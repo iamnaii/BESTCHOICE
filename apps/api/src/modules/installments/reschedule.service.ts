@@ -81,6 +81,28 @@ export class RescheduleService {
             rescheduleCount: { increment: 1 },
           } as any,
         });
+
+        // W4 fix: shift Payment.dueDate alongside InstallmentSchedule.dueDate.
+        // recordPayment reads payment.dueDate for the real-time late fee
+        // recompute. Without this update, a customer paying on the new due
+        // date is still flagged overdue by the original due date, and a
+        // bogus lateFee is computed + booked to 42-1103.
+        //
+        // Round 2 W4 fix: only shift dueDate on non-PAID rows. Reschedule
+        // should NEVER move a PAID row's dueDate — would corrupt historical
+        // late-fee evidence + GL audit trail. Soft-deleted rows are already
+        // filtered above. PaymentStatus enum = PENDING | PAID | PARTIALLY_PAID
+        // | OVERDUE (no CANCELLED) so `not: 'PAID'` is the exhaustive guard.
+        await tx.payment.updateMany({
+          where: {
+            contractId: input.contractId,
+            installmentNo: inst.installmentNo,
+            deletedAt: null,
+            status: { not: 'PAID' },
+          },
+          data: { dueDate: newDue },
+        });
+
         oldDueDates[inst.id] = inst.dueDate;
         newDueDates[inst.id] = newDue;
         shiftedIds.push(inst.id);

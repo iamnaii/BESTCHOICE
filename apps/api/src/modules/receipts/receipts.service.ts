@@ -9,6 +9,7 @@ import { LineOaService } from '../line-oa/line-oa.service';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { ReceiptVoidReversalTemplate } from '../journal/cpa-templates/receipt-void-reversal.template';
+import { EMBEDDED_FONT_FACES } from '../../assets/fonts/embedded-fonts';
 
 // Embedded BESTCHOICE logo. Single source of truth for the receipt header.
 // Loaded inline so the PDF renders without network access.
@@ -36,9 +37,18 @@ export class ReceiptsService {
    */
   private async generateReceiptNumber(tx?: Prisma.TransactionClient): Promise<string> {
     const db = tx || this.prisma;
+    // W5 fix: pin YYYY/MM to Asia/Bangkok so a receipt issued at 00:30 BKK
+    // on May 1 (17:30 UTC Apr 30) numbers under May, not April. Server-local
+    // .getFullYear()/.getMonth() on UTC Cloud Run produced the wrong month
+    // prefix at the BKK calendar boundary.
     const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const bkkParts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Bangkok',
+      year: 'numeric',
+      month: '2-digit',
+    }).formatToParts(now);
+    const year = parseInt(bkkParts.find((p) => p.type === 'year')!.value, 10);
+    const month = bkkParts.find((p) => p.type === 'month')!.value;
     const prefix = `RT-${year}${month}-`;
 
     const lockKey = parseInt(`1${year}${month}`, 10);
@@ -697,15 +707,22 @@ export class ReceiptsService {
         this.escapeHtml((receipt.issuer?.name || '').split(/\s+/)[0]) || 'ระบบ',
     };
 
-    const total = Number(receipt.amount);
-    const amountBeforeVat = receipt.amountBeforeVat ? Number(receipt.amountBeforeVat) : null;
-    const vatAmount = receipt.vatAmount ? Number(receipt.vatAmount) : null;
+    // I2 fix: route money math through Prisma.Decimal — Number(amountDue) +
+    // Number(lateFee) accumulated drift on receipts with fractional satang.
+    // Display uses .toFixed(2) before Intl.NumberFormat so the print output
+    // is satang-accurate even when the source columns ran through several
+    // additions.
+    const toDec = (v: unknown): Prisma.Decimal =>
+      new Prisma.Decimal((v ?? 0).toString());
+    const total = toDec(receipt.amount).toNumber();
+    const amountBeforeVat = receipt.amountBeforeVat ? toDec(receipt.amountBeforeVat).toNumber() : null;
+    const vatAmount = receipt.vatAmount ? toDec(receipt.vatAmount).toNumber() : null;
     const totalDue = receipt.payment
-      ? Number(receipt.payment.amountDue) + Number(receipt.payment.lateFee)
+      ? toDec(receipt.payment.amountDue).plus(toDec(receipt.payment.lateFee)).toNumber()
       : null;
-    const totalPaidOnInstallment = receipt.payment ? Number(receipt.payment.amountPaid) : null;
+    const totalPaidOnInstallment = receipt.payment ? toDec(receipt.payment.amountPaid).toNumber() : null;
     const isPartial = receipt.payment?.status === 'PARTIALLY_PAID';
-    const remainingBalance = Number(receipt.remainingBalance || 0);
+    const remainingBalance = toDec(receipt.remainingBalance ?? 0).toNumber();
     const fmt = (n: number) =>
       n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const thaiAmount = this.numberToThaiText(total);
@@ -724,14 +741,19 @@ export class ReceiptsService {
     });
     const page = await browser.newPage();
 
+    // C5 fix (round 2): self-host Thai fonts via base64-embedded @font-face.
+    // Cloud Run's `node:20-slim` and the puppeteer-bundled Chromium do NOT
+    // ship Thai fonts — without these embedded faces every Thai glyph
+    // renders as a tofu box. Fonts are loaded once at module init from
+    // `apps/api/src/assets/fonts/` (bundled into dist via nest-cli.json).
+    // Keep `domcontentloaded/10s` wait — no network assets remain.
     const html = `
 <!DOCTYPE html>
 <html lang="th">
 <head>
   <meta charset="UTF-8">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Sriracha&display=swap" rel="stylesheet">
   <style>
+    ${EMBEDDED_FONT_FACES}
     @page { size: A4; margin: 0; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -740,7 +762,7 @@ export class ReceiptsService {
       --red-500:#ef4444;
     }
     body {
-      font-family: 'IBM Plex Sans Thai', sans-serif;
+      font-family: 'Noto Sans Thai', 'IBM Plex Sans Thai', system-ui, -apple-system, sans-serif;
       color: var(--zinc-900);
       font-size: 9.5pt;
       line-height: 1.45;
@@ -758,7 +780,7 @@ export class ReceiptsService {
     .meta-card { background:var(--emerald-50); border:1px solid var(--emerald-100); border-radius:6px; padding:10px 14px; font-size:9pt; align-self:start; }
     .meta-row { display:flex; justify-content:space-between; padding:3px 0; }
     .meta-label { color:var(--emerald-800); font-weight:600; }
-    .meta-value { color:var(--zinc-900); font-family:'IBM Plex Mono',monospace; font-size:8.5pt; font-weight:500; }
+    .meta-value { color:var(--zinc-900); font-family:'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size:8.5pt; font-weight:500; }
     .contact-info { margin-top:14px; font-size:9pt; }
     .contact-info .heading { color:var(--zinc-700); margin-bottom:4px; }
     .icon-line { display:grid; grid-template-columns:16px 1fr; gap:6px; align-items:start; color:var(--zinc-700); font-size:9pt; margin-top:2px; }
@@ -818,7 +840,7 @@ export class ReceiptsService {
     .qr-pane img { width:104px; height:104px; }
     .sig-block { text-align:left; }
     .sig-role { font-size:9.5pt; color:var(--zinc-900); font-weight:600; margin-bottom:2px; }
-    .sig-handwriting { font-family:'Sriracha',cursive; font-size:22pt; color:var(--zinc-600); line-height:1; transform:rotate(-3deg); transform-origin:left center; display:inline-block; opacity:0.85; margin-top:4px; }
+    .sig-handwriting { font-family:'Sriracha', 'Apple Chancery', 'Brush Script MT', cursive; font-size:22pt; color:var(--zinc-600); line-height:1; transform:rotate(-3deg); transform-origin:left center; display:inline-block; opacity:0.85; margin-top:4px; }
     .sig-rule { width:200px; border-top:1px dotted var(--zinc-300); margin:14px 0 5px; }
     .sig-name { font-size:10pt; font-weight:700; color:var(--zinc-900); }
     .sig-date { font-size:9pt; color:var(--zinc-500); margin-top:1px; font-variant-numeric:tabular-nums; }
@@ -999,7 +1021,9 @@ export class ReceiptsService {
 </body>
 </html>`;
 
-    await page.setContent(html, { waitUntil: 'networkidle0' });
+    // C5 fix (round 2): fonts are embedded as base64 @font-face data URIs.
+    // No external network needed — domcontentloaded is sufficient.
+    await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 10_000 });
 
     const pdf = await page.pdf({
       format: 'A4',

@@ -6,6 +6,7 @@ import { seedStandard17k12m } from '../../__tests__/scenario-helpers';
 import { ContractActivation1ATemplate } from '../contract-activation-1a.template';
 import { EarlyPayoffJP4Template } from '../early-payoff-jp4.template';
 import { RepossessionJP5Template } from '../repossession-jp5.template';
+import { Vat60dayReversalTemplate } from '../vat-60day-reversal.template';
 import { JournalAutoService } from '../../journal-auto.service';
 
 const prisma = new PrismaClient();
@@ -143,7 +144,11 @@ describe('JE template atomicity (Wave 1 / P0)', () => {
     it('rolls back JP4 JE + Payment rows when outer transaction throws', async () => {
       const journal = new JournalAutoService(prisma as any);
       const oneA = new ContractActivation1ATemplate(journal, prisma as any);
-      const jp4 = new EarlyPayoffJP4Template(journal, prisma as any);
+      const jp4 = new EarlyPayoffJP4Template(
+        journal,
+        prisma as any,
+        new Vat60dayReversalTemplate(journal, prisma as any),
+      );
 
       const c = await seedStandard17k12m(prisma);
       // Seed 1A so the contract has receivable to pay off
@@ -188,7 +193,11 @@ describe('JE template atomicity (Wave 1 / P0)', () => {
     it('commits JP4 JE + Payment rows when outer transaction succeeds', async () => {
       const journal = new JournalAutoService(prisma as any);
       const oneA = new ContractActivation1ATemplate(journal, prisma as any);
-      const jp4 = new EarlyPayoffJP4Template(journal, prisma as any);
+      const jp4 = new EarlyPayoffJP4Template(
+        journal,
+        prisma as any,
+        new Vat60dayReversalTemplate(journal, prisma as any),
+      );
 
       const c = await seedStandard17k12m(prisma);
       await oneA.execute(c.id);

@@ -481,8 +481,10 @@ export function RecordPaymentWizard({
 
   const [amountReceived, setAmountReceived] = useState(defaultAmount.toFixed(2));
   const [amountManuallyEdited, setAmountManuallyEdited] = useState(false);
-  // lateFee always starts at 0 — user explicitly enters if applicable
-  const [lateFeeStr, setLateFeeStr] = useState('0.00');
+  // I4 fix: pre-fill lateFee from the server-computed payment.lateFee instead
+  // of hard-coding '0.00'. Previously the cashier had to retype the displayed
+  // late-fee figure from the contract info panel — error-prone and slow.
+  const [lateFeeStr, setLateFeeStr] = useState(lateFeeDecimal.toFixed(2));
 
   // Auto-sync amountReceived = amountDue + lateFee while user hasn't touched
   // the amount field. Once user edits amount manually, stop auto-syncing so

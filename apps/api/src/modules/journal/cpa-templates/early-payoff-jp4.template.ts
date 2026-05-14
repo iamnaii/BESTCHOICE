@@ -3,6 +3,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import { JournalAutoService, JeLineInput } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { Vat60dayReversalTemplate } from './vat-60day-reversal.template';
 
 export interface EarlyPayoffInput {
   contractId: string;
@@ -72,6 +73,12 @@ export class EarlyPayoffJP4Template {
   constructor(
     private readonly journal: JournalAutoService,
     private readonly prisma: PrismaService,
+    // Round 2 I1 fix: required injection (was @Optional() in round 1).
+    // Failure to wire Vat60dayReversalTemplate at module bootstrap should
+    // be a startup error, not a silent skip — silently bypassing it on
+    // an early payoff would leave 11-2104 + 21-2103 dangling forever.
+    // Test stubs must inject a real Vat60dayReversalTemplate instance.
+    private readonly vat60Reversal: Vat60dayReversalTemplate,
   ) {}
 
   async execute(
@@ -247,6 +254,21 @@ export class EarlyPayoffJP4Template {
             notes: 'EARLY_PAYOFF',
           },
         });
+      }
+
+      // C3 fix: reverse any 60-day mandatory VAT JEs on the installments
+      // being closed. Without this, 11-2104 receivable + 21-2103 RD liability
+      // would remain on the balance sheet forever for early-paid-off contracts
+      // that had been 60d-flagged. Runs inside the same tx so a reversal
+      // failure rolls back the JP4 JE — no partial state.
+      //
+      // Round 2 I1 fix: vat60Reversal is now required (was @Optional()) — no
+      // null check needed. DI failure surfaces at app bootstrap, not silently
+      // at runtime.
+      for (const inst of unpaidInsts) {
+        if (inst.vat60dayJournalEntryId) {
+          await this.vat60Reversal.execute(inst.id, tx);
+        }
       }
 
       return result.entryNumber;

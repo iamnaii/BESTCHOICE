@@ -1093,6 +1093,12 @@ export class PaySolutionsService {
       // concurrent webhook retries cannot read stale amountPaid and
       // double-credit an installment. The updateMany gate on `status: ACTIVE`
       // is the belt-and-suspenders claim — only one transaction wins.
+      //
+      // C2 fix (2026-05-14): JE post is now INSIDE this $transaction so a JE
+      // failure rolls back the Payment.update — no orphan PAID rows without
+      // ledger entries. Idempotency is preserved by the paymentLink.updateMany
+      // gate above (only one tx wins) and by the existing UNIQUE constraint
+      // on transactionRef.
       const result = await this.prisma.$transaction(
         async (tx) => {
           const claim = await tx.paymentLink.updateMany({
@@ -1115,10 +1121,9 @@ export class PaySolutionsService {
           let remaining = paidAmount;
           const now = new Date();
           let fullyPaidCount = 0;
-          // F-1-003 follow-up: collect snapshots of fully-paid payments for
-          // post-tx JE posting. JE must NOT run inside this $transaction —
-          // PostgreSQL Serializable would abort the tx on JE failure
-          // (tx-poisoning) and roll back the Payment.update to PAID.
+          // Collect snapshots of fully-paid payments. After the per-installment
+          // Payment.update loop, we post each JE inside this same $transaction
+          // (C2 fix) so atomicity is enforced.
           const fullyPaidSnapshots: Array<{
             id: string;
             installmentNo: number;
@@ -1164,8 +1169,7 @@ export class PaySolutionsService {
             });
             if (fullyPaid) {
               fullyPaidCount++;
-              // Capture snapshot for post-tx JE — see fullyPaidSnapshots
-              // declaration above for tx-poisoning rationale.
+              // Capture snapshot for in-tx JE post below.
               fullyPaidSnapshots.push({
                 id: paymentUpdated.id,
                 installmentNo: paymentUpdated.installmentNo,
@@ -1221,6 +1225,57 @@ export class PaySolutionsService {
             }
           }
 
+          // C2 fix: post each fully-paid installment's 2B JE INSIDE this tx.
+          // PaymentReceipt2BTemplate now accepts an outerTx parameter (added
+          // 2026-05-14) so the JE shares this serializable transaction.
+          // A JE failure here rolls back the Payment.update — no orphan
+          // PAID rows. The previous "JE outside tx + swallow errors + Sentry"
+          // pattern was the documented F-1-003 follow-up bug.
+          //
+          // Backward-compat: amountReceived = snapshot.amountPaid (cumulative)
+          // matches the pre-fix semantics. The vast majority of PaySolutions
+          // payments are no-prior-partial (LIFF early payoff, fresh installments),
+          // for which cumulative == delta. Prior-partial edge cases are still
+          // imperfect but are not a new regression introduced by this fix.
+          if (contractForJe && systemUserId) {
+            for (const snapshot of fullyPaidSnapshots) {
+              const instSchedPs = await tx.installmentSchedule.findUnique({
+                where: {
+                  contractId_installmentNo: {
+                    contractId: contractForJe.id,
+                    installmentNo: snapshot.installmentNo,
+                  },
+                },
+                select: { id: true },
+              });
+              if (instSchedPs) {
+                // Round 2 I2 — Known limitation:
+                // `amountReceived = snapshot.amountPaid` is cumulative, not
+                // delta. For the common LIFF flows (fresh installments,
+                // early payoff with no prior partial) cumulative == delta.
+                // For multi-installment payments where a prior partial
+                // existed, the JE base inflates by the carryover and the
+                // 2B template would post too much. Follow-up issue in
+                // PR #843 review thread — track via this TODO marker.
+                // TODO(PR-843/I2): switch to delta = amountPaid - priorPaid
+                // when prior-partial detection is added to the snapshot.
+                await this.paymentReceipt2BTemplate.execute(
+                  {
+                    installmentScheduleId: instSchedPs.id,
+                    amountReceived: new Decimal(snapshot.amountPaid.toString()),
+                    depositAccountCode: '11-1202',
+                    existingPaymentId: snapshot.id,
+                  },
+                  tx,
+                );
+              } else {
+                this.logger.warn(
+                  `PaySolutions: PaymentReceipt2B skipped — no InstallmentSchedule for contractId=${contractForJe.id} installmentNo=${snapshot.installmentNo}`,
+                );
+              }
+            }
+          }
+
           return {
             alreadyClaimed: false as const,
             contractStatus,
@@ -1243,59 +1298,10 @@ export class PaySolutionsService {
         `Payment SUCCESS: refno=${refno}, contractId=${paymentLink.contractId}, contractStatus=${result.contractStatus ?? 'ACTIVE'}, fullyPaid=${result.fullyPaidCount}/${result.totalUnpaidAtStart}`,
       );
 
-      // F-1-003 follow-up: Post payment JE OUTSIDE the main $transaction.
-      // Each JE runs in its own $transaction so a failure cannot poison the
-      // already-committed Payment.update. This preserves the P2 guarantee:
-      // payment is acknowledged regardless of JE success. JE errors go to
-      // Sentry for manual reconciliation.
-      if (contractForJe && systemUserId) {
-        for (const snapshot of result.fullyPaidSnapshots) {
-          try {
-            // Phase A.4b: replaced createPaymentJournal (old stub) with PaymentReceipt2BTemplate.
-            // Look up the InstallmentSchedule by contractId + installmentNo, then call template
-            // with existingPaymentId so template skips creating a duplicate Payment row.
-            // Default deposit account '11-1202' = SCB (PaySolutions settlement account).
-            const instSchedPs = await this.prisma.installmentSchedule.findUnique({
-              where: {
-                contractId_installmentNo: {
-                  contractId: contractForJe.id,
-                  installmentNo: snapshot.installmentNo,
-                },
-              },
-              select: { id: true },
-            });
-            if (instSchedPs) {
-              await this.paymentReceipt2BTemplate.execute({
-                installmentScheduleId: instSchedPs.id,
-                amountReceived: new Decimal(snapshot.amountPaid.toString()),
-                depositAccountCode: '11-1202',
-                existingPaymentId: snapshot.id,
-              });
-            } else {
-              this.logger.warn(
-                `PaySolutions: PaymentReceipt2B skipped — no InstallmentSchedule for contractId=${contractForJe.id} installmentNo=${snapshot.installmentNo}`,
-              );
-            }
-          } catch (jeErr) {
-            Sentry.captureException(jeErr, {
-              tags: {
-                module: 'paysolutions',
-                event: 'webhook-je-failure',
-              },
-              extra: {
-                paymentId: snapshot.id,
-                contractId: paymentLink.contractId,
-                refno,
-                error: String(jeErr),
-              },
-            });
-            this.logger.error(
-              `Webhook JE failed for payment ${snapshot.id}: ${jeErr instanceof Error ? jeErr.message : jeErr}`,
-            );
-            // DO NOT rethrow — Pattern P2 — payment was already committed.
-          }
-        }
-      }
+      // C2 fix: the JE post that used to be HERE (outside the $transaction)
+      // was moved inside the tx above so a JE failure rolls back the
+      // Payment.update. Orphan PAID rows are now impossible — the previous
+      // F-1-003 follow-up + webhook-je-failure Sentry path is removed.
 
       // Route notification: multi-installment close = early-payoff flex;
       // everything else uses the existing single-installment flex.

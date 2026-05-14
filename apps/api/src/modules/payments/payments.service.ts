@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException, InternalServerErrorException, Logger, Optional, Inject, forwardRef } from '@nestjs/common';
+import { createHash } from 'crypto';
 import * as Sentry from '@sentry/node';
 import { StructuredLoggerService } from '../../common/logger';
 import { Prisma, PaymentMethod } from '@prisma/client';
@@ -107,6 +108,45 @@ export class PaymentsService {
       select: { branchId: true, deletedAt: true },
     });
     if (contract && !contract.deletedAt && user.branchId && contract.branchId !== user.branchId) {
+      throw new ForbiddenException('ไม่สามารถบันทึกชำระเงินข้ามสาขาได้');
+    }
+  }
+
+  /**
+   * W1 fix: enforce branch-level access when the caller only knows the
+   * paymentId (waive-late-fee + partial-QR endpoints). Looks up the
+   * payment's contractId and delegates to validateBranchAccess.
+   *
+   * Routes guarded by class-level BranchGuard pass only when the request
+   * carries `branchId` — these payment-keyed routes don't, so they were
+   * silently bypassing the cross-branch check. This helper closes the gap.
+   */
+  async validateBranchAccessByPayment(
+    paymentId: string,
+    user: { role: string; branchId: string | null },
+  ) {
+    if (hasCrossBranchAccess(user)) return;
+    // Round 2 W1 fix: collapse the previous 2 queries (payment.findUnique →
+    // contract.findUnique) into a single join. Saves a roundtrip on every
+    // waive-late-fee + partial-QR call. Inline the branchId check here so
+    // we don't re-fetch the contract via validateBranchAccess().
+    const payment = await this.prisma.payment.findUnique({
+      where: { id: paymentId },
+      select: {
+        deletedAt: true,
+        contract: { select: { branchId: true, deletedAt: true } },
+      },
+    });
+    if (!payment || payment.deletedAt) {
+      throw new NotFoundException('ไม่พบรายการชำระ');
+    }
+    const contract = payment.contract;
+    if (
+      contract &&
+      !contract.deletedAt &&
+      user.branchId &&
+      contract.branchId !== user.branchId
+    ) {
       throw new ForbiddenException('ไม่สามารถบันทึกชำระเงินข้ามสาขาได้');
     }
   }
@@ -353,6 +393,11 @@ export class PaymentsService {
           select: { id: true },
         });
         if (instSched) {
+          // C1 fix: forward computed lateFee to the 2B template so it emits the
+          // Cr 42-1103 income leg AND the tolerance check correctly accounts
+          // for "amount = installmentTotal + lateFee". Without this, the
+          // template would either reject the payment (delta > 1฿ tolerance)
+          // or silently drop the 42-1103 income — both were prod bugs.
           await this.paymentReceipt2BTemplate.execute({
             installmentScheduleId: instSched.id,
             amountReceived: new Prisma.Decimal(amount.toString()),
@@ -362,6 +407,7 @@ export class PaymentsService {
             advanceCredit: advanceCredit.gt(0) ? advanceCredit : undefined,
             advanceConsume: advanceConsume.gt(0) ? advanceConsume : undefined,
             partialClear: isPartialClear ? true : undefined,
+            lateFee: lateFee.gt(0) ? lateFee : undefined,
           });
 
           // CPA Policy A §3.6 — ECL stage reverse on payment.
@@ -436,6 +482,15 @@ export class PaymentsService {
       });
     }
 
+    // I3 note: every effect below this point runs OUTSIDE the serializable
+    // payment tx. All are non-financial / idempotent / explicitly logged on
+    // failure — they MUST NOT roll back the committed payment. Effects:
+    //   - receiptsService.generateReceipt — own tx + sequence lock
+    //   - awardLoyaltyPoints — upsert on unique paymentId, errors logged
+    //   - sendPaymentSuccessLine — LINE push, errors swallowed via .warn
+    //   - mdmAuto.autoUnlockAfterPayment — fire-and-forget Promise
+    //   - checkPromiseAfterPayment — own tx, errors → Sentry only
+    //
     // Auto-generate e-Receipt for every payment event (TFRS practice:
     // issue a receipt each time money is received, including partial payments).
     // `amount` here is the actual delta paid in this transaction, not cumulative.
@@ -517,6 +572,12 @@ export class PaymentsService {
     const financeCompanyId = await this.resolveFinanceCompanyId();
     const shopCompanyId = await this.resolveShopCompanyId();
 
+    // W2 fix: resolve the deposit-account code for the recorder ONCE (mirrors
+    // recordPayment line ~160). Previously the per-installment Payment.update
+    // omitted depositAccountCode, so the downstream JE fell back to '11-1101'
+    // (สุทธินีย์) regardless of who actually collected the money.
+    const resolvedDepositAccountCode = await this.resolveUserDefaultCashAccount(recordedById);
+
     // Wrap entire allocation in a serializable transaction to prevent double-payment
     const allocationResult = await this.prisma.$transaction(async (tx) => {
       const contract = await tx.contract.findUnique({
@@ -555,7 +616,28 @@ export class PaymentsService {
             status: isPaidInFull ? 'PAID' : 'PARTIALLY_PAID',
             recordedById,
             notes: notes || payment.notes,
+            depositAccountCode: resolvedDepositAccountCode,
             ...(isFirstPayment && evidenceUrl ? { evidenceUrl } : {}),
+          },
+        });
+
+        // W3 fix: audit-log each per-installment payment created here.
+        // Previously only recordPayment emitted PAYMENT_RECORDED — the bulk
+        // path skipped audit, so allocated payments showed no audit trail.
+        await tx.auditLog.create({
+          data: {
+            userId: recordedById,
+            action: isPaidInFull ? 'PAYMENT_RECORDED' : 'PAYMENT_PARTIAL',
+            entity: 'payment',
+            entityId: updated.id,
+            newValue: {
+              contractId,
+              installmentNo: updated.installmentNo,
+              amount: payAmount.toString(),
+              paymentMethod,
+              source: 'AUTO_ALLOCATE',
+              depositAccountCode: resolvedDepositAccountCode,
+            },
           },
         });
 
@@ -581,7 +663,11 @@ export class PaymentsService {
             await this.paymentReceipt2BTemplate.execute({
               installmentScheduleId: instSchedBulk.id,
               amountReceived: new Prisma.Decimal(updated.amountPaid.toString()),
-              depositAccountCode: updated.depositAccountCode ?? '11-1101',
+              // W2 fix: use the resolvedDepositAccountCode that we just
+              // wrote on Payment.update — previously this read the field
+              // off the in-memory Prisma return value which may not yet
+              // reflect the same value (and read '11-1101' fallback).
+              depositAccountCode: updated.depositAccountCode ?? resolvedDepositAccountCode,
               existingPaymentId: updated.id,
             });
           } else {
@@ -642,9 +728,12 @@ export class PaymentsService {
         // Phase A.4b: replaced createCustomerCreditOverpaymentJournal (old stub)
         // with inline createAndPost. JE: Dr Cash (deposit) / Cr 21-5101 Customer Credit Balance.
         // 21-5101 = เงินเกินของลูกค้า (confirmed in finance-chart-of-accounts.csv).
+        // W2 fix: use the resolvedDepositAccountCode (caller's actual cash
+        // account) instead of the per-row fallback which masked the user's
+        // default and silently re-routed every overpayment JE to 11-1101.
         const depositCode = results.length > 0
-          ? (results[results.length - 1].updated.depositAccountCode ?? '11-1101')
-          : '11-1101';
+          ? (results[results.length - 1].updated.depositAccountCode ?? resolvedDepositAccountCode)
+          : resolvedDepositAccountCode;
         const zero = new Prisma.Decimal(0);
         await this.journalAutoService.createAndPost(
           {
@@ -848,11 +937,22 @@ export class PaymentsService {
       );
     });
 
+    // W6 fix: the previous Math.round(Decimal.toNumber()) silently dropped
+    // satang on every daily total — a day collecting 152.50 + 99.17 + ...
+    // was rounded to whole baht for the summary card. Drop the Math.round
+    // and keep two-decimal precision; the UI side already calls .toLocaleString
+    // which formats both ints and floats consistently.
+    const totalAmount = new Prisma.Decimal(aggregation._sum.amountPaid ?? 0)
+      .toDecimalPlaces(2)
+      .toNumber();
+    const totalLateFees = new Prisma.Decimal(aggregation._sum.lateFee ?? 0)
+      .toDecimalPlaces(2)
+      .toNumber();
     return {
       date,
       totalPayments: total,
-      totalAmount: Math.round(new Prisma.Decimal(aggregation._sum.amountPaid ?? 0).toNumber()),
-      totalLateFees: Math.round(new Prisma.Decimal(aggregation._sum.lateFee ?? 0).toNumber()),
+      totalAmount,
+      totalLateFees,
       byMethod,
       data: payments,
       total,
@@ -987,6 +1087,24 @@ export class PaymentsService {
           },
         });
 
+        // W3 fix: previously applyCreditBalance left no audit trail.
+        // Emit CREDIT_APPLIED per installment for forensic visibility.
+        await tx.auditLog.create({
+          data: {
+            userId: recordedById,
+            action: 'CREDIT_APPLIED',
+            entity: 'payment',
+            entityId: updated.id,
+            newValue: {
+              contractId,
+              installmentNo: updated.installmentNo,
+              payAmount: payAmount.toString(),
+              totalPaidAfter: totalPaid.toString(),
+              becamePaidInFull: isPaidInFull,
+            },
+          },
+        });
+
         results.push(updated);
         remaining = dSub(remaining, payAmount);
 
@@ -998,8 +1116,14 @@ export class PaymentsService {
           // clears the customer credit balance against the outstanding receivable.
           // No Dr Cash because the cash was already recorded when the overpayment
           // was originally received (audit finding F-1-004).
+          //
+          // C4 fix: use `payAmount` (the delta applied in THIS allocation) not
+          // `updated.amountPaid` (cumulative). The previous code over-Dr'd
+          // 21-5101 by the prior partial-paid portion, driving the customer-
+          // credit account to negative when an installment had been partially
+          // paid before the credit balance was applied.
           const creditZero = new Prisma.Decimal(0);
-          const creditPayAmount = new Prisma.Decimal(updated.amountPaid.toString());
+          const creditPayAmount = new Prisma.Decimal(payAmount.toString());
           await this.journalAutoService.createAndPost(
             {
               description: `ใช้เครดิตชำระงวด #${updated.installmentNo} — สัญญา ${contract.contractNumber}`,
@@ -1051,7 +1175,12 @@ export class PaymentsService {
       select: { id: true, contractNumber: true, creditBalance: true, deletedAt: true },
     });
     if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
-    return { creditBalance: Number(contract.creditBalance) };
+    // I1 fix: return as 2-dp string (Decimal precision preserved) instead of
+    // Number(...) which silently degrades to IEEE-754 binary float and can
+    // drift on large balances. UI parses with parseFloat / formatNumber.
+    return {
+      creditBalance: new Prisma.Decimal(contract.creditBalance.toString()).toFixed(2),
+    };
   }
 
   // ─── Batch CSV Payment Import ────────────────────────
@@ -1129,6 +1258,40 @@ export class PaymentsService {
           continue;
         }
 
+        // C6 fix: CSV idempotency. The previous synthetic
+        // `CSV-${Date.now()}-${row}-${Math.random()}` was unique every run, so
+        // re-importing the same CSV (e.g. operator retry after partial failure)
+        // created duplicate Payments + duplicate JEs. Replace with a
+        // content-stable SHA-256 hash of the row's business identity:
+        //   contractNumber | installmentNo | amount | paidDate (date-only).
+        // Re-importing the same row will compute the same ref, and the
+        // existing idempotency check in recordPayment (notes contains
+        // `ref:<value>`) will reject it as a duplicate.
+        //
+        // Round 2 C6 fix: date component MUST be Asia/Bangkok local date.
+        // `new Date().toISOString().slice(0, 10)` returns UTC, so a CSV
+        // imported at 01:00 BKK (= 18:00 UTC previous day) hashes as
+        // yesterday — losing idempotency for ~7 hours every night when the
+        // operator retries spanning UTC midnight. en-CA `Intl.DateTimeFormat`
+        // outputs `YYYY-MM-DD` in the chosen timeZone (matches getBkkYyyymm
+        // pattern from PR #840).
+        const bkkDate = new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'Asia/Bangkok',
+        }).format(new Date());
+        const stableRef =
+          transactionRef ||
+          `csv:${createHash('sha256')
+            .update(
+              [
+                contractNumber,
+                String(installmentNo),
+                amount.toFixed(2),
+                bkkDate,
+              ].join('|'),
+            )
+            .digest('hex')
+            .slice(0, 32)}`;
+
         await this.recordPayment(
           contract.id,
           installmentNo,
@@ -1137,7 +1300,7 @@ export class PaymentsService {
           recordedById,
           undefined, // evidenceUrl
           notes || `CSV import row ${row}`,
-          transactionRef || `CSV-${Date.now()}-${row}-${Math.random().toString(36).slice(2, 8)}`,
+          stableRef,
           depositCode, // resolves to user default → 11-1101 if undefined
         );
         success++;
@@ -1189,15 +1352,20 @@ export class PaymentsService {
       const payment = await tx.payment.findUnique({ where: { id: paymentId } });
       if (!payment || payment.deletedAt) throw new NotFoundException('ไม่พบรายการชำระ');
       if (payment.lateFeeWaived) throw new BadRequestException('รายการนี้ยกเว้นค่าปรับแล้ว');
-      if (Number(payment.lateFee) <= 0) throw new BadRequestException('รายการนี้ไม่มีค่าปรับ');
+      // I5 fix: read lateFee / amountDue / amountPaid through Prisma.Decimal
+      // so comparisons + log values cannot drift on large balances. The
+      // comparison + log are the only consumers; we keep `originalLateFee`
+      // as a number for the legacy unusual-waiver Sentry check below.
+      const lateFeeDec = new Prisma.Decimal(payment.lateFee.toString());
+      if (lateFeeDec.lte(0)) throw new BadRequestException('รายการนี้ไม่มีค่าปรับ');
 
-      const originalLateFee = roundBaht(Number(payment.lateFee));
+      const originalLateFee = lateFeeDec.toDecimalPlaces(2).toNumber();
       const notes = [payment.notes, `ยกเว้นค่าปรับ ${originalLateFee.toLocaleString()} บาท — ${reason}`].filter(Boolean).join(' | ');
 
       // Check if payment becomes fully paid after waiving late fee
-      const totalOwed = roundBaht(Number(payment.amountDue)); // without late fee
-      const amountPaid = roundBaht(Number(payment.amountPaid));
-      const isNowFullyPaid = amountPaid >= totalOwed;
+      const totalOwedDec = new Prisma.Decimal(payment.amountDue.toString()); // without late fee
+      const amountPaidDec = new Prisma.Decimal(payment.amountPaid.toString());
+      const isNowFullyPaid = amountPaidDec.gte(totalOwedDec);
 
       const updated = await tx.payment.update({
         where: { id: paymentId },
@@ -1386,8 +1554,10 @@ export class PaymentsService {
       });
       if (!contract?.customer?.lineIdFinance || !contract.customer.notifReceipt) return;
 
+      // I6 fix: include deletedAt: null so soft-deleted payments don't
+      // inflate the "X / N" counter shown in the LINE receipt.
       const paidCount = await this.prisma.payment.count({
-        where: { contractId, status: 'PAID' },
+        where: { contractId, status: 'PAID', deletedAt: null },
       });
       const remaining = contract.totalMonths - paidCount;
 
@@ -1614,6 +1784,12 @@ export class PaymentsService {
     const interestPerInst = interest.div(total).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
     const installmentTotal = monthly;
 
+    // Round 2 I3 audit: input.lateFee arrives as `number` from the DTO.
+    // `.toString()` is defensive against Decimal constructor surprises on
+    // large numbers — only this one site consumes input.lateFee raw, and
+    // it's properly wrapped. Other code paths (record/preview controllers,
+    // recordPayment service flow) re-read payment.lateFee from the DB which
+    // is already Prisma.Decimal. No further coercion sites identified.
     const lateFeeAmount = input.lateFee ? new Prisma.Decimal(input.lateFee.toString()) : zero;
 
     // Build raw JE lines (code, dr, cr, description)

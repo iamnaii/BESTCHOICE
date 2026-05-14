@@ -101,9 +101,18 @@ export class PaymentReceipt2BTemplate {
     @Optional() private readonly vat60Reversal?: Vat60dayReversalTemplate,
   ) {}
 
-  async execute(input: PaymentReceiptInput): Promise<{ entryNo: string }> {
-    // Pre-fetch outside transaction for validation (read-only)
-    const inst = await this.prisma.installmentSchedule.findUniqueOrThrow({
+  async execute(
+    input: PaymentReceiptInput,
+    outerTx?: Prisma.TransactionClient,
+  ): Promise<{ entryNo: string }> {
+    // C2 fix support: when an outerTx is provided (e.g. PaySolutions webhook),
+    // run the JE + Payment.create + VAT-reversal inside that tx so the whole
+    // financial event is atomic. When omitted, open a local tx (legacy behavior).
+    const readClient: Prisma.TransactionClient | PrismaService = outerTx ?? this.prisma;
+
+    // Pre-fetch for validation (read-only) — uses outerTx when supplied so it
+    // sees uncommitted Payment rows from the caller's tx.
+    const inst = await readClient.installmentSchedule.findUniqueOrThrow({
       where: { id: input.installmentScheduleId },
       include: { contract: true },
     });
@@ -164,7 +173,9 @@ export class PaymentReceipt2BTemplate {
     // If JE post fails (unbalanced, missing account), any Payment row created here is rolled back.
     // When existingPaymentId is provided (caller already created the Payment row), skip Payment.create
     // and use the provided id as the JE referenceId.
-    const entryNumber = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    // C2 fix: when caller provides outerTx, run inside that tx so the JE + the
+    // caller's Payment.update form a single atomic financial event.
+    const exec = async (tx: Prisma.TransactionClient) => {
       let paymentId: string;
       if (input.existingPaymentId) {
         // Caller owns the Payment row — just use its id as JE reference
@@ -304,7 +315,9 @@ export class PaymentReceipt2BTemplate {
       }
 
       return result.entryNumber;
-    });
+    };
+
+    const entryNumber = outerTx ? await exec(outerTx) : await this.prisma.$transaction(exec);
 
     return { entryNo: entryNumber };
   }

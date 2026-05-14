@@ -171,6 +171,17 @@ export class RecordPaymentDto {
   @IsString()
   @IsIn(['NORMAL', 'OVERPAY', 'UNDERPAY', 'PARTIAL', 'EARLY_PAYOFF', 'RESCHEDULE', 'OVERPAY_ADVANCE'])
   case?: PaymentCase;
+
+  /**
+   * ค่าปรับชำระล่าช้าที่รวมอยู่ใน `amount` (ถ้ามี).
+   * ส่งเป็นข้อมูล advisory จาก wizard เพื่อความโปร่งใส — service จะคำนวณ
+   * lateFee ใหม่จากข้อมูลในฐานข้อมูล (Payment.lateFee + late_fee_per_day config)
+   * เพื่อเป็น source of truth. ห้ามให้ลูกค้า/พนักงานกำหนดค่าปรับเอง.
+   */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  lateFee?: number;
 }
 
 export class BulkRecordPaymentDto {

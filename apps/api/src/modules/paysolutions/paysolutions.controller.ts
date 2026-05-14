@@ -16,6 +16,7 @@ import { Request } from 'express';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { createHmac, timingSafeEqual } from 'crypto';
+import * as Sentry from '@sentry/nestjs';
 import { SkipCsrf } from '../../guards/skip-csrf.decorator';
 import { PaySolutionsService } from './paysolutions.service';
 import { CreatePaymentIntentDto } from './dto';
@@ -157,12 +158,45 @@ export class PaySolutionsController {
       return { received: true, processed: false };
     }
 
-    // 3. Process payment callback
+    // 3. Process payment callback.
+    //
+    // Round 2 Critical #1 fix: the underlying $transaction in
+    // `handlePaymentCallback` now wraps Payment.update + JE post in
+    // serializable isolation and propagates exceptions on JE failure. We
+    // must MAKE failures VISIBLE in Sentry — silently swallowing them would
+    // hide permanent-fail cases (customer paid, no JE, paymentLink stuck
+    // ACTIVE forever) because PaySolutions caps retries at 3.
+    //
+    // Strategy: capture to Sentry with explicit module/action tags, then
+    // re-throw so PaySolutions enqueues a retry (their 3-retry policy is
+    // our last automatic chance before manual reconciliation).
+    //
+    // Alerting runbook: set a Sentry alert on
+    //   tags.module = "paysolutions" AND tags.action = "payment_callback_je_failure"
+    // → page on-call after the 3rd retry exhausts (any single capture with
+    // refno + transaction_id that doesn't auto-resolve in 30 min).
     try {
       await this.paySolutionsService.handlePaymentCallback(body);
     } catch (error) {
       this.logger.error(`Webhook processing error: ${error}`);
-      // Still return 200 — webhook received, processing failed
+      Sentry.captureException(error, {
+        tags: {
+          module: 'paysolutions',
+          action: 'payment_callback_je_failure',
+        },
+        extra: {
+          refno: body.refno,
+          merchantid: body.merchantid,
+          order_no: body.order_no,
+          transaction_id: body.transaction_id,
+          result_code: body.result_code,
+          total: body.total,
+        },
+      });
+      // Re-throw so PaySolutions retries (max 3). NestJS default exception
+      // filter converts to 500 — webhook caller treats as retriable. After
+      // 3 retries the Sentry alert is the manual-reconciliation signal.
+      throw error;
     }
 
     return { received: true, processed: true };

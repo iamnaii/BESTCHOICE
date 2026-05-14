@@ -4,6 +4,7 @@ import {
   NotFoundException,
   ForbiddenException,
   Logger,
+  OnModuleInit,
 } from '@nestjs/common';
 import { Prisma, DocumentStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -24,6 +25,7 @@ import { CreateSettlementDto } from './dto/create-settlement.dto';
 import { hasCrossBranchAccess } from '../auth/branch-access.util';
 import { LineAggregatorService } from './services/line-aggregator.service';
 import { JePreviewService } from './services/je-preview.service';
+import { validatePeriodOpen } from '../../utils/period-lock.util';
 
 /**
  * Allow-list of account codes that may appear on a multi-line Adjustment row
@@ -63,8 +65,37 @@ function bkkBusinessDate(now: Date): Date {
 }
 
 @Injectable()
-export class ExpenseDocumentsService {
+export class ExpenseDocumentsService implements OnModuleInit {
   private readonly logger = new Logger(ExpenseDocumentsService.name);
+
+  /**
+   * W1 (Round 2) — Boot-time validation that every ADJUSTMENT_ALLOWLIST code
+   * actually exists (active, not deleted) in chart_of_accounts. Pattern
+   * mirrors AccountRoleService.assertCodesExistInCoa. Without this, a CoA
+   * rename or soft-delete would let the allow-list silently reference a
+   * dead account and a preparer could still pick it. Boot fails loud so
+   * the drift is caught before the first doc posts.
+   */
+  async onModuleInit(): Promise<void> {
+    const codes = [...ADJUSTMENT_ALLOWLIST];
+    const found = await this.prisma.chartOfAccount.findMany({
+      where: { code: { in: codes }, deletedAt: null },
+      select: { code: true },
+    });
+    const foundSet = new Set(found.map((c) => c.code));
+    const missing = codes.filter((c) => !foundSet.has(c));
+    if (missing.length > 0) {
+      throw new Error(
+        `ExpenseDocumentsService: ADJUSTMENT_ALLOWLIST references ` +
+          `${missing.length} code(s) not present (or soft-deleted) in ` +
+          `chart_of_accounts: ${missing.join(', ')}. Either seed the ` +
+          `accounts or update the allow-list constant.`,
+      );
+    }
+    this.logger.log(
+      `[W1] Adjustment allow-list verified: ${codes.length} codes present in CoA`,
+    );
+  }
 
   constructor(
     private readonly prisma: PrismaService,
@@ -1178,6 +1209,35 @@ export class ExpenseDocumentsService {
         totalAmount: doc.totalAmount.toString(),
       });
 
+      // Fix #C9 (Round 2 — moved from journal-auto.service.createAndPost):
+      // Period-open guard at the module boundary. Previously the guard lived
+      // inside createAndPost, which broke payment + contract atomicity (it
+      // would reject mid-tx JE writes and roll back the Payment record).
+      // The guard belongs HERE because:
+      //   1. We know the canonical posting date — doc.documentDate, not
+      //      "now" (which would let a backdated post slip through if the
+      //      clock crossed midnight between create + post).
+      //   2. We know the canonical companyId — SHOP (all expense flows post
+      //      SHOP-side per accounting.md §VAT Policy; expense template
+      //      resolves SHOP later, this guard mirrors that).
+      // Resolve SHOP companyId once via tx + cache; re-using the same
+      // pattern as expense templates' getShopCompanyId.
+      const shopForPeriod = await tx.companyInfo.findFirst({
+        where: { companyCode: 'SHOP', deletedAt: null },
+        select: { id: true },
+      });
+      if (!shopForPeriod) {
+        throw new NotFoundException(
+          'CompanyInfo with companyCode=SHOP not found — seed accounting data first',
+        );
+      }
+      // documentDate is required on the schema but defend against legacy
+      // rows with NULL via fallback to "now" (matches receipts.service +
+      // payments.service behavior — neither has a per-row date column on
+      // the doc, both pass new Date()).
+      const periodDate = doc.documentDate ?? new Date();
+      await validatePeriodOpen(tx, periodDate, shopForPeriod.id);
+
       // Fix #C10 — attachment threshold enforced server-side.
       // ATTACHMENT_REQUIRED_ABOVE_AMOUNT is set in /settings#attachment but
       // was previously only enforced by the frontend submit button. A direct
@@ -1337,6 +1397,22 @@ export class ExpenseDocumentsService {
 
       this.transition.assertCanVoid({ from: doc.status });
 
+      // Fix #C9 (Round 2 — moved from journal-auto.service.createAndPost):
+      // Period-open guard at the module boundary. The reversal JE postedAt
+      // is BKK noon "today" (bkkBusinessDate(new Date())), so the check uses
+      // the same "now" reference. SHOP companyId resolved fresh (cache lives
+      // on JournalAutoService) — small cost, but voids are rare.
+      const shopForVoidPeriod = await tx.companyInfo.findFirst({
+        where: { companyCode: 'SHOP', deletedAt: null },
+        select: { id: true },
+      });
+      if (!shopForVoidPeriod) {
+        throw new NotFoundException(
+          'CompanyInfo with companyCode=SHOP not found — seed accounting data first',
+        );
+      }
+      await validatePeriodOpen(tx, bkkBusinessDate(new Date()), shopForVoidPeriod.id);
+
       // Post reversal JE (flipped Dr/Cr) if doc had one. The original JE stays
       // intact; the reversal lives as a separate POSTED entry tagged via metadata.
       // Reversal postedAt is BKK noon "today" — keeps the entry inside the
@@ -1357,8 +1433,12 @@ export class ExpenseDocumentsService {
             select: { id: true },
           });
           if (!shop) {
-            throw new Error(
-              'SHOP companyInfo not found — cannot reverse legacy JE without companyId',
+            // W6 (Round 2) — replace bare Error with NestJS exception so the
+            // response is a clean 404 instead of a 500 with stack trace. Same
+            // wording shape as the post()/voidDocument() period-guard SHOP
+            // fallback and the FINANCE fallback in resolveFinanceCompanyId.
+            throw new NotFoundException(
+              'CompanyInfo with companyCode=SHOP not found — seed accounting data first',
             );
           }
           companyId = shop.id;

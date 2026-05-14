@@ -35,12 +35,32 @@ export class VendorSettlementTemplate {
     outerTx?: Prisma.TransactionClient,
   ): Promise<{ entryNo: string }> {
     const exec = async (tx: Prisma.TransactionClient): Promise<{ entryNo: string }> => {
+      // C8 (Round 2) — cheap idempotency short-circuit BEFORE the heavy
+      // include query. A concurrent retry from a webhook / cron / manual
+      // re-post used to fetch the full settlement+settlementLines payload
+      // first, then bail at the secondary check below. Doing the cheap
+      // `select journalEntryId` first avoids the redundant join on every
+      // retry. Mirrors expense-accrual / expense-same-day templates.
+      const idemCheck = await tx.expenseDocument.findUnique({
+        where: { id: documentId },
+        select: { journalEntryId: true },
+      });
+      if (idemCheck?.journalEntryId) {
+        const existing = await tx.journalEntry.findUnique({
+          where: { id: idemCheck.journalEntryId },
+          select: { entryNumber: true },
+        });
+        return { entryNo: existing?.entryNumber ?? idemCheck.journalEntryId };
+      }
+
       const se = await tx.expenseDocument.findUniqueOrThrow({
         where: { id: documentId },
         include: { settlement: { include: { settlementLines: true } } },
       });
 
-      // Idempotency
+      // Belt-and-braces — same check after the heavy fetch, in case the
+      // window between the cheap select and this row was used by a parallel
+      // call that succeeded. Same shape as the cheap check above.
       if (se.journalEntryId) {
         const existing = await tx.journalEntry.findUnique({
           where: { id: se.journalEntryId },

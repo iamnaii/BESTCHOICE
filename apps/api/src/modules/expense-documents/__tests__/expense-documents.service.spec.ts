@@ -54,6 +54,16 @@ describe('ExpenseDocumentsService', () => {
       systemConfig: {
         findUnique: jest.fn().mockResolvedValue(null),
       },
+      // C9 Round 2 — post/voidDocument resolve SHOP companyId for the
+      // module-level validatePeriodOpen call (mirroring expense templates).
+      companyInfo: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'shop-co-id' }),
+      },
+      // C9 Round 2 — validatePeriodOpen reads accountingPeriod by
+      // (companyId, year, month). Default = no row (= OPEN), so post() passes.
+      accountingPeriod: {
+        findUnique: jest.fn().mockResolvedValue(null),
+      },
     };
     docNumber = { next: jest.fn().mockResolvedValue('EX-20260510-0001') };
     transition = {
@@ -263,10 +273,15 @@ describe('ExpenseDocumentsService', () => {
 
     // Fix #C10 — attachment threshold server-enforced
     it('Fix #C10: rejects post when totalAmount ≥ threshold and no receiptImageUrl', async () => {
-      prisma.systemConfig.findUnique.mockResolvedValue({
-        key: 'ATTACHMENT_REQUIRED_ABOVE_AMOUNT',
-        value: '50000',
-      });
+      // Key-aware mock — period-lock util reads `accounting_period_closed_until`
+      // from the same table; treat that key as missing (period OPEN) so the
+      // C10 attachment-threshold test doesn't accidentally fail on a phantom
+      // period lock.
+      prisma.systemConfig.findUnique.mockImplementation((args: { where: { key: string } }) =>
+        args.where.key === 'ATTACHMENT_REQUIRED_ABOVE_AMOUNT'
+          ? { key: 'ATTACHMENT_REQUIRED_ABOVE_AMOUNT', value: '50000' }
+          : null,
+      );
       prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
         id: 'doc-c10', status: 'DRAFT', documentType: 'EXPENSE',
         paymentMethod: 'CASH', depositAccountCode: '11-1101',
@@ -283,10 +298,15 @@ describe('ExpenseDocumentsService', () => {
     });
 
     it('Fix #C10: allows post when totalAmount ≥ threshold WITH receiptImageUrl', async () => {
-      prisma.systemConfig.findUnique.mockResolvedValue({
-        key: 'ATTACHMENT_REQUIRED_ABOVE_AMOUNT',
-        value: '50000',
-      });
+      // Key-aware mock — period-lock util reads `accounting_period_closed_until`
+      // from the same table; treat that key as missing (period OPEN) so the
+      // C10 attachment-threshold test doesn't accidentally fail on a phantom
+      // period lock.
+      prisma.systemConfig.findUnique.mockImplementation((args: { where: { key: string } }) =>
+        args.where.key === 'ATTACHMENT_REQUIRED_ABOVE_AMOUNT'
+          ? { key: 'ATTACHMENT_REQUIRED_ABOVE_AMOUNT', value: '50000' }
+          : null,
+      );
       prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
         id: 'doc-c10b', status: 'DRAFT', documentType: 'EXPENSE',
         paymentMethod: 'CASH', depositAccountCode: '11-1101',
@@ -301,10 +321,15 @@ describe('ExpenseDocumentsService', () => {
     });
 
     it('Fix #C10: allows post when totalAmount < threshold, no receipt required', async () => {
-      prisma.systemConfig.findUnique.mockResolvedValue({
-        key: 'ATTACHMENT_REQUIRED_ABOVE_AMOUNT',
-        value: '50000',
-      });
+      // Key-aware mock — period-lock util reads `accounting_period_closed_until`
+      // from the same table; treat that key as missing (period OPEN) so the
+      // C10 attachment-threshold test doesn't accidentally fail on a phantom
+      // period lock.
+      prisma.systemConfig.findUnique.mockImplementation((args: { where: { key: string } }) =>
+        args.where.key === 'ATTACHMENT_REQUIRED_ABOVE_AMOUNT'
+          ? { key: 'ATTACHMENT_REQUIRED_ABOVE_AMOUNT', value: '50000' }
+          : null,
+      );
       prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
         id: 'doc-c10c', status: 'DRAFT', documentType: 'EXPENSE',
         paymentMethod: 'CASH', depositAccountCode: '11-1101',
@@ -441,6 +466,76 @@ describe('ExpenseDocumentsService', () => {
       transition.resolveTargetStatus.mockReturnValue('POSTED');
       await expect(service.post('doc-pr-c12', 'user-1')).resolves.toBeDefined();
       expect(payroll.execute).toHaveBeenCalled();
+    });
+
+    // Fix #C9 Round 2 — period guard moved from journal-auto.createAndPost
+    // to the expense module's service entry point. Expense post in a CLOSED
+    // FINANCE/SHOP period must still reject; payment receipt JEs (which
+    // share createAndPost) must NOT be affected by this guard (see
+    // journal-auto.service.spec.ts for the converse: createAndPost itself
+    // no longer checks period).
+    it('Fix #C9 Round 2: rejects post when SHOP AccountingPeriod for documentDate is CLOSED', async () => {
+      prisma.accountingPeriod.findUnique.mockResolvedValue({ status: 'CLOSED' });
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-c9-1',
+        status: 'DRAFT',
+        documentType: 'EXPENSE',
+        documentDate: new Date('2026-03-15'), // period closed
+        paymentMethod: 'CASH',
+        depositAccountCode: '11-1101',
+        totalAmount: new Decimal('1000.00'),
+        receiptImageUrl: null,
+        withholdingTax: new Decimal('0'),
+        whtFormType: null,
+      });
+      transition.resolveTargetStatus.mockReturnValue('POSTED');
+      await expect(service.post('doc-c9-1', 'user-1')).rejects.toThrow(/ปิดแล้ว/);
+      expect(sameDay.execute).not.toHaveBeenCalled();
+      // Verify the period check ran with SHOP companyId + the doc's date
+      expect(prisma.companyInfo.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ companyCode: 'SHOP' }),
+        }),
+      );
+    });
+
+    it('Fix #C9 Round 2: rejects post when SHOP AccountingPeriod is SYNCED', async () => {
+      prisma.accountingPeriod.findUnique.mockResolvedValue({ status: 'SYNCED' });
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-c9-2',
+        status: 'DRAFT',
+        documentType: 'EXPENSE',
+        documentDate: new Date('2026-03-15'),
+        paymentMethod: 'CASH',
+        depositAccountCode: '11-1101',
+        totalAmount: new Decimal('1000.00'),
+        receiptImageUrl: null,
+        withholdingTax: new Decimal('0'),
+        whtFormType: null,
+      });
+      transition.resolveTargetStatus.mockReturnValue('POSTED');
+      await expect(service.post('doc-c9-2', 'user-1')).rejects.toThrow(/ปิดแล้ว/);
+    });
+
+    it('Fix #C9 Round 2: throws NotFoundException when SHOP CompanyInfo is missing', async () => {
+      prisma.companyInfo.findFirst.mockResolvedValue(null);
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-c9-3',
+        status: 'DRAFT',
+        documentType: 'EXPENSE',
+        documentDate: new Date('2026-05-10'),
+        paymentMethod: 'CASH',
+        depositAccountCode: '11-1101',
+        totalAmount: new Decimal('1000.00'),
+        receiptImageUrl: null,
+        withholdingTax: new Decimal('0'),
+        whtFormType: null,
+      });
+      transition.resolveTargetStatus.mockReturnValue('POSTED');
+      await expect(service.post('doc-c9-3', 'user-1')).rejects.toThrow(NotFoundException);
+      await expect(service.post('doc-c9-3', 'user-1')).rejects.toThrow(
+        /CompanyInfo with companyCode=SHOP/,
+      );
     });
   });
 

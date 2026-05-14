@@ -18,6 +18,10 @@ describe('VendorSettlementTemplate', () => {
       $transaction: jest.fn(async (cb: (tx: unknown) => unknown) => cb(prisma)),
       expenseDocument: {
         findUniqueOrThrow: jest.fn(),
+        // C8 Round 2 — cheap pre-check before the heavy findUniqueOrThrow.
+        // Default: returns { journalEntryId: null } so the cheap idempotency
+        // short-circuit treats the doc as un-posted and falls through.
+        findUnique: jest.fn().mockResolvedValue({ journalEntryId: null }),
         // findMany used for single-vendor invariant check (added in PR-1 hardening)
         // AND for partial-vs-full settlement lookup (Fix #C8 — totalAmount per cleared id).
         findMany: jest.fn().mockResolvedValue([]),
@@ -276,22 +280,43 @@ describe('VendorSettlementTemplate', () => {
   });
 
   it('idempotent — returns existing entryNo when journalEntryId already set, no createAndPost call', async () => {
+    // C8 Round 2 — the cheap pre-check `findUnique({select:journalEntryId})`
+    // runs first. Returning journalEntryId here trips the short-circuit
+    // BEFORE the heavy findUniqueOrThrow{include settlement} ever fires.
+    prisma.expenseDocument.findUnique.mockResolvedValue({
+      journalEntryId: 'je-existing-uuid',
+    });
+    prisma.journalEntry.findUnique.mockResolvedValueOnce({ entryNumber: 'JE-EXISTING' });
+
+    const result = await template.execute(docId);
+    expect(result.entryNo).toBe('JE-EXISTING');
+    expect(journal.createAndPost).not.toHaveBeenCalled();
+    // Heavy findUniqueOrThrow{include settlement} MUST NOT be called.
+    expect(prisma.expenseDocument.findUniqueOrThrow).not.toHaveBeenCalled();
+  });
+
+  // C8 Round 2 — concurrent retry that beats the cheap pre-check but
+  // races into the heavy fetch must still bail at the secondary check.
+  it('C8 belt-and-braces — also idempotent at secondary check after heavy fetch', async () => {
+    // First call (pre-check) returns null → proceed; then findUniqueOrThrow
+    // shows the JE was just posted by a parallel retry.
+    prisma.expenseDocument.findUnique.mockResolvedValue({ journalEntryId: null });
     prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
       id: docId,
-      number: 'SE-20260510-0005',
+      number: 'SE-20260510-0005b',
       documentType: 'VENDOR_SETTLEMENT',
       documentDate: new Date('2026-05-10'),
-      journalEntryId: 'je-existing-uuid',
+      journalEntryId: 'je-race-winner',
       settlement: {
         settlementLines: [
           { id: 'l1', clearedDocumentId: 'ex-1', amountSettled: new Decimal('1000.00') },
         ],
       },
     });
-    prisma.journalEntry.findUnique.mockResolvedValueOnce({ entryNumber: 'JE-EXISTING' });
+    prisma.journalEntry.findUnique.mockResolvedValueOnce({ entryNumber: 'JE-RACE-WINNER' });
 
     const result = await template.execute(docId);
-    expect(result.entryNo).toBe('JE-EXISTING');
+    expect(result.entryNo).toBe('JE-RACE-WINNER');
     expect(journal.createAndPost).not.toHaveBeenCalled();
   });
 

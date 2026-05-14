@@ -5,13 +5,28 @@ import { JournalAutoService } from './journal-auto.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
 /**
- * Fix #C9 — createAndPost must enforce validatePeriodOpen before writing
- * a JournalEntry. Without this guard, expense post/void, payroll, settlement,
- * credit-note, and all other automated JE templates could write into CLOSED
- * accounting periods (backdating after period close). Manual JournalService.create
- * has had this guard since v4; auto-generated entries now match.
+ * Fix #C9 (Round 2 — blast-radius correction)
+ *
+ * History:
+ *   - Initial Round 1 fix put `validatePeriodOpen` inside
+ *     `JournalAutoService.createAndPost`. That caused payment + contract
+ *     atomicity regressions: a reopened FINANCE period would reject a
+ *     mid-tx JE write and roll back the Payment record (the JE was meant
+ *     to be additive — not gating).
+ *   - Round 2 (this PR): period guard moved to each module's service entry
+ *     point (expense-documents.service.post + voidDocument). createAndPost
+ *     is now purely structural — it asserts balanced JE + posts.
+ *
+ * What this spec covers:
+ *   1. createAndPost still rejects unbalanced JEs (v4 regression guard).
+ *   2. createAndPost does NOT itself call validatePeriodOpen — closed
+ *      periods are filtered upstream by the module caller.
+ *   3. createAndPost resolves FINANCE companyId when caller omits one.
+ *
+ * Expense module-level period-lock enforcement is covered by
+ * expense-documents.service.spec.ts → "post() rejects closed period".
  */
-describe('JournalAutoService.createAndPost — period lock enforcement (Fix #C9)', () => {
+describe('JournalAutoService.createAndPost — structural invariants (Fix #C9 Round 2)', () => {
   let service: JournalAutoService;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let prisma: any;
@@ -41,8 +56,12 @@ describe('JournalAutoService.createAndPost — period lock enforcement (Fix #C9)
         count: jest.fn().mockResolvedValue(0),
         create: jest.fn().mockResolvedValue({ id: 'je-uuid-1', entryNumber: 'JE-202604-00001' }),
       },
+      // Even with a CLOSED period in the DB, createAndPost itself does NOT
+      // call validatePeriodOpen any more. These mocks exist only to detect
+      // a regression — if the call ever sneaks back in, the test name
+      // "does NOT call validatePeriodOpen" will fail.
       accountingPeriod: {
-        findUnique: jest.fn().mockResolvedValue(null),
+        findUnique: jest.fn().mockResolvedValue({ status: 'CLOSED' }),
       },
       systemConfig: {
         findUnique: jest.fn().mockResolvedValue(null),
@@ -61,47 +80,20 @@ describe('JournalAutoService.createAndPost — period lock enforcement (Fix #C9)
     service = mod.get(JournalAutoService);
   });
 
-  it('rejects auto JE when AccountingPeriod for postedAt is CLOSED', async () => {
-    prisma.accountingPeriod.findUnique.mockResolvedValue({ status: 'CLOSED' });
-
-    await expect(
-      service.createAndPost(balancedInput(new Date('2026-04-10')), prisma),
-    ).rejects.toThrow(BadRequestException);
-    await expect(
-      service.createAndPost(balancedInput(new Date('2026-04-10')), prisma),
-    ).rejects.toThrow(/ปิดแล้ว/);
-
-    expect(prisma.journalEntry.create).not.toHaveBeenCalled();
-  });
-
-  it('rejects auto JE when AccountingPeriod is SYNCED', async () => {
-    prisma.accountingPeriod.findUnique.mockResolvedValue({ status: 'SYNCED' });
-
-    await expect(
-      service.createAndPost(balancedInput(new Date('2026-04-10')), prisma),
-    ).rejects.toThrow(BadRequestException);
-    expect(prisma.journalEntry.create).not.toHaveBeenCalled();
-  });
-
-  it('allows auto JE when AccountingPeriod is OPEN / not found', async () => {
-    prisma.accountingPeriod.findUnique.mockResolvedValue(null);
-
-    const result = await service.createAndPost(balancedInput(new Date('2026-04-10')), prisma);
+  it('Round 2 — does NOT call validatePeriodOpen even when period is CLOSED', async () => {
+    // The guard moved upstream (expense-documents.service). createAndPost
+    // is now purely structural. A closed period at this layer must NOT
+    // throw — payment receipt JE writing into a reopened period must succeed.
+    const result = await service.createAndPost(
+      balancedInput(new Date('2026-04-10')),
+      prisma,
+    );
     expect(result.entryNumber).toBe('JE-202604-00001');
     expect(prisma.journalEntry.create).toHaveBeenCalledTimes(1);
-  });
-
-  it('also rejects when legacy SystemConfig `accounting_period_closed_until` blocks the date', async () => {
-    prisma.accountingPeriod.findUnique.mockResolvedValue(null);
-    prisma.systemConfig.findUnique.mockResolvedValue({
-      key: 'accounting_period_closed_until',
-      value: '2026-12-31',
-    });
-
-    await expect(
-      service.createAndPost(balancedInput(new Date('2026-04-10')), prisma),
-    ).rejects.toThrow(BadRequestException);
-    expect(prisma.journalEntry.create).not.toHaveBeenCalled();
+    // Belt-and-braces: accountingPeriod.findUnique must NOT have been
+    // queried by createAndPost (only the module-level caller queries it).
+    expect(prisma.accountingPeriod.findUnique).not.toHaveBeenCalled();
+    expect(prisma.systemConfig.findUnique).not.toHaveBeenCalled();
   });
 
   it('still rejects unbalanced JEs (regression for v4 guard)', async () => {
@@ -113,24 +105,24 @@ describe('JournalAutoService.createAndPost — period lock enforcement (Fix #C9)
     expect(prisma.journalEntry.create).not.toHaveBeenCalled();
   });
 
-  // companyId resolution: when not provided, defaults to FINANCE. Verifies
-  // period check runs against the resolved companyId, not undefined.
-  it('resolves companyId to FINANCE when not provided, then validates period', async () => {
+  it('resolves companyId to FINANCE when not provided', async () => {
     prisma.companyInfo.findFirst.mockResolvedValueOnce({ id: 'finance-co-id' });
-    prisma.accountingPeriod.findUnique.mockResolvedValue({ status: 'CLOSED' });
 
     const inputWithoutCompany = {
       ...balancedInput(new Date('2026-04-10')),
     };
     delete (inputWithoutCompany as { companyId?: string }).companyId;
 
-    await expect(service.createAndPost(inputWithoutCompany, prisma)).rejects.toThrow(/ปิดแล้ว/);
-    // validatePeriodOpen must have been called with the resolved companyId
-    expect(prisma.accountingPeriod.findUnique).toHaveBeenCalledWith(
+    const result = await service.createAndPost(inputWithoutCompany, prisma);
+    expect(result.entryNumber).toBeDefined();
+    expect(prisma.companyInfo.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({
-          companyId_year_month: expect.objectContaining({ companyId: 'finance-co-id' }),
-        }),
+        where: expect.objectContaining({ companyCode: 'FINANCE' }),
+      }),
+    );
+    expect(prisma.journalEntry.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ companyId: 'finance-co-id' }),
       }),
     );
   });

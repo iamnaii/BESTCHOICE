@@ -1,4 +1,6 @@
 import { CheckCircle2, XCircle } from 'lucide-react';
+import { useMemo } from 'react';
+import { useCoaByCodes } from '@/hooks/useCoa';
 
 interface JeLine {
   accountCode: string;
@@ -20,6 +22,19 @@ export function AutoJournalPreview({ lines }: Props) {
   const totalCr = lines.reduce((s, l) => s + l.credit, 0);
   const balanced = Math.abs(totalDr - totalCr) < 0.01;
 
+  // Resolve account codes → names via CoA lookup. Hook is cached (staleTime: Infinity),
+  // so subsequent renders with the same code set hit cache instantly.
+  const uniqueCodes = useMemo(
+    () => Array.from(new Set(lines.map((l) => l.accountCode).filter(Boolean))),
+    [lines],
+  );
+  const { data: coaRows } = useCoaByCodes(uniqueCodes);
+  const nameByCode = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const r of coaRows ?? []) map[r.code] = r.name;
+    return map;
+  }, [coaRows]);
+
   return (
     <div className="rounded-lg border p-3 bg-card">
       <p className="text-sm font-bold mb-2">JOURNAL PREVIEW (Auto)</p>
@@ -29,22 +44,28 @@ export function AutoJournalPreview({ lines }: Props) {
         <div className="font-mono text-xs space-y-1">
           {lines.map((l, idx) => {
             const isDr = l.debit > 0;
+            const accountName = nameByCode[l.accountCode];
             return (
               <div
                 key={idx}
                 className="flex items-baseline gap-2 px-2 py-1 hover:bg-accent rounded"
               >
-                <span className={`font-bold w-6 ${isDr ? 'text-info' : 'text-primary'}`}>
+                <span className={`font-bold w-6 shrink-0 ${isDr ? 'text-info' : 'text-primary'}`}>
                   {isDr ? 'Dr' : 'Cr'}
                 </span>
-                <span className={`font-bold w-20 ${isDr ? 'text-info' : 'text-primary'}`}>
+                <span className={`font-bold w-20 shrink-0 ${isDr ? 'text-info' : 'text-primary'}`}>
                   {l.accountCode}
                 </span>
-                <span className="font-bold w-28 text-right">
+                <span className="flex-1 truncate text-foreground">
+                  {accountName || <span className="text-muted-foreground">—</span>}
+                </span>
+                <span className="font-bold w-28 text-right shrink-0">
                   {(isDr ? l.debit : l.credit).toFixed(2)}
                 </span>
                 {l.description && (
-                  <span className="flex-1 text-muted-foreground truncate">({l.description})</span>
+                  <span className="w-40 text-muted-foreground truncate text-right shrink-0">
+                    ({l.description})
+                  </span>
                 )}
               </div>
             );

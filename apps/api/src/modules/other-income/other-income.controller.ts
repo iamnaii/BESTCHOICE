@@ -11,6 +11,7 @@ import {
   Put,
   Query,
   Request,
+  Res,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -18,6 +19,7 @@ import {
   MaxFileSizeValidator,
   FileTypeValidator,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -25,6 +27,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { OtherIncomeService } from './other-income.service';
 import { TemplateService } from './services/template.service';
+import { OtherIncomeReceiptPdfService } from './services/receipt-pdf.service';
 import { CreateOtherIncomeDto } from './dto/create-other-income.dto';
 import { UpdateOtherIncomeDto } from './dto/update-other-income.dto';
 import { PostOtherIncomeDto } from './dto/post-other-income.dto';
@@ -45,6 +48,7 @@ export class OtherIncomeController {
   constructor(
     private readonly service: OtherIncomeService,
     private readonly templateService: TemplateService,
+    private readonly receiptPdf: OtherIncomeReceiptPdfService,
   ) {}
 
   // CRITICAL: declare daily-sheet BEFORE :id so the literal string
@@ -162,6 +166,20 @@ export class OtherIncomeController {
   @Get(':id/audit')
   getAuditTrail(@Param('id', new ParseUUIDPipe()) id: string) {
     return this.service.getAuditTrail(id);
+  }
+
+  @Get(':id/receipt.pdf')
+  async getReceiptPdf(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Res() res: Response,
+  ) {
+    const pdf = await this.receiptPdf.generate(id);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="other-income-receipt-${id}.pdf"`,
+      'Content-Length': pdf.length.toString(),
+    });
+    res.send(pdf);
   }
 
   @Post()

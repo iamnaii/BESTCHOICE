@@ -11,6 +11,7 @@ import { SaveAsTemplateModal } from './components/SaveAsTemplateModal';
 import { AutoJournalPreview } from './components/AutoJournalPreview';
 import { InternalControlBar } from './components/InternalControlBar';
 import { otherIncomeApi } from '@/lib/otherIncome';
+import api from '@/lib/api';
 import type { OtherIncome, OtherIncomeStatus, OtherIncomeReverseReason } from '@/lib/otherIncome.types';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatThaiDateLong, formatThaiDateShort } from '@/lib/date';
@@ -128,6 +129,34 @@ function buildJeFromDoc(doc: OtherIncome): JeLine[] {
 // Roles that can reverse a POSTED document
 // B9: ACCOUNTANT removed — backend @Roles only allows OWNER/FINANCE_MANAGER on POST :id/reverse
 const REVERSE_ROLES = ['OWNER', 'FINANCE_MANAGER'];
+
+/**
+ * Fetch server-rendered PDF receipt and open in a new tab.
+ * Uses axios (JWT in-memory) since the in-memory token isn't on cookies.
+ */
+async function openReceiptPdf(docId: string, docNumber: string): Promise<void> {
+  try {
+    const res = await api.get(`/other-income/${docId}/receipt.pdf`, {
+      responseType: 'blob',
+    });
+    const blob = new Blob([res.data], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const win = window.open(url, '_blank');
+    if (!win) {
+      // Popup blocked — fall back to download
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${docNumber}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+    // Revoke after a delay to avoid breaking the new tab before it loads
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  } catch {
+    toast.error('ไม่สามารถสร้างใบเสร็จ PDF ได้');
+  }
+}
 
 // ------------------------------------------------------------------
 // Main component
@@ -265,7 +294,7 @@ export default function OtherIncomeViewPage() {
               {doc.status === 'POSTED' && doc.customerId && (
                 <button
                   type="button"
-                  onClick={() => navigate(`/other-income/${doc.id}/receipt`)}
+                  onClick={() => openReceiptPdf(doc.id, doc.docNumber)}
                   className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium border rounded-lg hover:bg-accent"
                 >
                   <Printer size={14} />
@@ -338,7 +367,7 @@ export default function OtherIncomeViewPage() {
               </div>
               {doc.customerId && (
                 <button
-                  onClick={() => navigate(`/other-income/${doc.id}/receipt`)}
+                  onClick={() => openReceiptPdf(doc.id, doc.docNumber)}
                   className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-bold bg-primary text-primary-foreground rounded-md animate-pulse"
                 >
                   <Printer size={16} /> พิมพ์ใบเสร็จ

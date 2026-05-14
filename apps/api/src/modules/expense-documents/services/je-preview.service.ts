@@ -33,6 +33,17 @@ export class JePreviewService {
   /**
    * Build a JE preview from form-state DTO without touching the database.
    * Same logic as ExpenseSameDay/ExpenseAccrual templates but pure.
+   *
+   * W8 — now mirrors the templates' multi-line WHT routing (P2-4) and the
+   * adjustment rows (P0-4):
+   *   - When any line carries its own `whtFormType`, aggregate WHT per form
+   *     and emit one Cr line per form (21-3102 + 21-3103). Otherwise fall
+   *     back to legacy doc-level routing.
+   *   - Render adjustment rows in the appropriate Dr / Cr column.
+   *   - Cash leg = `amountPaid` when set (post-adjustment), else `total − wht`.
+   *
+   * Only renders EXPENSE flows. CN / PAYROLL / VENDOR_SETTLEMENT previews are
+   * deferred — the frontend hides the preview panel for those doc types.
    */
   preview(dto: CreateExpenseDocumentDto, accountNames: Map<string, string>): JePreview {
     const priceType = dto.priceType ?? 'EXCLUSIVE';
@@ -42,6 +53,7 @@ export class JePreviewService {
       description: l.description,
       vatPercent: l.vatPercent ?? 0,
       whtPercent: l.whtPercent ?? 0,
+      whtFormType: l.whtFormType ?? null,
       ...this.aggregator.computeLine(l, priceType),
     }));
     const totals = this.aggregator.aggregateLines(computed);
@@ -82,9 +94,28 @@ export class JePreviewService {
       });
     }
 
+    // W8 — adjustments (P0-4 multi-line). Render Dr/Cr per row using the
+    // explicit `side`. The service has already validated V12 (signed sum
+    // closes the diff), so we just echo what will hit the GL.
+    const adjustments = dto.adjustments ?? [];
+    for (const adj of adjustments) {
+      const amt = new Decimal(adj.amount);
+      if (amt.lte(zero)) continue;
+      previewLines.push({
+        accountCode: adj.accountCode,
+        accountName: accountNames.get(adj.accountCode) ?? '',
+        description: adj.note ?? 'ปรับผลต่าง',
+        dr: adj.side === 'DR' ? amt.toFixed(2) : '0.00',
+        cr: adj.side === 'CR' ? amt.toFixed(2) : '0.00',
+      });
+    }
+
     if (hasPayment) {
-      // Same-day: Cr cash (totalAmount − wht), Cr WHT (per formType)
-      const cashCr = totals.totalAmount.minus(totals.withholdingTax);
+      // Same-day: Cr cash + Cr WHT (per formType, with per-line routing if used)
+      // Cash leg = amountPaid when set (post-adjustment), else `total − wht`.
+      const cashCr = dto.amountPaid
+        ? new Decimal(dto.amountPaid)
+        : totals.totalAmount.minus(totals.withholdingTax);
       previewLines.push({
         accountCode: dto.depositAccountCode!,
         accountName: accountNames.get(dto.depositAccountCode!) ?? '',
@@ -93,14 +124,42 @@ export class JePreviewService {
         cr: cashCr.toFixed(2),
       });
       if (totals.withholdingTax.gt(0)) {
-        const whtAccount = dto.whtFormType === 'PND53' ? '21-3103' : '21-3102';
-        previewLines.push({
-          accountCode: whtAccount,
-          accountName: accountNames.get(whtAccount) ?? '',
-          description: `WHT ${dto.whtFormType ?? 'PND3'}`,
-          dr: '0.00',
-          cr: totals.withholdingTax.toFixed(2),
-        });
+        // W8 — per-line WHT routing mirrors expense-same-day.template.ts
+        // (P2-4). When any line sets its own whtFormType, we aggregate by
+        // form-type and emit up to 2 Cr lines (21-3102 + 21-3103).
+        const hasPerLineRouting = computed.some((c) => !!c.whtFormType);
+        if (hasPerLineRouting) {
+          const whtByForm = new Map<'PND3' | 'PND53', Decimal>();
+          for (const c of computed) {
+            if (c.whtAmount.lte(zero)) continue;
+            const formType = (c.whtFormType ?? dto.whtFormType ?? 'PND3') as 'PND3' | 'PND53';
+            // Unknown/invalid form types fall through to PND3 *here only*
+            // (preview is best-effort; service guard rejects bad form types
+            // before the JE is ever booked).
+            const f = formType === 'PND53' ? 'PND53' : 'PND3';
+            whtByForm.set(f, (whtByForm.get(f) ?? zero).plus(c.whtAmount));
+          }
+          for (const [form, amt] of whtByForm.entries()) {
+            if (amt.lte(zero)) continue;
+            const whtAccount = form === 'PND53' ? '21-3103' : '21-3102';
+            previewLines.push({
+              accountCode: whtAccount,
+              accountName: accountNames.get(whtAccount) ?? '',
+              description: `WHT ${form}`,
+              dr: '0.00',
+              cr: amt.toFixed(2),
+            });
+          }
+        } else {
+          const whtAccount = dto.whtFormType === 'PND53' ? '21-3103' : '21-3102';
+          previewLines.push({
+            accountCode: whtAccount,
+            accountName: accountNames.get(whtAccount) ?? '',
+            description: `WHT ${dto.whtFormType ?? 'PND3'}`,
+            dr: '0.00',
+            cr: totals.withholdingTax.toFixed(2),
+          });
+        }
       }
     } else {
       // Accrual: Cr 21-1104 AP for total

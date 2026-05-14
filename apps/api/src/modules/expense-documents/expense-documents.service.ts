@@ -26,6 +26,26 @@ import { LineAggregatorService } from './services/line-aggregator.service';
 import { JePreviewService } from './services/je-preview.service';
 
 /**
+ * Allow-list of account codes that may appear on a multi-line Adjustment row
+ * (W1 hardening). The adjustment rows absorb cash-leg deltas between
+ * amount_paid and (totalAmount − wht); only small-amount tolerance / bank-fee
+ * / discount accounts are sensible here. Allowing arbitrary CoA codes lets the
+ * preparer pick Revenue or Cash, balancing the JE but causing accounting drift.
+ *
+ * Codes from accounting.md FINANCE chart (apps/api/src/modules/journal/__tests__/fixtures/cpa-cases/finance-coa.csv):
+ *   52-1104 — ส่วนลดเศษสตางค์ (≤1฿ rounding tolerance)
+ *   52-1106 — ส่วนลดดอกเบี้ย-ปิดยอด (Early payoff discount)
+ *   53-1303 — ค่าธรรมเนียมธนาคาร
+ *   53-1503 — กำไร/ขาดทุนจากการปัดเศษ
+ */
+const ADJUSTMENT_ALLOWLIST = new Set<string>([
+  '52-1104',
+  '52-1106',
+  '53-1303',
+  '53-1503',
+]);
+
+/**
  * Returns a Date representing 12:00 noon Asia/Bangkok on the same calendar day
  * as `now`. Used as a stable `postedAt` for journal entries that should land
  * on the BKK business day regardless of the server's UTC clock — without this,
@@ -114,7 +134,17 @@ export class ExpenseDocumentsService {
           }
         }
 
-        // V13 — adjustment account codes must exist in CoA (any type)
+        // V13 — adjustment account codes must exist in CoA AND be on the
+        // explicit allow-list. Without the allow-list, an accountant could
+        // pick Revenue (41-xxxx) or Cash (11-1101) as the offset, balancing
+        // the JE arithmetically but causing P&L / cash-flow drift.
+        //
+        // Allow-list scope: small-amount rounding tolerance + bank fees +
+        // early-payoff discounts. Source: accounting.md chart.
+        //   52-1104 — ส่วนลดเศษสตางค์ (≤1฿ rounding tolerance)
+        //   52-1106 — ส่วนลดดอกเบี้ย-ปิดยอด
+        //   53-1303 — ค่าธรรมเนียมธนาคาร
+        //   53-1503 — กำไร/ขาดทุนจากการปัดเศษ
         if (adjustments.length > 0) {
           const adjCodes = [...new Set(adjustments.map((a) => a.accountCode))];
           const adjCoaRows = await tx.chartOfAccount.findMany({
@@ -125,6 +155,12 @@ export class ExpenseDocumentsService {
           for (const c of adjCodes) {
             if (!adjFound.has(c)) {
               throw new BadRequestException(`V13: บัญชีปรับผลต่าง ${c} ไม่พบในผังบัญชี`);
+            }
+            if (!ADJUSTMENT_ALLOWLIST.has(c)) {
+              throw new BadRequestException(
+                `V13: บัญชีปรับผลต่าง ${c} ไม่อยู่ในรายการที่อนุญาต — ` +
+                  `อนุญาตเฉพาะ ${[...ADJUSTMENT_ALLOWLIST].join(', ')}`,
+              );
             }
           }
         }
@@ -715,16 +751,27 @@ export class ExpenseDocumentsService {
       where.vendorName = { contains: filters.vendor, mode: 'insensitive' };
     }
 
-    // Today in BKK at 00:00. (toLocaleString en-CA = YYYY-MM-DD; offset to UTC start.)
-    const bkkParts = new Date().toLocaleString('en-CA', {
-      timeZone: 'Asia/Bangkok',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    });
-    const [y, m, d] = bkkParts.split('-').map((s) => parseInt(s, 10));
-    const bkkOffsetMs = 7 * 60 * 60 * 1000;
-    const todayBkkStart = new Date(Date.UTC(y, m - 1, d) - bkkOffsetMs);
+    // W2 fix — age in calendar days, computed on BKK date strings.
+    // Previous implementation took (todayBkkStart UTC ms − documentDate UTC ms)
+    // / 86_400_000 and floored. Because documentDate stores UTC midnight (00:00Z
+    // = 07:00 BKK same day) while todayBkkStart was UTC minus 7h (=BKK midnight
+    // mapped to 17:00Z previous UTC day), the ms-diff was non-integer around
+    // the boundary, so floor() shifted some rows by ±1 day (e.g. a doc dated
+    // today appeared as 1 day old, pushing it from 0-30 to 31-60 right at
+    // 17:00 BKK / 30 days later). Switch to calendar-day diff on YYYY-MM-DD
+    // strings instead.
+    const toBkkDate = (d: Date): string =>
+      d.toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
+    const todayBkkStr = toBkkDate(new Date());
+    const daysBetween = (a: string, b: string): number => {
+      // a, b are 'YYYY-MM-DD'. Build UTC midnights and subtract — exact integer
+      // because both sides are at the same UTC hour.
+      const [ay, am, ad] = a.split('-').map(Number);
+      const [by, bm, bd] = b.split('-').map(Number);
+      const aMs = Date.UTC(ay, am - 1, ad);
+      const bMs = Date.UTC(by, bm - 1, bd);
+      return Math.round((bMs - aMs) / (24 * 60 * 60 * 1000));
+    };
 
     const rows = await this.prisma.expenseDocument.findMany({
       where,
@@ -750,10 +797,8 @@ export class ExpenseDocumentsService {
     };
 
     const enriched = rows.map((r) => {
-      const ageDays = Math.max(
-        0,
-        Math.floor((todayBkkStart.getTime() - new Date(r.documentDate).getTime()) / (24 * 60 * 60 * 1000)),
-      );
+      const docBkkStr = toBkkDate(new Date(r.documentDate));
+      const ageDays = Math.max(0, daysBetween(docBkkStr, todayBkkStr));
       return { ...r, ageDays, bucket: toBucket(ageDays) };
     });
 
@@ -938,11 +983,19 @@ export class ExpenseDocumentsService {
     const codes = new Set<string>();
     for (const l of dto.lines) codes.add(l.category);
     if (dto.depositAccountCode) codes.add(dto.depositAccountCode);
+    // W8 — preload adjustment row codes + per-line WHT routes so the preview
+    // can resolve names for the new sections (adjustments + multi-line WHT).
+    for (const adj of dto.adjustments ?? []) {
+      if (adj.accountCode) codes.add(adj.accountCode);
+    }
     // 11-4101 = ภาษีซื้อ (Input Tax Credit, claimable). Mirrors expense
     // templates' VAT routing — must match what post() actually books.
     codes.add('11-4101');
     codes.add('21-1104');
-    if (dto.whtFormType === 'PND53') codes.add('21-3103'); else codes.add('21-3102');
+    // Always preload both WHT routes — the preview may emit either or both
+    // depending on per-line whtFormType (P2-4).
+    codes.add('21-3102');
+    codes.add('21-3103');
 
     const rows = await this.prisma.chartOfAccount.findMany({
       where: { code: { in: [...codes] }, deletedAt: null },
@@ -1245,6 +1298,23 @@ export class ExpenseDocumentsService {
           where: { id: doc.journalEntryId },
           include: { lines: true },
         });
+        // W6 fix — fall back to SHOP company id when legacy JE rows lack
+        // companyId (pre-A.1b migration). Without this, voiding an old EX
+        // throws "companyId required" from journal-auto.service. SHOP is the
+        // canonical home for expense-side flows per accounting.md.
+        let companyId = original.companyId;
+        if (!companyId) {
+          const shop = await tx.companyInfo.findFirst({
+            where: { companyCode: 'SHOP', deletedAt: null },
+            select: { id: true },
+          });
+          if (!shop) {
+            throw new Error(
+              'SHOP companyInfo not found — cannot reverse legacy JE without companyId',
+            );
+          }
+          companyId = shop.id;
+        }
         await this.journal.createAndPost(
           {
             description: `กลับรายการ ${doc.number}`,
@@ -1258,7 +1328,7 @@ export class ExpenseDocumentsService {
               flow: `expense-${doc.documentType.toLowerCase()}-void`,
             },
             postedAt: bkkBusinessDate(new Date()),
-            companyId: original.companyId,
+            companyId,
             lines: original.lines.map((l) => ({
               accountCode: l.accountCode,
               dr: new Prisma.Decimal(l.credit.toString()),

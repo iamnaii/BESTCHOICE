@@ -29,6 +29,10 @@ interface ExpenseLine {
   amountBeforeVat: string;
   vatAmount: string;
   whtAmount: string;
+  // W7 — used by WhtCertificate to render a per-rate breakdown so the form
+  // 50 ทวิ requirement (itemize the WHT rate per income type) is met when a
+  // single document mixes vendors with different rates.
+  whtPercent?: string;
 }
 
 interface JournalLine {
@@ -302,8 +306,37 @@ function Sheet({
 function WhtCertificate({ doc }: { doc: VoucherDoc }) {
   const wht = parseFloat(doc.withholdingTax);
   const subtotal = parseFloat(doc.subtotal);
-  const whtPercent = subtotal > 0 ? (wht / subtotal) * 100 : 0;
   const formLabel = doc.whtFormType === 'PND53' ? 'ภ.ง.ด. 53' : 'ภ.ง.ด. 3';
+
+  // W7 — group lines by whtPercent so the form 50 ทวิ table can render
+  // one row per rate when a doc mixes 3% / 5% / 1% withholdings. Falls back
+  // to one aggregate row (legacy doc-level rate) when every line shares the
+  // same percent or whtPercent is missing.
+  const lines = doc.expenseDetail?.lines ?? [];
+  const ratedLines = lines.filter(
+    (l) => parseFloat(l.whtAmount ?? '0') > 0 && l.whtPercent != null,
+  );
+  type RateBucket = { rate: number; base: number; tax: number };
+  const buckets: RateBucket[] = [];
+  if (ratedLines.length > 0) {
+    const map = new Map<string, RateBucket>();
+    for (const l of ratedLines) {
+      const rate = parseFloat(l.whtPercent ?? '0');
+      const key = rate.toFixed(2);
+      const b = map.get(key) ?? { rate, base: 0, tax: 0 };
+      b.base += parseFloat(l.amountBeforeVat ?? '0');
+      b.tax += parseFloat(l.whtAmount ?? '0');
+      map.set(key, b);
+    }
+    buckets.push(...map.values());
+    // Sort descending by tax amount for a stable, readable layout.
+    buckets.sort((a, b) => b.tax - a.tax);
+  } else {
+    // Legacy / fallback: single weighted-average row from doc totals.
+    const avgRate = subtotal > 0 ? (wht / subtotal) * 100 : 0;
+    buckets.push({ rate: avgRate, base: subtotal, tax: wht });
+  }
+  const hasMixedRates = buckets.length > 1;
   return (
     <article
       className="voucher-sheet bg-white border border-border rounded-md p-8 shadow-sm print:border-0 print:p-0 print:shadow-none"
@@ -341,20 +374,24 @@ function WhtCertificate({ doc }: { doc: VoucherDoc }) {
           </tr>
         </thead>
         <tbody>
-          <tr>
-            <td className="border border-border p-2">
-              ค่าบริการ / ค่าจ้าง (ตาม {formLabel})
-            </td>
-            <td className="border border-border p-2 text-right tabular-nums">
-              {formatNumberDecimal(doc.subtotal)}
-            </td>
-            <td className="border border-border p-2 text-right tabular-nums">
-              {whtPercent.toFixed(2)}
-            </td>
-            <td className="border border-border p-2 text-right tabular-nums">
-              {formatNumberDecimal(doc.withholdingTax)}
-            </td>
-          </tr>
+          {buckets.map((b, idx) => (
+            <tr key={`${b.rate.toFixed(2)}-${idx}`}>
+              <td className="border border-border p-2">
+                {hasMixedRates
+                  ? `ค่าบริการ / ค่าจ้าง (อัตรา ${b.rate.toFixed(2)}%, ตาม ${formLabel})`
+                  : `ค่าบริการ / ค่าจ้าง (ตาม ${formLabel})`}
+              </td>
+              <td className="border border-border p-2 text-right tabular-nums">
+                {formatNumberDecimal(b.base.toFixed(2))}
+              </td>
+              <td className="border border-border p-2 text-right tabular-nums">
+                {b.rate.toFixed(2)}
+              </td>
+              <td className="border border-border p-2 text-right tabular-nums">
+                {formatNumberDecimal(b.tax.toFixed(2))}
+              </td>
+            </tr>
+          ))}
           <tr className="bg-muted/30">
             <td className="border border-border p-2 font-semibold">รวม</td>
             <td className="border border-border p-2 text-right tabular-nums font-semibold">

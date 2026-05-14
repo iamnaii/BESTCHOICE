@@ -62,4 +62,19 @@ describe('DocNumberService', () => {
     const num = await service.next(tx, 'EXPENSE', new Date('2026-05-10T19:00:00Z'));
     expect(num).toBe('EX-20260511-0001');
   });
+
+  // W4 — explicit throw when seq overflows 4-digit slot (rather than silently
+  // emitting EX-YYYYMMDD-10000 which sorts wrong and breaks downstream parsers).
+  it('W4: throws when seq exceeds 9999 for a day', async () => {
+    tx.expenseDocument.findFirst.mockResolvedValue({ number: 'EX-20260510-9999' });
+    await expect(
+      service.next(tx, 'EXPENSE', new Date('2026-05-10T12:00:00Z')),
+    ).rejects.toThrow(/เกิน 9999/);
+  });
+
+  it('W4: still works at 9998 → 9999', async () => {
+    tx.expenseDocument.findFirst.mockResolvedValue({ number: 'EX-20260510-9998' });
+    const num = await service.next(tx, 'EXPENSE', new Date('2026-05-10T12:00:00Z'));
+    expect(num).toBe('EX-20260510-9999');
+  });
 });

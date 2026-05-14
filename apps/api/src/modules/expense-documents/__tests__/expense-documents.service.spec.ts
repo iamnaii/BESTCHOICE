@@ -126,6 +126,57 @@ describe('ExpenseDocumentsService', () => {
       // subtotal=1000, vat=70, total=1070
       expect(callArg.data.totalAmount.toFixed(2)).toBe('1070.00');
     });
+
+    // W1 — adjustment row accountCode must be on the allow-list (52-1104,
+    // 52-1106, 53-1303, 53-1503). Without this, an accountant could pick
+    // Revenue or Cash as the offset, balancing the JE but causing drift.
+    it('W1: rejects adjustment accountCode outside the allow-list (e.g. 41-1101 Revenue)', async () => {
+      // CoA mock returns the rev code so the existence check passes,
+      // forcing the allow-list check to be the gate.
+      prisma.chartOfAccount.findMany.mockResolvedValue([
+        { code: '53-1302', type: 'ค่าใช้จ่าย' },
+        { code: '41-1101', type: 'รายได้' },
+      ]);
+      await expect(
+        service.create(
+          {
+            documentType: 'EXPENSE',
+            branchId: 'branch-1',
+            documentDate: '2026-05-10',
+            priceType: 'EXCLUSIVE',
+            lines: [
+              { category: '53-1302', quantity: 1, unitPrice: 1000, vatPercent: 0, whtPercent: 0 },
+            ],
+            amountPaid: '999',
+            adjustments: [{ accountCode: '41-1101', side: 'CR', amount: '1' }],
+          } as never,
+          'user-1',
+        ),
+      ).rejects.toThrow(/ไม่อยู่ในรายการที่อนุญาต/);
+    });
+
+    it('W1: accepts adjustment accountCode 52-1104 (rounding tolerance allow-list)', async () => {
+      prisma.chartOfAccount.findMany.mockResolvedValue([
+        { code: '53-1302', type: 'ค่าใช้จ่าย' },
+        { code: '52-1104', type: 'ค่าใช้จ่าย' },
+      ]);
+      await expect(
+        service.create(
+          {
+            documentType: 'EXPENSE',
+            branchId: 'branch-1',
+            documentDate: '2026-05-10',
+            priceType: 'EXCLUSIVE',
+            lines: [
+              { category: '53-1302', quantity: 1, unitPrice: 1000, vatPercent: 0, whtPercent: 0 },
+            ],
+            amountPaid: '999',
+            adjustments: [{ accountCode: '52-1104', side: 'DR', amount: '1' }],
+          } as never,
+          'user-1',
+        ),
+      ).resolves.toBeDefined();
+    });
   });
 
   describe('list', () => {

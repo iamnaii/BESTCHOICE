@@ -27,12 +27,19 @@ interface Props {
   onSaved: () => void;
 }
 
+// W3 fix — return YYYY-MM-DD for "today in Asia/Bangkok" (en-CA gives ISO-shaped
+// output). Previously used `new Date().toISOString().slice(0,10)` which returns
+// UTC-day — after 17:00 BKK that becomes tomorrow's BKK calendar date, so the
+// default for the docDate input was off by one half the working day.
+const todayBkkIso = (): string =>
+  new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
+
 const initial = (branchId: string, defaultCash: string): ExpenseFormState => {
   const today = new Date();
   return {
     docType: 'EXPENSE_SAMEDAY',
     branchId,
-    documentDate: today.toISOString().slice(0, 10),
+    documentDate: todayBkkIso(),
     vendorName: '',
     vendorTaxId: '',
     taxInvoiceNo: '',
@@ -77,7 +84,9 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
 
   // Smart default: switch SAMEDAY → ACCRUAL when invoice date is not today.
   // One-way: only auto-flip from SAMEDAY to ACCRUAL; does not revert manual ACCRUAL selection.
-  const todayIso = new Date().toISOString().slice(0, 10);
+  // W3 fix — compare against BKK calendar day, not UTC slice, to match the
+  // user's perception of "today" in Thailand.
+  const todayIso = todayBkkIso();
   const invoiceIsToday = state.documentDate === todayIso;
   useEffect(() => {
     if (state.docType === 'EXPENSE_SAMEDAY' && !invoiceIsToday) {

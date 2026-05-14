@@ -17,7 +17,6 @@ import {
 } from 'lucide-react';
 import Decimal from 'decimal.js';
 import QueryBoundary from '@/components/QueryBoundary';
-import { AccountingModuleTabBar } from '@/components/accounting/AccountingModuleTabBar';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatNumber, formatNumberDecimal } from '@/utils/formatters';
 import { otherIncomeApi } from '@/lib/otherIncome';
@@ -574,9 +573,6 @@ export default function OtherIncomeEntryPage() {
   return (
     <div className="pb-44 md:pb-40">
       <div className="p-4 md:p-6 max-w-5xl mx-auto">
-        <div className="mb-4">
-          <AccountingModuleTabBar />
-        </div>
         {/* Custom header */}
         <div className="flex items-start justify-between gap-4 mb-6">
           <div className="min-w-0">

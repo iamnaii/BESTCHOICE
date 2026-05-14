@@ -539,6 +539,7 @@ layer(base);
 
   button,
   nav,
+  .sidebar,
   .modal-backdrop,
   .print\:hidden,
   [data-print-hide="true"] {

@@ -156,7 +156,6 @@ const UserProfilePage = lazy(() => import('@/pages/UserProfilePage'));
 const OtherIncomeListPage = lazy(() => import('@/pages/other-income/OtherIncomeListPage'));
 const OtherIncomeEntryPage = lazy(() => import('@/pages/other-income/OtherIncomeEntryPage'));
 const OtherIncomeViewPage = lazy(() => import('@/pages/other-income/OtherIncomeViewPage'));
-const OtherIncomeReceiptPage = lazy(() => import('@/pages/other-income/OtherIncomeReceiptPage'));
 const OtherIncomeDailySheetPage = lazy(() => import('@/pages/other-income/OtherIncomeDailySheetPage'));
 const OtherIncomePendingApprovalPage = lazy(
   () => import('@/pages/other-income/OtherIncomePendingApprovalPage'),
@@ -1055,15 +1054,6 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/other-income/:id/receipt"
-            element={
-              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
-                <OtherIncomeReceiptPage />
-              </ProtectedRoute>
-            }
-          />
-
           {/* งวดบัญชี → /settings#periods (Task 7 backward-compat redirect) */}
           <Route
             path="/accounting/periods"

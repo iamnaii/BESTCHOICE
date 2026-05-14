@@ -950,8 +950,6 @@ export class OverdueService {
       slots?: Array<{ settlementDate: string; settlementAmount: number; notes?: string }>;
       targetInstallmentIds?: string[];
       settlementAmount?: number | string;
-      secondSettlementDate?: string;
-      secondSettlementAmount?: number | string;
     },
   ) {
     const contract = await this.prisma.contract.findFirst({
@@ -994,7 +992,7 @@ export class OverdueService {
         }
       }
 
-      // Build slots from either new dto.slots OR legacy single/dual settlement fields.
+      // Build slots from either new dto.slots OR legacy single-settlement field.
       const slotsInput =
         dto.slots && dto.slots.length > 0
           ? dto.slots.map((s) => ({
@@ -1002,24 +1000,14 @@ export class OverdueService {
               settlementAmount: s.settlementAmount,
               notes: s.notes,
             }))
-          : [
-              ...(dto.settlementDate
-                ? [
-                    {
-                      settlementDate: new Date(dto.settlementDate),
-                      settlementAmount: Number(dto.settlementAmount ?? 0),
-                    },
-                  ]
-                : []),
-              ...(dto.secondSettlementDate
-                ? [
-                    {
-                      settlementDate: new Date(dto.secondSettlementDate),
-                      settlementAmount: Number(dto.secondSettlementAmount ?? 0),
-                    },
-                  ]
-                : []),
-            ];
+          : dto.settlementDate
+            ? [
+                {
+                  settlementDate: new Date(dto.settlementDate),
+                  settlementAmount: Number(dto.settlementAmount ?? 0),
+                },
+              ]
+            : [];
 
       if (slotsInput.length === 0) {
         throw new BadRequestException('ต้องระบุอย่างน้อย 1 ที่');

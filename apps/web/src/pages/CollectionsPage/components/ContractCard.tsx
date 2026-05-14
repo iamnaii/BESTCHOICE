@@ -186,29 +186,15 @@ export default function ContractCard({
             </span>
           )}
 
-          {/* Settlement / นัดชำระ — แสดงยอดด้วยถ้ามี (พร้อมงวดที่ 2 กรณีแบ่งจ่าย) */}
+          {/* Settlement / นัดชำระ — แสดงยอดด้วยถ้ามี */}
           {contract.settlementDate && (
-            <span
-              className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary border border-primary/20 text-xs font-medium px-2.5 py-1 leading-snug"
-              title={
-                contract.secondSettlementDate
-                  ? `งวด 1: ${contract.settlementAmount != null ? formatNumber(contract.settlementAmount) + ' ฿ ' : ''}${formatDateShort(new Date(contract.settlementDate))}\nงวด 2: ${contract.secondSettlementAmount != null ? formatNumber(contract.secondSettlementAmount) + ' ฿ ' : ''}${formatDateShort(new Date(contract.secondSettlementDate))}`
-                  : undefined
-              }
-            >
+            <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary border border-primary/20 text-xs font-medium px-2.5 py-1 leading-snug">
               <CalendarCheck className="size-3.5" />
               นัดชำระ {formatDateShort(new Date(contract.settlementDate))}
               {contract.settlementAmount != null && (
                 <span className="font-semibold tabular-nums">
                   {' · '}
                   {formatNumber(contract.settlementAmount)} ฿
-                </span>
-              )}
-              {contract.secondSettlementDate && contract.secondSettlementAmount != null && (
-                <span className="text-primary/70">
-                  {' + '}
-                  {formatNumber(contract.secondSettlementAmount)} ฿{' '}
-                  {formatDateShort(new Date(contract.secondSettlementDate))}
                 </span>
               )}
             </span>

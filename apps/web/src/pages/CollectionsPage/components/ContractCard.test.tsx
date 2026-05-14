@@ -31,8 +31,6 @@ const base: ContractRow = {
   noAnswerCount: 0,
   settlementDate: null,
   settlementAmount: null,
-  secondSettlementDate: null,
-  secondSettlementAmount: null,
   needsSkipTracing: false,
   deviceLocked: false,
   lastContactedAt: null,

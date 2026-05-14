@@ -70,22 +70,13 @@ export class LogContactDto {
   @IsDateString({}, { message: 'settlementDate ต้องเป็นวันที่ ISO' })
   settlementDate?: string;
 
-  // N9 fix: explicitly declare legacy back-compat fields so the global
-  // ValidationPipe whitelist (`whitelist: true`) does not strip them off.
-  // overdue.service.logContact reads these fields when `slots` is not provided.
+  // Legacy single-settlement back-compat (kept so older clients sending
+  // `settlementDate` + `settlementAmount` instead of `slots` still work).
+  // overdue.service.logContact reads this when `slots` is not provided.
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 }, { message: 'settlementAmount ต้องเป็นตัวเลข' })
   @IsPositive({ message: 'settlementAmount ต้องมากกว่า 0' })
   settlementAmount?: number;
-
-  @IsOptional()
-  @IsDateString({}, { message: 'secondSettlementDate ต้องเป็นวันที่ ISO' })
-  secondSettlementDate?: string;
-
-  @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'secondSettlementAmount ต้องเป็นตัวเลข' })
-  @IsPositive({ message: 'secondSettlementAmount ต้องมากกว่า 0' })
-  secondSettlementAmount?: number;
 
   @IsOptional()
   @IsString()

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Plus, Search, FileText, Receipt, RotateCcw, CheckCircle2, ChartBar, ClipboardCheck } from 'lucide-react';
+import { Plus, Search, FileText, Receipt, RotateCcw, CheckCircle2, ChartBar, ClipboardCheck, Pencil } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -379,11 +379,10 @@ export default function OtherIncomeListPage() {
                         <span className="flex items-center gap-1">
                           {doc.isOverridden && (
                             <span
-                              className="text-warning"
                               title="POST ด้วย Override JV — ตรวจ audit log"
                               aria-label="Override JV"
                             >
-                              ✏
+                              <Pencil className="size-3.5 inline text-warning" />
                             </span>
                           )}
                           {doc.docNumber}

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Search, CheckCircle2 } from 'lucide-react';
+import { Search, CheckCircle2, ChevronUp, ChevronDown } from 'lucide-react';
 import { useCoaGroups } from '@/hooks/useCoa';
 
 interface CoaItem {
@@ -78,7 +78,7 @@ export function AccountSearchDropdown({
         ) : (
           <span className="text-muted-foreground">{placeholder}</span>
         )}
-        <span className="text-muted-foreground text-xs flex-shrink-0">{open ? '▲' : '▼'}</span>
+        {open ? <ChevronUp className="size-3.5 text-muted-foreground flex-shrink-0" /> : <ChevronDown className="size-3.5 text-muted-foreground flex-shrink-0" />}
       </button>
       {open && !disabled && (
         <div

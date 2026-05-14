@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { FileText, CheckCircle2, Paperclip, PenLine, Clock, AlertCircle } from 'lucide-react';
 import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
@@ -40,7 +41,7 @@ interface DocumentStats {
   }>;
 }
 
-function StatCard({ label, value, color = 'blue', icon }: { label: string; value: number; color?: string; icon: string }) {
+function StatCard({ label, value, color = 'blue', icon }: { label: string; value: number; color?: string; icon: ReactNode }) {
   const colors: Record<string, string> = {
     blue: 'bg-info/10 text-info border-info/20 border-l-primary',
     green: 'bg-success/5 dark:bg-success/10 text-success border-success/20 border-l-success',
@@ -117,12 +118,12 @@ function DocumentDashboardPage() {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-5 lg:gap-7.5 mb-6">
-        <StatCard icon="📋" label="สัญญาทั้งหมด" value={s.totalContracts} color="blue" />
-        <StatCard icon="✅" label="เอกสารครบ" value={s.fullyDocumented} color="green" />
-        <StatCard icon="📎" label="รอเอกสาร" value={s.pendingDocuments} color="yellow" />
-        <StatCard icon="✍️" label="รอลายเซ็น" value={s.pendingSignatures} color="purple" />
-        <StatCard icon="⏳" label="รออนุมัติ" value={s.pendingApproval} color="orange" />
-        <StatCard icon="🔴" label="ค้างชำระ" value={s.overdueContracts} color="red" />
+        <StatCard icon={<FileText className="size-5" />} label="สัญญาทั้งหมด" value={s.totalContracts} color="blue" />
+        <StatCard icon={<CheckCircle2 className="size-5" />} label="เอกสารครบ" value={s.fullyDocumented} color="green" />
+        <StatCard icon={<Paperclip className="size-5" />} label="รอเอกสาร" value={s.pendingDocuments} color="yellow" />
+        <StatCard icon={<PenLine className="size-5" />} label="รอลายเซ็น" value={s.pendingSignatures} color="purple" />
+        <StatCard icon={<Clock className="size-5" />} label="รออนุมัติ" value={s.pendingApproval} color="orange" />
+        <StatCard icon={<AlertCircle className="size-5" />} label="ค้างชำระ" value={s.overdueContracts} color="red" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 lg:gap-7.5">

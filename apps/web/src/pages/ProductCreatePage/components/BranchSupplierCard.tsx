@@ -54,7 +54,7 @@ export default function BranchSupplierCard({
               className={inputCls}
             >
               <option value="">
-                {suppliersLoading ? 'กำลังโหลด...' : suppliersError ? '⚠ โหลดข้อมูลไม่ได้' : 'ไม่ระบุ'}
+                {suppliersLoading ? 'กำลังโหลด...' : suppliersError ? 'โหลดข้อมูลไม่ได้' : 'ไม่ระบุ'}
               </option>
               {suppliers.map((s) => (
                 <option key={s.id} value={s.id}>

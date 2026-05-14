@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, sessionStatusMap } from '@/lib/status-badges';
 import { Card, CardContent } from '@/components/ui/card';
 import { formatDateTime } from '@/utils/formatters';
+import { User, Bot, Briefcase, Clock, Settings, Pin } from 'lucide-react';
 
 interface SessionItem {
   id: string;
@@ -41,12 +42,12 @@ interface SessionDetail extends SessionItem {
   messages: MessageItem[];
 }
 
-const ROLE_BADGE: Record<string, { label: string; cls: string }> = {
-  CUSTOMER: { label: '👤 ลูกค้า', cls: 'bg-info/10 border-info/20' },
-  BOT: { label: '🤖 น้องเบส', cls: 'bg-success/10 border-success/20' },
-  STAFF: { label: '👨‍💼 พนักงาน', cls: 'bg-secondary/20 border-secondary/30' },
-  AUTO_TRIGGER: { label: '⏰ Auto', cls: 'bg-warning/10 border-warning/20' },
-  SYSTEM: { label: '⚙️ System', cls: 'bg-muted border-border' },
+const ROLE_BADGE: Record<string, { label: string; icon: typeof User; cls: string }> = {
+  CUSTOMER:     { label: 'ลูกค้า',   icon: User,     cls: 'bg-info/10 border-info/20' },
+  BOT:          { label: 'น้องเบส', icon: Bot,      cls: 'bg-success/10 border-success/20' },
+  STAFF:        { label: 'พนักงาน', icon: Briefcase, cls: 'bg-secondary/20 border-secondary/30' },
+  AUTO_TRIGGER: { label: 'Auto',    icon: Clock,    cls: 'bg-warning/10 border-warning/20' },
+  SYSTEM:       { label: 'System',  icon: Settings, cls: 'bg-muted border-border' },
 };
 
 export default function ChatbotFinanceSessionsPage() {
@@ -223,7 +224,7 @@ export default function ChatbotFinanceSessionsPage() {
 
               {detail.data.handoffReason && (
                 <div className="mb-3 p-2 bg-warning/10 border border-warning/20 rounded-lg text-xs">
-                  📌 Handoff: {detail.data.handoffReason}
+                  <Pin className="size-3.5 inline mr-1" />Handoff: {detail.data.handoffReason}
                 </div>
               )}
 
@@ -233,7 +234,7 @@ export default function ChatbotFinanceSessionsPage() {
                   return (
                     <div key={m.id} className={`border rounded-lg p-2 text-sm ${badge.cls}`}>
                       <div className="flex justify-between text-[10px] text-muted-foreground mb-1">
-                        <span>{badge.label}</span>
+                        <span className="flex items-center gap-1"><badge.icon className="size-3" />{badge.label}</span>
                         <span>{new Date(m.createdAt).toLocaleTimeString('th-TH')}</span>
                       </div>
                       <p className="whitespace-pre-wrap">{m.text}</p>

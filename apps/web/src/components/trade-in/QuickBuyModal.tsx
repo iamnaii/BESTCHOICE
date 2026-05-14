@@ -16,6 +16,7 @@ import {
   Upload,
   AlertTriangle,
   ShoppingBag,
+  Check,
 } from 'lucide-react';
 import { brands, getModels } from '@/data/productCatalog';
 import SignaturePadFull from '@/components/signing/SignaturePadFull';
@@ -212,7 +213,7 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
         }));
         if (data.warning) {
           toast.warning(
-            `⚠️ ผู้ขายรายนี้ขายมาแล้ว ${data.recentCount} ครั้งใน 30 วัน — โปรดตรวจสอบที่มาให้ละเอียด`,
+            `ผู้ขายรายนี้ขายมาแล้ว ${data.recentCount} ครั้งใน 30 วัน — โปรดตรวจสอบที่มาให้ละเอียด`,
             { duration: 8000 },
           );
         } else {
@@ -234,7 +235,7 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
         count: res.data.occurrences?.length ?? 0,
       });
       if (res.data.result === 'duplicate') {
-        toast.error(`⚠️ IMEI นี้เคยถูกรับซื้อแล้ว — โปรดตรวจสอบ`);
+        toast.error(`IMEI นี้เคยถูกรับซื้อแล้ว — โปรดตรวจสอบ`);
       }
     } catch {
       // silent
@@ -301,7 +302,7 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
             onClick={close}
             className="text-muted-foreground hover:text-foreground text-sm font-medium"
           >
-            ปิด ✕
+            ปิด
           </button>
         </div>
 
@@ -319,7 +320,7 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
                       : 'bg-muted text-muted-foreground'
                   }`}
                 >
-                  {s < step ? '✓' : s}
+                  {s < step ? <Check className="size-4" /> : s}
                 </div>
                 <div className="ml-2 text-xs font-medium text-foreground">
                   {s === 1 ? 'ผู้ขาย' : s === 2 ? 'เครื่อง + ราคา' : 'ยืนยัน + เซ็น'}
@@ -371,7 +372,7 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
                   <div>
                     {sellerHistory.warning ? (
                       <>
-                        <div className="font-semibold mb-1">⚠️ ผู้ขายรายนี้มีประวัติผิดปกติ</div>
+                        <div className="font-semibold mb-1 flex items-center gap-1.5"><AlertTriangle className="size-4" /> ผู้ขายรายนี้มีประวัติผิดปกติ</div>
                         <div>ขายมาแล้ว {sellerHistory.recentCount} ครั้งใน 30 วันล่าสุด — รวมทั้งหมด {sellerHistory.totalCount} ครั้ง — โปรดตรวจสอบที่มาให้ละเอียดก่อนรับซื้อ</div>
                       </>
                     ) : (
@@ -640,7 +641,7 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
               disabled={quickBuyMutation.isPending}
               className="bg-success hover:bg-success/90 text-success-foreground font-bold"
             >
-              {quickBuyMutation.isPending ? 'กำลังบันทึก...' : '✓ บันทึก + ออกใบสำคัญ'}
+              {quickBuyMutation.isPending ? 'กำลังบันทึก...' : <><Check className="size-4 mr-1.5 inline" />บันทึก + ออกใบสำคัญ</>}
             </Button>
           )}
         </div>

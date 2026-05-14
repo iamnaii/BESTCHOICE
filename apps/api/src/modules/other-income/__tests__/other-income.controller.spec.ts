@@ -109,7 +109,7 @@ describe('OtherIncomeController — unit (mocked service)', () => {
       post: jest.fn().mockResolvedValue({ id: 'test-id', status: 'POSTED' }),
       reverse: jest.fn().mockResolvedValue({ id: 'test-id', status: 'REVERSED' }),
       copy: jest.fn().mockResolvedValue({ id: 'copy-id', docNumber: 'OI-2026-0002', status: 'DRAFT' }),
-      dailySheet: jest.fn().mockResolvedValue({ date: '2026-05-06', docs: [] }),
+      dailySheet: jest.fn().mockResolvedValue({ startDate: '2026-05-06', endDate: '2026-05-06', docs: [] }),
     } as unknown as jest.Mocked<OtherIncomeService>;
 
     const module = await Test.createTestingModule({
@@ -204,10 +204,10 @@ describe('OtherIncomeController — unit (mocked service)', () => {
     expect(result.status).toBe('DRAFT');
   });
 
-  it('dailySheet() delegates to service.dailySheet() with date string', async () => {
-    const result = await controller.dailySheet({ date: '2026-05-06' });
-    expect(service.dailySheet).toHaveBeenCalledWith('2026-05-06');
-    expect(result).toHaveProperty('date');
+  it('dailySheet() delegates to service.dailySheet() with start+end strings', async () => {
+    const result = await controller.dailySheet({ startDate: '2026-05-01', endDate: '2026-05-06' });
+    expect(service.dailySheet).toHaveBeenCalledWith('2026-05-01', '2026-05-06');
+    expect(result).toHaveProperty('startDate');
   });
 });
 
@@ -222,7 +222,7 @@ describe('OtherIncomeController — ValidationPipe (TestingModule + http)', () =
   const mockService = {
     create: jest.fn().mockResolvedValue({ id: 'new-id', docNumber: 'OI-2026-0001', status: 'DRAFT' }),
     list: jest.fn().mockResolvedValue({ data: [], total: 0, page: 1, limit: 50 }),
-    dailySheet: jest.fn().mockResolvedValue({ date: '2026-05-06', docs: [] }),
+    dailySheet: jest.fn().mockResolvedValue({ startDate: '2026-05-06', endDate: '2026-05-06', docs: [] }),
   };
 
   beforeAll(async () => {
@@ -303,7 +303,7 @@ describe('OtherIncomeController — ValidationPipe (TestingModule + http)', () =
     expect(result.issueDate).toBe('2026-05-06');
   });
 
-  it('GET /daily-sheet — ValidationPipe rejects missing date param', async () => {
+  it('GET /daily-sheet — ValidationPipe rejects missing startDate/endDate params', async () => {
     const pipe = new ValidationPipe({ transform: true, whitelist: true });
     const { DailySheetQueryDto } = await import('../dto/daily-sheet-query.dto');
     await expect(pipe.transform({}, { type: 'query', metatype: DailySheetQueryDto })).rejects.toMatchObject({

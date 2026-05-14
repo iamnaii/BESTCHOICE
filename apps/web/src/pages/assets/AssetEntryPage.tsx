@@ -29,7 +29,6 @@ import { AssetEntrySection2Cost } from './components/AssetEntrySection2Cost';
 import { AssetEntrySection3Vendor } from './components/AssetEntrySection3Vendor';
 import { AssetEntrySection4Journal } from './components/AssetEntrySection4Journal';
 import { AssetEntrySection5Approver } from './components/AssetEntrySection5Approver';
-import { AccountingModuleTabBar } from '@/components/accounting/AccountingModuleTabBar';
 
 interface Branch {
   id: string;
@@ -231,8 +230,6 @@ export default function AssetEntryPage() {
   return (
     <FormProvider {...form}>
       <div className="space-y-4 pb-32">
-        <AccountingModuleTabBar />
-
         {/* Page header card */}
         <div className="rounded-xl border border-border/60 bg-card p-5 shadow-sm">
           <button

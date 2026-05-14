@@ -4,10 +4,13 @@ import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Download, Printer } from 'lucide-react';
 import { otherIncomeApi } from '@/lib/otherIncome';
 import QueryBoundary from '@/components/QueryBoundary';
+import { DateRangeChips } from './components/DateRangeChips';
 
 // "Today" in Asia/Bangkok — guards against UTC server returning yesterday
 // between 00:00–07:00 BKK time. Mirrors `todayBangkok()` in OtherIncomeEntryPage.
-const today = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' });
+const todayLocal = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' });
+
+const firstOfThisMonth = () => `${todayLocal().slice(0, 7)}-01`;
 
 function fmt(v: string | number | undefined | null) {
   if (v === undefined || v === null) return '—';
@@ -47,11 +50,13 @@ function SummaryBox({ label, value, colorClass, highlight }: SummaryBoxProps) {
 
 export default function OtherIncomeDailySheetPage() {
   const navigate = useNavigate();
-  const [date, setDate] = useState<string>(today());
+  const [startDate, setStartDate] = useState<string>(firstOfThisMonth());
+  const [endDate, setEndDate] = useState<string>(todayLocal());
 
   const sheet = useQuery({
-    queryKey: ['other-income-daily-sheet', date],
-    queryFn: () => otherIncomeApi.dailySheet(date),
+    queryKey: ['other-income-daily-sheet', startDate, endDate],
+    queryFn: () => otherIncomeApi.dailySheet(startDate, endDate),
+    enabled: Boolean(startDate) && Boolean(endDate),
   });
 
   const exportCsv = () => {
@@ -81,7 +86,7 @@ export default function OtherIncomeDailySheetPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `daily-sheet-${date}.csv`;
+    a.download = `daily-sheet-${startDate}-to-${endDate}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -91,47 +96,60 @@ export default function OtherIncomeDailySheetPage() {
       {/* Toolbar — hidden on print via data-print-hide opt-in (W9). */}
       <div
         data-print-hide="true"
-        className="rounded-xl border px-6 py-4 flex items-center justify-between bg-card flex-wrap gap-3"
+        className="rounded-xl border px-6 py-4 bg-card space-y-3"
       >
-        <div>
-          <button
-            type="button"
-            onClick={() => navigate('/other-income')}
-            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:underline"
-          >
-            <ArrowLeft size={12} /> กลับ
-          </button>
-          <h2 className="text-2xl font-bold leading-snug mt-1">สรุปรายได้อื่นรายวัน</h2>
+        <div className="flex items-start justify-between flex-wrap gap-3">
+          <div>
+            <button
+              type="button"
+              onClick={() => navigate('/other-income')}
+              className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:underline"
+            >
+              <ArrowLeft size={12} /> กลับ
+            </button>
+            <h2 className="text-2xl font-bold leading-snug mt-1">สรุปรายได้อื่น</h2>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={exportCsv}
+              disabled={!sheet.data}
+              className="inline-flex items-center gap-1 px-3 py-1.5 text-sm border border-border rounded-md bg-background hover:bg-accent disabled:opacity-50"
+            >
+              <Download size={14} /> CSV
+            </button>
+            <button
+              type="button"
+              onClick={() => window.print()}
+              className="inline-flex items-center gap-1 px-4 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+            >
+              <Printer size={14} /> พิมพ์
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
+        <DateRangeChips
+          startDate={startDate}
+          endDate={endDate}
+          showAllChip={false}
+          onChange={({ startDate: sd, endDate: ed }) => {
+            setStartDate(sd);
+            setEndDate(ed);
+          }}
+        />
+        <div className="flex flex-wrap items-center gap-2">
           <input
             type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="border border-border rounded-md px-3 py-1.5 text-sm bg-background"
+            data-date-range-custom-start="true"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="border border-border rounded-md px-3 py-2 text-sm bg-background"
           />
-          <button
-            type="button"
-            onClick={() => setDate(today())}
-            className="text-xs px-3 py-1.5 border border-border rounded-md bg-background hover:bg-accent"
-          >
-            วันนี้
-          </button>
-          <button
-            type="button"
-            onClick={exportCsv}
-            disabled={!sheet.data}
-            className="inline-flex items-center gap-1 px-3 py-1.5 text-sm border border-border rounded-md bg-background hover:bg-accent disabled:opacity-50"
-          >
-            <Download size={14} /> CSV
-          </button>
-          <button
-            type="button"
-            onClick={() => window.print()}
-            className="inline-flex items-center gap-1 px-4 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
-          >
-            <Printer size={14} /> พิมพ์
-          </button>
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            className="border border-border rounded-md px-3 py-2 text-sm bg-background"
+          />
         </div>
       </div>
 
@@ -175,7 +193,7 @@ export default function OtherIncomeDailySheetPage() {
               </h3>
               {sheet.data.docs.length === 0 ? (
                 <p className="py-8 text-center text-muted-foreground text-sm">
-                  ไม่มีเอกสารในวันที่เลือก
+                  ไม่มีเอกสารในช่วงวันที่เลือก
                 </p>
               ) : (
                 <div className="overflow-x-auto">

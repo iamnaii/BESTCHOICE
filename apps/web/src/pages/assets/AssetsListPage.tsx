@@ -43,7 +43,6 @@ import { getErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { assetsApi } from './api';
 import { AssetStatusBadge } from './components/AssetStatusBadge';
-import { AccountingModuleTabBar } from '@/components/accounting/AccountingModuleTabBar';
 import {
   CATEGORY_LABEL,
   type Asset,
@@ -295,8 +294,6 @@ export default function AssetsListPage() {
 
   return (
     <div className="space-y-4">
-      <AccountingModuleTabBar />
-
       <PageHeader
         title="ซื้อสินทรัพย์ถาวร"
         subtitle="จัดการการซื้อสินทรัพย์ถาวร (กลุ่ม 12-21XX) — อุปกรณ์ · ส่วนปรับปรุง · ตกแต่ง · ยานพาหนะ · TFRS + Accrual VAT"

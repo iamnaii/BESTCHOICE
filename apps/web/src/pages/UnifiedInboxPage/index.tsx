@@ -86,7 +86,7 @@ export default function UnifiedInboxPage() {
     },
     onCollision: (data) => {
       const viewerNames = data.viewers?.map((v) => v.userName).join(', ');
-      toast.warning(`⚠️ ${viewerNames} กำลังดูแชทนี้อยู่`);
+      toast.warning(`${viewerNames} กำลังดูแชทนี้อยู่`);
     },
     onSendFailed: (data) => {
       toast.error(`ส่งข้อความไปยังลูกค้าไม่สำเร็จ${data.error ? ` — ${data.error}` : ''}`);

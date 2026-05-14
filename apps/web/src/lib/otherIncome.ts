@@ -80,6 +80,22 @@ export const otherIncomeApi = {
       .get<{ threshold: number }>('/other-income/config/attachment-threshold')
       .then((r) => r.data.threshold),
 
+  /**
+   * C14 — non-blocking soft warning for 42-1103 double-credit risk.
+   * Returns an empty array when there's no collision.
+   */
+  checkLateFeeCollision: (input: {
+    customerId?: string;
+    issueDate: string;
+    items: Array<{ lineNo: number; accountCode: string }>;
+  }) =>
+    api
+      .post<{ warnings: Array<{ rule: string; lineNo?: number; msg: string }> }>(
+        '/other-income/preview/late-fee-collision',
+        input,
+      )
+      .then((r) => r.data.warnings),
+
   isMakerCheckerEnabled: () =>
     api.get<{ enabled: boolean }>('/other-income/maker-checker-enabled').then((r) => r.data.enabled),
 

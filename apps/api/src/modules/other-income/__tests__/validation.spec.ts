@@ -1,5 +1,6 @@
 import { Test } from '@nestjs/testing';
 import { Prisma } from '@prisma/client';
+import { PrismaService } from '../../../prisma/prisma.service';
 import { ValidationService, type ValidationContext } from '../services/validation.service';
 import { goldenCases } from './fixtures/golden-cases';
 
@@ -11,12 +12,21 @@ const baseCtx: ValidationContext = {
   hasAttachment: false,
 };
 
+// Mock factory — pure ValidationService.validate() never touches the DB,
+// but checkLateFeeCollision() does. Default mock returns "no collision".
+function buildPrismaMock(paymentFindFirst: jest.Mock = jest.fn().mockResolvedValue(null)) {
+  return { payment: { findFirst: paymentFindFirst } } as unknown as PrismaService;
+}
+
 describe('ValidationService', () => {
   let service: ValidationService;
 
   beforeEach(async () => {
     const module = await Test.createTestingModule({
-      providers: [ValidationService],
+      providers: [
+        ValidationService,
+        { provide: PrismaService, useValue: buildPrismaMock() },
+      ],
     }).compile();
     service = module.get(ValidationService);
   });
@@ -115,7 +125,10 @@ describe('V15 — bank interest policy (B2)', () => {
 
   beforeEach(async () => {
     const module = await Test.createTestingModule({
-      providers: [ValidationService],
+      providers: [
+        ValidationService,
+        { provide: PrismaService, useValue: buildPrismaMock() },
+      ],
     }).compile();
     service = module.get(ValidationService);
   });
@@ -153,5 +166,117 @@ describe('V15 — bank interest policy (B2)', () => {
     const v15Error = result.errors.find((e) => e.rule === 'V15');
     expect(v15Error).toBeDefined();
     expect(v15Error?.msg).toMatch(/ยกเว้น VAT/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// C14 — 42-1103 double-credit collision soft warning
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('C14 — checkLateFeeCollision (42-1103 double-credit detection)', () => {
+  const customerId = '11111111-1111-1111-1111-111111111111';
+  const issueDate = new Date('2026-05-14T03:00:00.000Z'); // 10:00 BKK
+  const itemWithLateFee = [{ lineNo: 1, accountCode: '42-1103' }];
+  const itemWithoutLateFee = [{ lineNo: 1, accountCode: '42-1102' }];
+
+  function buildService(findFirstImpl: jest.Mock) {
+    const prismaMock = buildPrismaMock(findFirstImpl);
+    return Test.createTestingModule({
+      providers: [ValidationService, { provide: PrismaService, useValue: prismaMock }],
+    })
+      .compile()
+      .then((m) => ({
+        service: m.get(ValidationService),
+        prismaMock,
+        findFirst: findFirstImpl,
+      }));
+  }
+
+  it('returns warning when 42-1103 is used and a colliding Payment.lateFee exists', async () => {
+    const { service, findFirst } = await buildService(
+      jest.fn().mockResolvedValue({
+        id: 'p1',
+        installmentNo: 4,
+        lateFee: new Prisma.Decimal(50),
+        dueDate: new Date('2026-05-05T03:00:00.000Z'),
+      }),
+    );
+
+    const warnings = await service.checkLateFeeCollision(
+      customerId,
+      issueDate,
+      itemWithLateFee,
+    );
+
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].rule).toBe('C14');
+    expect(warnings[0].lineNo).toBe(1);
+    expect(warnings[0].msg).toMatch(/42-1103/);
+    expect(warnings[0].msg).toMatch(/งวดที่ 4/);
+    expect(findFirst).toHaveBeenCalledTimes(1);
+    const call = findFirst.mock.calls[0][0];
+    expect(call.where.contract.customerId).toBe(customerId);
+    expect(call.where.lateFee).toEqual({ gt: 0 });
+    expect(call.where.deletedAt).toBeNull();
+  });
+
+  it('returns no warning when no colliding Payment is found', async () => {
+    const { service } = await buildService(jest.fn().mockResolvedValue(null));
+
+    const warnings = await service.checkLateFeeCollision(
+      customerId,
+      issueDate,
+      itemWithLateFee,
+    );
+
+    expect(warnings).toEqual([]);
+  });
+
+  it('skips the DB query entirely when no item uses 42-1103', async () => {
+    const findFirst = jest.fn();
+    const { service } = await buildService(findFirst);
+
+    const warnings = await service.checkLateFeeCollision(
+      customerId,
+      issueDate,
+      itemWithoutLateFee,
+    );
+
+    expect(warnings).toEqual([]);
+    expect(findFirst).not.toHaveBeenCalled();
+  });
+
+  it('returns no warning when customerId is missing (no customer = no collision check)', async () => {
+    const findFirst = jest.fn();
+    const { service } = await buildService(findFirst);
+
+    const warnings = await service.checkLateFeeCollision(
+      null,
+      issueDate,
+      itemWithLateFee,
+    );
+
+    expect(warnings).toEqual([]);
+    expect(findFirst).not.toHaveBeenCalled();
+  });
+
+  it('returns no warning when items array is empty', async () => {
+    const findFirst = jest.fn();
+    const { service } = await buildService(findFirst);
+
+    const warnings = await service.checkLateFeeCollision(customerId, issueDate, []);
+
+    expect(warnings).toEqual([]);
+    expect(findFirst).not.toHaveBeenCalled();
+  });
+
+  it('returns no warning when issueDate is missing', async () => {
+    const findFirst = jest.fn();
+    const { service } = await buildService(findFirst);
+
+    const warnings = await service.checkLateFeeCollision(customerId, null, itemWithLateFee);
+
+    expect(warnings).toEqual([]);
+    expect(findFirst).not.toHaveBeenCalled();
   });
 });

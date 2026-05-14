@@ -1,8 +1,88 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import * as fs from 'fs';
+import * as path from 'path';
 import * as puppeteer from 'puppeteer';
 import * as QRCode from 'qrcode';
 import { PrismaService } from '../../../prisma/prisma.service';
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Self-hosted fonts (Fix C15 — eliminate fonts.googleapis.com hot path)
+//
+// Background: PR #839 added an 8s timeout on `networkidle0` for Google Fonts.
+// Every PDF render still paid up to 8s on each request, and a brief gstatic
+// DNS hiccup degraded each receipt by 5-8s silently. We now embed the four
+// IBM Plex Sans Thai weights + Sriracha as base64 data: URIs at boot time
+// (cached in module scope), so puppeteer can wait on `domcontentloaded` only.
+//
+// TTF files were fetched once from fonts.gstatic.com and committed to
+// `src/modules/other-income/assets/fonts/` — OFL license (SIL Open Font
+// License) permits redistribution. Total payload ~726 KB cached in memory.
+// ──────────────────────────────────────────────────────────────────────────────
+
+const FONT_DIR_CANDIDATES = [
+  // Dev: src/modules/other-income/assets/fonts/*.ttf
+  path.join(__dirname, '..', 'assets', 'fonts'),
+  // Prod (nest build): dist/src/modules/other-income/assets/fonts/*.ttf
+  path.join(__dirname, '..', '..', '..', '..', 'src', 'modules', 'other-income', 'assets', 'fonts'),
+  // Fallback when working directory matters
+  path.join(process.cwd(), 'src', 'modules', 'other-income', 'assets', 'fonts'),
+  path.join(
+    process.cwd(),
+    'apps',
+    'api',
+    'src',
+    'modules',
+    'other-income',
+    'assets',
+    'fonts',
+  ),
+];
+
+interface FontDef {
+  family: string;
+  weight: number;
+  file: string;
+}
+
+const FONT_FILES: FontDef[] = [
+  { family: 'IBM Plex Sans Thai', weight: 400, file: 'ibmplexsansthai-400.ttf' },
+  { family: 'IBM Plex Sans Thai', weight: 500, file: 'ibmplexsansthai-500.ttf' },
+  { family: 'IBM Plex Sans Thai', weight: 600, file: 'ibmplexsansthai-600.ttf' },
+  { family: 'IBM Plex Sans Thai', weight: 700, file: 'ibmplexsansthai-700.ttf' },
+  { family: 'Sriracha', weight: 400, file: 'sriracha-400.ttf' },
+];
+
+let cachedFontCss: string | null = null;
+
+/** Build the @font-face block once at first call, cache for the process lifetime. */
+function getEmbeddedFontCss(logger: Logger): string {
+  if (cachedFontCss !== null) return cachedFontCss;
+
+  const fontsDir =
+    FONT_DIR_CANDIDATES.find((dir) =>
+      fs.existsSync(path.join(dir, FONT_FILES[0].file)),
+    ) ?? FONT_DIR_CANDIDATES[0];
+
+  const blocks: string[] = [];
+  for (const f of FONT_FILES) {
+    const full = path.join(fontsDir, f.file);
+    try {
+      const b64 = fs.readFileSync(full).toString('base64');
+      blocks.push(
+        `@font-face{font-family:'${f.family}';font-style:normal;font-weight:${f.weight};font-display:block;` +
+          `src:url(data:font/ttf;base64,${b64}) format('truetype');}`,
+      );
+    } catch (err) {
+      logger.warn(
+        `Could not embed font ${f.file} (looked in ${fontsDir}): ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
+  cachedFontCss = blocks.join('\n');
+  return cachedFontCss;
+}
 
 type DocWithItems = Prisma.OtherIncomeGetPayload<{
   include: {
@@ -116,6 +196,8 @@ const BESTCHOICE_LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="39
 
 @Injectable()
 export class OtherIncomeReceiptPdfService {
+  private readonly logger = new Logger(OtherIncomeReceiptPdfService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   async generate(id: string): Promise<Buffer> {
@@ -152,14 +234,10 @@ export class OtherIncomeReceiptPdfService {
     });
     try {
       const page = await browser.newPage();
-      // Cap network wait at 8s so a fonts.googleapis.com outage doesn't stall
-      // the request for the full puppeteer 30s default — fonts will fall back
-      // to system sans-thai, which is acceptable degradation.
-      try {
-        await page.setContent(html, { waitUntil: 'networkidle0', timeout: 8_000 });
-      } catch {
-        await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 5_000 });
-      }
+      // C15 fix: fonts are now self-hosted (base64 data: URIs embedded in the
+      // HTML), so there are zero outbound network requests. Wait only for the
+      // HTML document to parse — no need for `networkidle0` + 8s fallback.
+      await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 10_000 });
       const pdf = await page.pdf({
         format: 'A4',
         margin: { top: '0', right: '0', bottom: '0', left: '0' },
@@ -236,13 +314,15 @@ export class OtherIncomeReceiptPdfService {
       })
       .join('');
 
+    const embeddedFontCss = getEmbeddedFontCss(this.logger);
+
     return `<!DOCTYPE html>
 <html lang="th">
 <head>
   <meta charset="UTF-8">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Sriracha&display=swap" rel="stylesheet">
   <style>
+    /* Self-hosted fonts — no fonts.googleapis.com requests (Fix C15) */
+    ${embeddedFontCss}
     @page { size: A4; margin: 0; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     :root {

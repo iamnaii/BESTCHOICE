@@ -560,6 +560,34 @@ export default function OtherIncomeEntryPage() {
   });
   const attachmentThreshold = thresholdQuery.data ?? ATTACHMENT_THRESHOLD_FALLBACK;
 
+  // C14 — late-fee collision soft warning. Fires only when:
+  //   - any item uses account 42-1103 (ค่าปรับชำระล่าช้า)
+  //   - AND a customerId is selected
+  //   - AND the same customer has Payment.lateFee > 0 in the issueDate's BKK month.
+  // Re-runs whenever the operator changes customer / issue date / items. Non-blocking.
+  const has42_1103 = (values.items ?? []).some((it) => it.accountCode === '42-1103');
+  const lateFeeCollisionQuery = useQuery({
+    queryKey: [
+      'other-income-late-fee-collision',
+      values.customerId,
+      values.issueDate,
+      // Stable key derived from line accountCodes only — collision is per-account
+      (values.items ?? []).map((it) => it.accountCode).join('|'),
+    ],
+    queryFn: () =>
+      otherIncomeApi.checkLateFeeCollision({
+        customerId: values.customerId || undefined,
+        issueDate: values.issueDate,
+        items: (values.items ?? []).map((it, idx) => ({
+          lineNo: idx + 1,
+          accountCode: it.accountCode,
+        })),
+      }),
+    enabled: Boolean(has42_1103 && values.customerId && values.issueDate),
+    staleTime: 30_000,
+  });
+  const lateFeeCollisionWarnings = lateFeeCollisionQuery.data ?? [];
+
   const currentAttachments = loadQuery.data?.attachments ?? [];
   const amountReceived = Number(values.amountReceived) || 0;
   const needsAttachment = amountReceived >= attachmentThreshold && currentAttachments.length === 0;
@@ -693,6 +721,33 @@ export default function OtherIncomeEntryPage() {
               </div>
             </div>
           </section>
+
+          {/* C14 — 42-1103 double-credit soft warning (non-blocking) */}
+          {lateFeeCollisionWarnings.length > 0 && (
+            <section
+              role="alert"
+              aria-live="polite"
+              className="rounded-xl border border-warning/40 bg-warning/5 p-4"
+            >
+              <div className="flex items-start gap-2">
+                <AlertTriangle size={16} className="text-warning shrink-0 mt-0.5" />
+                <div className="min-w-0 space-y-1">
+                  <p className="text-sm font-bold text-warning">
+                    เตือน: ตรวจพบความเสี่ยงคีย์ค่าปรับ (42-1103) ซ้ำ
+                  </p>
+                  <ul className="text-xs text-foreground/80 space-y-1 leading-snug">
+                    {lateFeeCollisionWarnings.map((w, idx) => (
+                      <li key={`${w.rule}-${idx}`}>{w.msg}</li>
+                    ))}
+                  </ul>
+                  <p className="text-[11px] text-muted-foreground leading-snug pt-1">
+                    คำเตือนนี้ไม่บล็อกการบันทึก กรุณายืนยันว่า lateFee
+                    ของงวดเดิมไม่ทับซ้อนกับรายการนี้ก่อนกด POST
+                  </p>
+                </div>
+              </div>
+            </section>
+          )}
 
           {/* Section 2 — Accounting items */}
           <section className="rounded-xl border bg-card p-5">

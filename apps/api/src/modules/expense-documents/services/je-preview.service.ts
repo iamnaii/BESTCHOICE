@@ -66,12 +66,17 @@ export class JePreviewService {
       });
     }
 
-    // Dr 11-2104 VAT (if any)
+    // Dr 11-4101 VAT (if any) — Input Tax Credit, claimable on ภ.พ.30.
+    // Must mirror expense-same-day / expense-accrual / credit-note templates,
+    // all of which book purchase VAT to 11-4101 (Fix Report P0-1).
+    // 11-2104 ("ลูกหนี้-VAT ที่ออกแทน") is reserved for ม.83/6 overseas-service
+    // VAT — NOT routine purchase. Booking preview vs actual JE to different
+    // accounts deceives the accountant approving the JE.
     if (totals.vatAmount.gt(0)) {
       previewLines.push({
-        accountCode: '11-2104',
-        accountName: accountNames.get('11-2104') ?? 'ลูกหนี้-VAT ที่ออกแทน',
-        description: 'VAT ซื้อ',
+        accountCode: '11-4101',
+        accountName: accountNames.get('11-4101') ?? 'ภาษีซื้อ',
+        description: 'ภาษีซื้อ',
         dr: totals.vatAmount.toFixed(2),
         cr: '0.00',
       });

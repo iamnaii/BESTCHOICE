@@ -38,6 +38,8 @@ describe('ExpenseDocumentsService', () => {
       },
       expenseDetail: {
         update: jest.fn().mockResolvedValue({}),
+        // C12 guard reads the lines to decide if per-line whtFormType is enough
+        findUnique: jest.fn().mockResolvedValue({ lines: [] }),
       },
       expenseLine: {
         deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
@@ -47,6 +49,10 @@ describe('ExpenseDocumentsService', () => {
           { code: '53-1302', type: 'ค่าใช้จ่าย' },
           { code: '53-1404', type: 'ค่าใช้จ่าย' },
         ]),
+      },
+      // C10 attachment-threshold check reads ATTACHMENT_REQUIRED_ABOVE_AMOUNT
+      systemConfig: {
+        findUnique: jest.fn().mockResolvedValue(null),
       },
     };
     docNumber = { next: jest.fn().mockResolvedValue('EX-20260510-0001') };
@@ -202,6 +208,128 @@ describe('ExpenseDocumentsService', () => {
       });
       transition.assertCanPost.mockImplementation(() => { throw new BadRequestException('not draft'); });
       await expect(service.post('doc-3', 'user-1')).rejects.toThrow(BadRequestException);
+    });
+
+    // Fix #C10 — attachment threshold server-enforced
+    it('Fix #C10: rejects post when totalAmount ≥ threshold and no receiptImageUrl', async () => {
+      prisma.systemConfig.findUnique.mockResolvedValue({
+        key: 'ATTACHMENT_REQUIRED_ABOVE_AMOUNT',
+        value: '50000',
+      });
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-c10', status: 'DRAFT', documentType: 'EXPENSE',
+        paymentMethod: 'CASH', depositAccountCode: '11-1101',
+        totalAmount: new Decimal('100000.00'),
+        receiptImageUrl: null,
+        withholdingTax: new Decimal('0'),
+        whtFormType: null,
+      });
+      transition.resolveTargetStatus.mockReturnValue('POSTED');
+      await expect(service.post('doc-c10', 'user-1')).rejects.toThrow(
+        /ต้องแนบไฟล์ประกอบ/,
+      );
+      expect(sameDay.execute).not.toHaveBeenCalled();
+    });
+
+    it('Fix #C10: allows post when totalAmount ≥ threshold WITH receiptImageUrl', async () => {
+      prisma.systemConfig.findUnique.mockResolvedValue({
+        key: 'ATTACHMENT_REQUIRED_ABOVE_AMOUNT',
+        value: '50000',
+      });
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-c10b', status: 'DRAFT', documentType: 'EXPENSE',
+        paymentMethod: 'CASH', depositAccountCode: '11-1101',
+        totalAmount: new Decimal('100000.00'),
+        receiptImageUrl: 's3://bucket/receipt.pdf',
+        withholdingTax: new Decimal('0'),
+        whtFormType: null,
+      });
+      transition.resolveTargetStatus.mockReturnValue('POSTED');
+      await expect(service.post('doc-c10b', 'user-1')).resolves.toBeDefined();
+      expect(sameDay.execute).toHaveBeenCalled();
+    });
+
+    it('Fix #C10: allows post when totalAmount < threshold, no receipt required', async () => {
+      prisma.systemConfig.findUnique.mockResolvedValue({
+        key: 'ATTACHMENT_REQUIRED_ABOVE_AMOUNT',
+        value: '50000',
+      });
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-c10c', status: 'DRAFT', documentType: 'EXPENSE',
+        paymentMethod: 'CASH', depositAccountCode: '11-1101',
+        totalAmount: new Decimal('1000.00'),
+        receiptImageUrl: null,
+        withholdingTax: new Decimal('0'),
+        whtFormType: null,
+      });
+      transition.resolveTargetStatus.mockReturnValue('POSTED');
+      await expect(service.post('doc-c10c', 'user-1')).resolves.toBeDefined();
+    });
+
+    it('Fix #C10: threshold=0 disables the check (default config)', async () => {
+      // null systemConfig → threshold defaults to 0 → never enforced
+      prisma.systemConfig.findUnique.mockResolvedValue(null);
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-c10d', status: 'DRAFT', documentType: 'EXPENSE',
+        paymentMethod: 'CASH', depositAccountCode: '11-1101',
+        totalAmount: new Decimal('999999.00'),
+        receiptImageUrl: null,
+        withholdingTax: new Decimal('0'),
+        whtFormType: null,
+      });
+      transition.resolveTargetStatus.mockReturnValue('POSTED');
+      await expect(service.post('doc-c10d', 'user-1')).resolves.toBeDefined();
+    });
+
+    // Fix #C12 — WHT form type required when wht > 0
+    it('Fix #C12: rejects post when wht > 0 and doc.whtFormType is null (no per-line override)', async () => {
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-c12a', status: 'DRAFT', documentType: 'EXPENSE',
+        paymentMethod: 'CASH', depositAccountCode: '11-1101',
+        totalAmount: new Decimal('1000.00'),
+        receiptImageUrl: null,
+        withholdingTax: new Decimal('30.00'),
+        whtFormType: null,
+      });
+      prisma.expenseDetail.findUnique.mockResolvedValue({
+        lines: [{ whtAmount: new Decimal('30.00'), whtFormType: null }],
+      });
+      transition.resolveTargetStatus.mockReturnValue('POSTED');
+      await expect(service.post('doc-c12a', 'user-1')).rejects.toThrow(
+        /whtFormType ต้องระบุ/,
+      );
+      expect(sameDay.execute).not.toHaveBeenCalled();
+    });
+
+    it('Fix #C12: allows post when wht > 0 and doc.whtFormType=PND53', async () => {
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-c12b', status: 'DRAFT', documentType: 'EXPENSE',
+        paymentMethod: 'CASH', depositAccountCode: '11-1101',
+        totalAmount: new Decimal('1000.00'),
+        receiptImageUrl: null,
+        withholdingTax: new Decimal('30.00'),
+        whtFormType: 'PND53',
+      });
+      transition.resolveTargetStatus.mockReturnValue('POSTED');
+      await expect(service.post('doc-c12b', 'user-1')).resolves.toBeDefined();
+      expect(sameDay.execute).toHaveBeenCalled();
+    });
+
+    it('Fix #C12: allows post when doc.whtFormType is null BUT every wht-line has its own form type', async () => {
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-c12c', status: 'DRAFT', documentType: 'EXPENSE',
+        paymentMethod: 'CASH', depositAccountCode: '11-1101',
+        totalAmount: new Decimal('1000.00'),
+        receiptImageUrl: null,
+        withholdingTax: new Decimal('30.00'),
+        whtFormType: null,
+      });
+      prisma.expenseDetail.findUnique.mockResolvedValue({
+        lines: [{ whtAmount: new Decimal('30.00'), whtFormType: 'PND53' }],
+      });
+      transition.resolveTargetStatus.mockReturnValue('POSTED');
+      await expect(service.post('doc-c12c', 'user-1')).resolves.toBeDefined();
+      expect(sameDay.execute).toHaveBeenCalled();
     });
   });
 

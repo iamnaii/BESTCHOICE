@@ -3,6 +3,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
+import { validatePeriodOpen } from '../../utils/period-lock.util';
 
 export interface JeLineInput {
   accountCode: string;
@@ -66,11 +67,22 @@ export class JournalAutoService {
       }
     }
 
-    // 3. entry number via advisory lock (per-month series)
+    // 3. resolve companyId — defaults to FINANCE if caller didn't pass one.
+    // Doing this up front (before validatePeriodOpen) so the period check has
+    // the actual companyId rather than `undefined`.
     const postedAt = input.postedAt ?? new Date();
+    const companyId = input.companyId ?? (await this.resolveFinanceCompanyId(client));
+
+    // 4. Fix #C9 — period-open guard. Previously absent on createAndPost —
+    // expense post/void, payroll, settlement, credit-note, repossession all
+    // could write into CLOSED periods. Manual JournalService.create has had
+    // this since v4; auto-generated entries now match the same invariant.
+    await validatePeriodOpen(client, postedAt, companyId);
+
+    // 5. entry number via advisory lock (per-month series)
     const entryNumber = await this.generateEntryNumber(postedAt, client);
 
-    // 4. create entry + lines (POSTED immediately — auto-generated entries skip DRAFT/SoD)
+    // 6. create entry + lines (POSTED immediately — auto-generated entries skip DRAFT/SoD)
     const entry = await client.journalEntry.create({
       data: {
         entryNumber,
@@ -83,7 +95,7 @@ export class JournalAutoService {
         postedAt,
         // companyId required by schema. Defaults to FINANCE; callers (e.g.
         // expense-documents PR #795) pass SHOP id when posting SHOP-side flows.
-        companyId: input.companyId ?? (await this.resolveFinanceCompanyId(client)),
+        companyId,
         createdById: await this.resolveSystemUserId(client),
         lines: {
           create: input.lines.map((l) => ({

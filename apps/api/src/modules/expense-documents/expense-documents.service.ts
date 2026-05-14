@@ -938,7 +938,9 @@ export class ExpenseDocumentsService {
     const codes = new Set<string>();
     for (const l of dto.lines) codes.add(l.category);
     if (dto.depositAccountCode) codes.add(dto.depositAccountCode);
-    codes.add('11-2104');
+    // 11-4101 = ภาษีซื้อ (Input Tax Credit, claimable). Mirrors expense
+    // templates' VAT routing — must match what post() actually books.
+    codes.add('11-4101');
     codes.add('21-1104');
     if (dto.whtFormType === 'PND53') codes.add('21-3103'); else codes.add('21-3102');
 
@@ -1075,9 +1077,58 @@ export class ExpenseDocumentsService {
         totalAmount: doc.totalAmount.toString(),
       });
 
+      // Fix #C10 — attachment threshold enforced server-side.
+      // ATTACHMENT_REQUIRED_ABOVE_AMOUNT is set in /settings#attachment but
+      // was previously only enforced by the frontend submit button. A direct
+      // API call could POST a 500k expense with no receiptImageUrl → tax-audit
+      // risk. Defense in depth: re-check at post() before any JE is written.
+      const thresholdCfg = await tx.systemConfig.findUnique({
+        where: { key: 'ATTACHMENT_REQUIRED_ABOVE_AMOUNT' },
+      });
+      const rawThreshold = thresholdCfg?.value ?? '0';
+      const threshold = new Prisma.Decimal(
+        Number.isFinite(Number(rawThreshold)) ? rawThreshold : '0',
+      );
+      const docTotal = new Prisma.Decimal(doc.totalAmount.toString());
+      if (threshold.gt(0) && docTotal.gte(threshold) && !doc.receiptImageUrl) {
+        throw new BadRequestException(
+          `เอกสารยอด ${docTotal.toFixed(2)} บาท ต้องแนบไฟล์ประกอบ (เกณฑ์ ${threshold.toFixed(2)} บาท)`,
+        );
+      }
+
       // EXPENSE + CREDIT_NOTE + PAYROLL + VENDOR_SETTLEMENT supported
       if (!['EXPENSE', 'CREDIT_NOTE', 'PAYROLL', 'VENDOR_SETTLEMENT'].includes(doc.documentType)) {
         throw new BadRequestException(`type ${doc.documentType} not supported`);
+      }
+
+      // Fix #C12 — WHT routing invariant. When the doc has WHT > 0, doc.whtFormType
+      // MUST be non-null (and a recognised form). Previously the JE template silently
+      // defaulted to PND3 → routed to 21-3102, misfiling juristic-vendor WHT under
+      // ภ.ง.ด.3 instead of ภ.ง.ด.53 (government compliance bug).
+      // Per-line override (P2-4) still works — when any ExpenseLine.whtFormType is set,
+      // the template uses per-line aggregation. For lines that don't set their own
+      // form type, they fall back to doc.whtFormType, which is now guaranteed non-null.
+      if (
+        doc.documentType === 'EXPENSE' &&
+        doc.withholdingTax &&
+        new Prisma.Decimal(doc.withholdingTax.toString()).gt(0) &&
+        !doc.whtFormType
+      ) {
+        // Check if every WHT-bearing line has its own form type → fall through to
+        // per-line routing in the template. Otherwise the doc-level is mandatory.
+        const detail = await tx.expenseDetail.findUnique({
+          where: { documentId: id },
+          include: { lines: true },
+        });
+        const whtLines = (detail?.lines ?? []).filter(
+          (l) => l.whtAmount && new Prisma.Decimal(l.whtAmount.toString()).gt(0),
+        );
+        const allLinesHaveFormType = whtLines.length > 0 && whtLines.every((l) => !!l.whtFormType);
+        if (!allLinesHaveFormType) {
+          throw new BadRequestException(
+            'whtFormType ต้องระบุเมื่อมี WHT — เลือก PND3 หรือ PND53',
+          );
+        }
       }
 
       if (doc.documentType === 'CREDIT_NOTE') {

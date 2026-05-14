@@ -5,6 +5,7 @@ import {
   IsDateString,
   IsNumber,
   Min,
+  Max,
   Matches,
   ValidateNested,
   ArrayMinSize,
@@ -26,8 +27,16 @@ class PayrollLineInput {
   @Min(0.01, { message: 'เงินเดือนพื้นฐานต้องมากกว่า 0' })
   baseSalary!: number;
 
+  /**
+   * Fix #C11 — SSO per-person cap (Thai law).
+   * SSO = 5% × min(salary, 15,000) → ceiling 750/person/month. payroll.template.ts
+   * reuses this value for the employer-side too (accounting.md §SSO accounts), so
+   * a single Max enforces both the employee deduction AND the employer match.
+   * Lower values are fine (salary < 15k → SSO < 750).
+   */
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
+  @Max(750, { message: 'SSO ต่อคนไม่เกิน 750 บาท/เดือน (5% × 15000 ceiling)' })
   @IsOptional()
   ssoEmployee?: number;
 

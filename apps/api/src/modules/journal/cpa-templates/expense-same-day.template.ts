@@ -155,10 +155,20 @@ export class ExpenseSameDayTemplate {
           if (rawWht == null) continue;
           const lineWht = new Decimal(rawWht.toString());
           if (lineWht.lte(zero)) continue;
-          const formType = ((l as { whtFormType?: string | null }).whtFormType ??
-            doc.whtFormType ??
-            'PND3') as 'PND3' | 'PND53';
-          whtByForm.set(formType, (whtByForm.get(formType) ?? zero).plus(lineWht));
+          const formType = (l as { whtFormType?: string | null }).whtFormType ?? doc.whtFormType;
+          // Fix #C12 — defense in depth. The service-level guard at post()
+          // already rejects WHT > 0 without a resolvable form type, but the
+          // template throws too so any future caller bypass surfaces here
+          // instead of silently misfiling under PND3.
+          if (formType !== 'PND3' && formType !== 'PND53') {
+            throw new Error(
+              `whtFormType ต้องเป็น PND3 หรือ PND53 (got ${formType ?? 'null'}) — line wht=${lineWht}`,
+            );
+          }
+          whtByForm.set(
+            formType,
+            (whtByForm.get(formType) ?? zero).plus(lineWht),
+          );
         }
         for (const [form, amt] of whtByForm.entries()) {
           if (amt.lte(zero)) continue;
@@ -172,12 +182,19 @@ export class ExpenseSameDayTemplate {
         }
       } else if (wht.gt(zero)) {
         // Legacy / single-vendor doc: one Cr line, route by doc.whtFormType.
+        // Fix #C12 — no silent PND3 fallback. Service guard guarantees
+        // doc.whtFormType is set when wht > 0; template re-checks.
+        if (doc.whtFormType !== 'PND3' && doc.whtFormType !== 'PND53') {
+          throw new Error(
+            `whtFormType ต้องเป็น PND3 หรือ PND53 (got ${doc.whtFormType ?? 'null'}) — doc wht=${wht}`,
+          );
+        }
         const whtAccount = doc.whtFormType === 'PND53' ? '21-3103' : '21-3102';
         lines.push({
           accountCode: whtAccount,
           dr: zero,
           cr: wht,
-          description: `หัก ณ ที่จ่าย ${doc.whtFormType ?? 'PND3'}`,
+          description: `หัก ณ ที่จ่าย ${doc.whtFormType}`,
         });
       }
 

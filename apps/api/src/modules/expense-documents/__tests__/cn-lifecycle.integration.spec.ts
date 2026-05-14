@@ -109,7 +109,7 @@ describe('Credit Note lifecycle (integration)', () => {
     const codes = je.lines.map((l) => l.accountCode);
     expect(codes).toContain('21-1104'); // Reverses AP
     expect(codes).toContain('53-1302'); // Reverses expense
-    expect(codes).toContain('11-2104'); // Reverses VAT
+    expect(codes).toContain('11-4101'); // Reverses VAT (Input Tax Credit) — Fix Report P0-1
   });
 
   it('CN amount cap: cumulative CNs cannot exceed original totalAmount', async () => {

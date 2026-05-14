@@ -57,7 +57,13 @@ function formatRangeLabel(startDate: string, endDate: string): string {
     const mm = String(startMonthIdx + 1).padStart(2, '0');
     return `${THAI_MONTHS_FULL[startMonthIdx]} ${beYear} (${sd}/${mm} - ${ed}/${mm})`;
   }
-  return `${startDay} ${THAI_MONTHS_SHORT[startMonthIdx]} - ${endDay} ${THAI_MONTHS_SHORT[endMonthIdx]} ${end.getFullYear() + 543}`;
+  // Cross-month range: include start-year only when years differ so the label
+  // remains unambiguous across year boundaries (e.g. ธ.ค. 2568 → ม.ค. 2569).
+  const endBeYear = end.getFullYear() + 543;
+  if (sameYear) {
+    return `${startDay} ${THAI_MONTHS_SHORT[startMonthIdx]} - ${endDay} ${THAI_MONTHS_SHORT[endMonthIdx]} ${endBeYear}`;
+  }
+  return `${startDay} ${THAI_MONTHS_SHORT[startMonthIdx]} ${beYear} - ${endDay} ${THAI_MONTHS_SHORT[endMonthIdx]} ${endBeYear}`;
 }
 
 export function DateRangeChips({ startDate, endDate, onChange }: DateRangeChipsProps) {

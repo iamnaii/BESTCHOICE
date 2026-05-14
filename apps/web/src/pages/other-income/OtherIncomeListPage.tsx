@@ -105,11 +105,14 @@ export default function OtherIncomeListPage() {
 
   const [q, setQ] = useState('');
   const [status, setStatus] = useState<OtherIncomeStatus | ''>('');
-  const todayInit = new Date();
-  const firstOfMonthInit = `${todayInit.getFullYear()}-${String(todayInit.getMonth() + 1).padStart(2, '0')}-01`;
-  const todayIsoInit = `${todayInit.getFullYear()}-${String(todayInit.getMonth() + 1).padStart(2, '0')}-${String(todayInit.getDate()).padStart(2, '0')}`;
-  const [startDate, setStartDate] = useState(firstOfMonthInit);
-  const [endDate, setEndDate] = useState(todayIsoInit);
+  const [startDate, setStartDate] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+  });
+  const [endDate, setEndDate] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
   const { page, size, setPage, setSize } = usePaginationParams({ defaultSize: 50 });
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [confirmDeleteNumber, setConfirmDeleteNumber] = useState<string>('');

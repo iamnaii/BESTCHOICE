@@ -114,19 +114,23 @@ export function InternalControlBar({
             ควบคุมภายใน
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <span
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-info/10 text-info text-xs"
-              title="ระบบกำหนดอัตโนมัติตาม user ที่เข้าใช้งานในขณะนี้"
-            >
-              <UserIcon size={13} />
-              <span className="text-muted-foreground">ผู้บันทึก:</span>
-              <span className="font-semibold text-foreground">{recorder.name}</span>
-            </span>
-            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-success/10 text-success text-xs">
-              <CheckCircle2 size={13} />
-              <span className="text-muted-foreground">ผู้อนุมัติ:</span>
-              <span className="font-semibold text-foreground">{approver.name}</span>
-            </span>
+            {recorder.name && recorder.name !== '—' && (
+              <span
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-info/10 text-info text-xs"
+                title="ระบบกำหนดอัตโนมัติตาม user ที่เข้าใช้งานในขณะนี้"
+              >
+                <UserIcon size={13} />
+                <span className="text-muted-foreground">ผู้บันทึก:</span>
+                <span className="font-semibold text-foreground">{recorder.name}</span>
+              </span>
+            )}
+            {approver.name && approver.name !== '—' && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-success/10 text-success text-xs">
+                <CheckCircle2 size={13} />
+                <span className="text-muted-foreground">ผู้อนุมัติ:</span>
+                <span className="font-semibold text-foreground">{approver.name}</span>
+              </span>
+            )}
             {showApprovalBadge && (
               <span
                 className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-warning/15 text-warning text-xs font-semibold"
@@ -168,63 +172,71 @@ export function InternalControlBar({
               {status === 'POSTED' || status === 'REVERSED' ? 'ปิด' : status === 'READY' ? 'กลับ' : 'ยกเลิก'}
             </button>
 
-            {/* DRAFT actions */}
+            {/* DRAFT actions — only render when handlers provided (Entry page) */}
             {status === 'DRAFT' && (
               <>
-                <button
-                  type="button"
-                  onClick={onSaveDraft}
-                  disabled={isLoading}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold border rounded-md hover:bg-accent disabled:opacity-50"
-                >
-                  <Save size={14} />
-                  บันทึกร่าง
-                </button>
-                {makerCheckerEnabled ? (
+                {onSaveDraft && (
                   <button
                     type="button"
-                    onClick={onSubmitForApproval}
-                    disabled={isLoading || !canPost}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-bold bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed"
+                    onClick={onSaveDraft}
+                    disabled={isLoading}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold border rounded-md hover:bg-accent disabled:opacity-50"
                   >
-                    <Send size={14} />
-                    ส่งให้อนุมัติ
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={onPost}
-                    disabled={isLoading || !canPost}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-bold bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    <CheckCircle2 size={14} />
-                    บันทึก & POST
+                    <Save size={14} />
+                    บันทึกร่าง
                   </button>
                 )}
+                {makerCheckerEnabled
+                  ? onSubmitForApproval && (
+                      <button
+                        type="button"
+                        onClick={onSubmitForApproval}
+                        disabled={isLoading || !canPost}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-bold bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        <Send size={14} />
+                        ส่งให้อนุมัติ
+                      </button>
+                    )
+                  : onPost && (
+                      <button
+                        type="button"
+                        onClick={onPost}
+                        disabled={isLoading || !canPost}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-bold bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        <CheckCircle2 size={14} />
+                        บันทึก & POST
+                      </button>
+                    )}
               </>
             )}
 
             {/* READY actions (approver only) */}
             {status === 'READY' && isViewerApprover && (
               <>
-                <button
-                  type="button"
-                  onClick={onReject}
-                  disabled={isLoading}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold border border-destructive/40 text-destructive rounded-md hover:bg-destructive/10 disabled:opacity-50"
-                >
-                  <XCircle size={14} />
-                  ปฏิเสธ
-                </button>
-                <button
-                  type="button"
-                  onClick={onApprove}
-                  disabled={isLoading}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-bold bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-40"
-                >
-                  <CheckCircle2 size={14} />
-                  อนุมัติ & POST
-                </button>
+                {onReject && (
+                  <button
+                    type="button"
+                    onClick={onReject}
+                    disabled={isLoading}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold border border-destructive/40 text-destructive rounded-md hover:bg-destructive/10 disabled:opacity-50"
+                  >
+                    <XCircle size={14} />
+                    ปฏิเสธ
+                  </button>
+                )}
+                {onApprove && (
+                  <button
+                    type="button"
+                    onClick={onApprove}
+                    disabled={isLoading}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-bold bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-40"
+                  >
+                    <CheckCircle2 size={14} />
+                    อนุมัติ & POST
+                  </button>
+                )}
               </>
             )}
 

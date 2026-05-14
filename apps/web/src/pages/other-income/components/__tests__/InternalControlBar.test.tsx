@@ -130,4 +130,35 @@ describe('InternalControlBar', () => {
     const active = dots.find((d) => d.getAttribute('data-state') === 'active');
     expect(active).toHaveAttribute('data-label', 'POSTED');
   });
+
+  it('REVERSED status + MC-off has active dot on REVERSED in 3-step bar', () => {
+    render(<InternalControlBar {...baseProps} status="REVERSED" makerCheckerEnabled={false} />);
+    const dots = screen.getAllByTestId('state-machine-dot');
+    expect(dots).toHaveLength(3);
+    const active = dots.find((d) => d.getAttribute('data-state') === 'active');
+    expect(active).toHaveAttribute('data-label', 'REVERSED');
+  });
+
+  it('DRAFT status without onSaveDraft/onPost handlers: no dead action buttons render', () => {
+    // ViewPage uses bar in view-only mode — should not show DRAFT action buttons
+    // (PageHeader provides them). Regression guard for dead-button bug.
+    const { onSaveDraft: _omit1, onPost: _omit2, onSubmitForApproval: _omit3, ...viewProps } = baseProps;
+    render(<InternalControlBar {...viewProps} status="DRAFT" />);
+    expect(screen.queryByRole('button', { name: /บันทึกร่าง/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /บันทึก & POST/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /ส่งให้อนุมัติ/ })).not.toBeInTheDocument();
+  });
+
+  it('pills hidden when name is empty/dash', () => {
+    render(
+      <InternalControlBar
+        {...baseProps}
+        status="POSTED"
+        recorder={{ name: '—' }}
+        approver={{ name: '' }}
+      />,
+    );
+    expect(screen.queryByText(/ผู้บันทึก:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/ผู้อนุมัติ:/)).not.toBeInTheDocument();
+  });
 });

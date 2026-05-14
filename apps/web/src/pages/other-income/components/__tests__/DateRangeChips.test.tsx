@@ -64,6 +64,13 @@ describe('DateRangeChips', () => {
     expect(screen.getByTestId('date-range-label')).toHaveTextContent('15 เม.ย. - 14 พ.ค. 2569');
   });
 
+  it('label includes both years for cross-year range', () => {
+    render(<DateRangeChips startDate="2025-12-15" endDate="2026-01-14" onChange={onChange} />);
+    expect(screen.getByTestId('date-range-label')).toHaveTextContent(
+      '15 ธ.ค. 2568 - 14 ม.ค. 2569',
+    );
+  });
+
   it('"เดือนนี้" chip has aria-checked=true when current month is selected', () => {
     render(<DateRangeChips startDate="2026-05-01" endDate="2026-05-14" onChange={onChange} />);
     expect(screen.getByRole('radio', { name: 'เดือนนี้' })).toHaveAttribute(

@@ -706,15 +706,22 @@ export class ReceiptsService {
         this.escapeHtml((receipt.issuer?.name || '').split(/\s+/)[0]) || 'ระบบ',
     };
 
-    const total = Number(receipt.amount);
-    const amountBeforeVat = receipt.amountBeforeVat ? Number(receipt.amountBeforeVat) : null;
-    const vatAmount = receipt.vatAmount ? Number(receipt.vatAmount) : null;
+    // I2 fix: route money math through Prisma.Decimal — Number(amountDue) +
+    // Number(lateFee) accumulated drift on receipts with fractional satang.
+    // Display uses .toFixed(2) before Intl.NumberFormat so the print output
+    // is satang-accurate even when the source columns ran through several
+    // additions.
+    const toDec = (v: unknown): Prisma.Decimal =>
+      new Prisma.Decimal((v ?? 0).toString());
+    const total = toDec(receipt.amount).toNumber();
+    const amountBeforeVat = receipt.amountBeforeVat ? toDec(receipt.amountBeforeVat).toNumber() : null;
+    const vatAmount = receipt.vatAmount ? toDec(receipt.vatAmount).toNumber() : null;
     const totalDue = receipt.payment
-      ? Number(receipt.payment.amountDue) + Number(receipt.payment.lateFee)
+      ? toDec(receipt.payment.amountDue).plus(toDec(receipt.payment.lateFee)).toNumber()
       : null;
-    const totalPaidOnInstallment = receipt.payment ? Number(receipt.payment.amountPaid) : null;
+    const totalPaidOnInstallment = receipt.payment ? toDec(receipt.payment.amountPaid).toNumber() : null;
     const isPartial = receipt.payment?.status === 'PARTIALLY_PAID';
-    const remainingBalance = Number(receipt.remainingBalance || 0);
+    const remainingBalance = toDec(receipt.remainingBalance ?? 0).toNumber();
     const fmt = (n: number) =>
       n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const thaiAmount = this.numberToThaiText(total);

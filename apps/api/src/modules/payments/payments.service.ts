@@ -467,6 +467,15 @@ export class PaymentsService {
       });
     }
 
+    // I3 note: every effect below this point runs OUTSIDE the serializable
+    // payment tx. All are non-financial / idempotent / explicitly logged on
+    // failure — they MUST NOT roll back the committed payment. Effects:
+    //   - receiptsService.generateReceipt — own tx + sequence lock
+    //   - awardLoyaltyPoints — upsert on unique paymentId, errors logged
+    //   - sendPaymentSuccessLine — LINE push, errors swallowed via .warn
+    //   - mdmAuto.autoUnlockAfterPayment — fire-and-forget Promise
+    //   - checkPromiseAfterPayment — own tx, errors → Sentry only
+    //
     // Auto-generate e-Receipt for every payment event (TFRS practice:
     // issue a receipt each time money is received, including partial payments).
     // `amount` here is the actual delta paid in this transaction, not cumulative.
@@ -1151,7 +1160,12 @@ export class PaymentsService {
       select: { id: true, contractNumber: true, creditBalance: true, deletedAt: true },
     });
     if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
-    return { creditBalance: Number(contract.creditBalance) };
+    // I1 fix: return as 2-dp string (Decimal precision preserved) instead of
+    // Number(...) which silently degrades to IEEE-754 binary float and can
+    // drift on large balances. UI parses with parseFloat / formatNumber.
+    return {
+      creditBalance: new Prisma.Decimal(contract.creditBalance.toString()).toFixed(2),
+    };
   }
 
   // ─── Batch CSV Payment Import ────────────────────────
@@ -1312,15 +1326,20 @@ export class PaymentsService {
       const payment = await tx.payment.findUnique({ where: { id: paymentId } });
       if (!payment || payment.deletedAt) throw new NotFoundException('ไม่พบรายการชำระ');
       if (payment.lateFeeWaived) throw new BadRequestException('รายการนี้ยกเว้นค่าปรับแล้ว');
-      if (Number(payment.lateFee) <= 0) throw new BadRequestException('รายการนี้ไม่มีค่าปรับ');
+      // I5 fix: read lateFee / amountDue / amountPaid through Prisma.Decimal
+      // so comparisons + log values cannot drift on large balances. The
+      // comparison + log are the only consumers; we keep `originalLateFee`
+      // as a number for the legacy unusual-waiver Sentry check below.
+      const lateFeeDec = new Prisma.Decimal(payment.lateFee.toString());
+      if (lateFeeDec.lte(0)) throw new BadRequestException('รายการนี้ไม่มีค่าปรับ');
 
-      const originalLateFee = roundBaht(Number(payment.lateFee));
+      const originalLateFee = lateFeeDec.toDecimalPlaces(2).toNumber();
       const notes = [payment.notes, `ยกเว้นค่าปรับ ${originalLateFee.toLocaleString()} บาท — ${reason}`].filter(Boolean).join(' | ');
 
       // Check if payment becomes fully paid after waiving late fee
-      const totalOwed = roundBaht(Number(payment.amountDue)); // without late fee
-      const amountPaid = roundBaht(Number(payment.amountPaid));
-      const isNowFullyPaid = amountPaid >= totalOwed;
+      const totalOwedDec = new Prisma.Decimal(payment.amountDue.toString()); // without late fee
+      const amountPaidDec = new Prisma.Decimal(payment.amountPaid.toString());
+      const isNowFullyPaid = amountPaidDec.gte(totalOwedDec);
 
       const updated = await tx.payment.update({
         where: { id: paymentId },
@@ -1509,8 +1528,10 @@ export class PaymentsService {
       });
       if (!contract?.customer?.lineIdFinance || !contract.customer.notifReceipt) return;
 
+      // I6 fix: include deletedAt: null so soft-deleted payments don't
+      // inflate the "X / N" counter shown in the LINE receipt.
       const paidCount = await this.prisma.payment.count({
-        where: { contractId, status: 'PAID' },
+        where: { contractId, status: 'PAID', deletedAt: null },
       });
       const remaining = contract.totalMonths - paidCount;
 

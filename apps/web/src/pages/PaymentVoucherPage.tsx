@@ -14,13 +14,14 @@ import { useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Printer } from 'lucide-react';
+import Decimal from 'decimal.js';
 import api from '@/lib/api';
 import QueryBoundary from '@/components/QueryBoundary';
 import { formatNumberDecimal } from '@/utils/formatters';
 import { formatThaiDateLong } from '@/lib/date';
 import { numToThaiText } from '@/utils/numToThaiText';
 
-interface ExpenseLine {
+export interface ExpenseLine {
   lineNo: number;
   category: string;
   description: string | null;
@@ -303,39 +304,51 @@ function Sheet({
   );
 }
 
-function WhtCertificate({ doc }: { doc: VoucherDoc }) {
-  const wht = parseFloat(doc.withholdingTax);
-  const subtotal = parseFloat(doc.subtotal);
-  const formLabel = doc.whtFormType === 'PND53' ? 'ภ.ง.ด. 53' : 'ภ.ง.ด. 3';
-
-  // W7 — group lines by whtPercent so the form 50 ทวิ table can render
-  // one row per rate when a doc mixes 3% / 5% / 1% withholdings. Falls back
-  // to one aggregate row (legacy doc-level rate) when every line shares the
-  // same percent or whtPercent is missing.
-  const lines = doc.expenseDetail?.lines ?? [];
+/**
+ * W7 (Round 2) — exported for unit testing. Form 50 ทวิ is a legal cert;
+ * per-row sums MUST equal the line-by-line totals exactly. Decimal.plus()
+ * preserves precision where parseFloat + += would drift a satang on
+ * mixed-rate docs.
+ */
+export interface RateBucket {
+  rate: Decimal;
+  base: Decimal;
+  tax: Decimal;
+}
+export function bucketWhtByRate(
+  lines: ExpenseLine[],
+  subtotal: Decimal,
+  wht: Decimal,
+): RateBucket[] {
   const ratedLines = lines.filter(
-    (l) => parseFloat(l.whtAmount ?? '0') > 0 && l.whtPercent != null,
+    (l) => new Decimal(l.whtAmount ?? '0').gt(0) && l.whtPercent != null,
   );
-  type RateBucket = { rate: number; base: number; tax: number };
-  const buckets: RateBucket[] = [];
-  if (ratedLines.length > 0) {
-    const map = new Map<string, RateBucket>();
-    for (const l of ratedLines) {
-      const rate = parseFloat(l.whtPercent ?? '0');
-      const key = rate.toFixed(2);
-      const b = map.get(key) ?? { rate, base: 0, tax: 0 };
-      b.base += parseFloat(l.amountBeforeVat ?? '0');
-      b.tax += parseFloat(l.whtAmount ?? '0');
-      map.set(key, b);
-    }
-    buckets.push(...map.values());
-    // Sort descending by tax amount for a stable, readable layout.
-    buckets.sort((a, b) => b.tax - a.tax);
-  } else {
+  if (ratedLines.length === 0) {
     // Legacy / fallback: single weighted-average row from doc totals.
-    const avgRate = subtotal > 0 ? (wht / subtotal) * 100 : 0;
-    buckets.push({ rate: avgRate, base: subtotal, tax: wht });
+    const avgRate = subtotal.gt(0) ? wht.div(subtotal).times(100) : new Decimal(0);
+    return [{ rate: avgRate, base: subtotal, tax: wht }];
   }
+  const map = new Map<string, RateBucket>();
+  for (const l of ratedLines) {
+    const rate = new Decimal(l.whtPercent ?? '0');
+    const key = rate.toFixed(2);
+    const b = map.get(key) ?? { rate, base: new Decimal(0), tax: new Decimal(0) };
+    b.base = b.base.plus(l.amountBeforeVat ?? '0');
+    b.tax = b.tax.plus(l.whtAmount ?? '0');
+    map.set(key, b);
+  }
+  // Sort descending by tax amount for a stable, readable layout.
+  return [...map.values()].sort((a, b) => b.tax.cmp(a.tax));
+}
+
+function WhtCertificate({ doc }: { doc: VoucherDoc }) {
+  // W7 (Round 2) — see bucketWhtByRate above for the Decimal-precision
+  // rationale. Convert to display strings only at render time via toFixed.
+  const wht = new Decimal(doc.withholdingTax || '0');
+  const subtotal = new Decimal(doc.subtotal || '0');
+  const formLabel = doc.whtFormType === 'PND53' ? 'ภ.ง.ด. 53' : 'ภ.ง.ด. 3';
+  const lines = doc.expenseDetail?.lines ?? [];
+  const buckets = bucketWhtByRate(lines, subtotal, wht);
   const hasMixedRates = buckets.length > 1;
   return (
     <article
@@ -407,7 +420,7 @@ function WhtCertificate({ doc }: { doc: VoucherDoc }) {
 
       <section className="mt-6 rounded-md border border-border bg-muted/20 p-4 text-sm">
         <p className="text-xs text-muted-foreground mb-1">ภาษีที่หักเป็นเงิน (ตัวอักษร)</p>
-        <p className="font-semibold leading-relaxed">{numToThaiText(wht)}</p>
+        <p className="font-semibold leading-relaxed">{numToThaiText(wht.toFixed(2))}</p>
       </section>
 
       <p className="mt-8 text-xs text-muted-foreground">

@@ -727,12 +727,12 @@ export default function OtherIncomeViewPage() {
           status={doc.status}
           recorder={{
             name:
-              doc.createdById === user?.id
-                ? user?.name || user?.email || '—'
-                : '—',
+              doc.createdBy?.name ||
+              doc.createdBy?.email ||
+              (doc.createdById === user?.id ? user?.name || user?.email || '—' : '—'),
           }}
           approver={{
-            name: user?.role === 'OWNER' ? user?.name || user?.email || 'OWNER' : '—',
+            name: doc.approver?.name || doc.approver?.email || '—',
           }}
           makerCheckerEnabled={makerCheckerEnabled}
           isViewerApprover={user?.role === 'OWNER' && doc.createdById !== user.id}

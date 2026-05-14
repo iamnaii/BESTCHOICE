@@ -67,6 +67,9 @@ export interface OtherIncome {
   isOverridden: boolean;
   customerNote: string | null;
   createdById: string;
+  createdBy?: { id: string; name: string | null; email: string } | null;
+  approverId?: string | null;
+  approver?: { id: string; name: string | null; email: string } | null;
   rejectNote: string | null;
   rejectedAt: string | null;
   postedAt: string | null;

@@ -42,7 +42,7 @@ export class OtherIncomeService {
   async create(dto: CreateOtherIncomeDto, userId: string) {
     const companyId = await this.resolveFinanceCompanyId();
 
-    return this.prisma.$transaction(async (tx) => {
+    const created = await this.prisma.$transaction(async (tx) => {
       const issueDate = new Date(dto.issueDate);
       const docNumber = await this.docNumber.nextDocNumber(tx, issueDate);
       const totals = this.computeTotals(dto);
@@ -102,6 +102,9 @@ export class OtherIncomeService {
         include: { items: true, adjustments: true },
       });
     });
+
+    await this.auditLifecycle('OI_CREATED', userId, created);
+    return created;
   }
 
   async update(id: string, dto: UpdateOtherIncomeDto, userId: string) {
@@ -112,7 +115,7 @@ export class OtherIncomeService {
       );
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const updated = await this.prisma.$transaction(async (tx) => {
       if (dto.items) {
         await tx.otherIncomeItem.deleteMany({ where: { otherIncomeId: id } });
       }
@@ -211,6 +214,9 @@ export class OtherIncomeService {
         include: { items: true, adjustments: true },
       });
     });
+
+    await this.auditLifecycle('OI_UPDATED', userId, updated);
+    return updated;
   }
 
   async softDelete(id: string, userId: string) {
@@ -218,10 +224,14 @@ export class OtherIncomeService {
     if (existing.status !== OtherIncomeStatus.DRAFT) {
       throw new ConflictException(`เอกสาร POSTED/REVERSED ลบไม่ได้ — ใช้ Reverse Entry`);
     }
-    return this.prisma.otherIncome.update({
+    const deleted = await this.prisma.otherIncome.update({
       where: { id },
       data: { deletedAt: new Date() },
+      include: { items: true, adjustments: true },
     });
+
+    await this.auditLifecycle('OI_DELETED', userId, deleted);
+    return deleted;
   }
 
   // -------------------------------------------------------------------------
@@ -243,7 +253,7 @@ export class OtherIncomeService {
       );
     }
     // Reset any prior reject metadata (re-submission after rejection)
-    return this.prisma.otherIncome.update({
+    const requested = await this.prisma.otherIncome.update({
       where: { id },
       data: {
         status: OtherIncomeStatus.READY,
@@ -253,6 +263,9 @@ export class OtherIncomeService {
       },
       include: { items: true, adjustments: true },
     });
+
+    await this.auditLifecycle('OI_APPROVAL_REQUESTED', userId, requested);
+    return requested;
   }
 
   // -------------------------------------------------------------------------
@@ -347,7 +360,7 @@ export class OtherIncomeService {
       })),
     });
 
-    return this.prisma.$transaction(async (tx) => {
+    const approved = await this.prisma.$transaction(async (tx) => {
       const now = new Date();
 
       // CAS-claim: atomically flip READY → POSTED, but only if still READY.
@@ -388,6 +401,12 @@ export class OtherIncomeService {
         include: { items: true, adjustments: true },
       });
     });
+
+    await this.auditLifecycle('OI_APPROVED', userId, approved, {
+      receiptNo: approved.receiptNo,
+      journalEntryId: approved.journalEntryId,
+    });
+    return approved;
   }
 
   // -------------------------------------------------------------------------
@@ -428,7 +447,13 @@ export class OtherIncomeService {
         `เอกสาร ${doc.docNumber} ถูกอนุมัติหรือปฏิเสธโดยผู้อื่นแล้ว — กรุณารีโหลด`,
       );
     }
-    return this.findOneOrFail(id);
+    const rejected = await this.findOneOrFail(id);
+    await this.auditLifecycle('OI_REJECTED', userId, rejected, {
+      fromStatus: 'READY',
+      toStatus: 'DRAFT',
+      rejectNote: dto.note,
+    });
+    return rejected;
   }
 
   // -------------------------------------------------------------------------
@@ -560,6 +585,12 @@ export class OtherIncomeService {
       });
     });
 
+    await this.auditLifecycle('OI_POSTED', userId, posted, {
+      receiptNo: posted.receiptNo,
+      journalEntryId: posted.journalEntryId,
+      isOverridden: posted.isOverridden,
+    });
+
     // Write JV_OVERRIDDEN audit outside transaction (non-blocking on TX connection)
     if (overrideLinesForAudit) {
       const diffSummary = this.journalOverride.computeDiffSummary(autoJeLines, overrideLinesForAudit);
@@ -630,7 +661,7 @@ export class OtherIncomeService {
       throw new NotFoundException(`JE ${original.journalEntryId} not found`);
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const reversal = await this.prisma.$transaction(async (tx) => {
       const issueDate = new Date();
       const reverseDocNumber = await this.docNumber.nextDocNumber(tx, issueDate);
       const receiptNo = await this.docNumber.nextReceiptNumber(tx, issueDate);
@@ -719,6 +750,13 @@ export class OtherIncomeService {
 
       return reversalDoc;
     });
+
+    await this.auditLifecycle('OI_REVERSED', userId, reversal, {
+      originalDocNumber: original.docNumber,
+      reverseReason: dto.reason,
+      reverseNote: dto.note,
+    });
+    return reversal;
   }
 
   // -------------------------------------------------------------------------
@@ -1016,8 +1054,14 @@ export class OtherIncomeService {
   async uploadAttachment(id: string, file: Express.Multer.File, userId: string) {
     const doc = await this.findOneOrFail(id);
 
-    if (doc.status === OtherIncomeStatus.REVERSED) {
-      throw new BadRequestException('ไม่สามารถแนบไฟล์เอกสารที่ถูกกลับรายการ');
+    // Maker-Checker integrity (PDF Section 5 rule 5): once the doc has left
+    // DRAFT, the attachments the approver/auditor saw must be frozen. Allowing
+    // late uploads on READY/POSTED/REVERSED would let a maker swap evidence
+    // after approval.
+    if (doc.status !== OtherIncomeStatus.DRAFT) {
+      throw new ConflictException(
+        `เอกสาร ${doc.docNumber} สถานะ ${doc.status} — แนบไฟล์ได้เฉพาะตอนเป็น DRAFT`,
+      );
     }
 
     // Defence-in-depth: controller's FileTypeValidator only inspects the
@@ -1069,6 +1113,10 @@ export class OtherIncomeService {
         // The ViewPage uses this to render "ดูเอกสาร Reversing Entry" on the original
         // doc once it has been reversed. Without this include the link never appears.
         reversedBy: { select: { id: true, docNumber: true } },
+        // Maker + approver name surfaced into the InternalControlBar so we don't
+        // mis-attribute the bar to the currently-logged-in viewer (PDF Section 5).
+        createdBy: { select: { id: true, name: true, email: true } },
+        approver: { select: { id: true, name: true, email: true } },
       },
     });
     if (!doc) throw new NotFoundException(`OtherIncome ${id} not found`);
@@ -1090,6 +1138,40 @@ export class OtherIncomeService {
       );
     }
     return co.id;
+  }
+
+  /**
+   * Lifecycle audit. Non-blocking — never throws to caller; Sentry on failure.
+   * Used by create/update/post/reverse/softDelete/approve/reject/requestApproval.
+   */
+  private async auditLifecycle(
+    action:
+      | 'OI_CREATED'
+      | 'OI_UPDATED'
+      | 'OI_DELETED'
+      | 'OI_POSTED'
+      | 'OI_REVERSED'
+      | 'OI_APPROVED'
+      | 'OI_REJECTED'
+      | 'OI_APPROVAL_REQUESTED',
+    userId: string,
+    doc: { id: string; docNumber: string; status?: string | null },
+    extra?: Record<string, unknown>,
+  ) {
+    try {
+      await this.audit.log({
+        userId,
+        action,
+        entity: 'other_income',
+        entityId: doc.id,
+        newValue: { docNumber: doc.docNumber, status: doc.status ?? null, ...extra },
+      });
+    } catch (err) {
+      Sentry.captureException(err, {
+        tags: { module: 'other-income', action },
+        extra: { otherIncomeId: doc.id, docNumber: doc.docNumber },
+      });
+    }
   }
 
   /** Read OTHER_INCOME_MAKER_CHECKER_ENABLED from SystemConfig. Default false. */

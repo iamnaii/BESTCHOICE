@@ -35,15 +35,12 @@ export class DocNumberService {
     tx: Prisma.TransactionClient | PrismaService,
     issueDate: Date,
   ): Promise<string> {
-    const { yyyymmdd } = this.getBkkDayBounds(issueDate);
-    const lockKey = this.hashLockKey(`rc:${yyyymmdd}`);
+    const yyyymm = this.getBkkYyyymm(issueDate);
+    const lockKey = this.hashLockKey(`rt:${yyyymm}`);
     await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${lockKey})`);
 
-    // Same approach as nextDocNumber — use max(seq) to avoid collision with
-    // any existing receiptNo (POSTED docs cannot be soft-deleted, but using
-    // the same pattern keeps both methods consistent and safe).
     const lastDoc = await tx.otherIncome.findFirst({
-      where: { receiptNo: { startsWith: `RC-${yyyymmdd}-` } },
+      where: { receiptNo: { startsWith: `RT-${yyyymm}-` } },
       orderBy: { receiptNo: 'desc' },
       select: { receiptNo: true },
     });
@@ -51,8 +48,20 @@ export class DocNumberService {
     const lastSeq = lastDoc?.receiptNo
       ? parseInt(lastDoc.receiptNo.split('-')[2], 10) || 0
       : 0;
-    const seq = String(lastSeq + 1).padStart(3, '0');
-    return `RC-${yyyymmdd}-${seq}`;
+    const seq = String(lastSeq + 1).padStart(5, '0');
+    return `RT-${yyyymm}-${seq}`;
+  }
+
+  private getBkkYyyymm(date: Date): string {
+    const parts = date.toLocaleString('en-CA', {
+      timeZone: 'Asia/Bangkok',
+      year: 'numeric',
+      month: '2-digit',
+    });
+    // Defensive: en-CA with year+month returns "YYYY-MM" today, but slice the
+    // first two segments to stay robust against ICU output shape drift across
+    // Node versions. Mirrors getBkkDayBounds() style.
+    return parts.split('-').slice(0, 2).join('');
   }
 
   /**

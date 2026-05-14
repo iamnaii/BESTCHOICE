@@ -5837,7 +5837,7 @@ model OtherIncome {
   totalAmount Decimal @default(0) @map("total_amount") @db.Decimal(15, 2)
 
   // Output references
-  receiptNo      String? @unique @map("receipt_no") // RC-YYYYMMDD-NNN
+  receiptNo      String? @unique @map("receipt_no") // RT-YYYYMM-NNNNN (legacy RC-YYYYMMDD-NNN may still exist)
   journalEntryId String? @unique @map("journal_entry_id") // null until POSTED
 
   // Override JV (when user manually edits the auto-generated JE)

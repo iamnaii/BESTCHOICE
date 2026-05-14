@@ -89,6 +89,3 @@ export function DocTypePicker({ value, onChange, invoiceDateIsToday }: Props) {
     </div>
   );
 }
-
-/** @deprecated use DocTypePicker (renamed in Fix Report P2-1). */
-export const TypeTabs = DocTypePicker;

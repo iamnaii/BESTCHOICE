@@ -225,11 +225,7 @@ export class OverdueController {
     @Param('contractId') contractId: string,
     @Body() dto: AssignCollectorDto,
   ) {
-    const targetId = dto.assignedToId ?? dto.userId;
-    if (!targetId) {
-      throw new BadRequestException('ต้องระบุ assignedToId หรือ userId');
-    }
-    return this.overdueService.assignCollector(contractId, targetId);
+    return this.overdueService.assignCollector(contractId, dto.assignedToId);
   }
 
   // T3-C11: Manual hold on auto-escalation cron. Path mirrors task spec

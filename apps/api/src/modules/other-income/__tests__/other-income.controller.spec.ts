@@ -22,6 +22,8 @@ import { ROLES_KEY } from '../../auth/decorators/roles.decorator';
 import { OtherIncomeController } from '../other-income.controller';
 import { OtherIncomeService } from '../other-income.service';
 import { TemplateService } from '../services/template.service';
+import { OtherIncomeReceiptPdfService } from '../services/receipt-pdf.service';
+import { ValidationService } from '../services/validation.service';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -75,6 +77,18 @@ describe('OtherIncomeController — @Roles metadata', () => {
     expect(methodRoles('post')).toBeUndefined();
     expect(methodRoles('copy')).toBeUndefined();
   });
+
+  // I2 — getMakerCheckerEnabled used to permit SALES + BRANCH_MANAGER even
+  // though those roles cannot access any Other Income screen. Restrict it.
+  it('getMakerCheckerEnabled() restricts to OWNER + ACCOUNTANT + FINANCE_MANAGER', () => {
+    const roles = methodRoles('getMakerCheckerEnabled');
+    expect(roles).toBeDefined();
+    expect(roles).toEqual(
+      expect.arrayContaining(['OWNER', 'ACCOUNTANT', 'FINANCE_MANAGER']),
+    );
+    expect(roles).not.toContain('SALES');
+    expect(roles).not.toContain('BRANCH_MANAGER');
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -112,6 +126,14 @@ describe('OtherIncomeController — unit (mocked service)', () => {
             softDelete: jest.fn(),
             use: jest.fn(),
           },
+        },
+        {
+          provide: OtherIncomeReceiptPdfService,
+          useValue: { generate: jest.fn().mockResolvedValue(Buffer.from('pdf-stub')) },
+        },
+        {
+          provide: ValidationService,
+          useValue: { checkLateFeeCollision: jest.fn().mockResolvedValue([]) },
         },
       ],
     })
@@ -219,6 +241,14 @@ describe('OtherIncomeController — ValidationPipe (TestingModule + http)', () =
             use: jest.fn(),
           },
         },
+        {
+          provide: OtherIncomeReceiptPdfService,
+          useValue: { generate: jest.fn().mockResolvedValue(Buffer.from('pdf-stub')) },
+        },
+        {
+          provide: ValidationService,
+          useValue: { checkLateFeeCollision: jest.fn().mockResolvedValue([]) },
+        },
       ],
     })
       .overrideGuard(JwtAuthGuard)
@@ -279,5 +309,63 @@ describe('OtherIncomeController — ValidationPipe (TestingModule + http)', () =
     await expect(pipe.transform({}, { type: 'query', metatype: DailySheetQueryDto })).rejects.toMatchObject({
       response: expect.objectContaining({ statusCode: 400 }),
     });
+  });
+
+  // ─── C16: ReverseOtherIncomeDto enum guard ───────────────────────────────
+  // Without @IsEnum the bad `reason` string would slip past the pipe, hit
+  // `prisma.otherIncome.update({ data: { reverseReason: dto.reason }})` and
+  // crash mid-transaction — leaving the reversal JE written but the doc-status
+  // flip never persisted (orphan record).
+  it('POST /:id/reverse — ValidationPipe rejects invalid reason enum value (C16)', async () => {
+    const pipe = new ValidationPipe({ transform: true, whitelist: true });
+    const { ReverseOtherIncomeDto } = await import('../dto/reverse-other-income.dto');
+    await expect(
+      pipe.transform(
+        { reason: 'NOT_A_REAL_REASON', note: 'should be rejected before service runs' },
+        { type: 'body', metatype: ReverseOtherIncomeDto },
+      ),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ statusCode: 400 }),
+    });
+  });
+
+  it('POST /:id/reverse — ValidationPipe rejects empty note (C16)', async () => {
+    const pipe = new ValidationPipe({ transform: true, whitelist: true });
+    const { ReverseOtherIncomeDto } = await import('../dto/reverse-other-income.dto');
+    await expect(
+      pipe.transform(
+        { reason: 'INPUT_ERROR', note: '' },
+        { type: 'body', metatype: ReverseOtherIncomeDto },
+      ),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ statusCode: 400 }),
+    });
+  });
+
+  it('POST /:id/reverse — ValidationPipe rejects short note (< 5 chars) (C16)', async () => {
+    const pipe = new ValidationPipe({ transform: true, whitelist: true });
+    const { ReverseOtherIncomeDto } = await import('../dto/reverse-other-income.dto');
+    await expect(
+      pipe.transform(
+        { reason: 'INPUT_ERROR', note: 'oops' },
+        { type: 'body', metatype: ReverseOtherIncomeDto },
+      ),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ statusCode: 400 }),
+    });
+  });
+
+  it('POST /:id/reverse — ValidationPipe accepts every valid OtherIncomeReverseReason enum value (C16)', async () => {
+    const pipe = new ValidationPipe({ transform: true, whitelist: true });
+    const { ReverseOtherIncomeDto } = await import('../dto/reverse-other-income.dto');
+    const { OtherIncomeReverseReason } = await import('@prisma/client');
+    for (const value of Object.values(OtherIncomeReverseReason)) {
+      const result = await pipe.transform(
+        { reason: value, note: 'valid reason note for test' },
+        { type: 'body', metatype: ReverseOtherIncomeDto },
+      );
+      expect(result).toBeInstanceOf(ReverseOtherIncomeDto);
+      expect(result.reason).toBe(value);
+    }
   });
 });

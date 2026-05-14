@@ -244,8 +244,12 @@ All accounting modules use the same convention:
 | Credit Note | `CN` | `CN-20260511-0001` |
 | Payroll | `PR` | `PR-20260511-0001` |
 | Vendor Settlement | `SE` | `SE-20260511-0001` |
-| Other Income | `OI` | `OI-20260511-0001` |
+| Other Income | `OI` | `OI-20260511-0001[-R]` [^1] |
 | Receipt (Other Income) | `RT` | `RT-202605-00001` (per-month seq) |
+
+[^1]: `-R` suffix is appended automatically to OtherIncome reversal documents
+      created via `POST /other-income/:id/reverse`. The original POSTED doc keeps
+      its base number; the reversing doc is `<original>-R`. See W15 fix.
 
 YYYYMMDD is **Asia/Bangkok local date** (so a doc created at 00:30 BKK = 17:30 UTC the previous day still numbers under today's date). The 4-digit sequence (`NNNN`) resets at BKK midnight per `<TYPE, day>` pair via an advisory lock — see `DocNumberService.next()` and `OtherIncomeService` / `DocNumberService.getBkkDayBounds()`.
 

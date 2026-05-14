@@ -21,15 +21,24 @@ export class JournalOverrideService {
    * Validate override JE lines against V1 (balanced), V2 (>=2 lines), V5 (Dr XOR Cr per line).
    * Short-circuits at first failing rule in order V2 → V5 → V1 so users see the most
    * fundamental problem first.
+   *
+   * I1 — Lines with neither accountCode nor any amount are treated as blank
+   * rows (user clicked "Add line" but did not fill anything). These are
+   * silently dropped BEFORE V5 so the rule reports a meaningful missing field
+   * via V2 ("need ≥ 2 lines") instead of a misleading "no Dr/Cr" complaint.
    */
   validate(lines: OverrideLine[]): void {
-    // V2 — must have at least 2 lines
-    if (lines.length < 2) {
+    const nonBlank = lines.filter(
+      (l) => (l.accountCode && l.accountCode.trim() !== '') || l.debit.gt(0) || l.credit.gt(0),
+    );
+
+    // V2 — must have at least 2 lines (counted on non-blank only)
+    if (nonBlank.length < 2) {
       this.fail('V2', 'ต้องมีอย่างน้อย 2 บรรทัด');
     }
 
     // V5 — each line must be Dr XOR Cr
-    for (const line of lines) {
+    for (const line of nonBlank) {
       const hasDr = line.debit.gt(0);
       const hasCr = line.credit.gt(0);
       if (hasDr && hasCr) {
@@ -40,9 +49,22 @@ export class JournalOverrideService {
       }
     }
 
+    // I3 — Reject duplicate accountCode lines so computeDiffSummary's
+    // accountCode→Map collapse cannot silently swallow one of them.
+    const seen = new Set<string>();
+    for (const line of nonBlank) {
+      if (seen.has(line.accountCode)) {
+        this.fail(
+          'V5',
+          `บรรทัด ${line.accountCode} ซ้ำซ้อน — ต้องรวมเป็นแถวเดียวก่อนบันทึก`,
+        );
+      }
+      seen.add(line.accountCode);
+    }
+
     // V1 — balanced within 0.01 THB tolerance
-    const drTotal = lines.reduce((s, l) => s.plus(l.debit), new Decimal(0));
-    const crTotal = lines.reduce((s, l) => s.plus(l.credit), new Decimal(0));
+    const drTotal = nonBlank.reduce((s, l) => s.plus(l.debit), new Decimal(0));
+    const crTotal = nonBlank.reduce((s, l) => s.plus(l.credit), new Decimal(0));
     const diff = drTotal.minus(crTotal).abs();
     if (diff.gt(TOLERANCE)) {
       this.fail('V1', `Dr (${drTotal.toFixed(2)}) ≠ Cr (${crTotal.toFixed(2)}) — ผลต่าง ${diff.toFixed(2)} บาท`);

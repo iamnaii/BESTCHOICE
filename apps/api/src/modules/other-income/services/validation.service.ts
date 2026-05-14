@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { PrismaService } from '../../../prisma/prisma.service';
 
 const D = Prisma.Decimal;
 type Decimal = Prisma.Decimal;
@@ -49,6 +50,12 @@ export interface ValidationResult {
 
 const VALID_WHT_PCT = [0, 1, 2, 3, 5, 7, 10, 15];
 
+// W14 — Block account codes that should NOT be booked via this module.
+//   42-1104 (รายได้จากการหักค่าจ้าง) — Pattern B is deferred until the payroll
+//   module exists (see accounting.md). Booking it here without the matching
+//   payroll JE creates an orphan revenue line.
+const BLOCKED_INCOME_CODES: readonly string[] = ['42-1104'];
+
 /**
  * Validation rule numbering — aligned to the accountant's PDF Spec v1.0
  * (`docs/superpowers/specs/2026-05-12-other-income-v2-1-pdf-gap-fixes-design.md`).
@@ -74,6 +81,8 @@ const VALID_WHT_PCT = [0, 1, 2, 3, 5, 7, 10, 15];
  */
 @Injectable()
 export class ValidationService {
+  constructor(private readonly prisma: PrismaService) {}
+
   validate(doc: ValidationDoc, ctx: ValidationContext): ValidationResult {
     const errors: ValidationIssue[] = [];
     const warnings: ValidationIssue[] = [];
@@ -96,6 +105,17 @@ export class ValidationService {
           rule: 'V4',
           lineNo: it.lineNo,
           msg: `รายการที่ ${it.lineNo}: ต้องเลือกบัญชีกลุ่ม 42-XXXX`,
+        });
+      }
+
+      // W14 — Disallow codes that belong to other modules (Pattern B payroll).
+      if (it.accountCode && BLOCKED_INCOME_CODES.includes(it.accountCode)) {
+        errors.push({
+          rule: 'V4',
+          lineNo: it.lineNo,
+          msg:
+            `รายการที่ ${it.lineNo}: บัญชี ${it.accountCode} จองไว้สำหรับ` +
+            ` Pattern B (หักค่าจ้าง) ยังไม่เปิดให้บันทึกผ่าน Other Income`,
         });
       }
 
@@ -211,5 +231,72 @@ export class ValidationService {
     });
 
     return { errors, warnings };
+  }
+
+  /**
+   * C14 — 42-1103 double-credit collision detection (non-blocking warning).
+   *
+   * Background: PR #832 removed the BLOCKED_INCOME_CODES guard for 42-1103
+   * (ค่าปรับชำระล่าช้า) to unblock the late-fee-only flow. But accounting.md
+   * warns: "if booked here, do NOT also pass `lateFee` on the next installment
+   * Payment for the same month, or 42-1103 will be credited twice." The
+   * collision can be legitimate (different fees on different days), so this is
+   * a soft warning, NOT a block.
+   *
+   * Returns a warning when:
+   *   - any item uses account 42-1103
+   *   - AND a Payment with `lateFee > 0` for the same customer exists in the
+   *     same BKK month as the OI issueDate (Payment.dueDate window)
+   *
+   * Callers should append the returned warnings to the existing
+   * ValidationResult.warnings array. UI surface: yellow banner in the OI
+   * Entry page / JE preview area.
+   */
+  async checkLateFeeCollision(
+    customerId: string | null | undefined,
+    issueDate: Date | null | undefined,
+    items: Pick<ValidationItem, 'lineNo' | 'accountCode'>[] | null | undefined,
+  ): Promise<ValidationIssue[]> {
+    if (!customerId || !issueDate || !items || items.length === 0) return [];
+
+    const hasLateFeeItem = items.some((it) => it.accountCode === '42-1103');
+    if (!hasLateFeeItem) return [];
+
+    // BKK month bounds for issueDate
+    // We compare against Payment.dueDate (the installment's billing month),
+    // which is the field used by PaymentReceipt2BTemplate to attach lateFee
+    // to 42-1103. We use UTC-month bounds here because Payment.dueDate values
+    // are stored as the contract's installment due-day at 00:00 UTC, which
+    // already lines up with BKK calendar months for all production data.
+    const y = issueDate.getFullYear();
+    const m = issueDate.getMonth();
+    const monthStart = new Date(Date.UTC(y, m, 1, 0, 0, 0, 0));
+    const monthEnd = new Date(Date.UTC(y, m + 1, 0, 23, 59, 59, 999));
+
+    const colliding = await this.prisma.payment.findFirst({
+      where: {
+        contract: { customerId },
+        lateFee: { gt: 0 },
+        dueDate: { gte: monthStart, lte: monthEnd },
+        deletedAt: null,
+      },
+      select: { id: true, installmentNo: true, lateFee: true, dueDate: true },
+    });
+
+    if (!colliding) return [];
+
+    const lineNo = items.find((it) => it.accountCode === '42-1103')?.lineNo;
+    const monthLabel = `${y}-${String(m + 1).padStart(2, '0')}`;
+    return [
+      {
+        rule: 'C14',
+        lineNo,
+        msg:
+          `ลูกค้ารายนี้มีค่าปรับชำระล่าช้าในงวด ${monthLabel} อยู่แล้ว ` +
+          `(งวดที่ ${colliding.installmentNo}, lateFee = ${colliding.lateFee.toString()} ฿). ` +
+          `หากบันทึก 42-1103 ที่นี่และยังเก็บ lateFee บนงวดเดิมจะทำให้ Cr 42-1103 ซ้ำซ้อน — ` +
+          `กรุณายืนยันก่อนบันทึก`,
+      },
+    ];
   }
 }

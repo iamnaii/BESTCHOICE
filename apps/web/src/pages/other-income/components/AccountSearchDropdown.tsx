@@ -14,6 +14,14 @@ interface Props {
   filter?: (a: CoaItem) => boolean;
   placeholder?: string;
   disabled?: boolean;
+  /**
+   * Account codes that should be shown in the list (so users can see they exist)
+   * but cannot be selected. Server-side validation (V4) still rejects these, but
+   * surfacing them up-front with a tooltip avoids the surprise round-trip.
+   */
+  blockedCodes?: string[];
+  /** Optional reason text shown as a tooltip on blocked rows. */
+  blockedReason?: string;
 }
 
 /**
@@ -26,6 +34,8 @@ export function AccountSearchDropdown({
   filter,
   placeholder = '— เลือกบัญชี —',
   disabled,
+  blockedCodes,
+  blockedReason,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -96,22 +106,41 @@ export function AccountSearchDropdown({
             ) : (
               filtered.map((a) => {
                 const isSel = a.code === value;
+                const isBlocked = blockedCodes?.includes(a.code) ?? false;
+                const tooltip = isBlocked
+                  ? (blockedReason ?? 'บัญชีนี้ยังไม่รองรับในระบบ')
+                  : undefined;
                 return (
                   <button
                     key={a.code}
                     type="button"
                     onClick={() => {
+                      if (isBlocked) return;
                       onChange(a.code);
                       setOpen(false);
                       setSearch('');
                     }}
-                    className={`w-full text-left px-3 py-2 hover:bg-accent border-b text-xs flex items-baseline gap-2 ${isSel ? 'bg-accent' : ''}`}
+                    disabled={isBlocked}
+                    title={tooltip}
+                    aria-disabled={isBlocked || undefined}
+                    className={`w-full text-left px-3 py-2 border-b text-xs flex items-baseline gap-2 ${
+                      isBlocked ? 'opacity-50 cursor-not-allowed bg-muted/40' : 'hover:bg-accent'
+                    } ${isSel ? 'bg-accent' : ''}`}
                   >
-                    <span className="font-mono w-16 font-bold text-primary flex-shrink-0">
+                    <span
+                      className={`font-mono w-16 font-bold flex-shrink-0 ${
+                        isBlocked ? 'text-muted-foreground' : 'text-primary'
+                      }`}
+                    >
                       {a.code}
                     </span>
                     <span className="flex-1 truncate">{a.name}</span>
-                    {isSel && <CheckCircle2 size={12} className="text-primary" />}
+                    {isBlocked && (
+                      <span className="text-[10px] text-muted-foreground shrink-0">
+                        ยังไม่รองรับ
+                      </span>
+                    )}
+                    {isSel && !isBlocked && <CheckCircle2 size={12} className="text-primary" />}
                   </button>
                 );
               })

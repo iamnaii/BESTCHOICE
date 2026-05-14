@@ -40,6 +40,8 @@ import { DailySheetQueryDto } from './dto/daily-sheet-query.dto';
 import { CreateTemplateDto, CreateTemplateFromDocDto } from './dto/create-template.dto';
 import { UpdateTemplateDto } from './dto/update-template.dto';
 import { ToggleMakerCheckerDto } from './dto/toggle-maker-checker.dto';
+import { CheckLateFeeCollisionDto } from './dto/check-late-fee-collision.dto';
+import { ValidationService } from './services/validation.service';
 
 @Controller('other-income')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -49,6 +51,7 @@ export class OtherIncomeController {
     private readonly service: OtherIncomeService,
     private readonly templateService: TemplateService,
     private readonly receiptPdf: OtherIncomeReceiptPdfService,
+    private readonly validation: ValidationService,
   ) {}
 
   // CRITICAL: declare daily-sheet BEFORE :id so the literal string
@@ -63,10 +66,35 @@ export class OtherIncomeController {
     return { threshold: await this.service.getAttachmentThreshold() };
   }
 
+  /**
+   * C14 — late-fee collision soft warning.
+   *
+   * Returns warnings (NOT errors) when the user is booking 42-1103 alongside
+   * a Customer that already has Payment.lateFee > 0 in the same BKK month.
+   * The frontend surfaces these as a yellow banner above the items table so
+   * the operator can confirm the booking is intentional. POST does NOT need
+   * to call this — collision is not blocked, just flagged.
+   */
+  @Post('preview/late-fee-collision')
+  @HttpCode(200)
+  async checkLateFeeCollision(@Body() dto: CheckLateFeeCollisionDto) {
+    const warnings = await this.validation.checkLateFeeCollision(
+      dto.customerId,
+      new Date(dto.issueDate),
+      dto.items,
+    );
+    return { warnings };
+  }
+
   // CRITICAL: must stay before any :id route so the literal string
   // 'maker-checker-enabled' is not captured as a UUID param.
+  //
+  // I2 — Restrict to accounting/finance roles. SALES has no Other Income UI
+  // surface and shouldn't be probing config flags; class-level @Roles already
+  // gates the rest of the module to OWNER/FINANCE_MANAGER/ACCOUNTANT, so this
+  // brings the helper endpoint in line.
   @Get('maker-checker-enabled')
-  @Roles('OWNER', 'ACCOUNTANT', 'SALES', 'BRANCH_MANAGER', 'FINANCE_MANAGER')
+  @Roles('OWNER', 'ACCOUNTANT', 'FINANCE_MANAGER')
   async getMakerCheckerEnabled() {
     const enabled = await this.service.isMakerCheckerEnabled();
     return { enabled };

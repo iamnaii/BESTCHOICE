@@ -111,7 +111,6 @@ layer(base);
   --color-sidebar-hover: hsl(var(--sidebar-hover));
   --color-sidebar-border: hsl(var(--sidebar-border));
 
-
   --color-chart-1: hsl(var(--chart-1));
   --color-chart-2: hsl(var(--chart-2));
   --color-chart-3: hsl(var(--chart-3));
@@ -129,7 +128,7 @@ layer(base);
   --shadow-card-hover: 0 4px 12px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.04);
   --shadow-sidebar: 4px 0 20px rgba(0, 0, 0, 0.08);
   --shadow-topbar: 0 1px 0 rgba(0, 0, 0, 0.04);
-  --shadow-modal: 0 10px 25px rgba(0, 0, 0, 0.10), 0 4px 10px rgba(0, 0, 0, 0.05);
+  --shadow-modal: 0 10px 25px rgba(0, 0, 0, 0.1), 0 4px 10px rgba(0, 0, 0, 0.05);
 
   @keyframes fadeIn {
     0% {
@@ -537,12 +536,17 @@ layer(base);
     print-color-adjust: exact;
   }
 
+  /* Hide non-printable chrome by default. Pages that need to keep a specific
+     element visible on paper should NOT use a button/nav — wrap interactive
+     controls in a containing element marked `data-print-hide="true"` instead.
+     The `data-print-hide` and `.print:hidden` opt-ins remain available for
+     ad-hoc overrides (e.g. Daily Sheet toolbar / date selector). */
   button,
   nav,
   .sidebar,
   .modal-backdrop,
   .print\:hidden,
-  [data-print-hide="true"] {
+  [data-print-hide='true'] {
     display: none !important;
   }
 

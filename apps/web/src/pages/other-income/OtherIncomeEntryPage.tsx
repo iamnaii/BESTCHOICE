@@ -5,13 +5,9 @@ import { standardSchemaResolver } from '@hookform/resolvers/standard-schema';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
-  Save,
-  Send,
   ArrowLeft,
   FileText,
   AlertTriangle,
-  CloudUpload,
-  CheckCircle2,
   Upload,
   Wallet,
   Building2,
@@ -34,6 +30,7 @@ import { TemplatePickerCombobox } from './components/TemplatePickerCombobox';
 import { OverrideConfirmDialog } from './components/OverrideConfirmDialog';
 import { EditableJournalTable, getJournalIssues } from './components/EditableJournalTable';
 import type { EditableJournalLine } from './components/EditableJournalTable';
+import { InternalControlBar } from './components/InternalControlBar';
 
 // Fallback while config is loading; live value comes from /other-income/config/attachment-threshold
 const ATTACHMENT_THRESHOLD_FALLBACK = 50_000;
@@ -575,7 +572,7 @@ export default function OtherIncomeEntryPage() {
   const userDisplayName = user?.name || user?.email || 'ผู้ใช้ปัจจุบัน';
 
   return (
-    <div className="pb-32">
+    <div className="pb-44 md:pb-40">
       <div className="p-4 md:p-6 max-w-5xl mx-auto">
         <div className="mb-4">
           <AccountingModuleTabBar />
@@ -969,32 +966,10 @@ export default function OtherIncomeEntryPage() {
             )}
           </section>
 
-          {/* Section 7 — Recorder & Approver */}
-          <section className="rounded-xl border bg-card p-5">
-            <SectionHeader num={7} title="ผู้บันทึก & ผู้อนุมัติ" />
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="text-xs italic text-muted-foreground">
-                ระบบกำหนดอัตโนมัติตาม user ที่เข้าใช้งานในขณะนี้
-              </p>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-info/10 text-info text-xs">
-                  <CloudUpload size={13} />
-                  <span className="text-muted-foreground">ผู้บันทึก:</span>
-                  <span className="font-semibold text-foreground">{userDisplayName}</span>
-                </span>
-                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-success/10 text-success text-xs">
-                  <CheckCircle2 size={13} />
-                  <span className="text-muted-foreground">ผู้อนุมัติ:</span>
-                  <span className="font-semibold text-foreground">{userDisplayName}</span>
-                </span>
-              </div>
-            </div>
-          </section>
-
-          {/* Section 8 — Attachments */}
+          {/* Section 7 — Attachments */}
           <section className={`rounded-xl border p-5 ${needsAttachment ? 'border-warning bg-warning/5' : 'bg-card'}`}>
             <SectionHeader
-              num={8}
+              num={7}
               title="แนบไฟล์เอกสาร (ไม่บังคับ)"
               hint="PDF/JPG/PNG ≤ 5MB"
             />
@@ -1092,9 +1067,9 @@ export default function OtherIncomeEntryPage() {
             )}
           </section>
 
-          {/* Section 9 — Confirmation summary */}
+          {/* Section 8 — Confirmation summary */}
           <section className="rounded-xl border bg-card p-5">
-            <SectionHeader num={9} title="สรุปก่อนยืนยัน" />
+            <SectionHeader num={8} title="สรุปก่อนยืนยัน" />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2 text-sm font-mono">
                 <div className="flex justify-between">
@@ -1127,85 +1102,44 @@ export default function OtherIncomeEntryPage() {
         </form>
       </div>
 
-      {/* Sticky bottom action bar */}
-      <div className="fixed bottom-0 left-0 right-0 z-40 bg-background border-t shadow-lg px-4 md:px-6 py-3">
-        <div className="max-w-5xl mx-auto flex items-center justify-between gap-3 flex-wrap">
-          <div className="text-xs flex items-center gap-1.5">
-            {errorCount > 0 ? (
-              <span className="inline-flex items-center gap-1 text-destructive font-semibold">
-                <AlertTriangle size={14} />
-                มี {errorCount} ข้อต้องแก้ไข
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1 text-success font-semibold">
-                <CheckCircle2 size={14} />
-                ข้อมูลพร้อม POST
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => navigate('/other-income')}
-              className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium border rounded-md hover:bg-accent"
-            >
-              <ArrowLeft size={14} />
-              ยกเลิก
-            </button>
-            <button
-              type="button"
-              disabled={isSubmitting}
-              onClick={() => {
-                const raw = form.getValues();
-                const result = otherIncomeFormSchema.safeParse(raw);
-                if (!result.success) {
-                  toast.error('กรุณาตรวจสอบข้อมูลให้ครบถ้วน');
-                  return;
-                }
-                saveDraftMutation.mutate(result.data);
-              }}
-              className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold border rounded-md hover:bg-accent disabled:opacity-50"
-            >
-              <Save size={14} />
-              {saveDraftMutation.isPending ? 'กำลังบันทึก...' : 'บันทึกร่าง'}
-            </button>
-            <button
-              type="button"
-              disabled={isSubmitting || !canPost}
-              title={
-                needsAttachment
-                  ? `ต้องแนบเอกสารเมื่อยอดรับ ≥ ${formatNumber(attachmentThreshold)} ฿`
-                  : errorCount > 0
-                    ? `ยังมี ${errorCount} ข้อต้องแก้ไข`
-                    : undefined
-              }
-              onClick={() => {
-                const raw = form.getValues();
-                const result = otherIncomeFormSchema.safeParse(raw);
-                if (!result.success) {
-                  toast.error('กรุณาตรวจสอบข้อมูลให้ครบถ้วน');
-                  return;
-                }
-                if (makerCheckerEnabled) {
-                  saveAndRequestApprovalMutation.mutate(result.data);
-                } else {
-                  saveAndPostMutation.mutate(result.data);
-                }
-              }}
-              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-bold bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <Send size={14} />
-              {saveAndRequestApprovalMutation.isPending
-                ? 'กำลังส่งขออนุมัติ...'
-                : saveAndPostMutation.isPending
-                  ? 'กำลัง POST...'
-                  : makerCheckerEnabled
-                    ? 'บันทึกและส่งขออนุมัติ'
-                    : 'บันทึก & POST'}
-            </button>
-          </div>
-        </div>
-      </div>
+      {/* Internal Control Bar (v2.3 — replaces Section 7 card + old sticky bar) */}
+      <InternalControlBar
+        status="DRAFT"
+        recorder={{ name: userDisplayName }}
+        approver={{ name: makerCheckerEnabled ? 'OWNER' : userDisplayName }}
+        makerCheckerEnabled={makerCheckerEnabled}
+        isLoading={isSubmitting}
+        errorCount={errorCount}
+        canPost={canPost}
+        onCancel={() => navigate('/other-income')}
+        onSaveDraft={() => {
+          const raw = form.getValues();
+          const result = otherIncomeFormSchema.safeParse(raw);
+          if (!result.success) {
+            toast.error('กรุณาตรวจสอบข้อมูลให้ครบถ้วน');
+            return;
+          }
+          saveDraftMutation.mutate(result.data);
+        }}
+        onPost={() => {
+          const raw = form.getValues();
+          const result = otherIncomeFormSchema.safeParse(raw);
+          if (!result.success) {
+            toast.error('กรุณาตรวจสอบข้อมูลให้ครบถ้วน');
+            return;
+          }
+          saveAndPostMutation.mutate(result.data);
+        }}
+        onSubmitForApproval={() => {
+          const raw = form.getValues();
+          const result = otherIncomeFormSchema.safeParse(raw);
+          if (!result.success) {
+            toast.error('กรุณาตรวจสอบข้อมูลให้ครบถ้วน');
+            return;
+          }
+          saveAndRequestApprovalMutation.mutate(result.data);
+        }}
+      />
     </div>
   );
 }

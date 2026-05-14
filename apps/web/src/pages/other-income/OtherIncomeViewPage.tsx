@@ -703,6 +703,7 @@ export default function OtherIncomeViewPage() {
           }}
           makerCheckerEnabled={makerCheckerEnabled}
           isViewerApprover={user?.role === 'OWNER' && doc.createdById !== user.id}
+          isOwnDoc={doc.createdById === user?.id}
           isLoading={isActionLoading}
           onCancel={() => navigate('/other-income')}
           onApprove={() => approveMutation.mutate(undefined)}

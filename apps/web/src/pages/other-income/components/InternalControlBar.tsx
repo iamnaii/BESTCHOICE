@@ -8,6 +8,12 @@ export interface InternalControlBarProps {
   approver: { name: string };
   makerCheckerEnabled: boolean;
   isViewerApprover?: boolean;
+  /**
+   * True when the current viewer is the creator of this doc. Used to suppress
+   * the "รออนุมัติจาก OWNER" hint on READY status, since an OWNER viewing their
+   * own doc already sees "ไม่สามารถอนุมัติเอกสารที่ตนสร้างได้" elsewhere on the page.
+   */
+  isOwnDoc?: boolean;
   isLoading?: boolean;
   errorCount?: number;
   canPost?: boolean;
@@ -85,6 +91,7 @@ export function InternalControlBar({
   approver,
   makerCheckerEnabled,
   isViewerApprover = false,
+  isOwnDoc = false,
   isLoading = false,
   errorCount = 0,
   canPost = true,
@@ -157,7 +164,7 @@ export function InternalControlBar({
             {status === 'DRAFT' && errorCount > 0 && (
               <span className="text-destructive font-semibold">มี {errorCount} ข้อต้องแก้ไข</span>
             )}
-            {status === 'READY' && !isViewerApprover && (
+            {status === 'READY' && !isViewerApprover && !isOwnDoc && (
               <span className="text-muted-foreground">รออนุมัติจาก OWNER</span>
             )}
           </div>
@@ -169,7 +176,15 @@ export function InternalControlBar({
               className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium border rounded-md hover:bg-accent disabled:opacity-50"
             >
               <ArrowLeft size={14} />
-              {status === 'POSTED' || status === 'REVERSED' ? 'ปิด' : status === 'READY' ? 'กลับ' : 'ยกเลิก'}
+              {(() => {
+                // View-only context (no DRAFT action handlers wired) → 'ปิด'.
+                // Entry context with handlers → 'ยกเลิก' (intent: discard form work).
+                const isViewOnlyDraft =
+                  status === 'DRAFT' && !onSaveDraft && !onPost && !onSubmitForApproval;
+                if (status === 'POSTED' || status === 'REVERSED' || isViewOnlyDraft) return 'ปิด';
+                if (status === 'READY') return 'กลับ';
+                return 'ยกเลิก';
+              })()}
             </button>
 
             {/* DRAFT actions — only render when handlers provided (Entry page) */}

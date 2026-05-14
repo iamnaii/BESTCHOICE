@@ -118,14 +118,15 @@ export default function OtherIncomeListPage() {
 
   const [q, setQ] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
+  // BKK-local date components — guards against UTC servers / late-night browsers
+  // putting the default month-range one day behind the user's calendar.
   const [startDate, setStartDate] = useState(() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+    const bkk = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' });
+    return `${bkk.slice(0, 7)}-01`;
   });
-  const [endDate, setEndDate] = useState(() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  });
+  const [endDate, setEndDate] = useState(() =>
+    new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' }),
+  );
   const { page, size, setPage, setSize } = usePaginationParams({ defaultSize: 50 });
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [confirmDeleteNumber, setConfirmDeleteNumber] = useState<string>('');
@@ -386,6 +387,16 @@ export default function OtherIncomeListPage() {
                             </span>
                           )}
                           {doc.docNumber}
+                          {/* W15 — visual marker for `-R` reversal docs in list view. */}
+                          {doc.docNumber.endsWith('-R') && (
+                            <span
+                              className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-destructive/10 text-destructive"
+                              title="ใบกลับรายการ"
+                              aria-label="Reversal"
+                            >
+                              R
+                            </span>
+                          )}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">

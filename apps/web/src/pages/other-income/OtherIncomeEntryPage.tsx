@@ -529,11 +529,17 @@ export default function OtherIncomeEntryPage() {
     return msgs;
   }, [values]);
 
-  // B7: Attachment uploader (only available after doc is saved and has an id)
+  // B7: Attachment uploader. W12 — if no doc exists yet, auto-save DRAFT first
+  // so the user can attach evidence before pressing the explicit "บันทึกร่าง"
+  // button. Mirrors the existing ContractCreate auto-save UX. Without this, the
+  // attachment-required threshold (V11) traps the user: POST blocked, but
+  // attachment input also disabled.
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
+  const [autoSavingForUpload, setAutoSavingForUpload] = useState(false);
   const uploadAttachmentMutation = useMutation({
-    mutationFn: (file: File) => otherIncomeApi.uploadAttachment(id!, file),
+    mutationFn: ({ docId, file }: { docId: string; file: File }) =>
+      otherIncomeApi.uploadAttachment(docId, file),
     onSuccess: () => {
       toast.success('แนบไฟล์เรียบร้อยแล้ว');
       queryClient.invalidateQueries({ queryKey: ['other-income', id] });
@@ -550,7 +556,24 @@ export default function OtherIncomeEntryPage() {
       toast.error('ไฟล์มีขนาดเกิน 5 MB');
       return;
     }
-    uploadAttachmentMutation.mutate(file);
+    if (id) {
+      uploadAttachmentMutation.mutate({ docId: id, file });
+      return;
+    }
+    // W12 — auto-save the draft, then upload to the newly-created doc id.
+    setAutoSavingForUpload(true);
+    otherIncomeApi
+      .create(form.getValues())
+      .then((doc) => {
+        toast.success('บันทึกร่างอัตโนมัติเพื่อแนบไฟล์');
+        queryClient.invalidateQueries({ queryKey: ['other-income'] });
+        // Navigate to edit URL so subsequent saves target this doc. Upload
+        // continues regardless because we already have the new doc.id in hand.
+        navigate(`/other-income/${doc.id}/edit`, { replace: true });
+        uploadAttachmentMutation.mutate({ docId: doc.id, file });
+      })
+      .catch(() => toast.error('บันทึกร่างเพื่อแนบไฟล์ไม่สำเร็จ'))
+      .finally(() => setAutoSavingForUpload(false));
   }
 
   const thresholdQuery = useQuery({
@@ -1025,11 +1048,12 @@ export default function OtherIncomeEntryPage() {
               hint="PDF/JPG/PNG ≤ 5MB"
             />
             {!isEdit && (
-              <p className="text-xs text-muted-foreground italic">
-                บันทึกร่างก่อนเพื่อเปิดใช้งานการแนบไฟล์
+              <p className="text-xs text-muted-foreground italic mb-2">
+                {/* W12 — file selection auto-saves the draft to unblock attachment. */}
+                ระบบจะบันทึกร่างอัตโนมัติเมื่อแนบไฟล์เป็นครั้งแรก
               </p>
             )}
-            {isEdit && (
+            {true && (
               <>
                 {needsAttachment && (
                   <div className="flex items-start gap-2 mb-3 text-xs text-warning">
@@ -1070,7 +1094,7 @@ export default function OtherIncomeEntryPage() {
                   onDragEnter={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    if (uploadAttachmentMutation.isPending) return;
+                    if (uploadAttachmentMutation.isPending || autoSavingForUpload) return;
                     setIsDraggingFile(true);
                   }}
                   onDragOver={(e) => {
@@ -1088,7 +1112,7 @@ export default function OtherIncomeEntryPage() {
                     e.preventDefault();
                     e.stopPropagation();
                     setIsDraggingFile(false);
-                    if (uploadAttachmentMutation.isPending) return;
+                    if (uploadAttachmentMutation.isPending || autoSavingForUpload) return;
                     const file = e.dataTransfer.files?.[0];
                     if (file) handleFileSelect(file);
                   }}
@@ -1096,11 +1120,11 @@ export default function OtherIncomeEntryPage() {
                     isDraggingFile
                       ? 'border-primary bg-primary/5'
                       : 'border-border hover:bg-accent/40'
-                  } ${uploadAttachmentMutation.isPending ? 'opacity-50 pointer-events-none' : ''}`}
+                  } ${uploadAttachmentMutation.isPending || autoSavingForUpload ? 'opacity-50 pointer-events-none' : ''}`}
                 >
                   <button
                     type="button"
-                    disabled={uploadAttachmentMutation.isPending}
+                    disabled={uploadAttachmentMutation.isPending || autoSavingForUpload}
                     onClick={() => fileInputRef.current?.click()}
                     className="w-full flex flex-col items-center justify-center gap-2 py-8 px-4 disabled:cursor-not-allowed"
                   >
@@ -1109,8 +1133,14 @@ export default function OtherIncomeEntryPage() {
                       className={isDraggingFile ? 'text-primary' : 'text-muted-foreground'}
                     />
                     <p className="text-sm text-muted-foreground">
-                      ลากไฟล์มาวางที่นี่ หรือ{' '}
-                      <span className="text-primary font-semibold">คลิกเพื่อเลือกไฟล์</span>
+                      {autoSavingForUpload
+                        ? 'กำลังบันทึกร่างเพื่อแนบไฟล์...'
+                        : (
+                          <>
+                            ลากไฟล์มาวางที่นี่ หรือ{' '}
+                            <span className="text-primary font-semibold">คลิกเพื่อเลือกไฟล์</span>
+                          </>
+                        )}
                     </p>
                   </button>
                 </div>

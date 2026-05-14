@@ -5,7 +5,9 @@ import { ArrowLeft, Download, Printer } from 'lucide-react';
 import { otherIncomeApi } from '@/lib/otherIncome';
 import QueryBoundary from '@/components/QueryBoundary';
 
-const today = () => new Date().toISOString().slice(0, 10);
+// "Today" in Asia/Bangkok — guards against UTC server returning yesterday
+// between 00:00–07:00 BKK time. Mirrors `todayBangkok()` in OtherIncomeEntryPage.
+const today = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' });
 
 function fmt(v: string | number | undefined | null) {
   if (v === undefined || v === null) return '—';
@@ -86,8 +88,11 @@ export default function OtherIncomeDailySheetPage() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-4">
-      {/* Toolbar */}
-      <div className="rounded-xl border px-6 py-4 flex items-center justify-between bg-card flex-wrap gap-3">
+      {/* Toolbar — hidden on print via data-print-hide opt-in (W9). */}
+      <div
+        data-print-hide="true"
+        className="rounded-xl border px-6 py-4 flex items-center justify-between bg-card flex-wrap gap-3"
+      >
         <div>
           <button
             type="button"
@@ -299,7 +304,10 @@ export default function OtherIncomeDailySheetPage() {
                     <thead className="bg-muted">
                       <tr>
                         <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">
-                          ช่องทาง / รหัสบัญชี
+                          รหัสบัญชี
+                        </th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">
+                          ชื่อบัญชี
                         </th>
                         <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">
                           รายการ
@@ -313,6 +321,7 @@ export default function OtherIncomeDailySheetPage() {
                       {sheet.data.byPayment.map((r) => (
                         <tr key={r.code} className="border-t">
                           <td className="px-3 py-2 font-mono text-xs font-semibold">{r.code}</td>
+                          <td className="px-3 py-2 text-xs leading-snug">{r.name}</td>
                           <td className="px-3 py-2 text-right text-xs text-muted-foreground">
                             {r.count}
                           </td>

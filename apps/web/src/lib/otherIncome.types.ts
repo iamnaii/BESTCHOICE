@@ -78,6 +78,10 @@ export interface OtherIncome {
   // this original doc has been reversed. Not a stored scalar — must be included
   // by the backend via Prisma `include: { reversedBy: { select: ... } }`.
   reversedBy: { id: string; docNumber: string } | null;
+  // Forward link from a `-R` reversal doc back to the original POSTED parent.
+  // Populated by the backend via Prisma `include: { reverses: { select: ... } }`.
+  // Used by ViewPage to render "เอกสารนี้กลับรายการของ ..." on -R docs.
+  reverses?: { id: string; docNumber: string } | null;
   reverseReason: OtherIncomeReverseReason | null;
   reverseNote: string | null;
   copiedFromId: string | null;
@@ -100,7 +104,7 @@ export interface DailySheet {
   };
   docs: OtherIncome[];
   byAccount: Array<{ code: string; name: string; total: string; count: number }>;
-  byPayment: Array<{ code: string; total: string; count: number }>;
+  byPayment: Array<{ code: string; name: string; total: string; count: number }>;
 }
 
 export interface ListResponse {

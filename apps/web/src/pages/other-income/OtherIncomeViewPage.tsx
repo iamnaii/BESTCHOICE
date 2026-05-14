@@ -505,6 +505,22 @@ export default function OtherIncomeViewPage() {
                 </div>
               )}
 
+              {/* --- W6: Reverses (back-link from -R doc to its original) --- */}
+              {doc.reverses && (
+                <div className="rounded-xl border bg-card p-5">
+                  <p className="text-xs text-muted-foreground">
+                    เอกสารนี้คือใบกลับรายการของ{' '}
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/other-income/${doc.reverses!.id}`)}
+                      className="font-mono text-primary hover:underline"
+                    >
+                      {doc.reverses.docNumber}
+                    </button>
+                  </p>
+                </div>
+              )}
+
               {/* --- Copied from --- */}
               {doc.copiedFromId && (
                 <div className="rounded-xl border bg-card p-5">

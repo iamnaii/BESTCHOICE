@@ -537,12 +537,21 @@ layer(base);
     print-color-adjust: exact;
   }
 
-  button,
-  nav,
+  /* W9 — Scope the blanket button/nav hide to dedicated PDF render mode only.
+     Pages that call `window.print()` (e.g. Other Income Daily Sheet) need to
+     keep their toolbar / interactive controls hidden via the explicit
+     `print:hidden` / `data-print-hide` opt-ins, not by killing every button.
+     Sidebar + nav + modal-backdrop are still hidden globally — those are
+     never useful on paper. */
   .sidebar,
   .modal-backdrop,
   .print\:hidden,
   [data-print-hide="true"] {
+    display: none !important;
+  }
+
+  body.print-pdf-mode button,
+  body.print-pdf-mode nav {
     display: none !important;
   }
 

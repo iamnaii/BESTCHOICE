@@ -88,8 +88,13 @@ export class OtherIncomeController {
 
   // CRITICAL: must stay before any :id route so the literal string
   // 'maker-checker-enabled' is not captured as a UUID param.
+  //
+  // I2 — Restrict to accounting/finance roles. SALES has no Other Income UI
+  // surface and shouldn't be probing config flags; class-level @Roles already
+  // gates the rest of the module to OWNER/FINANCE_MANAGER/ACCOUNTANT, so this
+  // brings the helper endpoint in line.
   @Get('maker-checker-enabled')
-  @Roles('OWNER', 'ACCOUNTANT', 'SALES', 'BRANCH_MANAGER', 'FINANCE_MANAGER')
+  @Roles('OWNER', 'ACCOUNTANT', 'FINANCE_MANAGER')
   async getMakerCheckerEnabled() {
     const enabled = await this.service.isMakerCheckerEnabled();
     return { enabled };

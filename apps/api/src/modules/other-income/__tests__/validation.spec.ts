@@ -67,6 +67,20 @@ describe('ValidationService', () => {
     expect(result.errors.find((e) => e.rule === 'V4')).toBeUndefined();
   });
 
+  // W14 — 42-1104 (payroll deduction / Pattern B) is deferred and must NOT
+  // be bookable via OtherIncome until the payroll module exists.
+  it('W14: blocks 42-1104 (payroll deduction, Pattern B deferred)', () => {
+    const doc = {
+      ...goldenCases.bankInterest,
+      items: [{ ...goldenCases.bankInterest.items[0], accountCode: '42-1104' }],
+    };
+    const result = service.validate(doc, baseCtx);
+    const blocked = result.errors.find(
+      (e) => e.rule === 'V4' && /42-1104/.test(e.msg),
+    );
+    expect(blocked).toBeDefined();
+  });
+
   it('V6: VAT% > 0 must coexist with VAT account on JE', () => {
     const ok = service.validate(goldenCases.gainOnDisposal, baseCtx);
     expect(ok.errors.find((e) => e.rule === 'V6')).toBeUndefined();

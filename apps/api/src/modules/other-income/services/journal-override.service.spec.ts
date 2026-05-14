@@ -75,6 +75,41 @@ describe('JournalOverrideService', () => {
         expect(e.response.errors[0].rule).toBe('V2');
       }
     });
+
+    it('I1: blank rows (no accountCode + no amounts) are filtered before V5', () => {
+      // Two valid lines + one "Add line" click that user left empty.
+      // Without the I1 filter, V5 would complain about the empty line.
+      const blank: OverrideLine = {
+        accountCode: '',
+        debit: D(0),
+        credit: D(0),
+      };
+      expect(() =>
+        svc.validate([line('11-1101', 100, 0), line('42-1102', 0, 100), blank]),
+      ).not.toThrow();
+    });
+
+    it('I1: only blank rows still report V2 (need ≥ 2 lines)', () => {
+      const blank: OverrideLine = { accountCode: '', debit: D(0), credit: D(0) };
+      try {
+        svc.validate([blank, blank]);
+      } catch (e: any) {
+        expect(e.response.errors[0].rule).toBe('V2');
+      }
+    });
+
+    it('I3: duplicate accountCode lines are rejected', () => {
+      try {
+        svc.validate([
+          line('11-1101', 50, 0),
+          line('11-1101', 50, 0),
+          line('42-1102', 0, 100),
+        ]);
+      } catch (e: any) {
+        expect(e.response.errors[0].rule).toBe('V5');
+        expect(e.response.errors[0].msg).toContain('ซ้ำซ้อน');
+      }
+    });
   });
 
   describe('computeDiffSummary()', () => {

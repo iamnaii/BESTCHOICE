@@ -442,6 +442,9 @@ describe('OtherIncomeService — post + reverse + copy', () => {
     expect(reversal.reversesId).toBe(posted.id);
     expect(reversal.reverseReason).toBe('INPUT_ERROR');
     expect(reversal.journalEntryId).toBeTruthy();
+    // W15 — reversal docNumber carries `-R` suffix so list views can flag it
+    // without loading the detail page.
+    expect(reversal.docNumber).toMatch(/-R$/);
 
     // Verify the original is now REVERSED
     const original = await prisma.otherIncome.findUnique({ where: { id: posted.id } });

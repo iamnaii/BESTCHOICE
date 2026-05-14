@@ -5788,7 +5788,9 @@ model SmsTemplate {
 enum OtherIncomeStatus {
   DRAFT
   READY      // PR-2: requested for approval (Maker-Checker opt-in flow)
-  APPROVED   // PR-2: transient — approved + auto-posted in same tx
+  // W5 — `APPROVED` removed. The approve() flow flips READY → POSTED inside
+  // a single transaction, so the value never appeared on a persisted row.
+  // Migration: 20260923000000_other_income_drop_approved_enum.
   POSTED
   REVERSED
 }

@@ -77,6 +77,18 @@ describe('OtherIncomeController — @Roles metadata', () => {
     expect(methodRoles('post')).toBeUndefined();
     expect(methodRoles('copy')).toBeUndefined();
   });
+
+  // I2 — getMakerCheckerEnabled used to permit SALES + BRANCH_MANAGER even
+  // though those roles cannot access any Other Income screen. Restrict it.
+  it('getMakerCheckerEnabled() restricts to OWNER + ACCOUNTANT + FINANCE_MANAGER', () => {
+    const roles = methodRoles('getMakerCheckerEnabled');
+    expect(roles).toBeDefined();
+    expect(roles).toEqual(
+      expect.arrayContaining(['OWNER', 'ACCOUNTANT', 'FINANCE_MANAGER']),
+    );
+    expect(roles).not.toContain('SALES');
+    expect(roles).not.toContain('BRANCH_MANAGER');
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -50,6 +50,12 @@ export interface ValidationResult {
 
 const VALID_WHT_PCT = [0, 1, 2, 3, 5, 7, 10, 15];
 
+// W14 — Block account codes that should NOT be booked via this module.
+//   42-1104 (รายได้จากการหักค่าจ้าง) — Pattern B is deferred until the payroll
+//   module exists (see accounting.md). Booking it here without the matching
+//   payroll JE creates an orphan revenue line.
+const BLOCKED_INCOME_CODES: readonly string[] = ['42-1104'];
+
 /**
  * Validation rule numbering — aligned to the accountant's PDF Spec v1.0
  * (`docs/superpowers/specs/2026-05-12-other-income-v2-1-pdf-gap-fixes-design.md`).
@@ -99,6 +105,17 @@ export class ValidationService {
           rule: 'V4',
           lineNo: it.lineNo,
           msg: `รายการที่ ${it.lineNo}: ต้องเลือกบัญชีกลุ่ม 42-XXXX`,
+        });
+      }
+
+      // W14 — Disallow codes that belong to other modules (Pattern B payroll).
+      if (it.accountCode && BLOCKED_INCOME_CODES.includes(it.accountCode)) {
+        errors.push({
+          rule: 'V4',
+          lineNo: it.lineNo,
+          msg:
+            `รายการที่ ${it.lineNo}: บัญชี ${it.accountCode} จองไว้สำหรับ` +
+            ` Pattern B (หักค่าจ้าง) ยังไม่เปิดให้บันทึกผ่าน Other Income`,
         });
       }
 

@@ -663,7 +663,11 @@ export class OtherIncomeService {
 
     const reversal = await this.prisma.$transaction(async (tx) => {
       const issueDate = new Date();
-      const reverseDocNumber = await this.docNumber.nextDocNumber(tx, issueDate);
+      // W15 — Append "-R" suffix so reversal docs are visually distinct from
+      // originals in list views without needing to open the detail page.
+      // Example: OI-20260514-0003 → OI-20260514-0003-R.
+      const baseReverseDocNumber = await this.docNumber.nextDocNumber(tx, issueDate);
+      const reverseDocNumber = `${baseReverseDocNumber}-R`;
       const receiptNo = await this.docNumber.nextReceiptNumber(tx, issueDate);
       const now = new Date();
 
@@ -774,7 +778,10 @@ export class OtherIncomeService {
 
       const docNumber = await this.docNumber.nextDocNumber(tx, issueDate);
 
-      // Recompute totals from items (do not carry amountReceived)
+      // W8 — Carry over `amountReceived` from source so the clone POSTs without
+      // a V10 violation (diff = 0). Resetting it to 0 while preserving the items
+      // produced unpostable DRAFTs because computeTotals.netReceived stayed > 0
+      // but amountReceived = 0 → diff ≠ 0 → V10 error.
       const srcItems = src.items.map((it) => ({
         accountCode: it.accountCode,
         description: it.description ?? undefined,
@@ -784,11 +791,12 @@ export class OtherIncomeService {
         vatPct: it.vatPct.toString() as any,
         whtPct: it.whtPct.toString() as any,
       }));
+      const srcAmountReceived = new D(src.amountReceived.toString()).toNumber();
       const totals = this.computeTotals({
         issueDate: issueDate.toISOString(),
         priceType: src.priceType,
         paymentAccountCode: src.paymentAccountCode,
-        amountReceived: 0, // cleared
+        amountReceived: srcAmountReceived,
         items: srcItems,
       } as any);
 
@@ -807,7 +815,9 @@ export class OtherIncomeService {
           counterpartyAddress: src.counterpartyAddress ?? null,
           counterpartyPhone: src.counterpartyPhone ?? null,
           paymentAccountCode: src.paymentAccountCode,
-          amountReceived: ZERO, // cleared — user must fill in
+          // W8 — Carry over source amountReceived so the cloned DRAFT can POST
+          // without a V10 (diff ≠ 0) violation; user can still adjust.
+          amountReceived: new D(srcAmountReceived.toString()),
           incomeGross: totals.incomeGross,
           vatAmount: totals.vatAmount,
           whtAmount: totals.whtAmount,
@@ -894,8 +904,12 @@ export class OtherIncomeService {
     // B3: include name + count per byAccount item
     // B4: include count per byPayment item
 
-    // Gather account names from ChartOfAccount for B3
-    const allAccountCodes = [...byAccountMap.keys()];
+    // Gather account names from ChartOfAccount for B3 + W13
+    // (Union of income account codes and payment account codes so payment
+    // channel rows can show account name beside the code.)
+    const allAccountCodes = [
+      ...new Set([...byAccountMap.keys(), ...byPaymentMap.keys()]),
+    ];
     const coaRows = allAccountCodes.length > 0
       ? await this.prisma.chartOfAccount.findMany({
           where: { code: { in: allAccountCodes } },
@@ -935,6 +949,9 @@ export class OtherIncomeService {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([code, total]) => ({
         code,
+        // W13 — include account name so Daily Sheet payment-channel table
+        // reads "11-1201 ธนาคาร KBank" instead of bare "11-1201".
+        name: nameByCode[code] ?? code,
         total: total.toFixed(2),
         count: byPaymentCountMap.get(code) ?? 0,
       }));
@@ -982,8 +999,16 @@ export class OtherIncomeService {
 
     // statusIn (comma-separated) takes precedence over single `status` —
     // supports "ค้างดำเนินการ" card which filters DRAFT+READY together.
+    // W4 — validate each segment against OtherIncomeStatus enum so unknown
+    // status strings are dropped (instead of silently casting to bad enum).
+    const validStatuses = Object.values(OtherIncomeStatus) as OtherIncomeStatus[];
     const statusInArr = query.statusIn
-      ? (query.statusIn.split(',').filter(Boolean) as OtherIncomeStatus[])
+      ? (query.statusIn
+          .split(',')
+          .map((s) => s.trim())
+          .filter((s): s is OtherIncomeStatus =>
+            validStatuses.includes(s as OtherIncomeStatus),
+          ))
       : null;
     const where: Prisma.OtherIncomeWhereInput = {
       deletedAt: null,
@@ -1113,6 +1138,10 @@ export class OtherIncomeService {
         // The ViewPage uses this to render "ดูเอกสาร Reversing Entry" on the original
         // doc once it has been reversed. Without this include the link never appears.
         reversedBy: { select: { id: true, docNumber: true } },
+        // W6 — `reverses` is the forward self-FK from a `-R` doc back to its
+        // original POSTED parent. ViewPage uses it to render
+        // "เอกสารนี้กลับรายการของ <docNumber>" when viewing a -R reversal doc.
+        reverses: { select: { id: true, docNumber: true } },
         // Maker + approver name surfaced into the InternalControlBar so we don't
         // mis-attribute the bar to the currently-logged-in viewer (PDF Section 5).
         createdBy: { select: { id: true, name: true, email: true } },

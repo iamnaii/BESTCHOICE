@@ -33,6 +33,11 @@ class PayrollLineInput {
    * reuses this value for the employer-side too (accounting.md §SSO accounts), so
    * a single Max enforces both the employee deduction AND the employer match.
    * Lower values are fine (salary < 15k → SSO < 750).
+   *
+   * TODO (Round 2 / I2): SSO cap is mandated by Thai SSO law (last changed
+   * 2019). If the cap moves, update this @Max + check `payroll.template.ts`
+   * for any other hardcoded references. Consider moving to
+   * SystemConfig['sso_monthly_cap'] when next refactoring payroll.
    */
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)

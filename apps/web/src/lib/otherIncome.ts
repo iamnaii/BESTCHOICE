@@ -12,6 +12,8 @@ import type { OtherIncomeFormValues } from './otherIncome.schema';
 
 export interface ListQuery {
   status?: OtherIncomeStatus;
+  /** Comma-separated, e.g. "DRAFT,READY" — used by "ค้างดำเนินการ" filter card. */
+  statusIn?: string;
   startDate?: string;
   endDate?: string;
   q?: string;

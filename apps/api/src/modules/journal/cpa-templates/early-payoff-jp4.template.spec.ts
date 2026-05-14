@@ -96,7 +96,11 @@ describe('EarlyPayoffJP4Template', () => {
     await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
     await payFirstN(journal, c.id, 6);
 
-    const tmpl = new EarlyPayoffJP4Template(journal, prisma as any);
+    const tmpl = new EarlyPayoffJP4Template(
+      journal,
+      prisma as any,
+      new Vat60dayReversalTemplate(journal, prisma as any),
+    );
     await tmpl.execute({
       contractId: c.id,
       depositAccountCode: '11-1101',
@@ -154,7 +158,11 @@ describe('EarlyPayoffJP4Template', () => {
     await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
     await payFirstN(journal, c.id, 6);
 
-    const tmpl = new EarlyPayoffJP4Template(journal, prisma as any);
+    const tmpl = new EarlyPayoffJP4Template(
+      journal,
+      prisma as any,
+      new Vat60dayReversalTemplate(journal, prisma as any),
+    );
     await tmpl.execute({
       contractId: c.id,
       depositAccountCode: '11-1101',
@@ -187,7 +195,11 @@ describe('EarlyPayoffJP4Template', () => {
     await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
     await payFirstN(journal, c.id, 6);
 
-    const tmpl = new EarlyPayoffJP4Template(journal, prisma as any);
+    const tmpl = new EarlyPayoffJP4Template(
+      journal,
+      prisma as any,
+      new Vat60dayReversalTemplate(journal, prisma as any),
+    );
     await tmpl.execute({
       contractId: c.id,
       depositAccountCode: '11-1101',
@@ -229,7 +241,11 @@ describe('EarlyPayoffJP4Template', () => {
       });
     }
 
-    const tmpl = new EarlyPayoffJP4Template(journal, prisma as any);
+    const tmpl = new EarlyPayoffJP4Template(
+      journal,
+      prisma as any,
+      new Vat60dayReversalTemplate(journal, prisma as any),
+    );
     await tmpl.execute({
       contractId: c.id,
       depositAccountCode: '11-1101',
@@ -276,7 +292,11 @@ describe('EarlyPayoffJP4Template', () => {
       });
     }
 
-    const tmpl = new EarlyPayoffJP4Template(journal, prisma as any);
+    const tmpl = new EarlyPayoffJP4Template(
+      journal,
+      prisma as any,
+      new Vat60dayReversalTemplate(journal, prisma as any),
+    );
     const result = await tmpl.execute({
       contractId: c.id,
       depositAccountCode: '11-1101',
@@ -373,7 +393,11 @@ describe('EarlyPayoffJP4Template', () => {
       });
     }
 
-    const tmpl = new EarlyPayoffJP4Template(journal, prisma as any);
+    const tmpl = new EarlyPayoffJP4Template(
+      journal,
+      prisma as any,
+      new Vat60dayReversalTemplate(journal, prisma as any),
+    );
     await expect(
       tmpl.execute({
         contractId: c.id,

@@ -1784,6 +1784,12 @@ export class PaymentsService {
     const interestPerInst = interest.div(total).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
     const installmentTotal = monthly;
 
+    // Round 2 I3 audit: input.lateFee arrives as `number` from the DTO.
+    // `.toString()` is defensive against Decimal constructor surprises on
+    // large numbers — only this one site consumes input.lateFee raw, and
+    // it's properly wrapped. Other code paths (record/preview controllers,
+    // recordPayment service flow) re-read payment.lateFee from the DB which
+    // is already Prisma.Decimal. No further coercion sites identified.
     const lateFeeAmount = input.lateFee ? new Prisma.Decimal(input.lateFee.toString()) : zero;
 
     // Build raw JE lines (code, dr, cr, description)

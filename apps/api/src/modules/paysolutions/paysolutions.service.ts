@@ -1249,6 +1249,16 @@ export class PaySolutionsService {
                 select: { id: true },
               });
               if (instSchedPs) {
+                // Round 2 I2 — Known limitation:
+                // `amountReceived = snapshot.amountPaid` is cumulative, not
+                // delta. For the common LIFF flows (fresh installments,
+                // early payoff with no prior partial) cumulative == delta.
+                // For multi-installment payments where a prior partial
+                // existed, the JE base inflates by the carryover and the
+                // 2B template would post too much. Follow-up issue in
+                // PR #843 review thread — track via this TODO marker.
+                // TODO(PR-843/I2): switch to delta = amountPaid - priorPaid
+                // when prior-partial detection is added to the snapshot.
                 await this.paymentReceipt2BTemplate.execute(
                   {
                     installmentScheduleId: instSchedPs.id,

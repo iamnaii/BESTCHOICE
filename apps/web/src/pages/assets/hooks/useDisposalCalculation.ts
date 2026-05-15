@@ -4,9 +4,13 @@
 // All money arithmetic uses decimal.js to avoid IEEE-754 floating-point drift.
 // `isBalanced` gates form submission, so a 0.01 drift could silently block valid
 // disposals or allow unbalanced JEs through.
+//
+// P13 (PDF page 11+13): account names come from chart_of_accounts via
+// `/chart-of-accounts/by-codes` — no hardcoded strings, no Dr/Cr prefixes.
 
 import { useMemo } from 'react';
 import Decimal from 'decimal.js';
+import { useCoaByCodes } from '@/hooks/useCoa';
 import type { Asset, DisposalCalculation } from '../types';
 import { CATEGORY_COA } from '../types';
 import type { DisposalFormValues } from '../disposal-schema';
@@ -20,6 +24,31 @@ export function useDisposalCalculation(
   asset: Asset | undefined,
   values: Partial<DisposalFormValues>,
 ): DisposalCalculation {
+  // Collect candidate codes BEFORE the JE memo so we can resolve names via CoA.
+  // Disposal touches at most 5 distinct codes; `useCoaByCodes` is cached.
+  const candidateCodes = useMemo(() => {
+    const codes: string[] = [];
+    if (asset) {
+      const coa = CATEGORY_COA[asset.category];
+      codes.push(asset.coaDeprAccount ?? coa.accDepr);
+      codes.push(asset.coaCostAccount ?? coa.cost);
+    }
+    if (values.depositAccountCode) codes.push(values.depositAccountCode);
+    codes.push('53-1605'); // loss on disposal
+    codes.push('42-1105'); // gain on disposal
+    return Array.from(new Set(codes.filter(Boolean)));
+  }, [asset, values.depositAccountCode]);
+
+  const { data: coaRows } = useCoaByCodes(candidateCodes);
+  const nameByCode = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const r of coaRows ?? []) map.set(r.code, r.name);
+    return map;
+  }, [coaRows]);
+  // Fallback to the code itself while CoA data loads — backfills once the
+  // React Query resolves.
+  const accountName = (code: string) => nameByCode.get(code) ?? code;
+
   return useMemo(() => {
     if (!asset) {
       return {
@@ -48,9 +77,10 @@ export function useDisposalCalculation(
     }> = [];
 
     if (accumulatedDepr.gt(0)) {
+      const code = asset.coaDeprAccount ?? coa.accDepr;
       lines.push({
-        accountCode: asset.coaDeprAccount ?? coa.accDepr,
-        accountName: 'Dr ค่าเสื่อมราคาสะสม',
+        accountCode: code,
+        accountName: accountName(code),
         debit: accumulatedDepr,
         credit: ZERO,
       });
@@ -62,7 +92,7 @@ export function useDisposalCalculation(
     ) {
       lines.push({
         accountCode: values.depositAccountCode,
-        accountName: 'Dr เงินสด/ธนาคาร',
+        accountName: accountName(values.depositAccountCode),
         debit: proceeds,
         credit: ZERO,
       });
@@ -70,21 +100,24 @@ export function useDisposalCalculation(
     if (gainLoss.lt(0)) {
       lines.push({
         accountCode: '53-1605',
-        accountName: 'Dr ขาดทุนจากการจำหน่าย',
+        accountName: accountName('53-1605'),
         debit: round2(gainLoss.negated()),
         credit: ZERO,
       });
     }
-    lines.push({
-      accountCode: asset.coaCostAccount ?? coa.cost,
-      accountName: 'Cr สินทรัพย์',
-      debit: ZERO,
-      credit: purchaseCost,
-    });
+    {
+      const code = asset.coaCostAccount ?? coa.cost;
+      lines.push({
+        accountCode: code,
+        accountName: accountName(code),
+        debit: ZERO,
+        credit: purchaseCost,
+      });
+    }
     if (gainLoss.gt(0)) {
       lines.push({
         accountCode: '42-1105',
-        accountName: 'Cr กำไรจากการจำหน่าย',
+        accountName: accountName('42-1105'),
         debit: ZERO,
         credit: round2(gainLoss),
       });
@@ -106,5 +139,8 @@ export function useDisposalCalculation(
       })),
       isBalanced,
     };
-  }, [asset, values]);
+    // accountName() depends on nameByCode; including the map ensures lines
+    // re-resolve once CoA data lands.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [asset, values, nameByCode]);
 }

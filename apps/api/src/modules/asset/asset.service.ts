@@ -1208,4 +1208,92 @@ export class AssetService {
   async runMonthEndDepreciation(_period: string | undefined, _userId: string) {
     throw new Error('runMonthEndDepreciation: implement in Task 9 (Phase 2)');
   }
+
+  /** Global audit feed — all AuditLog rows where entity = 'asset', paginated. */
+  async listGlobalAudit(params: {
+    page?: number;
+    limit?: number;
+    action?: string;
+    fromDate?: string;
+    toDate?: string;
+  }): Promise<{
+    data: Array<{
+      id: string;
+      action: string;
+      entity: string;
+      entityId: string;
+      userId: string;
+      user: { id: string; name: string };
+      oldValue: unknown;
+      newValue: unknown;
+      ipAddress: string | null;
+      createdAt: Date;
+      assetCode: string | null;
+      assetName: string | null;
+    }>;
+    total: number;
+    page: number;
+    limit: number;
+  }> {
+    const page = params.page && params.page > 0 ? params.page : 1;
+    const limit = params.limit && params.limit > 0 ? Math.min(params.limit, 200) : 50;
+
+    const where: Record<string, unknown> = { entity: 'fixed_asset' };
+    if (params.action) where.action = params.action;
+    if (params.fromDate || params.toDate) {
+      const range: Record<string, Date> = {};
+      if (params.fromDate) range.gte = new Date(params.fromDate);
+      if (params.toDate) {
+        const end = new Date(params.toDate);
+        end.setHours(23, 59, 59, 999);
+        range.lte = end;
+      }
+      where.createdAt = range;
+    }
+
+    const [logs, total] = await Promise.all([
+      this.prisma.auditLog.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+        include: { user: { select: { id: true, name: true } } },
+      }),
+      this.prisma.auditLog.count({ where }),
+    ]);
+
+    // Batch lookup assets to avoid N+1
+    const assetIds = Array.from(
+      new Set(logs.map((l) => l.entityId).filter((id): id is string => Boolean(id))),
+    );
+    // Intentional: audit history must show assetCode/assetName even for soft-deleted
+    // (deletedAt != null) assets. Project rule deviation acknowledged.
+    const assets = assetIds.length
+      ? await this.prisma.fixedAsset.findMany({
+          where: { id: { in: assetIds } },
+          select: { id: true, assetCode: true, name: true },
+        })
+      : [];
+    const assetById = new Map(assets.map((a) => [a.id, a]));
+
+    return {
+      data: logs.map((log) => ({
+        id: log.id,
+        action: log.action,
+        entity: log.entity,
+        entityId: log.entityId,
+        userId: log.userId,
+        user: log.user ?? { id: log.userId, name: '' },
+        oldValue: log.oldValue,
+        newValue: log.newValue,
+        ipAddress: log.ipAddress ?? null,
+        createdAt: log.createdAt,
+        assetCode: assetById.get(log.entityId)?.assetCode ?? null,
+        assetName: log.entityId ? (assetById.get(log.entityId)?.name ?? null) : null,
+      })),
+      total,
+      page,
+      limit,
+    };
+  }
 }

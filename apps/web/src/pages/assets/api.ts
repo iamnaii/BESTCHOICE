@@ -11,6 +11,7 @@ import type {
   AssetSummary,
   AssetTransferRow,
   AuditLogEntry,
+  GlobalAuditListResponse,
   ListResponse,
   SummaryRow,
 } from './types';
@@ -56,6 +57,23 @@ export const assetsApi = {
 
   getAudit: async (id: string): Promise<AuditLogEntry[]> => {
     const { data } = await api.get<AuditLogEntry[]>(`/assets/${id}/audit`);
+    return data;
+  },
+
+  getGlobalAudit: async (filters?: {
+    page?: number;
+    limit?: number;
+    action?: string;
+    fromDate?: string;
+    toDate?: string;
+  }): Promise<GlobalAuditListResponse> => {
+    const params: Record<string, string | number> = {};
+    if (filters?.page) params.page = filters.page;
+    if (filters?.limit) params.limit = filters.limit;
+    if (filters?.action) params.action = filters.action;
+    if (filters?.fromDate) params.fromDate = filters.fromDate;
+    if (filters?.toDate) params.toDate = filters.toDate;
+    const { data } = await api.get<GlobalAuditListResponse>('/assets/audit', { params });
     return data;
   },
 

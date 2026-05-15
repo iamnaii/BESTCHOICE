@@ -826,6 +826,15 @@ function App() {
               </ProtectedRoute>
             }
           />
+          {/* CRITICAL: /assets/audit must come BEFORE /assets/:id (static-before-dynamic) */}
+          <Route
+            path="/assets/audit"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <AssetAuditPage />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/assets/:id"
             element={
@@ -847,14 +856,6 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
                 <AssetSchedulePage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/assets/audit"
-            element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
-                <AssetAuditPage />
               </ProtectedRoute>
             }
           />

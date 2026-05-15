@@ -1,5 +1,6 @@
 import { ReactNode } from 'react';
 import { Link } from 'react-router';
+import { VersionBadge } from './VersionBadge';
 
 interface AuthLayoutProps {
   children: ReactNode;
@@ -11,7 +12,7 @@ interface AuthLayoutProps {
  */
 export default function AuthLayout({ children }: AuthLayoutProps) {
   return (
-    <div className="grid lg:grid-cols-2 grow min-h-screen bg-background">
+    <div className="grid lg:grid-cols-2 grow min-h-screen bg-background relative">
       {/* Left Side — Form */}
       <div className="flex justify-center items-center p-8 lg:p-10 order-2 lg:order-1">
         <div className="w-full max-w-[440px]">
@@ -64,6 +65,11 @@ export default function AuthLayout({ children }: AuthLayoutProps) {
         <div className="absolute -top-20 -right-20 w-96 h-96 bg-primary/20 rounded-full blur-[100px]" />
         <div className="absolute -bottom-20 -left-20 w-80 h-80 bg-primary/15 rounded-full blur-[80px]" />
         <div className="absolute top-1/2 right-1/4 w-48 h-48 bg-primary/10 rounded-full blur-[60px]" />
+      </div>
+
+      {/* Version badge — bottom-right of form panel */}
+      <div className="absolute bottom-4 right-4 lg:bottom-6 lg:right-auto lg:left-6 z-10">
+        <VersionBadge variant="login" />
       </div>
     </div>
   );

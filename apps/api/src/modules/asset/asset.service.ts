@@ -484,6 +484,7 @@ export class AssetService {
         approver: { select: { id: true, name: true } },
         postedBy: { select: { id: true, name: true } },
         reversedBy: { select: { id: true, name: true } },
+        invoiceReceivedBy: { select: { id: true, name: true } },
         transferHistory: {
           orderBy: { transferDate: 'desc' },
           take: 10,
@@ -1028,8 +1029,21 @@ export class AssetService {
       );
 
       const now = new Date();
-      await tx.fixedAsset.update({
-        where: { id },
+      // TOCTOU guard: precondition checks above ran outside this tx, so two
+      // concurrent clicks could both reach here. Use updateMany with a
+      // composite where-clause + rowCount check so the second caller's update
+      // affects 0 rows and we throw to roll the whole tx back (including the
+      // duplicate JE that the template just posted). The UNIQUE index on
+      // invoice_transfer_journal_entry_id provides a second defense at the DB
+      // level if a different code path ever skipped the where filter.
+      const upd = await tx.fixedAsset.updateMany({
+        where: {
+          id,
+          vatAccount: '11-4102',
+          invoiceReceivedAt: null,
+          invoiceTransferJournalEntryId: null,
+          deletedAt: null,
+        },
         data: {
           vatAccount: '11-4101',
           invoiceReceivedAt: now,
@@ -1037,6 +1051,11 @@ export class AssetService {
           invoiceTransferJournalEntryId: inner.journalEntryId,
         },
       });
+      if (upd.count !== 1) {
+        throw new BadRequestException(
+          'มีคนกดบันทึกใบกำกับไปแล้วในระหว่างนี้ — กรุณารีเฟรชหน้า',
+        );
+      }
 
       await tx.auditLog.create({
         data: {
@@ -1049,7 +1068,7 @@ export class AssetService {
             vatAccount: '11-4101',
             invoiceReceivedAt: now.toISOString(),
             transferEntryNumber: inner.entryNo,
-            vatAmount: asset.vatAmount.toString(),
+            vatAmount: new Decimal(asset.vatAmount.toString()).toFixed(2),
           },
         },
       });

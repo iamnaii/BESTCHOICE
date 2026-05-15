@@ -27,8 +27,8 @@ export interface AssetInvoiceReceivedInput {
  * assetId returns the existing JE entryNo without posting a duplicate.
  *
  * Period guard (V15): the caller (AssetService.markInvoiceReceived) calls
- * validatePeriodOpen with the trigger date (今 = current date) before invoking
- * this template, mirroring asset-purchase + asset-disposal.
+ * validatePeriodOpen with the trigger date (today = current date) before
+ * invoking this template, mirroring asset-purchase + asset-disposal.
  */
 @Injectable()
 export class AssetInvoiceReceivedTemplate {

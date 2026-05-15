@@ -1126,8 +1126,7 @@ export default function OtherIncomeEntryPage() {
                 ระบบจะบันทึกร่างอัตโนมัติเมื่อแนบไฟล์เป็นครั้งแรก
               </p>
             )}
-            {true && (
-              <>
+            <>
                 {needsAttachment && (
                   <div className="flex items-start gap-2 mb-3 text-xs text-warning">
                     <AlertTriangle size={14} className="shrink-0 mt-0.5" />
@@ -1220,7 +1219,6 @@ export default function OtherIncomeEntryPage() {
                   </button>
                 </div>
               </>
-            )}
           </section>
 
           {/* Section 8 — Confirmation summary */}

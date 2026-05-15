@@ -1,18 +1,130 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { BarChart3, ArrowRightLeft } from 'lucide-react';
+import { BarChart3, ArrowRightLeft, Monitor, Wrench, Sofa, Car, Package } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import DataTable from '@/components/ui/DataTable';
 import QueryBoundary from '@/components/QueryBoundary';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { formatDateShortThai, formatNumberDecimal } from '@/utils/formatters';
 import { assetsApi } from './api';
+import { CATEGORY_LABEL, type AssetCategory } from './types';
 import type { SummaryRow, AssetTransferRow } from './types';
 
 const today = () => new Date().toISOString().slice(0, 10);
+
+const CATEGORY_ICON: Record<AssetCategory, LucideIcon> = {
+  EQUIPMENT: Monitor,
+  IMPROVEMENT: Wrench,
+  FURNITURE: Sofa,
+  VEHICLE: Car,
+};
+
+function isAssetCategory(key: string): key is AssetCategory {
+  return key === 'EQUIPMENT' || key === 'IMPROVEMENT' || key === 'FURNITURE' || key === 'VEHICLE';
+}
+
+function CategoryGroupCards({ data }: { data: SummaryRow[] }) {
+  const grandTotal = useMemo(() => {
+    return data.reduce(
+      (acc, r) => ({
+        count: acc.count + r.count,
+        totalPurchaseCost: acc.totalPurchaseCost + parseFloat(r.totalPurchaseCost || '0'),
+        totalAccumulatedDepr: acc.totalAccumulatedDepr + parseFloat(r.totalAccumulatedDepr || '0'),
+        totalNbv: acc.totalNbv + parseFloat(r.totalNbv || '0'),
+      }),
+      { count: 0, totalPurchaseCost: 0, totalAccumulatedDepr: 0, totalNbv: 0 },
+    );
+  }, [data]);
+
+  if (data.length === 0) {
+    return (
+      <Card>
+        <CardContent className="p-8 text-center text-sm text-muted-foreground">
+          ไม่มีข้อมูลสินทรัพย์ ณ วันที่นี้
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {data.map((row) => {
+        const Icon = isAssetCategory(row.key) ? CATEGORY_ICON[row.key] : Package;
+        const label = isAssetCategory(row.key) ? CATEGORY_LABEL[row.key] : row.label;
+        return (
+          <Card key={row.key}>
+            <CardHeader className="flex flex-row items-center justify-between gap-4 p-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 text-primary">
+                  <Icon className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-semibold">{label}</h3>
+                  <p className="text-xs text-muted-foreground">{row.count} รายการ</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-6 text-right">
+                <div>
+                  <p className="text-xs text-muted-foreground">ราคาทุน</p>
+                  <p className="font-semibold tabular-nums">
+                    {formatNumberDecimal(parseFloat(row.totalPurchaseCost))}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">ค่าเสื่อมสะสม</p>
+                  <p className="font-semibold tabular-nums">
+                    {formatNumberDecimal(parseFloat(row.totalAccumulatedDepr))}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">มูลค่าตามบัญชีสุทธิ (NBV)</p>
+                  <p className="font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
+                    {formatNumberDecimal(parseFloat(row.totalNbv))}
+                  </p>
+                </div>
+              </div>
+            </CardHeader>
+          </Card>
+        );
+      })}
+
+      <Card className="bg-muted/30 border-primary/30">
+        <CardContent className="p-4">
+          <div className="flex flex-row items-center justify-between gap-4">
+            <div>
+              <h3 className="font-semibold">รวมทั้งหมด</h3>
+              <p className="text-xs text-muted-foreground">{grandTotal.count} รายการ</p>
+            </div>
+            <div className="grid grid-cols-3 gap-6 text-right">
+              <div>
+                <p className="text-xs text-muted-foreground">ราคาทุนรวม</p>
+                <p className="font-semibold tabular-nums">
+                  {formatNumberDecimal(grandTotal.totalPurchaseCost)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">ค่าเสื่อมสะสมรวม</p>
+                <p className="font-semibold tabular-nums">
+                  {formatNumberDecimal(grandTotal.totalAccumulatedDepr)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">มูลค่าตามบัญชีสุทธิ (NBV) รวม</p>
+                <p className="font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
+                  {formatNumberDecimal(grandTotal.totalNbv)}
+                </p>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
 
 function SummaryTable({ data }: { data: SummaryRow[] }) {
   const columns = [
@@ -115,7 +227,7 @@ export default function AssetSummaryReportPage() {
             error={summaryQuery.error}
             onRetry={() => summaryQuery.refetch()}
           >
-            <SummaryTable data={summaryQuery.data ?? []} />
+            <CategoryGroupCards data={summaryQuery.data ?? []} />
           </QueryBoundary>
         </TabsContent>
         <TabsContent value="custodian">

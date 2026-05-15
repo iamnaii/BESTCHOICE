@@ -70,7 +70,7 @@ export function AssetEntrySection2Cost({ calc }: { calc: CalculationResult }) {
         </div>
 
         {/* VAT */}
-        <div className="rounded-lg border p-4 space-y-3">
+        <div className="border-l-4 border-violet-500 bg-violet-50/30 dark:bg-violet-950/30 rounded-r-lg p-3 space-y-3">
           <div className="flex items-center gap-2">
             <Switch
               id="asset-has-vat"
@@ -126,7 +126,7 @@ export function AssetEntrySection2Cost({ calc }: { calc: CalculationResult }) {
         </div>
 
         {/* WHT */}
-        <div className="rounded-lg border p-4 space-y-3">
+        <div className="border-l-4 border-amber-500 bg-amber-50/30 dark:bg-amber-950/30 rounded-r-lg p-3 space-y-3">
           <div className="flex items-center gap-2">
             <Switch
               id="asset-has-wht"

@@ -316,12 +316,6 @@ export default function AssetsListPage() {
               </BreadcrumbItem>
               <BreadcrumbSeparator />
               <BreadcrumbItem>
-                <BreadcrumbLink asChild>
-                  <Link to="/assets">สินทรัพย์</Link>
-                </BreadcrumbLink>
-              </BreadcrumbItem>
-              <BreadcrumbSeparator />
-              <BreadcrumbItem>
                 <BreadcrumbPage>รายการเอกสารทั้งหมด</BreadcrumbPage>
               </BreadcrumbItem>
             </BreadcrumbList>

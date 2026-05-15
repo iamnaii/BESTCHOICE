@@ -296,7 +296,7 @@ export default function AssetEntryPage() {
         )}
 
         {/* Sticky action bar — validation status + Σ Dr = Σ Cr + 3 actions */}
-        <div className="sticky bottom-0 z-10 -mx-4 sm:-mx-6 px-4 sm:px-6 py-3 bg-background/95 backdrop-blur border-t border-border">
+        <div className="sticky bottom-[56px] lg:bottom-0 z-20 -mx-5 lg:-mx-7 px-5 lg:px-7 py-3 bg-background/95 backdrop-blur border-t border-border">
           <div className="container mx-auto flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-3 text-xs">
               {errorCount > 0 ? (

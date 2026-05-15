@@ -1,6 +1,7 @@
 // Asset module — status chip (uses shared assetStatusMap for labels,
 // overrides classes per PDF spec page 8: POSTED green · DISPOSED purple ·
-// WRITE-OFF red · FULLY DEPR เทา).
+// WRITE-OFF red). FULLY DEPR เทา applies to depreciation schedule status
+// (handled by a separate badge), not to AssetStatus.
 
 import { Badge } from '@/components/ui/badge';
 import { assetStatusMap, getStatusBadgeProps } from '@/lib/status-badges';
@@ -14,7 +15,6 @@ const STATUS_CLASS_OVERRIDE: Record<string, string> = {
   REVERSED: 'bg-amber-500/15 text-amber-700 dark:text-amber-400',
   DISPOSED: 'bg-purple-500/15 text-purple-700 dark:text-purple-400',
   WRITTEN_OFF: 'bg-red-500/15 text-red-700 dark:text-red-400',
-  FULLY_DEPRECIATED: 'bg-zinc-500/15 text-zinc-700 dark:text-zinc-400',
 };
 
 export function AssetStatusBadge({ status }: { status: AssetStatus }) {

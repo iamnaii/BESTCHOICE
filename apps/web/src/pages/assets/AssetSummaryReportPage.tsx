@@ -82,7 +82,7 @@ function CategoryGroupCards({ data }: { data: SummaryRow[] }) {
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">มูลค่าตามบัญชีสุทธิ (NBV)</p>
-                  <p className="font-semibold tabular-nums text-emerald-600">
+                  <p className="font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
                     {formatNumberDecimal(parseFloat(row.totalNbv))}
                   </p>
                 </div>
@@ -114,7 +114,7 @@ function CategoryGroupCards({ data }: { data: SummaryRow[] }) {
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">มูลค่าตามบัญชีสุทธิ (NBV) รวม</p>
-                <p className="font-semibold tabular-nums text-emerald-600">
+                <p className="font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
                   {formatNumberDecimal(grandTotal.totalNbv)}
                 </p>
               </div>

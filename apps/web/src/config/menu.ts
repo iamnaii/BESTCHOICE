@@ -84,13 +84,18 @@ export interface RoleMenuConfig {
 
 /* ── Shared menu items ─────────────────────────────── */
 
-const assetMenuItem: MenuItem = {
+// Asset section — promoted to its own top-level section per owner directive
+// ("เอาสินทรัพย์ แยกออกจากบัญชีเลยดีกว่า"). Previously nested as a
+// collapsible item inside "บัญชี & รายงาน" via the now-removed assetMenuItem.
+// Shared across OWNER / FINANCE_MANAGER / ACCOUNTANT — visible to roles that
+// own asset workflows. The `asset-draft-count` badge moves from the parent
+// to the "บันทึกซื้อ" item where drafts are actually listed.
+const assetMenuSection: MenuSection = {
+  key: 'asset',
   label: 'สินทรัพย์',
-  path: '/assets',
   icon: Landmark,
-  badgeKey: 'asset-draft-count',
-  children: [
-    { label: 'บันทึกซื้อ',                          path: '/assets',                icon: FileText },
+  items: [
+    { label: 'บันทึกซื้อ',                          path: '/assets',                icon: FileText, badgeKey: 'asset-draft-count' },
     { label: 'ทะเบียน + มูลค่าตามบัญชีสุทธิ (NBV)', path: '/assets/register',       icon: BookOpen },
     { label: 'สมุดรายวัน',                          path: '/assets/journal',        icon: FileText },
     { label: 'สรุปแยกหมวด',                         path: '/assets/summary-report', icon: BarChart3 },
@@ -263,10 +268,10 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'รายจ่าย', path: '/expenses', icon: Receipt },
         { label: 'รายได้อื่น', path: '/other-income', icon: TrendingUp },
         { label: 'กำไร-ขาดทุน', path: '/profit-loss', icon: PieChart },
-        assetMenuItem,
         { label: 'งวดบัญชี', path: '/accounting/periods', icon: CalendarDays },
       ],
     },
+    assetMenuSection,
     {
       key: 'fm-online-shop',
       label: 'ร้านค้าออนไลน์',
@@ -311,9 +316,9 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
         { label: 'กำไร-ขาดทุน', path: '/profit-loss', icon: PieChart },
         { label: 'ภาษี', path: '/tax-reports', icon: Calculator },
         { label: 'รายงาน', path: '/reports', icon: BarChart3 },
-        assetMenuItem,
       ],
     },
+    assetMenuSection,
     {
       key: 'acc-close',
       label: 'ปิดบัญชี',
@@ -395,7 +400,6 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
         { label: 'รายจ่าย', path: '/expenses', icon: Receipt },
         { label: 'รายได้อื่น', path: '/other-income', icon: TrendingUp },
-        assetMenuItem,
         // Reports & period-close grouped under collapsible parents
         {
           label: 'รายงาน',
@@ -421,6 +425,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
         },
       ],
     },
+    assetMenuSection,
     {
       key: 'owner-online-shop',
       label: 'ร้านค้าออนไลน์',

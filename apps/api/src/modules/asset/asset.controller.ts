@@ -90,6 +90,26 @@ export class AssetController {
     });
   }
 
+  @Get('audit')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  listGlobalAudit(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('action') action?: string,
+    @Query('fromDate') fromDate?: string,
+    @Query('toDate') toDate?: string,
+  ) {
+    const parsedPage = page ? parseInt(page, 10) : undefined;
+    const parsedLimit = limit ? parseInt(limit, 10) : undefined;
+    return this.assetService.listGlobalAudit({
+      page: Number.isInteger(parsedPage) && parsedPage! > 0 ? parsedPage : undefined,
+      limit: Number.isInteger(parsedLimit) && parsedLimit! > 0 ? parsedLimit : undefined,
+      action,
+      fromDate,
+      toDate,
+    });
+  }
+
   @Get(':id')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   findOne(@Param('id') id: string) {

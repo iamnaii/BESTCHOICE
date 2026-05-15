@@ -6,7 +6,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { FileSpreadsheet, FileText, Search, BookOpen } from 'lucide-react';
+import { FileSpreadsheet, FileText, Printer, Search, BookOpen } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -175,6 +175,13 @@ export default function AssetRegisterPage() {
             </Button>
             <Button variant="outline" onClick={handleExportXlsx} disabled={!query.data}>
               <FileSpreadsheet className="mr-2 h-4 w-4" /> Excel
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => window.print()}
+              disabled={!query.data}
+            >
+              <Printer className="mr-2 h-4 w-4" /> พิมพ์ PDF
             </Button>
           </div>
         }

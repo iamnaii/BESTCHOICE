@@ -66,7 +66,7 @@ export default function AssetSchedulePage() {
             </Card>
 
             <Card>
-              <CardHeader><CardTitle>ตาราง NBV รายเดือน ({query.data.rows.length} เดือน)</CardTitle></CardHeader>
+              <CardHeader><CardTitle>ตารางมูลค่าตามบัญชีสุทธิ (NBV) รายเดือน ({query.data.rows.length} เดือน)</CardTitle></CardHeader>
               <CardContent>
                 <table className="w-full text-sm">
                   <thead>
@@ -74,7 +74,7 @@ export default function AssetSchedulePage() {
                       <th className="text-left py-2 px-2">งวด</th>
                       <th className="text-right py-2 px-2">ค่าเสื่อม</th>
                       <th className="text-right py-2 px-2">ค่าเสื่อมสะสม</th>
-                      <th className="text-right py-2 px-2">NBV</th>
+                      <th className="text-right py-2 px-2">มูลค่าตามบัญชีสุทธิ (NBV)</th>
                       <th className="text-left py-2 px-2">สถานะ</th>
                     </tr>
                   </thead>

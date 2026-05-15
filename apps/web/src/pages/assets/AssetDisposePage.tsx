@@ -147,7 +147,7 @@ export default function AssetDisposePage() {
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-muted-foreground">NBV</dt>
+                    <dt className="text-muted-foreground">มูลค่าตามบัญชีสุทธิ (NBV)</dt>
                     <dd className="tabular-nums font-semibold">
                       {formatNumberDecimal(calc.nbv)}
                     </dd>
@@ -267,7 +267,7 @@ export default function AssetDisposePage() {
               <CardContent>
                 <dl className="grid grid-cols-3 gap-4 text-sm pb-4 border-b">
                   <div>
-                    <dt className="text-muted-foreground">NBV</dt>
+                    <dt className="text-muted-foreground">มูลค่าตามบัญชีสุทธิ (NBV)</dt>
                     <dd className="tabular-nums">{formatNumberDecimal(calc.nbv)}</dd>
                   </div>
                   <div>

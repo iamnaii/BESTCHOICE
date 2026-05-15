@@ -40,7 +40,7 @@ function SummaryTable({ data }: { data: SummaryRow[] }) {
     },
     {
       key: 'totalNbv',
-      label: 'NBV',
+      label: 'มูลค่าตามบัญชีสุทธิ (NBV)',
       render: (r: SummaryRow) => (
         <span className="tabular-nums font-semibold">
           {formatNumberDecimal(parseFloat(r.totalNbv))}

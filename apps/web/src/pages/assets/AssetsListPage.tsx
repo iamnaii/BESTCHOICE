@@ -3,7 +3,7 @@
 // Stats: ทั้งหมด / รอดำเนินการ / ลงบัญชี / ยกเลิก (P3 of PR 2a).
 
 import { useState, useMemo, type ReactNode } from 'react';
-import { useNavigate, useSearchParams } from 'react-router';
+import { useNavigate, useSearchParams, Link } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -20,6 +20,14 @@ import {
   Inbox,
 } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from '@/components/ui/breadcrumb';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -298,6 +306,27 @@ export default function AssetsListPage() {
         title="ซื้อสินทรัพย์ถาวร"
         subtitle="จัดการการซื้อสินทรัพย์ถาวร (กลุ่ม 12-21XX) — อุปกรณ์ · ส่วนปรับปรุง · ตกแต่ง · ยานพาหนะ · TFRS + Accrual VAT"
         icon={<Boxes className="size-5" />}
+        breadcrumb={
+          <Breadcrumb>
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <BreadcrumbLink asChild>
+                  <Link to="/">หน้าหลัก</Link>
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbLink asChild>
+                  <Link to="/assets">สินทรัพย์</Link>
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbPage>รายการเอกสารทั้งหมด</BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
+        }
         action={
           <Button variant="primary" size="md" onClick={() => navigate('/assets/new')}>
             <Plus className="size-4" /> สร้างเอกสารใหม่

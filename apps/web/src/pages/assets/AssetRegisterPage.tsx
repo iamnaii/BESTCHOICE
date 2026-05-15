@@ -224,7 +224,7 @@ export default function AssetRegisterPage() {
 
       {/* Filters */}
       <Card>
-        <CardContent className="p-4 grid grid-cols-1 md:grid-cols-4 gap-3">
+        <CardContent className="p-4 grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
           <div>
             <label className="text-sm font-medium mb-1 block">ณ วันที่</label>
             <ThaiDateInput
@@ -232,43 +232,52 @@ export default function AssetRegisterPage() {
               onChange={(e) => setParam('asOfDate', e.target.value || null)}
             />
           </div>
-          <Select
-            value={category || 'ALL'}
-            onValueChange={(v) => setParam('category', v === 'ALL' ? null : v)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="หมวด" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">ทุกหมวด</SelectItem>
-              <SelectItem value="EQUIPMENT">{CATEGORY_LABEL.EQUIPMENT}</SelectItem>
-              <SelectItem value="IMPROVEMENT">{CATEGORY_LABEL.IMPROVEMENT}</SelectItem>
-              <SelectItem value="FURNITURE">{CATEGORY_LABEL.FURNITURE}</SelectItem>
-              <SelectItem value="VEHICLE">{CATEGORY_LABEL.VEHICLE}</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select
-            value={status || 'ALL'}
-            onValueChange={(v) => setParam('status', v === 'ALL' ? null : v)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="สถานะ" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">ทุกสถานะ</SelectItem>
-              <SelectItem value="POSTED">ลงบัญชีแล้ว</SelectItem>
-              <SelectItem value="DISPOSED">จำหน่าย</SelectItem>
-              <SelectItem value="WRITTEN_OFF">ตัดบัญชี</SelectItem>
-            </SelectContent>
-          </Select>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              className="pl-10"
-              placeholder="ค้นหา รหัส/ชื่อ/serial"
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-            />
+          <div>
+            <label className="text-sm font-medium mb-1 block">หมวด</label>
+            <Select
+              value={category || 'ALL'}
+              onValueChange={(v) => setParam('category', v === 'ALL' ? null : v)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="หมวด" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">ทุกหมวด</SelectItem>
+                <SelectItem value="EQUIPMENT">{CATEGORY_LABEL.EQUIPMENT}</SelectItem>
+                <SelectItem value="IMPROVEMENT">{CATEGORY_LABEL.IMPROVEMENT}</SelectItem>
+                <SelectItem value="FURNITURE">{CATEGORY_LABEL.FURNITURE}</SelectItem>
+                <SelectItem value="VEHICLE">{CATEGORY_LABEL.VEHICLE}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-sm font-medium mb-1 block">สถานะ</label>
+            <Select
+              value={status || 'ALL'}
+              onValueChange={(v) => setParam('status', v === 'ALL' ? null : v)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="สถานะ" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">ทุกสถานะ</SelectItem>
+                <SelectItem value="POSTED">ลงบัญชีแล้ว</SelectItem>
+                <SelectItem value="DISPOSED">จำหน่าย</SelectItem>
+                <SelectItem value="WRITTEN_OFF">ตัดบัญชี</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-sm font-medium mb-1 block">ค้นหา</label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                className="pl-10"
+                placeholder="ค้นหา รหัส/ชื่อ/serial"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+              />
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -280,16 +289,19 @@ export default function AssetRegisterPage() {
         onRetry={() => query.refetch()}
         errorTitle="โหลดทะเบียนสินทรัพย์ไม่สำเร็จ"
       >
-        <DataTable
-          columns={columns}
-          data={query.data?.data ?? []}
-          pagination={{
-            page,
-            totalPages: query.data ? Math.max(1, Math.ceil(query.data.total / PAGE_SIZE)) : 1,
-            total: query.data?.total ?? 0,
-            onPageChange: (p: number) => setParam('page', String(p)),
-          }}
-        />
+        {/* P12: enhanced header contrast (bg-muted/60 + border-b-2) */}
+        <div className="[&_thead_tr]:bg-muted/60 [&_thead_tr]:border-b-2 [&_thead_tr]:border-border [&_thead_th]:text-foreground">
+          <DataTable
+            columns={columns}
+            data={query.data?.data ?? []}
+            pagination={{
+              page,
+              totalPages: query.data ? Math.max(1, Math.ceil(query.data.total / PAGE_SIZE)) : 1,
+              total: query.data?.total ?? 0,
+              onPageChange: (p: number) => setParam('page', String(p)),
+            }}
+          />
+        </div>
       </QueryBoundary>
     </div>
   );

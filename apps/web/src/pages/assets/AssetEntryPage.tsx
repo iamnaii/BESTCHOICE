@@ -17,8 +17,10 @@ import {
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ArrowLeft, AlertCircle, Save, Send, X } from 'lucide-react';
+import { ArrowLeft, AlertCircle, CheckCircle2, Save, Send, X } from 'lucide-react';
 import api, { getErrorMessage } from '@/lib/api';
+import { cn } from '@/lib/utils';
+import { formatNumberDecimal } from '@/utils/formatters';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { assetsApi } from './api';
@@ -239,7 +241,7 @@ export default function AssetEntryPage() {
 
   return (
     <FormProvider {...form}>
-      <div className="space-y-4 pb-32">
+      <div className="space-y-4">
         {/* Page header card */}
         <div className="rounded-xl border border-border/60 bg-card p-5 shadow-sm">
           <button
@@ -293,23 +295,36 @@ export default function AssetEntryPage() {
           </div>
         )}
 
-        {/* Sticky action bar */}
-        <div className="fixed bottom-0 left-0 right-0 bg-card border-t border-border z-10 shadow-lg">
-          <div className="container mx-auto flex flex-wrap items-center justify-between gap-3 p-4">
-            <div className="flex items-center gap-2 text-sm">
+        {/* Sticky action bar — validation status + Σ Dr = Σ Cr + 3 actions */}
+        <div className="sticky bottom-0 z-10 -mx-4 sm:-mx-6 px-4 sm:px-6 py-3 bg-background/95 backdrop-blur border-t border-border">
+          <div className="container mx-auto flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-3 text-xs">
               {errorCount > 0 ? (
                 <span className="inline-flex items-center gap-1.5 text-destructive">
-                  <AlertCircle className="size-4" />
-                  มี {errorCount} ข้อต้องแก้ไข
-                </span>
-              ) : !calc.isBalanced ? (
-                <span className="inline-flex items-center gap-1.5 text-warning">
-                  <AlertCircle className="size-4" />
-                  Auto Journal Preview ยังไม่สมดุล
+                  <AlertCircle className="size-3.5" />
+                  พบ {errorCount} ข้อผิดพลาด
                 </span>
               ) : (
-                <span className="text-muted-foreground">พร้อมบันทึก & POST</span>
+                <span className="inline-flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                  <CheckCircle2 className="size-3.5" />
+                  ผ่านการตรวจสอบ
+                </span>
               )}
+              <span
+                className={cn(
+                  'inline-flex items-center gap-1.5',
+                  calc.isBalanced
+                    ? 'text-emerald-600 dark:text-emerald-400'
+                    : 'text-destructive',
+                )}
+              >
+                {calc.isBalanced ? (
+                  <CheckCircle2 className="size-3.5" />
+                ) : (
+                  <AlertCircle className="size-3.5" />
+                )}
+                Σ Dr = Σ Cr ({formatNumberDecimal(calc.totalDr)})
+              </span>
             </div>
             <div className="flex flex-wrap items-center justify-end gap-2">
               <Button

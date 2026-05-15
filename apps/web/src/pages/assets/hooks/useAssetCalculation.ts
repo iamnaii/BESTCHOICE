@@ -21,6 +21,8 @@ export interface CalculationResult {
   monthlyDepr: number;
   netBookValue: number;
   journalLines: JournalLine[];
+  totalDr: number;
+  totalCr: number;
   isBalanced: boolean;
 }
 
@@ -111,6 +113,8 @@ export function useAssetCalculation(values: Partial<AssetEntryFormValues>): Calc
       monthlyDepr,
       netBookValue: purchaseCost,
       journalLines: lines,
+      totalDr: round2(totalDr),
+      totalCr: round2(totalCr),
       isBalanced,
     };
   }, [values]);

@@ -397,13 +397,15 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
               <AccordionMenuSubContent parentValue={section.key} type="single" collapsible>
                 {section.items.map((item) =>
                   item.children && item.children.length > 0 ? (
-                    <AccordionMenuSub key={item.path} value={item.path} data-testid={`nav-${item.path}`}>
+                    // Use group- prefix to avoid value collision with child paths
+                    // (e.g. parent "/assets" and first child "/assets" share the same path)
+                    <AccordionMenuSub key={item.path} value={`group-${item.path}`} data-testid={`nav-${item.path}`}>
                       <AccordionMenuSubTrigger>
                         <item.icon data-slot="accordion-menu-icon" className="size-[15px] shrink-0 opacity-70" />
                         <span data-slot="accordion-menu-title">{item.label}</span>
                         {item.badgeKey && <NavBadge badgeKey={item.badgeKey} />}
                       </AccordionMenuSubTrigger>
-                      <AccordionMenuSubContent parentValue={item.path} type="single" collapsible>
+                      <AccordionMenuSubContent parentValue={`group-${item.path}`} type="single" collapsible>
                         {item.children.map((child) => (
                           <AccordionMenuItem key={child.path} value={child.path} className="text-[15px]">
                             <Link to={child.path} className="flex items-center gap-2.5 w-full">
@@ -523,13 +525,15 @@ function MobileSidebarContent() {
               <AccordionMenuSubContent parentValue={section.key} type="single" collapsible>
                 {section.items.map((item) =>
                   item.children && item.children.length > 0 ? (
-                    <AccordionMenuSub key={item.path} value={item.path} data-testid={`nav-mobile-${item.path}`}>
+                    // Use group- prefix to avoid value collision with child paths
+                    // (e.g. parent "/assets" and first child "/assets" share the same path)
+                    <AccordionMenuSub key={item.path} value={`group-${item.path}`} data-testid={`nav-mobile-${item.path}`}>
                       <AccordionMenuSubTrigger>
                         <item.icon data-slot="accordion-menu-icon" className="size-[15px] shrink-0 opacity-70" />
                         <span data-slot="accordion-menu-title">{item.label}</span>
                         {item.badgeKey && <NavBadge badgeKey={item.badgeKey} />}
                       </AccordionMenuSubTrigger>
-                      <AccordionMenuSubContent parentValue={item.path} type="single" collapsible>
+                      <AccordionMenuSubContent parentValue={`group-${item.path}`} type="single" collapsible>
                         {item.children.map((child) => (
                           <AccordionMenuItem key={child.path} value={child.path} className="text-[15px]">
                             <Link to={child.path} className="flex items-center gap-2.5 w-full">

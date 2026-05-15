@@ -47,12 +47,12 @@ describe('AssetController — GET /assets/audit (global)', () => {
     controller = module.get(AssetController);
   });
 
-  it('returns paginated audit rows with entity="asset"', async () => {
+  it('returns paginated audit rows with entity="fixed_asset"', async () => {
     prisma.auditLog.findMany.mockResolvedValue([
       {
         id: 'a1',
         action: 'ASSET_POST',
-        entity: 'asset',
+        entity: 'fixed_asset',
         entityId: 'asset-1',
         userId: 'u1',
         user: { id: 'u1', name: 'Test User' },
@@ -77,7 +77,7 @@ describe('AssetController — GET /assets/audit (global)', () => {
 
     expect(prisma.auditLog.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ entity: 'asset' }),
+        where: expect.objectContaining({ entity: 'fixed_asset' }),
         take: 50,
         skip: 0,
       }),
@@ -118,7 +118,7 @@ describe('AssetController — GET /assets/audit (global)', () => {
 
     expect(prisma.auditLog.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ entity: 'asset', action: 'ASSET_POST' }),
+        where: expect.objectContaining({ entity: 'fixed_asset', action: 'ASSET_POST' }),
       }),
     );
   });
@@ -139,7 +139,7 @@ describe('AssetController — GET /assets/audit (global)', () => {
     expect(prisma.auditLog.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          entity: 'asset',
+          entity: 'fixed_asset',
           createdAt: expect.objectContaining({
             gte: expect.any(Date),
             lte: expect.any(Date),

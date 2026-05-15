@@ -60,6 +60,7 @@ export default function AssetAuditPage() {
     : (perAssetQuery.data ?? []);
 
   const filtered = useMemo(() => {
+    if (isGlobal) return logs; // server already filtered by action/date
     return logs.filter((log) => {
       if (actionFilter && log.action !== actionFilter) return false;
       if (fromDate && new Date(log.createdAt) < new Date(fromDate)) return false;
@@ -70,7 +71,7 @@ export default function AssetAuditPage() {
       }
       return true;
     });
-  }, [logs, actionFilter, fromDate, toDate]);
+  }, [isGlobal, logs, actionFilter, fromDate, toDate]);
 
   const toggleExpand = (logId: string) => {
     setExpanded((prev) => {
@@ -85,17 +86,19 @@ export default function AssetAuditPage() {
     <div className="space-y-4">
       <PageHeader
         title={isGlobal ? 'Audit Log สินทรัพย์ทั้งหมด' : 'ประวัติการเปลี่ยนแปลง (Audit Trail)'}
-        subtitle="แสดง 100 รายการล่าสุด"
+        subtitle={isGlobal ? `แสดงล่าสุด ${globalQuery.data?.limit ?? 50} รายการ` : 'แสดง 100 รายการล่าสุด'}
         icon={<History className="h-5 w-5" />}
         onBack={isGlobal ? () => navigate('/assets') : () => navigate(`/assets/${id}`)}
       />
 
-      <p className="text-sm text-muted-foreground mb-2">
-        แสดงเฉพาะ 100 รายการล่าสุด · สำหรับประวัติเก่ากว่านี้ ใช้หน้า{' '}
-        <Link to="/audit-logs" className="text-primary underline">
-          Audit Logs (ทั้งระบบ)
-        </Link>
-      </p>
+      {!isGlobal && (
+        <p className="text-sm text-muted-foreground mb-2">
+          แสดงเฉพาะ 100 รายการล่าสุด · สำหรับประวัติเก่ากว่านี้ ใช้หน้า{' '}
+          <Link to="/audit-logs" className="text-primary underline">
+            Audit Logs (ทั้งระบบ)
+          </Link>
+        </p>
+      )}
 
       <Card>
         <CardContent className="p-4 grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -162,7 +165,7 @@ export default function AssetAuditPage() {
               {filtered.length === 0 && (
                 <li className="p-4 text-center text-muted-foreground">
                   ไม่พบรายการ
-                  {(actionFilter || fromDate || toDate) && (
+                  {!isGlobal && (actionFilter || fromDate || toDate) && (
                     <span className="block text-xs mt-1">
                       (ไม่พบใน 100 รายการล่าสุด — ลองดู Audit Logs ของทั้งระบบ)
                     </span>

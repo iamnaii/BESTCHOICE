@@ -91,7 +91,7 @@ export class AssetController {
   }
 
   @Get('audit')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT') // BRANCH_MANAGER removed: global view exposes cross-branch audit (CROSS_BRANCH_ROLES policy)
   listGlobalAudit(
     @Query('page') page?: string,
     @Query('limit') limit?: string,

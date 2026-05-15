@@ -1238,7 +1238,7 @@ export class AssetService {
     const page = params.page && params.page > 0 ? params.page : 1;
     const limit = params.limit && params.limit > 0 ? Math.min(params.limit, 200) : 50;
 
-    const where: Record<string, unknown> = { entity: 'asset' };
+    const where: Record<string, unknown> = { entity: 'fixed_asset' };
     if (params.action) where.action = params.action;
     if (params.fromDate || params.toDate) {
       const range: Record<string, Date> = {};
@@ -1266,6 +1266,8 @@ export class AssetService {
     const assetIds = Array.from(
       new Set(logs.map((l) => l.entityId).filter((id): id is string => Boolean(id))),
     );
+    // Intentional: audit history must show assetCode/assetName even for soft-deleted
+    // (deletedAt != null) assets. Project rule deviation acknowledged.
     const assets = assetIds.length
       ? await this.prisma.fixedAsset.findMany({
           where: { id: { in: assetIds } },

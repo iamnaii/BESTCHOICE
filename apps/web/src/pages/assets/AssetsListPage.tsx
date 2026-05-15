@@ -1,5 +1,5 @@
 // Asset module — Phase 1 list page (Asset Acquisition v3 design)
-// Tabs: เอกสาร / รายงาน / ค่าเสื่อม / ปิดงบ / Audit
+// List page with stat cards + filter + table (no tab bar — accountant directive per PDF P4).
 // Stats: ทั้งหมด / รอดำเนินการ / ลงบัญชี / ยกเลิก (P3 of PR 2a).
 
 import { useState, useMemo, type ReactNode } from 'react';

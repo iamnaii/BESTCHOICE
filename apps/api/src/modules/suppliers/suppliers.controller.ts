@@ -48,7 +48,7 @@ export class SuppliersController {
   }
 
   @Post()
-  @Roles('OWNER', 'BRANCH_MANAGER')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   create(@Body() dto: CreateSupplierDto) {
     return this.suppliersService.create(dto);
   }

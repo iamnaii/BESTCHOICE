@@ -102,11 +102,14 @@ export class CreateAssetDto {
 
   // P6: Amount actually paid to vendor (for partial-payment cases). Server
   // accepts 0..99999999.99; leaving undefined means full settlement.
+  // I4: Type widened to include `null` — service handles explicit-null as
+  // "clear the field" (runtime validation unchanged; @IsOptional permits both
+  // undefined and null).
   @IsOptional()
   @IsNumber({}, { message: 'จำนวนเงินที่จ่ายต้องเป็นตัวเลข' })
   @Min(0, { message: 'จำนวนเงินที่จ่ายต้องไม่เป็นค่าลบ' })
   @Max(99999999.99, { message: 'จำนวนเงินที่จ่ายเกินขีดจำกัด' })
-  vendorAmountPaid?: number;
+  vendorAmountPaid?: number | null;
 
   @IsOptional() @IsString()
   invoiceNo?: string;

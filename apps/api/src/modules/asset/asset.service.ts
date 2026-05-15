@@ -400,6 +400,24 @@ export class AssetService {
       ...(derivedUpdate as Prisma.FixedAssetUncheckedUpdateInput),
     };
 
+    // I3 fix — keep legacy approverId in sync with permissionConfig for legacy callers
+    // who didn't migrate to the new Permission UI yet. Explicit permissionConfig wins
+    // (handled above); this only applies when caller updated approverId alone.
+    if (dto.approverId !== undefined && dto.permissionConfig === undefined) {
+      data.permissionConfig = (
+        dto.approverId
+          ? [
+              {
+                userId: dto.approverId,
+                canView: true,
+                canEdit: false,
+                canPost: true,
+              },
+            ]
+          : []
+      ) as unknown as Prisma.InputJsonValue;
+    }
+
     return this.prisma.fixedAsset.update({ where: { id }, data });
   }
 
@@ -1018,6 +1036,9 @@ export class AssetService {
           reversedById: null,
           reversedAt: null,
           reversalReason: null,
+          // I6 fix — preserve permission list on copy so user doesn't have to
+          // re-pick approvers/viewers on every clone. JSONB casts to InputJsonValue.
+          permissionConfig: source.permissionConfig as Prisma.InputJsonValue,
           status: AssetStatus.DRAFT,
           createdById,
         },

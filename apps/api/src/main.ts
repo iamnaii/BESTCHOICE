@@ -37,6 +37,22 @@ async function bootstrap() {
   const adminPrefix = new AdminPrefixMiddleware();
   app.use((req, res, next) => adminPrefix.use(req, res, next));
 
+  // No-cache headers for all /api/* responses. Chrome's heuristic cache will
+  // store 404 / non-2xx responses without explicit Cache-Control headers,
+  // which caused production users to see stale 404 from disk-cache even after
+  // a route was fixed (observed on /api/admin/assets/journal after PR #845
+  // deploy). Setting Cache-Control: no-store + Pragma: no-cache on every API
+  // response forces the browser to revalidate. Cheap (one header), safe for
+  // JSON APIs (clients should always re-fetch dashboard data anyway).
+  app.use((req, res, next) => {
+    if (req.url.startsWith('/api/')) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    }
+    next();
+  });
+
   // Increase body size limit for base64 image uploads
   // `verify` callback captures raw body bytes for LINE webhook HMAC verification
   app.use(

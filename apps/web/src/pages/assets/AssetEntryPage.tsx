@@ -28,7 +28,7 @@ import { AssetEntrySection1Info } from './components/AssetEntrySection1Info';
 import { AssetEntrySection2Cost } from './components/AssetEntrySection2Cost';
 import { AssetEntrySection3Vendor } from './components/AssetEntrySection3Vendor';
 import { AssetEntrySection4Journal } from './components/AssetEntrySection4Journal';
-import { AssetEntrySection5Approver } from './components/AssetEntrySection5Approver';
+import { AssetEntrySection5Permission } from './components/AssetEntrySection5Permission';
 
 interface Branch {
   id: string;
@@ -51,6 +51,8 @@ const defaultValues: AssetEntryFormValues = {
   usefulLifeMonths: 36,
   purchaseDate: today(),
   paymentAccount: '11-1201',
+  // PR 2a Task 6 (P7) — Section 5 starts empty; user explicitly adds permission rows.
+  permissionConfig: [],
 };
 
 interface FlatError {
@@ -149,6 +151,9 @@ export default function AssetEntryPage() {
         paymentAccount: a.paymentAccount ?? '',
         approverId: a.approverId ?? undefined,
         note: a.note ?? undefined,
+        // PR 2a Task 6 (P7) — Hydrate permission settings; default to empty array
+        // for legacy rows persisted before the migration.
+        permissionConfig: a.permissionConfig ?? [],
       });
     }
   }, [assetQuery.data, form, navigate]);
@@ -271,7 +276,7 @@ export default function AssetEntryPage() {
         <AssetEntrySection2Cost calc={calc} />
         <AssetEntrySection3Vendor />
         <AssetEntrySection4Journal calc={calc} />
-        <AssetEntrySection5Approver />
+        <AssetEntrySection5Permission />
 
         {/* Validation summary */}
         {errorCount > 0 && (

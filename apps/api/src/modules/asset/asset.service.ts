@@ -283,6 +283,20 @@ export class AssetService {
           status: AssetStatus.DRAFT,
           createdById,
           approverId: dto.approverId,
+          // PR 2a Task 6 (P7) — Persist permission settings; backfill from legacy
+          // approverId when caller still uses the old single-approver path. The
+          // canView/canEdit/canPost defaults mirror the UI defaults (view+post).
+          permissionConfig: (dto.permissionConfig ??
+            (dto.approverId
+              ? [
+                  {
+                    userId: dto.approverId,
+                    canView: true,
+                    canEdit: false,
+                    canPost: true,
+                  },
+                ]
+              : [])) as unknown as Prisma.InputJsonValue,
         },
       });
     });
@@ -354,6 +368,7 @@ export class AssetService {
       whtBaseAmount: _wba,
       whtRate: _wr,
       vendorAmountPaid: _vap,
+      permissionConfig: _pc,
       ...rest
     } = dto;
 
@@ -370,6 +385,16 @@ export class AssetService {
               dto.vendorAmountPaid === null
                 ? null
                 : new Decimal(dto.vendorAmountPaid),
+          }
+        : {}),
+      // PR 2a Task 6 (P7) — Persist permission settings as JSONB. Only write when
+      // explicitly supplied (preserves existing array on partial updates that omit
+      // the field). Cast to InputJsonValue because TS can't see the class shape
+      // as JSON-compatible on its own.
+      ...(dto.permissionConfig !== undefined
+        ? {
+            permissionConfig:
+              dto.permissionConfig as unknown as Prisma.InputJsonValue,
           }
         : {}),
       ...(derivedUpdate as Prisma.FixedAssetUncheckedUpdateInput),

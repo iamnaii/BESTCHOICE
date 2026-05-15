@@ -3127,6 +3127,12 @@ model FixedAsset {
   status       AssetStatus @default(DRAFT)
   isOverridden Boolean     @default(false) @map("is_overridden") // JE override mode
 
+  // PR 2a Task 6 (P7) — Permission settings (UI-only metadata, no enforcement yet).
+  // Array of { userId, canView, canEdit, canPost }. `approverId` retained for
+  // backward compat — legacy callers may still set it; backfilled into this array
+  // on read paths that need it.
+  permissionConfig Json @default("[]") @map("permission_config")
+
   // Audit
   createdById    String    @map("created_by_id")
   approverId     String?   @map("approver_id")

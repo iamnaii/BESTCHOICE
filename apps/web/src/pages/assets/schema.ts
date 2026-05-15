@@ -53,6 +53,19 @@ export const assetEntrySchema = z
     // Section 5 — approval / note
     approverId: z.string().optional(),
     note: z.string().optional(),
+    // PR 2a Task 6 (P7) — Permission settings (UI-only metadata; API enforcement
+    // deferred). Replaces the single-approver dropdown. Backend backfills from
+    // legacy `approverId` for callers that haven't migrated.
+    permissionConfig: z
+      .array(
+        z.object({
+          userId: z.string().uuid(),
+          canView: z.boolean(),
+          canEdit: z.boolean(),
+          canPost: z.boolean(),
+        }),
+      )
+      .default([]),
   })
   .refine((data) => !data.hasVat || !!data.vatAccount, {
     message: 'กรุณาเลือกบัญชี VAT',

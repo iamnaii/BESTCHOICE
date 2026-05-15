@@ -16,6 +16,7 @@ import {
   CheckSquare,
   TrendingDown,
   History,
+  ReceiptText,
 } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -61,6 +62,7 @@ export default function AssetDetailPage() {
   const [showReverseDisposal, setShowReverseDisposal] = useState(false);
   const [showTransfer, setShowTransfer] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
+  const [showInvoiceReceived, setShowInvoiceReceived] = useState(false);
 
   const reverseMutation = useMutation({
     mutationFn: (reason: string) => assetsApi.reverse(id!, reason),
@@ -134,6 +136,19 @@ export default function AssetDetailPage() {
     onError: (e) => toast.error(getErrorMessage(e)),
   });
 
+  const invoiceReceivedMutation = useMutation({
+    mutationFn: () => assetsApi.markInvoiceReceived(id!),
+    onSuccess: (r) => {
+      toast.success(`บันทึกใบกำกับและโอน 11-4102 → 11-4101 แล้ว (${r.entryNo})`);
+      queryClient.invalidateQueries({ queryKey: ['asset', id] });
+      queryClient.invalidateQueries({ queryKey: ['asset-audit', id] });
+      queryClient.invalidateQueries({ queryKey: ['assets'] });
+      queryClient.invalidateQueries({ queryKey: ['assets-journal'] });
+      setShowInvoiceReceived(false);
+    },
+    onError: (e) => toast.error(getErrorMessage(e)),
+  });
+
   const asset = assetQuery.data;
 
   return (
@@ -173,6 +188,11 @@ export default function AssetDetailPage() {
                 )}
                 {asset.status === 'POSTED' && (
                   <>
+                    {asset.vatAccount === '11-4102' && !asset.invoiceReceivedAt && (
+                      <DropdownMenuItem onClick={() => setShowInvoiceReceived(true)}>
+                        <ReceiptText className="mr-2 size-4" /> ใบกำกับมาถึงแล้ว
+                      </DropdownMenuItem>
+                    )}
                     <DropdownMenuItem onClick={() => setShowTransfer(true)}>
                       <ArrowRightLeft className="mr-2 size-4" /> โอนผู้ดูแล/ที่ตั้ง
                     </DropdownMenuItem>
@@ -259,12 +279,36 @@ export default function AssetDetailPage() {
                     </div>
                     <div>
                       <dt className="text-muted-foreground">VAT</dt>
-                      <dd className="tabular-nums">{fmt(asset.vatAmount)}</dd>
+                      <dd className="tabular-nums">
+                        {fmt(asset.vatAmount)}
+                        {asset.hasVat && asset.vatAccount && (
+                          <span
+                            className={`ml-2 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                              asset.vatAccount === '11-4102'
+                                ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
+                                : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
+                            }`}
+                          >
+                            {asset.vatAccount}
+                            {asset.vatAccount === '11-4102' && ' รอใบกำกับ'}
+                            {asset.vatAccount === '11-4101' && asset.invoiceReceivedAt && ' เครดิตได้'}
+                          </span>
+                        )}
+                      </dd>
                     </div>
                     <div>
                       <dt className="text-muted-foreground">WHT</dt>
                       <dd className="tabular-nums">{fmt(asset.whtAmount)}</dd>
                     </div>
+                    {asset.invoiceReceivedAt && (
+                      <div className="sm:col-span-2">
+                        <dt className="text-muted-foreground">ใบกำกับมาถึงเมื่อ</dt>
+                        <dd className="text-emerald-700 dark:text-emerald-400">
+                          {formatDateTime(asset.invoiceReceivedAt)}
+                          {asset.invoiceReceivedBy && ` · ${asset.invoiceReceivedBy.name}`}
+                        </dd>
+                      </div>
+                    )}
                     <div>
                       <dt className="text-muted-foreground">อายุการใช้งาน</dt>
                       <dd>{asset.usefulLifeMonths} เดือน</dd>
@@ -404,6 +448,15 @@ export default function AssetDetailPage() {
             variant="destructive"
             loading={deleteMutation.isPending}
             onConfirm={() => deleteMutation.mutate()}
+          />
+          <ConfirmDialog
+            open={showInvoiceReceived}
+            onOpenChange={setShowInvoiceReceived}
+            title="บันทึกใบกำกับมาถึงแล้ว?"
+            description={`โอน VAT ${fmt(asset.vatAmount)} บาท จาก 11-4102 (รอเรียกเก็บ) → 11-4101 (เครดิตได้) — ภ.พ.30 งวดถัดไปจะหักภาษีซื้อได้`}
+            confirmLabel="บันทึกใบกำกับ"
+            loading={invoiceReceivedMutation.isPending}
+            onConfirm={() => invoiceReceivedMutation.mutate()}
           />
         </>
       )}

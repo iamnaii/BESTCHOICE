@@ -630,6 +630,7 @@ model User {
   assetsApproved              FixedAsset[]              @relation("AssetApprover")
   assetsPosted                FixedAsset[]              @relation("AssetPostedBy")
   assetsReversed              FixedAsset[]              @relation("AssetReversedBy")
+  assetsInvoiceReceived       FixedAsset[]              @relation("AssetInvoiceReceivedBy")
   assetsTransferred           AssetTransferHistory[]    @relation("AssetTransferredBy")
   depreciationEntriesReversed DepreciationEntry[]       @relation("DepreciationEntryReversedBy")
   todosCreated                Todo[]                    @relation("TodoCreatedBy")
@@ -3142,6 +3143,15 @@ model FixedAsset {
   reversedAt     DateTime? @map("reversed_at")
   reversalReason String?   @map("reversal_reason")
 
+  // 11-4102 → 11-4101 transfer ("ใบกำกับมาถึงแล้ว"). When vatAccount was
+  // 11-4102 at POST (accrual: invoice not yet received), marking the invoice
+  // received transfers deferred input VAT to claimable 11-4101 and pins
+  // vatAccount to 11-4101. Idempotent — invoiceTransferJournalEntryId guards
+  // against double-posting.
+  invoiceReceivedAt             DateTime? @map("invoice_received_at")
+  invoiceReceivedById           String?   @map("invoice_received_by_id")
+  invoiceTransferJournalEntryId String?   @unique @map("invoice_transfer_journal_entry_id")
+
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
@@ -3151,6 +3161,8 @@ model FixedAsset {
   approver            User?                  @relation("AssetApprover", fields: [approverId], references: [id])
   postedBy            User?                  @relation("AssetPostedBy", fields: [postedById], references: [id])
   reversedBy          User?                  @relation("AssetReversedBy", fields: [reversedById], references: [id])
+  invoiceReceivedBy   User?                  @relation("AssetInvoiceReceivedBy", fields: [invoiceReceivedById], references: [id])
+  invoiceTransferJE   JournalEntry?          @relation("AssetInvoiceTransferJE", fields: [invoiceTransferJournalEntryId], references: [id])
   depreciationEntries DepreciationEntry[]
   transferHistory     AssetTransferHistory[]
 
@@ -3159,6 +3171,7 @@ model FixedAsset {
   @@index([purchaseDate])
   @@index([branchId])
   @@index([vendorId])
+  @@index([invoiceReceivedAt])
   @@map("fixed_assets")
 }
 
@@ -3443,6 +3456,7 @@ model JournalEntry {
   createdBy     User                  @relation("JournalCreatedBy", fields: [createdById], references: [id])
   postedBy      User?                 @relation("JournalPostedBy", fields: [postedById], references: [id])
   postAuditLogs JournalPostAuditLog[]
+  assetInvoiceTransferFor FixedAsset? @relation("AssetInvoiceTransferJE")
   // Partial unique index enforced via migration (CREATE UNIQUE INDEX ... WHERE reference_type IS NOT NULL)
   // Prisma cannot express partial @@unique; see migration 20260428010000_journal_entries_ref_unique
 

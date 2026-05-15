@@ -192,6 +192,27 @@ Two accounts look similar; **use them differently**:
 
 Expense module JE templates (`expense-accrual`, `expense-same-day`, `credit-note`) **all** book purchase VAT to **11-4101**. Booking to 11-2104 silently inflates the "ลูกหนี้" line on the balance sheet AND blocks the VAT refund. Anti-regression test exists in each template spec.
 
+### Asset VAT — 11-4102 deferred → 11-4101 transfer flow
+
+Assets can be POSTed before the supplier tax invoice physically arrives (TFRS accrual). For that case the asset entry form lets the user pick `vatAccount = '11-4102' ภาษีซื้อรอเรียกเก็บ` — the purchase JE then books the VAT to 11-4102 instead of 11-4101. Because 11-4102 is NOT claimable on ภ.พ.30, this VAT is parked until the invoice arrives.
+
+When the invoice physically arrives, the user clicks "ใบกำกับมาถึงแล้ว" on `AssetDetailPage`. `AssetService.markInvoiceReceived` runs `AssetInvoiceReceivedTemplate`:
+
+```
+Dr 11-4101 ภาษีซื้อ          [vatAmount]
+   Cr 11-4102 ภาษีซื้อรอเรียกเก็บ [vatAmount]
+```
+
+Guards:
+- Asset must be POSTED + `hasVat` + `vatAccount === '11-4102'` + `!invoiceReceivedAt`
+- V15 period guard uses TODAY (transfer posts to current period — purchaseDate may be in a closed period and that's fine)
+- Idempotent via `metadata.flow = 'asset-invoice-received' + assetId` (mirrors asset-purchase pattern) + unique constraint on `FixedAsset.invoiceTransferJournalEntryId`
+- After success: `asset.vatAccount` flips to `'11-4101'`, `invoiceReceivedAt/ById/JournalEntryId` populated, AuditLog `INVOICE_RECEIVED` written in same `$transaction`
+
+Template: `apps/api/src/modules/journal/cpa-templates/asset-invoice-received.template.ts`
+Endpoint: `POST /assets/:id/invoice-received` (Roles: OWNER, FINANCE_MANAGER, ACCOUNTANT)
+Schema: 3 nullable fields on `FixedAsset` (migration `20260926000000_asset_invoice_received`).
+
 ---
 
 ## V15 — ACCRUAL ห้ามมี WHT (ม.50 ป.รัษฎากร)

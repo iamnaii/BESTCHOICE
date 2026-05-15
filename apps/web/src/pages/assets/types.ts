@@ -87,6 +87,12 @@ export interface Asset {
   reversedBy: { id: string; name: string } | null;
   reversedAt: string | null;
   reversalReason: string | null;
+  // 11-4102 → 11-4101 transfer (ใบกำกับมาถึงแล้ว). Set when the supplier tax
+  // invoice arrives and the deferred VAT is reclassified to claimable.
+  invoiceReceivedAt: string | null;
+  invoiceReceivedById: string | null;
+  invoiceReceivedBy: { id: string; name: string } | null;
+  invoiceTransferJournalEntryId: string | null;
   createdAt: string;
   updatedAt: string;
   transferHistory?: AssetTransferHistory[];

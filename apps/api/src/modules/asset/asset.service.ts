@@ -14,6 +14,7 @@ import { AssetPurchaseTemplate } from '../journal/cpa-templates/asset-purchase.t
 import { AssetPurchaseReverseTemplate } from '../journal/cpa-templates/asset-purchase-reverse.template';
 import { AssetDisposalTemplate } from '../journal/cpa-templates/asset-disposal.template';
 import { AssetDisposalReverseTemplate } from '../journal/cpa-templates/asset-disposal-reverse.template';
+import { AssetInvoiceReceivedTemplate } from '../journal/cpa-templates/asset-invoice-received.template';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
 
 const CATEGORY_PREFIX: Record<AssetCategory, string> = {
@@ -42,6 +43,7 @@ export class AssetService {
     private readonly reverseTemplate: AssetPurchaseReverseTemplate,
     private readonly disposalTemplate: AssetDisposalTemplate,
     private readonly disposalReverseTemplate: AssetDisposalReverseTemplate,
+    private readonly invoiceReceivedTemplate: AssetInvoiceReceivedTemplate,
   ) {}
 
   /**
@@ -482,6 +484,7 @@ export class AssetService {
         approver: { select: { id: true, name: true } },
         postedBy: { select: { id: true, name: true } },
         reversedBy: { select: { id: true, name: true } },
+        invoiceReceivedBy: { select: { id: true, name: true } },
         transferHistory: {
           orderBy: { transferDate: 'desc' },
           take: 10,
@@ -953,6 +956,128 @@ export class AssetService {
 
     this.logger.log(
       `[Phase1] REVERSE asset ${asset.assetCode} → ${result.entryNo}`,
+    );
+    return result;
+  }
+
+  /**
+   * Mark a supplier tax invoice as received and transfer the deferred input
+   * VAT from 11-4102 to 11-4101 (claimable).
+   *
+   * Preconditions: asset POSTED, hasVat, vatAccount === '11-4102',
+   * !invoiceReceivedAt. V15 period guard uses TODAY (not purchaseDate) — the
+   * transfer JE posts in the current period.
+   *
+   * Atomic: template (JE post + idempotency + journalPostAuditLog) + asset
+   * field updates + INVOICE_RECEIVED audit log all run in ONE outer
+   * $transaction. After this, vatAccount becomes '11-4101' and the next ภ.พ.30
+   * filing can credit the input VAT.
+   */
+  async markInvoiceReceived(
+    id: string,
+    triggeredById: string,
+  ): Promise<{ entryNo: string; invoiceReceivedAt: Date }> {
+    const asset = await this.prisma.fixedAsset.findFirst({
+      where: { id, deletedAt: null },
+    });
+    if (!asset) throw new NotFoundException('ไม่พบสินทรัพย์');
+    if (asset.status !== AssetStatus.POSTED) {
+      throw new BadRequestException(
+        `บันทึกใบกำกับมาถึงได้เฉพาะสถานะ POSTED (ปัจจุบัน: ${asset.status})`,
+      );
+    }
+    if (!asset.hasVat) {
+      throw new BadRequestException(
+        'สินทรัพย์นี้ไม่มี VAT — ไม่ต้องโอน 11-4102 → 11-4101',
+      );
+    }
+    if (asset.vatAccount !== '11-4102') {
+      throw new BadRequestException(
+        `ภาษีซื้ออยู่บัญชี ${asset.vatAccount ?? '(ไม่ระบุ)'} แล้ว — ใช้ flow นี้ได้เฉพาะสินทรัพย์ที่บันทึก 11-4102`,
+      );
+    }
+    if (asset.invoiceReceivedAt) {
+      throw new BadRequestException(
+        `บันทึกใบกำกับมาถึงแล้วเมื่อ ${asset.invoiceReceivedAt.toISOString()}`,
+      );
+    }
+
+    // V15: period guard with TODAY (transfer JE posts in current period).
+    const financeCompanyId = await this.getFinanceCompanyId();
+    try {
+      await validatePeriodOpen(this.prisma, new Date(), financeCompanyId);
+    } catch (err: any) {
+      await this.prisma.auditLog.create({
+        data: {
+          userId: triggeredById,
+          action: 'ASSET_INVOICE_RECEIVED_BLOCKED',
+          entity: 'fixed_asset',
+          entityId: id,
+          oldValue: { vatAccount: '11-4102' },
+          newValue: { reason: err?.message ?? 'period closed' },
+        },
+      });
+      throw new BadRequestException(
+        `ไม่สามารถบันทึกใบกำกับ: ${err?.message ?? 'งวดบัญชีปิดแล้ว'}`,
+      );
+    }
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const inner = await this.invoiceReceivedTemplate.execute(
+        { assetId: id, triggeredById },
+        tx,
+      );
+
+      const now = new Date();
+      // TOCTOU guard: precondition checks above ran outside this tx, so two
+      // concurrent clicks could both reach here. Use updateMany with a
+      // composite where-clause + rowCount check so the second caller's update
+      // affects 0 rows and we throw to roll the whole tx back (including the
+      // duplicate JE that the template just posted). The UNIQUE index on
+      // invoice_transfer_journal_entry_id provides a second defense at the DB
+      // level if a different code path ever skipped the where filter.
+      const upd = await tx.fixedAsset.updateMany({
+        where: {
+          id,
+          vatAccount: '11-4102',
+          invoiceReceivedAt: null,
+          invoiceTransferJournalEntryId: null,
+          deletedAt: null,
+        },
+        data: {
+          vatAccount: '11-4101',
+          invoiceReceivedAt: now,
+          invoiceReceivedById: triggeredById,
+          invoiceTransferJournalEntryId: inner.journalEntryId,
+        },
+      });
+      if (upd.count !== 1) {
+        throw new BadRequestException(
+          'มีคนกดบันทึกใบกำกับไปแล้วในระหว่างนี้ — กรุณารีเฟรชหน้า',
+        );
+      }
+
+      await tx.auditLog.create({
+        data: {
+          userId: triggeredById,
+          action: 'INVOICE_RECEIVED',
+          entity: 'fixed_asset',
+          entityId: id,
+          oldValue: { vatAccount: '11-4102', invoiceReceivedAt: null },
+          newValue: {
+            vatAccount: '11-4101',
+            invoiceReceivedAt: now.toISOString(),
+            transferEntryNumber: inner.entryNo,
+            vatAmount: new Decimal(asset.vatAmount.toString()).toFixed(2),
+          },
+        },
+      });
+
+      return { entryNo: inner.entryNo, invoiceReceivedAt: now };
+    });
+
+    this.logger.log(
+      `INVOICE_RECEIVED asset ${asset.assetCode} → ${result.entryNo}`,
     );
     return result;
   }

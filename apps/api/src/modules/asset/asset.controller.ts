@@ -193,6 +193,15 @@ export class AssetController {
     return this.assetService.reverseDispose(id, dto.reason, userId);
   }
 
+  @Post(':id/invoice-received')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  markInvoiceReceived(
+    @Param('id') id: string,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.assetService.markInvoiceReceived(id, userId);
+  }
+
   @Post(':id/copy')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   copy(@Param('id') id: string, @CurrentUser('id') userId: string) {

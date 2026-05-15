@@ -141,6 +141,15 @@ export const assetsApi = {
     return data;
   },
 
+  markInvoiceReceived: async (
+    id: string,
+  ): Promise<{ entryNo: string; invoiceReceivedAt: string }> => {
+    const { data } = await api.post<{ entryNo: string; invoiceReceivedAt: string }>(
+      `/assets/${id}/invoice-received`,
+    );
+    return data;
+  },
+
   listAllTransfers: async (filters: {
     page?: number;
     limit?: number;

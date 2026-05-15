@@ -1220,11 +1220,14 @@ export class AssetService {
     data: Array<{
       id: string;
       action: string;
+      entity: string;
       entityId: string;
       userId: string;
-      createdAt: Date;
+      user: { id: string; name: string };
       oldValue: unknown;
       newValue: unknown;
+      ipAddress: string | null;
+      createdAt: Date;
       assetCode: string | null;
       assetName: string | null;
     }>;
@@ -1254,6 +1257,7 @@ export class AssetService {
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
         take: limit,
+        include: { user: { select: { id: true, name: true } } },
       }),
       this.prisma.auditLog.count({ where }),
     ]);
@@ -1274,11 +1278,14 @@ export class AssetService {
       data: logs.map((log) => ({
         id: log.id,
         action: log.action,
+        entity: log.entity,
         entityId: log.entityId ?? '',
         userId: log.userId ?? '',
-        createdAt: log.createdAt,
+        user: log.user ?? { id: log.userId ?? '', name: '' },
         oldValue: log.oldValue,
         newValue: log.newValue,
+        ipAddress: log.ipAddress ?? null,
+        createdAt: log.createdAt,
         assetCode: log.entityId ? (assetById.get(log.entityId)?.assetCode ?? null) : null,
         assetName: log.entityId ? (assetById.get(log.entityId)?.name ?? null) : null,
       })),

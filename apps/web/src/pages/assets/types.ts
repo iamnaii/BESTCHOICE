@@ -107,6 +107,18 @@ export interface AuditLogEntry {
   createdAt: string;
 }
 
+export interface GlobalAuditLogEntry extends AuditLogEntry {
+  assetCode: string | null;
+  assetName: string | null;
+}
+
+export interface GlobalAuditListResponse {
+  data: GlobalAuditLogEntry[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
 export interface ListResponse {
   data: Asset[];
   total: number;

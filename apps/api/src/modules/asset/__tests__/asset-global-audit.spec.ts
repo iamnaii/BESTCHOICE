@@ -55,9 +55,11 @@ describe('AssetController — GET /assets/audit (global)', () => {
         entity: 'asset',
         entityId: 'asset-1',
         userId: 'u1',
-        createdAt: new Date(),
-        oldValue: null,
+        user: { id: 'u1', name: 'Test User' },
+        oldValue: {},
         newValue: {},
+        ipAddress: null,
+        createdAt: new Date(),
       },
     ]);
     prisma.auditLog.count.mockResolvedValue(1);

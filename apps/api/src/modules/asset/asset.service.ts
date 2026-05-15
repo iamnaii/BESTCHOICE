@@ -265,6 +265,12 @@ export class AssetService {
           warrantyExpire: dto.warrantyExpire ? new Date(dto.warrantyExpire) : null,
           supplierName: dto.supplierName,
           supplierTaxId: dto.supplierTaxId,
+          // P6: vendor master link + partial-payment amount (both optional)
+          vendorId: dto.vendorId,
+          vendorAmountPaid:
+            dto.vendorAmountPaid !== undefined && dto.vendorAmountPaid !== null
+              ? new Decimal(dto.vendorAmountPaid)
+              : null,
           invoiceNo: dto.invoiceNo,
           taxInvoiceNo: dto.taxInvoiceNo,
           paymentMethod: dto.paymentMethod,
@@ -347,6 +353,7 @@ export class AssetService {
       basePrice: _bp,
       whtBaseAmount: _wba,
       whtRate: _wr,
+      vendorAmountPaid: _vap,
       ...rest
     } = dto;
 
@@ -355,6 +362,16 @@ export class AssetService {
       purchaseDate: purchaseDate ? new Date(purchaseDate) : undefined,
       invoiceDate: invoiceDate ? new Date(invoiceDate) : undefined,
       warrantyExpire: warrantyExpire ? new Date(warrantyExpire) : undefined,
+      // P6: vendorAmountPaid needs explicit Decimal conversion; preserve "set
+      // to null" semantics when client explicitly passes null.
+      ...(dto.vendorAmountPaid !== undefined
+        ? {
+            vendorAmountPaid:
+              dto.vendorAmountPaid === null
+                ? null
+                : new Decimal(dto.vendorAmountPaid),
+          }
+        : {}),
       ...(derivedUpdate as Prisma.FixedAssetUncheckedUpdateInput),
     };
 
@@ -950,6 +967,10 @@ export class AssetService {
           warrantyExpire: source.warrantyExpire,
           supplierName: source.supplierName,
           supplierTaxId: source.supplierTaxId,
+          // P6: copy vendor link forward; partial-payment amount NOT copied
+          // (treat each new draft as a fresh transaction; user re-enters amount).
+          vendorId: source.vendorId,
+          vendorAmountPaid: null,
           paymentMethod: source.paymentMethod,
           paymentAccount: source.paymentAccount,
           custodian: source.custodian,

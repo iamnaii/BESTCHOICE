@@ -1269,6 +1269,7 @@ model Supplier {
   products       Product[]
   purchaseOrders PurchaseOrder[]
   paymentMethods SupplierPaymentMethod[]
+  fixedAssets    FixedAsset[]            @relation("FixedAssetVendor")
 
   @@index([deletedAt])
   @@map("suppliers")
@@ -2975,15 +2976,15 @@ model CompanyInfo {
   deletedAt DateTime? @map("deleted_at")
 
   // Relations
-  branches           Branch[]
-  fromInterCompanyTx InterCompanyTransaction[] @relation("ICFromCompany")
-  toInterCompanyTx   InterCompanyTransaction[] @relation("ICToCompany")
-  journalEntries     JournalEntry[]
-  taxReports         TaxReport[]
-  ownedProducts      Product[]                 @relation("ProductOwnership")
-  accountingPeriods  AccountingPeriod[]
-  otherIncomes          OtherIncome[]
-  otherIncomeTemplates  OtherIncomeTemplate[]
+  branches             Branch[]
+  fromInterCompanyTx   InterCompanyTransaction[] @relation("ICFromCompany")
+  toInterCompanyTx     InterCompanyTransaction[] @relation("ICToCompany")
+  journalEntries       JournalEntry[]
+  taxReports           TaxReport[]
+  ownedProducts        Product[]                 @relation("ProductOwnership")
+  accountingPeriods    AccountingPeriod[]
+  otherIncomes         OtherIncome[]
+  otherIncomeTemplates OtherIncomeTemplate[]
 
   @@map("company_info")
 }
@@ -3101,12 +3102,19 @@ model FixedAsset {
   warrantyExpire DateTime? @map("warranty_expire")
 
   // Vendor (Handover §13 Section 3)
-  supplierName   String?        @map("supplier_name")
-  supplierTaxId  String?        @map("supplier_tax_id")
-  invoiceNo      String?        @map("invoice_no")
-  taxInvoiceNo   String?        @map("tax_invoice_no")
-  paymentMethod  PaymentMethod? @map("payment_method")
-  paymentAccount String?        @map("payment_account") // bank account code
+  supplierName     String?        @map("supplier_name")
+  supplierTaxId    String?        @map("supplier_tax_id")
+  // P6: Optional FK link to Supplier master data. supplierName/supplierTaxId
+  // remain as denormalized fallback for ad-hoc / legacy entries.
+  vendorId         String?        @map("vendor_id")
+  vendor           Supplier?      @relation("FixedAssetVendor", fields: [vendorId], references: [id])
+  // P6: Amount actually paid to vendor (optional). When less than purchaseCost
+  // a payable is implied — future JE preview will route remainder to AP.
+  vendorAmountPaid Decimal?       @map("vendor_amount_paid") @db.Decimal(12, 2)
+  invoiceNo        String?        @map("invoice_no")
+  taxInvoiceNo     String?        @map("tax_invoice_no")
+  paymentMethod    PaymentMethod? @map("payment_method")
+  paymentAccount   String?        @map("payment_account") // bank account code
 
   // Operations
   custodian String? // ผู้ดูแล (free text — wire to User in future)
@@ -3144,6 +3152,7 @@ model FixedAsset {
   @@index([category, status])
   @@index([purchaseDate])
   @@index([branchId])
+  @@index([vendorId])
   @@map("fixed_assets")
 }
 
@@ -3576,18 +3585,18 @@ model ExpenseLine {
   category        String
   description     String?
   quantity        Decimal       @default(1) @db.Decimal(12, 2)
-  unitPrice       Decimal       @db.Decimal(12, 2) @map("unit_price")
+  unitPrice       Decimal       @map("unit_price") @db.Decimal(12, 2)
   discount        Decimal       @default(0) @db.Decimal(12, 2)
-  vatPercent      Decimal       @default(0) @db.Decimal(5, 2) @map("vat_percent")
-  whtPercent      Decimal       @default(0) @db.Decimal(5, 2) @map("wht_percent")
+  vatPercent      Decimal       @default(0) @map("vat_percent") @db.Decimal(5, 2)
+  whtPercent      Decimal       @default(0) @map("wht_percent") @db.Decimal(5, 2)
   /// Per-line WHT routing (Fix Report P2-4): "PND3" (บุคคล → 21-3102) or
   /// "PND53" (นิติบุคคล → 21-3103). When null, the JE template falls back
   /// to the document-level whtFormType. Lets a single EX doc mix individual
   /// + juristic vendors without forcing 2 separate documents.
   whtFormType     String?       @map("wht_form_type")
-  amountBeforeVat Decimal       @db.Decimal(12, 2) @map("amount_before_vat")
-  vatAmount       Decimal       @default(0) @db.Decimal(12, 2) @map("vat_amount")
-  whtAmount       Decimal       @default(0) @db.Decimal(12, 2) @map("wht_amount")
+  amountBeforeVat Decimal       @map("amount_before_vat") @db.Decimal(12, 2)
+  vatAmount       Decimal       @default(0) @map("vat_amount") @db.Decimal(12, 2)
+  whtAmount       Decimal       @default(0) @map("wht_amount") @db.Decimal(12, 2)
   createdAt       DateTime      @default(now()) @map("created_at")
   updatedAt       DateTime      @updatedAt @map("updated_at")
 
@@ -5787,7 +5796,7 @@ model SmsTemplate {
 
 enum OtherIncomeStatus {
   DRAFT
-  READY      // PR-2: requested for approval (Maker-Checker opt-in flow)
+  READY // PR-2: requested for approval (Maker-Checker opt-in flow)
   // W5 — `APPROVED` removed. The approve() flow flips READY → POSTED inside
   // a single transaction, so the value never appeared on a persisted row.
   // Migration: 20260923000000_other_income_drop_approved_enum.
@@ -5866,12 +5875,12 @@ model OtherIncome {
   deletedAt DateTime? @map("deleted_at")
 
   // PR-2 Maker-Checker (opt-in via SystemConfig OTHER_INCOME_MAKER_CHECKER_ENABLED)
-  approverId    String?   @map("approver_id")
-  approvedAt    DateTime? @map("approved_at")
-  approveNote   String?   @map("approve_note")
-  rejectedById  String?   @map("rejected_by_id")
-  rejectedAt    DateTime? @map("rejected_at")
-  rejectNote    String?   @map("reject_note")
+  approverId   String?   @map("approver_id")
+  approvedAt   DateTime? @map("approved_at")
+  approveNote  String?   @map("approve_note")
+  rejectedById String?   @map("rejected_by_id")
+  rejectedAt   DateTime? @map("rejected_at")
+  rejectNote   String?   @map("reject_note")
 
   // Relations
   company    CompanyInfo   @relation(fields: [companyId], references: [id])

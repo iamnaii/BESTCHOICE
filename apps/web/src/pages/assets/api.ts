@@ -14,6 +14,7 @@ import type {
   GlobalAuditListResponse,
   ListResponse,
   SummaryRow,
+  SupplierLite,
 } from './types';
 
 export interface ListFilters {
@@ -229,6 +230,28 @@ export const assetsApi = {
     if (filters.status) params.status = filters.status;
     if (filters.branchId) params.branchId = filters.branchId;
     const { data } = await api.get<SummaryRow[]>('/reports/asset-summary', { params });
+    return data;
+  },
+
+  // P6 — Supplier master endpoints reused for vendor combobox + inline create.
+  // The /suppliers controller returns either an array (when ?limit large) or a
+  // paginated envelope ({ data, total, page, limit }); we accept both shapes.
+  suppliersList: async (): Promise<SupplierLite[]> => {
+    const { data } = await api.get<
+      SupplierLite[] | { data: SupplierLite[]; total: number; page: number; limit: number }
+    >('/suppliers', { params: { limit: 500 } });
+    if (Array.isArray(data)) return data;
+    return data?.data ?? [];
+  },
+
+  // POST /suppliers requires `phone` (NOT NULL in schema). Dialog form must
+  // collect phone before submitting; taxId remains optional.
+  suppliersCreate: async (input: {
+    name: string;
+    phone: string;
+    taxId?: string;
+  }): Promise<SupplierLite> => {
+    const { data } = await api.post<SupplierLite>('/suppliers', input);
     return data;
   },
 };

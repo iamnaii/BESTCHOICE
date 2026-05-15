@@ -1,6 +1,6 @@
 import {
   IsString, IsOptional, IsNumber, IsEnum, IsDateString, IsBoolean,
-  IsIn, IsNotEmpty, IsInt, Min, Max,
+  IsIn, IsNotEmpty, IsInt, IsUUID, Min, Max,
 } from 'class-validator';
 import { AssetCategory, PaymentMethod } from '@prisma/client';
 
@@ -76,6 +76,19 @@ export class CreateAssetDto {
 
   @IsOptional() @IsString()
   supplierTaxId?: string;
+
+  // P6: Optional FK to Supplier master record. When provided, takes precedence
+  // over supplierName/supplierTaxId text fields for downstream reporting.
+  @IsOptional() @IsUUID('4', { message: 'รหัสผู้ขายไม่ถูกต้อง' })
+  vendorId?: string;
+
+  // P6: Amount actually paid to vendor (for partial-payment cases). Server
+  // accepts 0..99999999.99; leaving undefined means full settlement.
+  @IsOptional()
+  @IsNumber({}, { message: 'จำนวนเงินที่จ่ายต้องเป็นตัวเลข' })
+  @Min(0, { message: 'จำนวนเงินที่จ่ายต้องไม่เป็นค่าลบ' })
+  @Max(99999999.99, { message: 'จำนวนเงินที่จ่ายเกินขีดจำกัด' })
+  vendorAmountPaid?: number;
 
   @IsOptional() @IsString()
   invoiceNo?: string;

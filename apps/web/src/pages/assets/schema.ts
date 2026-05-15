@@ -38,6 +38,13 @@ export const assetEntrySchema = z
     invoiceDate: z.string().optional(),
     supplierName: z.string().optional(),
     supplierTaxId: z.string().optional(),
+    // P6: optional FK to Supplier master + partial-payment amount.
+    vendorId: z.string().uuid().optional(),
+    vendorAmountPaid: z.coerce
+      .number()
+      .nonnegative('จำนวนเงินที่จ่ายต้องไม่เป็นค่าลบ')
+      .max(99999999.99, 'จำนวนเงินที่จ่ายเกินขีดจำกัด')
+      .optional(),
     invoiceNo: z.string().optional(),
     taxInvoiceNo: z.string().optional(),
     paymentMethod: z.enum(['CASH', 'BANK_TRANSFER', 'QR_EWALLET']).optional(),

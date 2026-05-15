@@ -138,6 +138,11 @@ export default function AssetEntryPage() {
         invoiceDate: a.invoiceDate?.slice(0, 10),
         supplierName: a.supplierName ?? undefined,
         supplierTaxId: a.supplierTaxId ?? undefined,
+        vendorId: a.vendorId ?? undefined,
+        vendorAmountPaid:
+          a.vendorAmountPaid !== null && a.vendorAmountPaid !== undefined
+            ? Number(a.vendorAmountPaid)
+            : undefined,
         invoiceNo: a.invoiceNo ?? undefined,
         taxInvoiceNo: a.taxInvoiceNo ?? undefined,
         paymentMethod: a.paymentMethod ?? undefined,

@@ -1,6 +1,14 @@
 // Asset module — shared types & constants (Phase 1)
 
 export type AssetStatus = 'DRAFT' | 'POSTED' | 'REVERSED' | 'DISPOSED' | 'WRITTEN_OFF';
+
+// P6: Minimal Supplier shape for vendor combobox + create dialog.
+export interface SupplierLite {
+  id: string;
+  name: string;
+  taxId?: string | null;
+}
+
 export type AssetCategory = 'EQUIPMENT' | 'IMPROVEMENT' | 'FURNITURE' | 'VEHICLE';
 export type PaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'QR_EWALLET';
 export type WhtFormType = 'PND3' | 'PND53';
@@ -42,6 +50,9 @@ export interface Asset {
   warrantyExpire: string | null;
   supplierName: string | null;
   supplierTaxId: string | null;
+  // P6: vendor master link + partial-payment amount
+  vendorId: string | null;
+  vendorAmountPaid: string | null;
   invoiceNo: string | null;
   taxInvoiceNo: string | null;
   paymentMethod: PaymentMethod | null;

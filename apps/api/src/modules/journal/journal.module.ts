@@ -25,6 +25,7 @@ import { DepreciationTemplate } from './cpa-templates/depreciation.template';
 import { AssetDisposalTemplate } from './cpa-templates/asset-disposal.template';
 import { AssetPurchaseTemplate } from './cpa-templates/asset-purchase.template';
 import { AssetPurchaseReverseTemplate } from './cpa-templates/asset-purchase-reverse.template';
+import { AssetInvoiceReceivedTemplate } from './cpa-templates/asset-invoice-received.template';
 import { AssetDisposalReverseTemplate } from './cpa-templates/asset-disposal-reverse.template';
 import { DepreciationReverseTemplate } from './cpa-templates/depreciation-reverse.template';
 import { DepreciationCron } from './cron/depreciation.cron';
@@ -64,6 +65,7 @@ import { VendorSettlementTemplate } from './cpa-templates/vendor-settlement.temp
     AssetDisposalTemplate,
     AssetPurchaseTemplate,
     AssetPurchaseReverseTemplate,
+    AssetInvoiceReceivedTemplate,
     AssetDisposalReverseTemplate,
     DepreciationReverseTemplate,
     DepreciationCron,
@@ -98,6 +100,7 @@ import { VendorSettlementTemplate } from './cpa-templates/vendor-settlement.temp
     AssetDisposalTemplate,
     AssetPurchaseTemplate,
     AssetPurchaseReverseTemplate,
+    AssetInvoiceReceivedTemplate,
     AssetDisposalReverseTemplate,
     DepreciationReverseTemplate,
     WhtAccrualTemplate,

@@ -6,7 +6,7 @@ import { useState, useMemo, type ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import Decimal from 'decimal.js';
-import { TrendingDown, Undo2 } from 'lucide-react';
+import { TrendingDown, RotateCcw } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -137,13 +137,14 @@ export default function DepreciationPage() {
         render: (row: RunRow): ReactNode =>
           row.status === 'POSTED' ? (
             <Button
-              size="icon"
-              mode="icon"
+              type="button"
+              size="sm"
               variant="ghost"
               aria-label="กลับรายการ"
               onClick={() => setReverseTargetPeriod(row.period)}
             >
-              <Undo2 className="size-4" />
+              <RotateCcw className="size-3.5 mr-1" />
+              กลับรายการ
             </Button>
           ) : null,
       },

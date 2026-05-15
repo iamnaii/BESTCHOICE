@@ -95,7 +95,7 @@ const assetMenuItem: MenuItem = {
     { label: 'สมุดรายวัน',                          path: '/assets/journal',        icon: FileText },
     { label: 'สรุปแยกหมวด',                         path: '/assets/summary-report', icon: BarChart3 },
     { label: 'ค่าเสื่อม',                           path: '/depreciation',          icon: TrendingDown },
-    { label: 'Audit Log',                            path: '/assets/audit',          icon: History },
+    { label: 'ประวัติสินทรัพย์',                    path: '/assets/audit',          icon: History },
   ],
 };
 
@@ -391,18 +391,34 @@ const OWNER_CONFIG: RoleMenuConfig = {
       label: 'บัญชี & รายงาน',
       icon: Calculator,
       items: [
+        // Daily-use direct items (one-click access)
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
         { label: 'รายจ่าย', path: '/expenses', icon: Receipt },
         { label: 'รายได้อื่น', path: '/other-income', icon: TrendingUp },
-        { label: 'รายงาน', path: '/reports', icon: BarChart3 },
-        { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
-        { label: 'ภาษี', path: '/tax-reports', icon: Calculator },
         assetMenuItem,
-        { label: 'ปิดบัญชีรายเดือน', path: '/monthly-close', icon: CalendarDays },
-        { label: 'งวดบัญชี', path: '/accounting/periods', icon: CalendarDays },
-        { label: 'ชำระเงินระหว่างบริษัท', path: '/accounting/intercompany', icon: ClipboardList },
-        { label: 'ผังบัญชี', path: '/settings/chart-of-accounts', icon: ClipboardList },
-        { label: 'ตรวจสอบบัญชี', path: '/financial-audit', icon: ClipboardList },
+        // Reports & period-close grouped under collapsible parents
+        {
+          label: 'รายงาน',
+          path: '/reports',
+          icon: BarChart3,
+          children: [
+            { label: 'รายงานรวม', path: '/reports', icon: BarChart3 },
+            { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
+            { label: 'ภาษี', path: '/tax-reports', icon: Calculator },
+            { label: 'ตรวจสอบบัญชี', path: '/financial-audit', icon: ClipboardList },
+          ],
+        },
+        {
+          label: 'ปิดบัญชี',
+          path: '/monthly-close',
+          icon: CalendarDays,
+          children: [
+            { label: 'ปิดบัญชีรายเดือน', path: '/monthly-close', icon: CalendarDays },
+            { label: 'งวดบัญชี', path: '/accounting/periods', icon: CalendarDays },
+            { label: 'ชำระเงินระหว่างบริษัท', path: '/accounting/intercompany', icon: ClipboardList },
+            { label: 'ผังบัญชี', path: '/settings/chart-of-accounts', icon: ClipboardList },
+          ],
+        },
       ],
     },
     {
@@ -445,9 +461,16 @@ const OWNER_CONFIG: RoleMenuConfig = {
       label: 'เครื่องมือ',
       icon: Plug,
       items: [
-        { label: 'AI Admin', path: '/settings/ai-admin', icon: Sparkles },
-        { label: 'AI Assistant', path: '/settings/ai-chat', icon: Sparkles },
-        { label: 'รวมแชท', path: '/chat', icon: MessageSquareMore },
+        // /chat removed — already in bottomNav as 'แชท'.
+        {
+          label: 'AI',
+          path: '/settings/ai-admin',
+          icon: Sparkles,
+          children: [
+            { label: 'AI Admin', path: '/settings/ai-admin', icon: Sparkles },
+            { label: 'AI Assistant', path: '/settings/ai-chat', icon: Sparkles },
+          ],
+        },
         { label: 'การเชื่อมต่อ', path: '/settings/integrations', icon: Plug },
         { label: 'LINE OA', path: '/settings/rich-menu', icon: MessageSquareMore },
         { label: 'Dunning', path: '/settings/dunning', icon: Bell },

@@ -202,7 +202,7 @@ export default function AssetDetailPage() {
                   <Copy className="mr-2 size-4" /> คัดลอกเป็น DRAFT ใหม่
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => navigate(`/assets/${id}/schedule`)}>
-                  <TrendingDown className="mr-2 size-4" /> ดูตาราง NBV
+                  <TrendingDown className="mr-2 size-4" /> ดูตารางมูลค่าตามบัญชีสุทธิ (NBV)
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => navigate(`/assets/${id}/audit`)}>
                   <History className="mr-2 size-4" /> ดูประวัติทั้งหมด
@@ -278,7 +278,7 @@ export default function AssetDetailPage() {
                       <dd className="tabular-nums">{fmt(asset.accumulatedDepr)}</dd>
                     </div>
                     <div>
-                      <dt className="text-muted-foreground">NBV</dt>
+                      <dt className="text-muted-foreground">มูลค่าตามบัญชีสุทธิ (NBV)</dt>
                       <dd className="tabular-nums font-medium">{fmt(asset.netBookValue)}</dd>
                     </div>
                     <div>

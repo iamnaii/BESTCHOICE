@@ -1,9 +1,26 @@
 // Asset module — shared types & constants (Phase 1)
 
 export type AssetStatus = 'DRAFT' | 'POSTED' | 'REVERSED' | 'DISPOSED' | 'WRITTEN_OFF';
+
+// P6: Minimal Supplier shape for vendor combobox + create dialog.
+export interface SupplierLite {
+  id: string;
+  name: string;
+  taxId?: string | null;
+}
+
 export type AssetCategory = 'EQUIPMENT' | 'IMPROVEMENT' | 'FURNITURE' | 'VEHICLE';
 export type PaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'QR_EWALLET';
 export type WhtFormType = 'PND3' | 'PND53';
+
+// PR 2a Task 6 (P7) — Permission metadata entry. Persisted as JSONB on FixedAsset.
+// UI-only; API enforcement (e.g. forbidding edit without canEdit) is deferred.
+export interface PermissionConfigEntry {
+  userId: string;
+  canView: boolean;
+  canEdit: boolean;
+  canPost: boolean;
+}
 
 export interface Asset {
   id: string;
@@ -42,6 +59,9 @@ export interface Asset {
   warrantyExpire: string | null;
   supplierName: string | null;
   supplierTaxId: string | null;
+  // P6: vendor master link + partial-payment amount
+  vendorId: string | null;
+  vendorAmountPaid: string | null;
   invoiceNo: string | null;
   taxInvoiceNo: string | null;
   paymentMethod: PaymentMethod | null;
@@ -57,6 +77,9 @@ export interface Asset {
   createdBy: { id: string; name: string };
   approverId: string | null;
   approver: { id: string; name: string } | null;
+  // PR 2a Task 6 (P7) — Optional for backward compat: older POSTED rows
+  // (pre-migration data) may serialize without the field set.
+  permissionConfig?: PermissionConfigEntry[];
   postedById: string | null;
   postedBy: { id: string; name: string } | null;
   postedAt: string | null;

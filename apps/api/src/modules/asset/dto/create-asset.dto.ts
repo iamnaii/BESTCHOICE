@@ -1,8 +1,26 @@
 import {
   IsString, IsOptional, IsNumber, IsEnum, IsDateString, IsBoolean,
-  IsIn, IsNotEmpty, IsInt, Min, Max,
+  IsIn, IsNotEmpty, IsInt, IsUUID, Min, Max,
+  IsArray, ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { AssetCategory, PaymentMethod } from '@prisma/client';
+
+// PR 2a Task 6 (P7) — Permission settings entry. Persisted as JSONB on FixedAsset.
+// UI-only metadata; no API enforcement yet.
+export class PermissionConfigEntryDto {
+  @IsUUID('4', { message: 'รหัสผู้ใช้ไม่ถูกต้อง' })
+  userId!: string;
+
+  @IsBoolean({ message: 'สิทธิ์ดูต้องเป็น boolean' })
+  canView!: boolean;
+
+  @IsBoolean({ message: 'สิทธิ์แก้ไขต้องเป็น boolean' })
+  canEdit!: boolean;
+
+  @IsBoolean({ message: 'สิทธิ์ลงบัญชีต้องเป็น boolean' })
+  canPost!: boolean;
+}
 
 export class CreateAssetDto {
   @IsString({ message: 'กรุณาระบุชื่อสินทรัพย์' })
@@ -77,6 +95,22 @@ export class CreateAssetDto {
   @IsOptional() @IsString()
   supplierTaxId?: string;
 
+  // P6: Optional FK to Supplier master record. When provided, takes precedence
+  // over supplierName/supplierTaxId text fields for downstream reporting.
+  @IsOptional() @IsUUID('4', { message: 'รหัสผู้ขายไม่ถูกต้อง' })
+  vendorId?: string;
+
+  // P6: Amount actually paid to vendor (for partial-payment cases). Server
+  // accepts 0..99999999.99; leaving undefined means full settlement.
+  // I4: Type widened to include `null` — service handles explicit-null as
+  // "clear the field" (runtime validation unchanged; @IsOptional permits both
+  // undefined and null).
+  @IsOptional()
+  @IsNumber({}, { message: 'จำนวนเงินที่จ่ายต้องเป็นตัวเลข' })
+  @Min(0, { message: 'จำนวนเงินที่จ่ายต้องไม่เป็นค่าลบ' })
+  @Max(99999999.99, { message: 'จำนวนเงินที่จ่ายเกินขีดจำกัด' })
+  vendorAmountPaid?: number | null;
+
   @IsOptional() @IsString()
   invoiceNo?: string;
 
@@ -106,4 +140,12 @@ export class CreateAssetDto {
 
   @IsOptional() @IsString()
   approverId?: string;
+
+  // PR 2a Task 6 (P7) — Permission settings (replaces single-approver UI flow).
+  // Lightweight metadata; backfilled from approverId on legacy create calls.
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => PermissionConfigEntryDto)
+  permissionConfig?: PermissionConfigEntryDto[];
 }

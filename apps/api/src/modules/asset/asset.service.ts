@@ -265,6 +265,12 @@ export class AssetService {
           warrantyExpire: dto.warrantyExpire ? new Date(dto.warrantyExpire) : null,
           supplierName: dto.supplierName,
           supplierTaxId: dto.supplierTaxId,
+          // P6: vendor master link + partial-payment amount (both optional)
+          vendorId: dto.vendorId,
+          vendorAmountPaid:
+            dto.vendorAmountPaid !== undefined && dto.vendorAmountPaid !== null
+              ? new Decimal(dto.vendorAmountPaid)
+              : null,
           invoiceNo: dto.invoiceNo,
           taxInvoiceNo: dto.taxInvoiceNo,
           paymentMethod: dto.paymentMethod,
@@ -277,6 +283,20 @@ export class AssetService {
           status: AssetStatus.DRAFT,
           createdById,
           approverId: dto.approverId,
+          // PR 2a Task 6 (P7) — Persist permission settings; backfill from legacy
+          // approverId when caller still uses the old single-approver path. The
+          // canView/canEdit/canPost defaults mirror the UI defaults (view+post).
+          permissionConfig: (dto.permissionConfig ??
+            (dto.approverId
+              ? [
+                  {
+                    userId: dto.approverId,
+                    canView: true,
+                    canEdit: false,
+                    canPost: true,
+                  },
+                ]
+              : [])) as unknown as Prisma.InputJsonValue,
         },
       });
     });
@@ -347,6 +367,8 @@ export class AssetService {
       basePrice: _bp,
       whtBaseAmount: _wba,
       whtRate: _wr,
+      vendorAmountPaid: _vap,
+      permissionConfig: _pc,
       ...rest
     } = dto;
 
@@ -355,8 +377,46 @@ export class AssetService {
       purchaseDate: purchaseDate ? new Date(purchaseDate) : undefined,
       invoiceDate: invoiceDate ? new Date(invoiceDate) : undefined,
       warrantyExpire: warrantyExpire ? new Date(warrantyExpire) : undefined,
+      // P6: vendorAmountPaid needs explicit Decimal conversion; preserve "set
+      // to null" semantics when client explicitly passes null.
+      ...(dto.vendorAmountPaid !== undefined
+        ? {
+            vendorAmountPaid:
+              dto.vendorAmountPaid === null
+                ? null
+                : new Decimal(dto.vendorAmountPaid),
+          }
+        : {}),
+      // PR 2a Task 6 (P7) — Persist permission settings as JSONB. Only write when
+      // explicitly supplied (preserves existing array on partial updates that omit
+      // the field). Cast to InputJsonValue because TS can't see the class shape
+      // as JSON-compatible on its own.
+      ...(dto.permissionConfig !== undefined
+        ? {
+            permissionConfig:
+              dto.permissionConfig as unknown as Prisma.InputJsonValue,
+          }
+        : {}),
       ...(derivedUpdate as Prisma.FixedAssetUncheckedUpdateInput),
     };
+
+    // I3 fix — keep legacy approverId in sync with permissionConfig for legacy callers
+    // who didn't migrate to the new Permission UI yet. Explicit permissionConfig wins
+    // (handled above); this only applies when caller updated approverId alone.
+    if (dto.approverId !== undefined && dto.permissionConfig === undefined) {
+      data.permissionConfig = (
+        dto.approverId
+          ? [
+              {
+                userId: dto.approverId,
+                canView: true,
+                canEdit: false,
+                canPost: true,
+              },
+            ]
+          : []
+      ) as unknown as Prisma.InputJsonValue;
+    }
 
     return this.prisma.fixedAsset.update({ where: { id }, data });
   }
@@ -950,6 +1010,10 @@ export class AssetService {
           warrantyExpire: source.warrantyExpire,
           supplierName: source.supplierName,
           supplierTaxId: source.supplierTaxId,
+          // P6: copy vendor link forward; partial-payment amount NOT copied
+          // (treat each new draft as a fresh transaction; user re-enters amount).
+          vendorId: source.vendorId,
+          vendorAmountPaid: null,
           paymentMethod: source.paymentMethod,
           paymentAccount: source.paymentAccount,
           custodian: source.custodian,
@@ -972,6 +1036,9 @@ export class AssetService {
           reversedById: null,
           reversedAt: null,
           reversalReason: null,
+          // I6 fix — preserve permission list on copy so user doesn't have to
+          // re-pick approvers/viewers on every clone. JSONB casts to InputJsonValue.
+          permissionConfig: source.permissionConfig as Prisma.InputJsonValue,
           status: AssetStatus.DRAFT,
           createdById,
         },

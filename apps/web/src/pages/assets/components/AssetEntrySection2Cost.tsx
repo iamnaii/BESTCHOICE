@@ -63,7 +63,7 @@ export function AssetEntrySection2Cost({ calc }: { calc: CalculationResult }) {
             <p className="mt-1 text-xs text-muted-foreground">Capitalize → cost</p>
           </div>
           <div>
-            <Label>ค่า capitalize อื่น</Label>
+            <Label>ต้นทุนสินทรัพย์อื่น ๆ (ค่า capitalize อื่น)</Label>
             <Input type="number" step="0.01" {...register('otherCapitalized')} />
             <p className="mt-1 text-xs text-muted-foreground">ทดสอบ เตรียม ฯลฯ</p>
           </div>

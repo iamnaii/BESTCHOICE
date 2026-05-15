@@ -51,10 +51,14 @@ import {
 
 /* ── Types ─────────────────────────────────────────── */
 
+export type MenuBadgeKey = 'chat-unread' | 'asset-draft-count';
+
 export interface MenuItem {
   label: string;
   path: string;
   icon: LucideIcon;
+  children?: MenuItem[];   // when present, item renders as collapsible group (path is not navigable)
+  badgeKey?: MenuBadgeKey; // optional dynamic count badge
 }
 
 export interface MenuSection {
@@ -68,7 +72,7 @@ export interface BottomNavItem {
   label: string;
   path: string;
   icon: LucideIcon;
-  badgeKey?: 'chat-unread';
+  badgeKey?: MenuBadgeKey;  // promoted from inline 'chat-unread' literal
   action?: 'sidebar';
 }
 

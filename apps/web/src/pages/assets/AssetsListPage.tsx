@@ -1,9 +1,9 @@
 // Asset module — Phase 1 list page (Asset Acquisition v3 design)
 // Tabs: เอกสาร / รายงาน / ค่าเสื่อม / ปิดงบ / Audit
-// Stats: ทั้งหมด / รอดำเนินการ / ลงบัญชี / ยกเลิก (P3 of PR 2a) + Register/Journal nav cards.
+// Stats: ทั้งหมด / รอดำเนินการ / ลงบัญชี / ยกเลิก (P3 of PR 2a).
 
 import { useState, useMemo, type ReactNode } from 'react';
-import { useNavigate, useSearchParams, NavLink } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -17,9 +17,6 @@ import {
   CheckCircle2,
   RotateCcw,
   Files,
-  BookOpen,
-  ClipboardList,
-  ChevronRight,
   Inbox,
 } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
@@ -341,46 +338,6 @@ export default function AssetsListPage() {
             </Card>
           );
         })}
-
-        {/* Register nav card */}
-        <NavLink to="/assets/register" className="block">
-          <Card className="h-full rounded-xl border border-border/60 bg-card shadow-sm transition-colors hover:border-primary/40 hover:bg-accent/40">
-            <CardContent className="flex h-full flex-col p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="flex items-center justify-center size-7 rounded-md bg-primary/10 text-primary">
-                  <BookOpen className="size-4" />
-                </div>
-                <span className="text-[11px] font-semibold tracking-wider text-muted-foreground">
-                  REGISTER
-                </span>
-              </div>
-              <div className="mt-auto flex items-center justify-between">
-                <div className="text-sm font-medium text-foreground">ทะเบียน + NBV</div>
-                <ChevronRight className="size-4 text-muted-foreground" />
-              </div>
-            </CardContent>
-          </Card>
-        </NavLink>
-
-        {/* Journal nav card */}
-        <NavLink to="/assets/journal" className="block">
-          <Card className="h-full rounded-xl border border-border/60 bg-card shadow-sm transition-colors hover:border-primary/40 hover:bg-accent/40">
-            <CardContent className="flex h-full flex-col p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="flex items-center justify-center size-7 rounded-md bg-warning/10 text-warning">
-                  <ClipboardList className="size-4" />
-                </div>
-                <span className="text-[11px] font-semibold tracking-wider text-muted-foreground">
-                  JOURNAL
-                </span>
-              </div>
-              <div className="mt-auto flex items-center justify-between">
-                <div className="text-sm font-medium text-foreground">สมุดรายวัน</div>
-                <ChevronRight className="size-4 text-muted-foreground" />
-              </div>
-            </CardContent>
-          </Card>
-        </NavLink>
       </div>
 
       {/* Filters */}

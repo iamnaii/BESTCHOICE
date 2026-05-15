@@ -10,7 +10,7 @@ import QueryBoundary from '@/components/QueryBoundary';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { formatDateTime } from '@/utils/formatters';
 import { assetsApi } from './api';
-import type { AuditLogEntry } from './types';
+import type { AuditLogEntry, GlobalAuditLogEntry } from './types';
 
 const ACTION_LABEL: Record<string, string> = {
   ASSET_CREATE: 'สร้าง',
@@ -28,57 +28,77 @@ const ACTION_LABEL: Record<string, string> = {
 };
 
 export default function AssetAuditPage() {
-  const { id } = useParams<{ id: string }>();
+  const { id } = useParams<{ id?: string }>();
   const navigate = useNavigate();
+  const isGlobal = !id;
   const [actionFilter, setActionFilter] = useState<string>('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
-  const query = useQuery({
+  const perAssetQuery = useQuery({
     queryKey: ['asset-audit', id],
     queryFn: () => assetsApi.getAudit(id!),
     enabled: !!id,
   });
 
+  const globalQuery = useQuery({
+    queryKey: ['asset-audit-global', actionFilter, fromDate, toDate],
+    queryFn: () =>
+      assetsApi.getGlobalAudit({
+        action: actionFilter || undefined,
+        fromDate: fromDate || undefined,
+        toDate: toDate || undefined,
+      }),
+    enabled: isGlobal,
+  });
+
+  const activeQuery = isGlobal ? globalQuery : perAssetQuery;
+
+  const logs: Array<AuditLogEntry | GlobalAuditLogEntry> = isGlobal
+    ? (globalQuery.data?.data ?? [])
+    : (perAssetQuery.data ?? []);
+
   const filtered = useMemo(() => {
-    if (!query.data) return [];
-    return query.data.filter((log) => {
+    if (isGlobal) return logs; // server already filtered by action/date
+    return logs.filter((log) => {
       if (actionFilter && log.action !== actionFilter) return false;
       if (fromDate && new Date(log.createdAt) < new Date(fromDate)) return false;
       if (toDate) {
-        const end = new Date(toDate); end.setHours(23, 59, 59, 999);
+        const end = new Date(toDate);
+        end.setHours(23, 59, 59, 999);
         if (new Date(log.createdAt) > end) return false;
       }
       return true;
     });
-  }, [query.data, actionFilter, fromDate, toDate]);
+  }, [isGlobal, logs, actionFilter, fromDate, toDate]);
 
   const toggleExpand = (logId: string) => {
     setExpanded((prev) => {
       const next = new Set(prev);
-      if (next.has(logId)) next.delete(logId); else next.add(logId);
+      if (next.has(logId)) next.delete(logId);
+      else next.add(logId);
       return next;
     });
   };
 
-  if (!id) return null;
-
   return (
     <div className="space-y-4">
       <PageHeader
-        title="ประวัติการเปลี่ยนแปลง (Audit Trail)"
-        subtitle="แสดง 100 รายการล่าสุด"
+        title={isGlobal ? 'Audit Log สินทรัพย์ทั้งหมด' : 'ประวัติการเปลี่ยนแปลง (Audit Trail)'}
+        subtitle={isGlobal ? `แสดงล่าสุด ${globalQuery.data?.limit ?? 50} รายการ` : 'แสดง 100 รายการล่าสุด'}
         icon={<History className="h-5 w-5" />}
-        onBack={() => navigate(`/assets/${id}`)}
+        onBack={isGlobal ? () => navigate('/assets') : () => navigate(`/assets/${id}`)}
       />
 
-      <p className="text-sm text-muted-foreground mb-2">
-        แสดงเฉพาะ 100 รายการล่าสุด · สำหรับประวัติเก่ากว่านี้ ใช้หน้า{' '}
-        <Link to="/audit-logs" className="text-primary underline">
-          Audit Logs (ทั้งระบบ)
-        </Link>
-      </p>
+      {!isGlobal && (
+        <p className="text-sm text-muted-foreground mb-2">
+          แสดงเฉพาะ 100 รายการล่าสุด · สำหรับประวัติเก่ากว่านี้ ใช้หน้า{' '}
+          <Link to="/audit-logs" className="text-primary underline">
+            Audit Logs (ทั้งระบบ)
+          </Link>
+        </p>
+      )}
 
       <Card>
         <CardContent className="p-4 grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -96,16 +116,25 @@ export default function AssetAuditPage() {
         </CardContent>
       </Card>
 
-      <QueryBoundary isLoading={query.isLoading} isError={query.isError} error={query.error} onRetry={() => query.refetch()} errorTitle="โหลดประวัติไม่สำเร็จ">
+      <QueryBoundary isLoading={activeQuery.isLoading} isError={activeQuery.isError} error={activeQuery.error} onRetry={() => activeQuery.refetch()} errorTitle="โหลดประวัติไม่สำเร็จ">
         <Card>
           <CardContent className="p-0">
             <ul className="divide-y">
-              {filtered.map((log: AuditLogEntry) => (
+              {filtered.map((log) => {
+                const globalLog = isGlobal ? (log as GlobalAuditLogEntry) : null;
+                return (
                 <li key={log.id} className="p-4">
                   <button onClick={() => toggleExpand(log.id)} className="flex items-start gap-2 w-full text-left">
                     {expanded.has(log.id) ? <ChevronDown className="h-4 w-4 mt-1" /> : <ChevronRight className="h-4 w-4 mt-1" />}
                     <div className="flex-1">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {isGlobal && globalLog && (
+                          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                            <span className="font-mono">{globalLog.assetCode ?? '—'}</span>
+                            <span>·</span>
+                            <span>{globalLog.assetName ?? '—'}</span>
+                          </span>
+                        )}
                         <Badge variant={log.action.endsWith('_BLOCKED') ? 'destructive' : 'success'}>
                           {ACTION_LABEL[log.action] ?? log.action}
                         </Badge>
@@ -131,11 +160,12 @@ export default function AssetAuditPage() {
                     </div>
                   )}
                 </li>
-              ))}
+                );
+              })}
               {filtered.length === 0 && (
                 <li className="p-4 text-center text-muted-foreground">
                   ไม่พบรายการ
-                  {(actionFilter || fromDate || toDate) && (
+                  {!isGlobal && (actionFilter || fromDate || toDate) && (
                     <span className="block text-xs mt-1">
                       (ไม่พบใน 100 รายการล่าสุด — ลองดู Audit Logs ของทั้งระบบ)
                     </span>

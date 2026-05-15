@@ -47,14 +47,19 @@ import {
   Tag,
   TrendingDown,
   BookOpen,
+  History,
 } from 'lucide-react';
 
 /* ── Types ─────────────────────────────────────────── */
+
+export type MenuBadgeKey = 'chat-unread' | 'asset-draft-count';
 
 export interface MenuItem {
   label: string;
   path: string;
   icon: LucideIcon;
+  children?: MenuItem[];   // when present, item renders as collapsible group (path is not navigable)
+  badgeKey?: MenuBadgeKey; // optional dynamic count badge
 }
 
 export interface MenuSection {
@@ -68,7 +73,7 @@ export interface BottomNavItem {
   label: string;
   path: string;
   icon: LucideIcon;
-  badgeKey?: 'chat-unread';
+  badgeKey?: MenuBadgeKey;  // promoted from inline 'chat-unread' literal
   action?: 'sidebar';
 }
 
@@ -76,6 +81,23 @@ export interface RoleMenuConfig {
   sidebar: MenuSection[];
   bottomNav: BottomNavItem[];
 }
+
+/* ── Shared menu items ─────────────────────────────── */
+
+const assetMenuItem: MenuItem = {
+  label: 'สินทรัพย์',
+  path: '/assets',
+  icon: Landmark,
+  badgeKey: 'asset-draft-count',
+  children: [
+    { label: 'บันทึกซื้อ',                          path: '/assets',                icon: FileText },
+    { label: 'ทะเบียน + มูลค่าตามบัญชีสุทธิ (NBV)', path: '/assets/register',       icon: BookOpen },
+    { label: 'สมุดรายวัน',                          path: '/assets/journal',        icon: FileText },
+    { label: 'สรุปแยกหมวด',                         path: '/assets/summary-report', icon: BarChart3 },
+    { label: 'ค่าเสื่อม',                           path: '/depreciation',          icon: TrendingDown },
+    { label: 'Audit Log',                            path: '/assets/audit',          icon: History },
+  ],
+};
 
 /* ── SALES — พนักงานขาย (10 เมนู) ──────────────────── */
 
@@ -241,11 +263,7 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'รายจ่าย', path: '/expenses', icon: Receipt },
         { label: 'รายได้อื่น', path: '/other-income', icon: TrendingUp },
         { label: 'กำไร-ขาดทุน', path: '/profit-loss', icon: PieChart },
-        { label: 'สินทรัพย์', path: '/assets', icon: Landmark },
-        { label: 'ทะเบียนสินทรัพย์', path: '/assets/register', icon: BookOpen },
-        { label: 'JV สินทรัพย์', path: '/assets/journal', icon: FileText },
-        { label: 'รายงานสรุป', path: '/assets/summary-report', icon: BarChart3 },
-        { label: 'ค่าเสื่อม', path: '/depreciation', icon: TrendingDown },
+        assetMenuItem,
         { label: 'งวดบัญชี', path: '/accounting/periods', icon: CalendarDays },
       ],
     },
@@ -293,11 +311,7 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
         { label: 'กำไร-ขาดทุน', path: '/profit-loss', icon: PieChart },
         { label: 'ภาษี', path: '/tax-reports', icon: Calculator },
         { label: 'รายงาน', path: '/reports', icon: BarChart3 },
-        { label: 'สินทรัพย์', path: '/assets', icon: Landmark },
-        { label: 'ทะเบียนสินทรัพย์', path: '/assets/register', icon: BookOpen },
-        { label: 'JV สินทรัพย์', path: '/assets/journal', icon: FileText },
-        { label: 'รายงานสรุป', path: '/assets/summary-report', icon: BarChart3 },
-        { label: 'ค่าเสื่อม', path: '/depreciation', icon: TrendingDown },
+        assetMenuItem,
       ],
     },
     {
@@ -383,11 +397,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'รายงาน', path: '/reports', icon: BarChart3 },
         { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
         { label: 'ภาษี', path: '/tax-reports', icon: Calculator },
-        { label: 'สินทรัพย์', path: '/assets', icon: Landmark },
-        { label: 'ทะเบียนสินทรัพย์', path: '/assets/register', icon: BookOpen },
-        { label: 'JV สินทรัพย์', path: '/assets/journal', icon: FileText },
-        { label: 'รายงานสรุป', path: '/assets/summary-report', icon: BarChart3 },
-        { label: 'ค่าเสื่อม', path: '/depreciation', icon: TrendingDown },
+        assetMenuItem,
         { label: 'ปิดบัญชีรายเดือน', path: '/monthly-close', icon: CalendarDays },
         { label: 'งวดบัญชี', path: '/accounting/periods', icon: CalendarDays },
         { label: 'ชำระเงินระหว่างบริษัท', path: '/accounting/intercompany', icon: ClipboardList },

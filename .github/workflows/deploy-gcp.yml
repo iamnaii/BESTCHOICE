@@ -94,6 +94,9 @@ jobs:
         run: npm run build --workspace=apps/web
         env:
           VITE_API_URL: http://localhost:3000/api
+          # Surface short commit SHA so the version badge can show it next
+          # to the CalVer (e.g. "v26.5.1·a1b2c3d"). vite.config.ts trims to 7 chars.
+          GIT_COMMIT: ${{ github.sha }}
 
       # E2E tests run in separate workflow (e2e-tests.yml) — skip here for faster deploy
       # - name: Install Playwright Browsers
@@ -327,6 +330,9 @@ jobs:
         env:
           VITE_API_URL: https://api.bestchoicephone.app/api
           VITE_LIFF_ID: 2009442540-d9XnzWwl
+          # Surface short commit SHA so the version badge can show it next
+          # to the CalVer (e.g. "v26.5.1·a1b2c3d"). vite.config.ts trims to 7 chars.
+          GIT_COMMIT: ${{ github.sha }}
 
       - name: Build customer shop (apps/web-shop → hosting:shop)
         run: npm run build --workspace=apps/web-shop

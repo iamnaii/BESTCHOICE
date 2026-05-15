@@ -35,6 +35,7 @@ import { getMenuConfig } from '@/config/menu';
 import type { MenuSection, MenuBadgeKey } from '@/config/menu';
 import { useCollectionsFlag } from '@/pages/CollectionsPage/hooks/useCollectionsFlag';
 import { useDraftAssetCount } from '@/hooks/useDraftAssetCount';
+import { VersionBadge } from './VersionBadge';
 
 /* ── NavBadge — dynamic count badge for sidebar items ── */
 function NavBadge({ badgeKey }: { badgeKey: MenuBadgeKey }) {
@@ -444,6 +445,7 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
         >
           <ChevronsLeft className="size-4" />
         </button>
+        <VersionBadge />
         <button
           onClick={logout}
           className="flex items-center justify-center size-8 rounded-lg text-muted-foreground/70 hover:text-destructive hover:bg-destructive/10 dark:text-muted-foreground/85 transition-all duration-200"
@@ -564,7 +566,8 @@ function MobileSidebarContent() {
       </ScrollArea>
 
       {/* Footer (logout) */}
-      <div className="px-4 py-3 border-t border-sidebar-border shrink-0 flex justify-end">
+      <div className="px-4 py-3 border-t border-sidebar-border shrink-0 flex items-center justify-between">
+        <VersionBadge />
         <button
           onClick={logout}
           className="flex items-center justify-center size-8 rounded-lg text-muted-foreground/70 hover:text-destructive hover:bg-destructive/10 dark:text-muted-foreground/85 transition-all duration-200"

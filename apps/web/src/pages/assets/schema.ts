@@ -38,6 +38,13 @@ export const assetEntrySchema = z
     invoiceDate: z.string().optional(),
     supplierName: z.string().optional(),
     supplierTaxId: z.string().optional(),
+    // P6: optional FK to Supplier master + partial-payment amount.
+    vendorId: z.string().uuid().optional(),
+    vendorAmountPaid: z.coerce
+      .number()
+      .nonnegative('จำนวนเงินที่จ่ายต้องไม่เป็นค่าลบ')
+      .max(99999999.99, 'จำนวนเงินที่จ่ายเกินขีดจำกัด')
+      .optional(),
     invoiceNo: z.string().optional(),
     taxInvoiceNo: z.string().optional(),
     paymentMethod: z.enum(['CASH', 'BANK_TRANSFER', 'QR_EWALLET']).optional(),
@@ -46,6 +53,19 @@ export const assetEntrySchema = z
     // Section 5 — approval / note
     approverId: z.string().optional(),
     note: z.string().optional(),
+    // PR 2a Task 6 (P7) — Permission settings (UI-only metadata; API enforcement
+    // deferred). Replaces the single-approver dropdown. Backend backfills from
+    // legacy `approverId` for callers that haven't migrated.
+    permissionConfig: z
+      .array(
+        z.object({
+          userId: z.string().uuid(),
+          canView: z.boolean(),
+          canEdit: z.boolean(),
+          canPost: z.boolean(),
+        }),
+      )
+      .default([]),
   })
   .refine((data) => !data.hasVat || !!data.vatAccount, {
     message: 'กรุณาเลือกบัญชี VAT',

@@ -1,9 +1,9 @@
 // Asset module — Phase 1 list page (Asset Acquisition v3 design)
-// Tabs: เอกสาร / รายงาน / ค่าเสื่อม / ปิดงบ / Audit
-// Stats: DRAFT, POSTED, REVERSED, TOTAL COST + Register/Journal nav cards.
+// List page with stat cards + filter + table (no tab bar — accountant directive per PDF P4).
+// Stats: ทั้งหมด / รอดำเนินการ / ลงบัญชี / ยกเลิก (P3 of PR 2a).
 
 import { useState, useMemo, type ReactNode } from 'react';
-import { useNavigate, useSearchParams, NavLink } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -16,10 +16,7 @@ import {
   FileEdit,
   CheckCircle2,
   RotateCcw,
-  Gem,
-  BookOpen,
-  ClipboardList,
-  ChevronRight,
+  Files,
   Inbox,
 } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
@@ -138,7 +135,18 @@ export default function AssetsListPage() {
   const statCards: StatCardConfig[] = useMemo(
     () => [
       {
-        label: 'DRAFT',
+        label: 'ทั้งหมด',
+        caption: 'เอกสารทั้งหมด',
+        value:
+          Number(summary?.draft ?? 0) +
+          Number(summary?.posted ?? 0) +
+          Number(summary?.reversed ?? 0),
+        decimals: 0,
+        icon: Files,
+        tone: 'info',
+      },
+      {
+        label: 'รอดำเนินการ',
         caption: 'ฉบับร่าง',
         value: Number(summary?.draft ?? 0),
         decimals: 0,
@@ -146,7 +154,7 @@ export default function AssetsListPage() {
         tone: 'muted',
       },
       {
-        label: 'POSTED',
+        label: 'ลงบัญชี',
         caption: 'บันทึกแล้ว',
         value: Number(summary?.posted ?? 0),
         decimals: 0,
@@ -154,20 +162,12 @@ export default function AssetsListPage() {
         tone: 'success',
       },
       {
-        label: 'REVERSED',
+        label: 'ยกเลิก',
         caption: 'กลับรายการ',
         value: Number(summary?.reversed ?? 0),
         decimals: 0,
         icon: RotateCcw,
         tone: 'warning',
-      },
-      {
-        label: 'TOTAL COST',
-        caption: 'ราคาทุนรวม',
-        value: Number(summary?.totalPurchaseCost ?? 0),
-        decimals: 2,
-        icon: Gem,
-        tone: 'info',
       },
     ],
     [summary],
@@ -305,8 +305,8 @@ export default function AssetsListPage() {
         }
       />
 
-      {/* Stat row: 4 status counts + 2 navigation cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      {/* Stat row: 4 Thai-labeled status counts (P3 of PR 2a) */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {statCards.map((card) => {
           const Icon = card.icon;
           return (
@@ -338,46 +338,6 @@ export default function AssetsListPage() {
             </Card>
           );
         })}
-
-        {/* Register nav card */}
-        <NavLink to="/assets/register" className="block">
-          <Card className="h-full rounded-xl border border-border/60 bg-card shadow-sm transition-colors hover:border-primary/40 hover:bg-accent/40">
-            <CardContent className="flex h-full flex-col p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="flex items-center justify-center size-7 rounded-md bg-primary/10 text-primary">
-                  <BookOpen className="size-4" />
-                </div>
-                <span className="text-[11px] font-semibold tracking-wider text-muted-foreground">
-                  REGISTER
-                </span>
-              </div>
-              <div className="mt-auto flex items-center justify-between">
-                <div className="text-sm font-medium text-foreground">ทะเบียน + NBV</div>
-                <ChevronRight className="size-4 text-muted-foreground" />
-              </div>
-            </CardContent>
-          </Card>
-        </NavLink>
-
-        {/* Journal nav card */}
-        <NavLink to="/assets/journal" className="block">
-          <Card className="h-full rounded-xl border border-border/60 bg-card shadow-sm transition-colors hover:border-primary/40 hover:bg-accent/40">
-            <CardContent className="flex h-full flex-col p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="flex items-center justify-center size-7 rounded-md bg-warning/10 text-warning">
-                  <ClipboardList className="size-4" />
-                </div>
-                <span className="text-[11px] font-semibold tracking-wider text-muted-foreground">
-                  JOURNAL
-                </span>
-              </div>
-              <div className="mt-auto flex items-center justify-between">
-                <div className="text-sm font-medium text-foreground">สมุดรายวัน</div>
-                <ChevronRight className="size-4 text-muted-foreground" />
-              </div>
-            </CardContent>
-          </Card>
-        </NavLink>
       </div>
 
       {/* Filters */}

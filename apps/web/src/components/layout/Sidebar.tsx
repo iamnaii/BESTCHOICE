@@ -32,8 +32,21 @@ import {
 } from '@/components/ui/popover';
 import { useLayout } from './LayoutContext';
 import { getMenuConfig } from '@/config/menu';
-import type { MenuSection } from '@/config/menu';
+import type { MenuSection, MenuBadgeKey } from '@/config/menu';
 import { useCollectionsFlag } from '@/pages/CollectionsPage/hooks/useCollectionsFlag';
+import { useDraftAssetCount } from '@/hooks/useDraftAssetCount';
+
+/* ── NavBadge — dynamic count badge for sidebar items ── */
+function NavBadge({ badgeKey }: { badgeKey: MenuBadgeKey }) {
+  const draftCount = useDraftAssetCount(badgeKey === 'asset-draft-count');
+  if (badgeKey !== 'asset-draft-count') return null;
+  if (!draftCount || draftCount === 0) return null;
+  return (
+    <span className="ml-auto inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[11px] font-medium bg-primary/15 text-primary">
+      {draftCount}
+    </span>
+  );
+}
 
 /* ── Role label map ─────────────────────────────── */
 const roleBadgeMap: Record<string, { label: string; cls: string }> = {
@@ -101,7 +114,12 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
         (item) =>
           item.path === pathname ||
           (item.path.length > 1 && pathname.startsWith(item.path + '/')) ||
-          pathname === item.path,
+          pathname === item.path ||
+          (item.children ?? []).some(
+            (child) =>
+              child.path === pathname ||
+              (child.path.length > 1 && pathname.startsWith(child.path + '/')),
+          ),
       ),
     [pathname],
   );
@@ -196,30 +214,65 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
                   </span>
                 </div>
                 <div className="h-px bg-border/60 mb-1.5 mx-1" />
-                {section.items.map((item) => (
-                  <Link
-                    key={item.path}
-                    to={item.path}
-                    onClick={() => setOpenPopover(null)}
-                    className={cn(
-                      'flex items-center gap-2.5 px-2.5 py-[7px] rounded-lg text-[13px] font-medium transition-colors duration-150',
-                      isItemActive(item.path)
-                        ? 'bg-primary/10 text-primary dark:bg-primary/20'
-                        : 'text-foreground/80 hover:text-primary hover:bg-primary/5 dark:hover:bg-primary/10',
-                    )}
-                  >
-                    <item.icon
+                {section.items.map((item) =>
+                  item.children && item.children.length > 0 ? (
+                    <div key={item.path}>
+                      <div className="flex items-center gap-2 px-2.5 pt-2 pb-1">
+                        <item.icon className="size-3.5 text-muted-foreground opacity-60" />
+                        <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+                          {item.label}
+                        </span>
+                      </div>
+                      {item.children.map((child) => (
+                        <Link
+                          key={child.path}
+                          to={child.path}
+                          onClick={() => setOpenPopover(null)}
+                          className={cn(
+                            'flex items-center gap-2.5 pl-6 pr-2.5 py-[7px] rounded-lg text-[13px] font-medium transition-colors duration-150',
+                            isItemActive(child.path)
+                              ? 'bg-primary/10 text-primary dark:bg-primary/20'
+                              : 'text-foreground/80 hover:text-primary hover:bg-primary/5 dark:hover:bg-primary/10',
+                          )}
+                        >
+                          <child.icon
+                            className={cn(
+                              'size-4 shrink-0',
+                              isItemActive(child.path) ? 'opacity-100' : 'opacity-70',
+                            )}
+                          />
+                          <span>{child.label}</span>
+                          {isItemActive(child.path) && (
+                            <ChevronRight className="size-3 ml-auto opacity-60" />
+                          )}
+                        </Link>
+                      ))}
+                    </div>
+                  ) : (
+                    <Link
+                      key={item.path}
+                      to={item.path}
+                      onClick={() => setOpenPopover(null)}
                       className={cn(
-                        'size-4 shrink-0',
-                        isItemActive(item.path) ? 'opacity-100' : 'opacity-70',
+                        'flex items-center gap-2.5 px-2.5 py-[7px] rounded-lg text-[13px] font-medium transition-colors duration-150',
+                        isItemActive(item.path)
+                          ? 'bg-primary/10 text-primary dark:bg-primary/20'
+                          : 'text-foreground/80 hover:text-primary hover:bg-primary/5 dark:hover:bg-primary/10',
                       )}
-                    />
-                    <span>{item.label}</span>
-                    {isItemActive(item.path) && (
-                      <ChevronRight className="size-3 ml-auto opacity-60" />
-                    )}
-                  </Link>
-                ))}
+                    >
+                      <item.icon
+                        className={cn(
+                          'size-4 shrink-0',
+                          isItemActive(item.path) ? 'opacity-100' : 'opacity-70',
+                        )}
+                      />
+                      <span>{item.label}</span>
+                      {isItemActive(item.path) && (
+                        <ChevronRight className="size-3 ml-auto opacity-60" />
+                      )}
+                    </Link>
+                  )
+                )}
               </PopoverContent>
             </Popover>
           ))}
@@ -342,17 +395,38 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
                 <span data-slot="accordion-menu-title">{section.label}</span>
               </AccordionMenuSubTrigger>
               <AccordionMenuSubContent parentValue={section.key} type="single" collapsible>
-                {section.items.map((item) => (
-                  <AccordionMenuItem key={item.path} value={item.path} className="text-[15px]">
-                    <Link to={item.path} className="flex items-center gap-2.5 w-full">
-                      <item.icon
-                        data-slot="accordion-menu-icon"
-                        className="size-[15px] shrink-0 opacity-70"
-                      />
-                      <span data-slot="accordion-menu-title">{item.label}</span>
-                    </Link>
-                  </AccordionMenuItem>
-                ))}
+                {section.items.map((item) =>
+                  item.children && item.children.length > 0 ? (
+                    <AccordionMenuSub key={item.path} value={item.path} data-testid={`nav-${item.path}`}>
+                      <AccordionMenuSubTrigger>
+                        <item.icon data-slot="accordion-menu-icon" className="size-[15px] shrink-0 opacity-70" />
+                        <span data-slot="accordion-menu-title">{item.label}</span>
+                        {item.badgeKey && <NavBadge badgeKey={item.badgeKey} />}
+                      </AccordionMenuSubTrigger>
+                      <AccordionMenuSubContent parentValue={item.path} type="single" collapsible>
+                        {item.children.map((child) => (
+                          <AccordionMenuItem key={child.path} value={child.path} className="text-[15px]">
+                            <Link to={child.path} className="flex items-center gap-2.5 w-full">
+                              <child.icon data-slot="accordion-menu-icon" className="size-[15px] shrink-0 opacity-70" />
+                              <span data-slot="accordion-menu-title">{child.label}</span>
+                            </Link>
+                          </AccordionMenuItem>
+                        ))}
+                      </AccordionMenuSubContent>
+                    </AccordionMenuSub>
+                  ) : (
+                    <AccordionMenuItem key={item.path} value={item.path} className="text-[15px]">
+                      <Link to={item.path} className="flex items-center gap-2.5 w-full">
+                        <item.icon
+                          data-slot="accordion-menu-icon"
+                          className="size-[15px] shrink-0 opacity-70"
+                        />
+                        <span data-slot="accordion-menu-title">{item.label}</span>
+                        {item.badgeKey && <NavBadge badgeKey={item.badgeKey} />}
+                      </Link>
+                    </AccordionMenuItem>
+                  )
+                )}
               </AccordionMenuSubContent>
             </AccordionMenuSub>
           ))}
@@ -447,17 +521,38 @@ function MobileSidebarContent() {
                 <span data-slot="accordion-menu-title">{section.label}</span>
               </AccordionMenuSubTrigger>
               <AccordionMenuSubContent parentValue={section.key} type="single" collapsible>
-                {section.items.map((item) => (
-                  <AccordionMenuItem key={item.path} value={item.path} className="text-[15px]">
-                    <Link to={item.path} className="flex items-center gap-2.5 w-full">
-                      <item.icon
-                        data-slot="accordion-menu-icon"
-                        className="size-[15px] shrink-0 opacity-70"
-                      />
-                      <span data-slot="accordion-menu-title">{item.label}</span>
-                    </Link>
-                  </AccordionMenuItem>
-                ))}
+                {section.items.map((item) =>
+                  item.children && item.children.length > 0 ? (
+                    <AccordionMenuSub key={item.path} value={item.path} data-testid={`nav-mobile-${item.path}`}>
+                      <AccordionMenuSubTrigger>
+                        <item.icon data-slot="accordion-menu-icon" className="size-[15px] shrink-0 opacity-70" />
+                        <span data-slot="accordion-menu-title">{item.label}</span>
+                        {item.badgeKey && <NavBadge badgeKey={item.badgeKey} />}
+                      </AccordionMenuSubTrigger>
+                      <AccordionMenuSubContent parentValue={item.path} type="single" collapsible>
+                        {item.children.map((child) => (
+                          <AccordionMenuItem key={child.path} value={child.path} className="text-[15px]">
+                            <Link to={child.path} className="flex items-center gap-2.5 w-full">
+                              <child.icon data-slot="accordion-menu-icon" className="size-[15px] shrink-0 opacity-70" />
+                              <span data-slot="accordion-menu-title">{child.label}</span>
+                            </Link>
+                          </AccordionMenuItem>
+                        ))}
+                      </AccordionMenuSubContent>
+                    </AccordionMenuSub>
+                  ) : (
+                    <AccordionMenuItem key={item.path} value={item.path} className="text-[15px]">
+                      <Link to={item.path} className="flex items-center gap-2.5 w-full">
+                        <item.icon
+                          data-slot="accordion-menu-icon"
+                          className="size-[15px] shrink-0 opacity-70"
+                        />
+                        <span data-slot="accordion-menu-title">{item.label}</span>
+                        {item.badgeKey && <NavBadge badgeKey={item.badgeKey} />}
+                      </Link>
+                    </AccordionMenuItem>
+                  )
+                )}
               </AccordionMenuSubContent>
             </AccordionMenuSub>
           ))}

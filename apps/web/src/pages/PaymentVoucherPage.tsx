@@ -55,6 +55,18 @@ interface JournalLine {
 }
 
 /**
+ * D1.2.5.2 — adjustment account codes that the OWNER may want to suppress
+ * from the printed voucher (kept on-screen for the JE preview):
+ *   - 52-1104 ส่วนลดเศษสตางค์ (≤1฿ rounding tolerance, underpay)
+ *   - 53-1503 กำไร/ขาดทุนจากการปัดเศษ (overpay rounding)
+ * Exported for unit testing.
+ */
+export const ADJUSTMENT_ACCOUNT_CODES = ['52-1104', '53-1503'] as const;
+export function isAdjustmentLine(line: { accountCode: string }): boolean {
+  return (ADJUSTMENT_ACCOUNT_CODES as readonly string[]).includes(line.accountCode);
+}
+
+/**
  * C2.7 — Payroll slip line with per-employee custom income/deduction.
  * Optional fields populated only for PAYROLL docs.
  */
@@ -267,6 +279,7 @@ function PettyCashSheet({
   const companyAddress = useCompanyAddress();
   const companyTaxId = useCompanyTaxId();
   const companyLogoUrl = useCompanyLogoUrl();
+  const { voucherIncludeAdjustment } = useUiFlags();
   const lines = doc.expenseDetail?.lines ?? [];
   // Distinct supplier count for the badge — useful auditing surface since
   // petty cash is the only doc type that mixes vendors per document.
@@ -382,18 +395,24 @@ function PettyCashSheet({
               </tr>
             </thead>
             <tbody>
-              {doc.journalLines.map((l, i) => (
-                <tr key={i}>
-                  <td className="border border-border p-2 font-mono">{l.accountCode}</td>
-                  <td className="border border-border p-2">{l.accountName}</td>
-                  <td className="border border-border p-2 text-right tabular-nums">
-                    {parseFloat(l.debit) > 0 ? formatNumberDecimal(l.debit) : '—'}
-                  </td>
-                  <td className="border border-border p-2 text-right tabular-nums">
-                    {parseFloat(l.credit) > 0 ? formatNumberDecimal(l.credit) : '—'}
-                  </td>
-                </tr>
-              ))}
+              {doc.journalLines.map((l, i) => {
+                // D1.2.5.2 — when voucherIncludeAdjustment is false, keep the
+                // adjustment rows on screen (for the JE preview) but hide
+                // them on the printed paper.
+                const hideOnPrint = !voucherIncludeAdjustment && isAdjustmentLine(l);
+                return (
+                  <tr key={i} className={hideOnPrint ? 'print:hidden' : undefined}>
+                    <td className="border border-border p-2 font-mono">{l.accountCode}</td>
+                    <td className="border border-border p-2">{l.accountName}</td>
+                    <td className="border border-border p-2 text-right tabular-nums">
+                      {parseFloat(l.debit) > 0 ? formatNumberDecimal(l.debit) : '—'}
+                    </td>
+                    <td className="border border-border p-2 text-right tabular-nums">
+                      {parseFloat(l.credit) > 0 ? formatNumberDecimal(l.credit) : '—'}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </section>
@@ -647,7 +666,7 @@ function Sheet({
   const companyAddress = useCompanyAddress();
   const companyTaxId = useCompanyTaxId();
   const companyLogoUrl = useCompanyLogoUrl();
-  const { voucherShowQrCode } = useUiFlags();
+  const { voucherShowQrCode, voucherIncludeAdjustment } = useUiFlags();
   const lines = doc.expenseDetail?.lines ?? [];
   // D1.2.2.7 — verification QR linking to /verify/<doc.number>. Default
   // on; OWNER can disable via SystemConfig `voucher_show_qr_code = false`.
@@ -768,18 +787,24 @@ function Sheet({
               </tr>
             </thead>
             <tbody>
-              {doc.journalLines.map((l, i) => (
-                <tr key={i}>
-                  <td className="border border-border p-2 font-mono">{l.accountCode}</td>
-                  <td className="border border-border p-2">{l.accountName}</td>
-                  <td className="border border-border p-2 text-right tabular-nums">
-                    {parseFloat(l.debit) > 0 ? formatNumberDecimal(l.debit) : '—'}
-                  </td>
-                  <td className="border border-border p-2 text-right tabular-nums">
-                    {parseFloat(l.credit) > 0 ? formatNumberDecimal(l.credit) : '—'}
-                  </td>
-                </tr>
-              ))}
+              {doc.journalLines.map((l, i) => {
+                // D1.2.5.2 — when voucherIncludeAdjustment is false, keep the
+                // adjustment rows on screen (for the JE preview) but hide
+                // them on the printed paper via `print:hidden`.
+                const hideOnPrint = !voucherIncludeAdjustment && isAdjustmentLine(l);
+                return (
+                  <tr key={i} className={hideOnPrint ? 'print:hidden' : undefined}>
+                    <td className="border border-border p-2 font-mono">{l.accountCode}</td>
+                    <td className="border border-border p-2">{l.accountName}</td>
+                    <td className="border border-border p-2 text-right tabular-nums">
+                      {parseFloat(l.debit) > 0 ? formatNumberDecimal(l.debit) : '—'}
+                    </td>
+                    <td className="border border-border p-2 text-right tabular-nums">
+                      {parseFloat(l.credit) > 0 ? formatNumberDecimal(l.credit) : '—'}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </section>

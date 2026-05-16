@@ -175,6 +175,14 @@ export class SettingsService {
      * accessibility readers via the lang attr.
      */
     language: 'th' | 'en';
+    /**
+     * D1.2.5.2 — include the rounding-adjustment / overpay-adjustment journal
+     * lines (52-1104, 53-1503) in the **printable** voucher layout. Default
+     * true. When false the rows are still rendered on screen so the JE
+     * preview stays complete, but the print stylesheet hides them so the
+     * physical paper voucher doesn't show the adjustment cents.
+     */
+    voucherIncludeAdjustment: boolean;
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -214,6 +222,11 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.2.5.2 — include adjustment rows (52-1104 / 53-1503) on printed voucher.
+    const voucherIncludeAdjustment = await this.readBoolean(
+      'voucher_include_adjustment',
+      true,
+    );
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -225,6 +238,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      voucherIncludeAdjustment,
     };
   }
 

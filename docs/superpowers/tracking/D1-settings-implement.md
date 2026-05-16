@@ -65,7 +65,7 @@ Sub-prioritization within expanded D1 scope:
 | D1.2.4.4 | `variables_support` formalization | P1 | ⬜ | — | Define `{{var}}` interpolation syntax |
 | D1.2.4.5 | Template `categories` table | P1 | ⬜ | — | New TemplateCategory model |
 | D1.2.5.1 | `voucher_print_mode_default` | P1 | ⬜ | — | single vs multi page mode |
-| D1.2.5.2 | `voucher_include_adjustment` | P1 | ⬜ | — | Render adjustments in print template |
+| D1.2.5.2 | `voucher_include_adjustment` | P1 | ✅ | this PR | SystemConfig `voucher_include_adjustment` (default true). `getUiFlags()` exposes `voucherIncludeAdjustment`. PaymentVoucherPage's Auto Journal table tags adjustment rows (codes `52-1104` ส่วนลดเศษสตางค์ / `53-1503` กำไรปัดเศษ) with `print:hidden` when flag is false — kept on-screen for the JE preview but hidden on the printed voucher. Applied to both `Sheet` and `PettyCashSheet`. Helper `isAdjustmentLine` exported for testing. 3 new vitest cases. Type-check 0 errors |
 | D1.2.5.3 | `voucher_show_partial_columns` | P1 | ⬜ | — | Partial column display flag |
 | D1.3.3.1 | `export_enabled` flag | P2 | ⬜ | — | Gate Excel/PDF/CSV exports |
 | D1.3.3.2 | `bank_reconciliation` mode | P2 | ⬜ | — | manual vs auto-match flag |

@@ -33,6 +33,12 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /**
+   * D1.2.5.2 — include the adjustment rows (52-1104 rounding, 53-1503 overpay)
+   * in the printable voucher layout. Default true. When false the rows stay
+   * on screen (JE preview) but are hidden by the print stylesheet.
+   */
+  voucherIncludeAdjustment: boolean;
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -53,6 +59,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  voucherIncludeAdjustment: true,
 };
 
 export function useUiFlags(): UiFlags {

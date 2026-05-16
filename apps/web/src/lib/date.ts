@@ -147,8 +147,10 @@ export function computeDefaultTimeRange(
   const lastYear = bkkMonth === 1 ? bkkYear - 1 : bkkYear;
   const lastMonth = bkkMonth === 1 ? 12 : bkkMonth - 1;
   const lastMonthFirst = `${lastYear}-${String(lastMonth).padStart(2, '0')}-01`;
-  // Last day of "last month" = day 0 of current month in BKK-local terms.
-  // Build a UTC date for the 0th day → safely represents the last day.
+  // Last day of "last month" via the JS Date "day = 0" idiom (= last day of
+  // the previous month). The day-count of any calendar month is timezone-
+  // invariant, so building the date in UTC is safe even though the inputs
+  // came from a BKK-local string.
   const lastDay = new Date(Date.UTC(bkkYear, bkkMonth - 1, 0)).getUTCDate();
   const lastMonthLast = `${lastYear}-${String(lastMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
   return { startDate: lastMonthFirst, endDate: lastMonthLast };

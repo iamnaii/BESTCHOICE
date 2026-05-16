@@ -1,18 +1,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Download, Printer } from 'lucide-react';
+import { ArrowLeft, Download, Printer, Info } from 'lucide-react';
 import { otherIncomeApi } from '@/lib/otherIncome';
 import QueryBoundary from '@/components/QueryBoundary';
 import { DateRangeChips } from './components/DateRangeChips';
 import { useUiFlags } from '@/hooks/useUiFlags';
 import { computeDefaultTimeRange } from '@/lib/date';
-
-// "Today" in Asia/Bangkok — guards against UTC server returning yesterday
-// between 00:00–07:00 BKK time. Mirrors `todayBangkok()` in OtherIncomeEntryPage.
-const todayLocal = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' });
-
-const firstOfThisMonth = () => `${todayLocal().slice(0, 7)}-01`;
 
 function fmt(v: string | number | undefined | null) {
   if (v === undefined || v === null) return '—';
@@ -53,18 +47,15 @@ function SummaryBox({ label, value, colorClass, highlight }: SummaryBoxProps) {
 export default function OtherIncomeDailySheetPage() {
   const navigate = useNavigate();
   // D1.2.3.1 — initial range driven by OWNER-configured `default_time_range`.
-  // Falls back to firstOfThisMonth/todayLocal helpers when preset is 'this_month'
-  // so behavior is unchanged for the default case. 'all' is NOT supported on
-  // this page (daily-sheet query requires both dates) — coerce to 'this_month'.
+  // Daily-sheet requires both dates (enabled: Boolean(startDate)&&Boolean(endDate))
+  // so 'all' is coerced to 'this_month' and a banner explains the coercion to
+  // the OWNER when their global pick can't be honored here.
   const { defaultTimeRange } = useUiFlags();
-  const initialPreset =
-    defaultTimeRange === 'all' ? 'this_month' : defaultTimeRange;
-  const [startDate, setStartDate] = useState<string>(
-    () => computeDefaultTimeRange(initialPreset).startDate || firstOfThisMonth(),
-  );
-  const [endDate, setEndDate] = useState<string>(
-    () => computeDefaultTimeRange(initialPreset).endDate || todayLocal(),
-  );
+  const isAllCoerced = defaultTimeRange === 'all';
+  const initialPreset = isAllCoerced ? 'this_month' : defaultTimeRange;
+  const initial = computeDefaultTimeRange(initialPreset);
+  const [startDate, setStartDate] = useState<string>(initial.startDate);
+  const [endDate, setEndDate] = useState<string>(initial.endDate);
 
   const sheet = useQuery({
     queryKey: ['other-income-daily-sheet', startDate, endDate],
@@ -140,6 +131,18 @@ export default function OtherIncomeDailySheetPage() {
             </button>
           </div>
         </div>
+        {/* D1.2.3.1 — when OWNER sets default_time_range='all' globally,
+            DailySheet can't honor it (requires both dates). Surface the
+            coercion so the OWNER knows their pick was overridden. */}
+        {isAllCoerced && (
+          <div className="flex items-center gap-2 px-3 py-2 text-xs bg-warning/10 border border-warning/30 text-foreground rounded-md">
+            <Info size={14} className="text-warning shrink-0" />
+            <span>
+              ค่าเริ่มต้น &ldquo;ทั้งหมด&rdquo; ใช้กับหน้านี้ไม่ได้ — แสดงเป็น
+              &ldquo;เดือนนี้&rdquo; แทน
+            </span>
+          </div>
+        )}
         <DateRangeChips
           startDate={startDate}
           endDate={endDate}

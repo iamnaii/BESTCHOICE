@@ -56,7 +56,9 @@ describe('Vendor Settlement lifecycle (integration)', () => {
     const settlement = new VendorSettlementTemplate(journal, prisma as never);
     return new ExpenseDocumentsService(
       prisma as never,
-      new DocNumberService(),
+      // D1.1.2.3 — DocNumberService now takes SettingsService; integration
+      // tests pass a stub that returns null (→ default daily cycle).
+      new DocNumberService({ getKey: async () => null } as never),
       new StatusTransitionService(),
       sameDay,
       accrual,

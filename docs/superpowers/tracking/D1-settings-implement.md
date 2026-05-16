@@ -101,7 +101,7 @@ Sub-prioritization within expanded D1 scope:
 | D1.1.1.7 | Permission control (admin only) | P0 | ⬜ | Q7 | |
 | D1.1.2.1 | `doc_prefix_per_type` | P0 | ⬜ | Q3 | Rename or accept current? |
 | D1.1.2.2 | `doc_number_format` | P0 | ⬜ | Q3 | Same |
-| D1.1.2.3 | `reset_cycle` | P0 | ⬜ | Q3 | |
+| D1.1.2.3 | `reset_cycle` | P0 | ✅ | this PR | SystemConfig key `doc_number_reset_cycle` whitelisted to `daily` (default) / `monthly` / `yearly`. `DocNumberService` advisory-lock key now hashes `(prefix, cycle, periodStart)` so concurrent writes within the same period are serialized. Sequence lookup window broadens accordingly: daily → `startsWith: 'EX-20260510'`, monthly → `startsWith: 'EX-202605'`, yearly → `startsWith: 'EX-2026'`. Emitted number always carries full YYYYMMDD (no display change). New sibling helpers `getBkkMonthBounds()` + `getBkkYearBounds()` mirror existing day-bounds style. 11 new vitest cases (3 cycles + bad fallback + throw fallback + 2 boundary cases + 4 helper cases). Type-check 0 errors. 18/18 tests pass |
 | D1.1.2.4 | `sequence_table` | P0 | ⬜ | Q3 | |
 | D1.1.2.5 | Admin reset capability | P0 | ⬜ | Q3 | |
 | D1.1.3.1 | `vat_rate` (Q6 P0 bug fix first) | P0 | ⬜ | Q6 | **VAT_RATE/vat_pct orphan-key fix** |

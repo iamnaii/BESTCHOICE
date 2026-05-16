@@ -85,7 +85,7 @@ export function calcPostponeFee(monthlyPayment: Decimal, daysToShift: number): D
  *
  * Case 2 — Underpay (diff < 0, abs(diff) ≤ 1฿, requires approverId):
  *   Dr depositAccountCode   amountReceived
- *   Dr 52-1104 ส่วนลดเศษสตางค์  abs(diff)
+ *   Dr <adj_underpay role> ส่วนลดเศษสตางค์  abs(diff)   // 52-1104 by default
  *     Cr 11-2103 ลูกหนี้ค้างชำระ  installmentTotal
  *
  * Reject: abs(diff) > 1.00 → BadRequestException 'exceeds tolerance'

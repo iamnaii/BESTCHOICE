@@ -106,9 +106,11 @@ describe('PaymentsService — Financial Integration', () => {
         {
           provide: AccountRoleService,
           useValue: {
-            code: jest.fn((role: string) =>
-              role === 'adj_underpay' ? '52-1104' : role === 'adj_overpay' ? '53-1503' : role,
-            ),
+            code: jest.fn((role: string) => {
+              if (role === 'adj_underpay') return '52-1104';
+              if (role === 'adj_overpay') return '53-1503';
+              throw new Error(`AccountRoleService stub: unmapped role "${role}"`);
+            }),
           },
         },
       ],

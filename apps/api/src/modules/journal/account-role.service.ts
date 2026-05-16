@@ -1,5 +1,6 @@
 import { Injectable, OnModuleInit, Logger, BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import * as Sentry from '@sentry/node';
 import { PrismaService } from '../../prisma/prisma.service';
 
 /**
@@ -31,6 +32,10 @@ export class AccountRoleService implements OnModuleInit {
     'sso_employer',
     'payroll_expense',
     'payroll_sso_expense',
+    // D1.1.6.1 — rounding-tolerance adjustment roles. Required so a missing/
+    // deactivated row fails at boot instead of throwing per-payment.
+    'adj_underpay',
+    'adj_overpay',
   ];
 
   constructor(private readonly prisma: PrismaService) {}
@@ -51,6 +56,14 @@ export class AccountRoleService implements OnModuleInit {
   code(role: string): string {
     const accountCode = this.cache.get(role);
     if (!accountCode) {
+      const knownRoles = [...this.cache.keys()].sort();
+      Sentry.captureException(new Error(`AccountRoleService cache miss: ${role}`), {
+        extra: { role, knownRoles, cacheSize: this.cache.size },
+        tags: { component: 'AccountRoleService' },
+      });
+      this.logger.warn(
+        `[Phase1] AccountRoleService: MISS role=${role} (known: ${knownRoles.join(',')})`,
+      );
       throw new BadRequestException(
         `AccountRoleService: role "${role}" not found in account_role_map ` +
           `(or not active). Check admin → account roles.`,
@@ -70,7 +83,10 @@ export class AccountRoleService implements OnModuleInit {
   > {
     const rows = await this.prisma.accountRoleMap.findMany({
       where: { isActive: true },
-      orderBy: [{ role: 'asc' }, { priority: 'asc' }],
+      // Deterministic ordering: role → priority → accountCode (final tiebreaker
+      // so two same-priority rows for the same role resolve identically across
+      // Postgres versions / restarts).
+      orderBy: [{ role: 'asc' }, { priority: 'asc' }, { accountCode: 'asc' }],
       select: { role: true, accountCode: true, priority: true, note: true },
     });
     return rows;
@@ -85,7 +101,10 @@ export class AccountRoleService implements OnModuleInit {
   private async loadCache(): Promise<void> {
     const rows = await this.prisma.accountRoleMap.findMany({
       where: { isActive: true },
-      orderBy: [{ role: 'asc' }, { priority: 'asc' }],
+      // Deterministic ordering: role → priority → accountCode (final tiebreaker
+      // so two same-priority rows for the same role resolve identically across
+      // Postgres versions / restarts).
+      orderBy: [{ role: 'asc' }, { priority: 'asc' }, { accountCode: 'asc' }],
       select: { role: true, accountCode: true },
     });
     const next = new Map<string, string>();

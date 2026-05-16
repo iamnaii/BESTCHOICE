@@ -164,9 +164,12 @@ describe('PaymentsService', () => {
         {
           provide: AccountRoleService,
           useValue: {
-            code: jest.fn((role: string) =>
-              role === 'adj_underpay' ? '52-1104' : role === 'adj_overpay' ? '53-1503' : role,
-            ),
+            // Mirror real AccountRoleService.code() contract: throw on unknown role.
+            code: jest.fn((role: string) => {
+              if (role === 'adj_underpay') return '52-1104';
+              if (role === 'adj_overpay') return '53-1503';
+              throw new Error(`AccountRoleService stub: unmapped role "${role}"`);
+            }),
           },
         },
       ],
@@ -1022,6 +1025,29 @@ describe('PaymentsService', () => {
       });
 
       expect(result.accrualMode).toBe('CONSOLIDATED_BACKFILL');
+    });
+
+    it('D1.1.6.1 — underpay rounding line routes via AccountRoleService (adj_underpay)', async () => {
+      prisma.installmentSchedule.findUnique.mockResolvedValue(mockInstallmentAccrued);
+      prisma.chartOfAccount.findMany.mockResolvedValue([
+        ...mockCoaRows,
+        { code: '52-1104', name: 'ส่วนลดเศษสตางค์' },
+      ]);
+
+      // installmentTotal = 2202.41; pay 2201.50 → diff -0.91 (underpay, within 1฿ tolerance)
+      const result = await service.previewJournal({
+        contractId: 'contract-preview',
+        installmentNo: 2,
+        amountReceived: 2201.50,
+        depositAccountCode: '11-1101',
+      });
+
+      expect(result.isBalanced).toBe(true);
+      // The underpay line uses the code returned by the stubbed AccountRoleService (52-1104).
+      const underpayLine = result.lines.find((l) => l.accountCode === '52-1104');
+      expect(underpayLine).toBeDefined();
+      expect(parseFloat(underpayLine!.debit)).toBeCloseTo(0.91, 2);
+      expect(parseFloat(underpayLine!.credit)).toBeCloseTo(0, 2);
     });
 
     it('blocks PARTIAL when installment is not yet accrued', async () => {

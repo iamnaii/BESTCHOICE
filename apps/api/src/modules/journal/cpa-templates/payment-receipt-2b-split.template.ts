@@ -39,7 +39,7 @@ export interface PaymentReceiptSplitInput {
  *       Cr 53-1503 กำไรปัดเศษ        diff
  *   Underpay (diff < 0, ≤1฿, requires approverId):
  *     Dr depositAccountCode   partialAmount
- *     Dr 52-1104 ส่วนลดเศษสตางค์  abs(diff)
+ *     Dr <adj_underpay role> ส่วนลดเศษสตางค์  abs(diff)   // 52-1104 by default
  *       Cr 11-2103 ลูกหนี้ค้างชำระ  remainingReceivable
  *
  * Reject: abs(diff) > 1.00 → BadRequestException 'exceeds tolerance'

@@ -20,8 +20,8 @@
 | [C2 · Payroll Custom Income/Deduction](C2-payroll-custom.md) | 7 | 7 | 100% | ✅ Done | — | [#871](https://github.com/iamnaii/BESTCHOICE/pull/871) · [#872](https://github.com/iamnaii/BESTCHOICE/pull/872) · this PR (slip PDF) |
 | [C3 · Reverse Dialog + V19](C3-reverse-dialog.md) | 5 | 4 | 80% | ✅ Done | — | [#875](https://github.com/iamnaii/BESTCHOICE/pull/875) · this PR (UI). C3.5 settings → A1 |
 | [C4 · Credit Note 2-Mode](C4-credit-note-2mode.md) | 4 | 4 | 100% | ✅ Done | — | [#877](https://github.com/iamnaii/BESTCHOICE/pull/877) · this PR (UI) |
-| [D1 · Settings Audit Phase 4](D1-settings-implement.md) | ~75 | 0 | 0% | 🟢 In Progress (one PR/item) | [Phase 2 spec](../specs/2026-05-16-a1-phase2-decision-report.md) | (per-item PRs incoming) |
-| **TOTAL** | **~159** | **67** | **~42%** | | | |
+| [D1 · Settings Audit Phase 4](D1-settings-implement.md) | ~75 | 1 | 1% | 🟢 In Progress (one PR/item) | [Phase 2 spec](../specs/2026-05-16-a1-phase2-decision-report.md) | this PR (D1.2.8.2) |
+| **TOTAL** | **~159** | **68** | **~43%** | | | |
 
 ## 🎯 Current Focus
 

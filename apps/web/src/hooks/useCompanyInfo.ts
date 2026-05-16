@@ -56,3 +56,13 @@ export function useCompanyDisplayName(): string {
   if (shop) return shop.nameTh;
   return 'BESTCHOICE FINANCE × SHOP';
 }
+
+/**
+ * D1.2.2.2 — single address string for the voucher sub-header.
+ * Prefers FINANCE (primary entity for accounting docs) then SHOP, then a
+ * legacy placeholder so first-render never prints blank.
+ */
+export function useCompanyAddress(): string {
+  const { shop, finance } = useCompanyInfo();
+  return finance?.address ?? shop?.address ?? 'เลขประจำตัวผู้เสียภาษี · สำนักงานใหญ่';
+}

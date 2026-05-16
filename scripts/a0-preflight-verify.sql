@@ -95,7 +95,7 @@ SELECT
   SUM(jl.debit)                     AS total_depreciation
 FROM journal_entries je
 JOIN journal_lines  jl ON jl.journal_entry_id = je.id
-WHERE je.metadata->>'flow' = 'asset-depreciation'
+WHERE je.metadata->>'flow' = 'depreciation'
   AND jl.account_code     LIKE '53-16%'
   AND jl.debit            > 0
   AND je.posted_at       >= '2026-03-01'

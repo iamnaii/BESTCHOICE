@@ -11,7 +11,7 @@
 | Sub-project | Items | Done | Progress | Status | Spec | Plan |
 |---|---|---|---|---|---|---|
 | [T0 · Tracking System](T0-tracking-system.md) | 5 | 5 | 100% | ✅ Done | [spec](../specs/2026-05-16-bestchoice-expense-v2-tracking-design.md) | [plan](../plans/2026-05-16-bestchoice-expense-v2-tracking.md) |
-| [A0 · Pre-flight Verify](A0-preflight-verify.md) | 3 | 2 | 67% | 🟡 Partial | — | [script](../../../scripts/a0-preflight-verify.sql) — prod-run 2026-05-16; A0.3 needs owner decision |
+| [A0 · Pre-flight Verify](A0-preflight-verify.md) | 3 | 3 | 100% | ✅ Done | — | [script](../../../scripts/a0-preflight-verify.sql) — prod-verified 2026-05-16. A0.3 closed (false alarm from wrong `flow` literal). |
 | [A1 · Settings Audit Phase 1+2](A1-settings-audit.md) | 102 | 0 | 0% | ⬜ Pending | — | — |
 | [B1 · SSO 875 Configurable](B1-sso-875.md) | 6 | 6 | 100% | ✅ Done | — | [#861](https://github.com/iamnaii/BESTCHOICE/pull/861) |
 | [B2 · Settlement Multi-line Adj](B2-settlement-adjustment.md) | 5 | 5 | 100% | ✅ Done | — | [#863](https://github.com/iamnaii/BESTCHOICE/pull/863) + B2.4 follow-up |
@@ -21,12 +21,12 @@
 | [C3 · Reverse Dialog + V19](C3-reverse-dialog.md) | 5 | 0 | 0% | ⬜ Pending | — | — |
 | [C4 · Credit Note 2-Mode](C4-credit-note-2mode.md) | 4 | 0 | 0% | ⬜ Pending | — | — |
 | [D1 · Settings Audit Phase 4](D1-settings-implement.md) | TBD | 0 | 0% | 🔒 Locked (by A1) | — | — |
-| **TOTAL** | **~159** | **46** | **~29%** | | | |
+| **TOTAL** | **~159** | **47** | **~30%** | | | |
 
 ## 🎯 Current Focus
 
 - **Active:** None. C2 shipped end-to-end except C2.7 slip PDF.
-- **Pending owner:** **A0.3 only** — depreciation gap on prod surfaced (zero JEs across all periods; 2 POSTED assets with one showing column-vs-JE anomaly). Needs owner decision on policy + investigation; remediation is `POST /admin/depreciation/run?period=YYYY-MM` once policy + eligible periods are confirmed.
+- **Optional housekeeping:** EQ-002 missing เม.ย. depreciation (~฿287). Not a blocker; owner can run `POST /admin/depreciation/run?period=2026-04` for catch-up at convenience. พ.ค. depreciation will tick automatically on May 31.
 - **Next:** C2 (Payroll Custom Income/Deduction), C3 (Reverse Dialog), or C4 (Credit Note 2-Mode)
 
 ## 📅 Timeline

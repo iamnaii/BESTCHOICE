@@ -90,6 +90,8 @@ describe('ExpenseDocumentsService', () => {
       new LineAggregatorService(),
       { preview: jest.fn() } as never,
       { validateContribution: jest.fn().mockResolvedValue(undefined) } as never,
+      { execute: jest.fn() } as never,
+      { getConfig: jest.fn(), validate: jest.fn() } as never,
     );
   });
 
@@ -873,6 +875,8 @@ describe('ExpenseDocumentsService', () => {
         new LineAggregatorService(),
         { preview: jest.fn() } as never,
         { validateContribution: jest.fn().mockResolvedValue(undefined) } as never,
+        { execute: jest.fn() } as never,
+        { getConfig: jest.fn(), validate: jest.fn() } as never,
       );
       await svc.voidDocument('doc-1', 'user-1');
       expect(journalMock.createAndPost).toHaveBeenCalledTimes(1);
@@ -915,6 +919,8 @@ describe('ExpenseDocumentsService', () => {
         new LineAggregatorService(),
         { preview: jest.fn() } as never,
         { validateContribution: jest.fn().mockResolvedValue(undefined) } as never,
+        { execute: jest.fn() } as never,
+        { getConfig: jest.fn(), validate: jest.fn() } as never,
       );
       await svc.voidDocument('se-1', 'user-1');
       // Both cleared EXs reverted via updateMany with deletedAt:null guard

@@ -11,6 +11,7 @@ import { DocNumberService } from './services/doc-number.service';
 import { StatusTransitionService } from './services/status-transition.service';
 import { LineAggregatorService } from './services/line-aggregator.service';
 import { JePreviewService } from './services/je-preview.service';
+import { PettyCashService } from './services/petty-cash.service';
 import { ExpenseRecurringCron } from './crons/expense-recurring.cron';
 
 @Module({
@@ -23,6 +24,7 @@ import { ExpenseRecurringCron } from './crons/expense-recurring.cron';
     StatusTransitionService,
     LineAggregatorService,
     JePreviewService,
+    PettyCashService,
     ExpenseRecurringCron,
   ],
   exports: [ExpenseDocumentsService, ExpenseTemplatesService],

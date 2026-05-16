@@ -22,6 +22,7 @@ import { ListExpenseDocumentsQueryDto } from './dto/list-query.dto';
 import { CreateCreditNoteDto } from './dto/create-credit-note.dto';
 import { CreatePayrollDto } from './dto/create-payroll.dto';
 import { CreateSettlementDto } from './dto/create-settlement.dto';
+import { CreatePettyCashDto } from './dto/create-petty-cash.dto';
 import { hasCrossBranchAccess } from '../auth/branch-access.util';
 
 @Controller('expense-documents')
@@ -63,6 +64,15 @@ export class ExpenseDocumentsController {
     @CurrentUser() user: { id: string; branchId?: string; role: string },
   ) {
     return this.service.createSettlement(dto, user);
+  }
+
+  @Post('petty-cash')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  createPettyCash(
+    @Body() dto: CreatePettyCashDto,
+    @CurrentUser() user: { id: string; branchId?: string; role: string },
+  ) {
+    return this.service.createPettyCash(dto, user);
   }
 
   @Get()

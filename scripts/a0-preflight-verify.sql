@@ -105,20 +105,25 @@ ORDER BY 1;
 
 \echo
 \echo '— A0.3 context: Active fixed assets eligible for depreciation'
-\echo '— Use this list to estimate expected monthly depreciation if A0.3 above shows gaps.'
-\echo '— monthly_amount = cost_value / useful_life. missed_2_months_estimate = monthly × 2.'
+\echo '— Schema authoritative source: apps/api/prisma/schema.prisma model FixedAsset.'
+\echo '— monthly_depr is persisted on the asset row (computed at POST). accumulated_depr'
+\echo '— shows how much has been booked historically. NBV = purchase_cost − accumulated_depr.'
 
 SELECT
   asset_code,
-  cost_value,
-  useful_life,
-  ROUND(cost_value / useful_life, 2)        AS monthly_amount,
-  ROUND((cost_value / useful_life) * 2, 2)  AS missed_2_months_estimate
+  name,
+  category,
+  purchase_date::date,
+  purchase_cost,
+  residual_value,
+  useful_life_months,
+  monthly_depr,
+  accumulated_depr,
+  net_book_value
 FROM fixed_assets
 WHERE status         = 'POSTED'
-  AND purchase_date  < '2026-03-01'
   AND deleted_at    IS NULL
-  AND disposed_at   IS NULL
+  AND disposal_date IS NULL
 ORDER BY asset_code;
 
 \echo

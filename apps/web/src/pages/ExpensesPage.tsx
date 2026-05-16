@@ -23,7 +23,7 @@ import { ReopenedPeriodBanner } from '@/components/accounting/ReopenedPeriodBann
 interface ExpenseDocument {
   id: string;
   number: string;
-  documentType: 'EXPENSE' | 'CREDIT_NOTE' | 'PAYROLL' | 'VENDOR_SETTLEMENT';
+  documentType: 'EXPENSE' | 'CREDIT_NOTE' | 'PAYROLL' | 'VENDOR_SETTLEMENT' | 'PETTY_CASH_REIMBURSEMENT';
   branchId: string;
   documentDate: string;
   vendorName: string | null;
@@ -68,6 +68,8 @@ function getDocumentType(e: Expense): { label: string; cls: string } {
       return { label: 'เงินเดือน', cls: 'bg-info/10 text-info border-info/20' };
     case 'VENDOR_SETTLEMENT':
       return { label: 'จ่ายเจ้าหนี้', cls: 'bg-muted text-muted-foreground border-border' };
+    case 'PETTY_CASH_REIMBURSEMENT':
+      return { label: 'Petty Cash', cls: 'bg-accent/30 text-foreground border-border' };
     case 'EXPENSE':
     default:
       return e.status === 'ACCRUAL'

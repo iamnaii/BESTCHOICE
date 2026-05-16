@@ -9,7 +9,7 @@
 //     off today still lives in ExpenseFormV4 (one-way: never reverts manual
 //     ACCRUAL).
 
-import { Banknote, FileWarning, Receipt, Users, Wallet, Sparkles } from 'lucide-react';
+import { Banknote, Coins, FileWarning, Receipt, Users, Wallet, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { DocType } from './types';
 
@@ -32,6 +32,7 @@ const TABS: TabDef[] = [
   { type: 'VENDOR_SETTLEMENT', label: 'จ่ายเจ้าหนี้', sub: 'อ้างถึง ACCRUAL', Icon: Wallet },
   { type: 'PAYROLL', label: 'เงินเดือน', sub: 'จ่ายเงินเดือนพนักงาน', Icon: Users },
   { type: 'CREDIT_NOTE', label: 'ใบลดหนี้', sub: 'ผู้ขายคืนเงิน', Icon: Receipt },
+  { type: 'PETTY_CASH_REIMBURSEMENT', label: 'Petty Cash', sub: 'เบิกชดเชยเงินสดย่อย', Icon: Coins },
 ];
 
 export function DocTypePicker({ value, onChange, invoiceDateIsToday }: Props) {
@@ -39,7 +40,7 @@ export function DocTypePicker({ value, onChange, invoiceDateIsToday }: Props) {
 
   return (
     <div className="space-y-2">
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
         {TABS.map(({ type, label, sub, Icon }) => {
           const active = value === type;
           const isRecommended = recommended === type && value !== type;

@@ -1,7 +1,7 @@
 # D1 · Settings Audit Phase 4 (Implement Approved Scope)
 
 **Status:** 🟢 In Progress — owner approved expanded scope 2026-05-16
-**Started:** 2026-05-16  |  **PRs:** #882 · #883 · #884 · this PR (D1.2.7.1)  |  **Done:** 4/75
+**Started:** 2026-05-16  |  **PRs:** #882 · #883 · #884 · #885 · this PR (D1.2.7.2)  |  **Done:** 5/75
 **Spec:** [`../specs/2026-05-16-a1-phase2-decision-report.md`](../specs/2026-05-16-a1-phase2-decision-report.md)  ·  **Plan:** —
 
 ## Context
@@ -51,7 +51,7 @@ Sub-prioritization within expanded D1 scope:
 | D1.2.6.3 | `payment_date_warning_backdate` | P1 | ⬜ | — | Replace hardcoded `30` at ReverseDialog.tsx:74,167 |
 | D1.2.6.4 | `payment_date_allow_future` toggle | P1 | ⬜ | — | Block-or-warn on future-dated reverse |
 | D1.2.7.1 | `reverse_reason_required` | P1 | ✅ | this PR | Server-side gate in `voidDocument` (reads `reverse_reason_required`, default true). UI: `useUiFlags()` reads `reverseReasonRequired` from `/settings/ui-flags`; `ReverseDialog` shows "— ไม่ระบุ —" + drops `*` when flag off + relaxes `canSubmit`. 3 new tests on the void path + 2 new getUiFlags tests |
-| D1.2.7.2 | `reverse_reasons_dropdown` | P1 | ⬜ | — | DB-driven 6-option list |
+| D1.2.7.2 | `reverse_reasons_dropdown` | P1 | ✅ | this PR | SystemConfig key `reverse_reasons` JSON `[{code,label}]` array. Defaults to 6 canonical codes. Backend: DTO relaxed (drops @IsIn); `voidDocument` validates reasonCode against configured whitelist; `getReverseReasons()` helper in both service + ExpenseDocumentsService. UI: `useUiFlags().reverseReasons` drives the dropdown. 5 settings tests + 2 void path tests added |
 | D1.2.7.3 | `reverse_manager_approval_days` | P1 | ⬜ | — | Age-gate the void path |
 | D1.2.7.4 | `reverse_block_cascaded` toggle | P1 | ✅ | this PR | New private helper `readBoolFlag()` in `ExpenseDocumentsService` (reads `system_config` directly via PrismaService to keep ctor lean + avoid circular-dep risk with audit/settings modules). Cascade-block check at `expense-documents.service.ts:1681-1700` now reads `reverse_block_cascaded` (default true). Both CN and SE cascade throws gated by the same flag. 2 new tests (toggle off → both bypassed; default → preserved). 52/52 service-spec tests pass |
 | D1.2.3.1 | `default_time_range` | P1 | ⬜ | — | DateRangeChips presets configurable |

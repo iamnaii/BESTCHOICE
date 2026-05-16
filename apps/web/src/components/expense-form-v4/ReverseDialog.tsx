@@ -26,22 +26,13 @@ import { useUiFlags } from '@/hooks/useUiFlags';
  * this doc — error propagates via `onError` upstream.
  */
 
-export type ReverseReasonCode =
-  | 'data_entry_error'
-  | 'wrong_vendor'
-  | 'wrong_amount'
-  | 'duplicate_entry'
-  | 'cancel_transaction'
-  | 'other';
-
-const REASON_OPTIONS: { value: ReverseReasonCode; label: string }[] = [
-  { value: 'data_entry_error', label: 'ป้อนข้อมูลผิด' },
-  { value: 'wrong_vendor', label: 'ผู้ขายผิด' },
-  { value: 'wrong_amount', label: 'จำนวนเงินผิด' },
-  { value: 'duplicate_entry', label: 'ข้อมูลซ้ำ' },
-  { value: 'cancel_transaction', label: 'ยกเลิกรายการ' },
-  { value: 'other', label: 'อื่นๆ (ระบุรายละเอียด)' },
-];
+/**
+ * D1.2.7.2 — reasons now come from `useUiFlags().reverseReasons` (default
+ * matches the 6 canonical codes; OWNER may extend/override via SystemConfig).
+ * `ReverseReasonCode` kept as a string alias for caller compat — runtime
+ * validation happens on the server against the configured whitelist.
+ */
+export type ReverseReasonCode = string;
 
 interface Props {
   open: boolean;
@@ -59,10 +50,10 @@ interface Props {
 const todayBkk = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
 
 export function ReverseDialog({ open, onOpenChange, docNumber, loading, onConfirm }: Props) {
-  // D1.2.7.1 — `reverseReasonRequired` (default true). When OWNER turns this off,
-  // the reason dropdown shows "— ไม่ระบุ —" as a valid selection (server still
-  // accepts; UI no longer blocks submit on missing reason).
-  const { reverseReasonRequired } = useUiFlags();
+  // D1.2.7.1 + D1.2.7.2 — reasons + reason-required flag both come from
+  // /settings/ui-flags. Reasons fall back to the 6 canonical codes; flag
+  // defaults true so first-render shows the existing strict UX.
+  const { reverseReasonRequired, reverseReasons } = useUiFlags();
   const [reasonCode, setReasonCode] = useState<ReverseReasonCode | ''>('');
   const [reasonDetail, setReasonDetail] = useState('');
   const [reverseDate, setReverseDate] = useState(todayBkk());
@@ -124,8 +115,8 @@ export function ReverseDialog({ open, onOpenChange, docNumber, loading, onConfir
               aria-required={reverseReasonRequired}
             >
               <option value="">{reverseReasonRequired ? '— เลือกเหตุผล —' : '— ไม่ระบุ —'}</option>
-              {REASON_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
+              {reverseReasons.map((opt) => (
+                <option key={opt.code} value={opt.code}>
                   {opt.label}
                 </option>
               ))}

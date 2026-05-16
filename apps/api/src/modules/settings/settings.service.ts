@@ -99,11 +99,48 @@ export class SettingsService {
    * Defaults match the spec-defined "on" behaviour so first-boot behaviour
    * is identical whether the SystemConfig key has been seeded or not.
    */
+  /**
+   * D1.2.7.2 — DB-driven reverse-reason dropdown. JSON-encoded array of
+   * `{code, label}` objects stored in SystemConfig key `reverse_reasons`.
+   * Default = the 6 canonical reasons. Caller is responsible for treating
+   * an empty/invalid stored list as "use default" — never as "empty list".
+   */
+  async getReverseReasons(): Promise<{ code: string; label: string }[]> {
+    const raw = await this.getKey('reverse_reasons');
+    const defaults: { code: string; label: string }[] = [
+      { code: 'data_entry_error', label: 'ป้อนข้อมูลผิด' },
+      { code: 'wrong_vendor', label: 'ผู้ขายผิด' },
+      { code: 'wrong_amount', label: 'จำนวนเงินผิด' },
+      { code: 'duplicate_entry', label: 'ข้อมูลซ้ำ' },
+      { code: 'cancel_transaction', label: 'ยกเลิกรายการ' },
+      { code: 'other', label: 'อื่นๆ (ระบุรายละเอียด)' },
+    ];
+    if (!raw) return defaults;
+    try {
+      const parsed = JSON.parse(raw);
+      if (
+        Array.isArray(parsed) &&
+        parsed.length > 0 &&
+        parsed.every(
+          (r) =>
+            r && typeof r === 'object' && typeof r.code === 'string' && typeof r.label === 'string',
+        )
+      ) {
+        return parsed;
+      }
+      return defaults;
+    } catch {
+      return defaults;
+    }
+  }
+
   async getUiFlags(): Promise<{
     /** D1.2.8.2 — show ม.42 tax-exempt warning when a payroll custom-income line is marked non-taxable. Default true. */
     taxExemptWarningEnabled: boolean;
     /** D1.2.7.1 — require reason on void/reverse dialog. Default true. */
     reverseReasonRequired: boolean;
+    /** D1.2.7.2 — configurable reverse-reason dropdown. Always at least the 6 defaults. */
+    reverseReasons: { code: string; label: string }[];
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -113,7 +150,8 @@ export class SettingsService {
       'reverse_reason_required',
       true,
     );
-    return { taxExemptWarningEnabled, reverseReasonRequired };
+    const reverseReasons = await this.getReverseReasons();
+    return { taxExemptWarningEnabled, reverseReasonRequired, reverseReasons };
   }
 
   /**

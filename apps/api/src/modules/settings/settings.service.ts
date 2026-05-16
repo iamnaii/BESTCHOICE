@@ -175,6 +175,14 @@ export class SettingsService {
      * accessibility readers via the lang attr.
      */
     language: 'th' | 'en';
+    /**
+     * D1.1.5.4 — Petty Cash replenish alert threshold (THB). Default 5000,
+     * valid 0–50000 (clamp). When the running float balance falls below this
+     * number, `PettyCashReplenishAlertCron` (daily 09:00 BKK) notifies all
+     * active OWNERs via IN_APP. Setting to 0 disables the alert entirely
+     * (kill switch — owner can pick "dead" semantics by flipping this to 0).
+     */
+    pettyCashReplenishThreshold: number;
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -214,6 +222,16 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.1.5.4 — Petty Cash replenish threshold. Default 5000, valid 0–50000.
+    // Negative or NaN silently clamps to default 5000 so a bad SystemConfig
+    // row can't accidentally suppress the alert via negative comparison.
+    const thresholdRaw = await this.readNumber('petty_cash_replenish_threshold', 5000);
+    let pettyCashReplenishThreshold = thresholdRaw;
+    if (!Number.isFinite(pettyCashReplenishThreshold) || pettyCashReplenishThreshold < 0) {
+      pettyCashReplenishThreshold = 5000;
+    } else if (pettyCashReplenishThreshold > 50000) {
+      pettyCashReplenishThreshold = 50000;
+    }
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -225,6 +243,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      pettyCashReplenishThreshold,
     };
   }
 

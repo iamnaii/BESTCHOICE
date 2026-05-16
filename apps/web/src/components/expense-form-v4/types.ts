@@ -36,6 +36,29 @@ export interface ExpenseAdjustmentForm {
   note: string;
 }
 
+/**
+ * C2 — Per-line custom income (bonus, OT, per-diem allowances).
+ * `isTaxable=false` for ม.42 tax-exempt items; flag-only no UI confirm prompt.
+ */
+export interface PayrollCustomIncomeRow {
+  uid: string;
+  accountCode: string;
+  name: string;
+  amount: string;
+  isTaxable: boolean;
+}
+
+/**
+ * C2 — Per-line custom deduction (loan repayment, advance recovery, etc.).
+ * No whitelist (employer-discretion); free CoA code.
+ */
+export interface PayrollCustomDeductionRow {
+  uid: string;
+  accountCode: string;
+  name: string;
+  amount: string;
+}
+
 export interface PayrollLineForm {
   uid: string;
   employeeName: string;
@@ -43,6 +66,12 @@ export interface PayrollLineForm {
   baseSalary: string;
   ssoEmployee: string;
   whtAmount: string;
+  // C2 — custom income/deduction (per-employee). Optional in API but always
+  // present as empty arrays in form state for ergonomic editing.
+  customIncome: PayrollCustomIncomeRow[];
+  customDeduction: PayrollCustomDeductionRow[];
+  // UI-only: accordion expand toggle. Excluded from POST body.
+  _expanded?: boolean;
 }
 
 export interface PayrollFormFields {
@@ -163,6 +192,30 @@ export const newPayrollLine = (overrides?: Partial<PayrollLineForm>): PayrollLin
   baseSalary: '',
   ssoEmployee: '0',
   whtAmount: '0',
+  customIncome: [],
+  customDeduction: [],
+  _expanded: false,
+  ...overrides,
+});
+
+export const newPayrollCustomIncome = (
+  overrides?: Partial<PayrollCustomIncomeRow>,
+): PayrollCustomIncomeRow => ({
+  uid: Math.random().toString(36).slice(2),
+  accountCode: '53-1104', // default = bonus (most common)
+  name: '',
+  amount: '',
+  isTaxable: true,
+  ...overrides,
+});
+
+export const newPayrollCustomDeduction = (
+  overrides?: Partial<PayrollCustomDeductionRow>,
+): PayrollCustomDeductionRow => ({
+  uid: Math.random().toString(36).slice(2),
+  accountCode: '',
+  name: '',
+  amount: '',
   ...overrides,
 });
 

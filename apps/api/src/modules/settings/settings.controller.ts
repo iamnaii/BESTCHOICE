@@ -1,12 +1,15 @@
-import { Controller, Get, Patch, Put, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, Patch, Put, Body, Param, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { SettingsService } from './settings.service';
 import { BulkUpdateSettingsDto } from './dto/update-settings.dto';
 import { CollectionsConfigDto } from './dto/collections-config.dto';
+import { UpdateRoleMapDto } from './dto/update-role-map.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { AccountRoleService } from '../journal/account-role.service';
+import { RoleMapValidationService } from './role-map-validation.service';
 
 @ApiTags('Settings')
 @ApiBearerAuth('JWT')
@@ -14,7 +17,11 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('OWNER')
 export class SettingsController {
-  constructor(private settingsService: SettingsService) {}
+  constructor(
+    private settingsService: SettingsService,
+    private accountRoleService: AccountRoleService,
+    private roleMapValidation: RoleMapValidationService,
+  ) {}
 
   @Get()
   findAll() {
@@ -30,6 +37,34 @@ export class SettingsController {
   @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   getUiFlags() {
     return this.settingsService.getUiFlags();
+  }
+
+  /** D1.1.1.2 — list account_role_map joined with chart_of_accounts. */
+  @Get('role-map')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  getRoleMap() {
+    return this.accountRoleService.listWithCoa();
+  }
+
+  /**
+   * D1.1.1.3 + D1.1.1.5 — Update one role-map row (OWNER-only). Validation
+   * runs through `RoleMapValidationService` (required-role lock, CoA
+   * presence + normal-balance match, priority uniqueness per role).
+   */
+  @Put('role-map/:id')
+  @Roles('OWNER')
+  updateRoleMap(
+    @Param('id') id: string,
+    @Body() dto: UpdateRoleMapDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.accountRoleService.update(
+      id,
+      dto,
+      user.id,
+      // Delegate validation so other entry points (POST, bulk) can reuse.
+      (args) => this.roleMapValidation.validateUpdate(args),
+    );
   }
 
   @Patch()

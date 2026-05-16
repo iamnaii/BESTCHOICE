@@ -49,7 +49,18 @@ export class PayrollTemplate {
     const exec = async (tx: Prisma.TransactionClient): Promise<{ entryNo: string }> => {
       const doc = await tx.expenseDocument.findUniqueOrThrow({
         where: { id: documentId },
-        include: { payroll: { include: { lines: true } } },
+        include: {
+          payroll: {
+            include: {
+              lines: {
+                include: {
+                  customIncome: true,
+                  customDeduction: true,
+                },
+              },
+            },
+          },
+        },
       });
 
       // Idempotency
@@ -133,6 +144,55 @@ export class PayrollTemplate {
           description: 'เงินสมทบประกันสังคม-นายจ้างค้างนำส่ง',
         });
       }
+      // C2 — Custom Income lines: Dr each accountCode for its amount.
+      // Aggregate by accountCode across all payroll lines so JE stays compact.
+      // The expense increases (Dr) regardless of isTaxable — the flag only
+      // controls the WHT base, not the bookkeeping.
+      const incomeByAccount = new Map<string, Decimal>();
+      for (const l of doc.payroll.lines) {
+        for (const ci of l.customIncome ?? []) {
+          const prev = incomeByAccount.get(ci.accountCode) ?? zero;
+          incomeByAccount.set(
+            ci.accountCode,
+            prev.plus(new Decimal(ci.amount.toString())),
+          );
+        }
+      }
+      for (const [accountCode, amount] of incomeByAccount) {
+        if (amount.gt(zero)) {
+          lines.push({
+            accountCode,
+            dr: amount,
+            cr: zero,
+            description: `รายได้พิเศษ ${accountCode} งวด ${doc.payroll.payrollPeriod}`,
+          });
+        }
+      }
+
+      // C2 — Custom Deduction lines: Cr each accountCode for its amount.
+      // Reduces net cash (already netted into sumNet upstream at service).
+      // Typical use: loan repayment Cr's 11-21XX (employee AR offset).
+      const deductionByAccount = new Map<string, Decimal>();
+      for (const l of doc.payroll.lines) {
+        for (const cd of l.customDeduction ?? []) {
+          const prev = deductionByAccount.get(cd.accountCode) ?? zero;
+          deductionByAccount.set(
+            cd.accountCode,
+            prev.plus(new Decimal(cd.amount.toString())),
+          );
+        }
+      }
+      for (const [accountCode, amount] of deductionByAccount) {
+        if (amount.gt(zero)) {
+          lines.push({
+            accountCode,
+            dr: zero,
+            cr: amount,
+            description: `รายการหัก ${accountCode} งวด ${doc.payroll.payrollPeriod}`,
+          });
+        }
+      }
+
       lines.push({
         accountCode: doc.depositAccountCode,
         dr: zero,

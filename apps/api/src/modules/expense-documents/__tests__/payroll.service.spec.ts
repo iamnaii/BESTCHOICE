@@ -42,6 +42,9 @@ describe('ExpenseDocumentsService.createPayroll', () => {
       // pettyCashTemplate + pettyCash mocks (C1) — payroll path doesn't touch them
       { execute: jest.fn() } as never,
       { getConfig: jest.fn(), validate: jest.fn() } as never,
+      // payrollCustom mock — fixtures don't exercise custom income/deduction; loadWhitelist
+      // returns the seeded default + validateLine no-ops.
+      { loadWhitelist: jest.fn().mockResolvedValue(new Set(['53-1104', '53-1105'])), validateLine: jest.fn().mockResolvedValue({ taxableBase: undefined }) } as never,
     );
   });
 

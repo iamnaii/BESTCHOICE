@@ -92,6 +92,7 @@ describe('ExpenseDocumentsService', () => {
       { validateContribution: jest.fn().mockResolvedValue(undefined) } as never,
       { execute: jest.fn() } as never,
       { getConfig: jest.fn(), validate: jest.fn() } as never,
+      { loadWhitelist: jest.fn().mockResolvedValue(new Set(['53-1104', '53-1105'])), validateLine: jest.fn().mockResolvedValue({ taxableBase: new Decimal(0) }) } as never,
     );
   });
 
@@ -877,6 +878,7 @@ describe('ExpenseDocumentsService', () => {
         { validateContribution: jest.fn().mockResolvedValue(undefined) } as never,
         { execute: jest.fn() } as never,
         { getConfig: jest.fn(), validate: jest.fn() } as never,
+        { loadWhitelist: jest.fn().mockResolvedValue(new Set(['53-1104', '53-1105'])), validateLine: jest.fn().mockResolvedValue({ taxableBase: new Decimal(0) }) } as never,
       );
       await svc.voidDocument('doc-1', 'user-1');
       expect(journalMock.createAndPost).toHaveBeenCalledTimes(1);
@@ -921,6 +923,7 @@ describe('ExpenseDocumentsService', () => {
         { validateContribution: jest.fn().mockResolvedValue(undefined) } as never,
         { execute: jest.fn() } as never,
         { getConfig: jest.fn(), validate: jest.fn() } as never,
+        { loadWhitelist: jest.fn().mockResolvedValue(new Set(['53-1104', '53-1105'])), validateLine: jest.fn().mockResolvedValue({ taxableBase: new Decimal(0) }) } as never,
       );
       await svc.voidDocument('se-1', 'user-1');
       // Both cleared EXs reverted via updateMany with deletedAt:null guard

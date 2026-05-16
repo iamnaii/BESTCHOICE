@@ -81,6 +81,35 @@ export class SettingsService {
     return Number.isFinite(n) ? n : fallback;
   }
 
+  private async readBoolean(key: string, fallback: boolean): Promise<boolean> {
+    const raw = await this.getKey(key);
+    if (raw == null) return fallback;
+    const v = raw.trim().toLowerCase();
+    if (v === 'true' || v === '1') return true;
+    if (v === 'false' || v === '0') return false;
+    return fallback;
+  }
+
+  /**
+   * D1.* — UI feature flags accessible to ANY authenticated user (not OWNER-only).
+   * Keep this method's response shape small and additive — every D1 item that
+   * needs a runtime UI toggle should land here so the web app can fetch one
+   * lightweight payload at app boot instead of per-feature endpoints.
+   *
+   * Defaults match the spec-defined "on" behaviour so first-boot behaviour
+   * is identical whether the SystemConfig key has been seeded or not.
+   */
+  async getUiFlags(): Promise<{
+    /** D1.2.8.2 — show ม.42 tax-exempt warning when a payroll custom-income line is marked non-taxable. Default true. */
+    taxExemptWarningEnabled: boolean;
+  }> {
+    const taxExemptWarningEnabled = await this.readBoolean(
+      'TAX_EXEMPT_WARNING_ENABLED',
+      true,
+    );
+    return { taxExemptWarningEnabled };
+  }
+
   /**
    * Typed bundle of collections-session tuning knobs. Defaults match the
    * pre-Phase-2 hardcoded constants so first-boot behaviour is unchanged

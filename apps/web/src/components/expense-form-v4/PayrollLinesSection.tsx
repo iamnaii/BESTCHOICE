@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, Plus, Trash2 } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronRight, Plus, Trash2 } from 'lucide-react';
 import {
   PayrollFormFields,
   PayrollLineForm,
@@ -11,6 +11,7 @@ import {
 import { formatNumberDecimal } from '@/utils/formatters';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { THAI_MONTHS_FULL } from '@/lib/date';
+import { useUiFlags } from '@/hooks/useUiFlags';
 
 interface Props {
   value: PayrollFormFields;
@@ -28,6 +29,7 @@ const CUSTOM_INCOME_WHITELIST: { code: string; label: string }[] = [
 ];
 
 export function PayrollLinesSection({ value, onChange, documentDate, onDocumentDateChange }: Props) {
+  const { taxExemptWarningEnabled } = useUiFlags();
   const updateField = (patch: Partial<PayrollFormFields>) => onChange({ ...value, ...patch });
 
   const updateLine = (uid: string, p: Partial<PayrollLineForm>) => {
@@ -342,10 +344,17 @@ function CustomIncomeSubTable({
   rows: PayrollCustomIncomeRow[];
   onChange: (rows: PayrollCustomIncomeRow[]) => void;
 }) {
+  const { taxExemptWarningEnabled } = useUiFlags();
   const update = (uid: string, p: Partial<PayrollCustomIncomeRow>) =>
     onChange(rows.map((r) => (r.uid === uid ? { ...r, ...p } : r)));
   const remove = (uid: string) => onChange(rows.filter((r) => r.uid !== uid));
   const add = () => onChange([...rows, newPayrollCustomIncome()]);
+
+  // D1.2.8.2 — show ม.42 tax-exempt warning when any row marked non-taxable.
+  // Gated by SystemConfig TAX_EXEMPT_WARNING_ENABLED (default true, OWNER toggleable).
+  const taxExemptRows = rows.filter((r) => !r.isTaxable);
+  const showWarning =
+    taxExemptWarningEnabled && taxExemptRows.length > 0;
 
   return (
     <div className="rounded-lg border border-border bg-card overflow-hidden">
@@ -440,6 +449,20 @@ function CustomIncomeSubTable({
       >
         <Plus className="size-3" /> เพิ่มรายได้พิเศษ
       </button>
+      {showWarning && (
+        <div
+          role="alert"
+          className="flex items-start gap-2 px-3 py-2 border-t border-border bg-warning/5 text-warning"
+        >
+          <AlertTriangle className="size-3.5 mt-0.5 shrink-0" />
+          <div className="text-xs leading-snug">
+            <span className="font-medium">ยกเว้นภาษี ม.42</span> —{' '}
+            มี {taxExemptRows.length} รายการที่ติ๊กไม่เสียภาษี
+            (ป.รัษฎากร ม.42). ตรวจสอบให้แน่ใจว่าเข้าเงื่อนไข เช่น เงินชดเชย ค่าใช้จ่ายเดินทาง
+            ตามอัตรา ก่อน POST เพราะ ภ.ง.ด.1 จะไม่นับฐานนี้
+          </div>
+        </div>
+      )}
     </div>
   );
 }

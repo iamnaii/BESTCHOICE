@@ -103,4 +103,31 @@ describe('SettingsService audit trail', () => {
     await expect(service.update('k', 'v', 'u-1')).rejects.toThrow();
     expect(prisma.systemConfig.upsert).toHaveBeenCalled();
   });
+
+  // D1.2.8.2 — UI feature flags endpoint
+  describe('getUiFlags', () => {
+    it('defaults taxExemptWarningEnabled=true when SystemConfig row missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.taxExemptWarningEnabled).toBe(true);
+    });
+
+    it('returns taxExemptWarningEnabled=false when SystemConfig row set to "false"', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue({ value: 'false' });
+      const flags = await service.getUiFlags();
+      expect(flags.taxExemptWarningEnabled).toBe(false);
+    });
+
+    it('returns taxExemptWarningEnabled=true when SystemConfig row set to "true"', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue({ value: 'true' });
+      const flags = await service.getUiFlags();
+      expect(flags.taxExemptWarningEnabled).toBe(true);
+    });
+
+    it('falls back to default for unparseable SystemConfig value', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue({ value: 'maybe' });
+      const flags = await service.getUiFlags();
+      expect(flags.taxExemptWarningEnabled).toBe(true);
+    });
+  });
 });

@@ -33,6 +33,12 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /**
+   * D1.1.3.2 — configurable WHT-rate dropdown. Always at least the 5 defaults.
+   * D1.1.3.5 — each entry may carry an optional `effectiveDate` (ISO string);
+   * UI filters out future-dated entries when rendering.
+   */
+  whtRates: { rate: number; label: string; effectiveDate?: string | null }[];
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -53,6 +59,13 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  whtRates: [
+    { rate: 1, label: '1% — ดอกเบี้ย' },
+    { rate: 3, label: '3% — ค่าบริการ' },
+    { rate: 5, label: '5% — ค่าเช่า' },
+    { rate: 10, label: '10% — ค่าวิชาชีพ' },
+    { rate: 15, label: '15% — ต่างประเทศ' },
+  ],
 };
 
 export function useUiFlags(): UiFlags {

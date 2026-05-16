@@ -105,7 +105,7 @@ Sub-prioritization within expanded D1 scope:
 | D1.1.2.4 | `sequence_table` | P0 | ⬜ | Q3 | |
 | D1.1.2.5 | Admin reset capability | P0 | ⬜ | Q3 | |
 | D1.1.3.1 | `vat_rate` (Q6 P0 bug fix first) | P0 | ⬜ | Q6 | **VAT_RATE/vat_pct orphan-key fix** |
-| D1.1.3.2 | `wht_rates` (1/3/5/10/15) | P0 | ⬜ | — | Mostly unblocked — extend SelectItem + table |
+| D1.1.3.2 | `wht_rates` (1/3/5/10/15) | P0 | ✅ | this PR | SystemConfig `wht_rates` JSON `[{rate,label,effectiveDate?}]` array. Default = 5 canonical rates (1/3/5/10/15 %). `SettingsService.getWhtRates()` validates each entry (rate ∈ [0,30] number, label non-empty, optional ISO `effectiveDate`) and falls back to defaults wholesale on any malformed entry. `getUiFlags()` exposes `whtRates` array; web `useUiFlags()` types it. `ItemLinesSection.tsx` (expense-form-v4) replaces hardcoded `['0','1','3','5']` SelectField with `useUiFlags().whtRates` (plus `0%` always-present option) — UI filters out future-dated entries client-side per D1.1.3.5. New `SelectFieldLabeled` variant lets each option carry the configured Thai label. 7 new vitest cases on `getUiFlags` (default / custom / malformed shape / out-of-range / empty array / effectiveDate present / effectiveDate unparseable) — 33/33 settings spec tests pass |
 | D1.1.3.3 | `sso_rate` (locked at 5% by law) | P0 | ⬜ | — | Just document the lock in service comment |
 | D1.1.3.5 | effective_date support | P0 | ⬜ | — | Per-rate effective dates |
 | D1.1.3.6 | Admin UI (tax rates tab) | P0 | ⬜ | — | New /settings/tax-rates route |

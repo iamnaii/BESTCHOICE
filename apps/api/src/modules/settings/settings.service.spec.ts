@@ -104,30 +104,40 @@ describe('SettingsService audit trail', () => {
     expect(prisma.systemConfig.upsert).toHaveBeenCalled();
   });
 
-  // D1.2.8.2 — UI feature flags endpoint
+  // D1.2.8.2 + D1.2.7.1 — UI feature flags endpoint
   describe('getUiFlags', () => {
-    it('defaults taxExemptWarningEnabled=true when SystemConfig row missing', async () => {
+    it('all flags default to true when SystemConfig rows missing', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
       const flags = await service.getUiFlags();
       expect(flags.taxExemptWarningEnabled).toBe(true);
+      expect(flags.reverseReasonRequired).toBe(true);
     });
 
     it('returns taxExemptWarningEnabled=false when SystemConfig row set to "false"', async () => {
-      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue({ value: 'false' });
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'TAX_EXEMPT_WARNING_ENABLED') return Promise.resolve({ value: 'false' });
+        return Promise.resolve(null);
+      });
       const flags = await service.getUiFlags();
       expect(flags.taxExemptWarningEnabled).toBe(false);
+      expect(flags.reverseReasonRequired).toBe(true);
     });
 
-    it('returns taxExemptWarningEnabled=true when SystemConfig row set to "true"', async () => {
-      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue({ value: 'true' });
+    it('returns reverseReasonRequired=false when SystemConfig set to "false"', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'reverse_reason_required') return Promise.resolve({ value: 'false' });
+        return Promise.resolve(null);
+      });
       const flags = await service.getUiFlags();
+      expect(flags.reverseReasonRequired).toBe(false);
       expect(flags.taxExemptWarningEnabled).toBe(true);
     });
 
-    it('falls back to default for unparseable SystemConfig value', async () => {
+    it('falls back to default for unparseable SystemConfig values', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockResolvedValue({ value: 'maybe' });
       const flags = await service.getUiFlags();
       expect(flags.taxExemptWarningEnabled).toBe(true);
+      expect(flags.reverseReasonRequired).toBe(true);
     });
   });
 });

@@ -11,6 +11,7 @@ import { CreditNoteTemplate } from '../../journal/cpa-templates/credit-note.temp
 import { PayrollTemplate } from '../../journal/cpa-templates/payroll.template';
 import { VendorSettlementTemplate } from '../../journal/cpa-templates/vendor-settlement.template';
 import { JournalAutoService } from '../../journal/journal-auto.service';
+import { SsoConfigService } from '../../sso-config/sso-config.service';
 import { seedFinanceCoa } from '../../../../prisma/seed-coa-finance';
 
 const prisma = new PrismaClient();
@@ -103,6 +104,7 @@ describe('ExpenseDocuments multi-line lifecycle (integration)', () => {
       journal,
       aggregator,
       new JePreviewService(aggregator),
+      new SsoConfigService(prisma as never),
     );
   }
 

@@ -89,6 +89,7 @@ describe('ExpenseDocumentsService', () => {
       { createAndPost: jest.fn() } as never,
       new LineAggregatorService(),
       { preview: jest.fn() } as never,
+      { validateContribution: jest.fn().mockResolvedValue(undefined) } as never,
     );
   });
 
@@ -759,6 +760,7 @@ describe('ExpenseDocumentsService', () => {
         journalMock as never,
         new LineAggregatorService(),
         { preview: jest.fn() } as never,
+        { validateContribution: jest.fn().mockResolvedValue(undefined) } as never,
       );
       await svc.voidDocument('doc-1', 'user-1');
       expect(journalMock.createAndPost).toHaveBeenCalledTimes(1);
@@ -800,6 +802,7 @@ describe('ExpenseDocumentsService', () => {
         journalMock as never,
         new LineAggregatorService(),
         { preview: jest.fn() } as never,
+        { validateContribution: jest.fn().mockResolvedValue(undefined) } as never,
       );
       await svc.voidDocument('se-1', 'user-1');
       // Both cleared EXs reverted via updateMany with deletedAt:null guard

@@ -35,6 +35,10 @@ describe('ExpenseDocumentsService.createPayroll', () => {
       { createAndPost: jest.fn() } as never,
       new LineAggregatorService(),
       { preview: jest.fn() } as never,
+      // ssoConfig: pass-through. Cap-validation behavior is tested in
+      // sso-config.service.spec.ts. Tests here use ssoEmployee values within
+      // the 2569+ cap of 875, so a no-op validator is sound.
+      { validateContribution: jest.fn().mockResolvedValue(undefined) } as never,
     );
   });
 

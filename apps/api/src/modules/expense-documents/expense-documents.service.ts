@@ -25,6 +25,7 @@ import { CreateSettlementDto } from './dto/create-settlement.dto';
 import { hasCrossBranchAccess } from '../auth/branch-access.util';
 import { LineAggregatorService } from './services/line-aggregator.service';
 import { JePreviewService } from './services/je-preview.service';
+import { SsoConfigService } from '../sso-config/sso-config.service';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
 
 /**
@@ -109,6 +110,7 @@ export class ExpenseDocumentsService implements OnModuleInit {
     private readonly journal: JournalAutoService,
     private readonly aggregator: LineAggregatorService,
     private readonly jePreview: JePreviewService,
+    private readonly ssoConfig: SsoConfigService,
   ) {}
 
   // ─── Create ──────────────────────────────────────────────────────────
@@ -428,6 +430,15 @@ export class ExpenseDocumentsService implements OnModuleInit {
     // can only create payroll documents for their own branch.
     if (!hasCrossBranchAccess(user) && user.branchId !== dto.branchId) {
       throw new ForbiddenException('ไม่สามารถสร้างเอกสารในสาขาอื่นได้');
+    }
+
+    // SSO cap is law-mandated (กฎกระทรวง) and changes ~every 3 years. The
+    // applicable cap depends on the payroll's documentDate, not the static
+    // value we'd otherwise hardcode in the DTO @Max decorator. Validate each
+    // line against the period-effective cap from sso_config.
+    const docDate = new Date(dto.documentDate);
+    for (const l of dto.lines) {
+      await this.ssoConfig.validateContribution(docDate, l.ssoEmployee);
     }
 
     // Compute netPaid per line + validate

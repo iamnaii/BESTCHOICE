@@ -11,10 +11,16 @@ import { JournalModule } from '../journal/journal.module';
 
 @Module({
   imports: [JournalModule],
+  // CRITICAL ordering: AssetJournalController MUST be registered before
+  // AssetController. AssetController has `@Get(':id')` which path-to-regexp
+  // matches /assets/journal with id='journal' — without this ordering,
+  // findOne('journal') throws NotFoundException → 404 and the JV page is
+  // permanently broken. NestJS uses Express's first-match routing so the
+  // more-specific 'assets/journal' must be added to the router first.
   controllers: [
+    AssetJournalController,
     AssetController,
     AssetTransferController,
-    AssetJournalController,
     AssetReportsController,
   ],
   providers: [

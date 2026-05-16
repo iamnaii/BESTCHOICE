@@ -1061,6 +1061,65 @@ describe('ExpenseDocumentsService', () => {
       await expect(service.voidDocument('doc-1', 'user-1')).rejects.toThrow(/เหตุผล/);
     });
 
+    // D1.2.7.2 — DB-driven reasons whitelist
+    it('D1.2.7.2: rejects void when reasonCode is not in configured whitelist', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'reverse_reasons') {
+          return Promise.resolve({
+            value: JSON.stringify([{ code: 'manager_decision', label: 'x' }]),
+          });
+        }
+        // reverse_reason_required defaults to true so we leave it alone
+        if (args.where.key === 'reverse_reason_required') return Promise.resolve(null);
+        return Promise.resolve(null);
+      });
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-1', status: 'ACCRUAL', journalEntryId: 'je-1', documentType: 'EXPENSE',
+      });
+      prisma.expenseDocument.count = jest.fn().mockResolvedValue(0);
+      await expect(
+        service.voidDocument('doc-1', 'user-1', { reasonCode: 'data_entry_error' }),
+      ).rejects.toThrow(/ไม่อยู่ในรายการ/);
+    });
+
+    it('D1.2.7.2: accepts custom reasonCode when in configured whitelist', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'reverse_reasons') {
+          return Promise.resolve({
+            value: JSON.stringify([{ code: 'manager_decision', label: 'x' }]),
+          });
+        }
+        return Promise.resolve(null);
+      });
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-1', status: 'ACCRUAL', journalEntryId: 'je-orig', documentType: 'EXPENSE', number: 'EX-001',
+      });
+      prisma.expenseDocument.count = jest.fn().mockResolvedValue(0);
+      prisma.journalEntry = {
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          id: 'je-orig', entryNumber: 'JE-OLD',
+          lines: [{ accountCode: '53-1404', debit: '100', credit: '0', description: 'x' }],
+          metadata: {},
+        }),
+      };
+      const journalMock = {
+        createAndPost: jest.fn().mockResolvedValue({ id: 'je-rev', entryNumber: 'JE-REV-001' }),
+      };
+      const svc = new ExpenseDocumentsService(
+        prisma, docNumber, transition, sameDay, accrual, creditNote, payroll, settlement,
+        journalMock as never,
+        new LineAggregatorService(),
+        { preview: jest.fn() } as never,
+        { validateContribution: jest.fn().mockResolvedValue(undefined) } as never,
+        { execute: jest.fn() } as never,
+        { getConfig: jest.fn(), validate: jest.fn() } as never,
+        { loadWhitelist: jest.fn().mockResolvedValue(new Set()), validateLine: jest.fn() } as never,
+      );
+      await expect(
+        svc.voidDocument('doc-1', 'user-1', { reasonCode: 'manager_decision' }),
+      ).resolves.toBeDefined();
+    });
+
     it('D1.2.7.1: allows void without reasonCode when flag is off', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
         if (args.where.key === 'reverse_reason_required') return Promise.resolve({ value: 'false' });

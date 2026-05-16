@@ -147,6 +147,48 @@ export class ExpenseDocumentsService implements OnModuleInit {
     }
   }
 
+  /**
+   * D1.2.7.2 — reverse-reasons whitelist. Inlined (vs. importing
+   * SettingsService) for the same reasons as readBoolFlag — keeps the ctor
+   * stable and dodges audit↔settings cycles.
+   */
+  private async getReverseReasons(
+    tx: Prisma.TransactionClient | PrismaService,
+  ): Promise<{ code: string; label: string }[]> {
+    const defaults = [
+      { code: 'data_entry_error', label: 'ป้อนข้อมูลผิด' },
+      { code: 'wrong_vendor', label: 'ผู้ขายผิด' },
+      { code: 'wrong_amount', label: 'จำนวนเงินผิด' },
+      { code: 'duplicate_entry', label: 'ข้อมูลซ้ำ' },
+      { code: 'cancel_transaction', label: 'ยกเลิกรายการ' },
+      { code: 'other', label: 'อื่นๆ (ระบุรายละเอียด)' },
+    ];
+    try {
+      const row = await tx.systemConfig.findFirst({
+        where: { key: 'reverse_reasons', deletedAt: null },
+        select: { value: true },
+      });
+      if (!row?.value) return defaults;
+      const parsed = JSON.parse(row.value);
+      if (
+        Array.isArray(parsed) &&
+        parsed.length > 0 &&
+        parsed.every(
+          (r) =>
+            r &&
+            typeof r === 'object' &&
+            typeof r.code === 'string' &&
+            typeof r.label === 'string',
+        )
+      ) {
+        return parsed;
+      }
+      return defaults;
+    } catch {
+      return defaults;
+    }
+  }
+
   // ─── V12/V13/V14 — Multi-line Adjustment validation (shared) ────────
   // Fix Report P0-4 + B2. Validates that:
   //   V12  Σ signed(adjustments) === amountPaid − netExpected
@@ -1737,6 +1779,19 @@ export class ExpenseDocumentsService implements OnModuleInit {
       const reasonRequired = await this.readBoolFlag(tx, 'reverse_reason_required', true);
       if (reasonRequired && !dto.reasonCode?.trim()) {
         throw new BadRequestException('กรุณาระบุเหตุผลในการยกเลิกเอกสาร');
+      }
+
+      // D1.2.7.2 — `reverse_reasons` SystemConfig (default = 6 canonical
+      // codes). Validate dto.reasonCode against the configured whitelist
+      // when present. OWNER can extend/override the list via SettingsService.
+      if (dto.reasonCode?.trim()) {
+        const reasons = await this.getReverseReasons(tx);
+        const allowed = new Set(reasons.map((r) => r.code));
+        if (!allowed.has(dto.reasonCode)) {
+          throw new BadRequestException(
+            `เหตุผล "${dto.reasonCode}" ไม่อยู่ในรายการที่ตั้งค่าไว้`,
+          );
+        }
       }
 
       this.transition.assertCanVoid({ from: doc.status });

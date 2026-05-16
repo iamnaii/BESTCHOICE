@@ -39,6 +39,8 @@ export interface UiFlags {
   summaryDefaultRange: 'today' | 'this_week' | 'this_month' | 'last_month';
   /** D1.3.5.2 — show inline performance warning banner when summary "all" range is picked. Default true. */
   summaryAllRangeWarning: boolean;
+  /** D1.3.5.3 — default page size for ExpenseDailySummaryPage result table. Default 100, clamped 10-500. */
+  summaryPaginationSize: number;
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -62,6 +64,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   defaultTimeRange: 'this_month',
   summaryDefaultRange: 'this_month',
   summaryAllRangeWarning: true,
+  summaryPaginationSize: 100,
 };
 
 export function useUiFlags(): UiFlags {

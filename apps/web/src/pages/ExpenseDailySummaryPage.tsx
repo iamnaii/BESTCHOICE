@@ -59,7 +59,7 @@ export default function ExpenseDailySummaryPage() {
   // their endDate); 'last_month' → last day of the previous month. The lazy
   // useState initializer captures the value once; mid-session preset changes
   // don't override user picks. URL `?date=` query param wins over the preset.
-  const { summaryDefaultRange, summaryAllRangeWarning } = useUiFlags();
+  const { summaryDefaultRange, summaryAllRangeWarning, summaryPaginationSize } = useUiFlags();
   const [date, setDate] = useState<string>(() => {
     const urlDate = searchParams.get('date');
     if (urlDate) return urlDate;
@@ -75,6 +75,17 @@ export default function ExpenseDailySummaryPage() {
   // banner renders above the summary table.
   const isAllRange = searchParams.get('range') === 'all';
   const showAllRangeWarning = isAllRange && summaryAllRangeWarning;
+  // D1.3.5.3 — pagination size for the result table. SUMMARY-SPECIFIC
+  // override of the generic `paginationSize` (D1.2.3.2 — when that ships,
+  // the summary page should prefer summaryPaginationSize over the generic
+  // value). visibleCount derives from `extraPages` × pageSize so the value
+  // tracks any async update to summaryPaginationSize (first paint default
+  // → fetched OWNER value) without resetting user's "Show more" clicks.
+  // Print: only the currently-visible rows are printed; if a user wants
+  // the full day printed, they "แสดงเพิ่ม" first. Default 100 covers
+  // virtually every realistic single-day case.
+  const [extraPages, setExtraPages] = useState<number>(0);
+  const visibleCount = summaryPaginationSize * (1 + extraPages);
   const [branchId, setBranchId] = useState<string>(
     searchParams.get('branchId') ?? user?.branchId ?? '',
   );
@@ -214,10 +225,30 @@ export default function ExpenseDailySummaryPage() {
         <div className="text-center py-12 text-muted-foreground">ไม่พบข้อมูลในวันที่เลือก</div>
       ) : (
         <div className="space-y-6">
-          {/* Documents table */}
+          {/* Documents table — D1.3.5.3: render up to `visibleCount` rows
+              with a "แสดงเพิ่ม" expander. Print stylesheet bypasses the cap
+              so the printed snapshot stays complete. */}
           <div className="border border-border rounded-xl overflow-hidden bg-card">
-            <div className="px-4 py-3 border-b border-border text-sm font-medium">
-              รายการเอกสาร ({summary.documents.length} รายการ)
+            <div className="px-4 py-3 border-b border-border text-sm font-medium flex items-center justify-between gap-3 flex-wrap">
+              <span>
+                รายการเอกสาร ({summary.documents.length} รายการ
+                {summary.documents.length > visibleCount && (
+                  <span className="text-muted-foreground font-normal">
+                    {' · แสดง '}
+                    {Math.min(visibleCount, summary.documents.length)}
+                  </span>
+                )}
+                )
+              </span>
+              {summary.documents.length > visibleCount && (
+                <button
+                  type="button"
+                  onClick={() => setExtraPages((n) => n + 1)}
+                  className="print:hidden text-xs text-primary hover:underline"
+                >
+                  แสดงเพิ่มอีก {Math.min(summaryPaginationSize, summary.documents.length - visibleCount)} รายการ
+                </button>
+              )}
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -242,7 +273,12 @@ export default function ExpenseDailySummaryPage() {
                       </td>
                     </tr>
                   ) : (
-                    summary.documents.map((d) => (
+                    // D1.3.5.3 — UI table renders only `visibleCount` rows.
+                    // The grand total in <tfoot> still reflects the FULL set
+                    // (summary.grandTotal is server-computed, not derived
+                    // from rendered rows), so paginated UI never under-
+                    // reports the day's total.
+                    summary.documents.slice(0, visibleCount).map((d) => (
                       <tr key={d.id} className="border-b border-border last:border-0">
                         <td className="p-2 font-mono">{d.number}</td>
                         <td className="p-2">{TYPE_LABELS[d.documentType] ?? d.documentType}</td>

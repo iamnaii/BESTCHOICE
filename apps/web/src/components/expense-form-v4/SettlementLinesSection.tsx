@@ -1,7 +1,18 @@
+import { useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { SettlementFormFields } from './types';
 import { formatNumberDecimal } from '@/utils/formatters';
+import { useUiFlags } from '@/hooks/useUiFlags';
+
+/**
+ * D1.3.6.2 — A bill is treated as "overdue" if its `documentDate` is older
+ * than 30 days from now. ExpenseDocument has no per-row due-date column, so
+ * this single net-30 heuristic is the best proxy without a schema change.
+ * The threshold lives here (not SystemConfig) because it's a UI-only sort
+ * hint — server doesn't act on it.
+ */
+const OVERDUE_DAYS = 30;
 
 interface AccrualDoc {
   id: string;
@@ -20,6 +31,8 @@ interface Props {
 }
 
 export function SettlementLinesSection({ branchId, value, onChange }: Props) {
+  // D1.3.6.2 — OWNER-configurable pre-tick preference.
+  const { settlementDefaultTick } = useUiFlags();
   const { data: accrualList } = useQuery<{ data: AccrualDoc[] }>({
     queryKey: ['accrual-list', branchId],
     queryFn: async () => {
@@ -33,6 +46,42 @@ export function SettlementLinesSection({ branchId, value, onChange }: Props) {
   });
 
   const docs = accrualList?.data ?? [];
+
+  // D1.3.6.2 — pre-tick the bill list according to the OWNER's preference.
+  // Runs once per (branch + docs payload) so it doesn't fight the user's
+  // manual toggles afterwards. `appliedKeyRef` stores the last (branchId,
+  // mode, docs-length) signature; we only auto-tick when that signature
+  // changes, never when `value.selections` mutates.
+  const appliedKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!branchId) return;
+    if (docs.length === 0) return;
+    const key = `${branchId}|${settlementDefaultTick}|${docs.length}`;
+    if (appliedKeyRef.current === key) return;
+    appliedKeyRef.current = key;
+    if (settlementDefaultTick === 'none') {
+      return; // 'none' means caller-supplied default (empty Map) stays
+    }
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - OVERDUE_DAYS);
+    const pre = new Map(value.selections);
+    let added = 0;
+    for (const doc of docs) {
+      if (pre.has(doc.id)) continue;
+      const shouldTick =
+        settlementDefaultTick === 'all' ||
+        (settlementDefaultTick === 'overdue_only' && new Date(doc.documentDate) < cutoff);
+      if (shouldTick) {
+        pre.set(doc.id, { docId: doc.id, amount: doc.totalAmount });
+        added += 1;
+      }
+    }
+    if (added > 0) onChange({ ...value, selections: pre });
+    // We intentionally exclude `value` + `onChange` from deps: the effect
+    // should only re-fire on docs/branch/preference change, not when the
+    // user toggles a row.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [branchId, settlementDefaultTick, docs]);
 
   const toggle = (doc: AccrualDoc) => {
     const next = new Map(value.selections);

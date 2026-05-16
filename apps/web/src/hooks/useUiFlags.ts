@@ -33,6 +33,13 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /**
+   * D1.3.6.2 — pre-tick preference for the VENDOR_SETTLEMENT bill list.
+   *   'all'          — pre-tick every loaded bill
+   *   'none'         — pre-tick nothing (manual selection only)
+   *   'overdue_only' — pre-tick only bills past their due date (default)
+   */
+  settlementDefaultTick: 'all' | 'none' | 'overdue_only';
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -53,6 +60,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  settlementDefaultTick: 'overdue_only',
 };
 
 export function useUiFlags(): UiFlags {

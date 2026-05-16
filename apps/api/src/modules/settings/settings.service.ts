@@ -175,6 +175,17 @@ export class SettingsService {
      * accessibility readers via the lang attr.
      */
     language: 'th' | 'en';
+    /**
+     * D1.3.6.2 — default-tick preference for the SettlementLinesSection bill
+     * list. Whitelist of three modes:
+     *   - `'all'`            — every fetched bill pre-ticked
+     *   - `'none'`           — nothing pre-ticked (manual selection only)
+     *   - `'overdue_only'`   — only bills past their `documentDate`-derived
+     *                          due date pre-ticked (default)
+     * Anything outside the whitelist (mis-edit, legacy value, malformed
+     * string) falls back to `'overdue_only'`.
+     */
+    settlementDefaultTick: 'all' | 'none' | 'overdue_only';
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -214,6 +225,15 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.3.6.2 — settlement_default_tick. Whitelist 'all' / 'none' /
+    // 'overdue_only'; everything else → 'overdue_only' (spec default).
+    const settlementDefaultTickRaw = await this.getKey('settlement_default_tick');
+    const settlementDefaultTick: 'all' | 'none' | 'overdue_only' =
+      settlementDefaultTickRaw === 'all'
+        ? 'all'
+        : settlementDefaultTickRaw === 'none'
+          ? 'none'
+          : 'overdue_only';
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -225,6 +245,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      settlementDefaultTick,
     };
   }
 

@@ -287,5 +287,42 @@ describe('SettingsService audit trail', () => {
       const flags = await service.getUiFlags();
       expect(flags.periodCloseDay).toBe(31);
     });
+
+    // D1.3.6.2 — settlement_default_tick (whitelist)
+    it('settlementDefaultTick defaults to "overdue_only" when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.settlementDefaultTick).toBe('overdue_only');
+    });
+
+    it('settlementDefaultTick honors "all" when OWNER sets it', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'settlement_default_tick')
+          return Promise.resolve({ value: 'all' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.settlementDefaultTick).toBe('all');
+    });
+
+    it('settlementDefaultTick honors "none" when OWNER sets it', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'settlement_default_tick')
+          return Promise.resolve({ value: 'none' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.settlementDefaultTick).toBe('none');
+    });
+
+    it('settlementDefaultTick falls back to "overdue_only" on unknown / malformed values', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'settlement_default_tick')
+          return Promise.resolve({ value: 'legacy-bool' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.settlementDefaultTick).toBe('overdue_only');
+    });
   });
 });

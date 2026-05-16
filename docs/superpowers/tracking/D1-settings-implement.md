@@ -93,7 +93,7 @@ Sub-prioritization within expanded D1 scope:
 
 | ID | Item | Priority | Status | Q-gate | Notes |
 |---|---|---|---|---|---|
-| D1.1.1.2 | `GET /api/settings/role-map` | P0 | ⬜ | Q7 | Wire AccountRoleService or drop table? |
+| D1.1.1.2 | `GET /api/settings/role-map` | P0 | ✅ | this PR | Q7=WIRE IT. New `AccountRoleService.listWithCoa()` joins account_role_map with chart_of_accounts.name + adds `required` flag (REQUIRED_ROLES whitelist). `GET /settings/role-map` (OWNER+FINANCE_MANAGER+ACCOUNTANT read). SettingsModule now imports JournalModule. 3 vitest cases (join, missing CoA drift, empty rows). Type-check 0 errors |
 | D1.1.1.3 | `PUT /api/settings/role-map` | P0 | ⬜ | Q7 | |
 | D1.1.1.4 | Admin UI for role map | P0 | ⬜ | Q7 | |
 | D1.1.1.5 | Validation rules | P0 | ⬜ | Q7 | |

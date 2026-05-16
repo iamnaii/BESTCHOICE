@@ -7,6 +7,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { AccountRoleService } from '../journal/account-role.service';
 
 @ApiTags('Settings')
 @ApiBearerAuth('JWT')
@@ -14,7 +15,10 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('OWNER')
 export class SettingsController {
-  constructor(private settingsService: SettingsService) {}
+  constructor(
+    private settingsService: SettingsService,
+    private accountRoleService: AccountRoleService,
+  ) {}
 
   @Get()
   findAll() {
@@ -30,6 +34,18 @@ export class SettingsController {
   @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   getUiFlags() {
     return this.settingsService.getUiFlags();
+  }
+
+  /**
+   * D1.1.1.2 — Read all rows from `account_role_map` joined with the
+   * matching ChartOfAccount.name for the admin UI. Read access is widened
+   * to FINANCE_MANAGER + ACCOUNTANT (they often need to verify routing
+   * before posting); writes (PUT, future POST/DELETE) stay OWNER-only.
+   */
+  @Get('role-map')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  getRoleMap() {
+    return this.accountRoleService.listWithCoa();
   }
 
   @Patch()

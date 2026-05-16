@@ -76,6 +76,62 @@ export class AccountRoleService implements OnModuleInit {
     return rows;
   }
 
+  /**
+   * D1.1.1.2 — All AccountRoleMap rows (incl. inactive) joined with
+   * ChartOfAccount.name. Returned to the admin UI so editors can see both
+   * the canonical role mapping and the human-readable account name without
+   * a second round-trip per row. The "required" flag tells the UI which
+   * roles cannot be deactivated (REQUIRED_ROLES list — protects boot
+   * invariants in `assertRequiredRolesPresent`).
+   */
+  async listWithCoa(): Promise<
+    Array<{
+      id: string;
+      role: string;
+      accountCode: string;
+      accountName: string | null;
+      priority: number;
+      isActive: boolean;
+      note: string | null;
+      required: boolean;
+    }>
+  > {
+    const rows = await this.prisma.accountRoleMap.findMany({
+      orderBy: [{ role: 'asc' }, { priority: 'asc' }],
+      select: {
+        id: true,
+        role: true,
+        accountCode: true,
+        priority: true,
+        isActive: true,
+        note: true,
+      },
+    });
+    if (rows.length === 0) return [];
+    const codes = Array.from(new Set(rows.map((r) => r.accountCode)));
+    const coas = await this.prisma.chartOfAccount.findMany({
+      where: { code: { in: codes }, deletedAt: null },
+      select: { code: true, name: true },
+    });
+    const nameByCode = new Map(coas.map((c) => [c.code, c.name]));
+    const requiredSet = new Set<string>(AccountRoleService.REQUIRED_ROLES);
+    return rows.map((r) => ({
+      id: r.id,
+      role: r.role,
+      accountCode: r.accountCode,
+      accountName: nameByCode.get(r.accountCode) ?? null,
+      priority: r.priority,
+      isActive: r.isActive,
+      note: r.note,
+      required: requiredSet.has(r.role),
+    }));
+  }
+
+  /** D1.1.1.5 — public access to the required-roles whitelist. */
+  static getRequiredRoles(): readonly string[] {
+    return AccountRoleService.REQUIRED_ROLES;
+  }
+
   /** Call after a mutation through the admin UI. */
   async invalidate(): Promise<void> {
     await this.loadCache();

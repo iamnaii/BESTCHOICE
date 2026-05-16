@@ -33,6 +33,14 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /**
+   * D1.3.3.4 — restrict integration API-key management UI to OWNER. Default
+   * true. UI surfaces (IntegrationHubPage link, "Manage API keys" menu
+   * entries) should hide for non-OWNER roles when this is true. Server-side
+   * the IntegrationsController is already OWNER-gated by `@Roles`, so this
+   * flag is the documentary toggle for that policy.
+   */
+  apiKeysAdminOnly: boolean;
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -53,6 +61,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  apiKeysAdminOnly: true,
 };
 
 export function useUiFlags(): UiFlags {

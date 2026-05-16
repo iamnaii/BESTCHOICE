@@ -70,7 +70,7 @@ Sub-prioritization within expanded D1 scope:
 | D1.3.3.1 | `export_enabled` flag | P2 | ⬜ | — | Gate Excel/PDF/CSV exports |
 | D1.3.3.2 | `bank_reconciliation` mode | P2 | ⬜ | — | manual vs auto-match flag |
 | D1.3.3.3 | `webhooks` default-off | P2 | ⬜ | — | Global gate on webhooks.controller |
-| D1.3.3.4 | `api_keys` admin admin | P2 | ⬜ | — | Already OWNER-only; flag as config |
+| D1.3.3.4 | `api_keys_admin_only` flag | P2 | ✅ | this PR | SystemConfig `api_keys_admin_only` (default `'true'`). **Documentary** — `IntegrationsController` is already `@Roles('OWNER')` on every method (MDM API key, OCR, PaySolutions credentials etc.). This flag is the visible config knob for that policy + future kill-switch if OWNER ever lets ACCOUNTANT/FINANCE_MANAGER rotate non-payment API keys (e.g. tax-filing). Frontend: `useUiFlags().apiKeysAdminOnly` (default true) — IntegrationHub link should hide for non-OWNER when true. Flipping false today only hides UI; server stays OWNER-gated until a future PR widens `@Roles` + reads the flag in a guard. 2 new tests |
 | D1.3.5.1 | `summary_default_range` | P2 | ⬜ | — | ExpenseDailySummaryPage default |
 | D1.3.5.2 | `summary_all_range_warning` | P2 | ⬜ | — | New UI warning |
 | D1.3.5.3 | `summary_pagination_size` | P2 | ⬜ | — | Configurable from pref |

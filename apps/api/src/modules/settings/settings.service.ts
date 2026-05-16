@@ -175,6 +175,21 @@ export class SettingsService {
      * accessibility readers via the lang attr.
      */
     language: 'th' | 'en';
+    /**
+     * D1.3.3.4 — restrict integration API-key management UI to OWNER.
+     * Default true. **Documentary today** — `IntegrationsController` already
+     * gates every method with `@Roles('OWNER')`, so this flag is the visible
+     * config knob for that policy. Lets the frontend conditionally
+     * show/hide IntegrationHub menu links for non-OWNER roles, and gives
+     * OWNER a future kill-switch if they ever decide ACCOUNTANT or
+     * FINANCE_MANAGER should be allowed to rotate, say, the e-tax API key.
+     *
+     * Flipping this to false today would only hide the link in the UI —
+     * the underlying endpoints remain OWNER-gated by their @Roles. To
+     * actually relax server-side access, a future PR must widen the @Roles
+     * decorator on `IntegrationsController` AND read this flag in a guard.
+     */
+    apiKeysAdminOnly: boolean;
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -214,6 +229,9 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.3.3.4 — api_keys_admin_only. Default true (matches current
+    // IntegrationsController @Roles('OWNER') policy).
+    const apiKeysAdminOnly = await this.readBoolean('api_keys_admin_only', true);
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -225,6 +243,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      apiKeysAdminOnly,
     };
   }
 

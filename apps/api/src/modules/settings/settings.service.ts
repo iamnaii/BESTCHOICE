@@ -145,6 +145,8 @@ export class SettingsService {
     reverseManagerApprovalDays: number;
     /** D1.2.6.3 — broader backdate warning threshold (days). Default 30. Distinct from D1.2.7.3 (the manager-approval threshold at 7d). */
     paymentDateWarningBackdate: number;
+    /** D1.2.6.4 — allow forward-dated transactions (reverse JE / payment / etc.). Default true. */
+    paymentDateAllowFuture: boolean;
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -163,12 +165,17 @@ export class SettingsService {
       'payment_date_warning_backdate',
       30,
     );
+    const paymentDateAllowFuture = await this.readBoolean(
+      'payment_date_allow_future',
+      true,
+    );
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
       reverseReasons,
       reverseManagerApprovalDays,
       paymentDateWarningBackdate,
+      paymentDateAllowFuture,
     };
   }
 

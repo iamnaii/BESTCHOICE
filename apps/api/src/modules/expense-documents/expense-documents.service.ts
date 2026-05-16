@@ -1794,6 +1794,22 @@ export class ExpenseDocumentsService implements OnModuleInit {
         }
       }
 
+      // D1.2.6.4 — `payment_date_allow_future` (default true). When OWNER
+      // disables, reject future-dated reverseDate. UI also shows warning.
+      if (dto.reverseDate) {
+        const allowFuture = await this.readBoolFlag(tx, 'payment_date_allow_future', true);
+        if (!allowFuture) {
+          const dateUtc = new Date(dto.reverseDate);
+          const todayBkk = new Date();
+          // Strip time so the check is calendar-day comparison.
+          if (dateUtc.getTime() > todayBkk.getTime()) {
+            throw new BadRequestException(
+              'ไม่อนุญาตให้ระบุวันที่ในอนาคต — กรุณาเลือกวันที่ไม่เกินวันนี้',
+            );
+          }
+        }
+      }
+
       this.transition.assertCanVoid({ from: doc.status });
 
       // Fix #C9 (Round 2 — moved from journal-auto.service.createAndPost):

@@ -1982,13 +1982,20 @@ export class PaymentsService {
     // 6. Rounding adjustment (≤1฿ tolerance) — must include for balanced preview
     // This mirrors PaymentReceipt2BTemplate's rounding logic.
     // Skipped for OVERPAY_ADVANCE / advance consume because those clear the diff via 21-1103.
+    // D1.1.6.3 — Also skipped when `adj_auto_route` is disabled. The preview
+    // becomes unbalanced (mirrors what the template would throw), and the
+    // caller surfaces `isBalanced=false` to the UI so the preparer knows
+    // they must reconcile manually.
     if (previewAdvCredit.eq(zero) && previewAdvConsume.eq(zero)) {
-      const roundingDiff = amountReceived.minus(installmentTotal);
-      const tolerance = new Prisma.Decimal('1.00');
-      if (roundingDiff.gt(zero) && roundingDiff.lte(tolerance)) {
-        rawLines.push({ code: this.roles.code('adj_overpay'), dr: zero, cr: roundingDiff, description: 'กำไรปัดเศษ (Policy C)' });
-      } else if (roundingDiff.lt(zero) && roundingDiff.abs().lte(tolerance)) {
-        rawLines.push({ code: this.roles.code('adj_underpay'), dr: roundingDiff.abs(), cr: zero, description: 'ส่วนลดเศษสตางค์ (Policy C)' });
+      const autoRouteEnabled = await this.roles.isAdjustmentAutoRouteEnabled();
+      if (autoRouteEnabled) {
+        const roundingDiff = amountReceived.minus(installmentTotal);
+        const tolerance = new Prisma.Decimal('1.00');
+        if (roundingDiff.gt(zero) && roundingDiff.lte(tolerance)) {
+          rawLines.push({ code: this.roles.code('adj_overpay'), dr: zero, cr: roundingDiff, description: 'กำไรปัดเศษ (Policy C)' });
+        } else if (roundingDiff.lt(zero) && roundingDiff.abs().lte(tolerance)) {
+          rawLines.push({ code: this.roles.code('adj_underpay'), dr: roundingDiff.abs(), cr: zero, description: 'ส่วนลดเศษสตางค์ (Policy C)' });
+        }
       }
     }
 

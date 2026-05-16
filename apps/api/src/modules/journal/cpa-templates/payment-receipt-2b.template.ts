@@ -169,6 +169,18 @@ export class PaymentReceipt2BTemplate {
           'Underpay tolerance requires approver (toleranceApproverId)',
         );
       }
+
+      // D1.1.6.3 — When `adj_auto_route` is disabled, refuse to auto-post the
+      // rounding line. The user must reconcile the diff via a manual Expense
+      // adjustment instead. Exact-pay (diff == 0) is always allowed.
+      if (!roundingDiff.eq(0)) {
+        const autoRouteEnabled = await this.roles.isAdjustmentAutoRouteEnabled();
+        if (!autoRouteEnabled) {
+          throw new BadRequestException(
+            'การปัดเศษอัตโนมัติถูกปิด (adj_auto_route=false) — กรุณาบันทึกค่าปรับเศษด้วยตนเอง',
+          );
+        }
+      }
     }
 
     // Wrap Payment.create (if needed) + JE post + reversal in a single atomic transaction.

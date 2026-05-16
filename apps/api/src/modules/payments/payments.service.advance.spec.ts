@@ -217,6 +217,7 @@ describe('PaymentsService — advance balance (Task 4)', () => {
               if (role === 'adj_overpay') return '53-1503';
               throw new Error(`AccountRoleService stub: unmapped role "${role}"`);
             }),
+            isAdjustmentAutoRouteEnabled: jest.fn().mockResolvedValue(true),
           },
         },
       ],

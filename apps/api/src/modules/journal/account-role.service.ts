@@ -93,6 +93,35 @@ export class AccountRoleService implements OnModuleInit {
     return rows;
   }
 
+  /**
+   * D1.1.6.3 — Returns `true` when rounding-tolerance adjustments should
+   * auto-route via the `adj_underpay` / `adj_overpay` roles (current
+   * behavior, default). When `false`, JE templates refuse to auto-post
+   * the rounding line and require a manual Expense-side adjustment.
+   *
+   * Read from SystemConfig key `adj_auto_route` (lower-case string value:
+   * 'true' / 'false'). Missing key, malformed value, or DB failure all
+   * fall through to the default `true` so existing flows are unaffected
+   * unless the owner explicitly opts out.
+   */
+  async isAdjustmentAutoRouteEnabled(): Promise<boolean> {
+    try {
+      const row = await this.prisma.systemConfig.findUnique({
+        where: { key: 'adj_auto_route' },
+      });
+      if (!row || typeof row.value !== 'string') return true;
+      const normalized = row.value.trim().toLowerCase();
+      // Treat only explicit 'false' / '0' / 'off' as disabled; everything
+      // else (incl. empty string, unexpected JSON) keeps current behavior.
+      return !['false', '0', 'off'].includes(normalized);
+    } catch (err) {
+      this.logger.warn(
+        `[D1.1.6.3] adj_auto_route lookup failed (defaulting to true): ${(err as Error).message}`,
+      );
+      return true;
+    }
+  }
+
   /** Call after a mutation through the admin UI. */
   async invalidate(): Promise<void> {
     await this.loadCache();

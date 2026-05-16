@@ -133,6 +133,16 @@ export class PaymentReceipt2BSplitTemplate {
           'Underpay tolerance requires approver (toleranceApproverId)',
         );
       }
+
+      // D1.1.6.3 — Refuse auto-routed rounding when adj_auto_route is off.
+      if (!diff.eq(0)) {
+        const autoRouteEnabled = await this.roles.isAdjustmentAutoRouteEnabled();
+        if (!autoRouteEnabled) {
+          throw new BadRequestException(
+            'การปัดเศษอัตโนมัติถูกปิด (adj_auto_route=false) — กรุณาบันทึกค่าปรับเศษด้วยตนเอง',
+          );
+        }
+      }
     }
 
     // For final partial: create the Payment row (one per installment, unique constraint)

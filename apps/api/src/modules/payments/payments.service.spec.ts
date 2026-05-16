@@ -170,6 +170,8 @@ describe('PaymentsService', () => {
               if (role === 'adj_overpay') return '53-1503';
               throw new Error(`AccountRoleService stub: unmapped role "${role}"`);
             }),
+            // D1.1.6.3 — default to enabled; specific tests can override.
+            isAdjustmentAutoRouteEnabled: jest.fn().mockResolvedValue(true),
           },
         },
       ],
@@ -1070,6 +1072,28 @@ describe('PaymentsService', () => {
       expect(overpayLine).toBeDefined();
       expect(parseFloat(overpayLine!.credit)).toBeCloseTo(0.89, 2);
       expect(parseFloat(overpayLine!.debit)).toBeCloseTo(0, 2);
+    });
+
+    it('D1.1.6.3 — preview omits rounding line + becomes unbalanced when adj_auto_route is disabled', async () => {
+      // Override the AccountRoleService stub for this test only — flip the
+      // auto-route flag off. Existing rounding paths should now NO-OP.
+      const accountRoleSvc: any = (service as any).roles;
+      accountRoleSvc.isAdjustmentAutoRouteEnabled = jest.fn().mockResolvedValue(false);
+      prisma.installmentSchedule.findUnique.mockResolvedValue(mockInstallmentAccrued);
+
+      // Same overpay 0.89 setup as the D1.1.6.2 test.
+      const result = await service.previewJournal({
+        contractId: 'contract-preview',
+        installmentNo: 2,
+        amountReceived: 2203.30,
+        depositAccountCode: '11-1101',
+      });
+
+      // No 53-1503 line should appear because auto-routing was suppressed.
+      const overpayLine = result.lines.find((l) => l.accountCode === '53-1503');
+      expect(overpayLine).toBeUndefined();
+      // Preview reports unbalanced so the UI surfaces the manual-adjustment path.
+      expect(result.isBalanced).toBe(false);
     });
 
     it('blocks PARTIAL when installment is not yet accrued', async () => {

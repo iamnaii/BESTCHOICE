@@ -175,6 +175,13 @@ export class SettingsService {
      * accessibility readers via the lang attr.
      */
     language: 'th' | 'en';
+    /**
+     * D1.2.1.5 — Notify approvers when a doc transitions to PENDING_APPROVAL.
+     * Default true. UI consumers (the Settings page) read this to render the
+     * toggle; the server-side hook in `ExpenseDocumentsService.notifyApprovers`
+     * reads the same SystemConfig row directly for the fan-out decision.
+     */
+    notificationOnPending: boolean;
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -214,6 +221,8 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.2.1.5 — notify approvers on PENDING_APPROVAL transition.
+    const notificationOnPending = await this.readBoolean('notification_on_pending', true);
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -225,6 +234,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      notificationOnPending,
     };
   }
 

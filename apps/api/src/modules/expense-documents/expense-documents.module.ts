@@ -3,6 +3,7 @@ import { PrismaModule } from '../../prisma/prisma.module';
 import { JournalModule } from '../journal/journal.module';
 import { AuthModule } from '../auth/auth.module';
 import { SsoConfigModule } from '../sso-config/sso-config.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { ExpenseDocumentsController } from './expense-documents.controller';
 import { ExpenseDocumentsService } from './expense-documents.service';
 import { ExpenseTemplatesController } from './expense-templates.controller';
@@ -16,7 +17,7 @@ import { PayrollCustomService } from './services/payroll-custom.service';
 import { ExpenseRecurringCron } from './crons/expense-recurring.cron';
 
 @Module({
-  imports: [PrismaModule, JournalModule, AuthModule, SsoConfigModule],
+  imports: [PrismaModule, JournalModule, AuthModule, SsoConfigModule, NotificationsModule],
   controllers: [ExpenseDocumentsController, ExpenseTemplatesController],
   providers: [
     ExpenseDocumentsService,

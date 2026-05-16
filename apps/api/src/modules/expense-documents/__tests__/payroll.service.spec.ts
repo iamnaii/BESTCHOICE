@@ -45,6 +45,7 @@ describe('ExpenseDocumentsService.createPayroll', () => {
       // payrollCustom mock — fixtures don't exercise custom income/deduction; loadWhitelist
       // returns the seeded default + validateLine no-ops.
       { loadWhitelist: jest.fn().mockResolvedValue(new Set(['53-1104', '53-1105'])), validateLine: jest.fn().mockResolvedValue({ taxableBase: undefined }) } as never,
+      { send: jest.fn().mockResolvedValue({ id: 'notif-1', status: 'SENT' }) } as never,
     );
   });
 

@@ -32,6 +32,8 @@ import { SsoConfigService } from '../sso-config/sso-config.service';
 import { PettyCashService } from './services/petty-cash.service';
 import { PayrollCustomService } from './services/payroll-custom.service';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationCategory } from '../notifications/notification-category.enum';
 
 /**
  * Allow-list of account codes that may appear on a multi-line Adjustment row
@@ -119,6 +121,7 @@ export class ExpenseDocumentsService implements OnModuleInit {
     private readonly pettyCashTemplate: PettyCashTemplate,
     private readonly pettyCash: PettyCashService,
     private readonly payrollCustom: PayrollCustomService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   // ─── D1.* — Service-side SystemConfig flag readers ─────────────────────
@@ -144,6 +147,94 @@ export class ExpenseDocumentsService implements OnModuleInit {
       return fallback;
     } catch {
       return fallback;
+    }
+  }
+
+  /**
+   * D1.2.1.5 — Notification hook for DRAFT → PENDING_APPROVAL transitions.
+   *
+   * Reads SystemConfig `notification_on_pending` (default true). When the
+   * flag is on, sends an IN_APP notification to every user in
+   * `approvers_list` (validated against the User table for active + not
+   * soft-deleted). When the list is empty, fans out to all OWNER users
+   * — that matches the OWNER-bypass behaviour added in D1.2.1.3 so
+   * notifications never silently drop on the floor.
+   *
+   * Errors are swallowed: a notification failure must NEVER prevent the
+   * status transition. The whole point of the workflow is that the doc
+   * MOVES to PENDING_APPROVAL regardless of who's listening.
+   *
+   * NOTE: this runs OUTSIDE the parent $transaction because the
+   * NotificationsService talks to LINE/SMS/IN_APP and writes its own log
+   * rows that we don't want rolled back together with the doc transition.
+   */
+  private async notifyApprovers(opts: {
+    docId: string;
+    docNumber: string;
+    documentType: DocumentType;
+    totalAmount: string;
+  }): Promise<void> {
+    try {
+      const enabled = await this.readBoolFlag(this.prisma, 'notification_on_pending', true);
+      if (!enabled) return;
+
+      // Pull approver IDs from SystemConfig (validated against User table)
+      const approverIds = await (async () => {
+        try {
+          const row = await this.prisma.systemConfig.findFirst({
+            where: { key: 'approvers_list', deletedAt: null },
+            select: { value: true },
+          });
+          if (!row?.value) return [];
+          const parsed: unknown = JSON.parse(row.value);
+          if (!Array.isArray(parsed)) return [];
+          return parsed.filter((v): v is string => typeof v === 'string');
+        } catch {
+          return [];
+        }
+      })();
+
+      // Resolve to real, active users. Fall back to OWNERs when list empty
+      // so notifications still land on the root-of-trust audience.
+      const recipients =
+        approverIds.length > 0
+          ? await this.prisma.user.findMany({
+              where: { id: { in: approverIds }, isActive: true, deletedAt: null },
+              select: { id: true, email: true, name: true },
+            })
+          : await this.prisma.user.findMany({
+              where: { role: 'OWNER', isActive: true, deletedAt: null },
+              select: { id: true, email: true, name: true },
+            });
+
+      if (recipients.length === 0) return;
+
+      const subject = `เอกสารรอการอนุมัติ — ${opts.docNumber}`;
+      const message =
+        `${opts.docNumber} (${opts.documentType}) ยอด ${opts.totalAmount} บาท ` +
+        `รอการอนุมัติ — กรุณาตรวจสอบและอนุมัติในระบบ`;
+
+      // Fan-out fire-and-forget. Each send() inside NotificationsService
+      // writes a NotificationLog row + handles retry; failures here are
+      // logged via Sentry by the notifier itself.
+      await Promise.allSettled(
+        recipients.map((r) =>
+          this.notifications.send({
+            channel: 'IN_APP',
+            recipient: r.email,
+            subject,
+            message,
+            relatedId: opts.docId,
+            category: NotificationCategory.STAFF,
+          }),
+        ),
+      );
+    } catch (err) {
+      // Last-resort swallow — log via Logger so the failure is observable
+      // without crashing the doc transition.
+      this.logger.warn(
+        `D1.2.1.5: notifyApprovers failed for doc ${opts.docNumber}: ${(err as Error).message}`,
+      );
     }
   }
 
@@ -1534,6 +1625,46 @@ export class ExpenseDocumentsService implements OnModuleInit {
         include: { expenseDetail: { include: { lines: { orderBy: { lineNo: 'asc' } } } } },
       });
     });
+  }
+
+  // ─── Submit for approval (DRAFT → PENDING_APPROVAL) ─────────────────
+  // D1.2.1.5 — minimal stub of submitForApproval() that wires the
+  // DRAFT → PENDING_APPROVAL transition to the new notification helper.
+  // D1.2.1.1 ships the canonical submitForApproval() with the full
+  // approval_enabled gate; at merge time take the union — keep 1.1's
+  // gate body and add the notifyApprovers() call after the status flip.
+  //
+  // NOTE: references the enum value `PENDING_APPROVAL` from D1.2.1.6's
+  // schema migration. Pre-merge we use `as unknown as DocumentStatus`.
+  async submitForApproval(id: string, _userId: string) {
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(hashtext($1))`, `post:${id}`);
+
+      const doc = await tx.expenseDocument.findUniqueOrThrow({ where: { id } });
+      if (doc.deletedAt) throw new NotFoundException('เอกสารถูกลบแล้ว');
+      if (doc.status !== 'DRAFT') {
+        throw new BadRequestException(
+          `ส่งขออนุมัติได้เฉพาะเอกสาร DRAFT — สถานะปัจจุบัน ${doc.status}`,
+        );
+      }
+
+      const PENDING_APPROVAL = 'PENDING_APPROVAL' as unknown as DocumentStatus;
+      return tx.expenseDocument.update({
+        where: { id },
+        data: { status: PENDING_APPROVAL },
+      });
+    });
+
+    // Notification fan-out happens OUTSIDE the transaction so a notification
+    // delivery failure doesn't roll back the status transition.
+    await this.notifyApprovers({
+      docId: updated.id,
+      docNumber: updated.number,
+      documentType: updated.documentType as unknown as DocumentType,
+      totalAmount: updated.totalAmount.toString(),
+    });
+
+    return updated;
   }
 
   // ─── Post (DRAFT → ACCRUAL or POSTED) ────────────────────────────────

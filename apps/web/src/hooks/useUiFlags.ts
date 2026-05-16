@@ -33,6 +33,11 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /**
+   * D1.2.1.5 — Send notification when a doc transitions to PENDING_APPROVAL.
+   * Default true. Used by the Settings UI to render the toggle.
+   */
+  notificationOnPending: boolean;
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -53,6 +58,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  notificationOnPending: true,
 };
 
 export function useUiFlags(): UiFlags {

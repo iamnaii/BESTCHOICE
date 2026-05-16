@@ -287,5 +287,21 @@ describe('SettingsService audit trail', () => {
       const flags = await service.getUiFlags();
       expect(flags.periodCloseDay).toBe(31);
     });
+
+    // D1.2.1.5 — notification_on_pending (default true)
+    it('notificationOnPending defaults to true when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.notificationOnPending).toBe(true);
+    });
+
+    it('notificationOnPending returns false when OWNER disables it', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'notification_on_pending') return Promise.resolve({ value: 'false' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.notificationOnPending).toBe(false);
+    });
   });
 });

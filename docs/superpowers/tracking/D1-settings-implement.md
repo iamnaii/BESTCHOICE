@@ -86,7 +86,7 @@ Sub-prioritization within expanded D1 scope:
 | D1.2.1.2 | `approval_threshold` 50,000 ฿ | P1 | ⬜ | — | Amount-based gate |
 | D1.2.1.3 | `approvers_list` user IDs | P1 | ⬜ | — | DB-driven, replace hardcoded APPROVER_ROLES |
 | D1.2.1.4 | `approval_required_doc_types` ([PAYROLL]) | P1 | ⬜ | — | Doctype filter |
-| D1.2.1.5 | `notification_on_pending` | P1 | ⬜ | — | Hook into existing notifier |
+| D1.2.1.5 | `notification_on_pending` | P1 | 🟡 | TBD | SystemConfig `notification_on_pending` (default true). `getUiFlags()` + `useUiFlags()` expose `notificationOnPending`. NotificationsService wired into ExpenseDocumentsModule. New `notifyApprovers()` helper fires IN_APP notifications to all users in `approvers_list` (or OWNERs if empty) on DRAFT→PENDING_APPROVAL. Notification fan-out happens OUTSIDE the transaction; Promise.allSettled + try/catch — delivery failures never block the transition |
 | D1.2.1.6 | `auto_post_on_approve` + DocumentStatus enum extension | P1 | ⬜ | — | Schema change: add PENDING_APPROVAL/APPROVED |
 
 ### Q-blocked items (wait for Q1–Q8 answers in PR #879)

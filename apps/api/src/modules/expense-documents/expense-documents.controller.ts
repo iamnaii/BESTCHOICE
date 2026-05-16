@@ -164,6 +164,17 @@ export class ExpenseDocumentsController {
     return this.service.post(id, user.id);
   }
 
+  /**
+   * D1.2.1.5 — Submit a DRAFT expense doc for approval. Sibling PR D1.2.1.1
+   * adds the full approval_enabled gate; this PR adds the IN_APP notification
+   * fan-out to approvers configured in SystemConfig `approvers_list`.
+   */
+  @Post(':id/submit-for-approval')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  submitForApproval(@Param('id') id: string, @CurrentUser() user: { id: string }) {
+    return this.service.submitForApproval(id, user.id);
+  }
+
   @Post(':id/void')
   @Roles('OWNER', 'FINANCE_MANAGER')
   void(

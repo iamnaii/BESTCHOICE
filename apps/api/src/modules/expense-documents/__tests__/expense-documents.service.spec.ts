@@ -21,6 +21,9 @@ describe('ExpenseDocumentsService', () => {
   let payroll: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let settlement: any;
+  // D1.2.1.5 — NotificationsService mock (used by submitForApproval)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let notifications: any;
 
   beforeEach(() => {
     prisma = {
@@ -78,6 +81,11 @@ describe('ExpenseDocumentsService', () => {
       auditLog: {
         create: jest.fn().mockResolvedValue({}),
       },
+      // D1.2.1.5 — notifyApprovers() resolves recipients via User.findMany.
+      // Default empty → fallback path tries OWNER (also empty here) → no-op.
+      user: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
     };
     docNumber = { next: jest.fn().mockResolvedValue('EX-20260510-0001') };
     transition = {
@@ -91,6 +99,7 @@ describe('ExpenseDocumentsService', () => {
     creditNote = { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-3' }) };
     payroll = { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-4' }) };
     settlement = { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-5' }) };
+    notifications = { send: jest.fn().mockResolvedValue({ id: 'notif-1', status: 'SENT' }) };
     service = new ExpenseDocumentsService(
       prisma,
       docNumber,
@@ -107,6 +116,7 @@ describe('ExpenseDocumentsService', () => {
       { execute: jest.fn() } as never,
       { getConfig: jest.fn(), validate: jest.fn() } as never,
       { loadWhitelist: jest.fn().mockResolvedValue(new Set(['53-1104', '53-1105'])), validateLine: jest.fn().mockResolvedValue({ taxableBase: new Decimal(0) }) } as never,
+      notifications,
     );
   });
 
@@ -669,6 +679,115 @@ describe('ExpenseDocumentsService', () => {
     });
   });
 
+  // D1.2.1.5 — notification_on_pending fan-out
+  describe('submitForApproval + notifyApprovers (D1.2.1.5)', () => {
+    function setupDraftDoc() {
+      const docFields = {
+        id: 'doc-sub-n',
+        number: 'EX-20260510-0001',
+        status: 'DRAFT',
+        documentType: 'EXPENSE',
+        totalAmount: new Decimal('500.00'),
+        deletedAt: null,
+      };
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue(docFields);
+      // update() in the global mock returns a stub w/o totalAmount → set it
+      // explicitly so submitForApproval's notifyApprovers() can read it.
+      prisma.expenseDocument.update.mockResolvedValue({
+        ...docFields,
+        status: 'PENDING_APPROVAL',
+      });
+    }
+
+    it('flips DRAFT -> PENDING_APPROVAL and notifies approvers when flag is on (default)', async () => {
+      setupDraftDoc();
+      prisma.systemConfig.findFirst.mockImplementation(
+        (args: { where: { key: string } }) => {
+          if (args.where.key === 'approvers_list') {
+            return Promise.resolve({ value: JSON.stringify(['user-app-1', 'user-app-2']) });
+          }
+          // notification_on_pending defaults to true (no row)
+          return Promise.resolve(null);
+        },
+      );
+      prisma.user.findMany.mockResolvedValue([
+        { id: 'user-app-1', email: 'app1@ex.com', name: 'Approver 1' },
+        { id: 'user-app-2', email: 'app2@ex.com', name: 'Approver 2' },
+      ]);
+      await service.submitForApproval('doc-sub-n', 'user-1');
+      const updateCalls = prisma.expenseDocument.update.mock.calls;
+      expect(
+        updateCalls.some((c: unknown[]) => {
+          const arg = c[0] as { data?: { status?: string } };
+          return arg?.data?.status === 'PENDING_APPROVAL';
+        }),
+      ).toBe(true);
+      // Fan-out: two recipients => two notifications.send() calls
+      expect(notifications.send).toHaveBeenCalledTimes(2);
+      const firstCall = notifications.send.mock.calls[0][0];
+      expect(firstCall.channel).toBe('IN_APP');
+      expect(firstCall.subject).toContain('EX-20260510-0001');
+      expect(firstCall.relatedId).toBe('doc-sub-n');
+    });
+
+    it('does NOT fan out when notification_on_pending = false', async () => {
+      setupDraftDoc();
+      prisma.systemConfig.findFirst.mockImplementation(
+        (args: { where: { key: string } }) => {
+          if (args.where.key === 'notification_on_pending') return Promise.resolve({ value: 'false' });
+          if (args.where.key === 'approvers_list') {
+            return Promise.resolve({ value: JSON.stringify(['user-app-1']) });
+          }
+          return Promise.resolve(null);
+        },
+      );
+      prisma.user.findMany.mockResolvedValue([
+        { id: 'user-app-1', email: 'app1@ex.com', name: 'A1' },
+      ]);
+      await service.submitForApproval('doc-sub-n', 'user-1');
+      expect(notifications.send).not.toHaveBeenCalled();
+    });
+
+    it('falls back to OWNERs when approvers_list is empty', async () => {
+      setupDraftDoc();
+      // approvers_list missing → empty list → notifyApprovers tries OWNERs
+      prisma.systemConfig.findFirst.mockResolvedValue(null);
+      prisma.user.findMany.mockResolvedValue([
+        { id: 'owner-1', email: 'owner@bc.com', name: 'Owner' },
+      ]);
+      await service.submitForApproval('doc-sub-n', 'user-1');
+      expect(notifications.send).toHaveBeenCalledTimes(1);
+      expect(notifications.send.mock.calls[0][0].recipient).toBe('owner@bc.com');
+    });
+
+    it('notification failures do NOT block the status transition', async () => {
+      setupDraftDoc();
+      prisma.systemConfig.findFirst.mockImplementation(
+        (args: { where: { key: string } }) => {
+          if (args.where.key === 'approvers_list') {
+            return Promise.resolve({ value: JSON.stringify(['user-app-1']) });
+          }
+          return Promise.resolve(null);
+        },
+      );
+      prisma.user.findMany.mockResolvedValue([
+        { id: 'user-app-1', email: 'app1@ex.com', name: 'A1' },
+      ]);
+      // Notification call throws — submitForApproval must still resolve
+      notifications.send.mockRejectedValueOnce(new Error('LINE down'));
+      await expect(service.submitForApproval('doc-sub-n', 'user-1')).resolves.toBeDefined();
+      // Status was still flipped (Promise.allSettled inside notifyApprovers
+      // ensures one delivery failure doesn't abort the operation).
+      const updateCalls = prisma.expenseDocument.update.mock.calls;
+      expect(
+        updateCalls.some((c: unknown[]) => {
+          const arg = c[0] as { data?: { status?: string } };
+          return arg?.data?.status === 'PENDING_APPROVAL';
+        }),
+      ).toBe(true);
+    });
+  });
+
   describe('update', () => {
     it('rejects update on POSTED doc', async () => {
       prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({ id: 'doc-1', status: 'POSTED' });
@@ -893,6 +1012,7 @@ describe('ExpenseDocumentsService', () => {
         { execute: jest.fn() } as never,
         { getConfig: jest.fn(), validate: jest.fn() } as never,
         { loadWhitelist: jest.fn().mockResolvedValue(new Set(['53-1104', '53-1105'])), validateLine: jest.fn().mockResolvedValue({ taxableBase: new Decimal(0) }) } as never,
+        { send: jest.fn().mockResolvedValue({ id: 'notif-1', status: 'SENT' }) } as never,
       );
       await svc.voidDocument('doc-1', 'user-1');
       expect(journalMock.createAndPost).toHaveBeenCalledTimes(1);
@@ -938,6 +1058,7 @@ describe('ExpenseDocumentsService', () => {
         { execute: jest.fn() } as never,
         { getConfig: jest.fn(), validate: jest.fn() } as never,
         { loadWhitelist: jest.fn().mockResolvedValue(new Set(['53-1104', '53-1105'])), validateLine: jest.fn().mockResolvedValue({ taxableBase: new Decimal(0) }) } as never,
+        { send: jest.fn().mockResolvedValue({ id: 'notif-1', status: 'SENT' }) } as never,
       );
       await svc.voidDocument('se-1', 'user-1');
       // Both cleared EXs reverted via updateMany with deletedAt:null guard
@@ -1033,6 +1154,7 @@ describe('ExpenseDocumentsService', () => {
         { execute: jest.fn() } as never,
         { getConfig: jest.fn(), validate: jest.fn() } as never,
         { loadWhitelist: jest.fn().mockResolvedValue(new Set()), validateLine: jest.fn() } as never,
+        { send: jest.fn().mockResolvedValue({ id: 'notif-1', status: 'SENT' }) } as never,
       );
       // Should NOT throw — both cascade checks are bypassed
       await expect(svc.voidDocument('doc-1', 'user-1')).resolves.toBeDefined();
@@ -1114,6 +1236,7 @@ describe('ExpenseDocumentsService', () => {
         { execute: jest.fn() } as never,
         { getConfig: jest.fn(), validate: jest.fn() } as never,
         { loadWhitelist: jest.fn().mockResolvedValue(new Set()), validateLine: jest.fn() } as never,
+        { send: jest.fn().mockResolvedValue({ id: 'notif-1', status: 'SENT' }) } as never,
       );
       await expect(
         svc.voidDocument('doc-1', 'user-1', { reasonCode: 'manager_decision' }),
@@ -1162,6 +1285,7 @@ describe('ExpenseDocumentsService', () => {
         { execute: jest.fn() } as never,
         { getConfig: jest.fn(), validate: jest.fn() } as never,
         { loadWhitelist: jest.fn().mockResolvedValue(new Set()), validateLine: jest.fn() } as never,
+        { send: jest.fn().mockResolvedValue({ id: 'notif-1', status: 'SENT' }) } as never,
       );
       const future = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
       await expect(
@@ -1197,6 +1321,7 @@ describe('ExpenseDocumentsService', () => {
         { execute: jest.fn() } as never,
         { getConfig: jest.fn(), validate: jest.fn() } as never,
         { loadWhitelist: jest.fn().mockResolvedValue(new Set()), validateLine: jest.fn() } as never,
+        { send: jest.fn().mockResolvedValue({ id: 'notif-1', status: 'SENT' }) } as never,
       );
       await expect(svc.voidDocument('doc-1', 'user-1')).resolves.toBeDefined();
     });
@@ -1234,6 +1359,7 @@ describe('ExpenseDocumentsService', () => {
         { execute: jest.fn() } as never,
         { getConfig: jest.fn(), validate: jest.fn() } as never,
         { loadWhitelist: jest.fn().mockResolvedValue(new Set(['53-1104', '53-1105'])), validateLine: jest.fn().mockResolvedValue({ taxableBase: new Decimal(0) }) } as never,
+        { send: jest.fn().mockResolvedValue({ id: 'notif-1', status: 'SENT' }) } as never,
       );
 
       await svc.voidDocument('doc-1', 'user-1', {
@@ -1288,6 +1414,7 @@ describe('ExpenseDocumentsService', () => {
         { execute: jest.fn() } as never,
         { getConfig: jest.fn(), validate: jest.fn() } as never,
         { loadWhitelist: jest.fn().mockResolvedValue(new Set(['53-1104', '53-1105'])), validateLine: jest.fn().mockResolvedValue({ taxableBase: new Decimal(0) }) } as never,
+        { send: jest.fn().mockResolvedValue({ id: 'notif-1', status: 'SENT' }) } as never,
       );
 
       await svc.voidDocument('doc-1', 'user-1', {

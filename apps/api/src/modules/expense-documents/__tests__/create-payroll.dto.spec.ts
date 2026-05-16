@@ -4,11 +4,13 @@ import { validate } from 'class-validator';
 import { CreatePayrollDto } from '../dto/create-payroll.dto';
 
 /**
- * Fix #C11 — SSO 750/person/month cap. Per Thai SSO law: employee + employer
- * each contribute 5% of min(salary, 15000) → max 750 each. payroll.template.ts
- * reuses ssoEmployee for the employer side, so the single Max enforces both.
+ * DTO-layer validation tests. The 750 cap was lifted from this DTO in
+ * B1 (SSO 875 Configurable) — the period-effective cap now lives in
+ * `sso_config` table and is enforced at the service layer via
+ * `SsoConfigService.validateContribution(documentDate, ssoEmployee)`.
+ * Cap-logic tests live in `sso-config.service.spec.ts`.
  */
-describe('CreatePayrollDto — SSO 750 cap (Fix #C11)', () => {
+describe('CreatePayrollDto — shape validation', () => {
   const baseDto = (overrides: Record<string, unknown>) => ({
     branchId: 'branch-1',
     documentDate: '2026-05-11',
@@ -28,41 +30,38 @@ describe('CreatePayrollDto — SSO 750 cap (Fix #C11)', () => {
     return validate(inst, { whitelist: true, forbidNonWhitelisted: false });
   }
 
-  it('rejects ssoEmployee=900 (over 750 cap)', async () => {
-    const errors = await validateDto(baseDto({ ssoEmployee: 900 }));
-    // Nested validation errors live under .children[0].children[?].constraints
-    const flat = JSON.stringify(errors);
-    expect(flat).toMatch(/SSO ต่อคนไม่เกิน 750/);
+  it('accepts ssoEmployee within plausible range (875)', async () => {
+    const errors = await validateDto(baseDto({ ssoEmployee: 875 }));
+    expect(errors).toEqual([]);
   });
 
-  it('accepts ssoEmployee=750 (exact cap)', async () => {
-    const errors = await validateDto(baseDto({ ssoEmployee: 750 }));
-    const flat = JSON.stringify(errors);
-    expect(flat).not.toMatch(/SSO ต่อคนไม่เกิน 750/);
-  });
-
-  it('accepts ssoEmployee=375 (salary 7500 × 5% = 375)', async () => {
-    const errors = await validateDto(baseDto({ baseSalary: 7500, ssoEmployee: 375 }));
-    const flat = JSON.stringify(errors);
-    expect(flat).not.toMatch(/SSO ต่อคนไม่เกิน 750/);
-  });
-
-  it('accepts ssoEmployee=0 (new hire mid-month, salary=0)', async () => {
-    // baseSalary must be > 0 (min 0.01), but ssoEmployee=0 is valid (no contribution).
+  it('accepts ssoEmployee=0 (no contribution)', async () => {
     const errors = await validateDto(baseDto({ baseSalary: 0.01, ssoEmployee: 0 }));
-    const flat = JSON.stringify(errors);
-    expect(flat).not.toMatch(/SSO ต่อคนไม่เกิน 750/);
+    expect(errors).toEqual([]);
   });
 
   it('accepts when ssoEmployee is omitted (optional)', async () => {
     const errors = await validateDto(baseDto({}));
-    const flat = JSON.stringify(errors);
-    expect(flat).not.toMatch(/SSO ต่อคนไม่เกิน 750/);
+    expect(errors).toEqual([]);
   });
 
-  it('rejects ssoEmployee=751 (off by 1 above cap)', async () => {
-    const errors = await validateDto(baseDto({ ssoEmployee: 751 }));
+  it('rejects negative ssoEmployee', async () => {
+    const errors = await validateDto(baseDto({ ssoEmployee: -1 }));
     const flat = JSON.stringify(errors);
-    expect(flat).toMatch(/SSO ต่อคนไม่เกิน 750/);
+    expect(flat).toMatch(/min/i);
+  });
+
+  it('rejects non-numeric ssoEmployee', async () => {
+    const errors = await validateDto(baseDto({ ssoEmployee: 'abc' }));
+    const flat = JSON.stringify(errors);
+    expect(flat).toMatch(/number/i);
+  });
+
+  // DTO no longer enforces the 750/875 cap — that lives in SsoConfigService.
+  // This test documents the deliberate lift: a value that LOOKS over-cap
+  // now passes DTO validation; service layer is the one that rejects it.
+  it('accepts ssoEmployee=900 at DTO layer (cap moved to service)', async () => {
+    const errors = await validateDto(baseDto({ ssoEmployee: 900 }));
+    expect(errors).toEqual([]);
   });
 });

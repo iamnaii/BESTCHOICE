@@ -25,10 +25,12 @@ import { AccountRoleService } from '../account-role.service';
  *   - SSO employer   = 21-3106 (NEW — dedicated SSO payable, employer side)
  *   - SSO employer expense = 53-1102 (เงินสมทบประกันสังคม)
  *
- * Thai SSO law: both employee and employer contribute 5% (cap 750/person).
+ * Thai SSO law: both employee and employer contribute 5% (cap is period-effective:
+ * 875 in 2569+, 1000 in 2572+, 1150 in 2575+ — see `sso_config` table).
  * Per-line `ssoEmployee` is reused for the employer side since by law they
  * match — if the rates ever diverge, add a separate `ssoEmployer` field to
- * PayrollLine.
+ * PayrollLine. Cap enforcement lives in `SsoConfigService.validateContribution`
+ * (called from `ExpenseDocumentsService.createPayroll`).
  */
 @Injectable()
 export class PayrollTemplate {
@@ -98,9 +100,9 @@ export class PayrollTemplate {
         },
       ];
       // Employer-side SSO: by Thai law, employer contributes the same amount
-      // as the employee (5% of base salary, capped at 750/person). Hence we
-      // reuse `sumSso` (which currently captures the employee deduction) for
-      // the employer expense + payable.
+      // as the employee (5% of base salary, capped per period in sso_config —
+      // 875 in 2569+). Hence we reuse `sumSso` (which currently captures the
+      // employee deduction) for the employer expense + payable.
       if (sumSso.gt(zero)) {
         lines.push({
           accountCode: codeSsoExpense,

@@ -33,6 +33,13 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /**
+   * D1.3.6.3 — allow per-line partial settlement on VENDOR_SETTLEMENT. Default
+   * true. When false: server rejects underpaid lines (V12 adjustment logic is
+   * effectively disabled by the gate), web app forces the "จำนวนที่จ่าย"
+   * column to the full remaining cap and disables the input.
+   */
+  settlementPartialPaymentEnabled: boolean;
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -53,6 +60,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  settlementPartialPaymentEnabled: true,
 };
 
 export function useUiFlags(): UiFlags {

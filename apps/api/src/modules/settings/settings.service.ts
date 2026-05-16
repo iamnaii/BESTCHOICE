@@ -175,6 +175,15 @@ export class SettingsService {
      * accessibility readers via the lang attr.
      */
     language: 'th' | 'en';
+    /**
+     * D1.3.6.3 — allow per-line partial settlement on VENDOR_SETTLEMENT.
+     * Default true (V12 adjustment logic remains active). When false the
+     * server rejects any line where `amountSettled < remainingCap` (±0.01
+     * rounding slop) — every line must clear the full outstanding balance.
+     * The web app additionally disables the "จำนวนที่จ่าย" input column so
+     * the user can't paste in a partial figure.
+     */
+    settlementPartialPaymentEnabled: boolean;
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -214,6 +223,13 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.3.6.3 — settlement_partial_payment_enabled. Default true (V12
+    // adjustments remain active). When false, web app disables the partial
+    // amount input + server rejects underpaid lines.
+    const settlementPartialPaymentEnabled = await this.readBoolean(
+      'settlement_partial_payment_enabled',
+      true,
+    );
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -225,6 +241,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      settlementPartialPaymentEnabled,
     };
   }
 

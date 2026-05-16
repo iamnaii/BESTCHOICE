@@ -76,7 +76,7 @@ Sub-prioritization within expanded D1 scope:
 | D1.3.5.3 | `summary_pagination_size` | P2 | ⬜ | — | Configurable from pref |
 | D1.3.6.1 | `settlement_max_bills_per_doc` | P2 | ⬜ | — | Replace literal 100 at SettlementLinesSection.tsx:28 |
 | D1.3.6.2 | `settlement_default_tick_behavior` | P2 | ⬜ | — | Initial-select logic |
-| D1.3.6.3 | `settlement_partial_payment_enabled` | P2 | ⬜ | — | Toggle V12 adjustments |
+| D1.3.6.3 | `settlement_partial_payment_enabled` | P2 | ✅ | TBD | Default true. When false: server rejects underpaid lines (cap−amount > 0.01); UI disables per-row amount input + snaps stale partials to total |
 
 ### Q-unblocked + bigger (6 items, Approval Workflow)
 

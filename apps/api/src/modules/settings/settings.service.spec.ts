@@ -287,5 +287,32 @@ describe('SettingsService audit trail', () => {
       const flags = await service.getUiFlags();
       expect(flags.periodCloseDay).toBe(31);
     });
+
+    // D1.3.6.3 — settlement_partial_payment_enabled
+    it('settlementPartialPaymentEnabled defaults to true when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.settlementPartialPaymentEnabled).toBe(true);
+    });
+
+    it('settlementPartialPaymentEnabled returns false when OWNER disables it', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'settlement_partial_payment_enabled')
+          return Promise.resolve({ value: 'false' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.settlementPartialPaymentEnabled).toBe(false);
+    });
+
+    it('settlementPartialPaymentEnabled falls back to true on unparseable value', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'settlement_partial_payment_enabled')
+          return Promise.resolve({ value: 'maybe' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.settlementPartialPaymentEnabled).toBe(true);
+    });
   });
 });

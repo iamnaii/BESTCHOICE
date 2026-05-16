@@ -1,7 +1,9 @@
+import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { SettlementFormFields } from './types';
 import { formatNumberDecimal } from '@/utils/formatters';
+import { useUiFlags } from '@/hooks/useUiFlags';
 
 interface AccrualDoc {
   id: string;
@@ -20,6 +22,10 @@ interface Props {
 }
 
 export function SettlementLinesSection({ branchId, value, onChange }: Props) {
+  // D1.3.6.3 — when partial-payment is disabled, the user can only clear
+  // each bill at its full totalAmount. Force the input read-only + reset
+  // the per-row amount when ticked.
+  const { settlementPartialPaymentEnabled } = useUiFlags();
   const { data: accrualList } = useQuery<{ data: AccrualDoc[] }>({
     queryKey: ['accrual-list', branchId],
     queryFn: async () => {
@@ -33,6 +39,28 @@ export function SettlementLinesSection({ branchId, value, onChange }: Props) {
   });
 
   const docs = accrualList?.data ?? [];
+
+  // D1.3.6.3 — when partial-payment is OFF, force every selected line back to
+  // its full `totalAmount`. Handles the corner case where the form already
+  // held partials (flag was on earlier) and the OWNER flipped the policy
+  // mid-session — without this snap the disabled input + persisted value
+  // could disagree.
+  useEffect(() => {
+    if (settlementPartialPaymentEnabled) return;
+    if (docs.length === 0 || value.selections.size === 0) return;
+    let mutated = false;
+    const next = new Map(value.selections);
+    for (const doc of docs) {
+      const sel = next.get(doc.id);
+      if (sel && sel.amount !== doc.totalAmount) {
+        next.set(doc.id, { ...sel, amount: doc.totalAmount });
+        mutated = true;
+      }
+    }
+    if (mutated) onChange({ ...value, selections: next });
+    // Excludes `value`/`onChange` so this only fires on flag/docs change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settlementPartialPaymentEnabled, docs]);
 
   const toggle = (doc: AccrualDoc) => {
     const next = new Map(value.selections);
@@ -99,6 +127,16 @@ export function SettlementLinesSection({ branchId, value, onChange }: Props) {
         </div>
       </div>
 
+      {!settlementPartialPaymentEnabled && (
+        <div
+          className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs leading-snug text-amber-700"
+          role="status"
+          aria-live="polite"
+        >
+          การชำระบางส่วนถูกปิดในการตั้งค่าระบบ — ทุกใบที่เลือกจะถูกล็อกที่ยอดเต็ม
+        </div>
+      )}
+
       <div className="rounded-xl border border-border overflow-hidden">
         <div className="bg-muted/50 px-4 py-2 text-xs font-medium border-b border-border">
           เจ้าหนี้คงค้างของสาขา ({docs.length} รายการรอจ่าย — เลือกที่ต้องการเคลียร์)
@@ -142,16 +180,33 @@ export function SettlementLinesSection({ branchId, value, onChange }: Props) {
                         {formatNumberDecimal(doc.totalAmount)}
                       </td>
                       <td className="p-1.5 text-right">
-                        {isSelected && (
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0.01"
-                            value={sel!.amount}
-                            onChange={(e) => updateAmount(doc.id, e.target.value)}
-                            className="w-32 px-2 py-1 border border-input rounded text-sm bg-background text-right font-mono inline-block"
-                          />
-                        )}
+                        {isSelected &&
+                          (settlementPartialPaymentEnabled ? (
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0.01"
+                              value={sel!.amount}
+                              onChange={(e) => updateAmount(doc.id, e.target.value)}
+                              className="w-32 px-2 py-1 border border-input rounded text-sm bg-background text-right font-mono inline-block"
+                            />
+                          ) : (
+                            // D1.3.6.3 OFF — locked to full totalAmount. Show as
+                            // disabled input + matching value so the column lines
+                            // up with the unlocked layout. Title surfaces the policy
+                            // reason for keyboard / a11y users.
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0.01"
+                              value={doc.totalAmount}
+                              readOnly
+                              disabled
+                              title="การชำระบางส่วนถูกปิดในการตั้งค่าระบบ — ต้องชำระเต็มจำนวน"
+                              aria-label={`ยอดที่จ่ายของ ${doc.number} ล็อกที่ยอดเต็ม`}
+                              className="w-32 px-2 py-1 border border-input rounded text-sm bg-muted text-right font-mono inline-block cursor-not-allowed opacity-70"
+                            />
+                          ))}
                       </td>
                     </tr>
                   );

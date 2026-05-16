@@ -175,6 +175,14 @@ export class SettingsService {
      * accessibility readers via the lang attr.
      */
     language: 'th' | 'en';
+    /**
+     * D1.1.5.1 — Petty Cash feature flag. Default true (feature is shipped
+     * and active per PRs #867+#868). When OWNER sets `petty_cash_enabled=false`,
+     * the web UI hides the Petty Cash doc-type card + the section in
+     * ExpenseFormV4, and the backend `createPettyCash` rejects with BadRequest
+     * "ระบบเงินสดย่อยถูกปิดใช้งาน".
+     */
+    pettyCashEnabled: boolean;
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -214,6 +222,8 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.1.5.1 — Petty Cash feature flag. Default true (feature shipped).
+    const pettyCashEnabled = await this.readBoolean('petty_cash_enabled', true);
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -225,6 +235,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      pettyCashEnabled,
     };
   }
 

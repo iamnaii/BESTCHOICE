@@ -287,5 +287,39 @@ describe('SettingsService audit trail', () => {
       const flags = await service.getUiFlags();
       expect(flags.periodCloseDay).toBe(31);
     });
+
+    // D1.1.5.1 — petty_cash_enabled feature flag
+    it('pettyCashEnabled defaults to true when SystemConfig row missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.pettyCashEnabled).toBe(true);
+    });
+
+    it('pettyCashEnabled returns false when OWNER disables it', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'petty_cash_enabled') return Promise.resolve({ value: 'false' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.pettyCashEnabled).toBe(false);
+    });
+
+    it('pettyCashEnabled returns true when OWNER explicitly sets to "true"', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'petty_cash_enabled') return Promise.resolve({ value: 'true' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.pettyCashEnabled).toBe(true);
+    });
+
+    it('pettyCashEnabled falls back to default true on unparseable value', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'petty_cash_enabled') return Promise.resolve({ value: 'sometimes' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.pettyCashEnabled).toBe(true);
+    });
   });
 });

@@ -5,6 +5,7 @@ import api, { getErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Receipt, Users, Banknote, FileText, Check, CheckCircle2, Clock } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useUiFlags } from '@/hooks/useUiFlags';
 import { cn } from '@/lib/utils';
 import { ExpenseFormState, newLine, newPayrollLine, newPettyCashLine } from './types';
 import { useFormCompute } from './useFormCompute';
@@ -81,12 +82,28 @@ const initial = (branchId: string, defaultCash: string): ExpenseFormState => {
 export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  // D1.1.5.1 — Petty Cash feature flag. When disabled, the picker hides the
+  // PETTY_CASH_REIMBURSEMENT chip and the form section is not rendered.
+  // Auto-flip away from PETTY_CASH_REIMBURSEMENT when the flag flips off
+  // mid-session (handled in the effect below).
+  const { pettyCashEnabled } = useUiFlags();
   const [showQuickStart, setShowQuickStart] = useState(true);
   const [state, setState] = useState<ExpenseFormState>(() =>
     initial(branchId, user?.defaultCashAccountCode || '11-1101'),
   );
 
   const patch = (p: Partial<ExpenseFormState>) => setState((s) => ({ ...s, ...p }));
+
+  // D1.1.5.1 — if flag flips off while user is on the Petty Cash form,
+  // revert to the safe default doctype so the form doesn't render an empty
+  // shell. Smart Default logic above will re-pick SAMEDAY vs ACCRUAL on next
+  // documentDate change.
+  useEffect(() => {
+    if (!pettyCashEnabled && state.docType === 'PETTY_CASH_REIMBURSEMENT') {
+      patch({ docType: 'EXPENSE_SAMEDAY' });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pettyCashEnabled]);
 
   // Smart default: switch SAMEDAY → ACCRUAL when invoice date is not today.
   // One-way: only auto-flip from SAMEDAY to ACCRUAL; does not revert manual ACCRUAL selection.
@@ -422,6 +439,7 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
                     value={state.docType}
                     onChange={(t) => patch({ docType: t })}
                     invoiceDateIsToday={invoiceIsToday}
+                    pettyCashEnabled={pettyCashEnabled}
                   />
                 </Section>
 
@@ -461,7 +479,11 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
                     />
                   </Section>
                 )}
-                {state.docType === 'PETTY_CASH_REIMBURSEMENT' && (
+                {/* D1.1.5.1 — gated by pettyCashEnabled flag. The auto-flip
+                    effect above guarantees state.docType won't be Petty Cash
+                    while the flag is off, but we keep the && here as a second
+                    line of defense for race conditions during the flag fetch. */}
+                {state.docType === 'PETTY_CASH_REIMBURSEMENT' && pettyCashEnabled && (
                   <Section num={next()} title="รายการเงินสดย่อย (Petty Cash)" Icon={Receipt}>
                     <PettyCashLinesSection
                       value={state.pettyCash}

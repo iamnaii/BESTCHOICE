@@ -33,6 +33,8 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /** D1.1.5.1 — Petty Cash feature flag. Default true. Hides DocTypePicker card + form section when false. */
+  pettyCashEnabled: boolean;
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -53,6 +55,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  pettyCashEnabled: true,
 };
 
 export function useUiFlags(): UiFlags {

@@ -72,7 +72,7 @@ Sub-prioritization within expanded D1 scope:
 | D1.3.3.3 | `webhooks` default-off | P2 | ⬜ | — | Global gate on webhooks.controller |
 | D1.3.3.4 | `api_keys` admin admin | P2 | ⬜ | — | Already OWNER-only; flag as config |
 | D1.3.5.1 | `summary_default_range` | P2 | ✅ | this PR | SystemConfig key `summary_default_range` (whitelisted `today`/`this_week`/`this_month`/`last_month`, default `this_month`). `getUiFlags()` adds `summaryDefaultRange`. `computeDefaultTimeRange()` extended to handle `'today'` (start=end=BKK today) + `'this_week'` (ISO Monday → today). `ExpenseDailySummaryPage` initializes `date` from preset's endDate (page is single-date today; range UI support deferred). 5 jest cases on getUiFlags + 4 vitest cases on `computeDefaultTimeRange` ('today', 'this_week' Wed/Mon/Sun) |
-| D1.3.5.2 | `summary_all_range_warning` | P2 | ⬜ | — | New UI warning |
+| D1.3.5.2 | `summary_all_range_warning` | P2 | ✅ | this PR | SystemConfig `summary_all_range_warning` (default `true`). `getUiFlags()` adds `summaryAllRangeWarning`. `ExpenseDailySummaryPage` renders an inline warning banner ("การโหลดช่วงทั้งหมดอาจช้า — แนะนำเลือกช่วงเวลาที่เจาะจง") above the summary table when `?range=all` URL param is active AND the flag is on. Banner uses semantic warning tokens (bg-warning/10, AlertTriangle icon). 2 jest cases on getUiFlags. **Note**: page currently has no built-in "ทั้งหมด" toggle UI — opt-in via URL only; banner sits ready for future UI expansion |
 | D1.3.5.3 | `summary_pagination_size` | P2 | ⬜ | — | Configurable from pref |
 | D1.3.6.1 | `settlement_max_bills_per_doc` | P2 | ⬜ | — | Replace literal 100 at SettlementLinesSection.tsx:28 |
 | D1.3.6.2 | `settlement_default_tick_behavior` | P2 | ⬜ | — | Initial-select logic |

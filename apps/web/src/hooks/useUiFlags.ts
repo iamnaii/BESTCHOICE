@@ -37,6 +37,8 @@ export interface UiFlags {
   defaultTimeRange: 'all' | 'this_month' | 'last_month';
   /** D1.3.5.1 — default time-range preset for ExpenseDailySummaryPage. Default 'this_month'. */
   summaryDefaultRange: 'today' | 'this_week' | 'this_month' | 'last_month';
+  /** D1.3.5.2 — show inline performance warning banner when summary "all" range is picked. Default true. */
+  summaryAllRangeWarning: boolean;
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -59,6 +61,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   language: 'th',
   defaultTimeRange: 'this_month',
   summaryDefaultRange: 'this_month',
+  summaryAllRangeWarning: true,
 };
 
 export function useUiFlags(): UiFlags {

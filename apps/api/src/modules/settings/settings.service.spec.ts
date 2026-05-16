@@ -367,5 +367,21 @@ describe('SettingsService audit trail', () => {
       const flags = await service.getUiFlags();
       expect(flags.summaryDefaultRange).toBe('this_month');
     });
+
+    // D1.3.5.2 — summary_all_range_warning flag
+    it('summaryAllRangeWarning defaults to true when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.summaryAllRangeWarning).toBe(true);
+    });
+
+    it('summaryAllRangeWarning returns false when OWNER disables it', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'summary_all_range_warning') return Promise.resolve({ value: 'false' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.summaryAllRangeWarning).toBe(false);
+    });
   });
 });

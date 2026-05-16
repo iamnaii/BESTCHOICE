@@ -193,6 +193,13 @@ export class SettingsService {
      * mount; mid-session user changes are NOT persisted to the setting.
      */
     summaryDefaultRange: 'today' | 'this_week' | 'this_month' | 'last_month';
+    /**
+     * D1.3.5.2 — when an OWNER picks "ทั้งหมด" / "all" on the summary page,
+     * show an inline performance warning banner. Default `true`. Independent
+     * of `summaryDefaultRange` (which doesn't whitelist 'all' today) so the
+     * banner sits ready for when the page exposes an explicit all-range UI.
+     */
+    summaryAllRangeWarning: boolean;
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -251,6 +258,9 @@ export class SettingsService {
       summaryDefaultRangeRaw === 'last_month'
         ? summaryDefaultRangeRaw
         : 'this_month';
+    // D1.3.5.2 — show performance warning banner when the user picks "all"
+    // range on the summary page. Default true (warn on heavy queries).
+    const summaryAllRangeWarning = await this.readBoolean('summary_all_range_warning', true);
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -264,6 +274,7 @@ export class SettingsService {
       language,
       defaultTimeRange,
       summaryDefaultRange,
+      summaryAllRangeWarning,
     };
   }
 

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams, useNavigate } from 'react-router';
 import api from '@/lib/api';
-import { ArrowLeft, Printer, FileSpreadsheet } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Printer, FileSpreadsheet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { formatNumberDecimal } from '@/utils/formatters';
@@ -59,7 +59,7 @@ export default function ExpenseDailySummaryPage() {
   // their endDate); 'last_month' → last day of the previous month. The lazy
   // useState initializer captures the value once; mid-session preset changes
   // don't override user picks. URL `?date=` query param wins over the preset.
-  const { summaryDefaultRange } = useUiFlags();
+  const { summaryDefaultRange, summaryAllRangeWarning } = useUiFlags();
   const [date, setDate] = useState<string>(() => {
     const urlDate = searchParams.get('date');
     if (urlDate) return urlDate;
@@ -67,6 +67,14 @@ export default function ExpenseDailySummaryPage() {
     // endDate is always non-empty for the summary preset whitelist (no 'all').
     return endDate || new Date().toISOString().slice(0, 10);
   });
+  // D1.3.5.2 — "all" range mode (no date filter, all-time view). The page UI
+  // does not currently expose a built-in toggle for this — opt-in via
+  // `?range=all` URL param so a future iteration can add the explicit "ทั้งหมด"
+  // button without touching the banner wiring. When active AND OWNER hasn't
+  // disabled `summary_all_range_warning`, an inline performance warning
+  // banner renders above the summary table.
+  const isAllRange = searchParams.get('range') === 'all';
+  const showAllRangeWarning = isAllRange && summaryAllRangeWarning;
   const [branchId, setBranchId] = useState<string>(
     searchParams.get('branchId') ?? user?.branchId ?? '',
   );
@@ -181,6 +189,22 @@ export default function ExpenseDailySummaryPage() {
           ผู้จัดทำ: {user?.name ?? '-'}
         </div>
       </div>
+
+      {/* D1.3.5.2 — performance warning when "all" range is active and
+          OWNER hasn't disabled the warning. Lives above the summary table
+          (also visible in print so the printed snapshot makes the wide-
+          range context explicit). Hidden when range !== 'all'. */}
+      {showAllRangeWarning && (
+        <div
+          role="alert"
+          className="mb-4 flex items-start gap-2.5 rounded-lg border border-warning/40 bg-warning/10 px-3.5 py-2.5 text-sm text-warning-foreground"
+        >
+          <AlertTriangle className="size-4 mt-0.5 shrink-0 text-warning" aria-hidden="true" />
+          <span className="leading-snug">
+            การโหลดช่วงทั้งหมดอาจช้า — แนะนำเลือกช่วงเวลาที่เจาะจง
+          </span>
+        </div>
+      )}
 
       {!branchId ? (
         <div className="text-center py-12 text-muted-foreground">กรุณาเลือกสาขา</div>

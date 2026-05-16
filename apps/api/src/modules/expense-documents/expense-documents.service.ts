@@ -148,6 +148,34 @@ export class ExpenseDocumentsService implements OnModuleInit {
   }
 
   /**
+   * D1.2.1.2 — Numeric SystemConfig reader. Returns the stored Decimal as a
+   * Prisma.Decimal, clamped to ≥ 0 (negatives become 0). On missing or
+   * unparseable values returns the fallback. Used by the approval-threshold
+   * gate where negatives would yield bizarre "every doc requires approval"
+   * behaviour.
+   */
+  private async readNumberFlag(
+    tx: Prisma.TransactionClient | PrismaService,
+    key: string,
+    fallback: number,
+  ): Promise<Prisma.Decimal> {
+    try {
+      const row = await tx.systemConfig.findFirst({
+        where: { key, deletedAt: null },
+        select: { value: true },
+      });
+      const raw = row?.value;
+      if (!raw) return new Prisma.Decimal(fallback);
+      const parsed = Number(raw);
+      if (!Number.isFinite(parsed)) return new Prisma.Decimal(fallback);
+      const clamped = parsed < 0 ? 0 : parsed;
+      return new Prisma.Decimal(clamped);
+    } catch {
+      return new Prisma.Decimal(fallback);
+    }
+  }
+
+  /**
    * D1.2.7.2 — reverse-reasons whitelist. Inlined (vs. importing
    * SettingsService) for the same reasons as readBoolFlag — keeps the ctor
    * stable and dodges audit↔settings cycles.
@@ -1547,6 +1575,34 @@ export class ExpenseDocumentsService implements OnModuleInit {
 
       const doc = await tx.expenseDocument.findUniqueOrThrow({ where: { id } });
       if (doc.deletedAt) throw new NotFoundException('เอกสารถูกลบแล้ว');
+
+      // D1.2.1.2 — approval-threshold gate.
+      //
+      // The gate fires only when BOTH:
+      //   (a) SystemConfig `approval_enabled` is true (sibling PR D1.2.1.1)
+      //   (b) doc.totalAmount >= SystemConfig `approval_threshold`
+      //       (default 50,000 ฿; negatives clamp to 0 so a malformed config
+      //       can never accidentally short-circuit the gate to "always on")
+      //
+      // Below-threshold docs proceed straight to POSTED on the legacy path —
+      // small expenses don't need an approval signature. Above-threshold docs
+      // are rejected with a Thai message that points the user to the
+      // submit-for-approval endpoint added by D1.2.1.1.
+      //
+      // Source-status check (`DRAFT`) keeps APPROVED docs flowing through —
+      // a doc that has already passed approval should not be re-checked here.
+      const approvalEnabled = await this.readBoolFlag(tx, 'approval_enabled', false);
+      if (approvalEnabled && doc.status === 'DRAFT') {
+        const threshold = await this.readNumberFlag(tx, 'approval_threshold', 50000);
+        const docTotal = new Prisma.Decimal(doc.totalAmount.toString());
+        if (docTotal.gte(threshold)) {
+          throw new BadRequestException(
+            `เอกสารยอด ${docTotal.toFixed(2)} บาท ≥ เกณฑ์ขออนุมัติ ${threshold.toFixed(2)} บาท — ` +
+              `กรุณากด "ส่งขออนุมัติ" ก่อน Post`,
+          );
+        }
+      }
+
       this.transition.assertCanPost({
         type: doc.documentType,
         from: doc.status,

@@ -188,6 +188,80 @@ describe('ExpenseDocumentsService', () => {
         ),
       ).resolves.toBeDefined();
     });
+
+    // B3 / K-05 — V12 happy path with diff=0 (omit amountPaid + no adjustments).
+    // Documents that the no-adjustment legacy path still works after the V12
+    // refactor in B2 (validateAdjustments helper extraction).
+    it('B3 / K-05 (V12 fast path): create with no adjustments + no amountPaid → POSTs successfully', async () => {
+      await expect(
+        service.create(
+          {
+            documentType: 'EXPENSE',
+            branchId: 'branch-1',
+            documentDate: '2026-05-10',
+            priceType: 'EXCLUSIVE',
+            lines: [
+              { category: '53-1302', quantity: 1, unitPrice: 1000, vatPercent: 0, whtPercent: 0 },
+            ],
+            // no amountPaid → defaults to netExpected; no adjustments → fast path
+          } as never,
+          'user-1',
+        ),
+      ).resolves.toBeDefined();
+    });
+
+    // B3 / K-08 — Direction routing: signed-sum rule lets either side route.
+    // `side: 'CR'` on 53-1503 closes a positive diff (overpay, +1) — would mis-
+    // route to 52-1104 if direction was hard-coded to one side. This test
+    // proves the validator accepts the correct CR-direction routing.
+    it('B3 / K-08 (direction overpay): diff > 0 → side=CR on 53-1503 reconciles', async () => {
+      prisma.chartOfAccount.findMany.mockResolvedValue([
+        { code: '53-1302', type: 'ค่าใช้จ่าย' },
+        { code: '53-1503', type: 'รายได้' },
+      ]);
+      await expect(
+        service.create(
+          {
+            documentType: 'EXPENSE',
+            branchId: 'branch-1',
+            documentDate: '2026-05-10',
+            priceType: 'EXCLUSIVE',
+            lines: [
+              { category: '53-1302', quantity: 1, unitPrice: 1000, vatPercent: 0, whtPercent: 0 },
+            ],
+            amountPaid: '1001',   // overpay by 1 (diff = +1)
+            adjustments: [{ accountCode: '53-1503', side: 'CR', amount: '1' }],
+          } as never,
+          'user-1',
+        ),
+      ).resolves.toBeDefined();
+    });
+
+    // B3 / K-08 (direction underpay): diff < 0 → side=DR on 52-1104 reconciles.
+    // Confirms the symmetrical direction works; rejects if the side is wrong.
+    it('B3 / K-08 (direction underpay): wrong side rejects via V12', async () => {
+      prisma.chartOfAccount.findMany.mockResolvedValue([
+        { code: '53-1302', type: 'ค่าใช้จ่าย' },
+        { code: '52-1104', type: 'ค่าใช้จ่าย' },
+      ]);
+      await expect(
+        service.create(
+          {
+            documentType: 'EXPENSE',
+            branchId: 'branch-1',
+            documentDate: '2026-05-10',
+            priceType: 'EXCLUSIVE',
+            lines: [
+              { category: '53-1302', quantity: 1, unitPrice: 1000, vatPercent: 0, whtPercent: 0 },
+            ],
+            amountPaid: '999',    // underpay by 1 (diff = −1)
+            // Wrong side: CR contributes +1, but diff needs −1
+            adjustments: [{ accountCode: '52-1104', side: 'CR', amount: '1' }],
+          } as never,
+          'user-1',
+        ),
+      ).rejects.toThrow(/V12/);
+    });
   });
 
   describe('list', () => {
@@ -270,6 +344,44 @@ describe('ExpenseDocumentsService', () => {
       });
       transition.assertCanPost.mockImplementation(() => { throw new BadRequestException('not draft'); });
       await expect(service.post('doc-3', 'user-1')).rejects.toThrow(BadRequestException);
+    });
+
+    // B3 / K-02 — V15: ACCRUAL ห้ามมี WHT (มาตรา 50 ป.รัษฎากร).
+    // WHT arises at payment, not accrual. ACCRUAL EXs cannot carry WHT — must
+    // throw before reaching the AccrualTemplate. Fix Report P0-2.
+    // `whtFormType: 'PND53'` is needed to bypass the doc-level form-type guard
+    // (which fires first at expense-documents.service.ts:1329); V15 is the
+    // intended check for this scenario.
+    it('B3 / K-02 (V15): rejects post on ACCRUAL doc with withholdingTax > 0', async () => {
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-v15',
+        status: 'DRAFT',
+        documentType: 'EXPENSE',
+        paymentMethod: null,         // → ACCRUAL path
+        depositAccountCode: null,
+        totalAmount: new Decimal('1000.00'),
+        withholdingTax: new Decimal('30.00'),
+        whtFormType: 'PND53',
+      });
+      transition.resolveTargetStatus.mockReturnValue('ACCRUAL');
+      await expect(service.post('doc-v15', 'user-1')).rejects.toThrow(/V15|มาตรา 50/);
+      expect(accrual.execute).not.toHaveBeenCalled();
+    });
+
+    // B3 / K-02 control — ACCRUAL with WHT = 0 should pass V15 + reach AccrualTemplate.
+    it('B3 / K-02 control: ACCRUAL with WHT = 0 reaches AccrualTemplate', async () => {
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-v15-ok',
+        status: 'DRAFT',
+        documentType: 'EXPENSE',
+        paymentMethod: null,
+        depositAccountCode: null,
+        totalAmount: new Decimal('1000.00'),
+        withholdingTax: new Decimal('0'),
+      });
+      transition.resolveTargetStatus.mockReturnValue('ACCRUAL');
+      await service.post('doc-v15-ok', 'user-1');
+      expect(accrual.execute).toHaveBeenCalledWith('doc-v15-ok', expect.anything());
     });
 
     // Fix #C10 — attachment threshold server-enforced

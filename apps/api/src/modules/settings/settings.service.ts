@@ -175,6 +175,14 @@ export class SettingsService {
      * accessibility readers via the lang attr.
      */
     language: 'th' | 'en';
+    /**
+     * D1.3.1.4 — Master IN_APP notification kill switch. Default `true`.
+     * When `false`, NotificationsService.send() returns
+     * `{ id: '', status: 'SKIPPED', blockReason: 'IN_APP_DISABLED' }` for
+     * `IN_APP` channel calls — no DB write, no exception. LINE/SMS unaffected.
+     * Surfaced here so UIs can render banners explaining the silent skip.
+     */
+    inAppNotificationsEnabled: boolean;
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -214,6 +222,11 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.3.1.4 — IN_APP notifications kill switch (default ON).
+    const inAppNotificationsEnabled = await this.readBoolean(
+      'in_app_notifications_enabled',
+      true,
+    );
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -225,6 +238,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      inAppNotificationsEnabled,
     };
   }
 

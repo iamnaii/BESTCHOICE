@@ -115,7 +115,7 @@ Sub-prioritization within expanded D1 scope:
 | D1.3.1.1 | `draft_alerts_enabled` | P2 | ⬜ | — | New cron + flag |
 | D1.3.1.2 | `ap_due_alerts` | P2 | ⬜ | — | Hook AP aging to notifier |
 | D1.3.1.3 | `email_provider` | P2 | ⬜ | Q5 | sendgrid vs SMTP |
-| D1.3.1.4 | `in_app_notifications` toggle | P2 | ⬜ | — | Channel disable |
+| D1.3.1.4 | `in_app_notifications` toggle | P2 | ✅ | this PR | SystemConfig `in_app_notifications_enabled` (default `'true'`). New `NotificationsService.readBoolFlag()` private helper (matches PR #884 pattern — direct PrismaService lookup, no SettingsModule dep). At top of `send()`, when `dto.channel === 'IN_APP'` + flag is `false` → silently returns `{ id: '', status: 'SKIPPED', blockReason: 'IN_APP_DISABLED' }` — no exception, no NotificationLog row written. **Critical cron safety:** callers awaiting `notifications.send(...)` continue without disruption. LINE/SMS unaffected (still validate channelKey, still hit compliance/templates/retry). `getUiFlags()` exposes `inAppNotificationsEnabled`. 3 jest cases (default-on / off silent-skip / LINE-unaffected). 56/56 cross-module regression suite passes. Type-check 0 errors |
 | D1.3.2.1 | `roles_defined` (add Viewer?) | P2 | ⬜ | Q4 | Schema change |
 | D1.3.2.2 | `settings_access_role` | P2 | ⬜ | Q4 | Runtime-editable role binding |
 | D1.3.2.3 | `post_permission` | P2 | ⬜ | Q4 | |

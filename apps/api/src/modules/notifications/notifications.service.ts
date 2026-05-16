@@ -50,14 +50,55 @@ export class NotificationsService {
     return (await this.integrationConfig.getValue('sms', 'force')) || 'standard';
   }
 
+  /**
+   * D1.3.1.4 — Read a SystemConfig boolean directly via PrismaService.
+   * Mirrors `ExpenseDocumentsService.readBoolFlag` (PR #884) — used here to
+   * gate IN_APP notifications without dragging SettingsModule into the
+   * NotificationsService DI graph. Returns the fallback when key is absent,
+   * malformed, or a transient DB error occurs.
+   */
+  private async readBoolFlag(key: string, fallback: boolean): Promise<boolean> {
+    try {
+      const row = await this.prisma.systemConfig.findFirst({
+        where: { key, deletedAt: null },
+        select: { value: true },
+      });
+      if (!row?.value) return fallback;
+      const v = row.value.trim().toLowerCase();
+      if (v === 'true' || v === '1') return true;
+      if (v === 'false' || v === '0') return false;
+      return fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
   // ============================================================
   // NOTIFICATION SENDING
   // ============================================================
 
   /**
    * Send a notification via LINE, SMS, or IN_APP with retry support
+   *
+   * **D1.3.1.4 — IN_APP channel gate:** when SystemConfig key
+   * `in_app_notifications_enabled` is `'false'`, IN_APP calls silently
+   * resolve with `{ id: '', status: 'SKIPPED', blockReason: 'IN_APP_DISABLED' }`
+   * — NO exception, NO DB write. Cron jobs + transactional flows that
+   * blindly `await notifications.send(...)` will continue without
+   * disruption. LINE/SMS are unaffected.
    */
   async send(dto: SendNotificationDto): Promise<{ id: string; status: string; errorMsg?: string; blockReason?: string }> {
+    // D1.3.1.4 — IN_APP kill switch. Default ON (silent pass-through when
+    // key missing/malformed). We read SystemConfig directly here to keep
+    // NotificationsService independent of SettingsModule (avoids a wide DI
+    // expansion just to read one boolean). Same pattern as PR #884.
+    if (dto.channel === 'IN_APP') {
+      const inAppEnabled = await this.readBoolFlag('in_app_notifications_enabled', true);
+      if (!inAppEnabled) {
+        return { id: '', status: 'SKIPPED', blockReason: 'IN_APP_DISABLED' };
+      }
+    }
+
     // LINE channel requires explicit channelKey — backward-compat default
     // ('line-finance') was removed in Phase 7 once all callers were updated.
     // DTO validator enforces this at the HTTP boundary; this guard catches

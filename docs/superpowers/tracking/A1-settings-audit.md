@@ -26,11 +26,15 @@ Anti-pattern reminder: NO implementation while scanning. AUDIT is read-only.
 
 | Tier | Total | ✅ Exists | ◐ Partial | ❌ Missing |
 |---|---|---|---|---|
-| P0 (sec 1.1–1.6) | 30 | 7 | 6 | 17 |
-| P1 (sec 2.1–2.8) | 37 | 0 | 4 | 33 |
+| P0 (sec 1.1–1.6) | 30 | 7 | 11 | 11 |
+| P1 (sec 2.1–2.8) | 37 | 2 | 3 | 32 |
 | P2 (sec 3.1–3.6) | 20 | 0 | 1 | 19 |
 | P3 (sec 4.1–4.3) | 15 | 3 | 3 | 9 |
-| **TOTAL** | **102** | **10 (10%)** | **14 (14%)** | **78 (76%)** |
+| **TOTAL** | **102** | **12 (12%)** | **18 (18%)** | **71 (69%)** |
+
+(Plus 1 SKIP — A1.1.3.4 SSO max, deferred to section 1.4 per spec.)
+
+(Counts post-R2: row-level icons are the source of truth. R2A recount fixed the Phase-1 headline undercount; R2B found 3 more false negatives — A1.1.6.1 + A1.1.6.2 (adjustment routes are seeded in account_role_map but consumers hardcode literals — "dead config" pattern) and A1.2.3.6 (User.preferences JSON exists with live endpoint, just not wired to display settings yet). Net: ✅ 11→12, ◐ 16→18, ❌ 74→71.)
 
 This is a raw scan result, not a scope decision. Phase 2 synthesizes it into a per-sub-section verdict ✅ APPROVE / ◐ DEFER / ⏸ SKIP after owner confirms the audit findings.
 
@@ -40,6 +44,8 @@ After Phase 2 produces results, owner decides per sub-section:
 - ✅ APPROVE: P0 ≥ 80% missing + P1 ≥ 50% missing → implement
 - ◐ DEFER: P0 ≥ 50% missing but P1 < 50% → P0 only this sprint
 - ⏸ SKIP: P0 < 50% missing → system already covers
+
+**Tie-breaker (codified by R2 review):** when computing "missing %", **◐ Partial counts toward Missing**. Every Partial in this audit is one of (a) "consumer doesn't read the configured value" (e.g. A1.1.6.1/2 dead config) or (b) "UI offers subset of spec range" (e.g. A1.1.3.2 WHT rates) or (c) "value exists but in code, not OWNER-editable" (e.g. A1.1.3.5 effective_date support). All three require D1 implementation work, so a Partial is not "already covered". Owner can override this rule per sub-section in Phase 2 if a Partial actually IS sufficient.
 
 ## Items Checklist
 
@@ -62,7 +68,7 @@ After Phase 2 produces results, owner decides per sub-section:
 | ID | Item | Priority | Status | PR | Evidence/Notes |
 |---|---|---|---|---|---|
 | A1.1.2.1 | `doc_prefix_per_type` (EXP/SET/PAY/CN/PC) | P0 | ◐ | this PR | `apps/api/src/modules/expense-documents/services/doc-number.service.ts:4-10` hardcoded `PREFIX_MAP` (EX/CN/PR/SE/PC). Spec said EXP/SET/PAY/CN/PC; code uses EX/SE/PR/CN/PC — different abbreviations. Not config-driven |
-| A1.1.2.2 | `doc_number_format` (YYMMNNN) | P0 | ◐ | this PR | `doc-number.service.ts:18` format `<TYPE>-YYYYMMDD-NNNN` (daily reset). Spec wanted YYMMNNN (monthly). Not configurable |
+| A1.1.2.2 | `doc_number_format` (YYMMNNN) | P0 | ◐ | this PR | `doc-number.service.ts:18` format `<TYPE>-YYYYMMDD-NNNN` (daily reset, 13 chars). Spec wanted `YYMMNNN` (monthly reset, 7 chars). **Format itself AND reset cycle differ from spec** — would require breaking change to align. Not configurable |
 | A1.1.2.3 | `reset_cycle` (yearly) | P0 | ❌ | this PR | Cycle is daily (BKK-day key at `doc-number.service.ts:38-40`), not yearly. No `reset_cycle` config |
 | A1.1.2.4 | `sequence_table` (doc_sequences) | P0 | ❌ | this PR | No `doc_sequences`/`DocSequence` model. Sequence derived via Postgres advisory lock + `findFirst orderBy desc` (`doc-number.service.ts:41-50`) — lock-based scan, no dedicated table |
 | A1.1.2.5 | Admin reset capability | P0 | ❌ | this PR | No admin reset endpoint or CLI; resets implicitly on date rollover |
@@ -71,8 +77,8 @@ After Phase 2 produces results, owner decides per sub-section:
 
 | ID | Item | Priority | Status | PR | Evidence/Notes |
 |---|---|---|---|---|---|
-| A1.1.3.1 | `vat_rate` (7%) | P0 | ◐ | this PR | `apps/api/prisma/schema.prisma:2190-2200` (SystemConfig); `apps/web/src/pages/SettingsPage/tabs/VatTab.tsx:26,35` UI writes key `VAT_RATE`; `apps/api/src/modules/purchase-orders/purchase-orders.service.ts:100` reads it; `apps/api/src/utils/config.util.ts:126-131`. NOT in seed lists — relies on UI/first-save. Hardcoded `0.07` fallbacks in repossessions/asset-disposal templates |
-| A1.1.3.2 | `wht_rates` (1/3/5/10/15) | P0 | ❌ | this PR | Per-line `whtRate` on schemas (`schema.prisma:3109/3574/6037`). No central WHT rates enum/table/system_config seed for {1,3,5,10,15}. PND3/PND53 form types routed but rates operator-entered per line |
+| A1.1.3.1 | `vat_rate` (7%) | P0 | ◐ | this PR | **🚨 R1A surfaced an orphan-key bug**: `SettingsPage/tabs/VatTab.tsx:26,35` UI writes SystemConfig key `VAT_RATE`, but `purchase-orders.service.ts:99` reads a DIFFERENT key `'vat_pct'` — VAT_RATE setting is non-functional through the documented path; consumer always falls back to `0.07` because `vat_pct` is never seeded. Hardcoded `0.07` fallbacks also in repossessions/asset-disposal templates. Also `config.util.ts:126-131` reads from yet another path. **Worth a P0 D1 fix even before Phase 2 verdict** |
+| A1.1.3.2 | `wht_rates` (1/3/5/10/15) | P0 | ◐ | this PR | **R1B flipped from ❌ to ◐**: `AssetEntrySection2Cost.tsx:167-170` hardcodes `<SelectItem value="0.01/0.03/0.05">` — only 3 of 5 spec rates (missing 10% and 15%). Schema `wht_rate Decimal` column at `schema.prisma:3109` allows per-line free entry. UI offers limited dropdown but column allows free entry — partially configurable, missing 2 spec rates |
 | A1.1.3.3 | `sso_rate` (5%) | P0 | ◐ | this PR | `dto/create-payroll.dto.ts:74,88`; `sso-config.service.ts:55`; `schema.prisma:2205` comment "5% rate is fixed by law and intentionally NOT stored". Enforced via `maxContribution` cap only |
 | A1.1.3.4 | `sso_max` (refined → 1.4) | P0 | — | — | SKIP per spec (covered by 1.4) |
 | A1.1.3.5 | effective_date support | P0 | ◐ | this PR | `schema.prisma:2214` `effective_from`/`to` on **SsoConfig only**. No `effective_from` on `system_config` (VAT_RATE) or any per-rate tax table |
@@ -94,15 +100,15 @@ After Phase 2 produces results, owner decides per sub-section:
 | A1.1.5.1 | `petty_cash_enabled` (true default) | P0 | ❌ | this PR | `DocTypePicker.tsx:35` DocType statically listed; no flag check. Feature always-on |
 | A1.1.5.2 | `petty_cash_account` (11-1103) | P0 | ✅ | this PR | `apps/api/src/modules/expense-documents/services/petty-cash.service.ts:29,39,87` reads `system_config.petty_cash_account` with **`'11-1201'` default (spec says 11-1103 — mismatch)** |
 | A1.1.5.3 | `petty_cash_limit` (5,000 ฿) | P0 | ✅ | this PR | `petty-cash.service.ts:30,40` reads `system_config.petty_cash_limit` with `'5000'` default; enforced by V20.1 |
-| A1.1.5.4 | `petty_cash_replenish_threshold` (1,000 ฿) | P0 | ◐ | this PR | `petty-cash.service.ts:31,42-44` config key read but interface comment "advisory, not enforced". Settable but inert |
+| A1.1.5.4 | `petty_cash_replenish_threshold` (1,000 ฿) | P0 | ◐ | this PR | **🚨 "Dead setting"**: `petty-cash.service.ts:31,42-44` reads the key (`replenishThreshold`) but `petty-cash.service.ts:11` interface comment is explicit "advisory, not enforced". No consumer ever acts on it. Functionally worse than a hardcoded value — gives false confidence of configurability. Spec default `1,000 ฿` never applied even when key is set |
 | A1.1.5.5 | `petty_cash_custodian` (employee FK) | P0 | ❌ | this PR | `PettyCashLinesSection.tsx:50-57`; `ExpenseFormV4.tsx:73,241` — `custodianName` is per-doc free text. No FK to employee, no default custodian setting |
 
 ### 1.6 Adjustment Routing (3 items · P0 · NEW v2.0)
 
 | ID | Item | Priority | Status | PR | Evidence/Notes |
 |---|---|---|---|---|---|
-| A1.1.6.1 | `adj_underpay_account` (52-1104) | P0 | ❌ | this PR | Literal `'52-1104'` hardcoded in `AdjustmentSection.tsx:30`, `payment-receipt-2b.template.ts:249`, `payment-receipt-2b-split.template.ts:212`, `payments.service.ts:1989` — 4 sites |
-| A1.1.6.2 | `adj_overpay_account` (53-1503) | P0 | ❌ | this PR | Literal `'53-1503'` same pattern in `AdjustmentSection.tsx:29`, `payment-receipt-2b.template.ts:277`, `payment-receipt-2b-split.template.ts:204`, `payments.service.ts:1987` |
+| A1.1.6.1 | `adj_underpay_account` (52-1104) | P0 | ◐ | this PR | **R2B flipped ❌→◐ — "dead setting" pattern.** Migration `20260919000000_add_account_role_map/migration.sql:46` SEEDS `account_role_map` with `role='adj_underpay'`, `account_code='52-1104'`. Infrastructure (`AccountRoleMap` table + `account-role.service.ts`) exists for runtime lookup. BUT consumers at `payment-receipt-2b.template.ts:249`, `payment-receipt-2b-split.template.ts:212`, `payments.service.ts:1989` still hardcode `'52-1104'` literals — they do NOT call `accountRoleService.getAccountForRole('adj_underpay')`. Configurable in DB but consumers ignore the configured value |
+| A1.1.6.2 | `adj_overpay_account` (53-1503) | P0 | ◐ | this PR | **R2B flipped ❌→◐ — same pattern.** Migration seeds `role='adj_overpay'`/`'53-1503'` (line 45). Consumers at `AdjustmentSection.tsx:29`, `payment-receipt-2b.template.ts:277`, `payment-receipt-2b-split.template.ts:204`, `payments.service.ts:1987` hardcode literal. Dead-config — wire-up needed in D1 |
 | A1.1.6.3 | `adj_auto_route` (true) | P0 | ❌ | this PR | Unconditional `if (diff > 0) … else …` in `payment-receipt-2b.template.ts:249,277`, `payments.service.ts:1987-1989`. No flag to disable |
 
 ### 2.1 Approval Workflow (6 items · P1)
@@ -137,7 +143,7 @@ After Phase 2 produces results, owner decides per sub-section:
 | A1.2.3.3 | `date_format` (DD/MM/YYYY) | P1 | ❌ | this PR | `formatDateShort` hardcoded to BE year `${DD}/${MM}/${YYYY+543}` at `apps/web/src/utils/formatters.ts:24-28`. No toggle |
 | A1.2.3.4 | `decimal_places` (2) | P1 | ❌ | this PR | Default arg `decimals = 2` in `formatNumberDecimal` at `formatters.ts:80`. Compile-time default |
 | A1.2.3.5 | `thousands_separator` (,) | P1 | ❌ | this PR | `toLocaleString('th-TH', ...)` at `formatters.ts:77,83` — locale hardcoded |
-| A1.2.3.6 | `per_user_override` (true) | P1 | ❌ | this PR | No `UserPreference`/`user_preferences` model in `schema.prisma`. Per-user display settings not modelled |
+| A1.2.3.6 | `per_user_override` (true) | P1 | ✅ | this PR | **R2B flipped ❌→✅ — false negative.** `schema.prisma:556` has `preferences Json? @map("preferences")` on User model. Live consumer: `auth.service.ts:436-446` (`updatePreferences` merge-patch); endpoint `PATCH /auth/me/preferences`. Frontend `AuthContext.tsx:12,92` + `useViewToggle.ts:18,33` persist per-user UI state. Mechanism exists — display settings (date_format/decimal_places) just aren't wired to read from it yet, but that's a different item |
 
 ### 2.4 Templates Management (5 items · P1)
 
@@ -279,6 +285,7 @@ After Phase 2 produces results, owner decides per sub-section:
   - `audit_log_retention_days` default (180d) vs spec (1825d for พ.ร.บ.บัญชี ม.7)
   - `doc_prefix_per_type` abbreviations differ: code uses `EX/SE/PR/CN/PC`, spec wrote `EXP/SET/PAY/CN/PC`
 - **2026-05-16:** `UserRole` enum mismatch — code has 5 roles (SALES/BRANCH_MANAGER/ACCOUNTANT/FINANCE_MANAGER/OWNER); spec wants 4 (Owner/Manager/Accountant/Viewer). Schema change required if A1.3.2.1 is approved for D1.
+- **2026-05-16 (3 review rounds — counts and findings now trustworthy):** Two re-grep passes (R1B + R2B) caught 4 false negatives: `A1.1.3.2 wht_rates` ❌→◐ (UI SelectItem partial coverage), `A1.1.6.1/2 adj_underpay/overpay_account` ❌→◐ (`account_role_map` migration SEEDS the roles but consumers hardcode literals → "dead config" pattern), `A1.2.3.6 per_user_override` ❌→✅ (`User.preferences Json` + `PATCH /auth/me/preferences` endpoint already in prod). Spot-check found `A1.1.3.1 VAT_RATE` evidence claimed an end-to-end wiring that doesn't exist (UI writes `VAT_RATE`, consumer reads `vat_pct`) — that's a real product bug, raised as Q6. Strengthened: `A1.1.5.4` flagged as "dead setting"; `A1.1.2.2` flagged on format+cycle mismatch. Headline recount fixed two undercounts. **Final post-review counts: TOTAL ✅ 12 / ◐ 18 / ❌ 71 / SKIP 1.** Under codified tie-breaker (◐ counts toward missing): P0 missing = 22/29 = 76%; P1 missing = 35/37 = 95%.
 
 ## Open Questions (raised by audit — for owner's Phase 2 input)
 
@@ -287,6 +294,9 @@ After Phase 2 produces results, owner decides per sub-section:
 - [ ] Q3: `doc_prefix_per_type` — accept the code's actual abbreviations (`EX/CN/PR/SE/PC`) as the new spec, or rename to spec's (`EXP/SET/PAY/CN/PC`)? Renaming touches every existing document number — likely big-bang migration. Recommend accept-actuals unless owner has business reason.
 - [ ] Q4: `UserRole` mismatch — spec wants {Owner, Manager, Accountant, Viewer}; code has {SALES, BRANCH_MANAGER, ACCOUNTANT, FINANCE_MANAGER, OWNER}. Add Viewer? Collapse SALES + BRANCH_MANAGER + FINANCE_MANAGER into "Manager"? Both are big changes.
 - [ ] Q5: `email_provider` (sendgrid) — code uses SMTP via nodemailer (works fine in prod). Forcing sendgrid requires API key + SDK swap. Drop spec's "sendgrid" requirement?
+- [ ] **Q6 (P0 correctness bug, surfaced by R1A):** `VAT_RATE` orphan-key — `SettingsPage/tabs/VatTab.tsx:26,35` writes SystemConfig key `VAT_RATE` but `purchase-orders.service.ts:99` reads a different key `vat_pct`. The UI setting is non-functional — consumer always falls back to `0.07`. Fix path: (a) rename consumer to read `VAT_RATE`, (b) rename UI to write `vat_pct`, or (c) introduce typed `VatService` that owns the key name. **This is a real product bug, not just config grooming** — pick a fix even before Phase 2 verdict.
+- [ ] **Q7 (dead-config pattern, surfaced by R2B):** `account_role_map` seeded with `adj_underpay → 52-1104` and `adj_overpay → 53-1503` but consumers at `payment-receipt-2b.template.ts` / `payment-receipt-2b-split.template.ts` / `payments.service.ts` still hardcode the literals — they don't call `accountRoleService.getAccountForRole()`. Wire all consumers to the service (proper config-driven flow), or accept hardcoded literals and remove the unused `account_role_map` rows?
+- [ ] **Q8 (dead-setting pattern, surfaced by R1C):** `petty_cash_replenish_threshold` (A1.1.5.4) is read by `petty-cash.service.ts:41-44` but the interface comment is explicit "advisory, not enforced" — no consumer acts on it. Worse than hardcoded — gives false confidence. Kill the dead setting (remove the read), or wire enforcement (block submit / show warning when balance < threshold)?
 
 ## Dependencies
 

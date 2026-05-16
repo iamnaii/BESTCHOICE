@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { randomUUID } from 'crypto';
+import { Prisma } from '@prisma/client';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 
@@ -50,6 +51,29 @@ export class PaymentReceipt2BSplitTemplate {
     private readonly journal: JournalAutoService,
     private readonly prisma: PrismaService,
   ) {}
+
+  /**
+   * D1.1.6.3 — read `adj_auto_route` flag (default TRUE).
+   * Inlined direct SystemConfig read to avoid pulling SettingsModule into the
+   * journal module DI graph. Mirrors the helper in PaymentReceipt2BTemplate.
+   */
+  private async readAdjAutoRouteFlag(
+    tx: Prisma.TransactionClient | PrismaService,
+  ): Promise<boolean> {
+    try {
+      const row = await tx.systemConfig.findFirst({
+        where: { key: 'adj_auto_route', deletedAt: null },
+        select: { value: true },
+      });
+      if (!row?.value) return true;
+      const v = row.value.trim().toLowerCase();
+      if (v === 'false' || v === '0') return false;
+      if (v === 'true' || v === '1') return true;
+      return true;
+    } catch {
+      return true;
+    }
+  }
 
   private computeInstallmentTotal(c: {
     totalMonths: number;
@@ -130,6 +154,18 @@ export class PaymentReceipt2BSplitTemplate {
         throw new BadRequestException(
           'Underpay tolerance requires approver (toleranceApproverId)',
         );
+      }
+
+      // D1.1.6.3 — when `adj_auto_route` flag is off, refuse to auto-route
+      // the final-partial rounding diff to 52-1104 / 53-1503. Owner must
+      // clear the diff manually before the final partial can post.
+      if (!diff.eq(0)) {
+        const autoRoute = await this.readAdjAutoRouteFlag(this.prisma);
+        if (!autoRoute) {
+          throw new BadRequestException(
+            'Auto-routing disabled — manual adjustment required',
+          );
+        }
       }
     }
 

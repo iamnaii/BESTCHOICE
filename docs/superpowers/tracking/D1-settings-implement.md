@@ -94,7 +94,7 @@ Sub-prioritization within expanded D1 scope:
 | ID | Item | Priority | Status | Q-gate | Notes |
 |---|---|---|---|---|---|
 | D1.1.1.2 | `GET /api/settings/role-map` | P0 | ⬜ | Q7 | Wire AccountRoleService or drop table? |
-| D1.1.1.3 | `PUT /api/settings/role-map` | P0 | ⬜ | Q7 | |
+| D1.1.1.3 | `PUT /api/settings/role-map` | P0 | ✅ | this PR | Q7=WIRE IT. New `AccountRoleService.update(id, dto, userId)` validates: REQUIRED_ROLES rows cannot be deactivated; accountCode must exist in chart_of_accounts. Writes `ROLE_MAP_UPDATED` audit + diffSummary, then calls `invalidate()` to refresh the in-memory role→code cache. New `UpdateRoleMapDto` (all fields optional). `PUT /settings/role-map/:id` OWNER-only. 5 vitest cases (valid update + audit, invalid code, deactivate-required-role rejection, missing id 404, partial update). Type-check 0 errors |
 | D1.1.1.4 | Admin UI for role map | P0 | ⬜ | Q7 | |
 | D1.1.1.5 | Validation rules | P0 | ⬜ | Q7 | |
 | D1.1.1.6 | Audit log on change | P0 | ⬜ | Q7 | |

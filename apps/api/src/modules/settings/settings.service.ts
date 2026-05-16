@@ -102,12 +102,18 @@ export class SettingsService {
   async getUiFlags(): Promise<{
     /** D1.2.8.2 — show ม.42 tax-exempt warning when a payroll custom-income line is marked non-taxable. Default true. */
     taxExemptWarningEnabled: boolean;
+    /** D1.2.7.1 — require reason on void/reverse dialog. Default true. */
+    reverseReasonRequired: boolean;
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
       true,
     );
-    return { taxExemptWarningEnabled };
+    const reverseReasonRequired = await this.readBoolean(
+      'reverse_reason_required',
+      true,
+    );
+    return { taxExemptWarningEnabled, reverseReasonRequired };
   }
 
   /**

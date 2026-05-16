@@ -1730,6 +1730,15 @@ export class ExpenseDocumentsService implements OnModuleInit {
         );
       }
 
+      // D1.2.7.1 — `reverse_reason_required` (default true). When enabled,
+      // server enforces that `dto.reasonCode` is present + non-empty. UI
+      // already enforces via canSubmit, but the server gate prevents a
+      // bypass (e.g. direct curl without going through ReverseDialog).
+      const reasonRequired = await this.readBoolFlag(tx, 'reverse_reason_required', true);
+      if (reasonRequired && !dto.reasonCode?.trim()) {
+        throw new BadRequestException('กรุณาระบุเหตุผลในการยกเลิกเอกสาร');
+      }
+
       this.transition.assertCanVoid({ from: doc.status });
 
       // Fix #C9 (Round 2 — moved from journal-auto.service.createAndPost):

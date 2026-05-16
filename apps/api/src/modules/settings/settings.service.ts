@@ -175,6 +175,16 @@ export class SettingsService {
      * accessibility readers via the lang attr.
      */
     language: 'th' | 'en';
+    /**
+     * D1.2.1.1 — Approval Workflow opt-in toggle. Default `false` (legacy
+     * lifecycle DRAFT → POSTED is preserved). When `true`, expense docs
+     * follow DRAFT → PENDING_APPROVAL → APPROVED → POSTED. The submit /
+     * approve actions live on `ExpenseDocumentsService.submitForApproval()`
+     * + `.approve()` (D1.2.1.6). Threshold + doc-type filters are layered
+     * on top by D1.2.1.2 / D1.2.1.4. Web UI uses this flag to conditionally
+     * render the "ส่งขออนุมัติ" button instead of "Post".
+     */
+    approvalEnabled: boolean;
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -214,6 +224,9 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.2.1.1 — Approval Workflow opt-in. Default false so existing
+    // installations keep the legacy DRAFT → POSTED lifecycle.
+    const approvalEnabled = await this.readBoolean('approval_enabled', false);
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -225,6 +238,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      approvalEnabled,
     };
   }
 

@@ -33,6 +33,13 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /**
+   * D1.2.1.1 — Approval Workflow opt-in. When true, expense docs follow
+   * DRAFT → PENDING_APPROVAL → APPROVED → POSTED. UI uses this flag to
+   * conditionally render the "ส่งขออนุมัติ" button instead of "Post".
+   * Default false (legacy DRAFT → POSTED lifecycle).
+   */
+  approvalEnabled: boolean;
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -53,6 +60,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  approvalEnabled: false,
 };
 
 export function useUiFlags(): UiFlags {

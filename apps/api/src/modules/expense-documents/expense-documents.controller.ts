@@ -164,6 +164,18 @@ export class ExpenseDocumentsController {
     return this.service.post(id, user.id);
   }
 
+  /**
+   * D1.2.1.1 — Submit a DRAFT expense doc for approval.
+   * Only callable when SystemConfig `approval_enabled` is true. Flips
+   * status DRAFT → PENDING_APPROVAL. Approve action lives on the sibling
+   * /approve endpoint (D1.2.1.6).
+   */
+  @Post(':id/submit-for-approval')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  submitForApproval(@Param('id') id: string, @CurrentUser() user: { id: string }) {
+    return this.service.submitForApproval(id, user.id);
+  }
+
   @Post(':id/void')
   @Roles('OWNER', 'FINANCE_MANAGER')
   void(

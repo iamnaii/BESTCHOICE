@@ -667,6 +667,121 @@ describe('ExpenseDocumentsService', () => {
         /CompanyInfo with companyCode=SHOP/,
       );
     });
+
+    // D1.2.1.1 — approval gate. With `approval_enabled` true, direct
+    // DRAFT → POSTED is rejected. User must go through submitForApproval.
+    it('D1.2.1.1: rejects post on DRAFT when approval_enabled is true', async () => {
+      prisma.systemConfig.findFirst.mockImplementation(
+        (args: { where: { key: string } }) => {
+          if (args.where.key === 'approval_enabled') return Promise.resolve({ value: 'true' });
+          if (args.where.key === 'reverse_reason_required') return Promise.resolve({ value: 'false' });
+          return Promise.resolve(null);
+        },
+      );
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-approval',
+        status: 'DRAFT',
+        documentType: 'EXPENSE',
+        paymentMethod: 'CASH',
+        depositAccountCode: '11-1101',
+        totalAmount: new Decimal('500.00'),
+        withholdingTax: new Decimal('0'),
+        whtFormType: null,
+        deletedAt: null,
+      });
+      await expect(service.post('doc-approval', 'user-1')).rejects.toThrow(
+        /ส่งขออนุมัติ/,
+      );
+      expect(sameDay.execute).not.toHaveBeenCalled();
+      expect(accrual.execute).not.toHaveBeenCalled();
+    });
+
+    it('D1.2.1.1: post on DRAFT proceeds normally when approval_enabled is false (default)', async () => {
+      // Global mock returns null for `approval_enabled` → readBoolFlag fallback = false
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-no-approval',
+        status: 'DRAFT',
+        documentType: 'EXPENSE',
+        paymentMethod: 'CASH',
+        depositAccountCode: '11-1101',
+        totalAmount: new Decimal('500.00'),
+        withholdingTax: new Decimal('0'),
+        whtFormType: null,
+        deletedAt: null,
+      });
+      transition.resolveTargetStatus.mockReturnValue('POSTED');
+      await service.post('doc-no-approval', 'user-1');
+      expect(sameDay.execute).toHaveBeenCalledWith('doc-no-approval', expect.anything());
+    });
+  });
+
+  describe('submitForApproval (D1.2.1.1)', () => {
+    it('rejects when approval_enabled is false (default)', async () => {
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-sub-1',
+        status: 'DRAFT',
+        deletedAt: null,
+      });
+      await expect(service.submitForApproval('doc-sub-1', 'user-1')).rejects.toThrow(
+        /ฟีเจอร์ขออนุมัติยังไม่เปิดใช้งาน/,
+      );
+    });
+
+    it('rejects when source status is not DRAFT', async () => {
+      prisma.systemConfig.findFirst.mockImplementation(
+        (args: { where: { key: string } }) => {
+          if (args.where.key === 'approval_enabled') return Promise.resolve({ value: 'true' });
+          return Promise.resolve(null);
+        },
+      );
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-sub-2',
+        status: 'POSTED',
+        deletedAt: null,
+      });
+      await expect(service.submitForApproval('doc-sub-2', 'user-1')).rejects.toThrow(
+        /ส่งขออนุมัติได้เฉพาะเอกสาร DRAFT/,
+      );
+    });
+
+    it('flips DRAFT → PENDING_APPROVAL when approval_enabled is true', async () => {
+      prisma.systemConfig.findFirst.mockImplementation(
+        (args: { where: { key: string } }) => {
+          if (args.where.key === 'approval_enabled') return Promise.resolve({ value: 'true' });
+          return Promise.resolve(null);
+        },
+      );
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-sub-3',
+        status: 'DRAFT',
+        deletedAt: null,
+      });
+      await service.submitForApproval('doc-sub-3', 'user-1');
+      const updateCalls = prisma.expenseDocument.update.mock.calls;
+      expect(
+        updateCalls.some((c: unknown[]) => {
+          const arg = c[0] as { data?: { status?: string } };
+          return arg?.data?.status === 'PENDING_APPROVAL';
+        }),
+      ).toBe(true);
+    });
+
+    it('rejects when doc is soft-deleted', async () => {
+      prisma.systemConfig.findFirst.mockImplementation(
+        (args: { where: { key: string } }) => {
+          if (args.where.key === 'approval_enabled') return Promise.resolve({ value: 'true' });
+          return Promise.resolve(null);
+        },
+      );
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-sub-4',
+        status: 'DRAFT',
+        deletedAt: new Date(),
+      });
+      await expect(service.submitForApproval('doc-sub-4', 'user-1')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
   });
 
   describe('update', () => {

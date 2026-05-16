@@ -175,6 +175,15 @@ export class SettingsService {
      * accessibility readers via the lang attr.
      */
     language: 'th' | 'en';
+    /**
+     * D1.2.3.3 — date display format toggle: 'BE' = Buddhist Era (พ.ศ., +543)
+     * default, 'CE' = Christian/Common Era (Gregorian ค.ศ.). SystemConfig
+     * key `date_format`. Applies to the *generic* `formatDateShort` family
+     * in `apps/web/src/utils/formatters.ts`. Voucher-specific helpers
+     * (`formatThaiDate*` in `apps/web/src/lib/date.ts`) remain BE-only by
+     * design — legal/tax documents always show พ.ศ. regardless of UI pref.
+     */
+    dateFormat: 'BE' | 'CE';
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -214,6 +223,10 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.2.3.3 — date_format. Whitelist 'BE' / 'CE'; everything else → 'BE'.
+    // Default 'BE' so existing flows are unchanged.
+    const dateFormatRaw = await this.getKey('date_format');
+    const dateFormat: 'BE' | 'CE' = dateFormatRaw === 'CE' ? 'CE' : 'BE';
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -225,6 +238,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      dateFormat,
     };
   }
 

@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
+import { setDateFormatPreference } from '@/utils/formatters';
 
 /**
  * D1.* — UI feature flags fetched from /settings/ui-flags.
@@ -33,6 +34,8 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /** D1.2.3.3 — date display preference: BE (พ.ศ., +543) default or CE (ค.ศ.). */
+  dateFormat: 'BE' | 'CE';
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -53,6 +56,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  dateFormat: 'BE',
 };
 
 export function useUiFlags(): UiFlags {
@@ -73,5 +77,19 @@ export function useUiFlags(): UiFlags {
       document.documentElement.lang = flags.language;
     }
   }, [flags.language]);
+  // D1.2.3.3 — sync the module-level date format preference so pure
+  // `formatDateShort` / `formatDateMedium` / `formatDateTime` calls inside
+  // non-React code (excel exports, status badges) respect the OWNER pref.
+  useEffect(() => {
+    setDateFormatPreference(flags.dateFormat);
+  }, [flags.dateFormat]);
   return flags;
+}
+
+/**
+ * D1.2.3.3 — Convenience hook for components that only need the date format
+ * preference (avoids subscribing to the whole flag object).
+ */
+export function useDateFormat(): 'BE' | 'CE' {
+  return useUiFlags().dateFormat;
 }

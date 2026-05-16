@@ -148,6 +148,59 @@ export class ExpenseDocumentsService implements OnModuleInit {
   }
 
   /**
+   * D1.2.1.3 — Approvers whitelist. JSON-encoded array of User UUIDs stored
+   * in SystemConfig key `approvers_list`. Default = empty array (only OWNER
+   * may approve when the workflow is enabled but no list is configured).
+   *
+   * Returns the list filtered to USERS that still exist + are active +
+   * not soft-deleted — so a stale ID in the SystemConfig row can never
+   * grant approval rights to a deleted account.
+   */
+  private async getApproversList(
+    tx: Prisma.TransactionClient | PrismaService,
+  ): Promise<string[]> {
+    try {
+      const row = await tx.systemConfig.findFirst({
+        where: { key: 'approvers_list', deletedAt: null },
+        select: { value: true },
+      });
+      if (!row?.value) return [];
+      const parsed: unknown = JSON.parse(row.value);
+      if (!Array.isArray(parsed)) return [];
+      const candidateIds = parsed.filter((v): v is string => typeof v === 'string');
+      if (candidateIds.length === 0) return [];
+      // Confirm against User table — drop IDs that don't exist, were deleted,
+      // or were deactivated. Keeps stale config from leaking access.
+      const valid = await tx.user.findMany({
+        where: { id: { in: candidateIds }, isActive: true, deletedAt: null },
+        select: { id: true },
+      });
+      return valid.map((u) => u.id);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * D1.2.1.3 — Approver gate. OWNER is always allowed (root-of-trust).
+   * Anyone else must be in the configured `approvers_list`. Throws
+   * `ForbiddenException` when the caller cannot approve.
+   */
+  private async assertUserCanApprove(
+    tx: Prisma.TransactionClient | PrismaService,
+    userId: string,
+    role?: string,
+  ): Promise<void> {
+    if (role === 'OWNER') return;
+    const approvers = await this.getApproversList(tx);
+    if (!approvers.includes(userId)) {
+      throw new ForbiddenException(
+        'ผู้ใช้ไม่ได้อยู่ในรายการผู้อนุมัติ (SystemConfig `approvers_list`)',
+      );
+    }
+  }
+
+  /**
    * D1.2.7.2 — reverse-reasons whitelist. Inlined (vs. importing
    * SettingsService) for the same reasons as readBoolFlag — keeps the ctor
    * stable and dodges audit↔settings cycles.
@@ -1712,6 +1765,42 @@ export class ExpenseDocumentsService implements OnModuleInit {
         }
         return this.accrualTemplate.execute(id, tx);
       }
+    });
+  }
+
+  // ─── Approve (PENDING_APPROVAL → APPROVED) ─────────────────────────
+  // D1.2.1.3 — role-gated approve action. Only OWNER or users in
+  // SystemConfig `approvers_list` may call this. This PR ships the
+  // role check + transition skeleton; D1.2.1.6 fills in the JE auto-post
+  // chain (controlled by SystemConfig `auto_post_on_approve`).
+  //
+  // NOTE: references the new enum values `PENDING_APPROVAL` and `APPROVED`
+  // which land on the schema in D1.2.1.6. Until that migrates, this PR
+  // uses `as unknown as DocumentStatus` casts. At merge time accept the
+  // conflict on `schema.prisma` from 1.6 + merge the approve() bodies.
+  async approve(id: string, userId: string, role?: string) {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(hashtext($1))`, `post:${id}`);
+
+      // D1.2.1.3 — gate FIRST so a non-approver doesn't even see the doc.
+      await this.assertUserCanApprove(tx, userId, role);
+
+      const doc = await tx.expenseDocument.findUniqueOrThrow({ where: { id } });
+      if (doc.deletedAt) throw new NotFoundException('เอกสารถูกลบแล้ว');
+
+      // PENDING_APPROVAL is added by D1.2.1.6. Pre-merge, the runtime value
+      // doesn't exist as a real enum yet so we use a typed string literal.
+      if (doc.status !== ('PENDING_APPROVAL' as unknown as DocumentStatus)) {
+        throw new BadRequestException(
+          `อนุมัติได้เฉพาะเอกสาร PENDING_APPROVAL — สถานะปัจจุบัน ${doc.status}`,
+        );
+      }
+
+      const APPROVED = 'APPROVED' as unknown as DocumentStatus;
+      return tx.expenseDocument.update({
+        where: { id },
+        data: { status: APPROVED },
+      });
     });
   }
 

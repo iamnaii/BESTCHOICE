@@ -164,6 +164,25 @@ export class ExpenseDocumentsController {
     return this.service.post(id, user.id);
   }
 
+  /**
+   * D1.2.1.3 — Approve a PENDING_APPROVAL expense doc. The user must be
+   * either OWNER (always allowed) or appear in SystemConfig `approvers_list`.
+   * Service runs the membership check via `assertUserCanApprove`.
+   *
+   * The @Roles decorator widens beyond OWNER so the runtime check (which can
+   * include any role, including SALES/BRANCH_MANAGER if the user is listed)
+   * is the source of truth. Without role widening, a listed ACCOUNTANT would
+   * be blocked at the controller before the membership check ran.
+   */
+  @Post(':id/approve')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  approve(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string; role?: string },
+  ) {
+    return this.service.approve(id, user.id, user.role);
+  }
+
   @Post(':id/void')
   @Roles('OWNER', 'FINANCE_MANAGER')
   void(

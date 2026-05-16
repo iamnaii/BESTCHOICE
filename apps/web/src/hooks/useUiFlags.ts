@@ -33,6 +33,8 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /** D1.3.1.3 — active email provider. Sendgrid requires API-key wiring before use. */
+  emailProvider: 'smtp' | 'sendgrid';
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -53,6 +55,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  emailProvider: 'smtp',
 };
 
 export function useUiFlags(): UiFlags {

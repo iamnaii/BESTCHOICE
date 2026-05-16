@@ -175,6 +175,13 @@ export class SettingsService {
      * accessibility readers via the lang attr.
      */
     language: 'th' | 'en';
+    /**
+     * D1.3.1.3 — active email provider. Whitelisted: 'smtp' (default —
+     * uses SMTP_HOST/PORT/USER/PASS env vars) / 'sendgrid' (stub — owner
+     * must wire SENDGRID_API_KEY before flipping). UI shows "Current
+     * provider: SMTP / Sendgrid" + warns when SMTP env not configured.
+     */
+    emailProvider: 'smtp' | 'sendgrid';
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -214,6 +221,10 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.3.1.3 — email provider. Whitelist 'smtp'/'sendgrid'; default 'smtp'.
+    const emailProviderRaw = await this.getKey('email_provider');
+    const emailProvider: 'smtp' | 'sendgrid' =
+      emailProviderRaw === 'sendgrid' ? 'sendgrid' : 'smtp';
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -225,6 +236,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      emailProvider,
     };
   }
 

@@ -24,6 +24,8 @@ export interface UiFlags {
   paymentDateWarningBackdate: number;
   /** D1.2.6.4 — allow forward-dated transactions. Default true. */
   paymentDateAllowFuture: boolean;
+  /** D1.2.6.1 — day-of-month when periods close. Default 31. Informational. */
+  periodCloseDay: number;
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -40,6 +42,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   reverseManagerApprovalDays: 7,
   paymentDateWarningBackdate: 30,
   paymentDateAllowFuture: true,
+  periodCloseDay: 31,
 };
 
 export function useUiFlags(): UiFlags {

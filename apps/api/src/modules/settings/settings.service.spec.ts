@@ -139,5 +139,62 @@ describe('SettingsService audit trail', () => {
       expect(flags.taxExemptWarningEnabled).toBe(true);
       expect(flags.reverseReasonRequired).toBe(true);
     });
+
+    // D1.2.7.2 — DB-driven reverse reasons
+    it('reverseReasons defaults to 6 canonical codes', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.reverseReasons).toHaveLength(6);
+      expect(flags.reverseReasons.map((r) => r.code)).toEqual([
+        'data_entry_error',
+        'wrong_vendor',
+        'wrong_amount',
+        'duplicate_entry',
+        'cancel_transaction',
+        'other',
+      ]);
+    });
+
+    it('reverseReasons returns custom list when SystemConfig set', async () => {
+      const custom = JSON.stringify([
+        { code: 'manager_decision', label: 'ตัดสินใจของผู้บริหาร' },
+        { code: 'audit_finding', label: 'ผลการตรวจสอบ' },
+      ]);
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'reverse_reasons') return Promise.resolve({ value: custom });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.reverseReasons).toHaveLength(2);
+      expect(flags.reverseReasons[0].code).toBe('manager_decision');
+    });
+
+    it('reverseReasons falls back to defaults when stored JSON is malformed', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'reverse_reasons') return Promise.resolve({ value: 'not-json' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.reverseReasons).toHaveLength(6);
+    });
+
+    it('reverseReasons falls back to defaults when stored array is empty', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'reverse_reasons') return Promise.resolve({ value: '[]' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.reverseReasons).toHaveLength(6);
+    });
+
+    it('reverseReasons falls back to defaults when row shape is wrong', async () => {
+      const bad = JSON.stringify([{ id: 'x', name: 'y' }]); // missing code+label
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'reverse_reasons') return Promise.resolve({ value: bad });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.reverseReasons).toHaveLength(6);
+    });
   });
 });

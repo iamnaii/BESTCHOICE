@@ -16,11 +16,21 @@ export interface UiFlags {
   taxExemptWarningEnabled: boolean;
   /** D1.2.7.1 — require reason on void/reverse dialog. */
   reverseReasonRequired: boolean;
+  /** D1.2.7.2 — configurable reverse-reason dropdown. */
+  reverseReasons: { code: string; label: string }[];
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
   taxExemptWarningEnabled: true,
   reverseReasonRequired: true,
+  reverseReasons: [
+    { code: 'data_entry_error', label: 'ป้อนข้อมูลผิด' },
+    { code: 'wrong_vendor', label: 'ผู้ขายผิด' },
+    { code: 'wrong_amount', label: 'จำนวนเงินผิด' },
+    { code: 'duplicate_entry', label: 'ข้อมูลซ้ำ' },
+    { code: 'cancel_transaction', label: 'ยกเลิกรายการ' },
+    { code: 'other', label: 'อื่นๆ (ระบุรายละเอียด)' },
+  ],
 };
 
 export function useUiFlags(): UiFlags {

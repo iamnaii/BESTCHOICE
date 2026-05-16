@@ -20,6 +20,8 @@ export interface UiFlags {
   reverseReasons: { code: string; label: string }[];
   /** D1.2.7.3 — soft warning threshold (days) when reverse backdate exceeds this; UI-only. */
   reverseManagerApprovalDays: number;
+  /** D1.2.6.3 — broader backdate warning threshold (days). Default 30. */
+  paymentDateWarningBackdate: number;
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -34,6 +36,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
     { code: 'other', label: 'อื่นๆ (ระบุรายละเอียด)' },
   ],
   reverseManagerApprovalDays: 7,
+  paymentDateWarningBackdate: 30,
 };
 
 export function useUiFlags(): UiFlags {

@@ -68,7 +68,7 @@ Sub-prioritization within expanded D1 scope:
 | D1.2.5.2 | `voucher_include_adjustment` | P1 | ⬜ | — | Render adjustments in print template |
 | D1.2.5.3 | `voucher_show_partial_columns` | P1 | ⬜ | — | Partial column display flag |
 | D1.3.3.1 | `export_enabled` flag | P2 | ⬜ | — | Gate Excel/PDF/CSV exports |
-| D1.3.3.2 | `bank_reconciliation` mode | P2 | ⬜ | — | manual vs auto-match flag |
+| D1.3.3.2 | `bank_reconciliation` mode | P2 | ✅ | this PR | SystemConfig `bank_reconciliation` (whitelisted `'manual'`/`'auto'`, default `'manual'`). `getUiFlags()` returns `bankReconciliationMode` + `useUiFlags()` exposes it. **INFORMATIONAL ONLY** — auto-match cron + UI haven't been built yet (no bank-reconciliation page exists). When a future page is built it should surface this value as a mode indicator. Auto-match implementation tracked as future enhancement. 3 new tests |
 | D1.3.3.3 | `webhooks` default-off | P2 | ⬜ | — | Global gate on webhooks.controller |
 | D1.3.3.4 | `api_keys` admin admin | P2 | ⬜ | — | Already OWNER-only; flag as config |
 | D1.3.5.1 | `summary_default_range` | P2 | ⬜ | — | ExpenseDailySummaryPage default |

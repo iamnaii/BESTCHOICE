@@ -33,6 +33,13 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /**
+   * D1.3.3.2 — bank reconciliation mode. INFORMATIONAL ONLY — auto-match
+   * cron + UI haven't been built yet. When a future bank-reconciliation
+   * page exists, it should surface this value prominently (e.g. mode
+   * indicator badge). Default `'manual'`.
+   */
+  bankReconciliationMode: 'manual' | 'auto';
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -53,6 +60,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  bankReconciliationMode: 'manual',
 };
 
 export function useUiFlags(): UiFlags {

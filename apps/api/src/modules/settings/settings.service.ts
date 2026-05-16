@@ -175,6 +175,18 @@ export class SettingsService {
      * accessibility readers via the lang attr.
      */
     language: 'th' | 'en';
+    /**
+     * D1.3.3.2 — bank reconciliation mode. Whitelisted `'manual'` / `'auto'`,
+     * default `'manual'`. Currently INFORMATIONAL only: the auto-match cron
+     * + UI to drive it haven't been built yet. When `'auto'`, a future cron
+     * will read bank statements (PaySolutions webhook + KBank/SCB CSV) and
+     * auto-link to Payment.depositAccountCode entries with matching amount
+     * + 1d-tolerance datetime. Current code path = the existing manual link
+     * via PaymentForm. OWNER setting this to `'auto'` today shows an
+     * "auto-match mode" indicator on any bank-reconciliation UI but does
+     * not change behaviour.
+     */
+    bankReconciliationMode: 'manual' | 'auto';
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -214,6 +226,10 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.3.3.2 — bank reconciliation mode. Whitelist 'manual' / 'auto'.
+    const bankRecRaw = await this.getKey('bank_reconciliation');
+    const bankReconciliationMode: 'manual' | 'auto' =
+      bankRecRaw === 'auto' ? 'auto' : 'manual';
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -225,6 +241,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      bankReconciliationMode,
     };
   }
 

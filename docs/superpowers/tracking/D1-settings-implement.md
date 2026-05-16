@@ -1,7 +1,7 @@
 # D1 · Settings Audit Phase 4 (Implement Approved Scope)
 
 **Status:** 🟢 In Progress — owner approved expanded scope 2026-05-16
-**Started:** 2026-05-16  |  **PRs:** #882-#897 · this PR (D1.2.2.6)  |  **Done:** 17/75 — 2.6 ✅ · 2.7 ✅ · 2.2 ✅ Complete (7/7)
+**Started:** 2026-05-16  |  **PRs:** #882-#901 · this PR (D1.2.3.1)  |  **Done:** 21/75 — 2.6 ✅ · 2.7 ✅ · 2.2 ✅ · 1.6 ✅ (3/3 in PR #899/#900/#901) · 2.3 partial (1/5)
 **Spec:** [`../specs/2026-05-16-a1-phase2-decision-report.md`](../specs/2026-05-16-a1-phase2-decision-report.md)  ·  **Plan:** —
 
 ## Context
@@ -54,7 +54,7 @@ Sub-prioritization within expanded D1 scope:
 | D1.2.7.2 | `reverse_reasons_dropdown` | P1 | ✅ | this PR | SystemConfig key `reverse_reasons` JSON `[{code,label}]` array. Defaults to 6 canonical codes. Backend: DTO relaxed (drops @IsIn); `voidDocument` validates reasonCode against configured whitelist; `getReverseReasons()` helper in both service + ExpenseDocumentsService. UI: `useUiFlags().reverseReasons` drives the dropdown. 5 settings tests + 2 void path tests added |
 | D1.2.7.3 | `reverse_manager_approval_days` | P1 | ✅ | this PR | Soft UI warning (per C3 Q2 owner decision). SystemConfig `reverse_manager_approval_days` (default 7). `getUiFlags()` exposes it; `ReverseDialog` shows "ควรมีอนุมัติจากผู้จัดการ" warning when daysBackdate exceeds threshold (but ≤30; the broader 30+ warning supersedes). No server block. 3 new tests on the threshold default + override + unparseable fallback |
 | D1.2.7.4 | `reverse_block_cascaded` toggle | P1 | ✅ | this PR | New private helper `readBoolFlag()` in `ExpenseDocumentsService` (reads `system_config` directly via PrismaService to keep ctor lean + avoid circular-dep risk with audit/settings modules). Cascade-block check at `expense-documents.service.ts:1681-1700` now reads `reverse_block_cascaded` (default true). Both CN and SE cascade throws gated by the same flag. 2 new tests (toggle off → both bypassed; default → preserved). 52/52 service-spec tests pass |
-| D1.2.3.1 | `default_time_range` | P1 | ⬜ | — | DateRangeChips presets configurable |
+| D1.2.3.1 | `default_time_range` | P1 | ✅ | this PR | SystemConfig key `default_time_range` (whitelisted `'all'`/`'this_month'`/`'last_month'`, default `'this_month'`). `getUiFlags()` returns `defaultTimeRange`; unknown values fall back. New `computeDefaultTimeRange(preset, now?)` helper in `apps/web/src/lib/date.ts` returns `{startDate,endDate}` ISO pair (BKK-local, handles Jan→Dec wrap). 2 list-page parents wired: `OtherIncomeListPage` + `OtherIncomeDailySheetPage` (coerces 'all' → 'this_month' since dual-date is required). 4 settings spec tests (default + 3 presets + unknown fallback). Type-check 0 errors |
 | D1.2.3.2 | `pagination_size` | P1 | ⬜ | — | Central default for list pages |
 | D1.2.3.3 | `date_format` BE↔ค.ศ. toggle | P1 | ⬜ | — | formatDateShort branch on pref |
 | D1.2.3.4 | `decimal_places` | P1 | ⬜ | — | formatNumberDecimal default from pref |

@@ -33,6 +33,8 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /** D1.2.3.1 — default time-range preset for list pages. Default 'this_month'. */
+  defaultTimeRange: 'all' | 'this_month' | 'last_month';
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -53,6 +55,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  defaultTimeRange: 'this_month',
 };
 
 export function useUiFlags(): UiFlags {

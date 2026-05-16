@@ -5,6 +5,8 @@ import { ArrowLeft, Download, Printer } from 'lucide-react';
 import { otherIncomeApi } from '@/lib/otherIncome';
 import QueryBoundary from '@/components/QueryBoundary';
 import { DateRangeChips } from './components/DateRangeChips';
+import { useUiFlags } from '@/hooks/useUiFlags';
+import { computeDefaultTimeRange } from '@/lib/date';
 
 // "Today" in Asia/Bangkok — guards against UTC server returning yesterday
 // between 00:00–07:00 BKK time. Mirrors `todayBangkok()` in OtherIncomeEntryPage.
@@ -50,8 +52,19 @@ function SummaryBox({ label, value, colorClass, highlight }: SummaryBoxProps) {
 
 export default function OtherIncomeDailySheetPage() {
   const navigate = useNavigate();
-  const [startDate, setStartDate] = useState<string>(firstOfThisMonth());
-  const [endDate, setEndDate] = useState<string>(todayLocal());
+  // D1.2.3.1 — initial range driven by OWNER-configured `default_time_range`.
+  // Falls back to firstOfThisMonth/todayLocal helpers when preset is 'this_month'
+  // so behavior is unchanged for the default case. 'all' is NOT supported on
+  // this page (daily-sheet query requires both dates) — coerce to 'this_month'.
+  const { defaultTimeRange } = useUiFlags();
+  const initialPreset =
+    defaultTimeRange === 'all' ? 'this_month' : defaultTimeRange;
+  const [startDate, setStartDate] = useState<string>(
+    () => computeDefaultTimeRange(initialPreset).startDate || firstOfThisMonth(),
+  );
+  const [endDate, setEndDate] = useState<string>(
+    () => computeDefaultTimeRange(initialPreset).endDate || todayLocal(),
+  );
 
   const sheet = useQuery({
     queryKey: ['other-income-daily-sheet', startDate, endDate],

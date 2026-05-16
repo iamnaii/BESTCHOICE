@@ -287,5 +287,39 @@ describe('SettingsService audit trail', () => {
       const flags = await service.getUiFlags();
       expect(flags.periodCloseDay).toBe(31);
     });
+
+    // D1.2.3.1 — default_time_range preset
+    it('defaultTimeRange defaults to "this_month" when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.defaultTimeRange).toBe('this_month');
+    });
+
+    it('defaultTimeRange accepts "all" from SystemConfig', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'default_time_range') return Promise.resolve({ value: 'all' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.defaultTimeRange).toBe('all');
+    });
+
+    it('defaultTimeRange accepts "last_month" from SystemConfig', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'default_time_range') return Promise.resolve({ value: 'last_month' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.defaultTimeRange).toBe('last_month');
+    });
+
+    it('defaultTimeRange falls back to "this_month" for unknown values', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'default_time_range') return Promise.resolve({ value: 'last_quarter' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.defaultTimeRange).toBe('this_month');
+    });
   });
 });

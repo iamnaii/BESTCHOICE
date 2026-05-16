@@ -175,6 +175,15 @@ export class SettingsService {
      * accessibility readers via the lang attr.
      */
     language: 'th' | 'en';
+    /**
+     * D1.3.2.1 — VIEWER role activation flag. Default false (conservative
+     * Q4-gated default). When true, downstream feature flags can widen GET
+     * endpoints on expense / other-income / asset modules to include the
+     * VIEWER role. Schema enum value always exists (UserRole.VIEWER) so the
+     * flip is non-destructive. Today this flag is purely informational — no
+     * server-side @Roles() decorator reads it; future PR can wire it.
+     */
+    viewerRoleEnabled: boolean;
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -214,6 +223,8 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.3.2.1 — VIEWER role activation. Default false (Q4-gated conservative).
+    const viewerRoleEnabled = await this.readBoolean('viewer_role_enabled', false);
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -225,6 +236,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      viewerRoleEnabled,
     };
   }
 

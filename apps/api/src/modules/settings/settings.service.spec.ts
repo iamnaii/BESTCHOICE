@@ -287,5 +287,39 @@ describe('SettingsService audit trail', () => {
       const flags = await service.getUiFlags();
       expect(flags.periodCloseDay).toBe(31);
     });
+
+    // D1.3.2.1 — VIEWER role activation flag
+    it('viewerRoleEnabled defaults to false (conservative Q4-gated default)', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.viewerRoleEnabled).toBe(false);
+    });
+
+    it('viewerRoleEnabled flips to true when OWNER sets viewer_role_enabled="true"', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'viewer_role_enabled') return Promise.resolve({ value: 'true' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.viewerRoleEnabled).toBe(true);
+    });
+
+    it('viewerRoleEnabled falls back to default on unparseable value', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'viewer_role_enabled') return Promise.resolve({ value: 'maybe' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.viewerRoleEnabled).toBe(false);
+    });
+
+    it('viewerRoleEnabled accepts "1" as truthy', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'viewer_role_enabled') return Promise.resolve({ value: '1' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.viewerRoleEnabled).toBe(true);
+    });
   });
 });

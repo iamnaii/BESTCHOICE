@@ -33,6 +33,8 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /** D1.3.2.1 — VIEWER role activation. Default false (Q4-gated). Informational today. */
+  viewerRoleEnabled: boolean;
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -53,6 +55,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  viewerRoleEnabled: false,
 };
 
 export function useUiFlags(): UiFlags {

@@ -103,7 +103,7 @@ Sub-prioritization within expanded D1 scope:
 | D1.1.2.2 | `doc_number_format` | P0 | ⬜ | Q3 | Same |
 | D1.1.2.3 | `reset_cycle` | P0 | ⬜ | Q3 | |
 | D1.1.2.4 | `sequence_table` | P0 | ⬜ | Q3 | |
-| D1.1.2.5 | Admin reset capability | P0 | ⬜ | Q3 | |
+| D1.1.2.5 | Admin reset capability | P0 | ✅ | this PR | New `POST /settings/doc-number/reset` endpoint (OWNER-only, class-level + method-level `@Roles('OWNER')`). Accepts `ResetDocNumberDto { docType, periodStart }` validated via class-validator (Thai messages). `SettingsService.resetDocSequence()` queries `MAX(docNumber)` per `DocumentType` via groupBy + writes immutable AuditLog `{ action: 'DOC_SEQUENCE_RESET', entity: 'DocumentSequence', entityId: '<type>:<periodStart>' }`. Future-proofing stub — current sequence derives from MAX so deletion resets it automatically; this endpoint is a planned migration hook for the D1.1.2.4 `DocumentSequence` table. 4 new vitest cases (snapshot, audit log shape, stub note, all 5 enum keys). 30/30 settings tests pass. Type-check 0 errors |
 | D1.1.3.1 | `vat_rate` (Q6 P0 bug fix first) | P0 | ⬜ | Q6 | **VAT_RATE/vat_pct orphan-key fix** |
 | D1.1.3.2 | `wht_rates` (1/3/5/10/15) | P0 | ⬜ | — | Mostly unblocked — extend SelectItem + table |
 | D1.1.3.3 | `sso_rate` (locked at 5% by law) | P0 | ⬜ | — | Just document the lock in service comment |

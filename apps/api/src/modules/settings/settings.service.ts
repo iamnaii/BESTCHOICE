@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { DocumentType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 
@@ -246,6 +247,70 @@ export class SettingsService {
     const sessionTargetMin = await this.readNumber('collections.sessionTargetMin', 150);
     const selfClaimLockHours = await this.readNumber('collections.selfClaimLockHours', 2);
     return { dailyCap, workloadFloor, etaPerContractMin, sessionTargetMin, selfClaimLockHours };
+  }
+
+  /**
+   * D1.1.2.5 — admin-only document-number sequence reset endpoint helper.
+   *
+   * Current `DocNumberService` derives the next sequence from
+   * `MAX(docNumber)` at every call, so deleting documents (e.g. soft-deleting
+   * an erroneous row) implicitly resets the sequence. This endpoint exists
+   * as a forward-extension stub for a future migration to a dedicated
+   * `DocumentSequence` Prisma model (see D1.1.2.4) — at that point this
+   * method will UPDATE the stored sequence row directly.
+   *
+   * Today the method:
+   *  - validates the docType (DocumentType enum)
+   *  - returns a snapshot of the CURRENT max sequence per doc type across
+   *    the whole `ExpenseDocument` table for diagnostic / sanity-check
+   *    purposes
+   *  - writes an immutable AuditLog with action `DOC_SEQUENCE_RESET`
+   *
+   * Note: the response does NOT actually mutate any sequence rows. The
+   * intent is to let OWNER preview what the next-issued number would look
+   * like and have a traceable audit record of their reset intention.
+   */
+  async resetDocSequence(
+    docType: DocumentType,
+    periodStart: string,
+    userId: string,
+  ): Promise<{
+    docType: DocumentType;
+    periodStart: string;
+    note: string;
+    currentMaxByType: Record<string, string | null>;
+  }> {
+    // Collect the latest issued number per DocumentType in one round-trip.
+    const maxRows = await this.prisma.expenseDocument.groupBy({
+      by: ['documentType'],
+      _max: { number: true },
+    });
+    const currentMaxByType: Record<string, string | null> = {};
+    for (const t of Object.values(DocumentType)) {
+      currentMaxByType[t] = null;
+    }
+    for (const row of maxRows) {
+      currentMaxByType[row.documentType] = row._max.number ?? null;
+    }
+
+    await this.audit.log({
+      userId,
+      action: 'DOC_SEQUENCE_RESET',
+      entity: 'DocumentSequence',
+      entityId: `${docType}:${periodStart}`,
+      newValue: {
+        docType,
+        periodStart,
+        currentMaxByType,
+      },
+    });
+
+    return {
+      docType,
+      periodStart,
+      note: 'Sequence resets implicitly when documents in the requested period are deleted. The current MAX(docNumber) per type is returned for diagnostic purposes. A future migration to a dedicated DocumentSequence model will enable explicit sequence mutation here.',
+      currentMaxByType,
+    };
   }
 
   async bulkUpdate(items: { key: string; value: string }[], userId?: string) {

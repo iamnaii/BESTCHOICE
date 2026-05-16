@@ -288,4 +288,58 @@ describe('SettingsService audit trail', () => {
       expect(flags.periodCloseDay).toBe(31);
     });
   });
+
+  // D1.1.2.5 — Admin sequence-reset endpoint helper.
+  describe('resetDocSequence', () => {
+    beforeEach(() => {
+      prisma.expenseDocument = {
+        groupBy: jest.fn(),
+      };
+    });
+
+    it('returns current MAX(docNumber) per type for diagnostic purposes', async () => {
+      prisma.expenseDocument.groupBy.mockResolvedValue([
+        { documentType: 'EXPENSE', _max: { number: 'EX-20260510-0042' } },
+        { documentType: 'CREDIT_NOTE', _max: { number: 'CN-20260509-0005' } },
+      ]);
+      const result = await service.resetDocSequence('EXPENSE', '2026-05-10', 'u-1');
+      expect(result.currentMaxByType.EXPENSE).toBe('EX-20260510-0042');
+      expect(result.currentMaxByType.CREDIT_NOTE).toBe('CN-20260509-0005');
+      expect(result.currentMaxByType.PAYROLL).toBeNull();
+      expect(result.currentMaxByType.VENDOR_SETTLEMENT).toBeNull();
+      expect(result.currentMaxByType.PETTY_CASH_REIMBURSEMENT).toBeNull();
+    });
+
+    it('writes DOC_SEQUENCE_RESET audit log with docType + periodStart', async () => {
+      prisma.expenseDocument.groupBy.mockResolvedValue([]);
+      await service.resetDocSequence('PAYROLL', '2026-05-01', 'u-2');
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 'u-2',
+          action: 'DOC_SEQUENCE_RESET',
+          entity: 'DocumentSequence',
+          entityId: 'PAYROLL:2026-05-01',
+          newValue: expect.objectContaining({
+            docType: 'PAYROLL',
+            periodStart: '2026-05-01',
+          }),
+        }),
+      );
+    });
+
+    it('returns a future-proof stub note explaining no actual mutation occurs', async () => {
+      prisma.expenseDocument.groupBy.mockResolvedValue([]);
+      const result = await service.resetDocSequence('EXPENSE', '2026-05-10', 'u-1');
+      expect(result.note).toMatch(/implicit/i);
+      expect(result.note).toMatch(/diagnostic/i);
+    });
+
+    it('includes all 5 DocumentType keys in currentMaxByType even when DB has no rows', async () => {
+      prisma.expenseDocument.groupBy.mockResolvedValue([]);
+      const result = await service.resetDocSequence('EXPENSE', '2026-05-10', 'u-1');
+      expect(Object.keys(result.currentMaxByType).sort()).toEqual(
+        ['CREDIT_NOTE', 'EXPENSE', 'PAYROLL', 'PETTY_CASH_REIMBURSEMENT', 'VENDOR_SETTLEMENT'].sort(),
+      );
+    });
+  });
 });

@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
+import { setThousandsSeparator } from '@/utils/formatters';
 
 /**
  * D1.* — UI feature flags fetched from /settings/ui-flags.
@@ -33,6 +34,8 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /** D1.2.3.5 — thousands separator style for the generic number formatter. */
+  thousandsSeparator: 'comma' | 'space' | 'none';
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -53,6 +56,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  thousandsSeparator: 'comma',
 };
 
 export function useUiFlags(): UiFlags {
@@ -73,5 +77,10 @@ export function useUiFlags(): UiFlags {
       document.documentElement.lang = flags.language;
     }
   }, [flags.language]);
+  // D1.2.3.5 — sync the module-level thousands-separator pref so pure
+  // formatNumber / formatNumberDecimal calls respect the OWNER pref.
+  useEffect(() => {
+    setThousandsSeparator(flags.thousandsSeparator);
+  }, [flags.thousandsSeparator]);
   return flags;
 }

@@ -287,5 +287,39 @@ describe('SettingsService audit trail', () => {
       const flags = await service.getUiFlags();
       expect(flags.periodCloseDay).toBe(31);
     });
+
+    // D1.2.3.5 — thousands_separator
+    it('thousandsSeparator defaults to comma when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.thousandsSeparator).toBe('comma');
+    });
+
+    it('thousandsSeparator returns space when SystemConfig set to "space"', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'thousands_separator') return Promise.resolve({ value: 'space' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.thousandsSeparator).toBe('space');
+    });
+
+    it('thousandsSeparator returns none when SystemConfig set to "none"', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'thousands_separator') return Promise.resolve({ value: 'none' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.thousandsSeparator).toBe('none');
+    });
+
+    it('thousandsSeparator falls back to comma when SystemConfig has invalid value', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'thousands_separator') return Promise.resolve({ value: 'dot' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.thousandsSeparator).toBe('comma');
+    });
   });
 });

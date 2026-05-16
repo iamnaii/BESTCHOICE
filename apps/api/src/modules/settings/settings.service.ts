@@ -175,6 +175,14 @@ export class SettingsService {
      * accessibility readers via the lang attr.
      */
     language: 'th' | 'en';
+    /**
+     * D1.2.3.5 — thousands separator style for the generic number formatter.
+     * Whitelisted: 'comma' (1,234,567) default, 'space' (1 234 567), or
+     * 'none' (1234567). SystemConfig key `thousands_separator`. Invalid
+     * values fall back to 'comma'. Voucher-specific helpers in `lib/date.ts`
+     * are unaffected — they format dates not numbers.
+     */
+    thousandsSeparator: 'comma' | 'space' | 'none';
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -214,6 +222,11 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.2.3.5 — thousands_separator. Whitelist 'comma' / 'space' / 'none';
+    // everything else → 'comma'.
+    const tsRaw = await this.getKey('thousands_separator');
+    const thousandsSeparator: 'comma' | 'space' | 'none' =
+      tsRaw === 'space' || tsRaw === 'none' ? tsRaw : 'comma';
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -225,6 +238,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      thousandsSeparator,
     };
   }
 

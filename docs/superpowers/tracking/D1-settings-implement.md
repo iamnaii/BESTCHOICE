@@ -58,7 +58,7 @@ Sub-prioritization within expanded D1 scope:
 | D1.2.3.2 | `pagination_size` | P1 | ⬜ | — | Central default for list pages |
 | D1.2.3.3 | `date_format` BE↔ค.ศ. toggle | P1 | ⬜ | — | formatDateShort branch on pref |
 | D1.2.3.4 | `decimal_places` | P1 | ⬜ | — | formatNumberDecimal default from pref |
-| D1.2.3.5 | `thousands_separator` | P1 | ⬜ | — | toLocaleString locale from pref |
+| D1.2.3.5 | `thousands_separator` | P1 | ✅ | this PR | SystemConfig `thousands_separator` (whitelisted `'comma'`/`'space'`/`'none'`, default `'comma'`; invalid values fall back). `getUiFlags()` exposes `thousandsSeparator`; `useUiFlags()` syncs `apps/web/src/utils/formatters.ts` module-level pref via `setThousandsSeparator()`. `formatNumber`/`formatNumberDecimal` switched from `toLocaleString('th-TH')` to `'en-US'` + post-process so the pref applies consistently across ICU locales: 'comma' → unchanged, 'space' → integer-part commas replaced with spaces, 'none' → integer-part separators stripped. Decimal point preserved + sign preserved on negatives. 4 settings spec tests + 5 vitest cases (default comma, space, none, bad-value fallback, negative+decimal across separator styles) |
 | D1.2.4.1 | `templates_enabled` flag | P1 | ⬜ | — | Feature flag at controller |
 | D1.2.4.2 | `max_templates_per_user` quota | P1 | ⬜ | — | Count check in createTemplate |
 | D1.2.4.3 | `sharing_rules` (ACL) | P1 | ⬜ | — | Schema: add visibility + sharedWith |

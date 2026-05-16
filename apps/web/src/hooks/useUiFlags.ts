@@ -33,6 +33,11 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /**
+   * D1.2.5.1 — voucher print mode. 'multi' (default) emits both ต้นฉบับ and
+   * สำเนา on separate A4 pages; 'single' emits only ต้นฉบับ.
+   */
+  voucherPrintMode: 'single' | 'multi';
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -53,6 +58,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  voucherPrintMode: 'multi',
 };
 
 export function useUiFlags(): UiFlags {

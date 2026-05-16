@@ -175,6 +175,15 @@ export class SettingsService {
      * accessibility readers via the lang attr.
      */
     language: 'th' | 'en';
+    /**
+     * D1.2.5.1 — voucher print mode.
+     *   - 'multi' (default) — emits BOTH the original (ต้นฉบับ) and the
+     *     customer-copy (สำเนา) sheets, each on its own A4 page. The
+     *     customer copy carries a "สำเนา" watermark in the header.
+     *   - 'single' — renders only the original sheet.
+     * Whitelisted; unknown values fall back to 'multi'.
+     */
+    voucherPrintMode: 'single' | 'multi';
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -214,6 +223,10 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.2.5.1 — voucher print mode. Whitelist 'single' / 'multi'; default 'multi'.
+    const voucherPrintModeRaw = await this.getKey('voucher_print_mode_default');
+    const voucherPrintMode: 'single' | 'multi' =
+      voucherPrintModeRaw === 'single' ? 'single' : 'multi';
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -225,6 +238,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      voucherPrintMode,
     };
   }
 

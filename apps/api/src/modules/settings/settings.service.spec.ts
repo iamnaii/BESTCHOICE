@@ -287,5 +287,39 @@ describe('SettingsService audit trail', () => {
       const flags = await service.getUiFlags();
       expect(flags.periodCloseDay).toBe(31);
     });
+
+    // D1.2.5.1 — voucher_print_mode_default
+    it('voucherPrintMode defaults to "multi" when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.voucherPrintMode).toBe('multi');
+    });
+
+    it('voucherPrintMode returns "single" when OWNER configures it', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'voucher_print_mode_default') return Promise.resolve({ value: 'single' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.voucherPrintMode).toBe('single');
+    });
+
+    it('voucherPrintMode returns "multi" when explicitly set to "multi"', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'voucher_print_mode_default') return Promise.resolve({ value: 'multi' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.voucherPrintMode).toBe('multi');
+    });
+
+    it('voucherPrintMode falls back to "multi" for unknown values', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'voucher_print_mode_default') return Promise.resolve({ value: 'triple' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.voucherPrintMode).toBe('multi');
+    });
   });
 });

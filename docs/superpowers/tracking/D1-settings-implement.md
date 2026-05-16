@@ -64,7 +64,7 @@ Sub-prioritization within expanded D1 scope:
 | D1.2.4.3 | `sharing_rules` (ACL) | P1 | ⬜ | — | Schema: add visibility + sharedWith |
 | D1.2.4.4 | `variables_support` formalization | P1 | ⬜ | — | Define `{{var}}` interpolation syntax |
 | D1.2.4.5 | Template `categories` table | P1 | ⬜ | — | New TemplateCategory model |
-| D1.2.5.1 | `voucher_print_mode_default` | P1 | ⬜ | — | single vs multi page mode |
+| D1.2.5.1 | `voucher_print_mode_default` | P1 | ✅ | this PR | SystemConfig key `voucher_print_mode_default` (whitelisted `single`/`multi`, default `multi`). `getUiFlags()` exposes `voucherPrintMode`. PaymentVoucherPage `VoucherSheet` renders BOTH ต้นฉบับ + สำเนา on separate A4 pages when `multi`; only ต้นฉบับ when `single`. Customer copy has `pageBreakBefore: 'always'` + "(สำเนา)" label in title/footer. PettyCash + Payroll layouts exempt (custodian-only / per-employee). 4 new vitest cases on settings service. Type-check 0 errors |
 | D1.2.5.2 | `voucher_include_adjustment` | P1 | ⬜ | — | Render adjustments in print template |
 | D1.2.5.3 | `voucher_show_partial_columns` | P1 | ⬜ | — | Partial column display flag |
 | D1.3.3.1 | `export_enabled` flag | P2 | ⬜ | — | Gate Excel/PDF/CSV exports |

@@ -19,16 +19,15 @@
 | [C1 · Petty Cash](C1-petty-cash.md) | 8 | 7 | 88% | ✅ Done | — | [#867](https://github.com/iamnaii/BESTCHOICE/pull/867) · [#868](https://github.com/iamnaii/BESTCHOICE/pull/868) · this PR (PDF). C1.7 settings → A1 |
 | [C2 · Payroll Custom Income/Deduction](C2-payroll-custom.md) | 7 | 7 | 100% | ✅ Done | — | [#871](https://github.com/iamnaii/BESTCHOICE/pull/871) · [#872](https://github.com/iamnaii/BESTCHOICE/pull/872) · this PR (slip PDF) |
 | [C3 · Reverse Dialog + V19](C3-reverse-dialog.md) | 5 | 4 | 80% | ✅ Done | — | [#875](https://github.com/iamnaii/BESTCHOICE/pull/875) · this PR (UI). C3.5 settings → A1 |
-| [C4 · Credit Note 2-Mode](C4-credit-note-2mode.md) | 4 | 0 | 0% | ⬜ Pending | — | — |
+| [C4 · Credit Note 2-Mode](C4-credit-note-2mode.md) | 4 | 1 | 25% | 🟡 In Progress | — | this PR (backend) |
 | [D1 · Settings Audit Phase 4](D1-settings-implement.md) | TBD | 0 | 0% | 🔒 Locked (by A1) | — | — |
-| **TOTAL** | **~159** | **51** | **~32%** | | | |
+| **TOTAL** | **~159** | **52** | **~33%** | | | |
 
 ## 🎯 Current Focus
 
-- **Active:** None. C2 shipped end-to-end except C2.7 slip PDF.
-- **Active:** None. C3 just shipped end-to-end except C3.5 settings (deferred to A1).
+- **Active:** C4 · Credit Note 2-Mode — backend shipped (C4.4 ✅ + C4.2/C4.3 groundwork). UI PR next (mode selector + standalone form).
 - **Optional housekeeping:** EQ-002 missing เม.ย. depreciation (~฿287). Not a blocker; owner can run `POST /admin/depreciation/run?period=2026-04` for catch-up at convenience. พ.ค. depreciation will tick automatically on May 31.
-- **Next:** C2 (Payroll Custom Income/Deduction), C3 (Reverse Dialog), or C4 (Credit Note 2-Mode)
+- **Next:** C4.1 + finalize C4.2/C4.3 UI
 
 ## 📅 Timeline
 

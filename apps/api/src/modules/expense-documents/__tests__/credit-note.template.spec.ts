@@ -448,4 +448,81 @@ describe('CreditNoteTemplate', () => {
       expect.objectContaining({ accountCode: '21-3102', dr: new Decimal('30.00') }),
     ]));
   });
+
+  // ─── C4 · STANDALONE mode ──────────────────────────────────────────────────
+
+  describe('STANDALONE mode', () => {
+    it('STANDALONE without deposit → Dr 21-1104 / Cr expense + Cr 11-4101 (AP-clearing)', async () => {
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'cn-sa-1',
+        number: 'CN-20260510-0010',
+        documentType: 'CREDIT_NOTE',
+        branchId: 'branch-1',
+        documentDate: new Date('2026-05-10'),
+        subtotal: new Decimal('500.00'),
+        vatAmount: new Decimal('35.00'),
+        withholdingTax: new Decimal('0.00'),
+        totalAmount: new Decimal('535.00'),
+        depositAccountCode: null,
+        journalEntryId: null,
+        creditNote: { mode: 'STANDALONE', originalDocumentId: null, reason: 'supplier refund' },
+        expenseDetail: {
+          priceType: 'EXCLUSIVE',
+          lines: [{ lineNo: 1, category: '53-1404', amountBeforeVat: new Decimal('500.00') }],
+        },
+      });
+      prisma.chartOfAccount.findMany.mockResolvedValueOnce([{ code: '53-1404', type: 'ค่าใช้จ่าย' }]);
+
+      await template.execute('cn-sa-1');
+
+      // Source doc must NOT be looked up
+      expect(prisma.expenseDocument.findUniqueOrThrow).toHaveBeenCalledTimes(1);
+
+      const [args] = journal.createAndPost.mock.calls[0];
+      expect(args.metadata.flow).toBe('expense-credit-note-standalone');
+      expect(args.metadata.mode).toBe('STANDALONE');
+      expect(args.metadata.originalDocumentId).toBeNull();
+      expect(args.lines).toEqual(expect.arrayContaining([
+        expect.objectContaining({ accountCode: '21-1104', dr: new Decimal('535.00') }),
+        expect.objectContaining({ accountCode: '53-1404', cr: new Decimal('500.00') }),
+        expect.objectContaining({ accountCode: '11-4101', cr: new Decimal('35.00') }),
+      ]));
+    });
+
+    it('STANDALONE with deposit → Dr cash / Cr expense + Cr 11-4101 (cash refund)', async () => {
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'cn-sa-2',
+        number: 'CN-20260510-0011',
+        documentType: 'CREDIT_NOTE',
+        branchId: 'branch-1',
+        documentDate: new Date('2026-05-10'),
+        subtotal: new Decimal('1000.00'),
+        vatAmount: new Decimal('70.00'),
+        withholdingTax: new Decimal('0.00'),
+        totalAmount: new Decimal('1070.00'),
+        depositAccountCode: '11-1101',
+        journalEntryId: null,
+        creditNote: { mode: 'STANDALONE', originalDocumentId: null, reason: 'cash refund' },
+        expenseDetail: {
+          priceType: 'EXCLUSIVE',
+          lines: [{ lineNo: 1, category: '53-1302', amountBeforeVat: new Decimal('1000.00') }],
+        },
+      });
+      prisma.chartOfAccount.findMany.mockResolvedValueOnce([{ code: '53-1302', type: 'ค่าใช้จ่าย' }]);
+
+      await template.execute('cn-sa-2');
+
+      const [args] = journal.createAndPost.mock.calls[0];
+      // Cash refund — STANDALONE has no original WHT to deduct
+      expect(args.lines).toEqual(expect.arrayContaining([
+        expect.objectContaining({ accountCode: '11-1101', dr: new Decimal('1070.00') }),
+        expect.objectContaining({ accountCode: '53-1302', cr: new Decimal('1000.00') }),
+        expect.objectContaining({ accountCode: '11-4101', cr: new Decimal('70.00') }),
+      ]));
+      // STANDALONE cash refund → paidAt populated
+      const updateCall = prisma.expenseDocument.update.mock.calls[0][0];
+      expect(updateCall.data.paidAt).toEqual(new Date('2026-05-10'));
+      expect(updateCall.data.netPayment).toEqual(new Decimal('1070.00'));
+    });
+  });
 });

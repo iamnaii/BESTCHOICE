@@ -7,12 +7,17 @@ import {
   IsArray,
   ArrayMinSize,
   MinLength,
+  MaxLength,
   Matches,
   ValidateNested,
+  ValidateIf,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { CASH_ACCOUNT_CODES } from '../../../constants/cash-account.constants';
 import { ExpenseLineInput } from './expense-line-input.dto';
+
+export const CREDIT_NOTE_MODES = ['LINKED', 'STANDALONE'] as const;
+export type CreditNoteMode = (typeof CREDIT_NOTE_MODES)[number];
 
 export class CreateCreditNoteDto {
   @IsString()
@@ -21,8 +26,36 @@ export class CreateCreditNoteDto {
   @IsDateString({}, { message: 'วันที่ใบกำกับไม่ถูกต้อง' })
   documentDate!: string;
 
+  /**
+   * C4 · 2-Mode UX.
+   * - `LINKED` (default): reverses a specific source EX document. Requires
+   *   `originalDocumentId`. Server enforces cap, branch match, status, no-WHT.
+   * - `STANDALONE`: free-form refund / supplier credit with no source FK.
+   *   Requires `vendorName`. Skips cap + source lookup.
+   *
+   * Defaults to LINKED so legacy callers (web form before C4.1) work unchanged.
+   */
+  @IsString()
+  @IsIn([...CREDIT_NOTE_MODES], { message: 'โหมดใบลดหนี้ต้องเป็น LINKED หรือ STANDALONE' })
+  @IsOptional()
+  mode?: CreditNoteMode;
+
+  // LINKED-only: required when mode === 'LINKED' (default).
+  @ValidateIf((o) => (o.mode ?? 'LINKED') === 'LINKED')
   @IsUUID('4', { message: 'รหัสเอกสารต้นฉบับไม่ถูกต้อง' })
-  originalDocumentId!: string;
+  originalDocumentId?: string;
+
+  // STANDALONE-only: required when mode === 'STANDALONE'.
+  @ValidateIf((o) => o.mode === 'STANDALONE')
+  @IsString()
+  @MinLength(1, { message: 'กรุณาระบุชื่อผู้ขาย' })
+  @MaxLength(255)
+  vendorName?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(20)
+  vendorTaxId?: string;
 
   @IsString()
   @MinLength(3, { message: 'เหตุผลต้องมีอย่างน้อย 3 ตัวอักษร' })
@@ -51,7 +84,8 @@ export class CreateCreditNoteDto {
   @Type(() => ExpenseLineInput)
   lines!: ExpenseLineInput[];
 
-  // Refund-account: required when original was POSTED + already paid
+  // Refund-account: required when original was POSTED + already paid (LINKED)
+  // or when STANDALONE CN involves actual cash refund.
   @IsString()
   @IsOptional()
   @IsIn([...CASH_ACCOUNT_CODES], { message: 'บัญชีรับเงินคืนไม่ถูกต้อง' })

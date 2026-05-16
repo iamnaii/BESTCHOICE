@@ -150,6 +150,8 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
         const { data } = await api.post('/expense-documents', payload);
         createdId = data.id;
       } else if (state.docType === 'PAYROLL') {
+        // C2 — forward customIncome + customDeduction. Server V16/V17/V18
+        // re-validate: whitelist, deduction ≤ gross, taxable-base calc.
         const { data } = await api.post('/expense-documents/payroll', {
           branchId: state.branchId,
           documentDate: state.documentDate,
@@ -158,13 +160,38 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
           paymentMethod: 'BANK_TRANSFER',
           lines: state.payroll.lines
             .filter((l) => l.employeeName && parseFloat(l.baseSalary) > 0)
-            .map((l) => ({
-              employeeName: l.employeeName,
-              employeeTaxId: l.employeeTaxId || undefined,
-              baseSalary: parseFloat(l.baseSalary),
-              ssoEmployee: parseFloat(l.ssoEmployee) || 0,
-              whtAmount: parseFloat(l.whtAmount) || 0,
-            })),
+            .map((l) => {
+              const validIncome = (l.customIncome ?? []).filter(
+                (r) => r.accountCode && parseFloat(r.amount) > 0,
+              );
+              const validDeduction = (l.customDeduction ?? []).filter(
+                (r) => r.accountCode && parseFloat(r.amount) > 0,
+              );
+              return {
+                employeeName: l.employeeName,
+                employeeTaxId: l.employeeTaxId || undefined,
+                baseSalary: parseFloat(l.baseSalary),
+                ssoEmployee: parseFloat(l.ssoEmployee) || 0,
+                whtAmount: parseFloat(l.whtAmount) || 0,
+                customIncome:
+                  validIncome.length > 0
+                    ? validIncome.map((r) => ({
+                        accountCode: r.accountCode,
+                        name: r.name || r.accountCode,
+                        amount: parseFloat(r.amount),
+                        isTaxable: r.isTaxable,
+                      }))
+                    : undefined,
+                customDeduction:
+                  validDeduction.length > 0
+                    ? validDeduction.map((r) => ({
+                        accountCode: r.accountCode,
+                        name: r.name || r.accountCode,
+                        amount: parseFloat(r.amount),
+                      }))
+                    : undefined,
+              };
+            }),
         });
         createdId = data.id;
       } else if (state.docType === 'VENDOR_SETTLEMENT') {

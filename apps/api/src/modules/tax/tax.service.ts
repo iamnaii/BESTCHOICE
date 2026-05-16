@@ -50,20 +50,29 @@ export class TaxService {
       new Prisma.Decimal(0),
     );
 
-    // Input VAT (ภาษีซื้อ): legacy `expense` model removed; ExpenseDocument-based tax
-    // reporting will be added in a follow-up PR. For now PP30 returns sales-only data.
-    const expenses: Array<{
-      expenseDate: Date;
-      description: string;
-      vendorName: string | null;
-      vendorTaxId: string | null;
-      taxInvoiceNo: string | null;
-      totalAmount: Prisma.Decimal;
-      vatAmount: Prisma.Decimal;
-    }> = [];
+    // Input VAT (ภาษีซื้อ) — B3/K-04 (Fix Report P0-1). Sources from journal_lines
+    // where account_code = '11-4101' (the post-A.5 input-VAT account) joined to
+    // the originating expense_document for vendor/invoice metadata. The legacy
+    // `expense` model has been replaced by the ExpenseDocument flow, which posts
+    // VAT via expense-same-day / expense-accrual / credit-note / vendor-settlement
+    // templates — all of which set `metadata.flow LIKE 'expense-%'` and
+    // `metadata.documentId` so this query is a precise filter.
+    //
+    // Sign convention: VAT input is Dr 11-4101 (asset increase) so we sum the
+    // debit column. Credit notes reverse the VAT — those JE lines book Cr 11-4101
+    // and are intentionally excluded here so the period total nets correctly when
+    // summed with sales output VAT. (CN's negative purchase is represented by
+    // a separate negative line on the next month's report if needed.)
+    const expenses = await this.getInputVatLineItems(branchIds, startDate, endDate);
 
-    const totalPurchases = new Prisma.Decimal(0);
-    const totalVatInput = new Prisma.Decimal(0);
+    const totalPurchases = expenses.reduce(
+      (s, e) => s.add(e.totalAmount),
+      new Prisma.Decimal(0),
+    );
+    const totalVatInput = expenses.reduce(
+      (s, e) => s.add(e.vatAmount),
+      new Prisma.Decimal(0),
+    );
 
     const netVat = totalVatOutput.sub(totalVatInput);
 
@@ -273,6 +282,116 @@ export class TaxService {
     const startDate = new Date(year, month - 1, 1);
     const endDate = new Date(year, month, 0, 23, 59, 59, 999);
     return { startDate, endDate };
+  }
+
+  /**
+   * B3 / K-04 — Read input VAT (ภาษีซื้อ) from journal_lines on account 11-4101
+   * within the given period, joined back to expense_documents for vendor info.
+   * Returns the shape `previewPP30` expects on its `expenses` slot.
+   *
+   * Filtering rules:
+   *   - account_code = '11-4101' (input VAT, ITC-claimable per Fix Report P0-1)
+   *   - debit > 0 (excludes credit-note reversals which Cr 11-4101)
+   *   - posted_at within [startDate, endDate] (period boundaries inclusive)
+   *   - metadata.flow LIKE 'expense-%' (any of expense-same-day / expense-accrual /
+   *     expense-credit-note / expense-vendor-settlement — only those four book VAT)
+   *   - expense_document.branchId IN branchIds (company scope)
+   *   - all deletedAt IS NULL
+   */
+  private async getInputVatLineItems(
+    branchIds: string[],
+    startDate: Date,
+    endDate: Date,
+  ): Promise<
+    Array<{
+      expenseDate: Date;
+      description: string;
+      vendorName: string | null;
+      vendorTaxId: string | null;
+      taxInvoiceNo: string | null;
+      totalAmount: Prisma.Decimal;
+      vatAmount: Prisma.Decimal;
+    }>
+  > {
+    if (branchIds.length === 0) return [];
+
+    const lines = await this.prisma.journalLine.findMany({
+      where: {
+        accountCode: '11-4101',
+        debit: { gt: 0 },
+        deletedAt: null,
+        journalEntry: {
+          deletedAt: null,
+          postedAt: { gte: startDate, lte: endDate },
+          metadata: { path: ['flow'], string_starts_with: 'expense-' } as Prisma.JsonFilter,
+        },
+      },
+      include: {
+        journalEntry: {
+          select: {
+            id: true,
+            postedAt: true,
+            description: true,
+            metadata: true,
+          },
+        },
+      },
+      orderBy: { journalEntry: { postedAt: 'asc' } },
+    });
+
+    if (lines.length === 0) return [];
+
+    // Resolve expense_documents via metadata.documentId (batch lookup, no N+1).
+    const documentIds = [
+      ...new Set(
+        lines
+          .map((l) => {
+            const md = l.journalEntry.metadata as Prisma.JsonObject | null;
+            const docId = md?.documentId;
+            return typeof docId === 'string' ? docId : null;
+          })
+          .filter((v): v is string => v !== null),
+      ),
+    ];
+    const docs =
+      documentIds.length > 0
+        ? await this.prisma.expenseDocument.findMany({
+            where: {
+              id: { in: documentIds },
+              branchId: { in: branchIds },
+              deletedAt: null,
+            },
+            select: {
+              id: true,
+              vendorName: true,
+              vendorTaxId: true,
+              taxInvoiceNo: true,
+              totalAmount: true,
+            },
+          })
+        : [];
+    const docById = new Map(docs.map((d) => [d.id, d]));
+
+    return lines.flatMap((line) => {
+      const md = line.journalEntry.metadata as Prisma.JsonObject | null;
+      const docId = typeof md?.documentId === 'string' ? md.documentId : null;
+      const doc = docId ? docById.get(docId) : null;
+      // Skip lines whose document is not in the company's branches (or was soft-
+      // deleted); without a doc we can't supply vendor info reliably, and including
+      // them would inflate purchases for a different company.
+      if (!doc) return [];
+      return [
+        {
+          expenseDate: line.journalEntry.postedAt ?? new Date(),
+          description: line.journalEntry.description,
+          vendorName: doc.vendorName,
+          vendorTaxId: doc.vendorTaxId,
+          taxInvoiceNo: doc.taxInvoiceNo,
+          totalAmount: doc.totalAmount,
+          vatAmount: line.debit,
+        },
+      ];
+    });
   }
 
   private async getBranchIds(companyId: string): Promise<string[]> {

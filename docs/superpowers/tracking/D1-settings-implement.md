@@ -1,7 +1,7 @@
 # D1 · Settings Audit Phase 4 (Implement Approved Scope)
 
 **Status:** 🟢 In Progress — owner approved expanded scope 2026-05-16
-**Started:** 2026-05-16  |  **PRs:** this PR (D1.2.8.2)  |  **Done:** 1/75
+**Started:** 2026-05-16  |  **PRs:** #882 (D1.2.8.2) · this PR (D1.4.3.1)  |  **Done:** 2/75
 **Spec:** [`../specs/2026-05-16-a1-phase2-decision-report.md`](../specs/2026-05-16-a1-phase2-decision-report.md)  ·  **Plan:** —
 
 ## Context
@@ -35,7 +35,7 @@ Sub-prioritization within expanded D1 scope:
 | ID | Item | Priority | Status | PR | Evidence/Notes |
 |---|---|---|---|---|---|
 | D1.2.8.2 | `tax_exempt_warning_enabled` (UI ม.42 warning toggle) | P1 | ✅ | this PR | `SystemConfig.TAX_EXEMPT_WARNING_ENABLED` (default true, OWNER-editable via existing PATCH /settings). New `GET /settings/ui-flags` endpoint (authenticated, all roles). New `useUiFlags()` hook + warning row in `CustomIncomeSubTable` (PayrollLinesSection.tsx) when any custom-income line has `isTaxable=false` and flag is on. 4 unit tests on getUiFlags. Pattern: reusable for future D1 UI flags |
-| D1.4.3.1 | `audit_log_retention_days` 180→1825d (พ.ร.บ.บัญชี ม.7 compliance) | P3 | ⬜ | — | env-var-tunable already; needs SystemConfig wrap + default raise |
+| D1.4.3.1 | `audit_log_retention_days` 180→1825d (พ.ร.บ.บัญชี ม.7 compliance) | P3 | ✅ | this PR | `AuditRetentionCron.DEFAULT_RETENTION_DAYS` raised 180→1825 (5 yr per ม.7). Precedence: SystemConfig key `audit_log_retention_days` → env `AUDIT_LOG_RETENTION_DAYS` → default 1825. Read via PrismaService directly (avoids AuditModule↔SettingsModule circular dep). 6/6 tests pass incl. new precedence + DB-failure paths |
 | D1.1.6.1 | `adj_underpay_account` (wire consumers to AccountRoleService) | P0 | ⬜ | — | `payment-receipt-2b.template.ts:249`, `payment-receipt-2b-split.template.ts:212`, `payments.service.ts:1989`, `AdjustmentSection.tsx:30` |
 | D1.1.6.2 | `adj_overpay_account` (wire consumers to AccountRoleService) | P0 | ⬜ | — | Same pattern with 53-1503 |
 | D1.1.6.3 | `adj_auto_route` toggle | P0 | ⬜ | — | Flag in SystemConfig + check in template |

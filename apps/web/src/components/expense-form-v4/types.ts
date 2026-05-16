@@ -132,6 +132,11 @@ export interface ExpenseFormState {
   fromTemplateId: string;
   lines: ExpenseLineForm[];
   // CN-only
+  /**
+   * C4 · 2-Mode. `LINKED` (default) requires `originalDocumentId`; `STANDALONE`
+   * requires top-level `vendorName` and skips the source-doc picker entirely.
+   */
+  cnMode: 'LINKED' | 'STANDALONE';
   originalDocumentId: string;
   cnReason: string;
   // PR-only

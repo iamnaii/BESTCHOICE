@@ -17,11 +17,11 @@
 | [B2 · Settlement Multi-line Adj](B2-settlement-adjustment.md) | 5 | 5 | 100% | ✅ Done | — | [#863](https://github.com/iamnaii/BESTCHOICE/pull/863) + B2.4 follow-up |
 | [B3 · Test Suite J+K](B3-test-suite.md) | 14 | 14 | 100% | ✅ Done | — | [#865](https://github.com/iamnaii/BESTCHOICE/pull/865) · [#866](https://github.com/iamnaii/BESTCHOICE/pull/866) · this PR (J-06) |
 | [C1 · Petty Cash](C1-petty-cash.md) | 8 | 7 | 88% | ✅ Done | — | [#867](https://github.com/iamnaii/BESTCHOICE/pull/867) · [#868](https://github.com/iamnaii/BESTCHOICE/pull/868) · this PR (PDF). C1.7 settings → A1 |
-| [C2 · Payroll Custom Income/Deduction](C2-payroll-custom.md) | 7 | 6 | 86% | ✅ Done | — | [#871](https://github.com/iamnaii/BESTCHOICE/pull/871) · this PR (UI). C2.7 slip → follow-up |
+| [C2 · Payroll Custom Income/Deduction](C2-payroll-custom.md) | 7 | 7 | 100% | ✅ Done | — | [#871](https://github.com/iamnaii/BESTCHOICE/pull/871) · [#872](https://github.com/iamnaii/BESTCHOICE/pull/872) · this PR (slip PDF) |
 | [C3 · Reverse Dialog + V19](C3-reverse-dialog.md) | 5 | 0 | 0% | ⬜ Pending | — | — |
 | [C4 · Credit Note 2-Mode](C4-credit-note-2mode.md) | 4 | 0 | 0% | ⬜ Pending | — | — |
 | [D1 · Settings Audit Phase 4](D1-settings-implement.md) | TBD | 0 | 0% | 🔒 Locked (by A1) | — | — |
-| **TOTAL** | **~159** | **45** | **~28%** | | | |
+| **TOTAL** | **~159** | **46** | **~29%** | | | |
 
 ## 🎯 Current Focus
 

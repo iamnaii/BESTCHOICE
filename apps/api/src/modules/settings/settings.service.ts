@@ -91,6 +91,17 @@ export class SettingsService {
   }
 
   /**
+   * D1.3.3.1 — public accessor for the export-enabled flag, used by export
+   * endpoints (PDF receipts, trade-in vouchers, OI receipt, reporting PDF)
+   * to short-circuit with 403 before any heavy generation happens. Defaults
+   * to true so existing exports keep working when the SystemConfig row is
+   * absent (first-boot / fresh-DB).
+   */
+  async isExportEnabled(): Promise<boolean> {
+    return this.readBoolean('export_enabled', true);
+  }
+
+  /**
    * D1.* — UI feature flags accessible to ANY authenticated user (not OWNER-only).
    * Keep this method's response shape small and additive — every D1 item that
    * needs a runtime UI toggle should land here so the web app can fetch one
@@ -175,6 +186,15 @@ export class SettingsService {
      * accessibility readers via the lang attr.
      */
     language: 'th' | 'en';
+    /**
+     * D1.3.3.1 — global toggle for data-export endpoints (Excel/PDF/CSV).
+     * Default true. When OWNER sets `export_enabled = 'false'`, the server
+     * blocks PDF export endpoints with HTTP 403 and the web hides the
+     * "ส่งออก Excel" / "ดาวน์โหลด PDF" buttons. Useful for compliance
+     * lockdown periods (e.g. statutory audit window) where uncontrolled
+     * data extraction needs to be paused.
+     */
+    exportEnabled: boolean;
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -214,6 +234,8 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.3.3.1 — export_enabled. Default true.
+    const exportEnabled = await this.readBoolean('export_enabled', true);
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -225,6 +247,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      exportEnabled,
     };
   }
 

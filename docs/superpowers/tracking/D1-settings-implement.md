@@ -67,7 +67,7 @@ Sub-prioritization within expanded D1 scope:
 | D1.2.5.1 | `voucher_print_mode_default` | P1 | ⬜ | — | single vs multi page mode |
 | D1.2.5.2 | `voucher_include_adjustment` | P1 | ⬜ | — | Render adjustments in print template |
 | D1.2.5.3 | `voucher_show_partial_columns` | P1 | ⬜ | — | Partial column display flag |
-| D1.3.3.1 | `export_enabled` flag | P2 | ⬜ | — | Gate Excel/PDF/CSV exports |
+| D1.3.3.1 | `export_enabled` flag | P2 | ✅ | this PR | SystemConfig `export_enabled` (default `'true'`). New `ExportEnabledGuard` at `apps/api/src/modules/settings/guards/export-enabled.guard.ts` reads SystemConfig directly via PrismaService (lean pattern from PR #884) and throws 403 (Thai message) when disabled. Applied to 4 PDF endpoints: `GET /receipts/:id/pdf`, `GET /trade-in/:id/voucher.pdf`, `GET /other-income/:id/receipt.pdf`, `POST /reporting/pdf`. Frontend: `useUiFlags().exportEnabled` + `SettingsService.isExportEnabled()` public accessor + CustomersPage "ส่งออก Excel" button hidden when off (other Excel buttons follow same pattern). 10 new tests (5 service + 5 guard). Excel exports are client-side via `excel.util.ts` so the frontend gate is the only kill-switch for those |
 | D1.3.3.2 | `bank_reconciliation` mode | P2 | ⬜ | — | manual vs auto-match flag |
 | D1.3.3.3 | `webhooks` default-off | P2 | ⬜ | — | Global gate on webhooks.controller |
 | D1.3.3.4 | `api_keys` admin admin | P2 | ⬜ | — | Already OWNER-only; flag as config |

@@ -26,6 +26,8 @@ export interface UiFlags {
   paymentDateAllowFuture: boolean;
   /** D1.2.6.1 — day-of-month when periods close. Default 31. Informational. */
   periodCloseDay: number;
+  /** D1.2.2.7 — render verification QR on voucher footers. Default true. */
+  voucherShowQrCode: boolean;
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -43,6 +45,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   paymentDateWarningBackdate: 30,
   paymentDateAllowFuture: true,
   periodCloseDay: 31,
+  voucherShowQrCode: true,
 };
 
 export function useUiFlags(): UiFlags {

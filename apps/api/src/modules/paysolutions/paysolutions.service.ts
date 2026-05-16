@@ -1265,6 +1265,12 @@ export class PaySolutionsService {
                     amountReceived: new Decimal(snapshot.amountPaid.toString()),
                     depositAccountCode: '11-1202',
                     existingPaymentId: snapshot.id,
+                    // D1.1.6.3 — PaySolutions has already collected the money.
+                    // Refusing to record a 0.50฿ rounding diff because of the
+                    // adj_auto_route flag would leave the payment in PaySolutions
+                    // but not in BESTCHOICE — irreversible data loss. Always
+                    // auto-route inbound webhook payments.
+                    bypassAutoRouteCheck: true,
                   },
                   tx,
                 );

@@ -1078,22 +1078,53 @@ describe('PaymentsService', () => {
       // Override the AccountRoleService stub for this test only — flip the
       // auto-route flag off. Existing rounding paths should now NO-OP.
       const accountRoleSvc: any = (service as any).roles;
+      const origFn = accountRoleSvc.isAdjustmentAutoRouteEnabled;
       accountRoleSvc.isAdjustmentAutoRouteEnabled = jest.fn().mockResolvedValue(false);
-      prisma.installmentSchedule.findUnique.mockResolvedValue(mockInstallmentAccrued);
+      try {
+        prisma.installmentSchedule.findUnique.mockResolvedValue(mockInstallmentAccrued);
 
-      // Same overpay 0.89 setup as the D1.1.6.2 test.
-      const result = await service.previewJournal({
-        contractId: 'contract-preview',
-        installmentNo: 2,
-        amountReceived: 2203.30,
-        depositAccountCode: '11-1101',
-      });
+        // Same overpay 0.89 setup as the D1.1.6.2 test.
+        const result = await service.previewJournal({
+          contractId: 'contract-preview',
+          installmentNo: 2,
+          amountReceived: 2203.30,
+          depositAccountCode: '11-1101',
+        });
 
-      // No 53-1503 line should appear because auto-routing was suppressed.
-      const overpayLine = result.lines.find((l) => l.accountCode === '53-1503');
-      expect(overpayLine).toBeUndefined();
-      // Preview reports unbalanced so the UI surfaces the manual-adjustment path.
-      expect(result.isBalanced).toBe(false);
+        // No 53-1503 line should appear because auto-routing was suppressed.
+        const overpayLine = result.lines.find((l) => l.accountCode === '53-1503');
+        expect(overpayLine).toBeUndefined();
+        // Preview reports unbalanced so the UI surfaces the manual-adjustment path.
+        expect(result.isBalanced).toBe(false);
+      } finally {
+        // Restore so subsequent tests inherit the default-enabled stub.
+        accountRoleSvc.isAdjustmentAutoRouteEnabled = origFn;
+      }
+    });
+
+    it('D1.1.6.3 — preview stays balanced on exact-pay even when adj_auto_route is disabled', async () => {
+      // Even with the flag off, an exact-pay (diff = 0) should produce a
+      // balanced JE — the rounding branch is never entered.
+      const accountRoleSvc: any = (service as any).roles;
+      const origFn = accountRoleSvc.isAdjustmentAutoRouteEnabled;
+      accountRoleSvc.isAdjustmentAutoRouteEnabled = jest.fn().mockResolvedValue(false);
+      try {
+        prisma.installmentSchedule.findUnique.mockResolvedValue(mockInstallmentAccrued);
+
+        const result = await service.previewJournal({
+          contractId: 'contract-preview',
+          installmentNo: 2,
+          amountReceived: 2202.41, // exact installmentTotal
+          depositAccountCode: '11-1101',
+        });
+
+        expect(result.isBalanced).toBe(true);
+        // No rounding adjustment line in either direction.
+        expect(result.lines.find((l) => l.accountCode === '53-1503')).toBeUndefined();
+        expect(result.lines.find((l) => l.accountCode === '52-1104')).toBeUndefined();
+      } finally {
+        accountRoleSvc.isAdjustmentAutoRouteEnabled = origFn;
+      }
     });
 
     it('blocks PARTIAL when installment is not yet accrued', async () => {

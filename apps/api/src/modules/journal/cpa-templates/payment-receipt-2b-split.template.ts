@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { randomUUID } from 'crypto';
+import * as Sentry from '@sentry/node';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { AccountRoleService } from '../account-role.service';
@@ -135,11 +136,23 @@ export class PaymentReceipt2BSplitTemplate {
       }
 
       // D1.1.6.3 — Refuse auto-routed rounding when adj_auto_route is off.
+      // Split-template path has no inbound-webhook caller today (PaySolutions
+      // uses the non-split execute()), so no bypass is needed here.
       if (!diff.eq(0)) {
         const autoRouteEnabled = await this.roles.isAdjustmentAutoRouteEnabled();
         if (!autoRouteEnabled) {
+          Sentry.captureMessage('adj_auto_route_rejection', {
+            level: 'info',
+            extra: {
+              contractId: c.id,
+              installmentNo: inst.installmentNo,
+              diff: diff.toString(),
+              path: 'split-final',
+            },
+            tags: { component: 'PaymentReceipt2BSplitTemplate' },
+          });
           throw new BadRequestException(
-            'การปัดเศษอัตโนมัติถูกปิด (adj_auto_route=false) — กรุณาบันทึกค่าปรับเศษด้วยตนเอง',
+            'การปัดเศษอัตโนมัติถูกปิดโดยผู้ดูแล — กรุณาบันทึกค่าปรับเศษด้วยตนเองผ่านโมดูลค่าใช้จ่าย',
           );
         }
       }

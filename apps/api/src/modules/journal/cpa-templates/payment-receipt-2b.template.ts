@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException, Optional } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
+import * as Sentry from '@sentry/node';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { Vat60dayReversalTemplate } from './vat-60day-reversal.template';
@@ -47,6 +48,14 @@ export interface PaymentReceiptInput {
    * Caller computes via calcLateFee(overdue_days) helper.
    */
   lateFee?: Decimal;
+  /**
+   * D1.1.6.3 — Set true for irreversible inbound payment paths (PaySolutions
+   * webhook). Bypasses the `adj_auto_route` flag check so payments already
+   * received via the gateway cannot be rejected for a 0.50฿ rounding diff —
+   * the alternative is losing the payment record entirely. Interactive
+   * cashier flows leave this undefined so the flag is honored.
+   */
+  bypassAutoRouteCheck?: boolean;
 }
 
 /**
@@ -173,11 +182,22 @@ export class PaymentReceipt2BTemplate {
       // D1.1.6.3 — When `adj_auto_route` is disabled, refuse to auto-post the
       // rounding line. The user must reconcile the diff via a manual Expense
       // adjustment instead. Exact-pay (diff == 0) is always allowed.
-      if (!roundingDiff.eq(0)) {
+      // Bypassed for irreversible inbound payments (PaySolutions webhook etc.)
+      // — see PaymentReceiptInput.bypassAutoRouteCheck.
+      if (!roundingDiff.eq(0) && !input.bypassAutoRouteCheck) {
         const autoRouteEnabled = await this.roles.isAdjustmentAutoRouteEnabled();
         if (!autoRouteEnabled) {
+          Sentry.captureMessage('adj_auto_route_rejection', {
+            level: 'info',
+            extra: {
+              contractId: c.id,
+              installmentNo: inst.installmentNo,
+              roundingDiff: roundingDiff.toString(),
+            },
+            tags: { component: 'PaymentReceipt2BTemplate' },
+          });
           throw new BadRequestException(
-            'การปัดเศษอัตโนมัติถูกปิด (adj_auto_route=false) — กรุณาบันทึกค่าปรับเศษด้วยตนเอง',
+            'การปัดเศษอัตโนมัติถูกปิดโดยผู้ดูแล — กรุณาบันทึกค่าปรับเศษด้วยตนเองผ่านโมดูลค่าใช้จ่าย',
           );
         }
       }

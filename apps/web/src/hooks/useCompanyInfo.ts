@@ -66,3 +66,13 @@ export function useCompanyAddress(): string {
   const { shop, finance } = useCompanyInfo();
   return finance?.address ?? shop?.address ?? 'เลขประจำตัวผู้เสียภาษี · สำนักงานใหญ่';
 }
+
+/**
+ * D1.2.2.3 — tax ID (เลขประจำตัวผู้เสียภาษี) for voucher header.
+ * Prefers FINANCE (primary VAT entity per CLAUDE.md two-entity structure)
+ * then SHOP, then empty string (caller hides the row).
+ */
+export function useCompanyTaxId(): string {
+  const { shop, finance } = useCompanyInfo();
+  return finance?.taxId ?? shop?.taxId ?? '';
+}

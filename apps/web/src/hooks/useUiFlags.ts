@@ -33,6 +33,12 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /**
+   * D1.3.6.1 — max bills (cleared docs) allowed per VENDOR_SETTLEMENT. Default
+   * 100, clamped 1–500 server-side. Used by SettlementLinesSection to show an
+   * inline cap-warning when the user approaches/exceeds the limit.
+   */
+  settlementMaxBillsPerDoc: number;
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -53,6 +59,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  settlementMaxBillsPerDoc: 100,
 };
 
 export function useUiFlags(): UiFlags {

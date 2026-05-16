@@ -175,6 +175,15 @@ export class SettingsService {
      * accessibility readers via the lang attr.
      */
     language: 'th' | 'en';
+    /**
+     * D1.3.6.1 — max number of bills (cleared docs) per VENDOR_SETTLEMENT
+     * document. Default 100 (matches the legacy `limit=100` literal that
+     * `SettlementLinesSection.tsx` used to pull from `/expense-documents`).
+     * Clamped to 1–500 on read so an OWNER mis-edit can't disable the cap or
+     * blow up the SE form. Server enforces the cap on `createSettlement()`;
+     * UI uses the value to surface an early-warning banner before submit.
+     */
+    settlementMaxBillsPerDoc: number;
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -214,6 +223,16 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.3.6.1 — settlement_max_bills_per_doc. Clamp to 1–500 inclusive;
+    // anything outside (incl. NaN / negative) falls back to the default 100
+    // which matches the previous hardcoded limit.
+    const settlementMaxBillsRaw = await this.readNumber('settlement_max_bills_per_doc', 100);
+    const settlementMaxBillsPerDoc =
+      Number.isInteger(settlementMaxBillsRaw) &&
+      settlementMaxBillsRaw >= 1 &&
+      settlementMaxBillsRaw <= 500
+        ? settlementMaxBillsRaw
+        : 100;
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -225,6 +244,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      settlementMaxBillsPerDoc,
     };
   }
 

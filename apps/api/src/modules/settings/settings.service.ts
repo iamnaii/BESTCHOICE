@@ -143,6 +143,8 @@ export class SettingsService {
     reverseReasons: { code: string; label: string }[];
     /** D1.2.7.3 — soft warning threshold (days) when reverse backdate exceeds this; default 7. UI-only, no server block. */
     reverseManagerApprovalDays: number;
+    /** D1.2.6.3 — broader backdate warning threshold (days). Default 30. Distinct from D1.2.7.3 (the manager-approval threshold at 7d). */
+    paymentDateWarningBackdate: number;
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -157,11 +159,16 @@ export class SettingsService {
       'reverse_manager_approval_days',
       7,
     );
+    const paymentDateWarningBackdate = await this.readNumber(
+      'payment_date_warning_backdate',
+      30,
+    );
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
       reverseReasons,
       reverseManagerApprovalDays,
+      paymentDateWarningBackdate,
     };
   }
 

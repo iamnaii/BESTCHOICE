@@ -221,5 +221,21 @@ describe('SettingsService audit trail', () => {
       const flags = await service.getUiFlags();
       expect(flags.reverseManagerApprovalDays).toBe(7);
     });
+
+    // D1.2.6.3 — payment_date_warning_backdate
+    it('paymentDateWarningBackdate defaults to 30 when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.paymentDateWarningBackdate).toBe(30);
+    });
+
+    it('paymentDateWarningBackdate returns OWNER-configured value', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'payment_date_warning_backdate') return Promise.resolve({ value: '90' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.paymentDateWarningBackdate).toBe(90);
+    });
   });
 });

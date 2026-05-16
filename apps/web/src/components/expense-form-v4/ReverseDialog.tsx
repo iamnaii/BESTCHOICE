@@ -50,10 +50,15 @@ interface Props {
 const todayBkk = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
 
 export function ReverseDialog({ open, onOpenChange, docNumber, loading, onConfirm }: Props) {
-  // D1.2.7.1 + D1.2.7.2 + D1.2.7.3 — reverse settings from /settings/ui-flags.
-  // Default true / 7d / 6 canonical reasons so first-render matches the
-  // pre-D1 strict UX.
-  const { reverseReasonRequired, reverseReasons, reverseManagerApprovalDays } = useUiFlags();
+  // D1.2.7.1 + D1.2.7.2 + D1.2.7.3 + D1.2.6.3 — reverse + backdate settings
+  // from /settings/ui-flags. Defaults true / 7d / 30d / 6 canonical reasons
+  // so first-render matches the pre-D1 strict UX.
+  const {
+    reverseReasonRequired,
+    reverseReasons,
+    reverseManagerApprovalDays,
+    paymentDateWarningBackdate,
+  } = useUiFlags();
   const [reasonCode, setReasonCode] = useState<ReverseReasonCode | ''>('');
   const [reasonDetail, setReasonDetail] = useState('');
   const [reverseDate, setReverseDate] = useState(todayBkk());
@@ -163,16 +168,19 @@ export function ReverseDialog({ open, onOpenChange, docNumber, loading, onConfir
               JE กลับรายการจะ post ในวันที่นี้ (server ตรวจ V19 ว่างวดยังเปิดอยู่)
             </p>
             {/* D1.2.7.3 — manager-approval soft warning at configurable threshold
-                (default 7d). Only shows when backdate ≤ 30 (the broader generic
-                warning supersedes for big backdates). */}
-            {daysBackdate > reverseManagerApprovalDays && daysBackdate <= 30 && (
-              <p className="text-xs text-warning mt-1 flex items-start gap-1">
-                <AlertTriangle className="size-3 mt-0.5 shrink-0" />
-                ย้อนหลัง {daysBackdate} วัน (เกิน {reverseManagerApprovalDays} วัน) —
-                ควรมีอนุมัติจากผู้จัดการก่อน
-              </p>
-            )}
-            {daysBackdate > 30 && (
+                (default 7d). Only shows when backdate ≤ paymentDateWarningBackdate
+                (the broader warning supersedes for big backdates). */}
+            {daysBackdate > reverseManagerApprovalDays &&
+              daysBackdate <= paymentDateWarningBackdate && (
+                <p className="text-xs text-warning mt-1 flex items-start gap-1">
+                  <AlertTriangle className="size-3 mt-0.5 shrink-0" />
+                  ย้อนหลัง {daysBackdate} วัน (เกิน {reverseManagerApprovalDays} วัน) —
+                  ควรมีอนุมัติจากผู้จัดการก่อน
+                </p>
+              )}
+            {/* D1.2.6.3 — broader backdate warning at configurable threshold
+                (default 30d). */}
+            {daysBackdate > paymentDateWarningBackdate && (
               <p className="text-xs text-warning mt-1 flex items-start gap-1">
                 <AlertTriangle className="size-3 mt-0.5 shrink-0" />
                 เลือกย้อนหลัง {daysBackdate} วัน — ตรวจสอบให้แน่ใจว่างวดยังเปิด

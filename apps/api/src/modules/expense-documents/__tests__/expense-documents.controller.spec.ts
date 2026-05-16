@@ -80,9 +80,19 @@ describe('ExpenseDocumentsController', () => {
     expect(service.post).toHaveBeenCalledWith('doc-1', 'user-1');
   });
 
-  it('POST /:id/void fires voidDocument', async () => {
-    await controller.void('doc-1', { id: 'user-1' } as never);
-    expect(service.voidDocument).toHaveBeenCalledWith('doc-1', 'user-1');
+  it('POST /:id/void fires voidDocument with dto', async () => {
+    await controller.void('doc-1', {}, { id: 'user-1' } as never);
+    expect(service.voidDocument).toHaveBeenCalledWith('doc-1', 'user-1', {});
+  });
+
+  it('POST /:id/void forwards reasonCode + reasonDetail + reverseDate to service', async () => {
+    const dto = {
+      reasonCode: 'data_entry_error' as const,
+      reasonDetail: 'ป้อนผิด',
+      reverseDate: '2026-05-16',
+    };
+    await controller.void('doc-1', dto, { id: 'user-1' } as never);
+    expect(service.voidDocument).toHaveBeenCalledWith('doc-1', 'user-1', dto);
   });
 
   it('PATCH /:id calls update', async () => {

@@ -64,6 +64,10 @@ describe('ExpenseDocumentsService', () => {
       accountingPeriod: {
         findUnique: jest.fn().mockResolvedValue(null),
       },
+      // C3 — voidDocument writes an audit entry with reason metadata.
+      auditLog: {
+        create: jest.fn().mockResolvedValue({}),
+      },
     };
     docNumber = { next: jest.fn().mockResolvedValue('EX-20260510-0001') };
     transition = {
@@ -967,6 +971,123 @@ describe('ExpenseDocumentsService', () => {
           where: { id: 'ex-deleted', deletedAt: null },
         }),
       );
+    });
+
+    // B3 / C3 — Cascade check + audit + reverseDate (C3.1, C3.3, C3.4)
+    it('C3.4: rejects void when an active SETTLEMENT references this doc', async () => {
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-1', status: 'ACCRUAL', journalEntryId: 'je-1', documentType: 'EXPENSE',
+      });
+      // First count() call = pending CN → 0
+      // Second count() call = pending SE → 1 (this is our cascade hit)
+      prisma.expenseDocument.count = jest
+        .fn()
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(1);
+      await expect(service.voidDocument('doc-1', 'user-1')).rejects.toThrow(
+        /SE.*ยกเลิก|ยกเลิก SE/,
+      );
+    });
+
+    it('C3.3: writes audit log with reasonCode + reasonDetail + reverseJournalEntryId', async () => {
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-1',
+        status: 'POSTED',
+        journalEntryId: 'je-original',
+        documentType: 'EXPENSE',
+        number: 'EX-001',
+      });
+      // Mock journal-auto returning a reversal JE id
+      const journalMock = {
+        createAndPost: jest.fn().mockResolvedValue({ id: 'je-reverse-1', entryNumber: 'JE-202605-X' }),
+      };
+      // Need to grab the spec's `original` JE mock — earlier test pattern uses
+      // tx.journalEntry.findUniqueOrThrow. Stitch it in.
+      prisma.journalEntry = {
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          id: 'je-original',
+          companyId: 'shop-co-id',
+          lines: [
+            { accountCode: '53-1101', debit: '100.00', credit: '0', description: 'salary' },
+            { accountCode: '11-1101', debit: '0', credit: '100.00', description: 'cash' },
+          ],
+        }),
+      };
+      const svc = new ExpenseDocumentsService(
+        prisma, docNumber, transition, sameDay, accrual, creditNote, payroll, settlement,
+        journalMock as never,
+        new LineAggregatorService(),
+        { preview: jest.fn() } as never,
+        { validateContribution: jest.fn().mockResolvedValue(undefined) } as never,
+        { execute: jest.fn() } as never,
+        { getConfig: jest.fn(), validate: jest.fn() } as never,
+        { loadWhitelist: jest.fn().mockResolvedValue(new Set(['53-1104', '53-1105'])), validateLine: jest.fn().mockResolvedValue({ taxableBase: new Decimal(0) }) } as never,
+      );
+
+      await svc.voidDocument('doc-1', 'user-1', {
+        reasonCode: 'data_entry_error',
+        reasonDetail: 'ป้อนยอดผิด',
+      });
+
+      expect(prisma.auditLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          action: 'EXPENSE_VOIDED',
+          entity: 'expense_document',
+          entityId: 'doc-1',
+          userId: 'user-1',
+          newValue: expect.objectContaining({
+            status: 'VOIDED',
+            reverseJournalEntryId: 'je-reverse-1',
+            reasonCode: 'data_entry_error',
+            reasonDetail: 'ป้อนยอดผิด',
+            documentNumber: 'EX-001',
+            documentType: 'EXPENSE',
+          }),
+        }),
+      });
+    });
+
+    it('C3.1: reverseDate from DTO overrides today for postedAt on reversal JE', async () => {
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-1',
+        status: 'POSTED',
+        journalEntryId: 'je-original',
+        documentType: 'EXPENSE',
+        number: 'EX-001',
+      });
+      const journalMock = {
+        createAndPost: jest.fn().mockResolvedValue({ id: 'je-reverse-2', entryNumber: 'JE-X' }),
+      };
+      prisma.journalEntry = {
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          id: 'je-original',
+          companyId: 'shop-co-id',
+          lines: [
+            { accountCode: '53-1101', debit: '100.00', credit: '0', description: 'salary' },
+          ],
+        }),
+      };
+      const svc = new ExpenseDocumentsService(
+        prisma, docNumber, transition, sameDay, accrual, creditNote, payroll, settlement,
+        journalMock as never,
+        new LineAggregatorService(),
+        { preview: jest.fn() } as never,
+        { validateContribution: jest.fn().mockResolvedValue(undefined) } as never,
+        { execute: jest.fn() } as never,
+        { getConfig: jest.fn(), validate: jest.fn() } as never,
+        { loadWhitelist: jest.fn().mockResolvedValue(new Set(['53-1104', '53-1105'])), validateLine: jest.fn().mockResolvedValue({ taxableBase: new Decimal(0) }) } as never,
+      );
+
+      await svc.voidDocument('doc-1', 'user-1', {
+        reasonCode: 'cancel_transaction',
+        reverseDate: '2026-04-30',
+      });
+
+      // Reversal JE postedAt should be derived from '2026-04-30' not today.
+      const call = journalMock.createAndPost.mock.calls[0][0];
+      const postedAtYmd = (call.postedAt as Date)
+        .toLocaleString('en-CA', { timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit' });
+      expect(postedAtYmd).toBe('2026-04-30');
     });
   });
 });

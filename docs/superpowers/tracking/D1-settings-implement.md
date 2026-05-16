@@ -57,7 +57,7 @@ Sub-prioritization within expanded D1 scope:
 | D1.2.3.1 | `default_time_range` | P1 | ⬜ | — | DateRangeChips presets configurable |
 | D1.2.3.2 | `pagination_size` | P1 | ⬜ | — | Central default for list pages |
 | D1.2.3.3 | `date_format` BE↔ค.ศ. toggle | P1 | ⬜ | — | formatDateShort branch on pref |
-| D1.2.3.4 | `decimal_places` | P1 | ⬜ | — | formatNumberDecimal default from pref |
+| D1.2.3.4 | `decimal_places` | P1 | ✅ | this PR | SystemConfig `decimal_places` (default 2, integer 0-4 inclusive; out-of-range/non-integer clamps to 2). `getUiFlags()` exposes `decimalPlaces`; `useUiFlags()` syncs `apps/web/src/utils/formatters.ts` module-level pref via `setDefaultDecimalPlaces()`. `formatNumberDecimal(value, decimals?)` signature: when `decimals` omitted, reads pref; explicit 2nd-arg call sites unchanged (backwards compat). Switched to explicit ROUND_HALF_UP via `Math.round` on absolute scaled value (was banker rounding via `toLocaleString` on some engines). 5 settings spec tests + 6 vitest cases (default 2, override 0, override 4, out-of-range fallback, explicit-arg wins, ROUND_HALF_UP on representable halves like 0.5/2.5). 32/32 formatters tests passing |
 | D1.2.3.5 | `thousands_separator` | P1 | ⬜ | — | toLocaleString locale from pref |
 | D1.2.4.1 | `templates_enabled` flag | P1 | ⬜ | — | Feature flag at controller |
 | D1.2.4.2 | `max_templates_per_user` quota | P1 | ⬜ | — | Count check in createTemplate |

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import {
   formatDateShort,
   formatDateMedium,
@@ -10,7 +10,15 @@ import {
   formatNumber,
   formatNumberDecimal,
   applyFormat,
+  setDefaultDecimalPlaces,
 } from './formatters';
+
+// D1.2.3.4 — `formatNumberDecimal` reads from a module-level pref when the
+// 2nd argument is omitted. Reset to 2 after each test to keep blocks
+// independent.
+afterEach(() => {
+  setDefaultDecimalPlaces(2);
+});
 
 // 3 มีนาคม 2026 14:30:05 local time
 const sampleDate = new Date(2026, 2, 3, 14, 30, 5);
@@ -132,5 +140,46 @@ describe('applyFormat', () => {
 
   it('trims whitespace from the format string', () => {
     expect(applyFormat(21468, ' num ')).toBe('21,468');
+  });
+});
+
+// D1.2.3.4 — decimal_places module-level default
+describe('formatters — decimal_places default (D1.2.3.4)', () => {
+  it('default 2: formatNumberDecimal(value) uses 2 digits when omitted', () => {
+    expect(formatNumberDecimal(21468.4)).toBe('21,468.40');
+  });
+
+  it('override 0: formatNumberDecimal(value) uses 0 digits when pref=0', () => {
+    setDefaultDecimalPlaces(0);
+    expect(formatNumberDecimal(21468.4)).toBe('21,468');
+    expect(formatNumberDecimal(21468.6)).toBe('21,469'); // ROUND_HALF_UP
+  });
+
+  it('override 4: formatNumberDecimal(value) uses 4 digits when pref=4', () => {
+    setDefaultDecimalPlaces(4);
+    expect(formatNumberDecimal(1.23456)).toBe('1.2346'); // ROUND_HALF_UP
+  });
+
+  it('out-of-range pref (5) falls back to default 2', () => {
+    setDefaultDecimalPlaces(5);
+    expect(formatNumberDecimal(21468.4)).toBe('21,468.40');
+  });
+
+  it('explicit 2nd arg always wins over the pref', () => {
+    setDefaultDecimalPlaces(0);
+    expect(formatNumberDecimal(21468.4, 2)).toBe('21,468.40');
+    expect(formatNumberDecimal(1.23456, 3)).toBe('1.235');
+  });
+
+  it('ROUND_HALF_UP applied: representable 0.5 boundaries round UP not banker', () => {
+    // 0.5 → 1 with ROUND_HALF_UP (banker would give 0). Representable exactly.
+    expect(formatNumberDecimal(0.5, 0)).toBe('1');
+    // 1.5 → 2 (banker would give 2 anyway — odd half-up matches)
+    expect(formatNumberDecimal(1.5, 0)).toBe('2');
+    // 2.5 → 3 with ROUND_HALF_UP (banker would give 2 here — divergence proves the rule)
+    expect(formatNumberDecimal(2.5, 0)).toBe('3');
+    // Note: 1.005 → "1.00" is unavoidable in IEEE 754 (`1.005` is really
+    // 1.0049999…). For correct half-up on string sources, callers should
+    // pass the string form unchanged (parseFloat is the lossy step).
   });
 });

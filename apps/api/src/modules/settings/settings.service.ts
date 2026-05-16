@@ -175,6 +175,15 @@ export class SettingsService {
      * accessibility readers via the lang attr.
      */
     language: 'th' | 'en';
+    /**
+     * D1.2.3.4 — default number of decimal places for the generic number
+     * formatter. Integer 0-4 inclusive. Default 2 (Thai currency convention).
+     * SystemConfig key `decimal_places`. Out-of-range/non-integer values
+     * clamp to default. The pref is the *default only* — `formatNumberDecimal`
+     * call sites that explicitly pass a digit count continue to work as
+     * before, preserving backwards compat.
+     */
+    decimalPlaces: number;
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -214,6 +223,13 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.2.3.4 — decimal_places. Integer 0-4 inclusive; clamp to 2 default
+    // for out-of-range / non-integer values.
+    const decimalPlacesRaw = await this.readNumber('decimal_places', 2);
+    const decimalPlaces =
+      Number.isInteger(decimalPlacesRaw) && decimalPlacesRaw >= 0 && decimalPlacesRaw <= 4
+        ? decimalPlacesRaw
+        : 2;
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -225,6 +241,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      decimalPlaces,
     };
   }
 

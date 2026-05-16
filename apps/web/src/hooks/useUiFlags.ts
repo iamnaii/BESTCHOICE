@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
+import { setDefaultDecimalPlaces } from '@/utils/formatters';
 
 /**
  * D1.* — UI feature flags fetched from /settings/ui-flags.
@@ -33,6 +34,8 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /** D1.2.3.4 — default decimal places (0-4) for the generic number formatter. */
+  decimalPlaces: number;
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -53,6 +56,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  decimalPlaces: 2,
 };
 
 export function useUiFlags(): UiFlags {
@@ -73,5 +77,12 @@ export function useUiFlags(): UiFlags {
       document.documentElement.lang = flags.language;
     }
   }, [flags.language]);
+  // D1.2.3.4 — sync the module-level default decimal-places preference so
+  // pure `formatNumberDecimal()` calls (in exports, badges, etc.) respect
+  // the OWNER pref. Call sites that pass an explicit digit count are
+  // unaffected — the pref is the *default only*.
+  useEffect(() => {
+    setDefaultDecimalPlaces(flags.decimalPlaces);
+  }, [flags.decimalPlaces]);
   return flags;
 }

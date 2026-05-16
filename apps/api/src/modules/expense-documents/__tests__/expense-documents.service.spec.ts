@@ -50,9 +50,11 @@ describe('ExpenseDocumentsService', () => {
           { code: '53-1404', type: 'ค่าใช้จ่าย' },
         ]),
       },
-      // C10 attachment-threshold check reads ATTACHMENT_REQUIRED_ABOVE_AMOUNT
+      // C10 attachment-threshold check reads ATTACHMENT_REQUIRED_ABOVE_AMOUNT.
+      // D1.2.7.4 — voidDocument now also reads `reverse_block_cascaded` via findFirst.
       systemConfig: {
         findUnique: jest.fn().mockResolvedValue(null),
+        findFirst: jest.fn().mockResolvedValue(null),
       },
       // C9 Round 2 — post/voidDocument resolve SHOP companyId for the
       // module-level validatePeriodOpen call (mirroring expense templates).
@@ -986,6 +988,56 @@ describe('ExpenseDocumentsService', () => {
         .mockResolvedValueOnce(1);
       await expect(service.voidDocument('doc-1', 'user-1')).rejects.toThrow(
         /SE.*ยกเลิก|ยกเลิก SE/,
+      );
+    });
+
+    // D1.2.7.4 — cascade block toggle
+    it('D1.2.7.4: OWNER can disable cascade block via SystemConfig — void proceeds even with pending CN/SE', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'reverse_block_cascaded') return Promise.resolve({ value: 'false' });
+        return Promise.resolve(null);
+      });
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-1', status: 'ACCRUAL', journalEntryId: 'je-orig', documentType: 'EXPENSE', number: 'EX-001',
+      });
+      // CN cascade hit and SE cascade hit — both should be IGNORED when flag is off
+      prisma.expenseDocument.count = jest
+        .fn()
+        .mockResolvedValueOnce(3) // pending CN > 0
+        .mockResolvedValueOnce(2); // pending SE > 0
+      prisma.journalEntry = {
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          id: 'je-orig', entryNumber: 'JE-OLD',
+          lines: [{ accountCode: '53-1404', debit: '100', credit: '0', description: 'x' }],
+          metadata: {},
+        }),
+      };
+      const journalMock = {
+        createAndPost: jest.fn().mockResolvedValue({ id: 'je-rev', entryNumber: 'JE-REV-001' }),
+      };
+      const svc = new ExpenseDocumentsService(
+        prisma, docNumber, transition, sameDay, accrual, creditNote, payroll, settlement,
+        journalMock as never,
+        new LineAggregatorService(),
+        { preview: jest.fn() } as never,
+        { validateContribution: jest.fn().mockResolvedValue(undefined) } as never,
+        { execute: jest.fn() } as never,
+        { getConfig: jest.fn(), validate: jest.fn() } as never,
+        { loadWhitelist: jest.fn().mockResolvedValue(new Set()), validateLine: jest.fn() } as never,
+      );
+      // Should NOT throw — both cascade checks are bypassed
+      await expect(svc.voidDocument('doc-1', 'user-1')).resolves.toBeDefined();
+    });
+
+    it('D1.2.7.4: default behavior unchanged when SystemConfig key absent (flag = true)', async () => {
+      // No SystemConfig override → cascade block enforced (= existing C3.4 behavior)
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-1', status: 'ACCRUAL', journalEntryId: 'je-1', documentType: 'EXPENSE',
+      });
+      prisma.expenseDocument.count = jest.fn().mockResolvedValue(1); // pending CN
+      await expect(service.voidDocument('doc-1', 'user-1')).rejects.toThrow(
+        /ใบลดหนี้/,
       );
     });
 

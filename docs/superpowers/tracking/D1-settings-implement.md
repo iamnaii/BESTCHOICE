@@ -1,7 +1,7 @@
 # D1 · Settings Audit Phase 4 (Implement Approved Scope)
 
 **Status:** 🟢 In Progress — owner approved expanded scope 2026-05-16
-**Started:** 2026-05-16  |  **PRs:** #882 (D1.2.8.2) · this PR (D1.4.3.1)  |  **Done:** 2/75
+**Started:** 2026-05-16  |  **PRs:** #882 · #883 · this PR (D1.2.7.4)  |  **Done:** 3/75
 **Spec:** [`../specs/2026-05-16-a1-phase2-decision-report.md`](../specs/2026-05-16-a1-phase2-decision-report.md)  ·  **Plan:** —
 
 ## Context
@@ -53,7 +53,7 @@ Sub-prioritization within expanded D1 scope:
 | D1.2.7.1 | `reverse_reason_required` | P1 | ⬜ | — | Move @IsOptional to required when flag set |
 | D1.2.7.2 | `reverse_reasons_dropdown` | P1 | ⬜ | — | DB-driven 6-option list |
 | D1.2.7.3 | `reverse_manager_approval_days` | P1 | ⬜ | — | Age-gate the void path |
-| D1.2.7.4 | `reverse_block_cascaded` toggle | P1 | ⬜ | — | Wrap unconditional throw in flag check |
+| D1.2.7.4 | `reverse_block_cascaded` toggle | P1 | ✅ | this PR | New private helper `readBoolFlag()` in `ExpenseDocumentsService` (reads `system_config` directly via PrismaService to keep ctor lean + avoid circular-dep risk with audit/settings modules). Cascade-block check at `expense-documents.service.ts:1681-1700` now reads `reverse_block_cascaded` (default true). Both CN and SE cascade throws gated by the same flag. 2 new tests (toggle off → both bypassed; default → preserved). 52/52 service-spec tests pass |
 | D1.2.3.1 | `default_time_range` | P1 | ⬜ | — | DateRangeChips presets configurable |
 | D1.2.3.2 | `pagination_size` | P1 | ⬜ | — | Central default for list pages |
 | D1.2.3.3 | `date_format` BE↔ค.ศ. toggle | P1 | ⬜ | — | formatDateShort branch on pref |

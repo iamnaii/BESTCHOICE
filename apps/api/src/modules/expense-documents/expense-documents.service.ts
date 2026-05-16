@@ -1331,7 +1331,16 @@ export class ExpenseDocumentsService implements OnModuleInit {
         creditNote: docType.documentType === 'CREDIT_NOTE',
         payroll:
           docType.documentType === 'PAYROLL'
-            ? { include: { lines: true } }
+            ? {
+                include: {
+                  lines: {
+                    include: {
+                      customIncome: { orderBy: { createdAt: 'asc' } },
+                      customDeduction: { orderBy: { createdAt: 'asc' } },
+                    },
+                  },
+                },
+              }
             : false,
         settlement:
           docType.documentType === 'VENDOR_SETTLEMENT'

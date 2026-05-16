@@ -1,6 +1,6 @@
 # C2 · Payroll Custom Income/Deduction (V16–V18)
 
-**Status:** ✅ Done  |  **Started:** 2026-05-16  |  **PRs:** #871 (backend) · this PR (UI). Only C2.7 slip PDF still deferred.
+**Status:** ✅ Done (7/7)  |  **Started:** 2026-05-16  |  **PRs:** #871 (backend) · #872 (UI) · this PR (slip PDF). Email dispatch deferred to a follow-up (needs Mailer service + employee email field).
 **Spec:** —  ·  **Plan:** —
 
 ## Context
@@ -27,7 +27,7 @@ UI: expandable row in PayrollFormV4 reveals two sub-sections (income / deduction
 | C2.4 | Schema: `payroll_custom_income[]` + `payroll_custom_deduction[]` nested under `Payroll` (Prisma) | P1 | 🔵 | TBD | New `PayrollCustomIncome` + `PayrollCustomDeduction` Prisma models FK'd to `PayrollLine` (not `PayrollDetail`) so each employee can have its own custom rows. Migration `20260929000000_payroll_custom_income_deduction` creates 2 tables + seeds V17 default whitelist. Local dry-run: ✅. |
 | C2.5 | `PayrollTemplate.execute` — emit Dr lines for each custom_income.account_code; deductions reduce the net Cr cash leg | P1 | 🔵 | TBD | [payroll.template.ts](../../../apps/api/src/modules/journal/cpa-templates/payroll.template.ts) — added 2 aggregation loops (income by accountCode → Dr; deduction by accountCode → Cr) AFTER WHT line but BEFORE the cash leg. `sumNet` was already computed by service to include income+deduction so the cash Cr lands correctly. All Dr/Cr stay balanced. |
 | C2.6 | UI: PayrollFormV4 expandable rows — Custom Income / Custom Deduction tables with quick-add buttons + V16 warning (ม.42 tax-exempt) | P1 | ✅ | this PR | [PayrollLinesSection.tsx](../../../apps/web/src/components/expense-form-v4/PayrollLinesSection.tsx) — chevron toggles accordion per employee row; expanded section renders 2 colored sub-tables (emerald = income, amber = deduction). Income table uses dropdown wired to `CUSTOM_INCOME_WHITELIST` constant matching the migration seed. Deduction table is free-form CoA code. Live `netPaid` recomputes including +income/−deduction. Live `taxableBase` shown when it differs from base. POST forwards `customIncome` + `customDeduction` arrays; server V16/V17/V18 re-validate. UI-only `_expanded` field excluded from POST body. |
-| C2.7 | Slip auto-generate — PDF per employee + email send | P1 | ⬜ | — | **Deferred to follow-up PR**. Reuses voucher infrastructure (PaymentVoucherPage pattern). Separate session. |
+| C2.7 | Slip auto-generate — PDF per employee + email send | P1 | ✅ | this PR | Extended [PaymentVoucherPage.tsx](../../../apps/web/src/pages/PaymentVoucherPage.tsx) with PAYROLL branch — renders one A4 sheet per employee (`pageBreakBefore: 'always'` from slip #2 onwards). Layout per mockup 02B: company header → ใบจ่ายเงินเดือน n/N → employee meta → Earnings table (base + custom income with `ม.42 ยกเว้นภาษี` badge when not taxable) → Deductions table (SSO + WHT + custom deduction) → net + Thai-text amount → 2 signature slots (ผู้รับเงิน + ผู้จัดทำ). Backend `findOne` now eagerly includes `payroll.lines.customIncome` + `customDeduction` for PAYROLL docs. **Email dispatch deferred** to a follow-up — needs Mailer service wiring + an email column on PayrollLine. PDF + print path already covers the immediate "give employee their slip" use case via browser print. |
 
 ## Decision Log
 

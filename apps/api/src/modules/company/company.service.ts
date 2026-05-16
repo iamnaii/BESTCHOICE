@@ -7,6 +7,18 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCompanyDto, UpdateCompanyDto } from './dto/company.dto';
 
+/** D1.2.2.* — Public-safe slice of CompanyInfo for voucher rendering. */
+export interface PublicCompanyInfo {
+  id: string;
+  nameTh: string;
+  nameEn: string | null;
+  taxId: string;
+  companyCode: string | null;
+  address: string;
+  phone: string | null;
+  logoUrl: string | null;
+}
+
 @Injectable()
 export class CompanyService {
   constructor(private prisma: PrismaService) {}
@@ -37,6 +49,41 @@ export class CompanyService {
       where: { companyCode, deletedAt: null },
       include: { branches: { where: { deletedAt: null } } },
     });
+  }
+
+  /**
+   * D1.2.2.1+ — Public-safe CompanyInfo for voucher/receipt rendering.
+   * Returns the SHOP and FINANCE companies with only the fields needed to
+   * print a header: id, nameTh, nameEn, taxId, companyCode, address, phone,
+   * logoUrl. Excludes director PII, bank account numbers, VAT internals.
+   * Authenticated but accessible to all roles (any user printing a voucher).
+   */
+  async findPublic(): Promise<{
+    shop: PublicCompanyInfo | null;
+    finance: PublicCompanyInfo | null;
+  }> {
+    const rows = await this.prisma.companyInfo.findMany({
+      where: {
+        companyCode: { in: ['SHOP', 'FINANCE'] },
+        deletedAt: null,
+        isActive: true,
+      },
+      select: {
+        id: true,
+        nameTh: true,
+        nameEn: true,
+        taxId: true,
+        companyCode: true,
+        address: true,
+        phone: true,
+        logoUrl: true,
+      },
+    });
+    return {
+      shop: (rows.find((r) => r.companyCode === 'SHOP') ?? null) as PublicCompanyInfo | null,
+      finance:
+        (rows.find((r) => r.companyCode === 'FINANCE') ?? null) as PublicCompanyInfo | null,
+    };
   }
 
   async create(dto: CreateCompanyDto) {

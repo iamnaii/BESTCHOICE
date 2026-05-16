@@ -33,6 +33,17 @@ export class CompanyController {
     return this.companyService.findAll();
   }
 
+  /**
+   * D1.2.2.* — Public-safe CompanyInfo for voucher headers.
+   * Authenticated but allowed for all roles (any user printing a voucher).
+   * Excludes director PII, bank credentials, VAT internals.
+   */
+  @Get('public')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  findPublic() {
+    return this.companyService.findPublic();
+  }
+
   @Get(':id')
   @Roles('OWNER')
   findOne(@Param('id') id: string) {

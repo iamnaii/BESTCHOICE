@@ -175,6 +175,15 @@ export class SettingsService {
      * accessibility readers via the lang attr.
      */
     language: 'th' | 'en';
+    /**
+     * D1.2.3.2 — default pagination size for list pages. Valid integer 10-200
+     * inclusive. Default `50`. Out-of-range or non-numeric values clamp to
+     * the default so a malformed admin edit can't break list pages. SystemConfig
+     * key `pagination_size`. Frontend uses this as the default `limit` query
+     * param; URL `?size=N` overrides per-session, but new sessions start at
+     * this value.
+     */
+    paginationSize: number;
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -214,6 +223,14 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.2.3.2 — pagination_size. Integer 10-200 inclusive; clamp to 50
+    // default for out-of-range or non-numeric values so list pages remain
+    // usable even when SystemConfig is mis-edited.
+    const paginationSizeRaw = await this.readNumber('pagination_size', 50);
+    const paginationSize =
+      Number.isInteger(paginationSizeRaw) && paginationSizeRaw >= 10 && paginationSizeRaw <= 200
+        ? paginationSizeRaw
+        : 50;
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -225,6 +242,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      paginationSize,
     };
   }
 

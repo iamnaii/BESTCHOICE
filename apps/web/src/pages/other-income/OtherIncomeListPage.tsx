@@ -9,6 +9,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { ReopenedPeriodBanner } from '@/components/accounting/ReopenedPeriodBanner';
 import { useDebounce } from '@/hooks/useDebounce';
 import { usePaginationParams } from '@/hooks/usePaginationParams';
+import { useUiFlags } from '@/hooks/useUiFlags';
 import { PaginationBar } from '@/components/ui/PaginationBar';
 import { otherIncomeApi } from '@/lib/otherIncome';
 import type { OtherIncome, OtherIncomeStatus } from '@/lib/otherIncome.types';
@@ -127,7 +128,9 @@ export default function OtherIncomeListPage() {
   const [endDate, setEndDate] = useState(() =>
     new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' }),
   );
-  const { page, size, setPage, setSize } = usePaginationParams({ defaultSize: 50 });
+  // D1.2.3.2 — defaultSize derived from OWNER-configured `pagination_size`.
+  const { paginationSize } = useUiFlags();
+  const { page, size, setPage, setSize } = usePaginationParams({ defaultSize: paginationSize });
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [confirmDeleteNumber, setConfirmDeleteNumber] = useState<string>('');
 

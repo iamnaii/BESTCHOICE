@@ -287,5 +287,48 @@ describe('SettingsService audit trail', () => {
       const flags = await service.getUiFlags();
       expect(flags.periodCloseDay).toBe(31);
     });
+
+    // D1.2.3.2 — pagination_size
+    it('paginationSize defaults to 50 when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.paginationSize).toBe(50);
+    });
+
+    it('paginationSize accepts valid value 100 from SystemConfig', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'pagination_size') return Promise.resolve({ value: '100' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.paginationSize).toBe(100);
+    });
+
+    it('paginationSize clamps to default 50 when out-of-range (5)', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'pagination_size') return Promise.resolve({ value: '5' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.paginationSize).toBe(50);
+    });
+
+    it('paginationSize clamps to default 50 when above max (250)', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'pagination_size') return Promise.resolve({ value: '250' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.paginationSize).toBe(50);
+    });
+
+    it('paginationSize falls back to default 50 when non-numeric', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'pagination_size') return Promise.resolve({ value: 'many' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.paginationSize).toBe(50);
+    });
   });
 });

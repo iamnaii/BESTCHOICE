@@ -1,6 +1,13 @@
-import { Injectable, OnModuleInit, Logger, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  OnModuleInit,
+  Logger,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 
 /**
  * Resolves semantic roles → CoA codes via the `account_role_map` table
@@ -33,7 +40,10 @@ export class AccountRoleService implements OnModuleInit {
     'payroll_sso_expense',
   ];
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   async onModuleInit(): Promise<void> {
     await this.loadCache();
@@ -74,6 +84,158 @@ export class AccountRoleService implements OnModuleInit {
       select: { role: true, accountCode: true, priority: true, note: true },
     });
     return rows;
+  }
+
+  /**
+   * D1.1.1.2 — All AccountRoleMap rows (incl. inactive) joined with
+   * ChartOfAccount.name + the REQUIRED_ROLES `required` flag, for the
+   * admin UI's table view.
+   */
+  async listWithCoa(): Promise<
+    Array<{
+      id: string;
+      role: string;
+      accountCode: string;
+      accountName: string | null;
+      priority: number;
+      isActive: boolean;
+      note: string | null;
+      required: boolean;
+    }>
+  > {
+    const rows = await this.prisma.accountRoleMap.findMany({
+      orderBy: [{ role: 'asc' }, { priority: 'asc' }],
+      select: {
+        id: true,
+        role: true,
+        accountCode: true,
+        priority: true,
+        isActive: true,
+        note: true,
+      },
+    });
+    if (rows.length === 0) return [];
+    const codes = Array.from(new Set(rows.map((r) => r.accountCode)));
+    const coas = await this.prisma.chartOfAccount.findMany({
+      where: { code: { in: codes }, deletedAt: null },
+      select: { code: true, name: true },
+    });
+    const nameByCode = new Map(coas.map((c) => [c.code, c.name]));
+    const requiredSet = new Set<string>(AccountRoleService.REQUIRED_ROLES);
+    return rows.map((r) => ({
+      id: r.id,
+      role: r.role,
+      accountCode: r.accountCode,
+      accountName: nameByCode.get(r.accountCode) ?? null,
+      priority: r.priority,
+      isActive: r.isActive,
+      note: r.note,
+      required: requiredSet.has(r.role),
+    }));
+  }
+
+  /** D1.1.1.5 — public access to the required-roles whitelist. */
+  static getRequiredRoles(): readonly string[] {
+    return AccountRoleService.REQUIRED_ROLES;
+  }
+
+  /**
+   * D1.1.1.3 — Update one AccountRoleMap row. Validates the new
+   * accountCode exists in chart_of_accounts, blocks deactivation of
+   * REQUIRED_ROLES rows, writes a ROLE_MAP_UPDATED audit entry, then
+   * refreshes the in-memory cache.
+   */
+  async update(
+    id: string,
+    dto: {
+      accountCode?: string;
+      priority?: number;
+      isActive?: boolean;
+      note?: string | null;
+    },
+    userId: string,
+  ): Promise<{
+    id: string;
+    role: string;
+    accountCode: string;
+    priority: number;
+    isActive: boolean;
+    note: string | null;
+  }> {
+    const before = await this.prisma.accountRoleMap.findUnique({ where: { id } });
+    if (!before) {
+      throw new NotFoundException(`ไม่พบแถวบัญชี role-map: ${id}`);
+    }
+    if (
+      dto.isActive === false &&
+      AccountRoleService.REQUIRED_ROLES.includes(before.role)
+    ) {
+      throw new BadRequestException(
+        `Role "${before.role}" จำเป็นสำหรับการทำงานของระบบ — ห้ามปิดใช้งาน`,
+      );
+    }
+    if (dto.accountCode && dto.accountCode !== before.accountCode) {
+      const coa = await this.prisma.chartOfAccount.findFirst({
+        where: { code: dto.accountCode, deletedAt: null },
+        select: { code: true },
+      });
+      if (!coa) {
+        throw new BadRequestException(`บัญชี ${dto.accountCode} ไม่พบในผังบัญชี`);
+      }
+    }
+    const updateData: Prisma.AccountRoleMapUpdateInput = {};
+    if (dto.accountCode !== undefined) updateData.accountCode = dto.accountCode;
+    if (dto.priority !== undefined) updateData.priority = dto.priority;
+    if (dto.isActive !== undefined) updateData.isActive = dto.isActive;
+    if (dto.note !== undefined) updateData.note = dto.note;
+    const updated = await this.prisma.accountRoleMap.update({
+      where: { id },
+      data: updateData,
+      select: {
+        id: true,
+        role: true,
+        accountCode: true,
+        priority: true,
+        isActive: true,
+        note: true,
+      },
+    });
+    const diff: string[] = [];
+    if (dto.accountCode !== undefined && dto.accountCode !== before.accountCode) {
+      diff.push(`accountCode: ${before.accountCode} → ${updated.accountCode}`);
+    }
+    if (dto.priority !== undefined && dto.priority !== before.priority) {
+      diff.push(`priority: ${before.priority} → ${updated.priority}`);
+    }
+    if (dto.isActive !== undefined && dto.isActive !== before.isActive) {
+      diff.push(`isActive: ${before.isActive} → ${updated.isActive}`);
+    }
+    if (dto.note !== undefined && dto.note !== before.note) {
+      diff.push(`note: ${before.note ?? '—'} → ${updated.note ?? '—'}`);
+    }
+    await this.audit.log({
+      userId,
+      action: 'ROLE_MAP_UPDATED',
+      entity: 'account_role_map',
+      entityId: id,
+      oldValue: {
+        role: before.role,
+        accountCode: before.accountCode,
+        priority: before.priority,
+        isActive: before.isActive,
+        note: before.note,
+      },
+      newValue: {
+        role: updated.role,
+        accountCode: updated.accountCode,
+        priority: updated.priority,
+        isActive: updated.isActive,
+        note: updated.note,
+        diffSummary: `role ${updated.role}: ${diff.join(', ') || 'no field changes'}`,
+      },
+    });
+    await this.invalidate();
+    return updated;
   }
 
   /** Call after a mutation through the admin UI. */

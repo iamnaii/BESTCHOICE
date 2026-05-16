@@ -95,7 +95,7 @@ Sub-prioritization within expanded D1 scope:
 |---|---|---|---|---|---|
 | D1.1.1.2 | `GET /api/settings/role-map` | P0 | ⬜ | Q7 | Wire AccountRoleService or drop table? |
 | D1.1.1.3 | `PUT /api/settings/role-map` | P0 | ⬜ | Q7 | |
-| D1.1.1.4 | Admin UI for role map | P0 | ⬜ | Q7 | |
+| D1.1.1.4 | Admin UI for role map | P0 | ✅ | this PR | Q7=WIRE IT. New route `/settings/account-roles` (OWNER-only) + page `AccountRolesPage.tsx`. Table groups rows by role + shows code/name/priority/active/note. REQUIRED_ROLES get a lock icon + Switch disabled. EditRoleMapDialog: CoA combobox (cmdk/Popover) filtered to status="ใช้งาน", priority Input, isActive Switch, note Input. react-query w/ invalidate on PUT success. Sidebar link "บัญชีตาม Role" under OWNER settings group. Backend GET/PUT re-wired self-contained. 5 vitest cases. Type-check 0 errors |
 | D1.1.1.5 | Validation rules | P0 | ⬜ | Q7 | |
 | D1.1.1.6 | Audit log on change | P0 | ⬜ | Q7 | |
 | D1.1.1.7 | Permission control (admin only) | P0 | ⬜ | Q7 | |

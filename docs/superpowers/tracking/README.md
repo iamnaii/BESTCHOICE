@@ -11,7 +11,7 @@
 | Sub-project | Items | Done | Progress | Status | Spec | Plan |
 |---|---|---|---|---|---|---|
 | [T0 · Tracking System](T0-tracking-system.md) | 5 | 5 | 100% | ✅ Done | [spec](../specs/2026-05-16-bestchoice-expense-v2-tracking-design.md) | [plan](../plans/2026-05-16-bestchoice-expense-v2-tracking.md) |
-| [A0 · Pre-flight Verify](A0-preflight-verify.md) | 3 | 0 | 0% | ⬜ Pending | — | — |
+| [A0 · Pre-flight Verify](A0-preflight-verify.md) | 3 | 0 | 0% | 🟡 In Progress | — | [script](../../../scripts/a0-preflight-verify.sql) |
 | [A1 · Settings Audit Phase 1+2](A1-settings-audit.md) | 102 | 0 | 0% | ⬜ Pending | — | — |
 | [B1 · SSO 875 Configurable](B1-sso-875.md) | 6 | 0 | 0% | ⬜ Pending | — | — |
 | [B2 · Settlement Multi-line Adj](B2-settlement-adjustment.md) | 5 | 0 | 0% | ⬜ Pending | — | — |
@@ -25,7 +25,7 @@
 
 ## 🎯 Current Focus
 
-- **Active:** None — T0 just shipped
+- **Active:** **A0 (Pre-flight Verify)** — script `scripts/a0-preflight-verify.sql` ready for owner to run on prod psql. 3 items remain "in progress" until prod output is captured back into A0 tracking Evidence/Notes
 - **Next:** **A0 (Pre-flight Verify)** — read-only DB checks before any code change. Critical because Action #1 in Dev_Action_Items requires verifying that `adj_underpay = 52-1104` in production before any other work
 - **Then:** **B1 (SSO 875)** — deadline-critical, government rule active for May 2026 close
 

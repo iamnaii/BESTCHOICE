@@ -1,0 +1,78 @@
+# Business Expense Module v2.0 · Tracking Master
+
+**Deadline:** ก่อนปิดงวด พ.ค. 2569 (grace through 5 มิ.ย. 2569 per `period_grace_days`)
+**Started:** 2026-05-16
+**Owner:** akenarin.ak@gmail.com
+**Spec:** [`../specs/2026-05-16-bestchoice-expense-v2-tracking-design.md`](../specs/2026-05-16-bestchoice-expense-v2-tracking-design.md)
+**Conventions:** [`_conventions.md`](_conventions.md)
+
+## Progress Overview
+
+| Sub-project | Items | Done | Progress | Status | Spec | Plan |
+|---|---|---|---|---|---|---|
+| [T0 · Tracking System](T0-tracking-system.md) | 5 | 5 | 100% | ✅ Done | [spec](../specs/2026-05-16-bestchoice-expense-v2-tracking-design.md) | [plan](../plans/2026-05-16-bestchoice-expense-v2-tracking.md) |
+| [A0 · Pre-flight Verify](A0-preflight-verify.md) | 3 | 0 | 0% | ⬜ Pending | — | — |
+| [A1 · Settings Audit Phase 1+2](A1-settings-audit.md) | 102 | 0 | 0% | ⬜ Pending | — | — |
+| [B1 · SSO 875 Configurable](B1-sso-875.md) | 6 | 0 | 0% | ⬜ Pending | — | — |
+| [B2 · Settlement Multi-line Adj](B2-settlement-adjustment.md) | 5 | 0 | 0% | ⬜ Pending | — | — |
+| [B3 · Test Suite J+K](B3-test-suite.md) | 14 | 0 | 0% | ⬜ Pending | — | — |
+| [C1 · Petty Cash](C1-petty-cash.md) | 8 | 0 | 0% | ⬜ Pending | — | — |
+| [C2 · Payroll Custom Income/Deduction](C2-payroll-custom.md) | 7 | 0 | 0% | ⬜ Pending | — | — |
+| [C3 · Reverse Dialog + V19](C3-reverse-dialog.md) | 5 | 0 | 0% | ⬜ Pending | — | — |
+| [C4 · Credit Note 2-Mode](C4-credit-note-2mode.md) | 4 | 0 | 0% | ⬜ Pending | — | — |
+| [D1 · Settings Audit Phase 4](D1-settings-implement.md) | TBD | 0 | 0% | 🔒 Locked (by A1) | — | — |
+| **TOTAL** | **~159** | **5** | **~3%** | | | |
+
+## 🎯 Current Focus
+
+- **Active:** None — T0 just shipped
+- **Next:** **A0 (Pre-flight Verify)** — read-only DB checks before any code change. Critical because Action #1 in Dev_Action_Items requires verifying that `adj_underpay = 52-1104` in production before any other work
+- **Then:** **B1 (SSO 875)** — deadline-critical, government rule active for May 2026 close
+
+## 📅 Timeline
+
+From owner's suggested timeline in [`_owner-package/README_FOR_DEV.md`](_owner-package/README_FOR_DEV.md):
+
+| Week | Dates (BE 2569) | Focus |
+|---|---|---|
+| 1 | 15–21 พ.ค. | T0 ✅ → A0 → A1 scan (no code yet) |
+| 2 | 22–28 พ.ค. | B1 SSO 875 + Settings P0 critical |
+| 3 | 29 พ.ค. – 4 มิ.ย. | B2 + B3 + C1 + UI updates |
+| 4 | 5–11 มิ.ย. | C2 / C3 / C4 + D1 + UAT + deploy |
+| Deadline | 5 มิ.ย. 2569 | period_grace_days = 5 cutoff |
+
+## 📚 Source Documents (Owner Package · 2026-05-15)
+
+All under [`_owner-package/`](_owner-package/):
+- [Cover Message](_owner-package/COVER_MESSAGE.md)
+- [README_FOR_DEV v2](_owner-package/README_FOR_DEV.md) — Pre-flight Check, Mandatory Stops, Anti-patterns
+- [Implementation Review v2.0](_owner-package/Implementation_Review_v2.0.md) — Executive summary
+- [Mockup v5](_owner-package/expense_module_mockup_v5.md) — 13 UI screens, single source of truth
+- [Settings Audit Index](_owner-package/Settings_Audit_Index.md)
+- [Settings Audit Core v2.0](_owner-package/Settings_Audit_Core_v2.0.md) — 102 items with Detection Hints
+- [Settings Audit Change Log](_owner-package/Settings_Audit_Change_Log.md) — v1.0 → v2.0 diff
+- [Dev Action Items v1.0](_owner-package/Dev_Action_Items_v1.0.md) — 5 bug-fix actions
+
+## 🚫 Hard Gates (from owner workflow)
+
+These gates MUST NOT be skipped:
+- **Phase 1 AUDIT → STOP** → await owner confirm before Phase 2
+- **Phase 2 REPORT → STOP** → await owner approval of scope before Phase 4
+- **Phase 4 IMPLEMENT** → one PR per item, no bundling
+
+Anti-patterns to avoid (from [`_owner-package/README_FOR_DEV.md`](_owner-package/README_FOR_DEV.md)):
+1. Chaining Phase 1 → Phase 2 in the same response
+2. Implementing settings while still in AUDIT
+3. Bundling multiple items in one PR
+4. Acting before Pre-flight Check answered
+5. Assuming owner's answers
+
+## 🔄 How to update this file
+
+Per [`_conventions.md`](_conventions.md) atomic-diff rule:
+- PRs that flip a sub-project item from `🟡` → `✅` MUST update the matching row's `Done` and `Progress` columns here in the same diff
+- PRs that change sub-project Status (e.g. `⬜ Pending` → `🟡 In Progress`) update the `Status` column
+- Specs and Plans get linked in their columns the first PR that creates them
+- TOTAL row updates on every change
+
+If you forgot to update this file in a PR, open a follow-up `chore(tracking): backfill progress for [Xn.Y]` PR.

@@ -287,5 +287,118 @@ describe('SettingsService audit trail', () => {
       const flags = await service.getUiFlags();
       expect(flags.periodCloseDay).toBe(31);
     });
+
+    // D1.1.2.1 — DocumentType → prefix override exposed via getUiFlags
+    it('docPrefixMap returns full defaults when no SystemConfig row exists', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.docPrefixMap).toEqual({
+        EXPENSE: 'EX',
+        CREDIT_NOTE: 'CN',
+        PAYROLL: 'PR',
+        VENDOR_SETTLEMENT: 'SE',
+        PETTY_CASH_REIMBURSEMENT: 'PC',
+      });
+    });
+
+    it('docPrefixMap applies stored overrides on top of defaults', async () => {
+      prisma.systemConfig.findFirst = jest
+        .fn()
+        .mockImplementation((args: { where: { key: string } }) => {
+          if (args.where.key === 'doc_prefix_per_type') {
+            return Promise.resolve({ value: '{"EXPENSE":"EXP","CREDIT_NOTE":"CRN"}' });
+          }
+          return Promise.resolve(null);
+        });
+      const flags = await service.getUiFlags();
+      expect(flags.docPrefixMap.EXPENSE).toBe('EXP');
+      expect(flags.docPrefixMap.CREDIT_NOTE).toBe('CRN');
+      // Untouched keys fall back to defaults
+      expect(flags.docPrefixMap.PAYROLL).toBe('PR');
+      expect(flags.docPrefixMap.VENDOR_SETTLEMENT).toBe('SE');
+      expect(flags.docPrefixMap.PETTY_CASH_REIMBURSEMENT).toBe('PC');
+    });
+
+    it('docPrefixMap falls back to all defaults when stored JSON is malformed', async () => {
+      prisma.systemConfig.findFirst = jest
+        .fn()
+        .mockImplementation((args: { where: { key: string } }) => {
+          if (args.where.key === 'doc_prefix_per_type') {
+            return Promise.resolve({ value: '{not valid json' });
+          }
+          return Promise.resolve(null);
+        });
+      const flags = await service.getUiFlags();
+      expect(flags.docPrefixMap.EXPENSE).toBe('EX');
+    });
+
+    it('docPrefixMap drops individual bad prefixes (silently keeps defaults for those)', async () => {
+      prisma.systemConfig.findFirst = jest
+        .fn()
+        .mockImplementation((args: { where: { key: string } }) => {
+          if (args.where.key === 'doc_prefix_per_type') {
+            // PAYROLL = lowercase → fails regex; EXPENSE valid override
+            return Promise.resolve({ value: '{"EXPENSE":"EXP","PAYROLL":"pyr"}' });
+          }
+          return Promise.resolve(null);
+        });
+      const flags = await service.getUiFlags();
+      expect(flags.docPrefixMap.EXPENSE).toBe('EXP');
+      expect(flags.docPrefixMap.PAYROLL).toBe('PR'); // bad value silently dropped
+    });
+  });
+
+  // D1.1.2.1 — write-time validation for doc_prefix_per_type
+  describe('validateKeyValue (doc_prefix_per_type)', () => {
+    it('update() rejects non-JSON value', async () => {
+      await expect(service.update('doc_prefix_per_type', 'not-json', 'u-1')).rejects.toThrow(
+        /JSON object/,
+      );
+      expect(prisma.systemConfig.upsert).not.toHaveBeenCalled();
+    });
+
+    it('update() rejects array value', async () => {
+      await expect(service.update('doc_prefix_per_type', '["EX"]', 'u-1')).rejects.toThrow(
+        /JSON object/,
+      );
+    });
+
+    it('update() rejects malformed prefix (too short / lowercase / digits)', async () => {
+      await expect(
+        service.update('doc_prefix_per_type', '{"EXPENSE":"X"}', 'u-1'),
+      ).rejects.toThrow(/A-Z/);
+      await expect(
+        service.update('doc_prefix_per_type', '{"EXPENSE":"exp"}', 'u-1'),
+      ).rejects.toThrow(/A-Z/);
+      await expect(
+        service.update('doc_prefix_per_type', '{"EXPENSE":"E1"}', 'u-1'),
+      ).rejects.toThrow(/A-Z/);
+      await expect(
+        service.update('doc_prefix_per_type', '{"EXPENSE":"TOOLONG"}', 'u-1'),
+      ).rejects.toThrow(/A-Z/);
+    });
+
+    it('update() accepts valid mapping (2-4 uppercase letters per value)', async () => {
+      prisma.systemConfig.findUnique.mockResolvedValue(null);
+      await service.update(
+        'doc_prefix_per_type',
+        '{"EXPENSE":"EX","CREDIT_NOTE":"CN","PAYROLL":"PYR","VENDOR_SETTLEMENT":"SETL"}',
+        'u-1',
+      );
+      expect(prisma.systemConfig.upsert).toHaveBeenCalled();
+    });
+
+    it('bulkUpdate() fails entire batch on first invalid doc_prefix_per_type', async () => {
+      await expect(
+        service.bulkUpdate(
+          [
+            { key: 'theme_color', value: '#10b981' },
+            { key: 'doc_prefix_per_type', value: '{"EXPENSE":"x"}' },
+          ],
+          'u-1',
+        ),
+      ).rejects.toThrow(/A-Z/);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
   });
 });

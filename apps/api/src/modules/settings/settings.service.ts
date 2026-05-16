@@ -1,6 +1,25 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
+import { DocumentType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+
+/**
+ * D1.1.2.1 — default mapping from DocumentType → 2-4 letter prefix. Mirrors the
+ * pre-Phase-2 hardcoded PREFIX_MAP in `DocNumberService` and serves as the
+ * fallback when SystemConfig key `doc_prefix_per_type` is missing or malformed.
+ * Keep keys in sync with the `DocumentType` enum in `schema.prisma`.
+ */
+export const DEFAULT_DOC_PREFIX_MAP: Record<DocumentType, string> = {
+  EXPENSE: 'EX',
+  CREDIT_NOTE: 'CN',
+  PAYROLL: 'PR',
+  VENDOR_SETTLEMENT: 'SE',
+  PETTY_CASH_REIMBURSEMENT: 'PC',
+};
+
+/** Validation regex — 2 to 4 uppercase Latin letters. Mirrors A-Z constraint
+ *  used by downstream JE templates + spreadsheet parsers. */
+export const DOC_PREFIX_REGEX = /^[A-Z]{2,4}$/;
 
 /**
  * Keys whose values are secrets (API tokens, bank credentials). The audit
@@ -40,11 +59,48 @@ export class SettingsService {
   }
 
   /**
+   * D1.1.2.1 — value-level validation for known keys that need stricter
+   * shape than the generic snake_case key check on the DTO. Throws
+   * BadRequestException with a Thai message on the first violation.
+   *
+   * Currently checks:
+   *  - `doc_prefix_per_type` — must parse as JSON object; every present
+   *    value must match `DOC_PREFIX_REGEX` (2-4 uppercase Latin letters).
+   *    Unknown keys are silently ignored (forward-compat with future
+   *    DocumentType additions).
+   */
+  private validateKeyValue(key: string, value: string): void {
+    if (key === 'doc_prefix_per_type') {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(value);
+      } catch {
+        throw new BadRequestException(
+          'doc_prefix_per_type ต้องเป็น JSON object ที่ถูกต้อง',
+        );
+      }
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new BadRequestException(
+          'doc_prefix_per_type ต้องเป็น JSON object (ไม่ใช่ array หรือ primitive)',
+        );
+      }
+      for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+        if (typeof v !== 'string' || !DOC_PREFIX_REGEX.test(v)) {
+          throw new BadRequestException(
+            `doc_prefix_per_type[${k}] ต้องเป็นตัวอักษรพิมพ์ใหญ่ A-Z จำนวน 2-4 ตัว`,
+          );
+        }
+      }
+    }
+  }
+
+  /**
    * Single key update with audit trail. Callers must pass userId — passing
    * null/undefined skips the audit log and is reserved for system-internal
    * writes (e.g. automated migrations).
    */
   async update(key: string, value: string, userId?: string) {
+    this.validateKeyValue(key, value);
     const before = await this.prisma.systemConfig.findUnique({ where: { key } });
     const updated = await this.prisma.systemConfig.upsert({
       where: { key },
@@ -134,6 +190,41 @@ export class SettingsService {
     }
   }
 
+  /**
+   * D1.1.2.1 — DocumentType → prefix mapping. Reads SystemConfig key
+   * `doc_prefix_per_type` (JSON object). Falls back to `DEFAULT_DOC_PREFIX_MAP`
+   * when the key is missing, malformed, or any value fails the
+   * `DOC_PREFIX_REGEX` (2-4 uppercase Latin letters).
+   *
+   * Partial overrides are supported: a stored `{ "EXPENSE": "EXP" }` overrides
+   * the EXPENSE prefix and falls back to defaults for every other type.
+   *
+   * **Safety**: invalid stored values do NOT throw at read time — they're
+   * silently replaced with the default so doc creation never blocks on a bad
+   * SystemConfig row. The validation guard in `bulkUpdate` rejects malformed
+   * values at write time.
+   */
+  async getDocPrefixMap(): Promise<Record<DocumentType, string>> {
+    const raw = await this.getKey('doc_prefix_per_type');
+    if (!raw) return { ...DEFAULT_DOC_PREFIX_MAP };
+    try {
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return { ...DEFAULT_DOC_PREFIX_MAP };
+      }
+      const result: Record<DocumentType, string> = { ...DEFAULT_DOC_PREFIX_MAP };
+      for (const key of Object.keys(DEFAULT_DOC_PREFIX_MAP) as DocumentType[]) {
+        const candidate = (parsed as Record<string, unknown>)[key];
+        if (typeof candidate === 'string' && DOC_PREFIX_REGEX.test(candidate)) {
+          result[key] = candidate;
+        }
+      }
+      return result;
+    } catch {
+      return { ...DEFAULT_DOC_PREFIX_MAP };
+    }
+  }
+
   async getUiFlags(): Promise<{
     /** D1.2.8.2 — show ม.42 tax-exempt warning when a payroll custom-income line is marked non-taxable. Default true. */
     taxExemptWarningEnabled: boolean;
@@ -175,6 +266,12 @@ export class SettingsService {
      * accessibility readers via the lang attr.
      */
     language: 'th' | 'en';
+    /**
+     * D1.1.2.1 — DocumentType → 2-4 letter prefix mapping. Used by the UI to
+     * render document number badges (e.g. show "EX" next to an EXPENSE doc).
+     * Always returns the full default mapping when no override is configured.
+     */
+    docPrefixMap: Record<DocumentType, string>;
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -214,6 +311,9 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.1.2.1 — DocumentType → prefix map (defaults applied per type when
+    // stored value is missing or malformed).
+    const docPrefixMap = await this.getDocPrefixMap();
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -225,6 +325,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      docPrefixMap,
     };
   }
 
@@ -249,6 +350,11 @@ export class SettingsService {
   }
 
   async bulkUpdate(items: { key: string; value: string }[], userId?: string) {
+    // Validate all items up front — fail the entire batch on the first bad
+    // value so a partially-applied bulk update can't leak through.
+    for (const item of items) {
+      this.validateKeyValue(item.key, item.value);
+    }
     // Fetch "before" snapshot in one query so the transaction stays bounded.
     const keys = items.map((i) => i.key);
     const existing = await this.prisma.systemConfig.findMany({

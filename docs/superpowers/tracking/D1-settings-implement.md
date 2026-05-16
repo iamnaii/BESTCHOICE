@@ -99,7 +99,7 @@ Sub-prioritization within expanded D1 scope:
 | D1.1.1.5 | Validation rules | P0 | ⬜ | Q7 | |
 | D1.1.1.6 | Audit log on change | P0 | ⬜ | Q7 | |
 | D1.1.1.7 | Permission control (admin only) | P0 | ⬜ | Q7 | |
-| D1.1.2.1 | `doc_prefix_per_type` | P0 | ⬜ | Q3 | Rename or accept current? |
+| D1.1.2.1 | `doc_prefix_per_type` | P0 | ✅ | this PR | SystemConfig key `doc_prefix_per_type` (JSON object). `DEFAULT_DOC_PREFIX_MAP` mirrors hardcoded prefixes for the 5 DocumentType enum values (EX/CN/PR/SE/PC). `SettingsService.getDocPrefixMap()` partial-merges overrides on top of defaults, silently drops bad regex matches (`^[A-Z]{2,4}$`). Write-time validation in `update`/`bulkUpdate` rejects malformed JSON / non-uppercase / wrong-length prefixes with Thai error messages. `DocNumberService.next()` now resolves prefix per-call via SettingsService (defensive fallback if lookup throws). Exposed via `getUiFlags()` as `docPrefixMap`. 4 new DocNumberService cases + 7 new SettingsService cases. Type-check 0 errors. **Accept current behavior**: format string + lock keying unchanged — only the prefix letters are swappable |
 | D1.1.2.2 | `doc_number_format` | P0 | ⬜ | Q3 | Same |
 | D1.1.2.3 | `reset_cycle` | P0 | ⬜ | Q3 | |
 | D1.1.2.4 | `sequence_table` | P0 | ⬜ | Q3 | |

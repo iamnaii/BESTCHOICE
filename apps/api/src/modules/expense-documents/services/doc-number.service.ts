@@ -1,21 +1,26 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { DocumentType, Prisma } from '@prisma/client';
-
-const PREFIX_MAP: Record<DocumentType, string> = {
-  EXPENSE: 'EX',
-  CREDIT_NOTE: 'CN',
-  PAYROLL: 'PR',
-  VENDOR_SETTLEMENT: 'SE',
-  PETTY_CASH_REIMBURSEMENT: 'PC',
-};
+import {
+  DEFAULT_DOC_PREFIX_MAP,
+  SettingsService,
+} from '../../settings/settings.service';
 
 @Injectable()
 export class DocNumberService {
+  constructor(private readonly settings: SettingsService) {}
+
   /**
    * Generate next sequential document number with race-safe Postgres
    * advisory lock per (type, BKK-day) key. Mirrors OI/RT pattern.
    *
    * Format: <TYPE>-YYYYMMDD-NNNN — daily reset, 4-digit seq.
+   *
+   * D1.1.2.1 — prefix is now sourced from SystemConfig key
+   * `doc_prefix_per_type` via `SettingsService.getDocPrefixMap()`. Falls back
+   * to the hardcoded `DEFAULT_DOC_PREFIX_MAP` when no override is configured
+   * or the stored value is malformed. The lock key + lookup query both use
+   * the resolved prefix, so changing the override at runtime applies to the
+   * next-issued number without restart.
    *
    * `issueDate` convention (W5): the BKK-day is derived from the user-chosen
    * `documentDate` (NOT server "now"), so a same-day creation backdated to
@@ -36,7 +41,9 @@ export class DocNumberService {
     issueDate: Date,
   ): Promise<string> {
     const yyyymmdd = this.bkkYyyymmdd(issueDate);
-    const prefix = `${PREFIX_MAP[type]}-${yyyymmdd}-`;
+    const prefixMap = await this.resolvePrefixMap();
+    const prefixLetters = prefixMap[type];
+    const prefix = `${prefixLetters}-${yyyymmdd}-`;
     const lockKey = this.hashLockKey(`expdoc:${type}:${yyyymmdd}`);
     await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${lockKey})`);
 
@@ -51,11 +58,24 @@ export class DocNumberService {
     const nextSeq = lastSeq + 1;
     if (nextSeq > 9999) {
       throw new BadRequestException(
-        `เลขที่เอกสาร ${PREFIX_MAP[type]} เกิน 9999 ใน 1 วัน (BKK ${yyyymmdd}) — ติดต่อผู้ดูแลระบบ`,
+        `เลขที่เอกสาร ${prefixLetters} เกิน 9999 ใน 1 วัน (BKK ${yyyymmdd}) — ติดต่อผู้ดูแลระบบ`,
       );
     }
     const seq = String(nextSeq).padStart(4, '0');
     return `${prefix}${seq}`;
+  }
+
+  /**
+   * D1.1.2.1 — fetch the active prefix map. Pulls from SettingsService when
+   * available; falls back to the static `DEFAULT_DOC_PREFIX_MAP` if any error
+   * surfaces (defensive: doc creation must never block on the settings query).
+   */
+  private async resolvePrefixMap(): Promise<Record<DocumentType, string>> {
+    try {
+      return await this.settings.getDocPrefixMap();
+    } catch {
+      return { ...DEFAULT_DOC_PREFIX_MAP };
+    }
   }
 
   /** Asia/Bangkok local YYYYMMDD via Intl (BKK is UTC+7, no DST). */

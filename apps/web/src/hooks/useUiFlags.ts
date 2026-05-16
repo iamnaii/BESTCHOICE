@@ -33,6 +33,17 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /**
+   * D1.1.2.1 — DocumentType → 2-4 letter prefix mapping. Used to render the
+   * configured prefix in document-number badges across list/detail pages.
+   */
+  docPrefixMap: {
+    EXPENSE: string;
+    CREDIT_NOTE: string;
+    PAYROLL: string;
+    VENDOR_SETTLEMENT: string;
+    PETTY_CASH_REIMBURSEMENT: string;
+  };
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -53,6 +64,13 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  docPrefixMap: {
+    EXPENSE: 'EX',
+    CREDIT_NOTE: 'CN',
+    PAYROLL: 'PR',
+    VENDOR_SETTLEMENT: 'SE',
+    PETTY_CASH_REIMBURSEMENT: 'PC',
+  },
 };
 
 export function useUiFlags(): UiFlags {

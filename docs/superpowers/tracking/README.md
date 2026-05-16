@@ -12,7 +12,7 @@
 |---|---|---|---|---|---|---|
 | [T0 · Tracking System](T0-tracking-system.md) | 5 | 5 | 100% | ✅ Done | [spec](../specs/2026-05-16-bestchoice-expense-v2-tracking-design.md) | [plan](../plans/2026-05-16-bestchoice-expense-v2-tracking.md) |
 | [A0 · Pre-flight Verify](A0-preflight-verify.md) | 3 | 3 | 100% | ✅ Done | — | [script](../../../scripts/a0-preflight-verify.sql) — prod-verified 2026-05-16. A0.3 closed (false alarm from wrong `flow` literal). |
-| [A1 · Settings Audit Phase 1+2](A1-settings-audit.md) | 102 | 0 | 0% | ⬜ Pending | — | — |
+| [A1 · Settings Audit Phase 1+2](A1-settings-audit.md) | 102 | 12 | 12% | 🚦 Phase 1 done — 🛑 STOP for owner review | — | this PR (findings) |
 | [B1 · SSO 875 Configurable](B1-sso-875.md) | 6 | 6 | 100% | ✅ Done | — | [#861](https://github.com/iamnaii/BESTCHOICE/pull/861) |
 | [B2 · Settlement Multi-line Adj](B2-settlement-adjustment.md) | 5 | 5 | 100% | ✅ Done | — | [#863](https://github.com/iamnaii/BESTCHOICE/pull/863) + B2.4 follow-up |
 | [B3 · Test Suite J+K](B3-test-suite.md) | 14 | 14 | 100% | ✅ Done | — | [#865](https://github.com/iamnaii/BESTCHOICE/pull/865) · [#866](https://github.com/iamnaii/BESTCHOICE/pull/866) · this PR (J-06) |
@@ -21,13 +21,13 @@
 | [C3 · Reverse Dialog + V19](C3-reverse-dialog.md) | 5 | 4 | 80% | ✅ Done | — | [#875](https://github.com/iamnaii/BESTCHOICE/pull/875) · this PR (UI). C3.5 settings → A1 |
 | [C4 · Credit Note 2-Mode](C4-credit-note-2mode.md) | 4 | 4 | 100% | ✅ Done | — | [#877](https://github.com/iamnaii/BESTCHOICE/pull/877) · this PR (UI) |
 | [D1 · Settings Audit Phase 4](D1-settings-implement.md) | TBD | 0 | 0% | 🔒 Locked (by A1) | — | — |
-| **TOTAL** | **~159** | **55** | **~35%** | | | |
+| **TOTAL** | **~159** | **67** | **~42%** | | | |
 
 ## 🎯 Current Focus
 
-- **Active:** None. C4 shipped end-to-end (4/4).
+- **Active:** 🛑 **A1 Phase 1 audit complete (R1+R2 reviewed) — awaiting owner review** before Phase 2 synthesis. Findings: 12 ✅ / 18 ◐ / 71 ❌ / 1 SKIP across 102 items.
 - **Optional housekeeping:** EQ-002 missing เม.ย. depreciation (~฿287). Not a blocker; owner can run `POST /admin/depreciation/run?period=2026-04` for catch-up at convenience. พ.ค. depreciation will tick automatically on May 31.
-- **Next:** A1 audit (Phase 1 scan only, no code) — owner workflow says Phase 1 → STOP for owner approval before Phase 2
+- **Next:** Owner reviews [A1 audit findings](A1-settings-audit.md) + 5 open questions → signals go-ahead → Phase 2 (REPORT only) → STOP again → owner approves scope → D1 implements.
 
 ## 📅 Timeline
 

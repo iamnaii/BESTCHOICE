@@ -156,6 +156,16 @@ export class SettingsService {
     periodCloseDay: number;
     /** D1.2.2.7 — render verification QR code on voucher footers. Default true. */
     voucherShowQrCode: boolean;
+    /**
+     * D1.2.2.5 — primary theme color hex string. Default '#10b981' (emerald,
+     * Tailwind v4 emerald-500). Currently INFORMATIONAL only — Tailwind v4's
+     * `@theme` block uses --color-primary-50..900 scale, so single-color
+     * override doesn't directly drive the design tokens. Future enhancement
+     * can either compute the full scale from this hex or switch to a CSS
+     * variable system that respects the override. Stored as hex string;
+     * caller validates format.
+     */
+    themeColor: string;
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -186,6 +196,12 @@ export class SettingsService {
         ? periodCloseDayRaw
         : 31;
     const voucherShowQrCode = await this.readBoolean('voucher_show_qr_code', true);
+    // D1.2.2.5 — theme color (hex). Validate `^#[0-9a-fA-F]{6}$`.
+    const themeColorRaw = await this.getKey('theme_color');
+    const themeColor =
+      themeColorRaw && /^#[0-9a-fA-F]{6}$/.test(themeColorRaw)
+        ? themeColorRaw
+        : '#10b981';
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -195,6 +211,7 @@ export class SettingsService {
       paymentDateAllowFuture,
       periodCloseDay,
       voucherShowQrCode,
+      themeColor,
     };
   }
 

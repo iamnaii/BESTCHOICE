@@ -253,5 +253,39 @@ describe('SettingsService audit trail', () => {
       const flags = await service.getUiFlags();
       expect(flags.paymentDateAllowFuture).toBe(false);
     });
+
+    // D1.2.6.1 — period_close_day
+    it('periodCloseDay defaults to 31 (end-of-month) when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.periodCloseDay).toBe(31);
+    });
+
+    it('periodCloseDay accepts valid 1-31 range from SystemConfig', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'period_close_day') return Promise.resolve({ value: '25' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.periodCloseDay).toBe(25);
+    });
+
+    it('periodCloseDay clamps to default when out of valid range', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'period_close_day') return Promise.resolve({ value: '32' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.periodCloseDay).toBe(31);
+    });
+
+    it('periodCloseDay clamps to default when zero or negative', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'period_close_day') return Promise.resolve({ value: '0' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.periodCloseDay).toBe(31);
+    });
   });
 });

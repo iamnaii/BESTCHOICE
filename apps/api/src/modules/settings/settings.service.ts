@@ -175,6 +175,15 @@ export class SettingsService {
      * accessibility readers via the lang attr.
      */
     language: 'th' | 'en';
+    /**
+     * D1.3.3.3 — outbound webhook dispatch master switch. **DEFAULT-OFF** per
+     * accountant package. When false, `WebhooksService.dispatchEvent` is a
+     * no-op and the OWNER's `POST /webhooks/test/:id` returns 400. Inbound
+     * webhooks (paysolutions / sms / line / facebook) are NOT gated by this
+     * flag — they run on dedicated controllers and remain critical for
+     * payment processing.
+     */
+    webhooksEnabled: boolean;
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -214,6 +223,8 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.3.3.3 — webhooks_enabled. DEFAULT-OFF per accountant package.
+    const webhooksEnabled = await this.readBoolean('webhooks_enabled', false);
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -225,6 +236,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      webhooksEnabled,
     };
   }
 

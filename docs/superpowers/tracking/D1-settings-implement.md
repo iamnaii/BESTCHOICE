@@ -69,7 +69,7 @@ Sub-prioritization within expanded D1 scope:
 | D1.2.5.3 | `voucher_show_partial_columns` | P1 | ⬜ | — | Partial column display flag |
 | D1.3.3.1 | `export_enabled` flag | P2 | ⬜ | — | Gate Excel/PDF/CSV exports |
 | D1.3.3.2 | `bank_reconciliation` mode | P2 | ⬜ | — | manual vs auto-match flag |
-| D1.3.3.3 | `webhooks` default-off | P2 | ⬜ | — | Global gate on webhooks.controller |
+| D1.3.3.3 | `webhooks` default-off | P2 | ✅ | this PR | SystemConfig `webhooks_enabled` (**DEFAULT-OFF** per accountant package). `WebhooksService.dispatchEvent` (outbound dispatcher for payment.created / contract events etc.) short-circuits to silent no-op when off so business flows don't break on side-effect. `sendTestEvent` throws Thai BadRequest so OWNER test-button click is loud. Reads SystemConfig directly via PrismaService (PR #884 lean pattern). **NOT applied to inbound webhooks** — paysolutions / sms / line / facebook are critical for payment processing and run on dedicated controllers. Frontend: `useUiFlags().webhooksEnabled` (default false). 6 new tests (2 settings + 4 webhooks service) |
 | D1.3.3.4 | `api_keys` admin admin | P2 | ⬜ | — | Already OWNER-only; flag as config |
 | D1.3.5.1 | `summary_default_range` | P2 | ⬜ | — | ExpenseDailySummaryPage default |
 | D1.3.5.2 | `summary_all_range_warning` | P2 | ⬜ | — | New UI warning |

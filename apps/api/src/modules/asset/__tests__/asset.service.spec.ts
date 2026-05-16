@@ -7,6 +7,7 @@ import { AssetPurchaseTemplate } from '../../journal/cpa-templates/asset-purchas
 import { AssetPurchaseReverseTemplate } from '../../journal/cpa-templates/asset-purchase-reverse.template';
 import { AssetDisposalTemplate } from '../../journal/cpa-templates/asset-disposal.template';
 import { AssetDisposalReverseTemplate } from '../../journal/cpa-templates/asset-disposal-reverse.template';
+import { AssetInvoiceReceivedTemplate } from '../../journal/cpa-templates/asset-invoice-received.template';
 import { JournalAutoService } from '../../journal/journal-auto.service';
 import { seedFinanceCoa } from '../../../../prisma/seed-coa-finance';
 import { CreateAssetDto } from '../dto/create-asset.dto';
@@ -37,6 +38,7 @@ describe('AssetService — CRUD + helpers', () => {
         AssetPurchaseReverseTemplate,
         AssetDisposalTemplate,
         AssetDisposalReverseTemplate,
+        AssetInvoiceReceivedTemplate,
       ],
     }).compile();
     await module.init();

@@ -827,10 +827,11 @@ function App() {
             }
           />
           {/* CRITICAL: /assets/audit must come BEFORE /assets/:id (static-before-dynamic) */}
+          {/* Roles intentionally exclude BRANCH_MANAGER — global view spans branches (CROSS_BRANCH_ROLES policy, matches asset.controller.ts @Roles on GET /assets/audit) */}
           <Route
             path="/assets/audit"
             element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
                 <AssetAuditPage />
               </ProtectedRoute>
             }

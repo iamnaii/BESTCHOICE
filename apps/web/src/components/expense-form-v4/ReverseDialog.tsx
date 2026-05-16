@@ -50,10 +50,10 @@ interface Props {
 const todayBkk = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
 
 export function ReverseDialog({ open, onOpenChange, docNumber, loading, onConfirm }: Props) {
-  // D1.2.7.1 + D1.2.7.2 — reasons + reason-required flag both come from
-  // /settings/ui-flags. Reasons fall back to the 6 canonical codes; flag
-  // defaults true so first-render shows the existing strict UX.
-  const { reverseReasonRequired, reverseReasons } = useUiFlags();
+  // D1.2.7.1 + D1.2.7.2 + D1.2.7.3 — reverse settings from /settings/ui-flags.
+  // Default true / 7d / 6 canonical reasons so first-render matches the
+  // pre-D1 strict UX.
+  const { reverseReasonRequired, reverseReasons, reverseManagerApprovalDays } = useUiFlags();
   const [reasonCode, setReasonCode] = useState<ReverseReasonCode | ''>('');
   const [reasonDetail, setReasonDetail] = useState('');
   const [reverseDate, setReverseDate] = useState(todayBkk());
@@ -162,6 +162,16 @@ export function ReverseDialog({ open, onOpenChange, docNumber, loading, onConfir
             <p className="text-xs text-muted-foreground mt-1">
               JE กลับรายการจะ post ในวันที่นี้ (server ตรวจ V19 ว่างวดยังเปิดอยู่)
             </p>
+            {/* D1.2.7.3 — manager-approval soft warning at configurable threshold
+                (default 7d). Only shows when backdate ≤ 30 (the broader generic
+                warning supersedes for big backdates). */}
+            {daysBackdate > reverseManagerApprovalDays && daysBackdate <= 30 && (
+              <p className="text-xs text-warning mt-1 flex items-start gap-1">
+                <AlertTriangle className="size-3 mt-0.5 shrink-0" />
+                ย้อนหลัง {daysBackdate} วัน (เกิน {reverseManagerApprovalDays} วัน) —
+                ควรมีอนุมัติจากผู้จัดการก่อน
+              </p>
+            )}
             {daysBackdate > 30 && (
               <p className="text-xs text-warning mt-1 flex items-start gap-1">
                 <AlertTriangle className="size-3 mt-0.5 shrink-0" />

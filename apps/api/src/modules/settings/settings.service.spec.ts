@@ -196,5 +196,30 @@ describe('SettingsService audit trail', () => {
       const flags = await service.getUiFlags();
       expect(flags.reverseReasons).toHaveLength(6);
     });
+
+    // D1.2.7.3 — manager approval days threshold
+    it('reverseManagerApprovalDays defaults to 7 when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.reverseManagerApprovalDays).toBe(7);
+    });
+
+    it('reverseManagerApprovalDays returns OWNER-configured value', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'reverse_manager_approval_days') return Promise.resolve({ value: '14' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.reverseManagerApprovalDays).toBe(14);
+    });
+
+    it('reverseManagerApprovalDays falls back to default on unparseable value', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'reverse_manager_approval_days') return Promise.resolve({ value: 'soon' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.reverseManagerApprovalDays).toBe(7);
+    });
   });
 });

@@ -18,6 +18,8 @@ export interface UiFlags {
   reverseReasonRequired: boolean;
   /** D1.2.7.2 — configurable reverse-reason dropdown. */
   reverseReasons: { code: string; label: string }[];
+  /** D1.2.7.3 — soft warning threshold (days) when reverse backdate exceeds this; UI-only. */
+  reverseManagerApprovalDays: number;
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -31,6 +33,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
     { code: 'cancel_transaction', label: 'ยกเลิกรายการ' },
     { code: 'other', label: 'อื่นๆ (ระบุรายละเอียด)' },
   ],
+  reverseManagerApprovalDays: 7,
 };
 
 export function useUiFlags(): UiFlags {

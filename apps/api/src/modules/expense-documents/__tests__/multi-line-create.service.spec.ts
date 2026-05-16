@@ -42,6 +42,7 @@ describe('ExpenseDocumentsService.create — multi-line', () => {
       { createAndPost: jest.fn() } as never,
       aggregator,
       { preview: jest.fn() } as never,
+      { validateContribution: jest.fn().mockResolvedValue(undefined) } as never,
     );
   });
 

@@ -5,7 +5,6 @@ import {
   IsDateString,
   IsNumber,
   Min,
-  Max,
   Matches,
   ValidateNested,
   ArrayMinSize,
@@ -28,20 +27,25 @@ class PayrollLineInput {
   baseSalary!: number;
 
   /**
-   * Fix #C11 — SSO per-person cap (Thai law).
-   * SSO = 5% × min(salary, 15,000) → ceiling 750/person/month. payroll.template.ts
-   * reuses this value for the employer-side too (accounting.md §SSO accounts), so
-   * a single Max enforces both the employee deduction AND the employer match.
-   * Lower values are fine (salary < 15k → SSO < 750).
+   * SSO per-person contribution (5% × min(salary, ceiling)).
    *
-   * TODO (Round 2 / I2): SSO cap is mandated by Thai SSO law (last changed
-   * 2019). If the cap moves, update this @Max + check `payroll.template.ts`
-   * for any other hardcoded references. Consider moving to
-   * SystemConfig['sso_monthly_cap'] when next refactoring payroll.
+   * Cap is law-mandated (กฎกระทรวง) and changes ~every 3 years:
+   *   - 2569+: ceiling 17,500 → max 875/person/month
+   *   - 2572+: ceiling 20,000 → max 1,000/person/month
+   *   - 2575+: ceiling 23,000 → max 1,150/person/month
+   *
+   * The applicable cap depends on the payroll's documentDate, not a static
+   * value — so the cap is NOT enforced here in the DTO @Max. Instead,
+   * `ExpenseDocumentsService.createPayroll` calls `SsoConfigService.validateContribution`
+   * to validate against the period-effective row in `sso_config` table.
+   * Source of truth: prisma migration 20260927000000_sso_config_table.
+   *
+   * `payroll.template.ts` reuses this value for the employer-side too
+   * (accounting.md §SSO accounts) since law mandates identical 5% match — if
+   * rates ever diverge, add a separate `ssoEmployer` field.
    */
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
-  @Max(750, { message: 'SSO ต่อคนไม่เกิน 750 บาท/เดือน (5% × 15000 ceiling)' })
   @IsOptional()
   ssoEmployee?: number;
 

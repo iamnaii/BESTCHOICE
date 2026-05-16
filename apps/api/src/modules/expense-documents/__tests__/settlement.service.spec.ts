@@ -65,6 +65,7 @@ describe('ExpenseDocumentsService.createSettlement', () => {
       { createAndPost: jest.fn() } as never,
       new LineAggregatorService(),
       { preview: jest.fn() } as never,
+      { validateContribution: jest.fn().mockResolvedValue(undefined) } as never,
     );
   });
 

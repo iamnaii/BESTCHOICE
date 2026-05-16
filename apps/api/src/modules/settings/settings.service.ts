@@ -175,6 +175,15 @@ export class SettingsService {
      * accessibility readers via the lang attr.
      */
     language: 'th' | 'en';
+    /**
+     * D1.2.4.4 — gates the `{{variable}}` interpolation feature on
+     * Expense Templates. Default true. When false, the UI hides the
+     * "ใส่ตัวแปร" affordance and `interpolateTemplate()` callers should
+     * skip interpolation. The util itself (`template-interpolation.util`)
+     * is pure and always available; this flag controls whether the
+     * product surfaces the feature to users.
+     */
+    templateVariablesEnabled: boolean;
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -214,6 +223,11 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.2.4.4 — gate the {{variable}} interpolation surface. Default true.
+    const templateVariablesEnabled = await this.readBoolean(
+      'template_variables_enabled',
+      true,
+    );
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -225,6 +239,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      templateVariablesEnabled,
     };
   }
 

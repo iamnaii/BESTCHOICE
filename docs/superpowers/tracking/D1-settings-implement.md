@@ -62,7 +62,7 @@ Sub-prioritization within expanded D1 scope:
 | D1.2.4.1 | `templates_enabled` flag | P1 | ⬜ | — | Feature flag at controller |
 | D1.2.4.2 | `max_templates_per_user` quota | P1 | ⬜ | — | Count check in createTemplate |
 | D1.2.4.3 | `sharing_rules` (ACL) | P1 | ⬜ | — | Schema: add visibility + sharedWith |
-| D1.2.4.4 | `variables_support` formalization | P1 | ⬜ | — | Define `{{var}}` interpolation syntax |
+| D1.2.4.4 | `variables_support` formalization | P1 | ✅ | this PR | New `interpolateTemplate(template, vars)` util in `apps/api/src/utils/template-interpolation.util.ts` — replaces `{{key}}` tokens with `vars[key]`, HTML-escapes replacement values to prevent XSS in voucher PDF render. Missing keys keep raw token (no silent blank). Single-pass (no nested re-interpolation). Whitespace inside braces tolerated. Key regex `[a-zA-Z0-9_]+` (dotted/special-char keys stay raw). SystemConfig `template_variables_enabled` (default true) gates the UI affordance via `getUiFlags().templateVariablesEnabled`; the util itself is always available. 9 vitest cases (single/multi/missing/null-undefined-value/HTML-escape/nested/whitespace/empty-vars/special-char-keys/empty-template) |
 | D1.2.4.5 | Template `categories` table | P1 | ⬜ | — | New TemplateCategory model |
 | D1.2.5.1 | `voucher_print_mode_default` | P1 | ⬜ | — | single vs multi page mode |
 | D1.2.5.2 | `voucher_include_adjustment` | P1 | ⬜ | — | Render adjustments in print template |

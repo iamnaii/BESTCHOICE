@@ -93,6 +93,61 @@ describe('SettingsService audit trail', () => {
     expect(actions).toContain('SYSTEM_CONFIG_CREATE');
   });
 
+  // D1.1.3.6 — server-side shape validation for wht_rates writes
+  describe('PUT /settings validation for wht_rates (D1.1.3.6)', () => {
+    it('rejects unparseable JSON', async () => {
+      await expect(service.update('wht_rates', 'not-json', 'u-1')).rejects.toThrow(
+        /JSON/,
+      );
+      expect(prisma.systemConfig.upsert).not.toHaveBeenCalled();
+    });
+
+    it('rejects empty array (must have at least 1 entry)', async () => {
+      await expect(service.update('wht_rates', '[]', 'u-1')).rejects.toThrow(
+        /อย่างน้อย 1/,
+      );
+    });
+
+    it('rejects entries with out-of-range rate', async () => {
+      const payload = JSON.stringify([{ rate: 99, label: 'too high' }]);
+      await expect(service.update('wht_rates', payload, 'u-1')).rejects.toThrow(
+        /0–30/,
+      );
+    });
+
+    it('rejects entries with empty label', async () => {
+      const payload = JSON.stringify([{ rate: 3, label: '  ' }]);
+      await expect(service.update('wht_rates', payload, 'u-1')).rejects.toThrow(
+        /label/,
+      );
+    });
+
+    it('accepts a well-formed payload (rate + label + optional ISO date)', async () => {
+      prisma.systemConfig.findUnique.mockResolvedValue(null);
+      const payload = JSON.stringify([
+        { rate: 1, label: '1%' },
+        { rate: 3, label: '3% — ค่าบริการ', effectiveDate: '2025-01-01' },
+      ]);
+      await expect(service.update('wht_rates', payload, 'u-1')).resolves.toBeDefined();
+      expect(prisma.systemConfig.upsert).toHaveBeenCalled();
+    });
+
+    it('rejects entire bulkUpdate batch when ANY wht_rates entry is malformed', async () => {
+      const bad = JSON.stringify([{ rate: 99, label: 'bad' }]);
+      await expect(
+        service.bulkUpdate(
+          [
+            { key: 'unrelated_key', value: 'ok' },
+            { key: 'wht_rates', value: bad },
+          ],
+          'u-1',
+        ),
+      ).rejects.toThrow(/0–30/);
+      // No upserts should fire — batch rejected before $transaction.
+      expect(prisma.systemConfig.upsert).not.toHaveBeenCalled();
+    });
+  });
+
   it('audit failure does NOT block config update (audit.log is fire-and-forget-style)', async () => {
     prisma.systemConfig.findUnique.mockResolvedValue({ value: 'old' });
     audit.log.mockRejectedValue(new Error('audit DB down'));

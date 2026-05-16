@@ -1,6 +1,61 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+
+/**
+ * D1.1.3.6 — server-side validation for SystemConfig keys whose value is
+ * JSON-encoded and must match a specific shape. Throws `BadRequestException`
+ * (with Thai message) when the payload doesn't fit. Unknown keys pass
+ * through unchanged.
+ *
+ * Today: `wht_rates`. Future: anything else fed by the admin UI that the
+ * defensive `getXxx()` parser would otherwise silently fall back to defaults
+ * for. We'd rather reject up-front than save garbage.
+ */
+function validateConfigShape(key: string, value: string): void {
+  if (key !== 'wht_rates') return;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw new BadRequestException('wht_rates ต้องเป็น JSON array ที่ valid');
+  }
+  if (!Array.isArray(parsed)) {
+    throw new BadRequestException('wht_rates ต้องเป็น JSON array');
+  }
+  if (parsed.length === 0) {
+    throw new BadRequestException('wht_rates ต้องมีอย่างน้อย 1 รายการ');
+  }
+  for (const r of parsed) {
+    if (!r || typeof r !== 'object') {
+      throw new BadRequestException('แต่ละรายการของ wht_rates ต้องเป็น object');
+    }
+    const entry = r as { rate?: unknown; label?: unknown; effectiveDate?: unknown };
+    if (
+      typeof entry.rate !== 'number' ||
+      !Number.isFinite(entry.rate) ||
+      entry.rate < 0 ||
+      entry.rate > 30
+    ) {
+      throw new BadRequestException(
+        'rate ต้องเป็นตัวเลขในช่วง 0–30 สำหรับทุกรายการของ wht_rates',
+      );
+    }
+    if (typeof entry.label !== 'string' || entry.label.trim().length === 0) {
+      throw new BadRequestException('label ห้ามว่าง สำหรับทุกรายการของ wht_rates');
+    }
+    if (
+      entry.effectiveDate !== undefined &&
+      entry.effectiveDate !== null &&
+      (typeof entry.effectiveDate !== 'string' ||
+        Number.isNaN(Date.parse(entry.effectiveDate)))
+    ) {
+      throw new BadRequestException(
+        'effectiveDate (ถ้ามี) ต้องเป็น ISO-8601 string ที่ parse ได้',
+      );
+    }
+  }
+}
 
 /**
  * Keys whose values are secrets (API tokens, bank credentials). The audit
@@ -45,6 +100,7 @@ export class SettingsService {
    * writes (e.g. automated migrations).
    */
   async update(key: string, value: string, userId?: string) {
+    validateConfigShape(key, value);
     const before = await this.prisma.systemConfig.findUnique({ where: { key } });
     const updated = await this.prisma.systemConfig.upsert({
       where: { key },
@@ -324,6 +380,9 @@ export class SettingsService {
   }
 
   async bulkUpdate(items: { key: string; value: string }[], userId?: string) {
+    // D1.1.3.6 — validate shape for every item before any DB write. Reject
+    // the whole batch on the first malformed entry (atomic).
+    for (const item of items) validateConfigShape(item.key, item.value);
     // Fetch "before" snapshot in one query so the transaction stays bounded.
     const keys = items.map((i) => i.key);
     const existing = await this.prisma.systemConfig.findMany({

@@ -1,7 +1,7 @@
 # D1 · Settings Audit Phase 4 (Implement Approved Scope)
 
 **Status:** 🟢 In Progress — owner approved expanded scope 2026-05-16
-**Started:** 2026-05-16  |  **PRs:** #882-#888 · this PR (D1.2.6.3)  |  **Done:** 8/75 — 2.7 ✅ · 2.6 2/4
+**Started:** 2026-05-16  |  **PRs:** #882-#889 · this PR (D1.2.6.4)  |  **Done:** 9/75 — 2.7 ✅ · 2.6 3/4
 **Spec:** [`../specs/2026-05-16-a1-phase2-decision-report.md`](../specs/2026-05-16-a1-phase2-decision-report.md)  ·  **Plan:** —
 
 ## Context
@@ -49,7 +49,7 @@ Sub-prioritization within expanded D1 scope:
 | D1.2.6.1 | `period_close_day` | P1 | ⬜ | — | Already supports closedUntil date; add day-of-month config wrapper |
 | D1.2.6.2 | `period_grace_days` | P1 | ✅ | this PR | SystemConfig key `period_grace_days` (default 5). `period-lock.util.ts:validatePeriodOpen` extended — closed-period throws only if today > periodLastDay + graceDays (Tier 1) or today > closedUntil + graceDays (Tier 2). 10 new tests (CLOSED within/beyond grace, SYNCED, OPEN, OWNER override 0/30, malformed/negative fallback, legacy Tier 2). Direct callers (journal-auto, expense-documents, receipts) all pass |
 | D1.2.6.3 | `payment_date_warning_backdate` | P1 | ✅ | this PR | SystemConfig `payment_date_warning_backdate` (default 30). `getUiFlags()` exposes `paymentDateWarningBackdate`; ReverseDialog hardcoded `30` replaced with the flag (both the threshold for the broader warning AND the upper bound for the 7d manager-approval warning). 2 new tests on default + override |
-| D1.2.6.4 | `payment_date_allow_future` toggle | P1 | ⬜ | — | Block-or-warn on future-dated reverse |
+| D1.2.6.4 | `payment_date_allow_future` toggle | P1 | ✅ | this PR | SystemConfig `payment_date_allow_future` (default true). Server `voidDocument` rejects future-dated `reverseDate` when flag off. UI: ReverseDialog shows destructive inline error + disables submit. 2 settings tests + 2 void path tests added |
 | D1.2.7.1 | `reverse_reason_required` | P1 | ✅ | this PR | Server-side gate in `voidDocument` (reads `reverse_reason_required`, default true). UI: `useUiFlags()` reads `reverseReasonRequired` from `/settings/ui-flags`; `ReverseDialog` shows "— ไม่ระบุ —" + drops `*` when flag off + relaxes `canSubmit`. 3 new tests on the void path + 2 new getUiFlags tests |
 | D1.2.7.2 | `reverse_reasons_dropdown` | P1 | ✅ | this PR | SystemConfig key `reverse_reasons` JSON `[{code,label}]` array. Defaults to 6 canonical codes. Backend: DTO relaxed (drops @IsIn); `voidDocument` validates reasonCode against configured whitelist; `getReverseReasons()` helper in both service + ExpenseDocumentsService. UI: `useUiFlags().reverseReasons` drives the dropdown. 5 settings tests + 2 void path tests added |
 | D1.2.7.3 | `reverse_manager_approval_days` | P1 | ✅ | this PR | Soft UI warning (per C3 Q2 owner decision). SystemConfig `reverse_manager_approval_days` (default 7). `getUiFlags()` exposes it; `ReverseDialog` shows "ควรมีอนุมัติจากผู้จัดการ" warning when daysBackdate exceeds threshold (but ≤30; the broader 30+ warning supersedes). No server block. 3 new tests on the threshold default + override + unparseable fallback |

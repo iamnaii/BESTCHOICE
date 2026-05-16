@@ -22,6 +22,8 @@ export interface UiFlags {
   reverseManagerApprovalDays: number;
   /** D1.2.6.3 — broader backdate warning threshold (days). Default 30. */
   paymentDateWarningBackdate: number;
+  /** D1.2.6.4 — allow forward-dated transactions. Default true. */
+  paymentDateAllowFuture: boolean;
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -37,6 +39,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   ],
   reverseManagerApprovalDays: 7,
   paymentDateWarningBackdate: 30,
+  paymentDateAllowFuture: true,
 };
 
 export function useUiFlags(): UiFlags {

@@ -50,14 +50,14 @@ interface Props {
 const todayBkk = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
 
 export function ReverseDialog({ open, onOpenChange, docNumber, loading, onConfirm }: Props) {
-  // D1.2.7.1 + D1.2.7.2 + D1.2.7.3 + D1.2.6.3 — reverse + backdate settings
-  // from /settings/ui-flags. Defaults true / 7d / 30d / 6 canonical reasons
-  // so first-render matches the pre-D1 strict UX.
+  // D1.2.7.1/2/3 + D1.2.6.3/4 — reverse + backdate settings from
+  // /settings/ui-flags. Defaults preserve pre-D1 strict UX.
   const {
     reverseReasonRequired,
     reverseReasons,
     reverseManagerApprovalDays,
     paymentDateWarningBackdate,
+    paymentDateAllowFuture,
   } = useUiFlags();
   const [reasonCode, setReasonCode] = useState<ReverseReasonCode | ''>('');
   const [reasonDetail, setReasonDetail] = useState('');
@@ -72,19 +72,23 @@ export function ReverseDialog({ open, onOpenChange, docNumber, loading, onConfir
     }
   }, [open]);
 
-  // ม.42-style soft warning when backdate > 30 days
+  // ม.42-style soft warning when backdate > threshold (default 30)
   const daysBackdate = (() => {
     if (!reverseDate) return 0;
     const today = new Date(todayBkk());
     const chosen = new Date(reverseDate);
     return Math.floor((today.getTime() - chosen.getTime()) / 86400000);
   })();
+  // D1.2.6.4 — disallow forward-dated reverse when OWNER turns flag off.
+  // Negative daysBackdate = future date.
+  const isFutureDate = daysBackdate < 0;
+  const futureBlocked = isFutureDate && !paymentDateAllowFuture;
 
   const otherDetailRequired = reasonCode === 'other';
   const detailMissing = otherDetailRequired && reasonDetail.trim().length === 0;
   // D1.2.7.1 — only enforce reasonCode-required when the flag is on.
   const reasonOk = reverseReasonRequired ? !!reasonCode : true;
-  const canSubmit = reasonOk && !detailMissing && !!reverseDate && !loading;
+  const canSubmit = reasonOk && !detailMissing && !!reverseDate && !loading && !futureBlocked;
 
   const handleConfirm = () => {
     if (!canSubmit) return;
@@ -184,6 +188,13 @@ export function ReverseDialog({ open, onOpenChange, docNumber, loading, onConfir
               <p className="text-xs text-warning mt-1 flex items-start gap-1">
                 <AlertTriangle className="size-3 mt-0.5 shrink-0" />
                 เลือกย้อนหลัง {daysBackdate} วัน — ตรวจสอบให้แน่ใจว่างวดยังเปิด
+              </p>
+            )}
+            {/* D1.2.6.4 — block future-dated reverse when flag is off. */}
+            {futureBlocked && (
+              <p className="text-xs text-destructive mt-1 flex items-start gap-1">
+                <AlertTriangle className="size-3 mt-0.5 shrink-0" />
+                ไม่อนุญาตให้ระบุวันที่ในอนาคต — กรุณาเลือกวันที่ไม่เกินวันนี้
               </p>
             )}
           </div>

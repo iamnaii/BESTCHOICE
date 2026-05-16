@@ -1,8 +1,8 @@
 # A1 · Settings Audit Phase 1+2 (Scan + Report)
 
-**Status:** 🚦 Phase 1 AUDIT complete — 🛑 STOP for owner review before Phase 2
-**Started:** 2026-05-16  ·  **PRs:** this PR (Phase 1 findings)
-**Spec:** —  ·  **Plan:** —
+**Status:** ✅ Phase 1+2 complete — owner approved expanded D1 scope (2026-05-16)
+**Started:** 2026-05-16  ·  **PRs:** [#879](https://github.com/iamnaii/BESTCHOICE/pull/879) (Phase 1) · this PR (Phase 2 expanded scope)
+**Spec:** [`../specs/2026-05-16-a1-phase2-decision-report.md`](../specs/2026-05-16-a1-phase2-decision-report.md)  ·  **Plan:** D1 PRs (one per item)
 
 ## Context
 
@@ -16,9 +16,7 @@ Read-only scan of the codebase against the 102 settings owner enumerated in `Set
 
 ## Phase
 
-✅ **Phase 1: AUDIT** (complete, this PR) → 🛑 **STOP for owner confirm** → Phase 2: REPORT → 🛑 STOP for owner approval → D1 (Phase 4: IMPLEMENT)
-
-Anti-pattern reminder: NO implementation while scanning. AUDIT is read-only.
+✅ **Phase 1: AUDIT** (#879) → ✅ **Phase 2: REPORT** ([spec](../specs/2026-05-16-a1-phase2-decision-report.md)) → ✅ **Owner approved expanded scope** (2026-05-16) → 🟢 **D1 (Phase 4: IMPLEMENT) IN PROGRESS** — one PR per item per anti-pattern #3.
 
 ## Phase 1 Headline (audit-only, NOT a recommendation)
 

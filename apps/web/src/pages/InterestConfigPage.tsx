@@ -277,7 +277,8 @@ export default function InterestConfigPage() {
                   </div>
                   <div>
                     <div className="text-xs text-muted-foreground">VAT</div>
-                    <div className="text-lg font-bold">{defaults['vat_pct'] || '-'}</div>
+                    {/* D1.1.3.1 — prefer canonical VAT_RATE key, fall back to legacy vat_pct */}
+                    <div className="text-lg font-bold">{defaults['VAT_RATE'] || defaults['vat_pct'] || '-'}</div>
                   </div>
                 </div>
               </>

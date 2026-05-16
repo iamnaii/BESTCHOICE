@@ -104,7 +104,7 @@ Sub-prioritization within expanded D1 scope:
 | D1.1.2.3 | `reset_cycle` | P0 | ⬜ | Q3 | |
 | D1.1.2.4 | `sequence_table` | P0 | ⬜ | Q3 | |
 | D1.1.2.5 | Admin reset capability | P0 | ⬜ | Q3 | |
-| D1.1.3.1 | `vat_rate` (Q6 P0 bug fix first) | P0 | ⬜ | Q6 | **VAT_RATE/vat_pct orphan-key fix** |
+| D1.1.3.1 | `vat_rate` (Q6 P0 bug fix first) | P0 | ✅ | this PR | **VAT_RATE/vat_pct orphan-key fix.** New `apps/api/src/utils/vat-rate.util.ts` — canonical-key-first loader (`loadVatRateDecimal`/`loadVatRatePercent`) reads `VAT_RATE` (percent form) → falls back to legacy `vat_pct` (decimal-or-percent) → `vat_rate` (decimal) → default 0.07. Heuristic: values ≥1 treated as percent (auto-divide by 100), values <1 as decimal. Migrated `purchase-orders.service.ts` + `config.util.ts::loadInstallmentConfig` + `InterestConfigPage.tsx` display. New `VatRateBootstrapService` logs WARN on startup when both canonical+legacy keys coexist. Manual SQL at `apps/api/prisma/migrations-manual/2026-05-17-merge-vat-rate-keys.sql` backfills `VAT_RATE` from `vat_pct` if missing (idempotent INSERT … WHERE NOT EXISTS). 16/16 jest cases (parseVatValue + loadVatRateDecimal precedence + percent + warn-collide). Type-check 0 errors |
 | D1.1.3.2 | `wht_rates` (1/3/5/10/15) | P0 | ⬜ | — | Mostly unblocked — extend SelectItem + table |
 | D1.1.3.3 | `sso_rate` (locked at 5% by law) | P0 | ⬜ | — | Just document the lock in service comment |
 | D1.1.3.5 | effective_date support | P0 | ⬜ | — | Per-rate effective dates |

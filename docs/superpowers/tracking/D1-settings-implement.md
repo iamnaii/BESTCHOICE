@@ -1,7 +1,7 @@
 # D1 · Settings Audit Phase 4 (Implement Approved Scope)
 
 **Status:** 🟢 In Progress — owner approved expanded scope 2026-05-16
-**Started:** 2026-05-16  |  **PRs:** #882 · #883 · #884 · #885 · #886 · this PR (D1.2.7.3)  |  **Done:** 6/75 — 2.7 Reverse Entry sub-section ✅ Complete (4/4)
+**Started:** 2026-05-16  |  **PRs:** #882 · #883 · #884 · #885 · #886 · #887 · this PR (D1.2.6.2)  |  **Done:** 7/75 — 2.7 ✅ · 2.6 1/4
 **Spec:** [`../specs/2026-05-16-a1-phase2-decision-report.md`](../specs/2026-05-16-a1-phase2-decision-report.md)  ·  **Plan:** —
 
 ## Context
@@ -47,7 +47,7 @@ Sub-prioritization within expanded D1 scope:
 | D1.2.2.6 | `language` (i18n) | P1 | ⬜ | — | Larger — defer if time short |
 | D1.2.2.7 | `show_qr_code` toggle | P1 | ⬜ | — | qrcode.react already imported in MobileReceipt |
 | D1.2.6.1 | `period_close_day` | P1 | ⬜ | — | Already supports closedUntil date; add day-of-month config wrapper |
-| D1.2.6.2 | `period_grace_days` | P1 | ⬜ | — | Wrap period-lock.util with grace check |
+| D1.2.6.2 | `period_grace_days` | P1 | ✅ | this PR | SystemConfig key `period_grace_days` (default 5). `period-lock.util.ts:validatePeriodOpen` extended — closed-period throws only if today > periodLastDay + graceDays (Tier 1) or today > closedUntil + graceDays (Tier 2). 10 new tests (CLOSED within/beyond grace, SYNCED, OPEN, OWNER override 0/30, malformed/negative fallback, legacy Tier 2). Direct callers (journal-auto, expense-documents, receipts) all pass |
 | D1.2.6.3 | `payment_date_warning_backdate` | P1 | ⬜ | — | Replace hardcoded `30` at ReverseDialog.tsx:74,167 |
 | D1.2.6.4 | `payment_date_allow_future` toggle | P1 | ⬜ | — | Block-or-warn on future-dated reverse |
 | D1.2.7.1 | `reverse_reason_required` | P1 | ✅ | this PR | Server-side gate in `voidDocument` (reads `reverse_reason_required`, default true). UI: `useUiFlags()` reads `reverseReasonRequired` from `/settings/ui-flags`; `ReverseDialog` shows "— ไม่ระบุ —" + drops `*` when flag off + relaxes `canSubmit`. 3 new tests on the void path + 2 new getUiFlags tests |

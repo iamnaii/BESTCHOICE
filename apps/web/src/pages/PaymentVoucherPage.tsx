@@ -14,6 +14,7 @@ import { useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Printer } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import Decimal from 'decimal.js';
 import api from '@/lib/api';
 import QueryBoundary from '@/components/QueryBoundary';
@@ -26,6 +27,7 @@ import {
   useCompanyTaxId,
   useCompanyLogoUrl,
 } from '@/hooks/useCompanyInfo';
+import { useUiFlags } from '@/hooks/useUiFlags';
 
 export interface ExpenseLine {
   lineNo: number;
@@ -645,7 +647,13 @@ function Sheet({
   const companyAddress = useCompanyAddress();
   const companyTaxId = useCompanyTaxId();
   const companyLogoUrl = useCompanyLogoUrl();
+  const { voucherShowQrCode } = useUiFlags();
   const lines = doc.expenseDetail?.lines ?? [];
+  // D1.2.2.7 — verification QR linking to /verify/<doc.number>. Default
+  // on; OWNER can disable via SystemConfig `voucher_show_qr_code = false`.
+  const verifyUrl = typeof window !== 'undefined'
+    ? `${window.location.origin}/verify/${doc.number}`
+    : `/verify/${doc.number}`;
   return (
     <article
       className="voucher-sheet bg-white border border-border rounded-md p-8 shadow-sm print:border-0 print:p-0 print:shadow-none"
@@ -792,6 +800,14 @@ function Sheet({
         <SignatureSlot label="ผู้รับเงิน" />
         <SignatureSlot label="ตราประทับ" border={false} />
       </section>
+
+      {/* D1.2.2.7 — verification QR (OWNER toggleable via voucher_show_qr_code) */}
+      {voucherShowQrCode && (
+        <section className="mt-6 flex flex-col items-end gap-1">
+          <QRCodeSVG value={verifyUrl} size={80} level="M" />
+          <span className="text-[9px] text-muted-foreground">สแกนเพื่อตรวจสอบ</span>
+        </section>
+      )}
 
       <footer className="mt-8 pt-3 border-t border-border text-[10px] text-muted-foreground flex justify-between">
         <span>ออกเอกสารจากระบบ BESTCHOICE — ไม่ต้องเซ็นต์ถือเป็นโมฆะ</span>

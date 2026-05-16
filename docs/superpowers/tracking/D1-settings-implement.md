@@ -1,7 +1,7 @@
 # D1 · Settings Audit Phase 4 (Implement Approved Scope)
 
 **Status:** 🟢 In Progress — owner approved expanded scope 2026-05-16
-**Started:** 2026-05-16  |  **PRs:** #882-#894 · this PR (D1.2.2.4)  |  **Done:** 14/75 — 2.6 ✅ · 2.7 ✅ · 2.2 4/7
+**Started:** 2026-05-16  |  **PRs:** #882-#895 · this PR (D1.2.2.7)  |  **Done:** 15/75 — 2.6 ✅ · 2.7 ✅ · 2.2 5/7
 **Spec:** [`../specs/2026-05-16-a1-phase2-decision-report.md`](../specs/2026-05-16-a1-phase2-decision-report.md)  ·  **Plan:** —
 
 ## Context
@@ -45,7 +45,7 @@ Sub-prioritization within expanded D1 scope:
 | D1.2.2.4 | `logo_url` (upload + render) | P1 | ✅ | this PR | `useCompanyLogoUrl()` hook + `<img>` render before `<h1>` in 3 voucher headers (PettyCashSheet/PayrollSlipSheet/Sheet). Hidden when null. h-12 contain-fit. Upload UI not in scope — uses existing CompanyInfo.logoUrl set via /companies CRUD. Type-check 0 errors |
 | D1.2.2.5 | `theme_color` admin override | P1 | ⬜ | — | Tailwind CSS var override at runtime |
 | D1.2.2.6 | `language` (i18n) | P1 | ⬜ | — | Larger — defer if time short |
-| D1.2.2.7 | `show_qr_code` toggle | P1 | ⬜ | — | qrcode.react already imported in MobileReceipt |
+| D1.2.2.7 | `show_qr_code` toggle | P1 | ✅ | this PR | SystemConfig `voucher_show_qr_code` (default true). `getUiFlags()` exposes `voucherShowQrCode`. Sheet voucher component renders `<QRCodeSVG value="{origin}/verify/{doc.number}" size=80>` + "สแกนเพื่อตรวจสอบ" caption above footer. Hidden when flag off. PettyCash/Payroll/WhtCertificate not included (smaller layouts) — can be added in a follow-up if owner wants |
 | D1.2.6.1 | `period_close_day` | P1 | ✅ | this PR | SystemConfig `period_close_day` (default 31). `getUiFlags()` returns `periodCloseDay` clamped to 1-31. **Informational for now** — period-lock still anchors at calendar month-end. Future enhancement: shift period boundary when ≠ 31. 4 new tests (default / valid range / out-of-range clamp / zero clamp) |
 | D1.2.6.2 | `period_grace_days` | P1 | ✅ | this PR | SystemConfig key `period_grace_days` (default 5). `period-lock.util.ts:validatePeriodOpen` extended — closed-period throws only if today > periodLastDay + graceDays (Tier 1) or today > closedUntil + graceDays (Tier 2). 10 new tests (CLOSED within/beyond grace, SYNCED, OPEN, OWNER override 0/30, malformed/negative fallback, legacy Tier 2). Direct callers (journal-auto, expense-documents, receipts) all pass |
 | D1.2.6.3 | `payment_date_warning_backdate` | P1 | ✅ | this PR | SystemConfig `payment_date_warning_backdate` (default 30). `getUiFlags()` exposes `paymentDateWarningBackdate`; ReverseDialog hardcoded `30` replaced with the flag (both the threshold for the broader warning AND the upper bound for the 7d manager-approval warning). 2 new tests on default + override |

@@ -154,6 +154,8 @@ export class SettingsService {
      * the period boundary when this is not 31. Validated 1–31.
      */
     periodCloseDay: number;
+    /** D1.2.2.7 — render verification QR code on voucher footers. Default true. */
+    voucherShowQrCode: boolean;
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -183,6 +185,7 @@ export class SettingsService {
       Number.isInteger(periodCloseDayRaw) && periodCloseDayRaw >= 1 && periodCloseDayRaw <= 31
         ? periodCloseDayRaw
         : 31;
+    const voucherShowQrCode = await this.readBoolean('voucher_show_qr_code', true);
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -191,6 +194,7 @@ export class SettingsService {
       paymentDateWarningBackdate,
       paymentDateAllowFuture,
       periodCloseDay,
+      voucherShowQrCode,
     };
   }
 

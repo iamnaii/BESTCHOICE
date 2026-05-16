@@ -97,7 +97,7 @@ Sub-prioritization within expanded D1 scope:
 | D1.1.1.3 | `PUT /api/settings/role-map` | P0 | ⬜ | Q7 | |
 | D1.1.1.4 | Admin UI for role map | P0 | ⬜ | Q7 | |
 | D1.1.1.5 | Validation rules | P0 | ⬜ | Q7 | |
-| D1.1.1.6 | Audit log on change | P0 | ⬜ | Q7 | |
+| D1.1.1.6 | Audit log on change | P0 | ✅ | this PR | 3 audit actions on account_role_map: `ROLE_MAP_CREATED` (new method `create()` for future POST/bulk-import), `ROLE_MAP_UPDATED` (field change), `ROLE_MAP_DEACTIVATED` (split when `isActive` flips true→false; compliance-meaningful event because deactivation makes JE templates throw). `newValue.diffSummary` is Thai one-liner: "สร้าง role X → 53-9999" / "role X: priority 1 → 5" / "ปิดใช้งาน role X". `create()` catches P2002 → ConflictException. 3 vitest cases (CREATE+diffSummary, P2002 conflict, DEACTIVATED action split). Type-check 0 errors |
 | D1.1.1.7 | Permission control (admin only) | P0 | ⬜ | Q7 | |
 | D1.1.2.1 | `doc_prefix_per_type` | P0 | ⬜ | Q3 | Rename or accept current? |
 | D1.1.2.2 | `doc_number_format` | P0 | ⬜ | Q3 | Same |

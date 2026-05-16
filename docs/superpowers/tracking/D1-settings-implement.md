@@ -100,7 +100,7 @@ Sub-prioritization within expanded D1 scope:
 | D1.1.1.6 | Audit log on change | P0 | ⬜ | Q7 | |
 | D1.1.1.7 | Permission control (admin only) | P0 | ⬜ | Q7 | |
 | D1.1.2.1 | `doc_prefix_per_type` | P0 | ⬜ | Q3 | Rename or accept current? |
-| D1.1.2.2 | `doc_number_format` | P0 | ⬜ | Q3 | Same |
+| D1.1.2.2 | `doc_number_format` | P0 | ✅ | this PR | SystemConfig key `doc_number_format` whitelisted to 3 values: `PREFIX-YYYYMMDD-NNNN` (default, current), `PREFIX-YYYYMM-NNNNN` (5-digit seq, monthly window), `PREFIX-YYYY-NNNNNN` (6-digit seq, yearly window). `DocNumberService.next()` resolves the active format via `SettingsService.getKey()` and builds the date portion + seq width accordingly. Same per-day advisory lock retained (D1.1.2.3 widens it to align with reset_cycle). Overflow message uses `maxSeq = 10^width - 1`. 7 new vitest cases (3 valid layouts + bad fallback + monthly overflow @ 99999 + yearly @ 999999 + defensive throw fallback). Type-check 0 errors |
 | D1.1.2.3 | `reset_cycle` | P0 | ⬜ | Q3 | |
 | D1.1.2.4 | `sequence_table` | P0 | ⬜ | Q3 | |
 | D1.1.2.5 | Admin reset capability | P0 | ⬜ | Q3 | |

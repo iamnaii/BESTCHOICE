@@ -28,6 +28,8 @@ export interface UiFlags {
   periodCloseDay: number;
   /** D1.2.2.7 — render verification QR on voucher footers. Default true. */
   voucherShowQrCode: boolean;
+  /** D1.2.2.5 — primary theme color hex. Default emerald. Informational. */
+  themeColor: string;
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -46,6 +48,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   paymentDateAllowFuture: true,
   periodCloseDay: 31,
   voucherShowQrCode: true,
+  themeColor: '#10b981',
 };
 
 export function useUiFlags(): UiFlags {

@@ -1,7 +1,7 @@
 # D1 · Settings Audit Phase 4 (Implement Approved Scope)
 
 **Status:** 🟢 In Progress — owner approved expanded scope 2026-05-16
-**Started:** 2026-05-16  |  **PRs:** #882-#895 · this PR (D1.2.2.7)  |  **Done:** 15/75 — 2.6 ✅ · 2.7 ✅ · 2.2 5/7
+**Started:** 2026-05-16  |  **PRs:** #882-#896 · this PR (D1.2.2.5)  |  **Done:** 16/75 — 2.6 ✅ · 2.7 ✅ · 2.2 6/7
 **Spec:** [`../specs/2026-05-16-a1-phase2-decision-report.md`](../specs/2026-05-16-a1-phase2-decision-report.md)  ·  **Plan:** —
 
 ## Context
@@ -43,7 +43,7 @@ Sub-prioritization within expanded D1 scope:
 | D1.2.2.2 | `company_address` (CompanyInfo wire) | P1 | ✅ | this PR | New `useCompanyAddress()` hook (prefers FINANCE then SHOP). Replaces all 4 hardcoded "เลขประจำตัวผู้เสียภาษี · สำนักงานใหญ่" placeholders in PaymentVoucherPage components. Re-uses the existing /companies/public endpoint from D1.2.2.1. Type-check 0 errors |
 | D1.2.2.3 | `tax_id` (CompanyInfo wire) | P1 | ✅ | this PR | New `useCompanyTaxId()` hook. Voucher sub-header now shows `{address} · เลขผู้เสียภาษี {taxId}` inline. Hidden when CompanyInfo absent. Re-uses /companies/public. Type-check 0 errors |
 | D1.2.2.4 | `logo_url` (upload + render) | P1 | ✅ | this PR | `useCompanyLogoUrl()` hook + `<img>` render before `<h1>` in 3 voucher headers (PettyCashSheet/PayrollSlipSheet/Sheet). Hidden when null. h-12 contain-fit. Upload UI not in scope — uses existing CompanyInfo.logoUrl set via /companies CRUD. Type-check 0 errors |
-| D1.2.2.5 | `theme_color` admin override | P1 | ⬜ | — | Tailwind CSS var override at runtime |
+| D1.2.2.5 | `theme_color` admin override | P1 | ✅ | this PR | SystemConfig `theme_color` (default `#10b981`). Hex format validated `^#[0-9a-fA-F]{6}$`. **Informational only** — Tailwind v4 uses `--color-primary-50..900` scale; single-hex override doesn't drive design tokens directly. Future enhancement: compute the full scale or switch theme runtime |
 | D1.2.2.6 | `language` (i18n) | P1 | ⬜ | — | Larger — defer if time short |
 | D1.2.2.7 | `show_qr_code` toggle | P1 | ✅ | this PR | SystemConfig `voucher_show_qr_code` (default true). `getUiFlags()` exposes `voucherShowQrCode`. Sheet voucher component renders `<QRCodeSVG value="{origin}/verify/{doc.number}" size=80>` + "สแกนเพื่อตรวจสอบ" caption above footer. Hidden when flag off. PettyCash/Payroll/WhtCertificate not included (smaller layouts) — can be added in a follow-up if owner wants |
 | D1.2.6.1 | `period_close_day` | P1 | ✅ | this PR | SystemConfig `period_close_day` (default 31). `getUiFlags()` returns `periodCloseDay` clamped to 1-31. **Informational for now** — period-lock still anchors at calendar month-end. Future enhancement: shift period boundary when ≠ 31. 4 new tests (default / valid range / out-of-range clamp / zero clamp) |

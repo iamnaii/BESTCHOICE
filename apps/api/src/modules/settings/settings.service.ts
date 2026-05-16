@@ -184,6 +184,15 @@ export class SettingsService {
      * setting — this is the *initial* state only.
      */
     defaultTimeRange: 'all' | 'this_month' | 'last_month';
+    /**
+     * D1.3.5.1 — default time range preset for the expense daily-summary
+     * page. Whitelisted: `'today' | 'this_week' | 'this_month' | 'last_month'`.
+     * Default `'this_month'`. Wider preset set than `defaultTimeRange` because
+     * the summary page is consumed daily (operations) AND monthly (ผู้จัดการ
+     * รีวิว). Page-level code uses this to initialize startDate/endDate on
+     * mount; mid-session user changes are NOT persisted to the setting.
+     */
+    summaryDefaultRange: 'today' | 'this_week' | 'this_month' | 'last_month';
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -231,6 +240,17 @@ export class SettingsService {
       defaultTimeRangeRaw === 'all' || defaultTimeRangeRaw === 'last_month'
         ? defaultTimeRangeRaw
         : 'this_month';
+    // D1.3.5.1 — summary-page default range. Wider whitelist than
+    // defaultTimeRange (no 'all' — summary always wants a bounded period,
+    // and the page UI doesn't currently expose an "all" option; the
+    // companion D1.3.5.2 banner explains gracefully if 'all' is ever wired).
+    const summaryDefaultRangeRaw = await this.getKey('summary_default_range');
+    const summaryDefaultRange: 'today' | 'this_week' | 'this_month' | 'last_month' =
+      summaryDefaultRangeRaw === 'today' ||
+      summaryDefaultRangeRaw === 'this_week' ||
+      summaryDefaultRangeRaw === 'last_month'
+        ? summaryDefaultRangeRaw
+        : 'this_month';
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -243,6 +263,7 @@ export class SettingsService {
       themeColor,
       language,
       defaultTimeRange,
+      summaryDefaultRange,
     };
   }
 

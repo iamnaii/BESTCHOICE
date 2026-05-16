@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import * as Sentry from '@sentry/react';
 import api from '@/lib/api';
 
 export interface CoaAccountRow {
@@ -72,8 +73,21 @@ export function useAdjustmentRoleCodes() {
   return useQuery<AdjustmentRoleCodes>({
     queryKey: ['coa', 'adjustment-roles'],
     queryFn: async () => {
-      const { data } = await api.get<AdjustmentRoleCodes>('/chart-of-accounts/adjustment-roles');
-      return data;
+      try {
+        const { data } = await api.get<AdjustmentRoleCodes>('/chart-of-accounts/adjustment-roles');
+        return data;
+      } catch (error) {
+        // D1.1.6.2 — silent UI fallback to FALLBACK_SUGGESTED would mask a
+        // misconfigured account_role_map (R1/R4 PR #900 review). Emit a
+        // warning to Sentry so operators see the picker is showing stale
+        // defaults instead of the live role-map codes.
+        Sentry.captureMessage('adjustment-roles fetch failed', {
+          level: 'warning',
+          extra: { error: error instanceof Error ? error.message : String(error) },
+          tags: { component: 'useAdjustmentRoleCodes' },
+        });
+        throw error;
+      }
     },
     staleTime: Infinity,
   });

@@ -56,13 +56,14 @@ export class AccountRoleService implements OnModuleInit {
   code(role: string): string {
     const accountCode = this.cache.get(role);
     if (!accountCode) {
-      const knownRoles = [...this.cache.keys()].sort();
+      // Trim sample to keep Sentry payload bounded as the role map grows.
+      const knownRolesSample = [...this.cache.keys()].sort().slice(0, 20);
       Sentry.captureException(new Error(`AccountRoleService cache miss: ${role}`), {
-        extra: { role, knownRoles, cacheSize: this.cache.size },
+        extra: { role, knownRolesSample, cacheSize: this.cache.size },
         tags: { component: 'AccountRoleService' },
       });
       this.logger.warn(
-        `[Phase1] AccountRoleService: MISS role=${role} (known: ${knownRoles.join(',')})`,
+        `[Phase1] AccountRoleService: MISS role=${role} (known sample: ${knownRolesSample.join(',')})`,
       );
       throw new BadRequestException(
         `AccountRoleService: role "${role}" not found in account_role_map ` +

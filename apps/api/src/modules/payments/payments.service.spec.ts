@@ -1050,6 +1050,28 @@ describe('PaymentsService', () => {
       expect(parseFloat(underpayLine!.credit)).toBeCloseTo(0, 2);
     });
 
+    it('D1.1.6.2 — overpay rounding line routes via AccountRoleService (adj_overpay)', async () => {
+      prisma.installmentSchedule.findUnique.mockResolvedValue(mockInstallmentAccrued);
+      prisma.chartOfAccount.findMany.mockResolvedValue([
+        ...mockCoaRows,
+        { code: '53-1503', name: 'กำไรปัดเศษ' },
+      ]);
+
+      // installmentTotal = 2202.41; pay 2203.30 → diff +0.89 (overpay, within 1฿ tolerance)
+      const result = await service.previewJournal({
+        contractId: 'contract-preview',
+        installmentNo: 2,
+        amountReceived: 2203.30,
+        depositAccountCode: '11-1101',
+      });
+
+      expect(result.isBalanced).toBe(true);
+      const overpayLine = result.lines.find((l) => l.accountCode === '53-1503');
+      expect(overpayLine).toBeDefined();
+      expect(parseFloat(overpayLine!.credit)).toBeCloseTo(0.89, 2);
+      expect(parseFloat(overpayLine!.debit)).toBeCloseTo(0, 2);
+    });
+
     it('blocks PARTIAL when installment is not yet accrued', async () => {
       prisma.installmentSchedule.findUnique.mockResolvedValue(mockInstallmentNotAccrued);
 

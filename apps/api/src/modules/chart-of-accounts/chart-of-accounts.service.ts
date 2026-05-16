@@ -16,9 +16,12 @@ export class ChartOfAccountsService {
    * D1.1.6.2 — Resolve the active CoA codes for the small set of "adjustment"
    * roles consumed by the AdjustmentSection UI. Decouples the frontend hint
    * from hardcoded literals so an owner-driven `account_role_map` change
-   * propagates to the picker without a deploy. Codes resolved at request
-   * time so a fresh admin-edit (followed by `roles.invalidate()`) takes
-   * effect on the next call.
+   * propagates to the picker without a deploy.
+   *
+   * Resolution reads from `AccountRoleService`'s in-memory cache; admin must
+   * call `roles.invalidate()` after mutating `account_role_map` (or the pod
+   * must restart) for changes to take effect — same staleness model as every
+   * other consumer of the service.
    */
   async getAdjustmentRoleCodes(): Promise<{ underpay: string; overpay: string }> {
     return {

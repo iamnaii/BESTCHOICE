@@ -237,5 +237,21 @@ describe('SettingsService audit trail', () => {
       const flags = await service.getUiFlags();
       expect(flags.paymentDateWarningBackdate).toBe(90);
     });
+
+    // D1.2.6.4 — payment_date_allow_future
+    it('paymentDateAllowFuture defaults to true when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.paymentDateAllowFuture).toBe(true);
+    });
+
+    it('paymentDateAllowFuture returns false when OWNER disables it', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'payment_date_allow_future') return Promise.resolve({ value: 'false' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.paymentDateAllowFuture).toBe(false);
+    });
   });
 });

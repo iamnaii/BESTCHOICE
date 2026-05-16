@@ -1120,6 +1120,55 @@ describe('ExpenseDocumentsService', () => {
       ).resolves.toBeDefined();
     });
 
+    // D1.2.6.4 — future-date reverseDate block
+    it('D1.2.6.4: rejects future-dated reverseDate when flag is off', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'payment_date_allow_future') return Promise.resolve({ value: 'false' });
+        if (args.where.key === 'reverse_reason_required') return Promise.resolve({ value: 'false' });
+        return Promise.resolve(null);
+      });
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-1', status: 'ACCRUAL', journalEntryId: 'je-1', documentType: 'EXPENSE',
+      });
+      prisma.expenseDocument.count = jest.fn().mockResolvedValue(0);
+      const future = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      await expect(
+        service.voidDocument('doc-1', 'user-1', { reverseDate: future }),
+      ).rejects.toThrow(/อนาคต/);
+    });
+
+    it('D1.2.6.4: allows future-dated reverseDate when flag is on (default)', async () => {
+      // Global mock has `reverse_reason_required: false`. No other overrides → flag defaults true.
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-1', status: 'ACCRUAL', journalEntryId: 'je-orig', documentType: 'EXPENSE', number: 'EX-001',
+      });
+      prisma.expenseDocument.count = jest.fn().mockResolvedValue(0);
+      prisma.journalEntry = {
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          id: 'je-orig', entryNumber: 'JE-OLD',
+          lines: [{ accountCode: '53-1404', debit: '100', credit: '0', description: 'x' }],
+          metadata: {},
+        }),
+      };
+      const journalMock = {
+        createAndPost: jest.fn().mockResolvedValue({ id: 'je-rev', entryNumber: 'JE-REV-001' }),
+      };
+      const svc = new ExpenseDocumentsService(
+        prisma, docNumber, transition, sameDay, accrual, creditNote, payroll, settlement,
+        journalMock as never,
+        new LineAggregatorService(),
+        { preview: jest.fn() } as never,
+        { validateContribution: jest.fn().mockResolvedValue(undefined) } as never,
+        { execute: jest.fn() } as never,
+        { getConfig: jest.fn(), validate: jest.fn() } as never,
+        { loadWhitelist: jest.fn().mockResolvedValue(new Set()), validateLine: jest.fn() } as never,
+      );
+      const future = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      await expect(
+        svc.voidDocument('doc-1', 'user-1', { reverseDate: future }),
+      ).resolves.toBeDefined();
+    });
+
     it('D1.2.7.1: allows void without reasonCode when flag is off', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
         if (args.where.key === 'reverse_reason_required') return Promise.resolve({ value: 'false' });

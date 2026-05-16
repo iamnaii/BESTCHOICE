@@ -34,7 +34,38 @@ export class ExpenseTemplatesService {
     }
   }
 
+  /**
+   * D1.2.4.1 — global feature flag for Expense Templates. Read direct from
+   * SystemConfig (avoids SettingsService injection — keeps the ctor lean
+   * and dodges potential audit↔settings circular dep). Default true so
+   * legacy behaviour is preserved when the SystemConfig row is missing.
+   *
+   * Gates WRITE paths only (create/update/delete/instantiate). Read paths
+   * (list/findOne) stay open so OWNER can disable the feature without
+   * hiding pre-existing templates from auditors.
+   */
+  private async assertTemplatesEnabled(): Promise<void> {
+    try {
+      const row = await this.prisma.systemConfig.findFirst({
+        where: { key: 'templates_enabled', deletedAt: null },
+        select: { value: true },
+      });
+      const raw = row?.value?.trim().toLowerCase();
+      // Only explicit 'false' / '0' disables. Missing row or any other
+      // value keeps the feature on (fail-open default).
+      if (raw === 'false' || raw === '0') {
+        throw new ForbiddenException(
+          'ระบบรายการโปรดถูกปิดใช้งานชั่วคราว — กรุณาติดต่อผู้ดูแลระบบ',
+        );
+      }
+    } catch (err) {
+      if (err instanceof ForbiddenException) throw err;
+      // DB read failure → fail-open (preserve existing behaviour)
+    }
+  }
+
   async create(dto: CreateTemplateDto, user: UserContext) {
+    await this.assertTemplatesEnabled();
     this.assertBranchAccess(dto.branchId, user);
     // CN ผูกกับเอกสารต้นฉบับเฉพาะตัว — บันทึกเป็น template ไม่ได้
     // (originalDocumentId จะ stale + cumulative cap จะหมดเมื่อใช้รอบสอง)
@@ -86,6 +117,7 @@ export class ExpenseTemplatesService {
   }
 
   async update(id: string, dto: UpdateTemplateDto, user: UserContext) {
+    await this.assertTemplatesEnabled();
     const tpl = await this.findOne(id, user);
     if (dto.isRecurring === true && (dto.recurringDay ?? tpl.recurringDay) == null) {
       throw new BadRequestException('Recurring template ต้องระบุ recurringDay 1-31');
@@ -99,6 +131,7 @@ export class ExpenseTemplatesService {
   }
 
   async softDelete(id: string, user: UserContext) {
+    await this.assertTemplatesEnabled();
     const tpl = await this.prisma.expenseTemplate.findUniqueOrThrow({ where: { id } });
     if (tpl.deletedAt) throw new BadRequestException('Template ถูกลบไปแล้ว');
     this.assertBranchAccess(tpl.branchId, user);
@@ -113,6 +146,7 @@ export class ExpenseTemplatesService {
    * Maps each documentType to the right ExpenseDocumentsService.create*() method.
    */
   async instantiate(id: string, user: UserContext, override?: { documentDate?: Date }) {
+    await this.assertTemplatesEnabled();
     const tpl = await this.findOne(id, user);
     const today = override?.documentDate ?? new Date();
     const documentDate = today.toISOString();

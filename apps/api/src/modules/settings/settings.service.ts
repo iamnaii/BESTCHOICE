@@ -175,6 +175,15 @@ export class SettingsService {
      * accessibility readers via the lang attr.
      */
     language: 'th' | 'en';
+    /**
+     * D1.2.4.1 — global toggle for the Expense Templates feature. When false,
+     * ExpenseTemplatesService rejects all writes (create/update/delete/
+     * instantiate) with a 403 ForbiddenException, and the UI hides the
+     * "บันทึกเป็นรายการโปรด" buttons + templates list. List/read endpoints
+     * still resolve (so legacy data isn't hidden) but new writes are blocked.
+     * Default true to preserve current behaviour.
+     */
+    templatesEnabled: boolean;
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -214,6 +223,9 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.2.4.1 — Expense Templates feature flag. Default true to preserve
+    // existing behaviour; OWNER can disable globally via Settings page.
+    const templatesEnabled = await this.readBoolean('templates_enabled', true);
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -225,6 +237,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      templatesEnabled,
     };
   }
 

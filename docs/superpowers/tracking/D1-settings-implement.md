@@ -59,7 +59,7 @@ Sub-prioritization within expanded D1 scope:
 | D1.2.3.3 | `date_format` BE↔ค.ศ. toggle | P1 | ⬜ | — | formatDateShort branch on pref |
 | D1.2.3.4 | `decimal_places` | P1 | ⬜ | — | formatNumberDecimal default from pref |
 | D1.2.3.5 | `thousands_separator` | P1 | ⬜ | — | toLocaleString locale from pref |
-| D1.2.4.1 | `templates_enabled` flag | P1 | ⬜ | — | Feature flag at controller |
+| D1.2.4.1 | `templates_enabled` flag | P1 | ✅ | this PR | SystemConfig `templates_enabled` (default true). `getUiFlags()` exposes `templatesEnabled`. `ExpenseTemplatesService` gates WRITE paths (create/update/delete/instantiate) via `assertTemplatesEnabled()` — reads SystemConfig direct via PrismaService (avoids SettingsService injection / circular dep risk). When `'false'`/`'0'`, all writes 403 with Thai message "ระบบรายการโปรดถูกปิดใช้งานชั่วคราว"; reads (list/findOne) stay open so auditors retain visibility into legacy data. `useUiFlags().templatesEnabled` available for future UI hide-button wiring. 3 jest tests added (default true, explicit false, unparseable fallback) |
 | D1.2.4.2 | `max_templates_per_user` quota | P1 | ⬜ | — | Count check in createTemplate |
 | D1.2.4.3 | `sharing_rules` (ACL) | P1 | ⬜ | — | Schema: add visibility + sharedWith |
 | D1.2.4.4 | `variables_support` formalization | P1 | ⬜ | — | Define `{{var}}` interpolation syntax |

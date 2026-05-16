@@ -4,6 +4,7 @@ import {
   IsIn,
   IsDateString,
   IsNumber,
+  IsNumberString,
   IsUUID,
   Min,
   ValidateNested,
@@ -11,6 +12,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { CASH_ACCOUNT_CODES } from '../../../constants/cash-account.constants';
+import { ExpenseAdjustmentInput } from './expense-adjustment-input.dto';
 
 class SettlementLineInput {
   @IsUUID('4', { message: 'รหัสเอกสารที่ต้องการเคลียร์ไม่ถูกต้อง' })
@@ -70,4 +72,26 @@ export class CreateSettlementDto {
   @IsString()
   @IsOptional()
   fromTemplateId?: string;
+
+  /**
+   * Multi-line Adjustment (B2 / Dev Action #2). When the actual amount paid
+   * to the vendor differs from `sumSettled − wht` (e.g. supplier discount,
+   * bank fee, rounding), adjustments balance the gap. Signed-sum rule (V12):
+   *   Σ signed(adjustments) === amountPaid − (sumSettled − wht)
+   * where CR contributes +amount and DR contributes −amount.
+   * Allow-list of accountCodes is enforced server-side (V13).
+   */
+  @ValidateNested({ each: true })
+  @Type(() => ExpenseAdjustmentInput)
+  @IsOptional()
+  adjustments?: ExpenseAdjustmentInput[];
+
+  /**
+   * Actual cash leg paid to vendor. When set, must reconcile via V12 against
+   * `sumSettled − wht` ± Σ signed(adjustments). Omitted ⇒ defaults to
+   * `sumSettled − wht` (legacy zero-adjustment behaviour).
+   */
+  @IsNumberString({ no_symbols: true })
+  @IsOptional()
+  amountPaid?: string;
 }

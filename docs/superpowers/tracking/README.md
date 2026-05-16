@@ -14,7 +14,7 @@
 | [A0 · Pre-flight Verify](A0-preflight-verify.md) | 3 | 0 | 0% | 🟡 In Progress | — | [script](../../../scripts/a0-preflight-verify.sql) |
 | [A1 · Settings Audit Phase 1+2](A1-settings-audit.md) | 102 | 0 | 0% | ⬜ Pending | — | — |
 | [B1 · SSO 875 Configurable](B1-sso-875.md) | 6 | 6 | 100% | ✅ Done | — | [#861](https://github.com/iamnaii/BESTCHOICE/pull/861) |
-| [B2 · Settlement Multi-line Adj](B2-settlement-adjustment.md) | 5 | 0 | 0% | ⬜ Pending | — | — |
+| [B2 · Settlement Multi-line Adj](B2-settlement-adjustment.md) | 5 | 1 | 20% | 🔵 In Review | — | PR TBD (B2.3 verified) |
 | [B3 · Test Suite J+K](B3-test-suite.md) | 14 | 0 | 0% | ⬜ Pending | — | — |
 | [C1 · Petty Cash](C1-petty-cash.md) | 8 | 0 | 0% | ⬜ Pending | — | — |
 | [C2 · Payroll Custom Income/Deduction](C2-payroll-custom.md) | 7 | 0 | 0% | ⬜ Pending | — | — |

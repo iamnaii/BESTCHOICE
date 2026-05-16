@@ -55,7 +55,10 @@ export class VendorSettlementTemplate {
 
       const se = await tx.expenseDocument.findUniqueOrThrow({
         where: { id: documentId },
-        include: { settlement: { include: { settlementLines: true } } },
+        include: {
+          settlement: { include: { settlementLines: true } },
+          adjustments: { orderBy: { lineNo: 'asc' } },
+        },
       });
 
       // Belt-and-braces — same check after the heavy fetch, in case the
@@ -102,7 +105,12 @@ export class VendorSettlementTemplate {
         zero,
       );
       const wht = new Decimal(se.withholdingTax.toString());
-      const cashLeg = sumSettled.minus(wht);
+      // B2 — cash leg comes from netPayment (which the service set during create
+      // to honor V12: amountPaid ± Σ signed(adjustments)). For SE with no
+      // adjustments this equals `sumSettled − wht` (legacy path). With
+      // adjustments, the gap between sumSettled-wht and netPayment is exactly
+      // Σ signed(adjustments), so the JE still balances.
+      const cashLeg = new Decimal(se.netPayment?.toString() ?? sumSettled.minus(wht).toString());
 
       const lines: JeLineInput[] = [
         {
@@ -130,6 +138,21 @@ export class VendorSettlementTemplate {
           dr: zero,
           cr: wht,
           description: `หัก ณ ที่จ่าย ${formType}`,
+        });
+      }
+
+      // B2 — Multi-line Adjustment. Each row contributes one JE line on its
+      // declared side. V12 already proved Σ signed(adjustments) === amountPaid
+      // − (sumSettled − wht), so adding these lines after WHT keeps the JE
+      // balanced no matter the direction (discount → Cr 52-1106, bank fee →
+      // Dr 53-1303, rounding tolerance → Dr/Cr 52-1104, etc.).
+      for (const adj of se.adjustments ?? []) {
+        const amt = new Decimal(adj.amount.toString());
+        lines.push({
+          accountCode: adj.accountCode,
+          dr: adj.side === 'DR' ? amt : zero,
+          cr: adj.side === 'CR' ? amt : zero,
+          description: adj.note ?? `ปรับผลต่าง ${adj.accountCode}`,
         });
       }
 
@@ -221,14 +244,15 @@ export class VendorSettlementTemplate {
       // so this partial SE will consume the cap correctly once it itself
       // becomes POSTED below.
 
-      // Update SE itself
+      // Update SE itself. netPayment was already set during create — don't
+      // overwrite it (post-create it equals amountPaid; overwriting with
+      // cashLeg would be the same value but is redundant work).
       await tx.expenseDocument.update({
         where: { id: se.id },
         data: {
           status: 'POSTED',
           paidAt: se.documentDate,
           journalEntryId: result.id,
-          netPayment: cashLeg,
         },
       });
 

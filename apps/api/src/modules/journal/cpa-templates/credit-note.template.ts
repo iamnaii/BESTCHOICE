@@ -22,6 +22,15 @@ import { assertWhtFormType } from '../utils/wht-form-type';
  *     Cr 5x-xxxx ค่าใช้จ่าย               (subtotal)
  *     Cr 11-4101 ภาษีซื้อ                  (vatAmount)        [if VAT > 0]
  *
+ * C4 · STANDALONE mode (creditNote.mode === 'STANDALONE'):
+ *   No source FK; treat as either AP-clearing or cash-refund based on
+ *   whether depositAccountCode is set:
+ *     - no depositAccountCode → Dr 21-1104 (like ACCRUAL)
+ *     - depositAccountCode set → Dr <refundAccount> (like POSTED refund)
+ *   Standalone CN MUST NOT have WHT in source — same as LINKED constraint —
+ *   but since there is no source to read from, the service-level guard rejects
+ *   CN docs with withholdingTax > 0 outright (defense in depth).
+ *
  * CN reverses the original VAT input recorded at acquisition (11-4101).
  * Fix Report P0-1 — was incorrectly using 11-2104 (ลูกหนี้-VAT ที่ออกแทน,
  * ม.83/6 only) which is not claimable on ภ.พ.30. ม.86/10 compliance.
@@ -57,7 +66,8 @@ export class CreditNoteTemplate {
       if (!cn.creditNote) {
         throw new Error(`CreditNote ${documentId} missing creditNote detail`);
       }
-      const { originalDocumentId } = cn.creditNote;
+      const { originalDocumentId, mode } = cn.creditNote;
+      const isStandalone = mode === 'STANDALONE';
 
       const cnLines = cn.expenseDetail?.lines ?? [];
       if (cnLines.length === 0) {
@@ -87,14 +97,27 @@ export class CreditNoteTemplate {
         }
       }
 
-      const original = await tx.expenseDocument.findUniqueOrThrow({
-        where: { id: originalDocumentId },
-      });
-
-      if (['VOIDED', 'DRAFT'].includes(original.status)) {
-        throw new BadRequestException(
-          `ไม่สามารถ post ใบลดหนี้ เพราะเอกสารต้นฉบับอยู่ในสถานะ ${original.status}`,
-        );
+      // LINKED-only: load source doc to determine Dr leg + reverse WHT correctly.
+      // STANDALONE: no source — treat refund vs AP-clear by depositAccountCode alone.
+      let original: { status: string; depositAccountCode: string | null; withholdingTax: Decimal | null; whtFormType: string | null } | null = null;
+      if (!isStandalone) {
+        if (!originalDocumentId) {
+          throw new Error(`CreditNote ${cn.id} mode=LINKED has no originalDocumentId`);
+        }
+        const orig = await tx.expenseDocument.findUniqueOrThrow({
+          where: { id: originalDocumentId },
+        });
+        if (['VOIDED', 'DRAFT'].includes(orig.status)) {
+          throw new BadRequestException(
+            `ไม่สามารถ post ใบลดหนี้ เพราะเอกสารต้นฉบับอยู่ในสถานะ ${orig.status}`,
+          );
+        }
+        original = {
+          status: orig.status,
+          depositAccountCode: orig.depositAccountCode,
+          withholdingTax: orig.withholdingTax ? new Decimal(orig.withholdingTax.toString()) : null,
+          whtFormType: orig.whtFormType,
+        };
       }
 
       const zero = new Decimal(0);
@@ -103,9 +126,17 @@ export class CreditNoteTemplate {
 
       const lines: JeLineInput[] = [];
 
-      // Dr leg depends on original status
-      if (original.status === 'ACCRUAL') {
-        // Reverse the AP booking
+      // Dr leg routing:
+      //   LINKED + ACCRUAL                            → Dr 21-1104 (AP)
+      //   LINKED + POSTED                             → Dr cash refund (less origWHT)
+      //   STANDALONE + no depositAccountCode          → Dr 21-1104 (AP refund pending)
+      //   STANDALONE + depositAccountCode set         → Dr cash refund
+      const isCashRefund =
+        isStandalone
+          ? !!cn.depositAccountCode
+          : original!.status === 'POSTED';
+
+      if (!isCashRefund) {
         lines.push({
           accountCode: '21-1104',
           dr: total,
@@ -113,20 +144,21 @@ export class CreditNoteTemplate {
           description: `กลับเจ้าหนี้ — ${cn.number}`,
         });
       } else {
-        // POSTED → refund cash. CN.depositAccountCode (or fall back to original's)
-        const refundAccount = cn.depositAccountCode ?? original.depositAccountCode;
+        // Determine refund account: STANDALONE always reads from cn.depositAccountCode;
+        // LINKED falls back to the original's depositAccountCode.
+        const refundAccount = cn.depositAccountCode ?? original?.depositAccountCode ?? null;
         if (!refundAccount) {
           throw new Error(
-            `CreditNote ${cn.id} on POSTED original requires depositAccountCode for refund`,
+            `CreditNote ${cn.id} cash-refund path requires depositAccountCode`,
           );
         }
-        // Cash refund out = total − WHT-of-original-being-reversed (if any).
+        // Cash refund out = total − WHT-of-original-being-reversed (if any, LINKED only).
         // Reasoning: original POSTED entry was Dr expense+VAT / Cr cash + Cr WHT-payable.
         // Reversing means Dr cash (less WHT, since WHT was never given to vendor) +
         // Dr WHT-payable (clears the liability) / Cr expense + Cr VAT.
         // NOTE: createCreditNote service blocks CN on docs with WHT > 0 (defense-in-depth
         // guard prevents this branch in production), but we reverse it correctly anyway.
-        const origWht = new Decimal(original.withholdingTax?.toString() ?? '0');
+        const origWht = original?.withholdingTax ?? zero;
         const cashRefund = total.minus(origWht);
         lines.push({
           accountCode: refundAccount,
@@ -141,7 +173,7 @@ export class CreditNoteTemplate {
           // validate so any future relaxation surfaces here instead of
           // misrouting under PND3.
           const formType = assertWhtFormType(
-            original.whtFormType,
+            original!.whtFormType,
             `original wht=${origWht.toString()}`,
           );
           const whtAccount = formType === 'PND53' ? '21-3103' : '21-3102';
@@ -183,15 +215,20 @@ export class CreditNoteTemplate {
 
       const result = await this.journal.createAndPost(
         {
-          description: `ใบลดหนี้ ${cn.number} (อ้าง ${original.id.slice(0, 8)}…)`,
+          description: isStandalone
+            ? `ใบลดหนี้ ${cn.number} (Standalone)`
+            : `ใบลดหนี้ ${cn.number} (อ้าง ${originalDocumentId!.slice(0, 8)}…)`,
           reference: cn.id,
           metadata: {
             tag: 'CREDIT_NOTE',
             documentId: cn.id,
             documentNumber: cn.number,
             documentType: cn.documentType,
-            originalDocumentId,
-            flow: 'expense-credit-note',
+            originalDocumentId: originalDocumentId ?? null,
+            mode,
+            // C4 — `expense-credit-note-standalone` flow lets ภ.พ.30 export
+            // distinguish CN credits with no source FK from linked reversals.
+            flow: isStandalone ? 'expense-credit-note-standalone' : 'expense-credit-note',
             lineCount: cnLines.length,
           },
           postedAt: cn.documentDate,
@@ -201,9 +238,9 @@ export class CreditNoteTemplate {
         tx,
       );
 
-      // paidAt only on POSTED-original path (cash actually moved); ACCRUAL-path
-      // CN clears AP without any cash flow, so paidAt stays null.
-      const isCashRefund = original.status === 'POSTED';
+      // paidAt is set whenever cash actually moved (POSTED-original path under
+      // LINKED, or any STANDALONE with depositAccountCode). AP-clearing paths
+      // (ACCRUAL-LINKED, STANDALONE-without-deposit) leave paidAt null.
       await tx.expenseDocument.update({
         where: { id: cn.id },
         data: {

@@ -34,6 +34,9 @@ export interface ExpenseLine {
   // 50 ทวิ requirement (itemize the WHT rate per income type) is met when a
   // single document mixes vendors with different rates.
   whtPercent?: string;
+  // C1 — Petty Cash carries supplier per line (relaxes 1-doc-1-supplier).
+  // Null for non-petty doc types.
+  supplierName?: string | null;
 }
 
 interface JournalLine {
@@ -46,6 +49,17 @@ interface JournalLine {
 interface VoucherDoc {
   id: string;
   number: string;
+  /**
+   * C1 — branches voucher layout: PETTY_CASH_REIMBURSEMENT renders a
+   * compact multi-supplier sheet (no WHT cert, no signature grid). All other
+   * doc types use the standard ใบสำคัญจ่าย layout.
+   */
+  documentType:
+    | 'EXPENSE'
+    | 'CREDIT_NOTE'
+    | 'PAYROLL'
+    | 'VENDOR_SETTLEMENT'
+    | 'PETTY_CASH_REIMBURSEMENT';
   documentDate: string;
   vendorName: string | null;
   vendorTaxId: string | null;
@@ -82,9 +96,16 @@ export default function PaymentVoucherPage() {
   // No auto-print — owner asked for explicit button.
 
   useEffect(() => {
-    document.title = docQuery.data
-      ? `ใบสำคัญจ่าย ${docQuery.data.number}`
-      : 'ใบสำคัญจ่าย';
+    const data = docQuery.data;
+    if (!data) {
+      document.title = 'ใบสำคัญจ่าย';
+      return;
+    }
+    const title =
+      data.documentType === 'PETTY_CASH_REIMBURSEMENT'
+        ? `ใบเบิกชดเชยเงินสดย่อย ${data.number}`
+        : `ใบสำคัญจ่าย ${data.number}`;
+    document.title = title;
   }, [docQuery.data]);
 
   return (
@@ -134,15 +155,186 @@ export default function PaymentVoucherPage() {
 }
 
 function VoucherSheet({ doc }: { doc: VoucherDoc }) {
+  const isPettyCash = doc.documentType === 'PETTY_CASH_REIMBURSEMENT';
   const hasWht = parseFloat(doc.withholdingTax || '0') > 0;
   const net = doc.netPayment ?? doc.totalAmount;
   const amountText = numToThaiText(parseFloat(net));
+
+  // C1.8 — Petty Cash uses its own compact sheet (no WHT, multi-supplier table,
+  // no signature grid per spec). All other doc types fall through to the
+  // standard ใบสำคัญจ่าย layout.
+  if (isPettyCash) {
+    return (
+      <div className="max-w-[210mm] mx-auto py-6 px-6 print:px-0 print:py-0 space-y-6">
+        <PettyCashSheet doc={doc} amountInText={amountText} net={net} />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-[210mm] mx-auto py-6 px-6 print:px-0 print:py-0 space-y-6">
       <Sheet doc={doc} amountInText={amountText} net={net} />
       {hasWht && <WhtCertificate doc={doc} />}
     </div>
+  );
+}
+
+/**
+ * C1.8 — Petty Cash voucher sheet (mockup 04B).
+ * Differences vs standard ใบสำคัญจ่าย:
+ *   - title: "ใบเบิกชดเชยเงินสดย่อย"
+ *   - meta: custodian (from doc.vendorName which we repurpose at backend) instead of vendor
+ *   - item table: per-row supplier column; no WHT column
+ *   - totals: drop WHT row
+ *   - no WHT certificate
+ *   - no signature grid (mockup 04B: signed inline in description, no formal sigs)
+ */
+function PettyCashSheet({
+  doc,
+  amountInText,
+  net,
+}: {
+  doc: VoucherDoc;
+  amountInText: string;
+  net: string;
+}) {
+  const lines = doc.expenseDetail?.lines ?? [];
+  // Distinct supplier count for the badge — useful auditing surface since
+  // petty cash is the only doc type that mixes vendors per document.
+  const supplierCount = new Set(
+    lines.map((l) => (l.supplierName ?? '').trim()).filter(Boolean),
+  ).size;
+  return (
+    <article
+      className="voucher-sheet bg-white border border-border rounded-md p-8 shadow-sm print:border-0 print:p-0 print:shadow-none"
+      style={{ minHeight: '270mm' }}
+    >
+      <header className="text-center border-b-2 border-foreground pb-3">
+        <h1 className="text-xl font-bold">BESTCHOICE FINANCE × SHOP</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          เลขประจำตัวผู้เสียภาษี · สำนักงานใหญ่
+        </p>
+        <h2 className="text-2xl font-bold tracking-wider mt-4">ใบเบิกชดเชยเงินสดย่อย</h2>
+        <p className="text-xs text-muted-foreground">Petty Cash Reimbursement Voucher</p>
+      </header>
+
+      <section className="grid grid-cols-2 gap-x-8 gap-y-2 mt-5 text-sm">
+        <MetaRow label="เลขที่เอกสาร" value={doc.number} mono />
+        <MetaRow label="วันที่" value={formatThaiDateLong(doc.documentDate)} />
+        <MetaRow label="ผู้ดูแลเงินสดย่อย" value={doc.vendorName ?? '—'} />
+        <MetaRow label="บัญชีเงินสดย่อย" value={doc.depositAccountCode ?? '—'} mono />
+        <MetaRow label="จำนวนผู้ขาย" value={`${supplierCount} ราย · ${lines.length} รายการ`} />
+        <MetaRow label="สถานะ" value={doc.status} mono />
+        {doc.description && (
+          <div className="col-span-2">
+            <MetaRow label="คำอธิบาย" value={doc.description} />
+          </div>
+        )}
+      </section>
+
+      <table className="w-full mt-6 text-xs border border-border">
+        <thead className="bg-muted/40">
+          <tr>
+            <th className="border border-border p-2 text-left w-10">#</th>
+            <th className="border border-border p-2 text-left">ผู้ขาย/ผู้รับเงิน</th>
+            <th className="border border-border p-2 text-left">หมวดบัญชี</th>
+            <th className="border border-border p-2 text-left">รายละเอียด</th>
+            <th className="border border-border p-2 text-right w-24">ก่อน VAT</th>
+            <th className="border border-border p-2 text-right w-20">VAT</th>
+            <th className="border border-border p-2 text-right w-24">รวม</th>
+          </tr>
+        </thead>
+        <tbody>
+          {lines.length === 0 ? (
+            <tr>
+              <td colSpan={7} className="border border-border p-3 text-center text-muted-foreground">
+                ไม่มีรายการ
+              </td>
+            </tr>
+          ) : (
+            lines.map((l) => {
+              const base = parseFloat(l.amountBeforeVat || '0');
+              const vat = parseFloat(l.vatAmount || '0');
+              return (
+                <tr key={l.lineNo}>
+                  <td className="border border-border p-2 tabular-nums">{l.lineNo}</td>
+                  <td className="border border-border p-2">{l.supplierName ?? '—'}</td>
+                  <td className="border border-border p-2 font-mono">{l.category}</td>
+                  <td className="border border-border p-2">{l.description ?? '—'}</td>
+                  <td className="border border-border p-2 text-right tabular-nums">
+                    {formatNumberDecimal(l.amountBeforeVat)}
+                  </td>
+                  <td className="border border-border p-2 text-right tabular-nums">
+                    {vat > 0 ? formatNumberDecimal(l.vatAmount) : '—'}
+                  </td>
+                  <td className="border border-border p-2 text-right tabular-nums">
+                    {formatNumberDecimal((base + vat).toString())}
+                  </td>
+                </tr>
+              );
+            })
+          )}
+        </tbody>
+      </table>
+
+      <section className="grid grid-cols-2 gap-6 mt-5">
+        <div className="rounded-md border border-border bg-muted/20 p-3 text-sm">
+          <p className="text-xs text-muted-foreground mb-1">จำนวนเงิน (ตัวอักษร)</p>
+          <p className="font-semibold leading-relaxed">{amountInText}</p>
+        </div>
+        <table className="text-sm">
+          <tbody>
+            <TotalRow label="ยอดรวมก่อน VAT" value={doc.subtotal} />
+            <TotalRow label="VAT 7%" value={doc.vatAmount} />
+            <TotalRow label="รวมที่เบิก" value={net} bold highlight />
+          </tbody>
+        </table>
+      </section>
+
+      {doc.journalLines && doc.journalLines.length > 0 && (
+        <section className="mt-6">
+          <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">
+            Auto Journal
+          </p>
+          <table className="w-full text-xs border border-border">
+            <thead className="bg-muted/40">
+              <tr>
+                <th className="border border-border p-2 text-left">บัญชี</th>
+                <th className="border border-border p-2 text-left">ชื่อบัญชี</th>
+                <th className="border border-border p-2 text-right w-24">Dr (฿)</th>
+                <th className="border border-border p-2 text-right w-24">Cr (฿)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {doc.journalLines.map((l, i) => (
+                <tr key={i}>
+                  <td className="border border-border p-2 font-mono">{l.accountCode}</td>
+                  <td className="border border-border p-2">{l.accountName}</td>
+                  <td className="border border-border p-2 text-right tabular-nums">
+                    {parseFloat(l.debit) > 0 ? formatNumberDecimal(l.debit) : '—'}
+                  </td>
+                  <td className="border border-border p-2 text-right tabular-nums">
+                    {parseFloat(l.credit) > 0 ? formatNumberDecimal(l.credit) : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
+
+      {doc.note && (
+        <section className="mt-6">
+          <p className="text-xs text-muted-foreground mb-1">หมายเหตุ</p>
+          <p className="text-sm">{doc.note}</p>
+        </section>
+      )}
+
+      <footer className="mt-8 pt-3 border-t border-border text-[10px] text-muted-foreground flex justify-between">
+        <span>ออกเอกสารจากระบบ BESTCHOICE — ไม่ต้องเซ็นต์ถือเป็นโมฆะ</span>
+        <span>ใบเบิกชดเชยเงินสดย่อย v1.0</span>
+      </footer>
+    </article>
   );
 }
 

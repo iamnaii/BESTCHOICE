@@ -175,6 +175,12 @@ export class SettingsService {
      * accessibility readers via the lang attr.
      */
     language: 'th' | 'en';
+    /**
+     * D1.2.5.3 — render the 3-column partial-payment breakdown (ยอดเดิม /
+     * ยอดที่ชำระ / ยอดคงเหลือ) on the voucher. Default true. When false the
+     * voucher shows only a single "ยอดที่ชำระ" column.
+     */
+    voucherShowPartialColumns: boolean;
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -214,6 +220,11 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.2.5.3 — show ยอดเดิม / ยอดที่ชำระ / ยอดคงเหลือ on voucher.
+    const voucherShowPartialColumns = await this.readBoolean(
+      'voucher_show_partial_columns',
+      true,
+    );
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -225,6 +236,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      voucherShowPartialColumns,
     };
   }
 

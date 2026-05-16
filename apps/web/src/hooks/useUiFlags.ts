@@ -33,6 +33,12 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /**
+   * D1.2.5.3 — render the 3-column partial-payment breakdown (ยอดเดิม /
+   * ยอดที่ชำระ / ยอดคงเหลือ) on the voucher. Default true. When false the
+   * voucher shows only a single "ยอดที่ชำระ" column.
+   */
+  voucherShowPartialColumns: boolean;
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -53,6 +59,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  voucherShowPartialColumns: true,
 };
 
 export function useUiFlags(): UiFlags {

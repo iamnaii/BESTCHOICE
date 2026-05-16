@@ -66,7 +66,7 @@ Sub-prioritization within expanded D1 scope:
 | D1.2.4.5 | Template `categories` table | P1 | ⬜ | — | New TemplateCategory model |
 | D1.2.5.1 | `voucher_print_mode_default` | P1 | ⬜ | — | single vs multi page mode |
 | D1.2.5.2 | `voucher_include_adjustment` | P1 | ⬜ | — | Render adjustments in print template |
-| D1.2.5.3 | `voucher_show_partial_columns` | P1 | ⬜ | — | Partial column display flag |
+| D1.2.5.3 | `voucher_show_partial_columns` | P1 | ✅ | this PR | SystemConfig `voucher_show_partial_columns` (default true). `getUiFlags()` exposes `voucherShowPartialColumns`. PaymentVoucherPage `Sheet` renders a new "สรุปยอด" section: when true, 3-cell row (ยอดเดิม / ยอดที่ชำระ / ยอดคงเหลือ) derived from `totalAmount`/`netPayment`/diff; when false, single ยอดที่ชำระ cell. New `PartialCell` helper component. 3 new vitest cases. Type-check 0 errors |
 | D1.3.3.1 | `export_enabled` flag | P2 | ⬜ | — | Gate Excel/PDF/CSV exports |
 | D1.3.3.2 | `bank_reconciliation` mode | P2 | ⬜ | — | manual vs auto-match flag |
 | D1.3.3.3 | `webhooks` default-off | P2 | ⬜ | — | Global gate on webhooks.controller |

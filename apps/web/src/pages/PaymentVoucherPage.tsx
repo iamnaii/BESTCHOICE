@@ -647,8 +647,17 @@ function Sheet({
   const companyAddress = useCompanyAddress();
   const companyTaxId = useCompanyTaxId();
   const companyLogoUrl = useCompanyLogoUrl();
-  const { voucherShowQrCode } = useUiFlags();
+  const { voucherShowQrCode, voucherShowPartialColumns } = useUiFlags();
   const lines = doc.expenseDetail?.lines ?? [];
+  // D1.2.5.3 — partial-payment summary. The pre-WHT total represents the
+  // "original" invoiced amount; `net` is what is actually being disbursed
+  // today; the remainder is whatever the WHT withholding left behind. For
+  // standalone EXPENSE/CREDIT_NOTE/VENDOR_SETTLEMENT docs the latter is
+  // simply the WHT figure (no installment scheduling here). Component is
+  // gated behind `voucherShowPartialColumns` flag.
+  const partialOriginal = parseFloat(doc.totalAmount || '0');
+  const partialPaid = parseFloat(net || '0');
+  const partialRemaining = Math.max(0, partialOriginal - partialPaid);
   // D1.2.2.7 — verification QR linking to /verify/<doc.number>. Default
   // on; OWNER can disable via SystemConfig `voucher_show_qr_code = false`.
   const verifyUrl = typeof window !== 'undefined'
@@ -750,6 +759,26 @@ function Sheet({
             <TotalRow label="ยอดสุทธิที่จ่าย" value={net} bold highlight />
           </tbody>
         </table>
+      </section>
+
+      {/* D1.2.5.3 — partial-payment breakdown. Full 3-column view when
+          `voucherShowPartialColumns` is true (default); single-column
+          "ยอดที่ชำระ" view when OWNER disables the flag. */}
+      <section className="mt-5">
+        <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">
+          สรุปยอด
+        </p>
+        {voucherShowPartialColumns ? (
+          <div className="grid grid-cols-3 gap-3 text-sm">
+            <PartialCell label="ยอดเดิม" value={partialOriginal.toFixed(2)} />
+            <PartialCell label="ยอดที่ชำระ" value={partialPaid.toFixed(2)} highlight />
+            <PartialCell label="ยอดคงเหลือ" value={partialRemaining.toFixed(2)} />
+          </div>
+        ) : (
+          <div className="text-sm">
+            <PartialCell label="ยอดที่ชำระ" value={partialPaid.toFixed(2)} highlight />
+          </div>
+        )}
       </section>
 
       {/* Auto Journal preview — optional, embedded so accounting team can verify */}
@@ -990,6 +1019,42 @@ function TotalRow({
         {formatNumberDecimal(value)}
       </td>
     </tr>
+  );
+}
+
+/**
+ * D1.2.5.3 — small card displaying one of the partial-payment columns
+ * (ยอดเดิม / ยอดที่ชำระ / ยอดคงเหลือ). When the flag is off, only one of
+ * these renders (the "ยอดที่ชำระ" cell). Pre-formatted numeric string in,
+ * formatted display out — keeps formatting logic consistent with the
+ * rest of the voucher.
+ */
+function PartialCell({
+  label,
+  value,
+  highlight = false,
+}: {
+  label: string;
+  value: string;
+  highlight?: boolean;
+}) {
+  return (
+    <div
+      className={
+        'rounded-md border border-border p-3 text-right ' +
+        (highlight ? 'bg-primary/5' : 'bg-muted/20')
+      }
+    >
+      <p className="text-xs text-muted-foreground mb-1 text-left">{label}</p>
+      <p
+        className={
+          'tabular-nums font-semibold ' +
+          (highlight ? 'text-primary text-lg' : 'text-sm')
+        }
+      >
+        {formatNumberDecimal(value)}
+      </p>
+    </div>
   );
 }
 

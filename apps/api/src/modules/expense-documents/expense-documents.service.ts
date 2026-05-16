@@ -16,16 +16,19 @@ import { ExpenseAccrualTemplate } from '../journal/cpa-templates/expense-accrual
 import { CreditNoteTemplate } from '../journal/cpa-templates/credit-note.template';
 import { PayrollTemplate } from '../journal/cpa-templates/payroll.template';
 import { VendorSettlementTemplate } from '../journal/cpa-templates/vendor-settlement.template';
+import { PettyCashTemplate } from '../journal/cpa-templates/petty-cash.template';
 import { CreateExpenseDocumentDto } from './dto/create.dto';
 import { UpdateExpenseDocumentDto } from './dto/update.dto';
 import { ListExpenseDocumentsQueryDto } from './dto/list-query.dto';
 import { CreateCreditNoteDto } from './dto/create-credit-note.dto';
 import { CreatePayrollDto } from './dto/create-payroll.dto';
 import { CreateSettlementDto } from './dto/create-settlement.dto';
+import { CreatePettyCashDto } from './dto/create-petty-cash.dto';
 import { hasCrossBranchAccess } from '../auth/branch-access.util';
 import { LineAggregatorService } from './services/line-aggregator.service';
 import { JePreviewService } from './services/je-preview.service';
 import { SsoConfigService } from '../sso-config/sso-config.service';
+import { PettyCashService } from './services/petty-cash.service';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
 
 /**
@@ -111,6 +114,8 @@ export class ExpenseDocumentsService implements OnModuleInit {
     private readonly aggregator: LineAggregatorService,
     private readonly jePreview: JePreviewService,
     private readonly ssoConfig: SsoConfigService,
+    private readonly pettyCashTemplate: PettyCashTemplate,
+    private readonly pettyCash: PettyCashService,
   ) {}
 
   // ─── V12/V13/V14 — Multi-line Adjustment validation (shared) ────────
@@ -663,6 +668,132 @@ export class ExpenseDocumentsService implements OnModuleInit {
         include: {
           settlement: { include: { settlementLines: true } },
           adjustments: { orderBy: { lineNo: 'asc' } },
+        },
+      });
+    });
+  }
+
+  // ─── Petty Cash create (C1) — multi-supplier single-doc ──────────────
+  async createPettyCash(
+    dto: CreatePettyCashDto,
+    user: { id: string; branchId?: string | null; role?: string | null },
+  ) {
+    // Branch access — same rule as other doc types.
+    if (!hasCrossBranchAccess(user) && user.branchId !== dto.branchId) {
+      throw new ForbiddenException('ไม่สามารถสร้างเอกสารในสาขาอื่นได้');
+    }
+
+    const documentDate = new Date(dto.documentDate);
+    const config = await this.pettyCash.getConfig();
+
+    // Compute per-line totals + aggregate. Petty Cash uses EXCLUSIVE pricing
+    // implicitly — `amount` is the pre-VAT base, `vatPercent` adds on top.
+    const linesPrepared = dto.lines.map((l, idx) => {
+      const base = new Prisma.Decimal(l.amount);
+      const vatPct = new Prisma.Decimal(l.vatPercent ?? 0);
+      const vat = base.times(vatPct).div(100).toDecimalPlaces(2);
+      return {
+        lineNo: idx + 1,
+        category: l.category,
+        description: l.description ?? null,
+        supplierName: l.supplierName,
+        quantity: new Prisma.Decimal(1),
+        unitPrice: base,
+        discount: new Prisma.Decimal(0),
+        vatPercent: vatPct,
+        whtPercent: new Prisma.Decimal(0),
+        whtFormType: null,
+        amountBeforeVat: base,
+        vatAmount: vat,
+        whtAmount: new Prisma.Decimal(0),
+        taxInvoiceNo: l.taxInvoiceNo ?? null,
+      };
+    });
+
+    const subtotal = linesPrepared.reduce(
+      (s, l) => s.plus(l.amountBeforeVat),
+      new Prisma.Decimal(0),
+    );
+    const vatTotal = linesPrepared.reduce(
+      (s, l) => s.plus(l.vatAmount),
+      new Prisma.Decimal(0),
+    );
+    const total = subtotal.plus(vatTotal);
+
+    // V20 — Petty Cash invariants (total ≤ limit, supplier on every line, account match).
+    this.pettyCash.validate(
+      {
+        total,
+        depositAccountCode: dto.depositAccountCode,
+        lines: dto.lines.map((l) => ({ supplierName: l.supplierName })),
+      },
+      config,
+    );
+
+    return this.prisma.$transaction(async (tx) => {
+      // CoA validation — each category must exist + be type "ค่าใช้จ่าย"
+      const codes = [...new Set(linesPrepared.map((l) => l.category))];
+      const coaRows = await tx.chartOfAccount.findMany({
+        where: { code: { in: codes }, deletedAt: null },
+        select: { code: true, type: true },
+      });
+      const byCode = new Map(coaRows.map((r) => [r.code, r.type]));
+      for (const c of codes) {
+        const t = byCode.get(c);
+        if (!t) throw new BadRequestException(`หมวดบัญชี ${c} ไม่พบในผังบัญชี`);
+        if (t !== 'ค่าใช้จ่าย') {
+          throw new BadRequestException(`หมวดบัญชี ${c} ไม่ใช่ "ค่าใช้จ่าย"`);
+        }
+      }
+
+      const number = await this.docNumber.next(tx, 'PETTY_CASH_REIMBURSEMENT', documentDate);
+
+      return tx.expenseDocument.create({
+        data: {
+          number,
+          documentType: 'PETTY_CASH_REIMBURSEMENT',
+          branchId: dto.branchId,
+          documentDate,
+          // Doc-level vendor stays null — supplier moves per-line.
+          vendorName: dto.custodianName ?? null,
+          description: dto.description ?? null,
+          subtotal,
+          vatAmount: vatTotal,
+          withholdingTax: new Prisma.Decimal(0),
+          whtFormType: null,
+          totalAmount: total,
+          netPayment: total,
+          depositAccountCode: dto.depositAccountCode,
+          paymentMethod: 'CASH',
+          status: 'DRAFT',
+          reference: dto.reference ?? null,
+          note: dto.note ?? null,
+          createdById: user.id,
+          expenseDetail: {
+            create: {
+              priceType: 'EXCLUSIVE',
+              lines: {
+                create: linesPrepared.map((l) => ({
+                  lineNo: l.lineNo,
+                  category: l.category,
+                  description: l.description,
+                  supplierName: l.supplierName,
+                  quantity: l.quantity,
+                  unitPrice: l.unitPrice,
+                  discount: l.discount,
+                  vatPercent: l.vatPercent,
+                  whtPercent: l.whtPercent,
+                  whtFormType: l.whtFormType,
+                  amountBeforeVat: l.amountBeforeVat,
+                  vatAmount: l.vatAmount,
+                  whtAmount: l.whtAmount,
+                })),
+              },
+            },
+          },
+        },
+        include: {
+          expenseDetail: { include: { lines: { orderBy: { lineNo: 'asc' } } } },
         },
       });
     });
@@ -1385,6 +1516,9 @@ export class ExpenseDocumentsService implements OnModuleInit {
       }
       if (doc.documentType === 'VENDOR_SETTLEMENT') {
         return this.settlementTemplate.execute(id, tx);
+      }
+      if (doc.documentType === 'PETTY_CASH_REIMBURSEMENT') {
+        return this.pettyCashTemplate.execute(id, tx);
       }
       const target = this.transition.resolveTargetStatus(
         doc.documentType,

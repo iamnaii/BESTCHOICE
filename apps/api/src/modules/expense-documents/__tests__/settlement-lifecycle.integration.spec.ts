@@ -12,6 +12,8 @@ import { PayrollTemplate } from '../../journal/cpa-templates/payroll.template';
 import { VendorSettlementTemplate } from '../../journal/cpa-templates/vendor-settlement.template';
 import { JournalAutoService } from '../../journal/journal-auto.service';
 import { SsoConfigService } from '../../sso-config/sso-config.service';
+import { PettyCashTemplate } from '../../journal/cpa-templates/petty-cash.template';
+import { PettyCashService } from '../services/petty-cash.service';
 import { seedFinanceCoa } from '../../../../prisma/seed-coa-finance';
 
 const prisma = new PrismaClient();
@@ -64,6 +66,8 @@ describe('Vendor Settlement lifecycle (integration)', () => {
       new LineAggregatorService(),
       new JePreviewService(new LineAggregatorService()),
       new SsoConfigService(prisma as never),
+      new PettyCashTemplate(journal, prisma as never),
+      new PettyCashService(prisma as never),
     );
   }
 

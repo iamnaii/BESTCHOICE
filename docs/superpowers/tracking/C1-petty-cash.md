@@ -1,6 +1,6 @@
 # C1 · Petty Cash Reimbursement
 
-**Status:** ⬜ Pending  |  **Started:** —  |  **PRs:** —
+**Status:** 🔵 In Review  |  **Started:** 2026-05-16  |  **PRs:** TBD (backend bundle; UI + PDF deferred)
 **Spec:** —  ·  **Plan:** —
 
 ## Context
@@ -18,28 +18,31 @@ JE shape: Dr each `53-XXXX` per line + Dr `11-4101` for VATable lines / Cr `11-1
 
 | ID | Item | Priority | Status | PR | Evidence/Notes |
 |---|---|---|---|---|---|
-| C1.1 | Add `PETTY_CASH_REIMBURSEMENT` to the expense doc type enum in `schema.prisma` + migration | P0 | ⬜ | — | File: `apps/api/prisma/schema.prisma` — verify actual enum name (likely `ExpenseDocumentType` or `DocType`) via `grep "PAYROLL.*SETTLEMENT" prisma/schema.prisma` |
-| C1.2 | Schema: add `supplier_name` column to `expense_lines` (or new `petty_cash_lines` table) | P0 | ⬜ | — | Decision needed — see Open Questions |
-| C1.3 | V20 validator: total ≤ `petty_cash_limit` setting, every line has `supplier_name`, doc has `cashAccountCode = 11-1201` | P0 | ⬜ | — | Add to expense-documents.service.ts |
-| C1.4 | `PettyCashTemplate` JE generator — Dr per-line account + per-line VAT / Cr cashAccountCode | P0 | ⬜ | — | New file: `apps/api/src/modules/journal/cpa-templates/petty-cash.template.ts` |
-| C1.5 | `PettyCashService` — limit lookup from settings, custodian assignment, replenish threshold alert | P0 | ⬜ | — | New file under `expense-documents/services/` |
-| C1.6 | UI: `PettyCashFormV4` page following mockup 04B layout — header (date, custodian, account) + per-row supplier table + JE preview | P0 | ⬜ | — | New file under `apps/web/src/components/expense-form-v4/` |
-| C1.7 | Settings rows: `petty_cash_enabled` / `petty_cash_account` / `petty_cash_limit` / `petty_cash_replenish_threshold` / `petty_cash_custodian` | P0 | ⬜ | — | Maps to A1.1.5.1–A1.1.5.5 |
-| C1.8 | Voucher PDF template — mockup 04B layout (header + per-row supplier table, no signatures grid for petty cash) | P1 | ⬜ | — | New template under reporting/voucher templates |
+| C1.1 | Add `PETTY_CASH_REIMBURSEMENT` to `DocumentType` enum + migration | P0 | 🔵 | TBD | [schema.prisma](../../../apps/api/prisma/schema.prisma) extends `DocumentType` enum. [Migration 20260928000000_petty_cash_reimbursement](../../../apps/api/prisma/migrations/20260928000000_petty_cash_reimbursement/migration.sql) — `ALTER TYPE "DocumentType" ADD VALUE 'PETTY_CASH_REIMBURSEMENT'`. `DocNumberService` PREFIX_MAP gets `PC` prefix → docs number `PC-YYYYMMDD-NNNN`. |
+| C1.2 | Schema: add `supplier_name` column to `expense_lines` | P0 | 🔵 | TBD | **Decision (Q1): added nullable column** to existing `expense_lines` rather than a separate polymorphic `petty_cash_lines` table — minimal disruption and matches the established 1-detail-many-lines pattern. Same migration as C1.1 adds `ALTER TABLE expense_lines ADD COLUMN supplier_name TEXT`. For other DocumentTypes the column stays null and the doc-level `vendorName` is used. |
+| C1.3 | V20 validator: total ≤ limit, every line has supplier, account = 11-1201 | P0 | 🔵 | TBD | `PettyCashService.validate(opts, config)` enforces V20.1/V20.2/V20.3. Called from `createPettyCash` in `expense-documents.service.ts` before persist. Thai error messages with code prefix. 9 unit tests in [petty-cash.service.spec.ts](../../../apps/api/src/modules/expense-documents/services/__tests__/petty-cash.service.spec.ts). |
+| C1.4 | `PettyCashTemplate` JE generator | P0 | 🔵 | TBD | [petty-cash.template.ts](../../../apps/api/src/modules/journal/cpa-templates/petty-cash.template.ts) — emits Dr per-line category + Dr 11-4101 (aggregated VAT) / Cr depositAccountCode. Idempotent via journalEntryId probe. Per-line `supplierName` flows into JE line description for audit trail. `metadata.flow = 'expense-petty-cash'` so PP30 (K-04) picks up the input VAT correctly. |
+| C1.5 | `PettyCashService` — config lookup + V20 | P0 | 🔵 | TBD | [petty-cash.service.ts](../../../apps/api/src/modules/expense-documents/services/petty-cash.service.ts) — `getConfig()` reads SystemConfig keys with defaults (`account: 11-1201, limit: 5000`). `createPettyCash` orchestrates: compute lines → aggregate → V20 validate → persist with `ExpenseDetail` + per-line supplier. New `POST /expense-documents/petty-cash` controller endpoint. |
+| C1.6 | UI: `PettyCashFormV4` page | P0 | ⬜ | — | **Deferred to follow-up PR**. Backend DTO + endpoint already accept the new shape. UI is purely additive (new docType case in ExpenseFormV4 + mockup 04B layout). |
+| C1.7 | Settings rows: `petty_cash_*` keys | P0 | ⬜ | deferred to A1 | Owner can add via /settings UI when ready. `PettyCashService.getConfig()` falls back to safe defaults if rows are absent (account=11-1201, limit=5000) so the feature works out-of-the-box. Maps to A1.1.5.1–A1.1.5.5 which will land in the Settings Audit phase. |
+| C1.8 | Voucher PDF template (mockup 04B) | P1 | ⬜ | — | **Deferred to follow-up PR**. Standalone work that doesn't gate API usage. Receipt PDF service can be extended in a separate session. |
 
 ## Decision Log
 
-(empty)
+- **2026-05-16:** Backend bundle approach (mirrors B2). 6/8 items in one PR (1, 2, 3, 4, 5, controller). UI (6) + PDF (8) deferred to follow-up — backend DTO already accepts the right shape so UI is purely additive. C1.7 settings rows deferred to A1 (admin UI work). Service falls back to safe defaults so feature works without those rows.
+- **2026-05-16:** Q1 answered — single `expense_lines` with nullable `supplier_name`. Existing pattern; no polymorphic refactor. Other DocumentTypes keep the column null.
+- **2026-05-16:** Q2 answered — NO WHT on petty cash. Small-cash workflow scope. Vendors that need WHT use regular EXPENSE flow. DTO + template enforce this (no `whtAmount` field, no WHT line in JE).
 
 ## Open Questions
 
-- [ ] Q: C1.2 — add `supplier_name` column to existing `expense_lines` table, or create separate `petty_cash_lines` polymorphic table? Existing pattern uses single `expense_lines` with nullable fields
-- [ ] Q: Should petty cash allow WHT on a per-line basis (e.g. a ภ.ง.ด.3 vendor mixed in with cash receipts)?
+- [x] Q: C1.2 — add `supplier_name` column to existing `expense_lines` table, or create separate `petty_cash_lines` polymorphic table? — **Existing `expense_lines` with nullable column**. Minimal disruption.
+- [x] Q: Should petty cash allow WHT on a per-line basis? — **No**. Out of scope; use EXPENSE flow for WHT vendors.
 
 ## Dependencies
 
 - ✅ T0
-- A1 audit results may flag conflicts with existing `expense_lines` shape (A1.1.5.1–A1.1.5.5)
+- ✅ A0/A1 don't block this PR (default config kicks in)
+- C1.6 UI follow-up should reuse `ExpenseFormV4` like other doctypes (add `PETTY_CASH_REIMBURSEMENT` to DocTypePicker + new section component for per-row supplier table)
 
 ## Related anti-patterns
 

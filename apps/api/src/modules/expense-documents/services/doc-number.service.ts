@@ -6,6 +6,7 @@ const PREFIX_MAP: Record<DocumentType, string> = {
   CREDIT_NOTE: 'CN',
   PAYROLL: 'PR',
   VENDOR_SETTLEMENT: 'SE',
+  PETTY_CASH_REIMBURSEMENT: 'PC',
 };
 
 @Injectable()

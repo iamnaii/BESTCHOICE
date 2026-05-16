@@ -1537,6 +1537,9 @@ export class ExpenseDocumentsService implements OnModuleInit {
   }
 
   // ─── Post (DRAFT → ACCRUAL or POSTED) ────────────────────────────────
+  // D1.2.1.6 — also accepts APPROVED → POSTED (when approval_enabled is on
+  // AND auto_post_on_approve is false, OWNER manually calls post() on an
+  // APPROVED doc; assertCanPost permits both DRAFT + APPROVED).
   async post(id: string, _userId: string) {
     return this.prisma.$transaction(async (tx) => {
       // Per-doc advisory lock — serializes concurrent post calls on the same id.
@@ -1712,6 +1715,164 @@ export class ExpenseDocumentsService implements OnModuleInit {
         }
         return this.accrualTemplate.execute(id, tx);
       }
+    });
+  }
+
+  // ─── Approve (PENDING_APPROVAL → APPROVED → optionally POSTED) ────────
+  // D1.2.1.6 — second leg of the Approval Workflow. The DRAFT →
+  // PENDING_APPROVAL gate is wired in D1.2.1.1 (approval_enabled flag).
+  //
+  // Behaviour:
+  //  - Loads the doc under the same `post:` advisory lock so a concurrent
+  //    approve+post cannot double-post a JE.
+  //  - Asserts the source status is PENDING_APPROVAL.
+  //  - Flips status → APPROVED.
+  //  - Reads SystemConfig `auto_post_on_approve` (default true). When true,
+  //    chains to post() in the same transaction so APPROVED never persists
+  //    visibly. When false, returns the APPROVED doc and OWNER posts later
+  //    by calling /expenses/:id/post (which now also accepts APPROVED via
+  //    StatusTransitionService.assertCanPost).
+  //
+  // userId is currently unused (approve audit metadata is the responsibility
+  // of D1.2.1.5 notification + AuditInterceptor on the controller). Kept for
+  // signature parity with post() / voidDocument() and for future expansion.
+  async approve(id: string, _userId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      // Re-use the `post:` lock key — approve always either becomes the JE
+      // post (auto path) or precedes a future post(), so serializing on the
+      // same lock is correct.
+      await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(hashtext($1))`, `post:${id}`);
+
+      const doc = await tx.expenseDocument.findUniqueOrThrow({ where: { id } });
+      if (doc.deletedAt) throw new NotFoundException('เอกสารถูกลบแล้ว');
+      this.transition.assertCanApprove({ from: doc.status });
+
+      // Stamp APPROVED first so the auto-post branch starts from a clean
+      // APPROVED row (assertCanPost permits APPROVED). When auto-post is off
+      // the APPROVED state persists and downstream post() will pick it up.
+      await tx.expenseDocument.update({
+        where: { id },
+        data: { status: 'APPROVED' as DocumentStatus },
+      });
+
+      const autoPost = await this.readBoolFlag(tx, 'auto_post_on_approve', true);
+      if (!autoPost) {
+        return tx.expenseDocument.findUniqueOrThrow({ where: { id } });
+      }
+
+      // Auto-post chain — replicates the body of post() but skips the lock
+      // (already held) and the assertCanPost from-DRAFT check (we just set
+      // APPROVED, and the same guard permits APPROVED).
+      // We DO re-run all the integrity guards (period open, attachment,
+      // WHT routing, etc.) because they validate the doc itself, not the
+      // transition. Pulling these out of post() into a shared helper would
+      // be cleaner but risks a wider blast radius — keep the duplication
+      // tight to this method until D1.2.1.1 wires the DRAFT→PENDING gate.
+      const shopForPeriod = await tx.companyInfo.findFirst({
+        where: { companyCode: 'SHOP', deletedAt: null },
+        select: { id: true },
+      });
+      if (!shopForPeriod) {
+        throw new NotFoundException(
+          'CompanyInfo with companyCode=SHOP not found — seed accounting data first',
+        );
+      }
+      const periodDate = doc.documentDate ?? new Date();
+      await validatePeriodOpen(tx, periodDate, shopForPeriod.id);
+
+      const thresholdCfg = await tx.systemConfig.findUnique({
+        where: { key: 'ATTACHMENT_REQUIRED_ABOVE_AMOUNT' },
+      });
+      const rawThreshold = thresholdCfg?.value ?? '0';
+      const threshold = new Prisma.Decimal(
+        Number.isFinite(Number(rawThreshold)) ? rawThreshold : '0',
+      );
+      const docTotal = new Prisma.Decimal(doc.totalAmount.toString());
+      if (threshold.gt(0) && docTotal.gte(threshold) && !doc.receiptImageUrl) {
+        throw new BadRequestException(
+          `เอกสารยอด ${docTotal.toFixed(2)} บาท ต้องแนบไฟล์ประกอบ (เกณฑ์ ${threshold.toFixed(2)} บาท)`,
+        );
+      }
+
+      if (!['EXPENSE', 'CREDIT_NOTE', 'PAYROLL', 'VENDOR_SETTLEMENT'].includes(doc.documentType)) {
+        throw new BadRequestException(`type ${doc.documentType} not supported`);
+      }
+
+      // WHT routing guard (mirrors post() — defense in depth)
+      const wht = new Prisma.Decimal(doc.withholdingTax?.toString() ?? '0');
+      if (wht.gt(0)) {
+        if (doc.documentType === 'EXPENSE') {
+          if (!doc.whtFormType) {
+            const detail = await tx.expenseDetail.findUnique({
+              where: { documentId: id },
+              include: { lines: true },
+            });
+            const whtLines = (detail?.lines ?? []).filter(
+              (l) => l.whtAmount && new Prisma.Decimal(l.whtAmount.toString()).gt(0),
+            );
+            const allLinesHaveFormType =
+              whtLines.length > 0 && whtLines.every((l) => !!l.whtFormType);
+            if (!allLinesHaveFormType) {
+              throw new BadRequestException(
+                'whtFormType ต้องระบุเมื่อมี WHT — เลือก PND3 หรือ PND53',
+              );
+            }
+            for (const l of whtLines) {
+              if (l.whtFormType !== 'PND3' && l.whtFormType !== 'PND53') {
+                throw new BadRequestException(
+                  `whtFormType ของบรรทัด ${(l as { lineNo?: number }).lineNo ?? '?'} ` +
+                    `ต้องเป็น PND3 หรือ PND53 (พบ ${l.whtFormType ?? 'null'})`,
+                );
+              }
+            }
+          } else if (doc.whtFormType !== 'PND3' && doc.whtFormType !== 'PND53') {
+            throw new BadRequestException(
+              `whtFormType ต้องเป็น PND3 หรือ PND53 (พบ ${doc.whtFormType})`,
+            );
+          }
+        } else if (
+          doc.documentType === 'VENDOR_SETTLEMENT' ||
+          doc.documentType === 'CREDIT_NOTE'
+        ) {
+          if (!doc.whtFormType) {
+            throw new BadRequestException(
+              'whtFormType ต้องระบุเมื่อมี WHT — เลือก PND3 หรือ PND53',
+            );
+          }
+          if (doc.whtFormType !== 'PND3' && doc.whtFormType !== 'PND53') {
+            throw new BadRequestException(
+              `whtFormType ต้องเป็น PND3 หรือ PND53 (พบ ${doc.whtFormType})`,
+            );
+          }
+        }
+      }
+
+      if (doc.documentType === 'CREDIT_NOTE') {
+        return this.creditNoteTemplate.execute(id, tx);
+      }
+      if (doc.documentType === 'PAYROLL') {
+        return this.payrollTemplate.execute(id, tx);
+      }
+      if (doc.documentType === 'VENDOR_SETTLEMENT') {
+        return this.settlementTemplate.execute(id, tx);
+      }
+      if (doc.documentType === 'PETTY_CASH_REIMBURSEMENT') {
+        return this.pettyCashTemplate.execute(id, tx);
+      }
+      const target = this.transition.resolveTargetStatus(
+        doc.documentType,
+        !!doc.paymentMethod && !!doc.depositAccountCode,
+      );
+      if (target === 'POSTED') {
+        return this.sameDayTemplate.execute(id, tx);
+      }
+      if (doc.withholdingTax && doc.withholdingTax.gt(0)) {
+        throw new BadRequestException(
+          'V15: เอกสารตั้งหนี้ (ACCRUAL) ห้ามมี WHT (มาตรา 50 ป.รัษฎากร) — ' +
+            'WHT จะถูกบันทึกตอน Settlement เมื่อจ่ายเงินจริง',
+        );
+      }
+      return this.accrualTemplate.execute(id, tx);
     });
   }
 

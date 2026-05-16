@@ -87,7 +87,7 @@ Sub-prioritization within expanded D1 scope:
 | D1.2.1.3 | `approvers_list` user IDs | P1 | ⬜ | — | DB-driven, replace hardcoded APPROVER_ROLES |
 | D1.2.1.4 | `approval_required_doc_types` ([PAYROLL]) | P1 | ⬜ | — | Doctype filter |
 | D1.2.1.5 | `notification_on_pending` | P1 | ⬜ | — | Hook into existing notifier |
-| D1.2.1.6 | `auto_post_on_approve` + DocumentStatus enum extension | P1 | ⬜ | — | Schema change: add PENDING_APPROVAL/APPROVED |
+| D1.2.1.6 | `auto_post_on_approve` + DocumentStatus enum extension | P1 | 🟡 | TBD | Schema migration `20260928100000_approval_workflow_status` adds PENDING_APPROVAL/APPROVED; `approve()` service method + `POST /:id/approve` endpoint; default = true (auto-post in same tx) |
 
 ### Q-blocked items (wait for Q1–Q8 answers in PR #879)
 

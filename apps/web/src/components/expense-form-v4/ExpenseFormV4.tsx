@@ -54,6 +54,7 @@ const initial = (branchId: string, defaultCash: string): ExpenseFormState => {
     approvedById: '',
     fromTemplateId: '',
     lines: [newLine()],
+    cnMode: 'LINKED',
     originalDocumentId: '',
     cnReason: '',
     payroll: {
@@ -250,8 +251,15 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
         });
         createdId = data.id;
       } else if (state.docType === 'CREDIT_NOTE') {
-        if (!state.originalDocumentId || !state.cnReason.trim()) {
-          throw new Error('กรุณาเลือกเอกสารต้นฉบับและระบุเหตุผล');
+        const isStandalone = state.cnMode === 'STANDALONE';
+        if (!state.cnReason.trim()) {
+          throw new Error('กรุณาระบุเหตุผลในการลดหนี้');
+        }
+        if (!isStandalone && !state.originalDocumentId) {
+          throw new Error('โหมด LINKED ต้องเลือกเอกสารต้นฉบับ');
+        }
+        if (isStandalone && !state.vendorName.trim()) {
+          throw new Error('โหมด STANDALONE ต้องระบุชื่อผู้ขาย');
         }
         const validLines = state.lines.filter((l) => l.category && parseFloat(l.unitPrice) > 0);
         if (validLines.length === 0) {
@@ -260,11 +268,19 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
         // Server computes totals from lines — no preview-je hop needed.
         // This also eliminates the float-string-Decimal dance at the money boundary.
         const { data } = await api.post('/expense-documents/credit-note', {
+          mode: state.cnMode,
           branchId: state.branchId,
           documentDate: state.documentDate,
-          originalDocumentId: state.originalDocumentId,
+          originalDocumentId: isStandalone ? undefined : state.originalDocumentId,
+          vendorName: isStandalone ? state.vendorName.trim() : undefined,
+          vendorTaxId: isStandalone ? state.vendorTaxId.trim() || undefined : undefined,
           reason: state.cnReason,
-          depositAccountCode: state.depositAccountCode || undefined,
+          // STANDALONE per mockup §4 defaults to AP-clearing (Dr 21-1104) — omit
+          // depositAccountCode so the backend takes the no-deposit branch.
+          // LINKED retains the existing behavior (backend uses original.status
+          // to decide Dr 21-1104 vs Dr cash; sends current cash account anyway
+          // for POSTED-original refund flow).
+          depositAccountCode: isStandalone ? undefined : state.depositAccountCode || undefined,
           note: state.note || undefined,
           lines: validLines.map((l) => ({
             category: l.category,

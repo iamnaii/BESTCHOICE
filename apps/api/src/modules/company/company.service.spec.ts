@@ -119,4 +119,74 @@ describe('CompanyService', () => {
       await expect(service.remove('missing')).rejects.toThrow(NotFoundException);
     });
   });
+
+  // D1.2.2.* — Public-safe CompanyInfo for voucher branding
+  describe('findPublic', () => {
+    it('returns SHOP + FINANCE with only public-safe fields', async () => {
+      prisma.companyInfo.findMany.mockResolvedValue([
+        {
+          id: 'shop-1',
+          nameTh: 'BEST CHOICE SHOP',
+          nameEn: null,
+          taxId: '0105561234567',
+          companyCode: 'SHOP',
+          address: 'BKK',
+          phone: null,
+          logoUrl: null,
+        },
+        {
+          id: 'fin-1',
+          nameTh: 'BEST CHOICE FINANCE',
+          nameEn: null,
+          taxId: '0105561234567',
+          companyCode: 'FINANCE',
+          address: 'BKK',
+          phone: null,
+          logoUrl: 'https://x/logo.png',
+        },
+      ]);
+      const result = await service.findPublic();
+      expect(result.shop?.companyCode).toBe('SHOP');
+      expect(result.finance?.companyCode).toBe('FINANCE');
+      expect(result.finance?.logoUrl).toBe('https://x/logo.png');
+      // Query must request only the safe field set (no director_*, bank_*, etc.)
+      const call = prisma.companyInfo.findMany.mock.calls[0][0];
+      expect(call.select).toEqual(
+        expect.objectContaining({
+          id: true,
+          nameTh: true,
+          taxId: true,
+          address: true,
+          logoUrl: true,
+        }),
+      );
+      expect(call.select).not.toHaveProperty('directorName');
+      expect(call.select).not.toHaveProperty('bankAccountNumber');
+    });
+
+    it('returns nulls when no SHOP or FINANCE row is configured', async () => {
+      prisma.companyInfo.findMany.mockResolvedValue([]);
+      const result = await service.findPublic();
+      expect(result.shop).toBeNull();
+      expect(result.finance).toBeNull();
+    });
+
+    it('returns shop only if FINANCE is missing', async () => {
+      prisma.companyInfo.findMany.mockResolvedValue([
+        {
+          id: 'shop-1',
+          nameTh: 'BEST CHOICE SHOP',
+          nameEn: null,
+          taxId: '0105561234567',
+          companyCode: 'SHOP',
+          address: 'BKK',
+          phone: null,
+          logoUrl: null,
+        },
+      ]);
+      const result = await service.findPublic();
+      expect(result.shop?.nameTh).toBe('BEST CHOICE SHOP');
+      expect(result.finance).toBeNull();
+    });
+  });
 });

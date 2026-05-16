@@ -9,11 +9,18 @@ import { PrismaService } from '../../prisma/prisma.service';
  * The AuditLog table carries the legal audit trail (who did what, when).
  * The BEFORE DELETE trigger installed by 20260520300000_audit_log_archive_immutable
  * refuses physical DELETEs, so we *archive* instead: set archived_at on any
- * row older than AUDIT_LOG_RETENTION_DAYS.
+ * row older than the configured retention.
  *
  * Archived rows remain queryable for forensics but fall outside the hot
  * reporting set. A separate purge path (not this cron) can later hard-cull
- * archived rows beyond the 7-year legal retention.
+ * archived rows beyond the legal retention.
+ *
+ * **D1.4.3.1 (2026-05-16):** default raised 180→1825d (5 years) per
+ * พ.ร.บ.บัญชี ม.7 legal compliance. Retention is now resolved in this order:
+ *   1. SystemConfig key `audit_log_retention_days` (OWNER-editable via UI)
+ *   2. env var `AUDIT_LOG_RETENTION_DAYS` (ops escape hatch, no restart needed
+ *      to override DB temporarily)
+ *   3. DEFAULT_RETENTION_DAYS (1825)
  *
  * Schedule: Sunday 03:00 Asia/Bangkok. Lines up after the audit-chain-verify
  * cron at 03:45 on other days, avoiding lock contention.
@@ -21,21 +28,44 @@ import { PrismaService } from '../../prisma/prisma.service';
 @Injectable()
 export class AuditRetentionCron {
   private readonly logger = new Logger(AuditRetentionCron.name);
-  static readonly DEFAULT_RETENTION_DAYS = 180;
+  /** D1.4.3.1 — 1825d = 5 years per พ.ร.บ.บัญชี ม.7 (was 180d pre-A1). */
+  static readonly DEFAULT_RETENTION_DAYS = 1825;
 
   constructor(private readonly prisma: PrismaService) {}
 
-  private getRetentionDays(): number {
+  private async getRetentionDays(): Promise<number> {
+    // Precedence 1: SystemConfig key `audit_log_retention_days` (OWNER-editable
+    // via existing PATCH /settings flow, no restart). Read via PrismaService
+    // directly rather than SettingsService to avoid an AuditModule ↔
+    // SettingsModule circular dependency (SettingsService consumes AuditService
+    // for change tracking; AuditModule providers cannot transitively re-import
+    // SettingsModule).
+    try {
+      const row = await this.prisma.systemConfig.findFirst({
+        where: { key: 'audit_log_retention_days', deletedAt: null },
+        select: { value: true },
+      });
+      if (row?.value) {
+        const n = Number.parseInt(row.value, 10);
+        if (Number.isFinite(n) && n > 0) return n;
+      }
+    } catch {
+      // DB error during config read shouldn't break the cron — fall through
+      // to env var / default.
+    }
+    // Precedence 2: env var (ops escape hatch)
     const raw = process.env.AUDIT_LOG_RETENTION_DAYS;
-    if (!raw) return AuditRetentionCron.DEFAULT_RETENTION_DAYS;
-    const n = Number.parseInt(raw, 10);
-    if (!Number.isFinite(n) || n <= 0) return AuditRetentionCron.DEFAULT_RETENTION_DAYS;
-    return n;
+    if (raw) {
+      const n = Number.parseInt(raw, 10);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+    // Precedence 3: compliance default
+    return AuditRetentionCron.DEFAULT_RETENTION_DAYS;
   }
 
   @Cron('0 3 * * 0', { timeZone: 'Asia/Bangkok' })
   async archiveOldEntries(): Promise<{ archived: number; retentionDays: number }> {
-    const retentionDays = this.getRetentionDays();
+    const retentionDays = await this.getRetentionDays();
     try {
       const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
       // Soft-archive only: the BEFORE DELETE trigger (T2-C4 ext) refuses

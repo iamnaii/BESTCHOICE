@@ -6,7 +6,7 @@ import {
   Logger,
   OnModuleInit,
 } from '@nestjs/common';
-import { Prisma, DocumentStatus } from '@prisma/client';
+import { Prisma, DocumentStatus, DocumentType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { DocNumberService } from './services/doc-number.service';
@@ -144,6 +144,46 @@ export class ExpenseDocumentsService implements OnModuleInit {
       return fallback;
     } catch {
       return fallback;
+    }
+  }
+
+  /**
+   * D1.2.1.4 — Doc-type filter for the Approval Workflow gate. JSON-encoded
+   * array of DocumentType enum values stored in SystemConfig key
+   * `approval_required_doc_types`. Default = `['PAYROLL']` — the most
+   * common controlled-cost category. Other doc types skip approval even
+   * when `approval_enabled` is true.
+   *
+   * Returns the set as a parsed array, defaulting to ['PAYROLL'] when the
+   * row is missing / malformed / contains invalid enum values.
+   */
+  private async getApprovalRequiredDocTypes(
+    tx: Prisma.TransactionClient | PrismaService,
+  ): Promise<DocumentType[]> {
+    const defaults: DocumentType[] = ['PAYROLL'];
+    const validValues: DocumentType[] = [
+      'EXPENSE',
+      'CREDIT_NOTE',
+      'PAYROLL',
+      'VENDOR_SETTLEMENT',
+      'PETTY_CASH_REIMBURSEMENT',
+    ];
+    try {
+      const row = await tx.systemConfig.findFirst({
+        where: { key: 'approval_required_doc_types', deletedAt: null },
+        select: { value: true },
+      });
+      if (!row?.value) return defaults;
+      const parsed: unknown = JSON.parse(row.value);
+      if (!Array.isArray(parsed) || parsed.length === 0) return defaults;
+      const filtered = parsed.filter((v): v is DocumentType =>
+        typeof v === 'string' && (validValues as string[]).includes(v),
+      );
+      // Empty after filtering = misconfig → preserve defaults rather than
+      // letting an empty list disable the gate entirely.
+      return filtered.length > 0 ? filtered : defaults;
+    } catch {
+      return defaults;
     }
   }
 
@@ -1547,6 +1587,29 @@ export class ExpenseDocumentsService implements OnModuleInit {
 
       const doc = await tx.expenseDocument.findUniqueOrThrow({ where: { id } });
       if (doc.deletedAt) throw new NotFoundException('เอกสารถูกลบแล้ว');
+
+      // D1.2.1.4 — doc-type filter on the Approval Workflow gate. Only docs
+      // whose `documentType` is in SystemConfig `approval_required_doc_types`
+      // need to go through approval; everything else skips straight to POST.
+      //
+      // Defaults to `['PAYROLL']` — payroll is the most common controlled-cost
+      // category. If the OWNER adds more types to the list (e.g. ['PAYROLL',
+      // 'VENDOR_SETTLEMENT']), those types also start requiring approval.
+      //
+      // Gate fires only when source is DRAFT (APPROVED docs flow through).
+      // Threshold / approver gates live in sibling PRs D1.2.1.2 / D1.2.1.3 —
+      // at merge time the gates compose with AND semantics.
+      const approvalEnabled = await this.readBoolFlag(tx, 'approval_enabled', false);
+      if (approvalEnabled && doc.status === 'DRAFT') {
+        const requiredTypes = await this.getApprovalRequiredDocTypes(tx);
+        if (requiredTypes.includes(doc.documentType)) {
+          throw new BadRequestException(
+            `เอกสารประเภท ${doc.documentType} ต้องผ่านการอนุมัติก่อน Post — ` +
+              `กรุณากด "ส่งขออนุมัติ" ก่อน`,
+          );
+        }
+      }
+
       this.transition.assertCanPost({
         type: doc.documentType,
         from: doc.status,

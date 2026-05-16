@@ -667,6 +667,110 @@ describe('ExpenseDocumentsService', () => {
         /CompanyInfo with companyCode=SHOP/,
       );
     });
+
+    // D1.2.1.4 — doc-type filter on the Approval Workflow gate.
+    it('D1.2.1.4: rejects post on PAYROLL when approval_enabled=true (default list includes PAYROLL)', async () => {
+      prisma.systemConfig.findFirst.mockImplementation(
+        (args: { where: { key: string } }) => {
+          if (args.where.key === 'approval_enabled') return Promise.resolve({ value: 'true' });
+          // approval_required_doc_types absent -> default ['PAYROLL']
+          if (args.where.key === 'reverse_reason_required') return Promise.resolve({ value: 'false' });
+          return Promise.resolve(null);
+        },
+      );
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-pr',
+        status: 'DRAFT',
+        documentType: 'PAYROLL',
+        paymentMethod: null,
+        depositAccountCode: null,
+        totalAmount: new Decimal('50000.00'),
+        withholdingTax: new Decimal('0'),
+        whtFormType: null,
+        deletedAt: null,
+      });
+      await expect(service.post('doc-pr', 'user-1')).rejects.toThrow(
+        /ต้องผ่านการอนุมัติ/,
+      );
+      expect(payroll.execute).not.toHaveBeenCalled();
+    });
+
+    it('D1.2.1.4: post on EXPENSE proceeds when EXPENSE NOT in approval_required_doc_types', async () => {
+      prisma.systemConfig.findFirst.mockImplementation(
+        (args: { where: { key: string } }) => {
+          if (args.where.key === 'approval_enabled') return Promise.resolve({ value: 'true' });
+          // Default list = ['PAYROLL'] - EXPENSE not subject to approval
+          if (args.where.key === 'reverse_reason_required') return Promise.resolve({ value: 'false' });
+          return Promise.resolve(null);
+        },
+      );
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-ex-skip',
+        status: 'DRAFT',
+        documentType: 'EXPENSE',
+        paymentMethod: 'CASH',
+        depositAccountCode: '11-1101',
+        totalAmount: new Decimal('100000.00'),
+        withholdingTax: new Decimal('0'),
+        whtFormType: null,
+        deletedAt: null,
+      });
+      transition.resolveTargetStatus.mockReturnValue('POSTED');
+      await service.post('doc-ex-skip', 'user-1');
+      expect(sameDay.execute).toHaveBeenCalledWith('doc-ex-skip', expect.anything());
+    });
+
+    it('D1.2.1.4: OWNER-configured list adds EXPENSE -> EXPENSE now gated', async () => {
+      prisma.systemConfig.findFirst.mockImplementation(
+        (args: { where: { key: string } }) => {
+          if (args.where.key === 'approval_enabled') return Promise.resolve({ value: 'true' });
+          if (args.where.key === 'approval_required_doc_types') {
+            return Promise.resolve({ value: JSON.stringify(['EXPENSE', 'PAYROLL']) });
+          }
+          if (args.where.key === 'reverse_reason_required') return Promise.resolve({ value: 'false' });
+          return Promise.resolve(null);
+        },
+      );
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-ex-gated',
+        status: 'DRAFT',
+        documentType: 'EXPENSE',
+        paymentMethod: 'CASH',
+        depositAccountCode: '11-1101',
+        totalAmount: new Decimal('500.00'),
+        withholdingTax: new Decimal('0'),
+        whtFormType: null,
+        deletedAt: null,
+      });
+      await expect(service.post('doc-ex-gated', 'user-1')).rejects.toThrow(
+        /ต้องผ่านการอนุมัติ/,
+      );
+    });
+
+    it('D1.2.1.4: empty list falls back to default ["PAYROLL"] (gate not silently disabled)', async () => {
+      prisma.systemConfig.findFirst.mockImplementation(
+        (args: { where: { key: string } }) => {
+          if (args.where.key === 'approval_enabled') return Promise.resolve({ value: 'true' });
+          if (args.where.key === 'approval_required_doc_types') {
+            return Promise.resolve({ value: '[]' });
+          }
+          if (args.where.key === 'reverse_reason_required') return Promise.resolve({ value: 'false' });
+          return Promise.resolve(null);
+        },
+      );
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-pr-default',
+        status: 'DRAFT',
+        documentType: 'PAYROLL',
+        paymentMethod: null,
+        depositAccountCode: null,
+        totalAmount: new Decimal('50000.00'),
+        withholdingTax: new Decimal('0'),
+        whtFormType: null,
+        deletedAt: null,
+      });
+      await expect(service.post('doc-pr-default', 'user-1')).rejects.toThrow(/ต้องผ่านการอนุมัติ/);
+    });
   });
 
   describe('update', () => {

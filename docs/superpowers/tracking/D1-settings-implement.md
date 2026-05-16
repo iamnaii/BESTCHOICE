@@ -85,7 +85,7 @@ Sub-prioritization within expanded D1 scope:
 | D1.2.1.1 | `approval_enabled` | P1 | ⬜ | — | Feature flag check at create/post |
 | D1.2.1.2 | `approval_threshold` 50,000 ฿ | P1 | ⬜ | — | Amount-based gate |
 | D1.2.1.3 | `approvers_list` user IDs | P1 | ⬜ | — | DB-driven, replace hardcoded APPROVER_ROLES |
-| D1.2.1.4 | `approval_required_doc_types` ([PAYROLL]) | P1 | ⬜ | — | Doctype filter |
+| D1.2.1.4 | `approval_required_doc_types` ([PAYROLL]) | P1 | 🟡 | TBD | SystemConfig `approval_required_doc_types` (JSON array of DocumentType values, default `["PAYROLL"]`). New `getApprovalRequiredDocTypes()` helper with enum-value validation. Gate in `post()` fires only when `approval_enabled` AND doc.documentType in list AND status = DRAFT |
 | D1.2.1.5 | `notification_on_pending` | P1 | ⬜ | — | Hook into existing notifier |
 | D1.2.1.6 | `auto_post_on_approve` + DocumentStatus enum extension | P1 | ⬜ | — | Schema change: add PENDING_APPROVAL/APPROVED |
 

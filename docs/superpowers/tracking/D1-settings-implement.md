@@ -112,7 +112,7 @@ Sub-prioritization within expanded D1 scope:
 | D1.1.5.1 | `petty_cash_enabled` | P0 | ⬜ | Q1 | Feature flag |
 | D1.1.5.4 | `petty_cash_replenish_threshold` (dead setting decision) | P0 | ⬜ | Q8 | Kill or wire |
 | D1.1.5.5 | `petty_cash_custodian` (FK) | P0 | ⬜ | Q1 | Schema + assignment UI |
-| D1.3.1.1 | `draft_alerts_enabled` | P2 | ⬜ | — | New cron + flag |
+| D1.3.1.1 | `draft_alerts_enabled` | P2 | ✅ | this PR | New `DraftAlertsCron` at `apps/api/src/modules/expense-documents/crons/draft-alerts.cron.ts` — daily 09:00 BKK. SystemConfig keys: `draft_alerts_enabled` (default `'false'` opt-in) + `draft_alert_threshold_days` (default 7). When enabled, scans expense docs in DRAFT older than threshold, posts IN_APP NotificationLog row to creator with subject "เอกสารฉบับร่างค้าง" + message "เอกสารฉบับร่าง #{number} ค้าง N+ วัน — โปรดส่งหรือลบ". Idempotent: dedup against alerts already created today on same docId. `getUiFlags()` exposes `draftAlertsEnabled` + `draftAlertThresholdDays`. Uses lean PrismaService-direct readBoolFlag/readNumberFlag (same as PR #884 pattern — no SettingsModule DI dep). 4 jest cases (default-off / fire / configurable threshold / dedup). Type-check 0 errors |
 | D1.3.1.2 | `ap_due_alerts` | P2 | ⬜ | — | Hook AP aging to notifier |
 | D1.3.1.3 | `email_provider` | P2 | ⬜ | Q5 | sendgrid vs SMTP |
 | D1.3.1.4 | `in_app_notifications` toggle | P2 | ⬜ | — | Channel disable |

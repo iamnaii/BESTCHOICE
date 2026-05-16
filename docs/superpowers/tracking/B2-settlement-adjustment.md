@@ -1,6 +1,6 @@
 # B2 · Settlement Multi-line Adjustment (V12 expansion)
 
-**Status:** 🔵 In Review  |  **Started:** 2026-05-16  |  **PRs:** TBD (backend bundled; frontend B2.4 deferred)
+**Status:** ✅ Done  |  **Started:** 2026-05-16  |  **PRs:** #863 (backend bundle), B2.4 UI follow-up TBD (this PR)
 **Spec:** —  ·  **Plan:** —
 
 ## Context
@@ -19,7 +19,7 @@ V12 currently validates adjustment sums for `EXPENSE_SAMEDAY` only (`Σ adjustme
 | B2.1 | V12 validator: extend to `VENDOR_SETTLEMENT` case computing `netExpected = sumSettled − wht` | P1 | 🔵 | TBD | Extracted shared `validateAdjustments(tx, opts)` private helper in [expense-documents.service.ts](../../../apps/api/src/modules/expense-documents/expense-documents.service.ts) and called from both `create` (EXPENSE) and `createSettlement` (SE). Same V12/V13/V14 logic, same ADJUSTMENT_ALLOWLIST. |
 | B2.2 | `VendorSettlementTemplate.execute` — emit adjustment lines from `doc.adjustments[]` after WHT line | P1 | 🔵 | TBD | [vendor-settlement.template.ts](../../../apps/api/src/modules/journal/cpa-templates/vendor-settlement.template.ts) — `include: { adjustments }`, cash leg now sourced from `doc.netPayment` (which createSettlement set to amountPaid honoring V12), then iterates `doc.adjustments` to emit one Dr/Cr line each per declared side. Existing balanced-JE check in `JournalAutoService.createAndPost` proves V12 invariant end-to-end. |
 | B2.3 | DB schema: ensure `expense_adjustments` FK accepts `VENDOR_SETTLEMENT` rows | P1 | ✅ | n/a | Verified `\d expense_adjustments` on dev DB: FK references `expense_documents(id)` with no CHECK constraint on document_type — polymorphic by design. No migration needed. |
-| B2.4 | Frontend: add Section 5 (Multi-line Adjustment) to SettlementForm — reuse `AdjustmentTable` component from ExpenseFormV4 | P1 | ⬜ | — | **Deferred to follow-up PR** to keep this PR backend-scoped + reviewable. Backend DTO already accepts `adjustments[]` + `amountPaid` so the UI work is purely additive (no further backend changes needed). |
+| B2.4 | Frontend: add Section 5 (Multi-line Adjustment) to SettlementForm — reuse `AdjustmentTable` component from ExpenseFormV4 | P1 | ✅ | this PR | [ExpenseFormV4.tsx](../../../apps/web/src/components/expense-form-v4/ExpenseFormV4.tsx) — extended Section 5 gate from `docType === 'EXPENSE_SAMEDAY'` to also include `'VENDOR_SETTLEMENT'`. For SE, netExpected computed locally (`Σ selections.amount − whtAmount`) since no JE preview exists yet. Same `AdjustmentSection` component reused unchanged; same V12 live-diff display. POST body forwards `amountPaid` + `adjustments` (only when set) to backend, which re-validates via the shared `validateAdjustments` helper. State reuses top-level `state.adjustments` + `state.amountPaid` since `docType` is mutually exclusive. |
 | B2.5 | K-07 test case: SETTLEMENT + adjustment results in balanced JE with allow-list Cr line | P1 | 🔵 | TBD | 3 new integration tests added to [settlement-lifecycle.integration.spec.ts](../../../apps/api/src/modules/expense-documents/__tests__/settlement-lifecycle.integration.spec.ts): (1) happy path SE with 20฿ discount → balanced JE Dr 21-1104 1000 / Cr cash 980 / Cr 52-1106 20; (2) negative V12 violation; (3) negative V13 violation (rev account 41-1101 rejected). Unit specs: 52/52 pass on the touched suites. |
 
 ## Decision Log
@@ -31,7 +31,7 @@ V12 currently validates adjustment sums for `EXPENSE_SAMEDAY` only (`Σ adjustme
 ## Open Questions
 
 - [x] Q: Should the schema migration in B2.3 happen — or does the FK already allow polymorphic doc_type? Need `\d` output first — **No migration needed**. FK on `expense_adjustments.document_id → expense_documents.id` with no CHECK on document_type. Polymorphic by design.
-- [ ] Q: SettlementForm Section 5 — should the section appear before or after JE Preview? — **Deferred to B2.4 follow-up PR**
+- [x] Q: SettlementForm Section 5 — should the section appear before or after JE Preview? — **No JE Preview exists for SE today** (deferred per existing comment in ExpenseFormV4.tsx I3 note). Section 5 placed after cash-account section + before approver section, matching SAMEDAY pattern. If SE gets a JE preview later, the section already sits in a sensible slot.
 
 ## Dependencies
 

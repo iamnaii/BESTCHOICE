@@ -400,6 +400,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
         { label: 'รายจ่าย', path: '/expenses', icon: Receipt },
         { label: 'รายได้อื่น', path: '/other-income', icon: TrendingUp },
+        { label: 'ผังบัญชี', path: '/settings/chart-of-accounts', icon: ClipboardList },
         // Reports & period-close grouped under collapsible parents
         {
           label: 'รายงาน',
@@ -420,7 +421,6 @@ const OWNER_CONFIG: RoleMenuConfig = {
             { label: 'ปิดบัญชีรายเดือน', path: '/monthly-close', icon: CalendarDays },
             { label: 'งวดบัญชี', path: '/accounting/periods', icon: CalendarDays },
             { label: 'ชำระเงินระหว่างบริษัท', path: '/accounting/intercompany', icon: ClipboardList },
-            { label: 'ผังบัญชี', path: '/settings/chart-of-accounts', icon: ClipboardList },
           ],
         },
       ],

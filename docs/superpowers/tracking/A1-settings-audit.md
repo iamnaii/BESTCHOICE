@@ -1,8 +1,8 @@
 # A1 · Settings Audit Phase 1+2 (Scan + Report)
 
-**Status:** 🚦 Phase 1 AUDIT complete — 🛑 STOP for owner review before Phase 2
-**Started:** 2026-05-16  ·  **PRs:** this PR (Phase 1 findings)
-**Spec:** —  ·  **Plan:** —
+**Status:** 🚦 Phase 1+2 REPORT complete — 🛑 STOP for owner D1 scope approval
+**Started:** 2026-05-16  ·  **PRs:** #879 (Phase 1 findings, R1+R2+R3) · this PR (Phase 2 report)
+**Spec:** [`../specs/2026-05-16-a1-phase2-decision-report.md`](../specs/2026-05-16-a1-phase2-decision-report.md)  ·  **Plan:** —
 
 ## Context
 
@@ -16,9 +16,9 @@ Read-only scan of the codebase against the 102 settings owner enumerated in `Set
 
 ## Phase
 
-✅ **Phase 1: AUDIT** (complete, this PR) → 🛑 **STOP for owner confirm** → Phase 2: REPORT → 🛑 STOP for owner approval → D1 (Phase 4: IMPLEMENT)
+✅ **Phase 1: AUDIT** (PR #879, R1+R2+R3 reviewed) → ✅ **Phase 2: REPORT** ([decision spec](../specs/2026-05-16-a1-phase2-decision-report.md), this PR) → 🛑 **STOP for owner D1 scope approval** → D1 (Phase 4: IMPLEMENT, one PR per item)
 
-Anti-pattern reminder: NO implementation while scanning. AUDIT is read-only.
+Anti-pattern reminder: NO implementation while in AUDIT/REPORT. Phase 1+2 are read-only.
 
 ## Phase 1 Headline (audit-only, NOT a recommendation)
 
@@ -305,6 +305,8 @@ After Phase 2 produces results, owner decides per sub-section:
 - 🛑 **Owner approval required before Phase 2 synthesis**
 - After Phase 2 reports, owner approves scope → D1 (Phase 4) begins
 
-## 🛑 STOP — Phase 1 complete, awaiting owner review
+## 🛑 STOP — Phase 1 + Phase 2 complete, awaiting owner D1 approval
 
-**Anti-pattern #1 reminder:** do NOT chain Phase 1 → Phase 2 in the same response. This PR is Phase 1 findings only. Owner reviews the headline + the 5 open questions, then signals "go ahead to Phase 2" — which produces a per-sub-section verdict (✅ APPROVE / ◐ DEFER / ⏸ SKIP) and a draft scope for D1. **No implementation yet.**
+Phase 2 decision report shipped in `docs/superpowers/specs/2026-05-16-a1-phase2-decision-report.md`. Proposed D1 scope: **22 items across 8 sub-sections** (1.1 + 1.3 + 1.6 + 2.2 + 2.6 + 2.7 + 2.8 + 4.3.1 only). Estimated 7–11 working days within the 5 มิ.ย. grace window.
+
+**Anti-pattern #2 reminder:** Implementing settings while still in REPORT. D1 cannot start until owner: (a) approves the scope, (b) answers Q1–Q8 that unblock specific sub-sections. After approval, D1 follows "one PR per item, no bundling" per anti-pattern #3.

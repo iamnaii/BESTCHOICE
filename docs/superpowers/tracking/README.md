@@ -12,7 +12,7 @@
 |---|---|---|---|---|---|---|
 | [T0 · Tracking System](T0-tracking-system.md) | 5 | 5 | 100% | ✅ Done | [spec](../specs/2026-05-16-bestchoice-expense-v2-tracking-design.md) | [plan](../plans/2026-05-16-bestchoice-expense-v2-tracking.md) |
 | [A0 · Pre-flight Verify](A0-preflight-verify.md) | 3 | 3 | 100% | ✅ Done | — | [script](../../../scripts/a0-preflight-verify.sql) — prod-verified 2026-05-16. A0.3 closed (false alarm from wrong `flow` literal). |
-| [A1 · Settings Audit Phase 1+2](A1-settings-audit.md) | 102 | 12 | 12% | 🚦 Phase 1 done — 🛑 STOP for owner review | — | this PR (findings) |
+| [A1 · Settings Audit Phase 1+2](A1-settings-audit.md) | 102 | 12 | 12% | 🚦 Phase 1+2 done — 🛑 STOP for owner D1 approval | [Phase 2 spec](../specs/2026-05-16-a1-phase2-decision-report.md) | #879 (P1) · this PR (P2) |
 | [B1 · SSO 875 Configurable](B1-sso-875.md) | 6 | 6 | 100% | ✅ Done | — | [#861](https://github.com/iamnaii/BESTCHOICE/pull/861) |
 | [B2 · Settlement Multi-line Adj](B2-settlement-adjustment.md) | 5 | 5 | 100% | ✅ Done | — | [#863](https://github.com/iamnaii/BESTCHOICE/pull/863) + B2.4 follow-up |
 | [B3 · Test Suite J+K](B3-test-suite.md) | 14 | 14 | 100% | ✅ Done | — | [#865](https://github.com/iamnaii/BESTCHOICE/pull/865) · [#866](https://github.com/iamnaii/BESTCHOICE/pull/866) · this PR (J-06) |
@@ -25,7 +25,7 @@
 
 ## 🎯 Current Focus
 
-- **Active:** 🛑 **A1 Phase 1 audit complete (R1+R2 reviewed) — awaiting owner review** before Phase 2 synthesis. Findings: 12 ✅ / 18 ◐ / 71 ❌ / 1 SKIP across 102 items.
+- **Active:** 🛑 **A1 Phase 1+2 complete (R1+R2+R3 reviewed) — awaiting owner D1 scope approval.** Phase 1: 12 ✅ / 18 ◐ / 71 ❌ / 1 SKIP. Phase 2 proposes 22-item D1 across 8 sub-sections (~7–11 working days). Blocking on Q1–Q8 answers.
 - **Optional housekeeping:** EQ-002 missing เม.ย. depreciation (~฿287). Not a blocker; owner can run `POST /admin/depreciation/run?period=2026-04` for catch-up at convenience. พ.ค. depreciation will tick automatically on May 31.
 - **Next:** Owner reviews [A1 audit findings](A1-settings-audit.md) + 5 open questions → signals go-ahead → Phase 2 (REPORT only) → STOP again → owner approves scope → D1 implements.
 

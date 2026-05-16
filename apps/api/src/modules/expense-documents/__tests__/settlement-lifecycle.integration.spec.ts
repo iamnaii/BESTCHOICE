@@ -194,4 +194,138 @@ describe('Vendor Settlement lifecycle (integration)', () => {
       ),
     ).rejects.toThrow(/เกินยอดที่ค้าง/);
   });
+
+  // ── B2 / K-07 — Settlement with Multi-line Adjustment ──────────────
+  // Clear 1000฿ AP, take 20฿ early-payoff discount → actual cash leg = 980.
+  // V12: signedSum(CR 52-1106: 20) = +20 = amountPaid(980) − netExpected(1000)
+  it('B2 / K-07: SE with discount adjustment posts balanced JE (Dr AP / Cr cash + Cr 52-1106)', async () => {
+    const service = buildService();
+    const user = { id: userId, branchId, role: 'OWNER' };
+    // Create fresh ACCRUAL EX of 1000฿
+    const ex = await service.create(
+      {
+        documentType: 'EXPENSE',
+        branchId,
+        documentDate: new Date().toISOString(),
+        priceType: 'EXCLUSIVE',
+        lines: [{ category: '53-1404', quantity: 1, unitPrice: 1000, vatPercent: 0, whtPercent: 0 }],
+      } as never,
+      userId,
+    );
+    await service.post(ex.id, userId); // → ACCRUAL
+
+    // Settlement with 20฿ discount adjustment
+    const se = await service.createSettlement(
+      {
+        branchId,
+        documentDate: new Date().toISOString(),
+        depositAccountCode: '11-1101',
+        lines: [{ clearedDocumentId: ex.id, amountSettled: 1000 }],
+        amountPaid: '980',
+        adjustments: [
+          { accountCode: '52-1106', side: 'CR', amount: '20', note: 'ส่วนลดปิดยอดก่อนกำหนด' },
+        ],
+      } as never,
+      user,
+    );
+    await service.post(se.id, userId);
+
+    const seAfter = await prisma.expenseDocument.findUniqueOrThrow({
+      where: { id: se.id },
+      include: { adjustments: true },
+    });
+    expect(seAfter.status).toBe(DocumentStatus.POSTED);
+    expect(seAfter.netPayment?.toString()).toBe('980');
+    expect(seAfter.adjustments).toHaveLength(1);
+    expect(seAfter.adjustments[0].accountCode).toBe('52-1106');
+    expect(seAfter.adjustments[0].side).toBe('CR');
+
+    // Balanced JE — Dr 21-1104 = 1000 / Cr cash 980 + Cr 52-1106 20 = 1000
+    const je = await prisma.journalEntry.findFirstOrThrow({
+      where: { id: seAfter.journalEntryId! },
+      include: { lines: true },
+    });
+    const drSum = je.lines.reduce((s, l) => s + Number(l.debit), 0);
+    const crSum = je.lines.reduce((s, l) => s + Number(l.credit), 0);
+    expect(drSum).toBeCloseTo(crSum, 2);
+    expect(drSum).toBeCloseTo(1000, 2);
+
+    const apLine = je.lines.find((l) => l.accountCode === '21-1104');
+    const cashLine = je.lines.find((l) => l.accountCode === '11-1101');
+    const discountLine = je.lines.find((l) => l.accountCode === '52-1106');
+    expect(Number(apLine!.debit)).toBeCloseTo(1000, 2);
+    expect(Number(cashLine!.credit)).toBeCloseTo(980, 2);
+    expect(Number(discountLine!.credit)).toBeCloseTo(20, 2);
+
+    // EX is fully cleared → POSTED
+    const exAfter = await prisma.expenseDocument.findUniqueOrThrow({ where: { id: ex.id } });
+    expect(exAfter.status).toBe('POSTED');
+  });
+
+  it('B2 / K-07 negative: SE with adjustments that violate V12 rejects', async () => {
+    const service = buildService();
+    const user = { id: userId, branchId, role: 'OWNER' };
+    const ex = await service.create(
+      {
+        documentType: 'EXPENSE',
+        branchId,
+        documentDate: new Date().toISOString(),
+        priceType: 'EXCLUSIVE',
+        lines: [{ category: '53-1404', quantity: 1, unitPrice: 1000, vatPercent: 0, whtPercent: 0 }],
+      } as never,
+      userId,
+    );
+    await service.post(ex.id, userId);
+
+    // amountPaid = 980 but adjustment only sums to +10 (not the required +20)
+    await expect(
+      service.createSettlement(
+        {
+          branchId,
+          documentDate: new Date().toISOString(),
+          depositAccountCode: '11-1101',
+          lines: [{ clearedDocumentId: ex.id, amountSettled: 1000 }],
+          amountPaid: '980',
+          adjustments: [
+            { accountCode: '52-1106', side: 'CR', amount: '10' },
+          ],
+        } as never,
+        user,
+      ),
+    ).rejects.toThrow(/V12/);
+  });
+
+  it('B2 / K-07 disallowed code: SE with adjustment outside ADJUSTMENT_ALLOWLIST rejects', async () => {
+    const service = buildService();
+    const user = { id: userId, branchId, role: 'OWNER' };
+    const ex = await service.create(
+      {
+        documentType: 'EXPENSE',
+        branchId,
+        documentDate: new Date().toISOString(),
+        priceType: 'EXCLUSIVE',
+        lines: [{ category: '53-1404', quantity: 1, unitPrice: 1000, vatPercent: 0, whtPercent: 0 }],
+      } as never,
+      userId,
+    );
+    await service.post(ex.id, userId);
+
+    // Try to route the discount to a Revenue account (would balance arithmetically
+    // but violate accounting policy — V13 must reject).
+    await expect(
+      service.createSettlement(
+        {
+          branchId,
+          documentDate: new Date().toISOString(),
+          depositAccountCode: '11-1101',
+          lines: [{ clearedDocumentId: ex.id, amountSettled: 1000 }],
+          amountPaid: '980',
+          adjustments: [
+            { accountCode: '41-1101', side: 'CR', amount: '20' },
+          ],
+        } as never,
+        user,
+      ),
+    ).rejects.toThrow(/V13|allow/i);
+  });
 });

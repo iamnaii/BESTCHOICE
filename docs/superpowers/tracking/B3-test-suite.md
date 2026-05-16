@@ -1,6 +1,6 @@
 # B3 · Test Suite J + K
 
-**Status:** 🔵 In Review  |  **Started:** 2026-05-16  |  **PRs:** TBD (audit + 5 new tests)
+**Status:** ✅ Done  |  **Started:** 2026-05-16  |  **PRs:** [#865](https://github.com/iamnaii/BESTCHOICE/pull/865) (audit + new tests) · [#866](https://github.com/iamnaii/BESTCHOICE/pull/866) (K-04 PP30 input VAT) · this PR (J-06 prod confirm)
 **Spec:** —  ·  **Plan:** —
 
 ## Context
@@ -24,7 +24,7 @@ Some cases already exist scattered across `apps/api/src/modules/expense-document
 | B3.J-03 | PAYROLL JV — `Dr 53-1102 = sso_employer_amount` | P2 | ✅ | exists | Covered by [payroll.template.spec.ts:73](../../../apps/api/src/modules/expense-documents/__tests__/payroll.template.spec.ts) — asserts `Dr 53-1102` line for employer SSO expense. |
 | B3.J-04 | `calculateSSO(20000)` returns **875** (ceiling, post-B1) | P2 | ✅ | reinterpreted | No `calculateSSO()` function exists in the codebase — Settings Audit was aspirational. The equivalent behavior is enforced via `SsoConfigService.validateContribution`, covered by 10 tests in [sso-config.service.spec.ts](../../../apps/api/src/modules/sso-config/__tests__/sso-config.service.spec.ts) (cap-pass / cap-fail / period boundary). |
 | B3.J-05 | `calculateSSO(10000)` returns **500** (5% of base) | P2 | ✅ | reinterpreted | Same as J-04 — service silently accepts amounts below cap, covered by `accepts ssoEmployee below cap` test. |
-| B3.J-06 | Trial Balance — `21-1104` no longer contains SSO rows | P2 | ⬜ | deferred | Depends on **A0.2 prod migration** completing. Local dev DB returned 0 rows in dry-run (`scripts/a0-preflight-verify.sql`). Will flip ✅ once owner runs the verification on prod and confirms 0 leftover SSO rows. |
+| B3.J-06 | Trial Balance — `21-1104` no longer contains SSO rows | P2 | ✅ | this PR | **Prod-verified 2026-05-16** via A0.2 — zero `21-1104` rows with `metadata.flow='expense-payroll'` containing `%SSO%` or `%ประกันสังคม%` and NOT matching `%[migrated%`. PR #810 SSO reclassification migration confirmed complete on prod. |
 
 ## Items Checklist · Suite K (Critical Fixes)
 

@@ -46,13 +46,41 @@ interface JournalLine {
   credit: string;
 }
 
+/**
+ * C2.7 — Payroll slip line with per-employee custom income/deduction.
+ * Optional fields populated only for PAYROLL docs.
+ */
+export interface PayrollSlipLine {
+  id: string;
+  employeeName: string;
+  employeeTaxId: string | null;
+  baseSalary: string;
+  ssoEmployee: string;
+  whtAmount: string;
+  netPaid: string;
+  customIncome?: Array<{
+    id: string;
+    accountCode: string;
+    name: string;
+    amount: string;
+    isTaxable: boolean;
+  }>;
+  customDeduction?: Array<{
+    id: string;
+    accountCode: string;
+    name: string;
+    amount: string;
+  }>;
+}
+
 interface VoucherDoc {
   id: string;
   number: string;
   /**
-   * C1 — branches voucher layout: PETTY_CASH_REIMBURSEMENT renders a
-   * compact multi-supplier sheet (no WHT cert, no signature grid). All other
-   * doc types use the standard ใบสำคัญจ่าย layout.
+   * Branches voucher layout:
+   *   - PETTY_CASH_REIMBURSEMENT — compact multi-supplier sheet (C1.8)
+   *   - PAYROLL — one A4 slip per employee (C2.7)
+   *   - All others — standard ใบสำคัญจ่าย
    */
   documentType:
     | 'EXPENSE'
@@ -76,6 +104,11 @@ interface VoucherDoc {
   reference: string | null;
   note: string | null;
   expenseDetail: { lines: ExpenseLine[] } | null;
+  // C2.7 — Payroll slip data (populated only for PAYROLL docs).
+  payroll?: {
+    payrollPeriod: string;
+    lines: PayrollSlipLine[];
+  } | null;
   journalLines?: JournalLine[];
 }
 
@@ -101,10 +134,14 @@ export default function PaymentVoucherPage() {
       document.title = 'ใบสำคัญจ่าย';
       return;
     }
-    const title =
-      data.documentType === 'PETTY_CASH_REIMBURSEMENT'
-        ? `ใบเบิกชดเชยเงินสดย่อย ${data.number}`
-        : `ใบสำคัญจ่าย ${data.number}`;
+    let title: string;
+    if (data.documentType === 'PETTY_CASH_REIMBURSEMENT') {
+      title = `ใบเบิกชดเชยเงินสดย่อย ${data.number}`;
+    } else if (data.documentType === 'PAYROLL') {
+      title = `ใบจ่ายเงินเดือน ${data.number}`;
+    } else {
+      title = `ใบสำคัญจ่าย ${data.number}`;
+    }
     document.title = title;
   }, [docQuery.data]);
 
@@ -156,6 +193,7 @@ export default function PaymentVoucherPage() {
 
 function VoucherSheet({ doc }: { doc: VoucherDoc }) {
   const isPettyCash = doc.documentType === 'PETTY_CASH_REIMBURSEMENT';
+  const isPayroll = doc.documentType === 'PAYROLL';
   const hasWht = parseFloat(doc.withholdingTax || '0') > 0;
   const net = doc.netPayment ?? doc.totalAmount;
   const amountText = numToThaiText(parseFloat(net));
@@ -167,6 +205,25 @@ function VoucherSheet({ doc }: { doc: VoucherDoc }) {
     return (
       <div className="max-w-[210mm] mx-auto py-6 px-6 print:px-0 print:py-0 space-y-6">
         <PettyCashSheet doc={doc} amountInText={amountText} net={net} />
+      </div>
+    );
+  }
+
+  // C2.7 — Payroll renders one A4 slip per employee. Each slip = own
+  // ใบจ่ายเงินเดือน with base + custom income + custom deduction + SSO + WHT
+  // + net + Thai-text + 2 signature slots. Browser `print()` will paginate.
+  if (isPayroll && doc.payroll && doc.payroll.lines.length > 0) {
+    return (
+      <div className="max-w-[210mm] mx-auto py-6 px-6 print:px-0 print:py-0 space-y-6">
+        {doc.payroll.lines.map((line, idx) => (
+          <PayrollSlipSheet
+            key={line.id}
+            doc={doc}
+            line={line}
+            slipNo={idx + 1}
+            totalSlips={doc.payroll!.lines.length}
+          />
+        ))}
       </div>
     );
   }
@@ -333,6 +390,215 @@ function PettyCashSheet({
       <footer className="mt-8 pt-3 border-t border-border text-[10px] text-muted-foreground flex justify-between">
         <span>ออกเอกสารจากระบบ BESTCHOICE — ไม่ต้องเซ็นต์ถือเป็นโมฆะ</span>
         <span>ใบเบิกชดเชยเงินสดย่อย v1.0</span>
+      </footer>
+    </article>
+  );
+}
+
+/**
+ * C2.7 — Payroll slip per employee. One A4 sheet per `PayrollSlipLine`.
+ * `pageBreakBefore: 'always'` from slip #2 onwards so the browser print
+ * dialog renders one slip per page. Email dispatch deferred to follow-up
+ * (involves Mailer service + employee email column on PayrollLine).
+ *
+ * Layout (mockup 02B Payroll Slip):
+ *   - Company header
+ *   - Title: ใบจ่ายเงินเดือน + slip n/N
+ *   - Employee meta (name, tax ID, period, doc no)
+ *   - Earnings table: base + custom income (with ม.42 flag if non-taxable)
+ *   - Deductions table: SSO + WHT + custom deduction
+ *   - Net paid + Thai-text amount
+ *   - 2 signature slots (ผู้รับเงิน · ผู้จัดทำ)
+ */
+function PayrollSlipSheet({
+  doc,
+  line,
+  slipNo,
+  totalSlips,
+}: {
+  doc: VoucherDoc;
+  line: PayrollSlipLine;
+  slipNo: number;
+  totalSlips: number;
+}) {
+  const base = new Decimal(line.baseSalary || '0');
+  const sso = new Decimal(line.ssoEmployee || '0');
+  const wht = new Decimal(line.whtAmount || '0');
+  const net = new Decimal(line.netPaid || '0');
+  const customIncome = line.customIncome ?? [];
+  const customDeduction = line.customDeduction ?? [];
+
+  const sumIncome = customIncome.reduce<Decimal>(
+    (s, r) => s.plus(new Decimal(r.amount || '0')),
+    new Decimal(0),
+  );
+  const sumDeduction = customDeduction.reduce<Decimal>(
+    (s, r) => s.plus(new Decimal(r.amount || '0')),
+    new Decimal(0),
+  );
+  // Earnings = base + Σ custom income (the gross-up)
+  const earningsTotal = base.plus(sumIncome);
+  // Deductions = SSO + WHT + Σ custom deduction
+  const deductionsTotal = sso.plus(wht).plus(sumDeduction);
+
+  const amountInText = numToThaiText(parseFloat(line.netPaid));
+
+  return (
+    <article
+      className="voucher-sheet bg-white border border-border rounded-md p-8 shadow-sm print:border-0 print:p-0 print:shadow-none"
+      style={{
+        minHeight: '270mm',
+        pageBreakBefore: slipNo > 1 ? 'always' : 'auto',
+      }}
+    >
+      <header className="text-center border-b-2 border-foreground pb-3">
+        <h1 className="text-xl font-bold">BESTCHOICE FINANCE × SHOP</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          เลขประจำตัวผู้เสียภาษี · สำนักงานใหญ่
+        </p>
+        <h2 className="text-2xl font-bold tracking-wider mt-4">ใบจ่ายเงินเดือน</h2>
+        <p className="text-xs text-muted-foreground">
+          Payroll Slip {slipNo}/{totalSlips}
+        </p>
+      </header>
+
+      <section className="grid grid-cols-2 gap-x-8 gap-y-2 mt-5 text-sm">
+        <MetaRow label="ชื่อพนักงาน" value={line.employeeName} />
+        <MetaRow label="เลขประจำตัวผู้เสียภาษี" value={line.employeeTaxId ?? '—'} mono />
+        <MetaRow label="งวด" value={doc.payroll?.payrollPeriod ?? '—'} mono />
+        <MetaRow label="วันที่จ่าย" value={formatThaiDateLong(doc.documentDate)} />
+        <MetaRow label="เลขที่เอกสารต้นทาง" value={doc.number} mono />
+        <MetaRow label="ช่องทางจ่าย" value={doc.depositAccountCode ?? '—'} mono />
+      </section>
+
+      {/* Earnings */}
+      <section className="mt-6">
+        <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">
+          รายได้ (Earnings)
+        </p>
+        <table className="w-full text-sm border border-border">
+          <tbody>
+            <tr>
+              <td className="border border-border p-2">เงินเดือนพื้นฐาน</td>
+              <td className="border border-border p-2 text-right tabular-nums w-32">
+                {formatNumberDecimal(base.toString())}
+              </td>
+            </tr>
+            {customIncome.map((ci) => (
+              <tr key={ci.id}>
+                <td className="border border-border p-2">
+                  <span className="font-mono text-xs text-muted-foreground mr-2">
+                    {ci.accountCode}
+                  </span>
+                  {ci.name}
+                  {!ci.isTaxable && (
+                    <span className="ml-2 inline-block rounded bg-info/10 px-1.5 py-0.5 text-[10px] text-info">
+                      ม.42 ยกเว้นภาษี
+                    </span>
+                  )}
+                </td>
+                <td className="border border-border p-2 text-right tabular-nums">
+                  {formatNumberDecimal(ci.amount)}
+                </td>
+              </tr>
+            ))}
+            <tr className="bg-muted/30">
+              <td className="border border-border p-2 font-semibold">รวมรายได้</td>
+              <td className="border border-border p-2 text-right tabular-nums font-semibold">
+                {formatNumberDecimal(earningsTotal.toString())}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      {/* Deductions */}
+      <section className="mt-5">
+        <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">
+          รายการหัก (Deductions)
+        </p>
+        <table className="w-full text-sm border border-border">
+          <tbody>
+            {sso.gt(0) && (
+              <tr>
+                <td className="border border-border p-2">เงินสมทบประกันสังคม (พนักงาน)</td>
+                <td className="border border-border p-2 text-right tabular-nums w-32">
+                  {formatNumberDecimal(sso.toString())}
+                </td>
+              </tr>
+            )}
+            {wht.gt(0) && (
+              <tr>
+                <td className="border border-border p-2">หัก ณ ที่จ่าย (ภ.ง.ด. 1)</td>
+                <td className="border border-border p-2 text-right tabular-nums">
+                  {formatNumberDecimal(wht.toString())}
+                </td>
+              </tr>
+            )}
+            {customDeduction.map((cd) => (
+              <tr key={cd.id}>
+                <td className="border border-border p-2">
+                  <span className="font-mono text-xs text-muted-foreground mr-2">
+                    {cd.accountCode}
+                  </span>
+                  {cd.name}
+                </td>
+                <td className="border border-border p-2 text-right tabular-nums">
+                  {formatNumberDecimal(cd.amount)}
+                </td>
+              </tr>
+            ))}
+            {sso.eq(0) && wht.eq(0) && customDeduction.length === 0 && (
+              <tr>
+                <td colSpan={2} className="border border-border p-3 text-center text-muted-foreground italic">
+                  ไม่มี
+                </td>
+              </tr>
+            )}
+            <tr className="bg-muted/30">
+              <td className="border border-border p-2 font-semibold">รวมรายการหัก</td>
+              <td className="border border-border p-2 text-right tabular-nums font-semibold">
+                {formatNumberDecimal(deductionsTotal.toString())}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      {/* Net */}
+      <section className="grid grid-cols-2 gap-6 mt-5">
+        <div className="rounded-md border border-border bg-muted/20 p-3 text-sm">
+          <p className="text-xs text-muted-foreground mb-1">จำนวนเงินสุทธิ (ตัวอักษร)</p>
+          <p className="font-semibold leading-relaxed">{amountInText}</p>
+        </div>
+        <table className="text-sm">
+          <tbody>
+            <TotalRow label="รายได้รวม" value={earningsTotal.toString()} />
+            <TotalRow label="รายการหักรวม" value={deductionsTotal.toString()} negative />
+            <TotalRow label="สุทธิที่จ่าย" value={net.toString()} bold highlight />
+          </tbody>
+        </table>
+      </section>
+
+      {doc.note && (
+        <section className="mt-6">
+          <p className="text-xs text-muted-foreground mb-1">หมายเหตุ</p>
+          <p className="text-sm">{doc.note}</p>
+        </section>
+      )}
+
+      {/* Signatures — 2 slots only (no full grid). Employees sign on receipt;
+          preparer signs on issuance. ตราประทับ unnecessary on individual slips. */}
+      <section className="grid grid-cols-2 gap-6 mt-12">
+        <SignatureSlot label="ผู้รับเงิน" />
+        <SignatureSlot label="ผู้จัดทำ" />
+      </section>
+
+      <footer className="mt-8 pt-3 border-t border-border text-[10px] text-muted-foreground flex justify-between">
+        <span>ออกเอกสารจากระบบ BESTCHOICE — ไม่ต้องเซ็นต์ถือเป็นโมฆะ</span>
+        <span>
+          ใบจ่ายเงินเดือน v1.0 · {slipNo}/{totalSlips}
+        </span>
       </footer>
     </article>
   );

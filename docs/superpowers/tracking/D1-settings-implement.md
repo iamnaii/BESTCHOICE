@@ -1,7 +1,7 @@
 # D1 · Settings Audit Phase 4 (Implement Approved Scope)
 
 **Status:** 🟢 In Progress — owner approved expanded scope 2026-05-16
-**Started:** 2026-05-16  |  **PRs:** #882-#897 · this PR (D1.2.2.6)  |  **Done:** 17/75 — 2.6 ✅ · 2.7 ✅ · 2.2 ✅ Complete (7/7)
+**Started:** 2026-05-16  |  **PRs:** #882-#897 · this PR (D1.2.2.6) · #957-#961 (D1.3.2.1 / D1.3.2.2 / D1.3.2.3 / D1.3.2.4 / D1.3.1.3)  |  **Done:** 22/75 — 2.6 ✅ · 2.7 ✅ · 2.2 ✅ Complete (7/7) · 3.2 ✅ Complete (4/4) · 3.1.3 ✅
 **Spec:** [`../specs/2026-05-16-a1-phase2-decision-report.md`](../specs/2026-05-16-a1-phase2-decision-report.md)  ·  **Plan:** —
 
 ## Context
@@ -114,12 +114,12 @@ Sub-prioritization within expanded D1 scope:
 | D1.1.5.5 | `petty_cash_custodian` (FK) | P0 | ⬜ | Q1 | Schema + assignment UI |
 | D1.3.1.1 | `draft_alerts_enabled` | P2 | ⬜ | — | New cron + flag |
 | D1.3.1.2 | `ap_due_alerts` | P2 | ⬜ | — | Hook AP aging to notifier |
-| D1.3.1.3 | `email_provider` | P2 | ⬜ | Q5 | sendgrid vs SMTP |
+| D1.3.1.3 | `email_provider` | P2 | ✅ | #961 | `EmailProviderService` factory at `apps/api/src/modules/notifications/email-provider.service.ts` — `IEmailProvider` interface + `SmtpEmailProvider` (nodemailer + SMTP_* env, graceful skip when missing) + `SendgridEmailProvider` (stub, throws NotImplementedException with API-key hint). SystemConfig `email_provider` (default `'smtp'`) selects impl at request time; unknown / DB error → smtp default. `getUiFlags()` exposes `emailProvider` for Settings UI display. 7 spec cases (factory default / sendgrid pick / invalid fallback / DB error fallback / sendgrid throws / SMTP no-env skip / service.send routing). Q5-gated conservative default — owner flips to `'sendgrid'` once API key is wired |
 | D1.3.1.4 | `in_app_notifications` toggle | P2 | ⬜ | — | Channel disable |
-| D1.3.2.1 | `roles_defined` (add Viewer?) | P2 | ⬜ | Q4 | Schema change |
-| D1.3.2.2 | `settings_access_role` | P2 | ⬜ | Q4 | Runtime-editable role binding |
-| D1.3.2.3 | `post_permission` | P2 | ⬜ | Q4 | |
-| D1.3.2.4 | `reverse_permission` | P2 | ⬜ | Q4 | |
+| D1.3.2.1 | `roles_defined` (add Viewer?) | P2 | ✅ | #957 | Added `VIEWER` to `UserRole` enum (migration `20260934000000_add_viewer_role` uses `ADD VALUE IF NOT EXISTS`). Decorator TS union extended. NO @Roles() includes VIEWER — schema enum exists for OWNER to assign to future read-only auditor accounts; today a Viewer logs in but sees empty pages. SystemConfig `viewer_role_enabled` (default `'false'`) gates future activation. `getUiFlags()` exposes `viewerRoleEnabled`. 4 vitest cases (default false / truthy `'true'` / unparseable fallback / `'1'` truthy). Q4-gated conservative default — owner can wire permissions later or reject without data loss |
+| D1.3.2.2 | `settings_access_role` | P2 | ✅ | #958 | New `SettingsAccessGuard` at `apps/api/src/modules/settings/settings-access.guard.ts` — reads SystemConfig `settings_access_role` (whitelisted `'OWNER'` / `'OWNER+FINANCE_MANAGER'` / `'OWNER+ACCOUNTANT'` / `'OWNER+ALL'`, default `'OWNER'` preserves current OWNER-only behavior). Class-level `@Roles` widened to superset; guard narrows per-request. `@AllowAnyAuthenticated()` marker on `/settings/ui-flags` keeps SALES access. DB error / unknown value → OWNER-only fallback. `getUiFlags()` exposes `settingsAccessRole`. 6 spec cases (default OWNER / FM widening / OWNER+ALL excludes SALES / malformed fallback / DB-error fallback / bypass marker). Q4-gated |
+| D1.3.2.3 | `post_permission` | P2 | ✅ | #959 | New `PostPermissionGuard` at `apps/api/src/modules/expense-documents/post-permission.guard.ts` — reads SystemConfig `post_permission` (whitelisted `'OWNER+FINANCE_MANAGER+ACCOUNTANT'` (default, current) / `'OWNER+FINANCE_MANAGER'` / `'OWNER_ONLY'` / `'OWNER+ALL_NON_SALES'`). `post()` controller method `@UseGuards(PostPermissionGuard)` + widened `@Roles` superset (adds BRANCH_MANAGER for `OWNER+ALL_NON_SALES`). `getUiFlags()` exposes `postPermission` for UI button visibility. 4 spec cases (default / FM only / OWNER_ONLY / +ALL_NON_SALES adds BM rejects SALES). Q4-gated |
+| D1.3.2.4 | `reverse_permission` | P2 | ✅ | #960 | New `ReversePermissionGuard` at `apps/api/src/modules/expense-documents/reverse-permission.guard.ts` — reads SystemConfig `reverse_permission` (whitelisted `'OWNER+FINANCE_MANAGER'` (default, current) / `'OWNER_ONLY'`). `void()` controller method `@UseGuards(ReversePermissionGuard)`; static `@Roles` list already matches superset (no widening needed). `getUiFlags()` exposes `reversePermission`. 4 spec cases (default / OWNER_ONLY narrows / malformed fallback / DB-error fallback). Q4-gated |
 
 ## Decision Log
 

@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ChartOfAccountsService } from './chart-of-accounts.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AccountRoleService } from '../journal/account-role.service';
 
 describe('ChartOfAccountsService.findGrouped', () => {
   let service: ChartOfAccountsService;
@@ -12,6 +13,16 @@ describe('ChartOfAccountsService.findGrouped', () => {
       providers: [
         ChartOfAccountsService,
         { provide: PrismaService, useValue: prisma },
+        {
+          provide: AccountRoleService,
+          useValue: {
+            code: jest.fn((role: string) => {
+              if (role === 'adj_underpay') return '52-1104';
+              if (role === 'adj_overpay') return '53-1503';
+              throw new Error(`AccountRoleService stub: unmapped role "${role}"`);
+            }),
+          },
+        },
       ],
     }).compile();
     service = module.get<ChartOfAccountsService>(ChartOfAccountsService);
@@ -55,5 +66,10 @@ describe('ChartOfAccountsService.findGrouped', () => {
     const result = await service.findGrouped({});
 
     expect(result.groups[0].category).toBe('อื่นๆ');
+  });
+
+  it('D1.1.6.2 — getAdjustmentRoleCodes resolves both roles via AccountRoleService', async () => {
+    const result = await service.getAdjustmentRoleCodes();
+    expect(result).toEqual({ underpay: '52-1104', overpay: '53-1503' });
   });
 });

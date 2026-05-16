@@ -81,7 +81,7 @@ export function calcPostponeFee(monthlyPayment: Decimal, daysToShift: number): D
  * Case 1 — Overpay (diff > 0, diff ≤ 1฿):
  *   Dr depositAccountCode   amountReceived
  *     Cr 11-2103 ลูกหนี้ค้างชำระ  installmentTotal
- *     Cr 53-1503 กำไรปัดเศษ        diff
+ *     Cr <adj_overpay role> กำไรปัดเศษ        diff   // 53-1503 by default
  *
  * Case 2 — Underpay (diff < 0, abs(diff) ≤ 1฿, requires approverId):
  *   Dr depositAccountCode   amountReceived
@@ -276,7 +276,7 @@ export class PaymentReceipt2BTemplate {
         // 6. Overpay rounding
         if (roundingDiff.gt(0)) {
           lines.push({
-            accountCode: '53-1503',
+            accountCode: this.roles.code('adj_overpay'),
             dr: zero,
             cr: roundingDiff,
             description: 'กำไรปัดเศษ (Policy C)',

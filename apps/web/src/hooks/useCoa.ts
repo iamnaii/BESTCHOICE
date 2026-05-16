@@ -56,3 +56,25 @@ export function useCoaByCodes(codes: string[]) {
     enabled: codes.length > 0,
   });
 }
+
+/**
+ * D1.1.6.2 — Resolves the `adj_underpay` / `adj_overpay` roles to their live
+ * CoA codes. Used by AdjustmentSection so the picker suggestion stays in sync
+ * with the server `account_role_map` instead of hard-coding `52-1104` /
+ * `53-1503`.
+ */
+export interface AdjustmentRoleCodes {
+  underpay: string;
+  overpay: string;
+}
+
+export function useAdjustmentRoleCodes() {
+  return useQuery<AdjustmentRoleCodes>({
+    queryKey: ['coa', 'adjustment-roles'],
+    queryFn: async () => {
+      const { data } = await api.get<AdjustmentRoleCodes>('/chart-of-accounts/adjustment-roles');
+      return data;
+    },
+    staleTime: Infinity,
+  });
+}

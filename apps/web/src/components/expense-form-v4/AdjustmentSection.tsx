@@ -11,6 +11,7 @@
 import { Plus, Trash2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import type { ExpenseAdjustmentForm } from './types';
 import { newAdjustment } from './types';
+import { useAdjustmentRoleCodes } from '@/hooks/useCoa';
 
 interface Props {
   /** Reconciliation diff = amountPaid − (totalAmount − wht). Sign decides side. */
@@ -25,7 +26,9 @@ interface Props {
   netExpected: string;
 }
 
-const DEFAULT_SUGGESTED: Array<{ code: string; name: string; defaultSide: 'DR' | 'CR' }> = [
+// Fallback used when the role API has not yet resolved. Matches the seeded
+// default in `account_role_map` so first paint matches the eventual values.
+const FALLBACK_SUGGESTED: Array<{ code: string; name: string; defaultSide: 'DR' | 'CR' }> = [
   { code: '53-1503', name: 'กำไร/ขาดทุน-สุทธิปัดเศษ', defaultSide: 'CR' },
   { code: '52-1104', name: 'ส่วนลดไม่จ่ายเศษสตางค์', defaultSide: 'DR' },
 ];
@@ -43,9 +46,22 @@ export function AdjustmentSection({
   onAmountPaidChange,
   adjustments,
   onChange,
-  suggestedAccounts = DEFAULT_SUGGESTED,
+  suggestedAccounts,
   netExpected,
 }: Props) {
+  // D1.1.6.2 — resolve adj_underpay / adj_overpay roles from server. When the
+  // caller supplies suggestedAccounts explicitly that wins (used by tests +
+  // callers with bespoke routing); otherwise we build the list from the
+  // role API, falling back to the seeded defaults during initial load.
+  const { data: roleCodes } = useAdjustmentRoleCodes();
+  const apiSuggested: Array<{ code: string; name: string; defaultSide: 'DR' | 'CR' }> = roleCodes
+    ? [
+        { code: roleCodes.overpay, name: 'กำไร/ขาดทุน-สุทธิปัดเศษ', defaultSide: 'CR' },
+        { code: roleCodes.underpay, name: 'ส่วนลดไม่จ่ายเศษสตางค์', defaultSide: 'DR' },
+      ]
+    : FALLBACK_SUGGESTED;
+  const effectiveSuggested = suggestedAccounts ?? apiSuggested;
+
   const diffNum = D(diff);
   const adjustmentsActive = adjustments.length > 0 || Math.abs(diffNum) > 0.005;
 
@@ -145,7 +161,7 @@ export function AdjustmentSection({
                     value={row.accountCode}
                     onChange={(e) => {
                       const code = e.target.value;
-                      const match = suggestedAccounts.find((s) => s.code === code);
+                      const match = effectiveSuggested.find((s) => s.code === code);
                       updateRow(row.uid, {
                         accountCode: code,
                         side: match?.defaultSide ?? row.side,
@@ -154,7 +170,7 @@ export function AdjustmentSection({
                     className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                   >
                     <option value="">— เลือกบัญชี —</option>
-                    {suggestedAccounts.map((s) => (
+                    {effectiveSuggested.map((s) => (
                       <option key={s.code} value={s.code}>
                         {s.code} — {s.name}
                       </option>

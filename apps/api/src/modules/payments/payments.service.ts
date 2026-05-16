@@ -1986,7 +1986,7 @@ export class PaymentsService {
       const roundingDiff = amountReceived.minus(installmentTotal);
       const tolerance = new Prisma.Decimal('1.00');
       if (roundingDiff.gt(zero) && roundingDiff.lte(tolerance)) {
-        rawLines.push({ code: '53-1503', dr: zero, cr: roundingDiff, description: 'กำไรปัดเศษ (Policy C)' });
+        rawLines.push({ code: this.roles.code('adj_overpay'), dr: zero, cr: roundingDiff, description: 'กำไรปัดเศษ (Policy C)' });
       } else if (roundingDiff.lt(zero) && roundingDiff.abs().lte(tolerance)) {
         rawLines.push({ code: this.roles.code('adj_underpay'), dr: roundingDiff.abs(), cr: zero, description: 'ส่วนลดเศษสตางค์ (Policy C)' });
       }

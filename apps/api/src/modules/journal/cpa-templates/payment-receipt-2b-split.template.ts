@@ -36,7 +36,7 @@ export interface PaymentReceiptSplitInput {
  *   Overpay (diff > 0, ≤1฿):
  *     Dr depositAccountCode   partialAmount
  *       Cr 11-2103 ลูกหนี้ค้างชำระ  remainingReceivable
- *       Cr 53-1503 กำไรปัดเศษ        diff
+ *       Cr <adj_overpay role> กำไรปัดเศษ        diff   // 53-1503 by default
  *   Underpay (diff < 0, ≤1฿, requires approverId):
  *     Dr depositAccountCode   partialAmount
  *     Dr <adj_underpay role> ส่วนลดเศษสตางค์  abs(diff)   // 52-1104 by default
@@ -203,7 +203,7 @@ export class PaymentReceipt2BSplitTemplate {
           description: 'ล้างลูกหนี้ค้างชำระ',
         });
         lines.push({
-          accountCode: '53-1503',
+          accountCode: this.roles.code('adj_overpay'),
           dr: zero,
           cr: diff,
           description: 'กำไรปัดเศษ (Policy C)',

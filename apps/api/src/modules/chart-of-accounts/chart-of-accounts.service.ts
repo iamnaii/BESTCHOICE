@@ -3,10 +3,29 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateChartOfAccountDto, UpdateChartOfAccountDto } from './dto/chart-of-account.dto';
 import { CoaAccountRow, CoaGroupedResponse } from './dto/coa-grouped.dto';
+import { AccountRoleService } from '../journal/account-role.service';
 
 @Injectable()
 export class ChartOfAccountsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private roles: AccountRoleService,
+  ) {}
+
+  /**
+   * D1.1.6.2 — Resolve the active CoA codes for the small set of "adjustment"
+   * roles consumed by the AdjustmentSection UI. Decouples the frontend hint
+   * from hardcoded literals so an owner-driven `account_role_map` change
+   * propagates to the picker without a deploy. Codes resolved at request
+   * time so a fresh admin-edit (followed by `roles.invalidate()`) takes
+   * effect on the next call.
+   */
+  async getAdjustmentRoleCodes(): Promise<{ underpay: string; overpay: string }> {
+    return {
+      underpay: this.roles.code('adj_underpay'),
+      overpay: this.roles.code('adj_overpay'),
+    };
+  }
 
   async findAll(filter?: {
     type?: string;

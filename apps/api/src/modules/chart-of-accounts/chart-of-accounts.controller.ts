@@ -37,6 +37,17 @@ export class ChartOfAccountsController {
     return this.service.findGrouped(query);
   }
 
+  /**
+   * D1.1.6.2 — Adjustment role mappings (`adj_underpay`, `adj_overpay`) resolved
+   * to their current CoA codes. Drives the AdjustmentSection UI hints so the
+   * preparer sees the live routing target instead of a hardcoded literal.
+   */
+  @Get('adjustment-roles')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  adjustmentRoles(): Promise<{ underpay: string; overpay: string }> {
+    return this.service.getAdjustmentRoleCodes();
+  }
+
   @Get(':id')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   findOne(@Param('id') id: string) {

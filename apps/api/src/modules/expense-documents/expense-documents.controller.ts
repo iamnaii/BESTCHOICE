@@ -23,6 +23,7 @@ import { CreateCreditNoteDto } from './dto/create-credit-note.dto';
 import { CreatePayrollDto } from './dto/create-payroll.dto';
 import { CreateSettlementDto } from './dto/create-settlement.dto';
 import { CreatePettyCashDto } from './dto/create-petty-cash.dto';
+import { VoidExpenseDocumentDto } from './dto/void-expense.dto';
 import { hasCrossBranchAccess } from '../auth/branch-access.util';
 
 @Controller('expense-documents')
@@ -165,8 +166,12 @@ export class ExpenseDocumentsController {
 
   @Post(':id/void')
   @Roles('OWNER', 'FINANCE_MANAGER')
-  void(@Param('id') id: string, @CurrentUser() user: { id: string }) {
-    return this.service.voidDocument(id, user.id);
+  void(
+    @Param('id') id: string,
+    @Body() dto: VoidExpenseDocumentDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.service.voidDocument(id, user.id, dto);
   }
 
   @Delete(':id')

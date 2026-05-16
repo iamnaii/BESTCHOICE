@@ -18,14 +18,15 @@
 | [B3 · Test Suite J+K](B3-test-suite.md) | 14 | 14 | 100% | ✅ Done | — | [#865](https://github.com/iamnaii/BESTCHOICE/pull/865) · [#866](https://github.com/iamnaii/BESTCHOICE/pull/866) · this PR (J-06) |
 | [C1 · Petty Cash](C1-petty-cash.md) | 8 | 7 | 88% | ✅ Done | — | [#867](https://github.com/iamnaii/BESTCHOICE/pull/867) · [#868](https://github.com/iamnaii/BESTCHOICE/pull/868) · this PR (PDF). C1.7 settings → A1 |
 | [C2 · Payroll Custom Income/Deduction](C2-payroll-custom.md) | 7 | 7 | 100% | ✅ Done | — | [#871](https://github.com/iamnaii/BESTCHOICE/pull/871) · [#872](https://github.com/iamnaii/BESTCHOICE/pull/872) · this PR (slip PDF) |
-| [C3 · Reverse Dialog + V19](C3-reverse-dialog.md) | 5 | 0 | 0% | ⬜ Pending | — | — |
+| [C3 · Reverse Dialog + V19](C3-reverse-dialog.md) | 5 | 3 | 60% | 🔵 In Review | — | PR TBD (backend bundle; UI + Settings deferred) |
 | [C4 · Credit Note 2-Mode](C4-credit-note-2mode.md) | 4 | 0 | 0% | ⬜ Pending | — | — |
 | [D1 · Settings Audit Phase 4](D1-settings-implement.md) | TBD | 0 | 0% | 🔒 Locked (by A1) | — | — |
-| **TOTAL** | **~159** | **47** | **~30%** | | | |
+| **TOTAL** | **~159** | **50** | **~31%** | | | |
 
 ## 🎯 Current Focus
 
 - **Active:** None. C2 shipped end-to-end except C2.7 slip PDF.
+- **Active:** **C3 (Reverse Dialog + V19)** — backend bundle (3/5 items) in review. UI (C3.2) + Settings (C3.5) deferred.
 - **Optional housekeeping:** EQ-002 missing เม.ย. depreciation (~฿287). Not a blocker; owner can run `POST /admin/depreciation/run?period=2026-04` for catch-up at convenience. พ.ค. depreciation will tick automatically on May 31.
 - **Next:** C2 (Payroll Custom Income/Deduction), C3 (Reverse Dialog), or C4 (Credit Note 2-Mode)
 

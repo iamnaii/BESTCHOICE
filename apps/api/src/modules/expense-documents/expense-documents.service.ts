@@ -24,6 +24,7 @@ import { CreateCreditNoteDto } from './dto/create-credit-note.dto';
 import { CreatePayrollDto } from './dto/create-payroll.dto';
 import { CreateSettlementDto } from './dto/create-settlement.dto';
 import { CreatePettyCashDto } from './dto/create-petty-cash.dto';
+import { VoidExpenseDocumentDto } from './dto/void-expense.dto';
 import { hasCrossBranchAccess } from '../auth/branch-access.util';
 import { LineAggregatorService } from './services/line-aggregator.service';
 import { JePreviewService } from './services/je-preview.service';
@@ -1626,7 +1627,10 @@ export class ExpenseDocumentsService implements OnModuleInit {
   // ─── Void (any non-VOIDED → VOIDED) ──────────────────────────────────
   // Posts a reversal JE (flipped Dr/Cr) when the doc had a journal entry,
   // and for VENDOR_SETTLEMENT also reverts each cleared EX back to ACCRUAL.
-  async voidDocument(id: string, _userId: string) {
+  // C3 — Optionally accepts reasonCode + reasonDetail + reverseDate (caller-chosen
+  // posting date for the reversal JE). All optional → existing parameterless
+  // void path still works (back-compat).
+  async voidDocument(id: string, userId: string, dto: VoidExpenseDocumentDto = {}) {
     return this.prisma.$transaction(async (tx) => {
       // Per-doc advisory lock — serializes concurrent voids on the same id so
       // two callers cannot both pass assertCanVoid and double-post a reversal JE.
@@ -1651,13 +1655,34 @@ export class ExpenseDocumentsService implements OnModuleInit {
         throw new BadRequestException('มีใบลดหนี้ที่ยังไม่ถูกยกเลิก ไม่สามารถยกเลิกเอกสารต้นฉบับได้');
       }
 
+      // C3.4 — Cascade check: also block void when an active SETTLEMENT
+      // clears this doc. (Settlement-on-void of the SE itself separately
+      // reverts cleared docs back to ACCRUAL — that's the SE-being-voided
+      // path, not this one.)
+      const pendingSe = await tx.expenseDocument.count({
+        where: {
+          documentType: 'VENDOR_SETTLEMENT',
+          status: { not: 'VOIDED' },
+          deletedAt: null,
+          settlement: { settlementLines: { some: { clearedDocumentId: id } } },
+        },
+      });
+      if (pendingSe > 0) {
+        throw new BadRequestException(
+          'มีใบจ่ายเจ้าหนี้ (SE) ที่ยังไม่ถูกยกเลิกอ้างถึงเอกสารนี้อยู่ — ' +
+            'กรุณายกเลิก SE ก่อน',
+        );
+      }
+
       this.transition.assertCanVoid({ from: doc.status });
 
       // Fix #C9 (Round 2 — moved from journal-auto.service.createAndPost):
-      // Period-open guard at the module boundary. The reversal JE postedAt
-      // is BKK noon "today" (bkkBusinessDate(new Date())), so the check uses
-      // the same "now" reference. SHOP companyId resolved fresh (cache lives
-      // on JournalAutoService) — small cost, but voids are rare.
+      // Period-open guard at the module boundary. C3.1 — when caller passes
+      // `reverseDate`, the reversal JE postedAt uses it (still V19-gated); else
+      // the legacy behavior (today BKK noon).
+      const reverseAt = dto.reverseDate
+        ? bkkBusinessDate(new Date(dto.reverseDate))
+        : bkkBusinessDate(new Date());
       const shopForVoidPeriod = await tx.companyInfo.findFirst({
         where: { companyCode: 'SHOP', deletedAt: null },
         select: { id: true },
@@ -1667,12 +1692,13 @@ export class ExpenseDocumentsService implements OnModuleInit {
           'CompanyInfo with companyCode=SHOP not found — seed accounting data first',
         );
       }
-      await validatePeriodOpen(tx, bkkBusinessDate(new Date()), shopForVoidPeriod.id);
+      await validatePeriodOpen(tx, reverseAt, shopForVoidPeriod.id);
 
       // Post reversal JE (flipped Dr/Cr) if doc had one. The original JE stays
       // intact; the reversal lives as a separate POSTED entry tagged via metadata.
       // Reversal postedAt is BKK noon "today" — keeps the entry inside the
       // intended Thai accounting day regardless of UTC server clock.
+      let reverseJournalEntryId: string | null = null;
       if (doc.journalEntryId) {
         const original = await tx.journalEntry.findUniqueOrThrow({
           where: { id: doc.journalEntryId },
@@ -1699,7 +1725,7 @@ export class ExpenseDocumentsService implements OnModuleInit {
           }
           companyId = shop.id;
         }
-        await this.journal.createAndPost(
+        const reverseEntry = await this.journal.createAndPost(
           {
             description: `กลับรายการ ${doc.number}`,
             reference: doc.id,
@@ -1710,8 +1736,12 @@ export class ExpenseDocumentsService implements OnModuleInit {
               documentType: doc.documentType,
               originalJournalEntryId: original.id,
               flow: `expense-${doc.documentType.toLowerCase()}-void`,
+              // C3 — reason metadata embedded so JE-side audits can grep
+              // by reasonCode without joining audit_logs.
+              reverseReasonCode: dto.reasonCode ?? null,
+              reverseReasonDetail: dto.reasonDetail ?? null,
             },
-            postedAt: bkkBusinessDate(new Date()),
+            postedAt: reverseAt,
             companyId,
             lines: original.lines.map((l) => ({
               accountCode: l.accountCode,
@@ -1722,6 +1752,7 @@ export class ExpenseDocumentsService implements OnModuleInit {
           },
           tx,
         );
+        reverseJournalEntryId = reverseEntry.id;
       }
 
       // VENDOR_SETTLEMENT side-effect: revert each cleared EX back to ACCRUAL.
@@ -1752,6 +1783,29 @@ export class ExpenseDocumentsService implements OnModuleInit {
       if (flip.count === 0) {
         throw new BadRequestException('เอกสารถูกยกเลิกไปแล้ว');
       }
+
+      // C3.3 — Audit trail with reason + reverse JE pointer. Stuffed into
+      // `newValue` JSON rather than adding columns (AuditLog has a Merkle hash
+      // chain — adding columns would break the verification path on existing rows).
+      await tx.auditLog.create({
+        data: {
+          action: 'EXPENSE_VOIDED',
+          entity: 'expense_document',
+          entityId: id,
+          userId,
+          oldValue: { status: doc.status, journalEntryId: doc.journalEntryId },
+          newValue: {
+            status: 'VOIDED',
+            reverseJournalEntryId,
+            reverseDate: reverseAt.toISOString(),
+            reasonCode: dto.reasonCode ?? null,
+            reasonDetail: dto.reasonDetail ?? null,
+            documentNumber: doc.number,
+            documentType: doc.documentType,
+          },
+        },
+      });
+
       return tx.expenseDocument.findUniqueOrThrow({ where: { id } });
     });
   }

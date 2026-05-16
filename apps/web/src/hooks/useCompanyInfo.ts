@@ -76,3 +76,13 @@ export function useCompanyTaxId(): string {
   const { shop, finance } = useCompanyInfo();
   return finance?.taxId ?? shop?.taxId ?? '';
 }
+
+/**
+ * D1.2.2.4 — uploaded logo URL for voucher header.
+ * Prefers FINANCE logo (primary entity), then SHOP, then null (caller
+ * hides the `<img>` element when null).
+ */
+export function useCompanyLogoUrl(): string | null {
+  const { shop, finance } = useCompanyInfo();
+  return finance?.logoUrl ?? shop?.logoUrl ?? null;
+}

@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 
@@ -30,6 +31,8 @@ export interface UiFlags {
   voucherShowQrCode: boolean;
   /** D1.2.2.5 — primary theme color hex. Default emerald. Informational. */
   themeColor: string;
+  /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
+  language: 'th' | 'en';
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -49,6 +52,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   periodCloseDay: 31,
   voucherShowQrCode: true,
   themeColor: '#10b981',
+  language: 'th',
 };
 
 export function useUiFlags(): UiFlags {
@@ -60,5 +64,14 @@ export function useUiFlags(): UiFlags {
     },
     staleTime: 5 * 60_000, // 5 min — flags rarely change mid-session
   });
-  return data ?? DEFAULT_UI_FLAGS;
+  const flags = data ?? DEFAULT_UI_FLAGS;
+  // D1.2.2.6 — sync the document `lang` attribute so accessibility readers
+  // and `<input>` locale heuristics respect the OWNER-configured language
+  // even before a full i18n framework is in place.
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.documentElement.lang = flags.language;
+    }
+  }, [flags.language]);
+  return flags;
 }

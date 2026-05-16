@@ -163,6 +163,11 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
         });
         createdId = data.id;
       } else if (state.docType === 'VENDOR_SETTLEMENT') {
+        // B2 — forward adjustments + amountPaid when the user has reconciled
+        // a supplier discount / bank fee / rounding diff. Server-side V12
+        // re-validates Σ signed(adjustments) === amountPaid − (sumSettled − wht).
+        const hasAdjustments = state.adjustments.length > 0;
+        const hasAmountPaid = state.amountPaid.trim() !== '';
         const { data } = await api.post('/expense-documents/settlement', {
           branchId: state.branchId,
           documentDate: state.documentDate,
@@ -175,6 +180,15 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
             clearedDocumentId: s.docId,
             amountSettled: parseFloat(s.amount) || 0,
           })),
+          amountPaid: hasAmountPaid ? state.amountPaid : undefined,
+          adjustments: hasAdjustments
+            ? state.adjustments.map((a) => ({
+                accountCode: a.accountCode,
+                side: a.side,
+                amount: a.amount,
+                note: a.note || undefined,
+              }))
+            : undefined,
         });
         createdId = data.id;
       } else if (state.docType === 'CREDIT_NOTE') {
@@ -395,13 +409,29 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
                   </Section>
                 )}
 
-                {/* Section: Multi-line Adjustment (Fix Report P0-4) — SAMEDAY only.
-                    Other doc types either have no cash leg (ACCRUAL, PAYROLL pre-pay)
-                    or post via a different flow (CREDIT_NOTE, VENDOR_SETTLEMENT). */}
-                {state.docType === 'EXPENSE_SAMEDAY' && (
+                {/* Section: Multi-line Adjustment (Fix Report P0-4, B2 for SE).
+                    Shown for SAMEDAY (cash leg = totalAmount − wht; covers
+                    overpay/underpay/rounding) and VENDOR_SETTLEMENT (cash leg
+                    = sumSettled − wht; covers supplier discounts/fees). ACCRUAL,
+                    PAYROLL, CREDIT_NOTE have no client-driven cash leg so the
+                    section is hidden. */}
+                {(state.docType === 'EXPENSE_SAMEDAY' || state.docType === 'VENDOR_SETTLEMENT') && (
                   <Section num={next()} title="บัญชีปรับผลต่าง (ถ้ามี)" Icon={Receipt}>
                     {(() => {
-                      const netExpected = preview?.totals.netPayment ?? '0.00';
+                      // SAMEDAY pulls netExpected from JE preview (server-computed).
+                      // SE has no JE preview yet, so compute locally:
+                      // netExpected = Σ selections.amount − whtAmount.
+                      let netExpected = '0.00';
+                      if (state.docType === 'EXPENSE_SAMEDAY') {
+                        netExpected = preview?.totals.netPayment ?? '0.00';
+                      } else {
+                        const sumSettled = [...state.settlement.selections.values()].reduce(
+                          (s, sel) => s + (parseFloat(sel.amount) || 0),
+                          0,
+                        );
+                        const wht = parseFloat(state.settlement.whtAmount) || 0;
+                        netExpected = (sumSettled - wht).toFixed(2);
+                      }
                       const paidNum =
                         state.amountPaid.trim() !== ''
                           ? parseFloat(state.amountPaid)

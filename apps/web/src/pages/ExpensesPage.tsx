@@ -11,6 +11,7 @@ import { useCoaGroups } from '@/hooks/useCoa';
 import DataTable from '@/components/ui/DataTable';
 import QueryBoundary from '@/components/QueryBoundary';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { ReverseDialog } from '@/components/expense-form-v4/ReverseDialog';
 import { useAuth } from '@/contexts/AuthContext';
 import { Receipt, Plus, Pencil, MoreVertical, Bookmark, Wallet, BarChart3, Search, SlidersHorizontal, Eye, ArrowRight, UserCircle2, ChevronDown, FileText, CreditCard } from 'lucide-react';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
@@ -125,6 +126,11 @@ export default function ExpensesPage() {
   const [showCreateMenu, setShowCreateMenu] = useState(false);
   const navigate = useNavigate();
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
+  // C3.2 — Reverse Dialog state separate from generic ConfirmDialog so the
+  // void path can capture reasonCode + reasonDetail + reverseDate.
+  const [reverseDialog, setReverseDialog] = useState<{ open: boolean; id: string; number: string }>(
+    { open: false, id: '', number: '' },
+  );
 
   const setFilter = (key: string, value: string) => {
     const params = new URLSearchParams(searchParams);
@@ -338,7 +344,7 @@ export default function ExpensesPage() {
                   )}
                   {isOwner && (
                     <button
-                      onClick={() => { setConfirmDialog({ open: true, message: `ยกเลิก "${e.number}"?`, action: () => actionMutation.mutate({ id: e.id, action: 'void' }) }); setOpenMenuId(null); }}
+                      onClick={() => { setReverseDialog({ open: true, id: e.id, number: e.number }); setOpenMenuId(null); }}
                       className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted text-destructive"
                     >
                       ยกเลิก
@@ -563,6 +569,21 @@ export default function ExpensesPage() {
       )}
 
       <ConfirmDialog open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog(prev => ({ ...prev, open }))} description={confirmDialog.message} onConfirm={confirmDialog.action} />
+
+      <ReverseDialog
+        open={reverseDialog.open}
+        onOpenChange={(open) => setReverseDialog((prev) => ({ ...prev, open }))}
+        docNumber={reverseDialog.number}
+        loading={actionMutation.isPending}
+        onConfirm={(payload) => {
+          actionMutation.mutate(
+            { id: reverseDialog.id, action: 'void', body: payload },
+            {
+              onSuccess: () => setReverseDialog({ open: false, id: '', number: '' }),
+            },
+          );
+        }}
+      />
     </div>
   );
 }

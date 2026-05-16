@@ -24,6 +24,7 @@ import {
   useCompanyDisplayName,
   useCompanyAddress,
   useCompanyTaxId,
+  useCompanyLogoUrl,
 } from '@/hooks/useCompanyInfo';
 
 export interface ExpenseLine {
@@ -263,6 +264,7 @@ function PettyCashSheet({
   const companyName = useCompanyDisplayName();
   const companyAddress = useCompanyAddress();
   const companyTaxId = useCompanyTaxId();
+  const companyLogoUrl = useCompanyLogoUrl();
   const lines = doc.expenseDetail?.lines ?? [];
   // Distinct supplier count for the badge — useful auditing surface since
   // petty cash is the only doc type that mixes vendors per document.
@@ -275,6 +277,13 @@ function PettyCashSheet({
       style={{ minHeight: '270mm' }}
     >
       <header className="text-center border-b-2 border-foreground pb-3">
+        {companyLogoUrl && (
+          <img
+            src={companyLogoUrl}
+            alt={companyName}
+            className="mx-auto mb-2 h-12 w-auto object-contain"
+          />
+        )}
         <h1 className="text-xl font-bold">{companyName}</h1>
         <p className="text-sm text-muted-foreground mt-1">
           {companyAddress}{companyTaxId && ` · เลขผู้เสียภาษี ${companyTaxId}`}
@@ -432,6 +441,7 @@ function PayrollSlipSheet({
   const companyName = useCompanyDisplayName();
   const companyAddress = useCompanyAddress();
   const companyTaxId = useCompanyTaxId();
+  const companyLogoUrl = useCompanyLogoUrl();
   const base = new Decimal(line.baseSalary || '0');
   const sso = new Decimal(line.ssoEmployee || '0');
   const wht = new Decimal(line.whtAmount || '0');
@@ -463,6 +473,13 @@ function PayrollSlipSheet({
       }}
     >
       <header className="text-center border-b-2 border-foreground pb-3">
+        {companyLogoUrl && (
+          <img
+            src={companyLogoUrl}
+            alt={companyName}
+            className="mx-auto mb-2 h-12 w-auto object-contain"
+          />
+        )}
         <h1 className="text-xl font-bold">{companyName}</h1>
         <p className="text-sm text-muted-foreground mt-1">
           {companyAddress}{companyTaxId && ` · เลขผู้เสียภาษี ${companyTaxId}`}
@@ -627,6 +644,7 @@ function Sheet({
   const companyName = useCompanyDisplayName();
   const companyAddress = useCompanyAddress();
   const companyTaxId = useCompanyTaxId();
+  const companyLogoUrl = useCompanyLogoUrl();
   const lines = doc.expenseDetail?.lines ?? [];
   return (
     <article
@@ -635,6 +653,13 @@ function Sheet({
     >
       {/* Company header */}
       <header className="text-center border-b-2 border-foreground pb-3">
+        {companyLogoUrl && (
+          <img
+            src={companyLogoUrl}
+            alt={companyName}
+            className="mx-auto mb-2 h-12 w-auto object-contain"
+          />
+        )}
         <h1 className="text-xl font-bold">{companyName}</h1>
         <p className="text-sm text-muted-foreground mt-1">
           {companyAddress}{companyTaxId && ` · เลขผู้เสียภาษี ${companyTaxId}`}
@@ -817,6 +842,7 @@ function WhtCertificate({ doc }: { doc: VoucherDoc }) {
   const companyName = useCompanyDisplayName();
   const companyAddress = useCompanyAddress();
   const companyTaxId = useCompanyTaxId();
+  const companyLogoUrl = useCompanyLogoUrl();
   // W7 (Round 2) — see bucketWhtByRate above for the Decimal-precision
   // rationale. Convert to display strings only at render time via toFixed.
   const wht = new Decimal(doc.withholdingTax || '0');

@@ -175,6 +175,16 @@ export class SettingsService {
      * accessibility readers via the lang attr.
      */
     language: 'th' | 'en';
+    /**
+     * D1.2.4.3 — default visibility for newly-created Expense Templates.
+     * Whitelisted PRIVATE/TEAM/PUBLIC, default PRIVATE. The UI uses this
+     * value to pre-select the visibility radio on the "บันทึกเป็นรายการ
+     * โปรด" dialog. Server-side, `ExpenseTemplatesService.listTemplates`
+     * filters rows by visibility: creator always sees own, TEAM viewers
+     * see grants from `sharedWith`, PUBLIC visible to all authenticated
+     * users (cross-branch access still gated by branchId).
+     */
+    templateSharingDefault: 'PRIVATE' | 'TEAM' | 'PUBLIC';
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -214,6 +224,12 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.2.4.3 — template sharing default. Whitelist PRIVATE/TEAM/PUBLIC;
+    // any unknown value falls back to PRIVATE (safest — never accidentally
+    // expose a new template to the whole shop on a bad config write).
+    const sharingRaw = await this.getKey('template_sharing_default');
+    const templateSharingDefault: 'PRIVATE' | 'TEAM' | 'PUBLIC' =
+      sharingRaw === 'TEAM' || sharingRaw === 'PUBLIC' ? sharingRaw : 'PRIVATE';
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -225,6 +241,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      templateSharingDefault,
     };
   }
 

@@ -60,8 +60,23 @@ export class ExpenseTemplatesService {
   }
 
   async list(filters: { branchId?: string; type?: string }, user: UserContext) {
-    const where: Prisma.ExpenseTemplateWhereInput = { deletedAt: null };
     const branchId = hasCrossBranchAccess(user) ? filters.branchId : (user.branchId ?? filters.branchId);
+    // D1.2.4.3 — visibility ACL filter. A row is visible when ANY of:
+    //   1. visibility = PUBLIC (everyone)
+    //   2. createdById = caller (always see your own)
+    //   3. visibility = TEAM AND caller listed in sharedWith
+    // This is layered ON TOP OF the existing branchId check so cross-branch
+    // users still can't see templates from branches they don't have access
+    // to (PUBLIC is "everyone in your branch context", not "literally every
+    // user system-wide").
+    const where: Prisma.ExpenseTemplateWhereInput = {
+      deletedAt: null,
+      OR: [
+        { visibility: 'PUBLIC' },
+        { createdById: user.id },
+        { visibility: 'TEAM', sharedWith: { some: { userId: user.id } } },
+      ],
+    };
     if (branchId) where.branchId = branchId;
     if (filters.type) where.documentType = filters.type as never;
     // Hard cap on rows returned. Favorites are user-curated so this should

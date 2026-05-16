@@ -33,6 +33,12 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /**
+   * D1.2.4.3 — default visibility selection on the "บันทึกเป็นรายการโปรด"
+   * dialog. PRIVATE = creator-only (default), TEAM = creator + explicit
+   * grants, PUBLIC = visible to all authenticated users.
+   */
+  templateSharingDefault: 'PRIVATE' | 'TEAM' | 'PUBLIC';
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -53,6 +59,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  templateSharingDefault: 'PRIVATE',
 };
 
 export function useUiFlags(): UiFlags {

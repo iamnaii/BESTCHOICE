@@ -61,7 +61,7 @@ Sub-prioritization within expanded D1 scope:
 | D1.2.3.5 | `thousands_separator` | P1 | ⬜ | — | toLocaleString locale from pref |
 | D1.2.4.1 | `templates_enabled` flag | P1 | ⬜ | — | Feature flag at controller |
 | D1.2.4.2 | `max_templates_per_user` quota | P1 | ⬜ | — | Count check in createTemplate |
-| D1.2.4.3 | `sharing_rules` (ACL) | P1 | ⬜ | — | Schema: add visibility + sharedWith |
+| D1.2.4.3 | `sharing_rules` (ACL) | P1 | ✅ | this PR | New `TemplateVisibility` enum (PRIVATE/TEAM/PUBLIC) + `visibility` field on `ExpenseTemplate` (default PRIVATE) + new `UserExpenseTemplate` join table for TEAM grants. Migration `20260931000000_template_sharing_rules` (additive: enum + column with default + new table — safe on existing data). SystemConfig `template_sharing_default` (whitelisted PRIVATE/TEAM/PUBLIC, default PRIVATE — unknown values fall through to PRIVATE for safety). `getUiFlags().templateSharingDefault` exposes it. `ExpenseTemplatesService.list()` now filters by visibility ACL (`OR: [PUBLIC, createdById=self, TEAM with sharedWith member]`) layered on top of existing branchId scoping. 5 jest tests (default, TEAM, PUBLIC, unknown fallback, case-sensitivity) |
 | D1.2.4.4 | `variables_support` formalization | P1 | ⬜ | — | Define `{{var}}` interpolation syntax |
 | D1.2.4.5 | Template `categories` table | P1 | ⬜ | — | New TemplateCategory model |
 | D1.2.5.1 | `voucher_print_mode_default` | P1 | ⬜ | — | single vs multi page mode |

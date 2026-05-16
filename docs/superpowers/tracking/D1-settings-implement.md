@@ -1,7 +1,7 @@
 # D1 · Settings Audit Phase 4 (Implement Approved Scope)
 
 **Status:** 🟢 In Progress — owner approved expanded scope 2026-05-16
-**Started:** 2026-05-16  |  **PRs:** #882-#892 · this PR (D1.2.2.2)  |  **Done:** 12/75 — 2.6 ✅ · 2.7 ✅ · 2.2 2/7
+**Started:** 2026-05-16  |  **PRs:** #882-#893 · this PR (D1.2.2.3)  |  **Done:** 13/75 — 2.6 ✅ · 2.7 ✅ · 2.2 3/7
 **Spec:** [`../specs/2026-05-16-a1-phase2-decision-report.md`](../specs/2026-05-16-a1-phase2-decision-report.md)  ·  **Plan:** —
 
 ## Context
@@ -41,7 +41,7 @@ Sub-prioritization within expanded D1 scope:
 | D1.1.6.3 | `adj_auto_route` toggle | P0 | ⬜ | — | Flag in SystemConfig + check in template |
 | D1.2.2.1 | `company_name` (CompanyInfo wire) | P1 | ✅ | this PR | **Foundation for 2.2 sub-section.** New `GET /companies/public` (authenticated, all roles, returns public-safe SHOP+FINANCE fields). New `useCompanyInfo()` + `useCompanyDisplayName()` hooks in apps/web/src/hooks/useCompanyInfo.ts. All 4 hardcoded `BESTCHOICE FINANCE × SHOP` literals in PaymentVoucherPage.tsx (lines 271/456/625/827 across PettyCashSheet/PayrollSlipSheet/Sheet/WhtCertificate) replaced with `{companyName}` from the hook. Fallback to legacy literal if API hasn't responded yet. 3 new service tests on findPublic |
 | D1.2.2.2 | `company_address` (CompanyInfo wire) | P1 | ✅ | this PR | New `useCompanyAddress()` hook (prefers FINANCE then SHOP). Replaces all 4 hardcoded "เลขประจำตัวผู้เสียภาษี · สำนักงานใหญ่" placeholders in PaymentVoucherPage components. Re-uses the existing /companies/public endpoint from D1.2.2.1. Type-check 0 errors |
-| D1.2.2.3 | `tax_id` (CompanyInfo wire) | P1 | ⬜ | — | |
+| D1.2.2.3 | `tax_id` (CompanyInfo wire) | P1 | ✅ | this PR | New `useCompanyTaxId()` hook. Voucher sub-header now shows `{address} · เลขผู้เสียภาษี {taxId}` inline. Hidden when CompanyInfo absent. Re-uses /companies/public. Type-check 0 errors |
 | D1.2.2.4 | `logo_url` (upload + render) | P1 | ⬜ | — | CompanyInfo.logoUrl already in schema |
 | D1.2.2.5 | `theme_color` admin override | P1 | ⬜ | — | Tailwind CSS var override at runtime |
 | D1.2.2.6 | `language` (i18n) | P1 | ⬜ | — | Larger — defer if time short |

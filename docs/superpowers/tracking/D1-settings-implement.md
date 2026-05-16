@@ -63,7 +63,7 @@ Sub-prioritization within expanded D1 scope:
 | D1.2.4.2 | `max_templates_per_user` quota | P1 | ⬜ | — | Count check in createTemplate |
 | D1.2.4.3 | `sharing_rules` (ACL) | P1 | ⬜ | — | Schema: add visibility + sharedWith |
 | D1.2.4.4 | `variables_support` formalization | P1 | ⬜ | — | Define `{{var}}` interpolation syntax |
-| D1.2.4.5 | Template `categories` table | P1 | ⬜ | — | New TemplateCategory model |
+| D1.2.4.5 | Template `categories` table | P1 | ✅ | this PR | New `TemplateCategory` model (`id`/`name` unique/`description?`/timestamps + soft-delete) + nullable `categoryId` FK on `ExpenseTemplate` (SetNull on delete). Migration `20260931000001_template_categories` (additive — column nullable, FK SetNull) seeds 5 starter categories via `ON CONFLICT DO NOTHING`: รายจ่ายทั่วไป, เงินเดือน, ค่าเช่า, ค่าสาธารณูปโภค, อื่นๆ. New `GET /template-categories` endpoint (authenticated, all roles incl. SALES) returns active rows ordered by name with `{id, name, description}` projection. Service in `template-categories.service.ts` (read-only — CRUD intentionally NOT in this PR). 4 jest tests (returns rows, empty array, soft-delete filter, public-field projection) |
 | D1.2.5.1 | `voucher_print_mode_default` | P1 | ⬜ | — | single vs multi page mode |
 | D1.2.5.2 | `voucher_include_adjustment` | P1 | ⬜ | — | Render adjustments in print template |
 | D1.2.5.3 | `voucher_show_partial_columns` | P1 | ⬜ | — | Partial column display flag |

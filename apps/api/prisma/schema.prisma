@@ -3860,17 +3860,40 @@ model ExpenseTemplate {
   isRecurring   Boolean      @default(false) @map("is_recurring")
   recurringDay  Int?         @map("recurring_day")
   createdById   String       @map("created_by_id")
+  /// D1.2.4.5 — optional category grouping. Null = uncategorised
+  /// (legacy default). FK to TemplateCategory with SetNull on delete
+  /// so removing a category doesn't orphan / cascade-delete templates.
+  categoryId    String?      @map("category_id")
   createdAt     DateTime     @default(now()) @map("created_at")
   updatedAt     DateTime     @updatedAt @map("updated_at")
   deletedAt     DateTime?    @map("deleted_at")
 
   branch                Branch            @relation(fields: [branchId], references: [id], onDelete: Restrict)
   createdBy             User              @relation("ExpenseTemplateCreator", fields: [createdById], references: [id])
+  category              TemplateCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   documentsFromTemplate ExpenseDocument[] @relation("ExpenseDocumentFromTemplate")
 
   @@index([branchId, deletedAt])
   @@index([isRecurring, recurringDay])
+  @@index([categoryId, deletedAt])
   @@map("expense_templates")
+}
+
+/// D1.2.4.5 — Shop-wide grouping for Expense Templates (e.g. "เงินเดือน",
+/// "ค่าเช่า"). Soft-deletable. `name` is unique — duplicates rejected by
+/// the unique index, NOT the service layer.
+model TemplateCategory {
+  id          String    @id @default(uuid())
+  name        String    @unique
+  description String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  expenseTemplates ExpenseTemplate[]
+
+  @@index([deletedAt])
+  @@map("template_categories")
 }
 
 // ============================================================

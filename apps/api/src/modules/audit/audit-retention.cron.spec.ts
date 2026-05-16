@@ -21,6 +21,7 @@ describe('AuditRetentionCron.archiveOldEntries', () => {
     delete process.env.AUDIT_LOG_RETENTION_DAYS;
     prisma = {
       auditLog: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      systemConfig: { findFirst: jest.fn().mockResolvedValue(null) },
     };
     const mod: TestingModule = await Test.createTestingModule({
       providers: [AuditRetentionCron, { provide: PrismaService, useValue: prisma }],
@@ -55,10 +56,10 @@ describe('AuditRetentionCron.archiveOldEntries', () => {
     expect(call.where.archivedAt).toBeNull();
     expect(call.where.createdAt.lt).toBeInstanceOf(Date);
 
-    // Default cutoff should be ~180d ago
+    // D1.4.3.1 — default raised to 1825d (5 yr per พ.ร.บ.บัญชี ม.7)
     const ageDays = (Date.now() - (call.where.createdAt.lt as Date).getTime()) / (24 * 60 * 60 * 1000);
-    expect(ageDays).toBeGreaterThan(179.9);
-    expect(ageDays).toBeLessThan(180.1);
+    expect(ageDays).toBeGreaterThan(1824.9);
+    expect(ageDays).toBeLessThan(1825.1);
 
     // Sentry info when rows were actually archived
     expect(Sentry.captureMessage).toHaveBeenCalledWith(
@@ -67,7 +68,7 @@ describe('AuditRetentionCron.archiveOldEntries', () => {
     );
   });
 
-  it('honours AUDIT_LOG_RETENTION_DAYS env override', async () => {
+  it('honours AUDIT_LOG_RETENTION_DAYS env override when SystemConfig absent', async () => {
     process.env.AUDIT_LOG_RETENTION_DAYS = '30';
     prisma.auditLog.updateMany.mockResolvedValue({ count: 0 });
     const result = await cron.archiveOldEntries();
@@ -77,5 +78,30 @@ describe('AuditRetentionCron.archiveOldEntries', () => {
     const ageDays = (Date.now() - (where.createdAt.lt as Date).getTime()) / (24 * 60 * 60 * 1000);
     expect(ageDays).toBeGreaterThan(29.9);
     expect(ageDays).toBeLessThan(30.1);
+  });
+
+  // D1.4.3.1 — SystemConfig override
+  it('SystemConfig audit_log_retention_days takes precedence over env var', async () => {
+    process.env.AUDIT_LOG_RETENTION_DAYS = '30';
+    prisma.systemConfig.findFirst.mockResolvedValue({ value: '900' });
+    const result = await cron.archiveOldEntries();
+    expect(result.retentionDays).toBe(900);
+    const where = prisma.auditLog.updateMany.mock.calls[0][0].where;
+    const ageDays = (Date.now() - (where.createdAt.lt as Date).getTime()) / (24 * 60 * 60 * 1000);
+    expect(ageDays).toBeGreaterThan(899.9);
+    expect(ageDays).toBeLessThan(900.1);
+  });
+
+  it('falls through to default when SystemConfig + env are missing/invalid', async () => {
+    prisma.systemConfig.findFirst.mockResolvedValue({ value: 'not-a-number' });
+    const result = await cron.archiveOldEntries();
+    expect(result.retentionDays).toBe(AuditRetentionCron.DEFAULT_RETENTION_DAYS);
+    expect(AuditRetentionCron.DEFAULT_RETENTION_DAYS).toBe(1825);
+  });
+
+  it('survives SystemConfig DB error (falls through to env/default)', async () => {
+    prisma.systemConfig.findFirst.mockRejectedValue(new Error('db down'));
+    const result = await cron.archiveOldEntries();
+    expect(result.retentionDays).toBe(AuditRetentionCron.DEFAULT_RETENTION_DAYS);
   });
 });

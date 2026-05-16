@@ -1,6 +1,6 @@
 # C2 · Payroll Custom Income/Deduction (V16–V18)
 
-**Status:** 🔵 In Review  |  **Started:** 2026-05-16  |  **PRs:** TBD (backend bundle; UI + slip PDF deferred)
+**Status:** ✅ Done  |  **Started:** 2026-05-16  |  **PRs:** #871 (backend) · this PR (UI). Only C2.7 slip PDF still deferred.
 **Spec:** —  ·  **Plan:** —
 
 ## Context
@@ -26,7 +26,7 @@ UI: expandable row in PayrollFormV4 reveals two sub-sections (income / deduction
 | C2.3 | V18 validator — `Σ(deduction) ≤ base + Σ(income)` invariant | P1 | 🔵 | TBD | Same `validateLine` method enforces. Reject before persist so partially-completed payroll can't poison the JE step. |
 | C2.4 | Schema: `payroll_custom_income[]` + `payroll_custom_deduction[]` nested under `Payroll` (Prisma) | P1 | 🔵 | TBD | New `PayrollCustomIncome` + `PayrollCustomDeduction` Prisma models FK'd to `PayrollLine` (not `PayrollDetail`) so each employee can have its own custom rows. Migration `20260929000000_payroll_custom_income_deduction` creates 2 tables + seeds V17 default whitelist. Local dry-run: ✅. |
 | C2.5 | `PayrollTemplate.execute` — emit Dr lines for each custom_income.account_code; deductions reduce the net Cr cash leg | P1 | 🔵 | TBD | [payroll.template.ts](../../../apps/api/src/modules/journal/cpa-templates/payroll.template.ts) — added 2 aggregation loops (income by accountCode → Dr; deduction by accountCode → Cr) AFTER WHT line but BEFORE the cash leg. `sumNet` was already computed by service to include income+deduction so the cash Cr lands correctly. All Dr/Cr stay balanced. |
-| C2.6 | UI: PayrollFormV4 expandable rows — Custom Income / Custom Deduction tables with quick-add buttons + V16 warning (ม.42 tax-exempt) | P1 | ⬜ | — | **Deferred to follow-up PR**. Backend DTO already final (DTO + endpoint accept the new shape); UI is purely additive. |
+| C2.6 | UI: PayrollFormV4 expandable rows — Custom Income / Custom Deduction tables with quick-add buttons + V16 warning (ม.42 tax-exempt) | P1 | ✅ | this PR | [PayrollLinesSection.tsx](../../../apps/web/src/components/expense-form-v4/PayrollLinesSection.tsx) — chevron toggles accordion per employee row; expanded section renders 2 colored sub-tables (emerald = income, amber = deduction). Income table uses dropdown wired to `CUSTOM_INCOME_WHITELIST` constant matching the migration seed. Deduction table is free-form CoA code. Live `netPaid` recomputes including +income/−deduction. Live `taxableBase` shown when it differs from base. POST forwards `customIncome` + `customDeduction` arrays; server V16/V17/V18 re-validate. UI-only `_expanded` field excluded from POST body. |
 | C2.7 | Slip auto-generate — PDF per employee + email send | P1 | ⬜ | — | **Deferred to follow-up PR**. Reuses voucher infrastructure (PaymentVoucherPage pattern). Separate session. |
 
 ## Decision Log

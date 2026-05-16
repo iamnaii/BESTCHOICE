@@ -17,15 +17,15 @@
 | [B2 · Settlement Multi-line Adj](B2-settlement-adjustment.md) | 5 | 5 | 100% | ✅ Done | — | [#863](https://github.com/iamnaii/BESTCHOICE/pull/863) + B2.4 follow-up |
 | [B3 · Test Suite J+K](B3-test-suite.md) | 14 | 14 | 100% | ✅ Done | — | [#865](https://github.com/iamnaii/BESTCHOICE/pull/865) · [#866](https://github.com/iamnaii/BESTCHOICE/pull/866) · this PR (J-06) |
 | [C1 · Petty Cash](C1-petty-cash.md) | 8 | 7 | 88% | ✅ Done | — | [#867](https://github.com/iamnaii/BESTCHOICE/pull/867) · [#868](https://github.com/iamnaii/BESTCHOICE/pull/868) · this PR (PDF). C1.7 settings → A1 |
-| [C2 · Payroll Custom Income/Deduction](C2-payroll-custom.md) | 7 | 5 | 71% | 🔵 In Review | — | PR TBD (backend bundle; UI + slip deferred) |
+| [C2 · Payroll Custom Income/Deduction](C2-payroll-custom.md) | 7 | 6 | 86% | ✅ Done | — | [#871](https://github.com/iamnaii/BESTCHOICE/pull/871) · this PR (UI). C2.7 slip → follow-up |
 | [C3 · Reverse Dialog + V19](C3-reverse-dialog.md) | 5 | 0 | 0% | ⬜ Pending | — | — |
 | [C4 · Credit Note 2-Mode](C4-credit-note-2mode.md) | 4 | 0 | 0% | ⬜ Pending | — | — |
 | [D1 · Settings Audit Phase 4](D1-settings-implement.md) | TBD | 0 | 0% | 🔒 Locked (by A1) | — | — |
-| **TOTAL** | **~159** | **44** | **~28%** | | | |
+| **TOTAL** | **~159** | **45** | **~28%** | | | |
 
 ## 🎯 Current Focus
 
-- **Active:** **C2 (Payroll Custom Income/Deduction)** — backend bundle (5/7 items) in review. UI (C2.6) + slip PDF (C2.7) deferred.
+- **Active:** None. C2 shipped end-to-end except C2.7 slip PDF.
 - **Pending owner:** **A0.3 only** — depreciation gap on prod surfaced (zero JEs across all periods; 2 POSTED assets with one showing column-vs-JE anomaly). Needs owner decision on policy + investigation; remediation is `POST /admin/depreciation/run?period=YYYY-MM` once policy + eligible periods are confirmed.
 - **Next:** C2 (Payroll Custom Income/Deduction), C3 (Reverse Dialog), or C4 (Credit Note 2-Mode)
 

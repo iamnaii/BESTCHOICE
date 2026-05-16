@@ -3544,6 +3544,11 @@ enum DocumentType {
   CREDIT_NOTE
   PAYROLL
   VENDOR_SETTLEMENT
+  /// Petty Cash Reimbursement — multi-supplier on one document (cash float
+  /// replenishment). Unique vs EXPENSE: lifts the 1-doc-1-supplier rule by
+  /// moving supplier_name from doc level to per-line. JE: Dr each line +
+  /// optional VAT / Cr 11-1201 (petty cash float).
+  PETTY_CASH_REIMBURSEMENT
 }
 
 enum DocumentStatus {
@@ -3642,6 +3647,10 @@ model ExpenseLine {
   /// to the document-level whtFormType. Lets a single EX doc mix individual
   /// + juristic vendors without forcing 2 separate documents.
   whtFormType     String?       @map("wht_form_type")
+  /// Per-line supplier name. Used by PETTY_CASH_REIMBURSEMENT where one
+  /// document carries receipts from multiple suppliers (relaxes 1-doc-1-supplier).
+  /// For other DocumentTypes the doc-level `vendorName` is used and this stays null.
+  supplierName    String?       @map("supplier_name")
   amountBeforeVat Decimal       @map("amount_before_vat") @db.Decimal(12, 2)
   vatAmount       Decimal       @default(0) @map("vat_amount") @db.Decimal(12, 2)
   whtAmount       Decimal       @default(0) @map("wht_amount") @db.Decimal(12, 2)

@@ -36,6 +36,7 @@ import { ExpenseAccrualTemplate } from './cpa-templates/expense-accrual.template
 import { CreditNoteTemplate } from './cpa-templates/credit-note.template';
 import { PayrollTemplate } from './cpa-templates/payroll.template';
 import { VendorSettlementTemplate } from './cpa-templates/vendor-settlement.template';
+import { PettyCashTemplate } from './cpa-templates/petty-cash.template';
 
 @Module({
   imports: [PrismaModule],
@@ -76,6 +77,7 @@ import { VendorSettlementTemplate } from './cpa-templates/vendor-settlement.temp
     CreditNoteTemplate,
     PayrollTemplate,
     VendorSettlementTemplate,
+    PettyCashTemplate,
   ],
   exports: [
     JournalService,
@@ -110,6 +112,7 @@ import { VendorSettlementTemplate } from './cpa-templates/vendor-settlement.temp
     CreditNoteTemplate,
     PayrollTemplate,
     VendorSettlementTemplate,
+    PettyCashTemplate,
   ],
 })
 export class JournalModule {}

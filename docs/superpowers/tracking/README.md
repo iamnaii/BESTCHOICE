@@ -16,18 +16,18 @@
 | [B1 · SSO 875 Configurable](B1-sso-875.md) | 6 | 6 | 100% | ✅ Done | — | [#861](https://github.com/iamnaii/BESTCHOICE/pull/861) |
 | [B2 · Settlement Multi-line Adj](B2-settlement-adjustment.md) | 5 | 5 | 100% | ✅ Done | — | [#863](https://github.com/iamnaii/BESTCHOICE/pull/863) + B2.4 follow-up |
 | [B3 · Test Suite J+K](B3-test-suite.md) | 14 | 13 | 93% | 🔵 In Review | — | [#865](https://github.com/iamnaii/BESTCHOICE/pull/865) + this PR (K-04 PP30 input VAT) |
-| [C1 · Petty Cash](C1-petty-cash.md) | 8 | 0 | 0% | ⬜ Pending | — | — |
+| [C1 · Petty Cash](C1-petty-cash.md) | 8 | 5 | 63% | 🔵 In Review | — | PR TBD (backend bundle; UI + PDF deferred) |
 | [C2 · Payroll Custom Income/Deduction](C2-payroll-custom.md) | 7 | 0 | 0% | ⬜ Pending | — | — |
 | [C3 · Reverse Dialog + V19](C3-reverse-dialog.md) | 5 | 0 | 0% | ⬜ Pending | — | — |
 | [C4 · Credit Note 2-Mode](C4-credit-note-2mode.md) | 4 | 0 | 0% | ⬜ Pending | — | — |
 | [D1 · Settings Audit Phase 4](D1-settings-implement.md) | TBD | 0 | 0% | 🔒 Locked (by A1) | — | — |
-| **TOTAL** | **~159** | **29** | **~18%** | | | |
+| **TOTAL** | **~159** | **34** | **~21%** | | | |
 
 ## 🎯 Current Focus
 
-- **Active:** **B3 (Test Suite J+K)** — coverage audit + 5 new tests (K-02 V15, K-05 zero-diff, K-08 direction routing). 12/14 ✅, 2 deferred (J-06 blocks A0 prod, K-04 belongs to tax module).
-- **Pending owner:** **A0** — owner runs `scripts/a0-preflight-verify.sql` on prod to flip A0 rows ✅ (also unblocks B3.J-06)
-- **Next:** C1 (Petty Cash) per Week 3 plan
+- **Active:** **C1 (Petty Cash)** — backend bundle (5/8 items) in code review. UI (C1.6) + PDF (C1.8) deferred to follow-up. Settings (C1.7) deferred to A1; service uses safe defaults meantime.
+- **Pending owner:** **A0** — owner runs `scripts/a0-preflight-verify.sql` on prod → unblocks B3.J-06
+- **Next:** C1.6 UI follow-up, or C2 (Payroll Custom Income/Deduction)
 
 ## 📅 Timeline
 

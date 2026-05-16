@@ -39,6 +39,9 @@ describe('ExpenseDocumentsService.createPayroll', () => {
       // sso-config.service.spec.ts. Tests here use ssoEmployee values within
       // the 2569+ cap of 875, so a no-op validator is sound.
       { validateContribution: jest.fn().mockResolvedValue(undefined) } as never,
+      // pettyCashTemplate + pettyCash mocks (C1) — payroll path doesn't touch them
+      { execute: jest.fn() } as never,
+      { getConfig: jest.fn(), validate: jest.fn() } as never,
     );
   });
 

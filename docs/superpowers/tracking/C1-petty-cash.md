@@ -1,6 +1,6 @@
 # C1 · Petty Cash Reimbursement
 
-**Status:** 🔵 In Review  |  **Started:** 2026-05-16  |  **PRs:** #867 (backend) + this PR (UI). PDF (C1.8) still deferred.
+**Status:** ✅ Done  |  **Started:** 2026-05-16  |  **PRs:** #867 (backend) · #868 (UI) · this PR (PDF voucher). Only C1.7 settings rows deferred to A1 admin UI.
 **Spec:** —  ·  **Plan:** —
 
 ## Context
@@ -25,7 +25,7 @@ JE shape: Dr each `53-XXXX` per line + Dr `11-4101` for VATable lines / Cr `11-1
 | C1.5 | `PettyCashService` — config lookup + V20 | P0 | 🔵 | TBD | [petty-cash.service.ts](../../../apps/api/src/modules/expense-documents/services/petty-cash.service.ts) — `getConfig()` reads SystemConfig keys with defaults (`account: 11-1201, limit: 5000`). `createPettyCash` orchestrates: compute lines → aggregate → V20 validate → persist with `ExpenseDetail` + per-line supplier. New `POST /expense-documents/petty-cash` controller endpoint. |
 | C1.6 | UI: `PettyCashFormV4` page | P0 | 🔵 | this PR | [PettyCashLinesSection.tsx](../../../apps/web/src/components/expense-form-v4/PettyCashLinesSection.tsx) — per-line table (supplier / category / description / amount / VAT% / tax-invoice). Wires into existing `ExpenseFormV4` rather than a new page — DocTypePicker now 6 chips, render gate adds `PETTY_CASH_REIMBURSEMENT` case, POST handler targets `/expense-documents/petty-cash`. Reuses `CashAccountVisualPicker` for the float account. Custodian name is doc-level (header), suppliers are per-line. ExpensesPage list shows `Petty Cash` label badge. |
 | C1.7 | Settings rows: `petty_cash_*` keys | P0 | ⬜ | deferred to A1 | Owner can add via /settings UI when ready. `PettyCashService.getConfig()` falls back to safe defaults if rows are absent (account=11-1201, limit=5000) so the feature works out-of-the-box. Maps to A1.1.5.1–A1.1.5.5 which will land in the Settings Audit phase. |
-| C1.8 | Voucher PDF template (mockup 04B) | P1 | ⬜ | — | **Deferred to follow-up PR**. Standalone work that doesn't gate API usage. Receipt PDF service can be extended in a separate session. |
+| C1.8 | Voucher PDF template (mockup 04B) | P1 | ✅ | this PR | Extended existing [PaymentVoucherPage.tsx](../../../apps/web/src/pages/PaymentVoucherPage.tsx) rather than create a new page — same `/expenses/:id/voucher` route works for both ใบสำคัญจ่าย and ใบเบิกชดเชยเงินสดย่อย. New `PettyCashSheet` component branches on `doc.documentType === 'PETTY_CASH_REIMBURSEMENT'`: title swapped, meta replaces vendor with custodian, item table adds Supplier column + drops WHT column, totals omit WHT row, no WHT certificate, no signature grid (per mockup 04B — petty cash receipts are signed inline at intake, not on the reimbursement voucher). Browser `window.print()` for PDF export, same as standard voucher. |
 
 ## Decision Log
 

@@ -3753,20 +3753,66 @@ model PayrollDetail {
 }
 
 model PayrollLine {
-  id            String        @id @default(uuid())
-  payrollId     String        @map("payroll_id")
-  payroll       PayrollDetail @relation(fields: [payrollId], references: [documentId], onDelete: Cascade)
-  employeeName  String        @map("employee_name")
-  employeeTaxId String?       @map("employee_tax_id")
-  baseSalary    Decimal       @map("base_salary") @db.Decimal(12, 2)
-  ssoEmployee   Decimal       @default(0) @map("sso_employee") @db.Decimal(12, 2)
-  whtAmount     Decimal       @default(0) @map("wht_amount") @db.Decimal(12, 2)
-  netPaid       Decimal       @map("net_paid") @db.Decimal(12, 2)
-  createdAt     DateTime      @default(now()) @map("created_at")
-  updatedAt     DateTime      @updatedAt @map("updated_at")
+  id                String                    @id @default(uuid())
+  payrollId         String                    @map("payroll_id")
+  payroll           PayrollDetail             @relation(fields: [payrollId], references: [documentId], onDelete: Cascade)
+  employeeName      String                    @map("employee_name")
+  employeeTaxId     String?                   @map("employee_tax_id")
+  baseSalary        Decimal                   @map("base_salary") @db.Decimal(12, 2)
+  ssoEmployee       Decimal                   @default(0) @map("sso_employee") @db.Decimal(12, 2)
+  whtAmount         Decimal                   @default(0) @map("wht_amount") @db.Decimal(12, 2)
+  netPaid           Decimal                   @map("net_paid") @db.Decimal(12, 2)
+  // C2 — Custom income (bonus, OT, allowances) and custom deduction (loan
+  // repayment, advances) per line. Optional; payroll lines without these
+  // collapse to the legacy base+sso+wht shape.
+  customIncome      PayrollCustomIncome[]
+  customDeduction   PayrollCustomDeduction[]
+  createdAt         DateTime                  @default(now()) @map("created_at")
+  updatedAt         DateTime                  @updatedAt @map("updated_at")
 
   @@index([payrollId])
   @@map("payroll_lines")
+}
+
+/// C2 — Custom Income line (bonus, OT, per-diem allowances). One PayrollLine
+/// can have many. `isTaxable=false` for ม.42 tax-exempt items (per-diem in
+/// budget, etc.) which Dr the same 53-XXXX category but DON'T count toward
+/// the WHT base.
+model PayrollCustomIncome {
+  id            String      @id @default(uuid())
+  payrollLineId String      @map("payroll_line_id")
+  payrollLine   PayrollLine @relation(fields: [payrollLineId], references: [id], onDelete: Cascade)
+  /// Account code (53-XXXX). V17 enforces whitelist from system_config.
+  accountCode   String      @map("account_code")
+  /// Label shown on slip PDF (e.g. "โบนัส", "ค่าล่วงเวลา").
+  name          String
+  amount        Decimal     @db.Decimal(12, 2)
+  /// V16: when false, this row Dr's the expense account but does NOT count
+  /// toward the WHT taxable base (ม.42 exemption). Defaults to true.
+  isTaxable     Boolean     @default(true) @map("is_taxable")
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+
+  @@index([payrollLineId])
+  @@map("payroll_custom_income")
+}
+
+/// C2 — Custom Deduction line (loan repayment, salary advance recovery,
+/// uniform fee, etc.). Cr's the chosen account (typically 11-21XX employee
+/// AR or 21-2XXX advance liability) AND reduces the net cash leg.
+model PayrollCustomDeduction {
+  id            String      @id @default(uuid())
+  payrollLineId String      @map("payroll_line_id")
+  payrollLine   PayrollLine @relation(fields: [payrollLineId], references: [id], onDelete: Cascade)
+  /// Account code (any — typically asset offset or liability accrual).
+  accountCode   String      @map("account_code")
+  name          String
+  amount        Decimal     @db.Decimal(12, 2)
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+
+  @@index([payrollLineId])
+  @@map("payroll_custom_deduction")
 }
 
 /// Lifecycle delegated to parent ExpenseDocument — timestamps/soft-delete intentionally omitted.

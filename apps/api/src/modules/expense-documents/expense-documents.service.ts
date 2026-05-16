@@ -121,6 +121,32 @@ export class ExpenseDocumentsService implements OnModuleInit {
     private readonly payrollCustom: PayrollCustomService,
   ) {}
 
+  // ─── D1.* — Service-side SystemConfig flag readers ─────────────────────
+  // Read directly via PrismaService (avoids injecting SettingsService for a
+  // single-key lookup; also sidesteps potential audit↔settings circular dep
+  // pattern when this service is consumed by future audit-linked features).
+  // Each helper returns the spec-defined default if the SystemConfig row is
+  // missing or has an unparseable value, so first-boot behavior is preserved.
+  private async readBoolFlag(
+    tx: Prisma.TransactionClient | PrismaService,
+    key: string,
+    fallback: boolean,
+  ): Promise<boolean> {
+    try {
+      const row = await tx.systemConfig.findFirst({
+        where: { key, deletedAt: null },
+        select: { value: true },
+      });
+      if (!row?.value) return fallback;
+      const v = row.value.trim().toLowerCase();
+      if (v === 'true' || v === '1') return true;
+      if (v === 'false' || v === '0') return false;
+      return fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
   // ─── V12/V13/V14 — Multi-line Adjustment validation (shared) ────────
   // Fix Report P0-4 + B2. Validates that:
   //   V12  Σ signed(adjustments) === amountPaid − netExpected
@@ -1666,6 +1692,13 @@ export class ExpenseDocumentsService implements OnModuleInit {
       });
       if (doc.deletedAt) throw new NotFoundException('เอกสารถูกลบแล้ว');
 
+      // D1.2.7.4 — `reverse_block_cascaded` (default true). OWNER may disable
+      // via SystemConfig to allow voiding upstream docs even when downstream CN/SE
+      // exist. Default-on preserves the strict safety from C3.4. If owner
+      // disables, downstream consumers will become orphaned — UI must surface
+      // this risk separately (out of scope here).
+      const cascadeBlockEnabled = await this.readBoolFlag(tx, 'reverse_block_cascaded', true);
+
       const pendingCn = await tx.expenseDocument.count({
         where: {
           documentType: 'CREDIT_NOTE',
@@ -1674,14 +1707,14 @@ export class ExpenseDocumentsService implements OnModuleInit {
           creditNote: { originalDocumentId: id },
         },
       });
-      if (pendingCn > 0) {
+      if (cascadeBlockEnabled && pendingCn > 0) {
         throw new BadRequestException('มีใบลดหนี้ที่ยังไม่ถูกยกเลิก ไม่สามารถยกเลิกเอกสารต้นฉบับได้');
       }
 
       // C3.4 — Cascade check: also block void when an active SETTLEMENT
       // clears this doc. (Settlement-on-void of the SE itself separately
       // reverts cleared docs back to ACCRUAL — that's the SE-being-voided
-      // path, not this one.)
+      // path, not this one.) Gated by the same `reverse_block_cascaded` flag.
       const pendingSe = await tx.expenseDocument.count({
         where: {
           documentType: 'VENDOR_SETTLEMENT',
@@ -1690,7 +1723,7 @@ export class ExpenseDocumentsService implements OnModuleInit {
           settlement: { settlementLines: { some: { clearedDocumentId: id } } },
         },
       });
-      if (pendingSe > 0) {
+      if (cascadeBlockEnabled && pendingSe > 0) {
         throw new BadRequestException(
           'มีใบจ่ายเจ้าหนี้ (SE) ที่ยังไม่ถูกยกเลิกอ้างถึงเอกสารนี้อยู่ — ' +
             'กรุณายกเลิก SE ก่อน',

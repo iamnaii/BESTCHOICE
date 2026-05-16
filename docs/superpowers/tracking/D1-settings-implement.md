@@ -60,7 +60,7 @@ Sub-prioritization within expanded D1 scope:
 | D1.2.3.4 | `decimal_places` | P1 | ⬜ | — | formatNumberDecimal default from pref |
 | D1.2.3.5 | `thousands_separator` | P1 | ⬜ | — | toLocaleString locale from pref |
 | D1.2.4.1 | `templates_enabled` flag | P1 | ⬜ | — | Feature flag at controller |
-| D1.2.4.2 | `max_templates_per_user` quota | P1 | ⬜ | — | Count check in createTemplate |
+| D1.2.4.2 | `max_templates_per_user` quota | P1 | ✅ | this PR | SystemConfig `max_templates_per_user` (default 20, clamped 1–1000 on read). `getUiFlags()` exposes `maxTemplatesPerUser`. `ExpenseTemplatesService.create()` calls `assertWithinUserQuota(user.id)` which counts `createdById + deletedAt: null` rows and rejects with `BadRequestException("โควต้าเทมเพลตเต็มแล้ว — ลบเทมเพลตเก่าก่อนสร้างใหม่")` when count >= cap. Direct SystemConfig read via PrismaService (no SettingsService injection / circular dep risk). 4 jest tests on getUiFlags (default 20, valid range, above-range clamp to 1000, zero/unparseable fallback) |
 | D1.2.4.3 | `sharing_rules` (ACL) | P1 | ⬜ | — | Schema: add visibility + sharedWith |
 | D1.2.4.4 | `variables_support` formalization | P1 | ⬜ | — | Define `{{var}}` interpolation syntax |
 | D1.2.4.5 | Template `categories` table | P1 | ⬜ | — | New TemplateCategory model |

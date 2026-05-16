@@ -33,6 +33,12 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /**
+   * D1.2.4.2 — per-user quota of saved Expense Templates. Default 20.
+   * Clamped to 1–1000 server-side. UI surfaces as "X/N" badge on the
+   * favorites picker so users see how close they are to the cap.
+   */
+  maxTemplatesPerUser: number;
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -53,6 +59,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  maxTemplatesPerUser: 20,
 };
 
 export function useUiFlags(): UiFlags {

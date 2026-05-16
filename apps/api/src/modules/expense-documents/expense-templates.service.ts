@@ -34,8 +34,40 @@ export class ExpenseTemplatesService {
     }
   }
 
+  /**
+   * D1.2.4.2 — per-user template quota. Reads `max_templates_per_user`
+   * direct from SystemConfig (avoids SettingsService injection — same
+   * reason as the readBoolFlag pattern in ExpenseDocumentsService).
+   * Default 20, clamped to 1–1000 to neutralise bad SystemConfig rows.
+   * Counts the caller's existing live templates (createdById + not
+   * deleted) and rejects when count >= cap.
+   */
+  private async assertWithinUserQuota(userId: string): Promise<void> {
+    const row = await this.prisma.systemConfig
+      .findFirst({
+        where: { key: 'max_templates_per_user', deletedAt: null },
+        select: { value: true },
+      })
+      .catch(() => null);
+    const raw = row?.value ? Number(row.value) : NaN;
+    const cap =
+      Number.isFinite(raw) && raw >= 1
+        ? Math.min(Math.floor(raw), 1000)
+        : 20;
+
+    const existing = await this.prisma.expenseTemplate.count({
+      where: { createdById: userId, deletedAt: null },
+    });
+    if (existing >= cap) {
+      throw new BadRequestException(
+        'โควต้าเทมเพลตเต็มแล้ว — ลบเทมเพลตเก่าก่อนสร้างใหม่',
+      );
+    }
+  }
+
   async create(dto: CreateTemplateDto, user: UserContext) {
     this.assertBranchAccess(dto.branchId, user);
+    await this.assertWithinUserQuota(user.id);
     // CN ผูกกับเอกสารต้นฉบับเฉพาะตัว — บันทึกเป็น template ไม่ได้
     // (originalDocumentId จะ stale + cumulative cap จะหมดเมื่อใช้รอบสอง)
     if (dto.documentType === 'CREDIT_NOTE') {

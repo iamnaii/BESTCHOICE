@@ -14,6 +14,7 @@ import { JePreviewService } from './services/je-preview.service';
 import { PettyCashService } from './services/petty-cash.service';
 import { PayrollCustomService } from './services/payroll-custom.service';
 import { ExpenseRecurringCron } from './crons/expense-recurring.cron';
+import { ApDueAlertsCron } from './crons/ap-due-alerts.cron';
 
 @Module({
   imports: [PrismaModule, JournalModule, AuthModule, SsoConfigModule],
@@ -28,6 +29,8 @@ import { ExpenseRecurringCron } from './crons/expense-recurring.cron';
     PettyCashService,
     PayrollCustomService,
     ExpenseRecurringCron,
+    // D1.3.1.2 — AP-due alerts cron (default ON via SystemConfig `ap_due_alerts_enabled`)
+    ApDueAlertsCron,
   ],
   exports: [ExpenseDocumentsService, ExpenseTemplatesService],
 })

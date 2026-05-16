@@ -113,7 +113,7 @@ Sub-prioritization within expanded D1 scope:
 | D1.1.5.4 | `petty_cash_replenish_threshold` (dead setting decision) | P0 | ⬜ | Q8 | Kill or wire |
 | D1.1.5.5 | `petty_cash_custodian` (FK) | P0 | ⬜ | Q1 | Schema + assignment UI |
 | D1.3.1.1 | `draft_alerts_enabled` | P2 | ⬜ | — | New cron + flag |
-| D1.3.1.2 | `ap_due_alerts` | P2 | ⬜ | — | Hook AP aging to notifier |
+| D1.3.1.2 | `ap_due_alerts` | P2 | ✅ | this PR | New `ApDueAlertsCron` at `apps/api/src/modules/expense-documents/crons/ap-due-alerts.cron.ts` — daily 09:00 BKK. SystemConfig keys: `ap_due_alerts_enabled` (default `'true'` ON) + `ap_due_days_before` (default 3). Finds POSTED expense docs where `paidAt IS NULL` + `documentDate <= now - N days` + not yet cleared by a non-VOIDED VENDOR_SETTLEMENT. Posts IN_APP NotificationLog to the doc's approver (fallback to creator) with vendor name + outstanding amount + posted date. **Note:** ExpenseDocument has no explicit `dueDate` column; cron approximates "due in N days" by counting days since `documentDate`. `getUiFlags()` exposes `apDueAlertsEnabled` + `apDueDaysBefore`. 5 jest cases (disabled / default-on / approver-recipient / creator-fallback / configurable threshold). Type-check 0 errors |
 | D1.3.1.3 | `email_provider` | P2 | ⬜ | Q5 | sendgrid vs SMTP |
 | D1.3.1.4 | `in_app_notifications` toggle | P2 | ⬜ | — | Channel disable |
 | D1.3.2.1 | `roles_defined` (add Viewer?) | P2 | ⬜ | Q4 | Schema change |

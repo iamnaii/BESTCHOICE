@@ -175,6 +175,18 @@ export class SettingsService {
      * accessibility readers via the lang attr.
      */
     language: 'th' | 'en';
+    /**
+     * D1.3.1.2 — AP-due alerts cron toggle. Default `true` (ON). When `false`,
+     * the daily `ApDueAlertsCron` is a silent no-op.
+     */
+    apDueAlertsEnabled: boolean;
+    /**
+     * D1.3.1.2 — number of days past `documentDate` that a POSTED unpaid
+     * expense doc must reach before triggering an AP-due alert. Default 3.
+     * NOTE: ExpenseDocument has no explicit dueDate column today; the cron
+     * approximates "due in N days" by counting days since `documentDate`.
+     */
+    apDueDaysBefore: number;
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -214,6 +226,10 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.3.1.2 — AP-due alerts (default ON).
+    const apDueAlertsEnabled = await this.readBoolean('ap_due_alerts_enabled', true);
+    const apDueDaysBeforeRaw = await this.readNumber('ap_due_days_before', 3);
+    const apDueDaysBefore = apDueDaysBeforeRaw >= 0 ? apDueDaysBeforeRaw : 3;
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -225,6 +241,8 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      apDueAlertsEnabled,
+      apDueDaysBefore,
     };
   }
 

@@ -33,6 +33,10 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /** D1.3.1.2 — AP-due alerts cron toggle. Default true (on). */
+  apDueAlertsEnabled: boolean;
+  /** D1.3.1.2 — days since documentDate before AP-due alert fires. Default 3. */
+  apDueDaysBefore: number;
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -53,6 +57,8 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  apDueAlertsEnabled: true,
+  apDueDaysBefore: 3,
 };
 
 export function useUiFlags(): UiFlags {

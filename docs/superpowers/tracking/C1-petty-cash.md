@@ -1,6 +1,6 @@
 # C1 · Petty Cash Reimbursement
 
-**Status:** 🔵 In Review  |  **Started:** 2026-05-16  |  **PRs:** TBD (backend bundle; UI + PDF deferred)
+**Status:** 🔵 In Review  |  **Started:** 2026-05-16  |  **PRs:** #867 (backend) + this PR (UI). PDF (C1.8) still deferred.
 **Spec:** —  ·  **Plan:** —
 
 ## Context
@@ -23,7 +23,7 @@ JE shape: Dr each `53-XXXX` per line + Dr `11-4101` for VATable lines / Cr `11-1
 | C1.3 | V20 validator: total ≤ limit, every line has supplier, account = 11-1201 | P0 | 🔵 | TBD | `PettyCashService.validate(opts, config)` enforces V20.1/V20.2/V20.3. Called from `createPettyCash` in `expense-documents.service.ts` before persist. Thai error messages with code prefix. 9 unit tests in [petty-cash.service.spec.ts](../../../apps/api/src/modules/expense-documents/services/__tests__/petty-cash.service.spec.ts). |
 | C1.4 | `PettyCashTemplate` JE generator | P0 | 🔵 | TBD | [petty-cash.template.ts](../../../apps/api/src/modules/journal/cpa-templates/petty-cash.template.ts) — emits Dr per-line category + Dr 11-4101 (aggregated VAT) / Cr depositAccountCode. Idempotent via journalEntryId probe. Per-line `supplierName` flows into JE line description for audit trail. `metadata.flow = 'expense-petty-cash'` so PP30 (K-04) picks up the input VAT correctly. |
 | C1.5 | `PettyCashService` — config lookup + V20 | P0 | 🔵 | TBD | [petty-cash.service.ts](../../../apps/api/src/modules/expense-documents/services/petty-cash.service.ts) — `getConfig()` reads SystemConfig keys with defaults (`account: 11-1201, limit: 5000`). `createPettyCash` orchestrates: compute lines → aggregate → V20 validate → persist with `ExpenseDetail` + per-line supplier. New `POST /expense-documents/petty-cash` controller endpoint. |
-| C1.6 | UI: `PettyCashFormV4` page | P0 | ⬜ | — | **Deferred to follow-up PR**. Backend DTO + endpoint already accept the new shape. UI is purely additive (new docType case in ExpenseFormV4 + mockup 04B layout). |
+| C1.6 | UI: `PettyCashFormV4` page | P0 | 🔵 | this PR | [PettyCashLinesSection.tsx](../../../apps/web/src/components/expense-form-v4/PettyCashLinesSection.tsx) — per-line table (supplier / category / description / amount / VAT% / tax-invoice). Wires into existing `ExpenseFormV4` rather than a new page — DocTypePicker now 6 chips, render gate adds `PETTY_CASH_REIMBURSEMENT` case, POST handler targets `/expense-documents/petty-cash`. Reuses `CashAccountVisualPicker` for the float account. Custodian name is doc-level (header), suppliers are per-line. ExpensesPage list shows `Petty Cash` label badge. |
 | C1.7 | Settings rows: `petty_cash_*` keys | P0 | ⬜ | deferred to A1 | Owner can add via /settings UI when ready. `PettyCashService.getConfig()` falls back to safe defaults if rows are absent (account=11-1201, limit=5000) so the feature works out-of-the-box. Maps to A1.1.5.1–A1.1.5.5 which will land in the Settings Audit phase. |
 | C1.8 | Voucher PDF template (mockup 04B) | P1 | ⬜ | — | **Deferred to follow-up PR**. Standalone work that doesn't gate API usage. Receipt PDF service can be extended in a separate session. |
 

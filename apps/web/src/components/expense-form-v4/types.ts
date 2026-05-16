@@ -1,4 +1,10 @@
-export type DocType = 'EXPENSE_SAMEDAY' | 'EXPENSE_ACCRUAL' | 'CREDIT_NOTE' | 'PAYROLL' | 'VENDOR_SETTLEMENT';
+export type DocType =
+  | 'EXPENSE_SAMEDAY'
+  | 'EXPENSE_ACCRUAL'
+  | 'CREDIT_NOTE'
+  | 'PAYROLL'
+  | 'VENDOR_SETTLEMENT'
+  | 'PETTY_CASH_REIMBURSEMENT';
 export type PriceType = 'EXCLUSIVE' | 'INCLUSIVE';
 export type WhtFormType = 'PND3' | 'PND53';
 
@@ -58,6 +64,27 @@ export interface SettlementFormFields {
   whtFormType: WhtFormType | '';
 }
 
+/**
+ * C1 — Petty Cash Reimbursement. Per-line supplier (relaxes 1-doc-1-supplier).
+ * No WHT support — vendors with WHT use regular EXPENSE flow. The cash leg
+ * routes to the petty-cash float account (default 11-1201, configurable via
+ * system_config.petty_cash_account).
+ */
+export interface PettyCashLineForm {
+  uid: string;
+  supplierName: string;
+  category: string;
+  description: string;
+  amount: string;
+  vatPercent: string;
+  taxInvoiceNo: string;
+}
+
+export interface PettyCashFormFields {
+  custodianName: string;
+  lines: PettyCashLineForm[];
+}
+
 export interface ExpenseFormState {
   docType: DocType;
   branchId: string;
@@ -82,6 +109,8 @@ export interface ExpenseFormState {
   payroll: PayrollFormFields;
   // SE-only
   settlement: SettlementFormFields;
+  // PC-only (Petty Cash)
+  pettyCash: PettyCashFormFields;
   // Multi-line adjustment (Fix Report P0-4) — Section 5 in the UI.
   // Used when amountPaid ≠ totalAmount − wht (rounding tolerance, overpay/underpay).
   // Empty array = no adjustments needed (legacy behaviour).
@@ -145,5 +174,18 @@ export const newAdjustment = (
   side: 'CR',
   amount: '',
   note: '',
+  ...overrides,
+});
+
+export const newPettyCashLine = (
+  overrides?: Partial<PettyCashLineForm>,
+): PettyCashLineForm => ({
+  uid: Math.random().toString(36).slice(2),
+  supplierName: '',
+  category: '',
+  description: '',
+  amount: '',
+  vatPercent: '0',
+  taxInvoiceNo: '',
   ...overrides,
 });

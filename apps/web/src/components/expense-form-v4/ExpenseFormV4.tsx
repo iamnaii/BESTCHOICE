@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { ArrowLeft, Receipt, Users, Banknote, FileText, Check, CheckCircle2, Clock } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
-import { ExpenseFormState, newLine, newPayrollLine } from './types';
+import { ExpenseFormState, newLine, newPayrollLine, newPettyCashLine } from './types';
 import { useFormCompute } from './useFormCompute';
 import { QuickStartPanel } from './QuickStartPanel';
 import { DocTypePicker } from './DocTypePicker';
@@ -14,6 +14,7 @@ import { VendorSection } from './VendorSection';
 import { ItemLinesSection } from './ItemLinesSection';
 import { PayrollLinesSection } from './PayrollLinesSection';
 import { SettlementLinesSection } from './SettlementLinesSection';
+import { PettyCashLinesSection } from './PettyCashLinesSection';
 import { CreditNoteLinesSection } from './CreditNoteLinesSection';
 import { CashAccountVisualPicker } from './CashAccountVisualPicker';
 import { JePreview } from './JePreview';
@@ -66,6 +67,10 @@ const initial = (branchId: string, defaultCash: string): ExpenseFormState => {
       vendorName: '',
       whtAmount: '0',
       whtFormType: '',
+    },
+    pettyCash: {
+      custodianName: '',
+      lines: [newPettyCashLine()],
     },
     adjustments: [],
     amountPaid: '',
@@ -191,6 +196,32 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
             : undefined,
         });
         createdId = data.id;
+      } else if (state.docType === 'PETTY_CASH_REIMBURSEMENT') {
+        // C1.6 — Petty Cash POST. Backend validates V20 (limit, supplier, account)
+        // and routes JE via PettyCashTemplate. Per-line supplierName is required;
+        // no WHT (vendors with WHT use regular EXPENSE flow).
+        const validLines = state.pettyCash.lines.filter(
+          (l) => l.supplierName.trim() && l.category && parseFloat(l.amount) > 0,
+        );
+        if (validLines.length === 0) {
+          throw new Error('ต้องมีรายการอย่างน้อย 1 บรรทัด (ระบุผู้ขาย + บัญชี + จำนวน)');
+        }
+        const { data } = await api.post('/expense-documents/petty-cash', {
+          branchId: state.branchId,
+          documentDate: state.documentDate,
+          depositAccountCode: state.depositAccountCode,
+          custodianName: state.pettyCash.custodianName || undefined,
+          description: state.note || undefined,
+          lines: validLines.map((l) => ({
+            supplierName: l.supplierName.trim(),
+            category: l.category,
+            description: l.description || undefined,
+            amount: parseFloat(l.amount),
+            vatPercent: parseFloat(l.vatPercent) || 0,
+            taxInvoiceNo: l.taxInvoiceNo || undefined,
+          })),
+        });
+        createdId = data.id;
       } else if (state.docType === 'CREDIT_NOTE') {
         if (!state.originalDocumentId || !state.cnReason.trim()) {
           throw new Error('กรุณาเลือกเอกสารต้นฉบับและระบุเหตุผล');
@@ -240,9 +271,13 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
       ? state.payroll.lines.filter((l) => l.employeeName && parseFloat(l.baseSalary) > 0).length
       : state.docType === 'VENDOR_SETTLEMENT'
         ? state.settlement.selections.size
-        : state.docType === 'CREDIT_NOTE'
-          ? state.lines.filter((l) => l.category && parseFloat(l.unitPrice) > 0).length
-          : state.lines.filter((l) => l.category).length;
+        : state.docType === 'PETTY_CASH_REIMBURSEMENT'
+          ? state.pettyCash.lines.filter(
+              (l) => l.supplierName.trim() && l.category && parseFloat(l.amount) > 0,
+            ).length
+          : state.docType === 'CREDIT_NOTE'
+            ? state.lines.filter((l) => l.category && parseFloat(l.unitPrice) > 0).length
+            : state.lines.filter((l) => l.category).length;
 
   const isPreviewType =
     state.docType === 'EXPENSE_SAMEDAY' || state.docType === 'EXPENSE_ACCRUAL';
@@ -334,7 +369,8 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
             const showCash =
               state.docType === 'EXPENSE_SAMEDAY' ||
               state.docType === 'PAYROLL' ||
-              state.docType === 'VENDOR_SETTLEMENT';
+              state.docType === 'VENDOR_SETTLEMENT' ||
+              state.docType === 'PETTY_CASH_REIMBURSEMENT';
             return (
               <>
                 {/* Section: Doc-type picker — always visible (P2-1 chip cards) */}
@@ -379,6 +415,14 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
                       branchId={state.branchId}
                       value={state.settlement}
                       onChange={(s) => patch({ settlement: s })}
+                    />
+                  </Section>
+                )}
+                {state.docType === 'PETTY_CASH_REIMBURSEMENT' && (
+                  <Section num={next()} title="รายการเงินสดย่อย (Petty Cash)" Icon={Receipt}>
+                    <PettyCashLinesSection
+                      value={state.pettyCash}
+                      onChange={(pc) => patch({ pettyCash: pc })}
                     />
                   </Section>
                 )}

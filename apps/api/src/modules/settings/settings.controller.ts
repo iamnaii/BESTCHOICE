@@ -21,6 +21,17 @@ export class SettingsController {
     return this.settingsService.findAll();
   }
 
+  /**
+   * D1.* — UI feature flags read by web app for non-OWNER users (payroll
+   * editors, accountants etc.). Authenticated but NOT @Roles-gated so the
+   * web app can fetch them in any role context.
+   */
+  @Get('ui-flags')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  getUiFlags() {
+    return this.settingsService.getUiFlags();
+  }
+
   @Patch()
   bulkUpdate(@Body() dto: BulkUpdateSettingsDto, @CurrentUser() user: { id: string }) {
     return this.settingsService.bulkUpdate(dto.items, user.id);

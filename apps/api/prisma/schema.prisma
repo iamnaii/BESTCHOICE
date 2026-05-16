@@ -3731,15 +3731,27 @@ model ExpenseAdjustment {
 }
 
 /// Lifecycle delegated to parent ExpenseDocument — timestamps/soft-delete intentionally omitted.
+///
+/// C4 · 2-Mode UX. `mode = LINKED` reverses a specific source EXPENSE doc
+/// (cap-checked against original.totalAmount minus prior non-VOIDED CN sum).
+/// `mode = STANDALONE` is a free-form CN with no source FK — used for supplier
+/// refunds where the original invoice doesn't exist in our system. JE template
+/// branches on this field; ภ.พ.30 export filters appropriately.
 model CreditNoteDetail {
-  documentId         String          @id @map("document_id")
-  document           ExpenseDocument @relation("CreditNoteDocument", fields: [documentId], references: [id], onDelete: Cascade)
-  originalDocumentId String          @map("original_document_id")
-  originalDocument   ExpenseDocument @relation("CreditNoteOriginal", fields: [originalDocumentId], references: [id], onDelete: Restrict)
+  documentId         String           @id @map("document_id")
+  document           ExpenseDocument  @relation("CreditNoteDocument", fields: [documentId], references: [id], onDelete: Cascade)
+  mode               CreditNoteMode   @default(LINKED)
+  originalDocumentId String?          @map("original_document_id")
+  originalDocument   ExpenseDocument? @relation("CreditNoteOriginal", fields: [originalDocumentId], references: [id], onDelete: Restrict)
   reason             String
 
   @@index([originalDocumentId])
   @@map("credit_note_details")
+}
+
+enum CreditNoteMode {
+  LINKED
+  STANDALONE
 }
 
 /// Lifecycle delegated to parent ExpenseDocument — timestamps/soft-delete intentionally omitted.

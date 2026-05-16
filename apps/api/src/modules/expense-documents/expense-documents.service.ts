@@ -294,9 +294,22 @@ export class ExpenseDocumentsService implements OnModuleInit {
   }
 
   // ─── Credit Note create (validates + computes totals from lines) ──────────
+  // C4 · 2-Mode:
+  //   - LINKED (default): full path with original lookup, advisory lock, cap
+  //     check, branch match, no-WHT guard.
+  //   - STANDALONE: free-form refund with no source FK. Requires vendorName.
+  //     Skips lookup + cap + branch match (no original to match against).
+  //     JE template branches on creditNote.mode to omit the original Dr leg.
   async createCreditNote(dto: CreateCreditNoteDto, userId: string) {
+    const mode = dto.mode ?? 'LINKED';
+    if (mode === 'LINKED' && !dto.originalDocumentId) {
+      throw new BadRequestException('โหมด LINKED ต้องระบุเอกสารต้นฉบับ');
+    }
+    if (mode === 'STANDALONE' && !dto.vendorName?.trim()) {
+      throw new BadRequestException('โหมด STANDALONE ต้องระบุชื่อผู้ขาย');
+    }
+
     // Compute per-line totals + aggregate server-side.
-    // Inherits priceType from the original's expenseDetail (EXCLUSIVE by default).
     // dto.subtotal/vatAmount are IGNORED — server is the source of truth.
     const priceType = 'EXCLUSIVE';
     const linesPrepared = dto.lines.map((l, idx) => {
@@ -319,60 +332,64 @@ export class ExpenseDocumentsService implements OnModuleInit {
         if (t !== 'ค่าใช้จ่าย') throw new BadRequestException(`หมวดบัญชี ${c} ไม่ใช่ "ค่าใช้จ่าย"`);
       }
 
-      // I2 fix — acquire the advisory lock BEFORE loading the original so a
-      // concurrent void/edit can't slip between the read and the cap check.
-      // Then re-read the original under the lock. Previously the original was
-      // read once before the lock, so two threads could both see status=ACCRUAL
-      // (or matching totalAmount) even after one of them was about to flip it
-      // via a concurrent operation. Locking first → reading second gives
-      // serialisable semantics for the cap branch.
-      await tx.$executeRawUnsafe(
-        `SELECT pg_advisory_xact_lock(hashtext($1))`,
-        dto.originalDocumentId,
-      );
-
-      // Load + validate original (now under the advisory lock).
-      const original = await tx.expenseDocument.findUniqueOrThrow({
-        where: { id: dto.originalDocumentId },
-        include: { expenseDetail: { include: { lines: { orderBy: { lineNo: 'asc' } } } } },
-      });
-      if (original.deletedAt) {
-        throw new NotFoundException('เอกสารต้นฉบับถูกลบแล้ว');
-      }
-      if (original.branchId !== dto.branchId) {
-        throw new BadRequestException('ใบลดหนี้ต้องอยู่สาขาเดียวกับเอกสารต้นฉบับ');
-      }
-      if (original.documentType !== 'EXPENSE') {
-        throw new BadRequestException('ใบลดหนี้ใช้ลดเอกสารรายจ่ายเท่านั้น');
-      }
-      if (!['ACCRUAL', 'POSTED'].includes(original.status)) {
-        throw new BadRequestException(`ไม่สามารถออกใบลดหนี้บนเอกสารสถานะ ${original.status}`);
-      }
-
-      const origWht = new Prisma.Decimal(original.withholdingTax?.toString() ?? '0');
-      if (origWht.gt(0)) {
-        throw new BadRequestException(
-          'ไม่รองรับใบลดหนี้บนเอกสารที่มีการหัก ณ ที่จ่าย — กรุณาใช้การยกเลิก (void) แล้วสร้างเอกสารใหม่',
+      // LINKED-mode validation: source lookup + cap + WHT guard under advisory lock.
+      // STANDALONE-mode skips this — there is no source document.
+      let originalVendorName: string | null = null;
+      let originalVendorTaxId: string | null = null;
+      if (mode === 'LINKED') {
+        // I2 fix — acquire the advisory lock BEFORE loading the original so a
+        // concurrent void/edit can't slip between the read and the cap check.
+        await tx.$executeRawUnsafe(
+          `SELECT pg_advisory_xact_lock(hashtext($1))`,
+          dto.originalDocumentId!,
         );
-      }
 
-      // Cumulative cap check — use server-computed totals.totalAmount
-      const priorAgg = await tx.expenseDocument.aggregate({
-        where: {
-          documentType: 'CREDIT_NOTE',
-          status: { not: 'VOIDED' },
-          deletedAt: null,
-          creditNote: { originalDocumentId: dto.originalDocumentId },
-        },
-        _sum: { totalAmount: true },
-      });
-      const priorTotal = new Prisma.Decimal(priorAgg._sum.totalAmount ?? 0);
+        const original = await tx.expenseDocument.findUniqueOrThrow({
+          where: { id: dto.originalDocumentId! },
+          include: { expenseDetail: { include: { lines: { orderBy: { lineNo: 'asc' } } } } },
+        });
+        if (original.deletedAt) {
+          throw new NotFoundException('เอกสารต้นฉบับถูกลบแล้ว');
+        }
+        if (original.branchId !== dto.branchId) {
+          throw new BadRequestException('ใบลดหนี้ต้องอยู่สาขาเดียวกับเอกสารต้นฉบับ');
+        }
+        if (original.documentType !== 'EXPENSE') {
+          throw new BadRequestException('ใบลดหนี้ใช้ลดเอกสารรายจ่ายเท่านั้น');
+        }
+        if (!['ACCRUAL', 'POSTED'].includes(original.status)) {
+          throw new BadRequestException(`ไม่สามารถออกใบลดหนี้บนเอกสารสถานะ ${original.status}`);
+        }
 
-      const cap = new Prisma.Decimal(original.totalAmount.toString()).minus(priorTotal);
-      if (totals.totalAmount.gt(cap)) {
-        throw new BadRequestException(
-          `จำนวนเงินเกินยอดที่ลดได้ (เหลือ ${cap.toFixed(2)} ฿)`,
-        );
+        const origWht = new Prisma.Decimal(original.withholdingTax?.toString() ?? '0');
+        if (origWht.gt(0)) {
+          throw new BadRequestException(
+            'ไม่รองรับใบลดหนี้บนเอกสารที่มีการหัก ณ ที่จ่าย — กรุณาใช้การยกเลิก (void) แล้วสร้างเอกสารใหม่',
+          );
+        }
+
+        // Cumulative cap check — use server-computed totals.totalAmount
+        const priorAgg = await tx.expenseDocument.aggregate({
+          where: {
+            documentType: 'CREDIT_NOTE',
+            status: { not: 'VOIDED' },
+            deletedAt: null,
+            creditNote: { originalDocumentId: dto.originalDocumentId },
+          },
+          _sum: { totalAmount: true },
+        });
+        const priorTotal = new Prisma.Decimal(priorAgg._sum.totalAmount ?? 0);
+
+        const cap = new Prisma.Decimal(original.totalAmount.toString()).minus(priorTotal);
+        if (totals.totalAmount.gt(cap)) {
+          throw new BadRequestException(
+            `จำนวนเงินเกินยอดที่ลดได้ (เหลือ ${cap.toFixed(2)} ฿)`,
+          );
+        }
+
+        // Inherit vendor info from source for traceability on the CN doc.
+        originalVendorName = original.vendorName;
+        originalVendorTaxId = original.vendorTaxId;
       }
 
       const documentDate = new Date(dto.documentDate);
@@ -384,6 +401,11 @@ export class ExpenseDocumentsService implements OnModuleInit {
           documentType: 'CREDIT_NOTE',
           branchId: dto.branchId,
           documentDate,
+          // LINKED inherits vendor from source; STANDALONE takes from DTO.
+          vendorName:
+            mode === 'STANDALONE' ? (dto.vendorName?.trim() ?? null) : originalVendorName,
+          vendorTaxId:
+            mode === 'STANDALONE' ? (dto.vendorTaxId?.trim() ?? null) : originalVendorTaxId,
           description: dto.description ?? null,
           subtotal: totals.subtotal,
           vatAmount: totals.vatAmount,
@@ -399,7 +421,8 @@ export class ExpenseDocumentsService implements OnModuleInit {
           createdById: userId,
           creditNote: {
             create: {
-              originalDocumentId: dto.originalDocumentId,
+              mode,
+              originalDocumentId: mode === 'LINKED' ? dto.originalDocumentId! : null,
               reason: dto.reason,
             },
           },

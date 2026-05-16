@@ -267,4 +267,99 @@ describe('ExpenseDocumentsService.createCreditNote', () => {
       lines: VALID_LINES,
     } as never, 'user-1')).rejects.toThrow(/ไม่ใช่ "ค่าใช้จ่าย"/);
   });
+
+  // ─── C4 · STANDALONE mode ──────────────────────────────────────────────────
+
+  describe('STANDALONE mode', () => {
+    it('rejects STANDALONE without vendorName', async () => {
+      await expect(
+        service.createCreditNote(
+          {
+            mode: 'STANDALONE',
+            branchId: 'b1',
+            documentDate: '2026-05-10',
+            reason: 'supplier refund',
+            lines: VALID_LINES,
+          } as never,
+          'user-1',
+        ),
+      ).rejects.toThrow(/STANDALONE ต้องระบุชื่อผู้ขาย/);
+    });
+
+    it('rejects LINKED without originalDocumentId', async () => {
+      await expect(
+        service.createCreditNote(
+          {
+            mode: 'LINKED',
+            branchId: 'b1',
+            documentDate: '2026-05-10',
+            reason: 'partial',
+            lines: VALID_LINES,
+          } as never,
+          'user-1',
+        ),
+      ).rejects.toThrow(/LINKED ต้องระบุเอกสารต้นฉบับ/);
+    });
+
+    it('STANDALONE skips original lookup + cap check entirely', async () => {
+      await service.createCreditNote(
+        {
+          mode: 'STANDALONE',
+          branchId: 'b1',
+          documentDate: '2026-05-10',
+          vendorName: 'ABC Supplier Co., Ltd.',
+          vendorTaxId: '0123456789012',
+          reason: 'supplier refund without original invoice',
+          lines: VALID_LINES,
+        } as never,
+        'user-1',
+      );
+
+      // No original doc lookup, no aggregate, no advisory lock for STANDALONE.
+      expect(prisma.expenseDocument.findUniqueOrThrow).not.toHaveBeenCalled();
+      expect(prisma.expenseDocument.aggregate).not.toHaveBeenCalled();
+      expect(prisma.$executeRawUnsafe).not.toHaveBeenCalled();
+
+      const callArg = prisma.expenseDocument.create.mock.calls[0][0];
+      expect(callArg.data.documentType).toBe('CREDIT_NOTE');
+      expect(callArg.data.vendorName).toBe('ABC Supplier Co., Ltd.');
+      expect(callArg.data.vendorTaxId).toBe('0123456789012');
+      expect(callArg.data.creditNote.create.mode).toBe('STANDALONE');
+      expect(callArg.data.creditNote.create.originalDocumentId).toBeNull();
+      expect(callArg.data.creditNote.create.reason).toBe('supplier refund without original invoice');
+    });
+
+    it('LINKED (default) still inherits vendor from original', async () => {
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: ORIG_ID,
+        branchId: 'b1',
+        documentType: 'EXPENSE',
+        status: 'POSTED',
+        totalAmount: new Decimal('1000.00'),
+        withholdingTax: new Decimal('0'),
+        vendorName: 'Original Vendor Inc.',
+        vendorTaxId: '9999999999999',
+        expenseDetail: { priceType: 'EXCLUSIVE', lines: [] },
+      });
+      prisma.expenseDocument.aggregate.mockResolvedValue({ _sum: { totalAmount: null } });
+
+      await service.createCreditNote(
+        {
+          // mode omitted → defaults to LINKED
+          branchId: 'b1',
+          documentDate: '2026-05-10',
+          originalDocumentId: ORIG_ID,
+          reason: 'partial refund',
+          lines: VALID_LINES,
+        } as never,
+        'user-1',
+      );
+
+      const callArg = prisma.expenseDocument.create.mock.calls[0][0];
+      expect(callArg.data.creditNote.create.mode).toBe('LINKED');
+      expect(callArg.data.creditNote.create.originalDocumentId).toBe(ORIG_ID);
+      expect(callArg.data.vendorName).toBe('Original Vendor Inc.');
+      expect(callArg.data.vendorTaxId).toBe('9999999999999');
+    });
+  });
 });

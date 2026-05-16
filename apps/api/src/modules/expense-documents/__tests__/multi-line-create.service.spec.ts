@@ -45,6 +45,7 @@ describe('ExpenseDocumentsService.create — multi-line', () => {
       { validateContribution: jest.fn().mockResolvedValue(undefined) } as never,
       { execute: jest.fn() } as never,
       { getConfig: jest.fn(), validate: jest.fn() } as never,
+      { loadWhitelist: jest.fn().mockResolvedValue(new Set()), validateLine: jest.fn() } as never,
     );
   });
 

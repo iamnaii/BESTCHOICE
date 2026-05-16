@@ -4,6 +4,7 @@ import {
   IsIn,
   IsDateString,
   IsNumber,
+  IsBoolean,
   Min,
   Matches,
   ValidateNested,
@@ -12,6 +13,49 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { CASH_ACCOUNT_CODES } from '../../../constants/cash-account.constants';
+
+/**
+ * C2 — Custom Income line (bonus, OT, per-diem allowances). V17 enforces
+ * accountCode is on the system_config whitelist; V16 uses `isTaxable=false`
+ * rows to exclude from the WHT base (ม.42 exemption).
+ */
+export class PayrollCustomIncomeInput {
+  @IsString()
+  @Matches(/^\d{2}-\d{4}$/, { message: 'หมวดบัญชีต้องเป็นรูปแบบ XX-XXXX' })
+  accountCode!: string;
+
+  @IsString()
+  @MinLength(1, { message: 'ต้องระบุชื่อรายการรายได้' })
+  name!: string;
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01, { message: 'จำนวนต้องมากกว่า 0' })
+  amount!: number;
+
+  /** Default true. Set false for ม.42 tax-exempt items (per-diem, etc.). */
+  @IsBoolean()
+  @IsOptional()
+  isTaxable?: boolean;
+}
+
+/**
+ * C2 — Custom Deduction line (loan repayment, salary advance recovery,
+ * uniform fee). Cr's the chosen account AND reduces the net cash leg.
+ * No whitelist (employer-discretion); validator only enforces format.
+ */
+export class PayrollCustomDeductionInput {
+  @IsString()
+  @Matches(/^\d{2}-\d{4}$/, { message: 'หมวดบัญชีต้องเป็นรูปแบบ XX-XXXX' })
+  accountCode!: string;
+
+  @IsString()
+  @MinLength(1, { message: 'ต้องระบุชื่อรายการหัก' })
+  name!: string;
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01, { message: 'จำนวนต้องมากกว่า 0' })
+  amount!: number;
+}
 
 class PayrollLineInput {
   @IsString()
@@ -53,6 +97,18 @@ class PayrollLineInput {
   @Min(0)
   @IsOptional()
   whtAmount?: number;
+
+  // C2 — Custom income + deduction (optional; legacy payroll with no extras
+  // collapses to the base+sso+wht shape).
+  @ValidateNested({ each: true })
+  @Type(() => PayrollCustomIncomeInput)
+  @IsOptional()
+  customIncome?: PayrollCustomIncomeInput[];
+
+  @ValidateNested({ each: true })
+  @Type(() => PayrollCustomDeductionInput)
+  @IsOptional()
+  customDeduction?: PayrollCustomDeductionInput[];
 }
 
 export class CreatePayrollDto {

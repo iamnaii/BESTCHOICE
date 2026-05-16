@@ -29,6 +29,7 @@ import { LineAggregatorService } from './services/line-aggregator.service';
 import { JePreviewService } from './services/je-preview.service';
 import { SsoConfigService } from '../sso-config/sso-config.service';
 import { PettyCashService } from './services/petty-cash.service';
+import { PayrollCustomService } from './services/payroll-custom.service';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
 
 /**
@@ -116,6 +117,7 @@ export class ExpenseDocumentsService implements OnModuleInit {
     private readonly ssoConfig: SsoConfigService,
     private readonly pettyCashTemplate: PettyCashTemplate,
     private readonly pettyCash: PettyCashService,
+    private readonly payrollCustom: PayrollCustomService,
   ) {}
 
   // ─── V12/V13/V14 — Multi-line Adjustment validation (shared) ────────
@@ -450,26 +452,66 @@ export class ExpenseDocumentsService implements OnModuleInit {
       await this.ssoConfig.validateContribution(docDate, l.ssoEmployee);
     }
 
+    // C2 — V17 whitelist lookup once (per request), then V16/V17/V18 per line.
+    const whitelist = await this.payrollCustom.loadWhitelist();
+
     // Compute netPaid per line + validate
-    const linesPrepared = dto.lines.map((l) => {
-      const base = new Prisma.Decimal(l.baseSalary);
-      const sso = new Prisma.Decimal(l.ssoEmployee ?? 0);
-      const wht = new Prisma.Decimal(l.whtAmount ?? 0);
-      const netPaid = base.minus(sso).minus(wht);
-      if (netPaid.lt(0)) {
-        throw new BadRequestException(
-          `พนักงาน "${l.employeeName}" — เงินสุทธิติดลบ (ฐาน ${base} - SSO ${sso} - WHT ${wht})`,
+    const preparedRows = await Promise.all(
+      dto.lines.map(async (l) => {
+        const base = new Prisma.Decimal(l.baseSalary);
+        const sso = new Prisma.Decimal(l.ssoEmployee ?? 0);
+        const wht = new Prisma.Decimal(l.whtAmount ?? 0);
+        // C2 — V16/V17/V18 validators + taxableBase result (not used here yet;
+        // exposed for future automatic-WHT-compute consumers).
+        await this.payrollCustom.validateLine(
+          {
+            employeeName: l.employeeName,
+            baseSalary: base,
+            customIncome: l.customIncome,
+            customDeduction: l.customDeduction,
+          },
+          whitelist,
         );
-      }
-      return {
-        employeeName: l.employeeName,
-        employeeTaxId: l.employeeTaxId ?? null,
-        baseSalary: base,
-        ssoEmployee: sso,
-        whtAmount: wht,
-        netPaid,
-      };
-    });
+
+        const sumIncome = (l.customIncome ?? []).reduce<Prisma.Decimal>(
+          (s, r) => s.plus(new Prisma.Decimal(r.amount)),
+          new Prisma.Decimal(0),
+        );
+        const sumDeduction = (l.customDeduction ?? []).reduce<Prisma.Decimal>(
+          (s, r) => s.plus(new Prisma.Decimal(r.amount)),
+          new Prisma.Decimal(0),
+        );
+
+        // Net cash = base + income − sso − wht − deduction
+        const netPaid = base.plus(sumIncome).minus(sso).minus(wht).minus(sumDeduction);
+        if (netPaid.lt(0)) {
+          throw new BadRequestException(
+            `พนักงาน "${l.employeeName}" — เงินสุทธิติดลบ ` +
+              `(ฐาน ${base} + รายได้พิเศษ ${sumIncome} - SSO ${sso} - WHT ${wht} - หัก ${sumDeduction})`,
+          );
+        }
+        return {
+          employeeName: l.employeeName,
+          employeeTaxId: l.employeeTaxId ?? null,
+          baseSalary: base,
+          ssoEmployee: sso,
+          whtAmount: wht,
+          netPaid,
+          customIncome: (l.customIncome ?? []).map((r) => ({
+            accountCode: r.accountCode,
+            name: r.name,
+            amount: new Prisma.Decimal(r.amount),
+            isTaxable: r.isTaxable !== false,
+          })),
+          customDeduction: (l.customDeduction ?? []).map((r) => ({
+            accountCode: r.accountCode,
+            name: r.name,
+            amount: new Prisma.Decimal(r.amount),
+          })),
+        };
+      }),
+    );
+    const linesPrepared = preparedRows;
 
     if (linesPrepared.length === 0) {
       throw new BadRequestException('ต้องมีพนักงานอย่างน้อย 1 คน');
@@ -513,11 +555,40 @@ export class ExpenseDocumentsService implements OnModuleInit {
           payroll: {
             create: {
               payrollPeriod: dto.payrollPeriod,
-              lines: { create: linesPrepared },
+              lines: {
+                create: linesPrepared.map((l) => ({
+                  employeeName: l.employeeName,
+                  employeeTaxId: l.employeeTaxId,
+                  baseSalary: l.baseSalary,
+                  ssoEmployee: l.ssoEmployee,
+                  whtAmount: l.whtAmount,
+                  netPaid: l.netPaid,
+                  // C2 — nested custom income/deduction (Prisma create relation)
+                  customIncome:
+                    l.customIncome.length > 0
+                      ? { create: l.customIncome }
+                      : undefined,
+                  customDeduction:
+                    l.customDeduction.length > 0
+                      ? { create: l.customDeduction }
+                      : undefined,
+                })),
+              },
             },
           },
         },
-        include: { payroll: { include: { lines: true } } },
+        include: {
+          payroll: {
+            include: {
+              lines: {
+                include: {
+                  customIncome: true,
+                  customDeduction: true,
+                },
+              },
+            },
+          },
+        },
       });
     });
   }

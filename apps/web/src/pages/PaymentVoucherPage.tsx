@@ -20,7 +20,7 @@ import QueryBoundary from '@/components/QueryBoundary';
 import { formatNumberDecimal } from '@/utils/formatters';
 import { formatThaiDateLong } from '@/lib/date';
 import { numToThaiText } from '@/utils/numToThaiText';
-import { useCompanyDisplayName } from '@/hooks/useCompanyInfo';
+import { useCompanyDisplayName, useCompanyAddress } from '@/hooks/useCompanyInfo';
 
 export interface ExpenseLine {
   lineNo: number;
@@ -257,6 +257,7 @@ function PettyCashSheet({
   net: string;
 }) {
   const companyName = useCompanyDisplayName();
+  const companyAddress = useCompanyAddress();
   const lines = doc.expenseDetail?.lines ?? [];
   // Distinct supplier count for the badge — useful auditing surface since
   // petty cash is the only doc type that mixes vendors per document.
@@ -271,7 +272,7 @@ function PettyCashSheet({
       <header className="text-center border-b-2 border-foreground pb-3">
         <h1 className="text-xl font-bold">{companyName}</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          เลขประจำตัวผู้เสียภาษี · สำนักงานใหญ่
+          {companyAddress}
         </p>
         <h2 className="text-2xl font-bold tracking-wider mt-4">ใบเบิกชดเชยเงินสดย่อย</h2>
         <p className="text-xs text-muted-foreground">Petty Cash Reimbursement Voucher</p>
@@ -424,6 +425,7 @@ function PayrollSlipSheet({
   totalSlips: number;
 }) {
   const companyName = useCompanyDisplayName();
+  const companyAddress = useCompanyAddress();
   const base = new Decimal(line.baseSalary || '0');
   const sso = new Decimal(line.ssoEmployee || '0');
   const wht = new Decimal(line.whtAmount || '0');
@@ -457,7 +459,7 @@ function PayrollSlipSheet({
       <header className="text-center border-b-2 border-foreground pb-3">
         <h1 className="text-xl font-bold">{companyName}</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          เลขประจำตัวผู้เสียภาษี · สำนักงานใหญ่
+          {companyAddress}
         </p>
         <h2 className="text-2xl font-bold tracking-wider mt-4">ใบจ่ายเงินเดือน</h2>
         <p className="text-xs text-muted-foreground">
@@ -617,6 +619,7 @@ function Sheet({
   net: string;
 }) {
   const companyName = useCompanyDisplayName();
+  const companyAddress = useCompanyAddress();
   const lines = doc.expenseDetail?.lines ?? [];
   return (
     <article
@@ -627,7 +630,7 @@ function Sheet({
       <header className="text-center border-b-2 border-foreground pb-3">
         <h1 className="text-xl font-bold">{companyName}</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          เลขประจำตัวผู้เสียภาษี · สำนักงานใหญ่
+          {companyAddress}
         </p>
         <h2 className="text-2xl font-bold tracking-wider mt-4">ใบสำคัญจ่าย</h2>
         <p className="text-xs text-muted-foreground">Payment Voucher</p>
@@ -805,6 +808,7 @@ export function bucketWhtByRate(
 
 function WhtCertificate({ doc }: { doc: VoucherDoc }) {
   const companyName = useCompanyDisplayName();
+  const companyAddress = useCompanyAddress();
   // W7 (Round 2) — see bucketWhtByRate above for the Decimal-precision
   // rationale. Convert to display strings only at render time via toFixed.
   const wht = new Decimal(doc.withholdingTax || '0');
@@ -829,7 +833,7 @@ function WhtCertificate({ doc }: { doc: VoucherDoc }) {
         <div>
           <p className="text-xs text-muted-foreground mb-1">ผู้มีหน้าที่หักภาษี ณ ที่จ่าย</p>
           <p className="font-semibold">{companyName}</p>
-          <p className="text-xs text-muted-foreground">เลขประจำตัวผู้เสียภาษี · สำนักงานใหญ่</p>
+          <p className="text-xs text-muted-foreground">{companyAddress}</p>
         </div>
         <div>
           <p className="text-xs text-muted-foreground mb-1">ผู้ถูกหัก ณ ที่จ่าย</p>

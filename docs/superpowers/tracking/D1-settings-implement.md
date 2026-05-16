@@ -106,7 +106,7 @@ Sub-prioritization within expanded D1 scope:
 | D1.1.2.5 | Admin reset capability | P0 | ⬜ | Q3 | |
 | D1.1.3.1 | `vat_rate` (Q6 P0 bug fix first) | P0 | ⬜ | Q6 | **VAT_RATE/vat_pct orphan-key fix** |
 | D1.1.3.2 | `wht_rates` (1/3/5/10/15) | P0 | ⬜ | — | Mostly unblocked — extend SelectItem + table |
-| D1.1.3.3 | `sso_rate` (locked at 5% by law) | P0 | ⬜ | — | Just document the lock in service comment |
+| D1.1.3.3 | `sso_rate` (locked at 5% by law) | P0 | ✅ | this PR | New `SSO_RATE = 0.05 as const` exported from `sso-config.service.ts` with JSDoc citing พ.ร.บ.ประกันสังคม §47. `BadRequestException` message now uses `SSO_RATE * 100` (`5%`) instead of magic-number literal. `SettingsService` refuses writes to read-only key `sso_rate_locked` (BadRequestException for both `update` and `bulkUpdate` — atomic batch reject). `getUiFlags()` exposes `ssoRateLocked: '5%'` (computed from `SSO_RATE`, never DB-overridable). Web `useUiFlags()` types/defaults match. 4 new tests (constant value / JSDoc citation present / exception uses derived rate / DB cannot override) — 41/41 sso + settings specs pass |
 | D1.1.3.5 | effective_date support | P0 | ⬜ | — | Per-rate effective dates |
 | D1.1.3.6 | Admin UI (tax rates tab) | P0 | ⬜ | — | New /settings/tax-rates route |
 | D1.1.5.1 | `petty_cash_enabled` | P0 | ⬜ | Q1 | Feature flag |

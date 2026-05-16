@@ -104,6 +104,32 @@ describe('SettingsService audit trail', () => {
     expect(prisma.systemConfig.upsert).toHaveBeenCalled();
   });
 
+  // D1.1.3.3 — read-only keys (sso_rate_locked)
+  describe('read-only keys (D1.1.3.3)', () => {
+    it('update() rejects sso_rate_locked with BadRequestException', async () => {
+      await expect(service.update('sso_rate_locked', '6%', 'u-1')).rejects.toThrow(
+        /read-only/,
+      );
+      expect(prisma.systemConfig.upsert).not.toHaveBeenCalled();
+      expect(audit.log).not.toHaveBeenCalled();
+    });
+
+    it('bulkUpdate() rejects entire batch if any item is a read-only key', async () => {
+      await expect(
+        service.bulkUpdate(
+          [
+            { key: 'good_key', value: '1' },
+            { key: 'sso_rate_locked', value: '6%' },
+          ],
+          'u-1',
+        ),
+      ).rejects.toThrow(/read-only/);
+      expect(prisma.systemConfig.upsert).not.toHaveBeenCalled();
+      // Audit log entries should be skipped wholesale (atomicity)
+      expect(audit.log).not.toHaveBeenCalled();
+    });
+  });
+
   // D1.2.8.2 + D1.2.7.1 — UI feature flags endpoint
   describe('getUiFlags', () => {
     it('all flags default to true when SystemConfig rows missing', async () => {
@@ -286,6 +312,24 @@ describe('SettingsService audit trail', () => {
       });
       const flags = await service.getUiFlags();
       expect(flags.periodCloseDay).toBe(31);
+    });
+
+    // D1.1.3.3 — sso_rate locked at 5%
+    it('ssoRateLocked is "5%" regardless of SystemConfig state', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.ssoRateLocked).toBe('5%');
+    });
+
+    it('ssoRateLocked is computed from SSO_RATE constant — DB writes can NOT override it', async () => {
+      // Even if someone smuggled a different value into the DB (which the
+      // read-only guard should prevent), getUiFlags must keep returning 5%.
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'sso_rate_locked') return Promise.resolve({ value: '99%' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.ssoRateLocked).toBe('5%');
     });
   });
 });

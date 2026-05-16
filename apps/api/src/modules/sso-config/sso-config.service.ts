@@ -2,6 +2,23 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
+/**
+ * D1.1.3.3 — Thai Social Security contribution rate is **fixed at 5%** by
+ * Thai Social Security Act §47 (พ.ร.บ.ประกันสังคม พ.ศ. 2533 มาตรา 47, both
+ * employee and employer sides). The 750-฿/person/month cap is enforced
+ * separately via `SsoConfig.maxContribution` (period-effective: 875 in
+ * 2569+, 1000 in 2572+, 1150 in 2575+).
+ *
+ * DO NOT make this configurable — change the law first. The rate is
+ * exposed as a `sso_rate_locked` UI flag (string "5%") so OWNER sees it as
+ * informational, but the SystemConfig key is read-only (writes rejected).
+ *
+ * If you ever find yourself wanting to bump this constant, you almost
+ * certainly mean to override the per-line `ssoEmployee` amount on a
+ * specific PayrollLine, NOT the global rate.
+ */
+export const SSO_RATE = 0.05 as const;
+
 export interface SsoConfigResult {
   id: string;
   salaryCeiling: Prisma.Decimal;
@@ -51,8 +68,9 @@ export class SsoConfigService {
     const cap = cfg.maxContribution.toNumber();
 
     if (ssoEmployee > cap) {
+      const ratePct = (SSO_RATE * 100).toFixed(0);
       throw new BadRequestException(
-        `SSO ต่อคนไม่เกิน ${cap.toFixed(2)} บาท/เดือน (5% × ${cfg.salaryCeiling.toFixed(0)} เพดาน, มีผล ${cfg.effectiveFrom.toISOString().slice(0, 10)})`,
+        `SSO ต่อคนไม่เกิน ${cap.toFixed(2)} บาท/เดือน (${ratePct}% × ${cfg.salaryCeiling.toFixed(0)} เพดาน, มีผล ${cfg.effectiveFrom.toISOString().slice(0, 10)})`,
       );
     }
   }

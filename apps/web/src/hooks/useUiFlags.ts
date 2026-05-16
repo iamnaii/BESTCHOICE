@@ -33,6 +33,12 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /**
+   * D1.1.3.3 — informational "SSO rate locked at 5%" string for Settings UI.
+   * Backed by `SSO_RATE` constant server-side. The SystemConfig key
+   * `sso_rate_locked` is read-only (server rejects writes).
+   */
+  ssoRateLocked: string;
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -53,6 +59,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  ssoRateLocked: '5%',
 };
 
 export function useUiFlags(): UiFlags {

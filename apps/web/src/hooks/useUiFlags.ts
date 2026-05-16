@@ -14,10 +14,13 @@ import api from '@/lib/api';
 export interface UiFlags {
   /** D1.2.8.2 — show ม.42 tax-exempt warning when payroll line marked non-taxable. */
   taxExemptWarningEnabled: boolean;
+  /** D1.2.7.1 — require reason on void/reverse dialog. */
+  reverseReasonRequired: boolean;
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
   taxExemptWarningEnabled: true,
+  reverseReasonRequired: true,
 };
 
 export function useUiFlags(): UiFlags {

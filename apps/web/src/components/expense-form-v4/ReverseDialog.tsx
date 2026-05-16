@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
+import { useUiFlags } from '@/hooks/useUiFlags';
 
 /**
  * C3.2 — Reverse Dialog modal (mockup 02E).
@@ -58,6 +59,10 @@ interface Props {
 const todayBkk = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
 
 export function ReverseDialog({ open, onOpenChange, docNumber, loading, onConfirm }: Props) {
+  // D1.2.7.1 — `reverseReasonRequired` (default true). When OWNER turns this off,
+  // the reason dropdown shows "— ไม่ระบุ —" as a valid selection (server still
+  // accepts; UI no longer blocks submit on missing reason).
+  const { reverseReasonRequired } = useUiFlags();
   const [reasonCode, setReasonCode] = useState<ReverseReasonCode | ''>('');
   const [reasonDetail, setReasonDetail] = useState('');
   const [reverseDate, setReverseDate] = useState(todayBkk());
@@ -81,7 +86,9 @@ export function ReverseDialog({ open, onOpenChange, docNumber, loading, onConfir
 
   const otherDetailRequired = reasonCode === 'other';
   const detailMissing = otherDetailRequired && reasonDetail.trim().length === 0;
-  const canSubmit = !!reasonCode && !detailMissing && !!reverseDate && !loading;
+  // D1.2.7.1 — only enforce reasonCode-required when the flag is on.
+  const reasonOk = reverseReasonRequired ? !!reasonCode : true;
+  const canSubmit = reasonOk && !detailMissing && !!reverseDate && !loading;
 
   const handleConfirm = () => {
     if (!canSubmit) return;
@@ -108,15 +115,15 @@ export function ReverseDialog({ open, onOpenChange, docNumber, loading, onConfir
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium mb-1">
-              เหตุผล <span className="text-destructive">*</span>
+              เหตุผล {reverseReasonRequired && <span className="text-destructive">*</span>}
             </label>
             <select
               value={reasonCode}
               onChange={(e) => setReasonCode(e.target.value as ReverseReasonCode | '')}
               className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-              aria-required="true"
+              aria-required={reverseReasonRequired}
             >
-              <option value="">— เลือกเหตุผล —</option>
+              <option value="">{reverseReasonRequired ? '— เลือกเหตุผล —' : '— ไม่ระบุ —'}</option>
               {REASON_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>
                   {opt.label}

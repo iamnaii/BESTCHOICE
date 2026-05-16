@@ -11,8 +11,20 @@ import { InstallmentAccrual2ATemplate } from './installment-accrual-2a.template'
 import { PaymentReceipt2BTemplate } from './payment-receipt-2b.template';
 import { RepossessionJP5Template } from './repossession-jp5.template';
 import { JournalAutoService } from '../journal-auto.service';
+import { AccountRoleService } from '../account-role.service';
 
 const prisma = new PrismaClient();
+
+function makeRoles(): AccountRoleService {
+  const svc = new AccountRoleService(prisma as any);
+  svc.__setCacheForTests(
+    new Map([
+      ['adj_underpay', '52-1104'],
+      ['adj_overpay', '53-1503'],
+    ]),
+  );
+  return svc;
+}
 
 async function setup() {
   await prisma.journalLine.deleteMany({});
@@ -53,7 +65,7 @@ describe('RepossessionJP5Template', () => {
 
     // Pay 4 installments
     const accrual = new InstallmentAccrual2ATemplate(journal, prisma as any);
-    const pay = new PaymentReceipt2BTemplate(journal, prisma as any);
+    const pay = new PaymentReceipt2BTemplate(journal, prisma as any, makeRoles());
     const insts = await prisma.installmentSchedule.findMany({
       where: { contractId: c.id },
       orderBy: { installmentNo: 'asc' },

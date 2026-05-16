@@ -8,9 +8,21 @@ import { RescheduleService } from '../../installments/reschedule.service';
 import { RescheduleJP6Template } from './reschedule-jp6.template';
 import { InstallmentAccrual2ATemplate } from './installment-accrual-2a.template';
 import { PaymentReceipt2BTemplate } from './payment-receipt-2b.template';
+import { AccountRoleService } from '../account-role.service';
 
 const prisma = new PrismaClient();
 const DEPOSIT = '11-1101';
+
+function makeRoles(): AccountRoleService {
+  const svc = new AccountRoleService(prisma as any);
+  svc.__setCacheForTests(
+    new Map([
+      ['adj_underpay', '52-1104'],
+      ['adj_overpay', '53-1503'],
+    ]),
+  );
+  return svc;
+}
 
 async function setup() {
   await prisma.journalLine.deleteMany({});
@@ -50,7 +62,7 @@ async function payInstallments1to4(
   contractId: string,
 ) {
   const accrual = new InstallmentAccrual2ATemplate(journal, prisma as any);
-  const pay = new PaymentReceipt2BTemplate(journal, prisma as any);
+  const pay = new PaymentReceipt2BTemplate(journal, prisma as any, makeRoles());
   const insts = await prisma.installmentSchedule.findMany({
     where: { contractId, installmentNo: { lte: 4 }, deletedAt: null },
     orderBy: { installmentNo: 'asc' },
@@ -98,7 +110,7 @@ describe('RescheduleJP6Template', () => {
         where: { contractId: c.id, installmentNo: 5 },
       });
       const accrual = new InstallmentAccrual2ATemplate(journal, prisma as any);
-      const pay = new PaymentReceipt2BTemplate(journal, prisma as any);
+      const pay = new PaymentReceipt2BTemplate(journal, prisma as any, makeRoles());
       await accrual.execute(inst5.id);
       await pay.execute({
         installmentScheduleId: inst5.id,
@@ -217,7 +229,7 @@ describe('RescheduleJP6Template', () => {
       });
 
       // Pay installments 6-11 normally
-      const pay = new PaymentReceipt2BTemplate(journal, prisma as any);
+      const pay = new PaymentReceipt2BTemplate(journal, prisma as any, makeRoles());
       const insts611 = await prisma.installmentSchedule.findMany({
         where: { contractId: c.id, installmentNo: { gte: 6, lte: 11 }, deletedAt: null },
         orderBy: { installmentNo: 'asc' },

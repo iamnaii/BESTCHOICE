@@ -10,8 +10,20 @@ import { EarlyPayoffJP4Template } from './early-payoff-jp4.template';
 import { Vat60dayMandatoryTemplate } from './vat-60day-mandatory.template';
 import { Vat60dayReversalTemplate } from './vat-60day-reversal.template';
 import { JournalAutoService } from '../journal-auto.service';
+import { AccountRoleService } from '../account-role.service';
 
 const prisma = new PrismaClient();
+
+function makeRoles(): AccountRoleService {
+  const svc = new AccountRoleService(prisma as any);
+  svc.__setCacheForTests(
+    new Map([
+      ['adj_underpay', '52-1104'],
+      ['adj_overpay', '53-1503'],
+    ]),
+  );
+  return svc;
+}
 
 async function setup() {
   await prisma.journalLine.deleteMany({});
@@ -74,7 +86,7 @@ async function payFirstN(
   n: number,
 ): Promise<void> {
   const accrual = new InstallmentAccrual2ATemplate(journal, prisma as any);
-  const pay = new PaymentReceipt2BTemplate(journal, prisma as any);
+  const pay = new PaymentReceipt2BTemplate(journal, prisma as any, makeRoles());
   const insts = await prisma.installmentSchedule.findMany({
     where: { contractId },
     orderBy: { installmentNo: 'asc' },
@@ -226,7 +238,7 @@ describe('EarlyPayoffJP4Template', () => {
     await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
 
     const accrual = new InstallmentAccrual2ATemplate(journal, prisma as any);
-    const pay = new PaymentReceipt2BTemplate(journal, prisma as any);
+    const pay = new PaymentReceipt2BTemplate(journal, prisma as any, makeRoles());
     const insts = await prisma.installmentSchedule.findMany({
       where: { contractId: c.id },
       orderBy: { installmentNo: 'asc' },

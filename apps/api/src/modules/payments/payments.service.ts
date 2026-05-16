@@ -9,6 +9,7 @@ import { ReceiptsService } from '../receipts/receipts.service';
 import { AuditService } from '../audit/audit.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { PaymentReceipt2BTemplate } from '../journal/cpa-templates/payment-receipt-2b.template';
+import { AccountRoleService } from '../journal/account-role.service';
 import { ProductsService } from '../products/products.service';
 import { hasCrossBranchAccess } from '../auth/branch-access.util';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
@@ -46,6 +47,7 @@ export class PaymentsService {
     // must break boot, not silently skip the reverse. Kept above the
     // @Optional() params per TS rule (required cannot follow optional).
     private badDebtService: BadDebtService,
+    private roles: AccountRoleService,
     @Optional() private mdmAuto?: MdmAutoService,
     @Optional() @Inject(forwardRef(() => PromiseService)) private promiseService?: PromiseService,
     @Optional() private mdmLockService?: MdmLockService,
@@ -1986,7 +1988,7 @@ export class PaymentsService {
       if (roundingDiff.gt(zero) && roundingDiff.lte(tolerance)) {
         rawLines.push({ code: '53-1503', dr: zero, cr: roundingDiff, description: 'กำไรปัดเศษ (Policy C)' });
       } else if (roundingDiff.lt(zero) && roundingDiff.abs().lte(tolerance)) {
-        rawLines.push({ code: '52-1104', dr: roundingDiff.abs(), cr: zero, description: 'ส่วนลดเศษสตางค์ (Policy C)' });
+        rawLines.push({ code: this.roles.code('adj_underpay'), dr: roundingDiff.abs(), cr: zero, description: 'ส่วนลดเศษสตางค์ (Policy C)' });
       }
     }
 

@@ -23,6 +23,7 @@ import { WarrantyService } from '../warranty/warranty.service';
 import { PromiseService } from '../overdue/promise.service';
 import { MdmLockService } from '../overdue/mdm-lock.service';
 import { PaymentReceipt2BTemplate } from '../journal/cpa-templates/payment-receipt-2b.template';
+import { AccountRoleService } from '../journal/account-role.service';
 import { BadDebtService } from '../accounting/bad-debt.service';
 import * as Sentry from '@sentry/node';
 
@@ -160,6 +161,14 @@ describe('PaymentsService', () => {
         },
         { provide: PaymentReceipt2BTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK' }) } },
         { provide: BadDebtService, useValue: { reverseStageOnPayment: jest.fn().mockResolvedValue(null) } },
+        {
+          provide: AccountRoleService,
+          useValue: {
+            code: jest.fn((role: string) =>
+              role === 'adj_underpay' ? '52-1104' : role === 'adj_overpay' ? '53-1503' : role,
+            ),
+          },
+        },
       ],
     }).compile();
 

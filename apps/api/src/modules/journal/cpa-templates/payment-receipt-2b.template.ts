@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { Vat60dayReversalTemplate } from './vat-60day-reversal.template';
+import { AccountRoleService } from '../account-role.service';
 
 const TOLERANCE = new Decimal('1.00');
 
@@ -98,6 +99,7 @@ export class PaymentReceipt2BTemplate {
   constructor(
     private readonly journal: JournalAutoService,
     private readonly prisma: PrismaService,
+    private readonly roles: AccountRoleService,
     @Optional() private readonly vat60Reversal?: Vat60dayReversalTemplate,
   ) {}
 
@@ -246,7 +248,7 @@ export class PaymentReceipt2BTemplate {
         // 3. Underpay rounding
         if (roundingDiff.lt(0)) {
           lines.push({
-            accountCode: '52-1104',
+            accountCode: this.roles.code('adj_underpay'),
             dr: roundingDiff.abs(),
             cr: zero,
             description: 'ส่วนลดเศษสตางค์ (Policy C)',

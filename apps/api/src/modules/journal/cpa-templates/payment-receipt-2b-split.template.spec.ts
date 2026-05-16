@@ -10,8 +10,20 @@ import { ContractActivation1ATemplate } from './contract-activation-1a.template'
 import { InstallmentAccrual2ATemplate } from './installment-accrual-2a.template';
 import { PaymentReceipt2BSplitTemplate } from './payment-receipt-2b-split.template';
 import { JournalAutoService } from '../journal-auto.service';
+import { AccountRoleService } from '../account-role.service';
 
 const prisma = new PrismaClient();
+
+function makeRoles(): AccountRoleService {
+  const svc = new AccountRoleService(prisma as any);
+  svc.__setCacheForTests(
+    new Map([
+      ['adj_underpay', '52-1104'],
+      ['adj_overpay', '53-1503'],
+    ]),
+  );
+  return svc;
+}
 
 async function setup() {
   await prisma.journalLine.deleteMany({});
@@ -71,7 +83,7 @@ async function get2BPartialBlocks(contractId: string) {
 describe('PaymentReceipt2BSplitTemplate', () => {
   it('case 3 — split 800 + 715.83 generates two 2B JEs', async () => {
     const { contract, inst, journal } = await setup();
-    const tmpl = new PaymentReceipt2BSplitTemplate(journal, prisma as any);
+    const tmpl = new PaymentReceipt2BSplitTemplate(journal, prisma as any, makeRoles());
 
     await tmpl.executePartial({
       installmentScheduleId: inst.id,
@@ -106,9 +118,53 @@ describe('PaymentReceipt2BSplitTemplate', () => {
     }
   });
 
+  it('D1.1.6.1 — final-partial underpay routes via AccountRoleService (adj_underpay)', async () => {
+    const { contract, inst, journal } = await setup();
+    const customRoles = new AccountRoleService(prisma as any);
+    customRoles.__setCacheForTests(
+      new Map([
+        ['adj_underpay', '52-9999'],
+        ['adj_overpay', '53-1503'],
+      ]),
+    );
+    await prisma.chartOfAccount.upsert({
+      where: { code: '52-9999' },
+      update: {},
+      create: {
+        code: '52-9999',
+        name: 'ส่วนลด — fixture override (D1.1.6.1)',
+        type: 'ค่าใช้จ่าย',
+        normalBalance: 'Dr',
+      },
+    });
+
+    const tmpl = new PaymentReceipt2BSplitTemplate(journal, prisma as any, customRoles);
+    // First non-final partial: 800
+    await tmpl.executePartial({
+      installmentScheduleId: inst.id,
+      partialAmount: new Decimal('800.00'),
+      depositAccountCode: '11-1101',
+      isFinalPartial: false,
+    });
+    // Final partial 715.00 → diff of -0.83 (underpay within 1฿ tolerance)
+    await tmpl.executePartial({
+      installmentScheduleId: inst.id,
+      partialAmount: new Decimal('715.00'),
+      depositAccountCode: '11-1101',
+      isFinalPartial: true,
+      toleranceApproverId: 'test-approver-id',
+    });
+
+    const blocks = await get2BPartialBlocks(contract.id);
+    const finalBlock = blocks[blocks.length - 1];
+    const codes = finalBlock.lines.map((l) => l.code);
+    expect(codes).toContain('52-9999');
+    expect(codes).not.toContain('52-1104');
+  });
+
   it('rejects final partial that exceeds tolerance', async () => {
     const { inst, journal } = await setup();
-    const tmpl = new PaymentReceipt2BSplitTemplate(journal, prisma as any);
+    const tmpl = new PaymentReceipt2BSplitTemplate(journal, prisma as any, makeRoles());
     await tmpl.executePartial({
       installmentScheduleId: inst.id,
       partialAmount: new Decimal('500.00'),

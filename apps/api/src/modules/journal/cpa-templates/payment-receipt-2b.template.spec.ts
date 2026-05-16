@@ -16,7 +16,19 @@ import {
 import { Vat60dayMandatoryTemplate } from './vat-60day-mandatory.template';
 import { Vat60dayReversalTemplate } from './vat-60day-reversal.template';
 import { JournalAutoService } from '../journal-auto.service';
+import { AccountRoleService } from '../account-role.service';
 import type { ActualJe } from '../__tests__/golden-je-matcher';
+
+function makeRoles(): AccountRoleService {
+  const svc = new AccountRoleService(prisma as any);
+  svc.__setCacheForTests(
+    new Map([
+      ['adj_underpay', '52-1104'],
+      ['adj_overpay', '53-1503'],
+    ]),
+  );
+  return svc;
+}
 
 const prisma = new PrismaClient();
 
@@ -97,7 +109,7 @@ async function get2BLines(contractId: string): Promise<ActualJe[] | null> {
 describe('PaymentReceipt2BTemplate', () => {
   it('case 1 — overpay 0.17 routes to 53-1503', async () => {
     const { contract, inst, journal } = await setup();
-    const tmpl = new PaymentReceipt2BTemplate(journal, prisma as any);
+    const tmpl = new PaymentReceipt2BTemplate(journal, prisma as any, makeRoles());
 
     await tmpl.execute({
       installmentScheduleId: inst.id,
@@ -119,7 +131,7 @@ describe('PaymentReceipt2BTemplate', () => {
 
   it('case 2 — underpay 0.83 routes to 52-1104', async () => {
     const { contract, inst, journal } = await setup();
-    const tmpl = new PaymentReceipt2BTemplate(journal, prisma as any);
+    const tmpl = new PaymentReceipt2BTemplate(journal, prisma as any, makeRoles());
 
     await tmpl.execute({
       installmentScheduleId: inst.id,
@@ -140,9 +152,50 @@ describe('PaymentReceipt2BTemplate', () => {
     expect(diff.diffs, diff.diffs.join('\n')).toEqual([]);
   });
 
+  it('D1.1.6.1 — underpay account code is resolved via AccountRoleService (adj_underpay)', async () => {
+    const { contract, inst, journal } = await setup();
+    // Custom roles map returning a non-default code for adj_underpay — proves
+    // the literal '52-1104' was removed and the JE line is now driven by the
+    // account_role_map seed.
+    const customRoles = new AccountRoleService(prisma as any);
+    customRoles.__setCacheForTests(
+      new Map([
+        ['adj_underpay', '52-9999'],
+        ['adj_overpay', '53-1503'],
+      ]),
+    );
+
+    // Seed the override account so the underlying JournalAutoService.createAndPost
+    // can resolve the chart-of-accounts name lookup without exploding.
+    await prisma.chartOfAccount.upsert({
+      where: { code: '52-9999' },
+      update: {},
+      create: {
+        code: '52-9999',
+        name: 'ส่วนลด — fixture override (D1.1.6.1)',
+        type: 'ค่าใช้จ่าย',
+        normalBalance: 'Dr',
+      },
+    });
+
+    const tmpl = new PaymentReceipt2BTemplate(journal, prisma as any, customRoles);
+    await tmpl.execute({
+      installmentScheduleId: inst.id,
+      amountReceived: new Decimal('1515.00'),
+      depositAccountCode: '11-1101',
+      toleranceApproverId: 'test-approver-id',
+    });
+
+    const actual = await get2BLines(contract.id);
+    expect(actual).not.toBeNull();
+    const codes = actual![0].lines.map((l) => l.code);
+    expect(codes).toContain('52-9999');
+    expect(codes).not.toContain('52-1104');
+  });
+
   it('rejects overpay/underpay >1฿', async () => {
     const { inst, journal } = await setup();
-    const tmpl = new PaymentReceipt2BTemplate(journal, prisma as any);
+    const tmpl = new PaymentReceipt2BTemplate(journal, prisma as any, makeRoles());
 
     await expect(
       tmpl.execute({
@@ -155,7 +208,7 @@ describe('PaymentReceipt2BTemplate', () => {
 
   it('rejects underpay without approver', async () => {
     const { inst, journal } = await setup();
-    const tmpl = new PaymentReceipt2BTemplate(journal, prisma as any);
+    const tmpl = new PaymentReceipt2BTemplate(journal, prisma as any, makeRoles());
 
     await expect(
       tmpl.execute({
@@ -186,7 +239,7 @@ describe('PaymentReceipt2BTemplate', () => {
 
     // Now run 2B with reversal injected
     const reversal = new Vat60dayReversalTemplate(journal, prisma as any);
-    const tmpl = new PaymentReceipt2BTemplate(journal, prisma as any, reversal);
+    const tmpl = new PaymentReceipt2BTemplate(journal, prisma as any, makeRoles(), reversal);
 
     await tmpl.execute({
       installmentScheduleId: inst.id,
@@ -218,7 +271,7 @@ describe('PaymentReceipt2BTemplate', () => {
 
     // No mandatory JE — vat60dayJournalEntryId is null
     const reversal = new Vat60dayReversalTemplate(journal, prisma as any);
-    const tmpl = new PaymentReceipt2BTemplate(journal, prisma as any, reversal);
+    const tmpl = new PaymentReceipt2BTemplate(journal, prisma as any, makeRoles(), reversal);
 
     await tmpl.execute({
       installmentScheduleId: inst.id,
@@ -243,7 +296,7 @@ describe('PaymentReceipt2BTemplate', () => {
       // installmentTotal = 1,515.83 (standard 17K/12M fixture)
       // Customer pays 1,600 — overpay = 84.17 → park to 21-1103
       const { contract, inst, journal } = await setup();
-      const tmpl = new PaymentReceipt2BTemplate(journal, prisma as any);
+      const tmpl = new PaymentReceipt2BTemplate(journal, prisma as any, makeRoles());
 
       const advanceCredit = new Decimal('84.17');
       await tmpl.execute({
@@ -279,7 +332,7 @@ describe('PaymentReceipt2BTemplate', () => {
       // installmentTotal = 1,515.83
       // Customer has 200 advance → pays 1,315.83 cash + consume 200
       const { contract, inst, journal } = await setup();
-      const tmpl = new PaymentReceipt2BTemplate(journal, prisma as any);
+      const tmpl = new PaymentReceipt2BTemplate(journal, prisma as any, makeRoles());
 
       const advanceConsume = new Decimal('200.00');
       const cashAmount = new Decimal('1315.83');
@@ -328,7 +381,7 @@ describe('PaymentReceipt2BTemplate', () => {
       // installmentTotal = 1,515.83
       // Customer has 1,515.83 advance → pays 0 cash, fully covered by advance
       const { contract, inst, journal } = await setup();
-      const tmpl = new PaymentReceipt2BTemplate(journal, prisma as any);
+      const tmpl = new PaymentReceipt2BTemplate(journal, prisma as any, makeRoles());
 
       const advanceConsume = new Decimal('1515.83');
       await tmpl.execute({
@@ -373,7 +426,7 @@ describe('PaymentReceipt2BTemplate', () => {
   describe('late fee (CPA case 6)', () => {
     it('on-time payment: lateFee=0, no 42-1103 line', async () => {
       const { contract, inst, journal } = await setup();
-      const tmpl = new PaymentReceipt2BTemplate(journal, prisma as any);
+      const tmpl = new PaymentReceipt2BTemplate(journal, prisma as any, makeRoles());
 
       await tmpl.execute({
         installmentScheduleId: inst.id,
@@ -391,7 +444,7 @@ describe('PaymentReceipt2BTemplate', () => {
 
     it('1-2 days overdue: 50฿ late fee → Cr 42-1103 = 50', async () => {
       const { contract, inst, journal } = await setup();
-      const tmpl = new PaymentReceipt2BTemplate(journal, prisma as any);
+      const tmpl = new PaymentReceipt2BTemplate(journal, prisma as any, makeRoles());
 
       // Customer pays installmentTotal + 50฿ late fee
       const lateFee = new Decimal(50);
@@ -429,7 +482,7 @@ describe('PaymentReceipt2BTemplate', () => {
 
     it('3+ days overdue: 100฿ late fee → Cr 42-1103 = 100', async () => {
       const { contract, inst, journal } = await setup();
-      const tmpl = new PaymentReceipt2BTemplate(journal, prisma as any);
+      const tmpl = new PaymentReceipt2BTemplate(journal, prisma as any, makeRoles());
 
       const lateFee = new Decimal(100);
       await tmpl.execute({
@@ -450,7 +503,7 @@ describe('PaymentReceipt2BTemplate', () => {
     it('late fee + overpay 0.17: 42-1103 + 53-1503 both posted', async () => {
       // installmentTotal = 1515.83, late fee = 50, customer pays 1566.00 (overpay 0.17 within tolerance)
       const { contract, inst, journal } = await setup();
-      const tmpl = new PaymentReceipt2BTemplate(journal, prisma as any);
+      const tmpl = new PaymentReceipt2BTemplate(journal, prisma as any, makeRoles());
 
       await tmpl.execute({
         installmentScheduleId: inst.id,
@@ -481,7 +534,7 @@ describe('PaymentReceipt2BTemplate', () => {
 
     it('late fee with rounding > 1฿ (excluding lateFee) still rejected', async () => {
       const { inst, journal } = await setup();
-      const tmpl = new PaymentReceipt2BTemplate(journal, prisma as any);
+      const tmpl = new PaymentReceipt2BTemplate(journal, prisma as any, makeRoles());
 
       // installmentTotal = 1515.83, late fee = 50
       // Customer pays 1500 + 50 = 1550 → after lateFee, rounding = 1500 - 1515.83 = -15.83 (>1฿)
@@ -500,7 +553,7 @@ describe('PaymentReceipt2BTemplate', () => {
   describe('partial clear', () => {
     it('partial: posts only Dr cash + Cr 11-2103 (amount), no tolerance check', async () => {
       const { inst, journal } = await setup();
-      const tmpl = new PaymentReceipt2BTemplate(journal, prisma as any);
+      const tmpl = new PaymentReceipt2BTemplate(journal, prisma as any, makeRoles());
 
       const result = await tmpl.execute({
         installmentScheduleId: inst.id,

@@ -3,6 +3,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { randomUUID } from 'crypto';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { AccountRoleService } from '../account-role.service';
 
 const TOLERANCE = new Decimal('1.00');
 
@@ -49,6 +50,7 @@ export class PaymentReceipt2BSplitTemplate {
   constructor(
     private readonly journal: JournalAutoService,
     private readonly prisma: PrismaService,
+    private readonly roles: AccountRoleService,
   ) {}
 
   private computeInstallmentTotal(c: {
@@ -209,7 +211,7 @@ export class PaymentReceipt2BSplitTemplate {
       } else if (diff.lt(0)) {
         // Underpay
         lines.push({
-          accountCode: '52-1104',
+          accountCode: this.roles.code('adj_underpay'),
           dr: diff.abs(),
           cr: zero,
           description: 'ส่วนลดเศษสตางค์ (Policy C)',

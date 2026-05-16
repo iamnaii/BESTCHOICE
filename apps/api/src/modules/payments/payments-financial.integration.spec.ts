@@ -11,6 +11,7 @@ import { QuickReplyService } from '../line-oa/quick-reply.service';
 import { WarrantyService } from '../warranty/warranty.service';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { PaymentReceipt2BTemplate } from '../journal/cpa-templates/payment-receipt-2b.template';
+import { AccountRoleService } from '../journal/account-role.service';
 import { BadDebtService } from '../accounting/bad-debt.service';
 
 /**
@@ -102,6 +103,14 @@ describe('PaymentsService — Financial Integration', () => {
         { provide: WarrantyService, useValue: { setShopWarranty: jest.fn().mockResolvedValue(undefined) } },
         { provide: PaymentReceipt2BTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK' }) } },
         { provide: BadDebtService, useValue: { reverseStageOnPayment: jest.fn().mockResolvedValue(null) } },
+        {
+          provide: AccountRoleService,
+          useValue: {
+            code: jest.fn((role: string) =>
+              role === 'adj_underpay' ? '52-1104' : role === 'adj_overpay' ? '53-1503' : role,
+            ),
+          },
+        },
       ],
     }).compile();
 

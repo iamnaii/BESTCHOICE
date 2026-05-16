@@ -8,8 +8,20 @@ import { InstallmentAccrual2ATemplate } from './installment-accrual-2a.template'
 import { PaymentReceipt2BTemplate } from './payment-receipt-2b.template';
 import { ReceiptVoidReversalTemplate } from './receipt-void-reversal.template';
 import { JournalAutoService } from '../journal-auto.service';
+import { AccountRoleService } from '../account-role.service';
 
 const prisma = new PrismaClient();
+
+function makeRoles(): AccountRoleService {
+  const svc = new AccountRoleService(prisma as any);
+  svc.__setCacheForTests(
+    new Map([
+      ['adj_underpay', '52-1104'],
+      ['adj_overpay', '53-1503'],
+    ]),
+  );
+  return svc;
+}
 
 async function setup() {
   await prisma.journalLine.deleteMany({});
@@ -57,7 +69,7 @@ describe('ReceiptVoidReversalTemplate', () => {
     const accrual = new InstallmentAccrual2ATemplate(journal, prisma as any);
     await accrual.execute(insts[0].id);
 
-    const payment = new PaymentReceipt2BTemplate(journal, prisma as any);
+    const payment = new PaymentReceipt2BTemplate(journal, prisma as any, makeRoles());
     await payment.execute({
       installmentScheduleId: insts[0].id,
       amountReceived: new Decimal('1515.83'),

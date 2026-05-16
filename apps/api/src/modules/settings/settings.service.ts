@@ -147,6 +147,13 @@ export class SettingsService {
     paymentDateWarningBackdate: number;
     /** D1.2.6.4 — allow forward-dated transactions (reverse JE / payment / etc.). Default true. */
     paymentDateAllowFuture: boolean;
+    /**
+     * D1.2.6.1 — day-of-month when the accounting period closes. Default 31
+     * (= last day of each month). Currently INFORMATIONAL only: period-lock
+     * still anchors at calendar month-end. A future enhancement can shift
+     * the period boundary when this is not 31. Validated 1–31.
+     */
+    periodCloseDay: number;
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -169,6 +176,13 @@ export class SettingsService {
       'payment_date_allow_future',
       true,
     );
+    // D1.2.6.1 — clamp to valid day-of-month range (1–31) on read so a
+    // bad SystemConfig row can't cause undefined behaviour downstream.
+    const periodCloseDayRaw = await this.readNumber('period_close_day', 31);
+    const periodCloseDay =
+      Number.isInteger(periodCloseDayRaw) && periodCloseDayRaw >= 1 && periodCloseDayRaw <= 31
+        ? periodCloseDayRaw
+        : 31;
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -176,6 +190,7 @@ export class SettingsService {
       reverseManagerApprovalDays,
       paymentDateWarningBackdate,
       paymentDateAllowFuture,
+      periodCloseDay,
     };
   }
 

@@ -166,6 +166,15 @@ export class SettingsService {
      * caller validates format.
      */
     themeColor: string;
+    /**
+     * D1.2.2.6 — UI language preference. 'th' default. The web app applies
+     * the value to `document.documentElement.lang` at boot, but translation
+     * tables are NOT yet provided — strings remain in their authored Thai
+     * form. Future enhancement adds an i18n framework (react-i18next or
+     * similar) consuming this setting. OWNER editing today still affects
+     * accessibility readers via the lang attr.
+     */
+    language: 'th' | 'en';
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -202,6 +211,9 @@ export class SettingsService {
       themeColorRaw && /^#[0-9a-fA-F]{6}$/.test(themeColorRaw)
         ? themeColorRaw
         : '#10b981';
+    // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
+    const languageRaw = await this.getKey('language');
+    const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -212,6 +224,7 @@ export class SettingsService {
       periodCloseDay,
       voucherShowQrCode,
       themeColor,
+      language,
     };
   }
 

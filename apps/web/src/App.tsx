@@ -115,6 +115,7 @@ const AssetSummaryReportPage = lazy(() => import('@/pages/assets/AssetSummaryRep
 const AssetTransfersListPage = lazy(() => import('@/pages/transfers/AssetTransfersListPage'));
 const DepreciationPage = lazy(() => import('@/pages/depreciation/DepreciationPage'));
 const ChartOfAccountsPage = lazy(() => import('@/pages/ChartOfAccountsPage'));
+const BankAccountsPage = lazy(() => import('@/pages/BankAccountsPage'));
 // D1.1.1.4 — Admin UI for account_role_map (OWNER-only).
 const AccountRolesPage = lazy(() => import('@/pages/AccountRolesPage'));
 const TodosPage = lazy(() => import('@/pages/TodosPage'));
@@ -886,6 +887,15 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
                 <ChartOfAccountsPage />
+              </ProtectedRoute>
+            }
+          />
+          {/* SP6 — Bank/Cash account directory (closes /finance/bank-accounts placeholder). */}
+          <Route
+            path="/finance/bank-accounts"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <BankAccountsPage />
               </ProtectedRoute>
             }
           />

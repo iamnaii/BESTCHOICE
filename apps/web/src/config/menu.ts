@@ -268,6 +268,8 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'รายจ่าย', path: '/expenses', icon: Receipt },
         { label: 'รายได้อื่น', path: '/other-income', icon: TrendingUp },
         { label: 'กำไร-ขาดทุน', path: '/profit-loss', icon: PieChart },
+        // SP6 — Bank/Cash account directory
+        { label: 'บัญชีเงินสด/ธนาคาร', path: '/finance/bank-accounts', icon: Landmark },
         { label: 'งวดบัญชี', path: '/accounting/periods', icon: CalendarDays },
       ],
     },
@@ -328,6 +330,8 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
         { label: 'งวดบัญชี', path: '/accounting/periods', icon: CalendarDays },
         { label: 'ชำระเงินระหว่างบริษัท', path: '/accounting/intercompany', icon: ClipboardList },
         { label: 'ผังบัญชี', path: '/settings/chart-of-accounts', icon: ClipboardList },
+        // SP6 — Bank/Cash account directory
+        { label: 'บัญชีเงินสด/ธนาคาร', path: '/finance/bank-accounts', icon: Landmark },
         { label: 'ตรวจสอบบัญชี', path: '/financial-audit', icon: ClipboardList },
         { label: 'PEAK Sync', path: '/settings/peak-sync', icon: Plug },
       ],
@@ -401,6 +405,8 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'รายจ่าย', path: '/expenses', icon: Receipt },
         { label: 'รายได้อื่น', path: '/other-income', icon: TrendingUp },
         { label: 'ผังบัญชี', path: '/settings/chart-of-accounts', icon: ClipboardList },
+        // SP6 — Bank/Cash account directory (mirrors CoA 11-1101..1203)
+        { label: 'บัญชีเงินสด/ธนาคาร', path: '/finance/bank-accounts', icon: Landmark },
         // Reports & period-close grouped under collapsible parents
         {
           label: 'รายงาน',

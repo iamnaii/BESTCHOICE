@@ -182,6 +182,23 @@ export class ExpenseDocumentsController {
     return this.service.post(id, user.id);
   }
 
+  /**
+   * D1.2.1.6 — Approve a PENDING_APPROVAL expense doc.
+   *
+   * When SystemConfig `auto_post_on_approve` is true (default) the doc is
+   * immediately auto-posted in the same transaction (status: POSTED).
+   * When false the doc stays APPROVED and an OWNER can call /post later.
+   *
+   * Approver role gating is widened in D1.2.1.3 (approvers_list). Until that
+   * lands, only OWNER + FINANCE_MANAGER can approve — the same roles allowed
+   * to post today.
+   */
+  @Post(':id/approve')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  approve(@Param('id') id: string, @CurrentUser() user: { id: string }) {
+    return this.service.approve(id, user.id);
+  }
+
   @Post(':id/void')
   @Roles('OWNER', 'FINANCE_MANAGER')
   void(

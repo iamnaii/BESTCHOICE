@@ -3553,6 +3553,15 @@ enum DocumentType {
 
 enum DocumentStatus {
   DRAFT
+  /// D1.2.1.* — Approval Workflow (opt-in via SystemConfig `approval_enabled`).
+  /// Lifecycle when enabled: DRAFT → PENDING_APPROVAL → APPROVED → POSTED.
+  /// When `approval_enabled` is false (default) docs stay on the legacy
+  /// DRAFT → POSTED (or DRAFT → ACCRUAL → POSTED) path and these states are
+  /// unused. New states must remain optional/transient so existing rows are
+  /// untouched. Order matters: PENDING_APPROVAL + APPROVED placed AFTER DRAFT
+  /// and BEFORE ACCRUAL/POSTED/VOIDED to keep the conceptual lifecycle order.
+  PENDING_APPROVAL
+  APPROVED
   ACCRUAL
   POSTED
   VOIDED

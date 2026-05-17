@@ -33,6 +33,8 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /** D1.2.3.2 — default pagination size (list pages). Integer 10-200; default 50. */
+  paginationSize: number;
   /** D1.2.3.1 — default time-range preset for list pages. Default 'this_month'. */
   defaultTimeRange: 'all' | 'this_month' | 'last_month';
   /** D1.3.1.1 — opt-in DRAFT alerts cron. Default false (off). */
@@ -77,6 +79,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  paginationSize: 50,
   defaultTimeRange: 'this_month',
   draftAlertsEnabled: false,
   draftAlertThresholdDays: 7,

@@ -1782,7 +1782,11 @@ export class ExpenseDocumentsService implements OnModuleInit {
     return this.prisma.$transaction(async (tx) => {
       await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(hashtext($1))`, `post:${id}`);
 
-      // D1.2.1.3 — gate FIRST so a non-approver doesn't even see the doc.
+      // D1.2.1.3 — defense-in-depth approver gate. Runs BEFORE any other
+      // operation in approve() (including findUniqueOrThrow) so a non-approver
+      // gets a ForbiddenException without leaking the doc's existence via
+      // a NotFound vs Forbidden enumeration oracle. The @Roles decorator on
+      // the controller is the first gate (HTTP-layer); this is the second.
       await this.assertUserCanApprove(tx, userId, role);
 
       const doc = await tx.expenseDocument.findUniqueOrThrow({ where: { id } });

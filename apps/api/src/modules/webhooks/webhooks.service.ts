@@ -14,6 +14,32 @@ export class WebhooksService {
 
   constructor(private prisma: PrismaService) {}
 
+  /**
+   * D1.3.3.3 — read the OWNER-editable `webhooks_enabled` SystemConfig flag.
+   * **DEFAULT-OFF** per accountant package — outbound webhook dispatch is
+   * paused unless OWNER explicitly opts in. (Inbound webhooks like
+   * paysolutions / sms / line / facebook are NOT gated by this flag; they
+   * are critical for payment processing and run on dedicated controllers.)
+   *
+   * Read directly via PrismaService (mirrors PR #884's lean readBoolFlag
+   * pattern). DB failure falls through to the spec-defined default false.
+   */
+  private async isWebhooksEnabled(): Promise<boolean> {
+    try {
+      const row = await this.prisma.systemConfig.findFirst({
+        where: { key: 'webhooks_enabled', deletedAt: null },
+        select: { value: true },
+      });
+      if (!row?.value) return false; // DEFAULT-OFF
+      const v = row.value.trim().toLowerCase();
+      if (v === 'true' || v === '1') return true;
+      if (v === 'false' || v === '0') return false;
+      return false; // unparseable → default off
+    } catch {
+      return false; // DB error → default off (fail-closed for outbound)
+    }
+  }
+
   async registerWebhook(dto: CreateWebhookDto, userId: string) {
     const invalidEvents = dto.events.filter(
       (e) => !(SUPPORTED_EVENTS as readonly string[]).includes(e),
@@ -110,6 +136,13 @@ export class WebhooksService {
   }
 
   async sendTestEvent(id: string) {
+    // D1.3.3.3 — short-circuit test sends when webhooks are globally off
+    // so OWNER's "Test" click in the UI doesn't silently surprise them.
+    if (!(await this.isWebhooksEnabled())) {
+      throw new BadRequestException(
+        'Webhook outbound dispatch ถูกปิดอยู่ — เปิด SystemConfig key `webhooks_enabled` ก่อนทดสอบ',
+      );
+    }
     const sub = await this.prisma.webhookSubscription.findFirst({
       where: { id, deletedAt: null },
     });
@@ -132,8 +165,18 @@ export class WebhooksService {
   /**
    * Dispatch an event to all active matching webhook subscriptions.
    * Called from payment/contract services.
+   *
+   * D1.3.3.3 — gated by `webhooks_enabled` SystemConfig flag (DEFAULT-OFF).
+   * Returns silently when disabled so business flows (payment / contract
+   * creation) don't error out on the webhook-related side-effect call.
    */
   async dispatchEvent(eventType: WebhookEventType | 'test', payload: Record<string, unknown>) {
+    if (!(await this.isWebhooksEnabled())) {
+      this.logger.debug(
+        `Skipping outbound webhook dispatch for '${eventType}' — webhooks_enabled flag is off`,
+      );
+      return;
+    }
     const subscriptions = await this.prisma.webhookSubscription.findMany({
       where: {
         deletedAt: null,

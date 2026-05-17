@@ -56,7 +56,9 @@ describe('Vendor Settlement lifecycle (integration)', () => {
     const settlement = new VendorSettlementTemplate(journal, prisma as never);
     return new ExpenseDocumentsService(
       prisma as never,
-      new DocNumberService(),
+      // D1.1.2.4 — DocNumberService now takes SettingsService; integration
+      // tests pass a stub that returns null (→ sequence-table flag = false).
+      new DocNumberService({ getKey: async () => null } as never),
       new StatusTransitionService(),
       sameDay,
       accrual,
@@ -70,6 +72,7 @@ describe('Vendor Settlement lifecycle (integration)', () => {
       new PettyCashTemplate(journal, prisma as never),
       new PettyCashService(prisma as never),
       new PayrollCustomService(prisma as never),
+      { send: jest.fn().mockResolvedValue({ id: 'notif-1', status: 'SENT' }) } as never,
     );
   }
 

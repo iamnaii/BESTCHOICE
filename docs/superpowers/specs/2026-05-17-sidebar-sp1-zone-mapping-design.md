@@ -237,9 +237,9 @@ All placeholder paths register with `<ComingSoonPage>` wrapped in lazy import + 
 ### 5.1 Pill switcher (P6 layout)
 
 - ตำแหน่ง: ใต้ `<sb-user>` block, padding `10px 12px`
-- 2 pills: SHOP, FIN — width equal (`flex: 1`)
+- 2 pills: **"หน้าร้าน"** (zone=`shop`) / **"ไฟแนนซ์"** (zone=`fin`) — width equal (`flex: 1`)
 - Active pill: `bg-primary text-primary-foreground`, inactive: `bg-card text-muted-foreground border border-border`
-- Icon prefix: `ShoppingCart` (SHOP), `CircleDollarSign` (FIN)
+- Icon prefix: `ShoppingCart` (หน้าร้าน), `CircleDollarSign` (ไฟแนนซ์)
 - Transition: `transition-colors duration-150`
 - Click → call `setCurrentZone(zone)` → sidebar content swap
 
@@ -371,11 +371,9 @@ All placeholder paths register with `<ComingSoonPage>` wrapped in lazy import + 
 | Cross-zone auto-switch logic break breadcrumb | M | E2E test cover: navigate cross-zone path → breadcrumb still correct |
 | `feature flag` removal forgotten | M | Add to roadmap "Phase 4" + reminder in PR-5 description |
 
-## 13. Open Questions (for user review)
+## 13. Open Questions — RESOLVED
 
-- [ ] **Zone label**: "หน้าร้าน" vs "SHOP" — Thai หรือ EN? (default proposed: "หน้าร้าน" / "FINANCE")
-- [ ] **Default zone for OWNER**: SHOP first (sales mindset) — owner confirm?
-- [ ] **BottomNav SHOP for FM**: when FM switches to SHOP pill, BottomNav swaps too? (default proposed: yes)
-- [ ] **Cross-zone deep link rule for ACCOUNTANT**: redirect to /403 หรือ silent ignore? (default proposed: /403 with toast)
-
-(Default answer = proposed unless user specifies otherwise)
+- [x] **Zone label**: ไทย — **"หน้าร้าน"** / **"ไฟแนนซ์"** (lock 2026-05-17)
+- [x] **Default zone for OWNER**: **SHOP** (sales mindset) — confirmed
+- [x] **BottomNav for FM SHOP pill**: swaps with currentZone — confirmed yes
+- [x] **Cross-zone deep link rule**: redirect to `/403` + toast "เมนูนี้สำหรับฝ่ายการเงิน" (or "ฝ่ายขาย" reverse) — confirmed yes

@@ -14,7 +14,8 @@
 
 | Decision | Value | เหตุผล |
 |---|---|---|
-| Sidebar paradigm | **P6 — Hybrid 2 Pills + Gear** | SHOP/FIN เด่น, Settings ลึกเข้าใต้เฟือง (ใช้นานๆ ครั้ง) |
+| Sidebar paradigm | **P6 — Hybrid 2 Pills + Gear** | "หน้าร้าน"/"ไฟแนนซ์" เด่น, ตั้งค่ากลางลึกเข้าใต้เฟือง (ใช้นานๆ ครั้ง) |
+| Pill labels | **"หน้าร้าน"** (shop) / **"ไฟแนนซ์"** (fin) | ใช้ไทยทั้งหมด (lock 2026-05-17) |
 | Per-role pills visibility | **Rule (b) — pills เฉพาะ multi-zone roles** | SALES/ACCOUNTANT single-zone → ไม่ต้องสลับ ลด clutter |
 | Scope | **Full (menu + build ทุกหน้าที่ขาด)** | 6 SP roadmap ครบ ไม่ให้คลิกเจอ 404 หลัง SP6 |
 | Sub-project execution | **Sequential SP1→SP6** | ลำดับ logical, SP1 unblock การมองเห็นช่องว่าง |

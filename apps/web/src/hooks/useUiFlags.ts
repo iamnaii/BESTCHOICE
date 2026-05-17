@@ -218,6 +218,24 @@ export interface UiFlags {
    */
   approvalEnabled: boolean;
   /**
+   * D1.2.1.2 — threshold (THB) above which docs require approval. The UI uses
+   * this only to surface helper text explaining why the doc was routed to
+   * approval. Backend remains source of truth for the gating decision.
+   * Defaults to 0 (= every doc needs approval when approvalEnabled is true).
+   */
+  approvalThreshold: number;
+  /**
+   * D1.2.1.3 — list of user IDs that may approve PENDING_APPROVAL docs (in
+   * addition to OWNER). OWNER can always approve regardless of this list.
+   * Defaults to empty array. Backend re-validates membership before approve().
+   */
+  approversList: string[];
+  /**
+   * D1.2.1.4 — document types that ALWAYS require approval (independent of
+   * threshold). OR-composed with approvalThreshold. Default `['PAYROLL']`.
+   */
+  approvalRequiredDocTypes: string[];
+  /**
    * D1.2.1.5 — fan out IN_APP notifications when a doc enters
    * PENDING_APPROVAL. Default `true`. Respects master gate
    * `in_app_notifications_enabled`.
@@ -360,6 +378,9 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   decimalPlaces: 2,
   dateFormat: 'BE',
   approvalEnabled: false,
+  approvalThreshold: 0,
+  approversList: [],
+  approvalRequiredDocTypes: ['PAYROLL'],
   notificationOnPending: true,
   paginationSize: 50,
   defaultTimeRange: 'this_month',

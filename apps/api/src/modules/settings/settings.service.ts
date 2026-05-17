@@ -668,6 +668,21 @@ export class SettingsService {
      */
     approvalEnabled: boolean;
     /**
+     * D1.2.1.2 — threshold (THB) above which docs require approval. Surfaced
+     * to the UI for helper-text only. Backend is the source of truth.
+     */
+    approvalThreshold: number;
+    /**
+     * D1.2.1.3 — user IDs that may approve PENDING_APPROVAL docs (besides
+     * OWNER). Frontend gates "อนุมัติเอกสาร" button on this.
+     */
+    approversList: string[];
+    /**
+     * D1.2.1.4 — document types that always require approval (OR-composed
+     * with threshold). Default `['PAYROLL']`.
+     */
+    approvalRequiredDocTypes: string[];
+    /**
      * D1.2.1.5 — fan out IN_APP notifications when a doc enters
      * PENDING_APPROVAL. Default `true`. Respects the master gate
      * `in_app_notifications_enabled` (D1.3.1.4) — if either is off, no
@@ -1043,6 +1058,36 @@ export class SettingsService {
     // Settings_Audit_Core_v2.0.md spec. Owner can flip to `false` via
     // SystemConfig if rollout needs to be gradual.
     const approvalEnabled = await this.readBoolean('approval_enabled', true);
+    // D1.2.1.2 — approval threshold (THB). Default 0; clamp negatives.
+    const approvalThresholdRaw = await this.readNumber('approval_threshold', 0);
+    const approvalThreshold = approvalThresholdRaw >= 0 ? approvalThresholdRaw : 0;
+    // D1.2.1.3 — approvers_list (JSON array of user IDs). Empty default.
+    let approversList: string[] = [];
+    try {
+      const raw = await this.getKey('approvers_list');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          approversList = parsed.filter((v): v is string => typeof v === 'string');
+        }
+      }
+    } catch {
+      approversList = [];
+    }
+    // D1.2.1.4 — approval_required_doc_types (JSON array). Default ['PAYROLL'].
+    let approvalRequiredDocTypes: string[] = ['PAYROLL'];
+    try {
+      const raw = await this.getKey('approval_required_doc_types');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const filtered = parsed.filter((v): v is string => typeof v === 'string');
+          if (filtered.length > 0) approvalRequiredDocTypes = filtered;
+        }
+      }
+    } catch {
+      // keep default
+    }
     // D1.2.1.5 — notification fan-out toggle. Default true. Respects master
     // gate `in_app_notifications_enabled` downstream in NotificationsService.
     const notificationOnPending = await this.readBoolean('notification_on_pending', true);
@@ -1205,6 +1250,9 @@ export class SettingsService {
       decimalPlaces,
       dateFormat,
       approvalEnabled,
+      approvalThreshold,
+      approversList,
+      approvalRequiredDocTypes,
       notificationOnPending,
       paginationSize,
       defaultTimeRange,

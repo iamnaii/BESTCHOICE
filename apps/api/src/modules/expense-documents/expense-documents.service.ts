@@ -165,6 +165,33 @@ export class ExpenseDocumentsService implements OnModuleInit {
   }
 
   /**
+   * D1.3.6.1 — Read an integer SystemConfig flag with min/max clamp.
+   * Returns `fallback` when the row is missing, the value isn't a finite
+   * integer, or it falls outside [min, max]. Mirrors `readBoolFlag` so
+   * future numeric flags share one code path.
+   */
+  private async readIntFlag(
+    tx: Prisma.TransactionClient | PrismaService,
+    key: string,
+    fallback: number,
+    min: number,
+    max: number,
+  ): Promise<number> {
+    try {
+      const row = await tx.systemConfig.findFirst({
+        where: { key, deletedAt: null },
+        select: { value: true },
+      });
+      if (!row?.value) return fallback;
+      const n = Number(row.value);
+      if (!Number.isInteger(n) || n < min || n > max) return fallback;
+      return n;
+    } catch {
+      return fallback;
+    }
+  }
+
+  /**
    * D1.2.7.2 — reverse-reasons whitelist. Uses shared `readJsonFlag` for
    * uniform JSON-parse + validator semantics. Empty / malformed lists fall
    * back to the canonical 6-reason default so the UI never shows an empty
@@ -705,6 +732,25 @@ export class ExpenseDocumentsService implements OnModuleInit {
   ) {
     if (!hasCrossBranchAccess(user) && user.branchId !== dto.branchId) {
       throw new ForbiddenException('ไม่สามารถสร้างเอกสารในสาขาอื่นได้');
+    }
+
+    // D1.3.6.1 — `settlement_max_bills_per_doc` (default 100, clamp 1–500).
+    // Enforce the cap before any DB lookups so a 1000-line payload can't burn
+    // advisory locks / aggregate queries unnecessarily. Reads from the plain
+    // PrismaService here (outside the $transaction below) because
+    // SystemConfig values rarely change mid-request and this is a soft gate
+    // rather than a row-level invariant.
+    const maxBills = await this.readIntFlag(
+      this.prisma,
+      'settlement_max_bills_per_doc',
+      100,
+      1,
+      500,
+    );
+    if (dto.lines.length > maxBills) {
+      throw new BadRequestException(
+        `จำนวนใบที่จะเคลียร์ในเอกสารเดียวเกินจำกัด (สูงสุด ${maxBills} ใบ ต่อเอกสาร)`,
+      );
     }
 
     // Dedup: prevent same cleared doc from appearing twice in one SE

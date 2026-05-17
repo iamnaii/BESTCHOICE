@@ -37,6 +37,112 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /**
+   * D1.1.2.1 — DocumentType → 2-4 letter prefix mapping. Used to render the
+   * configured prefix in document-number badges across list/detail pages.
+   */
+  docPrefixMap: {
+    EXPENSE: string;
+    CREDIT_NOTE: string;
+    PAYROLL: string;
+    VENDOR_SETTLEMENT: string;
+    PETTY_CASH_REIMBURSEMENT: string;
+  };
+  /**
+   * D1.3.3.2 — bank reconciliation mode. INFORMATIONAL ONLY — auto-match
+   * cron + UI haven't been built yet. When a future bank-reconciliation
+   * page exists, it should surface this value prominently (e.g. mode
+   * indicator badge). Default `'manual'`.
+   */
+  bankReconciliationMode: 'manual' | 'auto';
+  /**
+   * D1.1.3.3 — informational "SSO rate locked at 5%" string for Settings UI.
+   * Backed by `SSO_RATE` constant server-side. The SystemConfig key
+   * `sso_rate_locked` is read-only (server rejects writes).
+   */
+  ssoRateLocked: string;
+  /**
+   * D1.3.6.2 — pre-tick preference for the VENDOR_SETTLEMENT bill list.
+   *   'all'          — pre-tick every loaded bill
+   *   'none'         — pre-tick nothing (manual selection only)
+   *   'overdue_only' — pre-tick only bills past their due date (default)
+   */
+  settlementDefaultTick: 'all' | 'none' | 'overdue_only';
+  /**
+   * D1.3.3.1 — when false, hide Excel / PDF / CSV export buttons in the UI.
+   * Server-side ExportEnabledGuard returns 403 for PDF endpoints when this
+   * is false (defence-in-depth against UI bypass). Default true.
+   */
+  exportEnabled: boolean;
+  /**
+   * D1.4.3.2 — gate the weekly audit-log archive sweep. The server enforces;
+   * frontend exposes the flag so an admin UI can render the current state.
+   */
+  auditLogArchiveEnabled: boolean;
+  /**
+   * D1.4.3.3 — legal document retention years (พ.ร.บ.บัญชี ม.7).
+   * Default 5. Informational; no auto-purge cron consumes this yet.
+   */
+  documentRetentionYears: number;
+  /**
+   * D1.4.2.4 — CSV import batch size (rows). Default 500, valid 50–5000.
+   * INFORMATIONAL: current Payments CSV import processes rows one-at-a-time;
+   * flag is exposed for future bulk-import paths.
+   */
+  batchSizeImport: number;
+  /**
+   * D1.4.3.4 — default format for data export dropdowns across the app.
+   * Whitelist `'JSON'` / `'CSV'` / `'XLSX'`. UIs that already render
+   * export buttons should pre-select this value; the user can still
+   * change per export.
+   */
+  dataExportFormat: 'JSON' | 'CSV' | 'XLSX';
+  /**
+   * D1.4.3.5 — master PII masking toggle (PDPA / พ.ร.บ.คุ้มครองข้อมูล
+   * ส่วนบุคคล policy surface). Default `true`. Informational — does not
+   * short-circuit existing per-call mask helpers; admin UI editing this
+   * key should render a bold PDPA warning before persisting `false`.
+   */
+  piiMaskingEnabled: boolean;
+  /**
+   * D1.4.2.5 — max concurrent BullMQ worker jobs. Default 5, valid 1–50.
+   * INFORMATIONAL for the SystemConfig key — @Processor decorator reads
+   * `MAX_CONCURRENT_JOBS` env var at module load; SystemConfig is the
+   * OWNER-visible source of truth until refactored.
+   */
+  maxConcurrentJobs: number;
+  /**
+   * D1.4.3.6 — gate the LoginAuditLog row INSERT. Default `true`. When
+   * `false`, no audit row is written for login attempts. Failed-attempt
+   * counters + account lockout (v3 hardening) are unaffected — those run
+   * independent of audit retention.
+   */
+  loginLogEnabled: boolean;
+  /**
+   * D1.3.4.2 — days threshold for the SAMEDAY→ACCRUAL auto-switch in
+   * `ExpenseFormV4`. Default `0` = any past date triggers (legacy
+   * behavior). Server clamps to 0–30; out-of-range / NaN → 0.
+   */
+  smartSwitchThresholdDays: number;
+  /** D1.3.5.1 — default time-range preset for ExpenseDailySummaryPage. Default 'this_month'. */
+  summaryDefaultRange: 'today' | 'this_week' | 'this_month' | 'last_month';
+  /**
+   * D1.1.3.2 — configurable WHT-rate dropdown. Always at least the 5 defaults.
+   * D1.1.3.5 — each entry may carry an optional `effectiveDate` (ISO string);
+   * UI filters out future-dated entries when rendering.
+   */
+  whtRates: { rate: number; label: string; effectiveDate?: string | null }[];
+  /**
+   * D1.3.4.1 — gate the SAMEDAY→ACCRUAL auto-flip in `ExpenseFormV4`.
+   * Default `true`. When `false`, the user must manually choose docType.
+   */
+  smartDoctypeSwitchEnabled: boolean;
+  /**
+   * D1.3.6.1 — max bills (cleared docs) allowed per VENDOR_SETTLEMENT. Default
+   * 100, clamped 1–500 server-side. Used by SettlementLinesSection to show an
+   * inline cap-warning when the user approaches/exceeds the limit.
+   */
+  settlementMaxBillsPerDoc: number;
   /** D1.1.5.4 — Petty Cash replenish alert threshold (THB). Default 5000, 0 disables. */
   pettyCashReplenishThreshold: number;
   /** D1.1.5.1 — Petty Cash feature flag. Default true. Hides DocTypePicker card + form section when false. */
@@ -47,48 +153,17 @@ export interface UiFlags {
    * voucher shows only a single "ยอดที่ชำระ" column.
    */
   voucherShowPartialColumns: boolean;
+  /**
    * D1.2.5.2 — include the adjustment rows (52-1104 rounding, 53-1503 overpay)
    * in the printable voucher layout. Default true. When false the rows stay
    * on screen (JE preview) but are hidden by the print stylesheet.
    */
   voucherIncludeAdjustment: boolean;
+  /**
    * D1.2.5.1 — voucher print mode. 'multi' (default) emits both ต้นฉบับ and
    * สำเนา on separate A4 pages; 'single' emits only ต้นฉบับ.
    */
   voucherPrintMode: 'single' | 'multi';
-   * D1.2.4.1 — master switch for the Expense Templates ("รายการโปรด") feature.
-   * When false, the UI hides the favorites tab + entry buttons + the
-   * `บันทึกเป็นรายการโปรด` affordance; the API also rejects writes.
-   */
-  templatesEnabled: boolean;
-  /**
-   * D1.2.4.2 — per-user cap on saved Expense Templates. Default 20. UI
-   * surfaces "X/N" count + disables the create button at the cap. Server
-   * enforces the cap atomically (see ExpenseTemplatesService.create).
-   */
-  maxTemplatesPerUser: number;
-  /**
-   * D1.2.4.4 — gates the `{{variable}}` interpolation surface on
-   * Expense Templates ("ใส่ตัวแปร" affordance). When false, UI hides
-   * variable pickers; backend interpolation util still runs at consume-time.
-   */
-  templateVariablesEnabled: boolean;
-   * D1.2.4.4 — gates the `{{variable}}` interpolation surface on Expense
-   * Templates (the "ใส่ตัวแปร" affordance). The pure util in
-   * apps/api/src/utils/template-interpolation.util.ts is always
-   * available; this flag controls whether the UI exposes it.
-   */
-  templateVariablesEnabled: boolean;
-   * D1.2.4.3 — default visibility selection on the "บันทึกเป็นรายการโปรด"
-   * dialog. PRIVATE = creator-only (default), TEAM = creator + explicit
-   * grants, PUBLIC = visible to all authenticated users.
-   */
-  templateSharingDefault: 'PRIVATE' | 'TEAM' | 'PUBLIC';
-   * D1.2.4.2 — per-user quota of saved Expense Templates. Default 20.
-   * Clamped to 1–1000 server-side. UI surfaces as "X/N" badge on the
-   * favorites picker so users see how close they are to the cap.
-   */
-  maxTemplatesPerUser: number;
   /**
    * D1.2.4.1 — Expense Templates feature flag. Default true. When false,
    * the API rejects all template writes (create/update/delete/instantiate)
@@ -97,6 +172,26 @@ export interface UiFlags {
    * accessible to auditors.
    */
   templatesEnabled: boolean;
+  /**
+   * D1.2.4.2 — per-user quota of saved Expense Templates. Default 20.
+   * Clamped to 1–1000 server-side. UI surfaces as "X/N" badge on the
+   * favorites picker so users see how close they are to the cap. Server
+   * enforces the cap atomically (see ExpenseTemplatesService.create).
+   */
+  maxTemplatesPerUser: number;
+  /**
+   * D1.2.4.4 — gates the `{{variable}}` interpolation surface on Expense
+   * Templates (the "ใส่ตัวแปร" affordance). The pure util in
+   * apps/api/src/utils/template-interpolation.util.ts is always
+   * available; this flag controls whether the UI exposes it.
+   */
+  templateVariablesEnabled: boolean;
+  /**
+   * D1.2.4.3 — default visibility selection on the "บันทึกเป็นรายการโปรด"
+   * dialog. PRIVATE = creator-only (default), TEAM = creator + explicit
+   * grants, PUBLIC = visible to all authenticated users.
+   */
+  templateSharingDefault: 'PRIVATE' | 'TEAM' | 'PUBLIC';
   /** D1.2.3.5 — thousands separator style for the generic number formatter. */
   thousandsSeparator: 'comma' | 'space' | 'none';
   /** D1.2.3.4 — default decimal places (0-4) for the generic number formatter. */
@@ -168,7 +263,19 @@ export interface UiFlags {
    * `dashboardStaleTime`.
    */
   cacheTtlDashboard: number;
-  /** D1.3.2.1 — VIEWER role activation. Default false (Q4-gated). Informational today. */
+  /**
+   * D1.4.2.3 — react-query `staleTime` (seconds) for aggregated report
+   * queries (P&L, trial balance, monthly P&L, etc.). Default 300s, valid
+   * 30–7200. Wired into `ProfitLossPage`.
+   */
+  cacheTtlReports: number;
+  /**
+   * D1.3.2.1 — VIEWER role activation flag. Default false (Q4-gated).
+   * When true, future guards/widening code can extend @Roles() lists on
+   * expense / other-income / asset modules to include the VIEWER role.
+   * Schema enum value always exists (UserRole.VIEWER) so the flip is
+   * SystemConfig-only; no migration needed to roll forward/back.
+   */
   viewerRoleEnabled: boolean;
 }
 
@@ -190,6 +297,35 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  docPrefixMap: {
+    EXPENSE: 'EX',
+    CREDIT_NOTE: 'CN',
+    PAYROLL: 'PR',
+    VENDOR_SETTLEMENT: 'SE',
+    PETTY_CASH_REIMBURSEMENT: 'PC',
+  },
+  bankReconciliationMode: 'manual',
+  ssoRateLocked: '5%',
+  settlementDefaultTick: 'overdue_only',
+  whtRates: [
+    { rate: 1, label: '1% — ดอกเบี้ย' },
+    { rate: 3, label: '3% — ค่าบริการ' },
+    { rate: 5, label: '5% — ค่าเช่า' },
+    { rate: 10, label: '10% — ค่าวิชาชีพ' },
+    { rate: 15, label: '15% — ต่างประเทศ' },
+  ],
+  exportEnabled: true,
+  auditLogArchiveEnabled: true,
+  documentRetentionYears: 5,
+  batchSizeImport: 500,
+  dataExportFormat: 'JSON',
+  piiMaskingEnabled: true,
+  maxConcurrentJobs: 5,
+  loginLogEnabled: true,
+  smartSwitchThresholdDays: 0,
+  summaryDefaultRange: 'this_month',
+  smartDoctypeSwitchEnabled: true,
+  settlementMaxBillsPerDoc: 100,
   pettyCashReplenishThreshold: 5000,
   pettyCashEnabled: true,
   voucherShowPartialColumns: true,
@@ -198,10 +334,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   templatesEnabled: true,
   maxTemplatesPerUser: 20,
   templateVariablesEnabled: true,
-  templateVariablesEnabled: true,
   templateSharingDefault: 'PRIVATE',
-  maxTemplatesPerUser: 20,
-  templatesEnabled: true,
   thousandsSeparator: 'comma',
   decimalPlaces: 2,
   dateFormat: 'BE',
@@ -221,6 +354,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   queryTimeoutSeconds: 30,
   emailProvider: 'smtp',
   cacheTtlDashboard: 60,
+  cacheTtlReports: 300,
   viewerRoleEnabled: false,
 };
 

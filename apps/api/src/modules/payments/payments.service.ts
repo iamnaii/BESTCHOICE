@@ -51,10 +51,11 @@ export class PaymentsService {
     @Optional() @Inject(forwardRef(() => PromiseService)) private promiseService?: PromiseService,
     @Optional() private mdmLockService?: MdmLockService,
     /**
-     * D1.1.6.2 — resolves `adj_overpay` → CoA code via account_role_map for
-     * the JE preview path. Optional to match the resilient pattern used for
-     * `mdmAuto` / `mdmLockService`; when missing, falls back to the
-     * spec-default 53-1503 (matches the seed row).
+     * D1.1.6.1 + D1.1.6.2 — resolves `adj_underpay` / `adj_overpay` → CoA code
+     * via account_role_map for the JE preview path. Optional to match the
+     * resilient pattern used for `mdmAuto` / `mdmLockService`; when missing,
+     * falls back to spec defaults (52-1104 for underpay, 53-1503 for overpay)
+     * which match the seed rows.
      */
     @Optional() private accountRoleService?: AccountRoleService,
   ) {}
@@ -1998,7 +1999,11 @@ export class PaymentsService {
           this.accountRoleService?.tryCode('adj_overpay') ?? '53-1503';
         rawLines.push({ code: adjOverpayCode, dr: zero, cr: roundingDiff, description: 'กำไรปัดเศษ (Policy C)' });
       } else if (roundingDiff.lt(zero) && roundingDiff.abs().lte(tolerance)) {
-        rawLines.push({ code: '52-1104', dr: roundingDiff.abs(), cr: zero, description: 'ส่วนลดเศษสตางค์ (Policy C)' });
+        // D1.1.6.1 — resolve via AccountRoleService when available, otherwise
+        // fall back to spec-default 52-1104 (matches the seed row).
+        const adjUnderpayCode =
+          this.accountRoleService?.tryCode('adj_underpay') ?? '52-1104';
+        rawLines.push({ code: adjUnderpayCode, dr: roundingDiff.abs(), cr: zero, description: 'ส่วนลดเศษสตางค์ (Policy C)' });
       }
     }
 

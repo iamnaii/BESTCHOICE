@@ -48,6 +48,15 @@ END $$;
 -- Seed default configs. INSERT ... ON CONFLICT DO NOTHING for idempotency.
 -- Each row mirrors the current hard-coded behavior so the refactored service
 -- produces byte-identical numbers on day-one.
+--
+-- CT (Contract): seed for future use. Currently contracts use
+--   Contract.generateContractNumber() inline. SP5 may wire ContractsService to
+--   DocumentNumberConfig so this row drives those numbers too. Keep the row
+--   here so the UI lists CT (forward-compatibility) and a later SP doesn't
+--   need a separate seed migration.
+-- PC (PettyCashReimbursement): added in DEEP review W4. The petty-cash module
+--   already exists and emits PC-YYYYMMDD-NNNN doc numbers; seed it here so the
+--   SP4 Settings UI can edit its format alongside the other doc types.
 
 INSERT INTO "document_number_configs" (
   "id", "doc_type", "description", "prefix", "format",
@@ -59,5 +68,6 @@ INSERT INTO "document_number_configs" (
   (gen_random_uuid()::TEXT, 'SE', 'จ่ายชำระเจ้าหนี้ (Settlement)',  'SE', '{prefix}-{YYYYMMDD}-{NNNN}', 'DAILY',   4, CURRENT_TIMESTAMP),
   (gen_random_uuid()::TEXT, 'OI', 'รายได้อื่น (Other Income)',      'OI', '{prefix}-{YYYYMMDD}-{NNNN}', 'DAILY',   4, CURRENT_TIMESTAMP),
   (gen_random_uuid()::TEXT, 'RT', 'ใบเสร็จรับเงิน (Receipt)',       'RT', '{prefix}-{YYYYMM}-{NNNNN}', 'MONTHLY', 5, CURRENT_TIMESTAMP),
+  (gen_random_uuid()::TEXT, 'PC', 'ใบเบิกเงินสดย่อย (Petty Cash)',  'PC', '{prefix}-{YYYYMMDD}-{NNNN}', 'DAILY',   4, CURRENT_TIMESTAMP),
   (gen_random_uuid()::TEXT, 'CT', 'สัญญา (Contract)',               'CT', '{prefix}-{YYYYMMDD}-{NNNN}', 'DAILY',   4, CURRENT_TIMESTAMP)
 ON CONFLICT ("doc_type") DO NOTHING;

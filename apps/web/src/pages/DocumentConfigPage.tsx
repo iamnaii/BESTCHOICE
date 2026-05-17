@@ -85,7 +85,11 @@ export default function DocumentConfigPage() {
   });
 
   const [editTarget, setEditTarget] = useState<DocNumberConfig | null>(null);
+  // W5 (DEEP review): pendingDraft holds the in-flight edit while the confirm
+  // dialog is open. We close the edit dialog FIRST (so the page doesn't show
+  // two stacked overlays) and stash the draft + target here for the mutation.
   const [confirmTarget, setConfirmTarget] = useState<DocNumberConfig | null>(null);
+  const [pendingDraft, setPendingDraft] = useState<Partial<DocNumberConfig> | null>(null);
   const [draft, setDraft] = useState<Partial<DocNumberConfig>>({});
   const [preview, setPreview] = useState<PreviewResponse | null>(null);
 
@@ -130,24 +134,28 @@ export default function DocumentConfigPage() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      if (!editTarget) return;
+      // W5: use stashed pendingDraft + confirmTarget (edit dialog is already
+      // closed by the time the user clicks confirm).
+      const target = confirmTarget;
+      const source = pendingDraft;
+      if (!target || !source) return;
       await api.patch(
-        `/settings/doc-config/${encodeURIComponent(editTarget.docType)}`,
+        `/settings/doc-config/${encodeURIComponent(target.docType)}`,
         {
-          prefix: draft.prefix,
-          format: draft.format,
-          resetCadence: draft.resetCadence,
-          digitCount: draft.digitCount,
-          notes: draft.notes,
-          active: draft.active,
+          prefix: source.prefix,
+          format: source.format,
+          resetCadence: source.resetCadence,
+          digitCount: source.digitCount,
+          notes: source.notes,
+          active: source.active,
         },
       );
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['doc-config'] });
       toast.success('บันทึกการตั้งค่าเรียบร้อย');
-      setEditTarget(null);
       setConfirmTarget(null);
+      setPendingDraft(null);
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
@@ -360,7 +368,15 @@ export default function DocumentConfigPage() {
             </Button>
             <Button
               onClick={() => {
-                if (editTarget) setConfirmTarget(editTarget);
+                if (!editTarget) return;
+                // W5 (DEEP review): close the edit dialog first so the confirm
+                // dialog is the only overlay on top. Stash the draft+target so
+                // the confirm step + mutation still have what they need.
+                const snapshot = editTarget;
+                const draftSnapshot = { ...draft };
+                setEditTarget(null);
+                setPendingDraft(draftSnapshot);
+                setConfirmTarget(snapshot);
               }}
               disabled={!hasChanges || saveMutation.isPending}
             >
@@ -373,7 +389,10 @@ export default function DocumentConfigPage() {
       <ConfirmDialog
         open={!!confirmTarget}
         onOpenChange={(open) => {
-          if (!open) setConfirmTarget(null);
+          if (!open) {
+            setConfirmTarget(null);
+            setPendingDraft(null);
+          }
         }}
         title="ยืนยันการเปลี่ยนแปลง"
         description="การเปลี่ยนแปลงจะมีผลกับเอกสารใหม่หลังจากนี้ (ไม่ย้อนหลัง) — ยืนยันหรือไม่?"

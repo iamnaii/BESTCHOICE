@@ -97,6 +97,11 @@ export function getPeriodBounds(date: Date, cadence: string): PeriodBounds {
  *   {YYYYMMDD} {YYYYMM}
  *   {NNNN} {NNN} {NN} {N} — sequence padded to that many digits
  *   {SEQ}           — sequence padded to config.digitCount
+ *
+ * W1 (DEEP review): {prefix} is substituted LAST so its contents cannot
+ * inject other tokens (e.g. prefix='{YYYY}' must NOT smuggle in the year).
+ * The DTO additionally rejects `{` / `}` in prefix as a belt-and-braces
+ * defense, but this ordering keeps the util safe in isolation too.
  */
 export function formatDocNumber(
   template: string,
@@ -110,14 +115,14 @@ export function formatDocNumber(
   const padded = (n: number) => seqStr.padStart(Math.max(1, n), '0');
 
   return template
-    .replace(/\{prefix\}/g, prefix)
     .replace(/\{YYYYMMDD\}/g, parts.yyyymmdd)
     .replace(/\{YYYYMM\}/g, parts.yyyymm)
     .replace(/\{YYYY\}/g, parts.yyyy)
     .replace(/\{MM\}/g, parts.mm)
     .replace(/\{DD\}/g, parts.dd)
     .replace(/\{SEQ\}/g, padded(digitCount))
-    .replace(/\{N+\}/g, (m) => padded(m.length - 2));
+    .replace(/\{N+\}/g, (m) => padded(m.length - 2))
+    .replace(/\{prefix\}/g, prefix);
 }
 
 /**
@@ -134,13 +139,14 @@ export function buildStartsWithPrefix(
   const parts = getBkkDateParts(date);
   // Replace literal date/prefix tokens, then drop everything from the first
   // sequence token onward — that's the slot the running seq fills.
+  // W1: substitute {prefix} LAST so a malicious prefix can't inject tokens.
   const filled = template
-    .replace(/\{prefix\}/g, prefix)
     .replace(/\{YYYYMMDD\}/g, parts.yyyymmdd)
     .replace(/\{YYYYMM\}/g, parts.yyyymm)
     .replace(/\{YYYY\}/g, parts.yyyy)
     .replace(/\{MM\}/g, parts.mm)
-    .replace(/\{DD\}/g, parts.dd);
+    .replace(/\{DD\}/g, parts.dd)
+    .replace(/\{prefix\}/g, prefix);
   const seqTokenIndex = filled.search(/\{SEQ\}|\{N+\}/);
   return seqTokenIndex === -1 ? filled : filled.slice(0, seqTokenIndex);
 }

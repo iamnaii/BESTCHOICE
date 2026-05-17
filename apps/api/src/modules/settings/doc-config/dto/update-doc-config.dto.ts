@@ -4,20 +4,30 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  Matches,
   Max,
   MaxLength,
   Min,
 } from 'class-validator';
 
 export class UpdateDocConfigDto {
+  // W1 (DEEP review): reject `{` / `}` so prefix cannot smuggle in tokens
+  // like `{YYYY}` that would expand during format substitution.
   @IsOptional()
   @IsString({ message: 'รูปแบบ prefix ต้องเป็นตัวอักษร' })
   @MaxLength(20, { message: 'prefix ยาวเกิน 20 ตัวอักษร' })
+  @Matches(/^[^{}]*$/, { message: 'ห้ามใช้เครื่องหมาย { } ใน prefix' })
   prefix?: string;
 
+  // W3 (DEEP review): every format must contain at least one sequence token
+  // ({SEQ} or {NNNN}). Without one the running number has nowhere to go and
+  // every doc collides on the same name.
   @IsOptional()
   @IsString({ message: 'รูปแบบ format ต้องเป็นตัวอักษร' })
   @MaxLength(100, { message: 'format ยาวเกิน 100 ตัวอักษร' })
+  @Matches(/\{(SEQ|N+)\}/, {
+    message: 'รูปแบบต้องมี {SEQ} หรือ {NNNN} อย่างน้อย 1 อัน',
+  })
   format?: string;
 
   @IsOptional()
@@ -50,11 +60,15 @@ export class PreviewDocConfigDto {
   @IsOptional()
   @IsString()
   @MaxLength(20)
+  @Matches(/^[^{}]*$/, { message: 'ห้ามใช้เครื่องหมาย { } ใน prefix' })
   prefix?: string;
 
   @IsOptional()
   @IsString()
   @MaxLength(100)
+  @Matches(/\{(SEQ|N+)\}/, {
+    message: 'รูปแบบต้องมี {SEQ} หรือ {NNNN} อย่างน้อย 1 อัน',
+  })
   format?: string;
 
   @IsOptional()

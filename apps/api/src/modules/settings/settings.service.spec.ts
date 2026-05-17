@@ -567,6 +567,31 @@ describe('SettingsService audit trail', () => {
       expect(flags.batchSizeImport).toBe(500);
     });
 
+    // D1.4.3.4 — data_export_format whitelist
+    it('dataExportFormat defaults to JSON when SystemConfig row absent', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.dataExportFormat).toBe('JSON');
+    });
+
+    it('dataExportFormat accepts CSV / XLSX from SystemConfig', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'data_export_format') return Promise.resolve({ value: 'XLSX' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.dataExportFormat).toBe('XLSX');
+    });
+
+    it('dataExportFormat falls back to JSON for non-whitelisted value', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'data_export_format') return Promise.resolve({ value: 'YAML' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.dataExportFormat).toBe('JSON');
+    });
+
     // D1.3.4.2 — smart_switch_threshold_days (default 0, clamp 0–30,
     // negative/non-integer/NaN → 0). Originally marked SKIP per Phase 2
     // decision report; shipped per owner directive 2026-05-17 to reach

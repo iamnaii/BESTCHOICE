@@ -315,6 +315,16 @@ export class SettingsService {
      */
     batchSizeImport: number;
     /**
+     * D1.4.3.4 — preferred format for data export / compliance backup.
+     * Whitelist `'JSON'` / `'CSV'` / `'XLSX'`, default `'JSON'`. Existing
+     * export buttons across the app should select this as the DEFAULT
+     * option in their format dropdown; the user can still override per
+     * export. Future automated compliance-backup jobs should consume
+     * this value via `getUiFlags()` rather than re-reading the
+     * SystemConfig row directly.
+     */
+    dataExportFormat: 'JSON' | 'CSV' | 'XLSX';
+    /**
      * D1.3.4.2 — days threshold for the SAMEDAY→ACCRUAL auto-switch.
      * Default `0` = any past document date triggers the flip (preserves
      * the pre-Phase-4 hardcoded behavior). When set to N>0, the flip only
@@ -685,6 +695,12 @@ export class SettingsService {
       Number.isFinite(batchSizeImportRaw) && batchSizeImportRaw >= 50 && batchSizeImportRaw <= 5000
         ? Math.floor(batchSizeImportRaw)
         : 500;
+    // D1.4.3.4 — data_export_format. Whitelist JSON/CSV/XLSX; default JSON.
+    const dataExportFormatRaw = await this.getKey('data_export_format');
+    const dataExportFormat: 'JSON' | 'CSV' | 'XLSX' =
+      dataExportFormatRaw === 'CSV' || dataExportFormatRaw === 'XLSX'
+        ? dataExportFormatRaw
+        : 'JSON';
     // D1.3.4.2 — smart-switch threshold (days). Clamp 0–30; non-integer /
     // NaN / negative → 0. Default 0 = legacy behavior (any past date flips).
     const smartSwitchThresholdRaw = await this.readNumber(
@@ -900,6 +916,7 @@ export class SettingsService {
       auditLogArchiveEnabled,
       documentRetentionYears,
       batchSizeImport,
+      dataExportFormat,
       smartSwitchThresholdDays,
       summaryDefaultRange,
       smartDoctypeSwitchEnabled,

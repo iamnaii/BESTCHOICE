@@ -67,6 +67,13 @@ export interface UiFlags {
    */
   batchSizeImport: number;
   /**
+   * D1.4.3.4 — default format for data export dropdowns across the app.
+   * Whitelist `'JSON'` / `'CSV'` / `'XLSX'`. UIs that already render
+   * export buttons should pre-select this value; the user can still
+   * change per export.
+   */
+  dataExportFormat: 'JSON' | 'CSV' | 'XLSX';
+  /**
    * D1.3.4.2 — days threshold for the SAMEDAY→ACCRUAL auto-switch in
    * `ExpenseFormV4`. Default `0` = any past date triggers (legacy
    * behavior). Server clamps to 0–30; out-of-range / NaN → 0.
@@ -249,6 +256,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   auditLogArchiveEnabled: true,
   documentRetentionYears: 5,
   batchSizeImport: 500,
+  dataExportFormat: 'JSON',
   smartSwitchThresholdDays: 0,
   summaryDefaultRange: 'this_month',
   smartDoctypeSwitchEnabled: true,

@@ -101,6 +101,13 @@ export interface UiFlags {
    */
   maxConcurrentJobs: number;
   /**
+   * D1.4.3.6 — gate the LoginAuditLog row INSERT. Default `true`. When
+   * `false`, no audit row is written for login attempts. Failed-attempt
+   * counters + account lockout (v3 hardening) are unaffected — those run
+   * independent of audit retention.
+   */
+  loginLogEnabled: boolean;
+  /**
    * D1.3.4.2 — days threshold for the SAMEDAY→ACCRUAL auto-switch in
    * `ExpenseFormV4`. Default `0` = any past date triggers (legacy
    * behavior). Server clamps to 0–30; out-of-range / NaN → 0.
@@ -288,6 +295,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   dataExportFormat: 'JSON',
   piiMaskingEnabled: true,
   maxConcurrentJobs: 5,
+  loginLogEnabled: true,
   smartSwitchThresholdDays: 0,
   summaryDefaultRange: 'this_month',
   smartDoctypeSwitchEnabled: true,

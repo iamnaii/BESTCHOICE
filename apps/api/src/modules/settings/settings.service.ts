@@ -175,6 +175,23 @@ export class SettingsService {
      * accessibility readers via the lang attr.
      */
     language: 'th' | 'en';
+    /**
+     * D1.4.3.5 — master PII masking toggle (PDPA / พ.ร.บ.คุ้มครองข้อมูล
+     * ส่วนบุคคล policy surface). Default `true`. Currently INFORMATIONAL:
+     * existing PII masking helpers (`maskPhone`, `maskNationalId`,
+     * `maskEmail`, `maskBankAccount` in `apps/api/src/utils/pii.util.ts`)
+     * are consumed per-call in role-aware controllers (e.g.
+     * `CustomersController.applyRoleMask` masks `nationalId` for SALES).
+     * Flipping this toggle does NOT short-circuit those helpers globally
+     * — wiring a kill switch through ~17 call sites is a cross-cutting
+     * change with material test impact, deferred to a follow-up.
+     *
+     * When `false` (NOT recommended outside controlled debugging), the
+     * OWNER acknowledges that consumers honouring this flag should
+     * surface unmasked PII. The admin UI editing this key SHOULD render
+     * a bold PDPA warning before persisting `false`.
+     */
+    piiMaskingEnabled: boolean;
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -214,6 +231,8 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.4.3.5 — master PII masking toggle. Default true (PDPA-safe).
+    const piiMaskingEnabled = await this.readBoolean('pii_masking_enabled', true);
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -225,6 +244,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      piiMaskingEnabled,
     };
   }
 

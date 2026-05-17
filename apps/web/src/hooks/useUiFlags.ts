@@ -33,6 +33,13 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /**
+   * D1.4.3.5 — master PII masking toggle (PDPA / พ.ร.บ.คุ้มครองข้อมูล
+   * ส่วนบุคคล policy surface). Default `true`. Informational — does not
+   * short-circuit existing per-call mask helpers; admin UI editing this
+   * key should render a bold PDPA warning before persisting `false`.
+   */
+  piiMaskingEnabled: boolean;
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -53,6 +60,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  piiMaskingEnabled: true,
 };
 
 export function useUiFlags(): UiFlags {

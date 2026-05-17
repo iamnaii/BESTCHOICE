@@ -170,6 +170,14 @@ export class SettingsService {
      */
     language: 'th' | 'en';
     /**
+     * D1.2.4.2 — per-user quota of saved Expense Templates. Default 20.
+     * Clamped to 1–1000 on read. `ExpenseTemplatesService.create` counts
+     * the caller's existing (non-deleted) templates against this cap and
+     * rejects with BadRequestException ("โควต้าเทมเพลตเต็มแล้ว — ลบ
+     * เทมเพลตเก่าก่อนสร้างใหม่") when count >= cap. UI surfaces it as a
+     * "X/N" badge on the favorites picker for at-a-glance awareness.
+     */
+    maxTemplatesPerUser: number;
      * D1.2.4.1 — global toggle for the Expense Templates feature. When false,
      * ExpenseTemplatesService rejects all writes (create/update/delete/
      * instantiate) with a 403 ForbiddenException, and the UI hides the
@@ -353,6 +361,15 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.2.4.2 — per-user template quota. Default 20, clamp to 1–1000 on
+    // read so a bad SystemConfig row can't disable the cap (which would
+    // let one user balloon the favorites table) or pin it to 0 (which
+    // would lock everyone out of saving new templates).
+    const maxTemplatesPerUserRaw = await this.readNumber('max_templates_per_user', 20);
+    const maxTemplatesPerUser =
+      Number.isFinite(maxTemplatesPerUserRaw) && maxTemplatesPerUserRaw >= 1
+        ? Math.min(Math.floor(maxTemplatesPerUserRaw), 1000)
+        : 20;
     // D1.2.4.1 — Expense Templates feature flag. Default true to preserve
     // existing behaviour; OWNER can disable globally via Settings page.
     const templatesEnabled = await this.readBoolean('templates_enabled', true);
@@ -453,6 +470,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      maxTemplatesPerUser,
       templatesEnabled,
       thousandsSeparator,
       decimalPlaces,

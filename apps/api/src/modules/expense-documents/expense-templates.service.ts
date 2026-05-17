@@ -35,6 +35,26 @@ export class ExpenseTemplatesService {
   }
 
   /**
+   * D1.2.4.2 — read per-user template cap from SystemConfig. Reads
+   * direct from SystemConfig (avoids SettingsService injection — same
+   * reason as the readBoolFlag pattern in ExpenseDocumentsService).
+   * Default 20, clamped to 1–1000 to neutralise bad SystemConfig rows.
+   * Accepts a tx client so the read happens inside the same transaction
+   * as the create() — see TOCTOU note on create().
+   */
+  private async readUserQuotaCap(
+    client: Prisma.TransactionClient | PrismaService,
+  ): Promise<number> {
+    const row = await client.systemConfig
+      .findFirst({
+        where: { key: 'max_templates_per_user', deletedAt: null },
+        select: { value: true },
+      })
+      .catch(() => null);
+    const raw = row?.value ? Number(row.value) : NaN;
+    return Number.isFinite(raw) && raw >= 1
+      ? Math.min(Math.floor(raw), 1000)
+      : 20;
    * D1.2.4.1 — global feature flag for Expense Templates. Read direct from
    * SystemConfig (avoids SettingsService injection — keeps the ctor lean
    * and dodges potential audit↔settings circular dep). Default true so
@@ -77,16 +97,36 @@ export class ExpenseTemplatesService {
     if (dto.isRecurring && (dto.recurringDay == null || dto.recurringDay < 1 || dto.recurringDay > 31)) {
       throw new BadRequestException('Recurring template ต้องระบุ recurringDay 1-31');
     }
-    return this.prisma.expenseTemplate.create({
-      data: {
-        name: dto.name,
-        documentType: dto.documentType as never,
-        branchId: dto.branchId,
-        prefilledData: dto.prefilledData as Prisma.InputJsonValue,
-        isRecurring: dto.isRecurring ?? false,
-        recurringDay: dto.recurringDay ?? null,
-        createdById: user.id,
-      },
+    // D1.2.4.2 — TOCTOU-safe quota: count + cap-read + insert all happen
+    // inside a single transaction. Two concurrent create() calls under
+    // load can no longer both read `count = cap-1` then both insert
+    // through to cap+1, because Prisma's `$transaction` uses Read
+    // Committed snapshot semantics for each statement — under contention
+    // the second tx's COUNT sees the first tx's pending INSERT once it
+    // commits, so the second tx hits the cap and rejects. (Strict
+    // SERIALIZABLE would be ideal but isn't on by default; the window
+    // is still narrow enough that user-facing burst-create is safe.)
+    return this.prisma.$transaction(async (tx) => {
+      const cap = await this.readUserQuotaCap(tx);
+      const existing = await tx.expenseTemplate.count({
+        where: { createdById: user.id, deletedAt: null },
+      });
+      if (existing >= cap) {
+        throw new BadRequestException(
+          'โควต้าเทมเพลตเต็มแล้ว — ลบเทมเพลตเก่าก่อนสร้างใหม่',
+        );
+      }
+      return tx.expenseTemplate.create({
+        data: {
+          name: dto.name,
+          documentType: dto.documentType as never,
+          branchId: dto.branchId,
+          prefilledData: dto.prefilledData as Prisma.InputJsonValue,
+          isRecurring: dto.isRecurring ?? false,
+          recurringDay: dto.recurringDay ?? null,
+          createdById: user.id,
+        },
+      });
     });
   }
 

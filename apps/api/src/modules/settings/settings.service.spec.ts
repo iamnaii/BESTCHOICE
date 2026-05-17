@@ -333,6 +333,38 @@ describe('SettingsService audit trail', () => {
       expect(flags.periodCloseDay).toBe(31);
     });
 
+    // D1.2.4.2 — max_templates_per_user quota
+    it('maxTemplatesPerUser defaults to 20 when SystemConfig row missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.maxTemplatesPerUser).toBe(20);
+    });
+
+    it('maxTemplatesPerUser returns OWNER-configured value within range', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'max_templates_per_user') return Promise.resolve({ value: '50' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.maxTemplatesPerUser).toBe(50);
+    });
+
+    it('maxTemplatesPerUser clamps to 1000 when value above range', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'max_templates_per_user') return Promise.resolve({ value: '5000' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.maxTemplatesPerUser).toBe(1000);
+    });
+
+    it('maxTemplatesPerUser falls back to default when zero or unparseable', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'max_templates_per_user') return Promise.resolve({ value: '0' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.maxTemplatesPerUser).toBe(20);
     // D1.2.4.1 — templates_enabled feature flag
     it('templatesEnabled defaults to true when SystemConfig row missing', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);

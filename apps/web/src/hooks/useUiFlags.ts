@@ -37,6 +37,8 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /** D1.3.5.1 — default time-range preset for ExpenseDailySummaryPage. Default 'this_month'. */
+  summaryDefaultRange: 'today' | 'this_week' | 'this_month' | 'last_month';
   /**
    * D1.3.6.1 — max bills (cleared docs) allowed per VENDOR_SETTLEMENT. Default
    * 100, clamped 1–500 server-side. Used by SettlementLinesSection to show an
@@ -189,6 +191,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  summaryDefaultRange: 'this_month',
   settlementMaxBillsPerDoc: 100,
   pettyCashReplenishThreshold: 5000,
   pettyCashEnabled: true,

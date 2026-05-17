@@ -329,6 +329,15 @@ export class SettingsService {
      */
     defaultTimeRange: 'all' | 'this_month' | 'last_month';
     /**
+     * D1.3.5.1 — default time range preset for the expense daily-summary
+     * page. Whitelisted: `'today' | 'this_week' | 'this_month' | 'last_month'`.
+     * Default `'this_month'`. Wider preset set than `defaultTimeRange` because
+     * the summary page is consumed daily (operations) AND monthly (ผู้จัดการ
+     * รีวิว). Page-level code uses this to initialize startDate/endDate on
+     * mount; mid-session user changes are NOT persisted to the setting.
+     */
+    summaryDefaultRange: 'today' | 'this_week' | 'this_month' | 'last_month';
+    /**
      * D1.3.1.2 — AP-due alerts cron toggle. Default `false` (OFF) until
      * ExpenseDocument has a real `dueDate` column — currently the cron uses
      * `documentDate` as a proxy, so leaving it ON by default would spam
@@ -580,6 +589,17 @@ export class SettingsService {
       defaultTimeRangeRaw === 'all' || defaultTimeRangeRaw === 'last_month'
         ? defaultTimeRangeRaw
         : 'this_month';
+    // D1.3.5.1 — summary-page default range. Wider whitelist than
+    // defaultTimeRange (no 'all' — summary always wants a bounded period,
+    // and the page UI doesn't currently expose an "all" option; the
+    // companion D1.3.5.2 banner explains gracefully if 'all' is ever wired).
+    const summaryDefaultRangeRaw = await this.getKey('summary_default_range');
+    const summaryDefaultRange: 'today' | 'this_week' | 'this_month' | 'last_month' =
+      summaryDefaultRangeRaw === 'today' ||
+      summaryDefaultRangeRaw === 'this_week' ||
+      summaryDefaultRangeRaw === 'last_month'
+        ? summaryDefaultRangeRaw
+        : 'this_month';
     // D1.3.1.2 — AP-due alerts. Default OFF until ExpenseDocument has a real
     // dueDate column (documentDate proxy would otherwise spam every POSTED doc).
     const apDueAlertsEnabled = await this.readBoolean('ap_due_alerts_enabled', false);
@@ -662,6 +682,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      summaryDefaultRange,
       adjAutoRoute,
       settlementMaxBillsPerDoc,
       pettyCashReplenishThreshold,

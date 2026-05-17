@@ -364,4 +364,97 @@ export class InterCompanyService {
       data: { deletedAt: new Date() },
     });
   }
+
+  /**
+   * SP2: Aging report for unsettled inter-company transactions.
+   * Returns buckets 0-30 / 31-60 / 61-90 / 90+ days from createdAt,
+   * counting only PENDING + CONFIRMED (status excluded once RECONCILED).
+   */
+  async getAging(params: { branchId?: string; companyId?: string }) {
+    const where: Record<string, unknown> = {
+      deletedAt: null,
+      status: { in: ['PENDING', 'CONFIRMED'] },
+    };
+    if (params.branchId) where.branchId = params.branchId;
+    if (params.companyId) {
+      where.OR = [{ fromCompanyId: params.companyId }, { toCompanyId: params.companyId }];
+    }
+
+    const txns = await this.prisma.interCompanyTransaction.findMany({
+      where,
+      orderBy: { createdAt: 'asc' },
+      select: {
+        id: true,
+        principal: true,
+        commission: true,
+        vatAmount: true,
+        interestTotal: true,
+        totalAmount: true,
+        status: true,
+        createdAt: true,
+        contractId: true,
+        branchId: true,
+        branch: { select: { name: true } },
+        contract: { select: { contractNumber: true } },
+      },
+    });
+
+    const now = Date.now();
+    const dayMs = 24 * 60 * 60 * 1000;
+
+    type Bucket = '0-30' | '31-60' | '61-90' | '90+';
+    const bucketOrder: Bucket[] = ['0-30', '31-60', '61-90', '90+'];
+    const bucketStats: Record<Bucket, { count: number; totalAmount: Prisma.Decimal }> = {
+      '0-30': { count: 0, totalAmount: new Prisma.Decimal(0) },
+      '31-60': { count: 0, totalAmount: new Prisma.Decimal(0) },
+      '61-90': { count: 0, totalAmount: new Prisma.Decimal(0) },
+      '90+': { count: 0, totalAmount: new Prisma.Decimal(0) },
+    };
+
+    const details = txns.map((t) => {
+      const daysOutstanding = Math.floor((now - new Date(t.createdAt).getTime()) / dayMs);
+      let bucket: Bucket;
+      if (daysOutstanding <= 30) bucket = '0-30';
+      else if (daysOutstanding <= 60) bucket = '31-60';
+      else if (daysOutstanding <= 90) bucket = '61-90';
+      else bucket = '90+';
+
+      const principal = new Prisma.Decimal(t.principal);
+      const commission = new Prisma.Decimal(t.commission);
+      const interest = new Prisma.Decimal(t.interestTotal);
+      const vat = new Prisma.Decimal(t.vatAmount);
+      const total = principal.add(commission).add(interest).add(vat);
+
+      bucketStats[bucket].count += 1;
+      bucketStats[bucket].totalAmount = bucketStats[bucket].totalAmount.add(total);
+
+      return {
+        txId: t.id,
+        contractId: t.contractId,
+        contractNumber: t.contract?.contractNumber ?? null,
+        branchId: t.branchId,
+        branchName: t.branch?.name ?? null,
+        principal: principal.toNumber(),
+        commission: commission.toNumber(),
+        interest: interest.toNumber(),
+        vat: vat.toNumber(),
+        totalAmount: total.toNumber(),
+        daysOutstanding,
+        bucket,
+        status: t.status,
+        createdAt: t.createdAt,
+      };
+    });
+
+    const buckets = bucketOrder.map((range) => ({
+      range,
+      count: bucketStats[range].count,
+      totalAmount: bucketStats[range].totalAmount.toNumber(),
+    }));
+
+    const totalAmount = buckets.reduce((sum, b) => sum + b.totalAmount, 0);
+    const totalCount = buckets.reduce((sum, b) => sum + b.count, 0);
+
+    return { buckets, totalAmount, totalCount, details };
+  }
 }

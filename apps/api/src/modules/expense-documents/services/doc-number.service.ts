@@ -11,26 +11,58 @@ const PREFIX_MAP: Record<DocumentType, string> = {
 };
 
 /**
- * D1.1.2.2 — whitelisted document-number layout strings. Default is the
- * historical YYYYMMDD-NNNN; YYYYMM-NNNNN reflects a monthly cycle (5-digit
- * sequence width); YYYY-NNNNNN reflects a yearly cycle (6-digit width). The
- * per-day advisory lock continues to serialize same-day concurrent writes for
- * all formats — collision risk across different calendar days is bounded by
- * the unique constraint on `ExpenseDocument.number`. A future PR (D1.1.2.3)
- * widens the lock to per-month / per-year to remove that residual risk.
+ * D1.1.2.2 — whitelisted document-number layout strings.
+ *
+ * The Settings_Audit_Core_v2.0 spec (row 1.2.2) calls for `YYMMNNN`. We
+ * concretise that as `PREFIX-YYMM-NNN` (4-digit period + 3-digit seq) and
+ * make it the project default. Three legacy / extended variants stay in the
+ * whitelist so OWNERs can opt-in to higher daily / yearly volume:
+ *
+ *   - `PREFIX-YYMM-NNN`     (spec default — short, monthly window, 3 digits)
+ *   - `PREFIX-YYYYMMDD-NNNN` (legacy v1, daily window, 4 digits)
+ *   - `PREFIX-YYYYMM-NNNNN`  (monthly window, 5 digits — high-volume)
+ *   - `PREFIX-YYYY-NNNNNN`   (yearly window, 6 digits — very-high-volume)
+ *
+ * Unknown values silently fall back to the spec default at read time so doc
+ * creation never blocks on a bad SystemConfig row.
  */
 export type DocNumberFormat =
+  | 'PREFIX-YYMM-NNN'
   | 'PREFIX-YYYYMMDD-NNNN'
   | 'PREFIX-YYYYMM-NNNNN'
   | 'PREFIX-YYYY-NNNNNN';
 
-export const DEFAULT_DOC_NUMBER_FORMAT: DocNumberFormat = 'PREFIX-YYYYMMDD-NNNN';
+/**
+ * Spec default per `docs/superpowers/tracking/_owner-package/Settings_Audit_Core_v2.0.md`
+ * row 1.2.2 (`doc_number_format = YYMMNNN`).
+ */
+export const DEFAULT_DOC_NUMBER_FORMAT: DocNumberFormat = 'PREFIX-YYMM-NNN';
 
 const VALID_DOC_NUMBER_FORMATS: ReadonlySet<DocNumberFormat> = new Set<DocNumberFormat>([
+  'PREFIX-YYMM-NNN',
   'PREFIX-YYYYMMDD-NNNN',
   'PREFIX-YYYYMM-NNNNN',
   'PREFIX-YYYY-NNNNNN',
 ]);
+
+/**
+ * Reset cycle whitelist — duplicated locally to keep this PR self-contained
+ * when its sibling PR #947 (D1.1.2.3) has not yet merged. When BOTH PRs are
+ * on main the cycle string is owned by D1.1.2.3 via the `doc_number_reset_cycle`
+ * SystemConfig key; this PR only reads it as a soft input.
+ */
+type ResetCycle = 'daily' | 'monthly' | 'yearly';
+const VALID_RESET_CYCLES: ReadonlySet<ResetCycle> = new Set<ResetCycle>([
+  'daily',
+  'monthly',
+  'yearly',
+]);
+/**
+ * Legacy default when D1.1.2.3 has not yet merged. We intentionally keep
+ * `daily` here (not the spec's `yearly`) so behaviour pre-#947 is identical
+ * to today. Once #947 ships, its own service-level default flips to `yearly`.
+ */
+const LEGACY_DEFAULT_RESET_CYCLE: ResetCycle = 'daily';
 
 @Injectable()
 export class DocNumberService {
@@ -38,29 +70,27 @@ export class DocNumberService {
 
   /**
    * Generate next sequential document number with race-safe Postgres
-   * advisory lock per (type, BKK-day) key. Mirrors OI/RT pattern.
+   * advisory lock per (type, BKK-period) key. Mirrors OI/RT pattern.
    *
-   * Format: <TYPE>-YYYYMMDD-NNNN (default) — daily reset, 4-digit seq.
+   * D1.1.2.2 — the visible layout (date portion + sequence width) is driven
+   * by SystemConfig key `doc_number_format`. Four layouts are whitelisted:
+   *   - `PREFIX-YYMM-NNN`     (default — spec row 1.2.2)
+   *   - `PREFIX-YYYYMMDD-NNNN`
+   *   - `PREFIX-YYYYMM-NNNNN`
+   *   - `PREFIX-YYYY-NNNNNN`
+   * Unknown values silently fall back to the default at read time.
    *
-   * D1.1.2.2 — the date portion + sequence width are driven by SystemConfig
-   * key `doc_number_format`. Three layouts are whitelisted:
-   *   - `PREFIX-YYYYMMDD-NNNN` (default, current)
-   *   - `PREFIX-YYYYMM-NNNNN` (5-digit seq, monthly window)
-   *   - `PREFIX-YYYY-NNNNNN`  (6-digit seq, yearly window)
-   * Unknown values silently fall back to the default at read time so doc
-   * creation never blocks on a bad SystemConfig row.
+   * D1.1.2.3 (sibling PR #947) — the advisory-lock + sequence-lookup window
+   * is driven by SystemConfig key `doc_number_reset_cycle` (daily / monthly /
+   * yearly). This PR reads that key with a defensive fallback to `daily` so
+   * behaviour pre-#947 is identical to today. Once #947 ships, its own
+   * service-level default flips to `yearly` per spec row 1.2.3.
    *
-   * `issueDate` convention (W5): the BKK-day is derived from the user-chosen
-   * `documentDate` (NOT server "now"), so a same-day creation backdated to
-   * yesterday will still number under yesterday's sequence. This is intentional
-   * — auditors expect a doc dated 2026-05-13 to carry an EX-20260513-NNNN
-   * number regardless of when it was keyed in. The per-day advisory lock still
-   * prevents collisions across concurrent backdates onto the same day. If the
-   * convention ever needs to change, see the W5 note in fix report v1.1.
+   * `issueDate` convention (W5): the BKK period is derived from the
+   * user-chosen `documentDate` (NOT server "now"), so a same-day creation
+   * backdated to yesterday will still number under yesterday's sequence.
    *
-   * W4 — explicit throw when seq overflows the configured digit width (would
-   * otherwise emit a longer suffix that sorts wrong and breaks downstream
-   * parsers). Real-world limit is ~100 docs/day on the default daily layout.
+   * W4 — explicit throw when seq overflows the configured digit width.
    */
   async next(
     tx: Prisma.TransactionClient,
@@ -68,16 +98,15 @@ export class DocNumberService {
     issueDate: Date,
   ): Promise<string> {
     const format = await this.resolveFormat();
+    const cycle = await this.resolveResetCycle();
     const { datePortion, seqWidth } = this.layout(issueDate, format);
     const prefixLetters = PREFIX_MAP[type];
     const prefix = `${prefixLetters}-${datePortion}-`;
-    // Lock key intentionally stays per-BKK-day for now — D1.1.2.3 widens this
-    // to align with the chosen reset_cycle. Per-day lock means same-day
-    // concurrent writes are serialized; cross-day races are caught by the
-    // unique constraint on ExpenseDocument.number.
-    const lockKey = this.hashLockKey(
-      `expdoc:${type}:${this.bkkYyyymmdd(issueDate)}`,
-    );
+    // Advisory lock scope follows the reset_cycle dimension (D1.1.2.3).
+    // When #947 has not yet merged, cycle defaults to `daily` so lock
+    // behaviour is unchanged from pre-D1.1.2.x baseline.
+    const lockScope = this.periodStartString(issueDate, cycle);
+    const lockKey = this.hashLockKey(`expdoc:${type}:${cycle}:${lockScope}`);
     await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${lockKey})`);
 
     const last = await tx.expenseDocument.findFirst({
@@ -101,7 +130,7 @@ export class DocNumberService {
 
   /**
    * D1.1.2.2 — fetch the active doc-number format with defensive fallback.
-   * Unknown / missing values are silently coerced to the default so doc
+   * Unknown / missing values are silently coerced to the spec default so doc
    * creation never blocks on a bad SystemConfig row.
    */
   private async resolveFormat(): Promise<DocNumberFormat> {
@@ -117,8 +146,26 @@ export class DocNumberService {
   }
 
   /**
+   * D1.1.2.3 (sibling) — fetch the active reset cycle. When sibling PR #947
+   * has not yet merged the SystemConfig row will be absent and we fall back
+   * to `daily` (legacy behaviour). Once #947 is on main, its OWNER-set
+   * `doc_number_reset_cycle` SystemConfig key takes over.
+   */
+  private async resolveResetCycle(): Promise<ResetCycle> {
+    try {
+      const raw = await this.settings.getKey('doc_number_reset_cycle');
+      if (raw && VALID_RESET_CYCLES.has(raw as ResetCycle)) {
+        return raw as ResetCycle;
+      }
+    } catch {
+      // fall through to legacy default
+    }
+    return LEGACY_DEFAULT_RESET_CYCLE;
+  }
+
+  /**
    * D1.1.2.2 — map a `DocNumberFormat` to its date portion + seq width.
-   * Pure function; no DB / IO. Exported indirectly through `next()`.
+   * Pure function; no DB / IO.
    */
   private layout(
     issueDate: Date,
@@ -130,8 +177,26 @@ export class DocNumberService {
       case 'PREFIX-YYYY-NNNNNN':
         return { datePortion: this.bkkYyyy(issueDate), seqWidth: 6 };
       case 'PREFIX-YYYYMMDD-NNNN':
-      default:
         return { datePortion: this.bkkYyyymmdd(issueDate), seqWidth: 4 };
+      case 'PREFIX-YYMM-NNN':
+      default:
+        return { datePortion: this.bkkYymm(issueDate), seqWidth: 3 };
+    }
+  }
+
+  /**
+   * D1.1.2.3 (sibling) — BKK period identifier string for advisory-lock
+   * scope. Daily=YYYYMMDD, monthly=YYYYMM, yearly=YYYY.
+   */
+  private periodStartString(issueDate: Date, cycle: ResetCycle): string {
+    switch (cycle) {
+      case 'monthly':
+        return this.bkkYyyymm(issueDate);
+      case 'yearly':
+        return this.bkkYyyy(issueDate);
+      case 'daily':
+      default:
+        return this.bkkYyyymmdd(issueDate);
     }
   }
 
@@ -166,6 +231,22 @@ export class DocNumberService {
       timeZone: 'Asia/Bangkok',
       year: 'numeric',
     });
+  }
+
+  /**
+   * D1.1.2.2 — Asia/Bangkok local YYMM (2-digit year + 2-digit month).
+   * Used by the spec-default `PREFIX-YYMM-NNN` format.
+   *
+   * Spec uses Gregorian (ค.ศ.) 2-digit year for grep-ability with PEAK and
+   * other Thai accounting tools that historically use YY-prefix doc numbers.
+   * For 2026 → `YY = 26`; for 2100 → `YY = 00` (wraps). This is acceptable
+   * because doc-numbers reset annually under the spec default cycle (yearly)
+   * so cross-century collisions are extremely unlikely AND would be on
+   * different years anyway (different reset window).
+   */
+  private bkkYymm(date: Date): string {
+    const yyyymm = this.bkkYyyymm(date); // "YYYYMM"
+    return yyyymm.slice(2); // "YYMM"
   }
 
   /** Deterministic 32-bit hash for advisory lock keys. */

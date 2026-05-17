@@ -8,6 +8,11 @@ import { EventsGateway } from './events.gateway';
 import { ComplianceService } from './compliance.service';
 import { HolidayService } from './holiday.service';
 import { NotificationTemplateService } from './notification-template.service';
+import {
+  EmailProviderService,
+  SmtpEmailProvider,
+  SendgridEmailProvider,
+} from './email-provider.service';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { LineOaModule } from '../line-oa/line-oa.module';
 import { IntegrationsModule } from '../integrations/integrations.module';
@@ -35,6 +40,9 @@ const enableWebSocket = process.env.ENABLE_WEBSOCKET === 'true';
     ComplianceService,
     HolidayService,
     NotificationTemplateService,
+    SmtpEmailProvider,
+    SendgridEmailProvider,
+    EmailProviderService,
     ...(enableWebSocket ? [EventsGateway] : []),
   ],
   exports: [
@@ -42,6 +50,7 @@ const enableWebSocket = process.env.ENABLE_WEBSOCKET === 'true';
     ComplianceService,
     HolidayService,
     NotificationTemplateService,
+    EmailProviderService,
     ...(enableWebSocket ? [EventsGateway] : []),
   ],
 })

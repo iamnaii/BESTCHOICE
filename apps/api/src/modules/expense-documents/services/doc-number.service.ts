@@ -2,11 +2,32 @@ import {
   BadRequestException,
   Injectable,
   NotImplementedException,
+  Optional,
 } from '@nestjs/common';
 import { DocumentType, Prisma } from '@prisma/client';
 import { SettingsService } from '../../settings/settings.service';
+import { PrismaService } from '../../../prisma/prisma.service';
+import {
+  buildStartsWithPrefix,
+  formatDocNumber,
+  getPeriodBounds,
+  hashLockKey,
+  parseSequence,
+} from '../../../utils/doc-number-format.util';
 
 const PREFIX_MAP: Record<DocumentType, string> = {
+  EXPENSE: 'EX',
+  CREDIT_NOTE: 'CN',
+  PAYROLL: 'PR',
+  VENDOR_SETTLEMENT: 'SE',
+  PETTY_CASH_REIMBURSEMENT: 'PC',
+};
+
+/**
+ * Map our internal DocumentType enum to the SP4 `DocumentNumberConfig.docType`
+ * key (the same short code the UI shows to OWNER, e.g. 'EX', 'CN').
+ */
+const CONFIG_DOC_TYPE: Record<DocumentType, string> = {
   EXPENSE: 'EX',
   CREDIT_NOTE: 'CN',
   PAYROLL: 'PR',
@@ -26,41 +47,36 @@ const PREFIX_MAP: Record<DocumentType, string> = {
  * to a dedicated `DocumentSequence` model. When `true`, the service throws
  * `NotImplementedException` so the OWNER realizes the migration hasn't
  * happened yet — silent fallback would create the impression a feature exists
- * when it doesn't. To enable the new mode in the future:
+ * when it doesn't.
  *
- *  1. Add `model DocumentSequence` to `schema.prisma` with `@@unique([type, period])`
- *  2. Implement a `useSequenceTable()` branch in `next()` that does
- *     `upsert + increment` against the new table inside the same `$transaction`
- *  3. Drop the `NotImplementedException` throw
+ * --- SP4 ---
  *
- * Until then, OWNER setting this to `true` is a configuration error and the
- * exception is the correct response.
+ * The service now reads `DocumentNumberConfig` (when injected + row present) to
+ * pick prefix/format/resetCadence/digitCount. If the row is missing OR the
+ * PrismaService isn't injected (legacy unit tests) it falls back to the
+ * hard-coded `<TYPE>-YYYYMMDD-NNNN` convention so existing callers/tests are
+ * unaffected.
  */
 @Injectable()
 export class DocNumberService {
-  constructor(private readonly settings: SettingsService) {}
+  constructor(
+    private readonly settings: SettingsService,
+    @Optional() private readonly prisma?: PrismaService,
+  ) {}
 
   /**
    * Generate next sequential document number with race-safe Postgres
-   * advisory lock per (type, BKK-day) key. Mirrors OI/RT pattern.
+   * advisory lock per (type, period) key.
    *
-   * Format: <TYPE>-YYYYMMDD-NNNN — daily reset, 4-digit seq.
+   * Legacy format: <TYPE>-YYYYMMDD-NNNN (daily reset, 4-digit seq).
+   * SP4: format/prefix/cadence/digitCount come from DocumentNumberConfig when
+   * a row exists for the docType.
    *
-   * D1.1.2.4 — when `doc_sequence_table_enabled = 'true'`, throws
-   * `NotImplementedException`. See class docstring for rationale.
+   * `issueDate` convention (W5): the BKK-period is derived from the user-chosen
+   * `documentDate` (NOT server "now"). Auditors expect a doc dated 2026-05-13
+   * to carry an EX-20260513-NNNN number regardless of when it was keyed in.
    *
-   * `issueDate` convention (W5): the BKK-day is derived from the user-chosen
-   * `documentDate` (NOT server "now"), so a same-day creation backdated to
-   * yesterday will still number under yesterday's sequence. This is intentional
-   * — auditors expect a doc dated 2026-05-13 to carry an EX-20260513-NNNN
-   * number regardless of when it was keyed in. The per-day advisory lock still
-   * prevents collisions across concurrent backdates onto the same day. If the
-   * convention ever needs to change, see the W5 note in fix report v1.1.
-   *
-   * W4 — explicit throw when seq > 9999 (would overflow the 4-digit slot and
-   * silently produce a 5-digit number that sorts wrong). Real-world limit is
-   * ~100 docs/day, so this is purely a guard against runaway loops / data
-   * corruption / future high-volume regimes.
+   * W4 — explicit throw when seq exceeds the configured `digitCount` slot.
    */
   async next(
     tx: Prisma.TransactionClient,
@@ -75,27 +91,32 @@ export class DocNumberService {
       );
     }
 
-    const yyyymmdd = this.bkkYyyymmdd(issueDate);
-    const prefix = `${PREFIX_MAP[type]}-${yyyymmdd}-`;
-    const lockKey = this.hashLockKey(`expdoc:${type}:${yyyymmdd}`);
+    // SP4: try to read config; on any failure fall back to legacy hard-coded path.
+    const config = await this.tryLoadConfig(CONFIG_DOC_TYPE[type]);
+    const prefix = config?.prefix || PREFIX_MAP[type];
+    const format = config?.format || '{prefix}-{YYYYMMDD}-{NNNN}';
+    const cadence = config?.resetCadence || 'DAILY';
+    const digitCount = config?.digitCount || 4;
+
+    const bounds = getPeriodBounds(issueDate, cadence);
+    const startsWith = buildStartsWithPrefix(format, prefix, issueDate);
+    const lockKey = hashLockKey(`expdoc:${type}:${bounds.periodKey}`);
     await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${lockKey})`);
 
     const last = await tx.expenseDocument.findFirst({
-      where: { number: { startsWith: prefix } },
+      where: { number: { startsWith } },
       orderBy: { number: 'desc' },
       select: { number: true },
     });
-    const lastSeq = last
-      ? parseInt(last.number.slice(prefix.length), 10) || 0
-      : 0;
+    const lastSeq = last ? parseSequence(last.number, startsWith) : 0;
     const nextSeq = lastSeq + 1;
-    if (nextSeq > 9999) {
+    const maxSeq = Math.pow(10, digitCount) - 1;
+    if (nextSeq > maxSeq) {
       throw new BadRequestException(
-        `เลขที่เอกสาร ${PREFIX_MAP[type]} เกิน 9999 ใน 1 วัน (BKK ${yyyymmdd}) — ติดต่อผู้ดูแลระบบ`,
+        `เลขที่เอกสาร ${prefix} เกิน ${maxSeq} ใน 1 ${this.cadenceLabel(cadence)} — ติดต่อผู้ดูแลระบบ`,
       );
     }
-    const seq = String(nextSeq).padStart(4, '0');
-    return `${prefix}${seq}`;
+    return formatDocNumber(format, prefix, nextSeq, issueDate, digitCount);
   }
 
   /**
@@ -115,24 +136,38 @@ export class DocNumberService {
     }
   }
 
-  /** Asia/Bangkok local YYYYMMDD via Intl (BKK is UTC+7, no DST). */
-  private bkkYyyymmdd(date: Date): string {
-    const parts = date.toLocaleString('en-CA', {
-      timeZone: 'Asia/Bangkok',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    });
-    const [y, m, d] = parts.split('-').map((s) => parseInt(s, 10));
-    return `${y}${String(m).padStart(2, '0')}${String(d).padStart(2, '0')}`;
+  /**
+   * SP4 — load the active config for a docType. Returns null on any error so
+   * the legacy hard-coded path remains in effect:
+   *   - PrismaService not injected (legacy unit tests)
+   *   - Config row missing (docType not yet seeded)
+   *   - Table missing (running against a DB that hasn't migrated yet)
+   *   - inactive (active=false)
+   */
+  private async tryLoadConfig(docType: string) {
+    if (!this.prisma) return null;
+    try {
+      const row = await this.prisma.documentNumberConfig.findUnique({
+        where: { docType },
+      });
+      if (!row || row.deletedAt || !row.active) return null;
+      return row;
+    } catch {
+      return null;
+    }
   }
 
-  /** Deterministic 32-bit hash for advisory lock keys. */
-  private hashLockKey(key: string): number {
-    let h = 0;
-    for (let i = 0; i < key.length; i++) {
-      h = (h * 31 + key.charCodeAt(i)) | 0;
+  private cadenceLabel(cadence: string): string {
+    switch (cadence) {
+      case 'MONTHLY':
+        return 'เดือน';
+      case 'YEARLY':
+        return 'ปี';
+      case 'NEVER':
+        return 'รอบ';
+      case 'DAILY':
+      default:
+        return 'วัน';
     }
-    return h;
   }
 }

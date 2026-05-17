@@ -713,9 +713,36 @@ model User {
   // it's an organizational policy that lives in service-layer validation.
   custodianForCompanies CompanyInfo[] @relation("CompanyPettyCashCustodian")
 
+  // SP4 — Document Number Config (OWNER edits format/prefix/cadence)
+  docNumberConfigUpdates DocumentNumberConfig[] @relation("DocNumberConfigUpdatedBy")
+
   @@index([branchId])
   @@index([yeastarExtension])
   @@map("users")
+}
+
+/// SP4 — Configurable document number formats per docType.
+/// Read by DocNumberService.next() to format numbers like `EX-20260517-0001`.
+/// Falls back to hard-coded defaults if a row is missing (backward compat).
+model DocumentNumberConfig {
+  id           String    @id @default(uuid())
+  docType      String    @unique @map("doc_type") // 'EX', 'CN', 'PR', 'SE', 'OI', 'RT', 'CT', etc.
+  description  String // Thai user-facing label (e.g. 'ใบสำคัญจ่าย')
+  prefix       String    @default("") @map("prefix")
+  format       String    @default("{prefix}-{YYYYMMDD}-{NNNN}")
+  resetCadence String    @default("DAILY") @map("reset_cadence") // DAILY | MONTHLY | YEARLY | NEVER
+  digitCount   Int       @default(4) @map("digit_count")
+  active       Boolean   @default(true)
+  notes        String?
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
+  updatedById  String?   @map("updated_by_id")
+  updatedBy    User?     @relation("DocNumberConfigUpdatedBy", fields: [updatedById], references: [id])
+
+  @@index([docType])
+  @@index([deletedAt])
+  @@map("document_number_configs")
 }
 
 model Customer {
@@ -2212,21 +2239,21 @@ model SystemConfig {
 /// 5% rate is fixed by law and intentionally NOT stored here — only the
 /// cap/ceiling moves over time.
 model SsoConfig {
-  id               String    @id @default(uuid())
+  id              String    @id @default(uuid())
   /// Monthly salary ceiling used in `5% × min(salary, ceiling)` calc
-  salaryCeiling    Decimal   @db.Decimal(12, 2) @map("salary_ceiling")
+  salaryCeiling   Decimal   @map("salary_ceiling") @db.Decimal(12, 2)
   /// Max contribution per person per month (= 5% × salaryCeiling, rounded)
-  maxContribution  Decimal   @db.Decimal(12, 2) @map("max_contribution")
+  maxContribution Decimal   @map("max_contribution") @db.Decimal(12, 2)
   /// Inclusive start of validity period (Gregorian YYYY-MM-DD)
-  effectiveFrom    DateTime  @map("effective_from") @db.Date
+  effectiveFrom   DateTime  @map("effective_from") @db.Date
   /// Inclusive end of validity period; null = open-ended
-  effectiveTo      DateTime? @map("effective_to") @db.Date
+  effectiveTo     DateTime? @map("effective_to") @db.Date
   /// Free-text note (e.g. กฎกระทรวง reference)
-  note             String?
-  isActive         Boolean   @default(true) @map("is_active")
-  createdAt        DateTime  @default(now()) @map("created_at")
-  updatedAt        DateTime  @updatedAt @map("updated_at")
-  deletedAt        DateTime? @map("deleted_at")
+  note            String?
+  isActive        Boolean   @default(true) @map("is_active")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
 
   // Lookup by date hits this index — finds the row whose effective_from <= date
   // and (effective_to IS NULL OR effective_to >= date).
@@ -3497,12 +3524,12 @@ model JournalEntry {
   peakSyncedAt  DateTime?          @map("peak_synced_at") // When synced to PEAK accounting
   metadata      Json? // T6+ template tags and routing info
 
-  company       CompanyInfo           @relation(fields: [companyId], references: [id])
-  lines         JournalLine[]
-  createdBy     User                  @relation("JournalCreatedBy", fields: [createdById], references: [id])
-  postedBy      User?                 @relation("JournalPostedBy", fields: [postedById], references: [id])
-  postAuditLogs JournalPostAuditLog[]
-  assetInvoiceTransferFor FixedAsset? @relation("AssetInvoiceTransferJE")
+  company                 CompanyInfo           @relation(fields: [companyId], references: [id])
+  lines                   JournalLine[]
+  createdBy               User                  @relation("JournalCreatedBy", fields: [createdById], references: [id])
+  postedBy                User?                 @relation("JournalPostedBy", fields: [postedById], references: [id])
+  postAuditLogs           JournalPostAuditLog[]
+  assetInvoiceTransferFor FixedAsset?           @relation("AssetInvoiceTransferJE")
   // Partial unique index enforced via migration (CREATE UNIQUE INDEX ... WHERE reference_type IS NOT NULL)
   // Prisma cannot express partial @@unique; see migration 20260428010000_journal_entries_ref_unique
 
@@ -3810,22 +3837,22 @@ model PayrollDetail {
 }
 
 model PayrollLine {
-  id                String                    @id @default(uuid())
-  payrollId         String                    @map("payroll_id")
-  payroll           PayrollDetail             @relation(fields: [payrollId], references: [documentId], onDelete: Cascade)
-  employeeName      String                    @map("employee_name")
-  employeeTaxId     String?                   @map("employee_tax_id")
-  baseSalary        Decimal                   @map("base_salary") @db.Decimal(12, 2)
-  ssoEmployee       Decimal                   @default(0) @map("sso_employee") @db.Decimal(12, 2)
-  whtAmount         Decimal                   @default(0) @map("wht_amount") @db.Decimal(12, 2)
-  netPaid           Decimal                   @map("net_paid") @db.Decimal(12, 2)
+  id              String                   @id @default(uuid())
+  payrollId       String                   @map("payroll_id")
+  payroll         PayrollDetail            @relation(fields: [payrollId], references: [documentId], onDelete: Cascade)
+  employeeName    String                   @map("employee_name")
+  employeeTaxId   String?                  @map("employee_tax_id")
+  baseSalary      Decimal                  @map("base_salary") @db.Decimal(12, 2)
+  ssoEmployee     Decimal                  @default(0) @map("sso_employee") @db.Decimal(12, 2)
+  whtAmount       Decimal                  @default(0) @map("wht_amount") @db.Decimal(12, 2)
+  netPaid         Decimal                  @map("net_paid") @db.Decimal(12, 2)
   // C2 — Custom income (bonus, OT, allowances) and custom deduction (loan
   // repayment, advances) per line. Optional; payroll lines without these
   // collapse to the legacy base+sso+wht shape.
-  customIncome      PayrollCustomIncome[]
-  customDeduction   PayrollCustomDeduction[]
-  createdAt         DateTime                  @default(now()) @map("created_at")
-  updatedAt         DateTime                  @updatedAt @map("updated_at")
+  customIncome    PayrollCustomIncome[]
+  customDeduction PayrollCustomDeduction[]
+  createdAt       DateTime                 @default(now()) @map("created_at")
+  updatedAt       DateTime                 @updatedAt @map("updated_at")
 
   @@index([payrollId])
   @@map("payroll_lines")

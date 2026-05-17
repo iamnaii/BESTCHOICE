@@ -1,7 +1,22 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
+import {
+  buildStartsWithPrefix,
+  formatDocNumber,
+  getPeriodBounds,
+  hashLockKey,
+  parseSequence,
+} from '../../../utils/doc-number-format.util';
 
+/**
+ * Other Income document + receipt number generator.
+ *
+ * SP4 — reads `DocumentNumberConfig` (docType 'OI' / 'RT') when present and
+ * falls back to the legacy hard-coded format if a row is missing or the table
+ * doesn't exist yet. Existing tests that run before the SP4 migration is
+ * applied get unchanged behavior thanks to the try/catch fallback.
+ */
 @Injectable()
 export class DocNumberService {
   constructor(private readonly prisma: PrismaService) {}
@@ -10,8 +25,15 @@ export class DocNumberService {
     tx: Prisma.TransactionClient | PrismaService,
     issueDate: Date,
   ): Promise<string> {
-    const { yyyymmdd } = this.getBkkDayBounds(issueDate);
-    const lockKey = this.hashLockKey(`oi:${yyyymmdd}`);
+    const config = await this.tryLoadConfig('OI');
+    const prefix = config?.prefix || 'OI';
+    const format = config?.format || '{prefix}-{YYYYMMDD}-{NNNN}';
+    const cadence = config?.resetCadence || 'DAILY';
+    const digitCount = config?.digitCount || 4;
+
+    const bounds = getPeriodBounds(issueDate, cadence);
+    const startsWith = buildStartsWithPrefix(format, prefix, issueDate);
+    const lockKey = hashLockKey(`oi:${bounds.periodKey}`);
     await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${lockKey})`);
 
     // Use max(seq) instead of count() — soft-deleted docs still occupy their
@@ -19,82 +41,58 @@ export class DocNumberService {
     // collide with their numbers. findFirst with desc ordering sees all rows
     // and gives us the next available sequence.
     const lastDoc = await tx.otherIncome.findFirst({
-      where: { docNumber: { startsWith: `OI-${yyyymmdd}-` } },
+      where: { docNumber: { startsWith } },
       orderBy: { docNumber: 'desc' },
       select: { docNumber: true },
     });
 
-    const lastSeq = lastDoc
-      ? parseInt(lastDoc.docNumber.split('-')[2], 10) || 0
-      : 0;
-    const seq = String(lastSeq + 1).padStart(4, '0');
-    return `OI-${yyyymmdd}-${seq}`;
+    const lastSeq = lastDoc ? parseSequence(lastDoc.docNumber, startsWith) : 0;
+    const nextSeq = lastSeq + 1;
+    return formatDocNumber(format, prefix, nextSeq, issueDate, digitCount);
   }
 
   async nextReceiptNumber(
     tx: Prisma.TransactionClient | PrismaService,
     issueDate: Date,
   ): Promise<string> {
-    const yyyymm = this.getBkkYyyymm(issueDate);
-    const lockKey = this.hashLockKey(`rt:${yyyymm}`);
+    const config = await this.tryLoadConfig('RT');
+    const prefix = config?.prefix || 'RT';
+    const format = config?.format || '{prefix}-{YYYYMM}-{NNNNN}';
+    const cadence = config?.resetCadence || 'MONTHLY';
+    const digitCount = config?.digitCount || 5;
+
+    const bounds = getPeriodBounds(issueDate, cadence);
+    const startsWith = buildStartsWithPrefix(format, prefix, issueDate);
+    const lockKey = hashLockKey(`rt:${bounds.periodKey}`);
     await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${lockKey})`);
 
     const lastDoc = await tx.otherIncome.findFirst({
-      where: { receiptNo: { startsWith: `RT-${yyyymm}-` } },
+      where: { receiptNo: { startsWith } },
       orderBy: { receiptNo: 'desc' },
       select: { receiptNo: true },
     });
 
-    const lastSeq = lastDoc?.receiptNo
-      ? parseInt(lastDoc.receiptNo.split('-')[2], 10) || 0
-      : 0;
-    const seq = String(lastSeq + 1).padStart(5, '0');
-    return `RT-${yyyymm}-${seq}`;
-  }
-
-  private getBkkYyyymm(date: Date): string {
-    const parts = date.toLocaleString('en-CA', {
-      timeZone: 'Asia/Bangkok',
-      year: 'numeric',
-      month: '2-digit',
-    });
-    // Defensive: en-CA with year+month returns "YYYY-MM" today, but slice the
-    // first two segments to stay robust against ICU output shape drift across
-    // Node versions. Mirrors getBkkDayBounds() style.
-    return parts.split('-').slice(0, 2).join('');
+    const lastSeq = lastDoc?.receiptNo ? parseSequence(lastDoc.receiptNo, startsWith) : 0;
+    const nextSeq = lastSeq + 1;
+    return formatDocNumber(format, prefix, nextSeq, issueDate, digitCount);
   }
 
   /**
-   * Returns Asia/Bangkok day boundaries and YYYYMMDD string for the given date.
-   * BKK is UTC+7 with no DST — uses Intl-based approach consistent with the
-   * rest of the codebase (e.g. business-hours.util.ts).
+   * SP4 — load the active config for a docType. Returns null on any error so
+   * the legacy hard-coded path remains in effect:
+   *   - Config row missing
+   *   - Table missing (running against an older DB)
+   *   - inactive (active=false)
    */
-  private getBkkDayBounds(date: Date): { start: Date; end: Date; yyyymmdd: string } {
-    // Extract BKK local date parts via Intl
-    const parts = date.toLocaleString('en-CA', {
-      timeZone: 'Asia/Bangkok',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    });
-    // en-CA format gives "YYYY-MM-DD"
-    const [y, m, d] = parts.split('-').map((s) => parseInt(s, 10));
-    const yyyymmdd = `${y}${String(m).padStart(2, '0')}${String(d).padStart(2, '0')}`;
-
-    // BKK midnight = UTC midnight minus 7 hours = UTC (prev day) 17:00:00Z
-    // Construct start as UTC equivalent of BKK 00:00:00
-    const bkkOffsetMs = 7 * 60 * 60 * 1000;
-    const start = new Date(Date.UTC(y, m - 1, d) - bkkOffsetMs);
-    const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
-
-    return { start, end, yyyymmdd };
-  }
-
-  private hashLockKey(key: string): number {
-    let h = 0;
-    for (let i = 0; i < key.length; i++) {
-      h = (h * 31 + key.charCodeAt(i)) | 0;
+  private async tryLoadConfig(docType: string) {
+    try {
+      const row = await this.prisma.documentNumberConfig.findUnique({
+        where: { docType },
+      });
+      if (!row || row.deletedAt || !row.active) return null;
+      return row;
+    } catch {
+      return null;
     }
-    return h;
   }
 }

@@ -537,5 +537,39 @@ describe('SettingsService audit trail', () => {
       const flags = await service.getUiFlags();
       expect(flags.animationEnabled).toBe(true);
     });
+
+    // D1.4.1.4 — dark_mode_default
+    it('darkModeDefault defaults to "system" when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.darkModeDefault).toBe('system');
+    });
+
+    it('darkModeDefault returns "light" when OWNER stores "light"', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'dark_mode_default') return Promise.resolve({ value: 'light' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.darkModeDefault).toBe('light');
+    });
+
+    it('darkModeDefault returns "dark" when OWNER stores "dark"', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'dark_mode_default') return Promise.resolve({ value: 'dark' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.darkModeDefault).toBe('dark');
+    });
+
+    it('darkModeDefault falls back to "system" on unparseable value', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'dark_mode_default') return Promise.resolve({ value: 'rainbow' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.darkModeDefault).toBe('system');
+    });
   });
 });

@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useTheme } from 'next-themes';
 import api from '@/lib/api';
 
 /**
@@ -76,6 +77,11 @@ export interface UiFlags {
    * strips `transition` / `animation` from every element. Default true.
    */
   animationEnabled: boolean;
+  /**
+   * D1.4.1.4 — BOOTSTRAP default theme for first-time devices (no `theme`
+   * key in localStorage). 'system' = respect OS prefers-color-scheme.
+   */
+  darkModeDefault: 'light' | 'dark' | 'system';
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -107,6 +113,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   sidebarCollapsedDefault: false,
   showKeyboardShortcuts: true,
   animationEnabled: true,
+  darkModeDefault: 'system',
 };
 
 export function useUiFlags(): UiFlags {
@@ -119,6 +126,7 @@ export function useUiFlags(): UiFlags {
     staleTime: 5 * 60_000, // 5 min — flags rarely change mid-session
   });
   const flags = data ?? DEFAULT_UI_FLAGS;
+  const { setTheme } = useTheme();
   // D1.2.2.6 — sync the document `lang` attribute so accessibility readers
   // and `<input>` locale heuristics respect the OWNER-configured language
   // even before a full i18n framework is in place.
@@ -150,5 +158,19 @@ export function useUiFlags(): UiFlags {
       document.documentElement.setAttribute('data-animations-disabled', 'true');
     }
   }, [flags.animationEnabled]);
+  // D1.4.1.4 — first-time-device seed for theme. next-themes stores the
+  // user preference in `localStorage.theme`. When that key is absent AND
+  // the flags have loaded, seed it from `flags.darkModeDefault`. After
+  // the first toggle by the user, this no-ops (key present → bail).
+  useEffect(() => {
+    if (!data) return; // wait for server flags
+    try {
+      if (typeof window === 'undefined') return;
+      if (localStorage.getItem('theme') !== null) return; // user preference wins
+      setTheme(flags.darkModeDefault);
+    } catch {
+      /* ignore storage errors */
+    }
+  }, [data, flags.darkModeDefault, setTheme]);
   return flags;
 }

@@ -263,6 +263,13 @@ export class SettingsService {
      * accessibility users on browsers that don't expose the OS setting.
      */
     animationEnabled: boolean;
+    /**
+     * D1.4.1.4 — BOOTSTRAP default theme for first-time devices (no `theme`
+     * key in localStorage from next-themes). 'system' default = respect OS
+     * `prefers-color-scheme`. Existing per-user preference always wins after
+     * the user has clicked the theme toggle once.
+     */
+    darkModeDefault: 'light' | 'dark' | 'system';
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -360,6 +367,12 @@ export class SettingsService {
     );
     // D1.4.1.3 — animation enabled. Default true.
     const animationEnabled = await this.readBoolean('animation_enabled', true);
+    // D1.4.1.4 — dark_mode_default. Whitelist light/dark/system, default system.
+    const darkModeDefaultRaw = await this.getKey('dark_mode_default');
+    const darkModeDefault: 'light' | 'dark' | 'system' =
+      darkModeDefaultRaw === 'light' || darkModeDefaultRaw === 'dark'
+        ? darkModeDefaultRaw
+        : 'system';
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -382,6 +395,7 @@ export class SettingsService {
       sidebarCollapsedDefault,
       showKeyboardShortcuts,
       animationEnabled,
+      darkModeDefault,
     };
   }
 

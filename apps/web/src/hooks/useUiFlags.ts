@@ -33,6 +33,12 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /**
+   * D1.4.2.4 — CSV import batch size (rows). Default 500, valid 50–5000.
+   * INFORMATIONAL: current Payments CSV import processes rows one-at-a-time;
+   * flag is exposed for future bulk-import paths.
+   */
+  batchSizeImport: number;
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -53,6 +59,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  batchSizeImport: 500,
 };
 
 export function useUiFlags(): UiFlags {

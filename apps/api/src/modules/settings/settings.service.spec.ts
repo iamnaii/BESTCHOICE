@@ -287,5 +287,30 @@ describe('SettingsService audit trail', () => {
       const flags = await service.getUiFlags();
       expect(flags.periodCloseDay).toBe(31);
     });
+
+    // D1.4.2.4 — batch_size_import
+    it('batchSizeImport defaults to 500 when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.batchSizeImport).toBe(500);
+    });
+
+    it('batchSizeImport accepts valid 50-5000 range', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'batch_size_import') return Promise.resolve({ value: '1000' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.batchSizeImport).toBe(1000);
+    });
+
+    it('batchSizeImport clamps out-of-range values back to 500', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'batch_size_import') return Promise.resolve({ value: '10' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.batchSizeImport).toBe(500);
+    });
   });
 });

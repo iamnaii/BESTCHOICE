@@ -175,6 +175,17 @@ export class SettingsService {
      * accessibility readers via the lang attr.
      */
     language: 'th' | 'en';
+    /**
+     * D1.4.2.4 — batch size for CSV row processing in bulk imports.
+     * Default 500, valid 50–5000 (clamped). Currently INFORMATIONAL —
+     * the Payments CSV import in `payments.service.ts` processes rows
+     * one-at-a-time in a `for` loop (no explicit batching), so this flag
+     * is exposed for future bulk-import paths. The numeric range is
+     * deliberately wide so OWNER can dial down for resource-constrained
+     * deploys or up for high-throughput imports. Originally SKIP per
+     * Phase 2; shipped per owner directive 2026-05-17 to reach 100% A1.
+     */
+    batchSizeImport: number;
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -214,6 +225,12 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.4.2.4 — batch_size_import. Clamp to [50, 5000] rows.
+    const batchSizeImportRaw = await this.readNumber('batch_size_import', 500);
+    const batchSizeImport =
+      Number.isFinite(batchSizeImportRaw) && batchSizeImportRaw >= 50 && batchSizeImportRaw <= 5000
+        ? Math.floor(batchSizeImportRaw)
+        : 500;
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -225,6 +242,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      batchSizeImport,
     };
   }
 

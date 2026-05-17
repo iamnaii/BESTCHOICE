@@ -358,6 +358,40 @@ describe('SettingsService audit trail', () => {
       expect(flags.approvalEnabled).toBe(true);
     });
 
+    // D1.2.3.1 — default_time_range preset
+    it('defaultTimeRange defaults to "this_month" when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.defaultTimeRange).toBe('this_month');
+    });
+
+    it('defaultTimeRange accepts "all" from SystemConfig', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'default_time_range') return Promise.resolve({ value: 'all' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.defaultTimeRange).toBe('all');
+    });
+
+    it('defaultTimeRange accepts "last_month" from SystemConfig', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'default_time_range') return Promise.resolve({ value: 'last_month' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.defaultTimeRange).toBe('last_month');
+    });
+
+    it('defaultTimeRange falls back to "this_month" for unknown values', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'default_time_range') return Promise.resolve({ value: 'last_quarter' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.defaultTimeRange).toBe('this_month');
+    });
+
     // D1.1.6 — adjustmentCodes for V4 form's Multi-line Adjustment row.
     it('adjustmentCodes defaults to 52-1104 (underpay) / 53-1503 (overpay)', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
@@ -384,6 +418,56 @@ describe('SettingsService audit trail', () => {
       const flags = await service.getUiFlags();
       // Both bad → fall back to legacy defaults.
       expect(flags.adjustmentCodes).toEqual({ underpay: '52-1104', overpay: '53-1503' });
+    });
+
+    // D1.4.1.1 — sidebar_collapsed_default
+    it('sidebarCollapsedDefault defaults to false (expanded) when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.sidebarCollapsedDefault).toBe(false);
+    });
+
+    it('sidebarCollapsedDefault returns true when OWNER stores "true"', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'sidebar_collapsed_default') return Promise.resolve({ value: 'true' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.sidebarCollapsedDefault).toBe(true);
+    });
+
+    it('sidebarCollapsedDefault falls back to default on unparseable value', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'sidebar_collapsed_default') return Promise.resolve({ value: 'maybe' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.sidebarCollapsedDefault).toBe(false);
+    });
+
+    // D1.4.1.2 — show_keyboard_shortcuts
+    it('showKeyboardShortcuts defaults to true when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.showKeyboardShortcuts).toBe(true);
+    });
+
+    it('showKeyboardShortcuts returns false when OWNER stores "false"', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'show_keyboard_shortcuts') return Promise.resolve({ value: 'false' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.showKeyboardShortcuts).toBe(false);
+    });
+
+    it('showKeyboardShortcuts falls back to default on unparseable value', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'show_keyboard_shortcuts') return Promise.resolve({ value: 'maybe' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.showKeyboardShortcuts).toBe(true);
     });
   });
 });

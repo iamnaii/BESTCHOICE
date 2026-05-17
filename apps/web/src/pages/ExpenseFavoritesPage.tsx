@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
@@ -6,6 +6,7 @@ import api, { getErrorMessage } from '@/lib/api';
 import { Bookmark, Plus, Trash2, Repeat, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { useUiFlags } from '@/hooks/useUiFlags';
 
 interface Template {
   id: string;
@@ -37,6 +38,13 @@ const typeLabels: Record<Template['documentType'], { label: string; cls: string 
 export default function ExpenseFavoritesPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  // D1.2.4 follow-up — feature flags drive availability + quota display.
+  const { templatesEnabled, maxTemplatesPerUser } = useUiFlags();
+  // If OWNER kills the feature mid-session, route the user out instead of
+  // showing a half-functional page.
+  useEffect(() => {
+    if (!templatesEnabled) navigate('/expenses', { replace: true });
+  }, [templatesEnabled, navigate]);
   const [filterType, setFilterType] = useState<string>('');
   const [confirmDelete, setConfirmDelete] = useState<{
     open: boolean;
@@ -85,7 +93,23 @@ export default function ExpenseFavoritesPage() {
           >
             <ArrowLeft className="size-4" /> กลับ
           </button>
-          <h1 className="text-base font-semibold">รายการโปรด ({templates.length})</h1>
+          <h1 className="text-base font-semibold">
+            รายการโปรด{' '}
+            <span
+              className={
+                templates.length >= maxTemplatesPerUser
+                  ? 'text-destructive font-mono'
+                  : 'text-muted-foreground font-mono font-normal'
+              }
+              title={
+                templates.length >= maxTemplatesPerUser
+                  ? `เต็มโควต้า ${maxTemplatesPerUser} รายการแล้ว — ลบเก่าก่อนสร้างใหม่`
+                  : `${templates.length} / ${maxTemplatesPerUser}`
+              }
+            >
+              ({templates.length}/{maxTemplatesPerUser})
+            </span>
+          </h1>
         </div>
         <select
           value={filterType}

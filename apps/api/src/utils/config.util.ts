@@ -3,6 +3,138 @@
  * Eliminates duplication of config loading pattern across services
  */
 import { PrismaService } from '../prisma/prisma.service';
+import { DEFAULT_VAT_DECIMAL, parseVatValue } from './vat-rate.util';
+
+/**
+ * Minimal shape of a Prisma-compatible client for SystemConfig reads.
+ *
+ * Accepts both `PrismaService` and `Prisma.TransactionClient` so that
+ * transaction-scoped reads (`tx.systemConfig.findFirst`) and request-scoped
+ * reads (`this.prisma.systemConfig.findFirst`) share the same util.
+ */
+type SystemConfigReader = {
+  systemConfig: {
+    findFirst: (args: {
+      where: { key: string; deletedAt: null };
+      select: { value: true };
+    }) => Promise<{ value: string | null } | null>;
+  };
+};
+
+/**
+ * Read a single `SystemConfig.value` by key. Returns `null` when the row is
+ * missing or has been soft-deleted. Defensive try/catch — any DB error
+ * (connection blip, query timeout) is swallowed and returns `null` so the
+ * caller can fall through to its default. SystemConfig is "best effort"
+ * runtime config; first-boot behaviour must always succeed without a row.
+ */
+async function readRawValue(
+  prisma: SystemConfigReader,
+  key: string,
+): Promise<string | null> {
+  try {
+    const row = await prisma.systemConfig.findFirst({
+      where: { key, deletedAt: null },
+      select: { value: true },
+    });
+    return row?.value ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Read a boolean SystemConfig flag with fallback.
+ *
+ * Recognises `true`/`false` (case-insensitive) and `1`/`0`. Any other value
+ * (including null/missing key) yields the `fallback`. Whitespace is trimmed.
+ *
+ * Example: `readBoolFlag(prisma, 'reverse_block_cascaded', true)`
+ */
+export async function readBoolFlag(
+  prisma: SystemConfigReader,
+  key: string,
+  fallback: boolean,
+): Promise<boolean> {
+  const raw = await readRawValue(prisma, key);
+  if (raw == null) return fallback;
+  const v = raw.trim().toLowerCase();
+  if (v === 'true' || v === '1') return true;
+  if (v === 'false' || v === '0') return false;
+  return fallback;
+}
+
+/**
+ * Read a numeric SystemConfig flag with fallback. Uses `Number(...)` parsing —
+ * accepts integers, decimals, and negative numbers. NaN / Infinity values
+ * fall back to the default. Whitespace tolerated.
+ *
+ * Example: `readNumberFlag(prisma, 'late_fee_per_day', 100)`
+ */
+export async function readNumberFlag(
+  prisma: SystemConfigReader,
+  key: string,
+  fallback: number,
+): Promise<number> {
+  const raw = await readRawValue(prisma, key);
+  if (raw == null) return fallback;
+  const trimmed = raw.trim();
+  // Empty string would parse to `0` via Number('') — treat as unset instead.
+  if (trimmed.length === 0) return fallback;
+  const n = Number(trimmed);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+/**
+ * Read a string SystemConfig flag with fallback. Returns the raw string
+ * value (no parsing). Empty string → fallback (treat "" as unset).
+ *
+ * Example: `readStringFlag(prisma, 'bank_name', 'KBank')`
+ */
+export async function readStringFlag(
+  prisma: SystemConfigReader,
+  key: string,
+  fallback: string,
+): Promise<string> {
+  const raw = await readRawValue(prisma, key);
+  if (raw == null) return fallback;
+  const trimmed = raw.trim();
+  return trimmed.length === 0 ? fallback : trimmed;
+}
+
+/**
+ * Read a JSON-encoded SystemConfig flag with fallback. Caller supplies a
+ * validator predicate that confirms the parsed value matches the expected
+ * shape — if `JSON.parse` throws OR the validator returns false, fallback
+ * is used. Prevents malformed JSON from breaking runtime callers.
+ *
+ * Example:
+ * ```
+ * const reasons = await readJsonFlag(
+ *   prisma,
+ *   'reverse_reasons',
+ *   defaults,
+ *   (v): v is { code: string; label: string }[] =>
+ *     Array.isArray(v) && v.every((r) => typeof r.code === 'string'),
+ * );
+ * ```
+ */
+export async function readJsonFlag<T>(
+  prisma: SystemConfigReader,
+  key: string,
+  fallback: T,
+  validator?: (value: unknown) => value is T,
+): Promise<T> {
+  const raw = await readRawValue(prisma, key);
+  if (raw == null) return fallback;
+  try {
+    const parsed = JSON.parse(raw);
+    if (validator && !validator(parsed)) return fallback;
+    return parsed as T;
+  } catch {
+    return fallback;
+  }
+}
 
 const INSTALLMENT_CONFIG_KEYS = [
   'interest_rate',
@@ -10,7 +142,12 @@ const INSTALLMENT_CONFIG_KEYS = [
   'min_installment_months',
   'max_installment_months',
   'store_commission_pct',
+  // D1.1.3.1 — VAT rate now lives under canonical `VAT_RATE` (percentage form)
+  // with `vat_pct` retained as a legacy fallback. Both are fetched here; the
+  // resolution helper below picks the first one that parses.
+  'VAT_RATE',
   'vat_pct',
+  'vat_rate',
 ] as const;
 
 export interface InstallmentConfig {
@@ -69,13 +206,24 @@ export async function loadInstallmentConfig(
     return Math.round(raw * 10000) / 10000; // Round to 4 decimal places for rate precision
   };
 
+  // D1.1.3.1 — Resolve VAT rate with the canonical-key-first fallback chain.
+  // VAT_RATE (percent) → vat_pct (decimal) → vat_rate (decimal) → default.
+  const resolveVatPct = (): number => {
+    for (const k of ['VAT_RATE', 'vat_pct', 'vat_rate']) {
+      const row = configs.find((c) => c.key === k);
+      const parsed = parseVatValue(row?.value);
+      if (parsed != null) return Math.round(parsed * 10000) / 10000;
+    }
+    return DEFAULT_VAT_DECIMAL;
+  };
+
   return {
     interestRate: getValue('interest_rate', DEFAULTS.interestRate),
     minDownPaymentPct: getValue('min_down_payment_pct', DEFAULTS.minDownPaymentPct),
     minInstallmentMonths: getValue('min_installment_months', DEFAULTS.minInstallmentMonths),
     maxInstallmentMonths: getValue('max_installment_months', DEFAULTS.maxInstallmentMonths),
     storeCommissionPct: getValue('store_commission_pct', DEFAULTS.storeCommissionPct),
-    vatPct: getValue('vat_pct', DEFAULTS.vatPct),
+    vatPct: resolveVatPct(),
   };
 }
 

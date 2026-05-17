@@ -41,7 +41,7 @@ import { WebhooksController } from '../webhooks.controller';
  * instances depending on decoration site, so we read `.name`
  * defensively (also covers `undefined`).
  */
-function collectGuardNames(controller: Function, methodNames: string[]): string[] {
+function collectGuardNames(controller: new (...args: unknown[]) => object, methodNames: string[]): string[] {
   const classGuards: unknown[] =
     Reflect.getMetadata(GUARDS_METADATA, controller) ?? [];
 
@@ -69,14 +69,14 @@ function collectGuardNames(controller: Function, methodNames: string[]): string[
  * the regression test scans every handler without enumerating them
  * by name.
  */
-function instanceMethodNames(controller: Function): string[] {
+function instanceMethodNames(controller: new (...args: unknown[]) => object): string[] {
   return Object.getOwnPropertyNames(controller.prototype).filter(
     (m) => m !== 'constructor' && typeof (controller.prototype as Record<string, unknown>)[m] === 'function',
   );
 }
 
 describe('webhook-inbound-regression — gating lock', () => {
-  const INBOUND_CONTROLLERS: Array<{ name: string; ctor: Function }> = [
+  const INBOUND_CONTROLLERS: Array<{ name: string; ctor: new (...args: unknown[]) => object }> = [
     { name: 'PaySolutionsController (inbound payment webhook)', ctor: PaySolutionsController },
     { name: 'SmsWebhookController (inbound ThaiBulkSMS DLR)', ctor: SmsWebhookController },
     { name: 'LineOaChatbotController (inbound LINE OA webhook)', ctor: LineOaChatbotController },

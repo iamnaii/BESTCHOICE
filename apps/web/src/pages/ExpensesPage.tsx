@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useSearchParams, useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { usePaginationParams } from '@/hooks/usePaginationParams';
+import { useUiFlags } from '@/hooks/useUiFlags';
 import { PaginationBar } from '@/components/ui/PaginationBar';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
@@ -116,7 +117,9 @@ export default function ExpensesPage() {
   const branchFilter = searchParams.get('branch') || '';
   const startDate = searchParams.get('startDate') || '';
   const endDate = searchParams.get('endDate') || '';
-  const { page, size, setPage, setSize } = usePaginationParams({ defaultSize: 50 });
+  // D1.2.3.2 — defaultSize derived from OWNER-configured `pagination_size`.
+  const { paginationSize } = useUiFlags();
+  const { page, size, setPage, setSize } = usePaginationParams({ defaultSize: paginationSize });
   const [search, setSearch] = useState(searchParams.get('search') || '');
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const debouncedSearch = useDebounce(search, 300);

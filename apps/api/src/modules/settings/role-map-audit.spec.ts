@@ -109,7 +109,7 @@ describe('AccountRoleService audit (D1.1.1.6)', () => {
       note: null,
     });
 
-    await service.update('r1', { isActive: false }, 'user-1');
+    await service.update('r1', { isActive: false }, 'user-1', 'OWNER');
 
     expect(audit.log).toHaveBeenCalledTimes(1);
     const call = audit.log.mock.calls[0][0];

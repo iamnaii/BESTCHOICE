@@ -8,7 +8,12 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { AccountRoleService } from '../journal/account-role.service';
+import {
+  AccountRoleService,
+  ROLE_MAP_READ_ROLES,
+  ROLE_MAP_WRITE_ROLES,
+} from '../journal/account-role.service';
+import { RoleMapValidationService } from './role-map-validation.service';
 
 @ApiTags('Settings')
 @ApiBearerAuth('JWT')
@@ -19,6 +24,7 @@ export class SettingsController {
   constructor(
     private settingsService: SettingsService,
     private accountRoleService: AccountRoleService,
+    private roleMapValidation: RoleMapValidationService,
   ) {}
 
   @Get()
@@ -37,26 +43,47 @@ export class SettingsController {
     return this.settingsService.getUiFlags();
   }
 
-  /** D1.1.1.2 — joined list for admin UI. */
+  /**
+   * D1.1.1.2 / D1.1.1.7 — Read account_role_map joined with CoA.
+   *
+   * Permission: OWNER + FINANCE_MANAGER + ACCOUNTANT (read-only).
+   * Explicit `...ROLE_MAP_READ_ROLES` spread keeps the decorator + the
+   * `assertCanRead()` runtime check pointing at the same constant — no
+   * drift possible.
+   */
   @Get('role-map')
-  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
-  getRoleMap() {
+  @Roles(...ROLE_MAP_READ_ROLES)
+  getRoleMap(@CurrentUser() user: { id: string; role: string }) {
+    // D1.1.1.7 — runtime double-check (defense in depth — if a future
+    // refactor widens the decorator scope, this still blocks).
+    this.accountRoleService.assertCanRead(user.role);
     return this.accountRoleService.listWithCoa();
   }
 
   /**
-   * D1.1.1.3 + D1.1.1.6 — Update a role mapping. Audit log records
-   * either `ROLE_MAP_UPDATED` or `ROLE_MAP_DEACTIVATED` depending on
-   * whether `isActive` flipped true → false.
+   * D1.1.1.3 + D1.1.1.5 + D1.1.1.7 — Update one role-map row (OWNER-only).
+   *
+   * - Permission (D1.1.1.7): `@Roles(...ROLE_MAP_WRITE_ROLES)` + the
+   *   service-side `assertCanWrite()` gate — defense in depth.
+   * - Validation (D1.1.1.5): `RoleMapValidationService.validateUpdate`
+   *   handles the required-role lock, CoA presence + normal-balance match,
+   *   priority uniqueness per role. Service `update()` invokes it via the
+   *   `validate` callback so other entry points (POST, bulk) can reuse.
    */
   @Put('role-map/:id')
-  @Roles('OWNER')
+  @Roles(...ROLE_MAP_WRITE_ROLES)
   updateRoleMap(
     @Param('id') id: string,
     @Body() dto: UpdateRoleMapDto,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: { id: string; role: string },
   ) {
-    return this.accountRoleService.update(id, dto, user.id);
+    return this.accountRoleService.update(
+      id,
+      dto,
+      user.id,
+      user.role,
+      (args) => this.roleMapValidation.validateUpdate(args),
+    );
   }
 
   @Patch()

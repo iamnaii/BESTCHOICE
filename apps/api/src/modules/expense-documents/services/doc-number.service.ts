@@ -4,15 +4,10 @@ import {
   NotImplementedException,
 } from '@nestjs/common';
 import { DocumentType, Prisma } from '@prisma/client';
-import { SettingsService } from '../../settings/settings.service';
-
-const PREFIX_MAP: Record<DocumentType, string> = {
-  EXPENSE: 'EX',
-  CREDIT_NOTE: 'CN',
-  PAYROLL: 'PR',
-  VENDOR_SETTLEMENT: 'SE',
-  PETTY_CASH_REIMBURSEMENT: 'PC',
-};
+import {
+  DEFAULT_DOC_PREFIX_MAP,
+  SettingsService,
+} from '../../settings/settings.service';
 
 /**
  * D1.1.2.4 — SystemConfig key `doc_sequence_table_enabled` (default `'false'`).
@@ -46,6 +41,13 @@ export class DocNumberService {
    *
    * Format: <TYPE>-YYYYMMDD-NNNN — daily reset, 4-digit seq.
    *
+   * D1.1.2.1 — prefix is now sourced from SystemConfig key
+   * `doc_prefix_per_type` via `SettingsService.getDocPrefixMap()`. Falls back
+   * to the hardcoded `DEFAULT_DOC_PREFIX_MAP` when no override is configured
+   * or the stored value is malformed. The lock key + lookup query both use
+   * the resolved prefix, so changing the override at runtime applies to the
+   * next-issued number without restart.
+   *
    * D1.1.2.4 — when `doc_sequence_table_enabled = 'true'`, throws
    * `NotImplementedException`. See class docstring for rationale.
    *
@@ -76,7 +78,9 @@ export class DocNumberService {
     }
 
     const yyyymmdd = this.bkkYyyymmdd(issueDate);
-    const prefix = `${PREFIX_MAP[type]}-${yyyymmdd}-`;
+    const prefixMap = await this.resolvePrefixMap();
+    const prefixLetters = prefixMap[type];
+    const prefix = `${prefixLetters}-${yyyymmdd}-`;
     const lockKey = this.hashLockKey(`expdoc:${type}:${yyyymmdd}`);
     await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${lockKey})`);
 
@@ -91,11 +95,24 @@ export class DocNumberService {
     const nextSeq = lastSeq + 1;
     if (nextSeq > 9999) {
       throw new BadRequestException(
-        `เลขที่เอกสาร ${PREFIX_MAP[type]} เกิน 9999 ใน 1 วัน (BKK ${yyyymmdd}) — ติดต่อผู้ดูแลระบบ`,
+        `เลขที่เอกสาร ${prefixLetters} เกิน 9999 ใน 1 วัน (BKK ${yyyymmdd}) — ติดต่อผู้ดูแลระบบ`,
       );
     }
     const seq = String(nextSeq).padStart(4, '0');
     return `${prefix}${seq}`;
+  }
+
+  /**
+   * D1.1.2.1 — fetch the active prefix map. Pulls from SettingsService when
+   * available; falls back to the static `DEFAULT_DOC_PREFIX_MAP` if any error
+   * surfaces (defensive: doc creation must never block on the settings query).
+   */
+  private async resolvePrefixMap(): Promise<Record<DocumentType, string>> {
+    try {
+      return await this.settings.getDocPrefixMap();
+    } catch {
+      return { ...DEFAULT_DOC_PREFIX_MAP };
+    }
   }
 
   /**

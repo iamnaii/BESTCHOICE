@@ -98,9 +98,9 @@ Sub-prioritization within expanded D1 scope:
 | D1.1.1.2 | `GET /api/settings/role-map` | P0 | ⬜ | Q7 | Wire AccountRoleService or drop table? |
 | D1.1.1.3 | `PUT /api/settings/role-map` | P0 | ⬜ | Q7 | |
 | D1.1.1.4 | Admin UI for role map | P0 | ⬜ | Q7 | |
-| D1.1.1.5 | Validation rules | P0 | ⬜ | Q7 | |
+| D1.1.1.5 | Validation rules | P0 | ✅ | this PR | New `RoleMapValidationService` at `apps/api/src/modules/settings/role-map-validation.service.ts`. Enforces 3 rules: (1) REQUIRED_ROLES cannot be deactivated, (2) accountCode must exist in chart_of_accounts AND match expected normalBalance per role (e.g. vat_input=Dr, vat_output=Cr), (3) priority unique per role. `EXPECTED_NORMAL_BALANCE` map covers all 19 seeded roles. AccountRoleService.update() accepts optional `validate` callback — controller injects RoleMapValidationService; tests can pass inline checks. 7 vitest cases (rule 1 required+non-required, rule 2a missing CoA, rule 2b wrong side + matching side, rule 3 conflict + unique). Type-check 0 errors |
 | D1.1.1.6 | Audit log on change | P0 | ⬜ | Q7 | |
-| D1.1.1.7 | Permission control (admin only) | P0 | ⬜ | Q7 | |
+| D1.1.1.7 | Permission control (admin only) | P0 | ✅ | this PR | Defense-in-depth permission control. New exported constants `ROLE_MAP_READ_ROLES` (OWNER+FINANCE_MANAGER+ACCOUNTANT) + `ROLE_MAP_WRITE_ROLES` (OWNER) — single source of truth for both `@Roles` decorator (spread into decorator args) AND runtime `assertCanRead()`/`assertCanWrite()` service-side checks. `update()` now requires `userRole` arg + calls `assertCanWrite()` BEFORE any DB lookup (denied callers never trigger findUnique). 4 vitest cases (read allow/deny matrix, write OWNER-only matrix, update() pre-DB block on non-OWNER, OWNER happy path). Type-check 0 errors |
 | D1.1.2.1 | `doc_prefix_per_type` | P0 | ⬜ | Q3 | Rename or accept current? |
 | D1.1.2.2 | `doc_number_format` | P0 | ⬜ | Q3 | Same |
 | D1.1.2.3 | `reset_cycle` | P0 | ⬜ | Q3 | |

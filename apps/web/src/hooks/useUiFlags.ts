@@ -45,6 +45,12 @@ export interface UiFlags {
    */
   bankReconciliationMode: 'manual' | 'auto';
   /**
+   * D1.1.3.3 — informational "SSO rate locked at 5%" string for Settings UI.
+   * Backed by `SSO_RATE` constant server-side. The SystemConfig key
+   * `sso_rate_locked` is read-only (server rejects writes).
+   */
+  ssoRateLocked: string;
+  /**
    * D1.3.6.2 — pre-tick preference for the VENDOR_SETTLEMENT bill list.
    *   'all'          — pre-tick every loaded bill
    *   'none'         — pre-tick nothing (manual selection only)
@@ -73,6 +79,20 @@ export interface UiFlags {
    * flag is exposed for future bulk-import paths.
    */
   batchSizeImport: number;
+  /**
+   * D1.4.3.4 — default format for data export dropdowns across the app.
+   * Whitelist `'JSON'` / `'CSV'` / `'XLSX'`. UIs that already render
+   * export buttons should pre-select this value; the user can still
+   * change per export.
+   */
+  dataExportFormat: 'JSON' | 'CSV' | 'XLSX';
+  /**
+   * D1.4.3.5 — master PII masking toggle (PDPA / พ.ร.บ.คุ้มครองข้อมูล
+   * ส่วนบุคคล policy surface). Default `true`. Informational — does not
+   * short-circuit existing per-call mask helpers; admin UI editing this
+   * key should render a bold PDPA warning before persisting `false`.
+   */
+  piiMaskingEnabled: boolean;
   /**
    * D1.3.4.2 — days threshold for the SAMEDAY→ACCRUAL auto-switch in
    * `ExpenseFormV4`. Default `0` = any past date triggers (legacy
@@ -245,6 +265,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   themeColor: '#10b981',
   language: 'th',
   bankReconciliationMode: 'manual',
+  ssoRateLocked: '5%',
   settlementDefaultTick: 'overdue_only',
   whtRates: [
     { rate: 1, label: '1% — ดอกเบี้ย' },
@@ -257,6 +278,8 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   auditLogArchiveEnabled: true,
   documentRetentionYears: 5,
   batchSizeImport: 500,
+  dataExportFormat: 'JSON',
+  piiMaskingEnabled: true,
   smartSwitchThresholdDays: 0,
   summaryDefaultRange: 'this_month',
   smartDoctypeSwitchEnabled: true,

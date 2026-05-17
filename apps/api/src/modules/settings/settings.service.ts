@@ -2,6 +2,16 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { readBoolFlag, readNumberFlag } from '../../utils/config.util';
+import { SSO_RATE } from '../sso-config/sso-config.service';
+
+/**
+ * D1.1.3.3 — keys that are exposed read-only through SystemConfig.
+ * Writes via update/bulkUpdate are rejected with BadRequestException.
+ * `sso_rate_locked` is informational ("5%" string) because Thai SSO Act
+ * §46 + the ministerial regulation issued under it fix the contribution
+ * rate at 5%; UI displays it so OWNER understands the value is non-editable.
+ */
+const READ_ONLY_KEYS = new Set<string>(['sso_rate_locked']);
 
 /**
  * D1.1.5.5 — Whitelist of UserRoles that may hold the Petty Cash custodian
@@ -56,6 +66,11 @@ export class SettingsService {
    * writes (e.g. automated migrations).
    */
   async update(key: string, value: string, userId?: string) {
+    if (READ_ONLY_KEYS.has(key)) {
+      throw new BadRequestException(
+        `key "${key}" เป็น read-only ตามกฎหมาย/ระเบียบ — ไม่สามารถแก้ไขผ่านระบบได้`,
+      );
+    }
     const before = await this.prisma.systemConfig.findUnique({ where: { key } });
     const updated = await this.prisma.systemConfig.upsert({
       where: { key },
@@ -267,6 +282,12 @@ export class SettingsService {
      */
     bankReconciliationMode: 'manual' | 'auto';
     /**
+     * D1.1.3.3 — informational "SSO rate is locked at 5%" string for the
+     * Settings UI to display. Computed from `SSO_RATE` constant, NOT from
+     * SystemConfig — that key is read-only (writes rejected by service).
+     */
+    ssoRateLocked: string;
+    /**
      * D1.3.6.2 — default-tick preference for the SettlementLinesSection bill
      * list. Whitelist of three modes:
      *   - `'all'`            — every fetched bill pre-ticked
@@ -326,6 +347,25 @@ export class SettingsService {
      * Phase 2; shipped per owner directive 2026-05-17 to reach 100% A1.
      */
     batchSizeImport: number;
+    /**
+     * D1.4.3.4 — preferred format for data export / compliance backup.
+     * Whitelist `'JSON'` / `'CSV'` / `'XLSX'`, default `'JSON'`. Existing
+     * export buttons across the app should select this as the DEFAULT
+     * option in their format dropdown; the user can still override per
+     * export. Future automated compliance-backup jobs should consume
+     * this value via `getUiFlags()` rather than re-reading the
+     * SystemConfig row directly.
+     */
+    dataExportFormat: 'JSON' | 'CSV' | 'XLSX';
+    /**
+     * D1.4.3.5 — master PII masking toggle (PDPA policy surface).
+     * Default `true`. Currently INFORMATIONAL — existing PII masking
+     * helpers (`maskPhone`, `maskNationalId`, `maskEmail`, `maskBankAccount`)
+     * are consumed per-call in role-aware controllers and do NOT consult
+     * this flag. Surfacing it lets the admin UI display the PDPA stance
+     * and surface a bold warning before persisting `false`.
+     */
+    piiMaskingEnabled: boolean;
     /**
      * D1.3.4.2 — days threshold for the SAMEDAY→ACCRUAL auto-switch.
      * Default `0` = any past document date triggers the flip (preserves
@@ -667,6 +707,10 @@ export class SettingsService {
     const bankRecRaw = await this.getKey('bank_reconciliation');
     const bankReconciliationMode: 'manual' | 'auto' =
       bankRecRaw === 'auto' ? 'auto' : 'manual';
+    // D1.1.3.3 — sso_rate is locked at 5% by Thai SSO Act §46 + the
+    // ministerial regulation issued under it. Computed from the
+    // source-of-truth SSO_RATE constant, never read from DB.
+    const ssoRateLocked = `${(SSO_RATE * 100).toFixed(0)}%`;
     // D1.3.6.2 — settlement_default_tick. Whitelist 'all' / 'none' /
     // 'overdue_only'; everything else → 'overdue_only' (spec default).
     const settlementDefaultTickRaw = await this.getKey('settlement_default_tick');
@@ -701,6 +745,14 @@ export class SettingsService {
       Number.isFinite(batchSizeImportRaw) && batchSizeImportRaw >= 50 && batchSizeImportRaw <= 5000
         ? Math.floor(batchSizeImportRaw)
         : 500;
+    // D1.4.3.4 — data_export_format. Whitelist JSON/CSV/XLSX; default JSON.
+    const dataExportFormatRaw = await this.getKey('data_export_format');
+    const dataExportFormat: 'JSON' | 'CSV' | 'XLSX' =
+      dataExportFormatRaw === 'CSV' || dataExportFormatRaw === 'XLSX'
+        ? dataExportFormatRaw
+        : 'JSON';
+    // D1.4.3.5 — pii_masking_enabled. Default true (PDPA policy surface).
+    const piiMaskingEnabled = await this.readBoolean('pii_masking_enabled', true);
     // D1.3.4.2 — smart-switch threshold (days). Clamp 0–30; non-integer /
     // NaN / negative → 0. Default 0 = legacy behavior (any past date flips).
     const smartSwitchThresholdRaw = await this.readNumber(
@@ -911,12 +963,15 @@ export class SettingsService {
       themeColor,
       language,
       bankReconciliationMode,
+      ssoRateLocked,
       settlementDefaultTick,
       whtRates,
       exportEnabled,
       auditLogArchiveEnabled,
       documentRetentionYears,
       batchSizeImport,
+      dataExportFormat,
+      piiMaskingEnabled,
       smartSwitchThresholdDays,
       summaryDefaultRange,
       smartDoctypeSwitchEnabled,
@@ -1012,6 +1067,14 @@ export class SettingsService {
   }
 
   async bulkUpdate(items: { key: string; value: string }[], userId?: string) {
+    // D1.1.3.3 — reject the whole batch if any read-only key is present
+    // (atomicity: don't silently drop entries; the caller has a UI bug).
+    const readOnlyHit = items.find((i) => READ_ONLY_KEYS.has(i.key));
+    if (readOnlyHit) {
+      throw new BadRequestException(
+        `key "${readOnlyHit.key}" เป็น read-only ตามกฎหมาย/ระเบียบ — ไม่สามารถแก้ไขผ่านระบบได้`,
+      );
+    }
     // D1.1.3.1 follow-up — rewrite legacy VAT keys before persist.
     items = this.normaliseVatRateWrites(items);
     // Fetch "before" snapshot in one query so the transaction stays bounded.

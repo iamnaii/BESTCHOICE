@@ -149,6 +149,32 @@ describe('SettingsService audit trail', () => {
     expect(prisma.systemConfig.upsert).toHaveBeenCalled();
   });
 
+  // D1.1.3.3 — read-only keys (sso_rate_locked)
+  describe('read-only keys (D1.1.3.3)', () => {
+    it('update() rejects sso_rate_locked with BadRequestException', async () => {
+      await expect(service.update('sso_rate_locked', '6%', 'u-1')).rejects.toThrow(
+        /read-only/,
+      );
+      expect(prisma.systemConfig.upsert).not.toHaveBeenCalled();
+      expect(audit.log).not.toHaveBeenCalled();
+    });
+
+    it('bulkUpdate() rejects entire batch if any item is a read-only key', async () => {
+      await expect(
+        service.bulkUpdate(
+          [
+            { key: 'good_key', value: '1' },
+            { key: 'sso_rate_locked', value: '6%' },
+          ],
+          'u-1',
+        ),
+      ).rejects.toThrow(/read-only/);
+      expect(prisma.systemConfig.upsert).not.toHaveBeenCalled();
+      // Audit log entries should be skipped wholesale (atomicity)
+      expect(audit.log).not.toHaveBeenCalled();
+    });
+  });
+
   // D1.2.8.2 + D1.2.7.1 — UI feature flags endpoint
   describe('getUiFlags', () => {
     it('all flags default to true when SystemConfig rows missing', async () => {
@@ -356,6 +382,24 @@ describe('SettingsService audit trail', () => {
       });
       const flags = await service.getUiFlags();
       expect(flags.bankReconciliationMode).toBe('manual');
+    });
+
+    // D1.1.3.3 — sso_rate locked at 5%
+    it('ssoRateLocked is "5%" regardless of SystemConfig state', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.ssoRateLocked).toBe('5%');
+    });
+
+    it('ssoRateLocked is computed from SSO_RATE constant — DB writes can NOT override it', async () => {
+      // Even if someone smuggled a different value into the DB (which the
+      // read-only guard should prevent), getUiFlags must keep returning 5%.
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'sso_rate_locked') return Promise.resolve({ value: '99%' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.ssoRateLocked).toBe('5%');
     });
 
     // D1.3.6.2 — settlement_default_tick (whitelist)
@@ -590,6 +634,65 @@ describe('SettingsService audit trail', () => {
       });
       const flags = await service.getUiFlags();
       expect(flags.batchSizeImport).toBe(500);
+    });
+
+    // D1.4.3.4 — data_export_format whitelist
+    it('dataExportFormat defaults to JSON when SystemConfig row absent', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.dataExportFormat).toBe('JSON');
+    });
+
+    it('dataExportFormat accepts CSV / XLSX from SystemConfig', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'data_export_format') return Promise.resolve({ value: 'XLSX' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.dataExportFormat).toBe('XLSX');
+    });
+
+    it('dataExportFormat falls back to JSON for non-whitelisted value', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'data_export_format') return Promise.resolve({ value: 'YAML' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.dataExportFormat).toBe('JSON');
+    });
+
+    // D1.4.3.5 — pii_masking_enabled (PDPA master toggle)
+    it('piiMaskingEnabled defaults to true (PDPA-safe) when SystemConfig row absent', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.piiMaskingEnabled).toBe(true);
+    });
+
+    it('piiMaskingEnabled returns false when OWNER explicitly disables it', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'pii_masking_enabled') return Promise.resolve({ value: 'false' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.piiMaskingEnabled).toBe(false);
+    });
+
+    it('piiMaskingEnabled returns true when explicitly enabled', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'pii_masking_enabled') return Promise.resolve({ value: 'true' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.piiMaskingEnabled).toBe(true);
+    });
+
+    it('piiMaskingEnabled falls back to PDPA-safe default for unparseable value', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'pii_masking_enabled') return Promise.resolve({ value: 'maybe' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.piiMaskingEnabled).toBe(true);
     });
 
     // D1.3.4.2 — smart_switch_threshold_days (default 0, clamp 0–30,

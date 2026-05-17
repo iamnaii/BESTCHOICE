@@ -1,14 +1,19 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import type { Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { BranchGuard } from '../auth/guards/branch.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { DraftsService } from './drafts.service';
+
+type RequestUser = { id: string; role: string; branchId?: string | null };
+type AuthRequest = Request & { user?: RequestUser };
 
 @ApiTags('Drafts')
 @ApiBearerAuth('JWT')
 @Controller('drafts')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, BranchGuard)
 export class DraftsController {
   constructor(private readonly draftsService: DraftsService) {}
 
@@ -19,16 +24,22 @@ export class DraftsController {
       'SP5 — Drafts hub: federated read of DRAFT-status docs (Quote / Contract / ExpenseDocument / OtherIncome).',
   })
   list(
+    @Req() req: AuthRequest,
     @Query('type') type?: string,
     @Query('branchId') branchId?: string,
     @Query('search') search?: string,
     @Query('limit') limit?: string,
   ) {
-    return this.draftsService.findAll({
-      type,
-      branchId,
-      search,
-      limit: limit ? parseInt(limit, 10) || undefined : undefined,
-    });
+    const user = req.user;
+    if (!user) throw new Error('JWT user ไม่ถูกต้อง');
+    return this.draftsService.findAll(
+      {
+        type,
+        branchId,
+        search,
+        limit: limit ? parseInt(limit, 10) || undefined : undefined,
+      },
+      user,
+    );
   }
 }

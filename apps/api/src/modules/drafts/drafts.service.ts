@@ -1,6 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { getBranchScope } from '../auth/branch-access.util';
 
 export type DraftType = 'QUOTE' | 'CONTRACT' | 'EXPENSE' | 'OTHER_INCOME';
 
@@ -16,6 +17,8 @@ export interface DraftRow {
   link: string;
 }
 
+type RequestUser = { id: string; role: string; branchId?: string | null };
+
 const DRAFT_TYPES: ReadonlySet<DraftType> = new Set([
   'QUOTE',
   'CONTRACT',
@@ -30,22 +33,25 @@ const DRAFT_TYPES: ReadonlySet<DraftType> = new Set([
  * tables (Quote / Contract / ExpenseDocument / OtherIncome). Returns a
  * unified `DraftRow` shape so the UI can render a single tabbed table.
  *
- * Branch scoping: ExpenseDocument has `branchId`, but Quote/Contract/Sale
- * keep branch on related rows. OtherIncome scopes by `companyId` (FINANCE
- * only) — branch filter is N/A and we surface them all when no branch is
- * requested. When a `branchId` filter is set, OtherIncome rows are EXCLUDED
- * (they aren't branch-scoped at all).
+ * Branch scoping: Quote / Contract / ExpenseDocument all carry `branchId`
+ * and are scoped through `getBranchScope(user)`. OtherIncome scopes by
+ * `companyId` (FINANCE only) — branch filter is N/A. When the caller is
+ * branch-scoped (SALES / BRANCH_MANAGER) we exclude OtherIncome entirely
+ * since they don't have visibility into FINANCE-side rows.
  */
 @Injectable()
 export class DraftsService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll(opts: {
-    type?: string;
-    branchId?: string;
-    search?: string;
-    limit?: number;
-  }): Promise<{ data: DraftRow[]; total: number }> {
+  async findAll(
+    opts: {
+      type?: string;
+      branchId?: string;
+      search?: string;
+      limit?: number;
+    },
+    user: RequestUser,
+  ): Promise<{ data: DraftRow[]; total: number }> {
     const limit = Math.min(200, Math.max(1, opts.limit ?? 100));
     const filterType =
       opts.type && DRAFT_TYPES.has(opts.type as DraftType) ? (opts.type as DraftType) : null;
@@ -55,15 +61,35 @@ export class DraftsService {
     const includeExpense = !filterType || filterType === 'EXPENSE';
     const includeOtherIncome = !filterType || filterType === 'OTHER_INCOME';
 
+    const scope = getBranchScope(user);
+
+    // Resolve effective branchId. Branch-scoped users always read against
+    // their own branch; cross-branch users may pass a branchId filter.
+    let effectiveBranchId: string | null | undefined;
+    if (scope.all) {
+      effectiveBranchId = opts.branchId;
+    } else {
+      // Branch-scoped role — defend against clients passing a foreign branchId.
+      if (opts.branchId && opts.branchId !== scope.branchId) {
+        throw new ForbiddenException('ไม่สามารถเข้าถึงข้อมูลของสาขาอื่นได้');
+      }
+      if (!scope.branchId) {
+        // Branch-scoped user without a branchId — nothing to show.
+        return { data: [], total: 0 };
+      }
+      effectiveBranchId = scope.branchId;
+    }
+
     const rows: DraftRow[] = [];
 
     // Run all four queries in parallel for the requested types
     const promises: Promise<DraftRow[]>[] = [];
-    if (includeQuote) promises.push(this.queryQuotes(opts.branchId, limit));
-    if (includeContract) promises.push(this.queryContracts(opts.branchId, limit));
-    if (includeExpense) promises.push(this.queryExpenses(opts.branchId, limit));
-    // OtherIncome has no branchId. If caller specifies branch, skip OI entirely.
-    if (includeOtherIncome && !opts.branchId) {
+    if (includeQuote) promises.push(this.queryQuotes(effectiveBranchId, limit));
+    if (includeContract) promises.push(this.queryContracts(effectiveBranchId, limit));
+    if (includeExpense) promises.push(this.queryExpenses(effectiveBranchId, limit));
+    // OtherIncome has no branchId. Skip if branchId filter is active OR if
+    // the caller is a branch-scoped role (no FINANCE visibility).
+    if (includeOtherIncome && !effectiveBranchId && scope.all) {
       promises.push(this.queryOtherIncome(limit));
     }
 
@@ -85,7 +111,10 @@ export class DraftsService {
     return { data: filtered.slice(0, limit), total: filtered.length };
   }
 
-  private async queryQuotes(branchId: string | undefined, limit: number): Promise<DraftRow[]> {
+  private async queryQuotes(
+    branchId: string | null | undefined,
+    limit: number,
+  ): Promise<DraftRow[]> {
     const where: Prisma.QuoteWhereInput = { deletedAt: null, status: 'DRAFT' };
     if (branchId) where.branchId = branchId;
     const quotes = await this.prisma.quote.findMany({
@@ -111,7 +140,10 @@ export class DraftsService {
     }));
   }
 
-  private async queryContracts(branchId: string | undefined, limit: number): Promise<DraftRow[]> {
+  private async queryContracts(
+    branchId: string | null | undefined,
+    limit: number,
+  ): Promise<DraftRow[]> {
     const where: Prisma.ContractWhereInput = { deletedAt: null, status: 'DRAFT' };
     if (branchId) where.branchId = branchId;
     const contracts = await this.prisma.contract.findMany({
@@ -137,7 +169,10 @@ export class DraftsService {
     }));
   }
 
-  private async queryExpenses(branchId: string | undefined, limit: number): Promise<DraftRow[]> {
+  private async queryExpenses(
+    branchId: string | null | undefined,
+    limit: number,
+  ): Promise<DraftRow[]> {
     const where: Prisma.ExpenseDocumentWhereInput = { deletedAt: null, status: 'DRAFT' };
     if (branchId) where.branchId = branchId;
     const expenses = await this.prisma.expenseDocument.findMany({

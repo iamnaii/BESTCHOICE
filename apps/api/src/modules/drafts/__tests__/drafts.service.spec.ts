@@ -1,7 +1,13 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ForbiddenException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { DraftsService } from '../drafts.service';
 import { PrismaService } from '../../../prisma/prisma.service';
+
+const OWNER = { id: 'u-owner', role: 'OWNER', branchId: null };
+const SALES = { id: 'u-sales', role: 'SALES', branchId: 'br-1' };
+const SALES_OTHER = { id: 'u-sales-other', role: 'SALES', branchId: 'br-2' };
+const SALES_NO_BRANCH = { id: 'u-sales-x', role: 'SALES', branchId: null };
 
 describe('DraftsService', () => {
   let service: DraftsService;
@@ -70,7 +76,7 @@ describe('DraftsService', () => {
   });
 
   it('federates across 4 tables — returns unified DraftRow shape, sorted desc by createdAt', async () => {
-    const result = await service.findAll({});
+    const result = await service.findAll({}, OWNER);
     expect(result.data).toHaveLength(4);
     expect(result.data[0].type).toBe('QUOTE'); // newest
     expect(result.data[1].type).toBe('CONTRACT');
@@ -87,7 +93,7 @@ describe('DraftsService', () => {
   });
 
   it('type filter — narrows to a single source', async () => {
-    const result = await service.findAll({ type: 'CONTRACT' });
+    const result = await service.findAll({ type: 'CONTRACT' }, OWNER);
     expect(prisma.quote.findMany).not.toHaveBeenCalled();
     expect(prisma.expenseDocument.findMany).not.toHaveBeenCalled();
     expect(prisma.otherIncome.findMany).not.toHaveBeenCalled();
@@ -95,8 +101,8 @@ describe('DraftsService', () => {
     expect(result.data[0].type).toBe('CONTRACT');
   });
 
-  it('branch scoping — passes branchId to Quote/Contract/Expense + skips OtherIncome', async () => {
-    await service.findAll({ branchId: 'br-1' });
+  it('branch scoping — OWNER + branchId filter passes through to Quote/Contract/Expense + skips OtherIncome', async () => {
+    await service.findAll({ branchId: 'br-1' }, OWNER);
     expect(prisma.quote.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ branchId: 'br-1' }) }),
     );
@@ -108,5 +114,33 @@ describe('DraftsService', () => {
     );
     // OtherIncome has no branchId — never called when branch filter is set
     expect(prisma.otherIncome.findMany).not.toHaveBeenCalled();
+  });
+
+  it('branch scoping — SALES forces own branchId AND skips OtherIncome (no FINANCE visibility)', async () => {
+    await service.findAll({}, SALES);
+    expect(prisma.quote.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ branchId: 'br-1' }) }),
+    );
+    expect(prisma.contract.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ branchId: 'br-1' }) }),
+    );
+    expect(prisma.expenseDocument.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ branchId: 'br-1' }) }),
+    );
+    expect(prisma.otherIncome.findMany).not.toHaveBeenCalled();
+  });
+
+  it('branch scoping — SALES requesting another branchId is forbidden', async () => {
+    await expect(service.findAll({ branchId: 'br-1' }, SALES_OTHER)).rejects.toThrow(
+      ForbiddenException,
+    );
+    expect(prisma.quote.findMany).not.toHaveBeenCalled();
+  });
+
+  it('branch scoping — branch-scoped user with no branchId returns empty', async () => {
+    const result = await service.findAll({}, SALES_NO_BRANCH);
+    expect(result.data).toEqual([]);
+    expect(result.total).toBe(0);
+    expect(prisma.quote.findMany).not.toHaveBeenCalled();
   });
 });

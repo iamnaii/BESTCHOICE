@@ -1,4 +1,4 @@
-import { Navigate } from 'react-router';
+import { Navigate, useLocation } from 'react-router';
 
 /**
  * SP5 Phase 1 — Insurance / Returns refactor (scope-reduced).
@@ -8,6 +8,9 @@ import { Navigate } from 'react-router';
  * page already covers the same in-warranty repair workflow, so Phase 1
  * just routes /insurance back into /defect-exchange (single source of truth).
  *
+ * Preserves search params + hash so deep links (e.g. /insurance?ticketId=X)
+ * keep working through the redirect.
+ *
  * Phase 2 (deferred):
  * - Promote /insurance to its own page with a tabbed view
  *   (Repair / Returns / Out-of-warranty) backed by RepairTicket model + a
@@ -15,5 +18,6 @@ import { Navigate } from 'react-router';
  * - Audit trail per status transition.
  */
 export default function InsurancePage() {
-  return <Navigate to="/defect-exchange" replace />;
+  const { search, hash } = useLocation();
+  return <Navigate to={{ pathname: '/defect-exchange', search, hash }} replace />;
 }

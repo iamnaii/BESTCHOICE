@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
+import { formatThaiDate } from '@/lib/date';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Card, CardContent } from '@/components/ui/card';
@@ -52,12 +53,8 @@ function fmtMoney(v: number): string {
 }
 
 function fmtDate(s: string): string {
-  return new Date(s).toLocaleDateString('th-TH', {
-    timeZone: 'Asia/Bangkok',
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
+  // Thai พ.ศ. / Asia/Bangkok formatting — shared util normalizes across pages.
+  return formatThaiDate(s);
 }
 
 // ──────────────────────────────────────────────────────────────────────────

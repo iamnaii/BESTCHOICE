@@ -3,6 +3,7 @@ import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
+import { formatThaiDate } from '@/lib/date';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Card, CardContent } from '@/components/ui/card';
@@ -121,12 +122,8 @@ function fmtMoney(v: string | number): string {
 }
 
 function fmtDate(s: string): string {
-  return new Date(s).toLocaleDateString('th-TH', {
-    timeZone: 'Asia/Bangkok',
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
+  // Thai พ.ศ. / Asia/Bangkok formatting — shared util normalizes across pages.
+  return formatThaiDate(s);
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -138,7 +135,10 @@ export default function QuotesPage() {
   const { user } = useAuth();
   const qc = useQueryClient();
 
+  // FINANCE_MANAGER is read-only per spec — they can view + print PDF but not
+  // send/accept/reject/convert or create. SALES/BM/OWNER can mutate.
   const canCreate = ['OWNER', 'BRANCH_MANAGER', 'SALES'].includes(user?.role ?? '');
+  const canMutate = ['OWNER', 'BRANCH_MANAGER', 'SALES'].includes(user?.role ?? '');
   const canDelete = ['OWNER', 'BRANCH_MANAGER'].includes(user?.role ?? '');
 
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
@@ -231,6 +231,7 @@ export default function QuotesPage() {
         <QuoteDetailDialog
           quoteId={detailQuoteId}
           canDelete={canDelete}
+          canMutate={canMutate}
           onClose={() => setDetailQuoteId(null)}
           onChanged={() => qc.invalidateQueries({ queryKey: ['quotes'] })}
         />
@@ -574,11 +575,13 @@ function CreateQuoteDialog({
 function QuoteDetailDialog({
   quoteId,
   canDelete,
+  canMutate,
   onClose,
   onChanged,
 }: {
   quoteId: string;
   canDelete: boolean;
+  canMutate: boolean;
   onClose: () => void;
   onChanged: () => void;
 }) {
@@ -641,9 +644,28 @@ function QuoteDetailDialog({
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
-  function downloadPdf() {
-    window.open(`/api/quotes/${quoteId}/pdf`, '_blank');
-  }
+  const pdfMut = useMutation({
+    mutationFn: async () => {
+      // Use api.get so axios interceptors attach the in-memory JWT — the
+      // /api/quotes/:id/pdf route is JWT-protected and window.open won't
+      // include the bearer token.
+      const res = await api.get(`/quotes/${quoteId}/pdf`, { responseType: 'blob' });
+      const blob = res.data as Blob;
+      const url = URL.createObjectURL(blob);
+      try {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `quote-${quote?.quoteNumber ?? quoteId}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      } finally {
+        // Defer revoke so the browser has time to start the download
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
@@ -722,15 +744,20 @@ function QuoteDetailDialog({
         )}
 
         <DialogFooter className="flex-wrap gap-2">
-          <Button variant="outline" onClick={downloadPdf} className="gap-2">
-            <Printer className="h-4 w-4" /> พิมพ์ PDF
+          <Button
+            variant="outline"
+            onClick={() => pdfMut.mutate()}
+            disabled={pdfMut.isPending || !quote}
+            className="gap-2"
+          >
+            <Printer className="h-4 w-4" /> {pdfMut.isPending ? 'กำลังสร้าง PDF...' : 'พิมพ์ PDF'}
           </Button>
-          {quote?.status === 'DRAFT' && (
+          {canMutate && quote?.status === 'DRAFT' && (
             <Button onClick={() => sendMut.mutate()} disabled={sendMut.isPending} className="gap-2">
               <Send className="h-4 w-4" /> ส่งใบเสนอราคา
             </Button>
           )}
-          {quote?.status === 'SENT' && (
+          {canMutate && quote?.status === 'SENT' && (
             <>
               <Button variant="outline" onClick={() => rejectMut.mutate()} disabled={rejectMut.isPending} className="gap-2">
                 <XCircle className="h-4 w-4" /> ลูกค้าปฏิเสธ
@@ -740,7 +767,7 @@ function QuoteDetailDialog({
               </Button>
             </>
           )}
-          {quote?.status === 'ACCEPTED' && !quote.convertedToSale && (
+          {canMutate && quote?.status === 'ACCEPTED' && !quote.convertedToSale && (
             <Button onClick={() => convertMut.mutate()} disabled={convertMut.isPending} className="gap-2">
               <ShoppingCart className="h-4 w-4" /> แปลงเป็นการขาย
             </Button>

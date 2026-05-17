@@ -67,12 +67,36 @@ function validateForm(form: typeof defaultForm): FormErrors {
   return errors;
 }
 
+/**
+ * D1.1.3.1 follow-up — InterestConfigPage now writes to canonical `VAT_RATE`
+ * (percentage form, e.g. "7") instead of legacy `vat_pct` (decimal form,
+ * e.g. "0.07"). The display + save logic for VAT below handles legacy reads
+ * (decimal form → multiply by 100 for display) so the same OWNER can swap
+ * between this page and `/settings#vat` without seeing 700% or 0.07%.
+ *
+ * Other keys (`interest_rate`, `min_down_payment_pct`, `store_commission_pct`)
+ * remain in decimal form — those don't have a canonical-key counterpart yet.
+ */
 const defaultKeys = [
   { key: 'interest_rate', label: 'อัตราดอกเบี้ยต่อเดือน (Flat rate)', step: '0.01' },
   { key: 'min_down_payment_pct', label: 'เงินดาวน์ขั้นต่ำ (%)', step: '0.01' },
   { key: 'store_commission_pct', label: 'ค่าคอมหน้าร้าน (เช่น 0.10 = 10%)', step: '0.01' },
-  { key: 'vat_pct', label: 'VAT (เช่น 0.07 = 7%)', step: '0.01' },
+  { key: 'VAT_RATE', label: 'VAT (%) — เช่น 7 = 7%', step: '0.01' },
 ];
+
+/**
+ * Mirror of `parseVatValue` from `apps/api/src/utils/vat-rate.util.ts` —
+ * converts a raw SystemConfig VAT value into the percent-form string used
+ * by this editor. `"7"` stays "7", `"0.07"` becomes "7", malformed → "7".
+ */
+function toVatPercentString(raw: string | null | undefined): string {
+  if (raw == null || String(raw).trim() === '') return '7';
+  const n = Number(String(raw).trim());
+  if (!Number.isFinite(n) || n < 0) return '7';
+  // Values < 1 are decimal form ("0.07") → multiply by 100.
+  // Values >= 1 are percent form ("7") → unchanged.
+  return String(n < 1 ? n * 100 : n);
+}
 
 export default function InterestConfigPage() {
   const queryClient = useQueryClient();
@@ -98,6 +122,14 @@ export default function InterestConfigPage() {
     if (systemConfigs.length > 0 && !defaultsChangedRef.current) {
       const map: Record<string, string> = {};
       systemConfigs.forEach((c) => { map[c.key] = c.value; });
+      // D1.1.3.1 follow-up — VAT_RATE editor stores percentage form ("7"),
+      // but legacy `vat_pct` rows may still contain decimal form ("0.07").
+      // If canonical key absent + legacy present, hydrate the editor with
+      // the canonical key's value derived from the legacy form so the
+      // user sees the expected percent in the input.
+      if (!map['VAT_RATE'] && (map['vat_pct'] || map['vat_rate'])) {
+        map['VAT_RATE'] = toVatPercentString(map['vat_pct'] || map['vat_rate']);
+      }
       setDefaults(map);
     }
   }, [systemConfigs]);
@@ -277,8 +309,9 @@ export default function InterestConfigPage() {
                   </div>
                   <div>
                     <div className="text-xs text-muted-foreground">VAT</div>
-                    {/* D1.1.3.1 — prefer canonical VAT_RATE key, fall back to legacy vat_pct */}
-                    <div className="text-lg font-bold">{defaults['VAT_RATE'] || defaults['vat_pct'] || '-'}</div>
+                    {/* D1.1.3.1 follow-up — canonical VAT_RATE (percent) only.
+                        Legacy vat_pct/vat_rate normalised at hydrate-time. */}
+                    <div className="text-lg font-bold">{defaults['VAT_RATE'] ? `${defaults['VAT_RATE']}%` : '-'}</div>
                   </div>
                 </div>
               </>

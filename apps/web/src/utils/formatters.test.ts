@@ -10,6 +10,14 @@ import {
   formatNumber,
   formatNumberDecimal,
   applyFormat,
+  setDefaultDecimalPlaces,
+} from './formatters';
+
+// D1.2.3.4 — `formatNumberDecimal` reads from a module-level pref when the
+// 2nd argument is omitted. Reset to 2 after each test to keep blocks
+// independent.
+afterEach(() => {
+  setDefaultDecimalPlaces(2);
   setDateFormatPreference,
 } from './formatters';
 
@@ -143,6 +151,62 @@ describe('applyFormat', () => {
   });
 });
 
+// D1.2.3.4 — decimal_places module-level default
+describe('formatters — decimal_places default (D1.2.3.4)', () => {
+  it('default 2: formatNumberDecimal(value) uses 2 digits when omitted', () => {
+    expect(formatNumberDecimal(21468.4)).toBe('21,468.40');
+  });
+
+  it('override 0: formatNumberDecimal(value) uses 0 digits when pref=0', () => {
+    setDefaultDecimalPlaces(0);
+    expect(formatNumberDecimal(21468.4)).toBe('21,468');
+    expect(formatNumberDecimal(21468.6)).toBe('21,469'); // ROUND_HALF_UP
+  });
+
+  it('override 4: formatNumberDecimal(value) uses 4 digits when pref=4', () => {
+    setDefaultDecimalPlaces(4);
+    expect(formatNumberDecimal(1.23456)).toBe('1.2346'); // ROUND_HALF_UP
+  });
+
+  it('out-of-range pref (5) falls back to default 2', () => {
+    setDefaultDecimalPlaces(5);
+    expect(formatNumberDecimal(21468.4)).toBe('21,468.40');
+  });
+
+  it('explicit 2nd arg always wins over the pref', () => {
+    setDefaultDecimalPlaces(0);
+    expect(formatNumberDecimal(21468.4, 2)).toBe('21,468.40');
+    expect(formatNumberDecimal(1.23456, 3)).toBe('1.235');
+  });
+
+  it('ROUND_HALF_UP applied: representable 0.5 boundaries round UP not banker', () => {
+    // 0.5 → 1 with ROUND_HALF_UP (banker would give 0). Representable exactly.
+    expect(formatNumberDecimal(0.5, 0)).toBe('1');
+    // 1.5 → 2 (banker would give 2 anyway — odd half-up matches)
+    expect(formatNumberDecimal(1.5, 0)).toBe('2');
+    // 2.5 → 3 with ROUND_HALF_UP (banker would give 2 here — divergence proves the rule)
+    expect(formatNumberDecimal(2.5, 0)).toBe('3');
+    // Note: 1.005 → "1.00" is unavoidable in IEEE 754 (`1.005` is really
+    // 1.0049999…). For correct half-up on string sources, callers should
+    // pass the string form unchanged (parseFloat is the lossy step).
+  });
+
+  // Review-round-2 — negative half-up edge cases. The implementation rounds
+  // on the absolute value then re-applies the sign, so the magnitude rounds
+  // up the same way for negatives. Without this symmetry, ROUND_HALF_UP on
+  // -0.5 would yield 0 (banker / asymmetric) instead of the expected -1.
+  it('ROUND_HALF_UP symmetric on negatives (-0.5 → -1, -2.5 → -3)', () => {
+    // -0.5 rounds AWAY from zero → -1 (banker would give 0; asymmetric
+    // half-up would give 0; our symmetric impl gives -1 to match positive
+    // 0.5 → 1).
+    expect(formatNumberDecimal(-0.5, 0)).toBe('-1');
+    // -1.5 → -2 (banker would also give -2 — odd half-up matches)
+    expect(formatNumberDecimal(-1.5, 0)).toBe('-2');
+    // -2.5 → -3 (banker would give -2; divergence proves symmetric half-up)
+    expect(formatNumberDecimal(-2.5, 0)).toBe('-3');
+    // Negative non-half edge — verify the sign reapplies cleanly.
+    expect(formatNumberDecimal(-21468.6, 0)).toBe('-21,469');
+    expect(formatNumberDecimal(-21468.4, 0)).toBe('-21,468');
 // D1.2.3.3 — date_format BE↔ค.ศ. toggle
 describe('formatters — date_format toggle (D1.2.3.3)', () => {
   it('defaults to BE: formatDateShort returns +543 year', () => {

@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTheme } from 'next-themes';
 import api from '@/lib/api';
+import { setDefaultDecimalPlaces } from '@/utils/formatters';
 import { setDateFormatPreference } from '@/utils/formatters';
 
 /**
@@ -35,6 +36,8 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /** D1.2.3.4 — default decimal places (0-4) for the generic number formatter. */
+  decimalPlaces: number;
   /** D1.2.3.3 — date display preference: BE (พ.ศ., +543) default or CE (ค.ศ.). */
   dateFormat: 'BE' | 'CE';
   /** D1.2.3.2 — default pagination size (list pages). Integer 10-200; default 50. */
@@ -105,6 +108,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  decimalPlaces: 2,
   dateFormat: 'BE',
   approvalEnabled: false,
   paginationSize: 50,
@@ -139,6 +143,13 @@ export function useUiFlags(): UiFlags {
       document.documentElement.lang = flags.language;
     }
   }, [flags.language]);
+  // D1.2.3.4 — sync the module-level default decimal-places preference so
+  // pure `formatNumberDecimal()` calls (in exports, badges, etc.) respect
+  // the OWNER pref. Call sites that pass an explicit digit count are
+  // unaffected — the pref is the *default only*.
+  useEffect(() => {
+    setDefaultDecimalPlaces(flags.decimalPlaces);
+  }, [flags.decimalPlaces]);
   // D1.2.3.3 — sync the module-level date format preference so pure
   // `formatDateShort` / `formatDateMedium` / `formatDateTime` calls inside
   // non-React code (excel exports, status badges) respect the OWNER pref.

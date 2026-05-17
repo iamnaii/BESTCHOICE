@@ -333,6 +333,47 @@ describe('SettingsService audit trail', () => {
       expect(flags.periodCloseDay).toBe(31);
     });
 
+    // D1.2.3.4 — decimal_places
+    it('decimalPlaces defaults to 2 when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.decimalPlaces).toBe(2);
+    });
+
+    it('decimalPlaces accepts override 0 from SystemConfig', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'decimal_places') return Promise.resolve({ value: '0' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.decimalPlaces).toBe(0);
+    });
+
+    it('decimalPlaces accepts override 4 from SystemConfig', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'decimal_places') return Promise.resolve({ value: '4' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.decimalPlaces).toBe(4);
+    });
+
+    it('decimalPlaces clamps to default 2 when out-of-range (5)', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'decimal_places') return Promise.resolve({ value: '5' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.decimalPlaces).toBe(2);
+    });
+
+    it('decimalPlaces falls back to default 2 when non-numeric', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'decimal_places') return Promise.resolve({ value: 'two' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.decimalPlaces).toBe(2);
     // D1.2.3.3 — date_format
     it('dateFormat defaults to BE when SystemConfig missing', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);

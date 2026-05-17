@@ -170,6 +170,14 @@ export class SettingsService {
      */
     language: 'th' | 'en';
     /**
+     * D1.2.3.4 — default number of decimal places for the generic number
+     * formatter. Integer 0-4 inclusive. Default 2 (Thai currency convention).
+     * SystemConfig key `decimal_places`. Out-of-range/non-integer values
+     * clamp to default. The pref is the *default only* — `formatNumberDecimal`
+     * call sites that explicitly pass a digit count continue to work as
+     * before, preserving backwards compat.
+     */
+    decimalPlaces: number;
      * D1.2.3.3 — date display format toggle: 'BE' = Buddhist Era (พ.ศ., +543)
      * default, 'CE' = Christian/Common Era (Gregorian ค.ศ.). SystemConfig
      * key `date_format`. Applies to the *generic* `formatDateShort` family
@@ -318,6 +326,13 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.2.3.4 — decimal_places. Integer 0-4 inclusive; clamp to 2 default
+    // for out-of-range / non-integer values.
+    const decimalPlacesRaw = await this.readNumber('decimal_places', 2);
+    const decimalPlaces =
+      Number.isInteger(decimalPlacesRaw) && decimalPlacesRaw >= 0 && decimalPlacesRaw <= 4
+        ? decimalPlacesRaw
+        : 2;
     // D1.2.3.3 — date_format. Whitelist 'BE' / 'CE'; everything else → 'BE'.
     // Default 'BE' so existing flows are unchanged.
     const dateFormatRaw = await this.getKey('date_format');
@@ -397,6 +412,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      decimalPlaces,
       dateFormat,
       approvalEnabled,
       paginationSize,

@@ -17,6 +17,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { PdfReportService } from './pdf-report.service';
 import { PdfReportQueryDto } from './dto/pdf-report-query.dto';
 import { UpdateRecipientsDto } from './dto/recipients.dto';
+import { ExportEnabledGuard } from '../settings/guards/export-enabled.guard';
 
 /**
  * Reporting endpoints (P3 D1 — PDF export + recipient management).
@@ -34,6 +35,8 @@ export class ReportingController {
   // -------- D1: PDF report --------
 
   @Post('pdf')
+  // D1.3.3.1 — gated by ExportEnabledGuard (403 when export_enabled=false).
+  @UseGuards(ExportEnabledGuard)
   async generatePdf(@Query() dto: PdfReportQueryDto, @Res() res: Response): Promise<void> {
     const to = dto.to ? new Date(dto.to) : new Date();
     const from = dto.from

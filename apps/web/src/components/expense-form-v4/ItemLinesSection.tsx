@@ -2,6 +2,7 @@ import { useCoaGroups } from '@/hooks/useCoa';
 import { Plus, Trash2 } from 'lucide-react';
 import { ExpenseLineForm, newLine } from './types';
 import { formatNumberDecimal } from '@/utils/formatters';
+import { useUiFlags } from '@/hooks/useUiFlags';
 
 interface Props {
   lines: ExpenseLineForm[];
@@ -12,6 +13,17 @@ interface Props {
 export function ItemLinesSection({ lines, onChange, priceTypeLabel }: Props) {
   const { data: coaData } = useCoaGroups({ type: 'ค่าใช้จ่าย' });
   const groups = coaData?.groups ?? [];
+
+  // D1.1.3.2 — WHT% options sourced from SystemConfig `wht_rates`.
+  // D1.1.3.5 — filter out future-dated entries client-side.
+  const { whtRates } = useUiFlags();
+  const today = new Date();
+  const whtOptions: { value: string; label: string }[] = [
+    { value: '0', label: '0%' },
+    ...whtRates
+      .filter((r) => !r.effectiveDate || new Date(r.effectiveDate) <= today)
+      .map((r) => ({ value: String(r.rate), label: r.label })),
+  ];
 
   const updateLine = (uid: string, patch: Partial<ExpenseLineForm>) => {
     onChange(lines.map((l) => (l.uid === uid ? { ...l, ...patch } : l)));
@@ -90,11 +102,11 @@ export function ItemLinesSection({ lines, onChange, priceTypeLabel }: Props) {
                 onChange={(v) => updateLine(line.uid, { vatPercent: v })}
                 options={['0', '7']}
               />
-              <SelectField
+              <SelectFieldLabeled
                 label="WHT%"
                 value={line.whtPercent}
                 onChange={(v) => updateLine(line.uid, { whtPercent: v })}
-                options={['0', '1', '3', '5']}
+                options={whtOptions}
               />
               <div>
                 <label className="mb-1 block text-xs font-medium text-muted-foreground">ก่อนภาษี</label>
@@ -113,6 +125,21 @@ export function ItemLinesSection({ lines, onChange, priceTypeLabel }: Props) {
                 className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
               />
             </div>
+            {/* Phase A.5 — Per-line tax-disallowed override.
+                Rare path — set only when this single line is non-deductible
+                while the rest of the doc is deductible (or vice versa).
+                Effective rule = doc-level OR line-level. */}
+            <label className="flex items-start gap-2 text-xs cursor-pointer text-muted-foreground hover:text-foreground transition-colors">
+              <input
+                type="checkbox"
+                checked={line.taxDisallowed === true}
+                onChange={(e) => updateLine(line.uid, { taxDisallowed: e.target.checked })}
+                className="mt-0.5"
+              />
+              <span>
+                บรรทัดนี้เป็น <span className="font-medium">ค่าใช้จ่ายต้องห้าม</span> (ใช้เฉพาะกรณีเอกสารปนรายการที่หักได้+หักไม่ได้ — ปกติติ๊กที่ระดับเอกสารแทน)
+              </span>
+            </label>
           </div>
         </div>
       ))}
@@ -175,6 +202,40 @@ function SelectField({
         {options.map((o) => (
           <option key={o} value={o}>
             {o}%
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+/**
+ * D1.1.3.2 — labelled-option variant for WHT% where the configured rate
+ * carries a Thai explanation (e.g. "3% — ค่าบริการ"). Used in lieu of
+ * plain `SelectField` when option labels diverge from the raw value.
+ */
+function SelectFieldLabeled({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+}) {
+  return (
+    <div>
+      <label className="mb-1 block text-xs font-medium">{label}</label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
           </option>
         ))}
       </select>

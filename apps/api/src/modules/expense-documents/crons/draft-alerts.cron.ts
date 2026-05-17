@@ -2,6 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { NotificationsService } from '../../notifications/notifications.service';
+import { NotificationCategory } from '../../notifications/notification-category.enum';
 
 /**
  * D1.3.1.1 — DRAFT alerts.
@@ -16,113 +18,114 @@ import { PrismaService } from '../../../prisma/prisma.service';
  *   - `draft_alert_threshold_days`     (default 7)       — days in DRAFT
  *                                                          before alert fires
  *
- * Dedup: the cron skips drafts that already received an alert today
- * (subject prefix + relatedId match in notification_logs).
+ * Delivery: routes through `NotificationsService.send()` so the D1.3.1.4
+ * IN_APP master gate (`in_app_notifications_enabled`) and ComplianceService
+ * dedup apply. Direct `prisma.notificationLog.create` is intentionally
+ * avoided — it would bypass the kill switch.
  *
- * Implementation notes:
- *   - Reads SystemConfig via PrismaService (avoids SettingsModule DI dep,
- *     same pattern as PR #884 ExpenseDocumentsService.readBoolFlag).
- *   - Inserts NotificationLog directly (channel=IN_APP, status=SENT) rather
- *     than going through NotificationsService — IN_APP rows don't trigger
- *     external API calls, and the cron should remain isolated from
- *     compliance / retry-queue concerns.
- *   - Sentry capture on per-doc failure, batch continues on error.
+ * Outer try/catch + Sentry capture on full-tick failure (e.g. findMany
+ * outage); inner per-doc try/catch isolates one bad row from poisoning the
+ * batch.
+ *
+ * Schedule: 09:01 BKK — staggered ahead of ap-due-alerts (09:03) and
+ * petty-cash-replenish-alert (09:05) to avoid thundering herd at 09:00.
  */
 @Injectable()
 export class DraftAlertsCron {
   private readonly logger = new Logger(DraftAlertsCron.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
-  /** Daily at 09:00 Asia/Bangkok — start of business hours. */
-  @Cron('0 9 * * *', { timeZone: 'Asia/Bangkok' })
+  /** Daily at 09:01 Asia/Bangkok — staggered to avoid the 09:00 thundering herd. */
+  @Cron('1 9 * * *', { timeZone: 'Asia/Bangkok' })
   async tick(): Promise<{ enabled: boolean; alerted: number; skipped: number; failed: number }> {
-    const enabled = await this.readBoolFlag('draft_alerts_enabled', false);
-    if (!enabled) {
-      // Default-off + opt-in. Silent skip so quiet deploys don't fill logs.
-      this.logger.debug('[D1.3.1.1] DRAFT alerts disabled — skipping');
-      return { enabled: false, alerted: 0, skipped: 0, failed: 0 };
-    }
+    try {
+      const enabled = await this.readBoolFlag('draft_alerts_enabled', false);
+      if (!enabled) {
+        // Default-off + opt-in. Silent skip so quiet deploys don't fill logs.
+        this.logger.debug('[D1.3.1.1] DRAFT alerts disabled — skipping');
+        return { enabled: false, alerted: 0, skipped: 0, failed: 0 };
+      }
 
-    const thresholdDays = await this.readNumberFlag('draft_alert_threshold_days', 7);
-    const cutoff = new Date(Date.now() - thresholdDays * 24 * 60 * 60 * 1000);
+      const thresholdDays = await this.readNumberFlag('draft_alert_threshold_days', 7);
+      const cutoff = new Date(Date.now() - thresholdDays * 24 * 60 * 60 * 1000);
 
-    const stale = await this.prisma.expenseDocument.findMany({
-      where: {
-        status: 'DRAFT',
-        createdAt: { lte: cutoff },
-        deletedAt: null,
-      },
-      select: {
-        id: true,
-        number: true,
-        createdById: true,
-        documentType: true,
-        createdAt: true,
-        createdBy: { select: { email: true, name: true } },
-      },
-    });
+      const stale = await this.prisma.expenseDocument.findMany({
+        where: {
+          status: 'DRAFT',
+          createdAt: { lte: cutoff },
+          deletedAt: null,
+        },
+        select: {
+          id: true,
+          number: true,
+          createdById: true,
+          documentType: true,
+          createdAt: true,
+          createdBy: { select: { email: true, name: true } },
+        },
+      });
 
-    this.logger.log(
-      `[D1.3.1.1] DRAFT alerts: ${stale.length} doc(s) stale ≥${thresholdDays}d`,
-    );
-    if (stale.length === 0) {
-      return { enabled: true, alerted: 0, skipped: 0, failed: 0 };
-    }
+      this.logger.log(
+        `[D1.3.1.1] DRAFT alerts: ${stale.length} doc(s) stale ≥${thresholdDays}d`,
+      );
+      if (stale.length === 0) {
+        return { enabled: true, alerted: 0, skipped: 0, failed: 0 };
+      }
 
-    let alerted = 0;
-    let skipped = 0;
-    let failed = 0;
-    // Dedup window: skip if an alert for the same doc was already sent today.
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
+      let alerted = 0;
+      let skipped = 0;
+      let failed = 0;
 
-    for (const doc of stale) {
-      try {
-        // Idempotency: skip if we already alerted today
-        const alreadyAlerted = await this.prisma.notificationLog.findFirst({
-          where: {
-            relatedId: doc.id,
-            subject: 'เอกสารฉบับร่างค้าง',
-            createdAt: { gte: todayStart },
-          },
-          select: { id: true },
-        });
-        if (alreadyAlerted) {
-          skipped++;
-          continue;
-        }
-
-        const recipient = doc.createdBy?.email || doc.createdById;
-        await this.prisma.notificationLog.create({
-          data: {
+      for (const doc of stale) {
+        try {
+          const recipient = doc.createdBy?.email || doc.createdById;
+          // Route through NotificationsService so the IN_APP master gate
+          // (#949) + ComplianceService dedup applies. SKIPPED is normal when
+          // the gate is OFF — count it but don't error.
+          const result = await this.notifications.send({
             channel: 'IN_APP',
             recipient,
             subject: 'เอกสารฉบับร่างค้าง',
             message: `เอกสารฉบับร่าง #${doc.number} ค้าง ${thresholdDays}+ วัน — โปรดส่งหรือลบ`,
-            status: 'SENT',
             relatedId: doc.id,
-            category: 'STAFF',
-            sentAt: new Date(),
-          },
-        });
-        alerted++;
-      } catch (err) {
-        failed++;
-        Sentry.captureException(err, {
-          tags: { cron: 'draft-alerts' },
-          extra: { docId: doc.id, docNumber: doc.number },
-        });
-        this.logger.error(
-          `[D1.3.1.1] alert failed for ${doc.id}: ${err instanceof Error ? err.message : err}`,
-        );
+            category: NotificationCategory.STAFF,
+          });
+          if (result.status === 'SENT') {
+            alerted++;
+          } else {
+            skipped++;
+          }
+        } catch (err) {
+          failed++;
+          Sentry.captureException(err, {
+            tags: { cron: 'draft-alerts', docId: doc.id },
+            extra: { docNumber: doc.number },
+          });
+          this.logger.error(
+            `[D1.3.1.1] alert failed for ${doc.id}: ${err instanceof Error ? err.message : err}`,
+          );
+        }
       }
-    }
 
-    this.logger.log(
-      `[D1.3.1.1] DRAFT alerts complete: alerted=${alerted} skipped=${skipped} failed=${failed}`,
-    );
-    return { enabled: true, alerted, skipped, failed };
+      this.logger.log(
+        `[D1.3.1.1] DRAFT alerts complete: alerted=${alerted} skipped=${skipped} failed=${failed}`,
+      );
+      return { enabled: true, alerted, skipped, failed };
+    } catch (outerErr) {
+      // Outer guard: a findMany outage or DB hiccup must not crash the
+      // scheduler — capture and exit gracefully so subsequent ticks retry.
+      Sentry.captureException(outerErr, {
+        tags: { cron: 'draft-alerts', scope: 'tick' },
+      });
+      this.logger.error(
+        `[D1.3.1.1] Cron tick failed: ${outerErr instanceof Error ? outerErr.message : outerErr}`,
+      );
+      return { enabled: false, alerted: 0, skipped: 0, failed: 0 };
+    }
   }
 
   /**

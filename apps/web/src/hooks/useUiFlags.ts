@@ -33,6 +33,39 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /**
+   * D1.2.1.1 — opt-in Approval Workflow. When `false` (default), expense docs
+   * follow the legacy DRAFT → POSTED lifecycle. When `true`, the lifecycle
+   * becomes DRAFT → PENDING_APPROVAL → APPROVED → POSTED. The web UI uses
+   * this flag to gate the "ส่งขออนุมัติ" button (instead of "Post") on DRAFT
+   * docs.
+   *
+   * Backend gate lives on `/expense-documents/:id/submit-for-approval` (D1.2.1.1)
+   * and `/expense-documents/:id/approve` (D1.2.1.6). Frontend value defaults
+   * to false until backend PR #923 merges.
+   */
+  approvalEnabled: boolean;
+  /**
+   * D1.2.1.2 — threshold (THB) above which docs require approval. The UI uses
+   * this only to surface a helper text explaining why the doc was routed to
+   * approval. Backend remains the source of truth for the gating decision.
+   * Defaults to 0 (= every doc needs approval when approvalEnabled is true).
+   */
+  approvalThreshold: number;
+  /**
+   * D1.2.1.3 — list of user IDs that may approve PENDING_APPROVAL docs (in
+   * addition to OWNER). OWNER can always approve regardless of this list.
+   * Defaults to empty array. Backend re-validates membership before approve()
+   * — frontend uses this to conditionally render the "อนุมัติเอกสาร" button
+   * for the current user.
+   */
+  approversList: string[];
+  /**
+   * D1.2.1.4 — document types that ALWAYS require approval (independent of
+   * threshold). OR-composed with approvalThreshold. Default `['PAYROLL']`
+   * per spec — payroll always needs HR/Finance sign-off.
+   */
+  approvalRequiredDocTypes: string[];
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -53,6 +86,10 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  approvalEnabled: false,
+  approvalThreshold: 0,
+  approversList: [],
+  approvalRequiredDocTypes: ['PAYROLL'],
 };
 
 export function useUiFlags(): UiFlags {

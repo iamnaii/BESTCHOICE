@@ -1,7 +1,9 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { SsoConfigService } from '../sso-config.service';
+import { SsoConfigService, SSO_RATE } from '../sso-config.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 
 describe('SsoConfigService', () => {
@@ -93,6 +95,37 @@ describe('SsoConfigService', () => {
       prisma.ssoConfig.findFirst.mockResolvedValue(null);
       await expect(service.validateContribution(new Date('2025-01-01'), 500))
         .rejects.toThrow(NotFoundException);
+    });
+  });
+
+  // D1.1.3.3 — SSO rate is locked at 5% by Thai SSO Act §46 + กฎกระทรวง.
+  // §46 grants the Minister authority; the actual 5% lives in กฎกระทรวง.
+  describe('SSO_RATE constant (D1.1.3.3 — locked by law)', () => {
+    it('exports SSO_RATE as exactly 0.05', () => {
+      expect(SSO_RATE).toBe(0.05);
+    });
+
+    it('module documents the law citation in a JSDoc comment block', () => {
+      const src = fs.readFileSync(
+        path.resolve(__dirname, '..', 'sso-config.service.ts'),
+        'utf-8',
+      );
+      // Must reference the law (§46 + กฎกระทรวง / Social Security Act /
+      // พ.ร.บ.ประกันสังคม) AND must clearly say "DO NOT make this configurable".
+      expect(src).toMatch(/มาตรา\s*46|§\s*46|กฎกระทรวง|พ\.ร\.บ\.ประกันสังคม|Social Security Act/);
+      expect(src).toMatch(/DO NOT make this configurable|locked|fixed at 5/i);
+    });
+
+    it('exception message uses SSO_RATE-derived rate string (not a stale literal)', async () => {
+      prisma.ssoConfig.findFirst.mockResolvedValue(row2569);
+      try {
+        await service.validateContribution(new Date('2026-05-11'), 9999);
+        throw new Error('should have thrown');
+      } catch (e) {
+        const msg = (e as Error).message;
+        const expectedPct = `${(SSO_RATE * 100).toFixed(0)}%`;
+        expect(msg).toContain(expectedPct);
+      }
     });
   });
 });

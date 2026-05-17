@@ -38,6 +38,12 @@ export interface UiFlags {
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
   /**
+   * D1.1.3.3 — informational "SSO rate locked at 5%" string for Settings UI.
+   * Backed by `SSO_RATE` constant server-side. The SystemConfig key
+   * `sso_rate_locked` is read-only (server rejects writes).
+   */
+  ssoRateLocked: string;
+  /**
    * D1.3.6.2 — pre-tick preference for the VENDOR_SETTLEMENT bill list.
    *   'all'          — pre-tick every loaded bill
    *   'none'         — pre-tick nothing (manual selection only)
@@ -244,6 +250,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  ssoRateLocked: '5%',
   settlementDefaultTick: 'overdue_only',
   whtRates: [
     { rate: 1, label: '1% — ดอกเบี้ย' },

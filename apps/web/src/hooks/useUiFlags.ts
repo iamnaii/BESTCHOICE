@@ -38,6 +38,12 @@ export interface UiFlags {
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
   /**
+   * D1.2.4.4 — gates the `{{variable}}` interpolation surface on Expense
+   * Templates (the "ใส่ตัวแปร" affordance). The pure util in
+   * apps/api/src/utils/template-interpolation.util.ts is always
+   * available; this flag controls whether the UI exposes it.
+   */
+  templateVariablesEnabled: boolean;
    * D1.2.4.3 — default visibility selection on the "บันทึกเป็นรายการโปรด"
    * dialog. PRIVATE = creator-only (default), TEAM = creator + explicit
    * grants, PUBLIC = visible to all authenticated users.
@@ -138,6 +144,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  templateVariablesEnabled: true,
   templateSharingDefault: 'PRIVATE',
   maxTemplatesPerUser: 20,
   templatesEnabled: true,

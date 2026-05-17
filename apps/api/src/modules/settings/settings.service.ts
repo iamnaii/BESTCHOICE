@@ -170,6 +170,14 @@ export class SettingsService {
      */
     language: 'th' | 'en';
     /**
+     * D1.2.4.4 — gates the `{{variable}}` interpolation feature on
+     * Expense Templates. Default true. When false, the UI hides the
+     * "ใส่ตัวแปร" affordance and `interpolateTemplate()` callers should
+     * skip interpolation. The util itself (`template-interpolation.util`)
+     * is pure and always available; this flag controls whether the
+     * product surfaces the feature to users.
+     */
+    templateVariablesEnabled: boolean;
      * D1.2.4.3 — default visibility for newly-created Expense Templates.
      * Whitelisted PRIVATE/TEAM/PUBLIC, default PRIVATE. The UI uses this
      * value to pre-select the visibility radio on the "บันทึกเป็นรายการ
@@ -378,6 +386,11 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.2.4.4 — gate the {{variable}} interpolation surface. Default true.
+    const templateVariablesEnabled = await this.readBoolean(
+      'template_variables_enabled',
+      true,
+    );
     // D1.2.4.3 — template sharing default. Whitelist PRIVATE/TEAM/PUBLIC;
     // any unknown value falls back to PRIVATE (safest — never accidentally
     // expose a new template to the whole shop on a bad config write).
@@ -498,6 +511,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      templateVariablesEnabled,
       templateSharingDefault,
       maxTemplatesPerUser,
       templatesEnabled,

@@ -1,6 +1,7 @@
 import {
   Injectable,
   Logger,
+  NotFoundException,
   OnModuleInit,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -880,8 +881,11 @@ export class AccountingService implements OnModuleInit {
    * Accounts in prefix 55 are EXCLUDED per CPA chart note ("ไม่นำมาแสดงในงบกำไรขาดทุน").
    *
    * Period filter: JournalEntry.entryDate between periodStart and periodEnd (inclusive).
+   *
+   * Optional companyId scopes to JournalEntry.companyId — used by multi-entity
+   * reports (SP2 Cash Flow / Equity Statement / General Ledger).
    */
-  async getProfitLossFromJournal(periodStart: Date, periodEnd: Date) {
+  async getProfitLossFromJournal(periodStart: Date, periodEnd: Date, companyId?: string) {
     const REVENUE_PREFIXES = ['41', '42'];
     const EXPENSE_PREFIXES = ['51', '52', '53', '54']; // 55 excluded
 
@@ -892,6 +896,7 @@ export class AccountingService implements OnModuleInit {
           status: 'POSTED',
           entryDate: { gte: periodStart, lte: periodEnd },
           deletedAt: null,
+          ...(companyId ? { companyId } : {}),
         },
         deletedAt: null,
       },
@@ -1131,6 +1136,528 @@ export class AccountingService implements OnModuleInit {
         netOperatingCashFlow: netOperatingNum,
       },
       netCashChange: netCashChange.toNumber(),
+    };
+  }
+
+  // ─── SP2: Cash Flow (Indirect Method) ─────────────────────────────────────────
+  //
+  // TFRS for NPAEs Indirect Method:
+  //   1. Net Income (from getProfitLossFromJournal)
+  //   2. + Non-cash adjustments (depreciation, bad-debt provision Δ, unearned interest Δ)
+  //   3. ± Working capital Δ (AR, Inventory, AP, VAT payable)
+  //   4. Investing (PPE purchases / disposals)
+  //   5. Financing (capital injections / dividends)
+  //   6. Net Change reconciled vs. actual cash account movement (±1 THB tolerance)
+
+  /**
+   * Sum net balance of a list of account-code prefixes as of a specific date.
+   * Aggregates over JournalLine on POSTED entries (entryDate <= asOfDate).
+   *
+   * normalSide controls signing:
+   *   - 'Dr' → returns (debit - credit). Positive = balance on debit side.
+   *   - 'Cr' → returns (credit - debit). Positive = balance on credit side.
+   *
+   * Optional companyId scopes to JournalEntry.companyId (multi-entity reports).
+   */
+  private async sumAccountBalances(
+    codePrefixes: string[],
+    asOfDate: Date,
+    normalSide: 'Dr' | 'Cr',
+    companyId?: string,
+  ): Promise<Prisma.Decimal> {
+    if (codePrefixes.length === 0) return new Prisma.Decimal(0);
+
+    const orFilters = codePrefixes.map((p) => ({ accountCode: { startsWith: p } }));
+    const lineSums = await this.prisma.journalLine.groupBy({
+      by: ['accountCode'],
+      where: {
+        OR: orFilters,
+        deletedAt: null,
+        journalEntry: {
+          status: 'POSTED',
+          entryDate: { lte: asOfDate },
+          deletedAt: null,
+          ...(companyId ? { companyId } : {}),
+        },
+      },
+      _sum: { debit: true, credit: true },
+    });
+
+    let total = new Prisma.Decimal(0);
+    for (const row of lineSums) {
+      const dr = new Prisma.Decimal(row._sum.debit ?? 0);
+      const cr = new Prisma.Decimal(row._sum.credit ?? 0);
+      const delta = normalSide === 'Cr' ? cr.sub(dr) : dr.sub(cr);
+      total = total.add(delta);
+    }
+    return total;
+  }
+
+  /**
+   * Sum the period-only debit total for accounts matching the given prefixes.
+   * Used for depreciation expense (Dr 53-16XX) where we want only Dr posted in the period,
+   * not the running balance.
+   */
+  private async sumDebitInPeriod(
+    codePrefixes: string[],
+    periodStart: Date,
+    periodEnd: Date,
+    companyId?: string,
+  ): Promise<Prisma.Decimal> {
+    if (codePrefixes.length === 0) return new Prisma.Decimal(0);
+
+    const orFilters = codePrefixes.map((p) => ({ accountCode: { startsWith: p } }));
+    const lineSums = await this.prisma.journalLine.groupBy({
+      by: ['accountCode'],
+      where: {
+        OR: orFilters,
+        deletedAt: null,
+        journalEntry: {
+          status: 'POSTED',
+          entryDate: { gte: periodStart, lte: periodEnd },
+          deletedAt: null,
+          ...(companyId ? { companyId } : {}),
+        },
+      },
+      _sum: { debit: true, credit: true },
+    });
+
+    let total = new Prisma.Decimal(0);
+    for (const row of lineSums) {
+      const dr = new Prisma.Decimal(row._sum.debit ?? 0);
+      const cr = new Prisma.Decimal(row._sum.credit ?? 0);
+      // Net debit posted in period: Dr - Cr (positive for expense buildup)
+      total = total.add(dr.sub(cr));
+    }
+    return total;
+  }
+
+  /**
+   * Cash Flow Statement — Indirect Method (TFRS for NPAEs).
+   *
+   * @param periodStart start of period (inclusive)
+   * @param periodEnd   end of period (inclusive — caller should set 23:59:59.999 if needed)
+   * @param companyId   optional CompanyInfo.id scope
+   */
+  async getCashFlowFromJournal(
+    periodStart: Date,
+    periodEnd: Date,
+    companyId?: string,
+  ) {
+    const startMinusOne = new Date(periodStart);
+    startMinusOne.setMilliseconds(startMinusOne.getMilliseconds() - 1);
+
+    // 1. Net Income for the period
+    const pl = await this.getProfitLossFromJournal(periodStart, periodEnd, companyId);
+    const netIncome = pl.netIncome;
+
+    // 2. Non-cash adjustments
+    // Depreciation: Dr side of 53-16XX in the period
+    const depreciation = await this.sumDebitInPeriod(['53-16'], periodStart, periodEnd, companyId);
+    // Bad-debt provision change: Δ balance of 11-2102 (Cr-normal contra asset)
+    const allowanceOpening = await this.sumAccountBalances(['11-2102'], startMinusOne, 'Cr', companyId);
+    const allowanceClosing = await this.sumAccountBalances(['11-2102'], periodEnd, 'Cr', companyId);
+    const badDebtProvisionChange = allowanceClosing.sub(allowanceOpening);
+    // Unearned interest change: Δ balance of 11-2106 (Cr-normal contra asset)
+    const unearnedOpening = await this.sumAccountBalances(['11-2106'], startMinusOne, 'Cr', companyId);
+    const unearnedClosing = await this.sumAccountBalances(['11-2106'], periodEnd, 'Cr', companyId);
+    const unearnedInterestChange = unearnedClosing.sub(unearnedOpening);
+
+    // 3. Working capital changes
+    // AR (Dr-normal): 11-2101 + 11-2103. Increase consumes cash → subtract change.
+    const arOpening = await this.sumAccountBalances(['11-2101', '11-2103'], startMinusOne, 'Dr', companyId);
+    const arClosing = await this.sumAccountBalances(['11-2101', '11-2103'], periodEnd, 'Dr', companyId);
+    const arChange = arClosing.sub(arOpening); // positive = AR grew → cash OUT
+    // Inventory (Dr-normal): 11-3XXX
+    const invOpening = await this.sumAccountBalances(['11-3'], startMinusOne, 'Dr', companyId);
+    const invClosing = await this.sumAccountBalances(['11-3'], periodEnd, 'Dr', companyId);
+    const inventoryChange = invClosing.sub(invOpening); // positive = inventory grew → cash OUT
+    // AP (Cr-normal): 21-1101 + 21-1102 + 21-31XX. Increase frees cash → add change.
+    const apOpening = await this.sumAccountBalances(
+      ['21-1101', '21-1102', '21-31'],
+      startMinusOne,
+      'Cr',
+      companyId,
+    );
+    const apClosing = await this.sumAccountBalances(
+      ['21-1101', '21-1102', '21-31'],
+      periodEnd,
+      'Cr',
+      companyId,
+    );
+    const apChange = apClosing.sub(apOpening); // positive = AP grew → cash IN
+    // VAT payable (Cr-normal): 21-2101 + 21-2102
+    const vatOpening = await this.sumAccountBalances(
+      ['21-2101', '21-2102'],
+      startMinusOne,
+      'Cr',
+      companyId,
+    );
+    const vatClosing = await this.sumAccountBalances(
+      ['21-2101', '21-2102'],
+      periodEnd,
+      'Cr',
+      companyId,
+    );
+    const vatPayableChange = vatClosing.sub(vatOpening); // positive = VAT payable grew → cash IN
+
+    // Net Operating = NI + non-cash − ΔAR − ΔInventory + ΔAP + ΔVAT
+    // (depreciation, bad-debt provision, unearned interest are non-cash → add back)
+    const netOperating = netIncome
+      .add(depreciation)
+      .add(badDebtProvisionChange)
+      .add(unearnedInterestChange)
+      .sub(arChange)
+      .sub(inventoryChange)
+      .add(apChange)
+      .add(vatPayableChange);
+
+    // 4. Investing
+    // PPE purchases (cash OUT) — sum FixedAsset.purchaseCost where status=POSTED and
+    // postedAt in period. We use postedAt (the date the cost JE was posted) rather
+    // than purchaseDate to align with the cash effect — purchaseDate can lag well
+    // behind the actual cash settlement in an accrual system.
+    const ppePurchasesAgg = await this.prisma.fixedAsset.aggregate({
+      where: {
+        status: 'POSTED',
+        postedAt: { gte: periodStart, lte: periodEnd },
+        deletedAt: null,
+      },
+      _sum: { purchaseCost: true },
+    });
+    const ppePurchases = new Prisma.Decimal(ppePurchasesAgg._sum.purchaseCost ?? 0);
+
+    // PPE disposals (cash IN) — proceeds aren't a column on FixedAsset; they live in
+    // JE metadata under flow='asset-disposal'. We aggregate disposalProceeds from the
+    // metadata of POSTED disposal JEs whose entryDate falls in the period. This is
+    // the authoritative source (template asset-disposal.template.ts writes it).
+    const disposalEntries = await this.prisma.journalEntry.findMany({
+      where: {
+        status: 'POSTED',
+        entryDate: { gte: periodStart, lte: periodEnd },
+        deletedAt: null,
+        ...(companyId ? { companyId } : {}),
+        AND: [
+          { metadata: { path: ['flow'], equals: 'asset-disposal' } } as Prisma.JournalEntryWhereInput,
+        ],
+      },
+      select: { metadata: true },
+    });
+    let ppeDisposals = new Prisma.Decimal(0);
+    for (const e of disposalEntries) {
+      const meta = e.metadata as { disposalProceeds?: string | number } | null;
+      if (meta && meta.disposalProceeds != null) {
+        ppeDisposals = ppeDisposals.add(new Prisma.Decimal(meta.disposalProceeds.toString()));
+      }
+    }
+    const netInvesting = ppeDisposals.sub(ppePurchases);
+
+    // 5. Financing
+    // Capital injections (Cr-normal): Δ (31-1101 + 31-1102)
+    const capitalOpening = await this.sumAccountBalances(
+      ['31-1101', '31-1102'],
+      startMinusOne,
+      'Cr',
+      companyId,
+    );
+    const capitalClosing = await this.sumAccountBalances(
+      ['31-1101', '31-1102'],
+      periodEnd,
+      'Cr',
+      companyId,
+    );
+    const capitalInjections = capitalClosing.sub(capitalOpening); // positive = cash IN
+
+    // Dividends: Δ 32-1101 (Cr-normal). Decrease = cash OUT. We expose the raw
+    // delta — UI displays positive movements as injections (rare) and negative as
+    // dividends. Without year-end closing entries the line is approximate.
+    const dividendOpening = await this.sumAccountBalances(['32-1101'], startMinusOne, 'Cr', companyId);
+    const dividendClosing = await this.sumAccountBalances(['32-1101'], periodEnd, 'Cr', companyId);
+    const dividends = dividendOpening.sub(dividendClosing); // positive = paid out
+
+    const netFinancing = capitalInjections.sub(dividends);
+
+    const netChange = netOperating.add(netInvesting).add(netFinancing);
+
+    // 6. Reconciliation: compare with raw cash account movement
+    const CASH_PREFIXES = ['11-11', '11-12']; // 11-1101..11-1103 + 11-1201..11-1203
+    const openingCash = await this.sumAccountBalances(CASH_PREFIXES, startMinusOne, 'Dr', companyId);
+    const closingCash = await this.sumAccountBalances(CASH_PREFIXES, periodEnd, 'Dr', companyId);
+    const actualCashChange = closingCash.sub(openingCash);
+    const drift = netChange.sub(actualCashChange);
+    const isReconciled = drift.abs().lte(new Prisma.Decimal(1));
+
+    return {
+      periodStart,
+      periodEnd,
+      method: 'indirect' as const,
+      operating: {
+        netIncome: netIncome.toNumber(),
+        depreciation: depreciation.toNumber(),
+        badDebtProvisionChange: badDebtProvisionChange.toNumber(),
+        unearnedInterestChange: unearnedInterestChange.toNumber(),
+        arChange: arChange.toNumber(),
+        inventoryChange: inventoryChange.toNumber(),
+        apChange: apChange.toNumber(),
+        vatPayableChange: vatPayableChange.toNumber(),
+        netOperating: netOperating.toNumber(),
+      },
+      investing: {
+        ppePurchases: ppePurchases.toNumber(),
+        ppeDisposals: ppeDisposals.toNumber(),
+        netInvesting: netInvesting.toNumber(),
+      },
+      financing: {
+        capitalInjections: capitalInjections.toNumber(),
+        dividends: dividends.toNumber(),
+        netFinancing: netFinancing.toNumber(),
+      },
+      netChange: netChange.toNumber(),
+      openingCash: openingCash.toNumber(),
+      closingCash: closingCash.toNumber(),
+      actualCashChange: actualCashChange.toNumber(),
+      isReconciled,
+      drift: drift.toNumber(),
+    };
+  }
+
+  // ─── SP2: Equity Statement ────────────────────────────────────────────────────
+  //
+  // Matrix of equity accounts (31-1101, 31-1102, 32-1101, 33-1101) showing
+  // ยอดต้นงวด / +เพิ่ม / -ลด / ยอดปลายงวด with movement details.
+  // The current-year P&L line is derived from getProfitLossFromJournal — labelled
+  // with a caveat because year-end closing entries have not been posted to 33-1101.
+
+  private static readonly EQUITY_ACCOUNTS: { code: string; defaultName: string }[] = [
+    { code: '31-1101', defaultName: 'หุ้นสามัญ' },
+    { code: '31-1102', defaultName: 'ส่วนเกินมูลค่าหุ้น' },
+    { code: '32-1101', defaultName: 'กำไร(ขาดทุน)สะสม' },
+    { code: '33-1101', defaultName: 'กำไร(ขาดทุน)สุทธิประจำปี' },
+  ];
+
+  async getEquityStatementFromJournal(
+    periodStart: Date,
+    periodEnd: Date,
+    companyId?: string,
+  ) {
+    const codes = AccountingService.EQUITY_ACCOUNTS.map((a) => a.code);
+    const startMinusOne = new Date(periodStart);
+    startMinusOne.setMilliseconds(startMinusOne.getMilliseconds() - 1);
+
+    // Load CoA names (may be missing if not seeded)
+    const coa = await this.prisma.chartOfAccount.findMany({
+      where: { code: { in: codes }, deletedAt: null },
+      select: { code: true, name: true },
+    });
+    const nameMap = new Map(coa.map((c) => [c.code, c.name]));
+
+    // Load all journal lines that touched these accounts in the period
+    const lines = await this.prisma.journalLine.findMany({
+      where: {
+        accountCode: { in: codes },
+        deletedAt: null,
+        journalEntry: {
+          status: 'POSTED',
+          entryDate: { gte: periodStart, lte: periodEnd },
+          deletedAt: null,
+          ...(companyId ? { companyId } : {}),
+        },
+      },
+      select: {
+        accountCode: true,
+        debit: true,
+        credit: true,
+        description: true,
+        journalEntry: {
+          select: { entryDate: true, entryNumber: true, description: true },
+        },
+      },
+      orderBy: { journalEntry: { entryDate: 'asc' } },
+    });
+
+    type Movement = { entryDate: Date; entryNumber: string; description: string; amount: number };
+    const rows: Array<{
+      accountCode: string;
+      accountName: string;
+      opening: number;
+      increases: Movement[];
+      decreases: Movement[];
+      totalIncrease: number;
+      totalDecrease: number;
+      closing: number;
+    }> = [];
+
+    let totalOpening = new Prisma.Decimal(0);
+    let totalClosing = new Prisma.Decimal(0);
+
+    for (const accDef of AccountingService.EQUITY_ACCOUNTS) {
+      // Opening balance (Cr-normal): credits - debits before periodStart
+      const opening = await this.sumAccountBalances([accDef.code], startMinusOne, 'Cr', companyId);
+
+      const increases: Movement[] = [];
+      const decreases: Movement[] = [];
+      let increaseTotal = new Prisma.Decimal(0);
+      let decreaseTotal = new Prisma.Decimal(0);
+
+      for (const line of lines) {
+        if (line.accountCode !== accDef.code) continue;
+        const dr = new Prisma.Decimal(line.debit);
+        const cr = new Prisma.Decimal(line.credit);
+        const movement: Omit<Movement, 'amount'> = {
+          entryDate: line.journalEntry.entryDate,
+          entryNumber: line.journalEntry.entryNumber,
+          description: line.description ?? line.journalEntry.description,
+        };
+        // Equity is Cr-normal: Cr = increase, Dr = decrease.
+        if (cr.gt(0)) {
+          const amount = cr.toNumber();
+          increases.push({ ...movement, amount });
+          increaseTotal = increaseTotal.add(cr);
+        }
+        if (dr.gt(0)) {
+          const amount = dr.toNumber();
+          decreases.push({ ...movement, amount });
+          decreaseTotal = decreaseTotal.add(dr);
+        }
+      }
+
+      const closing = opening.add(increaseTotal).sub(decreaseTotal);
+
+      rows.push({
+        accountCode: accDef.code,
+        accountName: nameMap.get(accDef.code) ?? accDef.defaultName,
+        opening: opening.toNumber(),
+        increases,
+        decreases,
+        totalIncrease: increaseTotal.toNumber(),
+        totalDecrease: decreaseTotal.toNumber(),
+        closing: closing.toNumber(),
+      });
+
+      totalOpening = totalOpening.add(opening);
+      totalClosing = totalClosing.add(closing);
+    }
+
+    // Derive current-year P&L (yearStart .. periodEnd) for the caveat line.
+    // This represents the implicit profit not yet closed into 33-1101.
+    const yearStart = new Date(periodEnd.getFullYear(), 0, 1);
+    const yearPL = await this.getProfitLossFromJournal(yearStart, periodEnd, companyId);
+    const currentYearProfit = yearPL.netIncome.toNumber();
+
+    return {
+      periodStart,
+      periodEnd,
+      rows,
+      currentYearProfit,
+      caveat:
+        'ค่าประมาณกำไรปีปัจจุบัน — ยังไม่ปิดบัญชีจริงเข้า 33-1101 / 32-1101 (รอปิดบัญชีสิ้นปี)',
+      totalOpening: totalOpening.toNumber(),
+      totalClosing: totalClosing.toNumber(),
+    };
+  }
+
+  // ─── SP2: General Ledger ──────────────────────────────────────────────────────
+
+  /**
+   * General Ledger for a single account over a period.
+   * Returns opening balance, every posted journal line, and running balance.
+   *
+   * Running balance is signed on the normal side:
+   *   - Dr-normal account: balance = Σ(debit - credit)
+   *   - Cr-normal account: balance = Σ(credit - debit)
+   *   - Dr/Cr account: treated as Dr-normal for display purposes.
+   */
+  async getGeneralLedger(
+    accountCode: string,
+    periodStart: Date,
+    periodEnd: Date,
+    companyId?: string,
+  ) {
+    const account = await this.prisma.chartOfAccount.findFirst({
+      where: { code: accountCode, deletedAt: null },
+      select: { code: true, name: true, normalBalance: true },
+    });
+    if (!account) {
+      throw new NotFoundException(`ไม่พบรหัสบัญชี ${accountCode} ในผังบัญชี`);
+    }
+
+    const normalBalance = account.normalBalance as 'Dr' | 'Cr' | 'Dr/Cr';
+    const startMinusOne = new Date(periodStart);
+    startMinusOne.setMilliseconds(startMinusOne.getMilliseconds() - 1);
+
+    // Opening balance (everything before periodStart)
+    const opening = await this.sumAccountBalances(
+      [accountCode],
+      startMinusOne,
+      normalBalance === 'Cr' ? 'Cr' : 'Dr',
+      companyId,
+    );
+
+    // All journal lines in the period
+    const rawLines = await this.prisma.journalLine.findMany({
+      where: {
+        accountCode,
+        deletedAt: null,
+        journalEntry: {
+          status: 'POSTED',
+          entryDate: { gte: periodStart, lte: periodEnd },
+          deletedAt: null,
+          ...(companyId ? { companyId } : {}),
+        },
+      },
+      select: {
+        debit: true,
+        credit: true,
+        description: true,
+        journalEntry: {
+          select: {
+            entryDate: true,
+            entryNumber: true,
+            description: true,
+            referenceType: true,
+            referenceId: true,
+          },
+        },
+      },
+      orderBy: [{ journalEntry: { entryDate: 'asc' } }, { journalEntry: { entryNumber: 'asc' } }],
+    });
+
+    let running = new Prisma.Decimal(opening);
+    let totalDebit = new Prisma.Decimal(0);
+    let totalCredit = new Prisma.Decimal(0);
+
+    const lines = rawLines.map((line) => {
+      const dr = new Prisma.Decimal(line.debit);
+      const cr = new Prisma.Decimal(line.credit);
+      // Running balance on normal side
+      const delta = normalBalance === 'Cr' ? cr.sub(dr) : dr.sub(cr);
+      running = running.add(delta);
+      totalDebit = totalDebit.add(dr);
+      totalCredit = totalCredit.add(cr);
+
+      return {
+        entryDate: line.journalEntry.entryDate,
+        entryNumber: line.journalEntry.entryNumber,
+        description: line.description ?? line.journalEntry.description,
+        referenceType: line.journalEntry.referenceType,
+        referenceId: line.journalEntry.referenceId,
+        debit: dr.toNumber(),
+        credit: cr.toNumber(),
+        runningBalance: running.toNumber(),
+      };
+    });
+
+    return {
+      accountCode: account.code,
+      accountName: account.name,
+      normalBalance,
+      periodStart,
+      periodEnd,
+      opening: opening.toNumber(),
+      closing: running.toNumber(),
+      totalDebit: totalDebit.toNumber(),
+      totalCredit: totalCredit.toNumber(),
+      lines,
     };
   }
 }

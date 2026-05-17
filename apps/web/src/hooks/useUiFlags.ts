@@ -49,6 +49,11 @@ export interface UiFlags {
    */
   auditLogArchiveEnabled: boolean;
   /**
+   * D1.4.3.3 — legal document retention years (พ.ร.บ.บัญชี ม.7).
+   * Default 5. Informational; no auto-purge cron consumes this yet.
+   */
+  documentRetentionYears: number;
+  /**
    * D1.3.4.2 — days threshold for the SAMEDAY→ACCRUAL auto-switch in
    * `ExpenseFormV4`. Default `0` = any past date triggers (legacy
    * behavior). Server clamps to 0–30; out-of-range / NaN → 0.
@@ -228,6 +233,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   ],
   exportEnabled: true,
   auditLogArchiveEnabled: true,
+  documentRetentionYears: 5,
   smartSwitchThresholdDays: 0,
   summaryDefaultRange: 'this_month',
   smartDoctypeSwitchEnabled: true,

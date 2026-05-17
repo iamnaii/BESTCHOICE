@@ -279,6 +279,20 @@ export class SettingsService {
      */
     auditLogArchiveEnabled: boolean;
     /**
+     * D1.4.3.3 — legal document retention period in years. Default 5 per
+     * พ.ร.บ.การบัญชี พ.ศ. 2543 ม.7 (Thai Accounting Act §7). Validated 1–30
+     * and clamped on read so an out-of-range SystemConfig row can't surface
+     * absurd values downstream.
+     *
+     * Currently INFORMATIONAL only — there is no automated purge cron for
+     * expense / sales / receipt documents yet. The value is exposed so the
+     * compliance UI can display the configured retention policy. Future
+     * implementation gating any document purge (or archival) on this value
+     * should call `getUiFlags()` rather than re-reading the SystemConfig
+     * row directly.
+     */
+    documentRetentionYears: number;
+    /**
      * D1.3.4.2 — days threshold for the SAMEDAY→ACCRUAL auto-switch.
      * Default `0` = any past document date triggers the flip (preserves
      * the pre-Phase-4 hardcoded behavior). When set to N>0, the flip only
@@ -625,6 +639,15 @@ export class SettingsService {
       'audit_log_archive_enabled',
       true,
     );
+    // D1.4.3.3 — document retention years. Default 5 per พ.ร.บ.บัญชี ม.7.
+    // Clamp to [1, 30] so an out-of-range row can't surface absurd values.
+    const documentRetentionYearsRaw = await this.readNumber('document_retention_years', 5);
+    const documentRetentionYears =
+      Number.isInteger(documentRetentionYearsRaw) &&
+      documentRetentionYearsRaw >= 1 &&
+      documentRetentionYearsRaw <= 30
+        ? documentRetentionYearsRaw
+        : 5;
     // D1.3.4.2 — smart-switch threshold (days). Clamp 0–30; non-integer /
     // NaN / negative → 0. Default 0 = legacy behavior (any past date flips).
     const smartSwitchThresholdRaw = await this.readNumber(
@@ -837,6 +860,7 @@ export class SettingsService {
       whtRates,
       exportEnabled,
       auditLogArchiveEnabled,
+      documentRetentionYears,
       smartSwitchThresholdDays,
       summaryDefaultRange,
       smartDoctypeSwitchEnabled,

@@ -200,6 +200,14 @@ export class SettingsService {
      */
     exportEnabled: boolean;
     /**
+     * D1.4.3.2 — gate the weekly audit-log archive sweep
+     * (`AuditRetentionCron.archiveOldEntries`). Default `true`. When `false`,
+     * the cron skips without touching rows. Hard-delete remains impossible
+     * regardless (BEFORE DELETE trigger on audit_logs), so flipping this off
+     * just keeps rows in the hot set rather than purging the legal trail.
+     */
+    auditLogArchiveEnabled: boolean;
+    /**
      * D1.3.4.1 — gate the auto SAMEDAY→ACCRUAL switch logic in the expense
      * entry form. Default `true` preserves the existing one-way auto-flip
      * (ExpenseFormV4: when the user picks a past `documentDate` while
@@ -525,6 +533,11 @@ export class SettingsService {
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
     // D1.3.3.1 — export_enabled. Default true.
     const exportEnabled = await this.readBoolean('export_enabled', true);
+    // D1.4.3.2 — audit log archive toggle. Default true.
+    const auditLogArchiveEnabled = await this.readBoolean(
+      'audit_log_archive_enabled',
+      true,
+    );
     // D1.3.4.1 — smart_doctype_switch_enabled (default true).
     const smartDoctypeSwitchEnabled = await this.readBoolean(
       'smart_doctype_switch_enabled',
@@ -723,6 +736,7 @@ export class SettingsService {
       themeColor,
       language,
       exportEnabled,
+      auditLogArchiveEnabled,
       summaryDefaultRange,
       smartDoctypeSwitchEnabled,
       adjAutoRoute,

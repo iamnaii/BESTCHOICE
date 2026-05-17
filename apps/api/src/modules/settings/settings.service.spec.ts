@@ -332,5 +332,33 @@ describe('SettingsService audit trail', () => {
       const flags = await service.getUiFlags();
       expect(flags.periodCloseDay).toBe(31);
     });
+
+    // D1.1.6 — adjustmentCodes for V4 form's Multi-line Adjustment row.
+    it('adjustmentCodes defaults to 52-1104 (underpay) / 53-1503 (overpay)', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.adjustmentCodes).toEqual({ underpay: '52-1104', overpay: '53-1503' });
+    });
+
+    it('adjustmentCodes accepts OWNER override from SystemConfig', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'adjustment_code_underpay') return Promise.resolve({ value: '52-9999' });
+        if (args.where.key === 'adjustment_code_overpay') return Promise.resolve({ value: '53-9999' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.adjustmentCodes).toEqual({ underpay: '52-9999', overpay: '53-9999' });
+    });
+
+    it('adjustmentCodes rejects malformed code via regex fallback', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'adjustment_code_underpay') return Promise.resolve({ value: 'BAD-CODE' });
+        if (args.where.key === 'adjustment_code_overpay') return Promise.resolve({ value: '' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      // Both bad → fall back to legacy defaults.
+      expect(flags.adjustmentCodes).toEqual({ underpay: '52-1104', overpay: '53-1503' });
+    });
   });
 });

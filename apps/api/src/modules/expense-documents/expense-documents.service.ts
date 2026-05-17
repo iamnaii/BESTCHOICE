@@ -318,6 +318,9 @@ export class ExpenseDocumentsService implements OnModuleInit {
           note: dto.note ?? null,
           fromTemplateId: dto.fromTemplateId ?? null,
           approvedById: dto.approvedById ?? null,
+          // Phase A.5 — tax-disallowed flag (ม.65 ตรี). Lines inherit from doc-level
+          // unless they set their own override.
+          taxDisallowed: dto.taxDisallowed ?? false,
           createdById: userId,
           expenseDetail: {
             create: {
@@ -336,6 +339,7 @@ export class ExpenseDocumentsService implements OnModuleInit {
                   amountBeforeVat: l.amountBeforeVat,
                   vatAmount: l.vatAmount,
                   whtAmount: l.whtAmount,
+                  taxDisallowed: l.taxDisallowed ?? false,
                 })),
               },
             },
@@ -1100,6 +1104,80 @@ export class ExpenseDocumentsService implements OnModuleInit {
   }
 
   /**
+   * Phase A.5 — Tax-disallowed summary for ภ.ง.ด.50/51 prep.
+   *
+   * Returns the total amount of expense documents flagged as tax-disallowed
+   * (ม.65 ตรี ป.รัษฎากร) over a date range. Used by the accountant at year-
+   * end to exclude these from the deductible-expense total on the corporate
+   * income-tax filing.
+   *
+   * Two roll-ups:
+   *   - `docLevelTotal`: sum(totalAmount) of POSTED docs with doc-level flag
+   *   - `lineLevelTotal`: sum(amountBeforeVat) of line-level overrides on
+   *      docs NOT already disallowed at doc-level (avoid double-count)
+   *
+   * Both are POSTED-only — DRAFT / ACCRUAL / VOIDED are excluded since they
+   * aren't yet on the books. `from` / `to` filter by `documentDate` (BKK).
+   * When omitted, scans every POSTED document (use the calling controller's
+   * default = current calendar year if you want a "this year" view).
+   */
+  async getTaxDisallowedSummary(filters: {
+    branchId?: string;
+    from?: string;
+    to?: string;
+  }) {
+    const where: Prisma.ExpenseDocumentWhereInput = {
+      deletedAt: null,
+      status: 'POSTED',
+    };
+    if (filters.branchId) where.branchId = filters.branchId;
+    if (filters.from || filters.to) {
+      where.documentDate = {};
+      if (filters.from) where.documentDate.gte = new Date(filters.from);
+      if (filters.to) {
+        const end = new Date(filters.to);
+        end.setHours(23, 59, 59, 999);
+        where.documentDate.lte = end;
+      }
+    }
+
+    // Doc-level: all lines in the doc are disallowed → sum totalAmount.
+    const docLevel = await this.prisma.expenseDocument.aggregate({
+      where: { ...where, taxDisallowed: true },
+      _count: { _all: true },
+      _sum: { totalAmount: true },
+    });
+
+    // Line-level: only count rows where the PARENT doc is NOT already flagged
+    // doc-level (otherwise we'd double-count those lines). Sum `amountBeforeVat`
+    // because tax deductibility is computed on the pre-VAT amount — VAT input
+    // is handled separately on ภ.พ.30, not on ภ.ง.ด.50/51.
+    const lineLevel = await this.prisma.expenseLine.aggregate({
+      where: {
+        taxDisallowed: true,
+        expenseDetail: {
+          document: { ...where, taxDisallowed: false },
+        },
+      },
+      _count: { _all: true },
+      _sum: { amountBeforeVat: true },
+    });
+
+    const docTotal = docLevel._sum.totalAmount ?? new Prisma.Decimal(0);
+    const lineTotal = lineLevel._sum.amountBeforeVat ?? new Prisma.Decimal(0);
+    const grandTotal = docTotal.plus(lineTotal);
+
+    return {
+      docLevelCount: docLevel._count._all,
+      docLevelTotal: docTotal.toFixed(2),
+      lineLevelCount: lineLevel._count._all,
+      lineLevelTotal: lineTotal.toFixed(2),
+      grandTotal: grandTotal.toFixed(2),
+      filters: { from: filters.from ?? null, to: filters.to ?? null },
+    };
+  }
+
+  /**
    * AP Aging — Fix Report P1-1.
    *
    * Returns ACCRUAL (unpaid) expenses bucketed by age since `documentDate`,
@@ -1471,6 +1549,9 @@ export class ExpenseDocumentsService implements OnModuleInit {
           ? { connect: { id: dto.approvedById } }
           : { disconnect: true };
       }
+      // Phase A.5 — accountants may flip the flag retroactively while a doc
+      // is still editable (DRAFT/ACCRUAL). Persisted as plain Boolean.
+      if (dto.taxDisallowed !== undefined) data.taxDisallowed = dto.taxDisallowed;
 
       if (dto.lines !== undefined) {
         const priceType = dto.priceType ?? existing.expenseDetail?.priceType ?? 'EXCLUSIVE';
@@ -1522,6 +1603,7 @@ export class ExpenseDocumentsService implements OnModuleInit {
                 amountBeforeVat: l.amountBeforeVat,
                 vatAmount: l.vatAmount,
                 whtAmount: l.whtAmount,
+                taxDisallowed: l.taxDisallowed ?? false,
               })),
             },
           },

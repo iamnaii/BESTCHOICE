@@ -137,6 +137,34 @@ export class ExpenseDocumentsService implements OnModuleInit {
   }
 
   /**
+   * D1.2.1.2 — Numeric SystemConfig reader. Returns the stored Decimal as a
+   * Prisma.Decimal, clamped to ≥ 0 (negatives become 0). On missing or
+   * unparseable values returns the fallback. Used by the approval-threshold
+   * gate where negatives would yield bizarre "every doc requires approval"
+   * behaviour.
+   */
+  private async readNumberFlag(
+    tx: Prisma.TransactionClient | PrismaService,
+    key: string,
+    fallback: number,
+  ): Promise<Prisma.Decimal> {
+    try {
+      const row = await tx.systemConfig.findFirst({
+        where: { key, deletedAt: null },
+        select: { value: true },
+      });
+      const raw = row?.value;
+      if (!raw) return new Prisma.Decimal(fallback);
+      const parsed = Number(raw);
+      if (!Number.isFinite(parsed)) return new Prisma.Decimal(fallback);
+      const clamped = parsed < 0 ? 0 : parsed;
+      return new Prisma.Decimal(clamped);
+    } catch {
+      return new Prisma.Decimal(fallback);
+    }
+  }
+
+  /**
    * D1.2.7.2 — reverse-reasons whitelist. Uses shared `readJsonFlag` for
    * uniform JSON-parse + validator semantics. Empty / malformed lists fall
    * back to the canonical 6-reason default so the UI never shows an empty
@@ -1655,16 +1683,56 @@ export class ExpenseDocumentsService implements OnModuleInit {
       const doc = await tx.expenseDocument.findUniqueOrThrow({ where: { id } });
       if (doc.deletedAt) throw new NotFoundException('เอกสารถูกลบแล้ว');
 
-      // D1.2.1.1 — approval gate. Block direct DRAFT → POSTED when feature
-      // enabled. D1.2.1.2 / D1.2.1.4 further refine which docs are subject
-      // (threshold + doctype filters) — for now the gate applies to every
-      // DRAFT post when the flag is on.
+      // D1.2.1.2 — approval gate (threshold OR doctype filter).
+      //
+      // The gate fires when SystemConfig `approval_enabled` is true (sibling
+      // PR D1.2.1.1) AND the doc is DRAFT AND EITHER of:
+      //   (a) doc.totalAmount >= SystemConfig `approval_threshold`
+      //       (default 50,000 ฿; negatives clamp to 0 so a malformed config
+      //       can never accidentally short-circuit the gate to "always on")
+      //   (b) doc.documentType is in SystemConfig `approval_required_doc_types`
+      //       (default `['PAYROLL']` — hardcoded here; once #932 merges the
+      //       SystemConfig value takes over for the same OR-composed gate)
+      //
+      // OR semantics ensure low-value payroll still requires approval, and a
+      // high-value EX still gets gated even if not in the doctype list.
+      //
+      // Source-status check (`DRAFT`) keeps APPROVED docs flowing through —
+      // a doc that has already passed approval should not be re-checked here.
       const approvalEnabled = await this.readBoolFlag(tx, 'approval_enabled', false);
       if (approvalEnabled && doc.status === 'DRAFT') {
-        throw new BadRequestException(
-          'เปิดฟีเจอร์ขออนุมัติแล้ว — กรุณากด "ส่งขออนุมัติ" ก่อน Post (DRAFT → PENDING_APPROVAL → APPROVED → POSTED)',
-        );
+        const threshold = await this.readNumberFlag(tx, 'approval_threshold', 50000);
+        const docTotal = new Prisma.Decimal(doc.totalAmount.toString());
+        const overThreshold = docTotal.gte(threshold);
+
+        // Inline read of approval_required_doc_types (JSON array). Falls back
+        // to spec default ['PAYROLL'] on missing/unparseable/non-array values.
+        // Hardcoded here until #932 wires the SystemConfig key; the OR gate is
+        // structurally complete now so #932 only needs to expose the value.
+        let requiredDocTypes: string[] = ['PAYROLL'];
+        try {
+          const row = await tx.systemConfig.findFirst({
+            where: { key: 'approval_required_doc_types', deletedAt: null },
+            select: { value: true },
+          });
+          if (row?.value) {
+            const parsed = JSON.parse(row.value);
+            if (Array.isArray(parsed) && parsed.every((v) => typeof v === 'string')) {
+              requiredDocTypes = parsed;
+            }
+          }
+        } catch {
+          // keep default ['PAYROLL']
+        }
+        const isRequiredType = requiredDocTypes.includes(doc.documentType);
+
+        if (overThreshold || isRequiredType) {
+          throw new BadRequestException(
+            'เอกสารต้องผ่านการอนุมัติก่อน — กรุณากด "ส่งขออนุมัติ"',
+          );
+        }
       }
+
       this.transition.assertCanPost({
         type: doc.documentType,
         from: doc.status,

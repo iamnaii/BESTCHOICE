@@ -668,9 +668,35 @@ describe('ExpenseDocumentsService', () => {
       );
     });
 
-    // D1.2.1.1 — approval gate. With `approval_enabled` true, direct
-    // DRAFT → POSTED is rejected. User must go through submitForApproval.
-    it('D1.2.1.1: rejects post on DRAFT when approval_enabled is true', async () => {
+    // D1.2.1.2 — approval-threshold gate. With approval_enabled true and
+    // doc.totalAmount >= 50,000 (default threshold), post() must reject.
+    it('D1.2.1.2: rejects post when approval_enabled=true AND totalAmount >= threshold (default 50k)', async () => {
+      prisma.systemConfig.findFirst.mockImplementation(
+        (args: { where: { key: string } }) => {
+          if (args.where.key === 'approval_enabled') return Promise.resolve({ value: 'true' });
+          // approval_threshold key absent -> readNumberFlag falls back to 50000
+          if (args.where.key === 'reverse_reason_required') return Promise.resolve({ value: 'false' });
+          return Promise.resolve(null);
+        },
+      );
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-thr-over',
+        status: 'DRAFT',
+        documentType: 'EXPENSE',
+        paymentMethod: 'CASH',
+        depositAccountCode: '11-1101',
+        totalAmount: new Decimal('75000.00'),
+        withholdingTax: new Decimal('0'),
+        whtFormType: null,
+        deletedAt: null,
+      });
+      await expect(service.post('doc-thr-over', 'user-1')).rejects.toThrow(
+        /ต้องผ่านการอนุมัติก่อน/,
+      );
+      expect(sameDay.execute).not.toHaveBeenCalled();
+    });
+
+    it('D1.2.1.2: post proceeds normally when totalAmount < threshold (below 50k)', async () => {
       prisma.systemConfig.findFirst.mockImplementation(
         (args: { where: { key: string } }) => {
           if (args.where.key === 'approval_enabled') return Promise.resolve({ value: 'true' });
@@ -679,7 +705,58 @@ describe('ExpenseDocumentsService', () => {
         },
       );
       prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
-        id: 'doc-approval',
+        id: 'doc-thr-under',
+        status: 'DRAFT',
+        documentType: 'EXPENSE',
+        paymentMethod: 'CASH',
+        depositAccountCode: '11-1101',
+        totalAmount: new Decimal('1000.00'),
+        withholdingTax: new Decimal('0'),
+        whtFormType: null,
+        deletedAt: null,
+      });
+      transition.resolveTargetStatus.mockReturnValue('POSTED');
+      await service.post('doc-thr-under', 'user-1');
+      expect(sameDay.execute).toHaveBeenCalledWith('doc-thr-under', expect.anything());
+    });
+
+    it('D1.2.1.2: OWNER-configured threshold overrides default (e.g. 100k)', async () => {
+      prisma.systemConfig.findFirst.mockImplementation(
+        (args: { where: { key: string } }) => {
+          if (args.where.key === 'approval_enabled') return Promise.resolve({ value: 'true' });
+          if (args.where.key === 'approval_threshold') return Promise.resolve({ value: '100000' });
+          if (args.where.key === 'reverse_reason_required') return Promise.resolve({ value: 'false' });
+          return Promise.resolve(null);
+        },
+      );
+      // 75k < 100k -> should NOT be gated even though it would be at default 50k
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-thr-custom',
+        status: 'DRAFT',
+        documentType: 'EXPENSE',
+        paymentMethod: 'CASH',
+        depositAccountCode: '11-1101',
+        totalAmount: new Decimal('75000.00'),
+        withholdingTax: new Decimal('0'),
+        whtFormType: null,
+        deletedAt: null,
+      });
+      transition.resolveTargetStatus.mockReturnValue('POSTED');
+      await service.post('doc-thr-custom', 'user-1');
+      expect(sameDay.execute).toHaveBeenCalledWith('doc-thr-custom', expect.anything());
+    });
+
+    it('D1.2.1.2: negative threshold clamps to 0 -> all docs gated when flag on', async () => {
+      prisma.systemConfig.findFirst.mockImplementation(
+        (args: { where: { key: string } }) => {
+          if (args.where.key === 'approval_enabled') return Promise.resolve({ value: 'true' });
+          if (args.where.key === 'approval_threshold') return Promise.resolve({ value: '-100000' });
+          if (args.where.key === 'reverse_reason_required') return Promise.resolve({ value: 'false' });
+          return Promise.resolve(null);
+        },
+      );
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-thr-neg',
         status: 'DRAFT',
         documentType: 'EXPENSE',
         paymentMethod: 'CASH',
@@ -689,11 +766,59 @@ describe('ExpenseDocumentsService', () => {
         whtFormType: null,
         deletedAt: null,
       });
-      await expect(service.post('doc-approval', 'user-1')).rejects.toThrow(
-        /ส่งขออนุมัติ/,
+      await expect(service.post('doc-thr-neg', 'user-1')).rejects.toThrow(/ต้องผ่านการอนุมัติก่อน/);
+    });
+
+    // D1.2.1.2 — OR composition with doctype filter. Below-threshold docs in
+    // `approval_required_doc_types` must still be gated (default ['PAYROLL']).
+    it('D1.2.1.2: gates low-value PAYROLL via default doctype filter (OR composition)', async () => {
+      prisma.systemConfig.findFirst.mockImplementation(
+        (args: { where: { key: string } }) => {
+          if (args.where.key === 'approval_enabled') return Promise.resolve({ value: 'true' });
+          // approval_required_doc_types absent → falls back to ['PAYROLL']
+          if (args.where.key === 'reverse_reason_required') return Promise.resolve({ value: 'false' });
+          return Promise.resolve(null);
+        },
       );
-      expect(sameDay.execute).not.toHaveBeenCalled();
-      expect(accrual.execute).not.toHaveBeenCalled();
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-payroll-low',
+        status: 'DRAFT',
+        documentType: 'PAYROLL',
+        paymentMethod: 'BANK_TRANSFER',
+        depositAccountCode: '11-1201',
+        totalAmount: new Decimal('1000.00'),
+        withholdingTax: new Decimal('0'),
+        whtFormType: null,
+        deletedAt: null,
+      });
+      await expect(service.post('doc-payroll-low', 'user-1')).rejects.toThrow(
+        /ต้องผ่านการอนุมัติก่อน/,
+      );
+      expect(payroll.execute).not.toHaveBeenCalled();
+    });
+
+    it('D1.2.1.2: non-required doctype below threshold passes (OR neither true)', async () => {
+      prisma.systemConfig.findFirst.mockImplementation(
+        (args: { where: { key: string } }) => {
+          if (args.where.key === 'approval_enabled') return Promise.resolve({ value: 'true' });
+          if (args.where.key === 'reverse_reason_required') return Promise.resolve({ value: 'false' });
+          return Promise.resolve(null);
+        },
+      );
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-ex-low',
+        status: 'DRAFT',
+        documentType: 'EXPENSE',
+        paymentMethod: 'CASH',
+        depositAccountCode: '11-1101',
+        totalAmount: new Decimal('1000.00'),
+        withholdingTax: new Decimal('0'),
+        whtFormType: null,
+        deletedAt: null,
+      });
+      transition.resolveTargetStatus.mockReturnValue('POSTED');
+      await service.post('doc-ex-low', 'user-1');
+      expect(sameDay.execute).toHaveBeenCalledWith('doc-ex-low', expect.anything());
     });
 
     it('D1.2.1.1: post on DRAFT proceeds normally when approval_enabled is false (default)', async () => {

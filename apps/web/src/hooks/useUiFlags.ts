@@ -33,6 +33,12 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /**
+   * D1.4.1.2 — when false, hide keyboard-shortcut UI affordances:
+   * the global Shift+? help-dialog binding is disabled and per-item kbd
+   * hints are suppressed. Default true preserves existing UX.
+   */
+  showKeyboardShortcuts: boolean;
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -53,6 +59,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  showKeyboardShortcuts: true,
 };
 
 export function useUiFlags(): UiFlags {

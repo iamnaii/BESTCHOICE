@@ -621,6 +621,7 @@ model User {
   expenseDocumentsCreated     ExpenseDocument[]         @relation("ExpenseDocumentCreator")
   expenseDocumentsApproved    ExpenseDocument[]         @relation("ExpenseDocumentApprover")
   expenseTemplates            ExpenseTemplate[]         @relation("ExpenseTemplateCreator")
+  sharedExpenseTemplates      UserExpenseTemplate[]     @relation("UserSharedExpenseTemplates")
   journalEntriesCreated       JournalEntry[]            @relation("JournalCreatedBy")
   journalEntriesPosted        JournalEntry[]            @relation("JournalPostedBy")
   taxReportsFiled             TaxReport[]               @relation("TaxReportFiledBy")
@@ -3559,6 +3560,15 @@ enum DocumentType {
 
 enum DocumentStatus {
   DRAFT
+  /// D1.2.1.* — Approval Workflow (opt-in via SystemConfig `approval_enabled`).
+  /// Lifecycle when enabled: DRAFT → PENDING_APPROVAL → APPROVED → POSTED.
+  /// When `approval_enabled` is false (default) docs stay on the legacy
+  /// DRAFT → POSTED (or DRAFT → ACCRUAL → POSTED) path and these states are
+  /// unused. New states must remain optional/transient so existing rows are
+  /// untouched. Order matters: PENDING_APPROVAL + APPROVED placed AFTER DRAFT
+  /// and BEFORE ACCRUAL/POSTED/VOIDED to keep the conceptual lifecycle order.
+  PENDING_APPROVAL
+  APPROVED
   ACCRUAL
   POSTED
   VOIDED
@@ -3606,6 +3616,15 @@ model ExpenseDocument {
 
   fromTemplateId String? @map("from_template_id")
 
+  /// Phase A.5 — Tax-disallowed flag for ภ.ง.ด.50/51 deduction filtering.
+  /// When true, the document's expense lines are excluded from the deductible
+  /// total at year-end corporate income-tax filing (ม.65 ตรี ป.รัษฎากร — e.g.
+  /// personal expenses, gifts > THB 2,000, tax penalties, late fees paid to
+  /// Revenue). Disallowed expenses are STILL booked normally — this flag only
+  /// affects tax reporting, never the journal entry. ExpenseLine carries the
+  /// same flag for per-line override (rare mixed-category docs).
+  taxDisallowed Boolean @default(false) @map("tax_disallowed")
+
   createdById  String    @map("created_by_id")
   approvedById String?   @map("approved_by_id")
   createdAt    DateTime  @default(now()) @map("created_at")
@@ -3623,6 +3642,7 @@ model ExpenseDocument {
   @@index([status, paidAt])
   @@index([status, createdAt(sort: Desc)])
   @@index([fromTemplateId])
+  @@index([taxDisallowed, deletedAt])
   @@map("expense_documents")
 }
 
@@ -3660,6 +3680,14 @@ model ExpenseLine {
   amountBeforeVat Decimal       @map("amount_before_vat") @db.Decimal(12, 2)
   vatAmount       Decimal       @default(0) @map("vat_amount") @db.Decimal(12, 2)
   whtAmount       Decimal       @default(0) @map("wht_amount") @db.Decimal(12, 2)
+  /// Phase A.5 — Per-line tax-disallowed override (ม.65 ตรี).
+  /// When true, THIS line is excluded from ภ.ง.ด.50/51 deductible totals
+  /// regardless of the doc-level flag. Rare path — only set when one EX
+  /// document mixes deductible + non-deductible categories (e.g. a vendor
+  /// invoice combining genuine business expenses with personal gifts).
+  /// Effective rule = doc.taxDisallowed OR line.taxDisallowed (line never
+  /// overrides to "allowed" once doc-level is true).
+  taxDisallowed   Boolean       @default(false) @map("tax_disallowed")
   createdAt       DateTime      @default(now()) @map("created_at")
   updatedAt       DateTime      @updatedAt @map("updated_at")
 
@@ -3866,17 +3894,96 @@ model ExpenseTemplate {
   isRecurring   Boolean      @default(false) @map("is_recurring")
   recurringDay  Int?         @map("recurring_day")
   createdById   String       @map("created_by_id")
+  /// D1.2.4.5 — optional category grouping. Null = uncategorised
+  /// (legacy default). FK to TemplateCategory with SetNull on delete
+  /// so removing a category doesn't orphan / cascade-delete templates.
+  categoryId    String?      @map("category_id")
   createdAt     DateTime     @default(now()) @map("created_at")
   updatedAt     DateTime     @updatedAt @map("updated_at")
   deletedAt     DateTime?    @map("deleted_at")
 
   branch                Branch            @relation(fields: [branchId], references: [id], onDelete: Restrict)
   createdBy             User              @relation("ExpenseTemplateCreator", fields: [createdById], references: [id])
+  category              TemplateCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   documentsFromTemplate ExpenseDocument[] @relation("ExpenseDocumentFromTemplate")
 
   @@index([branchId, deletedAt])
   @@index([isRecurring, recurringDay])
+  @@index([categoryId, deletedAt])
   @@map("expense_templates")
+}
+
+/// D1.2.4.5 — Shop-wide grouping for Expense Templates (e.g. "เงินเดือน",
+/// "ค่าเช่า"). Soft-deletable. `name` is unique — duplicates rejected by
+/// the unique index, NOT the service layer.
+model TemplateCategory {
+  id          String    @id @default(uuid())
+  name        String    @unique
+  description String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  expenseTemplates ExpenseTemplate[]
+
+  @@index([deletedAt])
+  @@map("template_categories")
+/// D1.2.4.3 — Template visibility (ACL).
+/// PRIVATE: visible only to createdBy.
+/// TEAM:    visible to createdBy + users explicitly listed in `sharedWith`.
+/// PUBLIC:  visible to all authenticated users (cross-branch caveat still
+///          applies via existing branchId access check).
+enum TemplateVisibility {
+  PRIVATE
+  TEAM
+  PUBLIC
+}
+
+model ExpenseTemplate {
+  id            String             @id @default(uuid())
+  name          String
+  documentType  DocumentType       @map("document_type")
+  branchId      String             @map("branch_id")
+  prefilledData Json               @map("prefilled_data")
+  isRecurring   Boolean            @default(false) @map("is_recurring")
+  recurringDay  Int?               @map("recurring_day")
+  createdById   String             @map("created_by_id")
+  /// D1.2.4.3 — sharing visibility. Default PRIVATE preserves legacy
+  /// behaviour (creator-only). Use TEAM with `sharedWith` to grant
+  /// specific users access, or PUBLIC for shop-wide visibility.
+  visibility    TemplateVisibility @default(PRIVATE)
+  createdAt     DateTime           @default(now()) @map("created_at")
+  updatedAt     DateTime           @updatedAt @map("updated_at")
+  deletedAt     DateTime?          @map("deleted_at")
+
+  branch                Branch                  @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  createdBy             User                    @relation("ExpenseTemplateCreator", fields: [createdById], references: [id])
+  documentsFromTemplate ExpenseDocument[]       @relation("ExpenseDocumentFromTemplate")
+  sharedWith            UserExpenseTemplate[]   @relation("ExpenseTemplateSharedWith")
+
+  @@index([branchId, deletedAt])
+  @@index([isRecurring, recurringDay])
+  @@index([visibility, deletedAt])
+  @@map("expense_templates")
+}
+
+/// D1.2.4.3 — TEAM-visibility ACL: maps an ExpenseTemplate to the set of
+/// users explicitly granted view/instantiate access. Composite PK on
+/// (templateId, userId) prevents duplicate grants.
+/// Append-only join table — `updatedAt`/`deletedAt` intentionally omitted.
+/// Grants are revoked by hard-deleting the row (no audit trail needed
+/// beyond the AuditLog written by the service when the share list mutates).
+model UserExpenseTemplate {
+  templateId String   @map("template_id")
+  userId     String   @map("user_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  template ExpenseTemplate @relation("ExpenseTemplateSharedWith", fields: [templateId], references: [id], onDelete: Cascade)
+  user     User            @relation("UserSharedExpenseTemplates", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([templateId, userId])
+  @@index([userId])
+  @@map("user_expense_templates")
 }
 
 // ============================================================

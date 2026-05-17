@@ -333,6 +333,47 @@ describe('SettingsService audit trail', () => {
       expect(flags.periodCloseDay).toBe(31);
     });
 
+    // D1.2.4.3 — template_sharing_default whitelisted enum
+    it('templateSharingDefault defaults to PRIVATE when SystemConfig row missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.templateSharingDefault).toBe('PRIVATE');
+    });
+
+    it('templateSharingDefault returns TEAM when OWNER configures it', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'template_sharing_default') return Promise.resolve({ value: 'TEAM' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.templateSharingDefault).toBe('TEAM');
+    });
+
+    it('templateSharingDefault returns PUBLIC when OWNER configures it', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'template_sharing_default') return Promise.resolve({ value: 'PUBLIC' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.templateSharingDefault).toBe('PUBLIC');
+    });
+
+    it('templateSharingDefault falls back to PRIVATE for unknown values', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'template_sharing_default') return Promise.resolve({ value: 'EVERYONE' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.templateSharingDefault).toBe('PRIVATE');
+    });
+
+    it('templateSharingDefault falls back to PRIVATE for lowercase values', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'template_sharing_default') return Promise.resolve({ value: 'team' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.templateSharingDefault).toBe('PRIVATE');
     // D1.2.4.2 — max_templates_per_user quota
     it('maxTemplatesPerUser defaults to 20 when SystemConfig row missing', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);

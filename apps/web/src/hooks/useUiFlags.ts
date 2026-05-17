@@ -38,6 +38,11 @@ export interface UiFlags {
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
   /**
+   * D1.2.4.3 — default visibility selection on the "บันทึกเป็นรายการโปรด"
+   * dialog. PRIVATE = creator-only (default), TEAM = creator + explicit
+   * grants, PUBLIC = visible to all authenticated users.
+   */
+  templateSharingDefault: 'PRIVATE' | 'TEAM' | 'PUBLIC';
    * D1.2.4.2 — per-user quota of saved Expense Templates. Default 20.
    * Clamped to 1–1000 server-side. UI surfaces as "X/N" badge on the
    * favorites picker so users see how close they are to the cap.
@@ -133,6 +138,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  templateSharingDefault: 'PRIVATE',
   maxTemplatesPerUser: 20,
   templatesEnabled: true,
   thousandsSeparator: 'comma',

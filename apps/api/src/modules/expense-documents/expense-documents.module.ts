@@ -3,6 +3,8 @@ import { PrismaModule } from '../../prisma/prisma.module';
 import { JournalModule } from '../journal/journal.module';
 import { AuthModule } from '../auth/auth.module';
 import { SsoConfigModule } from '../sso-config/sso-config.module';
+import { NotificationsModule } from '../notifications/notifications.module';
+import { SettingsModule } from '../settings/settings.module';
 import { ExpenseDocumentsController } from './expense-documents.controller';
 import { ExpenseDocumentsService } from './expense-documents.service';
 import { ExpenseTemplatesController } from './expense-templates.controller';
@@ -14,9 +16,20 @@ import { JePreviewService } from './services/je-preview.service';
 import { PettyCashService } from './services/petty-cash.service';
 import { PayrollCustomService } from './services/payroll-custom.service';
 import { ExpenseRecurringCron } from './crons/expense-recurring.cron';
+import { DraftAlertsCron } from './crons/draft-alerts.cron';
+import { ApDueAlertsCron } from './crons/ap-due-alerts.cron';
 
 @Module({
-  imports: [PrismaModule, JournalModule, AuthModule, SsoConfigModule],
+  // NotificationsModule import is required so DraftAlertsCron + ApDueAlertsCron can
+  // route IN_APP alerts through NotificationsService.send() (respects D1.3.1.4 master gate).
+  imports: [
+    PrismaModule,
+    JournalModule,
+    AuthModule,
+    SsoConfigModule,
+    NotificationsModule,
+    SettingsModule,
+  ],
   controllers: [ExpenseDocumentsController, ExpenseTemplatesController],
   providers: [
     ExpenseDocumentsService,
@@ -28,6 +41,10 @@ import { ExpenseRecurringCron } from './crons/expense-recurring.cron';
     PettyCashService,
     PayrollCustomService,
     ExpenseRecurringCron,
+    // D1.3.1.1 — DRAFT alerts cron (opt-in via SystemConfig `draft_alerts_enabled`)
+    DraftAlertsCron,
+    // D1.3.1.2 — AP-due alerts cron. Default OFF (opt-in) — see ap-due-alerts.cron.ts for rationale.
+    ApDueAlertsCron,
   ],
   exports: [ExpenseDocumentsService, ExpenseTemplatesService],
 })

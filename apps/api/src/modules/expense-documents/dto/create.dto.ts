@@ -7,6 +7,7 @@ import {
   ArrayMinSize,
   IsIn,
   IsNumberString,
+  IsBoolean,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ExpenseLineInput } from './expense-line-input.dto';
@@ -80,6 +81,17 @@ export class CreateExpenseDocumentDto {
   @IsString()
   @IsOptional()
   approvedById?: string;
+
+  /**
+   * Phase A.5 — Tax-disallowed doc-level flag (ม.65 ตรี ป.รัษฎากร).
+   * When true, ALL lines in this document are excluded from ภ.ง.ด.50/51
+   * deductible totals. Disallowed expenses are still booked normally — the
+   * flag only affects year-end corporate income-tax filing, never the JE.
+   * Default false (deductible) for backwards compatibility.
+   */
+  @IsBoolean()
+  @IsOptional()
+  taxDisallowed?: boolean;
 
   @IsArray()
   @ArrayMinSize(1, { message: 'ต้องมีรายการบัญชีอย่างน้อย 1 บรรทัด' })

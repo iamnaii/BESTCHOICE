@@ -4,6 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreatePODto, UpdatePODto, ReceivePODto, GoodsReceivingDto, UpdatePaymentDto } from './dto/create-po.dto';
 import { generatePONumber } from '../../utils/sequence.util';
 import { d, dAdd, dSub, dSum } from '../../utils/decimal.util';
+import { loadVatRateDecimal } from '../../utils/vat-rate.util';
 
 @Injectable()
 export class PurchaseOrdersService {
@@ -96,8 +97,12 @@ export class PurchaseOrdersService {
     const discount = dto.discount || 0; // ส่วนลดก่อน VAT
     const discountAfterVat = supplier.hasVat ? dto.discountAfterVat || 0 : 0; // ส่วนลดหลัง VAT (เฉพาะ supplier มี VAT)
     const subtotalAfterDiscount = totalAmount - discount;
-    const vatConfig = await this.prisma.systemConfig.findUnique({ where: { key: 'vat_pct' } });
-    const vatRate = vatConfig ? Number(vatConfig.value) : 0.07;
+    // D1.1.3.1 — resolve VAT via canonical-key-first helper. Reads VAT_RATE
+    // (percent) first, falls back to legacy vat_pct/vat_rate (decimal), or
+    // 0.07 if all are absent. Replaces the previous direct `vat_pct` lookup
+    // that silently returned the default when admins saved through the new
+    // VatTab UI (which writes VAT_RATE).
+    const vatRate = await loadVatRateDecimal(this.prisma);
     const vatAmount = supplier.hasVat ? Math.round(subtotalAfterDiscount * vatRate * 100) / 100 : 0;
     const netAmount = subtotalAfterDiscount + vatAmount - discountAfterVat;
 

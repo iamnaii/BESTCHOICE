@@ -1,9 +1,18 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { SettlementFormFields } from './types';
 import { formatNumberDecimal } from '@/utils/formatters';
 import { useUiFlags } from '@/hooks/useUiFlags';
+
+/**
+ * D1.3.6.2 — A bill is treated as "overdue" if its `documentDate` is older
+ * than 30 days from now. ExpenseDocument has no per-row due-date column, so
+ * this single net-30 heuristic is the best proxy without a schema change.
+ * The threshold lives here (not SystemConfig) because it's a UI-only sort
+ * hint — server doesn't act on it.
+ */
+const OVERDUE_DAYS = 30;
 
 interface AccrualDoc {
   id: string;
@@ -22,16 +31,21 @@ interface Props {
 }
 
 export function SettlementLinesSection({ branchId, value, onChange }: Props) {
+  // D1.3.6.2 — OWNER-configurable pre-tick preference.
+  // D1.3.6.1 — `settlement_max_bills_per_doc` (default 100). One fetch limit
+  // matches the server-enforced cap so the user can never tick a doc the
+  // server would reject. UI also surfaces a soft warning before the cap.
   // D1.3.6.3 — when partial-payment is disabled, the user can only clear
   // each bill at its full totalAmount. Force the input read-only + reset
   // the per-row amount when ticked.
-  const { settlementPartialPaymentEnabled } = useUiFlags();
+  const { settlementDefaultTick, settlementMaxBillsPerDoc, settlementPartialPaymentEnabled } =
+    useUiFlags();
   const { data: accrualList } = useQuery<{ data: AccrualDoc[] }>({
-    queryKey: ['accrual-list', branchId],
+    queryKey: ['accrual-list', branchId, settlementMaxBillsPerDoc],
     queryFn: async () => {
       if (!branchId) return { data: [] };
       const res = await api.get(
-        `/expense-documents?type=EXPENSE&status=ACCRUAL&branchId=${branchId}&limit=100`,
+        `/expense-documents?type=EXPENSE&status=ACCRUAL&branchId=${branchId}&limit=${settlementMaxBillsPerDoc}`,
       );
       return res.data;
     },
@@ -39,6 +53,55 @@ export function SettlementLinesSection({ branchId, value, onChange }: Props) {
   });
 
   const docs = accrualList?.data ?? [];
+  // D1.3.6.1 — warn at 80% of cap to give the user a heads-up before hitting
+  // the hard limit. Threshold floor of 1 ensures the warning never fires at
+  // capacity = 1 (the legitimate min).
+  const selectedCount = value.selections.size;
+  const warnThreshold = Math.max(1, Math.floor(settlementMaxBillsPerDoc * 0.8));
+  const showApproachingCap = selectedCount >= warnThreshold && selectedCount <= settlementMaxBillsPerDoc;
+  const exceedsCap = selectedCount > settlementMaxBillsPerDoc;
+
+  // D1.3.6.2 — pre-tick the bill list according to the OWNER's preference.
+  // Runs once per (branch + docs payload) so it doesn't fight the user's
+  // manual toggles afterwards. `appliedKeyRef` stores the last (branchId,
+  // mode, docs-hash) signature; we only auto-tick when that signature
+  // changes, never when `value.selections` mutates.
+  //
+  // `docsKey` is a stable hash of doc IDs (not `docs.length`) so a same-
+  // length swap (e.g. one bill paid + one new bill arrives) still re-runs
+  // the auto-tick logic against the new set. Otherwise the ref short-
+  // circuits and newly-arrived overdue bills would silently skip pre-tick.
+  const docsKey = useMemo(() => docs.map((d) => d.id).join('|'), [docs]);
+  const appliedKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!branchId) return;
+    if (docs.length === 0) return;
+    const key = `${branchId}|${settlementDefaultTick}|${docsKey}`;
+    if (appliedKeyRef.current === key) return;
+    appliedKeyRef.current = key;
+    if (settlementDefaultTick === 'none') {
+      return; // 'none' means caller-supplied default (empty Map) stays
+    }
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - OVERDUE_DAYS);
+    const pre = new Map(value.selections);
+    let added = 0;
+    for (const doc of docs) {
+      if (pre.has(doc.id)) continue;
+      const shouldTick =
+        settlementDefaultTick === 'all' ||
+        (settlementDefaultTick === 'overdue_only' && new Date(doc.documentDate) < cutoff);
+      if (shouldTick) {
+        pre.set(doc.id, { docId: doc.id, amount: doc.totalAmount });
+        added += 1;
+      }
+    }
+    if (added > 0) onChange({ ...value, selections: pre });
+    // We intentionally exclude `value` + `onChange` from deps: the effect
+    // should only re-fire on docs/branch/preference change, not when the
+    // user toggles a row.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [branchId, settlementDefaultTick, docsKey]);
 
   // D1.3.6.3 — when partial-payment is OFF, force every selected line back to
   // its full `totalAmount`. Handles the corner case where the form already
@@ -137,9 +200,25 @@ export function SettlementLinesSection({ branchId, value, onChange }: Props) {
         </div>
       )}
 
+      {(showApproachingCap || exceedsCap) && (
+        <div
+          className={`rounded-lg border px-3 py-2 text-xs leading-snug ${
+            exceedsCap
+              ? 'border-destructive/40 bg-destructive/10 text-destructive'
+              : 'border-amber-500/40 bg-amber-500/10 text-amber-700'
+          }`}
+          role="status"
+          aria-live="polite"
+        >
+          {exceedsCap
+            ? `เลือกใบเกินจำกัด ${settlementMaxBillsPerDoc} ใบต่อเอกสาร (เลือก ${selectedCount}) — กรุณาแยกเป็นหลายเอกสาร`
+            : `ใกล้ถึงจำกัด ${settlementMaxBillsPerDoc} ใบต่อเอกสาร (เลือกแล้ว ${selectedCount})`}
+        </div>
+      )}
+
       <div className="rounded-xl border border-border overflow-hidden">
         <div className="bg-muted/50 px-4 py-2 text-xs font-medium border-b border-border">
-          เจ้าหนี้คงค้างของสาขา ({docs.length} รายการรอจ่าย — เลือกที่ต้องการเคลียร์)
+          เจ้าหนี้คงค้างของสาขา ({docs.length} รายการรอจ่าย — เลือกที่ต้องการเคลียร์ สูงสุด {settlementMaxBillsPerDoc} ใบ/เอกสาร)
         </div>
         {docs.length === 0 ? (
           <div className="p-6 text-center text-sm text-muted-foreground">

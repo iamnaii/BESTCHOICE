@@ -43,6 +43,7 @@ import QueryBoundary from '@/components/QueryBoundary';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import AnimatedCounter from '@/components/ui/animated-counter';
 import { useDebounce } from '@/hooks/useDebounce';
+import { useUiFlags } from '@/hooks/useUiFlags';
 import { formatDateShortThai, formatNumberDecimal } from '@/utils/formatters';
 import { getErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -55,7 +56,8 @@ import {
   type AssetStatus,
 } from './types';
 
-const PAGE_SIZE = 50;
+// D1.2.3.2 — fallback when useUiFlags() hasn't resolved yet.
+const PAGE_SIZE_FALLBACK = 50;
 
 interface StatCardConfig {
   label: string;
@@ -78,6 +80,10 @@ export default function AssetsListPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
+  // D1.2.3.2 — OWNER-configured pagination size. Fallback used pre-resolution
+  // matches the prior hardcoded value so initial paint is unchanged.
+  const { paginationSize } = useUiFlags();
+  const PAGE_SIZE = paginationSize || PAGE_SIZE_FALLBACK;
 
   const [searchInput, setSearchInput] = useState(searchParams.get('search') ?? '');
   const debouncedSearch = useDebounce(searchInput, 300);
@@ -91,7 +97,7 @@ export default function AssetsListPage() {
   });
 
   const listQuery = useQuery({
-    queryKey: ['assets', { search: debouncedSearch, status, category, page }],
+    queryKey: ['assets', { search: debouncedSearch, status, category, page, PAGE_SIZE }],
     queryFn: () =>
       assetsApi.list({
         search: debouncedSearch || undefined,

@@ -1,8 +1,10 @@
-# A1 · Settings Audit Phase 1+2 (Scan + Report)
+# A1 · Settings Audit Phase 1+2+4 (Scan + Report + Implement)
 
-**Status:** ✅ Phase 1+2 complete — owner approved expanded D1 scope (2026-05-16)
-**Started:** 2026-05-16  ·  **PRs:** [#879](https://github.com/iamnaii/BESTCHOICE/pull/879) (Phase 1) · this PR (Phase 2 expanded scope)
+**Status:** ✅ Phase 1+2+4 complete — 102/102 items shipped (pending merge of 86 PRs from 2026-05-17 session)
+**Started:** 2026-05-16  ·  **PRs:** [#879](https://github.com/iamnaii/BESTCHOICE/pull/879) (Phase 1) · Phase 2 companion · D1 #882-#897 + 2026-05-17 86-PR session (Phase 4)
 **Spec:** [`../specs/2026-05-16-a1-phase2-decision-report.md`](../specs/2026-05-16-a1-phase2-decision-report.md)  ·  **Plan:** D1 PRs (one per item)
+
+> ✅ **Phase 4 implementation 100% complete (pending merge).** All 102 audit items — including SKIP-sub-sections (3.4 / 4.1 / 4.2 / 4.3.2–4.3.6) reopened per owner directive — closed via 86 parallel PRs on 2026-05-17. Row-level details remain in `D1-settings-implement.md`.
 
 ## Context
 

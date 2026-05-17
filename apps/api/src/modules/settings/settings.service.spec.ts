@@ -670,6 +670,31 @@ describe('SettingsService audit trail', () => {
       expect(flags.piiMaskingEnabled).toBe(true);
     });
 
+    // D1.4.2.5 — max_concurrent_jobs
+    it('maxConcurrentJobs defaults to 5 when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.maxConcurrentJobs).toBe(5);
+    });
+
+    it('maxConcurrentJobs accepts valid 1-50 range', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'max_concurrent_jobs') return Promise.resolve({ value: '12' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.maxConcurrentJobs).toBe(12);
+    });
+
+    it('maxConcurrentJobs clamps out-of-range values back to 5', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'max_concurrent_jobs') return Promise.resolve({ value: '999' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.maxConcurrentJobs).toBe(5);
+    });
+
     // D1.3.4.2 — smart_switch_threshold_days (default 0, clamp 0–30,
     // negative/non-integer/NaN → 0). Originally marked SKIP per Phase 2
     // decision report; shipped per owner directive 2026-05-17 to reach

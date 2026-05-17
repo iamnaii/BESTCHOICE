@@ -355,6 +355,17 @@ export class SettingsService {
      */
     piiMaskingEnabled: boolean;
     /**
+     * D1.4.2.5 — max concurrent BullMQ worker jobs. Default 5, valid 1–50
+     * (clamped). Currently INFORMATIONAL for the SystemConfig key — the
+     * BullMQ `@Processor` decorator is evaluated at class load time and
+     * cannot read a DB-backed value at boot. The flag is exposed so OWNER
+     * can advertise the intended concurrency cap; the actual worker
+     * concurrency is set via `MAX_CONCURRENT_JOBS` env var read in
+     * `NotificationWorker`'s @Processor options (same default 5). A future
+     * refactor can wire this to a hot-reloadable dispatcher.
+     */
+    maxConcurrentJobs: number;
+    /**
      * D1.3.4.2 — days threshold for the SAMEDAY→ACCRUAL auto-switch.
      * Default `0` = any past document date triggers the flip (preserves
      * the pre-Phase-4 hardcoded behavior). When set to N>0, the flip only
@@ -737,6 +748,14 @@ export class SettingsService {
         : 'JSON';
     // D1.4.3.5 — pii_masking_enabled. Default true (PDPA policy surface).
     const piiMaskingEnabled = await this.readBoolean('pii_masking_enabled', true);
+    // D1.4.2.5 — max_concurrent_jobs. Default 5, clamp 1–50.
+    const maxConcurrentJobsRaw = await this.readNumber('max_concurrent_jobs', 5);
+    const maxConcurrentJobs =
+      Number.isInteger(maxConcurrentJobsRaw) &&
+      maxConcurrentJobsRaw >= 1 &&
+      maxConcurrentJobsRaw <= 50
+        ? maxConcurrentJobsRaw
+        : 5;
     // D1.3.4.2 — smart-switch threshold (days). Clamp 0–30; non-integer /
     // NaN / negative → 0. Default 0 = legacy behavior (any past date flips).
     const smartSwitchThresholdRaw = await this.readNumber(
@@ -955,6 +974,7 @@ export class SettingsService {
       batchSizeImport,
       dataExportFormat,
       piiMaskingEnabled,
+      maxConcurrentJobs,
       smartSwitchThresholdDays,
       summaryDefaultRange,
       smartDoctypeSwitchEnabled,

@@ -87,6 +87,13 @@ export interface UiFlags {
    */
   piiMaskingEnabled: boolean;
   /**
+   * D1.4.2.5 — max concurrent BullMQ worker jobs. Default 5, valid 1–50.
+   * INFORMATIONAL for the SystemConfig key — @Processor decorator reads
+   * `MAX_CONCURRENT_JOBS` env var at module load; SystemConfig is the
+   * OWNER-visible source of truth until refactored.
+   */
+  maxConcurrentJobs: number;
+  /**
    * D1.3.4.2 — days threshold for the SAMEDAY→ACCRUAL auto-switch in
    * `ExpenseFormV4`. Default `0` = any past date triggers (legacy
    * behavior). Server clamps to 0–30; out-of-range / NaN → 0.
@@ -272,6 +279,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   batchSizeImport: 500,
   dataExportFormat: 'JSON',
   piiMaskingEnabled: true,
+  maxConcurrentJobs: 5,
   smartSwitchThresholdDays: 0,
   summaryDefaultRange: 'this_month',
   smartDoctypeSwitchEnabled: true,

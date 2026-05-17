@@ -39,7 +39,7 @@
 
 | SP | Title | Scope summary | Est. PRs | Est. weeks | Tracking issue |
 |---|---|---|---|---|---|
-| **SP1** | Sidebar P6 + Zone Mapping | New `menu.ts` config (zones + per-role rule b), placeholder pages, zone persistence, BottomNav zone-aware | 3-5 | 1-2 | TBD (open after spec approval) |
+| **SP1** | Sidebar P6 + Zone Mapping | New `menu.ts` config (zones + per-role rule b), placeholder pages, zone persistence, BottomNav zone-aware | 3-5 | 1-2 | ✅ **DONE 2026-05-17** — PR #995 (15 commits, +3317/-27, awaiting CI+merge) |
 | **SP2** | Accounting Reports Gap | Cash Flow Statement, Equity Statement (งบการเปลี่ยนแปลงส่วนของผู้ถือหุ้น), General Ledger detail page (สมุดแยกประเภท by account), รายงาน Inter-co ครบ | 4-6 | 1-2 | TBD |
 | **SP3** | Tax Module Restructure | Refactor `/tax-reports` → split into `/finance/vat` (ภ.พ.30), `/finance/wht` (ภ.ง.ด. 1/3/53 แยกฟอร์ม), `/finance/e-tax` (e-Tax Invoice dedicated, integrate PEAK Sync) | 4-5 | 2-3 | TBD |
 | **SP4** | Document Config | Settings UI ตั้งค่ารูปแบบ + เลขที่เอกสาร per type (รายรับ/รายจ่าย/สัญญา/quote) + migration ทำให้ existing seq configurable | 2-3 | 1 | TBD |

@@ -50,7 +50,13 @@ export default function TaxRatesPage() {
   useDocumentTitle('ตั้งค่าอัตราภาษี');
   const queryClient = useQueryClient();
   const flags = useUiFlags();
-  const whtRates: UiFlags['whtRates'] = flags.whtRates;
+  // D1.1.3.2 — `whtRates` flag is supplied by sibling PR #934. The TS type
+  // says it's always present, but at runtime the API may return a partial
+  // payload (e.g. older Cloud Run revision still serving the response shape
+  // from before #934 merged). The `?? []` fallback keeps this page
+  // functional with an empty rate list until #934 ships, then auto-picks
+  // up the real list as soon as the API revision is updated.
+  const whtRates: UiFlags['whtRates'] = (flags?.whtRates ?? []);
   // D1.1.3.3 — SSO rate is locked at 5%. `ssoRateLocked` flag is supplied
   // by a separate PR (D1.1.3.3); fall back to '5%' if not yet present so
   // this page renders cleanly even before that PR merges.
@@ -221,8 +227,9 @@ export default function TaxRatesPage() {
             <p className="mt-3 text-sm text-muted-foreground leading-snug flex items-start gap-2">
               <AlertTriangle className="size-4 mt-0.5 text-amber-500" />
               <span>
-                อัตราถูกล็อกที่ 5% ตามพระราชบัญญัติประกันสังคม พ.ศ. 2533 มาตรา 47 —
-                ห้ามแก้ไขผ่านระบบ. หากต้องการเปลี่ยนแปลง ต้องรอกฎหมายแก้ไข.
+                อัตราถูกล็อกที่ 5% ตามพระราชบัญญัติประกันสังคม พ.ศ. 2533 มาตรา 46
+                ประกอบกฎกระทรวง — ห้ามแก้ไขผ่านระบบ. หากต้องการเปลี่ยนแปลง
+                ต้องรอกฎหมายแก้ไข.
               </span>
             </p>
           </CardContent>

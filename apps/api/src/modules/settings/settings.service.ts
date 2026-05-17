@@ -251,6 +251,19 @@ export class SettingsService {
      */
     whtRates: { rate: number; label: string; effectiveDate?: string | null }[];
     /**
+     * D1.3.4.1 — gate the auto SAMEDAY→ACCRUAL switch logic in the expense
+     * entry form. Default `true` preserves the existing one-way auto-flip
+     * (ExpenseFormV4: when the user picks a past `documentDate` while
+     * docType is SAMEDAY, flip to ACCRUAL). When `false` the auto-flip is
+     * skipped and the user must manually pick SAMEDAY vs ACCRUAL — useful
+     * for accountants who explicitly want SAMEDAY entries with a backdated
+     * invoice (e.g. cash purchases booked next day).
+     *
+     * Originally marked SKIP per Phase 2 decision report; shipped per
+     * owner directive 2026-05-17 to reach 100% A1 coverage.
+     */
+    smartDoctypeSwitchEnabled: boolean;
+    /**
      * D1.1.6.3 — auto-route the ≤1฿ rounding remainder on Payment receipts
      * to adj_underpay (52-1104) / adj_overpay (53-1503). Default TRUE.
      * When FALSE, PaymentReceipt2B + PaymentReceipt2B-split throw
@@ -564,6 +577,11 @@ export class SettingsService {
     // D1.1.3.2 — WHT rates (default 5 canonical entries + optional D1.1.3.5
     // effectiveDate per entry).
     const whtRates = await this.getWhtRates();
+    // D1.3.4.1 — smart_doctype_switch_enabled (default true).
+    const smartDoctypeSwitchEnabled = await this.readBoolean(
+      'smart_doctype_switch_enabled',
+      true,
+    );
     // D1.1.6.3 — adj_auto_route. Defaults TRUE so first-boot behaviour
     // mirrors the original auto-route-to-52-1104/53-1503 logic.
     const adjAutoRoute = await this.readBoolean('adj_auto_route', true);
@@ -758,6 +776,7 @@ export class SettingsService {
       language,
       whtRates,
       summaryDefaultRange,
+      smartDoctypeSwitchEnabled,
       adjAutoRoute,
       settlementMaxBillsPerDoc,
       pettyCashReplenishThreshold,

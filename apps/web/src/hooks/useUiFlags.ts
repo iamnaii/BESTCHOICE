@@ -46,6 +46,11 @@ export interface UiFlags {
    */
   whtRates: { rate: number; label: string; effectiveDate?: string | null }[];
   /**
+   * D1.3.4.1 — gate the SAMEDAY→ACCRUAL auto-flip in `ExpenseFormV4`.
+   * Default `true`. When `false`, the user must manually choose docType.
+   */
+  smartDoctypeSwitchEnabled: boolean;
+  /**
    * D1.3.6.1 — max bills (cleared docs) allowed per VENDOR_SETTLEMENT. Default
    * 100, clamped 1–500 server-side. Used by SettlementLinesSection to show an
    * inline cap-warning when the user approaches/exceeds the limit.
@@ -205,6 +210,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
     { rate: 15, label: '15% — ต่างประเทศ' },
   ],
   summaryDefaultRange: 'this_month',
+  smartDoctypeSwitchEnabled: true,
   settlementMaxBillsPerDoc: 100,
   pettyCashReplenishThreshold: 5000,
   pettyCashEnabled: true,

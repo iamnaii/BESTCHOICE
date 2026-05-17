@@ -41,6 +41,7 @@ import { ReceivableReconModule } from './modules/receivable-recon/receivable-rec
 import { MetricsModule } from './modules/metrics/metrics.module';
 import { UsersModule } from './modules/users/users.module';
 import { SettingsModule } from './modules/settings/settings.module';
+import { DocConfigModule } from './modules/settings/doc-config/doc-config.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { SalesModule } from './modules/sales/sales.module';
 import { InterestConfigModule } from './modules/interest-config/interest-config.module';
@@ -324,6 +325,7 @@ import { AppCacheModule } from './cache/cache.module';
     // MASTER: Management
     UsersModule,
     SettingsModule,
+    DocConfigModule,
     WebhooksModule,
     AnalyticsModule,
     SearchModule,

@@ -188,7 +188,7 @@ describe('TaxService.previewPND1 — payroll WHT from 21-3101', () => {
           id: 'je-pr-1',
           postedAt: new Date('2026-05-31'),
           description: 'Payroll May',
-          metadata: { flow: 'payroll-post', documentId: 'pr-doc-1' },
+          metadata: { flow: 'expense-payroll', documentId: 'pr-doc-1' },
         },
       },
     ]);
@@ -235,6 +235,24 @@ describe('TaxService.previewPND1 — payroll WHT from 21-3101', () => {
     expect(prisma.journalLine.findMany).not.toHaveBeenCalled();
     expect(result.count).toBe(0);
     expect(result.whtTotal.toString()).toBe('0');
+  });
+
+  it('Critical #1 regression: query filters by metadata.flow string_starts_with "expense-payroll" (matches payroll.template.ts)', async () => {
+    await service.previewPND1('co-1', 2026, 5);
+    expect(prisma.journalLine.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          accountCode: '21-3101',
+          credit: { gt: 0 },
+          journalEntry: expect.objectContaining({
+            metadata: { path: ['flow'], string_starts_with: 'expense-payroll' },
+          }),
+        }),
+      }),
+    );
+    const call = prisma.journalLine.findMany.mock.calls[0][0];
+    // Anti-regression: legacy 'payroll' prefix would miss the real 'expense-payroll' flow tag
+    expect(call.where.journalEntry.metadata.string_starts_with).not.toBe('payroll');
   });
 });
 

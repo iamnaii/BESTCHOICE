@@ -776,7 +776,11 @@ export class TaxService {
           deletedAt: null,
           status: 'POSTED',
           postedAt: { gte: startDate, lte: endDate },
-          metadata: { path: ['flow'], string_starts_with: 'payroll' } as Prisma.JsonFilter,
+          // payroll.template.ts writes `flow: 'expense-payroll'` — must match exactly
+          metadata: {
+            path: ['flow'],
+            string_starts_with: 'expense-payroll',
+          } as Prisma.JsonFilter,
         },
       },
       include: {

@@ -170,6 +170,15 @@ export class SettingsService {
      */
     language: 'th' | 'en';
     /**
+     * D1.2.3.1 — default time range preset selected on list-page mount.
+     * Whitelisted: `'all' | 'this_month' | 'last_month'`. Default
+     * `'this_month'` (matches accounting workflow expectation). Page-level
+     * code uses this to initialize startDate/endDate when no URL query
+     * params override; user changes mid-session are NOT persisted to the
+     * setting — this is the *initial* state only.
+     */
+    defaultTimeRange: 'all' | 'this_month' | 'last_month';
+    /**
      * D1.3.1.1 — DRAFT alerts toggle. When true, `DraftAlertsCron` (daily at
      * 09:00 BKK) scans expense docs in DRAFT for longer than the configured
      * threshold and sends an in-app notification to the creator. Default
@@ -244,6 +253,14 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.2.3.1 — default time range. Whitelist; everything else falls
+    // through to 'this_month' so a malformed admin edit can't break list
+    // pages that depend on this for initial state.
+    const defaultTimeRangeRaw = await this.getKey('default_time_range');
+    const defaultTimeRange: 'all' | 'this_month' | 'last_month' =
+      defaultTimeRangeRaw === 'all' || defaultTimeRangeRaw === 'last_month'
+        ? defaultTimeRangeRaw
+        : 'this_month';
     // D1.3.1.1 — DRAFT alerts (opt-in, default off).
     const draftAlertsEnabled = await this.readBoolean('draft_alerts_enabled', false);
     const draftAlertThresholdDaysRaw = await this.readNumber(
@@ -281,6 +298,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      defaultTimeRange,
       draftAlertsEnabled,
       draftAlertThresholdDays,
       adjustmentCodes,

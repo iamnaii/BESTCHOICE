@@ -113,6 +113,21 @@ export function ItemLinesSection({ lines, onChange, priceTypeLabel }: Props) {
                 className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
               />
             </div>
+            {/* Phase A.5 — Per-line tax-disallowed override.
+                Rare path — set only when this single line is non-deductible
+                while the rest of the doc is deductible (or vice versa).
+                Effective rule = doc-level OR line-level. */}
+            <label className="flex items-start gap-2 text-xs cursor-pointer text-muted-foreground hover:text-foreground transition-colors">
+              <input
+                type="checkbox"
+                checked={line.taxDisallowed === true}
+                onChange={(e) => updateLine(line.uid, { taxDisallowed: e.target.checked })}
+                className="mt-0.5"
+              />
+              <span>
+                บรรทัดนี้เป็น <span className="font-medium">ค่าใช้จ่ายต้องห้าม</span> (ใช้เฉพาะกรณีเอกสารปนรายการที่หักได้+หักไม่ได้ — ปกติติ๊กที่ระดับเอกสารแทน)
+              </span>
+            </label>
           </div>
         </div>
       ))}

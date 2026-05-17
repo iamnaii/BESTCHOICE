@@ -38,6 +38,23 @@ export interface UiFlags {
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
   /**
+   * D1.2.4.1 — master switch for the Expense Templates ("รายการโปรด") feature.
+   * When false, the UI hides the favorites tab + entry buttons + the
+   * `บันทึกเป็นรายการโปรด` affordance; the API also rejects writes.
+   */
+  templatesEnabled: boolean;
+  /**
+   * D1.2.4.2 — per-user cap on saved Expense Templates. Default 20. UI
+   * surfaces "X/N" count + disables the create button at the cap. Server
+   * enforces the cap atomically (see ExpenseTemplatesService.create).
+   */
+  maxTemplatesPerUser: number;
+  /**
+   * D1.2.4.4 — gates the `{{variable}}` interpolation surface on
+   * Expense Templates ("ใส่ตัวแปร" affordance). When false, UI hides
+   * variable pickers; backend interpolation util still runs at consume-time.
+   */
+  templateVariablesEnabled: boolean;
    * D1.2.4.4 — gates the `{{variable}}` interpolation surface on Expense
    * Templates (the "ใส่ตัวแปร" affordance). The pure util in
    * apps/api/src/utils/template-interpolation.util.ts is always
@@ -144,6 +161,9 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  templatesEnabled: true,
+  maxTemplatesPerUser: 20,
+  templateVariablesEnabled: true,
   templateVariablesEnabled: true,
   templateSharingDefault: 'PRIVATE',
   maxTemplatesPerUser: 20,

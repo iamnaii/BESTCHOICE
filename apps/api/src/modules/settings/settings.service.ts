@@ -170,6 +170,20 @@ export class SettingsService {
      */
     language: 'th' | 'en';
     /**
+     * D1.2.4.1 — master switch for the Expense Templates feature.
+     * Reads SystemConfig `templates_enabled`; default true.
+     */
+    templatesEnabled: boolean;
+    /**
+     * D1.2.4.2 — per-user cap on saved templates. Reads SystemConfig
+     * `max_templates_per_user`; default 20, clamped 1–1000.
+     */
+    maxTemplatesPerUser: number;
+    /**
+     * D1.2.4.4 — gates `{{variable}}` interpolation affordance. Reads
+     * SystemConfig `template_variables_enabled`; default true.
+     */
+    templateVariablesEnabled: boolean;
      * D1.2.4.4 — gates the `{{variable}}` interpolation feature on
      * Expense Templates. Default true. When false, the UI hides the
      * "ใส่ตัวแปร" affordance and `interpolateTemplate()` callers should
@@ -386,6 +400,10 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.2.4.1 — Expense Templates feature flag.
+    const templatesEnabled = await this.readBoolean('templates_enabled', true);
+    // D1.2.4.2 — per-user template quota. Clamp to 1–1000 (same range as
+    // ExpenseTemplatesService's internal cap-reader so values stay aligned).
     // D1.2.4.4 — gate the {{variable}} interpolation surface. Default true.
     const templateVariablesEnabled = await this.readBoolean(
       'template_variables_enabled',
@@ -406,6 +424,11 @@ export class SettingsService {
       Number.isFinite(maxTemplatesPerUserRaw) && maxTemplatesPerUserRaw >= 1
         ? Math.min(Math.floor(maxTemplatesPerUserRaw), 1000)
         : 20;
+    // D1.2.4.4 — template `{{variable}}` interpolation toggle.
+    const templateVariablesEnabled = await this.readBoolean(
+      'template_variables_enabled',
+      true,
+    );
     // D1.2.4.1 — Expense Templates feature flag. Default true to preserve
     // existing behaviour; OWNER can disable globally via Settings page.
     const templatesEnabled = await this.readBoolean('templates_enabled', true);
@@ -511,6 +534,9 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      templatesEnabled,
+      maxTemplatesPerUser,
+      templateVariablesEnabled,
       templateVariablesEnabled,
       templateSharingDefault,
       maxTemplatesPerUser,

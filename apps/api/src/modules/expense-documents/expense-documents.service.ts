@@ -9,6 +9,7 @@ import {
 import { Prisma, DocumentStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
+import { resolvePostPermissionRoles } from './post-permission.guard';
 import { DocNumberService } from './services/doc-number.service';
 import { StatusTransitionService } from './services/status-transition.service';
 import { ExpenseSameDayTemplate } from '../journal/cpa-templates/expense-same-day.template';
@@ -1940,7 +1941,18 @@ export class ExpenseDocumentsService implements OnModuleInit {
   // D1.2.1.6 — also accepts APPROVED → POSTED (when approval_enabled is on
   // AND auto_post_on_approve is false, OWNER manually calls post() on an
   // APPROVED doc; assertCanPost permits both DRAFT + APPROVED).
-  async post(id: string, _userId: string) {
+  async post(id: string, _userId: string, userRole?: string) {
+    // D1.3.2.3 (S3 defense-in-depth) — mirror the PostPermissionGuard
+    // check at the service boundary. Skipped when userRole is undefined
+    // (system-internal / unit-test paths).
+    if (userRole !== undefined) {
+      const allowed = await resolvePostPermissionRoles(this.prisma);
+      if (!allowed.has(userRole)) {
+        throw new ForbiddenException(
+          `ไม่มีสิทธิ์โพสต์เอกสาร (role ปัจจุบัน: ${userRole})`,
+        );
+      }
+    }
     return this.prisma.$transaction(async (tx) => {
       // Per-doc advisory lock — serializes concurrent post calls on the same id.
       // Without this, two callers could both read DRAFT, both pass assertCanPost,

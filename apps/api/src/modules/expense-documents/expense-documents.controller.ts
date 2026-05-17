@@ -15,6 +15,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { PostPermissionGuard } from './post-permission.guard';
 import { ExpenseDocumentsService } from './expense-documents.service';
 import { CreateExpenseDocumentDto } from './dto/create.dto';
 import { UpdateExpenseDocumentDto } from './dto/update.dto';
@@ -176,10 +177,25 @@ export class ExpenseDocumentsController {
     return this.service.update(id, dto, user.id);
   }
 
+  /**
+   * D1.3.2.3 — Post DRAFT → ACCRUAL.
+   *
+   * Class-level guards (JwtAuthGuard, RolesGuard, BranchGuard) run first.
+   * The method-level `@Roles(...)` decorator is widened to the SUPERSET of
+   * any value the dynamic SystemConfig key `post_permission` may select
+   * (OWNER + FINANCE_MANAGER + BRANCH_MANAGER + ACCOUNTANT). The
+   * `PostPermissionGuard` then narrows per-request based on the live
+   * SystemConfig value. Default `post_permission =
+   * 'OWNER+FINANCE_MANAGER+ACCOUNTANT'` preserves current behavior.
+   *
+   * SALES is intentionally excluded from the superset — they don't post
+   * accounting documents.
+   */
   @Post(':id/post')
-  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
-  post(@Param('id') id: string, @CurrentUser() user: { id: string }) {
-    return this.service.post(id, user.id);
+  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  @UseGuards(PostPermissionGuard)
+  post(@Param('id') id: string, @CurrentUser() user: { id: string; role: string }) {
+    return this.service.post(id, user.id, user.role);
   }
 
   /**

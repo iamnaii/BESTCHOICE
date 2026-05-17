@@ -298,6 +298,18 @@ export interface UiFlags {
    * informational badge on /settings.
    */
   settingsAccessRole: 'OWNER' | 'OWNER+FINANCE_MANAGER' | 'OWNER+ACCOUNTANT' | 'OWNER+ALL';
+  /**
+   * D1.3.2.3 — dynamic bundle controlling who can POST expense documents
+   * (DRAFT → ACCRUAL). Whitelisted: `'OWNER+FINANCE_MANAGER+ACCOUNTANT'`
+   * (default) / `'OWNER+FINANCE_MANAGER'` / `'OWNER_ONLY'` /
+   * `'OWNER+ALL_NON_SALES'`. UI uses this to hide the "Post" button for
+   * roles that will be 403'd at the server.
+   */
+  postPermission:
+    | 'OWNER+FINANCE_MANAGER+ACCOUNTANT'
+    | 'OWNER+FINANCE_MANAGER'
+    | 'OWNER_ONLY'
+    | 'OWNER+ALL_NON_SALES';
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -380,6 +392,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   settlementPartialPaymentEnabled: true,
   viewerRoleEnabled: false,
   settingsAccessRole: 'OWNER',
+  postPermission: 'OWNER+FINANCE_MANAGER+ACCOUNTANT',
 };
 
 export function useUiFlags(): UiFlags {

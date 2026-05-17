@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { readBoolFlag, readNumberFlag } from '../../utils/config.util';
 
 /**
  * Keys whose values are secrets (API tokens, bank credentials). The audit
@@ -74,20 +75,13 @@ export class SettingsService {
     return row?.value ?? null;
   }
 
+  // Delegate to shared util — keeps parsing semantics identical across services.
   private async readNumber(key: string, fallback: number): Promise<number> {
-    const raw = await this.getKey(key);
-    if (raw == null) return fallback;
-    const n = Number(raw);
-    return Number.isFinite(n) ? n : fallback;
+    return readNumberFlag(this.prisma, key, fallback);
   }
 
   private async readBoolean(key: string, fallback: boolean): Promise<boolean> {
-    const raw = await this.getKey(key);
-    if (raw == null) return fallback;
-    const v = raw.trim().toLowerCase();
-    if (v === 'true' || v === '1') return true;
-    if (v === 'false' || v === '0') return false;
-    return fallback;
+    return readBoolFlag(this.prisma, key, fallback);
   }
 
   /**
@@ -276,7 +270,46 @@ export class SettingsService {
     return { dailyCap, workloadFloor, etaPerContractMin, sessionTargetMin, selfClaimLockHours };
   }
 
+  /**
+   * D1.1.3.1 follow-up — defensive normalisation for VAT-rate writes.
+   *
+   * Legacy frontends (or operators using a generic SQL client) may still
+   * send `{ key: 'vat_pct', value: '0.07' }` to `/settings`. After PR #940
+   * (the canonical `VAT_RATE` migration) any such write resurrects the
+   * orphan key and `VatRateBootstrapService` warns on the next boot.
+   *
+   * This helper rewrites the item in-place: `vat_pct` writes become
+   * `VAT_RATE` writes, converting decimal form to percent form when
+   * needed. `vat_rate` (older legacy) treated the same. Already-canonical
+   * `VAT_RATE` items pass through unchanged.
+   *
+   * Idempotent: if both legacy and canonical keys are sent in the same
+   * batch, the canonical wins (last write wins inside the same batch).
+   */
+  private normaliseVatRateWrites(
+    items: { key: string; value: string }[],
+  ): { key: string; value: string }[] {
+    return items.map((item) => {
+      if (item.key !== 'vat_pct' && item.key !== 'vat_rate') return item;
+      const trimmed = String(item.value ?? '').trim();
+      if (!trimmed) return { key: 'VAT_RATE', value: '' };
+      const n = Number(trimmed);
+      if (!Number.isFinite(n) || n < 0) {
+        return { key: 'VAT_RATE', value: trimmed };
+      }
+      // Values < 1 are decimal-form ('0.07') → multiply by 100 for percent.
+      // Values >= 1 are already percent-form. Round to 4 decimal places so
+      // floating-point math (0.07*100=7.000000000000001) doesn't leak into
+      // the audit log or back to the UI.
+      const asPercent = n < 1 ? n * 100 : n;
+      const rounded = Math.round(asPercent * 10000) / 10000;
+      return { key: 'VAT_RATE', value: String(rounded) };
+    });
+  }
+
   async bulkUpdate(items: { key: string; value: string }[], userId?: string) {
+    // D1.1.3.1 follow-up — rewrite legacy VAT keys before persist.
+    items = this.normaliseVatRateWrites(items);
     // Fetch "before" snapshot in one query so the transaction stays bounded.
     const keys = items.map((i) => i.key);
     const existing = await this.prisma.systemConfig.findMany({

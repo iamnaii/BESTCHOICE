@@ -93,6 +93,51 @@ describe('SettingsService audit trail', () => {
     expect(actions).toContain('SYSTEM_CONFIG_CREATE');
   });
 
+  // D1.1.3.1 follow-up — VAT-rate write normalisation.
+  describe('bulkUpdate VAT_RATE normalisation', () => {
+    beforeEach(() => {
+      // Mock the upsert side-effect so we can read the call args.
+      prisma.systemConfig.upsert = jest.fn(
+        (args: { where: { key: string }; update: { value: string }; create: { key: string; value: string } }) =>
+          Promise.resolve({ id: 'sc-1', key: args.where.key, value: args.update.value }),
+      );
+    });
+
+    it('rewrites vat_pct decimal form to VAT_RATE percent form', async () => {
+      prisma.systemConfig.findMany.mockResolvedValue([]);
+      await service.bulkUpdate([{ key: 'vat_pct', value: '0.07' }], 'u-1');
+      const upsertArgs = prisma.systemConfig.upsert.mock.calls[0][0];
+      expect(upsertArgs.where).toEqual({ key: 'VAT_RATE' });
+      expect(upsertArgs.update).toEqual({ value: '7' });
+    });
+
+    it('passes through VAT_RATE writes unchanged', async () => {
+      prisma.systemConfig.findMany.mockResolvedValue([]);
+      await service.bulkUpdate([{ key: 'VAT_RATE', value: '7' }], 'u-1');
+      const upsertArgs = prisma.systemConfig.upsert.mock.calls[0][0];
+      expect(upsertArgs.where).toEqual({ key: 'VAT_RATE' });
+      expect(upsertArgs.update).toEqual({ value: '7' });
+    });
+
+    it('rewrites legacy vat_rate alias the same way as vat_pct', async () => {
+      prisma.systemConfig.findMany.mockResolvedValue([]);
+      await service.bulkUpdate([{ key: 'vat_rate', value: '0.07' }], 'u-1');
+      const upsertArgs = prisma.systemConfig.upsert.mock.calls[0][0];
+      expect(upsertArgs.where).toEqual({ key: 'VAT_RATE' });
+      expect(upsertArgs.update).toEqual({ value: '7' });
+    });
+
+    it('preserves percent-form value sent under vat_pct (operator confusion)', async () => {
+      prisma.systemConfig.findMany.mockResolvedValue([]);
+      // Operator types "7" into a field labelled vat_pct — that's percent,
+      // not decimal. Heuristic treats >=1 as already percent.
+      await service.bulkUpdate([{ key: 'vat_pct', value: '7' }], 'u-1');
+      const upsertArgs = prisma.systemConfig.upsert.mock.calls[0][0];
+      expect(upsertArgs.where).toEqual({ key: 'VAT_RATE' });
+      expect(upsertArgs.update).toEqual({ value: '7' });
+    });
+  });
+
   it('audit failure does NOT block config update (audit.log is fire-and-forget-style)', async () => {
     prisma.systemConfig.findUnique.mockResolvedValue({ value: 'old' });
     audit.log.mockRejectedValue(new Error('audit DB down'));

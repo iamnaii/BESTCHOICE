@@ -162,6 +162,9 @@ const OtherIncomePendingApprovalPage = lazy(
 );
 const OtherIncomeTemplatesPage = lazy(() => import('@/pages/other-income/OtherIncomeTemplatesPage'));
 const PeriodClosePage = lazy(() => import('@/pages/accounting/PeriodClosePage'));
+const TaxDisallowedSummaryPage = lazy(
+  () => import('@/pages/accounting/TaxDisallowedSummaryPage'),
+);
 
 const PageLoader = () => (
   <div className="flex items-center justify-center py-20">
@@ -1070,6 +1073,15 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER']}>
                 <PeriodsRedirect />
+              </ProtectedRoute>
+            }
+          />
+          {/* Phase A.5 — Tax-disallowed expense summary for ภ.ง.ด.50/51 prep */}
+          <Route
+            path="/accounting/tax-disallowed-summary"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <TaxDisallowedSummaryPage />
               </ProtectedRoute>
             }
           />

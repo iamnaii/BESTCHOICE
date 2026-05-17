@@ -1,14 +1,48 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotImplementedException,
+} from '@nestjs/common';
 import { DocumentType, Prisma } from '@prisma/client';
-import { SettingsService } from '../../settings/settings.service';
+import {
+  DEFAULT_DOC_PREFIX_MAP,
+  SettingsService,
+} from '../../settings/settings.service';
 
-const PREFIX_MAP: Record<DocumentType, string> = {
-  EXPENSE: 'EX',
-  CREDIT_NOTE: 'CN',
-  PAYROLL: 'PR',
-  VENDOR_SETTLEMENT: 'SE',
-  PETTY_CASH_REIMBURSEMENT: 'PC',
-};
+/**
+ * D1.1.2.2 — whitelisted document-number layout strings.
+ *
+ * The Settings_Audit_Core_v2.0 spec (row 1.2.2) calls for `YYMMNNN`. We
+ * concretise that as `PREFIX-YYMM-NNN` (4-digit period + 3-digit seq) and
+ * make it the project default. Three legacy / extended variants stay in the
+ * whitelist so OWNERs can opt-in to higher daily / yearly volume:
+ *
+ *   - `PREFIX-YYMM-NNN`     (spec default — short, monthly window, 3 digits)
+ *   - `PREFIX-YYYYMMDD-NNNN` (legacy v1, daily window, 4 digits)
+ *   - `PREFIX-YYYYMM-NNNNN`  (monthly window, 5 digits — high-volume)
+ *   - `PREFIX-YYYY-NNNNNN`   (yearly window, 6 digits — very-high-volume)
+ *
+ * Unknown values silently fall back to the spec default at read time so doc
+ * creation never blocks on a bad SystemConfig row.
+ */
+export type DocNumberFormat =
+  | 'PREFIX-YYMM-NNN'
+  | 'PREFIX-YYYYMMDD-NNNN'
+  | 'PREFIX-YYYYMM-NNNNN'
+  | 'PREFIX-YYYY-NNNNNN';
+
+/**
+ * Spec default per `docs/superpowers/tracking/_owner-package/Settings_Audit_Core_v2.0.md`
+ * row 1.2.2 (`doc_number_format = YYMMNNN`).
+ */
+export const DEFAULT_DOC_NUMBER_FORMAT: DocNumberFormat = 'PREFIX-YYMM-NNN';
+
+const VALID_DOC_NUMBER_FORMATS: ReadonlySet<DocNumberFormat> = new Set<DocNumberFormat>([
+  'PREFIX-YYMM-NNN',
+  'PREFIX-YYYYMMDD-NNNN',
+  'PREFIX-YYYYMM-NNNNN',
+  'PREFIX-YYYY-NNNNNN',
+]);
 
 /**
  * D1.1.2.3 — whitelisted reset cycles for document-number sequences.
@@ -23,11 +57,6 @@ const PREFIX_MAP: Record<DocumentType, string> = {
  */
 export type ResetCycle = 'daily' | 'monthly' | 'yearly';
 
-/**
- * Spec default per Settings_Audit_Core_v2.0 row 1.2.3.
- */
-export const DEFAULT_RESET_CYCLE: ResetCycle = 'yearly';
-
 const VALID_RESET_CYCLES: ReadonlySet<ResetCycle> = new Set<ResetCycle>([
   'daily',
   'monthly',
@@ -35,170 +64,106 @@ const VALID_RESET_CYCLES: ReadonlySet<ResetCycle> = new Set<ResetCycle>([
 ]);
 
 /**
- * D1.1.2.2 format whitelist — duplicated locally to keep this PR self-contained
- * when its sibling PR #941 (D1.1.2.2) has not yet merged. When BOTH PRs are
- * on main the format string is owned by D1.1.2.2 via the `doc_number_format`
- * SystemConfig key; this PR only reads it as a soft input.
- *
- * C6.1 (deep review) — the emitted number's date portion + seq width MUST
- * follow the configured format. Hard-coding YYYYMMDD here (as previous draft
- * did) breaks the spec's `YYMMNNN` default.
+ * D1.1.2.3 — spec default per Settings_Audit_Core_v2.0 row 1.2.3
+ * (`reset_cycle = yearly`).
  */
-type DocNumberFormat =
-  | 'PREFIX-YYMM-NNN'
-  | 'PREFIX-YYYYMMDD-NNNN'
-  | 'PREFIX-YYYYMM-NNNNN'
-  | 'PREFIX-YYYY-NNNNNN';
-
-const VALID_DOC_NUMBER_FORMATS: ReadonlySet<DocNumberFormat> = new Set<DocNumberFormat>([
-  'PREFIX-YYMM-NNN',
-  'PREFIX-YYYYMMDD-NNNN',
-  'PREFIX-YYYYMM-NNNNN',
-  'PREFIX-YYYY-NNNNNN',
-]);
+export const DEFAULT_RESET_CYCLE: ResetCycle = 'yearly';
 
 /**
- * Legacy default when D1.1.2.2 has not yet merged. We intentionally keep
- * `PREFIX-YYYYMMDD-NNNN` here (not the spec's `PREFIX-YYMM-NNN`) so emitted
- * numbers pre-#941 are identical to today's `EX-20260510-0001` form.
- * Once #941 ships, its OWNER-set `doc_number_format` SystemConfig key takes
- * over (and its service-level default flips to the spec's YYMM-NNN).
+ * D1.1.2.4 — SystemConfig key `doc_sequence_table_enabled` (default `'false'`).
+ *
+ * Owner picked "accept current behavior" for Q3 — current implementation uses
+ * a PostgreSQL advisory lock + `MAX(docNumber)` lookup inside the same DB
+ * transaction. This works correctly under normal load (~100 docs/day) and
+ * doesn't require an additional table.
+ *
+ * The flag is reserved as a **forward-extension point** for a future migration
+ * to a dedicated `DocumentSequence` model. When `true`, the service throws
+ * `NotImplementedException` so the OWNER realizes the migration hasn't
+ * happened yet — silent fallback would create the impression a feature exists
+ * when it doesn't.
  */
-const LEGACY_DEFAULT_FORMAT: DocNumberFormat = 'PREFIX-YYYYMMDD-NNNN';
-
 @Injectable()
 export class DocNumberService {
   constructor(private readonly settings: SettingsService) {}
 
   /**
    * Generate next sequential document number with race-safe Postgres
-   * advisory lock per (type, cycle, BKK-period) key. Mirrors OI/RT pattern.
+   * advisory lock per (type, BKK-period) key. Mirrors OI/RT pattern.
    *
-   * D1.1.2.3 — the advisory-lock + sequence-lookup window is driven by
-   * SystemConfig key `doc_number_reset_cycle`. Three cycles whitelisted:
-   *   - `daily`   — legacy v1, per-day window
-   *   - `monthly` — per-month window
-   *   - `yearly`  — (spec default) per-year window
-   * Unknown values silently fall back to the spec default at read time.
-   *
-   * D1.1.2.2 (sibling PR #941) — the visible layout (date portion + seq
-   * width) is driven by SystemConfig key `doc_number_format`. This PR
-   * reads that key with a defensive fallback to the legacy
-   * `PREFIX-YYYYMMDD-NNNN` form so behaviour pre-#941 is identical to
-   * today's `EX-20260510-0001` numbers.
-   *
-   * **C6.1 fix:** previous draft hard-coded YYYYMMDD in the emitted number.
-   * Now the date portion + seq width follow the active format, so when
-   * BOTH PRs ship the composition is e.g. `EX-2605-001` (yearly cycle +
-   * YYMM-NNN format) instead of the meaningless `EX-20260510-001`.
-   *
-   * `issueDate` convention (W5): the BKK period is derived from the
-   * user-chosen `documentDate` (NOT server "now"), so a same-day creation
-   * backdated to yesterday will still number under yesterday's sequence.
-   *
-   * W4 — explicit throw when seq overflows the configured digit width.
+   * D1.1.2.1 — prefix is sourced from SystemConfig `doc_prefix_per_type`
+   * with fallback to `DEFAULT_DOC_PREFIX_MAP`.
+   * D1.1.2.2 — layout (date portion + seq width) driven by SystemConfig
+   * `doc_number_format`. Four layouts whitelisted; unknown falls back to
+   * the spec default.
+   * D1.1.2.3 (sibling PR #947) — advisory-lock + sequence-lookup window
+   * driven by SystemConfig `doc_number_reset_cycle` (daily/monthly/yearly).
+   * Soft-reads with fallback to `daily` pre-#947.
+   * D1.1.2.4 — when `doc_sequence_table_enabled = 'true'`, throws
+   * `NotImplementedException`. See class docstring for rationale.
    */
   async next(
     tx: Prisma.TransactionClient,
     type: DocumentType,
     issueDate: Date,
   ): Promise<string> {
-    const cycle = await this.resolveResetCycle();
+    // D1.1.2.4 — sequence table not implemented; reject explicitly if OWNER
+    // has flipped the flag without an accompanying migration.
+    if (await this.isSequenceTableEnabled()) {
+      throw new NotImplementedException(
+        'Sequence table mode not implemented yet — please disable this flag (doc_sequence_table_enabled = false)',
+      );
+    }
+
     const format = await this.resolveFormat();
+    const cycle = await this.resolveResetCycle();
     const { datePortion, seqWidth } = this.layout(issueDate, format);
-    const periodStart = this.periodStartString(issueDate, cycle);
-    const prefixLetters = PREFIX_MAP[type];
-    const emitPrefix = `${prefixLetters}-${datePortion}-`;
-    // Lookup prefix follows the CYCLE window expressed in the FORMAT's year
-    // representation (2-digit vs 4-digit). When the cycle resolution is
-    // finer than the format expresses, fall back to the format's datePortion
-    // (e.g. format=YYMM-NNN + cycle=daily is degenerate → effectively monthly).
-    const lookupPrefix = `${prefixLetters}-${this.lookupPeriodPrefix(issueDate, format, cycle)}`;
-    const lockKey = this.hashLockKey(`expdoc:${type}:${cycle}:${periodStart}`);
+    const prefixMap = await this.resolvePrefixMap();
+    const prefixLetters = prefixMap[type];
+    const prefix = `${prefixLetters}-${datePortion}-`;
+    // Advisory lock scope follows the reset_cycle dimension (D1.1.2.3).
+    // When #947 has not yet merged, cycle defaults to `daily` so lock
+    // behaviour is unchanged from pre-D1.1.2.x baseline.
+    const lockScope = this.periodStartString(issueDate, cycle);
+    const lockKey = this.hashLockKey(`expdoc:${type}:${cycle}:${lockScope}`);
     await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${lockKey})`);
 
     const last = await tx.expenseDocument.findFirst({
-      where: { number: { startsWith: lookupPrefix } },
+      where: { number: { startsWith: prefix } },
       orderBy: { number: 'desc' },
       select: { number: true },
     });
-    const lastSeq = last ? this.extractTrailingSeq(last.number) : 0;
+    const lastSeq = last
+      ? parseInt(last.number.slice(prefix.length), 10) || 0
+      : 0;
     const nextSeq = lastSeq + 1;
     const maxSeq = Math.pow(10, seqWidth) - 1;
     if (nextSeq > maxSeq) {
       throw new BadRequestException(
-        `เลขที่เอกสาร ${prefixLetters} เกิน ${maxSeq} ใน 1 ช่วง (${cycle} ${periodStart}) — ติดต่อผู้ดูแลระบบ`,
+        `เลขที่เอกสาร ${prefixLetters} เกิน ${maxSeq} ใน 1 ช่วง (BKK ${datePortion}) — ติดต่อผู้ดูแลระบบ`,
       );
     }
     const seq = String(nextSeq).padStart(seqWidth, '0');
-    return `${emitPrefix}${seq}`;
+    return `${prefix}${seq}`;
   }
 
   /**
-   * D1.1.2.3 — compute the sequence-lookup prefix for the (format, cycle)
-   * pair. The lookup prefix is a `startsWith` substring of the emitted
-   * number — it MUST be a leading substring of `${prefixLetters}-${datePortion}-`
-   * so that all docs issued in the same cycle window match.
-   *
-   * Tables:
-   *
-   * | format        | daily        | monthly | yearly |
-   * |---------------|--------------|---------|--------|
-   * | YYMM-NNN      | YYMM*        | YYMM    | YY     |
-   * | YYYYMMDD-NNNN | YYYYMMDD     | YYYYMM  | YYYY   |
-   * | YYYYMM-NNNNN  | YYYYMM*      | YYYYMM  | YYYY   |
-   * | YYYY-NNNNNN   | YYYY*        | YYYY*   | YYYY   |
-   *
-   *  *Degenerate combos — cycle resolution finer than format expresses;
-   *  effectively the format's own period.
+   * D1.1.2.1 — fetch the active prefix map. Pulls from SettingsService when
+   * available; falls back to the static `DEFAULT_DOC_PREFIX_MAP` if any error
+   * surfaces (defensive: doc creation must never block on the settings query).
    */
-  private lookupPeriodPrefix(
-    issueDate: Date,
-    format: DocNumberFormat,
-    cycle: ResetCycle,
-  ): string {
-    const useTwoDigitYear = format === 'PREFIX-YYMM-NNN';
-    const yy = this.bkkYyyy(issueDate).slice(2);
-    const yyyy = this.bkkYyyy(issueDate);
-    const mm = this.bkkYyyymm(issueDate).slice(-2);
-    switch (cycle) {
-      case 'yearly':
-        return useTwoDigitYear ? yy : yyyy;
-      case 'monthly':
-        return useTwoDigitYear ? `${yy}${mm}` : `${yyyy}${mm}`;
-      case 'daily':
-      default: {
-        // Daily lookup only makes sense for formats that include the day.
-        // Fall back to the format's own datePortion for day-less formats.
-        const { datePortion } = this.layout(issueDate, format);
-        return datePortion;
-      }
-    }
-  }
-
-  /**
-   * D1.1.2.3 — fetch the active reset cycle with defensive fallback. Unknown
-   * / missing values are silently coerced to the spec default (`yearly`) so
-   * doc creation never blocks on a bad SystemConfig row.
-   */
-  private async resolveResetCycle(): Promise<ResetCycle> {
+  private async resolvePrefixMap(): Promise<Record<DocumentType, string>> {
     try {
-      const raw = await this.settings.getKey('doc_number_reset_cycle');
-      if (raw && VALID_RESET_CYCLES.has(raw as ResetCycle)) {
-        return raw as ResetCycle;
-      }
+      return await this.settings.getDocPrefixMap();
     } catch {
-      // fall through
+      return { ...DEFAULT_DOC_PREFIX_MAP };
     }
-    return DEFAULT_RESET_CYCLE;
   }
 
   /**
-   * D1.1.2.2 (sibling) — fetch the active doc-number format. When sibling
-   * PR #941 has not yet merged the SystemConfig row will be absent and we
-   * fall back to legacy `PREFIX-YYYYMMDD-NNNN` (so emitted numbers stay
-   * identical to today's `EX-20260510-0001` form). Once #941 is on main,
-   * its OWNER-set `doc_number_format` SystemConfig key takes over.
+   * D1.1.2.2 — fetch the active doc-number format with defensive fallback.
+   * Unknown / missing values are silently coerced to the spec default so doc
+   * creation never blocks on a bad SystemConfig row.
    */
   private async resolveFormat(): Promise<DocNumberFormat> {
     try {
@@ -207,43 +172,59 @@ export class DocNumberService {
         return raw as DocNumberFormat;
       }
     } catch {
-      // fall through to legacy default
+      // fall through to default
     }
-    return LEGACY_DEFAULT_FORMAT;
+    return DEFAULT_DOC_NUMBER_FORMAT;
   }
 
   /**
-   * D1.1.2.2 (sibling) — map a `DocNumberFormat` to its date portion + seq
-   * width. Pure function; no DB / IO.
+   * D1.1.2.3 — fetch the active reset cycle from SystemConfig with defensive
+   * fallback to the spec default (`yearly`). Unknown / missing values are
+   * silently coerced so doc creation never blocks on a bad SystemConfig row.
+   */
+  private async resolveResetCycle(): Promise<ResetCycle> {
+    try {
+      const raw = await this.settings.getKey('doc_number_reset_cycle');
+      if (raw && VALID_RESET_CYCLES.has(raw as ResetCycle)) {
+        return raw as ResetCycle;
+      }
+    } catch {
+      // fall through to spec default
+    }
+    return DEFAULT_RESET_CYCLE;
+  }
+
+  /**
+   * D1.1.2.2 — map a `DocNumberFormat` to its date portion + seq width.
+   * Pure function; no DB / IO.
    */
   private layout(
     issueDate: Date,
     format: DocNumberFormat,
   ): { datePortion: string; seqWidth: number } {
     switch (format) {
-      case 'PREFIX-YYMM-NNN':
-        return { datePortion: this.bkkYymm(issueDate), seqWidth: 3 };
       case 'PREFIX-YYYYMM-NNNNN':
         return { datePortion: this.bkkYyyymm(issueDate), seqWidth: 5 };
       case 'PREFIX-YYYY-NNNNNN':
         return { datePortion: this.bkkYyyy(issueDate), seqWidth: 6 };
       case 'PREFIX-YYYYMMDD-NNNN':
-      default:
         return { datePortion: this.bkkYyyymmdd(issueDate), seqWidth: 4 };
+      case 'PREFIX-YYMM-NNN':
+      default:
+        return { datePortion: this.bkkYymm(issueDate), seqWidth: 3 };
     }
   }
 
   /**
-   * D1.1.2.3 — BKK YYYYMMDD / YYYYMM / YYYY identifier string for the
-   * issue date's containing period under the given cycle. Used as the
-   * advisory-lock scope dimension.
+   * D1.1.2.3 (sibling) — BKK period identifier string for advisory-lock
+   * scope. Daily=YYYYMMDD, monthly=YYYYMM, yearly=YYYY.
    */
   private periodStartString(issueDate: Date, cycle: ResetCycle): string {
     switch (cycle) {
       case 'monthly':
-        return this.getBkkMonthBounds(issueDate).yyyymm;
+        return this.bkkYyyymm(issueDate);
       case 'yearly':
-        return this.getBkkYearBounds(issueDate).yyyy;
+        return this.bkkYyyy(issueDate);
       case 'daily':
       default:
         return this.bkkYyyymmdd(issueDate);
@@ -251,13 +232,20 @@ export class DocNumberService {
   }
 
   /**
-   * D1.1.2.3 — extract the trailing NNNN sequence from a document number.
-   * Parses the last `-`-delimited segment so it handles any D1.1.2.2
-   * layout (3-digit / 4-digit / 5-digit / 6-digit) without changes.
+   * D1.1.2.4 — read `doc_sequence_table_enabled` flag. Defensive: any error
+   * resolving the flag (DB down, malformed value) is treated as "false" so
+   * doc creation continues using the advisory-lock fast path. Only an
+   * explicit `'true'` / `'1'` value (case-insensitive) enables the throw branch.
    */
-  private extractTrailingSeq(docNumber: string): number {
-    const segs = docNumber.split('-');
-    return parseInt(segs[segs.length - 1], 10) || 0;
+  private async isSequenceTableEnabled(): Promise<boolean> {
+    try {
+      const raw = await this.settings.getKey('doc_sequence_table_enabled');
+      if (!raw) return false;
+      const v = raw.trim().toLowerCase();
+      return v === 'true' || v === '1';
+    } catch {
+      return false;
+    }
   }
 
   /** Asia/Bangkok local YYYYMMDD via Intl (BKK is UTC+7, no DST). */
@@ -279,6 +267,9 @@ export class DocNumberService {
       year: 'numeric',
       month: '2-digit',
     });
+    // Defensive: en-CA with year+month returns "YYYY-MM" today, but slice the
+    // first two segments to stay robust against ICU output shape drift across
+    // Node versions.
     return parts.split('-').slice(0, 2).join('');
   }
 
@@ -291,47 +282,19 @@ export class DocNumberService {
   }
 
   /**
-   * D1.1.2.2 (sibling) — Asia/Bangkok local YYMM (2-digit year + month).
-   * Used by the spec-default `PREFIX-YYMM-NNN` format. See sibling PR #941
-   * for full discussion of the 2-digit-year wraparound trade-off.
+   * D1.1.2.2 — Asia/Bangkok local YYMM (2-digit year + 2-digit month).
+   * Used by the spec-default `PREFIX-YYMM-NNN` format.
+   *
+   * Spec uses Gregorian (ค.ศ.) 2-digit year for grep-ability with PEAK and
+   * other Thai accounting tools that historically use YY-prefix doc numbers.
+   * For 2026 → `YY = 26`; for 2100 → `YY = 00` (wraps). This is acceptable
+   * because doc-numbers reset annually under the spec default cycle (yearly)
+   * so cross-century collisions are extremely unlikely AND would be on
+   * different years anyway (different reset window).
    */
   private bkkYymm(date: Date): string {
-    return this.bkkYyyymm(date).slice(2);
-  }
-
-  /**
-   * D1.1.2.3 — BKK month bounds (start of 1st → start of next month UTC) +
-   * YYYYMM identifier string. Mirrors `getBkkDayBounds()` style.
-   */
-  getBkkMonthBounds(date: Date): { start: Date; end: Date; yyyymm: string } {
-    const parts = date.toLocaleString('en-CA', {
-      timeZone: 'Asia/Bangkok',
-      year: 'numeric',
-      month: '2-digit',
-    });
-    const [y, m] = parts.split('-').slice(0, 2).map((s) => parseInt(s, 10));
-    const yyyymm = `${y}${String(m).padStart(2, '0')}`;
-    // BKK midnight on 1st = UTC 17:00 previous day.
-    const bkkOffsetMs = 7 * 60 * 60 * 1000;
-    const start = new Date(Date.UTC(y, m - 1, 1) - bkkOffsetMs);
-    const end = new Date(Date.UTC(y, m, 1) - bkkOffsetMs);
-    return { start, end, yyyymm };
-  }
-
-  /**
-   * D1.1.2.3 — BKK year bounds (start of Jan 1 → start of next Jan 1) +
-   * YYYY identifier string.
-   */
-  getBkkYearBounds(date: Date): { start: Date; end: Date; yyyy: string } {
-    const yyyy = date.toLocaleString('en-CA', {
-      timeZone: 'Asia/Bangkok',
-      year: 'numeric',
-    });
-    const y = parseInt(yyyy, 10);
-    const bkkOffsetMs = 7 * 60 * 60 * 1000;
-    const start = new Date(Date.UTC(y, 0, 1) - bkkOffsetMs);
-    const end = new Date(Date.UTC(y + 1, 0, 1) - bkkOffsetMs);
-    return { start, end, yyyy };
+    const yyyymm = this.bkkYyyymm(date); // "YYYYMM"
+    return yyyymm.slice(2); // "YYMM"
   }
 
   /** Deterministic 32-bit hash for advisory lock keys. */

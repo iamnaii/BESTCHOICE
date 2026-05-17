@@ -17,41 +17,35 @@ describe('DocNumberService', () => {
       },
     };
     settings = {
-      // default: both keys absent.
-      // → cycle defaults to spec `yearly`
-      // → format defaults to legacy `PREFIX-YYYYMMDD-NNNN` (pre-#941 behaviour)
+      // default: both keys absent (no SystemConfig rows) → spec default
+      // format PREFIX-YYMM-NNN + legacy cycle daily.
       getKey: jest.fn().mockResolvedValue(null),
     };
     service = new DocNumberService(settings as unknown as SettingsService);
   });
 
   // ---------------------------------------------------------------------------
-  // Default — cycle=yearly (spec) + format=YYYYMMDD-NNNN (legacy fallback).
-  // Emitted number keeps full date portion; lookup prefix is YYYY-wide so the
-  // sequence carries across the year.
+  // Spec default — PREFIX-YYMM-NNN (Settings_Audit_Core_v2.0 row 1.2.2).
   // ---------------------------------------------------------------------------
-  describe('default (cycle=yearly + legacy format fallback)', () => {
-    it('returns EX-YYYYMMDD-0001 for first EXPENSE of the year', async () => {
+  describe('default format (PREFIX-YYMM-NNN per spec)', () => {
+    it('returns EX-YYMM-001 for first EXPENSE on given date', async () => {
       tx.expenseDocument.findFirst.mockResolvedValue(null);
       const num = await service.next(
         tx as Prisma.TransactionClient,
         'EXPENSE',
         new Date('2026-05-10T12:00:00Z'),
       );
-      expect(num).toBe('EX-20260510-0001');
+      expect(num).toBe('EX-2605-001');
     });
 
-    it('sequence carries across the year: Feb seq 0123 → May 0124', async () => {
-      tx.expenseDocument.findFirst.mockResolvedValue({ number: 'EX-20260214-0123' });
+    it('increments sequence within the YYMM window', async () => {
+      tx.expenseDocument.findFirst.mockResolvedValue({ number: 'EX-2605-042' });
       const num = await service.next(
         tx as Prisma.TransactionClient,
         'EXPENSE',
         new Date('2026-05-10T12:00:00Z'),
       );
-      expect(num).toBe('EX-20260510-0124');
-      // Lookup should be YYYY-wide.
-      const findCall = tx.expenseDocument.findFirst.mock.calls[0][0];
-      expect(findCall.where.number.startsWith).toBe('EX-2026');
+      expect(num).toBe('EX-2605-043');
     });
 
     it('uses correct prefix per type', async () => {
@@ -74,198 +68,162 @@ describe('DocNumberService', () => {
       );
     });
 
-    it('yearly cycle: different days within same year share same lock key', async () => {
+    it('uses Asia/Bangkok timezone for date boundary (UTC late-night → next BKK day/month)', async () => {
       tx.expenseDocument.findFirst.mockResolvedValue(null);
-      await service.next(tx, 'EXPENSE', new Date('2026-01-15T12:00:00Z'));
-      const lockKey1 = tx.$executeRawUnsafe.mock.calls[0][0];
-      tx.$executeRawUnsafe.mockClear();
-      await service.next(tx, 'EXPENSE', new Date('2026-11-15T12:00:00Z'));
-      const lockKey2 = tx.$executeRawUnsafe.mock.calls[0][0];
-      expect(lockKey1).toBe(lockKey2);
+      // 2026-05-31 19:00 UTC = 2026-06-01 02:00 BKK → YYMM = "2606"
+      const num = await service.next(tx, 'EXPENSE', new Date('2026-05-31T19:00:00Z'));
+      expect(num).toBe('EX-2606-001');
     });
 
-    it('uses Asia/Bangkok timezone for date boundary', async () => {
-      tx.expenseDocument.findFirst.mockResolvedValue(null);
-      // 2026-05-10 19:00 UTC = 2026-05-11 02:00 BKK
-      const num = await service.next(tx, 'EXPENSE', new Date('2026-05-10T19:00:00Z'));
-      expect(num).toBe('EX-20260511-0001');
-    });
-
-    // W4 — explicit throw when seq overflows 4-digit slot (legacy format).
-    it('W4: throws when seq exceeds 9999', async () => {
-      tx.expenseDocument.findFirst.mockResolvedValue({ number: 'EX-20260510-9999' });
+    it('W4: throws when seq exceeds 999 on default format', async () => {
+      tx.expenseDocument.findFirst.mockResolvedValue({ number: 'EX-2605-999' });
       await expect(
         service.next(tx, 'EXPENSE', new Date('2026-05-10T12:00:00Z')),
-      ).rejects.toThrow(/เกิน 9999/);
+      ).rejects.toThrow(/เกิน 999/);
+    });
+
+    it('W4: still works at 998 → 999', async () => {
+      tx.expenseDocument.findFirst.mockResolvedValue({ number: 'EX-2605-998' });
+      const num = await service.next(tx, 'EXPENSE', new Date('2026-05-10T12:00:00Z'));
+      expect(num).toBe('EX-2605-999');
     });
   });
 
   // ---------------------------------------------------------------------------
-  // D1.1.2.3 — reset_cycle whitelist (3 cycles + bad fallback).
+  // D1.1.2.2 — whitelisted enum (all 4 variants).
   // ---------------------------------------------------------------------------
-  describe('D1.1.2.3 — doc_number_reset_cycle', () => {
-    it('daily: looks up prior numbers per-day only', async () => {
+  describe('D1.1.2.2 — doc_number_format whitelist', () => {
+    it('PREFIX-YYMM-NNN (explicit) produces YYMM + 3-digit seq', async () => {
       settings.getKey.mockImplementation(async (k: string) =>
-        k === 'doc_number_reset_cycle' ? 'daily' : null,
+        k === 'doc_number_format' ? 'PREFIX-YYMM-NNN' : null,
       );
-      tx.expenseDocument.findFirst.mockResolvedValue({ number: 'EX-20260510-0009' });
+      tx.expenseDocument.findFirst.mockResolvedValue(null);
       const num = await service.next(tx, 'EXPENSE', new Date('2026-05-10T12:00:00Z'));
-      expect(num).toBe('EX-20260510-0010');
-      const findCall = tx.expenseDocument.findFirst.mock.calls[0][0];
-      expect(findCall.where.number.startsWith).toBe('EX-20260510');
+      expect(num).toBe('EX-2605-001');
     });
 
-    it('monthly: looks up prior numbers across the whole BKK month', async () => {
+    it('PREFIX-YYYYMMDD-NNNN produces full date + 4-digit seq', async () => {
       settings.getKey.mockImplementation(async (k: string) =>
-        k === 'doc_number_reset_cycle' ? 'monthly' : null,
+        k === 'doc_number_format' ? 'PREFIX-YYYYMMDD-NNNN' : null,
       );
-      tx.expenseDocument.findFirst.mockResolvedValue({ number: 'EX-20260503-0050' });
+      tx.expenseDocument.findFirst.mockResolvedValue(null);
       const num = await service.next(tx, 'EXPENSE', new Date('2026-05-10T12:00:00Z'));
-      expect(num).toBe('EX-20260510-0051');
-      const findCall = tx.expenseDocument.findFirst.mock.calls[0][0];
-      expect(findCall.where.number.startsWith).toBe('EX-202605');
+      expect(num).toBe('EX-20260510-0001');
     });
 
-    it('yearly (spec default): looks up prior numbers across the whole BKK year', async () => {
-      // No SystemConfig set → defaults to yearly per spec.
-      tx.expenseDocument.findFirst.mockResolvedValue({ number: 'EX-20260214-0123' });
+    it('PREFIX-YYYYMM-NNNNN produces YYYYMM + 5-digit seq', async () => {
+      settings.getKey.mockImplementation(async (k: string) =>
+        k === 'doc_number_format' ? 'PREFIX-YYYYMM-NNNNN' : null,
+      );
+      tx.expenseDocument.findFirst.mockResolvedValue(null);
       const num = await service.next(tx, 'EXPENSE', new Date('2026-05-10T12:00:00Z'));
-      expect(num).toBe('EX-20260510-0124');
-      const findCall = tx.expenseDocument.findFirst.mock.calls[0][0];
-      expect(findCall.where.number.startsWith).toBe('EX-2026');
+      expect(num).toBe('EX-202605-00001');
     });
 
-    it('bad / non-whitelisted cycle value falls back to spec default (yearly)', async () => {
+    it('PREFIX-YYYY-NNNNNN produces YYYY + 6-digit seq', async () => {
       settings.getKey.mockImplementation(async (k: string) =>
-        k === 'doc_number_reset_cycle' ? 'weekly' : null,
+        k === 'doc_number_format' ? 'PREFIX-YYYY-NNNNNN' : null,
       );
-      tx.expenseDocument.findFirst.mockResolvedValue({ number: 'EX-20260214-0123' });
+      tx.expenseDocument.findFirst.mockResolvedValue(null);
       const num = await service.next(tx, 'EXPENSE', new Date('2026-05-10T12:00:00Z'));
-      expect(num).toBe('EX-20260510-0124');
-      const findCall = tx.expenseDocument.findFirst.mock.calls[0][0];
-      expect(findCall.where.number.startsWith).toBe('EX-2026');
+      expect(num).toBe('EX-2026-000001');
+    });
+
+    it('bad / non-whitelisted format value falls back to spec default', async () => {
+      settings.getKey.mockImplementation(async (k: string) =>
+        k === 'doc_number_format' ? 'PREFIX-WTF-99' : null,
+      );
+      tx.expenseDocument.findFirst.mockResolvedValue(null);
+      const num = await service.next(tx, 'EXPENSE', new Date('2026-05-10T12:00:00Z'));
+      expect(num).toBe('EX-2605-001');
+    });
+
+    it('seq width overflow throws on PREFIX-YYYYMM-NNNNN at 99999', async () => {
+      settings.getKey.mockImplementation(async (k: string) =>
+        k === 'doc_number_format' ? 'PREFIX-YYYYMM-NNNNN' : null,
+      );
+      tx.expenseDocument.findFirst.mockResolvedValue({ number: 'EX-202605-99999' });
+      await expect(
+        service.next(tx, 'EXPENSE', new Date('2026-05-10T12:00:00Z')),
+      ).rejects.toThrow(/เกิน 99999/);
+    });
+
+    it('seq width overflow throws on PREFIX-YYYY-NNNNNN at 999999', async () => {
+      settings.getKey.mockImplementation(async (k: string) =>
+        k === 'doc_number_format' ? 'PREFIX-YYYY-NNNNNN' : null,
+      );
+      tx.expenseDocument.findFirst.mockResolvedValue({ number: 'EX-2026-999999' });
+      await expect(
+        service.next(tx, 'EXPENSE', new Date('2026-05-10T12:00:00Z')),
+      ).rejects.toThrow(/เกิน 999999/);
     });
 
     it('defensive fallback when SettingsService.getKey throws', async () => {
       settings.getKey.mockRejectedValue(new Error('db down'));
       tx.expenseDocument.findFirst.mockResolvedValue(null);
       const num = await service.next(tx, 'EXPENSE', new Date('2026-05-10T12:00:00Z'));
-      // Both keys throw → cycle=yearly (spec), format=legacy
-      expect(num).toBe('EX-20260510-0001');
-    });
-
-    // Period boundary edges.
-    it('monthly: BKK new-month boundary starts a fresh sequence', async () => {
-      settings.getKey.mockImplementation(async (k: string) =>
-        k === 'doc_number_reset_cycle' ? 'monthly' : null,
-      );
-      tx.expenseDocument.findFirst.mockResolvedValue(null);
-      const num = await service.next(tx, 'EXPENSE', new Date('2026-06-01T05:00:00Z'));
-      expect(num).toBe('EX-20260601-0001');
-      const findCall = tx.expenseDocument.findFirst.mock.calls[0][0];
-      expect(findCall.where.number.startsWith).toBe('EX-202606');
-    });
-
-    it('yearly: BKK new-year boundary starts a fresh sequence', async () => {
-      tx.expenseDocument.findFirst.mockResolvedValue(null);
-      const num = await service.next(tx, 'EXPENSE', new Date('2027-01-01T05:00:00Z'));
-      expect(num).toBe('EX-20270101-0001');
-      const findCall = tx.expenseDocument.findFirst.mock.calls[0][0];
-      expect(findCall.where.number.startsWith).toBe('EX-2027');
+      expect(num).toBe('EX-2605-001');
     });
   });
 
   // ---------------------------------------------------------------------------
-  // C6.1 composition with D1.1.2.2 — the emit's date portion + seq width must
-  // follow `doc_number_format`. When sibling PR #941 has not yet merged, this
-  // PR falls back to legacy `PREFIX-YYYYMMDD-NNNN`. When both merge, the spec
-  // composition yields `EX-2605-001` (yearly cycle + YYMM format).
+  // Composition with D1.1.2.3 — when sibling PR #947 sets a reset_cycle key
+  // this PR should respect it for advisory-lock scope (no visible change to
+  // the emitted number; just lock-key dimension). When the key is absent
+  // (#947 not merged) we default to legacy `daily` lock scope.
   // ---------------------------------------------------------------------------
-  describe('C6.1 composition with D1.1.2.2 doc_number_format', () => {
-    it('legacy format fallback: format key absent → YYYYMMDD-NNNN emission', async () => {
-      // Only cycle key set (e.g. owner toggled cycle via #947 but #941 not merged).
+  describe('D1.1.2.2 composition with D1.1.2.3 reset_cycle', () => {
+    it('legacy fallback: no reset_cycle key → daily lock scope, default format unchanged', async () => {
+      // both keys absent — legacy behaviour
+      settings.getKey.mockResolvedValue(null);
+      tx.expenseDocument.findFirst.mockResolvedValue(null);
+      const num = await service.next(tx, 'EXPENSE', new Date('2026-05-10T12:00:00Z'));
+      expect(num).toBe('EX-2605-001');
+      expect(tx.$executeRawUnsafe).toHaveBeenCalledWith(
+        expect.stringMatching(/^SELECT pg_advisory_xact_lock\(-?\d+\)$/),
+      );
+    });
+
+    it('respects reset_cycle=yearly: different days in same year hash to same lock key', async () => {
       settings.getKey.mockImplementation(async (k: string) =>
         k === 'doc_number_reset_cycle' ? 'yearly' : null,
       );
       tx.expenseDocument.findFirst.mockResolvedValue(null);
-      const num = await service.next(tx, 'EXPENSE', new Date('2026-05-10T12:00:00Z'));
-      expect(num).toBe('EX-20260510-0001');
+
+      await service.next(tx, 'EXPENSE', new Date('2026-01-15T12:00:00Z'));
+      const lockKey1 = tx.$executeRawUnsafe.mock.calls[0][0];
+      tx.$executeRawUnsafe.mockClear();
+
+      await service.next(tx, 'EXPENSE', new Date('2026-11-15T12:00:00Z'));
+      const lockKey2 = tx.$executeRawUnsafe.mock.calls[0][0];
+
+      expect(lockKey1).toBe(lockKey2);
     });
 
-    it('both merged: format=YYMM-NNN + cycle=yearly → EX-2605-001 (spec compose)', async () => {
-      settings.getKey.mockImplementation(async (k: string) => {
-        if (k === 'doc_number_format') return 'PREFIX-YYMM-NNN';
-        if (k === 'doc_number_reset_cycle') return 'yearly';
-        return null;
-      });
-      tx.expenseDocument.findFirst.mockResolvedValue(null);
-      const num = await service.next(tx, 'EXPENSE', new Date('2026-05-10T12:00:00Z'));
-      expect(num).toBe('EX-2605-001');
-      // Lookup uses 2-digit-year + yearly → YY prefix.
-      const findCall = tx.expenseDocument.findFirst.mock.calls[0][0];
-      expect(findCall.where.number.startsWith).toBe('EX-26');
-    });
-
-    it('compose: format=YYYY-NNNNNN + cycle=yearly → EX-2026-000001', async () => {
-      settings.getKey.mockImplementation(async (k: string) => {
-        if (k === 'doc_number_format') return 'PREFIX-YYYY-NNNNNN';
-        if (k === 'doc_number_reset_cycle') return 'yearly';
-        return null;
-      });
-      tx.expenseDocument.findFirst.mockResolvedValue(null);
-      const num = await service.next(tx, 'EXPENSE', new Date('2026-05-10T12:00:00Z'));
-      expect(num).toBe('EX-2026-000001');
-      const findCall = tx.expenseDocument.findFirst.mock.calls[0][0];
-      expect(findCall.where.number.startsWith).toBe('EX-2026');
-    });
-
-    it('compose: format=YYMM-NNN + cycle=monthly → EX-2605-001, lookup EX-2605', async () => {
-      settings.getKey.mockImplementation(async (k: string) => {
-        if (k === 'doc_number_format') return 'PREFIX-YYMM-NNN';
-        if (k === 'doc_number_reset_cycle') return 'monthly';
-        return null;
-      });
-      tx.expenseDocument.findFirst.mockResolvedValue({ number: 'EX-2605-050' });
-      const num = await service.next(tx, 'EXPENSE', new Date('2026-05-15T12:00:00Z'));
-      expect(num).toBe('EX-2605-051');
-      const findCall = tx.expenseDocument.findFirst.mock.calls[0][0];
-      expect(findCall.where.number.startsWith).toBe('EX-2605');
-    });
-
-    it('bad format value falls back to legacy YYYYMMDD-NNNN', async () => {
+    it('respects reset_cycle=daily: different days hash to different lock keys', async () => {
       settings.getKey.mockImplementation(async (k: string) =>
-        k === 'doc_number_format' ? 'BAD-FORMAT-XYZ' : null,
+        k === 'doc_number_reset_cycle' ? 'daily' : null,
+      );
+      tx.expenseDocument.findFirst.mockResolvedValue(null);
+
+      await service.next(tx, 'EXPENSE', new Date('2026-05-10T12:00:00Z'));
+      const lockKey1 = tx.$executeRawUnsafe.mock.calls[0][0];
+      tx.$executeRawUnsafe.mockClear();
+
+      await service.next(tx, 'EXPENSE', new Date('2026-05-11T12:00:00Z'));
+      const lockKey2 = tx.$executeRawUnsafe.mock.calls[0][0];
+
+      expect(lockKey1).not.toBe(lockKey2);
+    });
+
+    it('bad reset_cycle value falls back to legacy daily', async () => {
+      settings.getKey.mockImplementation(async (k: string) =>
+        k === 'doc_number_reset_cycle' ? 'WTF' : null,
       );
       tx.expenseDocument.findFirst.mockResolvedValue(null);
       const num = await service.next(tx, 'EXPENSE', new Date('2026-05-10T12:00:00Z'));
-      expect(num).toBe('EX-20260510-0001');
-    });
-  });
-
-  // ---------------------------------------------------------------------------
-  // D1.1.2.3 — BKK period helper methods (unchanged).
-  // ---------------------------------------------------------------------------
-  describe('D1.1.2.3 — BKK period helpers', () => {
-    it('getBkkMonthBounds returns YYYYMM identifier', () => {
-      const { yyyymm } = service.getBkkMonthBounds(new Date('2026-05-10T12:00:00Z'));
-      expect(yyyymm).toBe('202605');
-    });
-
-    it('getBkkMonthBounds spans first → next month UTC', () => {
-      const { start, end } = service.getBkkMonthBounds(new Date('2026-05-10T12:00:00Z'));
-      expect(start.toISOString()).toBe('2026-04-30T17:00:00.000Z');
-      expect(end.toISOString()).toBe('2026-05-31T17:00:00.000Z');
-    });
-
-    it('getBkkYearBounds returns YYYY identifier', () => {
-      const { yyyy } = service.getBkkYearBounds(new Date('2026-05-10T12:00:00Z'));
-      expect(yyyy).toBe('2026');
-    });
-
-    it('getBkkYearBounds spans Jan 1 → next Jan 1 UTC', () => {
-      const { start, end } = service.getBkkYearBounds(new Date('2026-05-10T12:00:00Z'));
-      expect(start.toISOString()).toBe('2025-12-31T17:00:00.000Z');
-      expect(end.toISOString()).toBe('2026-12-31T17:00:00.000Z');
+      // Format still default — bad cycle doesn't break number issuance.
+      expect(num).toBe('EX-2605-001');
     });
   });
 });

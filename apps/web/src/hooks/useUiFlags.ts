@@ -335,6 +335,13 @@ export interface UiFlags {
     | 'OWNER+FINANCE_MANAGER'
     | 'OWNER_ONLY'
     | 'OWNER+ALL_NON_SALES';
+  /**
+   * D1.3.2.4 — dynamic bundle controlling who can reverse/void expense
+   * documents. Whitelisted: `'OWNER+FINANCE_MANAGER'` (default) /
+   * `'OWNER_ONLY'`. UI uses this to hide the "Void" button for roles that
+   * will be 403'd at the server.
+   */
+  reversePermission: 'OWNER+FINANCE_MANAGER' | 'OWNER_ONLY';
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -422,6 +429,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   webhooksEnabled: false,
   settingsAccessRole: 'OWNER',
   postPermission: 'OWNER+FINANCE_MANAGER+ACCOUNTANT',
+  reversePermission: 'OWNER+FINANCE_MANAGER',
 };
 
 export function useUiFlags(): UiFlags {

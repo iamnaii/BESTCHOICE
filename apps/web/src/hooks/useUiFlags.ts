@@ -33,6 +33,13 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /**
+   * D1.4.3.6 — gate the LoginAuditLog row INSERT. Default `true`. When
+   * `false`, no audit row is written for login attempts. Failed-attempt
+   * counters + account lockout (v3 hardening) are unaffected — those run
+   * independent of audit retention.
+   */
+  loginLogEnabled: boolean;
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -53,6 +60,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  loginLogEnabled: true,
 };
 
 export function useUiFlags(): UiFlags {

@@ -175,6 +175,16 @@ export class SettingsService {
      * accessibility readers via the lang attr.
      */
     language: 'th' | 'en';
+    /**
+     * D1.4.3.6 — gate the LoginAuditLog row INSERT in
+     * `LoginAuditService.record`. Default `true`. When `false`, no audit
+     * row is written for login attempts — known-device tracking +
+     * new-device LINE alerts still run (security alerting independent of
+     * audit retention) and failed-attempt counting + account lockout in
+     * `AuthService` are unaffected (those drive the v3 account-lockout
+     * hardening, NOT the audit trail).
+     */
+    loginLogEnabled: boolean;
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -214,6 +224,8 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.4.3.6 — login audit logging toggle. Default true.
+    const loginLogEnabled = await this.readBoolean('login_log_enabled', true);
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -225,6 +237,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      loginLogEnabled,
     };
   }
 

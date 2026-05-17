@@ -115,6 +115,70 @@ export class SettingsService {
    * is identical whether the SystemConfig key has been seeded or not.
    */
   /**
+   * D1.1.3.2 — DB-driven WHT-rate dropdown. JSON-encoded array of
+   * `{rate, label}` objects stored in SystemConfig key `wht_rates`.
+   * Default = the 5 canonical rates (1/3/5/10/15 %).
+   *
+   * D1.1.3.5 — each entry MAY also carry an optional `effectiveDate`
+   * (ISO-8601 string). `null`/missing means "always active". Frontend
+   * filters out future-dated entries client-side when rendering the
+   * dropdown. The server keeps stored history intact.
+   *
+   * Validation rules per entry:
+   *   - `rate` must be a finite number in [0, 30]
+   *   - `label` must be a non-empty string
+   *   - `effectiveDate`, if present, must be a string that parses to a
+   *     valid Date (Date.parse not NaN)
+   * If ANY entry fails validation, fall back to defaults wholesale —
+   * partial/malformed data leaks confusing UI options.
+   */
+  async getWhtRates(): Promise<
+    { rate: number; label: string; effectiveDate?: string | null }[]
+  > {
+    const raw = await this.getKey('wht_rates');
+    const defaults: { rate: number; label: string; effectiveDate?: string | null }[] = [
+      { rate: 1, label: '1% — ดอกเบี้ย' },
+      { rate: 3, label: '3% — ค่าบริการ' },
+      { rate: 5, label: '5% — ค่าเช่า' },
+      { rate: 10, label: '10% — ค่าวิชาชีพ' },
+      { rate: 15, label: '15% — ต่างประเทศ' },
+    ];
+    if (!raw) return defaults;
+    try {
+      const parsed = JSON.parse(raw);
+      if (
+        !Array.isArray(parsed) ||
+        parsed.length === 0 ||
+        !parsed.every(
+          (r) =>
+            r &&
+            typeof r === 'object' &&
+            typeof r.rate === 'number' &&
+            Number.isFinite(r.rate) &&
+            r.rate >= 0 &&
+            r.rate <= 30 &&
+            typeof r.label === 'string' &&
+            r.label.trim().length > 0 &&
+            // effectiveDate is optional — null/undefined or a parsable string.
+            (r.effectiveDate == null ||
+              (typeof r.effectiveDate === 'string' &&
+                !Number.isNaN(Date.parse(r.effectiveDate)))),
+        )
+      ) {
+        return defaults;
+      }
+      // Normalize: drop unknown keys, coerce effectiveDate to string|null.
+      return parsed.map((r) => ({
+        rate: r.rate,
+        label: r.label,
+        ...(r.effectiveDate ? { effectiveDate: r.effectiveDate as string } : {}),
+      }));
+    } catch {
+      return defaults;
+    }
+  }
+
+  /**
    * D1.2.7.2 — DB-driven reverse-reason dropdown. JSON-encoded array of
    * `{code, label}` objects stored in SystemConfig key `reverse_reasons`.
    * Default = the 6 canonical reasons. Caller is responsible for treating
@@ -190,6 +254,13 @@ export class SettingsService {
      * accessibility readers via the lang attr.
      */
     language: 'th' | 'en';
+    /**
+     * D1.1.3.2 — configurable WHT-rate dropdown. Always at least the 5
+     * defaults (1/3/5/10/15 %). Each entry may carry an optional
+     * `effectiveDate` (D1.1.3.5) — frontend filters out future-dated
+     * entries when rendering the picker.
+     */
+    whtRates: { rate: number; label: string; effectiveDate?: string | null }[];
     /**
      * D1.3.3.1 — global toggle for data-export endpoints (Excel/PDF/CSV).
      * Default true. When OWNER sets `export_enabled = 'false'`, the server
@@ -544,6 +615,9 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.1.3.2 — WHT rates (default 5 canonical entries + optional D1.1.3.5
+    // effectiveDate per entry).
+    const whtRates = await this.getWhtRates();
     // D1.3.3.1 — export_enabled. Default true.
     const exportEnabled = await this.readBoolean('export_enabled', true);
     // D1.4.3.2 — audit log archive toggle. Default true.
@@ -760,6 +834,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      whtRates,
       exportEnabled,
       auditLogArchiveEnabled,
       smartSwitchThresholdDays,

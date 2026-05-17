@@ -333,6 +333,90 @@ describe('SettingsService audit trail', () => {
       expect(flags.periodCloseDay).toBe(31);
     });
 
+    // D1.1.3.2 — wht_rates dropdown
+    it('whtRates defaults to the 5 canonical rates (1/3/5/10/15) when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.whtRates).toHaveLength(5);
+      expect(flags.whtRates.map((r) => r.rate)).toEqual([1, 3, 5, 10, 15]);
+      // Each default carries a non-empty label
+      expect(flags.whtRates.every((r) => typeof r.label === 'string' && r.label.length > 0)).toBe(true);
+    });
+
+    it('whtRates returns custom list when SystemConfig set', async () => {
+      const custom = JSON.stringify([
+        { rate: 2, label: '2% — custom A' },
+        { rate: 7, label: '7% — custom B' },
+      ]);
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'wht_rates') return Promise.resolve({ value: custom });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.whtRates).toHaveLength(2);
+      expect(flags.whtRates[0].rate).toBe(2);
+      expect(flags.whtRates[1].label).toBe('7% — custom B');
+    });
+
+    it('whtRates falls back to defaults when an entry has wrong shape (missing label)', async () => {
+      const malformed = JSON.stringify([{ rate: 1 }]); // no label
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'wht_rates') return Promise.resolve({ value: malformed });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.whtRates).toHaveLength(5);
+    });
+
+    it('whtRates falls back to defaults when rate is out of [0, 30] range', async () => {
+      const outOfRange = JSON.stringify([{ rate: 99, label: 'too high' }]);
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'wht_rates') return Promise.resolve({ value: outOfRange });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.whtRates).toHaveLength(5);
+    });
+
+    it('whtRates falls back to defaults when stored array is empty', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'wht_rates') return Promise.resolve({ value: '[]' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.whtRates).toHaveLength(5);
+    });
+
+    // D1.1.3.5 — effectiveDate support (carried alongside wht_rates JSON)
+    it('whtRates accepts optional ISO effectiveDate on entries', async () => {
+      const withDates = JSON.stringify([
+        { rate: 1, label: '1% — old', effectiveDate: '2025-01-01' },
+        { rate: 5, label: '5% — future', effectiveDate: '2030-01-01' },
+        { rate: 10, label: '10% — always-on' }, // no effectiveDate
+      ]);
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'wht_rates') return Promise.resolve({ value: withDates });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.whtRates).toHaveLength(3);
+      expect(flags.whtRates[0].effectiveDate).toBe('2025-01-01');
+      expect(flags.whtRates[1].effectiveDate).toBe('2030-01-01');
+      expect(flags.whtRates[2].effectiveDate).toBeUndefined();
+    });
+
+    it('whtRates falls back to defaults when an effectiveDate is unparseable', async () => {
+      const badDate = JSON.stringify([
+        { rate: 1, label: '1% — bad date', effectiveDate: 'not-a-date' },
+      ]);
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'wht_rates') return Promise.resolve({ value: badDate });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.whtRates).toHaveLength(5);
+    });
+
     // D1.3.3.1 — export_enabled flag
     it('exportEnabled defaults to true when SystemConfig missing', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);

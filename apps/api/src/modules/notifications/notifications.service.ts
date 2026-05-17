@@ -88,6 +88,12 @@ export class NotificationsService {
    * disruption. LINE/SMS are unaffected.
    */
   async send(dto: SendNotificationDto): Promise<{ id: string; status: string; errorMsg?: string; blockReason?: string }> {
+    // CRITICAL: IN_APP gate MUST remain at top of send() — before LINE/SMS channel
+    // validators, before compliance gating, before any DB writes. Refactoring this
+    // lower silently regresses the master toggle: cron jobs calling send({channel:'IN_APP'})
+    // would burn a NotificationLog row even when the gate is OFF.
+    // See PR #949 (D1.3.1.4) for context.
+    //
     // D1.3.1.4 — IN_APP kill switch. Default ON (silent pass-through when
     // key missing/malformed). We read SystemConfig directly here to keep
     // NotificationsService independent of SettingsModule (avoids a wide DI

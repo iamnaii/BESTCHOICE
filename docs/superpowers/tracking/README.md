@@ -12,7 +12,7 @@
 |---|---|---|---|---|---|---|
 | [T0 · Tracking System](T0-tracking-system.md) | 5 | 5 | 100% | ✅ Done | [spec](../specs/2026-05-16-bestchoice-expense-v2-tracking-design.md) | [plan](../plans/2026-05-16-bestchoice-expense-v2-tracking.md) |
 | [A0 · Pre-flight Verify](A0-preflight-verify.md) | 3 | 3 | 100% | ✅ Done | — | [script](../../../scripts/a0-preflight-verify.sql) — prod-verified 2026-05-16. A0.3 closed (false alarm from wrong `flow` literal). |
-| [A1 · Settings Audit Phase 1+2](A1-settings-audit.md) | 102 | 12 | 12% | ✅ Phase 1+2 done | [Phase 2 spec](../specs/2026-05-16-a1-phase2-decision-report.md) | [#879](https://github.com/iamnaii/BESTCHOICE/pull/879) (P1) · this PR (P2) |
+| [A1 · Settings Audit Phase 1+2](A1-settings-audit.md) | 102 | 102 | 100% (pending merge) | ✅ Phase 4 implementation 100% (pending merge) | [Phase 2 spec](../specs/2026-05-16-a1-phase2-decision-report.md) | [#879](https://github.com/iamnaii/BESTCHOICE/pull/879) (P1) · 2026-05-17 86-PR session (P4) |
 | [B1 · SSO 875 Configurable](B1-sso-875.md) | 6 | 6 | 100% | ✅ Done | — | [#861](https://github.com/iamnaii/BESTCHOICE/pull/861) |
 | [B2 · Settlement Multi-line Adj](B2-settlement-adjustment.md) | 5 | 5 | 100% | ✅ Done | — | [#863](https://github.com/iamnaii/BESTCHOICE/pull/863) + B2.4 follow-up |
 | [B3 · Test Suite J+K](B3-test-suite.md) | 14 | 14 | 100% | ✅ Done | — | [#865](https://github.com/iamnaii/BESTCHOICE/pull/865) · [#866](https://github.com/iamnaii/BESTCHOICE/pull/866) · this PR (J-06) |
@@ -20,14 +20,15 @@
 | [C2 · Payroll Custom Income/Deduction](C2-payroll-custom.md) | 7 | 7 | 100% | ✅ Done | — | [#871](https://github.com/iamnaii/BESTCHOICE/pull/871) · [#872](https://github.com/iamnaii/BESTCHOICE/pull/872) · this PR (slip PDF) |
 | [C3 · Reverse Dialog + V19](C3-reverse-dialog.md) | 5 | 4 | 80% | ✅ Done | — | [#875](https://github.com/iamnaii/BESTCHOICE/pull/875) · this PR (UI). C3.5 settings → A1 |
 | [C4 · Credit Note 2-Mode](C4-credit-note-2mode.md) | 4 | 4 | 100% | ✅ Done | — | [#877](https://github.com/iamnaii/BESTCHOICE/pull/877) · this PR (UI) |
-| [D1 · Settings Audit Phase 4](D1-settings-implement.md) | ~75 | 17 | 23% | 🟢 In Progress (one PR/item) | [Phase 2 spec](../specs/2026-05-16-a1-phase2-decision-report.md) | #882-#897 · this PR |
-| **TOTAL** | **~159** | **84** | **~53%** | | | |
+| [D1 · Settings Audit Phase 4](D1-settings-implement.md) | 75 | 75 | 100% (pending merge) | ✅ All items shipped (one PR/item) | [Phase 2 spec](../specs/2026-05-16-a1-phase2-decision-report.md) | #882-#897 · 2026-05-17 86-PR session |
+| **TOTAL** | **159** | **159** | **100% (pending merge of 86 PRs)** | | | |
+| **NOTE** | All counts above reflect post-merge state — actual counts in each sub-project's branch table rows will flip ⬜→✅ as PRs land. | | | | | |
 
 ## 🎯 Current Focus
 
-- **Active:** 🟢 **D1 Settings Implementation in progress.** Owner expanded scope ("ทำ DEFER และ skip") = ~75 items / 18 sub-sections, one PR each per anti-pattern #3. Starting Q-unblocked items.
+- **Active:** ✅ ALL D1 + A1 SKIP items shipped via 86 parallel PRs (2026-05-17 session). Pending owner review + merge.
 - **Optional housekeeping:** EQ-002 missing เม.ย. depreciation (~฿287). Not a blocker; owner can run `POST /admin/depreciation/run?period=2026-04` for catch-up at convenience. พ.ค. depreciation will tick automatically on May 31.
-- **Next:** Owner reviews [A1 audit findings](A1-settings-audit.md) + 5 open questions → signals go-ahead → Phase 2 (REPORT only) → STOP again → owner approves scope → D1 implements.
+- **Next:** Owner reviews 86 open PRs · Q1-Q8 answers may trigger re-do of Q-gated items.
 
 ## 📅 Timeline
 
@@ -76,3 +77,38 @@ Per [`_conventions.md`](_conventions.md) atomic-diff rule:
 - TOTAL row updates on every change
 
 If you forgot to update this file in a PR, open a follow-up `chore(tracking): backfill progress for [Xn.Y]` PR.
+
+## 📊 Session 2026-05-17 Summary
+
+Single-day, subagent-driven sweep that took the master tracker from 84/159 (53%) → **159/159 (100% projection, pending merge of 86 PRs)**.
+
+### PR breakdown (86 total)
+
+| Category | Count | Notes |
+|---|---|---|
+| **Spec-build PRs** (D1 Clusters A–N) | 58 | Each implements one Settings_Audit item; covers D1.1.6.x, D1.2.x, D1.3.x, D1.2.1.x (Approval Workflow), etc. |
+| **SKIP-section conversions** | 16 | Sub-sections 3.4 / 4.1 / 4.2 / 4.3.2–4.3.6 previously marked SKIP — shipped per owner directive |
+| **Deferred follow-ups** | 4 | #965 (Approval UI), #966 (Approval E2E), #967 (`executePostBody` refactor), #968 (admin E2E) |
+| **Review-fix follow-ups** | 7 | #962–#964 + #969–#972 (AdjustmentSection, InterestConfigPage, Templates UI, DRY pass, branch-scope, webhook lock, PAYROLL audit PII) |
+| **Tracking rollup** | 1 | #953 (D1 mid-session backfill) + this PR (master 100% projection) |
+
+### Master TOTAL trajectory
+
+```
+84/159 (53%)  →  159/159 (100% projection, pending merge)
+```
+
+### Deep review summary
+
+- 8 review groups dispatched in parallel (subagent-driven, Opus model).
+- **17 Critical + 47 Warning** identified across all groups.
+- All addressed via **6 fix-dispatch waves** (each wave = one Critical or Warning cluster fanned out to a fresh worktree).
+- 3–4 review rounds per task held throughout (per [feedback memory](../../../MEMORY.md) feedback_review_thoroughness).
+
+### Anti-pattern #3 compliance
+
+Strictly maintained: **1 PR per item, no bundling.** F2 + F5 first dispatches were caught mid-stream attempting to bundle multiple items; both were stopped + re-dispatched as one-PR-per-item. Final 86-PR fan-out fully honors the rule.
+
+### Note on speculative counts
+
+The header counts above are **post-merge projection**. Until each of the 86 PRs merges, the row-level ⬜→✅ flips in each sub-project's checklist remain partial. Once all PRs land, branch tables will match the headers automatically. This single rollup PR was opened deliberately ahead of merges so the master dashboard reflects work-in-flight at-a-glance.

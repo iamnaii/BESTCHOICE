@@ -45,23 +45,29 @@ const VALID_DOC_NUMBER_FORMATS: ReadonlySet<DocNumberFormat> = new Set<DocNumber
 ]);
 
 /**
- * Reset cycle whitelist — duplicated locally to keep this PR self-contained
- * when its sibling PR #947 (D1.1.2.3) has not yet merged. When BOTH PRs are
- * on main the cycle string is owned by D1.1.2.3 via the `doc_number_reset_cycle`
- * SystemConfig key; this PR only reads it as a soft input.
+ * D1.1.2.3 — whitelisted reset cycles for document-number sequences.
+ *
+ *   - `daily`   — advisory lock + sequence reset keyed by BKK-day.
+ *                 Legacy v1 behaviour. Lock scope = YYYYMMDD.
+ *   - `monthly` — lock + reset keyed by BKK-month. Lock scope = YYYYMM.
+ *   - `yearly`  — (spec default) lock + reset keyed by BKK-year. Lock scope = YYYY.
+ *
+ * Spec reference: `docs/superpowers/tracking/_owner-package/Settings_Audit_Core_v2.0.md`
+ * row 1.2.3 (`reset_cycle = yearly`).
  */
-type ResetCycle = 'daily' | 'monthly' | 'yearly';
+export type ResetCycle = 'daily' | 'monthly' | 'yearly';
+
 const VALID_RESET_CYCLES: ReadonlySet<ResetCycle> = new Set<ResetCycle>([
   'daily',
   'monthly',
   'yearly',
 ]);
+
 /**
- * Legacy default when D1.1.2.3 has not yet merged. We intentionally keep
- * `daily` here (not the spec's `yearly`) so behaviour pre-#947 is identical
- * to today. Once #947 ships, its own service-level default flips to `yearly`.
+ * D1.1.2.3 — spec default per Settings_Audit_Core_v2.0 row 1.2.3
+ * (`reset_cycle = yearly`).
  */
-const LEGACY_DEFAULT_RESET_CYCLE: ResetCycle = 'daily';
+export const DEFAULT_RESET_CYCLE: ResetCycle = 'yearly';
 
 /**
  * D1.1.2.4 — SystemConfig key `doc_sequence_table_enabled` (default `'false'`).
@@ -172,10 +178,9 @@ export class DocNumberService {
   }
 
   /**
-   * D1.1.2.3 (sibling) — fetch the active reset cycle. When sibling PR #947
-   * has not yet merged the SystemConfig row will be absent and we fall back
-   * to `daily` (legacy behaviour). Once #947 is on main, its OWNER-set
-   * `doc_number_reset_cycle` SystemConfig key takes over.
+   * D1.1.2.3 — fetch the active reset cycle from SystemConfig with defensive
+   * fallback to the spec default (`yearly`). Unknown / missing values are
+   * silently coerced so doc creation never blocks on a bad SystemConfig row.
    */
   private async resolveResetCycle(): Promise<ResetCycle> {
     try {
@@ -184,9 +189,9 @@ export class DocNumberService {
         return raw as ResetCycle;
       }
     } catch {
-      // fall through to legacy default
+      // fall through to spec default
     }
-    return LEGACY_DEFAULT_RESET_CYCLE;
+    return DEFAULT_RESET_CYCLE;
   }
 
   /**

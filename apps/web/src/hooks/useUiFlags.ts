@@ -47,48 +47,17 @@ export interface UiFlags {
    * voucher shows only a single "ยอดที่ชำระ" column.
    */
   voucherShowPartialColumns: boolean;
+  /**
    * D1.2.5.2 — include the adjustment rows (52-1104 rounding, 53-1503 overpay)
    * in the printable voucher layout. Default true. When false the rows stay
    * on screen (JE preview) but are hidden by the print stylesheet.
    */
   voucherIncludeAdjustment: boolean;
+  /**
    * D1.2.5.1 — voucher print mode. 'multi' (default) emits both ต้นฉบับ and
    * สำเนา on separate A4 pages; 'single' emits only ต้นฉบับ.
    */
   voucherPrintMode: 'single' | 'multi';
-   * D1.2.4.1 — master switch for the Expense Templates ("รายการโปรด") feature.
-   * When false, the UI hides the favorites tab + entry buttons + the
-   * `บันทึกเป็นรายการโปรด` affordance; the API also rejects writes.
-   */
-  templatesEnabled: boolean;
-  /**
-   * D1.2.4.2 — per-user cap on saved Expense Templates. Default 20. UI
-   * surfaces "X/N" count + disables the create button at the cap. Server
-   * enforces the cap atomically (see ExpenseTemplatesService.create).
-   */
-  maxTemplatesPerUser: number;
-  /**
-   * D1.2.4.4 — gates the `{{variable}}` interpolation surface on
-   * Expense Templates ("ใส่ตัวแปร" affordance). When false, UI hides
-   * variable pickers; backend interpolation util still runs at consume-time.
-   */
-  templateVariablesEnabled: boolean;
-   * D1.2.4.4 — gates the `{{variable}}` interpolation surface on Expense
-   * Templates (the "ใส่ตัวแปร" affordance). The pure util in
-   * apps/api/src/utils/template-interpolation.util.ts is always
-   * available; this flag controls whether the UI exposes it.
-   */
-  templateVariablesEnabled: boolean;
-   * D1.2.4.3 — default visibility selection on the "บันทึกเป็นรายการโปรด"
-   * dialog. PRIVATE = creator-only (default), TEAM = creator + explicit
-   * grants, PUBLIC = visible to all authenticated users.
-   */
-  templateSharingDefault: 'PRIVATE' | 'TEAM' | 'PUBLIC';
-   * D1.2.4.2 — per-user quota of saved Expense Templates. Default 20.
-   * Clamped to 1–1000 server-side. UI surfaces as "X/N" badge on the
-   * favorites picker so users see how close they are to the cap.
-   */
-  maxTemplatesPerUser: number;
   /**
    * D1.2.4.1 — Expense Templates feature flag. Default true. When false,
    * the API rejects all template writes (create/update/delete/instantiate)
@@ -97,6 +66,26 @@ export interface UiFlags {
    * accessible to auditors.
    */
   templatesEnabled: boolean;
+  /**
+   * D1.2.4.2 — per-user quota of saved Expense Templates. Default 20.
+   * Clamped to 1–1000 server-side. UI surfaces as "X/N" badge on the
+   * favorites picker so users see how close they are to the cap. Server
+   * enforces the cap atomically (see ExpenseTemplatesService.create).
+   */
+  maxTemplatesPerUser: number;
+  /**
+   * D1.2.4.4 — gates the `{{variable}}` interpolation surface on Expense
+   * Templates (the "ใส่ตัวแปร" affordance). The pure util in
+   * apps/api/src/utils/template-interpolation.util.ts is always
+   * available; this flag controls whether the UI exposes it.
+   */
+  templateVariablesEnabled: boolean;
+  /**
+   * D1.2.4.3 — default visibility selection on the "บันทึกเป็นรายการโปรด"
+   * dialog. PRIVATE = creator-only (default), TEAM = creator + explicit
+   * grants, PUBLIC = visible to all authenticated users.
+   */
+  templateSharingDefault: 'PRIVATE' | 'TEAM' | 'PUBLIC';
   /** D1.2.3.5 — thousands separator style for the generic number formatter. */
   thousandsSeparator: 'comma' | 'space' | 'none';
   /** D1.2.3.4 — default decimal places (0-4) for the generic number formatter. */
@@ -202,10 +191,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   templatesEnabled: true,
   maxTemplatesPerUser: 20,
   templateVariablesEnabled: true,
-  templateVariablesEnabled: true,
   templateSharingDefault: 'PRIVATE',
-  maxTemplatesPerUser: 20,
-  templatesEnabled: true,
   thousandsSeparator: 'comma',
   decimalPlaces: 2,
   dateFormat: 'BE',

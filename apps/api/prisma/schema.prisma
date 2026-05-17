@@ -3897,30 +3897,36 @@ model SettlementLine {
 }
 
 model ExpenseTemplate {
-  id            String       @id @default(uuid())
+  id            String             @id @default(uuid())
   name          String
-  documentType  DocumentType @map("document_type")
-  branchId      String       @map("branch_id")
-  prefilledData Json         @map("prefilled_data")
-  isRecurring   Boolean      @default(false) @map("is_recurring")
-  recurringDay  Int?         @map("recurring_day")
-  createdById   String       @map("created_by_id")
+  documentType  DocumentType       @map("document_type")
+  branchId      String             @map("branch_id")
+  prefilledData Json               @map("prefilled_data")
+  isRecurring   Boolean            @default(false) @map("is_recurring")
+  recurringDay  Int?               @map("recurring_day")
+  createdById   String             @map("created_by_id")
   /// D1.2.4.5 — optional category grouping. Null = uncategorised
   /// (legacy default). FK to TemplateCategory with SetNull on delete
   /// so removing a category doesn't orphan / cascade-delete templates.
-  categoryId    String?      @map("category_id")
-  createdAt     DateTime     @default(now()) @map("created_at")
-  updatedAt     DateTime     @updatedAt @map("updated_at")
-  deletedAt     DateTime?    @map("deleted_at")
+  categoryId    String?            @map("category_id")
+  /// D1.2.4.3 — sharing visibility. Default PRIVATE preserves legacy
+  /// behaviour (creator-only). Use TEAM with `sharedWith` to grant
+  /// specific users access, or PUBLIC for shop-wide visibility.
+  visibility    TemplateVisibility @default(PRIVATE)
+  createdAt     DateTime           @default(now()) @map("created_at")
+  updatedAt     DateTime           @updatedAt @map("updated_at")
+  deletedAt     DateTime?          @map("deleted_at")
 
-  branch                Branch            @relation(fields: [branchId], references: [id], onDelete: Restrict)
-  createdBy             User              @relation("ExpenseTemplateCreator", fields: [createdById], references: [id])
-  category              TemplateCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  documentsFromTemplate ExpenseDocument[] @relation("ExpenseDocumentFromTemplate")
+  branch                Branch                @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  createdBy             User                  @relation("ExpenseTemplateCreator", fields: [createdById], references: [id])
+  category              TemplateCategory?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  documentsFromTemplate ExpenseDocument[]     @relation("ExpenseDocumentFromTemplate")
+  sharedWith            UserExpenseTemplate[] @relation("ExpenseTemplateSharedWith")
 
   @@index([branchId, deletedAt])
   @@index([isRecurring, recurringDay])
   @@index([categoryId, deletedAt])
+  @@index([visibility, deletedAt])
   @@map("expense_templates")
 }
 
@@ -3939,6 +3945,8 @@ model TemplateCategory {
 
   @@index([deletedAt])
   @@map("template_categories")
+}
+
 /// D1.2.4.3 — Template visibility (ACL).
 /// PRIVATE: visible only to createdBy.
 /// TEAM:    visible to createdBy + users explicitly listed in `sharedWith`.
@@ -3948,34 +3956,6 @@ enum TemplateVisibility {
   PRIVATE
   TEAM
   PUBLIC
-}
-
-model ExpenseTemplate {
-  id            String             @id @default(uuid())
-  name          String
-  documentType  DocumentType       @map("document_type")
-  branchId      String             @map("branch_id")
-  prefilledData Json               @map("prefilled_data")
-  isRecurring   Boolean            @default(false) @map("is_recurring")
-  recurringDay  Int?               @map("recurring_day")
-  createdById   String             @map("created_by_id")
-  /// D1.2.4.3 — sharing visibility. Default PRIVATE preserves legacy
-  /// behaviour (creator-only). Use TEAM with `sharedWith` to grant
-  /// specific users access, or PUBLIC for shop-wide visibility.
-  visibility    TemplateVisibility @default(PRIVATE)
-  createdAt     DateTime           @default(now()) @map("created_at")
-  updatedAt     DateTime           @updatedAt @map("updated_at")
-  deletedAt     DateTime?          @map("deleted_at")
-
-  branch                Branch                  @relation(fields: [branchId], references: [id], onDelete: Restrict)
-  createdBy             User                    @relation("ExpenseTemplateCreator", fields: [createdById], references: [id])
-  documentsFromTemplate ExpenseDocument[]       @relation("ExpenseDocumentFromTemplate")
-  sharedWith            UserExpenseTemplate[]   @relation("ExpenseTemplateSharedWith")
-
-  @@index([branchId, deletedAt])
-  @@index([isRecurring, recurringDay])
-  @@index([visibility, deletedAt])
-  @@map("expense_templates")
 }
 
 /// D1.2.4.3 — TEAM-visibility ACL: maps an ExpenseTemplate to the set of

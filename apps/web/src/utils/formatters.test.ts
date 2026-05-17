@@ -11,27 +11,21 @@ import {
   formatNumberDecimal,
   applyFormat,
   setThousandsSeparator,
+  setDefaultDecimalPlaces,
+  setDateFormatPreference,
 } from './formatters';
 
 // D1.2.3.5 — thousands separator pref is module-level; reset after each
 // test so a CE-style space pref can't leak into later cases.
-afterEach(() => {
-  setThousandsSeparator('comma');
-  setDefaultDecimalPlaces,
-} from './formatters';
-
 // D1.2.3.4 — `formatNumberDecimal` reads from a module-level pref when the
 // 2nd argument is omitted. Reset to 2 after each test to keep blocks
 // independent.
-afterEach(() => {
-  setDefaultDecimalPlaces(2);
-  setDateFormatPreference,
-} from './formatters';
-
 // D1.2.3.3 — date_format toggle uses a module-level preference. Tests below
 // rely on the BE default; this guard resets it after each block to prevent
 // cross-test leakage when a CE-flipping case fails part-way.
 afterEach(() => {
+  setThousandsSeparator('comma');
+  setDefaultDecimalPlaces(2);
   setDateFormatPreference('BE');
 });
 
@@ -187,6 +181,9 @@ describe('formatters — thousands_separator (D1.2.3.5)', () => {
     expect(formatNumberDecimal(-1234567.89)).toBe('-1 234 567.89');
     setThousandsSeparator('none');
     expect(formatNumberDecimal(-1234567.89)).toBe('-1234567.89');
+  });
+});
+
 // D1.2.3.4 — decimal_places module-level default
 describe('formatters — decimal_places default (D1.2.3.4)', () => {
   it('default 2: formatNumberDecimal(value) uses 2 digits when omitted', () => {
@@ -243,6 +240,9 @@ describe('formatters — decimal_places default (D1.2.3.4)', () => {
     // Negative non-half edge — verify the sign reapplies cleanly.
     expect(formatNumberDecimal(-21468.6, 0)).toBe('-21,469');
     expect(formatNumberDecimal(-21468.4, 0)).toBe('-21,468');
+  });
+});
+
 // D1.2.3.3 — date_format BE↔ค.ศ. toggle
 describe('formatters — date_format toggle (D1.2.3.3)', () => {
   it('defaults to BE: formatDateShort returns +543 year', () => {

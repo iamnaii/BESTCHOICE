@@ -17,10 +17,11 @@ import { PettyCashService } from './services/petty-cash.service';
 import { PayrollCustomService } from './services/payroll-custom.service';
 import { ExpenseRecurringCron } from './crons/expense-recurring.cron';
 import { DraftAlertsCron } from './crons/draft-alerts.cron';
+import { ApDueAlertsCron } from './crons/ap-due-alerts.cron';
 
 @Module({
-  // NotificationsModule import is required so DraftAlertsCron can route IN_APP
-  // alerts through NotificationsService.send() (respects the D1.3.1.4 master gate).
+  // NotificationsModule import is required so DraftAlertsCron + ApDueAlertsCron can
+  // route IN_APP alerts through NotificationsService.send() (respects D1.3.1.4 master gate).
   imports: [
     PrismaModule,
     JournalModule,
@@ -42,6 +43,8 @@ import { DraftAlertsCron } from './crons/draft-alerts.cron';
     ExpenseRecurringCron,
     // D1.3.1.1 — DRAFT alerts cron (opt-in via SystemConfig `draft_alerts_enabled`)
     DraftAlertsCron,
+    // D1.3.1.2 — AP-due alerts cron. Default OFF (opt-in) — see ap-due-alerts.cron.ts for rationale.
+    ApDueAlertsCron,
   ],
   exports: [ExpenseDocumentsService, ExpenseTemplatesService],
 })

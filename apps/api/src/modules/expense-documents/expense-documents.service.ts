@@ -1599,7 +1599,48 @@ export class ExpenseDocumentsService implements OnModuleInit {
     });
   }
 
+  // ─── Submit for approval (DRAFT → PENDING_APPROVAL) ─────────────────
+  // D1.2.1.1 — entry point of the Approval Workflow. Only callable when
+  // SystemConfig `approval_enabled` is true. Without that flag set the
+  // legacy lifecycle (DRAFT → POSTED) applies and there's no reason to
+  // visit PENDING_APPROVAL.
+  //
+  // NOTE: this references the new enum values `PENDING_APPROVAL` and
+  // `APPROVED` which land on the schema in D1.2.1.6 (sibling PR). Until
+  // that migrates, this PR uses `as unknown as DocumentStatus` casts. At
+  // merge time accept the conflict on `schema.prisma` from 1.6.
+  async submitForApproval(id: string, _userId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(hashtext($1))`, `post:${id}`);
+
+      const approvalEnabled = await this.readBoolFlag(tx, 'approval_enabled', false);
+      if (!approvalEnabled) {
+        throw new BadRequestException(
+          'ฟีเจอร์ขออนุมัติยังไม่เปิดใช้งาน — กรุณาเปิด SystemConfig `approval_enabled` ก่อน',
+        );
+      }
+
+      const doc = await tx.expenseDocument.findUniqueOrThrow({ where: { id } });
+      if (doc.deletedAt) throw new NotFoundException('เอกสารถูกลบแล้ว');
+      if (doc.status !== 'DRAFT') {
+        throw new BadRequestException(
+          `ส่งขออนุมัติได้เฉพาะเอกสาร DRAFT — สถานะปัจจุบัน ${doc.status}`,
+        );
+      }
+
+      const PENDING_APPROVAL = 'PENDING_APPROVAL' as unknown as DocumentStatus;
+      return tx.expenseDocument.update({
+        where: { id },
+        data: { status: PENDING_APPROVAL },
+      });
+    });
+  }
+
   // ─── Post (DRAFT → ACCRUAL or POSTED) ────────────────────────────────
+  // D1.2.1.1 — when `approval_enabled` is true, DRAFT documents must first
+  // be submitted via `submitForApproval()`. Posting straight from DRAFT is
+  // rejected so the approval signature is never bypassed. When false, the
+  // legacy DRAFT → POSTED path is preserved.
   // D1.2.1.6 — also accepts APPROVED → POSTED (when approval_enabled is on
   // AND auto_post_on_approve is false, OWNER manually calls post() on an
   // APPROVED doc; assertCanPost permits both DRAFT + APPROVED).
@@ -1613,6 +1654,17 @@ export class ExpenseDocumentsService implements OnModuleInit {
 
       const doc = await tx.expenseDocument.findUniqueOrThrow({ where: { id } });
       if (doc.deletedAt) throw new NotFoundException('เอกสารถูกลบแล้ว');
+
+      // D1.2.1.1 — approval gate. Block direct DRAFT → POSTED when feature
+      // enabled. D1.2.1.2 / D1.2.1.4 further refine which docs are subject
+      // (threshold + doctype filters) — for now the gate applies to every
+      // DRAFT post when the flag is on.
+      const approvalEnabled = await this.readBoolFlag(tx, 'approval_enabled', false);
+      if (approvalEnabled && doc.status === 'DRAFT') {
+        throw new BadRequestException(
+          'เปิดฟีเจอร์ขออนุมัติแล้ว — กรุณากด "ส่งขออนุมัติ" ก่อน Post (DRAFT → PENDING_APPROVAL → APPROVED → POSTED)',
+        );
+      }
       this.transition.assertCanPost({
         type: doc.documentType,
         from: doc.status,

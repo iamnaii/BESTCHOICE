@@ -10,7 +10,6 @@ import { ReopenedPeriodBanner } from '@/components/accounting/ReopenedPeriodBann
 import { useDebounce } from '@/hooks/useDebounce';
 import { useUiFlags } from '@/hooks/useUiFlags';
 import { usePaginationParams } from '@/hooks/usePaginationParams';
-import { useUiFlags } from '@/hooks/useUiFlags';
 import { PaginationBar } from '@/components/ui/PaginationBar';
 import { otherIncomeApi } from '@/lib/otherIncome';
 import type { OtherIncome, OtherIncomeStatus } from '@/lib/otherIncome.types';

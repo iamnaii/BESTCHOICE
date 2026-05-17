@@ -167,6 +167,11 @@ const PeriodClosePage = lazy(() => import('@/pages/accounting/PeriodClosePage'))
 const TaxDisallowedSummaryPage = lazy(
   () => import('@/pages/accounting/TaxDisallowedSummaryPage'),
 );
+// SP1 placeholder shell — wraps ComingSoonPage for routes whose real implementations
+// land in SP2-SP6. Named export, so use .then() to map to default for lazy().
+const ComingSoonPage = lazy(() =>
+  import('@/components/ComingSoonPage').then((m) => ({ default: m.ComingSoonPage })),
+);
 
 const PageLoader = () => (
   <div className="flex items-center justify-center py-20">
@@ -1094,6 +1099,138 @@ function App() {
               <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
                 <TaxDisallowedSummaryPage />
               </ProtectedRoute>
+            }
+          />
+
+          {/* SP1 placeholder routes — to be replaced by SP2-SP6 implementations */}
+          <Route
+            path="/quotes"
+            element={
+              <ComingSoonPage
+                feature="ใบเสนอราคา"
+                trackingSP="SP5"
+                eta="ภายในไตรมาส 3/2026"
+              />
+            }
+          />
+          <Route
+            path="/insurance"
+            element={
+              <ComingSoonPage
+                feature="ลงทะเบียนประกัน + รับเครื่องคืน"
+                trackingSP="SP5"
+                eta="ภายในไตรมาส 3/2026"
+              />
+            }
+          />
+          <Route
+            path="/drafts"
+            element={
+              <ComingSoonPage
+                feature="เอกสารร่างทั้งหมด"
+                trackingSP="SP5"
+                eta="ภายในไตรมาส 3/2026"
+              />
+            }
+          />
+          <Route
+            path="/finance/vat"
+            element={
+              <ComingSoonPage
+                feature="VAT (ภ.พ.30)"
+                trackingSP="SP3"
+                eta="ภายในไตรมาส 3/2026"
+              />
+            }
+          />
+          <Route
+            path="/finance/wht"
+            element={
+              <ComingSoonPage
+                feature="ภาษีหัก ณ ที่จ่าย (ภ.ง.ด. 1/3/53)"
+                trackingSP="SP3"
+                eta="ภายในไตรมาส 3/2026"
+              />
+            }
+          />
+          <Route
+            path="/finance/e-tax"
+            element={
+              <ComingSoonPage
+                feature="e-Tax Invoice"
+                trackingSP="SP3"
+                eta="ภายในไตรมาส 3/2026"
+              />
+            }
+          />
+          <Route
+            path="/finance/cash-flow"
+            element={
+              <ComingSoonPage
+                feature="งบกระแสเงินสด"
+                trackingSP="SP2"
+                eta="ภายในไตรมาส 2/2026"
+              />
+            }
+          />
+          <Route
+            path="/finance/equity-statement"
+            element={
+              <ComingSoonPage
+                feature="งบแสดงการเปลี่ยนแปลงในส่วนของผู้ถือหุ้น"
+                trackingSP="SP2"
+                eta="ภายในไตรมาส 2/2026"
+              />
+            }
+          />
+          <Route
+            path="/finance/general-ledger"
+            element={
+              <ComingSoonPage
+                feature="สมุดแยกประเภท"
+                trackingSP="SP2"
+                eta="ภายในไตรมาส 2/2026"
+              />
+            }
+          />
+          <Route
+            path="/finance/bank-accounts"
+            element={
+              <ComingSoonPage
+                feature="บัญชีธนาคาร"
+                trackingSP="SP6"
+                eta="ภายในไตรมาส 4/2026"
+              />
+            }
+          />
+          <Route
+            path="/settings/document-config"
+            element={
+              <ComingSoonPage
+                feature="ตั้งค่าเลขที่/รูปแบบเอกสาร"
+                trackingSP="SP4"
+                eta="ภายในไตรมาส 3/2026"
+              />
+            }
+          />
+          <Route
+            path="/settings/brands"
+            element={
+              <ComingSoonPage
+                feature="จัดการแบรนด์สินค้า"
+                trackingSP="SP5"
+                eta="ภายในไตรมาส 3/2026"
+              />
+            }
+          />
+          <Route
+            path="/settings/backup"
+            element={
+              <ComingSoonPage
+                feature="รายงาน Backup"
+                trackingSP="SP6"
+                eta="ภายในไตรมาส 4/2026"
+              />
             }
           />
         </Route>

@@ -89,6 +89,7 @@ export interface UiFlags {
    * favorites picker so users see how close they are to the cap.
    */
   maxTemplatesPerUser: number;
+  /**
    * D1.2.4.1 — Expense Templates feature flag. Default true. When false,
    * the API rejects all template writes (create/update/delete/instantiate)
    * with 403, and the UI hides "บันทึกเป็นรายการโปรด" affordances + the
@@ -161,6 +162,12 @@ export interface UiFlags {
   queryTimeoutSeconds: number;
   /** D1.3.1.3 — active email provider. Sendgrid requires API-key wiring before use. */
   emailProvider: 'smtp' | 'sendgrid';
+  /**
+   * D1.4.2.2 — react-query `staleTime` (seconds) for dashboard queries.
+   * Default 60, valid 10–3600. Wired into `DashboardPage`'s
+   * `dashboardStaleTime`.
+   */
+  cacheTtlDashboard: number;
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -211,6 +218,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   darkModeDefault: 'system',
   queryTimeoutSeconds: 30,
   emailProvider: 'smtp',
+  cacheTtlDashboard: 60,
 };
 
 export function useUiFlags(): UiFlags {

@@ -972,6 +972,31 @@ describe('SettingsService audit trail', () => {
       const flags = await service.getUiFlags();
       expect(flags.queryTimeoutSeconds).toBe(30);
     });
+
+    // D1.4.2.2 — cache_ttl_dashboard
+    it('cacheTtlDashboard defaults to 60 when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.cacheTtlDashboard).toBe(60);
+    });
+
+    it('cacheTtlDashboard accepts valid 10-3600 range', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'cache_ttl_dashboard') return Promise.resolve({ value: '180' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.cacheTtlDashboard).toBe(180);
+    });
+
+    it('cacheTtlDashboard clamps out-of-range values back to 60', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'cache_ttl_dashboard') return Promise.resolve({ value: '5' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.cacheTtlDashboard).toBe(60);
+    });
   });
 
   // ─── D1.1.5.5 — Petty Cash custodian ───────────────────────────────

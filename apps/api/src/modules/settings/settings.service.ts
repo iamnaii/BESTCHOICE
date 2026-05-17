@@ -412,6 +412,14 @@ export class SettingsService {
      * provider: SMTP / Sendgrid" + warns when SMTP env not configured.
      */
     emailProvider: 'smtp' | 'sendgrid';
+    /**
+     * D1.4.2.2 — react-query staleTime (seconds) for dashboard KPI / chart
+     * queries. Default 60s, valid 10–3600 (clamped). Actively wired into
+     * `DashboardPage`'s `dashboardStaleTime` so OWNER can balance
+     * freshness vs DB cost without redeploy. Originally SKIP per Phase 2;
+     * shipped per owner directive 2026-05-17 to reach 100% A1 coverage.
+     */
+    cacheTtlDashboard: number;
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -604,6 +612,12 @@ export class SettingsService {
     const emailProviderRaw = await this.getKey('email_provider');
     const emailProvider: 'smtp' | 'sendgrid' =
       emailProviderRaw === 'sendgrid' ? 'sendgrid' : 'smtp';
+    // D1.4.2.2 — cache_ttl_dashboard. Clamp to [10, 3600] seconds.
+    const cacheTtlDashboardRaw = await this.readNumber('cache_ttl_dashboard', 60);
+    const cacheTtlDashboard =
+      Number.isFinite(cacheTtlDashboardRaw) && cacheTtlDashboardRaw >= 10 && cacheTtlDashboardRaw <= 3600
+        ? Math.floor(cacheTtlDashboardRaw)
+        : 60;
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -645,6 +659,7 @@ export class SettingsService {
       darkModeDefault,
       queryTimeoutSeconds,
       emailProvider,
+      cacheTtlDashboard,
     };
   }
 

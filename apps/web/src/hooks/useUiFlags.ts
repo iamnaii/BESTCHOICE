@@ -145,6 +145,8 @@ export interface UiFlags {
    * the intended cutoff; a future PR can wire it.
    */
   queryTimeoutSeconds: number;
+  /** D1.3.1.3 — active email provider. Sendgrid requires API-key wiring before use. */
+  emailProvider: 'smtp' | 'sendgrid';
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -190,6 +192,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   inAppNotificationsEnabled: true,
   darkModeDefault: 'system',
   queryTimeoutSeconds: 30,
+  emailProvider: 'smtp',
 };
 
 export function useUiFlags(): UiFlags {

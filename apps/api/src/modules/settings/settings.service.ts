@@ -369,6 +369,13 @@ export class SettingsService {
      * 2026-05-17 to reach 100% A1 coverage.
      */
     queryTimeoutSeconds: number;
+    /**
+     * D1.3.1.3 — active email provider. Whitelisted: 'smtp' (default —
+     * uses SMTP_HOST/PORT/USER/PASS env vars) / 'sendgrid' (stub — owner
+     * must wire SENDGRID_API_KEY before flipping). UI shows "Current
+     * provider: SMTP / Sendgrid" + warns when SMTP env not configured.
+     */
+    emailProvider: 'smtp' | 'sendgrid';
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -535,6 +542,10 @@ export class SettingsService {
       Number.isFinite(queryTimeoutSecondsRaw) && queryTimeoutSecondsRaw >= 5 && queryTimeoutSecondsRaw <= 300
         ? Math.floor(queryTimeoutSecondsRaw)
         : 30;
+    // D1.3.1.3 — email provider whitelist. Default smtp.
+    const emailProviderRaw = await this.getKey('email_provider');
+    const emailProvider: 'smtp' | 'sendgrid' =
+      emailProviderRaw === 'sendgrid' ? 'sendgrid' : 'smtp';
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -571,6 +582,7 @@ export class SettingsService {
       inAppNotificationsEnabled,
       darkModeDefault,
       queryTimeoutSeconds,
+      emailProvider,
     };
   }
 

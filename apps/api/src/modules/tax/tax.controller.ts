@@ -1,17 +1,20 @@
 import {
+  BadRequestException,
+  Body,
   Controller,
   Get,
-  Post,
-  Patch,
   Param,
-  Body,
+  Patch,
+  Post,
   Query,
+  Res,
   UseGuards,
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
-import { TaxService } from './tax.service';
+import type { Response } from 'express';
+import { TaxFormCode, TaxService } from './tax.service';
 import { GenerateTaxReportDto } from './dto/tax.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -56,6 +59,16 @@ export class TaxController {
     return this.taxService.previewPP30(companyId, parseInt(year), parseInt(month));
   }
 
+  @Get('pnd1-preview')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  previewPND1(
+    @Query('companyId') companyId: string,
+    @Query('year') year: string,
+    @Query('month') month: string,
+  ) {
+    return this.taxService.previewPND1(companyId, parseInt(year), parseInt(month));
+  }
+
   @Get('pnd3-preview')
   @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   previewPND3(
@@ -74,6 +87,41 @@ export class TaxController {
     @Query('month') month: string,
   ) {
     return this.taxService.previewPND53(companyId, parseInt(year), parseInt(month));
+  }
+
+  @Get('export-xlsx')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  async exportXlsx(
+    @Query('form') form: string,
+    @Query('companyId') companyId: string,
+    @Query('year') year: string,
+    @Query('month') month: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const ALLOWED: TaxFormCode[] = ['PP30', 'PND1', 'PND3', 'PND53'];
+    if (!ALLOWED.includes(form as TaxFormCode)) {
+      throw new BadRequestException('รูปแบบฟอร์มภาษีไม่ถูกต้อง');
+    }
+    if (!companyId) throw new BadRequestException('กรุณาระบุบริษัท');
+    const y = parseInt(year);
+    const m = parseInt(month);
+    if (!Number.isInteger(y) || !Number.isInteger(m) || m < 1 || m > 12) {
+      throw new BadRequestException('ปี/เดือนไม่ถูกต้อง');
+    }
+    const buffer = await this.taxService.exportTaxFormXlsx(
+      form as TaxFormCode,
+      companyId,
+      y,
+      m,
+    );
+    const filename = `${form}-${y}-${String(m).padStart(2, '0')}.xlsx`;
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', buffer.length.toString());
+    res.end(buffer);
   }
 
   @Get(':id')

@@ -377,6 +377,7 @@ enum WhtIncomeType {
 
 enum TaxReportType {
   PP30 // ภ.พ.30 (VAT รายเดือน)
+  PND1 // ภ.ง.ด.1 (PIT — WHT on payroll, ม.50(1))
   PND3 // ภ.ง.ด.3 (หัก ณ ที่จ่าย บุคคล)
   PND53 // ภ.ง.ด.53 (หัก ณ ที่จ่าย นิติบุคคล)
 }

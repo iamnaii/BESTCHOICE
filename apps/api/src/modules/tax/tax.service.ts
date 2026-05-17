@@ -1,8 +1,11 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { Prisma, TaxReportType } from '@prisma/client';
+import ExcelJS from 'exceljs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { paginatedResponse } from '../../common/helpers/pagination.helper';
 import { GenerateTaxReportDto } from './dto/tax.dto';
+
+export type TaxFormCode = 'PP30' | 'PND1' | 'PND3' | 'PND53';
 
 @Injectable()
 export class TaxService {
@@ -110,17 +113,36 @@ export class TaxService {
   }
 
   /**
-   * ภ.ง.ด.3 Preview — WHT for individuals (บุคคลธรรมดา)
+   * ภ.ง.ด.1 Preview — Personal Income Tax (WHT on payroll, ม.50(1), ม.52/53).
+   *
+   * Source: JournalLine where accountCode = '21-3101' (WHT payable — payroll)
+   * + credit > 0 + entry POSTED in period + referenceType = 'PAYROLL'.
+   * Joined back to PayrollLine via the originating PayrollDetail document for
+   * employee name + tax id + WHT amount.
+   *
+   * V17 rule: WHT base on PayrollLine is `baseSalary` (already pre-VAT;
+   * payroll has no VAT). Documented in `.claude/rules/accounting.md`.
    */
-  async previewPND3(companyId: string, year: number, month: number) {
-    return this.previewWHT(companyId, year, month, 'PND3');
+  async previewPND1(companyId: string, year: number, month: number) {
+    return this.previewPayrollWHT(companyId, year, month);
   }
 
   /**
-   * ภ.ง.ด.53 Preview — WHT for companies (นิติบุคคล)
+   * ภ.ง.ด.3 Preview — WHT for individuals (บุคคลธรรมดา, ม.3 เตรส, ม.50(3)(4)).
+   * Source: JournalLine accountCode = '21-3102', joined to ExpenseDocument /
+   * VendorSettlementDetail for vendor name + tax id + WHT amount.
+   * V17: WHT base = subtotal (pre-VAT) per ExpenseDocument.subtotal.
+   */
+  async previewPND3(companyId: string, year: number, month: number) {
+    return this.previewVendorWHT(companyId, year, month, 'PND3');
+  }
+
+  /**
+   * ภ.ง.ด.53 Preview — WHT for juristic persons (นิติบุคคล, ทป.4/2528).
+   * Source: JournalLine accountCode = '21-3103'.
    */
   async previewPND53(companyId: string, year: number, month: number) {
-    return this.previewWHT(companyId, year, month, 'PND53');
+    return this.previewVendorWHT(companyId, year, month, 'PND53');
   }
 
   /**
@@ -133,6 +155,8 @@ export class TaxService {
     let previewData: Record<string, unknown>;
     if (reportType === 'PP30') {
       previewData = await this.previewPP30(dto.companyId, dto.reportYear, dto.reportMonth);
+    } else if (reportType === 'PND1') {
+      previewData = await this.previewPND1(dto.companyId, dto.reportYear, dto.reportMonth);
     } else if (reportType === 'PND3') {
       previewData = await this.previewPND3(dto.companyId, dto.reportYear, dto.reportMonth);
     } else {
@@ -165,8 +189,8 @@ export class TaxService {
             totalPurchases: null,
             totalVatInput: null,
             netVat: null,
-            totalWht: (previewData as { totalWht: Prisma.Decimal }).totalWht,
-            transactionCount: (previewData as { transactionCount: number }).transactionCount,
+            totalWht: (previewData as { whtTotal: Prisma.Decimal }).whtTotal,
+            transactionCount: (previewData as { count: number }).count,
           };
 
     return this.prisma.taxReport.upsert({
@@ -245,6 +269,146 @@ export class TaxService {
     }
 
     return report;
+  }
+
+  /**
+   * Export tax form data as a 1-sheet XLSX (RD-format columns).
+   *
+   * Wraps the matching `preview*` query and emits an exceljs workbook as a
+   * Buffer suitable for HTTP streaming. Returns RD-style columns:
+   *   - PP30: sales / purchases sheets
+   *   - PND1: employee + tax id + gross + WHT
+   *   - PND3 / PND53: vendor + tax id + income type + gross + WHT% + WHT
+   */
+  async exportTaxFormXlsx(
+    form: TaxFormCode,
+    companyId: string,
+    year: number,
+    month: number,
+  ): Promise<Buffer> {
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'BESTCHOICE';
+    workbook.created = new Date();
+
+    const periodLabel = `${year}-${String(month).padStart(2, '0')}`;
+
+    if (form === 'PP30') {
+      const data = await this.previewPP30(companyId, year, month);
+      const sheet = workbook.addWorksheet(`PP30-${periodLabel}`);
+      sheet.columns = [
+        { header: 'หมวด', key: 'category', width: 16 },
+        { header: 'รายการ', key: 'description', width: 40 },
+        { header: 'ผู้ขาย / ลูกค้า', key: 'party', width: 30 },
+        { header: 'เลขที่กำกับภาษี', key: 'taxInvoiceNo', width: 18 },
+        { header: 'วันที่', key: 'date', width: 12 },
+        { header: 'มูลค่า (บาท)', key: 'amount', width: 14 },
+        { header: 'ภาษีมูลค่าเพิ่ม (บาท)', key: 'vat', width: 16 },
+      ];
+      sheet.getRow(1).font = { bold: true };
+      for (const s of data.lineItems.sales) {
+        sheet.addRow({
+          category: 'ขาย',
+          description: s.description,
+          party: s.customerName,
+          taxInvoiceNo: s.contractNumber,
+          date: s.date,
+          amount: Number(s.amount ?? 0),
+          vat: Number(s.vatAmount ?? 0),
+        });
+      }
+      for (const p of data.lineItems.purchases) {
+        sheet.addRow({
+          category: 'ซื้อ',
+          description: p.description,
+          party: p.vendorName ?? '',
+          taxInvoiceNo: p.taxInvoiceNo ?? '',
+          date: p.date,
+          amount: Number(p.amount ?? 0),
+          vat: Number(p.vatAmount ?? 0),
+        });
+      }
+      const summary = sheet.addRow({});
+      summary.getCell('description').value = 'ภาษีขาย (Output VAT)';
+      summary.getCell('vat').value = Number(data.totalVatOutput);
+      summary.font = { bold: true };
+      const summary2 = sheet.addRow({});
+      summary2.getCell('description').value = 'ภาษีซื้อ (Input VAT)';
+      summary2.getCell('vat').value = Number(data.totalVatInput);
+      summary2.font = { bold: true };
+      const summary3 = sheet.addRow({});
+      summary3.getCell('description').value = 'ภาษีที่ต้องชำระ (Net VAT)';
+      summary3.getCell('vat').value = Number(data.netVat);
+      summary3.font = { bold: true };
+    } else if (form === 'PND1') {
+      const data = await this.previewPND1(companyId, year, month);
+      const sheet = workbook.addWorksheet(`PND1-${periodLabel}`);
+      sheet.columns = [
+        { header: 'ลำดับ', key: 'no', width: 6 },
+        { header: 'ชื่อพนักงาน', key: 'name', width: 30 },
+        { header: 'เลขประจำตัวผู้เสียภาษี', key: 'taxId', width: 22 },
+        { header: 'จำนวนเงินได้ (บาท)', key: 'gross', width: 18 },
+        { header: 'ภาษีหัก ณ ที่จ่าย (บาท)', key: 'wht', width: 20 },
+        { header: 'วันที่จ่าย', key: 'payDate', width: 12 },
+        { header: 'เลขที่เอกสาร', key: 'doc', width: 18 },
+      ];
+      sheet.getRow(1).font = { bold: true };
+      data.items.forEach((it, idx) => {
+        sheet.addRow({
+          no: idx + 1,
+          name: it.employeeName,
+          taxId: it.employeeTaxId ?? '',
+          gross: Number(it.gross),
+          wht: Number(it.whtAmount),
+          payDate: it.payDate,
+          doc: it.payrollDocNumber,
+        });
+      });
+      const total = sheet.addRow({});
+      total.getCell('name').value = 'รวม';
+      total.getCell('gross').value = Number(data.grossIncome);
+      total.getCell('wht').value = Number(data.whtTotal);
+      total.font = { bold: true };
+    } else {
+      // PND3 / PND53 — vendor WHT
+      const data =
+        form === 'PND3'
+          ? await this.previewPND3(companyId, year, month)
+          : await this.previewPND53(companyId, year, month);
+      const sheet = workbook.addWorksheet(`${form}-${periodLabel}`);
+      sheet.columns = [
+        { header: 'ลำดับ', key: 'no', width: 6 },
+        { header: 'ชื่อผู้รับเงิน', key: 'name', width: 30 },
+        { header: 'เลขประจำตัวผู้เสียภาษี', key: 'taxId', width: 22 },
+        { header: 'ประเภทเงินได้', key: 'incomeType', width: 20 },
+        { header: 'จำนวนเงิน (บาท)', key: 'gross', width: 16 },
+        { header: 'อัตรา %', key: 'whtPercent', width: 10 },
+        { header: 'ภาษีหัก ณ ที่จ่าย (บาท)', key: 'wht', width: 20 },
+        { header: 'วันที่จ่าย', key: 'paidDate', width: 12 },
+        { header: 'เลขที่เอกสาร', key: 'doc', width: 18 },
+      ];
+      sheet.getRow(1).font = { bold: true };
+      data.items.forEach((it, idx) => {
+        sheet.addRow({
+          no: idx + 1,
+          name: it.vendorName,
+          taxId: it.vendorTaxId ?? '',
+          incomeType: it.incomeType ?? '',
+          gross: Number(it.gross),
+          whtPercent: Number(it.whtPercent),
+          wht: Number(it.whtAmount),
+          paidDate: it.paidDate,
+          doc: it.expenseDocNumber,
+        });
+      });
+      const total = sheet.addRow({});
+      total.getCell('name').value = 'รวม';
+      total.getCell('gross').value = Number(data.grossIncome);
+      total.getCell('wht').value = Number(data.whtTotal);
+      total.font = { bold: true };
+    }
+
+    const arrayBuffer = await workbook.xlsx.writeBuffer();
+    return Buffer.from(arrayBuffer as ArrayBuffer);
   }
 
   /**
@@ -403,30 +567,311 @@ export class TaxService {
   }
 
   /**
-   * Shared WHT preview logic for PND3 (individuals) and PND53 (companies)
+   * Shared WHT preview for vendor flows (PND3 individuals / PND53 juristic).
+   *
+   * Source: JournalLine where accountCode matches the WHT payable account for
+   * the form (21-3102 PND3, 21-3103 PND53) + credit > 0 + entry POSTED in
+   * period + entry.metadata.flow LIKE 'expense-%' (only expense-same-day,
+   * expense-accrual, credit-note, vendor-settlement touch WHT payable).
+   *
+   * Joined back to ExpenseDocument via metadata.documentId for vendor name /
+   * tax id / WHT income type / amount. WHT base per V17 = subtotal (pre-VAT).
+   *
+   * Returns items shaped per RD form: vendorName, vendorTaxId, incomeType,
+   * gross (pre-VAT amount), whtAmount, paidDate, expenseDocNumber.
    */
-  private async previewWHT(
+  private async previewVendorWHT(
     companyId: string,
     year: number,
     month: number,
-    type: 'PND3' | 'PND53',
+    form: 'PND3' | 'PND53',
   ) {
-    // Legacy `expense` model removed; WHT reporting on the new ExpenseDocument
-    // module will be reinstated in a follow-up PR. For now PND3/PND53 preview is empty.
-    void this.getDateRange(year, month);
-    void (await this.getBranchIds(companyId));
-    void type;
-
-    return {
+    const { startDate, endDate } = this.getDateRange(year, month);
+    const branchIds = await this.getBranchIds(companyId);
+    const accountCode = form === 'PND3' ? '21-3102' : '21-3103';
+    const emptyResult = {
+      items: [] as Array<{
+        vendorName: string;
+        vendorTaxId: string | null;
+        incomeType: string | null;
+        gross: Prisma.Decimal;
+        whtPercent: Prisma.Decimal;
+        whtAmount: Prisma.Decimal;
+        paidDate: Date;
+        expenseDocNumber: string;
+      }>,
+      grossIncome: new Prisma.Decimal(0),
+      whtTotal: new Prisma.Decimal(0),
+      count: 0,
+      period: { year, month, startDate, endDate },
+      companyId,
+      form,
+      // Backward-compat fields consumed by /tax/generate upsert
       totalWht: new Prisma.Decimal(0),
       transactionCount: 0,
       vendors: [] as Array<{
         vendorName: string;
-        vendorTaxId: string;
+        vendorTaxId: string | null;
         whtIncomeType: string | null;
         totalAmount: Prisma.Decimal;
         whtAmount: Prisma.Decimal;
       }>,
+    };
+
+    if (branchIds.length === 0) return emptyResult;
+
+    const lines = await this.prisma.journalLine.findMany({
+      where: {
+        accountCode,
+        credit: { gt: 0 },
+        deletedAt: null,
+        journalEntry: {
+          deletedAt: null,
+          status: 'POSTED',
+          postedAt: { gte: startDate, lte: endDate },
+          metadata: { path: ['flow'], string_starts_with: 'expense-' } as Prisma.JsonFilter,
+        },
+      },
+      include: {
+        journalEntry: {
+          select: {
+            id: true,
+            postedAt: true,
+            description: true,
+            metadata: true,
+          },
+        },
+      },
+      orderBy: { journalEntry: { postedAt: 'asc' } },
+    });
+
+    if (lines.length === 0) return emptyResult;
+
+    const documentIds = [
+      ...new Set(
+        lines
+          .map((l) => {
+            const md = l.journalEntry.metadata as Prisma.JsonObject | null;
+            const docId = md?.documentId;
+            return typeof docId === 'string' ? docId : null;
+          })
+          .filter((v): v is string => v !== null),
+      ),
+    ];
+
+    const docs =
+      documentIds.length > 0
+        ? await this.prisma.expenseDocument.findMany({
+            where: {
+              id: { in: documentIds },
+              branchId: { in: branchIds },
+              deletedAt: null,
+            },
+            select: {
+              id: true,
+              number: true,
+              vendorName: true,
+              vendorTaxId: true,
+              subtotal: true,
+              documentDate: true,
+              paidAt: true,
+              expenseDetail: {
+                select: {
+                  lines: {
+                    select: { category: true, whtPercent: true },
+                    take: 1,
+                  },
+                },
+              },
+            },
+          })
+        : [];
+    const docById = new Map(docs.map((d) => [d.id, d]));
+
+    const items = lines.flatMap((line) => {
+      const md = line.journalEntry.metadata as Prisma.JsonObject | null;
+      const docId = typeof md?.documentId === 'string' ? md.documentId : null;
+      const doc = docId ? docById.get(docId) : null;
+      if (!doc) return [];
+      const firstLine = doc.expenseDetail?.lines?.[0];
+      const incomeType = firstLine?.category ?? null;
+      const whtPercent = firstLine?.whtPercent ?? new Prisma.Decimal(0);
+      return [
+        {
+          vendorName: doc.vendorName ?? '(ไม่ระบุชื่อผู้รับเงิน)',
+          vendorTaxId: doc.vendorTaxId,
+          incomeType,
+          gross: doc.subtotal,
+          whtPercent,
+          whtAmount: line.credit,
+          paidDate: doc.paidAt ?? doc.documentDate ?? line.journalEntry.postedAt ?? new Date(),
+          expenseDocNumber: doc.number,
+        },
+      ];
+    });
+
+    const grossIncome = items.reduce((s, x) => s.add(x.gross), new Prisma.Decimal(0));
+    const whtTotal = items.reduce((s, x) => s.add(x.whtAmount), new Prisma.Decimal(0));
+
+    return {
+      items,
+      grossIncome,
+      whtTotal,
+      count: items.length,
+      period: { year, month, startDate, endDate },
+      companyId,
+      form,
+      // Backward-compat fields consumed by /tax/generate upsert
+      totalWht: whtTotal,
+      transactionCount: items.length,
+      vendors: items.map((x) => ({
+        vendorName: x.vendorName,
+        vendorTaxId: x.vendorTaxId,
+        whtIncomeType: x.incomeType,
+        totalAmount: x.gross,
+        whtAmount: x.whtAmount,
+      })),
+    };
+  }
+
+  /**
+   * Payroll WHT (ภ.ง.ด.1) preview. Source: JournalLine accountCode='21-3101'
+   * (WHT payable — payroll) joined to PayrollLine via metadata.documentId on
+   * the originating PAYROLL ExpenseDocument.
+   *
+   * WHT base on a payroll line = baseSalary (already pre-VAT; payroll has no
+   * VAT). Each PayrollLine row maps 1:1 to a beneficiary on form ภ.ง.ด.1.
+   */
+  private async previewPayrollWHT(companyId: string, year: number, month: number) {
+    const { startDate, endDate } = this.getDateRange(year, month);
+    const branchIds = await this.getBranchIds(companyId);
+    const emptyResult = {
+      items: [] as Array<{
+        employeeName: string;
+        employeeTaxId: string | null;
+        gross: Prisma.Decimal;
+        whtAmount: Prisma.Decimal;
+        payDate: Date;
+        payrollDocNumber: string;
+      }>,
+      grossIncome: new Prisma.Decimal(0),
+      whtTotal: new Prisma.Decimal(0),
+      count: 0,
+      period: { year, month, startDate, endDate },
+      companyId,
+      form: 'PND1' as const,
+      // Backward-compat fields consumed by /tax/generate upsert
+      totalWht: new Prisma.Decimal(0),
+      transactionCount: 0,
+    };
+
+    if (branchIds.length === 0) return emptyResult;
+
+    const lines = await this.prisma.journalLine.findMany({
+      where: {
+        accountCode: '21-3101',
+        credit: { gt: 0 },
+        deletedAt: null,
+        journalEntry: {
+          deletedAt: null,
+          status: 'POSTED',
+          postedAt: { gte: startDate, lte: endDate },
+          metadata: { path: ['flow'], string_starts_with: 'payroll' } as Prisma.JsonFilter,
+        },
+      },
+      include: {
+        journalEntry: {
+          select: {
+            id: true,
+            postedAt: true,
+            description: true,
+            metadata: true,
+          },
+        },
+      },
+      orderBy: { journalEntry: { postedAt: 'asc' } },
+    });
+
+    if (lines.length === 0) return emptyResult;
+
+    const documentIds = [
+      ...new Set(
+        lines
+          .map((l) => {
+            const md = l.journalEntry.metadata as Prisma.JsonObject | null;
+            const docId = md?.documentId;
+            return typeof docId === 'string' ? docId : null;
+          })
+          .filter((v): v is string => v !== null),
+      ),
+    ];
+
+    if (documentIds.length === 0) return emptyResult;
+
+    const docs = await this.prisma.expenseDocument.findMany({
+      where: {
+        id: { in: documentIds },
+        branchId: { in: branchIds },
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        number: true,
+        documentDate: true,
+        paidAt: true,
+        payroll: {
+          select: {
+            lines: {
+              where: { whtAmount: { gt: 0 } },
+              select: {
+                employeeName: true,
+                employeeTaxId: true,
+                baseSalary: true,
+                whtAmount: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const items: Array<{
+      employeeName: string;
+      employeeTaxId: string | null;
+      gross: Prisma.Decimal;
+      whtAmount: Prisma.Decimal;
+      payDate: Date;
+      payrollDocNumber: string;
+    }> = [];
+
+    for (const doc of docs) {
+      const payDate = doc.paidAt ?? doc.documentDate ?? new Date();
+      for (const line of doc.payroll?.lines ?? []) {
+        items.push({
+          employeeName: line.employeeName,
+          employeeTaxId: line.employeeTaxId,
+          gross: line.baseSalary,
+          whtAmount: line.whtAmount,
+          payDate,
+          payrollDocNumber: doc.number,
+        });
+      }
+    }
+
+    const grossIncome = items.reduce((s, x) => s.add(x.gross), new Prisma.Decimal(0));
+    const whtTotal = items.reduce((s, x) => s.add(x.whtAmount), new Prisma.Decimal(0));
+
+    return {
+      items,
+      grossIncome,
+      whtTotal,
+      count: items.length,
+      period: { year, month, startDate, endDate },
+      companyId,
+      form: 'PND1' as const,
+      // Backward-compat fields consumed by /tax/generate upsert
+      totalWht: whtTotal,
+      transactionCount: items.length,
     };
   }
 }

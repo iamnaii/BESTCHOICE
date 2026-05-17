@@ -34,6 +34,38 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /** D1.2.3.2 — default pagination size (list pages). Integer 10-200; default 50. */
+  paginationSize: number;
+  /** D1.2.3.1 — default time-range preset for list pages. Default 'this_month'. */
+  defaultTimeRange: 'all' | 'this_month' | 'last_month';
+  /** D1.3.1.1 — opt-in DRAFT alerts cron. Default false (off). */
+  draftAlertsEnabled: boolean;
+  /** D1.3.1.1 — days a doc must stay DRAFT before alert fires. Default 7. */
+  draftAlertThresholdDays: number;
+  /**
+   * D1.1.6 — adjustment account codes for the V4 multi-line Adjustment row.
+   * Frontend was hardcoding '52-1104' / '53-1503'; now reads from this flag
+   * so OWNER can rebind the codes without a frontend deploy.
+   */
+  adjustmentCodes: { underpay: string; overpay: string };
+  /**
+   * D1.4.1.1 — BOOTSTRAP default for sidebar collapse on a new device
+   * (no `sidebar_collapse` key in localStorage). Per-user preference takes
+   * over the moment the user toggles the sidebar. Default false (= expanded).
+   */
+  sidebarCollapsedDefault: boolean;
+  /**
+   * D1.4.1.2 — when false, hide keyboard-shortcut UI affordances:
+   * the global Shift+? help-dialog binding is disabled and per-item kbd
+   * hints are suppressed. Default true preserves existing UX.
+   */
+  showKeyboardShortcuts: boolean;
+  /**
+   * D1.4.1.3 — global animations + transitions toggle. When false, the
+   * hook sets `data-animations-disabled="true"` on `<html>` and a CSS rule
+   * strips `transition` / `animation` from every element. Default true.
+   */
+  animationEnabled: boolean;
   /**
    * D1.4.1.4 — BOOTSTRAP default theme for first-time devices (no `theme`
    * key in localStorage). 'system' = respect OS prefers-color-scheme.
@@ -59,6 +91,14 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  paginationSize: 50,
+  defaultTimeRange: 'this_month',
+  draftAlertsEnabled: false,
+  draftAlertThresholdDays: 7,
+  adjustmentCodes: { underpay: '52-1104', overpay: '53-1503' },
+  sidebarCollapsedDefault: false,
+  showKeyboardShortcuts: true,
+  animationEnabled: true,
   darkModeDefault: 'system',
 };
 
@@ -81,6 +121,29 @@ export function useUiFlags(): UiFlags {
       document.documentElement.lang = flags.language;
     }
   }, [flags.language]);
+  // D1.4.1.1 — first-time-device seed for sidebar collapse. Only writes when
+  // localStorage has NO `sidebar_collapse` key yet, so we never clobber an
+  // existing per-user preference. Runs once after the flags resolve.
+  useEffect(() => {
+    if (!data) return; // wait for server flags before deciding
+    try {
+      if (typeof window === 'undefined') return;
+      if (localStorage.getItem('sidebar_collapse') !== null) return;
+      localStorage.setItem('sidebar_collapse', String(flags.sidebarCollapsedDefault));
+    } catch {
+      /* ignore quota / disabled-storage */
+    }
+  }, [data, flags.sidebarCollapsedDefault]);
+  // D1.4.1.3 — toggle global animations. CSS rule in `index.css` matches
+  // `[data-animations-disabled="true"]` and strips transitions + animations.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (flags.animationEnabled) {
+      document.documentElement.removeAttribute('data-animations-disabled');
+    } else {
+      document.documentElement.setAttribute('data-animations-disabled', 'true');
+    }
+  }, [flags.animationEnabled]);
   // D1.4.1.4 — first-time-device seed for theme. next-themes stores the
   // user preference in `localStorage.theme`. When that key is absent AND
   // the flags have loaded, seed it from `flags.darkModeDefault`. After

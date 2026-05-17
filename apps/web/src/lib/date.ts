@@ -117,3 +117,41 @@ export function beToAd(yearBE: number): number {
 export function adToBe(yearAD: number): number {
   return yearAD + 543;
 }
+
+/**
+ * D1.2.3.1 — Compute initial `{startDate, endDate}` ISO pair for a list-page
+ * mount based on the OWNER-configured `default_time_range` preset.
+ *
+ * - `'this_month'` → first-of-month → today (Asia/Bangkok)
+ * - `'last_month'` → first-of-last-month → last-of-last-month
+ * - `'all'`        → empty strings (the page query treats empty as "no filter")
+ *
+ * All computations anchor to Bangkok local date via `toLocaleDateString('sv-SE',
+ * { timeZone: 'Asia/Bangkok' })` so late-night users on UTC servers see the
+ * same boundary day they expect.
+ */
+export function computeDefaultTimeRange(
+  preset: 'all' | 'this_month' | 'last_month',
+  now: Date = new Date(),
+): { startDate: string; endDate: string } {
+  if (preset === 'all') return { startDate: '', endDate: '' };
+  const bkkToday = now.toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' });
+  if (preset === 'this_month') {
+    return { startDate: `${bkkToday.slice(0, 7)}-01`, endDate: bkkToday };
+  }
+  // 'last_month' — derive from the Bangkok-local year+month of `now`, then
+  // subtract one month (handles January → previous-year December correctly).
+  const [bkkYearStr, bkkMonthStr] = bkkToday.split('-');
+  const bkkYear = Number(bkkYearStr);
+  const bkkMonth = Number(bkkMonthStr); // 1-12
+  const lastYear = bkkMonth === 1 ? bkkYear - 1 : bkkYear;
+  const lastMonth = bkkMonth === 1 ? 12 : bkkMonth - 1;
+  const lastMonthFirst = `${lastYear}-${String(lastMonth).padStart(2, '0')}-01`;
+  // Last day of "last month" via the JS Date "day = 0" idiom (= last day of
+  // the previous month). The day-count of any calendar month is timezone-
+  // invariant, so building the date in UTC is safe even though the inputs
+  // came from a BKK-local string.
+  const lastDay = new Date(Date.UTC(bkkYear, bkkMonth - 1, 0)).getUTCDate();
+  const lastMonthLast = `${lastYear}-${String(lastMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+  return { startDate: lastMonthFirst, endDate: lastMonthLast };
+}

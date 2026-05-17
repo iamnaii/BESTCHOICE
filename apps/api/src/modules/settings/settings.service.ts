@@ -892,6 +892,14 @@ export class SettingsService {
      * in a guard to enforce the new policy.
      */
     apiKeysAdminOnly: boolean;
+    /**
+     * D1.3.2.4 — dynamic bundle controlling who can reverse/void expense
+     * documents. Whitelisted: `'OWNER+FINANCE_MANAGER'` (default — current
+     * behavior) / `'OWNER_ONLY'`. Enforced at request time by
+     * `ReversePermissionGuard`; exposed here so UIs can hide the "Void"
+     * button for roles that won't be allowed.
+     */
+    reversePermission: 'OWNER+FINANCE_MANAGER' | 'OWNER_ONLY';
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -1263,6 +1271,11 @@ export class SettingsService {
     // D1.3.3.4 — api_keys_admin_only. Default true. Documentary —
     // IntegrationsController @Roles('OWNER') is the actual enforcement.
     const apiKeysAdminOnly = await this.readBoolean('api_keys_admin_only', true);
+    // D1.3.2.4 — reverse_permission. Whitelist 2 values; everything else
+    // falls back to the default OWNER+FM bundle.
+    const reversePermissionRaw = await this.getKey('reverse_permission');
+    const reversePermission: 'OWNER+FINANCE_MANAGER' | 'OWNER_ONLY' =
+      reversePermissionRaw === 'OWNER_ONLY' ? 'OWNER_ONLY' : 'OWNER+FINANCE_MANAGER';
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -1331,6 +1344,7 @@ export class SettingsService {
       settingsAccessRole,
       postPermission,
       apiKeysAdminOnly,
+      reversePermission,
     };
   }
 

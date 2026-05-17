@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { readBoolFlag, readNumberFlag } from '../../utils/config.util';
 
 /**
  * Keys whose values are secrets (API tokens, bank credentials). The audit
@@ -74,20 +75,13 @@ export class SettingsService {
     return row?.value ?? null;
   }
 
+  // Delegate to shared util — keeps parsing semantics identical across services.
   private async readNumber(key: string, fallback: number): Promise<number> {
-    const raw = await this.getKey(key);
-    if (raw == null) return fallback;
-    const n = Number(raw);
-    return Number.isFinite(n) ? n : fallback;
+    return readNumberFlag(this.prisma, key, fallback);
   }
 
   private async readBoolean(key: string, fallback: boolean): Promise<boolean> {
-    const raw = await this.getKey(key);
-    if (raw == null) return fallback;
-    const v = raw.trim().toLowerCase();
-    if (v === 'true' || v === '1') return true;
-    if (v === 'false' || v === '0') return false;
-    return fallback;
+    return readBoolFlag(this.prisma, key, fallback);
   }
 
   /**
@@ -184,6 +178,66 @@ export class SettingsService {
      * design — legal/tax documents always show พ.ศ. regardless of UI pref.
      */
     dateFormat: 'BE' | 'CE';
+    /**
+     * D1.2.3.2 — default pagination size for list pages. Valid integer 10-200
+     * inclusive. Default `50`. Out-of-range or non-numeric values clamp to
+     * the default so a malformed admin edit can't break list pages. SystemConfig
+     * key `pagination_size`. Frontend uses this as the default `limit` query
+     * param; URL `?size=N` overrides per-session, but new sessions start at
+     * this value.
+     */
+    paginationSize: number;
+    /**
+     * D1.2.3.1 — default time range preset selected on list-page mount.
+     * Whitelisted: `'all' | 'this_month' | 'last_month'`. Default
+     * `'this_month'` (matches accounting workflow expectation). Page-level
+     * code uses this to initialize startDate/endDate when no URL query
+     * params override; user changes mid-session are NOT persisted to the
+     * setting — this is the *initial* state only.
+     */
+    defaultTimeRange: 'all' | 'this_month' | 'last_month';
+    /**
+     * D1.3.1.1 — DRAFT alerts toggle. When true, `DraftAlertsCron` (daily at
+     * 09:00 BKK) scans expense docs in DRAFT for longer than the configured
+     * threshold and sends an in-app notification to the creator. Default
+     * `false` (opt-in) so existing deploys don't suddenly start spamming
+     * users when this PR rolls out.
+     */
+    draftAlertsEnabled: boolean;
+    /**
+     * D1.3.1.1 — DRAFT alert threshold in days. Drafts older than this trigger
+     * the alert. Default 7. Validated `> 0`.
+     */
+    draftAlertThresholdDays: number;
+    /**
+     * D1.1.6 — adjustment account codes for the V4 multi-line Adjustment
+     * row. Frontend `AdjustmentSection.tsx` previously hardcoded
+     * '52-1104' / '53-1503'; now reads from this flag so OWNER can rebind
+     * the codes (e.g. branch-specific CoA variant) without a frontend
+     * deploy. Defaults preserve the legacy behaviour.
+     *
+     * `underpay` is suggested when amountPaid < expected (Dr side).
+     * `overpay` is suggested when amountPaid > expected (Cr side).
+     *
+     * Backend JE templates (PaymentReceipt2BTemplate, etc.) still
+     * hardcode these codes — keeping this scoped to the V4 form so
+     * server-side templates stay deterministic for golden CSV.
+     */
+    adjustmentCodes: { underpay: string; overpay: string };
+    /**
+     * D1.4.1.1 — BOOTSTRAP default for sidebar collapse on a brand-new device
+     * (no `sidebar_collapse` key in localStorage). Once the user toggles the
+     * sidebar in the UI, their personal preference is persisted and takes
+     * precedence — this flag never overrides an existing per-user value.
+     * Default false (= expanded). OWNER stores 'true' / 'false'.
+     */
+    sidebarCollapsedDefault: boolean;
+    /**
+     * D1.4.1.2 — controls whether keyboard-shortcut hints (the Shift+? help
+     * dialog binding + per-item kbd hints) are exposed to the user. Default
+     * true preserves the existing UX. OWNER stores 'true'/'false'.
+     */
+    showKeyboardShortcuts: boolean;
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -227,6 +281,53 @@ export class SettingsService {
     // Default 'BE' so existing flows are unchanged.
     const dateFormatRaw = await this.getKey('date_format');
     const dateFormat: 'BE' | 'CE' = dateFormatRaw === 'CE' ? 'CE' : 'BE';
+    // D1.2.3.2 — pagination_size. Integer 10-200 inclusive; clamp to 50
+    // default for out-of-range or non-numeric values so list pages remain
+    // usable even when SystemConfig is mis-edited.
+    const paginationSizeRaw = await this.readNumber('pagination_size', 50);
+    const paginationSize =
+      Number.isInteger(paginationSizeRaw) && paginationSizeRaw >= 10 && paginationSizeRaw <= 200
+        ? paginationSizeRaw
+        : 50;
+    // D1.2.3.1 — default time range. Whitelist; everything else falls
+    // through to 'this_month' so a malformed admin edit can't break list
+    // pages that depend on this for initial state.
+    const defaultTimeRangeRaw = await this.getKey('default_time_range');
+    const defaultTimeRange: 'all' | 'this_month' | 'last_month' =
+      defaultTimeRangeRaw === 'all' || defaultTimeRangeRaw === 'last_month'
+        ? defaultTimeRangeRaw
+        : 'this_month';
+    // D1.3.1.1 — DRAFT alerts (opt-in, default off).
+    const draftAlertsEnabled = await this.readBoolean('draft_alerts_enabled', false);
+    const draftAlertThresholdDaysRaw = await this.readNumber(
+      'draft_alert_threshold_days',
+      7,
+    );
+    const draftAlertThresholdDays =
+      draftAlertThresholdDaysRaw > 0 ? draftAlertThresholdDaysRaw : 7;
+    // D1.1.6 — adjustment codes for the V4 form's manual reconciliation
+    // row. Codes must match the format `\d{2}-\d{4}` to be accepted;
+    // anything malformed falls back to the legacy default. Empty string
+    // never returned — defensive against half-saved SystemConfig rows.
+    const isValidCode = (raw: string | null): raw is string =>
+      !!raw && /^\d{2}-\d{4}$/.test(raw);
+    const underpayRaw = await this.getKey('adjustment_code_underpay');
+    const overpayRaw = await this.getKey('adjustment_code_overpay');
+    const adjustmentCodes = {
+      underpay: isValidCode(underpayRaw) ? underpayRaw : '52-1104',
+      overpay: isValidCode(overpayRaw) ? overpayRaw : '53-1503',
+    };
+    // D1.4.1.1 — sidebar bootstrap default. `readBoolean` already whitelists
+    // 'true' / 'false' / '1' / '0' so a bad row falls back to false (expanded).
+    const sidebarCollapsedDefault = await this.readBoolean(
+      'sidebar_collapsed_default',
+      false,
+    );
+    // D1.4.1.2 — keyboard shortcut hints + help-dialog binding. Default true.
+    const showKeyboardShortcuts = await this.readBoolean(
+      'show_keyboard_shortcuts',
+      true,
+    );
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -239,6 +340,13 @@ export class SettingsService {
       themeColor,
       language,
       dateFormat,
+      paginationSize,
+      defaultTimeRange,
+      draftAlertsEnabled,
+      draftAlertThresholdDays,
+      adjustmentCodes,
+      sidebarCollapsedDefault,
+      showKeyboardShortcuts,
     };
   }
 
@@ -262,7 +370,46 @@ export class SettingsService {
     return { dailyCap, workloadFloor, etaPerContractMin, sessionTargetMin, selfClaimLockHours };
   }
 
+  /**
+   * D1.1.3.1 follow-up — defensive normalisation for VAT-rate writes.
+   *
+   * Legacy frontends (or operators using a generic SQL client) may still
+   * send `{ key: 'vat_pct', value: '0.07' }` to `/settings`. After PR #940
+   * (the canonical `VAT_RATE` migration) any such write resurrects the
+   * orphan key and `VatRateBootstrapService` warns on the next boot.
+   *
+   * This helper rewrites the item in-place: `vat_pct` writes become
+   * `VAT_RATE` writes, converting decimal form to percent form when
+   * needed. `vat_rate` (older legacy) treated the same. Already-canonical
+   * `VAT_RATE` items pass through unchanged.
+   *
+   * Idempotent: if both legacy and canonical keys are sent in the same
+   * batch, the canonical wins (last write wins inside the same batch).
+   */
+  private normaliseVatRateWrites(
+    items: { key: string; value: string }[],
+  ): { key: string; value: string }[] {
+    return items.map((item) => {
+      if (item.key !== 'vat_pct' && item.key !== 'vat_rate') return item;
+      const trimmed = String(item.value ?? '').trim();
+      if (!trimmed) return { key: 'VAT_RATE', value: '' };
+      const n = Number(trimmed);
+      if (!Number.isFinite(n) || n < 0) {
+        return { key: 'VAT_RATE', value: trimmed };
+      }
+      // Values < 1 are decimal-form ('0.07') → multiply by 100 for percent.
+      // Values >= 1 are already percent-form. Round to 4 decimal places so
+      // floating-point math (0.07*100=7.000000000000001) doesn't leak into
+      // the audit log or back to the UI.
+      const asPercent = n < 1 ? n * 100 : n;
+      const rounded = Math.round(asPercent * 10000) / 10000;
+      return { key: 'VAT_RATE', value: String(rounded) };
+    });
+  }
+
   async bulkUpdate(items: { key: string; value: string }[], userId?: string) {
+    // D1.1.3.1 follow-up — rewrite legacy VAT keys before persist.
+    items = this.normaliseVatRateWrites(items);
     // Fetch "before" snapshot in one query so the transaction stays bounded.
     const keys = items.map((i) => i.key);
     const existing = await this.prisma.systemConfig.findMany({

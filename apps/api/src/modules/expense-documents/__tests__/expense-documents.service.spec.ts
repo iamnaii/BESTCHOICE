@@ -667,6 +667,195 @@ describe('ExpenseDocumentsService', () => {
         /CompanyInfo with companyCode=SHOP/,
       );
     });
+
+    // D1.2.1.6 — assertCanPost now also accepts APPROVED (the auto-post chain
+    // in approve() relies on this when transition.assertCanPost is invoked at
+    // the post-side, and a manual POST after APPROVE goes through this gate).
+    // Spec calls real StatusTransitionService to anchor the contract.
+    it('D1.2.1.6: post() permits source status APPROVED (manual post after approve)', async () => {
+      // Replace mock transition with real one so its assertCanPost runs.
+      const realTransition = new (require('../services/status-transition.service').StatusTransitionService)();
+      service = new ExpenseDocumentsService(
+        prisma, docNumber, realTransition, sameDay, accrual, creditNote,
+        payroll, settlement,
+        { createAndPost: jest.fn() } as never,
+        new LineAggregatorService(),
+        { preview: jest.fn() } as never,
+        { validateContribution: jest.fn().mockResolvedValue(undefined) } as never,
+        { execute: jest.fn() } as never,
+        { getConfig: jest.fn(), validate: jest.fn() } as never,
+        { loadWhitelist: jest.fn().mockResolvedValue(new Set(['53-1104'])), validateLine: jest.fn() } as never,
+      );
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-approved',
+        status: 'APPROVED',
+        documentType: 'EXPENSE',
+        paymentMethod: 'CASH',
+        depositAccountCode: '11-1101',
+        totalAmount: new Decimal('500.00'),
+        withholdingTax: new Decimal('0'),
+        whtFormType: null,
+        receiptImageUrl: null,
+      });
+      await service.post('doc-approved', 'user-1');
+      expect(sameDay.execute).toHaveBeenCalledWith('doc-approved', expect.anything());
+    });
+  });
+
+  describe('approve (D1.2.1.6)', () => {
+    function setupApprovableDoc(overrides: Record<string, unknown> = {}) {
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-pend',
+        status: 'PENDING_APPROVAL',
+        documentType: 'EXPENSE',
+        paymentMethod: 'CASH',
+        depositAccountCode: '11-1101',
+        totalAmount: new Decimal('500.00'),
+        withholdingTax: new Decimal('0'),
+        whtFormType: null,
+        receiptImageUrl: null,
+        documentDate: new Date('2026-05-10'),
+        deletedAt: null,
+        ...overrides,
+      });
+      transition.resolveTargetStatus.mockReturnValue('POSTED');
+    }
+
+    it('rejects when source status is not PENDING_APPROVAL', async () => {
+      setupApprovableDoc({ status: 'DRAFT' });
+      transition.assertCanApprove = jest.fn(() => {
+        throw new BadRequestException('not pending');
+      });
+      await expect(service.approve('doc-pend', 'user-1')).rejects.toThrow(BadRequestException);
+    });
+
+    it('auto_post_on_approve = true (default): flips to APPROVED then runs sameDay template', async () => {
+      setupApprovableDoc();
+      transition.assertCanApprove = jest.fn();
+      // systemConfig.findFirst defaults to null → readBoolFlag returns true (default)
+      await service.approve('doc-pend', 'user-1');
+      // First: update to APPROVED
+      const updateCalls = prisma.expenseDocument.update.mock.calls;
+      expect(updateCalls.some((c: unknown[]) => {
+        const arg = c[0] as { data?: { status?: string } };
+        return arg?.data?.status === 'APPROVED';
+      })).toBe(true);
+      // Then: JE template is executed (auto-post chain)
+      expect(sameDay.execute).toHaveBeenCalledWith('doc-pend', expect.anything());
+    });
+
+    it('auto_post_on_approve = false: flips to APPROVED but skips JE template', async () => {
+      setupApprovableDoc();
+      transition.assertCanApprove = jest.fn();
+      prisma.systemConfig.findFirst.mockImplementation(
+        (args: { where: { key: string } }) => {
+          if (args.where.key === 'auto_post_on_approve') {
+            return Promise.resolve({ value: 'false' });
+          }
+          if (args.where.key === 'reverse_reason_required') {
+            return Promise.resolve({ value: 'false' });
+          }
+          return Promise.resolve(null);
+        },
+      );
+      await service.approve('doc-pend', 'user-1');
+      // Status flip happens
+      const updateCalls = prisma.expenseDocument.update.mock.calls;
+      expect(updateCalls.some((c: unknown[]) => {
+        const arg = c[0] as { data?: { status?: string } };
+        return arg?.data?.status === 'APPROVED';
+      })).toBe(true);
+      // But JE templates are NOT called
+      expect(sameDay.execute).not.toHaveBeenCalled();
+      expect(accrual.execute).not.toHaveBeenCalled();
+    });
+
+    it('rejects when doc is soft-deleted', async () => {
+      setupApprovableDoc({ deletedAt: new Date() });
+      transition.assertCanApprove = jest.fn();
+      await expect(service.approve('doc-pend', 'user-1')).rejects.toThrow(NotFoundException);
+    });
+
+    it('auto-post chain dispatches PAYROLL through payroll template', async () => {
+      setupApprovableDoc({ documentType: 'PAYROLL', paymentMethod: null, depositAccountCode: null });
+      transition.assertCanApprove = jest.fn();
+      await service.approve('doc-pend', 'user-1');
+      expect(payroll.execute).toHaveBeenCalledWith('doc-pend', expect.anything());
+    });
+
+    it('auto-post chain enforces attachment-threshold guard (C10 symmetry)', async () => {
+      setupApprovableDoc({ totalAmount: new Decimal('100000.00') });
+      transition.assertCanApprove = jest.fn();
+      prisma.systemConfig.findUnique.mockImplementation(
+        (args: { where: { key: string } }) =>
+          args.where.key === 'ATTACHMENT_REQUIRED_ABOVE_AMOUNT'
+            ? { key: 'ATTACHMENT_REQUIRED_ABOVE_AMOUNT', value: '50000' }
+            : null,
+      );
+      await expect(service.approve('doc-pend', 'user-1')).rejects.toThrow(/ต้องแนบไฟล์ประกอบ/);
+      expect(sameDay.execute).not.toHaveBeenCalled();
+    });
+
+    // D1.2.1.6 — audit trail: APPROVED on every approve(), AUTO_POSTED only
+    // when auto_post_on_approve=true completes successfully.
+    it('approve() writes APPROVED audit log (even when auto-post disabled)', async () => {
+      setupApprovableDoc();
+      transition.assertCanApprove = jest.fn();
+      prisma.systemConfig.findFirst.mockImplementation(
+        (args: { where: { key: string } }) => {
+          if (args.where.key === 'auto_post_on_approve') {
+            return Promise.resolve({ value: 'false' });
+          }
+          return Promise.resolve(null);
+        },
+      );
+      await service.approve('doc-pend', 'user-1');
+      const auditCalls = prisma.auditLog.create.mock.calls;
+      const approvedCall = auditCalls.find((c: unknown[]) => {
+        const arg = c[0] as { data?: { action?: string } };
+        return arg?.data?.action === 'APPROVED';
+      });
+      expect(approvedCall).toBeDefined();
+      const approvedArg = approvedCall![0] as {
+        data: { action: string; entity: string; entityId: string; userId: string; oldValue: unknown; newValue: unknown };
+      };
+      expect(approvedArg.data.entity).toBe('expense_document');
+      expect(approvedArg.data.entityId).toBe('doc-pend');
+      expect(approvedArg.data.userId).toBe('user-1');
+      expect(approvedArg.data.oldValue).toEqual({ status: 'PENDING_APPROVAL' });
+      expect(approvedArg.data.newValue).toEqual({ status: 'APPROVED' });
+      // AUTO_POSTED MUST NOT fire when auto-post is disabled
+      const autoPostedCall = auditCalls.find((c: unknown[]) => {
+        const arg = c[0] as { data?: { action?: string } };
+        return arg?.data?.action === 'AUTO_POSTED';
+      });
+      expect(autoPostedCall).toBeUndefined();
+    });
+
+    it('approve() writes APPROVED + AUTO_POSTED audit logs when auto_post_on_approve=true', async () => {
+      setupApprovableDoc();
+      transition.assertCanApprove = jest.fn();
+      // Default systemConfig (null) → readBoolFlag returns true (default) → auto-post path
+      await service.approve('doc-pend', 'user-1');
+      const auditCalls = prisma.auditLog.create.mock.calls;
+      const actions = auditCalls
+        .map((c: unknown[]) => (c[0] as { data?: { action?: string } })?.data?.action)
+        .filter(Boolean);
+      expect(actions).toContain('APPROVED');
+      expect(actions).toContain('AUTO_POSTED');
+      const autoPostedCall = auditCalls.find((c: unknown[]) => {
+        const arg = c[0] as { data?: { action?: string } };
+        return arg?.data?.action === 'AUTO_POSTED';
+      });
+      const autoPostedArg = autoPostedCall![0] as {
+        data: { action: string; entity: string; entityId: string; userId: string; newValue: { autoPostedFromApproval?: boolean; status?: string } };
+      };
+      expect(autoPostedArg.data.entity).toBe('expense_document');
+      expect(autoPostedArg.data.entityId).toBe('doc-pend');
+      expect(autoPostedArg.data.userId).toBe('user-1');
+      expect(autoPostedArg.data.newValue.status).toBe('POSTED');
+      expect(autoPostedArg.data.newValue.autoPostedFromApproval).toBe(true);
+    });
   });
 
   describe('update', () => {

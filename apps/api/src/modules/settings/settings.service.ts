@@ -251,6 +251,16 @@ export class SettingsService {
      */
     whtRates: { rate: number; label: string; effectiveDate?: string | null }[];
     /**
+     * D1.1.6.3 — auto-route the ≤1฿ rounding remainder on Payment receipts
+     * to adj_underpay (52-1104) / adj_overpay (53-1503). Default TRUE.
+     * When FALSE, PaymentReceipt2B + PaymentReceipt2B-split throw
+     * BadRequestException on any non-zero rounding diff, forcing a manual
+     * JV to clear the residual. Exposed here so the admin Settings UI can
+     * render the toggle; the actual server-side enforcement lives in the JE
+     * templates (they read `adj_auto_route` directly via PrismaService).
+     */
+    adjAutoRoute: boolean;
+    /**
      * D1.3.6.1 — max number of bills (cleared docs) per VENDOR_SETTLEMENT
      * document. Default 100 (matches the legacy `limit=100` literal that
      * `SettlementLinesSection.tsx` used to pull from `/expense-documents`).
@@ -389,6 +399,15 @@ export class SettingsService {
      * setting — this is the *initial* state only.
      */
     defaultTimeRange: 'all' | 'this_month' | 'last_month';
+    /**
+     * D1.3.5.1 — default time range preset for the expense daily-summary
+     * page. Whitelisted: `'today' | 'this_week' | 'this_month' | 'last_month'`.
+     * Default `'this_month'`. Wider preset set than `defaultTimeRange` because
+     * the summary page is consumed daily (operations) AND monthly (ผู้จัดการ
+     * รีวิว). Page-level code uses this to initialize startDate/endDate on
+     * mount; mid-session user changes are NOT persisted to the setting.
+     */
+    summaryDefaultRange: 'today' | 'this_week' | 'this_month' | 'last_month';
     /**
      * D1.3.1.2 — AP-due alerts cron toggle. Default `false` (OFF) until
      * ExpenseDocument has a real `dueDate` column — currently the cron uses
@@ -545,6 +564,9 @@ export class SettingsService {
     // D1.1.3.2 — WHT rates (default 5 canonical entries + optional D1.1.3.5
     // effectiveDate per entry).
     const whtRates = await this.getWhtRates();
+    // D1.1.6.3 — adj_auto_route. Defaults TRUE so first-boot behaviour
+    // mirrors the original auto-route-to-52-1104/53-1503 logic.
+    const adjAutoRoute = await this.readBoolean('adj_auto_route', true);
     // D1.3.6.1 — settlement_max_bills_per_doc. Clamp to 1–500 inclusive;
     // anything outside (incl. NaN / negative) falls back to the default 100
     // which matches the previous hardcoded limit.
@@ -641,6 +663,17 @@ export class SettingsService {
       defaultTimeRangeRaw === 'all' || defaultTimeRangeRaw === 'last_month'
         ? defaultTimeRangeRaw
         : 'this_month';
+    // D1.3.5.1 — summary-page default range. Wider whitelist than
+    // defaultTimeRange (no 'all' — summary always wants a bounded period,
+    // and the page UI doesn't currently expose an "all" option; the
+    // companion D1.3.5.2 banner explains gracefully if 'all' is ever wired).
+    const summaryDefaultRangeRaw = await this.getKey('summary_default_range');
+    const summaryDefaultRange: 'today' | 'this_week' | 'this_month' | 'last_month' =
+      summaryDefaultRangeRaw === 'today' ||
+      summaryDefaultRangeRaw === 'this_week' ||
+      summaryDefaultRangeRaw === 'last_month'
+        ? summaryDefaultRangeRaw
+        : 'this_month';
     // D1.3.1.2 — AP-due alerts. Default OFF until ExpenseDocument has a real
     // dueDate column (documentDate proxy would otherwise spam every POSTED doc).
     const apDueAlertsEnabled = await this.readBoolean('ap_due_alerts_enabled', false);
@@ -724,6 +757,8 @@ export class SettingsService {
       themeColor,
       language,
       whtRates,
+      summaryDefaultRange,
+      adjAutoRoute,
       settlementMaxBillsPerDoc,
       pettyCashReplenishThreshold,
       pettyCashEnabled,

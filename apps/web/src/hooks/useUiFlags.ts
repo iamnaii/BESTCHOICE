@@ -37,6 +37,8 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /** D1.3.5.1 — default time-range preset for ExpenseDailySummaryPage. Default 'this_month'. */
+  summaryDefaultRange: 'today' | 'this_week' | 'this_month' | 'last_month';
   /**
    * D1.1.3.2 — configurable WHT-rate dropdown. Always at least the 5 defaults.
    * D1.1.3.5 — each entry may carry an optional `effectiveDate` (ISO string);
@@ -202,6 +204,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
     { rate: 10, label: '10% — ค่าวิชาชีพ' },
     { rate: 15, label: '15% — ต่างประเทศ' },
   ],
+  summaryDefaultRange: 'this_month',
   settlementMaxBillsPerDoc: 100,
   pettyCashReplenishThreshold: 5000,
   pettyCashEnabled: true,

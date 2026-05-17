@@ -865,6 +865,19 @@ export class SettingsService {
      * back to `'OWNER'` (preserves OWNER-only behavior).
      */
     settingsAccessRole: 'OWNER' | 'OWNER+FINANCE_MANAGER' | 'OWNER+ACCOUNTANT' | 'OWNER+ALL';
+    /**
+     * D1.3.2.3 — dynamic bundle controlling who can POST expense documents
+     * (DRAFT → ACCRUAL). Whitelisted: `'OWNER+FINANCE_MANAGER+ACCOUNTANT'`
+     * (default — current behavior) / `'OWNER+FINANCE_MANAGER'` /
+     * `'OWNER_ONLY'` / `'OWNER+ALL_NON_SALES'`. Enforced at request time by
+     * `PostPermissionGuard`; exposed here so UIs can hide the "Post" button
+     * for roles that won't be allowed (defence against confusing 403s).
+     */
+    postPermission:
+      | 'OWNER+FINANCE_MANAGER+ACCOUNTANT'
+      | 'OWNER+FINANCE_MANAGER'
+      | 'OWNER_ONLY'
+      | 'OWNER+ALL_NON_SALES';
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -1219,6 +1232,20 @@ export class SettingsService {
       settingsAccessRoleRaw === 'OWNER+ALL'
         ? settingsAccessRoleRaw
         : 'OWNER';
+    // D1.3.2.3 — post_permission. Whitelist 4 values; everything else falls
+    // back to the default OWNER+FM+ACCOUNTANT bundle (matches the
+    // pre-Phase-2 static @Roles decorator).
+    const postPermissionRaw = await this.getKey('post_permission');
+    const postPermission:
+      | 'OWNER+FINANCE_MANAGER+ACCOUNTANT'
+      | 'OWNER+FINANCE_MANAGER'
+      | 'OWNER_ONLY'
+      | 'OWNER+ALL_NON_SALES' =
+      postPermissionRaw === 'OWNER+FINANCE_MANAGER' ||
+      postPermissionRaw === 'OWNER_ONLY' ||
+      postPermissionRaw === 'OWNER+ALL_NON_SALES'
+        ? postPermissionRaw
+        : 'OWNER+FINANCE_MANAGER+ACCOUNTANT';
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -1285,6 +1312,7 @@ export class SettingsService {
       viewerRoleEnabled,
       webhooksEnabled,
       settingsAccessRole,
+      postPermission,
     };
   }
 

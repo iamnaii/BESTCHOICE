@@ -642,6 +642,13 @@ export class SettingsService {
      */
     approvalEnabled: boolean;
     /**
+     * D1.2.1.5 — fan out IN_APP notifications when a doc enters
+     * PENDING_APPROVAL. Default `true`. Respects the master gate
+     * `in_app_notifications_enabled` (D1.3.1.4) — if either is off, no
+     * notifications are sent. Read by `ExpenseDocumentsService.notifyApprovers`.
+     */
+    notificationOnPending: boolean;
+    /**
      * D1.2.3.2 — default pagination size for list pages. Valid integer 10-200
      * inclusive. Default `50`. Out-of-range or non-numeric values clamp to
      * the default so a malformed admin edit can't break list pages. SystemConfig
@@ -1001,6 +1008,9 @@ export class SettingsService {
     // Settings_Audit_Core_v2.0.md spec. Owner can flip to `false` via
     // SystemConfig if rollout needs to be gradual.
     const approvalEnabled = await this.readBoolean('approval_enabled', true);
+    // D1.2.1.5 — notification fan-out toggle. Default true. Respects master
+    // gate `in_app_notifications_enabled` downstream in NotificationsService.
+    const notificationOnPending = await this.readBoolean('notification_on_pending', true);
     // D1.2.3.2 — pagination_size. Integer 10-200 inclusive; clamp to 50
     // default for out-of-range or non-numeric values so list pages remain
     // usable even when SystemConfig is mis-edited.
@@ -1150,6 +1160,7 @@ export class SettingsService {
       decimalPlaces,
       dateFormat,
       approvalEnabled,
+      notificationOnPending,
       paginationSize,
       defaultTimeRange,
       apDueAlertsEnabled,

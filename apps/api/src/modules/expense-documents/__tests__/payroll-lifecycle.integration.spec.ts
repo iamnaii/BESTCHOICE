@@ -72,6 +72,7 @@ describe('Payroll lifecycle (integration)', () => {
       new PettyCashTemplate(journal, prisma as never),
       new PettyCashService(prisma as never),
       new PayrollCustomService(prisma as never),
+      { send: jest.fn().mockResolvedValue({ id: 'notif-1', status: 'SENT' }) } as never,
     );
   }
 

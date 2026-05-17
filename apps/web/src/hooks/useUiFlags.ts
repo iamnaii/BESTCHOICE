@@ -218,6 +218,12 @@ export interface UiFlags {
    */
   approvalEnabled: boolean;
   /**
+   * D1.2.1.5 — fan out IN_APP notifications when a doc enters
+   * PENDING_APPROVAL. Default `true`. Respects master gate
+   * `in_app_notifications_enabled`.
+   */
+  notificationOnPending: boolean;
+  /**
    * D1.1.6 — adjustment account codes for the V4 multi-line Adjustment row.
    * Frontend was hardcoding '52-1104' / '53-1503'; now reads from this flag
    * so OWNER can rebind the codes without a frontend deploy.
@@ -346,6 +352,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   decimalPlaces: 2,
   dateFormat: 'BE',
   approvalEnabled: false,
+  notificationOnPending: true,
   paginationSize: 50,
   defaultTimeRange: 'this_month',
   apDueAlertsEnabled: false,

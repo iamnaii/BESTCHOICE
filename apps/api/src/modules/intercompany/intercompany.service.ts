@@ -10,6 +10,7 @@ import { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
+import { validatePeriodOpen } from '../../utils/period-lock.util';
 import { SettleIntercompanyDto } from './dto/settle-intercompany.dto';
 
 @Injectable()
@@ -133,6 +134,19 @@ export class IntercompanyService {
     const transactionId = dto.transactionId!;
     const depositAccountCode = dto.depositAccountCode ?? '11-1201';
 
+    // Period guard — must run BEFORE the $transaction so a closed-period
+    // rejection doesn't roll back any other concurrent work. Mirrors the
+    // per-module pattern used by payments.service / receipts.service / etc.
+    // (see journal-auto.service.ts comment block lines 73-94).
+    // Resolve FINANCE companyId for the AccountingPeriod lookup since the
+    // settlement JE always posts on the FINANCE ledger.
+    const postedAt = dto.paidDate ? new Date(dto.paidDate) : new Date();
+    const finance = await this.prisma.companyInfo.findFirst({
+      where: { companyCode: 'FINANCE', deletedAt: null },
+      select: { id: true },
+    });
+    await validatePeriodOpen(this.prisma, postedAt, finance?.id);
+
     return this.prisma.$transaction(async (tx) => {
       const txn = await tx.interCompanyTransaction.findFirst({
         where: { id: transactionId, deletedAt: null },
@@ -163,7 +177,7 @@ export class IntercompanyService {
         );
       }
 
-      const postedAt = dto.paidDate ? new Date(dto.paidDate) : new Date();
+      // postedAt is computed above (before period guard) — re-used here.
 
       const lines: Array<{ accountCode: string; dr: Decimal; cr: Decimal; description?: string }> =
         [];

@@ -35,6 +35,13 @@ describe('IntercompanyService (Phase A.3 W-5)', () => {
       journalEntry: {
         update: jest.fn().mockResolvedValue({}),
       },
+      // For validatePeriodOpen — period unlocked by default.
+      systemConfig: {
+        findUnique: jest.fn().mockResolvedValue(null),
+      },
+      accountingPeriod: {
+        findUnique: jest.fn().mockResolvedValue(null),
+      },
       $transaction: jest.fn().mockImplementation(async (fn: (tx: unknown) => unknown) => fn(prisma)),
     };
     journalAuto = {
@@ -234,6 +241,64 @@ describe('IntercompanyService (Phase A.3 W-5)', () => {
           'user-1',
         ),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    // SP2 Critical #4 — period guard before posting settlement JE
+    it('rejects when paidDate falls in a CLOSED accounting period', async () => {
+      // Spec assumes a real paidDate well past the grace window — use a date
+      // 2 years ago so the 5-day grace window cannot rescue it.
+      const oldDate = new Date();
+      oldDate.setFullYear(oldDate.getFullYear() - 2);
+      const paidDate = oldDate.toISOString();
+
+      prisma.accountingPeriod.findUnique.mockResolvedValue({ status: 'CLOSED' });
+      prisma.interCompanyTransaction.findFirst.mockResolvedValue({
+        id: 'ict-1',
+        status: 'PENDING',
+        principal: 9600,
+        commission: 1000,
+        totalAmount: 10600,
+        journalEntryId: null,
+      });
+
+      await expect(
+        service.settle(
+          {
+            amount: 10600,
+            reference: 'TXN-CLOSED',
+            transactionId: 'ict-1',
+            paidDate,
+          },
+          'user-1',
+        ),
+      ).rejects.toThrow(/งวดที่ปิดแล้ว/);
+      expect(journalAuto.createAndPost).not.toHaveBeenCalled();
+      expect(prisma.interCompanyTransaction.update).not.toHaveBeenCalled();
+    });
+
+    it('succeeds against an OPEN period (period guard passes)', async () => {
+      // status not CLOSED → period guard returns silently
+      prisma.accountingPeriod.findUnique.mockResolvedValue({ status: 'OPEN' });
+      prisma.interCompanyTransaction.findFirst.mockResolvedValue({
+        id: 'ict-1',
+        status: 'PENDING',
+        principal: 9600,
+        commission: 1000,
+        totalAmount: 10600,
+        journalEntryId: null,
+      });
+
+      const result = await service.settle(
+        {
+          amount: 10600,
+          reference: 'TXN-OPEN',
+          transactionId: 'ict-1',
+        },
+        'user-1',
+      );
+      expect(journalAuto.createAndPost).toHaveBeenCalledTimes(1);
+      const settled = result as { journalEntryId: string };
+      expect(settled.journalEntryId).toBe('je-1');
     });
   });
 });

@@ -180,6 +180,15 @@ export class SettingsService {
      */
     approvalEnabled: boolean;
     /**
+     * D1.2.3.2 — default pagination size for list pages. Valid integer 10-200
+     * inclusive. Default `50`. Out-of-range or non-numeric values clamp to
+     * the default so a malformed admin edit can't break list pages. SystemConfig
+     * key `pagination_size`. Frontend uses this as the default `limit` query
+     * param; URL `?size=N` overrides per-session, but new sessions start at
+     * this value.
+     */
+    paginationSize: number;
+    /**
      * D1.2.3.1 — default time range preset selected on list-page mount.
      * Whitelisted: `'all' | 'this_month' | 'last_month'`. Default
      * `'this_month'` (matches accounting workflow expectation). Page-level
@@ -273,6 +282,14 @@ export class SettingsService {
     // Settings_Audit_Core_v2.0.md spec. Owner can flip to `false` via
     // SystemConfig if rollout needs to be gradual.
     const approvalEnabled = await this.readBoolean('approval_enabled', true);
+    // D1.2.3.2 — pagination_size. Integer 10-200 inclusive; clamp to 50
+    // default for out-of-range or non-numeric values so list pages remain
+    // usable even when SystemConfig is mis-edited.
+    const paginationSizeRaw = await this.readNumber('pagination_size', 50);
+    const paginationSize =
+      Number.isInteger(paginationSizeRaw) && paginationSizeRaw >= 10 && paginationSizeRaw <= 200
+        ? paginationSizeRaw
+        : 50;
     // D1.2.3.1 — default time range. Whitelist; everything else falls
     // through to 'this_month' so a malformed admin edit can't break list
     // pages that depend on this for initial state.
@@ -324,6 +341,7 @@ export class SettingsService {
       themeColor,
       language,
       approvalEnabled,
+      paginationSize,
       defaultTimeRange,
       draftAlertsEnabled,
       draftAlertThresholdDays,

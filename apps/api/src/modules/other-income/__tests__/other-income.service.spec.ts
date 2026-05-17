@@ -777,9 +777,24 @@ describe('OtherIncomeService — post — period lock (B1)', () => {
       data: { status: 'CLOSED' },
     });
 
-    // Act + Assert: reverse() must fail because today's period is CLOSED
-    await expect(
-      service.reverse(posted.id, { reason: 'INPUT_ERROR', note: 'test' }, userId),
-    ).rejects.toThrow(/งวดที่ปิดแล้ว/);
+    // D1.2.6.2 — validatePeriodOpen now allows posting INTO a CLOSED period
+    // for `period_grace_days` (default 5) after periodLastDay. This test
+    // creates a CLOSED period for *today*'s month, so today is always within
+    // the default grace window → reverse() would succeed. Force strict mode
+    // (grace=0) so the rejection assertion holds deterministically.
+    await prisma.systemConfig.upsert({
+      where: { key: 'period_grace_days' },
+      update: { value: '0' },
+      create: { key: 'period_grace_days', value: '0' },
+    });
+
+    try {
+      // Act + Assert: reverse() must fail because today's period is CLOSED
+      await expect(
+        service.reverse(posted.id, { reason: 'INPUT_ERROR', note: 'test' }, userId),
+      ).rejects.toThrow(/งวดที่ปิดแล้ว/);
+    } finally {
+      await prisma.systemConfig.deleteMany({ where: { key: 'period_grace_days' } });
+    }
   }, 30_000);
 });

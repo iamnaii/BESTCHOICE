@@ -91,6 +91,25 @@ beforeEach(async () => {
   });
 });
 
+/**
+ * D1.2.6.2 — V15 tests below post into a CLOSED period dated "this month".
+ * The default 5-day grace window introduced by PR #888 would otherwise let
+ * those transactions through (today ≤ periodLastDay + 5d). Setting
+ * `period_grace_days = 0` for the duration of each V15 test restores
+ * strict rejection. Caller must `restoreGraceDays()` after to avoid
+ * polluting other suites that share the DB.
+ */
+async function setStrictGracePeriod(): Promise<void> {
+  await prisma.systemConfig.upsert({
+    where: { key: 'period_grace_days' },
+    update: { value: '0' },
+    create: { key: 'period_grace_days', value: '0' },
+  });
+}
+async function restoreGraceDays(): Promise<void> {
+  await prisma.systemConfig.deleteMany({ where: { key: 'period_grace_days' } });
+}
+
 async function postedAsset(monthly = '833.33') {
   return prisma.fixedAsset.create({
     data: {
@@ -279,19 +298,24 @@ describe('DepreciationService.runManual', () => {
         closedById: userId,
       },
     });
-    await postedAsset();
-    await expect(service.runManual('2026-05', userId)).rejects.toThrow(/period|งวด/i);
-    const blocked = await prisma.auditLog.findFirst({
-      where: {
-        entity: 'depreciation_run',
-        entityId: '2026-05',
-        action: 'DEPRECIATION_RUN_MANUAL_BLOCKED',
-      },
-    });
-    expect(blocked).toBeTruthy();
-    await prisma.accountingPeriod.delete({
-      where: { companyId_year_month: { companyId: finance.id, year: 2026, month: 5 } },
-    });
+    await setStrictGracePeriod();
+    try {
+      await postedAsset();
+      await expect(service.runManual('2026-05', userId)).rejects.toThrow(/period|งวด/i);
+      const blocked = await prisma.auditLog.findFirst({
+        where: {
+          entity: 'depreciation_run',
+          entityId: '2026-05',
+          action: 'DEPRECIATION_RUN_MANUAL_BLOCKED',
+        },
+      });
+      expect(blocked).toBeTruthy();
+    } finally {
+      await prisma.accountingPeriod.delete({
+        where: { companyId_year_month: { companyId: finance.id, year: 2026, month: 5 } },
+      });
+      await restoreGraceDays();
+    }
   });
 });
 
@@ -343,25 +367,30 @@ describe('DepreciationService.reverseRun', () => {
         closedById: userId,
       },
     });
-    await expect(service.reverseRun('2026-05', 'test reason', userId)).rejects.toThrow(
-      /period|งวด/i,
-    );
-    const blocked = await prisma.auditLog.findFirst({
-      where: {
-        entity: 'depreciation_run',
-        entityId: '2026-05',
-        action: 'DEPRECIATION_RUN_REVERSE_BLOCKED',
-      },
-    });
-    expect(blocked).toBeTruthy();
-    await prisma.accountingPeriod.delete({
-      where: {
-        companyId_year_month: {
-          companyId: finance.id,
-          year: now.getFullYear(),
-          month: now.getMonth() + 1,
+    await setStrictGracePeriod();
+    try {
+      await expect(service.reverseRun('2026-05', 'test reason', userId)).rejects.toThrow(
+        /period|งวด/i,
+      );
+      const blocked = await prisma.auditLog.findFirst({
+        where: {
+          entity: 'depreciation_run',
+          entityId: '2026-05',
+          action: 'DEPRECIATION_RUN_REVERSE_BLOCKED',
         },
-      },
-    });
+      });
+      expect(blocked).toBeTruthy();
+    } finally {
+      await prisma.accountingPeriod.delete({
+        where: {
+          companyId_year_month: {
+            companyId: finance.id,
+            year: now.getFullYear(),
+            month: now.getMonth() + 1,
+          },
+        },
+      });
+      await restoreGraceDays();
+    }
   });
 });

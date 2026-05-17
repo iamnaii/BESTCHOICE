@@ -159,6 +159,27 @@ describe('AssetService — CRUD + helpers', () => {
     await cleanupUserAssets();
   });
 
+  /**
+   * D1.2.6.2 — V15 period-lock tests post into a CLOSED period dated
+   * "this month". The default 5-day grace window introduced by PR #888
+   * would otherwise let those transactions through (today ≤ periodLastDay
+   * + 5d). Setting `period_grace_days = 0` for the duration of each V15
+   * test restores strict rejection. Caller must `restoreGraceDays()` in
+   * the finally block to avoid polluting other suites that share the DB.
+   */
+  async function setStrictGracePeriod(): Promise<void> {
+    await prisma.systemConfig.upsert({
+      where: { key: 'period_grace_days' },
+      update: { value: '0' },
+      create: { key: 'period_grace_days', value: '0' },
+    });
+  }
+  async function restoreGraceDays(): Promise<void> {
+    // Remove the override so the production default (5) applies again
+    // in subsequent tests / other suites running in the same worker.
+    await prisma.systemConfig.deleteMany({ where: { key: 'period_grace_days' } });
+  }
+
   afterAll(async () => {
     await cleanupUserAssets();
     await prisma.user.delete({ where: { id: userId } });
@@ -566,6 +587,10 @@ describe('AssetService — CRUD + helpers', () => {
           closedById: userId,
         },
       });
+      // D1.2.6.2: force strict grace window so this test's expectation
+      // (CLOSED period blocks immediately) holds regardless of today's
+      // distance from periodLastDay + default 5d.
+      await setStrictGracePeriod();
 
       try {
         const draft = await service.createDraft(baseDto, userId);
@@ -585,6 +610,7 @@ describe('AssetService — CRUD + helpers', () => {
         await prisma.accountingPeriod.delete({
           where: { id: period.id },
         });
+        await restoreGraceDays();
       }
     });
   });
@@ -866,6 +892,8 @@ describe('AssetService — CRUD + helpers', () => {
           closedById: userId,
         },
       });
+      // D1.2.6.2 strict-grace override — see helper comment above.
+      await setStrictGracePeriod();
       try {
         await expect(
           service.dispose(
@@ -892,6 +920,7 @@ describe('AssetService — CRUD + helpers', () => {
         await prisma.accountingPeriod.delete({
           where: { companyId_year_month: { companyId: finance.id, year: 2026, month: 5 } },
         });
+        await restoreGraceDays();
       }
     });
 
@@ -1026,6 +1055,8 @@ describe('AssetService — CRUD + helpers', () => {
           closedById: userId,
         },
       });
+      // D1.2.6.2 strict-grace override — see helper comment above.
+      await setStrictGracePeriod();
       try {
         await expect(service.reverseDispose(asset.id, 'test', userId)).rejects.toThrow(
           /period|งวด/i,
@@ -1048,6 +1079,7 @@ describe('AssetService — CRUD + helpers', () => {
             },
           },
         });
+        await restoreGraceDays();
       }
     });
 

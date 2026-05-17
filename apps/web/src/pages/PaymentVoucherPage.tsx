@@ -684,7 +684,7 @@ function Sheet({
   const companyAddress = useCompanyAddress();
   const companyTaxId = useCompanyTaxId();
   const companyLogoUrl = useCompanyLogoUrl();
-  const { voucherShowQrCode, voucherShowPartialColumns } = useUiFlags();
+  const { voucherShowQrCode, voucherShowPartialColumns, voucherIncludeAdjustment } = useUiFlags();
   const lines = doc.expenseDetail?.lines ?? [];
   // D1.2.5.3 — partial-payment summary. The pre-WHT total represents the
   // "original" invoiced amount; `net` is what is actually being disbursed
@@ -695,8 +695,6 @@ function Sheet({
   const partialOriginal = parseFloat(doc.totalAmount || '0');
   const partialPaid = parseFloat(net || '0');
   const partialRemaining = Math.max(0, partialOriginal - partialPaid);
-  const { voucherShowQrCode, voucherIncludeAdjustment } = useUiFlags();
-  const lines = doc.expenseDetail?.lines ?? [];
   const isCustomerCopy = copyVariant === 'customer';
   // D1.2.2.7 — verification QR linking to /verify/<doc.number>. Default
   // on; OWNER can disable via SystemConfig `voucher_show_qr_code = false`.

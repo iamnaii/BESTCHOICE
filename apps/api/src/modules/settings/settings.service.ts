@@ -187,6 +187,7 @@ export class SettingsService {
      * (kill switch — owner can pick "dead" semantics by flipping this to 0).
      */
     pettyCashReplenishThreshold: number;
+    /**
      * D1.1.5.1 — Petty Cash feature flag. Default true (feature is shipped
      * and active per PRs #867+#868). When OWNER sets `petty_cash_enabled=false`,
      * the web UI hides the Petty Cash doc-type card + the section in
@@ -194,11 +195,13 @@ export class SettingsService {
      * "ระบบเงินสดย่อยถูกปิดใช้งาน".
      */
     pettyCashEnabled: boolean;
+    /**
      * D1.2.5.3 — render the 3-column partial-payment breakdown (ยอดเดิม /
      * ยอดที่ชำระ / ยอดคงเหลือ) on the voucher. Default true. When false the
      * voucher shows only a single "ยอดที่ชำระ" column.
      */
     voucherShowPartialColumns: boolean;
+    /**
      * D1.2.5.2 — include the rounding-adjustment / overpay-adjustment journal
      * lines (52-1104, 53-1503) in the **printable** voucher layout. Default
      * true. When false the rows are still rendered on screen so the JE
@@ -206,6 +209,7 @@ export class SettingsService {
      * physical paper voucher doesn't show the adjustment cents.
      */
     voucherIncludeAdjustment: boolean;
+    /**
      * D1.2.5.1 — voucher print mode.
      *   - 'multi' (default) — emits BOTH the original (ต้นฉบับ) and the
      *     customer-copy (สำเนา) sheets, each on its own A4 page. The
@@ -214,20 +218,25 @@ export class SettingsService {
      * Whitelisted; unknown values fall back to 'multi'.
      */
     voucherPrintMode: 'single' | 'multi';
-     * D1.2.4.1 — master switch for the Expense Templates feature.
-     * Reads SystemConfig `templates_enabled`; default true.
+    /**
+     * D1.2.4.1 — global toggle for the Expense Templates feature. When false,
+     * ExpenseTemplatesService rejects all writes (create/update/delete/
+     * instantiate) with a 403 ForbiddenException, and the UI hides the
+     * "บันทึกเป็นรายการโปรด" buttons + templates list. List/read endpoints
+     * still resolve (so legacy data isn't hidden) but new writes are blocked.
+     * Default true to preserve current behaviour.
      */
     templatesEnabled: boolean;
     /**
-     * D1.2.4.2 — per-user cap on saved templates. Reads SystemConfig
-     * `max_templates_per_user`; default 20, clamped 1–1000.
+     * D1.2.4.2 — per-user quota of saved Expense Templates. Default 20.
+     * Clamped to 1–1000 on read. `ExpenseTemplatesService.create` counts
+     * the caller's existing (non-deleted) templates against this cap and
+     * rejects with BadRequestException ("โควต้าเทมเพลตเต็มแล้ว — ลบ
+     * เทมเพลตเก่าก่อนสร้างใหม่") when count >= cap. UI surfaces it as a
+     * "X/N" badge on the favorites picker for at-a-glance awareness.
      */
     maxTemplatesPerUser: number;
     /**
-     * D1.2.4.4 — gates `{{variable}}` interpolation affordance. Reads
-     * SystemConfig `template_variables_enabled`; default true.
-     */
-    templateVariablesEnabled: boolean;
      * D1.2.4.4 — gates the `{{variable}}` interpolation feature on
      * Expense Templates. Default true. When false, the UI hides the
      * "ใส่ตัวแปร" affordance and `interpolateTemplate()` callers should
@@ -236,6 +245,7 @@ export class SettingsService {
      * product surfaces the feature to users.
      */
     templateVariablesEnabled: boolean;
+    /**
      * D1.2.4.3 — default visibility for newly-created Expense Templates.
      * Whitelisted PRIVATE/TEAM/PUBLIC, default PRIVATE. The UI uses this
      * value to pre-select the visibility radio on the "บันทึกเป็นรายการ
@@ -245,22 +255,7 @@ export class SettingsService {
      * users (cross-branch access still gated by branchId).
      */
     templateSharingDefault: 'PRIVATE' | 'TEAM' | 'PUBLIC';
-     * D1.2.4.2 — per-user quota of saved Expense Templates. Default 20.
-     * Clamped to 1–1000 on read. `ExpenseTemplatesService.create` counts
-     * the caller's existing (non-deleted) templates against this cap and
-     * rejects with BadRequestException ("โควต้าเทมเพลตเต็มแล้ว — ลบ
-     * เทมเพลตเก่าก่อนสร้างใหม่") when count >= cap. UI surfaces it as a
-     * "X/N" badge on the favorites picker for at-a-glance awareness.
-     */
-    maxTemplatesPerUser: number;
-     * D1.2.4.1 — global toggle for the Expense Templates feature. When false,
-     * ExpenseTemplatesService rejects all writes (create/update/delete/
-     * instantiate) with a 403 ForbiddenException, and the UI hides the
-     * "บันทึกเป็นรายการโปรด" buttons + templates list. List/read endpoints
-     * still resolve (so legacy data isn't hidden) but new writes are blocked.
-     * Default true to preserve current behaviour.
-     */
-    templatesEnabled: boolean;
+    /**
      * D1.2.3.5 — thousands separator style for the generic number formatter.
      * Whitelisted: 'comma' (1,234,567) default, 'space' (1 234 567), or
      * 'none' (1234567). SystemConfig key `thousands_separator`. Invalid
@@ -268,6 +263,7 @@ export class SettingsService {
      * are unaffected — they format dates not numbers.
      */
     thousandsSeparator: 'comma' | 'space' | 'none';
+    /**
      * D1.2.3.4 — default number of decimal places for the generic number
      * formatter. Integer 0-4 inclusive. Default 2 (Thai currency convention).
      * SystemConfig key `decimal_places`. Out-of-range/non-integer values
@@ -276,6 +272,7 @@ export class SettingsService {
      * before, preserving backwards compat.
      */
     decimalPlaces: number;
+    /**
      * D1.2.3.3 — date display format toggle: 'BE' = Buddhist Era (พ.ศ., +543)
      * default, 'CE' = Christian/Common Era (Gregorian ค.ศ.). SystemConfig
      * key `date_format`. Applies to the *generic* `formatDateShort` family
@@ -515,14 +512,6 @@ export class SettingsService {
       Number.isFinite(maxTemplatesPerUserRaw) && maxTemplatesPerUserRaw >= 1
         ? Math.min(Math.floor(maxTemplatesPerUserRaw), 1000)
         : 20;
-    // D1.2.4.4 — template `{{variable}}` interpolation toggle.
-    const templateVariablesEnabled = await this.readBoolean(
-      'template_variables_enabled',
-      true,
-    );
-    // D1.2.4.1 — Expense Templates feature flag. Default true to preserve
-    // existing behaviour; OWNER can disable globally via Settings page.
-    const templatesEnabled = await this.readBoolean('templates_enabled', true);
     // D1.2.3.5 — thousands_separator. Whitelist 'comma' / 'space' / 'none';
     // everything else → 'comma'.
     const tsRaw = await this.getKey('thousands_separator');
@@ -649,10 +638,7 @@ export class SettingsService {
       templatesEnabled,
       maxTemplatesPerUser,
       templateVariablesEnabled,
-      templateVariablesEnabled,
       templateSharingDefault,
-      maxTemplatesPerUser,
-      templatesEnabled,
       thousandsSeparator,
       decimalPlaces,
       dateFormat,

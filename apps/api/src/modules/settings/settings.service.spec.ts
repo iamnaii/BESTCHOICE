@@ -374,6 +374,8 @@ describe('SettingsService audit trail', () => {
       });
       const flags = await service.getUiFlags();
       expect(flags.pettyCashReplenishThreshold).toBe(50000);
+    });
+
     // D1.1.5.1 — petty_cash_enabled feature flag
     it('pettyCashEnabled defaults to true when SystemConfig row missing', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
@@ -406,6 +408,8 @@ describe('SettingsService audit trail', () => {
       });
       const flags = await service.getUiFlags();
       expect(flags.pettyCashEnabled).toBe(true);
+    });
+
     // D1.2.5.3 — voucher_show_partial_columns
     it('voucherShowPartialColumns defaults to true when SystemConfig missing', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
@@ -429,6 +433,8 @@ describe('SettingsService audit trail', () => {
       });
       const flags = await service.getUiFlags();
       expect(flags.voucherShowPartialColumns).toBe(true);
+    });
+
     // D1.2.5.2 — voucher_include_adjustment
     it('voucherIncludeAdjustment defaults to true when SystemConfig missing', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
@@ -452,6 +458,8 @@ describe('SettingsService audit trail', () => {
       });
       const flags = await service.getUiFlags();
       expect(flags.voucherIncludeAdjustment).toBe(true);
+    });
+
     // D1.2.5.1 — voucher_print_mode_default
     it('voucherPrintMode defaults to "multi" when SystemConfig missing', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
@@ -484,8 +492,8 @@ describe('SettingsService audit trail', () => {
       });
       const flags = await service.getUiFlags();
       expect(flags.voucherPrintMode).toBe('multi');
-    // D1.2.4 follow-up — templates feature flags.
-    it('templatesEnabled defaults to true when SystemConfig missing', async () => {
+    });
+
     // D1.2.4.3 — template_sharing_default whitelisted enum
     it('templateSharingDefault defaults to PRIVATE when SystemConfig row missing', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
@@ -527,6 +535,8 @@ describe('SettingsService audit trail', () => {
       });
       const flags = await service.getUiFlags();
       expect(flags.templateSharingDefault).toBe('PRIVATE');
+    });
+
     // D1.2.4.2 — max_templates_per_user quota
     it('maxTemplatesPerUser defaults to 20 when SystemConfig row missing', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
@@ -559,6 +569,8 @@ describe('SettingsService audit trail', () => {
       });
       const flags = await service.getUiFlags();
       expect(flags.maxTemplatesPerUser).toBe(20);
+    });
+
     // D1.2.4.1 — templates_enabled feature flag
     it('templatesEnabled defaults to true when SystemConfig row missing', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
@@ -566,7 +578,6 @@ describe('SettingsService audit trail', () => {
       expect(flags.templatesEnabled).toBe(true);
     });
 
-    it('templatesEnabled honours explicit "false"', async () => {
     it('templatesEnabled returns false when OWNER disables it', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
         if (args.where.key === 'templates_enabled') return Promise.resolve({ value: 'false' });
@@ -595,6 +606,8 @@ describe('SettingsService audit trail', () => {
       prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
       const flags = await service.getUiFlags();
       expect(flags.templateVariablesEnabled).toBe(true);
+    });
+
     it('templatesEnabled falls back to default for unparseable value', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
         if (args.where.key === 'templates_enabled') return Promise.resolve({ value: 'maybe' });
@@ -602,6 +615,8 @@ describe('SettingsService audit trail', () => {
       });
       const flags = await service.getUiFlags();
       expect(flags.templatesEnabled).toBe(true);
+    });
+
     // D1.2.3.5 — thousands_separator
     it('thousandsSeparator defaults to comma when SystemConfig missing', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
@@ -634,6 +649,8 @@ describe('SettingsService audit trail', () => {
       });
       const flags = await service.getUiFlags();
       expect(flags.thousandsSeparator).toBe('comma');
+    });
+
     // D1.2.3.4 — decimal_places
     it('decimalPlaces defaults to 2 when SystemConfig missing', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
@@ -675,6 +692,8 @@ describe('SettingsService audit trail', () => {
       });
       const flags = await service.getUiFlags();
       expect(flags.decimalPlaces).toBe(2);
+    });
+
     // D1.2.3.3 — date_format
     it('dateFormat defaults to BE when SystemConfig missing', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
@@ -1129,3 +1148,4 @@ describe('SettingsService audit trail', () => {
     });
   });
 });
+

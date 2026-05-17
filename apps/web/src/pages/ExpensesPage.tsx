@@ -14,7 +14,6 @@ import QueryBoundary from '@/components/QueryBoundary';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { ReverseDialog } from '@/components/expense-form-v4/ReverseDialog';
 import { useAuth } from '@/contexts/AuthContext';
-import { useUiFlags } from '@/hooks/useUiFlags';
 import { Receipt, Plus, Pencil, MoreVertical, Bookmark, Wallet, BarChart3, Search, SlidersHorizontal, Eye, ArrowRight, UserCircle2, ChevronDown, FileText, CreditCard } from 'lucide-react';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { Button } from '@/components/ui/button';

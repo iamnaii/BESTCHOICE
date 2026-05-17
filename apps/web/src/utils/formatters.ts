@@ -162,15 +162,6 @@ export function formatNumber(value: number | string): string {
 }
 
 // num:2 → 21,468.48 (separator per D1.2.3.5 pref)
-export function formatNumberDecimal(value: number | string, decimals = 2): string {
-  const n = typeof value === 'string' ? parseFloat(value) : value;
-  if (isNaN(n)) return String(value);
-  const formatted = n.toLocaleString('en-US', {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  });
-  return applySeparator(formatted);
-// num:2 → 21,468.48
 // D1.2.3.4 — when `decimals` is omitted, falls back to the module-level
 // pref (configurable via SystemConfig `decimal_places`, default 2). Explicit
 // digit-count callers preserve the previous behaviour exactly.
@@ -188,10 +179,11 @@ export function formatNumberDecimal(value: number | string, decimals?: number): 
   // Round on absolute value so negative inputs use the same half-up direction.
   const sign = n < 0 ? -1 : 1;
   const rounded = (sign * Math.round(Math.abs(n) * factor)) / factor;
-  return rounded.toLocaleString('th-TH', {
+  const formatted = rounded.toLocaleString('en-US', {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   });
+  return applySeparator(formatted);
 }
 
 // Apply format pipe

@@ -133,8 +133,12 @@ export class AccountRoleService implements OnModuleInit {
   }
 
   /**
-   * D1.1.1.2 — All AccountRoleMap rows joined with ChartOfAccount.name +
-   * REQUIRED_ROLES `required` flag, for the admin UI's table view.
+   * D1.1.1.2 — All AccountRoleMap rows (incl. inactive) joined with
+   * ChartOfAccount.name. Returned to the admin UI so editors can see both
+   * the canonical role mapping and the human-readable account name without
+   * a second round-trip per row. The "required" flag tells the UI which
+   * roles cannot be deactivated (REQUIRED_ROLES list — protects boot
+   * invariants in `assertRequiredRolesPresent`).
    */
   async listWithCoa(): Promise<
     Array<{

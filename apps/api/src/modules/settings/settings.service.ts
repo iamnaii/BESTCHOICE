@@ -179,6 +179,19 @@ export class SettingsService {
      */
     defaultTimeRange: 'all' | 'this_month' | 'last_month';
     /**
+     * D1.3.1.1 — DRAFT alerts toggle. When true, `DraftAlertsCron` (daily at
+     * 09:00 BKK) scans expense docs in DRAFT for longer than the configured
+     * threshold and sends an in-app notification to the creator. Default
+     * `false` (opt-in) so existing deploys don't suddenly start spamming
+     * users when this PR rolls out.
+     */
+    draftAlertsEnabled: boolean;
+    /**
+     * D1.3.1.1 — DRAFT alert threshold in days. Drafts older than this trigger
+     * the alert. Default 7. Validated `> 0`.
+     */
+    draftAlertThresholdDays: number;
+    /**
      * D1.1.6 — adjustment account codes for the V4 multi-line Adjustment
      * row. Frontend `AdjustmentSection.tsx` previously hardcoded
      * '52-1104' / '53-1503'; now reads from this flag so OWNER can rebind
@@ -240,6 +253,14 @@ export class SettingsService {
       defaultTimeRangeRaw === 'all' || defaultTimeRangeRaw === 'last_month'
         ? defaultTimeRangeRaw
         : 'this_month';
+    // D1.3.1.1 — DRAFT alerts (opt-in, default off).
+    const draftAlertsEnabled = await this.readBoolean('draft_alerts_enabled', false);
+    const draftAlertThresholdDaysRaw = await this.readNumber(
+      'draft_alert_threshold_days',
+      7,
+    );
+    const draftAlertThresholdDays =
+      draftAlertThresholdDaysRaw > 0 ? draftAlertThresholdDaysRaw : 7;
     // D1.1.6 — adjustment codes for the V4 form's manual reconciliation
     // row. Codes must match the format `\d{2}-\d{4}` to be accepted;
     // anything malformed falls back to the legacy default. Empty string
@@ -264,6 +285,8 @@ export class SettingsService {
       themeColor,
       language,
       defaultTimeRange,
+      draftAlertsEnabled,
+      draftAlertThresholdDays,
       adjustmentCodes,
     };
   }

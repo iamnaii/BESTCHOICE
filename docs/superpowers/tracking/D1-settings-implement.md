@@ -95,7 +95,7 @@ Sub-prioritization within expanded D1 scope:
 
 | ID | Item | Priority | Status | Q-gate | Notes |
 |---|---|---|---|---|---|
-| D1.1.1.2 | `GET /api/settings/role-map` | P0 | ⬜ | Q7 | Wire AccountRoleService or drop table? |
+| D1.1.1.2 | `GET /api/settings/role-map` | P0 | ✅ | this PR | Q7=WIRE IT. New `AccountRoleService.listWithCoa()` joins account_role_map with chart_of_accounts.name + adds `required` flag (REQUIRED_ROLES whitelist). `GET /settings/role-map` (OWNER+FINANCE_MANAGER+ACCOUNTANT read). SettingsModule now imports JournalModule. 3 vitest cases (join, missing CoA drift, empty rows). Type-check 0 errors |
 | D1.1.1.3 | `PUT /api/settings/role-map` | P0 | ⬜ | Q7 | |
 | D1.1.1.4 | Admin UI for role map | P0 | ⬜ | Q7 | |
 | D1.1.1.5 | Validation rules | P0 | ✅ | this PR | New `RoleMapValidationService` at `apps/api/src/modules/settings/role-map-validation.service.ts`. Enforces 3 rules: (1) REQUIRED_ROLES cannot be deactivated, (2) accountCode must exist in chart_of_accounts AND match expected normalBalance per role (e.g. vat_input=Dr, vat_output=Cr), (3) priority unique per role. `EXPECTED_NORMAL_BALANCE` map covers all 19 seeded roles. AccountRoleService.update() accepts optional `validate` callback — controller injects RoleMapValidationService; tests can pass inline checks. 7 vitest cases (rule 1 required+non-required, rule 2a missing CoA, rule 2b wrong side + matching side, rule 3 conflict + unique). Type-check 0 errors |
@@ -114,7 +114,7 @@ Sub-prioritization within expanded D1 scope:
 | D1.1.5.1 | `petty_cash_enabled` | P0 | ⬜ | Q1 | Feature flag |
 | D1.1.5.4 | `petty_cash_replenish_threshold` (dead setting decision) | P0 | ⬜ | Q8 | Kill or wire |
 | D1.1.5.5 | `petty_cash_custodian` (FK) | P0 | ⬜ | Q1 | Schema + assignment UI |
-| D1.3.1.1 | `draft_alerts_enabled` | P2 | ⬜ | — | New cron + flag |
+| D1.3.1.1 | `draft_alerts_enabled` | P2 | ✅ | this PR | New `DraftAlertsCron` at `apps/api/src/modules/expense-documents/crons/draft-alerts.cron.ts` — daily 09:00 BKK. SystemConfig keys: `draft_alerts_enabled` (default `'false'` opt-in) + `draft_alert_threshold_days` (default 7). When enabled, scans expense docs in DRAFT older than threshold, posts IN_APP NotificationLog row to creator with subject "เอกสารฉบับร่างค้าง" + message "เอกสารฉบับร่าง #{number} ค้าง N+ วัน — โปรดส่งหรือลบ". Idempotent: dedup against alerts already created today on same docId. `getUiFlags()` exposes `draftAlertsEnabled` + `draftAlertThresholdDays`. Uses lean PrismaService-direct readBoolFlag/readNumberFlag (same as PR #884 pattern — no SettingsModule DI dep). 4 jest cases (default-off / fire / configurable threshold / dedup). Type-check 0 errors |
 | D1.3.1.2 | `ap_due_alerts` | P2 | ⬜ | — | Hook AP aging to notifier |
 | D1.3.1.3 | `email_provider` | P2 | ⬜ | Q5 | sendgrid vs SMTP |
 | D1.3.1.4 | `in_app_notifications` toggle | P2 | ⬜ | — | Channel disable |

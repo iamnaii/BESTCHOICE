@@ -175,6 +175,14 @@ export class SettingsService {
      * accessibility readers via the lang attr.
      */
     language: 'th' | 'en';
+    /**
+     * D1.4.1.1 — BOOTSTRAP default for sidebar collapse on a brand-new device
+     * (no `sidebar_collapse` key in localStorage). Once the user toggles the
+     * sidebar in the UI, their personal preference is persisted and takes
+     * precedence — this flag never overrides an existing per-user value.
+     * Default false (= expanded). OWNER stores 'true' / 'false'.
+     */
+    sidebarCollapsedDefault: boolean;
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -214,6 +222,12 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.4.1.1 — sidebar bootstrap default. `readBoolean` already whitelists
+    // 'true' / 'false' / '1' / '0' so a bad row falls back to false (expanded).
+    const sidebarCollapsedDefault = await this.readBoolean(
+      'sidebar_collapsed_default',
+      false,
+    );
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -225,6 +239,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      sidebarCollapsedDefault,
     };
   }
 

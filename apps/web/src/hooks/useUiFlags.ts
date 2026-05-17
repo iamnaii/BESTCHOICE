@@ -35,6 +35,12 @@ export interface UiFlags {
   language: 'th' | 'en';
   /** D1.2.3.1 — default time-range preset for list pages. Default 'this_month'. */
   defaultTimeRange: 'all' | 'this_month' | 'last_month';
+  /**
+   * D1.1.6 — adjustment account codes for the V4 multi-line Adjustment row.
+   * Frontend was hardcoding '52-1104' / '53-1503'; now reads from this flag
+   * so OWNER can rebind the codes without a frontend deploy.
+   */
+  adjustmentCodes: { underpay: string; overpay: string };
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -56,6 +62,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   themeColor: '#10b981',
   language: 'th',
   defaultTimeRange: 'this_month',
+  adjustmentCodes: { underpay: '52-1104', overpay: '53-1503' },
 };
 
 export function useUiFlags(): UiFlags {

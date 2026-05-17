@@ -46,6 +46,11 @@ export interface UiFlags {
   /** D1.3.5.1 — default time-range preset for ExpenseDailySummaryPage. Default 'this_month'. */
   summaryDefaultRange: 'today' | 'this_week' | 'this_month' | 'last_month';
   /**
+   * D1.3.4.1 — gate the SAMEDAY→ACCRUAL auto-flip in `ExpenseFormV4`.
+   * Default `true`. When `false`, the user must manually choose docType.
+   */
+  smartDoctypeSwitchEnabled: boolean;
+  /**
    * D1.3.6.1 — max bills (cleared docs) allowed per VENDOR_SETTLEMENT. Default
    * 100, clamped 1–500 server-side. Used by SettlementLinesSection to show an
    * inline cap-warning when the user approaches/exceeds the limit.
@@ -199,6 +204,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   language: 'th',
   exportEnabled: true,
   summaryDefaultRange: 'this_month',
+  smartDoctypeSwitchEnabled: true,
   settlementMaxBillsPerDoc: 100,
   pettyCashReplenishThreshold: 5000,
   pettyCashEnabled: true,

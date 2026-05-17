@@ -93,6 +93,8 @@ Sub-prioritization within expanded D1 scope:
 | D1.3.6.1 | `settlement_max_bills_per_doc` | P2 | ✅ | TBD | Server cap in createSettlement + UI warning at 80% / over-cap |
 | D1.3.6.2 | `settlement_default_tick_behavior` | P2 | ⬜ | — | Initial-select logic |
 | D1.3.6.3 | `settlement_partial_payment_enabled` | P2 | ⬜ | — | Toggle V12 adjustments |
+| D1.3.4.1 | `smart_doctype_switch_enabled` | P3 | ✅ | this PR | Originally SKIP per Phase 2 decision report; shipped per owner directive 2026-05-17. SystemConfig `smart_doctype_switch_enabled` (default `true`). `getUiFlags()` exposes it; `ExpenseFormV4` `useEffect` early-returns when `false` so the user must pick SAMEDAY/ACCRUAL manually. `DocTypePicker` suppresses the "แนะนำ" badge + flips the inline hint when the flag is off. 3 jest cases on settings service. |
+| D1.3.4.2 | `smart_switch_threshold_days` | P3 | ⬜ | — | Configurable threshold for the SAMEDAY→ACCRUAL flip |
 
 ### Q-unblocked + bigger (6 items, Approval Workflow)
 

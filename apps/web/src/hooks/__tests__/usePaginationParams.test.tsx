@@ -52,4 +52,51 @@ describe('usePaginationParams', () => {
     act(() => result.current.setPage(3));
     expect(result.current.page).toBe(3);
   });
+
+  // Review-round-2 — URL ?size=N is clamped to [10, 200].
+  describe('?size= URL clamping', () => {
+    it('clamps oversize URL ?size=99999 to 200', () => {
+      const { result } = renderHook(() => usePaginationParams({ defaultSize: 50 }), {
+        wrapper: wrapper({ initial: '/list?size=99999' }),
+      });
+      expect(result.current.size).toBe(200);
+    });
+
+    it('clamps under-min URL ?size=5 to 10', () => {
+      const { result } = renderHook(() => usePaginationParams({ defaultSize: 50 }), {
+        wrapper: wrapper({ initial: '/list?size=5' }),
+      });
+      expect(result.current.size).toBe(10);
+    });
+
+    it('passes through valid range values unchanged', () => {
+      const { result: r1 } = renderHook(() => usePaginationParams({ defaultSize: 50 }), {
+        wrapper: wrapper({ initial: '/list?size=10' }),
+      });
+      expect(r1.current.size).toBe(10);
+      const { result: r2 } = renderHook(() => usePaginationParams({ defaultSize: 50 }), {
+        wrapper: wrapper({ initial: '/list?size=200' }),
+      });
+      expect(r2.current.size).toBe(200);
+      const { result: r3 } = renderHook(() => usePaginationParams({ defaultSize: 50 }), {
+        wrapper: wrapper({ initial: '/list?size=75' }),
+      });
+      expect(r3.current.size).toBe(75);
+    });
+
+    it('falls back to defaultSize on garbage values (NaN / negative / 0)', () => {
+      const { result: r1 } = renderHook(() => usePaginationParams({ defaultSize: 50 }), {
+        wrapper: wrapper({ initial: '/list?size=abc' }),
+      });
+      expect(r1.current.size).toBe(50);
+      const { result: r2 } = renderHook(() => usePaginationParams({ defaultSize: 50 }), {
+        wrapper: wrapper({ initial: '/list?size=0' }),
+      });
+      expect(r2.current.size).toBe(50);
+      const { result: r3 } = renderHook(() => usePaginationParams({ defaultSize: 50 }), {
+        wrapper: wrapper({ initial: '/list?size=-5' }),
+      });
+      expect(r3.current.size).toBe(50);
+    });
+  });
 });

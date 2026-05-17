@@ -168,6 +168,12 @@ export interface UiFlags {
    * `dashboardStaleTime`.
    */
   cacheTtlDashboard: number;
+  /**
+   * D1.4.2.3 — react-query `staleTime` (seconds) for aggregated report
+   * queries (P&L, trial balance, monthly P&L, etc.). Default 300s, valid
+   * 30–7200. Wired into `ProfitLossPage`.
+   */
+  cacheTtlReports: number;
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -219,6 +225,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   queryTimeoutSeconds: 30,
   emailProvider: 'smtp',
   cacheTtlDashboard: 60,
+  cacheTtlReports: 300,
 };
 
 export function useUiFlags(): UiFlags {

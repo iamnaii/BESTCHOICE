@@ -420,6 +420,12 @@ export class SettingsService {
      * shipped per owner directive 2026-05-17 to reach 100% A1 coverage.
      */
     cacheTtlDashboard: number;
+    /**
+     * D1.4.2.3 — react-query staleTime (seconds) for aggregated report
+     * queries (P&L, monthly P&L, trial balance). Default 300s, valid
+     * 30–7200 (clamped). Wired into `ProfitLossPage`.
+     */
+    cacheTtlReports: number;
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -618,6 +624,12 @@ export class SettingsService {
       Number.isFinite(cacheTtlDashboardRaw) && cacheTtlDashboardRaw >= 10 && cacheTtlDashboardRaw <= 3600
         ? Math.floor(cacheTtlDashboardRaw)
         : 60;
+    // D1.4.2.3 — cache_ttl_reports. Clamp to [30, 7200] seconds.
+    const cacheTtlReportsRaw = await this.readNumber('cache_ttl_reports', 300);
+    const cacheTtlReports =
+      Number.isFinite(cacheTtlReportsRaw) && cacheTtlReportsRaw >= 30 && cacheTtlReportsRaw <= 7200
+        ? Math.floor(cacheTtlReportsRaw)
+        : 300;
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -660,6 +672,7 @@ export class SettingsService {
       queryTimeoutSeconds,
       emailProvider,
       cacheTtlDashboard,
+      cacheTtlReports,
     };
   }
 

@@ -359,6 +359,31 @@ describe('SettingsService audit trail', () => {
       expect(flags.periodCloseDay).toBe(31);
     });
 
+    // D1.3.3.2 — bank_reconciliation mode
+    it('bankReconciliationMode defaults to "manual" when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.bankReconciliationMode).toBe('manual');
+    });
+
+    it('bankReconciliationMode returns "auto" when OWNER sets it explicitly', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'bank_reconciliation') return Promise.resolve({ value: 'auto' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.bankReconciliationMode).toBe('auto');
+    });
+
+    it('bankReconciliationMode falls back to "manual" for non-whitelisted values', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'bank_reconciliation') return Promise.resolve({ value: 'hybrid' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.bankReconciliationMode).toBe('manual');
+    });
+
     // D1.1.3.3 — sso_rate locked at 5%
     it('ssoRateLocked is "5%" regardless of SystemConfig state', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);

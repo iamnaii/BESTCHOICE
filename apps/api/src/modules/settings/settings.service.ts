@@ -270,6 +270,18 @@ export class SettingsService {
      */
     language: 'th' | 'en';
     /**
+     * D1.3.3.2 — bank reconciliation mode. Whitelisted `'manual'` / `'auto'`,
+     * default `'manual'`. Currently INFORMATIONAL only: the auto-match cron
+     * + UI to drive it haven't been built yet. When `'auto'`, a future cron
+     * will read bank statements (PaySolutions webhook + KBank/SCB CSV) and
+     * auto-link to Payment.depositAccountCode entries with matching amount
+     * + 1d-tolerance datetime. Current code path = the existing manual link
+     * via PaymentForm. OWNER setting this to `'auto'` today shows an
+     * "auto-match mode" indicator on any bank-reconciliation UI but does
+     * not change behaviour.
+     */
+    bankReconciliationMode: 'manual' | 'auto';
+    /**
      * D1.1.3.3 — informational "SSO rate is locked at 5%" string for the
      * Settings UI to display. Computed from `SSO_RATE` constant, NOT from
      * SystemConfig — that key is read-only (writes rejected by service).
@@ -702,6 +714,10 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.3.3.2 — bank reconciliation mode. Whitelist 'manual' / 'auto'.
+    const bankRecRaw = await this.getKey('bank_reconciliation');
+    const bankReconciliationMode: 'manual' | 'auto' =
+      bankRecRaw === 'auto' ? 'auto' : 'manual';
     // D1.1.3.3 — sso_rate is locked at 5% by Thai SSO Act §46 + the
     // ministerial regulation issued under it. Computed from the
     // source-of-truth SSO_RATE constant, never read from DB.
@@ -965,6 +981,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      bankReconciliationMode,
       ssoRateLocked,
       settlementDefaultTick,
       whtRates,

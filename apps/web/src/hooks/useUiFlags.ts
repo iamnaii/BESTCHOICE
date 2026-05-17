@@ -38,6 +38,13 @@ export interface UiFlags {
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
   /**
+   * D1.3.3.2 — bank reconciliation mode. INFORMATIONAL ONLY — auto-match
+   * cron + UI haven't been built yet. When a future bank-reconciliation
+   * page exists, it should surface this value prominently (e.g. mode
+   * indicator badge). Default `'manual'`.
+   */
+  bankReconciliationMode: 'manual' | 'auto';
+  /**
    * D1.1.3.3 — informational "SSO rate locked at 5%" string for Settings UI.
    * Backed by `SSO_RATE` constant server-side. The SystemConfig key
    * `sso_rate_locked` is read-only (server rejects writes).
@@ -264,6 +271,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  bankReconciliationMode: 'manual',
   ssoRateLocked: '5%',
   settlementDefaultTick: 'overdue_only',
   whtRates: [

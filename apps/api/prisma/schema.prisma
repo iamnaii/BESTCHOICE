@@ -615,6 +615,7 @@ model User {
   expenseDocumentsCreated     ExpenseDocument[]         @relation("ExpenseDocumentCreator")
   expenseDocumentsApproved    ExpenseDocument[]         @relation("ExpenseDocumentApprover")
   expenseTemplates            ExpenseTemplate[]         @relation("ExpenseTemplateCreator")
+  sharedExpenseTemplates      UserExpenseTemplate[]     @relation("UserSharedExpenseTemplates")
   journalEntriesCreated       JournalEntry[]            @relation("JournalCreatedBy")
   journalEntriesPosted        JournalEntry[]            @relation("JournalPostedBy")
   taxReportsFiled             TaxReport[]               @relation("TaxReportFiledBy")
@@ -705,6 +706,12 @@ model User {
   otherIncomesRejected   OtherIncome[]           @relation("OtherIncomeRejecter")
   otherIncomeAttachments OtherIncomeAttachment[] @relation("OtherIncomeAttachmentUploader")
   otherIncomeTemplates   OtherIncomeTemplate[]   @relation("OtherIncomeTemplateCreator")
+
+  // D1.1.5.5 — Petty Cash custodian assignment (the user responsible for
+  // the petty-cash drawer). One user can be custodian for at most one
+  // CompanyInfo (SHOP or FINANCE), but the schema doesn't enforce that —
+  // it's an organizational policy that lives in service-layer validation.
+  custodianForCompanies CompanyInfo[] @relation("CompanyPettyCashCustodian")
 
   @@index([branchId])
   @@index([yeastarExtension])
@@ -3004,6 +3011,16 @@ model CompanyInfo {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
+  // D1.1.5.5 — Petty Cash custodian. The user responsible for the cash
+  // drawer at this CompanyInfo (SHOP or FINANCE). Nullable so the row can
+  // exist before assignment; ON DELETE SET NULL keeps the company row even
+  // if the user is later soft-deleted. Role-eligibility (which UserRoles
+  // may hold this seat) is enforced at the service layer via SystemConfig
+  // key `petty_cash_custodian_role` — not by a DB constraint — to keep
+  // role policy editable without a schema migration.
+  pettyCashCustodianId String? @map("petty_cash_custodian_id")
+  pettyCashCustodian   User?   @relation("CompanyPettyCashCustodian", fields: [pettyCashCustodianId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
   // Relations
   branches             Branch[]
   fromInterCompanyTx   InterCompanyTransaction[] @relation("ICFromCompany")
@@ -3015,6 +3032,7 @@ model CompanyInfo {
   otherIncomes         OtherIncome[]
   otherIncomeTemplates OtherIncomeTemplate[]
 
+  @@index([pettyCashCustodianId])
   @@map("company_info")
 }
 
@@ -3879,25 +3897,84 @@ model SettlementLine {
 }
 
 model ExpenseTemplate {
-  id            String       @id @default(uuid())
+  id            String             @id @default(uuid())
   name          String
-  documentType  DocumentType @map("document_type")
-  branchId      String       @map("branch_id")
-  prefilledData Json         @map("prefilled_data")
-  isRecurring   Boolean      @default(false) @map("is_recurring")
-  recurringDay  Int?         @map("recurring_day")
-  createdById   String       @map("created_by_id")
-  createdAt     DateTime     @default(now()) @map("created_at")
-  updatedAt     DateTime     @updatedAt @map("updated_at")
-  deletedAt     DateTime?    @map("deleted_at")
+  documentType  DocumentType       @map("document_type")
+  branchId      String             @map("branch_id")
+  prefilledData Json               @map("prefilled_data")
+  isRecurring   Boolean            @default(false) @map("is_recurring")
+  recurringDay  Int?               @map("recurring_day")
+  createdById   String             @map("created_by_id")
+  /// D1.2.4.5 — optional category grouping. Null = uncategorised
+  /// (legacy default). FK to TemplateCategory with SetNull on delete
+  /// so removing a category doesn't orphan / cascade-delete templates.
+  categoryId    String?            @map("category_id")
+  /// D1.2.4.3 — sharing visibility. Default PRIVATE preserves legacy
+  /// behaviour (creator-only). Use TEAM with `sharedWith` to grant
+  /// specific users access, or PUBLIC for shop-wide visibility.
+  visibility    TemplateVisibility @default(PRIVATE)
+  createdAt     DateTime           @default(now()) @map("created_at")
+  updatedAt     DateTime           @updatedAt @map("updated_at")
+  deletedAt     DateTime?          @map("deleted_at")
 
-  branch                Branch            @relation(fields: [branchId], references: [id], onDelete: Restrict)
-  createdBy             User              @relation("ExpenseTemplateCreator", fields: [createdById], references: [id])
-  documentsFromTemplate ExpenseDocument[] @relation("ExpenseDocumentFromTemplate")
+  branch                Branch                @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  createdBy             User                  @relation("ExpenseTemplateCreator", fields: [createdById], references: [id])
+  category              TemplateCategory?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  documentsFromTemplate ExpenseDocument[]     @relation("ExpenseDocumentFromTemplate")
+  sharedWith            UserExpenseTemplate[] @relation("ExpenseTemplateSharedWith")
 
   @@index([branchId, deletedAt])
   @@index([isRecurring, recurringDay])
+  @@index([categoryId, deletedAt])
+  @@index([visibility, deletedAt])
   @@map("expense_templates")
+}
+
+/// D1.2.4.5 — Shop-wide grouping for Expense Templates (e.g. "เงินเดือน",
+/// "ค่าเช่า"). Soft-deletable. `name` is unique — duplicates rejected by
+/// the unique index, NOT the service layer.
+model TemplateCategory {
+  id          String    @id @default(uuid())
+  name        String    @unique
+  description String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  expenseTemplates ExpenseTemplate[]
+
+  @@index([deletedAt])
+  @@map("template_categories")
+}
+
+/// D1.2.4.3 — Template visibility (ACL).
+/// PRIVATE: visible only to createdBy.
+/// TEAM:    visible to createdBy + users explicitly listed in `sharedWith`.
+/// PUBLIC:  visible to all authenticated users (cross-branch caveat still
+///          applies via existing branchId access check).
+enum TemplateVisibility {
+  PRIVATE
+  TEAM
+  PUBLIC
+}
+
+/// D1.2.4.3 — TEAM-visibility ACL: maps an ExpenseTemplate to the set of
+/// users explicitly granted view/instantiate access. Composite PK on
+/// (templateId, userId) prevents duplicate grants.
+/// Append-only join table — `updatedAt`/`deletedAt` intentionally omitted.
+/// Grants are revoked by hard-deleting the row (no audit trail needed
+/// beyond the AuditLog written by the service when the share list mutates).
+model UserExpenseTemplate {
+  templateId String   @map("template_id")
+  userId     String   @map("user_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  template ExpenseTemplate @relation("ExpenseTemplateSharedWith", fields: [templateId], references: [id], onDelete: Cascade)
+  user     User            @relation("UserSharedExpenseTemplates", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([templateId, userId])
+  @@index([userId])
+  @@map("user_expense_templates")
 }
 
 // ============================================================

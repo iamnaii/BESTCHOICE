@@ -8,6 +8,7 @@ import { TrendingUp, TrendingDown, DollarSign, ArrowDown, ArrowUp, Minus } from 
 import { formatDateMedium } from '@/utils/formatters';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import CompanyFilter from '@/components/CompanyFilter';
+import { useUiFlags } from '@/hooks/useUiFlags';
 
 // Lazy-load recharts to keep it out of the initial bundle (~200KB gzip)
 const PLChart = lazy(() => import('@/components/charts/PLChart'));
@@ -104,6 +105,10 @@ export default function ProfitLossPage() {
   const [endDate, setEndDate] = useState(now.toISOString().split('T')[0]);
   const [branchId, setBranchId] = useState('');
   const [companyId, setCompanyId] = useState('');
+  // D1.4.2.3 — OWNER-configurable staleTime (seconds) for report queries.
+  // Defaults 300s via DEFAULT_UI_FLAGS; clamped server-side to [30, 7200].
+  const { cacheTtlReports } = useUiFlags();
+  const reportsStaleTime = cacheTtlReports * 1000;
 
   const { data: branches = [] } = useQuery<{ id: string; name: string }[]>({
     queryKey: ['branches'],
@@ -119,6 +124,7 @@ export default function ProfitLossPage() {
       return (await api.get(`/reports/profit-loss?${params}`)).data;
     },
     enabled: !!startDate && !!endDate,
+    staleTime: reportsStaleTime,
   });
 
   const { data: monthlyData } = useQuery<{ year: number; months: { month: number; label: string; revenue: number; expenses: number; netProfit: number }[] }>({
@@ -130,6 +136,7 @@ export default function ProfitLossPage() {
       if (companyId) params.set('companyId', companyId);
       return (await api.get(`/reports/monthly-pl?${params}`)).data;
     },
+    staleTime: reportsStaleTime,
   });
 
   const margin = pl?.summary.profitMargin || 0;

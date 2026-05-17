@@ -101,13 +101,39 @@ export class PaymentReceipt2BTemplate {
     private readonly prisma: PrismaService,
     @Optional() private readonly vat60Reversal?: Vat60dayReversalTemplate,
     /**
-     * D1.1.6.2 — resolves `adj_overpay` → CoA code via account_role_map.
-     * Optional to keep backwards compat with raw `new PaymentReceipt2BTemplate(journal, prisma)`
-     * call sites in integration specs; when omitted we fall back to the
-     * spec-default `'53-1503'` (which equals the seeded role row).
+     * D1.1.6.1 + D1.1.6.2 — resolves `adj_underpay`/`adj_overpay` → CoA code
+     * via account_role_map. Optional to keep backwards compat with raw
+     * `new PaymentReceipt2BTemplate(journal, prisma)` call sites in
+     * integration specs; when omitted we fall back to spec defaults
+     * (`'52-1104'` for underpay, `'53-1503'` for overpay) which equal the
+     * seeded role rows.
      */
     @Optional() private readonly roles?: AccountRoleService,
   ) {}
+
+  /**
+   * D1.1.6.3 — read `adj_auto_route` flag (default TRUE).
+   * Inlined direct SystemConfig read (PrismaService) to avoid pulling
+   * SettingsModule into the journal module DI graph. Defaults to TRUE so
+   * first-boot behaviour is unchanged.
+   */
+  private async readAdjAutoRouteFlag(
+    tx: Prisma.TransactionClient | PrismaService,
+  ): Promise<boolean> {
+    try {
+      const row = await tx.systemConfig.findFirst({
+        where: { key: 'adj_auto_route', deletedAt: null },
+        select: { value: true },
+      });
+      if (!row?.value) return true;
+      const v = row.value.trim().toLowerCase();
+      if (v === 'false' || v === '0') return false;
+      if (v === 'true' || v === '1') return true;
+      return true;
+    } catch {
+      return true;
+    }
+  }
 
   async execute(
     input: PaymentReceiptInput,
@@ -174,6 +200,22 @@ export class PaymentReceipt2BTemplate {
         throw new BadRequestException(
           'Underpay tolerance requires approver (toleranceApproverId)',
         );
+      }
+
+      // D1.1.6.3 — when `adj_auto_route` flag is off, refuse to auto-route the
+      // rounding remainder to 52-1104 / 53-1503. Owner must clear the diff
+      // manually (e.g. via a manual JV) before the payment can post.
+      // Uses PrismaService directly to avoid pulling SettingsModule into the
+      // journal module dependency graph (mirrors the readBoolFlag() pattern
+      // in expense-documents.service.ts). Defaults TRUE so first-boot behaviour
+      // is unchanged.
+      if (!roundingDiff.eq(0)) {
+        const autoRoute = await this.readAdjAutoRouteFlag(readClient);
+        if (!autoRoute) {
+          throw new BadRequestException(
+            'Auto-routing disabled — manual adjustment required',
+          );
+        }
       }
     }
 
@@ -253,8 +295,11 @@ export class PaymentReceipt2BTemplate {
 
         // 3. Underpay rounding
         if (roundingDiff.lt(0)) {
+          // D1.1.6.1 — resolve via AccountRoleService when available,
+          // otherwise fall back to spec-default 52-1104 (matches seed row).
+          const adjUnderpayCode = this.roles?.tryCode('adj_underpay') ?? '52-1104';
           lines.push({
-            accountCode: '52-1104',
+            accountCode: adjUnderpayCode,
             dr: roundingDiff.abs(),
             cr: zero,
             description: 'ส่วนลดเศษสตางค์ (Policy C)',

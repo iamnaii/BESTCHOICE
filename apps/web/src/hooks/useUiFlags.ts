@@ -309,6 +309,13 @@ export interface UiFlags {
    */
   viewerRoleEnabled: boolean;
   /**
+   * D1.3.3.3 — outbound webhook dispatch master switch. **DEFAULT OFF**
+   * per accountant package. When false, the Webhooks admin page should
+   * surface an "outbound dispatch paused" banner so OWNER understands
+   * why registered subscriptions aren't firing.
+   */
+  webhooksEnabled: boolean;
+  /**
    * D1.3.2.2 — dynamic bundle name controlling who can access Settings.
    * Whitelisted: `'OWNER'` (default) / `'OWNER+FINANCE_MANAGER'` /
    * `'OWNER+ACCOUNTANT'` / `'OWNER+ALL'`. The server's `SettingsAccessGuard`
@@ -400,6 +407,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   cacheTtlReports: 300,
   settlementPartialPaymentEnabled: true,
   viewerRoleEnabled: false,
+  webhooksEnabled: false,
   settingsAccessRole: 'OWNER',
 };
 

@@ -848,6 +848,15 @@ export class SettingsService {
      */
     viewerRoleEnabled: boolean;
     /**
+     * D1.3.3.3 — outbound webhook dispatch master switch. **DEFAULT-OFF** per
+     * accountant package. When false, `WebhooksService.dispatchEvent` is a
+     * no-op and the OWNER's `POST /webhooks/test/:id` returns 400. Inbound
+     * webhooks (paysolutions / sms / line / facebook) are NOT gated by this
+     * flag — they run on dedicated controllers and remain critical for
+     * payment processing.
+     */
+    webhooksEnabled: boolean;
+    /**
      * D1.3.2.2 — dynamic bundle name controlling who can access Settings.
      * Whitelisted: `'OWNER'` (default) / `'OWNER+FINANCE_MANAGER'` /
      * `'OWNER+ACCOUNTANT'` / `'OWNER+ALL'`. Read at request time by
@@ -1198,6 +1207,8 @@ export class SettingsService {
     );
     // D1.3.2.1 — VIEWER role activation. Conservative default false.
     const viewerRoleEnabled = await this.readBoolean('viewer_role_enabled', false);
+    // D1.3.3.3 — webhooks_enabled. DEFAULT-OFF per accountant package.
+    const webhooksEnabled = await this.readBoolean('webhooks_enabled', false);
     // D1.3.2.2 — settings_access_role. Whitelist 4 values; everything else
     // (missing key, malformed value) falls back to 'OWNER' so behavior
     // matches the pre-Phase-2 hardcoded @Roles('OWNER').
@@ -1272,6 +1283,7 @@ export class SettingsService {
       cacheTtlReports,
       settlementPartialPaymentEnabled,
       viewerRoleEnabled,
+      webhooksEnabled,
       settingsAccessRole,
     };
   }

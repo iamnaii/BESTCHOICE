@@ -1618,6 +1618,22 @@ describe('SettingsService audit trail', () => {
       const flags = await service.getUiFlags();
       expect(flags.settlementPartialPaymentEnabled).toBe(true);
     });
+
+    // D1.3.3.3 — webhooks_enabled DEFAULT-OFF
+    it('webhooksEnabled defaults to false (DEFAULT-OFF) when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.webhooksEnabled).toBe(false);
+    });
+
+    it('webhooksEnabled returns true only when OWNER explicitly opts in', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'webhooks_enabled') return Promise.resolve({ value: 'true' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.webhooksEnabled).toBe(true);
+    });
   });
 
   // ─── D1.1.5.5 — Petty Cash custodian ───────────────────────────────

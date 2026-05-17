@@ -103,6 +103,24 @@ export class ExpenseDocumentsController {
   }
 
   /**
+   * Phase A.5 — Tax-disallowed summary for ภ.ง.ด.50/51 prep.
+   * Returns total amount of POSTED expense docs flagged as non-deductible
+   * (ม.65 ตรี) over a date range. Doc-level + line-level overrides counted
+   * separately (no double-count). Cross-branch roles see all; others scoped.
+   */
+  @Get('tax-disallowed')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  taxDisallowed(
+    @Req() req: { user: { id: string; branchId?: string; role: string } },
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('branchId') branchId?: string,
+  ) {
+    const effective = hasCrossBranchAccess(req.user) ? branchId : req.user.branchId;
+    return this.service.getTaxDisallowedSummary({ branchId: effective, from, to });
+  }
+
+  /**
    * AP Aging — Fix Report P1-1.
    * Buckets unpaid ACCRUAL expenses by days-since-documentDate into
    * 0-30 / 31-60 / 61-90 / >90 + Total. Optional filter by vendorName or
@@ -162,6 +180,35 @@ export class ExpenseDocumentsController {
   @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   post(@Param('id') id: string, @CurrentUser() user: { id: string }) {
     return this.service.post(id, user.id);
+  }
+
+  /**
+   * D1.2.1.1 — Submit a DRAFT expense doc for approval.
+   * Only callable when SystemConfig `approval_enabled` is true. Flips
+   * status DRAFT → PENDING_APPROVAL. Approve action lives on the sibling
+   * /approve endpoint (D1.2.1.6).
+   */
+  @Post(':id/submit-for-approval')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  submitForApproval(@Param('id') id: string, @CurrentUser() user: { id: string }) {
+    return this.service.submitForApproval(id, user.id);
+  }
+
+  /**
+   * D1.2.1.6 — Approve a PENDING_APPROVAL expense doc.
+   *
+   * When SystemConfig `auto_post_on_approve` is true (default) the doc is
+   * immediately auto-posted in the same transaction (status: POSTED).
+   * When false the doc stays APPROVED and an OWNER can call /post later.
+   *
+   * Approver role gating is widened in D1.2.1.3 (approvers_list). Until that
+   * lands, only OWNER + FINANCE_MANAGER can approve — the same roles allowed
+   * to post today.
+   */
+  @Post(':id/approve')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  approve(@Param('id') id: string, @CurrentUser() user: { id: string }) {
+    return this.service.approve(id, user.id);
   }
 
   @Post(':id/void')

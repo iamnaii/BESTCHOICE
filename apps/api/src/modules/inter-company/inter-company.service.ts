@@ -369,6 +369,9 @@ export class InterCompanyService {
    * SP2: Aging report for unsettled inter-company transactions.
    * Returns buckets 0-30 / 31-60 / 61-90 / 90+ days from createdAt,
    * counting only PENDING + CONFIRMED (status excluded once RECONCILED).
+   *
+   * Pagination: hard cap of 500 detail rows. When truncated, `truncated: true`
+   * is returned so the UI can prompt the user to narrow filters.
    */
   async getAging(params: { branchId?: string; companyId?: string }) {
     const where: Record<string, unknown> = {
@@ -424,6 +427,12 @@ export class InterCompanyService {
       const interest = new Prisma.Decimal(t.interestTotal);
       const vat = new Prisma.Decimal(t.vatAmount);
       const total = principal.add(commission).add(interest).add(vat);
+      // SP2 Critical #5: `settleableAmount` = principal + commission only.
+      // FINANCE settles SHOP via Dr 21-1101 + Dr 21-1102 — interest + VAT live
+      // on FINANCE's own ledger (they're not owed to SHOP). The UI uses this
+      // amount in the settle dialog so `inputAmount === expectedTotal` matches
+      // the `principal + commission` check inside `settleWithJournal`.
+      const settleable = principal.add(commission);
 
       bucketStats[bucket].count += 1;
       bucketStats[bucket].totalAmount = bucketStats[bucket].totalAmount.add(total);
@@ -439,6 +448,7 @@ export class InterCompanyService {
         interest: interest.toNumber(),
         vat: vat.toNumber(),
         totalAmount: total.toNumber(),
+        settleableAmount: settleable.toNumber(),
         daysOutstanding,
         bucket,
         status: t.status,
@@ -455,6 +465,18 @@ export class InterCompanyService {
     const totalAmount = buckets.reduce((sum, b) => sum + b.totalAmount, 0);
     const totalCount = buckets.reduce((sum, b) => sum + b.count, 0);
 
-    return { buckets, totalAmount, totalCount, details };
+    // SP2: hard pagination cap. Truncating only the `details` array — bucket
+    // totals still reflect the full set so the summary cards stay correct.
+    const HARD_CAP = 500;
+    const truncated = details.length > HARD_CAP;
+    const cappedDetails = truncated ? details.slice(0, HARD_CAP) : details;
+
+    return {
+      buckets,
+      totalAmount,
+      totalCount,
+      details: cappedDetails,
+      truncated,
+    };
   }
 }

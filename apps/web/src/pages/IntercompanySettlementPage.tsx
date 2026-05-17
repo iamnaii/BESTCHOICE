@@ -65,6 +65,8 @@ interface AgingDetail {
   interest: number;
   vat: number;
   totalAmount: number;
+  /** SP2 Critical #5 — principal + commission (the amount FINANCE owes SHOP). */
+  settleableAmount: number;
   daysOutstanding: number;
   bucket: AgingBucket['range'];
   status: string;
@@ -76,6 +78,8 @@ interface AgingResponse {
   totalAmount: number;
   totalCount: number;
   details: AgingDetail[];
+  /** SP2 — set true when server returned `details` capped at 500 rows. */
+  truncated?: boolean;
 }
 
 const fmtBaht = (n: number) =>
@@ -112,6 +116,11 @@ export default function IntercompanySettlementPage() {
   const [paidDate, setPaidDate] = useState(new Date().toISOString().slice(0, 10));
   const [agingBranchId, setAgingBranchId] = useState('');
   const [agingCompanyId, setAgingCompanyId] = useState('');
+  // SP2 Critical #5 — when aging row's ชำระ is clicked, this is set to that
+  // InterCompanyTransaction.id so settle() can post the JE + flip status.
+  // Free-form settlement (top "บันทึกการชำระเงิน" button) keeps it null and
+  // falls through to the legacy no-JE path.
+  const [selectedTransactionId, setSelectedTransactionId] = useState<string | null>(null);
 
   const balanceQ = useQuery<BalanceResponse>({
     queryKey: ['intercompany-balance'],
@@ -163,10 +172,17 @@ export default function IntercompanySettlementPage() {
           reference,
           notes: notes || undefined,
           paidDate: paidDate ? new Date(paidDate).toISOString() : undefined,
+          // SP2 Critical #5 — passing transactionId routes to settleWithJournal
+          // (posts real JE + flips status RECONCILED). Omitted = legacy path.
+          transactionId: selectedTransactionId ?? undefined,
         })
       ).data,
     onSuccess: () => {
-      toast.success('บันทึกการชำระเงินระหว่างบริษัทเรียบร้อย');
+      toast.success(
+        selectedTransactionId
+          ? 'บันทึกการชำระและบันทึกบัญชีเรียบร้อย'
+          : 'บันทึกการชำระเงินระหว่างบริษัทเรียบร้อย',
+      );
       qc.invalidateQueries({ queryKey: ['intercompany-balance'] });
       qc.invalidateQueries({ queryKey: ['intercompany-history'] });
       qc.invalidateQueries({ queryKey: ['ic-aging'] });
@@ -174,6 +190,7 @@ export default function IntercompanySettlementPage() {
       setAmount('');
       setReference('');
       setNotes('');
+      setSelectedTransactionId(null);
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
@@ -213,7 +230,11 @@ export default function IntercompanySettlementPage() {
   };
 
   const openSettleFor = (detail: AgingDetail) => {
-    setAmount(detail.totalAmount.toFixed(2));
+    // SP2 Critical #5 — use settleableAmount (= principal + commission), NOT
+    // totalAmount (= principal + commission + interest + vat). The backend's
+    // settleWithJournal validates `inputAmount === txn.principal + commission`
+    // (1-satang tolerance) and rejects the JE if interest+vat are bundled in.
+    setAmount(detail.settleableAmount.toFixed(2));
     setReference(
       detail.contractNumber
         ? `IC-${detail.contractNumber}`
@@ -222,6 +243,8 @@ export default function IntercompanySettlementPage() {
     setNotes(
       `ชำระยอดค้าง ${BUCKET_LABEL[detail.bucket]} (${detail.daysOutstanding} วัน) — สาขา ${detail.branchName ?? 'ไม่ระบุ'}`,
     );
+    // SP2 Critical #5 — route to settleWithJournal (posts JE + RECONCILED)
+    setSelectedTransactionId(detail.txId);
     setDialogOpen(true);
   };
 
@@ -425,6 +448,17 @@ export default function IntercompanySettlementPage() {
               ))}
             </div>
 
+            {/* SP2 — pagination cap notice */}
+            {aging?.truncated && (
+              <div className="rounded-md border border-warning bg-warning/10 p-3 text-sm text-warning leading-snug flex items-start gap-2">
+                <AlertTriangle className="size-4 mt-0.5 shrink-0" />
+                <div>
+                  <strong>แสดงผล 500 รายการแรก</strong> จากทั้งหมด {aging.totalCount} รายการ —
+                  กรุณากรองตามสาขา/บริษัทเพื่อแคบผลลัพธ์
+                </div>
+              </div>
+            )}
+
             {/* Details table */}
             <Card>
               <CardHeader>
@@ -522,7 +556,15 @@ export default function IntercompanySettlementPage() {
         </TabsContent>
       </Tabs>
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <Dialog
+        open={dialogOpen}
+        onOpenChange={(open) => {
+          setDialogOpen(open);
+          // SP2 Critical #5 — clearing on close prevents the next "บันทึกการชำระเงิน"
+          // (free-form, top-card button) from inheriting a stale transactionId.
+          if (!open) setSelectedTransactionId(null);
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>บันทึกการชำระเงิน FINANCE → SHOP</DialogTitle>

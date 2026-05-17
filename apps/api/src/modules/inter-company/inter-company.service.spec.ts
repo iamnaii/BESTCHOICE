@@ -159,4 +159,44 @@ describe('InterCompanyService.getAging (SP2)', () => {
     expect(where.status).toEqual({ in: ['PENDING', 'CONFIRMED'] });
     expect(where.branchId).toBe('b-1');
   });
+
+  // SP2 Critical #5 — settleableAmount = principal + commission only,
+  // distinct from totalAmount which bundles interest + VAT.
+  it('exposes settleableAmount = principal + commission (excludes interest + VAT)', async () => {
+    prisma.interCompanyTransaction.findMany.mockResolvedValue([
+      txn({
+        principal: 9600,
+        commission: 1000,
+        interestTotal: 1500,
+        vatAmount: 700,
+      }),
+    ]);
+    const result = await service.getAging({});
+    expect(result.details).toHaveLength(1);
+    const detail = result.details[0];
+    expect(detail.settleableAmount).toBeCloseTo(10600, 2);
+    // totalAmount still bundles everything (display only)
+    expect(detail.totalAmount).toBeCloseTo(9600 + 1000 + 1500 + 700, 2);
+    // The two MUST differ — otherwise the settle dialog will overpay
+    expect(detail.totalAmount).not.toBe(detail.settleableAmount);
+  });
+
+  // SP2 — pagination cap at 500
+  it('caps details at 500 rows and flags truncated=true', async () => {
+    const many = Array.from({ length: 600 }, (_, i) => txn({ id: `tx-${i}` }));
+    prisma.interCompanyTransaction.findMany.mockResolvedValue(many);
+    const result = await service.getAging({});
+    expect(result.details).toHaveLength(500);
+    expect(result.truncated).toBe(true);
+    // Bucket totals still reflect the FULL set (not just 500)
+    expect(result.totalCount).toBe(600);
+  });
+
+  it('does not flag truncated when ≤ 500 rows', async () => {
+    const fewer = Array.from({ length: 5 }, (_, i) => txn({ id: `tx-${i}` }));
+    prisma.interCompanyTransaction.findMany.mockResolvedValue(fewer);
+    const result = await service.getAging({});
+    expect(result.details).toHaveLength(5);
+    expect(result.truncated).toBe(false);
+  });
 });

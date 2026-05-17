@@ -367,6 +367,18 @@ export class SettingsService {
      */
     docPrefixMap: Record<DocumentType, string>;
     /**
+     * D1.3.3.2 — bank reconciliation mode. Whitelisted `'manual'` / `'auto'`,
+     * default `'manual'`. Currently INFORMATIONAL only: the auto-match cron
+     * + UI to drive it haven't been built yet. When `'auto'`, a future cron
+     * will read bank statements (PaySolutions webhook + KBank/SCB CSV) and
+     * auto-link to Payment.depositAccountCode entries with matching amount
+     * + 1d-tolerance datetime. Current code path = the existing manual link
+     * via PaymentForm. OWNER setting this to `'auto'` today shows an
+     * "auto-match mode" indicator on any bank-reconciliation UI but does
+     * not change behaviour.
+     */
+    bankReconciliationMode: 'manual' | 'auto';
+    /**
      * D1.1.3.3 — informational "SSO rate is locked at 5%" string for the
      * Settings UI to display. Computed from `SSO_RATE` constant, NOT from
      * SystemConfig — that key is read-only (writes rejected by service).
@@ -442,6 +454,26 @@ export class SettingsService {
      * SystemConfig row directly.
      */
     dataExportFormat: 'JSON' | 'CSV' | 'XLSX';
+    /**
+     * D1.4.3.5 — master PII masking toggle (PDPA policy surface).
+     * Default `true`. Currently INFORMATIONAL — existing PII masking
+     * helpers (`maskPhone`, `maskNationalId`, `maskEmail`, `maskBankAccount`)
+     * are consumed per-call in role-aware controllers and do NOT consult
+     * this flag. Surfacing it lets the admin UI display the PDPA stance
+     * and surface a bold warning before persisting `false`.
+     */
+    piiMaskingEnabled: boolean;
+    /**
+     * D1.4.2.5 — max concurrent BullMQ worker jobs. Default 5, valid 1–50
+     * (clamped). Currently INFORMATIONAL for the SystemConfig key — the
+     * BullMQ `@Processor` decorator is evaluated at class load time and
+     * cannot read a DB-backed value at boot. The flag is exposed so OWNER
+     * can advertise the intended concurrency cap; the actual worker
+     * concurrency is set via `MAX_CONCURRENT_JOBS` env var read in
+     * `NotificationWorker`'s @Processor options (same default 5). A future
+     * refactor can wire this to a hot-reloadable dispatcher.
+     */
+    maxConcurrentJobs: number;
     /**
      * D1.3.4.2 — days threshold for the SAMEDAY→ACCRUAL auto-switch.
      * Default `0` = any past document date triggers the flip (preserves
@@ -782,6 +814,10 @@ export class SettingsService {
     // D1.1.2.1 — DocumentType → prefix map (defaults applied per type when
     // stored value is missing or malformed).
     const docPrefixMap = await this.getDocPrefixMap();
+    // D1.3.3.2 — bank reconciliation mode. Whitelist 'manual' / 'auto'.
+    const bankRecRaw = await this.getKey('bank_reconciliation');
+    const bankReconciliationMode: 'manual' | 'auto' =
+      bankRecRaw === 'auto' ? 'auto' : 'manual';
     // D1.1.3.3 — sso_rate is locked at 5% by Thai SSO Act §46 + the
     // ministerial regulation issued under it. Computed from the
     // source-of-truth SSO_RATE constant, never read from DB.
@@ -826,6 +862,16 @@ export class SettingsService {
       dataExportFormatRaw === 'CSV' || dataExportFormatRaw === 'XLSX'
         ? dataExportFormatRaw
         : 'JSON';
+    // D1.4.3.5 — pii_masking_enabled. Default true (PDPA policy surface).
+    const piiMaskingEnabled = await this.readBoolean('pii_masking_enabled', true);
+    // D1.4.2.5 — max_concurrent_jobs. Default 5, clamp 1–50.
+    const maxConcurrentJobsRaw = await this.readNumber('max_concurrent_jobs', 5);
+    const maxConcurrentJobs =
+      Number.isInteger(maxConcurrentJobsRaw) &&
+      maxConcurrentJobsRaw >= 1 &&
+      maxConcurrentJobsRaw <= 50
+        ? maxConcurrentJobsRaw
+        : 5;
     // D1.3.4.2 — smart-switch threshold (days). Clamp 0–30; non-integer /
     // NaN / negative → 0. Default 0 = legacy behavior (any past date flips).
     const smartSwitchThresholdRaw = await this.readNumber(
@@ -1036,6 +1082,7 @@ export class SettingsService {
       themeColor,
       language,
       docPrefixMap,
+      bankReconciliationMode,
       ssoRateLocked,
       settlementDefaultTick,
       whtRates,
@@ -1044,6 +1091,8 @@ export class SettingsService {
       documentRetentionYears,
       batchSizeImport,
       dataExportFormat,
+      piiMaskingEnabled,
+      maxConcurrentJobs,
       smartSwitchThresholdDays,
       summaryDefaultRange,
       smartDoctypeSwitchEnabled,

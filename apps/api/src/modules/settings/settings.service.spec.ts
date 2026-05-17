@@ -359,6 +359,31 @@ describe('SettingsService audit trail', () => {
       expect(flags.periodCloseDay).toBe(31);
     });
 
+    // D1.3.3.2 — bank_reconciliation mode
+    it('bankReconciliationMode defaults to "manual" when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.bankReconciliationMode).toBe('manual');
+    });
+
+    it('bankReconciliationMode returns "auto" when OWNER sets it explicitly', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'bank_reconciliation') return Promise.resolve({ value: 'auto' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.bankReconciliationMode).toBe('auto');
+    });
+
+    it('bankReconciliationMode falls back to "manual" for non-whitelisted values', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'bank_reconciliation') return Promise.resolve({ value: 'hybrid' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.bankReconciliationMode).toBe('manual');
+    });
+
     // D1.1.3.3 — sso_rate locked at 5%
     it('ssoRateLocked is "5%" regardless of SystemConfig state', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
@@ -634,6 +659,65 @@ describe('SettingsService audit trail', () => {
       });
       const flags = await service.getUiFlags();
       expect(flags.dataExportFormat).toBe('JSON');
+    });
+
+    // D1.4.3.5 — pii_masking_enabled (PDPA master toggle)
+    it('piiMaskingEnabled defaults to true (PDPA-safe) when SystemConfig row absent', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.piiMaskingEnabled).toBe(true);
+    });
+
+    it('piiMaskingEnabled returns false when OWNER explicitly disables it', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'pii_masking_enabled') return Promise.resolve({ value: 'false' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.piiMaskingEnabled).toBe(false);
+    });
+
+    it('piiMaskingEnabled returns true when explicitly enabled', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'pii_masking_enabled') return Promise.resolve({ value: 'true' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.piiMaskingEnabled).toBe(true);
+    });
+
+    it('piiMaskingEnabled falls back to PDPA-safe default for unparseable value', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'pii_masking_enabled') return Promise.resolve({ value: 'maybe' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.piiMaskingEnabled).toBe(true);
+    });
+
+    // D1.4.2.5 — max_concurrent_jobs
+    it('maxConcurrentJobs defaults to 5 when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.maxConcurrentJobs).toBe(5);
+    });
+
+    it('maxConcurrentJobs accepts valid 1-50 range', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'max_concurrent_jobs') return Promise.resolve({ value: '12' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.maxConcurrentJobs).toBe(12);
+    });
+
+    it('maxConcurrentJobs clamps out-of-range values back to 5', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'max_concurrent_jobs') return Promise.resolve({ value: '999' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.maxConcurrentJobs).toBe(5);
     });
 
     // D1.3.4.2 — smart_switch_threshold_days (default 0, clamp 0–30,

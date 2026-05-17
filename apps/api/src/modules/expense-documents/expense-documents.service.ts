@@ -1733,10 +1733,9 @@ export class ExpenseDocumentsService implements OnModuleInit {
   //    by calling /expenses/:id/post (which now also accepts APPROVED via
   //    StatusTransitionService.assertCanPost).
   //
-  // userId is currently unused (approve audit metadata is the responsibility
-  // of D1.2.1.5 notification + AuditInterceptor on the controller). Kept for
-  // signature parity with post() / voidDocument() and for future expansion.
-  async approve(id: string, _userId: string) {
+  // userId is captured for audit logs (APPROVED + AUTO_POSTED actions written
+  // inside the same tx). Signature parity with post() / voidDocument().
+  async approve(id: string, userId: string) {
     return this.prisma.$transaction(async (tx) => {
       // Re-use the `post:` lock key — approve always either becomes the JE
       // post (auto path) or precedes a future post(), so serializing on the
@@ -1753,6 +1752,18 @@ export class ExpenseDocumentsService implements OnModuleInit {
       await tx.expenseDocument.update({
         where: { id },
         data: { status: 'APPROVED' as DocumentStatus },
+      });
+
+      // D1.2.1.6 — APPROVED audit log (always written, regardless of auto-post).
+      await tx.auditLog.create({
+        data: {
+          action: 'APPROVED',
+          entity: 'expense_document',
+          entityId: id,
+          userId,
+          oldValue: { status: 'PENDING_APPROVAL' },
+          newValue: { status: 'APPROVED' },
+        },
       });
 
       const autoPost = await this.readBoolFlag(tx, 'auto_post_on_approve', true);
@@ -1847,32 +1858,48 @@ export class ExpenseDocumentsService implements OnModuleInit {
         }
       }
 
+      // Capture the auto-post result so we can write an AUTO_POSTED audit
+      // log after the template runs (still inside the same $transaction).
+      let result;
       if (doc.documentType === 'CREDIT_NOTE') {
-        return this.creditNoteTemplate.execute(id, tx);
-      }
-      if (doc.documentType === 'PAYROLL') {
-        return this.payrollTemplate.execute(id, tx);
-      }
-      if (doc.documentType === 'VENDOR_SETTLEMENT') {
-        return this.settlementTemplate.execute(id, tx);
-      }
-      if (doc.documentType === 'PETTY_CASH_REIMBURSEMENT') {
-        return this.pettyCashTemplate.execute(id, tx);
-      }
-      const target = this.transition.resolveTargetStatus(
-        doc.documentType,
-        !!doc.paymentMethod && !!doc.depositAccountCode,
-      );
-      if (target === 'POSTED') {
-        return this.sameDayTemplate.execute(id, tx);
-      }
-      if (doc.withholdingTax && doc.withholdingTax.gt(0)) {
-        throw new BadRequestException(
-          'V15: เอกสารตั้งหนี้ (ACCRUAL) ห้ามมี WHT (มาตรา 50 ป.รัษฎากร) — ' +
-            'WHT จะถูกบันทึกตอน Settlement เมื่อจ่ายเงินจริง',
+        result = await this.creditNoteTemplate.execute(id, tx);
+      } else if (doc.documentType === 'PAYROLL') {
+        result = await this.payrollTemplate.execute(id, tx);
+      } else if (doc.documentType === 'VENDOR_SETTLEMENT') {
+        result = await this.settlementTemplate.execute(id, tx);
+      } else if (doc.documentType === 'PETTY_CASH_REIMBURSEMENT') {
+        result = await this.pettyCashTemplate.execute(id, tx);
+      } else {
+        const target = this.transition.resolveTargetStatus(
+          doc.documentType,
+          !!doc.paymentMethod && !!doc.depositAccountCode,
         );
+        if (target === 'POSTED') {
+          result = await this.sameDayTemplate.execute(id, tx);
+        } else {
+          if (doc.withholdingTax && doc.withholdingTax.gt(0)) {
+            throw new BadRequestException(
+              'V15: เอกสารตั้งหนี้ (ACCRUAL) ห้ามมี WHT (มาตรา 50 ป.รัษฎากร) — ' +
+                'WHT จะถูกบันทึกตอน Settlement เมื่อจ่ายเงินจริง',
+            );
+          }
+          result = await this.accrualTemplate.execute(id, tx);
+        }
       }
-      return this.accrualTemplate.execute(id, tx);
+
+      // D1.2.1.6 — AUTO_POSTED audit log (only when auto_post_on_approve=true
+      // and the auto-post chain completed without throwing).
+      await tx.auditLog.create({
+        data: {
+          action: 'AUTO_POSTED',
+          entity: 'expense_document',
+          entityId: id,
+          userId,
+          newValue: { status: 'POSTED', autoPostedFromApproval: true },
+        },
+      });
+
+      return result;
     });
   }
 

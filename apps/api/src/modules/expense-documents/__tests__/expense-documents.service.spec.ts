@@ -795,6 +795,67 @@ describe('ExpenseDocumentsService', () => {
       await expect(service.approve('doc-pend', 'user-1')).rejects.toThrow(/ต้องแนบไฟล์ประกอบ/);
       expect(sameDay.execute).not.toHaveBeenCalled();
     });
+
+    // D1.2.1.6 — audit trail: APPROVED on every approve(), AUTO_POSTED only
+    // when auto_post_on_approve=true completes successfully.
+    it('approve() writes APPROVED audit log (even when auto-post disabled)', async () => {
+      setupApprovableDoc();
+      transition.assertCanApprove = jest.fn();
+      prisma.systemConfig.findFirst.mockImplementation(
+        (args: { where: { key: string } }) => {
+          if (args.where.key === 'auto_post_on_approve') {
+            return Promise.resolve({ value: 'false' });
+          }
+          return Promise.resolve(null);
+        },
+      );
+      await service.approve('doc-pend', 'user-1');
+      const auditCalls = prisma.auditLog.create.mock.calls;
+      const approvedCall = auditCalls.find((c: unknown[]) => {
+        const arg = c[0] as { data?: { action?: string } };
+        return arg?.data?.action === 'APPROVED';
+      });
+      expect(approvedCall).toBeDefined();
+      const approvedArg = approvedCall![0] as {
+        data: { action: string; entity: string; entityId: string; userId: string; oldValue: unknown; newValue: unknown };
+      };
+      expect(approvedArg.data.entity).toBe('expense_document');
+      expect(approvedArg.data.entityId).toBe('doc-pend');
+      expect(approvedArg.data.userId).toBe('user-1');
+      expect(approvedArg.data.oldValue).toEqual({ status: 'PENDING_APPROVAL' });
+      expect(approvedArg.data.newValue).toEqual({ status: 'APPROVED' });
+      // AUTO_POSTED MUST NOT fire when auto-post is disabled
+      const autoPostedCall = auditCalls.find((c: unknown[]) => {
+        const arg = c[0] as { data?: { action?: string } };
+        return arg?.data?.action === 'AUTO_POSTED';
+      });
+      expect(autoPostedCall).toBeUndefined();
+    });
+
+    it('approve() writes APPROVED + AUTO_POSTED audit logs when auto_post_on_approve=true', async () => {
+      setupApprovableDoc();
+      transition.assertCanApprove = jest.fn();
+      // Default systemConfig (null) → readBoolFlag returns true (default) → auto-post path
+      await service.approve('doc-pend', 'user-1');
+      const auditCalls = prisma.auditLog.create.mock.calls;
+      const actions = auditCalls
+        .map((c: unknown[]) => (c[0] as { data?: { action?: string } })?.data?.action)
+        .filter(Boolean);
+      expect(actions).toContain('APPROVED');
+      expect(actions).toContain('AUTO_POSTED');
+      const autoPostedCall = auditCalls.find((c: unknown[]) => {
+        const arg = c[0] as { data?: { action?: string } };
+        return arg?.data?.action === 'AUTO_POSTED';
+      });
+      const autoPostedArg = autoPostedCall![0] as {
+        data: { action: string; entity: string; entityId: string; userId: string; newValue: { autoPostedFromApproval?: boolean; status?: string } };
+      };
+      expect(autoPostedArg.data.entity).toBe('expense_document');
+      expect(autoPostedArg.data.entityId).toBe('doc-pend');
+      expect(autoPostedArg.data.userId).toBe('user-1');
+      expect(autoPostedArg.data.newValue.status).toBe('POSTED');
+      expect(autoPostedArg.data.newValue.autoPostedFromApproval).toBe(true);
+    });
   });
 
   describe('update', () => {

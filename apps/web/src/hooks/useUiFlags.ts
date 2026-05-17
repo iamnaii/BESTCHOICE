@@ -1,6 +1,8 @@
 import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useTheme } from 'next-themes';
 import api from '@/lib/api';
+import { setDateFormatPreference } from '@/utils/formatters';
 
 /**
  * D1.* — UI feature flags fetched from /settings/ui-flags.
@@ -33,6 +35,8 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /** D1.2.3.3 — date display preference: BE (พ.ศ., +543) default or CE (ค.ศ.). */
+  dateFormat: 'BE' | 'CE';
   /** D1.2.3.2 — default pagination size (list pages). Integer 10-200; default 50. */
   paginationSize: number;
   /** D1.2.3.1 — default time-range preset for list pages. Default 'this_month'. */
@@ -78,6 +82,11 @@ export interface UiFlags {
   animationEnabled: boolean;
   /** D1.3.1.4 — IN_APP channel master toggle. Default true. */
   inAppNotificationsEnabled: boolean;
+  /**
+   * D1.4.1.4 — BOOTSTRAP default theme for first-time devices (no `theme`
+   * key in localStorage). 'system' = respect OS prefers-color-scheme.
+   */
+  darkModeDefault: 'light' | 'dark' | 'system';
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -98,6 +107,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  dateFormat: 'BE',
   approvalEnabled: false,
   paginationSize: 50,
   defaultTimeRange: 'this_month',
@@ -110,6 +120,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   showKeyboardShortcuts: true,
   animationEnabled: true,
   inAppNotificationsEnabled: true,
+  darkModeDefault: 'system',
 };
 
 export function useUiFlags(): UiFlags {
@@ -122,6 +133,7 @@ export function useUiFlags(): UiFlags {
     staleTime: 5 * 60_000, // 5 min — flags rarely change mid-session
   });
   const flags = data ?? DEFAULT_UI_FLAGS;
+  const { setTheme } = useTheme();
   // D1.2.2.6 — sync the document `lang` attribute so accessibility readers
   // and `<input>` locale heuristics respect the OWNER-configured language
   // even before a full i18n framework is in place.
@@ -130,6 +142,12 @@ export function useUiFlags(): UiFlags {
       document.documentElement.lang = flags.language;
     }
   }, [flags.language]);
+  // D1.2.3.3 — sync the module-level date format preference so pure
+  // `formatDateShort` / `formatDateMedium` / `formatDateTime` calls inside
+  // non-React code (excel exports, status badges) respect the OWNER pref.
+  useEffect(() => {
+    setDateFormatPreference(flags.dateFormat);
+  }, [flags.dateFormat]);
   // D1.4.1.1 — first-time-device seed for sidebar collapse. Only writes when
   // localStorage has NO `sidebar_collapse` key yet, so we never clobber an
   // existing per-user preference. Runs once after the flags resolve.
@@ -153,5 +171,27 @@ export function useUiFlags(): UiFlags {
       document.documentElement.setAttribute('data-animations-disabled', 'true');
     }
   }, [flags.animationEnabled]);
+  // D1.4.1.4 — first-time-device seed for theme. next-themes stores the
+  // user preference in `localStorage.theme`. When that key is absent AND
+  // the flags have loaded, seed it from `flags.darkModeDefault`. After
+  // the first toggle by the user, this no-ops (key present → bail).
+  useEffect(() => {
+    if (!data) return; // wait for server flags
+    try {
+      if (typeof window === 'undefined') return;
+      if (localStorage.getItem('theme') !== null) return; // user preference wins
+      setTheme(flags.darkModeDefault);
+    } catch {
+      /* ignore storage errors */
+    }
+  }, [data, flags.darkModeDefault, setTheme]);
   return flags;
+}
+
+/**
+ * D1.2.3.3 — Convenience hook for components that only need the date format
+ * preference (avoids subscribing to the whole flag object).
+ */
+export function useDateFormat(): 'BE' | 'CE' {
+  return useUiFlags().dateFormat;
 }

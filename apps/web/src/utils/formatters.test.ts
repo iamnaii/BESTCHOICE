@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import {
   formatDateShort,
   formatDateMedium,
@@ -10,7 +10,15 @@ import {
   formatNumber,
   formatNumberDecimal,
   applyFormat,
+  setDateFormatPreference,
 } from './formatters';
+
+// D1.2.3.3 — date_format toggle uses a module-level preference. Tests below
+// rely on the BE default; this guard resets it after each block to prevent
+// cross-test leakage when a CE-flipping case fails part-way.
+afterEach(() => {
+  setDateFormatPreference('BE');
+});
 
 // 3 มีนาคม 2026 14:30:05 local time
 const sampleDate = new Date(2026, 2, 3, 14, 30, 5);
@@ -132,5 +140,36 @@ describe('applyFormat', () => {
 
   it('trims whitespace from the format string', () => {
     expect(applyFormat(21468, ' num ')).toBe('21,468');
+  });
+});
+
+// D1.2.3.3 — date_format BE↔ค.ศ. toggle
+describe('formatters — date_format toggle (D1.2.3.3)', () => {
+  it('defaults to BE: formatDateShort returns +543 year', () => {
+    expect(formatDateShort(sampleDate)).toBe('03/03/2569');
+  });
+
+  it('CE preference: formatDateShort returns Gregorian year', () => {
+    setDateFormatPreference('CE');
+    expect(formatDateShort(sampleDate)).toBe('03/03/2026');
+  });
+
+  it('toggle effect propagates to all generic date formatters', () => {
+    setDateFormatPreference('CE');
+    expect(formatDateShort(sampleDate)).toBe('03/03/2026');
+    expect(formatDateMedium(sampleDate)).toBe('03 มี.ค. 2026');
+    expect(formatDateLong(sampleDate)).toBe('3 เดือน มีนาคม ค.ศ. 2026');
+    expect(formatDateTime(sampleDate)).toBe('03/03/2026 14:30');
+    expect(formatDateTimeSeconds(sampleDate)).toBe('03/03/2026 14:30:05');
+    // flip back, BE values restored
+    setDateFormatPreference('BE');
+    expect(formatDateShort(sampleDate)).toBe('03/03/2569');
+    expect(formatDateLong(sampleDate)).toBe('3 เดือน มีนาคม พ.ศ. 2569');
+  });
+
+  it('bad preference value is ignored — falls back to current BE default', () => {
+    // @ts-expect-error — intentional bad input
+    setDateFormatPreference('XX');
+    expect(formatDateShort(sampleDate)).toBe('03/03/2569');
   });
 });

@@ -3,6 +3,7 @@ import {
   OnModuleInit,
   Logger,
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
@@ -189,7 +190,85 @@ export class AccountRoleService implements OnModuleInit {
   }
 
   /**
-   * D1.1.1.3 + D1.1.1.5 + D1.1.1.7 — Update a single AccountRoleMap row.
+   * D1.1.1.6 — Create a new role mapping with `ROLE_MAP_CREATED` audit.
+   * For future POST endpoint or bulk-import flows; not exposed via PUT.
+   */
+  async create(
+    dto: {
+      role: string;
+      accountCode: string;
+      priority?: number;
+      note?: string | null;
+    },
+    userId: string,
+  ): Promise<{
+    id: string;
+    role: string;
+    accountCode: string;
+    priority: number;
+    isActive: boolean;
+    note: string | null;
+  }> {
+    // CoA presence check — the row must point to a real account.
+    const coa = await this.prisma.chartOfAccount.findFirst({
+      where: { code: dto.accountCode, deletedAt: null },
+      select: { code: true },
+    });
+    if (!coa) {
+      throw new BadRequestException(`บัญชี ${dto.accountCode} ไม่พบในผังบัญชี`);
+    }
+    let created;
+    try {
+      created = await this.prisma.accountRoleMap.create({
+        data: {
+          role: dto.role,
+          accountCode: dto.accountCode,
+          priority: dto.priority ?? 1,
+          isActive: true,
+          note: dto.note ?? null,
+        },
+        select: {
+          id: true,
+          role: true,
+          accountCode: true,
+          priority: true,
+          isActive: true,
+          note: true,
+        },
+      });
+    } catch (err) {
+      // Unique constraint on (role, accountCode) — caller is trying to
+      // re-insert an existing mapping.
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        throw new ConflictException(
+          `Role "${dto.role}" + code "${dto.accountCode}" มีอยู่แล้วในระบบ`,
+        );
+      }
+      throw err;
+    }
+    await this.audit.log({
+      userId,
+      action: 'ROLE_MAP_CREATED',
+      entity: 'account_role_map',
+      entityId: created.id,
+      newValue: {
+        role: created.role,
+        accountCode: created.accountCode,
+        priority: created.priority,
+        isActive: created.isActive,
+        note: created.note,
+        diffSummary: `สร้าง role ${created.role} → ${created.accountCode}`,
+      },
+    });
+    await this.invalidate();
+    return created;
+  }
+
+  /**
+   * D1.1.1.3 + D1.1.1.5 + D1.1.1.6 + D1.1.1.7 — Update a single AccountRoleMap row.
    *
    * Permission (D1.1.1.7): the caller MUST pass `userRole`. `assertCanWrite`
    * runs FIRST — before any DB I/O — as defense-in-depth so that even if a
@@ -310,9 +389,18 @@ export class AccountRoleService implements OnModuleInit {
     if (dto.note !== undefined && dto.note !== before.note) {
       diff.push(`note: ${before.note ?? '—'} → ${updated.note ?? '—'}`);
     }
+    // D1.1.1.6 — Split action: DEACTIVATED is a compliance-meaningful event
+    // (JE templates will start throwing if the role was required). All other
+    // changes use the generic UPDATED action.
+    const isDeactivation =
+      dto.isActive === false && before.isActive === true;
+    const action = isDeactivation ? 'ROLE_MAP_DEACTIVATED' : 'ROLE_MAP_UPDATED';
+    const diffSummary = isDeactivation
+      ? `ปิดใช้งาน role ${updated.role}`
+      : `role ${updated.role}: ${diff.join(', ') || 'no field changes'}`;
     await this.audit.log({
       userId,
-      action: 'ROLE_MAP_UPDATED',
+      action,
       entity: 'account_role_map',
       entityId: id,
       oldValue: {
@@ -328,7 +416,7 @@ export class AccountRoleService implements OnModuleInit {
         priority: updated.priority,
         isActive: updated.isActive,
         note: updated.note,
-        diffSummary: `role ${updated.role}: ${diff.join(', ') || 'no field changes'}`,
+        diffSummary,
       },
     });
     await this.invalidate();

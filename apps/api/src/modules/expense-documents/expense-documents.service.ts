@@ -1772,7 +1772,7 @@ export class ExpenseDocumentsService implements OnModuleInit {
    * by template) so the caller can propagate it.
    */
   private async executePostBody(
-    doc: Prisma.ExpenseDocumentGetPayload<{}>,
+    doc: Prisma.ExpenseDocumentGetPayload<Record<string, never>>,
     tx: Prisma.TransactionClient,
   ): Promise<unknown> {
     const id = doc.id;

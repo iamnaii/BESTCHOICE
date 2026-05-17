@@ -845,7 +845,9 @@ describe('ExpenseDocumentsService', () => {
     // Spec calls real StatusTransitionService to anchor the contract.
     it('D1.2.1.6: post() permits source status APPROVED (manual post after approve)', async () => {
       // Replace mock transition with real one so its assertCanPost runs.
-      const realTransition = new (require('../services/status-transition.service').StatusTransitionService)();
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { StatusTransitionService } = require('../services/status-transition.service');
+      const realTransition = new StatusTransitionService();
       service = new ExpenseDocumentsService(
         prisma, docNumber, realTransition, sameDay, accrual, creditNote,
         payroll, settlement,

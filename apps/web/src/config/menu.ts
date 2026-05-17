@@ -314,6 +314,9 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'รายได้อื่น', path: '/other-income', icon: TrendingUp },
         { label: 'กำไร-ขาดทุน', path: '/profit-loss', icon: PieChart },
+        { label: 'งบกระแสเงินสด', path: '/finance/cash-flow', icon: Banknote },
+        { label: 'งบ Equity', path: '/finance/equity-statement', icon: Landmark },
+        { label: 'สมุดแยกประเภท', path: '/finance/general-ledger', icon: BookOpen },
         { label: 'ภาษี', path: '/tax-reports', icon: Calculator },
         { label: 'รายงาน', path: '/reports', icon: BarChart3 },
       ],
@@ -408,6 +411,9 @@ const OWNER_CONFIG: RoleMenuConfig = {
           icon: BarChart3,
           children: [
             { label: 'รายงานรวม', path: '/reports', icon: BarChart3 },
+            { label: 'งบกระแสเงินสด', path: '/finance/cash-flow', icon: Banknote },
+            { label: 'งบ Equity', path: '/finance/equity-statement', icon: Landmark },
+            { label: 'สมุดแยกประเภท', path: '/finance/general-ledger', icon: BookOpen },
             { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
             { label: 'ภาษี', path: '/tax-reports', icon: Calculator },
             { label: 'ตรวจสอบบัญชี', path: '/financial-audit', icon: ClipboardList },

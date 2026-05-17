@@ -4,6 +4,7 @@ import { Clock, Inbox } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { usePaginationParams } from '@/hooks/usePaginationParams';
+import { useUiFlags } from '@/hooks/useUiFlags';
 import { PaginationBar } from '@/components/ui/PaginationBar';
 import { otherIncomeApi } from '@/lib/otherIncome';
 import { formatThaiDateShort } from '@/lib/date';
@@ -11,7 +12,9 @@ import { formatNumberDecimal } from '@/utils/formatters';
 
 export default function OtherIncomePendingApprovalPage() {
   const navigate = useNavigate();
-  const { page, size, setPage, setSize } = usePaginationParams({ defaultSize: 50 });
+  // D1.2.3.2 — defaultSize derived from OWNER-configured `pagination_size`.
+  const { paginationSize } = useUiFlags();
+  const { page, size, setPage, setSize } = usePaginationParams({ defaultSize: paginationSize });
 
   const query = useQuery({
     queryKey: ['other-income', 'list', { status: 'READY', page, size }],

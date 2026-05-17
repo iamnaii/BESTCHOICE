@@ -201,14 +201,19 @@ export class ExpenseDocumentsController {
    * immediately auto-posted in the same transaction (status: POSTED).
    * When false the doc stays APPROVED and an OWNER can call /post later.
    *
-   * Approver role gating is widened in D1.2.1.3 (approvers_list). Until that
-   * lands, only OWNER + FINANCE_MANAGER can approve — the same roles allowed
-   * to post today.
+   * D1.2.1.3 — approver gating is the runtime membership check inside
+   * service.approve() against SystemConfig `approvers_list`. The @Roles
+   * decorator widens beyond OWNER so any listed user (including SALES /
+   * ACCOUNTANT) is not blocked at the controller before that runtime check
+   * runs. OWNER is always allowed regardless of list contents.
    */
   @Post(':id/approve')
-  @Roles('OWNER', 'FINANCE_MANAGER')
-  approve(@Param('id') id: string, @CurrentUser() user: { id: string }) {
-    return this.service.approve(id, user.id);
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  approve(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string; role?: string },
+  ) {
+    return this.service.approve(id, user.id, user.role);
   }
 
   @Post(':id/void')

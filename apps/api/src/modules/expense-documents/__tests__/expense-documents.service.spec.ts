@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { ExpenseDocumentsService } from '../expense-documents.service';
 import { LineAggregatorService } from '../services/line-aggregator.service';
@@ -77,6 +77,11 @@ describe('ExpenseDocumentsService', () => {
       // C3 — voidDocument writes an audit entry with reason metadata.
       auditLog: {
         create: jest.fn().mockResolvedValue({}),
+      },
+      // D1.2.1.3 — approve() validates approvers_list against User table.
+      // Default: list is empty (only OWNER may approve).
+      user: {
+        findMany: jest.fn().mockResolvedValue([]),
       },
     };
     docNumber = { next: jest.fn().mockResolvedValue('EX-20260510-0001') };
@@ -1095,6 +1100,112 @@ describe('ExpenseDocumentsService', () => {
       expect(autoPostedArg.data.userId).toBe('user-1');
       expect(autoPostedArg.data.newValue.status).toBe('POSTED');
       expect(autoPostedArg.data.newValue.autoPostedFromApproval).toBe(true);
+    });
+  });
+
+  // D1.2.1.3 — approvers_list role gate
+  describe('approve (D1.2.1.3)', () => {
+    function setupPendingDoc(overrides: Record<string, unknown> = {}) {
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-app',
+        status: 'PENDING_APPROVAL',
+        deletedAt: null,
+        ...overrides,
+      });
+    }
+
+    it('OWNER can always approve regardless of approvers_list', async () => {
+      setupPendingDoc();
+      // user.findMany returns [] (default) but OWNER short-circuits the check
+      await service.approve('doc-app', 'user-owner', 'OWNER');
+      const updateCalls = prisma.expenseDocument.update.mock.calls;
+      expect(
+        updateCalls.some((c: unknown[]) => {
+          const arg = c[0] as { data?: { status?: string } };
+          return arg?.data?.status === 'APPROVED';
+        }),
+      ).toBe(true);
+    });
+
+    it('rejects non-OWNER users not on the approvers_list', async () => {
+      setupPendingDoc();
+      prisma.systemConfig.findFirst.mockImplementation(
+        (args: { where: { key: string } }) => {
+          if (args.where.key === 'approvers_list') {
+            return Promise.resolve({ value: JSON.stringify(['user-other']) });
+          }
+          if (args.where.key === 'reverse_reason_required') return Promise.resolve({ value: 'false' });
+          return Promise.resolve(null);
+        },
+      );
+      prisma.user.findMany.mockResolvedValue([{ id: 'user-other' }]);
+      await expect(service.approve('doc-app', 'user-not-listed', 'ACCOUNTANT')).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+
+    it('accepts non-OWNER users that ARE on the approvers_list', async () => {
+      setupPendingDoc();
+      prisma.systemConfig.findFirst.mockImplementation(
+        (args: { where: { key: string } }) => {
+          if (args.where.key === 'approvers_list') {
+            return Promise.resolve({ value: JSON.stringify(['user-acc-1']) });
+          }
+          if (args.where.key === 'reverse_reason_required') return Promise.resolve({ value: 'false' });
+          return Promise.resolve(null);
+        },
+      );
+      prisma.user.findMany.mockResolvedValue([{ id: 'user-acc-1' }]);
+      await service.approve('doc-app', 'user-acc-1', 'ACCOUNTANT');
+      const updateCalls = prisma.expenseDocument.update.mock.calls;
+      expect(
+        updateCalls.some((c: unknown[]) => {
+          const arg = c[0] as { data?: { status?: string } };
+          return arg?.data?.status === 'APPROVED';
+        }),
+      ).toBe(true);
+    });
+
+    it('drops stale/inactive user IDs from approvers_list', async () => {
+      setupPendingDoc();
+      prisma.systemConfig.findFirst.mockImplementation(
+        (args: { where: { key: string } }) => {
+          if (args.where.key === 'approvers_list') {
+            return Promise.resolve({ value: JSON.stringify(['user-stale', 'user-active']) });
+          }
+          if (args.where.key === 'reverse_reason_required') return Promise.resolve({ value: 'false' });
+          return Promise.resolve(null);
+        },
+      );
+      // findMany only returns the active user; the stale ID is dropped
+      prisma.user.findMany.mockResolvedValue([{ id: 'user-active' }]);
+      // user-stale tries to approve but is filtered out → Forbidden
+      await expect(service.approve('doc-app', 'user-stale', 'ACCOUNTANT')).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+
+    it('rejects when source status is not PENDING_APPROVAL', async () => {
+      setupPendingDoc({ status: 'DRAFT' });
+      await expect(service.approve('doc-app', 'user-owner', 'OWNER')).rejects.toThrow(
+        /อนุมัติได้เฉพาะเอกสาร PENDING_APPROVAL/,
+      );
+    });
+
+    it('falls back to "OWNER-only" when approvers_list JSON is malformed', async () => {
+      setupPendingDoc();
+      prisma.systemConfig.findFirst.mockImplementation(
+        (args: { where: { key: string } }) => {
+          if (args.where.key === 'approvers_list') {
+            return Promise.resolve({ value: 'not-json' });
+          }
+          return Promise.resolve(null);
+        },
+      );
+      // Non-OWNER can't approve when list is empty/malformed
+      await expect(service.approve('doc-app', 'user-x', 'ACCOUNTANT')).rejects.toThrow(
+        ForbiddenException,
+      );
     });
   });
 

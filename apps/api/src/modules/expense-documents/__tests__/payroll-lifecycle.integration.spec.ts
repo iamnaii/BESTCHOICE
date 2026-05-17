@@ -56,17 +56,9 @@ describe('Payroll lifecycle (integration)', () => {
     const settlement = new VendorSettlementTemplate(journal, prisma as never);
     return new ExpenseDocumentsService(
       prisma as never,
-      // D1.1.2.1 — DocNumberService takes SettingsService; integration tests
-      // pass a stub that resolves to the default prefix map.
-      new DocNumberService({
-        getDocPrefixMap: async () => ({
-          EXPENSE: 'EX',
-          CREDIT_NOTE: 'CN',
-          PAYROLL: 'PR',
-          VENDOR_SETTLEMENT: 'SE',
-          PETTY_CASH_REIMBURSEMENT: 'PC',
-        }),
-      } as never),
+      // D1.1.2.4 — DocNumberService now takes SettingsService; integration
+      // tests pass a stub that returns null (→ sequence-table flag = false).
+      new DocNumberService({ getKey: async () => null } as never),
       new StatusTransitionService(),
       sameDay,
       accrual,

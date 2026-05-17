@@ -61,8 +61,27 @@ export class ExpenseTemplatesService {
 
   async list(filters: { branchId?: string; type?: string }, user: UserContext) {
     const where: Prisma.ExpenseTemplateWhereInput = { deletedAt: null };
-    const branchId = hasCrossBranchAccess(user) ? filters.branchId : (user.branchId ?? filters.branchId);
-    if (branchId) where.branchId = branchId;
+
+    // Branch-scope enforcement.
+    // Cross-branch roles (OWNER / FINANCE_MANAGER / ACCOUNTANT) see ALL
+    //   templates by default, optionally filtered by ?branchId.
+    // Single-branch roles (SALES / BRANCH_MANAGER) MUST be locked to
+    //   `user.branchId`. The previous logic fell through to
+    //   `filters.branchId` when `user.branchId` was nullish, which let a
+    //   single-branch user pass `?branchId=<anyOtherBranchId>` and read
+    //   templates from a sibling shop. We now ignore the filter for
+    //   single-branch users (or 403 if their branchId is missing — a
+    //   misconfigured user record is a programming error, not a security
+    //   bypass).
+    if (hasCrossBranchAccess(user)) {
+      if (filters.branchId) where.branchId = filters.branchId;
+    } else {
+      if (!user.branchId) {
+        throw new ForbiddenException('ผู้ใช้งานยังไม่ได้ผูกกับสาขา ไม่สามารถดูรายการโปรดได้');
+      }
+      where.branchId = user.branchId;
+    }
+
     if (filters.type) where.documentType = filters.type as never;
     // Hard cap on rows returned. Favorites are user-curated so this should
     // never realistically be hit, but it prevents an unbounded findMany if a

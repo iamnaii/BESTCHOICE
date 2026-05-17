@@ -133,4 +133,49 @@ describe('ExpenseDocumentsController', () => {
     await controller.previewJe(dto as never);
     expect(service.previewJe).toHaveBeenCalledWith(dto);
   });
+
+  // Phase A.5 — Tax-disallowed summary endpoint
+  describe('GET /tax-disallowed (Phase A.5)', () => {
+    beforeEach(() => {
+      service.getTaxDisallowedSummary = jest.fn().mockResolvedValue({
+        docLevelCount: 0,
+        docLevelTotal: '0.00',
+        lineLevelCount: 0,
+        lineLevelTotal: '0.00',
+        grandTotal: '0.00',
+        filters: { from: null, to: null },
+      });
+    });
+
+    it('cross-branch role (OWNER) can scope by ?branchId or see all', async () => {
+      await controller.taxDisallowed(
+        { user: { id: 'u', branchId: 'home-branch', role: 'OWNER' } } as never,
+        '2026-01-01',
+        '2026-12-31',
+        'b1',
+      );
+      // OWNER is cross-branch — passed-through branchId is the query param, not user's
+      expect(service.getTaxDisallowedSummary).toHaveBeenCalledWith({
+        branchId: 'b1',
+        from: '2026-01-01',
+        to: '2026-12-31',
+      });
+    });
+
+    it('non-cross-branch role (BRANCH_MANAGER) is pinned to their own branch (cross-branch leak guard)', async () => {
+      // BRANCH_MANAGER is NOT in CROSS_BRANCH_ROLES — query ?branchId is ignored,
+      // user's own branchId wins. Prevents cross-branch leak.
+      await controller.taxDisallowed(
+        { user: { id: 'u', branchId: 'b-mine', role: 'BRANCH_MANAGER' } } as never,
+        '2026-01-01',
+        '2026-12-31',
+        'b-other',
+      );
+      expect(service.getTaxDisallowedSummary).toHaveBeenCalledWith({
+        branchId: 'b-mine',
+        from: '2026-01-01',
+        to: '2026-12-31',
+      });
+    });
+  });
 });

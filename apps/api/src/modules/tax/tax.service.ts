@@ -551,6 +551,33 @@ export class TaxService {
   }
 
   /**
+   * Critical #4: WHT income type human label. Previously the raw CoA
+   * `category` (e.g. '52-1101') was returned to the RD-format report, which
+   * is meaningless to filers and unmappable to RD's income-type taxonomy
+   * (ม.40(5),(6),(7),(8)).
+   *
+   * Pragmatic mapping by category prefix for SP3 — owner can refine via
+   * Settings later (deferred to Phase 2). Mappings follow common Thai WHT
+   * income types:
+   *   - 52-11 ค่าจ้างทำของ (hire of work — ม.40(7),(8))
+   *   - 52-12 ค่าบริการ (service fees — ม.40(6))
+   *   - 52-13 ค่าเช่า (rent — ม.40(5))
+   *   - 52-14 ค่าโฆษณา (advertising — ม.40(8))
+   * Fallback "อื่นๆ — <code>" preserves visibility of unrecognized codes.
+   */
+  private resolveIncomeType(category: string | null | undefined): string {
+    if (!category) return 'อื่นๆ';
+    // If the category isn't a CoA code (e.g. already a label from older
+    // payroll records like 'ค่าจ้างทำของ'), pass it through.
+    if (!/^5\d-\d{4}/.test(category)) return category;
+    if (category.startsWith('52-11')) return 'ค่าจ้างทำของ';
+    if (category.startsWith('52-12')) return 'ค่าบริการ';
+    if (category.startsWith('52-13')) return 'ค่าเช่า';
+    if (category.startsWith('52-14')) return 'ค่าโฆษณา';
+    return `อื่นๆ — ${category}`;
+  }
+
+  /**
    * B3 / K-04 — Read input VAT (ภาษีซื้อ) from journal_lines on account 11-4101
    * within the given period, joined back to expense_documents for vendor info.
    * Returns the shape `previewPP30` expects on its `expenses` slot.
@@ -777,11 +804,22 @@ export class TaxService {
               subtotal: true,
               documentDate: true,
               paidAt: true,
+              whtFormType: true,
               expenseDetail: {
                 select: {
                   lines: {
-                    select: { category: true, whtPercent: true },
-                    take: 1,
+                    // Critical #3: pull ALL lines (not take: 1) so we can
+                    // aggregate gross + WHT per the relevant whtFormType only.
+                    // Previously doc.subtotal was used as a doc-level gross
+                    // which double-counted when a doc mixed PND3 + PND53 lines
+                    // (per-line P2-4 routing — see accounting.md).
+                    select: {
+                      category: true,
+                      whtPercent: true,
+                      whtFormType: true,
+                      amountBeforeVat: true,
+                      whtAmount: true,
+                    },
                   },
                 },
               },
@@ -795,17 +833,47 @@ export class TaxService {
       const docId = typeof md?.documentId === 'string' ? md.documentId : null;
       const doc = docId ? docById.get(docId) : null;
       if (!doc) return [];
-      const firstLine = doc.expenseDetail?.lines?.[0];
-      const incomeType = firstLine?.category ?? null;
-      const whtPercent = firstLine?.whtPercent ?? new Prisma.Decimal(0);
+
+      // Critical #3: filter to lines whose effective whtFormType matches
+      // the report being run (per-line P2-4 routing). Without this filter,
+      // a mixed-form doc (1 PND3 line + 1 PND53 line) would report the
+      // whole doc.subtotal for BOTH reports — double-counting the gross.
+      const allLines = doc.expenseDetail?.lines ?? [];
+      const relevantLines = allLines.filter((l) => {
+        const effectiveForm = l.whtFormType ?? doc.whtFormType ?? 'PND3';
+        return effectiveForm === form;
+      });
+      if (relevantLines.length === 0) return [];
+
+      const gross = relevantLines.reduce(
+        (sum, l) => sum.add(l.amountBeforeVat ?? new Prisma.Decimal(0)),
+        new Prisma.Decimal(0),
+      );
+      // Sum WHT from the doc's lines (the source of truth for the WHT amount).
+      // Note: `line.credit` is the doc-level aggregate posted to the JE; it's
+      // the right number when the entire doc is one form, but for mixed docs
+      // we need the per-line sum filtered by form.
+      const whtFromLines = relevantLines.reduce(
+        (sum, l) => sum.add(l.whtAmount ?? new Prisma.Decimal(0)),
+        new Prisma.Decimal(0),
+      );
+      // Prefer line-level sum when present; fall back to JE credit when lines
+      // have no whtAmount (defensive — older PETTY_CASH docs may not).
+      const whtAmount = whtFromLines.gt(0) ? whtFromLines : line.credit;
+
+      // First relevant line's whtPercent represents the rate for this group
+      const firstRelevant = relevantLines[0];
+
       return [
         {
           vendorName: doc.vendorName ?? '(ไม่ระบุชื่อผู้รับเงิน)',
           vendorTaxId: doc.vendorTaxId,
-          incomeType,
-          gross: doc.subtotal,
-          whtPercent,
-          whtAmount: line.credit,
+          // Critical #4: incomeType resolved from category prefix instead of
+          // returning the raw CoA code (e.g. '52-1101').
+          incomeType: this.resolveIncomeType(firstRelevant.category),
+          gross,
+          whtPercent: firstRelevant.whtPercent ?? new Prisma.Decimal(0),
+          whtAmount,
           paidDate: doc.paidAt ?? doc.documentDate ?? line.journalEntry.postedAt ?? new Date(),
           expenseDocNumber: doc.number,
         },

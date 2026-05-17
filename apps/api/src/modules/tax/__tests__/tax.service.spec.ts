@@ -546,8 +546,17 @@ describe('TaxService.previewPND3 / previewPND53 — vendor WHT', () => {
         subtotal: Dec('1000'),
         documentDate: new Date('2026-05-15'),
         paidAt: new Date('2026-05-15'),
+        whtFormType: 'PND3',
         expenseDetail: {
-          lines: [{ category: 'ค่าจ้างทำของ', whtPercent: Dec('3') }],
+          lines: [
+            {
+              category: 'ค่าจ้างทำของ',
+              whtPercent: Dec('3'),
+              whtFormType: null,
+              amountBeforeVat: Dec('1000'),
+              whtAmount: Dec('30'),
+            },
+          ],
         },
       },
     ]);
@@ -589,7 +598,18 @@ describe('TaxService.previewPND3 / previewPND53 — vendor WHT', () => {
         subtotal: Dec('10000'),
         documentDate: new Date('2026-05-20'),
         paidAt: null,
-        expenseDetail: { lines: [{ category: 'ค่าบริการ', whtPercent: Dec('1') }] },
+        whtFormType: 'PND53',
+        expenseDetail: {
+          lines: [
+            {
+              category: 'ค่าบริการ',
+              whtPercent: Dec('1'),
+              whtFormType: null,
+              amountBeforeVat: Dec('10000'),
+              whtAmount: Dec('100'),
+            },
+          ],
+        },
       },
     ]);
     const r = await service.previewPND53('co-1', 2026, 5);
@@ -597,6 +617,195 @@ describe('TaxService.previewPND3 / previewPND53 — vendor WHT', () => {
     expect(r.items[0].whtAmount.toString()).toBe('100');
     expect(r.whtTotal.toString()).toBe('100');
     expect(r.form).toBe('PND53');
+  });
+
+  it('Critical #3: mixed-form doc reports only relevant lines per report (no double-count)', async () => {
+    // Doc with 1 PND3 line (1000) + 1 PND53 line (5000). Doc subtotal = 6000.
+    // Old impl returned gross=6000 for BOTH reports → double-count.
+    // New impl aggregates only matching lines.
+
+    // First: mock for PND3 report
+    prisma.journalLine.findMany.mockResolvedValue([
+      {
+        credit: Dec('30'), // PND3 portion 3% of 1000 = 30
+        journalEntry: {
+          id: 'je-mixed-1',
+          postedAt: new Date('2026-05-15'),
+          description: 'EX-mixed',
+          metadata: { flow: 'expense-same-day', documentId: 'doc-mixed' },
+        },
+      },
+    ]);
+    prisma.expenseDocument.findMany.mockResolvedValue([
+      {
+        id: 'doc-mixed',
+        number: 'EX-mixed',
+        vendorName: 'Mixed Vendor',
+        vendorTaxId: '1234567890123',
+        subtotal: Dec('6000'),
+        documentDate: new Date('2026-05-15'),
+        paidAt: new Date('2026-05-15'),
+        whtFormType: null,
+        expenseDetail: {
+          lines: [
+            {
+              category: '52-1101',
+              whtPercent: Dec('3'),
+              whtFormType: 'PND3',
+              amountBeforeVat: Dec('1000'),
+              whtAmount: Dec('30'),
+            },
+            {
+              category: '52-1201',
+              whtPercent: Dec('1'),
+              whtFormType: 'PND53',
+              amountBeforeVat: Dec('5000'),
+              whtAmount: Dec('50'),
+            },
+          ],
+        },
+      },
+    ]);
+    const pnd3 = await service.previewPND3('co-1', 2026, 5);
+    // Critical #3: gross is 1000 (PND3 line only), NOT 6000 (whole doc)
+    expect(pnd3.items[0].gross.toString()).toBe('1000');
+    expect(pnd3.items[0].whtAmount.toString()).toBe('30');
+
+    // Now: same doc, run PND53 report
+    prisma.journalLine.findMany.mockResolvedValue([
+      {
+        credit: Dec('50'),
+        journalEntry: {
+          id: 'je-mixed-2',
+          postedAt: new Date('2026-05-15'),
+          description: 'EX-mixed',
+          metadata: { flow: 'expense-same-day', documentId: 'doc-mixed' },
+        },
+      },
+    ]);
+    const pnd53 = await service.previewPND53('co-1', 2026, 5);
+    expect(pnd53.items[0].gross.toString()).toBe('5000');
+    expect(pnd53.items[0].whtAmount.toString()).toBe('50');
+  });
+
+  it('Critical #3: line-level whtFormType falls back to doc-level when null', async () => {
+    prisma.journalLine.findMany.mockResolvedValue([
+      {
+        credit: Dec('30'),
+        journalEntry: {
+          id: 'je-fb',
+          postedAt: new Date('2026-05-15'),
+          description: 'EX-fb',
+          metadata: { flow: 'expense-same-day', documentId: 'doc-fb' },
+        },
+      },
+    ]);
+    prisma.expenseDocument.findMany.mockResolvedValue([
+      {
+        id: 'doc-fb',
+        number: 'EX-fb',
+        vendorName: 'Vendor FB',
+        vendorTaxId: '1234567890124',
+        subtotal: Dec('1000'),
+        documentDate: new Date('2026-05-15'),
+        paidAt: new Date('2026-05-15'),
+        whtFormType: 'PND3', // doc-level
+        expenseDetail: {
+          lines: [
+            {
+              category: '52-1101',
+              whtPercent: Dec('3'),
+              whtFormType: null, // ← falls back to doc.whtFormType = 'PND3'
+              amountBeforeVat: Dec('1000'),
+              whtAmount: Dec('30'),
+            },
+          ],
+        },
+      },
+    ]);
+    const pnd3 = await service.previewPND3('co-1', 2026, 5);
+    expect(pnd3.items).toHaveLength(1);
+    expect(pnd3.items[0].gross.toString()).toBe('1000');
+  });
+
+  it('Critical #4: incomeType resolves CoA code to Thai income label', async () => {
+    prisma.journalLine.findMany.mockResolvedValue([
+      {
+        credit: Dec('30'),
+        journalEntry: {
+          id: 'je-it',
+          postedAt: new Date('2026-05-15'),
+          description: 'EX-it',
+          metadata: { flow: 'expense-same-day', documentId: 'doc-it' },
+        },
+      },
+    ]);
+    prisma.expenseDocument.findMany.mockResolvedValue([
+      {
+        id: 'doc-it',
+        number: 'EX-it',
+        vendorName: 'Vendor IT',
+        vendorTaxId: '1234567890125',
+        subtotal: Dec('1000'),
+        documentDate: new Date('2026-05-15'),
+        paidAt: new Date('2026-05-15'),
+        whtFormType: 'PND3',
+        expenseDetail: {
+          lines: [
+            {
+              category: '52-1101', // → 'ค่าจ้างทำของ'
+              whtPercent: Dec('3'),
+              whtFormType: 'PND3',
+              amountBeforeVat: Dec('1000'),
+              whtAmount: Dec('30'),
+            },
+          ],
+        },
+      },
+    ]);
+    const r = await service.previewPND3('co-1', 2026, 5);
+    // Critical #4: NOT raw '52-1101'
+    expect(r.items[0].incomeType).toBe('ค่าจ้างทำของ');
+    expect(r.items[0].incomeType).not.toBe('52-1101');
+  });
+
+  it('Critical #4: unrecognized 5x-xxxx CoA code falls back to "อื่นๆ — <code>"', async () => {
+    prisma.journalLine.findMany.mockResolvedValue([
+      {
+        credit: Dec('30'),
+        journalEntry: {
+          id: 'je-unk',
+          postedAt: new Date('2026-05-15'),
+          description: 'EX-unk',
+          metadata: { flow: 'expense-same-day', documentId: 'doc-unk' },
+        },
+      },
+    ]);
+    prisma.expenseDocument.findMany.mockResolvedValue([
+      {
+        id: 'doc-unk',
+        number: 'EX-unk',
+        vendorName: 'Vendor Unk',
+        vendorTaxId: '1234567890126',
+        subtotal: Dec('1000'),
+        documentDate: new Date('2026-05-15'),
+        paidAt: new Date('2026-05-15'),
+        whtFormType: 'PND3',
+        expenseDetail: {
+          lines: [
+            {
+              category: '52-9999', // unmapped
+              whtPercent: Dec('3'),
+              whtFormType: 'PND3',
+              amountBeforeVat: Dec('1000'),
+              whtAmount: Dec('30'),
+            },
+          ],
+        },
+      },
+    ]);
+    const r = await service.previewPND3('co-1', 2026, 5);
+    expect(r.items[0].incomeType).toBe('อื่นๆ — 52-9999');
   });
 
   it('PND3: lines whose document is in a different company are excluded', async () => {

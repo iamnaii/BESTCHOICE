@@ -54,18 +54,30 @@ import {
 
 export type MenuBadgeKey = 'chat-unread' | 'asset-draft-count';
 
+/** Logical zone — sidebar splits navigation into these contexts */
+export type Zone = 'shop' | 'fin' | 'settings';
+
+/** Hint shown on placeholder pages so users see which SP will deliver it */
+export interface PlaceholderInfo {
+  trackingSP: 'SP2' | 'SP3' | 'SP4' | 'SP5' | 'SP6';
+  trackingIssueUrl?: string;
+  eta?: string;
+}
+
 export interface MenuItem {
   label: string;
   path: string;
   icon: LucideIcon;
   children?: MenuItem[];   // when present, item renders as collapsible group (path is not navigable)
   badgeKey?: MenuBadgeKey; // optional dynamic count badge
+  placeholder?: PlaceholderInfo; // marks the destination as a placeholder owned by a future SP
 }
 
 export interface MenuSection {
   key: string;
   label: string;
   icon: LucideIcon;
+  zone?: Zone; // optional during SP1 staged rollout; required at render once all configs are tagged (Task 6)
   items: MenuItem[];
 }
 
@@ -80,6 +92,19 @@ export interface BottomNavItem {
 export interface RoleMenuConfig {
   sidebar: MenuSection[];
   bottomNav: BottomNavItem[];
+}
+
+export interface RoleZoneConfig {
+  /** Pills visible to this role (1 zone → no pill switcher) */
+  zones: Zone[];
+  /** Default zone if no URL/localStorage value */
+  defaultZone: Zone;
+  /** Show gear (Settings) icon? */
+  showSettingsGear: boolean;
+  /** All sections across all zones — filtered at render */
+  sections: MenuSection[];
+  /** BottomNav items per zone */
+  bottomNav: Record<Zone, BottomNavItem[]>;
 }
 
 /* ── Shared menu items ─────────────────────────────── */

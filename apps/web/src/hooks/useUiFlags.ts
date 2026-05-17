@@ -336,6 +336,14 @@ export interface UiFlags {
     | 'OWNER_ONLY'
     | 'OWNER+ALL_NON_SALES';
   /**
+   * D1.3.3.4 — restrict integration API-key management UI to OWNER. Default
+   * true. UI surfaces (IntegrationHubPage link, "Manage API keys" menu
+   * entries) should hide for non-OWNER roles when this is true. Server-side
+   * the IntegrationsController is already OWNER-gated by `@Roles`, so this
+   * flag is the documentary toggle for that policy.
+   */
+  apiKeysAdminOnly: boolean;
+  /**
    * D1.3.2.4 — dynamic bundle controlling who can reverse/void expense
    * documents. Whitelisted: `'OWNER+FINANCE_MANAGER'` (default) /
    * `'OWNER_ONLY'`. UI uses this to hide the "Void" button for roles that
@@ -429,6 +437,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   webhooksEnabled: false,
   settingsAccessRole: 'OWNER',
   postPermission: 'OWNER+FINANCE_MANAGER+ACCOUNTANT',
+  apiKeysAdminOnly: true,
   reversePermission: 'OWNER+FINANCE_MANAGER',
 };
 

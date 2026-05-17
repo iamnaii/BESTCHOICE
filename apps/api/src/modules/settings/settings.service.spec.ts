@@ -1634,6 +1634,22 @@ describe('SettingsService audit trail', () => {
       const flags = await service.getUiFlags();
       expect(flags.webhooksEnabled).toBe(true);
     });
+
+    // D1.3.3.4 — api_keys_admin_only
+    it('apiKeysAdminOnly defaults to true when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.apiKeysAdminOnly).toBe(true);
+    });
+
+    it('apiKeysAdminOnly returns false when OWNER explicitly opens to other roles', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'api_keys_admin_only') return Promise.resolve({ value: 'false' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.apiKeysAdminOnly).toBe(false);
+    });
   });
 
   // ─── D1.1.5.5 — Petty Cash custodian ───────────────────────────────

@@ -879,6 +879,20 @@ export class SettingsService {
       | 'OWNER_ONLY'
       | 'OWNER+ALL_NON_SALES';
     /**
+     * D1.3.3.4 — restrict integration API-key management UI to OWNER.
+     * Default true. **Documentary today** — `IntegrationsController` already
+     * gates every method with `@Roles('OWNER')`, so this flag is the visible
+     * config knob for that policy. Lets the frontend conditionally
+     * show/hide IntegrationHub menu links for non-OWNER roles, and gives
+     * OWNER a future kill-switch if they ever decide ACCOUNTANT or
+     * FINANCE_MANAGER should be allowed to rotate, say, the e-tax API key.
+     *
+     * Flipping this to false today only changes the UI — server stays
+     * OWNER-gated. A future PR can widen the `@Roles` set AND read this flag
+     * in a guard to enforce the new policy.
+     */
+    apiKeysAdminOnly: boolean;
+    /**
      * D1.3.2.4 — dynamic bundle controlling who can reverse/void expense
      * documents. Whitelisted: `'OWNER+FINANCE_MANAGER'` (default — current
      * behavior) / `'OWNER_ONLY'`. Enforced at request time by
@@ -1254,6 +1268,9 @@ export class SettingsService {
       postPermissionRaw === 'OWNER+ALL_NON_SALES'
         ? postPermissionRaw
         : 'OWNER+FINANCE_MANAGER+ACCOUNTANT';
+    // D1.3.3.4 — api_keys_admin_only. Default true. Documentary —
+    // IntegrationsController @Roles('OWNER') is the actual enforcement.
+    const apiKeysAdminOnly = await this.readBoolean('api_keys_admin_only', true);
     // D1.3.2.4 — reverse_permission. Whitelist 2 values; everything else
     // falls back to the default OWNER+FM bundle.
     const reversePermissionRaw = await this.getKey('reverse_permission');
@@ -1326,6 +1343,7 @@ export class SettingsService {
       webhooksEnabled,
       settingsAccessRole,
       postPermission,
+      apiKeysAdminOnly,
       reversePermission,
     };
   }

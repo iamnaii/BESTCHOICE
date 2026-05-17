@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { useGlobalShortcuts } from '@/hooks/useGlobalShortcuts';
+import { useUiFlags } from '@/hooks/useUiFlags';
 import { LayoutProvider, useLayout } from './LayoutContext';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
@@ -113,6 +114,10 @@ function MainContent() {
 
 /* ── Layout root ──────────────────────────────────── */
 export default function MainLayout() {
+  // D1.4.1.3 — useUiFlags side-effects (animation toggle + future) run at the
+  // earliest authenticated paint. Hook is React-Query cached so the extra
+  // mount here is cheap.
+  useUiFlags();
   return (
     <LayoutProvider>
       <MainContent />

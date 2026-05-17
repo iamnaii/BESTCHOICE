@@ -175,6 +175,14 @@ export class SettingsService {
      * accessibility readers via the lang attr.
      */
     language: 'th' | 'en';
+    /**
+     * D1.4.1.3 — global animations + transitions toggle. Default true.
+     * When false, the web app sets `data-animations-disabled="true"` on
+     * `<html>` and a CSS rule strips `transition` / `animation` properties.
+     * Complements the OS-level `prefers-reduced-motion` media query for
+     * accessibility users on browsers that don't expose the OS setting.
+     */
+    animationEnabled: boolean;
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -214,6 +222,8 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.4.1.3 — animation enabled. Default true.
+    const animationEnabled = await this.readBoolean('animation_enabled', true);
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -225,6 +235,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      animationEnabled,
     };
   }
 

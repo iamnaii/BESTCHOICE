@@ -33,6 +33,12 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /**
+   * D1.4.1.3 — global animations + transitions toggle. When false, the
+   * hook sets `data-animations-disabled="true"` on `<html>` and a CSS rule
+   * strips `transition` / `animation` from every element. Default true.
+   */
+  animationEnabled: boolean;
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -53,6 +59,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  animationEnabled: true,
 };
 
 export function useUiFlags(): UiFlags {
@@ -73,5 +80,15 @@ export function useUiFlags(): UiFlags {
       document.documentElement.lang = flags.language;
     }
   }, [flags.language]);
+  // D1.4.1.3 — toggle global animations. CSS rule in `index.css` matches
+  // `[data-animations-disabled="true"]` and strips transitions + animations.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (flags.animationEnabled) {
+      document.documentElement.removeAttribute('data-animations-disabled');
+    } else {
+      document.documentElement.setAttribute('data-animations-disabled', 'true');
+    }
+  }, [flags.animationEnabled]);
   return flags;
 }

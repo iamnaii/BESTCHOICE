@@ -38,6 +38,13 @@ export interface UiFlags {
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
   /**
+   * D1.3.6.2 — pre-tick preference for the VENDOR_SETTLEMENT bill list.
+   *   'all'          — pre-tick every loaded bill
+   *   'none'         — pre-tick nothing (manual selection only)
+   *   'overdue_only' — pre-tick only bills past their due date (default)
+   */
+  settlementDefaultTick: 'all' | 'none' | 'overdue_only';
+  /**
    * D1.3.3.1 — when false, hide Excel / PDF / CSV export buttons in the UI.
    * Server-side ExportEnabledGuard returns 403 for PDF endpoints when this
    * is false (defence-in-depth against UI bypass). Default true.
@@ -230,6 +237,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  settlementDefaultTick: 'overdue_only',
   whtRates: [
     { rate: 1, label: '1% — ดอกเบี้ย' },
     { rate: 3, label: '3% — ค่าบริการ' },

@@ -31,6 +31,14 @@ export interface LoginAuditInput {
  * Fire-and-forget audit writer for auth attempts. Must never block the login
  * path, must never throw. If the table is gone or the DB is wedged, we still
  * want the user to be able to sign in (or not) on the path they're on.
+ *
+ * **D1.4.3.6 (2026-05-17):** the LoginAuditLog write is gated on
+ * SystemConfig key `login_log_enabled` (default `'true'`). When `'false'`,
+ * the audit-row INSERT is skipped — known-device tracking + new-device
+ * LINE alerts still run because those drive security alerts independent
+ * of audit retention. Failed-login attempt counting on `User` and account
+ * lockout (v3 hardening) live in `AuthService` and are **unaffected** by
+ * this toggle.
  */
 @Injectable()
 export class LoginAuditService {
@@ -40,6 +48,28 @@ export class LoginAuditService {
     private readonly prisma: PrismaService,
     private readonly lineOaService: LineOaService,
   ) {}
+
+  /**
+   * D1.4.3.6 — read SystemConfig toggle `login_log_enabled`. Default
+   * `true`. On DB read failure, fall through to enabled (fail-safe — we
+   * don't want a transient DB hiccup to silently turn off the security
+   * audit trail).
+   */
+  private async isLoginLogEnabled(): Promise<boolean> {
+    try {
+      const row = await this.prisma.systemConfig.findFirst({
+        where: { key: 'login_log_enabled', deletedAt: null },
+        select: { value: true },
+      });
+      if (row?.value) {
+        const v = row.value.trim().toLowerCase();
+        if (v === 'false' || v === '0') return false;
+      }
+    } catch {
+      // Fall through — default-on protects the audit trail.
+    }
+    return true;
+  }
 
   async record(entry: LoginAuditInput): Promise<void> {
     try {
@@ -84,6 +114,15 @@ export class LoginAuditService {
             userAgent: entry.userAgent,
           });
         }
+      }
+
+      // D1.4.3.6 — skip the audit-row INSERT when login_log disabled. Known-
+      // device tracking + new-device LINE alerts above already ran since
+      // they drive security notifications independent of audit retention.
+      // Failed-attempt counting + account-lockout in AuthService are
+      // unaffected by this toggle.
+      if (!(await this.isLoginLogEnabled())) {
+        return;
       }
 
       await this.prisma.loginAuditLog.create({

@@ -1,14 +1,13 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotImplementedException,
+} from '@nestjs/common';
 import { DocumentType, Prisma } from '@prisma/client';
-import { SettingsService } from '../../settings/settings.service';
-
-const PREFIX_MAP: Record<DocumentType, string> = {
-  EXPENSE: 'EX',
-  CREDIT_NOTE: 'CN',
-  PAYROLL: 'PR',
-  VENDOR_SETTLEMENT: 'SE',
-  PETTY_CASH_REIMBURSEMENT: 'PC',
-};
+import {
+  DEFAULT_DOC_PREFIX_MAP,
+  SettingsService,
+} from '../../settings/settings.service';
 
 /**
  * D1.1.2.2 — whitelisted document-number layout strings.
@@ -64,6 +63,20 @@ const VALID_RESET_CYCLES: ReadonlySet<ResetCycle> = new Set<ResetCycle>([
  */
 const LEGACY_DEFAULT_RESET_CYCLE: ResetCycle = 'daily';
 
+/**
+ * D1.1.2.4 — SystemConfig key `doc_sequence_table_enabled` (default `'false'`).
+ *
+ * Owner picked "accept current behavior" for Q3 — current implementation uses
+ * a PostgreSQL advisory lock + `MAX(docNumber)` lookup inside the same DB
+ * transaction. This works correctly under normal load (~100 docs/day) and
+ * doesn't require an additional table.
+ *
+ * The flag is reserved as a **forward-extension point** for a future migration
+ * to a dedicated `DocumentSequence` model. When `true`, the service throws
+ * `NotImplementedException` so the OWNER realizes the migration hasn't
+ * happened yet — silent fallback would create the impression a feature exists
+ * when it doesn't.
+ */
 @Injectable()
 export class DocNumberService {
   constructor(private readonly settings: SettingsService) {}
@@ -72,35 +85,35 @@ export class DocNumberService {
    * Generate next sequential document number with race-safe Postgres
    * advisory lock per (type, BKK-period) key. Mirrors OI/RT pattern.
    *
-   * D1.1.2.2 — the visible layout (date portion + sequence width) is driven
-   * by SystemConfig key `doc_number_format`. Four layouts are whitelisted:
-   *   - `PREFIX-YYMM-NNN`     (default — spec row 1.2.2)
-   *   - `PREFIX-YYYYMMDD-NNNN`
-   *   - `PREFIX-YYYYMM-NNNNN`
-   *   - `PREFIX-YYYY-NNNNNN`
-   * Unknown values silently fall back to the default at read time.
-   *
-   * D1.1.2.3 (sibling PR #947) — the advisory-lock + sequence-lookup window
-   * is driven by SystemConfig key `doc_number_reset_cycle` (daily / monthly /
-   * yearly). This PR reads that key with a defensive fallback to `daily` so
-   * behaviour pre-#947 is identical to today. Once #947 ships, its own
-   * service-level default flips to `yearly` per spec row 1.2.3.
-   *
-   * `issueDate` convention (W5): the BKK period is derived from the
-   * user-chosen `documentDate` (NOT server "now"), so a same-day creation
-   * backdated to yesterday will still number under yesterday's sequence.
-   *
-   * W4 — explicit throw when seq overflows the configured digit width.
+   * D1.1.2.1 — prefix is sourced from SystemConfig `doc_prefix_per_type`
+   * with fallback to `DEFAULT_DOC_PREFIX_MAP`.
+   * D1.1.2.2 — layout (date portion + seq width) driven by SystemConfig
+   * `doc_number_format`. Four layouts whitelisted; unknown falls back to
+   * the spec default.
+   * D1.1.2.3 (sibling PR #947) — advisory-lock + sequence-lookup window
+   * driven by SystemConfig `doc_number_reset_cycle` (daily/monthly/yearly).
+   * Soft-reads with fallback to `daily` pre-#947.
+   * D1.1.2.4 — when `doc_sequence_table_enabled = 'true'`, throws
+   * `NotImplementedException`. See class docstring for rationale.
    */
   async next(
     tx: Prisma.TransactionClient,
     type: DocumentType,
     issueDate: Date,
   ): Promise<string> {
+    // D1.1.2.4 — sequence table not implemented; reject explicitly if OWNER
+    // has flipped the flag without an accompanying migration.
+    if (await this.isSequenceTableEnabled()) {
+      throw new NotImplementedException(
+        'Sequence table mode not implemented yet — please disable this flag (doc_sequence_table_enabled = false)',
+      );
+    }
+
     const format = await this.resolveFormat();
     const cycle = await this.resolveResetCycle();
     const { datePortion, seqWidth } = this.layout(issueDate, format);
-    const prefixLetters = PREFIX_MAP[type];
+    const prefixMap = await this.resolvePrefixMap();
+    const prefixLetters = prefixMap[type];
     const prefix = `${prefixLetters}-${datePortion}-`;
     // Advisory lock scope follows the reset_cycle dimension (D1.1.2.3).
     // When #947 has not yet merged, cycle defaults to `daily` so lock
@@ -126,6 +139,19 @@ export class DocNumberService {
     }
     const seq = String(nextSeq).padStart(seqWidth, '0');
     return `${prefix}${seq}`;
+  }
+
+  /**
+   * D1.1.2.1 — fetch the active prefix map. Pulls from SettingsService when
+   * available; falls back to the static `DEFAULT_DOC_PREFIX_MAP` if any error
+   * surfaces (defensive: doc creation must never block on the settings query).
+   */
+  private async resolvePrefixMap(): Promise<Record<DocumentType, string>> {
+    try {
+      return await this.settings.getDocPrefixMap();
+    } catch {
+      return { ...DEFAULT_DOC_PREFIX_MAP };
+    }
   }
 
   /**
@@ -197,6 +223,23 @@ export class DocNumberService {
       case 'daily':
       default:
         return this.bkkYyyymmdd(issueDate);
+    }
+  }
+
+  /**
+   * D1.1.2.4 — read `doc_sequence_table_enabled` flag. Defensive: any error
+   * resolving the flag (DB down, malformed value) is treated as "false" so
+   * doc creation continues using the advisory-lock fast path. Only an
+   * explicit `'true'` / `'1'` value (case-insensitive) enables the throw branch.
+   */
+  private async isSequenceTableEnabled(): Promise<boolean> {
+    try {
+      const raw = await this.settings.getKey('doc_sequence_table_enabled');
+      if (!raw) return false;
+      const v = raw.trim().toLowerCase();
+      return v === 'true' || v === '1';
+    } catch {
+      return false;
     }
   }
 

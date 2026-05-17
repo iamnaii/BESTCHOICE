@@ -10,6 +10,13 @@ import {
   formatNumber,
   formatNumberDecimal,
   applyFormat,
+  setThousandsSeparator,
+} from './formatters';
+
+// D1.2.3.5 — thousands separator pref is module-level; reset after each
+// test so a CE-style space pref can't leak into later cases.
+afterEach(() => {
+  setThousandsSeparator('comma');
   setDefaultDecimalPlaces,
 } from './formatters';
 
@@ -151,6 +158,35 @@ describe('applyFormat', () => {
   });
 });
 
+// D1.2.3.5 — thousands_separator
+describe('formatters — thousands_separator (D1.2.3.5)', () => {
+  it("default 'comma': formatNumber outputs '1,234,567'", () => {
+    expect(formatNumber(1234567)).toBe('1,234,567');
+  });
+
+  it("'space' preference: formatNumber outputs '1 234 567'", () => {
+    setThousandsSeparator('space');
+    expect(formatNumber(1234567)).toBe('1 234 567');
+    expect(formatNumberDecimal(1234567.89)).toBe('1 234 567.89');
+  });
+
+  it("'none' preference: formatNumber outputs '1234567' (no grouping)", () => {
+    setThousandsSeparator('none');
+    expect(formatNumber(1234567)).toBe('1234567');
+    expect(formatNumberDecimal(1234567.89)).toBe('1234567.89');
+  });
+
+  it('bad preference value is ignored — falls back to current comma default', () => {
+    // @ts-expect-error — intentional bad input
+    setThousandsSeparator('dot');
+    expect(formatNumber(1234567)).toBe('1,234,567');
+  });
+
+  it('negative + decimal handled correctly across separator styles', () => {
+    setThousandsSeparator('space');
+    expect(formatNumberDecimal(-1234567.89)).toBe('-1 234 567.89');
+    setThousandsSeparator('none');
+    expect(formatNumberDecimal(-1234567.89)).toBe('-1234567.89');
 // D1.2.3.4 — decimal_places module-level default
 describe('formatters — decimal_places default (D1.2.3.4)', () => {
   it('default 2: formatNumberDecimal(value) uses 2 digits when omitted', () => {

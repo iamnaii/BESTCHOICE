@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTheme } from 'next-themes';
 import api from '@/lib/api';
+import { setThousandsSeparator } from '@/utils/formatters';
 import { setDefaultDecimalPlaces } from '@/utils/formatters';
 import { setDateFormatPreference } from '@/utils/formatters';
 
@@ -36,6 +37,8 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /** D1.2.3.5 — thousands separator style for the generic number formatter. */
+  thousandsSeparator: 'comma' | 'space' | 'none';
   /** D1.2.3.4 — default decimal places (0-4) for the generic number formatter. */
   decimalPlaces: number;
   /** D1.2.3.3 — date display preference: BE (พ.ศ., +543) default or CE (ค.ศ.). */
@@ -108,6 +111,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  thousandsSeparator: 'comma',
   decimalPlaces: 2,
   dateFormat: 'BE',
   approvalEnabled: false,
@@ -143,6 +147,11 @@ export function useUiFlags(): UiFlags {
       document.documentElement.lang = flags.language;
     }
   }, [flags.language]);
+  // D1.2.3.5 — sync the module-level thousands-separator pref so pure
+  // formatNumber / formatNumberDecimal calls respect the OWNER pref.
+  useEffect(() => {
+    setThousandsSeparator(flags.thousandsSeparator);
+  }, [flags.thousandsSeparator]);
   // D1.2.3.4 — sync the module-level default decimal-places preference so
   // pure `formatNumberDecimal()` calls (in exports, badges, etc.) respect
   // the OWNER pref. Call sites that pass an explicit digit count are

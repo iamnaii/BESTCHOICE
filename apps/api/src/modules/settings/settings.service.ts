@@ -170,6 +170,13 @@ export class SettingsService {
      */
     language: 'th' | 'en';
     /**
+     * D1.2.3.5 — thousands separator style for the generic number formatter.
+     * Whitelisted: 'comma' (1,234,567) default, 'space' (1 234 567), or
+     * 'none' (1234567). SystemConfig key `thousands_separator`. Invalid
+     * values fall back to 'comma'. Voucher-specific helpers in `lib/date.ts`
+     * are unaffected — they format dates not numbers.
+     */
+    thousandsSeparator: 'comma' | 'space' | 'none';
      * D1.2.3.4 — default number of decimal places for the generic number
      * formatter. Integer 0-4 inclusive. Default 2 (Thai currency convention).
      * SystemConfig key `decimal_places`. Out-of-range/non-integer values
@@ -326,6 +333,11 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.2.3.5 — thousands_separator. Whitelist 'comma' / 'space' / 'none';
+    // everything else → 'comma'.
+    const tsRaw = await this.getKey('thousands_separator');
+    const thousandsSeparator: 'comma' | 'space' | 'none' =
+      tsRaw === 'space' || tsRaw === 'none' ? tsRaw : 'comma';
     // D1.2.3.4 — decimal_places. Integer 0-4 inclusive; clamp to 2 default
     // for out-of-range / non-integer values.
     const decimalPlacesRaw = await this.readNumber('decimal_places', 2);
@@ -412,6 +424,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      thousandsSeparator,
       decimalPlaces,
       dateFormat,
       approvalEnabled,

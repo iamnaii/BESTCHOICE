@@ -1,5 +1,42 @@
 // Thai date & number formatting utilities
 
+// D1.2.3.5 — module-level thousands-separator pref. Default 'comma' matches
+// the prior `toLocaleString('th-TH')` output (Thai locale uses comma). Set
+// via `useUiFlags` on mount.
+type ThousandsSeparator = 'comma' | 'space' | 'none';
+let thousandsSeparator: ThousandsSeparator = 'comma';
+
+/**
+ * D1.2.3.5 — Set the global thousands separator. Whitelist enforced; unknown
+ * values silently fall back to 'comma'.
+ */
+export function setThousandsSeparator(sep: ThousandsSeparator): void {
+  if (sep === 'comma' || sep === 'space' || sep === 'none') {
+    thousandsSeparator = sep;
+  } else {
+    thousandsSeparator = 'comma';
+  }
+}
+
+/**
+ * Apply the current thousands-separator pref to an already-formatted number
+ * string. Caller formats with `'en-US'` so the integer-part separator is
+ * always a comma; this function rewrites only the integer-part separators
+ * (preserves the decimal `.` separator).
+ */
+function applySeparator(formatted: string): string {
+  if (thousandsSeparator === 'comma') return formatted;
+  // Split off any sign and any decimal portion so we don't touch them.
+  const match = formatted.match(/^(-?)([^.]*)(\..*)?$/);
+  if (!match) return formatted;
+  const [, sign, intPart, decPart = ''] = match;
+  const intRewritten =
+    thousandsSeparator === 'none'
+      ? intPart.replace(/,/g, '')
+      : intPart.replace(/,/g, ' ');
+  return `${sign}${intRewritten}${decPart}`;
+}
+
 // D1.2.3.4 — module-level default decimal places. Pure formatter calls
 // without an explicit count read from here; explicit overrides still win.
 // Default 2 matches Thai currency convention + the original hardcoded value.
@@ -115,13 +152,24 @@ export function formatDateTimeSeconds(value: string | Date): string {
   return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear() + yearOffset()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
 }
 
-// num → 21,468
+// num → 21,468 (or "21 468" / "21468" per D1.2.3.5 pref)
+// D1.2.3.5 — format via 'en-US' (always comma) then post-process so the
+// pref consistently applies regardless of underlying ICU locale quirks.
 export function formatNumber(value: number | string): string {
   const n = typeof value === 'string' ? parseFloat(value) : value;
   if (isNaN(n)) return String(value);
-  return n.toLocaleString('th-TH');
+  return applySeparator(n.toLocaleString('en-US'));
 }
 
+// num:2 → 21,468.48 (separator per D1.2.3.5 pref)
+export function formatNumberDecimal(value: number | string, decimals = 2): string {
+  const n = typeof value === 'string' ? parseFloat(value) : value;
+  if (isNaN(n)) return String(value);
+  const formatted = n.toLocaleString('en-US', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+  return applySeparator(formatted);
 // num:2 → 21,468.48
 // D1.2.3.4 — when `decimals` is omitted, falls back to the module-level
 // pref (configurable via SystemConfig `decimal_places`, default 2). Explicit

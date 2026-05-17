@@ -12,11 +12,18 @@ describe('ExpenseTemplatesService', () => {
     prisma = {
       expenseTemplate: {
         create: jest.fn().mockResolvedValue({ id: 'tpl-1', name: 'ค่าไฟ' }),
+        count: jest.fn().mockResolvedValue(0),
         findFirst: jest.fn(),
         findMany: jest.fn().mockResolvedValue([]),
         findUniqueOrThrow: jest.fn(),
         update: jest.fn().mockResolvedValue({ id: 'tpl-1' }),
       },
+      systemConfig: {
+        findFirst: jest.fn().mockResolvedValue(null), // default → cap=20
+      },
+      // D1.2.4.2 — `$transaction(cb)` runs the callback with the prisma
+      // mock itself acting as the tx client.
+      $transaction: jest.fn().mockImplementation((cb) => cb(prisma)),
     };
     // Documents service mock — for instantiate
     docsService = {
@@ -57,6 +64,38 @@ describe('ExpenseTemplatesService', () => {
           }),
         }),
       );
+    });
+
+    // D1.2.4.2 — quota check + create wrapped in $transaction
+    it('runs quota check + insert inside a single $transaction (TOCTOU-safe)', async () => {
+      await service.create({
+        name: 'ค่าไฟ', documentType: 'EXPENSE', branchId: 'b1',
+        prefilledData: {},
+      } as never, { id: 'u1', branchId: 'b1', role: 'OWNER' });
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      // count + create both invoked once inside the tx callback.
+      expect(prisma.expenseTemplate.count).toHaveBeenCalledWith({
+        where: { createdById: 'u1', deletedAt: null },
+      });
+      expect(prisma.expenseTemplate.create).toHaveBeenCalled();
+    });
+
+    it('rejects when count >= cap (default cap 20, count 20 → reject)', async () => {
+      prisma.expenseTemplate.count.mockResolvedValueOnce(20);
+      await expect(service.create({
+        name: 'ค่าไฟ', documentType: 'EXPENSE', branchId: 'b1',
+        prefilledData: {},
+      } as never, { id: 'u1', branchId: 'b1', role: 'OWNER' })).rejects.toThrow(/โควต้า/);
+      expect(prisma.expenseTemplate.create).not.toHaveBeenCalled();
+    });
+
+    it('respects custom cap from SystemConfig (cap 5, count 5 → reject)', async () => {
+      prisma.systemConfig.findFirst.mockResolvedValueOnce({ value: '5' });
+      prisma.expenseTemplate.count.mockResolvedValueOnce(5);
+      await expect(service.create({
+        name: 'ค่าไฟ', documentType: 'EXPENSE', branchId: 'b1',
+        prefilledData: {},
+      } as never, { id: 'u1', branchId: 'b1', role: 'OWNER' })).rejects.toThrow(/โควต้า/);
     });
   });
 

@@ -226,8 +226,10 @@ export default function ExpenseDailySummaryPage() {
       ) : (
         <div className="space-y-6">
           {/* Documents table — D1.3.5.3: render up to `visibleCount` rows
-              with a "แสดงเพิ่ม" expander. Print stylesheet bypasses the cap
-              so the printed snapshot stays complete. */}
+              with a "แสดงเพิ่ม" expander.
+              Note: print snapshot is also limited to `visibleCount`; the
+              "แสดงเพิ่ม" button has print:hidden so users click it BEFORE
+              printing if they need the full day on paper. */}
           <div className="border border-border rounded-xl overflow-hidden bg-card">
             <div className="px-4 py-3 border-b border-border text-sm font-medium flex items-center justify-between gap-3 flex-wrap">
               <span>

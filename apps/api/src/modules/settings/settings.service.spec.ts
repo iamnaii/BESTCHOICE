@@ -287,5 +287,30 @@ describe('SettingsService audit trail', () => {
       const flags = await service.getUiFlags();
       expect(flags.periodCloseDay).toBe(31);
     });
+
+    // D1.4.2.1 — query_timeout_seconds
+    it('queryTimeoutSeconds defaults to 30 when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.queryTimeoutSeconds).toBe(30);
+    });
+
+    it('queryTimeoutSeconds accepts valid 5-300 range', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'query_timeout_seconds') return Promise.resolve({ value: '120' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.queryTimeoutSeconds).toBe(120);
+    });
+
+    it('queryTimeoutSeconds clamps out-of-range values back to 30', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'query_timeout_seconds') return Promise.resolve({ value: '600' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.queryTimeoutSeconds).toBe(30);
+    });
   });
 });

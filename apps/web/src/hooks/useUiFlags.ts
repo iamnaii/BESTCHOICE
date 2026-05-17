@@ -33,6 +33,13 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /**
+   * D1.4.2.1 — long-running query timeout (seconds). Default 30; valid 5–300.
+   * INFORMATIONAL today — axios client uses a fixed 15s timeout and Postgres
+   * `statement_timeout` is a DB-level setting. Exposed so OWNER can advertise
+   * the intended cutoff; a future PR can wire it.
+   */
+  queryTimeoutSeconds: number;
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -53,6 +60,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  queryTimeoutSeconds: 30,
 };
 
 export function useUiFlags(): UiFlags {

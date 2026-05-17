@@ -1,7 +1,9 @@
 import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useTheme } from 'next-themes';
 import api from '@/lib/api';
 import { setDefaultDecimalPlaces } from '@/utils/formatters';
+import { setDateFormatPreference } from '@/utils/formatters';
 
 /**
  * D1.* — UI feature flags fetched from /settings/ui-flags.
@@ -36,6 +38,56 @@ export interface UiFlags {
   language: 'th' | 'en';
   /** D1.2.3.4 — default decimal places (0-4) for the generic number formatter. */
   decimalPlaces: number;
+  /** D1.2.3.3 — date display preference: BE (พ.ศ., +543) default or CE (ค.ศ.). */
+  dateFormat: 'BE' | 'CE';
+  /** D1.2.3.2 — default pagination size (list pages). Integer 10-200; default 50. */
+  paginationSize: number;
+  /** D1.2.3.1 — default time-range preset for list pages. Default 'this_month'. */
+  defaultTimeRange: 'all' | 'this_month' | 'last_month';
+  /** D1.3.1.2 — AP-due alerts cron toggle. Default false (off). */
+  apDueAlertsEnabled: boolean;
+  /** D1.3.1.2 — days since documentDate before AP-due alert fires. Default 3. */
+  apDueDaysBefore: number;
+  /** D1.3.1.1 — opt-in DRAFT alerts cron. Default false (off). */
+  draftAlertsEnabled: boolean;
+  /** D1.3.1.1 — days a doc must stay DRAFT before alert fires. Default 7. */
+  draftAlertThresholdDays: number;
+  /**
+   * D1.2.1.1 — Approval Workflow opt-in. When true, expense docs follow
+   * DRAFT → PENDING_APPROVAL → APPROVED → POSTED. UI uses this flag to
+   * conditionally render the "ส่งขออนุมัติ" button instead of "Post".
+   * Default false (legacy DRAFT → POSTED lifecycle).
+   */
+  approvalEnabled: boolean;
+  /**
+   * D1.1.6 — adjustment account codes for the V4 multi-line Adjustment row.
+   * Frontend was hardcoding '52-1104' / '53-1503'; now reads from this flag
+   * so OWNER can rebind the codes without a frontend deploy.
+   */
+  adjustmentCodes: { underpay: string; overpay: string };
+  /**
+   * D1.4.1.1 — BOOTSTRAP default for sidebar collapse on a new device
+   * (no `sidebar_collapse` key in localStorage). Per-user preference takes
+   * over the moment the user toggles the sidebar. Default false (= expanded).
+   */
+  sidebarCollapsedDefault: boolean;
+  /**
+   * D1.4.1.2 — when false, hide keyboard-shortcut UI affordances:
+   * the global Shift+? help-dialog binding is disabled and per-item kbd
+   * hints are suppressed. Default true preserves existing UX.
+   */
+  showKeyboardShortcuts: boolean;
+  /**
+   * D1.4.1.3 — global animations + transitions toggle. When false, the
+   * hook sets `data-animations-disabled="true"` on `<html>` and a CSS rule
+   * strips `transition` / `animation` from every element. Default true.
+   */
+  animationEnabled: boolean;
+  /**
+   * D1.4.1.4 — BOOTSTRAP default theme for first-time devices (no `theme`
+   * key in localStorage). 'system' = respect OS prefers-color-scheme.
+   */
+  darkModeDefault: 'light' | 'dark' | 'system';
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -57,6 +109,19 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   themeColor: '#10b981',
   language: 'th',
   decimalPlaces: 2,
+  dateFormat: 'BE',
+  approvalEnabled: false,
+  paginationSize: 50,
+  defaultTimeRange: 'this_month',
+  apDueAlertsEnabled: false,
+  apDueDaysBefore: 3,
+  draftAlertsEnabled: false,
+  draftAlertThresholdDays: 7,
+  adjustmentCodes: { underpay: '52-1104', overpay: '53-1503' },
+  sidebarCollapsedDefault: false,
+  showKeyboardShortcuts: true,
+  animationEnabled: true,
+  darkModeDefault: 'system',
 };
 
 export function useUiFlags(): UiFlags {
@@ -69,6 +134,7 @@ export function useUiFlags(): UiFlags {
     staleTime: 5 * 60_000, // 5 min — flags rarely change mid-session
   });
   const flags = data ?? DEFAULT_UI_FLAGS;
+  const { setTheme } = useTheme();
   // D1.2.2.6 — sync the document `lang` attribute so accessibility readers
   // and `<input>` locale heuristics respect the OWNER-configured language
   // even before a full i18n framework is in place.
@@ -84,5 +150,56 @@ export function useUiFlags(): UiFlags {
   useEffect(() => {
     setDefaultDecimalPlaces(flags.decimalPlaces);
   }, [flags.decimalPlaces]);
+  // D1.2.3.3 — sync the module-level date format preference so pure
+  // `formatDateShort` / `formatDateMedium` / `formatDateTime` calls inside
+  // non-React code (excel exports, status badges) respect the OWNER pref.
+  useEffect(() => {
+    setDateFormatPreference(flags.dateFormat);
+  }, [flags.dateFormat]);
+  // D1.4.1.1 — first-time-device seed for sidebar collapse. Only writes when
+  // localStorage has NO `sidebar_collapse` key yet, so we never clobber an
+  // existing per-user preference. Runs once after the flags resolve.
+  useEffect(() => {
+    if (!data) return; // wait for server flags before deciding
+    try {
+      if (typeof window === 'undefined') return;
+      if (localStorage.getItem('sidebar_collapse') !== null) return;
+      localStorage.setItem('sidebar_collapse', String(flags.sidebarCollapsedDefault));
+    } catch {
+      /* ignore quota / disabled-storage */
+    }
+  }, [data, flags.sidebarCollapsedDefault]);
+  // D1.4.1.3 — toggle global animations. CSS rule in `index.css` matches
+  // `[data-animations-disabled="true"]` and strips transitions + animations.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (flags.animationEnabled) {
+      document.documentElement.removeAttribute('data-animations-disabled');
+    } else {
+      document.documentElement.setAttribute('data-animations-disabled', 'true');
+    }
+  }, [flags.animationEnabled]);
+  // D1.4.1.4 — first-time-device seed for theme. next-themes stores the
+  // user preference in `localStorage.theme`. When that key is absent AND
+  // the flags have loaded, seed it from `flags.darkModeDefault`. After
+  // the first toggle by the user, this no-ops (key present → bail).
+  useEffect(() => {
+    if (!data) return; // wait for server flags
+    try {
+      if (typeof window === 'undefined') return;
+      if (localStorage.getItem('theme') !== null) return; // user preference wins
+      setTheme(flags.darkModeDefault);
+    } catch {
+      /* ignore storage errors */
+    }
+  }, [data, flags.darkModeDefault, setTheme]);
   return flags;
+}
+
+/**
+ * D1.2.3.3 — Convenience hook for components that only need the date format
+ * preference (avoids subscribing to the whole flag object).
+ */
+export function useDateFormat(): 'BE' | 'CE' {
+  return useUiFlags().dateFormat;
 }

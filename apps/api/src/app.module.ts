@@ -124,6 +124,8 @@ import { CollectionsSessionModule } from './modules/collections-session/collecti
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { SecurityMiddleware } from './modules/audit/security.middleware';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
+// D1.1.3.1 — One-shot startup warning for VAT_RATE/vat_pct orphan keys.
+import { VatRateBootstrapService } from './utils/vat-rate-bootstrap.service';
 import { CsrfGuard } from './guards/csrf.guard';
 import { JwtAudienceGuard } from './modules/auth/guards/jwt-audience.guard';
 import { AppCacheModule } from './cache/cache.module';
@@ -353,6 +355,10 @@ import { AppCacheModule } from './cache/cache.module';
       provide: APP_INTERCEPTOR,
       useClass: AuditInterceptor,
     },
+    // D1.1.3.1 — VAT_RATE orphan-key bootstrap warning. No exports, no
+    // controllers — just a one-shot OnModuleInit that warns when both the
+    // canonical VAT_RATE and a legacy vat_pct/vat_rate row coexist.
+    VatRateBootstrapService,
   ],
 })
 export class AppModule implements NestModule {

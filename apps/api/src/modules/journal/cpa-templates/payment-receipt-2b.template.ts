@@ -3,6 +3,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { AccountRoleService } from '../account-role.service';
 import { Vat60dayReversalTemplate } from './vat-60day-reversal.template';
 
 const TOLERANCE = new Decimal('1.00');
@@ -99,6 +100,13 @@ export class PaymentReceipt2BTemplate {
     private readonly journal: JournalAutoService,
     private readonly prisma: PrismaService,
     @Optional() private readonly vat60Reversal?: Vat60dayReversalTemplate,
+    /**
+     * D1.1.6.2 — resolves `adj_overpay` → CoA code via account_role_map.
+     * Optional to keep backwards compat with raw `new PaymentReceipt2BTemplate(journal, prisma)`
+     * call sites in integration specs; when omitted we fall back to the
+     * spec-default `'53-1503'` (which equals the seeded role row).
+     */
+    @Optional() private readonly roles?: AccountRoleService,
   ) {}
 
   async execute(
@@ -273,8 +281,11 @@ export class PaymentReceipt2BTemplate {
 
         // 6. Overpay rounding
         if (roundingDiff.gt(0)) {
+          // D1.1.6.2 — resolve via AccountRoleService when available,
+          // otherwise fall back to spec-default 53-1503 (matches seed row).
+          const adjOverpayCode = this.roles?.tryCode('adj_overpay') ?? '53-1503';
           lines.push({
-            accountCode: '53-1503',
+            accountCode: adjOverpayCode,
             dr: zero,
             cr: roundingDiff,
             description: 'กำไรปัดเศษ (Policy C)',

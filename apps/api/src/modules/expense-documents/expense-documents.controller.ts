@@ -103,6 +103,24 @@ export class ExpenseDocumentsController {
   }
 
   /**
+   * Phase A.5 — Tax-disallowed summary for ภ.ง.ด.50/51 prep.
+   * Returns total amount of POSTED expense docs flagged as non-deductible
+   * (ม.65 ตรี) over a date range. Doc-level + line-level overrides counted
+   * separately (no double-count). Cross-branch roles see all; others scoped.
+   */
+  @Get('tax-disallowed')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  taxDisallowed(
+    @Req() req: { user: { id: string; branchId?: string; role: string } },
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('branchId') branchId?: string,
+  ) {
+    const effective = hasCrossBranchAccess(req.user) ? branchId : req.user.branchId;
+    return this.service.getTaxDisallowedSummary({ branchId: effective, from, to });
+  }
+
+  /**
    * AP Aging — Fix Report P1-1.
    * Buckets unpaid ACCRUAL expenses by days-since-documentDate into
    * 0-30 / 31-60 / 61-90 / >90 + Total. Optional filter by vendorName or

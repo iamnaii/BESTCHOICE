@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { readBoolFlag, readNumberFlag } from '../../utils/config.util';
 
 /**
  * Keys whose values are secrets (API tokens, bank credentials). The audit
@@ -74,20 +75,13 @@ export class SettingsService {
     return row?.value ?? null;
   }
 
+  // Delegate to shared util — keeps parsing semantics identical across services.
   private async readNumber(key: string, fallback: number): Promise<number> {
-    const raw = await this.getKey(key);
-    if (raw == null) return fallback;
-    const n = Number(raw);
-    return Number.isFinite(n) ? n : fallback;
+    return readNumberFlag(this.prisma, key, fallback);
   }
 
   private async readBoolean(key: string, fallback: boolean): Promise<boolean> {
-    const raw = await this.getKey(key);
-    if (raw == null) return fallback;
-    const v = raw.trim().toLowerCase();
-    if (v === 'true' || v === '1') return true;
-    if (v === 'false' || v === '0') return false;
-    return fallback;
+    return readBoolFlag(this.prisma, key, fallback);
   }
 
   /**
@@ -185,6 +179,21 @@ export class SettingsService {
      * render the "ส่งขออนุมัติ" button instead of "Post".
      */
     approvalEnabled: boolean;
+    /**
+     * D1.1.6 — adjustment account codes for the V4 multi-line Adjustment
+     * row. Frontend `AdjustmentSection.tsx` previously hardcoded
+     * '52-1104' / '53-1503'; now reads from this flag so OWNER can rebind
+     * the codes (e.g. branch-specific CoA variant) without a frontend
+     * deploy. Defaults preserve the legacy behaviour.
+     *
+     * `underpay` is suggested when amountPaid < expected (Dr side).
+     * `overpay` is suggested when amountPaid > expected (Cr side).
+     *
+     * Backend JE templates (PaymentReceipt2BTemplate, etc.) still
+     * hardcode these codes — keeping this scoped to the V4 form so
+     * server-side templates stay deterministic for golden CSV.
+     */
+    adjustmentCodes: { underpay: string; overpay: string };
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -228,6 +237,18 @@ export class SettingsService {
     // Settings_Audit_Core_v2.0.md spec. Owner can flip to `false` via
     // SystemConfig if rollout needs to be gradual.
     const approvalEnabled = await this.readBoolean('approval_enabled', true);
+    // D1.1.6 — adjustment codes for the V4 form's manual reconciliation
+    // row. Codes must match the format `\d{2}-\d{4}` to be accepted;
+    // anything malformed falls back to the legacy default. Empty string
+    // never returned — defensive against half-saved SystemConfig rows.
+    const isValidCode = (raw: string | null): raw is string =>
+      !!raw && /^\d{2}-\d{4}$/.test(raw);
+    const underpayRaw = await this.getKey('adjustment_code_underpay');
+    const overpayRaw = await this.getKey('adjustment_code_overpay');
+    const adjustmentCodes = {
+      underpay: isValidCode(underpayRaw) ? underpayRaw : '52-1104',
+      overpay: isValidCode(overpayRaw) ? overpayRaw : '53-1503',
+    };
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -240,6 +261,7 @@ export class SettingsService {
       themeColor,
       language,
       approvalEnabled,
+      adjustmentCodes,
     };
   }
 
@@ -263,7 +285,46 @@ export class SettingsService {
     return { dailyCap, workloadFloor, etaPerContractMin, sessionTargetMin, selfClaimLockHours };
   }
 
+  /**
+   * D1.1.3.1 follow-up — defensive normalisation for VAT-rate writes.
+   *
+   * Legacy frontends (or operators using a generic SQL client) may still
+   * send `{ key: 'vat_pct', value: '0.07' }` to `/settings`. After PR #940
+   * (the canonical `VAT_RATE` migration) any such write resurrects the
+   * orphan key and `VatRateBootstrapService` warns on the next boot.
+   *
+   * This helper rewrites the item in-place: `vat_pct` writes become
+   * `VAT_RATE` writes, converting decimal form to percent form when
+   * needed. `vat_rate` (older legacy) treated the same. Already-canonical
+   * `VAT_RATE` items pass through unchanged.
+   *
+   * Idempotent: if both legacy and canonical keys are sent in the same
+   * batch, the canonical wins (last write wins inside the same batch).
+   */
+  private normaliseVatRateWrites(
+    items: { key: string; value: string }[],
+  ): { key: string; value: string }[] {
+    return items.map((item) => {
+      if (item.key !== 'vat_pct' && item.key !== 'vat_rate') return item;
+      const trimmed = String(item.value ?? '').trim();
+      if (!trimmed) return { key: 'VAT_RATE', value: '' };
+      const n = Number(trimmed);
+      if (!Number.isFinite(n) || n < 0) {
+        return { key: 'VAT_RATE', value: trimmed };
+      }
+      // Values < 1 are decimal-form ('0.07') → multiply by 100 for percent.
+      // Values >= 1 are already percent-form. Round to 4 decimal places so
+      // floating-point math (0.07*100=7.000000000000001) doesn't leak into
+      // the audit log or back to the UI.
+      const asPercent = n < 1 ? n * 100 : n;
+      const rounded = Math.round(asPercent * 10000) / 10000;
+      return { key: 'VAT_RATE', value: String(rounded) };
+    });
+  }
+
   async bulkUpdate(items: { key: string; value: string }[], userId?: string) {
+    // D1.1.3.1 follow-up — rewrite legacy VAT keys before persist.
+    items = this.normaliseVatRateWrites(items);
     // Fetch "before" snapshot in one query so the transaction stays bounded.
     const keys = items.map((i) => i.key);
     const existing = await this.prisma.systemConfig.findMany({

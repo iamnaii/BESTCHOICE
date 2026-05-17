@@ -40,6 +40,12 @@ export interface UiFlags {
    * Default false (legacy DRAFT → POSTED lifecycle).
    */
   approvalEnabled: boolean;
+  /**
+   * D1.1.6 — adjustment account codes for the V4 multi-line Adjustment row.
+   * Frontend was hardcoding '52-1104' / '53-1503'; now reads from this flag
+   * so OWNER can rebind the codes without a frontend deploy.
+   */
+  adjustmentCodes: { underpay: string; overpay: string };
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -61,6 +67,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   themeColor: '#10b981',
   language: 'th',
   approvalEnabled: false,
+  adjustmentCodes: { underpay: '52-1104', overpay: '53-1503' },
 };
 
 export function useUiFlags(): UiFlags {

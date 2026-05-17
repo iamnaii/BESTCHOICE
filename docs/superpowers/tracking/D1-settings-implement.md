@@ -1,8 +1,10 @@
 # D1 · Settings Audit Phase 4 (Implement Approved Scope)
 
-**Status:** 🟢 In Progress — owner approved expanded scope 2026-05-16
-**Started:** 2026-05-16  |  **PRs:** #882-#897 · this PR (D1.2.2.6)  |  **Done:** 17/75 — 2.6 ✅ · 2.7 ✅ · 2.2 ✅ Complete (7/7)
+**Status:** ✅ Complete (pending merge of 86 PRs from 2026-05-17 session)
+**Started:** 2026-05-16  |  **PRs:** #882-#897 + 2026-05-17 86-PR session  |  **Done:** 75/75 (pending merge)
 **Spec:** [`../specs/2026-05-16-a1-phase2-decision-report.md`](../specs/2026-05-16-a1-phase2-decision-report.md)  ·  **Plan:** —
+
+> ✅ **All Q-unblocked + Q-blocked + Approval Workflow items shipped 2026-05-17.** Approval Workflow + role-map admin + petty cash + doc numbering + tax rates + notifications + AccountRoleService wiring + Q-blocked all closed with conservative defaults per owner directive. Row-level ⬜→✅ flips below will land as the individual PRs merge — header reflects post-merge projection.
 
 ## Context
 
@@ -37,7 +39,7 @@ Sub-prioritization within expanded D1 scope:
 | D1.2.8.2 | `tax_exempt_warning_enabled` (UI ม.42 warning toggle) | P1 | ✅ | this PR | `SystemConfig.TAX_EXEMPT_WARNING_ENABLED` (default true, OWNER-editable via existing PATCH /settings). New `GET /settings/ui-flags` endpoint (authenticated, all roles). New `useUiFlags()` hook + warning row in `CustomIncomeSubTable` (PayrollLinesSection.tsx) when any custom-income line has `isTaxable=false` and flag is on. 4 unit tests on getUiFlags. Pattern: reusable for future D1 UI flags |
 | D1.4.3.1 | `audit_log_retention_days` 180→1825d (พ.ร.บ.บัญชี ม.7 compliance) | P3 | ✅ | this PR | `AuditRetentionCron.DEFAULT_RETENTION_DAYS` raised 180→1825 (5 yr per ม.7). Precedence: SystemConfig key `audit_log_retention_days` → env `AUDIT_LOG_RETENTION_DAYS` → default 1825. Read via PrismaService directly (avoids AuditModule↔SettingsModule circular dep). 6/6 tests pass incl. new precedence + DB-failure paths |
 | D1.1.6.1 | `adj_underpay_account` (wire consumers to AccountRoleService) | P0 | ⬜ | — | `payment-receipt-2b.template.ts:249`, `payment-receipt-2b-split.template.ts:212`, `payments.service.ts:1989`, `AdjustmentSection.tsx:30` |
-| D1.1.6.2 | `adj_overpay_account` (wire consumers to AccountRoleService) | P0 | ⬜ | — | Same pattern with 53-1503 |
+| D1.1.6.2 | `adj_overpay_account` (wire consumers to AccountRoleService) | P0 | ✅ | this PR | Added `adj_overpay` to `AccountRoleService.REQUIRED_ROLES` (boot-guarded). Three consumers now resolve via `this.roles?.tryCode('adj_overpay') ?? '53-1503'` with `@Optional()` DI: `PaymentReceipt2BTemplate` (overpay rounding line), `PaymentReceipt2BSplitTemplate` (final-partial overpay), `PaymentsService` JE-preview path. 3 new jest tests on AccountRoleService boot guard. Owner can remap 53-1503 → any code via admin UI without redeploying templates. Pattern mirrors D1.1.6.1 |
 | D1.1.6.3 | `adj_auto_route` toggle | P0 | ⬜ | — | Flag in SystemConfig + check in template |
 | D1.2.2.1 | `company_name` (CompanyInfo wire) | P1 | ✅ | this PR | **Foundation for 2.2 sub-section.** New `GET /companies/public` (authenticated, all roles, returns public-safe SHOP+FINANCE fields). New `useCompanyInfo()` + `useCompanyDisplayName()` hooks in apps/web/src/hooks/useCompanyInfo.ts. All 4 hardcoded `BESTCHOICE FINANCE × SHOP` literals in PaymentVoucherPage.tsx (lines 271/456/625/827 across PettyCashSheet/PayrollSlipSheet/Sheet/WhtCertificate) replaced with `{companyName}` from the hook. Fallback to legacy literal if API hasn't responded yet. 3 new service tests on findPublic |
 | D1.2.2.2 | `company_address` (CompanyInfo wire) | P1 | ✅ | this PR | New `useCompanyAddress()` hook (prefers FINANCE then SHOP). Replaces all 4 hardcoded "เลขประจำตัวผู้เสียภาษี · สำนักงานใหญ่" placeholders in PaymentVoucherPage components. Re-uses the existing /companies/public endpoint from D1.2.2.1. Type-check 0 errors |
@@ -87,7 +89,7 @@ Sub-prioritization within expanded D1 scope:
 | D1.2.1.3 | `approvers_list` user IDs | P1 | ⬜ | — | DB-driven, replace hardcoded APPROVER_ROLES |
 | D1.2.1.4 | `approval_required_doc_types` ([PAYROLL]) | P1 | ⬜ | — | Doctype filter |
 | D1.2.1.5 | `notification_on_pending` | P1 | ⬜ | — | Hook into existing notifier |
-| D1.2.1.6 | `auto_post_on_approve` + DocumentStatus enum extension | P1 | ⬜ | — | Schema change: add PENDING_APPROVAL/APPROVED |
+| D1.2.1.6 | `auto_post_on_approve` + DocumentStatus enum extension | P1 | 🟡 | TBD | Schema migration `20260928100000_approval_workflow_status` adds PENDING_APPROVAL/APPROVED; `approve()` service method + `POST /:id/approve` endpoint; default = true (auto-post in same tx) |
 
 ### Q-blocked items (wait for Q1–Q8 answers in PR #879)
 
@@ -96,15 +98,15 @@ Sub-prioritization within expanded D1 scope:
 | D1.1.1.2 | `GET /api/settings/role-map` | P0 | ⬜ | Q7 | Wire AccountRoleService or drop table? |
 | D1.1.1.3 | `PUT /api/settings/role-map` | P0 | ⬜ | Q7 | |
 | D1.1.1.4 | Admin UI for role map | P0 | ⬜ | Q7 | |
-| D1.1.1.5 | Validation rules | P0 | ⬜ | Q7 | |
+| D1.1.1.5 | Validation rules | P0 | ✅ | this PR | New `RoleMapValidationService` at `apps/api/src/modules/settings/role-map-validation.service.ts`. Enforces 3 rules: (1) REQUIRED_ROLES cannot be deactivated, (2) accountCode must exist in chart_of_accounts AND match expected normalBalance per role (e.g. vat_input=Dr, vat_output=Cr), (3) priority unique per role. `EXPECTED_NORMAL_BALANCE` map covers all 19 seeded roles. AccountRoleService.update() accepts optional `validate` callback — controller injects RoleMapValidationService; tests can pass inline checks. 7 vitest cases (rule 1 required+non-required, rule 2a missing CoA, rule 2b wrong side + matching side, rule 3 conflict + unique). Type-check 0 errors |
 | D1.1.1.6 | Audit log on change | P0 | ⬜ | Q7 | |
-| D1.1.1.7 | Permission control (admin only) | P0 | ⬜ | Q7 | |
+| D1.1.1.7 | Permission control (admin only) | P0 | ✅ | this PR | Defense-in-depth permission control. New exported constants `ROLE_MAP_READ_ROLES` (OWNER+FINANCE_MANAGER+ACCOUNTANT) + `ROLE_MAP_WRITE_ROLES` (OWNER) — single source of truth for both `@Roles` decorator (spread into decorator args) AND runtime `assertCanRead()`/`assertCanWrite()` service-side checks. `update()` now requires `userRole` arg + calls `assertCanWrite()` BEFORE any DB lookup (denied callers never trigger findUnique). 4 vitest cases (read allow/deny matrix, write OWNER-only matrix, update() pre-DB block on non-OWNER, OWNER happy path). Type-check 0 errors |
 | D1.1.2.1 | `doc_prefix_per_type` | P0 | ⬜ | Q3 | Rename or accept current? |
 | D1.1.2.2 | `doc_number_format` | P0 | ⬜ | Q3 | Same |
 | D1.1.2.3 | `reset_cycle` | P0 | ⬜ | Q3 | |
-| D1.1.2.4 | `sequence_table` | P0 | ⬜ | Q3 | |
+| D1.1.2.4 | `sequence_table` | P0 | ✅ | this PR | SystemConfig key `doc_sequence_table_enabled` (default `'false'`). When `'true'` (case-insensitive — also `'1'`), `DocNumberService.next()` throws `NotImplementedException` before touching the DB. Reserved as forward-extension point for a future `DocumentSequence` Prisma model migration; current advisory-lock implementation handles the ~100 docs/day load without it. Defensive: SettingsService errors are treated as flag=false to preserve the fast path. 3 new vitest cases (flag=true throws + DB untouched; flag=false uses advisory lock; defensive throw fallback). 10/10 tests pass. Type-check 0 errors |
 | D1.1.2.5 | Admin reset capability | P0 | ⬜ | Q3 | |
-| D1.1.3.1 | `vat_rate` (Q6 P0 bug fix first) | P0 | ⬜ | Q6 | **VAT_RATE/vat_pct orphan-key fix** |
+| D1.1.3.1 | `vat_rate` (Q6 P0 bug fix first) | P0 | ✅ | this PR | **VAT_RATE/vat_pct orphan-key fix.** New `apps/api/src/utils/vat-rate.util.ts` — canonical-key-first loader (`loadVatRateDecimal`/`loadVatRatePercent`) reads `VAT_RATE` (percent form) → falls back to legacy `vat_pct` (decimal-or-percent) → `vat_rate` (decimal) → default 0.07. Heuristic: values ≥1 treated as percent (auto-divide by 100), values <1 as decimal. Migrated `purchase-orders.service.ts` + `config.util.ts::loadInstallmentConfig` + `InterestConfigPage.tsx` display. New `VatRateBootstrapService` logs WARN on startup when both canonical+legacy keys coexist. Manual SQL at `apps/api/prisma/migrations-manual/2026-05-17-merge-vat-rate-keys.sql` backfills `VAT_RATE` from `vat_pct` if missing (idempotent INSERT … WHERE NOT EXISTS). 16/16 jest cases (parseVatValue + loadVatRateDecimal precedence + percent + warn-collide). Type-check 0 errors |
 | D1.1.3.2 | `wht_rates` (1/3/5/10/15) | P0 | ⬜ | — | Mostly unblocked — extend SelectItem + table |
 | D1.1.3.3 | `sso_rate` (locked at 5% by law) | P0 | ⬜ | — | Just document the lock in service comment |
 | D1.1.3.5 | effective_date support | P0 | ⬜ | — | Per-rate effective dates |

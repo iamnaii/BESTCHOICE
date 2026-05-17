@@ -55,8 +55,25 @@ export interface UiFlags {
    * frontend exposes the flag so an admin UI can render the current state.
    */
   auditLogArchiveEnabled: boolean;
+  /**
+   * D1.4.3.3 — legal document retention years (พ.ร.บ.บัญชี ม.7).
+   * Default 5. Informational; no auto-purge cron consumes this yet.
+   */
+  documentRetentionYears: number;
+  /**
+   * D1.3.4.2 — days threshold for the SAMEDAY→ACCRUAL auto-switch in
+   * `ExpenseFormV4`. Default `0` = any past date triggers (legacy
+   * behavior). Server clamps to 0–30; out-of-range / NaN → 0.
+   */
+  smartSwitchThresholdDays: number;
   /** D1.3.5.1 — default time-range preset for ExpenseDailySummaryPage. Default 'this_month'. */
   summaryDefaultRange: 'today' | 'this_week' | 'this_month' | 'last_month';
+  /**
+   * D1.1.3.2 — configurable WHT-rate dropdown. Always at least the 5 defaults.
+   * D1.1.3.5 — each entry may carry an optional `effectiveDate` (ISO string);
+   * UI filters out future-dated entries when rendering.
+   */
+  whtRates: { rate: number; label: string; effectiveDate?: string | null }[];
   /**
    * D1.3.4.1 — gate the SAMEDAY→ACCRUAL auto-flip in `ExpenseFormV4`.
    * Default `true`. When `false`, the user must manually choose docType.
@@ -215,8 +232,17 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   themeColor: '#10b981',
   language: 'th',
   settlementDefaultTick: 'overdue_only',
+  whtRates: [
+    { rate: 1, label: '1% — ดอกเบี้ย' },
+    { rate: 3, label: '3% — ค่าบริการ' },
+    { rate: 5, label: '5% — ค่าเช่า' },
+    { rate: 10, label: '10% — ค่าวิชาชีพ' },
+    { rate: 15, label: '15% — ต่างประเทศ' },
+  ],
   exportEnabled: true,
   auditLogArchiveEnabled: true,
+  documentRetentionYears: 5,
+  smartSwitchThresholdDays: 0,
   summaryDefaultRange: 'this_month',
   smartDoctypeSwitchEnabled: true,
   settlementMaxBillsPerDoc: 100,

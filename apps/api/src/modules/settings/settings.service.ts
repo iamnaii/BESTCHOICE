@@ -115,6 +115,70 @@ export class SettingsService {
    * is identical whether the SystemConfig key has been seeded or not.
    */
   /**
+   * D1.1.3.2 — DB-driven WHT-rate dropdown. JSON-encoded array of
+   * `{rate, label}` objects stored in SystemConfig key `wht_rates`.
+   * Default = the 5 canonical rates (1/3/5/10/15 %).
+   *
+   * D1.1.3.5 — each entry MAY also carry an optional `effectiveDate`
+   * (ISO-8601 string). `null`/missing means "always active". Frontend
+   * filters out future-dated entries client-side when rendering the
+   * dropdown. The server keeps stored history intact.
+   *
+   * Validation rules per entry:
+   *   - `rate` must be a finite number in [0, 30]
+   *   - `label` must be a non-empty string
+   *   - `effectiveDate`, if present, must be a string that parses to a
+   *     valid Date (Date.parse not NaN)
+   * If ANY entry fails validation, fall back to defaults wholesale —
+   * partial/malformed data leaks confusing UI options.
+   */
+  async getWhtRates(): Promise<
+    { rate: number; label: string; effectiveDate?: string | null }[]
+  > {
+    const raw = await this.getKey('wht_rates');
+    const defaults: { rate: number; label: string; effectiveDate?: string | null }[] = [
+      { rate: 1, label: '1% — ดอกเบี้ย' },
+      { rate: 3, label: '3% — ค่าบริการ' },
+      { rate: 5, label: '5% — ค่าเช่า' },
+      { rate: 10, label: '10% — ค่าวิชาชีพ' },
+      { rate: 15, label: '15% — ต่างประเทศ' },
+    ];
+    if (!raw) return defaults;
+    try {
+      const parsed = JSON.parse(raw);
+      if (
+        !Array.isArray(parsed) ||
+        parsed.length === 0 ||
+        !parsed.every(
+          (r) =>
+            r &&
+            typeof r === 'object' &&
+            typeof r.rate === 'number' &&
+            Number.isFinite(r.rate) &&
+            r.rate >= 0 &&
+            r.rate <= 30 &&
+            typeof r.label === 'string' &&
+            r.label.trim().length > 0 &&
+            // effectiveDate is optional — null/undefined or a parsable string.
+            (r.effectiveDate == null ||
+              (typeof r.effectiveDate === 'string' &&
+                !Number.isNaN(Date.parse(r.effectiveDate)))),
+        )
+      ) {
+        return defaults;
+      }
+      // Normalize: drop unknown keys, coerce effectiveDate to string|null.
+      return parsed.map((r) => ({
+        rate: r.rate,
+        label: r.label,
+        ...(r.effectiveDate ? { effectiveDate: r.effectiveDate as string } : {}),
+      }));
+    } catch {
+      return defaults;
+    }
+  }
+
+  /**
    * D1.2.7.2 — DB-driven reverse-reason dropdown. JSON-encoded array of
    * `{code, label}` objects stored in SystemConfig key `reverse_reasons`.
    * Default = the 6 canonical reasons. Caller is responsible for treating
@@ -202,6 +266,13 @@ export class SettingsService {
      */
     settlementDefaultTick: 'all' | 'none' | 'overdue_only';
     /**
+     * D1.1.3.2 — configurable WHT-rate dropdown. Always at least the 5
+     * defaults (1/3/5/10/15 %). Each entry may carry an optional
+     * `effectiveDate` (D1.1.3.5) — frontend filters out future-dated
+     * entries when rendering the picker.
+     */
+    whtRates: { rate: number; label: string; effectiveDate?: string | null }[];
+    /**
      * D1.3.3.1 — global toggle for data-export endpoints (Excel/PDF/CSV).
      * Default true. When OWNER sets `export_enabled = 'false'`, the server
      * blocks PDF export endpoints with HTTP 403 and the web hides the
@@ -218,6 +289,33 @@ export class SettingsService {
      * just keeps rows in the hot set rather than purging the legal trail.
      */
     auditLogArchiveEnabled: boolean;
+    /**
+     * D1.4.3.3 — legal document retention period in years. Default 5 per
+     * พ.ร.บ.การบัญชี พ.ศ. 2543 ม.7 (Thai Accounting Act §7). Validated 1–30
+     * and clamped on read so an out-of-range SystemConfig row can't surface
+     * absurd values downstream.
+     *
+     * Currently INFORMATIONAL only — there is no automated purge cron for
+     * expense / sales / receipt documents yet. The value is exposed so the
+     * compliance UI can display the configured retention policy. Future
+     * implementation gating any document purge (or archival) on this value
+     * should call `getUiFlags()` rather than re-reading the SystemConfig
+     * row directly.
+     */
+    documentRetentionYears: number;
+    /**
+     * D1.3.4.2 — days threshold for the SAMEDAY→ACCRUAL auto-switch.
+     * Default `0` = any past document date triggers the flip (preserves
+     * the pre-Phase-4 hardcoded behavior). When set to N>0, the flip only
+     * fires when `(today − documentDate) > N` days. Useful when the shop
+     * routinely books cash purchases the next day (set `1` to tolerate a
+     * one-day lag without flipping to ACCRUAL). Clamped to 0–30 on read;
+     * non-integer / NaN / negative values fall back to 0.
+     *
+     * Originally marked SKIP per Phase 2 decision report; shipped per
+     * owner directive 2026-05-17 to reach 100% A1 coverage.
+     */
+    smartSwitchThresholdDays: number;
     /**
      * D1.3.4.1 — gate the auto SAMEDAY→ACCRUAL switch logic in the expense
      * entry form. Default `true` preserves the existing one-way auto-flip
@@ -551,6 +649,9 @@ export class SettingsService {
         : settlementDefaultTickRaw === 'none'
           ? 'none'
           : 'overdue_only';
+    // D1.1.3.2 — WHT rates (default 5 canonical entries + optional D1.1.3.5
+    // effectiveDate per entry).
+    const whtRates = await this.getWhtRates();
     // D1.3.3.1 — export_enabled. Default true.
     const exportEnabled = await this.readBoolean('export_enabled', true);
     // D1.4.3.2 — audit log archive toggle. Default true.
@@ -558,6 +659,27 @@ export class SettingsService {
       'audit_log_archive_enabled',
       true,
     );
+    // D1.4.3.3 — document retention years. Default 5 per พ.ร.บ.บัญชี ม.7.
+    // Clamp to [1, 30] so an out-of-range row can't surface absurd values.
+    const documentRetentionYearsRaw = await this.readNumber('document_retention_years', 5);
+    const documentRetentionYears =
+      Number.isInteger(documentRetentionYearsRaw) &&
+      documentRetentionYearsRaw >= 1 &&
+      documentRetentionYearsRaw <= 30
+        ? documentRetentionYearsRaw
+        : 5;
+    // D1.3.4.2 — smart-switch threshold (days). Clamp 0–30; non-integer /
+    // NaN / negative → 0. Default 0 = legacy behavior (any past date flips).
+    const smartSwitchThresholdRaw = await this.readNumber(
+      'smart_switch_threshold_days',
+      0,
+    );
+    const smartSwitchThresholdDays =
+      Number.isInteger(smartSwitchThresholdRaw) &&
+      smartSwitchThresholdRaw >= 0 &&
+      smartSwitchThresholdRaw <= 30
+        ? smartSwitchThresholdRaw
+        : 0;
     // D1.3.4.1 — smart_doctype_switch_enabled (default true).
     const smartDoctypeSwitchEnabled = await this.readBoolean(
       'smart_doctype_switch_enabled',
@@ -756,8 +878,11 @@ export class SettingsService {
       themeColor,
       language,
       settlementDefaultTick,
+      whtRates,
       exportEnabled,
       auditLogArchiveEnabled,
+      documentRetentionYears,
+      smartSwitchThresholdDays,
       summaryDefaultRange,
       smartDoctypeSwitchEnabled,
       adjAutoRoute,

@@ -137,6 +137,57 @@ export class ExpenseDocumentsService implements OnModuleInit {
   }
 
   /**
+   * D1.2.1.3 — Approvers whitelist. JSON-encoded array of User UUIDs stored
+   * in SystemConfig key `approvers_list`. Default = empty array (only OWNER
+   * may approve when the workflow is enabled but no list is configured).
+   *
+   * Returns the list filtered to USERS that still exist + are active +
+   * not soft-deleted — so a stale ID in the SystemConfig row can never
+   * grant approval rights to a deleted account.
+   */
+  private async getApproversList(
+    tx: Prisma.TransactionClient | PrismaService,
+  ): Promise<string[]> {
+    try {
+      const row = await tx.systemConfig.findFirst({
+        where: { key: 'approvers_list', deletedAt: null },
+        select: { value: true },
+      });
+      if (!row?.value) return [];
+      const parsed: unknown = JSON.parse(row.value);
+      if (!Array.isArray(parsed)) return [];
+      const candidateIds = parsed.filter((v): v is string => typeof v === 'string');
+      if (candidateIds.length === 0) return [];
+      const valid = await tx.user.findMany({
+        where: { id: { in: candidateIds }, isActive: true, deletedAt: null },
+        select: { id: true },
+      });
+      return valid.map((u) => u.id);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * D1.2.1.3 — Approver gate. OWNER is always allowed (root-of-trust).
+   * Anyone else must be in the configured `approvers_list`. Throws
+   * `ForbiddenException` when the caller cannot approve.
+   */
+  private async assertUserCanApprove(
+    tx: Prisma.TransactionClient | PrismaService,
+    userId: string,
+    userRole?: string,
+  ): Promise<void> {
+    if (userRole === 'OWNER') return;
+    const approvers = await this.getApproversList(tx);
+    if (!approvers.includes(userId)) {
+      throw new ForbiddenException(
+        'ไม่มีสิทธิ์อนุมัติเอกสาร — ผู้ใช้นี้ไม่อยู่ในรายชื่อผู้อนุมัติ',
+      );
+    }
+  }
+
+  /**
    * D1.2.1.2 — Numeric SystemConfig reader. Returns the stored Decimal as a
    * Prisma.Decimal, clamped to ≥ 0 (negatives become 0). On missing or
    * unparseable values returns the fallback. Used by the approval-threshold
@@ -2000,12 +2051,16 @@ export class ExpenseDocumentsService implements OnModuleInit {
   //
   // userId is captured for audit logs (APPROVED + AUTO_POSTED actions written
   // inside the same tx). Signature parity with post() / voidDocument().
-  async approve(id: string, userId: string) {
+  async approve(id: string, userId: string, userRole?: string) {
     return this.prisma.$transaction(async (tx) => {
       // Re-use the `post:` lock key — approve always either becomes the JE
       // post (auto path) or precedes a future post(), so serializing on the
       // same lock is correct.
       await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(hashtext($1))`, `post:${id}`);
+
+      // D1.2.1.3 — approver membership check. OWNER always passes; everyone
+      // else must appear in SystemConfig `approvers_list`.
+      await this.assertUserCanApprove(tx, userId, userRole);
 
       const doc = await tx.expenseDocument.findUniqueOrThrow({ where: { id } });
       if (doc.deletedAt) throw new NotFoundException('เอกสารถูกลบแล้ว');

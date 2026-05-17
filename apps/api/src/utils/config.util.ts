@@ -3,6 +3,7 @@
  * Eliminates duplication of config loading pattern across services
  */
 import { PrismaService } from '../prisma/prisma.service';
+import { DEFAULT_VAT_DECIMAL, parseVatValue } from './vat-rate.util';
 
 /**
  * Minimal shape of a Prisma-compatible client for SystemConfig reads.
@@ -141,7 +142,12 @@ const INSTALLMENT_CONFIG_KEYS = [
   'min_installment_months',
   'max_installment_months',
   'store_commission_pct',
+  // D1.1.3.1 — VAT rate now lives under canonical `VAT_RATE` (percentage form)
+  // with `vat_pct` retained as a legacy fallback. Both are fetched here; the
+  // resolution helper below picks the first one that parses.
+  'VAT_RATE',
   'vat_pct',
+  'vat_rate',
 ] as const;
 
 export interface InstallmentConfig {
@@ -200,13 +206,24 @@ export async function loadInstallmentConfig(
     return Math.round(raw * 10000) / 10000; // Round to 4 decimal places for rate precision
   };
 
+  // D1.1.3.1 — Resolve VAT rate with the canonical-key-first fallback chain.
+  // VAT_RATE (percent) → vat_pct (decimal) → vat_rate (decimal) → default.
+  const resolveVatPct = (): number => {
+    for (const k of ['VAT_RATE', 'vat_pct', 'vat_rate']) {
+      const row = configs.find((c) => c.key === k);
+      const parsed = parseVatValue(row?.value);
+      if (parsed != null) return Math.round(parsed * 10000) / 10000;
+    }
+    return DEFAULT_VAT_DECIMAL;
+  };
+
   return {
     interestRate: getValue('interest_rate', DEFAULTS.interestRate),
     minDownPaymentPct: getValue('min_down_payment_pct', DEFAULTS.minDownPaymentPct),
     minInstallmentMonths: getValue('min_installment_months', DEFAULTS.minInstallmentMonths),
     maxInstallmentMonths: getValue('max_installment_months', DEFAULTS.maxInstallmentMonths),
     storeCommissionPct: getValue('store_commission_pct', DEFAULTS.storeCommissionPct),
-    vatPct: getValue('vat_pct', DEFAULTS.vatPct),
+    vatPct: resolveVatPct(),
   };
 }
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { SettlementFormFields } from './types';
@@ -50,13 +50,19 @@ export function SettlementLinesSection({ branchId, value, onChange }: Props) {
   // D1.3.6.2 — pre-tick the bill list according to the OWNER's preference.
   // Runs once per (branch + docs payload) so it doesn't fight the user's
   // manual toggles afterwards. `appliedKeyRef` stores the last (branchId,
-  // mode, docs-length) signature; we only auto-tick when that signature
+  // mode, docs-hash) signature; we only auto-tick when that signature
   // changes, never when `value.selections` mutates.
+  //
+  // `docsKey` is a stable hash of doc IDs (not `docs.length`) so a same-
+  // length swap (e.g. one bill paid + one new bill arrives) still re-runs
+  // the auto-tick logic against the new set. Otherwise the ref short-
+  // circuits and newly-arrived overdue bills would silently skip pre-tick.
+  const docsKey = useMemo(() => docs.map((d) => d.id).join('|'), [docs]);
   const appliedKeyRef = useRef<string | null>(null);
   useEffect(() => {
     if (!branchId) return;
     if (docs.length === 0) return;
-    const key = `${branchId}|${settlementDefaultTick}|${docs.length}`;
+    const key = `${branchId}|${settlementDefaultTick}|${docsKey}`;
     if (appliedKeyRef.current === key) return;
     appliedKeyRef.current = key;
     if (settlementDefaultTick === 'none') {
@@ -81,7 +87,7 @@ export function SettlementLinesSection({ branchId, value, onChange }: Props) {
     // should only re-fire on docs/branch/preference change, not when the
     // user toggles a row.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [branchId, settlementDefaultTick, docs]);
+  }, [branchId, settlementDefaultTick, docsKey]);
 
   const toggle = (doc: AccrualDoc) => {
     const next = new Map(value.selections);

@@ -5,6 +5,7 @@ import api, { getErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Receipt, Users, Banknote, FileText, Check, CheckCircle2, Clock } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useUiFlags } from '@/hooks/useUiFlags';
 import { cn } from '@/lib/utils';
 import { ExpenseFormState, newLine, newPayrollLine, newPettyCashLine } from './types';
 import { useFormCompute } from './useFormCompute';
@@ -75,12 +76,21 @@ const initial = (branchId: string, defaultCash: string): ExpenseFormState => {
     },
     adjustments: [],
     amountPaid: '',
+    // Phase A.5 — default false (deductible). Accountant flips for non-deductible
+    // expenses (gifts > 2,000, personal expenses, tax penalties, etc.).
+    taxDisallowed: false,
   };
 };
 
 export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  // D1.1.5.1 — Petty Cash feature flag. When disabled, the picker hides the
+  // PETTY_CASH_REIMBURSEMENT chip and the form section is not rendered.
+  // Auto-flip away from PETTY_CASH_REIMBURSEMENT when the flag flips off
+  // mid-session (handled in the effect below).
+  // D1.3.4.1 — smartDoctypeSwitchEnabled gates the SAMEDAY→ACCRUAL auto-flip.
+  const { smartDoctypeSwitchEnabled, pettyCashEnabled } = useUiFlags();
   const [showQuickStart, setShowQuickStart] = useState(true);
   const [state, setState] = useState<ExpenseFormState>(() =>
     initial(branchId, user?.defaultCashAccountCode || '11-1101'),
@@ -88,18 +98,32 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
 
   const patch = (p: Partial<ExpenseFormState>) => setState((s) => ({ ...s, ...p }));
 
+  // D1.1.5.1 — if flag flips off while user is on the Petty Cash form,
+  // revert to the safe default doctype so the form doesn't render an empty
+  // shell. Smart Default logic above will re-pick SAMEDAY vs ACCRUAL on next
+  // documentDate change.
+  useEffect(() => {
+    if (!pettyCashEnabled && state.docType === 'PETTY_CASH_REIMBURSEMENT') {
+      patch({ docType: 'EXPENSE_SAMEDAY' });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pettyCashEnabled]);
+
   // Smart default: switch SAMEDAY → ACCRUAL when invoice date is not today.
   // One-way: only auto-flip from SAMEDAY to ACCRUAL; does not revert manual ACCRUAL selection.
   // W3 fix — compare against BKK calendar day, not UTC slice, to match the
   // user's perception of "today" in Thailand.
+  // D1.3.4.1 — gated by `smartDoctypeSwitchEnabled` (OWNER toggle, default
+  // true). When false the user must pick the docType manually.
   const todayIso = todayBkkIso();
   const invoiceIsToday = state.documentDate === todayIso;
   useEffect(() => {
+    if (!smartDoctypeSwitchEnabled) return;
     if (state.docType === 'EXPENSE_SAMEDAY' && !invoiceIsToday) {
       patch({ docType: 'EXPENSE_ACCRUAL' });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.documentDate]);
+  }, [state.documentDate, smartDoctypeSwitchEnabled]);
 
   const { preview, loading, error } = useFormCompute(state);
 
@@ -122,6 +146,10 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
             state.docType === 'EXPENSE_SAMEDAY' ? state.depositAccountCode : undefined,
           approvedById: state.approvedById || undefined,
           fromTemplateId: state.fromTemplateId || undefined,
+          // Phase A.5 — doc-level non-deductible flag. Server defaults to false
+          // if omitted; we always send the explicit boolean so the value is
+          // round-trippable.
+          taxDisallowed: state.taxDisallowed,
           lines: state.lines
             .filter((l) => l.category && parseFloat(l.unitPrice) > 0)
             .map((l) => ({
@@ -132,6 +160,8 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
               discount: parseFloat(l.discount) || 0,
               vatPercent: parseFloat(l.vatPercent) || 0,
               whtPercent: parseFloat(l.whtPercent) || 0,
+              // Per-line override; backend interprets undefined as false.
+              taxDisallowed: l.taxDisallowed === true ? true : undefined,
             })),
           // Fix Report P0-4 — pass adjustments + amountPaid when set.
           // Backend V12/V13/V14 verify the signed sum closes the diff.
@@ -422,6 +452,8 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
                     value={state.docType}
                     onChange={(t) => patch({ docType: t })}
                     invoiceDateIsToday={invoiceIsToday}
+                    smartDoctypeSwitchEnabled={smartDoctypeSwitchEnabled}
+                    pettyCashEnabled={pettyCashEnabled}
                   />
                 </Section>
 
@@ -461,7 +493,11 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
                     />
                   </Section>
                 )}
-                {state.docType === 'PETTY_CASH_REIMBURSEMENT' && (
+                {/* D1.1.5.1 — gated by pettyCashEnabled flag. The auto-flip
+                    effect above guarantees state.docType won't be Petty Cash
+                    while the flag is off, but we keep the && here as a second
+                    line of defense for race conditions during the flag fetch. */}
+                {state.docType === 'PETTY_CASH_REIMBURSEMENT' && pettyCashEnabled && (
                   <Section num={next()} title="รายการเงินสดย่อย (Petty Cash)" Icon={Receipt}>
                     <PettyCashLinesSection
                       value={state.pettyCash}

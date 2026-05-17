@@ -94,7 +94,7 @@ describe('AccountRoleService (admin endpoints)', () => {
       note: null,
     });
 
-    const updated = await service.update('r1', { accountCode: '53-1503' }, 'user-1');
+    const updated = await service.update('r1', { accountCode: '53-1503' }, 'user-1', 'OWNER');
     expect(updated.accountCode).toBe('53-1503');
     expect(audit.log).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -118,7 +118,7 @@ describe('AccountRoleService (admin endpoints)', () => {
     prisma.chartOfAccount.findFirst.mockResolvedValue(null);
 
     await expect(
-      service.update('r1', { accountCode: '99-9999' }, 'user-1'),
+      service.update('r1', { accountCode: '99-9999' }, 'user-1', 'OWNER'),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
@@ -132,14 +132,14 @@ describe('AccountRoleService (admin endpoints)', () => {
       note: null,
     });
     await expect(
-      service.update('r1', { isActive: false }, 'user-1'),
+      service.update('r1', { isActive: false }, 'user-1', 'OWNER'),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('update: throws NotFoundException for unknown id', async () => {
     prisma.accountRoleMap.findUnique.mockResolvedValue(null);
     await expect(
-      service.update('nope', { priority: 2 }, 'user-1'),
+      service.update('nope', { priority: 2 }, 'user-1', 'OWNER'),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 });

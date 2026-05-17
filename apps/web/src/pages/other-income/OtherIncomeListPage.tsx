@@ -8,11 +8,12 @@ import QueryBoundary from '@/components/QueryBoundary';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { ReopenedPeriodBanner } from '@/components/accounting/ReopenedPeriodBanner';
 import { useDebounce } from '@/hooks/useDebounce';
+import { useUiFlags } from '@/hooks/useUiFlags';
 import { usePaginationParams } from '@/hooks/usePaginationParams';
 import { PaginationBar } from '@/components/ui/PaginationBar';
 import { otherIncomeApi } from '@/lib/otherIncome';
 import type { OtherIncome, OtherIncomeStatus } from '@/lib/otherIncome.types';
-import { formatThaiDateShort } from '@/lib/date';
+import { formatThaiDateShort, computeDefaultTimeRange } from '@/lib/date';
 import { formatNumberDecimal } from '@/utils/formatters';
 import { DateRangeChips } from './components/DateRangeChips';
 
@@ -115,17 +116,18 @@ function StatusCard({
 export default function OtherIncomeListPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { defaultTimeRange } = useUiFlags();
 
   const [q, setQ] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
-  // BKK-local date components — guards against UTC servers / late-night browsers
-  // putting the default month-range one day behind the user's calendar.
-  const [startDate, setStartDate] = useState(() => {
-    const bkk = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' });
-    return `${bkk.slice(0, 7)}-01`;
-  });
-  const [endDate, setEndDate] = useState(() =>
-    new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' }),
+  // D1.2.3.1 — initial range driven by OWNER-configured `default_time_range`
+  // SystemConfig key. Defaults to 'this_month' (matches the prior hardcoded
+  // behaviour). Lazy useState initializer runs once; user picks override.
+  const [startDate, setStartDate] = useState(
+    () => computeDefaultTimeRange(defaultTimeRange).startDate,
+  );
+  const [endDate, setEndDate] = useState(
+    () => computeDefaultTimeRange(defaultTimeRange).endDate,
   );
   const { page, size, setPage, setSize } = usePaginationParams({ defaultSize: 50 });
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);

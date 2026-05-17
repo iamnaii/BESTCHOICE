@@ -33,12 +33,30 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /** D1.2.3.1 — default time-range preset for list pages. Default 'this_month'. */
+  defaultTimeRange: 'all' | 'this_month' | 'last_month';
+  /** D1.3.1.1 — opt-in DRAFT alerts cron. Default false (off). */
+  draftAlertsEnabled: boolean;
+  /** D1.3.1.1 — days a doc must stay DRAFT before alert fires. Default 7. */
+  draftAlertThresholdDays: number;
   /**
    * D1.1.6 — adjustment account codes for the V4 multi-line Adjustment row.
    * Frontend was hardcoding '52-1104' / '53-1503'; now reads from this flag
    * so OWNER can rebind the codes without a frontend deploy.
    */
   adjustmentCodes: { underpay: string; overpay: string };
+  /**
+   * D1.4.1.1 — BOOTSTRAP default for sidebar collapse on a new device
+   * (no `sidebar_collapse` key in localStorage). Per-user preference takes
+   * over the moment the user toggles the sidebar. Default false (= expanded).
+   */
+  sidebarCollapsedDefault: boolean;
+  /**
+   * D1.4.1.2 — when false, hide keyboard-shortcut UI affordances:
+   * the global Shift+? help-dialog binding is disabled and per-item kbd
+   * hints are suppressed. Default true preserves existing UX.
+   */
+  showKeyboardShortcuts: boolean;
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -59,7 +77,12 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  defaultTimeRange: 'this_month',
+  draftAlertsEnabled: false,
+  draftAlertThresholdDays: 7,
   adjustmentCodes: { underpay: '52-1104', overpay: '53-1503' },
+  sidebarCollapsedDefault: false,
+  showKeyboardShortcuts: true,
 };
 
 export function useUiFlags(): UiFlags {
@@ -80,5 +103,18 @@ export function useUiFlags(): UiFlags {
       document.documentElement.lang = flags.language;
     }
   }, [flags.language]);
+  // D1.4.1.1 — first-time-device seed for sidebar collapse. Only writes when
+  // localStorage has NO `sidebar_collapse` key yet, so we never clobber an
+  // existing per-user preference. Runs once after the flags resolve.
+  useEffect(() => {
+    if (!data) return; // wait for server flags before deciding
+    try {
+      if (typeof window === 'undefined') return;
+      if (localStorage.getItem('sidebar_collapse') !== null) return;
+      localStorage.setItem('sidebar_collapse', String(flags.sidebarCollapsedDefault));
+    } catch {
+      /* ignore quota / disabled-storage */
+    }
+  }, [data, flags.sidebarCollapsedDefault]);
   return flags;
 }

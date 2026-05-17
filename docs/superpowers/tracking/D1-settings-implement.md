@@ -84,7 +84,7 @@ Sub-prioritization within expanded D1 scope:
 
 | ID | Item | Priority | Status | PR | Notes |
 |---|---|---|---|---|---|
-| D1.2.1.1 | `approval_enabled` | P1 | ⬜ | — | Feature flag check at create/post |
+| D1.2.1.1 | `approval_enabled` | P1 | 🟡 | TBD | SystemConfig `approval_enabled` (default false). `getUiFlags()` + `useUiFlags()` expose `approvalEnabled`. New `submitForApproval()` service method + `POST /:id/submit-for-approval` endpoint. `post()` rejects DRAFT when flag is on (must go through approval). Depends on enum from 1.6 |
 | D1.2.1.2 | `approval_threshold` 50,000 ฿ | P1 | ⬜ | — | Amount-based gate |
 | D1.2.1.3 | `approvers_list` user IDs | P1 | ⬜ | — | DB-driven, replace hardcoded APPROVER_ROLES |
 | D1.2.1.4 | `approval_required_doc_types` ([PAYROLL]) | P1 | ⬜ | — | Doctype filter |

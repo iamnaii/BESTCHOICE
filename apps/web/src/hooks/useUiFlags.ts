@@ -42,6 +42,13 @@ export interface UiFlags {
   /** D1.3.1.1 — days a doc must stay DRAFT before alert fires. Default 7. */
   draftAlertThresholdDays: number;
   /**
+   * D1.2.1.1 — Approval Workflow opt-in. When true, expense docs follow
+   * DRAFT → PENDING_APPROVAL → APPROVED → POSTED. UI uses this flag to
+   * conditionally render the "ส่งขออนุมัติ" button instead of "Post".
+   * Default false (legacy DRAFT → POSTED lifecycle).
+   */
+  approvalEnabled: boolean;
+  /**
    * D1.1.6 — adjustment account codes for the V4 multi-line Adjustment row.
    * Frontend was hardcoding '52-1104' / '53-1503'; now reads from this flag
    * so OWNER can rebind the codes without a frontend deploy.
@@ -85,6 +92,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  approvalEnabled: false,
   paginationSize: 50,
   defaultTimeRange: 'this_month',
   draftAlertsEnabled: false,

@@ -333,6 +333,31 @@ describe('SettingsService audit trail', () => {
       expect(flags.periodCloseDay).toBe(31);
     });
 
+    // D1.2.1.1 — Approval Workflow opt-in (default true per Settings_Audit_Core_v2.0.md)
+    it('approvalEnabled defaults to true when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.approvalEnabled).toBe(true);
+    });
+
+    it('approvalEnabled returns false when OWNER disables it explicitly', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'approval_enabled') return Promise.resolve({ value: 'false' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.approvalEnabled).toBe(false);
+    });
+
+    it('approvalEnabled falls back to default (true) on unparseable value', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'approval_enabled') return Promise.resolve({ value: 'maybe' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.approvalEnabled).toBe(true);
+    });
+
     // D1.2.3.2 — pagination_size
     it('paginationSize defaults to 50 when SystemConfig missing', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);

@@ -37,6 +37,12 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /**
+   * D1.3.6.1 — max bills (cleared docs) allowed per VENDOR_SETTLEMENT. Default
+   * 100, clamped 1–500 server-side. Used by SettlementLinesSection to show an
+   * inline cap-warning when the user approaches/exceeds the limit.
+   */
+  settlementMaxBillsPerDoc: number;
   /** D1.1.5.4 — Petty Cash replenish alert threshold (THB). Default 5000, 0 disables. */
   pettyCashReplenishThreshold: number;
   /** D1.1.5.1 — Petty Cash feature flag. Default true. Hides DocTypePicker card + form section when false. */
@@ -183,6 +189,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  settlementMaxBillsPerDoc: 100,
   pettyCashReplenishThreshold: 5000,
   pettyCashEnabled: true,
   voucherShowPartialColumns: true,

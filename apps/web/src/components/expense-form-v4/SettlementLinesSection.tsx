@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { SettlementFormFields } from './types';
 import { formatNumberDecimal } from '@/utils/formatters';
+import { useUiFlags } from '@/hooks/useUiFlags';
 
 interface AccrualDoc {
   id: string;
@@ -20,12 +21,16 @@ interface Props {
 }
 
 export function SettlementLinesSection({ branchId, value, onChange }: Props) {
+  // D1.3.6.1 — `settlement_max_bills_per_doc` (default 100). One fetch limit
+  // matches the server-enforced cap so the user can never tick a doc the
+  // server would reject. UI also surfaces a soft warning before the cap.
+  const { settlementMaxBillsPerDoc } = useUiFlags();
   const { data: accrualList } = useQuery<{ data: AccrualDoc[] }>({
-    queryKey: ['accrual-list', branchId],
+    queryKey: ['accrual-list', branchId, settlementMaxBillsPerDoc],
     queryFn: async () => {
       if (!branchId) return { data: [] };
       const res = await api.get(
-        `/expense-documents?type=EXPENSE&status=ACCRUAL&branchId=${branchId}&limit=100`,
+        `/expense-documents?type=EXPENSE&status=ACCRUAL&branchId=${branchId}&limit=${settlementMaxBillsPerDoc}`,
       );
       return res.data;
     },
@@ -33,6 +38,13 @@ export function SettlementLinesSection({ branchId, value, onChange }: Props) {
   });
 
   const docs = accrualList?.data ?? [];
+  // D1.3.6.1 — warn at 80% of cap to give the user a heads-up before hitting
+  // the hard limit. Threshold floor of 1 ensures the warning never fires at
+  // capacity = 1 (the legitimate min).
+  const selectedCount = value.selections.size;
+  const warnThreshold = Math.max(1, Math.floor(settlementMaxBillsPerDoc * 0.8));
+  const showApproachingCap = selectedCount >= warnThreshold && selectedCount <= settlementMaxBillsPerDoc;
+  const exceedsCap = selectedCount > settlementMaxBillsPerDoc;
 
   const toggle = (doc: AccrualDoc) => {
     const next = new Map(value.selections);
@@ -99,9 +111,25 @@ export function SettlementLinesSection({ branchId, value, onChange }: Props) {
         </div>
       </div>
 
+      {(showApproachingCap || exceedsCap) && (
+        <div
+          className={`rounded-lg border px-3 py-2 text-xs leading-snug ${
+            exceedsCap
+              ? 'border-destructive/40 bg-destructive/10 text-destructive'
+              : 'border-amber-500/40 bg-amber-500/10 text-amber-700'
+          }`}
+          role="status"
+          aria-live="polite"
+        >
+          {exceedsCap
+            ? `เลือกใบเกินจำกัด ${settlementMaxBillsPerDoc} ใบต่อเอกสาร (เลือก ${selectedCount}) — กรุณาแยกเป็นหลายเอกสาร`
+            : `ใกล้ถึงจำกัด ${settlementMaxBillsPerDoc} ใบต่อเอกสาร (เลือกแล้ว ${selectedCount})`}
+        </div>
+      )}
+
       <div className="rounded-xl border border-border overflow-hidden">
         <div className="bg-muted/50 px-4 py-2 text-xs font-medium border-b border-border">
-          เจ้าหนี้คงค้างของสาขา ({docs.length} รายการรอจ่าย — เลือกที่ต้องการเคลียร์)
+          เจ้าหนี้คงค้างของสาขา ({docs.length} รายการรอจ่าย — เลือกที่ต้องการเคลียร์ สูงสุด {settlementMaxBillsPerDoc} ใบ/เอกสาร)
         </div>
         {docs.length === 0 ? (
           <div className="p-6 text-center text-sm text-muted-foreground">

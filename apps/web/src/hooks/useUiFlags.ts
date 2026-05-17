@@ -34,6 +34,12 @@ export interface UiFlags {
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
   /**
+   * D1.1.6 — adjustment account codes for the V4 multi-line Adjustment row.
+   * Frontend was hardcoding '52-1104' / '53-1503'; now reads from this flag
+   * so OWNER can rebind the codes without a frontend deploy.
+   */
+  adjustmentCodes: { underpay: string; overpay: string };
+  /**
    * D1.4.1.1 — BOOTSTRAP default for sidebar collapse on a new device
    * (no `sidebar_collapse` key in localStorage). Per-user preference takes
    * over the moment the user toggles the sidebar. Default false (= expanded).
@@ -59,6 +65,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  adjustmentCodes: { underpay: '52-1104', overpay: '53-1503' },
   sidebarCollapsedDefault: false,
 };
 

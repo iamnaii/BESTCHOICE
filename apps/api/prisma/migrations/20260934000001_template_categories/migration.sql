@@ -7,6 +7,11 @@
 --
 -- Additive only — `category_id` defaults to NULL on existing rows.
 
+-- Ensure gen_random_uuid() is available (required for the seed INSERT below).
+-- pgcrypto is enabled on GCP Cloud SQL by default; this CREATE is idempotent
+-- and protects fresh local databases too.
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 CREATE TABLE "template_categories" (
   "id"          TEXT NOT NULL,
   "name"        TEXT NOT NULL,

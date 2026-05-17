@@ -9,6 +9,8 @@ import { ExpenseDocumentsController } from './expense-documents.controller';
 import { ExpenseDocumentsService } from './expense-documents.service';
 import { ExpenseTemplatesController } from './expense-templates.controller';
 import { ExpenseTemplatesService } from './expense-templates.service';
+import { TemplateCategoriesController } from './template-categories.controller';
+import { TemplateCategoriesService } from './template-categories.service';
 import { DocNumberService } from './services/doc-number.service';
 import { StatusTransitionService } from './services/status-transition.service';
 import { LineAggregatorService } from './services/line-aggregator.service';
@@ -20,6 +22,12 @@ import { DraftAlertsCron } from './crons/draft-alerts.cron';
 import { ApDueAlertsCron } from './crons/ap-due-alerts.cron';
 
 @Module({
+  imports: [PrismaModule, JournalModule, AuthModule, SsoConfigModule],
+  controllers: [
+    ExpenseDocumentsController,
+    ExpenseTemplatesController,
+    TemplateCategoriesController,
+  ],
   // NotificationsModule import is required so DraftAlertsCron + ApDueAlertsCron can
   // route IN_APP alerts through NotificationsService.send() (respects D1.3.1.4 master gate).
   imports: [
@@ -34,6 +42,7 @@ import { ApDueAlertsCron } from './crons/ap-due-alerts.cron';
   providers: [
     ExpenseDocumentsService,
     ExpenseTemplatesService,
+    TemplateCategoriesService,
     DocNumberService,
     StatusTransitionService,
     LineAggregatorService,

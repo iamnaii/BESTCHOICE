@@ -197,7 +197,7 @@ export default function ExpenseDailySummaryPage() {
       {showAllRangeWarning && (
         <div
           role="alert"
-          className="mb-4 flex items-start gap-2.5 rounded-lg border border-warning/40 bg-warning/10 px-3.5 py-2.5 text-sm text-warning-foreground"
+          className="mb-4 flex items-start gap-2.5 rounded-lg border border-warning/40 bg-warning/10 px-3.5 py-2.5 text-sm text-foreground"
         >
           <AlertTriangle className="size-4 mt-0.5 shrink-0 text-warning" aria-hidden="true" />
           <span className="leading-snug">

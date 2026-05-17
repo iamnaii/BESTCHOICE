@@ -377,6 +377,43 @@ describe('SettingsService audit trail', () => {
       expect(flags.ssoRateLocked).toBe('5%');
     });
 
+    // D1.3.6.2 — settlement_default_tick (whitelist)
+    it('settlementDefaultTick defaults to "overdue_only" when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.settlementDefaultTick).toBe('overdue_only');
+    });
+
+    it('settlementDefaultTick honors "all" when OWNER sets it', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'settlement_default_tick')
+          return Promise.resolve({ value: 'all' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.settlementDefaultTick).toBe('all');
+    });
+
+    it('settlementDefaultTick honors "none" when OWNER sets it', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'settlement_default_tick')
+          return Promise.resolve({ value: 'none' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.settlementDefaultTick).toBe('none');
+    });
+
+    it('settlementDefaultTick falls back to "overdue_only" on unknown / malformed values', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'settlement_default_tick')
+          return Promise.resolve({ value: 'legacy-bool' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.settlementDefaultTick).toBe('overdue_only');
+    });
+
     // D1.1.3.2 — wht_rates dropdown
     it('whtRates defaults to the 5 canonical rates (1/3/5/10/15) when SystemConfig missing', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
@@ -522,6 +559,56 @@ describe('SettingsService audit trail', () => {
       });
       const flags = await service.getUiFlags();
       expect(flags.auditLogArchiveEnabled).toBe(true);
+    });
+
+    // D1.4.3.3 — document_retention_years (พ.ร.บ.บัญชี ม.7 = 5 years)
+    it('documentRetentionYears defaults to 5 when SystemConfig row absent', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.documentRetentionYears).toBe(5);
+    });
+
+    it('documentRetentionYears accepts valid 1-30 range from SystemConfig', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'document_retention_years') return Promise.resolve({ value: '7' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.documentRetentionYears).toBe(7);
+    });
+
+    it('documentRetentionYears clamps to default when out of valid 1-30 range', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'document_retention_years') return Promise.resolve({ value: '50' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.documentRetentionYears).toBe(5);
+    });
+
+    // D1.4.2.4 — batch_size_import
+    it('batchSizeImport defaults to 500 when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.batchSizeImport).toBe(500);
+    });
+
+    it('batchSizeImport accepts valid 50-5000 range', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'batch_size_import') return Promise.resolve({ value: '1000' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.batchSizeImport).toBe(1000);
+    });
+
+    it('batchSizeImport clamps out-of-range values back to 500', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'batch_size_import') return Promise.resolve({ value: '10' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.batchSizeImport).toBe(500);
     });
 
     // D1.3.4.2 — smart_switch_threshold_days (default 0, clamp 0–30,

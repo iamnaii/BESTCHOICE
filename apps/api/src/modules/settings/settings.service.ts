@@ -276,6 +276,17 @@ export class SettingsService {
      */
     ssoRateLocked: string;
     /**
+     * D1.3.6.2 — default-tick preference for the SettlementLinesSection bill
+     * list. Whitelist of three modes:
+     *   - `'all'`            — every fetched bill pre-ticked
+     *   - `'none'`           — nothing pre-ticked (manual selection only)
+     *   - `'overdue_only'`   — only bills past their `documentDate`-derived
+     *                          due date pre-ticked (default)
+     * Anything outside the whitelist (mis-edit, legacy value, malformed
+     * string) falls back to `'overdue_only'`.
+     */
+    settlementDefaultTick: 'all' | 'none' | 'overdue_only';
+    /**
      * D1.1.3.2 — configurable WHT-rate dropdown. Always at least the 5
      * defaults (1/3/5/10/15 %). Each entry may carry an optional
      * `effectiveDate` (D1.1.3.5) — frontend filters out future-dated
@@ -299,6 +310,31 @@ export class SettingsService {
      * just keeps rows in the hot set rather than purging the legal trail.
      */
     auditLogArchiveEnabled: boolean;
+    /**
+     * D1.4.3.3 — legal document retention period in years. Default 5 per
+     * พ.ร.บ.การบัญชี พ.ศ. 2543 ม.7 (Thai Accounting Act §7). Validated 1–30
+     * and clamped on read so an out-of-range SystemConfig row can't surface
+     * absurd values downstream.
+     *
+     * Currently INFORMATIONAL only — there is no automated purge cron for
+     * expense / sales / receipt documents yet. The value is exposed so the
+     * compliance UI can display the configured retention policy. Future
+     * implementation gating any document purge (or archival) on this value
+     * should call `getUiFlags()` rather than re-reading the SystemConfig
+     * row directly.
+     */
+    documentRetentionYears: number;
+    /**
+     * D1.4.2.4 — batch size for CSV row processing in bulk imports.
+     * Default 500, valid 50–5000 (clamped). Currently INFORMATIONAL —
+     * the Payments CSV import in `payments.service.ts` processes rows
+     * one-at-a-time in a `for` loop (no explicit batching), so this flag
+     * is exposed for future bulk-import paths. The numeric range is
+     * deliberately wide so OWNER can dial down for resource-constrained
+     * deploys or up for high-throughput imports. Originally SKIP per
+     * Phase 2; shipped per owner directive 2026-05-17 to reach 100% A1.
+     */
+    batchSizeImport: number;
     /**
      * D1.3.4.2 — days threshold for the SAMEDAY→ACCRUAL auto-switch.
      * Default `0` = any past document date triggers the flip (preserves
@@ -640,6 +676,15 @@ export class SettingsService {
     // ministerial regulation issued under it. Computed from the
     // source-of-truth SSO_RATE constant, never read from DB.
     const ssoRateLocked = `${(SSO_RATE * 100).toFixed(0)}%`;
+    // D1.3.6.2 — settlement_default_tick. Whitelist 'all' / 'none' /
+    // 'overdue_only'; everything else → 'overdue_only' (spec default).
+    const settlementDefaultTickRaw = await this.getKey('settlement_default_tick');
+    const settlementDefaultTick: 'all' | 'none' | 'overdue_only' =
+      settlementDefaultTickRaw === 'all'
+        ? 'all'
+        : settlementDefaultTickRaw === 'none'
+          ? 'none'
+          : 'overdue_only';
     // D1.1.3.2 — WHT rates (default 5 canonical entries + optional D1.1.3.5
     // effectiveDate per entry).
     const whtRates = await this.getWhtRates();
@@ -650,6 +695,21 @@ export class SettingsService {
       'audit_log_archive_enabled',
       true,
     );
+    // D1.4.3.3 — document retention years. Default 5 per พ.ร.บ.บัญชี ม.7.
+    // Clamp to [1, 30] so an out-of-range row can't surface absurd values.
+    const documentRetentionYearsRaw = await this.readNumber('document_retention_years', 5);
+    const documentRetentionYears =
+      Number.isInteger(documentRetentionYearsRaw) &&
+      documentRetentionYearsRaw >= 1 &&
+      documentRetentionYearsRaw <= 30
+        ? documentRetentionYearsRaw
+        : 5;
+    // D1.4.2.4 — batch_size_import. Clamp to [50, 5000] rows.
+    const batchSizeImportRaw = await this.readNumber('batch_size_import', 500);
+    const batchSizeImport =
+      Number.isFinite(batchSizeImportRaw) && batchSizeImportRaw >= 50 && batchSizeImportRaw <= 5000
+        ? Math.floor(batchSizeImportRaw)
+        : 500;
     // D1.3.4.2 — smart-switch threshold (days). Clamp 0–30; non-integer /
     // NaN / negative → 0. Default 0 = legacy behavior (any past date flips).
     const smartSwitchThresholdRaw = await this.readNumber(
@@ -860,9 +920,12 @@ export class SettingsService {
       themeColor,
       language,
       ssoRateLocked,
+      settlementDefaultTick,
       whtRates,
       exportEnabled,
       auditLogArchiveEnabled,
+      documentRetentionYears,
+      batchSizeImport,
       smartSwitchThresholdDays,
       summaryDefaultRange,
       smartDoctypeSwitchEnabled,

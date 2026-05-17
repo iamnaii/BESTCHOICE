@@ -44,6 +44,13 @@ export interface UiFlags {
    */
   ssoRateLocked: string;
   /**
+   * D1.3.6.2 — pre-tick preference for the VENDOR_SETTLEMENT bill list.
+   *   'all'          — pre-tick every loaded bill
+   *   'none'         — pre-tick nothing (manual selection only)
+   *   'overdue_only' — pre-tick only bills past their due date (default)
+   */
+  settlementDefaultTick: 'all' | 'none' | 'overdue_only';
+  /**
    * D1.3.3.1 — when false, hide Excel / PDF / CSV export buttons in the UI.
    * Server-side ExportEnabledGuard returns 403 for PDF endpoints when this
    * is false (defence-in-depth against UI bypass). Default true.
@@ -54,6 +61,17 @@ export interface UiFlags {
    * frontend exposes the flag so an admin UI can render the current state.
    */
   auditLogArchiveEnabled: boolean;
+  /**
+   * D1.4.3.3 — legal document retention years (พ.ร.บ.บัญชี ม.7).
+   * Default 5. Informational; no auto-purge cron consumes this yet.
+   */
+  documentRetentionYears: number;
+  /**
+   * D1.4.2.4 — CSV import batch size (rows). Default 500, valid 50–5000.
+   * INFORMATIONAL: current Payments CSV import processes rows one-at-a-time;
+   * flag is exposed for future bulk-import paths.
+   */
+  batchSizeImport: number;
   /**
    * D1.3.4.2 — days threshold for the SAMEDAY→ACCRUAL auto-switch in
    * `ExpenseFormV4`. Default `0` = any past date triggers (legacy
@@ -226,6 +244,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   themeColor: '#10b981',
   language: 'th',
   ssoRateLocked: '5%',
+  settlementDefaultTick: 'overdue_only',
   whtRates: [
     { rate: 1, label: '1% — ดอกเบี้ย' },
     { rate: 3, label: '3% — ค่าบริการ' },
@@ -235,6 +254,8 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   ],
   exportEnabled: true,
   auditLogArchiveEnabled: true,
+  documentRetentionYears: 5,
+  batchSizeImport: 500,
   smartSwitchThresholdDays: 0,
   summaryDefaultRange: 'this_month',
   smartDoctypeSwitchEnabled: true,

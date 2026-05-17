@@ -101,10 +101,12 @@ export class PaymentReceipt2BTemplate {
     private readonly prisma: PrismaService,
     @Optional() private readonly vat60Reversal?: Vat60dayReversalTemplate,
     /**
-     * D1.1.6.2 — resolves `adj_overpay` → CoA code via account_role_map.
-     * Optional to keep backwards compat with raw `new PaymentReceipt2BTemplate(journal, prisma)`
-     * call sites in integration specs; when omitted we fall back to the
-     * spec-default `'53-1503'` (which equals the seeded role row).
+     * D1.1.6.1 + D1.1.6.2 — resolves `adj_underpay`/`adj_overpay` → CoA code
+     * via account_role_map. Optional to keep backwards compat with raw
+     * `new PaymentReceipt2BTemplate(journal, prisma)` call sites in
+     * integration specs; when omitted we fall back to spec defaults
+     * (`'52-1104'` for underpay, `'53-1503'` for overpay) which equal the
+     * seeded role rows.
      */
     @Optional() private readonly roles?: AccountRoleService,
   ) {}
@@ -253,8 +255,11 @@ export class PaymentReceipt2BTemplate {
 
         // 3. Underpay rounding
         if (roundingDiff.lt(0)) {
+          // D1.1.6.1 — resolve via AccountRoleService when available,
+          // otherwise fall back to spec-default 52-1104 (matches seed row).
+          const adjUnderpayCode = this.roles?.tryCode('adj_underpay') ?? '52-1104';
           lines.push({
-            accountCode: '52-1104',
+            accountCode: adjUnderpayCode,
             dr: roundingDiff.abs(),
             cr: zero,
             description: 'ส่วนลดเศษสตางค์ (Policy C)',

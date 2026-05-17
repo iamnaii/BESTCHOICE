@@ -360,6 +360,43 @@ describe('SettingsService audit trail', () => {
       expect(flags.smartDoctypeSwitchEnabled).toBe(true);
     });
 
+    // D1.3.6.1 — settlement_max_bills_per_doc
+    it('settlementMaxBillsPerDoc defaults to 100 when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.settlementMaxBillsPerDoc).toBe(100);
+    });
+
+    it('settlementMaxBillsPerDoc returns OWNER-configured value (e.g. 50)', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'settlement_max_bills_per_doc')
+          return Promise.resolve({ value: '50' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.settlementMaxBillsPerDoc).toBe(50);
+    });
+
+    it('settlementMaxBillsPerDoc clamps to default when above max (500)', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'settlement_max_bills_per_doc')
+          return Promise.resolve({ value: '999' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.settlementMaxBillsPerDoc).toBe(100);
+    });
+
+    it('settlementMaxBillsPerDoc clamps to default when below min (0 / negative)', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'settlement_max_bills_per_doc')
+          return Promise.resolve({ value: '0' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.settlementMaxBillsPerDoc).toBe(100);
+    });
+
     // D1.1.5.4 — petty_cash_replenish_threshold
     it('pettyCashReplenishThreshold defaults to 5000 when SystemConfig missing', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);

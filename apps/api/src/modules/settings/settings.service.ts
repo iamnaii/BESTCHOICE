@@ -193,6 +193,15 @@ export class SettingsService {
      */
     smartDoctypeSwitchEnabled: boolean;
     /**
+     * D1.3.6.1 — max number of bills (cleared docs) per VENDOR_SETTLEMENT
+     * document. Default 100 (matches the legacy `limit=100` literal that
+     * `SettlementLinesSection.tsx` used to pull from `/expense-documents`).
+     * Clamped to 1–500 on read so an OWNER mis-edit can't disable the cap or
+     * blow up the SE form. Server enforces the cap on `createSettlement()`;
+     * UI uses the value to surface an early-warning banner before submit.
+     */
+    settlementMaxBillsPerDoc: number;
+    /**
      * D1.1.5.4 — Petty Cash replenish alert threshold (THB). Default 5000,
      * valid 0–50000 (clamp). When the running float balance falls below this
      * number, `PettyCashReplenishAlertCron` (daily 09:00 BKK) notifies all
@@ -480,6 +489,16 @@ export class SettingsService {
       'smart_doctype_switch_enabled',
       true,
     );
+    // D1.3.6.1 — settlement_max_bills_per_doc. Clamp to 1–500 inclusive;
+    // anything outside (incl. NaN / negative) falls back to the default 100
+    // which matches the previous hardcoded limit.
+    const settlementMaxBillsRaw = await this.readNumber('settlement_max_bills_per_doc', 100);
+    const settlementMaxBillsPerDoc =
+      Number.isInteger(settlementMaxBillsRaw) &&
+      settlementMaxBillsRaw >= 1 &&
+      settlementMaxBillsRaw <= 500
+        ? settlementMaxBillsRaw
+        : 100;
     // D1.1.5.4 — Petty Cash replenish threshold. Default 5000, valid 0–50000.
     // Negative or NaN silently clamps to default 5000 so a bad SystemConfig
     // row can't accidentally suppress the alert via negative comparison.
@@ -649,6 +668,7 @@ export class SettingsService {
       themeColor,
       language,
       smartDoctypeSwitchEnabled,
+      settlementMaxBillsPerDoc,
       pettyCashReplenishThreshold,
       pettyCashEnabled,
       voucherShowPartialColumns,

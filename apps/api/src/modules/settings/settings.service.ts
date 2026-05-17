@@ -180,6 +180,16 @@ export class SettingsService {
      */
     language: 'th' | 'en';
     /**
+     * D1.1.6.3 — auto-route the ≤1฿ rounding remainder on Payment receipts
+     * to adj_underpay (52-1104) / adj_overpay (53-1503). Default TRUE.
+     * When FALSE, PaymentReceipt2B + PaymentReceipt2B-split throw
+     * BadRequestException on any non-zero rounding diff, forcing a manual
+     * JV to clear the residual. Exposed here so the admin Settings UI can
+     * render the toggle; the actual server-side enforcement lives in the JE
+     * templates (they read `adj_auto_route` directly via PrismaService).
+     */
+    adjAutoRoute: boolean;
+    /**
      * D1.3.6.1 — max number of bills (cleared docs) per VENDOR_SETTLEMENT
      * document. Default 100 (matches the legacy `limit=100` literal that
      * `SettlementLinesSection.tsx` used to pull from `/expense-documents`).
@@ -480,6 +490,9 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.1.6.3 — adj_auto_route. Defaults TRUE so first-boot behaviour
+    // mirrors the original auto-route-to-52-1104/53-1503 logic.
+    const adjAutoRoute = await this.readBoolean('adj_auto_route', true);
     // D1.3.6.1 — settlement_max_bills_per_doc. Clamp to 1–500 inclusive;
     // anything outside (incl. NaN / negative) falls back to the default 100
     // which matches the previous hardcoded limit.
@@ -670,6 +683,7 @@ export class SettingsService {
       themeColor,
       language,
       summaryDefaultRange,
+      adjAutoRoute,
       settlementMaxBillsPerDoc,
       pettyCashReplenishThreshold,
       pettyCashEnabled,

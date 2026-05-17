@@ -66,6 +66,7 @@ import { InterCompanyModule } from './modules/inter-company/inter-company.module
 import { IntercompanyModule } from './modules/intercompany/intercompany.module';
 import { JournalModule } from './modules/journal/journal.module';
 import { ChartOfAccountsModule } from './modules/chart-of-accounts/chart-of-accounts.module';
+import { BankAccountsModule } from './modules/bank-accounts/bank-accounts.module';
 import { TaxModule } from './modules/tax/tax.module';
 import { CommissionModule } from './modules/commission/commission.module';
 import { TradeInModule } from './modules/trade-in/trade-in.module';
@@ -228,6 +229,8 @@ import { AppCacheModule } from './cache/cache.module';
     // Journal Entries (double-entry accounting)
     JournalModule,
     ChartOfAccountsModule,
+    // SP6 — Bank/Cash account directory (mirrors CoA 11-1101..1203)
+    BankAccountsModule,
     // Tax Reports (ภ.พ.30, ภ.ง.ด.3, ภ.ง.ด.53)
     TaxModule,
     // Sales Commission

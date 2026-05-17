@@ -1636,7 +1636,7 @@ export class ExpenseDocumentsService implements OnModuleInit {
   //
   // NOTE: references the enum value `PENDING_APPROVAL` from D1.2.1.6's
   // schema migration. Pre-merge we use `as unknown as DocumentStatus`.
-  async submitForApproval(id: string, _userId: string) {
+  async submitForApproval(id: string, userId: string) {
     const updated = await this.prisma.$transaction(async (tx) => {
       await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(hashtext($1))`, `post:${id}`);
 
@@ -1649,10 +1649,28 @@ export class ExpenseDocumentsService implements OnModuleInit {
       }
 
       const PENDING_APPROVAL = 'PENDING_APPROVAL' as unknown as DocumentStatus;
-      return tx.expenseDocument.update({
+      const result = await tx.expenseDocument.update({
         where: { id },
         data: { status: PENDING_APPROVAL },
       });
+
+      // D1.2.1.5 — APPROVAL_REQUESTED audit log inside the tx so status
+      // transition + audit stay atomic.
+      await tx.auditLog.create({
+        data: {
+          action: 'APPROVAL_REQUESTED',
+          entity: 'expense_document',
+          entityId: id,
+          userId,
+          newValue: {
+            documentNumber: doc.number,
+            totalAmount: doc.totalAmount.toString(),
+            documentType: doc.documentType,
+          },
+        },
+      });
+
+      return result;
     });
 
     // Notification fan-out happens OUTSIDE the transaction so a notification

@@ -786,6 +786,62 @@ describe('ExpenseDocumentsService', () => {
         }),
       ).toBe(true);
     });
+
+    // D1.2.1.5 — audit trail on submitForApproval(). APPROVAL_REQUESTED row
+    // must be written inside the tx so status flip + audit stay atomic.
+    it('writes APPROVAL_REQUESTED audit log inside the transaction', async () => {
+      setupDraftDoc();
+      prisma.systemConfig.findFirst.mockResolvedValue(null);
+      prisma.user.findMany.mockResolvedValue([]);
+      await service.submitForApproval('doc-sub-n', 'user-1');
+      const auditCalls = prisma.auditLog.create.mock.calls;
+      const requestedCall = auditCalls.find((c: unknown[]) => {
+        const arg = c[0] as { data?: { action?: string } };
+        return arg?.data?.action === 'APPROVAL_REQUESTED';
+      });
+      expect(requestedCall).toBeDefined();
+      const arg = requestedCall![0] as {
+        data: {
+          action: string;
+          entity: string;
+          entityId: string;
+          userId: string;
+          newValue: { documentNumber: string; totalAmount: string; documentType: string };
+        };
+      };
+      expect(arg.data.entity).toBe('expense_document');
+      expect(arg.data.entityId).toBe('doc-sub-n');
+      expect(arg.data.userId).toBe('user-1');
+      expect(arg.data.newValue.documentNumber).toBe('EX-20260510-0001');
+      expect(arg.data.newValue.totalAmount).toBe('500');
+      expect(arg.data.newValue.documentType).toBe('EXPENSE');
+    });
+
+    it('fires notifyApprovers AFTER status flip (notifications.send invoked)', async () => {
+      setupDraftDoc();
+      prisma.systemConfig.findFirst.mockImplementation(
+        (args: { where: { key: string } }) => {
+          if (args.where.key === 'approvers_list') {
+            return Promise.resolve({ value: JSON.stringify(['user-app-1']) });
+          }
+          return Promise.resolve(null);
+        },
+      );
+      prisma.user.findMany.mockResolvedValue([
+        { id: 'user-app-1', email: 'app1@ex.com', name: 'A1' },
+      ]);
+      await service.submitForApproval('doc-sub-n', 'user-1');
+      // Notify fires
+      expect(notifications.send).toHaveBeenCalledTimes(1);
+      // And status flipped to PENDING_APPROVAL
+      const updateCalls = prisma.expenseDocument.update.mock.calls;
+      expect(
+        updateCalls.some((c: unknown[]) => {
+          const arg = c[0] as { data?: { status?: string } };
+          return arg?.data?.status === 'PENDING_APPROVAL';
+        }),
+      ).toBe(true);
+    });
   });
 
   describe('update', () => {

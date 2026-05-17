@@ -373,6 +373,17 @@ export function CashFlowPage() {
                       กิจกรรมลงทุน (Investing)
                     </span>
                   </div>
+                  {/* SP2 — known gap caveat (deferred to Phase A.5) */}
+                  <div className="my-2 rounded-md border border-warning/40 bg-warning/5 p-3 text-xs text-warning leading-snug flex items-start gap-2">
+                    <AlertTriangle className="size-3.5 mt-0.5 shrink-0" />
+                    <div>
+                      หมวด <strong>กิจกรรมลงทุน</strong> ใช้ข้อมูลจาก FixedAsset โดยตรง —
+                      หากมีการขายสินทรัพย์พร้อมกำไร/ขาดทุนในงวดเดียวกัน ตัวเลข Net Operating
+                      + Net Investing อาจคลาดเคลื่อนเล็กน้อย (รอ Phase A.5
+                      PPE/Depreciation flows). ตัวกรองบริษัทจะไม่มีผลกับยอด PPE
+                      เนื่องจาก FixedAsset ยังไม่มี companyId scope.
+                    </div>
+                  </div>
                   <CFRow
                     label="ซื้อสินทรัพย์ถาวร"
                     amount={-cf.investing.ppePurchases}

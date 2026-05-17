@@ -1317,6 +1317,17 @@ export class AccountingService implements OnModuleInit {
     // postedAt in period. We use postedAt (the date the cost JE was posted) rather
     // than purchaseDate to align with the cash effect — purchaseDate can lag well
     // behind the actual cash settlement in an accrual system.
+    //
+    // SP2 KNOWN GAP — FixedAsset has no companyId column, so passing `companyId`
+    // filter has no effect on this aggregate. The number reflects ALL fixed
+    // assets across both SHOP+FINANCE entities. Phase A.5 will add companyId
+    // scoping on FixedAsset; until then we warn the caller.
+    if (companyId) {
+      this.logger.warn(
+        `Cash Flow getCashFlowFromJournal called with companyId=${companyId} but ` +
+          `FixedAsset lacks companyId. investing.ppePurchases will reflect company-wide PPE.`,
+      );
+    }
     const ppePurchasesAgg = await this.prisma.fixedAsset.aggregate({
       where: {
         status: 'POSTED',

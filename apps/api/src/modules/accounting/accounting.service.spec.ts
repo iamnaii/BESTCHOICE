@@ -713,6 +713,74 @@ describe('AccountingService', () => {
       expect(result.operating.netOperating).toBeCloseTo(0, 2);
     });
 
+    // SP2 Critical #1-#3 — known PPE/Disposal accounting gaps (deferred A.5)
+    //
+    // These tests assert the CURRENT (buggy-by-design) behavior so any future
+    // fix surfaces as a test diff. Per .claude/rules/accounting.md, PPE +
+    // depreciation is "DEFERRED to Phase A.5" — the cash flow report ships
+    // with documented caveats rather than blocking on a full A.5 build-out.
+    //
+    // When Phase A.5 lands disposal handling, update these tests to assert the
+    // corrected behavior (and remove the warning banner from CashFlowPage).
+
+    it('CASH FLOW KNOWN GAP: ppePurchases is NOT companyId-scoped (FixedAsset lacks companyId)', async () => {
+      // 100k FixedAsset purchase posted in period — same number returned
+      // regardless of companyId filter passed by caller.
+      prisma.fixedAsset.aggregate.mockResolvedValue({
+        _sum: { purchaseCost: new Prisma.Decimal(100_000) },
+      });
+
+      const resultNoCo = await service.getCashFlowFromJournal(
+        new Date('2026-01-01'),
+        new Date('2026-01-31'),
+      );
+      const resultWithCo = await service.getCashFlowFromJournal(
+        new Date('2026-01-01'),
+        new Date('2026-01-31'),
+        'co-FINANCE',
+      );
+
+      // KNOWN GAP — passing companyId has zero effect on PPE aggregate.
+      // Phase A.5: must add FixedAsset.companyId scope + assert difference.
+      expect(resultNoCo.investing.ppePurchases).toBe(100_000);
+      expect(resultWithCo.investing.ppePurchases).toBe(100_000);
+      expect(resultWithCo.investing.ppePurchases).toBe(resultNoCo.investing.ppePurchases);
+
+      // Verify the aggregate was called WITHOUT companyId in the where clause
+      // (proves the leak — confirming the gap is structural, not a typo).
+      const aggregateCalls = prisma.fixedAsset.aggregate.mock.calls;
+      for (const call of aggregateCalls) {
+        expect(call[0].where).not.toHaveProperty('companyId');
+      }
+    });
+
+    it('CASH FLOW KNOWN GAP: disposal proceeds use JE metadata only — no reversal of gain/loss in operating section', async () => {
+      // Asset disposal with 30k proceeds via metadata.disposalProceeds
+      prisma.journalEntry.findMany.mockResolvedValue([
+        {
+          metadata: { flow: 'asset-disposal', disposalProceeds: '30000' },
+        },
+      ]);
+
+      const result = await service.getCashFlowFromJournal(
+        new Date('2026-01-01'),
+        new Date('2026-01-31'),
+      );
+
+      // Net Investing reflects disposal proceeds — good.
+      expect(result.investing.ppeDisposals).toBe(30_000);
+
+      // KNOWN GAP — gain/loss from the disposal flows into netIncome via P&L
+      // (because asset-disposal JE credits 41-12XX gain or debits 51-XX loss),
+      // but the indirect-method operating section does NOT reverse it out.
+      // This creates a double-count when both operating gain AND investing
+      // proceeds are presented. Phase A.5 must add a "reverse gain/loss on
+      // disposal" line in the operating section.
+      // For now, document by asserting reverseDisposalGain field is missing.
+      expect(result.operating).not.toHaveProperty('reverseDisposalGain');
+      expect(result.operating).not.toHaveProperty('reverseDisposalLoss');
+    });
+
     it('flags isReconciled=false when computed netChange drifts > 1 THB from actual cash Δ', async () => {
       // Make the cash account show a different delta than the indirect computation.
       // We seed cash account opening 0 and closing 100 (asActualCashChange=100),

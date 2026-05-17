@@ -707,6 +707,12 @@ model User {
   otherIncomeAttachments OtherIncomeAttachment[] @relation("OtherIncomeAttachmentUploader")
   otherIncomeTemplates   OtherIncomeTemplate[]   @relation("OtherIncomeTemplateCreator")
 
+  // D1.1.5.5 — Petty Cash custodian assignment (the user responsible for
+  // the petty-cash drawer). One user can be custodian for at most one
+  // CompanyInfo (SHOP or FINANCE), but the schema doesn't enforce that —
+  // it's an organizational policy that lives in service-layer validation.
+  custodianForCompanies CompanyInfo[] @relation("CompanyPettyCashCustodian")
+
   @@index([branchId])
   @@index([yeastarExtension])
   @@map("users")
@@ -3005,6 +3011,16 @@ model CompanyInfo {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
+  // D1.1.5.5 — Petty Cash custodian. The user responsible for the cash
+  // drawer at this CompanyInfo (SHOP or FINANCE). Nullable so the row can
+  // exist before assignment; ON DELETE SET NULL keeps the company row even
+  // if the user is later soft-deleted. Role-eligibility (which UserRoles
+  // may hold this seat) is enforced at the service layer via SystemConfig
+  // key `petty_cash_custodian_role` — not by a DB constraint — to keep
+  // role policy editable without a schema migration.
+  pettyCashCustodianId String? @map("petty_cash_custodian_id")
+  pettyCashCustodian   User?   @relation("CompanyPettyCashCustodian", fields: [pettyCashCustodianId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
   // Relations
   branches             Branch[]
   fromInterCompanyTx   InterCompanyTransaction[] @relation("ICFromCompany")
@@ -3016,6 +3032,7 @@ model CompanyInfo {
   otherIncomes         OtherIncome[]
   otherIncomeTemplates OtherIncomeTemplate[]
 
+  @@index([pettyCashCustodianId])
   @@map("company_info")
 }
 

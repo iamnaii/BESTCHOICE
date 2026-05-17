@@ -973,4 +973,134 @@ describe('SettingsService audit trail', () => {
       expect(flags.queryTimeoutSeconds).toBe(30);
     });
   });
+
+  // ─── D1.1.5.5 — Petty Cash custodian ───────────────────────────────
+  describe('assignPettyCashCustodian (D1.1.5.5)', () => {
+    beforeEach(() => {
+      // Default to FINANCE company resolved + ACCOUNTANT role
+      prisma.companyInfo = {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'co-finance',
+          companyCode: 'FINANCE',
+          pettyCashCustodianId: null,
+          pettyCashCustodian: null,
+        }),
+        update: jest.fn().mockResolvedValue({}),
+      };
+      prisma.user = {
+        findFirst: jest.fn(),
+        findMany: jest.fn().mockResolvedValue([]),
+      };
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+    });
+
+    it('assigns a valid ACCOUNTANT user → updates company + audit log', async () => {
+      const validUser = {
+        id: 'u-acct-1',
+        role: 'ACCOUNTANT',
+        name: 'Acc One',
+        email: 'acc1@bestchoice.test',
+      };
+      prisma.user.findFirst.mockResolvedValue(validUser);
+      // Second call: post-update reload via getPettyCashCustodian
+      prisma.companyInfo.findFirst
+        .mockResolvedValueOnce({
+          id: 'co-finance',
+          companyCode: 'FINANCE',
+          pettyCashCustodianId: null,
+          pettyCashCustodian: null,
+        })
+        .mockResolvedValueOnce({
+          id: 'co-finance',
+          companyCode: 'FINANCE',
+          pettyCashCustodian: validUser,
+        });
+      const out = await service.assignPettyCashCustodian('owner-1', {
+        userId: 'u-acct-1',
+      });
+      expect(prisma.companyInfo.update).toHaveBeenCalledWith({
+        where: { id: 'co-finance' },
+        data: { pettyCashCustodianId: 'u-acct-1' },
+      });
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 'owner-1',
+          action: 'PETTY_CASH_CUSTODIAN_ASSIGNED',
+          entity: 'CompanyInfo',
+          entityId: 'co-finance',
+          oldValue: { pettyCashCustodianId: null },
+          newValue: { pettyCashCustodianId: 'u-acct-1' },
+        }),
+      );
+      expect(out.custodian?.id).toBe('u-acct-1');
+    });
+
+    it('rejects when target user role does not match configured whitelist (BadRequest)', async () => {
+      prisma.user.findFirst.mockResolvedValue({
+        id: 'u-sales-1',
+        role: 'SALES',
+        name: 'Sales User',
+        email: 's@test',
+      });
+      await expect(
+        service.assignPettyCashCustodian('owner-1', { userId: 'u-sales-1' }),
+      ).rejects.toThrow(/บทบาท ACCOUNTANT/);
+      expect(prisma.companyInfo.update).not.toHaveBeenCalled();
+      expect(audit.log).not.toHaveBeenCalled();
+    });
+
+    it('rejects when target user is not found / inactive (NotFound)', async () => {
+      prisma.user.findFirst.mockResolvedValue(null);
+      await expect(
+        service.assignPettyCashCustodian('owner-1', { userId: 'u-ghost' }),
+      ).rejects.toThrow(/ไม่พบผู้ใช้งาน/);
+      expect(prisma.companyInfo.update).not.toHaveBeenCalled();
+    });
+
+    it('allows clearing the seat (userId=null) without role validation', async () => {
+      // Second call: post-update reload
+      prisma.companyInfo.findFirst
+        .mockResolvedValueOnce({
+          id: 'co-finance',
+          companyCode: 'FINANCE',
+          pettyCashCustodianId: 'u-old',
+          pettyCashCustodian: { id: 'u-old', role: 'ACCOUNTANT', name: 'Old', email: 'o@t' },
+        })
+        .mockResolvedValueOnce({
+          id: 'co-finance',
+          companyCode: 'FINANCE',
+          pettyCashCustodian: null,
+        });
+      const out = await service.assignPettyCashCustodian('owner-1', { userId: null });
+      expect(prisma.companyInfo.update).toHaveBeenCalledWith({
+        where: { id: 'co-finance' },
+        data: { pettyCashCustodianId: null },
+      });
+      expect(prisma.user.findFirst).not.toHaveBeenCalled();
+      expect(out.custodian).toBeNull();
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'PETTY_CASH_CUSTODIAN_ASSIGNED',
+          newValue: { pettyCashCustodianId: null },
+        }),
+      );
+    });
+
+    it('respects SystemConfig role override (BRANCH_MANAGER) — rejects ACCOUNTANT', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'petty_cash_custodian_role')
+          return Promise.resolve({ value: 'BRANCH_MANAGER' });
+        return Promise.resolve(null);
+      });
+      prisma.user.findFirst.mockResolvedValue({
+        id: 'u-acct-1',
+        role: 'ACCOUNTANT',
+        name: 'Acc',
+        email: 'a@t',
+      });
+      await expect(
+        service.assignPettyCashCustodian('owner-1', { userId: 'u-acct-1' }),
+      ).rejects.toThrow(/บทบาท BRANCH_MANAGER/);
+    });
+  });
 });

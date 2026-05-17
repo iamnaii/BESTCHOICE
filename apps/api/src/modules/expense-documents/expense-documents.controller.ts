@@ -16,6 +16,7 @@ import { BranchGuard } from '../auth/guards/branch.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { PostPermissionGuard } from './post-permission.guard';
+import { ReversePermissionGuard } from './reverse-permission.guard';
 import { ExpenseDocumentsService } from './expense-documents.service';
 import { CreateExpenseDocumentDto } from './dto/create.dto';
 import { UpdateExpenseDocumentDto } from './dto/update.dto';
@@ -232,14 +233,25 @@ export class ExpenseDocumentsController {
     return this.service.approve(id, user.id, user.role);
   }
 
+  /**
+   * D1.3.2.4 — Reverse / void a posted doc.
+   *
+   * Class-level guards (JwtAuthGuard, RolesGuard, BranchGuard) run first.
+   * Method-level `@Roles(...)` matches the SUPERSET of any value that the
+   * dynamic SystemConfig key `reverse_permission` may select (OWNER +
+   * FINANCE_MANAGER). The `ReversePermissionGuard` then narrows
+   * per-request. Default `reverse_permission = 'OWNER+FINANCE_MANAGER'`
+   * preserves current behavior.
+   */
   @Post(':id/void')
   @Roles('OWNER', 'FINANCE_MANAGER')
+  @UseGuards(ReversePermissionGuard)
   void(
     @Param('id') id: string,
     @Body() dto: VoidExpenseDocumentDto,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: { id: string; role: string },
   ) {
-    return this.service.voidDocument(id, user.id, dto);
+    return this.service.voidDocument(id, user.id, dto, user.role);
   }
 
   @Delete(':id')

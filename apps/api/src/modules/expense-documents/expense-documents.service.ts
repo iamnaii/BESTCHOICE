@@ -10,6 +10,7 @@ import { Prisma, DocumentStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { resolvePostPermissionRoles } from './post-permission.guard';
+import { resolveReversePermissionRoles } from './reverse-permission.guard';
 import { DocNumberService } from './services/doc-number.service';
 import { StatusTransitionService } from './services/status-transition.service';
 import { ExpenseSameDayTemplate } from '../journal/cpa-templates/expense-same-day.template';
@@ -2281,7 +2282,23 @@ export class ExpenseDocumentsService implements OnModuleInit {
   // C3 — Optionally accepts reasonCode + reasonDetail + reverseDate (caller-chosen
   // posting date for the reversal JE). All optional → existing parameterless
   // void path still works (back-compat).
-  async voidDocument(id: string, userId: string, dto: VoidExpenseDocumentDto = {}) {
+  async voidDocument(
+    id: string,
+    userId: string,
+    dto: VoidExpenseDocumentDto = {},
+    userRole?: string,
+  ) {
+    // D1.3.2.4 (S3 defense-in-depth) — mirror the ReversePermissionGuard
+    // check at the service boundary. Skipped when userRole is undefined
+    // (system-internal / unit-test paths).
+    if (userRole !== undefined) {
+      const allowed = await resolveReversePermissionRoles(this.prisma);
+      if (!allowed.has(userRole)) {
+        throw new ForbiddenException(
+          `ไม่มีสิทธิ์กลับรายการเอกสาร (role ปัจจุบัน: ${userRole})`,
+        );
+      }
+    }
     return this.prisma.$transaction(async (tx) => {
       // Per-doc advisory lock — serializes concurrent voids on the same id so
       // two callers cannot both pass assertCanVoid and double-post a reversal JE.

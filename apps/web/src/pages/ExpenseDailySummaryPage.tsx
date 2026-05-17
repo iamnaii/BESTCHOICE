@@ -6,8 +6,9 @@ import { ArrowLeft, Printer, FileSpreadsheet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { formatNumberDecimal } from '@/utils/formatters';
-import { formatThaiDateLong } from '@/lib/date';
+import { computeDefaultTimeRange, formatThaiDateLong } from '@/lib/date';
 import { useAuth } from '@/contexts/AuthContext';
+import { useUiFlags } from '@/hooks/useUiFlags';
 
 // ─── Types ─────────────────────────────────────────────────────────────
 interface ExpenseDocumentRow {
@@ -51,9 +52,21 @@ export default function ExpenseDailySummaryPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [date, setDate] = useState<string>(
-    searchParams.get('date') ?? new Date().toISOString().slice(0, 10),
-  );
+  // D1.3.5.1 — initial date driven by OWNER-configured `summary_default_range`.
+  // The summary page renders ONE calendar day at a time (single-date API), so
+  // we use the preset's endDate (latest day of the preferred period) as the
+  // initial pick: 'today' → today; 'this_week'/'this_month' → today (also
+  // their endDate); 'last_month' → last day of the previous month. The lazy
+  // useState initializer captures the value once; mid-session preset changes
+  // don't override user picks. URL `?date=` query param wins over the preset.
+  const { summaryDefaultRange } = useUiFlags();
+  const [date, setDate] = useState<string>(() => {
+    const urlDate = searchParams.get('date');
+    if (urlDate) return urlDate;
+    const { endDate } = computeDefaultTimeRange(summaryDefaultRange);
+    // endDate is always non-empty for the summary preset whitelist (no 'all').
+    return endDate || new Date().toISOString().slice(0, 10);
+  });
   const [branchId, setBranchId] = useState<string>(
     searchParams.get('branchId') ?? user?.branchId ?? '',
   );

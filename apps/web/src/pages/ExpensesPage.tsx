@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useSearchParams, useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { usePaginationParams } from '@/hooks/usePaginationParams';
+import { useUiFlags } from '@/hooks/useUiFlags';
 import { PaginationBar } from '@/components/ui/PaginationBar';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
@@ -19,7 +20,6 @@ import { Button } from '@/components/ui/button';
 import { formatDateShortThai, formatNumberDecimal } from '@/utils/formatters';
 import { ExpenseFormV4 } from '@/components/expense-form-v4/ExpenseFormV4';
 import { ReopenedPeriodBanner } from '@/components/accounting/ReopenedPeriodBanner';
-import { useUiFlags } from '@/hooks/useUiFlags';
 import { useApprovalActions, getApprovalReason, canApprove } from '@/hooks/useApprovalActions';
 
 // ─── Types ───
@@ -120,6 +120,10 @@ function fmt(n: string | number | null | undefined): string {
 export default function ExpensesPage() {
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
+  // D1.2.4 follow-up — feature flag for the Expense Templates ("รายการโปรด")
+  // surface. When OWNER disables, the favorites tab + entry button are
+  // hidden. Default true so first paint matches legacy behaviour.
+  const { templatesEnabled } = useUiFlags();
   const isOwner = currentUser?.role === 'OWNER';
   const [searchParams, setSearchParams] = useSearchParams();
   const tabFilter = searchParams.get('tab') || 'all';
@@ -128,7 +132,9 @@ export default function ExpensesPage() {
   const branchFilter = searchParams.get('branch') || '';
   const startDate = searchParams.get('startDate') || '';
   const endDate = searchParams.get('endDate') || '';
-  const { page, size, setPage, setSize } = usePaginationParams({ defaultSize: 50 });
+  // D1.2.3.2 — defaultSize derived from OWNER-configured `pagination_size`.
+  const { paginationSize } = useUiFlags();
+  const { page, size, setPage, setSize } = usePaginationParams({ defaultSize: paginationSize });
   const [search, setSearch] = useState(searchParams.get('search') || '');
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const debouncedSearch = useDebounce(search, 300);
@@ -240,13 +246,16 @@ export default function ExpensesPage() {
   const paidCount = summary?.byStatus?.POSTED ?? 0;
   const recordedCount = totalCount - draftCount;
 
+  // D1.2.4 follow-up — strip 'favorites' tab when templates feature is OFF.
   const tabs = [
     { id: 'all', label: 'ทั้งหมด', count: totalCount, icon: Receipt },
     { id: 'draft', label: 'ฉบับร่าง', count: draftCount, icon: FileText },
     { id: 'unpaid', label: 'รอจ่าย', count: unpaidCount, sub: parseFloat(unpaidTotal) > 0 ? `รวม ${fmt(unpaidTotal)} B` : undefined, icon: Wallet },
     { id: 'recorded', label: 'บันทึกแล้ว', count: recordedCount, icon: CreditCard },
     { id: 'paid', label: 'จ่ายแล้ว', count: paidCount, icon: Receipt },
-    { id: 'favorites', label: 'รายการโปรด', count: 0, sub: 'ใช้บันทึกซ้ำ', icon: Bookmark },
+    ...(templatesEnabled
+      ? [{ id: 'favorites' as const, label: 'รายการโปรด', count: 0, sub: 'ใช้บันทึกซ้ำ', icon: Bookmark }]
+      : []),
     { id: 'daily-summary', label: 'สรุปรายวัน', icon: BarChart3, isAction: true },
   ] as const;
 
@@ -470,11 +479,17 @@ export default function ExpensesPage() {
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <button className="px-3 py-1.5 rounded-lg border border-border text-xs flex items-center gap-1.5 hover:bg-muted transition-colors">
-            <Bookmark className="size-3.5 text-muted-foreground" />
-            <span className="text-foreground">รายการโปรด</span>
-            <span className="text-primary font-semibold ml-0.5 font-mono">0</span>
-          </button>
+          {templatesEnabled && (
+            <button
+              type="button"
+              onClick={() => navigate('/expenses/favorites')}
+              className="px-3 py-1.5 rounded-lg border border-border text-xs flex items-center gap-1.5 hover:bg-muted transition-colors"
+            >
+              <Bookmark className="size-3.5 text-muted-foreground" />
+              <span className="text-foreground">รายการโปรด</span>
+              <span className="text-primary font-semibold ml-0.5 font-mono">0</span>
+            </button>
+          )}
           <button className="px-3 py-1.5 rounded-lg border border-border text-xs flex items-center gap-1.5 hover:bg-muted transition-colors">
             <Wallet className="size-3.5 text-muted-foreground" />
             <span className="text-foreground">เจ้าหนี้คงค้าง</span>

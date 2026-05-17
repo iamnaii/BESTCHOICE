@@ -1,5 +1,6 @@
 import { Link } from 'react-router';
 import { MakerCheckerToggle } from '../components/MakerCheckerToggle';
+import { PettyCashCustodianCard } from '../components/PettyCashCustodianCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Users } from 'lucide-react';
@@ -8,6 +9,11 @@ export function UsersTab() {
   return (
     <div className="space-y-4">
       <MakerCheckerToggle />
+
+      {/* D1.1.5.5 — Petty Cash custodian assignment (OWNER-only).
+          Sits under MakerCheckerToggle since both deal with operational
+          authority — segregation-of-duties + cash-drawer responsibility. */}
+      <PettyCashCustodianCard />
 
       <Card>
         <CardHeader>

@@ -304,6 +304,14 @@ export class SettingsService {
      */
     animationEnabled: boolean;
     /**
+     * D1.3.1.4 — Master IN_APP notification kill switch. Default `true`.
+     * When `false`, NotificationsService.send() returns
+     * `{ id: '', status: 'SKIPPED', blockReason: 'IN_APP_DISABLED' }` for
+     * `IN_APP` channel calls — no DB write, no exception. LINE/SMS unaffected.
+     * Surfaced here so UIs can render banners explaining the silent skip.
+     */
+    inAppNotificationsEnabled: boolean;
+    /**
      * D1.4.1.4 — BOOTSTRAP default theme for first-time devices (no `theme`
      * key in localStorage from next-themes). 'system' default = respect OS
      * `prefers-color-scheme`. Existing per-user preference always wins after
@@ -447,6 +455,11 @@ export class SettingsService {
     );
     // D1.4.1.3 — animation enabled. Default true.
     const animationEnabled = await this.readBoolean('animation_enabled', true);
+    // D1.3.1.4 — Master IN_APP notification toggle. Default true.
+    const inAppNotificationsEnabled = await this.readBoolean(
+      'in_app_notifications_enabled',
+      true,
+    );
     // D1.4.1.4 — dark_mode_default. Whitelist light/dark/system, default system.
     const darkModeDefaultRaw = await this.getKey('dark_mode_default');
     const darkModeDefault: 'light' | 'dark' | 'system' =
@@ -486,6 +499,7 @@ export class SettingsService {
       sidebarCollapsedDefault,
       showKeyboardShortcuts,
       animationEnabled,
+      inAppNotificationsEnabled,
       darkModeDefault,
       queryTimeoutSeconds,
     };

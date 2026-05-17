@@ -99,6 +99,8 @@ export interface UiFlags {
    * strips `transition` / `animation` from every element. Default true.
    */
   animationEnabled: boolean;
+  /** D1.3.1.4 — IN_APP channel master toggle. Default true. */
+  inAppNotificationsEnabled: boolean;
   /**
    * D1.4.1.4 — BOOTSTRAP default theme for first-time devices (no `theme`
    * key in localStorage). 'system' = respect OS prefers-color-scheme.
@@ -147,6 +149,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   sidebarCollapsedDefault: false,
   showKeyboardShortcuts: true,
   animationEnabled: true,
+  inAppNotificationsEnabled: true,
   darkModeDefault: 'system',
   queryTimeoutSeconds: 30,
 };

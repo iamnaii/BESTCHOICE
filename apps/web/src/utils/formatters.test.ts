@@ -182,4 +182,22 @@ describe('formatters — decimal_places default (D1.2.3.4)', () => {
     // 1.0049999…). For correct half-up on string sources, callers should
     // pass the string form unchanged (parseFloat is the lossy step).
   });
+
+  // Review-round-2 — negative half-up edge cases. The implementation rounds
+  // on the absolute value then re-applies the sign, so the magnitude rounds
+  // up the same way for negatives. Without this symmetry, ROUND_HALF_UP on
+  // -0.5 would yield 0 (banker / asymmetric) instead of the expected -1.
+  it('ROUND_HALF_UP symmetric on negatives (-0.5 → -1, -2.5 → -3)', () => {
+    // -0.5 rounds AWAY from zero → -1 (banker would give 0; asymmetric
+    // half-up would give 0; our symmetric impl gives -1 to match positive
+    // 0.5 → 1).
+    expect(formatNumberDecimal(-0.5, 0)).toBe('-1');
+    // -1.5 → -2 (banker would also give -2 — odd half-up matches)
+    expect(formatNumberDecimal(-1.5, 0)).toBe('-2');
+    // -2.5 → -3 (banker would give -2; divergence proves symmetric half-up)
+    expect(formatNumberDecimal(-2.5, 0)).toBe('-3');
+    // Negative non-half edge — verify the sign reapplies cleanly.
+    expect(formatNumberDecimal(-21468.6, 0)).toBe('-21,469');
+    expect(formatNumberDecimal(-21468.4, 0)).toBe('-21,468');
+  });
 });

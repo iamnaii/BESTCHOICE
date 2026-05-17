@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { ExpenseDocumentsService } from '../expense-documents.service';
 import { LineAggregatorService } from '../services/line-aggregator.service';
@@ -21,9 +21,6 @@ describe('ExpenseDocumentsService', () => {
   let payroll: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let settlement: any;
-  // D1.2.1.5 — NotificationsService mock (used by submitForApproval)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let notifications: any;
 
   beforeEach(() => {
     prisma = {
@@ -81,8 +78,8 @@ describe('ExpenseDocumentsService', () => {
       auditLog: {
         create: jest.fn().mockResolvedValue({}),
       },
-      // D1.2.1.5 — notifyApprovers() resolves recipients via User.findMany.
-      // Default empty → fallback path tries OWNER (also empty here) → no-op.
+      // D1.2.1.3 — approve() validates approvers_list against User table.
+      // Default: list is empty (only OWNER may approve).
       user: {
         findMany: jest.fn().mockResolvedValue([]),
       },
@@ -99,7 +96,6 @@ describe('ExpenseDocumentsService', () => {
     creditNote = { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-3' }) };
     payroll = { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-4' }) };
     settlement = { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-5' }) };
-    notifications = { send: jest.fn().mockResolvedValue({ id: 'notif-1', status: 'SENT' }) };
     service = new ExpenseDocumentsService(
       prisma,
       docNumber,
@@ -116,7 +112,6 @@ describe('ExpenseDocumentsService', () => {
       { execute: jest.fn() } as never,
       { getConfig: jest.fn(), validate: jest.fn() } as never,
       { loadWhitelist: jest.fn().mockResolvedValue(new Set(['53-1104', '53-1105'])), validateLine: jest.fn().mockResolvedValue({ taxableBase: new Decimal(0) }) } as never,
-      notifications,
     );
   });
 
@@ -677,279 +672,540 @@ describe('ExpenseDocumentsService', () => {
         /CompanyInfo with companyCode=SHOP/,
       );
     });
+
+    // D1.2.1.2 — approval-threshold gate. With approval_enabled true and
+    // doc.totalAmount >= 50,000 (default threshold), post() must reject.
+    it('D1.2.1.2: rejects post when approval_enabled=true AND totalAmount >= threshold (default 50k)', async () => {
+      prisma.systemConfig.findFirst.mockImplementation(
+        (args: { where: { key: string } }) => {
+          if (args.where.key === 'approval_enabled') return Promise.resolve({ value: 'true' });
+          // approval_threshold key absent -> readNumberFlag falls back to 50000
+          if (args.where.key === 'reverse_reason_required') return Promise.resolve({ value: 'false' });
+          return Promise.resolve(null);
+        },
+      );
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-thr-over',
+        status: 'DRAFT',
+        documentType: 'EXPENSE',
+        paymentMethod: 'CASH',
+        depositAccountCode: '11-1101',
+        totalAmount: new Decimal('75000.00'),
+        withholdingTax: new Decimal('0'),
+        whtFormType: null,
+        deletedAt: null,
+      });
+      await expect(service.post('doc-thr-over', 'user-1')).rejects.toThrow(
+        /ต้องผ่านการอนุมัติก่อน/,
+      );
+      expect(sameDay.execute).not.toHaveBeenCalled();
+    });
+
+    it('D1.2.1.2: post proceeds normally when totalAmount < threshold (below 50k)', async () => {
+      prisma.systemConfig.findFirst.mockImplementation(
+        (args: { where: { key: string } }) => {
+          if (args.where.key === 'approval_enabled') return Promise.resolve({ value: 'true' });
+          if (args.where.key === 'reverse_reason_required') return Promise.resolve({ value: 'false' });
+          return Promise.resolve(null);
+        },
+      );
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-thr-under',
+        status: 'DRAFT',
+        documentType: 'EXPENSE',
+        paymentMethod: 'CASH',
+        depositAccountCode: '11-1101',
+        totalAmount: new Decimal('1000.00'),
+        withholdingTax: new Decimal('0'),
+        whtFormType: null,
+        deletedAt: null,
+      });
+      transition.resolveTargetStatus.mockReturnValue('POSTED');
+      await service.post('doc-thr-under', 'user-1');
+      expect(sameDay.execute).toHaveBeenCalledWith('doc-thr-under', expect.anything());
+    });
+
+    it('D1.2.1.2: OWNER-configured threshold overrides default (e.g. 100k)', async () => {
+      prisma.systemConfig.findFirst.mockImplementation(
+        (args: { where: { key: string } }) => {
+          if (args.where.key === 'approval_enabled') return Promise.resolve({ value: 'true' });
+          if (args.where.key === 'approval_threshold') return Promise.resolve({ value: '100000' });
+          if (args.where.key === 'reverse_reason_required') return Promise.resolve({ value: 'false' });
+          return Promise.resolve(null);
+        },
+      );
+      // 75k < 100k -> should NOT be gated even though it would be at default 50k
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-thr-custom',
+        status: 'DRAFT',
+        documentType: 'EXPENSE',
+        paymentMethod: 'CASH',
+        depositAccountCode: '11-1101',
+        totalAmount: new Decimal('75000.00'),
+        withholdingTax: new Decimal('0'),
+        whtFormType: null,
+        deletedAt: null,
+      });
+      transition.resolveTargetStatus.mockReturnValue('POSTED');
+      await service.post('doc-thr-custom', 'user-1');
+      expect(sameDay.execute).toHaveBeenCalledWith('doc-thr-custom', expect.anything());
+    });
+
+    it('D1.2.1.2: negative threshold clamps to 0 -> all docs gated when flag on', async () => {
+      prisma.systemConfig.findFirst.mockImplementation(
+        (args: { where: { key: string } }) => {
+          if (args.where.key === 'approval_enabled') return Promise.resolve({ value: 'true' });
+          if (args.where.key === 'approval_threshold') return Promise.resolve({ value: '-100000' });
+          if (args.where.key === 'reverse_reason_required') return Promise.resolve({ value: 'false' });
+          return Promise.resolve(null);
+        },
+      );
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-thr-neg',
+        status: 'DRAFT',
+        documentType: 'EXPENSE',
+        paymentMethod: 'CASH',
+        depositAccountCode: '11-1101',
+        totalAmount: new Decimal('500.00'),
+        withholdingTax: new Decimal('0'),
+        whtFormType: null,
+        deletedAt: null,
+      });
+      await expect(service.post('doc-thr-neg', 'user-1')).rejects.toThrow(/ต้องผ่านการอนุมัติก่อน/);
+    });
+
+    // D1.2.1.2 — OR composition with doctype filter. Below-threshold docs in
+    // `approval_required_doc_types` must still be gated (default ['PAYROLL']).
+    it('D1.2.1.2: gates low-value PAYROLL via default doctype filter (OR composition)', async () => {
+      prisma.systemConfig.findFirst.mockImplementation(
+        (args: { where: { key: string } }) => {
+          if (args.where.key === 'approval_enabled') return Promise.resolve({ value: 'true' });
+          // approval_required_doc_types absent → falls back to ['PAYROLL']
+          if (args.where.key === 'reverse_reason_required') return Promise.resolve({ value: 'false' });
+          return Promise.resolve(null);
+        },
+      );
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-payroll-low',
+        status: 'DRAFT',
+        documentType: 'PAYROLL',
+        paymentMethod: 'BANK_TRANSFER',
+        depositAccountCode: '11-1201',
+        totalAmount: new Decimal('1000.00'),
+        withholdingTax: new Decimal('0'),
+        whtFormType: null,
+        deletedAt: null,
+      });
+      await expect(service.post('doc-payroll-low', 'user-1')).rejects.toThrow(
+        /ต้องผ่านการอนุมัติก่อน/,
+      );
+      expect(payroll.execute).not.toHaveBeenCalled();
+    });
+
+    it('D1.2.1.2: non-required doctype below threshold passes (OR neither true)', async () => {
+      prisma.systemConfig.findFirst.mockImplementation(
+        (args: { where: { key: string } }) => {
+          if (args.where.key === 'approval_enabled') return Promise.resolve({ value: 'true' });
+          if (args.where.key === 'reverse_reason_required') return Promise.resolve({ value: 'false' });
+          return Promise.resolve(null);
+        },
+      );
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-ex-low',
+        status: 'DRAFT',
+        documentType: 'EXPENSE',
+        paymentMethod: 'CASH',
+        depositAccountCode: '11-1101',
+        totalAmount: new Decimal('1000.00'),
+        withholdingTax: new Decimal('0'),
+        whtFormType: null,
+        deletedAt: null,
+      });
+      transition.resolveTargetStatus.mockReturnValue('POSTED');
+      await service.post('doc-ex-low', 'user-1');
+      expect(sameDay.execute).toHaveBeenCalledWith('doc-ex-low', expect.anything());
+    });
+
+    it('D1.2.1.1: post on DRAFT proceeds normally when approval_enabled is false (default)', async () => {
+      // Global mock returns null for `approval_enabled` → readBoolFlag fallback = false
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-no-approval',
+        status: 'DRAFT',
+        documentType: 'EXPENSE',
+        paymentMethod: 'CASH',
+        depositAccountCode: '11-1101',
+        totalAmount: new Decimal('500.00'),
+        withholdingTax: new Decimal('0'),
+        whtFormType: null,
+        deletedAt: null,
+      });
+      transition.resolveTargetStatus.mockReturnValue('POSTED');
+      await service.post('doc-no-approval', 'user-1');
+      expect(sameDay.execute).toHaveBeenCalledWith('doc-no-approval', expect.anything());
+    });
+
+    // D1.2.1.6 — assertCanPost now also accepts APPROVED (the auto-post chain
+    // in approve() relies on this when transition.assertCanPost is invoked at
+    // the post-side, and a manual POST after APPROVE goes through this gate).
+    // Spec calls real StatusTransitionService to anchor the contract.
+    it('D1.2.1.6: post() permits source status APPROVED (manual post after approve)', async () => {
+      // Replace mock transition with real one so its assertCanPost runs.
+      const realTransition = new (require('../services/status-transition.service').StatusTransitionService)();
+      service = new ExpenseDocumentsService(
+        prisma, docNumber, realTransition, sameDay, accrual, creditNote,
+        payroll, settlement,
+        { createAndPost: jest.fn() } as never,
+        new LineAggregatorService(),
+        { preview: jest.fn() } as never,
+        { validateContribution: jest.fn().mockResolvedValue(undefined) } as never,
+        { execute: jest.fn() } as never,
+        { getConfig: jest.fn(), validate: jest.fn() } as never,
+        { loadWhitelist: jest.fn().mockResolvedValue(new Set(['53-1104'])), validateLine: jest.fn() } as never,
+      );
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-approved',
+        status: 'APPROVED',
+        documentType: 'EXPENSE',
+        paymentMethod: 'CASH',
+        depositAccountCode: '11-1101',
+        totalAmount: new Decimal('500.00'),
+        withholdingTax: new Decimal('0'),
+        whtFormType: null,
+        receiptImageUrl: null,
+      });
+      await service.post('doc-approved', 'user-1');
+      expect(sameDay.execute).toHaveBeenCalledWith('doc-approved', expect.anything());
+    });
   });
 
-  // D1.2.1.5 — notification_on_pending fan-out
-  describe('submitForApproval + notifyApprovers (D1.2.1.5)', () => {
-    function setupDraftDoc(
-      overrides: Partial<{
-        documentType: string;
-        vendorName: string | null;
-        expenseLineCount: number;
-        payrollPeriod: string;
-        payrollLineCount: number;
-        settlementLineCount: number;
-      }> = {},
-    ) {
-      const documentType = overrides.documentType ?? 'EXPENSE';
-      const docFields: Record<string, unknown> = {
-        id: 'doc-sub-n',
-        number: 'EX-20260510-0001',
+  describe('submitForApproval (D1.2.1.1)', () => {
+    it('rejects when approval_enabled is false (default)', async () => {
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-sub-1',
         status: 'DRAFT',
-        documentType,
-        vendorName: overrides.vendorName ?? null,
-        totalAmount: new Decimal('500.00'),
         deletedAt: null,
-      };
-      // Attach the related-detail include shape that submitForApproval pulls
-      // for its PDPA-safe audit summary. Each branch only gets the relation
-      // for its own documentType to mirror real Prisma behavior.
-      if (documentType === 'EXPENSE') {
-        const n = overrides.expenseLineCount ?? 2;
-        docFields.expenseDetail = {
-          lines: Array.from({ length: n }, (_, i) => ({ id: `line-${i}` })),
-        };
-      } else if (documentType === 'PAYROLL') {
-        const n = overrides.payrollLineCount ?? 3;
-        docFields.payroll = {
-          payrollPeriod: overrides.payrollPeriod ?? '2026-05',
-          lines: Array.from({ length: n }, (_, i) => ({ id: `pline-${i}` })),
-        };
-      } else if (documentType === 'VENDOR_SETTLEMENT') {
-        const n = overrides.settlementLineCount ?? 1;
-        docFields.settlement = {
-          settlementLines: Array.from({ length: n }, (_, i) => ({ id: `sline-${i}` })),
-        };
-      } else if (documentType === 'CREDIT_NOTE') {
-        docFields.creditNote = { mode: 'LINKED' };
-      }
-      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue(docFields);
-      // update() in the global mock returns a stub w/o totalAmount → set it
-      // explicitly so submitForApproval's notifyApprovers() can read it.
-      prisma.expenseDocument.update.mockResolvedValue({
-        ...docFields,
+      });
+      await expect(service.submitForApproval('doc-sub-1', 'user-1')).rejects.toThrow(
+        /ฟีเจอร์ขออนุมัติยังไม่เปิดใช้งาน/,
+      );
+    });
+
+    it('rejects when source status is not DRAFT', async () => {
+      prisma.systemConfig.findFirst.mockImplementation(
+        (args: { where: { key: string } }) => {
+          if (args.where.key === 'approval_enabled') return Promise.resolve({ value: 'true' });
+          return Promise.resolve(null);
+        },
+      );
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-sub-2',
+        status: 'POSTED',
+        deletedAt: null,
+      });
+      await expect(service.submitForApproval('doc-sub-2', 'user-1')).rejects.toThrow(
+        /ส่งขออนุมัติได้เฉพาะเอกสาร DRAFT/,
+      );
+    });
+
+    it('flips DRAFT → PENDING_APPROVAL when approval_enabled is true', async () => {
+      prisma.systemConfig.findFirst.mockImplementation(
+        (args: { where: { key: string } }) => {
+          if (args.where.key === 'approval_enabled') return Promise.resolve({ value: 'true' });
+          return Promise.resolve(null);
+        },
+      );
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-sub-3',
+        status: 'DRAFT',
+        deletedAt: null,
+      });
+      await service.submitForApproval('doc-sub-3', 'user-1');
+      const updateCalls = prisma.expenseDocument.update.mock.calls;
+      expect(
+        updateCalls.some((c: unknown[]) => {
+          const arg = c[0] as { data?: { status?: string } };
+          return arg?.data?.status === 'PENDING_APPROVAL';
+        }),
+      ).toBe(true);
+    });
+
+    it('rejects when doc is soft-deleted', async () => {
+      prisma.systemConfig.findFirst.mockImplementation(
+        (args: { where: { key: string } }) => {
+          if (args.where.key === 'approval_enabled') return Promise.resolve({ value: 'true' });
+          return Promise.resolve(null);
+        },
+      );
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-sub-4',
+        status: 'DRAFT',
+        deletedAt: new Date(),
+      });
+      await expect(service.submitForApproval('doc-sub-4', 'user-1')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+  });
+
+  describe('approve (D1.2.1.6)', () => {
+    function setupApprovableDoc(overrides: Record<string, unknown> = {}) {
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-pend',
         status: 'PENDING_APPROVAL',
+        documentType: 'EXPENSE',
+        paymentMethod: 'CASH',
+        depositAccountCode: '11-1101',
+        totalAmount: new Decimal('500.00'),
+        withholdingTax: new Decimal('0'),
+        whtFormType: null,
+        receiptImageUrl: null,
+        documentDate: new Date('2026-05-10'),
+        deletedAt: null,
+        ...overrides,
+      });
+      transition.resolveTargetStatus.mockReturnValue('POSTED');
+    }
+
+    it('rejects when source status is not PENDING_APPROVAL', async () => {
+      setupApprovableDoc({ status: 'DRAFT' });
+      transition.assertCanApprove = jest.fn(() => {
+        throw new BadRequestException('not pending');
+      });
+      await expect(service.approve('doc-pend', 'user-1')).rejects.toThrow(BadRequestException);
+    });
+
+    it('auto_post_on_approve = true (default): flips to APPROVED then runs sameDay template', async () => {
+      setupApprovableDoc();
+      transition.assertCanApprove = jest.fn();
+      // systemConfig.findFirst defaults to null → readBoolFlag returns true (default)
+      await service.approve('doc-pend', 'user-1');
+      // First: update to APPROVED
+      const updateCalls = prisma.expenseDocument.update.mock.calls;
+      expect(updateCalls.some((c: unknown[]) => {
+        const arg = c[0] as { data?: { status?: string } };
+        return arg?.data?.status === 'APPROVED';
+      })).toBe(true);
+      // Then: JE template is executed (auto-post chain)
+      expect(sameDay.execute).toHaveBeenCalledWith('doc-pend', expect.anything());
+    });
+
+    it('auto_post_on_approve = false: flips to APPROVED but skips JE template', async () => {
+      setupApprovableDoc();
+      transition.assertCanApprove = jest.fn();
+      prisma.systemConfig.findFirst.mockImplementation(
+        (args: { where: { key: string } }) => {
+          if (args.where.key === 'auto_post_on_approve') {
+            return Promise.resolve({ value: 'false' });
+          }
+          if (args.where.key === 'reverse_reason_required') {
+            return Promise.resolve({ value: 'false' });
+          }
+          return Promise.resolve(null);
+        },
+      );
+      await service.approve('doc-pend', 'user-1');
+      // Status flip happens
+      const updateCalls = prisma.expenseDocument.update.mock.calls;
+      expect(updateCalls.some((c: unknown[]) => {
+        const arg = c[0] as { data?: { status?: string } };
+        return arg?.data?.status === 'APPROVED';
+      })).toBe(true);
+      // But JE templates are NOT called
+      expect(sameDay.execute).not.toHaveBeenCalled();
+      expect(accrual.execute).not.toHaveBeenCalled();
+    });
+
+    it('rejects when doc is soft-deleted', async () => {
+      setupApprovableDoc({ deletedAt: new Date() });
+      transition.assertCanApprove = jest.fn();
+      await expect(service.approve('doc-pend', 'user-1')).rejects.toThrow(NotFoundException);
+    });
+
+    it('auto-post chain dispatches PAYROLL through payroll template', async () => {
+      setupApprovableDoc({ documentType: 'PAYROLL', paymentMethod: null, depositAccountCode: null });
+      transition.assertCanApprove = jest.fn();
+      await service.approve('doc-pend', 'user-1');
+      expect(payroll.execute).toHaveBeenCalledWith('doc-pend', expect.anything());
+    });
+
+    it('auto-post chain enforces attachment-threshold guard (C10 symmetry)', async () => {
+      setupApprovableDoc({ totalAmount: new Decimal('100000.00') });
+      transition.assertCanApprove = jest.fn();
+      prisma.systemConfig.findUnique.mockImplementation(
+        (args: { where: { key: string } }) =>
+          args.where.key === 'ATTACHMENT_REQUIRED_ABOVE_AMOUNT'
+            ? { key: 'ATTACHMENT_REQUIRED_ABOVE_AMOUNT', value: '50000' }
+            : null,
+      );
+      await expect(service.approve('doc-pend', 'user-1')).rejects.toThrow(/ต้องแนบไฟล์ประกอบ/);
+      expect(sameDay.execute).not.toHaveBeenCalled();
+    });
+
+    // D1.2.1.6 — audit trail: APPROVED on every approve(), AUTO_POSTED only
+    // when auto_post_on_approve=true completes successfully.
+    it('approve() writes APPROVED audit log (even when auto-post disabled)', async () => {
+      setupApprovableDoc();
+      transition.assertCanApprove = jest.fn();
+      prisma.systemConfig.findFirst.mockImplementation(
+        (args: { where: { key: string } }) => {
+          if (args.where.key === 'auto_post_on_approve') {
+            return Promise.resolve({ value: 'false' });
+          }
+          return Promise.resolve(null);
+        },
+      );
+      await service.approve('doc-pend', 'user-1');
+      const auditCalls = prisma.auditLog.create.mock.calls;
+      const approvedCall = auditCalls.find((c: unknown[]) => {
+        const arg = c[0] as { data?: { action?: string } };
+        return arg?.data?.action === 'APPROVED';
+      });
+      expect(approvedCall).toBeDefined();
+      const approvedArg = approvedCall![0] as {
+        data: { action: string; entity: string; entityId: string; userId: string; oldValue: unknown; newValue: unknown };
+      };
+      expect(approvedArg.data.entity).toBe('expense_document');
+      expect(approvedArg.data.entityId).toBe('doc-pend');
+      expect(approvedArg.data.userId).toBe('user-1');
+      expect(approvedArg.data.oldValue).toEqual({ status: 'PENDING_APPROVAL' });
+      expect(approvedArg.data.newValue).toEqual({ status: 'APPROVED' });
+      // AUTO_POSTED MUST NOT fire when auto-post is disabled
+      const autoPostedCall = auditCalls.find((c: unknown[]) => {
+        const arg = c[0] as { data?: { action?: string } };
+        return arg?.data?.action === 'AUTO_POSTED';
+      });
+      expect(autoPostedCall).toBeUndefined();
+    });
+
+    it('approve() writes APPROVED + AUTO_POSTED audit logs when auto_post_on_approve=true', async () => {
+      setupApprovableDoc();
+      transition.assertCanApprove = jest.fn();
+      // Default systemConfig (null) → readBoolFlag returns true (default) → auto-post path
+      await service.approve('doc-pend', 'user-1');
+      const auditCalls = prisma.auditLog.create.mock.calls;
+      const actions = auditCalls
+        .map((c: unknown[]) => (c[0] as { data?: { action?: string } })?.data?.action)
+        .filter(Boolean);
+      expect(actions).toContain('APPROVED');
+      expect(actions).toContain('AUTO_POSTED');
+      const autoPostedCall = auditCalls.find((c: unknown[]) => {
+        const arg = c[0] as { data?: { action?: string } };
+        return arg?.data?.action === 'AUTO_POSTED';
+      });
+      const autoPostedArg = autoPostedCall![0] as {
+        data: { action: string; entity: string; entityId: string; userId: string; newValue: { autoPostedFromApproval?: boolean; status?: string } };
+      };
+      expect(autoPostedArg.data.entity).toBe('expense_document');
+      expect(autoPostedArg.data.entityId).toBe('doc-pend');
+      expect(autoPostedArg.data.userId).toBe('user-1');
+      expect(autoPostedArg.data.newValue.status).toBe('POSTED');
+      expect(autoPostedArg.data.newValue.autoPostedFromApproval).toBe(true);
+    });
+  });
+
+  // D1.2.1.3 — approvers_list role gate
+  describe('approve (D1.2.1.3)', () => {
+    function setupPendingDoc(overrides: Record<string, unknown> = {}) {
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-app',
+        status: 'PENDING_APPROVAL',
+        deletedAt: null,
+        ...overrides,
       });
     }
 
-    it('flips DRAFT -> PENDING_APPROVAL and notifies approvers when flag is on (default)', async () => {
-      setupDraftDoc();
-      prisma.systemConfig.findFirst.mockImplementation(
-        (args: { where: { key: string } }) => {
-          if (args.where.key === 'approvers_list') {
-            return Promise.resolve({ value: JSON.stringify(['user-app-1', 'user-app-2']) });
-          }
-          // notification_on_pending defaults to true (no row)
-          return Promise.resolve(null);
-        },
-      );
-      prisma.user.findMany.mockResolvedValue([
-        { id: 'user-app-1', email: 'app1@ex.com', name: 'Approver 1' },
-        { id: 'user-app-2', email: 'app2@ex.com', name: 'Approver 2' },
-      ]);
-      await service.submitForApproval('doc-sub-n', 'user-1');
+    it('OWNER can always approve regardless of approvers_list', async () => {
+      setupPendingDoc();
+      // user.findMany returns [] (default) but OWNER short-circuits the check
+      await service.approve('doc-app', 'user-owner', 'OWNER');
       const updateCalls = prisma.expenseDocument.update.mock.calls;
       expect(
         updateCalls.some((c: unknown[]) => {
           const arg = c[0] as { data?: { status?: string } };
-          return arg?.data?.status === 'PENDING_APPROVAL';
+          return arg?.data?.status === 'APPROVED';
         }),
       ).toBe(true);
-      // Fan-out: two recipients => two notifications.send() calls
-      expect(notifications.send).toHaveBeenCalledTimes(2);
-      const firstCall = notifications.send.mock.calls[0][0];
-      expect(firstCall.channel).toBe('IN_APP');
-      expect(firstCall.subject).toContain('EX-20260510-0001');
-      expect(firstCall.relatedId).toBe('doc-sub-n');
     });
 
-    it('does NOT fan out when notification_on_pending = false', async () => {
-      setupDraftDoc();
-      prisma.systemConfig.findFirst.mockImplementation(
-        (args: { where: { key: string } }) => {
-          if (args.where.key === 'notification_on_pending') return Promise.resolve({ value: 'false' });
-          if (args.where.key === 'approvers_list') {
-            return Promise.resolve({ value: JSON.stringify(['user-app-1']) });
-          }
-          return Promise.resolve(null);
-        },
-      );
-      prisma.user.findMany.mockResolvedValue([
-        { id: 'user-app-1', email: 'app1@ex.com', name: 'A1' },
-      ]);
-      await service.submitForApproval('doc-sub-n', 'user-1');
-      expect(notifications.send).not.toHaveBeenCalled();
-    });
-
-    it('falls back to OWNERs when approvers_list is empty', async () => {
-      setupDraftDoc();
-      // approvers_list missing → empty list → notifyApprovers tries OWNERs
-      prisma.systemConfig.findFirst.mockResolvedValue(null);
-      prisma.user.findMany.mockResolvedValue([
-        { id: 'owner-1', email: 'owner@bc.com', name: 'Owner' },
-      ]);
-      await service.submitForApproval('doc-sub-n', 'user-1');
-      expect(notifications.send).toHaveBeenCalledTimes(1);
-      expect(notifications.send.mock.calls[0][0].recipient).toBe('owner@bc.com');
-    });
-
-    it('notification failures do NOT block the status transition', async () => {
-      setupDraftDoc();
+    it('rejects non-OWNER users not on the approvers_list', async () => {
+      setupPendingDoc();
       prisma.systemConfig.findFirst.mockImplementation(
         (args: { where: { key: string } }) => {
           if (args.where.key === 'approvers_list') {
-            return Promise.resolve({ value: JSON.stringify(['user-app-1']) });
+            return Promise.resolve({ value: JSON.stringify(['user-other']) });
           }
+          if (args.where.key === 'reverse_reason_required') return Promise.resolve({ value: 'false' });
           return Promise.resolve(null);
         },
       );
-      prisma.user.findMany.mockResolvedValue([
-        { id: 'user-app-1', email: 'app1@ex.com', name: 'A1' },
-      ]);
-      // Notification call throws — submitForApproval must still resolve
-      notifications.send.mockRejectedValueOnce(new Error('LINE down'));
-      await expect(service.submitForApproval('doc-sub-n', 'user-1')).resolves.toBeDefined();
-      // Status was still flipped (Promise.allSettled inside notifyApprovers
-      // ensures one delivery failure doesn't abort the operation).
+      prisma.user.findMany.mockResolvedValue([{ id: 'user-other' }]);
+      await expect(service.approve('doc-app', 'user-not-listed', 'ACCOUNTANT')).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+
+    it('accepts non-OWNER users that ARE on the approvers_list', async () => {
+      setupPendingDoc();
+      prisma.systemConfig.findFirst.mockImplementation(
+        (args: { where: { key: string } }) => {
+          if (args.where.key === 'approvers_list') {
+            return Promise.resolve({ value: JSON.stringify(['user-acc-1']) });
+          }
+          if (args.where.key === 'reverse_reason_required') return Promise.resolve({ value: 'false' });
+          return Promise.resolve(null);
+        },
+      );
+      prisma.user.findMany.mockResolvedValue([{ id: 'user-acc-1' }]);
+      await service.approve('doc-app', 'user-acc-1', 'ACCOUNTANT');
       const updateCalls = prisma.expenseDocument.update.mock.calls;
       expect(
         updateCalls.some((c: unknown[]) => {
           const arg = c[0] as { data?: { status?: string } };
-          return arg?.data?.status === 'PENDING_APPROVAL';
+          return arg?.data?.status === 'APPROVED';
         }),
       ).toBe(true);
     });
 
-    // D1.2.1.5 — audit trail on submitForApproval(). APPROVAL_REQUESTED row
-    // must be written inside the tx so status flip + audit stay atomic.
-    it('writes APPROVAL_REQUESTED audit log inside the transaction', async () => {
-      setupDraftDoc();
-      prisma.systemConfig.findFirst.mockResolvedValue(null);
-      prisma.user.findMany.mockResolvedValue([]);
-      await service.submitForApproval('doc-sub-n', 'user-1');
-      const auditCalls = prisma.auditLog.create.mock.calls;
-      const requestedCall = auditCalls.find((c: unknown[]) => {
-        const arg = c[0] as { data?: { action?: string } };
-        return arg?.data?.action === 'APPROVAL_REQUESTED';
-      });
-      expect(requestedCall).toBeDefined();
-      const arg = requestedCall![0] as {
-        data: {
-          action: string;
-          entity: string;
-          entityId: string;
-          userId: string;
-          newValue: { documentNumber: string; totalAmount: string; documentType: string };
-        };
-      };
-      expect(arg.data.entity).toBe('expense_document');
-      expect(arg.data.entityId).toBe('doc-sub-n');
-      expect(arg.data.userId).toBe('user-1');
-      expect(arg.data.newValue.documentNumber).toBe('EX-20260510-0001');
-      expect(arg.data.newValue.totalAmount).toBe('500');
-      expect(arg.data.newValue.documentType).toBe('EXPENSE');
-    });
-
-    // ── PDPA-safe summary on APPROVAL_REQUESTED audit (W4) ─────────────
-    // Enrich audit.newValue with non-PII contextual fields so compliance
-    // can reconstruct who-approved-what WITHOUT line-level salary data.
-    describe('APPROVAL_REQUESTED audit — PDPA-safe summary (D1.2.1.5 follow-up)', () => {
-      function getRequestedAudit() {
-        const auditCalls = prisma.auditLog.create.mock.calls;
-        const requestedCall = auditCalls.find((c: unknown[]) => {
-          const arg = c[0] as { data?: { action?: string } };
-          return arg?.data?.action === 'APPROVAL_REQUESTED';
-        });
-        expect(requestedCall).toBeDefined();
-        return (requestedCall![0] as { data: { newValue: Record<string, unknown> } }).data.newValue;
-      }
-
-      it('EXPENSE submit → audit has documentNumber + totalAmount + vendorName + lineCount + requesterUserId', async () => {
-        setupDraftDoc({
-          documentType: 'EXPENSE',
-          vendorName: 'การไฟฟ้านครหลวง',
-          expenseLineCount: 4,
-        });
-        prisma.systemConfig.findFirst.mockResolvedValue(null);
-        prisma.user.findMany.mockResolvedValue([]);
-        await service.submitForApproval('doc-sub-n', 'user-1');
-        const v = getRequestedAudit();
-        expect(v.documentNumber).toBe('EX-20260510-0001');
-        expect(v.totalAmount).toBe('500');
-        expect(v.documentType).toBe('EXPENSE');
-        expect(v.vendorName).toBe('การไฟฟ้านครหลวง');
-        expect(v.requesterUserId).toBe('user-1');
-        expect(v.lineCount).toBe(4);
-        // No employee data on EXPENSE — payrollPeriod must be absent
-        expect(v.payrollPeriod).toBeUndefined();
-      });
-
-      it('PAYROLL submit → audit has payrollPeriod + lineCount, NO employee names / salaries', async () => {
-        setupDraftDoc({
-          documentType: 'PAYROLL',
-          payrollPeriod: '2026-05',
-          payrollLineCount: 8,
-        });
-        prisma.systemConfig.findFirst.mockResolvedValue(null);
-        prisma.user.findMany.mockResolvedValue([]);
-        await service.submitForApproval('doc-sub-n', 'user-1');
-        const v = getRequestedAudit();
-        expect(v.documentNumber).toBe('EX-20260510-0001');
-        expect(v.documentType).toBe('PAYROLL');
-        expect(v.payrollPeriod).toBe('2026-05');
-        expect(v.lineCount).toBe(8);
-        expect(v.requesterUserId).toBe('user-1');
-        // PDPA: payroll line bodies (employeeName, employeeTaxId, baseSalary,
-        // ssoEmployee, netPaid, whtAmount) must NOT appear in the audit payload
-        const json = JSON.stringify(v);
-        expect(json).not.toMatch(/employeeName/i);
-        expect(json).not.toMatch(/employeeTaxId/i);
-        expect(json).not.toMatch(/baseSalary/i);
-        expect(json).not.toMatch(/netPaid/i);
-        expect(json).not.toMatch(/lines/i); // not an array, just the count
-        // vendorName is N/A for payroll
-        expect(v.vendorName).toBeUndefined();
-      });
-
-      it('audit row is queryable by documentNumber for compliance lookup', async () => {
-        setupDraftDoc({ documentType: 'EXPENSE', vendorName: 'Vendor A', expenseLineCount: 1 });
-        prisma.systemConfig.findFirst.mockResolvedValue(null);
-        prisma.user.findMany.mockResolvedValue([]);
-        await service.submitForApproval('doc-sub-n', 'user-1');
-        const v = getRequestedAudit();
-        // The contract: documentNumber is the stable handle compliance uses
-        // to reconstruct context. It must be present + non-empty + match the
-        // doc number on the source document — never anonymized.
-        expect(typeof v.documentNumber).toBe('string');
-        expect((v.documentNumber as string).length).toBeGreaterThan(0);
-        expect(v.documentNumber).toBe('EX-20260510-0001');
-      });
-    });
-
-    it('fires notifyApprovers AFTER status flip (notifications.send invoked)', async () => {
-      setupDraftDoc();
+    it('drops stale/inactive user IDs from approvers_list', async () => {
+      setupPendingDoc();
       prisma.systemConfig.findFirst.mockImplementation(
         (args: { where: { key: string } }) => {
           if (args.where.key === 'approvers_list') {
-            return Promise.resolve({ value: JSON.stringify(['user-app-1']) });
+            return Promise.resolve({ value: JSON.stringify(['user-stale', 'user-active']) });
+          }
+          if (args.where.key === 'reverse_reason_required') return Promise.resolve({ value: 'false' });
+          return Promise.resolve(null);
+        },
+      );
+      // findMany only returns the active user; the stale ID is dropped
+      prisma.user.findMany.mockResolvedValue([{ id: 'user-active' }]);
+      // user-stale tries to approve but is filtered out → Forbidden
+      await expect(service.approve('doc-app', 'user-stale', 'ACCOUNTANT')).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+
+    it('rejects when source status is not PENDING_APPROVAL', async () => {
+      setupPendingDoc({ status: 'DRAFT' });
+      await expect(service.approve('doc-app', 'user-owner', 'OWNER')).rejects.toThrow(
+        /อนุมัติได้เฉพาะเอกสาร PENDING_APPROVAL/,
+      );
+    });
+
+    it('falls back to "OWNER-only" when approvers_list JSON is malformed', async () => {
+      setupPendingDoc();
+      prisma.systemConfig.findFirst.mockImplementation(
+        (args: { where: { key: string } }) => {
+          if (args.where.key === 'approvers_list') {
+            return Promise.resolve({ value: 'not-json' });
           }
           return Promise.resolve(null);
         },
       );
-      prisma.user.findMany.mockResolvedValue([
-        { id: 'user-app-1', email: 'app1@ex.com', name: 'A1' },
-      ]);
-      await service.submitForApproval('doc-sub-n', 'user-1');
-      // Notify fires
-      expect(notifications.send).toHaveBeenCalledTimes(1);
-      // And status flipped to PENDING_APPROVAL
-      const updateCalls = prisma.expenseDocument.update.mock.calls;
-      expect(
-        updateCalls.some((c: unknown[]) => {
-          const arg = c[0] as { data?: { status?: string } };
-          return arg?.data?.status === 'PENDING_APPROVAL';
-        }),
-      ).toBe(true);
+      // Non-OWNER can't approve when list is empty/malformed
+      await expect(service.approve('doc-app', 'user-x', 'ACCOUNTANT')).rejects.toThrow(
+        ForbiddenException,
+      );
     });
   });
 
@@ -1177,7 +1433,6 @@ describe('ExpenseDocumentsService', () => {
         { execute: jest.fn() } as never,
         { getConfig: jest.fn(), validate: jest.fn() } as never,
         { loadWhitelist: jest.fn().mockResolvedValue(new Set(['53-1104', '53-1105'])), validateLine: jest.fn().mockResolvedValue({ taxableBase: new Decimal(0) }) } as never,
-        { send: jest.fn().mockResolvedValue({ id: 'notif-1', status: 'SENT' }) } as never,
       );
       await svc.voidDocument('doc-1', 'user-1');
       expect(journalMock.createAndPost).toHaveBeenCalledTimes(1);
@@ -1223,7 +1478,6 @@ describe('ExpenseDocumentsService', () => {
         { execute: jest.fn() } as never,
         { getConfig: jest.fn(), validate: jest.fn() } as never,
         { loadWhitelist: jest.fn().mockResolvedValue(new Set(['53-1104', '53-1105'])), validateLine: jest.fn().mockResolvedValue({ taxableBase: new Decimal(0) }) } as never,
-        { send: jest.fn().mockResolvedValue({ id: 'notif-1', status: 'SENT' }) } as never,
       );
       await svc.voidDocument('se-1', 'user-1');
       // Both cleared EXs reverted via updateMany with deletedAt:null guard
@@ -1319,7 +1573,6 @@ describe('ExpenseDocumentsService', () => {
         { execute: jest.fn() } as never,
         { getConfig: jest.fn(), validate: jest.fn() } as never,
         { loadWhitelist: jest.fn().mockResolvedValue(new Set()), validateLine: jest.fn() } as never,
-        { send: jest.fn().mockResolvedValue({ id: 'notif-1', status: 'SENT' }) } as never,
       );
       // Should NOT throw — both cascade checks are bypassed
       await expect(svc.voidDocument('doc-1', 'user-1')).resolves.toBeDefined();
@@ -1401,7 +1654,6 @@ describe('ExpenseDocumentsService', () => {
         { execute: jest.fn() } as never,
         { getConfig: jest.fn(), validate: jest.fn() } as never,
         { loadWhitelist: jest.fn().mockResolvedValue(new Set()), validateLine: jest.fn() } as never,
-        { send: jest.fn().mockResolvedValue({ id: 'notif-1', status: 'SENT' }) } as never,
       );
       await expect(
         svc.voidDocument('doc-1', 'user-1', { reasonCode: 'manager_decision' }),
@@ -1450,7 +1702,6 @@ describe('ExpenseDocumentsService', () => {
         { execute: jest.fn() } as never,
         { getConfig: jest.fn(), validate: jest.fn() } as never,
         { loadWhitelist: jest.fn().mockResolvedValue(new Set()), validateLine: jest.fn() } as never,
-        { send: jest.fn().mockResolvedValue({ id: 'notif-1', status: 'SENT' }) } as never,
       );
       const future = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
       await expect(
@@ -1486,7 +1737,6 @@ describe('ExpenseDocumentsService', () => {
         { execute: jest.fn() } as never,
         { getConfig: jest.fn(), validate: jest.fn() } as never,
         { loadWhitelist: jest.fn().mockResolvedValue(new Set()), validateLine: jest.fn() } as never,
-        { send: jest.fn().mockResolvedValue({ id: 'notif-1', status: 'SENT' }) } as never,
       );
       await expect(svc.voidDocument('doc-1', 'user-1')).resolves.toBeDefined();
     });
@@ -1524,7 +1774,6 @@ describe('ExpenseDocumentsService', () => {
         { execute: jest.fn() } as never,
         { getConfig: jest.fn(), validate: jest.fn() } as never,
         { loadWhitelist: jest.fn().mockResolvedValue(new Set(['53-1104', '53-1105'])), validateLine: jest.fn().mockResolvedValue({ taxableBase: new Decimal(0) }) } as never,
-        { send: jest.fn().mockResolvedValue({ id: 'notif-1', status: 'SENT' }) } as never,
       );
 
       await svc.voidDocument('doc-1', 'user-1', {
@@ -1579,7 +1828,6 @@ describe('ExpenseDocumentsService', () => {
         { execute: jest.fn() } as never,
         { getConfig: jest.fn(), validate: jest.fn() } as never,
         { loadWhitelist: jest.fn().mockResolvedValue(new Set(['53-1104', '53-1105'])), validateLine: jest.fn().mockResolvedValue({ taxableBase: new Decimal(0) }) } as never,
-        { send: jest.fn().mockResolvedValue({ id: 'notif-1', status: 'SENT' }) } as never,
       );
 
       await svc.voidDocument('doc-1', 'user-1', {
@@ -1592,6 +1840,83 @@ describe('ExpenseDocumentsService', () => {
       const postedAtYmd = (call.postedAt as Date)
         .toLocaleString('en-CA', { timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit' });
       expect(postedAtYmd).toBe('2026-04-30');
+    });
+  });
+
+  // D1.1.5.1 — petty_cash_enabled feature flag gate
+  describe('createPettyCash — D1.1.5.1 feature flag gate', () => {
+    const validDto = {
+      branchId: 'branch-1',
+      documentDate: '2026-05-17',
+      depositAccountCode: '11-1201',
+      lines: [
+        {
+          supplierName: 'Vendor A',
+          category: '53-1302',
+          amount: 100,
+          vatPercent: 0,
+        },
+      ],
+    };
+
+    it('rejects with BadRequest "ระบบเงินสดย่อยถูกปิดใช้งาน" when petty_cash_enabled = false', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'petty_cash_enabled') return Promise.resolve({ value: 'false' });
+        return Promise.resolve(null);
+      });
+      await expect(
+        service.createPettyCash(validDto as never, { id: 'u-1', branchId: 'branch-1', role: 'OWNER' }),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        service.createPettyCash(validDto as never, { id: 'u-1', branchId: 'branch-1', role: 'OWNER' }),
+      ).rejects.toThrow(/ระบบเงินสดย่อยถูกปิดใช้งาน/);
+    });
+
+    it('proceeds past the flag check when petty_cash_enabled = true (explicit)', async () => {
+      // Default-true behaviour: flag missing OR equal to "true" should allow.
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'petty_cash_enabled') return Promise.resolve({ value: 'true' });
+        return Promise.resolve(null);
+      });
+      // We don't need the full flow to succeed — only assert that the
+      // BadRequest "ระบบเงินสดย่อยถูกปิดใช้งาน" is NOT thrown. Downstream
+      // CoA/V20 validation may still fail in this mocked harness; we just
+      // need to prove the flag gate passes.
+      try {
+        await service.createPettyCash(
+          validDto as never,
+          { id: 'u-1', branchId: 'branch-1', role: 'OWNER' },
+        );
+      } catch (e) {
+        expect((e as Error).message).not.toMatch(/ระบบเงินสดย่อยถูกปิดใช้งาน/);
+      }
+    });
+
+    it('proceeds past the flag check when SystemConfig row missing (default true)', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      try {
+        await service.createPettyCash(
+          validDto as never,
+          { id: 'u-1', branchId: 'branch-1', role: 'OWNER' },
+        );
+      } catch (e) {
+        expect((e as Error).message).not.toMatch(/ระบบเงินสดย่อยถูกปิดใช้งาน/);
+      }
+    });
+
+    it('proceeds past the flag check on unparseable SystemConfig value (defaults to true)', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'petty_cash_enabled') return Promise.resolve({ value: 'maybe' });
+        return Promise.resolve(null);
+      });
+      try {
+        await service.createPettyCash(
+          validDto as never,
+          { id: 'u-1', branchId: 'branch-1', role: 'OWNER' },
+        );
+      } catch (e) {
+        expect((e as Error).message).not.toMatch(/ระบบเงินสดย่อยถูกปิดใช้งาน/);
+      }
     });
   });
 });

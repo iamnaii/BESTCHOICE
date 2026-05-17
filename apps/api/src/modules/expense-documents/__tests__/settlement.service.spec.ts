@@ -40,6 +40,11 @@ describe('ExpenseDocumentsService.createSettlement', () => {
       settlementLine: {
         aggregate: jest.fn().mockResolvedValue({ _sum: { amountSettled: null } }),
       },
+      // D1.3.6.1 — createSettlement reads `settlement_max_bills_per_doc` via
+      // findFirst. Default to null so existing tests keep the spec default of 100.
+      systemConfig: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
     };
     docNumber = { next: jest.fn().mockResolvedValue('SE-20260510-0001') };
     transition = {
@@ -355,5 +360,96 @@ describe('ExpenseDocumentsService.createSettlement', () => {
     expect(lockCalls[0][1]).toBe(ID_A);
     expect(lockCalls[1][1]).toBe(ID_B);
     expect(lockCalls[2][1]).toBe(ID_C);
+  });
+
+  // D1.3.6.1 — settlement_max_bills_per_doc
+  describe('D1.3.6.1 max-bills cap', () => {
+    const makeLines = (n: number) =>
+      Array.from({ length: n }, (_, i) => ({
+        clearedDocumentId: `00000000-0000-4000-8000-${(i + 1).toString().padStart(12, '0')}`,
+        amountSettled: 10,
+      }));
+
+    it('default (flag absent): rejects when lines.length > 100', async () => {
+      // findFirst returns null → fallback default 100
+      await expect(
+        service.createSettlement(
+          {
+            branchId: 'b1',
+            documentDate: '2026-05-10',
+            depositAccountCode: '11-1101',
+            lines: makeLines(101),
+          } as never,
+          owner,
+        ),
+      ).rejects.toThrow(/100 ใบ ต่อเอกสาร/);
+    });
+
+    it('default (flag absent): accepts when lines.length === 100', async () => {
+      prisma.expenseDocument.findUniqueOrThrow.mockImplementation(
+        ({ where }: { where: { id: string } }) =>
+          Promise.resolve({
+            id: where.id,
+            number: 'EX-x',
+            branchId: 'b1',
+            documentType: 'EXPENSE',
+            status: 'ACCRUAL',
+            totalAmount: new Decimal('100.00'),
+            deletedAt: null,
+          }),
+      );
+      // 100 lines at amountSettled=10 each = sum 1000, totalAmount per doc=100 → cap fails on lines.
+      // Use amount within cap (10) so the line-level cap check passes.
+      await expect(
+        service.createSettlement(
+          {
+            branchId: 'b1',
+            documentDate: '2026-05-10',
+            depositAccountCode: '11-1101',
+            lines: makeLines(100),
+          } as never,
+          owner,
+        ),
+      ).resolves.toBeDefined();
+    });
+
+    it('OWNER-configured cap of 50: rejects when lines.length > 50', async () => {
+      prisma.systemConfig.findFirst.mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'settlement_max_bills_per_doc')
+          return Promise.resolve({ value: '50' });
+        return Promise.resolve(null);
+      });
+      await expect(
+        service.createSettlement(
+          {
+            branchId: 'b1',
+            documentDate: '2026-05-10',
+            depositAccountCode: '11-1101',
+            lines: makeLines(51),
+          } as never,
+          owner,
+        ),
+      ).rejects.toThrow(/50 ใบ ต่อเอกสาร/);
+    });
+
+    it('out-of-range SystemConfig (e.g. "9999"): clamps to default 100', async () => {
+      // 9999 > max 500 → readIntFlag falls back to 100. So 101 lines should reject.
+      prisma.systemConfig.findFirst.mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'settlement_max_bills_per_doc')
+          return Promise.resolve({ value: '9999' });
+        return Promise.resolve(null);
+      });
+      await expect(
+        service.createSettlement(
+          {
+            branchId: 'b1',
+            documentDate: '2026-05-10',
+            depositAccountCode: '11-1101',
+            lines: makeLines(101),
+          } as never,
+          owner,
+        ),
+      ).rejects.toThrow(/100 ใบ ต่อเอกสาร/);
+    });
   });
 });

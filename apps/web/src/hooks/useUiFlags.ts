@@ -33,6 +33,11 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /**
+   * D1.3.4.1 — gate the SAMEDAY→ACCRUAL auto-flip in `ExpenseFormV4`.
+   * Default `true`. When `false`, the user must manually choose docType.
+   */
+  smartDoctypeSwitchEnabled: boolean;
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -53,6 +58,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  smartDoctypeSwitchEnabled: true,
 };
 
 export function useUiFlags(): UiFlags {

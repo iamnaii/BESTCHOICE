@@ -17,6 +17,14 @@ interface Props {
   value: DocType;
   onChange: (t: DocType) => void;
   invoiceDateIsToday: boolean;
+  /**
+   * D1.3.4.1 — when false, suppress the "แนะนำ" smart-default badge + the
+   * "ตั้งหนี้แล้วทั้งที่วันที่เป็นวันนี้" inline hint. The auto-flip in
+   * ExpenseFormV4 is gated by the same flag; this prop keeps the picker UI
+   * consistent so the user is not nudged toward a default the app no
+   * longer applies. Defaults to true for backwards compatibility.
+   */
+  smartDoctypeSwitchEnabled?: boolean;
 }
 
 interface TabDef {
@@ -35,8 +43,19 @@ const TABS: TabDef[] = [
   { type: 'PETTY_CASH_REIMBURSEMENT', label: 'Petty Cash', sub: 'เบิกชดเชยเงินสดย่อย', Icon: Coins },
 ];
 
-export function DocTypePicker({ value, onChange, invoiceDateIsToday }: Props) {
-  const recommended: DocType = invoiceDateIsToday ? 'EXPENSE_SAMEDAY' : 'EXPENSE_ACCRUAL';
+export function DocTypePicker({
+  value,
+  onChange,
+  invoiceDateIsToday,
+  smartDoctypeSwitchEnabled = true,
+}: Props) {
+  // D1.3.4.1 — when the OWNER disables smart-doctype-switch, suppress the
+  // recommendation by setting the placeholder to a value no real chip uses.
+  const recommended: DocType | null = smartDoctypeSwitchEnabled
+    ? invoiceDateIsToday
+      ? 'EXPENSE_SAMEDAY'
+      : 'EXPENSE_ACCRUAL'
+    : null;
 
   return (
     <div className="space-y-2">
@@ -82,9 +101,15 @@ export function DocTypePicker({ value, onChange, invoiceDateIsToday }: Props) {
         })}
       </div>
       <p className="text-xs text-muted-foreground pl-1">
-        Smart Default: invoice_date = today → SAMEDAY · invoice_date &lt; today → ACCRUAL
-        {invoiceDateIsToday && value === 'EXPENSE_ACCRUAL' && (
-          <span className="text-warning"> · ตั้งหนี้แล้วทั้งที่วันที่เป็นวันนี้</span>
+        {smartDoctypeSwitchEnabled ? (
+          <>
+            Smart Default: invoice_date = today → SAMEDAY · invoice_date &lt; today → ACCRUAL
+            {invoiceDateIsToday && value === 'EXPENSE_ACCRUAL' && (
+              <span className="text-warning"> · ตั้งหนี้แล้วทั้งที่วันที่เป็นวันนี้</span>
+            )}
+          </>
+        ) : (
+          <>Smart Default ปิดอยู่ — เลือกประเภทเอกสารด้วยตนเอง</>
         )}
       </p>
     </div>

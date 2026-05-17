@@ -175,6 +175,19 @@ export class SettingsService {
      * accessibility readers via the lang attr.
      */
     language: 'th' | 'en';
+    /**
+     * D1.3.4.1 — gate the auto SAMEDAY→ACCRUAL switch logic in the expense
+     * entry form. Default `true` preserves the existing one-way auto-flip
+     * (ExpenseFormV4: when the user picks a past `documentDate` while
+     * docType is SAMEDAY, flip to ACCRUAL). When `false` the auto-flip is
+     * skipped and the user must manually pick SAMEDAY vs ACCRUAL — useful
+     * for accountants who explicitly want SAMEDAY entries with a backdated
+     * invoice (e.g. cash purchases booked next day).
+     *
+     * Originally marked SKIP per Phase 2 decision report; shipped per
+     * owner directive 2026-05-17 to reach 100% A1 coverage.
+     */
+    smartDoctypeSwitchEnabled: boolean;
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -214,6 +227,11 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.3.4.1 — smart_doctype_switch_enabled (default true).
+    const smartDoctypeSwitchEnabled = await this.readBoolean(
+      'smart_doctype_switch_enabled',
+      true,
+    );
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -225,6 +243,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      smartDoctypeSwitchEnabled,
     };
   }
 

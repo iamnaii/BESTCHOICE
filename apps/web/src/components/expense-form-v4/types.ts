@@ -17,6 +17,11 @@ export interface ExpenseLineForm {
   discount: string;
   vatPercent: string;
   whtPercent: string;
+  // Phase A.5 — Per-line tax-disallowed override (ม.65 ตรี ป.รัษฎากร).
+  // When true, this line is excluded from ภ.ง.ด.50/51 deductible totals
+  // regardless of doc-level flag. Only relevant when one doc mixes
+  // deductible + non-deductible categories.
+  taxDisallowed?: boolean;
   // computed (server-authoritative)
   amountBeforeVat?: string;
   vatAmount?: string;
@@ -153,6 +158,11 @@ export interface ExpenseFormState {
   // computed totalAmount − wht. When set, signed Σ adjustments must equal
   // (amountPaid − (totalAmount − wht)).
   amountPaid: string;
+  // Phase A.5 — Doc-level tax-disallowed flag (ม.65 ตรี ป.รัษฎากร). When true,
+  // every line in this doc is excluded from ภ.ง.ด.50/51 deductible totals.
+  // The flag does not change the JE — disallowed expenses are still booked
+  // normally. Only affects year-end corporate income-tax filing.
+  taxDisallowed: boolean;
 }
 
 export interface JePreviewLine {

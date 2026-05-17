@@ -108,6 +108,40 @@ describe('ExpenseTemplatesService', () => {
         }),
       );
     });
+
+    // ── Branch-scope hardening (Group 1 review follow-up) ──────────────
+    it('OWNER (cross-branch) sees all branches when no filter passed', async () => {
+      await service.list({}, { id: 'u1', branchId: 'b1', role: 'OWNER' });
+      // No branchId on the where clause = "all branches" (cross-branch view)
+      const callArg = prisma.expenseTemplate.findMany.mock.calls[0][0];
+      expect(callArg.where.deletedAt).toBeNull();
+      expect(callArg.where.branchId).toBeUndefined();
+    });
+
+    it('SALES (single-branch) is locked to user.branchId — ignores cross-branch filter', async () => {
+      // SALES tries to spoof another branch via ?branchId=b2 — must be forced back to b1
+      await service.list({ branchId: 'b2' }, { id: 'u1', branchId: 'b1', role: 'SALES' });
+      expect(prisma.expenseTemplate.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ branchId: 'b1', deletedAt: null }),
+        }),
+      );
+    });
+
+    it('SALES with no user.branchId is rejected (misconfigured user)', async () => {
+      await expect(
+        service.list({ branchId: 'b2' }, { id: 'u1', branchId: null, role: 'SALES' }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('BRANCH_MANAGER without filter is locked to their own branch', async () => {
+      await service.list({}, { id: 'u1', branchId: 'b1', role: 'BRANCH_MANAGER' });
+      expect(prisma.expenseTemplate.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ branchId: 'b1', deletedAt: null }),
+        }),
+      );
+    });
   });
 
   describe('softDelete', () => {

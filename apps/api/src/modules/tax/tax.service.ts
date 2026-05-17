@@ -13,6 +13,21 @@ export class TaxService {
 
   /**
    * ภ.พ.30 Preview — VAT output (ภาษีขาย) vs VAT input (ภาษีซื้อ)
+   *
+   * Critical #2 fix: Output VAT is sourced from JournalLine Cr to 21-2101
+   * (settled VAT — ภ.พ.30) + 21-2103 (60-day mandatory VAT) within the
+   * period. The previous implementation summed `Payment.vatAmount` only —
+   * which silently undercounted VAT from:
+   *   - 21-2103 mandatory 60-day overdue VAT (Vat60dayMandatoryTemplate)
+   *   - 2A accrual (Dr 11-2105 / Cr 21-2102 — until cleared to 21-2101)
+   *   - JP4 early payoff (reverses 21-2106 and clears VAT to 21-2101)
+   *   - JP5 repossession output VAT
+   *   - OtherIncomeTemplate (42-1105 disposal gain VAT, etc.)
+   *   - Asset disposal VAT (Cr 21-2101)
+   *
+   * Journal-based totals are the single source of truth. Payment-level
+   * vatOutputLineItems is kept as a UI breakdown for source detail only;
+   * the totals reported to RD are computed from journal lines.
    */
   async previewPP30(companyId: string, year: number, month: number) {
     const { startDate, endDate } = this.getDateRange(year, month);
@@ -20,52 +35,121 @@ export class TaxService {
     // Get branches belonging to this company
     const branchIds = await this.getBranchIds(companyId);
 
-    // Output VAT (ภาษีขาย): PAID payments with vatAmount from FINANCE company contracts
-    const payments = await this.prisma.payment.findMany({
+    // ── Output VAT side — JOURNAL-BASED (Critical #2) ────────────────────
+    // Settled output VAT: Cr 21-2101 (the account ภ.พ.30 actually filed on)
+    const settledOutputLines = await this.prisma.journalLine.findMany({
       where: {
+        accountCode: '21-2101',
+        credit: { gt: 0 },
         deletedAt: null,
-        status: 'PAID',
-        vatAmount: { not: null },
-        paidDate: { gte: startDate, lte: endDate },
-        contract: {
+        journalEntry: {
           deletedAt: null,
-          branchId: { in: branchIds },
+          status: 'POSTED',
+          companyId,
+          postedAt: { gte: startDate, lte: endDate },
         },
       },
       include: {
-        contract: {
+        journalEntry: {
           select: {
             id: true,
-            contractNumber: true,
-            customer: { select: { id: true, name: true } },
+            entryNumber: true,
+            entryDate: true,
+            postedAt: true,
+            referenceType: true,
+            referenceId: true,
+            description: true,
           },
         },
       },
-      orderBy: { paidDate: 'asc' },
+      orderBy: { journalEntry: { postedAt: 'asc' } },
     });
+
+    // Mandatory 60-day overdue VAT — ม.78/2 (Vat60dayMandatoryTemplate)
+    // Recognized separately so accountant can see the split between
+    // "VAT we received cash on" vs "VAT we owe by law on overdue receivables"
+    const mandatoryVat60DayLines = await this.prisma.journalLine.findMany({
+      where: {
+        accountCode: '21-2103',
+        credit: { gt: 0 },
+        deletedAt: null,
+        journalEntry: {
+          deletedAt: null,
+          status: 'POSTED',
+          companyId,
+          postedAt: { gte: startDate, lte: endDate },
+        },
+      },
+      include: {
+        journalEntry: {
+          select: {
+            id: true,
+            entryNumber: true,
+            entryDate: true,
+            postedAt: true,
+            referenceType: true,
+            description: true,
+          },
+        },
+      },
+      orderBy: { journalEntry: { postedAt: 'asc' } },
+    });
+
+    const totalVatSettled = settledOutputLines.reduce(
+      (s, l) => s.add(l.credit ?? new Prisma.Decimal(0)),
+      new Prisma.Decimal(0),
+    );
+    const totalVatMandatory60Day = mandatoryVat60DayLines.reduce(
+      (s, l) => s.add(l.credit ?? new Prisma.Decimal(0)),
+      new Prisma.Decimal(0),
+    );
+    // ภ.พ.30 reports BOTH — settled (paid this month) + mandatory (60-day overdue).
+    // Both are output VAT owed to RD for the period.
+    const totalVatOutput = totalVatSettled.add(totalVatMandatory60Day);
+
+    // Aggregate by referenceType so the UI / report can break down the source
+    // (PAYMENT, OTHER_INCOME, REPOSSESSION, etc.)
+    const outputBySource = new Map<string, Prisma.Decimal>();
+    for (const line of settledOutputLines) {
+      const refType = line.journalEntry.referenceType ?? 'OTHER';
+      const current = outputBySource.get(refType) ?? new Prisma.Decimal(0);
+      outputBySource.set(refType, current.add(line.credit ?? new Prisma.Decimal(0)));
+    }
+
+    // Source detail for the UI: Payment.vatAmount within period (backward
+    // compatible breakdown — vatOutputLineItems shows per-payment source).
+    // Total reported above is journal-based; this list is presentation only.
+    const payments = branchIds.length
+      ? await this.prisma.payment.findMany({
+          where: {
+            deletedAt: null,
+            status: 'PAID',
+            vatAmount: { not: null },
+            paidDate: { gte: startDate, lte: endDate },
+            contract: {
+              deletedAt: null,
+              branchId: { in: branchIds },
+            },
+          },
+          include: {
+            contract: {
+              select: {
+                id: true,
+                contractNumber: true,
+                customer: { select: { id: true, name: true } },
+              },
+            },
+          },
+          orderBy: { paidDate: 'asc' },
+        })
+      : [];
 
     const totalSales = payments.reduce(
       (sum, p) => sum.add(p.amountPaid),
       new Prisma.Decimal(0),
     );
-    const totalVatOutput = payments.reduce(
-      (sum, p) => sum.add(p.vatAmount ?? new Prisma.Decimal(0)),
-      new Prisma.Decimal(0),
-    );
 
-    // Input VAT (ภาษีซื้อ) — B3/K-04 (Fix Report P0-1). Sources from journal_lines
-    // where account_code = '11-4101' (the post-A.5 input-VAT account) joined to
-    // the originating expense_document for vendor/invoice metadata. The legacy
-    // `expense` model has been replaced by the ExpenseDocument flow, which posts
-    // VAT via expense-same-day / expense-accrual / credit-note / vendor-settlement
-    // templates — all of which set `metadata.flow LIKE 'expense-%'` and
-    // `metadata.documentId` so this query is a precise filter.
-    //
-    // Sign convention: VAT input is Dr 11-4101 (asset increase) so we sum the
-    // debit column. Credit notes reverse the VAT — those JE lines book Cr 11-4101
-    // and are intentionally excluded here so the period total nets correctly when
-    // summed with sales output VAT. (CN's negative purchase is represented by
-    // a separate negative line on the next month's report if needed.)
+    // ── Input VAT side — UNCHANGED (already journal-based; verified correct) ─
     const expenses = await this.getInputVatLineItems(branchIds, startDate, endDate);
 
     const totalPurchases = expenses.reduce(
@@ -99,15 +183,33 @@ export class TaxService {
       vatAmount: e.vatAmount,
     }));
 
+    // Mandatory 60-day VAT — separate breakdown so accountant can see what
+    // portion of total VAT output came from the 21-2103 cron (no cash received)
+    const mandatoryVat60DayItems = mandatoryVat60DayLines.map((line) => ({
+      date: line.journalEntry.postedAt ?? line.journalEntry.entryDate,
+      entryNumber: line.journalEntry.entryNumber,
+      description: line.journalEntry.description,
+      referenceType: line.journalEntry.referenceType,
+      vatAmount: line.credit,
+    }));
+
     return {
       totalSales,
+      // ── Output VAT (journal-sourced) ───────────────────────────────────
       totalVatOutput,
+      totalVatSettled, // Cr 21-2101 — paid output VAT
+      totalVatMandatory60Day, // Cr 21-2103 — 60-day overdue mandatory VAT
+      vatOutputBySource: Object.fromEntries(
+        Array.from(outputBySource.entries()).map(([k, v]) => [k, v]),
+      ),
+      // ── Input VAT (already journal-sourced) ────────────────────────────
       totalPurchases,
       totalVatInput,
       netVat,
       lineItems: {
         sales: salesLineItems,
         purchases: purchaseLineItems,
+        mandatoryVat60Day: mandatoryVat60DayItems,
       },
     };
   }

@@ -10,6 +10,15 @@ describe('TaxService.previewPP30 — B3 / K-04 input VAT from 11-4101', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let prisma: any;
 
+  // Helper: PP30 now makes 3 journalLine.findMany calls (21-2101, 21-2103, 11-4101).
+  // Mocks route by accountCode in the where clause so individual tests can mock just
+  // the call they care about.
+  function mockJournalByCode(byCode: Record<string, unknown[]>) {
+    prisma.journalLine.findMany.mockImplementation((args: { where: { accountCode: string } }) => {
+      return Promise.resolve(byCode[args.where.accountCode] ?? []);
+    });
+  }
+
   beforeEach(async () => {
     prisma = {
       branch: { findMany: jest.fn() },
@@ -33,26 +42,28 @@ describe('TaxService.previewPP30 — B3 / K-04 input VAT from 11-4101', () => {
   });
 
   it('K-04: sums Dr 11-4101 journal lines as totalVatInput', async () => {
-    prisma.journalLine.findMany.mockResolvedValue([
-      {
-        debit: Dec('70'),
-        journalEntry: {
-          id: 'je-1',
-          postedAt: new Date('2026-05-15'),
-          description: 'EX-001 vendor A',
-          metadata: { flow: 'expense-same-day', documentId: 'doc-A' },
+    mockJournalByCode({
+      '11-4101': [
+        {
+          debit: Dec('70'),
+          journalEntry: {
+            id: 'je-1',
+            postedAt: new Date('2026-05-15'),
+            description: 'EX-001 vendor A',
+            metadata: { flow: 'expense-same-day', documentId: 'doc-A' },
+          },
         },
-      },
-      {
-        debit: Dec('140'),
-        journalEntry: {
-          id: 'je-2',
-          postedAt: new Date('2026-05-18'),
-          description: 'EX-002 vendor B',
-          metadata: { flow: 'expense-accrual', documentId: 'doc-B' },
+        {
+          debit: Dec('140'),
+          journalEntry: {
+            id: 'je-2',
+            postedAt: new Date('2026-05-18'),
+            description: 'EX-002 vendor B',
+            metadata: { flow: 'expense-accrual', documentId: 'doc-B' },
+          },
         },
-      },
-    ]);
+      ],
+    });
     prisma.expenseDocument.findMany.mockResolvedValue([
       { id: 'doc-A', vendorName: 'Vendor A', vendorTaxId: '0123456789012', taxInvoiceNo: 'INV-A1', totalAmount: Dec('1070') },
       { id: 'doc-B', vendorName: 'Vendor B', vendorTaxId: '0123456789013', taxInvoiceNo: 'INV-B1', totalAmount: Dec('2140') },
@@ -70,33 +81,38 @@ describe('TaxService.previewPP30 — B3 / K-04 input VAT from 11-4101', () => {
   it('K-04: query filters by 11-4101 + debit > 0 + period + metadata.flow = expense-*', async () => {
     await service.previewPP30('co-1', 2026, 5);
 
-    expect(prisma.journalLine.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          accountCode: '11-4101',
-          debit: { gt: 0 },
-          deletedAt: null,
-          journalEntry: expect.objectContaining({
-            postedAt: { gte: expect.any(Date), lte: expect.any(Date) },
-            metadata: { path: ['flow'], string_starts_with: 'expense-' },
-          }),
-        }),
-      }),
+    // The 11-4101 input-VAT query is one of the 3 journalLine calls — find it.
+    const inputVatCall = prisma.journalLine.findMany.mock.calls.find(
+      ([args]: [{ where: { accountCode: string } }]) => args.where.accountCode === '11-4101',
     );
+    expect(inputVatCall).toBeDefined();
+    expect(inputVatCall[0]).toMatchObject({
+      where: {
+        accountCode: '11-4101',
+        debit: { gt: 0 },
+        deletedAt: null,
+        journalEntry: expect.objectContaining({
+          postedAt: { gte: expect.any(Date), lte: expect.any(Date) },
+          metadata: { path: ['flow'], string_starts_with: 'expense-' },
+        }),
+      },
+    });
   });
 
   it('K-04: lines whose expense_document is in a different branch are excluded', async () => {
-    prisma.journalLine.findMany.mockResolvedValue([
-      {
-        debit: Dec('70'),
-        journalEntry: {
-          id: 'je-1',
-          postedAt: new Date('2026-05-15'),
-          description: 'EX-001',
-          metadata: { flow: 'expense-same-day', documentId: 'doc-from-other-co' },
+    mockJournalByCode({
+      '11-4101': [
+        {
+          debit: Dec('70'),
+          journalEntry: {
+            id: 'je-1',
+            postedAt: new Date('2026-05-15'),
+            description: 'EX-001',
+            metadata: { flow: 'expense-same-day', documentId: 'doc-from-other-co' },
+          },
         },
-      },
-    ]);
+      ],
+    });
     // expenseDocument.findMany returns [] because doc's branchId not in our branchIds
     prisma.expenseDocument.findMany.mockResolvedValue([]);
 
@@ -115,12 +131,18 @@ describe('TaxService.previewPP30 — B3 / K-04 input VAT from 11-4101', () => {
     );
   });
 
-  it('K-04: empty branches → skip journal query entirely (no-company-no-input-VAT)', async () => {
+  it('K-04: empty branches → skip 11-4101 input-VAT query (no-company-no-input-VAT)', async () => {
     prisma.branch.findMany.mockResolvedValue([]);
 
     const result = await service.previewPP30('co-empty', 2026, 5);
 
-    expect(prisma.journalLine.findMany).not.toHaveBeenCalled();
+    // After Critical #2 fix: output VAT is journal-based and uses companyId
+    // scoping, so 21-2101/21-2103 queries CAN run even with no branches.
+    // The 11-4101 input-VAT helper is the one that bails early on empty branches.
+    const inputCall = prisma.journalLine.findMany.mock.calls.find(
+      ([args]: [{ where: { accountCode: string } }]) => args.where.accountCode === '11-4101',
+    );
+    expect(inputCall).toBeUndefined();
     expect(result.totalVatInput.toString()).toBe('0');
     expect(result.lineItems.purchases).toHaveLength(0);
   });
@@ -131,20 +153,222 @@ describe('TaxService.previewPP30 — B3 / K-04 input VAT from 11-4101', () => {
     // P0-1 routing remains correct end-to-end.
     await service.previewPP30('co-1', 2026, 5);
 
-    const call = prisma.journalLine.findMany.mock.calls[0][0];
-    expect(call.where.accountCode).toBe('11-4101');
-    expect(call.where.accountCode).not.toBe('11-2104');
+    // Find the input-VAT call (one of 3 journalLine calls).
+    const inputCall = prisma.journalLine.findMany.mock.calls.find(
+      ([args]: [{ where: { accountCode: string } }]) => args.where.accountCode === '11-4101',
+    );
+    expect(inputCall).toBeDefined();
+    expect(inputCall[0].where.accountCode).toBe('11-4101');
+    expect(inputCall[0].where.accountCode).not.toBe('11-2104');
   });
 
   it('K-04: credit-note reversal lines (Cr 11-4101) are excluded via debit > 0 filter', async () => {
-    // CN's reverse VAT books Cr 11-4101 (credit). Our `debit: { gt: 0 }` filter
-    // skips those. This keeps the period's totalVatInput net-zero-friendly when
-    // both sides exist in the same period — the CN's negative VAT contribution
-    // is reflected by the absent line, not a negative one.
     await service.previewPP30('co-1', 2026, 5);
 
-    const call = prisma.journalLine.findMany.mock.calls[0][0];
-    expect(call.where.debit).toEqual({ gt: 0 });
+    const inputCall = prisma.journalLine.findMany.mock.calls.find(
+      ([args]: [{ where: { accountCode: string } }]) => args.where.accountCode === '11-4101',
+    );
+    expect(inputCall).toBeDefined();
+    expect(inputCall[0].where.debit).toEqual({ gt: 0 });
+  });
+});
+
+// ────────────────────────────────────────────────────────────
+// Critical #2 — VAT output is journal-based (Cr 21-2101 + 21-2103)
+// ────────────────────────────────────────────────────────────
+
+describe('TaxService.previewPP30 — Critical #2: output VAT journal-based', () => {
+  let service: TaxService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let prisma: any;
+
+  function mockJournalByCode(byCode: Record<string, unknown[]>) {
+    prisma.journalLine.findMany.mockImplementation((args: { where: { accountCode: string } }) => {
+      return Promise.resolve(byCode[args.where.accountCode] ?? []);
+    });
+  }
+
+  beforeEach(async () => {
+    prisma = {
+      branch: { findMany: jest.fn() },
+      payment: { findMany: jest.fn() },
+      journalLine: { findMany: jest.fn() },
+      expenseDocument: { findMany: jest.fn() },
+    };
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [TaxService, { provide: PrismaService, useValue: prisma }],
+    }).compile();
+    service = module.get(TaxService);
+    prisma.branch.findMany.mockResolvedValue([{ id: 'br-1' }]);
+    prisma.payment.findMany.mockResolvedValue([]);
+    prisma.journalLine.findMany.mockResolvedValue([]);
+    prisma.expenseDocument.findMany.mockResolvedValue([]);
+  });
+
+  it('sums Cr 21-2101 + Cr 21-2103 as totalVatOutput (settled + 60-day mandatory)', async () => {
+    mockJournalByCode({
+      '21-2101': [
+        // PAYMENT — Cr 21-2101 from PaymentReceipt2BTemplate
+        {
+          credit: Dec('70'),
+          journalEntry: {
+            id: 'je-pay-1',
+            entryNumber: 'JE-202605-0001',
+            entryDate: new Date('2026-05-10'),
+            postedAt: new Date('2026-05-10'),
+            referenceType: 'PAYMENT',
+            referenceId: 'pay-1',
+            description: 'PaymentReceipt',
+          },
+        },
+        // OTHER_INCOME — Cr 21-2101 from OtherIncomeTemplate (asset disposal VAT)
+        {
+          credit: Dec('14'),
+          journalEntry: {
+            id: 'je-oi-1',
+            entryNumber: 'JE-202605-0002',
+            entryDate: new Date('2026-05-15'),
+            postedAt: new Date('2026-05-15'),
+            referenceType: 'OTHER_INCOME',
+            referenceId: 'oi-1',
+            description: 'Disposal asset',
+          },
+        },
+        // REPOSSESSION — Cr 21-2101 from RepossessionJP5Template
+        {
+          credit: Dec('35'),
+          journalEntry: {
+            id: 'je-rep-1',
+            entryNumber: 'JE-202605-0003',
+            entryDate: new Date('2026-05-20'),
+            postedAt: new Date('2026-05-20'),
+            referenceType: 'REPOSSESSION',
+            referenceId: 'rep-1',
+            description: 'Repossession',
+          },
+        },
+      ],
+      '21-2103': [
+        // 60-day mandatory VAT (Vat60dayMandatoryTemplate)
+        {
+          credit: Dec('21'),
+          journalEntry: {
+            id: 'je-60d-1',
+            entryNumber: 'JE-202605-0099',
+            entryDate: new Date('2026-05-25'),
+            postedAt: new Date('2026-05-25'),
+            referenceType: 'VAT_60DAY',
+            description: '60-day mandatory VAT',
+          },
+        },
+      ],
+    });
+
+    const result = await service.previewPP30('co-1', 2026, 5);
+
+    // 70 + 14 + 35 = 119 settled, 21 mandatory → total 140
+    expect(result.totalVatSettled.toString()).toBe('119');
+    expect(result.totalVatMandatory60Day.toString()).toBe('21');
+    expect(result.totalVatOutput.toString()).toBe('140');
+
+    // Source breakdown by referenceType
+    expect(result.vatOutputBySource.PAYMENT.toString()).toBe('70');
+    expect(result.vatOutputBySource.OTHER_INCOME.toString()).toBe('14');
+    expect(result.vatOutputBySource.REPOSSESSION.toString()).toBe('35');
+
+    // 60-day mandatory items appear in dedicated line-item section
+    expect(result.lineItems.mandatoryVat60Day).toHaveLength(1);
+    expect(result.lineItems.mandatoryVat60Day[0].vatAmount.toString()).toBe('21');
+    expect(result.lineItems.mandatoryVat60Day[0].entryNumber).toBe('JE-202605-0099');
+  });
+
+  it('queries 21-2101 with Cr > 0, POSTED, companyId, period range', async () => {
+    await service.previewPP30('co-1', 2026, 5);
+
+    const settledCall = prisma.journalLine.findMany.mock.calls.find(
+      ([args]: [{ where: { accountCode: string } }]) => args.where.accountCode === '21-2101',
+    );
+    expect(settledCall).toBeDefined();
+    expect(settledCall[0]).toMatchObject({
+      where: {
+        accountCode: '21-2101',
+        credit: { gt: 0 },
+        deletedAt: null,
+        journalEntry: expect.objectContaining({
+          status: 'POSTED',
+          companyId: 'co-1',
+          postedAt: { gte: expect.any(Date), lte: expect.any(Date) },
+        }),
+      },
+    });
+  });
+
+  it('queries 21-2103 (60-day mandatory VAT) separately from 21-2101', async () => {
+    await service.previewPP30('co-1', 2026, 5);
+
+    const mandatoryCall = prisma.journalLine.findMany.mock.calls.find(
+      ([args]: [{ where: { accountCode: string } }]) => args.where.accountCode === '21-2103',
+    );
+    expect(mandatoryCall).toBeDefined();
+    expect(mandatoryCall[0]).toMatchObject({
+      where: {
+        accountCode: '21-2103',
+        credit: { gt: 0 },
+        deletedAt: null,
+        journalEntry: expect.objectContaining({
+          status: 'POSTED',
+          companyId: 'co-1',
+        }),
+      },
+    });
+  });
+
+  it('Critical #2 regression: VAT from JP5 / OtherIncome / Vat60dayMandatory is captured even when no Payment.vatAmount exists', async () => {
+    // SCENARIO: month with only repossession + 60-day VAT events. The old
+    // Payment-only implementation would have reported totalVatOutput=0; the
+    // journal-based path catches both.
+    prisma.payment.findMany.mockResolvedValue([]); // no PAID payments with vatAmount
+    mockJournalByCode({
+      '21-2101': [
+        {
+          credit: Dec('500'),
+          journalEntry: {
+            id: 'je-rep',
+            entryNumber: 'JE-1',
+            entryDate: new Date('2026-05-10'),
+            postedAt: new Date('2026-05-10'),
+            referenceType: 'REPOSSESSION',
+            description: 'JP5',
+          },
+        },
+      ],
+      '21-2103': [
+        {
+          credit: Dec('100'),
+          journalEntry: {
+            id: 'je-60d',
+            entryNumber: 'JE-2',
+            entryDate: new Date('2026-05-15'),
+            postedAt: new Date('2026-05-15'),
+            referenceType: 'VAT_60DAY',
+            description: '60-day VAT',
+          },
+        },
+      ],
+    });
+
+    const result = await service.previewPP30('co-1', 2026, 5);
+
+    expect(result.totalVatOutput.toString()).toBe('600'); // 500 + 100
+    expect(result.totalSales.toString()).toBe('0'); // no payments
+  });
+
+  it('empty period → zero output VAT', async () => {
+    const result = await service.previewPP30('co-1', 2026, 5);
+    expect(result.totalVatOutput.toString()).toBe('0');
+    expect(result.totalVatSettled.toString()).toBe('0');
+    expect(result.totalVatMandatory60Day.toString()).toBe('0');
+    expect(result.lineItems.mandatoryVat60Day).toHaveLength(0);
   });
 });
 

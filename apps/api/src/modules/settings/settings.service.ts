@@ -1,9 +1,10 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { DocumentType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { readBoolFlag, readNumberFlag } from '../../utils/config.util';
 import { SSO_RATE } from '../sso-config/sso-config.service';
+import { resolveSettingsAccessRoles } from './settings-access.guard';
 
 /**
  * D1.1.3.3 — keys that are exposed read-only through SystemConfig.
@@ -120,7 +121,32 @@ export class SettingsService {
    * null/undefined skips the audit log and is reserved for system-internal
    * writes (e.g. automated migrations).
    */
-  async update(key: string, value: string, userId?: string) {
+  /**
+   * D1.3.2.2 (S3 defense-in-depth) — Service-side mirror of
+   * `SettingsAccessGuard`. Mutating callsites (`update`, `bulkUpdate`)
+   * invoke this with the request user's role. Throws ForbiddenException
+   * if the role is not in the currently-allowed bundle.
+   *
+   * The guard is the primary gate; this check survives a future refactor
+   * that accidentally widens the controller decorator or replaces the
+   * guard pipeline. `userRole === undefined` is treated as "skip check"
+   * for two legitimate cases:
+   *   - system-internal callers (cron jobs, migrations) that don't carry
+   *     a user identity (matches existing `userId === undefined` skip),
+   *   - unit tests that don't construct a full guard pipeline.
+   */
+  async assertCanWriteSettings(userRole: string | undefined): Promise<void> {
+    if (userRole === undefined) return; // system-internal / test bypass
+    const allowed = await resolveSettingsAccessRoles(this.prisma);
+    if (!allowed.has(userRole)) {
+      throw new ForbiddenException(
+        `ไม่มีสิทธิ์แก้ไขการตั้งค่า (role ปัจจุบัน: ${userRole})`,
+      );
+    }
+  }
+
+  async update(key: string, value: string, userId?: string, userRole?: string) {
+    await this.assertCanWriteSettings(userRole);
     if (READ_ONLY_KEYS.has(key)) {
       throw new BadRequestException(
         `key "${key}" เป็น read-only ตามกฎหมาย/ระเบียบ — ไม่สามารถแก้ไขผ่านระบบได้`,
@@ -642,6 +668,13 @@ export class SettingsService {
      */
     approvalEnabled: boolean;
     /**
+     * D1.2.1.5 — fan out IN_APP notifications when a doc enters
+     * PENDING_APPROVAL. Default `true`. Respects the master gate
+     * `in_app_notifications_enabled` (D1.3.1.4) — if either is off, no
+     * notifications are sent. Read by `ExpenseDocumentsService.notifyApprovers`.
+     */
+    notificationOnPending: boolean;
+    /**
      * D1.2.3.2 — default pagination size for list pages. Valid integer 10-200
      * inclusive. Default `50`. Out-of-range or non-numeric values clamp to
      * the default so a malformed admin edit can't break list pages. SystemConfig
@@ -808,6 +841,15 @@ export class SettingsService {
      * payment processing.
      */
     webhooksEnabled: boolean;
+    /**
+     * D1.3.2.2 — dynamic bundle name controlling who can access Settings.
+     * Whitelisted: `'OWNER'` (default) / `'OWNER+FINANCE_MANAGER'` /
+     * `'OWNER+ACCOUNTANT'` / `'OWNER+ALL'`. Read at request time by
+     * `SettingsAccessGuard`; exposed here so the web app can render an
+     * informational badge on /settings. Invalid SystemConfig values fall
+     * back to `'OWNER'` (preserves OWNER-only behavior).
+     */
+    settingsAccessRole: 'OWNER' | 'OWNER+FINANCE_MANAGER' | 'OWNER+ACCOUNTANT' | 'OWNER+ALL';
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -1010,6 +1052,9 @@ export class SettingsService {
     // Settings_Audit_Core_v2.0.md spec. Owner can flip to `false` via
     // SystemConfig if rollout needs to be gradual.
     const approvalEnabled = await this.readBoolean('approval_enabled', true);
+    // D1.2.1.5 — notification fan-out toggle. Default true. Respects master
+    // gate `in_app_notifications_enabled` downstream in NotificationsService.
+    const notificationOnPending = await this.readBoolean('notification_on_pending', true);
     // D1.2.3.2 — pagination_size. Integer 10-200 inclusive; clamp to 50
     // default for out-of-range or non-numeric values so list pages remain
     // usable even when SystemConfig is mis-edited.
@@ -1119,6 +1164,16 @@ export class SettingsService {
     const viewerRoleEnabled = await this.readBoolean('viewer_role_enabled', false);
     // D1.3.3.3 — webhooks_enabled. DEFAULT-OFF per accountant package.
     const webhooksEnabled = await this.readBoolean('webhooks_enabled', false);
+    // D1.3.2.2 — settings_access_role. Whitelist 4 values; everything else
+    // (missing key, malformed value) falls back to 'OWNER' so behavior
+    // matches the pre-Phase-2 hardcoded @Roles('OWNER').
+    const settingsAccessRoleRaw = await this.getKey('settings_access_role');
+    const settingsAccessRole: 'OWNER' | 'OWNER+FINANCE_MANAGER' | 'OWNER+ACCOUNTANT' | 'OWNER+ALL' =
+      settingsAccessRoleRaw === 'OWNER+FINANCE_MANAGER' ||
+      settingsAccessRoleRaw === 'OWNER+ACCOUNTANT' ||
+      settingsAccessRoleRaw === 'OWNER+ALL'
+        ? settingsAccessRoleRaw
+        : 'OWNER';
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -1161,6 +1216,7 @@ export class SettingsService {
       decimalPlaces,
       dateFormat,
       approvalEnabled,
+      notificationOnPending,
       paginationSize,
       defaultTimeRange,
       apDueAlertsEnabled,
@@ -1180,6 +1236,7 @@ export class SettingsService {
       settlementPartialPaymentEnabled,
       viewerRoleEnabled,
       webhooksEnabled,
+      settingsAccessRole,
     };
   }
 
@@ -1240,7 +1297,13 @@ export class SettingsService {
     });
   }
 
-  async bulkUpdate(items: { key: string; value: string }[], userId?: string) {
+  async bulkUpdate(
+    items: { key: string; value: string }[],
+    userId?: string,
+    userRole?: string,
+  ) {
+    // D1.3.2.2 (S3) — defense-in-depth role check (mirrors SettingsAccessGuard).
+    await this.assertCanWriteSettings(userRole);
     // D1.1.3.3 — reject the whole batch if any read-only key is present
     // (atomicity: don't silently drop entries; the caller has a UI bug).
     const readOnlyHit = items.find((i) => READ_ONLY_KEYS.has(i.key));

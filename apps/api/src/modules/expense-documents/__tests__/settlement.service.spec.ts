@@ -74,6 +74,7 @@ describe('ExpenseDocumentsService.createSettlement', () => {
       { execute: jest.fn() } as never,
       { getConfig: jest.fn(), validate: jest.fn() } as never,
       { loadWhitelist: jest.fn().mockResolvedValue(new Set()), validateLine: jest.fn() } as never,
+      { send: jest.fn().mockResolvedValue({ id: 'notif-1', status: 'SENT' }) } as never,
     );
   });
 

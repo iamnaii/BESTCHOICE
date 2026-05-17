@@ -218,6 +218,12 @@ export interface UiFlags {
    */
   approvalEnabled: boolean;
   /**
+   * D1.2.1.5 — fan out IN_APP notifications when a doc enters
+   * PENDING_APPROVAL. Default `true`. Respects master gate
+   * `in_app_notifications_enabled`.
+   */
+  notificationOnPending: boolean;
+  /**
    * D1.1.6 — adjustment account codes for the V4 multi-line Adjustment row.
    * Frontend was hardcoding '52-1104' / '53-1503'; now reads from this flag
    * so OWNER can rebind the codes without a frontend deploy.
@@ -291,6 +297,14 @@ export interface UiFlags {
    * why registered subscriptions aren't firing.
    */
   webhooksEnabled: boolean;
+  /**
+   * D1.3.2.2 — dynamic bundle name controlling who can access Settings.
+   * Whitelisted: `'OWNER'` (default) / `'OWNER+FINANCE_MANAGER'` /
+   * `'OWNER+ACCOUNTANT'` / `'OWNER+ALL'`. The server's `SettingsAccessGuard`
+   * narrows per-request based on this value; the frontend uses it for the
+   * informational badge on /settings.
+   */
+  settingsAccessRole: 'OWNER' | 'OWNER+FINANCE_MANAGER' | 'OWNER+ACCOUNTANT' | 'OWNER+ALL';
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -353,6 +367,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   decimalPlaces: 2,
   dateFormat: 'BE',
   approvalEnabled: false,
+  notificationOnPending: true,
   paginationSize: 50,
   defaultTimeRange: 'this_month',
   apDueAlertsEnabled: false,
@@ -372,6 +387,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   settlementPartialPaymentEnabled: true,
   viewerRoleEnabled: false,
   webhooksEnabled: false,
+  settingsAccessRole: 'OWNER',
 };
 
 export function useUiFlags(): UiFlags {

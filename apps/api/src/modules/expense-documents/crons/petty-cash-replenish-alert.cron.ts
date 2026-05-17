@@ -40,8 +40,11 @@ export class PettyCashReplenishAlertCron {
     private readonly notifications: NotificationsService,
   ) {}
 
-  /** Daily at 09:00 BKK — runs after the working day starts so OWNERs see it during business hours. */
-  @Cron('0 9 * * *', { timeZone: 'Asia/Bangkok' })
+  /**
+   * Daily at 09:05 BKK — staggered behind draft-alerts (09:01) and ap-due-alerts (09:03)
+   * to avoid the 09:00 thundering herd. OWNERs still see the alert during business hours.
+   */
+  @Cron('5 9 * * *', { timeZone: 'Asia/Bangkok' })
   async tick(): Promise<{ alertsSent: number; balance: number; threshold: number; limit: number }> {
     try {
       const { limit, threshold } = await this.readConfig();

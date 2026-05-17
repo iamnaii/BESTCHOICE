@@ -42,6 +42,7 @@ import { UpdateTemplateDto } from './dto/update-template.dto';
 import { ToggleMakerCheckerDto } from './dto/toggle-maker-checker.dto';
 import { CheckLateFeeCollisionDto } from './dto/check-late-fee-collision.dto';
 import { ValidationService } from './services/validation.service';
+import { ExportEnabledGuard } from '../settings/guards/export-enabled.guard';
 
 @Controller('other-income')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -197,6 +198,8 @@ export class OtherIncomeController {
   }
 
   @Get(':id/receipt.pdf')
+  // D1.3.3.1 — gated by ExportEnabledGuard (403 when export_enabled=false).
+  @UseGuards(ExportEnabledGuard)
   async getReceiptPdf(
     @Param('id', new ParseUUIDPipe()) id: string,
     @Res() res: Response,

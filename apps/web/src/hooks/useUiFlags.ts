@@ -51,6 +51,12 @@ export interface UiFlags {
    * over the moment the user toggles the sidebar. Default false (= expanded).
    */
   sidebarCollapsedDefault: boolean;
+  /**
+   * D1.4.1.2 — when false, hide keyboard-shortcut UI affordances:
+   * the global Shift+? help-dialog binding is disabled and per-item kbd
+   * hints are suppressed. Default true preserves existing UX.
+   */
+  showKeyboardShortcuts: boolean;
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -76,6 +82,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   draftAlertThresholdDays: 7,
   adjustmentCodes: { underpay: '52-1104', overpay: '53-1503' },
   sidebarCollapsedDefault: false,
+  showKeyboardShortcuts: true,
 };
 
 export function useUiFlags(): UiFlags {

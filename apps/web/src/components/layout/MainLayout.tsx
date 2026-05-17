@@ -50,7 +50,12 @@ function MainContent() {
   const isMobile = useIsMobile();
   const { sidebarCollapse } = useLayout();
   const { pathname } = useLocation();
-  const { showShortcutsHelp, setShowShortcutsHelp } = useGlobalShortcuts();
+  const { showKeyboardShortcuts } = useUiFlags();
+  // D1.4.1.2 — when OWNER disables `show_keyboard_shortcuts`, the Shift+?
+  // help-dialog binding becomes a no-op AND the overlay is never rendered.
+  const { showShortcutsHelp, setShowShortcutsHelp } = useGlobalShortcuts({
+    disabled: !showKeyboardShortcuts,
+  });
 
   const isFullBleed = FULL_BLEED_ROUTES.some((r) => pathname === r || pathname.startsWith(r + '/'));
 
@@ -104,8 +109,8 @@ function MainContent() {
       {/* Global Command Palette (Ctrl+K) */}
       <CommandPalette />
 
-      {/* Shortcuts Help Overlay (Shift+?) */}
-      {showShortcutsHelp && (
+      {/* Shortcuts Help Overlay (Shift+?) — gated by D1.4.1.2 */}
+      {showShortcutsHelp && showKeyboardShortcuts && (
         <ShortcutsHelpOverlay onClose={() => setShowShortcutsHelp(false)} />
       )}
     </div>

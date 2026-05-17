@@ -214,6 +214,12 @@ export class SettingsService {
      * Default false (= expanded). OWNER stores 'true' / 'false'.
      */
     sidebarCollapsedDefault: boolean;
+    /**
+     * D1.4.1.2 — controls whether keyboard-shortcut hints (the Shift+? help
+     * dialog binding + per-item kbd hints) are exposed to the user. Default
+     * true preserves the existing UX. OWNER stores 'true'/'false'.
+     */
+    showKeyboardShortcuts: boolean;
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -287,6 +293,11 @@ export class SettingsService {
       'sidebar_collapsed_default',
       false,
     );
+    // D1.4.1.2 — keyboard shortcut hints + help-dialog binding. Default true.
+    const showKeyboardShortcuts = await this.readBoolean(
+      'show_keyboard_shortcuts',
+      true,
+    );
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -303,6 +314,7 @@ export class SettingsService {
       draftAlertThresholdDays,
       adjustmentCodes,
       sidebarCollapsedDefault,
+      showKeyboardShortcuts,
     };
   }
 

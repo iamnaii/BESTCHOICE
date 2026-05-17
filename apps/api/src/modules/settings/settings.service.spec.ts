@@ -419,5 +419,30 @@ describe('SettingsService audit trail', () => {
       const flags = await service.getUiFlags();
       expect(flags.sidebarCollapsedDefault).toBe(false);
     });
+
+    // D1.4.1.2 — show_keyboard_shortcuts
+    it('showKeyboardShortcuts defaults to true when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.showKeyboardShortcuts).toBe(true);
+    });
+
+    it('showKeyboardShortcuts returns false when OWNER stores "false"', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'show_keyboard_shortcuts') return Promise.resolve({ value: 'false' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.showKeyboardShortcuts).toBe(false);
+    });
+
+    it('showKeyboardShortcuts falls back to default on unparseable value', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'show_keyboard_shortcuts') return Promise.resolve({ value: 'maybe' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.showKeyboardShortcuts).toBe(true);
+    });
   });
 });

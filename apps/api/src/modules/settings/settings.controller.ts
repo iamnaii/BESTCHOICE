@@ -1,13 +1,21 @@
 import { Controller, Get, Patch, Put, Body, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Patch, Put, Body, Param, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { SettingsService } from './settings.service';
 import { BulkUpdateSettingsDto } from './dto/update-settings.dto';
 import { CollectionsConfigDto } from './dto/collections-config.dto';
 import { AssignPettyCashCustodianDto } from './dto/petty-cash-custodian.dto';
+import { UpdateRoleMapDto } from './dto/update-role-map.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import {
+  AccountRoleService,
+  ROLE_MAP_READ_ROLES,
+  ROLE_MAP_WRITE_ROLES,
+} from '../journal/account-role.service';
+import { RoleMapValidationService } from './role-map-validation.service';
 
 @ApiTags('Settings')
 @ApiBearerAuth('JWT')
@@ -15,7 +23,11 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('OWNER')
 export class SettingsController {
-  constructor(private settingsService: SettingsService) {}
+  constructor(
+    private settingsService: SettingsService,
+    private accountRoleService: AccountRoleService,
+    private roleMapValidation: RoleMapValidationService,
+  ) {}
 
   @Get()
   findAll() {
@@ -31,6 +43,49 @@ export class SettingsController {
   @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   getUiFlags() {
     return this.settingsService.getUiFlags();
+  }
+
+  /**
+   * D1.1.1.2 / D1.1.1.7 — Read account_role_map joined with CoA.
+   *
+   * Permission: OWNER + FINANCE_MANAGER + ACCOUNTANT (read-only).
+   * Explicit `...ROLE_MAP_READ_ROLES` spread keeps the decorator + the
+   * `assertCanRead()` runtime check pointing at the same constant — no
+   * drift possible.
+   */
+  @Get('role-map')
+  @Roles(...ROLE_MAP_READ_ROLES)
+  getRoleMap(@CurrentUser() user: { id: string; role: string }) {
+    // D1.1.1.7 — runtime double-check (defense in depth — if a future
+    // refactor widens the decorator scope, this still blocks).
+    this.accountRoleService.assertCanRead(user.role);
+    return this.accountRoleService.listWithCoa();
+  }
+
+  /**
+   * D1.1.1.3 + D1.1.1.5 + D1.1.1.7 — Update one role-map row (OWNER-only).
+   *
+   * - Permission (D1.1.1.7): `@Roles(...ROLE_MAP_WRITE_ROLES)` + the
+   *   service-side `assertCanWrite()` gate — defense in depth.
+   * - Validation (D1.1.1.5): `RoleMapValidationService.validateUpdate`
+   *   handles the required-role lock, CoA presence + normal-balance match,
+   *   priority uniqueness per role. Service `update()` invokes it via the
+   *   `validate` callback so other entry points (POST, bulk) can reuse.
+   */
+  @Put('role-map/:id')
+  @Roles(...ROLE_MAP_WRITE_ROLES)
+  updateRoleMap(
+    @Param('id') id: string,
+    @Body() dto: UpdateRoleMapDto,
+    @CurrentUser() user: { id: string; role: string },
+  ) {
+    return this.accountRoleService.update(
+      id,
+      dto,
+      user.id,
+      user.role,
+      (args) => this.roleMapValidation.validateUpdate(args),
+    );
   }
 
   @Patch()

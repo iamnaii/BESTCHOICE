@@ -8,9 +8,11 @@
 // This component shows the live signed sum + diff so the user can self-check
 // before POST.
 
+import { useMemo } from 'react';
 import { Plus, Trash2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import type { ExpenseAdjustmentForm } from './types';
 import { newAdjustment } from './types';
+import { useUiFlags } from '@/hooks/useUiFlags';
 
 interface Props {
   /** Reconciliation diff = amountPaid − (totalAmount − wht). Sign decides side. */
@@ -19,16 +21,16 @@ interface Props {
   onAmountPaidChange: (value: string) => void;
   adjustments: ExpenseAdjustmentForm[];
   onChange: (rows: ExpenseAdjustmentForm[]) => void;
-  /** Suggested account codes (rounding-tolerance + discount accounts, etc.) */
+  /**
+   * Suggested account codes (rounding-tolerance + discount accounts, etc.).
+   * When omitted, falls back to OWNER-configured codes from getUiFlags
+   * (`adjustmentCodes.underpay` + `adjustmentCodes.overpay`), with legacy
+   * defaults '52-1104' (Dr) + '53-1503' (Cr) baked into useUiFlags.
+   */
   suggestedAccounts?: Array<{ code: string; name: string; defaultSide: 'DR' | 'CR' }>;
   /** Sum of items + VAT − WHT — shown for context */
   netExpected: string;
 }
-
-const DEFAULT_SUGGESTED: Array<{ code: string; name: string; defaultSide: 'DR' | 'CR' }> = [
-  { code: '53-1503', name: 'กำไร/ขาดทุน-สุทธิปัดเศษ', defaultSide: 'CR' },
-  { code: '52-1104', name: 'ส่วนลดไม่จ่ายเศษสตางค์', defaultSide: 'DR' },
-];
 
 const D = (s: string) => {
   const n = parseFloat(s || '0');
@@ -43,9 +45,29 @@ export function AdjustmentSection({
   onAmountPaidChange,
   adjustments,
   onChange,
-  suggestedAccounts = DEFAULT_SUGGESTED,
+  suggestedAccounts,
   netExpected,
 }: Props) {
+  // D1.1.6 — read configurable adjustment codes from getUiFlags so OWNER
+  // can rebind without a frontend deploy. Caller-supplied list still wins
+  // (overrides the flag) — preserves backwards-compatible API.
+  const { adjustmentCodes } = useUiFlags();
+  const effectiveSuggested = useMemo(
+    () =>
+      suggestedAccounts ?? [
+        {
+          code: adjustmentCodes.overpay,
+          name: 'กำไร/ขาดทุน-สุทธิปัดเศษ',
+          defaultSide: 'CR' as const,
+        },
+        {
+          code: adjustmentCodes.underpay,
+          name: 'ส่วนลดไม่จ่ายเศษสตางค์',
+          defaultSide: 'DR' as const,
+        },
+      ],
+    [suggestedAccounts, adjustmentCodes.overpay, adjustmentCodes.underpay],
+  );
   const diffNum = D(diff);
   const adjustmentsActive = adjustments.length > 0 || Math.abs(diffNum) > 0.005;
 
@@ -145,7 +167,7 @@ export function AdjustmentSection({
                     value={row.accountCode}
                     onChange={(e) => {
                       const code = e.target.value;
-                      const match = suggestedAccounts.find((s) => s.code === code);
+                      const match = effectiveSuggested.find((s) => s.code === code);
                       updateRow(row.uid, {
                         accountCode: code,
                         side: match?.defaultSide ?? row.side,
@@ -154,7 +176,7 @@ export function AdjustmentSection({
                     className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                   >
                     <option value="">— เลือกบัญชี —</option>
-                    {suggestedAccounts.map((s) => (
+                    {effectiveSuggested.map((s) => (
                       <option key={s.code} value={s.code}>
                         {s.code} — {s.name}
                       </option>

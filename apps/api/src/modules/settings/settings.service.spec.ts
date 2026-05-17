@@ -396,6 +396,43 @@ describe('SettingsService audit trail', () => {
       expect(flags.auditLogArchiveEnabled).toBe(true);
     });
 
+    // D1.3.4.2 — smart_switch_threshold_days (default 0, clamp 0–30,
+    // negative/non-integer/NaN → 0). Originally marked SKIP per Phase 2
+    // decision report; shipped per owner directive 2026-05-17 to reach
+    // 100% A1 coverage.
+    it('smartSwitchThresholdDays defaults to 0 when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.smartSwitchThresholdDays).toBe(0);
+    });
+
+    it('smartSwitchThresholdDays accepts OWNER-configured value within 0–30', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'smart_switch_threshold_days') return Promise.resolve({ value: '7' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.smartSwitchThresholdDays).toBe(7);
+    });
+
+    it('smartSwitchThresholdDays clamps out-of-range value (>30) to default 0', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'smart_switch_threshold_days') return Promise.resolve({ value: '60' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.smartSwitchThresholdDays).toBe(0);
+    });
+
+    it('smartSwitchThresholdDays falls back to default for negative values', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'smart_switch_threshold_days') return Promise.resolve({ value: '-3' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.smartSwitchThresholdDays).toBe(0);
+    });
+
     // D1.3.4.1 — smart_doctype_switch_enabled (default true, originally
     // marked SKIP per Phase 2 decision report; shipped per owner directive
     // 2026-05-17 to reach 100% A1 coverage).

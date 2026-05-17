@@ -208,6 +208,19 @@ export class SettingsService {
      */
     auditLogArchiveEnabled: boolean;
     /**
+     * D1.3.4.2 — days threshold for the SAMEDAY→ACCRUAL auto-switch.
+     * Default `0` = any past document date triggers the flip (preserves
+     * the pre-Phase-4 hardcoded behavior). When set to N>0, the flip only
+     * fires when `(today − documentDate) > N` days. Useful when the shop
+     * routinely books cash purchases the next day (set `1` to tolerate a
+     * one-day lag without flipping to ACCRUAL). Clamped to 0–30 on read;
+     * non-integer / NaN / negative values fall back to 0.
+     *
+     * Originally marked SKIP per Phase 2 decision report; shipped per
+     * owner directive 2026-05-17 to reach 100% A1 coverage.
+     */
+    smartSwitchThresholdDays: number;
+    /**
      * D1.3.4.1 — gate the auto SAMEDAY→ACCRUAL switch logic in the expense
      * entry form. Default `true` preserves the existing one-way auto-flip
      * (ExpenseFormV4: when the user picks a past `documentDate` while
@@ -538,6 +551,18 @@ export class SettingsService {
       'audit_log_archive_enabled',
       true,
     );
+    // D1.3.4.2 — smart-switch threshold (days). Clamp 0–30; non-integer /
+    // NaN / negative → 0. Default 0 = legacy behavior (any past date flips).
+    const smartSwitchThresholdRaw = await this.readNumber(
+      'smart_switch_threshold_days',
+      0,
+    );
+    const smartSwitchThresholdDays =
+      Number.isInteger(smartSwitchThresholdRaw) &&
+      smartSwitchThresholdRaw >= 0 &&
+      smartSwitchThresholdRaw <= 30
+        ? smartSwitchThresholdRaw
+        : 0;
     // D1.3.4.1 — smart_doctype_switch_enabled (default true).
     const smartDoctypeSwitchEnabled = await this.readBoolean(
       'smart_doctype_switch_enabled',
@@ -737,6 +762,7 @@ export class SettingsService {
       language,
       exportEnabled,
       auditLogArchiveEnabled,
+      smartSwitchThresholdDays,
       summaryDefaultRange,
       smartDoctypeSwitchEnabled,
       adjAutoRoute,

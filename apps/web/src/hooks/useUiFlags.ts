@@ -48,6 +48,12 @@ export interface UiFlags {
    * frontend exposes the flag so an admin UI can render the current state.
    */
   auditLogArchiveEnabled: boolean;
+  /**
+   * D1.3.4.2 — days threshold for the SAMEDAY→ACCRUAL auto-switch in
+   * `ExpenseFormV4`. Default `0` = any past date triggers (legacy
+   * behavior). Server clamps to 0–30; out-of-range / NaN → 0.
+   */
+  smartSwitchThresholdDays: number;
   /** D1.3.5.1 — default time-range preset for ExpenseDailySummaryPage. Default 'this_month'. */
   summaryDefaultRange: 'today' | 'this_week' | 'this_month' | 'last_month';
   /**
@@ -209,6 +215,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   language: 'th',
   exportEnabled: true,
   auditLogArchiveEnabled: true,
+  smartSwitchThresholdDays: 0,
   summaryDefaultRange: 'this_month',
   smartDoctypeSwitchEnabled: true,
   settlementMaxBillsPerDoc: 100,

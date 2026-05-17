@@ -59,6 +59,12 @@ export interface UiFlags {
    * hints are suppressed. Default true preserves existing UX.
    */
   showKeyboardShortcuts: boolean;
+  /**
+   * D1.4.1.3 — global animations + transitions toggle. When false, the
+   * hook sets `data-animations-disabled="true"` on `<html>` and a CSS rule
+   * strips `transition` / `animation` from every element. Default true.
+   */
+  animationEnabled: boolean;
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -86,6 +92,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   adjustmentCodes: { underpay: '52-1104', overpay: '53-1503' },
   sidebarCollapsedDefault: false,
   showKeyboardShortcuts: true,
+  animationEnabled: true,
 };
 
 export function useUiFlags(): UiFlags {
@@ -119,5 +126,15 @@ export function useUiFlags(): UiFlags {
       /* ignore quota / disabled-storage */
     }
   }, [data, flags.sidebarCollapsedDefault]);
+  // D1.4.1.3 — toggle global animations. CSS rule in `index.css` matches
+  // `[data-animations-disabled="true"]` and strips transitions + animations.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (flags.animationEnabled) {
+      document.documentElement.removeAttribute('data-animations-disabled');
+    } else {
+      document.documentElement.setAttribute('data-animations-disabled', 'true');
+    }
+  }, [flags.animationEnabled]);
   return flags;
 }

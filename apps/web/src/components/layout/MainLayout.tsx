@@ -121,7 +121,8 @@ function MainContent() {
 export default function MainLayout() {
   // Fire useUiFlags here so the D1.4.1.1 first-device sidebar seed runs as
   // early as possible — before any consumer component asks for the flags.
-  // Hook handles its own caching; no perf concern about extra calls.
+  // D1.4.1.3 — animation toggle side-effect also runs here. Hook is
+  // React-Query cached so the extra mount is cheap.
   useUiFlags();
   return (
     <LayoutProvider>

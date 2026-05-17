@@ -229,6 +229,14 @@ export class SettingsService {
      * true preserves the existing UX. OWNER stores 'true'/'false'.
      */
     showKeyboardShortcuts: boolean;
+    /**
+     * D1.4.1.3 — global animations + transitions toggle. Default true.
+     * When false, the web app sets `data-animations-disabled="true"` on
+     * `<html>` and a CSS rule strips `transition` / `animation` properties.
+     * Complements the OS-level `prefers-reduced-motion` media query for
+     * accessibility users on browsers that don't expose the OS setting.
+     */
+    animationEnabled: boolean;
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -315,6 +323,8 @@ export class SettingsService {
       'show_keyboard_shortcuts',
       true,
     );
+    // D1.4.1.3 — animation enabled. Default true.
+    const animationEnabled = await this.readBoolean('animation_enabled', true);
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -333,6 +343,7 @@ export class SettingsService {
       adjustmentCodes,
       sidebarCollapsedDefault,
       showKeyboardShortcuts,
+      animationEnabled,
     };
   }
 

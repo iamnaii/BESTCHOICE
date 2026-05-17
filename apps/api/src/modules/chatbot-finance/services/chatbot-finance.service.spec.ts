@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { ChatbotFinanceService } from './chatbot-finance.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LineFinanceClientService } from './line-finance-client.service';
@@ -75,6 +76,10 @@ describe('ChatbotFinanceService', () => {
         { provide: HandoffService, useValue: handoff },
         { provide: SlipProcessingService, useValue: slipProcessing },
         { provide: FeedbackService, useValue: { saveFeedback: jest.fn().mockResolvedValue({ ok: true }) } },
+        // ChatbotFinanceService recently added ConfigService as a constructor dep
+        // (used for FB_BOT_DISABLED / LINE token reads). Tests don't exercise
+        // those paths — a no-op stub keeps DI happy without affecting assertions.
+        { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue(undefined) } },
       ],
     }).compile();
 

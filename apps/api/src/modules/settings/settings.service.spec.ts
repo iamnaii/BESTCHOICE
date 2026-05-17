@@ -93,6 +93,51 @@ describe('SettingsService audit trail', () => {
     expect(actions).toContain('SYSTEM_CONFIG_CREATE');
   });
 
+  // D1.1.3.1 follow-up — VAT-rate write normalisation.
+  describe('bulkUpdate VAT_RATE normalisation', () => {
+    beforeEach(() => {
+      // Mock the upsert side-effect so we can read the call args.
+      prisma.systemConfig.upsert = jest.fn(
+        (args: { where: { key: string }; update: { value: string }; create: { key: string; value: string } }) =>
+          Promise.resolve({ id: 'sc-1', key: args.where.key, value: args.update.value }),
+      );
+    });
+
+    it('rewrites vat_pct decimal form to VAT_RATE percent form', async () => {
+      prisma.systemConfig.findMany.mockResolvedValue([]);
+      await service.bulkUpdate([{ key: 'vat_pct', value: '0.07' }], 'u-1');
+      const upsertArgs = prisma.systemConfig.upsert.mock.calls[0][0];
+      expect(upsertArgs.where).toEqual({ key: 'VAT_RATE' });
+      expect(upsertArgs.update).toEqual({ value: '7' });
+    });
+
+    it('passes through VAT_RATE writes unchanged', async () => {
+      prisma.systemConfig.findMany.mockResolvedValue([]);
+      await service.bulkUpdate([{ key: 'VAT_RATE', value: '7' }], 'u-1');
+      const upsertArgs = prisma.systemConfig.upsert.mock.calls[0][0];
+      expect(upsertArgs.where).toEqual({ key: 'VAT_RATE' });
+      expect(upsertArgs.update).toEqual({ value: '7' });
+    });
+
+    it('rewrites legacy vat_rate alias the same way as vat_pct', async () => {
+      prisma.systemConfig.findMany.mockResolvedValue([]);
+      await service.bulkUpdate([{ key: 'vat_rate', value: '0.07' }], 'u-1');
+      const upsertArgs = prisma.systemConfig.upsert.mock.calls[0][0];
+      expect(upsertArgs.where).toEqual({ key: 'VAT_RATE' });
+      expect(upsertArgs.update).toEqual({ value: '7' });
+    });
+
+    it('preserves percent-form value sent under vat_pct (operator confusion)', async () => {
+      prisma.systemConfig.findMany.mockResolvedValue([]);
+      // Operator types "7" into a field labelled vat_pct — that's percent,
+      // not decimal. Heuristic treats >=1 as already percent.
+      await service.bulkUpdate([{ key: 'vat_pct', value: '7' }], 'u-1');
+      const upsertArgs = prisma.systemConfig.upsert.mock.calls[0][0];
+      expect(upsertArgs.where).toEqual({ key: 'VAT_RATE' });
+      expect(upsertArgs.update).toEqual({ value: '7' });
+    });
+  });
+
   it('audit failure does NOT block config update (audit.log is fire-and-forget-style)', async () => {
     prisma.systemConfig.findUnique.mockResolvedValue({ value: 'old' });
     audit.log.mockRejectedValue(new Error('audit DB down'));
@@ -329,6 +374,93 @@ describe('SettingsService audit trail', () => {
       });
       const flags = await service.getUiFlags();
       expect(flags.paginationSize).toBe(50);
+    });
+
+    // D1.2.3.1 — default_time_range preset
+    it('defaultTimeRange defaults to "this_month" when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.defaultTimeRange).toBe('this_month');
+    });
+
+    it('defaultTimeRange accepts "all" from SystemConfig', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'default_time_range') return Promise.resolve({ value: 'all' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.defaultTimeRange).toBe('all');
+    });
+
+    it('defaultTimeRange accepts "last_month" from SystemConfig', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'default_time_range') return Promise.resolve({ value: 'last_month' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.defaultTimeRange).toBe('last_month');
+    });
+
+    it('defaultTimeRange falls back to "this_month" for unknown values', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'default_time_range') return Promise.resolve({ value: 'last_quarter' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.defaultTimeRange).toBe('this_month');
+    });
+
+    // D1.1.6 — adjustmentCodes for V4 form's Multi-line Adjustment row.
+    it('adjustmentCodes defaults to 52-1104 (underpay) / 53-1503 (overpay)', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.adjustmentCodes).toEqual({ underpay: '52-1104', overpay: '53-1503' });
+    });
+
+    it('adjustmentCodes accepts OWNER override from SystemConfig', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'adjustment_code_underpay') return Promise.resolve({ value: '52-9999' });
+        if (args.where.key === 'adjustment_code_overpay') return Promise.resolve({ value: '53-9999' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.adjustmentCodes).toEqual({ underpay: '52-9999', overpay: '53-9999' });
+    });
+
+    it('adjustmentCodes rejects malformed code via regex fallback', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'adjustment_code_underpay') return Promise.resolve({ value: 'BAD-CODE' });
+        if (args.where.key === 'adjustment_code_overpay') return Promise.resolve({ value: '' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      // Both bad → fall back to legacy defaults.
+      expect(flags.adjustmentCodes).toEqual({ underpay: '52-1104', overpay: '53-1503' });
+    });
+
+    // D1.4.1.1 — sidebar_collapsed_default
+    it('sidebarCollapsedDefault defaults to false (expanded) when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.sidebarCollapsedDefault).toBe(false);
+    });
+
+    it('sidebarCollapsedDefault returns true when OWNER stores "true"', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'sidebar_collapsed_default') return Promise.resolve({ value: 'true' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.sidebarCollapsedDefault).toBe(true);
+    });
+
+    it('sidebarCollapsedDefault falls back to default on unparseable value', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'sidebar_collapsed_default') return Promise.resolve({ value: 'maybe' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.sidebarCollapsedDefault).toBe(false);
     });
   });
 });

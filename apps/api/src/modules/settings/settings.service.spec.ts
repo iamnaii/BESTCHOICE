@@ -919,6 +919,52 @@ describe('SettingsService audit trail', () => {
       expect(flags.defaultTimeRange).toBe('this_month');
     });
 
+    // D1.3.5.1 — summary_default_range preset (ExpenseDailySummaryPage)
+    it('summaryDefaultRange defaults to "this_month" when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.summaryDefaultRange).toBe('this_month');
+    });
+
+    it('summaryDefaultRange accepts "today" from SystemConfig', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'summary_default_range') return Promise.resolve({ value: 'today' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.summaryDefaultRange).toBe('today');
+    });
+
+    it('summaryDefaultRange accepts "this_week" from SystemConfig', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'summary_default_range') return Promise.resolve({ value: 'this_week' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.summaryDefaultRange).toBe('this_week');
+    });
+
+    it('summaryDefaultRange accepts "last_month" from SystemConfig', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'summary_default_range') return Promise.resolve({ value: 'last_month' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.summaryDefaultRange).toBe('last_month');
+    });
+
+    it('summaryDefaultRange falls back to "this_month" for unknown values (and rejects "all" — not whitelisted for summary)', async () => {
+      // 'all' is intentionally NOT in the summary whitelist. The summary page
+      // does not currently expose an "all" UI option and its query needs a
+      // bounded period to render. A bad admin edit must not blank the page.
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'summary_default_range') return Promise.resolve({ value: 'all' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.summaryDefaultRange).toBe('this_month');
+    });
+
     // D1.1.6 — adjustmentCodes for V4 form's Multi-line Adjustment row.
     it('adjustmentCodes defaults to 52-1104 (underpay) / 53-1503 (overpay)', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);

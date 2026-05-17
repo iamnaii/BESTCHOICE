@@ -37,6 +37,8 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /** D1.3.5.1 — default time-range preset for ExpenseDailySummaryPage. Default 'this_month'. */
+  summaryDefaultRange: 'today' | 'this_week' | 'this_month' | 'last_month';
   /**
    * D1.3.4.1 — gate the SAMEDAY→ACCRUAL auto-flip in `ExpenseFormV4`.
    * Default `true`. When `false`, the user must manually choose docType.
@@ -194,6 +196,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  summaryDefaultRange: 'this_month',
   smartDoctypeSwitchEnabled: true,
   settlementMaxBillsPerDoc: 100,
   pettyCashReplenishThreshold: 5000,

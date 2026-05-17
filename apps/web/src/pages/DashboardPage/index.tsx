@@ -1,6 +1,7 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
+import { useUiFlags } from '@/hooks/useUiFlags';
 import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import { DashboardSkeleton } from '@/components/ui/page-skeletons';
@@ -34,8 +35,10 @@ import type {
 export default function DashboardPage() {
   useDocumentTitle('แดชบอร์ด');
   const { user } = useAuth();
-
-  const dashboardStaleTime = 5 * 60 * 1000;
+  // D1.4.2.2 — OWNER-configurable react-query staleTime (in seconds).
+  // Defaults to 60s via DEFAULT_UI_FLAGS; clamped server-side to [10, 3600].
+  const { cacheTtlDashboard } = useUiFlags();
+  const dashboardStaleTime = cacheTtlDashboard * 1000;
 
   // Backend now rejects SALES from every /dashboard/* endpoint (need-to-know).
   // Gate all dashboard queries to non-SALES to avoid a flood of 403 toasts

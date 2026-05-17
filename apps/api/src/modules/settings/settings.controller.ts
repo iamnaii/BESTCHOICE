@@ -1,10 +1,11 @@
-import { Controller, Get, Patch, Put, Body, Query, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Patch, Post, Put, Body, Query, Param, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { SettingsService } from './settings.service';
 import { BulkUpdateSettingsDto } from './dto/update-settings.dto';
 import { CollectionsConfigDto } from './dto/collections-config.dto';
 import { AssignPettyCashCustodianDto } from './dto/petty-cash-custodian.dto';
 import { UpdateRoleMapDto } from './dto/update-role-map.dto';
+import { ResetDocNumberDto } from './dto/reset-doc-number.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -90,6 +91,25 @@ export class SettingsController {
   @Patch()
   bulkUpdate(@Body() dto: BulkUpdateSettingsDto, @CurrentUser() user: { id: string }) {
     return this.settingsService.bulkUpdate(dto.items, user.id);
+  }
+
+  /**
+   * D1.1.2.5 — admin-only document-number sequence reset.
+   *
+   * OWNER-only. Returns a snapshot of the current MAX(docNumber) per
+   * DocumentType for diagnostic purposes + writes an AuditLog with action
+   * `DOC_SEQUENCE_RESET`. Does NOT actually mutate any sequence — current
+   * `DocNumberService` derives sequence from `MAX(docNumber)`, so deleting
+   * documents implicitly resets it. This endpoint exists as a future-proof
+   * stub for the planned `DocumentSequence` table migration (D1.1.2.4).
+   */
+  @Post('doc-number/reset')
+  @Roles('OWNER')
+  resetDocNumberSequence(
+    @Body() dto: ResetDocNumberDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.settingsService.resetDocSequence(dto.docType, dto.periodStart, user.id);
   }
 
   @Get('collections')

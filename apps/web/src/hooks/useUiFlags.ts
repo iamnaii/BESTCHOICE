@@ -269,6 +269,14 @@ export interface UiFlags {
    * 30–7200. Wired into `ProfitLossPage`.
    */
   cacheTtlReports: number;
+  /**
+   * D1.3.2.1 — VIEWER role activation flag. Default false (Q4-gated).
+   * When true, future guards/widening code can extend @Roles() lists on
+   * expense / other-income / asset modules to include the VIEWER role.
+   * Schema enum value always exists (UserRole.VIEWER) so the flip is
+   * SystemConfig-only; no migration needed to roll forward/back.
+   */
+  viewerRoleEnabled: boolean;
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -347,6 +355,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   emailProvider: 'smtp',
   cacheTtlDashboard: 60,
   cacheTtlReports: 300,
+  viewerRoleEnabled: false,
 };
 
 export function useUiFlags(): UiFlags {

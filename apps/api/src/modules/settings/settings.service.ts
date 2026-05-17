@@ -782,6 +782,14 @@ export class SettingsService {
      * 30–7200 (clamped). Wired into `ProfitLossPage`.
      */
     cacheTtlReports: number;
+    /**
+     * D1.3.2.1 — VIEWER role activation flag. Default false (Q4-gated).
+     * When true, future guards/widening code can extend @Roles() lists on
+     * expense / other-income / asset modules to include the VIEWER role.
+     * Schema enum value always exists (UserRole.VIEWER) so the flip is
+     * SystemConfig-only; no migration needed to roll forward/back.
+     */
+    viewerRoleEnabled: boolean;
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -1082,6 +1090,8 @@ export class SettingsService {
       Number.isFinite(cacheTtlReportsRaw) && cacheTtlReportsRaw >= 30 && cacheTtlReportsRaw <= 7200
         ? Math.floor(cacheTtlReportsRaw)
         : 300;
+    // D1.3.2.1 — VIEWER role activation. Conservative default false.
+    const viewerRoleEnabled = await this.readBoolean('viewer_role_enabled', false);
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -1140,6 +1150,7 @@ export class SettingsService {
       emailProvider,
       cacheTtlDashboard,
       cacheTtlReports,
+      viewerRoleEnabled,
     };
   }
 

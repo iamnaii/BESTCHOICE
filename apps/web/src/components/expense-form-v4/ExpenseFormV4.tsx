@@ -21,6 +21,7 @@ import { JePreview } from './JePreview';
 import { ApproverSection } from './ApproverSection';
 import { AdjustmentSection } from './AdjustmentSection';
 import { formatNumberDecimal } from '@/utils/formatters';
+import { useUiFlags } from '@/hooks/useUiFlags';
 
 interface Props {
   branchId: string;
@@ -78,9 +79,23 @@ const initial = (branchId: string, defaultCash: string): ExpenseFormState => {
   };
 };
 
+// D1.3.4.2 — count whole days between two BKK calendar days (`YYYY-MM-DD`).
+// Returns `(today - docDate)` in days. Negative when docDate is in the future.
+// Computed via Date.UTC noon to dodge DST cliffs (Thailand has no DST today,
+// but defensive coding for future timezone-rule changes).
+const daysBetweenBkkIso = (todayIso: string, docDateIso: string): number => {
+  const [ty, tm, td] = todayIso.split('-').map(Number);
+  const [dy, dm, dd] = docDateIso.split('-').map(Number);
+  if (!ty || !tm || !td || !dy || !dm || !dd) return 0;
+  const ms =
+    Date.UTC(ty, tm - 1, td, 12, 0, 0) - Date.UTC(dy, dm - 1, dd, 12, 0, 0);
+  return Math.round(ms / (24 * 60 * 60 * 1000));
+};
+
 export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const { smartSwitchThresholdDays } = useUiFlags();
   const [showQuickStart, setShowQuickStart] = useState(true);
   const [state, setState] = useState<ExpenseFormState>(() =>
     initial(branchId, user?.defaultCashAccountCode || '11-1101'),
@@ -92,14 +107,21 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
   // One-way: only auto-flip from SAMEDAY to ACCRUAL; does not revert manual ACCRUAL selection.
   // W3 fix — compare against BKK calendar day, not UTC slice, to match the
   // user's perception of "today" in Thailand.
+  // D1.3.4.2 — fire only when `(today - docDate) > smartSwitchThresholdDays`.
+  // Default threshold `0` = any past date triggers (legacy behavior).
   const todayIso = todayBkkIso();
   const invoiceIsToday = state.documentDate === todayIso;
+  const daysBackdated = daysBetweenBkkIso(todayIso, state.documentDate);
   useEffect(() => {
-    if (state.docType === 'EXPENSE_SAMEDAY' && !invoiceIsToday) {
+    if (
+      state.docType === 'EXPENSE_SAMEDAY' &&
+      !invoiceIsToday &&
+      daysBackdated > smartSwitchThresholdDays
+    ) {
       patch({ docType: 'EXPENSE_ACCRUAL' });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.documentDate]);
+  }, [state.documentDate, smartSwitchThresholdDays]);
 
   const { preview, loading, error } = useFormCompute(state);
 

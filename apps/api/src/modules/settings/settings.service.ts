@@ -175,6 +175,19 @@ export class SettingsService {
      * accessibility readers via the lang attr.
      */
     language: 'th' | 'en';
+    /**
+     * D1.3.4.2 — days threshold for the SAMEDAY→ACCRUAL auto-switch.
+     * Default `0` = any past document date triggers the flip (preserves
+     * the pre-Phase-4 hardcoded behavior). When set to N>0, the flip only
+     * fires when `(today − documentDate) > N` days. Useful when the shop
+     * routinely books cash purchases the next day (set `1` to tolerate a
+     * one-day lag without flipping to ACCRUAL). Clamped to 0–30 on read;
+     * non-integer / NaN / negative values fall back to 0.
+     *
+     * Originally marked SKIP per Phase 2 decision report; shipped per
+     * owner directive 2026-05-17 to reach 100% A1 coverage.
+     */
+    smartSwitchThresholdDays: number;
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -214,6 +227,18 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.3.4.2 — smart-switch threshold (days). Clamp 0–30; non-integer /
+    // NaN / negative → 0. Default 0 = legacy behavior (any past date flips).
+    const smartSwitchThresholdRaw = await this.readNumber(
+      'smart_switch_threshold_days',
+      0,
+    );
+    const smartSwitchThresholdDays =
+      Number.isInteger(smartSwitchThresholdRaw) &&
+      smartSwitchThresholdRaw >= 0 &&
+      smartSwitchThresholdRaw <= 30
+        ? smartSwitchThresholdRaw
+        : 0;
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -225,6 +250,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      smartSwitchThresholdDays,
     };
   }
 

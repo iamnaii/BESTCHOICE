@@ -77,6 +77,7 @@ Sub-prioritization within expanded D1 scope:
 | D1.3.6.1 | `settlement_max_bills_per_doc` | P2 | ⬜ | — | Replace literal 100 at SettlementLinesSection.tsx:28 |
 | D1.3.6.2 | `settlement_default_tick_behavior` | P2 | ⬜ | — | Initial-select logic |
 | D1.3.6.3 | `settlement_partial_payment_enabled` | P2 | ⬜ | — | Toggle V12 adjustments |
+| D1.3.4.2 | `smart_switch_threshold_days` | P3 | ✅ | this PR | Originally SKIP per Phase 2 decision report; shipped per owner directive 2026-05-17. SystemConfig `smart_switch_threshold_days` (default `0`, clamp 0–30; negative/NaN → 0). `getUiFlags()` exposes it; `ExpenseFormV4` auto-flip now fires only when `(today − docDate) > threshold` (default 0 preserves legacy "any past date triggers" behavior). 4 jest cases (default missing, override 7, out-of-range >30 clamp, negative fallback). |
 
 ### Q-unblocked + bigger (6 items, Approval Workflow)
 

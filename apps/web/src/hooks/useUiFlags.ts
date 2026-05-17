@@ -33,6 +33,12 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /**
+   * D1.3.4.2 — days threshold for the SAMEDAY→ACCRUAL auto-switch in
+   * `ExpenseFormV4`. Default `0` = any past date triggers (legacy
+   * behavior). Server clamps to 0–30; out-of-range / NaN → 0.
+   */
+  smartSwitchThresholdDays: number;
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -53,6 +59,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  smartSwitchThresholdDays: 0,
 };
 
 export function useUiFlags(): UiFlags {

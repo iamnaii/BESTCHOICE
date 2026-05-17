@@ -681,15 +681,48 @@ describe('ExpenseDocumentsService', () => {
 
   // D1.2.1.5 — notification_on_pending fan-out
   describe('submitForApproval + notifyApprovers (D1.2.1.5)', () => {
-    function setupDraftDoc() {
-      const docFields = {
+    function setupDraftDoc(
+      overrides: Partial<{
+        documentType: string;
+        vendorName: string | null;
+        expenseLineCount: number;
+        payrollPeriod: string;
+        payrollLineCount: number;
+        settlementLineCount: number;
+      }> = {},
+    ) {
+      const documentType = overrides.documentType ?? 'EXPENSE';
+      const docFields: Record<string, unknown> = {
         id: 'doc-sub-n',
         number: 'EX-20260510-0001',
         status: 'DRAFT',
-        documentType: 'EXPENSE',
+        documentType,
+        vendorName: overrides.vendorName ?? null,
         totalAmount: new Decimal('500.00'),
         deletedAt: null,
       };
+      // Attach the related-detail include shape that submitForApproval pulls
+      // for its PDPA-safe audit summary. Each branch only gets the relation
+      // for its own documentType to mirror real Prisma behavior.
+      if (documentType === 'EXPENSE') {
+        const n = overrides.expenseLineCount ?? 2;
+        docFields.expenseDetail = {
+          lines: Array.from({ length: n }, (_, i) => ({ id: `line-${i}` })),
+        };
+      } else if (documentType === 'PAYROLL') {
+        const n = overrides.payrollLineCount ?? 3;
+        docFields.payroll = {
+          payrollPeriod: overrides.payrollPeriod ?? '2026-05',
+          lines: Array.from({ length: n }, (_, i) => ({ id: `pline-${i}` })),
+        };
+      } else if (documentType === 'VENDOR_SETTLEMENT') {
+        const n = overrides.settlementLineCount ?? 1;
+        docFields.settlement = {
+          settlementLines: Array.from({ length: n }, (_, i) => ({ id: `sline-${i}` })),
+        };
+      } else if (documentType === 'CREDIT_NOTE') {
+        docFields.creditNote = { mode: 'LINKED' };
+      }
       prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue(docFields);
       // update() in the global mock returns a stub w/o totalAmount → set it
       // explicitly so submitForApproval's notifyApprovers() can read it.
@@ -815,6 +848,82 @@ describe('ExpenseDocumentsService', () => {
       expect(arg.data.newValue.documentNumber).toBe('EX-20260510-0001');
       expect(arg.data.newValue.totalAmount).toBe('500');
       expect(arg.data.newValue.documentType).toBe('EXPENSE');
+    });
+
+    // ── PDPA-safe summary on APPROVAL_REQUESTED audit (W4) ─────────────
+    // Enrich audit.newValue with non-PII contextual fields so compliance
+    // can reconstruct who-approved-what WITHOUT line-level salary data.
+    describe('APPROVAL_REQUESTED audit — PDPA-safe summary (D1.2.1.5 follow-up)', () => {
+      function getRequestedAudit() {
+        const auditCalls = prisma.auditLog.create.mock.calls;
+        const requestedCall = auditCalls.find((c: unknown[]) => {
+          const arg = c[0] as { data?: { action?: string } };
+          return arg?.data?.action === 'APPROVAL_REQUESTED';
+        });
+        expect(requestedCall).toBeDefined();
+        return (requestedCall![0] as { data: { newValue: Record<string, unknown> } }).data.newValue;
+      }
+
+      it('EXPENSE submit → audit has documentNumber + totalAmount + vendorName + lineCount + requesterUserId', async () => {
+        setupDraftDoc({
+          documentType: 'EXPENSE',
+          vendorName: 'การไฟฟ้านครหลวง',
+          expenseLineCount: 4,
+        });
+        prisma.systemConfig.findFirst.mockResolvedValue(null);
+        prisma.user.findMany.mockResolvedValue([]);
+        await service.submitForApproval('doc-sub-n', 'user-1');
+        const v = getRequestedAudit();
+        expect(v.documentNumber).toBe('EX-20260510-0001');
+        expect(v.totalAmount).toBe('500');
+        expect(v.documentType).toBe('EXPENSE');
+        expect(v.vendorName).toBe('การไฟฟ้านครหลวง');
+        expect(v.requesterUserId).toBe('user-1');
+        expect(v.lineCount).toBe(4);
+        // No employee data on EXPENSE — payrollPeriod must be absent
+        expect(v.payrollPeriod).toBeUndefined();
+      });
+
+      it('PAYROLL submit → audit has payrollPeriod + lineCount, NO employee names / salaries', async () => {
+        setupDraftDoc({
+          documentType: 'PAYROLL',
+          payrollPeriod: '2026-05',
+          payrollLineCount: 8,
+        });
+        prisma.systemConfig.findFirst.mockResolvedValue(null);
+        prisma.user.findMany.mockResolvedValue([]);
+        await service.submitForApproval('doc-sub-n', 'user-1');
+        const v = getRequestedAudit();
+        expect(v.documentNumber).toBe('EX-20260510-0001');
+        expect(v.documentType).toBe('PAYROLL');
+        expect(v.payrollPeriod).toBe('2026-05');
+        expect(v.lineCount).toBe(8);
+        expect(v.requesterUserId).toBe('user-1');
+        // PDPA: payroll line bodies (employeeName, employeeTaxId, baseSalary,
+        // ssoEmployee, netPaid, whtAmount) must NOT appear in the audit payload
+        const json = JSON.stringify(v);
+        expect(json).not.toMatch(/employeeName/i);
+        expect(json).not.toMatch(/employeeTaxId/i);
+        expect(json).not.toMatch(/baseSalary/i);
+        expect(json).not.toMatch(/netPaid/i);
+        expect(json).not.toMatch(/lines/i); // not an array, just the count
+        // vendorName is N/A for payroll
+        expect(v.vendorName).toBeUndefined();
+      });
+
+      it('audit row is queryable by documentNumber for compliance lookup', async () => {
+        setupDraftDoc({ documentType: 'EXPENSE', vendorName: 'Vendor A', expenseLineCount: 1 });
+        prisma.systemConfig.findFirst.mockResolvedValue(null);
+        prisma.user.findMany.mockResolvedValue([]);
+        await service.submitForApproval('doc-sub-n', 'user-1');
+        const v = getRequestedAudit();
+        // The contract: documentNumber is the stable handle compliance uses
+        // to reconstruct context. It must be present + non-empty + match the
+        // doc number on the source document — never anonymized.
+        expect(typeof v.documentNumber).toBe('string');
+        expect((v.documentNumber as string).length).toBeGreaterThan(0);
+        expect(v.documentNumber).toBe('EX-20260510-0001');
+      });
     });
 
     it('fires notifyApprovers AFTER status flip (notifications.send invoked)', async () => {

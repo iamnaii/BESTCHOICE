@@ -1636,11 +1636,51 @@ export class ExpenseDocumentsService implements OnModuleInit {
   //
   // NOTE: references the enum value `PENDING_APPROVAL` from D1.2.1.6's
   // schema migration. Pre-merge we use `as unknown as DocumentStatus`.
+  /**
+   * Submit a DRAFT document for approval. Writes an `APPROVAL_REQUESTED`
+   * AuditLog row inside the same `$transaction` as the status flip so the
+   * compliance trail is atomic with the state change.
+   *
+   * **PDPA / audit-payload policy** (D1.2.1.5 follow-up):
+   * The `newValue` field MUST NOT include line-level personal data. For
+   * PAYROLL docs the line array touches salary + employee names + tax IDs
+   * — booking that into AuditLog would expose it in any compliance export
+   * (audit-log retention runs 1yr by default; tighter PII handling is
+   * required by Thai PDPA). The audit row therefore contains only:
+   *
+   *  - `documentNumber`  — non-PII identifier (queryable by compliance)
+   *  - `totalAmount`     — aggregate; not personally identifying
+   *  - `documentType`    — enum value
+   *  - `requesterUserId` — who clicked submit
+   *  - `lineCount`       — array length only (NOT line bodies)
+   *
+   * Plus exactly ONE flow-specific contextual key:
+   *  - `vendorName`      — for EXPENSE / CREDIT_NOTE / VENDOR_SETTLEMENT
+   *                        (vendors are juristic persons / business names,
+   *                        not natural-person PII per PDPA §6 exemption)
+   *  - `payrollPeriod`   — for PAYROLL, in `YYYY-MM` form, with NO
+   *                        employee names / employee tax IDs / per-line
+   *                        salary numbers. Reviewers can still query the
+   *                        live ExpenseDocument by documentNumber if they
+   *                        need the operational detail; the audit trail
+   *                        deliberately doesn't carry it.
+   *
+   * The `documentNumber` index lets compliance reconstruct who-approved-
+   * what without joining the audit row to the live (mutable) doc body.
+   */
   async submitForApproval(id: string, userId: string) {
     const updated = await this.prisma.$transaction(async (tx) => {
       await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(hashtext($1))`, `post:${id}`);
 
-      const doc = await tx.expenseDocument.findUniqueOrThrow({ where: { id } });
+      const doc = await tx.expenseDocument.findUniqueOrThrow({
+        where: { id },
+        include: {
+          expenseDetail: { include: { lines: { select: { id: true } } } },
+          creditNote: true,
+          payroll: { include: { lines: { select: { id: true } } } },
+          settlement: { include: { settlementLines: { select: { id: true } } } },
+        },
+      });
       if (doc.deletedAt) throw new NotFoundException('เอกสารถูกลบแล้ว');
       if (doc.status !== 'DRAFT') {
         throw new BadRequestException(
@@ -1654,6 +1694,35 @@ export class ExpenseDocumentsService implements OnModuleInit {
         data: { status: PENDING_APPROVAL },
       });
 
+      // PDPA-safe summary — no line-level salary / employee names.
+      // See JSDoc above for policy rationale.
+      const baseSummary: Record<string, unknown> = {
+        documentNumber: doc.number,
+        totalAmount: doc.totalAmount.toString(),
+        documentType: doc.documentType,
+        requesterUserId: userId,
+      };
+
+      let lineCount = 0;
+      if (doc.documentType === 'PAYROLL') {
+        lineCount = doc.payroll?.lines.length ?? 0;
+        if (doc.payroll?.payrollPeriod) {
+          baseSummary.payrollPeriod = doc.payroll.payrollPeriod;
+        }
+      } else if (doc.documentType === 'VENDOR_SETTLEMENT') {
+        lineCount = doc.settlement?.settlementLines.length ?? 0;
+        if (doc.vendorName) baseSummary.vendorName = doc.vendorName;
+      } else if (doc.documentType === 'CREDIT_NOTE') {
+        // CN has no line array of its own — it references the original.
+        lineCount = 1;
+        if (doc.vendorName) baseSummary.vendorName = doc.vendorName;
+      } else {
+        // EXPENSE (the default — V4 multi-line)
+        lineCount = doc.expenseDetail?.lines.length ?? 0;
+        if (doc.vendorName) baseSummary.vendorName = doc.vendorName;
+      }
+      baseSummary.lineCount = lineCount;
+
       // D1.2.1.5 — APPROVAL_REQUESTED audit log inside the tx so status
       // transition + audit stay atomic.
       await tx.auditLog.create({
@@ -1662,11 +1731,7 @@ export class ExpenseDocumentsService implements OnModuleInit {
           entity: 'expense_document',
           entityId: id,
           userId,
-          newValue: {
-            documentNumber: doc.number,
-            totalAmount: doc.totalAmount.toString(),
-            documentType: doc.documentType,
-          },
+          newValue: baseSummary as Prisma.InputJsonValue,
         },
       });
 

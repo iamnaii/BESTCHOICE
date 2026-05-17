@@ -178,7 +178,11 @@ export class ETaxService {
       where: { id: paymentCheck.contract.branchId, deletedAt: null },
       select: { companyId: true },
     });
-    if (!branch) throw new NotFoundException('ไม่พบรายการชำระเงิน');
+    // companyId is nullable on Branch — payment from an orphan branch is
+    // treated as not-accessible (defensive: refuse to leak via missing FK).
+    if (!branch || !branch.companyId) {
+      throw new NotFoundException('ไม่พบรายการชำระเงิน');
+    }
 
     const accessibleBranches = await this.getAccessibleBranchIds(branch.companyId, user);
     if (!accessibleBranches.includes(paymentCheck.contract.branchId)) {

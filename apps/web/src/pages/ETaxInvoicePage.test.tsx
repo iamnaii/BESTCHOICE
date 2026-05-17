@@ -50,13 +50,14 @@ describe('ETaxInvoicePage', () => {
 
   it('shows Phase 1 limitations banner (internal receipt, NOT legal tax invoice)', () => {
     renderPage();
-    expect(screen.getByTestId('phase2-banner')).toBeInTheDocument();
-    // Critical #6+#7: explicit "internal receipt only" disclaimer
-    expect(screen.getByText(/ใบรับเงินภายใน/)).toBeInTheDocument();
-    expect(screen.getByText(/ไม่ใช่ใบกำกับภาษีอิเล็กทรอนิกส์ตามกฎหมาย/)).toBeInTheDocument();
-    expect(screen.getByText(/ม\.86\/4/)).toBeInTheDocument();
-    expect(screen.getByText(/PKCS#7/)).toBeInTheDocument();
-    expect(screen.getByText(/ระยะที่ 2/)).toBeInTheDocument();
+    const banner = screen.getByTestId('phase2-banner');
+    expect(banner).toBeInTheDocument();
+    // Critical #6+#7: explicit "internal receipt only" disclaimer (scoped to banner)
+    expect(banner.textContent).toMatch(/ใบรับเงินภายใน/);
+    expect(banner.textContent).toMatch(/ไม่ใช่ใบกำกับภาษีอิเล็กทรอนิกส์ตามกฎหมาย/);
+    expect(banner.textContent).toMatch(/ม\.86\/4/);
+    expect(banner.textContent).toMatch(/PKCS#7/);
+    expect(banner.textContent).toMatch(/ระยะที่ 2/);
   });
 
   it('renders Export CSV button (monthly)', () => {

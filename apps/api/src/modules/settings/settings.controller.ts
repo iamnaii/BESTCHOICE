@@ -1,8 +1,10 @@
+import { Controller, Get, Patch, Put, Body, Query, UseGuards } from '@nestjs/common';
 import { Controller, Get, Patch, Put, Body, Param, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { SettingsService } from './settings.service';
 import { BulkUpdateSettingsDto } from './dto/update-settings.dto';
 import { CollectionsConfigDto } from './dto/collections-config.dto';
+import { AssignPettyCashCustodianDto } from './dto/petty-cash-custodian.dto';
 import { UpdateRoleMapDto } from './dto/update-role-map.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -114,5 +116,46 @@ export class SettingsController {
       user.id,
     );
     return this.settingsService.getCollectionsConfig();
+  }
+
+  // ─── D1.1.5.5 — Petty Cash custodian ─────────────────────────────────
+
+  /**
+   * Read the currently-assigned Petty Cash custodian (and configured role
+   * whitelist) for the given CompanyInfo (FINANCE by default).
+   * OWNER-only — explicit method-level @Roles so we don't accidentally
+   * inherit a broader class-level decorator if it's ever loosened.
+   */
+  @Get('petty-cash/custodian')
+  @Roles('OWNER')
+  getPettyCashCustodian(@Query('companyId') companyId?: string) {
+    return this.settingsService.getPettyCashCustodian(companyId);
+  }
+
+  /**
+   * Read the eligible-user pool for the Petty Cash custodian picker —
+   * active users matching the configured role. OWNER-only — see note above.
+   */
+  @Get('petty-cash/eligible-custodians')
+  @Roles('OWNER')
+  getEligibleCustodians() {
+    return this.settingsService.getEligibleCustodians();
+  }
+
+  /**
+   * Assign (or clear) the Petty Cash custodian on a CompanyInfo. OWNER-only.
+   * Validates target user.role against the configured whitelist
+   * (`petty_cash_custodian_role`).
+   */
+  @Put('petty-cash/custodian')
+  @Roles('OWNER')
+  assignPettyCashCustodian(
+    @Body() dto: AssignPettyCashCustodianDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.settingsService.assignPettyCashCustodian(user.id, {
+      companyId: dto.companyId,
+      userId: dto.userId,
+    });
   }
 }

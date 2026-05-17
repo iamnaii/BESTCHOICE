@@ -854,6 +854,15 @@ export class ExpenseDocumentsService implements OnModuleInit {
     dto: CreatePettyCashDto,
     user: { id: string; branchId?: string | null; role?: string | null },
   ) {
+    // D1.1.5.1 — feature flag gate. OWNER can disable Petty Cash entirely via
+    // SystemConfig `petty_cash_enabled = false`. Default true (feature shipped
+    // and active). Checked against PrismaService (not in $transaction) since
+    // failure is a 400 long before any DB writes happen.
+    const enabled = await this.readBoolFlag(this.prisma, 'petty_cash_enabled', true);
+    if (!enabled) {
+      throw new BadRequestException('ระบบเงินสดย่อยถูกปิดใช้งาน');
+    }
+
     // Branch access — same rule as other doc types.
     if (!hasCrossBranchAccess(user) && user.branchId !== dto.branchId) {
       throw new ForbiddenException('ไม่สามารถสร้างเอกสารในสาขาอื่นได้');

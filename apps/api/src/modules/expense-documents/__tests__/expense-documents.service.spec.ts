@@ -1731,4 +1731,81 @@ describe('ExpenseDocumentsService', () => {
       expect(postedAtYmd).toBe('2026-04-30');
     });
   });
+
+  // D1.1.5.1 — petty_cash_enabled feature flag gate
+  describe('createPettyCash — D1.1.5.1 feature flag gate', () => {
+    const validDto = {
+      branchId: 'branch-1',
+      documentDate: '2026-05-17',
+      depositAccountCode: '11-1201',
+      lines: [
+        {
+          supplierName: 'Vendor A',
+          category: '53-1302',
+          amount: 100,
+          vatPercent: 0,
+        },
+      ],
+    };
+
+    it('rejects with BadRequest "ระบบเงินสดย่อยถูกปิดใช้งาน" when petty_cash_enabled = false', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'petty_cash_enabled') return Promise.resolve({ value: 'false' });
+        return Promise.resolve(null);
+      });
+      await expect(
+        service.createPettyCash(validDto as never, { id: 'u-1', branchId: 'branch-1', role: 'OWNER' }),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        service.createPettyCash(validDto as never, { id: 'u-1', branchId: 'branch-1', role: 'OWNER' }),
+      ).rejects.toThrow(/ระบบเงินสดย่อยถูกปิดใช้งาน/);
+    });
+
+    it('proceeds past the flag check when petty_cash_enabled = true (explicit)', async () => {
+      // Default-true behaviour: flag missing OR equal to "true" should allow.
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'petty_cash_enabled') return Promise.resolve({ value: 'true' });
+        return Promise.resolve(null);
+      });
+      // We don't need the full flow to succeed — only assert that the
+      // BadRequest "ระบบเงินสดย่อยถูกปิดใช้งาน" is NOT thrown. Downstream
+      // CoA/V20 validation may still fail in this mocked harness; we just
+      // need to prove the flag gate passes.
+      try {
+        await service.createPettyCash(
+          validDto as never,
+          { id: 'u-1', branchId: 'branch-1', role: 'OWNER' },
+        );
+      } catch (e) {
+        expect((e as Error).message).not.toMatch(/ระบบเงินสดย่อยถูกปิดใช้งาน/);
+      }
+    });
+
+    it('proceeds past the flag check when SystemConfig row missing (default true)', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      try {
+        await service.createPettyCash(
+          validDto as never,
+          { id: 'u-1', branchId: 'branch-1', role: 'OWNER' },
+        );
+      } catch (e) {
+        expect((e as Error).message).not.toMatch(/ระบบเงินสดย่อยถูกปิดใช้งาน/);
+      }
+    });
+
+    it('proceeds past the flag check on unparseable SystemConfig value (defaults to true)', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'petty_cash_enabled') return Promise.resolve({ value: 'maybe' });
+        return Promise.resolve(null);
+      });
+      try {
+        await service.createPettyCash(
+          validDto as never,
+          { id: 'u-1', branchId: 'branch-1', role: 'OWNER' },
+        );
+      } catch (e) {
+        expect((e as Error).message).not.toMatch(/ระบบเงินสดย่อยถูกปิดใช้งาน/);
+      }
+    });
+  });
 });

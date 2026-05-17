@@ -1,5 +1,7 @@
 # D1 · Settings Audit Phase 4 (Implement Approved Scope)
 
+**Status:** 🟢 In Progress — owner approved expanded scope 2026-05-16
+**Started:** 2026-05-16  |  **PRs:** #882-#897 · #938 · #943 · #950  |  **Done:** 20/75 — 2.6 ✅ · 2.7 ✅ · 2.2 ✅ Complete (7/7) · 1.5 ✅ Petty Cash (3/3)
 **Status:** ✅ Complete (pending merge of 86 PRs from 2026-05-17 session)
 **Started:** 2026-05-16  |  **PRs:** #882-#897 + 2026-05-17 86-PR session  |  **Done:** 75/75 (pending merge)
 **Spec:** [`../specs/2026-05-16-a1-phase2-decision-report.md`](../specs/2026-05-16-a1-phase2-decision-report.md)  ·  **Plan:** —
@@ -123,6 +125,11 @@ Sub-prioritization within expanded D1 scope:
 | D1.1.3.3 | `sso_rate` (locked at 5% by law) | P0 | ⬜ | — | Just document the lock in service comment |
 | D1.1.3.5 | effective_date support | P0 | ⬜ | — | Per-rate effective dates |
 | D1.1.3.6 | Admin UI (tax rates tab) | P0 | ⬜ | — | New /settings/tax-rates route |
+| D1.1.5.1 | `petty_cash_enabled` | P0 | ✅ | #938 | OWNER kill switch (default `true`). `ExpenseDocumentsService.createPettyCash` throws `BadRequest 'ระบบเงินสดย่อยถูกปิดใช้งาน'` when flag off (reuses `readBoolFlag` from #884). `DocTypePicker` omits Petty Cash chip; `ExpenseFormV4` hides section + auto-flips docType to `EXPENSE_SAMEDAY` if flag flips off mid-session. Exposed via `getUiFlags().pettyCashEnabled`. 4 settings tests + 4 service-flag-gate tests (8/8 green) |
+| D1.1.5.4 | `petty_cash_replenish_threshold` (Q8 — owner picked WIRE IT) | P0 | ✅ | #943 | SystemConfig key default 5000 THB, valid 0–50000 with clamp. New `PettyCashReplenishAlertCron` (daily 09:00 BKK): `balance = petty_cash_limit − Σ(POSTED PETTY_CASH_REIMBURSEMENT.totalAmount in current BKK month)`; if `< threshold`, IN_APP to all active OWNERs. `threshold = 0` disables alert entirely (kill switch). Money via `Prisma.Decimal` + ROUND_HALF_UP. Exposed via `getUiFlags().pettyCashReplenishThreshold`. 6 cron tests + 5 settings tests (11/11 green). `ExpenseDocumentsModule` now imports `NotificationsModule` |
+| D1.1.5.5 | `petty_cash_custodian` (FK + assignment UI) | P0 | ✅ | #950 | Migration `20260932000000_petty_cash_custodian` adds nullable `CompanyInfo.pettyCashCustodianId` FK to `User` (`ON DELETE SET NULL`). SystemConfig key `petty_cash_custodian_role` (whitelist OWNER/BRANCH_MANAGER/ACCOUNTANT, default `ACCOUNTANT`). New 3 endpoints under `PUT/GET /settings/petty-cash/custodian` + `/eligible-custodians`. Validates target user role against whitelist — BadRequest on mismatch. Audit `PETTY_CASH_CUSTODIAN_ASSIGNED`. New `PettyCashCustodianCard` on `/settings#users`. 5 service-spec tests (31/31 green) |
+| D1.3.1.1 | `draft_alerts_enabled` | P2 | ⬜ | — | New cron + flag |
+| D1.3.1.2 | `ap_due_alerts` | P2 | ⬜ | — | Hook AP aging to notifier |
 | D1.1.5.1 | `petty_cash_enabled` | P0 | ⬜ | Q1 | Feature flag |
 | D1.1.5.4 | `petty_cash_replenish_threshold` (dead setting decision) | P0 | ⬜ | Q8 | Kill or wire |
 | D1.1.5.5 | `petty_cash_custodian` (FK) | P0 | ⬜ | Q1 | Schema + assignment UI |

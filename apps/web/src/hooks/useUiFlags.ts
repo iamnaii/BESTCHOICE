@@ -37,6 +37,8 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /** D1.1.5.4 — Petty Cash replenish alert threshold (THB). Default 5000, 0 disables. */
+  pettyCashReplenishThreshold: number;
   /** D1.1.5.1 — Petty Cash feature flag. Default true. Hides DocTypePicker card + form section when false. */
   pettyCashEnabled: boolean;
   /**
@@ -87,6 +89,7 @@ export interface UiFlags {
    * favorites picker so users see how close they are to the cap.
    */
   maxTemplatesPerUser: number;
+  /**
    * D1.2.4.1 — Expense Templates feature flag. Default true. When false,
    * the API rejects all template writes (create/update/delete/instantiate)
    * with 403, and the UI hides "บันทึกเป็นรายการโปรด" affordances + the
@@ -159,6 +162,12 @@ export interface UiFlags {
   queryTimeoutSeconds: number;
   /** D1.3.1.3 — active email provider. Sendgrid requires API-key wiring before use. */
   emailProvider: 'smtp' | 'sendgrid';
+  /**
+   * D1.4.2.2 — react-query `staleTime` (seconds) for dashboard queries.
+   * Default 60, valid 10–3600. Wired into `DashboardPage`'s
+   * `dashboardStaleTime`.
+   */
+  cacheTtlDashboard: number;
   /** D1.3.2.1 — VIEWER role activation. Default false (Q4-gated). Informational today. */
   viewerRoleEnabled: boolean;
 }
@@ -181,6 +190,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  pettyCashReplenishThreshold: 5000,
   pettyCashEnabled: true,
   voucherShowPartialColumns: true,
   voucherIncludeAdjustment: true,
@@ -210,6 +220,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   darkModeDefault: 'system',
   queryTimeoutSeconds: 30,
   emailProvider: 'smtp',
+  cacheTtlDashboard: 60,
   viewerRoleEnabled: false,
 };
 

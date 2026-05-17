@@ -1,7 +1,17 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { readBoolFlag, readNumberFlag } from '../../utils/config.util';
+
+/**
+ * D1.1.5.5 — Whitelist of UserRoles that may hold the Petty Cash custodian
+ * seat. The active role is read from SystemConfig key
+ * `petty_cash_custodian_role` (default 'ACCOUNTANT'); only roles in this
+ * tuple are accepted as the configured value. Picking a non-whitelisted role
+ * silently falls back to ACCOUNTANT.
+ */
+const PETTY_CASH_CUSTODIAN_ROLES = ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'] as const;
+type PettyCashCustodianRole = (typeof PETTY_CASH_CUSTODIAN_ROLES)[number];
 
 /**
  * Keys whose values are secrets (API tokens, bank credentials). The audit
@@ -170,6 +180,20 @@ export class SettingsService {
      */
     language: 'th' | 'en';
     /**
+     * D1.1.5.4 — Petty Cash replenish alert threshold (THB). Default 5000,
+     * valid 0–50000 (clamp). When the running float balance falls below this
+     * number, `PettyCashReplenishAlertCron` (daily 09:00 BKK) notifies all
+     * active OWNERs via IN_APP. Setting to 0 disables the alert entirely
+     * (kill switch — owner can pick "dead" semantics by flipping this to 0).
+     */
+    pettyCashReplenishThreshold: number;
+     * D1.1.5.1 — Petty Cash feature flag. Default true (feature is shipped
+     * and active per PRs #867+#868). When OWNER sets `petty_cash_enabled=false`,
+     * the web UI hides the Petty Cash doc-type card + the section in
+     * ExpenseFormV4, and the backend `createPettyCash` rejects with BadRequest
+     * "ระบบเงินสดย่อยถูกปิดใช้งาน".
+     */
+    pettyCashEnabled: boolean;
      * D1.2.5.3 — render the 3-column partial-payment breakdown (ยอดเดิม /
      * ยอดที่ชำระ / ยอดคงเหลือ) on the voucher. Default true. When false the
      * voucher shows only a single "ยอดที่ชำระ" column.
@@ -389,11 +413,19 @@ export class SettingsService {
      */
     emailProvider: 'smtp' | 'sendgrid';
     /**
-     * D1.3.2.1 — VIEWER role activation flag. Default false (conservative
-     * Q4-gated default). When true, downstream feature flags can widen GET
-     * endpoints on expense / other-income / asset modules to include the
-     * VIEWER role. Schema enum value always exists (UserRole.VIEWER) so the
-     * flip is non-destructive. Today this flag is purely informational — no
+     * D1.4.2.2 — react-query staleTime (seconds) for dashboard KPI / chart
+     * queries. Default 60s, valid 10–3600 (clamped). Actively wired into
+     * `DashboardPage`'s `dashboardStaleTime` so OWNER can balance
+     * freshness vs DB cost without redeploy. Originally SKIP per Phase 2;
+     * shipped per owner directive 2026-05-17 to reach 100% A1 coverage.
+     */
+    cacheTtlDashboard: number;
+    /**
+     * D1.3.2.1 — VIEWER role activation flag. Default false (Q4-gated).
+     * When true, downstream feature flags can widen GET endpoints on
+     * expense / other-income / asset modules to include the VIEWER role.
+     * Schema enum value always exists (UserRole.VIEWER) so the flip is
+     * non-destructive. Today this flag is purely informational — no
      * server-side @Roles() decorator reads it; future PR can wire it.
      */
     viewerRoleEnabled: boolean;
@@ -436,6 +468,18 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.1.5.4 — Petty Cash replenish threshold. Default 5000, valid 0–50000.
+    // Negative or NaN silently clamps to default 5000 so a bad SystemConfig
+    // row can't accidentally suppress the alert via negative comparison.
+    const thresholdRaw = await this.readNumber('petty_cash_replenish_threshold', 5000);
+    let pettyCashReplenishThreshold = thresholdRaw;
+    if (!Number.isFinite(pettyCashReplenishThreshold) || pettyCashReplenishThreshold < 0) {
+      pettyCashReplenishThreshold = 5000;
+    } else if (pettyCashReplenishThreshold > 50000) {
+      pettyCashReplenishThreshold = 50000;
+    }
+    // D1.1.5.1 — Petty Cash feature flag. Default true (feature shipped).
+    const pettyCashEnabled = await this.readBoolean('petty_cash_enabled', true);
     // D1.2.5.3 — show ยอดเดิม / ยอดที่ชำระ / ยอดคงเหลือ on voucher.
     const voucherShowPartialColumns = await this.readBoolean(
       'voucher_show_partial_columns',
@@ -577,6 +621,12 @@ export class SettingsService {
     const emailProviderRaw = await this.getKey('email_provider');
     const emailProvider: 'smtp' | 'sendgrid' =
       emailProviderRaw === 'sendgrid' ? 'sendgrid' : 'smtp';
+    // D1.4.2.2 — cache_ttl_dashboard. Clamp to [10, 3600] seconds.
+    const cacheTtlDashboardRaw = await this.readNumber('cache_ttl_dashboard', 60);
+    const cacheTtlDashboard =
+      Number.isFinite(cacheTtlDashboardRaw) && cacheTtlDashboardRaw >= 10 && cacheTtlDashboardRaw <= 3600
+        ? Math.floor(cacheTtlDashboardRaw)
+        : 60;
     // D1.3.2.1 — VIEWER role activation. Conservative default false.
     const viewerRoleEnabled = await this.readBoolean('viewer_role_enabled', false);
     return {
@@ -590,6 +640,8 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      pettyCashReplenishThreshold,
+      pettyCashEnabled,
       voucherShowPartialColumns,
       voucherIncludeAdjustment,
       voucherPrintMode,
@@ -618,6 +670,7 @@ export class SettingsService {
       darkModeDefault,
       queryTimeoutSeconds,
       emailProvider,
+      cacheTtlDashboard,
       viewerRoleEnabled,
     };
   }
@@ -715,5 +768,163 @@ export class SettingsService {
     }
 
     return updated;
+  }
+
+  // ─── D1.1.5.5 — Petty Cash custodian (FK on CompanyInfo) ────────────
+
+  /**
+   * Returns the effective custodian role (whitelisted; falls back to default).
+   * Used both by the assign endpoint validation and by the UI picker filter.
+   */
+  async getPettyCashCustodianRole(): Promise<PettyCashCustodianRole> {
+    const raw = await this.getKey('petty_cash_custodian_role');
+    if (raw && (PETTY_CASH_CUSTODIAN_ROLES as readonly string[]).includes(raw)) {
+      return raw as PettyCashCustodianRole;
+    }
+    return 'ACCOUNTANT';
+  }
+
+  /**
+   * Returns the currently-assigned custodian for the given CompanyInfo
+   * (or FINANCE by default). Used by both the Settings UI render + future
+   * petty-cash voucher footer signing.
+   */
+  async getPettyCashCustodian(
+    companyId?: string,
+  ): Promise<{
+    companyId: string;
+    companyCode: string | null;
+    custodianRole: PettyCashCustodianRole;
+    custodian: { id: string; name: string; email: string; role: string } | null;
+  } | null> {
+    const company = companyId
+      ? await this.prisma.companyInfo.findFirst({
+          where: { id: companyId, deletedAt: null },
+          include: {
+            pettyCashCustodian: {
+              select: { id: true, name: true, email: true, role: true },
+            },
+          },
+        })
+      : await this.prisma.companyInfo.findFirst({
+          where: { companyCode: 'FINANCE', deletedAt: null },
+          include: {
+            pettyCashCustodian: {
+              select: { id: true, name: true, email: true, role: true },
+            },
+          },
+        });
+    if (!company) return null;
+    const custodianRole = await this.getPettyCashCustodianRole();
+    return {
+      companyId: company.id,
+      companyCode: company.companyCode,
+      custodianRole,
+      custodian: company.pettyCashCustodian
+        ? {
+            id: company.pettyCashCustodian.id,
+            name: company.pettyCashCustodian.name,
+            email: company.pettyCashCustodian.email,
+            role: company.pettyCashCustodian.role,
+          }
+        : null,
+    };
+  }
+
+  /**
+   * Assigns (or clears) the Petty Cash custodian on a CompanyInfo. Validates
+   * target user's role against the configured whitelist when assigning;
+   * `userId=null` clears the seat (always allowed).
+   *
+   * Audit `PETTY_CASH_CUSTODIAN_ASSIGNED` action — captures both old + new
+   * userIds so reviewers can trace handoffs.
+   */
+  async assignPettyCashCustodian(
+    actorUserId: string,
+    opts: { companyId?: string; userId: string | null | undefined },
+  ): Promise<{
+    companyId: string;
+    custodianRole: PettyCashCustodianRole;
+    custodian: { id: string; name: string; email: string; role: string } | null;
+  }> {
+    // Default to FINANCE (single petty-cash drawer for now; SHOP support
+    // when SHOP-side accounting lands in Phase A.5).
+    const targetCompany = opts.companyId
+      ? await this.prisma.companyInfo.findFirst({
+          where: { id: opts.companyId, deletedAt: null },
+          select: { id: true, companyCode: true, pettyCashCustodianId: true },
+        })
+      : await this.prisma.companyInfo.findFirst({
+          where: { companyCode: 'FINANCE', deletedAt: null },
+          select: { id: true, companyCode: true, pettyCashCustodianId: true },
+        });
+    if (!targetCompany) {
+      throw new NotFoundException('ไม่พบข้อมูลบริษัทสำหรับกำหนดผู้ดูแลเงินสดย่อย');
+    }
+
+    const newUserId = opts.userId ?? null;
+    const role = await this.getPettyCashCustodianRole();
+
+    // Validate the proposed user when assigning (null clears — always OK).
+    if (newUserId !== null) {
+      const user = await this.prisma.user.findFirst({
+        where: { id: newUserId, isActive: true, deletedAt: null },
+        select: { id: true, role: true, name: true, email: true },
+      });
+      if (!user) {
+        throw new NotFoundException('ไม่พบผู้ใช้งานที่จะกำหนดเป็นผู้ดูแลเงินสดย่อย');
+      }
+      if (user.role !== role) {
+        throw new BadRequestException(
+          `ผู้ใช้งานต้องมีบทบาท ${role} (พบ ${user.role}) — สามารถเปลี่ยนบทบาทที่อนุญาตได้ที่ SystemConfig.petty_cash_custodian_role`,
+        );
+      }
+    }
+
+    const oldUserId = targetCompany.pettyCashCustodianId;
+
+    await this.prisma.companyInfo.update({
+      where: { id: targetCompany.id },
+      data: { pettyCashCustodianId: newUserId },
+    });
+
+    // Audit log — fire-and-forget per the existing pattern.
+    await this.audit.log({
+      userId: actorUserId,
+      action: 'PETTY_CASH_CUSTODIAN_ASSIGNED',
+      entity: 'CompanyInfo',
+      entityId: targetCompany.id,
+      oldValue: { pettyCashCustodianId: oldUserId },
+      newValue: { pettyCashCustodianId: newUserId },
+    });
+
+    // Reload the fresh assignment for the response payload.
+    const fresh = await this.getPettyCashCustodian(targetCompany.id);
+    // getPettyCashCustodian returns null only when the company was deleted
+    // mid-transaction (impossible here since we just updated it).
+    if (!fresh) {
+      throw new NotFoundException('โหลดข้อมูลผู้ดูแลเงินสดย่อยไม่สำเร็จ');
+    }
+    return {
+      companyId: fresh.companyId,
+      custodianRole: fresh.custodianRole,
+      custodian: fresh.custodian,
+    };
+  }
+
+  /**
+   * Returns the eligible-user pool for the Petty Cash custodian picker.
+   * Filtered to active, non-deleted users whose role matches the configured
+   * whitelist value. Sorted by name for stable rendering.
+   */
+  async getEligibleCustodians(): Promise<
+    { id: string; name: string; email: string; role: string }[]
+  > {
+    const role = await this.getPettyCashCustodianRole();
+    return this.prisma.user.findMany({
+      where: { role, isActive: true, deletedAt: null },
+      select: { id: true, name: true, email: true, role: true },
+      orderBy: { name: 'asc' },
+    });
   }
 }

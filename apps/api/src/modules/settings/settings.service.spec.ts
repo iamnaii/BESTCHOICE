@@ -333,6 +333,79 @@ describe('SettingsService audit trail', () => {
       expect(flags.periodCloseDay).toBe(31);
     });
 
+    // D1.1.5.4 — petty_cash_replenish_threshold
+    it('pettyCashReplenishThreshold defaults to 5000 when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.pettyCashReplenishThreshold).toBe(5000);
+    });
+
+    it('pettyCashReplenishThreshold returns OWNER-configured value within range', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'petty_cash_replenish_threshold') return Promise.resolve({ value: '2500' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.pettyCashReplenishThreshold).toBe(2500);
+    });
+
+    it('pettyCashReplenishThreshold returns 0 when OWNER explicitly disables alerts', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'petty_cash_replenish_threshold') return Promise.resolve({ value: '0' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.pettyCashReplenishThreshold).toBe(0);
+    });
+
+    it('pettyCashReplenishThreshold clamps negative to default 5000', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'petty_cash_replenish_threshold') return Promise.resolve({ value: '-50' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.pettyCashReplenishThreshold).toBe(5000);
+    });
+
+    it('pettyCashReplenishThreshold clamps absurdly large to 50000 upper bound', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'petty_cash_replenish_threshold') return Promise.resolve({ value: '99999999' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.pettyCashReplenishThreshold).toBe(50000);
+    // D1.1.5.1 — petty_cash_enabled feature flag
+    it('pettyCashEnabled defaults to true when SystemConfig row missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.pettyCashEnabled).toBe(true);
+    });
+
+    it('pettyCashEnabled returns false when OWNER disables it', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'petty_cash_enabled') return Promise.resolve({ value: 'false' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.pettyCashEnabled).toBe(false);
+    });
+
+    it('pettyCashEnabled returns true when OWNER explicitly sets to "true"', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'petty_cash_enabled') return Promise.resolve({ value: 'true' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.pettyCashEnabled).toBe(true);
+    });
+
+    it('pettyCashEnabled falls back to default true on unparseable value', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'petty_cash_enabled') return Promise.resolve({ value: 'sometimes' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.pettyCashEnabled).toBe(true);
     // D1.2.5.3 — voucher_show_partial_columns
     it('voucherShowPartialColumns defaults to true when SystemConfig missing', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
@@ -898,6 +971,161 @@ describe('SettingsService audit trail', () => {
       });
       const flags = await service.getUiFlags();
       expect(flags.queryTimeoutSeconds).toBe(30);
+    });
+
+    // D1.4.2.2 — cache_ttl_dashboard
+    it('cacheTtlDashboard defaults to 60 when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.cacheTtlDashboard).toBe(60);
+    });
+
+    it('cacheTtlDashboard accepts valid 10-3600 range', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'cache_ttl_dashboard') return Promise.resolve({ value: '180' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.cacheTtlDashboard).toBe(180);
+    });
+
+    it('cacheTtlDashboard clamps out-of-range values back to 60', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'cache_ttl_dashboard') return Promise.resolve({ value: '5' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.cacheTtlDashboard).toBe(60);
+    });
+  });
+
+  // ─── D1.1.5.5 — Petty Cash custodian ───────────────────────────────
+  describe('assignPettyCashCustodian (D1.1.5.5)', () => {
+    beforeEach(() => {
+      // Default to FINANCE company resolved + ACCOUNTANT role
+      prisma.companyInfo = {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'co-finance',
+          companyCode: 'FINANCE',
+          pettyCashCustodianId: null,
+          pettyCashCustodian: null,
+        }),
+        update: jest.fn().mockResolvedValue({}),
+      };
+      prisma.user = {
+        findFirst: jest.fn(),
+        findMany: jest.fn().mockResolvedValue([]),
+      };
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+    });
+
+    it('assigns a valid ACCOUNTANT user → updates company + audit log', async () => {
+      const validUser = {
+        id: 'u-acct-1',
+        role: 'ACCOUNTANT',
+        name: 'Acc One',
+        email: 'acc1@bestchoice.test',
+      };
+      prisma.user.findFirst.mockResolvedValue(validUser);
+      // Second call: post-update reload via getPettyCashCustodian
+      prisma.companyInfo.findFirst
+        .mockResolvedValueOnce({
+          id: 'co-finance',
+          companyCode: 'FINANCE',
+          pettyCashCustodianId: null,
+          pettyCashCustodian: null,
+        })
+        .mockResolvedValueOnce({
+          id: 'co-finance',
+          companyCode: 'FINANCE',
+          pettyCashCustodian: validUser,
+        });
+      const out = await service.assignPettyCashCustodian('owner-1', {
+        userId: 'u-acct-1',
+      });
+      expect(prisma.companyInfo.update).toHaveBeenCalledWith({
+        where: { id: 'co-finance' },
+        data: { pettyCashCustodianId: 'u-acct-1' },
+      });
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 'owner-1',
+          action: 'PETTY_CASH_CUSTODIAN_ASSIGNED',
+          entity: 'CompanyInfo',
+          entityId: 'co-finance',
+          oldValue: { pettyCashCustodianId: null },
+          newValue: { pettyCashCustodianId: 'u-acct-1' },
+        }),
+      );
+      expect(out.custodian?.id).toBe('u-acct-1');
+    });
+
+    it('rejects when target user role does not match configured whitelist (BadRequest)', async () => {
+      prisma.user.findFirst.mockResolvedValue({
+        id: 'u-sales-1',
+        role: 'SALES',
+        name: 'Sales User',
+        email: 's@test',
+      });
+      await expect(
+        service.assignPettyCashCustodian('owner-1', { userId: 'u-sales-1' }),
+      ).rejects.toThrow(/บทบาท ACCOUNTANT/);
+      expect(prisma.companyInfo.update).not.toHaveBeenCalled();
+      expect(audit.log).not.toHaveBeenCalled();
+    });
+
+    it('rejects when target user is not found / inactive (NotFound)', async () => {
+      prisma.user.findFirst.mockResolvedValue(null);
+      await expect(
+        service.assignPettyCashCustodian('owner-1', { userId: 'u-ghost' }),
+      ).rejects.toThrow(/ไม่พบผู้ใช้งาน/);
+      expect(prisma.companyInfo.update).not.toHaveBeenCalled();
+    });
+
+    it('allows clearing the seat (userId=null) without role validation', async () => {
+      // Second call: post-update reload
+      prisma.companyInfo.findFirst
+        .mockResolvedValueOnce({
+          id: 'co-finance',
+          companyCode: 'FINANCE',
+          pettyCashCustodianId: 'u-old',
+          pettyCashCustodian: { id: 'u-old', role: 'ACCOUNTANT', name: 'Old', email: 'o@t' },
+        })
+        .mockResolvedValueOnce({
+          id: 'co-finance',
+          companyCode: 'FINANCE',
+          pettyCashCustodian: null,
+        });
+      const out = await service.assignPettyCashCustodian('owner-1', { userId: null });
+      expect(prisma.companyInfo.update).toHaveBeenCalledWith({
+        where: { id: 'co-finance' },
+        data: { pettyCashCustodianId: null },
+      });
+      expect(prisma.user.findFirst).not.toHaveBeenCalled();
+      expect(out.custodian).toBeNull();
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'PETTY_CASH_CUSTODIAN_ASSIGNED',
+          newValue: { pettyCashCustodianId: null },
+        }),
+      );
+    });
+
+    it('respects SystemConfig role override (BRANCH_MANAGER) — rejects ACCOUNTANT', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'petty_cash_custodian_role')
+          return Promise.resolve({ value: 'BRANCH_MANAGER' });
+        return Promise.resolve(null);
+      });
+      prisma.user.findFirst.mockResolvedValue({
+        id: 'u-acct-1',
+        role: 'ACCOUNTANT',
+        name: 'Acc',
+        email: 'a@t',
+      });
+      await expect(
+        service.assignPettyCashCustodian('owner-1', { userId: 'u-acct-1' }),
+      ).rejects.toThrow(/บทบาท BRANCH_MANAGER/);
     });
   });
 });

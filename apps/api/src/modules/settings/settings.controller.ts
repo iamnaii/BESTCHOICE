@@ -68,27 +68,32 @@ export class SettingsController {
   /**
    * Read the currently-assigned Petty Cash custodian (and configured role
    * whitelist) for the given CompanyInfo (FINANCE by default).
+   * OWNER-only — explicit method-level @Roles so we don't accidentally
+   * inherit a broader class-level decorator if it's ever loosened.
    */
   @Get('petty-cash/custodian')
+  @Roles('OWNER')
   getPettyCashCustodian(@Query('companyId') companyId?: string) {
     return this.settingsService.getPettyCashCustodian(companyId);
   }
 
   /**
    * Read the eligible-user pool for the Petty Cash custodian picker —
-   * active users matching the configured role.
+   * active users matching the configured role. OWNER-only — see note above.
    */
   @Get('petty-cash/eligible-custodians')
+  @Roles('OWNER')
   getEligibleCustodians() {
     return this.settingsService.getEligibleCustodians();
   }
 
   /**
-   * Assign (or clear) the Petty Cash custodian on a CompanyInfo. OWNER-only
-   * via the class-level @Roles('OWNER'). Validates target user.role against
-   * the configured whitelist (`petty_cash_custodian_role`).
+   * Assign (or clear) the Petty Cash custodian on a CompanyInfo. OWNER-only.
+   * Validates target user.role against the configured whitelist
+   * (`petty_cash_custodian_role`).
    */
   @Put('petty-cash/custodian')
+  @Roles('OWNER')
   assignPettyCashCustodian(
     @Body() dto: AssignPettyCashCustodianDto,
     @CurrentUser() user: { id: string },

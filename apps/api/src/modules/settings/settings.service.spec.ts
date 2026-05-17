@@ -636,6 +636,40 @@ describe('SettingsService audit trail', () => {
       expect(flags.dataExportFormat).toBe('JSON');
     });
 
+    // D1.4.3.5 — pii_masking_enabled (PDPA master toggle)
+    it('piiMaskingEnabled defaults to true (PDPA-safe) when SystemConfig row absent', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.piiMaskingEnabled).toBe(true);
+    });
+
+    it('piiMaskingEnabled returns false when OWNER explicitly disables it', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'pii_masking_enabled') return Promise.resolve({ value: 'false' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.piiMaskingEnabled).toBe(false);
+    });
+
+    it('piiMaskingEnabled returns true when explicitly enabled', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'pii_masking_enabled') return Promise.resolve({ value: 'true' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.piiMaskingEnabled).toBe(true);
+    });
+
+    it('piiMaskingEnabled falls back to PDPA-safe default for unparseable value', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'pii_masking_enabled') return Promise.resolve({ value: 'maybe' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.piiMaskingEnabled).toBe(true);
+    });
+
     // D1.3.4.2 — smart_switch_threshold_days (default 0, clamp 0–30,
     // negative/non-integer/NaN → 0). Originally marked SKIP per Phase 2
     // decision report; shipped per owner directive 2026-05-17 to reach

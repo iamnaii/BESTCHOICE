@@ -80,6 +80,13 @@ export interface UiFlags {
    */
   dataExportFormat: 'JSON' | 'CSV' | 'XLSX';
   /**
+   * D1.4.3.5 — master PII masking toggle (PDPA / พ.ร.บ.คุ้มครองข้อมูล
+   * ส่วนบุคคล policy surface). Default `true`. Informational — does not
+   * short-circuit existing per-call mask helpers; admin UI editing this
+   * key should render a bold PDPA warning before persisting `false`.
+   */
+  piiMaskingEnabled: boolean;
+  /**
    * D1.3.4.2 — days threshold for the SAMEDAY→ACCRUAL auto-switch in
    * `ExpenseFormV4`. Default `0` = any past date triggers (legacy
    * behavior). Server clamps to 0–30; out-of-range / NaN → 0.
@@ -264,6 +271,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   documentRetentionYears: 5,
   batchSizeImport: 500,
   dataExportFormat: 'JSON',
+  piiMaskingEnabled: true,
   smartSwitchThresholdDays: 0,
   summaryDefaultRange: 'this_month',
   smartDoctypeSwitchEnabled: true,

@@ -346,6 +346,15 @@ export class SettingsService {
      */
     dataExportFormat: 'JSON' | 'CSV' | 'XLSX';
     /**
+     * D1.4.3.5 — master PII masking toggle (PDPA policy surface).
+     * Default `true`. Currently INFORMATIONAL — existing PII masking
+     * helpers (`maskPhone`, `maskNationalId`, `maskEmail`, `maskBankAccount`)
+     * are consumed per-call in role-aware controllers and do NOT consult
+     * this flag. Surfacing it lets the admin UI display the PDPA stance
+     * and surface a bold warning before persisting `false`.
+     */
+    piiMaskingEnabled: boolean;
+    /**
      * D1.3.4.2 — days threshold for the SAMEDAY→ACCRUAL auto-switch.
      * Default `0` = any past document date triggers the flip (preserves
      * the pre-Phase-4 hardcoded behavior). When set to N>0, the flip only
@@ -726,6 +735,8 @@ export class SettingsService {
       dataExportFormatRaw === 'CSV' || dataExportFormatRaw === 'XLSX'
         ? dataExportFormatRaw
         : 'JSON';
+    // D1.4.3.5 — pii_masking_enabled. Default true (PDPA policy surface).
+    const piiMaskingEnabled = await this.readBoolean('pii_masking_enabled', true);
     // D1.3.4.2 — smart-switch threshold (days). Clamp 0–30; non-integer /
     // NaN / negative → 0. Default 0 = legacy behavior (any past date flips).
     const smartSwitchThresholdRaw = await this.readNumber(
@@ -943,6 +954,7 @@ export class SettingsService {
       documentRetentionYears,
       batchSizeImport,
       dataExportFormat,
+      piiMaskingEnabled,
       smartSwitchThresholdDays,
       summaryDefaultRange,
       smartDoctypeSwitchEnabled,

@@ -1576,18 +1576,19 @@ export class ExpenseDocumentsService implements OnModuleInit {
       const doc = await tx.expenseDocument.findUniqueOrThrow({ where: { id } });
       if (doc.deletedAt) throw new NotFoundException('เอกสารถูกลบแล้ว');
 
-      // D1.2.1.2 — approval-threshold gate.
+      // D1.2.1.2 — approval gate (threshold OR doctype filter).
       //
-      // The gate fires only when BOTH:
-      //   (a) SystemConfig `approval_enabled` is true (sibling PR D1.2.1.1)
-      //   (b) doc.totalAmount >= SystemConfig `approval_threshold`
+      // The gate fires when SystemConfig `approval_enabled` is true (sibling
+      // PR D1.2.1.1) AND the doc is DRAFT AND EITHER of:
+      //   (a) doc.totalAmount >= SystemConfig `approval_threshold`
       //       (default 50,000 ฿; negatives clamp to 0 so a malformed config
       //       can never accidentally short-circuit the gate to "always on")
+      //   (b) doc.documentType is in SystemConfig `approval_required_doc_types`
+      //       (default `['PAYROLL']` — hardcoded here; once #932 merges the
+      //       SystemConfig value takes over for the same OR-composed gate)
       //
-      // Below-threshold docs proceed straight to POSTED on the legacy path —
-      // small expenses don't need an approval signature. Above-threshold docs
-      // are rejected with a Thai message that points the user to the
-      // submit-for-approval endpoint added by D1.2.1.1.
+      // OR semantics ensure low-value payroll still requires approval, and a
+      // high-value EX still gets gated even if not in the doctype list.
       //
       // Source-status check (`DRAFT`) keeps APPROVED docs flowing through —
       // a doc that has already passed approval should not be re-checked here.
@@ -1595,10 +1596,32 @@ export class ExpenseDocumentsService implements OnModuleInit {
       if (approvalEnabled && doc.status === 'DRAFT') {
         const threshold = await this.readNumberFlag(tx, 'approval_threshold', 50000);
         const docTotal = new Prisma.Decimal(doc.totalAmount.toString());
-        if (docTotal.gte(threshold)) {
+        const overThreshold = docTotal.gte(threshold);
+
+        // Inline read of approval_required_doc_types (JSON array). Falls back
+        // to spec default ['PAYROLL'] on missing/unparseable/non-array values.
+        // Hardcoded here until #932 wires the SystemConfig key; the OR gate is
+        // structurally complete now so #932 only needs to expose the value.
+        let requiredDocTypes: string[] = ['PAYROLL'];
+        try {
+          const row = await tx.systemConfig.findFirst({
+            where: { key: 'approval_required_doc_types', deletedAt: null },
+            select: { value: true },
+          });
+          if (row?.value) {
+            const parsed = JSON.parse(row.value);
+            if (Array.isArray(parsed) && parsed.every((v) => typeof v === 'string')) {
+              requiredDocTypes = parsed;
+            }
+          }
+        } catch {
+          // keep default ['PAYROLL']
+        }
+        const isRequiredType = requiredDocTypes.includes(doc.documentType);
+
+        if (overThreshold || isRequiredType) {
           throw new BadRequestException(
-            `เอกสารยอด ${docTotal.toFixed(2)} บาท ≥ เกณฑ์ขออนุมัติ ${threshold.toFixed(2)} บาท — ` +
-              `กรุณากด "ส่งขออนุมัติ" ก่อน Post`,
+            'เอกสารต้องผ่านการอนุมัติก่อน — กรุณากด "ส่งขออนุมัติ"',
           );
         }
       }

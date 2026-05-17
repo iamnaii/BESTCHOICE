@@ -691,7 +691,7 @@ describe('ExpenseDocumentsService', () => {
         deletedAt: null,
       });
       await expect(service.post('doc-thr-over', 'user-1')).rejects.toThrow(
-        /เกณฑ์ขออนุมัติ/,
+        /ต้องผ่านการอนุมัติก่อน/,
       );
       expect(sameDay.execute).not.toHaveBeenCalled();
     });
@@ -766,7 +766,59 @@ describe('ExpenseDocumentsService', () => {
         whtFormType: null,
         deletedAt: null,
       });
-      await expect(service.post('doc-thr-neg', 'user-1')).rejects.toThrow(/เกณฑ์ขออนุมัติ/);
+      await expect(service.post('doc-thr-neg', 'user-1')).rejects.toThrow(/ต้องผ่านการอนุมัติก่อน/);
+    });
+
+    // D1.2.1.2 — OR composition with doctype filter. Below-threshold docs in
+    // `approval_required_doc_types` must still be gated (default ['PAYROLL']).
+    it('D1.2.1.2: gates low-value PAYROLL via default doctype filter (OR composition)', async () => {
+      prisma.systemConfig.findFirst.mockImplementation(
+        (args: { where: { key: string } }) => {
+          if (args.where.key === 'approval_enabled') return Promise.resolve({ value: 'true' });
+          // approval_required_doc_types absent → falls back to ['PAYROLL']
+          if (args.where.key === 'reverse_reason_required') return Promise.resolve({ value: 'false' });
+          return Promise.resolve(null);
+        },
+      );
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-payroll-low',
+        status: 'DRAFT',
+        documentType: 'PAYROLL',
+        paymentMethod: 'BANK_TRANSFER',
+        depositAccountCode: '11-1201',
+        totalAmount: new Decimal('1000.00'),
+        withholdingTax: new Decimal('0'),
+        whtFormType: null,
+        deletedAt: null,
+      });
+      await expect(service.post('doc-payroll-low', 'user-1')).rejects.toThrow(
+        /ต้องผ่านการอนุมัติก่อน/,
+      );
+      expect(payroll.execute).not.toHaveBeenCalled();
+    });
+
+    it('D1.2.1.2: non-required doctype below threshold passes (OR neither true)', async () => {
+      prisma.systemConfig.findFirst.mockImplementation(
+        (args: { where: { key: string } }) => {
+          if (args.where.key === 'approval_enabled') return Promise.resolve({ value: 'true' });
+          if (args.where.key === 'reverse_reason_required') return Promise.resolve({ value: 'false' });
+          return Promise.resolve(null);
+        },
+      );
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-ex-low',
+        status: 'DRAFT',
+        documentType: 'EXPENSE',
+        paymentMethod: 'CASH',
+        depositAccountCode: '11-1101',
+        totalAmount: new Decimal('1000.00'),
+        withholdingTax: new Decimal('0'),
+        whtFormType: null,
+        deletedAt: null,
+      });
+      transition.resolveTargetStatus.mockReturnValue('POSTED');
+      await service.post('doc-ex-low', 'user-1');
+      expect(sameDay.execute).toHaveBeenCalledWith('doc-ex-low', expect.anything());
     });
   });
 

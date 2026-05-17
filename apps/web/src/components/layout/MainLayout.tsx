@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { useGlobalShortcuts } from '@/hooks/useGlobalShortcuts';
+import { useUiFlags } from '@/hooks/useUiFlags';
 import { LayoutProvider, useLayout } from './LayoutContext';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
@@ -113,6 +114,9 @@ function MainContent() {
 
 /* ── Layout root ──────────────────────────────────── */
 export default function MainLayout() {
+  // D1.4.1.4 — fires useUiFlags side-effects (incl. dark-mode bootstrap)
+  // at the earliest authenticated paint. Hook is React-Query cached.
+  useUiFlags();
   return (
     <LayoutProvider>
       <MainContent />

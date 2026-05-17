@@ -76,6 +76,9 @@ const initial = (branchId: string, defaultCash: string): ExpenseFormState => {
     },
     adjustments: [],
     amountPaid: '',
+    // Phase A.5 — default false (deductible). Accountant flips for non-deductible
+    // expenses (gifts > 2,000, personal expenses, tax penalties, etc.).
+    taxDisallowed: false,
   };
 };
 
@@ -139,6 +142,10 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
             state.docType === 'EXPENSE_SAMEDAY' ? state.depositAccountCode : undefined,
           approvedById: state.approvedById || undefined,
           fromTemplateId: state.fromTemplateId || undefined,
+          // Phase A.5 — doc-level non-deductible flag. Server defaults to false
+          // if omitted; we always send the explicit boolean so the value is
+          // round-trippable.
+          taxDisallowed: state.taxDisallowed,
           lines: state.lines
             .filter((l) => l.category && parseFloat(l.unitPrice) > 0)
             .map((l) => ({
@@ -149,6 +156,8 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
               discount: parseFloat(l.discount) || 0,
               vatPercent: parseFloat(l.vatPercent) || 0,
               whtPercent: parseFloat(l.whtPercent) || 0,
+              // Per-line override; backend interprets undefined as false.
+              taxDisallowed: l.taxDisallowed === true ? true : undefined,
             })),
           // Fix Report P0-4 — pass adjustments + amountPaid when set.
           // Backend V12/V13/V14 verify the signed sum closes the diff.

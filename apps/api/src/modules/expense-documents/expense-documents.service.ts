@@ -32,6 +32,7 @@ import { SsoConfigService } from '../sso-config/sso-config.service';
 import { PettyCashService } from './services/petty-cash.service';
 import { PayrollCustomService } from './services/payroll-custom.service';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
+import { readBoolFlag, readJsonFlag } from '../../utils/config.util';
 
 /**
  * Allow-list of account codes that may appear on a multi-line Adjustment row
@@ -122,40 +123,57 @@ export class ExpenseDocumentsService implements OnModuleInit {
   ) {}
 
   // ─── D1.* — Service-side SystemConfig flag readers ─────────────────────
-  // Read directly via PrismaService (avoids injecting SettingsService for a
-  // single-key lookup; also sidesteps potential audit↔settings circular dep
-  // pattern when this service is consumed by future audit-linked features).
-  // Each helper returns the spec-defined default if the SystemConfig row is
-  // missing or has an unparseable value, so first-boot behavior is preserved.
+  // Delegates to shared `readBoolFlag` / `readJsonFlag` in utils/config.util
+  // so every service uses identical parsing + defensive try/catch semantics.
+  // Kept as private wrappers for ergonomic (this.readBoolFlag) call sites.
+  // Spec-defined defaults flow through `fallback` and preserve first-boot
+  // behaviour when the SystemConfig row is missing.
   private async readBoolFlag(
     tx: Prisma.TransactionClient | PrismaService,
     key: string,
     fallback: boolean,
   ): Promise<boolean> {
+    return readBoolFlag(tx, key, fallback);
+  }
+
+  /**
+   * D1.2.1.2 — Numeric SystemConfig reader. Returns the stored Decimal as a
+   * Prisma.Decimal, clamped to ≥ 0 (negatives become 0). On missing or
+   * unparseable values returns the fallback. Used by the approval-threshold
+   * gate where negatives would yield bizarre "every doc requires approval"
+   * behaviour.
+   */
+  private async readNumberFlag(
+    tx: Prisma.TransactionClient | PrismaService,
+    key: string,
+    fallback: number,
+  ): Promise<Prisma.Decimal> {
     try {
       const row = await tx.systemConfig.findFirst({
         where: { key, deletedAt: null },
         select: { value: true },
       });
-      if (!row?.value) return fallback;
-      const v = row.value.trim().toLowerCase();
-      if (v === 'true' || v === '1') return true;
-      if (v === 'false' || v === '0') return false;
-      return fallback;
+      const raw = row?.value;
+      if (!raw) return new Prisma.Decimal(fallback);
+      const parsed = Number(raw);
+      if (!Number.isFinite(parsed)) return new Prisma.Decimal(fallback);
+      const clamped = parsed < 0 ? 0 : parsed;
+      return new Prisma.Decimal(clamped);
     } catch {
-      return fallback;
+      return new Prisma.Decimal(fallback);
     }
   }
 
   /**
-   * D1.2.7.2 — reverse-reasons whitelist. Inlined (vs. importing
-   * SettingsService) for the same reasons as readBoolFlag — keeps the ctor
-   * stable and dodges audit↔settings cycles.
+   * D1.2.7.2 — reverse-reasons whitelist. Uses shared `readJsonFlag` for
+   * uniform JSON-parse + validator semantics. Empty / malformed lists fall
+   * back to the canonical 6-reason default so the UI never shows an empty
+   * dropdown.
    */
   private async getReverseReasons(
     tx: Prisma.TransactionClient | PrismaService,
   ): Promise<{ code: string; label: string }[]> {
-    const defaults = [
+    const defaults: { code: string; label: string }[] = [
       { code: 'data_entry_error', label: 'ป้อนข้อมูลผิด' },
       { code: 'wrong_vendor', label: 'ผู้ขายผิด' },
       { code: 'wrong_amount', label: 'จำนวนเงินผิด' },
@@ -163,30 +181,21 @@ export class ExpenseDocumentsService implements OnModuleInit {
       { code: 'cancel_transaction', label: 'ยกเลิกรายการ' },
       { code: 'other', label: 'อื่นๆ (ระบุรายละเอียด)' },
     ];
-    try {
-      const row = await tx.systemConfig.findFirst({
-        where: { key: 'reverse_reasons', deletedAt: null },
-        select: { value: true },
-      });
-      if (!row?.value) return defaults;
-      const parsed = JSON.parse(row.value);
-      if (
-        Array.isArray(parsed) &&
-        parsed.length > 0 &&
-        parsed.every(
+    return readJsonFlag<{ code: string; label: string }[]>(
+      tx,
+      'reverse_reasons',
+      defaults,
+      (v): v is { code: string; label: string }[] =>
+        Array.isArray(v) &&
+        v.length > 0 &&
+        v.every(
           (r) =>
-            r &&
+            r != null &&
             typeof r === 'object' &&
-            typeof r.code === 'string' &&
-            typeof r.label === 'string',
-        )
-      ) {
-        return parsed;
-      }
-      return defaults;
-    } catch {
-      return defaults;
-    }
+            typeof (r as { code: unknown }).code === 'string' &&
+            typeof (r as { label: unknown }).label === 'string',
+        ),
+    );
   }
 
   // ─── V12/V13/V14 — Multi-line Adjustment validation (shared) ────────
@@ -318,6 +327,9 @@ export class ExpenseDocumentsService implements OnModuleInit {
           note: dto.note ?? null,
           fromTemplateId: dto.fromTemplateId ?? null,
           approvedById: dto.approvedById ?? null,
+          // Phase A.5 — tax-disallowed flag (ม.65 ตรี). Lines inherit from doc-level
+          // unless they set their own override.
+          taxDisallowed: dto.taxDisallowed ?? false,
           createdById: userId,
           expenseDetail: {
             create: {
@@ -336,6 +348,7 @@ export class ExpenseDocumentsService implements OnModuleInit {
                   amountBeforeVat: l.amountBeforeVat,
                   vatAmount: l.vatAmount,
                   whtAmount: l.whtAmount,
+                  taxDisallowed: l.taxDisallowed ?? false,
                 })),
               },
             },
@@ -1109,6 +1122,80 @@ export class ExpenseDocumentsService implements OnModuleInit {
   }
 
   /**
+   * Phase A.5 — Tax-disallowed summary for ภ.ง.ด.50/51 prep.
+   *
+   * Returns the total amount of expense documents flagged as tax-disallowed
+   * (ม.65 ตรี ป.รัษฎากร) over a date range. Used by the accountant at year-
+   * end to exclude these from the deductible-expense total on the corporate
+   * income-tax filing.
+   *
+   * Two roll-ups:
+   *   - `docLevelTotal`: sum(totalAmount) of POSTED docs with doc-level flag
+   *   - `lineLevelTotal`: sum(amountBeforeVat) of line-level overrides on
+   *      docs NOT already disallowed at doc-level (avoid double-count)
+   *
+   * Both are POSTED-only — DRAFT / ACCRUAL / VOIDED are excluded since they
+   * aren't yet on the books. `from` / `to` filter by `documentDate` (BKK).
+   * When omitted, scans every POSTED document (use the calling controller's
+   * default = current calendar year if you want a "this year" view).
+   */
+  async getTaxDisallowedSummary(filters: {
+    branchId?: string;
+    from?: string;
+    to?: string;
+  }) {
+    const where: Prisma.ExpenseDocumentWhereInput = {
+      deletedAt: null,
+      status: 'POSTED',
+    };
+    if (filters.branchId) where.branchId = filters.branchId;
+    if (filters.from || filters.to) {
+      where.documentDate = {};
+      if (filters.from) where.documentDate.gte = new Date(filters.from);
+      if (filters.to) {
+        const end = new Date(filters.to);
+        end.setHours(23, 59, 59, 999);
+        where.documentDate.lte = end;
+      }
+    }
+
+    // Doc-level: all lines in the doc are disallowed → sum totalAmount.
+    const docLevel = await this.prisma.expenseDocument.aggregate({
+      where: { ...where, taxDisallowed: true },
+      _count: { _all: true },
+      _sum: { totalAmount: true },
+    });
+
+    // Line-level: only count rows where the PARENT doc is NOT already flagged
+    // doc-level (otherwise we'd double-count those lines). Sum `amountBeforeVat`
+    // because tax deductibility is computed on the pre-VAT amount — VAT input
+    // is handled separately on ภ.พ.30, not on ภ.ง.ด.50/51.
+    const lineLevel = await this.prisma.expenseLine.aggregate({
+      where: {
+        taxDisallowed: true,
+        expenseDetail: {
+          document: { ...where, taxDisallowed: false },
+        },
+      },
+      _count: { _all: true },
+      _sum: { amountBeforeVat: true },
+    });
+
+    const docTotal = docLevel._sum.totalAmount ?? new Prisma.Decimal(0);
+    const lineTotal = lineLevel._sum.amountBeforeVat ?? new Prisma.Decimal(0);
+    const grandTotal = docTotal.plus(lineTotal);
+
+    return {
+      docLevelCount: docLevel._count._all,
+      docLevelTotal: docTotal.toFixed(2),
+      lineLevelCount: lineLevel._count._all,
+      lineLevelTotal: lineTotal.toFixed(2),
+      grandTotal: grandTotal.toFixed(2),
+      filters: { from: filters.from ?? null, to: filters.to ?? null },
+    };
+  }
+
+  /**
    * AP Aging — Fix Report P1-1.
    *
    * Returns ACCRUAL (unpaid) expenses bucketed by age since `documentDate`,
@@ -1480,6 +1567,9 @@ export class ExpenseDocumentsService implements OnModuleInit {
           ? { connect: { id: dto.approvedById } }
           : { disconnect: true };
       }
+      // Phase A.5 — accountants may flip the flag retroactively while a doc
+      // is still editable (DRAFT/ACCRUAL). Persisted as plain Boolean.
+      if (dto.taxDisallowed !== undefined) data.taxDisallowed = dto.taxDisallowed;
 
       if (dto.lines !== undefined) {
         const priceType = dto.priceType ?? existing.expenseDetail?.priceType ?? 'EXCLUSIVE';
@@ -1531,6 +1621,7 @@ export class ExpenseDocumentsService implements OnModuleInit {
                 amountBeforeVat: l.amountBeforeVat,
                 vatAmount: l.vatAmount,
                 whtAmount: l.whtAmount,
+                taxDisallowed: l.taxDisallowed ?? false,
               })),
             },
           },
@@ -1545,7 +1636,51 @@ export class ExpenseDocumentsService implements OnModuleInit {
     });
   }
 
+  // ─── Submit for approval (DRAFT → PENDING_APPROVAL) ─────────────────
+  // D1.2.1.1 — entry point of the Approval Workflow. Only callable when
+  // SystemConfig `approval_enabled` is true. Without that flag set the
+  // legacy lifecycle (DRAFT → POSTED) applies and there's no reason to
+  // visit PENDING_APPROVAL.
+  //
+  // NOTE: this references the new enum values `PENDING_APPROVAL` and
+  // `APPROVED` which land on the schema in D1.2.1.6 (sibling PR). Until
+  // that migrates, this PR uses `as unknown as DocumentStatus` casts. At
+  // merge time accept the conflict on `schema.prisma` from 1.6.
+  async submitForApproval(id: string, _userId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(hashtext($1))`, `post:${id}`);
+
+      const approvalEnabled = await this.readBoolFlag(tx, 'approval_enabled', false);
+      if (!approvalEnabled) {
+        throw new BadRequestException(
+          'ฟีเจอร์ขออนุมัติยังไม่เปิดใช้งาน — กรุณาเปิด SystemConfig `approval_enabled` ก่อน',
+        );
+      }
+
+      const doc = await tx.expenseDocument.findUniqueOrThrow({ where: { id } });
+      if (doc.deletedAt) throw new NotFoundException('เอกสารถูกลบแล้ว');
+      if (doc.status !== 'DRAFT') {
+        throw new BadRequestException(
+          `ส่งขออนุมัติได้เฉพาะเอกสาร DRAFT — สถานะปัจจุบัน ${doc.status}`,
+        );
+      }
+
+      const PENDING_APPROVAL = 'PENDING_APPROVAL' as unknown as DocumentStatus;
+      return tx.expenseDocument.update({
+        where: { id },
+        data: { status: PENDING_APPROVAL },
+      });
+    });
+  }
+
   // ─── Post (DRAFT → ACCRUAL or POSTED) ────────────────────────────────
+  // D1.2.1.1 — when `approval_enabled` is true, DRAFT documents must first
+  // be submitted via `submitForApproval()`. Posting straight from DRAFT is
+  // rejected so the approval signature is never bypassed. When false, the
+  // legacy DRAFT → POSTED path is preserved.
+  // D1.2.1.6 — also accepts APPROVED → POSTED (when approval_enabled is on
+  // AND auto_post_on_approve is false, OWNER manually calls post() on an
+  // APPROVED doc; assertCanPost permits both DRAFT + APPROVED).
   async post(id: string, _userId: string) {
     return this.prisma.$transaction(async (tx) => {
       // Per-doc advisory lock — serializes concurrent post calls on the same id.
@@ -1556,6 +1691,57 @@ export class ExpenseDocumentsService implements OnModuleInit {
 
       const doc = await tx.expenseDocument.findUniqueOrThrow({ where: { id } });
       if (doc.deletedAt) throw new NotFoundException('เอกสารถูกลบแล้ว');
+
+      // D1.2.1.2 — approval gate (threshold OR doctype filter).
+      //
+      // The gate fires when SystemConfig `approval_enabled` is true (sibling
+      // PR D1.2.1.1) AND the doc is DRAFT AND EITHER of:
+      //   (a) doc.totalAmount >= SystemConfig `approval_threshold`
+      //       (default 50,000 ฿; negatives clamp to 0 so a malformed config
+      //       can never accidentally short-circuit the gate to "always on")
+      //   (b) doc.documentType is in SystemConfig `approval_required_doc_types`
+      //       (default `['PAYROLL']` — hardcoded here; once #932 merges the
+      //       SystemConfig value takes over for the same OR-composed gate)
+      //
+      // OR semantics ensure low-value payroll still requires approval, and a
+      // high-value EX still gets gated even if not in the doctype list.
+      //
+      // Source-status check (`DRAFT`) keeps APPROVED docs flowing through —
+      // a doc that has already passed approval should not be re-checked here.
+      const approvalEnabled = await this.readBoolFlag(tx, 'approval_enabled', false);
+      if (approvalEnabled && doc.status === 'DRAFT') {
+        const threshold = await this.readNumberFlag(tx, 'approval_threshold', 50000);
+        const docTotal = new Prisma.Decimal(doc.totalAmount.toString());
+        const overThreshold = docTotal.gte(threshold);
+
+        // Inline read of approval_required_doc_types (JSON array). Falls back
+        // to spec default ['PAYROLL'] on missing/unparseable/non-array values.
+        // Hardcoded here until #932 wires the SystemConfig key; the OR gate is
+        // structurally complete now so #932 only needs to expose the value.
+        let requiredDocTypes: string[] = ['PAYROLL'];
+        try {
+          const row = await tx.systemConfig.findFirst({
+            where: { key: 'approval_required_doc_types', deletedAt: null },
+            select: { value: true },
+          });
+          if (row?.value) {
+            const parsed = JSON.parse(row.value);
+            if (Array.isArray(parsed) && parsed.every((v) => typeof v === 'string')) {
+              requiredDocTypes = parsed;
+            }
+          }
+        } catch {
+          // keep default ['PAYROLL']
+        }
+        const isRequiredType = requiredDocTypes.includes(doc.documentType);
+
+        if (overThreshold || isRequiredType) {
+          throw new BadRequestException(
+            'เอกสารต้องผ่านการอนุมัติก่อน — กรุณากด "ส่งขออนุมัติ"',
+          );
+        }
+      }
+
       this.transition.assertCanPost({
         type: doc.documentType,
         from: doc.status,
@@ -1563,164 +1749,268 @@ export class ExpenseDocumentsService implements OnModuleInit {
         totalAmount: doc.totalAmount.toString(),
       });
 
-      // Fix #C9 (Round 2 — moved from journal-auto.service.createAndPost):
-      // Period-open guard at the module boundary. Previously the guard lived
-      // inside createAndPost, which broke payment + contract atomicity (it
-      // would reject mid-tx JE writes and roll back the Payment record).
-      // The guard belongs HERE because:
-      //   1. We know the canonical posting date — doc.documentDate, not
-      //      "now" (which would let a backdated post slip through if the
-      //      clock crossed midnight between create + post).
-      //   2. We know the canonical companyId — SHOP (all expense flows post
-      //      SHOP-side per accounting.md §VAT Policy; expense template
-      //      resolves SHOP later, this guard mirrors that).
-      // Resolve SHOP companyId once via tx + cache; re-using the same
-      // pattern as expense templates' getShopCompanyId.
-      const shopForPeriod = await tx.companyInfo.findFirst({
-        where: { companyCode: 'SHOP', deletedAt: null },
-        select: { id: true },
-      });
-      if (!shopForPeriod) {
-        throw new NotFoundException(
-          'CompanyInfo with companyCode=SHOP not found — seed accounting data first',
-        );
-      }
-      // documentDate is required on the schema but defend against legacy
-      // rows with NULL via fallback to "now" (matches receipts.service +
-      // payments.service behavior — neither has a per-row date column on
-      // the doc, both pass new Date()).
-      const periodDate = doc.documentDate ?? new Date();
-      await validatePeriodOpen(tx, periodDate, shopForPeriod.id);
+      return this.executePostBody(doc, tx);
+    });
+  }
 
-      // Fix #C10 — attachment threshold enforced server-side.
-      // ATTACHMENT_REQUIRED_ABOVE_AMOUNT is set in /settings#attachment but
-      // was previously only enforced by the frontend submit button. A direct
-      // API call could POST a 500k expense with no receiptImageUrl → tax-audit
-      // risk. Defense in depth: re-check at post() before any JE is written.
-      const thresholdCfg = await tx.systemConfig.findUnique({
-        where: { key: 'ATTACHMENT_REQUIRED_ABOVE_AMOUNT' },
-      });
-      const rawThreshold = thresholdCfg?.value ?? '0';
-      const threshold = new Prisma.Decimal(
-        Number.isFinite(Number(rawThreshold)) ? rawThreshold : '0',
+  /**
+   * Shared post body — period guard, attachment threshold, WHT routing,
+   * JE template dispatch. Called from both post() (after assertCanPost) and
+   * approve() (after assertCanApprove + status flip to APPROVED, when
+   * auto_post_on_approve is true).
+   *
+   * Pure refactor extracted to eliminate ~150 LOC of drift-prone duplication
+   * (see deep-review finding Group 3 #1). Behaviour is identical to the inline
+   * blocks it replaces — caller is responsible for:
+   *   • advisory lock acquisition
+   *   • doc load + deletedAt check
+   *   • transition assertion (assertCanPost / assertCanApprove)
+   *   • status flip + APPROVED audit (approve path only)
+   *   • AUTO_POSTED audit after success (approve path only)
+   *
+   * Returns the JE template result (`{ journalEntryId, ... }` shape varies
+   * by template) so the caller can propagate it.
+   */
+  private async executePostBody(
+    doc: Prisma.ExpenseDocumentGetPayload<{}>,
+    tx: Prisma.TransactionClient,
+  ): Promise<unknown> {
+    const id = doc.id;
+
+    // Fix #C9 (Round 2 — moved from journal-auto.service.createAndPost):
+    // Period-open guard at the module boundary. Previously the guard lived
+    // inside createAndPost, which broke payment + contract atomicity (it
+    // would reject mid-tx JE writes and roll back the Payment record).
+    // The guard belongs HERE because:
+    //   1. We know the canonical posting date — doc.documentDate, not
+    //      "now" (which would let a backdated post slip through if the
+    //      clock crossed midnight between create + post).
+    //   2. We know the canonical companyId — SHOP (all expense flows post
+    //      SHOP-side per accounting.md §VAT Policy; expense template
+    //      resolves SHOP later, this guard mirrors that).
+    // Resolve SHOP companyId once via tx + cache; re-using the same
+    // pattern as expense templates' getShopCompanyId.
+    const shopForPeriod = await tx.companyInfo.findFirst({
+      where: { companyCode: 'SHOP', deletedAt: null },
+      select: { id: true },
+    });
+    if (!shopForPeriod) {
+      throw new NotFoundException(
+        'CompanyInfo with companyCode=SHOP not found — seed accounting data first',
       );
-      const docTotal = new Prisma.Decimal(doc.totalAmount.toString());
-      if (threshold.gt(0) && docTotal.gte(threshold) && !doc.receiptImageUrl) {
-        throw new BadRequestException(
-          `เอกสารยอด ${docTotal.toFixed(2)} บาท ต้องแนบไฟล์ประกอบ (เกณฑ์ ${threshold.toFixed(2)} บาท)`,
-        );
-      }
+    }
+    // documentDate is required on the schema but defend against legacy
+    // rows with NULL via fallback to "now" (matches receipts.service +
+    // payments.service behavior — neither has a per-row date column on
+    // the doc, both pass new Date()).
+    const periodDate = doc.documentDate ?? new Date();
+    await validatePeriodOpen(tx, periodDate, shopForPeriod.id);
 
-      // EXPENSE + CREDIT_NOTE + PAYROLL + VENDOR_SETTLEMENT supported
-      if (!['EXPENSE', 'CREDIT_NOTE', 'PAYROLL', 'VENDOR_SETTLEMENT'].includes(doc.documentType)) {
-        throw new BadRequestException(`type ${doc.documentType} not supported`);
-      }
+    // Fix #C10 — attachment threshold enforced server-side.
+    // ATTACHMENT_REQUIRED_ABOVE_AMOUNT is set in /settings#attachment but
+    // was previously only enforced by the frontend submit button. A direct
+    // API call could POST a 500k expense with no receiptImageUrl → tax-audit
+    // risk. Defense in depth: re-check at post() before any JE is written.
+    const thresholdCfg = await tx.systemConfig.findUnique({
+      where: { key: 'ATTACHMENT_REQUIRED_ABOVE_AMOUNT' },
+    });
+    const rawThreshold = thresholdCfg?.value ?? '0';
+    const threshold = new Prisma.Decimal(
+      Number.isFinite(Number(rawThreshold)) ? rawThreshold : '0',
+    );
+    const docTotal = new Prisma.Decimal(doc.totalAmount.toString());
+    if (threshold.gt(0) && docTotal.gte(threshold) && !doc.receiptImageUrl) {
+      throw new BadRequestException(
+        `เอกสารยอด ${docTotal.toFixed(2)} บาท ต้องแนบไฟล์ประกอบ (เกณฑ์ ${threshold.toFixed(2)} บาท)`,
+      );
+    }
 
-      // Fix #C12 — WHT routing invariant. When the doc has WHT > 0, doc.whtFormType
-      // MUST be non-null (and a recognised form). Previously the JE template silently
-      // defaulted to PND3 → routed to 21-3102, misfiling juristic-vendor WHT under
-      // ภ.ง.ด.3 instead of ภ.ง.ด.53 (government compliance bug).
-      //
-      // C12-symmetry (this PR): mirror the guard across all 4 doc types so any
-      // future bypass surfaces at post() instead of being silently misrouted by
-      // the template. Each doc type carries WHT differently:
-      //   - EXPENSE: doc.whtFormType OR every ExpenseLine.whtFormType is set
-      //     (per-line routing — P2-4)
-      //   - PAYROLL: doc.withholdingTax > 0 → always Cr 21-3101 (ภ.ง.ด.1) —
-      //     payroll WHT is employee income tax, NOT PND3/PND53, so no formType
-      //     enforcement here (BUT we still require it to be null since the field
-      //     is meaningless for payroll)
-      //   - VENDOR_SETTLEMENT: single-vendor invariant means doc-level form type
-      //     applies (intentionally no per-line routing per accounting.md)
-      //   - CREDIT_NOTE: createCreditNote already blocks original-with-WHT
-      //     (so CN itself ideally has no WHT), but if the original had WHT and
-      //     this branch is reached, we still need doc-level formType
-      const wht = new Prisma.Decimal(doc.withholdingTax?.toString() ?? '0');
-      if (wht.gt(0)) {
-        if (doc.documentType === 'EXPENSE') {
-          if (!doc.whtFormType) {
-            // Check if every WHT-bearing line has its own form type → fall through to
-            // per-line routing in the template. Otherwise the doc-level is mandatory.
-            const detail = await tx.expenseDetail.findUnique({
-              where: { documentId: id },
-              include: { lines: true },
-            });
-            const whtLines = (detail?.lines ?? []).filter(
-              (l) => l.whtAmount && new Prisma.Decimal(l.whtAmount.toString()).gt(0),
-            );
-            const allLinesHaveFormType =
-              whtLines.length > 0 && whtLines.every((l) => !!l.whtFormType);
-            if (!allLinesHaveFormType) {
-              throw new BadRequestException(
-                'whtFormType ต้องระบุเมื่อมี WHT — เลือก PND3 หรือ PND53',
-              );
-            }
-            // If every line has a form type, validate each is PND3/PND53 (no other strings)
-            for (const l of whtLines) {
-              if (l.whtFormType !== 'PND3' && l.whtFormType !== 'PND53') {
-                throw new BadRequestException(
-                  `whtFormType ของบรรทัด ${(l as { lineNo?: number }).lineNo ?? '?'} ` +
-                    `ต้องเป็น PND3 หรือ PND53 (พบ ${l.whtFormType ?? 'null'})`,
-                );
-              }
-            }
-          } else if (doc.whtFormType !== 'PND3' && doc.whtFormType !== 'PND53') {
-            throw new BadRequestException(
-              `whtFormType ต้องเป็น PND3 หรือ PND53 (พบ ${doc.whtFormType})`,
-            );
-          }
-        } else if (doc.documentType === 'VENDOR_SETTLEMENT' || doc.documentType === 'CREDIT_NOTE') {
-          // Per-line routing intentionally NOT supported for SE (single-vendor
-          // invariant per accounting.md) and CN (template routes by original.whtFormType
-          // since CN itself carries no WHT — but defense in depth).
-          if (!doc.whtFormType) {
+    // EXPENSE + CREDIT_NOTE + PAYROLL + VENDOR_SETTLEMENT supported
+    if (!['EXPENSE', 'CREDIT_NOTE', 'PAYROLL', 'VENDOR_SETTLEMENT'].includes(doc.documentType)) {
+      throw new BadRequestException(`type ${doc.documentType} not supported`);
+    }
+
+    // Fix #C12 — WHT routing invariant. When the doc has WHT > 0, doc.whtFormType
+    // MUST be non-null (and a recognised form). Previously the JE template silently
+    // defaulted to PND3 → routed to 21-3102, misfiling juristic-vendor WHT under
+    // ภ.ง.ด.3 instead of ภ.ง.ด.53 (government compliance bug).
+    //
+    // C12-symmetry: mirror the guard across all 4 doc types so any
+    // future bypass surfaces at post() instead of being silently misrouted by
+    // the template. Each doc type carries WHT differently:
+    //   - EXPENSE: doc.whtFormType OR every ExpenseLine.whtFormType is set
+    //     (per-line routing — P2-4)
+    //   - PAYROLL: doc.withholdingTax > 0 → always Cr 21-3101 (ภ.ง.ด.1) —
+    //     payroll WHT is employee income tax, NOT PND3/PND53, so no formType
+    //     enforcement here (BUT we still require it to be null since the field
+    //     is meaningless for payroll)
+    //   - VENDOR_SETTLEMENT: single-vendor invariant means doc-level form type
+    //     applies (intentionally no per-line routing per accounting.md)
+    //   - CREDIT_NOTE: createCreditNote already blocks original-with-WHT
+    //     (so CN itself ideally has no WHT), but if the original had WHT and
+    //     this branch is reached, we still need doc-level formType
+    const wht = new Prisma.Decimal(doc.withholdingTax?.toString() ?? '0');
+    if (wht.gt(0)) {
+      if (doc.documentType === 'EXPENSE') {
+        if (!doc.whtFormType) {
+          // Check if every WHT-bearing line has its own form type → fall through to
+          // per-line routing in the template. Otherwise the doc-level is mandatory.
+          const detail = await tx.expenseDetail.findUnique({
+            where: { documentId: id },
+            include: { lines: true },
+          });
+          const whtLines = (detail?.lines ?? []).filter(
+            (l) => l.whtAmount && new Prisma.Decimal(l.whtAmount.toString()).gt(0),
+          );
+          const allLinesHaveFormType =
+            whtLines.length > 0 && whtLines.every((l) => !!l.whtFormType);
+          if (!allLinesHaveFormType) {
             throw new BadRequestException(
               'whtFormType ต้องระบุเมื่อมี WHT — เลือก PND3 หรือ PND53',
             );
           }
-          if (doc.whtFormType !== 'PND3' && doc.whtFormType !== 'PND53') {
-            throw new BadRequestException(
-              `whtFormType ต้องเป็น PND3 หรือ PND53 (พบ ${doc.whtFormType})`,
-            );
+          // If every line has a form type, validate each is PND3/PND53 (no other strings)
+          for (const l of whtLines) {
+            if (l.whtFormType !== 'PND3' && l.whtFormType !== 'PND53') {
+              throw new BadRequestException(
+                `whtFormType ของบรรทัด ${(l as { lineNo?: number }).lineNo ?? '?'} ` +
+                  `ต้องเป็น PND3 หรือ PND53 (พบ ${l.whtFormType ?? 'null'})`,
+              );
+            }
           }
-        }
-        // PAYROLL: doc.whtFormType is meaningless (employee income tax always
-        // routes to 21-3101 / ภ.ง.ด.1). No enforcement — payroll.template
-        // posts to 21-3101 unconditionally when sumWht > 0.
-      }
-
-      if (doc.documentType === 'CREDIT_NOTE') {
-        return this.creditNoteTemplate.execute(id, tx);
-      }
-      if (doc.documentType === 'PAYROLL') {
-        return this.payrollTemplate.execute(id, tx);
-      }
-      if (doc.documentType === 'VENDOR_SETTLEMENT') {
-        return this.settlementTemplate.execute(id, tx);
-      }
-      if (doc.documentType === 'PETTY_CASH_REIMBURSEMENT') {
-        return this.pettyCashTemplate.execute(id, tx);
-      }
-      const target = this.transition.resolveTargetStatus(
-        doc.documentType,
-        !!doc.paymentMethod && !!doc.depositAccountCode,
-      );
-      if (target === 'POSTED') {
-        return this.sameDayTemplate.execute(id, tx);
-      } else {
-        // V15 — ACCRUAL ห้ามมี WHT (ม.50 ป.รัษฎากร).
-        // WHT เกิด "ขณะที่จ่ายเงินได้" → ACCRUAL is the accrual leg before
-        // payment, so WHT must defer to the SETTLEMENT step. Booking WHT now
-        // would put it in the wrong tax period and cause ภงด.53 misfile.
-        // Fix Report P0-2.
-        if (doc.withholdingTax && doc.withholdingTax.gt(0)) {
+        } else if (doc.whtFormType !== 'PND3' && doc.whtFormType !== 'PND53') {
           throw new BadRequestException(
-            'V15: เอกสารตั้งหนี้ (ACCRUAL) ห้ามมี WHT (มาตรา 50 ป.รัษฎากร) — ' +
-              'WHT จะถูกบันทึกตอน Settlement เมื่อจ่ายเงินจริง',
+            `whtFormType ต้องเป็น PND3 หรือ PND53 (พบ ${doc.whtFormType})`,
           );
         }
-        return this.accrualTemplate.execute(id, tx);
+      } else if (doc.documentType === 'VENDOR_SETTLEMENT' || doc.documentType === 'CREDIT_NOTE') {
+        // Per-line routing intentionally NOT supported for SE (single-vendor
+        // invariant per accounting.md) and CN (template routes by original.whtFormType
+        // since CN itself carries no WHT — but defense in depth).
+        if (!doc.whtFormType) {
+          throw new BadRequestException(
+            'whtFormType ต้องระบุเมื่อมี WHT — เลือก PND3 หรือ PND53',
+          );
+        }
+        if (doc.whtFormType !== 'PND3' && doc.whtFormType !== 'PND53') {
+          throw new BadRequestException(
+            `whtFormType ต้องเป็น PND3 หรือ PND53 (พบ ${doc.whtFormType})`,
+          );
+        }
       }
+      // PAYROLL: doc.whtFormType is meaningless (employee income tax always
+      // routes to 21-3101 / ภ.ง.ด.1). No enforcement — payroll.template
+      // posts to 21-3101 unconditionally when sumWht > 0.
+    }
+
+    if (doc.documentType === 'CREDIT_NOTE') {
+      return this.creditNoteTemplate.execute(id, tx);
+    }
+    if (doc.documentType === 'PAYROLL') {
+      return this.payrollTemplate.execute(id, tx);
+    }
+    if (doc.documentType === 'VENDOR_SETTLEMENT') {
+      return this.settlementTemplate.execute(id, tx);
+    }
+    if (doc.documentType === 'PETTY_CASH_REIMBURSEMENT') {
+      return this.pettyCashTemplate.execute(id, tx);
+    }
+    const target = this.transition.resolveTargetStatus(
+      doc.documentType,
+      !!doc.paymentMethod && !!doc.depositAccountCode,
+    );
+    if (target === 'POSTED') {
+      return this.sameDayTemplate.execute(id, tx);
+    } else {
+      // V15 — ACCRUAL ห้ามมี WHT (ม.50 ป.รัษฎากร).
+      // WHT เกิด "ขณะที่จ่ายเงินได้" → ACCRUAL is the accrual leg before
+      // payment, so WHT must defer to the SETTLEMENT step. Booking WHT now
+      // would put it in the wrong tax period and cause ภงด.53 misfile.
+      // Fix Report P0-2.
+      if (doc.withholdingTax && doc.withholdingTax.gt(0)) {
+        throw new BadRequestException(
+          'V15: เอกสารตั้งหนี้ (ACCRUAL) ห้ามมี WHT (มาตรา 50 ป.รัษฎากร) — ' +
+            'WHT จะถูกบันทึกตอน Settlement เมื่อจ่ายเงินจริง',
+        );
+      }
+      return this.accrualTemplate.execute(id, tx);
+    }
+  }
+
+  // ─── Approve (PENDING_APPROVAL → APPROVED → optionally POSTED) ────────
+  // D1.2.1.6 — second leg of the Approval Workflow. The DRAFT →
+  // PENDING_APPROVAL gate is wired in D1.2.1.1 (approval_enabled flag).
+  //
+  // Behaviour:
+  //  - Loads the doc under the same `post:` advisory lock so a concurrent
+  //    approve+post cannot double-post a JE.
+  //  - Asserts the source status is PENDING_APPROVAL.
+  //  - Flips status → APPROVED.
+  //  - Reads SystemConfig `auto_post_on_approve` (default true). When true,
+  //    chains to post() in the same transaction so APPROVED never persists
+  //    visibly. When false, returns the APPROVED doc and OWNER posts later
+  //    by calling /expenses/:id/post (which now also accepts APPROVED via
+  //    StatusTransitionService.assertCanPost).
+  //
+  // userId is captured for audit logs (APPROVED + AUTO_POSTED actions written
+  // inside the same tx). Signature parity with post() / voidDocument().
+  async approve(id: string, userId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      // Re-use the `post:` lock key — approve always either becomes the JE
+      // post (auto path) or precedes a future post(), so serializing on the
+      // same lock is correct.
+      await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(hashtext($1))`, `post:${id}`);
+
+      const doc = await tx.expenseDocument.findUniqueOrThrow({ where: { id } });
+      if (doc.deletedAt) throw new NotFoundException('เอกสารถูกลบแล้ว');
+      this.transition.assertCanApprove({ from: doc.status });
+
+      // Stamp APPROVED first so the auto-post branch starts from a clean
+      // APPROVED row (assertCanPost permits APPROVED). When auto-post is off
+      // the APPROVED state persists and downstream post() will pick it up.
+      await tx.expenseDocument.update({
+        where: { id },
+        data: { status: 'APPROVED' as DocumentStatus },
+      });
+
+      // D1.2.1.6 — APPROVED audit log (always written, regardless of auto-post).
+      await tx.auditLog.create({
+        data: {
+          action: 'APPROVED',
+          entity: 'expense_document',
+          entityId: id,
+          userId,
+          oldValue: { status: 'PENDING_APPROVAL' },
+          newValue: { status: 'APPROVED' },
+        },
+      });
+
+      const autoPost = await this.readBoolFlag(tx, 'auto_post_on_approve', true);
+      if (!autoPost) {
+        return tx.expenseDocument.findUniqueOrThrow({ where: { id } });
+      }
+
+      // Auto-post chain — delegated to executePostBody() shared helper.
+      // Skips the lock (already held) and the from-DRAFT assertCanPost (we
+      // just set APPROVED, which assertCanPost permits per D1.2.1.6). All
+      // integrity guards (period open, attachment threshold, WHT routing,
+      // V15 ACCRUAL-no-WHT, type allow-list) run via the helper so any
+      // future change to those guards lands in both paths automatically.
+      const result = await this.executePostBody(doc, tx);
+
+      // D1.2.1.6 — AUTO_POSTED audit log (only when auto_post_on_approve=true
+      // and the auto-post chain completed without throwing).
+      await tx.auditLog.create({
+        data: {
+          action: 'AUTO_POSTED',
+          entity: 'expense_document',
+          entityId: id,
+          userId,
+          newValue: { status: 'POSTED', autoPostedFromApproval: true },
+        },
+      });
+
+      return result;
     });
   }
 

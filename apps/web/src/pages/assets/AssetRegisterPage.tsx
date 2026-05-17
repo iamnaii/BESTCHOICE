@@ -23,6 +23,7 @@ import QueryBoundary from '@/components/QueryBoundary';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import AnimatedCounter from '@/components/ui/animated-counter';
 import { useDebounce } from '@/hooks/useDebounce';
+import { useUiFlags } from '@/hooks/useUiFlags';
 import { formatDateShortThai, formatNumberDecimal } from '@/utils/formatters';
 import { getErrorMessage } from '@/lib/api';
 import { assetsApi } from './api';
@@ -34,13 +35,17 @@ import {
   type AssetStatus,
 } from './types';
 
-const PAGE_SIZE = 50;
+// D1.2.3.2 — fallback when useUiFlags() hasn't resolved yet.
+const PAGE_SIZE_FALLBACK = 50;
 
 const today = () => new Date().toISOString().slice(0, 10);
 
 export default function AssetRegisterPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  // D1.2.3.2 — OWNER-configured pagination size.
+  const { paginationSize } = useUiFlags();
+  const PAGE_SIZE = paginationSize || PAGE_SIZE_FALLBACK;
 
   const asOfDate = searchParams.get('asOfDate') ?? today();
   const category = (searchParams.get('category') ?? '') as AssetCategory | '';

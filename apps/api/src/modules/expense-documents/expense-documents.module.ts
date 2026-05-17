@@ -3,6 +3,7 @@ import { PrismaModule } from '../../prisma/prisma.module';
 import { JournalModule } from '../journal/journal.module';
 import { AuthModule } from '../auth/auth.module';
 import { SsoConfigModule } from '../sso-config/sso-config.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { ExpenseDocumentsController } from './expense-documents.controller';
 import { ExpenseDocumentsService } from './expense-documents.service';
 import { ExpenseTemplatesController } from './expense-templates.controller';
@@ -17,7 +18,9 @@ import { ExpenseRecurringCron } from './crons/expense-recurring.cron';
 import { ApDueAlertsCron } from './crons/ap-due-alerts.cron';
 
 @Module({
-  imports: [PrismaModule, JournalModule, AuthModule, SsoConfigModule],
+  // NotificationsModule import is required so ApDueAlertsCron can route IN_APP
+  // alerts through NotificationsService.send() (respects the D1.3.1.4 master gate).
+  imports: [PrismaModule, JournalModule, AuthModule, SsoConfigModule, NotificationsModule],
   controllers: [ExpenseDocumentsController, ExpenseTemplatesController],
   providers: [
     ExpenseDocumentsService,
@@ -29,7 +32,7 @@ import { ApDueAlertsCron } from './crons/ap-due-alerts.cron';
     PettyCashService,
     PayrollCustomService,
     ExpenseRecurringCron,
-    // D1.3.1.2 — AP-due alerts cron (default ON via SystemConfig `ap_due_alerts_enabled`)
+    // D1.3.1.2 — AP-due alerts cron. Default OFF (opt-in) — see ap-due-alerts.cron.ts for rationale.
     ApDueAlertsCron,
   ],
   exports: [ExpenseDocumentsService, ExpenseTemplatesService],

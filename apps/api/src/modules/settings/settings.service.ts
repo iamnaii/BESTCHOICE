@@ -176,8 +176,12 @@ export class SettingsService {
      */
     language: 'th' | 'en';
     /**
-     * D1.3.1.2 — AP-due alerts cron toggle. Default `true` (ON). When `false`,
-     * the daily `ApDueAlertsCron` is a silent no-op.
+     * D1.3.1.2 — AP-due alerts cron toggle. Default `false` (OFF) until
+     * ExpenseDocument has a real `dueDate` column — currently the cron uses
+     * `documentDate` as a proxy, so leaving it ON by default would spam
+     * approvers with daily alerts for every POSTED doc 3+ days old regardless
+     * of actual vendor credit terms. OWNERs opt-in via /settings when they
+     * accept the documentDate semantics.
      */
     apDueAlertsEnabled: boolean;
     /**
@@ -226,8 +230,9 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
-    // D1.3.1.2 — AP-due alerts (default ON).
-    const apDueAlertsEnabled = await this.readBoolean('ap_due_alerts_enabled', true);
+    // D1.3.1.2 — AP-due alerts. Default OFF until ExpenseDocument has a real
+    // dueDate column (documentDate proxy would otherwise spam every POSTED doc).
+    const apDueAlertsEnabled = await this.readBoolean('ap_due_alerts_enabled', false);
     const apDueDaysBeforeRaw = await this.readNumber('ap_due_days_before', 3);
     const apDueDaysBefore = apDueDaysBeforeRaw >= 0 ? apDueDaysBeforeRaw : 3;
     return {

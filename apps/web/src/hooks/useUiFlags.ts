@@ -33,6 +33,11 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /**
+   * D1.4.3.2 — gate the weekly audit-log archive sweep. The server enforces;
+   * frontend exposes the flag so an admin UI can render the current state.
+   */
+  auditLogArchiveEnabled: boolean;
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -53,6 +58,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  auditLogArchiveEnabled: true,
 };
 
 export function useUiFlags(): UiFlags {

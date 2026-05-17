@@ -175,6 +175,14 @@ export class SettingsService {
      * accessibility readers via the lang attr.
      */
     language: 'th' | 'en';
+    /**
+     * D1.4.3.2 — gate the weekly audit-log archive sweep
+     * (`AuditRetentionCron.archiveOldEntries`). Default `true`. When `false`,
+     * the cron skips without touching rows. Hard-delete remains impossible
+     * regardless (BEFORE DELETE trigger on audit_logs), so flipping this off
+     * just keeps rows in the hot set rather than purging the legal trail.
+     */
+    auditLogArchiveEnabled: boolean;
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -214,6 +222,11 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.4.3.2 — audit log archive toggle. Default true.
+    const auditLogArchiveEnabled = await this.readBoolean(
+      'audit_log_archive_enabled',
+      true,
+    );
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -225,6 +238,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      auditLogArchiveEnabled,
     };
   }
 

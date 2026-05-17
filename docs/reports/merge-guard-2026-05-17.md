@@ -115,5 +115,6 @@ _None._
 | #961 | feat/a1-d1.3.1.3-email-provider | 0 critical, 0 warning | ✅ APPROVE |
 | #960 | feat/a1-d1.3.2.4-reverse-permission | 0 critical, 0 warning | ✅ APPROVE |
 | #959 | feat/a1-d1.3.2.3-post-permission | 0 critical, 1 warning | ⚠️ APPROVE with note |
+| —   | feat/a1-d1.2.1-frontend-approval-ui | 0 critical, 0 warning | ✅ APPROVE |
 
-No PRs are blocked. All three follow the established guard patterns (mirrors `SettingsAccessGuard` D1.3.2.2), use proper fallback semantics, include Thai error messages, and have adequate unit tests. The only flag is the intentional BRANCH_MANAGER superset widening on PR #959 which warrants an explicit owner acknowledgment before merge.
+No PRs are blocked. The three guard branches follow the established `SettingsAccessGuard` pattern (D1.3.2.2), use proper fallback semantics, include Thai error messages, and have adequate unit tests. The only flag is the intentional BRANCH_MANAGER superset widening on PR #959 which warrants an explicit owner acknowledgment before merge. The frontend approval-UI branch (`feat/a1-d1.2.1-frontend-approval-ui`) is clean — `warning`/`info` CSS tokens verified, all mutations use the `api` client, cache invalidation wired, pure helpers fully tested. See individual report for details.

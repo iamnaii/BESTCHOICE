@@ -6282,3 +6282,28 @@ model PartialPaymentLink {
   @@index([status, expiresAt])
   @@map("partial_payment_links")
 }
+
+/// SP6 — Bank/Cash Account directory.
+/// Mirrors the 6 cash/bank CoA codes (11-1101..1103 cash, 11-1201..1203 bank) and
+/// lets owners register additional accounts. The page `/finance/bank-accounts`
+/// computes current balance from JournalLine for each `accountCode`.
+/// Account number is treated as PII — UI must mask all but the last 5 digits.
+model BankAccount {
+  id            String    @id @default(uuid())
+  accountCode   String    @unique @map("account_code")
+  accountName   String    @map("account_name")
+  bankName      String    @map("bank_name")
+  accountNumber String?   @map("account_number")
+  /// 'SAVINGS' | 'CURRENT' | 'FIXED' | 'CASH'
+  accountType   String    @default("SAVINGS") @map("account_type")
+  currency      String    @default("THB")
+  isActive      Boolean   @default(true) @map("is_active")
+  notes         String?
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+
+  @@index([accountCode])
+  @@index([deletedAt])
+  @@map("bank_accounts")
+}

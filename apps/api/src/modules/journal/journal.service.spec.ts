@@ -95,12 +95,29 @@ describe('JournalService.create — period lock enforcement', () => {
 
   it('also rejects when legacy SystemConfig `accounting_period_closed_until` blocks the date', async () => {
     prisma.accountingPeriod.findUnique.mockResolvedValue(null);
-    prisma.systemConfig.findUnique.mockResolvedValue({
-      key: 'accounting_period_closed_until',
-      value: '2026-12-31',
-    });
+    // D1.2.6.2 — validatePeriodOpen now requires today > closedUntil + grace
+    // to throw. Use a `closedUntil` well in the past + grace=0 so the legacy
+    // rejection path still fires deterministically regardless of when this
+    // test runs. (The DTO's entryDate '2026-04-10' is on/before closedUntil
+    // '2026-04-30', so date <= closedUntil holds.)
+    prisma.systemConfig.findUnique.mockImplementation(
+      ({ where }: { where: { key: string } }) => {
+        if (where.key === 'period_grace_days') {
+          return Promise.resolve({ key: 'period_grace_days', value: '0' });
+        }
+        if (where.key === 'accounting_period_closed_until') {
+          return Promise.resolve({
+            key: 'accounting_period_closed_until',
+            value: '2020-12-31',
+          });
+        }
+        return Promise.resolve(null);
+      },
+    );
 
-    await expect(service.create(balancedDto(), 'user-1')).rejects.toThrow(BadRequestException);
+    await expect(
+      service.create({ ...balancedDto(), entryDate: '2020-04-10' }, 'user-1'),
+    ).rejects.toThrow(BadRequestException);
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 });

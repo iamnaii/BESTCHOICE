@@ -16,12 +16,28 @@ import {
   ROLE_MAP_WRITE_ROLES,
 } from '../journal/account-role.service';
 import { RoleMapValidationService } from './role-map-validation.service';
+import { SettingsAccessGuard, AllowAnyAuthenticated } from './settings-access.guard';
 
+/**
+ * D1.3.2.2 — class-level `@Roles(...)` is widened to the SUPERSET of any
+ * value the dynamic SystemConfig key `settings_access_role` may select
+ * (OWNER+FINANCE_MANAGER+BRANCH_MANAGER+ACCOUNTANT). `SettingsAccessGuard`
+ * then narrows per-request based on the live SystemConfig value. Default
+ * `settings_access_role = 'OWNER'` preserves OWNER-only behavior, so
+ * flipping the SystemConfig row is opt-in.
+ *
+ * SALES is intentionally excluded from the superset — settings are not
+ * sales-team workflows; widening to SALES would require a fresh security
+ * review.
+ *
+ * Per-route `@Roles(...)` decorators (e.g. role-map endpoints) still
+ * narrow the class-level allowed set as before.
+ */
 @ApiTags('Settings')
 @ApiBearerAuth('JWT')
 @Controller('settings')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('OWNER')
+@UseGuards(JwtAuthGuard, RolesGuard, SettingsAccessGuard)
+@Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'ACCOUNTANT')
 export class SettingsController {
   constructor(
     private settingsService: SettingsService,
@@ -38,9 +54,14 @@ export class SettingsController {
    * D1.* — UI feature flags read by web app for non-OWNER users (payroll
    * editors, accountants etc.). Authenticated but NOT @Roles-gated so the
    * web app can fetch them in any role context.
+   *
+   * D1.3.2.2 — bypass SettingsAccessGuard so SALES (and any other
+   * authenticated role) can still fetch their ui-flags regardless of the
+   * `settings_access_role` SystemConfig value.
    */
   @Get('ui-flags')
   @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @AllowAnyAuthenticated()
   getUiFlags() {
     return this.settingsService.getUiFlags();
   }
@@ -89,8 +110,12 @@ export class SettingsController {
   }
 
   @Patch()
-  bulkUpdate(@Body() dto: BulkUpdateSettingsDto, @CurrentUser() user: { id: string }) {
-    return this.settingsService.bulkUpdate(dto.items, user.id);
+  bulkUpdate(
+    @Body() dto: BulkUpdateSettingsDto,
+    @CurrentUser() user: { id: string; role: string },
+  ) {
+    // D1.3.2.2 (S3) — pass role for service-side defense-in-depth check.
+    return this.settingsService.bulkUpdate(dto.items, user.id, user.role);
   }
 
   /**
@@ -120,7 +145,7 @@ export class SettingsController {
   @Put('collections')
   async updateCollectionsConfig(
     @Body() dto: CollectionsConfigDto,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: { id: string; role: string },
   ) {
     // Reuse existing bulkUpdate plumbing so audit log + cache invalidation
     // continue to flow through the same path as the generic Patch endpoint.
@@ -133,6 +158,7 @@ export class SettingsController {
         { key: 'collections.selfClaimLockHours', value: String(dto.selfClaimLockHours) },
       ],
       user.id,
+      user.role,
     );
     return this.settingsService.getCollectionsConfig();
   }

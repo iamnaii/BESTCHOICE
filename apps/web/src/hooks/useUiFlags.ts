@@ -290,6 +290,14 @@ export interface UiFlags {
    * SystemConfig-only; no migration needed to roll forward/back.
    */
   viewerRoleEnabled: boolean;
+  /**
+   * D1.3.2.2 — dynamic bundle name controlling who can access Settings.
+   * Whitelisted: `'OWNER'` (default) / `'OWNER+FINANCE_MANAGER'` /
+   * `'OWNER+ACCOUNTANT'` / `'OWNER+ALL'`. The server's `SettingsAccessGuard`
+   * narrows per-request based on this value; the frontend uses it for the
+   * informational badge on /settings.
+   */
+  settingsAccessRole: 'OWNER' | 'OWNER+FINANCE_MANAGER' | 'OWNER+ACCOUNTANT' | 'OWNER+ALL';
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -371,6 +379,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   cacheTtlReports: 300,
   settlementPartialPaymentEnabled: true,
   viewerRoleEnabled: false,
+  settingsAccessRole: 'OWNER',
 };
 
 export function useUiFlags(): UiFlags {

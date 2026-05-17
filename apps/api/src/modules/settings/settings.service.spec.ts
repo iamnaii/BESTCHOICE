@@ -287,5 +287,30 @@ describe('SettingsService audit trail', () => {
       const flags = await service.getUiFlags();
       expect(flags.periodCloseDay).toBe(31);
     });
+
+    // D1.4.2.5 — max_concurrent_jobs
+    it('maxConcurrentJobs defaults to 5 when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.maxConcurrentJobs).toBe(5);
+    });
+
+    it('maxConcurrentJobs accepts valid 1-50 range', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'max_concurrent_jobs') return Promise.resolve({ value: '12' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.maxConcurrentJobs).toBe(12);
+    });
+
+    it('maxConcurrentJobs clamps out-of-range values back to 5', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'max_concurrent_jobs') return Promise.resolve({ value: '999' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.maxConcurrentJobs).toBe(5);
+    });
   });
 });

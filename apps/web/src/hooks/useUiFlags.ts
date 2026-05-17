@@ -33,6 +33,13 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /**
+   * D1.4.2.5 — max concurrent BullMQ worker jobs. Default 5, valid 1–50.
+   * INFORMATIONAL for the SystemConfig key — @Processor decorator reads
+   * `MAX_CONCURRENT_JOBS` env var at module load; SystemConfig is the
+   * OWNER-visible source of truth until refactored.
+   */
+  maxConcurrentJobs: number;
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -53,6 +60,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  maxConcurrentJobs: 5,
 };
 
 export function useUiFlags(): UiFlags {

@@ -175,6 +175,20 @@ export class SettingsService {
      * accessibility readers via the lang attr.
      */
     language: 'th' | 'en';
+    /**
+     * D1.4.2.5 — max concurrent BullMQ worker jobs. Default 5, valid 1–50
+     * (clamped). Currently INFORMATIONAL for the SystemConfig key — the
+     * BullMQ `@Processor` decorator is evaluated at class load time and
+     * cannot read a DB-backed value at boot. The flag is exposed so OWNER
+     * can advertise the intended concurrency cap; the actual worker
+     * concurrency is set via `MAX_CONCURRENT_JOBS` env var read in
+     * `NotificationWorker`'s @Processor options (same default 5). A future
+     * PR can refactor `WorkerHost` to read the SystemConfig value at
+     * bootstrap and apply via `BullModule.forRootAsync` worker overrides.
+     * Originally SKIP per Phase 2; shipped per owner directive 2026-05-17
+     * to reach 100% A1 coverage.
+     */
+    maxConcurrentJobs: number;
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -214,6 +228,12 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.4.2.5 — max_concurrent_jobs. Clamp to [1, 50].
+    const maxConcurrentJobsRaw = await this.readNumber('max_concurrent_jobs', 5);
+    const maxConcurrentJobs =
+      Number.isFinite(maxConcurrentJobsRaw) && maxConcurrentJobsRaw >= 1 && maxConcurrentJobsRaw <= 50
+        ? Math.floor(maxConcurrentJobsRaw)
+        : 5;
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -225,6 +245,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      maxConcurrentJobs,
     };
   }
 

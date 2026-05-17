@@ -251,6 +251,14 @@ export class SettingsService {
      */
     whtRates: { rate: number; label: string; effectiveDate?: string | null }[];
     /**
+     * D1.4.3.2 — gate the weekly audit-log archive sweep
+     * (`AuditRetentionCron.archiveOldEntries`). Default `true`. When `false`,
+     * the cron skips without touching rows. Hard-delete remains impossible
+     * regardless (BEFORE DELETE trigger on audit_logs), so flipping this off
+     * just keeps rows in the hot set rather than purging the legal trail.
+     */
+    auditLogArchiveEnabled: boolean;
+    /**
      * D1.3.4.1 — gate the auto SAMEDAY→ACCRUAL switch logic in the expense
      * entry form. Default `true` preserves the existing one-way auto-flip
      * (ExpenseFormV4: when the user picks a past `documentDate` while
@@ -577,6 +585,11 @@ export class SettingsService {
     // D1.1.3.2 — WHT rates (default 5 canonical entries + optional D1.1.3.5
     // effectiveDate per entry).
     const whtRates = await this.getWhtRates();
+    // D1.4.3.2 — audit log archive toggle. Default true.
+    const auditLogArchiveEnabled = await this.readBoolean(
+      'audit_log_archive_enabled',
+      true,
+    );
     // D1.3.4.1 — smart_doctype_switch_enabled (default true).
     const smartDoctypeSwitchEnabled = await this.readBoolean(
       'smart_doctype_switch_enabled',
@@ -775,6 +788,7 @@ export class SettingsService {
       themeColor,
       language,
       whtRates,
+      auditLogArchiveEnabled,
       summaryDefaultRange,
       smartDoctypeSwitchEnabled,
       adjAutoRoute,

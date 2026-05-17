@@ -37,6 +37,11 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /**
+   * D1.4.3.2 — gate the weekly audit-log archive sweep. The server enforces;
+   * frontend exposes the flag so an admin UI can render the current state.
+   */
+  auditLogArchiveEnabled: boolean;
   /** D1.3.5.1 — default time-range preset for ExpenseDailySummaryPage. Default 'this_month'. */
   summaryDefaultRange: 'today' | 'this_week' | 'this_month' | 'last_month';
   /**
@@ -209,6 +214,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
     { rate: 10, label: '10% — ค่าวิชาชีพ' },
     { rate: 15, label: '15% — ต่างประเทศ' },
   ],
+  auditLogArchiveEnabled: true,
   summaryDefaultRange: 'this_month',
   smartDoctypeSwitchEnabled: true,
   settlementMaxBillsPerDoc: 100,

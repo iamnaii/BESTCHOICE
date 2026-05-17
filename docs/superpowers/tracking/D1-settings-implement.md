@@ -90,7 +90,7 @@ Sub-prioritization within expanded D1 scope:
 | D1.3.5.1 | `summary_default_range` | P2 | ⬜ | — | ExpenseDailySummaryPage default |
 | D1.3.5.2 | `summary_all_range_warning` | P2 | ⬜ | — | New UI warning |
 | D1.3.5.3 | `summary_pagination_size` | P2 | ⬜ | — | Configurable from pref |
-| D1.3.6.1 | `settlement_max_bills_per_doc` | P2 | ⬜ | — | Replace literal 100 at SettlementLinesSection.tsx:28 |
+| D1.3.6.1 | `settlement_max_bills_per_doc` | P2 | ✅ | TBD | Server cap in createSettlement + UI warning at 80% / over-cap |
 | D1.3.6.2 | `settlement_default_tick_behavior` | P2 | ⬜ | — | Initial-select logic |
 | D1.3.6.3 | `settlement_partial_payment_enabled` | P2 | ⬜ | — | Toggle V12 adjustments |
 

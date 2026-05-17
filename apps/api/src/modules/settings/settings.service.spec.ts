@@ -417,6 +417,44 @@ describe('SettingsService audit trail', () => {
       expect(flags.whtRates).toHaveLength(5);
     });
 
+    // D1.3.3.1 — export_enabled flag
+    it('exportEnabled defaults to true when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.exportEnabled).toBe(true);
+    });
+
+    it('exportEnabled returns false when OWNER disables it', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'export_enabled') return Promise.resolve({ value: 'false' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.exportEnabled).toBe(false);
+    });
+
+    it('exportEnabled falls back to default (true) on unparseable value', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'export_enabled') return Promise.resolve({ value: 'banana' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.exportEnabled).toBe(true);
+    });
+
+    it('isExportEnabled() returns false when SystemConfig set to "false"', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'export_enabled') return Promise.resolve({ value: 'false' });
+        return Promise.resolve(null);
+      });
+      expect(await service.isExportEnabled()).toBe(false);
+    });
+
+    it('isExportEnabled() returns true (default) when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      expect(await service.isExportEnabled()).toBe(true);
+    });
+
     // D1.4.3.2 — audit_log_archive_enabled toggle
     it('auditLogArchiveEnabled defaults to true when SystemConfig row absent', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);

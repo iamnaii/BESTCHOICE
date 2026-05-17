@@ -38,6 +38,12 @@ export interface UiFlags {
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
   /**
+   * D1.3.3.1 — when false, hide Excel / PDF / CSV export buttons in the UI.
+   * Server-side ExportEnabledGuard returns 403 for PDF endpoints when this
+   * is false (defence-in-depth against UI bypass). Default true.
+   */
+  exportEnabled: boolean;
+  /**
    * D1.4.3.2 — gate the weekly audit-log archive sweep. The server enforces;
    * frontend exposes the flag so an admin UI can render the current state.
    */
@@ -214,6 +220,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
     { rate: 10, label: '10% — ค่าวิชาชีพ' },
     { rate: 15, label: '15% — ต่างประเทศ' },
   ],
+  exportEnabled: true,
   auditLogArchiveEnabled: true,
   summaryDefaultRange: 'this_month',
   smartDoctypeSwitchEnabled: true,

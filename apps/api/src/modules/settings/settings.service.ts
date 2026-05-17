@@ -95,6 +95,17 @@ export class SettingsService {
   }
 
   /**
+   * D1.3.3.1 — public accessor for the export-enabled flag, used by export
+   * endpoints (PDF receipts, trade-in vouchers, OI receipt, reporting PDF)
+   * to short-circuit with 403 before any heavy generation happens. Defaults
+   * to true so existing exports keep working when the SystemConfig row is
+   * absent (first-boot / fresh-DB).
+   */
+  async isExportEnabled(): Promise<boolean> {
+    return this.readBoolean('export_enabled', true);
+  }
+
+  /**
    * D1.* — UI feature flags accessible to ANY authenticated user (not OWNER-only).
    * Keep this method's response shape small and additive — every D1 item that
    * needs a runtime UI toggle should land here so the web app can fetch one
@@ -250,6 +261,15 @@ export class SettingsService {
      * entries when rendering the picker.
      */
     whtRates: { rate: number; label: string; effectiveDate?: string | null }[];
+    /**
+     * D1.3.3.1 — global toggle for data-export endpoints (Excel/PDF/CSV).
+     * Default true. When OWNER sets `export_enabled = 'false'`, the server
+     * blocks PDF export endpoints with HTTP 403 and the web hides the
+     * "ส่งออก Excel" / "ดาวน์โหลด PDF" buttons. Useful for compliance
+     * lockdown periods (e.g. statutory audit window) where uncontrolled
+     * data extraction needs to be paused.
+     */
+    exportEnabled: boolean;
     /**
      * D1.4.3.2 — gate the weekly audit-log archive sweep
      * (`AuditRetentionCron.archiveOldEntries`). Default `true`. When `false`,
@@ -585,6 +605,8 @@ export class SettingsService {
     // D1.1.3.2 — WHT rates (default 5 canonical entries + optional D1.1.3.5
     // effectiveDate per entry).
     const whtRates = await this.getWhtRates();
+    // D1.3.3.1 — export_enabled. Default true.
+    const exportEnabled = await this.readBoolean('export_enabled', true);
     // D1.4.3.2 — audit log archive toggle. Default true.
     const auditLogArchiveEnabled = await this.readBoolean(
       'audit_log_archive_enabled',
@@ -788,6 +810,7 @@ export class SettingsService {
       themeColor,
       language,
       whtRates,
+      exportEnabled,
       auditLogArchiveEnabled,
       summaryDefaultRange,
       smartDoctypeSwitchEnabled,

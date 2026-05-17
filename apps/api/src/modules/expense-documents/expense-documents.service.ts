@@ -1592,13 +1592,16 @@ export class ExpenseDocumentsService implements OnModuleInit {
       // whose `documentType` is in SystemConfig `approval_required_doc_types`
       // need to go through approval; everything else skips straight to POST.
       //
-      // Defaults to `['PAYROLL']` — payroll is the most common controlled-cost
-      // category. If the OWNER adds more types to the list (e.g. ['PAYROLL',
-      // 'VENDOR_SETTLEMENT']), those types also start requiring approval.
+      // Defaults to `['PAYROLL']` per Settings_Audit_Core_v2.0.md §2.1.4 —
+      // payroll is the most common controlled-cost category. If the OWNER
+      // adds more types to the list (e.g. ['PAYROLL', 'VENDOR_SETTLEMENT']),
+      // those types also start requiring approval.
       //
       // Gate fires only when source is DRAFT (APPROVED docs flow through).
-      // Threshold / approver gates live in sibling PRs D1.2.1.2 / D1.2.1.3 —
-      // at merge time the gates compose with AND semantics.
+      // Composes with D1.2.1.2 threshold via OR — requires EITHER condition
+      // true to gate. The threshold leg lives in PR #930; together they
+      // produce a unified gate where doc is rejected when:
+      //   approval_enabled=true AND status=DRAFT AND (overThreshold OR isRequiredType)
       const approvalEnabled = await this.readBoolFlag(tx, 'approval_enabled', false);
       if (approvalEnabled && doc.status === 'DRAFT') {
         const requiredTypes = await this.getApprovalRequiredDocTypes(tx);

@@ -188,6 +188,44 @@ export class ExpenseDocumentsService implements OnModuleInit {
   }
 
   /**
+   * D1.2.1.4 — Doc-type filter for the Approval Workflow gate. JSON-encoded
+   * array of DocumentType enum values stored in SystemConfig key
+   * `approval_required_doc_types`. Default = `['PAYROLL']` — the most
+   * common controlled-cost category. Other doc types skip approval even
+   * when `approval_enabled` is true.
+   *
+   * Returns the set as a parsed array, defaulting to ['PAYROLL'] when the
+   * row is missing / malformed / contains invalid enum values.
+   */
+  private async getApprovalRequiredDocTypes(
+    tx: Prisma.TransactionClient | PrismaService,
+  ): Promise<string[]> {
+    const defaults: string[] = ['PAYROLL'];
+    const validValues: string[] = [
+      'EXPENSE',
+      'CREDIT_NOTE',
+      'PAYROLL',
+      'VENDOR_SETTLEMENT',
+      'PETTY_CASH_REIMBURSEMENT',
+    ];
+    try {
+      const row = await tx.systemConfig.findFirst({
+        where: { key: 'approval_required_doc_types', deletedAt: null },
+        select: { value: true },
+      });
+      if (!row?.value) return defaults;
+      const parsed: unknown = JSON.parse(row.value);
+      if (!Array.isArray(parsed) || parsed.length === 0) return defaults;
+      const filtered = parsed.filter(
+        (v): v is string => typeof v === 'string' && validValues.includes(v),
+      );
+      return filtered.length > 0 ? filtered : defaults;
+    } catch {
+      return defaults;
+    }
+  }
+
+  /**
    * D1.2.1.2 — Numeric SystemConfig reader. Returns the stored Decimal as a
    * Prisma.Decimal, clamped to ≥ 0 (negatives become 0). On missing or
    * unparseable values returns the fallback. Used by the approval-threshold
@@ -1811,25 +1849,11 @@ export class ExpenseDocumentsService implements OnModuleInit {
         const docTotal = new Prisma.Decimal(doc.totalAmount.toString());
         const overThreshold = docTotal.gte(threshold);
 
-        // Inline read of approval_required_doc_types (JSON array). Falls back
-        // to spec default ['PAYROLL'] on missing/unparseable/non-array values.
-        // Hardcoded here until #932 wires the SystemConfig key; the OR gate is
-        // structurally complete now so #932 only needs to expose the value.
-        let requiredDocTypes: string[] = ['PAYROLL'];
-        try {
-          const row = await tx.systemConfig.findFirst({
-            where: { key: 'approval_required_doc_types', deletedAt: null },
-            select: { value: true },
-          });
-          if (row?.value) {
-            const parsed = JSON.parse(row.value);
-            if (Array.isArray(parsed) && parsed.every((v) => typeof v === 'string')) {
-              requiredDocTypes = parsed;
-            }
-          }
-        } catch {
-          // keep default ['PAYROLL']
-        }
+        // D1.2.1.4 — doc-type filter via `getApprovalRequiredDocTypes` helper.
+        // Reads SystemConfig key `approval_required_doc_types` (JSON array),
+        // filters to valid DocumentType enum values, defaults to ['PAYROLL']
+        // on missing/malformed rows.
+        const requiredDocTypes = await this.getApprovalRequiredDocTypes(tx);
         const isRequiredType = requiredDocTypes.includes(doc.documentType);
 
         if (overThreshold || isRequiredType) {

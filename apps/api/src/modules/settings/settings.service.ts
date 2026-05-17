@@ -224,9 +224,10 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
-    // D1.2.1.1 — Approval Workflow opt-in. Default false so existing
-    // installations keep the legacy DRAFT → POSTED lifecycle.
-    const approvalEnabled = await this.readBoolean('approval_enabled', false);
+    // D1.2.1.1 — Approval Workflow opt-in. Default true per
+    // Settings_Audit_Core_v2.0.md spec. Owner can flip to `false` via
+    // SystemConfig if rollout needs to be gradual.
+    const approvalEnabled = await this.readBoolean('approval_enabled', true);
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,

@@ -170,6 +170,13 @@ export class SettingsService {
      */
     language: 'th' | 'en';
     /**
+     * D1.1.5.1 — Petty Cash feature flag. Default true (feature is shipped
+     * and active per PRs #867+#868). When OWNER sets `petty_cash_enabled=false`,
+     * the web UI hides the Petty Cash doc-type card + the section in
+     * ExpenseFormV4, and the backend `createPettyCash` rejects with BadRequest
+     * "ระบบเงินสดย่อยถูกปิดใช้งาน".
+     */
+    pettyCashEnabled: boolean;
      * D1.2.5.3 — render the 3-column partial-payment breakdown (ยอดเดิม /
      * ยอดที่ชำระ / ยอดคงเหลือ) on the voucher. Default true. When false the
      * voucher shows only a single "ยอดที่ชำระ" column.
@@ -427,6 +434,8 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.1.5.1 — Petty Cash feature flag. Default true (feature shipped).
+    const pettyCashEnabled = await this.readBoolean('petty_cash_enabled', true);
     // D1.2.5.3 — show ยอดเดิม / ยอดที่ชำระ / ยอดคงเหลือ on voucher.
     const voucherShowPartialColumns = await this.readBoolean(
       'voucher_show_partial_columns',
@@ -579,6 +588,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      pettyCashEnabled,
       voucherShowPartialColumns,
       voucherIncludeAdjustment,
       voucherPrintMode,

@@ -37,6 +37,8 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /** D1.1.5.1 — Petty Cash feature flag. Default true. Hides DocTypePicker card + form section when false. */
+  pettyCashEnabled: boolean;
   /**
    * D1.2.5.3 — render the 3-column partial-payment breakdown (ยอดเดิม /
    * ยอดที่ชำระ / ยอดคงเหลือ) on the voucher. Default true. When false the
@@ -177,6 +179,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  pettyCashEnabled: true,
   voucherShowPartialColumns: true,
   voucherIncludeAdjustment: true,
   voucherPrintMode: 'multi',

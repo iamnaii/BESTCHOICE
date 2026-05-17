@@ -287,5 +287,30 @@ describe('SettingsService audit trail', () => {
       const flags = await service.getUiFlags();
       expect(flags.periodCloseDay).toBe(31);
     });
+
+    // D1.4.3.3 — document_retention_years (พ.ร.บ.บัญชี ม.7 = 5 years)
+    it('documentRetentionYears defaults to 5 when SystemConfig row absent', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.documentRetentionYears).toBe(5);
+    });
+
+    it('documentRetentionYears accepts valid 1-30 range from SystemConfig', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'document_retention_years') return Promise.resolve({ value: '7' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.documentRetentionYears).toBe(7);
+    });
+
+    it('documentRetentionYears clamps to default when out of valid 1-30 range', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'document_retention_years') return Promise.resolve({ value: '50' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.documentRetentionYears).toBe(5);
+    });
   });
 });

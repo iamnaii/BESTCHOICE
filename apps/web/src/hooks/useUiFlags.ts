@@ -37,7 +37,51 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /** D1.1.5.1 — Petty Cash feature flag. Default true. Hides DocTypePicker card + form section when false. */
+  pettyCashEnabled: boolean;
   /**
+   * D1.2.5.3 — render the 3-column partial-payment breakdown (ยอดเดิม /
+   * ยอดที่ชำระ / ยอดคงเหลือ) on the voucher. Default true. When false the
+   * voucher shows only a single "ยอดที่ชำระ" column.
+   */
+  voucherShowPartialColumns: boolean;
+   * D1.2.5.2 — include the adjustment rows (52-1104 rounding, 53-1503 overpay)
+   * in the printable voucher layout. Default true. When false the rows stay
+   * on screen (JE preview) but are hidden by the print stylesheet.
+   */
+  voucherIncludeAdjustment: boolean;
+   * D1.2.5.1 — voucher print mode. 'multi' (default) emits both ต้นฉบับ and
+   * สำเนา on separate A4 pages; 'single' emits only ต้นฉบับ.
+   */
+  voucherPrintMode: 'single' | 'multi';
+   * D1.2.4.1 — master switch for the Expense Templates ("รายการโปรด") feature.
+   * When false, the UI hides the favorites tab + entry buttons + the
+   * `บันทึกเป็นรายการโปรด` affordance; the API also rejects writes.
+   */
+  templatesEnabled: boolean;
+  /**
+   * D1.2.4.2 — per-user cap on saved Expense Templates. Default 20. UI
+   * surfaces "X/N" count + disables the create button at the cap. Server
+   * enforces the cap atomically (see ExpenseTemplatesService.create).
+   */
+  maxTemplatesPerUser: number;
+  /**
+   * D1.2.4.4 — gates the `{{variable}}` interpolation surface on
+   * Expense Templates ("ใส่ตัวแปร" affordance). When false, UI hides
+   * variable pickers; backend interpolation util still runs at consume-time.
+   */
+  templateVariablesEnabled: boolean;
+   * D1.2.4.4 — gates the `{{variable}}` interpolation surface on Expense
+   * Templates (the "ใส่ตัวแปร" affordance). The pure util in
+   * apps/api/src/utils/template-interpolation.util.ts is always
+   * available; this flag controls whether the UI exposes it.
+   */
+  templateVariablesEnabled: boolean;
+   * D1.2.4.3 — default visibility selection on the "บันทึกเป็นรายการโปรด"
+   * dialog. PRIVATE = creator-only (default), TEAM = creator + explicit
+   * grants, PUBLIC = visible to all authenticated users.
+   */
+  templateSharingDefault: 'PRIVATE' | 'TEAM' | 'PUBLIC';
    * D1.2.4.2 — per-user quota of saved Expense Templates. Default 20.
    * Clamped to 1–1000 server-side. UI surfaces as "X/N" badge on the
    * favorites picker so users see how close they are to the cap.
@@ -100,6 +144,8 @@ export interface UiFlags {
    * strips `transition` / `animation` from every element. Default true.
    */
   animationEnabled: boolean;
+  /** D1.3.1.4 — IN_APP channel master toggle. Default true. */
+  inAppNotificationsEnabled: boolean;
   /**
    * D1.4.1.4 — BOOTSTRAP default theme for first-time devices (no `theme`
    * key in localStorage). 'system' = respect OS prefers-color-scheme.
@@ -112,6 +158,8 @@ export interface UiFlags {
    * the intended cutoff; a future PR can wire it.
    */
   queryTimeoutSeconds: number;
+  /** D1.3.1.3 — active email provider. Sendgrid requires API-key wiring before use. */
+  emailProvider: 'smtp' | 'sendgrid';
   /**
    * D1.4.2.2 — react-query `staleTime` (seconds) for dashboard queries.
    * Default 60, valid 10–3600. Wired into `DashboardPage`'s
@@ -138,6 +186,15 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  pettyCashEnabled: true,
+  voucherShowPartialColumns: true,
+  voucherIncludeAdjustment: true,
+  voucherPrintMode: 'multi',
+  templatesEnabled: true,
+  maxTemplatesPerUser: 20,
+  templateVariablesEnabled: true,
+  templateVariablesEnabled: true,
+  templateSharingDefault: 'PRIVATE',
   maxTemplatesPerUser: 20,
   templatesEnabled: true,
   thousandsSeparator: 'comma',
@@ -154,8 +211,10 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   sidebarCollapsedDefault: false,
   showKeyboardShortcuts: true,
   animationEnabled: true,
+  inAppNotificationsEnabled: true,
   darkModeDefault: 'system',
   queryTimeoutSeconds: 30,
+  emailProvider: 'smtp',
   cacheTtlDashboard: 60,
 };
 

@@ -333,6 +333,159 @@ describe('SettingsService audit trail', () => {
       expect(flags.periodCloseDay).toBe(31);
     });
 
+    // D1.1.5.1 — petty_cash_enabled feature flag
+    it('pettyCashEnabled defaults to true when SystemConfig row missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.pettyCashEnabled).toBe(true);
+    });
+
+    it('pettyCashEnabled returns false when OWNER disables it', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'petty_cash_enabled') return Promise.resolve({ value: 'false' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.pettyCashEnabled).toBe(false);
+    });
+
+    it('pettyCashEnabled returns true when OWNER explicitly sets to "true"', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'petty_cash_enabled') return Promise.resolve({ value: 'true' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.pettyCashEnabled).toBe(true);
+    });
+
+    it('pettyCashEnabled falls back to default true on unparseable value', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'petty_cash_enabled') return Promise.resolve({ value: 'sometimes' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.pettyCashEnabled).toBe(true);
+    // D1.2.5.3 — voucher_show_partial_columns
+    it('voucherShowPartialColumns defaults to true when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.voucherShowPartialColumns).toBe(true);
+    });
+
+    it('voucherShowPartialColumns returns false when OWNER disables it', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'voucher_show_partial_columns') return Promise.resolve({ value: 'false' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.voucherShowPartialColumns).toBe(false);
+    });
+
+    it('voucherShowPartialColumns falls back to default for unparseable value', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'voucher_show_partial_columns') return Promise.resolve({ value: 'sometimes' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.voucherShowPartialColumns).toBe(true);
+    // D1.2.5.2 — voucher_include_adjustment
+    it('voucherIncludeAdjustment defaults to true when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.voucherIncludeAdjustment).toBe(true);
+    });
+
+    it('voucherIncludeAdjustment returns false when OWNER disables it', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'voucher_include_adjustment') return Promise.resolve({ value: 'false' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.voucherIncludeAdjustment).toBe(false);
+    });
+
+    it('voucherIncludeAdjustment falls back to default for unparseable value', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'voucher_include_adjustment') return Promise.resolve({ value: 'kinda' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.voucherIncludeAdjustment).toBe(true);
+    // D1.2.5.1 — voucher_print_mode_default
+    it('voucherPrintMode defaults to "multi" when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.voucherPrintMode).toBe('multi');
+    });
+
+    it('voucherPrintMode returns "single" when OWNER configures it', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'voucher_print_mode_default') return Promise.resolve({ value: 'single' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.voucherPrintMode).toBe('single');
+    });
+
+    it('voucherPrintMode returns "multi" when explicitly set to "multi"', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'voucher_print_mode_default') return Promise.resolve({ value: 'multi' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.voucherPrintMode).toBe('multi');
+    });
+
+    it('voucherPrintMode falls back to "multi" for unknown values', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'voucher_print_mode_default') return Promise.resolve({ value: 'triple' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.voucherPrintMode).toBe('multi');
+    // D1.2.4 follow-up — templates feature flags.
+    it('templatesEnabled defaults to true when SystemConfig missing', async () => {
+    // D1.2.4.3 — template_sharing_default whitelisted enum
+    it('templateSharingDefault defaults to PRIVATE when SystemConfig row missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.templateSharingDefault).toBe('PRIVATE');
+    });
+
+    it('templateSharingDefault returns TEAM when OWNER configures it', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'template_sharing_default') return Promise.resolve({ value: 'TEAM' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.templateSharingDefault).toBe('TEAM');
+    });
+
+    it('templateSharingDefault returns PUBLIC when OWNER configures it', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'template_sharing_default') return Promise.resolve({ value: 'PUBLIC' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.templateSharingDefault).toBe('PUBLIC');
+    });
+
+    it('templateSharingDefault falls back to PRIVATE for unknown values', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'template_sharing_default') return Promise.resolve({ value: 'EVERYONE' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.templateSharingDefault).toBe('PRIVATE');
+    });
+
+    it('templateSharingDefault falls back to PRIVATE for lowercase values', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'template_sharing_default') return Promise.resolve({ value: 'team' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.templateSharingDefault).toBe('PRIVATE');
     // D1.2.4.2 — max_templates_per_user quota
     it('maxTemplatesPerUser defaults to 20 when SystemConfig row missing', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
@@ -372,6 +525,7 @@ describe('SettingsService audit trail', () => {
       expect(flags.templatesEnabled).toBe(true);
     });
 
+    it('templatesEnabled honours explicit "false"', async () => {
     it('templatesEnabled returns false when OWNER disables it', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
         if (args.where.key === 'templates_enabled') return Promise.resolve({ value: 'false' });
@@ -381,6 +535,25 @@ describe('SettingsService audit trail', () => {
       expect(flags.templatesEnabled).toBe(false);
     });
 
+    it('maxTemplatesPerUser defaults to 20', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.maxTemplatesPerUser).toBe(20);
+    });
+
+    it('maxTemplatesPerUser clamps to 1–1000', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'max_templates_per_user') return Promise.resolve({ value: '99999' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.maxTemplatesPerUser).toBe(1000);
+    });
+
+    it('templateVariablesEnabled defaults to true', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.templateVariablesEnabled).toBe(true);
     it('templatesEnabled falls back to default for unparseable value', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
         if (args.where.key === 'templates_enabled') return Promise.resolve({ value: 'maybe' });

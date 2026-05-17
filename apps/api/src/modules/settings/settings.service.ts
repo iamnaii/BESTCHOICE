@@ -170,6 +170,64 @@ export class SettingsService {
      */
     language: 'th' | 'en';
     /**
+     * D1.1.5.1 — Petty Cash feature flag. Default true (feature is shipped
+     * and active per PRs #867+#868). When OWNER sets `petty_cash_enabled=false`,
+     * the web UI hides the Petty Cash doc-type card + the section in
+     * ExpenseFormV4, and the backend `createPettyCash` rejects with BadRequest
+     * "ระบบเงินสดย่อยถูกปิดใช้งาน".
+     */
+    pettyCashEnabled: boolean;
+     * D1.2.5.3 — render the 3-column partial-payment breakdown (ยอดเดิม /
+     * ยอดที่ชำระ / ยอดคงเหลือ) on the voucher. Default true. When false the
+     * voucher shows only a single "ยอดที่ชำระ" column.
+     */
+    voucherShowPartialColumns: boolean;
+     * D1.2.5.2 — include the rounding-adjustment / overpay-adjustment journal
+     * lines (52-1104, 53-1503) in the **printable** voucher layout. Default
+     * true. When false the rows are still rendered on screen so the JE
+     * preview stays complete, but the print stylesheet hides them so the
+     * physical paper voucher doesn't show the adjustment cents.
+     */
+    voucherIncludeAdjustment: boolean;
+     * D1.2.5.1 — voucher print mode.
+     *   - 'multi' (default) — emits BOTH the original (ต้นฉบับ) and the
+     *     customer-copy (สำเนา) sheets, each on its own A4 page. The
+     *     customer copy carries a "สำเนา" watermark in the header.
+     *   - 'single' — renders only the original sheet.
+     * Whitelisted; unknown values fall back to 'multi'.
+     */
+    voucherPrintMode: 'single' | 'multi';
+     * D1.2.4.1 — master switch for the Expense Templates feature.
+     * Reads SystemConfig `templates_enabled`; default true.
+     */
+    templatesEnabled: boolean;
+    /**
+     * D1.2.4.2 — per-user cap on saved templates. Reads SystemConfig
+     * `max_templates_per_user`; default 20, clamped 1–1000.
+     */
+    maxTemplatesPerUser: number;
+    /**
+     * D1.2.4.4 — gates `{{variable}}` interpolation affordance. Reads
+     * SystemConfig `template_variables_enabled`; default true.
+     */
+    templateVariablesEnabled: boolean;
+     * D1.2.4.4 — gates the `{{variable}}` interpolation feature on
+     * Expense Templates. Default true. When false, the UI hides the
+     * "ใส่ตัวแปร" affordance and `interpolateTemplate()` callers should
+     * skip interpolation. The util itself (`template-interpolation.util`)
+     * is pure and always available; this flag controls whether the
+     * product surfaces the feature to users.
+     */
+    templateVariablesEnabled: boolean;
+     * D1.2.4.3 — default visibility for newly-created Expense Templates.
+     * Whitelisted PRIVATE/TEAM/PUBLIC, default PRIVATE. The UI uses this
+     * value to pre-select the visibility radio on the "บันทึกเป็นรายการ
+     * โปรด" dialog. Server-side, `ExpenseTemplatesService.listTemplates`
+     * filters rows by visibility: creator always sees own, TEAM viewers
+     * see grants from `sharedWith`, PUBLIC visible to all authenticated
+     * users (cross-branch access still gated by branchId).
+     */
+    templateSharingDefault: 'PRIVATE' | 'TEAM' | 'PUBLIC';
      * D1.2.4.2 — per-user quota of saved Expense Templates. Default 20.
      * Clamped to 1–1000 on read. `ExpenseTemplatesService.create` counts
      * the caller's existing (non-deleted) templates against this cap and
@@ -304,6 +362,14 @@ export class SettingsService {
      */
     animationEnabled: boolean;
     /**
+     * D1.3.1.4 — Master IN_APP notification kill switch. Default `true`.
+     * When `false`, NotificationsService.send() returns
+     * `{ id: '', status: 'SKIPPED', blockReason: 'IN_APP_DISABLED' }` for
+     * `IN_APP` channel calls — no DB write, no exception. LINE/SMS unaffected.
+     * Surfaced here so UIs can render banners explaining the silent skip.
+     */
+    inAppNotificationsEnabled: boolean;
+    /**
      * D1.4.1.4 — BOOTSTRAP default theme for first-time devices (no `theme`
      * key in localStorage from next-themes). 'system' default = respect OS
      * `prefers-color-scheme`. Existing per-user preference always wins after
@@ -322,6 +388,13 @@ export class SettingsService {
      * 2026-05-17 to reach 100% A1 coverage.
      */
     queryTimeoutSeconds: number;
+    /**
+     * D1.3.1.3 — active email provider. Whitelisted: 'smtp' (default —
+     * uses SMTP_HOST/PORT/USER/PASS env vars) / 'sendgrid' (stub — owner
+     * must wire SENDGRID_API_KEY before flipping). UI shows "Current
+     * provider: SMTP / Sendgrid" + warns when SMTP env not configured.
+     */
+    emailProvider: 'smtp' | 'sendgrid';
     /**
      * D1.4.2.2 — react-query staleTime (seconds) for dashboard KPI / chart
      * queries. Default 60s, valid 10–3600 (clamped). Actively wired into
@@ -369,6 +442,37 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.1.5.1 — Petty Cash feature flag. Default true (feature shipped).
+    const pettyCashEnabled = await this.readBoolean('petty_cash_enabled', true);
+    // D1.2.5.3 — show ยอดเดิม / ยอดที่ชำระ / ยอดคงเหลือ on voucher.
+    const voucherShowPartialColumns = await this.readBoolean(
+      'voucher_show_partial_columns',
+      true,
+    );
+    // D1.2.5.2 — include adjustment rows (52-1104 / 53-1503) on printed voucher.
+    const voucherIncludeAdjustment = await this.readBoolean(
+      'voucher_include_adjustment',
+      true,
+    );
+    // D1.2.5.1 — voucher print mode. Whitelist 'single' / 'multi'; default 'multi'.
+    const voucherPrintModeRaw = await this.getKey('voucher_print_mode_default');
+    const voucherPrintMode: 'single' | 'multi' =
+      voucherPrintModeRaw === 'single' ? 'single' : 'multi';
+    // D1.2.4.1 — Expense Templates feature flag.
+    const templatesEnabled = await this.readBoolean('templates_enabled', true);
+    // D1.2.4.2 — per-user template quota. Clamp to 1–1000 (same range as
+    // ExpenseTemplatesService's internal cap-reader so values stay aligned).
+    // D1.2.4.4 — gate the {{variable}} interpolation surface. Default true.
+    const templateVariablesEnabled = await this.readBoolean(
+      'template_variables_enabled',
+      true,
+    );
+    // D1.2.4.3 — template sharing default. Whitelist PRIVATE/TEAM/PUBLIC;
+    // any unknown value falls back to PRIVATE (safest — never accidentally
+    // expose a new template to the whole shop on a bad config write).
+    const sharingRaw = await this.getKey('template_sharing_default');
+    const templateSharingDefault: 'PRIVATE' | 'TEAM' | 'PUBLIC' =
+      sharingRaw === 'TEAM' || sharingRaw === 'PUBLIC' ? sharingRaw : 'PRIVATE';
     // D1.2.4.2 — per-user template quota. Default 20, clamp to 1–1000 on
     // read so a bad SystemConfig row can't disable the cap (which would
     // let one user balloon the favorites table) or pin it to 0 (which
@@ -378,6 +482,11 @@ export class SettingsService {
       Number.isFinite(maxTemplatesPerUserRaw) && maxTemplatesPerUserRaw >= 1
         ? Math.min(Math.floor(maxTemplatesPerUserRaw), 1000)
         : 20;
+    // D1.2.4.4 — template `{{variable}}` interpolation toggle.
+    const templateVariablesEnabled = await this.readBoolean(
+      'template_variables_enabled',
+      true,
+    );
     // D1.2.4.1 — Expense Templates feature flag. Default true to preserve
     // existing behaviour; OWNER can disable globally via Settings page.
     const templatesEnabled = await this.readBoolean('templates_enabled', true);
@@ -455,6 +564,11 @@ export class SettingsService {
     );
     // D1.4.1.3 — animation enabled. Default true.
     const animationEnabled = await this.readBoolean('animation_enabled', true);
+    // D1.3.1.4 — Master IN_APP notification toggle. Default true.
+    const inAppNotificationsEnabled = await this.readBoolean(
+      'in_app_notifications_enabled',
+      true,
+    );
     // D1.4.1.4 — dark_mode_default. Whitelist light/dark/system, default system.
     const darkModeDefaultRaw = await this.getKey('dark_mode_default');
     const darkModeDefault: 'light' | 'dark' | 'system' =
@@ -467,6 +581,10 @@ export class SettingsService {
       Number.isFinite(queryTimeoutSecondsRaw) && queryTimeoutSecondsRaw >= 5 && queryTimeoutSecondsRaw <= 300
         ? Math.floor(queryTimeoutSecondsRaw)
         : 30;
+    // D1.3.1.3 — email provider whitelist. Default smtp.
+    const emailProviderRaw = await this.getKey('email_provider');
+    const emailProvider: 'smtp' | 'sendgrid' =
+      emailProviderRaw === 'sendgrid' ? 'sendgrid' : 'smtp';
     // D1.4.2.2 — cache_ttl_dashboard. Clamp to [10, 3600] seconds.
     const cacheTtlDashboardRaw = await this.readNumber('cache_ttl_dashboard', 60);
     const cacheTtlDashboard =
@@ -484,6 +602,15 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      pettyCashEnabled,
+      voucherShowPartialColumns,
+      voucherIncludeAdjustment,
+      voucherPrintMode,
+      templatesEnabled,
+      maxTemplatesPerUser,
+      templateVariablesEnabled,
+      templateVariablesEnabled,
+      templateSharingDefault,
       maxTemplatesPerUser,
       templatesEnabled,
       thousandsSeparator,
@@ -500,8 +627,10 @@ export class SettingsService {
       sidebarCollapsedDefault,
       showKeyboardShortcuts,
       animationEnabled,
+      inAppNotificationsEnabled,
       darkModeDefault,
       queryTimeoutSeconds,
+      emailProvider,
       cacheTtlDashboard,
     };
   }

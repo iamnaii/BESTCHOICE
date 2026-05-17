@@ -37,6 +37,10 @@ export interface UiFlags {
   paginationSize: number;
   /** D1.2.3.1 — default time-range preset for list pages. Default 'this_month'. */
   defaultTimeRange: 'all' | 'this_month' | 'last_month';
+  /** D1.3.1.2 — AP-due alerts cron toggle. Default false (off). */
+  apDueAlertsEnabled: boolean;
+  /** D1.3.1.2 — days since documentDate before AP-due alert fires. Default 3. */
+  apDueDaysBefore: number;
   /** D1.3.1.1 — opt-in DRAFT alerts cron. Default false (off). */
   draftAlertsEnabled: boolean;
   /** D1.3.1.1 — days a doc must stay DRAFT before alert fires. Default 7. */
@@ -95,6 +99,8 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   approvalEnabled: false,
   paginationSize: 50,
   defaultTimeRange: 'this_month',
+  apDueAlertsEnabled: false,
+  apDueDaysBefore: 3,
   draftAlertsEnabled: false,
   draftAlertThresholdDays: 7,
   adjustmentCodes: { underpay: '52-1104', overpay: '53-1503' },

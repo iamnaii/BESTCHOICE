@@ -198,6 +198,22 @@ export class SettingsService {
      */
     defaultTimeRange: 'all' | 'this_month' | 'last_month';
     /**
+     * D1.3.1.2 — AP-due alerts cron toggle. Default `false` (OFF) until
+     * ExpenseDocument has a real `dueDate` column — currently the cron uses
+     * `documentDate` as a proxy, so leaving it ON by default would spam
+     * approvers with daily alerts for every POSTED doc 3+ days old regardless
+     * of actual vendor credit terms. OWNERs opt-in via /settings when they
+     * accept the documentDate semantics.
+     */
+    apDueAlertsEnabled: boolean;
+    /**
+     * D1.3.1.2 — number of days past `documentDate` that a POSTED unpaid
+     * expense doc must reach before triggering an AP-due alert. Default 3.
+     * NOTE: ExpenseDocument has no explicit dueDate column today; the cron
+     * approximates "due in N days" by counting days since `documentDate`.
+     */
+    apDueDaysBefore: number;
+    /**
      * D1.3.1.1 — DRAFT alerts toggle. When true, `DraftAlertsCron` (daily at
      * 09:00 BKK) scans expense docs in DRAFT for longer than the configured
      * threshold and sends an in-app notification to the creator. Default
@@ -306,6 +322,11 @@ export class SettingsService {
       defaultTimeRangeRaw === 'all' || defaultTimeRangeRaw === 'last_month'
         ? defaultTimeRangeRaw
         : 'this_month';
+    // D1.3.1.2 — AP-due alerts. Default OFF until ExpenseDocument has a real
+    // dueDate column (documentDate proxy would otherwise spam every POSTED doc).
+    const apDueAlertsEnabled = await this.readBoolean('ap_due_alerts_enabled', false);
+    const apDueDaysBeforeRaw = await this.readNumber('ap_due_days_before', 3);
+    const apDueDaysBefore = apDueDaysBeforeRaw >= 0 ? apDueDaysBeforeRaw : 3;
     // D1.3.1.1 — DRAFT alerts (opt-in, default off).
     const draftAlertsEnabled = await this.readBoolean('draft_alerts_enabled', false);
     const draftAlertThresholdDaysRaw = await this.readNumber(
@@ -353,6 +374,8 @@ export class SettingsService {
       approvalEnabled,
       paginationSize,
       defaultTimeRange,
+      apDueAlertsEnabled,
+      apDueDaysBefore,
       draftAlertsEnabled,
       draftAlertThresholdDays,
       adjustmentCodes,

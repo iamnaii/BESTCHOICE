@@ -51,6 +51,10 @@ export class AccountRoleService implements OnModuleInit {
     'sso_employer',
     'payroll_expense',
     'payroll_sso_expense',
+    // D1.1.6.2 — rounding-tolerance routing role (≤1฿ overpay adjustment on
+    // Payment). Seeded by migration 20260919000000_add_account_role_map.
+    // Owner may remap via admin UI without redeploying the JE templates.
+    'adj_overpay',
   ];
 
   constructor(

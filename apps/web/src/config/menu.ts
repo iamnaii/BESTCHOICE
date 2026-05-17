@@ -452,6 +452,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
       icon: Settings,
       items: [
         { label: 'ตั้งค่าระบบ', path: '/settings', icon: Settings },
+        { label: 'บัญชีตาม Role', path: '/settings/account-roles', icon: ClipboardList },
         { label: 'ผู้ใช้', path: '/users', icon: UserCog },
         { label: 'สาขา', path: '/branches', icon: Building2 },
         { label: 'บริษัท', path: '/settings/companies', icon: Building2 },

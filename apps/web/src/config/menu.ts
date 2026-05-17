@@ -532,6 +532,30 @@ export function getMenuConfig(role: string): RoleMenuConfig {
   return MENU_CONFIG[role] ?? OWNER_CONFIG;
 }
 
+/** Map of role → new zone-aware config. Populated in SP1 Task 6. */
+const ZONE_CONFIG: Record<string, RoleZoneConfig> = {};
+
+/**
+ * Filter sections for the role's current zone.
+ * Returns empty array if role/zone combo invalid (caller handles fallback).
+ */
+export function getSidebarForRole(role: string, currentZone: Zone): MenuSection[] {
+  const config = ZONE_CONFIG[role];
+  if (!config) return [];
+  if (currentZone === 'settings') {
+    return config.showSettingsGear
+      ? config.sections.filter((s) => s.zone === 'settings')
+      : [];
+  }
+  if (!config.zones.includes(currentZone)) return [];
+  return config.sections.filter((s) => s.zone === currentZone);
+}
+
+/** Returns the RoleZoneConfig for a role (or undefined). Used by Sidebar to check pills/gear visibility. */
+export function getZoneConfigForRole(role: string): RoleZoneConfig | undefined {
+  return ZONE_CONFIG[role];
+}
+
 /* ── Chat visibility per role ──────────────────────── */
 
 const CHAT_VISIBLE_ROLES = new Set(['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES']);

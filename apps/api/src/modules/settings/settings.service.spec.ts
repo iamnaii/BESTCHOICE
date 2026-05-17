@@ -720,6 +720,22 @@ describe('SettingsService audit trail', () => {
       expect(flags.maxConcurrentJobs).toBe(5);
     });
 
+    // D1.4.3.6 — login_log_enabled
+    it('loginLogEnabled defaults to true when SystemConfig row absent', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.loginLogEnabled).toBe(true);
+    });
+
+    it('loginLogEnabled returns false when OWNER disables it', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'login_log_enabled') return Promise.resolve({ value: 'false' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.loginLogEnabled).toBe(false);
+    });
+
     // D1.3.4.2 — smart_switch_threshold_days (default 0, clamp 0–30,
     // negative/non-integer/NaN → 0). Originally marked SKIP per Phase 2
     // decision report; shipped per owner directive 2026-05-17 to reach

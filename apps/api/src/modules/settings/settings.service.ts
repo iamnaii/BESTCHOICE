@@ -475,6 +475,16 @@ export class SettingsService {
      */
     maxConcurrentJobs: number;
     /**
+     * D1.4.3.6 — gate the LoginAuditLog row INSERT in
+     * `LoginAuditService.record`. Default `true`. When `false`, no audit
+     * row is written for login attempts — known-device tracking +
+     * new-device LINE alerts still run (security alerting independent of
+     * audit retention) and failed-attempt counting + account lockout in
+     * `AuthService` are unaffected (those drive the v3 account-lockout
+     * hardening, NOT the audit trail).
+     */
+    loginLogEnabled: boolean;
+    /**
      * D1.3.4.2 — days threshold for the SAMEDAY→ACCRUAL auto-switch.
      * Default `0` = any past document date triggers the flip (preserves
      * the pre-Phase-4 hardcoded behavior). When set to N>0, the flip only
@@ -872,6 +882,8 @@ export class SettingsService {
       maxConcurrentJobsRaw <= 50
         ? maxConcurrentJobsRaw
         : 5;
+    // D1.4.3.6 — login_log_enabled. Default true.
+    const loginLogEnabled = await this.readBoolean('login_log_enabled', true);
     // D1.3.4.2 — smart-switch threshold (days). Clamp 0–30; non-integer /
     // NaN / negative → 0. Default 0 = legacy behavior (any past date flips).
     const smartSwitchThresholdRaw = await this.readNumber(
@@ -1093,6 +1105,7 @@ export class SettingsService {
       dataExportFormat,
       piiMaskingEnabled,
       maxConcurrentJobs,
+      loginLogEnabled,
       smartSwitchThresholdDays,
       summaryDefaultRange,
       smartDoctypeSwitchEnabled,

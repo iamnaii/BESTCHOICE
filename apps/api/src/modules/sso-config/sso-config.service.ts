@@ -4,12 +4,18 @@ import { PrismaService } from '../../prisma/prisma.service';
 
 /**
  * D1.1.3.3 — Thai Social Security contribution rate is **fixed at 5%** by
- * Thai Social Security Act §47 (พ.ร.บ.ประกันสังคม พ.ศ. 2533 มาตรา 47, both
- * employee and employer sides). The 750-฿/person/month cap is enforced
- * separately via `SsoConfig.maxContribution` (period-effective: 875 in
- * 2569+, 1000 in 2572+, 1150 in 2575+).
+ * Thai Social Security Act §46 + the ministerial regulation issued under it
+ * (พ.ร.บ.ประกันสังคม พ.ศ. 2533 มาตรา 46 ประกอบกฎกระทรวง). §46 gives the
+ * Minister authority to set the rate within statutory bounds; the actual
+ * 5% figure lives in the กฎกระทรวง (ministerial regulation), not the Act
+ * itself. §47 covers maximum benefit amounts and is NOT relevant to the
+ * contribution rate. Both employee and employer sides contribute 5%.
  *
- * DO NOT make this configurable — change the law first. The rate is
+ * The 750-฿/person/month cap is enforced separately via
+ * `SsoConfig.maxContribution` (period-effective: 875 in 2569+, 1000 in
+ * 2572+, 1150 in 2575+).
+ *
+ * DO NOT make this configurable — change the กฎกระทรวง first. The rate is
  * exposed as a `sso_rate_locked` UI flag (string "5%") so OWNER sees it as
  * informational, but the SystemConfig key is read-only (writes rejected).
  *

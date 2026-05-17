@@ -98,7 +98,8 @@ describe('SsoConfigService', () => {
     });
   });
 
-  // D1.1.3.3 — SSO rate is locked at 5% by Thai SSO Act §47.
+  // D1.1.3.3 — SSO rate is locked at 5% by Thai SSO Act §46 + กฎกระทรวง.
+  // §46 grants the Minister authority; the actual 5% lives in กฎกระทรวง.
   describe('SSO_RATE constant (D1.1.3.3 — locked by law)', () => {
     it('exports SSO_RATE as exactly 0.05', () => {
       expect(SSO_RATE).toBe(0.05);
@@ -109,9 +110,9 @@ describe('SsoConfigService', () => {
         path.resolve(__dirname, '..', 'sso-config.service.ts'),
         'utf-8',
       );
-      // Must reference the law (§47 / Social Security Act / พ.ร.บ.ประกันสังคม)
-      // AND must clearly say "DO NOT make this configurable".
-      expect(src).toMatch(/§\s*47|มาตรา\s*47|พ\.ร\.บ\.ประกันสังคม|Social Security Act/);
+      // Must reference the law (§46 + กฎกระทรวง / Social Security Act /
+      // พ.ร.บ.ประกันสังคม) AND must clearly say "DO NOT make this configurable".
+      expect(src).toMatch(/มาตรา\s*46|§\s*46|กฎกระทรวง|พ\.ร\.บ\.ประกันสังคม|Social Security Act/);
       expect(src).toMatch(/DO NOT make this configurable|locked|fixed at 5/i);
     });
 

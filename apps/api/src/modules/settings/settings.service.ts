@@ -6,9 +6,9 @@ import { SSO_RATE } from '../sso-config/sso-config.service';
 /**
  * D1.1.3.3 — keys that are exposed read-only through SystemConfig.
  * Writes via update/bulkUpdate are rejected with BadRequestException.
- * `sso_rate_locked` is informational ("5%" string) because Thai SSO Act §47
- * fixes the contribution rate at 5%; UI displays it so OWNER understands
- * the value is non-editable.
+ * `sso_rate_locked` is informational ("5%" string) because Thai SSO Act
+ * §46 + the ministerial regulation issued under it fix the contribution
+ * rate at 5%; UI displays it so OWNER understands the value is non-editable.
  */
 const READ_ONLY_KEYS = new Set<string>(['sso_rate_locked']);
 
@@ -235,8 +235,9 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
-    // D1.1.3.3 — sso_rate is locked at 5% by Thai SSO Act §47. Computed
-    // from the source-of-truth SSO_RATE constant, never read from DB.
+    // D1.1.3.3 — sso_rate is locked at 5% by Thai SSO Act §46 + the
+    // ministerial regulation issued under it. Computed from the
+    // source-of-truth SSO_RATE constant, never read from DB.
     const ssoRateLocked = `${(SSO_RATE * 100).toFixed(0)}%`;
     return {
       taxExemptWarningEnabled,

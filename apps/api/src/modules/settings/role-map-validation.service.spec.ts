@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException } from '@nestjs/common';
 import { RoleMapValidationService } from './role-map-validation.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AccountRoleService } from '../journal/account-role.service';
 
 /**
  * D1.1.1.5 — Validation rules.
@@ -115,5 +116,32 @@ describe('RoleMapValidationService', () => {
         update: { priority: 5 },
       }),
     ).resolves.toBeUndefined();
+  });
+
+  /**
+   * D1.1.1.5 follow-up — Group 4 deep-review drift guard.
+   *
+   * EXPECTED_NORMAL_BALANCE is keyed by role name. A role in REQUIRED_ROLES
+   * without an entry here silently skips rule 2b (the Dr/Cr side check) —
+   * the bug would only surface as a wrong-side JE much later. This test
+   * fails fast when a future role is added to REQUIRED_ROLES without
+   * registering its expected side. It's pure metadata coverage, no mocks
+   * needed.
+   */
+  describe('EXPECTED_NORMAL_BALANCE coverage (drift guard)', () => {
+    it('every REQUIRED_ROLE has an entry in EXPECTED_NORMAL_BALANCE', () => {
+      const required = AccountRoleService.getRequiredRoles();
+      const expected = RoleMapValidationService.EXPECTED_NORMAL_BALANCE;
+      const missing = required.filter((role: string) => !(role in expected));
+      expect(missing).toEqual([]);
+    });
+
+    it('every EXPECTED_NORMAL_BALANCE value is "Dr" or "Cr" (typo guard)', () => {
+      const expected = RoleMapValidationService.EXPECTED_NORMAL_BALANCE;
+      const invalid = Object.entries(expected).filter(
+        ([, side]) => side !== 'Dr' && side !== 'Cr',
+      );
+      expect(invalid).toEqual([]);
+    });
   });
 });

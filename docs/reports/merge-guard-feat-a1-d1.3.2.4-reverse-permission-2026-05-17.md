@@ -1,67 +1,48 @@
-# Merge Guard Report — feat/a1-d1.3.2.4-reverse-permission
+# Pre-Merge Guard Report — feat/a1-d1.3.2.4-reverse-permission
 
 **Date:** 2026-05-17  
 **Branch:** `feat/a1-d1.3.2.4-reverse-permission`  
-**Recommendation:** ✅ APPROVE
+**Author:** Akenarin Kongdach `<iamnaii@MacBook-Pro-khxng-Akenarin.local>`  
+**Commits:** 1 (`8a98ad87` — 2026-05-17 20:37:16 +0700)
 
 ---
 
 ## File Changes Summary
 
-| File | Change | Lines |
-|------|--------|-------|
-| `apps/api/src/modules/expense-documents/reverse-permission.guard.ts` | New | +61 |
-| `apps/api/src/modules/expense-documents/__tests__/reverse-permission.guard.spec.ts` | New | +65 |
-| `apps/api/src/modules/expense-documents/expense-documents.controller.ts` | Modified | +11 |
-| `apps/api/src/modules/expense-documents/expense-documents.module.ts` | Modified | +2 |
-| `apps/api/src/modules/settings/settings.service.ts` | Modified | +13 |
-| `apps/web/src/hooks/useUiFlags.ts` | Modified | +3 |
+| File | +/- |
+|------|-----|
+| `apps/api/src/modules/expense-documents/reverse-permission.guard.ts` | +75 new |
+| `apps/api/src/modules/expense-documents/__tests__/reverse-permission.guard.spec.ts` | +65 new |
+| `apps/api/src/modules/expense-documents/expense-documents.controller.ts` | +22/-3 |
+| `apps/api/src/modules/expense-documents/expense-documents.service.ts` | +19/-4 |
+| `apps/api/src/modules/expense-documents/expense-documents.module.ts` | +3/-0 |
+| `apps/api/src/modules/settings/settings.service.ts` | +14/-0 |
+| `apps/web/src/hooks/useUiFlags.ts` | +8/-0 |
+| **Total** | **+197 / -3** |
 
-**Total:** 6 files changed, 153 insertions(+)
-
----
-
-## Issues Found
-
-### Critical — 0 issues
-
-None.
-
-### Warning — 0 issues
-
-None.
-
-### Info
-
-- The `DEFAULT_VALUE = 'OWNER+FINANCE_MANAGER'` constant contains a `+` character. This is used as both a DB key value and a `ROLE_SETS` map key. The whitelist approach makes this safe (only `'OWNER+FINANCE_MANAGER'` and `'OWNER_ONLY'` are accepted), but a future developer scanning SystemConfig rows might find the value with `+` unusual. Minor readability note only.
-- `ReversePermissionGuard` is layered on top of the existing `@Roles('OWNER', 'FINANCE_MANAGER')` static decorator. The static `@Roles` forms the superset; the guard can only narrow it. This layering pattern is consistent with `PostPermissionGuard` (D1.3.2.3). ✅
+**What this branch does (D1.3.2.4):**
+- Adds `ReversePermissionGuard` — a dynamic NestJS guard that reads `SystemConfig.reverse_permission` at request time to gate `POST /expense-documents/:id/void`
+- Supported values: `OWNER+FINANCE_MANAGER` (default, matches existing `@Roles` decorator) / `OWNER_ONLY`
+- Defense-in-depth: `resolveReversePermissionRoles()` is also called inside `voidDocument()` when `userRole` is provided
+- Exposes `reversePermission` flag through `GET /settings/ui-flags` and `useUiFlags` hook
+- 65-line test suite with 4 cases covering default, OWNER_ONLY narrowing, malformed value fallback, and DB error fallback
 
 ---
 
-## Detailed Findings
+## Issues
 
-### Security
-- Controller class: `@UseGuards(JwtAuthGuard, RolesGuard, BranchGuard)` ✅  
-  `void` endpoint additionally: `@UseGuards(ReversePermissionGuard)` ✅
-- `@Roles('OWNER', 'FINANCE_MANAGER')` remains on the `void` method — guard can only narrow, never widen ✅
-- `getAllowedRoles()` queries SystemConfig with `where: { key: 'reverse_permission', deletedAt: null }` — soft-delete filter present ✅
-- No hardcoded secrets ✅
-- No money/financial fields ✅
-- No raw SQL ✅
-- Thai error messages: `'ไม่พบข้อมูลผู้ใช้'`, `'ไม่มีสิทธิ์กลับรายการเอกสาร'` ✅
+### Warning — Double DB Query on Every Void Operation
 
-### Architecture
-- Fallback to `DEFAULT_VALUE` on DB error and on unknown/malformed SystemConfig values ✅
-- `ROLE_SETS` uses `ReadonlySet<string>` — immutable, no mutation risk ✅
-- `ReversePermissionGuard` registered as provider in `ExpenseDocumentsModule` ✅
-- `UiFlags.reversePermission` exposed to frontend for conditional button visibility ✅
+**Files:** `expense-documents.controller.ts` + `expense-documents.service.ts`
 
-### Tests
-- 4 unit tests covering: default (missing row), `OWNER_ONLY` mode, malformed value fallback, and DB error fallback ✅
-- Tests verify both allowed and denied role paths ✅
+Same pattern as `feat/a1-d1.3.2.3-post-permission`: `ReversePermissionGuard.canActivate` and `voidDocument()` each call `resolveReversePermissionRoles(this.prisma)` — 2 queries to `systemConfig` per void request. Not a blocker (consistent with existing guards, low latency impact), but worth addressing with a shared short-TTL cache if post-permission gets the same treatment.
+
+### Info — Narrower Value Set Than Post-Permission Guard
+
+`ReversePermissionGuard` exposes 2 whitelisted values (`OWNER+FINANCE_MANAGER`, `OWNER_ONLY`) while `PostPermissionGuard` exposes 4. The asymmetry is intentional — reversing a posted accounting document is a more consequential action than posting. The guard's JSDoc explains this. No action required; noted for completeness.
 
 ---
 
-## Recommendation: APPROVE
+## Recommendation: **APPROVE**
 
-Clean dynamic-guard implementation. No security issues, no missing guards, no missing deletedAt filters, no money field mistakes. Consistent with the established `PostPermissionGuard` pattern. Safe to merge.
+This is a textbook mirror of `PostPermissionGuard` (D1.3.2.3). Correct guard placement (`@UseGuards(ReversePermissionGuard)` added after `@Roles('OWNER', 'FINANCE_MANAGER')` on the `void` method), DB error fallback to default, Thai error messages, existing `deletedAt: null` filter on `systemConfig` query. No critical issues found.

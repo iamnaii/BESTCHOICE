@@ -51,10 +51,11 @@ export class PaymentReceipt2BSplitTemplate {
     private readonly journal: JournalAutoService,
     private readonly prisma: PrismaService,
     /**
-     * D1.1.6.1 — resolves `adj_underpay` → CoA code via account_role_map.
-     * Optional to keep backwards compat with raw integration-spec call sites
-     * that pass only `(journal, prisma)`; falls back to spec-default '52-1104'
-     * (which equals the seeded role row).
+     * D1.1.6.1 + D1.1.6.2 — resolves `adj_underpay`/`adj_overpay` → CoA code
+     * via account_role_map. Optional to keep backwards compat with raw
+     * integration-spec call sites that pass only `(journal, prisma)`; falls
+     * back to spec defaults ('52-1104' for underpay, '53-1503' for overpay)
+     * which equal the seeded role rows.
      */
     @Optional() private readonly roles?: AccountRoleService,
   ) {}
@@ -201,7 +202,9 @@ export class PaymentReceipt2BSplitTemplate {
       });
 
       if (diff.gt(0)) {
-        // Overpay
+        // Overpay — D1.1.6.2: resolve via AccountRoleService when available,
+        // otherwise fall back to spec-default 53-1503 (matches seed row).
+        const adjOverpayCode = this.roles?.tryCode('adj_overpay') ?? '53-1503';
         lines.push({
           accountCode: '11-2103',
           dr: zero,
@@ -209,7 +212,7 @@ export class PaymentReceipt2BSplitTemplate {
           description: 'ล้างลูกหนี้ค้างชำระ',
         });
         lines.push({
-          accountCode: '53-1503',
+          accountCode: adjOverpayCode,
           dr: zero,
           cr: diff,
           description: 'กำไรปัดเศษ (Policy C)',

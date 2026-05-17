@@ -51,10 +51,11 @@ export class PaymentsService {
     @Optional() @Inject(forwardRef(() => PromiseService)) private promiseService?: PromiseService,
     @Optional() private mdmLockService?: MdmLockService,
     /**
-     * D1.1.6.1 — resolves `adj_underpay` → CoA code via account_role_map for
-     * the JE preview path. Optional to match the resilient pattern used for
-     * `mdmAuto` / `mdmLockService`; when missing, falls back to the
-     * spec-default 52-1104 (matches the seed row).
+     * D1.1.6.1 + D1.1.6.2 — resolves `adj_underpay` / `adj_overpay` → CoA code
+     * via account_role_map for the JE preview path. Optional to match the
+     * resilient pattern used for `mdmAuto` / `mdmLockService`; when missing,
+     * falls back to spec defaults (52-1104 for underpay, 53-1503 for overpay)
+     * which match the seed rows.
      */
     @Optional() private accountRoleService?: AccountRoleService,
   ) {}
@@ -1992,7 +1993,11 @@ export class PaymentsService {
       const roundingDiff = amountReceived.minus(installmentTotal);
       const tolerance = new Prisma.Decimal('1.00');
       if (roundingDiff.gt(zero) && roundingDiff.lte(tolerance)) {
-        rawLines.push({ code: '53-1503', dr: zero, cr: roundingDiff, description: 'กำไรปัดเศษ (Policy C)' });
+        // D1.1.6.2 — resolve via AccountRoleService when available, otherwise
+        // fall back to spec-default 53-1503 (matches the seed row).
+        const adjOverpayCode =
+          this.accountRoleService?.tryCode('adj_overpay') ?? '53-1503';
+        rawLines.push({ code: adjOverpayCode, dr: zero, cr: roundingDiff, description: 'กำไรปัดเศษ (Policy C)' });
       } else if (roundingDiff.lt(zero) && roundingDiff.abs().lte(tolerance)) {
         // D1.1.6.1 — resolve via AccountRoleService when available, otherwise
         // fall back to spec-default 52-1104 (matches the seed row).

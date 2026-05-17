@@ -16,8 +16,13 @@ export class StatusTransitionService {
     hasPaymentMethod: boolean;
     totalAmount?: number | string | Decimal;
   }): void {
-    if (input.from !== 'DRAFT') {
-      throw new BadRequestException(`ไม่สามารถ post จากสถานะ ${input.from} ได้ (ต้องเป็น DRAFT)`);
+    // D1.2.1.6 — when approval_enabled is true, docs may also reach post()
+    // already in APPROVED (manual post after approve, or the auto-post chain).
+    // DRAFT remains valid for the legacy / approval-disabled path.
+    if (input.from !== 'DRAFT' && input.from !== 'APPROVED') {
+      throw new BadRequestException(
+        `ไม่สามารถ post จากสถานะ ${input.from} ได้ (ต้องเป็น DRAFT หรือ APPROVED)`,
+      );
     }
     if (input.totalAmount !== undefined) {
       const t =
@@ -57,6 +62,19 @@ export class StatusTransitionService {
   assertCanEdit(input: { from: DocumentStatus }): void {
     if (input.from !== 'DRAFT') {
       throw new BadRequestException(`ไม่สามารถแก้ไขเอกสารในสถานะ ${input.from} ได้ (DRAFT เท่านั้น)`);
+    }
+  }
+
+  /**
+   * D1.2.1.6 — approve allowed only from PENDING_APPROVAL.
+   * Used when SystemConfig `approval_enabled` is true. The DRAFT →
+   * PENDING_APPROVAL gate is added by D1.2.1.1.
+   */
+  assertCanApprove(input: { from: DocumentStatus }): void {
+    if (input.from !== 'PENDING_APPROVAL') {
+      throw new BadRequestException(
+        `ไม่สามารถอนุมัติเอกสารในสถานะ ${input.from} ได้ (PENDING_APPROVAL เท่านั้น)`,
+      );
     }
   }
 }

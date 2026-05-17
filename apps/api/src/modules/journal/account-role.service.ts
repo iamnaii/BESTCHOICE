@@ -3,11 +3,24 @@ import {
   OnModuleInit,
   Logger,
   BadRequestException,
+  ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+
+/**
+ * D1.1.1.7 — Role permission constants. Single source of truth for which
+ * roles can read vs write the account_role_map. Used by both the @Roles
+ * decorators on the controller AND the runtime `assertCanWrite()` guard
+ * (defense in depth — if a future refactor accidentally widens the
+ * decorator scope, the service-level check still blocks the write).
+ */
+export const ROLE_MAP_READ_ROLES = ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'] as const;
+export const ROLE_MAP_WRITE_ROLES = ['OWNER'] as const;
+export type RoleMapReadRole = (typeof ROLE_MAP_READ_ROLES)[number];
+export type RoleMapWriteRole = (typeof ROLE_MAP_WRITE_ROLES)[number];
 
 /**
  * Resolves semantic roles → CoA codes via the `account_role_map` table
@@ -38,12 +51,45 @@ export class AccountRoleService implements OnModuleInit {
     'sso_employer',
     'payroll_expense',
     'payroll_sso_expense',
+    // D1.1.6.2 — rounding-tolerance routing role (≤1฿ overpay adjustment on
+    // Payment). Seeded by migration 20260919000000_add_account_role_map.
+    // Owner may remap via admin UI without redeploying the JE templates.
+    'adj_overpay',
   ];
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
   ) {}
+
+  /**
+   * D1.1.1.7 — Runtime double-check that the caller can write to
+   * account_role_map. Throws ForbiddenException with a Thai message
+   * otherwise. The @Roles decorator on the controller is the primary
+   * gate; this is a defense-in-depth check that survives accidental
+   * decorator removal in future refactors.
+   */
+  assertCanWrite(userRole: string | undefined): void {
+    const allowed = ROLE_MAP_WRITE_ROLES as readonly string[];
+    if (!userRole || !allowed.includes(userRole)) {
+      throw new ForbiddenException(
+        `เฉพาะ OWNER เท่านั้นที่แก้ไข role mapping ได้ (role ปัจจุบัน: ${userRole ?? 'unknown'})`,
+      );
+    }
+  }
+
+  /**
+   * D1.1.1.7 — Read-side guard. Throws ForbiddenException unless the
+   * caller has one of `ROLE_MAP_READ_ROLES`.
+   */
+  assertCanRead(userRole: string | undefined): void {
+    const allowed = ROLE_MAP_READ_ROLES as readonly string[];
+    if (!userRole || !allowed.includes(userRole)) {
+      throw new ForbiddenException(
+        `ไม่มีสิทธิ์อ่าน role mapping (role ปัจจุบัน: ${userRole ?? 'unknown'})`,
+      );
+    }
+  }
 
   async onModuleInit(): Promise<void> {
     await this.loadCache();
@@ -87,8 +133,12 @@ export class AccountRoleService implements OnModuleInit {
   }
 
   /**
-   * D1.1.1.2 — All AccountRoleMap rows joined with ChartOfAccount.name +
-   * REQUIRED_ROLES `required` flag, for the admin UI's table view.
+   * D1.1.1.2 — All AccountRoleMap rows (incl. inactive) joined with
+   * ChartOfAccount.name. Returned to the admin UI so editors can see both
+   * the canonical role mapping and the human-readable account name without
+   * a second round-trip per row. The "required" flag tells the UI which
+   * roles cannot be deactivated (REQUIRED_ROLES list — protects boot
+   * invariants in `assertRequiredRolesPresent`).
    */
   async listWithCoa(): Promise<
     Array<{
@@ -139,15 +189,20 @@ export class AccountRoleService implements OnModuleInit {
   }
 
   /**
-   * D1.1.1.3 + D1.1.1.5 — Update a single AccountRoleMap row. Validation
-   * is delegated to `RoleMapValidationService.validateUpdate` (callable
-   * by PUT, future POST, bulk-import). Writes a `ROLE_MAP_UPDATED` audit
-   * entry then invalidates the cache.
+   * D1.1.1.3 + D1.1.1.5 + D1.1.1.7 — Update a single AccountRoleMap row.
    *
-   * Callers should pass a `validator` instance (or rely on the
-   * controller injecting RoleMapValidationService and calling it before
-   * delegating here — both flows are supported so this method stays
-   * useful for unit tests without a NestJS context).
+   * Permission (D1.1.1.7): the caller MUST pass `userRole`. `assertCanWrite`
+   * runs FIRST — before any DB I/O — as defense-in-depth so that even if a
+   * future refactor accidentally widens the controller's @Roles decorator,
+   * the service-level OWNER check still rejects the write.
+   *
+   * Validation (D1.1.1.5): delegated to `RoleMapValidationService.validateUpdate`
+   * via the optional `validate` callback (callable by PUT, future POST,
+   * bulk-import). When the callback is not supplied (unit tests without
+   * the settings module), an inline mirror of the canonical rules runs.
+   *
+   * Audit: writes `ROLE_MAP_UPDATED` with `diffSummary` then invalidates
+   * the in-memory cache.
    */
   async update(
     id: string,
@@ -158,6 +213,7 @@ export class AccountRoleService implements OnModuleInit {
       note?: string | null;
     },
     userId: string,
+    userRole: string,
     validate?: (args: {
       id: string;
       currentRow: {
@@ -177,6 +233,11 @@ export class AccountRoleService implements OnModuleInit {
     isActive: boolean;
     note: string | null;
   }> {
+    // D1.1.1.7 — runtime double-check that the caller is OWNER.
+    // MUST run before any DB I/O so an unauthorised caller never even
+    // sees the existence of the row.
+    this.assertCanWrite(userRole);
+
     const before = await this.prisma.accountRoleMap.findUnique({ where: { id } });
     if (!before) {
       throw new NotFoundException(`ไม่พบแถวบัญชี role-map: ${id}`);

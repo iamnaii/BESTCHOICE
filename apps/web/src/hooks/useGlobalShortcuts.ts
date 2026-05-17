@@ -4,8 +4,16 @@ import { useNavigate } from 'react-router';
 /**
  * Global keyboard shortcuts for the app.
  * Returns state for the shortcuts help overlay.
+ *
+ * D1.4.1.2 — when `disabled` is true (`show_keyboard_shortcuts=false`),
+ * the global "?" help-dialog binding becomes a no-op. Navigation shortcuts
+ * (Alt+N/C/P/S/D, Ctrl+/) keep working — they're power-user productivity
+ * features, not UI affordances the flag aims to hide. The flag's intent
+ * is to suppress *advertised* shortcuts, not lock out users who already
+ * know them.
  */
-export function useGlobalShortcuts() {
+export function useGlobalShortcuts(options?: { disabled?: boolean }) {
+  const disabled = options?.disabled ?? false;
   const navigate = useNavigate();
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
 
@@ -25,6 +33,8 @@ export function useGlobalShortcuts() {
       if (e.shiftKey && e.key === '?') {
         // Don't fire if user is typing in an input
         if (isInputFocused(target)) return;
+        // D1.4.1.2 — suppress help dialog when keyboard shortcuts are disabled
+        if (disabled) return;
         e.preventDefault();
         setShowShortcutsHelp((prev) => !prev);
         return;
@@ -87,7 +97,7 @@ export function useGlobalShortcuts() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [navigate, isInputFocused, showShortcutsHelp]);
+  }, [navigate, isInputFocused, showShortcutsHelp, disabled]);
 
   return { showShortcutsHelp, setShowShortcutsHelp };
 }

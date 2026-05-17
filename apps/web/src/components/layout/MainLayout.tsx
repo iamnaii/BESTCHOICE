@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { useGlobalShortcuts } from '@/hooks/useGlobalShortcuts';
+import { useUiFlags } from '@/hooks/useUiFlags';
 import { LayoutProvider, useLayout } from './LayoutContext';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
@@ -49,7 +50,12 @@ function MainContent() {
   const isMobile = useIsMobile();
   const { sidebarCollapse } = useLayout();
   const { pathname } = useLocation();
-  const { showShortcutsHelp, setShowShortcutsHelp } = useGlobalShortcuts();
+  const { showKeyboardShortcuts } = useUiFlags();
+  // D1.4.1.2 — when OWNER disables `show_keyboard_shortcuts`, the Shift+?
+  // help-dialog binding becomes a no-op AND the overlay is never rendered.
+  const { showShortcutsHelp, setShowShortcutsHelp } = useGlobalShortcuts({
+    disabled: !showKeyboardShortcuts,
+  });
 
   const isFullBleed = FULL_BLEED_ROUTES.some((r) => pathname === r || pathname.startsWith(r + '/'));
 
@@ -103,8 +109,8 @@ function MainContent() {
       {/* Global Command Palette (Ctrl+K) */}
       <CommandPalette />
 
-      {/* Shortcuts Help Overlay (Shift+?) */}
-      {showShortcutsHelp && (
+      {/* Shortcuts Help Overlay (Shift+?) — gated by D1.4.1.2 */}
+      {showShortcutsHelp && showKeyboardShortcuts && (
         <ShortcutsHelpOverlay onClose={() => setShowShortcutsHelp(false)} />
       )}
     </div>
@@ -113,6 +119,11 @@ function MainContent() {
 
 /* ── Layout root ──────────────────────────────────── */
 export default function MainLayout() {
+  // Fire useUiFlags here so the D1.4.1.1 first-device sidebar seed runs as
+  // early as possible — before any consumer component asks for the flags.
+  // D1.4.1.3 — animation toggle, D1.4.1.4 — dark mode bootstrap side-effects
+  // also run here. Hook is React-Query cached so the extra mount is cheap.
+  useUiFlags();
   return (
     <LayoutProvider>
       <MainContent />

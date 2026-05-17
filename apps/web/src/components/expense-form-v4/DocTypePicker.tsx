@@ -25,6 +25,13 @@ interface Props {
    * longer applies. Defaults to true for backwards compatibility.
    */
   smartDoctypeSwitchEnabled?: boolean;
+  /**
+   * D1.1.5.1 — Petty Cash feature flag. When false the
+   * `PETTY_CASH_REIMBURSEMENT` chip is omitted from the grid (not just
+   * disabled — owner wants the doc-type hidden entirely when off). Defaults
+   * to true so callers that haven't yet been migrated keep existing behavior.
+   */
+  pettyCashEnabled?: boolean;
 }
 
 interface TabDef {
@@ -48,6 +55,7 @@ export function DocTypePicker({
   onChange,
   invoiceDateIsToday,
   smartDoctypeSwitchEnabled = true,
+  pettyCashEnabled = true,
 }: Props) {
   // D1.3.4.1 — when the OWNER disables smart-doctype-switch, suppress the
   // recommendation by setting the placeholder to a value no real chip uses.
@@ -56,11 +64,17 @@ export function DocTypePicker({
       ? 'EXPENSE_SAMEDAY'
       : 'EXPENSE_ACCRUAL'
     : null;
+  // D1.1.5.1 — drop the Petty Cash chip when flag off. Grid then renders 5
+  // chips instead of 6 — `md:grid-cols-6` still spans cleanly because the
+  // empty slot folds into the second row only on narrow screens.
+  const visibleTabs = pettyCashEnabled
+    ? TABS
+    : TABS.filter((t) => t.type !== 'PETTY_CASH_REIMBURSEMENT');
 
   return (
     <div className="space-y-2">
       <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
-        {TABS.map(({ type, label, sub, Icon }) => {
+        {visibleTabs.map(({ type, label, sub, Icon }) => {
           const active = value === type;
           const isRecommended = recommended === type && value !== type;
           return (

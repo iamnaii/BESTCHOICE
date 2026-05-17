@@ -287,5 +287,30 @@ describe('SettingsService audit trail', () => {
       const flags = await service.getUiFlags();
       expect(flags.periodCloseDay).toBe(31);
     });
+
+    // D1.4.2.3 — cache_ttl_reports
+    it('cacheTtlReports defaults to 300 when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.cacheTtlReports).toBe(300);
+    });
+
+    it('cacheTtlReports accepts valid 30-7200 range', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'cache_ttl_reports') return Promise.resolve({ value: '900' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.cacheTtlReports).toBe(900);
+    });
+
+    it('cacheTtlReports clamps out-of-range values back to 300', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'cache_ttl_reports') return Promise.resolve({ value: '10' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.cacheTtlReports).toBe(300);
+    });
   });
 });

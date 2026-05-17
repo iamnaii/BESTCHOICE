@@ -33,6 +33,12 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /**
+   * D1.4.2.3 — react-query `staleTime` (seconds) for aggregated report
+   * queries (P&L, trial balance, monthly P&L, etc.). Default 300s, valid
+   * 30–7200. Wired into `ProfitLossPage`.
+   */
+  cacheTtlReports: number;
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -53,6 +59,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  cacheTtlReports: 300,
 };
 
 export function useUiFlags(): UiFlags {

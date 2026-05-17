@@ -175,6 +175,14 @@ export class SettingsService {
      * accessibility readers via the lang attr.
      */
     language: 'th' | 'en';
+    /**
+     * D1.4.2.3 — react-query staleTime (seconds) for aggregated report
+     * queries (P&L, monthly P&L, trial balance, balance sheet, entity
+     * profit). Default 300s (5 min), valid 30–7200 (clamped). Actively
+     * wired into `ProfitLossPage`. Originally SKIP per Phase 2; shipped
+     * per owner directive 2026-05-17 to reach 100% A1 coverage.
+     */
+    cacheTtlReports: number;
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -214,6 +222,12 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.4.2.3 — cache_ttl_reports. Clamp to [30, 7200] seconds.
+    const cacheTtlReportsRaw = await this.readNumber('cache_ttl_reports', 300);
+    const cacheTtlReports =
+      Number.isFinite(cacheTtlReportsRaw) && cacheTtlReportsRaw >= 30 && cacheTtlReportsRaw <= 7200
+        ? Math.floor(cacheTtlReportsRaw)
+        : 300;
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -225,6 +239,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      cacheTtlReports,
     };
   }
 

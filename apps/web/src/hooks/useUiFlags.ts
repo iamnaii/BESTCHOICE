@@ -38,6 +38,11 @@ export interface UiFlags {
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
   /**
+   * D1.2.5.2 — include the adjustment rows (52-1104 rounding, 53-1503 overpay)
+   * in the printable voucher layout. Default true. When false the rows stay
+   * on screen (JE preview) but are hidden by the print stylesheet.
+   */
+  voucherIncludeAdjustment: boolean;
    * D1.2.5.1 — voucher print mode. 'multi' (default) emits both ต้นฉบับ and
    * สำเนา on separate A4 pages; 'single' emits only ต้นฉบับ.
    */
@@ -167,6 +172,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  voucherIncludeAdjustment: true,
   voucherPrintMode: 'multi',
   templatesEnabled: true,
   maxTemplatesPerUser: 20,

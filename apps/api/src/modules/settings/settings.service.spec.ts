@@ -333,6 +333,29 @@ describe('SettingsService audit trail', () => {
       expect(flags.periodCloseDay).toBe(31);
     });
 
+    // D1.2.5.2 — voucher_include_adjustment
+    it('voucherIncludeAdjustment defaults to true when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.voucherIncludeAdjustment).toBe(true);
+    });
+
+    it('voucherIncludeAdjustment returns false when OWNER disables it', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'voucher_include_adjustment') return Promise.resolve({ value: 'false' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.voucherIncludeAdjustment).toBe(false);
+    });
+
+    it('voucherIncludeAdjustment falls back to default for unparseable value', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'voucher_include_adjustment') return Promise.resolve({ value: 'kinda' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.voucherIncludeAdjustment).toBe(true);
     // D1.2.5.1 — voucher_print_mode_default
     it('voucherPrintMode defaults to "multi" when SystemConfig missing', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);

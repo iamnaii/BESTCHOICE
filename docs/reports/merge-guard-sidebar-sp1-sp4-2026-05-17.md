@@ -10,7 +10,7 @@
 | PR | Branch | Title | Critical | Warning | Info | Verdict |
 |----|--------|-------|----------|---------|------|---------|
 | [#995](https://github.com/iamnaii/BESTCHOICE/pull/995) | feat/sidebar-sp1 | SP1 — P6 Hybrid 2 Pills + Gear | 0 | 3 | 3 | ⚠️ REVIEW |
-| [#996](https://github.com/iamnaii/BESTCHOICE/pull/996) | feat/sidebar-sp2 | SP2 — Accounting Reports Gap | 0 | 2 | 4 | ⚠️ REVIEW |
+| [#996](https://github.com/iamnaii/BESTCHOICE/pull/996) | feat/sidebar-sp2 | SP2 — Accounting Reports Gap | **2** | 4 | 5 | 🚫 BLOCK |
 | [#997](https://github.com/iamnaii/BESTCHOICE/pull/997) | feat/sidebar-sp3 | SP3 — Tax Module Restructure | **2** | 5 | 4 | 🚫 BLOCK |
 | [#998](https://github.com/iamnaii/BESTCHOICE/pull/998) | feat/sidebar-sp4 | SP4 — Document Number Config UI | 0 | 2 | 3 | ⚠️ REVIEW |
 
@@ -48,27 +48,35 @@ No new NestJS controllers. No money-field arithmetic. No new Prisma queries.
 
 **Files changed**: 25 (6,034 insertions, 120 deletions)  
 **Author**: iamnaii  
-**Verdict**: ⚠️ REVIEW — fix unbounded query before merge
+**CI status**: 🔴 Lint & Test: FAILED — E2E Tests: FAILED  
+**Verdict**: 🚫 BLOCK — CI failing + 2 critical code issues
 
 ### Critical
-None found.  
-All new endpoints are on existing guarded controllers. `Prisma.Decimal` used throughout service layer; `.toNumber()` only at JSON response boundary. All new queries have `deletedAt: null`.
+
+| Location | Issue |
+|----------|-------|
+| CI | **Lint & Test check is failing.** Root cause unknown without log access but must be green before merge. |
+| `apps/api/src/modules/accounting/accounting.service.ts` (GL endpoint) | **`getGeneralLedger` has no row limit** — `journalLine.findMany()` with no `take:` cap. Account `11-2101` will accumulate tens of thousands of rows as the business grows; a single GL request can OOM the API pod. Add `take: 2000` at the Prisma query level and return a `truncated: true` flag in the response (same pattern as the aging `HARD_CAP = 500`). |
 
 ### Warning
 
 | Location | Issue |
 |----------|-------|
+| `apps/api/src/modules/accounting/accounting.service.ts` (CF/ES/GL endpoints) | `new Date(periodStart)` called on raw `@Query()` string with no validation — `new Date(undefined)` silently returns `Invalid Date` and produces garbage query results. Add `BadRequestException` guard: `if (isNaN(start.getTime())) throw new BadRequestException('periodStart ไม่ถูกต้อง')`. |
+| `apps/api/src/modules/inter-company/intercompany.service.ts` | `settle()` receives `_userId` (unused — prefixed underscore) but writes no `AuditLog`. Every other high-value write posts an audit entry. Add `auditLog.create({ action: 'IC_SETTLEMENT_POSTED', entity: 'inter_company_transaction', … })` inside the `$transaction`. |
 | `apps/api/src/modules/inter-company/inter-company.service.ts:386` | `getAging()` calls `findMany()` with no `take` limit; 500-row cap applied in app memory after full table scan. Move `take: 501` to the Prisma query. |
+| `apps/api/prisma/migrations/` | Migration named `20260938000000` — `2026-09-38` is not a real date (September has 30 days). Prisma treats filenames as lexicographic sort keys so it won't error, but the name will confuse `prisma migrate status` audits. Rename to a valid date (e.g. `20260917000000`) before merge. |
 | `apps/web/src/pages/CashFlowPage.tsx`, `EquityStatementPage.tsx`, `GeneralLedgerPage.tsx` | `fmtAmount` / `fmt()` helper using `toLocaleString('th-TH', …)` defined identically in all three files. Extract to `@/lib/format.ts`. |
 
 ### Info
 
 | Location | Note |
 |----------|------|
+| `apps/web/src/config/menu.ts` | `FINANCE_MANAGER_CONFIG` not updated — FM users must type the 3 new report URLs directly; only OWNER and ACCOUNTANT configs got sidebar links. Not a security issue but poor UX. |
 | `apps/api/src/modules/accounting/accounting.service.ts` | Grows to ~1,674 lines after 3 new methods. Consider `AccountingReportsService`. |
 | `apps/web/src/pages/IntercompanySettlementPage.tsx` | 634 lines — exceeds 500-line guideline. |
 | Multiple test files | `let prisma: any` with `eslint-disable` comments. Use `jest.Mocked<PrismaService>`. |
-| `GeneralLedgerPage.tsx` Excel export | `new Date(l.entryDate).toISOString().slice(0, 10)` — use `formatDateMedium` from `@/lib/date` for consistency. |
+| `GeneralLedgerPage.tsx` Excel export | Iterates all `gl.lines` client-side with no cap — will exhaust browser memory once the server-side row limit (Critical C2) is removed. Fix C2 first. |
 
 ---
 
@@ -136,17 +144,26 @@ New `DocConfigController` has `@UseGuards(JwtAuthGuard, RolesGuard)` at class le
 
 ## Action Items by Priority
 
-### Must fix before merge (SP3 only — BLOCKED)
-1. **SP3** `tax.service.ts`: Replace all `Number(expr)` on Decimal financial fields with `expr.toNumber()` — ~15 occurrences in `exportTaxFormXlsx`, `previewPayrollWHT`, `previewVendorWHT`.
+### Must fix before merge — BLOCKED PRs (SP2 + SP3)
 
-### Should fix before merge (all REVIEW PRs)
-2. **SP1**: Remove `'fin'` from `BRANCH_MANAGER.zones` or add fin-zone sidebar sections.
-3. **SP2**: Add `take: 501` to `getAging()` `findMany()` in `inter-company.service.ts`.
-4. **SP4**: Add `deletedAt: null` to 3 probe queries in `doc-config.service.ts`.
-5. **SP3/SP4**: Replace `toLocaleDateString`/`toLocaleString` with `@/lib/date` helpers.
-6. **SP3**: Remove unused `addressIdCard` PII fetch in `e-tax.service.ts`.
+1. **SP2** CI: Diagnose and fix failing Lint & Test check.
+2. **SP2** `accounting.service.ts` GL endpoint: Add `take: 2000` + `truncated` flag to `getGeneralLedger` `journalLine.findMany()`.
+3. **SP2** 3 new accounting endpoints: Add `BadRequestException` guard on raw date query params.
+4. **SP2** `intercompany.service.ts` `settle()`: Write `AuditLog` record inside `$transaction` for IC settlement JE.
+5. **SP3** `tax.service.ts`: Replace all `Number(expr)` on Decimal financial fields with `expr.toNumber()` — ~15 occurrences in `exportTaxFormXlsx`, `previewPayrollWHT`, `previewVendorWHT`.
+
+### Should fix before merge — REVIEW PRs (SP1 + SP4)
+
+6. **SP1**: Remove `'fin'` from `BRANCH_MANAGER.zones` or add fin-zone sidebar sections to prevent blank ไฟแนนซ์ pill.
+7. **SP2**: Rename migration `20260938000000` to a valid date (e.g. `20260917000000`).
+8. **SP2**: Add `take: 501` to `getAging()` `findMany()` in `inter-company.service.ts`.
+9. **SP4**: Add `deletedAt: null` to 3 probe queries in `doc-config.service.ts`.
+10. **SP3/SP4**: Replace `toLocaleDateString`/`toLocaleString` with `@/lib/date` helpers.
+11. **SP3**: Remove unused `addressIdCard` PII fetch in `e-tax.service.ts`.
 
 ### Can merge with follow-up ticket
-7. SP1/SP2/SP3/SP4: Extract duplicated `fmtAmount`/`fmtNumber` helpers to `@/lib/format.ts`.
-8. SP2: Extract `AccountingReportsService` from the growing `accounting.service.ts`.
-9. All: Replace `let prisma: any` in test files with `jest.Mocked<PrismaService>`.
+
+12. SP2: Add `FINANCE_MANAGER_CONFIG` sidebar links for 3 new report pages.
+13. SP1/SP2/SP3/SP4: Extract duplicated `fmtAmount`/`fmtNumber` helpers to `@/lib/format.ts`.
+14. SP2: Extract `AccountingReportsService` from the growing `accounting.service.ts`.
+15. All: Replace `let prisma: any` in test files with `jest.Mocked<PrismaService>`.

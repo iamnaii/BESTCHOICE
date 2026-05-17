@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { Bookmark, FileEdit, Files, Sparkles, X, Star } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useUiFlags } from '@/hooks/useUiFlags';
 
 interface TemplateRow {
   id: string;
@@ -24,12 +25,16 @@ interface Props {
 }
 
 export function QuickStartPanel({ branchId, onMode, onPickTemplate, onClose }: Props) {
+  // D1.2.4.1 follow-up — when templates feature is disabled, skip the
+  // network roundtrip and hide both the "จาก Template" CTA + the
+  // ใช้บ่อย grid.
+  const { templatesEnabled } = useUiFlags();
   const { data: templates } = useQuery<TemplateRow[]>({
     queryKey: ['expense-templates', branchId],
     queryFn: async () => (await api.get(`/expense-templates?branchId=${branchId}`)).data,
-    enabled: !!branchId,
+    enabled: !!branchId && templatesEnabled,
   });
-  const top6 = (templates ?? []).slice(0, 6);
+  const top6 = templatesEnabled ? (templates ?? []).slice(0, 6) : [];
 
   return (
     <div className="rounded-xl border border-border bg-card">
@@ -43,20 +48,22 @@ export function QuickStartPanel({ branchId, onMode, onPickTemplate, onClose }: P
         </button>
       </div>
       <div className="p-4 space-y-4">
-        <div className="grid grid-cols-3 gap-3">
+        <div className={cn('grid gap-3', templatesEnabled ? 'grid-cols-3' : 'grid-cols-2')}>
           <ModeCard
             Icon={FileEdit}
             label="เริ่มเปล่า"
             sub="กรอกใหม่ทั้งหมด"
             onClick={() => onMode('blank')}
           />
-          <ModeCard
-            Icon={Bookmark}
-            label="จาก Template"
-            sub={`${templates?.length ?? 0} รายการพร้อมใช้`}
-            onClick={() => onMode('template')}
-            accent
-          />
+          {templatesEnabled && (
+            <ModeCard
+              Icon={Bookmark}
+              label="จาก Template"
+              sub={`${templates?.length ?? 0} รายการพร้อมใช้`}
+              onClick={() => onMode('template')}
+              accent
+            />
+          )}
           <ModeCard
             Icon={Files}
             label="คัดลอกเก่า"

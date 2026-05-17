@@ -293,6 +293,17 @@ export class SettingsService {
      */
     documentRetentionYears: number;
     /**
+     * D1.4.2.4 — batch size for CSV row processing in bulk imports.
+     * Default 500, valid 50–5000 (clamped). Currently INFORMATIONAL —
+     * the Payments CSV import in `payments.service.ts` processes rows
+     * one-at-a-time in a `for` loop (no explicit batching), so this flag
+     * is exposed for future bulk-import paths. The numeric range is
+     * deliberately wide so OWNER can dial down for resource-constrained
+     * deploys or up for high-throughput imports. Originally SKIP per
+     * Phase 2; shipped per owner directive 2026-05-17 to reach 100% A1.
+     */
+    batchSizeImport: number;
+    /**
      * D1.3.4.2 — days threshold for the SAMEDAY→ACCRUAL auto-switch.
      * Default `0` = any past document date triggers the flip (preserves
      * the pre-Phase-4 hardcoded behavior). When set to N>0, the flip only
@@ -648,6 +659,12 @@ export class SettingsService {
       documentRetentionYearsRaw <= 30
         ? documentRetentionYearsRaw
         : 5;
+    // D1.4.2.4 — batch_size_import. Clamp to [50, 5000] rows.
+    const batchSizeImportRaw = await this.readNumber('batch_size_import', 500);
+    const batchSizeImport =
+      Number.isFinite(batchSizeImportRaw) && batchSizeImportRaw >= 50 && batchSizeImportRaw <= 5000
+        ? Math.floor(batchSizeImportRaw)
+        : 500;
     // D1.3.4.2 — smart-switch threshold (days). Clamp 0–30; non-integer /
     // NaN / negative → 0. Default 0 = legacy behavior (any past date flips).
     const smartSwitchThresholdRaw = await this.readNumber(
@@ -861,6 +878,7 @@ export class SettingsService {
       exportEnabled,
       auditLogArchiveEnabled,
       documentRetentionYears,
+      batchSizeImport,
       smartSwitchThresholdDays,
       summaryDefaultRange,
       smartDoctypeSwitchEnabled,

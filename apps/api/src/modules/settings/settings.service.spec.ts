@@ -505,6 +505,31 @@ describe('SettingsService audit trail', () => {
       expect(flags.documentRetentionYears).toBe(5);
     });
 
+    // D1.4.2.4 — batch_size_import
+    it('batchSizeImport defaults to 500 when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.batchSizeImport).toBe(500);
+    });
+
+    it('batchSizeImport accepts valid 50-5000 range', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'batch_size_import') return Promise.resolve({ value: '1000' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.batchSizeImport).toBe(1000);
+    });
+
+    it('batchSizeImport clamps out-of-range values back to 500', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'batch_size_import') return Promise.resolve({ value: '10' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.batchSizeImport).toBe(500);
+    });
+
     // D1.3.4.2 — smart_switch_threshold_days (default 0, clamp 0–30,
     // negative/non-integer/NaN → 0). Originally marked SKIP per Phase 2
     // decision report; shipped per owner directive 2026-05-17 to reach

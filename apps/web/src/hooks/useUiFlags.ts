@@ -54,6 +54,12 @@ export interface UiFlags {
    */
   documentRetentionYears: number;
   /**
+   * D1.4.2.4 — CSV import batch size (rows). Default 500, valid 50–5000.
+   * INFORMATIONAL: current Payments CSV import processes rows one-at-a-time;
+   * flag is exposed for future bulk-import paths.
+   */
+  batchSizeImport: number;
+  /**
    * D1.3.4.2 — days threshold for the SAMEDAY→ACCRUAL auto-switch in
    * `ExpenseFormV4`. Default `0` = any past date triggers (legacy
    * behavior). Server clamps to 0–30; out-of-range / NaN → 0.
@@ -234,6 +240,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   exportEnabled: true,
   auditLogArchiveEnabled: true,
   documentRetentionYears: 5,
+  batchSizeImport: 500,
   smartSwitchThresholdDays: 0,
   summaryDefaultRange: 'this_month',
   smartDoctypeSwitchEnabled: true,

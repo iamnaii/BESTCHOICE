@@ -100,6 +100,9 @@ function MainContent() {
       );
       if (anyRoleHasIt) {
         toast.error('คุณไม่มีสิทธิ์เข้าถึงหน้านี้');
+        // Spec called for /403 + toast, but no such route exists in this app;
+        // redirecting to dashboard as a soft landing while still surfacing the
+        // toast so the user knows why the navigation happened.
         navigate('/', { replace: true });
       }
       return;

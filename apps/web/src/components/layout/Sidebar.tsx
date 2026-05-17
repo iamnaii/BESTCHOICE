@@ -4,7 +4,6 @@ import { Link, useLocation } from 'react-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import {
-  Home,
   LogOut,
   ChevronsRight,
   ChevronsLeft,

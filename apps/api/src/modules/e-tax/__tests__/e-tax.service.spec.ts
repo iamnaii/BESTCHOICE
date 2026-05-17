@@ -100,29 +100,147 @@ describe('ETaxService', () => {
     expect(csv).toContain('70.00');
   });
 
-  it('generateInvoicePdf: returns PDF buffer for PAID payment with VAT', async () => {
-    prisma.payment.findFirst.mockResolvedValue({
-      id: 'pay-1',
-      paidDate: new Date('2026-05-10'),
-      installmentNo: 1,
-      amountPaid: Dec('1070'),
-      vatAmount: Dec('70'),
-      contract: {
-        id: 'ct-1',
-        contractNumber: 'CT-001',
-        customer: {
-          id: 'cu-1',
-          name: 'นายลูกหนี้',
-          nationalId: '1234567890123',
-          addressIdCard: '1 ถ.พระราม 4 กรุงเทพ',
+  it('generateInvoicePdf: returns PDF buffer for PAID payment with VAT (OWNER access)', async () => {
+    // Critical #5: PDF requires user context for branch scoping.
+    // First call = paymentCheck (just contract.branchId). Then branch lookup.
+    // Then full payment fetch with scoped where.
+    prisma.payment.findFirst
+      .mockResolvedValueOnce({
+        contract: { branchId: 'br-1', deletedAt: null },
+      })
+      .mockResolvedValueOnce({
+        id: 'pay-1',
+        paidDate: new Date('2026-05-10'),
+        installmentNo: 1,
+        amountPaid: Dec('1070'),
+        vatAmount: Dec('70'),
+        contract: {
+          id: 'ct-1',
+          contractNumber: 'CT-001',
+          customer: {
+            id: 'cu-1',
+            name: 'นายลูกหนี้',
+            nationalId: '1234567890123',
+            addressIdCard: '1 ถ.พระราม 4 กรุงเทพ',
+          },
         },
-      },
-    });
+      });
+    // Branch lookup for company resolution
+    prisma.branch = {
+      findMany: jest.fn().mockResolvedValue([{ id: 'br-1' }]),
+      findFirst: jest.fn().mockResolvedValue({ companyId: 'co-1' }),
+    };
 
-    const pdf = await service.generateInvoicePdf('pay-1');
+    const pdf = await service.generateInvoicePdf('pay-1', { role: 'OWNER', branchId: null });
     expect(pdf).toBeInstanceOf(Buffer);
     expect(pdf.length).toBeGreaterThan(500); // smallest legit PDF
     // PDF starts with '%PDF'
     expect(pdf.slice(0, 4).toString('ascii')).toBe('%PDF');
+  });
+
+  // ──────────────────────────────────────────────────────────────────
+  // Critical #5: PDF endpoint scoped by branch — close PII leak
+  // ──────────────────────────────────────────────────────────────────
+
+  it('Critical #5: BRANCH_MANAGER from branch B cannot fetch branch A payment PDF (NotFoundException)', async () => {
+    // Payment belongs to branch A
+    prisma.payment.findFirst.mockResolvedValueOnce({
+      contract: { branchId: 'br-A', deletedAt: null },
+    });
+    // branch A is in company co-1
+    prisma.branch = {
+      findMany: jest.fn().mockResolvedValue([{ id: 'br-A' }, { id: 'br-B' }]),
+      findFirst: jest.fn().mockResolvedValue({ companyId: 'co-1' }),
+    };
+
+    // BRANCH_MANAGER of branch B — should not be able to fetch
+    await expect(
+      service.generateInvoicePdf('pay-A', { role: 'BRANCH_MANAGER', branchId: 'br-B' }),
+    ).rejects.toThrow('ไม่พบรายการชำระเงิน');
+  });
+
+  it('Critical #5: SALES from branch A CAN fetch own branch A payment PDF', async () => {
+    prisma.payment.findFirst
+      .mockResolvedValueOnce({
+        contract: { branchId: 'br-A', deletedAt: null },
+      })
+      .mockResolvedValueOnce({
+        id: 'pay-A',
+        paidDate: new Date('2026-05-10'),
+        installmentNo: 1,
+        amountPaid: Dec('1070'),
+        vatAmount: Dec('70'),
+        contract: {
+          id: 'ct-A',
+          contractNumber: 'CT-A',
+          customer: { id: 'cu-A', name: 'A', nationalId: null, addressIdCard: null },
+        },
+      });
+    prisma.branch = {
+      findMany: jest.fn().mockResolvedValue([{ id: 'br-A' }, { id: 'br-B' }]),
+      findFirst: jest.fn().mockResolvedValue({ companyId: 'co-1' }),
+    };
+
+    const pdf = await service.generateInvoicePdf('pay-A', {
+      role: 'SALES',
+      branchId: 'br-A',
+    });
+    expect(pdf).toBeInstanceOf(Buffer);
+    expect(pdf.slice(0, 4).toString('ascii')).toBe('%PDF');
+  });
+
+  it('Critical #5: ACCOUNTANT (cross-branch) CAN fetch any branch payment PDF in their company', async () => {
+    prisma.payment.findFirst
+      .mockResolvedValueOnce({
+        contract: { branchId: 'br-A', deletedAt: null },
+      })
+      .mockResolvedValueOnce({
+        id: 'pay-A',
+        paidDate: new Date('2026-05-10'),
+        installmentNo: 1,
+        amountPaid: Dec('1070'),
+        vatAmount: Dec('70'),
+        contract: {
+          id: 'ct-A',
+          contractNumber: 'CT-A',
+          customer: { id: 'cu-A', name: 'A', nationalId: null, addressIdCard: null },
+        },
+      });
+    prisma.branch = {
+      findMany: jest.fn().mockResolvedValue([{ id: 'br-A' }, { id: 'br-B' }]),
+      findFirst: jest.fn().mockResolvedValue({ companyId: 'co-1' }),
+    };
+
+    // ACCOUNTANT branchId is irrelevant — cross-branch role sees all branches in company
+    const pdf = await service.generateInvoicePdf('pay-A', {
+      role: 'ACCOUNTANT',
+      branchId: 'br-B',
+    });
+    expect(pdf).toBeInstanceOf(Buffer);
+  });
+
+  it('Critical #5: missing payment returns NotFoundException (no leak of existence)', async () => {
+    prisma.payment.findFirst.mockResolvedValueOnce(null);
+
+    await expect(
+      service.generateInvoicePdf('pay-doesnotexist', { role: 'OWNER', branchId: null }),
+    ).rejects.toThrow('ไม่พบรายการชำระเงิน');
+  });
+
+  it('Critical #5: listInvoices respects user branch scoping (BRANCH_MANAGER sees only own branch)', async () => {
+    // Company has 2 branches; BRANCH_MANAGER is in br-A only
+    prisma.branch.findMany.mockResolvedValue([{ id: 'br-A' }, { id: 'br-B' }]);
+    prisma.payment.findMany.mockResolvedValue([]);
+    prisma.payment.count.mockResolvedValue(0);
+
+    await service.listInvoices('co-1', 2026, 5, 1, 50, {
+      role: 'BRANCH_MANAGER',
+      branchId: 'br-A',
+    });
+
+    const callWhere = prisma.payment.findMany.mock.calls[0][0].where;
+    // Should scope to br-A only, NOT br-A + br-B
+    expect(callWhere.contract.branchId.in).toEqual(['br-A']);
+    expect(callWhere.contract.branchId.in).not.toContain('br-B');
   });
 });

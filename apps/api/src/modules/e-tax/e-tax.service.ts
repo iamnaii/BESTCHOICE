@@ -3,6 +3,14 @@ import { Prisma } from '@prisma/client';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { PrismaService } from '../../prisma/prisma.service';
+import { hasCrossBranchAccess } from '../auth/branch-access.util';
+
+/** Minimal user shape needed for branch scoping — branchId may be null
+ * for cross-branch roles (OWNER / FINANCE_MANAGER / ACCOUNTANT). */
+export interface ETaxRequestUser {
+  role: string;
+  branchId?: string | null;
+}
 
 /**
  * e-Tax Invoice — Phase 1
@@ -36,10 +44,25 @@ export class ETaxService {
   /**
    * List Payment records with VAT > 0 paid in the period for the company.
    * Pagination via page/limit; default 1/50 per backend conventions.
+   *
+   * Critical #5: optional `user` arg narrows results to branches the user
+   * can access. Cross-branch roles (OWNER/FINANCE_MANAGER/ACCOUNTANT) see
+   * all branches of the requested company. Branch-scoped roles
+   * (BRANCH_MANAGER/SALES) see only their own branch — and only if it
+   * belongs to the requested company.
    */
-  async listInvoices(companyId: string, year: number, month: number, page = 1, limit = 50) {
+  async listInvoices(
+    companyId: string,
+    year: number,
+    month: number,
+    page = 1,
+    limit = 50,
+    user?: ETaxRequestUser,
+  ) {
     const { startDate, endDate } = this.getDateRange(year, month);
-    const branchIds = await this.getBranchIds(companyId);
+    const branchIds = user
+      ? await this.getAccessibleBranchIds(companyId, user)
+      : await this.getBranchIds(companyId);
 
     const where: Prisma.PaymentWhereInput = {
       deletedAt: null,
@@ -102,12 +125,78 @@ export class ETaxService {
   }
 
   /**
-   * Generate PDF receipt for a single Payment record (e-Tax invoice receipt).
-   * Phase 1: jspdf-autotable. No XML, no digital signature.
+   * Critical #5: compute the set of branchIds the requesting user can access
+   * for a given company. Cross-branch roles (OWNER/FINANCE_MANAGER/ACCOUNTANT)
+   * see all branches under the company. Branch-scoped roles
+   * (BRANCH_MANAGER/SALES) see ONLY their own branch — and only if it belongs
+   * to the requested company.
    */
-  async generateInvoicePdf(paymentId: string): Promise<Buffer> {
-    const payment = await this.prisma.payment.findFirst({
+  private async getAccessibleBranchIds(
+    companyId: string,
+    user: ETaxRequestUser,
+  ): Promise<string[]> {
+    const companyBranchIds = await this.getBranchIds(companyId);
+    if (hasCrossBranchAccess(user)) return companyBranchIds;
+
+    // Branch-scoped role — limit to their own branch if it's in this company
+    if (!user.branchId) return [];
+    return companyBranchIds.includes(user.branchId) ? [user.branchId] : [];
+  }
+
+  /**
+   * Critical #5: Generate PDF receipt for a single Payment record
+   * (Phase 1 internal receipt, NOT a legal e-Tax Invoice per ม.86/4).
+   *
+   * Scoping: requires the requesting user. Resolves the Payment via Contract
+   * → Branch and rejects (NotFoundException — does not leak existence) if
+   * the contract's branchId is not in the user's accessible set. Without
+   * this, any authenticated user with the PDF route could fetch any
+   * payment's customer name + nationalId — a PII leak across companies.
+   *
+   * Phase 1: jspdf-autotable, English labels, plain receipt format.
+   * Phase 2 will produce a real ใบกำกับภาษีอิเล็กทรอนิกส์ with Thai font +
+   * ม.86/4 mandatory fields + PKCS#7 signature.
+   */
+  async generateInvoicePdf(
+    paymentId: string,
+    user: ETaxRequestUser,
+  ): Promise<Buffer> {
+    // Look up the payment's contract.branchId first (no PII leak — just branch)
+    const paymentCheck = await this.prisma.payment.findFirst({
       where: { id: paymentId, deletedAt: null, status: 'PAID' },
+      select: {
+        contract: { select: { branchId: true, deletedAt: true } },
+      },
+    });
+    if (!paymentCheck || paymentCheck.contract.deletedAt) {
+      throw new NotFoundException('ไม่พบรายการชำระเงิน');
+    }
+
+    // Determine the user's company for the contract's branch, then check
+    // accessible branches under that company.
+    const branch = await this.prisma.branch.findFirst({
+      where: { id: paymentCheck.contract.branchId, deletedAt: null },
+      select: { companyId: true },
+    });
+    if (!branch) throw new NotFoundException('ไม่พบรายการชำระเงิน');
+
+    const accessibleBranches = await this.getAccessibleBranchIds(branch.companyId, user);
+    if (!accessibleBranches.includes(paymentCheck.contract.branchId)) {
+      // Do NOT differentiate "not found" vs "forbidden" — same response
+      // prevents enumeration of valid payment IDs from other companies.
+      throw new NotFoundException('ไม่พบรายการชำระเงิน');
+    }
+
+    const payment = await this.prisma.payment.findFirst({
+      where: {
+        id: paymentId,
+        deletedAt: null,
+        status: 'PAID',
+        contract: {
+          deletedAt: null,
+          branchId: { in: accessibleBranches },
+        },
+      },
       select: {
         id: true,
         paidDate: true,
@@ -166,9 +255,14 @@ export class ETaxService {
    *   paidDate, installmentNo, contractNumber, customerName, customerTaxId,
    *   amountBeforeVat, vatAmount, total
    */
-  async exportCsv(companyId: string, year: number, month: number): Promise<string> {
+  async exportCsv(
+    companyId: string,
+    year: number,
+    month: number,
+    user?: ETaxRequestUser,
+  ): Promise<string> {
     // limit very high — CSV is "give me everything in the month"
-    const result = await this.listInvoices(companyId, year, month, 1, 100000);
+    const result = await this.listInvoices(companyId, year, month, 1, 100000, user);
     const rows = result.data;
 
     const header = [

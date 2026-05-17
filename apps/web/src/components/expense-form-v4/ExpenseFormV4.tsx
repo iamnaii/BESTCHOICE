@@ -89,7 +89,8 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
   // PETTY_CASH_REIMBURSEMENT chip and the form section is not rendered.
   // Auto-flip away from PETTY_CASH_REIMBURSEMENT when the flag flips off
   // mid-session (handled in the effect below).
-  const { pettyCashEnabled } = useUiFlags();
+  // D1.3.4.1 — smartDoctypeSwitchEnabled gates the SAMEDAY→ACCRUAL auto-flip.
+  const { smartDoctypeSwitchEnabled, pettyCashEnabled } = useUiFlags();
   const [showQuickStart, setShowQuickStart] = useState(true);
   const [state, setState] = useState<ExpenseFormState>(() =>
     initial(branchId, user?.defaultCashAccountCode || '11-1101'),
@@ -112,14 +113,17 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
   // One-way: only auto-flip from SAMEDAY to ACCRUAL; does not revert manual ACCRUAL selection.
   // W3 fix — compare against BKK calendar day, not UTC slice, to match the
   // user's perception of "today" in Thailand.
+  // D1.3.4.1 — gated by `smartDoctypeSwitchEnabled` (OWNER toggle, default
+  // true). When false the user must pick the docType manually.
   const todayIso = todayBkkIso();
   const invoiceIsToday = state.documentDate === todayIso;
   useEffect(() => {
+    if (!smartDoctypeSwitchEnabled) return;
     if (state.docType === 'EXPENSE_SAMEDAY' && !invoiceIsToday) {
       patch({ docType: 'EXPENSE_ACCRUAL' });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.documentDate]);
+  }, [state.documentDate, smartDoctypeSwitchEnabled]);
 
   const { preview, loading, error } = useFormCompute(state);
 
@@ -448,6 +452,7 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
                     value={state.docType}
                     onChange={(t) => patch({ docType: t })}
                     invoiceDateIsToday={invoiceIsToday}
+                    smartDoctypeSwitchEnabled={smartDoctypeSwitchEnabled}
                     pettyCashEnabled={pettyCashEnabled}
                   />
                 </Section>

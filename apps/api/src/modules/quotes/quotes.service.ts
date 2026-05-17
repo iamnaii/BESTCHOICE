@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
@@ -8,10 +9,13 @@ import {
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { generateQuoteNumber, generateSaleNumber } from '../../utils/sequence.util';
+import { getBranchScope, hasCrossBranchAccess } from '../auth/branch-access.util';
 import { CreateQuoteDto } from './dto/create-quote.dto';
 import { UpdateQuoteDto } from './dto/update-quote.dto';
 import { ConvertQuoteDto } from './dto/convert-quote.dto';
 import { renderQuoteHtml, QuotePdfData } from './templates/quote-pdf.template';
+
+type RequestUser = { id: string; role: string; branchId?: string | null };
 
 const QUOTE_DEFAULT_INCLUDE = {
   items: { orderBy: { createdAt: 'asc' as const } },
@@ -29,6 +33,8 @@ const QUOTE_DEFAULT_INCLUDE = {
   convertedToSale: { select: { id: true, saleNumber: true, saleType: true } },
 } as const;
 
+const ZERO = new Prisma.Decimal(0);
+
 @Injectable()
 export class QuotesService {
   private readonly logger = new Logger(QuotesService.name);
@@ -36,31 +42,79 @@ export class QuotesService {
   constructor(private prisma: PrismaService) {}
 
   // ───────────────────────────────────────────────────────────────────────
+  // Branch scoping helpers
+  // ───────────────────────────────────────────────────────────────────────
+
+  /**
+   * Apply the caller's branch scope onto a quote `where` clause and refuse
+   * an explicit branch filter that the caller cannot access. Returns null
+   * when the caller is branch-scoped but has no branchId — caller should
+   * surface this as an empty result rather than leaking other branches'
+   * data.
+   */
+  private applyBranchScope(
+    where: Prisma.QuoteWhereInput,
+    user: RequestUser,
+    requestedBranchId?: string,
+  ): { where: Prisma.QuoteWhereInput; empty: boolean } {
+    const scope = getBranchScope(user);
+    if (scope.all) {
+      if (requestedBranchId) where.branchId = requestedBranchId;
+      return { where, empty: false };
+    }
+    if (!scope.branchId) return { where, empty: true };
+    if (requestedBranchId && requestedBranchId !== scope.branchId) {
+      throw new ForbiddenException('ไม่สามารถเข้าถึงข้อมูลของสาขาอื่นได้');
+    }
+    where.branchId = scope.branchId;
+    return { where, empty: false };
+  }
+
+  /**
+   * Verify branch-scoped users can only act on a target branchId they own.
+   * Cross-branch roles bypass.
+   */
+  private assertCanWriteBranch(user: RequestUser, branchId: string) {
+    if (hasCrossBranchAccess(user)) return;
+    if (!user.branchId) {
+      throw new ForbiddenException('บัญชีนี้ยังไม่มีสาขาที่รับผิดชอบ');
+    }
+    if (user.branchId !== branchId) {
+      throw new ForbiddenException('ไม่สามารถเข้าถึงข้อมูลของสาขาอื่นได้');
+    }
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
   // Read
   // ───────────────────────────────────────────────────────────────────────
 
-  async findAll(opts: {
-    page?: number;
-    limit?: number;
-    status?: string;
-    branchId?: string;
-    search?: string;
-    customerId?: string;
-  }) {
+  async findAll(
+    opts: {
+      page?: number;
+      limit?: number;
+      status?: string;
+      branchId?: string;
+      search?: string;
+      customerId?: string;
+    },
+    user: RequestUser,
+  ) {
     const page = Math.max(1, opts.page ?? 1);
     const limit = Math.min(100, Math.max(1, opts.limit ?? 50));
     const skip = (page - 1) * limit;
 
-    const where: Prisma.QuoteWhereInput = { deletedAt: null };
-    if (opts.status) where.status = opts.status as Prisma.QuoteWhereInput['status'];
-    if (opts.branchId) where.branchId = opts.branchId;
-    if (opts.customerId) where.customerId = opts.customerId;
+    const baseWhere: Prisma.QuoteWhereInput = { deletedAt: null };
+    if (opts.status) baseWhere.status = opts.status as Prisma.QuoteWhereInput['status'];
+    if (opts.customerId) baseWhere.customerId = opts.customerId;
     if (opts.search) {
-      where.OR = [
+      baseWhere.OR = [
         { quoteNumber: { contains: opts.search, mode: 'insensitive' } },
         { customer: { name: { contains: opts.search, mode: 'insensitive' } } },
       ];
     }
+
+    const { where, empty } = this.applyBranchScope(baseWhere, user, opts.branchId);
+    if (empty) return { data: [], total: 0, page, limit };
 
     const [data, total] = await Promise.all([
       this.prisma.quote.findMany({
@@ -76,37 +130,86 @@ export class QuotesService {
     return { data, total, page, limit };
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, user: RequestUser) {
+    const baseWhere: Prisma.QuoteWhereInput = { id, deletedAt: null };
+    const { where, empty } = this.applyBranchScope(baseWhere, user);
+    if (empty) throw new NotFoundException('ไม่พบใบเสนอราคา');
     const quote = await this.prisma.quote.findFirst({
-      where: { id, deletedAt: null },
+      where,
       include: QUOTE_DEFAULT_INCLUDE,
     });
     if (!quote) throw new NotFoundException('ไม่พบใบเสนอราคา');
     return quote;
   }
 
+  /**
+   * Internal lookup without branch scoping — used inside lifecycle methods
+   * that have already verified branch access by other means (e.g. by
+   * loading the quote first via findOne).
+   */
+  private async loadQuoteScoped(
+    id: string,
+    user: RequestUser,
+    select?: Prisma.QuoteSelect,
+  ) {
+    const baseWhere: Prisma.QuoteWhereInput = { id, deletedAt: null };
+    const { where, empty } = this.applyBranchScope(baseWhere, user);
+    if (empty) throw new NotFoundException('ไม่พบใบเสนอราคา');
+    return this.prisma.quote.findFirst({
+      where,
+      select: select ?? { id: true, status: true, branchId: true },
+    });
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Money math (Prisma.Decimal — never Number())
+  // ───────────────────────────────────────────────────────────────────────
+
+  /**
+   * Compute subtotal + total from line items using Prisma.Decimal arithmetic.
+   * `discount` + `vatAmount` come from the dto (frontend lets sales enter
+   * them explicitly).
+   *
+   * NOTE: VAT on this DTO is informational only — BESTCHOICE SHOP is not
+   * VAT-registered per project policy (see .claude/CLAUDE.md "Business
+   * Model"). FINANCE flows handle VAT through their own JE templates.
+   */
+  private computeTotals(
+    items: { quantity: number; unitPrice: number | string | Prisma.Decimal }[],
+    discount: number | string | Prisma.Decimal,
+    vatAmount: number | string | Prisma.Decimal,
+  ): { subtotal: Prisma.Decimal; discount: Prisma.Decimal; vatAmount: Prisma.Decimal; total: Prisma.Decimal } {
+    const subtotal = items.reduce<Prisma.Decimal>(
+      (sum, it) => sum.add(new Prisma.Decimal(it.unitPrice).mul(it.quantity)),
+      ZERO,
+    );
+    const discountD = new Prisma.Decimal(discount);
+    const vatD = new Prisma.Decimal(vatAmount);
+    const totalRaw = subtotal.sub(discountD).add(vatD);
+    const total = totalRaw.isNegative() ? ZERO : totalRaw;
+    return { subtotal, discount: discountD, vatAmount: vatD, total };
+  }
+
+  private computeItemAmount(quantity: number, unitPrice: number | string | Prisma.Decimal): Prisma.Decimal {
+    return new Prisma.Decimal(unitPrice).mul(quantity);
+  }
+
+  private assertDiscountInRange(discount: Prisma.Decimal, subtotal: Prisma.Decimal) {
+    if (discount.lessThan(0)) {
+      throw new BadRequestException('ส่วนลดต้องไม่ติดลบ');
+    }
+    if (discount.greaterThan(subtotal)) {
+      throw new BadRequestException(
+        `ส่วนลด (${discount.toFixed(2)}) ห้ามมากกว่ายอดรวมก่อนหักส่วนลด (${subtotal.toFixed(2)})`,
+      );
+    }
+  }
+
   // ───────────────────────────────────────────────────────────────────────
   // Write
   // ───────────────────────────────────────────────────────────────────────
 
-  /**
-   * Compute subtotal + total from line items. discount + vatAmount come from
-   * the dto (frontend lets sales enter them explicitly).
-   */
-  private computeTotals(
-    items: { quantity: number; unitPrice: number }[],
-    discount: number,
-    vatAmount: number,
-  ) {
-    const subtotal = items.reduce(
-      (sum, it) => sum + Math.round(it.quantity * it.unitPrice * 100) / 100,
-      0,
-    );
-    const total = Math.max(0, subtotal - discount + vatAmount);
-    return { subtotal, total };
-  }
-
-  async create(dto: CreateQuoteDto, createdById: string) {
+  async create(dto: CreateQuoteDto, createdById: string, user: RequestUser) {
     const validUntil = new Date(dto.validUntil);
     if (Number.isNaN(validUntil.getTime())) {
       throw new BadRequestException('validUntil ไม่ใช่วันที่');
@@ -114,6 +217,9 @@ export class QuotesService {
     if (validUntil.getTime() < Date.now() - 24 * 60 * 60 * 1000) {
       throw new BadRequestException('validUntil ต้องไม่เลยมาแล้วเกิน 1 วัน');
     }
+
+    // Branch-scoped users can only create against their own branchId
+    this.assertCanWriteBranch(user, dto.branchId);
 
     // Sanity-check customer + branch exist + not soft-deleted
     const [customer, branch] = await Promise.all([
@@ -129,24 +235,23 @@ export class QuotesService {
     if (!customer) throw new NotFoundException('ไม่พบลูกค้า');
     if (!branch) throw new NotFoundException('ไม่พบสาขา');
 
-    const discount = dto.discount ?? 0;
-    const vatAmount = dto.vatAmount ?? 0;
-    const { subtotal, total } = this.computeTotals(dto.items, discount, vatAmount);
+    const totals = this.computeTotals(dto.items, dto.discount ?? 0, dto.vatAmount ?? 0);
+    this.assertDiscountInRange(totals.discount, totals.subtotal);
 
     return this.prisma.$transaction(async (tx) => {
       const quoteNumber = await generateQuoteNumber(tx as unknown as Parameters<typeof generateQuoteNumber>[0]);
 
-      return tx.quote.create({
+      const quote = await tx.quote.create({
         data: {
           quoteNumber,
           customerId: dto.customerId,
           branchId: dto.branchId,
           status: 'DRAFT',
           validUntil,
-          subtotal: new Prisma.Decimal(subtotal.toFixed(2)),
-          discount: new Prisma.Decimal(discount.toFixed(2)),
-          vatAmount: new Prisma.Decimal(vatAmount.toFixed(2)),
-          total: new Prisma.Decimal(total.toFixed(2)),
+          subtotal: totals.subtotal,
+          discount: totals.discount,
+          vatAmount: totals.vatAmount,
+          total: totals.total,
           notes: dto.notes,
           createdById,
           items: {
@@ -154,28 +259,49 @@ export class QuotesService {
               productId: item.productId,
               description: item.description,
               quantity: item.quantity,
-              unitPrice: new Prisma.Decimal(item.unitPrice.toFixed(2)),
-              amount: new Prisma.Decimal(
-                (Math.round(item.quantity * item.unitPrice * 100) / 100).toFixed(2),
-              ),
+              unitPrice: new Prisma.Decimal(item.unitPrice),
+              amount: this.computeItemAmount(item.quantity, item.unitPrice),
             })),
           },
         },
         include: QUOTE_DEFAULT_INCLUDE,
       });
+
+      await tx.auditLog.create({
+        data: {
+          action: 'QUOTE_CREATED',
+          entity: 'quote',
+          entityId: quote.id,
+          userId: createdById,
+          newValue: {
+            quoteNumber: quote.quoteNumber,
+            status: quote.status,
+            total: quote.total.toFixed(2),
+            branchId: quote.branchId,
+          },
+        },
+      });
+
+      return quote;
     });
   }
 
-  async update(id: string, dto: UpdateQuoteDto) {
-    const existing = await this.prisma.quote.findFirst({
-      where: { id, deletedAt: null },
-      select: { id: true, status: true },
+  async update(id: string, dto: UpdateQuoteDto, user: RequestUser) {
+    const existing = await this.loadQuoteScoped(id, user, {
+      id: true,
+      status: true,
+      branchId: true,
     });
     if (!existing) throw new NotFoundException('ไม่พบใบเสนอราคา');
     if (existing.status !== 'DRAFT') {
       throw new BadRequestException(
         `แก้ไขใบเสนอราคาได้เฉพาะสถานะ DRAFT (สถานะปัจจุบัน: ${existing.status})`,
       );
+    }
+
+    // If branch is being changed, verify caller can write to the new branch too
+    if (dto.branchId) {
+      this.assertCanWriteBranch(user, dto.branchId);
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -192,14 +318,13 @@ export class QuotesService {
 
       // If items changed, recompute totals + rebuild items
       if (dto.items) {
-        const discount = dto.discount ?? 0;
-        const vatAmount = dto.vatAmount ?? 0;
-        const { subtotal, total } = this.computeTotals(dto.items, discount, vatAmount);
+        const totals = this.computeTotals(dto.items, dto.discount ?? 0, dto.vatAmount ?? 0);
+        this.assertDiscountInRange(totals.discount, totals.subtotal);
 
-        updates.subtotal = new Prisma.Decimal(subtotal.toFixed(2));
-        updates.discount = new Prisma.Decimal(discount.toFixed(2));
-        updates.vatAmount = new Prisma.Decimal(vatAmount.toFixed(2));
-        updates.total = new Prisma.Decimal(total.toFixed(2));
+        updates.subtotal = totals.subtotal;
+        updates.discount = totals.discount;
+        updates.vatAmount = totals.vatAmount;
+        updates.total = totals.total;
 
         // Delete existing items + replace
         await tx.quoteItem.deleteMany({ where: { quoteId: id } });
@@ -208,10 +333,8 @@ export class QuotesService {
             productId: item.productId,
             description: item.description,
             quantity: item.quantity,
-            unitPrice: new Prisma.Decimal(item.unitPrice.toFixed(2)),
-            amount: new Prisma.Decimal(
-              (Math.round(item.quantity * item.unitPrice * 100) / 100).toFixed(2),
-            ),
+            unitPrice: new Prisma.Decimal(item.unitPrice),
+            amount: this.computeItemAmount(item.quantity, item.unitPrice),
           })),
         };
       } else if (dto.discount !== undefined || dto.vatAmount !== undefined) {
@@ -220,17 +343,13 @@ export class QuotesService {
           where: { quoteId: id },
           select: { quantity: true, unitPrice: true },
         });
-        const itemsForCalc = items.map((it) => ({
-          quantity: it.quantity,
-          unitPrice: Number(it.unitPrice),
-        }));
-        const discount = dto.discount ?? 0;
-        const vatAmount = dto.vatAmount ?? 0;
-        const { subtotal, total } = this.computeTotals(itemsForCalc, discount, vatAmount);
-        updates.subtotal = new Prisma.Decimal(subtotal.toFixed(2));
-        updates.discount = new Prisma.Decimal(discount.toFixed(2));
-        updates.vatAmount = new Prisma.Decimal(vatAmount.toFixed(2));
-        updates.total = new Prisma.Decimal(total.toFixed(2));
+        const totals = this.computeTotals(items, dto.discount ?? 0, dto.vatAmount ?? 0);
+        this.assertDiscountInRange(totals.discount, totals.subtotal);
+
+        updates.subtotal = totals.subtotal;
+        updates.discount = totals.discount;
+        updates.vatAmount = totals.vatAmount;
+        updates.total = totals.total;
       }
 
       return tx.quote.update({
@@ -245,28 +364,39 @@ export class QuotesService {
   // Lifecycle transitions
   // ───────────────────────────────────────────────────────────────────────
 
-  async send(id: string) {
-    const quote = await this.prisma.quote.findFirst({
-      where: { id, deletedAt: null },
-      select: { id: true, status: true },
-    });
+  async send(id: string, user: RequestUser) {
+    const quote = await this.loadQuoteScoped(id, user, { id: true, status: true });
     if (!quote) throw new NotFoundException('ไม่พบใบเสนอราคา');
     if (quote.status !== 'DRAFT') {
       throw new BadRequestException(
         `ส่งใบเสนอราคาได้เฉพาะสถานะ DRAFT (สถานะปัจจุบัน: ${quote.status})`,
       );
     }
-    return this.prisma.quote.update({
-      where: { id },
-      data: { status: 'SENT', sentAt: new Date() },
-      include: QUOTE_DEFAULT_INCLUDE,
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.quote.update({
+        where: { id },
+        data: { status: 'SENT', sentAt: new Date() },
+        include: QUOTE_DEFAULT_INCLUDE,
+      });
+      await tx.auditLog.create({
+        data: {
+          action: 'QUOTE_SENT',
+          entity: 'quote',
+          entityId: id,
+          userId: user.id,
+          oldValue: { status: 'DRAFT' },
+          newValue: { status: 'SENT' },
+        },
+      });
+      return updated;
     });
   }
 
-  async accept(id: string) {
-    const quote = await this.prisma.quote.findFirst({
-      where: { id, deletedAt: null },
-      select: { id: true, status: true, validUntil: true },
+  async accept(id: string, user: RequestUser) {
+    const quote = await this.loadQuoteScoped(id, user, {
+      id: true,
+      status: true,
+      validUntil: true,
     });
     if (!quote) throw new NotFoundException('ไม่พบใบเสนอราคา');
     if (quote.status !== 'SENT') {
@@ -274,46 +404,86 @@ export class QuotesService {
         `ลูกค้ายอมรับใบเสนอราคาได้เฉพาะสถานะ SENT (สถานะปัจจุบัน: ${quote.status})`,
       );
     }
-    if (quote.validUntil.getTime() < Date.now()) {
+    if (quote.validUntil!.getTime() < Date.now()) {
       throw new BadRequestException('ใบเสนอราคานี้หมดอายุแล้ว — กรุณาออกใหม่');
     }
-    return this.prisma.quote.update({
-      where: { id },
-      data: { status: 'ACCEPTED', acceptedAt: new Date() },
-      include: QUOTE_DEFAULT_INCLUDE,
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.quote.update({
+        where: { id },
+        data: { status: 'ACCEPTED', acceptedAt: new Date() },
+        include: QUOTE_DEFAULT_INCLUDE,
+      });
+      await tx.auditLog.create({
+        data: {
+          action: 'QUOTE_ACCEPTED',
+          entity: 'quote',
+          entityId: id,
+          userId: user.id,
+          oldValue: { status: 'SENT' },
+          newValue: { status: 'ACCEPTED' },
+        },
+      });
+      return updated;
     });
   }
 
-  async reject(id: string) {
-    const quote = await this.prisma.quote.findFirst({
-      where: { id, deletedAt: null },
-      select: { id: true, status: true },
-    });
+  async reject(id: string, user: RequestUser) {
+    const quote = await this.loadQuoteScoped(id, user, { id: true, status: true });
     if (!quote) throw new NotFoundException('ไม่พบใบเสนอราคา');
     if (quote.status !== 'SENT') {
       throw new BadRequestException(
         `ปฏิเสธใบเสนอราคาได้เฉพาะสถานะ SENT (สถานะปัจจุบัน: ${quote.status})`,
       );
     }
-    return this.prisma.quote.update({
-      where: { id },
-      data: { status: 'REJECTED', rejectedAt: new Date() },
-      include: QUOTE_DEFAULT_INCLUDE,
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.quote.update({
+        where: { id },
+        data: { status: 'REJECTED', rejectedAt: new Date() },
+        include: QUOTE_DEFAULT_INCLUDE,
+      });
+      await tx.auditLog.create({
+        data: {
+          action: 'QUOTE_REJECTED',
+          entity: 'quote',
+          entityId: id,
+          userId: user.id,
+          oldValue: { status: 'SENT' },
+          newValue: { status: 'REJECTED' },
+        },
+      });
+      return updated;
     });
   }
 
   /**
    * Convert an ACCEPTED quote into a CASH Sale row.
+   *
+   * Race + double-convert protection:
+   *  1. Initial guards filter on quote.status='ACCEPTED' + convertedToSaleId IS NULL.
+   *  2. Inside the $transaction we run a composite-where `updateMany` that
+   *     bumps a tombstone (`convertedToSaleId` left null but `status` flipped
+   *     to CONVERTED) WHERE convertedToSaleId IS NULL AND status IN
+   *     ('ACCEPTED','SENT'). If `count !== 1` the other side won — throw.
+   *  3. After tx.sale.create() we update the sale link with a second
+   *     `updateMany` filtered on the now-CONVERTED row. This pattern lets
+   *     two concurrent /convert calls race fearlessly: exactly one wins,
+   *     the other gets ConflictException with no orphan Sale.
+   *
    * Phase 1 scope: takes the FIRST quote item's productId (if set) and uses
    * the quote's `total` as the sellingPrice. SP6 will extend with multi-item,
    * INSTALLMENT, and EXTERNAL_FINANCE conversions.
    */
-  async convert(id: string, dto: ConvertQuoteDto, salespersonId: string) {
+  async convert(id: string, dto: ConvertQuoteDto, salespersonId: string, user: RequestUser) {
     const quote = await this.prisma.quote.findFirst({
       where: { id, deletedAt: null },
       include: { items: true },
     });
     if (!quote) throw new NotFoundException('ไม่พบใบเสนอราคา');
+
+    // Branch enforcement — branch-scoped roles can only convert quotes for
+    // their own branch. Cross-branch roles bypass.
+    this.assertCanWriteBranch(user, quote.branchId);
+
     if (quote.status !== 'ACCEPTED') {
       throw new BadRequestException(
         `แปลงเป็นการขายได้เฉพาะสถานะ ACCEPTED (สถานะปัจจุบัน: ${quote.status})`,
@@ -332,21 +502,30 @@ export class QuotesService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      // Re-check sale not yet linked under tx + lock semantics
-      const fresh = await tx.quote.findFirst({
-        where: { id, deletedAt: null },
-        select: { convertedToSaleId: true },
+      // Step 1: race-safe claim — flip status to CONVERTED iff still ACCEPTED + not linked.
+      // updateMany returns { count } so two concurrent callers can't both succeed.
+      const claim = await tx.quote.updateMany({
+        where: {
+          id,
+          deletedAt: null,
+          status: 'ACCEPTED',
+          convertedToSaleId: null,
+        },
+        data: {
+          status: 'CONVERTED',
+          convertedAt: new Date(),
+        },
       });
-      if (fresh?.convertedToSaleId) {
+      if (claim.count !== 1) {
         throw new ConflictException('ใบเสนอราคานี้ถูกแปลงเป็นการขายแล้ว');
       }
 
+      // Step 2: create the Sale row. If this throws, the surrounding tx
+      // rolls back the claim — quote returns to ACCEPTED + convertedToSaleId
+      // still null (atomic).
       const saleNumber = await generateSaleNumber(
         tx as unknown as Parameters<typeof generateSaleNumber>[0],
       );
-      const totalNum = Number(quote.total);
-      const discountNum = Number(quote.discount);
-
       const sale = await tx.sale.create({
         data: {
           saleNumber,
@@ -355,21 +534,29 @@ export class QuotesService {
           productId: firstItem.productId!,
           branchId: quote.branchId,
           salespersonId,
-          sellingPrice: new Prisma.Decimal(totalNum.toFixed(2)),
-          discount: new Prisma.Decimal(discountNum.toFixed(2)),
-          netAmount: new Prisma.Decimal(totalNum.toFixed(2)),
+          sellingPrice: quote.total,
+          discount: quote.discount,
+          netAmount: quote.total,
           paymentMethod: (dto.paymentMethod as Prisma.SaleCreateInput['paymentMethod']) || null,
-          amountReceived: new Prisma.Decimal(totalNum.toFixed(2)),
+          amountReceived: quote.total,
           notes: dto.notes || `แปลงจากใบเสนอราคา ${quote.quoteNumber}`,
         },
       });
 
+      // Step 3: link the sale back to the now-CONVERTED quote.
       await tx.quote.update({
         where: { id },
+        data: { convertedToSaleId: sale.id },
+      });
+
+      await tx.auditLog.create({
         data: {
-          status: 'CONVERTED',
-          convertedAt: new Date(),
-          convertedToSaleId: sale.id,
+          action: 'QUOTE_CONVERTED',
+          entity: 'quote',
+          entityId: id,
+          userId: user.id,
+          oldValue: { status: 'ACCEPTED' },
+          newValue: { status: 'CONVERTED', saleId: sale.id, saleNumber: sale.saleNumber },
         },
       });
 
@@ -377,22 +564,32 @@ export class QuotesService {
     });
   }
 
-  async remove(id: string) {
-    const quote = await this.prisma.quote.findFirst({
-      where: { id, deletedAt: null },
-      select: { id: true, status: true },
-    });
+  async remove(id: string, user: RequestUser) {
+    const quote = await this.loadQuoteScoped(id, user, { id: true, status: true });
     if (!quote) throw new NotFoundException('ไม่พบใบเสนอราคา');
     if (quote.status !== 'DRAFT') {
       throw new BadRequestException(
         `ลบใบเสนอราคาได้เฉพาะสถานะ DRAFT (สถานะปัจจุบัน: ${quote.status})`,
       );
     }
-    await this.prisma.quote.update({
-      where: { id },
-      data: { deletedAt: new Date() },
+    const deletedAt = new Date();
+    await this.prisma.$transaction(async (tx) => {
+      await tx.quote.update({
+        where: { id },
+        data: { deletedAt },
+      });
+      await tx.auditLog.create({
+        data: {
+          action: 'QUOTE_DELETED',
+          entity: 'quote',
+          entityId: id,
+          userId: user.id,
+          oldValue: { status: 'DRAFT' },
+          newValue: { deletedAt: deletedAt.toISOString() },
+        },
+      });
     });
-    return { id, deletedAt: new Date() };
+    return { id, deletedAt };
   }
 
   // ───────────────────────────────────────────────────────────────────────
@@ -400,9 +597,15 @@ export class QuotesService {
   // ───────────────────────────────────────────────────────────────────────
 
   /** Build PDF data and render HTML (caller decides puppeteer vs raw HTML). */
-  async buildPdfData(id: string): Promise<QuotePdfData> {
+  async buildPdfData(id: string, user?: RequestUser): Promise<QuotePdfData> {
+    const baseWhere: Prisma.QuoteWhereInput = { id, deletedAt: null };
+    if (user) {
+      const { where, empty } = this.applyBranchScope(baseWhere, user);
+      if (empty) throw new NotFoundException('ไม่พบใบเสนอราคา');
+      Object.assign(baseWhere, where);
+    }
     const quote = await this.prisma.quote.findFirst({
-      where: { id, deletedAt: null },
+      where: baseWhere,
       include: {
         items: { orderBy: { createdAt: 'asc' } },
         customer: {
@@ -449,8 +652,8 @@ export class QuotesService {
    * so the package isn't required at boot/test time — many test runners spin
    * up the service without the Chromium binary on disk.
    */
-  async generatePdf(id: string): Promise<Buffer> {
-    const data = await this.buildPdfData(id);
+  async generatePdf(id: string, user?: RequestUser): Promise<Buffer> {
+    const data = await this.buildPdfData(id, user);
     const html = renderQuoteHtml(data);
 
     // Lazy import to keep test environment lean.

@@ -170,6 +170,14 @@ export class SettingsService {
      */
     language: 'th' | 'en';
     /**
+     * D1.2.5.1 — voucher print mode.
+     *   - 'multi' (default) — emits BOTH the original (ต้นฉบับ) and the
+     *     customer-copy (สำเนา) sheets, each on its own A4 page. The
+     *     customer copy carries a "สำเนา" watermark in the header.
+     *   - 'single' — renders only the original sheet.
+     * Whitelisted; unknown values fall back to 'multi'.
+     */
+    voucherPrintMode: 'single' | 'multi';
      * D1.2.4.1 — master switch for the Expense Templates feature.
      * Reads SystemConfig `templates_enabled`; default true.
      */
@@ -400,6 +408,10 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.2.5.1 — voucher print mode. Whitelist 'single' / 'multi'; default 'multi'.
+    const voucherPrintModeRaw = await this.getKey('voucher_print_mode_default');
+    const voucherPrintMode: 'single' | 'multi' =
+      voucherPrintModeRaw === 'single' ? 'single' : 'multi';
     // D1.2.4.1 — Expense Templates feature flag.
     const templatesEnabled = await this.readBoolean('templates_enabled', true);
     // D1.2.4.2 — per-user template quota. Clamp to 1–1000 (same range as
@@ -534,6 +546,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      voucherPrintMode,
       templatesEnabled,
       maxTemplatesPerUser,
       templateVariablesEnabled,

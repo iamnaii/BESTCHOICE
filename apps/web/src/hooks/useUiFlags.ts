@@ -38,6 +38,10 @@ export interface UiFlags {
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
   /**
+   * D1.2.5.1 — voucher print mode. 'multi' (default) emits both ต้นฉบับ and
+   * สำเนา on separate A4 pages; 'single' emits only ต้นฉบับ.
+   */
+  voucherPrintMode: 'single' | 'multi';
    * D1.2.4.1 — master switch for the Expense Templates ("รายการโปรด") feature.
    * When false, the UI hides the favorites tab + entry buttons + the
    * `บันทึกเป็นรายการโปรด` affordance; the API also rejects writes.
@@ -161,6 +165,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  voucherPrintMode: 'multi',
   templatesEnabled: true,
   maxTemplatesPerUser: 20,
   templateVariablesEnabled: true,

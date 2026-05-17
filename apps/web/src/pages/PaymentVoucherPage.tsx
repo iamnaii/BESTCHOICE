@@ -205,10 +205,16 @@ function VoucherSheet({ doc }: { doc: VoucherDoc }) {
   const hasWht = parseFloat(doc.withholdingTax || '0') > 0;
   const net = doc.netPayment ?? doc.totalAmount;
   const amountText = numToThaiText(parseFloat(net));
+  // D1.2.5.1 — voucher print mode. 'multi' renders both ต้นฉบับ + สำเนา on
+  // separate A4 pages; 'single' renders only ต้นฉบับ. Default 'multi' so
+  // existing behavior (accounting team gets one original to file plus a
+  // customer copy) is preserved when SystemConfig is unseeded.
+  const { voucherPrintMode } = useUiFlags();
 
   // C1.8 — Petty Cash uses its own compact sheet (no WHT, multi-supplier table,
   // no signature grid per spec). All other doc types fall through to the
-  // standard ใบสำคัญจ่าย layout.
+  // standard ใบสำคัญจ่าย layout. Petty cash + payroll layouts are exempt from
+  // the multi-copy print mode (custodian-only and per-employee respectively).
   if (isPettyCash) {
     return (
       <div className="max-w-[210mm] mx-auto py-6 px-6 print:px-0 print:py-0 space-y-6">
@@ -238,7 +244,10 @@ function VoucherSheet({ doc }: { doc: VoucherDoc }) {
 
   return (
     <div className="max-w-[210mm] mx-auto py-6 px-6 print:px-0 print:py-0 space-y-6">
-      <Sheet doc={doc} amountInText={amountText} net={net} />
+      <Sheet doc={doc} amountInText={amountText} net={net} copyVariant="original" />
+      {voucherPrintMode === 'multi' && (
+        <Sheet doc={doc} amountInText={amountText} net={net} copyVariant="customer" />
+      )}
       {hasWht && <WhtCertificate doc={doc} />}
     </div>
   );
@@ -638,10 +647,19 @@ function Sheet({
   doc,
   amountInText,
   net,
+  copyVariant = 'original',
 }: {
   doc: VoucherDoc;
   amountInText: string;
   net: string;
+  /**
+   * D1.2.5.1 — distinguishes the original copy from the customer carbon copy
+   * in multi-mode prints. Both copies are visually identical except for the
+   * "(ต้นฉบับ)" / "(สำเนา)" label under the title; the customer copy also
+   * gets `pageBreakBefore: 'always'` so the browser print dialog paginates
+   * onto a fresh A4 sheet.
+   */
+  copyVariant?: 'original' | 'customer';
 }) {
   const companyName = useCompanyDisplayName();
   const companyAddress = useCompanyAddress();
@@ -649,6 +667,7 @@ function Sheet({
   const companyLogoUrl = useCompanyLogoUrl();
   const { voucherShowQrCode } = useUiFlags();
   const lines = doc.expenseDetail?.lines ?? [];
+  const isCustomerCopy = copyVariant === 'customer';
   // D1.2.2.7 — verification QR linking to /verify/<doc.number>. Default
   // on; OWNER can disable via SystemConfig `voucher_show_qr_code = false`.
   const verifyUrl = typeof window !== 'undefined'
@@ -657,7 +676,10 @@ function Sheet({
   return (
     <article
       className="voucher-sheet bg-white border border-border rounded-md p-8 shadow-sm print:border-0 print:p-0 print:shadow-none"
-      style={{ minHeight: '270mm' }}
+      style={{
+        minHeight: '270mm',
+        pageBreakBefore: isCustomerCopy ? 'always' : 'auto',
+      }}
     >
       {/* Company header */}
       <header className="text-center border-b-2 border-foreground pb-3">
@@ -673,7 +695,10 @@ function Sheet({
           {companyAddress}{companyTaxId && ` · เลขผู้เสียภาษี ${companyTaxId}`}
         </p>
         <h2 className="text-2xl font-bold tracking-wider mt-4">ใบสำคัญจ่าย</h2>
-        <p className="text-xs text-muted-foreground">Payment Voucher</p>
+        <p className="text-xs text-muted-foreground">
+          Payment Voucher
+          {isCustomerCopy ? ' · (สำเนา)' : ' · (ต้นฉบับ)'}
+        </p>
       </header>
 
       {/* Meta */}
@@ -811,7 +836,9 @@ function Sheet({
 
       <footer className="mt-8 pt-3 border-t border-border text-[10px] text-muted-foreground flex justify-between">
         <span>ออกเอกสารจากระบบ BESTCHOICE — ไม่ต้องเซ็นต์ถือเป็นโมฆะ</span>
-        <span>ใบสำคัญจ่ายแบบฟอร์ม v1.0</span>
+        <span>
+          ใบสำคัญจ่ายแบบฟอร์ม v1.0{isCustomerCopy ? ' · สำเนา' : ' · ต้นฉบับ'}
+        </span>
       </footer>
     </article>
   );

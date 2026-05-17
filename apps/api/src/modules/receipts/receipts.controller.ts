@@ -8,6 +8,7 @@ import { BranchGuard } from '../auth/guards/branch.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { VoidReceiptDto } from './dto/void-receipt.dto';
+import { ExportEnabledGuard } from '../settings/guards/export-enabled.guard';
 
 @ApiTags('Receipts')
 @ApiBearerAuth('JWT')
@@ -81,6 +82,9 @@ export class ReceiptsController {
   }
 
   @Get(':id/pdf')
+  // D1.3.3.1 — ExportEnabledGuard short-circuits this endpoint with 403
+  // when OWNER toggles SystemConfig `export_enabled` to 'false'.
+  @UseGuards(ExportEnabledGuard)
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   async getReceiptPDF(@Param('id') id: string, @Res() res: Response) {
     const pdf = await this.receiptsService.generatePDF(id);

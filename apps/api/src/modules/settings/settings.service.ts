@@ -302,6 +302,18 @@ export class SettingsService {
      * the user has clicked the theme toggle once.
      */
     darkModeDefault: 'light' | 'dark' | 'system';
+    /**
+     * D1.4.2.1 — long-running query timeout (seconds). Default 30, valid
+     * range 5–300 (clamped). Currently INFORMATIONAL — applying this to
+     * Postgres requires a DB-level `statement_timeout` setting, and the
+     * shared axios client in `apps/web/src/lib/api.ts` uses a fixed 15s
+     * timeout. The flag is exposed so OWNER can advertise the intended
+     * cutoff to operators and a future PR can wire it into either the
+     * axios `timeout` field or a Postgres `SET LOCAL statement_timeout`
+     * pre-hook. Originally SKIP per Phase 2; shipped per owner directive
+     * 2026-05-17 to reach 100% A1 coverage.
+     */
+    queryTimeoutSeconds: number;
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -424,6 +436,12 @@ export class SettingsService {
       darkModeDefaultRaw === 'light' || darkModeDefaultRaw === 'dark'
         ? darkModeDefaultRaw
         : 'system';
+    // D1.4.2.1 — query_timeout_seconds. Clamp to [5, 300].
+    const queryTimeoutSecondsRaw = await this.readNumber('query_timeout_seconds', 30);
+    const queryTimeoutSeconds =
+      Number.isFinite(queryTimeoutSecondsRaw) && queryTimeoutSecondsRaw >= 5 && queryTimeoutSecondsRaw <= 300
+        ? Math.floor(queryTimeoutSecondsRaw)
+        : 30;
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -451,6 +469,7 @@ export class SettingsService {
       showKeyboardShortcuts,
       animationEnabled,
       darkModeDefault,
+      queryTimeoutSeconds,
     };
   }
 

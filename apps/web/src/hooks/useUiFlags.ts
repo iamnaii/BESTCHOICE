@@ -99,6 +99,13 @@ export interface UiFlags {
    * key in localStorage). 'system' = respect OS prefers-color-scheme.
    */
   darkModeDefault: 'light' | 'dark' | 'system';
+  /**
+   * D1.4.2.1 — long-running query timeout (seconds). Default 30; valid 5–300.
+   * INFORMATIONAL today — axios client uses a fixed 15s timeout and Postgres
+   * `statement_timeout` is a DB-level setting. Exposed so OWNER can advertise
+   * the intended cutoff; a future PR can wire it.
+   */
+  queryTimeoutSeconds: number;
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -135,6 +142,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   showKeyboardShortcuts: true,
   animationEnabled: true,
   darkModeDefault: 'system',
+  queryTimeoutSeconds: 30,
 };
 
 export function useUiFlags(): UiFlags {

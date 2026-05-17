@@ -176,6 +176,21 @@ export class SettingsService {
      * accessibility readers via the lang attr.
      */
     language: 'th' | 'en';
+    /**
+     * D1.1.6 — adjustment account codes for the V4 multi-line Adjustment
+     * row. Frontend `AdjustmentSection.tsx` previously hardcoded
+     * '52-1104' / '53-1503'; now reads from this flag so OWNER can rebind
+     * the codes (e.g. branch-specific CoA variant) without a frontend
+     * deploy. Defaults preserve the legacy behaviour.
+     *
+     * `underpay` is suggested when amountPaid < expected (Dr side).
+     * `overpay` is suggested when amountPaid > expected (Cr side).
+     *
+     * Backend JE templates (PaymentReceipt2BTemplate, etc.) still
+     * hardcode these codes — keeping this scoped to the V4 form so
+     * server-side templates stay deterministic for golden CSV.
+     */
+    adjustmentCodes: { underpay: string; overpay: string };
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -215,6 +230,18 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.1.6 — adjustment codes for the V4 form's manual reconciliation
+    // row. Codes must match the format `\d{2}-\d{4}` to be accepted;
+    // anything malformed falls back to the legacy default. Empty string
+    // never returned — defensive against half-saved SystemConfig rows.
+    const isValidCode = (raw: string | null): raw is string =>
+      !!raw && /^\d{2}-\d{4}$/.test(raw);
+    const underpayRaw = await this.getKey('adjustment_code_underpay');
+    const overpayRaw = await this.getKey('adjustment_code_overpay');
+    const adjustmentCodes = {
+      underpay: isValidCode(underpayRaw) ? underpayRaw : '52-1104',
+      overpay: isValidCode(overpayRaw) ? overpayRaw : '53-1503',
+    };
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -226,6 +253,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      adjustmentCodes,
     };
   }
 

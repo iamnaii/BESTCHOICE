@@ -33,6 +33,10 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /** D1.3.1.1 — opt-in DRAFT alerts cron. Default false (off). */
+  draftAlertsEnabled: boolean;
+  /** D1.3.1.1 — days a doc must stay DRAFT before alert fires. Default 7. */
+  draftAlertThresholdDays: number;
   /**
    * D1.1.6 — adjustment account codes for the V4 multi-line Adjustment row.
    * Frontend was hardcoding '52-1104' / '53-1503'; now reads from this flag
@@ -59,6 +63,8 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  draftAlertsEnabled: false,
+  draftAlertThresholdDays: 7,
   adjustmentCodes: { underpay: '52-1104', overpay: '53-1503' },
 };
 

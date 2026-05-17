@@ -71,4 +71,48 @@ describe('getSidebarForRole — populated ZONE_CONFIG', () => {
     expect(getZoneConfigForRole('OWNER')?.showSettingsGear).toBe(true);
     expect(getZoneConfigForRole('SALES')?.showSettingsGear).toBe(false);
   });
+
+  it('OWNER shop sections have exact expected keys (regression guard)', () => {
+    const keys = getSidebarForRole('OWNER', 'shop').map((s) => s.key);
+    expect(keys).toEqual([
+      'owner-overview',
+      'owner-inventory',
+      'owner-sales',
+      'owner-drafts',
+      'owner-collection',
+      'owner-online-shop',
+      'owner-marketing',
+    ]);
+  });
+
+  it('OWNER fin sections include all FIN-zone keys (regression guard)', () => {
+    const keys = getSidebarForRole('OWNER', 'fin').map((s) => s.key);
+    // Order should be: accounting, tax, statements, bank, asset, fin-tools
+    expect(keys).toContain('owner-accounting');
+    expect(keys).toContain('owner-tax');
+    expect(keys).toContain('owner-statements');
+    expect(keys).toContain('owner-bank');
+    expect(keys).toContain('asset'); // assetMenuSection.key
+    expect(keys).toContain('owner-fin-tools');
+  });
+
+  it('OWNER settings sections have expected keys', () => {
+    const keys = getSidebarForRole('OWNER', 'settings').map((s) => s.key);
+    expect(keys).toContain('owner-doc-config');
+    expect(keys).toContain('owner-settings');
+    expect(keys).toContain('owner-settings-extra');
+  });
+
+  it('FINANCE_MANAGER fin sections include payments (regression for fm-payments zone fix)', () => {
+    const sections = getSidebarForRole('FINANCE_MANAGER', 'fin');
+    const allPaths = sections.flatMap((s) => s.items.map((i) => i.path));
+    expect(allPaths).toContain('/payments');
+    expect(allPaths).toContain('/contracts');
+  });
+
+  it('ACCOUNTANT fin sections include doc-config and bank', () => {
+    const keys = getSidebarForRole('ACCOUNTANT', 'fin').map((s) => s.key);
+    expect(keys).toContain('acc-doc-config');
+    expect(keys).toContain('acc-bank');
+  });
 });

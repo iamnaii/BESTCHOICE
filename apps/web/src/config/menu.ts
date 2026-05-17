@@ -274,9 +274,19 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
       ],
     },
     {
-      key: 'fm-payments',
-      label: 'สัญญา & ชำระ',
-      icon: FileCheck,
+      key: 'fm-fin-daily',
+      label: 'งานประจำวัน (การเงิน)',
+      icon: HandCoins,
+      zone: 'fin',
+      items: [
+        { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
+        { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
+      ],
+    },
+    {
+      key: 'fm-shop-ops',
+      label: 'งานหน้าร้าน',
+      icon: ShoppingCart,
       zone: 'shop',
       items: [
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
@@ -564,7 +574,6 @@ const OWNER_CONFIG: RoleMenuConfig = {
           icon: FileText,
           placeholder: { trackingSP: 'SP3', eta: 'ภายในไตรมาส 3/2026' },
         },
-        { label: 'รายงานภาษี (legacy)', path: '/tax-reports', icon: Calculator },
       ],
     },
     {
@@ -600,7 +609,6 @@ const OWNER_CONFIG: RoleMenuConfig = {
       icon: Landmark,
       zone: 'fin',
       items: [
-        { label: 'ผังบัญชี', path: '/settings/chart-of-accounts', icon: ClipboardList },
         {
           label: 'บัญชีธนาคาร',
           path: '/finance/bank-accounts',
@@ -764,9 +772,9 @@ const ZONE_CONFIG: Record<string, RoleZoneConfig> = {
     sections: FINANCE_MANAGER_CONFIG.sidebar,
     bottomNav: {
       shop: [
+        { label: 'Dashboard', path: '/', icon: Home },
         { label: 'สัญญา', path: '/contracts', icon: FileCheck },
         { label: 'ชำระ', path: '/payments', icon: HandCoins },
-        { label: 'MDM', path: '/mdm', icon: Smartphone },
         { label: 'แชท', path: '/inbox', icon: MessageSquareMore, badgeKey: 'chat-unread' },
         { label: 'เพิ่มเติม', path: '#more', icon: MoreHorizontal, action: 'sidebar' },
       ],

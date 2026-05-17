@@ -360,5 +360,30 @@ describe('SettingsService audit trail', () => {
       // Both bad → fall back to legacy defaults.
       expect(flags.adjustmentCodes).toEqual({ underpay: '52-1104', overpay: '53-1503' });
     });
+
+    // D1.4.1.1 — sidebar_collapsed_default
+    it('sidebarCollapsedDefault defaults to false (expanded) when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.sidebarCollapsedDefault).toBe(false);
+    });
+
+    it('sidebarCollapsedDefault returns true when OWNER stores "true"', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'sidebar_collapsed_default') return Promise.resolve({ value: 'true' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.sidebarCollapsedDefault).toBe(true);
+    });
+
+    it('sidebarCollapsedDefault falls back to default on unparseable value', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'sidebar_collapsed_default') return Promise.resolve({ value: 'maybe' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.sidebarCollapsedDefault).toBe(false);
+    });
   });
 });

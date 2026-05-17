@@ -197,6 +197,14 @@ export class SettingsService {
      * server-side templates stay deterministic for golden CSV.
      */
     adjustmentCodes: { underpay: string; overpay: string };
+    /**
+     * D1.4.1.1 — BOOTSTRAP default for sidebar collapse on a brand-new device
+     * (no `sidebar_collapse` key in localStorage). Once the user toggles the
+     * sidebar in the UI, their personal preference is persisted and takes
+     * precedence — this flag never overrides an existing per-user value.
+     * Default false (= expanded). OWNER stores 'true' / 'false'.
+     */
+    sidebarCollapsedDefault: boolean;
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -256,6 +264,12 @@ export class SettingsService {
       underpay: isValidCode(underpayRaw) ? underpayRaw : '52-1104',
       overpay: isValidCode(overpayRaw) ? overpayRaw : '53-1503',
     };
+    // D1.4.1.1 — sidebar bootstrap default. `readBoolean` already whitelists
+    // 'true' / 'false' / '1' / '0' so a bad row falls back to false (expanded).
+    const sidebarCollapsedDefault = await this.readBoolean(
+      'sidebar_collapsed_default',
+      false,
+    );
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -270,6 +284,7 @@ export class SettingsService {
       draftAlertsEnabled,
       draftAlertThresholdDays,
       adjustmentCodes,
+      sidebarCollapsedDefault,
     };
   }
 

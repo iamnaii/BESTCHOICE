@@ -37,6 +37,12 @@ export interface UiFlags {
   draftAlertsEnabled: boolean;
   /** D1.3.1.1 — days a doc must stay DRAFT before alert fires. Default 7. */
   draftAlertThresholdDays: number;
+  /**
+   * D1.1.6 — adjustment account codes for the V4 multi-line Adjustment row.
+   * Frontend was hardcoding '52-1104' / '53-1503'; now reads from this flag
+   * so OWNER can rebind the codes without a frontend deploy.
+   */
+  adjustmentCodes: { underpay: string; overpay: string };
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -59,6 +65,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   language: 'th',
   draftAlertsEnabled: false,
   draftAlertThresholdDays: 7,
+  adjustmentCodes: { underpay: '52-1104', overpay: '53-1503' },
 };
 
 export function useUiFlags(): UiFlags {

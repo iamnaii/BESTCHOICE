@@ -4,6 +4,7 @@ import { JournalModule } from '../journal/journal.module';
 import { AuthModule } from '../auth/auth.module';
 import { SsoConfigModule } from '../sso-config/sso-config.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { SettingsModule } from '../settings/settings.module';
 import { ExpenseDocumentsController } from './expense-documents.controller';
 import { ExpenseDocumentsService } from './expense-documents.service';
 import { ExpenseTemplatesController } from './expense-templates.controller';
@@ -20,7 +21,14 @@ import { DraftAlertsCron } from './crons/draft-alerts.cron';
 @Module({
   // NotificationsModule import is required so DraftAlertsCron can route IN_APP
   // alerts through NotificationsService.send() (respects the D1.3.1.4 master gate).
-  imports: [PrismaModule, JournalModule, AuthModule, SsoConfigModule, NotificationsModule],
+  imports: [
+    PrismaModule,
+    JournalModule,
+    AuthModule,
+    SsoConfigModule,
+    NotificationsModule,
+    SettingsModule,
+  ],
   controllers: [ExpenseDocumentsController, ExpenseTemplatesController],
   providers: [
     ExpenseDocumentsService,

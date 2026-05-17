@@ -9,6 +9,7 @@ import { ReceiptsService } from '../receipts/receipts.service';
 import { AuditService } from '../audit/audit.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { PaymentReceipt2BTemplate } from '../journal/cpa-templates/payment-receipt-2b.template';
+import { AccountRoleService } from '../journal/account-role.service';
 import { ProductsService } from '../products/products.service';
 import { hasCrossBranchAccess } from '../auth/branch-access.util';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
@@ -49,6 +50,13 @@ export class PaymentsService {
     @Optional() private mdmAuto?: MdmAutoService,
     @Optional() @Inject(forwardRef(() => PromiseService)) private promiseService?: PromiseService,
     @Optional() private mdmLockService?: MdmLockService,
+    /**
+     * D1.1.6.2 — resolves `adj_overpay` → CoA code via account_role_map for
+     * the JE preview path. Optional to match the resilient pattern used for
+     * `mdmAuto` / `mdmLockService`; when missing, falls back to the
+     * spec-default 53-1503 (matches the seed row).
+     */
+    @Optional() private accountRoleService?: AccountRoleService,
   ) {}
 
   /**
@@ -1984,7 +1992,11 @@ export class PaymentsService {
       const roundingDiff = amountReceived.minus(installmentTotal);
       const tolerance = new Prisma.Decimal('1.00');
       if (roundingDiff.gt(zero) && roundingDiff.lte(tolerance)) {
-        rawLines.push({ code: '53-1503', dr: zero, cr: roundingDiff, description: 'กำไรปัดเศษ (Policy C)' });
+        // D1.1.6.2 — resolve via AccountRoleService when available, otherwise
+        // fall back to spec-default 53-1503 (matches the seed row).
+        const adjOverpayCode =
+          this.accountRoleService?.tryCode('adj_overpay') ?? '53-1503';
+        rawLines.push({ code: adjOverpayCode, dr: zero, cr: roundingDiff, description: 'กำไรปัดเศษ (Policy C)' });
       } else if (roundingDiff.lt(zero) && roundingDiff.abs().lte(tolerance)) {
         rawLines.push({ code: '52-1104', dr: roundingDiff.abs(), cr: zero, description: 'ส่วนลดเศษสตางค์ (Policy C)' });
       }

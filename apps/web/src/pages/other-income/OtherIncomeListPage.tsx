@@ -129,7 +129,9 @@ export default function OtherIncomeListPage() {
   const [endDate, setEndDate] = useState(
     () => computeDefaultTimeRange(defaultTimeRange).endDate,
   );
-  const { page, size, setPage, setSize } = usePaginationParams({ defaultSize: 50 });
+  // D1.2.3.2 — defaultSize derived from OWNER-configured `pagination_size`.
+  const { paginationSize } = useUiFlags();
+  const { page, size, setPage, setSize } = usePaginationParams({ defaultSize: paginationSize });
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [confirmDeleteNumber, setConfirmDeleteNumber] = useState<string>('');
 

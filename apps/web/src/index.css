@@ -625,3 +625,16 @@ layer(base);
     scroll-behavior: auto !important;
   }
 }
+
+/*
+ * D1.4.1.3 — animation_enabled SystemConfig
+ * useUiFlags toggles data-animations-disabled on <html> when OWNER sets
+ * `animation_enabled=false`. Equivalent to a manual prefers-reduced-motion
+ * for browsers / OS profiles where the user can't or won't set it.
+ */
+html[data-animations-disabled='true'] *,
+html[data-animations-disabled='true'] *::before,
+html[data-animations-disabled='true'] *::after {
+  transition: none !important;
+  animation: none !important;
+}

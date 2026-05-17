@@ -175,6 +175,16 @@ export class SettingsService {
      * accessibility readers via the lang attr.
      */
     language: 'th' | 'en';
+    /**
+     * D1.4.3.4 — preferred format for data export / compliance backup.
+     * Whitelist `'JSON'` / `'CSV'` / `'XLSX'`, default `'JSON'`. Existing
+     * export buttons across the app should select this as the DEFAULT
+     * option in their format dropdown; the user can still override per
+     * export. Future automated compliance-backup jobs should consume
+     * this value via `getUiFlags()` rather than re-reading the
+     * SystemConfig row directly.
+     */
+    dataExportFormat: 'JSON' | 'CSV' | 'XLSX';
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -214,6 +224,14 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.4.3.4 — data export format. Whitelist 'JSON' / 'CSV' / 'XLSX';
+    // anything else → 'JSON'. Case-insensitive read so a lowercase value
+    // saved by a future Settings UI still matches the whitelist.
+    const dataExportFormatRaw = await this.getKey('data_export_format');
+    const dataExportFormat: 'JSON' | 'CSV' | 'XLSX' =
+      dataExportFormatRaw === 'CSV' || dataExportFormatRaw === 'XLSX'
+        ? dataExportFormatRaw
+        : 'JSON';
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -225,6 +243,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      dataExportFormat,
     };
   }
 

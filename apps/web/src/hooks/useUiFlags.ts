@@ -33,6 +33,13 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /**
+   * D1.4.3.4 — default format for data export dropdowns across the app.
+   * Whitelist `'JSON'` / `'CSV'` / `'XLSX'`. UIs that already render
+   * export buttons should pre-select this value; the user can still
+   * change per export.
+   */
+  dataExportFormat: 'JSON' | 'CSV' | 'XLSX';
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -53,6 +60,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  dataExportFormat: 'JSON',
 };
 
 export function useUiFlags(): UiFlags {

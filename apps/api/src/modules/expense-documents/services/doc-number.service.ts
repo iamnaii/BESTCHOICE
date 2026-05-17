@@ -1,21 +1,55 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotImplementedException,
+} from '@nestjs/common';
 import { DocumentType, Prisma } from '@prisma/client';
+import {
+  DEFAULT_DOC_PREFIX_MAP,
+  SettingsService,
+} from '../../settings/settings.service';
 
-const PREFIX_MAP: Record<DocumentType, string> = {
-  EXPENSE: 'EX',
-  CREDIT_NOTE: 'CN',
-  PAYROLL: 'PR',
-  VENDOR_SETTLEMENT: 'SE',
-  PETTY_CASH_REIMBURSEMENT: 'PC',
-};
-
+/**
+ * D1.1.2.4 — SystemConfig key `doc_sequence_table_enabled` (default `'false'`).
+ *
+ * Owner picked "accept current behavior" for Q3 — current implementation uses
+ * a PostgreSQL advisory lock + `MAX(docNumber)` lookup inside the same DB
+ * transaction. This works correctly under normal load (~100 docs/day) and
+ * doesn't require an additional table.
+ *
+ * The flag is reserved as a **forward-extension point** for a future migration
+ * to a dedicated `DocumentSequence` model. When `true`, the service throws
+ * `NotImplementedException` so the OWNER realizes the migration hasn't
+ * happened yet — silent fallback would create the impression a feature exists
+ * when it doesn't. To enable the new mode in the future:
+ *
+ *  1. Add `model DocumentSequence` to `schema.prisma` with `@@unique([type, period])`
+ *  2. Implement a `useSequenceTable()` branch in `next()` that does
+ *     `upsert + increment` against the new table inside the same `$transaction`
+ *  3. Drop the `NotImplementedException` throw
+ *
+ * Until then, OWNER setting this to `true` is a configuration error and the
+ * exception is the correct response.
+ */
 @Injectable()
 export class DocNumberService {
+  constructor(private readonly settings: SettingsService) {}
+
   /**
    * Generate next sequential document number with race-safe Postgres
    * advisory lock per (type, BKK-day) key. Mirrors OI/RT pattern.
    *
    * Format: <TYPE>-YYYYMMDD-NNNN — daily reset, 4-digit seq.
+   *
+   * D1.1.2.1 — prefix is now sourced from SystemConfig key
+   * `doc_prefix_per_type` via `SettingsService.getDocPrefixMap()`. Falls back
+   * to the hardcoded `DEFAULT_DOC_PREFIX_MAP` when no override is configured
+   * or the stored value is malformed. The lock key + lookup query both use
+   * the resolved prefix, so changing the override at runtime applies to the
+   * next-issued number without restart.
+   *
+   * D1.1.2.4 — when `doc_sequence_table_enabled = 'true'`, throws
+   * `NotImplementedException`. See class docstring for rationale.
    *
    * `issueDate` convention (W5): the BKK-day is derived from the user-chosen
    * `documentDate` (NOT server "now"), so a same-day creation backdated to
@@ -35,8 +69,18 @@ export class DocNumberService {
     type: DocumentType,
     issueDate: Date,
   ): Promise<string> {
+    // D1.1.2.4 — sequence table not implemented; reject explicitly if OWNER
+    // has flipped the flag without an accompanying migration.
+    if (await this.isSequenceTableEnabled()) {
+      throw new NotImplementedException(
+        'Sequence table mode not implemented yet — please disable this flag (doc_sequence_table_enabled = false)',
+      );
+    }
+
     const yyyymmdd = this.bkkYyyymmdd(issueDate);
-    const prefix = `${PREFIX_MAP[type]}-${yyyymmdd}-`;
+    const prefixMap = await this.resolvePrefixMap();
+    const prefixLetters = prefixMap[type];
+    const prefix = `${prefixLetters}-${yyyymmdd}-`;
     const lockKey = this.hashLockKey(`expdoc:${type}:${yyyymmdd}`);
     await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${lockKey})`);
 
@@ -51,11 +95,41 @@ export class DocNumberService {
     const nextSeq = lastSeq + 1;
     if (nextSeq > 9999) {
       throw new BadRequestException(
-        `เลขที่เอกสาร ${PREFIX_MAP[type]} เกิน 9999 ใน 1 วัน (BKK ${yyyymmdd}) — ติดต่อผู้ดูแลระบบ`,
+        `เลขที่เอกสาร ${prefixLetters} เกิน 9999 ใน 1 วัน (BKK ${yyyymmdd}) — ติดต่อผู้ดูแลระบบ`,
       );
     }
     const seq = String(nextSeq).padStart(4, '0');
     return `${prefix}${seq}`;
+  }
+
+  /**
+   * D1.1.2.1 — fetch the active prefix map. Pulls from SettingsService when
+   * available; falls back to the static `DEFAULT_DOC_PREFIX_MAP` if any error
+   * surfaces (defensive: doc creation must never block on the settings query).
+   */
+  private async resolvePrefixMap(): Promise<Record<DocumentType, string>> {
+    try {
+      return await this.settings.getDocPrefixMap();
+    } catch {
+      return { ...DEFAULT_DOC_PREFIX_MAP };
+    }
+  }
+
+  /**
+   * D1.1.2.4 — read `doc_sequence_table_enabled` flag. Defensive: any error
+   * resolving the flag (DB down, malformed value) is treated as "false" so
+   * doc creation continues using the advisory-lock fast path. Only an
+   * explicit `'true'` / `'1'` value (case-insensitive) enables the throw branch.
+   */
+  private async isSequenceTableEnabled(): Promise<boolean> {
+    try {
+      const raw = await this.settings.getKey('doc_sequence_table_enabled');
+      if (!raw) return false;
+      const v = raw.trim().toLowerCase();
+      return v === 'true' || v === '1';
+    } catch {
+      return false;
+    }
   }
 
   /** Asia/Bangkok local YYYYMMDD via Intl (BKK is UTC+7, no DST). */

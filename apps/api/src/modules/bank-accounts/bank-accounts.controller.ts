@@ -22,6 +22,12 @@ import { UpdateBankAccountDto } from './dto/update-bank-account.dto';
  * Read: OWNER / FINANCE_MANAGER / ACCOUNTANT
  * Write: OWNER only (matches the spec — bank-account changes affect downstream
  * Trial Balance presentation and should funnel through the owner).
+ *
+ * No BranchGuard — bank/cash accounts are FINANCE-level global entities, not
+ * branch-scoped. This differs from Quote/Sale (which use BranchGuard per
+ * Hardening v1, PR #430) but matches the IntercompanyController pattern. Per
+ * `.claude/rules/accounting.md`: in Phase A.4 only FINANCE has a chart of
+ * accounts, and there is no branch-scoped cash dimension yet.
  */
 @Controller('bank-accounts')
 @UseGuards(JwtAuthGuard, RolesGuard)

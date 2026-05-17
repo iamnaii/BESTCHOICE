@@ -7,7 +7,6 @@ type PrismaMock = {
   bankAccount: {
     findMany: jest.Mock;
     findFirst: jest.Mock;
-    findUnique: jest.Mock;
     create: jest.Mock;
     update: jest.Mock;
   };
@@ -19,13 +18,15 @@ type PrismaMock = {
   chartOfAccount: {
     findUnique: jest.Mock;
   };
+  auditLog: {
+    create: jest.Mock;
+  };
 };
 
 const makePrismaMock = (): PrismaMock => ({
   bankAccount: {
     findMany: jest.fn(),
     findFirst: jest.fn(),
-    findUnique: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
   },
@@ -37,14 +38,17 @@ const makePrismaMock = (): PrismaMock => ({
   chartOfAccount: {
     findUnique: jest.fn(),
   },
+  auditLog: {
+    create: jest.fn().mockResolvedValue({}),
+  },
 });
 
 const sampleAccount = (overrides: Partial<Record<string, unknown>> = {}) => ({
   id: 'acc-1',
   accountCode: '11-1201',
-  accountName: 'KBank ธนาคารกสิกรไทย',
-  bankName: 'KBank',
-  accountNumber: '123-4-56789-0',
+  accountName: 'ธนาคาร KBank',
+  bankName: 'กสิกรไทย',
+  accountNumber: '203-1-16520-5',
   accountType: 'SAVINGS',
   currency: 'THB',
   isActive: true,
@@ -92,6 +96,22 @@ describe('BankAccountsService', () => {
       expect(result).toHaveLength(2);
       expect(result[0].balance).toBe('400.00');
       expect(result[1].balance).toBe('7500.00');
+    });
+
+    it('applies entryDate cutoff so future-dated postings are excluded (TB parity)', async () => {
+      prisma.bankAccount.findMany.mockResolvedValue([
+        sampleAccount({ accountCode: '11-1201' }),
+      ]);
+      prisma.journalLine.groupBy.mockResolvedValue([]);
+
+      await service.findAll();
+
+      const groupByCall = prisma.journalLine.groupBy.mock.calls[0][0];
+      expect(groupByCall.where.journalEntry.entryDate).toBeDefined();
+      expect(groupByCall.where.journalEntry.entryDate.lte).toBeInstanceOf(Date);
+      // The cutoff must be "now-ish" — give a generous 5s window for slow CI.
+      const cutoff = groupByCall.where.journalEntry.entryDate.lte as Date;
+      expect(Math.abs(Date.now() - cutoff.getTime())).toBeLessThan(5000);
     });
   });
 
@@ -152,7 +172,7 @@ describe('BankAccountsService', () => {
         name: 'KBank ออม',
         deletedAt: null,
       });
-      prisma.bankAccount.findUnique.mockResolvedValue(null);
+      prisma.bankAccount.findFirst.mockResolvedValue(null);
       prisma.bankAccount.create.mockImplementation(({ data }) =>
         Promise.resolve(sampleAccount({ ...data, id: 'new-1' })),
       );
@@ -173,6 +193,42 @@ describe('BankAccountsService', () => {
       });
     });
 
+    it('writes BANK_ACCOUNT_CREATED audit log', async () => {
+      prisma.chartOfAccount.findUnique.mockResolvedValue({
+        id: 'coa-1',
+        code: '11-1204',
+        name: 'KBank ออม',
+        deletedAt: null,
+      });
+      prisma.bankAccount.findFirst.mockResolvedValue(null);
+      prisma.bankAccount.create.mockImplementation(({ data }) =>
+        Promise.resolve(sampleAccount({ ...data, id: 'new-1' })),
+      );
+
+      await service.create(
+        {
+          accountCode: '11-1204',
+          accountName: 'KBank ออม',
+          bankName: 'KBank',
+          accountType: 'SAVINGS',
+        },
+        'user-7',
+      );
+
+      expect(prisma.auditLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          userId: 'user-7',
+          action: 'BANK_ACCOUNT_CREATED',
+          entity: 'bank_account',
+          entityId: 'new-1',
+          newValue: expect.objectContaining({
+            accountCode: '11-1204',
+            accountName: 'KBank ออม',
+          }),
+        }),
+      });
+    });
+
     it('rejects non-cash/bank codes', async () => {
       await expect(
         service.create(
@@ -184,6 +240,85 @@ describe('BankAccountsService', () => {
           'user-1',
         ),
       ).rejects.toThrow(/ไม่ใช่บัญชีเงินสด\/ธนาคาร/);
+    });
+
+    it('rejects when an active row with the same code already exists', async () => {
+      prisma.chartOfAccount.findUnique.mockResolvedValue({
+        id: 'coa-1',
+        code: '11-1201',
+        name: 'KBank',
+        deletedAt: null,
+      });
+      prisma.bankAccount.findFirst.mockResolvedValue(sampleAccount());
+
+      await expect(
+        service.create(
+          {
+            accountCode: '11-1201',
+            accountName: 'KBank ซ้ำ',
+            bankName: 'KBank',
+          },
+          'user-1',
+        ),
+      ).rejects.toThrow(/มีบัญชีรหัส 11-1201 อยู่แล้ว/);
+    });
+  });
+
+  describe('update', () => {
+    it('writes BANK_ACCOUNT_UPDATED with old/new diff for changed fields only', async () => {
+      prisma.bankAccount.findFirst.mockResolvedValue(sampleAccount());
+      prisma.bankAccount.update.mockImplementation(({ data }) =>
+        Promise.resolve(sampleAccount({ ...data })),
+      );
+
+      await service.update(
+        '11-1201',
+        { bankName: 'กสิกรไทย NEW', notes: 'ปรับชื่อ' },
+        'user-9',
+      );
+
+      expect(prisma.auditLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          userId: 'user-9',
+          action: 'BANK_ACCOUNT_UPDATED',
+          entity: 'bank_account',
+          oldValue: { bankName: 'กสิกรไทย', notes: null },
+          newValue: { bankName: 'กสิกรไทย NEW', notes: 'ปรับชื่อ' },
+        }),
+      });
+    });
+
+    it('no-op PATCH (all unchanged) does not write an audit log', async () => {
+      prisma.bankAccount.findFirst.mockResolvedValue(sampleAccount());
+      prisma.bankAccount.update.mockResolvedValue(sampleAccount());
+
+      await service.update('11-1201', {}, 'user-9');
+
+      expect(prisma.auditLog.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('disable', () => {
+    it('soft-deletes + flips isActive + writes BANK_ACCOUNT_DISABLED audit log', async () => {
+      prisma.bankAccount.findFirst.mockResolvedValue(sampleAccount());
+      prisma.bankAccount.update.mockImplementation(({ data }) =>
+        Promise.resolve(sampleAccount({ ...data })),
+      );
+
+      await service.disable('11-1201', 'user-3');
+
+      expect(prisma.bankAccount.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ isActive: false, deletedAt: expect.any(Date) }),
+        }),
+      );
+      expect(prisma.auditLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          userId: 'user-3',
+          action: 'BANK_ACCOUNT_DISABLED',
+          entity: 'bank_account',
+        }),
+      });
     });
   });
 

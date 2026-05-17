@@ -6290,7 +6290,12 @@ model PartialPaymentLink {
 /// Account number is treated as PII — UI must mask all but the last 5 digits.
 model BankAccount {
   id            String    @id @default(uuid())
-  accountCode   String    @unique @map("account_code")
+  /// Uniqueness is enforced at the DB level by a PARTIAL unique index that
+  /// only applies to non-soft-deleted rows (see migration
+  /// `20260941000000_add_bank_accounts`). We deliberately do NOT use Prisma
+  /// `@unique` here because that would create a full UNIQUE CONSTRAINT and
+  /// block re-creating an account after a soft delete.
+  accountCode   String    @map("account_code")
   accountName   String    @map("account_name")
   bankName      String    @map("bank_name")
   accountNumber String?   @map("account_number")

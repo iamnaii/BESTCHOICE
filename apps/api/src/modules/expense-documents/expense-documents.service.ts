@@ -842,6 +842,19 @@ export class ExpenseDocumentsService implements OnModuleInit {
       );
     }
 
+    // D1.3.6.3 — `settlement_partial_payment_enabled` (default true). Read
+    // outside the $transaction since this is a doc-creation policy gate and
+    // SystemConfig values rarely change mid-request. When OFF, every line's
+    // `amountSettled` must equal the remaining cap (full settlement only) —
+    // we apply that check INSIDE the transaction after we've read the
+    // current cap, so partial-flag toggling between request fetch + commit
+    // is fine.
+    const partialPaymentEnabled = await this.readBoolFlag(
+      this.prisma,
+      'settlement_partial_payment_enabled',
+      true,
+    );
+
     // Dedup: prevent same cleared doc from appearing twice in one SE
     const seenClearedIds = new Set<string>();
     for (const line of dto.lines) {
@@ -906,6 +919,17 @@ export class ExpenseDocumentsService implements OnModuleInit {
         if (amount.gt(cap)) {
           throw new BadRequestException(
             `เอกสาร ${cleared.number} จำนวนที่จ่ายเกินยอดที่ค้าง (เหลือ ${cap.toFixed(2)} ฿)`,
+          );
+        }
+        // D1.3.6.3 — when partial-payment is disabled, every line must clear
+        // the FULL remaining cap. `amount < cap` is the partial-payment
+        // condition; allow ≤0.01 ฿ rounding slop just like the tolerance
+        // policy elsewhere (BadRequestException is still the right call —
+        // the user can edit the line amount and resubmit).
+        if (!partialPaymentEnabled && cap.minus(amount).gt(new Prisma.Decimal('0.01'))) {
+          throw new BadRequestException(
+            `เอกสาร ${cleared.number} ต้องชำระเต็มจำนวน (ค้าง ${cap.toFixed(2)} ฿) — ` +
+              `การชำระบางส่วนถูกปิดในการตั้งค่าระบบ`,
           );
         }
         sumSettled = sumSettled.plus(amount);

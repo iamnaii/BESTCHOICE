@@ -783,6 +783,15 @@ export class SettingsService {
      */
     cacheTtlReports: number;
     /**
+     * D1.3.6.3 — allow per-line partial settlement on VENDOR_SETTLEMENT.
+     * Default true (V12 adjustment logic remains active). When false the
+     * server rejects any line where `amountSettled < remainingCap` (±0.01
+     * rounding slop) — every line must clear the full outstanding balance.
+     * The web app additionally disables the "จำนวนที่จ่าย" input column so
+     * the user can't paste in a partial figure.
+     */
+    settlementPartialPaymentEnabled: boolean;
+    /**
      * D1.3.2.1 — VIEWER role activation flag. Default false (Q4-gated).
      * When true, future guards/widening code can extend @Roles() lists on
      * expense / other-income / asset modules to include the VIEWER role.
@@ -1090,6 +1099,13 @@ export class SettingsService {
       Number.isFinite(cacheTtlReportsRaw) && cacheTtlReportsRaw >= 30 && cacheTtlReportsRaw <= 7200
         ? Math.floor(cacheTtlReportsRaw)
         : 300;
+    // D1.3.6.3 — settlement_partial_payment_enabled. Default true (V12
+    // adjustments remain active). When false, web app disables the partial
+    // amount input + server rejects underpaid lines.
+    const settlementPartialPaymentEnabled = await this.readBoolean(
+      'settlement_partial_payment_enabled',
+      true,
+    );
     // D1.3.2.1 — VIEWER role activation. Conservative default false.
     const viewerRoleEnabled = await this.readBoolean('viewer_role_enabled', false);
     return {
@@ -1150,6 +1166,7 @@ export class SettingsService {
       emailProvider,
       cacheTtlDashboard,
       cacheTtlReports,
+      settlementPartialPaymentEnabled,
       viewerRoleEnabled,
     };
   }

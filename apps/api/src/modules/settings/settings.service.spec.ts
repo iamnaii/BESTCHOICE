@@ -287,5 +287,42 @@ describe('SettingsService audit trail', () => {
       const flags = await service.getUiFlags();
       expect(flags.periodCloseDay).toBe(31);
     });
+
+    // D1.2.4 follow-up — templates feature flags.
+    it('templatesEnabled defaults to true when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.templatesEnabled).toBe(true);
+    });
+
+    it('templatesEnabled honours explicit "false"', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'templates_enabled') return Promise.resolve({ value: 'false' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.templatesEnabled).toBe(false);
+    });
+
+    it('maxTemplatesPerUser defaults to 20', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.maxTemplatesPerUser).toBe(20);
+    });
+
+    it('maxTemplatesPerUser clamps to 1–1000', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'max_templates_per_user') return Promise.resolve({ value: '99999' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.maxTemplatesPerUser).toBe(1000);
+    });
+
+    it('templateVariablesEnabled defaults to true', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.templateVariablesEnabled).toBe(true);
+    });
   });
 });

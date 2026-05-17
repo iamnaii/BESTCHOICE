@@ -13,6 +13,7 @@ import QueryBoundary from '@/components/QueryBoundary';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { ReverseDialog } from '@/components/expense-form-v4/ReverseDialog';
 import { useAuth } from '@/contexts/AuthContext';
+import { useUiFlags } from '@/hooks/useUiFlags';
 import { Receipt, Plus, Pencil, MoreVertical, Bookmark, Wallet, BarChart3, Search, SlidersHorizontal, Eye, ArrowRight, UserCircle2, ChevronDown, FileText, CreditCard } from 'lucide-react';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { Button } from '@/components/ui/button';
@@ -108,6 +109,10 @@ function fmt(n: string | number | null | undefined): string {
 export default function ExpensesPage() {
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
+  // D1.2.4 follow-up — feature flag for the Expense Templates ("รายการโปรด")
+  // surface. When OWNER disables, the favorites tab + entry button are
+  // hidden. Default true so first paint matches legacy behaviour.
+  const { templatesEnabled } = useUiFlags();
   const isOwner = currentUser?.role === 'OWNER';
   const [searchParams, setSearchParams] = useSearchParams();
   const tabFilter = searchParams.get('tab') || 'all';
@@ -218,13 +223,16 @@ export default function ExpensesPage() {
   const paidCount = summary?.byStatus?.POSTED ?? 0;
   const recordedCount = totalCount - draftCount;
 
+  // D1.2.4 follow-up — strip 'favorites' tab when templates feature is OFF.
   const tabs = [
     { id: 'all', label: 'ทั้งหมด', count: totalCount, icon: Receipt },
     { id: 'draft', label: 'ฉบับร่าง', count: draftCount, icon: FileText },
     { id: 'unpaid', label: 'รอจ่าย', count: unpaidCount, sub: parseFloat(unpaidTotal) > 0 ? `รวม ${fmt(unpaidTotal)} B` : undefined, icon: Wallet },
     { id: 'recorded', label: 'บันทึกแล้ว', count: recordedCount, icon: CreditCard },
     { id: 'paid', label: 'จ่ายแล้ว', count: paidCount, icon: Receipt },
-    { id: 'favorites', label: 'รายการโปรด', count: 0, sub: 'ใช้บันทึกซ้ำ', icon: Bookmark },
+    ...(templatesEnabled
+      ? [{ id: 'favorites' as const, label: 'รายการโปรด', count: 0, sub: 'ใช้บันทึกซ้ำ', icon: Bookmark }]
+      : []),
     { id: 'daily-summary', label: 'สรุปรายวัน', icon: BarChart3, isAction: true },
   ] as const;
 
@@ -374,11 +382,17 @@ export default function ExpensesPage() {
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <button className="px-3 py-1.5 rounded-lg border border-border text-xs flex items-center gap-1.5 hover:bg-muted transition-colors">
-            <Bookmark className="size-3.5 text-muted-foreground" />
-            <span className="text-foreground">รายการโปรด</span>
-            <span className="text-primary font-semibold ml-0.5 font-mono">0</span>
-          </button>
+          {templatesEnabled && (
+            <button
+              type="button"
+              onClick={() => navigate('/expenses/favorites')}
+              className="px-3 py-1.5 rounded-lg border border-border text-xs flex items-center gap-1.5 hover:bg-muted transition-colors"
+            >
+              <Bookmark className="size-3.5 text-muted-foreground" />
+              <span className="text-foreground">รายการโปรด</span>
+              <span className="text-primary font-semibold ml-0.5 font-mono">0</span>
+            </button>
+          )}
           <button className="px-3 py-1.5 rounded-lg border border-border text-xs flex items-center gap-1.5 hover:bg-muted transition-colors">
             <Wallet className="size-3.5 text-muted-foreground" />
             <span className="text-foreground">เจ้าหนี้คงค้าง</span>

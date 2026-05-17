@@ -222,21 +222,48 @@ export class ETaxService {
     const total = payment.amountPaid;
     const base = total.sub(vat);
 
+    // Critical #6: jsPDF default Helvetica cannot render Thai (tofu boxes).
+    // PR #843 bundled Noto Sans Thai for pdfmake — that lives in the
+    // expense-document PDF pipeline. For SP3 Phase 1 we ship an
+    // English-only receipt to avoid font regression risk while we work the
+    // proper Thai-font path into the e-tax module for Phase 2.
+    //
+    // Critical #7: This PDF is INTERNAL only — NOT a legal ใบกำกับภาษี
+    // ตามม.86/4. Title, header banner, and file name all reflect that.
     const doc = new jsPDF({ unit: 'pt', format: 'a4' });
-    doc.setFontSize(18);
-    doc.text('e-Tax Invoice Receipt', 40, 60);
+
+    doc.setFontSize(16);
+    doc.text('Receipt with VAT (Internal)', 40, 60);
+    doc.setFontSize(9);
+    doc.setTextColor(120, 120, 120);
+    doc.text(
+      'Phase 1 — Internal receipt, NOT a legal Thai tax invoice (per Section 86/4 of the Revenue Code).',
+      40,
+      78,
+    );
+    doc.text(
+      'Phase 2 will deliver a compliant e-Tax Invoice with Thai font, full ม.86/4 fields, and PKCS#7 signature.',
+      40,
+      90,
+    );
+    doc.setTextColor(0, 0, 0);
+
     doc.setFontSize(10);
-    doc.text(`Payment ID: ${payment.id}`, 40, 90);
-    doc.text(`Paid Date: ${payment.paidDate?.toISOString().slice(0, 10) ?? '-'}`, 40, 105);
-    doc.text(`Contract: ${payment.contract.contractNumber}`, 40, 120);
-    doc.text(`Installment No: ${payment.installmentNo}`, 40, 135);
-    doc.text(`Customer: ${payment.contract.customer.name}`, 40, 150);
+    doc.text(`Payment ID: ${payment.id}`, 40, 120);
+    doc.text(`Paid Date: ${payment.paidDate?.toISOString().slice(0, 10) ?? '-'}`, 40, 135);
+    doc.text(`Contract: ${payment.contract.contractNumber}`, 40, 150);
+    doc.text(`Installment No: ${payment.installmentNo}`, 40, 165);
+    // Customer name and address may contain Thai — render with placeholder
+    // tag so jsPDF default font does not emit garbled tofu boxes. The
+    // accountant uses Contract + Payment ID to cross-reference the real
+    // customer record. Phase 2 swaps in Noto Sans Thai for native rendering.
+    doc.text(`Customer: [contract ${payment.contract.contractNumber}]`, 40, 180);
     if (payment.contract.customer.nationalId) {
-      doc.text(`Tax ID: ${payment.contract.customer.nationalId}`, 40, 165);
+      doc.text(`Tax ID: ${payment.contract.customer.nationalId}`, 40, 195);
     }
 
     autoTable(doc, {
-      startY: 200,
+      startY: 220,
       head: [['Item', 'Amount (THB)']],
       body: [
         ['Amount before VAT', base.toFixed(2)],
@@ -245,6 +272,15 @@ export class ETaxService {
       ],
       styles: { fontSize: 10 },
     });
+
+    // Footer disclaimer
+    doc.setFontSize(8);
+    doc.setTextColor(150, 150, 150);
+    doc.text(
+      'This receipt is for internal verification only. Issue an official tax invoice (Phase 2) before submitting to RD.',
+      40,
+      doc.internal.pageSize.getHeight() - 30,
+    );
 
     const arrayBuffer = doc.output('arraybuffer');
     return Buffer.from(arrayBuffer as ArrayBuffer);

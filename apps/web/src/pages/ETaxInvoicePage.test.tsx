@@ -42,16 +42,21 @@ describe('ETaxInvoicePage', () => {
     vi.clearAllMocks();
   });
 
-  it('renders header with "e-Tax Invoice" title', () => {
+  it('renders header showing Phase 1 scope (Receipt + CSV)', () => {
     renderPage();
-    expect(screen.getByText('e-Tax Invoice')).toBeInTheDocument();
+    // Critical #6+#7: title makes scope reduction explicit
+    expect(screen.getByText(/e-Tax Invoice \(Phase 1: Receipt \+ CSV\)/)).toBeInTheDocument();
   });
 
-  it('shows Phase 2 banner (XML/PKCS#7)', () => {
+  it('shows Phase 1 limitations banner (internal receipt, NOT legal tax invoice)', () => {
     renderPage();
     expect(screen.getByTestId('phase2-banner')).toBeInTheDocument();
-    expect(screen.getByText(/ระยะที่ 2/)).toBeInTheDocument();
+    // Critical #6+#7: explicit "internal receipt only" disclaimer
+    expect(screen.getByText(/ใบรับเงินภายใน/)).toBeInTheDocument();
+    expect(screen.getByText(/ไม่ใช่ใบกำกับภาษีอิเล็กทรอนิกส์ตามกฎหมาย/)).toBeInTheDocument();
+    expect(screen.getByText(/ม\.86\/4/)).toBeInTheDocument();
     expect(screen.getByText(/PKCS#7/)).toBeInTheDocument();
+    expect(screen.getByText(/ระยะที่ 2/)).toBeInTheDocument();
   });
 
   it('renders Export CSV button (monthly)', () => {

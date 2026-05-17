@@ -333,6 +333,47 @@ describe('SettingsService audit trail', () => {
       expect(flags.periodCloseDay).toBe(31);
     });
 
+    // D1.1.5.4 — petty_cash_replenish_threshold
+    it('pettyCashReplenishThreshold defaults to 5000 when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.pettyCashReplenishThreshold).toBe(5000);
+    });
+
+    it('pettyCashReplenishThreshold returns OWNER-configured value within range', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'petty_cash_replenish_threshold') return Promise.resolve({ value: '2500' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.pettyCashReplenishThreshold).toBe(2500);
+    });
+
+    it('pettyCashReplenishThreshold returns 0 when OWNER explicitly disables alerts', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'petty_cash_replenish_threshold') return Promise.resolve({ value: '0' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.pettyCashReplenishThreshold).toBe(0);
+    });
+
+    it('pettyCashReplenishThreshold clamps negative to default 5000', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'petty_cash_replenish_threshold') return Promise.resolve({ value: '-50' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.pettyCashReplenishThreshold).toBe(5000);
+    });
+
+    it('pettyCashReplenishThreshold clamps absurdly large to 50000 upper bound', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'petty_cash_replenish_threshold') return Promise.resolve({ value: '99999999' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.pettyCashReplenishThreshold).toBe(50000);
     // D1.1.5.1 — petty_cash_enabled feature flag
     it('pettyCashEnabled defaults to true when SystemConfig row missing', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);

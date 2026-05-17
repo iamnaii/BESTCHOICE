@@ -170,6 +170,13 @@ export class SettingsService {
      */
     language: 'th' | 'en';
     /**
+     * D1.1.5.4 — Petty Cash replenish alert threshold (THB). Default 5000,
+     * valid 0–50000 (clamp). When the running float balance falls below this
+     * number, `PettyCashReplenishAlertCron` (daily 09:00 BKK) notifies all
+     * active OWNERs via IN_APP. Setting to 0 disables the alert entirely
+     * (kill switch — owner can pick "dead" semantics by flipping this to 0).
+     */
+    pettyCashReplenishThreshold: number;
      * D1.1.5.1 — Petty Cash feature flag. Default true (feature is shipped
      * and active per PRs #867+#868). When OWNER sets `petty_cash_enabled=false`,
      * the web UI hides the Petty Cash doc-type card + the section in
@@ -434,6 +441,16 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.1.5.4 — Petty Cash replenish threshold. Default 5000, valid 0–50000.
+    // Negative or NaN silently clamps to default 5000 so a bad SystemConfig
+    // row can't accidentally suppress the alert via negative comparison.
+    const thresholdRaw = await this.readNumber('petty_cash_replenish_threshold', 5000);
+    let pettyCashReplenishThreshold = thresholdRaw;
+    if (!Number.isFinite(pettyCashReplenishThreshold) || pettyCashReplenishThreshold < 0) {
+      pettyCashReplenishThreshold = 5000;
+    } else if (pettyCashReplenishThreshold > 50000) {
+      pettyCashReplenishThreshold = 50000;
+    }
     // D1.1.5.1 — Petty Cash feature flag. Default true (feature shipped).
     const pettyCashEnabled = await this.readBoolean('petty_cash_enabled', true);
     // D1.2.5.3 — show ยอดเดิม / ยอดที่ชำระ / ยอดคงเหลือ on voucher.
@@ -588,6 +605,7 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      pettyCashReplenishThreshold,
       pettyCashEnabled,
       voucherShowPartialColumns,
       voucherIncludeAdjustment,

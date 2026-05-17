@@ -37,6 +37,8 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /** D1.1.5.4 — Petty Cash replenish alert threshold (THB). Default 5000, 0 disables. */
+  pettyCashReplenishThreshold: number;
   /** D1.1.5.1 — Petty Cash feature flag. Default true. Hides DocTypePicker card + form section when false. */
   pettyCashEnabled: boolean;
   /**
@@ -179,6 +181,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  pettyCashReplenishThreshold: 5000,
   pettyCashEnabled: true,
   voucherShowPartialColumns: true,
   voucherIncludeAdjustment: true,

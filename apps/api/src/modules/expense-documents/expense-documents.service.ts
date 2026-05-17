@@ -32,6 +32,7 @@ import { SsoConfigService } from '../sso-config/sso-config.service';
 import { PettyCashService } from './services/petty-cash.service';
 import { PayrollCustomService } from './services/payroll-custom.service';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
+import { readBoolFlag, readJsonFlag } from '../../utils/config.util';
 
 /**
  * Allow-list of account codes that may appear on a multi-line Adjustment row
@@ -122,40 +123,29 @@ export class ExpenseDocumentsService implements OnModuleInit {
   ) {}
 
   // ─── D1.* — Service-side SystemConfig flag readers ─────────────────────
-  // Read directly via PrismaService (avoids injecting SettingsService for a
-  // single-key lookup; also sidesteps potential audit↔settings circular dep
-  // pattern when this service is consumed by future audit-linked features).
-  // Each helper returns the spec-defined default if the SystemConfig row is
-  // missing or has an unparseable value, so first-boot behavior is preserved.
+  // Delegates to shared `readBoolFlag` / `readJsonFlag` in utils/config.util
+  // so every service uses identical parsing + defensive try/catch semantics.
+  // Kept as private wrappers for ergonomic (this.readBoolFlag) call sites.
+  // Spec-defined defaults flow through `fallback` and preserve first-boot
+  // behaviour when the SystemConfig row is missing.
   private async readBoolFlag(
     tx: Prisma.TransactionClient | PrismaService,
     key: string,
     fallback: boolean,
   ): Promise<boolean> {
-    try {
-      const row = await tx.systemConfig.findFirst({
-        where: { key, deletedAt: null },
-        select: { value: true },
-      });
-      if (!row?.value) return fallback;
-      const v = row.value.trim().toLowerCase();
-      if (v === 'true' || v === '1') return true;
-      if (v === 'false' || v === '0') return false;
-      return fallback;
-    } catch {
-      return fallback;
-    }
+    return readBoolFlag(tx, key, fallback);
   }
 
   /**
-   * D1.2.7.2 — reverse-reasons whitelist. Inlined (vs. importing
-   * SettingsService) for the same reasons as readBoolFlag — keeps the ctor
-   * stable and dodges audit↔settings cycles.
+   * D1.2.7.2 — reverse-reasons whitelist. Uses shared `readJsonFlag` for
+   * uniform JSON-parse + validator semantics. Empty / malformed lists fall
+   * back to the canonical 6-reason default so the UI never shows an empty
+   * dropdown.
    */
   private async getReverseReasons(
     tx: Prisma.TransactionClient | PrismaService,
   ): Promise<{ code: string; label: string }[]> {
-    const defaults = [
+    const defaults: { code: string; label: string }[] = [
       { code: 'data_entry_error', label: 'ป้อนข้อมูลผิด' },
       { code: 'wrong_vendor', label: 'ผู้ขายผิด' },
       { code: 'wrong_amount', label: 'จำนวนเงินผิด' },
@@ -163,30 +153,21 @@ export class ExpenseDocumentsService implements OnModuleInit {
       { code: 'cancel_transaction', label: 'ยกเลิกรายการ' },
       { code: 'other', label: 'อื่นๆ (ระบุรายละเอียด)' },
     ];
-    try {
-      const row = await tx.systemConfig.findFirst({
-        where: { key: 'reverse_reasons', deletedAt: null },
-        select: { value: true },
-      });
-      if (!row?.value) return defaults;
-      const parsed = JSON.parse(row.value);
-      if (
-        Array.isArray(parsed) &&
-        parsed.length > 0 &&
-        parsed.every(
+    return readJsonFlag<{ code: string; label: string }[]>(
+      tx,
+      'reverse_reasons',
+      defaults,
+      (v): v is { code: string; label: string }[] =>
+        Array.isArray(v) &&
+        v.length > 0 &&
+        v.every(
           (r) =>
-            r &&
+            r != null &&
             typeof r === 'object' &&
-            typeof r.code === 'string' &&
-            typeof r.label === 'string',
-        )
-      ) {
-        return parsed;
-      }
-      return defaults;
-    } catch {
-      return defaults;
-    }
+            typeof (r as { code: unknown }).code === 'string' &&
+            typeof (r as { label: unknown }).label === 'string',
+        ),
+    );
   }
 
   // ─── V12/V13/V14 — Multi-line Adjustment validation (shared) ────────

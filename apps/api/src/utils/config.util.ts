@@ -4,6 +4,137 @@
  */
 import { PrismaService } from '../prisma/prisma.service';
 
+/**
+ * Minimal shape of a Prisma-compatible client for SystemConfig reads.
+ *
+ * Accepts both `PrismaService` and `Prisma.TransactionClient` so that
+ * transaction-scoped reads (`tx.systemConfig.findFirst`) and request-scoped
+ * reads (`this.prisma.systemConfig.findFirst`) share the same util.
+ */
+type SystemConfigReader = {
+  systemConfig: {
+    findFirst: (args: {
+      where: { key: string; deletedAt: null };
+      select: { value: true };
+    }) => Promise<{ value: string | null } | null>;
+  };
+};
+
+/**
+ * Read a single `SystemConfig.value` by key. Returns `null` when the row is
+ * missing or has been soft-deleted. Defensive try/catch — any DB error
+ * (connection blip, query timeout) is swallowed and returns `null` so the
+ * caller can fall through to its default. SystemConfig is "best effort"
+ * runtime config; first-boot behaviour must always succeed without a row.
+ */
+async function readRawValue(
+  prisma: SystemConfigReader,
+  key: string,
+): Promise<string | null> {
+  try {
+    const row = await prisma.systemConfig.findFirst({
+      where: { key, deletedAt: null },
+      select: { value: true },
+    });
+    return row?.value ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Read a boolean SystemConfig flag with fallback.
+ *
+ * Recognises `true`/`false` (case-insensitive) and `1`/`0`. Any other value
+ * (including null/missing key) yields the `fallback`. Whitespace is trimmed.
+ *
+ * Example: `readBoolFlag(prisma, 'reverse_block_cascaded', true)`
+ */
+export async function readBoolFlag(
+  prisma: SystemConfigReader,
+  key: string,
+  fallback: boolean,
+): Promise<boolean> {
+  const raw = await readRawValue(prisma, key);
+  if (raw == null) return fallback;
+  const v = raw.trim().toLowerCase();
+  if (v === 'true' || v === '1') return true;
+  if (v === 'false' || v === '0') return false;
+  return fallback;
+}
+
+/**
+ * Read a numeric SystemConfig flag with fallback. Uses `Number(...)` parsing —
+ * accepts integers, decimals, and negative numbers. NaN / Infinity values
+ * fall back to the default. Whitespace tolerated.
+ *
+ * Example: `readNumberFlag(prisma, 'late_fee_per_day', 100)`
+ */
+export async function readNumberFlag(
+  prisma: SystemConfigReader,
+  key: string,
+  fallback: number,
+): Promise<number> {
+  const raw = await readRawValue(prisma, key);
+  if (raw == null) return fallback;
+  const trimmed = raw.trim();
+  // Empty string would parse to `0` via Number('') — treat as unset instead.
+  if (trimmed.length === 0) return fallback;
+  const n = Number(trimmed);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+/**
+ * Read a string SystemConfig flag with fallback. Returns the raw string
+ * value (no parsing). Empty string → fallback (treat "" as unset).
+ *
+ * Example: `readStringFlag(prisma, 'bank_name', 'KBank')`
+ */
+export async function readStringFlag(
+  prisma: SystemConfigReader,
+  key: string,
+  fallback: string,
+): Promise<string> {
+  const raw = await readRawValue(prisma, key);
+  if (raw == null) return fallback;
+  const trimmed = raw.trim();
+  return trimmed.length === 0 ? fallback : trimmed;
+}
+
+/**
+ * Read a JSON-encoded SystemConfig flag with fallback. Caller supplies a
+ * validator predicate that confirms the parsed value matches the expected
+ * shape — if `JSON.parse` throws OR the validator returns false, fallback
+ * is used. Prevents malformed JSON from breaking runtime callers.
+ *
+ * Example:
+ * ```
+ * const reasons = await readJsonFlag(
+ *   prisma,
+ *   'reverse_reasons',
+ *   defaults,
+ *   (v): v is { code: string; label: string }[] =>
+ *     Array.isArray(v) && v.every((r) => typeof r.code === 'string'),
+ * );
+ * ```
+ */
+export async function readJsonFlag<T>(
+  prisma: SystemConfigReader,
+  key: string,
+  fallback: T,
+  validator?: (value: unknown) => value is T,
+): Promise<T> {
+  const raw = await readRawValue(prisma, key);
+  if (raw == null) return fallback;
+  try {
+    const parsed = JSON.parse(raw);
+    if (validator && !validator(parsed)) return fallback;
+    return parsed as T;
+  } catch {
+    return fallback;
+  }
+}
+
 const INSTALLMENT_CONFIG_KEYS = [
   'interest_rate',
   'min_down_payment_pct',

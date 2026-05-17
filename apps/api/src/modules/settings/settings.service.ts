@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { readBoolFlag, readNumberFlag } from '../../utils/config.util';
 
 /**
  * Keys whose values are secrets (API tokens, bank credentials). The audit
@@ -74,20 +75,13 @@ export class SettingsService {
     return row?.value ?? null;
   }
 
+  // Delegate to shared util — keeps parsing semantics identical across services.
   private async readNumber(key: string, fallback: number): Promise<number> {
-    const raw = await this.getKey(key);
-    if (raw == null) return fallback;
-    const n = Number(raw);
-    return Number.isFinite(n) ? n : fallback;
+    return readNumberFlag(this.prisma, key, fallback);
   }
 
   private async readBoolean(key: string, fallback: boolean): Promise<boolean> {
-    const raw = await this.getKey(key);
-    if (raw == null) return fallback;
-    const v = raw.trim().toLowerCase();
-    if (v === 'true' || v === '1') return true;
-    if (v === 'false' || v === '0') return false;
-    return fallback;
+    return readBoolFlag(this.prisma, key, fallback);
   }
 
   /**

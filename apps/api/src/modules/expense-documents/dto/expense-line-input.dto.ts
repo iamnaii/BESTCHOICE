@@ -6,6 +6,7 @@ import {
   Min,
   Max,
   Matches,
+  IsBoolean,
 } from 'class-validator';
 
 export class ExpenseLineInput {
@@ -56,4 +57,14 @@ export class ExpenseLineInput {
   @IsIn(['PND3', 'PND53'])
   @IsOptional()
   whtFormType?: 'PND3' | 'PND53';
+
+  /**
+   * Phase A.5 — Per-line tax-disallowed override (ม.65 ตรี ป.รัษฎากร).
+   * When true, THIS line is excluded from ภ.ง.ด.50/51 deductible totals
+   * regardless of the doc-level flag. Only set when one document mixes
+   * deductible + non-deductible categories. Default false.
+   */
+  @IsBoolean()
+  @IsOptional()
+  taxDisallowed?: boolean;
 }

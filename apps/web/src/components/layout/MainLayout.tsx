@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { useGlobalShortcuts } from '@/hooks/useGlobalShortcuts';
+import { useUiFlags } from '@/hooks/useUiFlags';
 import { LayoutProvider, useLayout } from './LayoutContext';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
@@ -113,6 +114,10 @@ function MainContent() {
 
 /* ── Layout root ──────────────────────────────────── */
 export default function MainLayout() {
+  // Fire useUiFlags here so the D1.4.1.1 first-device sidebar seed runs as
+  // early as possible — before any consumer component asks for the flags.
+  // Hook handles its own caching; no perf concern about extra calls.
+  useUiFlags();
   return (
     <LayoutProvider>
       <MainContent />

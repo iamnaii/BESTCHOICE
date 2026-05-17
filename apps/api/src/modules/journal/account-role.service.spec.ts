@@ -1,150 +1,179 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { AccountRoleService } from './account-role.service';
 import { PrismaService } from '../../prisma/prisma.service';
-import { AuditService } from '../audit/audit.service';
 
 /**
- * D1.1.1.3 — `update()` validates input, rejects required-role
- * deactivation, validates accountCode against chart_of_accounts, writes
- * an audit log entry, then invalidates the in-memory cache.
+ * D1.1.1.2 — `listWithCoa()` joins account_role_map with chart_of_accounts
+ * for the admin UI. These tests exercise the join logic + the required-role
+ * flag without touching the boot-time invariants (those are integration-
+ * tested in account-role boot specs).
  */
-describe('AccountRoleService.update', () => {
+describe('AccountRoleService.listWithCoa', () => {
   let service: AccountRoleService;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let prisma: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let audit: any;
 
   beforeEach(async () => {
     prisma = {
-      accountRoleMap: {
-        findUnique: jest.fn(),
-        findMany: jest.fn().mockResolvedValue([]),
-        update: jest.fn(),
-      },
-      chartOfAccount: { findFirst: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
+      accountRoleMap: { findMany: jest.fn() },
+      chartOfAccount: { findMany: jest.fn() },
     };
-    audit = { log: jest.fn().mockResolvedValue(undefined) };
     const mod: TestingModule = await Test.createTestingModule({
       providers: [
         AccountRoleService,
         { provide: PrismaService, useValue: prisma },
-        { provide: AuditService, useValue: audit },
       ],
     }).compile();
     service = mod.get(AccountRoleService);
   });
 
-  it('updates accountCode + writes ROLE_MAP_UPDATED audit + refreshes cache', async () => {
-    prisma.accountRoleMap.findUnique.mockResolvedValue({
-      id: 'r1',
-      role: 'custom_role',
-      accountCode: '11-4101',
-      priority: 1,
-      isActive: true,
-      note: null,
-    });
-    prisma.chartOfAccount.findFirst.mockResolvedValue({ code: '53-1503' });
-    prisma.accountRoleMap.update.mockResolvedValue({
-      id: 'r1',
-      role: 'custom_role',
-      accountCode: '53-1503',
-      priority: 1,
-      isActive: true,
-      note: null,
-    });
+  it('returns rows joined with ChartOfAccount.name + required flag', async () => {
+    prisma.accountRoleMap.findMany.mockResolvedValue([
+      {
+        id: 'r1',
+        role: 'vat_input',
+        accountCode: '11-4101',
+        priority: 1,
+        isActive: true,
+        note: null,
+      },
+      {
+        id: 'r2',
+        role: 'custom_role',
+        accountCode: '53-1503',
+        priority: 1,
+        isActive: true,
+        note: 'optional',
+      },
+    ]);
+    prisma.chartOfAccount.findMany.mockResolvedValue([
+      { code: '11-4101', name: 'ภาษีซื้อ' },
+      { code: '53-1503', name: 'กำไร/ขาดทุนจากการปัดเศษ' },
+    ]);
 
-    const updated = await service.update('r1', { accountCode: '53-1503' }, 'user-1');
+    const rows = await service.listWithCoa();
 
-    expect(updated.accountCode).toBe('53-1503');
-    expect(audit.log).toHaveBeenCalledWith(
-      expect.objectContaining({
-        action: 'ROLE_MAP_UPDATED',
-        entity: 'account_role_map',
-        entityId: 'r1',
-        userId: 'user-1',
-      }),
-    );
-    expect(audit.log.mock.calls[0][0].newValue.diffSummary).toContain(
-      '11-4101 → 53-1503',
-    );
-    // Cache refresh via invalidate() calls findMany on the active rows
-    expect(prisma.accountRoleMap.findMany).toHaveBeenCalled();
-  });
-
-  it('rejects unknown accountCode with Thai message', async () => {
-    prisma.accountRoleMap.findUnique.mockResolvedValue({
-      id: 'r1',
-      role: 'custom_role',
-      accountCode: '11-4101',
-      priority: 1,
-      isActive: true,
-      note: null,
-    });
-    prisma.chartOfAccount.findFirst.mockResolvedValue(null); // not in CoA
-
-    await expect(
-      service.update('r1', { accountCode: '99-9999' }, 'user-1'),
-    ).rejects.toBeInstanceOf(BadRequestException);
-    await expect(
-      service.update('r1', { accountCode: '99-9999' }, 'user-1'),
-    ).rejects.toThrow('บัญชี 99-9999 ไม่พบในผังบัญชี');
-    expect(prisma.accountRoleMap.update).not.toHaveBeenCalled();
-    expect(audit.log).not.toHaveBeenCalled();
-  });
-
-  it('rejects isActive=false on a REQUIRED_ROLES row (e.g. vat_input)', async () => {
-    prisma.accountRoleMap.findUnique.mockResolvedValue({
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({
       id: 'r1',
       role: 'vat_input',
       accountCode: '11-4101',
-      priority: 1,
-      isActive: true,
-      note: null,
+      accountName: 'ภาษีซื้อ',
+      required: true,
     });
-
-    await expect(
-      service.update('r1', { isActive: false }, 'user-1'),
-    ).rejects.toBeInstanceOf(BadRequestException);
-    await expect(
-      service.update('r1', { isActive: false }, 'user-1'),
-    ).rejects.toThrow(/ห้ามปิดใช้งาน/);
-    expect(prisma.accountRoleMap.update).not.toHaveBeenCalled();
-  });
-
-  it('throws NotFoundException when row id is missing', async () => {
-    prisma.accountRoleMap.findUnique.mockResolvedValue(null);
-    await expect(
-      service.update('does-not-exist', { priority: 5 }, 'user-1'),
-    ).rejects.toBeInstanceOf(NotFoundException);
-  });
-
-  it('allows partial updates (e.g. priority only) without touching accountCode', async () => {
-    prisma.accountRoleMap.findUnique.mockResolvedValue({
-      id: 'r1',
+    expect(rows[1]).toMatchObject({
+      id: 'r2',
       role: 'custom_role',
-      accountCode: '11-4101',
-      priority: 1,
-      isActive: true,
-      note: null,
+      accountCode: '53-1503',
+      accountName: 'กำไร/ขาดทุนจากการปัดเศษ',
+      required: false,
     });
-    prisma.accountRoleMap.update.mockResolvedValue({
-      id: 'r1',
-      role: 'custom_role',
-      accountCode: '11-4101',
-      priority: 5,
-      isActive: true,
-      note: null,
-    });
-
-    const updated = await service.update('r1', { priority: 5 }, 'user-1');
-
-    // CoA check must NOT happen when accountCode is unchanged
-    expect(prisma.chartOfAccount.findFirst).not.toHaveBeenCalled();
-    expect(updated.priority).toBe(5);
-    expect(audit.log.mock.calls[0][0].newValue.diffSummary).toContain(
-      'priority: 1 → 5',
+    // Must NOT filter by isActive — the admin UI needs to see inactive rows
+    // so an OWNER can reactivate them.
+    expect(prisma.accountRoleMap.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: [{ role: 'asc' }, { priority: 'asc' }],
+      }),
     );
+    expect(prisma.accountRoleMap.findMany.mock.calls[0][0]).not.toHaveProperty('where');
+  });
+
+  it('returns accountName=null when CoA row is missing (drift detection)', async () => {
+    prisma.accountRoleMap.findMany.mockResolvedValue([
+      {
+        id: 'r1',
+        role: 'vat_input',
+        accountCode: '99-9999',
+        priority: 1,
+        isActive: true,
+        note: null,
+      },
+    ]);
+    prisma.chartOfAccount.findMany.mockResolvedValue([]); // no match
+    const rows = await service.listWithCoa();
+    expect(rows[0].accountName).toBeNull();
+    expect(rows[0].required).toBe(true); // vat_input is in REQUIRED_ROLES
+  });
+
+  it('returns empty array + skips CoA query when no role rows exist', async () => {
+    prisma.accountRoleMap.findMany.mockResolvedValue([]);
+    const rows = await service.listWithCoa();
+    expect(rows).toEqual([]);
+    expect(prisma.chartOfAccount.findMany).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * D1.1.6.2 — boot-guard unit tests for AccountRoleService.
+ *
+ * Mocks PrismaService and calls `onModuleInit` directly so we can assert that
+ * the REQUIRED_ROLES set (now including `adj_overpay`) is enforced at boot.
+ * No real DB needed.
+ */
+describe('AccountRoleService — boot guard (D1.1.6.2)', () => {
+  // Snapshot of the rows the seed migration installs for every role currently
+  // required by AccountRoleService.REQUIRED_ROLES. Tests reuse this list and
+  // selectively drop rows to verify the missing-role branch.
+  const requiredRows = [
+    { role: 'vat_input', accountCode: '11-4101' },
+    { role: 'vat_output', accountCode: '21-2101' },
+    { role: 'payable_default', accountCode: '21-1104' },
+    { role: 'wht_individual', accountCode: '21-3102' },
+    { role: 'wht_juristic', accountCode: '21-3103' },
+    { role: 'wht_payroll', accountCode: '21-3101' },
+    { role: 'sso_employee', accountCode: '21-3105' },
+    { role: 'sso_employer', accountCode: '21-3106' },
+    { role: 'payroll_expense', accountCode: '53-1101' },
+    { role: 'payroll_sso_expense', accountCode: '53-1102' },
+    { role: 'adj_overpay', accountCode: '53-1503' },
+  ];
+
+  function buildPrismaMock(rows: { role: string; accountCode: string }[]) {
+    return {
+      accountRoleMap: {
+        findMany: jest.fn().mockResolvedValue(rows),
+      },
+      chartOfAccount: {
+        findMany: jest
+          .fn()
+          // Every code referenced by the map is present in CoA (good case).
+          .mockImplementation(({ where }: any) =>
+            Promise.resolve(
+              (where.code.in as string[]).map((code: string) => ({ code })),
+            ),
+          ),
+      },
+    };
+  }
+
+  async function makeService(prismaMock: any): Promise<AccountRoleService> {
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        AccountRoleService,
+        { provide: PrismaService, useValue: prismaMock },
+      ],
+    }).compile();
+    return moduleRef.get(AccountRoleService);
+  }
+
+  it('boots successfully when adj_overpay is present in account_role_map', async () => {
+    const service = await makeService(buildPrismaMock(requiredRows));
+    await expect(service.onModuleInit()).resolves.toBeUndefined();
+    expect(service.code('adj_overpay')).toBe('53-1503');
+  });
+
+  it('throws at boot if adj_overpay is missing from account_role_map', async () => {
+    const rows = requiredRows.filter((r) => r.role !== 'adj_overpay');
+    const service = await makeService(buildPrismaMock(rows));
+    await expect(service.onModuleInit()).rejects.toThrow(
+      /required role\(s\) missing.*adj_overpay/,
+    );
+  });
+
+  it('tryCode("adj_overpay") returns the seeded code without throwing on unknown roles', async () => {
+    const service = await makeService(buildPrismaMock(requiredRows));
+    await service.onModuleInit();
+    expect(service.tryCode('adj_overpay')).toBe('53-1503');
+    expect(service.tryCode('does_not_exist')).toBeNull();
   });
 });

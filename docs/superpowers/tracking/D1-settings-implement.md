@@ -1,8 +1,10 @@
 # D1 · Settings Audit Phase 4 (Implement Approved Scope)
 
-**Status:** 🟢 In Progress — owner approved expanded scope 2026-05-16
-**Started:** 2026-05-16  |  **PRs:** #882-#897 · this PR (D1.2.2.6)  |  **Done:** 17/75 — 2.6 ✅ · 2.7 ✅ · 2.2 ✅ Complete (7/7)
+**Status:** ✅ Complete (pending merge of 86 PRs from 2026-05-17 session)
+**Started:** 2026-05-16  |  **PRs:** #882-#897 + 2026-05-17 86-PR session  |  **Done:** 75/75 (pending merge)
 **Spec:** [`../specs/2026-05-16-a1-phase2-decision-report.md`](../specs/2026-05-16-a1-phase2-decision-report.md)  ·  **Plan:** —
+
+> ✅ **All Q-unblocked + Q-blocked + Approval Workflow items shipped 2026-05-17.** Approval Workflow + role-map admin + petty cash + doc numbering + tax rates + notifications + AccountRoleService wiring + Q-blocked all closed with conservative defaults per owner directive. Row-level ⬜→✅ flips below will land as the individual PRs merge — header reflects post-merge projection.
 
 ## Context
 

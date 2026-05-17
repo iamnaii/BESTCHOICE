@@ -333,6 +333,40 @@ describe('SettingsService audit trail', () => {
       expect(flags.periodCloseDay).toBe(31);
     });
 
+    // D1.2.3.3 — date_format
+    it('dateFormat defaults to BE when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.dateFormat).toBe('BE');
+    });
+
+    it('dateFormat returns CE when SystemConfig set to "CE"', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'date_format') return Promise.resolve({ value: 'CE' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.dateFormat).toBe('CE');
+    });
+
+    it('dateFormat returns BE when SystemConfig set to "BE" explicitly', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'date_format') return Promise.resolve({ value: 'BE' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.dateFormat).toBe('BE');
+    });
+
+    it('dateFormat falls back to BE when SystemConfig has invalid value', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'date_format') return Promise.resolve({ value: 'XX' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.dateFormat).toBe('BE');
+    });
+
     // D1.2.1.1 — Approval Workflow opt-in (default true per Settings_Audit_Core_v2.0.md)
     it('approvalEnabled defaults to true when SystemConfig missing', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);

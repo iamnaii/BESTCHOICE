@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTheme } from 'next-themes';
 import api from '@/lib/api';
+import { setDateFormatPreference } from '@/utils/formatters';
 
 /**
  * D1.* — UI feature flags fetched from /settings/ui-flags.
@@ -34,6 +35,8 @@ export interface UiFlags {
   themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
+  /** D1.2.3.3 — date display preference: BE (พ.ศ., +543) default or CE (ค.ศ.). */
+  dateFormat: 'BE' | 'CE';
   /** D1.2.3.2 — default pagination size (list pages). Integer 10-200; default 50. */
   paginationSize: number;
   /** D1.2.3.1 — default time-range preset for list pages. Default 'this_month'. */
@@ -102,6 +105,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  dateFormat: 'BE',
   approvalEnabled: false,
   paginationSize: 50,
   defaultTimeRange: 'this_month',
@@ -135,6 +139,12 @@ export function useUiFlags(): UiFlags {
       document.documentElement.lang = flags.language;
     }
   }, [flags.language]);
+  // D1.2.3.3 — sync the module-level date format preference so pure
+  // `formatDateShort` / `formatDateMedium` / `formatDateTime` calls inside
+  // non-React code (excel exports, status badges) respect the OWNER pref.
+  useEffect(() => {
+    setDateFormatPreference(flags.dateFormat);
+  }, [flags.dateFormat]);
   // D1.4.1.1 — first-time-device seed for sidebar collapse. Only writes when
   // localStorage has NO `sidebar_collapse` key yet, so we never clobber an
   // existing per-user preference. Runs once after the flags resolve.
@@ -173,4 +183,12 @@ export function useUiFlags(): UiFlags {
     }
   }, [data, flags.darkModeDefault, setTheme]);
   return flags;
+}
+
+/**
+ * D1.2.3.3 — Convenience hook for components that only need the date format
+ * preference (avoids subscribing to the whole flag object).
+ */
+export function useDateFormat(): 'BE' | 'CE' {
+  return useUiFlags().dateFormat;
 }

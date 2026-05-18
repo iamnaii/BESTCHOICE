@@ -299,10 +299,106 @@ VendorSettlement intentionally does NOT support per-line routing — by the mode
 | PPE + depreciation | 12-21XX, 53-16XX | Asset register + monthly depreciation cron |
 | WHT | 21-31XX/32XX, 54-XXXX | Payroll + vendor withholding flows |
 | Tax-disallowed expenses | 54-XXXX | Flag on expense type |
-| SHOP-side accounting | SHOP chart (separate) | Paired SHOP+FINANCE JEs (currently FINANCE-only) |
 | 41-2101/02 HP Revenue | — | CSV omits: FINANCE income = interest, not principal |
 
+> "SHOP-side accounting" graduated to Phase 3 SP5 — see "SHOP Accounting (Phase 3 SP5)" section below.
+
 > "PEAK code mapping" graduated to Phase 3 SP3 — see "PEAK Code Mapping" section below.
+> "SHOP-side accounting" graduated to Phase 3 SP5 — see "SHOP Accounting (Phase 3 SP5)" section below.
+
+---
+
+## SHOP Accounting (Phase 3 SP5)
+
+BESTCHOICE runs as 1 legal entity but 2 business halves: SHOP (retail, not VAT-registered) and FINANCE (installment financing, VAT-registered at 7%). All Phase A.0-A.4 templates were FINANCE-only. P3-SP5 adds the SHOP-side chart + templates so SHOP can produce its own Trial Balance + P&L.
+
+### Chart prefix convention
+
+SHOP accounts live in the same `chart_of_accounts` table as FINANCE accounts but use a leading `S`:
+
+| Group | FINANCE | SHOP |
+|---|---|---|
+| Cash | 11-1101..1103 | S11-1101..1103 |
+| Bank | 11-1201..1203 | S11-1201..1202 |
+| Inventory | 11-3101 (repo) | S11-2001 (new mobile), S11-2002 (used), S11-2003 (accessory), S11-2004 (pending eval) |
+| Inter-co receivable | n/a | S11-3001 (FINANCE owes ยอดจัด), S11-3002 (FINANCE owes commission), S11-3003 (FINANCE ตีคืน) |
+| AP | 21-1101..1104 | S21-1101 (supplier mobile), S21-1102 (supplier accessory), S21-1103 (สาขาค่าใช้จ่ายค้าง) |
+| Customer down-payment | n/a | S21-2001 (down-payment payable), S21-2002 (deposit) |
+| Equity | 31-1101, 32-1101, 33-1101 | S31-1101, S32-1101, S33-1101 |
+| Revenue | 41-1101..1102 | S41-1101 (new mobile), S41-1102 (used), S41-1103 (accessory), S41-1201 (commission from FINANCE), S41-1202 (manufacturer promo) |
+| COGS | n/a (FINANCE = interest income only) | S50-1101..1103, S50-1201 (used-buy-in) |
+| OpEx | 51-XXXX..53-XXXX | S51-1101..1104 (selling), S52-1101..1301 (admin), S53-1101..1103 (other) |
+
+The full list lives in `apps/api/src/modules/journal/__tests__/fixtures/cpa-cases/shop-coa.csv` (~50 accounts). Seeded by `apps/api/prisma/seed-coa-shop.ts`.
+
+The unique constraint on `chart_of_accounts.code` is safe because the `S` prefix guarantees no overlap with FINANCE codes. When Phase 3 SP7 splits the entities into separate legal companies + separate DBs, the SHOP DB can drop the `S` prefix internally — until then it is the partition key.
+
+### CSV loader regex
+
+`apps/api/src/modules/journal/__tests__/csv-fixture-loader.ts` accepts `^S?\d{2}-\d{4}$` so both FINANCE and SHOP CoA CSVs parse with the same loader.
+
+### Seeders
+
+- `seedShopCoa(prisma)` — idempotent upsert (matches `seedFinanceCoa` shape; preserves owner-set `peakCode` values)
+- Called from:
+  - `apps/api/prisma/seed.ts` (dev reset)
+  - `apps/api/prisma/seed-production.ts` (prod fresh seed)
+  - `apps/api/src/cli/seed-coa.cli.ts` (`npm run seed:coa` — non-destructive upsert)
+  - `apps/api/src/cli/wipe-accounting.cli.ts` (`npm run wipe:accounting` — destructive Phase A.4 helper)
+
+### PairedJournalService
+
+`apps/api/src/modules/journal/paired-journal.service.ts` posts BOTH SHOP and FINANCE JEs atomically in one `$transaction`, stamping the SAME `metadata.batchId` on both so audit reports can pair them. Each half is balance-checked up front; an unbalanced half throws BEFORE either side is posted.
+
+```ts
+await pairedJournal.postPaired({
+  shop:    { companyCode: 'SHOP',    description: '...', lines: [...] },
+  finance: { companyCode: 'FINANCE', description: '...', lines: [...] },
+  batchRef: contractId,
+});
+```
+
+Currently only inventory transfer uses paired wrapping; the existing FINANCE templates (e.g. `ContractActivation1ATemplate`) already book the FINANCE side of contract activation so most SHOP templates ship as SHOP-only single-side JEs.
+
+### SHOP JE templates
+
+All live at `apps/api/src/modules/journal/cpa-templates/`. Each is idempotent via `metadata.flow + metadata.idempotencyKey`.
+
+| Template | Trigger | Companies | Notes |
+|---|---|---|---|
+| `ShopCashSaleTemplate` | Sale w/ method=CASH | SHOP only | Dr cash / Cr revenue + Dr COGS / Cr inventory. No FINANCE involvement. |
+| `ShopDownPaymentTemplate` | Customer pays down at contract creation | SHOP only | Dr cash / Cr S21-2001 (down payable). Cleared later by ShopFinanceReceipt. |
+| `ShopFinanceReceiptTemplate` | FINANCE wires `financedAmount + commission` to SHOP | SHOP only | Clears S21-2001 (down), books revenue+commission income, recognises receivable clearance from FINANCE. FINANCE side handled by existing VendorClearanceTemplate. |
+| `ShopTradeInTemplate` | Trade-in ACCEPTED | SHOP only | Dr S11-2002 (used inventory) / Cr cash. |
+| `ShopExpenseTemplate` | Branch expense recorded (rent/salary/utilities/etc) | SHOP only | CASH mode (Dr expense / Cr bank) or ACCRUAL mode (Dr expense / Cr S21-1103 payable). |
+| `ShopInventoryTransferTemplate` | Contract activated (ownership SHOP→FINANCE) | SHOP only* | Dr S11-3001 (FINANCE receivable) / Cr S11-200X (inventory). FINANCE side already booked by ContractActivation1ATemplate's Cr 21-1101 line. |
+
+*`ShopInventoryTransferTemplate` is SHOP-only by design — Phase 3 SP7 will rewrite it through `PairedJournalService` once SHOP and FINANCE truly split.
+
+### Reports
+
+Two endpoints in `accounting.controller.ts`:
+
+| Method | Path | Roles | Description |
+|---|---|---|---|
+| GET | `/expenses/ledger/shop/trial-balance` | OWNER, BM, FM, ACC | SHOP-scoped Trial Balance (filters `code.startsWith('S')`) |
+| GET | `/expenses/ledger/shop/profit-loss` | OWNER, BM, FM, ACC | SHOP-scoped P&L (Revenue=S41+S42, Expenses=S50+S51+S52+S53) |
+
+The existing `/expenses/ledger/trial-balance` and `/expenses/ledger/profit-loss` now accept a `scope=FINANCE|SHOP|ALL` query (defaults to `FINANCE` for backward compat). The shop-specific paths are syntactic sugar for `?scope=SHOP`.
+
+`AccountingService.codePrefix(code)` extracts the section prefix correctly for both FINANCE (`11-1101` → `11`) and SHOP (`S11-1101` → `S11`). `SECTION_MAP` includes both sets of prefixes with SHOP entries suffixed " (SHOP)" so a combined view (scope=ALL) makes the partition obvious.
+
+### Frontend
+
+`/shop/accounting` — `apps/web/src/pages/ShopAccountingPage.tsx`. Two tabs (Trial Balance + P&L) with date pickers. Wired into `OWNER`, `BRANCH_MANAGER`, `FINANCE_MANAGER`, `ACCOUNTANT` menu configs under the SHOP zone.
+
+### Out of scope for P3-SP5 (deferred to P3-SP7)
+
+- Multi-entity legal split (`from_company_id`/`to_company_id` on JEs become FK to separate companies)
+- SHOP-side VAT reports (SHOP not VAT-registered)
+- SHOP-side payroll/SSO (handled at FINANCE level for now)
+- Historical migration of past SHOP transactions (forward-only)
+- SHOP-side balance sheet (Trial Balance + P&L only in SP5)
 
 ---
 

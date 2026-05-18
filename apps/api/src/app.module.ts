@@ -60,6 +60,7 @@ import { FinanceReceivableModule } from './modules/finance-receivable/finance-re
 import { AccountingModule } from './modules/accounting/accounting.module';
 import { OtherIncomeModule } from './modules/other-income/other-income.module';
 import { QuotesModule } from './modules/quotes/quotes.module';
+import { BookingsModule } from './modules/bookings/bookings.module';
 import { DraftsModule } from './modules/drafts/drafts.module';
 import { ExpenseDocumentsModule } from './modules/expense-documents/expense-documents.module';
 import { PaymentMethodConfigModule } from './modules/payment-method-config/payment-method-config.module';
@@ -222,6 +223,8 @@ import { AppCacheModule } from './cache/cache.module';
     OtherIncomeModule,
     // SP5 — ใบเสนอราคา (SHOP-side pre-sale)
     QuotesModule,
+    // P2-SP4 — การจอง / มัดจำ (SHOP-side reservation + deposit)
+    BookingsModule,
     // SP5 — Drafts hub (federated DRAFT-status docs across modules)
     DraftsModule,
     // Expense Documents (เอกสารค่าใช้จ่าย — accrual workflow)

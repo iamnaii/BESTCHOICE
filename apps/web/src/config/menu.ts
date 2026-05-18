@@ -147,6 +147,7 @@ const SALES_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
         { label: 'ใบเสนอราคา', path: '/quotes', icon: ReceiptText },
+        { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
         { label: 'ลูกค้า', path: '/customers', icon: Users },
         { label: 'เช็คเครดิตลูกค้าใหม่', path: '/customer-intake', icon: UserSearch },
         { label: 'รับซื้อมือสอง', path: '/trade-in', icon: Smartphone },
@@ -212,6 +213,7 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
         { label: 'ใบเสนอราคา', path: '/quotes', icon: ReceiptText },
+        { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
         { label: 'ลูกค้า', path: '/customers', icon: Users },
         { label: 'เช็คเครดิตลูกค้าใหม่', path: '/customer-intake', icon: UserSearch },
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
@@ -450,7 +452,11 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
       icon: FileText,
       zone: 'fin', // ACC sees doc config in FIN zone (no gear access)
       items: [
-        { label: 'เลขที่/รูปแบบเอกสาร', path: '/settings/document-config', icon: FileText, placeholder: { trackingSP: 'SP4', eta: 'ภายในไตรมาส 3/2026' } },
+        // P2-SP2 — ACC currently sees the link but the page itself enforces
+        // OWNER-only via ProtectedRoute, so non-OWNER clicks land on a
+        // "ไม่มีสิทธิ์เข้าถึง" view. Kept here for menu parity per the
+        // existing menu shape; security is enforced page-side.
+        { label: 'เลขที่/รูปแบบเอกสาร', path: '/settings/document-config', icon: FileText },
       ],
     },
   ],
@@ -502,6 +508,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'ลูกค้า', path: '/customers', icon: Users },
         { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
         { label: 'ใบเสนอราคา', path: '/quotes', icon: ReceiptText },
+        { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
         { label: 'เอกสารร่าง', path: '/drafts', icon: Inbox },
         { label: 'รับประกัน/ส่งซ่อม', path: '/insurance', icon: ShieldCheck },
@@ -641,11 +648,13 @@ const OWNER_CONFIG: RoleMenuConfig = {
       icon: FileText,
       zone: 'settings',
       items: [
+        // P2-SP2 — live page (D1.1.2.x SystemConfig backend wired through
+        // DocumentConfigPage). Previously a placeholder; promoted to a real
+        // link once the UI shipped.
         {
           label: 'เลขที่/รูปแบบเอกสาร',
           path: '/settings/document-config',
           icon: FileText,
-          placeholder: { trackingSP: 'SP4', eta: 'ภายในไตรมาส 3/2026' },
         },
       ],
     },

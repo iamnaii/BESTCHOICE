@@ -51,10 +51,13 @@ const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
 const StickersSettingsPage = lazy(() => import('@/pages/SettingsPage/StickersPage'));
 const CollectionsSettingsPage = lazy(() => import('@/pages/SettingsPage/CollectionsPage'));
 const GeneralSettingsPage = lazy(() => import('@/pages/SettingsPage/GeneralSettingsPage'));
+const DocumentConfigPage = lazy(() => import('@/pages/DocumentConfigPage'));
 const PaymentMethodSettingsPage = lazy(() => import('@/pages/PaymentMethodSettingsPage'));
 const DefectExchangePage = lazy(() => import('@/pages/DefectExchangePage'));
 // SP5 — SHOP-side additions
 const QuotesPage = lazy(() => import('@/pages/QuotesPage'));
+// P2-SP4 — การจอง / มัดจำ (SHOP-side reservation)
+const BookingsPage = lazy(() => import('@/pages/BookingsPage'));
 const DraftsPage = lazy(() => import('@/pages/DraftsPage'));
 const InsurancePage = lazy(() => import('@/pages/InsurancePage'));
 const AuditLogsPage = lazy(() => import('@/pages/AuditLogsPage'));
@@ -442,6 +445,7 @@ function App() {
           <Route path="/settings/stickers" element={<ProtectedRoute roles={['OWNER']}><StickersSettingsPage /></ProtectedRoute>} />
           <Route path="/settings/collections" element={<ProtectedRoute roles={['OWNER']}><CollectionsSettingsPage /></ProtectedRoute>} />
           <Route path="/settings/general" element={<ProtectedRoute roles={['OWNER']}><GeneralSettingsPage /></ProtectedRoute>} />
+          <Route path="/settings/document-config" element={<ProtectedRoute roles={['OWNER']}><DocumentConfigPage /></ProtectedRoute>} />
           <Route path="/chatbot-finance" element={<ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER']}><ChatbotFinanceAnalyticsPage /></ProtectedRoute>} />
           <Route path="/chatbot-finance/sessions" element={<ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}><ChatbotFinanceSessionsPage /></ProtectedRoute>} />
           <Route path="/chatbot-finance/knowledge" element={<ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER']}><ChatbotFinanceKnowledgePage /></ProtectedRoute>} />
@@ -604,6 +608,17 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES']}>
                 <QuotesPage />
+              </ProtectedRoute>
+            }
+          />
+          {/* P2-SP4 — การจอง / มัดจำ */}
+          <Route
+            path="/bookings"
+            element={
+              <ProtectedRoute
+                roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES']}
+              >
+                <BookingsPage />
               </ProtectedRoute>
             }
           />

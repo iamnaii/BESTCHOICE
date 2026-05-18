@@ -28,6 +28,9 @@ describe('LoginAuditService.record', () => {
           role: 'SALES',
         }),
       },
+      // D1.4.3.6 — login_log_enabled toggle. Default: SystemConfig row
+      // absent → toggle reads as enabled (existing behaviour preserved).
+      systemConfig: { findFirst: jest.fn().mockResolvedValue(null) },
     };
     lineOaService = {
       pushMessage: jest.fn().mockResolvedValue(undefined),
@@ -169,5 +172,85 @@ describe('LoginAuditService.record', () => {
     // LINE alert should not be sent
     await new Promise((r) => setImmediate(r));
     expect(lineOaService.pushMessage).not.toHaveBeenCalled();
+  });
+
+  // D1.4.3.6 — login_log_enabled SystemConfig toggle
+  describe('D1.4.3.6 login_log_enabled toggle', () => {
+    it('skips LoginAuditLog INSERT when login_log_enabled=false', async () => {
+      prisma.systemConfig.findFirst.mockImplementation((args: { where: { key: string } }) =>
+        Promise.resolve(
+          args.where.key === 'login_log_enabled' ? { value: 'false' } : null,
+        ),
+      );
+      // Use existing-device path so KnownDevice upsert doesn't trigger LINE alert
+      prisma.knownDevice.findUnique.mockResolvedValue({ id: 'kd-existing' });
+
+      await service.record({
+        userId: 'u-1',
+        emailTried: 'test@example.com',
+        success: true,
+        ipAddress: '1.2.3.4',
+      });
+
+      expect(prisma.loginAuditLog.create).not.toHaveBeenCalled();
+    });
+
+    it('still tracks KnownDevice + sends LINE alert when login_log disabled (security-independent)', async () => {
+      const origEnv = process.env.SHOP_STAFF_LINE_ID;
+      process.env.SHOP_STAFF_LINE_ID = 'U-staff';
+      prisma.systemConfig.findFirst.mockImplementation((args: { where: { key: string } }) =>
+        Promise.resolve(
+          args.where.key === 'login_log_enabled' ? { value: 'false' } : null,
+        ),
+      );
+      prisma.knownDevice.findUnique.mockResolvedValue(null); // new device
+
+      await service.record({
+        userId: 'u-2',
+        emailTried: 'new@example.com',
+        success: true,
+        ipAddress: '2.2.2.2',
+      });
+
+      // Audit row skipped, but security alerting still ran
+      expect(prisma.loginAuditLog.create).not.toHaveBeenCalled();
+      expect(prisma.knownDevice.upsert).toHaveBeenCalledTimes(1);
+      await new Promise((r) => setImmediate(r));
+      expect(lineOaService.pushMessage).toHaveBeenCalledTimes(1);
+
+      process.env.SHOP_STAFF_LINE_ID = origEnv;
+    });
+
+    it('writes LoginAuditLog when login_log_enabled=true (explicit)', async () => {
+      prisma.systemConfig.findFirst.mockImplementation((args: { where: { key: string } }) =>
+        Promise.resolve(
+          args.where.key === 'login_log_enabled' ? { value: 'true' } : null,
+        ),
+      );
+      prisma.knownDevice.findUnique.mockResolvedValue({ id: 'kd-existing' });
+
+      await service.record({
+        userId: 'u-3',
+        emailTried: 'test@example.com',
+        success: true,
+        ipAddress: '3.3.3.3',
+      });
+
+      expect(prisma.loginAuditLog.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('defaults to enabled when SystemConfig row absent (existing behaviour preserved)', async () => {
+      // systemConfig.findFirst already returns null in beforeEach
+      prisma.knownDevice.findUnique.mockResolvedValue({ id: 'kd-existing' });
+
+      await service.record({
+        userId: 'u-4',
+        emailTried: 'test@example.com',
+        success: true,
+        ipAddress: '4.4.4.4',
+      });
+
+      expect(prisma.loginAuditLog.create).toHaveBeenCalledTimes(1);
+    });
   });
 });

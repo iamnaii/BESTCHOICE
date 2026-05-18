@@ -21,6 +21,12 @@ enum UserRole {
   ACCOUNTANT
   FINANCE_MANAGER
   OWNER
+  /// D1.3.2.1 — read-only auditor role. Schema enum exists so OWNER can
+  /// create Viewer accounts, but NO @Roles() decorator includes VIEWER by
+  /// default. Activation gate: SystemConfig key `viewer_role_enabled`
+  /// (default 'false'). Future expansion: GET endpoints on expense,
+  /// other-income, asset modules should add VIEWER when flag is on.
+  VIEWER
 }
 
 enum SupplierType {

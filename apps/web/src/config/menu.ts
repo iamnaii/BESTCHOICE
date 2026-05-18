@@ -412,6 +412,7 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
         { label: 'บัญชีเงินสด/ธนาคาร', path: '/finance/bank-accounts', icon: Landmark },
         { label: 'ตรวจสอบบัญชี', path: '/financial-audit', icon: ClipboardList },
         { label: 'PEAK Sync', path: '/settings/peak-sync', icon: Plug },
+        { label: 'ส่งออก PEAK CSV', path: '/finance/peak-export', icon: Plug },
       ],
     },
     {

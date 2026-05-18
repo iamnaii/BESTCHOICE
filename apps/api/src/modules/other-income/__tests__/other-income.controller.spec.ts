@@ -24,6 +24,22 @@ import { OtherIncomeService } from '../other-income.service';
 import { TemplateService } from '../services/template.service';
 import { OtherIncomeReceiptPdfService } from '../services/receipt-pdf.service';
 import { ValidationService } from '../services/validation.service';
+import { PrismaService } from '../../../prisma/prisma.service';
+
+// Minimal PrismaService stub for ExportEnabledGuard (D1.3.3.1).
+// The guard reads `systemConfig.findFirst({ key: 'export_enabled' })`. Returning
+// `null` here means the flag is absent → guard allows the request (default true).
+// Also stubs `auditLog.create` because the guard would write an EXPORT_BLOCKED
+// row if it ever decided to deny; with the flag absent that branch never runs,
+// but providing the method keeps the mock honest if a test later overrides it.
+const makePrismaMock = () => ({
+  systemConfig: {
+    findFirst: jest.fn().mockResolvedValue(null),
+  },
+  auditLog: {
+    create: jest.fn().mockResolvedValue({}),
+  },
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -135,6 +151,9 @@ describe('OtherIncomeController — unit (mocked service)', () => {
           provide: ValidationService,
           useValue: { checkLateFeeCollision: jest.fn().mockResolvedValue([]) },
         },
+        // D1.3.3.1 — ExportEnabledGuard depends on PrismaService. Provide a
+        // minimal stub so Nest can resolve the guard during TestingModule.compile().
+        { provide: PrismaService, useValue: makePrismaMock() },
       ],
     })
       .overrideGuard(JwtAuthGuard)
@@ -249,6 +268,9 @@ describe('OtherIncomeController — ValidationPipe (TestingModule + http)', () =
           provide: ValidationService,
           useValue: { checkLateFeeCollision: jest.fn().mockResolvedValue([]) },
         },
+        // D1.3.3.1 — ExportEnabledGuard depends on PrismaService. Provide a
+        // minimal stub so Nest can resolve the guard during TestingModule.compile().
+        { provide: PrismaService, useValue: makePrismaMock() },
       ],
     })
       .overrideGuard(JwtAuthGuard)

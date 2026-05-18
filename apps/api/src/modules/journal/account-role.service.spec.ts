@@ -1,6 +1,13 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { AccountRoleService } from './account-role.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
+
+// AccountRoleService writes ROLE_MAP_CREATED / ROLE_MAP_UPDATED /
+// ROLE_MAP_DEACTIVATED audit entries via AuditService.log(). The tests
+// below don't exercise those write paths, but Nest's DI graph still needs
+// the dep satisfied at TestingModule.compile() time.
+const auditMock = { log: jest.fn().mockResolvedValue(undefined) };
 
 /**
  * D1.1.1.2 — `listWithCoa()` joins account_role_map with chart_of_accounts
@@ -22,6 +29,7 @@ describe('AccountRoleService.listWithCoa', () => {
       providers: [
         AccountRoleService,
         { provide: PrismaService, useValue: prisma },
+        { provide: AuditService, useValue: auditMock },
       ],
     }).compile();
     service = mod.get(AccountRoleService);
@@ -152,6 +160,7 @@ describe('AccountRoleService — boot guard (D1.1.6.x)', () => {
       providers: [
         AccountRoleService,
         { provide: PrismaService, useValue: prismaMock },
+        { provide: AuditService, useValue: auditMock },
       ],
     }).compile();
     return moduleRef.get(AccountRoleService);

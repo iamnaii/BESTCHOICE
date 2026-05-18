@@ -42,10 +42,9 @@ describe('ETaxInvoicePage', () => {
     vi.clearAllMocks();
   });
 
-  it('renders header showing Phase 1 scope (Receipt + CSV)', () => {
+  it('renders header (P2-SP5 — e-Tax Invoice w/ XML actions)', () => {
     renderPage();
-    // Critical #6+#7: title makes scope reduction explicit
-    expect(screen.getByText(/e-Tax Invoice \(Phase 1: Receipt \+ CSV\)/)).toBeInTheDocument();
+    expect(screen.getByText(/e-Tax Invoice \(สรรพากร\)/)).toBeInTheDocument();
   });
 
   it('shows Phase 1 limitations banner (internal receipt, NOT legal tax invoice)', () => {

@@ -1,7 +1,19 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { DocumentType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { readBoolFlag, readNumberFlag } from '../../utils/config.util';
+import { SSO_RATE } from '../sso-config/sso-config.service';
+import { resolveSettingsAccessRoles } from './settings-access.guard';
+
+/**
+ * D1.1.3.3 — keys that are exposed read-only through SystemConfig.
+ * Writes via update/bulkUpdate are rejected with BadRequestException.
+ * `sso_rate_locked` is informational ("5%" string) because Thai SSO Act
+ * §46 + the ministerial regulation issued under it fix the contribution
+ * rate at 5%; UI displays it so OWNER understands the value is non-editable.
+ */
+const READ_ONLY_KEYS = new Set<string>(['sso_rate_locked']);
 
 /**
  * D1.1.5.5 — Whitelist of UserRoles that may hold the Petty Cash custodian
@@ -12,6 +24,24 @@ import { readBoolFlag, readNumberFlag } from '../../utils/config.util';
  */
 const PETTY_CASH_CUSTODIAN_ROLES = ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'] as const;
 type PettyCashCustodianRole = (typeof PETTY_CASH_CUSTODIAN_ROLES)[number];
+
+/**
+ * D1.1.2.1 — default mapping from DocumentType → 2-4 letter prefix. Mirrors the
+ * pre-Phase-2 hardcoded PREFIX_MAP in `DocNumberService` and serves as the
+ * fallback when SystemConfig key `doc_prefix_per_type` is missing or malformed.
+ * Keep keys in sync with the `DocumentType` enum in `schema.prisma`.
+ */
+export const DEFAULT_DOC_PREFIX_MAP: Record<DocumentType, string> = {
+  EXPENSE: 'EX',
+  CREDIT_NOTE: 'CN',
+  PAYROLL: 'PR',
+  VENDOR_SETTLEMENT: 'SE',
+  PETTY_CASH_REIMBURSEMENT: 'PC',
+};
+
+/** Validation regex — 2 to 4 uppercase Latin letters. Mirrors A-Z constraint
+ *  used by downstream JE templates + spreadsheet parsers. */
+export const DOC_PREFIX_REGEX = /^[A-Z]{2,4}$/;
 
 /**
  * Keys whose values are secrets (API tokens, bank credentials). The audit
@@ -51,11 +81,78 @@ export class SettingsService {
   }
 
   /**
+   * D1.1.2.1 — value-level validation for known keys that need stricter
+   * shape than the generic snake_case key check on the DTO. Throws
+   * BadRequestException with a Thai message on the first violation.
+   *
+   * Currently checks:
+   *  - `doc_prefix_per_type` — must parse as JSON object; every present
+   *    value must match `DOC_PREFIX_REGEX` (2-4 uppercase Latin letters).
+   *    Unknown keys are silently ignored (forward-compat with future
+   *    DocumentType additions).
+   */
+  private validateKeyValue(key: string, value: string): void {
+    if (key === 'doc_prefix_per_type') {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(value);
+      } catch {
+        throw new BadRequestException(
+          'doc_prefix_per_type ต้องเป็น JSON object ที่ถูกต้อง',
+        );
+      }
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new BadRequestException(
+          'doc_prefix_per_type ต้องเป็น JSON object (ไม่ใช่ array หรือ primitive)',
+        );
+      }
+      for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+        if (typeof v !== 'string' || !DOC_PREFIX_REGEX.test(v)) {
+          throw new BadRequestException(
+            `doc_prefix_per_type[${k}] ต้องเป็นตัวอักษรพิมพ์ใหญ่ A-Z จำนวน 2-4 ตัว`,
+          );
+        }
+      }
+    }
+  }
+
+  /**
    * Single key update with audit trail. Callers must pass userId — passing
    * null/undefined skips the audit log and is reserved for system-internal
    * writes (e.g. automated migrations).
    */
-  async update(key: string, value: string, userId?: string) {
+  /**
+   * D1.3.2.2 (S3 defense-in-depth) — Service-side mirror of
+   * `SettingsAccessGuard`. Mutating callsites (`update`, `bulkUpdate`)
+   * invoke this with the request user's role. Throws ForbiddenException
+   * if the role is not in the currently-allowed bundle.
+   *
+   * The guard is the primary gate; this check survives a future refactor
+   * that accidentally widens the controller decorator or replaces the
+   * guard pipeline. `userRole === undefined` is treated as "skip check"
+   * for two legitimate cases:
+   *   - system-internal callers (cron jobs, migrations) that don't carry
+   *     a user identity (matches existing `userId === undefined` skip),
+   *   - unit tests that don't construct a full guard pipeline.
+   */
+  async assertCanWriteSettings(userRole: string | undefined): Promise<void> {
+    if (userRole === undefined) return; // system-internal / test bypass
+    const allowed = await resolveSettingsAccessRoles(this.prisma);
+    if (!allowed.has(userRole)) {
+      throw new ForbiddenException(
+        `ไม่มีสิทธิ์แก้ไขการตั้งค่า (role ปัจจุบัน: ${userRole})`,
+      );
+    }
+  }
+
+  async update(key: string, value: string, userId?: string, userRole?: string) {
+    await this.assertCanWriteSettings(userRole);
+    if (READ_ONLY_KEYS.has(key)) {
+      throw new BadRequestException(
+        `key "${key}" เป็น read-only ตามกฎหมาย/ระเบียบ — ไม่สามารถแก้ไขผ่านระบบได้`,
+      );
+    }
+    this.validateKeyValue(key, value);
     const before = await this.prisma.systemConfig.findUnique({ where: { key } });
     const updated = await this.prisma.systemConfig.upsert({
       where: { key },
@@ -95,6 +192,17 @@ export class SettingsService {
   }
 
   /**
+   * D1.3.3.1 — public accessor for the export-enabled flag, used by export
+   * endpoints (PDF receipts, trade-in vouchers, OI receipt, reporting PDF)
+   * to short-circuit with 403 before any heavy generation happens. Defaults
+   * to true so existing exports keep working when the SystemConfig row is
+   * absent (first-boot / fresh-DB).
+   */
+  async isExportEnabled(): Promise<boolean> {
+    return this.readBoolean('export_enabled', true);
+  }
+
+  /**
    * D1.* — UI feature flags accessible to ANY authenticated user (not OWNER-only).
    * Keep this method's response shape small and additive — every D1 item that
    * needs a runtime UI toggle should land here so the web app can fetch one
@@ -103,6 +211,70 @@ export class SettingsService {
    * Defaults match the spec-defined "on" behaviour so first-boot behaviour
    * is identical whether the SystemConfig key has been seeded or not.
    */
+  /**
+   * D1.1.3.2 — DB-driven WHT-rate dropdown. JSON-encoded array of
+   * `{rate, label}` objects stored in SystemConfig key `wht_rates`.
+   * Default = the 5 canonical rates (1/3/5/10/15 %).
+   *
+   * D1.1.3.5 — each entry MAY also carry an optional `effectiveDate`
+   * (ISO-8601 string). `null`/missing means "always active". Frontend
+   * filters out future-dated entries client-side when rendering the
+   * dropdown. The server keeps stored history intact.
+   *
+   * Validation rules per entry:
+   *   - `rate` must be a finite number in [0, 30]
+   *   - `label` must be a non-empty string
+   *   - `effectiveDate`, if present, must be a string that parses to a
+   *     valid Date (Date.parse not NaN)
+   * If ANY entry fails validation, fall back to defaults wholesale —
+   * partial/malformed data leaks confusing UI options.
+   */
+  async getWhtRates(): Promise<
+    { rate: number; label: string; effectiveDate?: string | null }[]
+  > {
+    const raw = await this.getKey('wht_rates');
+    const defaults: { rate: number; label: string; effectiveDate?: string | null }[] = [
+      { rate: 1, label: '1% — ดอกเบี้ย' },
+      { rate: 3, label: '3% — ค่าบริการ' },
+      { rate: 5, label: '5% — ค่าเช่า' },
+      { rate: 10, label: '10% — ค่าวิชาชีพ' },
+      { rate: 15, label: '15% — ต่างประเทศ' },
+    ];
+    if (!raw) return defaults;
+    try {
+      const parsed = JSON.parse(raw);
+      if (
+        !Array.isArray(parsed) ||
+        parsed.length === 0 ||
+        !parsed.every(
+          (r) =>
+            r &&
+            typeof r === 'object' &&
+            typeof r.rate === 'number' &&
+            Number.isFinite(r.rate) &&
+            r.rate >= 0 &&
+            r.rate <= 30 &&
+            typeof r.label === 'string' &&
+            r.label.trim().length > 0 &&
+            // effectiveDate is optional — null/undefined or a parsable string.
+            (r.effectiveDate == null ||
+              (typeof r.effectiveDate === 'string' &&
+                !Number.isNaN(Date.parse(r.effectiveDate)))),
+        )
+      ) {
+        return defaults;
+      }
+      // Normalize: drop unknown keys, coerce effectiveDate to string|null.
+      return parsed.map((r) => ({
+        rate: r.rate,
+        label: r.label,
+        ...(r.effectiveDate ? { effectiveDate: r.effectiveDate as string } : {}),
+      }));
+    } catch {
+      return defaults;
+    }
+  }
+
   /**
    * D1.2.7.2 — DB-driven reverse-reason dropdown. JSON-encoded array of
    * `{code, label}` objects stored in SystemConfig key `reverse_reasons`.
@@ -135,6 +307,41 @@ export class SettingsService {
       return defaults;
     } catch {
       return defaults;
+    }
+  }
+
+  /**
+   * D1.1.2.1 — DocumentType → prefix mapping. Reads SystemConfig key
+   * `doc_prefix_per_type` (JSON object). Falls back to `DEFAULT_DOC_PREFIX_MAP`
+   * when the key is missing, malformed, or any value fails the
+   * `DOC_PREFIX_REGEX` (2-4 uppercase Latin letters).
+   *
+   * Partial overrides are supported: a stored `{ "EXPENSE": "EXP" }` overrides
+   * the EXPENSE prefix and falls back to defaults for every other type.
+   *
+   * **Safety**: invalid stored values do NOT throw at read time — they're
+   * silently replaced with the default so doc creation never blocks on a bad
+   * SystemConfig row. The validation guard in `bulkUpdate` rejects malformed
+   * values at write time.
+   */
+  async getDocPrefixMap(): Promise<Record<DocumentType, string>> {
+    const raw = await this.getKey('doc_prefix_per_type');
+    if (!raw) return { ...DEFAULT_DOC_PREFIX_MAP };
+    try {
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return { ...DEFAULT_DOC_PREFIX_MAP };
+      }
+      const result: Record<DocumentType, string> = { ...DEFAULT_DOC_PREFIX_MAP };
+      for (const key of Object.keys(DEFAULT_DOC_PREFIX_MAP) as DocumentType[]) {
+        const candidate = (parsed as Record<string, unknown>)[key];
+        if (typeof candidate === 'string' && DOC_PREFIX_REGEX.test(candidate)) {
+          result[key] = candidate;
+        }
+      }
+      return result;
+    } catch {
+      return { ...DEFAULT_DOC_PREFIX_MAP };
     }
   }
 
@@ -179,6 +386,175 @@ export class SettingsService {
      * accessibility readers via the lang attr.
      */
     language: 'th' | 'en';
+    /**
+     * D1.1.2.1 — DocumentType → 2-4 letter prefix mapping. Used by the UI to
+     * render document number badges (e.g. show "EX" next to an EXPENSE doc).
+     * Always returns the full default mapping when no override is configured.
+     */
+    docPrefixMap: Record<DocumentType, string>;
+    /**
+     * D1.3.3.2 — bank reconciliation mode. Whitelisted `'manual'` / `'auto'`,
+     * default `'manual'`. Currently INFORMATIONAL only: the auto-match cron
+     * + UI to drive it haven't been built yet. When `'auto'`, a future cron
+     * will read bank statements (PaySolutions webhook + KBank/SCB CSV) and
+     * auto-link to Payment.depositAccountCode entries with matching amount
+     * + 1d-tolerance datetime. Current code path = the existing manual link
+     * via PaymentForm. OWNER setting this to `'auto'` today shows an
+     * "auto-match mode" indicator on any bank-reconciliation UI but does
+     * not change behaviour.
+     */
+    bankReconciliationMode: 'manual' | 'auto';
+    /**
+     * D1.1.3.3 — informational "SSO rate is locked at 5%" string for the
+     * Settings UI to display. Computed from `SSO_RATE` constant, NOT from
+     * SystemConfig — that key is read-only (writes rejected by service).
+     */
+    ssoRateLocked: string;
+    /**
+     * D1.3.6.2 — default-tick preference for the SettlementLinesSection bill
+     * list. Whitelist of three modes:
+     *   - `'all'`            — every fetched bill pre-ticked
+     *   - `'none'`           — nothing pre-ticked (manual selection only)
+     *   - `'overdue_only'`   — only bills past their `documentDate`-derived
+     *                          due date pre-ticked (default)
+     * Anything outside the whitelist (mis-edit, legacy value, malformed
+     * string) falls back to `'overdue_only'`.
+     */
+    settlementDefaultTick: 'all' | 'none' | 'overdue_only';
+    /**
+     * D1.1.3.2 — configurable WHT-rate dropdown. Always at least the 5
+     * defaults (1/3/5/10/15 %). Each entry may carry an optional
+     * `effectiveDate` (D1.1.3.5) — frontend filters out future-dated
+     * entries when rendering the picker.
+     */
+    whtRates: { rate: number; label: string; effectiveDate?: string | null }[];
+    /**
+     * D1.3.3.1 — global toggle for data-export endpoints (Excel/PDF/CSV).
+     * Default true. When OWNER sets `export_enabled = 'false'`, the server
+     * blocks PDF export endpoints with HTTP 403 and the web hides the
+     * "ส่งออก Excel" / "ดาวน์โหลด PDF" buttons. Useful for compliance
+     * lockdown periods (e.g. statutory audit window) where uncontrolled
+     * data extraction needs to be paused.
+     */
+    exportEnabled: boolean;
+    /**
+     * D1.4.3.2 — gate the weekly audit-log archive sweep
+     * (`AuditRetentionCron.archiveOldEntries`). Default `true`. When `false`,
+     * the cron skips without touching rows. Hard-delete remains impossible
+     * regardless (BEFORE DELETE trigger on audit_logs), so flipping this off
+     * just keeps rows in the hot set rather than purging the legal trail.
+     */
+    auditLogArchiveEnabled: boolean;
+    /**
+     * D1.4.3.3 — legal document retention period in years. Default 5 per
+     * พ.ร.บ.การบัญชี พ.ศ. 2543 ม.7 (Thai Accounting Act §7). Validated 1–30
+     * and clamped on read so an out-of-range SystemConfig row can't surface
+     * absurd values downstream.
+     *
+     * Currently INFORMATIONAL only — there is no automated purge cron for
+     * expense / sales / receipt documents yet. The value is exposed so the
+     * compliance UI can display the configured retention policy. Future
+     * implementation gating any document purge (or archival) on this value
+     * should call `getUiFlags()` rather than re-reading the SystemConfig
+     * row directly.
+     */
+    documentRetentionYears: number;
+    /**
+     * D1.4.2.4 — batch size for CSV row processing in bulk imports.
+     * Default 500, valid 50–5000 (clamped). Currently INFORMATIONAL —
+     * the Payments CSV import in `payments.service.ts` processes rows
+     * one-at-a-time in a `for` loop (no explicit batching), so this flag
+     * is exposed for future bulk-import paths. The numeric range is
+     * deliberately wide so OWNER can dial down for resource-constrained
+     * deploys or up for high-throughput imports. Originally SKIP per
+     * Phase 2; shipped per owner directive 2026-05-17 to reach 100% A1.
+     */
+    batchSizeImport: number;
+    /**
+     * D1.4.3.4 — preferred format for data export / compliance backup.
+     * Whitelist `'JSON'` / `'CSV'` / `'XLSX'`, default `'JSON'`. Existing
+     * export buttons across the app should select this as the DEFAULT
+     * option in their format dropdown; the user can still override per
+     * export. Future automated compliance-backup jobs should consume
+     * this value via `getUiFlags()` rather than re-reading the
+     * SystemConfig row directly.
+     */
+    dataExportFormat: 'JSON' | 'CSV' | 'XLSX';
+    /**
+     * D1.4.3.5 — master PII masking toggle (PDPA policy surface).
+     * Default `true`. Currently INFORMATIONAL — existing PII masking
+     * helpers (`maskPhone`, `maskNationalId`, `maskEmail`, `maskBankAccount`)
+     * are consumed per-call in role-aware controllers and do NOT consult
+     * this flag. Surfacing it lets the admin UI display the PDPA stance
+     * and surface a bold warning before persisting `false`.
+     */
+    piiMaskingEnabled: boolean;
+    /**
+     * D1.4.2.5 — max concurrent BullMQ worker jobs. Default 5, valid 1–50
+     * (clamped). Currently INFORMATIONAL for the SystemConfig key — the
+     * BullMQ `@Processor` decorator is evaluated at class load time and
+     * cannot read a DB-backed value at boot. The flag is exposed so OWNER
+     * can advertise the intended concurrency cap; the actual worker
+     * concurrency is set via `MAX_CONCURRENT_JOBS` env var read in
+     * `NotificationWorker`'s @Processor options (same default 5). A future
+     * refactor can wire this to a hot-reloadable dispatcher.
+     */
+    maxConcurrentJobs: number;
+    /**
+     * D1.4.3.6 — gate the LoginAuditLog row INSERT in
+     * `LoginAuditService.record`. Default `true`. When `false`, no audit
+     * row is written for login attempts — known-device tracking +
+     * new-device LINE alerts still run (security alerting independent of
+     * audit retention) and failed-attempt counting + account lockout in
+     * `AuthService` are unaffected (those drive the v3 account-lockout
+     * hardening, NOT the audit trail).
+     */
+    loginLogEnabled: boolean;
+    /**
+     * D1.3.4.2 — days threshold for the SAMEDAY→ACCRUAL auto-switch.
+     * Default `0` = any past document date triggers the flip (preserves
+     * the pre-Phase-4 hardcoded behavior). When set to N>0, the flip only
+     * fires when `(today − documentDate) > N` days. Useful when the shop
+     * routinely books cash purchases the next day (set `1` to tolerate a
+     * one-day lag without flipping to ACCRUAL). Clamped to 0–30 on read;
+     * non-integer / NaN / negative values fall back to 0.
+     *
+     * Originally marked SKIP per Phase 2 decision report; shipped per
+     * owner directive 2026-05-17 to reach 100% A1 coverage.
+     */
+    smartSwitchThresholdDays: number;
+    /**
+     * D1.3.4.1 — gate the auto SAMEDAY→ACCRUAL switch logic in the expense
+     * entry form. Default `true` preserves the existing one-way auto-flip
+     * (ExpenseFormV4: when the user picks a past `documentDate` while
+     * docType is SAMEDAY, flip to ACCRUAL). When `false` the auto-flip is
+     * skipped and the user must manually pick SAMEDAY vs ACCRUAL — useful
+     * for accountants who explicitly want SAMEDAY entries with a backdated
+     * invoice (e.g. cash purchases booked next day).
+     *
+     * Originally marked SKIP per Phase 2 decision report; shipped per
+     * owner directive 2026-05-17 to reach 100% A1 coverage.
+     */
+    smartDoctypeSwitchEnabled: boolean;
+    /**
+     * D1.1.6.3 — auto-route the ≤1฿ rounding remainder on Payment receipts
+     * to adj_underpay (52-1104) / adj_overpay (53-1503). Default TRUE.
+     * When FALSE, PaymentReceipt2B + PaymentReceipt2B-split throw
+     * BadRequestException on any non-zero rounding diff, forcing a manual
+     * JV to clear the residual. Exposed here so the admin Settings UI can
+     * render the toggle; the actual server-side enforcement lives in the JE
+     * templates (they read `adj_auto_route` directly via PrismaService).
+     */
+    adjAutoRoute: boolean;
+    /**
+     * D1.3.6.1 — max number of bills (cleared docs) per VENDOR_SETTLEMENT
+     * document. Default 100 (matches the legacy `limit=100` literal that
+     * `SettlementLinesSection.tsx` used to pull from `/expense-documents`).
+     * Clamped to 1–500 on read so an OWNER mis-edit can't disable the cap or
+     * blow up the SE form. Server enforces the cap on `createSettlement()`;
+     * UI uses the value to surface an early-warning banner before submit.
+     */
+    settlementMaxBillsPerDoc: number;
     /**
      * D1.1.5.4 — Petty Cash replenish alert threshold (THB). Default 5000,
      * valid 0–50000 (clamp). When the running float balance falls below this
@@ -292,6 +668,28 @@ export class SettingsService {
      */
     approvalEnabled: boolean;
     /**
+     * D1.2.1.2 — threshold (THB) above which docs require approval. Surfaced
+     * to the UI for helper-text only. Backend is the source of truth.
+     */
+    approvalThreshold: number;
+    /**
+     * D1.2.1.3 — user IDs that may approve PENDING_APPROVAL docs (besides
+     * OWNER). Frontend gates "อนุมัติเอกสาร" button on this.
+     */
+    approversList: string[];
+    /**
+     * D1.2.1.4 — document types that always require approval (OR-composed
+     * with threshold). Default `['PAYROLL']`.
+     */
+    approvalRequiredDocTypes: string[];
+    /**
+     * D1.2.1.5 — fan out IN_APP notifications when a doc enters
+     * PENDING_APPROVAL. Default `true`. Respects the master gate
+     * `in_app_notifications_enabled` (D1.3.1.4) — if either is off, no
+     * notifications are sent. Read by `ExpenseDocumentsService.notifyApprovers`.
+     */
+    notificationOnPending: boolean;
+    /**
      * D1.2.3.2 — default pagination size for list pages. Valid integer 10-200
      * inclusive. Default `50`. Out-of-range or non-numeric values clamp to
      * the default so a malformed admin edit can't break list pages. SystemConfig
@@ -309,6 +707,15 @@ export class SettingsService {
      * setting — this is the *initial* state only.
      */
     defaultTimeRange: 'all' | 'this_month' | 'last_month';
+    /**
+     * D1.3.5.1 — default time range preset for the expense daily-summary
+     * page. Whitelisted: `'today' | 'this_week' | 'this_month' | 'last_month'`.
+     * Default `'this_month'`. Wider preset set than `defaultTimeRange` because
+     * the summary page is consumed daily (operations) AND monthly (ผู้จัดการ
+     * รีวิว). Page-level code uses this to initialize startDate/endDate on
+     * mount; mid-session user changes are NOT persisted to the setting.
+     */
+    summaryDefaultRange: 'today' | 'this_week' | 'this_month' | 'last_month';
     /**
      * D1.3.1.2 — AP-due alerts cron toggle. Default `false` (OFF) until
      * ExpenseDocument has a real `dueDate` column — currently the cron uses
@@ -423,6 +830,76 @@ export class SettingsService {
      * 30–7200 (clamped). Wired into `ProfitLossPage`.
      */
     cacheTtlReports: number;
+    /**
+     * D1.3.6.3 — allow per-line partial settlement on VENDOR_SETTLEMENT.
+     * Default true (V12 adjustment logic remains active). When false the
+     * server rejects any line where `amountSettled < remainingCap` (±0.01
+     * rounding slop) — every line must clear the full outstanding balance.
+     * The web app additionally disables the "จำนวนที่จ่าย" input column so
+     * the user can't paste in a partial figure.
+     */
+    settlementPartialPaymentEnabled: boolean;
+    /**
+     * D1.3.2.1 — VIEWER role activation flag. Default false (Q4-gated).
+     * When true, future guards/widening code can extend @Roles() lists on
+     * expense / other-income / asset modules to include the VIEWER role.
+     * Schema enum value always exists (UserRole.VIEWER) so the flip is
+     * SystemConfig-only; no migration needed to roll forward/back.
+     */
+    viewerRoleEnabled: boolean;
+    /**
+     * D1.3.3.3 — outbound webhook dispatch master switch. **DEFAULT-OFF** per
+     * accountant package. When false, `WebhooksService.dispatchEvent` is a
+     * no-op and the OWNER's `POST /webhooks/test/:id` returns 400. Inbound
+     * webhooks (paysolutions / sms / line / facebook) are NOT gated by this
+     * flag — they run on dedicated controllers and remain critical for
+     * payment processing.
+     */
+    webhooksEnabled: boolean;
+    /**
+     * D1.3.2.2 — dynamic bundle name controlling who can access Settings.
+     * Whitelisted: `'OWNER'` (default) / `'OWNER+FINANCE_MANAGER'` /
+     * `'OWNER+ACCOUNTANT'` / `'OWNER+ALL'`. Read at request time by
+     * `SettingsAccessGuard`; exposed here so the web app can render an
+     * informational badge on /settings. Invalid SystemConfig values fall
+     * back to `'OWNER'` (preserves OWNER-only behavior).
+     */
+    settingsAccessRole: 'OWNER' | 'OWNER+FINANCE_MANAGER' | 'OWNER+ACCOUNTANT' | 'OWNER+ALL';
+    /**
+     * D1.3.2.3 — dynamic bundle controlling who can POST expense documents
+     * (DRAFT → ACCRUAL). Whitelisted: `'OWNER+FINANCE_MANAGER+ACCOUNTANT'`
+     * (default — current behavior) / `'OWNER+FINANCE_MANAGER'` /
+     * `'OWNER_ONLY'` / `'OWNER+ALL_NON_SALES'`. Enforced at request time by
+     * `PostPermissionGuard`; exposed here so UIs can hide the "Post" button
+     * for roles that won't be allowed (defence against confusing 403s).
+     */
+    postPermission:
+      | 'OWNER+FINANCE_MANAGER+ACCOUNTANT'
+      | 'OWNER+FINANCE_MANAGER'
+      | 'OWNER_ONLY'
+      | 'OWNER+ALL_NON_SALES';
+    /**
+     * D1.3.3.4 — restrict integration API-key management UI to OWNER.
+     * Default true. **Documentary today** — `IntegrationsController` already
+     * gates every method with `@Roles('OWNER')`, so this flag is the visible
+     * config knob for that policy. Lets the frontend conditionally
+     * show/hide IntegrationHub menu links for non-OWNER roles, and gives
+     * OWNER a future kill-switch if they ever decide ACCOUNTANT or
+     * FINANCE_MANAGER should be allowed to rotate, say, the e-tax API key.
+     *
+     * Flipping this to false today only changes the UI — server stays
+     * OWNER-gated. A future PR can widen the `@Roles` set AND read this flag
+     * in a guard to enforce the new policy.
+     */
+    apiKeysAdminOnly: boolean;
+    /**
+     * D1.3.2.4 — dynamic bundle controlling who can reverse/void expense
+     * documents. Whitelisted: `'OWNER+FINANCE_MANAGER'` (default — current
+     * behavior) / `'OWNER_ONLY'`. Enforced at request time by
+     * `ReversePermissionGuard`; exposed here so UIs can hide the "Void"
+     * button for roles that won't be allowed.
+     */
+    reversePermission: 'OWNER+FINANCE_MANAGER' | 'OWNER_ONLY';
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -462,6 +939,99 @@ export class SettingsService {
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    // D1.1.2.1 — DocumentType → prefix map (defaults applied per type when
+    // stored value is missing or malformed).
+    const docPrefixMap = await this.getDocPrefixMap();
+    // D1.3.3.2 — bank reconciliation mode. Whitelist 'manual' / 'auto'.
+    const bankRecRaw = await this.getKey('bank_reconciliation');
+    const bankReconciliationMode: 'manual' | 'auto' =
+      bankRecRaw === 'auto' ? 'auto' : 'manual';
+    // D1.1.3.3 — sso_rate is locked at 5% by Thai SSO Act §46 + the
+    // ministerial regulation issued under it. Computed from the
+    // source-of-truth SSO_RATE constant, never read from DB.
+    const ssoRateLocked = `${(SSO_RATE * 100).toFixed(0)}%`;
+    // D1.3.6.2 — settlement_default_tick. Whitelist 'all' / 'none' /
+    // 'overdue_only'; everything else → 'overdue_only' (spec default).
+    const settlementDefaultTickRaw = await this.getKey('settlement_default_tick');
+    const settlementDefaultTick: 'all' | 'none' | 'overdue_only' =
+      settlementDefaultTickRaw === 'all'
+        ? 'all'
+        : settlementDefaultTickRaw === 'none'
+          ? 'none'
+          : 'overdue_only';
+    // D1.1.3.2 — WHT rates (default 5 canonical entries + optional D1.1.3.5
+    // effectiveDate per entry).
+    const whtRates = await this.getWhtRates();
+    // D1.3.3.1 — export_enabled. Default true.
+    const exportEnabled = await this.readBoolean('export_enabled', true);
+    // D1.4.3.2 — audit log archive toggle. Default true.
+    const auditLogArchiveEnabled = await this.readBoolean(
+      'audit_log_archive_enabled',
+      true,
+    );
+    // D1.4.3.3 — document retention years. Default 5 per พ.ร.บ.บัญชี ม.7.
+    // Clamp to [1, 30] so an out-of-range row can't surface absurd values.
+    const documentRetentionYearsRaw = await this.readNumber('document_retention_years', 5);
+    const documentRetentionYears =
+      Number.isInteger(documentRetentionYearsRaw) &&
+      documentRetentionYearsRaw >= 1 &&
+      documentRetentionYearsRaw <= 30
+        ? documentRetentionYearsRaw
+        : 5;
+    // D1.4.2.4 — batch_size_import. Clamp to [50, 5000] rows.
+    const batchSizeImportRaw = await this.readNumber('batch_size_import', 500);
+    const batchSizeImport =
+      Number.isFinite(batchSizeImportRaw) && batchSizeImportRaw >= 50 && batchSizeImportRaw <= 5000
+        ? Math.floor(batchSizeImportRaw)
+        : 500;
+    // D1.4.3.4 — data_export_format. Whitelist JSON/CSV/XLSX; default JSON.
+    const dataExportFormatRaw = await this.getKey('data_export_format');
+    const dataExportFormat: 'JSON' | 'CSV' | 'XLSX' =
+      dataExportFormatRaw === 'CSV' || dataExportFormatRaw === 'XLSX'
+        ? dataExportFormatRaw
+        : 'JSON';
+    // D1.4.3.5 — pii_masking_enabled. Default true (PDPA policy surface).
+    const piiMaskingEnabled = await this.readBoolean('pii_masking_enabled', true);
+    // D1.4.2.5 — max_concurrent_jobs. Default 5, clamp 1–50.
+    const maxConcurrentJobsRaw = await this.readNumber('max_concurrent_jobs', 5);
+    const maxConcurrentJobs =
+      Number.isInteger(maxConcurrentJobsRaw) &&
+      maxConcurrentJobsRaw >= 1 &&
+      maxConcurrentJobsRaw <= 50
+        ? maxConcurrentJobsRaw
+        : 5;
+    // D1.4.3.6 — login_log_enabled. Default true.
+    const loginLogEnabled = await this.readBoolean('login_log_enabled', true);
+    // D1.3.4.2 — smart-switch threshold (days). Clamp 0–30; non-integer /
+    // NaN / negative → 0. Default 0 = legacy behavior (any past date flips).
+    const smartSwitchThresholdRaw = await this.readNumber(
+      'smart_switch_threshold_days',
+      0,
+    );
+    const smartSwitchThresholdDays =
+      Number.isInteger(smartSwitchThresholdRaw) &&
+      smartSwitchThresholdRaw >= 0 &&
+      smartSwitchThresholdRaw <= 30
+        ? smartSwitchThresholdRaw
+        : 0;
+    // D1.3.4.1 — smart_doctype_switch_enabled (default true).
+    const smartDoctypeSwitchEnabled = await this.readBoolean(
+      'smart_doctype_switch_enabled',
+      true,
+    );
+    // D1.1.6.3 — adj_auto_route. Defaults TRUE so first-boot behaviour
+    // mirrors the original auto-route-to-52-1104/53-1503 logic.
+    const adjAutoRoute = await this.readBoolean('adj_auto_route', true);
+    // D1.3.6.1 — settlement_max_bills_per_doc. Clamp to 1–500 inclusive;
+    // anything outside (incl. NaN / negative) falls back to the default 100
+    // which matches the previous hardcoded limit.
+    const settlementMaxBillsRaw = await this.readNumber('settlement_max_bills_per_doc', 100);
+    const settlementMaxBillsPerDoc =
+      Number.isInteger(settlementMaxBillsRaw) &&
+      settlementMaxBillsRaw >= 1 &&
+      settlementMaxBillsRaw <= 500
+        ? settlementMaxBillsRaw
+        : 100;
     // D1.1.5.4 — Petty Cash replenish threshold. Default 5000, valid 0–50000.
     // Negative or NaN silently clamps to default 5000 so a bad SystemConfig
     // row can't accidentally suppress the alert via negative comparison.
@@ -532,6 +1102,39 @@ export class SettingsService {
     // Settings_Audit_Core_v2.0.md spec. Owner can flip to `false` via
     // SystemConfig if rollout needs to be gradual.
     const approvalEnabled = await this.readBoolean('approval_enabled', true);
+    // D1.2.1.2 — approval threshold (THB). Default 0; clamp negatives.
+    const approvalThresholdRaw = await this.readNumber('approval_threshold', 0);
+    const approvalThreshold = approvalThresholdRaw >= 0 ? approvalThresholdRaw : 0;
+    // D1.2.1.3 — approvers_list (JSON array of user IDs). Empty default.
+    let approversList: string[] = [];
+    try {
+      const raw = await this.getKey('approvers_list');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          approversList = parsed.filter((v): v is string => typeof v === 'string');
+        }
+      }
+    } catch {
+      approversList = [];
+    }
+    // D1.2.1.4 — approval_required_doc_types (JSON array). Default ['PAYROLL'].
+    let approvalRequiredDocTypes: string[] = ['PAYROLL'];
+    try {
+      const raw = await this.getKey('approval_required_doc_types');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const filtered = parsed.filter((v): v is string => typeof v === 'string');
+          if (filtered.length > 0) approvalRequiredDocTypes = filtered;
+        }
+      }
+    } catch {
+      // keep default
+    }
+    // D1.2.1.5 — notification fan-out toggle. Default true. Respects master
+    // gate `in_app_notifications_enabled` downstream in NotificationsService.
+    const notificationOnPending = await this.readBoolean('notification_on_pending', true);
     // D1.2.3.2 — pagination_size. Integer 10-200 inclusive; clamp to 50
     // default for out-of-range or non-numeric values so list pages remain
     // usable even when SystemConfig is mis-edited.
@@ -547,6 +1150,17 @@ export class SettingsService {
     const defaultTimeRange: 'all' | 'this_month' | 'last_month' =
       defaultTimeRangeRaw === 'all' || defaultTimeRangeRaw === 'last_month'
         ? defaultTimeRangeRaw
+        : 'this_month';
+    // D1.3.5.1 — summary-page default range. Wider whitelist than
+    // defaultTimeRange (no 'all' — summary always wants a bounded period,
+    // and the page UI doesn't currently expose an "all" option; the
+    // companion D1.3.5.2 banner explains gracefully if 'all' is ever wired).
+    const summaryDefaultRangeRaw = await this.getKey('summary_default_range');
+    const summaryDefaultRange: 'today' | 'this_week' | 'this_month' | 'last_month' =
+      summaryDefaultRangeRaw === 'today' ||
+      summaryDefaultRangeRaw === 'this_week' ||
+      summaryDefaultRangeRaw === 'last_month'
+        ? summaryDefaultRangeRaw
         : 'this_month';
     // D1.3.1.2 — AP-due alerts. Default OFF until ExpenseDocument has a real
     // dueDate column (documentDate proxy would otherwise spam every POSTED doc).
@@ -619,6 +1233,49 @@ export class SettingsService {
       Number.isFinite(cacheTtlReportsRaw) && cacheTtlReportsRaw >= 30 && cacheTtlReportsRaw <= 7200
         ? Math.floor(cacheTtlReportsRaw)
         : 300;
+    // D1.3.6.3 — settlement_partial_payment_enabled. Default true (V12
+    // adjustments remain active). When false, web app disables the partial
+    // amount input + server rejects underpaid lines.
+    const settlementPartialPaymentEnabled = await this.readBoolean(
+      'settlement_partial_payment_enabled',
+      true,
+    );
+    // D1.3.2.1 — VIEWER role activation. Conservative default false.
+    const viewerRoleEnabled = await this.readBoolean('viewer_role_enabled', false);
+    // D1.3.3.3 — webhooks_enabled. DEFAULT-OFF per accountant package.
+    const webhooksEnabled = await this.readBoolean('webhooks_enabled', false);
+    // D1.3.2.2 — settings_access_role. Whitelist 4 values; everything else
+    // (missing key, malformed value) falls back to 'OWNER' so behavior
+    // matches the pre-Phase-2 hardcoded @Roles('OWNER').
+    const settingsAccessRoleRaw = await this.getKey('settings_access_role');
+    const settingsAccessRole: 'OWNER' | 'OWNER+FINANCE_MANAGER' | 'OWNER+ACCOUNTANT' | 'OWNER+ALL' =
+      settingsAccessRoleRaw === 'OWNER+FINANCE_MANAGER' ||
+      settingsAccessRoleRaw === 'OWNER+ACCOUNTANT' ||
+      settingsAccessRoleRaw === 'OWNER+ALL'
+        ? settingsAccessRoleRaw
+        : 'OWNER';
+    // D1.3.2.3 — post_permission. Whitelist 4 values; everything else falls
+    // back to the default OWNER+FM+ACCOUNTANT bundle (matches the
+    // pre-Phase-2 static @Roles decorator).
+    const postPermissionRaw = await this.getKey('post_permission');
+    const postPermission:
+      | 'OWNER+FINANCE_MANAGER+ACCOUNTANT'
+      | 'OWNER+FINANCE_MANAGER'
+      | 'OWNER_ONLY'
+      | 'OWNER+ALL_NON_SALES' =
+      postPermissionRaw === 'OWNER+FINANCE_MANAGER' ||
+      postPermissionRaw === 'OWNER_ONLY' ||
+      postPermissionRaw === 'OWNER+ALL_NON_SALES'
+        ? postPermissionRaw
+        : 'OWNER+FINANCE_MANAGER+ACCOUNTANT';
+    // D1.3.3.4 — api_keys_admin_only. Default true. Documentary —
+    // IntegrationsController @Roles('OWNER') is the actual enforcement.
+    const apiKeysAdminOnly = await this.readBoolean('api_keys_admin_only', true);
+    // D1.3.2.4 — reverse_permission. Whitelist 2 values; everything else
+    // falls back to the default OWNER+FM bundle.
+    const reversePermissionRaw = await this.getKey('reverse_permission');
+    const reversePermission: 'OWNER+FINANCE_MANAGER' | 'OWNER_ONLY' =
+      reversePermissionRaw === 'OWNER_ONLY' ? 'OWNER_ONLY' : 'OWNER+FINANCE_MANAGER';
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -630,6 +1287,24 @@ export class SettingsService {
       voucherShowQrCode,
       themeColor,
       language,
+      docPrefixMap,
+      bankReconciliationMode,
+      ssoRateLocked,
+      settlementDefaultTick,
+      whtRates,
+      exportEnabled,
+      auditLogArchiveEnabled,
+      documentRetentionYears,
+      batchSizeImport,
+      dataExportFormat,
+      piiMaskingEnabled,
+      maxConcurrentJobs,
+      loginLogEnabled,
+      smartSwitchThresholdDays,
+      summaryDefaultRange,
+      smartDoctypeSwitchEnabled,
+      adjAutoRoute,
+      settlementMaxBillsPerDoc,
       pettyCashReplenishThreshold,
       pettyCashEnabled,
       voucherShowPartialColumns,
@@ -643,6 +1318,10 @@ export class SettingsService {
       decimalPlaces,
       dateFormat,
       approvalEnabled,
+      approvalThreshold,
+      approversList,
+      approvalRequiredDocTypes,
+      notificationOnPending,
       paginationSize,
       defaultTimeRange,
       apDueAlertsEnabled,
@@ -659,6 +1338,13 @@ export class SettingsService {
       emailProvider,
       cacheTtlDashboard,
       cacheTtlReports,
+      settlementPartialPaymentEnabled,
+      viewerRoleEnabled,
+      webhooksEnabled,
+      settingsAccessRole,
+      postPermission,
+      apiKeysAdminOnly,
+      reversePermission,
     };
   }
 
@@ -719,7 +1405,26 @@ export class SettingsService {
     });
   }
 
-  async bulkUpdate(items: { key: string; value: string }[], userId?: string) {
+  async bulkUpdate(
+    items: { key: string; value: string }[],
+    userId?: string,
+    userRole?: string,
+  ) {
+    // D1.3.2.2 (S3) — defense-in-depth role check (mirrors SettingsAccessGuard).
+    await this.assertCanWriteSettings(userRole);
+    // D1.1.3.3 — reject the whole batch if any read-only key is present
+    // (atomicity: don't silently drop entries; the caller has a UI bug).
+    const readOnlyHit = items.find((i) => READ_ONLY_KEYS.has(i.key));
+    if (readOnlyHit) {
+      throw new BadRequestException(
+        `key "${readOnlyHit.key}" เป็น read-only ตามกฎหมาย/ระเบียบ — ไม่สามารถแก้ไขผ่านระบบได้`,
+      );
+    }
+    // Validate all items up front — fail the entire batch on the first bad
+    // value so a partially-applied bulk update can't leak through.
+    for (const item of items) {
+      this.validateKeyValue(item.key, item.value);
+    }
     // D1.1.3.1 follow-up — rewrite legacy VAT keys before persist.
     items = this.normaliseVatRateWrites(items);
     // Fetch "before" snapshot in one query so the transaction stays bounded.
@@ -913,5 +1618,69 @@ export class SettingsService {
       select: { id: true, name: true, email: true, role: true },
       orderBy: { name: 'asc' },
     });
+  }
+
+  /**
+   * D1.1.2.5 — admin-only document-number sequence reset endpoint helper.
+   *
+   * Current `DocNumberService` derives the next sequence from
+   * `MAX(docNumber)` at every call, so deleting documents (e.g. soft-deleting
+   * an erroneous row) implicitly resets the sequence. This endpoint exists
+   * as a forward-extension stub for a future migration to a dedicated
+   * `DocumentSequence` Prisma model (see D1.1.2.4) — at that point this
+   * method will UPDATE the stored sequence row directly.
+   *
+   * Today the method:
+   *  - validates the docType (DocumentType enum)
+   *  - returns a snapshot of the CURRENT max sequence per doc type across
+   *    the whole `ExpenseDocument` table for diagnostic / sanity-check
+   *    purposes
+   *  - writes an immutable AuditLog with action `DOC_SEQUENCE_RESET`
+   *
+   * Note: the response does NOT actually mutate any sequence rows. The
+   * intent is to let OWNER preview what the next-issued number would look
+   * like and have a traceable audit record of their reset intention.
+   */
+  async resetDocSequence(
+    docType: DocumentType,
+    periodStart: string,
+    userId: string,
+  ): Promise<{
+    docType: DocumentType;
+    periodStart: string;
+    note: string;
+    currentMaxByType: Record<string, string | null>;
+  }> {
+    // Collect the latest issued number per DocumentType in one round-trip.
+    const maxRows = await this.prisma.expenseDocument.groupBy({
+      by: ['documentType'],
+      _max: { number: true },
+    });
+    const currentMaxByType: Record<string, string | null> = {};
+    for (const t of Object.values(DocumentType)) {
+      currentMaxByType[t] = null;
+    }
+    for (const row of maxRows) {
+      currentMaxByType[row.documentType] = row._max.number ?? null;
+    }
+
+    await this.audit.log({
+      userId,
+      action: 'DOC_SEQUENCE_RESET',
+      entity: 'DocumentSequence',
+      entityId: `${docType}:${periodStart}`,
+      newValue: {
+        docType,
+        periodStart,
+        currentMaxByType,
+      },
+    });
+
+    return {
+      docType,
+      periodStart,
+      note: 'Sequence resets implicitly when documents in the requested period are deleted. The current MAX(docNumber) per type is returned for diagnostic purposes. A future migration to a dedicated DocumentSequence model will enable explicit sequence mutation here.',
+      currentMaxByType,
+    };
   }
 }

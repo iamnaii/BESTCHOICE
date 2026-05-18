@@ -104,4 +104,53 @@ describe('AuditRetentionCron.archiveOldEntries', () => {
     const result = await cron.archiveOldEntries();
     expect(result.retentionDays).toBe(AuditRetentionCron.DEFAULT_RETENTION_DAYS);
   });
+
+  // D1.4.3.2 — audit_log_archive_enabled toggle
+  describe('D1.4.3.2 audit_log_archive_enabled toggle', () => {
+    it('skips sweep entirely when audit_log_archive_enabled=false', async () => {
+      prisma.systemConfig.findFirst.mockImplementation((args: { where: { key: string } }) =>
+        Promise.resolve(
+          args.where.key === 'audit_log_archive_enabled' ? { value: 'false' } : null,
+        ),
+      );
+      const result = await cron.archiveOldEntries();
+      expect(result.archived).toBe(0);
+      expect(result.skipped).toBe(true);
+      expect(prisma.auditLog.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('runs sweep normally when audit_log_archive_enabled=true', async () => {
+      prisma.systemConfig.findFirst.mockImplementation((args: { where: { key: string } }) =>
+        Promise.resolve(
+          args.where.key === 'audit_log_archive_enabled' ? { value: 'true' } : null,
+        ),
+      );
+      prisma.auditLog.updateMany.mockResolvedValue({ count: 5 });
+      const result = await cron.archiveOldEntries();
+      expect(result.archived).toBe(5);
+      expect(result.skipped).toBeUndefined();
+      expect(prisma.auditLog.updateMany).toHaveBeenCalled();
+    });
+
+    it('defaults to enabled when toggle row absent (existing behaviour preserved)', async () => {
+      prisma.systemConfig.findFirst.mockResolvedValue(null);
+      prisma.auditLog.updateMany.mockResolvedValue({ count: 3 });
+      const result = await cron.archiveOldEntries();
+      expect(result.archived).toBe(3);
+      expect(result.skipped).toBeUndefined();
+      expect(prisma.auditLog.updateMany).toHaveBeenCalled();
+    });
+
+    it('treats malformed toggle value as enabled (fail-safe default-on)', async () => {
+      prisma.systemConfig.findFirst.mockImplementation((args: { where: { key: string } }) =>
+        Promise.resolve(
+          args.where.key === 'audit_log_archive_enabled' ? { value: 'maybe' } : null,
+        ),
+      );
+      prisma.auditLog.updateMany.mockResolvedValue({ count: 1 });
+      const result = await cron.archiveOldEntries();
+      expect(result.skipped).toBeUndefined();
+      expect(prisma.auditLog.updateMany).toHaveBeenCalled();
+    });
+  });
 });

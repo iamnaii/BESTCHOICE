@@ -1,5 +1,7 @@
 import { useEffect } from 'react';
-import { Outlet, useLocation } from 'react-router';
+import { Outlet, useLocation, useNavigate } from 'react-router';
+import { toast } from 'sonner';
+import { useAuth } from '@/contexts/AuthContext';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { useGlobalShortcuts } from '@/hooks/useGlobalShortcuts';
 import { useUiFlags } from '@/hooks/useUiFlags';
@@ -12,10 +14,36 @@ import ShortcutsHelpOverlay from '@/components/ShortcutsHelpOverlay';
 import MobileBottomNav from './MobileBottomNav';
 import { SkipLink } from './SkipLink';
 import { InboundCallPopup } from '@/components/InboundCallPopup';
+import { getSidebarForRole, getZoneConfigForRole } from '@/config/menu';
+import type { Zone } from '@/config/menu';
 
 /* ── Sidebar widths — keep in sync with Sidebar.tsx ── */
 const SIDEBAR_EXPANDED_W = 264;  // px
 const SIDEBAR_COLLAPSED_W = 70;  // px
+
+/* ── Zone resolution helpers (Task 15) ────────────── */
+const ZONE_LOOKUP_ORDER: Zone[] = ['shop', 'fin', 'settings'];
+const ALL_ROLES = ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES', 'ACCOUNTANT'];
+
+/**
+ * Find which zone a path belongs to across the role's accessible zones.
+ * Returns null if the path isn't in any of the role's zones (caller decides
+ * whether to let it through as a "common route" or redirect).
+ */
+function resolveZoneForPath(role: string, path: string): Zone | null {
+  for (const z of ZONE_LOOKUP_ORDER) {
+    const sections = getSidebarForRole(role, z);
+    const found = sections.some((s) =>
+      s.items.some(
+        (item) =>
+          item.path === path ||
+          (item.children ?? []).some((c) => c.path === path)
+      )
+    );
+    if (found) return z;
+  }
+  return null;
+}
 
 /* ── Mobile Sheet Sidebar ─────────────────────────── */
 function MobileSidebar() {
@@ -48,9 +76,44 @@ const FULL_BLEED_ROUTES = ['/inbox', '/chat'];
 
 function MainContent() {
   const isMobile = useIsMobile();
-  const { sidebarCollapse } = useLayout();
+  const { sidebarCollapse, currentZone, setCurrentZone } = useLayout();
   const { pathname } = useLocation();
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const { showKeyboardShortcuts } = useUiFlags();
+
+  /* Task 15 — auto-sync currentZone to the pathname's zone, and redirect
+     if this role has no path that lives in any of its zones. Common routes
+     (paths not in ANY role's sidebar — e.g., /profile, /404) pass through. */
+  useEffect(() => {
+    const role = user?.role ?? '';
+    if (!role) return;
+    if (!getZoneConfigForRole(role)) return;
+
+    const targetZone = resolveZoneForPath(role, pathname);
+
+    if (targetZone === null) {
+      // Path is not in THIS role's sidebar — check if it's in any other role's
+      // sidebar; if yes, it's an access-denied case; if no, it's a "common" route.
+      const anyRoleHasIt = ALL_ROLES.some(
+        (r) => r !== role && resolveZoneForPath(r, pathname) !== null
+      );
+      if (anyRoleHasIt) {
+        toast.error('คุณไม่มีสิทธิ์เข้าถึงหน้านี้');
+        // Spec called for /403 + toast, but no such route exists in this app;
+        // redirecting to dashboard as a soft landing while still surfacing the
+        // toast so the user knows why the navigation happened.
+        navigate('/', { replace: true });
+      }
+      return;
+    }
+
+    // Path lives in role's sidebar — switch the pill if needed.
+    if (targetZone !== currentZone) {
+      setCurrentZone(targetZone);
+    }
+  }, [pathname, user?.role, currentZone, setCurrentZone, navigate]);
+
   // D1.4.1.2 — when OWNER disables `show_keyboard_shortcuts`, the Shift+?
   // help-dialog binding becomes a no-op AND the overlay is never rendered.
   const { showShortcutsHelp, setShowShortcutsHelp } = useGlobalShortcuts({

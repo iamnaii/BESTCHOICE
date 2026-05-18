@@ -75,4 +75,27 @@ test.describe('Flow 3 — Quote to sale conversion', () => {
     await expect(detailDialog).toBeVisible({ timeout: 5000 });
     await q.assertNoAppError();
   });
+
+  /* ─── Edge cases ─── */
+
+  test('Edge: FINANCE_MANAGER (read-only) sees no create button on /quotes', async ({ page }) => {
+    await loginAsRole(page, 'FINANCE_MANAGER');
+    const q = new QuoteCreatePage(page);
+    const ok = await q.goto();
+    if (!ok) {
+      test.skip(true, '/quotes did not load for FINANCE_MANAGER');
+      return;
+    }
+
+    // QuotesPage.tsx canCreate = OWNER/BRANCH_MANAGER/SALES only.
+    // FINANCE_MANAGER is intentionally read-only per spec.
+    await expect(q.heading()).toBeVisible({ timeout: 15000 });
+
+    // Create button MUST NOT be visible for FINANCE_MANAGER
+    const createBtn = q.createBtn();
+    const isCreateVisible = await createBtn.isVisible({ timeout: 3000 }).catch(() => false);
+    expect(isCreateVisible).toBeFalsy();
+
+    await q.assertNoAppError();
+  });
 });

@@ -6,8 +6,13 @@ export default defineConfig({
   testIgnore: ['**/load-test-*.spec.ts'],
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
+  // CI retries: 2 (handles transient flake); local: 1
   retries: process.env.CI ? 2 : 1,
   workers: process.env.CI ? 1 : 2,
+  // Per-test timeout 60s — long enough for the multi-step flow specs in e2e/flows/
+  // (Playwright default is 30s which is too short for golden-path flows that span
+  // multiple page navigations + auto-wait for SPA route transitions).
+  timeout: 60_000,
   reporter: [['html', { open: 'never' }], ['list']],
   use: {
     baseURL: process.env.BASE_URL || 'http://localhost:5173',

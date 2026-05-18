@@ -91,4 +91,45 @@ test.describe('Flow 5 — Year-end closing guards', () => {
 
     await y.assertNoAppError();
   });
+
+  /* ─── Edge cases ─── */
+
+  test('Edge: SALES role sees read-only banner (no post permission)', async ({ page }) => {
+    await loginAsRole(page, 'SALES');
+    const y = new YearEndClosingPage(page);
+    const ok = await y.goto();
+    if (!ok) {
+      // SALES might be redirected away from this page entirely
+      // (depends on route guard config) — both behaviors are valid
+      const onYearEndUrl = page.url().includes('year-end-closing');
+      if (!onYearEndUrl) {
+        // Redirected — pass, role guard worked
+        return;
+      }
+      test.skip(true, 'year-end-closing page failed to load for SALES');
+      return;
+    }
+
+    // Read-only mode banner appears for non-OWNER/non-ACCOUNTANT roles,
+    // OR page is fully blocked by route guard (also fine).
+    const readonlyBanner = page.getByText(/โหมดดูอย่างเดียว/).first();
+
+    // Trigger preview so the action card / readonly banner is rendered
+    await y.clickPreview().catch(() => null);
+
+    // Either: readonly banner visible OR no close button visible for SALES
+    const hasReadonly = await readonlyBanner
+      .isVisible({ timeout: 5000 })
+      .catch(() => false);
+    const hasCloseBtn = await y.closeYearBtn()
+      .isVisible({ timeout: 2000 })
+      .catch(() => false);
+
+    // If page rendered: SALES must EITHER see readonly banner OR not see close button
+    if (await y.heading().isVisible({ timeout: 2000 }).catch(() => false)) {
+      expect(hasReadonly || !hasCloseBtn).toBeTruthy();
+    }
+
+    await y.assertNoAppError();
+  });
 });

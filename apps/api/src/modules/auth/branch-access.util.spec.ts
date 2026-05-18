@@ -1,4 +1,8 @@
-import { CROSS_BRANCH_ROLES, hasCrossBranchAccess } from './branch-access.util';
+import {
+  CROSS_BRANCH_ROLES,
+  getBranchScope,
+  hasCrossBranchAccess,
+} from './branch-access.util';
 
 describe('branch-access.util', () => {
   describe('CROSS_BRANCH_ROLES', () => {
@@ -44,6 +48,32 @@ describe('branch-access.util', () => {
     it('returns false for an unknown role string', () => {
       expect(hasCrossBranchAccess({ role: 'SUPERADMIN' })).toBe(false);
       expect(hasCrossBranchAccess({ role: '' })).toBe(false);
+    });
+  });
+
+  describe('getBranchScope', () => {
+    it.each([['OWNER'], ['FINANCE_MANAGER'], ['ACCOUNTANT']])(
+      'returns { all: true } for cross-branch role %s',
+      (role) => {
+        expect(getBranchScope({ role, branchId: null })).toEqual({ all: true });
+      },
+    );
+
+    it('returns branchId for branch-scoped role with an assigned branch', () => {
+      expect(getBranchScope({ role: 'SALES', branchId: 'br-1' })).toEqual({ branchId: 'br-1' });
+      expect(getBranchScope({ role: 'BRANCH_MANAGER', branchId: 'br-2' })).toEqual({
+        branchId: 'br-2',
+      });
+    });
+
+    it('returns branchId: null for branch-scoped role with no assigned branch (defensive)', () => {
+      expect(getBranchScope({ role: 'SALES', branchId: null })).toEqual({ branchId: null });
+      expect(getBranchScope({ role: 'SALES' })).toEqual({ branchId: null });
+    });
+
+    it('returns branchId: null for null / undefined input (defensive)', () => {
+      expect(getBranchScope(null)).toEqual({ branchId: null });
+      expect(getBranchScope(undefined)).toEqual({ branchId: null });
     });
   });
 });

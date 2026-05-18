@@ -92,7 +92,13 @@ enum QuoteStatus {
 - Contract status='PENDING' (pre-activation)
 - ExpenseDocument status='DRAFT'
 - OtherIncome status='DRAFT'
-- Sale status='PENDING' (cart with no payment)
+
+> **Scope honesty (revised 2026-05-17 post-review):** The original draft also
+> included `Sale status='PENDING'` (cart-with-no-payment), but the Sale model
+> has no PENDING state — Sale rows are created on payment, with cart state
+> living in client-side POS draft store. Phase 1 ships with the 4 tables
+> above only. POS cart drafts will be surfaced by a separate localStorage
+> import flow if/when needed.
 
 **Endpoint**: `GET /drafts?type=&branchId=` — federated query across 4 tables, returns `{ type, id, number, customer, branch, createdBy, createdAt, amount, link }`
 

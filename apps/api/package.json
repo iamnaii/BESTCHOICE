@@ -36,7 +36,11 @@
     "backfill:asset-vat:help": "echo 'Usage: EXPECTED_DB_NAME=<db> [DRY_RUN=true|false] [ALLOW_PROD_BACKFILL=YES_I_AM_SURE] npm run backfill:asset-vat'",
     "backfill:encrypt-pii": "tsx src/cli/encrypt-customer-pii.cli.ts",
     "backfill:encrypt-pii:help": "echo 'Usage: CONFIRM_BACKFILL=YES_I_AM_SURE EXPECTED_DB_NAME=<db> PII_ENCRYPTION_KEY=<64hex> PII_HASH_SALT=<>=32chars> [ALLOW_PROD_BACKFILL=YES_I_AM_SURE] [PDPA_BACKFILL_BATCH_SIZE=100] npm run backfill:encrypt-pii'",
-    "backfill:user-companies": "tsx src/cli/backfill-user-companies.cli.ts"
+    "backfill:user-companies": "tsx src/cli/backfill-user-companies.cli.ts",
+    "audit:sp7-edge-cases": "tsx src/cli/audit-edge-cases-sp7.cli.ts",
+    "sp7:clone-orig-to-finance": "tsx src/cli/clone-orig-to-finance.cli.ts",
+    "sp7:extract-shop": "tsx src/cli/extract-shop-from-finance.cli.ts",
+    "sp7:opening-balance": "tsx src/cli/post-opening-balance-transfer-sp7.cli.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.88.0",

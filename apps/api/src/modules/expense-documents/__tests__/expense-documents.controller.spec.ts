@@ -3,6 +3,7 @@ import { ExpenseDocumentsController } from '../expense-documents.controller';
 import { ExpenseDocumentsService } from '../expense-documents.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
+import { PrismaService } from '../../../prisma/prisma.service';
 
 describe('ExpenseDocumentsController', () => {
   let controller: ExpenseDocumentsController;
@@ -30,7 +31,19 @@ describe('ExpenseDocumentsController', () => {
     };
     const moduleRef = await Test.createTestingModule({
       controllers: [ExpenseDocumentsController],
-      providers: [{ provide: ExpenseDocumentsService, useValue: service }],
+      providers: [
+        { provide: ExpenseDocumentsService, useValue: service },
+        // D1.3.3.1 — ExportEnabledGuard depends on PrismaService. Provide a
+        // minimal stub returning `null` for systemConfig.findFirst so the
+        // export flag defaults to enabled (guard allows the request).
+        {
+          provide: PrismaService,
+          useValue: {
+            systemConfig: { findFirst: jest.fn().mockResolvedValue(null) },
+            auditLog: { create: jest.fn().mockResolvedValue({}) },
+          },
+        },
+      ],
     })
       .overrideGuard(JwtAuthGuard)
       .useValue({ canActivate: () => true })
@@ -76,13 +89,18 @@ describe('ExpenseDocumentsController', () => {
   });
 
   it('POST /:id/post fires post', async () => {
+    // D1.3.2.3 — controller now forwards user.role as 3rd arg for defense-in-depth
+    // role check inside service.post(). Tests pass `{ id: 'user-1' }` without
+    // .role so the 3rd arg is `undefined` (service skips the check in that case).
     await controller.post('doc-1', { id: 'user-1' } as never);
-    expect(service.post).toHaveBeenCalledWith('doc-1', 'user-1');
+    expect(service.post).toHaveBeenCalledWith('doc-1', 'user-1', undefined);
   });
 
   it('POST /:id/void fires voidDocument with dto', async () => {
+    // D1.3.2.4 — controller now forwards user.role as 4th arg (mirrors D1.3.2.3
+    // pattern on post()). With no .role on the user fixture it lands as undefined.
     await controller.void('doc-1', {}, { id: 'user-1' } as never);
-    expect(service.voidDocument).toHaveBeenCalledWith('doc-1', 'user-1', {});
+    expect(service.voidDocument).toHaveBeenCalledWith('doc-1', 'user-1', {}, undefined);
   });
 
   it('POST /:id/void forwards reasonCode + reasonDetail + reverseDate to service', async () => {
@@ -92,7 +110,7 @@ describe('ExpenseDocumentsController', () => {
       reverseDate: '2026-05-16',
     };
     await controller.void('doc-1', dto, { id: 'user-1' } as never);
-    expect(service.voidDocument).toHaveBeenCalledWith('doc-1', 'user-1', dto);
+    expect(service.voidDocument).toHaveBeenCalledWith('doc-1', 'user-1', dto, undefined);
   });
 
   it('PATCH /:id calls update', async () => {

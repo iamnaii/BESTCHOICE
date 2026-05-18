@@ -51,6 +51,7 @@ const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
 const StickersSettingsPage = lazy(() => import('@/pages/SettingsPage/StickersPage'));
 const CollectionsSettingsPage = lazy(() => import('@/pages/SettingsPage/CollectionsPage'));
 const GeneralSettingsPage = lazy(() => import('@/pages/SettingsPage/GeneralSettingsPage'));
+const DocumentConfigPage = lazy(() => import('@/pages/DocumentConfigPage'));
 const PaymentMethodSettingsPage = lazy(() => import('@/pages/PaymentMethodSettingsPage'));
 const DefectExchangePage = lazy(() => import('@/pages/DefectExchangePage'));
 // SP5 — SHOP-side additions
@@ -439,6 +440,7 @@ function App() {
           <Route path="/settings/stickers" element={<ProtectedRoute roles={['OWNER']}><StickersSettingsPage /></ProtectedRoute>} />
           <Route path="/settings/collections" element={<ProtectedRoute roles={['OWNER']}><CollectionsSettingsPage /></ProtectedRoute>} />
           <Route path="/settings/general" element={<ProtectedRoute roles={['OWNER']}><GeneralSettingsPage /></ProtectedRoute>} />
+          <Route path="/settings/document-config" element={<ProtectedRoute roles={['OWNER']}><DocumentConfigPage /></ProtectedRoute>} />
           <Route path="/chatbot-finance" element={<ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER']}><ChatbotFinanceAnalyticsPage /></ProtectedRoute>} />
           <Route path="/chatbot-finance/sessions" element={<ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}><ChatbotFinanceSessionsPage /></ProtectedRoute>} />
           <Route path="/chatbot-finance/knowledge" element={<ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER']}><ChatbotFinanceKnowledgePage /></ProtectedRoute>} />

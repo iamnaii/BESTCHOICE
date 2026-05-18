@@ -137,6 +137,36 @@ export class SettingsController {
     return this.settingsService.resetDocSequence(dto.docType, dto.periodStart, user.id);
   }
 
+  /**
+   * P2-SP2 — Document Number Config live-preview endpoint.
+   *
+   * OWNER-only. Returns a sample "next" doc number given optional overrides
+   * for format / prefix / resetCycle. When an override is omitted, the
+   * current persisted SystemConfig value (or spec default) is used. Pure read
+   * — never touches expense_documents or any sequence state.
+   *
+   * Query: ?docType=EXPENSE&format=PREFIX-YYMM-NNN&prefix=EX&resetCycle=MONTHLY
+   * Response: { sample, format, resetCycle, prefix }
+   */
+  @Get('doc-config/preview')
+  @Roles('OWNER')
+  previewDocNumber(
+    @Query('docType') docType: string,
+    @Query('format') format?: string,
+    @Query('prefix') prefix?: string,
+    @Query('resetCycle') resetCycle?: string,
+  ) {
+    // resetCycle from UI may be uppercase (DAILY/MONTHLY/YEARLY) per spec; the
+    // service expects lowercase. Normalise here so the UI doesn't have to.
+    const normalisedCycle = resetCycle ? resetCycle.toLowerCase() : undefined;
+    return this.settingsService.previewNumber(
+      docType,
+      format,
+      prefix,
+      normalisedCycle,
+    );
+  }
+
   @Get('collections')
   getCollectionsConfig() {
     return this.settingsService.getCollectionsConfig();

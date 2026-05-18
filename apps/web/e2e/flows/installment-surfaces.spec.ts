@@ -1,18 +1,21 @@
 /**
- * Flow 2: Installment Contract → Activation → First Payment
+ * Installment-related page surfaces — page-load smoke checks
  *
- * Covers the most critical revenue path: SALES creates a customer + contract,
- * then ACCOUNTANT records the first payment. We use the API for the heavy
- * lifting (customer + contract creation) and the UI for the assertion points,
- * because the contract create wizard has 4 steps and many product/plan
- * combinations — a fully UI-driven golden path is too brittle for CI.
+ * Verifies that the pages on the installment revenue path render without
+ * error and expose their primary surfaces:
  *
- * Edge cases:
- *   - Verify contract appears in /contracts list after creation
- *   - Verify payment appears in /payments list after recording
+ *   1. SALES can load /contracts/create (wizard heading + product search input).
+ *   2. SALES seeded customer via API appears in /customers list.
+ *   3. ACCOUNTANT can load /payments (recording surface accessible).
+ *
+ * This spec does NOT exercise the full create-contract → record-first-payment
+ * flow because:
+ *   - The contract create wizard has 4 steps + many product/plan combinations.
+ *   - Payments require an ACTIVE contract with seeded installment schedules.
+ *   - Both need additional seed infrastructure deferred to a future PR.
  */
 import { test, expect } from '@playwright/test';
-import { loginAsRole, loginViaAPI } from '../helpers/auth';
+import { loginAsRole } from '../helpers/auth';
 import { ContractCreatePage } from '../pom/ContractCreatePage';
 import {
   cleanupTestData,
@@ -23,10 +26,12 @@ import {
 import { getApiToken } from '../helpers/api-utils';
 import { gotoWithRetry, hasErrorBoundary } from '../helpers/navigation';
 
+test.describe.configure({ timeout: 60_000 });
+
 let ids: SeedIds;
 let ownerToken: string;
 
-test.describe('Flow 2 — Installment full cycle', () => {
+test.describe('Installment surfaces — page-load smoke', () => {
   test.beforeAll(async ({ browser }) => {
     ids = newSeedIds();
     const ctx = await browser.newContext();
@@ -49,12 +54,10 @@ test.describe('Flow 2 — Installment full cycle', () => {
     const cc = new ContractCreatePage(page);
     const ok = await cc.goto();
     if (!ok) {
-      test.skip(true, '/contracts/create did not load');
-      return;
+      throw new Error('/contracts/create failed to load — likely error boundary or auth issue');
     }
     if (await hasErrorBoundary(page)) {
-      test.skip(true, 'Error boundary on /contracts/create');
-      return;
+      throw new Error('Error boundary on /contracts/create — page rendered an unhandled exception');
     }
 
     // Heading visible
@@ -81,8 +84,7 @@ test.describe('Flow 2 — Installment full cycle', () => {
     // Navigate to /customers and verify the seeded record appears
     const ok = await gotoWithRetry(page, '/customers');
     if (!ok) {
-      test.skip(true, '/customers did not load');
-      return;
+      throw new Error('/customers failed to load — likely error boundary or auth issue');
     }
 
     // Search for the seeded customer by phone (unique per run)
@@ -103,12 +105,10 @@ test.describe('Flow 2 — Installment full cycle', () => {
 
     const ok = await gotoWithRetry(page, '/payments');
     if (!ok) {
-      test.skip(true, '/payments did not load');
-      return;
+      throw new Error('/payments failed to load — likely error boundary or auth issue');
     }
     if (await hasErrorBoundary(page)) {
-      test.skip(true, 'Error boundary on /payments');
-      return;
+      throw new Error('Error boundary on /payments — page rendered an unhandled exception');
     }
 
     // Heading or main content visible

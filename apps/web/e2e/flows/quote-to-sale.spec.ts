@@ -1,30 +1,35 @@
 /**
- * Flow 3: Quote → Convert to Sale → Receipt
+ * Quotes page — page-load + role-gate smoke checks
  *
- * Phase 1 SP5 module. SALES creates a quote, sends it, accepts, then
- * converts → POS with prefilled customer + items.
+ * Verifies surfaces on /quotes without exercising the full quote lifecycle
+ * (send → accept → convert). Specifically:
  *
- * Edge cases:
- *   - cannot convert REJECTED quote (button hidden)
- *   - cannot mutate ACCEPTED quote that already converted (button hidden)
+ *   1. SALES can load the page; "สร้างใบเสนอราคา" dialog opens with form fields.
+ *   2. Existing quote rows (when present) open a detail dialog without error;
+ *      empty state is also accepted (CI seed may have no quotes).
+ *   3. FINANCE_MANAGER sees no create button (read-only by role).
+ *
+ * A real flow spec (create → send → accept → convert → POS) needs seeded
+ * products + a customer to attach the quote to — deferred to a future PR
+ * that adds product/branch seeding helpers.
  */
 import { test, expect } from '@playwright/test';
 import { loginAsRole } from '../helpers/auth';
 import { QuoteCreatePage } from '../pom/QuoteCreatePage';
 import { hasErrorBoundary } from '../helpers/navigation';
 
-test.describe('Flow 3 — Quote to sale conversion', () => {
+test.describe.configure({ timeout: 60_000 });
+
+test.describe('Quotes — page-load + role gate', () => {
   test('SALES: /quotes page loads, create dialog opens with form fields', async ({ page }) => {
     await loginAsRole(page, 'SALES');
     const q = new QuoteCreatePage(page);
     const ok = await q.goto();
     if (!ok) {
-      test.skip(true, '/quotes did not load');
-      return;
+      throw new Error('/quotes failed to load — likely error boundary or auth issue');
     }
     if (await hasErrorBoundary(page)) {
-      test.skip(true, 'Error boundary on /quotes');
-      return;
+      throw new Error('Error boundary on /quotes — page rendered an unhandled exception');
     }
 
     await expect(q.heading()).toBeVisible({ timeout: 15000 });
@@ -48,8 +53,7 @@ test.describe('Flow 3 — Quote to sale conversion', () => {
     const q = new QuoteCreatePage(page);
     const ok = await q.goto();
     if (!ok) {
-      test.skip(true, '/quotes did not load');
-      return;
+      throw new Error('/quotes failed to load — likely error boundary or auth issue');
     }
 
     await expect(q.heading()).toBeVisible({ timeout: 15000 });
@@ -76,15 +80,12 @@ test.describe('Flow 3 — Quote to sale conversion', () => {
     await q.assertNoAppError();
   });
 
-  /* ─── Edge cases ─── */
-
-  test('Edge: FINANCE_MANAGER (read-only) sees no create button on /quotes', async ({ page }) => {
+  test('FINANCE_MANAGER (read-only) sees no create button on /quotes', async ({ page }) => {
     await loginAsRole(page, 'FINANCE_MANAGER');
     const q = new QuoteCreatePage(page);
     const ok = await q.goto();
     if (!ok) {
-      test.skip(true, '/quotes did not load for FINANCE_MANAGER');
-      return;
+      throw new Error('/quotes failed to load for FINANCE_MANAGER');
     }
 
     // QuotesPage.tsx canCreate = OWNER/BRANCH_MANAGER/SALES only.

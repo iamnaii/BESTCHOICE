@@ -16,7 +16,8 @@ export class PosPage {
   }
 
   heading(): Locator {
-    return this.page.getByText('POS').first();
+    // Match the PageHeader "POS - ขายสินค้า" heading, not the sidebar nav link.
+    return this.page.getByRole('heading', { name: /POS|ขายสินค้า/ }).first();
   }
 
   productSearchInput(): Locator {
@@ -34,22 +35,6 @@ export class PosPage {
 
   externalFinanceTile(): Locator {
     return this.page.getByText(/ไฟแนนซ์|ภายนอก/).first();
-  }
-
-  /** First clickable product result row */
-  firstProductResult(): Locator {
-    return this.page
-      .locator('[role="option"], .product-result, .search-result')
-      .first()
-      .or(this.page.locator('[class*="cursor-pointer"]').filter({ hasText: /฿|ราคา/ }).first());
-  }
-
-  /** First clickable customer result */
-  firstCustomerResult(): Locator {
-    return this.page
-      .locator('[role="option"], .customer-result, .search-result')
-      .first()
-      .or(this.page.locator('[class*="cursor-pointer"]').filter({ hasText: /08|09/ }).first());
   }
 
   /** Main "confirm sale" / "ยืนยันการขาย" button (in main content, not sidebar) */

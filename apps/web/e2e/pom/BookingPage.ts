@@ -36,33 +36,6 @@ export class BookingPage {
       .or(this.page.getByText(text).first());
   }
 
-  firstBookingRow(): Locator {
-    return this.page.locator('table tbody tr').first();
-  }
-
-  /* ─── Detail dialog actions ─── */
-
-  payDepositBtn(): Locator {
-    return this.page
-      .locator('[role="dialog"]')
-      .getByRole('button', { name: /รับชำระมัดจำ|ชำระมัดจำ|รับมัดจำ/ })
-      .first();
-  }
-
-  cancelBookingBtn(): Locator {
-    return this.page
-      .locator('[role="dialog"]')
-      .getByRole('button', { name: /ยกเลิกใบจอง|ยกเลิก/ })
-      .first();
-  }
-
-  convertBtn(): Locator {
-    return this.page
-      .locator('[role="dialog"]')
-      .getByRole('button', { name: /แปลงเป็นการขาย|แปลง/ })
-      .first();
-  }
-
   async assertNoAppError(): Promise<void> {
     await expect(this.page.locator('body')).not.toContainText('เกิดข้อผิดพลาด');
   }

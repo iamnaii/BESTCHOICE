@@ -27,17 +27,9 @@ export class YearEndClosingPage {
     return this.page.getByRole('button', { name: /ดูตัวอย่างการปิดบัญชี|กำลังคำนวณ/ }).first();
   }
 
-  /** The destructive "Close year X" button */
+  /** The destructive "Close year X" button — kept so guards can assert absence */
   closeYearBtn(): Locator {
     return this.page.getByRole('button', { name: /ปิดบัญชีปี/ }).last();
-  }
-
-  /** ConfirmDialog confirm — the destructive variant */
-  confirmDialogConfirmBtn(): Locator {
-    return this.page
-      .getByRole('dialog')
-      .getByRole('button', { name: /ปิดบัญชีปี|ยืนยัน/ })
-      .first();
   }
 
   /** "Already closed" banner */
@@ -48,24 +40,6 @@ export class YearEndClosingPage {
   /** Open-months error banner */
   openMonthsBanner(): Locator {
     return this.page.getByText(/ต้องปิดงวดบัญชีรายเดือนก่อน/).first();
-  }
-
-  /** Reverse button (OWNER only) */
-  reverseBtn(): Locator {
-    return this.page.getByRole('button', { name: /กลับรายการ/ }).first();
-  }
-
-  async setYear(year: number): Promise<void> {
-    const sel = this.yearSelect();
-    if (await sel.isVisible({ timeout: 5000 }).catch(() => false)) {
-      // Try select dropdown first
-      const isSelect = await sel.evaluate((el) => el.tagName.toLowerCase() === 'select');
-      if (isSelect) {
-        await sel.selectOption({ value: String(year) });
-      } else {
-        await sel.fill(String(year));
-      }
-    }
   }
 
   async clickPreview(): Promise<void> {

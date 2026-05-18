@@ -1,38 +1,39 @@
 /**
- * Flow 1: POS Cash Sale → Receipt
+ * POS page surfaces — page-load + input/validation smoke checks
  *
- * Top business flow #1. SALES user picks a product, picks a customer,
- * selects CASH, confirms, and lands on a receipt-y view.
+ * Verifies that /pos renders without error and exposes its primary
+ * surfaces. Does NOT complete a sale (which would require seeded products,
+ * a real cash drawer, and would write Payment/Sale records into the dev DB
+ * that the cleanup helper can't remove).
  *
- * Edge cases:
- *   - Empty cart → validation prevents submit
- *   - Change calculation reflects amount received
+ *   1. SALES golden surface: heading, product/customer search inputs respond,
+ *      CASH sale tile is selectable.
+ *   2. Empty-cart submit is prevented (button disabled or validation toast).
+ *   3. OWNER sees both CASH and EXTERNAL_FINANCE tiles and can toggle between them.
  *
- * NOTE: This is intentionally permissive in selectors because the POS page
- * UI varies slightly across product types. We assert: page loaded,
- * search inputs respond, validation prevents bad submits, no error
- * boundary appears. We do NOT assert exact receipt-rendering details
- * because they depend on seeded products which CI may not have.
+ * Selectors stay permissive (regex + first()) because the page has multiple
+ * sale-type-switched layouts. A real end-to-end cash sale will be added in a
+ * future PR alongside seed infrastructure for products + cash drawer setup.
  */
 import { test, expect } from '@playwright/test';
 import { loginAsRole, loginViaAPI } from '../helpers/auth';
 import { PosPage } from '../pom/PosPage';
 import { hasErrorBoundary } from '../helpers/navigation';
 
-test.describe('Flow 1 — POS Cash Sale', () => {
-  test('SALES: golden path — page loads, product+customer search work, cash sale type selectable', async ({
+test.describe.configure({ timeout: 60_000 });
+
+test.describe('POS — page-load + input/validation surfaces', () => {
+  test('SALES: page loads, product+customer search work, cash sale type selectable', async ({
     page,
   }) => {
     await loginAsRole(page, 'SALES');
     const pos = new PosPage(page);
     const ok = await pos.goto();
     if (!ok) {
-      test.skip(true, 'POS page failed to load — likely a CI env data issue');
-      return;
+      throw new Error('/pos failed to load — likely error boundary or auth issue');
     }
     if (await hasErrorBoundary(page)) {
-      test.skip(true, 'Error boundary on /pos in this environment');
-      return;
+      throw new Error('Error boundary on /pos — page rendered an unhandled exception');
     }
 
     // Heading rendered
@@ -61,8 +62,7 @@ test.describe('Flow 1 — POS Cash Sale', () => {
     const pos = new PosPage(page);
     const ok = await pos.goto();
     if (!ok) {
-      test.skip(true, 'POS page failed to load');
-      return;
+      throw new Error('/pos failed to load — likely error boundary or auth issue');
     }
 
     await expect(pos.heading()).toBeVisible({ timeout: 15000 });
@@ -102,8 +102,7 @@ test.describe('Flow 1 — POS Cash Sale', () => {
     const pos = new PosPage(page);
     const ok = await pos.goto();
     if (!ok) {
-      test.skip(true, 'POS page failed to load');
-      return;
+      throw new Error('/pos failed to load — likely error boundary or auth issue');
     }
 
     await expect(pos.heading()).toBeVisible({ timeout: 15000 });

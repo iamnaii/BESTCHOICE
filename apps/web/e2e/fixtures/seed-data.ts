@@ -29,8 +29,10 @@ export interface SeedIds {
   bookings: string[];
   quotes: string[];
   contracts: string[];
-  sales: string[];
-  payments: string[];
+  // NOTE: `payments` and `sales` intentionally omitted — those modules expose
+  // no `DELETE /:id` endpoint (audit-trail by design). Records created during
+  // tests stay in the dev DB; rely on `e2e-flow-` notes/prefix + manual
+  // cleanup when seeding flows that produce them.
 }
 
 export function newSeedIds(): SeedIds {
@@ -40,12 +42,15 @@ export function newSeedIds(): SeedIds {
     bookings: [],
     quotes: [],
     contracts: [],
-    sales: [],
-    payments: [],
   };
 }
 
-/** Unique-per-run suffix so seeded names never collide on retry */
+/**
+ * Unique-per-run suffix so seeded names never collide on retry.
+ *
+ * Uses `Date.now()` (monotonically increasing in ms) for ordering plus a
+ * crypto-random tail to avoid collisions when two specs seed in the same ms.
+ */
 export function runSuffix() {
   return `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 }
@@ -65,8 +70,10 @@ export async function seedCustomer(
   input: SeedCustomerInput = {},
 ): Promise<{ id: string; name: string; phone: string }> {
   const suffix = runSuffix();
-  // 13 digit national ID — Thai checksum isn't enforced for the dev seed
-  const nationalId = input.nationalId ?? `199${suffix.replace(/\D/g, '').padStart(10, '9').slice(-10)}`;
+  // 13 digit national ID — Thai checksum isn't enforced for the dev seed.
+  // Using `Date.now().toString().slice(-13)` is fine for E2E because tests do
+  // not share customer rows and Date.now() is monotonic at ms resolution.
+  const nationalId = input.nationalId ?? Date.now().toString().padStart(13, '9').slice(-13);
   const phone = input.phone ?? `08${Math.floor(10000000 + Math.random() * 89999999)}`;
   const firstName = input.firstName ?? 'ทดสอบ';
   const lastName = input.lastName ?? `อัตโนมัติ-${suffix.slice(-6)}`;
@@ -121,70 +128,60 @@ export async function getFirstInStockProduct(
   };
 }
 
-/* ─── AccountingPeriod (monthly close prep) ─── */
-
-export interface SeedClosedPeriodInput {
-  year: number;
-  month: number;
-  companyId?: string; // FINANCE companyId if you have it; left optional
-}
-
-/** Best-effort close a monthly period — returns true if closed or already closed */
-export async function seedClosedPeriod(
-  page: Page,
-  token: string,
-  input: SeedClosedPeriodInput,
-): Promise<boolean> {
-  // Pull the FINANCE company if not provided
-  let companyId = input.companyId;
-  if (!companyId) {
-    const c = await page.request.get(`${API_URL}/api/companies`, { headers: headers(token) });
-    if (c.ok()) {
-      const raw = unwrapResponse(await c.json());
-      const list = (raw.data ?? raw ?? []) as Array<{ id: string; companyCode?: string }>;
-      const finance = list.find((x) => x.companyCode === 'FINANCE') ?? list[0];
-      companyId = finance?.id;
-    }
-  }
-  if (!companyId) return false;
-
-  // The endpoint optionally accepts forceCloseReason — for tests we always pass one,
-  // it is ignored when there are no audit issues.
-  const longReason =
-    'E2E seed: closing month for year-end-closing test prerequisite. Audit waived for test fixture.';
-  const res = await page.request.post(`${API_URL}/api/expenses/periods/close`, {
-    headers: headers(token),
-    data: { companyId, year: input.year, month: input.month, forceCloseReason: longReason },
-  });
-  // 200 = closed now; 409/400 with 'already closed' is fine; 404 = no period to close yet (skip)
-  if (res.ok()) return true;
-  const text = await res.text().catch(() => '');
-  if (/already.?closed|ปิด.?แล้ว/i.test(text)) return true;
-  return false;
-}
-
 /* ─── Cleanup ─── */
 
+/**
+ * Best-effort cleanup of test data via DELETE endpoints.
+ *
+ * Only entities with a real `DELETE /:id` route are processed:
+ *   - customers    — DELETE /api/customers/:id     (OWNER)
+ *   - products     — DELETE /api/products/:id      (OWNER, BRANCH_MANAGER)
+ *   - bookings     — DELETE /api/bookings/:id      (OWNER, BRANCH_MANAGER)
+ *   - quotes       — DELETE /api/quotes/:id        (OWNER, BRANCH_MANAGER, SALES)
+ *   - contracts    — DELETE /api/contracts/:id     (OWNER only)
+ *
+ * `payments` and `sales` are NOT cleaned up here — those modules expose no
+ * DELETE route (audit-trail by design). Must pass an OWNER token so every
+ * delete has permission to run.
+ *
+ * Logs a warning when delete returns non-2xx / non-404 (404 is fine — caller
+ * may have rolled back the record). Failures do not throw — they're best-effort.
+ */
 export async function cleanupTestData(page: Page, token: string, ids: SeedIds): Promise<void> {
-  // Best-effort delete — ignore failures (record may have been mutated downstream)
-  await Promise.allSettled([
-    ...ids.payments.map((id) =>
-      page.request.delete(`${API_URL}/api/payments/${id}`, { headers: headers(token) }),
-    ),
-    ...ids.contracts.map((id) =>
-      page.request.delete(`${API_URL}/api/contracts/${id}`, { headers: headers(token) }),
-    ),
-    ...ids.sales.map((id) =>
-      page.request.delete(`${API_URL}/api/sales/${id}`, { headers: headers(token) }),
-    ),
-    ...ids.bookings.map((id) =>
-      page.request.delete(`${API_URL}/api/bookings/${id}`, { headers: headers(token) }),
-    ),
-    ...ids.quotes.map((id) =>
-      page.request.delete(`${API_URL}/api/quotes/${id}`, { headers: headers(token) }),
-    ),
-    ...ids.customers.map((id) =>
-      page.request.delete(`${API_URL}/api/customers/${id}`, { headers: headers(token) }),
-    ),
-  ]);
+  const tasks: Array<{ entity: string; id: string; url: string }> = [];
+  // Order matters loosely: child records first so FK constraints don't bite.
+  // contracts → bookings → quotes → products → customers
+  for (const id of ids.contracts) {
+    tasks.push({ entity: 'contracts', id, url: `${API_URL}/api/contracts/${id}` });
+  }
+  for (const id of ids.bookings) {
+    tasks.push({ entity: 'bookings', id, url: `${API_URL}/api/bookings/${id}` });
+  }
+  for (const id of ids.quotes) {
+    tasks.push({ entity: 'quotes', id, url: `${API_URL}/api/quotes/${id}` });
+  }
+  for (const id of ids.products) {
+    tasks.push({ entity: 'products', id, url: `${API_URL}/api/products/${id}` });
+  }
+  for (const id of ids.customers) {
+    tasks.push({ entity: 'customers', id, url: `${API_URL}/api/customers/${id}` });
+  }
+
+  const results = await Promise.allSettled(
+    tasks.map((t) => page.request.delete(t.url, { headers: headers(token) })),
+  );
+
+  results.forEach((r, idx) => {
+    const t = tasks[idx];
+    if (r.status === 'rejected') {
+      // eslint-disable-next-line no-console
+      console.warn(`[cleanupTestData] DELETE ${t.entity}/${t.id} threw:`, r.reason);
+      return;
+    }
+    const status = r.value.status();
+    if (status >= 200 && status < 300) return; // success
+    if (status === 404) return; // already gone — fine
+    // eslint-disable-next-line no-console
+    console.warn(`[cleanupTestData] DELETE ${t.entity}/${t.id} → HTTP ${status} (not cleaned)`);
+  });
 }

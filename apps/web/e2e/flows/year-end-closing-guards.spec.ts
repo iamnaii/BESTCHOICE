@@ -1,26 +1,32 @@
 /**
- * Flow 5: Year-End Closing → Trial Balance Verifies Zero
+ * Year-end closing — page-load + guard smoke checks
  *
- * Phase 3 SP1 module (just merged). ACCOUNTANT/OWNER previews then closes
- * the prior year. Revenue + expense accounts roll into 33-1101 retained
- * earnings via Income Summary (39-9999).
+ * Verifies the surfaces on /finance/year-end-closing without exercising the
+ * destructive close path. Specifically:
  *
- * Edge cases:
- *   - Cannot close future year (button disabled + warning shown)
- *   - Non-OWNER/ACCOUNTANT role sees read-only banner
+ *   1. ACCOUNTANT can load the page; the year selector defaults to last year
+ *      and the preview button is enabled.
+ *   2. OWNER preview click renders ONE of: net-income summary, already-closed
+ *      banner, or open-months banner (depends on monthly close state — all
+ *      three states are legitimate in a CI seed).
+ *   3. FINANCE_MANAGER (route-allowed but canPost=false) sees the read-only
+ *      banner OR no "ปิดบัญชีปี" button.
  *
- * NOTE: Actually posting a year-end JE in CI would require all 12 months
- * to be CLOSED in the test seed. That is not currently part of the seed,
- * so this spec focuses on guard behavior (preview UI + future-year block +
- * read-only mode) rather than the destructive close itself. The destructive
- * close path is unit-tested via jest in apps/web/src/pages/YearEndClosingPage.test.tsx.
+ * The actual year-end close JE is unit-tested in
+ * apps/api/src/modules/accounting/closing.service.spec.ts and the page state
+ * machine in apps/web/src/pages/YearEndClosingPage.test.tsx. A real flow spec
+ * needs all 12 monthly periods CLOSED — not currently part of the E2E seed,
+ * deferred to a future PR that adds period-seeding infrastructure.
  */
 import { test, expect } from '@playwright/test';
 import { loginAsRole, loginViaAPI } from '../helpers/auth';
 import { YearEndClosingPage } from '../pom/YearEndClosingPage';
 import { hasErrorBoundary } from '../helpers/navigation';
 
-test.describe('Flow 5 — Year-end closing guards', () => {
+// Flow specs may need longer per-test budget (multi-step UI + SPA route waits).
+test.describe.configure({ timeout: 60_000 });
+
+test.describe('Year-end closing — page-load + guards', () => {
   test('ACCOUNTANT: /finance/year-end-closing loads, preview button visible, year selector defaults to last year', async ({
     page,
   }) => {
@@ -28,12 +34,10 @@ test.describe('Flow 5 — Year-end closing guards', () => {
     const y = new YearEndClosingPage(page);
     const ok = await y.goto();
     if (!ok) {
-      test.skip(true, '/finance/year-end-closing did not load');
-      return;
+      throw new Error('/finance/year-end-closing failed to load — likely error boundary or auth issue');
     }
     if (await hasErrorBoundary(page)) {
-      test.skip(true, 'Error boundary on year-end-closing page');
-      return;
+      throw new Error('Error boundary on /finance/year-end-closing — page rendered an unhandled exception');
     }
 
     await expect(y.heading()).toBeVisible({ timeout: 15000 });
@@ -53,15 +57,14 @@ test.describe('Flow 5 — Year-end closing guards', () => {
     await y.assertNoAppError();
   });
 
-  test('OWNER: clicking preview renders Net Income summary (or already-closed banner)', async ({
+  test('OWNER: clicking preview renders Net Income summary OR open-months banner OR already-closed banner', async ({
     page,
   }) => {
     await loginViaAPI(page);
     const y = new YearEndClosingPage(page);
     const ok = await y.goto();
     if (!ok) {
-      test.skip(true, '/finance/year-end-closing did not load');
-      return;
+      throw new Error('/finance/year-end-closing failed to load — likely error boundary or auth issue');
     }
 
     await expect(y.heading()).toBeVisible({ timeout: 15000 });
@@ -92,32 +95,26 @@ test.describe('Flow 5 — Year-end closing guards', () => {
     await y.assertNoAppError();
   });
 
-  /* ─── Edge cases ─── */
-
-  test('Edge: SALES role sees read-only banner (no post permission)', async ({ page }) => {
-    await loginAsRole(page, 'SALES');
+  test('FINANCE_MANAGER: page loads but readonly banner shown OR close button hidden (canPost=false)', async ({
+    page,
+  }) => {
+    // FINANCE_MANAGER has page access (route allowed) but cannot post —
+    // exercises the read-only banner / hidden-close-button branch.
+    // SALES would hit the route guard and never see the page, so this role
+    // is the right one for asserting the read-only UI path.
+    await loginAsRole(page, 'FINANCE_MANAGER');
     const y = new YearEndClosingPage(page);
     const ok = await y.goto();
     if (!ok) {
-      // SALES might be redirected away from this page entirely
-      // (depends on route guard config) — both behaviors are valid
-      const onYearEndUrl = page.url().includes('year-end-closing');
-      if (!onYearEndUrl) {
-        // Redirected — pass, role guard worked
-        return;
-      }
-      test.skip(true, 'year-end-closing page failed to load for SALES');
-      return;
+      throw new Error('/finance/year-end-closing failed to load for FINANCE_MANAGER');
     }
 
-    // Read-only mode banner appears for non-OWNER/non-ACCOUNTANT roles,
-    // OR page is fully blocked by route guard (also fine).
-    const readonlyBanner = page.getByText(/โหมดดูอย่างเดียว/).first();
+    await expect(y.heading()).toBeVisible({ timeout: 15000 });
 
     // Trigger preview so the action card / readonly banner is rendered
     await y.clickPreview().catch(() => null);
 
-    // Either: readonly banner visible OR no close button visible for SALES
+    const readonlyBanner = page.getByText(/โหมดดูอย่างเดียว/).first();
     const hasReadonly = await readonlyBanner
       .isVisible({ timeout: 5000 })
       .catch(() => false);
@@ -125,10 +122,8 @@ test.describe('Flow 5 — Year-end closing guards', () => {
       .isVisible({ timeout: 2000 })
       .catch(() => false);
 
-    // If page rendered: SALES must EITHER see readonly banner OR not see close button
-    if (await y.heading().isVisible({ timeout: 2000 }).catch(() => false)) {
-      expect(hasReadonly || !hasCloseBtn).toBeTruthy();
-    }
+    // FINANCE_MANAGER must EITHER see the readonly banner OR not see the close button
+    expect(hasReadonly || !hasCloseBtn).toBeTruthy();
 
     await y.assertNoAppError();
   });

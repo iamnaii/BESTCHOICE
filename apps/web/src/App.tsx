@@ -156,6 +156,7 @@ const CollectionsPage = lazy(() => import('@/pages/CollectionsPage'));
 const DunningSettingsPage = lazy(() => import('@/pages/DunningSettingsPage'));
 const SmsTemplatesPage = lazy(() => import('@/pages/SmsTemplatesPage'));
 const MonthlyClosePage = lazy(() => import('@/pages/MonthlyClosePage'));
+const YearEndClosingPage = lazy(() => import('@/pages/YearEndClosingPage'));
 const IntercompanySettlementPage = lazy(() => import('@/pages/IntercompanySettlementPage'));
 // SP2 — Accounting Reports Gap
 const CashFlowPage = lazy(() =>
@@ -726,6 +727,14 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
                 <MonthlyClosePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/finance/year-end-closing"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <YearEndClosingPage />
               </ProtectedRoute>
             }
           />

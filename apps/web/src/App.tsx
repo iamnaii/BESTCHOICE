@@ -56,6 +56,8 @@ const PaymentMethodSettingsPage = lazy(() => import('@/pages/PaymentMethodSettin
 const DefectExchangePage = lazy(() => import('@/pages/DefectExchangePage'));
 // SP5 — SHOP-side additions
 const QuotesPage = lazy(() => import('@/pages/QuotesPage'));
+// P2-SP4 — การจอง / มัดจำ (SHOP-side reservation)
+const BookingsPage = lazy(() => import('@/pages/BookingsPage'));
 const DraftsPage = lazy(() => import('@/pages/DraftsPage'));
 const InsurancePage = lazy(() => import('@/pages/InsurancePage'));
 const AuditLogsPage = lazy(() => import('@/pages/AuditLogsPage'));
@@ -603,6 +605,17 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES']}>
                 <QuotesPage />
+              </ProtectedRoute>
+            }
+          />
+          {/* P2-SP4 — การจอง / มัดจำ */}
+          <Route
+            path="/bookings"
+            element={
+              <ProtectedRoute
+                roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES']}
+              >
+                <BookingsPage />
               </ProtectedRoute>
             }
           />

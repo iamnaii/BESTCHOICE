@@ -593,6 +593,13 @@ model User {
   lockedUntil         DateTime? @map("locked_until")
   lastLoginAt         DateTime? @map("last_login_at")
 
+  /// SP7.1 — รายชื่อ companies ที่ user เข้าถึงได้
+  /// OWNER/ACCOUNTANT = ["SHOP", "FINANCE"]; SALES/BM = ["SHOP"]; FM = ["FINANCE"]
+  accessibleCompanies String[] @default([]) @map("accessible_companies")
+
+  /// SP7.1 — Company context เริ่มต้นเมื่อ user login (default ใน pill switcher)
+  primaryCompany      String?  @map("primary_company")
+
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")

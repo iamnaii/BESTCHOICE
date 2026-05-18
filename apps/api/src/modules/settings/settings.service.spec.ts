@@ -149,6 +149,32 @@ describe('SettingsService audit trail', () => {
     expect(prisma.systemConfig.upsert).toHaveBeenCalled();
   });
 
+  // D1.1.3.3 — read-only keys (sso_rate_locked)
+  describe('read-only keys (D1.1.3.3)', () => {
+    it('update() rejects sso_rate_locked with BadRequestException', async () => {
+      await expect(service.update('sso_rate_locked', '6%', 'u-1')).rejects.toThrow(
+        /read-only/,
+      );
+      expect(prisma.systemConfig.upsert).not.toHaveBeenCalled();
+      expect(audit.log).not.toHaveBeenCalled();
+    });
+
+    it('bulkUpdate() rejects entire batch if any item is a read-only key', async () => {
+      await expect(
+        service.bulkUpdate(
+          [
+            { key: 'good_key', value: '1' },
+            { key: 'sso_rate_locked', value: '6%' },
+          ],
+          'u-1',
+        ),
+      ).rejects.toThrow(/read-only/);
+      expect(prisma.systemConfig.upsert).not.toHaveBeenCalled();
+      // Audit log entries should be skipped wholesale (atomicity)
+      expect(audit.log).not.toHaveBeenCalled();
+    });
+  });
+
   // D1.2.8.2 + D1.2.7.1 — UI feature flags endpoint
   describe('getUiFlags', () => {
     it('all flags default to true when SystemConfig rows missing', async () => {
@@ -331,6 +357,509 @@ describe('SettingsService audit trail', () => {
       });
       const flags = await service.getUiFlags();
       expect(flags.periodCloseDay).toBe(31);
+    });
+
+    // D1.3.3.2 — bank_reconciliation mode
+    it('bankReconciliationMode defaults to "manual" when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.bankReconciliationMode).toBe('manual');
+    });
+
+    it('bankReconciliationMode returns "auto" when OWNER sets it explicitly', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'bank_reconciliation') return Promise.resolve({ value: 'auto' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.bankReconciliationMode).toBe('auto');
+    });
+
+    it('bankReconciliationMode falls back to "manual" for non-whitelisted values', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'bank_reconciliation') return Promise.resolve({ value: 'hybrid' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.bankReconciliationMode).toBe('manual');
+    });
+
+    // D1.1.3.3 — sso_rate locked at 5%
+    it('ssoRateLocked is "5%" regardless of SystemConfig state', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.ssoRateLocked).toBe('5%');
+    });
+
+    it('ssoRateLocked is computed from SSO_RATE constant — DB writes can NOT override it', async () => {
+      // Even if someone smuggled a different value into the DB (which the
+      // read-only guard should prevent), getUiFlags must keep returning 5%.
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'sso_rate_locked') return Promise.resolve({ value: '99%' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.ssoRateLocked).toBe('5%');
+    });
+
+    // D1.3.6.2 — settlement_default_tick (whitelist)
+    it('settlementDefaultTick defaults to "overdue_only" when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.settlementDefaultTick).toBe('overdue_only');
+    });
+
+    it('settlementDefaultTick honors "all" when OWNER sets it', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'settlement_default_tick')
+          return Promise.resolve({ value: 'all' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.settlementDefaultTick).toBe('all');
+    });
+
+    it('settlementDefaultTick honors "none" when OWNER sets it', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'settlement_default_tick')
+          return Promise.resolve({ value: 'none' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.settlementDefaultTick).toBe('none');
+    });
+
+    it('settlementDefaultTick falls back to "overdue_only" on unknown / malformed values', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'settlement_default_tick')
+          return Promise.resolve({ value: 'legacy-bool' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.settlementDefaultTick).toBe('overdue_only');
+    });
+
+    // D1.1.3.2 — wht_rates dropdown
+    it('whtRates defaults to the 5 canonical rates (1/3/5/10/15) when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.whtRates).toHaveLength(5);
+      expect(flags.whtRates.map((r) => r.rate)).toEqual([1, 3, 5, 10, 15]);
+      // Each default carries a non-empty label
+      expect(flags.whtRates.every((r) => typeof r.label === 'string' && r.label.length > 0)).toBe(true);
+    });
+
+    it('whtRates returns custom list when SystemConfig set', async () => {
+      const custom = JSON.stringify([
+        { rate: 2, label: '2% — custom A' },
+        { rate: 7, label: '7% — custom B' },
+      ]);
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'wht_rates') return Promise.resolve({ value: custom });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.whtRates).toHaveLength(2);
+      expect(flags.whtRates[0].rate).toBe(2);
+      expect(flags.whtRates[1].label).toBe('7% — custom B');
+    });
+
+    it('whtRates falls back to defaults when an entry has wrong shape (missing label)', async () => {
+      const malformed = JSON.stringify([{ rate: 1 }]); // no label
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'wht_rates') return Promise.resolve({ value: malformed });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.whtRates).toHaveLength(5);
+    });
+
+    it('whtRates falls back to defaults when rate is out of [0, 30] range', async () => {
+      const outOfRange = JSON.stringify([{ rate: 99, label: 'too high' }]);
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'wht_rates') return Promise.resolve({ value: outOfRange });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.whtRates).toHaveLength(5);
+    });
+
+    it('whtRates falls back to defaults when stored array is empty', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'wht_rates') return Promise.resolve({ value: '[]' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.whtRates).toHaveLength(5);
+    });
+
+    // D1.1.3.5 — effectiveDate support (carried alongside wht_rates JSON)
+    it('whtRates accepts optional ISO effectiveDate on entries', async () => {
+      const withDates = JSON.stringify([
+        { rate: 1, label: '1% — old', effectiveDate: '2025-01-01' },
+        { rate: 5, label: '5% — future', effectiveDate: '2030-01-01' },
+        { rate: 10, label: '10% — always-on' }, // no effectiveDate
+      ]);
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'wht_rates') return Promise.resolve({ value: withDates });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.whtRates).toHaveLength(3);
+      expect(flags.whtRates[0].effectiveDate).toBe('2025-01-01');
+      expect(flags.whtRates[1].effectiveDate).toBe('2030-01-01');
+      expect(flags.whtRates[2].effectiveDate).toBeUndefined();
+    });
+
+    it('whtRates falls back to defaults when an effectiveDate is unparseable', async () => {
+      const badDate = JSON.stringify([
+        { rate: 1, label: '1% — bad date', effectiveDate: 'not-a-date' },
+      ]);
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'wht_rates') return Promise.resolve({ value: badDate });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.whtRates).toHaveLength(5);
+    });
+
+    // D1.3.3.1 — export_enabled flag
+    it('exportEnabled defaults to true when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.exportEnabled).toBe(true);
+    });
+
+    it('exportEnabled returns false when OWNER disables it', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'export_enabled') return Promise.resolve({ value: 'false' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.exportEnabled).toBe(false);
+    });
+
+    it('exportEnabled falls back to default (true) on unparseable value', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'export_enabled') return Promise.resolve({ value: 'banana' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.exportEnabled).toBe(true);
+    });
+
+    it('isExportEnabled() returns false when SystemConfig set to "false"', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'export_enabled') return Promise.resolve({ value: 'false' });
+        return Promise.resolve(null);
+      });
+      expect(await service.isExportEnabled()).toBe(false);
+    });
+
+    it('isExportEnabled() returns true (default) when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      expect(await service.isExportEnabled()).toBe(true);
+    });
+
+    // D1.4.3.2 — audit_log_archive_enabled toggle
+    it('auditLogArchiveEnabled defaults to true when SystemConfig row absent', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.auditLogArchiveEnabled).toBe(true);
+    });
+
+    it('auditLogArchiveEnabled returns false when OWNER disables it', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'audit_log_archive_enabled') return Promise.resolve({ value: 'false' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.auditLogArchiveEnabled).toBe(false);
+    });
+
+    it('auditLogArchiveEnabled falls back to default for unparseable value', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'audit_log_archive_enabled') return Promise.resolve({ value: 'sometimes' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.auditLogArchiveEnabled).toBe(true);
+    });
+
+    // D1.4.3.3 — document_retention_years (พ.ร.บ.บัญชี ม.7 = 5 years)
+    it('documentRetentionYears defaults to 5 when SystemConfig row absent', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.documentRetentionYears).toBe(5);
+    });
+
+    it('documentRetentionYears accepts valid 1-30 range from SystemConfig', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'document_retention_years') return Promise.resolve({ value: '7' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.documentRetentionYears).toBe(7);
+    });
+
+    it('documentRetentionYears clamps to default when out of valid 1-30 range', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'document_retention_years') return Promise.resolve({ value: '50' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.documentRetentionYears).toBe(5);
+    });
+
+    // D1.4.2.4 — batch_size_import
+    it('batchSizeImport defaults to 500 when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.batchSizeImport).toBe(500);
+    });
+
+    it('batchSizeImport accepts valid 50-5000 range', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'batch_size_import') return Promise.resolve({ value: '1000' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.batchSizeImport).toBe(1000);
+    });
+
+    it('batchSizeImport clamps out-of-range values back to 500', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'batch_size_import') return Promise.resolve({ value: '10' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.batchSizeImport).toBe(500);
+    });
+
+    // D1.4.3.4 — data_export_format whitelist
+    it('dataExportFormat defaults to JSON when SystemConfig row absent', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.dataExportFormat).toBe('JSON');
+    });
+
+    it('dataExportFormat accepts CSV / XLSX from SystemConfig', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'data_export_format') return Promise.resolve({ value: 'XLSX' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.dataExportFormat).toBe('XLSX');
+    });
+
+    it('dataExportFormat falls back to JSON for non-whitelisted value', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'data_export_format') return Promise.resolve({ value: 'YAML' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.dataExportFormat).toBe('JSON');
+    });
+
+    // D1.4.3.5 — pii_masking_enabled (PDPA master toggle)
+    it('piiMaskingEnabled defaults to true (PDPA-safe) when SystemConfig row absent', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.piiMaskingEnabled).toBe(true);
+    });
+
+    it('piiMaskingEnabled returns false when OWNER explicitly disables it', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'pii_masking_enabled') return Promise.resolve({ value: 'false' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.piiMaskingEnabled).toBe(false);
+    });
+
+    it('piiMaskingEnabled returns true when explicitly enabled', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'pii_masking_enabled') return Promise.resolve({ value: 'true' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.piiMaskingEnabled).toBe(true);
+    });
+
+    it('piiMaskingEnabled falls back to PDPA-safe default for unparseable value', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'pii_masking_enabled') return Promise.resolve({ value: 'maybe' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.piiMaskingEnabled).toBe(true);
+    });
+
+    // D1.4.2.5 — max_concurrent_jobs
+    it('maxConcurrentJobs defaults to 5 when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.maxConcurrentJobs).toBe(5);
+    });
+
+    it('maxConcurrentJobs accepts valid 1-50 range', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'max_concurrent_jobs') return Promise.resolve({ value: '12' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.maxConcurrentJobs).toBe(12);
+    });
+
+    it('maxConcurrentJobs clamps out-of-range values back to 5', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'max_concurrent_jobs') return Promise.resolve({ value: '999' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.maxConcurrentJobs).toBe(5);
+    });
+
+    // D1.4.3.6 — login_log_enabled
+    it('loginLogEnabled defaults to true when SystemConfig row absent', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.loginLogEnabled).toBe(true);
+    });
+
+    it('loginLogEnabled returns false when OWNER disables it', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'login_log_enabled') return Promise.resolve({ value: 'false' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.loginLogEnabled).toBe(false);
+    });
+
+    // D1.3.4.2 — smart_switch_threshold_days (default 0, clamp 0–30,
+    // negative/non-integer/NaN → 0). Originally marked SKIP per Phase 2
+    // decision report; shipped per owner directive 2026-05-17 to reach
+    // 100% A1 coverage.
+    it('smartSwitchThresholdDays defaults to 0 when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.smartSwitchThresholdDays).toBe(0);
+    });
+
+    it('smartSwitchThresholdDays accepts OWNER-configured value within 0–30', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'smart_switch_threshold_days') return Promise.resolve({ value: '7' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.smartSwitchThresholdDays).toBe(7);
+    });
+
+    it('smartSwitchThresholdDays clamps out-of-range value (>30) to default 0', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'smart_switch_threshold_days') return Promise.resolve({ value: '60' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.smartSwitchThresholdDays).toBe(0);
+    });
+
+    it('smartSwitchThresholdDays falls back to default for negative values', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'smart_switch_threshold_days') return Promise.resolve({ value: '-3' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.smartSwitchThresholdDays).toBe(0);
+    });
+
+    // D1.3.4.1 — smart_doctype_switch_enabled (default true, originally
+    // marked SKIP per Phase 2 decision report; shipped per owner directive
+    // 2026-05-17 to reach 100% A1 coverage).
+    it('smartDoctypeSwitchEnabled defaults to true when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.smartDoctypeSwitchEnabled).toBe(true);
+    });
+
+    it('smartDoctypeSwitchEnabled returns false when SystemConfig set to "false"', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'smart_doctype_switch_enabled') return Promise.resolve({ value: 'false' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.smartDoctypeSwitchEnabled).toBe(false);
+    });
+
+    it('smartDoctypeSwitchEnabled falls back to default on unparseable value', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'smart_doctype_switch_enabled') return Promise.resolve({ value: 'maybe' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.smartDoctypeSwitchEnabled).toBe(true);
+    });
+
+    // D1.1.6.3 — adj_auto_route toggle
+    it('adjAutoRoute defaults to true when SystemConfig row missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.adjAutoRoute).toBe(true);
+    });
+
+    it('adjAutoRoute returns false when SystemConfig set to "false"', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'adj_auto_route') return Promise.resolve({ value: 'false' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.adjAutoRoute).toBe(false);
+    });
+
+    it('adjAutoRoute falls back to default on unparseable value', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'adj_auto_route') return Promise.resolve({ value: 'maybe' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.adjAutoRoute).toBe(true);
+    });
+
+    // D1.3.6.1 — settlement_max_bills_per_doc
+    it('settlementMaxBillsPerDoc defaults to 100 when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.settlementMaxBillsPerDoc).toBe(100);
+    });
+
+    it('settlementMaxBillsPerDoc returns OWNER-configured value (e.g. 50)', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'settlement_max_bills_per_doc')
+          return Promise.resolve({ value: '50' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.settlementMaxBillsPerDoc).toBe(50);
+    });
+
+    it('settlementMaxBillsPerDoc clamps to default when above max (500)', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'settlement_max_bills_per_doc')
+          return Promise.resolve({ value: '999' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.settlementMaxBillsPerDoc).toBe(100);
+    });
+
+    it('settlementMaxBillsPerDoc clamps to default when below min (0 / negative)', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'settlement_max_bills_per_doc')
+          return Promise.resolve({ value: '0' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.settlementMaxBillsPerDoc).toBe(100);
     });
 
     // D1.1.5.4 — petty_cash_replenish_threshold
@@ -830,6 +1359,52 @@ describe('SettingsService audit trail', () => {
       expect(flags.defaultTimeRange).toBe('this_month');
     });
 
+    // D1.3.5.1 — summary_default_range preset (ExpenseDailySummaryPage)
+    it('summaryDefaultRange defaults to "this_month" when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.summaryDefaultRange).toBe('this_month');
+    });
+
+    it('summaryDefaultRange accepts "today" from SystemConfig', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'summary_default_range') return Promise.resolve({ value: 'today' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.summaryDefaultRange).toBe('today');
+    });
+
+    it('summaryDefaultRange accepts "this_week" from SystemConfig', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'summary_default_range') return Promise.resolve({ value: 'this_week' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.summaryDefaultRange).toBe('this_week');
+    });
+
+    it('summaryDefaultRange accepts "last_month" from SystemConfig', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'summary_default_range') return Promise.resolve({ value: 'last_month' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.summaryDefaultRange).toBe('last_month');
+    });
+
+    it('summaryDefaultRange falls back to "this_month" for unknown values (and rejects "all" — not whitelisted for summary)', async () => {
+      // 'all' is intentionally NOT in the summary whitelist. The summary page
+      // does not currently expose an "all" UI option and its query needs a
+      // bounded period to render. A bad admin edit must not blank the page.
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'summary_default_range') return Promise.resolve({ value: 'all' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.summaryDefaultRange).toBe('this_month');
+    });
+
     // D1.1.6 — adjustmentCodes for V4 form's Multi-line Adjustment row.
     it('adjustmentCodes defaults to 52-1104 (underpay) / 53-1503 (overpay)', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
@@ -1016,6 +1591,65 @@ describe('SettingsService audit trail', () => {
       const flags = await service.getUiFlags();
       expect(flags.cacheTtlDashboard).toBe(60);
     });
+
+    // D1.3.6.3 — settlement_partial_payment_enabled
+    it('settlementPartialPaymentEnabled defaults to true when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.settlementPartialPaymentEnabled).toBe(true);
+    });
+
+    it('settlementPartialPaymentEnabled returns false when OWNER disables it', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'settlement_partial_payment_enabled')
+          return Promise.resolve({ value: 'false' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.settlementPartialPaymentEnabled).toBe(false);
+    });
+
+    it('settlementPartialPaymentEnabled falls back to true on unparseable value', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'settlement_partial_payment_enabled')
+          return Promise.resolve({ value: 'maybe' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.settlementPartialPaymentEnabled).toBe(true);
+    });
+
+    // D1.3.3.3 — webhooks_enabled DEFAULT-OFF
+    it('webhooksEnabled defaults to false (DEFAULT-OFF) when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.webhooksEnabled).toBe(false);
+    });
+
+    it('webhooksEnabled returns true only when OWNER explicitly opts in', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'webhooks_enabled') return Promise.resolve({ value: 'true' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.webhooksEnabled).toBe(true);
+    });
+
+    // D1.3.3.4 — api_keys_admin_only
+    it('apiKeysAdminOnly defaults to true when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.apiKeysAdminOnly).toBe(true);
+    });
+
+    it('apiKeysAdminOnly returns false when OWNER explicitly opens to other roles', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'api_keys_admin_only') return Promise.resolve({ value: 'false' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.apiKeysAdminOnly).toBe(false);
+    });
   });
 
   // ─── D1.1.5.5 — Petty Cash custodian ───────────────────────────────
@@ -1145,6 +1779,60 @@ describe('SettingsService audit trail', () => {
       await expect(
         service.assignPettyCashCustodian('owner-1', { userId: 'u-acct-1' }),
       ).rejects.toThrow(/บทบาท BRANCH_MANAGER/);
+    });
+  });
+
+  // D1.1.2.5 — Admin sequence-reset endpoint helper.
+  describe('resetDocSequence', () => {
+    beforeEach(() => {
+      prisma.expenseDocument = {
+        groupBy: jest.fn(),
+      };
+    });
+
+    it('returns current MAX(docNumber) per type for diagnostic purposes', async () => {
+      prisma.expenseDocument.groupBy.mockResolvedValue([
+        { documentType: 'EXPENSE', _max: { number: 'EX-20260510-0042' } },
+        { documentType: 'CREDIT_NOTE', _max: { number: 'CN-20260509-0005' } },
+      ]);
+      const result = await service.resetDocSequence('EXPENSE', '2026-05-10', 'u-1');
+      expect(result.currentMaxByType.EXPENSE).toBe('EX-20260510-0042');
+      expect(result.currentMaxByType.CREDIT_NOTE).toBe('CN-20260509-0005');
+      expect(result.currentMaxByType.PAYROLL).toBeNull();
+      expect(result.currentMaxByType.VENDOR_SETTLEMENT).toBeNull();
+      expect(result.currentMaxByType.PETTY_CASH_REIMBURSEMENT).toBeNull();
+    });
+
+    it('writes DOC_SEQUENCE_RESET audit log with docType + periodStart', async () => {
+      prisma.expenseDocument.groupBy.mockResolvedValue([]);
+      await service.resetDocSequence('PAYROLL', '2026-05-01', 'u-2');
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 'u-2',
+          action: 'DOC_SEQUENCE_RESET',
+          entity: 'DocumentSequence',
+          entityId: 'PAYROLL:2026-05-01',
+          newValue: expect.objectContaining({
+            docType: 'PAYROLL',
+            periodStart: '2026-05-01',
+          }),
+        }),
+      );
+    });
+
+    it('returns a future-proof stub note explaining no actual mutation occurs', async () => {
+      prisma.expenseDocument.groupBy.mockResolvedValue([]);
+      const result = await service.resetDocSequence('EXPENSE', '2026-05-10', 'u-1');
+      expect(result.note).toMatch(/implicit/i);
+      expect(result.note).toMatch(/diagnostic/i);
+    });
+
+    it('includes all 5 DocumentType keys in currentMaxByType even when DB has no rows', async () => {
+      prisma.expenseDocument.groupBy.mockResolvedValue([]);
+      const result = await service.resetDocSequence('EXPENSE', '2026-05-10', 'u-1');
+      expect(Object.keys(result.currentMaxByType).sort()).toEqual(
+        ['CREDIT_NOTE', 'EXPENSE', 'PAYROLL', 'PETTY_CASH_REIMBURSEMENT', 'VENDOR_SETTLEMENT'].sort(),
+      );
     });
   });
 });

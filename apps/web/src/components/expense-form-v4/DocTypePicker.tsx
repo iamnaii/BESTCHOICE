@@ -18,6 +18,14 @@ interface Props {
   onChange: (t: DocType) => void;
   invoiceDateIsToday: boolean;
   /**
+   * D1.3.4.1 — when false, suppress the "แนะนำ" smart-default badge + the
+   * "ตั้งหนี้แล้วทั้งที่วันที่เป็นวันนี้" inline hint. The auto-flip in
+   * ExpenseFormV4 is gated by the same flag; this prop keeps the picker UI
+   * consistent so the user is not nudged toward a default the app no
+   * longer applies. Defaults to true for backwards compatibility.
+   */
+  smartDoctypeSwitchEnabled?: boolean;
+  /**
    * D1.1.5.1 — Petty Cash feature flag. When false the
    * `PETTY_CASH_REIMBURSEMENT` chip is omitted from the grid (not just
    * disabled — owner wants the doc-type hidden entirely when off). Defaults
@@ -46,9 +54,16 @@ export function DocTypePicker({
   value,
   onChange,
   invoiceDateIsToday,
+  smartDoctypeSwitchEnabled = true,
   pettyCashEnabled = true,
 }: Props) {
-  const recommended: DocType = invoiceDateIsToday ? 'EXPENSE_SAMEDAY' : 'EXPENSE_ACCRUAL';
+  // D1.3.4.1 — when the OWNER disables smart-doctype-switch, suppress the
+  // recommendation by setting the placeholder to a value no real chip uses.
+  const recommended: DocType | null = smartDoctypeSwitchEnabled
+    ? invoiceDateIsToday
+      ? 'EXPENSE_SAMEDAY'
+      : 'EXPENSE_ACCRUAL'
+    : null;
   // D1.1.5.1 — drop the Petty Cash chip when flag off. Grid then renders 5
   // chips instead of 6 — `md:grid-cols-6` still spans cleanly because the
   // empty slot folds into the second row only on narrow screens.
@@ -100,9 +115,15 @@ export function DocTypePicker({
         })}
       </div>
       <p className="text-xs text-muted-foreground pl-1">
-        Smart Default: invoice_date = today → SAMEDAY · invoice_date &lt; today → ACCRUAL
-        {invoiceDateIsToday && value === 'EXPENSE_ACCRUAL' && (
-          <span className="text-warning"> · ตั้งหนี้แล้วทั้งที่วันที่เป็นวันนี้</span>
+        {smartDoctypeSwitchEnabled ? (
+          <>
+            Smart Default: invoice_date = today → SAMEDAY · invoice_date &lt; today → ACCRUAL
+            {invoiceDateIsToday && value === 'EXPENSE_ACCRUAL' && (
+              <span className="text-warning"> · ตั้งหนี้แล้วทั้งที่วันที่เป็นวันนี้</span>
+            )}
+          </>
+        ) : (
+          <>Smart Default ปิดอยู่ — เลือกประเภทเอกสารด้วยตนเอง</>
         )}
       </p>
     </div>

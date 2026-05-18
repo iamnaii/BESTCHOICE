@@ -15,6 +15,7 @@
  */
 import { PrismaClient } from '@prisma/client';
 import { seedFinanceCoa } from '../../prisma/seed-coa-finance';
+import { seedShopCoa } from '../../prisma/seed-coa-shop';
 
 async function main(): Promise<void> {
   const expectedDb = process.env.EXPECTED_DB_NAME;
@@ -36,7 +37,10 @@ async function main(): Promise<void> {
   try {
     console.log(`[seed-coa] Connected to "${actualDb}". Upserting FINANCE chart of accounts from CSV...`);
     const result = await seedFinanceCoa(prisma);
-    console.log(`[seed-coa] Done: ${result.created} created, ${result.updated} updated.`);
+    console.log(`[seed-coa] FINANCE done: ${result.created} created, ${result.updated} updated.`);
+    // P3-SP5: also seed SHOP chart (S-prefixed). Same idempotent pattern.
+    const shopResult = await seedShopCoa(prisma);
+    console.log(`[seed-coa] SHOP done: ${shopResult.created} created, ${shopResult.updated} updated.`);
   } finally {
     await prisma.$disconnect();
   }

@@ -3,6 +3,7 @@ import * as bcrypt from 'bcrypt';
 import * as fs from 'fs';
 import * as path from 'path';
 import { seedFinanceCoa } from './seed-coa-finance';
+import { seedShopCoa } from './seed-coa-shop';
 import { seedTradeInValuations } from './seeds/trade-in-valuations';
 import { seedKnowledgeBase } from './seeds/knowledge-base';
 import { seedCollectionsFoundation } from './seeds/collections-foundation.seed';
@@ -1521,6 +1522,8 @@ async function main() {
   // CHART OF ACCOUNTS (ผังบัญชี)
   // ============================================================
   await seedFinanceCoa(prisma);
+  // P3-SP5: also seed SHOP chart (S-prefixed codes — see seed-coa-shop.ts)
+  await seedShopCoa(prisma);
 
   // ============================================================
   // TRADE-IN VALUATION TABLE (ตารางราคารับซื้ออ้างอิง)

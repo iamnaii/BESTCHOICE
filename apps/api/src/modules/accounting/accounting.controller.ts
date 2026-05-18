@@ -47,8 +47,14 @@ export class AccountingController {
 
   @Get('ledger/trial-balance')
   @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
-  getTrialBalance(@Query('asOfDate') asOfDate?: string) {
-    return this.service.getTrialBalance(asOfDate ? new Date(asOfDate) : undefined);
+  getTrialBalance(
+    @Query('asOfDate') asOfDate?: string,
+    @Query('scope') scope?: 'FINANCE' | 'SHOP' | 'ALL',
+  ) {
+    return this.service.getTrialBalance(
+      asOfDate ? new Date(asOfDate) : undefined,
+      scope ?? 'FINANCE',
+    );
   }
 
   @Get('ledger/profit-loss')
@@ -56,11 +62,45 @@ export class AccountingController {
   getProfitLossFromJournal(
     @Query('periodStart') periodStart: string,
     @Query('periodEnd') periodEnd: string,
+    @Query('scope') scope?: 'FINANCE' | 'SHOP' | 'ALL',
   ) {
     const start = new Date(periodStart);
     const end = new Date(periodEnd);
     end.setHours(23, 59, 59, 999);
-    return this.service.getProfitLossFromJournal(start, end);
+    return this.service.getProfitLossFromJournal(start, end, undefined, scope ?? 'FINANCE');
+  }
+
+  // ============================================================
+  // P3-SP5: SHOP-side reports (separate paths for sidebar UX)
+  // ============================================================
+  //
+  // POLICY (P3-SP5 W5): SHOP reports are cross-branch by design — these
+  // endpoints aggregate SHOP-side journal lines across ALL branches into
+  // ONE Trial Balance / P&L. BRANCH_MANAGER is NOT in CROSS_BRANCH_ROLES
+  // (see apps/api/src/modules/auth/branch-access.util.ts), so adding BM to
+  // @Roles here would actually 403 at BranchGuard. Roles intentionally
+  // limited to the cross-branch set: OWNER, FINANCE_MANAGER, ACCOUNTANT.
+  //
+  // If owner ever wants branch-scoped SHOP P&L for BM, add a `?branchId=`
+  // query and filter inside the service — do NOT just widen @Roles, the
+  // global guard will block it anyway.
+
+  @Get('ledger/shop/trial-balance')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  getShopTrialBalance(@Query('asOfDate') asOfDate?: string) {
+    return this.service.getTrialBalance(asOfDate ? new Date(asOfDate) : undefined, 'SHOP');
+  }
+
+  @Get('ledger/shop/profit-loss')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  getShopProfitLoss(
+    @Query('periodStart') periodStart: string,
+    @Query('periodEnd') periodEnd: string,
+  ) {
+    const start = new Date(periodStart);
+    const end = new Date(periodEnd);
+    end.setHours(23, 59, 59, 999);
+    return this.service.getProfitLossFromJournal(start, end, undefined, 'SHOP');
   }
 
   @Get('ledger/balance-sheet')

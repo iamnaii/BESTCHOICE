@@ -9,6 +9,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { StructuredLoggerService } from '../../common/logger';
 import { Prisma } from '@prisma/client';
 import { JournalAutoService } from '../journal/journal-auto.service';
+import { CompanyResolverService } from '../journal/company-resolver.service';
 
 /**
  * INVENTORY COSTING METHOD: Specific Identification
@@ -55,6 +56,8 @@ export class AccountingService implements OnModuleInit {
   constructor(
     private prisma: PrismaService,
     private journalAutoService: JournalAutoService,
+    // P3-SP5 W7: defense-in-depth filter on companyId for SHOP/FINANCE scoping.
+    private companyResolver: CompanyResolverService,
   ) {}
 
   /**
@@ -721,6 +724,7 @@ export class AccountingService implements OnModuleInit {
   //   55 = EXCLUDE from P&L (พีคโปรแกรม — ไม่นำมาแสดงในงบกำไรขาดทุน)
 
   private static readonly SECTION_MAP: Record<string, string> = {
+    // FINANCE chart (single-prefix)
     '11': 'สินทรัพย์หมุนเวียน',
     '12': 'สินทรัพย์ไม่หมุนเวียน',
     '21': 'หนี้สินหมุนเวียน',
@@ -735,7 +739,32 @@ export class AccountingService implements OnModuleInit {
     '53': 'ค่าใช้จ่ายบริหาร',
     '54': 'ค่าใช้จ่ายต้องห้ามทางภาษี',
     '55': 'ค่าใช้จ่ายโปรแกรมบัญชี (ยกเว้น P&L)',
+    // P3-SP5 — SHOP chart (S-prefix). Same logical grouping as FINANCE but
+    // labelled "(SHOP)" so a combined report makes it obvious which side a
+    // section came from.
+    'S11': 'สินทรัพย์หมุนเวียน (SHOP)',
+    'S12': 'สินทรัพย์ไม่หมุนเวียน (SHOP)',
+    'S21': 'หนี้สินหมุนเวียน (SHOP)',
+    'S22': 'หนี้สินไม่หมุนเวียน (SHOP)',
+    'S31': 'ทุนจดทะเบียน (SHOP)',
+    'S32': 'กำไรสะสม (SHOP)',
+    'S33': 'กำไรขาดทุนปีปัจจุบัน (SHOP)',
+    'S41': 'รายได้ (SHOP)',
+    'S42': 'รายได้อื่น (SHOP)',
+    'S50': 'ต้นทุนขาย (SHOP)',
+    'S51': 'ค่าใช้จ่ายขาย (SHOP)',
+    'S52': 'ค่าใช้จ่ายบริหาร (SHOP)',
+    'S53': 'ค่าใช้จ่ายอื่น (SHOP)',
   };
+
+  /**
+   * Extract the section-prefix from an account code.
+   * - FINANCE: `11-1101` → `11` (first 2 chars)
+   * - SHOP:    `S11-1101` → `S11` (first 3 chars, S + 2 digits)
+   */
+  private static codePrefix(code: string): string {
+    return code.startsWith('S') ? code.slice(0, 3) : code.slice(0, 2);
+  }
 
   /**
    * Get Trial Balance from journal lines as of a given date.
@@ -745,13 +774,46 @@ export class AccountingService implements OnModuleInit {
    *
    * Sections are grouped by the 2-digit prefix of the account code (11, 12, 21, …).
    * isBalanced = grandDrTotal equals grandCrTotal (accounting identity check).
+   *
+   * P3-SP5: `scope` filters by account code prefix:
+   *   - 'FINANCE' (default) — codes WITHOUT `S` prefix (the FINANCE chart)
+   *   - 'SHOP'              — codes WITH    `S` prefix (the SHOP chart)
+   *   - 'ALL'               — all accounts (combined report — both prefixes)
+   *
+   * Filtering happens on `chartOfAccount.code` and `journalLine.accountCode`
+   * at the DB level so SHOP/FINANCE running balances stay strictly separate.
    */
-  async getTrialBalance(asOfDate?: Date) {
+  async getTrialBalance(asOfDate?: Date, scope: 'FINANCE' | 'SHOP' | 'ALL' = 'FINANCE') {
     const cutoff = asOfDate ?? new Date();
 
-    // 1. Load all active chart of accounts
+    // Code-prefix filter: SHOP codes start with 'S' (S11-XXXX); FINANCE codes
+    // are bare digits (11-XXXX). Use Prisma `startsWith` for the SHOP filter
+    // and `not.startsWith` for FINANCE. 'ALL' skips the filter entirely.
+    const codeFilter: Prisma.StringFilter | undefined =
+      scope === 'SHOP'
+        ? { startsWith: 'S' }
+        : scope === 'FINANCE'
+          ? { not: { startsWith: 'S' } }
+          : undefined;
+
+    // P3-SP5 W7 — defense-in-depth: ALSO filter by JournalEntry.companyId.
+    // Code-prefix is the partition key but companyId guards against the
+    // edge case of a misposted JE (S-code lines under FINANCE companyId
+    // or vice versa). 'ALL' skips this filter so combined views work.
+    const companyIdFilter: string | undefined =
+      scope === 'SHOP'
+        ? await this.companyResolver.getShopCompanyId()
+        : scope === 'FINANCE'
+          ? await this.companyResolver.getFinanceCompanyId()
+          : undefined;
+
+    // 1. Load all active chart of accounts (scoped)
     const accounts = await this.prisma.chartOfAccount.findMany({
-      where: { deletedAt: null, status: 'ใช้งาน' },
+      where: {
+        deletedAt: null,
+        status: 'ใช้งาน',
+        ...(codeFilter ? { code: codeFilter } : {}),
+      },
       orderBy: { code: 'asc' },
     });
 
@@ -763,8 +825,10 @@ export class AccountingService implements OnModuleInit {
           status: 'POSTED',
           entryDate: { lte: cutoff },
           deletedAt: null,
+          ...(companyIdFilter ? { companyId: companyIdFilter } : {}),
         },
         deletedAt: null,
+        ...(codeFilter ? { accountCode: codeFilter } : {}),
       },
       _sum: { debit: true, credit: true },
     });
@@ -791,7 +855,7 @@ export class AccountingService implements OnModuleInit {
     }>();
 
     for (const acc of accounts) {
-      const prefix = acc.code.slice(0, 2);
+      const prefix = AccountingService.codePrefix(acc.code);
       const sectionName = AccountingService.SECTION_MAP[prefix] ?? `หมวด ${prefix}`;
 
       if (!sectionMap.has(prefix)) {
@@ -826,7 +890,7 @@ export class AccountingService implements OnModuleInit {
 
     // Also include any journal lines for codes not in CoA (orphan codes)
     for (const [code, sums] of sumMap) {
-      const prefix = code.slice(0, 2);
+      const prefix = AccountingService.codePrefix(code);
       if (!sectionMap.has(prefix)) {
         sectionMap.set(prefix, {
           sectionName: AccountingService.SECTION_MAP[prefix] ?? `หมวด ${prefix}`,
@@ -865,12 +929,61 @@ export class AccountingService implements OnModuleInit {
       grandCrTotal = grandCrTotal.add(s.crTotal);
     }
 
+    // P3-SP5 DEEP review C5 — per-scope subtotals + per-scope balance check.
+    //
+    // For scope='ALL' the combined Dr / Cr totals can sum to zero even if
+    // the SHOP half is unbalanced and the FINANCE half is unbalanced by
+    // the same magnitude in opposite directions. That hides real bugs.
+    // Always return strict per-scope totals so the UI can show TWO balance
+    // badges (SHOP balanced / FINANCE balanced) instead of one combined.
+    const shopDr = sections
+      .filter((s) => s.codePrefix.startsWith('S'))
+      .reduce((acc, s) => acc.add(s.drTotal), new Prisma.Decimal(0));
+    const shopCr = sections
+      .filter((s) => s.codePrefix.startsWith('S'))
+      .reduce((acc, s) => acc.add(s.crTotal), new Prisma.Decimal(0));
+    const financeDr = sections
+      .filter((s) => !s.codePrefix.startsWith('S'))
+      .reduce((acc, s) => acc.add(s.drTotal), new Prisma.Decimal(0));
+    const financeCr = sections
+      .filter((s) => !s.codePrefix.startsWith('S'))
+      .reduce((acc, s) => acc.add(s.crTotal), new Prisma.Decimal(0));
+
+    const shopBalanced = shopDr.equals(shopCr);
+    const financeBalanced = financeDr.equals(financeCr);
+    // isAllBalanced is STRICTER than the combined Dr=Cr check — both halves
+    // MUST balance independently. Combined Dr=Cr alone is not enough.
+    const isAllBalanced =
+      scope === 'ALL'
+        ? shopBalanced && financeBalanced
+        : scope === 'SHOP'
+          ? shopBalanced
+          : financeBalanced;
+
     return {
       asOfDate: cutoff,
+      scope,
       sections,
       grandDrTotal,
       grandCrTotal,
+      // Per-scope subtotals (always populated; consumers can show them per
+      // their needs — UI shows both badges when scope='ALL').
+      perScope: {
+        shop: {
+          drTotal: shopDr,
+          crTotal: shopCr,
+          isBalanced: shopBalanced,
+        },
+        finance: {
+          drTotal: financeDr,
+          crTotal: financeCr,
+          isBalanced: financeBalanced,
+        },
+      },
+      // Legacy combined balance check (kept for backward compatibility but
+      // do NOT rely on it for scope='ALL' — use `isAllBalanced` instead).
       isBalanced: grandDrTotal.equals(grandCrTotal),
+      isAllBalanced,
     };
   }
 
@@ -879,16 +992,59 @@ export class AccountingService implements OnModuleInit {
    *
    * Revenue = net Cr balance of accounts 41 + 42 for the period.
    * Expenses = net Dr balance of accounts 51 + 52 + 53 + 54 for the period.
+   * COGS    = net Dr balance of S50 (SHOP only — FINANCE does not carry COGS).
    * Accounts in prefix 55 are EXCLUDED per CPA chart note ("ไม่นำมาแสดงในงบกำไรขาดทุน").
    *
    * Period filter: JournalEntry.entryDate between periodStart and periodEnd (inclusive).
    *
    * Optional companyId scopes to JournalEntry.companyId — used by multi-entity
    * reports (SP2 Cash Flow / Equity Statement / General Ledger).
+   *
+   * P3-SP5: `scope` filters by account code prefix:
+   *   - 'FINANCE' (default) — codes WITHOUT `S` prefix
+   *   - 'SHOP'              — codes WITH    `S` prefix (S41, S42, S50, S51, S52, S53)
+   *   - 'ALL'               — both
    */
-  async getProfitLossFromJournal(periodStart: Date, periodEnd: Date, companyId?: string) {
-    const REVENUE_PREFIXES = ['41', '42'];
-    const EXPENSE_PREFIXES = ['51', '52', '53', '54']; // 55 excluded
+  async getProfitLossFromJournal(
+    periodStart: Date,
+    periodEnd: Date,
+    companyId?: string,
+    scope: 'FINANCE' | 'SHOP' | 'ALL' = 'FINANCE',
+  ) {
+    // Prefixes per scope. SHOP introduces S50-XXXX COGS (treated as
+    // expense in the P&L — separately reported under "ต้นทุนขาย").
+    const REVENUE_PREFIXES =
+      scope === 'SHOP'
+        ? ['S41', 'S42']
+        : scope === 'ALL'
+          ? ['41', '42', 'S41', 'S42']
+          : ['41', '42'];
+    const EXPENSE_PREFIXES =
+      scope === 'SHOP'
+        ? ['S50', 'S51', 'S52', 'S53']
+        : scope === 'ALL'
+          ? ['51', '52', '53', '54', 'S50', 'S51', 'S52', 'S53']
+          : ['51', '52', '53', '54']; // 55 excluded
+
+    const codeFilter: Prisma.StringFilter | undefined =
+      scope === 'SHOP'
+        ? { startsWith: 'S' }
+        : scope === 'FINANCE'
+          ? { not: { startsWith: 'S' } }
+          : undefined;
+
+    // P3-SP5 W7 — defense-in-depth companyId filter (see getTrialBalance for
+    // rationale). Honour an explicit `companyId` override from callers that
+    // already know the company; otherwise resolve from scope.
+    let companyIdFilter: string | undefined = companyId;
+    if (!companyIdFilter) {
+      if (scope === 'SHOP') {
+        companyIdFilter = await this.companyResolver.getShopCompanyId();
+      } else if (scope === 'FINANCE') {
+        companyIdFilter = await this.companyResolver.getFinanceCompanyId();
+      }
+      // scope === 'ALL' leaves companyIdFilter unset (cross-company view).
+    }
 
     const lineSums = await this.prisma.journalLine.groupBy({
       by: ['accountCode'],
@@ -897,9 +1053,10 @@ export class AccountingService implements OnModuleInit {
           status: 'POSTED',
           entryDate: { gte: periodStart, lte: periodEnd },
           deletedAt: null,
-          ...(companyId ? { companyId } : {}),
+          ...(companyIdFilter ? { companyId: companyIdFilter } : {}),
         },
         deletedAt: null,
+        ...(codeFilter ? { accountCode: codeFilter } : {}),
       },
       _sum: { debit: true, credit: true },
     });
@@ -919,22 +1076,34 @@ export class AccountingService implements OnModuleInit {
     let revenueTotal = new Prisma.Decimal(0);
     let expenseTotal = new Prisma.Decimal(0);
 
+    // P3-SP5 DEEP review C5 — per-scope subtotals so the UI can show SHOP
+    // vs FINANCE side-by-side without re-querying.
+    let shopRevenueTotal = new Prisma.Decimal(0);
+    let shopExpenseTotal = new Prisma.Decimal(0);
+    let financeRevenueTotal = new Prisma.Decimal(0);
+    let financeExpenseTotal = new Prisma.Decimal(0);
+
     for (const row of lineSums) {
-      const prefix = row.accountCode.slice(0, 2);
+      const prefix = AccountingService.codePrefix(row.accountCode);
       const dr = new Prisma.Decimal(row._sum.debit ?? 0);
       const cr = new Prisma.Decimal(row._sum.credit ?? 0);
       const name = nameMap.get(row.accountCode) ?? row.accountCode;
+      const isShop = row.accountCode.startsWith('S');
 
       if (REVENUE_PREFIXES.includes(prefix)) {
         // Revenue accounts are Cr-normal: net = Cr - Dr
         const amount = cr.sub(dr);
         revenueRows.push({ code: row.accountCode, name, amount });
         revenueTotal = revenueTotal.add(amount);
+        if (isShop) shopRevenueTotal = shopRevenueTotal.add(amount);
+        else financeRevenueTotal = financeRevenueTotal.add(amount);
       } else if (EXPENSE_PREFIXES.includes(prefix)) {
         // Expense accounts are Dr-normal: net = Dr - Cr
         const amount = dr.sub(cr);
         expenseRows.push({ code: row.accountCode, name, amount });
         expenseTotal = expenseTotal.add(amount);
+        if (isShop) shopExpenseTotal = shopExpenseTotal.add(amount);
+        else financeExpenseTotal = financeExpenseTotal.add(amount);
       }
       // prefix 55 and others: skip
     }
@@ -945,6 +1114,7 @@ export class AccountingService implements OnModuleInit {
     return {
       periodStart,
       periodEnd,
+      scope,
       revenue: {
         sectionName: 'รายได้รวม',
         rows: revenueRows,
@@ -956,6 +1126,21 @@ export class AccountingService implements OnModuleInit {
         total: expenseTotal,
       },
       netIncome: revenueTotal.sub(expenseTotal),
+      // P3-SP5 DEEP review C5 — per-scope subtotals (always populated).
+      // For scope='ALL' the UI displays BOTH side-by-side; for SHOP/FINANCE
+      // the other side will be 0.
+      perScope: {
+        shop: {
+          revenueTotal: shopRevenueTotal,
+          expenseTotal: shopExpenseTotal,
+          netIncome: shopRevenueTotal.sub(shopExpenseTotal),
+        },
+        finance: {
+          revenueTotal: financeRevenueTotal,
+          expenseTotal: financeExpenseTotal,
+          netIncome: financeRevenueTotal.sub(financeExpenseTotal),
+        },
+      },
     };
   }
 
@@ -971,7 +1156,9 @@ export class AccountingService implements OnModuleInit {
    */
   async getBalanceSheetFromJournal(asOfDate?: Date) {
     const cutoff = asOfDate ?? new Date();
-    const tb = await this.getTrialBalance(cutoff);
+    // P3-SP5 W1: explicit 'FINANCE' scope — this method historically reports
+    // the FINANCE-side balance sheet. SHOP balance sheet is deferred to SP7.
+    const tb = await this.getTrialBalance(cutoff, 'FINANCE');
 
     const zero = new Prisma.Decimal(0);
 
@@ -1249,7 +1436,8 @@ export class AccountingService implements OnModuleInit {
     startMinusOne.setMilliseconds(startMinusOne.getMilliseconds() - 1);
 
     // 1. Net Income for the period
-    const pl = await this.getProfitLossFromJournal(periodStart, periodEnd, companyId);
+    // P3-SP5 W1: explicit 'FINANCE' scope — Cash Flow is FINANCE-only.
+    const pl = await this.getProfitLossFromJournal(periodStart, periodEnd, companyId, 'FINANCE');
     const netIncome = pl.netIncome;
 
     // 2. Non-cash adjustments
@@ -1553,7 +1741,8 @@ export class AccountingService implements OnModuleInit {
     // Derive current-year P&L (yearStart .. periodEnd) for the caveat line.
     // This represents the implicit profit not yet closed into 33-1101.
     const yearStart = new Date(periodEnd.getFullYear(), 0, 1);
-    const yearPL = await this.getProfitLossFromJournal(yearStart, periodEnd, companyId);
+    // P3-SP5 W1: explicit 'FINANCE' scope — Equity Statement is FINANCE-only.
+    const yearPL = await this.getProfitLossFromJournal(yearStart, periodEnd, companyId, 'FINANCE');
     const currentYearProfit = yearPL.netIncome.toNumber();
 
     return {

@@ -30,3 +30,43 @@ export function hasCrossBranchAccess(
   if (!user || !user.role) return false;
   return CROSS_BRANCH_ROLES.has(user.role);
 }
+
+/**
+ * Branch scope descriptor used by services to apply consistent `where`
+ * filters on multi-branch resources.
+ *
+ * Shape:
+ *  - `{ all: true }`   — cross-branch role; service should NOT filter by branchId
+ *  - `{ branchId }`    — single-branch role; service MUST filter by user.branchId
+ *  - `{ branchId: null }` — branch-scoped role without a branchId assignment
+ *                          (defensive — return zero rows by filtering to a
+ *                          guaranteed-empty set rather than leaking data)
+ */
+export type BranchScope =
+  | { all: true; branchId?: undefined }
+  | { all?: false; branchId: string | null };
+
+/**
+ * Build a BranchScope from the authenticated request user.
+ *
+ * Services should call this once at the top of read methods and apply the
+ * returned scope to their `where` clause:
+ *
+ *   const scope = getBranchScope(user);
+ *   if (!scope.all) {
+ *     if (!scope.branchId) return { data: [], total: 0 };
+ *     where.branchId = scope.branchId;
+ *   }
+ *
+ * This mirrors BranchGuard but works at the service layer where we can
+ * scope the query rather than just gate the request — important for list
+ * endpoints that don't receive a branchId from the client.
+ */
+export function getBranchScope(
+  user: { role?: string | null; branchId?: string | null } | null | undefined,
+): BranchScope {
+  if (hasCrossBranchAccess(user)) {
+    return { all: true };
+  }
+  return { branchId: user?.branchId ?? null };
+}

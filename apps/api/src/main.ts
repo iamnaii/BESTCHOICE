@@ -207,6 +207,17 @@ async function bootstrap() {
   // Graceful shutdown
   app.enableShutdownHooks();
 
+  // P2-SP5 — e-Tax submission mode boot notice. Disabled by default; the
+  // module still exposes XML generation so accounting can inspect outputs.
+  const etaxMode = process.env.ETAX_SUBMIT_MODE ?? 'disabled';
+  if (etaxMode === 'disabled') {
+    logger.warn(
+      '[e-Tax] submission disabled (ETAX_SUBMIT_MODE=disabled) — only XML generation available. Set to "enabled" + configure cert/RD creds to send to สรรพากร.',
+    );
+  } else {
+    logger.log('[e-Tax] submission ENABLED — cert + RD creds expected via /settings/e-tax-config');
+  }
+
   const port = process.env.PORT || 3000;
   await app.listen(port);
   logger.log(`API server running on http://localhost:${port}`);

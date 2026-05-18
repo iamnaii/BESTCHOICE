@@ -1165,6 +1165,9 @@ model Payment {
   dunningActions      DunningAction[]
   refunds             Refund[]
 
+  // P2-SP5: e-Tax XML submission (1:1, only if generated)
+  eTaxSubmission ETaxSubmission? @relation("PaymentETaxSubmission")
+
   @@unique([contractId, installmentNo])
   @@index([contractId])
   @@index([dueDate])
@@ -3027,6 +3030,12 @@ model CompanyInfo {
   nameTh             String  @map("name_th")
   nameEn             String? @map("name_en")
   taxId              String  @map("tax_id") // เลขทะเบียนนิติบุคคล/ผู้เสียภาษี
+  /// P2-SP5 C6 — RD branch code (5 digits, '00000' = head office) used in
+  /// e-Tax XML `cbc:CompanyID schemeID="TXID"` as `{taxId}-{branchCode}`.
+  /// Stored at company level so OWNER can change once if they file from a
+  /// sub-branch ('00001', '00002', ...). No UI to edit in SP5 — default is
+  /// fine for HQ FINANCE issuance.
+  taxBranchCode      String  @default("00000") @map("tax_branch_code")
   companyCode        String? @unique @map("company_code") // "SHOP" / "FINANCE"
   address            String
   phone              String?
@@ -6502,4 +6511,65 @@ model BankAccount {
   @@index([accountCode])
   @@index([deletedAt])
   @@map("bank_accounts")
+}
+
+// ============================================================
+// P2-SP5 — e-Tax XML submission to สรรพากร (Revenue Department)
+// ============================================================
+
+/// e-Tax Invoice XML submission per ขมธอ.21-2562 (Thailand UBL 2.1) +
+/// ป.รัษฎากร ม.86/4 + ประกาศอธิบดี ฉ.48. Tracks the lifecycle of one XML
+/// document per Payment from generation → signing → RD submission →
+/// accepted/rejected. Cert + RD creds are PLUGGABLE — when
+/// `ETAX_SUBMIT_MODE=disabled` (default) only XML generation runs and the
+/// "ส่งให้สรรพากร" button is gated in the UI.
+model ETaxSubmission {
+  id             String               @id @default(uuid())
+  paymentId      String               @unique @map("payment_id")
+  /// P2-SP5 C7 — sequential invoice number per ม.86/4. Format
+  /// `ET-YYYYMMDD-NNNN` (BKK day). Generated once at submission creation via
+  /// advisory-lock daily sequence (mirrors DocNumberService convention).
+  /// Idempotent — re-running generateForPayment reuses this stored number
+  /// instead of allocating a new one.
+  invoiceNumber  String?              @unique @map("invoice_number")
+  /// Raw generated UBL 2.1 XML — large text column
+  xmlContent     String               @map("xml_content") @db.Text
+  /// PKCS#7 detached signature bundle (CMS) — populated after sign step
+  signedXml      String?              @map("signed_xml") @db.Text
+  status         ETaxSubmissionStatus @default(PENDING)
+  submittedAt    DateTime?            @map("submitted_at")
+  /// RD's tracking ID once accepted into their queue
+  rdSubmissionId String?              @map("rd_submission_id")
+  /// Full RD API response payload for forensics (status code, body)
+  rdResponse     Json?                @map("rd_response")
+  acceptedAt     DateTime?            @map("accepted_at")
+  rejectedAt     DateTime?            @map("rejected_at")
+  rejectReason   String?              @map("reject_reason")
+  retryCount     Int                  @default(0) @map("retry_count")
+  lastRetryAt    DateTime?            @map("last_retry_at")
+  createdAt      DateTime             @default(now()) @map("created_at")
+  updatedAt      DateTime             @updatedAt @map("updated_at")
+  deletedAt      DateTime?            @map("deleted_at")
+
+  payment Payment @relation("PaymentETaxSubmission", fields: [paymentId], references: [id])
+
+  @@index([status])
+  @@index([paymentId, deletedAt])
+  @@index([submittedAt])
+  @@map("etax_submissions")
+}
+
+enum ETaxSubmissionStatus {
+  /// XML generated, not yet signed
+  PENDING
+  /// PKCS#7 signed, ready to submit
+  SIGNED
+  /// Sent to RD, awaiting response
+  SUBMITTED
+  /// RD accepted (success)
+  ACCEPTED
+  /// RD rejected (see rejectReason)
+  REJECTED
+  /// Transport / server error — eligible for retry
+  ERROR
 }

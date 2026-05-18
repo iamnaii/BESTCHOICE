@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 
 interface OffsiteBackupRun {
   id: string;
@@ -17,13 +18,14 @@ interface OffsiteBackupRun {
   filesCount: number;
   totalBytes: number;
   errorMessage: string | null;
-  triggeredBy: string | null;
+  triggeredBy: string;
+  triggeredByUser: { id: string; name: string } | null;
   destBucket: string | null;
 }
 
 interface OffsiteBackupStatus {
   enabled: boolean;
-  destBucket: string;
+  destBucket: string | null;
   retentionDays: number;
   sqlSourceBucket: string | null;
   runs: OffsiteBackupRun[];
@@ -64,13 +66,28 @@ function formatThaiDateTime(iso: string): string {
   });
 }
 
+function formatTrigger(run: OffsiteBackupRun): string {
+  if (run.triggeredBy === 'cron') return 'cron';
+  // W3/C2: prefer joined user name; fall back to category label (no UUID slice).
+  return run.triggeredByUser?.name || 'manual';
+}
+
 export function OffsiteBackupTab() {
   const queryClient = useQueryClient();
-  const [confirming, setConfirming] = useState(false);
+  // W4 — replaces 2-click toast confirm. Modal dialog before enabling.
+  const [showEnableConfirm, setShowEnableConfirm] = useState(false);
 
   const { data, isLoading } = useQuery<OffsiteBackupStatus>({
     queryKey: ['backup', 'offsite-status'],
     queryFn: async () => (await api.get('/backup/offsite-status')).data,
+    // W3 — auto-refresh every 5s while the topmost run is still RUNNING so
+    // the UI reflects progress without manual refresh. Once the top row
+    // leaves RUNNING the interval stops (returns false).
+    refetchInterval: (query) => {
+      const status = query.state.data as OffsiteBackupStatus | undefined;
+      const top = status?.runs?.[0];
+      return top?.status === 'RUNNING' ? 5_000 : false;
+    },
   });
 
   const toggleMutation = useMutation({
@@ -95,19 +112,33 @@ export function OffsiteBackupTab() {
         toast.error(`สำรองข้อมูลล้มเหลว: ${resp.errorMessage || 'ไม่ทราบสาเหตุ'}`);
       }
     },
+    // W3 — combined with server-side advisory lock (C1). A 409 ConflictException
+    // from concurrent runs (cron + manual click) surfaces here with a friendly
+    // Thai message instead of a generic axios error.
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
   if (isLoading) {
-    return <p className="text-sm text-muted-foreground">กำลังโหลด...</p>;
+    return <p className="text-sm text-muted-foreground leading-snug">กำลังโหลด...</p>;
   }
 
   if (!data) {
-    return <p className="text-sm text-muted-foreground">ไม่สามารถโหลดสถานะได้</p>;
+    return <p className="text-sm text-muted-foreground leading-snug">ไม่สามารถโหลดสถานะได้</p>;
   }
 
   return (
     <div className="space-y-4">
+      <ConfirmDialog
+        open={showEnableConfirm}
+        onOpenChange={setShowEnableConfirm}
+        title="เปิดใช้งาน Off-site Backup?"
+        description="ต้องสร้าง destination bucket + grant IAM ก่อน — กรุณาตรวจสอบใน docs/guides/OFFSITE-BACKUP.md ก่อนเปิดใช้งาน"
+        confirmLabel="ยืนยัน"
+        cancelLabel="ยกเลิก"
+        loading={toggleMutation.isPending}
+        onConfirm={() => toggleMutation.mutate(true)}
+      />
+
       {/* Enable toggle + config */}
       <Card>
         <CardHeader>
@@ -124,7 +155,7 @@ export function OffsiteBackupTab() {
         <CardContent className="space-y-4">
           <div className="flex items-start justify-between gap-4 rounded-lg border border-border/60 bg-muted p-4">
             <div className="flex-1">
-              <p className="text-sm font-medium text-foreground">เปิดใช้งาน Off-site Backup</p>
+              <p className="text-sm font-medium text-foreground leading-snug">เปิดใช้งาน Off-site Backup</p>
               <p className="text-xs text-muted-foreground leading-snug mt-1">
                 เมื่อเปิดอยู่ cron จะรันทุกวัน 03:30 น. และเขียนประวัติการรันลงตาราง
                 ด้านล่าง — ก่อนเปิดต้องให้ owner สร้าง destination bucket
@@ -136,14 +167,13 @@ export function OffsiteBackupTab() {
               checked={data.enabled}
               disabled={toggleMutation.isPending}
               onCheckedChange={(v) => {
-                if (v && !confirming) {
-                  setConfirming(true);
-                  toast.warning('ยืนยันอีกครั้งเพื่อเปิดใช้งาน (กดอีกครั้ง)');
-                  setTimeout(() => setConfirming(false), 4000);
-                  return;
+                // W4 — modal confirm for ON (destructive surface);
+                // OFF is a one-click action.
+                if (v) {
+                  setShowEnableConfirm(true);
+                } else {
+                  toggleMutation.mutate(false);
                 }
-                setConfirming(false);
-                toggleMutation.mutate(v);
               }}
               aria-label="เปิดปิด Off-site Backup"
             />
@@ -151,22 +181,28 @@ export function OffsiteBackupTab() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="rounded-lg bg-muted p-3">
-              <p className="text-xs text-muted-foreground">Destination Bucket</p>
-              <p className="text-sm font-mono text-foreground mt-1 break-all">{data.destBucket}</p>
+              <p className="text-xs text-muted-foreground leading-snug">Destination Bucket</p>
+              <p className="text-sm font-mono text-foreground mt-1 break-all">
+                {data.destBucket || <span className="text-muted-foreground italic">— ปกปิดสำหรับ role นี้</span>}
+              </p>
             </div>
             <div className="rounded-lg bg-muted p-3">
-              <p className="text-xs text-muted-foreground">ระยะเก็บข้อมูล (Retention)</p>
+              <p className="text-xs text-muted-foreground leading-snug">ระยะเก็บข้อมูล (Retention)</p>
               <p className="text-sm font-semibold text-foreground mt-1">{data.retentionDays} วัน</p>
             </div>
             <div className="rounded-lg bg-muted p-3">
-              <p className="text-xs text-muted-foreground">SQL Source Bucket</p>
+              <p className="text-xs text-muted-foreground leading-snug">SQL Source Bucket</p>
               <p className="text-sm font-mono text-foreground mt-1 break-all">
-                {data.sqlSourceBucket || <span className="text-muted-foreground italic">ไม่ได้ตั้งค่า (จะข้าม SQL replication)</span>}
+                {data.sqlSourceBucket === null ? (
+                  <span className="text-muted-foreground italic leading-snug">— ปกปิด / ไม่ได้ตั้งค่า</span>
+                ) : (
+                  data.sqlSourceBucket
+                )}
               </p>
             </div>
           </div>
 
-          {!data.sqlSourceBucket && (
+          {data.destBucket !== null && !data.sqlSourceBucket && (
             <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900 p-3 text-sm">
               <ShieldAlert className="size-4 mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
               <p className="text-amber-900 dark:text-amber-200 leading-snug">
@@ -201,7 +237,7 @@ export function OffsiteBackupTab() {
         </CardHeader>
         <CardContent>
           {data.runs.length === 0 ? (
-            <p className="text-sm text-muted-foreground">ยังไม่มีประวัติการสำรองข้อมูล</p>
+            <p className="text-sm text-muted-foreground leading-snug">ยังไม่มีประวัติการสำรองข้อมูล</p>
           ) : (
             <div className="overflow-x-auto">
               <Table>
@@ -228,10 +264,10 @@ export function OffsiteBackupTab() {
                         <TableCell className="text-right tabular-nums">{run.filesCount.toLocaleString('th-TH')}</TableCell>
                         <TableCell className="text-right tabular-nums">{formatBytes(run.totalBytes)}</TableCell>
                         <TableCell className="text-right tabular-nums">{formatDuration(run.startedAt, run.finishedAt)}</TableCell>
-                        <TableCell className="text-xs text-muted-foreground font-mono">
-                          {run.triggeredBy === 'cron' ? 'cron' : run.triggeredBy === 'manual' ? 'manual' : run.triggeredBy ? `user:${run.triggeredBy.slice(0, 8)}` : '-'}
+                        <TableCell className="text-xs text-muted-foreground leading-snug">
+                          {formatTrigger(run)}
                         </TableCell>
-                        <TableCell className="text-xs text-destructive max-w-[18rem] truncate" title={run.errorMessage || ''}>
+                        <TableCell className="text-xs text-destructive max-w-[18rem] truncate leading-snug" title={run.errorMessage || ''}>
                           {run.errorMessage || ''}
                         </TableCell>
                       </TableRow>

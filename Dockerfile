@@ -51,12 +51,17 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
-# Install wget (health check) + chromium (puppeteer PDF generation)
-# Puppeteer-core has no bundled Chromium — must provide system one.
-# Chromium + minimal font/ca deps are needed for headless PDF rendering in
-# documents.service.ts::htmlToPdf. Thai fonts (TH Sarabun PSK) are base64
-# embedded at runtime from public/fonts/, so we only need ttf-freefont here
-# for fallback glyphs.
+# Install wget (health check) + chromium (puppeteer PDF generation) + tzdata
+# - Puppeteer-core has no bundled Chromium — must provide system one.
+# - Chromium + minimal font/ca deps are needed for headless PDF rendering in
+#   documents.service.ts::htmlToPdf. Thai fonts (TH Sarabun PSK) are base64
+#   embedded at runtime from public/fonts/, so we only need ttf-freefont here
+#   for fallback glyphs.
+# - tzdata is REQUIRED for @nestjs/schedule timezone-bound crons
+#   (e.g. OffsiteBackupCron at 03:30 Asia/Bangkok). Without it Alpine has no
+#   IANA zoneinfo and the cron silently falls back to UTC — daily backup
+#   would run at 10:30 BKK instead of the intended 03:30. We also force
+#   process TZ for consistent log timestamps.
 RUN apk add --no-cache \
       wget \
       chromium \
@@ -64,7 +69,9 @@ RUN apk add --no-cache \
       freetype \
       harfbuzz \
       ca-certificates \
-      ttf-freefont
+      ttf-freefont \
+      tzdata
+ENV TZ=Asia/Bangkok
 
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
     PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser

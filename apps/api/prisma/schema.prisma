@@ -733,6 +733,9 @@ model User {
   bookingsCreated  Booking[] @relation("BookingCreatedBy")
   bookingsCanceled Booking[] @relation("BookingCanceledBy")
 
+  // P3-SP2 — Off-site backup manual triggers (forensics: who clicked "Run Now")
+  offsiteBackupRunsTriggered OffsiteBackupRun[] @relation("OffsiteBackupTriggeredBy")
+
   @@index([branchId])
   @@index([yeastarExtension])
   @@map("users")
@@ -6581,22 +6584,31 @@ enum ETaxSubmissionStatus {
 /// Run-log for the off-site GCS replication cron.
 /// Append-only operational history (last 30 rows surfaced in UI).
 /// Created via OffsiteBackupService — never edited after finishedAt set.
+/// Append-only event log — updatedAt/deletedAt intentionally omitted.
+/// Retention handled by offsite-backup-retention cron (rows older than 1
+/// year pruned daily at 02:00 BKK to match AuditLog policy + avoid PDPA
+/// risk on lingering user UUIDs after soft-delete).
 model OffsiteBackupRun {
-  id            String                @id @default(uuid())
-  startedAt     DateTime              @map("started_at")
-  finishedAt    DateTime?             @map("finished_at")
-  status        OffsiteBackupStatus
-  filesCount    Int                   @default(0) @map("files_count")
-  totalBytes    BigInt                @default(0) @map("total_bytes")
+  id                String              @id @default(uuid())
+  startedAt         DateTime            @map("started_at")
+  finishedAt        DateTime?           @map("finished_at")
+  status            OffsiteBackupStatus
+  filesCount        Int                 @default(0) @map("files_count")
+  totalBytes        BigInt              @default(0) @map("total_bytes")
   /// First error message (truncated to 1000 chars) when status = FAILED.
-  errorMessage  String?               @map("error_message")
-  /// 'cron' | 'manual' | userId — for forensics on who/what triggered the run.
-  triggeredBy   String?               @map("triggered_by")
+  errorMessage      String?             @map("error_message")
+  /// Category: 'cron' | 'manual'. Was previously also storing raw UUIDs
+  /// — split into triggeredByUserId for proper FK + audit-safe joins.
+  triggeredBy       String              @default("cron") @map("triggered_by")
+  /// Set when triggeredBy = 'manual' (OWNER clicked "Run Now"). Null for cron.
+  triggeredByUserId String?             @map("triggered_by_user_id")
+  triggeredByUser   User?               @relation("OffsiteBackupTriggeredBy", fields: [triggeredByUserId], references: [id])
   /// Off-site destination bucket name captured at run time (for audit).
-  destBucket    String?               @map("dest_bucket")
-  createdAt     DateTime              @default(now()) @map("created_at")
+  destBucket        String?             @map("dest_bucket")
+  createdAt         DateTime            @default(now()) @map("created_at")
 
   @@index([startedAt])
+  @@index([triggeredByUserId])
   @@map("offsite_backup_runs")
 }
 

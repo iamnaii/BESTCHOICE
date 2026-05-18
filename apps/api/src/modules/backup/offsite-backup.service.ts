@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { ConflictException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Storage as GcsStorage, type Bucket, type File as GcsFile } from '@google-cloud/storage';
 import * as Sentry from '@sentry/nestjs';
@@ -96,11 +96,20 @@ export class OffsiteBackupService {
   /**
    * Manually toggle the SystemConfig flag (used by SettingsService /
    * controller endpoint). Returns the new effective value.
+   *
+   * W1 fix: pass `deletedAt: null` on the update branch so a previously
+   * soft-deleted SystemConfig row is revived. Without this, isEnabled()
+   * would still return false (its WHERE clause filters `deletedAt: null`)
+   * and the toggle would silently no-op.
    */
   async setEnabled(enabled: boolean): Promise<boolean> {
     await this.prisma.systemConfig.upsert({
       where: { key: 'OFFSITE_BACKUP_ENABLED' },
-      update: { value: enabled ? 'true' : 'false', updatedAt: new Date() },
+      update: {
+        value: enabled ? 'true' : 'false',
+        updatedAt: new Date(),
+        deletedAt: null,
+      },
       create: {
         key: 'OFFSITE_BACKUP_ENABLED',
         value: enabled ? 'true' : 'false',
@@ -145,13 +154,67 @@ export class OffsiteBackupService {
   }
 
   /**
-   * Main entry point — runs the full replication cycle and writes a
-   * RunOffsiteBackupResult to OffsiteBackupRun.
+   * Cross-pod advisory lock key — `pg_try_advisory_lock(hashtext(...))`
+   * returns true only for the first caller to acquire it. Released either
+   * by `pg_advisory_unlock` or when the underlying connection closes.
    *
-   * `triggeredBy` is stored on the run row for forensics. Pass 'cron' from
-   * the scheduler, 'manual' / userId from the controller.
+   * Exposed as `static readonly` so tests can assert the same hash without
+   * coupling to the string literal.
    */
-  async run(triggeredBy: string): Promise<OffsiteBackupRunResult> {
+  static readonly ADVISORY_LOCK_KEY = 'offsite-backup';
+
+  /**
+   * Main entry point — runs the full replication cycle and writes one
+   * OffsiteBackupRun row.
+   *
+   * C1 fix: PostgreSQL advisory lock guards against concurrent runs.
+   *   - OWNER click + scheduled cron firing within the same minute
+   *   - 2 Cloud Run pods both firing the same cron tick
+   * Without the lock, both would replicate the same files and double-
+   * cleanup — md5 TOCTOU race, swallowed errors, unreliable history.
+   *
+   * C2 fix: triggeredBy is split into category ('cron'|'manual') +
+   * triggeredByUserId (real FK, NULL for cron). UI displays user name
+   * via the relation instead of `user:abcd1234` prefix.
+   *
+   * @throws ConflictException when another run already holds the lock.
+   */
+  async run(opts: OffsiteBackupRunOptions): Promise<OffsiteBackupRunResult> {
+    const { triggeredBy, triggeredByUserId = null } = opts;
+
+    // C1: try to acquire the advisory lock. pg_try_advisory_lock returns
+    // false (no wait) if someone else already holds it.
+    const lockResult = await this.prisma.$queryRaw<{ acquired: boolean }[]>`
+      SELECT pg_try_advisory_lock(hashtext(${OffsiteBackupService.ADVISORY_LOCK_KEY})) AS acquired
+    `;
+    if (!lockResult[0]?.acquired) {
+      this.logger.warn(
+        `offsite-backup: advisory lock already held — refusing concurrent run (triggeredBy=${triggeredBy})`,
+      );
+      throw new ConflictException(
+        'สำรองข้อมูลกำลังทำงานอยู่ — กรุณารอจนเสร็จ',
+      );
+    }
+
+    try {
+      return await this.runUnderLock({ triggeredBy, triggeredByUserId });
+    } finally {
+      // Always release. If the connection died, the lock auto-releases.
+      try {
+        await this.prisma.$queryRaw`
+          SELECT pg_advisory_unlock(hashtext(${OffsiteBackupService.ADVISORY_LOCK_KEY}))
+        `;
+      } catch (err) {
+        this.logger.warn(`offsite-backup: advisory unlock failed (non-fatal): ${this.truncErr(err)}`);
+      }
+    }
+  }
+
+  private async runUnderLock(opts: {
+    triggeredBy: 'cron' | 'manual';
+    triggeredByUserId: string | null;
+  }): Promise<OffsiteBackupRunResult> {
+    const { triggeredBy, triggeredByUserId } = opts;
     const startedAt = new Date();
     const destBucket = this.getDestBucket();
 
@@ -167,6 +230,7 @@ export class OffsiteBackupService {
           filesCount: 0,
           totalBytes: BigInt(0),
           triggeredBy,
+          triggeredByUserId,
           destBucket,
         },
       });
@@ -188,6 +252,7 @@ export class OffsiteBackupService {
         startedAt,
         status: 'RUNNING',
         triggeredBy,
+        triggeredByUserId,
         destBucket,
       },
     });
@@ -284,11 +349,20 @@ export class OffsiteBackupService {
     };
   }
 
+  /** GCS list-page size — capped to stay well under the per-pod memory budget. */
+  static readonly LIST_PAGE_SIZE = 1000;
+
   /**
    * Stream-copy every object under `sourcePrefix` whose updated time falls
    * after `modifiedSince` (or all of them, when null) into the destination
    * bucket under `destPrefix`. Skips when the destination object already
    * has the same md5 (idempotent re-run safety).
+   *
+   * W2 fix: pages through the source listing 1000 objects at a time. The
+   * previous single-call `getFiles({ prefix })` materialized every object
+   * descriptor into memory — on a 100GB document bucket (50k+ files) that
+   * was a ~250MB JS heap spike per run, risking OOM on Cloud Run's 512MB
+   * default. Memory now bounded to one page at a time.
    */
   private async replicatePrefix(args: {
     source: Bucket;
@@ -301,44 +375,79 @@ export class OffsiteBackupService {
     let filesCount = 0;
     let totalBytes = 0n;
 
-    const [files] = await source.getFiles({ prefix: sourcePrefix });
-    for (const file of files) {
-      try {
-        if (modifiedSince && !this.isFileModifiedAfter(file, modifiedSince)) {
-          continue;
-        }
-        const relPath = file.name.startsWith(sourcePrefix)
-          ? file.name.slice(sourcePrefix.length)
-          : file.name;
-        const destName = `${destPrefix}${relPath}`;
-        const destFile = dest.file(destName);
+    let pageToken: string | undefined;
+    do {
+      const listOpts = {
+        prefix: sourcePrefix,
+        autoPaginate: false,
+        maxResults: OffsiteBackupService.LIST_PAGE_SIZE,
+        pageToken,
+      };
+      // GCS SDK overloads return `[File[], Query | null, ApiResponse]` when
+      // called without a callback. Types lose the tuple shape across the
+      // union — cast through unknown for safety.
+      const [files, nextQuery] = (await source.getFiles(
+        listOpts as unknown as Parameters<Bucket['getFiles']>[0],
+      )) as unknown as [GcsFile[], { pageToken?: string } | null];
 
-        // Idempotency: skip if dest already exists and md5 matches the source.
-        const [destExists] = await destFile.exists();
-        if (destExists) {
-          const [destMeta] = await destFile.getMetadata();
-          if (destMeta.md5Hash && file.metadata.md5Hash === destMeta.md5Hash) {
-            this.logger.debug(`offsite-backup skip (md5 match): ${destName}`);
+      for (const file of files) {
+        try {
+          if (modifiedSince && !this.isFileModifiedAfter(file, modifiedSince)) {
             continue;
           }
-        }
+          const relPath = file.name.startsWith(sourcePrefix)
+            ? file.name.slice(sourcePrefix.length)
+            : file.name;
+          const destName = `${destPrefix}${relPath}`;
+          const destFile = dest.file(destName);
 
-        await file.copy(destFile);
-        const size = this.parseSize(file.metadata.size);
-        filesCount++;
-        totalBytes += BigInt(size);
-        this.logger.debug(`offsite-backup copied: ${file.name} -> ${destName} (${size}B)`);
-      } catch (err) {
-        // Partial-failure semantics — log + Sentry + keep going on next file.
-        this.logger.warn(
-          `offsite-backup copy failed for ${file.name}: ${this.truncErr(err)}`,
-        );
-        Sentry.captureException(err, {
-          tags: { kind: 'cron-job', cron: 'offsite-backup', step: 'replicate' },
-          extra: { sourceFile: file.name, destPrefix },
-        });
+          // Idempotency: skip if dest already exists and md5 matches the source.
+          const [destExists] = await destFile.exists();
+          if (destExists) {
+            const [destMeta] = await destFile.getMetadata();
+            if (destMeta.md5Hash && file.metadata.md5Hash === destMeta.md5Hash) {
+              this.logger.debug(`offsite-backup skip (md5 match): ${destName}`);
+              continue;
+            }
+          }
+
+          await file.copy(destFile);
+
+          // W6 fix: some GCS object types (e.g. composed objects, transcoded
+          // media) return `size` undefined on source — refresh from dest as
+          // a fallback rather than silently under-counting totalBytes.
+          let copiedBytes = this.parseSize(file.metadata.size);
+          if (copiedBytes === 0) {
+            try {
+              const [destMeta] = await destFile.getMetadata();
+              copiedBytes = this.parseSize(destMeta.size);
+            } catch {
+              // Already copied — metadata refresh failure shouldn't fail run.
+            }
+            if (copiedBytes === 0) {
+              this.logger.warn(
+                `offsite-backup: size=0 reported for ${file.name} after copy — totalBytes will under-count by this file`,
+              );
+            }
+          }
+
+          filesCount++;
+          totalBytes += BigInt(copiedBytes);
+          this.logger.debug(`offsite-backup copied: ${file.name} -> ${destName} (${copiedBytes}B)`);
+        } catch (err) {
+          // Partial-failure semantics — log + Sentry + keep going on next file.
+          this.logger.warn(
+            `offsite-backup copy failed for ${file.name}: ${this.truncErr(err)}`,
+          );
+          Sentry.captureException(err, {
+            tags: { kind: 'cron-job', cron: 'offsite-backup', step: 'replicate' },
+            extra: { sourceFile: file.name, destPrefix },
+          });
+        }
       }
-    }
+
+      pageToken = nextQuery?.pageToken ?? undefined;
+    } while (pageToken);
 
     return { filesCount, totalBytes };
   }
@@ -346,28 +455,46 @@ export class OffsiteBackupService {
   /**
    * Delete objects under `prefix` that haven't been updated since `cutoff`.
    * Returns the deleted count.
+   *
+   * W2 fix: pages through 1000 objects at a time — same memory bound as
+   * replicatePrefix.
    */
   private async cleanupPrefix(dest: Bucket, prefix: string, cutoff: Date): Promise<number> {
-    const [files] = await dest.getFiles({ prefix });
     let deleted = 0;
-    for (const file of files) {
-      const updated = this.parseDate(file.metadata.updated);
-      if (updated && updated.getTime() < cutoff.getTime()) {
-        try {
-          await file.delete({ ignoreNotFound: true });
-          deleted++;
-          this.logger.debug(`offsite-backup cleanup deleted: ${file.name}`);
-        } catch (err) {
-          this.logger.warn(
-            `offsite-backup cleanup failed for ${file.name}: ${this.truncErr(err)}`,
-          );
-          Sentry.captureException(err, {
-            tags: { kind: 'cron-job', cron: 'offsite-backup', step: 'cleanup' },
-            extra: { destFile: file.name },
-          });
+    let pageToken: string | undefined;
+    do {
+      const listOpts = {
+        prefix,
+        autoPaginate: false,
+        maxResults: OffsiteBackupService.LIST_PAGE_SIZE,
+        pageToken,
+      };
+      const [files, nextQuery] = (await dest.getFiles(
+        listOpts as unknown as Parameters<Bucket['getFiles']>[0],
+      )) as unknown as [GcsFile[], { pageToken?: string } | null];
+
+      for (const file of files) {
+        const updated = this.parseDate(file.metadata.updated);
+        if (updated && updated.getTime() < cutoff.getTime()) {
+          try {
+            await file.delete({ ignoreNotFound: true });
+            deleted++;
+            this.logger.debug(`offsite-backup cleanup deleted: ${file.name}`);
+          } catch (err) {
+            this.logger.warn(
+              `offsite-backup cleanup failed for ${file.name}: ${this.truncErr(err)}`,
+            );
+            Sentry.captureException(err, {
+              tags: { kind: 'cron-job', cron: 'offsite-backup', step: 'cleanup' },
+              extra: { destFile: file.name },
+            });
+          }
         }
       }
-    }
+
+      pageToken = nextQuery?.pageToken ?? undefined;
+    } while (pageToken);
+
     if (deleted > 0) {
       this.logger.log(`offsite-backup cleanup: deleted ${deleted} object(s) under ${prefix}`);
     }
@@ -403,12 +530,16 @@ export class OffsiteBackupService {
   }
 
   /**
-   * History endpoint backing — newest first.
+   * History endpoint backing — newest first. Joins the user that triggered
+   * a manual run so the UI can display a real name instead of a UUID slice.
    */
   async getRecentRuns(limit = 7): Promise<RecentRun[]> {
     const rows = await this.prisma.offsiteBackupRun.findMany({
       orderBy: { startedAt: 'desc' },
       take: limit,
+      include: {
+        triggeredByUser: { select: { id: true, name: true, email: true } },
+      },
     });
     return rows.map((r) => ({
       id: r.id,
@@ -419,9 +550,43 @@ export class OffsiteBackupService {
       totalBytes: Number(r.totalBytes),
       errorMessage: r.errorMessage,
       triggeredBy: r.triggeredBy,
+      triggeredByUser: r.triggeredByUser
+        ? { id: r.triggeredByUser.id, name: r.triggeredByUser.name }
+        : null,
       destBucket: r.destBucket,
     }));
   }
+
+  /**
+   * C3 fix — daily retention. Prunes OffsiteBackupRun rows older than
+   * `days` (default 365). Called by `OffsiteBackupRetentionCron` at
+   * 02:00 BKK; exposed as a method so tests can drive it without the
+   * scheduler.
+   *
+   * Hard-delete is correct here — these rows are pure operational logs
+   * (no legal evidence; the actual backup files live in GCS with their own
+   * lifecycle). Matches AuditLog 1-year policy + the model's
+   * "append-only event log" exception in database.md.
+   */
+  async pruneOldRuns(days = 365): Promise<number> {
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const result = await this.prisma.offsiteBackupRun.deleteMany({
+      where: { startedAt: { lt: cutoff } },
+    });
+    if (result.count > 0) {
+      this.logger.log(
+        `offsite-backup retention: pruned ${result.count} row(s) older than ${days}d`,
+      );
+    }
+    return result.count;
+  }
+}
+
+export interface OffsiteBackupRunOptions {
+  /** Always required — disambiguates whether the row came from a scheduler tick or a human button click. */
+  triggeredBy: 'cron' | 'manual';
+  /** When triggeredBy = 'manual', the OWNER who clicked "Run Now". Null for cron. */
+  triggeredByUserId?: string | null;
 }
 
 export interface OffsiteBackupRunResult {
@@ -443,6 +608,7 @@ export interface RecentRun {
   filesCount: number;
   totalBytes: number;
   errorMessage: string | null;
-  triggeredBy: string | null;
+  triggeredBy: string;
+  triggeredByUser: { id: string; name: string } | null;
   destBucket: string | null;
 }

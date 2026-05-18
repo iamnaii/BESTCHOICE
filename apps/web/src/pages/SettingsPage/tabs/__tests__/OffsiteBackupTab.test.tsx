@@ -60,6 +60,7 @@ describe('OffsiteBackupTab', () => {
             totalBytes: 1024 * 1024 * 5,
             errorMessage: null,
             triggeredBy: 'cron',
+            triggeredByUser: null,
             destBucket: 'bestchoice-backups-offsite',
           },
         ],
@@ -127,5 +128,107 @@ describe('OffsiteBackupTab', () => {
     await waitFor(() => {
       expect(apiPost).toHaveBeenCalledWith('/backup/offsite-now');
     });
+  });
+
+  it('W4 — opens ConfirmDialog before enabling toggle (no 2-click toast)', async () => {
+    apiGet.mockResolvedValue({
+      data: {
+        enabled: false,
+        destBucket: 'dest',
+        retentionDays: 30,
+        sqlSourceBucket: 'sql-src',
+        runs: [],
+      },
+    });
+    apiPut.mockResolvedValue({ data: { enabled: true } });
+
+    wrap(<OffsiteBackupTab />);
+
+    const toggle = await screen.findByRole('switch', { name: /เปิดปิด Off-site Backup/ });
+    fireEvent.click(toggle);
+
+    // Dialog should appear with action description
+    await waitFor(() => {
+      expect(screen.getByText(/ต้องสร้าง destination bucket/)).toBeInTheDocument();
+    });
+
+    // No PUT yet — must confirm
+    expect(apiPut).not.toHaveBeenCalled();
+
+    // Click the confirm button in the dialog
+    const confirmBtn = screen.getAllByRole('button', { name: /^ยืนยัน$/ }).pop();
+    if (!confirmBtn) throw new Error('confirm button not rendered');
+    fireEvent.click(confirmBtn);
+
+    await waitFor(() => {
+      expect(apiPut).toHaveBeenCalledWith('/backup/offsite-enabled', { enabled: true });
+    });
+  });
+
+  it('W7 — handles destBucket=null gracefully (FM/ACC role)', async () => {
+    apiGet.mockResolvedValue({
+      data: {
+        enabled: true,
+        destBucket: null,
+        retentionDays: 30,
+        sqlSourceBucket: null,
+        runs: [
+          {
+            id: 'r1',
+            startedAt: '2026-05-18T03:30:00Z',
+            finishedAt: '2026-05-18T03:31:00Z',
+            status: 'SUCCESS',
+            filesCount: 1,
+            totalBytes: 100,
+            errorMessage: null,
+            triggeredBy: 'cron',
+            triggeredByUser: null,
+            destBucket: null,
+          },
+        ],
+      },
+    });
+
+    wrap(<OffsiteBackupTab />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/ปกปิดสำหรับ role นี้/)).toBeInTheDocument();
+    });
+    // No "OFFSITE_BACKUP_SQL_SOURCE_BUCKET" warning when destBucket is masked
+    // (warning only relevant when user can see infra config).
+    expect(screen.queryByText(/OFFSITE_BACKUP_SQL_SOURCE_BUCKET/)).toBeNull();
+  });
+
+  it('C2 — displays triggered-by-user name from joined relation', async () => {
+    apiGet.mockResolvedValue({
+      data: {
+        enabled: true,
+        destBucket: 'dest',
+        retentionDays: 30,
+        sqlSourceBucket: 'sql',
+        runs: [
+          {
+            id: 'r1',
+            startedAt: '2026-05-18T03:30:00Z',
+            finishedAt: '2026-05-18T03:31:00Z',
+            status: 'SUCCESS',
+            filesCount: 1,
+            totalBytes: 100,
+            errorMessage: null,
+            triggeredBy: 'manual',
+            triggeredByUser: { id: 'u1', name: 'อาเค' },
+            destBucket: 'dest',
+          },
+        ],
+      },
+    });
+
+    wrap(<OffsiteBackupTab />);
+
+    await waitFor(() => {
+      expect(screen.getByText('อาเค')).toBeInTheDocument();
+    });
+    // Old `user:abcd1234` slice format must NOT appear
+    expect(screen.queryByText(/^user:/)).toBeNull();
   });
 });

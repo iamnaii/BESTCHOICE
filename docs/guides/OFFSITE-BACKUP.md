@@ -333,11 +333,28 @@ Run on the **first business day of each month**. Owner or accountant on call.
   `kind:cron-job AND cron:offsite-backup AND level:error` if you want
   a pager event on each failure.
 - The `OffsiteBackupRun` table grows by ~30 rows / month at the daily
-  cadence. No retention cron — it stays small forever.
+  cadence. Rows older than **1 year** are pruned daily by
+  `offsite-backup-retention.cron` at **02:00 BKK** (matches AuditLog policy
+  + avoids PDPA risk on stale user UUIDs after soft-delete). Adjust the
+  window by editing `OffsiteBackupRetentionCron.RETENTION_DAYS`.
 - The toggle is a **SystemConfig** row (`OFFSITE_BACKUP_ENABLED`) not an
   env var, so flipping it doesn't require a Cloud Run redeploy. The env
   var is a fallback for environments where SystemConfig isn't seeded
   (e.g. brand-new dev DB).
+- **Concurrency safety:** `OffsiteBackupService.run` takes a PostgreSQL
+  advisory lock (`pg_try_advisory_lock(hashtext('offsite-backup'))`)
+  before touching GCS. A 2nd attempt while a run is in flight returns
+  HTTP **409 Conflict** — the cron logs the conflict as a warning and
+  exits cleanly. Lock is released in a `finally` (and auto-released by
+  the database when the connection closes).
+- **Manual trigger audit:** `POST /backup/offsite-now` writes an
+  `OFFSITE_BACKUP_RUN_NOW` event into AuditLog (hash-chained, immutable).
+  The `OffsiteBackupRun.triggeredByUserId` FK is a convenience join — the
+  hash-chained AuditLog is the legal trail.
+- **Bucket-name masking:** `GET /backup/offsite-status` returns
+  `destBucket` and `sqlSourceBucket` only when the caller is `OWNER`.
+  FM / ACC see `null` (so they can monitor the audit trail without
+  learning the infra topology).
 
 ---
 

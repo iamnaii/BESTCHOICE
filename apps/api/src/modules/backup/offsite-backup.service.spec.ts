@@ -36,8 +36,12 @@ class FakeBucket {
     this.files = files;
     this.fileMap = new Map(files.map((f) => [f.name, f]));
   }
+  // Accepts the paginated form `{ prefix, autoPaginate, maxResults, pageToken }`
+  // — the production code passes `autoPaginate: false`. Returns
+  // `[files, nextQuery]` where nextQuery.pageToken is undefined for the
+  // single-page fake (no need to paginate fixture lists).
   getFiles = jest.fn(async ({ prefix }: { prefix: string }) => {
-    return [this.files.filter((f) => f.name.startsWith(prefix))];
+    return [this.files.filter((f) => f.name.startsWith(prefix)), null];
   });
   file = jest.fn((name: string) => {
     let f = this.fileMap.get(name);
@@ -87,7 +91,12 @@ describe('OffsiteBackupService', () => {
           return Promise.resolve({ id: args.where.id, ...args.data });
         }),
         findMany: jest.fn().mockResolvedValue([]),
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
+      // Default: advisory lock acquired. Individual tests can override
+      // with mockResolvedValueOnce({ acquired: false }) to simulate
+      // contention.
+      $queryRaw: jest.fn().mockResolvedValue([{ acquired: true }]),
     };
     config = {
       get: jest.fn((key: string) => {
@@ -144,7 +153,7 @@ describe('OffsiteBackupService', () => {
       const bucketMap: Record<string, FakeBucket> = {};
       service.setStorageClient(makeFakeStorage(bucketMap));
 
-      const result = await service.run('cron');
+      const result = await service.run({ triggeredBy: 'cron' });
       expect(result.status).toBe('SKIPPED');
       expect(result.filesCount).toBe(0);
       expect(createdRuns).toHaveLength(1);
@@ -175,7 +184,7 @@ describe('OffsiteBackupService', () => {
       };
       service.setStorageClient(makeFakeStorage(bucketMap));
 
-      const result = await service.run('cron');
+      const result = await service.run({ triggeredBy: 'cron' });
       expect(result.status).toBe('SUCCESS');
       expect(result.filesCount).toBe(2);
       expect(result.totalBytes).toBe(1024 + 512);
@@ -204,7 +213,7 @@ describe('OffsiteBackupService', () => {
         }),
       );
       // First run — populate dest
-      await service.run('cron');
+      await service.run({ triggeredBy: 'cron' });
       expect(sqlSrc.files[0].copy).toHaveBeenCalledTimes(1);
 
       // Set up the dest file as already existing with matching md5
@@ -215,7 +224,7 @@ describe('OffsiteBackupService', () => {
       sqlSrc.files[0].copy.mockClear();
 
       // Second run on same day — should skip
-      const result = await service.run('cron');
+      const result = await service.run({ triggeredBy: 'cron' });
       expect(sqlSrc.files[0].copy).not.toHaveBeenCalled();
       expect(result.status).toBe('SUCCESS');
     });
@@ -236,7 +245,7 @@ describe('OffsiteBackupService', () => {
           'dest-bkt': dest,
         }),
       );
-      const result = await service.run('cron');
+      const result = await service.run({ triggeredBy: 'cron' });
       expect(result.filesCount).toBe(1);
       expect(result.totalBytes).toBe(200);
       expect(docsSrc.files[0].copy).not.toHaveBeenCalled(); // old.pdf skipped
@@ -256,7 +265,7 @@ describe('OffsiteBackupService', () => {
           'dest-bkt': new FakeBucket(),
         }),
       );
-      const result = await service.run('cron');
+      const result = await service.run({ triggeredBy: 'cron' });
       expect(result.status).toBe('SUCCESS'); // run as a whole still succeeded
       expect(result.filesCount).toBe(1); // only f2 was counted
     });
@@ -276,7 +285,7 @@ describe('OffsiteBackupService', () => {
           'dest-bkt': dest,
         }),
       );
-      await service.run('cron');
+      await service.run({ triggeredBy: 'cron' });
       expect(dest.files[0].delete).toHaveBeenCalled(); // sql/old-dump
       expect(dest.files[1].delete).not.toHaveBeenCalled(); // sql/new-dump
       expect(dest.files[2].delete).toHaveBeenCalled(); // docs/old
@@ -294,7 +303,7 @@ describe('OffsiteBackupService', () => {
       service.setStorageClient(
         makeFakeStorage({ 'docs-src': docsSrc, 'dest-bkt': new FakeBucket() }),
       );
-      const result = await service.run('cron');
+      const result = await service.run({ triggeredBy: 'cron' });
       expect(result.status).toBe('SUCCESS');
       expect(result.filesCount).toBe(0);
     });
@@ -307,7 +316,7 @@ describe('OffsiteBackupService', () => {
         }),
       } as unknown as Parameters<OffsiteBackupService['setStorageClient']>[0];
       service.setStorageClient(broken);
-      const result = await service.run('manual');
+      const result = await service.run({ triggeredBy: 'manual', triggeredByUserId: 'u1' });
       expect(result.status).toBe('FAILED');
       expect(result.errorMessage).toContain('ADC unavailable');
       expect(updatedRuns[0].data.status).toBe('FAILED');
@@ -340,6 +349,8 @@ describe('OffsiteBackupService', () => {
           totalBytes: BigInt(1024),
           errorMessage: null,
           triggeredBy: 'cron',
+          triggeredByUserId: null,
+          triggeredByUser: null,
           destBucket: 'dest-bkt',
         },
       ];
@@ -347,9 +358,157 @@ describe('OffsiteBackupService', () => {
       const result = await service.getRecentRuns(7);
       expect(result).toHaveLength(1);
       expect(result[0].totalBytes).toBe(1024);
+      expect(result[0].triggeredBy).toBe('cron');
+      expect(result[0].triggeredByUser).toBeNull();
       expect(prisma.offsiteBackupRun.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({ take: 7, orderBy: { startedAt: 'desc' } }),
+        expect.objectContaining({
+          take: 7,
+          orderBy: { startedAt: 'desc' },
+          include: expect.objectContaining({
+            triggeredByUser: { select: { id: true, name: true, email: true } },
+          }),
+        }),
       );
+    });
+
+    it('joins the manual-trigger user so UI can show name (C2 fix)', async () => {
+      const rows = [
+        {
+          id: 'r2',
+          startedAt: new Date(),
+          finishedAt: new Date(),
+          status: 'SUCCESS',
+          filesCount: 1,
+          totalBytes: BigInt(1),
+          errorMessage: null,
+          triggeredBy: 'manual',
+          triggeredByUserId: 'u-1',
+          triggeredByUser: { id: 'u-1', name: 'Owner Account', email: 'owner@example.com' },
+          destBucket: 'dest-bkt',
+        },
+      ];
+      prisma.offsiteBackupRun.findMany.mockResolvedValue(rows);
+      const result = await service.getRecentRuns(7);
+      expect(result[0].triggeredBy).toBe('manual');
+      expect(result[0].triggeredByUser).toEqual({ id: 'u-1', name: 'Owner Account' });
+    });
+  });
+
+  describe('advisory lock (C1)', () => {
+    beforeEach(() => {
+      prisma.systemConfig.findFirst.mockResolvedValue({ value: 'true' });
+      service.setStorageClient(
+        makeFakeStorage({
+          'sql-src': new FakeBucket(),
+          'docs-src': new FakeBucket(),
+          'dest-bkt': new FakeBucket(),
+        }),
+      );
+    });
+
+    it('throws ConflictException when another run already holds the lock', async () => {
+      // First $queryRaw call (lock acquire) returns acquired: false.
+      prisma.$queryRaw.mockReset();
+      prisma.$queryRaw.mockResolvedValueOnce([{ acquired: false }]);
+
+      await expect(service.run({ triggeredBy: 'cron' })).rejects.toMatchObject({
+        status: 409,
+        message: expect.stringContaining('สำรองข้อมูลกำลังทำงานอยู่'),
+      });
+      // No run row should have been created when lock was rejected.
+      expect(createdRuns).toHaveLength(0);
+    });
+
+    it('releases the lock after a successful run', async () => {
+      prisma.$queryRaw.mockReset();
+      prisma.$queryRaw
+        .mockResolvedValueOnce([{ acquired: true }]) // acquire
+        .mockResolvedValueOnce([{ pg_advisory_unlock: true }]); // release
+
+      const result = await service.run({ triggeredBy: 'cron' });
+      expect(result.status).toBe('SUCCESS');
+      // Acquire + release were both called.
+      expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
+    });
+
+    it('still releases the lock when the run throws mid-flight', async () => {
+      prisma.$queryRaw.mockReset();
+      prisma.$queryRaw
+        .mockResolvedValueOnce([{ acquired: true }])
+        .mockResolvedValueOnce([{ pg_advisory_unlock: true }]);
+      const broken = {
+        bucket: jest.fn(() => {
+          throw new Error('boom');
+        }),
+      } as unknown as Parameters<OffsiteBackupService['setStorageClient']>[0];
+      service.setStorageClient(broken);
+      const result = await service.run({ triggeredBy: 'cron' });
+      // Run reports FAILED but lock release still ran (2 $queryRaw calls).
+      expect(result.status).toBe('FAILED');
+      expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('triggeredByUserId persistence (C2)', () => {
+    beforeEach(() => {
+      prisma.systemConfig.findFirst.mockResolvedValue({ value: 'true' });
+      service.setStorageClient(
+        makeFakeStorage({
+          'sql-src': new FakeBucket(),
+          'docs-src': new FakeBucket(),
+          'dest-bkt': new FakeBucket(),
+        }),
+      );
+    });
+
+    it('persists triggeredBy=cron + triggeredByUserId=null for scheduler runs', async () => {
+      await service.run({ triggeredBy: 'cron' });
+      expect(createdRuns[0]).toMatchObject({
+        status: 'RUNNING',
+        triggeredBy: 'cron',
+        triggeredByUserId: null,
+      });
+    });
+
+    it('persists triggeredBy=manual + triggeredByUserId=<id> for manual runs', async () => {
+      await service.run({ triggeredBy: 'manual', triggeredByUserId: 'user-uuid-1' });
+      expect(createdRuns[0]).toMatchObject({
+        status: 'RUNNING',
+        triggeredBy: 'manual',
+        triggeredByUserId: 'user-uuid-1',
+      });
+    });
+
+    it('records SKIPPED rows with the same triggeredBy+userId split', async () => {
+      prisma.systemConfig.findFirst.mockResolvedValue({ value: 'false' });
+      await service.run({ triggeredBy: 'manual', triggeredByUserId: 'user-uuid-1' });
+      expect(createdRuns[0]).toMatchObject({
+        status: 'SKIPPED',
+        triggeredBy: 'manual',
+        triggeredByUserId: 'user-uuid-1',
+      });
+    });
+  });
+
+  describe('pruneOldRuns (C3 retention)', () => {
+    it('deletes rows older than the cutoff and returns the count', async () => {
+      prisma.offsiteBackupRun.deleteMany.mockResolvedValue({ count: 12 });
+      const result = await service.pruneOldRuns(365);
+      expect(result).toBe(12);
+      const call = prisma.offsiteBackupRun.deleteMany.mock.calls[0][0];
+      expect(call.where.startedAt.lt).toBeInstanceOf(Date);
+      // Cutoff is ~365 days back from now.
+      const expectedCutoff = Date.now() - 365 * 24 * 60 * 60 * 1000;
+      expect(Math.abs(call.where.startedAt.lt.getTime() - expectedCutoff)).toBeLessThan(5_000);
+    });
+  });
+
+  describe('setEnabled (W1)', () => {
+    it('revives a soft-deleted SystemConfig row by clearing deletedAt', async () => {
+      prisma.systemConfig.upsert.mockResolvedValue({});
+      await service.setEnabled(true);
+      const args = prisma.systemConfig.upsert.mock.calls[0][0];
+      expect(args.update).toMatchObject({ value: 'true', deletedAt: null });
     });
   });
 

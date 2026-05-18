@@ -736,6 +736,9 @@ model User {
   // P3-SP2 — Off-site backup manual triggers (forensics: who clicked "Run Now")
   offsiteBackupRunsTriggered OffsiteBackupRun[] @relation("OffsiteBackupTriggeredBy")
 
+  // P3-SP4 — PDPA PII encryption backfill triggers (forensics: who started a backfill run)
+  pdpaBackfillRunsTriggered PdpaBackfillRun[] @relation("PdpaBackfillTriggeredBy")
+
   @@index([branchId])
   @@index([yeastarExtension])
   @@map("users")
@@ -6625,4 +6628,52 @@ enum OffsiteBackupStatus {
   FAILED
   /// Cron triggered but skipped (OFFSITE_BACKUP_ENABLED=false)
   SKIPPED
+}
+
+// =============================================================================
+// Phase 3 SP4 — PDPA PII column-level encryption
+// =============================================================================
+
+/// Append-only event log for PDPA PII encryption backfill runs.
+/// updatedAt/deletedAt intentionally omitted — runs are immutable once finished;
+/// retention via dedicated retention job (see docs/guides/PDPA-COMPLIANCE.md).
+model PdpaBackfillRun {
+  id               String              @id @default(uuid())
+  status           PdpaBackfillStatus
+  /// Total Customer rows considered (where at least one *Encrypted column is NULL).
+  totalRecords     Int                 @default(0) @map("total_records")
+  /// Rows actually processed so far. Updated incrementally between batches so
+  /// the UI can render a live progress bar without a separate counter table.
+  processedRecords Int                 @default(0) @map("processed_records")
+  /// Sum of rows skipped because every encrypted column was already populated
+  /// (idempotent re-runs). Helps distinguish "no-op" vs "did real work".
+  skippedRecords   Int                 @default(0) @map("skipped_records")
+  startedAt        DateTime            @map("started_at")
+  finishedAt       DateTime?           @map("finished_at")
+  /// First error message (truncated to 1000 chars) when status = FAILED.
+  errorMessage     String?             @map("error_message")
+  /// Category: 'cli' | 'manual'. CLI = `npm run backfill:encrypt-pii`, manual =
+  /// OWNER clicks "Run Backfill" in /settings#pdpa.
+  triggeredBy       String             @default("cli") @map("triggered_by")
+  /// Set when triggeredBy = 'manual' (OWNER from UI). Null for cli.
+  triggeredByUserId String?            @map("triggered_by_user_id")
+  triggeredByUser   User?              @relation("PdpaBackfillTriggeredBy", fields: [triggeredByUserId], references: [id])
+  /// Hostname / Cloud Run revision the run executed on — useful when
+  /// reproducing failures with environment-specific drift.
+  hostname          String?            @map("hostname")
+  createdAt         DateTime           @default(now()) @map("created_at")
+
+  @@index([startedAt])
+  @@index([triggeredByUserId])
+  @@index([status])
+  @@map("pdpa_backfill_runs")
+}
+
+enum PdpaBackfillStatus {
+  /// Run started, batches being processed
+  RUNNING
+  /// Run finished without errors
+  COMPLETED
+  /// Run aborted with error (see errorMessage); partial progress in processedRecords
+  FAILED
 }

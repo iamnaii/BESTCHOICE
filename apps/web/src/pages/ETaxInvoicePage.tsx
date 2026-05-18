@@ -1,14 +1,23 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router';
 import { toast } from 'sonner';
 import api from '@/lib/api';
 import QueryBoundary from '@/components/QueryBoundary';
 import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import CompanyFilter from '@/components/CompanyFilter';
 import { THAI_MONTHS_FULL } from '@/lib/date';
-import { FileText, Download, AlertCircle } from 'lucide-react';
+import {
+  FileText,
+  Download,
+  AlertCircle,
+  Send,
+  FileCode,
+  Settings as SettingsIcon,
+} from 'lucide-react';
 
 interface ETaxInvoice {
   paymentId: string;
@@ -29,6 +38,43 @@ interface ETaxListResponse {
   limit: number;
 }
 
+/** P2-SP5 — XML submission status per Payment, keyed by paymentId */
+type ETaxStatus =
+  | 'PENDING'
+  | 'SIGNED'
+  | 'SUBMITTED'
+  | 'ACCEPTED'
+  | 'REJECTED'
+  | 'ERROR';
+interface ETaxSubmission {
+  id: string;
+  paymentId: string;
+  status: ETaxStatus;
+  rdSubmissionId: string | null;
+  rejectReason: string | null;
+}
+
+const STATUS_LABEL: Record<ETaxStatus, string> = {
+  PENDING: 'รอเซ็น',
+  SIGNED: 'รอส่ง',
+  SUBMITTED: 'ส่งแล้ว',
+  ACCEPTED: 'สรรพากรรับ',
+  REJECTED: 'ปฏิเสธ',
+  ERROR: 'ข้อผิดพลาด',
+};
+
+const STATUS_VARIANT: Record<
+  ETaxStatus,
+  'primary' | 'secondary' | 'destructive' | 'outline' | 'success' | 'info'
+> = {
+  PENDING: 'outline',
+  SIGNED: 'secondary',
+  SUBMITTED: 'info',
+  ACCEPTED: 'success',
+  REJECTED: 'destructive',
+  ERROR: 'destructive',
+};
+
 const inputClass =
   'w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden bg-background text-foreground';
 
@@ -40,6 +86,7 @@ function fmtNumber(n: number | string | null | undefined): string {
 
 export function ETaxInvoicePage() {
   const now = new Date();
+  const queryClient = useQueryClient();
   const [companyId, setCompanyId] = useState('');
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
@@ -56,6 +103,63 @@ export function ETaxInvoicePage() {
       const res = await api.get(url);
       return res.data;
     },
+  });
+
+  // P2-SP5 — XML submission state, page-scoped. We load a flat list of
+  // recent submissions; the row UI looks up by paymentId. Avoids N+1
+  // requests per row.
+  const submissionsQuery = useQuery<{ data: ETaxSubmission[] }>({
+    queryKey: ['e-tax-xml', 'submissions', companyId, year, month, page],
+    enabled,
+    queryFn: async () => {
+      const res = await api.get('/e-tax-xml?limit=200');
+      return res.data;
+    },
+  });
+  const submissionsByPayment = new Map<string, ETaxSubmission>();
+  for (const s of submissionsQuery.data?.data ?? []) {
+    submissionsByPayment.set(s.paymentId, s);
+  }
+
+  // Read ETAX_SUBMIT_MODE via the config integration — drives whether the
+  // submit/sign buttons are enabled. Cached by react-query.
+  const configQuery = useQuery<{ config: { submitMode?: string } }>({
+    queryKey: ['integration-config', 'e-tax', 'public-mode'],
+    queryFn: async () => {
+      try {
+        const res = await api.get('/integrations/e-tax/config');
+        return res.data;
+      } catch {
+        // Non-OWNER reads will 403 — quietly treat as disabled.
+        return { config: { submitMode: 'disabled' } };
+      }
+    },
+  });
+  const submitEnabled = configQuery.data?.config?.submitMode === 'enabled';
+
+  const generateMutation = useMutation({
+    mutationFn: (paymentId: string) =>
+      api.post(`/e-tax-xml/generate/${paymentId}`).then((r) => r.data),
+    onSuccess: () => {
+      toast.success('สร้าง XML สำเร็จ');
+      queryClient.invalidateQueries({ queryKey: ['e-tax-xml', 'submissions'] });
+    },
+    onError: (e: Error) => toast.error(e.message ?? 'สร้าง XML ล้มเหลว'),
+  });
+
+  const submitMutation = useMutation({
+    mutationFn: async (submissionId: string) => {
+      // Two-step pipeline: sign then submit. Failing sign rolls forward
+      // to user toast (no submit attempted).
+      await api.post(`/e-tax-xml/${submissionId}/sign`);
+      const res = await api.post(`/e-tax-xml/${submissionId}/submit`);
+      return res.data;
+    },
+    onSuccess: () => {
+      toast.success('ส่งให้สรรพากรเรียบร้อย');
+      queryClient.invalidateQueries({ queryKey: ['e-tax-xml', 'submissions'] });
+    },
+    onError: (e: Error) => toast.error(e.message ?? 'ส่งให้สรรพากรล้มเหลว'),
   });
 
   async function handleDownloadPdf(paymentId: string) {
@@ -99,14 +203,22 @@ export function ETaxInvoicePage() {
   return (
     <div className="container mx-auto px-4 py-6 max-w-6xl">
       <PageHeader
-        title="e-Tax Invoice (Phase 1: Receipt + CSV)"
-        subtitle="ใบรับเงินภายใน + ส่งออก CSV รายเดือน — Phase 2 จะเป็นใบกำกับภาษีอิเล็กทรอนิกส์จริงตาม ม.86/4"
+        title="e-Tax Invoice (สรรพากร)"
+        subtitle="ใบรับเงินภายใน + Export CSV + สร้าง XML ตาม ขมธอ.21-2562"
         icon={<FileText className="size-5" aria-hidden />}
         action={
-          <Button variant="outline" onClick={handleExportCsv} disabled={!companyId}>
-            <Download className="size-4 mr-2" aria-hidden />
-            Export CSV (รายเดือน)
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="ghost" asChild>
+              <Link to="/settings/e-tax-config" aria-label="ตั้งค่า e-Tax">
+                <SettingsIcon className="size-4 mr-2" aria-hidden />
+                ตั้งค่า
+              </Link>
+            </Button>
+            <Button variant="outline" onClick={handleExportCsv} disabled={!companyId}>
+              <Download className="size-4 mr-2" aria-hidden />
+              Export CSV (รายเดือน)
+            </Button>
+          </div>
         }
       />
 
@@ -203,53 +315,125 @@ export function ETaxInvoicePage() {
                         <th className="py-2 pr-2 text-right">ก่อน VAT (฿)</th>
                         <th className="py-2 pr-2 text-right">VAT (฿)</th>
                         <th className="py-2 pr-2 text-right">รวม (฿)</th>
+                        <th className="py-2 pr-2">สถานะ XML</th>
                         <th className="py-2 pr-2"></th>
                       </tr>
                     </thead>
                     <tbody>
                       {data.data.length === 0 && (
                         <tr>
-                          <td colSpan={8} className="py-4 text-center text-muted-foreground">
+                          <td colSpan={9} className="py-4 text-center text-muted-foreground">
                             ไม่มีรายการในงวด
                           </td>
                         </tr>
                       )}
-                      {data.data.map((inv) => (
-                        <tr key={inv.paymentId} className="border-b border-border/40">
-                          <td className="py-2 pr-2 tabular-nums">
-                            {inv.paidDate
-                              ? new Date(inv.paidDate).toLocaleDateString('th-TH')
-                              : '-'}
-                          </td>
-                          <td className="py-2 pr-2 font-mono text-xs">
-                            {inv.contractNumber} / {inv.installmentNo}
-                          </td>
-                          <td className="py-2 pr-2">{inv.customerName}</td>
-                          <td className="py-2 pr-2 font-mono text-xs">
-                            {inv.customerTaxId ?? '-'}
-                          </td>
-                          <td className="py-2 pr-2 text-right tabular-nums">
-                            {fmtNumber(inv.amountBeforeVat)}
-                          </td>
-                          <td className="py-2 pr-2 text-right tabular-nums">
-                            {fmtNumber(inv.vatAmount)}
-                          </td>
-                          <td className="py-2 pr-2 text-right tabular-nums">
-                            {fmtNumber(inv.total)}
-                          </td>
-                          <td className="py-2 pr-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleDownloadPdf(inv.paymentId)}
-                              aria-label={`ดาวน์โหลด PDF สัญญา ${inv.contractNumber} งวด ${inv.installmentNo}`}
-                            >
-                              <Download className="size-3.5 mr-1.5" aria-hidden />
-                              PDF
-                            </Button>
-                          </td>
-                        </tr>
-                      ))}
+                      {data.data.map((inv) => {
+                        const sub = submissionsByPayment.get(inv.paymentId);
+                        return (
+                          <tr key={inv.paymentId} className="border-b border-border/40">
+                            <td className="py-2 pr-2 tabular-nums">
+                              {inv.paidDate
+                                ? new Date(inv.paidDate).toLocaleDateString('th-TH')
+                                : '-'}
+                            </td>
+                            <td className="py-2 pr-2 font-mono text-xs">
+                              {inv.contractNumber} / {inv.installmentNo}
+                            </td>
+                            <td className="py-2 pr-2">{inv.customerName}</td>
+                            <td className="py-2 pr-2 font-mono text-xs">
+                              {inv.customerTaxId ?? '-'}
+                            </td>
+                            <td className="py-2 pr-2 text-right tabular-nums">
+                              {fmtNumber(inv.amountBeforeVat)}
+                            </td>
+                            <td className="py-2 pr-2 text-right tabular-nums">
+                              {fmtNumber(inv.vatAmount)}
+                            </td>
+                            <td className="py-2 pr-2 text-right tabular-nums">
+                              {fmtNumber(inv.total)}
+                            </td>
+                            <td className="py-2 pr-2">
+                              {sub ? (
+                                <div className="flex flex-col gap-1">
+                                  <Badge
+                                    variant={STATUS_VARIANT[sub.status]}
+                                    data-testid={`etax-status-${inv.paymentId}`}
+                                  >
+                                    {STATUS_LABEL[sub.status]}
+                                  </Badge>
+                                  {sub.rdSubmissionId && (
+                                    <span
+                                      className="text-[10px] text-muted-foreground font-mono leading-snug"
+                                      title="RD submission ID"
+                                    >
+                                      RD: {sub.rdSubmissionId}
+                                    </span>
+                                  )}
+                                  {sub.rejectReason && (
+                                    <span
+                                      className="text-[10px] text-destructive leading-snug"
+                                      title={sub.rejectReason}
+                                    >
+                                      {sub.rejectReason.slice(0, 40)}
+                                      {sub.rejectReason.length > 40 ? '…' : ''}
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-xs text-muted-foreground leading-snug">
+                                  ยังไม่มี XML
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-2 pr-2">
+                              <div className="flex flex-wrap gap-1.5">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleDownloadPdf(inv.paymentId)}
+                                  aria-label={`ดาวน์โหลด PDF สัญญา ${inv.contractNumber} งวด ${inv.installmentNo}`}
+                                >
+                                  <Download className="size-3.5 mr-1.5" aria-hidden />
+                                  PDF
+                                </Button>
+                                {!sub && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => generateMutation.mutate(inv.paymentId)}
+                                    disabled={generateMutation.isPending}
+                                    aria-label={`สร้าง XML สัญญา ${inv.contractNumber} งวด ${inv.installmentNo}`}
+                                  >
+                                    <FileCode className="size-3.5 mr-1.5" aria-hidden />
+                                    สร้าง XML
+                                  </Button>
+                                )}
+                                {sub &&
+                                  (sub.status === 'PENDING' ||
+                                    sub.status === 'ERROR' ||
+                                    sub.status === 'REJECTED') && (
+                                    <Button
+                                      variant="primary"
+                                      size="sm"
+                                      disabled={!submitEnabled || submitMutation.isPending}
+                                      title={
+                                        submitEnabled
+                                          ? undefined
+                                          : 'ตั้งค่า e-Tax cert ก่อน'
+                                      }
+                                      onClick={() => submitMutation.mutate(sub.id)}
+                                      aria-label={`ส่งให้สรรพากร สัญญา ${inv.contractNumber} งวด ${inv.installmentNo}`}
+                                      data-testid={`etax-submit-${inv.paymentId}`}
+                                    >
+                                      <Send className="size-3.5 mr-1.5" aria-hidden />
+                                      ส่งให้สรรพากร
+                                    </Button>
+                                  )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

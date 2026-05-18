@@ -113,6 +113,9 @@ const WhtReportPage = lazy(() =>
 const ETaxInvoicePage = lazy(() =>
   import('@/pages/ETaxInvoicePage').then((m) => ({ default: m.ETaxInvoicePage })),
 );
+const ETaxConfigPage = lazy(() =>
+  import('@/pages/ETaxConfigPage').then((m) => ({ default: m.ETaxConfigPage })),
+);
 const CommissionsPage = lazy(() => import('@/pages/CommissionsPage'));
 const TradeInPage = lazy(() => import('@/pages/TradeInPage'));
 const PromotionsPage = lazy(() => import('@/pages/PromotionsPage'));
@@ -790,6 +793,15 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
                 <ETaxInvoicePage />
+              </ProtectedRoute>
+            }
+          />
+          {/* P2-SP5 — OWNER-only e-Tax cert + RD creds configuration */}
+          <Route
+            path="/settings/e-tax-config"
+            element={
+              <ProtectedRoute roles={['OWNER']}>
+                <ETaxConfigPage />
               </ProtectedRoute>
             }
           />

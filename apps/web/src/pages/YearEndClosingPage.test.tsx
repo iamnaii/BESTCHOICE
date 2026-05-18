@@ -4,9 +4,12 @@ import { MemoryRouter } from 'react-router';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import YearEndClosingPage from './YearEndClosingPage';
 
+// Mutable role for tests that need to swap roles (W4 — FM gets a different UI)
+let mockRole: 'OWNER' | 'ACCOUNTANT' | 'FINANCE_MANAGER' | 'BRANCH_MANAGER' | 'SALES' = 'OWNER';
+
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({
-    user: { id: 'owner-1', role: 'OWNER', branchId: null },
+    user: { id: 'user-1', role: mockRole, branchId: null },
     isLoading: false,
     isAuthenticated: true,
   }),
@@ -42,6 +45,7 @@ function renderPage() {
 
 beforeEach(() => {
   apiPost.mockReset();
+  mockRole = 'OWNER';
 });
 
 describe('YearEndClosingPage', () => {
@@ -104,5 +108,89 @@ describe('YearEndClosingPage', () => {
     expect(
       screen.getByText(new RegExp(`ไม่สามารถปิดบัญชีปี ${currentYear + 1}`)),
     ).toBeInTheDocument();
+  });
+
+  it('renders pa.. (Buddhist Era) year in headings (W1)', async () => {
+    apiPost.mockResolvedValueOnce({
+      data: {
+        year: 2025,
+        revenues: [],
+        expenses: [{ code: '51-1102', name: 'หนี้สูญ', balance: '500.00' }],
+        revenueTotal: '0.00',
+        expenseTotal: '500.00',
+        netIncome: '-500.00',
+        isProfit: false,
+        totalSteps: 3,
+        alreadyClosed: true,
+        closedAt: new Date('2026-01-15T10:30:00.000Z').toISOString(),
+        closingBatchId: 'batch-1',
+        openMonths: [],
+      },
+    });
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: /ดูตัวอย่างการปิดบัญชี/ }));
+    // "ปี 2025 (พ.ศ. 2568)" — 2025 + 543 = 2568. Banner + action card + button
+    // each display it — use getAllByText.
+    await waitFor(() => {
+      const matches = screen.getAllByText(/พ\.ศ\. 2568/);
+      expect(matches.length).toBeGreaterThan(0);
+    });
+    // Banner says "ปิดบัญชีไปแล้ว"
+    expect(screen.getByText(/ปิดบัญชีไปแล้ว/)).toBeInTheDocument();
+  });
+
+  it('hides post Card for FINANCE_MANAGER and shows role-explainer Alert (W4)', async () => {
+    mockRole = 'FINANCE_MANAGER';
+    apiPost.mockResolvedValueOnce({
+      data: {
+        year: 2025,
+        revenues: [{ code: '41-1101', name: 'รายได้ดอกเบี้ย', balance: '1000.00' }],
+        expenses: [],
+        revenueTotal: '1000.00',
+        expenseTotal: '0.00',
+        netIncome: '1000.00',
+        isProfit: true,
+        totalSteps: 3,
+        alreadyClosed: false,
+        closedAt: null,
+        closingBatchId: null,
+        openMonths: [],
+      },
+    });
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: /ดูตัวอย่างการปิดบัญชี/ }));
+    await waitFor(() => {
+      expect(screen.getByText('โหมดดูอย่างเดียว')).toBeInTheDocument();
+    });
+    // No disabled "ปิดบัญชีปี" submit button rendered
+    expect(screen.queryByRole('button', { name: /ปิดบัญชีปี/i })).not.toBeInTheDocument();
+    // Explainer mentions allowed roles
+    expect(screen.getByText(/OWNER และ ACCOUNTANT/)).toBeInTheDocument();
+  });
+
+  it('shows post Card for ACCOUNTANT (canPost path)', async () => {
+    mockRole = 'ACCOUNTANT';
+    apiPost.mockResolvedValueOnce({
+      data: {
+        year: 2025,
+        revenues: [{ code: '41-1101', name: 'รายได้ดอกเบี้ย', balance: '1000.00' }],
+        expenses: [],
+        revenueTotal: '1000.00',
+        expenseTotal: '0.00',
+        netIncome: '1000.00',
+        isProfit: true,
+        totalSteps: 3,
+        alreadyClosed: false,
+        closedAt: null,
+        closingBatchId: null,
+        openMonths: [],
+      },
+    });
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: /ดูตัวอย่างการปิดบัญชี/ }));
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /ปิดบัญชีปี/i })).toBeInTheDocument();
+    });
+    expect(screen.queryByText('โหมดดูอย่างเดียว')).not.toBeInTheDocument();
   });
 });

@@ -96,18 +96,24 @@ export class AccountingClosingService {
     // posts 3 JEs; if the audit log write fails, all 3 must roll back.
     const result = await this.prisma.$transaction(async (tx) => {
       // Re-check inside tx — guards against two requests racing past the
-      // pre-tx check and both attempting to post.
-      const existingInTx = await tx.journalEntry.findFirst({
-        where: {
-          AND: [
-            { metadata: { path: ['flow'], equals: 'year-end-closing' } as any },
-            { metadata: { path: ['year'], equals: year } as any },
-          ],
-          deletedAt: null,
-        },
-      });
+      // pre-tx check and both attempting to post. Mirrors the post-filter
+      // logic in `findExistingClosingBatch` (excludes reversed batches so
+      // reverse → re-close is allowed).
+      const existingInTx = await this.findActiveClosingBatchTx(tx, year);
       if (existingInTx) {
         throw new ConflictException(`ปี ${year} ปิดบัญชีไปแล้ว`);
+      }
+
+      // Re-check open monthly periods inside tx — guards against OWNER
+      // reopening a period via `/expenses/periods/reopen` after the pre-tx
+      // check but before the JE is posted. Mirrors the CAS pattern from
+      // monthly-close.service.ts reopenPeriod().
+      const openPeriodsInTx = await this.findOpenMonthlyPeriods(year, tx);
+      if (openPeriodsInTx.length > 0) {
+        const monthList = openPeriodsInTx.map((p) => p.month).join(', ');
+        throw new BadRequestException(
+          `ต้องปิดงวดทุกเดือนก่อนปิดบัญชีปี ${year} — เดือนที่ยังไม่ปิด: ${monthList}`,
+        );
       }
 
       const out = await this.template.execute(year, tx);
@@ -318,8 +324,11 @@ export class AccountingClosingService {
 
   private validateYear(year: number) {
     const currentYear = new Date().getFullYear();
-    if (!Number.isInteger(year) || year < 2020 || year > 2030) {
-      throw new BadRequestException('ปีไม่ถูกต้อง (รองรับ 2020-2030)');
+    // Lower bound 2020 = historical backfill window. NO hardcoded upper bound:
+    // `year < currentYear` is the meaningful check (cannot close future/current
+    // year). Hardcoding e.g. 2030 would silently break the system in Jan 2031.
+    if (!Number.isInteger(year) || year < 2020) {
+      throw new BadRequestException('ปีไม่ถูกต้อง (รองรับตั้งแต่ปี 2020 เป็นต้นไป)');
     }
     if (year >= currentYear) {
       throw new BadRequestException(
@@ -329,7 +338,23 @@ export class AccountingClosingService {
   }
 
   private async findExistingClosingBatch(year: number) {
-    return this.prisma.journalEntry.findFirst({
+    return this.findActiveClosingBatchTx(this.prisma, year);
+  }
+
+  /**
+   * Tx-aware variant of `findExistingClosingBatch`. Returns the most recent
+   * step-1 closing JE for the year IF it is still active (i.e. not marked
+   * as reversed via `metadata.reversedByBatchId`). Returns null when the
+   * prior batch has been fully reversed — allowing a fresh re-close.
+   *
+   * Accepts either the root PrismaService or a `Prisma.TransactionClient`
+   * so it can be safely reused inside `$transaction` for race-free guards.
+   */
+  private async findActiveClosingBatchTx(
+    client: PrismaService | Prisma.TransactionClient,
+    year: number,
+  ) {
+    const entry = await client.journalEntry.findFirst({
       where: {
         AND: [
           { metadata: { path: ['flow'], equals: 'year-end-closing' } as any },
@@ -341,22 +366,28 @@ export class AccountingClosingService {
         deletedAt: null,
       },
       orderBy: { createdAt: 'desc' },
-    }).then((e) => {
-      if (!e) return null;
-      const meta = e.metadata as { reversedByBatchId?: string } | null;
-      if (meta?.reversedByBatchId) return null;
-      return e;
     });
+    if (!entry) return null;
+    const meta = entry.metadata as { reversedByBatchId?: string } | null;
+    if (meta?.reversedByBatchId) return null;
+    return entry;
   }
 
   /**
    * Returns array of months whose AccountingPeriod for FINANCE company is
    * NOT CLOSED/SYNCED. Empty array = all 12 months are closed.
+   *
+   * Accepts an optional transaction client so the same check can run inside
+   * a `$transaction` to close the race window where an OWNER reopens a
+   * period between the pre-tx check and JE posting.
    */
   private async findOpenMonthlyPeriods(
     year: number,
+    client?: PrismaService | Prisma.TransactionClient,
   ): Promise<Array<{ month: number; status: string }>> {
-    const financeCompany = await this.prisma.companyInfo.findFirst({
+    const db = client ?? this.prisma;
+
+    const financeCompany = await db.companyInfo.findFirst({
       where: { companyCode: 'FINANCE', deletedAt: null },
       select: { id: true },
     });
@@ -364,7 +395,7 @@ export class AccountingClosingService {
       throw new BadRequestException('ไม่พบ FINANCE company ในระบบ');
     }
 
-    const periods = await this.prisma.accountingPeriod.findMany({
+    const periods = await db.accountingPeriod.findMany({
       where: { companyId: financeCompany.id, year },
       select: { month: true, status: true },
     });

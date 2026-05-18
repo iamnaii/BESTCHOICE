@@ -232,16 +232,69 @@ describe('AccountingClosingService', () => {
     });
 
     it('treats a reversed prior batch as not-blocking (allows re-close)', async () => {
-      // First findFirst (pre-tx) returns a reversed batch — must NOT block
-      prisma.journalEntry.findFirst.mockResolvedValueOnce({
+      // Both findFirst calls (pre-tx + inside-tx) hit the SAME reversed row in
+      // real Prisma — the post-filter on metadata.reversedByBatchId is what
+      // turns the truthy row into null. Use mockResolvedValue (not Once) so
+      // both calls receive the reversed batch.
+      prisma.journalEntry.findFirst.mockResolvedValue({
         id: 'old-je',
         entryDate: new Date(),
-        metadata: { batchId: 'old', reversedByBatchId: 'old:R' },
+        metadata: {
+          flow: 'year-end-closing',
+          year: PAST_YEAR,
+          step: 1,
+          batchId: 'old',
+          reversedByBatchId: 'old:R',
+        },
       });
-      // Inside-tx findFirst → none active
-      prisma.journalEntry.findFirst.mockResolvedValueOnce(null);
       const out = await service.postYearEndClosing(PAST_YEAR, 'user-1');
       expect(out.batchId).toBe('batch-uuid-1');
+      // Verify findFirst was hit at least twice (pre-tx + inside-tx race check)
+      expect(prisma.journalEntry.findFirst).toHaveBeenCalledTimes(2);
+    });
+
+    it('rejects re-close when a non-reversed batch reappears mid-transaction (race)', async () => {
+      // Simulates the race: pre-tx check sees nothing, but between pre-tx
+      // and the inside-tx guard, a concurrent request inserted an active
+      // (non-reversed) batch. The inside-tx ConflictException MUST fire.
+      // First call (pre-tx) → null
+      prisma.journalEntry.findFirst.mockResolvedValueOnce(null);
+      // Second call (inside-tx) → active batch
+      prisma.journalEntry.findFirst.mockResolvedValueOnce({
+        id: 'concurrent-je',
+        entryDate: new Date(),
+        metadata: {
+          flow: 'year-end-closing',
+          year: PAST_YEAR,
+          step: 1,
+          batchId: 'concurrent',
+        },
+      });
+      await expect(
+        service.postYearEndClosing(PAST_YEAR, 'user-1'),
+      ).rejects.toThrow(ConflictException);
+      expect(template.execute).not.toHaveBeenCalled();
+    });
+
+    it('rejects when a monthly period is reopened mid-transaction (race)', async () => {
+      // Simulates the W2 race: pre-tx sees all 12 months CLOSED, but
+      // between pre-tx and JE post, OWNER reopens month 5. The inside-tx
+      // re-check MUST fire BadRequestException and template.execute MUST NOT
+      // be called.
+      // First findMany (pre-tx) → all CLOSED (default beforeEach mock)
+      // Second findMany (inside-tx) → month 5 reopened
+      prisma.accountingPeriod.findMany.mockResolvedValueOnce(
+        Array.from({ length: 12 }, (_, i) => ({ month: i + 1, status: 'CLOSED' })),
+      );
+      prisma.accountingPeriod.findMany.mockResolvedValueOnce([
+        ...Array.from({ length: 4 }, (_, i) => ({ month: i + 1, status: 'CLOSED' })),
+        { month: 5, status: 'OPEN' },
+        ...Array.from({ length: 7 }, (_, i) => ({ month: i + 6, status: 'CLOSED' })),
+      ]);
+      await expect(
+        service.postYearEndClosing(PAST_YEAR, 'user-1'),
+      ).rejects.toThrow(BadRequestException);
+      expect(template.execute).not.toHaveBeenCalled();
     });
   });
 

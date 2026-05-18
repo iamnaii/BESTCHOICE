@@ -8,6 +8,7 @@ import {
   AlertTriangle,
   CalendarCheck,
   CheckCircle2,
+  Info,
   Loader2,
   Lock,
   RotateCcw,
@@ -32,7 +33,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { THAI_MONTHS_FULL } from '@/lib/date';
+import { formatThaiDateTime, THAI_MONTHS_FULL } from '@/lib/date';
+
+// Convert ค.ศ. (Gregorian) year to พ.ศ. (Buddhist Era) for display.
+const toBE = (yearCE: number) => yearCE + 543;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -131,7 +135,7 @@ export default function YearEndClosingPage() {
       return data;
     },
     onSuccess: (data) => {
-      toast.success(`ปิดบัญชีปี ${year} เรียบร้อย — สร้าง JE 3 รายการ`);
+      toast.success(`ปิดบัญชีปี ${toBE(year)} (พ.ศ.) เรียบร้อย — สร้าง JE 3 รายการ`);
       setLastPosted(data);
       queryClient.invalidateQueries({ queryKey: ['year-end-closing-preview', year] });
       void previewQuery.refetch();
@@ -149,7 +153,7 @@ export default function YearEndClosingPage() {
       return data;
     },
     onSuccess: () => {
-      toast.success(`กลับรายการปิดบัญชีปี ${year} เรียบร้อย`);
+      toast.success(`กลับรายการปิดบัญชีปี ${toBE(year)} (พ.ศ.) เรียบร้อย`);
       setReverseDialogOpen(false);
       queryClient.invalidateQueries({ queryKey: ['year-end-closing-preview', year] });
       void previewQuery.refetch();
@@ -232,7 +236,8 @@ export default function YearEndClosingPage() {
             </div>
             {isFutureYear && (
               <p className="text-sm text-destructive leading-snug">
-                ไม่สามารถปิดบัญชีปี {year} ได้ — เลือกปีที่ผ่านมา (น้อยกว่า {currentYear})
+                ไม่สามารถปิดบัญชีปี {year} (พ.ศ. {toBE(year)}) ได้ — เลือกปีที่ผ่านมา (น้อยกว่า{' '}
+                {currentYear})
               </p>
             )}
           </CardContent>
@@ -253,11 +258,11 @@ export default function YearEndClosingPage() {
                     <Lock className="h-5 w-5 text-success shrink-0 mt-0.5" />
                     <div className="flex-1 space-y-1">
                       <p className="text-sm font-semibold leading-snug">
-                        ปี {preview.year} ปิดบัญชีไปแล้ว
+                        ปีบัญชี {preview.year} (พ.ศ. {toBE(preview.year)}) ปิดบัญชีไปแล้ว
                       </p>
                       {preview.closedAt && (
                         <p className="text-sm text-muted-foreground leading-snug">
-                          วันที่บันทึก: {new Date(preview.closedAt).toLocaleString('th-TH')}
+                          วันที่บันทึก: {formatThaiDateTime(preview.closedAt)} น.
                         </p>
                       )}
                       {preview.closingBatchId && (
@@ -379,36 +384,52 @@ export default function YearEndClosingPage() {
                 />
               </div>
 
-              {/* Post action */}
-              <Card>
-                <CardContent className="pt-6 flex flex-wrap items-center justify-between gap-3">
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium leading-snug">
-                      จะสร้าง Journal Entry รวม {preview.totalSteps} รายการ
-                    </p>
-                    <p className="text-xs text-muted-foreground leading-snug">
-                      บันทึกวันที่ 31 ธันวาคม {preview.year} 23:59 — ไม่สามารถแก้ไขได้หลังบันทึก
-                    </p>
-                  </div>
-                  <Button
-                    variant="destructive"
-                    disabled={blockPost || postMutation.isPending}
-                    onClick={() => setPostConfirmOpen(true)}
-                  >
-                    {postMutation.isPending ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        กำลังบันทึก...
-                      </>
-                    ) : (
-                      <>
-                        <Lock className="mr-2 h-4 w-4" />
-                        ปิดบัญชีปี {preview.year}
-                      </>
-                    )}
-                  </Button>
-                </CardContent>
-              </Card>
+              {/* Post action — only show full action card to roles that can post */}
+              {canPost ? (
+                <Card>
+                  <CardContent className="pt-6 flex flex-wrap items-center justify-between gap-3">
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium leading-snug">
+                        จะสร้าง Journal Entry รวม {preview.totalSteps} รายการ
+                      </p>
+                      <p className="text-xs text-muted-foreground leading-snug">
+                        บันทึกวันที่ 31 ธันวาคม {preview.year} (พ.ศ. {toBE(preview.year)}) 23:59 น. —
+                        ไม่สามารถแก้ไขได้หลังบันทึก
+                      </p>
+                    </div>
+                    <Button
+                      variant="destructive"
+                      disabled={blockPost || postMutation.isPending}
+                      onClick={() => setPostConfirmOpen(true)}
+                    >
+                      {postMutation.isPending ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          กำลังบันทึก...
+                        </>
+                      ) : (
+                        <>
+                          <Lock className="mr-2 h-4 w-4" />
+                          ปิดบัญชีปี {preview.year} (พ.ศ. {toBE(preview.year)})
+                        </>
+                      )}
+                    </Button>
+                  </CardContent>
+                </Card>
+              ) : (
+                <Card className="border-warning/40 bg-warning/5">
+                  <CardContent className="flex items-start gap-3 pt-6">
+                    <Info className="h-5 w-5 text-warning shrink-0 mt-0.5" />
+                    <div className="flex-1 space-y-1">
+                      <p className="text-sm font-semibold leading-snug">โหมดดูอย่างเดียว</p>
+                      <p className="text-sm text-muted-foreground leading-snug">
+                        เฉพาะ OWNER และ ACCOUNTANT เท่านั้นที่บันทึกการปิดบัญชีได้ — บัญชีของคุณดูข้อมูลได้
+                        แต่ไม่สามารถสร้าง Journal Entry ปิดบัญชี
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Posted JE links */}
               {lastPosted && (
@@ -451,7 +472,7 @@ export default function YearEndClosingPage() {
       <ConfirmDialog
         open={postConfirmOpen}
         onOpenChange={setPostConfirmOpen}
-        title={`ยืนยันการปิดบัญชีปี ${year}`}
+        title={`ยืนยันการปิดบัญชีปี ${year} (พ.ศ. ${toBE(year)})`}
         description={`การปิดบัญชีจะสร้าง JE ${preview?.totalSteps ?? 3} รายการ และไม่สามารถแก้ไขได้ — เฉพาะ OWNER เท่านั้นที่กลับรายการได้`}
         confirmLabel={`ปิดบัญชีปี ${year}`}
         cancelLabel="ยกเลิก"
@@ -464,7 +485,7 @@ export default function YearEndClosingPage() {
       <Dialog open={reverseDialogOpen} onOpenChange={setReverseDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>กลับรายการปิดบัญชีปี {year}</DialogTitle>
+            <DialogTitle>กลับรายการปิดบัญชีปี {year} (พ.ศ. {toBE(year)})</DialogTitle>
             <DialogDescription className="leading-snug">
               จะสร้าง JE กลับรายการตรงข้ามทั้ง 3 รายการ — รายการเดิมจะคงอยู่เพื่อ audit trail
             </DialogDescription>

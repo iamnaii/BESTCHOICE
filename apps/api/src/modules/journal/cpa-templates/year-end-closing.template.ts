@@ -187,16 +187,36 @@ export class YearEndClosingTemplate {
 
     const run = async (tx: Prisma.TransactionClient) => {
       // ── Step 1: Close revenue → 39-9999 ───────────────────────────────
-      const step1Lines = revenues.map((r) => ({
-        accountCode: r.code,
-        dr: r.balance,
-        cr: ZERO,
-        description: `ปิดบัญชี ${r.name} ปี ${year}`,
-      }));
+      //
+      // Revenue is Cr-normal. Closing entry Dr's the revenue account to
+      // zero it out, Cr's Income Summary by the same total.
+      //
+      // If a revenue account ends the year with a NET DEBIT balance (e.g.
+      // refunds exceed sales), `balance` from getYearAccountActivity is
+      // negative. Posting `dr: <negative>` is mathematically balanced but
+      // not standard accounting practice — we flip the side so a negative
+      // revenue posts as `Cr <abs>` on the revenue account (effectively
+      // unwinding the abnormal Dr balance). The matching Income Summary
+      // contribution flips too, but the net impact on the ISC side is
+      // already captured in `revenueTotal` (it nets the negatives), so
+      // the contra line stays uniform on the Cr side.
+      const step1Lines = revenues.map((r) => {
+        const isAbnormal = r.balance.isNegative();
+        return {
+          accountCode: r.code,
+          dr: isAbnormal ? ZERO : r.balance,
+          cr: isAbnormal ? r.balance.abs() : ZERO,
+          description: `ปิดบัญชี ${r.name} ปี ${year}`,
+        };
+      });
+      // Revenue contra into Income Summary. `revenueTotal` already nets
+      // any negative balances. If the overall net is negative (highly
+      // unusual — all revenue accounts net-debit), post the opposite side.
+      const revenueTotalAbnormal = revenueTotal.isNegative();
       step1Lines.push({
         accountCode: ISC,
-        dr: ZERO,
-        cr: revenueTotal,
+        dr: revenueTotalAbnormal ? revenueTotal.abs() : ZERO,
+        cr: revenueTotalAbnormal ? ZERO : revenueTotal,
         description: `รวมรายได้เข้า Income Summary ปี ${year}`,
       });
 
@@ -218,6 +238,15 @@ export class YearEndClosingTemplate {
       );
 
       // ── Step 2: Close expenses ← 39-9999 ──────────────────────────────
+      //
+      // Expense is Dr-normal. Closing entry Cr's the expense account to
+      // zero it out, Dr's Income Summary by the same total.
+      //
+      // If an expense account ends the year with a NET CREDIT (e.g.
+      // refunds/recoveries exceed billed expense), `balance` is negative.
+      // We flip the side: post `Dr <abs>` on the expense account to
+      // unwind the abnormal Cr position, with matching adjustment on ISC.
+      const expenseTotalAbnormal = expenseTotal.isNegative();
       const step2Lines: {
         accountCode: string;
         dr: Prisma.Decimal;
@@ -226,16 +255,19 @@ export class YearEndClosingTemplate {
       }[] = [
         {
           accountCode: ISC,
-          dr: expenseTotal,
-          cr: ZERO,
+          dr: expenseTotalAbnormal ? ZERO : expenseTotal,
+          cr: expenseTotalAbnormal ? expenseTotal.abs() : ZERO,
           description: `รวมค่าใช้จ่ายจาก Income Summary ปี ${year}`,
         },
-        ...expenses.map((e) => ({
-          accountCode: e.code,
-          dr: ZERO,
-          cr: e.balance,
-          description: `ปิดบัญชี ${e.name} ปี ${year}`,
-        })),
+        ...expenses.map((e) => {
+          const isAbnormal = e.balance.isNegative();
+          return {
+            accountCode: e.code,
+            dr: isAbnormal ? e.balance.abs() : ZERO,
+            cr: isAbnormal ? ZERO : e.balance,
+            description: `ปิดบัญชี ${e.name} ปี ${year}`,
+          };
+        }),
       ];
 
       const step2 = await this.journal.createAndPost(

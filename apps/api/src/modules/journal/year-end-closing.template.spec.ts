@@ -123,5 +123,164 @@ describe('YearEndClosingTemplate (unit)', () => {
       const out = await t.getYearAccountActivity(2026);
       expect(out.netIncome.toFixed(2)).toBe('-40000.00');
     });
+
+    it('preserves negative balance for revenue with net DEBIT position', async () => {
+      // Revenue Cr-normal but ended year with Dr > Cr (refunds > sales)
+      const t = buildTemplate([
+        { accountCode: '41-1101', _sum: { debit: '5000', credit: '1000' } },
+      ]);
+      const out = await t.getYearAccountActivity(2026);
+      expect(out.revenues).toHaveLength(1);
+      // cr - dr = 1000 - 5000 = -4000 (kept negative; execute() flips side)
+      expect(out.revenues[0].balance.toFixed(2)).toBe('-4000.00');
+    });
+
+    it('preserves negative balance for expense with net CREDIT position', async () => {
+      // Expense Dr-normal but ended year with Cr > Dr (refunds/recoveries)
+      const t = buildTemplate([
+        { accountCode: '51-1101', _sum: { debit: '500', credit: '2000' } },
+      ]);
+      const out = await t.getYearAccountActivity(2026);
+      expect(out.expenses).toHaveLength(1);
+      // dr - cr = 500 - 2000 = -1500
+      expect(out.expenses[0].balance.toFixed(2)).toBe('-1500.00');
+    });
+  });
+
+  describe('execute (negative-balance JE flip)', () => {
+    function buildTemplateWithJournal(
+      rows: Array<{ accountCode: string; _sum: { debit: string; credit: string } }>,
+    ) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const journalCalls: any[] = [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const journal: any = {
+        createAndPost: jest.fn().mockImplementation((dto: any) => {
+          journalCalls.push(dto);
+          return Promise.resolve({
+            id: `je-${journalCalls.length}`,
+            entryNumber: `JE-${journalCalls.length}`,
+          });
+        }),
+      };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const prisma: any = {
+        journalLine: {
+          groupBy: jest.fn().mockResolvedValue(
+            rows.map((r) => ({
+              accountCode: r.accountCode,
+              _sum: {
+                debit: new Prisma.Decimal(r._sum.debit),
+                credit: new Prisma.Decimal(r._sum.credit),
+              },
+            })),
+          ),
+        },
+        chartOfAccount: {
+          findMany: jest.fn().mockResolvedValue(
+            rows.map((r) => ({ code: r.accountCode, name: `Name ${r.accountCode}` })),
+          ),
+        },
+        // Pass through $transaction so execute() can run without a real DB
+        $transaction: jest.fn().mockImplementation(async (fn: any) => fn(prisma)),
+      };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const template = new YearEndClosingTemplate(journal as any, prisma as any);
+      return { template, journal, journalCalls };
+    }
+
+    it('flips revenue Dr/Cr when balance is negative (refunds > sales)', async () => {
+      // 41-1101 has Dr 5000 + Cr 1000 → net -4000 (abnormal Dr position)
+      // 51-1101 normal Dr 1000 → expense 1000
+      // Net income = -4000 - 1000 = -5000 (loss)
+      const { template, journalCalls } = buildTemplateWithJournal([
+        { accountCode: '41-1101', _sum: { debit: '5000', credit: '1000' } },
+        { accountCode: '51-1101', _sum: { debit: '1000', credit: '0' } },
+      ]);
+
+      await template.execute(2026);
+
+      // Step 1 = close revenue. Find the 41-1101 line in step 1.
+      const step1 = journalCalls[0];
+      const revenueLine = step1.lines.find(
+        (l: { accountCode: string }) => l.accountCode === '41-1101',
+      );
+      // Abnormal negative balance must post as Cr (not negative Dr)
+      expect(revenueLine.dr.toString()).toBe('0');
+      expect(revenueLine.cr.toString()).toBe('4000');
+
+      // Income Summary side must mirror to keep entry balanced
+      const iscLine = step1.lines.find(
+        (l: { accountCode: string }) => l.accountCode === '39-9999',
+      );
+      // Net revenue total is -4000 (abnormal). Cr revenue 4000 + Dr ISC 4000.
+      expect(iscLine.dr.toString()).toBe('4000');
+      expect(iscLine.cr.toString()).toBe('0');
+
+      // Verify the entry is still balanced (Dr total = Cr total)
+      const drTotal = step1.lines.reduce(
+        (acc: Prisma.Decimal, l: { dr: Prisma.Decimal }) => acc.add(l.dr),
+        new Prisma.Decimal(0),
+      );
+      const crTotal = step1.lines.reduce(
+        (acc: Prisma.Decimal, l: { cr: Prisma.Decimal }) => acc.add(l.cr),
+        new Prisma.Decimal(0),
+      );
+      expect(drTotal.toString()).toBe(crTotal.toString());
+    });
+
+    it('flips expense Dr/Cr when balance is negative (recoveries > expense)', async () => {
+      const { template, journalCalls } = buildTemplateWithJournal([
+        { accountCode: '41-1101', _sum: { debit: '0', credit: '10000' } },
+        // 51-1101 abnormal Cr position: Dr 200 + Cr 800 → net -600
+        { accountCode: '51-1101', _sum: { debit: '200', credit: '800' } },
+      ]);
+
+      await template.execute(2026);
+
+      // Step 2 = close expenses
+      const step2 = journalCalls[1];
+      const expenseLine = step2.lines.find(
+        (l: { accountCode: string }) => l.accountCode === '51-1101',
+      );
+      // Abnormal negative balance must post as Dr (not negative Cr)
+      expect(expenseLine.dr.toString()).toBe('600');
+      expect(expenseLine.cr.toString()).toBe('0');
+
+      const iscLine = step2.lines.find(
+        (l: { accountCode: string }) => l.accountCode === '39-9999',
+      );
+      // Net expense total is -600 (abnormal). Dr expense 600 + Cr ISC 600.
+      expect(iscLine.dr.toString()).toBe('0');
+      expect(iscLine.cr.toString()).toBe('600');
+
+      // Balance check
+      const drTotal = step2.lines.reduce(
+        (acc: Prisma.Decimal, l: { dr: Prisma.Decimal }) => acc.add(l.dr),
+        new Prisma.Decimal(0),
+      );
+      const crTotal = step2.lines.reduce(
+        (acc: Prisma.Decimal, l: { cr: Prisma.Decimal }) => acc.add(l.cr),
+        new Prisma.Decimal(0),
+      );
+      expect(drTotal.toString()).toBe(crTotal.toString());
+    });
+
+    it('normal-side path unchanged for positive balances (no regression)', async () => {
+      const { template, journalCalls } = buildTemplateWithJournal([
+        { accountCode: '41-1101', _sum: { debit: '0', credit: '10000' } },
+        { accountCode: '51-1101', _sum: { debit: '3000', credit: '0' } },
+      ]);
+
+      await template.execute(2026);
+
+      const step1 = journalCalls[0];
+      const revenueLine = step1.lines.find(
+        (l: { accountCode: string }) => l.accountCode === '41-1101',
+      );
+      // Normal Cr-normal revenue → close with Dr <balance>
+      expect(revenueLine.dr.toString()).toBe('10000');
+      expect(revenueLine.cr.toString()).toBe('0');
+    });
   });
 });

@@ -9,8 +9,9 @@ import { VatTab } from './tabs/VatTab';
 import { PeriodsTab } from './tabs/PeriodsTab';
 import { AttachmentTab } from './tabs/AttachmentTab';
 import { UsersTab } from './tabs/UsersTab';
+import { PeakMappingTab } from './tabs/PeakMappingTab';
 
-const TAB_IDS = ['company', 'vat', 'periods', 'attachment', 'users'] as const;
+const TAB_IDS = ['company', 'vat', 'periods', 'attachment', 'users', 'peak-mapping'] as const;
 type TabId = typeof TAB_IDS[number];
 
 function readHash(): TabId {
@@ -47,12 +48,13 @@ export default function SettingsPage() {
       <PageHeader title="ตั้งค่าระบบ" subtitle="กำหนดพารามิเตอร์การทำงานของระบบ" />
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabId)}>
-        <TabsList className="grid grid-cols-2 md:grid-cols-5 mb-4">
+        <TabsList className="grid grid-cols-2 md:grid-cols-6 mb-4">
           <TabsTrigger value="company">บริษัท</TabsTrigger>
           <TabsTrigger value="vat">VAT</TabsTrigger>
           <TabsTrigger value="periods">งวดบัญชี</TabsTrigger>
           <TabsTrigger value="attachment">เอกสารแนบ</TabsTrigger>
           <TabsTrigger value="users">ผู้ใช้งาน</TabsTrigger>
+          <TabsTrigger value="peak-mapping">PEAK</TabsTrigger>
         </TabsList>
 
         <TabsContent value="company"><CompanyTab /></TabsContent>
@@ -60,6 +62,7 @@ export default function SettingsPage() {
         <TabsContent value="periods"><PeriodsTab /></TabsContent>
         <TabsContent value="attachment"><AttachmentTab /></TabsContent>
         <TabsContent value="users"><UsersTab /></TabsContent>
+        <TabsContent value="peak-mapping"><PeakMappingTab /></TabsContent>
       </Tabs>
     </div>
   );

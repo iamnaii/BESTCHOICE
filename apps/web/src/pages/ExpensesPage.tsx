@@ -14,12 +14,13 @@ import QueryBoundary from '@/components/QueryBoundary';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { ReverseDialog } from '@/components/expense-form-v4/ReverseDialog';
 import { useAuth } from '@/contexts/AuthContext';
-import { Receipt, Plus, Pencil, MoreVertical, Bookmark, Wallet, BarChart3, Search, SlidersHorizontal, Eye, ArrowRight, UserCircle2, ChevronDown, FileText, CreditCard } from 'lucide-react';
+import { Receipt, Plus, Pencil, MoreVertical, Bookmark, Wallet, BarChart3, Search, SlidersHorizontal, Eye, ArrowRight, UserCircle2, ChevronDown, FileText, CreditCard, Send, CheckCircle2 } from 'lucide-react';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { Button } from '@/components/ui/button';
 import { formatDateShortThai, formatNumberDecimal } from '@/utils/formatters';
 import { ExpenseFormV4 } from '@/components/expense-form-v4/ExpenseFormV4';
 import { ReopenedPeriodBanner } from '@/components/accounting/ReopenedPeriodBanner';
+import { useApprovalActions, getApprovalReason, canApprove } from '@/hooks/useApprovalActions';
 
 // ─── Types ───
 interface ExpenseDocument {
@@ -37,7 +38,7 @@ interface ExpenseDocument {
   withholdingTax: string;
   totalAmount: string;
   netPayment: string | null;
-  status: 'DRAFT' | 'ACCRUAL' | 'POSTED' | 'VOIDED';
+  status: 'DRAFT' | 'PENDING_APPROVAL' | 'APPROVED' | 'ACCRUAL' | 'POSTED' | 'VOIDED';
   paidAt: string | null;
   paymentMethod: string | null;
   depositAccountCode: string | null;
@@ -80,18 +81,28 @@ function getDocumentType(e: Expense): { label: string; cls: string } {
   }
 }
 
-// Derived status badge — 4 statuses mapped to user-facing labels
+// Derived status badge — 6 statuses mapped to user-facing labels.
+// D1.2.1 adds PENDING_APPROVAL + APPROVED (warning/info hues).
 function getStatusBadge(e: Expense): { label: string; cls: string } {
-  if (e.status === 'DRAFT') return { label: 'DRAFT', cls: 'bg-muted text-muted-foreground border-border' };
-  if (e.status === 'VOIDED') return { label: 'VOIDED', cls: 'bg-muted text-muted-foreground border-border' };
-  if (e.status === 'ACCRUAL') return { label: 'ACCRUAL', cls: 'bg-success/10 text-success border-success/20' };
-  return { label: 'POSTED', cls: 'bg-success/10 text-success border-success/20' };
+  if (e.status === 'DRAFT')
+    return { label: 'ฉบับร่าง', cls: 'bg-muted text-muted-foreground border-border' };
+  if (e.status === 'PENDING_APPROVAL')
+    return { label: 'รออนุมัติ', cls: 'bg-warning/10 text-warning border-warning/40' };
+  if (e.status === 'APPROVED')
+    return { label: 'อนุมัติแล้ว', cls: 'bg-info/10 text-info border-info/40' };
+  if (e.status === 'VOIDED')
+    return { label: 'VOIDED', cls: 'bg-muted text-muted-foreground border-border' };
+  if (e.status === 'ACCRUAL')
+    return { label: 'ACCRUAL', cls: 'bg-success/10 text-success border-success/20' };
+  return { label: 'ผ่านรายการ', cls: 'bg-success/10 text-success border-success/20' };
 }
 
 // ─── Constants ───
 
 const statusLabels: Record<string, string> = {
   DRAFT: 'ร่าง',
+  PENDING_APPROVAL: 'รออนุมัติ',
+  APPROVED: 'อนุมัติแล้ว',
   ACCRUAL: 'ตั้งหนี้',
   POSTED: 'บันทึกแล้ว',
   VOIDED: 'ยกเลิก',
@@ -214,6 +225,16 @@ export default function ExpensesPage() {
   const openCreate = () => { setEditingExpense(null); setShowForm(true); };
   const openEdit = (e: Expense) => { setEditingExpense(e); setShowForm(true); setOpenMenuId(null); };
   const handleFormSaved = () => { setShowForm(false); setEditingExpense(null); invalidateAll(); };
+
+  // D1.2.1 — Approval Workflow. Flags + mutations stay at page level so all
+  // row actions share the same react-query cache invalidations + sonner toasts.
+  const uiFlags = useUiFlags();
+  const { submitForApproval, approve } = useApprovalActions();
+  const isApprover = canApprove({
+    userId: currentUser?.id,
+    userRole: currentUser?.role,
+    approversList: uiFlags.approversList,
+  });
 
   const total = expensesData?.total ?? 0;
 
@@ -338,19 +359,93 @@ export default function ExpensesPage() {
                 <MoreVertical className="size-4 text-muted-foreground" />
               </button>
               {openMenuId === e.id && (
-                <div className="absolute right-0 top-full mt-1 z-10 bg-card border border-border rounded-lg shadow-lg py-1 min-w-[140px]">
+                <div className="absolute right-0 top-full mt-1 z-10 bg-card border border-border rounded-lg shadow-lg py-1 min-w-[160px]">
                   {e.status === 'DRAFT' && (
                     <>
                       <button onClick={() => openEdit(e)} className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted flex items-center gap-2">
                         <Pencil className="size-3.5" /> แก้ไข
                       </button>
-                      <button
-                        onClick={() => setConfirmDialog({ open: true, message: `โพสต์ "${e.number}"?`, action: () => actionMutation.mutate({ id: e.id, action: 'post' }) })}
-                        className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted"
-                      >
-                        โพสต์
-                      </button>
+                      {/* D1.2.1.1 — "ส่งขออนุมัติ" only when approval workflow is enabled. */}
+                      {uiFlags.approvalEnabled && (
+                        <>
+                          <button
+                            onClick={() =>
+                              setConfirmDialog({
+                                open: true,
+                                message: `ส่งเอกสาร "${e.number}" ขออนุมัติ?`,
+                                action: () => submitForApproval.mutate(e.id),
+                              })
+                            }
+                            className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted flex items-center gap-2"
+                            disabled={submitForApproval.isPending}
+                          >
+                            <Send className="size-3.5" /> ส่งขออนุมัติ
+                          </button>
+                          {(() => {
+                            // D1.2.1.2 / D1.2.1.4 — explain WHY this doc needs approval.
+                            const reason = getApprovalReason({
+                              totalAmount: parseFloat(e.totalAmount || '0'),
+                              docType: e.documentType,
+                              approvalThreshold: uiFlags.approvalThreshold,
+                              approvalRequiredDocTypes: uiFlags.approvalRequiredDocTypes,
+                            });
+                            if (!reason) return null;
+                            return (
+                              <div className="px-3 py-1 text-[10px] text-muted-foreground leading-snug border-t border-border/40 mt-1 pt-1.5">
+                                เอกสารนี้ต้องผ่านการอนุมัติเนื่องจาก:
+                                <br />
+                                {reason}
+                              </div>
+                            );
+                          })()}
+                        </>
+                      )}
+                      {/* Legacy direct POST — hidden when approval workflow is on so
+                          users follow the new lifecycle. Backend gate also rejects
+                          direct POST on DRAFT when approvalEnabled is true. */}
+                      {!uiFlags.approvalEnabled && (
+                        <button
+                          onClick={() => setConfirmDialog({ open: true, message: `โพสต์ "${e.number}"?`, action: () => actionMutation.mutate({ id: e.id, action: 'post' }) })}
+                          className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted"
+                        >
+                          โพสต์
+                        </button>
+                      )}
                     </>
+                  )}
+                  {/* D1.2.1.6 — APPROVE button. Visible only on PENDING_APPROVAL +
+                      current user is in approversList (or OWNER). Backend
+                      assertUserCanApprove() re-validates. */}
+                  {e.status === 'PENDING_APPROVAL' && isApprover && (
+                    <button
+                      onClick={() =>
+                        setConfirmDialog({
+                          open: true,
+                          message: `อนุมัติเอกสาร "${e.number}"?`,
+                          action: () => approve.mutate(e.id),
+                        })
+                      }
+                      className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted flex items-center gap-2 text-info"
+                      disabled={approve.isPending}
+                    >
+                      <CheckCircle2 className="size-3.5" /> อนุมัติเอกสาร
+                    </button>
+                  )}
+                  {/* APPROVED docs that didn't auto-post fall back to the legacy
+                      POST action — OWNER can still finalize them manually. */}
+                  {e.status === 'APPROVED' && isOwner && (
+                    <button
+                      onClick={() =>
+                        setConfirmDialog({
+                          open: true,
+                          message: `โพสต์ "${e.number}"?`,
+                          action: () => actionMutation.mutate({ id: e.id, action: 'post' }),
+                        })
+                      }
+                      className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted"
+                    >
+                      โพสต์
+                    </button>
                   )}
                   {isOwner && (
                     <button

@@ -11,6 +11,7 @@ import api, { getErrorMessage } from '@/lib/api';
 import { compressImageForOcr } from '@/lib/compressImage';
 import { checkCardReaderStatus, readSmartCard, type SmartCardData } from '@/lib/cardReader';
 import { useDebounce } from '@/hooks/useDebounce';
+import { useUiFlags } from '@/hooks/useUiFlags';
 import { useAuth } from '@/contexts/AuthContext';
 import { maskNationalId, formatNationalId } from '@/utils/mask.util';
 import { THAI_NAME_PREFIXES, RELATIONSHIP_OPTIONS } from '@/lib/constants';
@@ -143,6 +144,7 @@ export default function CustomersPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const { exportEnabled } = useUiFlags();
   const { copy } = useCopyToClipboard();
   const isOwner = user?.role === 'OWNER';
   const isOwnerOrManager = ['OWNER', 'BRANCH_MANAGER'].includes(user?.role ?? '');
@@ -673,13 +675,16 @@ export default function CustomersPage() {
         subtitle={`ทั้งหมด ${result?.total ?? 0} ราย`}
         action={
           <div className="flex gap-2">
-            <button
-              onClick={exportExcel}
-              className="inline-flex items-center gap-1.5 px-4 py-2 border border-input text-foreground rounded-lg text-sm font-medium hover:bg-accent transition-colors"
-            >
-              <Download className="w-4 h-4" />
-              ส่งออก Excel
-            </button>
+            {/* D1.3.3.1 — hide export button when OWNER disables export_enabled. */}
+            {exportEnabled && (
+              <button
+                onClick={exportExcel}
+                className="inline-flex items-center gap-1.5 px-4 py-2 border border-input text-foreground rounded-lg text-sm font-medium hover:bg-accent transition-colors"
+              >
+                <Download className="w-4 h-4" />
+                ส่งออก Excel
+              </button>
+            )}
             <button onClick={() => navigate('/customer-intake')} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90">
               + เพิ่มลูกค้าใหม่
             </button>

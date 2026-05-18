@@ -28,6 +28,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { ExportEnabledGuard } from '../settings/guards/export-enabled.guard';
 import { PiiAuditService } from '../pii/pii-audit.service';
 import { maskBankAccount } from '../../utils/pii.util';
 
@@ -232,6 +233,8 @@ export class TradeInController {
   }
 
   @Get(':id/voucher.pdf')
+  // D1.3.3.1 — gated by ExportEnabledGuard (403 when export_enabled=false).
+  @UseGuards(ExportEnabledGuard)
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES', 'ACCOUNTANT')
   async downloadVoucher(@Param('id') id: string, @Res() res: Response) {
     const { buffer, voucherNumber } = await this.tradeInService.getVoucherPdf(id);

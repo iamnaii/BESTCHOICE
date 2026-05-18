@@ -168,6 +168,7 @@ const GeneralLedgerPage = lazy(() =>
   import('@/pages/GeneralLedgerPage').then((m) => ({ default: m.GeneralLedgerPage })),
 );
 const PeakSyncPage = lazy(() => import('@/pages/PeakSyncPage'));
+const PeakExportPage = lazy(() => import('@/pages/PeakExportPage'));
 const AiSettingsPage = lazy(() => import('@/pages/AiSettingsPage'));
 const AiTrainingPage = lazy(() => import('@/pages/AiTrainingPage'));
 const AiPerformancePage = lazy(() => import('@/pages/AiPerformancePage'));
@@ -851,6 +852,14 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER', 'ACCOUNTANT']}>
                 <PeakSyncPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/finance/peak-export"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <PeakExportPage />
               </ProtectedRoute>
             }
           />

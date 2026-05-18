@@ -1,13 +1,16 @@
 import {
+  BadRequestException,
   Controller,
   Get,
   Post,
   Param,
   Body,
   Query,
+  Res,
   UseGuards,
   Request,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { AccountingService } from './accounting.service';
 import { BadDebtService } from './bad-debt.service';
@@ -97,6 +100,44 @@ export class AccountingController {
     const end = new Date(periodEnd);
     end.setHours(23, 59, 59, 999);
     return this.service.getEquityStatementFromJournal(start, end, companyId);
+  }
+
+  // ============================================================
+  // P3-SP3: PEAK CSV export
+  // ============================================================
+
+  /**
+   * Stream a CSV of journal lines (within the date range) tagged with their
+   * mapped PEAK code. Lines whose account has no PEAK mapping are skipped —
+   * the count is returned via the `X-Skipped-Lines` response header so the UI
+   * can surface a warning banner.
+   */
+  @Get('journal/export-peak')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  async exportJournalPeak(
+    @Query('startDate') startDate: string,
+    @Query('endDate') endDate: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    if (!startDate || !endDate) {
+      throw new BadRequestException('กรุณาระบุช่วงวันที่');
+    }
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      throw new BadRequestException('รูปแบบวันที่ไม่ถูกต้อง');
+    }
+    end.setHours(23, 59, 59, 999);
+
+    const result = await this.service.exportJournalWithPeakCodes(start, end);
+    const filename = `peak-journal-${startDate}_${endDate}.csv`;
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('X-Skipped-Lines', String(result.skippedLineCount));
+    res.setHeader('X-Row-Count', String(result.rowCount));
+    // Expose custom headers so the browser fetch() sees them through CORS.
+    res.setHeader('Access-Control-Expose-Headers', 'X-Skipped-Lines, X-Row-Count');
+    res.end(result.csv);
   }
 
   @Get('ledger/general-ledger')

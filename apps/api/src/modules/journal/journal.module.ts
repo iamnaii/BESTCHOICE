@@ -37,6 +37,7 @@ import { CreditNoteTemplate } from './cpa-templates/credit-note.template';
 import { PayrollTemplate } from './cpa-templates/payroll.template';
 import { VendorSettlementTemplate } from './cpa-templates/vendor-settlement.template';
 import { PettyCashTemplate } from './cpa-templates/petty-cash.template';
+import { YearEndClosingTemplate } from './cpa-templates/year-end-closing.template';
 
 @Module({
   imports: [PrismaModule],
@@ -78,6 +79,7 @@ import { PettyCashTemplate } from './cpa-templates/petty-cash.template';
     PayrollTemplate,
     VendorSettlementTemplate,
     PettyCashTemplate,
+    YearEndClosingTemplate,
   ],
   exports: [
     JournalService,
@@ -113,6 +115,7 @@ import { PettyCashTemplate } from './cpa-templates/petty-cash.template';
     PayrollTemplate,
     VendorSettlementTemplate,
     PettyCashTemplate,
+    YearEndClosingTemplate,
   ],
 })
 export class JournalModule {}

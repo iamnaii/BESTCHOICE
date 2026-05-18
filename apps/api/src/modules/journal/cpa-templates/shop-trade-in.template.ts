@@ -3,23 +3,34 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import { JournalAutoService, JeLineInput } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { CompanyResolverService } from '../company-resolver.service';
 
 /**
  * P3-SP5 — SHOP Trade-In (รับซื้อมือถือมือสองจากลูกค้า).
  *
- * Trigger: a TradeIn record reaches status=ACCEPTED. Customer hands over a
- * used phone, SHOP pays cash, the phone enters SHOP's used-inventory.
+ * Two-stage trade-in flow (see .claude/rules/accounting.md SHOP section):
+ *
+ *   Stage 1 — Customer drops off used phone for evaluation:
+ *     pending evaluation → Dr S11-2004 (สินค้าระหว่างประเมินราคา)
+ *     A cash deposit may or may not be advanced here. If the shop pre-pays a
+ *     deposit before final pricing, the trade-in is booked under 'S11-2004'
+ *     so the unit is segregated from sellable stock until appraisal closes.
+ *
+ *   Stage 2 — Appraisal accepted, final price agreed:
+ *     unit moves into sellable used inventory → Dr S11-2002
+ *     SHOP pays final cash difference to the customer.
+ *
+ * Most trade-ins go through Stage 2 directly (same-day buy-in), so the
+ * template's default `inventoryAccountCode` is `'S11-2002'`. Callers that
+ * need Stage 1 pass `inventoryAccountCode: 'S11-2004'` explicitly.
  *
  * JE (single SHOP entry, no FINANCE pairing):
  *
- *   Dr S11-2002 (สินค้าคงคลัง-มือถือมือสอง)   [tradeInPrice]
- *     Cr S11-1101 / S11-1201 (cash or bank)   [tradeInPrice]
+ *   Dr <inventoryAccountCode>           [tradeInPrice]
+ *     Cr S11-1101 / S11-1201 (cash)     [tradeInPrice]
  *
- * Note: The trade-in price is the negotiated buy-in (cost basis for the used
- * phone). When the phone is later sold via cash sale or installment, that
- * sale's COGS comes from S11-2002 — which is exactly this cost basis.
- *
- * Idempotency key: `tradein-${tradeInId}`.
+ * Idempotency key: `tradein-${tradeInId}` (or include stage suffix when
+ * the same tradeInId may move through both stages).
  */
 export interface ShopTradeInInput {
   idempotencyKey: string;
@@ -27,29 +38,27 @@ export interface ShopTradeInInput {
   tradeInNumber?: string;
   cashAccountCode: string;
   tradeInPrice: Decimal;
+  /**
+   * Inventory account the trade-in lands in. Defaults to `'S11-2002'`
+   * (used mobile, sellable). Pass `'S11-2004'` for the Stage-1 pending-
+   * evaluation case where the unit is segregated from sellable stock.
+   */
+  inventoryAccountCode?: string;
   postedAt?: Date;
 }
+
+const DEFAULT_INVENTORY_ACCOUNT = 'S11-2002';
+const ALLOWED_INVENTORY_ACCOUNTS = new Set(['S11-2002', 'S11-2004']);
 
 @Injectable()
 export class ShopTradeInTemplate {
   private readonly logger = new Logger(ShopTradeInTemplate.name);
-  private shopCompanyId: string | null = null;
 
   constructor(
     private readonly journal: JournalAutoService,
     private readonly prisma: PrismaService,
+    private readonly companyResolver: CompanyResolverService,
   ) {}
-
-  private async getShopCompanyId(tx: Prisma.TransactionClient): Promise<string> {
-    if (this.shopCompanyId) return this.shopCompanyId;
-    const co = await tx.companyInfo.findFirst({
-      where: { companyCode: 'SHOP', deletedAt: null },
-      select: { id: true },
-    });
-    if (!co) throw new BadRequestException('SHOP CompanyInfo not found — seed required');
-    this.shopCompanyId = co.id;
-    return co.id;
-  }
 
   async execute(
     input: ShopTradeInInput,
@@ -65,13 +74,24 @@ export class ShopTradeInTemplate {
         `ShopTradeIn: cashAccountCode must be SHOP-side (S-prefix); got ${input.cashAccountCode}`,
       );
     }
+    const inventoryAccountCode = input.inventoryAccountCode ?? DEFAULT_INVENTORY_ACCOUNT;
+    if (!ALLOWED_INVENTORY_ACCOUNTS.has(inventoryAccountCode)) {
+      throw new BadRequestException(
+        `ShopTradeIn: inventoryAccountCode must be S11-2002 (sellable used) or S11-2004 (pending eval); got ${inventoryAccountCode}`,
+      );
+    }
+
+    const inventoryDescription =
+      inventoryAccountCode === 'S11-2004'
+        ? 'รับเข้าระหว่างประเมินราคา - มือถือมือสอง'
+        : 'รับเข้าสต็อก - มือถือมือสอง';
 
     const lines: JeLineInput[] = [
       {
-        accountCode: 'S11-2002',
+        accountCode: inventoryAccountCode,
         dr: price,
         cr: zero,
-        description: 'รับเข้าสต็อก - มือถือมือสอง',
+        description: inventoryDescription,
       },
       {
         accountCode: input.cashAccountCode,
@@ -100,7 +120,7 @@ export class ShopTradeInTemplate {
         return { entryNo: existing.entryNumber, journalEntryId: existing.id };
       }
 
-      const shopCompanyId = await this.getShopCompanyId(tx);
+      const shopCompanyId = await this.companyResolver.getShopCompanyId(tx);
       const result = await this.journal.createAndPost(
         {
           description: `รับซื้อมือถือมือสอง ${input.tradeInNumber ?? input.tradeInId} (SHOP)`,
@@ -113,6 +133,7 @@ export class ShopTradeInTemplate {
             tradeInNumber: input.tradeInNumber ?? null,
             companyCode: 'SHOP',
             tradeInPrice: price.toFixed(2),
+            inventoryAccountCode,
           },
           postedAt: input.postedAt ?? new Date(),
           companyId: shopCompanyId,

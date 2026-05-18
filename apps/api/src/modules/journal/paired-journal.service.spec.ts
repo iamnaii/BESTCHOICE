@@ -3,6 +3,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { PairedJournalService } from './paired-journal.service';
 import { JournalAutoService } from './journal-auto.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CompanyResolverService } from './company-resolver.service';
 
 describe('PairedJournalService.postPaired', () => {
   let service: PairedJournalService;
@@ -39,11 +40,35 @@ describe('PairedJournalService.postPaired', () => {
         // run the supplied callback with the same mocked prisma (acts as tx)
         .mockImplementation((cb: (tx: unknown) => unknown) => cb(prisma)),
     };
+    // Lightweight stand-in for CompanyResolverService — delegates to the
+    // mocked prisma so the same `companyInfo.findFirst` assertions still
+    // fire from the prisma.companyInfo.findFirst spy.
+    const resolver = {
+      getShopCompanyId: jest.fn().mockImplementation((tx?: { companyInfo?: { findFirst: jest.Mock } }) => {
+        const client = tx ?? prisma;
+        return client.companyInfo
+          .findFirst({ where: { companyCode: 'SHOP' } })
+          .then((co: { id?: string } | null) => {
+            if (!co) throw new Error('SHOP CompanyInfo not found');
+            return co.id;
+          });
+      }),
+      getFinanceCompanyId: jest.fn().mockImplementation((tx?: { companyInfo?: { findFirst: jest.Mock } }) => {
+        const client = tx ?? prisma;
+        return client.companyInfo
+          .findFirst({ where: { companyCode: 'FINANCE' } })
+          .then((co: { id?: string } | null) => {
+            if (!co) throw new Error('FINANCE CompanyInfo not found');
+            return co.id;
+          });
+      }),
+    };
     const mod: TestingModule = await Test.createTestingModule({
       providers: [
         PairedJournalService,
         { provide: JournalAutoService, useValue: journal },
         { provide: PrismaService, useValue: prisma },
+        { provide: CompanyResolverService, useValue: resolver },
       ],
     }).compile();
     service = mod.get(PairedJournalService);
@@ -131,7 +156,7 @@ describe('PairedJournalService.postPaired', () => {
     prisma.companyInfo.findFirst = jest.fn().mockResolvedValue(null);
     await expect(
       service.postPaired({ shop: shopHalf(), finance: financeHalf() }),
-    ).rejects.toThrow(/SHOP CompanyInfo not found/);
+    ).rejects.toThrow(/SHOP CompanyInfo not found/i);
   });
 
   it('uses outerTx when supplied (does not start a new $transaction)', async () => {

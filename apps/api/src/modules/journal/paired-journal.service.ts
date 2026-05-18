@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { JournalAutoService, JeLineInput } from './journal-auto.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CompanyResolverService } from './company-resolver.service';
 
 /**
  * P3-SP5 — Paired Journal Entries (SHOP ↔ FINANCE).
@@ -62,33 +63,12 @@ export interface PairedJournalResult {
 export class PairedJournalService {
   private readonly logger = new Logger(PairedJournalService.name);
 
-  // Cache companyId per code (lifetime of the service instance) — looked up
-  // lazily because seed timing isn't guaranteed at module init in tests.
-  private companyIdCache = new Map<string, string>();
-
   constructor(
     private readonly journal: JournalAutoService,
     private readonly prisma: PrismaService,
+    // P3-SP5 W3: centralised lookup, no per-service cache (stale-id bugs).
+    private readonly companyResolver: CompanyResolverService,
   ) {}
-
-  private async resolveCompanyId(
-    tx: Prisma.TransactionClient,
-    code: 'SHOP' | 'FINANCE',
-  ): Promise<string> {
-    const cached = this.companyIdCache.get(code);
-    if (cached) return cached;
-    const co = await tx.companyInfo.findFirst({
-      where: { companyCode: code, deletedAt: null },
-      select: { id: true },
-    });
-    if (!co) {
-      throw new BadRequestException(
-        `Paired JE: ${code} CompanyInfo not found — run seed:coa first`,
-      );
-    }
-    this.companyIdCache.set(code, co.id);
-    return co.id;
-  }
 
   /** Assert the half's Dr/Cr lines balance — surfaces a friendly error early. */
   private assertBalanced(half: PairedJeHalf, label: 'shop' | 'finance'): void {
@@ -126,8 +106,8 @@ export class PairedJournalService {
     const batchId = randomUUID();
 
     const exec = async (tx: Prisma.TransactionClient): Promise<PairedJournalResult> => {
-      const shopCompanyId = await this.resolveCompanyId(tx, 'SHOP');
-      const financeCompanyId = await this.resolveCompanyId(tx, 'FINANCE');
+      const shopCompanyId = await this.companyResolver.getShopCompanyId(tx);
+      const financeCompanyId = await this.companyResolver.getFinanceCompanyId(tx);
 
       const shopJe = await this.journal.createAndPost(
         {

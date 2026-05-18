@@ -3,6 +3,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import { JournalAutoService, JeLineInput } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { CompanyResolverService } from '../company-resolver.service';
 
 /**
  * P3-SP5 — SHOP Installment Down-Payment Receipt.
@@ -38,23 +39,12 @@ export interface ShopDownPaymentInput {
 @Injectable()
 export class ShopDownPaymentTemplate {
   private readonly logger = new Logger(ShopDownPaymentTemplate.name);
-  private shopCompanyId: string | null = null;
 
   constructor(
     private readonly journal: JournalAutoService,
     private readonly prisma: PrismaService,
+    private readonly companyResolver: CompanyResolverService,
   ) {}
-
-  private async getShopCompanyId(tx: Prisma.TransactionClient): Promise<string> {
-    if (this.shopCompanyId) return this.shopCompanyId;
-    const co = await tx.companyInfo.findFirst({
-      where: { companyCode: 'SHOP', deletedAt: null },
-      select: { id: true },
-    });
-    if (!co) throw new BadRequestException('SHOP CompanyInfo not found — seed required');
-    this.shopCompanyId = co.id;
-    return co.id;
-  }
 
   async execute(
     input: ShopDownPaymentInput,
@@ -100,7 +90,7 @@ export class ShopDownPaymentTemplate {
         return { entryNo: existing.entryNumber, journalEntryId: existing.id };
       }
 
-      const shopCompanyId = await this.getShopCompanyId(tx);
+      const shopCompanyId = await this.companyResolver.getShopCompanyId(tx);
       const result = await this.journal.createAndPost(
         {
           description: `รับเงินดาวน์ — สัญญา ${input.contractNumber ?? input.contractId} (SHOP)`,

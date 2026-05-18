@@ -247,10 +247,10 @@ describe('PII dual-write (Phase 3)', () => {
     // Legacy columns still populated
     expect(call.data.nationalId).toBe('1234567890123');
     expect(call.data.phone).toMatch(/^08\d{8}$/);
-    // Encrypted columns populated (iv:cipher format)
-    expect(call.data.nationalIdEncrypted).toMatch(/^[0-9a-f]+:[0-9a-f]+$/);
-    expect(call.data.phoneEncrypted).toMatch(/^[0-9a-f]+:[0-9a-f]+$/);
-    expect(call.data.emailEncrypted).toMatch(/^[0-9a-f]+:[0-9a-f]+$/);
+    // Encrypted columns populated (GCM iv:tag:cipher format — C1)
+    expect(call.data.nationalIdEncrypted).toMatch(/^[0-9a-f]+:[0-9a-f]+:[0-9a-f]+$/);
+    expect(call.data.phoneEncrypted).toMatch(/^[0-9a-f]+:[0-9a-f]+:[0-9a-f]+$/);
+    expect(call.data.emailEncrypted).toMatch(/^[0-9a-f]+:[0-9a-f]+:[0-9a-f]+$/);
     // Hash columns populated (sha256 = 64 hex chars)
     expect(call.data.nationalIdHash).toMatch(/^[0-9a-f]{64}$/);
     expect(call.data.phoneHash).toMatch(/^[0-9a-f]{64}$/);
@@ -273,7 +273,7 @@ describe('PII dual-write (Phase 3)', () => {
 
     const call = (prisma.customer.update as jest.Mock).mock.calls[0][0];
     expect(call.data.phone).toMatch(/^08\d{8}$/);
-    expect(call.data.phoneEncrypted).toMatch(/^[0-9a-f]+:[0-9a-f]+$/);
+    expect(call.data.phoneEncrypted).toMatch(/^[0-9a-f]+:[0-9a-f]+:[0-9a-f]+$/);
     expect(call.data.phoneHash).toMatch(/^[0-9a-f]{64}$/);
   });
 });

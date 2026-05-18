@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { paginatedResponse } from '../../common/helpers/pagination.helper';
@@ -6,12 +6,17 @@ import { CreateCustomerDto, UpdateCustomerDto } from './dto/customer.dto';
 import { encryptPII, decryptPII, isEncrypted } from '../../utils/crypto.util';
 import { hashPII, encryptReferencesJson, decryptReferencesJson } from '../../utils/pii.util';
 import { CustomerTierService } from './customer-tier.service';
+import { CustomerPiiService } from './customer-pii.service';
 
 @Injectable()
 export class CustomersService {
   constructor(
     private prisma: PrismaService,
     private readonly tierService: CustomerTierService,
+    // Optional so legacy spec tests that construct CustomersService with
+    // only PrismaService + CustomerTierService keep working. Production
+    // wires the real provider through CustomersModule.
+    @Optional() private readonly piiService?: CustomerPiiService,
   ) {}
 
   async findAll(
@@ -120,13 +125,17 @@ export class CustomersService {
       })(),
     ]);
 
+    // Phase 3 SP4 — strict mode resolved once per request; null piiService
+    // (legacy spec injection) treats as non-strict.
+    const strict = this.piiService ? await this.piiService.isStrictMode() : false;
+
     const enriched = data.map((c) => {
       const activeContracts = c.contracts.filter((ct) => ct.status === 'ACTIVE').length;
       const overdueContracts = c.contracts.filter((ct) => ['OVERDUE', 'DEFAULT'].includes(ct.status)).length;
       const latestCredit = c.creditChecks[0] || null;
       const { contracts, creditChecks, ...rest } = c;
       // Phase 5: decrypt PII fields, then strip encrypted columns from response
-      const decrypted = this.decryptCustomerPII(rest as Record<string, unknown>);
+      const decrypted = this.decryptCustomerPII(rest as Record<string, unknown>, { strict });
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { nationalIdEncrypted: _ne, phoneEncrypted: _pe, ...clean } =
         decrypted as typeof rest & { nationalIdEncrypted?: unknown; phoneEncrypted?: unknown };
@@ -198,8 +207,11 @@ export class CustomersService {
       },
     });
     if (!customer || customer.deletedAt) throw new NotFoundException('ไม่พบลูกค้า');
-    // Phase 5: decrypt PII before returning
-    return this.decryptCustomerPII(customer as unknown as Record<string, unknown>) as typeof customer;
+    // Phase 5: decrypt PII before returning. Phase 3 SP4 also enforces
+    // strict-mode rejection — if PDPA_STRICT_MODE=true and the row hasn't
+    // been backfilled, BadRequestException is thrown with a clear message.
+    const strict = this.piiService ? await this.piiService.isStrictMode() : false;
+    return this.decryptCustomerPII(customer as unknown as Record<string, unknown>, { strict }) as typeof customer;
   }
 
   async getReferrals(id: string) {
@@ -291,7 +303,8 @@ export class CustomersService {
       orderBy: { name: 'asc' },
     });
     // Phase 5: decrypt PII, then project only the fields callers expect
-    return this.decryptCustomerList(rows as unknown as Record<string, unknown>[]).map((r) => ({
+    const strict = this.piiService ? await this.piiService.isStrictMode() : false;
+    return this.decryptCustomerList(rows as unknown as Record<string, unknown>[], { strict }).map((r) => ({
       id: r['id'],
       name: r['name'],
       phone: r['phone'],
@@ -333,6 +346,12 @@ export class CustomersService {
     guardianAddress?: string | null;
     references?: unknown;
   }): Record<string, unknown> {
+    // Phase 3 SP4 — delegate to CustomerPiiService when injected. Falls back
+    // to inline logic so legacy spec tests that construct CustomersService
+    // without the new dependency keep working (jest 'as unknown as ...' DI).
+    if (this.piiService) {
+      return this.piiService.encryptCustomerFields(data) as Record<string, unknown>;
+    }
     const key = this.piiKey;
     const salt = this.hashSalt;
     const out: Record<string, unknown> = {};
@@ -379,7 +398,14 @@ export class CustomersService {
    * be populated. We still gracefully fall back to the legacy plaintext
    * column if encrypted is NULL — supports rolling deploy + rollback safety.
    */
-  private decryptCustomerPII<T extends Record<string, unknown>>(c: T | null): T | null {
+  private decryptCustomerPII<T extends Record<string, unknown>>(c: T | null, opts: { strict?: boolean } = {}): T | null {
+    // Phase 3 SP4 — delegate to CustomerPiiService when injected (also
+    // surfaces strict-mode rejection). Falls back to inline logic so legacy
+    // tests that construct CustomersService without the new dependency
+    // continue to work.
+    if (this.piiService) {
+      return this.piiService.decryptCustomerFields(c, opts);
+    }
     if (!c) return c;
     const key = this.piiKey;
     if (!key) return c;
@@ -413,8 +439,8 @@ export class CustomersService {
   /**
    * Decrypt a list of customer rows.
    */
-  private decryptCustomerList<T extends Record<string, unknown>>(rows: T[]): T[] {
-    return rows.map((r) => this.decryptCustomerPII(r) as T);
+  private decryptCustomerList<T extends Record<string, unknown>>(rows: T[], opts: { strict?: boolean } = {}): T[] {
+    return rows.map((r) => this.decryptCustomerPII(r, opts) as T);
   }
 
   /**

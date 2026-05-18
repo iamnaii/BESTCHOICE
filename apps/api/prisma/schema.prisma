@@ -6684,3 +6684,38 @@ enum PdpaBackfillStatus {
   /// Run aborted with error (see errorMessage); partial progress in processedRecords
   FAILED
 }
+
+// =============================================================================
+// SP7.2 — Outbox pattern for cross-entity (SHOP↔FINANCE) JE pairing
+// =============================================================================
+
+/// SP7.2 — Outbox-pattern events for cross-entity (SHOP↔FINANCE) JE pairing.
+/// Written in the SAME TX as the source JE; processed asynchronously by
+/// OutboxProcessorCron which writes the paired JE in the target DB.
+model OutboxEvent {
+  id             String            @id @default(uuid())
+  flowType       String            @map("flow_type")
+  sourceId       String            @map("source_id")
+  sourceEntity   String            @map("source_entity")
+  targetEntity   String            @map("target_entity")
+  payload        Json
+  status         OutboxEventStatus @default(PENDING)
+  attempts       Int               @default(0)
+  lastError      String?           @map("last_error")
+  idempotencyKey String            @unique @map("idempotency_key")
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+  processedAt    DateTime?         @map("processed_at")
+  deletedAt      DateTime?         @map("deleted_at")
+
+  @@index([status, createdAt])
+  @@index([flowType])
+  @@map("outbox_events")
+}
+
+enum OutboxEventStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  FAILED
+}

@@ -48,10 +48,16 @@ import { ShopFinanceReceiptTemplate } from './cpa-templates/shop-finance-receipt
 import { ShopTradeInTemplate } from './cpa-templates/shop-trade-in.template';
 import { ShopExpenseTemplate } from './cpa-templates/shop-expense.template';
 import { ShopInventoryTransferTemplate } from './cpa-templates/shop-inventory-transfer.template';
+// SP7.2 — Outbox + saga infrastructure for cross-entity JE
+import { OutboxService } from './outbox.service';
+import { OutboxProcessorService } from './outbox-processor.service';
+import { OutboxProcessorCron } from './cron/outbox-processor.cron';
+import { ReconciliationCron } from './cron/reconciliation.cron';
+import { ReconcileController } from './reconcile.controller';
 
 @Module({
   imports: [PrismaModule],
-  controllers: [JournalController],
+  controllers: [JournalController, ReconcileController],
   providers: [
     JournalService,
     JournalAutoService,
@@ -100,6 +106,11 @@ import { ShopInventoryTransferTemplate } from './cpa-templates/shop-inventory-tr
     ShopTradeInTemplate,
     ShopExpenseTemplate,
     ShopInventoryTransferTemplate,
+    // SP7.2 — Outbox + saga infrastructure
+    OutboxService,
+    OutboxProcessorService,
+    OutboxProcessorCron,
+    ReconciliationCron,
   ],
   exports: [
     JournalService,
@@ -146,6 +157,9 @@ import { ShopInventoryTransferTemplate } from './cpa-templates/shop-inventory-tr
     ShopTradeInTemplate,
     ShopExpenseTemplate,
     ShopInventoryTransferTemplate,
+    // SP7.2 — Outbox + saga infrastructure
+    OutboxService,
+    OutboxProcessorService,
   ],
 })
 export class JournalModule {}

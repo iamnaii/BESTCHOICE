@@ -17,6 +17,9 @@ export async function seedFinanceCoa(
   for (const r of rows) {
     const category = r.category || null;
     const notes = r.notes || null;
+    // P3-SP3: empty string in CSV → null in DB so the partial index stays sparse
+    // and the editable UI shows the cell as "unmapped" instead of "".
+    const peakCode = r.peakCode && r.peakCode.length > 0 ? r.peakCode : null;
 
     const existing = await prisma.chartOfAccount.findUnique({ where: { code: r.code } });
     if (existing) {
@@ -26,7 +29,11 @@ export async function seedFinanceCoa(
         existing.normalBalance !== r.normalBalance ||
         existing.category !== category ||
         existing.vatApplicable !== r.vatApplicable ||
-        existing.notes !== notes;
+        existing.notes !== notes ||
+        // Only flag peakCode as changed when CSV provides a non-empty value —
+        // owners fill PEAK codes via the UI, so we must never overwrite existing
+        // owner-set values with the empty CSV cells.
+        (peakCode !== null && existing.peakCode !== peakCode);
       if (changed) {
         await prisma.chartOfAccount.update({
           where: { code: r.code },
@@ -37,6 +44,8 @@ export async function seedFinanceCoa(
             category,
             vatApplicable: r.vatApplicable,
             notes,
+            // Same rule on update path — only write when CSV has a value.
+            ...(peakCode !== null ? { peakCode } : {}),
           },
         });
         updated++;
@@ -52,6 +61,7 @@ export async function seedFinanceCoa(
           vatApplicable: r.vatApplicable,
           notes,
           status: r.status || 'ใช้งาน',
+          peakCode,
         },
       });
       created++;

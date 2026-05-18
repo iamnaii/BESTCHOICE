@@ -10,17 +10,17 @@ import { PdpaEncryptionController } from './pdpa-encryption.controller';
 import { PdpaBackfillRetentionCron } from './pdpa-backfill-retention.cron';
 
 /**
- * Hotfix 2026-05-18 (#1018 + follow-up) —
+ * Hotfix 2026-05-18 (#1018 + this PR) —
  *
  * Two cycles needed breaking:
  * 1) PDPAModule → CustomersModule → OverdueModule → ChatEngine ↔ StaffChat cycle
- *    → fixed by extracting CustomerPiiModule (leaf, PrismaModule only).
+ *    → fixed in #1018 by extracting CustomerPiiModule (leaf, PrismaModule only).
  * 2) NotificationsModule → PDPAModule → AuthModule (in scan order: AuthModule
  *    is mid-init via LineOaModule forwardRef, so PDPAModule sees AuthModule
- *    as undefined). → fixed by forwardRef on AuthModule import here too.
+ *    as undefined). → fixed here by forwardRef on AuthModule import.
  *
  * Without (1) the chain dies at StaffChatModule with index [0]=undefined.
- * Without (2) it dies at PDPAModule with index [1]=undefined (AuthModule).
+ * Without (2) it dies at PDPAModule with index [1]=AuthModule undefined.
  */
 @Module({
   imports: [

@@ -21,7 +21,7 @@
 **Goals (SP3 scope):**
 - `/finance/vat` — ภ.พ.30 dedicated page (รับงานจาก /tax-reports tab) + RD XLSX export
 - `/finance/wht` — tabbed page with 3 sub-tabs (ภ.ง.ด.1 / ภ.ง.ด.3 / ภ.ง.ด.53) + real aggregation from JournalLine
-- `/finance/e-tax` — **Phase 1**: List Payment records with VAT, PDF receipt generation, monthly CSV export. **No XML/cert** (Phase 2).
+- `/finance/e-tax` — **Phase 1**: List Payment records with VAT, **INTERNAL RECEIPT** PDF (NOT a legal Thai tax invoice — see Section 11), monthly CSV export. **No XML/cert/Thai font** (Phase 2).
 - Sidebar updated to point to 3 new routes; `/tax-reports` redirects to `/finance/vat`
 
 **Non-Goals:**
@@ -115,7 +115,8 @@ Roles: OWNER, FINANCE_MANAGER, ACCOUNTANT (all).
 - List of payments with VAT (paginated)
 - Per-row: invoice number, customer, taxId, total + VAT amount, "Download PDF" button
 - Export CSV button (monthly)
-- Banner: "e-Tax XML submission to RD = Phase 2 (PDF + CSV first)"
+- **Banner (Critical #6+#7)**: Phase 1 = ใบรับเงินภายใน (Internal Receipt), NOT a legal ใบกำกับภาษีตามม.86/4. Cannot be submitted to RD or given to customers as a tax invoice. PDF file name `receipt-{paymentId}.pdf` reflects scope.
+- PDF body: English labels + ASCII-only customer placeholder (`[contract <num>]`) — jsPDF default font cannot render Thai. Phase 2 will bundle Noto Sans Thai (mirroring PR #843 pdfmake pipeline) and produce real ใบกำกับภาษี.
 
 ### Route changes (App.tsx)
 
@@ -194,8 +195,29 @@ Single PR per SP1/SP2 pattern. Commits:
 
 ## 11. Out of Scope (Phase 2)
 
-- e-Tax Invoice XML submission to RD (ขมธอ.21-2562)
+### Phase 1 = INTERNAL RECEIPT ONLY (Critical #6+#7 scope clarification)
+
+The `/finance/e-tax` PDF in this PR is an **internal receipt** — it satisfies
+none of the legal requirements for a Thai electronic tax invoice (ใบกำกับภาษี
+อิเล็กทรอนิกส์ ตามม.86/4 + ประกาศอธิบดี ฉ.48). Specifically Phase 1 does NOT
+provide:
+
+- Thai font in PDF (jsPDF default = Helvetica → Thai = tofu boxes).
+  Customer name is printed as placeholder `[contract <num>]` to avoid this.
+  Phase 2 will bundle Noto Sans Thai (same pipeline as PR #843 pdfmake).
+- Mandatory ม.86/4 fields: seller name + tax id + address + branch code,
+  unique invoice number, item descriptions, base/VAT/total breakdown by line,
+  authorized signer
+- e-Tax XML submission to RD (ขมธอ.21-2562)
 - Digital signature / PKCS#7 cert
 - Bulk upload workflow to RD
+
+The Phase 1 PDF file name is `receipt-{paymentId}.pdf` (NOT
+`tax-invoice-...`) to make scope unambiguous. UI banner and PDF body both
+state "Internal receipt — NOT a legal tax invoice. Cannot submit to RD."
+
+### Other Phase 2 items
 - ภ.พ.36 (foreign service VAT)
 - Year-end ปอ.50 corporate income tax (separate concern)
+- Critical #4 — `whtIncomeType` field on ExpenseLine + Settings UI for owner
+  to customize income-type mapping (current SP3 uses CoA-prefix heuristic)

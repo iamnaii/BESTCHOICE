@@ -69,6 +69,7 @@ import { IntercompanyModule } from './modules/intercompany/intercompany.module';
 import { JournalModule } from './modules/journal/journal.module';
 import { ChartOfAccountsModule } from './modules/chart-of-accounts/chart-of-accounts.module';
 import { TaxModule } from './modules/tax/tax.module';
+import { ETaxModule } from './modules/e-tax/e-tax.module';
 import { CommissionModule } from './modules/commission/commission.module';
 import { TradeInModule } from './modules/trade-in/trade-in.module';
 import { PromotionsModule } from './modules/promotions/promotions.module';
@@ -234,8 +235,10 @@ import { AppCacheModule } from './cache/cache.module';
     // Journal Entries (double-entry accounting)
     JournalModule,
     ChartOfAccountsModule,
-    // Tax Reports (ภ.พ.30, ภ.ง.ด.3, ภ.ง.ด.53)
+    // Tax Reports (ภ.พ.30, ภ.ง.ด.1/3/53)
     TaxModule,
+    // e-Tax Invoice (Phase 1: list + PDF + CSV)
+    ETaxModule,
     // Sales Commission
     CommissionModule,
     // Trade-In & Promotions

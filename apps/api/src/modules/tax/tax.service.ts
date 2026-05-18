@@ -4,6 +4,7 @@ import ExcelJS from 'exceljs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { paginatedResponse } from '../../common/helpers/pagination.helper';
 import { GenerateTaxReportDto } from './dto/tax.dto';
+import { EntityScope, ensureTaxTypeAllowedForEntity } from './tax-entity.util';
 
 export type TaxFormCode = 'PP30' | 'PND1' | 'PND3' | 'PND53';
 
@@ -29,7 +30,11 @@ export class TaxService {
    * vatOutputLineItems is kept as a UI breakdown for source detail only;
    * the totals reported to RD are computed from journal lines.
    */
-  async previewPP30(companyId: string, year: number, month: number) {
+  async previewPP30(companyId: string, year: number, month: number, entityScope?: EntityScope) {
+    // SP7.5: PP30 is FINANCE-only (SHOP is not VAT-registered)
+    if (entityScope) {
+      ensureTaxTypeAllowedForEntity(entityScope, 'PP30');
+    }
     const { startDate, endDate } = this.getDateRange(year, month);
 
     // Get branches belonging to this company
@@ -248,10 +253,16 @@ export class TaxService {
   }
 
   /**
-   * Generate tax report — upsert with snapshot data
+   * Generate tax report — upsert with snapshot data.
+   * SP7.5: Validates entity scope against report type (e.g. PP30 not allowed for SHOP).
    */
-  async generate(dto: GenerateTaxReportDto, userId: string) {
+  async generate(dto: GenerateTaxReportDto, userId: string, entityScope?: EntityScope) {
     const reportType = dto.reportType as TaxReportType;
+
+    // SP7.5: enforce per-entity tax type rules when scope is known
+    if (entityScope) {
+      ensureTaxTypeAllowedForEntity(entityScope, reportType);
+    }
 
     // Call the appropriate preview method
     let previewData: Record<string, unknown>;
@@ -321,7 +332,8 @@ export class TaxService {
   }
 
   /**
-   * List tax reports with filters and pagination
+   * List tax reports with filters and pagination.
+   * SP7.5: When entityScope is provided, list is restricted to that company entity.
    */
   async findAll(
     companyId?: string,
@@ -330,10 +342,16 @@ export class TaxService {
     status?: string,
     page = 1,
     limit = 50,
+    entityScope?: EntityScope,
   ) {
     const where: Prisma.TaxReportWhereInput = { deletedAt: null };
 
-    if (companyId) where.companyId = companyId;
+    if (companyId) {
+      where.companyId = companyId;
+    } else if (entityScope) {
+      // SP7.5: scope by company entity when no explicit companyId provided
+      where.company = { companyCode: entityScope };
+    }
     if (reportType) where.reportType = reportType as TaxReportType;
     if (year) where.reportYear = year;
     if (status) where.status = status as 'DRAFT' | 'SUBMITTED' | 'FILED';

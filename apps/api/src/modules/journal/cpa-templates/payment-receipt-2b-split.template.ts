@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException, Optional } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { randomUUID } from 'crypto';
+import { Prisma } from '@prisma/client';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { AccountRoleService } from '../account-role.service';
@@ -51,13 +52,37 @@ export class PaymentReceipt2BSplitTemplate {
     private readonly journal: JournalAutoService,
     private readonly prisma: PrismaService,
     /**
-     * D1.1.6.2 — resolves `adj_overpay` → CoA code via account_role_map.
-     * Optional to keep backwards compat with raw integration-spec call sites
-     * that pass only `(journal, prisma)`; falls back to spec-default '53-1503'
-     * (which equals the seeded role row).
+     * D1.1.6.1 + D1.1.6.2 — resolves `adj_underpay`/`adj_overpay` → CoA code
+     * via account_role_map. Optional to keep backwards compat with raw
+     * integration-spec call sites that pass only `(journal, prisma)`; falls
+     * back to spec defaults ('52-1104' for underpay, '53-1503' for overpay)
+     * which equal the seeded role rows.
      */
     @Optional() private readonly roles?: AccountRoleService,
   ) {}
+
+  /**
+   * D1.1.6.3 — read `adj_auto_route` flag (default TRUE).
+   * Inlined direct SystemConfig read to avoid pulling SettingsModule into the
+   * journal module DI graph. Mirrors the helper in PaymentReceipt2BTemplate.
+   */
+  private async readAdjAutoRouteFlag(
+    tx: Prisma.TransactionClient | PrismaService,
+  ): Promise<boolean> {
+    try {
+      const row = await tx.systemConfig.findFirst({
+        where: { key: 'adj_auto_route', deletedAt: null },
+        select: { value: true },
+      });
+      if (!row?.value) return true;
+      const v = row.value.trim().toLowerCase();
+      if (v === 'false' || v === '0') return false;
+      if (v === 'true' || v === '1') return true;
+      return true;
+    } catch {
+      return true;
+    }
+  }
 
   private computeInstallmentTotal(c: {
     totalMonths: number;
@@ -139,6 +164,18 @@ export class PaymentReceipt2BSplitTemplate {
           'Underpay tolerance requires approver (toleranceApproverId)',
         );
       }
+
+      // D1.1.6.3 — when `adj_auto_route` flag is off, refuse to auto-route
+      // the final-partial rounding diff to 52-1104 / 53-1503. Owner must
+      // clear the diff manually before the final partial can post.
+      if (!diff.eq(0)) {
+        const autoRoute = await this.readAdjAutoRouteFlag(this.prisma);
+        if (!autoRoute) {
+          throw new BadRequestException(
+            'Auto-routing disabled — manual adjustment required',
+          );
+        }
+      }
     }
 
     // For final partial: create the Payment row (one per installment, unique constraint)
@@ -217,9 +254,11 @@ export class PaymentReceipt2BSplitTemplate {
           description: 'กำไรปัดเศษ (Policy C)',
         });
       } else if (diff.lt(0)) {
-        // Underpay
+        // Underpay — D1.1.6.1: resolve via AccountRoleService when available,
+        // otherwise fall back to spec-default 52-1104 (matches seed row).
+        const adjUnderpayCode = this.roles?.tryCode('adj_underpay') ?? '52-1104';
         lines.push({
-          accountCode: '52-1104',
+          accountCode: adjUnderpayCode,
           dr: diff.abs(),
           cr: zero,
           description: 'ส่วนลดเศษสตางค์ (Policy C)',

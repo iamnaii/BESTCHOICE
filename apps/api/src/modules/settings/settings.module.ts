@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { SettingsController } from './settings.controller';
 import { SettingsService } from './settings.service';
 import { RoleMapValidationService } from './role-map-validation.service';
+import { SettingsAccessGuard } from './settings-access.guard';
 import { JournalModule } from '../journal/journal.module';
 
 @Module({
@@ -13,7 +14,9 @@ import { JournalModule } from '../journal/journal.module';
   // `validate` callback into AccountRoleService.update().
   imports: [JournalModule],
   controllers: [SettingsController],
-  providers: [SettingsService, RoleMapValidationService],
+  // D1.3.2.2 — SettingsAccessGuard is consumed by the controller via
+  // `@UseGuards(...)` so Nest needs it in the providers list.
+  providers: [SettingsService, RoleMapValidationService, SettingsAccessGuard],
   exports: [SettingsService, RoleMapValidationService],
 })
 export class SettingsModule {}

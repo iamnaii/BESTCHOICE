@@ -119,9 +119,13 @@ export function adToBe(yearAD: number): number {
 }
 
 /**
- * D1.2.3.1 — Compute initial `{startDate, endDate}` ISO pair for a list-page
- * mount based on the OWNER-configured `default_time_range` preset.
+ * D1.2.3.1 / D1.3.5.1 — Compute initial `{startDate, endDate}` ISO pair for a
+ * list/summary page mount based on the OWNER-configured time-range preset
+ * (`default_time_range` for generic list pages, `summary_default_range` for
+ * the expense daily-summary page).
  *
+ * - `'today'`      → today → today (D1.3.5.1)
+ * - `'this_week'`  → Monday-of-this-week → today (D1.3.5.1, ISO week start)
  * - `'this_month'` → first-of-month → today (Asia/Bangkok)
  * - `'last_month'` → first-of-last-month → last-of-last-month
  * - `'all'`        → empty strings (the page query treats empty as "no filter")
@@ -130,14 +134,37 @@ export function adToBe(yearAD: number): number {
  * { timeZone: 'Asia/Bangkok' })` so late-night users on UTC servers see the
  * same boundary day they expect.
  */
+export type DefaultTimeRangePreset = 'all' | 'today' | 'this_week' | 'this_month' | 'last_month';
+
 export function computeDefaultTimeRange(
-  preset: 'all' | 'this_month' | 'last_month',
+  preset: DefaultTimeRangePreset,
   now: Date = new Date(),
 ): { startDate: string; endDate: string } {
   if (preset === 'all') return { startDate: '', endDate: '' };
   const bkkToday = now.toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' });
+  if (preset === 'today') {
+    return { startDate: bkkToday, endDate: bkkToday };
+  }
   if (preset === 'this_month') {
     return { startDate: `${bkkToday.slice(0, 7)}-01`, endDate: bkkToday };
+  }
+  if (preset === 'this_week') {
+    // ISO week start (Monday). Compute day-of-week relative to UTC-indexed
+    // copy of the BKK calendar day — day-of-week is timezone-invariant for
+    // a given calendar date, so the BKK→UTC indexing trick used elsewhere
+    // in this helper is safe here too.
+    const [yStr, mStr, dStr] = bkkToday.split('-');
+    const y = Number(yStr);
+    const m = Number(mStr);
+    const d = Number(dStr);
+    const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay(); // 0=Sun..6=Sat
+    // Convert Sun=0 to ISO Sunday=7 so Monday=1 stays unchanged; "days since
+    // last Monday" = isoDow - 1.
+    const isoDow = dow === 0 ? 7 : dow;
+    const daysSinceMonday = isoDow - 1;
+    const monday = new Date(Date.UTC(y, m - 1, d - daysSinceMonday));
+    const startDate = `${monday.getUTCFullYear()}-${String(monday.getUTCMonth() + 1).padStart(2, '0')}-${String(monday.getUTCDate()).padStart(2, '0')}`;
+    return { startDate, endDate: bkkToday };
   }
   // 'last_month' — derive from the Bangkok-local year+month of `now`, then
   // subtract one month (handles January → previous-year December correctly).

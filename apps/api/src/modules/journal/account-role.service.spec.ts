@@ -104,13 +104,13 @@ describe('AccountRoleService.listWithCoa', () => {
 });
 
 /**
- * D1.1.6.2 — boot-guard unit tests for AccountRoleService.
+ * D1.1.6.1 + D1.1.6.2 — boot-guard unit tests for AccountRoleService.
  *
  * Mocks PrismaService and calls `onModuleInit` directly so we can assert that
- * the REQUIRED_ROLES set (now including `adj_overpay`) is enforced at boot.
- * No real DB needed.
+ * the REQUIRED_ROLES set (including `adj_underpay` and `adj_overpay`) is
+ * enforced at boot. No real DB needed.
  */
-describe('AccountRoleService — boot guard (D1.1.6.2)', () => {
+describe('AccountRoleService — boot guard (D1.1.6.x)', () => {
   // Snapshot of the rows the seed migration installs for every role currently
   // required by AccountRoleService.REQUIRED_ROLES. Tests reuse this list and
   // selectively drop rows to verify the missing-role branch.
@@ -125,6 +125,7 @@ describe('AccountRoleService — boot guard (D1.1.6.2)', () => {
     { role: 'sso_employer', accountCode: '21-3106' },
     { role: 'payroll_expense', accountCode: '53-1101' },
     { role: 'payroll_sso_expense', accountCode: '53-1102' },
+    { role: 'adj_underpay', accountCode: '52-1104' },
     { role: 'adj_overpay', accountCode: '53-1503' },
   ];
 
@@ -155,6 +156,27 @@ describe('AccountRoleService — boot guard (D1.1.6.2)', () => {
     }).compile();
     return moduleRef.get(AccountRoleService);
   }
+
+  it('boots successfully when adj_underpay is present in account_role_map', async () => {
+    const service = await makeService(buildPrismaMock(requiredRows));
+    await expect(service.onModuleInit()).resolves.toBeUndefined();
+    expect(service.code('adj_underpay')).toBe('52-1104');
+  });
+
+  it('throws at boot if adj_underpay is missing from account_role_map', async () => {
+    const rows = requiredRows.filter((r) => r.role !== 'adj_underpay');
+    const service = await makeService(buildPrismaMock(rows));
+    await expect(service.onModuleInit()).rejects.toThrow(
+      /required role\(s\) missing.*adj_underpay/,
+    );
+  });
+
+  it('tryCode("adj_underpay") returns the seeded code without throwing on unknown roles', async () => {
+    const service = await makeService(buildPrismaMock(requiredRows));
+    await service.onModuleInit();
+    expect(service.tryCode('adj_underpay')).toBe('52-1104');
+    expect(service.tryCode('does_not_exist')).toBeNull();
+  });
 
   it('boots successfully when adj_overpay is present in account_role_map', async () => {
     const service = await makeService(buildPrismaMock(requiredRows));

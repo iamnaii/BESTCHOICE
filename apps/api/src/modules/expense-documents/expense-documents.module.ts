@@ -21,6 +21,8 @@ import { ExpenseRecurringCron } from './crons/expense-recurring.cron';
 import { PettyCashReplenishAlertCron } from './crons/petty-cash-replenish-alert.cron';
 import { DraftAlertsCron } from './crons/draft-alerts.cron';
 import { ApDueAlertsCron } from './crons/ap-due-alerts.cron';
+import { PostPermissionGuard } from './post-permission.guard';
+import { ReversePermissionGuard } from './reverse-permission.guard';
 
 @Module({
   // NotificationsModule import is required so DraftAlertsCron + ApDueAlertsCron can
@@ -54,6 +56,10 @@ import { ApDueAlertsCron } from './crons/ap-due-alerts.cron';
     DraftAlertsCron,
     // D1.3.1.2 — AP-due alerts cron. Default OFF (opt-in) — see ap-due-alerts.cron.ts for rationale.
     ApDueAlertsCron,
+    // D1.3.2.3 — dynamic post-permission guard for POST /expense-documents/:id/post
+    PostPermissionGuard,
+    // D1.3.2.4 — dynamic reverse-permission guard for POST /expense-documents/:id/void
+    ReversePermissionGuard,
   ],
   exports: [ExpenseDocumentsService, ExpenseTemplatesService],
 })

@@ -51,4 +51,30 @@ describe('lib/date — computeDefaultTimeRange', () => {
     const r = computeDefaultTimeRange('last_month', ny);
     expect(r).toEqual({ startDate: '2026-12-01', endDate: '2026-12-31' });
   });
+
+  // D1.3.5.1 — extended presets ('today', 'this_week')
+  it("'today' returns same date for start + end (BKK)", () => {
+    const r = computeDefaultTimeRange('today', fixedMidApril);
+    expect(r).toEqual({ startDate: '2026-04-15', endDate: '2026-04-15' });
+  });
+
+  it("'this_week' returns Monday → today (ISO week start) for a Wednesday", () => {
+    // 2026-04-15 is Wednesday; ISO Monday-of-week = 2026-04-13.
+    const r = computeDefaultTimeRange('this_week', fixedMidApril);
+    expect(r).toEqual({ startDate: '2026-04-13', endDate: '2026-04-15' });
+  });
+
+  it("'this_week' on Monday returns same date for start + end", () => {
+    // 2026-04-13 is Monday — start === end (no prior week-days).
+    const monday = new Date('2026-04-13T12:00:00Z');
+    const r = computeDefaultTimeRange('this_week', monday);
+    expect(r).toEqual({ startDate: '2026-04-13', endDate: '2026-04-13' });
+  });
+
+  it("'this_week' on Sunday returns previous Monday (ISO week treats Sun as day 7)", () => {
+    // 2026-04-19 is Sunday — ISO Monday-of-week = 2026-04-13 (6 days back).
+    const sunday = new Date('2026-04-19T12:00:00Z');
+    const r = computeDefaultTimeRange('this_week', sunday);
+    expect(r).toEqual({ startDate: '2026-04-13', endDate: '2026-04-19' });
+  });
 });

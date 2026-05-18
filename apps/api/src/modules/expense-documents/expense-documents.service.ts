@@ -9,6 +9,8 @@ import {
 import { Prisma, DocumentStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
+import { resolvePostPermissionRoles } from './post-permission.guard';
+import { resolveReversePermissionRoles } from './reverse-permission.guard';
 import { DocNumberService } from './services/doc-number.service';
 import { StatusTransitionService } from './services/status-transition.service';
 import { ExpenseSameDayTemplate } from '../journal/cpa-templates/expense-same-day.template';
@@ -29,6 +31,7 @@ import { hasCrossBranchAccess } from '../auth/branch-access.util';
 import { LineAggregatorService } from './services/line-aggregator.service';
 import { JePreviewService } from './services/je-preview.service';
 import { SsoConfigService } from '../sso-config/sso-config.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PettyCashService } from './services/petty-cash.service';
 import { PayrollCustomService } from './services/payroll-custom.service';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
@@ -120,7 +123,73 @@ export class ExpenseDocumentsService implements OnModuleInit {
     private readonly pettyCashTemplate: PettyCashTemplate,
     private readonly pettyCash: PettyCashService,
     private readonly payrollCustom: PayrollCustomService,
+    // D1.2.1.5 — IN_APP notification fan-out on DRAFT → PENDING_APPROVAL.
+    // Optional injection — when the module wires NotificationsService it
+    // is used; tests can omit it without breaking submitForApproval.
+    private readonly notifications?: NotificationsService,
   ) {}
+
+  /**
+   * D1.2.1.5 — Fan out IN_APP notifications to configured approvers when
+   * a doc enters PENDING_APPROVAL. Runs OUTSIDE the parent transaction —
+   * a notification failure NEVER rolls back the status flip.
+   *
+   * - Reads `notification_on_pending` (default true) — opt-out per OWNER.
+   * - Reads + validates `approvers_list` against the User table.
+   * - Falls back to OWNER users when the list is empty (root-of-trust).
+   * - Uses `Promise.allSettled` so one bad recipient never blocks the rest.
+   * - Errors are logged + swallowed (no rethrow).
+   */
+  private async notifyApprovers(doc: {
+    id: string;
+    documentNumber: string;
+    documentType: string;
+    totalAmount: Prisma.Decimal | string | number;
+  }): Promise<void> {
+    try {
+      const enabled = await this.readBoolFlag(
+        this.prisma,
+        'notification_on_pending',
+        true,
+      );
+      if (!enabled) return;
+      if (!this.notifications) return;
+
+      // Resolve recipients: approvers_list → fallback to OWNER users.
+      let recipients = await this.getApproversList(this.prisma);
+      if (recipients.length === 0) {
+        const owners = await this.prisma.user.findMany({
+          where: { role: 'OWNER', isActive: true, deletedAt: null },
+          select: { id: true },
+        });
+        recipients = owners.map((u) => u.id);
+      }
+      if (recipients.length === 0) return;
+
+      const totalStr = new Prisma.Decimal(doc.totalAmount.toString()).toFixed(2);
+      const message =
+        `เอกสาร ${doc.documentNumber} (${doc.documentType}) ` +
+        `ยอด ${totalStr} บาท รออนุมัติ`;
+
+      await Promise.allSettled(
+        recipients.map((userId) =>
+          this.notifications!.send({
+            channel: 'IN_APP',
+            recipient: userId,
+            subject: 'มีเอกสารรออนุมัติ',
+            message,
+            relatedId: doc.id,
+          }),
+        ),
+      );
+    } catch (err) {
+      // Log and swallow — notification failure must NOT roll back the
+      // status flip already persisted in the parent transaction.
+      this.logger.warn(
+        `notifyApprovers(${doc.id}) failed: ${(err as Error).message}`,
+      );
+    }
+  }
 
   // ─── D1.* — Service-side SystemConfig flag readers ─────────────────────
   // Delegates to shared `readBoolFlag` / `readJsonFlag` in utils/config.util
@@ -134,6 +203,95 @@ export class ExpenseDocumentsService implements OnModuleInit {
     fallback: boolean,
   ): Promise<boolean> {
     return readBoolFlag(tx, key, fallback);
+  }
+
+  /**
+   * D1.2.1.3 — Approvers whitelist. JSON-encoded array of User UUIDs stored
+   * in SystemConfig key `approvers_list`. Default = empty array (only OWNER
+   * may approve when the workflow is enabled but no list is configured).
+   *
+   * Returns the list filtered to USERS that still exist + are active +
+   * not soft-deleted — so a stale ID in the SystemConfig row can never
+   * grant approval rights to a deleted account.
+   */
+  private async getApproversList(
+    tx: Prisma.TransactionClient | PrismaService,
+  ): Promise<string[]> {
+    try {
+      const row = await tx.systemConfig.findFirst({
+        where: { key: 'approvers_list', deletedAt: null },
+        select: { value: true },
+      });
+      if (!row?.value) return [];
+      const parsed: unknown = JSON.parse(row.value);
+      if (!Array.isArray(parsed)) return [];
+      const candidateIds = parsed.filter((v): v is string => typeof v === 'string');
+      if (candidateIds.length === 0) return [];
+      const valid = await tx.user.findMany({
+        where: { id: { in: candidateIds }, isActive: true, deletedAt: null },
+        select: { id: true },
+      });
+      return valid.map((u) => u.id);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * D1.2.1.3 — Approver gate. OWNER is always allowed (root-of-trust).
+   * Anyone else must be in the configured `approvers_list`. Throws
+   * `ForbiddenException` when the caller cannot approve.
+   */
+  private async assertUserCanApprove(
+    tx: Prisma.TransactionClient | PrismaService,
+    userId: string,
+    userRole?: string,
+  ): Promise<void> {
+    if (userRole === 'OWNER') return;
+    const approvers = await this.getApproversList(tx);
+    if (!approvers.includes(userId)) {
+      throw new ForbiddenException(
+        'ไม่มีสิทธิ์อนุมัติเอกสาร — ผู้ใช้นี้ไม่อยู่ในรายชื่อผู้อนุมัติ',
+      );
+    }
+  }
+
+  /**
+   * D1.2.1.4 — Doc-type filter for the Approval Workflow gate. JSON-encoded
+   * array of DocumentType enum values stored in SystemConfig key
+   * `approval_required_doc_types`. Default = `['PAYROLL']` — the most
+   * common controlled-cost category. Other doc types skip approval even
+   * when `approval_enabled` is true.
+   *
+   * Returns the set as a parsed array, defaulting to ['PAYROLL'] when the
+   * row is missing / malformed / contains invalid enum values.
+   */
+  private async getApprovalRequiredDocTypes(
+    tx: Prisma.TransactionClient | PrismaService,
+  ): Promise<string[]> {
+    const defaults: string[] = ['PAYROLL'];
+    const validValues: string[] = [
+      'EXPENSE',
+      'CREDIT_NOTE',
+      'PAYROLL',
+      'VENDOR_SETTLEMENT',
+      'PETTY_CASH_REIMBURSEMENT',
+    ];
+    try {
+      const row = await tx.systemConfig.findFirst({
+        where: { key: 'approval_required_doc_types', deletedAt: null },
+        select: { value: true },
+      });
+      if (!row?.value) return defaults;
+      const parsed: unknown = JSON.parse(row.value);
+      if (!Array.isArray(parsed) || parsed.length === 0) return defaults;
+      const filtered = parsed.filter(
+        (v): v is string => typeof v === 'string' && validValues.includes(v),
+      );
+      return filtered.length > 0 ? filtered : defaults;
+    } catch {
+      return defaults;
+    }
   }
 
   /**
@@ -161,6 +319,33 @@ export class ExpenseDocumentsService implements OnModuleInit {
       return new Prisma.Decimal(clamped);
     } catch {
       return new Prisma.Decimal(fallback);
+    }
+  }
+
+  /**
+   * D1.3.6.1 — Read an integer SystemConfig flag with min/max clamp.
+   * Returns `fallback` when the row is missing, the value isn't a finite
+   * integer, or it falls outside [min, max]. Mirrors `readBoolFlag` so
+   * future numeric flags share one code path.
+   */
+  private async readIntFlag(
+    tx: Prisma.TransactionClient | PrismaService,
+    key: string,
+    fallback: number,
+    min: number,
+    max: number,
+  ): Promise<number> {
+    try {
+      const row = await tx.systemConfig.findFirst({
+        where: { key, deletedAt: null },
+        select: { value: true },
+      });
+      if (!row?.value) return fallback;
+      const n = Number(row.value);
+      if (!Number.isInteger(n) || n < min || n > max) return fallback;
+      return n;
+    } catch {
+      return fallback;
     }
   }
 
@@ -707,6 +892,38 @@ export class ExpenseDocumentsService implements OnModuleInit {
       throw new ForbiddenException('ไม่สามารถสร้างเอกสารในสาขาอื่นได้');
     }
 
+    // D1.3.6.1 — `settlement_max_bills_per_doc` (default 100, clamp 1–500).
+    // Enforce the cap before any DB lookups so a 1000-line payload can't burn
+    // advisory locks / aggregate queries unnecessarily. Reads from the plain
+    // PrismaService here (outside the $transaction below) because
+    // SystemConfig values rarely change mid-request and this is a soft gate
+    // rather than a row-level invariant.
+    const maxBills = await this.readIntFlag(
+      this.prisma,
+      'settlement_max_bills_per_doc',
+      100,
+      1,
+      500,
+    );
+    if (dto.lines.length > maxBills) {
+      throw new BadRequestException(
+        `จำนวนใบที่จะเคลียร์ในเอกสารเดียวเกินจำกัด (สูงสุด ${maxBills} ใบ ต่อเอกสาร)`,
+      );
+    }
+
+    // D1.3.6.3 — `settlement_partial_payment_enabled` (default true). Read
+    // outside the $transaction since this is a doc-creation policy gate and
+    // SystemConfig values rarely change mid-request. When OFF, every line's
+    // `amountSettled` must equal the remaining cap (full settlement only) —
+    // we apply that check INSIDE the transaction after we've read the
+    // current cap, so partial-flag toggling between request fetch + commit
+    // is fine.
+    const partialPaymentEnabled = await this.readBoolFlag(
+      this.prisma,
+      'settlement_partial_payment_enabled',
+      true,
+    );
+
     // Dedup: prevent same cleared doc from appearing twice in one SE
     const seenClearedIds = new Set<string>();
     for (const line of dto.lines) {
@@ -771,6 +988,17 @@ export class ExpenseDocumentsService implements OnModuleInit {
         if (amount.gt(cap)) {
           throw new BadRequestException(
             `เอกสาร ${cleared.number} จำนวนที่จ่ายเกินยอดที่ค้าง (เหลือ ${cap.toFixed(2)} ฿)`,
+          );
+        }
+        // D1.3.6.3 — when partial-payment is disabled, every line must clear
+        // the FULL remaining cap. `amount < cap` is the partial-payment
+        // condition; allow ≤0.01 ฿ rounding slop just like the tolerance
+        // policy elsewhere (BadRequestException is still the right call —
+        // the user can edit the line amount and resubmit).
+        if (!partialPaymentEnabled && cap.minus(amount).gt(new Prisma.Decimal('0.01'))) {
+          throw new BadRequestException(
+            `เอกสาร ${cleared.number} ต้องชำระเต็มจำนวน (ค้าง ${cap.toFixed(2)} ฿) — ` +
+              `การชำระบางส่วนถูกปิดในการตั้งค่าระบบ`,
           );
         }
         sumSettled = sumSettled.plus(amount);
@@ -1646,8 +1874,8 @@ export class ExpenseDocumentsService implements OnModuleInit {
   // `APPROVED` which land on the schema in D1.2.1.6 (sibling PR). Until
   // that migrates, this PR uses `as unknown as DocumentStatus` casts. At
   // merge time accept the conflict on `schema.prisma` from 1.6.
-  async submitForApproval(id: string, _userId: string) {
-    return this.prisma.$transaction(async (tx) => {
+  async submitForApproval(id: string, userId: string) {
+    const updated = await this.prisma.$transaction(async (tx) => {
       await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(hashtext($1))`, `post:${id}`);
 
       const approvalEnabled = await this.readBoolFlag(tx, 'approval_enabled', false);
@@ -1666,11 +1894,44 @@ export class ExpenseDocumentsService implements OnModuleInit {
       }
 
       const PENDING_APPROVAL = 'PENDING_APPROVAL' as unknown as DocumentStatus;
-      return tx.expenseDocument.update({
+      const result = await tx.expenseDocument.update({
         where: { id },
         data: { status: PENDING_APPROVAL },
       });
+
+      // D1.2.1.5 — APPROVAL_REQUESTED audit log. Atomic with the status flip.
+      // PII-safe payload: documentNumber + totalAmount + documentType only.
+      // Salary lines, employee tax IDs, etc. NEVER captured here per PDPA.
+      await tx.auditLog.create({
+        data: {
+          action: 'APPROVAL_REQUESTED',
+          entity: 'expense_document',
+          entityId: id,
+          userId,
+          oldValue: { status: 'DRAFT' },
+          newValue: {
+            status: 'PENDING_APPROVAL',
+            documentNumber: result.number,
+            documentType: result.documentType,
+            totalAmount: result.totalAmount.toString(),
+            requesterUserId: userId,
+          },
+        },
+      });
+
+      return result;
     });
+
+    // D1.2.1.5 — fan out notifications OUTSIDE the tx. A notification failure
+    // must never roll back the status flip already persisted.
+    await this.notifyApprovers({
+      id: updated.id,
+      documentNumber: updated.number,
+      documentType: updated.documentType,
+      totalAmount: updated.totalAmount,
+    });
+
+    return updated;
   }
 
   // ─── Post (DRAFT → ACCRUAL or POSTED) ────────────────────────────────
@@ -1681,7 +1942,18 @@ export class ExpenseDocumentsService implements OnModuleInit {
   // D1.2.1.6 — also accepts APPROVED → POSTED (when approval_enabled is on
   // AND auto_post_on_approve is false, OWNER manually calls post() on an
   // APPROVED doc; assertCanPost permits both DRAFT + APPROVED).
-  async post(id: string, _userId: string) {
+  async post(id: string, _userId: string, userRole?: string) {
+    // D1.3.2.3 (S3 defense-in-depth) — mirror the PostPermissionGuard
+    // check at the service boundary. Skipped when userRole is undefined
+    // (system-internal / unit-test paths).
+    if (userRole !== undefined) {
+      const allowed = await resolvePostPermissionRoles(this.prisma);
+      if (!allowed.has(userRole)) {
+        throw new ForbiddenException(
+          `ไม่มีสิทธิ์โพสต์เอกสาร (role ปัจจุบัน: ${userRole})`,
+        );
+      }
+    }
     return this.prisma.$transaction(async (tx) => {
       // Per-doc advisory lock — serializes concurrent post calls on the same id.
       // Without this, two callers could both read DRAFT, both pass assertCanPost,
@@ -1714,25 +1986,11 @@ export class ExpenseDocumentsService implements OnModuleInit {
         const docTotal = new Prisma.Decimal(doc.totalAmount.toString());
         const overThreshold = docTotal.gte(threshold);
 
-        // Inline read of approval_required_doc_types (JSON array). Falls back
-        // to spec default ['PAYROLL'] on missing/unparseable/non-array values.
-        // Hardcoded here until #932 wires the SystemConfig key; the OR gate is
-        // structurally complete now so #932 only needs to expose the value.
-        let requiredDocTypes: string[] = ['PAYROLL'];
-        try {
-          const row = await tx.systemConfig.findFirst({
-            where: { key: 'approval_required_doc_types', deletedAt: null },
-            select: { value: true },
-          });
-          if (row?.value) {
-            const parsed = JSON.parse(row.value);
-            if (Array.isArray(parsed) && parsed.every((v) => typeof v === 'string')) {
-              requiredDocTypes = parsed;
-            }
-          }
-        } catch {
-          // keep default ['PAYROLL']
-        }
+        // D1.2.1.4 — doc-type filter via `getApprovalRequiredDocTypes` helper.
+        // Reads SystemConfig key `approval_required_doc_types` (JSON array),
+        // filters to valid DocumentType enum values, defaults to ['PAYROLL']
+        // on missing/malformed rows.
+        const requiredDocTypes = await this.getApprovalRequiredDocTypes(tx);
         const isRequiredType = requiredDocTypes.includes(doc.documentType);
 
         if (overThreshold || isRequiredType) {
@@ -1954,12 +2212,16 @@ export class ExpenseDocumentsService implements OnModuleInit {
   //
   // userId is captured for audit logs (APPROVED + AUTO_POSTED actions written
   // inside the same tx). Signature parity with post() / voidDocument().
-  async approve(id: string, userId: string) {
+  async approve(id: string, userId: string, userRole?: string) {
     return this.prisma.$transaction(async (tx) => {
       // Re-use the `post:` lock key — approve always either becomes the JE
       // post (auto path) or precedes a future post(), so serializing on the
       // same lock is correct.
       await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(hashtext($1))`, `post:${id}`);
+
+      // D1.2.1.3 — approver membership check. OWNER always passes; everyone
+      // else must appear in SystemConfig `approvers_list`.
+      await this.assertUserCanApprove(tx, userId, userRole);
 
       const doc = await tx.expenseDocument.findUniqueOrThrow({ where: { id } });
       if (doc.deletedAt) throw new NotFoundException('เอกสารถูกลบแล้ว');
@@ -2020,7 +2282,23 @@ export class ExpenseDocumentsService implements OnModuleInit {
   // C3 — Optionally accepts reasonCode + reasonDetail + reverseDate (caller-chosen
   // posting date for the reversal JE). All optional → existing parameterless
   // void path still works (back-compat).
-  async voidDocument(id: string, userId: string, dto: VoidExpenseDocumentDto = {}) {
+  async voidDocument(
+    id: string,
+    userId: string,
+    dto: VoidExpenseDocumentDto = {},
+    userRole?: string,
+  ) {
+    // D1.3.2.4 (S3 defense-in-depth) — mirror the ReversePermissionGuard
+    // check at the service boundary. Skipped when userRole is undefined
+    // (system-internal / unit-test paths).
+    if (userRole !== undefined) {
+      const allowed = await resolveReversePermissionRoles(this.prisma);
+      if (!allowed.has(userRole)) {
+        throw new ForbiddenException(
+          `ไม่มีสิทธิ์กลับรายการเอกสาร (role ปัจจุบัน: ${userRole})`,
+        );
+      }
+    }
     return this.prisma.$transaction(async (tx) => {
       // Per-doc advisory lock — serializes concurrent voids on the same id so
       // two callers cannot both pass assertCanVoid and double-post a reversal JE.

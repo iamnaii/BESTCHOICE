@@ -6,7 +6,7 @@ export class GenerateTaxReportDto {
   @IsString()
   companyId: string;
 
-  @IsIn(['PP30', 'PND3', 'PND53'], { message: 'ประเภทรายงานไม่ถูกต้อง' })
+  @IsIn(['PP30', 'PND1', 'PND3', 'PND53'], { message: 'ประเภทรายงานไม่ถูกต้อง' })
   reportType: string;
 
   @IsInt({ message: 'กรุณาระบุปี' })

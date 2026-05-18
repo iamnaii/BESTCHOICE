@@ -6573,3 +6573,40 @@ enum ETaxSubmissionStatus {
   /// Transport / server error — eligible for retry
   ERROR
 }
+
+// ──────────────────────────────────────────────────────────────────────────
+// Phase 3 SP2 — Off-site backup replication
+// ──────────────────────────────────────────────────────────────────────────
+
+/// Run-log for the off-site GCS replication cron.
+/// Append-only operational history (last 30 rows surfaced in UI).
+/// Created via OffsiteBackupService — never edited after finishedAt set.
+model OffsiteBackupRun {
+  id            String                @id @default(uuid())
+  startedAt     DateTime              @map("started_at")
+  finishedAt    DateTime?             @map("finished_at")
+  status        OffsiteBackupStatus
+  filesCount    Int                   @default(0) @map("files_count")
+  totalBytes    BigInt                @default(0) @map("total_bytes")
+  /// First error message (truncated to 1000 chars) when status = FAILED.
+  errorMessage  String?               @map("error_message")
+  /// 'cron' | 'manual' | userId — for forensics on who/what triggered the run.
+  triggeredBy   String?               @map("triggered_by")
+  /// Off-site destination bucket name captured at run time (for audit).
+  destBucket    String?               @map("dest_bucket")
+  createdAt     DateTime              @default(now()) @map("created_at")
+
+  @@index([startedAt])
+  @@map("offsite_backup_runs")
+}
+
+enum OffsiteBackupStatus {
+  /// Run started, files being replicated
+  RUNNING
+  /// Run finished without errors
+  SUCCESS
+  /// Run aborted with error (see errorMessage)
+  FAILED
+  /// Cron triggered but skipped (OFFSITE_BACKUP_ENABLED=false)
+  SKIPPED
+}

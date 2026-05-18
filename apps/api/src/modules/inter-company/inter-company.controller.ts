@@ -48,6 +48,15 @@ export class InterCompanyController {
     return this.interCompanyService.getProfitSummary({ branchId, startDate, endDate });
   }
 
+  @Get('aging')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  getAging(
+    @Query('branchId') branchId?: string,
+    @Query('companyId') companyId?: string,
+  ) {
+    return this.interCompanyService.getAging({ branchId, companyId });
+  }
+
   @Get(':id')
   @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   findOne(@Param('id') id: string) {

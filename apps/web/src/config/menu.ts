@@ -370,7 +370,11 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'รายได้อื่น', path: '/other-income', icon: TrendingUp },
         { label: 'กำไร-ขาดทุน', path: '/profit-loss', icon: PieChart },
-        // SP3 — Tax module split
+        // SP2 — Accounting reports
+        { label: 'งบกระแสเงินสด', path: '/finance/cash-flow', icon: Banknote },
+        { label: 'งบ Equity', path: '/finance/equity-statement', icon: Landmark },
+        { label: 'สมุดแยกประเภท', path: '/finance/general-ledger', icon: BookOpen },
+        // SP3 — Tax module split (replaces /tax-reports)
         { label: 'ภ.พ.30 (VAT)', path: '/finance/vat', icon: Calculator },
         { label: 'ภ.ง.ด. 1/3/53 (WHT)', path: '/finance/wht', icon: Calculator },
         { label: 'e-Tax Invoice', path: '/finance/e-tax', icon: FileText },
@@ -540,6 +544,9 @@ const OWNER_CONFIG: RoleMenuConfig = {
           icon: BarChart3,
           children: [
             { label: 'รายงานรวม', path: '/reports', icon: BarChart3 },
+            { label: 'งบกระแสเงินสด', path: '/finance/cash-flow', icon: Banknote },
+            { label: 'งบ Equity', path: '/finance/equity-statement', icon: Landmark },
+            { label: 'สมุดแยกประเภท', path: '/finance/general-ledger', icon: BookOpen },
             { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
             // SP3 — Tax module split
             { label: 'ภ.พ.30 (VAT)', path: '/finance/vat', icon: Calculator },

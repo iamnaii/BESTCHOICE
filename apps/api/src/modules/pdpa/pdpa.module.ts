@@ -13,7 +13,7 @@ import { PdpaBackfillRetentionCron } from './pdpa-backfill-retention.cron';
  * Hotfix 2026-05-18 — was importing CustomersModule (P3-SP4) which transitively
  * pulled in OverdueModule → ChatEngineModule → StaffChatModule cycle, breaking
  * boot. Now imports the leaf CustomerPiiModule directly — same CustomerPiiService
- * is exported, no other deps come along.
+ * is exported, no other deps come along. Supersedes #1017 forwardRef hotfix.
  */
 @Module({
   imports: [PrismaModule, AuthModule, CustomerPiiModule, AuditModule],

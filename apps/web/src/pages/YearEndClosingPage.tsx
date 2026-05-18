@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
+import { standardSchemaResolver } from '@hookform/resolvers/standard-schema';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import {
@@ -159,7 +159,7 @@ export default function YearEndClosingPage() {
 
   // ─── Reverse form ─────────────────────────────────────────────────────
   const reverseForm = useForm<ReverseFormValues>({
-    resolver: zodResolver(reverseSchema),
+    resolver: standardSchemaResolver(reverseSchema),
     defaultValues: { reason: '' },
   });
 

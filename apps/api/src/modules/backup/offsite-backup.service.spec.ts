@@ -534,4 +534,77 @@ describe('OffsiteBackupService', () => {
       expect(service.getRetentionDays()).toBe(60);
     });
   });
+
+  // ─── SP7.8 — Dual-DB Cloud SQL backup ────────────────────────────────────
+
+  describe('backupAllDatabases (SP7.8)', () => {
+    const SHOP_KEY = 'CLOUDSQL_SHOP_INSTANCE';
+    const FINANCE_KEY = 'CLOUDSQL_FINANCE_INSTANCE';
+
+    afterEach(() => {
+      delete process.env[SHOP_KEY];
+      delete process.env[FINANCE_KEY];
+    });
+
+    it('skips both DBs and returns error-env-not-set when neither env var is set', async () => {
+      delete process.env[SHOP_KEY];
+      delete process.env[FINANCE_KEY];
+
+      const results = await service.backupAllDatabases();
+
+      expect(results).toHaveLength(2);
+      expect(results[0]).toMatchObject({ db: 'bc_shop', status: 'error', error: 'env-not-set' });
+      expect(results[1]).toMatchObject({ db: 'bc_finance', status: 'error', error: 'env-not-set' });
+    });
+
+    it('returns ok for configured DB and skips unconfigured one', async () => {
+      process.env[SHOP_KEY] = 'project:region:bc-shop';
+      delete process.env[FINANCE_KEY];
+
+      const results = await service.backupAllDatabases();
+
+      expect(results).toHaveLength(2);
+      expect(results[0]).toMatchObject({ db: 'bc_shop', status: 'ok' });
+      expect(results[1]).toMatchObject({ db: 'bc_finance', status: 'error', error: 'env-not-set' });
+    });
+
+    it('returns ok for both when both env vars are set', async () => {
+      process.env[SHOP_KEY] = 'project:region:bc-shop';
+      process.env[FINANCE_KEY] = 'project:region:bc-finance';
+
+      const results = await service.backupAllDatabases();
+
+      expect(results).toHaveLength(2);
+      expect(results[0]).toMatchObject({ db: 'bc_shop', status: 'ok' });
+      expect(results[1]).toMatchObject({ db: 'bc_finance', status: 'ok' });
+    });
+
+    it('captures partial failure — one ok, one error', async () => {
+      process.env[SHOP_KEY] = 'project:region:bc-shop';
+      process.env[FINANCE_KEY] = 'project:region:bc-finance';
+
+      // Spy on backupSingleDatabase via prototype to inject a failure for finance
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const spy = jest.spyOn(service as any, 'backupSingleDatabase');
+      spy.mockResolvedValueOnce(undefined); // shop: ok
+      spy.mockRejectedValueOnce(new Error('Cloud SQL export failed')); // finance: error
+
+      const results = await service.backupAllDatabases();
+
+      expect(results).toHaveLength(2);
+      expect(results[0]).toMatchObject({ db: 'bc_shop', status: 'ok' });
+      expect(results[1]).toMatchObject({
+        db: 'bc_finance',
+        status: 'error',
+        error: 'Cloud SQL export failed',
+      });
+
+      spy.mockRestore();
+    });
+
+    it('DB_INSTANCES static list matches expected db names', () => {
+      const names = OffsiteBackupService.DB_INSTANCES.map((i) => i.name);
+      expect(names).toEqual(['bc_shop', 'bc_finance']);
+    });
+  });
 });

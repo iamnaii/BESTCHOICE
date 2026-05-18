@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
@@ -84,11 +84,24 @@ function MainContent() {
 
   /* Task 15 — auto-sync currentZone to the pathname's zone, and redirect
      if this role has no path that lives in any of its zones. Common routes
-     (paths not in ANY role's sidebar — e.g., /profile, /404) pass through. */
+     (paths not in ANY role's sidebar — e.g., /profile, /404) pass through.
+
+     IMPORTANT: this effect must NOT run when only `currentZone` changed
+     (e.g., user clicked the PillSwitcher / GearButton). If it did, the
+     auto-resolve would immediately revert the user's manual pill choice
+     back to whatever zone owns the current path. Track previous pathname
+     via a ref and skip when only the zone changed. */
+  const prevPathnameRef = useRef<string | null>(null);
   useEffect(() => {
     const role = user?.role ?? '';
     if (!role) return;
     if (!getZoneConfigForRole(role)) return;
+
+    // Skip if only `currentZone` changed (pill click) — preserve manual intent.
+    const isFirstRun = prevPathnameRef.current === null;
+    const pathChanged = prevPathnameRef.current !== pathname;
+    prevPathnameRef.current = pathname;
+    if (!isFirstRun && !pathChanged) return;
 
     const targetZone = resolveZoneForPath(role, pathname);
 

@@ -26,6 +26,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { CashAccountSelect } from '@/components/CashAccountSelect';
+import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import {
   CalendarDays,
@@ -605,10 +607,24 @@ function BookingDetailDialog({
   });
 
   const [depositMethod, setDepositMethod] = useState('CASH');
+  const [depositAccountCode, setDepositAccountCode] = useState('11-1101');
   const [cancelReason, setCancelReason] = useState('');
+  // C2 — convert UX: cashier must affirm balance collection when partial-paid
+  const [collectBalance, setCollectBalance] = useState(false);
+
+  // Derived: is this a partial-deposit booking? (deposit < total)
+  const isPartialDeposit =
+    !!booking && Number(booking.depositAmount) < Number(booking.totalAmount);
+  const outstandingBalance = booking
+    ? Number(booking.totalAmount) - Number(booking.depositAmount)
+    : 0;
 
   const payMut = useMutation({
-    mutationFn: () => api.post(`/bookings/${bookingId}/pay-deposit`, { depositMethod }),
+    mutationFn: () =>
+      api.post(`/bookings/${bookingId}/pay-deposit`, {
+        depositMethod,
+        depositAccountCode,
+      }),
     onSuccess: () => {
       toast.success('บันทึกการรับมัดจำแล้ว');
       qc.invalidateQueries({ queryKey: ['booking', bookingId] });
@@ -629,7 +645,12 @@ function BookingDetailDialog({
   });
 
   const convertMut = useMutation({
-    mutationFn: () => api.post(`/bookings/${bookingId}/convert`, { saleType: 'CASH' }),
+    mutationFn: () =>
+      api.post(`/bookings/${bookingId}/convert`, {
+        saleType: 'CASH',
+        // Only relevant on partial-deposit bookings; backend ignores otherwise.
+        collectBalance: isPartialDeposit ? collectBalance : undefined,
+      }),
     onSuccess: () => {
       toast.success('แปลงเป็นการขายแล้ว — มัดจำเข้า downPayment อัตโนมัติ');
       qc.invalidateQueries({ queryKey: ['booking', bookingId] });
@@ -745,22 +766,60 @@ function BookingDetailDialog({
             )}
 
             {canMutate && booking.status === 'PENDING_DEPOSIT' && (
-              <div className="space-y-2 rounded-md border border-border bg-muted/20 p-3">
-                <Label>วิธีรับมัดจำ</Label>
-                <Select value={depositMethod} onValueChange={setDepositMethod}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="CASH">เงินสด</SelectItem>
-                    <SelectItem value="BANK_TRANSFER">โอนธนาคาร</SelectItem>
-                    <SelectItem value="QR_EWALLET">QR / e-Wallet</SelectItem>
-                    <SelectItem value="CREDIT_BALANCE">หักจากเครดิตคงเหลือ</SelectItem>
-                    <SelectItem value="ONLINE_GATEWAY">ผ่าน Gateway</SelectItem>
-                  </SelectContent>
-                </Select>
+              <div className="space-y-3 rounded-md border border-border bg-muted/20 p-3">
+                <div className="space-y-2">
+                  <Label>วิธีรับมัดจำ</Label>
+                  <Select value={depositMethod} onValueChange={setDepositMethod}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="CASH">เงินสด</SelectItem>
+                      <SelectItem value="BANK_TRANSFER">โอนธนาคาร</SelectItem>
+                      <SelectItem value="QR_EWALLET">QR / e-Wallet</SelectItem>
+                      <SelectItem value="CREDIT_BALANCE">หักจากเครดิตคงเหลือ</SelectItem>
+                      <SelectItem value="ONLINE_GATEWAY">ผ่าน Gateway</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>บัญชีเงินสด/ธนาคารปลายทาง</Label>
+                  <CashAccountSelect
+                    value={depositAccountCode}
+                    onChange={setDepositAccountCode}
+                  />
+                </div>
               </div>
             )}
+
+            {canMutate &&
+              booking.status === 'PAID' &&
+              !booking.convertedToSale &&
+              isPartialDeposit && (
+                <div className="space-y-2 rounded-md border border-amber-500/30 bg-amber-50/40 p-3 text-sm dark:bg-amber-950/20">
+                  <div className="font-medium">ก่อนแปลงเป็นการขาย</div>
+                  <div className="text-muted-foreground">
+                    ใบจองนี้รับมัดจำเพียง{' '}
+                    <span className="tabular-nums">{fmtMoney(booking.depositAmount)}</span>{' '}
+                    บาท คงเหลือ{' '}
+                    <span className="font-semibold tabular-nums">
+                      {fmtMoney(outstandingBalance)}
+                    </span>{' '}
+                    บาท
+                  </div>
+                  <label className="flex cursor-pointer items-start gap-2 rounded-md border border-border bg-background p-2">
+                    <Checkbox
+                      checked={collectBalance}
+                      onCheckedChange={(v) => setCollectBalance(v === true)}
+                      className="mt-0.5"
+                    />
+                    <span className="leading-snug">
+                      เรียกเก็บยอดส่วนต่างที่เคาน์เตอร์แล้ว — บันทึก Sale.amountReceived =
+                      ยอดเต็ม
+                    </span>
+                  </label>
+                </div>
+              )}
 
             {canMutate &&
               (booking.status === 'PENDING_DEPOSIT' || booking.status === 'PAID') && (
@@ -800,8 +859,15 @@ function BookingDetailDialog({
           {canMutate && booking?.status === 'PAID' && !booking.convertedToSale && (
             <Button
               onClick={() => convertMut.mutate()}
-              disabled={convertMut.isPending}
+              disabled={
+                convertMut.isPending || (isPartialDeposit && !collectBalance)
+              }
               className="gap-2"
+              title={
+                isPartialDeposit && !collectBalance
+                  ? 'ติ๊ก "เรียกเก็บยอดส่วนต่างแล้ว" ก่อนแปลง'
+                  : undefined
+              }
             >
               <ShoppingCart className="h-4 w-4" /> แปลงเป็นการขาย
             </Button>

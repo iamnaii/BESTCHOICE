@@ -59,6 +59,23 @@ describe('BookingsService', () => {
       ),
     };
 
+    const txProduct = {
+      findUnique: jest.fn().mockResolvedValue({
+        id: 'prod-1',
+        status: 'IN_STOCK',
+        deletedAt: null,
+      }),
+      update: jest.fn((args) => Promise.resolve({ id: args.where.id, ...args.data })),
+    };
+
+    const txCommissionRule = {
+      findFirst: jest.fn().mockResolvedValue({ rate: 0.03 }),
+    };
+
+    const txSalesCommission = {
+      create: jest.fn((args) => Promise.resolve({ id: 'cm-1', ...args.data })),
+    };
+
     prisma = {
       booking: {
         findFirst: jest.fn(),
@@ -76,10 +93,21 @@ describe('BookingsService', () => {
           booking: txBooking,
           bookingItem: txBookingItem,
           sale: txSale,
+          product: txProduct,
+          commissionRule: txCommissionRule,
+          salesCommission: txSalesCommission,
           auditLog: txAuditLog,
         }),
       ),
-      _tx: { booking: txBooking, bookingItem: txBookingItem, sale: txSale, auditLog: txAuditLog },
+      _tx: {
+        booking: txBooking,
+        bookingItem: txBookingItem,
+        sale: txSale,
+        product: txProduct,
+        commissionRule: txCommissionRule,
+        salesCommission: txSalesCommission,
+        auditLog: txAuditLog,
+      },
     };
 
     const mod: TestingModule = await Test.createTestingModule({
@@ -174,30 +202,40 @@ describe('BookingsService', () => {
   });
 
   // 2. payDeposit — happy path + race protection
-  it('payDeposit — PENDING_DEPOSIT → PAID with updateMany race claim + audit', async () => {
+  it('payDeposit — PENDING_DEPOSIT → PAID with updateMany race claim + audit + persists depositAccountCode (C3)', async () => {
     prisma.booking.findFirst.mockResolvedValueOnce({
       id: 'bk-1',
       status: 'PENDING_DEPOSIT',
       branchId: 'br-1',
       expireDate: new Date(Date.now() + 86400000),
     });
-    await service.payDeposit('bk-1', { depositMethod: 'CASH' }, OWNER);
+    await service.payDeposit(
+      'bk-1',
+      { depositMethod: 'CASH', depositAccountCode: '11-1101' },
+      OWNER,
+    );
     expect(prisma._tx.booking.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
           id: 'bk-1',
           status: 'PENDING_DEPOSIT',
+          // C6 — expireDate enforced atomically in the filter
+          expireDate: expect.objectContaining({ gt: expect.any(Date) }),
         }),
         data: expect.objectContaining({
           status: 'PAID',
           depositMethod: 'CASH',
+          depositAccountCode: '11-1101',
           depositReceivedById: OWNER.id,
         }),
       }),
     );
     expect(prisma._tx.auditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ action: 'BOOKING_DEPOSIT_PAID' }),
+        data: expect.objectContaining({
+          action: 'BOOKING_DEPOSIT_PAID',
+          newValue: expect.objectContaining({ depositAccountCode: '11-1101' }),
+        }),
       }),
     );
   });
@@ -211,18 +249,28 @@ describe('BookingsService', () => {
     });
     prisma._tx.booking.updateMany.mockResolvedValueOnce({ count: 0 });
     await expect(
-      service.payDeposit('bk-1', { depositMethod: 'CASH' }, OWNER),
+      service.payDeposit(
+        'bk-1',
+        { depositMethod: 'CASH', depositAccountCode: '11-1101' },
+        OWNER,
+      ),
     ).rejects.toThrow(ConflictException);
   });
 
-  it('payDeposit — rejects expired booking', async () => {
+  it('payDeposit — rejects expired booking (pre-tx guard)', async () => {
     prisma.booking.findFirst.mockResolvedValueOnce({
       id: 'bk-1',
       status: 'PENDING_DEPOSIT',
       branchId: 'br-1',
       expireDate: new Date(Date.now() - 86400000),
     });
-    await expect(service.payDeposit('bk-1', {}, OWNER)).rejects.toThrow(BadRequestException);
+    await expect(
+      service.payDeposit(
+        'bk-1',
+        { depositMethod: 'CASH', depositAccountCode: '11-1101' },
+        OWNER,
+      ),
+    ).rejects.toThrow(BadRequestException);
   });
 
   // 3. cancel — before expire only
@@ -271,7 +319,7 @@ describe('BookingsService', () => {
   });
 
   // 4. convertToSale — happy path + idempotency
-  it('convertToSale — PAID → CONVERTED + Sale row with downPaymentAmount + audit', async () => {
+  it('convertToSale — full-prepay (deposit==total) → CONVERTED + Sale.amountReceived=total + Product SOLD_CASH + commission (C1, C2)', async () => {
     prisma.booking.findFirst.mockResolvedValueOnce({
       id: 'bk-1',
       status: 'PAID',
@@ -280,9 +328,9 @@ describe('BookingsService', () => {
       customerId: 'cust-1',
       branchId: 'br-1',
       totalAmount: new Prisma.Decimal(40990),
-      depositAmount: new Prisma.Decimal(5000),
+      depositAmount: new Prisma.Decimal(40990),
       depositMethod: 'CASH',
-      items: [{ productId: 'prod-1', quantity: 1, unitPrice: 35000, amount: 35000 }],
+      items: [{ productId: 'prod-1', quantity: 1, unitPrice: 40990, amount: 40990 }],
     });
     const result = await service.convertToSale('bk-1', {}, 'user-1', OWNER);
     expect(prisma._tx.booking.updateMany).toHaveBeenCalledWith(
@@ -296,17 +344,79 @@ describe('BookingsService', () => {
       }),
     );
     const saleArgs = prisma._tx.sale.create.mock.calls[0][0];
-    expect(Number(saleArgs.data.downPaymentAmount)).toBe(5000);
+    expect(Number(saleArgs.data.downPaymentAmount)).toBe(40990);
     expect(Number(saleArgs.data.sellingPrice)).toBe(40990);
+    // C2 — amountReceived = totalAmount because the whole sale was prepaid
+    expect(Number(saleArgs.data.amountReceived)).toBe(40990);
+    // C1 — product flipped to SOLD_CASH
+    expect(prisma._tx.product.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'prod-1' },
+        data: { status: 'SOLD_CASH' },
+      }),
+    );
+    // C1 — SalesCommission row created
+    expect(prisma._tx.salesCommission.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          saleId: 'sale-new',
+          salespersonId: 'user-1',
+          commissionRate: 0.03,
+        }),
+      }),
+    );
     expect(result.sale.id).toBe('sale-new');
     expect(prisma._tx.auditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           action: 'BOOKING_CONVERTED',
-          newValue: expect.objectContaining({ depositTransferred: '5000.00' }),
+          newValue: expect.objectContaining({
+            depositTransferred: '40990.00',
+            amountReceived: '40990.00',
+          }),
         }),
       }),
     );
+  });
+
+  it('convertToSale — partial deposit without collectBalance → BadRequest (C2 — no revenue overstatement)', async () => {
+    prisma.booking.findFirst.mockResolvedValueOnce({
+      id: 'bk-1',
+      status: 'PAID',
+      convertedToSaleId: null,
+      bookingNumber: 'BK-20260517-0001',
+      customerId: 'cust-1',
+      branchId: 'br-1',
+      totalAmount: new Prisma.Decimal(40990),
+      depositAmount: new Prisma.Decimal(5000),
+      depositMethod: 'CASH',
+      items: [{ productId: 'prod-1', quantity: 1, unitPrice: 35000, amount: 35000 }],
+    });
+    await expect(service.convertToSale('bk-1', {}, 'user-1', OWNER)).rejects.toThrow(
+      /เรียกเก็บยอดส่วนต่าง 35990\.00/,
+    );
+    // Sale must NOT be created — guard fires before tx
+    expect(prisma._tx.sale.create).not.toHaveBeenCalled();
+    expect(prisma._tx.product.update).not.toHaveBeenCalled();
+  });
+
+  it('convertToSale — partial deposit + collectBalance=true → amountReceived=totalAmount (C2)', async () => {
+    prisma.booking.findFirst.mockResolvedValueOnce({
+      id: 'bk-1',
+      status: 'PAID',
+      convertedToSaleId: null,
+      bookingNumber: 'BK-20260517-0001',
+      customerId: 'cust-1',
+      branchId: 'br-1',
+      totalAmount: new Prisma.Decimal(40990),
+      depositAmount: new Prisma.Decimal(5000),
+      depositMethod: 'CASH',
+      items: [{ productId: 'prod-1', quantity: 1, unitPrice: 35000, amount: 35000 }],
+    });
+    await service.convertToSale('bk-1', { collectBalance: true }, 'user-1', OWNER);
+    const saleArgs = prisma._tx.sale.create.mock.calls[0][0];
+    expect(Number(saleArgs.data.amountReceived)).toBe(40990);
+    expect(Number(saleArgs.data.downPaymentAmount)).toBe(5000);
   });
 
   it('convertToSale — race: second concurrent caller throws Conflict (no Sale created)', async () => {
@@ -318,8 +428,8 @@ describe('BookingsService', () => {
       customerId: 'cust-1',
       branchId: 'br-1',
       totalAmount: new Prisma.Decimal(40990),
-      depositAmount: new Prisma.Decimal(5000),
-      items: [{ productId: 'prod-1', quantity: 1, unitPrice: 35000, amount: 35000 }],
+      depositAmount: new Prisma.Decimal(40990),
+      items: [{ productId: 'prod-1', quantity: 1, unitPrice: 40990, amount: 40990 }],
     });
     prisma._tx.booking.updateMany.mockResolvedValueOnce({ count: 0 });
     await expect(service.convertToSale('bk-1', {}, 'user-1', OWNER)).rejects.toThrow(
@@ -339,6 +449,29 @@ describe('BookingsService', () => {
     await expect(service.convertToSale('bk-1', {}, 'user-1', OWNER)).rejects.toThrow(
       ConflictException,
     );
+  });
+
+  it('convertToSale — rejects when product no longer IN_STOCK (C1 — double-sell guard)', async () => {
+    prisma.booking.findFirst.mockResolvedValueOnce({
+      id: 'bk-1',
+      status: 'PAID',
+      convertedToSaleId: null,
+      bookingNumber: 'BK-20260517-0001',
+      customerId: 'cust-1',
+      branchId: 'br-1',
+      totalAmount: new Prisma.Decimal(40990),
+      depositAmount: new Prisma.Decimal(40990),
+      items: [{ productId: 'prod-1', quantity: 1, unitPrice: 40990, amount: 40990 }],
+    });
+    prisma._tx.product.findUnique.mockResolvedValueOnce({
+      id: 'prod-1',
+      status: 'SOLD_CASH',
+      deletedAt: null,
+    });
+    await expect(service.convertToSale('bk-1', {}, 'user-1', OWNER)).rejects.toThrow(
+      /ไม่พร้อมขาย/,
+    );
+    expect(prisma._tx.sale.create).not.toHaveBeenCalled();
   });
 
   // 5. autoExpire — cron path

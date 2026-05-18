@@ -7,6 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import * as Sentry from '@sentry/node';
 import { PrismaService } from '../../prisma/prisma.service';
 import { generateBookingNumber, generateSaleNumber } from '../../utils/sequence.util';
 import { readNumberFlag } from '../../utils/config.util';
@@ -387,21 +388,26 @@ export class BookingsService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      // C6 — expireDate enforced atomically in the updateMany filter so the
+      // expire-cron can't flip status between the read above and this write.
+      const now = new Date();
       const claim = await tx.booking.updateMany({
         where: {
           id,
           deletedAt: null,
           status: 'PENDING_DEPOSIT',
+          expireDate: { gt: now },
         },
         data: {
           status: 'PAID',
-          depositPaidAt: new Date(),
+          depositPaidAt: now,
           depositMethod: dto.depositMethod,
+          depositAccountCode: dto.depositAccountCode,
           depositReceivedById: user.id,
         },
       });
       if (claim.count !== 1) {
-        throw new ConflictException('ใบจองนี้ถูกบันทึกมัดจำหรือเปลี่ยนสถานะไปแล้ว');
+        throw new ConflictException('ใบจองนี้หมดอายุ ถูกบันทึกมัดจำ หรือเปลี่ยนสถานะไปแล้ว');
       }
 
       const updated = await tx.booking.findFirst({
@@ -418,7 +424,8 @@ export class BookingsService {
           oldValue: { status: 'PENDING_DEPOSIT' },
           newValue: {
             status: 'PAID',
-            depositMethod: dto.depositMethod ?? null,
+            depositMethod: dto.depositMethod,
+            depositAccountCode: dto.depositAccountCode,
             notes: dto.notes ?? null,
           },
         },
@@ -546,7 +553,29 @@ export class BookingsService {
       );
     }
 
+    // C2 — guard amountReceived honesty. The cashier MUST tell us whether the
+    // outstanding balance is being collected at convert time, so we don't lie
+    // about cash-in on the Sale row (which feeds revenue + cash reports).
+    const totalAmount = booking.totalAmount as Prisma.Decimal;
+    const depositAmount = booking.depositAmount as Prisma.Decimal;
+    const isFullPrepay = depositAmount.equals(totalAmount);
+
+    if (!isFullPrepay && !dto.collectBalance) {
+      throw new BadRequestException(
+        `ต้องเรียกเก็บยอดส่วนต่าง ${totalAmount
+          .sub(depositAmount)
+          .toFixed(2)} บาท ก่อนแปลงเป็นการขาย (ส่ง collectBalance: true เมื่อรับเงินครบ)`,
+      );
+    }
+
+    // C1 — inline the SalesService.createCashSale invariants the original
+    // tx.sale.create skipped: verifyProductInStock, Product.status flip to
+    // SOLD_CASH, SalesCommission row. Doing it inline (not by calling
+    // SalesService) keeps the booking module self-contained and avoids
+    // accidentally inheriting CASH-sale discount / loyalty branches that
+    // don't apply here.
     return this.prisma.$transaction(async (tx) => {
+      // 1. Claim the booking PAID → CONVERTED atomically.
       const claim = await tx.booking.updateMany({
         where: {
           id,
@@ -563,10 +592,23 @@ export class BookingsService {
         throw new ConflictException('ใบจองนี้ถูกแปลงเป็นการขายแล้ว');
       }
 
+      // 2. Verify the product is still IN_STOCK (race vs another POS sale).
+      const product = await tx.product.findUnique({
+        where: { id: firstItem.productId! },
+      });
+      if (!product || product.deletedAt || product.status !== 'IN_STOCK') {
+        throw new BadRequestException(
+          'สินค้าไม่พร้อมขาย หรือถูกขายไปแล้ว — กรุณาตรวจสอบสต็อก',
+        );
+      }
+
       const saleNumber = await generateSaleNumber(
         tx as unknown as Parameters<typeof generateSaleNumber>[0],
       );
 
+      // 3. Create the Sale row. amountReceived = depositAmount when no balance
+      // collected, totalAmount when fully prepaid OR balance collected now.
+      const amountReceived = isFullPrepay || dto.collectBalance ? totalAmount : depositAmount;
       const sale = await tx.sale.create({
         data: {
           saleNumber,
@@ -575,19 +617,51 @@ export class BookingsService {
           productId: firstItem.productId!,
           branchId: booking.branchId,
           salespersonId,
-          sellingPrice: booking.totalAmount,
+          sellingPrice: totalAmount,
           discount: ZERO,
-          netAmount: booking.totalAmount,
+          netAmount: totalAmount,
           paymentMethod:
             (dto.paymentMethod as Prisma.SaleCreateInput['paymentMethod']) ||
             booking.depositMethod ||
             null,
-          amountReceived: booking.totalAmount,
-          downPaymentAmount: booking.depositAmount,
+          amountReceived,
+          downPaymentAmount: depositAmount,
           notes: dto.notes || `แปลงจากใบจอง ${booking.bookingNumber}`,
         },
       });
 
+      // 4. Flip product → SOLD_CASH (mirrors SalesService.createCashSale).
+      await tx.product.update({
+        where: { id: firstItem.productId! },
+        data: { status: 'SOLD_CASH' },
+      });
+
+      // 5. Auto-create sales commission (read from CommissionRule, fallback 3%).
+      const nowCommission = new Date();
+      const period = `${nowCommission.getFullYear()}-${String(
+        nowCommission.getMonth() + 1,
+      ).padStart(2, '0')}`;
+      const rule = await tx.commissionRule.findFirst({
+        where: { isActive: true, deletedAt: null },
+        orderBy: { createdAt: 'desc' },
+      });
+      const commissionRate = rule?.rate ? Number(rule.rate) : 0.03;
+      const commissionAmount = totalAmount.mul(commissionRate).toDecimalPlaces(2);
+      await tx.salesCommission.create({
+        data: {
+          salespersonId,
+          // Cash sale has no contract — snapshot earner = current earner.
+          snapshotSalespersonId: salespersonId,
+          saleId: sale.id,
+          period,
+          saleAmount: totalAmount,
+          commissionRate,
+          commissionAmount,
+          status: 'PENDING',
+        },
+      });
+
+      // 6. Link booking → sale (FK on Booking side).
       await tx.booking.update({
         where: { id },
         data: { convertedToSaleId: sale.id },
@@ -604,7 +678,9 @@ export class BookingsService {
             status: 'CONVERTED',
             saleId: sale.id,
             saleNumber: sale.saleNumber,
-            depositTransferred: booking.depositAmount.toFixed(2),
+            depositTransferred: depositAmount.toFixed(2),
+            amountReceived: amountReceived.toFixed(2),
+            balanceCollectedAtConvert: !isFullPrepay && !!dto.collectBalance,
           },
         },
       });
@@ -734,6 +810,12 @@ export class BookingsService {
             err instanceof Error ? err.message : String(err)
           }`,
         );
+        // C5 — per-row Sentry capture so one bad candidate doesn't disappear
+        // into the log noise. Cron-level Sentry only fires on an overall throw,
+        // and the per-row try/catch above swallows individual failures.
+        Sentry.captureException(err, {
+          tags: { module: 'booking-expire', bookingId: candidate.id },
+        });
       }
     }
     return flipped;

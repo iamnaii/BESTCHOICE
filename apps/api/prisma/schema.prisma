@@ -6427,6 +6427,10 @@ model Booking {
   notes               String?
   depositPaidAt       DateTime?     @map("deposit_paid_at")
   depositMethod       PaymentMethod? @map("deposit_method")
+  /// Cash Account Dimension (CoA code) — required on payDeposit per
+  /// `.claude/rules/accounting.md`. Nullable column for back-compat with
+  /// any row created before payDeposit was called (PENDING_DEPOSIT rows).
+  depositAccountCode  String?       @map("deposit_account_code")
   depositReceivedById String?       @map("deposit_received_by_id")
   canceledAt          DateTime?     @map("canceled_at")
   canceledById        String?       @map("canceled_by_id")

@@ -7,6 +7,7 @@ type PrismaTx = {
   contract: { findFirst: (...args: unknown[]) => Promise<{ contractNumber: string } | null> };
   sale: { findFirst: (...args: unknown[]) => Promise<{ saleNumber: string } | null> };
   purchaseOrder: { count: (...args: unknown[]) => Promise<number> };
+  quote?: { findFirst: (...args: unknown[]) => Promise<{ quoteNumber: string } | null> };
 };
 
 /**
@@ -47,6 +48,42 @@ export async function generateSaleNumber(tx: PrismaTx): Promise<string> {
     ? parseInt(lastSale.saleNumber.replace(/\D/g, '')) || 0
     : 0;
   return `SL${String(lastNum + 1).padStart(6, '0')}`;
+}
+
+/**
+ * SP5 — Generate next quote number (QU-YYYYMMDD-NNNN, Asia/Bangkok date).
+ * Per-day reset, 4-digit zero-padded sequence. No advisory lock — Quote is
+ * SHOP-side pre-sale, very low concurrency. Mirrors generateContractNumber
+ * style (lookup MAX(quoteNumber) for the day's prefix).
+ */
+export async function generateQuoteNumber(tx: PrismaTx): Promise<string> {
+  if (!tx.quote) {
+    throw new Error('generateQuoteNumber requires a transaction client with `quote` delegate');
+  }
+  const now = new Date();
+  // Asia/Bangkok local YYYYMMDD via Intl (BKK is UTC+7, no DST).
+  const parts = now.toLocaleString('en-CA', {
+    timeZone: 'Asia/Bangkok',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const [y, m, d] = parts.split('-');
+  const yyyymmdd = `${y}${m}${d}`;
+  const prefix = `QU-${yyyymmdd}-`;
+
+  const last = await tx.quote.findFirst({
+    where: { quoteNumber: { startsWith: prefix } },
+    orderBy: { quoteNumber: 'desc' as const },
+    select: { quoteNumber: true },
+  });
+
+  let nextSeq = 1;
+  if (last) {
+    const lastSeq = parseInt(last.quoteNumber.slice(prefix.length), 10) || 0;
+    nextSeq = lastSeq + 1;
+  }
+  return `${prefix}${String(nextSeq).padStart(4, '0')}`;
 }
 
 /**

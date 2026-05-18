@@ -48,6 +48,10 @@ import {
   TrendingDown,
   BookOpen,
   History,
+  // SP5 — SHOP additions
+  ReceiptText,
+  Inbox,
+  ShieldCheck,
 } from 'lucide-react';
 
 /* ── Types ─────────────────────────────────────────── */
@@ -142,6 +146,7 @@ const SALES_CONFIG: RoleMenuConfig = {
       zone: 'shop',
       items: [
         { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
+        { label: 'ใบเสนอราคา', path: '/quotes', icon: ReceiptText },
         { label: 'ลูกค้า', path: '/customers', icon: Users },
         { label: 'เช็คเครดิตลูกค้าใหม่', path: '/customer-intake', icon: UserSearch },
         { label: 'รับซื้อมือสอง', path: '/trade-in', icon: Smartphone },
@@ -155,6 +160,8 @@ const SALES_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
+        { label: 'เอกสารร่าง', path: '/drafts', icon: Inbox },
+        { label: 'รับประกัน/ส่งซ่อม', path: '/insurance', icon: ShieldCheck },
       ],
     },
     {
@@ -204,11 +211,14 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
       zone: 'shop',
       items: [
         { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
+        { label: 'ใบเสนอราคา', path: '/quotes', icon: ReceiptText },
         { label: 'ลูกค้า', path: '/customers', icon: Users },
         { label: 'เช็คเครดิตลูกค้าใหม่', path: '/customer-intake', icon: UserSearch },
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
+        { label: 'เอกสารร่าง', path: '/drafts', icon: Inbox },
         { label: 'จัดการอุปกรณ์', path: '/mdm', icon: Smartphone },
+        { label: 'รับประกัน/ส่งซ่อม', path: '/insurance', icon: ShieldCheck },
       ],
     },
     {
@@ -316,6 +326,7 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
         { label: 'รายจ่าย', path: '/expenses', icon: Receipt },
         { label: 'รายได้อื่น', path: '/other-income', icon: TrendingUp },
+        { label: 'เอกสารร่าง', path: '/drafts', icon: Inbox },
         { label: 'กำไร-ขาดทุน', path: '/profit-loss', icon: PieChart },
         // SP3 — Tax module split
         { label: 'ภ.พ.30 (VAT)', path: '/finance/vat', icon: Calculator },
@@ -358,6 +369,7 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
         { label: 'บันทึกรายจ่าย', path: '/expenses', icon: Receipt },
+        { label: 'เอกสารร่าง', path: '/drafts', icon: Inbox },
         { label: 'พิมพ์สติกเกอร์', path: '/stickers', icon: Tag },
         { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
       ],
@@ -485,27 +497,10 @@ const OWNER_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'ลูกค้า', path: '/customers', icon: Users },
         { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
+        { label: 'ใบเสนอราคา', path: '/quotes', icon: ReceiptText },
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
-        {
-          label: 'ใบเสนอราคา',
-          path: '/quotes',
-          icon: FileText,
-          placeholder: { trackingSP: 'SP5', eta: 'ภายในไตรมาส 3/2026' },
-        },
-      ],
-    },
-    {
-      key: 'owner-drafts',
-      label: 'รายการร่าง',
-      icon: FileText,
-      zone: 'shop',
-      items: [
-        {
-          label: 'เอกสารร่างทุกประเภท',
-          path: '/drafts',
-          icon: FileText,
-          placeholder: { trackingSP: 'SP5', eta: 'ภายในไตรมาส 3/2026' },
-        },
+        { label: 'เอกสารร่าง', path: '/drafts', icon: Inbox },
+        { label: 'รับประกัน/ส่งซ่อม', path: '/insurance', icon: ShieldCheck },
       ],
     },
     {

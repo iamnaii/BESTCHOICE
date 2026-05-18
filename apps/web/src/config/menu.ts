@@ -52,6 +52,8 @@ import {
   ReceiptText,
   Inbox,
   ShieldCheck,
+  // P3-SP5 — SHOP-side accounting menu icon
+  Store,
 } from 'lucide-react';
 
 /* ── Types ─────────────────────────────────────────── */
@@ -260,6 +262,16 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'รีวิวลูกค้า', path: '/reviews', icon: Star },
       ],
     },
+    // P3-SP5 — SHOP-side accounting reports (Trial Balance + P&L)
+    {
+      key: 'bm-shop-accounting',
+      label: 'บัญชีหน้าร้าน',
+      icon: Calculator,
+      zone: 'shop',
+      items: [
+        { label: 'งบทดลอง + P&L (SHOP)', path: '/shop/accounting', icon: PieChart },
+      ],
+    },
   ],
   bottomNav: [
     { label: 'Dashboard', path: '/', icon: Home },
@@ -305,6 +317,8 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
         { label: 'จัดการอุปกรณ์', path: '/mdm', icon: Smartphone },
         { label: 'พิมพ์สติกเกอร์', path: '/stickers', icon: Tag },
+        // P3-SP5 — SHOP-side accounting (visible to FM in SHOP zone for cross-side overview)
+        { label: 'บัญชีหน้าร้าน (SHOP)', path: '/shop/accounting', icon: Calculator },
       ],
     },
     {
@@ -398,6 +412,8 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
         { label: 'ภ.ง.ด. 1/3/53 (WHT)', path: '/finance/wht', icon: Calculator },
         { label: 'e-Tax Invoice', path: '/finance/e-tax', icon: FileText },
         { label: 'รายงาน', path: '/reports', icon: BarChart3 },
+        // P3-SP5 — SHOP-side accounting reports
+        { label: 'บัญชีหน้าร้าน (SHOP)', path: '/shop/accounting', icon: Store },
       ],
     },
     assetMenuSection,
@@ -677,6 +693,16 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'คำขอผ่อนชำระ', path: '/installment-applications', icon: ClipboardCheck },
         { label: 'แผนออม', path: '/saving-plans', icon: PiggyBank },
         { label: 'รีวิวลูกค้า', path: '/reviews', icon: Star },
+      ],
+    },
+    // P3-SP5 — SHOP-side accounting reports
+    {
+      key: 'owner-shop-accounting',
+      label: 'บัญชีหน้าร้าน',
+      icon: Calculator,
+      zone: 'shop',
+      items: [
+        { label: 'งบทดลอง + P&L (SHOP)', path: '/shop/accounting', icon: PieChart },
       ],
     },
     {

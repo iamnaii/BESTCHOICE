@@ -157,6 +157,8 @@ const DunningSettingsPage = lazy(() => import('@/pages/DunningSettingsPage'));
 const SmsTemplatesPage = lazy(() => import('@/pages/SmsTemplatesPage'));
 const MonthlyClosePage = lazy(() => import('@/pages/MonthlyClosePage'));
 const YearEndClosingPage = lazy(() => import('@/pages/YearEndClosingPage'));
+// P3-SP5 — SHOP-side accounting (Trial Balance + P&L scoped to SHOP chart)
+const ShopAccountingPage = lazy(() => import('@/pages/ShopAccountingPage'));
 const IntercompanySettlementPage = lazy(() => import('@/pages/IntercompanySettlementPage'));
 // SP2 — Accounting Reports Gap
 const CashFlowPage = lazy(() =>
@@ -736,6 +738,17 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
                 <YearEndClosingPage />
+              </ProtectedRoute>
+            }
+          />
+          {/* P3-SP5 — SHOP-side accounting (Trial Balance + P&L) */}
+          <Route
+            path="/shop/accounting"
+            element={
+              <ProtectedRoute
+                roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}
+              >
+                <ShopAccountingPage />
               </ProtectedRoute>
             }
           />

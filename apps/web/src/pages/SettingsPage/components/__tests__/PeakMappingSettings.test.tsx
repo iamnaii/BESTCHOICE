@@ -113,4 +113,47 @@ describe('PeakMappingSettings', () => {
       ),
     );
   });
+
+  it('Download CSV uses server Content-Disposition filename when present', async () => {
+    // Spy on createElement to capture the <a download="..."> attribute set in downloadCsv
+    const originalCreate = document.createElement.bind(document);
+    const anchors: HTMLAnchorElement[] = [];
+    const createSpy = vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
+      const el = originalCreate(tag);
+      if (tag === 'a') {
+        anchors.push(el as HTMLAnchorElement);
+        // No-op click — jsdom would otherwise try to navigate
+        (el as HTMLAnchorElement).click = () => undefined;
+      }
+      return el;
+    });
+
+    apiGet.mockImplementation((path: string) => {
+      if (path === '/chart-of-accounts/peak-mapping') {
+        return Promise.resolve({ data: [] });
+      }
+      if (path === '/chart-of-accounts/peak-mapping/csv') {
+        return Promise.resolve({
+          data: new Blob(['code,name,peakCode\n']),
+          headers: { 'content-disposition': 'attachment; filename="peak-mapping-20260518.csv"' },
+        });
+      }
+      return Promise.reject(new Error('unexpected path: ' + path));
+    });
+
+    wrap(<PeakMappingSettings />);
+    await waitFor(() => expect(apiGet).toHaveBeenCalledWith('/chart-of-accounts/peak-mapping'));
+
+    fireEvent.click(screen.getByRole('button', { name: /ดาวน์โหลด CSV/ }));
+    await waitFor(() =>
+      expect(apiGet).toHaveBeenCalledWith(
+        '/chart-of-accounts/peak-mapping/csv',
+        expect.objectContaining({ responseType: 'blob' }),
+      ),
+    );
+    await waitFor(() => expect(anchors.length).toBeGreaterThan(0));
+    expect(anchors[0].download).toBe('peak-mapping-20260518.csv');
+
+    createSpy.mockRestore();
+  });
 });

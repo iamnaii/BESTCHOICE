@@ -123,10 +123,21 @@ export default function PeakMappingSettings() {
     try {
       const res = await api.get('/chart-of-accounts/peak-mapping/csv', { responseType: 'blob' });
       const blob = res.data as Blob;
+      // Use the server's Content-Disposition filename as the single source of truth.
+      // The server already stamps the filename with the Asia/Bangkok date — building
+      // a stamp client-side would drift to UTC between 17:00–24:00 UTC each day.
+      const contentDisp = (res.headers?.['content-disposition'] as string | undefined) || '';
+      const match = contentDisp.match(/filename="?([^";]+)"?/);
+      // Fallback uses a BKK-shifted date (UTC + 7h) so the offline fallback also
+      // aligns with the server's BKK date rather than the browser's local zone.
+      const fallbackBkk = new Date(Date.now() + 7 * 60 * 60 * 1000)
+        .toISOString()
+        .slice(0, 10)
+        .replace(/-/g, '');
+      const filename = match?.[1] || `peak-mapping-${fallbackBkk}.csv`;
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-      a.download = `peak-mapping-${today}.csv`;
+      a.download = filename;
       a.click();
       URL.revokeObjectURL(a.href);
     } catch (e) {

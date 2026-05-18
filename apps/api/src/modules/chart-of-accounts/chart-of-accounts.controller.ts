@@ -1,5 +1,6 @@
 import { Controller, Get, Post, Put, Patch, Delete, Param, Body, Query, Req, Res, UseGuards, BadRequestException } from '@nestjs/common';
 import type { Response } from 'express';
+import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -64,6 +65,9 @@ export class ChartOfAccountsController {
 
   @Put('peak-mapping')
   @Roles('OWNER', 'ACCOUNTANT')
+  // Bulk write (up to 500 mappings/request) writes one audit-log row per change.
+  // Cap per-user to 10 saves/min so a hot-loop client can't flood AuditLog.
+  @Throttle({ short: { ttl: 60000, limit: 10 } })
   updatePeakMapping(@Body() dto: UpdatePeakMappingDto, @Req() req: AuthedRequest) {
     if (!req.user?.id) throw new BadRequestException('กรุณาเข้าสู่ระบบ');
     return this.service.updatePeakMapping(dto, req.user.id);
@@ -76,6 +80,9 @@ export class ChartOfAccountsController {
     const filename = `peak-mapping-${bkkDateStamp()}.csv`;
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    // Expose Content-Disposition so the browser fetch() can read it through CORS
+    // (client uses it as the single source of truth for the filename — avoids UTC/BKK drift).
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
     res.end(csv);
   }
 

@@ -337,6 +337,8 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         // SP6 — Bank/Cash account directory
         { label: 'บัญชีเงินสด/ธนาคาร', path: '/finance/bank-accounts', icon: Landmark },
         { label: 'งวดบัญชี', path: '/accounting/periods', icon: CalendarDays },
+        // P3-SP3 — PEAK CSV export (deep-linked from /settings#peak-mapping which is OWNER-only)
+        { label: 'ส่งออก PEAK CSV', path: '/finance/peak-export', icon: Plug },
       ],
     },
     assetMenuSection,
@@ -572,6 +574,8 @@ const OWNER_CONFIG: RoleMenuConfig = {
             { label: 'ปิดบัญชีรายเดือน', path: '/monthly-close', icon: CalendarDays },
             { label: 'งวดบัญชี', path: '/accounting/periods', icon: CalendarDays },
             { label: 'ชำระเงินระหว่างบริษัท', path: '/accounting/intercompany', icon: ClipboardList },
+            // P3-SP3 — PEAK CSV export (mapping config lives in /settings#peak-mapping)
+            { label: 'ส่งออก PEAK CSV', path: '/finance/peak-export', icon: Plug },
           ],
         },
       ],

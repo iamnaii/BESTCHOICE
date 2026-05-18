@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { PDPAController } from './pdpa.controller';
 import { PDPAService } from './pdpa.service';
 import { PrismaModule } from '../../prisma/prisma.module';
@@ -10,13 +10,25 @@ import { PdpaEncryptionController } from './pdpa-encryption.controller';
 import { PdpaBackfillRetentionCron } from './pdpa-backfill-retention.cron';
 
 /**
- * Hotfix 2026-05-18 — was importing CustomersModule (P3-SP4) which transitively
- * pulled in OverdueModule → ChatEngineModule → StaffChatModule cycle, breaking
- * boot. Now imports the leaf CustomerPiiModule directly — same CustomerPiiService
- * is exported, no other deps come along. Supersedes #1017 forwardRef hotfix.
+ * Hotfix 2026-05-18 (#1018 + this PR) —
+ *
+ * Two cycles needed breaking:
+ * 1) PDPAModule → CustomersModule → OverdueModule → ChatEngine ↔ StaffChat cycle
+ *    → fixed in #1018 by extracting CustomerPiiModule (leaf, PrismaModule only).
+ * 2) NotificationsModule → PDPAModule → AuthModule (in scan order: AuthModule
+ *    is mid-init via LineOaModule forwardRef, so PDPAModule sees AuthModule
+ *    as undefined). → fixed here by forwardRef on AuthModule import.
+ *
+ * Without (1) the chain dies at StaffChatModule with index [0]=undefined.
+ * Without (2) it dies at PDPAModule with index [1]=AuthModule undefined.
  */
 @Module({
-  imports: [PrismaModule, AuthModule, CustomerPiiModule, AuditModule],
+  imports: [
+    PrismaModule,
+    forwardRef(() => AuthModule),
+    CustomerPiiModule,
+    AuditModule,
+  ],
   controllers: [PDPAController, PdpaEncryptionController],
   providers: [PDPAService, PdpaEncryptionService, PdpaBackfillRetentionCron],
   exports: [PDPAService, PdpaEncryptionService],

@@ -13,6 +13,7 @@
  */
 import { PrismaClient } from '@prisma/client';
 import { seedFinanceCoa } from '../../prisma/seed-coa-finance';
+import { seedShopCoa } from '../../prisma/seed-coa-shop';
 
 const REQUIRED_CONSENT = 'YES_I_AM_SURE';
 
@@ -115,7 +116,11 @@ async function main(): Promise<void> {
     }
     if (canSeed) {
       const result = await seedFinanceCoa(prisma);
-      console.log(`[wipe-accounting]   Reseed complete: ${result.created} created, ${result.updated} updated`);
+      console.log(`[wipe-accounting]   FINANCE Reseed complete: ${result.created} created, ${result.updated} updated`);
+      // P3-SP5: also seed SHOP-side chart (S-prefixed codes). Same idempotent
+      // upsert pattern; safe to re-run.
+      const shopResult = await seedShopCoa(prisma);
+      console.log(`[wipe-accounting]   SHOP Reseed complete: ${shopResult.created} created, ${shopResult.updated} updated`);
     }
     console.log('');
     console.log('[wipe-accounting] Wipe & reseed finished successfully.');

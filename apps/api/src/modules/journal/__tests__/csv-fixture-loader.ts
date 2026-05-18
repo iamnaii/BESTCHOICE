@@ -34,7 +34,12 @@ export interface CaseFixture {
   entries: JeBlock[];
 }
 
-const ACCOUNT_CODE_RE = /^\d{2}-\d{4}$/;
+// P3-SP5: accept both FINANCE codes (NN-NNNN) and SHOP codes (SNN-NNNN).
+// The 'S' prefix on SHOP chart of accounts avoids collision with FINANCE codes
+// in the single `chart_of_accounts` table (unique `code`). When Phase 3 SP7
+// splits the two halves into separate legal entities + DBs, the SHOP DB can
+// drop the prefix internally — but until then the prefix is the partition key.
+const ACCOUNT_CODE_RE = /^S?\d{2}-\d{4}$/;
 
 export function loadCoaFromCsv(csvPath: string): CoaRow[] {
   const text = fs.readFileSync(csvPath, 'utf-8');

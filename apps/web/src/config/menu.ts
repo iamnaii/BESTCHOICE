@@ -147,6 +147,7 @@ const SALES_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
         { label: 'ใบเสนอราคา', path: '/quotes', icon: ReceiptText },
+        { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
         { label: 'ลูกค้า', path: '/customers', icon: Users },
         { label: 'เช็คเครดิตลูกค้าใหม่', path: '/customer-intake', icon: UserSearch },
         { label: 'รับซื้อมือสอง', path: '/trade-in', icon: Smartphone },
@@ -212,6 +213,7 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
         { label: 'ใบเสนอราคา', path: '/quotes', icon: ReceiptText },
+        { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
         { label: 'ลูกค้า', path: '/customers', icon: Users },
         { label: 'เช็คเครดิตลูกค้าใหม่', path: '/customer-intake', icon: UserSearch },
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
@@ -502,6 +504,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'ลูกค้า', path: '/customers', icon: Users },
         { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
         { label: 'ใบเสนอราคา', path: '/quotes', icon: ReceiptText },
+        { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
         { label: 'เอกสารร่าง', path: '/drafts', icon: Inbox },
         { label: 'รับประกัน/ส่งซ่อม', path: '/insurance', icon: ShieldCheck },

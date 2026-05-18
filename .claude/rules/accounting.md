@@ -299,9 +299,57 @@ VendorSettlement intentionally does NOT support per-line routing — by the mode
 | PPE + depreciation | 12-21XX, 53-16XX | Asset register + monthly depreciation cron |
 | WHT | 21-31XX/32XX, 54-XXXX | Payroll + vendor withholding flows |
 | Tax-disallowed expenses | 54-XXXX | Flag on expense type |
-| PEAK code mapping | column in CSV | Export reconciliation |
 | SHOP-side accounting | SHOP chart (separate) | Paired SHOP+FINANCE JEs (currently FINANCE-only) |
 | 41-2101/02 HP Revenue | — | CSV omits: FINANCE income = interest, not principal |
+
+> "PEAK code mapping" graduated to Phase 3 SP3 — see "PEAK Code Mapping" section below.
+
+---
+
+## PEAK Code Mapping (Phase 3 SP3)
+
+The owner uses **PEAK** (peakaccount.com) as the CPA's external bookkeeping system. Phase 3 SP3 wires a per-account PEAK code so the journal can be exported in PEAK's chart and uploaded for tax/audit handoff. Internal codes stay unchanged — PEAK is a parallel external chart.
+
+### Schema
+
+`ChartOfAccount.peakCode String?` (column `peak_code`, max 20 chars, partial index for non-null values). Migration `20260946000000_add_peak_code_to_chart_of_accounts` is idempotent (uses `IF NOT EXISTS`).
+
+CSV fixture `apps/api/src/modules/journal/__tests__/fixtures/cpa-cases/finance-coa.csv` already has column 9 "เลขบัญชีในพึค" reserved — the CSV loader at `apps/api/src/modules/journal/__tests__/csv-fixture-loader.ts` now reads it as `peakCode`. Values remain EMPTY in the CSV; owner fills them via UI. The seeder (`apps/api/prisma/seed-coa-finance.ts`) only writes `peakCode` when the CSV cell is non-empty, so re-seeding never overwrites owner-set values.
+
+### Settings UI
+
+`/settings#peak-mapping` (OWNER only — non-OWNER blocked by the global SettingsPage guard). Tab provides:
+
+- Editable table: `รหัสบัญชี | ชื่อบัญชี | รหัส PEAK` (in-row input, max 20 chars).
+- Search by code/name/peakCode.
+- Bulk import: paste `internal_code,peak_code` lines (header row auto-skipped).
+- "ดาวน์โหลด CSV" → calls `GET /chart-of-accounts/peak-mapping/csv`.
+- "บันทึก" enables only when there are unsaved changes; clears dirty map on success.
+
+ACC role cannot reach the tab (settings page is OWNER-only) but the API endpoint accepts ACC for parity with the future role expansion — see `peak-mapping.dto.ts`.
+
+### Endpoints
+
+| Method | Path | Roles | Notes |
+|---|---|---|---|
+| GET | `/chart-of-accounts/peak-mapping` | OWNER, FM, ACC | Returns `{ id, code, name, type, peakCode }` for active accounts |
+| PUT | `/chart-of-accounts/peak-mapping` | OWNER, ACC | Bulk update; rejects empty-string (must be null or trimmed); writes `PEAK_MAPPING_UPDATED` audit log with diff |
+| GET | `/chart-of-accounts/peak-mapping/csv` | OWNER, FM, ACC | `text/csv; charset=utf-8` + UTF-8 BOM; filename `peak-mapping-YYYYMMDD.csv` (BKK) |
+| GET | `/expenses/journal/export-peak?startDate&endDate` | OWNER, FM, ACC | CSV of POSTED journal lines tagged with mapped PEAK code |
+
+### Export semantics
+
+`/expenses/journal/export-peak` returns CSV columns: `entryDate, entryNumber, peakCode, accountCode, accountName, debit, credit, description, reference`. Money values are emitted as `Prisma.Decimal.toString()` to preserve precision (never `Number()`).
+
+Guards:
+- Date range capped at 186 days (~6 months). Longer ranges → `BadRequestException`.
+- Lines whose account has no PEAK mapping are SKIPPED. The skipped count returns via header `X-Skipped-Lines` (and total rows via `X-Row-Count`). Both headers are CORS-exposed via `Access-Control-Expose-Headers`.
+
+Frontend `/finance/peak-export` (OWNER, FM, ACC) wraps the call with a date-range picker and surfaces the skipped count as a warning banner with a deep link back to the mapping settings.
+
+### Audit
+
+`PEAK_MAPPING_UPDATED` audit log entry (action string, no Prisma enum). `entity = 'chart_of_account'`, `entityId` = comma-joined account codes, `newValue.changes` = array of `{ code, before, after }`.
 
 ---
 

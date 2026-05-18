@@ -985,4 +985,92 @@ describe('AccountingService', () => {
       expect(result.totalCredit).toBeCloseTo(100, 2);
     });
   });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // P3-SP3: exportJournalWithPeakCodes
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  describe('exportJournalWithPeakCodes', () => {
+    const startDate = new Date('2026-05-01');
+    const endDate = new Date('2026-05-31');
+
+    beforeEach(() => {
+      // Two CoA rows — one mapped, one unmapped.
+      prisma.chartOfAccount.findMany.mockImplementation(({ where }: { where?: { peakCode?: { not?: null } } }) => {
+        if (where?.peakCode?.not === null) {
+          return Promise.resolve([
+            { code: '11-1101', name: 'เงินสด - สุทธินีย์', peakCode: '1110-01' },
+          ]);
+        }
+        return Promise.resolve([
+          { code: '11-1101', name: 'เงินสด - สุทธินีย์' },
+          { code: '11-2103', name: 'ลูกหนี้ค้างชำระ' },
+        ]);
+      });
+    });
+
+    it('rejects a range longer than 6 months', async () => {
+      await expect(
+        service.exportJournalWithPeakCodes(new Date('2026-01-01'), new Date('2026-12-31')),
+      ).rejects.toThrow(/ไม่เกิน 6 เดือน/);
+    });
+
+    it('rejects when end is before start', async () => {
+      await expect(
+        service.exportJournalWithPeakCodes(new Date('2026-05-31'), new Date('2026-05-01')),
+      ).rejects.toThrow(/ไม่อยู่ก่อนวันเริ่มต้น/);
+    });
+
+    it('returns CSV with header + mapped rows, skips unmapped accounts', async () => {
+      prisma.journalLine.findMany.mockResolvedValue([
+        {
+          accountCode: '11-1101',
+          debit: new Prisma.Decimal('1000.50'),
+          credit: new Prisma.Decimal(0),
+          description: 'รับชำระงวด 1',
+          journalEntry: {
+            entryNumber: 'JE-202605-0001',
+            entryDate: new Date('2026-05-10'),
+            description: 'ชำระเงิน',
+            referenceType: 'PAYMENT',
+            referenceId: 'pay-uuid-1',
+          },
+        },
+        {
+          accountCode: '11-2103', // unmapped — should be skipped
+          debit: new Prisma.Decimal(0),
+          credit: new Prisma.Decimal('1000.50'),
+          description: 'รับชำระงวด 1',
+          journalEntry: {
+            entryNumber: 'JE-202605-0001',
+            entryDate: new Date('2026-05-10'),
+            description: 'ชำระเงิน',
+            referenceType: 'PAYMENT',
+            referenceId: 'pay-uuid-1',
+          },
+        },
+      ]);
+
+      const result = await service.exportJournalWithPeakCodes(startDate, endDate);
+
+      expect(result.skippedLineCount).toBe(1);
+      expect(result.rowCount).toBe(1);
+      // First char is BOM, then header
+      expect(result.csv).toContain('entryDate,entryNumber,peakCode');
+      // Mapped line is present
+      expect(result.csv).toContain('1110-01');
+      expect(result.csv).toContain('11-1101');
+      // Money values preserved as string (not Number())
+      expect(result.csv).toContain('1000.5');
+    });
+
+    it('returns 0 rows when nothing in range matches', async () => {
+      prisma.journalLine.findMany.mockResolvedValue([]);
+      const result = await service.exportJournalWithPeakCodes(startDate, endDate);
+      expect(result.rowCount).toBe(0);
+      expect(result.skippedLineCount).toBe(0);
+      // Still has header + BOM
+      expect(result.csv.startsWith('﻿entryDate,')).toBe(true);
+    });
+  });
 });

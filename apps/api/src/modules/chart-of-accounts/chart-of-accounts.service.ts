@@ -3,6 +3,19 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateChartOfAccountDto, UpdateChartOfAccountDto } from './dto/chart-of-account.dto';
 import { CoaAccountRow, CoaGroupedResponse } from './dto/coa-grouped.dto';
+import { UpdatePeakMappingDto } from './dto/peak-mapping.dto';
+
+/**
+ * P3-SP3: PEAK mapping row returned to the settings UI. peakCode is null when
+ * the owner hasn't mapped this account yet — the UI shows an empty input cell.
+ */
+export interface PeakMappingRow {
+  id: string;
+  code: string;
+  name: string;
+  type: string;
+  peakCode: string | null;
+}
 
 @Injectable()
 export class ChartOfAccountsService {
@@ -128,5 +141,119 @@ export class ChartOfAccountsService {
       where: { id },
       data: { deletedAt: new Date() },
     });
+  }
+
+  // ============================================================
+  // P3-SP3: PEAK code mapping
+  // ============================================================
+
+  /** Return all active accounts with current PEAK code mapping (for the settings table). */
+  async getPeakMapping(): Promise<PeakMappingRow[]> {
+    const rows = await this.prisma.chartOfAccount.findMany({
+      where: { deletedAt: null, status: 'ใช้งาน' },
+      orderBy: { code: 'asc' },
+      select: { id: true, code: true, name: true, type: true, peakCode: true },
+    });
+    return rows;
+  }
+
+  /**
+   * Bulk-update peakCode on a list of accounts. Writes one AuditLog row
+   * summarising what changed (entity = `chart_of_account`, entityId =
+   * comma-joined codes). Empty-string peakCode values are rejected — DTO must
+   * pass null or a non-empty trimmed value.
+   */
+  async updatePeakMapping(
+    dto: UpdatePeakMappingDto,
+    userId: string,
+  ): Promise<{ updated: number }> {
+    if (!dto.mappings.length) return { updated: 0 };
+
+    // Validate: peakCode must be either null/undefined or a trimmed non-empty string.
+    // (The regex in the DTO allows ""; we reject explicitly here so the column
+    // never stores '' — only null or a real code.)
+    const normalised = dto.mappings.map((m) => {
+      const raw = m.peakCode;
+      if (raw === undefined || raw === null) {
+        return { id: m.id, peakCode: null as string | null };
+      }
+      const trimmed = String(raw).trim();
+      if (trimmed.length === 0) {
+        return { id: m.id, peakCode: null };
+      }
+      return { id: m.id, peakCode: trimmed };
+    });
+
+    // Pre-load existing rows in a single query so we can (a) reject unknown IDs
+    // and (b) capture before/after values for the audit log.
+    const ids = normalised.map((m) => m.id);
+    const existing = await this.prisma.chartOfAccount.findMany({
+      where: { id: { in: ids }, deletedAt: null },
+      select: { id: true, code: true, peakCode: true },
+    });
+    const existingMap = new Map(existing.map((e) => [e.id, e]));
+    const missing = normalised.filter((m) => !existingMap.has(m.id));
+    if (missing.length) {
+      throw new BadRequestException(
+        `ไม่พบบัญชี: ${missing.slice(0, 5).map((m) => m.id).join(', ')}${missing.length > 5 ? '...' : ''}`,
+      );
+    }
+
+    // Apply updates inside a transaction so partial failure rolls back the
+    // whole batch (matches the all-or-nothing UX expected by a Save button).
+    const changes: { code: string; before: string | null; after: string | null }[] = [];
+    await this.prisma.$transaction(async (tx) => {
+      for (const m of normalised) {
+        const prev = existingMap.get(m.id)!;
+        if (prev.peakCode !== m.peakCode) {
+          await tx.chartOfAccount.update({
+            where: { id: m.id },
+            data: { peakCode: m.peakCode },
+          });
+          changes.push({ code: prev.code, before: prev.peakCode, after: m.peakCode });
+        }
+      }
+
+      if (changes.length > 0) {
+        await tx.auditLog.create({
+          data: {
+            userId,
+            action: 'PEAK_MAPPING_UPDATED',
+            entity: 'chart_of_account',
+            entityId: changes.map((c) => c.code).join(','),
+            newValue: {
+              changes: changes.map((c) => ({
+                code: c.code,
+                before: c.before,
+                after: c.after,
+              })),
+              count: changes.length,
+            } as unknown as Prisma.JsonObject,
+          },
+        });
+      }
+    });
+
+    return { updated: changes.length };
+  }
+
+  /**
+   * Render the current PEAK mapping as a CSV string (UTF-8 BOM, 3 columns:
+   * code, name, peakCode). For Excel-friendly Thai display + later re-import.
+   */
+  async exportPeakMappingCsv(): Promise<string> {
+    const rows = await this.getPeakMapping();
+    const escape = (v: string | null) => {
+      if (v == null) return '';
+      const s = String(v);
+      if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+        return `"${s.replace(/"/g, '""')}"`;
+      }
+      return s;
+    };
+    const header = ['code', 'name', 'peakCode'].join(',');
+    const body = rows.map((r) => [escape(r.code), escape(r.name), escape(r.peakCode)].join(','));
+    // UTF-8 BOM so Excel renders Thai correctly without prompting for encoding.
+    return '﻿' + [header, ...body].join('\n');
   }
 }

@@ -6378,3 +6378,33 @@ model QuoteItem {
   @@index([productId])
   @@map("quote_items")
 }
+
+/// SP6 — Bank/Cash Account directory.
+/// Mirrors the 6 cash/bank CoA codes (11-1101..1103 cash, 11-1201..1203 bank) and
+/// lets owners register additional accounts. The page `/finance/bank-accounts`
+/// computes current balance from JournalLine for each `accountCode`.
+/// Account number is treated as PII — UI must mask all but the last 5 digits.
+model BankAccount {
+  id            String    @id @default(uuid())
+  /// Uniqueness is enforced at the DB level by a PARTIAL unique index that
+  /// only applies to non-soft-deleted rows (see migration
+  /// `20260941000000_add_bank_accounts`). We deliberately do NOT use Prisma
+  /// `@unique` here because that would create a full UNIQUE CONSTRAINT and
+  /// block re-creating an account after a soft delete.
+  accountCode   String    @map("account_code")
+  accountName   String    @map("account_name")
+  bankName      String    @map("bank_name")
+  accountNumber String?   @map("account_number")
+  /// 'SAVINGS' | 'CURRENT' | 'FIXED' | 'CASH'
+  accountType   String    @default("SAVINGS") @map("account_type")
+  currency      String    @default("THB")
+  isActive      Boolean   @default(true) @map("is_active")
+  notes         String?
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+
+  @@index([accountCode])
+  @@index([deletedAt])
+  @@map("bank_accounts")
+}

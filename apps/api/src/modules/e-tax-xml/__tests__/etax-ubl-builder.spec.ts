@@ -58,14 +58,14 @@ describe('EtaxUblBuilder (ขมธอ.21-2562 UBL 2.1)', () => {
     expect(xml).toContain('<cbc:InvoiceTypeCode>388</cbc:InvoiceTypeCode>');
     expect(xml).toContain('<cbc:DocumentCurrencyCode>THB</cbc:DocumentCurrencyCode>');
 
-    // Supplier (FINANCE) + branch code = 00000
-    expect(xml).toContain('0000000000001');
+    // C5 — supplier TaxScheme uses `cbc:CompanyID schemeID="TXID"`
+    // with `{taxId}-{branchCode}` format per ขมธอ.21-2562
     expect(xml).toContain('BESTCHOICE FINANCE');
-    expect(xml).toMatch(/listName="BranchCode"/);
-    expect(xml).toContain('>00000<');
+    expect(xml).toContain('0000000000001-00000');
+    expect(xml).toMatch(/<cbc:CompanyID schemeID="TXID">0000000000001-00000<\/cbc:CompanyID>/);
 
-    // Customer with Thai name + tax ID
-    expect(xml).toContain('1100100000001');
+    // Customer with Thai name + tax ID (also TXID format)
+    expect(xml).toContain('1100100000001-00000');
     expect(xml).toContain('นาย ทดสอบ ระบบ');
 
     // TaxTotal with VAT 7%
@@ -104,6 +104,28 @@ describe('EtaxUblBuilder (ขมธอ.21-2562 UBL 2.1)', () => {
     // (one PartyTaxScheme remains — supplier).
     const matches = xml.match(/<cac:PartyTaxScheme>/g);
     expect(matches?.length).toBe(1);
+  });
+
+  it('C5 — emits cbc:CompanyID schemeID="TXID" for seller party (UBL/RD profile)', () => {
+    const input = baseInput();
+    input.supplier.taxId = '0123456789012';
+    input.supplier.branchCode = '00001';
+    const xml = builder.build(input);
+
+    // Supplier TaxScheme MUST carry the schemeID="TXID" attribute
+    // (the previously-emitted invented <cbc:TaxLevelCode> is rejected by RD)
+    expect(xml).toMatch(
+      /<cbc:CompanyID schemeID="TXID">0123456789012-00001<\/cbc:CompanyID>/,
+    );
+    expect(xml).not.toContain('<cbc:TaxLevelCode');
+  });
+
+  it('respects custom customer branchCode in TXID format', () => {
+    const input = baseInput();
+    input.customer.taxId = '0987654321099';
+    input.customer.branchCode = '00012';
+    const xml = builder.build(input);
+    expect(xml).toContain('0987654321099-00012');
   });
 
   it('renders multiple line items with correct amounts', () => {

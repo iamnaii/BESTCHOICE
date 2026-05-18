@@ -3014,6 +3014,12 @@ model CompanyInfo {
   nameTh             String  @map("name_th")
   nameEn             String? @map("name_en")
   taxId              String  @map("tax_id") // เลขทะเบียนนิติบุคคล/ผู้เสียภาษี
+  /// P2-SP5 C6 — RD branch code (5 digits, '00000' = head office) used in
+  /// e-Tax XML `cbc:CompanyID schemeID="TXID"` as `{taxId}-{branchCode}`.
+  /// Stored at company level so OWNER can change once if they file from a
+  /// sub-branch ('00001', '00002', ...). No UI to edit in SP5 — default is
+  /// fine for HQ FINANCE issuance.
+  taxBranchCode      String  @default("00000") @map("tax_branch_code")
   companyCode        String? @unique @map("company_code") // "SHOP" / "FINANCE"
   address            String
   phone              String?
@@ -6425,6 +6431,12 @@ model BankAccount {
 model ETaxSubmission {
   id             String               @id @default(uuid())
   paymentId      String               @unique @map("payment_id")
+  /// P2-SP5 C7 — sequential invoice number per ม.86/4. Format
+  /// `ET-YYYYMMDD-NNNN` (BKK day). Generated once at submission creation via
+  /// advisory-lock daily sequence (mirrors DocNumberService convention).
+  /// Idempotent — re-running generateForPayment reuses this stored number
+  /// instead of allocating a new one.
+  invoiceNumber  String?              @unique @map("invoice_number")
   /// Raw generated UBL 2.1 XML — large text column
   xmlContent     String               @map("xml_content") @db.Text
   /// PKCS#7 detached signature bundle (CMS) — populated after sign step

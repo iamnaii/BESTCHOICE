@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  Body,
   Controller,
   Get,
   Param,
@@ -60,6 +59,19 @@ export class ETaxXmlController {
     return this.service.checkConfig();
   }
 
+  /**
+   * C3 — Public-ish read of submit mode so the e-Tax invoice list page can
+   * enable/disable the "ส่งให้สรรพากร" button without exposing cert path or
+   * passwords. Available to OWNER, FINANCE_MANAGER, ACCOUNTANT.
+   *
+   * Returns only `{ mode: 'disabled' | 'sandbox' | 'prod' }`. No secrets.
+   */
+  @Get('submit-mode')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  async getSubmitMode(): Promise<{ mode: 'disabled' | 'sandbox' | 'prod' }> {
+    return this.service.getSubmitModeStatus();
+  }
+
   @Post('generate/:paymentId')
   @Roles('OWNER', 'FINANCE_MANAGER')
   async generate(
@@ -101,8 +113,6 @@ export class ETaxXmlController {
   @Roles('OWNER')
   async retry(@Param('id') id: string, @Req() req: AuthRequest) {
     if (!req.user) throw new BadRequestException('กรุณาเข้าสู่ระบบ');
-    // Empty body accepted — keep symmetric with other POST routes.
-    void Body; // type-only import marker
     return this.service.retrySubmission(id, req.user.id);
   }
 }

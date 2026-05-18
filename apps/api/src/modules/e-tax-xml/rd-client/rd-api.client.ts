@@ -107,20 +107,55 @@ export class RdApiClient {
         };
       }
 
-      // Heuristic: RD returns { result_code: 'ACCEPTED'|'REJECTED', submission_id, message }
-      // Adjust per actual production response shape during cert pinning.
-      const obj = parsed as Record<string, unknown>;
+      // C9 — Fail-loud on unknown RD response shape. RD's submitInvoice
+      // returns one of two known schemas:
+      //   { result_code: 'ACCEPTED'|'REJECTED', submission_id?, message? }
+      //   { status:      'ACCEPTED'|'REJECTED', tracking_id?,  reason?  }
+      // Anything else (HTML error page, partial response, downtime mock)
+      // must NOT silently map to SUBMITTED — the caller would lock in a
+      // false-positive ACCEPTED audit trail. Mark REJECTED with the raw
+      // body so accountants can investigate, and alert Sentry.
+      const obj = (parsed && typeof parsed === 'object' ? parsed : {}) as Record<
+        string,
+        unknown
+      >;
       const code = (obj.result_code ?? obj.status) as string | undefined;
       const submissionId = (obj.submission_id ?? obj.tracking_id) as string | undefined;
       const message = (obj.message ?? obj.reason) as string | undefined;
 
-      if (code && String(code).toUpperCase() === 'ACCEPTED') {
+      const upper = code ? String(code).toUpperCase() : '';
+
+      if (upper === 'ACCEPTED') {
         return { accepted: true, submissionId, rawResponse: parsed };
       }
 
+      if (upper === 'REJECTED') {
+        return {
+          accepted: false,
+          reason: message ?? 'RD รายงานปฏิเสธ (REJECTED) แต่ไม่ได้แจ้งเหตุผล',
+          rawResponse: parsed,
+        };
+      }
+
+      // Unknown shape — alert + record as REJECTED with raw payload. We do
+      // NOT throw because the lifecycle expects a structured result; an
+      // exception here would re-enter the transport-error path which is
+      // misleading (RD did respond, just in an unrecognized way).
+      this.logger.error(
+        `RD submit returned unknown response shape (code=${code ?? 'missing'}) at ${url}`,
+      );
+      Sentry.captureException(
+        new Error(
+          `etax.rd.submit.unknown_response: ${JSON.stringify(parsed).slice(0, 1000)}`,
+        ),
+        {
+          tags: { module: 'e-tax-xml', op: 'submit', reason: 'unknown_shape' },
+          extra: { url, parsed },
+        },
+      );
       return {
         accepted: false,
-        reason: message ?? `RD response: ${code ?? 'unknown'}`,
+        reason: `RD response รูปแบบไม่ถูกต้อง (code=${code ?? 'missing'}) — ตรวจสอบ rd_response`,
         rawResponse: parsed,
       };
     } catch (err) {

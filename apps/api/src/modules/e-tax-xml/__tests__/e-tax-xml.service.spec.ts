@@ -66,7 +66,9 @@ interface PaymentFixture {
       id: string;
       name: string;
       nationalId: string | null;
+      nationalIdEncrypted: string | null;
       addressIdCard: string | null;
+      addressIdCardEncrypted: string | null;
     };
   };
 }
@@ -84,8 +86,12 @@ function makePayment(overrides: Partial<PaymentFixture> = {}): PaymentFixture {
       customer: {
         id: 'cust-1',
         name: 'นาย ทดสอบ ระบบ',
+        // C1 — legacy plaintext only in tests; service must still read
+        // nationalIdEncrypted preferentially when present.
         nationalId: '1100100000001',
+        nationalIdEncrypted: null,
         addressIdCard: '99/9 ถ.ทดสอบ',
+        addressIdCardEncrypted: null,
       },
     },
     ...overrides,
@@ -97,6 +103,7 @@ const FINANCE = {
   nameTh: 'BESTCHOICE FINANCE',
   nameEn: null,
   taxId: '0000000000001',
+  taxBranchCode: '00000',
   address: '123 ถ.บัญชี',
 };
 
@@ -104,8 +111,10 @@ interface MockTx {
   eTaxSubmission: {
     create: jest.Mock;
     update: jest.Mock;
+    findFirst: jest.Mock;
   };
   auditLog: { create: jest.Mock };
+  $executeRawUnsafe: jest.Mock;
 }
 
 function buildPrismaMock(opts: {
@@ -114,6 +123,8 @@ function buildPrismaMock(opts: {
   finance?: typeof FINANCE | null;
   txCreatedSub?: AnySub;
   txUpdatedSub?: AnySub;
+  // C7 — last invoice number on the day; if null, sequence starts at 0001
+  lastInvoiceNumber?: string | null;
 }) {
   const auditCreate = jest.fn().mockResolvedValue({});
   const subCreate = jest.fn().mockImplementation(async ({ data }: { data: AnySub }) => ({
@@ -133,9 +144,20 @@ function buildPrismaMock(opts: {
     ...(opts.txUpdatedSub ?? makeSub()),
     ...data,
   }));
+  // C7 — tx-level findFirst is used by nextInvoiceNumber to discover the
+  // current max sequence per BKK day.
+  const txSubFindFirst = jest.fn().mockResolvedValue(
+    opts.lastInvoiceNumber ? { invoiceNumber: opts.lastInvoiceNumber } : null,
+  );
+  const txExecuteRaw = jest.fn().mockResolvedValue(1);
   const tx: MockTx = {
-    eTaxSubmission: { create: subCreate, update: subUpdate },
+    eTaxSubmission: {
+      create: subCreate,
+      update: subUpdate,
+      findFirst: txSubFindFirst,
+    },
     auditLog: { create: auditCreate },
+    $executeRawUnsafe: txExecuteRaw,
   };
   const prisma = {
     eTaxSubmission: {
@@ -149,7 +171,7 @@ function buildPrismaMock(opts: {
     },
     $transaction: jest.fn().mockImplementation(async (cb: (tx: MockTx) => unknown) => cb(tx)),
   };
-  return { prisma, tx, auditCreate, subCreate, subUpdate };
+  return { prisma, tx, auditCreate, subCreate, subUpdate, txSubFindFirst, txExecuteRaw };
 }
 
 function buildIntegrationConfigMock(values: Record<string, string>) {
@@ -207,6 +229,47 @@ describe('ETaxXmlService', () => {
       expect(subCreate).not.toHaveBeenCalled();
       // No need to even consult payment + company when idempotency triggers
       expect(prisma.payment.findFirst).not.toHaveBeenCalled();
+    });
+
+    it('C7 — generateForPayment called twice for same submission reuses invoiceNumber (no re-alloc)', async () => {
+      // First call: nothing exists, full path runs + allocates ET-2026-05-15-0001
+      const first = buildPrismaMock({
+        existingSub: null,
+        payment: makePayment(),
+        finance: FINANCE,
+        lastInvoiceNumber: null, // empty day → seq starts at 0001
+      });
+      const cfgFirst = buildIntegrationConfigMock({ submitMode: 'disabled' });
+      const svcFirst = new ETaxXmlService(first.prisma as never, cfgFirst as never);
+      await svcFirst.generateForPayment('payment-1', 'user-1');
+
+      const firstCreatedNumber = first.subCreate.mock.calls[0][0].data
+        .invoiceNumber as string;
+      expect(firstCreatedNumber).toMatch(/^ET-\d{8}-0001$/);
+
+      // Second call: pretend the row now exists w/ the same invoiceNumber.
+      // Service must short-circuit on the idempotency findFirst and not
+      // allocate another number (advisory lock never even taken).
+      const existing = makeSub({
+        status: ETaxSubmissionStatus.PENDING,
+        // attach invoiceNumber via spread since AnySub doesn't track it
+      });
+      (existing as unknown as Record<string, unknown>).invoiceNumber = firstCreatedNumber;
+      const second = buildPrismaMock({ existingSub: existing });
+      const cfgSecond = buildIntegrationConfigMock({});
+      const svcSecond = new ETaxXmlService(second.prisma as never, cfgSecond as never);
+
+      const result = await svcSecond.generateForPayment('payment-1', 'user-1');
+
+      expect(result).toBe(existing);
+      // No tx ⇒ no new allocation, no executeRawUnsafe, no audit
+      expect(second.txExecuteRaw).not.toHaveBeenCalled();
+      expect(second.subCreate).not.toHaveBeenCalled();
+      expect(second.auditCreate).not.toHaveBeenCalled();
+      // The returned row carries the original invoiceNumber
+      expect((result as { invoiceNumber: string }).invoiceNumber).toBe(
+        firstCreatedNumber,
+      );
     });
 
     it('rejects when payment has no VAT', async () => {

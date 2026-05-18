@@ -7,6 +7,7 @@ import {
 import { ETaxSubmissionStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
+import { decryptPII, isEncrypted } from '../../utils/crypto.util';
 import { EtaxUblBuilder, EtaxInvoiceInput } from './xml-builder/etax-ubl-2-1.builder';
 import { Pkcs7Signer } from './signer/pkcs7-signer';
 import { RdApiClient, RdSubmitConfig } from './rd-client/rd-api.client';
@@ -49,6 +50,7 @@ export class ETaxXmlService {
         nameTh: true,
         nameEn: true,
         taxId: true,
+        taxBranchCode: true,
         address: true,
       },
     });
@@ -63,6 +65,13 @@ export class ETaxXmlService {
   /**
    * Load Payment + Contract + Customer; reject if no VAT amount.
    * Used by both XML generation and status displays.
+   *
+   * C1 — Customer.nationalId is the LEGACY plaintext column and may be
+   * null on rows created after the PII migration. Real ID lives in
+   * `nationalIdEncrypted`. We load both, decrypt with the project's
+   * INTEGRATION_ENCRYPTION_KEY equivalent (here: PII_ENCRYPTION_KEY env
+   * which the existing customers.service uses), and return the
+   * server-side decrypted value. Never log the decrypted ID.
    */
   private async loadPaymentForXml(paymentId: string) {
     const payment = await this.prisma.payment.findFirst({
@@ -82,7 +91,9 @@ export class ETaxXmlService {
                 id: true,
                 name: true,
                 nationalId: true,
+                nationalIdEncrypted: true,
                 addressIdCard: true,
+                addressIdCardEncrypted: true,
               },
             },
           },
@@ -97,9 +108,79 @@ export class ETaxXmlService {
   }
 
   /**
+   * C1 — Resolve customer PII (nationalId, addressIdCard) decrypted. Prefers
+   * the encrypted column; falls back to legacy plaintext when encrypted is
+   * NULL (rolling-deploy safety, mirrors customers.service.decryptCustomerPII).
+   * Never logs the decrypted value.
+   */
+  private resolveCustomerPII(c: {
+    nationalId: string | null;
+    nationalIdEncrypted: string | null;
+    addressIdCard: string | null;
+    addressIdCardEncrypted: string | null;
+  }): { nationalId: string | null; addressIdCard: string | null } {
+    const key = process.env.PII_ENCRYPTION_KEY ?? '';
+    const dec = (
+      encrypted: string | null,
+      legacy: string | null,
+    ): string | null => {
+      if (encrypted && key && isEncrypted(encrypted)) {
+        return decryptPII(encrypted, key);
+      }
+      return legacy ?? null;
+    };
+    return {
+      nationalId: dec(c.nationalIdEncrypted, c.nationalId),
+      addressIdCard: dec(c.addressIdCardEncrypted, c.addressIdCard),
+    };
+  }
+
+  /**
+   * C7 — Allocate the next sequential e-Tax invoice number for the given
+   * BKK day. `ET-YYYYMMDD-NNNN` with a 4-digit counter that resets at BKK
+   * midnight, race-safe via PostgreSQL advisory lock (mirrors
+   * DocNumberService convention in apps/api/src/modules/other-income/).
+   *
+   * MUST run inside a transaction (advisory lock is per-tx).
+   */
+  private async nextInvoiceNumber(
+    tx: Prisma.TransactionClient,
+    issueDate: Date,
+  ): Promise<string> {
+    const yyyymmdd = issueDate
+      .toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
+      .replace(/-/g, '');
+
+    // Stable hash for advisory lock key — namespaced under `etax`.
+    const lockSeed = `etax:${yyyymmdd}`;
+    let lockKey = 0;
+    for (let i = 0; i < lockSeed.length; i++) {
+      lockKey = (lockKey * 31 + lockSeed.charCodeAt(i)) | 0;
+    }
+    await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${lockKey})`);
+
+    const last = await tx.eTaxSubmission.findFirst({
+      where: { invoiceNumber: { startsWith: `ET-${yyyymmdd}-` } },
+      orderBy: { invoiceNumber: 'desc' },
+      select: { invoiceNumber: true },
+    });
+
+    const lastSeq = last?.invoiceNumber
+      ? parseInt(last.invoiceNumber.split('-')[2], 10) || 0
+      : 0;
+    const seq = String(lastSeq + 1).padStart(4, '0');
+    return `ET-${yyyymmdd}-${seq}`;
+  }
+
+  /**
    * Generate (or return existing) UBL 2.1 XML for the given Payment.
    * Idempotent — if an ETaxSubmission row already exists (any status),
    * return it without regenerating to preserve the original document.
+   *
+   * C7 — Invoice number is allocated once inside the transaction via
+   * `nextInvoiceNumber` (advisory-locked sequential per BKK day). Retries
+   * for an already-existing submission reuse the stored `invoiceNumber`,
+   * never re-allocate (ม.86/4 sequential constraint).
    */
   async generateForPayment(paymentId: string, userId: string) {
     // Idempotency check first — never regenerate after the fact
@@ -115,61 +196,62 @@ export class ETaxXmlService {
 
     const payment = await this.loadPaymentForXml(paymentId);
     const finance = await this.getFinanceCompany();
+    // C1 — decrypt PII server-side; never trust the legacy plaintext column alone.
+    const customerPII = this.resolveCustomerPII(payment.contract.customer);
 
     const total = payment.amountPaid;
     const vat = payment.vatAmount as Prisma.Decimal;
     const base = total.sub(vat);
 
-    // Invoice number convention — `ET-YYYYMMDD-NNNN` modeled after doc number
-    // convention from accounting.md. We re-use Payment.id slice for the
-    // numeric tail to keep it deterministic without grabbing an advisory
-    // lock on every call.
-    const dateStr = (payment.paidDate ?? new Date())
-      .toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
-      .replace(/-/g, '');
-    const invoiceNumber = `ET-${dateStr}-${payment.id.slice(0, 8).toUpperCase()}`;
-
-    const input: EtaxInvoiceInput = {
-      invoiceNumber,
-      issueDate: payment.paidDate ?? new Date(),
-      currency: 'THB',
-      invoiceTypeCode: '388',
-      buyerReference: `${payment.contract.contractNumber}/${payment.installmentNo}`,
-      supplier: {
-        taxId: finance.taxId,
-        branchCode: '00000',
-        nameTh: finance.nameTh,
-        nameEn: finance.nameEn,
-        address: finance.address,
-      },
-      customer: {
-        taxId: payment.contract.customer.nationalId ?? null,
-        name: payment.contract.customer.name,
-        address: payment.contract.customer.addressIdCard ?? null,
-      },
-      lines: [
-        {
-          id: '1',
-          description: `ค่างวดสัญญา ${payment.contract.contractNumber} งวดที่ ${payment.installmentNo}`,
-          quantity: 1,
-          unitPrice: base,
-          lineExtension: base,
-        },
-      ],
-      lineExtensionAmount: base,
-      taxExclusiveAmount: base,
-      vatAmount: vat,
-      vatPercent: 7,
-      taxInclusiveAmount: total,
-      payableAmount: total,
-    };
-
-    const xml = this.builder.build(input);
+    const issueDate = payment.paidDate ?? new Date();
 
     return this.prisma.$transaction(async (tx) => {
+      // C7 — allocate inside the tx; advisory lock prevents two concurrent
+      // generates on the same day from clashing on the unique constraint.
+      const invoiceNumber = await this.nextInvoiceNumber(tx, issueDate);
+
+      const input: EtaxInvoiceInput = {
+        invoiceNumber,
+        issueDate,
+        currency: 'THB',
+        invoiceTypeCode: '388',
+        buyerReference: `${payment.contract.contractNumber}/${payment.installmentNo}`,
+        supplier: {
+          // C5/C6 — branch code is per-CompanyInfo, default '00000' on HQ
+          taxId: finance.taxId,
+          branchCode: finance.taxBranchCode,
+          nameTh: finance.nameTh,
+          nameEn: finance.nameEn,
+          address: finance.address,
+        },
+        customer: {
+          taxId: customerPII.nationalId,
+          name: payment.contract.customer.name,
+          address: customerPII.addressIdCard,
+        },
+        lines: [
+          {
+            id: '1',
+            description: `ค่างวดสัญญา ${payment.contract.contractNumber} งวดที่ ${payment.installmentNo}`,
+            quantity: 1,
+            unitPrice: base,
+            lineExtension: base,
+          },
+        ],
+        lineExtensionAmount: base,
+        taxExclusiveAmount: base,
+        vatAmount: vat,
+        vatPercent: 7,
+        taxInclusiveAmount: total,
+        payableAmount: total,
+      };
+
+      const xml = this.builder.build(input);
+
       const created = await tx.eTaxSubmission.create({
         data: {
           paymentId,
+          invoiceNumber,
           xmlContent: xml,
           status: ETaxSubmissionStatus.PENDING,
         },
@@ -191,6 +273,24 @@ export class ETaxXmlService {
   private async getSubmitMode(): Promise<'disabled' | 'enabled'> {
     const mode = await this.integrationConfig.getValue('e-tax', 'submitMode');
     return mode === 'enabled' ? 'enabled' : 'disabled';
+  }
+
+  /**
+   * C3 — Public read used by FM/ACCOUNTANT-accessible
+   * `GET /e-tax-xml/submit-mode`. Maps the binary submitMode (disabled |
+   * enabled) and the RD endpoint domain to a 3-value status so the UI can
+   * distinguish sandbox vs production. No secrets leaked.
+   */
+  async getSubmitModeStatus(): Promise<{ mode: 'disabled' | 'sandbox' | 'prod' }> {
+    const mode = await this.getSubmitMode();
+    if (mode === 'disabled') return { mode: 'disabled' };
+    const endpoint =
+      (await this.integrationConfig.getValue('e-tax', 'rdEndpoint')) ?? '';
+    // RD's production endpoint host is `etax.rd.go.th/etax_v2/...`; sandbox
+    // is `etax.rd.go.th/etax_staging/...`. Default to sandbox when the
+    // path doesn't include `etax_v2`.
+    const isProd = endpoint.toLowerCase().includes('etax_v2');
+    return { mode: isProd ? 'prod' : 'sandbox' };
   }
 
   /** Read cert config (DB → env). */

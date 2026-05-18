@@ -43,6 +43,8 @@ export interface SupplierInfo {
 export interface CustomerInfo {
   /** Customer's tax ID (13 digits). Null/empty when N/A for non-juristic individuals */
   taxId: string | null;
+  /** Branch code — 5 digits ('00000' = head office / individual). Optional, default '00000'. */
+  branchCode?: string;
   name: string;
   /** Customer address (may contain Thai). Optional. */
   address?: string | null;
@@ -112,12 +114,15 @@ export class EtaxUblBuilder {
         'xmlns:ext': EtaxUblBuilder.NS.ext,
       });
 
-    // UBL header — placeholder for ext:UBLExtensions (PKCS#7 sig slot)
+    // UBL header — placeholder for ext:UBLExtensions (PKCS#7 sig slot).
+    // C8 — Signer fills `<ext:ExtensionContent><ds:Signature>...</ds:Signature></ext:ExtensionContent>`
+    // post-hoc (see Pkcs7Signer.embedInUblExtension). We emit the empty
+    // shell here so the signer only has to swap the inner text.
     root
       .ele('ext:UBLExtensions')
       .ele('ext:UBLExtension')
       .ele('ext:ExtensionContent')
-      .txt('') // signer fills this with XAdES sig later
+      .txt('') // signer replaces this with <ds:Signature>...</ds:Signature>
       .up()
       .up()
       .up();
@@ -134,11 +139,17 @@ export class EtaxUblBuilder {
     }
 
     // ─── Supplier (FINANCE company) ───────────────────────────────
+    // C5 — ขมธอ.21-2562 + Thailand RD profile use `cbc:CompanyID schemeID="TXID"`
+    // under `cac:PartyTaxScheme` with the format `{13-digit-taxId}-{5-digit-branchCode}`.
+    // The previously emitted `<cbc:TaxLevelCode>` element is NOT part of UBL 2.1 +
+    // does not exist in the RD profile — schema-invalid and would 100% reject.
+    const supplierTxid = `${input.supplier.taxId}-${input.supplier.branchCode}`;
+
     const supplierParty = root.ele('cac:AccountingSupplierParty').ele('cac:Party');
     supplierParty
       .ele('cac:PartyIdentification')
       .ele('cbc:ID', { schemeID: 'TXID' })
-      .txt(input.supplier.taxId);
+      .txt(supplierTxid);
 
     supplierParty
       .ele('cac:PartyName')
@@ -165,11 +176,8 @@ export class EtaxUblBuilder {
 
     supplierParty
       .ele('cac:PartyTaxScheme')
-      .ele('cbc:CompanyID')
-      .txt(input.supplier.taxId)
-      .up()
-      .ele('cbc:TaxLevelCode', { listAgencyName: 'UN/ECE', listName: 'BranchCode' })
-      .txt(input.supplier.branchCode)
+      .ele('cbc:CompanyID', { schemeID: 'TXID' })
+      .txt(supplierTxid)
       .up()
       .ele('cac:TaxScheme')
       .ele('cbc:ID')
@@ -178,12 +186,18 @@ export class EtaxUblBuilder {
       .up();
 
     // ─── Customer ─────────────────────────────────────────────────
+    // C5 — Buyer TXID also follows `{taxId}-{branchCode}` format. For an
+    // individual buyer without a juristic branch, default branchCode '00000'
+    // is universally accepted by RD.
     const customerParty = root.ele('cac:AccountingCustomerParty').ele('cac:Party');
-    if (input.customer.taxId) {
+    const customerTxid = input.customer.taxId
+      ? `${input.customer.taxId}-${input.customer.branchCode ?? '00000'}`
+      : null;
+    if (customerTxid) {
       customerParty
         .ele('cac:PartyIdentification')
         .ele('cbc:ID', { schemeID: 'TXID' })
-        .txt(input.customer.taxId);
+        .txt(customerTxid);
     }
 
     customerParty
@@ -204,11 +218,11 @@ export class EtaxUblBuilder {
         .up();
     }
 
-    if (input.customer.taxId) {
+    if (customerTxid) {
       customerParty
         .ele('cac:PartyTaxScheme')
-        .ele('cbc:CompanyID')
-        .txt(input.customer.taxId)
+        .ele('cbc:CompanyID', { schemeID: 'TXID' })
+        .txt(customerTxid)
         .up()
         .ele('cac:TaxScheme')
         .ele('cbc:ID')

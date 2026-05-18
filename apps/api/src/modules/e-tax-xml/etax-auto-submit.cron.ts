@@ -16,10 +16,10 @@ import { IntegrationConfigService } from '../integrations/integration-config.ser
  *   3. For each: sign → submit → record outcome. Errors per row are
  *      caught individually so one bad cert won't block siblings.
  *
- * SYSTEM user (env `ETAX_CRON_USER_ID`) is used as the actor for audit
- * logs — must be a real User row created by the seed/migration script.
- * If not configured, falls back to silently logging and skips audit
- * writes (still preserves the submission state).
+ * C10 — Audit logs are written under the SYSTEM user (User.isSystemUser=true),
+ * resolved at runtime via PrismaService — same pattern as
+ * promise-resolution.cron and broken-promise.cron. The seed-collections
+ * migration must have run first (the SYSTEM user is created there).
  */
 @Injectable()
 export class ETaxAutoSubmitCron {
@@ -31,6 +31,27 @@ export class ETaxAutoSubmitCron {
     private readonly integrationConfig: IntegrationConfigService,
   ) {}
 
+  /**
+   * C10 — Resolve the SYSTEM user UUID. Mirrors
+   * PromiseResolutionCron.getSystemUserId() — single source of truth
+   * for cron-actor identity. Returns null + alerts Sentry when the
+   * seed hasn't run; caller decides whether that's fatal.
+   */
+  private async getSystemUserId(): Promise<string | null> {
+    const user = await this.prisma.user.findFirst({
+      where: { isSystemUser: true },
+      select: { id: true },
+    });
+    if (!user) {
+      this.logger.error(
+        'SYSTEM user not found (User.isSystemUser=true) — seed collections-foundation must run first',
+      );
+      Sentry.captureMessage('etax.cron.no_system_user', { level: 'error' });
+      return null;
+    }
+    return user.id;
+  }
+
   /** Cron: hourly at minute 15 (offset from common :00/:30 crons) BKK time */
   @Cron('15 * * * *', { timeZone: 'Asia/Bangkok' })
   async tick(): Promise<void> {
@@ -41,14 +62,8 @@ export class ETaxAutoSubmitCron {
         return;
       }
 
-      const userId = process.env.ETAX_CRON_USER_ID ?? '';
-      if (!userId) {
-        this.logger.warn(
-          'ETAX_CRON_USER_ID not set — skipping auto-submit (cannot audit-log)',
-        );
-        Sentry.captureMessage('etax.cron.no_user_id', { level: 'warning' });
-        return;
-      }
+      const userId = await this.getSystemUserId();
+      if (!userId) return; // already logged + Sentry'd
 
       const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
       const pending = await this.prisma.eTaxSubmission.findMany({

@@ -32,7 +32,18 @@ describe('ExpenseDocumentsService', () => {
         count: jest.fn().mockResolvedValue(0),
         findFirst: jest.fn().mockResolvedValue(null),
         findUniqueOrThrow: jest.fn(),
-        update: jest.fn().mockResolvedValue({ id: 'doc-1' }),
+        // D1.2.1.1 — submitForApproval reads `result.totalAmount.toString()`,
+        // `result.number`, `result.documentType` from the update return value
+        // to build the APPROVAL_REQUESTED audit-log payload. Return a doc-shaped
+        // mock with totalAmount as Prisma.Decimal so .toString() works.
+        update: jest.fn().mockResolvedValue({
+          id: 'doc-1',
+          number: 'EX-20260510-0001',
+          documentType: 'EXPENSE',
+          totalAmount: new Decimal('1234.56'),
+          status: 'PENDING_APPROVAL',
+          deletedAt: null,
+        }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         aggregate: jest.fn(),
       },
@@ -89,6 +100,11 @@ describe('ExpenseDocumentsService', () => {
       assertCanPost: jest.fn(),
       assertCanVoid: jest.fn(),
       assertCanEdit: jest.fn(),
+      // D1.2.1.6 — approve() calls transition.assertCanApprove({ from: status }).
+      // Default to a no-op so tests that don't care about the gate (D1.2.1.3
+      // happy-path approve tests) just flow through; tests that need to assert
+      // rejection override with `transition.assertCanApprove = jest.fn(() => { throw ... })`.
+      assertCanApprove: jest.fn(),
       resolveTargetStatus: jest.fn().mockReturnValue('POSTED'),
     };
     sameDay = { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-1' }) };
@@ -850,7 +866,9 @@ describe('ExpenseDocumentsService', () => {
     // Spec calls real StatusTransitionService to anchor the contract.
     it('D1.2.1.6: post() permits source status APPROVED (manual post after approve)', async () => {
       // Replace mock transition with real one so its assertCanPost runs.
-      const realTransition = new (require('../services/status-transition.service').StatusTransitionService)();
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { StatusTransitionService } = require('../services/status-transition.service');
+      const realTransition = new StatusTransitionService();
       service = new ExpenseDocumentsService(
         prisma, docNumber, realTransition, sameDay, accrual, creditNote,
         payroll, settlement,
@@ -966,19 +984,23 @@ describe('ExpenseDocumentsService', () => {
       transition.resolveTargetStatus.mockReturnValue('POSTED');
     }
 
+    // NOTE: D1.2.1.6 tests pass `'OWNER'` as the third arg so the D1.2.1.3
+    // approver-list gate short-circuits. These tests focus on auto-post + audit
+    // behaviour, not on the approvers_list permission check (which is covered
+    // exhaustively in the `approve (D1.2.1.3)` describe block below).
     it('rejects when source status is not PENDING_APPROVAL', async () => {
       setupApprovableDoc({ status: 'DRAFT' });
       transition.assertCanApprove = jest.fn(() => {
         throw new BadRequestException('not pending');
       });
-      await expect(service.approve('doc-pend', 'user-1')).rejects.toThrow(BadRequestException);
+      await expect(service.approve('doc-pend', 'user-1', 'OWNER')).rejects.toThrow(BadRequestException);
     });
 
     it('auto_post_on_approve = true (default): flips to APPROVED then runs sameDay template', async () => {
       setupApprovableDoc();
       transition.assertCanApprove = jest.fn();
       // systemConfig.findFirst defaults to null → readBoolFlag returns true (default)
-      await service.approve('doc-pend', 'user-1');
+      await service.approve('doc-pend', 'user-1', 'OWNER');
       // First: update to APPROVED
       const updateCalls = prisma.expenseDocument.update.mock.calls;
       expect(updateCalls.some((c: unknown[]) => {
@@ -1003,7 +1025,7 @@ describe('ExpenseDocumentsService', () => {
           return Promise.resolve(null);
         },
       );
-      await service.approve('doc-pend', 'user-1');
+      await service.approve('doc-pend', 'user-1', 'OWNER');
       // Status flip happens
       const updateCalls = prisma.expenseDocument.update.mock.calls;
       expect(updateCalls.some((c: unknown[]) => {
@@ -1018,13 +1040,13 @@ describe('ExpenseDocumentsService', () => {
     it('rejects when doc is soft-deleted', async () => {
       setupApprovableDoc({ deletedAt: new Date() });
       transition.assertCanApprove = jest.fn();
-      await expect(service.approve('doc-pend', 'user-1')).rejects.toThrow(NotFoundException);
+      await expect(service.approve('doc-pend', 'user-1', 'OWNER')).rejects.toThrow(NotFoundException);
     });
 
     it('auto-post chain dispatches PAYROLL through payroll template', async () => {
       setupApprovableDoc({ documentType: 'PAYROLL', paymentMethod: null, depositAccountCode: null });
       transition.assertCanApprove = jest.fn();
-      await service.approve('doc-pend', 'user-1');
+      await service.approve('doc-pend', 'user-1', 'OWNER');
       expect(payroll.execute).toHaveBeenCalledWith('doc-pend', expect.anything());
     });
 
@@ -1037,7 +1059,7 @@ describe('ExpenseDocumentsService', () => {
             ? { key: 'ATTACHMENT_REQUIRED_ABOVE_AMOUNT', value: '50000' }
             : null,
       );
-      await expect(service.approve('doc-pend', 'user-1')).rejects.toThrow(/ต้องแนบไฟล์ประกอบ/);
+      await expect(service.approve('doc-pend', 'user-1', 'OWNER')).rejects.toThrow(/ต้องแนบไฟล์ประกอบ/);
       expect(sameDay.execute).not.toHaveBeenCalled();
     });
 
@@ -1054,7 +1076,7 @@ describe('ExpenseDocumentsService', () => {
           return Promise.resolve(null);
         },
       );
-      await service.approve('doc-pend', 'user-1');
+      await service.approve('doc-pend', 'user-1', 'OWNER');
       const auditCalls = prisma.auditLog.create.mock.calls;
       const approvedCall = auditCalls.find((c: unknown[]) => {
         const arg = c[0] as { data?: { action?: string } };
@@ -1081,7 +1103,7 @@ describe('ExpenseDocumentsService', () => {
       setupApprovableDoc();
       transition.assertCanApprove = jest.fn();
       // Default systemConfig (null) → readBoolFlag returns true (default) → auto-post path
-      await service.approve('doc-pend', 'user-1');
+      await service.approve('doc-pend', 'user-1', 'OWNER');
       const auditCalls = prisma.auditLog.create.mock.calls;
       const actions = auditCalls
         .map((c: unknown[]) => (c[0] as { data?: { action?: string } })?.data?.action)
@@ -1106,11 +1128,35 @@ describe('ExpenseDocumentsService', () => {
   // D1.2.1.3 — approvers_list role gate
   describe('approve (D1.2.1.3)', () => {
     function setupPendingDoc(overrides: Record<string, unknown> = {}) {
+      // Doc must include the fields executePostBody reads (totalAmount,
+      // documentType, paymentMethod, depositAccountCode, withholdingTax,
+      // whtFormType, receiptImageUrl, documentDate) — otherwise OWNER-approves
+      // / approver-approves tests hit `Cannot read properties of undefined`
+      // when the auto-post chain runs after the approver check passes.
       prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
         id: 'doc-app',
         status: 'PENDING_APPROVAL',
+        documentType: 'EXPENSE',
+        paymentMethod: 'CASH',
+        depositAccountCode: '11-1101',
+        totalAmount: new Decimal('500.00'),
+        withholdingTax: new Decimal('0'),
+        whtFormType: null,
+        receiptImageUrl: null,
+        documentDate: new Date('2026-05-10'),
         deletedAt: null,
         ...overrides,
+      });
+      // Make assertCanApprove mirror the real StatusTransitionService so the
+      // "rejects when source status is not PENDING_APPROVAL" test gets a
+      // realistic error message — the global mock is a no-op which would let
+      // the call fall through to executePostBody.
+      transition.assertCanApprove = jest.fn((input: { from: string }) => {
+        if (input.from !== 'PENDING_APPROVAL') {
+          throw new BadRequestException(
+            `ไม่สามารถอนุมัติเอกสารในสถานะ ${input.from} ได้ (PENDING_APPROVAL เท่านั้น)`,
+          );
+        }
       });
     }
 
@@ -1188,7 +1234,7 @@ describe('ExpenseDocumentsService', () => {
     it('rejects when source status is not PENDING_APPROVAL', async () => {
       setupPendingDoc({ status: 'DRAFT' });
       await expect(service.approve('doc-app', 'user-owner', 'OWNER')).rejects.toThrow(
-        /อนุมัติได้เฉพาะเอกสาร PENDING_APPROVAL/,
+        /ไม่สามารถอนุมัติเอกสารในสถานะ DRAFT/,
       );
     });
 

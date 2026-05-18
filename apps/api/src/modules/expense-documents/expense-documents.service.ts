@@ -2030,6 +2030,7 @@ export class ExpenseDocumentsService implements OnModuleInit {
    * by template) so the caller can propagate it.
    */
   private async executePostBody(
+    // eslint-disable-next-line @typescript-eslint/no-empty-object-type
     doc: Prisma.ExpenseDocumentGetPayload<{}>,
     tx: Prisma.TransactionClient,
   ): Promise<unknown> {

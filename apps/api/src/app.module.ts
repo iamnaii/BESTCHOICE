@@ -129,6 +129,8 @@ import { ReportingModule } from './modules/reporting/reporting.module';
 import { CollectionsSessionModule } from './modules/collections-session/collections-session.module';
 // P3-SP2 — Off-site backup replication (GCS cross-region sync)
 import { BackupModule } from './modules/backup/backup.module';
+// SP7.4 — External Finance Companies + Commission (SHOP-side GFIN/Krungsri)
+import { ExternalFinanceModule } from './modules/external-finance/external-finance.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { SecurityMiddleware } from './modules/audit/security.middleware';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
@@ -356,6 +358,8 @@ import { AppCacheModule } from './cache/cache.module';
     ReportingModule,
     // P3-SP2 — Off-site backup replication (GCS cross-region sync, daily 03:30 BKK)
     BackupModule,
+    // SP7.4 — External Finance Companies + Commission (SHOP-side GFIN/Krungsri)
+    ExternalFinanceModule,
   ],
   controllers: [AppController],
   providers: [

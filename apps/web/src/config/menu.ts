@@ -337,6 +337,9 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         // SP6 — Bank/Cash account directory
         { label: 'บัญชีเงินสด/ธนาคาร', path: '/finance/bank-accounts', icon: Landmark },
         { label: 'งวดบัญชี', path: '/accounting/periods', icon: CalendarDays },
+        { label: 'ปิดบัญชีสิ้นปี', path: '/finance/year-end-closing', icon: CalendarDays },
+        // P3-SP3 — PEAK CSV export (deep-linked from /settings#peak-mapping which is OWNER-only)
+        { label: 'ส่งออก PEAK CSV', path: '/finance/peak-export', icon: Plug },
       ],
     },
     assetMenuSection,
@@ -405,6 +408,7 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
       zone: 'fin',
       items: [
         { label: 'ปิดบัญชีรายเดือน', path: '/monthly-close', icon: CalendarDays },
+        { label: 'ปิดบัญชีสิ้นปี', path: '/finance/year-end-closing', icon: CalendarDays },
         { label: 'งวดบัญชี', path: '/accounting/periods', icon: CalendarDays },
         { label: 'ชำระเงินระหว่างบริษัท', path: '/accounting/intercompany', icon: ClipboardList },
         { label: 'ผังบัญชี', path: '/settings/chart-of-accounts', icon: ClipboardList },
@@ -412,6 +416,7 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
         { label: 'บัญชีเงินสด/ธนาคาร', path: '/finance/bank-accounts', icon: Landmark },
         { label: 'ตรวจสอบบัญชี', path: '/financial-audit', icon: ClipboardList },
         { label: 'PEAK Sync', path: '/settings/peak-sync', icon: Plug },
+        { label: 'ส่งออก PEAK CSV', path: '/finance/peak-export', icon: Plug },
       ],
     },
     {
@@ -569,8 +574,11 @@ const OWNER_CONFIG: RoleMenuConfig = {
           icon: CalendarDays,
           children: [
             { label: 'ปิดบัญชีรายเดือน', path: '/monthly-close', icon: CalendarDays },
+            { label: 'ปิดบัญชีสิ้นปี', path: '/finance/year-end-closing', icon: CalendarDays },
             { label: 'งวดบัญชี', path: '/accounting/periods', icon: CalendarDays },
             { label: 'ชำระเงินระหว่างบริษัท', path: '/accounting/intercompany', icon: ClipboardList },
+            // P3-SP3 — PEAK CSV export (mapping config lives in /settings#peak-mapping)
+            { label: 'ส่งออก PEAK CSV', path: '/finance/peak-export', icon: Plug },
           ],
         },
       ],

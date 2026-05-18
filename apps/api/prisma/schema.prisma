@@ -3512,10 +3512,14 @@ model ChartOfAccount {
   vatApplicable Boolean   @default(false)
   notes         String?
   status        String    @default("ใช้งาน")
+  /// P3-SP3: PEAK external account code for CPA bookkeeping handoff
+  /// (peakaccount.com). Nullable — owner fills via /settings#peak-mapping.
+  peakCode      String?   @map("peak_code")
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   deletedAt     DateTime?
 
+  @@index([peakCode])
   @@map("chart_of_accounts")
 }
 

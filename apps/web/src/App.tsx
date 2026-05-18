@@ -156,6 +156,7 @@ const CollectionsPage = lazy(() => import('@/pages/CollectionsPage'));
 const DunningSettingsPage = lazy(() => import('@/pages/DunningSettingsPage'));
 const SmsTemplatesPage = lazy(() => import('@/pages/SmsTemplatesPage'));
 const MonthlyClosePage = lazy(() => import('@/pages/MonthlyClosePage'));
+const YearEndClosingPage = lazy(() => import('@/pages/YearEndClosingPage'));
 const IntercompanySettlementPage = lazy(() => import('@/pages/IntercompanySettlementPage'));
 // SP2 — Accounting Reports Gap
 const CashFlowPage = lazy(() =>
@@ -168,6 +169,7 @@ const GeneralLedgerPage = lazy(() =>
   import('@/pages/GeneralLedgerPage').then((m) => ({ default: m.GeneralLedgerPage })),
 );
 const PeakSyncPage = lazy(() => import('@/pages/PeakSyncPage'));
+const PeakExportPage = lazy(() => import('@/pages/PeakExportPage'));
 const AiSettingsPage = lazy(() => import('@/pages/AiSettingsPage'));
 const AiTrainingPage = lazy(() => import('@/pages/AiTrainingPage'));
 const AiPerformancePage = lazy(() => import('@/pages/AiPerformancePage'));
@@ -730,6 +732,14 @@ function App() {
             }
           />
           <Route
+            path="/finance/year-end-closing"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <YearEndClosingPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/accounting/intercompany"
             element={
               <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
@@ -851,6 +861,14 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER', 'ACCOUNTANT']}>
                 <PeakSyncPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/finance/peak-export"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <PeakExportPage />
               </ProtectedRoute>
             }
           />

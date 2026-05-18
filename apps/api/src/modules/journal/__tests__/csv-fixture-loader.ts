@@ -10,6 +10,9 @@ export interface CoaRow {
   vatApplicable: boolean;
   notes: string;
   status: string;
+  /// P3-SP3: PEAK external bookkeeping code (column "เลขบัญชีในพึค", index 8).
+  /// Empty string when unmapped — seeder converts to null when persisting.
+  peakCode: string;
 }
 
 export interface JeLine {
@@ -49,6 +52,8 @@ export function loadCoaFromCsv(csvPath: string): CoaRow[] {
       vatApplicable: (cols[5] ?? '').trim() === 'ใช่',
       notes: (cols[6] ?? '').trim(),
       status: (cols[7] ?? '').trim(),
+      // P3-SP3: PEAK code lives at index 8 ("เลขบัญชีในพึค"). Empty by default.
+      peakCode: (cols[8] ?? '').trim(),
     });
   }
   return rows;

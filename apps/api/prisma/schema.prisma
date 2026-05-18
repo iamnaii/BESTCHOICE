@@ -383,6 +383,7 @@ enum WhtIncomeType {
 
 enum TaxReportType {
   PP30 // ภ.พ.30 (VAT รายเดือน)
+  PND1 // ภ.ง.ด.1 (PIT — WHT on payroll, ม.50(1))
   PND3 // ภ.ง.ด.3 (หัก ณ ที่จ่าย บุคคล)
   PND53 // ภ.ง.ด.53 (หัก ณ ที่จ่าย นิติบุคคล)
 }
@@ -3509,6 +3510,8 @@ model JournalEntry {
   postedBy      User?                 @relation("JournalPostedBy", fields: [postedById], references: [id])
   postAuditLogs JournalPostAuditLog[]
   assetInvoiceTransferFor FixedAsset? @relation("AssetInvoiceTransferJE")
+  /// SP2: InterCompanyTransactions that this JE settled (typically 1 per JE).
+  icSettlements InterCompanyTransaction[] @relation("ICSettlementJE")
   // Partial unique index enforced via migration (CREATE UNIQUE INDEX ... WHERE reference_type IS NOT NULL)
   // Prisma cannot express partial @@unique; see migration 20260428010000_journal_entries_ref_unique
 
@@ -4047,15 +4050,20 @@ model InterCompanyTransaction {
 
   note         String?
   reconciledAt DateTime? @map("reconciled_at")
+  /// SP2: link to the JournalEntry that posted the settlement
+  /// (Dr 21-1101 + Dr 21-1102 / Cr <cash>). Set when status flips to RECONCILED.
+  /// ON DELETE SET NULL — voiding the JE leaves the txn intact but unlinked.
+  journalEntryId String? @map("journal_entry_id")
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
   deletedAt    DateTime? @map("deleted_at")
 
-  sale        Sale        @relation(fields: [saleId], references: [id])
-  contract    Contract?   @relation(fields: [contractId], references: [id])
-  branch      Branch      @relation(fields: [branchId], references: [id])
-  fromCompany CompanyInfo @relation("ICFromCompany", fields: [fromCompanyId], references: [id])
-  toCompany   CompanyInfo @relation("ICToCompany", fields: [toCompanyId], references: [id])
+  sale         Sale          @relation(fields: [saleId], references: [id])
+  contract     Contract?     @relation(fields: [contractId], references: [id])
+  branch       Branch        @relation(fields: [branchId], references: [id])
+  fromCompany  CompanyInfo   @relation("ICFromCompany", fields: [fromCompanyId], references: [id])
+  toCompany    CompanyInfo   @relation("ICToCompany", fields: [toCompanyId], references: [id])
+  journalEntry JournalEntry? @relation("ICSettlementJE", fields: [journalEntryId], references: [id], onDelete: SetNull)
 
   @@index([saleId])
   @@index([contractId])
@@ -4068,6 +4076,7 @@ model InterCompanyTransaction {
   @@index([toCompanyId])
   @@index([createdAt])
   @@index([deletedAt])
+  @@index([journalEntryId])
   @@map("inter_company_transactions")
 }
 

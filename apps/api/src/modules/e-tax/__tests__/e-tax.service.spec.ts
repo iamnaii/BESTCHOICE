@@ -14,6 +14,9 @@ describe('ETaxService', () => {
     prisma = {
       branch: { findMany: jest.fn() },
       payment: { findMany: jest.fn(), count: jest.fn(), findFirst: jest.fn() },
+      // P2-SP3: ม.86/4 PDF needs issuer (FINANCE) lookup. Default mock returns
+      // null so per-test setup explicitly opts in to a real issuer or null.
+      companyInfo: { findFirst: jest.fn().mockResolvedValue(null) },
     };
     const module: TestingModule = await Test.createTestingModule({
       providers: [ETaxService, { provide: PrismaService, useValue: prisma }],
@@ -136,6 +139,124 @@ describe('ETaxService', () => {
     expect(pdf.length).toBeGreaterThan(500); // smallest legit PDF
     // PDF starts with '%PDF'
     expect(pdf.slice(0, 4).toString('ascii')).toBe('%PDF');
+  });
+
+  // ──────────────────────────────────────────────────────────────────
+  // P2-SP3: Thai font + ม.86/4 invoice layout
+  // ──────────────────────────────────────────────────────────────────
+
+  it('P2-SP3: PDF starts with %PDF magic bytes (smoke)', async () => {
+    prisma.payment.findFirst
+      .mockResolvedValueOnce({ contract: { branchId: 'br-1', deletedAt: null } })
+      .mockResolvedValueOnce({
+        id: 'pay-thai',
+        paidDate: new Date('2026-05-10'),
+        installmentNo: 1,
+        amountPaid: Dec('1070'),
+        vatAmount: Dec('70'),
+        contract: {
+          id: 'ct-thai',
+          contractNumber: 'CT-THAI',
+          customer: {
+            id: 'cu-thai',
+            name: 'นายสมชาย ใจดี',
+            nationalId: '1234567890123',
+            addressIdCard: '99/9 ถ.สุขุมวิท เขตคลองเตย กรุงเทพฯ 10110',
+          },
+        },
+      });
+    prisma.branch = {
+      findMany: jest.fn().mockResolvedValue([{ id: 'br-1' }]),
+      findFirst: jest.fn().mockResolvedValue({ companyId: 'co-1' }),
+    };
+
+    const pdf = await service.generateInvoicePdf('pay-thai', {
+      role: 'OWNER',
+      branchId: null,
+    });
+    expect(pdf.slice(0, 4).toString('ascii')).toBe('%PDF');
+  });
+
+  it('P2-SP3: PDF size exceeds 5KB once Thai font is bundled (~200KB+ expected)', async () => {
+    // With the Noto Sans Thai variable font embedded, the resulting PDF
+    // should weigh in well above 5KB — typical size ~200-250KB. Without
+    // the font, jsPDF emits ~2-3KB.
+    prisma.payment.findFirst
+      .mockResolvedValueOnce({ contract: { branchId: 'br-1', deletedAt: null } })
+      .mockResolvedValueOnce({
+        id: 'pay-size',
+        paidDate: new Date('2026-05-10'),
+        installmentNo: 1,
+        amountPaid: Dec('1070'),
+        vatAmount: Dec('70'),
+        contract: {
+          id: 'ct-size',
+          contractNumber: 'CT-SIZE',
+          customer: {
+            id: 'cu-size',
+            name: 'นางสาวอัจฉรา สวัสดี',
+            nationalId: '9876543210123',
+            addressIdCard: '1 ถ.พระราม 4 กรุงเทพ',
+          },
+        },
+      });
+    prisma.branch = {
+      findMany: jest.fn().mockResolvedValue([{ id: 'br-1' }]),
+      findFirst: jest.fn().mockResolvedValue({ companyId: 'co-1' }),
+    };
+
+    const pdf = await service.generateInvoicePdf('pay-size', {
+      role: 'OWNER',
+      branchId: null,
+    });
+    expect(pdf.length).toBeGreaterThan(5_000);
+  });
+
+  it('P2-SP3: Thai customer name + FINANCE issuer do not crash PDF render', async () => {
+    // Long Thai customer name with sara + vowels + tone marks; long address;
+    // FINANCE issuer with full Thai company info.
+    prisma.payment.findFirst
+      .mockResolvedValueOnce({ contract: { branchId: 'br-1', deletedAt: null } })
+      .mockResolvedValueOnce({
+        id: 'pay-issuer',
+        paidDate: new Date('2026-05-15'),
+        installmentNo: 7,
+        amountPaid: Dec('5350'),
+        vatAmount: Dec('350'),
+        contract: {
+          id: 'ct-issuer',
+          contractNumber: 'CT-2026-007',
+          customer: {
+            id: 'cu-issuer',
+            name: 'นางสาวพิมพ์มาดา เลิศวิไลรัตน์ ณ อยุธยา',
+            nationalId: '5566778899001',
+            addressIdCard:
+              '123/456 หมู่ที่ 7 ตำบลบางพลีใหญ่ อำเภอบางพลี จังหวัดสมุทรปราการ 10540',
+          },
+        },
+      });
+    prisma.branch = {
+      findMany: jest.fn().mockResolvedValue([{ id: 'br-1' }]),
+      findFirst: jest.fn().mockResolvedValue({ companyId: 'co-1' }),
+    };
+    prisma.companyInfo.findFirst.mockResolvedValue({
+      nameTh: 'บริษัท เบสท์ช้อยส์ ไฟแนนซ์ จำกัด',
+      address: '88 ถ.รัชดาภิเษก แขวงห้วยขวาง เขตห้วยขวาง กรุงเทพฯ 10310',
+      taxId: '0105563012345',
+      phone: '02-123-4567',
+    });
+
+    const pdf = await service.generateInvoicePdf('pay-issuer', {
+      role: 'OWNER',
+      branchId: null,
+    });
+    expect(pdf).toBeInstanceOf(Buffer);
+    expect(pdf.slice(0, 4).toString('ascii')).toBe('%PDF');
+    // companyInfo.findFirst is queried with companyCode='FINANCE' first;
+    // verify the lookup happened (issuer block sourced from FINANCE entity).
+    expect(prisma.companyInfo.findFirst).toHaveBeenCalled();
+    const firstCall = prisma.companyInfo.findFirst.mock.calls[0][0];
+    expect(firstCall.where).toMatchObject({ companyCode: 'FINANCE', deletedAt: null });
   });
 
   // ──────────────────────────────────────────────────────────────────

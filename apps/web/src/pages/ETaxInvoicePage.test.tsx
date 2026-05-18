@@ -47,14 +47,16 @@ describe('ETaxInvoicePage', () => {
     expect(screen.getByText(/e-Tax Invoice \(สรรพากร\)/)).toBeInTheDocument();
   });
 
-  it('shows Phase 1 limitations banner (internal receipt, NOT legal tax invoice)', () => {
+  it('shows Phase 1 banner: PDF ม.86/4 compliant; Phase 2 = XML submission to RD', () => {
     renderPage();
     const banner = screen.getByTestId('phase2-banner');
     expect(banner).toBeInTheDocument();
-    // Critical #6+#7: explicit "internal receipt only" disclaimer (scoped to banner)
-    expect(banner.textContent).toMatch(/ใบรับเงินภายใน/);
-    expect(banner.textContent).toMatch(/ไม่ใช่ใบกำกับภาษีอิเล็กทรอนิกส์ตามกฎหมาย/);
+    // P2-SP3: confirms PDF is legal paper invoice; XML to RD still pending
+    expect(banner.textContent).toMatch(/ใบกำกับภาษี/);
     expect(banner.textContent).toMatch(/ม\.86\/4/);
+    expect(banner.textContent).toMatch(/พิมพ์มอบ/);
+    // Phase 2 messaging — XML submission + cert still pending
+    expect(banner.textContent).toMatch(/XML/);
     expect(banner.textContent).toMatch(/PKCS#7/);
     expect(banner.textContent).toMatch(/ระยะที่ 2/);
   });

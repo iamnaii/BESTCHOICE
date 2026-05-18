@@ -170,8 +170,8 @@ export function ETaxInvoicePage() {
       const blob = res.data as Blob;
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      // Critical #6+#7: file is an internal receipt, NOT a legal tax invoice
-      a.download = `receipt-${paymentId}.pdf`;
+      // P2-SP3: PDF now complies with ม.86/4 — name as 'tax-invoice'
+      a.download = `tax-invoice-${paymentId}.pdf`;
       a.click();
       URL.revokeObjectURL(a.href);
     } catch (e) {
@@ -204,7 +204,7 @@ export function ETaxInvoicePage() {
     <div className="container mx-auto px-4 py-6 max-w-6xl">
       <PageHeader
         title="e-Tax Invoice (สรรพากร)"
-        subtitle="ใบรับเงินภายใน + Export CSV + สร้าง XML ตาม ขมธอ.21-2562"
+        subtitle="ใบกำกับภาษี (กระดาษ ม.86/4) + Export CSV + สร้าง XML ตาม ขมธอ.21-2562"
         icon={<FileText className="size-5" aria-hidden />}
         action={
           <div className="flex gap-2">
@@ -222,24 +222,26 @@ export function ETaxInvoicePage() {
         }
       />
 
-      {/* Critical #6+#7: explicit Phase 1 limitations banner */}
+      {/* P2-SP3: PDF now complies with ม.86/4 paper format (Thai font + full fields).
+       * The remaining gap is the XML submission to RD — pending CA cert + ภ.อ.01 registration. */}
       <div
         data-testid="phase2-banner"
-        className="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3 mb-4"
+        className="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 mb-4"
       >
-        <AlertCircle className="size-4 text-destructive mt-0.5 shrink-0" aria-hidden />
+        <AlertCircle className="size-4 text-amber-600 mt-0.5 shrink-0" aria-hidden />
         <div className="text-sm text-foreground leading-snug">
           <p className="font-medium mb-1">
-            ระยะที่ 1 — ใบรับเงินภายใน (Internal Receipt) เท่านั้น
+            ระยะที่ 1 — ใบกำกับภาษี (กระดาษ ม.86/4) พร้อมพิมพ์มอบลูกค้า
           </p>
           <p className="text-muted-foreground">
-            PDF ที่ดาวน์โหลด <strong>ไม่ใช่ใบกำกับภาษีอิเล็กทรอนิกส์ตามกฎหมาย</strong>
-            (ม.86/4 ป.รัษฎากร + ประกาศอธิบดี ฉ.48). ใช้เพื่อยืนยันภายในระบบเท่านั้น —
-            ห้ามใช้ส่ง RD หรือมอบให้ลูกค้าเป็นใบกำกับภาษี.
+            PDF ที่ดาวน์โหลดเป็น <strong>ใบกำกับภาษีตามรูปแบบ ม.86/4 ป.รัษฎากร</strong>
+            — มีข้อมูลผู้ออก, ผู้ซื้อ, รายการ, VAT 7%, รวมทั้งสิ้นครบถ้วน
+            สามารถพิมพ์มอบให้ลูกค้าและใช้ยื่นภาษีได้ตามกฎหมาย.
           </p>
           <p className="text-muted-foreground mt-1">
-            ระยะที่ 2: ใบกำกับภาษีอิเล็กทรอนิกส์จริง (Thai font, full ม.86/4 fields,
-            PKCS#7 ลายเซ็นดิจิทัล, ส่ง XML ให้ RD)
+            ระยะที่ 2: ส่งใบกำกับภาษีอิเล็กทรอนิกส์ (XML) ให้กรมสรรพากรอัตโนมัติ
+            พร้อมลายเซ็นดิจิทัล PKCS#7 — รอลงทะเบียน ภ.อ.01 + อัปโหลด CA cert
+            (ดู P2-SP5 roadmap).
           </p>
         </div>
       </div>

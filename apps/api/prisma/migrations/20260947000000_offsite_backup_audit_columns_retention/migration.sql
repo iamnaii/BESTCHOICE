@@ -8,27 +8,29 @@
 -- IF NOT EXISTS / DO $$ guards make this migration idempotent — safe to
 -- re-run after a partial failure or on environments that already applied.
 
--- 1) Add nullable FK column (idempotent).
+-- 1) Add nullable FK column (idempotent). User.id is mapped to TEXT in
+--    Prisma's default UUID-string mode (no @db.Uuid), so the FK column
+--    must also be TEXT to be type-compatible for the constraint.
 ALTER TABLE "offsite_backup_runs"
-  ADD COLUMN IF NOT EXISTS "triggered_by_user_id" UUID;
+  ADD COLUMN IF NOT EXISTS "triggered_by_user_id" TEXT;
 
 -- 2) Backfill: normalize triggered_by values.
 --    Anything that is NOT one of the two known categories ('cron'|'manual')
 --    is assumed to be a stray user UUID written by the pre-fix code. Move
---    it into triggered_by_user_id (best-effort — invalid UUIDs silently
---    skipped) and reset triggered_by to 'manual'. Defaults
---    `triggered_by IS NULL` to 'cron' so existing rows always have a value.
+--    it into triggered_by_user_id (best-effort — only when the value
+--    matches an existing user) and reset triggered_by to 'manual'.
 DO $$
 BEGIN
-  -- Migrate stray UUIDs from triggered_by → triggered_by_user_id.
-  UPDATE "offsite_backup_runs"
-  SET "triggered_by_user_id" = "triggered_by"::uuid
-  WHERE "triggered_by" IS NOT NULL
-    AND "triggered_by" NOT IN ('cron', 'manual')
-    AND "triggered_by" ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-    AND EXISTS (SELECT 1 FROM "users" WHERE "users"."id"::text = "offsite_backup_runs"."triggered_by");
+  -- Migrate stray UUIDs from triggered_by → triggered_by_user_id, only
+  -- when the value matches an existing user row. Both columns are TEXT
+  -- so no casting required.
+  UPDATE "offsite_backup_runs" o
+  SET "triggered_by_user_id" = o."triggered_by"
+  WHERE o."triggered_by" IS NOT NULL
+    AND o."triggered_by" NOT IN ('cron', 'manual')
+    AND EXISTS (SELECT 1 FROM "users" u WHERE u."id" = o."triggered_by");
 EXCEPTION WHEN OTHERS THEN
-  -- Defensive: any cast failure should not break the migration.
+  -- Defensive: any error should not break the migration.
   NULL;
 END $$;
 

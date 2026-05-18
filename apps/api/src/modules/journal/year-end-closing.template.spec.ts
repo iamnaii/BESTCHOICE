@@ -145,6 +145,118 @@ describe('YearEndClosingTemplate (unit)', () => {
       // dr - cr = 500 - 2000 = -1500
       expect(out.expenses[0].balance.toFixed(2)).toBe('-1500.00');
     });
+
+    /**
+     * SP7.9 — Legacy single-entity year-end (pre-cutover sanity).
+     *
+     * In the pre-cutover bc_orig DB, chart_of_accounts contains BOTH:
+     *   - FINANCE-prefix accounts (41-XXXX, 42-XXXX, 51-XXXX, etc.)
+     *   - SHOP-prefix accounts (S-41-XXXX, S-51-XXXX, etc.) added by SP7
+     *
+     * The YearEndClosingTemplate classifies accounts by their 2-digit prefix
+     * slice (accountCode.slice(0, 2)). SHOP-prefix codes like 'S-41-1101'
+     * have a 2-digit slice of 'S-' which matches neither REVENUE_PREFIXES nor
+     * EXPENSE_PREFIXES — so they are correctly IGNORED by the closing logic.
+     *
+     * This means:
+     *   - FINANCE revenue/expense accounts ARE closed to 33-1101 ✓
+     *   - SHOP-prefix accounts remain untouched (extracted to bc_shop separately) ✓
+     *
+     * Runbook: docs/runbooks/sp7-year-end-closing-pre-cutover.md
+     */
+    describe('SP7.9 — Legacy single-entity year-end (pre-cutover sanity)', () => {
+      it('closes FINANCE-prefix accounts and ignores SHOP-prefix (S-) accounts', async () => {
+        // Mixed chart: FINANCE accounts + SHOP-prefix accounts coexist in bc_orig
+        const t = buildTemplate([
+          // FINANCE revenue — should be included in closing
+          { accountCode: '41-1101', _sum: { debit: '0', credit: '500000' } },
+          { accountCode: '42-1103', _sum: { debit: '0', credit: '15000' } },
+          // FINANCE expense — should be included in closing
+          { accountCode: '51-1101', _sum: { debit: '80000', credit: '0' } },
+          { accountCode: '52-1104', _sum: { debit: '3000', credit: '0' } },
+          // SHOP-prefix accounts (SP7 dual-entity) — must be IGNORED by closing
+          { accountCode: 'S-41-1101', _sum: { debit: '0', credit: '200000' } },
+          { accountCode: 'S-51-1101', _sum: { debit: '40000', credit: '0' } },
+        ]);
+
+        const out = await t.getYearAccountActivity(2026);
+
+        // Only FINANCE revenue accounts (41-, 42-) are classified
+        expect(out.revenues).toHaveLength(2);
+        expect(out.revenues.map((r) => r.code)).toEqual(
+          expect.arrayContaining(['41-1101', '42-1103']),
+        );
+        // SHOP-prefix S-41-1101 must NOT appear in revenues
+        expect(out.revenues.map((r) => r.code)).not.toContain('S-41-1101');
+
+        // Only FINANCE expense accounts (51-, 52-) are classified
+        expect(out.expenses).toHaveLength(2);
+        expect(out.expenses.map((e) => e.code)).toEqual(
+          expect.arrayContaining(['51-1101', '52-1104']),
+        );
+        // SHOP-prefix S-51-1101 must NOT appear in expenses
+        expect(out.expenses.map((e) => e.code)).not.toContain('S-51-1101');
+
+        // Totals reflect FINANCE-only balances (SHOP balances excluded)
+        expect(out.revenueTotal.toFixed(2)).toBe('515000.00'); // 500000 + 15000
+        expect(out.expenseTotal.toFixed(2)).toBe('83000.00');  // 80000 + 3000
+        expect(out.netIncome.toFixed(2)).toBe('432000.00');    // 515000 - 83000
+      });
+
+      it('SHOP-prefix net income (S- accounts) does NOT affect 33-1101 transfer', async () => {
+        // Verify: execute() produces a step3 netIncome that excludes SHOP balances.
+        // SHOP S-41-1101 has 200000 credit but must not inflate the transfer to RE.
+        const journalCalls: any[] = [];
+        const journal: any = {
+          createAndPost: jest.fn().mockImplementation((dto: any) => {
+            journalCalls.push(dto);
+            return Promise.resolve({
+              id: `je-${journalCalls.length}`,
+              entryNumber: `JE-${journalCalls.length}`,
+            });
+          }),
+        };
+        const rows = [
+          { accountCode: '41-1101', _sum: { debit: '0', credit: '100000' } },
+          { accountCode: '51-1101', _sum: { debit: '60000', credit: '0' } },
+          { accountCode: 'S-41-1101', _sum: { debit: '0', credit: '200000' } }, // ignored
+          { accountCode: 'S-51-1101', _sum: { debit: '120000', credit: '0' } }, // ignored
+        ];
+        const prisma: any = {
+          journalLine: {
+            groupBy: jest.fn().mockResolvedValue(
+              rows.map((r) => ({
+                accountCode: r.accountCode,
+                _sum: {
+                  debit: new Prisma.Decimal(r._sum.debit),
+                  credit: new Prisma.Decimal(r._sum.credit),
+                },
+              })),
+            ),
+          },
+          chartOfAccount: {
+            findMany: jest.fn().mockResolvedValue(
+              rows.map((r) => ({ code: r.accountCode, name: `Name ${r.accountCode}` })),
+            ),
+          },
+          $transaction: jest.fn().mockImplementation(async (fn: any) => fn(prisma)),
+        };
+
+        const template = new YearEndClosingTemplate(journal as any, prisma as any);
+        const result = await template.execute(2026);
+
+        // Net income = 100000 (FINANCE revenue) - 60000 (FINANCE expense) = 40000
+        // SHOP amounts (200000 - 120000 = 80000) must NOT be included
+        expect(result.netIncome.toFixed(2)).toBe('40000.00');
+
+        // Step 3 (transfer to 33-1101) should reflect FINANCE-only net
+        const step3 = journalCalls[2];
+        const reLine = step3.lines.find(
+          (l: { accountCode: string }) => l.accountCode === '33-1101',
+        );
+        expect(reLine.cr.toString()).toBe('40000');
+      });
+    });
   });
 
   describe('execute (negative-balance JE flip)', () => {

@@ -136,6 +136,8 @@ import { SecurityMiddleware } from './modules/audit/security.middleware';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
 import { EntityScopeMiddleware } from './middleware/entity-scope.middleware';
 import { SentryEntityTagMiddleware } from './middleware/sentry-entity-tag.middleware';
+// SP7.10 — Maintenance-mode toggle for cutover window (MAINTENANCE_MODE=true blocks writes)
+import { MaintenanceModeMiddleware } from './middleware/maintenance-mode.middleware';
 // D1.1.3.1 — One-shot startup warning for VAT_RATE/vat_pct orphan keys.
 import { VatRateBootstrapService } from './utils/vat-rate-bootstrap.service';
 import { CsrfGuard } from './guards/csrf.guard';
@@ -394,6 +396,9 @@ export class AppModule implements NestModule {
     // NOTE: AdminPrefixMiddleware is applied at Express level in main.ts
     // (not here) because forRoutes('*') doesn't reliably run before the
     // NestJS routing layer rejects unknown /api/admin/* paths with 404.
+    // SP7.10 — MaintenanceModeMiddleware runs FIRST to gate writes during cutover.
+    // Activate: MAINTENANCE_MODE=true env + Cloud Run redeploy.
+    consumer.apply(MaintenanceModeMiddleware).forRoutes('*');
     // RequestIdMiddleware must run before SecurityMiddleware so Sentry scope is tagged first.
     consumer.apply(RequestIdMiddleware).forRoutes('*');
     consumer.apply(SecurityMiddleware).forRoutes('*');

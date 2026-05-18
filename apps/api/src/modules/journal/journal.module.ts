@@ -38,6 +38,14 @@ import { PayrollTemplate } from './cpa-templates/payroll.template';
 import { VendorSettlementTemplate } from './cpa-templates/vendor-settlement.template';
 import { PettyCashTemplate } from './cpa-templates/petty-cash.template';
 import { YearEndClosingTemplate } from './cpa-templates/year-end-closing.template';
+// P3-SP5 — SHOP-side accounting
+import { PairedJournalService } from './paired-journal.service';
+import { ShopCashSaleTemplate } from './cpa-templates/shop-cash-sale.template';
+import { ShopDownPaymentTemplate } from './cpa-templates/shop-down-payment.template';
+import { ShopFinanceReceiptTemplate } from './cpa-templates/shop-finance-receipt.template';
+import { ShopTradeInTemplate } from './cpa-templates/shop-trade-in.template';
+import { ShopExpenseTemplate } from './cpa-templates/shop-expense.template';
+import { ShopInventoryTransferTemplate } from './cpa-templates/shop-inventory-transfer.template';
 
 @Module({
   imports: [PrismaModule],
@@ -80,6 +88,14 @@ import { YearEndClosingTemplate } from './cpa-templates/year-end-closing.templat
     VendorSettlementTemplate,
     PettyCashTemplate,
     YearEndClosingTemplate,
+    // P3-SP5 — SHOP-side accounting
+    PairedJournalService,
+    ShopCashSaleTemplate,
+    ShopDownPaymentTemplate,
+    ShopFinanceReceiptTemplate,
+    ShopTradeInTemplate,
+    ShopExpenseTemplate,
+    ShopInventoryTransferTemplate,
   ],
   exports: [
     JournalService,
@@ -116,6 +132,14 @@ import { YearEndClosingTemplate } from './cpa-templates/year-end-closing.templat
     VendorSettlementTemplate,
     PettyCashTemplate,
     YearEndClosingTemplate,
+    // P3-SP5 — SHOP-side accounting
+    PairedJournalService,
+    ShopCashSaleTemplate,
+    ShopDownPaymentTemplate,
+    ShopFinanceReceiptTemplate,
+    ShopTradeInTemplate,
+    ShopExpenseTemplate,
+    ShopInventoryTransferTemplate,
   ],
 })
 export class JournalModule {}

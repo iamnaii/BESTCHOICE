@@ -67,12 +67,6 @@ export type HashSearchField = 'phone' | 'nationalId' | 'email';
 @Injectable()
 export class CustomerPiiService {
   private readonly logger = new Logger(CustomerPiiService.name);
-  /** Cached strict-mode flag — refreshed via isStrictMode(); cheap because it's a single bool. */
-  private strictModeCache: { value: boolean; checkedAt: number } | null = null;
-  /** Strict-mode cache TTL — 30s. Long enough to avoid hammering SystemConfig
-   *  on hot read paths, short enough that toggling the flag in /settings#pdpa
-   *  takes effect promptly. */
-  static readonly STRICT_MODE_TTL_MS = 30_000;
   /** SystemConfig key that controls strict mode. */
   static readonly STRICT_MODE_CONFIG_KEY = 'PDPA_STRICT_MODE';
 
@@ -90,16 +84,14 @@ export class CustomerPiiService {
    * Read the strict-mode toggle. SystemConfig wins, env var falls back. The
    * env var path matters in tests + CLI runs that have no DB session, but
    * production toggling happens through the SystemConfig UI.
+   *
+   * DEEP review W1 — there is intentionally NO in-process cache here. The
+   * SystemConfig SELECT is sub-millisecond (indexed `key` column, ~99
+   * rows total) and caching produces cross-pod inconsistency (one pod
+   * reads strict=true, peer pod still serves strict=false from its
+   * 30s-old cache, callers see flapping 400s). Hit the DB every time.
    */
   async isStrictMode(): Promise<boolean> {
-    const now = Date.now();
-    if (
-      this.strictModeCache &&
-      now - this.strictModeCache.checkedAt < CustomerPiiService.STRICT_MODE_TTL_MS
-    ) {
-      return this.strictModeCache.value;
-    }
-    let value = false;
     try {
       const row = await this.prisma.systemConfig.findFirst({
         where: { key: CustomerPiiService.STRICT_MODE_CONFIG_KEY, deletedAt: null },
@@ -107,32 +99,20 @@ export class CustomerPiiService {
       });
       if (row?.value) {
         const v = row.value.trim().toLowerCase();
-        value = v === 'true' || v === '1';
-      } else {
-        const env = (process.env.PDPA_STRICT_MODE || '').trim().toLowerCase();
-        value = env === 'true' || env === '1';
+        return v === 'true' || v === '1';
       }
     } catch {
       // Database unreachable (CLI bootstrap, ts-node first connect, etc.)
       // — fall back to env var rather than throwing. Strict-mode rejection
       // is enforced in user-facing paths only, so a fallback of `false`
       // here is safe (dual-write still happens).
-      const env = (process.env.PDPA_STRICT_MODE || '').trim().toLowerCase();
-      value = env === 'true' || env === '1';
     }
-    this.strictModeCache = { value, checkedAt: now };
-    return value;
-  }
-
-  /** Test seam — bypass the SystemConfig cache without waiting 30s. */
-  invalidateStrictModeCache(): void {
-    this.strictModeCache = null;
+    const env = (process.env.PDPA_STRICT_MODE || '').trim().toLowerCase();
+    return env === 'true' || env === '1';
   }
 
   /**
-   * Set the strict-mode flag. Upserts SystemConfig and clears the cache
-   * so the next isStrictMode() call sees the new value immediately.
-   *
+   * Set the strict-mode flag. Upserts SystemConfig.
    * Returns the new effective value.
    */
   async setStrictMode(enabled: boolean): Promise<boolean> {
@@ -149,7 +129,6 @@ export class CustomerPiiService {
         label: 'PDPA strict mode — require encrypted PII columns on every read',
       },
     });
-    this.invalidateStrictModeCache();
     return enabled;
   }
 
@@ -161,21 +140,56 @@ export class CustomerPiiService {
    * Null / empty inputs become null/empty in the output, NOT encrypted —
    * encrypting an empty string would produce ciphertext that decrypts to
    * '' but burns CPU + bytes for nothing.
+   *
+   * @throws Error when PII_ENCRYPTION_KEY is missing or too short and the
+   *   caller is trying to write a non-empty value. Refusing here prevents
+   *   the historical bug where misconfigured prod wrote literal plaintext
+   *   into the `*_encrypted` columns (DEEP review C2).
    */
   encryptCustomerFields(input: CustomerPiiInput): CustomerPiiEncrypted {
     const key = this.piiKey;
     const salt = this.hashSalt;
     const out: CustomerPiiEncrypted = {};
 
+    // Hard guard: if any non-empty PII value is being written but the key
+    // / salt are missing, refuse the operation. Empty values stay legal
+    // because they bypass crypto entirely.
+    const hasNonEmptyPii = ([
+      input.nationalId,
+      input.phone,
+      input.phoneSecondary,
+      input.email,
+      input.addressIdCard,
+      input.addressCurrent,
+      input.addressWork,
+      input.guardianNationalId,
+      input.guardianPhone,
+      input.guardianAddress,
+    ] as Array<string | null | undefined>).some((v) => typeof v === 'string' && v.length > 0) ||
+      (Array.isArray(input.references) && input.references.length > 0);
+
+    if (hasNonEmptyPii) {
+      if (!key || key.length < 32) {
+        throw new Error(
+          'PII_ENCRYPTION_KEY missing or too short — refusing to write plaintext into *_encrypted columns',
+        );
+      }
+      if (!salt || salt.length < 32) {
+        throw new Error(
+          'PII_HASH_SALT missing or too short — refusing to write plaintext into *_hash columns',
+        );
+      }
+    }
+
     const enc = (v: string | null | undefined): string | null | undefined => {
       if (v === undefined) return undefined;
       if (v === null || v === '') return v;
-      return key ? encryptPII(v, key) : v;
+      return encryptPII(v, key);
     };
     const hsh = (v: string | null | undefined): string | null | undefined => {
       if (v === undefined) return undefined;
       if (v === null || v === '') return v;
-      return salt ? hashPII(v, salt) : v;
+      return hashPII(v, salt);
     };
 
     if (input.nationalId !== undefined) {

@@ -1,4 +1,15 @@
-import { Body, Controller, Get, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Put,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+import type { Request } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -46,14 +57,21 @@ export class PdpaEncryptionController {
   @Put('strict-mode')
   @ApiOperation({ summary: 'Toggle PDPA strict mode (OWNER only)' })
   @Roles('OWNER')
-  async setStrictMode(@Body() dto: SetStrictModeDto, @CurrentUser() user: AuthUser) {
+  async setStrictMode(
+    @Body() dto: SetStrictModeDto,
+    @CurrentUser() user: AuthUser,
+    @Req() req: Request,
+  ) {
     const before = await this.service.getStatus();
     const result = await this.service.setStrictMode(dto.enabled);
+    // W6 — capture request IP + UA so PDPA audit trail is forensics-grade.
     await this.audit.log({
       userId: user?.id,
       action: 'PDPA_STRICT_MODE_TOGGLED',
       entity: 'system_config',
       entityId: 'PDPA_STRICT_MODE',
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
       oldValue: { strictMode: before.strictMode },
       newValue: { strictMode: result.strictMode },
     });
@@ -63,25 +81,16 @@ export class PdpaEncryptionController {
   @Post('backfill')
   @ApiOperation({ summary: 'Run PDPA PII backfill (OWNER only)' })
   @Roles('OWNER')
-  async runBackfill(@CurrentUser() user: AuthUser) {
-    const result = await this.service.runBackfill({
+  async runBackfill(@CurrentUser() user: AuthUser, @Req() req: Request) {
+    // W7 — the service writes the `PDPA_BACKFILL_RUN` AuditLog itself so
+    // the CLI invocation path also gets one entry. We forward IP + UA so
+    // the audit row records who initiated from where.
+    return this.service.runBackfill({
       triggeredBy: 'manual',
       triggeredByUserId: user?.id ?? null,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
     });
-    await this.audit.log({
-      userId: user?.id,
-      action: 'PDPA_BACKFILL_RUN',
-      entity: 'pdpa_backfill_run',
-      entityId: result.id,
-      newValue: {
-        status: result.status,
-        totalRecords: result.totalRecords,
-        processedRecords: result.processedRecords,
-        skippedRecords: result.skippedRecords,
-        durationMs: result.durationMs,
-      },
-    });
-    return result;
   }
 
   @Get('backfill/:id')

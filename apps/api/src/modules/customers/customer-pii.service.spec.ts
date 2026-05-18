@@ -47,9 +47,10 @@ describe('CustomerPiiService', () => {
         nationalId: '1234567890123',
         phone: '0812345678',
       });
-      expect(out.nationalIdEncrypted).toMatch(/^[a-f0-9]{32}:/);
+      // GCM wire format: iv(24):tag(32):cipher (3 colon-separated parts).
+      expect(out.nationalIdEncrypted).toMatch(/^[a-f0-9]{24}:[a-f0-9]{32}:/);
       expect(out.nationalIdHash).toMatch(/^[a-f0-9]{64}$/);
-      expect(out.phoneEncrypted).toMatch(/^[a-f0-9]{32}:/);
+      expect(out.phoneEncrypted).toMatch(/^[a-f0-9]{24}:[a-f0-9]{32}:/);
       expect(out.phoneHash).toMatch(/^[a-f0-9]{64}$/);
     });
 
@@ -83,11 +84,26 @@ describe('CustomerPiiService', () => {
       expect(a.phoneEncrypted).not.toBe(b.phoneEncrypted);
     });
 
-    it('passes through plaintext when PII_ENCRYPTION_KEY missing (dev fallback)', () => {
+    it('THROWS when PII_ENCRYPTION_KEY missing and caller writes a non-empty PII field (C2)', () => {
+      // C2 — the previous behaviour passed the plaintext straight through
+      // into `phoneEncrypted`, then strict-mode `isEncrypted` was happy to
+      // accept it because the format check was looking at the legacy
+      // plaintext column. Hard-fail now instead.
       delete process.env.PII_ENCRYPTION_KEY;
       const svc = new CustomerPiiService(makePrismaMock());
-      const out = svc.encryptCustomerFields({ phone: '0812345678' });
-      expect(out.phoneEncrypted).toBe('0812345678');
+      expect(() => svc.encryptCustomerFields({ phone: '0812345678' })).toThrow(
+        /PII_ENCRYPTION_KEY missing/i,
+      );
+    });
+
+    it('allows empty / null inputs even when key missing (no-op path)', () => {
+      delete process.env.PII_ENCRYPTION_KEY;
+      const svc = new CustomerPiiService(makePrismaMock());
+      // Passing only null/empty values is a no-op and should not throw —
+      // useful for partial updates that clear other columns.
+      expect(() =>
+        svc.encryptCustomerFields({ nationalId: null, phone: '' }),
+      ).not.toThrow();
     });
   });
 
@@ -190,28 +206,21 @@ describe('CustomerPiiService', () => {
       await expect(svc.isStrictMode()).resolves.toBe(true);
     });
 
-    it('caches results within the TTL window', async () => {
+    it('hits the DB on every call (no in-process cache — W1 fix)', async () => {
       const prisma = makePrismaMock('true') as unknown as { systemConfig: { findFirst: jest.Mock } };
       const svc = new CustomerPiiService(prisma as unknown as PrismaService);
       await svc.isStrictMode();
       await svc.isStrictMode();
       await svc.isStrictMode();
-      // Three calls but only one DB query thanks to cache.
-      expect(prisma.systemConfig.findFirst).toHaveBeenCalledTimes(1);
-    });
-
-    it('invalidateStrictModeCache() forces a re-read', async () => {
-      const prisma = makePrismaMock('true') as unknown as { systemConfig: { findFirst: jest.Mock } };
-      const svc = new CustomerPiiService(prisma as unknown as PrismaService);
-      await svc.isStrictMode();
-      svc.invalidateStrictModeCache();
-      await svc.isStrictMode();
-      expect(prisma.systemConfig.findFirst).toHaveBeenCalledTimes(2);
+      // 3 calls → 3 DB queries (previously 1 due to 30s cache). Cache was
+      // dropped because the toggle is hot-path and stale-cache produces
+      // cross-pod inconsistency.
+      expect(prisma.systemConfig.findFirst).toHaveBeenCalledTimes(3);
     });
   });
 
   describe('setStrictMode', () => {
-    it('upserts the SystemConfig row and clears the cache', async () => {
+    it('upserts the SystemConfig row', async () => {
       const prisma = makePrismaMock(null);
       const svc = new CustomerPiiService(prisma);
       await svc.setStrictMode(true);

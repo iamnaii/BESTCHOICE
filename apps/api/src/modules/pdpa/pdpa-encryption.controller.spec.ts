@@ -1,11 +1,19 @@
 import { PdpaEncryptionController } from './pdpa-encryption.controller';
 import type { PdpaEncryptionService } from './pdpa-encryption.service';
 import type { AuditService } from '../audit/audit.service';
+import type { Request } from 'express';
 
 describe('PdpaEncryptionController', () => {
   let svc: jest.Mocked<PdpaEncryptionService>;
   let audit: jest.Mocked<AuditService>;
   let controller: PdpaEncryptionController;
+
+  function makeReq(): Request {
+    return {
+      ip: '10.1.2.3',
+      headers: { 'user-agent': 'Jest/1.0' },
+    } as unknown as Request;
+  }
 
   beforeEach(() => {
     svc = {
@@ -20,19 +28,24 @@ describe('PdpaEncryptionController', () => {
   });
 
   describe('setStrictMode', () => {
-    it('writes PDPA_STRICT_MODE_TOGGLED audit log with old/new value', async () => {
+    it('writes PDPA_STRICT_MODE_TOGGLED audit log with old/new value + ip + userAgent (W6)', async () => {
       svc.getStatus.mockResolvedValue({
         strictMode: false,
         totalCustomers: 10,
         encryptedCount: 10,
         plaintextCount: 0,
+        plaintextByColumn: [],
         readyForStrictMode: true,
         encryptionKeyConfigured: true,
         hashSaltConfigured: true,
       });
       svc.setStrictMode.mockResolvedValue({ strictMode: true });
 
-      const result = await controller.setStrictMode({ enabled: true }, { id: 'u1', role: 'OWNER' });
+      const result = await controller.setStrictMode(
+        { enabled: true },
+        { id: 'u1', role: 'OWNER' },
+        makeReq(),
+      );
       expect(result).toEqual({ strictMode: true });
       expect(audit.log).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -40,6 +53,8 @@ describe('PdpaEncryptionController', () => {
           action: 'PDPA_STRICT_MODE_TOGGLED',
           entity: 'system_config',
           entityId: 'PDPA_STRICT_MODE',
+          ipAddress: '10.1.2.3',
+          userAgent: 'Jest/1.0',
           oldValue: { strictMode: false },
           newValue: { strictMode: true },
         }),
@@ -48,7 +63,7 @@ describe('PdpaEncryptionController', () => {
   });
 
   describe('runBackfill', () => {
-    it('writes PDPA_BACKFILL_RUN audit log with run metrics', async () => {
+    it('delegates to service.runBackfill and forwards ip + userAgent (W7)', async () => {
       svc.runBackfill.mockResolvedValue({
         id: 'run-1',
         status: 'COMPLETED',
@@ -57,16 +72,20 @@ describe('PdpaEncryptionController', () => {
         skippedRecords: 0,
         durationMs: 1234,
       });
-      const result = await controller.runBackfill({ id: 'u1', role: 'OWNER' });
+      const result = await controller.runBackfill({ id: 'u1', role: 'OWNER' }, makeReq());
       expect(result.id).toBe('run-1');
-      expect(audit.log).toHaveBeenCalledWith(
+      expect(svc.runBackfill).toHaveBeenCalledWith(
         expect.objectContaining({
-          userId: 'u1',
-          action: 'PDPA_BACKFILL_RUN',
-          entity: 'pdpa_backfill_run',
-          entityId: 'run-1',
+          triggeredBy: 'manual',
+          triggeredByUserId: 'u1',
+          ipAddress: '10.1.2.3',
+          userAgent: 'Jest/1.0',
         }),
       );
+      // Controller no longer writes its own audit log — the service does
+      // (so the CLI path also gets one). Test confirms the controller is
+      // NOT double-writing.
+      expect(audit.log).not.toHaveBeenCalled();
     });
   });
 

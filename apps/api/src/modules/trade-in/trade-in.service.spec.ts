@@ -581,8 +581,8 @@ describe('TradeInService', () => {
         transferAccountNumber: '1234567890',
         transferAccountName: 'Mr Test',
       });
-      expect(result.transferAccountNumberEncrypted).toMatch(/^[0-9a-f]+:[0-9a-f]+$/);
-      expect(result.transferAccountNameEncrypted).toMatch(/^[0-9a-f]+:[0-9a-f]+$/);
+      expect(result.transferAccountNumberEncrypted).toMatch(/^[0-9a-f]+:[0-9a-f]+:[0-9a-f]+$/);
+      expect(result.transferAccountNameEncrypted).toMatch(/^[0-9a-f]+:[0-9a-f]+:[0-9a-f]+$/);
     });
 
     it('returns null encrypted fields when paymentMethod=CASH', () => {

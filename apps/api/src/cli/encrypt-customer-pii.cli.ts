@@ -17,13 +17,16 @@
  *   - We don't bootstrap the full NestJS DI container — instantiating
  *     PdpaEncryptionService directly with PrismaClient keeps the CLI fast
  *     and lets it run inside Cloud Run Jobs without the HTTP server.
- *   - The service writes one PdpaBackfillRun row regardless of CLI vs UI
- *     trigger, so ops gets a single auditable history.
+ *   - The service writes one PdpaBackfillRun row AND one AuditLog
+ *     `PDPA_BACKFILL_RUN` entry regardless of CLI vs UI trigger (W7),
+ *     so ops gets a single auditable history. CLI rows carry the SYSTEM
+ *     user UUID (User.isSystemUser=true) — same pattern as cron jobs.
  *   - NEVER prints decrypted PII. Progress lines only carry counters.
  */
 import { PrismaClient } from '@prisma/client';
 import { PdpaEncryptionService } from '../modules/pdpa/pdpa-encryption.service';
 import { CustomerPiiService } from '../modules/customers/customer-pii.service';
+import { AuditService } from '../modules/audit/audit.service';
 import type { PrismaService } from '../prisma/prisma.service';
 
 const REQUIRED_CONSENT = 'YES_I_AM_SURE';
@@ -88,7 +91,8 @@ async function main(): Promise<void> {
     // depends on PrismaService only for the strict-mode SystemConfig read,
     // which the backfill itself doesn't need, so we cast the client.
     const piiService = new CustomerPiiService(prisma as unknown as PrismaService);
-    const pdpaService = new PdpaEncryptionService(prisma as unknown as PrismaService, piiService);
+    const audit = new AuditService(prisma as unknown as PrismaService);
+    const pdpaService = new PdpaEncryptionService(prisma as unknown as PrismaService, piiService, audit);
 
     console.log('[pdpa-backfill] Starting backfill...');
     const result = await pdpaService.runBackfill({
@@ -111,6 +115,12 @@ async function main(): Promise<void> {
     if (result.errorMessage) {
       console.error(`[pdpa-backfill] Error: ${result.errorMessage}`);
       process.exit(1);
+    }
+    if (result.status === 'COMPLETED_WITH_RACE') {
+      console.warn(
+        '[pdpa-backfill] WARNING: Completed with race — concurrent writes added new plaintext during the run.',
+      );
+      console.warn('[pdpa-backfill] WARNING: Re-run during a maintenance window to converge.');
     }
   } finally {
     await prisma.$disconnect();

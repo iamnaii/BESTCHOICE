@@ -31,13 +31,36 @@ infrastructure delivered in PR `feat/p3-sp4-pii-encryption`.
 
 | Purpose | Algorithm | Implementation |
 | --- | --- | --- |
-| Confidentiality (column encryption) | AES-256-CBC with random 16-byte IV | `apps/api/src/utils/crypto.util.ts:encryptPII` |
+| Confidentiality + integrity (column encryption) | AES-256-GCM with random 12-byte IV + 16-byte auth tag | `apps/api/src/utils/crypto.util.ts:encryptPII` |
 | Deterministic lookup hash | HMAC-SHA-256 | `apps/api/src/utils/pii.util.ts:hashPII` |
-| Reference JSON encryption | Per-field AES-256-CBC | `apps/api/src/utils/pii.util.ts:encryptReferencesJson` |
+| Reference JSON encryption | Per-field AES-256-GCM | `apps/api/src/utils/pii.util.ts:encryptReferencesJson` |
+
+Wire format: `<iv-hex(24)>:<authTag-hex(32)>:<ciphertext-hex>`. Decryption
+verifies the auth tag — wrong key or tampered ciphertext throws an
+exception (we do NOT silently return the input — that would render
+ciphertext as the user's phone number).
 
 The hash is keyed by `PII_HASH_SALT` (≥32 chars) so two databases that share
 a `PII_ENCRYPTION_KEY` but differ in salt cannot cross-correlate plaintext
 identities.
+
+> **DEEP review C1 migration note** — a brief earlier draft of `crypto.util.ts`
+> used AES-256-CBC (no auth tag). The `isEncrypted` format check now requires
+> 3 colon-separated parts (iv:tag:ciphertext), so any column that still holds
+> CBC-format data after this PR ships will fail `isEncrypted`, fall back to
+> its legacy plaintext column, and need to be re-encrypted by the next
+> backfill pass. For the Customer 11 PII columns this is automatic via the
+> backfill cron. For trade-in `transfer_account_*` columns (Phase 2 PR #743),
+> any rows written between Phase 2 merge and Phase 3 SP4 deploy will need a
+> one-off re-encrypt — `apps/api/src/cli/encrypt-customer-pii.cli.ts` does NOT
+> cover trade-in. Verify with:
+> ```sql
+> SELECT COUNT(*) FROM trade_ins
+> WHERE transfer_account_number_encrypted IS NOT NULL
+>   AND transfer_account_number_encrypted NOT LIKE '%:%:%';
+> ```
+> If 0, no action needed. If > 0, schedule a trade-in re-encrypt CLI before
+> enabling PDPA strict mode.
 
 ---
 
@@ -47,12 +70,20 @@ identities.
 
 | Var | Purpose | How to generate |
 | --- | --- | --- |
-| `PII_ENCRYPTION_KEY` | AES-256-CBC key, hex-encoded | `openssl rand -hex 32` (64 chars) |
+| `PII_ENCRYPTION_KEY` | AES-256-GCM key, hex-encoded | `openssl rand -hex 32` (64 chars) |
 | `PII_HASH_SALT` | HMAC-SHA-256 salt | `openssl rand -hex 32` (64 chars) — anything ≥32 chars is accepted |
 | `PDPA_STRICT_MODE` | Optional fallback when `system_config` is unreachable | `'true'` / `'1'` to enable |
 
 Both are validated at boot — see `apps/api/src/utils/env-validation.ts`.
 A missing or malformed key crashes the API on startup in production.
+
+> **DEEP review C2 note** — `encryptPII` will now THROW if called with a
+> missing or too-short key. The previous "silent passthrough" path wrote
+> literal plaintext into the `*_encrypted` columns, which the strict-mode
+> `isEncrypted` check happily accepted. This affects `CustomerPiiService.
+> encryptCustomerFields` — any code path that writes Customer PII without
+> setting `PII_ENCRYPTION_KEY` (>=32 chars) will fail at request time
+> rather than silently corrupting data.
 
 Generate once and store in **Secret Manager** (GCP) or your secret backend.
 **Never** commit `.env` files. **Never** print these values to logs.
@@ -155,22 +186,55 @@ Backfill is protected by a PostgreSQL advisory lock keyed
 `pdpa-backfill`, so CLI + UI button + cron firing simultaneously cannot
 double-run.
 
+### Cursor-race retry (W9)
+
+If a concurrent writer inserts a new customer between two batches, the
+cursor-based loop can skip past the new row. The backfill detects this
+by running a final `count()` after the main loop completes — if
+remaining > 0, it runs one additional pass over the unencrypted tail.
+After 2 passes, if remaining is still > 0, the run is marked
+`COMPLETED_WITH_RACE` (visible in the `errorMessage` column of
+`PdpaBackfillRun`) and the operator is recommended to re-run during a
+maintenance window where writes are paused.
+
+### PdpaBackfillRun retention (W2)
+
+`PdpaBackfillRetentionCron` (apps/api/src/modules/pdpa/pdpa-backfill-retention.cron.ts)
+hard-deletes rows older than 365 days. Runs daily at 02:00 BKK.
+Matches the existing AuditLog + OffsiteBackupRun retention policy.
+
+### Backfill query indexes (W10)
+
+Migration `20260949000000_pii_backfill_pending_indexes` adds 4 partial
+indexes on `customers` covering the high-cardinality PII columns:
+`national_id`, `phone`, `email`, `address_id_card`. Each index covers
+only rows where the encrypted counterpart is NULL, so the index size
+collapses to ~0 bytes once the backfill is complete.
+
 ---
 
 ## 4. Audit + access patterns
 
 ### What gets logged
 
-| Event | AuditLog action | Triggered by |
-| --- | --- | --- |
-| Backfill run completed/failed | `PDPA_BACKFILL_RUN` | `POST /pdpa-encryption/backfill` |
-| Strict-mode toggle | `PDPA_STRICT_MODE_TOGGLED` | `PUT /pdpa-encryption/strict-mode` |
-| Per-row PII decryption (existing) | `PII_DECRYPT_FULL` / `PII_DECRYPT_MASKED` | every CustomersController read |
+| Event | AuditLog action | Triggered by | userId carries |
+| --- | --- | --- | --- |
+| Backfill run completed/failed | `PDPA_BACKFILL_RUN` | `POST /pdpa-encryption/backfill` (UI) OR CLI | OWNER user (UI) / SYSTEM user (CLI) — W7 |
+| Strict-mode toggle | `PDPA_STRICT_MODE_TOGGLED` | `PUT /pdpa-encryption/strict-mode` | OWNER user |
+| Per-row PII decryption (existing) | `PII_DECRYPT_FULL` / `PII_DECRYPT_MASKED` | every CustomersController read | reader user |
+
+> **DEEP review W6/W7** — `PDPA_STRICT_MODE_TOGGLED` and `PDPA_BACKFILL_RUN`
+> audit rows include `ipAddress` + `userAgent` from the request when
+> triggered through HTTP. CLI invocations have neither — the audit row
+> lists `triggeredBy: 'cli'` in `newValue` and uses the SYSTEM user UUID
+> (`User.isSystemUser=true`) as `userId`, mirroring the cron-job pattern
+> from `OffsiteBackupCron` / `etax-auto-submit.cron`.
 
 The `PdpaBackfillRun` model is the auditable history of every backfill,
 including the CLI invocations. It records `triggeredBy` ('cli' or
 'manual'), `triggeredByUserId` (FK to `User` when 'manual'), and the
-hostname/Cloud Run revision the run executed on.
+hostname/Cloud Run revision the run executed on. Rows older than 1 year
+are pruned by `PdpaBackfillRetentionCron` (see §3).
 
 ### Who can decrypt what
 
@@ -205,9 +269,10 @@ customers full deletion.
 
 ### "I lost the PII_ENCRYPTION_KEY"
 
-**Data is unrecoverable.** AES-256-CBC has no backdoor. Every encrypted
-column on every customer is now opaque ciphertext that decrypts to
-garbage with the wrong key.
+**Data is unrecoverable.** AES-256-GCM has no backdoor — the auth tag
+verifies key correctness and will THROW on the wrong key (no silent
+return of garbage). Every encrypted column on every customer is opaque
+ciphertext that cannot be decrypted without the original key.
 
 Recovery path:
 1. Restore the most recent Cloud SQL backup that pre-dates the key loss
@@ -272,6 +337,8 @@ safe and instantaneous.
 | Backfill CLI | `apps/api/src/cli/encrypt-customer-pii.cli.ts` |
 | Settings UI tab | `apps/web/src/pages/SettingsPage/tabs/PdpaTab.tsx` |
 | Backfill history schema | `model PdpaBackfillRun` in `apps/api/prisma/schema.prisma` |
+| Backfill retention cron (W2) | `apps/api/src/modules/pdpa/pdpa-backfill-retention.cron.ts` |
 | Existing PII decryption audit | `apps/api/src/modules/pii/pii-audit.service.ts` |
 | Phase 2 encrypted-column migration | `apps/api/prisma/migrations/20260528400000_add_pii_encrypted_columns/` |
 | SP4 PdpaBackfillRun migration | `apps/api/prisma/migrations/20260948000000_pdpa_backfill_runs/` |
+| SP4 partial-index migration (W10) | `apps/api/prisma/migrations/20260949000000_pii_backfill_pending_indexes/` |

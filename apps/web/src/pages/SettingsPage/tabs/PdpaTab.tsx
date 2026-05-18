@@ -10,6 +10,9 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+// W8 — shared formatter returns พ.ศ. ("8 เม.ย. 69 14:30") instead of the
+// local helper's ค.ศ. output. Removes the date-format drift across pages.
+import { formatThaiDateTime } from '@/lib/date';
 
 /**
  * Phase 3 SP4 — PDPA strict-mode + backfill console.
@@ -26,11 +29,19 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
  * that could leak a customer's name, phone, etc.
  */
 
+interface PiiColumnPlaintextCount {
+  column: string;
+  plaintextCount: number;
+}
+
 interface PdpaStatus {
   strictMode: boolean;
   totalCustomers: number;
   encryptedCount: number;
   plaintextCount: number;
+  /** W3 — per-column breakdown so the UI can surface which exact field is missing.
+   *  Optional for forward compat with older API responses that pre-date this field. */
+  plaintextByColumn?: PiiColumnPlaintextCount[];
   readyForStrictMode: boolean;
   encryptionKeyConfigured: boolean;
   hashSaltConfigured: boolean;
@@ -55,17 +66,6 @@ const STATUS_LABELS: Record<PdpaBackfillRun['status'], { label: string; variant:
   COMPLETED: { label: 'สำเร็จ', variant: 'success' },
   FAILED: { label: 'ล้มเหลว', variant: 'destructive' },
 };
-
-function formatThaiDateTime(iso: string): string {
-  return new Date(iso).toLocaleString('th-TH', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: 'Asia/Bangkok',
-  });
-}
 
 function formatDuration(startedAt: string, finishedAt: string | null): string {
   if (!finishedAt) return '-';
@@ -305,12 +305,29 @@ export function PdpaTab() {
 
           {/* Plaintext warning when strict mode is OFF but we have plaintext rows */}
           {!status.readyForStrictMode && !isRunning && envReady && (
-            <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900 p-3 text-sm">
-              <ShieldAlert className="size-4 mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
-              <p className="text-amber-900 dark:text-amber-200 leading-snug">
-                ลูกค้า {status.plaintextCount.toLocaleString('th-TH')} คน
-                ยังไม่ได้เข้ารหัส — รัน Backfill ก่อนเปิด Strict Mode
-              </p>
+            <div className="rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900 p-3 text-sm">
+              <div className="flex items-start gap-2">
+                <ShieldAlert className="size-4 mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                <p className="text-amber-900 dark:text-amber-200 leading-snug">
+                  ลูกค้า {status.plaintextCount.toLocaleString('th-TH')} คน
+                  ยังไม่ได้เข้ารหัส — รัน Backfill ก่อนเปิด Strict Mode
+                </p>
+              </div>
+              {/* W3 — per-column breakdown so the operator knows which
+                  exact columns still need backfilling. Falls back gracefully
+                  when the API response pre-dates this field. */}
+              {status.plaintextByColumn && status.plaintextByColumn.some((c) => c.plaintextCount > 0) && (
+                <ul className="mt-2 ml-6 list-disc text-xs text-amber-900 dark:text-amber-200 leading-snug">
+                  {status.plaintextByColumn
+                    .filter((c) => c.plaintextCount > 0)
+                    .map((c) => (
+                      <li key={c.column}>
+                        <span className="font-mono">{c.column}</span> —{' '}
+                        {c.plaintextCount.toLocaleString('th-TH')} แถว
+                      </li>
+                    ))}
+                </ul>
+              )}
             </div>
           )}
 

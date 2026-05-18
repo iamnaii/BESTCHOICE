@@ -2,9 +2,11 @@ import { BadRequestException, ConflictException } from '@nestjs/common';
 import { PdpaEncryptionService } from './pdpa-encryption.service';
 import { CustomerPiiService } from '../customers/customer-pii.service';
 import type { PrismaService } from '../../prisma/prisma.service';
+import type { AuditService } from '../audit/audit.service';
 
 jest.mock('@sentry/nestjs', () => ({
   captureException: jest.fn(),
+  captureMessage: jest.fn(),
 }));
 
 const TEST_KEY = 'a'.repeat(64);
@@ -18,6 +20,22 @@ interface FakeRow {
   phone: string | null;
   phoneEncrypted: string | null;
   phoneHash: string | null;
+  phoneSecondary?: string | null;
+  phoneSecondaryEncrypted?: string | null;
+  email?: string | null;
+  emailEncrypted?: string | null;
+  addressIdCard?: string | null;
+  addressIdCardEncrypted?: string | null;
+  addressCurrent?: string | null;
+  addressCurrentEncrypted?: string | null;
+  addressWork?: string | null;
+  addressWorkEncrypted?: string | null;
+  guardianNationalId?: string | null;
+  guardianNationalIdEncrypted?: string | null;
+  guardianPhone?: string | null;
+  guardianPhoneEncrypted?: string | null;
+  guardianAddress?: string | null;
+  guardianAddressEncrypted?: string | null;
   references?: unknown;
   referencesEncrypted?: unknown;
   [k: string]: unknown;
@@ -27,23 +45,68 @@ function makePrismaMock(opts: {
   rows?: FakeRow[];
   totalCustomers?: number;
   plaintextCount?: number;
+  /** Per-column count overrides for getPlaintextCountsByColumn. Keyed by plaintext column name. */
+  perColumnCounts?: Record<string, number>;
   lockAcquired?: boolean;
   systemConfigValue?: string | null;
+  /** Concurrent-writer count for W9 race tests — number of new
+   *  plaintext rows that "appear" after the main loop's first pass. */
+  raceRemaining?: number;
 }) {
   let rows = (opts.rows ?? []).map((r) => ({ ...r }));
   const runRows: Array<Record<string, unknown>> = [];
+  let countCallSinceFindMany = 0;
+  // For W9 retry: after the main loop finishes (lots of findMany calls),
+  // the first subsequent count() returns raceRemaining > 0 to simulate
+  // concurrent writers. Subsequent count() calls return 0 (or
+  // continueRaceForever).
+  let racePollIdx = 0;
+
+  function isPlaintextWhere(where: unknown): boolean {
+    // Heuristic: any where with OR conditions is a "plaintext count" query.
+    return Boolean(where && (where as { OR?: unknown }).OR);
+  }
+  function isPerColumnWhere(where: unknown): { column: string } | null {
+    // Per-column counts use AND: [{ <plain>: { not: '' } }, { <plain>: { not: null } }, { <enc>: null }].
+    if (!where || !(where as { AND?: unknown }).AND) return null;
+    const and = (where as { AND: Array<Record<string, unknown>> }).AND;
+    const plainKey = Object.keys(and[0] ?? {})[0];
+    return plainKey ? { column: plainKey } : null;
+  }
 
   return {
     customer: {
-      count: jest.fn().mockImplementation((args: { where?: { AND?: unknown } } = {}) => {
-        // The plaintext-count query has the AND filter; the all-customers
-        // query doesn't. Use that to differentiate.
-        if (args.where && (args.where as { AND?: unknown }).AND) {
-          return Promise.resolve(opts.plaintextCount ?? rows.filter((r) => r.nationalIdEncrypted === null && r.nationalId).length);
+      count: jest.fn().mockImplementation((args: { where?: unknown } = {}) => {
+        const where = args.where;
+        if (!where || (Object.keys(where).length === 1 && (where as { deletedAt?: unknown }).deletedAt !== undefined)) {
+          return Promise.resolve(opts.totalCustomers ?? rows.length);
+        }
+        const perCol = isPerColumnWhere(where);
+        if (perCol) {
+          if (opts.perColumnCounts && opts.perColumnCounts[perCol.column] !== undefined) {
+            return Promise.resolve(opts.perColumnCounts[perCol.column]);
+          }
+          if (perCol.column === 'nationalId') {
+            return Promise.resolve(rows.filter((r) => r.nationalIdEncrypted === null && r.nationalId).length);
+          }
+          return Promise.resolve(0);
+        }
+        if (isPlaintextWhere(where)) {
+          // W9: after main loop iterations, simulate race by returning > 0 once.
+          if (opts.raceRemaining !== undefined && countCallSinceFindMany > 0) {
+            if (racePollIdx === 0) {
+              racePollIdx++;
+              return Promise.resolve(opts.raceRemaining);
+            }
+            return Promise.resolve(0);
+          }
+          if (opts.plaintextCount !== undefined) return Promise.resolve(opts.plaintextCount);
+          return Promise.resolve(rows.filter((r) => r.nationalIdEncrypted === null && r.nationalId).length);
         }
         return Promise.resolve(opts.totalCustomers ?? rows.length);
       }),
       findMany: jest.fn().mockImplementation((args: { cursor?: { id: string }; take?: number } = {}) => {
+        countCallSinceFindMany++;
         const sorted = rows
           .filter((r) => r.nationalIdEncrypted === null && r.nationalId)
           .sort((a, b) => a.id.localeCompare(b.id));
@@ -69,6 +132,7 @@ function makePrismaMock(opts: {
       }),
       findUnique: jest.fn().mockResolvedValue(null),
       findMany: jest.fn().mockResolvedValue([]),
+      deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
     systemConfig: {
       findFirst: jest.fn().mockResolvedValue(
@@ -76,6 +140,15 @@ function makePrismaMock(opts: {
       ),
       upsert: jest.fn().mockResolvedValue({}),
     },
+    user: {
+      findFirst: jest.fn().mockResolvedValue({ id: 'system-user-uuid' }),
+    },
+    $transaction: jest.fn().mockImplementation(async (queries: Array<Promise<unknown>>) => {
+      // Sequentially resolve the array of pre-issued promises (Prisma's
+      // batch transaction signature). This mirrors the real behaviour
+      // closely enough to verify atomicity wiring.
+      return Promise.all(queries);
+    }),
     $queryRaw: jest.fn().mockImplementation((strings: TemplateStringsArray | string) => {
       const sql = Array.isArray(strings) ? (strings as TemplateStringsArray).join('?') : String(strings);
       if (sql.includes('pg_try_advisory_lock')) {
@@ -94,8 +167,9 @@ function makePrismaMock(opts: {
 
 function makeService(prisma: PrismaService) {
   const piiService = new CustomerPiiService(prisma);
-  const svc = new PdpaEncryptionService(prisma, piiService);
-  return { svc, piiService };
+  const audit = { log: jest.fn().mockResolvedValue(undefined) } as unknown as AuditService;
+  const svc = new PdpaEncryptionService(prisma, piiService, audit);
+  return { svc, piiService, audit };
 }
 
 describe('PdpaEncryptionService', () => {
@@ -118,8 +192,12 @@ describe('PdpaEncryptionService', () => {
   });
 
   describe('getStatus', () => {
-    it('reports totalCustomers, encryptedCount, plaintextCount, readyForStrictMode', async () => {
-      const prisma = makePrismaMock({ totalCustomers: 100, plaintextCount: 5 });
+    it('reports totalCustomers, encryptedCount, plaintextCount, readyForStrictMode + per-column breakdown (W3)', async () => {
+      const prisma = makePrismaMock({
+        totalCustomers: 100,
+        plaintextCount: 5,
+        perColumnCounts: { nationalId: 3, phone: 4, email: 2 },
+      });
       const { svc } = makeService(prisma);
       const status = await svc.getStatus();
       expect(status.totalCustomers).toBe(100);
@@ -128,6 +206,12 @@ describe('PdpaEncryptionService', () => {
       expect(status.readyForStrictMode).toBe(false);
       expect(status.encryptionKeyConfigured).toBe(true);
       expect(status.hashSaltConfigured).toBe(true);
+      // Per-column breakdown should include every PII_COLUMN.
+      expect(status.plaintextByColumn.length).toBe(10);
+      const byCol = Object.fromEntries(status.plaintextByColumn.map((c) => [c.column, c.plaintextCount]));
+      expect(byCol.nationalId).toBe(3);
+      expect(byCol.phone).toBe(4);
+      expect(byCol.email).toBe(2);
     });
 
     it('readyForStrictMode true when plaintextCount is 0', async () => {
@@ -139,10 +223,16 @@ describe('PdpaEncryptionService', () => {
   });
 
   describe('setStrictMode', () => {
-    it('refuses to enable when plaintext rows still exist', async () => {
-      const prisma = makePrismaMock({ totalCustomers: 100, plaintextCount: 3 });
+    it('refuses to enable when plaintext rows still exist on ANY PII column (W4)', async () => {
+      const prisma = makePrismaMock({
+        totalCustomers: 100,
+        plaintextCount: 3,
+        perColumnCounts: { phone: 2, email: 1 },
+      });
       const { svc } = makeService(prisma);
       await expect(svc.setStrictMode(true)).rejects.toThrow(BadRequestException);
+      // Error message should name the offending columns.
+      await expect(svc.setStrictMode(true)).rejects.toThrow(/phone|email/);
     });
 
     it('refuses to enable when PII_ENCRYPTION_KEY missing', async () => {
@@ -206,10 +296,29 @@ describe('PdpaEncryptionService', () => {
       expect(result.status).toBe('COMPLETED');
       expect(result.processedRecords).toBe(2);
       expect(result.skippedRecords).toBe(0);
-      // Sanity-check the rows got written
+      // Sanity-check the rows got written — GCM 3-part format.
       const c1 = (prisma as unknown as { _rows: FakeRow[] })._rows.find((r) => r.id === 'c1')!;
-      expect(c1.nationalIdEncrypted).toMatch(/^[a-f0-9]{32}:/);
+      expect(c1.nationalIdEncrypted).toMatch(/^[a-f0-9]{24}:[a-f0-9]{32}:/);
       expect(c1.phoneHash).toMatch(/^[a-f0-9]{64}$/);
+    });
+
+    it('uses $transaction to commit batch writes + counter atomically (W5)', async () => {
+      const rows: FakeRow[] = [
+        {
+          id: 'c1',
+          nationalId: '1234567890123',
+          nationalIdEncrypted: null,
+          nationalIdHash: null,
+          phone: '0812345678',
+          phoneEncrypted: null,
+          phoneHash: null,
+        },
+      ];
+      const prisma = makePrismaMock({ rows, totalCustomers: 1 });
+      const { svc } = makeService(prisma);
+      await svc.runBackfill({ triggeredBy: 'cli' });
+      // The batch tx should have been called — one $transaction per batch.
+      expect((prisma as unknown as { $transaction: jest.Mock }).$transaction).toHaveBeenCalled();
     });
 
     it('is idempotent — already-encrypted rows are skipped', async () => {
@@ -256,6 +365,64 @@ describe('PdpaEncryptionService', () => {
       // 5 rows / 2 per batch = 3 batches → 3 progress events
       expect(progress.length).toBe(3);
       expect(progress[progress.length - 1].processed).toBe(5);
+    });
+
+    it('writes PDPA_BACKFILL_RUN audit log from CLI path using SYSTEM user (W7)', async () => {
+      const prisma = makePrismaMock({ totalCustomers: 0, plaintextCount: 0 });
+      const { svc, audit } = makeService(prisma);
+      await svc.runBackfill({ triggeredBy: 'cli', triggeredByUserId: null });
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 'system-user-uuid',
+          action: 'PDPA_BACKFILL_RUN',
+          entity: 'pdpa_backfill_run',
+        }),
+      );
+    });
+
+    it('writes PDPA_BACKFILL_RUN audit log from UI path using OWNER userId + ip + UA (W6, W7)', async () => {
+      const prisma = makePrismaMock({ totalCustomers: 0, plaintextCount: 0 });
+      const { svc, audit } = makeService(prisma);
+      await svc.runBackfill({
+        triggeredBy: 'manual',
+        triggeredByUserId: 'owner-uuid',
+        ipAddress: '10.1.2.3',
+        userAgent: 'TestAgent/1.0',
+      });
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 'owner-uuid',
+          action: 'PDPA_BACKFILL_RUN',
+          entity: 'pdpa_backfill_run',
+          ipAddress: '10.1.2.3',
+          userAgent: 'TestAgent/1.0',
+        }),
+      );
+    });
+  });
+
+  describe('pruneOldRuns (W2 retention)', () => {
+    it('delegates to prisma.pdpaBackfillRun.deleteMany with a cutoff date', async () => {
+      const prisma = makePrismaMock({});
+      const deleteMany = (prisma as unknown as { pdpaBackfillRun: { deleteMany: jest.Mock } })
+        .pdpaBackfillRun.deleteMany;
+      deleteMany.mockResolvedValue({ count: 7 });
+      const { svc } = makeService(prisma);
+      const count = await svc.pruneOldRuns(365);
+      expect(count).toBe(7);
+      expect(deleteMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { startedAt: { lt: expect.any(Date) } },
+        }),
+      );
+    });
+
+    it('returns 0 for invalid retention windows', async () => {
+      const prisma = makePrismaMock({});
+      const { svc } = makeService(prisma);
+      await expect(svc.pruneOldRuns(0)).resolves.toBe(0);
+      await expect(svc.pruneOldRuns(-1)).resolves.toBe(0);
+      await expect(svc.pruneOldRuns(NaN)).resolves.toBe(0);
     });
   });
 });

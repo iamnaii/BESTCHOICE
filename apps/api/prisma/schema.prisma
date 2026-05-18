@@ -6636,7 +6636,7 @@ enum OffsiteBackupStatus {
 
 /// Append-only event log for PDPA PII encryption backfill runs.
 /// updatedAt/deletedAt intentionally omitted — runs are immutable once finished;
-/// retention via dedicated retention job (see docs/guides/PDPA-COMPLIANCE.md).
+/// 1-year retention via PdpaBackfillRetentionCron (W2 — see docs/guides/PDPA-COMPLIANCE.md §3).
 model PdpaBackfillRun {
   id               String              @id @default(uuid())
   status           PdpaBackfillStatus

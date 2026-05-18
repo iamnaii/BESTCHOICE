@@ -90,7 +90,15 @@ describe('ExpenseTemplatesService', () => {
     });
 
     it('respects custom cap from SystemConfig (cap 5, count 5 → reject)', async () => {
-      prisma.systemConfig.findFirst.mockResolvedValueOnce({ value: '5' });
+      // ExpenseTemplatesService.create() calls systemConfig.findFirst twice:
+      //   1) assertTemplatesEnabled — key='templates_enabled' (D1.2.4.1)
+      //   2) readUserQuotaCap     — key='max_templates_per_user' (D1.2.4.2)
+      // Use a key-aware mockImplementation so the cap row is only returned
+      // for the second call regardless of invocation order.
+      prisma.systemConfig.findFirst.mockImplementation(({ where }: { where: { key: string } }) => {
+        if (where.key === 'max_templates_per_user') return Promise.resolve({ value: '5' });
+        return Promise.resolve(null);
+      });
       prisma.expenseTemplate.count.mockResolvedValueOnce(5);
       await expect(service.create({
         name: 'ค่าไฟ', documentType: 'EXPENSE', branchId: 'b1',

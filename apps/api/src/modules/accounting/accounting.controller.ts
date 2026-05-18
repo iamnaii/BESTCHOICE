@@ -47,8 +47,14 @@ export class AccountingController {
 
   @Get('ledger/trial-balance')
   @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
-  getTrialBalance(@Query('asOfDate') asOfDate?: string) {
-    return this.service.getTrialBalance(asOfDate ? new Date(asOfDate) : undefined);
+  getTrialBalance(
+    @Query('asOfDate') asOfDate?: string,
+    @Query('scope') scope?: 'FINANCE' | 'SHOP' | 'ALL',
+  ) {
+    return this.service.getTrialBalance(
+      asOfDate ? new Date(asOfDate) : undefined,
+      scope ?? 'FINANCE',
+    );
   }
 
   @Get('ledger/profit-loss')
@@ -56,11 +62,34 @@ export class AccountingController {
   getProfitLossFromJournal(
     @Query('periodStart') periodStart: string,
     @Query('periodEnd') periodEnd: string,
+    @Query('scope') scope?: 'FINANCE' | 'SHOP' | 'ALL',
   ) {
     const start = new Date(periodStart);
     const end = new Date(periodEnd);
     end.setHours(23, 59, 59, 999);
-    return this.service.getProfitLossFromJournal(start, end);
+    return this.service.getProfitLossFromJournal(start, end, undefined, scope ?? 'FINANCE');
+  }
+
+  // ============================================================
+  // P3-SP5: SHOP-side reports (separate paths for sidebar UX)
+  // ============================================================
+
+  @Get('ledger/shop/trial-balance')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  getShopTrialBalance(@Query('asOfDate') asOfDate?: string) {
+    return this.service.getTrialBalance(asOfDate ? new Date(asOfDate) : undefined, 'SHOP');
+  }
+
+  @Get('ledger/shop/profit-loss')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  getShopProfitLoss(
+    @Query('periodStart') periodStart: string,
+    @Query('periodEnd') periodEnd: string,
+  ) {
+    const start = new Date(periodStart);
+    const end = new Date(periodEnd);
+    end.setHours(23, 59, 59, 999);
+    return this.service.getProfitLossFromJournal(start, end, undefined, 'SHOP');
   }
 
   @Get('ledger/balance-sheet')

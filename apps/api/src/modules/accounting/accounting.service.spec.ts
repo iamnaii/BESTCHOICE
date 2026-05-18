@@ -1073,4 +1073,160 @@ describe('AccountingService', () => {
       expect(result.csv.startsWith('﻿entryDate,')).toBe(true);
     });
   });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // P3-SP5: SHOP-scoped Trial Balance + P&L
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  describe('getTrialBalance — SHOP scope', () => {
+    beforeEach(() => {
+      prisma.chartOfAccount = { findMany: jest.fn().mockResolvedValue([]) };
+      prisma.journalLine = { groupBy: jest.fn().mockResolvedValue([]) };
+    });
+
+    it('passes startsWith=S filter to both queries when scope=SHOP', async () => {
+      await service.getTrialBalance(undefined, 'SHOP');
+      const accCall = prisma.chartOfAccount.findMany.mock.calls[0][0];
+      expect(accCall.where.code).toEqual({ startsWith: 'S' });
+      const lineCall = prisma.journalLine.groupBy.mock.calls[0][0];
+      expect(lineCall.where.accountCode).toEqual({ startsWith: 'S' });
+    });
+
+    it('passes NOT startsWith=S filter when scope=FINANCE', async () => {
+      await service.getTrialBalance(undefined, 'FINANCE');
+      const accCall = prisma.chartOfAccount.findMany.mock.calls[0][0];
+      expect(accCall.where.code).toEqual({ not: { startsWith: 'S' } });
+    });
+
+    it('omits the code filter entirely when scope=ALL', async () => {
+      await service.getTrialBalance(undefined, 'ALL');
+      const accCall = prisma.chartOfAccount.findMany.mock.calls[0][0];
+      expect(accCall.where.code).toBeUndefined();
+    });
+
+    it('groups SHOP accounts into their own sections (S11, S21, etc)', async () => {
+      prisma.chartOfAccount.findMany.mockResolvedValue([
+        {
+          id: 'S11-1101',
+          code: 'S11-1101',
+          name: 'เงินสด SHOP',
+          type: 'สินทรัพย์',
+          normalBalance: 'Dr',
+          category: null,
+          vatApplicable: false,
+          notes: null,
+          status: 'ใช้งาน',
+          deletedAt: null,
+        },
+        {
+          id: 'S21-2001',
+          code: 'S21-2001',
+          name: 'เงินรับล่วงหน้า',
+          type: 'หนี้สิน',
+          normalBalance: 'Cr',
+          category: null,
+          vatApplicable: false,
+          notes: null,
+          status: 'ใช้งาน',
+          deletedAt: null,
+        },
+      ]);
+      prisma.journalLine.groupBy.mockResolvedValue([
+        {
+          accountCode: 'S11-1101',
+          _sum: { debit: new Prisma.Decimal(3000), credit: new Prisma.Decimal(0) },
+        },
+        {
+          accountCode: 'S21-2001',
+          _sum: { debit: new Prisma.Decimal(0), credit: new Prisma.Decimal(3000) },
+        },
+      ]);
+
+      const result = await service.getTrialBalance(undefined, 'SHOP');
+      const prefixes = result.sections.map((s) => s.codePrefix);
+      expect(prefixes).toContain('S11');
+      expect(prefixes).toContain('S21');
+      expect(result.isBalanced).toBe(true);
+      expect(result.grandDrTotal.toNumber()).toBe(3000);
+      expect(result.grandCrTotal.toNumber()).toBe(3000);
+    });
+  });
+
+  describe('getProfitLossFromJournal — SHOP scope', () => {
+    beforeEach(() => {
+      prisma.chartOfAccount = { findMany: jest.fn().mockResolvedValue([]) };
+      prisma.journalLine = { groupBy: jest.fn().mockResolvedValue([]) };
+    });
+
+    it('classifies S41/S42 as revenue and S50/S51/S52/S53 as expense when scope=SHOP', async () => {
+      prisma.journalLine.groupBy.mockResolvedValue([
+        {
+          accountCode: 'S41-1101',
+          _sum: { debit: new Prisma.Decimal(0), credit: new Prisma.Decimal(10000) },
+        },
+        {
+          accountCode: 'S50-1101',
+          _sum: { debit: new Prisma.Decimal(6000), credit: new Prisma.Decimal(0) },
+        },
+        {
+          accountCode: 'S52-1101',
+          _sum: { debit: new Prisma.Decimal(1500), credit: new Prisma.Decimal(0) },
+        },
+      ]);
+      prisma.chartOfAccount.findMany.mockResolvedValue([
+        { code: 'S41-1101', name: 'รายได้ขายมือถือใหม่' },
+        { code: 'S50-1101', name: 'ต้นทุนขาย' },
+        { code: 'S52-1101', name: 'ค่าเช่าสาขา' },
+      ]);
+
+      const result = await service.getProfitLossFromJournal(
+        new Date('2026-01-01'),
+        new Date('2026-01-31'),
+        undefined,
+        'SHOP',
+      );
+      expect(result.revenue.total.toNumber()).toBe(10000);
+      expect(result.expenses.total.toNumber()).toBe(7500); // 6000 + 1500
+      expect(result.netIncome.toNumber()).toBe(2500);
+    });
+
+    it('passes startsWith=S filter to journalLine.groupBy when scope=SHOP', async () => {
+      await service.getProfitLossFromJournal(
+        new Date('2026-01-01'),
+        new Date('2026-01-31'),
+        undefined,
+        'SHOP',
+      );
+      const call = prisma.journalLine.groupBy.mock.calls[0][0];
+      expect(call.where.accountCode).toEqual({ startsWith: 'S' });
+    });
+
+    it('does not include FINANCE revenue (41-XXXX) when scope=SHOP', async () => {
+      // Even if the DB returns 41-XXXX rows (e.g. caller mocked the filter),
+      // the prefix filter inside the loop only counts S41/S42 toward revenue.
+      prisma.journalLine.groupBy.mockResolvedValue([
+        {
+          accountCode: '41-1101',
+          _sum: { debit: new Prisma.Decimal(0), credit: new Prisma.Decimal(99999) },
+        },
+        {
+          accountCode: 'S41-1101',
+          _sum: { debit: new Prisma.Decimal(0), credit: new Prisma.Decimal(1000) },
+        },
+      ]);
+      prisma.chartOfAccount.findMany.mockResolvedValue([
+        { code: '41-1101', name: 'FIN revenue' },
+        { code: 'S41-1101', name: 'SHOP revenue' },
+      ]);
+
+      const result = await service.getProfitLossFromJournal(
+        new Date('2026-01-01'),
+        new Date('2026-01-31'),
+        undefined,
+        'SHOP',
+      );
+      // Only S41-1101 counted, 41-1101 ignored by the prefix check.
+      expect(result.revenue.total.toNumber()).toBe(1000);
+    });
+  });
 });

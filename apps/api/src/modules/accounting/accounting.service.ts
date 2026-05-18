@@ -721,6 +721,7 @@ export class AccountingService implements OnModuleInit {
   //   55 = EXCLUDE from P&L (พีคโปรแกรม — ไม่นำมาแสดงในงบกำไรขาดทุน)
 
   private static readonly SECTION_MAP: Record<string, string> = {
+    // FINANCE chart (single-prefix)
     '11': 'สินทรัพย์หมุนเวียน',
     '12': 'สินทรัพย์ไม่หมุนเวียน',
     '21': 'หนี้สินหมุนเวียน',
@@ -735,7 +736,32 @@ export class AccountingService implements OnModuleInit {
     '53': 'ค่าใช้จ่ายบริหาร',
     '54': 'ค่าใช้จ่ายต้องห้ามทางภาษี',
     '55': 'ค่าใช้จ่ายโปรแกรมบัญชี (ยกเว้น P&L)',
+    // P3-SP5 — SHOP chart (S-prefix). Same logical grouping as FINANCE but
+    // labelled "(SHOP)" so a combined report makes it obvious which side a
+    // section came from.
+    'S11': 'สินทรัพย์หมุนเวียน (SHOP)',
+    'S12': 'สินทรัพย์ไม่หมุนเวียน (SHOP)',
+    'S21': 'หนี้สินหมุนเวียน (SHOP)',
+    'S22': 'หนี้สินไม่หมุนเวียน (SHOP)',
+    'S31': 'ทุนจดทะเบียน (SHOP)',
+    'S32': 'กำไรสะสม (SHOP)',
+    'S33': 'กำไรขาดทุนปีปัจจุบัน (SHOP)',
+    'S41': 'รายได้ (SHOP)',
+    'S42': 'รายได้อื่น (SHOP)',
+    'S50': 'ต้นทุนขาย (SHOP)',
+    'S51': 'ค่าใช้จ่ายขาย (SHOP)',
+    'S52': 'ค่าใช้จ่ายบริหาร (SHOP)',
+    'S53': 'ค่าใช้จ่ายอื่น (SHOP)',
   };
+
+  /**
+   * Extract the section-prefix from an account code.
+   * - FINANCE: `11-1101` → `11` (first 2 chars)
+   * - SHOP:    `S11-1101` → `S11` (first 3 chars, S + 2 digits)
+   */
+  private static codePrefix(code: string): string {
+    return code.startsWith('S') ? code.slice(0, 3) : code.slice(0, 2);
+  }
 
   /**
    * Get Trial Balance from journal lines as of a given date.
@@ -745,13 +771,35 @@ export class AccountingService implements OnModuleInit {
    *
    * Sections are grouped by the 2-digit prefix of the account code (11, 12, 21, …).
    * isBalanced = grandDrTotal equals grandCrTotal (accounting identity check).
+   *
+   * P3-SP5: `scope` filters by account code prefix:
+   *   - 'FINANCE' (default) — codes WITHOUT `S` prefix (the FINANCE chart)
+   *   - 'SHOP'              — codes WITH    `S` prefix (the SHOP chart)
+   *   - 'ALL'               — all accounts (combined report — both prefixes)
+   *
+   * Filtering happens on `chartOfAccount.code` and `journalLine.accountCode`
+   * at the DB level so SHOP/FINANCE running balances stay strictly separate.
    */
-  async getTrialBalance(asOfDate?: Date) {
+  async getTrialBalance(asOfDate?: Date, scope: 'FINANCE' | 'SHOP' | 'ALL' = 'FINANCE') {
     const cutoff = asOfDate ?? new Date();
 
-    // 1. Load all active chart of accounts
+    // Code-prefix filter: SHOP codes start with 'S' (S11-XXXX); FINANCE codes
+    // are bare digits (11-XXXX). Use Prisma `startsWith` for the SHOP filter
+    // and `not.startsWith` for FINANCE. 'ALL' skips the filter entirely.
+    const codeFilter: Prisma.StringFilter | undefined =
+      scope === 'SHOP'
+        ? { startsWith: 'S' }
+        : scope === 'FINANCE'
+          ? { not: { startsWith: 'S' } }
+          : undefined;
+
+    // 1. Load all active chart of accounts (scoped)
     const accounts = await this.prisma.chartOfAccount.findMany({
-      where: { deletedAt: null, status: 'ใช้งาน' },
+      where: {
+        deletedAt: null,
+        status: 'ใช้งาน',
+        ...(codeFilter ? { code: codeFilter } : {}),
+      },
       orderBy: { code: 'asc' },
     });
 
@@ -765,6 +813,7 @@ export class AccountingService implements OnModuleInit {
           deletedAt: null,
         },
         deletedAt: null,
+        ...(codeFilter ? { accountCode: codeFilter } : {}),
       },
       _sum: { debit: true, credit: true },
     });
@@ -791,7 +840,7 @@ export class AccountingService implements OnModuleInit {
     }>();
 
     for (const acc of accounts) {
-      const prefix = acc.code.slice(0, 2);
+      const prefix = AccountingService.codePrefix(acc.code);
       const sectionName = AccountingService.SECTION_MAP[prefix] ?? `หมวด ${prefix}`;
 
       if (!sectionMap.has(prefix)) {
@@ -826,7 +875,7 @@ export class AccountingService implements OnModuleInit {
 
     // Also include any journal lines for codes not in CoA (orphan codes)
     for (const [code, sums] of sumMap) {
-      const prefix = code.slice(0, 2);
+      const prefix = AccountingService.codePrefix(code);
       if (!sectionMap.has(prefix)) {
         sectionMap.set(prefix, {
           sectionName: AccountingService.SECTION_MAP[prefix] ?? `หมวด ${prefix}`,
@@ -879,16 +928,46 @@ export class AccountingService implements OnModuleInit {
    *
    * Revenue = net Cr balance of accounts 41 + 42 for the period.
    * Expenses = net Dr balance of accounts 51 + 52 + 53 + 54 for the period.
+   * COGS    = net Dr balance of S50 (SHOP only — FINANCE does not carry COGS).
    * Accounts in prefix 55 are EXCLUDED per CPA chart note ("ไม่นำมาแสดงในงบกำไรขาดทุน").
    *
    * Period filter: JournalEntry.entryDate between periodStart and periodEnd (inclusive).
    *
    * Optional companyId scopes to JournalEntry.companyId — used by multi-entity
    * reports (SP2 Cash Flow / Equity Statement / General Ledger).
+   *
+   * P3-SP5: `scope` filters by account code prefix:
+   *   - 'FINANCE' (default) — codes WITHOUT `S` prefix
+   *   - 'SHOP'              — codes WITH    `S` prefix (S41, S42, S50, S51, S52, S53)
+   *   - 'ALL'               — both
    */
-  async getProfitLossFromJournal(periodStart: Date, periodEnd: Date, companyId?: string) {
-    const REVENUE_PREFIXES = ['41', '42'];
-    const EXPENSE_PREFIXES = ['51', '52', '53', '54']; // 55 excluded
+  async getProfitLossFromJournal(
+    periodStart: Date,
+    periodEnd: Date,
+    companyId?: string,
+    scope: 'FINANCE' | 'SHOP' | 'ALL' = 'FINANCE',
+  ) {
+    // Prefixes per scope. SHOP introduces S50-XXXX COGS (treated as
+    // expense in the P&L — separately reported under "ต้นทุนขาย").
+    const REVENUE_PREFIXES =
+      scope === 'SHOP'
+        ? ['S41', 'S42']
+        : scope === 'ALL'
+          ? ['41', '42', 'S41', 'S42']
+          : ['41', '42'];
+    const EXPENSE_PREFIXES =
+      scope === 'SHOP'
+        ? ['S50', 'S51', 'S52', 'S53']
+        : scope === 'ALL'
+          ? ['51', '52', '53', '54', 'S50', 'S51', 'S52', 'S53']
+          : ['51', '52', '53', '54']; // 55 excluded
+
+    const codeFilter: Prisma.StringFilter | undefined =
+      scope === 'SHOP'
+        ? { startsWith: 'S' }
+        : scope === 'FINANCE'
+          ? { not: { startsWith: 'S' } }
+          : undefined;
 
     const lineSums = await this.prisma.journalLine.groupBy({
       by: ['accountCode'],
@@ -900,6 +979,7 @@ export class AccountingService implements OnModuleInit {
           ...(companyId ? { companyId } : {}),
         },
         deletedAt: null,
+        ...(codeFilter ? { accountCode: codeFilter } : {}),
       },
       _sum: { debit: true, credit: true },
     });
@@ -920,7 +1000,7 @@ export class AccountingService implements OnModuleInit {
     let expenseTotal = new Prisma.Decimal(0);
 
     for (const row of lineSums) {
-      const prefix = row.accountCode.slice(0, 2);
+      const prefix = AccountingService.codePrefix(row.accountCode);
       const dr = new Prisma.Decimal(row._sum.debit ?? 0);
       const cr = new Prisma.Decimal(row._sum.credit ?? 0);
       const name = nameMap.get(row.accountCode) ?? row.accountCode;

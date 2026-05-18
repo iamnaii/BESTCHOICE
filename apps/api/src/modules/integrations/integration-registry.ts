@@ -471,6 +471,63 @@ export const INTEGRATIONS: IntegrationDef[] = [
       },
     ],
   },
+  {
+    key: 'e-tax',
+    name: 'e-Tax Invoice (สรรพากร)',
+    description:
+      'ส่ง XML ใบกำกับภาษีอิเล็กทรอนิกส์ให้กรมสรรพากรตาม ขมธอ.21-2562 + ป.รัษฎากร ม.86/4',
+    icon: 'file-text',
+    fields: [
+      {
+        key: 'submitMode',
+        label: 'โหมดส่ง RD (disabled / enabled)',
+        sensitive: false,
+        required: false,
+        defaultValue: 'disabled',
+        envVar: 'ETAX_SUBMIT_MODE',
+      },
+      {
+        key: 'certPath',
+        label: 'Path ไฟล์ใบรับรอง (.p12/.pfx)',
+        sensitive: false,
+        required: false,
+        defaultValue: '',
+        envVar: 'ETAX_CERT_PATH',
+      },
+      {
+        key: 'certPassword',
+        label: 'รหัสผ่านใบรับรอง',
+        sensitive: true,
+        required: false,
+        defaultValue: '',
+        envVar: 'ETAX_CERT_PASSWORD',
+      },
+      {
+        key: 'rdEndpoint',
+        label: 'URL ของ RD web service',
+        sensitive: false,
+        required: false,
+        defaultValue: 'https://etax.rd.go.th/etax_staging/etaxws',
+        envVar: 'ETAX_RD_ENDPOINT',
+      },
+      {
+        key: 'rdUsername',
+        label: 'Username (RD)',
+        sensitive: false,
+        required: false,
+        defaultValue: '',
+        envVar: 'ETAX_RD_USERNAME',
+      },
+      {
+        key: 'rdPassword',
+        label: 'Password (RD)',
+        sensitive: true,
+        required: false,
+        defaultValue: '',
+        envVar: 'ETAX_RD_PASSWORD',
+      },
+    ],
+  },
 ];
 
 /**

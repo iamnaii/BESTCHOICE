@@ -72,6 +72,7 @@ import { ChartOfAccountsModule } from './modules/chart-of-accounts/chart-of-acco
 import { BankAccountsModule } from './modules/bank-accounts/bank-accounts.module';
 import { TaxModule } from './modules/tax/tax.module';
 import { ETaxModule } from './modules/e-tax/e-tax.module';
+import { ETaxXmlModule } from './modules/e-tax-xml/e-tax-xml.module';
 import { CommissionModule } from './modules/commission/commission.module';
 import { TradeInModule } from './modules/trade-in/trade-in.module';
 import { PromotionsModule } from './modules/promotions/promotions.module';
@@ -245,6 +246,8 @@ import { AppCacheModule } from './cache/cache.module';
     TaxModule,
     // e-Tax Invoice (Phase 1: list + PDF + CSV)
     ETaxModule,
+    // P2-SP5 — e-Tax XML submission to สรรพากร (scaffolding, cert pluggable)
+    ETaxXmlModule,
     // Sales Commission
     CommissionModule,
     // Trade-In & Promotions

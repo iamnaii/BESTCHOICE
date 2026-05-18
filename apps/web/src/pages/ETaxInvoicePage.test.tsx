@@ -42,10 +42,9 @@ describe('ETaxInvoicePage', () => {
     vi.clearAllMocks();
   });
 
-  it('renders header showing Phase 1 scope (PDF + CSV)', () => {
+  it('renders header (P2-SP5 — e-Tax Invoice w/ XML actions)', () => {
     renderPage();
-    // P2-SP3: PDF now ม.86/4 compliant; title reflects the upgrade
-    expect(screen.getByText(/e-Tax Invoice \(Phase 1: PDF \+ CSV\)/)).toBeInTheDocument();
+    expect(screen.getByText(/e-Tax Invoice \(สรรพากร\)/)).toBeInTheDocument();
   });
 
   it('shows Phase 1 banner: PDF ม.86/4 compliant; Phase 2 = XML submission to RD', () => {

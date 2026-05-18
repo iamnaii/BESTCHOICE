@@ -433,4 +433,84 @@ Operational settings live at dedicated routes (also OWNER-only):
 - `/settings/collections` — CollectionsConfigCard
 - `/settings/general` — Banking, penalty, PDPA, payment_link (GeneralSettings pre+post)
 
+---
+
+## Year-End Closing (P3-SP1)
+
+Runs once at the end of each fiscal year (typically Jan-March of the following
+year, after all 12 monthly periods are CLOSED). Closes revenue + expense
+accounts into Income Summary (39-9999), then transfers net income/loss to
+Retained Earnings (33-1101 — กำไร(ขาดทุน)สุทธิประจำปี).
+
+Template: `apps/api/src/modules/journal/cpa-templates/year-end-closing.template.ts`
+Service: `apps/api/src/modules/accounting/closing.service.ts`
+Page: `apps/web/src/pages/YearEndClosingPage.tsx` → route `/finance/year-end-closing`
+
+### 3-step JE flow
+
+All 3 entries share `metadata.batchId` (uuid) for traceability:
+
+```
+Step 1 — Close revenue (per non-zero 41/42-XXXX account):
+  Dr 41-XXXX  [net Cr balance for the year]
+  Dr 42-XXXX  ...
+    Cr 39-9999 Income Summary  [revenueTotal]
+
+Step 2 — Close expenses (per non-zero 51/52/53/54-XXXX account):
+  Dr 39-9999 Income Summary  [expenseTotal]
+    Cr 51-XXXX  [net Dr balance]
+    Cr 52-XXXX  ...
+
+Step 3 — Transfer net to retained earnings (skipped if net = 0):
+  If profit:  Dr 39-9999 / Cr 33-1101  [netIncome]
+  If loss:    Dr 33-1101 / Cr 39-9999  [|netLoss|]
+```
+
+Entry-date for all 3 JEs = `Dec 31 23:59:59.999 BKK` of the closed year (keeps
+the closing entries inside the year window).
+
+### Guards
+
+- **Year window**: 2020-2030, must be strictly `< current year` (cannot close
+  future or in-progress year)
+- **Monthly periods**: all 12 months for FINANCE company must be in
+  `CLOSED` or `SYNCED` status — otherwise `BadRequestException` with the
+  list of open months
+- **Idempotency**: a year can only be closed once. `ConflictException` on
+  re-attempt unless prior batch was reversed first (then re-close allowed)
+- **Tx atomicity**: 3 JEs created in a single `$transaction` — partial
+  failure rolls all 3 back
+
+### Reversal escape hatch (OWNER only)
+
+```
+POST /accounting/year-end-closing/reverse
+Body: { year, reason }  // reason min 10 chars
+```
+
+Creates 3 mirror-flipped JEs (Dr/Cr swapped), dated today (NOT the original
+Dec 31). Original entries keep their POSTED status — reversal sits beside
+them with `metadata.flow = 'year-end-closing-reverse'` + back-ref via
+`reversesEntryId`. Originals are marked `metadata.reversedByBatchId` so the
+idempotency guard no longer blocks a re-close.
+
+AuditLog actions:
+- `YEAR_END_CLOSED` — entity=accounting_period, entityId=batchId, newValue includes year + netIncome + 3 JE ids
+- `YEAR_END_CLOSING_REVERSED` — entity=accounting_period, entityId=originalBatchId
+
+### Reports impact
+
+After year-end closing posts:
+- `getProfitLossFromJournal(Jan-Dec)` for the closed year returns ~0 for
+  Revenue and Expense (they've been zeroed out), and `netIncome ≈ 0`
+- `getTrialBalance(asOfDate >= Dec 31)` shows 33-1101 increased by net income,
+  Income Summary (39-9999) back to 0
+- `getBalanceSheetFromJournal(asOfDate >= Dec 31)` — equity section reflects
+  the year's profit moved to retained earnings (no longer "implicit" derived
+  from P&L)
+
+The "ค่าประมาณกำไรปีปัจจุบัน — ยังไม่ปิดบัญชีจริงเข้า 33-1101" caveat on the
+balance-sheet equity matrix (accounting.service.ts:1564) disappears for years
+that have been closed via this flow.
+
 `/accounting/periods` redirects to `/settings#periods` via `window.location.replace` (preserves hash; react-router `<Navigate>` cannot set hash fragments).

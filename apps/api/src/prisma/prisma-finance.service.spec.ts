@@ -32,8 +32,11 @@ describeOrSkip('PrismaFinanceService', () => {
 
   it('has access to healthCheck model', async () => {
     const created = await service.healthCheck.create({ data: {} });
-    expect(created.id).toBeDefined();
-    expect(created.createdAt).toBeInstanceOf(Date);
-    await service.healthCheck.delete({ where: { id: created.id } });
+    try {
+      expect(created.id).toBeDefined();
+      expect(created.createdAt).toBeInstanceOf(Date);
+    } finally {
+      await service.healthCheck.delete({ where: { id: created.id } });
+    }
   });
 });

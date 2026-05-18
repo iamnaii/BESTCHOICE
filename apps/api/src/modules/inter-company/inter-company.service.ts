@@ -364,4 +364,119 @@ export class InterCompanyService {
       data: { deletedAt: new Date() },
     });
   }
+
+  /**
+   * SP2: Aging report for unsettled inter-company transactions.
+   * Returns buckets 0-30 / 31-60 / 61-90 / 90+ days from createdAt,
+   * counting only PENDING + CONFIRMED (status excluded once RECONCILED).
+   *
+   * Pagination: hard cap of 500 detail rows. When truncated, `truncated: true`
+   * is returned so the UI can prompt the user to narrow filters.
+   */
+  async getAging(params: { branchId?: string; companyId?: string }) {
+    const where: Record<string, unknown> = {
+      deletedAt: null,
+      status: { in: ['PENDING', 'CONFIRMED'] },
+    };
+    if (params.branchId) where.branchId = params.branchId;
+    if (params.companyId) {
+      where.OR = [{ fromCompanyId: params.companyId }, { toCompanyId: params.companyId }];
+    }
+
+    const txns = await this.prisma.interCompanyTransaction.findMany({
+      where,
+      orderBy: { createdAt: 'asc' },
+      select: {
+        id: true,
+        principal: true,
+        commission: true,
+        vatAmount: true,
+        interestTotal: true,
+        totalAmount: true,
+        status: true,
+        createdAt: true,
+        contractId: true,
+        branchId: true,
+        branch: { select: { name: true } },
+        contract: { select: { contractNumber: true } },
+      },
+    });
+
+    const now = Date.now();
+    const dayMs = 24 * 60 * 60 * 1000;
+
+    type Bucket = '0-30' | '31-60' | '61-90' | '90+';
+    const bucketOrder: Bucket[] = ['0-30', '31-60', '61-90', '90+'];
+    const bucketStats: Record<Bucket, { count: number; totalAmount: Prisma.Decimal }> = {
+      '0-30': { count: 0, totalAmount: new Prisma.Decimal(0) },
+      '31-60': { count: 0, totalAmount: new Prisma.Decimal(0) },
+      '61-90': { count: 0, totalAmount: new Prisma.Decimal(0) },
+      '90+': { count: 0, totalAmount: new Prisma.Decimal(0) },
+    };
+
+    const details = txns.map((t) => {
+      const daysOutstanding = Math.floor((now - new Date(t.createdAt).getTime()) / dayMs);
+      let bucket: Bucket;
+      if (daysOutstanding <= 30) bucket = '0-30';
+      else if (daysOutstanding <= 60) bucket = '31-60';
+      else if (daysOutstanding <= 90) bucket = '61-90';
+      else bucket = '90+';
+
+      const principal = new Prisma.Decimal(t.principal);
+      const commission = new Prisma.Decimal(t.commission);
+      const interest = new Prisma.Decimal(t.interestTotal);
+      const vat = new Prisma.Decimal(t.vatAmount);
+      const total = principal.add(commission).add(interest).add(vat);
+      // SP2 Critical #5: `settleableAmount` = principal + commission only.
+      // FINANCE settles SHOP via Dr 21-1101 + Dr 21-1102 — interest + VAT live
+      // on FINANCE's own ledger (they're not owed to SHOP). The UI uses this
+      // amount in the settle dialog so `inputAmount === expectedTotal` matches
+      // the `principal + commission` check inside `settleWithJournal`.
+      const settleable = principal.add(commission);
+
+      bucketStats[bucket].count += 1;
+      bucketStats[bucket].totalAmount = bucketStats[bucket].totalAmount.add(total);
+
+      return {
+        txId: t.id,
+        contractId: t.contractId,
+        contractNumber: t.contract?.contractNumber ?? null,
+        branchId: t.branchId,
+        branchName: t.branch?.name ?? null,
+        principal: principal.toNumber(),
+        commission: commission.toNumber(),
+        interest: interest.toNumber(),
+        vat: vat.toNumber(),
+        totalAmount: total.toNumber(),
+        settleableAmount: settleable.toNumber(),
+        daysOutstanding,
+        bucket,
+        status: t.status,
+        createdAt: t.createdAt,
+      };
+    });
+
+    const buckets = bucketOrder.map((range) => ({
+      range,
+      count: bucketStats[range].count,
+      totalAmount: bucketStats[range].totalAmount.toNumber(),
+    }));
+
+    const totalAmount = buckets.reduce((sum, b) => sum + b.totalAmount, 0);
+    const totalCount = buckets.reduce((sum, b) => sum + b.count, 0);
+
+    // SP2: hard pagination cap. Truncating only the `details` array — bucket
+    // totals still reflect the full set so the summary cards stay correct.
+    const HARD_CAP = 500;
+    const truncated = details.length > HARD_CAP;
+    const cappedDetails = truncated ? details.slice(0, HARD_CAP) : details;
+
+    return {
+      buckets,
+      totalAmount,
+      totalCount,
+      details: cappedDetails,
+      truncated,
+    };
+  }
 }

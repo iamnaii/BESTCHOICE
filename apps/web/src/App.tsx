@@ -99,7 +99,16 @@ const ExpenseFavoritesPage = lazy(() => import('@/pages/ExpenseFavoritesPage'));
 const ExpenseDailySummaryPage = lazy(() => import('@/pages/ExpenseDailySummaryPage'));
 const ProfitLossPage = lazy(() => import('@/pages/ProfitLossPage'));
 const CompanySettingsPage = lazy(() => import('@/pages/CompanySettingsPage'));
-const TaxReportsPage = lazy(() => import('@/pages/TaxReportsPage'));
+// SP3 — split /tax-reports into 3 dedicated pages (VAT / WHT / e-Tax)
+const VatReportPage = lazy(() =>
+  import('@/pages/VatReportPage').then((m) => ({ default: m.VatReportPage })),
+);
+const WhtReportPage = lazy(() =>
+  import('@/pages/WhtReportPage').then((m) => ({ default: m.WhtReportPage })),
+);
+const ETaxInvoicePage = lazy(() =>
+  import('@/pages/ETaxInvoicePage').then((m) => ({ default: m.ETaxInvoicePage })),
+);
 const CommissionsPage = lazy(() => import('@/pages/CommissionsPage'));
 const TradeInPage = lazy(() => import('@/pages/TradeInPage'));
 const PromotionsPage = lazy(() => import('@/pages/PromotionsPage'));
@@ -727,14 +736,33 @@ function App() {
               </ProtectedRoute>
             }
           />
+          {/* SP3 — Tax module split */}
           <Route
-            path="/tax-reports"
+            path="/finance/vat"
             element={
               <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
-                <TaxReportsPage />
+                <VatReportPage />
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/finance/wht"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <WhtReportPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/finance/e-tax"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <ETaxInvoicePage />
+              </ProtectedRoute>
+            }
+          />
+          {/* Backwards-compat: legacy /tax-reports → /finance/vat */}
+          <Route path="/tax-reports" element={<Navigate to="/finance/vat" replace />} />
           <Route
             path="/settings/companies"
             element={

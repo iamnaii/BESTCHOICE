@@ -1155,6 +1155,9 @@ model Payment {
   dunningActions      DunningAction[]
   refunds             Refund[]
 
+  // P2-SP5: e-Tax XML submission (1:1, only if generated)
+  eTaxSubmission ETaxSubmission? @relation("PaymentETaxSubmission")
+
   @@unique([contractId, installmentNo])
   @@index([contractId])
   @@index([dueDate])
@@ -6407,4 +6410,59 @@ model BankAccount {
   @@index([accountCode])
   @@index([deletedAt])
   @@map("bank_accounts")
+}
+
+// ============================================================
+// P2-SP5 — e-Tax XML submission to สรรพากร (Revenue Department)
+// ============================================================
+
+/// e-Tax Invoice XML submission per ขมธอ.21-2562 (Thailand UBL 2.1) +
+/// ป.รัษฎากร ม.86/4 + ประกาศอธิบดี ฉ.48. Tracks the lifecycle of one XML
+/// document per Payment from generation → signing → RD submission →
+/// accepted/rejected. Cert + RD creds are PLUGGABLE — when
+/// `ETAX_SUBMIT_MODE=disabled` (default) only XML generation runs and the
+/// "ส่งให้สรรพากร" button is gated in the UI.
+model ETaxSubmission {
+  id             String               @id @default(uuid())
+  paymentId      String               @unique @map("payment_id")
+  /// Raw generated UBL 2.1 XML — large text column
+  xmlContent     String               @map("xml_content") @db.Text
+  /// PKCS#7 detached signature bundle (CMS) — populated after sign step
+  signedXml      String?              @map("signed_xml") @db.Text
+  status         ETaxSubmissionStatus @default(PENDING)
+  submittedAt    DateTime?            @map("submitted_at")
+  /// RD's tracking ID once accepted into their queue
+  rdSubmissionId String?              @map("rd_submission_id")
+  /// Full RD API response payload for forensics (status code, body)
+  rdResponse     Json?                @map("rd_response")
+  acceptedAt     DateTime?            @map("accepted_at")
+  rejectedAt     DateTime?            @map("rejected_at")
+  rejectReason   String?              @map("reject_reason")
+  retryCount     Int                  @default(0) @map("retry_count")
+  lastRetryAt    DateTime?            @map("last_retry_at")
+  createdAt      DateTime             @default(now()) @map("created_at")
+  updatedAt      DateTime             @updatedAt @map("updated_at")
+  deletedAt      DateTime?            @map("deleted_at")
+
+  payment Payment @relation("PaymentETaxSubmission", fields: [paymentId], references: [id])
+
+  @@index([status])
+  @@index([paymentId, deletedAt])
+  @@index([submittedAt])
+  @@map("etax_submissions")
+}
+
+enum ETaxSubmissionStatus {
+  /// XML generated, not yet signed
+  PENDING
+  /// PKCS#7 signed, ready to submit
+  SIGNED
+  /// Sent to RD, awaiting response
+  SUBMITTED
+  /// RD accepted (success)
+  ACCEPTED
+  /// RD rejected (see rejectReason)
+  REJECTED
+  /// Transport / server error — eligible for retry
+  ERROR
 }

@@ -32,6 +32,7 @@ import { useCommandPalette } from '@/components/CommandPalette';
 import { ChatUnreadBadge } from './Sidebar';
 import { isChatVisibleForRole } from '@/config/menu';
 import { useUnreadNotifications } from '@/hooks/useUnreadNotifications';
+import { CompanyPillSwitcher } from './CompanyPillSwitcher';
 
 const NOTIFICATION_ROLES = ['OWNER', 'BRANCH_MANAGER'];
 
@@ -219,6 +220,9 @@ export default function TopBar() {
           <Search className="size-3.5 text-muted-foreground" strokeWidth={1.75} />
           <span className="text-muted-foreground">ค้นหา... (⌘K)</span>
         </button>
+
+        {/* SP7.3 — entity switcher pill (only renders for dual-entity users) */}
+        <CompanyPillSwitcher />
 
         {/* Chat inbox button */}
         {user && isChatVisibleForRole(user.role) && (

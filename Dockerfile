@@ -74,14 +74,20 @@ RUN addgroup --system --gid 1001 appgroup && \
     adduser --system --uid 1001 appuser
 
 # Copy API build artifacts (use --chown for correct permissions)
-# Runtime resolves all deps from root node_modules via workspace hoisting —
-# no apps/api/node_modules copy needed (see builder stage comment).
+# Most workspace deps hoist to root /app/node_modules, but npm nests
+# version-conflicting packages under apps/api/node_modules (e.g. node-forge
+# v1.x conflicts with selfsigned's transitive ^0.10.0 pin → nested under
+# apps/api). Without this copy, `require('node-forge')` from compiled
+# dist/.../pkcs7-signer.js resolves to the wrong version OR fails outright
+# (SP5 e-Tax XML hit this with revision 00633 crash at boot).
 COPY --from=builder --chown=appuser:appgroup /app/apps/api/dist ./apps/api/dist
 COPY --from=builder --chown=appuser:appgroup /app/apps/api/package.json ./apps/api/
 # TH Sarabun PSK fonts are embedded into PDFs at runtime. htmlToPdf reads
 # them from process.cwd()/public/fonts (and fallbacks); ensure they exist.
 COPY --chown=appuser:appgroup apps/api/public ./public
 COPY --from=deps --chown=appuser:appgroup /app/node_modules ./node_modules
+# Workspace-nested deps (resolution conflicts) — see comment above.
+COPY --from=deps --chown=appuser:appgroup /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=builder --chown=appuser:appgroup /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder --chown=appuser:appgroup /app/apps/api/prisma ./apps/api/prisma
 

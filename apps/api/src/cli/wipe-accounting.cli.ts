@@ -125,9 +125,13 @@ async function main(): Promise<void> {
     console.log('');
     console.log('[wipe-accounting] Wipe & reseed finished successfully.');
     console.log('[wipe-accounting] Next steps:');
-    console.log('  1. Verify CoA count: SELECT COUNT(*) FROM chart_of_accounts;  -- expected 99');
+    console.log('  1. Verify CoA count: ');
+    console.log("     SELECT COUNT(*) FROM chart_of_accounts WHERE code NOT LIKE 'S%';  -- expected 99 (FINANCE)");
+    console.log("     SELECT COUNT(*) FROM chart_of_accounts WHERE code LIKE 'S%';      -- expected ~56 (SHOP)");
     console.log('  2. Smoke test: create one contract end-to-end via UI');
-    console.log('  3. Run TB report and confirm it balances');
+    console.log('  3. Run TB report (scope=FINANCE) and confirm it balances');
+    console.log('  4. Run TB report (scope=SHOP) and confirm it balances');
+    console.log('  5. Run TB report (scope=ALL) and confirm BOTH halves balance independently');
   } finally {
     await prisma.$disconnect();
   }

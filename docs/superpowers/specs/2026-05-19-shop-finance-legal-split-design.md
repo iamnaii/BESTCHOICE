@@ -22,11 +22,13 @@ BESTCHOICE ดำเนินธุรกิจ 2 ฝั่งภายใต้
 - ลูกหนี้ปะปนกัน — เครื่องที่ SHOP ขาย กรรมสิทธิ์ "ย้าย" ไป FINANCE ในระดับบันทึกบัญชี แต่ตามกฎหมายยังเป็นทรัพย์สินของ "บริษัทเดียว"
 
 **แผนธุรกิจปลายปี 2026:** จดทะเบียน 2 นิติบุคคลแยก
-- **BC SHOP Co.,Ltd.** — tax ID ใหม่
-- **BC FINANCE Co.,Ltd.** — tax ID ใหม่
+- **BC FINANCE Co.,Ltd.** — **continuing entity** (นิติบุคคลปัจจุบัน, tax ID เดิม, ผู้สอบบัญชีเดิม, ภ.พ.30 history, journal history, ทุกอย่างที่บันทึกบัญชีมาตลอด)
+- **BC SHOP Co.,Ltd.** — **brand new entity** (จดทะเบียนใหม่ที่กรมพัฒน์ฯ + tax ID ใหม่, เริ่มจากศูนย์ ณ 1 ม.ค. 2027)
 - เจ้าของเดียวกัน, บัญชีธนาคารแยก, LINE OA แยก
 - ภ.พ.30 แยก (FINANCE only — SHOP ยังไม่จด VAT), ภ.ง.ด. 3/53/50/51 แยก
 - ระหว่าง entities ใช้ inter-company transactions + commission flows
+
+**Key decision (2026-05-19 owner directive):** "พวกบัญชีที่ทำมาตลอด ให้ยึดเป็นของไฟแนนซ์" — historical accounting records ทั้งหมด (99-account chart, journal entries, tax reports, accounting periods) เป็นของ **FINANCE entity (continuing)**. SHOP entity เริ่ม clean state, มีเฉพาะ opening balance transferred จาก FINANCE สำหรับ SHOP-side accounts (เครื่องในสต็อก, รายการขายเงินสด accruals ฯลฯ — รายละเอียดใน OQ4 ปรับปรุง)
 
 ระบบต้องสนับสนุน split นี้ **ก่อน 1 ม.ค. 2027** เพื่อให้รอบบัญชี 2027 เริ่มแบบสะอาด
 
@@ -485,13 +487,28 @@ Order of precedence:
 
 ### 11.2 Data audit (P-2 = ส.ค.-ก.ย. 2026)
 
-**Audit script**: scan ทุก table, identify rows ที่ entity ambiguous:
-- products: ตอนนี้ไม่มี ownership tracking → กำหนดด้วยกฎ (ของที่ status="IN_STOCK" → SHOP; ของที่ "TRANSFERRED_TO_FINANCE" → FINANCE)
-- journal_entries: filter by chart account code prefix (S- → SHOP; 11-/21-/41-/etc. → FINANCE)
-- expense_documents: ตอนนี้มี `companyId` แล้ว → ใช้ existing tag
-- ทุก audit finding → save into `migration_audit_report` table + manual review by accountant
+**Simplified rule (owner directive 2026-05-19):** บัญชีที่ทำมาตลอด = ของ FINANCE entity (continuing). ทำให้ audit ส่วนใหญ่กลายเป็น **rule-based assignment** ไม่ใช่ per-row review:
 
-**Output**: report `migration-audit-2026-09-XX.md` + per-table CSV ของ rows ที่ต้อง manual classify
+| Table | Rule | Manual review needed? |
+|---|---|---|
+| `journal_entries`, `journal_lines`, `accounting_periods` | **ALL → bc_finance** (historical FINANCE accounting) | ไม่ต้อง |
+| `tax_reports` (PP30, PND3/53/50/51 ที่มีอยู่) | **ALL → bc_finance** | ไม่ต้อง |
+| `chart_of_accounts` 99-account FINANCE chart | **→ bc_finance** | ไม่ต้อง |
+| `chart_of_accounts` S-prefix (P3-SP5 SHOP additions) | **→ bc_shop** ก็เริ่มจากกราฟ S- ใหม่ใน bc_shop, opening balances transferred via journal entries | ไม่ต้อง |
+| `contracts`, `payments`, `receipts`, FINANCE customers | **ALL → bc_finance** | ไม่ต้อง |
+| `products`, `serial_numbers`, `stock_*` | **ALL → bc_shop** (SHOP เป็นเจ้าของสต็อก) | ไม่ต้อง |
+| `sales` (cash sales) | **ALL → bc_shop** | ไม่ต้อง |
+| `expense_documents` | filter by existing `companyId` FK (มีอยู่แล้ว) | ไม่ต้อง |
+| `commissions` (existing) | **→ bc_shop** (SHOP received side) | ไม่ต้อง |
+| `users`, `audit_logs`, `system_config`, `notifications` | **→ bc_shop** (per arch — shared tables) | ไม่ต้อง |
+| `customers` (single table currently) | split by usage — POS/quote/sale → bc_shop; contract/LIFF → bc_finance; both → ทั้งคู่ + link via national_id_hash | partial — automated dedup + manual review of ambiguous |
+| `branches` | **→ bc_shop** (เฉพาะ branches; FINANCE = ส่วนกลาง ไม่มี branches) | ไม่ต้อง |
+| `fixed_assets` | **→ bc_finance** (อุปกรณ์ FINANCE ส่วนกลาง — ของ SHOP สาขามีน้อย, ตรวจรายตัว) | partial |
+| `payroll_*` | classify by employee.branch — branch มี → bc_shop; ไม่มี branch (HQ staff) → bc_finance | partial |
+
+**Manual review ลดเหลือ ~3 tables (customers, fixed_assets, payroll)** แทน 50+ tables → SP7.7 effort ลดลง ~50%
+
+**Output**: report `migration-audit-2026-09-XX.md` + per-table CSV เฉพาะ tables ที่ต้อง manual review
 
 ### 11.3 Migration script (P-2)
 
@@ -725,9 +742,11 @@ node scripts/migration/split-databases.js --execute --source-db=bc_orig --dest-s
 - กำไรสะสม (retained earnings) → แบ่งสัดส่วนเท่าไร?
 - คำตอบกำหนด opening balance ของแต่ละ entity. **ต้อง CPA + ทนายตัดสิน ก่อน Sept 2026**
 
-### OQ2 — Tax IDs (CRITICAL, needs owner action)
-- บริษัทใหม่ทั้ง 2 ต้องมี tax ID จาก RD ภายใน ต.ค. 2026 (ให้ทันบันทึก system + invoice template)
-- เลข nittibukkon ID จากกรมพัฒน์ฯ — ขั้นตอนแยก, อาจช้ากว่า tax ID
+### OQ2 — Tax IDs (CRITICAL, needs owner action — REVISED 2026-05-19)
+- **BC FINANCE Co.,Ltd.** = continuing entity → tax ID เดิม (อาจต้อง update นิติบุคคล name change ที่ RD + กรมพัฒน์ฯ)
+- **BC SHOP Co.,Ltd.** = new entity → ต้องจดทะเบียนใหม่ที่กรมพัฒน์ฯ + ขอ tax ID จาก RD
+- Timeline: BC SHOP ต้องมี tax ID ภายใน **ต.ค. 2026** เพื่อให้ทันบันทึก system + invoice template
+- กรมพัฒน์ฯ จดทะเบียน ~30 วัน, RD ~7-14 วัน — เริ่ม process ภายใน **ก.ค. 2026** (3 เดือนก่อน deadline)
 
 ### OQ3 — Existing contracts (ลูกค้า active)
 ลูกค้าที่มี contract active ณ 31 ธ.ค. 2026:
@@ -735,9 +754,15 @@ node scripts/migration/split-databases.js --execute --source-db=bc_orig --dest-s
 - มี option (a) ทำหนังสือโอนสัญญารายลูกค้า, (b) แจ้งยกเลิกแบบโดยปริยายผ่าน LINE OA + รอ 30 วัน, (c) ดำเนินคดีต่อด้วย BC FINANCE ในฐานะผู้รับโอน → ต้องปรึกษาทนาย
 - ระบบรองรับ: contract.legalEntityId column + migration script เปลี่ยน contract เก่าเป็น BC FINANCE Co.,Ltd. ใหม่
 
-### OQ4 — Inventory ที่ FINANCE ถือ (กรรมสิทธิ์ระหว่างผ่อน)
-- เครื่องที่ลูกค้ายังผ่อนอยู่ ตอน 31 ธ.ค. = ทรัพย์สิน FINANCE
-- หลังแยก BC FINANCE Co.,Ltd. ใหม่ ถือกรรมสิทธิ์ → ต้องมี **transfer document** จากบริษัทเดิม → ปรึกษา CPA ว่าทำ asset transfer entry ยังไง
+### OQ4 — SHOP entity opening balance transfer (CRITICAL, needs CPA — EXPANDED 2026-05-19)
+Per owner directive: FINANCE = continuing entity, SHOP = new entity. ตอน 1 ม.ค. 2027 BC SHOP เริ่มจากศูนย์ — ต้องมี **opening balance transfer JE** จาก FINANCE (อดีต = บริษัทเดียว) → SHOP (entity ใหม่):
+
+- **Inventory** (เครื่องในสต็อก, อะไหล่, สินค้ารับซื้อมือสอง) — book value ณ 31 ธ.ค. 2026 → transferred to SHOP. JE: FINANCE Cr inventory, owner capital injection to SHOP Dr inventory
+- **SHOP receivables** (commission receivable ยังไม่จ่าย, trade-in deposits) → transferred to SHOP
+- **SHOP-side payables** (เงินเดือนพนักงานหน้าร้าน, ค่าน้ำไฟค้างจ่าย) → transferred to SHOP
+- **Equity injection to SHOP** = net of above transfers + owner cash injection (if any)
+- ปรึกษา CPA ว่า transfer JE แต่ละ leg ใช้ accounts ไหน + ภาษีมีผลกระทบยังไง (ภาษีของขวัญ, capital transfer tax)
+- **ต้อง CPA approval ก่อน Aug 2026** (ก่อน SP7.7 migration script เริ่ม)
 
 ### OQ5 — Bank accounts
 - บัญชีธนาคารปัจจุบัน — แยกอยู่แล้วต่อ entity logical ใช่ไหม?

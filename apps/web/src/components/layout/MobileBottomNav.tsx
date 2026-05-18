@@ -4,23 +4,24 @@ import { cn } from '@/lib/utils';
 import { useLayout } from './LayoutContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUnreadChat } from '@/hooks/useUnreadChat';
-import { getMenuConfig } from '@/config/menu';
+import { getZoneConfigForRole } from '@/config/menu';
 import type { BottomNavItem } from '@/config/menu';
 import { useCollectionsFlag } from '@/pages/CollectionsPage/hooks/useCollectionsFlag';
 
 function MobileBottomNav() {
   const { pathname } = useLocation();
-  const { setMobileSidebarOpen } = useLayout();
+  const { setMobileSidebarOpen, currentZone } = useLayout();
   const { user } = useAuth();
 
   const { enabled: collectionsEnabled } = useCollectionsFlag();
   const tabs = useMemo<BottomNavItem[]>(() => {
-    const rawTabs = getMenuConfig(user?.role ?? '').bottomNav;
+    const zoneConfig = getZoneConfigForRole(user?.role ?? '');
+    const rawTabs: BottomNavItem[] = zoneConfig?.bottomNav[currentZone] ?? [];
     if (!collectionsEnabled) return rawTabs;
     return rawTabs.map((tab) =>
       tab.path === '/overdue' ? { ...tab, path: '/collections' } : tab,
     );
-  }, [user?.role, collectionsEnabled]);
+  }, [user?.role, currentZone, collectionsEnabled]);
 
   const isActive = (path: string) => {
     if (path === '/') return pathname === '/';

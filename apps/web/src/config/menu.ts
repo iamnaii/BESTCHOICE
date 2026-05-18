@@ -54,18 +54,30 @@ import {
 
 export type MenuBadgeKey = 'chat-unread' | 'asset-draft-count';
 
+/** Logical zone — sidebar splits navigation into these contexts */
+export type Zone = 'shop' | 'fin' | 'settings';
+
+/** Hint shown on placeholder pages so users see which SP will deliver it */
+export interface PlaceholderInfo {
+  trackingSP: 'SP2' | 'SP3' | 'SP4' | 'SP5' | 'SP6';
+  trackingIssueUrl?: string;
+  eta?: string;
+}
+
 export interface MenuItem {
   label: string;
   path: string;
   icon: LucideIcon;
   children?: MenuItem[];   // when present, item renders as collapsible group (path is not navigable)
   badgeKey?: MenuBadgeKey; // optional dynamic count badge
+  placeholder?: PlaceholderInfo; // marks the destination as a placeholder owned by a future SP
 }
 
 export interface MenuSection {
   key: string;
   label: string;
   icon: LucideIcon;
+  zone?: Zone; // optional during SP1 staged rollout; required at render once all configs are tagged (Task 6)
   items: MenuItem[];
 }
 
@@ -82,6 +94,19 @@ export interface RoleMenuConfig {
   bottomNav: BottomNavItem[];
 }
 
+export interface RoleZoneConfig {
+  /** Pills visible to this role (1 zone → no pill switcher) */
+  zones: Zone[];
+  /** Default zone if no URL/localStorage value */
+  defaultZone: Zone;
+  /** Show gear (Settings) icon? */
+  showSettingsGear: boolean;
+  /** All sections across all zones — filtered at render */
+  sections: MenuSection[];
+  /** BottomNav items per zone */
+  bottomNav: Record<Zone, BottomNavItem[]>;
+}
+
 /* ── Shared menu items ─────────────────────────────── */
 
 // Asset section — promoted to its own top-level section per owner directive
@@ -90,10 +115,12 @@ export interface RoleMenuConfig {
 // Shared across OWNER / FINANCE_MANAGER / ACCOUNTANT — visible to roles that
 // own asset workflows. The `asset-draft-count` badge moves from the parent
 // to the "บันทึกซื้อ" item where drafts are actually listed.
+// SP1 zone tag: 'fin' — assets are FINANCE-side per spec §3.2
 const assetMenuSection: MenuSection = {
   key: 'asset',
   label: 'สินทรัพย์',
   icon: Landmark,
+  zone: 'fin',
   items: [
     { label: 'บันทึกซื้อ',                          path: '/assets',                icon: FileText, badgeKey: 'asset-draft-count' },
     { label: 'ทะเบียน + มูลค่าตามบัญชีสุทธิ (NBV)', path: '/assets/register',       icon: BookOpen },
@@ -112,6 +139,7 @@ const SALES_CONFIG: RoleMenuConfig = {
       key: 'sales-work',
       label: 'ขาย',
       icon: ShoppingCart,
+      zone: 'shop',
       items: [
         { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
         { label: 'ลูกค้า', path: '/customers', icon: Users },
@@ -123,6 +151,7 @@ const SALES_CONFIG: RoleMenuConfig = {
       key: 'sales-contracts',
       label: 'สัญญา & ชำระ',
       icon: FileCheck,
+      zone: 'shop',
       items: [
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
@@ -132,6 +161,7 @@ const SALES_CONFIG: RoleMenuConfig = {
       key: 'sales-tools',
       label: 'เครื่องมือ',
       icon: Warehouse,
+      zone: 'shop',
       items: [
         { label: 'ภาพรวมคลัง', path: '/stock', icon: Warehouse },
         { label: 'รายการสินค้า', path: '/stock/products', icon: ClipboardList },
@@ -160,6 +190,7 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
       key: 'bm-overview',
       label: 'ภาพรวม',
       icon: Home,
+      zone: 'shop',
       items: [
         { label: 'Dashboard', path: '/', icon: Home },
         { label: 'ยอดขาย', path: '/sales', icon: TrendingUp },
@@ -170,6 +201,7 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
       key: 'bm-sales',
       label: 'ขาย',
       icon: ShoppingCart,
+      zone: 'shop',
       items: [
         { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
         { label: 'ลูกค้า', path: '/customers', icon: Users },
@@ -183,6 +215,7 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
       key: 'bm-inventory',
       label: 'คลัง & จัดซื้อ',
       icon: Warehouse,
+      zone: 'shop',
       items: [
         { label: 'ภาพรวมคลัง', path: '/stock', icon: Warehouse },
         { label: 'รายการสินค้า', path: '/stock/products', icon: ClipboardList },
@@ -195,6 +228,7 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
       key: 'bm-followup',
       label: 'ติดตาม',
       icon: AlertTriangle,
+      zone: 'shop',
       items: [
         { label: 'ค้างชำระ', path: '/overdue', icon: AlertTriangle },
         { label: 'CRM Pipeline', path: '/crm', icon: Kanban },
@@ -206,6 +240,7 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
       key: 'bm-online-shop',
       label: 'ร้านค้าออนไลน์',
       icon: ShoppingBag,
+      zone: 'shop',
       items: [
         { label: 'คำสั่งซื้อออนไลน์', path: '/online-orders', icon: ShoppingBag },
         { label: 'คำขอผ่อนชำระ', path: '/installment-applications', icon: ClipboardCheck },
@@ -231,6 +266,7 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
       key: 'fm-overview',
       label: 'ภาพรวม',
       icon: Home,
+      zone: 'fin',
       items: [
         { label: 'Dashboard', path: '/', icon: Home },
         { label: 'Finance Overview', path: '/finance-portfolio', icon: CircleDollarSign },
@@ -238,9 +274,20 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
       ],
     },
     {
-      key: 'fm-payments',
-      label: 'สัญญา & ชำระ',
-      icon: FileCheck,
+      key: 'fm-fin-daily',
+      label: 'งานประจำวัน (การเงิน)',
+      icon: HandCoins,
+      zone: 'fin',
+      items: [
+        { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
+        { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
+      ],
+    },
+    {
+      key: 'fm-shop-ops',
+      label: 'งานหน้าร้าน',
+      icon: ShoppingCart,
+      zone: 'shop',
       items: [
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
@@ -252,6 +299,7 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
       key: 'fm-collection',
       label: 'ติดตามหนี้',
       icon: AlertTriangle,
+      zone: 'fin',
       items: [
         { label: 'ติดตามหนี้', path: '/overdue', icon: AlertTriangle },
         { label: 'เปลี่ยนเครื่องเสีย (7 วัน)', path: '/defect-exchange', icon: Wrench },
@@ -263,6 +311,7 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
       key: 'fm-finance',
       label: 'บัญชี & รายงาน',
       icon: Coins,
+      zone: 'fin',
       items: [
         { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
         { label: 'รายจ่าย', path: '/expenses', icon: Receipt },
@@ -280,6 +329,7 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
       key: 'fm-online-shop',
       label: 'ร้านค้าออนไลน์',
       icon: ShoppingBag,
+      zone: 'shop',
       items: [
         { label: 'คำสั่งซื้อออนไลน์', path: '/online-orders', icon: ShoppingBag },
         { label: 'คำขอผ่อนชำระ', path: '/installment-applications', icon: ClipboardCheck },
@@ -304,6 +354,7 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
       key: 'acc-daily',
       label: 'งานประจำวัน',
       icon: HandCoins,
+      zone: 'fin',
       items: [
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
         { label: 'บันทึกรายจ่าย', path: '/expenses', icon: Receipt },
@@ -315,6 +366,7 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
       key: 'acc-reports',
       label: 'บัญชี & รายงาน',
       icon: BarChart3,
+      zone: 'fin',
       items: [
         { label: 'รายได้อื่น', path: '/other-income', icon: TrendingUp },
         { label: 'กำไร-ขาดทุน', path: '/profit-loss', icon: PieChart },
@@ -330,6 +382,7 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
       key: 'acc-close',
       label: 'ปิดบัญชี',
       icon: CalendarDays,
+      zone: 'fin',
       items: [
         { label: 'ปิดบัญชีรายเดือน', path: '/monthly-close', icon: CalendarDays },
         { label: 'งวดบัญชี', path: '/accounting/periods', icon: CalendarDays },
@@ -337,6 +390,47 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
         { label: 'ผังบัญชี', path: '/settings/chart-of-accounts', icon: ClipboardList },
         { label: 'ตรวจสอบบัญชี', path: '/financial-audit', icon: ClipboardList },
         { label: 'PEAK Sync', path: '/settings/peak-sync', icon: Plug },
+      ],
+    },
+    {
+      key: 'acc-tax',
+      label: 'ภาษี',
+      icon: Calculator,
+      zone: 'fin',
+      items: [
+        { label: 'VAT (ภ.พ.30)', path: '/finance/vat', icon: Receipt, placeholder: { trackingSP: 'SP3', eta: 'ภายในไตรมาส 3/2026' } },
+        { label: 'WHT (ภ.ง.ด. 1/3/53)', path: '/finance/wht', icon: Receipt, placeholder: { trackingSP: 'SP3', eta: 'ภายในไตรมาส 3/2026' } },
+        { label: 'e-Tax Invoice', path: '/finance/e-tax', icon: FileText, placeholder: { trackingSP: 'SP3', eta: 'ภายในไตรมาส 3/2026' } },
+      ],
+    },
+    {
+      key: 'acc-statements',
+      label: 'งบการเงิน',
+      icon: PieChart,
+      zone: 'fin',
+      items: [
+        { label: 'กำไร-ขาดทุน (P&L)', path: '/profit-loss', icon: PieChart },
+        { label: 'งบกระแสเงินสด', path: '/finance/cash-flow', icon: TrendingUp, placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' } },
+        { label: 'งบ Equity', path: '/finance/equity-statement', icon: BarChart3, placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' } },
+        { label: 'สมุดแยกประเภท', path: '/finance/general-ledger', icon: BookOpen, placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' } },
+      ],
+    },
+    {
+      key: 'acc-bank',
+      label: 'ผังบัญชี + ธนาคาร',
+      icon: Landmark,
+      zone: 'fin',
+      items: [
+        { label: 'บัญชีธนาคาร', path: '/finance/bank-accounts', icon: Landmark, placeholder: { trackingSP: 'SP6', eta: 'ภายในไตรมาส 4/2026' } },
+      ],
+    },
+    {
+      key: 'acc-doc-config',
+      label: 'ตั้งค่าเอกสาร',
+      icon: FileText,
+      zone: 'fin', // ACC sees doc config in FIN zone (no gear access)
+      items: [
+        { label: 'เลขที่/รูปแบบเอกสาร', path: '/settings/document-config', icon: FileText, placeholder: { trackingSP: 'SP4', eta: 'ภายในไตรมาส 3/2026' } },
       ],
     },
   ],
@@ -357,6 +451,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
       key: 'owner-overview',
       label: 'ภาพรวม',
       icon: Home,
+      zone: 'shop',
       items: [
         { label: 'Dashboard', path: '/', icon: Home },
         { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
@@ -368,6 +463,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
       key: 'owner-inventory',
       label: 'คลัง & จัดซื้อ',
       icon: Warehouse,
+      zone: 'shop',
       items: [
         { label: 'ผู้ขาย', path: '/suppliers', icon: Building2 },
         { label: 'สั่งซื้อ (PO)', path: '/purchase-orders', icon: ClipboardList },
@@ -381,27 +477,56 @@ const OWNER_CONFIG: RoleMenuConfig = {
       key: 'owner-sales',
       label: 'ขาย',
       icon: ShoppingCart,
+      zone: 'shop',
       items: [
         { label: 'ลูกค้า', path: '/customers', icon: Users },
         { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
+        {
+          label: 'ใบเสนอราคา',
+          path: '/quotes',
+          icon: FileText,
+          placeholder: { trackingSP: 'SP5', eta: 'ภายในไตรมาส 3/2026' },
+        },
+      ],
+    },
+    {
+      key: 'owner-drafts',
+      label: 'รายการร่าง',
+      icon: FileText,
+      zone: 'shop',
+      items: [
+        {
+          label: 'เอกสารร่างทุกประเภท',
+          path: '/drafts',
+          icon: FileText,
+          placeholder: { trackingSP: 'SP5', eta: 'ภายในไตรมาส 3/2026' },
+        },
       ],
     },
     {
       key: 'owner-collection',
       label: 'ติดตามหนี้',
       icon: AlertTriangle,
+      zone: 'shop',
       items: [
         { label: 'ติดตามหนี้', path: '/overdue', icon: AlertTriangle },
         { label: 'เปลี่ยนเครื่องเสีย (7 วัน)', path: '/defect-exchange', icon: Wrench },
         { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
         { label: 'จัดการอุปกรณ์', path: '/mdm', icon: Smartphone },
+        {
+          label: 'ลงทะเบียนประกัน',
+          path: '/insurance',
+          icon: Shield,
+          placeholder: { trackingSP: 'SP5', eta: 'ภายในไตรมาส 3/2026' },
+        },
       ],
     },
     {
       key: 'owner-accounting',
       label: 'บัญชี & รายงาน',
       icon: Calculator,
+      zone: 'fin',
       items: [
         // Daily-use direct items (one-click access)
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
@@ -435,11 +560,93 @@ const OWNER_CONFIG: RoleMenuConfig = {
         },
       ],
     },
+    {
+      key: 'owner-tax',
+      label: 'ภาษี',
+      icon: Calculator,
+      zone: 'fin',
+      items: [
+        {
+          label: 'VAT (ภ.พ.30)',
+          path: '/finance/vat',
+          icon: Receipt,
+          placeholder: { trackingSP: 'SP3', eta: 'ภายในไตรมาส 3/2026' },
+        },
+        {
+          label: 'WHT (ภ.ง.ด. 1/3/53)',
+          path: '/finance/wht',
+          icon: Receipt,
+          placeholder: { trackingSP: 'SP3', eta: 'ภายในไตรมาส 3/2026' },
+        },
+        {
+          label: 'e-Tax Invoice',
+          path: '/finance/e-tax',
+          icon: FileText,
+          placeholder: { trackingSP: 'SP3', eta: 'ภายในไตรมาส 3/2026' },
+        },
+      ],
+    },
+    {
+      key: 'owner-statements',
+      label: 'งบการเงิน',
+      icon: PieChart,
+      zone: 'fin',
+      items: [
+        { label: 'กำไร-ขาดทุน (P&L)', path: '/profit-loss', icon: PieChart },
+        {
+          label: 'งบกระแสเงินสด',
+          path: '/finance/cash-flow',
+          icon: TrendingUp,
+          placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' },
+        },
+        {
+          label: 'งบ Equity',
+          path: '/finance/equity-statement',
+          icon: BarChart3,
+          placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' },
+        },
+        {
+          label: 'สมุดแยกประเภท',
+          path: '/finance/general-ledger',
+          icon: BookOpen,
+          placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' },
+        },
+      ],
+    },
+    {
+      key: 'owner-bank',
+      label: 'ผังบัญชี + ธนาคาร',
+      icon: Landmark,
+      zone: 'fin',
+      items: [
+        {
+          label: 'บัญชีธนาคาร',
+          path: '/finance/bank-accounts',
+          icon: Landmark,
+          placeholder: { trackingSP: 'SP6', eta: 'ภายในไตรมาส 4/2026' },
+        },
+      ],
+    },
+    {
+      key: 'owner-doc-config',
+      label: 'ตั้งค่าเอกสาร',
+      icon: FileText,
+      zone: 'settings',
+      items: [
+        {
+          label: 'เลขที่/รูปแบบเอกสาร',
+          path: '/settings/document-config',
+          icon: FileText,
+          placeholder: { trackingSP: 'SP4', eta: 'ภายในไตรมาส 3/2026' },
+        },
+      ],
+    },
     assetMenuSection,
     {
       key: 'owner-online-shop',
       label: 'ร้านค้าออนไลน์',
       icon: ShoppingBag,
+      zone: 'shop',
       items: [
         { label: 'คำสั่งซื้อออนไลน์', path: '/online-orders', icon: ShoppingBag },
         { label: 'คำขอผ่อนชำระ', path: '/installment-applications', icon: ClipboardCheck },
@@ -451,6 +658,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
       key: 'owner-marketing',
       label: 'การตลาด',
       icon: Target,
+      zone: 'shop',
       items: [
         { label: 'Ads & ROI', path: '/ads', icon: Target },
         { label: 'Broadcast', path: '/broadcast', icon: Send },
@@ -460,6 +668,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
       key: 'owner-settings',
       label: 'ตั้งค่า',
       icon: Settings,
+      zone: 'settings',
       items: [
         { label: 'ตั้งค่าระบบ', path: '/settings', icon: Settings },
         { label: 'บัญชีตาม Role', path: '/settings/account-roles', icon: ClipboardList },
@@ -473,11 +682,11 @@ const OWNER_CONFIG: RoleMenuConfig = {
       ],
     },
     {
-      key: 'owner-tools',
-      label: 'เครื่องมือ',
+      key: 'owner-fin-tools',
+      label: 'เครื่องมือไฟแนนซ์',
       icon: Plug,
+      zone: 'fin',
       items: [
-        // /chat removed — already in bottomNav as 'แชท'.
         {
           label: 'AI',
           path: '/settings/ai-admin',
@@ -490,6 +699,14 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'การเชื่อมต่อ', path: '/settings/integrations', icon: Plug },
         { label: 'LINE OA', path: '/settings/rich-menu', icon: MessageSquareMore },
         { label: 'Dunning', path: '/settings/dunning', icon: Bell },
+      ],
+    },
+    {
+      key: 'owner-settings-extra',
+      label: 'บันทึกระบบ',
+      icon: ScrollText,
+      zone: 'settings',
+      items: [
         { label: 'Audit Log', path: '/audit-logs', icon: ScrollText },
       ],
     },
@@ -515,6 +732,109 @@ const MENU_CONFIG: Record<string, RoleMenuConfig> = {
 
 export function getMenuConfig(role: string): RoleMenuConfig {
   return MENU_CONFIG[role] ?? OWNER_CONFIG;
+}
+
+/** Map of role → new zone-aware config. Populated in SP1 Task 6. */
+const ZONE_CONFIG: Record<string, RoleZoneConfig> = {
+  OWNER: {
+    zones: ['shop', 'fin'],
+    defaultZone: 'shop',
+    showSettingsGear: true,
+    sections: OWNER_CONFIG.sidebar,
+    bottomNav: {
+      shop: OWNER_CONFIG.bottomNav,
+      fin: [
+        { label: 'Dashboard', path: '/finance-portfolio', icon: CircleDollarSign },
+        { label: 'ค้างชำระ', path: '/overdue', icon: AlertTriangle },
+        { label: 'ชำระ', path: '/payments', icon: HandCoins },
+        { label: 'แชท', path: '/inbox', icon: MessageSquareMore, badgeKey: 'chat-unread' },
+        { label: 'เพิ่มเติม', path: '#more', icon: MoreHorizontal, action: 'sidebar' },
+      ],
+      settings: [
+        { label: 'ผู้ใช้', path: '/users', icon: UserCog },
+        { label: 'บริษัท', path: '/settings/companies', icon: Building2 },
+        { label: 'สาขา', path: '/branches', icon: Building2 },
+        { label: 'ตั้งค่า', path: '/settings', icon: Settings },
+        { label: 'เพิ่มเติม', path: '#more', icon: MoreHorizontal, action: 'sidebar' },
+      ],
+    },
+  },
+  BRANCH_MANAGER: {
+    zones: ['shop', 'fin'],
+    defaultZone: 'shop',
+    showSettingsGear: false,
+    sections: BRANCH_MANAGER_CONFIG.sidebar,
+    bottomNav: {
+      shop: BRANCH_MANAGER_CONFIG.bottomNav,
+      fin: [
+        { label: 'ค้างชำระ', path: '/overdue', icon: AlertTriangle },
+        { label: 'รายงาน', path: '/reports', icon: BarChart3 },
+        { label: 'แชท', path: '/inbox', icon: MessageSquareMore, badgeKey: 'chat-unread' },
+        { label: 'เพิ่มเติม', path: '#more', icon: MoreHorizontal, action: 'sidebar' },
+      ],
+      settings: [],
+    },
+  },
+  FINANCE_MANAGER: {
+    zones: ['shop', 'fin'],
+    defaultZone: 'fin',
+    showSettingsGear: false,
+    sections: FINANCE_MANAGER_CONFIG.sidebar,
+    bottomNav: {
+      shop: [
+        { label: 'Dashboard', path: '/', icon: Home },
+        { label: 'สัญญา', path: '/contracts', icon: FileCheck },
+        { label: 'ชำระ', path: '/payments', icon: HandCoins },
+        { label: 'แชท', path: '/inbox', icon: MessageSquareMore, badgeKey: 'chat-unread' },
+        { label: 'เพิ่มเติม', path: '#more', icon: MoreHorizontal, action: 'sidebar' },
+      ],
+      fin: FINANCE_MANAGER_CONFIG.bottomNav,
+      settings: [],
+    },
+  },
+  SALES: {
+    zones: ['shop'],
+    defaultZone: 'shop',
+    showSettingsGear: false,
+    sections: SALES_CONFIG.sidebar,
+    bottomNav: {
+      shop: SALES_CONFIG.bottomNav,
+      fin: [],
+      settings: [],
+    },
+  },
+  ACCOUNTANT: {
+    zones: ['fin'],
+    defaultZone: 'fin',
+    showSettingsGear: false,
+    sections: ACCOUNTANT_CONFIG.sidebar,
+    bottomNav: {
+      shop: [],
+      fin: ACCOUNTANT_CONFIG.bottomNav,
+      settings: [],
+    },
+  },
+};
+
+/**
+ * Filter sections for the role's current zone.
+ * Returns empty array if role/zone combo invalid (caller handles fallback).
+ */
+export function getSidebarForRole(role: string, currentZone: Zone): MenuSection[] {
+  const config = ZONE_CONFIG[role];
+  if (!config) return [];
+  if (currentZone === 'settings') {
+    return config.showSettingsGear
+      ? config.sections.filter((s) => s.zone === 'settings')
+      : [];
+  }
+  if (!config.zones.includes(currentZone)) return [];
+  return config.sections.filter((s) => s.zone === currentZone);
+}
+
+/** Returns the RoleZoneConfig for a role (or undefined). Used by Sidebar to check pills/gear visibility. */
+export function getZoneConfigForRole(role: string): RoleZoneConfig | undefined {
+  return ZONE_CONFIG[role];
 }
 
 /* ── Chat visibility per role ──────────────────────── */

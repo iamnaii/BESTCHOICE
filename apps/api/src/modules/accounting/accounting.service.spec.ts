@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { AccountingService } from './accounting.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
+import { CompanyResolverService } from '../journal/company-resolver.service';
 
 /**
  * AccountingService — financial reporting engine for BESTCHOICE.
@@ -111,6 +112,13 @@ describe('AccountingService', () => {
         AccountingService,
         { provide: PrismaService, useValue: prisma },
         { provide: JournalAutoService, useValue: journalAutoService },
+        {
+          provide: CompanyResolverService,
+          useValue: {
+            getShopCompanyId: jest.fn().mockResolvedValue('shop-co-id'),
+            getFinanceCompanyId: jest.fn().mockResolvedValue('finance-co-id'),
+          },
+        },
       ],
     }).compile();
 

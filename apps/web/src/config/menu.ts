@@ -262,16 +262,11 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'รีวิวลูกค้า', path: '/reviews', icon: Star },
       ],
     },
-    // P3-SP5 — SHOP-side accounting reports (Trial Balance + P&L)
-    {
-      key: 'bm-shop-accounting',
-      label: 'บัญชีหน้าร้าน',
-      icon: Calculator,
-      zone: 'shop',
-      items: [
-        { label: 'งบทดลอง + P&L (SHOP)', path: '/shop/accounting', icon: PieChart },
-      ],
-    },
+    // P3-SP5 W5 — BM does NOT have access to /shop/accounting (the API
+    // endpoint excludes BRANCH_MANAGER because the report is cross-branch
+    // by design, and BM is NOT in CROSS_BRANCH_ROLES). The menu entry
+    // that used to live here would 403 on click. Removed.
+    // SHOP P&L for BM is deferred to a future per-branch report.
   ],
   bottomNav: [
     { label: 'Dashboard', path: '/', icon: Home },
@@ -317,8 +312,9 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
         { label: 'จัดการอุปกรณ์', path: '/mdm', icon: Smartphone },
         { label: 'พิมพ์สติกเกอร์', path: '/stickers', icon: Tag },
-        // P3-SP5 — SHOP-side accounting (visible to FM in SHOP zone for cross-side overview)
-        { label: 'บัญชีหน้าร้าน (SHOP)', path: '/shop/accounting', icon: Calculator },
+        // P3-SP5 W6 — SHOP-side accounting (visible to FM in SHOP zone for cross-side overview)
+        // Standardized label + icon across all 4 role configs.
+        { label: 'บัญชีหน้าร้าน (SHOP)', path: '/shop/accounting', icon: Store },
       ],
     },
     {
@@ -695,14 +691,16 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'รีวิวลูกค้า', path: '/reviews', icon: Star },
       ],
     },
-    // P3-SP5 — SHOP-side accounting reports
+    // P3-SP5 W6 — SHOP-side accounting reports
+    // Standardized label + Store icon across 4 role configs (OWNER/FM/ACC).
+    // BM excluded per W5.
     {
       key: 'owner-shop-accounting',
-      label: 'บัญชีหน้าร้าน',
-      icon: Calculator,
+      label: 'บัญชีหน้าร้าน (SHOP)',
+      icon: Store,
       zone: 'shop',
       items: [
-        { label: 'งบทดลอง + P&L (SHOP)', path: '/shop/accounting', icon: PieChart },
+        { label: 'งบทดลอง + P&L', path: '/shop/accounting', icon: PieChart },
       ],
     },
     {

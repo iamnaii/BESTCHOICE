@@ -73,15 +73,26 @@ export class AccountingController {
   // ============================================================
   // P3-SP5: SHOP-side reports (separate paths for sidebar UX)
   // ============================================================
+  //
+  // POLICY (P3-SP5 W5): SHOP reports are cross-branch by design — these
+  // endpoints aggregate SHOP-side journal lines across ALL branches into
+  // ONE Trial Balance / P&L. BRANCH_MANAGER is NOT in CROSS_BRANCH_ROLES
+  // (see apps/api/src/modules/auth/branch-access.util.ts), so adding BM to
+  // @Roles here would actually 403 at BranchGuard. Roles intentionally
+  // limited to the cross-branch set: OWNER, FINANCE_MANAGER, ACCOUNTANT.
+  //
+  // If owner ever wants branch-scoped SHOP P&L for BM, add a `?branchId=`
+  // query and filter inside the service — do NOT just widen @Roles, the
+  // global guard will block it anyway.
 
   @Get('ledger/shop/trial-balance')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   getShopTrialBalance(@Query('asOfDate') asOfDate?: string) {
     return this.service.getTrialBalance(asOfDate ? new Date(asOfDate) : undefined, 'SHOP');
   }
 
   @Get('ledger/shop/profit-loss')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   getShopProfitLoss(
     @Query('periodStart') periodStart: string,
     @Query('periodEnd') periodEnd: string,

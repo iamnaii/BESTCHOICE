@@ -132,6 +132,7 @@ import { BackupModule } from './modules/backup/backup.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { SecurityMiddleware } from './modules/audit/security.middleware';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
+import { EntityScopeMiddleware } from './middleware/entity-scope.middleware';
 // D1.1.3.1 — One-shot startup warning for VAT_RATE/vat_pct orphan keys.
 import { VatRateBootstrapService } from './utils/vat-rate-bootstrap.service';
 import { CsrfGuard } from './guards/csrf.guard';
@@ -391,5 +392,7 @@ export class AppModule implements NestModule {
     // RequestIdMiddleware must run before SecurityMiddleware so Sentry scope is tagged first.
     consumer.apply(RequestIdMiddleware).forRoutes('*');
     consumer.apply(SecurityMiddleware).forRoutes('*');
+    // SP7.1 — Resolves req.entityScope after auth (runs after JwtAuthGuard populates req.user).
+    consumer.apply(EntityScopeMiddleware).forRoutes('*');
   }
 }

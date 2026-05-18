@@ -1,7 +1,15 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaFinanceService } from './prisma-finance.service';
 
-describe('PrismaFinanceService', () => {
+const HAS_DB = !!process.env.DATABASE_URL_FINANCE;
+
+// SP7.1 — Integration tests that hit live postgres-finance container.
+// Skipped when DATABASE_URL_FINANCE is not set (e.g. plain `npm test` without env).
+// To run locally: `export DATABASE_URL_FINANCE=... && npx jest src/prisma/prisma-finance.service.spec.ts`
+// CI integration deferred to SP7.1 Task 10.
+const describeOrSkip = HAS_DB ? describe : describe.skip;
+
+describeOrSkip('PrismaFinanceService', () => {
   let service: PrismaFinanceService;
 
   beforeAll(async () => {

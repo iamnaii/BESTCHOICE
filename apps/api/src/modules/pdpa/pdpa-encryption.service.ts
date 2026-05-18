@@ -1,6 +1,8 @@
 import {
   BadRequestException,
   ConflictException,
+  forwardRef,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
@@ -128,6 +130,7 @@ export class PdpaEncryptionService {
 
   constructor(
     private readonly prisma: PrismaService,
+    @Inject(forwardRef(() => CustomerPiiService))
     private readonly piiService: CustomerPiiService,
     private readonly audit: AuditService,
   ) {}

@@ -137,6 +137,16 @@ const DunningSettingsPage = lazy(() => import('@/pages/DunningSettingsPage'));
 const SmsTemplatesPage = lazy(() => import('@/pages/SmsTemplatesPage'));
 const MonthlyClosePage = lazy(() => import('@/pages/MonthlyClosePage'));
 const IntercompanySettlementPage = lazy(() => import('@/pages/IntercompanySettlementPage'));
+// SP2 — Accounting Reports Gap
+const CashFlowPage = lazy(() =>
+  import('@/pages/CashFlowPage').then((m) => ({ default: m.CashFlowPage })),
+);
+const EquityStatementPage = lazy(() =>
+  import('@/pages/EquityStatementPage').then((m) => ({ default: m.EquityStatementPage })),
+);
+const GeneralLedgerPage = lazy(() =>
+  import('@/pages/GeneralLedgerPage').then((m) => ({ default: m.GeneralLedgerPage })),
+);
 const PeakSyncPage = lazy(() => import('@/pages/PeakSyncPage'));
 const AiSettingsPage = lazy(() => import('@/pages/AiSettingsPage'));
 const AiTrainingPage = lazy(() => import('@/pages/AiTrainingPage'));
@@ -665,6 +675,31 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
                 <IntercompanySettlementPage />
+              </ProtectedRoute>
+            }
+          />
+          {/* SP2 — Accounting Reports Gap */}
+          <Route
+            path="/finance/cash-flow"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <CashFlowPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/finance/equity-statement"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <EquityStatementPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/finance/general-ledger"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <GeneralLedgerPage />
               </ProtectedRoute>
             }
           />

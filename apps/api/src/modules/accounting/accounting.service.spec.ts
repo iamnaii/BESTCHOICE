@@ -83,12 +83,18 @@ describe('AccountingService', () => {
       },
       chartOfAccount: {
         findMany: jest.fn().mockResolvedValue([]),
+        findFirst: jest.fn().mockResolvedValue(null),
       },
       journalEntry: {
         findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([]),
       },
       journalLine: {
         groupBy: jest.fn().mockResolvedValue([]),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      fixedAsset: {
+        aggregate: jest.fn().mockResolvedValue({ _sum: { purchaseCost: null } }),
       },
       $transaction: jest.fn().mockImplementation(async (fn) => {
         if (typeof fn === 'function') {
@@ -640,6 +646,343 @@ describe('AccountingService', () => {
       const where = prisma.branch.findMany.mock.calls[0][0].where;
       expect(where.deletedAt).toBeNull();
       expect(where.companyId).toBe('company-1');
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SP2: getCashFlowFromJournal (Indirect Method)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  describe('getCashFlowFromJournal (SP2)', () => {
+    beforeEach(() => {
+      prisma.journalLine.groupBy.mockResolvedValue([]);
+      prisma.journalEntry.findMany.mockResolvedValue([]);
+      prisma.fixedAsset.aggregate.mockResolvedValue({ _sum: { purchaseCost: null } });
+    });
+
+    it('returns all zeros for empty period and isReconciled=true', async () => {
+      const result = await service.getCashFlowFromJournal(
+        new Date('2026-01-01'),
+        new Date('2026-01-31'),
+      );
+      expect(result.method).toBe('indirect');
+      expect(result.operating.netIncome).toBe(0);
+      expect(result.operating.depreciation).toBe(0);
+      expect(result.operating.netOperating).toBe(0);
+      expect(result.investing.netInvesting).toBe(0);
+      expect(result.financing.netFinancing).toBe(0);
+      expect(result.netChange).toBe(0);
+      expect(result.openingCash).toBe(0);
+      expect(result.closingCash).toBe(0);
+      expect(result.actualCashChange).toBe(0);
+      expect(result.drift).toBe(0);
+      expect(result.isReconciled).toBe(true);
+    });
+
+    it('adds depreciation (Dr 53-16) back to net income in operating section', async () => {
+      // First call: getProfitLossFromJournal (revenue + expense lines)
+      // We return one expense line in 53-16: Dr 5000 → net income = -5000
+      // Subsequent calls: sumDebitInPeriod for 53-16 returns Dr 5000
+      // All other balance calls return empty.
+      let callCount = 0;
+      prisma.journalLine.groupBy.mockImplementation(() => {
+        callCount += 1;
+        // Call 1: getProfitLossFromJournal — return 53-16 expense
+        // Call 2: sumDebitInPeriod for '53-16' — return Dr 5000 net
+        if (callCount <= 2) {
+          return Promise.resolve([
+            {
+              accountCode: '53-1601',
+              _sum: { debit: new Prisma.Decimal(5000), credit: new Prisma.Decimal(0) },
+            },
+          ]);
+        }
+        return Promise.resolve([]);
+      });
+      prisma.chartOfAccount.findMany.mockResolvedValue([
+        { code: '53-1601', name: 'ค่าเสื่อม' },
+      ]);
+
+      const result = await service.getCashFlowFromJournal(
+        new Date('2026-01-01'),
+        new Date('2026-01-31'),
+      );
+      expect(result.operating.netIncome).toBeCloseTo(-5000, 2);
+      expect(result.operating.depreciation).toBeCloseTo(5000, 2);
+      // netOperating = NI + depreciation = -5000 + 5000 = 0
+      expect(result.operating.netOperating).toBeCloseTo(0, 2);
+    });
+
+    // SP2 Critical #1-#3 — known PPE/Disposal accounting gaps (deferred A.5)
+    //
+    // These tests assert the CURRENT (buggy-by-design) behavior so any future
+    // fix surfaces as a test diff. Per .claude/rules/accounting.md, PPE +
+    // depreciation is "DEFERRED to Phase A.5" — the cash flow report ships
+    // with documented caveats rather than blocking on a full A.5 build-out.
+    //
+    // When Phase A.5 lands disposal handling, update these tests to assert the
+    // corrected behavior (and remove the warning banner from CashFlowPage).
+
+    it('CASH FLOW KNOWN GAP: ppePurchases is NOT companyId-scoped (FixedAsset lacks companyId)', async () => {
+      // 100k FixedAsset purchase posted in period — same number returned
+      // regardless of companyId filter passed by caller.
+      prisma.fixedAsset.aggregate.mockResolvedValue({
+        _sum: { purchaseCost: new Prisma.Decimal(100_000) },
+      });
+
+      const resultNoCo = await service.getCashFlowFromJournal(
+        new Date('2026-01-01'),
+        new Date('2026-01-31'),
+      );
+      const resultWithCo = await service.getCashFlowFromJournal(
+        new Date('2026-01-01'),
+        new Date('2026-01-31'),
+        'co-FINANCE',
+      );
+
+      // KNOWN GAP — passing companyId has zero effect on PPE aggregate.
+      // Phase A.5: must add FixedAsset.companyId scope + assert difference.
+      expect(resultNoCo.investing.ppePurchases).toBe(100_000);
+      expect(resultWithCo.investing.ppePurchases).toBe(100_000);
+      expect(resultWithCo.investing.ppePurchases).toBe(resultNoCo.investing.ppePurchases);
+
+      // Verify the aggregate was called WITHOUT companyId in the where clause
+      // (proves the leak — confirming the gap is structural, not a typo).
+      const aggregateCalls = prisma.fixedAsset.aggregate.mock.calls;
+      for (const call of aggregateCalls) {
+        expect(call[0].where).not.toHaveProperty('companyId');
+      }
+    });
+
+    it('CASH FLOW KNOWN GAP: disposal proceeds use JE metadata only — no reversal of gain/loss in operating section', async () => {
+      // Asset disposal with 30k proceeds via metadata.disposalProceeds
+      prisma.journalEntry.findMany.mockResolvedValue([
+        {
+          metadata: { flow: 'asset-disposal', disposalProceeds: '30000' },
+        },
+      ]);
+
+      const result = await service.getCashFlowFromJournal(
+        new Date('2026-01-01'),
+        new Date('2026-01-31'),
+      );
+
+      // Net Investing reflects disposal proceeds — good.
+      expect(result.investing.ppeDisposals).toBe(30_000);
+
+      // KNOWN GAP — gain/loss from the disposal flows into netIncome via P&L
+      // (because asset-disposal JE credits 41-12XX gain or debits 51-XX loss),
+      // but the indirect-method operating section does NOT reverse it out.
+      // This creates a double-count when both operating gain AND investing
+      // proceeds are presented. Phase A.5 must add a "reverse gain/loss on
+      // disposal" line in the operating section.
+      // For now, document by asserting reverseDisposalGain field is missing.
+      expect(result.operating).not.toHaveProperty('reverseDisposalGain');
+      expect(result.operating).not.toHaveProperty('reverseDisposalLoss');
+    });
+
+    it('flags isReconciled=false when computed netChange drifts > 1 THB from actual cash Δ', async () => {
+      // Make the cash account show a different delta than the indirect computation.
+      // We seed cash account opening 0 and closing 100 (asActualCashChange=100),
+      // but leave all operating/investing/financing at 0 → netChange=0 → drift=100.
+      let groupByCall = 0;
+      prisma.journalLine.groupBy.mockImplementation((args) => {
+        groupByCall += 1;
+        // Identify the cash-prefix balance lookups by their OR filter on '11-11' or '11-12'.
+        const where = (args as { where?: { OR?: Array<{ accountCode?: { startsWith: string } }> } })
+          .where;
+        const codes = where?.OR?.map((o) => o.accountCode?.startsWith);
+        const isCash =
+          codes && codes.length === 2 && codes.includes('11-11') && codes.includes('11-12');
+        if (isCash) {
+          // 2 cash calls: opening (startMinusOne) then closing (periodEnd).
+          // We track that the second cash call returns 100.
+          return Promise.resolve([
+            {
+              accountCode: '11-1101',
+              _sum: {
+                debit: new Prisma.Decimal(groupByCall % 2 === 0 ? 100 : 0),
+                credit: new Prisma.Decimal(0),
+              },
+            },
+          ]);
+        }
+        return Promise.resolve([]);
+      });
+
+      const result = await service.getCashFlowFromJournal(
+        new Date('2026-01-01'),
+        new Date('2026-01-31'),
+      );
+      expect(result.actualCashChange).not.toBe(0);
+      expect(result.drift).not.toBe(0);
+      expect(result.isReconciled).toBe(false);
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SP2: getEquityStatementFromJournal
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  describe('getEquityStatementFromJournal (SP2)', () => {
+    beforeEach(() => {
+      prisma.journalLine.groupBy.mockResolvedValue([]);
+      prisma.journalLine.findMany.mockResolvedValue([]);
+      prisma.chartOfAccount.findMany.mockResolvedValue([]);
+    });
+
+    it('returns empty matrix + zero currentYearProfit + caveat when no movements', async () => {
+      const result = await service.getEquityStatementFromJournal(
+        new Date('2026-01-01'),
+        new Date('2026-03-31'),
+      );
+      expect(result.rows).toHaveLength(4);
+      expect(result.rows[0].opening).toBe(0);
+      expect(result.rows[0].closing).toBe(0);
+      expect(result.rows[0].increases).toEqual([]);
+      expect(result.rows[0].decreases).toEqual([]);
+      expect(result.currentYearProfit).toBe(0);
+      expect(result.caveat).toMatch(/ค่าประมาณ.*ยังไม่ปิดบัญชี/);
+      expect(result.totalOpening).toBe(0);
+      expect(result.totalClosing).toBe(0);
+    });
+
+    it('records Cr movements as increases on 31-1101 and updates closing balance', async () => {
+      prisma.chartOfAccount.findMany.mockResolvedValue([
+        { code: '31-1101', name: 'หุ้นสามัญ' },
+        { code: '31-1102', name: 'ส่วนเกินมูลค่าหุ้น' },
+        { code: '32-1101', name: 'กำไรสะสม' },
+        { code: '33-1101', name: 'กำไรประจำปี' },
+      ]);
+      prisma.journalLine.findMany.mockResolvedValue([
+        {
+          accountCode: '31-1101',
+          debit: new Prisma.Decimal(0),
+          credit: new Prisma.Decimal(50000),
+          description: 'เพิ่มทุน',
+          journalEntry: {
+            entryDate: new Date('2026-02-10'),
+            entryNumber: 'JE-202602-00001',
+            description: 'Capital injection',
+          },
+        },
+      ]);
+
+      const result = await service.getEquityStatementFromJournal(
+        new Date('2026-01-01'),
+        new Date('2026-03-31'),
+      );
+      const row = result.rows.find((r) => r.accountCode === '31-1101')!;
+      expect(row.increases).toHaveLength(1);
+      expect(row.increases[0].amount).toBeCloseTo(50000, 2);
+      expect(row.totalIncrease).toBeCloseTo(50000, 2);
+      expect(row.totalDecrease).toBe(0);
+      expect(row.closing).toBeCloseTo(50000, 2);
+      expect(result.totalClosing).toBeCloseTo(50000, 2);
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SP2: getGeneralLedger
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  describe('getGeneralLedger (SP2)', () => {
+    beforeEach(() => {
+      prisma.journalLine.groupBy.mockResolvedValue([]);
+      prisma.journalLine.findMany.mockResolvedValue([]);
+    });
+
+    it('throws NotFoundException when accountCode is not in CoA', async () => {
+      prisma.chartOfAccount.findFirst.mockResolvedValue(null);
+      await expect(
+        service.getGeneralLedger(
+          '99-9999',
+          new Date('2026-01-01'),
+          new Date('2026-01-31'),
+        ),
+      ).rejects.toThrow(/ไม่พบรหัสบัญชี/);
+    });
+
+    it('returns opening + zero lines + closing=opening for an account with no period activity', async () => {
+      prisma.chartOfAccount.findFirst.mockResolvedValue({
+        code: '11-1201',
+        name: 'ธนาคาร KBank',
+        normalBalance: 'Dr',
+      });
+      // sumAccountBalances for opening — return Dr 1000 - Cr 0 = 1000
+      prisma.journalLine.groupBy.mockResolvedValue([
+        {
+          accountCode: '11-1201',
+          _sum: { debit: new Prisma.Decimal(1000), credit: new Prisma.Decimal(0) },
+        },
+      ]);
+      prisma.journalLine.findMany.mockResolvedValue([]);
+
+      const result = await service.getGeneralLedger(
+        '11-1201',
+        new Date('2026-01-01'),
+        new Date('2026-01-31'),
+      );
+      expect(result.accountCode).toBe('11-1201');
+      expect(result.accountName).toBe('ธนาคาร KBank');
+      expect(result.normalBalance).toBe('Dr');
+      expect(result.opening).toBeCloseTo(1000, 2);
+      expect(result.closing).toBeCloseTo(1000, 2);
+      expect(result.lines).toHaveLength(0);
+    });
+
+    it('computes running balance for a Dr-normal account across multiple lines', async () => {
+      prisma.chartOfAccount.findFirst.mockResolvedValue({
+        code: '11-1201',
+        name: 'ธนาคาร KBank',
+        normalBalance: 'Dr',
+      });
+      // Opening 500
+      prisma.journalLine.groupBy.mockResolvedValue([
+        {
+          accountCode: '11-1201',
+          _sum: { debit: new Prisma.Decimal(500), credit: new Prisma.Decimal(0) },
+        },
+      ]);
+      // Two lines in period: +200 (Dr) then -100 (Cr)
+      prisma.journalLine.findMany.mockResolvedValue([
+        {
+          debit: new Prisma.Decimal(200),
+          credit: new Prisma.Decimal(0),
+          description: 'รับเงิน',
+          journalEntry: {
+            entryDate: new Date('2026-01-05'),
+            entryNumber: 'JE-202601-00001',
+            description: 'รับชำระงวด',
+            referenceType: 'AUTO',
+            referenceId: 'pay-1',
+          },
+        },
+        {
+          debit: new Prisma.Decimal(0),
+          credit: new Prisma.Decimal(100),
+          description: 'จ่ายเงิน',
+          journalEntry: {
+            entryDate: new Date('2026-01-15'),
+            entryNumber: 'JE-202601-00002',
+            description: 'จ่ายค่าใช้จ่าย',
+            referenceType: 'AUTO',
+            referenceId: 'exp-1',
+          },
+        },
+      ]);
+
+      const result = await service.getGeneralLedger(
+        '11-1201',
+        new Date('2026-01-01'),
+        new Date('2026-01-31'),
+      );
+      expect(result.opening).toBeCloseTo(500, 2);
+      expect(result.lines[0].runningBalance).toBeCloseTo(700, 2);
+      expect(result.lines[1].runningBalance).toBeCloseTo(600, 2);
+      expect(result.closing).toBeCloseTo(600, 2);
+      expect(result.totalDebit).toBeCloseTo(200, 2);
+      expect(result.totalCredit).toBeCloseTo(100, 2);
     });
   });
 });

@@ -70,6 +70,50 @@ export class AccountingController {
   // to avoid duplicate routes. See reports.controller.ts.
 
   // ============================================================
+  // SP2: Cash Flow Indirect / Equity Statement / General Ledger
+  // ============================================================
+
+  @Get('ledger/cash-flow')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  getCashFlowFromJournal(
+    @Query('periodStart') periodStart: string,
+    @Query('periodEnd') periodEnd: string,
+    @Query('companyId') companyId?: string,
+  ) {
+    const start = new Date(periodStart);
+    const end = new Date(periodEnd);
+    end.setHours(23, 59, 59, 999);
+    return this.service.getCashFlowFromJournal(start, end, companyId);
+  }
+
+  @Get('ledger/equity-statement')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  getEquityStatementFromJournal(
+    @Query('periodStart') periodStart: string,
+    @Query('periodEnd') periodEnd: string,
+    @Query('companyId') companyId?: string,
+  ) {
+    const start = new Date(periodStart);
+    const end = new Date(periodEnd);
+    end.setHours(23, 59, 59, 999);
+    return this.service.getEquityStatementFromJournal(start, end, companyId);
+  }
+
+  @Get('ledger/general-ledger')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  getGeneralLedger(
+    @Query('accountCode') accountCode: string,
+    @Query('periodStart') periodStart: string,
+    @Query('periodEnd') periodEnd: string,
+    @Query('companyId') companyId?: string,
+  ) {
+    const start = new Date(periodStart);
+    const end = new Date(periodEnd);
+    end.setHours(23, 59, 59, 999);
+    return this.service.getGeneralLedger(accountCode, start, end, companyId);
+  }
+
+  // ============================================================
   // W-013: Period Closing Lock
   // ============================================================
 

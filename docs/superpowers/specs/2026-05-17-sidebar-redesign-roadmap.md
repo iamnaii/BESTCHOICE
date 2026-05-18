@@ -1,6 +1,6 @@
 # Sidebar Redesign — 6-Sub-Project Roadmap
 
-**สถานะ:** Brainstorm complete (2026-05-17). SP1 spec ready for review.
+**สถานะ:** ✅ **COMPLETE 2026-05-18** — 5/6 SPs MERGED + DEPLOYED, SP4 CLOSED (superseded by D1.1.2.x)
 **Owner approval:** P6 paradigm + per-role rule (b) + 6-SP decomposition order (a)
 **Source artifacts:** เมนูระบบ_BESTCHOICE_ฉบับปรับปรุง CSV + previous SHOP/FINANCE brainstorm 2026-05-15
 
@@ -37,16 +37,24 @@
 
 แต่ละ SP มี spec + plan + implementation cycle แยก — **ห้ามรวม PR ข้าม SP**
 
-| SP | Title | Scope summary | Est. PRs | Est. weeks | Tracking issue |
-|---|---|---|---|---|---|
-| **SP1** | Sidebar P6 + Zone Mapping | New `menu.ts` config (zones + per-role rule b), placeholder pages, zone persistence, BottomNav zone-aware | 3-5 | 1-2 | ✅ **MERGED 2026-05-18** — PR #995 |
-| **SP2** | Accounting Reports Gap | Cash Flow Statement, Equity Statement (งบการเปลี่ยนแปลงส่วนของผู้ถือหุ้น), General Ledger detail page (สมุดแยกประเภท by account), รายงาน Inter-co ครบ | 4-6 | 1-2 | TBD |
-| **SP3** | Tax Module Restructure | Refactor `/tax-reports` → split into `/finance/vat` (ภ.พ.30), `/finance/wht` (ภ.ง.ด. 1/3/53 แยกฟอร์ม), `/finance/e-tax` (e-Tax Invoice dedicated, integrate PEAK Sync) | 4-5 | 2-3 | TBD |
-| **SP4** | Document Config | Settings UI ตั้งค่ารูปแบบ + เลขที่เอกสาร per type (รายรับ/รายจ่าย/สัญญา/quote) + migration ทำให้ existing seq configurable | 2-3 | 1 | TBD |
-| **SP5** | SHOP Additions | ใบเสนอราคา (Quote — new module), Drafts hub (รวม DRAFT-status docs ทุกประเภท), Insurance/Returns refactor (lifecycle รับเข้า→ส่งศูนย์→คืนลูกค้า), CRM Pipeline stages | 5-7 | 2-3 | TBD |
-| **SP6** | Bank Accounts Dedicated | แยก Bank Accounts จาก Settings → dedicated page + bank reconciliation feature | 2-3 | 1 | TBD |
+| SP | Title | Scope summary | Status |
+|---|---|---|---|
+| **SP1** | Sidebar P6 + Zone Mapping | New `menu.ts` config (zones + per-role rule b), placeholder pages, zone persistence, BottomNav zone-aware | ✅ **MERGED 2026-05-18** — PR #995 |
+| **SP2** | Accounting Reports Gap | Cash Flow Statement (Indirect), Equity Statement (caveat for unclosed period), General Ledger detail (สมุดแยกประเภท), Inter-co settlement JE + aging report | ✅ **MERGED 2026-05-18** — PR #996 |
+| **SP3** | Tax Module Restructure | `/finance/vat` (ภ.พ.30 journal-based), `/finance/wht` (ภ.ง.ด.1/3/53 per-line WHT routing), `/finance/e-tax` Phase 1 (Internal Receipt PDF + CSV, XML deferred) | ✅ **MERGED 2026-05-18** — PR #997 |
+| **SP4** | Document Config | Settings UI for prefix/format/reset/digit per doc type | ❌ **CLOSED** — Superseded by D1.1.2.x (PRs #937/#941/#947) already on main using SystemConfig pattern. SP4's UI deferred — may rebuild on D1.1.2.x backend later. |
+| **SP5** | SHOP Additions | Quote module (CRUD + PDF + race-safe convert-to-sale), Drafts hub (federated 4 tables), Insurance redirect to /defect-exchange | ✅ **MERGED 2026-05-18** — PR #999 |
+| **SP6** | Bank Accounts Dedicated | BankAccount model + balance from JournalLine + masked account number + audit log on OWNER mutations | ✅ **MERGED 2026-05-18** — PR #1000 |
 
-**Total:** ~20-29 PRs / 8-13 weeks
+**Total delivered:** 5 PRs merged + 1 closed (SP4) / **57 commits / +12,000 LOC / 200+ new tests / 0 TS errors**
+
+## Production deployment
+
+All 5 merged PRs auto-deployed via `.github/workflows/deploy-gcp.yml` on push to main:
+- 5 Cloud SQL migrations applied (20260938..20260941 series)
+- API Cloud Run service updated
+- Web Firebase Hosting deployed
+- Initial smoke test pass expected within 5 min of last merge (04:08 UTC)
 
 ## 5. Dependencies
 

@@ -41,6 +41,23 @@ import { VersionBadge } from './VersionBadge';
 import { PillSwitcher } from './PillSwitcher';
 import { GearButton } from './GearButton';
 
+/* ── NavBullet — small dot in place of leaf-item icons ──
+ * Owner directive: ลด icon รก — เก็บ icon เฉพาะที่ section header (top-level group);
+ * รายการใต้ section + sub-group ทั้งหมดใช้จุดกลม. Color inherits via bg-current
+ * so the bullet follows text color into active state (primary/accent). */
+function NavBullet({ size = 15 }: { size?: number }) {
+  return (
+    <span
+      aria-hidden="true"
+      data-slot="accordion-menu-icon"
+      className="inline-flex shrink-0 items-center justify-center"
+      style={{ width: size, height: size }}
+    >
+      <span className="size-[5px] rounded-full bg-current opacity-60" />
+    </span>
+  );
+}
+
 /* ── NavBadge — dynamic count badge for sidebar items ── */
 function NavBadge({ badgeKey }: { badgeKey: MenuBadgeKey }) {
   const draftCount = useDraftAssetCount(badgeKey === 'asset-draft-count');
@@ -287,7 +304,7 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
                   item.children && item.children.length > 0 ? (
                     <div key={item.path}>
                       <div className="flex items-center gap-2 px-2.5 pt-2 pb-1">
-                        <item.icon className="size-3.5 text-muted-foreground opacity-60" />
+                        <NavBullet size={14} />
                         <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
                           {item.label}
                         </span>
@@ -304,12 +321,7 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
                               : 'text-foreground/80 hover:text-primary hover:bg-primary/5 dark:hover:bg-primary/10',
                           )}
                         >
-                          <child.icon
-                            className={cn(
-                              'size-4 shrink-0',
-                              isItemActive(child.path) ? 'opacity-100' : 'opacity-70',
-                            )}
-                          />
+                          <NavBullet size={16} />
                           <span>{child.label}</span>
                           {isItemActive(child.path) && (
                             <ChevronRight className="size-3 ml-auto opacity-60" />
@@ -329,12 +341,7 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
                           : 'text-foreground/80 hover:text-primary hover:bg-primary/5 dark:hover:bg-primary/10',
                       )}
                     >
-                      <item.icon
-                        className={cn(
-                          'size-4 shrink-0',
-                          isItemActive(item.path) ? 'opacity-100' : 'opacity-70',
-                        )}
-                      />
+                      <NavBullet size={16} />
                       <span>{item.label}</span>
                       {isItemActive(item.path) && (
                         <ChevronRight className="size-3 ml-auto opacity-60" />
@@ -510,7 +517,7 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
                     // (e.g. parent "/assets" and first child "/assets" share the same path)
                     <AccordionMenuSub key={item.path} value={`group-${item.path}`} data-testid={`nav-${item.path}`}>
                       <AccordionMenuSubTrigger>
-                        <item.icon data-slot="accordion-menu-icon" className="size-[15px] shrink-0 opacity-70" />
+                        <NavBullet />
                         <span data-slot="accordion-menu-title">{item.label}</span>
                         {item.badgeKey && <NavBadge badgeKey={item.badgeKey} />}
                       </AccordionMenuSubTrigger>
@@ -518,7 +525,7 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
                         {item.children.map((child) => (
                           <AccordionMenuItem key={child.path} value={child.path} className="text-[15px]">
                             <Link to={child.path} className="flex items-center gap-2.5 w-full">
-                              <child.icon data-slot="accordion-menu-icon" className="size-[15px] shrink-0 opacity-70" />
+                              <NavBullet />
                               <span data-slot="accordion-menu-title">{child.label}</span>
                             </Link>
                           </AccordionMenuItem>
@@ -528,10 +535,7 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
                   ) : (
                     <AccordionMenuItem key={item.path} value={item.path} className="text-[15px]">
                       <Link to={item.path} className="flex items-center gap-2.5 w-full">
-                        <item.icon
-                          data-slot="accordion-menu-icon"
-                          className="size-[15px] shrink-0 opacity-70"
-                        />
+                        <NavBullet />
                         <span data-slot="accordion-menu-title">{item.label}</span>
                         {item.badgeKey && <NavBadge badgeKey={item.badgeKey} />}
                       </Link>

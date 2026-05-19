@@ -602,6 +602,43 @@ Operational settings live at dedicated routes (also OWNER-only):
 
 ---
 
+## REPAIR_SERVICE (SP5 Phase 2)
+
+Auto-created on RepairTicket close (`returnToCustomer()`) depending on who pays the repair cost.
+
+### Payer routing
+
+| Payer | Document Created | Account Dr | Account Cr |
+|-------|-----------------|-----------|-----------|
+| `SHOP` | `ExpenseDocument` (DRAFT) | `REPAIR_EXPENSE_ACCOUNT_CODE` SystemConfig key (default `53-1306` ค่าซ่อมเครื่องลูกค้า) | A/P-supplier (ExpenseDocument standard Cr) |
+| `CUSTOMER` | `OtherIncome` (DRAFT) | Cash/receivable (OtherIncome standard Dr) | `REPAIR_INCOME_ACCOUNT_CODE` SystemConfig key (default `42-1106` รายได้บริการซ่อม) |
+| `SUPPLIER_CLAIM` | No accounting document | — | — (supplier handles physically) |
+
+### Key design points
+- Vendor = `repairSupplierId` from the repair ticket (must be a Supplier with `isRepairCenter = true`).
+- Both documents are created as **DRAFT** — accountant reviews and posts manually. No auto-post on ticket close.
+- The document creation is **atomic** via Prisma `$transaction` alongside the status transition. If document creation fails, the ticket status does NOT advance.
+- `metadata.repairTicketId` is stamped on the created document for traceability (visible in audit log + document detail page).
+- Document number: `EX-YYYYMMDD-NNNN` (expense) or `OI-YYYYMMDD-NNNN` (other income) — same convention as all other modules.
+
+### SystemConfig keys
+| Key | Default | Type |
+|-----|---------|------|
+| `REPAIR_EXPENSE_ACCOUNT_CODE` | `53-1306` | CoA code (SHOP expense) |
+| `REPAIR_INCOME_ACCOUNT_CODE` | `42-1106` | CoA code (FINANCE revenue) |
+
+### Source
+`apps/api/src/modules/repair-tickets/repair-tickets.service.ts` → `returnToCustomer()` for the atomic cross-module flow.
+
+### Repair Ticket document number
+| Module | Prefix | Example |
+|--------|--------|---------|
+| Repair Ticket | `RT` | `RT-20260519-0001` (per-day BKK sequence) |
+
+`RepairTicketDocNumberService` uses the same advisory-lock BKK-day-bounds pattern as `DocNumberService`.
+
+---
+
 ## Year-End Closing (P3-SP1)
 
 Runs once at the end of each fiscal year (typically Jan-March of the following

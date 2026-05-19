@@ -25,8 +25,11 @@ export class DefectExchangeController {
 
   @Post('execute')
   @Roles('OWNER', 'BRANCH_MANAGER')
-  execute(@Body() dto: ExecuteDefectExchangeDto, @CurrentUser() user: { id: string }) {
-    return this.service.execute(dto, user.id);
+  execute(
+    @Body() dto: ExecuteDefectExchangeDto,
+    @CurrentUser() user: { id: string; role: string; branchId?: string | null },
+  ) {
+    return this.service.execute(dto, user);
   }
 
   @Get()

@@ -107,6 +107,98 @@ export class OtherIncomeService {
     return created;
   }
 
+  // ─── SP5 Phase 2 — Repair-ticket auto-doc helper ──────────────────────────
+  /**
+   * Creates a DRAFT OtherIncome within an existing transaction. Called by
+   * RepairTicketsService.returnToCustomer() (payer=CUSTOMER path) so the
+   * income receipt doc and the ticket state-flip land atomically.
+   *
+   * Design notes:
+   * - Takes a `Prisma.TransactionClient` so the entire returnToCustomer flow
+   *   is a single atomic unit — no partial state if doc creation fails.
+   * - `amount` is accepted as `Prisma.Decimal` to keep full precision across
+   *   the module boundary (no Number() drift).
+   * - Skips CoA name resolution round-trip by setting accountName to the code
+   *   value directly — acceptable for auto-created drafts; accountant can
+   *   review and correct before posting.
+   * - No VAT and no WHT for SHOP-side repair income (SHOP not VAT-registered).
+   */
+  async createDraftForRepair(
+    dto: {
+      accountCode: string;
+      counterpartyName: string;
+      customerId: string;
+      amount: Prisma.Decimal;
+      description: string;
+      receivedAt: Date;
+      branchId: string;
+      createdById: string;
+      metadata: Record<string, unknown>;
+    },
+    tx: Prisma.TransactionClient,
+  ): Promise<{ id: string }> {
+    // Repair income belongs to SHOP entity (SHOP is not VAT-registered — no VAT
+    // on repair service fees). Always 'SHOP', never 'FINANCE'. C2 fix.
+    const companyId = await tx.companyInfo
+      .findFirst({ where: { companyCode: 'SHOP', deletedAt: null }, select: { id: true } })
+      .then((co) => {
+        if (!co) {
+          throw new BadRequestException(
+            'CompanyInfo with companyCode=SHOP not found — seed accounting data first',
+          );
+        }
+        return co.id;
+      });
+
+    const issueDate = dto.receivedAt;
+    const docNumber = await this.docNumber.nextDocNumber(tx, issueDate);
+
+    // Single item: no VAT, no WHT (SHOP not VAT-registered; repair income is service fee)
+    const itemAmount = dto.amount;
+    const itemsWithName = [
+      {
+        lineNo: 1,
+        accountCode: dto.accountCode,
+        accountName: dto.accountCode, // name resolved by accountant before posting
+        description: dto.description,
+        quantity: new D(1),
+        unitAmount: itemAmount,
+        discountAmount: new D(0),
+        vatPct: new D(0),
+        whtPct: new D(0),
+        amountBeforeVat: itemAmount,
+        vatAmount: new D(0),
+        whtAmount: new D(0),
+      },
+    ];
+
+    const doc = await tx.otherIncome.create({
+      data: {
+        docNumber,
+        companyId,
+        status: OtherIncomeStatus.DRAFT,
+        issueDate,
+        paymentDate: dto.receivedAt,
+        priceType: 'EXCLUSIVE',
+        customerId: dto.customerId,
+        counterpartyName: dto.counterpartyName,
+        paymentAccountCode: '11-1201', // default cash/bank; accountant adjusts before post
+        amountReceived: itemAmount,
+        incomeGross: itemAmount,
+        vatAmount: new D(0),
+        whtAmount: new D(0),
+        netReceived: itemAmount,
+        totalAmount: itemAmount,
+        customerNote: dto.description,
+        createdById: dto.createdById,
+        items: { create: itemsWithName },
+      },
+      select: { id: true },
+    });
+
+    return { id: doc.id };
+  }
+
   async update(id: string, dto: UpdateOtherIncomeDto, userId: string) {
     const existing = await this.findOneOrFail(id);
     if (existing.status !== OtherIncomeStatus.DRAFT) {

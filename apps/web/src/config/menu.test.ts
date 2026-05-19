@@ -75,10 +75,9 @@ describe('getSidebarForRole — populated ZONE_CONFIG', () => {
   it('OWNER shop sections have exact expected keys (regression guard)', () => {
     const keys = getSidebarForRole('OWNER', 'shop').map((s) => s.key);
     expect(keys).toEqual([
-      'owner-overview',
       'owner-inventory',
       'owner-sales',
-      'owner-collection',
+      'owner-aftersales',
       'owner-online-shop',
       'owner-shop-accounting',
       'owner-marketing',
@@ -87,7 +86,9 @@ describe('getSidebarForRole — populated ZONE_CONFIG', () => {
 
   it('OWNER fin sections include all FIN-zone keys (regression guard)', () => {
     const keys = getSidebarForRole('OWNER', 'fin').map((s) => s.key);
-    // CSV-based 9-section order (no standalone "asset" — embedded in expense sub-group)
+    // Union of all FIN zone sections (SP5 + P4 SP1-5)
+    expect(keys).toContain('owner-overview');
+    expect(keys).toContain('owner-fin-collection');
     expect(keys).toContain('owner-fin-revenue');
     expect(keys).toContain('owner-fin-expense');
     expect(keys).toContain('owner-tax');

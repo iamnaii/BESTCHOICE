@@ -109,6 +109,14 @@ export class AccountingController {
     return this.service.getBalanceSheetFromJournal(asOfDate ? new Date(asOfDate) : undefined);
   }
 
+  // ─── P4-SP1: Aging Report ────────────────────────────────────────────────
+
+  @Get('ledger/aging')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  getAgingReport(@Query('asOf') asOf?: string) {
+    return this.service.getAgingReport(asOf ? new Date(asOf) : new Date());
+  }
+
   // Balance Sheet & Cash Flow endpoints are in ReportsController (/reports/balance-sheet, /reports/cash-flow)
   // to avoid duplicate routes. See reports.controller.ts.
 

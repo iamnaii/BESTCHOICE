@@ -1240,6 +1240,96 @@ describe('AccountingService', () => {
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // getAgingReport
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  describe('getAgingReport', () => {
+    it('returns customer-by-customer aging with buckets 0-30/31-60/61-90/90+', async () => {
+      const result = await service.getAgingReport(new Date('2026-05-19'));
+      expect(result.summary).toHaveProperty('bucket_0_30');
+      expect(result.summary).toHaveProperty('bucket_31_60');
+      expect(result.summary).toHaveProperty('bucket_61_90');
+      expect(result.summary).toHaveProperty('bucket_90_plus');
+      expect(result.customers).toBeInstanceOf(Array);
+      if (result.customers.length > 0) {
+        expect(result.customers[0]).toHaveProperty('customerId');
+        expect(result.customers[0]).toHaveProperty('totalOverdue');
+        expect(result.customers[0]).toHaveProperty('bucket');
+      }
+    });
+
+    it('returns empty customers and zero summary when no overdue payments exist', async () => {
+      prisma.payment.findMany.mockResolvedValueOnce([]);
+      const result = await service.getAgingReport(new Date('2026-05-19'));
+      expect(result.customers).toHaveLength(0);
+      expect(result.summary.bucket_0_30).toBe(0);
+      expect(result.summary.bucket_31_60).toBe(0);
+      expect(result.summary.bucket_61_90).toBe(0);
+      expect(result.summary.bucket_90_plus).toBe(0);
+    });
+
+    it('correctly buckets a payment that is 45 days overdue into bucket_31_60', async () => {
+      const asOf = new Date('2026-05-19');
+      const dueDate = new Date('2026-04-04'); // 45 days before asOf
+      prisma.payment.findMany.mockResolvedValueOnce([
+        {
+          id: 'pay-1',
+          dueDate,
+          amountDue: new Prisma.Decimal(1500),
+          amountPaid: new Prisma.Decimal(0),
+          status: 'OVERDUE',
+          contract: {
+            customer: {
+              id: 'cust-1',
+              name: 'สมชาย ใจดี',
+              phone: '0812345678',
+            },
+          },
+        },
+      ]);
+      const result = await service.getAgingReport(asOf);
+      expect(result.summary.bucket_31_60).toBeCloseTo(1500, 2);
+      expect(result.summary.bucket_0_30).toBe(0);
+      expect(result.customers).toHaveLength(1);
+      expect(result.customers[0].customerName).toBe('สมชาย ใจดี');
+      expect(result.customers[0].bucket).toBe('bucket_31_60');
+    });
+
+    it('skips payments where remaining balance is zero', async () => {
+      const asOf = new Date('2026-05-19');
+      const dueDate = new Date('2026-04-01'); // overdue
+      prisma.payment.findMany.mockResolvedValueOnce([
+        {
+          id: 'pay-2',
+          dueDate,
+          amountDue: new Prisma.Decimal(1500),
+          amountPaid: new Prisma.Decimal(1500), // fully paid
+          status: 'PENDING',
+          contract: {
+            customer: { id: 'cust-2', name: 'มานะ ดี', phone: '0899999999' },
+          },
+        },
+      ]);
+      const result = await service.getAgingReport(asOf);
+      expect(result.customers).toHaveLength(0);
+    });
+
+    it('queries payment.findMany with deletedAt: null filter', async () => {
+      await service.getAgingReport(new Date('2026-05-19'));
+      const call = prisma.payment.findMany.mock.calls.at(-1)[0];
+      expect(call.where.deletedAt).toBeNull();
+      expect(call.where.status.in).toContain('PENDING');
+      expect(call.where.status.in).toContain('OVERDUE');
+    });
+
+    it('returns asOf in the response', async () => {
+      const asOf = new Date('2026-05-19');
+      const result = await service.getAgingReport(asOf);
+      expect(result.asOf).toEqual(asOf);
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // getGeneralJournal
   // ═══════════════════════════════════════════════════════════════════════════
 

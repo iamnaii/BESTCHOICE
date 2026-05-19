@@ -2042,4 +2042,89 @@ export class AccountingService implements OnModuleInit {
     ]);
     return { data, total, page, limit };
   }
+
+  // ─── P4-SP1: Aging Report ────────────────────────────────────────────────
+
+  async getAgingReport(asOf: Date) {
+    const overduePayments = await this.prisma.payment.findMany({
+      where: {
+        status: { in: ['PENDING', 'OVERDUE'] },
+        dueDate: { lt: asOf },
+        deletedAt: null,
+      },
+      include: {
+        contract: {
+          include: {
+            customer: {
+              select: { id: true, name: true, phone: true },
+            },
+          },
+        },
+      },
+    });
+
+    const summary = {
+      bucket_0_30: 0,
+      bucket_31_60: 0,
+      bucket_61_90: 0,
+      bucket_90_plus: 0,
+    };
+
+    const customerMap = new Map<
+      string,
+      {
+        customerId: string;
+        customerName: string;
+        phone: string;
+        totalOverdue: number;
+        daysOverdue: number;
+        bucket: string;
+        contracts: number;
+      }
+    >();
+
+    const calcBucket = (days: number): keyof typeof summary => {
+      if (days <= 30) return 'bucket_0_30';
+      if (days <= 60) return 'bucket_31_60';
+      if (days <= 90) return 'bucket_61_90';
+      return 'bucket_90_plus';
+    };
+
+    for (const p of overduePayments) {
+      const daysOverdue = Math.floor(
+        (asOf.getTime() - p.dueDate.getTime()) / (1000 * 60 * 60 * 24),
+      );
+      const remaining = Number(p.amountDue) - Number(p.amountPaid ?? 0);
+      if (remaining <= 0) continue;
+
+      const bucket = calcBucket(daysOverdue);
+      summary[bucket] += remaining;
+
+      const cid = p.contract.customer.id;
+      const existing = customerMap.get(cid);
+      if (existing) {
+        existing.totalOverdue += remaining;
+        existing.daysOverdue = Math.max(existing.daysOverdue, daysOverdue);
+        existing.bucket = calcBucket(existing.daysOverdue);
+      } else {
+        customerMap.set(cid, {
+          customerId: cid,
+          customerName: p.contract.customer.name,
+          phone: p.contract.customer.phone ?? '',
+          totalOverdue: remaining,
+          daysOverdue,
+          bucket,
+          contracts: 1,
+        });
+      }
+    }
+
+    return {
+      asOf,
+      summary,
+      customers: Array.from(customerMap.values()).sort(
+        (a, b) => b.daysOverdue - a.daysOverdue,
+      ),
+    };
+  }
 }

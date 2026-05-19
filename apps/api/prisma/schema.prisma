@@ -45,6 +45,13 @@ enum ContractStatus {
   EXCHANGED
   DEFECT_EXCHANGED
   CLOSED_BAD_DEBT
+  CANCELED // ยกเลิกสัญญา — ย้อนรายการบัญชีทั้งหมด (ContractCancellation)
+}
+
+enum ContractCancellationStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 // P1 Collections UI — Saved Filter Presets (Task 3)
@@ -746,6 +753,10 @@ model User {
   // P3-SP4 — PDPA PII encryption backfill triggers (forensics: who started a backfill run)
   pdpaBackfillRunsTriggered PdpaBackfillRun[] @relation("PdpaBackfillTriggeredBy")
 
+  // P4-SP4 — Contract cancellation requests made/approved by this user
+  cancellationRequests  ContractCancellation[] @relation("CancellationRequester")
+  cancellationsApproved ContractCancellation[] @relation("CancellationApprover")
+
   @@index([branchId])
   @@index([yeastarExtension])
   @@map("users")
@@ -1064,6 +1075,9 @@ model Contract {
 
   // Phase A.4 — installment schedule rows
   installmentSchedules InstallmentSchedule[]
+
+  // P4-SP4: Contract cancellation requests
+  cancellations ContractCancellation[] @relation("ContractCancellations")
 
   @@index([customerId])
   @@index([branchId])
@@ -3569,6 +3583,8 @@ model JournalEntry {
   assetInvoiceTransferFor FixedAsset?               @relation("AssetInvoiceTransferJE")
   /// SP2: InterCompanyTransactions that this JE settled (typically 1 per JE).
   icSettlements           InterCompanyTransaction[] @relation("ICSettlementJE")
+  /// P4-SP4: ContractCancellation that this JE is the reversal for (0..1).
+  contractCancellationReversal ContractCancellation? @relation("CancellationReversal")
   // Partial unique index enforced via migration (CREATE UNIQUE INDEX ... WHERE reference_type IS NOT NULL)
   // Prisma cannot express partial @@unique; see migration 20260428010000_journal_entries_ref_unique
 
@@ -6773,4 +6789,31 @@ model ExternalFinanceCommission {
   @@index([status])
   @@index([receivedAt])
   @@map("external_finance_commissions")
+}
+
+// ============================================================
+// P4-SP4: Contract Cancellation (Task 1)
+// ============================================================
+
+model ContractCancellation {
+  id                     String                     @id @default(uuid())
+  contractId             String                     @map("contract_id")
+  contract               Contract                   @relation("ContractCancellations", fields: [contractId], references: [id])
+  requestedById          String                     @map("requested_by_id")
+  requestedBy            User                       @relation("CancellationRequester", fields: [requestedById], references: [id])
+  reason                 String
+  refundAmount           Decimal                    @map("refund_amount") @db.Decimal(12, 2)
+  status                 ContractCancellationStatus @default(PENDING)
+  approvedById           String?                    @map("approved_by_id")
+  approvedBy             User?                      @relation("CancellationApprover", fields: [approvedById], references: [id])
+  approvedAt             DateTime?                  @map("approved_at")
+  reversalJournalEntryId String?                    @unique @map("reversal_journal_entry_id")
+  reversalJournalEntry   JournalEntry?              @relation("CancellationReversal", fields: [reversalJournalEntryId], references: [id])
+  createdAt              DateTime                   @default(now()) @map("created_at")
+  updatedAt              DateTime                   @updatedAt @map("updated_at")
+  deletedAt              DateTime?                  @map("deleted_at")
+
+  @@index([contractId])
+  @@index([status])
+  @@map("contract_cancellations")
 }

@@ -64,6 +64,13 @@ export class ContractsController {
     return this.documentService.getDocumentDashboard(branchId);
   }
 
+  // P4-SP5: Dashboard milestones summary — new + completing this month
+  @Get('milestones-summary')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'BRANCH_MANAGER')
+  getMilestonesSummary() {
+    return this.contractsService.getMilestonesSummary();
+  }
+
   @Get(':id')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   findOne(

@@ -24,9 +24,10 @@ interface CheckResult {
 
 interface DbProbeResult {
   db: string;
-  status: 'ok' | 'error';
+  status: 'ok' | 'error' | 'skipped';
   latency_ms?: number;
   error?: string;
+  message?: string;
 }
 
 interface PublicHealthResponse {
@@ -96,7 +97,8 @@ export class HealthController {
       this.checkStorage(),
     ]);
 
-    const allOk = dbProbes.every((p) => p.status === 'ok') && storageCheck.status === 'ok';
+    // 'skipped' counts as OK (e.g. bc_finance not yet provisioned)
+    const allOk = dbProbes.every((p) => p.status === 'ok' || p.status === 'skipped') && storageCheck.status === 'ok';
     const response: DetailedHealthResponse = {
       status: allOk ? 'ok' : 'error',
       timestamp,
@@ -122,8 +124,24 @@ export class HealthController {
   private async checkDatabases(): Promise<DbProbeResult[]> {
     return Promise.all([
       this.pingDb(this.prisma, 'shop'),
-      this.pingDb(this.prismaFin, 'finance'),
+      this.pingFinanceDb(),
     ]);
+  }
+
+  /**
+   * SP7.1 hotfix — bc_finance is optional until provisioned.
+   * When PrismaFinanceService.isEnabled = false, return 'skipped' instead of
+   * probing (which would throw because $connect() was never called).
+   */
+  private async pingFinanceDb(): Promise<DbProbeResult> {
+    if (!this.prismaFin.isEnabled) {
+      return {
+        db: 'finance',
+        status: 'skipped',
+        message: 'DATABASE_URL_FINANCE not set — bc_finance not yet provisioned (SP7.1)',
+      };
+    }
+    return this.pingDb(this.prismaFin, 'finance');
   }
 
   private async pingDb(

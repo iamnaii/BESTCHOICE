@@ -49,8 +49,6 @@ import {
   BookOpen,
   History,
   // SP5 — SHOP additions
-  ReceiptText,
-  Inbox,
   ShieldCheck,
 } from 'lucide-react';
 
@@ -146,7 +144,6 @@ const SALES_CONFIG: RoleMenuConfig = {
       zone: 'shop',
       items: [
         { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
-        { label: 'ใบเสนอราคา', path: '/quotes', icon: ReceiptText },
         { label: 'ลูกค้า', path: '/customers', icon: Users },
         { label: 'เช็คเครดิตลูกค้าใหม่', path: '/customer-intake', icon: UserSearch },
         { label: 'รับซื้อมือสอง', path: '/trade-in', icon: Smartphone },
@@ -160,7 +157,6 @@ const SALES_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
-        { label: 'เอกสารร่าง', path: '/drafts', icon: Inbox },
         { label: 'รับประกัน/ส่งซ่อม', path: '/insurance', icon: ShieldCheck },
       ],
     },
@@ -211,12 +207,10 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
       zone: 'shop',
       items: [
         { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
-        { label: 'ใบเสนอราคา', path: '/quotes', icon: ReceiptText },
         { label: 'ลูกค้า', path: '/customers', icon: Users },
         { label: 'เช็คเครดิตลูกค้าใหม่', path: '/customer-intake', icon: UserSearch },
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
-        { label: 'เอกสารร่าง', path: '/drafts', icon: Inbox },
         { label: 'จัดการอุปกรณ์', path: '/mdm', icon: Smartphone },
         { label: 'รับประกัน/ส่งซ่อม', path: '/insurance', icon: ShieldCheck },
       ],
@@ -326,7 +320,6 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
         { label: 'รายจ่าย', path: '/expenses', icon: Receipt },
         { label: 'รายได้อื่น', path: '/other-income', icon: TrendingUp },
-        { label: 'เอกสารร่าง', path: '/drafts', icon: Inbox },
         { label: 'กำไร-ขาดทุน', path: '/profit-loss', icon: PieChart },
         // SP3 — Tax module split
         { label: 'ภ.พ.30 (VAT)', path: '/finance/vat', icon: Calculator },
@@ -371,7 +364,6 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
         { label: 'บันทึกรายจ่าย', path: '/expenses', icon: Receipt },
-        { label: 'เอกสารร่าง', path: '/drafts', icon: Inbox },
         { label: 'พิมพ์สติกเกอร์', path: '/stickers', icon: Tag },
         { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
       ],
@@ -471,12 +463,20 @@ const OWNER_CONFIG: RoleMenuConfig = {
       key: 'owner-overview',
       label: 'ภาพรวม',
       icon: Home,
-      zone: 'shop',
+      zone: 'fin',
       items: [
-        { label: 'Dashboard', path: '/', icon: Home },
-        { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
-        { label: 'CRM Pipeline', path: '/crm', icon: Kanban },
         { label: 'Finance Overview', path: '/finance-portfolio', icon: CircleDollarSign },
+      ],
+    },
+    {
+      key: 'owner-fin-collection',
+      label: 'ติดตามหนี้',
+      icon: AlertTriangle,
+      zone: 'fin',
+      items: [
+        { label: 'ติดตามหนี้', path: '/overdue', icon: AlertTriangle },
+        { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
+        { label: 'จัดการอุปกรณ์', path: '/mdm', icon: Smartphone },
       ],
     },
     {
@@ -501,22 +501,17 @@ const OWNER_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'ลูกค้า', path: '/customers', icon: Users },
         { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
-        { label: 'ใบเสนอราคา', path: '/quotes', icon: ReceiptText },
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
-        { label: 'เอกสารร่าง', path: '/drafts', icon: Inbox },
         { label: 'รับประกัน/ส่งซ่อม', path: '/insurance', icon: ShieldCheck },
       ],
     },
     {
-      key: 'owner-collection',
-      label: 'ติดตามหนี้',
-      icon: AlertTriangle,
+      key: 'owner-aftersales',
+      label: 'หลังการขาย',
+      icon: Shield,
       zone: 'shop',
       items: [
-        { label: 'ติดตามหนี้', path: '/overdue', icon: AlertTriangle },
         { label: 'เปลี่ยนเครื่องเสีย (7 วัน)', path: '/defect-exchange', icon: Wrench },
-        { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
-        { label: 'จัดการอุปกรณ์', path: '/mdm', icon: Smartphone },
         {
           label: 'ลงทะเบียนประกัน',
           path: '/insurance',
@@ -527,7 +522,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
     },
     {
       key: 'owner-accounting',
-      label: 'บัญชี & รายงาน',
+      label: 'บัญชี',
       icon: Calculator,
       zone: 'fin',
       items: [
@@ -535,27 +530,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
         { label: 'รายจ่าย', path: '/expenses', icon: Receipt },
         { label: 'รายได้อื่น', path: '/other-income', icon: TrendingUp },
-        { label: 'ผังบัญชี', path: '/settings/chart-of-accounts', icon: ClipboardList },
-        // SP6 — Bank/Cash account directory (mirrors CoA 11-1101..1203)
-        { label: 'บัญชีเงินสด/ธนาคาร', path: '/finance/bank-accounts', icon: Landmark },
-        // Reports & period-close grouped under collapsible parents
-        {
-          label: 'รายงาน',
-          path: '/reports',
-          icon: BarChart3,
-          children: [
-            { label: 'รายงานรวม', path: '/reports', icon: BarChart3 },
-            { label: 'งบกระแสเงินสด', path: '/finance/cash-flow', icon: Banknote },
-            { label: 'งบ Equity', path: '/finance/equity-statement', icon: Landmark },
-            { label: 'สมุดแยกประเภท', path: '/finance/general-ledger', icon: BookOpen },
-            { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
-            // SP3 — Tax module split
-            { label: 'ภ.พ.30 (VAT)', path: '/finance/vat', icon: Calculator },
-            { label: 'ภ.ง.ด. 1/3/53 (WHT)', path: '/finance/wht', icon: Calculator },
-            { label: 'e-Tax Invoice', path: '/finance/e-tax', icon: FileText },
-            { label: 'ตรวจสอบบัญชี', path: '/financial-audit', icon: ClipboardList },
-          ],
-        },
+        // Period-close grouped under collapsible parent
         {
           label: 'ปิดบัญชี',
           path: '/monthly-close',
@@ -566,6 +541,28 @@ const OWNER_CONFIG: RoleMenuConfig = {
             { label: 'ชำระเงินระหว่างบริษัท', path: '/accounting/intercompany', icon: ClipboardList },
           ],
         },
+      ],
+    },
+    {
+      // Promoted from collapsible inside "บัญชี & รายงาน" — owner directive
+      // "ดึงรายงานออกมา" (find-menu friction reduction follow-up to PR #849).
+      // Items intentionally mirror entries in owner-tax / owner-statements
+      // — this is the curated report index for one-click discovery.
+      key: 'owner-reports',
+      label: 'รายงาน',
+      icon: BarChart3,
+      zone: 'fin',
+      items: [
+        { label: 'รายงานรวม', path: '/reports', icon: BarChart3 },
+        { label: 'งบกระแสเงินสด', path: '/finance/cash-flow', icon: Banknote },
+        { label: 'งบ Equity', path: '/finance/equity-statement', icon: Landmark },
+        { label: 'สมุดแยกประเภท', path: '/finance/general-ledger', icon: BookOpen },
+        { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
+        // SP3 — Tax module split
+        { label: 'ภ.พ.30 (VAT)', path: '/finance/vat', icon: Calculator },
+        { label: 'ภ.ง.ด. 1/3/53 (WHT)', path: '/finance/wht', icon: Calculator },
+        { label: 'e-Tax Invoice', path: '/finance/e-tax', icon: FileText },
+        { label: 'ตรวจสอบบัญชี', path: '/financial-audit', icon: ClipboardList },
       ],
     },
     {
@@ -627,12 +624,9 @@ const OWNER_CONFIG: RoleMenuConfig = {
       icon: Landmark,
       zone: 'fin',
       items: [
-        {
-          label: 'บัญชีธนาคาร',
-          path: '/finance/bank-accounts',
-          icon: Landmark,
-          placeholder: { trackingSP: 'SP6', eta: 'ภายในไตรมาส 4/2026' },
-        },
+        { label: 'ผังบัญชี', path: '/settings/chart-of-accounts', icon: ClipboardList },
+        // SP6 — Bank/Cash account directory (mirrors CoA 11-1101..1203)
+        { label: 'บัญชีเงินสด/ธนาคาร', path: '/finance/bank-accounts', icon: Landmark },
       ],
     },
     {

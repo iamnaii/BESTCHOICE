@@ -547,7 +547,6 @@ model Branch {
   filterPresets FilterPreset[]
 
   // SP5 — ใบเสนอราคา
-  quotes Quote[] @relation("BranchQuotes")
 
   @@index([companyId])
   @@map("branches")
@@ -724,7 +723,6 @@ model User {
   custodianForCompanies CompanyInfo[] @relation("CompanyPettyCashCustodian")
 
   // SP5 — ใบเสนอราคา (created by this user)
-  quotesCreated Quote[] @relation("QuoteCreatedBy")
 
   @@index([branchId])
   @@index([yeastarExtension])
@@ -859,7 +857,6 @@ model Customer {
   partialPaymentLinks PartialPaymentLink[]
 
   // SP5 — ใบเสนอราคา
-  quotes Quote[] @relation("CustomerQuotes")
 
   @@index([phone])
   @@index([name])
@@ -1483,7 +1480,6 @@ model Product {
   onlineApplications       OnlineInstallmentApplication[]
 
   // SP5 — ใบเสนอราคา
-  quoteItems QuoteItem[] @relation("ProductQuoteItems")
 
   @@index([branchId])
   @@index([status])
@@ -2293,9 +2289,6 @@ model Sale {
   commissions              SalesCommission[]
   promotionUsages          PromotionUsage[]
   onlineOrder              OnlineOrder?
-
-  // SP5 — ใบเสนอราคา (origin) — set when sale was created via Quote conversion
-  quote Quote? @relation("SaleQuote")
 
   @@index([saleType])
   @@index([branchId])
@@ -6311,72 +6304,6 @@ model PartialPaymentLink {
   @@index([contractId])
   @@index([status, expiresAt])
   @@map("partial_payment_links")
-}
-
-/// SP5 — ใบเสนอราคา (Quote) for SHOP-side pre-sale workflow.
-/// Lifecycle: DRAFT -> SENT -> ACCEPTED -> CONVERTED (also REJECTED / EXPIRED).
-/// On CONVERTED, `convertedToSaleId` links to the resulting Sale row.
-enum QuoteStatus {
-  DRAFT
-  SENT
-  ACCEPTED
-  REJECTED
-  EXPIRED
-  CONVERTED
-}
-
-/// SP5 — ใบเสนอราคา. Numbering: QU-YYYYMMDD-NNNN (per-day reset, BKK time).
-model Quote {
-  id                String      @id @default(uuid())
-  quoteNumber       String      @unique @map("quote_number")
-  customerId        String      @map("customer_id")
-  branchId          String      @map("branch_id")
-  status            QuoteStatus @default(DRAFT)
-  validUntil        DateTime    @map("valid_until")
-  subtotal          Decimal     @db.Decimal(12, 2)
-  discount          Decimal     @default(0) @db.Decimal(12, 2)
-  vatAmount         Decimal     @default(0) @map("vat_amount") @db.Decimal(12, 2)
-  total             Decimal     @db.Decimal(12, 2)
-  notes             String?
-  convertedToSaleId String?     @unique @map("converted_to_sale_id")
-  sentAt            DateTime?   @map("sent_at")
-  acceptedAt        DateTime?   @map("accepted_at")
-  rejectedAt        DateTime?   @map("rejected_at")
-  convertedAt       DateTime?   @map("converted_at")
-  createdById       String      @map("created_by_id")
-  createdAt         DateTime    @default(now()) @map("created_at")
-  updatedAt         DateTime    @updatedAt @map("updated_at")
-  deletedAt         DateTime?   @map("deleted_at")
-
-  customer        Customer    @relation("CustomerQuotes", fields: [customerId], references: [id])
-  branch          Branch      @relation("BranchQuotes", fields: [branchId], references: [id])
-  createdBy       User        @relation("QuoteCreatedBy", fields: [createdById], references: [id])
-  convertedToSale Sale?       @relation("SaleQuote", fields: [convertedToSaleId], references: [id])
-  items           QuoteItem[]
-
-  @@index([customerId, deletedAt])
-  @@index([branchId, status, deletedAt])
-  @@index([status])
-  @@index([createdAt])
-  @@map("quotes")
-}
-
-model QuoteItem {
-  id          String   @id @default(uuid())
-  quoteId     String   @map("quote_id")
-  productId   String?  @map("product_id")
-  description String
-  quantity    Int      @default(1)
-  unitPrice   Decimal  @map("unit_price") @db.Decimal(12, 2)
-  amount      Decimal  @db.Decimal(12, 2)
-  createdAt   DateTime @default(now()) @map("created_at")
-
-  quote   Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
-  product Product? @relation("ProductQuoteItems", fields: [productId], references: [id])
-
-  @@index([quoteId])
-  @@index([productId])
-  @@map("quote_items")
 }
 
 /// SP6 — Bank/Cash Account directory.

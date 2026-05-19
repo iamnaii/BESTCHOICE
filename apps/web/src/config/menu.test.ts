@@ -75,11 +75,10 @@ describe('getSidebarForRole — populated ZONE_CONFIG', () => {
   it('OWNER shop sections have exact expected keys (regression guard)', () => {
     const keys = getSidebarForRole('OWNER', 'shop').map((s) => s.key);
     expect(keys).toEqual([
-      'owner-overview',
       'owner-inventory',
       'owner-sales',
       'owner-drafts',
-      'owner-collection',
+      'owner-aftersales',
       'owner-online-shop',
       'owner-marketing',
     ]);
@@ -87,8 +86,11 @@ describe('getSidebarForRole — populated ZONE_CONFIG', () => {
 
   it('OWNER fin sections include all FIN-zone keys (regression guard)', () => {
     const keys = getSidebarForRole('OWNER', 'fin').map((s) => s.key);
-    // Order should be: accounting, tax, statements, bank, asset, fin-tools
+    // Order: overview, fin-collection, accounting, reports, tax, statements, bank, asset, fin-tools
+    expect(keys).toContain('owner-overview');
+    expect(keys).toContain('owner-fin-collection');
     expect(keys).toContain('owner-accounting');
+    expect(keys).toContain('owner-reports');
     expect(keys).toContain('owner-tax');
     expect(keys).toContain('owner-statements');
     expect(keys).toContain('owner-bank');

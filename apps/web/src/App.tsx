@@ -54,8 +54,6 @@ const GeneralSettingsPage = lazy(() => import('@/pages/SettingsPage/GeneralSetti
 const PaymentMethodSettingsPage = lazy(() => import('@/pages/PaymentMethodSettingsPage'));
 const DefectExchangePage = lazy(() => import('@/pages/DefectExchangePage'));
 // SP5 — SHOP-side additions
-const QuotesPage = lazy(() => import('@/pages/QuotesPage'));
-const DraftsPage = lazy(() => import('@/pages/DraftsPage'));
 const InsurancePage = lazy(() => import('@/pages/InsurancePage'));
 const AuditLogsPage = lazy(() => import('@/pages/AuditLogsPage'));
 const FinancialAuditPage = lazy(() => import('@/pages/FinancialAuditPage'));
@@ -596,24 +594,6 @@ function App() {
             }
           />
           {/* SP5 — SHOP-side additions */}
-          <Route
-            path="/quotes"
-            element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES']}>
-                <QuotesPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/drafts"
-            element={
-              <ProtectedRoute
-                roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES']}
-              >
-                <DraftsPage />
-              </ProtectedRoute>
-            }
-          />
           <Route
             path="/insurance"
             element={
@@ -1210,35 +1190,11 @@ function App() {
               Role gating mirrors the menu visibility in spec §3 / §6 so that
               users cannot direct-URL-jump into pages they aren't supposed to see. */}
           <Route
-            path="/quotes"
-            element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'SALES']}>
-                <ComingSoonPage
-                  feature="ใบเสนอราคา"
-                  trackingSP="SP5"
-                  eta="ภายในไตรมาส 3/2026"
-                />
-              </ProtectedRoute>
-            }
-          />
-          <Route
             path="/insurance"
             element={
               <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES']}>
                 <ComingSoonPage
                   feature="ลงทะเบียนประกัน + รับเครื่องคืน"
-                  trackingSP="SP5"
-                  eta="ภายในไตรมาส 3/2026"
-                />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/drafts"
-            element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES']}>
-                <ComingSoonPage
-                  feature="เอกสารร่างทั้งหมด"
                   trackingSP="SP5"
                   eta="ภายในไตรมาส 3/2026"
                 />

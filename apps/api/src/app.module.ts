@@ -59,8 +59,6 @@ import { PaySolutionsModule } from './modules/paysolutions/paysolutions.module';
 import { FinanceReceivableModule } from './modules/finance-receivable/finance-receivable.module';
 import { AccountingModule } from './modules/accounting/accounting.module';
 import { OtherIncomeModule } from './modules/other-income/other-income.module';
-import { QuotesModule } from './modules/quotes/quotes.module';
-import { DraftsModule } from './modules/drafts/drafts.module';
 import { ExpenseDocumentsModule } from './modules/expense-documents/expense-documents.module';
 import { PaymentMethodConfigModule } from './modules/payment-method-config/payment-method-config.module';
 import { CompanyModule } from './modules/company/company.module';
@@ -219,10 +217,6 @@ import { AppCacheModule } from './cache/cache.module';
     AccountingModule,
     // Other Income (รายได้อื่น — FINANCE only)
     OtherIncomeModule,
-    // SP5 — ใบเสนอราคา (SHOP-side pre-sale)
-    QuotesModule,
-    // SP5 — Drafts hub (federated DRAFT-status docs across modules)
-    DraftsModule,
     // Expense Documents (เอกสารค่าใช้จ่าย — accrual workflow)
     ExpenseDocumentsModule,
     // Payment method ↔ Cash account mapping (cashier wizard filter)

@@ -8,6 +8,7 @@ type PrismaTx = {
   sale: { findFirst: (...args: unknown[]) => Promise<{ saleNumber: string } | null> };
   purchaseOrder: { count: (...args: unknown[]) => Promise<number> };
   quote?: { findFirst: (...args: unknown[]) => Promise<{ quoteNumber: string } | null> };
+  booking?: { findFirst: (...args: unknown[]) => Promise<{ bookingNumber: string } | null> };
 };
 
 /**
@@ -81,6 +82,42 @@ export async function generateQuoteNumber(tx: PrismaTx): Promise<string> {
   let nextSeq = 1;
   if (last) {
     const lastSeq = parseInt(last.quoteNumber.slice(prefix.length), 10) || 0;
+    nextSeq = lastSeq + 1;
+  }
+  return `${prefix}${String(nextSeq).padStart(4, '0')}`;
+}
+
+/**
+ * P2-SP4 — Generate next booking number (BK-YYYYMMDD-NNNN, Asia/Bangkok date).
+ * Per-day reset, 4-digit zero-padded sequence. Mirrors generateQuoteNumber
+ * (lookup MAX(bookingNumber) for the day's prefix). Booking is SHOP-side
+ * pre-sale, low concurrency.
+ */
+export async function generateBookingNumber(tx: PrismaTx): Promise<string> {
+  if (!tx.booking) {
+    throw new Error('generateBookingNumber requires a transaction client with `booking` delegate');
+  }
+  const now = new Date();
+  // Asia/Bangkok local YYYYMMDD via Intl (BKK is UTC+7, no DST).
+  const parts = now.toLocaleString('en-CA', {
+    timeZone: 'Asia/Bangkok',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const [y, m, d] = parts.split('-');
+  const yyyymmdd = `${y}${m}${d}`;
+  const prefix = `BK-${yyyymmdd}-`;
+
+  const last = await tx.booking.findFirst({
+    where: { bookingNumber: { startsWith: prefix } },
+    orderBy: { bookingNumber: 'desc' as const },
+    select: { bookingNumber: true },
+  });
+
+  let nextSeq = 1;
+  if (last) {
+    const lastSeq = parseInt(last.bookingNumber.slice(prefix.length), 10) || 0;
     nextSeq = lastSeq + 1;
   }
   return `${prefix}${String(nextSeq).padStart(4, '0')}`;

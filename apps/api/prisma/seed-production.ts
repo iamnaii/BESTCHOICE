@@ -22,6 +22,7 @@
  */
 import { PrismaClient } from '@prisma/client';
 import { seedFinanceCoa } from './seed-coa-finance';
+import { seedShopCoa } from './seed-coa-shop';
 import { seedTradeInValuations } from './seeds/trade-in-valuations';
 import { seedKnowledgeBase } from './seeds/knowledge-base';
 import { seedCollectionsFoundation } from './seeds/collections-foundation.seed';
@@ -168,7 +169,10 @@ async function main() {
   // ============================================================
   console.log('[3/6] Chart of Accounts...');
   const coaResult = await seedFinanceCoa(prisma);
-  console.log(`  Chart of Accounts: created=${coaResult.created} updated=${coaResult.updated}`);
+  console.log(`  FINANCE Chart of Accounts: created=${coaResult.created} updated=${coaResult.updated}`);
+  // P3-SP5: also seed SHOP chart (S-prefixed codes)
+  const shopCoaResult = await seedShopCoa(prisma);
+  console.log(`  SHOP Chart of Accounts: created=${shopCoaResult.created} updated=${shopCoaResult.updated}`);
 
   // ============================================================
   // STEP 4: Trade-in Valuations (upsert — idempotent)

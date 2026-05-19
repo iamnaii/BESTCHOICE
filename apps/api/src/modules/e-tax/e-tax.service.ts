@@ -4,6 +4,44 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { PrismaService } from '../../prisma/prisma.service';
 import { hasCrossBranchAccess } from '../auth/branch-access.util';
+import { registerThaiFont } from './thai-font.util';
+
+/**
+ * Format a Date as Thai-locale full date (Buddhist era + Asia/Bangkok TZ).
+ * Example: 2026-05-17 → "17 พฤษภาคม 2569"
+ *
+ * Pinned to Asia/Bangkok so server TZ (Cloud Run UTC) doesn't shift the
+ * date by 1 day for late-evening BKK timestamps.
+ */
+function formatThaiDate(d: Date): string {
+  const intl = new Intl.DateTimeFormat('th-TH-u-ca-buddhist', {
+    timeZone: 'Asia/Bangkok',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+  return intl.format(d);
+}
+
+/**
+ * Build a 3-4 line block for a party (issuer or buyer) on the invoice.
+ * Order: name → tax id → address → optional phone.
+ *
+ * ม.86/4 mandates name + address + tax id; phone is courtesy.
+ */
+function buildPartyLines(party: {
+  name: string;
+  taxId: string;
+  address: string;
+  phone: string | null;
+}): string[] {
+  const lines: string[] = [];
+  lines.push(party.name);
+  lines.push(`เลขประจำตัวผู้เสียภาษี: ${party.taxId}`);
+  lines.push(`ที่อยู่: ${party.address}`);
+  if (party.phone) lines.push(`โทร: ${party.phone}`);
+  return lines;
+}
 
 /** Minimal user shape needed for branch scoping — branchId may be null
  * for cross-branch roles (OWNER / FINANCE_MANAGER / ACCOUNTANT). */
@@ -144,18 +182,23 @@ export class ETaxService {
   }
 
   /**
-   * Critical #5: Generate PDF receipt for a single Payment record
-   * (Phase 1 internal receipt, NOT a legal e-Tax Invoice per ม.86/4).
+   * P2-SP3: Generate ใบกำกับภาษี (ต้นฉบับ) per ม.86/4 of the Revenue Code.
    *
-   * Scoping: requires the requesting user. Resolves the Payment via Contract
-   * → Branch and rejects (NotFoundException — does not leak existence) if
-   * the contract's branchId is not in the user's accessible set. Without
-   * this, any authenticated user with the PDF route could fetch any
-   * payment's customer name + nationalId — a PII leak across companies.
+   * This PDF is the **paper form** of the tax invoice — content layout
+   * complies with ม.86/4 mandatory fields. Phase 2 (P2-SP5) layers the
+   * XML submission + PKCS#7 digital signature on top, which is what RD's
+   * e-Tax Invoice & e-Receipt programme actually requires for electronic
+   * delivery. Until SP5 ships + cert is uploaded, this PDF can be printed
+   * + handed to the customer (acceptable per ม.86/4 paper format).
    *
-   * Phase 1: jspdf-autotable, English labels, plain receipt format.
-   * Phase 2 will produce a real ใบกำกับภาษีอิเล็กทรอนิกส์ with Thai font +
-   * ม.86/4 mandatory fields + PKCS#7 signature.
+   * Scoping (Critical #5 preserved): resolves Payment → Contract → Branch
+   * and rejects (NotFoundException — does not leak existence) when the
+   * branch is not in the requesting user's accessible set. Without this
+   * any authenticated user could fetch any payment's customer PII.
+   *
+   * Thai text is rendered via the Noto Sans Thai variable font bundled
+   * by PR #843 — see `thai-font.util.ts`. Cloud Run's `node:20-slim` has
+   * NO Thai system fonts so this embedding is mandatory.
    */
   async generateInvoicePdf(
     paymentId: string,
@@ -226,65 +269,206 @@ export class ETaxService {
     const total = payment.amountPaid;
     const base = total.sub(vat);
 
-    // Critical #6: jsPDF default Helvetica cannot render Thai (tofu boxes).
-    // PR #843 bundled Noto Sans Thai for pdfmake — that lives in the
-    // expense-document PDF pipeline. For SP3 Phase 1 we ship an
-    // English-only receipt to avoid font regression risk while we work the
-    // proper Thai-font path into the e-tax module for Phase 2.
-    //
-    // Critical #7: This PDF is INTERNAL only — NOT a legal ใบกำกับภาษี
-    // ตามม.86/4. Title, header banner, and file name all reflect that.
+    // ผู้ออก (issuer) = FINANCE legal entity. VAT registration sits on
+    // CompanyInfo by `companyCode = 'FINANCE'`. We don't trust the
+    // branch's company directly — VAT invoice must be issued under the
+    // VAT-registered FINANCE entity (per business model documented in
+    // .claude/CLAUDE.md). Fall back to the branch's company if FINANCE
+    // not yet seeded (dev env), and finally to a placeholder.
+    const issuer =
+      (await this.prisma.companyInfo.findFirst({
+        where: { companyCode: 'FINANCE', deletedAt: null },
+        select: {
+          nameTh: true,
+          address: true,
+          taxId: true,
+          phone: true,
+        },
+      })) ??
+      (await this.prisma.companyInfo.findFirst({
+        where: { id: branch.companyId, deletedAt: null },
+        select: {
+          nameTh: true,
+          address: true,
+          taxId: true,
+          phone: true,
+        },
+      }));
+
+    return this.buildInvoicePdf({
+      payment,
+      base,
+      vat,
+      total,
+      issuer,
+    });
+  }
+
+  /**
+   * Build the ม.86/4 PDF — kept separate from `generateInvoicePdf` so the
+   * service is easier to unit-test (callers can stub the prisma loads then
+   * verify the buffer shape directly).
+   *
+   * Layout (A4 portrait, units = pt):
+   *   - Header: "ใบกำกับภาษี" + "(ต้นฉบับ)" badge + เลขที่ + วันที่
+   *   - 2-col block: ผู้ออก (FINANCE) // ผู้ซื้อ (customer)
+   *   - Item table: รายการ / จำนวน / ราคา/หน่วย / รวม
+   *   - Summary: ราคาก่อน VAT, VAT 7%, รวมทั้งสิ้น
+   *   - Footer disclaimer (Phase 1 — XML submission not yet implemented)
+   */
+  private buildInvoicePdf(args: {
+    payment: {
+      id: string;
+      paidDate: Date | null;
+      installmentNo: number;
+      contract: { contractNumber: string; customer: { name: string; nationalId: string | null; addressIdCard: string | null } };
+    };
+    base: Prisma.Decimal;
+    vat: Prisma.Decimal;
+    total: Prisma.Decimal;
+    issuer: { nameTh: string; address: string; taxId: string; phone: string | null } | null;
+  }): Buffer {
+    const { payment, base, vat, total, issuer } = args;
     const doc = new jsPDF({ unit: 'pt', format: 'a4' });
 
-    doc.setFontSize(16);
-    doc.text('Receipt with VAT (Internal)', 40, 60);
-    doc.setFontSize(9);
-    doc.setTextColor(120, 120, 120);
-    doc.text(
-      'Phase 1 — Internal receipt, NOT a legal Thai tax invoice (per Section 86/4 of the Revenue Code).',
-      40,
-      78,
-    );
-    doc.text(
-      'Phase 2 will deliver a compliant e-Tax Invoice with Thai font, full ม.86/4 fields, and PKCS#7 signature.',
-      40,
-      90,
-    );
-    doc.setTextColor(0, 0, 0);
+    // Register Thai font (Noto Sans Thai VF — PR #843 bundle).
+    // If font is missing on disk this returns 'helvetica' as a fallback;
+    // Thai text will still appear as tofu but PDF renders.
+    const fontFamily = registerThaiFont(doc);
+    const setBold = () => doc.setFont(fontFamily, 'bold');
+    const setNormal = () => doc.setFont(fontFamily, 'normal');
 
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 40;
+    const contentWidth = pageWidth - margin * 2;
+
+    // ─── HEADER ────────────────────────────────────────────────────
+    setBold();
+    doc.setFontSize(20);
+    doc.text('ใบกำกับภาษี', pageWidth / 2, 56, { align: 'center' });
+    doc.setFontSize(11);
+    doc.text('(ต้นฉบับ / ORIGINAL)', pageWidth / 2, 76, { align: 'center' });
+    setNormal();
+
+    // เลขที่ใบกำกับภาษี + วันที่ (Asia/Bangkok). Use Payment.id as the
+    // invoice number for now — Phase 2 (SP5) will introduce a dedicated
+    // running number per `TX-YYYYMMDD-NNNN` convention when we wire the
+    // RD submission queue.
+    const invoiceNumber = `TX-${payment.id.slice(0, 8).toUpperCase()}`;
+    const paidDateThai = payment.paidDate
+      ? formatThaiDate(payment.paidDate)
+      : '-';
     doc.setFontSize(10);
-    doc.text(`Payment ID: ${payment.id}`, 40, 120);
-    doc.text(`Paid Date: ${payment.paidDate?.toISOString().slice(0, 10) ?? '-'}`, 40, 135);
-    doc.text(`Contract: ${payment.contract.contractNumber}`, 40, 150);
-    doc.text(`Installment No: ${payment.installmentNo}`, 40, 165);
-    // Customer name and address may contain Thai — render with placeholder
-    // tag so jsPDF default font does not emit garbled tofu boxes. The
-    // accountant uses Contract + Payment ID to cross-reference the real
-    // customer record. Phase 2 swaps in Noto Sans Thai for native rendering.
-    doc.text(`Customer: [contract ${payment.contract.contractNumber}]`, 40, 180);
-    if (payment.contract.customer.nationalId) {
-      doc.text(`Tax ID: ${payment.contract.customer.nationalId}`, 40, 195);
-    }
-
-    autoTable(doc, {
-      startY: 220,
-      head: [['Item', 'Amount (THB)']],
-      body: [
-        ['Amount before VAT', base.toFixed(2)],
-        ['VAT 7%', vat.toFixed(2)],
-        ['Total', total.toFixed(2)],
-      ],
-      styles: { fontSize: 10 },
+    doc.text(`เลขที่ใบกำกับภาษี: ${invoiceNumber}`, margin, 110);
+    doc.text(`วันที่ออกใบกำกับ: ${paidDateThai}`, pageWidth - margin, 110, {
+      align: 'right',
     });
 
-    // Footer disclaimer
-    doc.setFontSize(8);
-    doc.setTextColor(150, 150, 150);
+    // ─── ISSUER (left) + BUYER (right) BLOCKS ──────────────────────
+    const blockTop = 140;
+    const colWidth = (contentWidth - 20) / 2;
+
+    setBold();
+    doc.setFontSize(11);
+    doc.text('ผู้ออกใบกำกับภาษี (ผู้ขาย)', margin, blockTop);
+    doc.text('ผู้ซื้อ / ผู้รับบริการ', margin + colWidth + 20, blockTop);
+    setNormal();
+
+    doc.setFontSize(10);
+    const issuerLines = buildPartyLines({
+      name: issuer?.nameTh ?? 'BESTCHOICE FINANCE',
+      taxId: issuer?.taxId ?? '-',
+      address: issuer?.address ?? '-',
+      phone: issuer?.phone ?? null,
+    });
+    const buyerLines = buildPartyLines({
+      name: payment.contract.customer.name,
+      taxId: payment.contract.customer.nationalId ?? '-',
+      address: payment.contract.customer.addressIdCard ?? '-',
+      phone: null,
+    });
+
+    // Both blocks share a fixed leading. Wrap each line to colWidth.
+    let yL = blockTop + 18;
+    let yR = blockTop + 18;
+    const lineHeight = 14;
+    for (const line of issuerLines) {
+      const wrapped = doc.splitTextToSize(line, colWidth) as string[];
+      for (const w of wrapped) {
+        doc.text(w, margin, yL);
+        yL += lineHeight;
+      }
+    }
+    for (const line of buyerLines) {
+      const wrapped = doc.splitTextToSize(line, colWidth) as string[];
+      for (const w of wrapped) {
+        doc.text(w, margin + colWidth + 20, yR);
+        yR += lineHeight;
+      }
+    }
+
+    // ─── REFERENCE LINE (สัญญา / งวด) ─────────────────────────────
+    const refTop = Math.max(yL, yR) + 8;
+    doc.setFontSize(10);
     doc.text(
-      'This receipt is for internal verification only. Issue an official tax invoice (Phase 2) before submitting to RD.',
-      40,
-      doc.internal.pageSize.getHeight() - 30,
+      `อ้างอิงสัญญา: ${payment.contract.contractNumber}    งวดที่: ${payment.installmentNo}`,
+      margin,
+      refTop,
     );
+
+    // ─── ITEM TABLE ───────────────────────────────────────────────
+    // ม.86/4: must list ชนิด/ประเภท/จำนวน/ราคาต่อหน่วย/รวม
+    const description = `ค่างวดผ่อนชำระตามสัญญา ${payment.contract.contractNumber} งวดที่ ${payment.installmentNo}`;
+    autoTable(doc, {
+      startY: refTop + 14,
+      head: [['ลำดับ', 'รายการ', 'จำนวน', 'ราคา/หน่วย (บาท)', 'รวม (บาท)']],
+      body: [['1', description, '1', base.toFixed(2), base.toFixed(2)]],
+      styles: { font: fontFamily, fontSize: 10, cellPadding: 6 },
+      headStyles: { font: fontFamily, fontStyle: 'bold', fillColor: [240, 240, 240], textColor: [0, 0, 0] },
+      columnStyles: {
+        0: { halign: 'center', cellWidth: 40 },
+        2: { halign: 'right', cellWidth: 50 },
+        3: { halign: 'right', cellWidth: 100 },
+        4: { halign: 'right', cellWidth: 100 },
+      },
+      margin: { left: margin, right: margin },
+    });
+
+    // ─── SUMMARY ─────────────────────────────────────────────────
+    // jspdf-autotable mutates doc internal cursor — read it back.
+    const finalY = (doc as unknown as { lastAutoTable?: { finalY: number } })
+      .lastAutoTable?.finalY ?? refTop + 60;
+
+    const summaryRows: Array<[string, string]> = [
+      ['ราคาก่อนภาษีมูลค่าเพิ่ม', base.toFixed(2)],
+      ['ภาษีมูลค่าเพิ่ม 7%', vat.toFixed(2)],
+      ['รวมทั้งสิ้น', total.toFixed(2)],
+    ];
+    let sumY = finalY + 18;
+    for (let i = 0; i < summaryRows.length; i++) {
+      const [label, value] = summaryRows[i];
+      if (i === summaryRows.length - 1) setBold();
+      doc.setFontSize(10);
+      doc.text(label, pageWidth - margin - 140, sumY, { align: 'right' });
+      doc.text(value, pageWidth - margin, sumY, { align: 'right' });
+      if (i === summaryRows.length - 1) setNormal();
+      sumY += 16;
+    }
+
+    // ─── FOOTER DISCLAIMER ───────────────────────────────────────
+    doc.setFontSize(8);
+    doc.setTextColor(120, 120, 120);
+    const disclaimer =
+      'เอกสารฉบับนี้เป็นใบกำกับภาษีแบบกระดาษตาม ม.86/4 ป.รัษฎากร — ' +
+      'การส่งแบบอิเล็กทรอนิกส์ (XML + PKCS#7) ให้กรมสรรพากร อยู่ระหว่างเตรียมการ.';
+    const wrapped = doc.splitTextToSize(disclaimer, contentWidth) as string[];
+    let footY = pageHeight - 30 - wrapped.length * 10;
+    for (const w of wrapped) {
+      doc.text(w, margin, footY);
+      footY += 10;
+    }
+    doc.setTextColor(0, 0, 0);
 
     const arrayBuffer = doc.output('arraybuffer');
     return Buffer.from(arrayBuffer as ArrayBuffer);

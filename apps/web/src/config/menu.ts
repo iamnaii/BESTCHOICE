@@ -50,6 +50,10 @@ import {
   History,
   // SP5 — SHOP additions
   ShieldCheck,
+  // P3-SP5 — SHOP-side accounting menu icon
+  Store,
+  // P2-SP2 / P4 — document config menu
+  ReceiptText,
 } from 'lucide-react';
 
 /* ── Types ─────────────────────────────────────────── */
@@ -144,6 +148,7 @@ const SALES_CONFIG: RoleMenuConfig = {
       zone: 'shop',
       items: [
         { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
+        { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
         { label: 'ลูกค้า', path: '/customers', icon: Users },
         { label: 'เช็คเครดิตลูกค้าใหม่', path: '/customer-intake', icon: UserSearch },
         { label: 'รับซื้อมือสอง', path: '/trade-in', icon: Smartphone },
@@ -207,6 +212,7 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
       zone: 'shop',
       items: [
         { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
+        { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
         { label: 'ลูกค้า', path: '/customers', icon: Users },
         { label: 'เช็คเครดิตลูกค้าใหม่', path: '/customer-intake', icon: UserSearch },
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
@@ -252,6 +258,11 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'รีวิวลูกค้า', path: '/reviews', icon: Star },
       ],
     },
+    // P3-SP5 W5 — BM does NOT have access to /shop/accounting (the API
+    // endpoint excludes BRANCH_MANAGER because the report is cross-branch
+    // by design, and BM is NOT in CROSS_BRANCH_ROLES). The menu entry
+    // that used to live here would 403 on click. Removed.
+    // SHOP P&L for BM is deferred to a future per-branch report.
   ],
   bottomNav: [
     { label: 'Dashboard', path: '/', icon: Home },
@@ -297,6 +308,9 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
         { label: 'จัดการอุปกรณ์', path: '/mdm', icon: Smartphone },
         { label: 'พิมพ์สติกเกอร์', path: '/stickers', icon: Tag },
+        // P3-SP5 W6 — SHOP-side accounting (visible to FM in SHOP zone for cross-side overview)
+        // Standardized label + icon across all 4 role configs.
+        { label: 'บัญชีหน้าร้าน (SHOP)', path: '/shop/accounting', icon: Store },
       ],
     },
     {
@@ -321,13 +335,17 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'รายจ่าย', path: '/expenses', icon: Receipt },
         { label: 'รายได้อื่น', path: '/other-income', icon: TrendingUp },
         { label: 'กำไร-ขาดทุน', path: '/profit-loss', icon: PieChart },
-        // SP3 — Tax module split
+        // P4-SP2 — Tax module (finance-tax endpoints)
         { label: 'ภ.พ.30 (VAT)', path: '/finance/vat', icon: Calculator },
         { label: 'ภ.ง.ด. 1/3/53 (WHT)', path: '/finance/wht', icon: Calculator },
         { label: 'e-Tax Invoice', path: '/finance/e-tax', icon: FileText },
+        { label: 'VAT Auto Journal', path: '/finance/vat-auto-journal', icon: Calculator },
         // SP6 — Bank/Cash account directory
         { label: 'บัญชีเงินสด/ธนาคาร', path: '/finance/bank-accounts', icon: Landmark },
         { label: 'งวดบัญชี', path: '/accounting/periods', icon: CalendarDays },
+        { label: 'ปิดบัญชีสิ้นปี', path: '/finance/year-end-closing', icon: CalendarDays },
+        // P3-SP3 — PEAK CSV export (deep-linked from /settings#peak-mapping which is OWNER-only)
+        { label: 'ส่งออก PEAK CSV', path: '/finance/peak-export', icon: Plug },
       ],
     },
     assetMenuSection,
@@ -380,11 +398,14 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
         { label: 'งบกระแสเงินสด', path: '/finance/cash-flow', icon: Banknote },
         { label: 'งบ Equity', path: '/finance/equity-statement', icon: Landmark },
         { label: 'สมุดแยกประเภท', path: '/finance/general-ledger', icon: BookOpen },
-        // SP3 — Tax module split (replaces /tax-reports)
+        // P4-SP2 — Tax module (finance-tax endpoints)
         { label: 'ภ.พ.30 (VAT)', path: '/finance/vat', icon: Calculator },
         { label: 'ภ.ง.ด. 1/3/53 (WHT)', path: '/finance/wht', icon: Calculator },
         { label: 'e-Tax Invoice', path: '/finance/e-tax', icon: FileText },
+        { label: 'VAT Auto Journal', path: '/finance/vat-auto-journal', icon: Calculator },
         { label: 'รายงาน', path: '/reports', icon: BarChart3 },
+        // P3-SP5 — SHOP-side accounting reports
+        { label: 'บัญชีหน้าร้าน (SHOP)', path: '/shop/accounting', icon: Store },
       ],
     },
     assetMenuSection,
@@ -395,6 +416,7 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
       zone: 'fin',
       items: [
         { label: 'ปิดบัญชีรายเดือน', path: '/monthly-close', icon: CalendarDays },
+        { label: 'ปิดบัญชีสิ้นปี', path: '/finance/year-end-closing', icon: CalendarDays },
         { label: 'งวดบัญชี', path: '/accounting/periods', icon: CalendarDays },
         { label: 'ชำระเงินระหว่างบริษัท', path: '/accounting/intercompany', icon: ClipboardList },
         { label: 'ผังบัญชี', path: '/settings/chart-of-accounts', icon: ClipboardList },
@@ -402,6 +424,7 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
         { label: 'บัญชีเงินสด/ธนาคาร', path: '/finance/bank-accounts', icon: Landmark },
         { label: 'ตรวจสอบบัญชี', path: '/financial-audit', icon: ClipboardList },
         { label: 'PEAK Sync', path: '/settings/peak-sync', icon: Plug },
+        { label: 'ส่งออก PEAK CSV', path: '/finance/peak-export', icon: Plug },
       ],
     },
     {
@@ -410,9 +433,10 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
       icon: Calculator,
       zone: 'fin',
       items: [
-        { label: 'VAT (ภ.พ.30)', path: '/finance/vat', icon: Receipt, placeholder: { trackingSP: 'SP3', eta: 'ภายในไตรมาส 3/2026' } },
-        { label: 'WHT (ภ.ง.ด. 1/3/53)', path: '/finance/wht', icon: Receipt, placeholder: { trackingSP: 'SP3', eta: 'ภายในไตรมาส 3/2026' } },
-        { label: 'e-Tax Invoice', path: '/finance/e-tax', icon: FileText, placeholder: { trackingSP: 'SP3', eta: 'ภายในไตรมาส 3/2026' } },
+        { label: 'VAT (ภ.พ.30)', path: '/finance/vat', icon: Receipt },
+        { label: 'WHT (ภ.ง.ด. 1/3/53)', path: '/finance/wht', icon: Receipt },
+        { label: 'e-Tax Invoice', path: '/finance/e-tax', icon: FileText },
+        { label: 'VAT Auto Journal', path: '/finance/vat-auto-journal', icon: Calculator },
       ],
     },
     {
@@ -422,9 +446,9 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
       zone: 'fin',
       items: [
         { label: 'กำไร-ขาดทุน (P&L)', path: '/profit-loss', icon: PieChart },
-        { label: 'งบกระแสเงินสด', path: '/finance/cash-flow', icon: TrendingUp, placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' } },
-        { label: 'งบ Equity', path: '/finance/equity-statement', icon: BarChart3, placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' } },
-        { label: 'สมุดแยกประเภท', path: '/finance/general-ledger', icon: BookOpen, placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' } },
+        { label: 'งบกระแสเงินสด', path: '/finance/cash-flow', icon: TrendingUp },
+        { label: 'งบ Equity', path: '/finance/equity-statement', icon: BarChart3 },
+        { label: 'สมุดแยกประเภท', path: '/finance/general-ledger', icon: BookOpen },
       ],
     },
     {
@@ -442,7 +466,11 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
       icon: FileText,
       zone: 'fin', // ACC sees doc config in FIN zone (no gear access)
       items: [
-        { label: 'เลขที่/รูปแบบเอกสาร', path: '/settings/document-config', icon: FileText, placeholder: { trackingSP: 'SP4', eta: 'ภายในไตรมาส 3/2026' } },
+        // P2-SP2 — ACC currently sees the link but the page itself enforces
+        // OWNER-only via ProtectedRoute, so non-OWNER clicks land on a
+        // "ไม่มีสิทธิ์เข้าถึง" view. Kept here for menu parity per the
+        // existing menu shape; security is enforced page-side.
+        { label: 'เลขที่/รูปแบบเอกสาร', path: '/settings/document-config', icon: FileText },
       ],
     },
   ],
@@ -501,6 +529,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'ลูกค้า', path: '/customers', icon: Users },
         { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
+        { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
       ],
     },
@@ -514,15 +543,37 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'รับซ่อม/รับประกัน', path: '/insurance', icon: ShieldCheck },
       ],
     },
+    /* ── FIN zone restructure (per owner CSV) ───────────────────
+     * 9 sections mirroring the CSV "BESTCHOICE FINANCE" outline:
+     * รายรับ / รายจ่าย / ภาษี / บัญชี+งบ / รายงาน /
+     * ผังบัญชี+ธนาคาร / ตั้งค่าเอกสาร / เครื่องมือเชื่อมต่อ / การแจ้งเตือน
+     * SHOP-zone duplicates (overdue/defect/mdm/repo) intentional —
+     * OWNER sees them from both zones; FM/ACC already have them in FIN.
+     * Asset menu items embedded as sub-group inside "รายจ่าย" → ซื้อทรัพย์สิน
+     * (mirrors `assetMenuSection.items` — kept in sync manually). */
     {
-      key: 'owner-accounting',
-      label: 'บัญชี',
-      icon: Calculator,
+      key: 'owner-fin-revenue',
+      label: 'รายรับ',
+      icon: TrendingUp,
       zone: 'fin',
       items: [
-        // Daily-use direct items (one-click access)
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
-        { label: 'รายจ่าย', path: '/expenses', icon: Receipt },
+        { label: 'ติดตามลูกค้าค้างชำระ', path: '/overdue', icon: AlertTriangle },
+        { label: 'เปลี่ยนเครื่องเสีย (7 วัน)', path: '/defect-exchange', icon: Wrench },
+        { label: 'ล็อคเครื่อง (MDM)', path: '/mdm', icon: Lock },
+        { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
+        // CSV §2 placeholder — owner-flagged ✏ "ต้องสร้าง"
+        { label: 'เอกสารยกเลิกสัญญา', path: '/finance/contract-cancellation', icon: FileText },
+      ],
+    },
+    {
+      key: 'owner-fin-expense',
+      label: 'รายจ่าย',
+      icon: TrendingDown,
+      zone: 'fin',
+      items: [
+        { label: 'จ่ายให้หน้าร้าน (Inter-co)', path: '/accounting/intercompany', icon: ClipboardList },
+        { label: 'ค่าใช้จ่ายดำเนินงาน', path: '/expenses', icon: Receipt },
         { label: 'รายได้อื่น', path: '/other-income', icon: TrendingUp },
         // Period-close grouped under collapsible parent
         {
@@ -535,28 +586,19 @@ const OWNER_CONFIG: RoleMenuConfig = {
             { label: 'ชำระเงินระหว่างบริษัท', path: '/accounting/intercompany', icon: ClipboardList },
           ],
         },
-      ],
-    },
-    {
-      // Promoted from collapsible inside "บัญชี & รายงาน" — owner directive
-      // "ดึงรายงานออกมา" (find-menu friction reduction follow-up to PR #849).
-      // Items intentionally mirror entries in owner-tax / owner-statements
-      // — this is the curated report index for one-click discovery.
-      key: 'owner-reports',
-      label: 'รายงาน',
-      icon: BarChart3,
-      zone: 'fin',
-      items: [
-        { label: 'รายงานรวม', path: '/reports', icon: BarChart3 },
-        { label: 'งบกระแสเงินสด', path: '/finance/cash-flow', icon: Banknote },
-        { label: 'งบ Equity', path: '/finance/equity-statement', icon: Landmark },
-        { label: 'สมุดแยกประเภท', path: '/finance/general-ledger', icon: BookOpen },
-        { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
-        // SP3 — Tax module split
-        { label: 'ภ.พ.30 (VAT)', path: '/finance/vat', icon: Calculator },
-        { label: 'ภ.ง.ด. 1/3/53 (WHT)', path: '/finance/wht', icon: Calculator },
-        { label: 'e-Tax Invoice', path: '/finance/e-tax', icon: FileText },
-        { label: 'ตรวจสอบบัญชี', path: '/financial-audit', icon: ClipboardList },
+        {
+          label: 'ซื้อทรัพย์สิน',
+          path: '/assets',
+          icon: Landmark,
+          children: [
+            { label: 'บันทึกซื้อ', path: '/assets', icon: FileText, badgeKey: 'asset-draft-count' },
+            { label: 'ทะเบียน + NBV', path: '/assets/register', icon: BookOpen },
+            { label: 'สมุดรายวัน', path: '/assets/journal', icon: FileText },
+            { label: 'สรุปแยกหมวด', path: '/assets/summary-report', icon: BarChart3 },
+            { label: 'ค่าเสื่อม', path: '/depreciation', icon: TrendingDown },
+            { label: 'ประวัติสินทรัพย์', path: '/assets/audit', icon: History },
+          ],
+        },
       ],
     },
     {
@@ -565,51 +607,46 @@ const OWNER_CONFIG: RoleMenuConfig = {
       icon: Calculator,
       zone: 'fin',
       items: [
-        {
-          label: 'VAT (ภ.พ.30)',
-          path: '/finance/vat',
-          icon: Receipt,
-          placeholder: { trackingSP: 'SP3', eta: 'ภายในไตรมาส 3/2026' },
-        },
-        {
-          label: 'WHT (ภ.ง.ด. 1/3/53)',
-          path: '/finance/wht',
-          icon: Receipt,
-          placeholder: { trackingSP: 'SP3', eta: 'ภายในไตรมาส 3/2026' },
-        },
-        {
-          label: 'e-Tax Invoice',
-          path: '/finance/e-tax',
-          icon: FileText,
-          placeholder: { trackingSP: 'SP3', eta: 'ภายในไตรมาส 3/2026' },
-        },
+        { label: 'VAT (ภ.พ.30)', path: '/finance/vat', icon: Receipt },
+        { label: 'WHT (ภ.ง.ด. 1/3/53)', path: '/finance/wht', icon: Receipt },
+        { label: 'e-Tax Invoice', path: '/finance/e-tax', icon: FileText },
+        { label: 'VAT Auto Journal', path: '/finance/vat-auto-journal', icon: Calculator },
       ],
     },
     {
-      key: 'owner-statements',
-      label: 'งบการเงิน',
+      // CSV §5 — "บัญชี + บันทึกเริ่ม" merged "บัญชี" + "งบการเงิน" groups
+      key: 'owner-accounting',
+      label: 'บัญชี + งบการเงิน',
       icon: PieChart,
       zone: 'fin',
       items: [
+        { label: 'ปิดบัญชีรายเดือน', path: '/monthly-close', icon: CalendarDays },
+        { label: 'ปิดบัญชีสิ้นปี', path: '/finance/year-end-closing', icon: CalendarDays },
+        { label: 'งวดบัญชี', path: '/accounting/periods', icon: CalendarDays },
+        // CSV §5 — "งบ 4 ประเภท" (full 4-statement set per TFRS)
+        { label: 'งบดุล (Balance Sheet)', path: '/finance/balance-sheet', icon: PieChart },
         { label: 'กำไร-ขาดทุน (P&L)', path: '/profit-loss', icon: PieChart },
-        {
-          label: 'งบกระแสเงินสด',
-          path: '/finance/cash-flow',
-          icon: TrendingUp,
-          placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' },
-        },
-        {
-          label: 'งบ Equity',
-          path: '/finance/equity-statement',
-          icon: BarChart3,
-          placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' },
-        },
-        {
-          label: 'สมุดแยกประเภท',
-          path: '/finance/general-ledger',
-          icon: BookOpen,
-          placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' },
-        },
+        { label: 'งบกระแสเงินสด', path: '/finance/cash-flow', icon: Banknote },
+        { label: 'งบ Equity', path: '/finance/equity-statement', icon: BarChart3 },
+      ],
+    },
+    {
+      key: 'owner-reports',
+      label: 'รายงาน',
+      icon: BarChart3,
+      zone: 'fin',
+      items: [
+        { label: 'รายงานรวม', path: '/reports', icon: BarChart3 },
+        // CSV §6 placeholders — flagged "ต้องสร้าง"
+        { label: 'รายงานลูกหนี้ + Aging', path: '/finance/aging-report', icon: AlertTriangle },
+        { label: 'สมุดรายวัน', path: '/finance/general-journal', icon: BookOpen },
+        { label: 'สมุดแยกประเภท', path: '/finance/general-ledger', icon: BookOpen },
+        { label: 'รายงานหนี้สูญ', path: '/finance/bad-debt-report', icon: TrendingDown },
+        { label: 'รายงานลูกหนี้ Inter-co', path: '/finance/intercompany-report', icon: Building2 },
+        { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
+        { label: 'ตรวจสอบบัญชี', path: '/financial-audit', icon: ClipboardList },
+        // P3-SP3 — PEAK CSV export (mapping config lives in /settings#peak-mapping)
+        { label: 'ส่งออก PEAK CSV', path: '/finance/peak-export', icon: Plug },
       ],
     },
     {
@@ -624,20 +661,41 @@ const OWNER_CONFIG: RoleMenuConfig = {
       ],
     },
     {
+      // MOVED from `zone: 'settings'` → `zone: 'fin'` per CSV §8.
+      // SystemConfig backend (D1.1.2.x) is shared but UX-wise this is a
+      // finance-team config, so it belongs in the FIN zone for OWNER.
+      // CSV §8 sub-grouping: รายรับ (3 doc types) + รายจ่าย (5 doc types).
+      // Sub-items are placeholders — backend config UI per doc type pending.
       key: 'owner-doc-config',
       label: 'ตั้งค่าเอกสาร',
       icon: FileText,
-      zone: 'settings',
+      zone: 'fin',
       items: [
+        { label: 'เลขที่/รูปแบบเอกสาร', path: '/settings/document-config?tab=numbering', icon: FileText },
         {
-          label: 'เลขที่/รูปแบบเอกสาร',
+          label: 'เอกสารรายรับ',
           path: '/settings/document-config',
-          icon: FileText,
-          placeholder: { trackingSP: 'SP4', eta: 'ภายในไตรมาส 3/2026' },
+          icon: TrendingUp,
+          children: [
+            { label: 'ใบรับเงินมัดจำ', path: '/settings/document-config?tab=deposit_receipt', icon: Receipt },
+            { label: 'ใบเสร็จรับเงิน', path: '/settings/document-config?tab=receipt', icon: ReceiptText },
+            { label: 'ใบลดหนี้', path: '/settings/document-config?tab=credit_note', icon: FileText },
+          ],
+        },
+        {
+          label: 'เอกสารรายจ่าย',
+          path: '/settings/document-config',
+          icon: TrendingDown,
+          children: [
+            { label: 'ใบสั่งซื้อ (PO)', path: '/settings/document-config?tab=purchase_order', icon: ClipboardList },
+            { label: 'ค่าใช้จ่าย', path: '/settings/document-config?tab=expense_doc', icon: Receipt },
+            { label: 'รับใบลดหนี้', path: '/settings/document-config?tab=credit_note_received', icon: FileText },
+            { label: 'ใบรวมจ่าย', path: '/settings/document-config?tab=payment_summary', icon: FileText },
+            { label: 'ซื้อสินทรัพย์', path: '/settings/document-config?tab=asset_purchase', icon: Landmark },
+          ],
         },
       ],
     },
-    assetMenuSection,
     {
       key: 'owner-online-shop',
       label: 'ร้านค้าออนไลน์',
@@ -648,6 +706,18 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'คำขอผ่อนชำระ', path: '/installment-applications', icon: ClipboardCheck },
         { label: 'แผนออม', path: '/saving-plans', icon: PiggyBank },
         { label: 'รีวิวลูกค้า', path: '/reviews', icon: Star },
+      ],
+    },
+    // P3-SP5 W6 — SHOP-side accounting reports
+    // Standardized label + Store icon across 4 role configs (OWNER/FM/ACC).
+    // BM excluded per W5.
+    {
+      key: 'owner-shop-accounting',
+      label: 'บัญชีหน้าร้าน (SHOP)',
+      icon: Store,
+      zone: 'shop',
+      items: [
+        { label: 'งบทดลอง + P&L', path: '/shop/accounting', icon: PieChart },
       ],
     },
     {
@@ -678,11 +748,17 @@ const OWNER_CONFIG: RoleMenuConfig = {
       ],
     },
     {
-      key: 'owner-fin-tools',
-      label: 'เครื่องมือไฟแนนซ์',
+      // CSV §9 — split from old "เครื่องมือไฟแนนซ์" — Dunning moved to its
+      // own section (#10) since it's customer-facing notifications, not
+      // an integration target.
+      key: 'owner-fin-integrations',
+      label: 'เครื่องมือเชื่อมต่อ',
       icon: Plug,
       zone: 'fin',
       items: [
+        { label: 'จัดการอุปกรณ์ (MDM)', path: '/mdm', icon: Smartphone },
+        { label: 'LINE OA', path: '/settings/rich-menu', icon: MessageSquareMore },
+        { label: 'การเชื่อมต่อ (PaySolutions / สรรพากร ฯลฯ)', path: '/settings/integrations', icon: Plug },
         {
           label: 'AI',
           path: '/settings/ai-admin',
@@ -692,9 +768,18 @@ const OWNER_CONFIG: RoleMenuConfig = {
             { label: 'AI Assistant', path: '/settings/ai-chat', icon: Sparkles },
           ],
         },
-        { label: 'การเชื่อมต่อ', path: '/settings/integrations', icon: Plug },
-        { label: 'LINE OA', path: '/settings/rich-menu', icon: MessageSquareMore },
-        { label: 'Dunning', path: '/settings/dunning', icon: Bell },
+      ],
+    },
+    {
+      // CSV §10 — separated from เครื่องมือ since this is customer comms
+      key: 'owner-fin-notifications',
+      label: 'การแจ้งเตือนลูกค้า',
+      icon: Bell,
+      zone: 'fin',
+      items: [
+        { label: 'Dunning (เตือนค่างวด)', path: '/settings/dunning', icon: Bell },
+        // P4-SP2 — auto e-receipt config (e_receipt_auto SystemConfig key)
+        { label: 'ใบเสร็จอิเล็กทรอนิกส์อัตโนมัติ', path: '/finance/e-receipt-auto', icon: FileText },
       ],
     },
     {

@@ -45,6 +45,13 @@ enum ContractStatus {
   EXCHANGED
   DEFECT_EXCHANGED
   CLOSED_BAD_DEBT
+  CANCELED // ยกเลิกสัญญา — ย้อนรายการบัญชีทั้งหมด (ContractCancellation)
+}
+
+enum ContractCancellationStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 // P1 Collections UI — Saved Filter Presets (Task 3)
@@ -551,6 +558,9 @@ model Branch {
 
   // SP5 — ใบเสนอราคา
 
+  // P2-SP4 — การจอง / มัดจำ
+  bookings Booking[] @relation("BranchBookings")
+
   @@index([companyId])
   @@map("branches")
 }
@@ -591,6 +601,13 @@ model User {
   failedLoginAttempts Int       @default(0) @map("failed_login_attempts")
   lockedUntil         DateTime? @map("locked_until")
   lastLoginAt         DateTime? @map("last_login_at")
+
+  /// SP7.1 — รายชื่อ companies ที่ user เข้าถึงได้
+  /// OWNER/ACCOUNTANT = ["SHOP", "FINANCE"]; SALES/BM = ["SHOP"]; FM = ["FINANCE"]
+  accessibleCompanies String[] @default([]) @map("accessible_companies")
+
+  /// SP7.1 — Company context เริ่มต้นเมื่อ user login (default ใน pill switcher)
+  primaryCompany String? @map("primary_company")
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
@@ -731,6 +748,20 @@ model User {
 
   // SP5 — ใบเสนอราคา (created by this user)
 
+  // P2-SP4 — การจอง / มัดจำ
+  bookingsCreated  Booking[] @relation("BookingCreatedBy")
+  bookingsCanceled Booking[] @relation("BookingCanceledBy")
+
+  // P3-SP2 — Off-site backup manual triggers (forensics: who clicked "Run Now")
+  offsiteBackupRunsTriggered OffsiteBackupRun[] @relation("OffsiteBackupTriggeredBy")
+
+  // P3-SP4 — PDPA PII encryption backfill triggers (forensics: who started a backfill run)
+  pdpaBackfillRunsTriggered PdpaBackfillRun[] @relation("PdpaBackfillTriggeredBy")
+
+  // P4-SP4 — Contract cancellation requests made/approved by this user
+  cancellationRequests  ContractCancellation[] @relation("CancellationRequester")
+  cancellationsApproved ContractCancellation[] @relation("CancellationApprover")
+
   @@index([branchId])
   @@index([yeastarExtension])
   @@map("users")
@@ -867,6 +898,9 @@ model Customer {
   repairTickets RepairTicket[] @relation("CustomerRepairTickets")
 
   // SP5 — ใบเสนอราคา
+
+  // P2-SP4 — การจอง / มัดจำ
+  bookings Booking[] @relation("CustomerBookings")
 
   @@index([phone])
   @@index([name])
@@ -1050,9 +1084,11 @@ model Contract {
   installmentSchedules InstallmentSchedule[]
 
   // SP5 Phase 2 — Repair tickets linked to this contract (as the source/original contract)
-  repairTickets      RepairTicket[] @relation("ContractRepairTickets")
+  repairTickets      RepairTicket[]         @relation("ContractRepairTickets")
   // SP5 Phase 2 — Repair ticket that resulted in this contract as a replacement
-  originRepairTicket RepairTicket?  @relation("ReplacementContractRepairs")
+  originRepairTicket RepairTicket?          @relation("ReplacementContractRepairs")
+  // P4-SP4: Contract cancellation requests
+  cancellations      ContractCancellation[] @relation("ContractCancellations")
 
   @@index([customerId])
   @@index([branchId])
@@ -1166,6 +1202,9 @@ model Payment {
   loyaltyPoint        LoyaltyPoint?
   dunningActions      DunningAction[]
   refunds             Refund[]
+
+  // P2-SP5: e-Tax XML submission (1:1, only if generated)
+  eTaxSubmission ETaxSubmission? @relation("PaymentETaxSubmission")
 
   @@unique([contractId, installmentNo])
   @@index([contractId])
@@ -1502,6 +1541,9 @@ model Product {
   repairTickets RepairTicket[] @relation("ProductRepairs")
 
   // SP5 — ใบเสนอราคา
+
+  // P2-SP4 — การจอง / มัดจำ
+  bookingItems BookingItem[] @relation("ProductBookingItems")
 
   @@index([branchId])
   @@index([status])
@@ -2312,6 +2354,9 @@ model Sale {
   promotionUsages          PromotionUsage[]
   onlineOrder              OnlineOrder?
 
+  // P2-SP4 — การจอง (origin) — set when sale was created via Booking conversion
+  booking Booking? @relation("SaleBooking")
+
   @@index([saleType])
   @@index([branchId])
   @@index([createdAt])
@@ -3026,6 +3071,12 @@ model CompanyInfo {
   nameTh             String  @map("name_th")
   nameEn             String? @map("name_en")
   taxId              String  @map("tax_id") // เลขทะเบียนนิติบุคคล/ผู้เสียภาษี
+  /// P2-SP5 C6 — RD branch code (5 digits, '00000' = head office) used in
+  /// e-Tax XML `cbc:CompanyID schemeID="TXID"` as `{taxId}-{branchCode}`.
+  /// Stored at company level so OWNER can change once if they file from a
+  /// sub-branch ('00001', '00002', ...). No UI to edit in SP5 — default is
+  /// fine for HQ FINANCE issuance.
+  taxBranchCode      String  @default("00000") @map("tax_branch_code")
   companyCode        String? @unique @map("company_code") // "SHOP" / "FINANCE"
   address            String
   phone              String?
@@ -3499,10 +3550,14 @@ model ChartOfAccount {
   vatApplicable Boolean   @default(false)
   notes         String?
   status        String    @default("ใช้งาน")
+  /// P3-SP3: PEAK external account code for CPA bookkeeping handoff
+  /// (peakaccount.com). Nullable — owner fills via /settings#peak-mapping.
+  peakCode      String?   @map("peak_code")
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   deletedAt     DateTime?
 
+  @@index([peakCode])
   @@map("chart_of_accounts")
 }
 
@@ -3534,14 +3589,16 @@ model JournalEntry {
   peakSyncedAt  DateTime?          @map("peak_synced_at") // When synced to PEAK accounting
   metadata      Json? // T6+ template tags and routing info
 
-  company                 CompanyInfo               @relation(fields: [companyId], references: [id])
-  lines                   JournalLine[]
-  createdBy               User                      @relation("JournalCreatedBy", fields: [createdById], references: [id])
-  postedBy                User?                     @relation("JournalPostedBy", fields: [postedById], references: [id])
-  postAuditLogs           JournalPostAuditLog[]
-  assetInvoiceTransferFor FixedAsset?               @relation("AssetInvoiceTransferJE")
+  company                      CompanyInfo               @relation(fields: [companyId], references: [id])
+  lines                        JournalLine[]
+  createdBy                    User                      @relation("JournalCreatedBy", fields: [createdById], references: [id])
+  postedBy                     User?                     @relation("JournalPostedBy", fields: [postedById], references: [id])
+  postAuditLogs                JournalPostAuditLog[]
+  assetInvoiceTransferFor      FixedAsset?               @relation("AssetInvoiceTransferJE")
   /// SP2: InterCompanyTransactions that this JE settled (typically 1 per JE).
-  icSettlements           InterCompanyTransaction[] @relation("ICSettlementJE")
+  icSettlements                InterCompanyTransaction[] @relation("ICSettlementJE")
+  /// P4-SP4: ContractCancellation that this JE is the reversal for (0..1).
+  contractCancellationReversal ContractCancellation?     @relation("CancellationReversal")
   // Partial unique index enforced via migration (CREATE UNIQUE INDEX ... WHERE reference_type IS NOT NULL)
   // Prisma cannot express partial @@unique; see migration 20260428010000_journal_entries_ref_unique
 
@@ -6449,6 +6506,85 @@ model RepairStatusLog {
   @@map("repair_status_logs")
 }
 
+/// P2-SP4 — การจอง / มัดจำ (Booking).
+/// Lifecycle: PENDING_DEPOSIT -> PAID -> (CANCELED | EXPIRED | CONVERTED).
+/// On CONVERTED, `convertedToSaleId` links to the resulting Sale row and the
+/// deposit transfers to Sale.downPaymentAmount.
+/// On CANCELED before expireDate: 100% refund.
+/// On CANCELED after expireDate or EXPIRED: 0% refund (forfeit).
+enum BookingStatus {
+  PENDING_DEPOSIT
+  PAID
+  CANCELED
+  EXPIRED
+  CONVERTED
+}
+
+/// P2-SP4 — การจอง / มัดจำ. Numbering: BK-YYYYMMDD-NNNN (per-day reset, BKK time).
+/// Deposit info is stored as native fields (depositPaidAt / depositMethod /
+/// depositReceivedById) rather than reusing the Payment model — Payment is
+/// strictly contract-installment-bound (Payment.contractId is required), while
+/// a booking is SHOP-side pre-sale with no contract yet. On conversion the
+/// depositAmount flows into Sale.downPaymentAmount.
+model Booking {
+  id                  String         @id @default(uuid())
+  bookingNumber       String         @unique @map("booking_number")
+  customerId          String         @map("customer_id")
+  branchId            String         @map("branch_id")
+  status              BookingStatus  @default(PENDING_DEPOSIT)
+  depositAmount       Decimal        @map("deposit_amount") @db.Decimal(12, 2)
+  totalAmount         Decimal        @map("total_amount") @db.Decimal(12, 2)
+  expireDate          DateTime       @map("expire_date")
+  notes               String?
+  depositPaidAt       DateTime?      @map("deposit_paid_at")
+  depositMethod       PaymentMethod? @map("deposit_method")
+  /// Cash Account Dimension (CoA code) — required on payDeposit per
+  /// `.claude/rules/accounting.md`. Nullable column for back-compat with
+  /// any row created before payDeposit was called (PENDING_DEPOSIT rows).
+  depositAccountCode  String?        @map("deposit_account_code")
+  depositReceivedById String?        @map("deposit_received_by_id")
+  canceledAt          DateTime?      @map("canceled_at")
+  canceledById        String?        @map("canceled_by_id")
+  cancelReason        String?        @map("cancel_reason")
+  convertedToSaleId   String?        @unique @map("converted_to_sale_id")
+  convertedAt         DateTime?      @map("converted_at")
+  createdById         String         @map("created_by_id")
+  createdAt           DateTime       @default(now()) @map("created_at")
+  updatedAt           DateTime       @updatedAt @map("updated_at")
+  deletedAt           DateTime?      @map("deleted_at")
+
+  customer        Customer      @relation("CustomerBookings", fields: [customerId], references: [id])
+  branch          Branch        @relation("BranchBookings", fields: [branchId], references: [id])
+  createdBy       User          @relation("BookingCreatedBy", fields: [createdById], references: [id])
+  canceledBy      User?         @relation("BookingCanceledBy", fields: [canceledById], references: [id])
+  convertedToSale Sale?         @relation("SaleBooking", fields: [convertedToSaleId], references: [id])
+  items           BookingItem[]
+
+  @@index([customerId, deletedAt])
+  @@index([branchId, status, deletedAt])
+  @@index([status, expireDate])
+  @@index([createdAt])
+  @@map("bookings")
+}
+
+model BookingItem {
+  id          String   @id @default(uuid())
+  bookingId   String   @map("booking_id")
+  productId   String?  @map("product_id")
+  description String
+  quantity    Int      @default(1)
+  unitPrice   Decimal  @map("unit_price") @db.Decimal(12, 2)
+  amount      Decimal  @db.Decimal(12, 2)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  booking Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  product Product? @relation("ProductBookingItems", fields: [productId], references: [id])
+
+  @@index([bookingId])
+  @@index([productId])
+  @@map("booking_items")
+}
+
 /// SP6 — Bank/Cash Account directory.
 /// Mirrors the 6 cash/bank CoA codes (11-1101..1103 cash, 11-1201..1203 bank) and
 /// lets owners register additional accounts. The page `/finance/bank-accounts`
@@ -6477,4 +6613,276 @@ model BankAccount {
   @@index([accountCode])
   @@index([deletedAt])
   @@map("bank_accounts")
+}
+
+// ============================================================
+// P2-SP5 — e-Tax XML submission to สรรพากร (Revenue Department)
+// ============================================================
+
+/// e-Tax Invoice XML submission per ขมธอ.21-2562 (Thailand UBL 2.1) +
+/// ป.รัษฎากร ม.86/4 + ประกาศอธิบดี ฉ.48. Tracks the lifecycle of one XML
+/// document per Payment from generation → signing → RD submission →
+/// accepted/rejected. Cert + RD creds are PLUGGABLE — when
+/// `ETAX_SUBMIT_MODE=disabled` (default) only XML generation runs and the
+/// "ส่งให้สรรพากร" button is gated in the UI.
+model ETaxSubmission {
+  id             String               @id @default(uuid())
+  paymentId      String               @unique @map("payment_id")
+  /// P2-SP5 C7 — sequential invoice number per ม.86/4. Format
+  /// `ET-YYYYMMDD-NNNN` (BKK day). Generated once at submission creation via
+  /// advisory-lock daily sequence (mirrors DocNumberService convention).
+  /// Idempotent — re-running generateForPayment reuses this stored number
+  /// instead of allocating a new one.
+  invoiceNumber  String?              @unique @map("invoice_number")
+  /// Raw generated UBL 2.1 XML — large text column
+  xmlContent     String               @map("xml_content") @db.Text
+  /// PKCS#7 detached signature bundle (CMS) — populated after sign step
+  signedXml      String?              @map("signed_xml") @db.Text
+  status         ETaxSubmissionStatus @default(PENDING)
+  submittedAt    DateTime?            @map("submitted_at")
+  /// RD's tracking ID once accepted into their queue
+  rdSubmissionId String?              @map("rd_submission_id")
+  /// Full RD API response payload for forensics (status code, body)
+  rdResponse     Json?                @map("rd_response")
+  acceptedAt     DateTime?            @map("accepted_at")
+  rejectedAt     DateTime?            @map("rejected_at")
+  rejectReason   String?              @map("reject_reason")
+  retryCount     Int                  @default(0) @map("retry_count")
+  lastRetryAt    DateTime?            @map("last_retry_at")
+  createdAt      DateTime             @default(now()) @map("created_at")
+  updatedAt      DateTime             @updatedAt @map("updated_at")
+  deletedAt      DateTime?            @map("deleted_at")
+
+  payment Payment @relation("PaymentETaxSubmission", fields: [paymentId], references: [id])
+
+  @@index([status])
+  @@index([paymentId, deletedAt])
+  @@index([submittedAt])
+  @@map("etax_submissions")
+}
+
+enum ETaxSubmissionStatus {
+  /// XML generated, not yet signed
+  PENDING
+  /// PKCS#7 signed, ready to submit
+  SIGNED
+  /// Sent to RD, awaiting response
+  SUBMITTED
+  /// RD accepted (success)
+  ACCEPTED
+  /// RD rejected (see rejectReason)
+  REJECTED
+  /// Transport / server error — eligible for retry
+  ERROR
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Phase 3 SP2 — Off-site backup replication
+// ──────────────────────────────────────────────────────────────────────────
+
+/// Run-log for the off-site GCS replication cron.
+/// Append-only operational history (last 30 rows surfaced in UI).
+/// Created via OffsiteBackupService — never edited after finishedAt set.
+/// Append-only event log — updatedAt/deletedAt intentionally omitted.
+/// Retention handled by offsite-backup-retention cron (rows older than 1
+/// year pruned daily at 02:00 BKK to match AuditLog policy + avoid PDPA
+/// risk on lingering user UUIDs after soft-delete).
+model OffsiteBackupRun {
+  id                String              @id @default(uuid())
+  startedAt         DateTime            @map("started_at")
+  finishedAt        DateTime?           @map("finished_at")
+  status            OffsiteBackupStatus
+  filesCount        Int                 @default(0) @map("files_count")
+  totalBytes        BigInt              @default(0) @map("total_bytes")
+  /// First error message (truncated to 1000 chars) when status = FAILED.
+  errorMessage      String?             @map("error_message")
+  /// Category: 'cron' | 'manual'. Was previously also storing raw UUIDs
+  /// — split into triggeredByUserId for proper FK + audit-safe joins.
+  triggeredBy       String              @default("cron") @map("triggered_by")
+  /// Set when triggeredBy = 'manual' (OWNER clicked "Run Now"). Null for cron.
+  triggeredByUserId String?             @map("triggered_by_user_id")
+  triggeredByUser   User?               @relation("OffsiteBackupTriggeredBy", fields: [triggeredByUserId], references: [id])
+  /// Off-site destination bucket name captured at run time (for audit).
+  destBucket        String?             @map("dest_bucket")
+  createdAt         DateTime            @default(now()) @map("created_at")
+
+  @@index([startedAt])
+  @@index([triggeredByUserId])
+  @@map("offsite_backup_runs")
+}
+
+enum OffsiteBackupStatus {
+  /// Run started, files being replicated
+  RUNNING
+  /// Run finished without errors
+  SUCCESS
+  /// Run aborted with error (see errorMessage)
+  FAILED
+  /// Cron triggered but skipped (OFFSITE_BACKUP_ENABLED=false)
+  SKIPPED
+}
+
+// =============================================================================
+// Phase 3 SP4 — PDPA PII column-level encryption
+// =============================================================================
+
+/// Append-only event log for PDPA PII encryption backfill runs.
+/// updatedAt/deletedAt intentionally omitted — runs are immutable once finished;
+/// 1-year retention via PdpaBackfillRetentionCron (W2 — see docs/guides/PDPA-COMPLIANCE.md §3).
+model PdpaBackfillRun {
+  id                String             @id @default(uuid())
+  status            PdpaBackfillStatus
+  /// Total Customer rows considered (where at least one *Encrypted column is NULL).
+  totalRecords      Int                @default(0) @map("total_records")
+  /// Rows actually processed so far. Updated incrementally between batches so
+  /// the UI can render a live progress bar without a separate counter table.
+  processedRecords  Int                @default(0) @map("processed_records")
+  /// Sum of rows skipped because every encrypted column was already populated
+  /// (idempotent re-runs). Helps distinguish "no-op" vs "did real work".
+  skippedRecords    Int                @default(0) @map("skipped_records")
+  startedAt         DateTime           @map("started_at")
+  finishedAt        DateTime?          @map("finished_at")
+  /// First error message (truncated to 1000 chars) when status = FAILED.
+  errorMessage      String?            @map("error_message")
+  /// Category: 'cli' | 'manual'. CLI = `npm run backfill:encrypt-pii`, manual =
+  /// OWNER clicks "Run Backfill" in /settings#pdpa.
+  triggeredBy       String             @default("cli") @map("triggered_by")
+  /// Set when triggeredBy = 'manual' (OWNER from UI). Null for cli.
+  triggeredByUserId String?            @map("triggered_by_user_id")
+  triggeredByUser   User?              @relation("PdpaBackfillTriggeredBy", fields: [triggeredByUserId], references: [id])
+  /// Hostname / Cloud Run revision the run executed on — useful when
+  /// reproducing failures with environment-specific drift.
+  hostname          String?            @map("hostname")
+  createdAt         DateTime           @default(now()) @map("created_at")
+
+  @@index([startedAt])
+  @@index([triggeredByUserId])
+  @@index([status])
+  @@map("pdpa_backfill_runs")
+}
+
+enum PdpaBackfillStatus {
+  /// Run started, batches being processed
+  RUNNING
+  /// Run finished without errors
+  COMPLETED
+  /// Run aborted with error (see errorMessage); partial progress in processedRecords
+  FAILED
+}
+
+// =============================================================================
+// SP7.2 — Outbox pattern for cross-entity (SHOP↔FINANCE) JE pairing
+// =============================================================================
+
+/// SP7.2 — Outbox-pattern events for cross-entity (SHOP↔FINANCE) JE pairing.
+/// Written in the SAME TX as the source JE; processed asynchronously by
+/// OutboxProcessorCron which writes the paired JE in the target DB.
+model OutboxEvent {
+  id             String            @id @default(uuid())
+  flowType       String            @map("flow_type")
+  sourceId       String            @map("source_id")
+  sourceEntity   String            @map("source_entity")
+  targetEntity   String            @map("target_entity")
+  payload        Json
+  status         OutboxEventStatus @default(PENDING)
+  attempts       Int               @default(0)
+  lastError      String?           @map("last_error")
+  idempotencyKey String            @unique @map("idempotency_key")
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+  processedAt    DateTime?         @map("processed_at")
+  deletedAt      DateTime?         @map("deleted_at")
+
+  @@index([status, createdAt])
+  @@index([flowType])
+  @@map("outbox_events")
+}
+
+enum OutboxEventStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  FAILED
+}
+
+// ============================================================
+// SP7.4 — External Finance Companies + Commission
+// ============================================================
+
+enum ExternalCommissionStatus {
+  PENDING
+  RECEIVED
+  CANCELLED
+}
+
+/// SP7.4 — ไฟแนนซ์ภายนอก เช่น GFIN, Krungsri Auto. SHOP รับ commission.
+model ExternalFinanceCompany {
+  id                    String    @id @default(uuid())
+  name                  String    @unique
+  contactPerson         String?   @map("contact_person")
+  contactPhone          String?   @map("contact_phone")
+  defaultCommissionRate Decimal?  @map("default_commission_rate") @db.Decimal(5, 4)
+  bankAccountInfo       Json?     @map("bank_account_info")
+  notes                 String?
+  isActive              Boolean   @default(true) @map("is_active")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+  deletedAt             DateTime? @map("deleted_at")
+
+  commissions ExternalFinanceCommission[]
+
+  @@map("external_finance_companies")
+}
+
+/// SP7.4 — Track commission accrual + receipt per external finance sale.
+model ExternalFinanceCommission {
+  id                       String                   @id @default(uuid())
+  externalFinanceCompanyId String                   @map("external_finance_company_id")
+  saleReferenceId          String?                  @map("sale_reference_id")
+  customerId               String?                  @map("customer_id")
+  financedAmount           Decimal                  @map("financed_amount") @db.Decimal(12, 2)
+  commissionRate           Decimal                  @map("commission_rate") @db.Decimal(5, 4)
+  commissionAmount         Decimal                  @map("commission_amount") @db.Decimal(12, 2)
+  receivedAt               DateTime?                @map("received_at")
+  bankSlipUrl              String?                  @map("bank_slip_url")
+  journalEntryId           String?                  @map("journal_entry_id")
+  status                   ExternalCommissionStatus @default(PENDING)
+  notes                    String?
+  createdAt                DateTime                 @default(now()) @map("created_at")
+  updatedAt                DateTime                 @updatedAt @map("updated_at")
+  deletedAt                DateTime?                @map("deleted_at")
+
+  externalFinanceCompany ExternalFinanceCompany @relation(fields: [externalFinanceCompanyId], references: [id])
+
+  @@index([externalFinanceCompanyId])
+  @@index([status])
+  @@index([receivedAt])
+  @@map("external_finance_commissions")
+}
+
+// ============================================================
+// P4-SP4: Contract Cancellation (Task 1)
+// ============================================================
+
+model ContractCancellation {
+  id                     String                     @id @default(uuid())
+  contractId             String                     @map("contract_id")
+  contract               Contract                   @relation("ContractCancellations", fields: [contractId], references: [id])
+  requestedById          String                     @map("requested_by_id")
+  requestedBy            User                       @relation("CancellationRequester", fields: [requestedById], references: [id])
+  reason                 String
+  refundAmount           Decimal                    @map("refund_amount") @db.Decimal(12, 2)
+  status                 ContractCancellationStatus @default(PENDING)
+  approvedById           String?                    @map("approved_by_id")
+  approvedBy             User?                      @relation("CancellationApprover", fields: [approvedById], references: [id])
+  approvedAt             DateTime?                  @map("approved_at")
+  reversalJournalEntryId String?                    @unique @map("reversal_journal_entry_id")
+  reversalJournalEntry   JournalEntry?              @relation("CancellationReversal", fields: [reversalJournalEntryId], references: [id])
+  createdAt              DateTime                   @default(now()) @map("created_at")
+  updatedAt              DateTime                   @updatedAt @map("updated_at")
+  deletedAt              DateTime?                  @map("deleted_at")
+
+  @@index([contractId])
+  @@index([status])
+  @@map("contract_cancellations")
 }

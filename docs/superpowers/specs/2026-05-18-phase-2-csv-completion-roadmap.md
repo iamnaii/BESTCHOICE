@@ -1,7 +1,29 @@
 # Phase 2 — CSV 100% Completion Roadmap
 
-**Status:** Spec 2026-05-18. Closes remaining 5 gaps vs original CSV after Phase 1 (Sidebar Redesign SP1-SP6 deployed)
-**Goal:** ครบ 100% ตาม CSV ที่ owner ส่ง 2026-05-17
+**Status:** ✅ **COMPLETE 2026-05-18** — 5/5 SPs MERGED + auto-deployed to production
+**Goal:** ครบ 100% ตาม CSV ที่ owner ส่ง 2026-05-17 — **ACHIEVED**
+
+## Final merge sequence
+
+| Time UTC | PR | SP | Merge SHA | Notes |
+|---|---|---|---|---|
+| ~06:00 | #1004 | P2-SP1 — CRM 4-stage Kanban | 77a44777 | Mapped existing PROPOSAL+NEGOTIATION → QUOTED UI column |
+| ~06:20 | #1005 | P2-SP3 — Thai font + ม.86/4 PDF | 1b4d0bb0 | NotoSansThai-VF bundled, real customer name |
+| 06:29 | #1006 | P2-SP2 — Doc Config UI | c395edd0 | Built on existing D1.1.2.x SystemConfig backend |
+| 06:35 | #1007 | P2-SP4 — Booking system | 13d20a36 | Fixed 6 Criticals from DEEP review (1bfa8c24) |
+| 06:41 | #1008 | P2-SP5 — e-Tax XML scaffolding | 006a9bfc | Fixed 10 Criticals from DEEP review (19b0d267), cert pluggable |
+
+**Total:** 5 PRs / ~10k LOC / new migrations: `20260942000000_add_booking` + `20260943000000_add_etax_submission` + `20260944000000_add_company_tax_branch_code`
+
+## DEEP review summary (Critical findings fixed pre-merge)
+
+| SP | Criticals fixed | Highlights |
+|---|---|---|
+| P2-SP1 | 0 | Frontend-only, no schema risk |
+| P2-SP2 | 0 | Reused existing SystemConfig backend |
+| P2-SP3 | 0 | Font bundle + ม.86/4 layout |
+| P2-SP4 | 6 | SalesService inventory invariants inlined, partial deposit amountReceived corrected, depositMethod required, migration idempotent (IF NOT EXISTS), AutoExpire Sentry per-row, expireDate atomic in updateMany (TOCTOU fix) |
+| P2-SP5 | 10 | PII decrypt server-side (nationalId), password mask round-trip, GET /submit-mode for FM/ACC, dead Body import, UBL `cbc:CompanyID schemeID="TXID"` (not invented TaxLevelCode), `CompanyInfo.taxBranchCode` (not hardcoded '00000'), sequential invoice via DocNumberService (ET-YYYYMMDD-NNNN), signed payload in ext:ExtensionContent, fail-loud on unknown RD response, isSystemUser audit pattern |
 
 ---
 
@@ -9,13 +31,13 @@
 
 After Phase 1 deploy, these 5 CSV items remain partial/missing:
 
-| # | CSV item | Phase 1 status | Phase 2 SP |
-|---|---|---|---|
-| 1 | CRM Pipeline (สนใจ→ติดต่อ→เสนอราคา→ปิดการขาย) | Existing Kanban, needs 4-stage labels + filter | P2-SP1 |
-| 2 | ตั้งค่าเลขที่/รูปแบบเอกสาร UI | D1.1.2.x backend exists, no UI | P2-SP2 |
-| 3 | e-Tax PDF Thai font | ASCII placeholder | P2-SP3 |
-| 4 | การจอง / มัดจำ booking system | Not built | P2-SP4 |
-| 5 | e-Tax XML ส่ง RD (ม.86/4 + ขมธอ.21-2562) | Phase 1 Receipt only | P2-SP5 |
+| # | CSV item | Phase 1 status | Phase 2 SP | Result |
+|---|---|---|---|---|
+| 1 | CRM Pipeline (สนใจ→ติดต่อ→เสนอราคา→ปิดการขาย) | Existing Kanban, needs 4-stage labels + filter | P2-SP1 | ✅ MERGED |
+| 2 | ตั้งค่าเลขที่/รูปแบบเอกสาร UI | D1.1.2.x backend exists, no UI | P2-SP2 | ✅ MERGED |
+| 3 | e-Tax PDF Thai font | ASCII placeholder | P2-SP3 | ✅ MERGED |
+| 4 | การจอง / มัดจำ booking system | Not built | P2-SP4 | ✅ MERGED |
+| 5 | e-Tax XML ส่ง RD (ม.86/4 + ขมธอ.21-2562) | Phase 1 Receipt only | P2-SP5 | ✅ MERGED (cert plug-in pending) |
 
 ## 2. Decomposition (5 sub-projects)
 

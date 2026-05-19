@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   Logger,
   NotFoundException,
@@ -8,6 +9,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { StructuredLoggerService } from '../../common/logger';
 import { Prisma } from '@prisma/client';
 import { JournalAutoService } from '../journal/journal-auto.service';
+import { CompanyResolverService } from '../journal/company-resolver.service';
 
 /**
  * INVENTORY COSTING METHOD: Specific Identification
@@ -54,6 +56,8 @@ export class AccountingService implements OnModuleInit {
   constructor(
     private prisma: PrismaService,
     private journalAutoService: JournalAutoService,
+    // P3-SP5 W7: defense-in-depth filter on companyId for SHOP/FINANCE scoping.
+    private companyResolver: CompanyResolverService,
   ) {}
 
   /**
@@ -720,6 +724,7 @@ export class AccountingService implements OnModuleInit {
   //   55 = EXCLUDE from P&L (พีคโปรแกรม — ไม่นำมาแสดงในงบกำไรขาดทุน)
 
   private static readonly SECTION_MAP: Record<string, string> = {
+    // FINANCE chart (single-prefix)
     '11': 'สินทรัพย์หมุนเวียน',
     '12': 'สินทรัพย์ไม่หมุนเวียน',
     '21': 'หนี้สินหมุนเวียน',
@@ -734,7 +739,32 @@ export class AccountingService implements OnModuleInit {
     '53': 'ค่าใช้จ่ายบริหาร',
     '54': 'ค่าใช้จ่ายต้องห้ามทางภาษี',
     '55': 'ค่าใช้จ่ายโปรแกรมบัญชี (ยกเว้น P&L)',
+    // P3-SP5 — SHOP chart (S-prefix). Same logical grouping as FINANCE but
+    // labelled "(SHOP)" so a combined report makes it obvious which side a
+    // section came from.
+    'S11': 'สินทรัพย์หมุนเวียน (SHOP)',
+    'S12': 'สินทรัพย์ไม่หมุนเวียน (SHOP)',
+    'S21': 'หนี้สินหมุนเวียน (SHOP)',
+    'S22': 'หนี้สินไม่หมุนเวียน (SHOP)',
+    'S31': 'ทุนจดทะเบียน (SHOP)',
+    'S32': 'กำไรสะสม (SHOP)',
+    'S33': 'กำไรขาดทุนปีปัจจุบัน (SHOP)',
+    'S41': 'รายได้ (SHOP)',
+    'S42': 'รายได้อื่น (SHOP)',
+    'S50': 'ต้นทุนขาย (SHOP)',
+    'S51': 'ค่าใช้จ่ายขาย (SHOP)',
+    'S52': 'ค่าใช้จ่ายบริหาร (SHOP)',
+    'S53': 'ค่าใช้จ่ายอื่น (SHOP)',
   };
+
+  /**
+   * Extract the section-prefix from an account code.
+   * - FINANCE: `11-1101` → `11` (first 2 chars)
+   * - SHOP:    `S11-1101` → `S11` (first 3 chars, S + 2 digits)
+   */
+  private static codePrefix(code: string): string {
+    return code.startsWith('S') ? code.slice(0, 3) : code.slice(0, 2);
+  }
 
   /**
    * Get Trial Balance from journal lines as of a given date.
@@ -744,13 +774,46 @@ export class AccountingService implements OnModuleInit {
    *
    * Sections are grouped by the 2-digit prefix of the account code (11, 12, 21, …).
    * isBalanced = grandDrTotal equals grandCrTotal (accounting identity check).
+   *
+   * P3-SP5: `scope` filters by account code prefix:
+   *   - 'FINANCE' (default) — codes WITHOUT `S` prefix (the FINANCE chart)
+   *   - 'SHOP'              — codes WITH    `S` prefix (the SHOP chart)
+   *   - 'ALL'               — all accounts (combined report — both prefixes)
+   *
+   * Filtering happens on `chartOfAccount.code` and `journalLine.accountCode`
+   * at the DB level so SHOP/FINANCE running balances stay strictly separate.
    */
-  async getTrialBalance(asOfDate?: Date) {
+  async getTrialBalance(asOfDate?: Date, scope: 'FINANCE' | 'SHOP' | 'ALL' = 'FINANCE') {
     const cutoff = asOfDate ?? new Date();
 
-    // 1. Load all active chart of accounts
+    // Code-prefix filter: SHOP codes start with 'S' (S11-XXXX); FINANCE codes
+    // are bare digits (11-XXXX). Use Prisma `startsWith` for the SHOP filter
+    // and `not.startsWith` for FINANCE. 'ALL' skips the filter entirely.
+    const codeFilter: Prisma.StringFilter | undefined =
+      scope === 'SHOP'
+        ? { startsWith: 'S' }
+        : scope === 'FINANCE'
+          ? { not: { startsWith: 'S' } }
+          : undefined;
+
+    // P3-SP5 W7 — defense-in-depth: ALSO filter by JournalEntry.companyId.
+    // Code-prefix is the partition key but companyId guards against the
+    // edge case of a misposted JE (S-code lines under FINANCE companyId
+    // or vice versa). 'ALL' skips this filter so combined views work.
+    const companyIdFilter: string | undefined =
+      scope === 'SHOP'
+        ? await this.companyResolver.getShopCompanyId()
+        : scope === 'FINANCE'
+          ? await this.companyResolver.getFinanceCompanyId()
+          : undefined;
+
+    // 1. Load all active chart of accounts (scoped)
     const accounts = await this.prisma.chartOfAccount.findMany({
-      where: { deletedAt: null, status: 'ใช้งาน' },
+      where: {
+        deletedAt: null,
+        status: 'ใช้งาน',
+        ...(codeFilter ? { code: codeFilter } : {}),
+      },
       orderBy: { code: 'asc' },
     });
 
@@ -762,8 +825,10 @@ export class AccountingService implements OnModuleInit {
           status: 'POSTED',
           entryDate: { lte: cutoff },
           deletedAt: null,
+          ...(companyIdFilter ? { companyId: companyIdFilter } : {}),
         },
         deletedAt: null,
+        ...(codeFilter ? { accountCode: codeFilter } : {}),
       },
       _sum: { debit: true, credit: true },
     });
@@ -790,7 +855,7 @@ export class AccountingService implements OnModuleInit {
     }>();
 
     for (const acc of accounts) {
-      const prefix = acc.code.slice(0, 2);
+      const prefix = AccountingService.codePrefix(acc.code);
       const sectionName = AccountingService.SECTION_MAP[prefix] ?? `หมวด ${prefix}`;
 
       if (!sectionMap.has(prefix)) {
@@ -825,7 +890,7 @@ export class AccountingService implements OnModuleInit {
 
     // Also include any journal lines for codes not in CoA (orphan codes)
     for (const [code, sums] of sumMap) {
-      const prefix = code.slice(0, 2);
+      const prefix = AccountingService.codePrefix(code);
       if (!sectionMap.has(prefix)) {
         sectionMap.set(prefix, {
           sectionName: AccountingService.SECTION_MAP[prefix] ?? `หมวด ${prefix}`,
@@ -864,12 +929,61 @@ export class AccountingService implements OnModuleInit {
       grandCrTotal = grandCrTotal.add(s.crTotal);
     }
 
+    // P3-SP5 DEEP review C5 — per-scope subtotals + per-scope balance check.
+    //
+    // For scope='ALL' the combined Dr / Cr totals can sum to zero even if
+    // the SHOP half is unbalanced and the FINANCE half is unbalanced by
+    // the same magnitude in opposite directions. That hides real bugs.
+    // Always return strict per-scope totals so the UI can show TWO balance
+    // badges (SHOP balanced / FINANCE balanced) instead of one combined.
+    const shopDr = sections
+      .filter((s) => s.codePrefix.startsWith('S'))
+      .reduce((acc, s) => acc.add(s.drTotal), new Prisma.Decimal(0));
+    const shopCr = sections
+      .filter((s) => s.codePrefix.startsWith('S'))
+      .reduce((acc, s) => acc.add(s.crTotal), new Prisma.Decimal(0));
+    const financeDr = sections
+      .filter((s) => !s.codePrefix.startsWith('S'))
+      .reduce((acc, s) => acc.add(s.drTotal), new Prisma.Decimal(0));
+    const financeCr = sections
+      .filter((s) => !s.codePrefix.startsWith('S'))
+      .reduce((acc, s) => acc.add(s.crTotal), new Prisma.Decimal(0));
+
+    const shopBalanced = shopDr.equals(shopCr);
+    const financeBalanced = financeDr.equals(financeCr);
+    // isAllBalanced is STRICTER than the combined Dr=Cr check — both halves
+    // MUST balance independently. Combined Dr=Cr alone is not enough.
+    const isAllBalanced =
+      scope === 'ALL'
+        ? shopBalanced && financeBalanced
+        : scope === 'SHOP'
+          ? shopBalanced
+          : financeBalanced;
+
     return {
       asOfDate: cutoff,
+      scope,
       sections,
       grandDrTotal,
       grandCrTotal,
+      // Per-scope subtotals (always populated; consumers can show them per
+      // their needs — UI shows both badges when scope='ALL').
+      perScope: {
+        shop: {
+          drTotal: shopDr,
+          crTotal: shopCr,
+          isBalanced: shopBalanced,
+        },
+        finance: {
+          drTotal: financeDr,
+          crTotal: financeCr,
+          isBalanced: financeBalanced,
+        },
+      },
+      // Legacy combined balance check (kept for backward compatibility but
+      // do NOT rely on it for scope='ALL' — use `isAllBalanced` instead).
       isBalanced: grandDrTotal.equals(grandCrTotal),
+      isAllBalanced,
     };
   }
 
@@ -878,16 +992,59 @@ export class AccountingService implements OnModuleInit {
    *
    * Revenue = net Cr balance of accounts 41 + 42 for the period.
    * Expenses = net Dr balance of accounts 51 + 52 + 53 + 54 for the period.
+   * COGS    = net Dr balance of S50 (SHOP only — FINANCE does not carry COGS).
    * Accounts in prefix 55 are EXCLUDED per CPA chart note ("ไม่นำมาแสดงในงบกำไรขาดทุน").
    *
    * Period filter: JournalEntry.entryDate between periodStart and periodEnd (inclusive).
    *
    * Optional companyId scopes to JournalEntry.companyId — used by multi-entity
    * reports (SP2 Cash Flow / Equity Statement / General Ledger).
+   *
+   * P3-SP5: `scope` filters by account code prefix:
+   *   - 'FINANCE' (default) — codes WITHOUT `S` prefix
+   *   - 'SHOP'              — codes WITH    `S` prefix (S41, S42, S50, S51, S52, S53)
+   *   - 'ALL'               — both
    */
-  async getProfitLossFromJournal(periodStart: Date, periodEnd: Date, companyId?: string) {
-    const REVENUE_PREFIXES = ['41', '42'];
-    const EXPENSE_PREFIXES = ['51', '52', '53', '54']; // 55 excluded
+  async getProfitLossFromJournal(
+    periodStart: Date,
+    periodEnd: Date,
+    companyId?: string,
+    scope: 'FINANCE' | 'SHOP' | 'ALL' = 'FINANCE',
+  ) {
+    // Prefixes per scope. SHOP introduces S50-XXXX COGS (treated as
+    // expense in the P&L — separately reported under "ต้นทุนขาย").
+    const REVENUE_PREFIXES =
+      scope === 'SHOP'
+        ? ['S41', 'S42']
+        : scope === 'ALL'
+          ? ['41', '42', 'S41', 'S42']
+          : ['41', '42'];
+    const EXPENSE_PREFIXES =
+      scope === 'SHOP'
+        ? ['S50', 'S51', 'S52', 'S53']
+        : scope === 'ALL'
+          ? ['51', '52', '53', '54', 'S50', 'S51', 'S52', 'S53']
+          : ['51', '52', '53', '54']; // 55 excluded
+
+    const codeFilter: Prisma.StringFilter | undefined =
+      scope === 'SHOP'
+        ? { startsWith: 'S' }
+        : scope === 'FINANCE'
+          ? { not: { startsWith: 'S' } }
+          : undefined;
+
+    // P3-SP5 W7 — defense-in-depth companyId filter (see getTrialBalance for
+    // rationale). Honour an explicit `companyId` override from callers that
+    // already know the company; otherwise resolve from scope.
+    let companyIdFilter: string | undefined = companyId;
+    if (!companyIdFilter) {
+      if (scope === 'SHOP') {
+        companyIdFilter = await this.companyResolver.getShopCompanyId();
+      } else if (scope === 'FINANCE') {
+        companyIdFilter = await this.companyResolver.getFinanceCompanyId();
+      }
+      // scope === 'ALL' leaves companyIdFilter unset (cross-company view).
+    }
 
     const lineSums = await this.prisma.journalLine.groupBy({
       by: ['accountCode'],
@@ -896,9 +1053,10 @@ export class AccountingService implements OnModuleInit {
           status: 'POSTED',
           entryDate: { gte: periodStart, lte: periodEnd },
           deletedAt: null,
-          ...(companyId ? { companyId } : {}),
+          ...(companyIdFilter ? { companyId: companyIdFilter } : {}),
         },
         deletedAt: null,
+        ...(codeFilter ? { accountCode: codeFilter } : {}),
       },
       _sum: { debit: true, credit: true },
     });
@@ -918,22 +1076,34 @@ export class AccountingService implements OnModuleInit {
     let revenueTotal = new Prisma.Decimal(0);
     let expenseTotal = new Prisma.Decimal(0);
 
+    // P3-SP5 DEEP review C5 — per-scope subtotals so the UI can show SHOP
+    // vs FINANCE side-by-side without re-querying.
+    let shopRevenueTotal = new Prisma.Decimal(0);
+    let shopExpenseTotal = new Prisma.Decimal(0);
+    let financeRevenueTotal = new Prisma.Decimal(0);
+    let financeExpenseTotal = new Prisma.Decimal(0);
+
     for (const row of lineSums) {
-      const prefix = row.accountCode.slice(0, 2);
+      const prefix = AccountingService.codePrefix(row.accountCode);
       const dr = new Prisma.Decimal(row._sum.debit ?? 0);
       const cr = new Prisma.Decimal(row._sum.credit ?? 0);
       const name = nameMap.get(row.accountCode) ?? row.accountCode;
+      const isShop = row.accountCode.startsWith('S');
 
       if (REVENUE_PREFIXES.includes(prefix)) {
         // Revenue accounts are Cr-normal: net = Cr - Dr
         const amount = cr.sub(dr);
         revenueRows.push({ code: row.accountCode, name, amount });
         revenueTotal = revenueTotal.add(amount);
+        if (isShop) shopRevenueTotal = shopRevenueTotal.add(amount);
+        else financeRevenueTotal = financeRevenueTotal.add(amount);
       } else if (EXPENSE_PREFIXES.includes(prefix)) {
         // Expense accounts are Dr-normal: net = Dr - Cr
         const amount = dr.sub(cr);
         expenseRows.push({ code: row.accountCode, name, amount });
         expenseTotal = expenseTotal.add(amount);
+        if (isShop) shopExpenseTotal = shopExpenseTotal.add(amount);
+        else financeExpenseTotal = financeExpenseTotal.add(amount);
       }
       // prefix 55 and others: skip
     }
@@ -944,6 +1114,7 @@ export class AccountingService implements OnModuleInit {
     return {
       periodStart,
       periodEnd,
+      scope,
       revenue: {
         sectionName: 'รายได้รวม',
         rows: revenueRows,
@@ -955,6 +1126,21 @@ export class AccountingService implements OnModuleInit {
         total: expenseTotal,
       },
       netIncome: revenueTotal.sub(expenseTotal),
+      // P3-SP5 DEEP review C5 — per-scope subtotals (always populated).
+      // For scope='ALL' the UI displays BOTH side-by-side; for SHOP/FINANCE
+      // the other side will be 0.
+      perScope: {
+        shop: {
+          revenueTotal: shopRevenueTotal,
+          expenseTotal: shopExpenseTotal,
+          netIncome: shopRevenueTotal.sub(shopExpenseTotal),
+        },
+        finance: {
+          revenueTotal: financeRevenueTotal,
+          expenseTotal: financeExpenseTotal,
+          netIncome: financeRevenueTotal.sub(financeExpenseTotal),
+        },
+      },
     };
   }
 
@@ -970,7 +1156,9 @@ export class AccountingService implements OnModuleInit {
    */
   async getBalanceSheetFromJournal(asOfDate?: Date) {
     const cutoff = asOfDate ?? new Date();
-    const tb = await this.getTrialBalance(cutoff);
+    // P3-SP5 W1: explicit 'FINANCE' scope — this method historically reports
+    // the FINANCE-side balance sheet. SHOP balance sheet is deferred to SP7.
+    const tb = await this.getTrialBalance(cutoff, 'FINANCE');
 
     const zero = new Prisma.Decimal(0);
 
@@ -1248,7 +1436,8 @@ export class AccountingService implements OnModuleInit {
     startMinusOne.setMilliseconds(startMinusOne.getMilliseconds() - 1);
 
     // 1. Net Income for the period
-    const pl = await this.getProfitLossFromJournal(periodStart, periodEnd, companyId);
+    // P3-SP5 W1: explicit 'FINANCE' scope — Cash Flow is FINANCE-only.
+    const pl = await this.getProfitLossFromJournal(periodStart, periodEnd, companyId, 'FINANCE');
     const netIncome = pl.netIncome;
 
     // 2. Non-cash adjustments
@@ -1552,7 +1741,8 @@ export class AccountingService implements OnModuleInit {
     // Derive current-year P&L (yearStart .. periodEnd) for the caveat line.
     // This represents the implicit profit not yet closed into 33-1101.
     const yearStart = new Date(periodEnd.getFullYear(), 0, 1);
-    const yearPL = await this.getProfitLossFromJournal(yearStart, periodEnd, companyId);
+    // P3-SP5 W1: explicit 'FINANCE' scope — Equity Statement is FINANCE-only.
+    const yearPL = await this.getProfitLossFromJournal(yearStart, periodEnd, companyId, 'FINANCE');
     const currentYearProfit = yearPL.netIncome.toNumber();
 
     return {
@@ -1669,6 +1859,323 @@ export class AccountingService implements OnModuleInit {
       totalDebit: totalDebit.toNumber(),
       totalCredit: totalCredit.toNumber(),
       lines,
+    };
+  }
+
+  // ============================================================
+  // P3-SP3: PEAK CSV export (journal lines tagged with PEAK code)
+  // ============================================================
+
+  /**
+   * Build a CSV of POSTED journal lines within `[periodStart, periodEnd]`
+   * joined with their `ChartOfAccount.peakCode`. Lines whose account has no
+   * PEAK mapping are SKIPPED (returned `skippedLineCount`) so the caller can
+   * surface a warning. Date range is capped at ~6 months (186 days) so accidental
+   * "give me everything" queries don't dump millions of rows.
+   *
+   * Output columns:
+   *   entryDate, entryNumber, peakCode, accountCode, accountName,
+   *   debit, credit, description, reference
+   *
+   * Money values are emitted via `.toString()` to preserve Decimal precision
+   * (matches the "DO NOT Number() on Prisma.Decimal in export" rule).
+   */
+  async exportJournalWithPeakCodes(
+    periodStart: Date,
+    periodEnd: Date,
+  ): Promise<{ csv: string; rowCount: number; skippedLineCount: number }> {
+    // Guard: max 186 days (~6 months) per spec — protects DB + filesystem.
+    const ms = periodEnd.getTime() - periodStart.getTime();
+    const MAX_DAYS = 186;
+    if (ms < 0) {
+      throw new BadRequestException('วันที่สิ้นสุดต้องไม่อยู่ก่อนวันเริ่มต้น');
+    }
+    if (ms > MAX_DAYS * 24 * 60 * 60 * 1000) {
+      throw new BadRequestException('ช่วงเวลาส่งออกต้องไม่เกิน 6 เดือนต่อครั้ง');
+    }
+
+    // 1) Build a peakCode lookup for every account that has one. Single query
+    //    is cheaper than joining inline because there are ~99 accounts total.
+    const mappedAccounts = await this.prisma.chartOfAccount.findMany({
+      where: { deletedAt: null, peakCode: { not: null } },
+      select: { code: true, name: true, peakCode: true },
+    });
+    const peakByCode = new Map(
+      mappedAccounts.map((a) => [a.code, { name: a.name, peakCode: a.peakCode! }]),
+    );
+
+    // Also load account names for un-mapped lines so we can report what was skipped.
+    const allAccounts = await this.prisma.chartOfAccount.findMany({
+      where: { deletedAt: null },
+      select: { code: true, name: true },
+    });
+    const nameByCode = new Map(allAccounts.map((a) => [a.code, a.name]));
+
+    // 2) Fetch journal lines in range. Order by entryDate then entryNumber so
+    //    the CSV is deterministic for reconciliation diffs.
+    const lines = await this.prisma.journalLine.findMany({
+      where: {
+        deletedAt: null,
+        journalEntry: {
+          status: 'POSTED',
+          entryDate: { gte: periodStart, lte: periodEnd },
+          deletedAt: null,
+        },
+      },
+      select: {
+        accountCode: true,
+        debit: true,
+        credit: true,
+        description: true,
+        journalEntry: {
+          select: {
+            entryNumber: true,
+            entryDate: true,
+            description: true,
+            referenceType: true,
+            referenceId: true,
+          },
+        },
+      },
+      orderBy: [
+        { journalEntry: { entryDate: 'asc' } },
+        { journalEntry: { entryNumber: 'asc' } },
+      ],
+    });
+
+    // 3) Render rows; skip un-mapped accounts.
+    const escape = (v: string | null | undefined) => {
+      if (v == null) return '';
+      const s = String(v);
+      if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+        return `"${s.replace(/"/g, '""')}"`;
+      }
+      return s;
+    };
+
+    const header = [
+      'entryDate',
+      'entryNumber',
+      'peakCode',
+      'accountCode',
+      'accountName',
+      'debit',
+      'credit',
+      'description',
+      'reference',
+    ].join(',');
+
+    const body: string[] = [];
+    let skipped = 0;
+    for (const ln of lines) {
+      const mapping = peakByCode.get(ln.accountCode);
+      if (!mapping) {
+        skipped++;
+        continue;
+      }
+      const ref = ln.journalEntry.referenceType
+        ? `${ln.journalEntry.referenceType}:${ln.journalEntry.referenceId ?? ''}`
+        : '';
+      body.push(
+        [
+          ln.journalEntry.entryDate.toISOString().slice(0, 10),
+          escape(ln.journalEntry.entryNumber),
+          escape(mapping.peakCode),
+          escape(ln.accountCode),
+          escape(nameByCode.get(ln.accountCode) ?? mapping.name),
+          // String form keeps full Decimal precision — never Number()
+          new Prisma.Decimal(ln.debit).toString(),
+          new Prisma.Decimal(ln.credit).toString(),
+          escape(ln.description ?? ln.journalEntry.description),
+          escape(ref),
+        ].join(','),
+      );
+    }
+
+    return {
+      // UTF-8 BOM so Excel renders Thai correctly.
+      csv: '﻿' + [header, ...body].join('\n'),
+      rowCount: body.length,
+      skippedLineCount: skipped,
+    };
+  }
+
+  // ─── General Journal ──────────────────────────────────────────────────────
+
+  /**
+   * Returns a paginated list of JournalEntries within the given date range,
+   * ordered by postedAt descending, with their lines included.
+   *
+   * Used by the GeneralJournalPage (P4-SP1, Task 7).
+   */
+  async getGeneralJournal(
+    periodStart: Date,
+    periodEnd: Date,
+    opts: { page?: number; limit?: number; companyId?: string } = {},
+  ) {
+    const page = opts.page ?? 1;
+    const limit = opts.limit ?? 50;
+    const where = {
+      postedAt: { gte: periodStart, lte: periodEnd },
+      deletedAt: null,
+      ...(opts.companyId ? { companyId: opts.companyId } : {}),
+    };
+    const [data, total] = await Promise.all([
+      this.prisma.journalEntry.findMany({
+        where,
+        include: {
+          lines: {
+            select: {
+              accountCode: true,
+              debit: true,
+              credit: true,
+              description: true,
+            },
+            orderBy: { id: 'asc' },
+          },
+        },
+        orderBy: { postedAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.journalEntry.count({ where }),
+    ]);
+    return { data, total, page, limit };
+  }
+
+  // ─── P4-SP1: Aging Report ────────────────────────────────────────────────
+
+  async getAgingReport(asOf: Date) {
+    const overduePayments = await this.prisma.payment.findMany({
+      where: {
+        status: { in: ['PENDING', 'OVERDUE'] },
+        dueDate: { lt: asOf },
+        deletedAt: null,
+      },
+      include: {
+        contract: {
+          include: {
+            customer: {
+              select: { id: true, name: true, phone: true },
+            },
+          },
+        },
+      },
+    });
+
+    const summary = {
+      bucket_0_30: 0,
+      bucket_31_60: 0,
+      bucket_61_90: 0,
+      bucket_90_plus: 0,
+    };
+
+    const customerMap = new Map<
+      string,
+      {
+        customerId: string;
+        customerName: string;
+        phone: string;
+        totalOverdue: number;
+        daysOverdue: number;
+        bucket: string;
+        contracts: number;
+      }
+    >();
+
+    const calcBucket = (days: number): keyof typeof summary => {
+      if (days <= 30) return 'bucket_0_30';
+      if (days <= 60) return 'bucket_31_60';
+      if (days <= 90) return 'bucket_61_90';
+      return 'bucket_90_plus';
+    };
+
+    for (const p of overduePayments) {
+      const daysOverdue = Math.floor(
+        (asOf.getTime() - p.dueDate.getTime()) / (1000 * 60 * 60 * 24),
+      );
+      const remaining = Number(p.amountDue) - Number(p.amountPaid ?? 0);
+      if (remaining <= 0) continue;
+
+      const bucket = calcBucket(daysOverdue);
+      summary[bucket] += remaining;
+
+      const cid = p.contract.customer.id;
+      const existing = customerMap.get(cid);
+      if (existing) {
+        existing.totalOverdue += remaining;
+        existing.daysOverdue = Math.max(existing.daysOverdue, daysOverdue);
+        existing.bucket = calcBucket(existing.daysOverdue);
+      } else {
+        customerMap.set(cid, {
+          customerId: cid,
+          customerName: p.contract.customer.name,
+          phone: p.contract.customer.phone ?? '',
+          totalOverdue: remaining,
+          daysOverdue,
+          bucket,
+          contracts: 1,
+        });
+      }
+    }
+
+    return {
+      asOf,
+      summary,
+      customers: Array.from(customerMap.values()).sort(
+        (a, b) => b.daysOverdue - a.daysOverdue,
+      ),
+    };
+  }
+
+  // ─── P4-SP1 Task 3: Bad Debt Report ─────────────────────────────────────────
+
+  /**
+   * Returns journal lines posted to account 51-1102 (หนี้สูญ/ขาดทุนจากยึดเครื่อง)
+   * within the given period. Used by BadDebtReportPage to display write-off history.
+   *
+   * Per .claude/rules/accounting.md:
+   *   51-1102 = หนี้สูญ/ขาดทุนจากยึดเครื่อง (RepossessionJP5Template loss branch)
+   */
+  async getBadDebtReport(periodStart: Date, periodEnd: Date, companyId?: string) {
+    const lines = await this.prisma.journalLine.findMany({
+      where: {
+        accountCode: '51-1102',
+        journalEntry: {
+          postedAt: { gte: periodStart, lte: periodEnd },
+          deletedAt: null,
+          ...(companyId ? { companyId } : {}),
+        },
+      },
+      include: {
+        journalEntry: {
+          select: {
+            id: true,
+            entryNumber: true,
+            description: true,
+            postedAt: true,
+            referenceType: true,
+            referenceId: true,
+          },
+        },
+      },
+      orderBy: { journalEntry: { postedAt: 'desc' } },
+    });
+
+    const total = lines.reduce((sum, l) => sum + Number(l.debit ?? 0), 0);
+
+    return {
+      period: { start: periodStart, end: periodEnd },
+      totalBadDebt: total,
+      entries: lines.map((l) => ({
+        journalEntryId: l.journalEntry.id,
+        documentNumber: l.journalEntry.entryNumber,
+        postedAt: l.journalEntry.postedAt,
+        description: l.description ?? l.journalEntry.description,
+        amount: Number(l.debit ?? 0),
+        sourceType: l.journalEntry.referenceType,
+        sourceId: l.journalEntry.referenceId,
+      })),
     };
   }
 }

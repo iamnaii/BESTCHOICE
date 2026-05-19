@@ -10,6 +10,9 @@ export interface CoaRow {
   vatApplicable: boolean;
   notes: string;
   status: string;
+  /// P3-SP3: PEAK external bookkeeping code (column "เลขบัญชีในพึค", index 8).
+  /// Empty string when unmapped — seeder converts to null when persisting.
+  peakCode: string;
 }
 
 export interface JeLine {
@@ -31,7 +34,12 @@ export interface CaseFixture {
   entries: JeBlock[];
 }
 
-const ACCOUNT_CODE_RE = /^\d{2}-\d{4}$/;
+// P3-SP5: accept both FINANCE codes (NN-NNNN) and SHOP codes (SNN-NNNN).
+// The 'S' prefix on SHOP chart of accounts avoids collision with FINANCE codes
+// in the single `chart_of_accounts` table (unique `code`). When Phase 3 SP7
+// splits the two halves into separate legal entities + DBs, the SHOP DB can
+// drop the prefix internally — but until then the prefix is the partition key.
+const ACCOUNT_CODE_RE = /^S?\d{2}-\d{4}$/;
 
 export function loadCoaFromCsv(csvPath: string): CoaRow[] {
   const text = fs.readFileSync(csvPath, 'utf-8');
@@ -49,6 +57,8 @@ export function loadCoaFromCsv(csvPath: string): CoaRow[] {
       vatApplicable: (cols[5] ?? '').trim() === 'ใช่',
       notes: (cols[6] ?? '').trim(),
       status: (cols[7] ?? '').trim(),
+      // P3-SP3: PEAK code lives at index 8 ("เลขบัญชีในพึค"). Empty by default.
+      peakCode: (cols[8] ?? '').trim(),
     });
   }
   return rows;

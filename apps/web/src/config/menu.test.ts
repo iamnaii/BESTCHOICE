@@ -77,30 +77,32 @@ describe('getSidebarForRole — populated ZONE_CONFIG', () => {
     expect(keys).toEqual([
       'owner-inventory',
       'owner-sales',
-      'owner-drafts',
       'owner-aftersales',
       'owner-online-shop',
+      'owner-shop-accounting',
       'owner-marketing',
     ]);
   });
 
   it('OWNER fin sections include all FIN-zone keys (regression guard)', () => {
     const keys = getSidebarForRole('OWNER', 'fin').map((s) => s.key);
-    // Order: overview, fin-collection, accounting, reports, tax, statements, bank, asset, fin-tools
+    // Union of all FIN zone sections (SP5 + P4 SP1-5)
     expect(keys).toContain('owner-overview');
     expect(keys).toContain('owner-fin-collection');
+    expect(keys).toContain('owner-fin-revenue');
+    expect(keys).toContain('owner-fin-expense');
+    expect(keys).toContain('owner-tax');
     expect(keys).toContain('owner-accounting');
     expect(keys).toContain('owner-reports');
-    expect(keys).toContain('owner-tax');
-    expect(keys).toContain('owner-statements');
     expect(keys).toContain('owner-bank');
-    expect(keys).toContain('asset'); // assetMenuSection.key
-    expect(keys).toContain('owner-fin-tools');
+    expect(keys).toContain('owner-doc-config');
+    expect(keys).toContain('owner-fin-integrations');
+    expect(keys).toContain('owner-fin-notifications');
   });
 
   it('OWNER settings sections have expected keys', () => {
     const keys = getSidebarForRole('OWNER', 'settings').map((s) => s.key);
-    expect(keys).toContain('owner-doc-config');
+    // owner-doc-config moved to FIN zone per CSV §8
     expect(keys).toContain('owner-settings');
     expect(keys).toContain('owner-settings-extra');
   });

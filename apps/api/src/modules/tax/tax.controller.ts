@@ -7,19 +7,21 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   Res,
   UseGuards,
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { TaxFormCode, TaxService } from './tax.service';
 import { GenerateTaxReportDto } from './dto/tax.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { EntityScope } from './tax-entity.util';
 
 @ApiTags('Tax')
 @ApiBearerAuth('JWT')
@@ -32,6 +34,7 @@ export class TaxController {
   @Get()
   @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   findAll(
+    @Req() req: Request,
     @Query('companyId') companyId?: string,
     @Query('reportType') reportType?: string,
     @Query('year') year?: string,
@@ -46,17 +49,24 @@ export class TaxController {
       status,
       page ? parseInt(page) : 1,
       limit ? parseInt(limit) : 50,
+      req.entityScope as EntityScope | undefined,
     );
   }
 
   @Get('pp30-preview')
   @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   previewPP30(
+    @Req() req: Request,
     @Query('companyId') companyId: string,
     @Query('year') year: string,
     @Query('month') month: string,
   ) {
-    return this.taxService.previewPP30(companyId, parseInt(year), parseInt(month));
+    return this.taxService.previewPP30(
+      companyId,
+      parseInt(year),
+      parseInt(month),
+      req.entityScope as EntityScope | undefined,
+    );
   }
 
   @Get('pnd1-preview')
@@ -132,8 +142,12 @@ export class TaxController {
 
   @Post('generate')
   @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
-  generate(@Body() dto: GenerateTaxReportDto, @CurrentUser('id') userId: string) {
-    return this.taxService.generate(dto, userId);
+  generate(
+    @Body() dto: GenerateTaxReportDto,
+    @CurrentUser('id') userId: string,
+    @Req() req: Request,
+  ) {
+    return this.taxService.generate(dto, userId, req.entityScope as EntityScope | undefined);
   }
 
   @Patch(':id/submit')

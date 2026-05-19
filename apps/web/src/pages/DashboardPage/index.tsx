@@ -6,6 +6,7 @@ import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import { DashboardSkeleton } from '@/components/ui/page-skeletons';
 import QueryBoundary from '@/components/QueryBoundary';
+import { useLayout } from '@/components/layout/LayoutContext';
 import DashboardAlerts from './components/DashboardAlerts';
 import DashboardKPIs from './components/DashboardKPIs';
 import DashboardWatchList from './components/DashboardWatchList';
@@ -15,6 +16,9 @@ import DashboardCharts from './components/DashboardCharts';
 import DashboardTables from './components/DashboardTables';
 import DashboardMySales from './components/DashboardMySales';
 import DashboardFinanceOverview from './components/DashboardFinanceOverview';
+import AgingSummaryWidget from './widgets/AgingSummaryWidget';
+import PromiseDueTodayWidget from './widgets/PromiseDueTodayWidget';
+import ContractMilestonesWidget from './widgets/ContractMilestonesWidget';
 import type {
   KPIs,
   MonthlyTrend,
@@ -35,6 +39,7 @@ import type {
 export default function DashboardPage() {
   useDocumentTitle('แดชบอร์ด');
   const { user } = useAuth();
+  const { currentZone } = useLayout();
   // D1.4.2.2 — OWNER-configurable react-query staleTime (in seconds).
   // Defaults to 60s via DEFAULT_UI_FLAGS; clamped server-side to [10, 3600].
   const { cacheTtlDashboard } = useUiFlags();
@@ -193,6 +198,15 @@ export default function DashboardPage() {
 
       {/* KPI Stats — all roles */}
       {kpis && <DashboardKPIs kpis={kpis} comparativePL={comparativePL} />}
+
+      {/* FINANCE zone widgets — Aging / Promises / Milestones */}
+      {currentZone === 'fin' && (
+        <div className="grid md:grid-cols-3 gap-4 mt-6">
+          <AgingSummaryWidget />
+          <PromiseDueTodayWidget />
+          <ContractMilestonesWidget />
+        </div>
+      )}
 
       {/* Watch List + Upsell — management + finance roles */}
       {role !== 'SALES' && (

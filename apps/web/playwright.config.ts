@@ -6,8 +6,14 @@ export default defineConfig({
   testIgnore: ['**/load-test-*.spec.ts'],
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
+  // CI retries: 2 (handles transient flake); local: 1
   retries: process.env.CI ? 2 : 1,
   workers: process.env.CI ? 1 : 2,
+  // Per-test timeout 30s (Playwright default). Specs under e2e/flows/ that need
+  // longer timeouts opt in locally via `test.describe.configure({ timeout: 60_000 })`
+  // — keeping the global default at 30s avoids accidentally masking regressions
+  // across the 80+ existing smoke specs.
+  timeout: 30_000,
   reporter: [['html', { open: 'never' }], ['list']],
   use: {
     baseURL: process.env.BASE_URL || 'http://localhost:5173',

@@ -51,6 +51,21 @@ jobs:
         ports:
           - 5432:5432
 
+      # SP7.1 — second postgres for FINANCE DB (dual-Prisma architecture)
+      postgres-finance:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test_finance_db
+        options: >-
+          --health-cmd "pg_isready -U test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5433:5432
+
     steps:
       - uses: actions/checkout@v4
 
@@ -67,13 +82,21 @@ jobs:
         run: npm audit --audit-level=high
         continue-on-error: true
 
-      - name: Generate Prisma Client
+      - name: Generate Prisma Client (SHOP)
         run: npx prisma generate --schema=apps/api/prisma/schema.prisma
 
-      - name: Run DB migrations
+      - name: Generate Prisma Client (FINANCE)
+        run: npm run prisma:finance:generate --workspace=apps/api
+
+      - name: Run DB migrations (SHOP)
         run: npx prisma migrate deploy --schema=apps/api/prisma/schema.prisma
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/test_db?schema=public
+
+      - name: Run DB migrations (FINANCE)
+        run: npm run prisma:finance:migrate:deploy --workspace=apps/api
+        env:
+          DATABASE_URL_FINANCE: postgresql://test:test@localhost:5433/test_finance_db?schema=public
 
       - name: Lint API
         run: npm run lint --workspace=apps/api
@@ -85,7 +108,19 @@ jobs:
         run: npm run test --workspace=apps/api
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/test_db?schema=public
+          DATABASE_URL_FINANCE: postgresql://test:test@localhost:5433/test_finance_db?schema=public
           JWT_SECRET: test-secret
+
+      - name: Run dual-Prisma integration tests (SP7.1)
+        run: npm run test:e2e --workspace=apps/api
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/test_db?schema=public
+          DATABASE_URL_FINANCE: postgresql://test:test@localhost:5433/test_finance_db?schema=public
+          JWT_SECRET: test-secret
+          JWT_REFRESH_SECRET: test-refresh-secret
+          JWT_EXPIRATION: 15m
+          JWT_REFRESH_EXPIRATION: 7d
+          NODE_ENV: test
 
       - name: Build API
         run: npm run build --workspace=apps/api

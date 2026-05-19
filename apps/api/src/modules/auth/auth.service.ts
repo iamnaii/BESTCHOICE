@@ -232,6 +232,9 @@ export class AuthService {
       // JwtAudienceGuard enforces this at endpoint level via @RequireAudience('admin').
       aud: 'admin',
       scope: 'admin:full',
+      // SP7.1 — dual-entity authorization
+      accessibleCompanies: user.accessibleCompanies,
+      primaryCompany: user.primaryCompany,
     };
 
     const accessToken = this.jwtService.sign(payload, {
@@ -298,6 +301,9 @@ export class AuthService {
       email: user.email,
       role: user.role,
       branchId: user.branchId,
+      // SP7.1 — dual-entity authorization
+      accessibleCompanies: user.accessibleCompanies,
+      primaryCompany: user.primaryCompany,
     };
 
     const accessToken = this.jwtService.sign(jwtPayload, {
@@ -368,6 +374,9 @@ export class AuthService {
       branchId: user.branchId,
       aud: 'admin',
       scope: 'admin:full',
+      // SP7.1 — dual-entity authorization
+      accessibleCompanies: user.accessibleCompanies,
+      primaryCompany: user.primaryCompany,
     };
 
     const accessToken = this.jwtService.sign(payload, {
@@ -622,6 +631,9 @@ export class AuthService {
         branchId: user.branchId,
         aud: 'admin',
         scope: 'admin:full',
+        // SP7.1 — dual-entity authorization
+        accessibleCompanies: user.accessibleCompanies,
+        primaryCompany: user.primaryCompany,
       };
 
       const accessToken = this.jwtService.sign(newPayload, {

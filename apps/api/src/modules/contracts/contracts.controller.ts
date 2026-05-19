@@ -6,7 +6,7 @@ import { ContractWorkflowService } from './contract-workflow.service';
 import { ContractPaymentService } from './contract-payment.service';
 import { ContractDocumentService } from './contract-document.service';
 import { ContractSnapshotService } from './contract-snapshot.service';
-import { CreateContractDto, UpdateContractDto, EarlyPayoffDto, ReviewContractDto, RejectContractDto } from './dto/contract.dto';
+import { CreateContractDto, UpdateContractDto, EarlyPayoffDto, ReviewContractDto, RejectContractDto, RequestCancellationDto, RejectCancellationDto } from './dto/contract.dto';
 import { PdpaConsentDto } from './dto/pdpa-consent.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -62,6 +62,13 @@ export class ContractsController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER')
   getDocumentDashboard(@Query('branchId') branchId?: string) {
     return this.documentService.getDocumentDashboard(branchId);
+  }
+
+  // P4-SP5: Dashboard milestones summary — new + completing this month
+  @Get('milestones-summary')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'BRANCH_MANAGER')
+  getMilestonesSummary() {
+    return this.contractsService.getMilestonesSummary();
   }
 
   @Get(':id')
@@ -229,5 +236,42 @@ export class ContractsController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
   getPdpaConsent(@Param('id') id: string) {
     return this.documentService.getPdpaConsent(id);
+  }
+
+  // === P4-SP4: Contract Cancellation ===
+
+  @Get('cancellations/pending')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  listPendingCancellations() {
+    return this.contractsService.listPendingCancellations();
+  }
+
+  @Post(':id/request-cancellation')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'SALES')
+  requestCancellation(
+    @Param('id') id: string,
+    @Body() dto: RequestCancellationDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.contractsService.requestCancellation(id, user.id, dto.reason, dto.refundAmount);
+  }
+
+  @Post('cancellations/:id/approve')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  approveCancellation(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.contractsService.approveCancellation(id, user.id);
+  }
+
+  @Post('cancellations/:id/reject')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  rejectCancellation(
+    @Param('id') id: string,
+    @Body() dto: RejectCancellationDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.contractsService.rejectCancellation(id, user.id, dto.reason);
   }
 }

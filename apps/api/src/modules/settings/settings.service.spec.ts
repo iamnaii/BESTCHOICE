@@ -1835,5 +1835,76 @@ describe('SettingsService audit trail', () => {
       );
     });
   });
+
+  // P2-SP2 — Document Number Config UI live preview.
+  describe('previewNumber (P2-SP2)', () => {
+    beforeEach(() => {
+      // findFirst returns null by default so getKey resolves to "missing".
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+    });
+
+    it('returns canonical default prefix + spec default format when no overrides + no SystemConfig', async () => {
+      // No persisted format/prefix — service uses DEFAULT_DOC_NUMBER_FORMAT_VALUE
+      // (PREFIX-YYMM-NNN) + DEFAULT_DOC_PREFIX_MAP.EXPENSE ('EX').
+      const result = await service.previewNumber(
+        'EXPENSE',
+        undefined,
+        undefined,
+        undefined,
+        new Date('2026-05-10T12:00:00Z'),
+      );
+      expect(result.sample).toBe('EX-2605-001');
+      expect(result.format).toBe('PREFIX-YYMM-NNN');
+      expect(result.resetCycle).toBe('yearly');
+      expect(result.prefix).toBe('EX');
+    });
+
+    it('honors explicit overrides for format + prefix (live preview path)', async () => {
+      // OWNER is typing in the form — overrides take precedence over persisted state.
+      const result = await service.previewNumber(
+        'EXPENSE',
+        'PREFIX-YYYYMMDD-NNNN',
+        'EXP',
+        'daily',
+        new Date('2026-05-10T12:00:00Z'),
+      );
+      expect(result.sample).toBe('EXP-20260510-0001');
+      expect(result.format).toBe('PREFIX-YYYYMMDD-NNNN');
+      expect(result.resetCycle).toBe('daily');
+      expect(result.prefix).toBe('EXP');
+    });
+  });
+
+  // P4-SP3 — doc-config keys for 8 per-doc-type config entries
+  describe('SystemConfig — doc-type keys', () => {
+    beforeEach(() => {
+      prisma.systemConfig.findUnique = jest.fn().mockResolvedValue(null);
+      prisma.systemConfig.upsert = jest.fn((args: {
+        where: { key: string };
+        update: { value: string };
+        create: { key: string; value: string };
+      }) => Promise.resolve({ id: 'sc-doc', key: args.where.key, value: args.update.value }));
+    });
+
+    it.each([
+      'doc_config_deposit_receipt',
+      'doc_config_receipt',
+      'doc_config_credit_note',
+      'doc_config_purchase_order',
+      'doc_config_expense_doc',
+      'doc_config_credit_note_received',
+      'doc_config_payment_summary',
+      'doc_config_asset_purchase',
+    ])('accepts key %s', async (key) => {
+      const value = JSON.stringify({ prefix: 'XX', requiresApproval: false });
+      await service.update(key, value, 'u-1');
+      expect(prisma.systemConfig.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { key } }),
+      );
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'SYSTEM_CONFIG_CREATE', entityId: key }),
+      );
+    });
+  });
 });
 

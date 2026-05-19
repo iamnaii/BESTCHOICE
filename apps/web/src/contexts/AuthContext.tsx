@@ -12,6 +12,10 @@ interface User {
   preferences?: Record<string, unknown> | null;
   /** T15: default cash/bank account code (e.g. '11-1101') for payment deposit dimension. */
   defaultCashAccountCode?: string | null;
+  /** SP7.3 — dual entity: list of company codes this user can access */
+  accessibleCompanies?: string[];
+  /** SP7.3 — dual entity: the user's primary company scope */
+  primaryCompany?: 'SHOP' | 'FINANCE' | null;
 }
 
 /** State after password phase — waiting for OTP or 2FA setup */
@@ -56,7 +60,7 @@ interface AuthContextType {
   refresh: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -90,6 +94,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         branchId: data.branchId,
         branchName: data.branch?.name || null,
         preferences: data.preferences ?? null,
+        accessibleCompanies: data.accessibleCompanies ?? [],
+        primaryCompany: data.primaryCompany ?? null,
       };
       setUser(nextUser);
       setSentryUser(nextUser);
@@ -164,6 +170,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         role: data.user.role,
         branchId: data.user.branchId,
         branchName: data.user.branchName ?? data.user.branch?.name ?? null,
+        accessibleCompanies: data.user.accessibleCompanies ?? [],
+        primaryCompany: data.user.primaryCompany ?? null,
       };
       setUser(nextUser);
       setSentryUser(nextUser);

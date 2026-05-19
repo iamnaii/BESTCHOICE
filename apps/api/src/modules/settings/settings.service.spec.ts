@@ -1827,11 +1827,11 @@ describe('SettingsService audit trail', () => {
       expect(result.note).toMatch(/diagnostic/i);
     });
 
-    it('includes all 5 DocumentType keys in currentMaxByType even when DB has no rows', async () => {
+    it('includes all 6 DocumentType keys in currentMaxByType even when DB has no rows', async () => {
       prisma.expenseDocument.groupBy.mockResolvedValue([]);
       const result = await service.resetDocSequence('EXPENSE', '2026-05-10', 'u-1');
       expect(Object.keys(result.currentMaxByType).sort()).toEqual(
-        ['CREDIT_NOTE', 'EXPENSE', 'PAYROLL', 'PETTY_CASH_REIMBURSEMENT', 'VENDOR_SETTLEMENT'].sort(),
+        ['CREDIT_NOTE', 'EXPENSE', 'PAYROLL', 'PETTY_CASH_REIMBURSEMENT', 'REPAIR_SERVICE', 'VENDOR_SETTLEMENT'].sort(),
       );
     });
   });

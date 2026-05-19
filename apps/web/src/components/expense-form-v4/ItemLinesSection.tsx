@@ -3,6 +3,7 @@ import { Plus, Trash2 } from 'lucide-react';
 import { ExpenseLineForm, newLine } from './types';
 import { formatNumberDecimal } from '@/utils/formatters';
 import { useUiFlags } from '@/hooks/useUiFlags';
+import { whtRatesToSelectOptions } from '@/lib/wht-rates';
 import TaxDisallowedHint from './TaxDisallowedHint';
 
 interface Props {
@@ -16,15 +17,9 @@ export function ItemLinesSection({ lines, onChange, priceTypeLabel }: Props) {
   const groups = coaData?.groups ?? [];
 
   // D1.1.3.2 — WHT% options sourced from SystemConfig `wht_rates`.
-  // D1.1.3.5 — filter out future-dated entries client-side.
+  // D1.1.3.5 — filter out future-dated entries client-side via helper.
   const { whtRates } = useUiFlags();
-  const today = new Date();
-  const whtOptions: { value: string; label: string }[] = [
-    { value: '0', label: '0%' },
-    ...whtRates
-      .filter((r) => !r.effectiveDate || new Date(r.effectiveDate) <= today)
-      .map((r) => ({ value: String(r.rate), label: r.label })),
-  ];
+  const whtOptions = whtRatesToSelectOptions(whtRates);
 
   const updateLine = (uid: string, patch: Partial<ExpenseLineForm>) => {
     onChange(lines.map((l) => (l.uid === uid ? { ...l, ...patch } : l)));

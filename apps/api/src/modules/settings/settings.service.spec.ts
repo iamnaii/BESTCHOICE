@@ -1874,5 +1874,37 @@ describe('SettingsService audit trail', () => {
       expect(result.prefix).toBe('EXP');
     });
   });
+
+  // P4-SP3 — doc-config keys for 8 per-doc-type config entries
+  describe('SystemConfig — doc-type keys', () => {
+    beforeEach(() => {
+      prisma.systemConfig.findUnique = jest.fn().mockResolvedValue(null);
+      prisma.systemConfig.upsert = jest.fn((args: {
+        where: { key: string };
+        update: { value: string };
+        create: { key: string; value: string };
+      }) => Promise.resolve({ id: 'sc-doc', key: args.where.key, value: args.update.value }));
+    });
+
+    it.each([
+      'doc_config_deposit_receipt',
+      'doc_config_receipt',
+      'doc_config_credit_note',
+      'doc_config_purchase_order',
+      'doc_config_expense_doc',
+      'doc_config_credit_note_received',
+      'doc_config_payment_summary',
+      'doc_config_asset_purchase',
+    ])('accepts key %s', async (key) => {
+      const value = JSON.stringify({ prefix: 'XX', requiresApproval: false });
+      await service.update(key, value, 'u-1');
+      expect(prisma.systemConfig.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { key } }),
+      );
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'SYSTEM_CONFIG_CREATE', entityId: key }),
+      );
+    });
+  });
 });
 

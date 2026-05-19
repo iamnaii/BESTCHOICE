@@ -30,7 +30,9 @@ describe('HealthController', () => {
     // Simulate both DBs unreachable so that both DB checks exercise the error branch.
     const dbError = new Error('password authentication failed for user "postgres"');
     prismaShop = { $queryRaw: jest.fn().mockRejectedValue(dbError) };
-    prismaFin = { $queryRaw: jest.fn().mockRejectedValue(dbError) };
+    // SP7.1 hotfix: PrismaFinanceService gained an isEnabled flag.
+    // Default mocks to enabled=true so existing error-path tests still exercise pingDb.
+    prismaFin = { $queryRaw: jest.fn().mockRejectedValue(dbError), isEnabled: true };
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [HealthController],

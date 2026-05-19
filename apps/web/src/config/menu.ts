@@ -568,6 +568,8 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'เปลี่ยนเครื่องเสีย (7 วัน)', path: '/defect-exchange', icon: Wrench },
         { label: 'ล็อคเครื่อง (MDM)', path: '/mdm', icon: Lock },
         { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
+        // CSV §2 placeholder — owner-flagged ✏ "ต้องสร้าง"
+        { label: 'เอกสารยกเลิกสัญญา', path: '/finance/contract-cancellation', icon: FileText, placeholder: { trackingSP: 'SP5', eta: 'ภายในไตรมาส 3/2026' } },
       ],
     },
     {
@@ -615,6 +617,8 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'ปิดบัญชีรายเดือน', path: '/monthly-close', icon: CalendarDays },
         { label: 'ปิดบัญชีสิ้นปี', path: '/finance/year-end-closing', icon: CalendarDays },
         { label: 'งวดบัญชี', path: '/accounting/periods', icon: CalendarDays },
+        // CSV §5 — "งบ 4 ประเภท" (full 4-statement set per TFRS)
+        { label: 'งบดุล (Balance Sheet)', path: '/finance/balance-sheet', icon: PieChart, placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' } },
         { label: 'กำไร-ขาดทุน (P&L)', path: '/profit-loss', icon: PieChart },
         { label: 'งบกระแสเงินสด', path: '/finance/cash-flow', icon: Banknote, placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' } },
         { label: 'งบ Equity', path: '/finance/equity-statement', icon: BarChart3, placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' } },
@@ -627,7 +631,12 @@ const OWNER_CONFIG: RoleMenuConfig = {
       zone: 'fin',
       items: [
         { label: 'รายงานรวม', path: '/reports', icon: BarChart3 },
+        // CSV §6 placeholders — flagged "ต้องสร้าง"
+        { label: 'รายงานลูกหนี้ + Aging', path: '/finance/aging-report', icon: AlertTriangle, placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' } },
+        { label: 'สมุดรายวัน', path: '/finance/general-journal', icon: BookOpen, placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' } },
         { label: 'สมุดแยกประเภท', path: '/finance/general-ledger', icon: BookOpen, placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' } },
+        { label: 'รายงานหนี้สูญ', path: '/finance/bad-debt-report', icon: TrendingDown, placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' } },
+        { label: 'รายงานลูกหนี้ Inter-co', path: '/finance/intercompany-report', icon: Building2, placeholder: { trackingSP: 'SP6', eta: 'ภายในไตรมาส 4/2026' } },
         { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
         { label: 'ตรวจสอบบัญชี', path: '/financial-audit', icon: ClipboardList },
         // P3-SP3 — PEAK CSV export (mapping config lives in /settings#peak-mapping)
@@ -649,12 +658,36 @@ const OWNER_CONFIG: RoleMenuConfig = {
       // MOVED from `zone: 'settings'` → `zone: 'fin'` per CSV §8.
       // SystemConfig backend (D1.1.2.x) is shared but UX-wise this is a
       // finance-team config, so it belongs in the FIN zone for OWNER.
+      // CSV §8 sub-grouping: รายรับ (3 doc types) + รายจ่าย (5 doc types).
+      // Sub-items are placeholders — backend config UI per doc type pending.
       key: 'owner-doc-config',
       label: 'ตั้งค่าเอกสาร',
       icon: FileText,
       zone: 'fin',
       items: [
         { label: 'เลขที่/รูปแบบเอกสาร', path: '/settings/document-config', icon: FileText },
+        {
+          label: 'เอกสารรายรับ',
+          path: '/settings/document-config/revenue',
+          icon: TrendingUp,
+          children: [
+            { label: 'ใบรับเงินมัดจำ', path: '/settings/document-config/deposit-receipt', icon: Receipt, placeholder: { trackingSP: 'SP4', eta: 'ภายในไตรมาส 3/2026' } },
+            { label: 'ใบเสร็จรับเงิน', path: '/settings/document-config/receipt', icon: ReceiptText, placeholder: { trackingSP: 'SP4', eta: 'ภายในไตรมาส 3/2026' } },
+            { label: 'ใบลดหนี้', path: '/settings/document-config/credit-note', icon: FileText, placeholder: { trackingSP: 'SP4', eta: 'ภายในไตรมาส 3/2026' } },
+          ],
+        },
+        {
+          label: 'เอกสารรายจ่าย',
+          path: '/settings/document-config/expense',
+          icon: TrendingDown,
+          children: [
+            { label: 'ใบสั่งซื้อ (PO)', path: '/settings/document-config/purchase-order', icon: ClipboardList, placeholder: { trackingSP: 'SP4', eta: 'ภายในไตรมาส 3/2026' } },
+            { label: 'ค่าใช้จ่าย', path: '/settings/document-config/expense-doc', icon: Receipt, placeholder: { trackingSP: 'SP4', eta: 'ภายในไตรมาส 3/2026' } },
+            { label: 'รับใบลดหนี้', path: '/settings/document-config/credit-note-received', icon: FileText, placeholder: { trackingSP: 'SP4', eta: 'ภายในไตรมาส 3/2026' } },
+            { label: 'ใบรวมจ่าย', path: '/settings/document-config/payment-summary', icon: FileText, placeholder: { trackingSP: 'SP4', eta: 'ภายในไตรมาส 3/2026' } },
+            { label: 'ซื้อสินทรัพย์', path: '/settings/document-config/asset-purchase', icon: Landmark, placeholder: { trackingSP: 'SP4', eta: 'ภายในไตรมาส 3/2026' } },
+          ],
+        },
       ],
     },
     {
@@ -739,6 +772,8 @@ const OWNER_CONFIG: RoleMenuConfig = {
       zone: 'fin',
       items: [
         { label: 'Dunning (เตือนค่างวด)', path: '/settings/dunning', icon: Bell },
+        // CSV §10 placeholder — "แจ้งสร้างอีเล็คทรอนิกส์รอบอินส์" = auto e-receipt
+        { label: 'ใบเสร็จอิเล็กทรอนิกส์อัตโนมัติ', path: '/finance/e-receipt-auto', icon: FileText, placeholder: { trackingSP: 'SP3', eta: 'ภายในไตรมาส 3/2026' } },
       ],
     },
     {

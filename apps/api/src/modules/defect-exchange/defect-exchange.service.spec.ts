@@ -1,9 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { DefectExchangeService } from './defect-exchange.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { DefectExchangeReversalTemplate } from '../journal/cpa-templates/defect-exchange-reversal.template';
+import { RepairTicketsService } from '../repair-tickets/repair-tickets.service';
 
 // generateContractNumber issues a $queryRaw lock + sequence read; stub it out
 // so unit tests don't need a Postgres advisory-lock implementation.
@@ -14,6 +15,7 @@ jest.mock('../../utils/sequence.util', () => ({
 describe('DefectExchangeService', () => {
   let service: DefectExchangeService;
   let prisma: any;
+  let repairTickets: any;
 
   const oldContractId = 'ct-old';
   const newProductId = 'prod-new';
@@ -78,12 +80,14 @@ describe('DefectExchangeService', () => {
     supplierId: 'sup-1',
   };
 
+  const OWNER = { id: 'user-owner', role: 'OWNER', branchId: null };
+
   beforeEach(async () => {
     const txMock = {
       contract: {
         findUnique: jest.fn(),
         update: jest.fn().mockResolvedValue({}),
-        create: jest.fn().mockResolvedValue({ id: 'ct-new', contractNumber: 'CT-2026-05-00001' }),
+        create: jest.fn().mockResolvedValue({ id: 'ct-new', contractNumber: 'CT-2026-05-00001', customerId: 'cust-1' }),
       },
       product: {
         findUnique: jest.fn(),
@@ -95,6 +99,9 @@ describe('DefectExchangeService', () => {
       },
       auditLog: {
         create: jest.fn().mockResolvedValue({ id: 'audit-1' }),
+      },
+      repairTicket: {
+        findUnique: jest.fn(),
       },
     };
 
@@ -109,6 +116,10 @@ describe('DefectExchangeService', () => {
       __tx: txMock,
     };
 
+    repairTickets = {
+      markReplaced: jest.fn().mockResolvedValue(undefined),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         DefectExchangeService,
@@ -118,6 +129,7 @@ describe('DefectExchangeService', () => {
           provide: DefectExchangeReversalTemplate,
           useValue: { reverseContract: jest.fn().mockResolvedValue({ id: 'je-rev' }) },
         },
+        { provide: RepairTicketsService, useValue: repairTickets },
       ],
     }).compile();
 
@@ -213,5 +225,134 @@ describe('DefectExchangeService', () => {
   // Reference futureWindowEnd to silence unused-var warning if test grows.
   it('windowEnd helper — sanity check', () => {
     expect(futureWindowEnd.getTime()).toBeGreaterThan(Date.now());
+  });
+
+  describe('execute — bypassWindowCheck path', () => {
+    const bypassDto = {
+      oldContractId,
+      newProductId,
+      defectReason: 'insurance replacement',
+      bypassWindowCheck: true,
+      originRepairTicketId: 'rt-1',
+    } as any;
+
+    it('throws BadRequestException when bypass=true without originRepairTicketId', async () => {
+      await expect(
+        service.execute(
+          { ...bypassDto, originRepairTicketId: undefined } as any,
+          OWNER,
+        ),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        service.execute(
+          { ...bypassDto, originRepairTicketId: undefined } as any,
+          OWNER,
+        ),
+      ).rejects.toThrow(/originRepairTicketId/);
+    });
+
+    it('throws ForbiddenException when SALES role tries bypass', async () => {
+      const salesUser = { id: 'user-sales', role: 'SALES', branchId: 'branch-1' };
+      await expect(
+        service.execute(bypassDto, salesUser),
+      ).rejects.toThrow(ForbiddenException);
+      await expect(
+        service.execute(bypassDto, salesUser),
+      ).rejects.toThrow(/OWNER/);
+    });
+
+    it('throws BadRequestException when ticket is in terminal status', async () => {
+      const tx = prisma.__tx;
+      tx.repairTicket.findUnique.mockResolvedValue({
+        id: 'rt-1',
+        customerId: 'cust-1',
+        status: 'CLOSED',
+        deletedAt: null,
+      });
+
+      await expect(service.execute(bypassDto, OWNER)).rejects.toThrow(BadRequestException);
+      await expect(service.execute(bypassDto, OWNER)).rejects.toThrow(/terminal/);
+    });
+
+    it('throws ForbiddenException when repair ticket customer does not match contract customer', async () => {
+      const tx = prisma.__tx;
+      // Both calls to repairTicket.findUnique return ticket with different customerId.
+      // First call: existence + status guard (status IN_PROGRESS → passes).
+      // Second call: customer match select (customerId = 'cust-DIFFERENT' ≠ contract.customerId 'cust-1').
+      const mismatchTicket = {
+        id: 'rt-1',
+        customerId: 'cust-DIFFERENT',
+        status: 'IN_PROGRESS',
+        deletedAt: null,
+      };
+      tx.repairTicket.findUnique.mockResolvedValue(mismatchTicket);
+
+      tx.payment.count.mockResolvedValue(0);
+      tx.contract.findUnique.mockResolvedValue(baseContract()); // customerId = 'cust-1'
+      tx.product.findUnique.mockResolvedValue(newProductRec);
+      // newContract.customerId = 'cust-1' → mismatch with ticket's 'cust-DIFFERENT'
+      tx.contract.create.mockResolvedValue({
+        id: 'ct-new',
+        contractNumber: 'CT-2026-05-00001',
+        customerId: 'cust-1',
+      });
+
+      prisma.contract.findUnique.mockResolvedValue(baseContract());
+      prisma.product.findUnique.mockResolvedValue(newProductRec);
+
+      const err = await service.execute(bypassDto, OWNER).catch((e) => e);
+      expect(err).toBeInstanceOf(ForbiddenException);
+      expect(err.message).toMatch(/customer mismatch/);
+    });
+
+    it('happy path: skips eligibility, creates contract, calls markReplaced, writes bypass audit log', async () => {
+      const tx = prisma.__tx;
+      tx.repairTicket.findUnique
+        // First call: existence + status check
+        .mockResolvedValueOnce({
+          id: 'rt-1',
+          customerId: 'cust-1',
+          status: 'IN_PROGRESS',
+          deletedAt: null,
+        })
+        // Second call: customer match check (select: { customerId })
+        .mockResolvedValueOnce({ customerId: 'cust-1' });
+
+      tx.payment.count.mockResolvedValue(0);
+      tx.contract.findUnique.mockResolvedValue(baseContract());
+      tx.product.findUnique.mockResolvedValue(newProductRec);
+      tx.contract.create.mockResolvedValue({
+        id: 'ct-new',
+        contractNumber: 'CT-2026-05-00001',
+        customerId: 'cust-1',
+      });
+
+      prisma.contract.findUnique.mockResolvedValue(baseContract());
+      prisma.product.findUnique.mockResolvedValue(newProductRec);
+
+      const result = await service.execute(bypassDto, OWNER);
+
+      expect(result.newContract).toBeDefined();
+      expect(result.oldContract.status).toBe('DEFECT_EXCHANGED');
+
+      // markReplaced must be called with correct args inside same tx
+      expect(repairTickets.markReplaced).toHaveBeenCalledWith(
+        'rt-1',
+        'ct-new',
+        OWNER,
+        expect.anything(), // tx proxy
+      );
+
+      // DEFECT_EXCHANGE_WINDOW_BYPASSED audit log must be written
+      expect(tx.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            action: 'DEFECT_EXCHANGE_WINDOW_BYPASSED',
+            entityId: 'ct-new',
+            newValue: expect.objectContaining({ originRepairTicketId: 'rt-1' }),
+          }),
+        }),
+      );
+    });
   });
 });

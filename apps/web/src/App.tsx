@@ -55,11 +55,11 @@ const DocumentConfigPage = lazy(() => import('@/pages/DocumentConfigPage'));
 const PaymentMethodSettingsPage = lazy(() => import('@/pages/PaymentMethodSettingsPage'));
 const DefectExchangePage = lazy(() => import('@/pages/DefectExchangePage'));
 // SP5 — SHOP-side additions
-const QuotesPage = lazy(() => import('@/pages/QuotesPage'));
 // P2-SP4 — การจอง / มัดจำ (SHOP-side reservation)
 const BookingsPage = lazy(() => import('@/pages/BookingsPage'));
-const DraftsPage = lazy(() => import('@/pages/DraftsPage'));
 const InsurancePage = lazy(() => import('@/pages/InsurancePage'));
+const CreateRepairTicketPage = lazy(() => import('@/pages/insurance/CreateRepairTicketPage'));
+const RepairTicketDetailPage = lazy(() => import('@/pages/insurance/RepairTicketDetailPage'));
 const AuditLogsPage = lazy(() => import('@/pages/AuditLogsPage'));
 const FinancialAuditPage = lazy(() => import('@/pages/FinancialAuditPage'));
 const PaymentCsvImportPage = lazy(() => import('@/pages/PaymentCsvImportPage'));
@@ -621,14 +621,6 @@ function App() {
             }
           />
           {/* SP5 — SHOP-side additions */}
-          <Route
-            path="/quotes"
-            element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES']}>
-                <QuotesPage />
-              </ProtectedRoute>
-            }
-          />
           {/* P2-SP4 — การจอง / มัดจำ */}
           <Route
             path="/bookings"
@@ -641,20 +633,28 @@ function App() {
             }
           />
           <Route
-            path="/drafts"
+            path="/insurance"
             element={
-              <ProtectedRoute
-                roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES']}
-              >
-                <DraftsPage />
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES']}>
+                <InsurancePage />
               </ProtectedRoute>
             }
           />
           <Route
-            path="/insurance"
+            path="/insurance/new"
             element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES']}>
-                <InsurancePage />
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'SALES']}>
+                <CreateRepairTicketPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/insurance/:id"
+            element={
+              <ProtectedRoute
+                roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES', 'ACCOUNTANT']}
+              >
+                <RepairTicketDetailPage />
               </ProtectedRoute>
             }
           />
@@ -1289,42 +1289,7 @@ function App() {
           {/* SP1 placeholder routes — to be replaced by SP2-SP6 implementations.
               Role gating mirrors the menu visibility in spec §3 / §6 so that
               users cannot direct-URL-jump into pages they aren't supposed to see. */}
-          <Route
-            path="/quotes"
-            element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'SALES']}>
-                <ComingSoonPage
-                  feature="ใบเสนอราคา"
-                  trackingSP="SP5"
-                  eta="ภายในไตรมาส 3/2026"
-                />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/insurance"
-            element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES']}>
-                <ComingSoonPage
-                  feature="ลงทะเบียนประกัน + รับเครื่องคืน"
-                  trackingSP="SP5"
-                  eta="ภายในไตรมาส 3/2026"
-                />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/drafts"
-            element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES']}>
-                <ComingSoonPage
-                  feature="เอกสารร่างทั้งหมด"
-                  trackingSP="SP5"
-                  eta="ภายในไตรมาส 3/2026"
-                />
-              </ProtectedRoute>
-            }
-          />
+          {/* /insurance + /insurance/new + /insurance/:id are now real pages — see SP5 routes above */}
           {/* /finance/vat, /finance/wht, /finance/e-tax — handled by P4-SP2 routes above */}
           {/* /finance/cash-flow — handled by SP2 CashFlowPage route above (line ~763) */}
           {/* /finance/equity-statement — handled by SP2 EquityStatementPage route above (line ~773) */}

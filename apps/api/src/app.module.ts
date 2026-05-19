@@ -25,6 +25,7 @@ import { CustomerTagsModule } from './modules/customer-tags/customer-tags.module
 import { SmsTemplatesModule } from './modules/sms-templates/sms-templates.module';
 import { FilterPresetsModule } from './modules/filter-presets/filter-presets.module';
 import { DefectExchangeModule } from './modules/defect-exchange/defect-exchange.module';
+import { RepairTicketsModule } from './modules/repair-tickets/repair-tickets.module';
 import { RepossessionsModule } from './modules/repossessions/repossessions.module';
 import { PurchaseOrdersModule } from './modules/purchase-orders/purchase-orders.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
@@ -59,9 +60,7 @@ import { PaySolutionsModule } from './modules/paysolutions/paysolutions.module';
 import { FinanceReceivableModule } from './modules/finance-receivable/finance-receivable.module';
 import { AccountingModule } from './modules/accounting/accounting.module';
 import { OtherIncomeModule } from './modules/other-income/other-income.module';
-import { QuotesModule } from './modules/quotes/quotes.module';
 import { BookingsModule } from './modules/bookings/bookings.module';
-import { DraftsModule } from './modules/drafts/drafts.module';
 import { ExpenseDocumentsModule } from './modules/expense-documents/expense-documents.module';
 import { PaymentMethodConfigModule } from './modules/payment-method-config/payment-method-config.module';
 import { CompanyModule } from './modules/company/company.module';
@@ -193,6 +192,8 @@ import { AppCacheModule } from './cache/cache.module';
     SmsTemplatesModule,
     FilterPresetsModule,
     DefectExchangeModule,
+    // SP5 Phase 2 — Insurance / Repair Ticket
+    RepairTicketsModule,
     RepossessionsModule,
     PurchaseOrdersModule,
     InventoryModule,
@@ -231,12 +232,8 @@ import { AppCacheModule } from './cache/cache.module';
     AccountingModule,
     // Other Income (รายได้อื่น — FINANCE only)
     OtherIncomeModule,
-    // SP5 — ใบเสนอราคา (SHOP-side pre-sale)
-    QuotesModule,
     // P2-SP4 — การจอง / มัดจำ (SHOP-side reservation + deposit)
     BookingsModule,
-    // SP5 — Drafts hub (federated DRAFT-status docs across modules)
-    DraftsModule,
     // Expense Documents (เอกสารค่าใช้จ่าย — accrual workflow)
     ExpenseDocumentsModule,
     // Payment method ↔ Cash account mapping (cashier wizard filter)

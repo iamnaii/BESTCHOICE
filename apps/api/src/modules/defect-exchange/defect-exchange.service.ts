@@ -1,10 +1,19 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+  Logger,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { DefectExchangeReversalTemplate } from '../journal/cpa-templates/defect-exchange-reversal.template';
+import { RepairTicketsService } from '../repair-tickets/repair-tickets.service';
 import { ExecuteDefectExchangeDto } from './dto/defect-exchange.dto';
 import { generateContractNumber } from '../../utils/sequence.util';
 import { Decimal } from '@prisma/client/runtime/library';
+
+type ReqUser = { id: string; role: string; branchId?: string | null };
 
 const DEFECT_WINDOW_DAYS = 7;
 const ELIGIBLE_CATEGORIES = ['PHONE_USED'];
@@ -17,6 +26,7 @@ export class DefectExchangeService {
     private prisma: PrismaService,
     private journalAutoService: JournalAutoService,
     private defectExchangeReversalTemplate: DefectExchangeReversalTemplate,
+    private repairTickets: RepairTicketsService,
   ) {}
 
   /**
@@ -123,12 +133,53 @@ export class DefectExchangeService {
    *   - New product → RESERVED (→ SOLD_INSTALLMENT on activate)
    *   - Reversal journal on old + new activation journal (net zero until new activates)
    */
-  async execute(dto: ExecuteDefectExchangeDto, userId: string) {
+  async execute(dto: ExecuteDefectExchangeDto, user: ReqUser | string) {
+    // Support legacy string userId calls (e.g. existing controller) as well as
+    // the new full-user object required for bypass-window role checks.
+    const reqUser: ReqUser =
+      typeof user === 'string' ? { id: user, role: 'BRANCH_MANAGER' } : user;
+
     return this.prisma.$transaction(
       async (tx) => {
-        const elig = await this.checkEligibility(dto.oldContractId, dto.newProductId);
-        if (!elig.eligible) {
-          throw new BadRequestException(`ไม่เข้าเกณฑ์: ${elig.reasons.join(', ')}`);
+        // === bypass-window guards (must run before eligibility check) ===
+        if (dto.bypassWindowCheck) {
+          if (!dto.originRepairTicketId) {
+            throw new BadRequestException(
+              'bypassWindowCheck ต้องระบุ originRepairTicketId',
+            );
+          }
+          if (!['OWNER', 'BRANCH_MANAGER'].includes(reqUser.role)) {
+            throw new ForbiddenException(
+              'สิทธิ์ไม่พอ — bypass ทำได้เฉพาะ OWNER/BRANCH_MANAGER',
+            );
+          }
+          const ticket = await tx.repairTicket.findUnique({
+            where: { id: dto.originRepairTicketId, deletedAt: null },
+          });
+          if (!ticket) {
+            throw new NotFoundException('ไม่พบ repair ticket');
+          }
+          if (!['OPEN', 'IN_PROGRESS', 'READY_FOR_PICKUP'].includes(ticket.status)) {
+            throw new BadRequestException(
+              'repair ticket อยู่ในสถานะ terminal — ไม่สามารถ replace ได้',
+            );
+          }
+        } else {
+          // === normal 7-day eligibility check ===
+          const elig = await this.checkEligibility(dto.oldContractId, dto.newProductId);
+          if (!elig.eligible) {
+            throw new BadRequestException(`ไม่เข้าเกณฑ์: ${elig.reasons.join(', ')}`);
+          }
+        }
+
+        // supplierClaimEligible is only relevant in the normal (non-bypass) path.
+        // For bypass we default to false — the exchange is admin-forced, supplier claim
+        // determination can be done separately if needed.
+        let supplierClaimEligible = false;
+        if (!dto.bypassWindowCheck) {
+          // We already validated eligibility above; re-fetch just the supplier claim flag.
+          const eligForClaim = await this.checkEligibility(dto.oldContractId, dto.newProductId);
+          supplierClaimEligible = eligForClaim.supplierClaimEligible;
         }
 
         // Wave 3 T2 (ปพพ.386 C-6): Defect Exchange ไม่อนุญาตถ้ามี Payment record
@@ -240,10 +291,42 @@ export class DefectExchangeService {
           data: { status: 'RESERVED' },
         });
 
+        // === repair-ticket handoff (bypass path only) ===
+        if (dto.bypassWindowCheck && dto.originRepairTicketId) {
+          // Customer match check — repair ticket customer must match the new contract customer.
+          const ticketForMatch = await tx.repairTicket.findUnique({
+            where: { id: dto.originRepairTicketId },
+            select: { customerId: true },
+          });
+          if (ticketForMatch && ticketForMatch.customerId !== newContract.customerId) {
+            throw new ForbiddenException(
+              'customer mismatch — repair ticket vs new contract',
+            );
+          }
+
+          await this.repairTickets.markReplaced(
+            dto.originRepairTicketId,
+            newContract.id,
+            reqUser,
+            tx,
+          );
+
+          await tx.auditLog.create({
+            data: {
+              userId: reqUser.id,
+              action: 'DEFECT_EXCHANGE_WINDOW_BYPASSED',
+              entity: 'defect_exchange',
+              entityId: newContract.id,
+              newValue: { originRepairTicketId: dto.originRepairTicketId },
+              ipAddress: '',
+            },
+          });
+        }
+
         // Audit log
         await tx.auditLog.create({
           data: {
-            userId,
+            userId: reqUser.id,
             action: 'DEFECT_EXCHANGE',
             entity: 'contract',
             entityId: newContract.id,
@@ -257,7 +340,7 @@ export class DefectExchangeService {
               defectReason: dto.defectReason,
               photoUrls: dto.photoUrls ?? [],
               transferredCredit: paidInstallments.toNumber(),
-              supplierClaimEligible: elig.supplierClaimEligible,
+              supplierClaimEligible,
             },
             ipAddress: '',
           },
@@ -280,7 +363,7 @@ export class DefectExchangeService {
             workflowStatus: 'CREATING',
             creditBalance: paidInstallments.toNumber(),
           },
-          supplierClaimEligible: elig.supplierClaimEligible,
+          supplierClaimEligible,
         };
       },
       { isolationLevel: 'Serializable' },

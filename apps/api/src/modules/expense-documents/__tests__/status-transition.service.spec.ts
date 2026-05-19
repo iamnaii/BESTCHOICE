@@ -46,6 +46,13 @@ describe('StatusTransitionService', () => {
     it('returns ACCRUAL for EXPENSE without paymentMethod', () => {
       expect(service.resolveTargetStatus('EXPENSE', false)).toBe('ACCRUAL');
     });
+    // C1 — REPAIR_SERVICE follows same routing as EXPENSE
+    it('C1: returns ACCRUAL for REPAIR_SERVICE without paymentMethod (auto-created has none)', () => {
+      expect(service.resolveTargetStatus('REPAIR_SERVICE', false)).toBe('ACCRUAL');
+    });
+    it('C1: returns POSTED for REPAIR_SERVICE with paymentMethod (same-day pay edge case)', () => {
+      expect(service.resolveTargetStatus('REPAIR_SERVICE', true)).toBe('POSTED');
+    });
   });
 
   describe('assertCanVoid', () => {

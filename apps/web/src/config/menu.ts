@@ -49,11 +49,11 @@ import {
   BookOpen,
   History,
   // SP5 — SHOP additions
-  ReceiptText,
-  Inbox,
   ShieldCheck,
   // P3-SP5 — SHOP-side accounting menu icon
   Store,
+  // P2-SP2 / P4 — document config menu
+  ReceiptText,
 } from 'lucide-react';
 
 /* ── Types ─────────────────────────────────────────── */
@@ -148,7 +148,6 @@ const SALES_CONFIG: RoleMenuConfig = {
       zone: 'shop',
       items: [
         { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
-        { label: 'ใบเสนอราคา', path: '/quotes', icon: ReceiptText },
         { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
         { label: 'ลูกค้า', path: '/customers', icon: Users },
         { label: 'เช็คเครดิตลูกค้าใหม่', path: '/customer-intake', icon: UserSearch },
@@ -163,8 +162,7 @@ const SALES_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
-        { label: 'เอกสารร่าง', path: '/drafts', icon: Inbox },
-        { label: 'รับประกัน/ส่งซ่อม', path: '/insurance', icon: ShieldCheck },
+        { label: 'รับซ่อม/รับประกัน', path: '/insurance', icon: ShieldCheck },
       ],
     },
     {
@@ -214,15 +212,13 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
       zone: 'shop',
       items: [
         { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
-        { label: 'ใบเสนอราคา', path: '/quotes', icon: ReceiptText },
         { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
         { label: 'ลูกค้า', path: '/customers', icon: Users },
         { label: 'เช็คเครดิตลูกค้าใหม่', path: '/customer-intake', icon: UserSearch },
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
-        { label: 'เอกสารร่าง', path: '/drafts', icon: Inbox },
         { label: 'จัดการอุปกรณ์', path: '/mdm', icon: Smartphone },
-        { label: 'รับประกัน/ส่งซ่อม', path: '/insurance', icon: ShieldCheck },
+        { label: 'รับซ่อม/รับประกัน', path: '/insurance', icon: ShieldCheck },
       ],
     },
     {
@@ -338,7 +334,6 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
         { label: 'รายจ่าย', path: '/expenses', icon: Receipt },
         { label: 'รายได้อื่น', path: '/other-income', icon: TrendingUp },
-        { label: 'เอกสารร่าง', path: '/drafts', icon: Inbox },
         { label: 'กำไร-ขาดทุน', path: '/profit-loss', icon: PieChart },
         // P4-SP2 — Tax module (finance-tax endpoints)
         { label: 'ภ.พ.30 (VAT)', path: '/finance/vat', icon: Calculator },
@@ -387,7 +382,6 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
         { label: 'บันทึกรายจ่าย', path: '/expenses', icon: Receipt },
-        { label: 'เอกสารร่าง', path: '/drafts', icon: Inbox },
         { label: 'พิมพ์สติกเกอร์', path: '/stickers', icon: Tag },
         { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
       ],
@@ -497,12 +491,20 @@ const OWNER_CONFIG: RoleMenuConfig = {
       key: 'owner-overview',
       label: 'ภาพรวม',
       icon: Home,
-      zone: 'shop',
+      zone: 'fin',
       items: [
-        { label: 'Dashboard', path: '/', icon: Home },
-        { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
-        { label: 'CRM Pipeline', path: '/crm', icon: Kanban },
         { label: 'Finance Overview', path: '/finance-portfolio', icon: CircleDollarSign },
+      ],
+    },
+    {
+      key: 'owner-fin-collection',
+      label: 'ติดตามหนี้',
+      icon: AlertTriangle,
+      zone: 'fin',
+      items: [
+        { label: 'ติดตามหนี้', path: '/overdue', icon: AlertTriangle },
+        { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
+        { label: 'จัดการอุปกรณ์', path: '/mdm', icon: Smartphone },
       ],
     },
     {
@@ -527,29 +529,18 @@ const OWNER_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'ลูกค้า', path: '/customers', icon: Users },
         { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
-        { label: 'ใบเสนอราคา', path: '/quotes', icon: ReceiptText },
         { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
-        { label: 'เอกสารร่าง', path: '/drafts', icon: Inbox },
-        { label: 'รับประกัน/ส่งซ่อม', path: '/insurance', icon: ShieldCheck },
       ],
     },
     {
-      key: 'owner-collection',
-      label: 'ติดตามหนี้',
-      icon: AlertTriangle,
+      key: 'owner-aftersales',
+      label: 'หลังการขาย',
+      icon: Shield,
       zone: 'shop',
       items: [
-        { label: 'ติดตามหนี้', path: '/overdue', icon: AlertTriangle },
         { label: 'เปลี่ยนเครื่องเสีย (7 วัน)', path: '/defect-exchange', icon: Wrench },
-        { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
-        { label: 'จัดการอุปกรณ์', path: '/mdm', icon: Smartphone },
-        {
-          label: 'ลงทะเบียนประกัน',
-          path: '/insurance',
-          icon: Shield,
-          placeholder: { trackingSP: 'SP5', eta: 'ภายในไตรมาส 3/2026' },
-        },
+        { label: 'รับซ่อม/รับประกัน', path: '/insurance', icon: ShieldCheck },
       ],
     },
     /* ── FIN zone restructure (per owner CSV) ───────────────────
@@ -584,6 +575,17 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'จ่ายให้หน้าร้าน (Inter-co)', path: '/accounting/intercompany', icon: ClipboardList },
         { label: 'ค่าใช้จ่ายดำเนินงาน', path: '/expenses', icon: Receipt },
         { label: 'รายได้อื่น', path: '/other-income', icon: TrendingUp },
+        // Period-close grouped under collapsible parent
+        {
+          label: 'ปิดบัญชี',
+          path: '/monthly-close',
+          icon: CalendarDays,
+          children: [
+            { label: 'ปิดบัญชีรายเดือน', path: '/monthly-close', icon: CalendarDays },
+            { label: 'งวดบัญชี', path: '/accounting/periods', icon: CalendarDays },
+            { label: 'ชำระเงินระหว่างบริษัท', path: '/accounting/intercompany', icon: ClipboardList },
+          ],
+        },
         {
           label: 'ซื้อทรัพย์สิน',
           path: '/assets',

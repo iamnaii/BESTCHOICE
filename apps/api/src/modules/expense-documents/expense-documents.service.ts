@@ -559,6 +559,98 @@ export class ExpenseDocumentsService implements OnModuleInit {
     });
   }
 
+  // ─── SP5 Phase 2 — Repair-ticket auto-doc helper ──────────────────────────
+  /**
+   * Creates a DRAFT ExpenseDocument of type REPAIR_SERVICE within an existing
+   * transaction. Called by RepairTicketsService.returnToCustomer() (payer=SHOP
+   * path) so the repair cost doc and the ticket state-flip land atomically.
+   *
+   * Design notes:
+   * - Takes a `Prisma.TransactionClient` so the entire returnToCustomer flow
+   *   is a single atomic unit — no partial state if doc creation fails.
+   * - `amount` is accepted as `Prisma.Decimal` to keep full precision across
+   *   the module boundary (no Number() drift).
+   * - Skips the CoA-type guard (5x-xxxx "ค่าใช้จ่าย" check) because the
+   *   account code comes from SystemConfig, not from user input. Validated at
+   *   configuration time by the OWNER.
+   * - Skips the multi-line adjustment validation (V12/V13/V14) — single-line
+   *   doc with no adjustments.
+   */
+  async createDraftForRepair(
+    dto: {
+      vendorName: string;
+      amount: Prisma.Decimal;
+      accountCode: string;
+      description: string;
+      branchId: string;
+      createdById: string;
+      metadata: Record<string, unknown>;
+    },
+    tx: Prisma.TransactionClient,
+  ): Promise<{ id: string }> {
+    const documentDate = new Date();
+
+    const line = this.aggregator.computeLine(
+      {
+        quantity: 1,
+        unitPrice: dto.amount,
+        vatPercent: 0,
+        whtPercent: 0,
+      },
+      'EXCLUSIVE',
+    );
+    const totals = this.aggregator.aggregateLines([line]);
+
+    const number = await this.docNumber.next(tx, 'REPAIR_SERVICE', documentDate);
+
+    const doc = await tx.expenseDocument.create({
+      data: {
+        number,
+        documentType: 'REPAIR_SERVICE',
+        branchId: dto.branchId,
+        documentDate,
+        vendorName: dto.vendorName,
+        description: dto.description,
+        subtotal: totals.subtotal,
+        vatAmount: totals.vatAmount,
+        withholdingTax: totals.withholdingTax,
+        totalAmount: totals.totalAmount,
+        status: 'DRAFT',
+        taxDisallowed: false,
+        createdById: dto.createdById,
+        // W6: human-readable note (metadata traceability via FK repairTicketId on
+        // the RepairTicket → expenseDocumentId back-reference; no need to embed JSON).
+        note: `Auto-created from repair ticket ${(dto.metadata as { repairTicketId?: string }).repairTicketId ?? ''}`,
+        expenseDetail: {
+          create: {
+            priceType: 'EXCLUSIVE',
+            lines: {
+              create: [
+                {
+                  lineNo: 1,
+                  category: dto.accountCode,
+                  description: dto.description,
+                  quantity: new Prisma.Decimal(1),
+                  unitPrice: dto.amount,
+                  discount: new Prisma.Decimal(0),
+                  vatPercent: new Prisma.Decimal(0),
+                  whtPercent: new Prisma.Decimal(0),
+                  amountBeforeVat: line.amountBeforeVat,
+                  vatAmount: line.vatAmount,
+                  whtAmount: line.whtAmount,
+                  taxDisallowed: false,
+                },
+              ],
+            },
+          },
+        },
+      },
+      select: { id: true },
+    });
+
+    return { id: doc.id };
+  }
+
   // ─── Credit Note create (validates + computes totals from lines) ──────────
   // C4 · 2-Mode:
   //   - LINKED (default): full path with original lookup, advisory lock, cap
@@ -2084,8 +2176,12 @@ export class ExpenseDocumentsService implements OnModuleInit {
       );
     }
 
-    // EXPENSE + CREDIT_NOTE + PAYROLL + VENDOR_SETTLEMENT supported
-    if (!['EXPENSE', 'CREDIT_NOTE', 'PAYROLL', 'VENDOR_SETTLEMENT'].includes(doc.documentType)) {
+    // EXPENSE + CREDIT_NOTE + PAYROLL + VENDOR_SETTLEMENT + REPAIR_SERVICE supported
+    if (
+      !['EXPENSE', 'CREDIT_NOTE', 'PAYROLL', 'VENDOR_SETTLEMENT', 'REPAIR_SERVICE'].includes(
+        doc.documentType,
+      )
+    ) {
       throw new BadRequestException(`type ${doc.documentType} not supported`);
     }
 

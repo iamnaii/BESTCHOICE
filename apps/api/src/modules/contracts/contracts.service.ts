@@ -1044,4 +1044,131 @@ export class ContractsService {
       },
     });
   }
+
+  /**
+   * P4-SP5: Dashboard milestones summary.
+   * Returns new contracts this month, contracts completing this month,
+   * and top 5 recent new contracts + top 20 final installments.
+   */
+  async getMilestonesSummary() {
+    const now = new Date();
+    // Current month bounds (UTC — server stores UTC but created_at/due_date are aligned to BKK days)
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+
+    // --- newThisMonth: contracts created this month (ACTIVE or later = signed & activated) ---
+    const newContracts = await this.prisma.contract.findMany({
+      where: {
+        createdAt: { gte: monthStart, lte: monthEnd },
+        status: { notIn: ['DRAFT', 'CANCELED'] },
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        contractNumber: true,
+        financedAmount: true,
+        createdAt: true,
+        customer: { select: { id: true, name: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const newThisMonthCount = newContracts.length;
+    const newThisMonthSum = newContracts.reduce(
+      (acc, c) => acc + Number(c.financedAmount),
+      0,
+    );
+    const recentNewContracts = newContracts.slice(0, 5).map((c) => ({
+      id: c.id,
+      contractNumber: c.contractNumber,
+      customerName: c.customer.name,
+      financedAmount: Number(c.financedAmount),
+      createdAt: c.createdAt,
+    }));
+
+    // --- completingThisMonth: ACTIVE contracts where last installment dueDate is this month ---
+    // Find max dueDate per contract among PENDING/OVERDUE payments, check if in this month
+    const lastInstallmentsRaw = await this.prisma.payment.findMany({
+      where: {
+        dueDate: { gte: monthStart, lte: monthEnd },
+        status: { in: ['PENDING', 'OVERDUE'] },
+        deletedAt: null,
+        contract: {
+          status: 'ACTIVE',
+          deletedAt: null,
+        },
+      },
+      select: {
+        id: true,
+        contractId: true,
+        dueDate: true,
+        amountDue: true,
+        amountPaid: true,
+        installmentNo: true,
+        contract: {
+          select: {
+            id: true,
+            contractNumber: true,
+            totalMonths: true,
+            customer: { select: { id: true, name: true } },
+          },
+        },
+      },
+      orderBy: { dueDate: 'asc' },
+    });
+
+    // Keep only the max installmentNo per contract to identify "last" installment
+    const contractMaxInstallment = new Map<string, number>();
+    for (const p of lastInstallmentsRaw) {
+      const existing = contractMaxInstallment.get(p.contractId) ?? 0;
+      if (p.installmentNo > existing) {
+        contractMaxInstallment.set(p.contractId, p.installmentNo);
+      }
+    }
+
+    // Also get actual max installmentNo for each contract (to find truly last installment)
+    const contractIds = [...new Set(lastInstallmentsRaw.map((p) => p.contractId))];
+    const maxInstallments = await this.prisma.payment.groupBy({
+      by: ['contractId'],
+      where: { contractId: { in: contractIds }, deletedAt: null },
+      _max: { installmentNo: true },
+    });
+    const contractTotalInstallments = new Map(
+      maxInstallments.map((m) => [m.contractId, m._max.installmentNo ?? 0]),
+    );
+
+    // Filter to payments that are the final installment for their contract
+    const finalInstallmentsThisMonth = lastInstallmentsRaw
+      .filter((p) => p.installmentNo === contractTotalInstallments.get(p.contractId))
+      .slice(0, 20)
+      .map((p) => ({
+        paymentId: p.id,
+        contractId: p.contractId,
+        contractNumber: p.contract.contractNumber,
+        customerName: p.contract.customer.name,
+        dueDate: p.dueDate,
+        amountDue: Number(p.amountDue),
+        installmentNo: p.installmentNo,
+        totalMonths: p.contract.totalMonths,
+      }));
+
+    const completingThisMonthCount = new Set(finalInstallmentsThisMonth.map((p) => p.contractId)).size;
+    const completingThisMonthSum = finalInstallmentsThisMonth.reduce(
+      (acc, p) => acc + p.amountDue,
+      0,
+    );
+
+    return {
+      newThisMonth: {
+        count: newThisMonthCount,
+        totalAmount: newThisMonthSum,
+      },
+      completingThisMonth: {
+        count: completingThisMonthCount,
+        totalAmount: completingThisMonthSum,
+      },
+      recentNewContracts,
+      finalInstallmentsThisMonth: finalInstallmentsThisMonth.slice(0, 5),
+    };
+  }
 }

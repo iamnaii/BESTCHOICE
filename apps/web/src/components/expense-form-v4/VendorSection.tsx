@@ -1,5 +1,6 @@
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { ExpenseFormState } from './types';
+import TaxDisallowedHint from './TaxDisallowedHint';
 
 interface Props {
   state: ExpenseFormState;
@@ -78,21 +79,28 @@ export function VendorSection({ state, onChange }: Props) {
       {/* Phase A.5 — Tax-disallowed flag (ม.65 ตรี ป.รัษฎากร).
           Bookkeeping unchanged — flag only affects ภ.ง.ด.50/51 deductible total
           at year-end. Display as a single doc-level checkbox; per-line override
-          lives on each line row for the rare mixed-category case. */}
-      <label className="flex items-start gap-2.5 rounded-lg border border-border bg-muted/30 px-3 py-2.5 cursor-pointer hover:bg-muted/50 transition-colors">
-        <input
-          type="checkbox"
-          checked={state.taxDisallowed}
-          onChange={(e) => onChange({ taxDisallowed: e.target.checked })}
-          className="mt-0.5"
-        />
-        <div className="text-xs leading-snug">
-          <div className="font-medium">ค่าใช้จ่ายต้องห้าม (ม.65 ตรี ป.รัษฎากร)</div>
-          <div className="text-muted-foreground mt-0.5">
-            ติ๊กเมื่อเป็นค่าใช้จ่ายที่หักลดหย่อนภาษีนิติบุคคลไม่ได้ (เช่น ค่ารับรองเกิน 2,000 บาท, ค่าปรับสรรพากร, รายจ่ายส่วนตัว). บันทึกบัญชีปกติ — มีผลเฉพาะรายงาน ภ.ง.ด.50/51
+          lives on each line row for the rare mixed-category case.
+          Owner B2 (2026-05-17): TaxDisallowedHint exposes the full ม.65 ตรี
+          category list via a Popover next to the inline description. */}
+      <div className="rounded-lg border border-border bg-muted/30 px-3 py-2.5">
+        <label className="flex items-start gap-2.5 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={state.taxDisallowed}
+            onChange={(e) => onChange({ taxDisallowed: e.target.checked })}
+            className="mt-0.5"
+          />
+          <div className="text-xs leading-snug">
+            <div className="font-medium">ค่าใช้จ่ายต้องห้าม (ม.65 ตรี ป.รัษฎากร)</div>
+            <div className="text-muted-foreground mt-0.5">
+              ติ๊กเมื่อเป็นค่าใช้จ่ายที่หักลดหย่อนภาษีนิติบุคคลไม่ได้ (เช่น ค่ารับรองเกิน 2,000 บาท, ค่าปรับสรรพากร, รายจ่ายส่วนตัว). บันทึกบัญชีปกติ — มีผลเฉพาะรายงาน ภ.ง.ด.50/51
+            </div>
           </div>
+        </label>
+        <div className="mt-1.5 pl-6">
+          <TaxDisallowedHint />
         </div>
-      </label>
+      </div>
     </div>
   );
 }

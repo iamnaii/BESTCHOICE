@@ -1999,4 +1999,47 @@ export class AccountingService implements OnModuleInit {
       skippedLineCount: skipped,
     };
   }
+
+  // ─── General Journal ──────────────────────────────────────────────────────
+
+  /**
+   * Returns a paginated list of JournalEntries within the given date range,
+   * ordered by postedAt descending, with their lines included.
+   *
+   * Used by the GeneralJournalPage (P4-SP1, Task 7).
+   */
+  async getGeneralJournal(
+    periodStart: Date,
+    periodEnd: Date,
+    opts: { page?: number; limit?: number; companyId?: string } = {},
+  ) {
+    const page = opts.page ?? 1;
+    const limit = opts.limit ?? 50;
+    const where = {
+      postedAt: { gte: periodStart, lte: periodEnd },
+      deletedAt: null,
+      ...(opts.companyId ? { companyId: opts.companyId } : {}),
+    };
+    const [data, total] = await Promise.all([
+      this.prisma.journalEntry.findMany({
+        where,
+        include: {
+          lines: {
+            select: {
+              accountCode: true,
+              debit: true,
+              credit: true,
+              description: true,
+            },
+            orderBy: { id: 'asc' },
+          },
+        },
+        orderBy: { postedAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.journalEntry.count({ where }),
+    ]);
+    return { data, total, page, limit };
+  }
 }

@@ -180,6 +180,22 @@ export class AccountingController {
     res.end(result.csv);
   }
 
+  @Get('ledger/general-journal')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  getGeneralJournal(
+    @Query('start') start: string,
+    @Query('end') end: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('companyId') companyId?: string,
+  ) {
+    return this.service.getGeneralJournal(new Date(start), new Date(end), {
+      page: page ? parseInt(page, 10) : 1,
+      limit: limit ? parseInt(limit, 10) : 50,
+      companyId,
+    });
+  }
+
   @Get('ledger/general-ledger')
   @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   getGeneralLedger(

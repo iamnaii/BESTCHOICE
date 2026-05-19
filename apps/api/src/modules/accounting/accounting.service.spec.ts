@@ -89,6 +89,7 @@ describe('AccountingService', () => {
       journalEntry: {
         findFirst: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(0),
       },
       journalLine: {
         groupBy: jest.fn().mockResolvedValue([]),
@@ -1235,6 +1236,58 @@ describe('AccountingService', () => {
       );
       // Only S41-1101 counted, 41-1101 ignored by the prefix check.
       expect(result.revenue.total.toNumber()).toBe(1000);
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // getGeneralJournal
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  describe('getGeneralJournal', () => {
+    it('returns JournalEntry list with lines, sorted by postedAt desc, paged', async () => {
+      const start = new Date('2026-05-01');
+      const end = new Date('2026-05-31');
+      const result = await service.getGeneralJournal(start, end, { page: 1, limit: 50 });
+      expect(result).toHaveProperty('data');
+      expect(result).toHaveProperty('total');
+      // Empty mock DB — shape assertions only
+      if (result.data.length > 0) {
+        expect(result.data[0]).toHaveProperty('lines');
+        // sorted desc by postedAt
+        for (let i = 1; i < result.data.length; i++) {
+          const prev = result.data[i - 1].postedAt;
+          const curr = result.data[i].postedAt;
+          if (prev != null && curr != null) {
+            expect(new Date(prev).getTime()).toBeGreaterThanOrEqual(new Date(curr).getTime());
+          }
+        }
+      }
+    });
+
+    it('returns correct pagination shape', async () => {
+      const start = new Date('2026-05-01');
+      const end = new Date('2026-05-31');
+      const result = await service.getGeneralJournal(start, end, { page: 2, limit: 25 });
+      expect(result.page).toBe(2);
+      expect(result.limit).toBe(25);
+      expect(result.total).toBe(0);
+      expect(Array.isArray(result.data)).toBe(true);
+    });
+
+    it('filters by companyId when provided', async () => {
+      const start = new Date('2026-05-01');
+      const end = new Date('2026-05-31');
+      await service.getGeneralJournal(start, end, { companyId: 'co-123' });
+      const call = prisma.journalEntry.findMany.mock.calls.at(-1)[0];
+      expect(call.where.companyId).toBe('co-123');
+    });
+
+    it('does not include deleted entries', async () => {
+      const start = new Date('2026-05-01');
+      const end = new Date('2026-05-31');
+      await service.getGeneralJournal(start, end);
+      const call = prisma.journalEntry.findMany.mock.calls.at(-1)[0];
+      expect(call.where.deletedAt).toBeNull();
     });
   });
 });

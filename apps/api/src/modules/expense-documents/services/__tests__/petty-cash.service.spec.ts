@@ -22,21 +22,25 @@ describe('PettyCashService', () => {
   });
 
   describe('getConfig', () => {
-    it('defaults to 11-1201 / 5000 when no SystemConfig rows exist', async () => {
+    it('defaults to 11-1103 / 5000 when no SystemConfig rows exist', async () => {
+      // Owner Response Q1 (signed 2026-05-17): Petty Cash Cr leg = 11-1103
+      // (เงินสดพนักงานบัญชี — Imprest Fund pattern). Default flipped from the
+      // previous 11-1201 (KBank) — see migration
+      // 20260955000000_owner_q1q8_systemconfig_decisions.
       const cfg = await service.getConfig();
-      expect(cfg.account).toBe('11-1201');
+      expect(cfg.account).toBe('11-1103');
       expect(cfg.limit.toString()).toBe('5000');
       expect(cfg.replenishThreshold).toBeNull();
     });
 
     it('reads overrides from SystemConfig when present', async () => {
       prisma.systemConfig.findMany.mockResolvedValue([
-        { key: 'petty_cash_account', value: '11-1103' },
+        { key: 'petty_cash_account', value: '11-1201' },
         { key: 'petty_cash_limit', value: '10000' },
         { key: 'petty_cash_replenish_threshold', value: '2000' },
       ]);
       const cfg = await service.getConfig();
-      expect(cfg.account).toBe('11-1103');
+      expect(cfg.account).toBe('11-1201');
       expect(cfg.limit.toString()).toBe('10000');
       expect(cfg.replenishThreshold?.toString()).toBe('2000');
     });

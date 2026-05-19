@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>คำถามรอคำตอบ Owner — Owner Response v2.0 follow-up</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:           #ffffff;
+    --bg-muted:    #fafaf9;
+    --bg-elev:    #f4f4f3;
+    --fg:           #18181b;
+    --fg-muted:   #71717a;
+    --fg-subtle:  #a1a1aa;
+    --border:     #e4e4e7;
+    --border-soft:#f1f1f0;
+    --emerald-50: #ecfdf5;
+    --emerald-600:#059669;
+    --emerald-700:#047857;
+    --amber-50:   #fffbeb;
+    --amber-600:  #d97706;
+    --amber-800:  #92400e;
+    --rose-50:    #fff1f2;
+    --rose-600:   #e11d48;
+    --rose-800:   #9f1239;
+    --indigo-50:  #eef2ff;
+    --indigo-600: #4f46e5;
+    --indigo-800: #3730a3;
+    --slate-50:   #f8fafc;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html { -webkit-text-size-adjust: 100%; }
+
+  body {
+    margin: 0;
+    font-family: 'IBM Plex Sans Thai', system-ui, -apple-system, sans-serif;
+    font-feature-settings: 'liga', 'kern';
+    line-height: 1.6;
+    color: var(--fg);
+    background: var(--bg-muted);
+    padding: 24px 16px 80px;
+  }
+
+  .wrap {
+    max-width: 880px;
+    margin: 0 auto;
+  }
+
+  .hero {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px 28px 24px;
+    margin-bottom: 24px;
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: var(--emerald-50);
+    color: var(--emerald-700);
+    border: 1px solid var(--emerald-600);
+    margin-bottom: 12px;
+  }
+
+  h1 {
+    font-size: 22px;
+    font-weight: 700;
+    margin: 0 0 8px;
+    color: var(--fg);
+    line-height: 1.3;
+  }
+
+  .subtitle {
+    font-size: 13.5px;
+    color: var(--fg-muted);
+    margin: 0;
+    line-height: 1.55;
+  }
+
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border-soft);
+  }
+
+  @media (max-width: 600px) {
+    .stats { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  .stat {
+    text-align: center;
+  }
+
+  .stat-num {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--fg);
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+  }
+
+  .stat-label {
+    font-size: 11.5px;
+    color: var(--fg-muted);
+    margin-top: 4px;
+    line-height: 1.4;
+  }
+
+  /* Section block */
+  .section {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    margin-bottom: 18px;
+    overflow: hidden;
+  }
+
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 18px 22px;
+    border-bottom: 1px solid var(--border-soft);
+  }
+
+  .section-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+
+  .section-icon.cpa  { background: var(--rose-50);    color: var(--rose-600);    border: 1px solid #fecdd3; }
+  .section-icon.owner{ background: var(--indigo-50);  color: var(--indigo-600);  border: 1px solid #c7d2fe; }
+  .section-icon.ops  { background: var(--amber-50);   color: var(--amber-600);   border: 1px solid #fde68a; }
+
+  .section-title {
+    font-size: 15px;
+    font-weight: 600;
+    margin: 0;
+    color: var(--fg);
+  }
+
+  .section-meta {
+    font-size: 12.5px;
+    color: var(--fg-muted);
+    margin: 2px 0 0;
+    line-height: 1.4;
+  }
+
+  /* Question card */
+  .q {
+    padding: 18px 22px;
+    border-top: 1px solid var(--border-soft);
+  }
+
+  .q:first-of-type { border-top: 0; }
+
+  .q-tag {
+    display: inline-block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--fg-muted);
+    background: var(--bg-elev);
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin-bottom: 8px;
+    letter-spacing: 0.02em;
+  }
+
+  .q-title {
+    font-size: 14.5px;
+    font-weight: 600;
+    color: var(--fg);
+    margin: 0 0 6px;
+    line-height: 1.45;
+  }
+
+  .q-body {
+    font-size: 13.5px;
+    color: var(--fg);
+    line-height: 1.65;
+  }
+
+  .q-body p { margin: 0 0 8px; }
+  .q-body p:last-child { margin-bottom: 0; }
+
+  .q-body em {
+    background: var(--bg-elev);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-style: normal;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+  }
+
+  .q-context {
+    margin-top: 12px;
+    padding: 12px 14px;
+    background: var(--bg-elev);
+    border-radius: 8px;
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: var(--fg-muted);
+    border-left: 3px solid var(--border);
+  }
+
+  .q-context strong {
+    color: var(--fg);
+    font-weight: 600;
+  }
+
+  /* Options for owner to pick */
+  .opts {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 12px;
+  }
+
+  .opt {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 10px 12px;
+    background: var(--slate-50);
+    border: 1px solid var(--border-soft);
+    border-radius: 8px;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .opt-letter {
+    font-weight: 700;
+    color: var(--emerald-700);
+    flex-shrink: 0;
+    width: 22px;
+  }
+
+  .opt-body { flex: 1; }
+  .opt-body strong { color: var(--fg); font-weight: 600; }
+
+  /* Answer space */
+  .answer-box {
+    margin-top: 12px;
+    padding: 14px 16px;
+    border: 1.5px dashed var(--border);
+    border-radius: 8px;
+    min-height: 56px;
+    font-size: 13px;
+    color: var(--fg-subtle);
+    background: #fff;
+  }
+
+  .answer-box::before {
+    content: "✏  คำตอบ Owner: ";
+    font-weight: 600;
+    color: var(--fg-muted);
+  }
+
+  /* Action checklist */
+  .actions {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 22px 24px;
+    margin-top: 24px;
+  }
+
+  .actions h2 {
+    font-size: 15px;
+    font-weight: 600;
+    margin: 0 0 4px;
+    color: var(--fg);
+  }
+
+  .actions .lead {
+    font-size: 12.5px;
+    color: var(--fg-muted);
+    margin: 0 0 16px;
+    line-height: 1.5;
+  }
+
+  .check-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  .check-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px 0;
+    border-top: 1px solid var(--border-soft);
+    font-size: 13.5px;
+    line-height: 1.55;
+  }
+
+  .check-list li:first-child { border-top: 0; padding-top: 0; }
+
+  .check-box {
+    width: 18px;
+    height: 18px;
+    border: 1.5px solid var(--fg-subtle);
+    border-radius: 4px;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  .check-body { flex: 1; }
+
+  .check-body strong {
+    display: block;
+    color: var(--fg);
+    font-weight: 600;
+    margin-bottom: 2px;
+  }
+
+  .check-body .check-meta {
+    font-size: 12px;
+    color: var(--fg-muted);
+  }
+
+  /* Footer */
+  .foot {
+    text-align: center;
+    font-size: 11.5px;
+    color: var(--fg-subtle);
+    padding-top: 28px;
+    line-height: 1.6;
+  }
+
+  .foot strong { color: var(--fg-muted); }
+
+  /* Print */
+  @media print {
+    body { background: white; padding: 0; }
+    .section, .hero, .actions { break-inside: avoid; border-radius: 0; }
+    .answer-box { min-height: 64px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ============ HERO ============ -->
+  <header class="hero">
+    <span class="badge">⏳ Pending Owner Decision</span>
+    <h1>คำถามรอคำตอบ Owner</h1>
+    <p class="subtitle">
+      Owner Response v2.0 ปิดครบ 11/11 ข้อแล้ว (4 PR + 2 docs). คำถามที่เหลือมาจาก Phase A.5 brief — <strong>ส่งให้ Owner ตรวจก่อน Dev เริ่ม implement</strong> ตามคำสั่ง Bonus B3. <br><br>
+      Session: 2026-05-19 · Dev: Claude (Opus 4.7) · จากเอกสาร <em>2026-05-19-phase-a5-brief.md</em>
+    </p>
+    <div class="stats">
+      <div class="stat">
+        <div class="stat-num">8</div>
+        <div class="stat-label">คำถามทั้งหมด</div>
+      </div>
+      <div class="stat">
+        <div class="stat-num" style="color: var(--rose-600);">4</div>
+        <div class="stat-label">CPA-blocked</div>
+      </div>
+      <div class="stat">
+        <div class="stat-num" style="color: var(--indigo-600);">3</div>
+        <div class="stat-label">Owner-decision</div>
+      </div>
+      <div class="stat">
+        <div class="stat-num" style="color: var(--amber-600);">1</div>
+        <div class="stat-label">Ops-verify</div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ============ SECTION A — OPS VERIFY ============ -->
+  <section class="section">
+    <header class="section-header">
+      <div class="section-icon ops">⚙</div>
+      <div>
+        <h2 class="section-title">A · Ops verify (Owner ทำเอง)</h2>
+        <p class="section-meta">เปิด psql ตรวจค่า → ถ้าตรง ลุย soft-delete ตามรันบุค</p>
+      </div>
+    </header>
+
+    <article class="q">
+      <span class="q-tag">A1 · Q6 VAT-RATE</span>
+      <h3 class="q-title">ค่า <code>VAT_RATE</code> ใน SystemConfig prod ตอนนี้ตรงไหม?</h3>
+      <div class="q-body">
+        <p>ก่อน soft-delete legacy keys <code>vat_pct</code> + <code>vat_rate</code> ผม ต้อง verify ว่า <code>VAT_RATE</code> ถือค่าที่ถูกต้องอยู่ (น่าจะ <code>'7'</code> = 7%).</p>
+        <div class="q-context">
+          <strong>เปิด psql รัน:</strong><br>
+          <code>SELECT key, value, deleted_at IS NOT NULL AS deleted FROM system_config WHERE key IN ('VAT_RATE', 'vat_pct', 'vat_rate');</code><br><br>
+          คาดหวัง: <code>VAT_RATE = '7'</code>, deleted = false. ถ้าผิดให้แจ้ง Dev เพื่อ backfill ก่อน.
+        </div>
+      </div>
+      <div class="answer-box"></div>
+    </article>
+  </section>
+
+  <!-- ============ SECTION B — OWNER DECISION ============ -->
+  <section class="section">
+    <header class="section-header">
+      <div class="section-icon owner">🧭</div>
+      <div>
+        <h2 class="section-title">B · Owner decisions (Dev รอ go/no-go)</h2>
+        <p class="section-meta">ตัดสินใจอย่างเดียวก็พอ — ไม่ต้องปรึกษา CPA</p>
+      </div>
+    </header>
+
+    <article class="q">
+      <span class="q-tag">B1 · Phase A.5 §8.1 · CPA channel</span>
+      <h3 class="q-title">Dev คุย CPA โดยตรงเรื่อง CR-001 + N-005 ได้เลย หรือ Owner เป็นช่องทาง?</h3>
+      <div class="q-body">
+        <p>Dev มีข้อมูลครบในมือพอจะ brief CPA เรื่อง VAT-on-interest (CR-001) + Interest recognition (N-005 EIR-vs-straight-line) — เริ่มได้เมื่อ Owner OK.</p>
+        <div class="opts">
+          <div class="opt"><span class="opt-letter">A</span><span class="opt-body"><strong>Dev brief CPA โดยตรง</strong> — Owner ฟัง CC, Dev ส่งคำถามเป็นเอกสารให้ CPA, รับคำตอบกลับ → Dev เริ่ม implement</span></div>
+          <div class="opt"><span class="opt-letter">B</span><span class="opt-body"><strong>Owner เป็นช่องทาง</strong> — Dev ส่ง memo ให้ Owner เห็นก่อน → Owner ส่งต่อ CPA → คำตอบกลับมาที่ Owner → forward ให้ Dev</span></div>
+        </div>
+      </div>
+      <div class="answer-box"></div>
+    </article>
+
+    <article class="q">
+      <span class="q-tag">B2 · Phase A.5 §8.2 / §4 · SHOP pairing scope</span>
+      <h3 class="q-title">SHOP-side accounting pairing ควรครอบคลุมแค่ Contract Activation หรือเพิ่ม Repossession ด้วย?</h3>
+      <div class="q-body">
+        <p>ปัจจุบัน P3-SP5 ship PairedJournalService แล้ว แต่ใช้แค่ "ย้ายของระหว่าง SHOP→FINANCE" ตอน activation. งาน A.5 จะ extend ไปไหน:</p>
+        <div class="opts">
+          <div class="opt"><span class="opt-letter">A</span><span class="opt-body"><strong>Activation อย่างเดียว</strong> — ลด risk ของ orphan FINANCE JE ตอนสร้างสัญญา (3 วัน)</span></div>
+          <div class="opt"><span class="opt-letter">B</span><span class="opt-body"><strong>Activation + Repossession</strong> — เพิ่ม SHOP repossession-reversal template (ตี inventory คืน + reverse COGS) (≈7 วัน รวม)</span></div>
+          <div class="opt"><span class="opt-letter">C</span><span class="opt-body"><strong>ยังไม่ต้อง</strong> — รอ P3-SP7 multi-entity legal split (2027) แทน</span></div>
+        </div>
+        <div class="q-context">
+          <strong>Trade-off:</strong> A เร็วและปลอดภัย แต่ Repossession ปัจจุบันยังเป็น "FINANCE post repo, SHOP ลืม book inventory คืน" → SHOP TB ผิดเฉย ๆ ถ้าเกิด repo จริง. B ปิด gap นี้แต่ใช้เวลา 2x.
+        </div>
+      </div>
+      <div class="answer-box"></div>
+    </article>
+
+    <article class="q">
+      <span class="q-tag">B3 · Phase A.5 §8.4 · CR-001 historical re-stating</span>
+      <h3 class="q-title">ถ้า CPA ตอบว่า ม.79/4(7) บังคับ ไม่ vat บนดอกเบี้ย — Owner ยอม re-state ย้อนหลังในกรณีไหน?</h3>
+      <div class="q-body">
+        <p>ถ้า CPA confirm ว่าต้องยกเว้น VAT บนดอกเบี้ย ระบบมี 3 paths:</p>
+        <div class="opts">
+          <div class="opt"><span class="opt-letter">A</span><span class="opt-body"><strong>Forward-only</strong> — สัญญาใหม่หลังวันที่ X ไม่คิด VAT บนดอกเบี้ย, สัญญาเก่าไม่แตะ (recommended)</span></div>
+          <div class="opt"><span class="opt-letter">B</span><span class="opt-body"><strong>Back-correct เฉพาะถ้าสรรพากรเรียกตรวจ</strong> — เก็บ stance ปัจจุบันไว้, refile ภ.พ.30 เมื่อถูก audit</span></div>
+          <div class="opt"><span class="opt-letter">C</span><span class="opt-body"><strong>Back-correct ทันที (proactive)</strong> — reverse 21-2102 over-bookings, refile ภ.พ.30 ทุกเดือนตั้งแต่ปีเปิด, ขอ refund</span></div>
+        </div>
+        <div class="q-context">
+          <strong>Risk:</strong> C มีค่าใช้จ่าย CPA + ขั้นตอนเยอะที่สุด แต่เป็น defense ที่หนาที่สุดถ้าโดน audit. A เป็น golden mean.
+        </div>
+      </div>
+      <div class="answer-box"></div>
+    </article>
+
+    <article class="q">
+      <span class="q-tag">B4 · CLAUDE.md cleanup (small)</span>
+      <h3 class="q-title">อนุญาตให้ Dev ลบ "W-003 Unearned interest field" จาก CLAUDE.md "Things deferred"?</h3>
+      <div class="q-body">
+        <p>Phase A.4 implement W-003 ผ่าน 11-2106 Contra Asset ไปแล้ว (ดู accounting.md "Full Accrual TFRS 15"). แต่ CLAUDE.md ยังโชว์ว่า deferred — ทำให้ Dev คนใหม่งง.</p>
+        <div class="opts">
+          <div class="opt"><span class="opt-letter">A</span><span class="opt-body"><strong>OK ลบได้</strong> — Dev จะลบ W-003 line + เพิ่มบันทึก v6 (Owner Response 2026-05-17) ใน Hardening History</span></div>
+          <div class="opt"><span class="opt-letter">B</span><span class="opt-body"><strong>ยังไม่ต้อง</strong> — เก็บไว้เพื่อ visibility</span></div>
+        </div>
+      </div>
+      <div class="answer-box"></div>
+    </article>
+  </section>
+
+  <!-- ============ SECTION C — CPA QUESTIONS ============ -->
+  <section class="section">
+    <header class="section-header">
+      <div class="section-icon cpa">🧾</div>
+      <div>
+        <h2 class="section-title">C · CPA questions (4 ข้อ)</h2>
+        <p class="section-meta">ส่งให้ CPA ตอบ — Dev รอผลก่อน implement Phase A.5-SP5/SP6</p>
+      </div>
+    </header>
+
+    <article class="q">
+      <span class="q-tag">C1 · CR-001 VAT-on-interest #1</span>
+      <h3 class="q-title">ภ.พ.30 ของบริษัทที่ผ่านมาเคย report VAT บน "ดอกเบี้ยเช่าซื้อ" ไหม?</h3>
+      <div class="q-body">
+        <p>ระบบปัจจุบัน book VAT 7% บนยอดรวม (เงินต้น + ดอกเบี้ย + ค่าคอม) แล้วยังนำส่งทาง ภ.พ.30 ทุกเดือน. คำถามนี้สำหรับยืนยันว่าวันนี้ทำอยู่ตามนี้จริง — ก่อนตัดสินใจว่าจะแก้.</p>
+      </div>
+      <div class="answer-box"></div>
+    </article>
+
+    <article class="q">
+      <span class="q-tag">C2 · CR-001 VAT-on-interest #2</span>
+      <h3 class="q-title">ม.79/4(7) ป.รัษฎากร ใช้กับ "ดอกเบี้ยเช่าซื้อ" ในนิยามของเราหรือไม่?</h3>
+      <div class="q-body">
+        <p>มาตรา 79/4(7) ยกเว้น VAT สำหรับ "ดอกเบี้ย" — แต่ definition ของ "ดอกเบี้ย" ใน hire-purchase context เป็นอะไรกันแน่? ถือว่า interest component ของยอดผ่อนเป็น "ดอกเบี้ย" ตาม ม.79/4(7) ได้ไหม?</p>
+      </div>
+      <div class="answer-box"></div>
+    </article>
+
+    <article class="q">
+      <span class="q-tag">C3 · CR-001 VAT-on-interest #3</span>
+      <h3 class="q-title">ถ้ายกเว้นจริง — split base ออกเป็น taxable principal + exempt interest บนใบกำกับภาษีอย่างไร?</h3>
+      <div class="q-body">
+        <p>ตัวอย่าง ค่างวด 1,515.83฿ = principal 1,416.66 + interest 0 (ปัจจุบัน) + VAT 99.17. ถ้าแยก base: ค่างวด = principal 1,416.66 + interest X (exempt) + VAT = principal × 7% เท่านั้น. CPA แนะนำ format ใบกำกับให้แสดงยอดอย่างไรเพื่อให้ผ่านการตรวจ?</p>
+      </div>
+      <div class="answer-box"></div>
+    </article>
+
+    <article class="q">
+      <span class="q-tag">C4 · N-005 Interest recognition</span>
+      <h3 class="q-title">เคสของเรา (37.5% flat / ≈154% EIR / 12 งวด) ผ่าน NPAEs §11 simplification ได้ไหม?</h3>
+      <div class="q-body">
+        <p>ปัจจุบันใช้ straight-line allocation: <code>interestTotal / totalMonths</code>. TFRS 15 §60-65 ให้ใช้ Effective Interest Method (EIR) แต่ NPAEs §11 ผ่อนปรนถ้า "significant financing component" ไม่ material. คำถามนี้สำคัญ:</p>
+        <ul style="margin: 6px 0 8px; padding-left: 18px; font-size: 13px;">
+          <li>NPAEs §11 simplification ใช้ได้ในเคสเรา?</li>
+          <li>ถ้าใช่ — ออก Policy Memo ลายลักษณ์อักษรให้ดี เก็บไว้ audit trail</li>
+          <li>ถ้าไม่ใช่ — กำหนด timeline migration เป็น EIR (Dev บอก ~1 อาทิตย์)</li>
+        </ul>
+        <div class="q-context">
+          <strong>เอกสารอ้างอิง:</strong> docs/accounting/eir-decision-memo.md (มีตารางเทียบ per-period P&L difference ระหว่าง 2 methods)
+        </div>
+      </div>
+      <div class="answer-box"></div>
+    </article>
+  </section>
+
+  <!-- ============ ACTION CHECKLIST ============ -->
+  <section class="actions">
+    <h2>สิ่งที่ต้องทำหลัง Owner ตอบ</h2>
+    <p class="lead">เพื่อ unblock Phase A.5 และเริ่ม merge / deploy / ส่ง CPA</p>
+
+    <ol class="check-list">
+      <li>
+        <div class="check-box"></div>
+        <div class="check-body">
+          <strong>Owner ตอบ A1 + B1-B4 (5 ข้อ) → Dev ลุย</strong>
+          <div class="check-meta">A.5-SP1 docs cleanup, A.5-SP3/SP4 SHOP pairing — เริ่มได้ทันทีหลัง B2 ตอบ</div>
+        </div>
+      </li>
+      <li>
+        <div class="check-box"></div>
+        <div class="check-body">
+          <strong>Owner ส่ง C1-C4 ให้ CPA (channel ตาม B1) → รอผล</strong>
+          <div class="check-meta">A.5-SP5 (N-005) + A.5-SP6 (CR-001) start หลัง CPA ตอบ — ปกติ 1-2 สัปดาห์</div>
+        </div>
+      </li>
+      <li>
+        <div class="check-box"></div>
+        <div class="check-body">
+          <strong>Merge PR #1035 → #1036 → #1037 → #1038</strong>
+          <div class="check-meta">รอ CI เขียวทั้ง 4 PR (ตอนนี้ MERGEABLE ทุกตัว) — Owner กดเอง หรือบอก Dev "merge ตามลำดับ"</div>
+        </div>
+      </li>
+      <li>
+        <div class="check-box"></div>
+        <div class="check-body">
+          <strong>หลัง #1035 merged + deployed → Owner รัน Q6 SQL runbook</strong>
+          <div class="check-meta">docs/runbooks/2026-05-19-owner-q6-vat-key-cleanup.md (2 step + verify SELECT)</div>
+        </div>
+      </li>
+      <li>
+        <div class="check-box"></div>
+        <div class="check-body">
+          <strong>(Optional) บอก Dev ให้สร้าง VIEWER user ตัวอย่างเพื่อ smoke test</strong>
+          <div class="check-meta">หลัง 3 PR แรก merged — ตรวจว่า auditor เห็นเฉพาะ /reports + /audit-logs + /accounting + /finance/*-report</div>
+        </div>
+      </li>
+    </ol>
+  </section>
+
+  <p class="foot">
+    <strong>BESTCHOICE FINANCE × SHOP</strong> · Owner Response v2.0 follow-up · Session 2026-05-19<br>
+    เอกสารต้นทาง: <em>docs/superpowers/specs/2026-05-19-phase-a5-brief.md</em> + Owner_Response_Q1-Q8_BESTCHOICE_v2.0.pdf
+  </p>
+
+</div>
+</body>
+</html>

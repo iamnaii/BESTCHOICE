@@ -17,7 +17,8 @@ import { Type } from 'class-transformer';
  *
  * Differences vs CreateExpenseDocumentDto:
  *   - No doc-level `vendorName` / `vendorTaxId` — moved per-line via `supplierName`
- *   - `depositAccountCode` is the petty-cash float account (typically 11-1201)
+ *   - `depositAccountCode` is the petty-cash float account (default 11-1103
+ *     เงินสดพนักงานบัญชี per Owner Response Q1 2026-05-17 — Imprest Fund pattern)
  *     and is REQUIRED — V20 rejects other accounts unless config overrides
  *   - WHT intentionally omitted at line level (small-cash scope; vendors with
  *     WHT must use regular EXPENSE flow)
@@ -65,8 +66,9 @@ export class CreatePettyCashDto {
   description?: string;
 
   /**
-   * Petty-cash float account — V20 enforces this is 11-1201 (or whatever the
-   * `petty_cash_account` system_config row says). Required.
+   * Petty-cash float account — V20 enforces this matches the
+   * `petty_cash_account` system_config row (default 11-1103 เงินสดพนักงานบัญชี
+   * per Owner Response Q1 2026-05-17). Required.
    */
   @IsString()
   depositAccountCode!: string;

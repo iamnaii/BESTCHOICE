@@ -449,9 +449,9 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
       zone: 'fin',
       items: [
         { label: 'กำไร-ขาดทุน (P&L)', path: '/profit-loss', icon: PieChart },
-        { label: 'งบกระแสเงินสด', path: '/finance/cash-flow', icon: TrendingUp, placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' } },
-        { label: 'งบ Equity', path: '/finance/equity-statement', icon: BarChart3, placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' } },
-        { label: 'สมุดแยกประเภท', path: '/finance/general-ledger', icon: BookOpen, placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' } },
+        { label: 'งบกระแสเงินสด', path: '/finance/cash-flow', icon: TrendingUp },
+        { label: 'งบ Equity', path: '/finance/equity-statement', icon: BarChart3 },
+        { label: 'สมุดแยกประเภท', path: '/finance/general-ledger', icon: BookOpen },
       ],
     },
     {
@@ -618,10 +618,10 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'ปิดบัญชีสิ้นปี', path: '/finance/year-end-closing', icon: CalendarDays },
         { label: 'งวดบัญชี', path: '/accounting/periods', icon: CalendarDays },
         // CSV §5 — "งบ 4 ประเภท" (full 4-statement set per TFRS)
-        { label: 'งบดุล (Balance Sheet)', path: '/finance/balance-sheet', icon: PieChart, placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' } },
+        { label: 'งบดุล (Balance Sheet)', path: '/finance/balance-sheet', icon: PieChart },
         { label: 'กำไร-ขาดทุน (P&L)', path: '/profit-loss', icon: PieChart },
-        { label: 'งบกระแสเงินสด', path: '/finance/cash-flow', icon: Banknote, placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' } },
-        { label: 'งบ Equity', path: '/finance/equity-statement', icon: BarChart3, placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' } },
+        { label: 'งบกระแสเงินสด', path: '/finance/cash-flow', icon: Banknote },
+        { label: 'งบ Equity', path: '/finance/equity-statement', icon: BarChart3 },
       ],
     },
     {
@@ -632,10 +632,10 @@ const OWNER_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'รายงานรวม', path: '/reports', icon: BarChart3 },
         // CSV §6 placeholders — flagged "ต้องสร้าง"
-        { label: 'รายงานลูกหนี้ + Aging', path: '/finance/aging-report', icon: AlertTriangle, placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' } },
-        { label: 'สมุดรายวัน', path: '/finance/general-journal', icon: BookOpen, placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' } },
-        { label: 'สมุดแยกประเภท', path: '/finance/general-ledger', icon: BookOpen, placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' } },
-        { label: 'รายงานหนี้สูญ', path: '/finance/bad-debt-report', icon: TrendingDown, placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' } },
+        { label: 'รายงานลูกหนี้ + Aging', path: '/finance/aging-report', icon: AlertTriangle },
+        { label: 'สมุดรายวัน', path: '/finance/general-journal', icon: BookOpen },
+        { label: 'สมุดแยกประเภท', path: '/finance/general-ledger', icon: BookOpen },
+        { label: 'รายงานหนี้สูญ', path: '/finance/bad-debt-report', icon: TrendingDown },
         { label: 'รายงานลูกหนี้ Inter-co', path: '/finance/intercompany-report', icon: Building2, placeholder: { trackingSP: 'SP6', eta: 'ภายในไตรมาส 4/2026' } },
         { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
         { label: 'ตรวจสอบบัญชี', path: '/financial-audit', icon: ClipboardList },

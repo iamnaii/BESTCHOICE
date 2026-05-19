@@ -109,6 +109,26 @@ export class AccountingController {
     return this.service.getBalanceSheetFromJournal(asOfDate ? new Date(asOfDate) : undefined);
   }
 
+  // ─── P4-SP1: Aging Report ────────────────────────────────────────────────
+
+  @Get('ledger/aging')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  getAgingReport(@Query('asOf') asOf?: string) {
+    return this.service.getAgingReport(asOf ? new Date(asOf) : new Date());
+  }
+
+  // ─── P4-SP1: Bad Debt Report ──────────────────────────────────────────────
+
+  @Get('ledger/bad-debt')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  getBadDebtReport(
+    @Query('start') start: string,
+    @Query('end') end: string,
+    @Query('companyId') companyId?: string,
+  ) {
+    return this.service.getBadDebtReport(new Date(start), new Date(end), companyId);
+  }
+
   // Balance Sheet & Cash Flow endpoints are in ReportsController (/reports/balance-sheet, /reports/cash-flow)
   // to avoid duplicate routes. See reports.controller.ts.
 
@@ -178,6 +198,22 @@ export class AccountingController {
     // Expose custom headers so the browser fetch() sees them through CORS.
     res.setHeader('Access-Control-Expose-Headers', 'X-Skipped-Lines, X-Row-Count');
     res.end(result.csv);
+  }
+
+  @Get('ledger/general-journal')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  getGeneralJournal(
+    @Query('start') start: string,
+    @Query('end') end: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('companyId') companyId?: string,
+  ) {
+    return this.service.getGeneralJournal(new Date(start), new Date(end), {
+      page: page ? parseInt(page, 10) : 1,
+      limit: limit ? parseInt(limit, 10) : 50,
+      companyId,
+    });
   }
 
   @Get('ledger/general-ledger')

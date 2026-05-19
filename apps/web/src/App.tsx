@@ -170,6 +170,11 @@ const EquityStatementPage = lazy(() =>
 const GeneralLedgerPage = lazy(() =>
   import('@/pages/GeneralLedgerPage').then((m) => ({ default: m.GeneralLedgerPage })),
 );
+// P4-SP1 — Financial report pages
+const BalanceSheetPage = lazy(() => import('@/pages/finance/BalanceSheetPage'));
+const GeneralJournalPage = lazy(() => import('@/pages/finance/GeneralJournalPage'));
+const AgingReportPage = lazy(() => import('@/pages/finance/AgingReportPage'));
+const BadDebtReportPage = lazy(() => import('@/pages/finance/BadDebtReportPage'));
 const PeakSyncPage = lazy(() => import('@/pages/PeakSyncPage'));
 const PeakExportPage = lazy(() => import('@/pages/PeakExportPage'));
 const AiSettingsPage = lazy(() => import('@/pages/AiSettingsPage'));
@@ -1339,42 +1344,9 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/finance/cash-flow"
-            element={
-              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
-                <ComingSoonPage
-                  feature="งบกระแสเงินสด"
-                  trackingSP="SP2"
-                  eta="ภายในไตรมาส 2/2026"
-                />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/finance/equity-statement"
-            element={
-              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
-                <ComingSoonPage
-                  feature="งบแสดงการเปลี่ยนแปลงในส่วนของผู้ถือหุ้น"
-                  trackingSP="SP2"
-                  eta="ภายในไตรมาส 2/2026"
-                />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/finance/general-ledger"
-            element={
-              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
-                <ComingSoonPage
-                  feature="สมุดแยกประเภท"
-                  trackingSP="SP2"
-                  eta="ภายในไตรมาส 2/2026"
-                />
-              </ProtectedRoute>
-            }
-          />
+          {/* /finance/cash-flow — handled by SP2 CashFlowPage route above (line ~763) */}
+          {/* /finance/equity-statement — handled by SP2 EquityStatementPage route above (line ~773) */}
+          {/* /finance/general-ledger — handled by SP2 GeneralLedgerPage route above (line ~780) */}
           <Route
             path="/finance/bank-accounts"
             element={
@@ -1439,7 +1411,7 @@ function App() {
             path="/finance/balance-sheet"
             element={
               <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
-                <ComingSoonPage feature="งบดุล (Balance Sheet)" trackingSP="SP2" eta="ภายในไตรมาส 2/2026" />
+                <BalanceSheetPage />
               </ProtectedRoute>
             }
           />
@@ -1447,7 +1419,7 @@ function App() {
             path="/finance/aging-report"
             element={
               <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
-                <ComingSoonPage feature="รายงานลูกหนี้ + วิเคราะห์อายุหนี้ (Aging)" trackingSP="SP2" eta="ภายในไตรมาส 2/2026" />
+                <AgingReportPage />
               </ProtectedRoute>
             }
           />
@@ -1455,7 +1427,7 @@ function App() {
             path="/finance/general-journal"
             element={
               <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
-                <ComingSoonPage feature="สมุดรายวันทั่วไป" trackingSP="SP2" eta="ภายในไตรมาส 2/2026" />
+                <GeneralJournalPage />
               </ProtectedRoute>
             }
           />
@@ -1463,7 +1435,7 @@ function App() {
             path="/finance/bad-debt-report"
             element={
               <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
-                <ComingSoonPage feature="รายงานหนี้สูญ" trackingSP="SP2" eta="ภายในไตรมาส 2/2026" />
+                <BadDebtReportPage />
               </ProtectedRoute>
             }
           />

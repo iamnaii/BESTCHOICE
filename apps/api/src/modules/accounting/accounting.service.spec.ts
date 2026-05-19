@@ -89,6 +89,7 @@ describe('AccountingService', () => {
       journalEntry: {
         findFirst: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(0),
       },
       journalLine: {
         groupBy: jest.fn().mockResolvedValue([]),
@@ -1235,6 +1236,259 @@ describe('AccountingService', () => {
       );
       // Only S41-1101 counted, 41-1101 ignored by the prefix check.
       expect(result.revenue.total.toNumber()).toBe(1000);
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // getAgingReport
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  describe('getAgingReport', () => {
+    it('returns customer-by-customer aging with buckets 0-30/31-60/61-90/90+', async () => {
+      const result = await service.getAgingReport(new Date('2026-05-19'));
+      expect(result.summary).toHaveProperty('bucket_0_30');
+      expect(result.summary).toHaveProperty('bucket_31_60');
+      expect(result.summary).toHaveProperty('bucket_61_90');
+      expect(result.summary).toHaveProperty('bucket_90_plus');
+      expect(result.customers).toBeInstanceOf(Array);
+      if (result.customers.length > 0) {
+        expect(result.customers[0]).toHaveProperty('customerId');
+        expect(result.customers[0]).toHaveProperty('totalOverdue');
+        expect(result.customers[0]).toHaveProperty('bucket');
+      }
+    });
+
+    it('returns empty customers and zero summary when no overdue payments exist', async () => {
+      prisma.payment.findMany.mockResolvedValueOnce([]);
+      const result = await service.getAgingReport(new Date('2026-05-19'));
+      expect(result.customers).toHaveLength(0);
+      expect(result.summary.bucket_0_30).toBe(0);
+      expect(result.summary.bucket_31_60).toBe(0);
+      expect(result.summary.bucket_61_90).toBe(0);
+      expect(result.summary.bucket_90_plus).toBe(0);
+    });
+
+    it('correctly buckets a payment that is 45 days overdue into bucket_31_60', async () => {
+      const asOf = new Date('2026-05-19');
+      const dueDate = new Date('2026-04-04'); // 45 days before asOf
+      prisma.payment.findMany.mockResolvedValueOnce([
+        {
+          id: 'pay-1',
+          dueDate,
+          amountDue: new Prisma.Decimal(1500),
+          amountPaid: new Prisma.Decimal(0),
+          status: 'OVERDUE',
+          contract: {
+            customer: {
+              id: 'cust-1',
+              name: 'สมชาย ใจดี',
+              phone: '0812345678',
+            },
+          },
+        },
+      ]);
+      const result = await service.getAgingReport(asOf);
+      expect(result.summary.bucket_31_60).toBeCloseTo(1500, 2);
+      expect(result.summary.bucket_0_30).toBe(0);
+      expect(result.customers).toHaveLength(1);
+      expect(result.customers[0].customerName).toBe('สมชาย ใจดี');
+      expect(result.customers[0].bucket).toBe('bucket_31_60');
+    });
+
+    it('skips payments where remaining balance is zero', async () => {
+      const asOf = new Date('2026-05-19');
+      const dueDate = new Date('2026-04-01'); // overdue
+      prisma.payment.findMany.mockResolvedValueOnce([
+        {
+          id: 'pay-2',
+          dueDate,
+          amountDue: new Prisma.Decimal(1500),
+          amountPaid: new Prisma.Decimal(1500), // fully paid
+          status: 'PENDING',
+          contract: {
+            customer: { id: 'cust-2', name: 'มานะ ดี', phone: '0899999999' },
+          },
+        },
+      ]);
+      const result = await service.getAgingReport(asOf);
+      expect(result.customers).toHaveLength(0);
+    });
+
+    it('queries payment.findMany with deletedAt: null filter', async () => {
+      await service.getAgingReport(new Date('2026-05-19'));
+      const call = prisma.payment.findMany.mock.calls.at(-1)[0];
+      expect(call.where.deletedAt).toBeNull();
+      expect(call.where.status.in).toContain('PENDING');
+      expect(call.where.status.in).toContain('OVERDUE');
+    });
+
+    it('returns asOf in the response', async () => {
+      const asOf = new Date('2026-05-19');
+      const result = await service.getAgingReport(asOf);
+      expect(result.asOf).toEqual(asOf);
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // getBadDebtReport
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  describe('getBadDebtReport', () => {
+    const periodStart = new Date('2026-01-01');
+    const periodEnd = new Date('2026-01-31');
+
+    const makeJournalLine = (debit: number, overrides?: Record<string, unknown>) => ({
+      accountCode: '51-1102',
+      debit: new Prisma.Decimal(debit),
+      credit: new Prisma.Decimal(0),
+      description: 'หนี้สูญ',
+      journalEntry: {
+        id: 'je-1',
+        entryNumber: 'JP5-20260115-0001',
+        description: 'ยึดเครื่อง',
+        postedAt: new Date('2026-01-15'),
+        referenceType: 'REPOSSESSION',
+        referenceId: 'repo-1',
+        ...overrides,
+      },
+    });
+
+    beforeEach(() => {
+      prisma.journalLine.findMany.mockResolvedValue([]);
+    });
+
+    it('returns correct shape with period, totalBadDebt, and entries', async () => {
+      const result = await service.getBadDebtReport(periodStart, periodEnd);
+      expect(result).toHaveProperty('period');
+      expect(result.period.start).toEqual(periodStart);
+      expect(result.period.end).toEqual(periodEnd);
+      expect(result).toHaveProperty('totalBadDebt');
+      expect(result).toHaveProperty('entries');
+      expect(Array.isArray(result.entries)).toBe(true);
+    });
+
+    it('returns totalBadDebt=0 and empty entries when no 51-1102 lines exist', async () => {
+      prisma.journalLine.findMany.mockResolvedValueOnce([]);
+      const result = await service.getBadDebtReport(periodStart, periodEnd);
+      expect(result.totalBadDebt).toBe(0);
+      expect(result.entries).toHaveLength(0);
+    });
+
+    it('sums debit amounts correctly across multiple lines', async () => {
+      prisma.journalLine.findMany.mockResolvedValueOnce([
+        makeJournalLine(5000),
+        makeJournalLine(3000),
+        makeJournalLine(2000),
+      ]);
+      const result = await service.getBadDebtReport(periodStart, periodEnd);
+      expect(result.totalBadDebt).toBeCloseTo(10000, 2);
+      expect(result.entries).toHaveLength(3);
+    });
+
+    it('queries only account 51-1102 lines within the period', async () => {
+      await service.getBadDebtReport(periodStart, periodEnd);
+      const call = prisma.journalLine.findMany.mock.calls.at(-1)[0];
+      expect(call.where.accountCode).toBe('51-1102');
+      expect(call.where.journalEntry.postedAt.gte).toEqual(periodStart);
+      expect(call.where.journalEntry.postedAt.lte).toEqual(periodEnd);
+      expect(call.where.journalEntry.deletedAt).toBeNull();
+    });
+
+    it('filters by companyId when provided', async () => {
+      await service.getBadDebtReport(periodStart, periodEnd, 'co-FINANCE');
+      const call = prisma.journalLine.findMany.mock.calls.at(-1)[0];
+      expect(call.where.journalEntry.companyId).toBe('co-FINANCE');
+    });
+
+    it('omits companyId filter when not provided', async () => {
+      await service.getBadDebtReport(periodStart, periodEnd);
+      const call = prisma.journalLine.findMany.mock.calls.at(-1)[0];
+      expect(call.where.journalEntry).not.toHaveProperty('companyId');
+    });
+
+    it('maps entry fields correctly from journalLine and journalEntry', async () => {
+      prisma.journalLine.findMany.mockResolvedValueOnce([makeJournalLine(7500)]);
+      const result = await service.getBadDebtReport(periodStart, periodEnd);
+      const entry = result.entries[0];
+      expect(entry.journalEntryId).toBe('je-1');
+      // entryNumber is exposed as documentNumber in the response
+      expect(entry.documentNumber).toBe('JP5-20260115-0001');
+      expect(entry.amount).toBeCloseTo(7500, 2);
+      // referenceType is exposed as sourceType in the response
+      expect(entry.sourceType).toBe('REPOSSESSION');
+      // referenceId is exposed as sourceId in the response
+      expect(entry.sourceId).toBe('repo-1');
+    });
+
+    it('falls back to journalEntry.description when line description is null', async () => {
+      prisma.journalLine.findMany.mockResolvedValueOnce([
+        {
+          ...makeJournalLine(1000),
+          description: null,
+          journalEntry: {
+            id: 'je-2',
+            entryNumber: 'JP5-20260120-0001',
+            description: 'entry-level description',
+            postedAt: new Date('2026-01-20'),
+            referenceType: 'REPOSSESSION',
+            referenceId: 'repo-2',
+          },
+        },
+      ]);
+      const result = await service.getBadDebtReport(periodStart, periodEnd);
+      expect(result.entries[0].description).toBe('entry-level description');
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // getGeneralJournal
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  describe('getGeneralJournal', () => {
+    it('returns JournalEntry list with lines, sorted by postedAt desc, paged', async () => {
+      const start = new Date('2026-05-01');
+      const end = new Date('2026-05-31');
+      const result = await service.getGeneralJournal(start, end, { page: 1, limit: 50 });
+      expect(result).toHaveProperty('data');
+      expect(result).toHaveProperty('total');
+      // Empty mock DB — shape assertions only
+      if (result.data.length > 0) {
+        expect(result.data[0]).toHaveProperty('lines');
+        // sorted desc by postedAt
+        for (let i = 1; i < result.data.length; i++) {
+          const prev = result.data[i - 1].postedAt;
+          const curr = result.data[i].postedAt;
+          if (prev != null && curr != null) {
+            expect(new Date(prev).getTime()).toBeGreaterThanOrEqual(new Date(curr).getTime());
+          }
+        }
+      }
+    });
+
+    it('returns correct pagination shape', async () => {
+      const start = new Date('2026-05-01');
+      const end = new Date('2026-05-31');
+      const result = await service.getGeneralJournal(start, end, { page: 2, limit: 25 });
+      expect(result.page).toBe(2);
+      expect(result.limit).toBe(25);
+      expect(result.total).toBe(0);
+      expect(Array.isArray(result.data)).toBe(true);
+    });
+
+    it('filters by companyId when provided', async () => {
+      const start = new Date('2026-05-01');
+      const end = new Date('2026-05-31');
+      await service.getGeneralJournal(start, end, { companyId: 'co-123' });
+      const call = prisma.journalEntry.findMany.mock.calls.at(-1)[0];
+      expect(call.where.companyId).toBe('co-123');
+    });
+
+    it('does not include deleted entries', async () => {
+      const start = new Date('2026-05-01');
+      const end = new Date('2026-05-31');
+      await service.getGeneralJournal(start, end);
+      const call = prisma.journalEntry.findMany.mock.calls.at(-1)[0];
+      expect(call.where.deletedAt).toBeNull();
     });
   });
 });

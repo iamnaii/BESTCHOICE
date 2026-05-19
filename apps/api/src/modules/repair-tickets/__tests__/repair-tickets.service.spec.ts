@@ -539,6 +539,306 @@ describe('RepairTicketsService.replace', () => {
   });
 });
 
+// ─── RepairTicketsService.findAll ──────────────────────────────────────────
+
+describe('RepairTicketsService.findAll', () => {
+  let svc: RepairTicketsService;
+  let prisma: any;
+  let audit: any;
+
+  const SALES: { id: string; role: string; branchId: string } = {
+    id: 'u-sales',
+    role: 'SALES',
+    branchId: 'b-1',
+  };
+
+  beforeEach(async () => {
+    ({ prisma, audit } = buildTransitionModule());
+    prisma.repairTicket.findMany = jest.fn().mockResolvedValue([]);
+    prisma.repairTicket.count = jest.fn().mockResolvedValue(0);
+    svc = await buildSvc(prisma, audit, { nextTicketNumber: jest.fn() });
+  });
+
+  it('returns paginated list with defaults page=1 limit=50', async () => {
+    prisma.repairTicket.findMany.mockResolvedValue([{ id: 't-1' }]);
+    prisma.repairTicket.count.mockResolvedValue(1);
+
+    const r = await svc.findAll({}, OWNER);
+
+    expect(r.page).toBe(1);
+    expect(r.limit).toBe(50);
+    expect(r.total).toBe(1);
+    expect(r.data).toHaveLength(1);
+  });
+
+  it('applies status filter when provided', async () => {
+    prisma.repairTicket.findMany.mockResolvedValue([]);
+    prisma.repairTicket.count.mockResolvedValue(0);
+
+    await svc.findAll({ status: 'IN_PROGRESS' } as any, OWNER);
+
+    const whereArg = prisma.repairTicket.findMany.mock.calls[0][0].where;
+    expect(whereArg.status).toBe('IN_PROGRESS');
+  });
+
+  it('SALES role is scoped to own branch (where.branchId = user.branchId)', async () => {
+    prisma.repairTicket.findMany.mockResolvedValue([]);
+    prisma.repairTicket.count.mockResolvedValue(0);
+
+    await svc.findAll({}, SALES);
+
+    const whereArg = prisma.repairTicket.findMany.mock.calls[0][0].where;
+    expect(whereArg.branchId).toBe('b-1');
+  });
+
+  it('OWNER is not constrained by branch unless dto.branchId is explicitly passed', async () => {
+    prisma.repairTicket.findMany.mockResolvedValue([]);
+    prisma.repairTicket.count.mockResolvedValue(0);
+
+    // No dto.branchId → no branchId filter
+    await svc.findAll({}, OWNER);
+    const whereNoFilter = prisma.repairTicket.findMany.mock.calls[0][0].where;
+    expect(whereNoFilter.branchId).toBeUndefined();
+
+    jest.clearAllMocks();
+
+    // With dto.branchId → filtered to that branch
+    await svc.findAll({ branchId: 'b-99' } as any, OWNER);
+    const whereWithFilter = prisma.repairTicket.findMany.mock.calls[0][0].where;
+    expect(whereWithFilter.branchId).toBe('b-99');
+  });
+
+  it('search query builds where.OR with 3 alternatives (ticketNumber/customer.name/deviceImei)', async () => {
+    prisma.repairTicket.findMany.mockResolvedValue([]);
+    prisma.repairTicket.count.mockResolvedValue(0);
+
+    await svc.findAll({ q: 'iPhone' } as any, OWNER);
+
+    const whereArg = prisma.repairTicket.findMany.mock.calls[0][0].where;
+    expect(whereArg.OR).toHaveLength(3);
+    expect(whereArg.OR).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ ticketNumber: expect.anything() }),
+        expect.objectContaining({ customer: expect.anything() }),
+        expect.objectContaining({ deviceImei: expect.anything() }),
+      ]),
+    );
+  });
+});
+
+// ─── RepairTicketsService.findOne ──────────────────────────────────────────
+
+describe('RepairTicketsService.findOne', () => {
+  let svc: RepairTicketsService;
+  let prisma: any;
+  let audit: any;
+
+  const SALES_BRANCH_2: { id: string; role: string; branchId: string } = {
+    id: 'u-sales-2',
+    role: 'SALES',
+    branchId: 'b-2',
+  };
+
+  beforeEach(async () => {
+    ({ prisma, audit } = buildTransitionModule());
+    prisma.repairTicket.findUnique = jest.fn();
+    svc = await buildSvc(prisma, audit, { nextTicketNumber: jest.fn() });
+  });
+
+  it('returns ticket with all nested includes when found', async () => {
+    const fullTicket = {
+      id: 't-1',
+      branchId: 'b-1',
+      customer: { id: 'c-1', name: 'นาย ก' },
+      contract: null,
+      product: null,
+      repairSupplier: null,
+      branch: { id: 'b-1', name: 'สาขาลาดพร้าว' },
+      createdBy: { id: 'u-1', name: 'Admin' },
+      expenseDocument: null,
+      otherIncome: null,
+      replacementContract: null,
+      statusLogs: [],
+    };
+    prisma.repairTicket.findUnique.mockResolvedValue(fullTicket);
+
+    const result = await svc.findOne('t-1', OWNER);
+
+    expect(result).toEqual(fullTicket);
+    const callArg = prisma.repairTicket.findUnique.mock.calls[0][0];
+    expect(callArg.include).toMatchObject({
+      customer: true,
+      statusLogs: expect.anything(),
+    });
+  });
+
+  it('SALES from different branch throws ForbiddenException', async () => {
+    prisma.repairTicket.findUnique.mockResolvedValue({
+      id: 't-1',
+      branchId: 'b-1', // ticket is in branch b-1
+    });
+
+    // SALES_BRANCH_2 has branchId b-2 → should be denied
+    await expect(svc.findOne('t-1', SALES_BRANCH_2)).rejects.toBeInstanceOf(ForbiddenException);
+  });
+});
+
+// ─── RepairTicketsService.update ───────────────────────────────────────────
+
+describe('RepairTicketsService.update', () => {
+  let svc: RepairTicketsService;
+  let prisma: any;
+  let audit: any;
+
+  beforeEach(async () => {
+    ({ prisma, audit } = buildTransitionModule());
+    prisma.repairTicket.findUnique = jest.fn();
+    prisma.repairTicket.update = jest.fn();
+    svc = await buildSvc(prisma, audit, { nextTicketNumber: jest.fn() });
+  });
+
+  it('OPEN status → allows update and writes REPAIR_TICKET_EDITED audit log', async () => {
+    const existingTicket = {
+      id: 't-1',
+      status: 'OPEN',
+      deletedAt: null,
+      defectDescription: 'จอแตก',
+      repairSupplierId: null,
+      estimatedCost: null,
+      notes: null,
+    };
+    const updatedTicket = { ...existingTicket, defectDescription: 'จอแตก — อัปเดต' };
+
+    prisma.repairTicket.findUnique.mockResolvedValue(existingTicket);
+    prisma.repairTicket.update.mockResolvedValue(updatedTicket);
+
+    const result = await svc.update(
+      't-1',
+      { defectDescription: 'จอแตก — อัปเดต' } as any,
+      OWNER,
+    );
+
+    expect(result.defectDescription).toBe('จอแตก — อัปเดต');
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'REPAIR_TICKET_EDITED' }),
+    );
+  });
+
+  it('non-OPEN status → ConflictException', async () => {
+    prisma.repairTicket.findUnique.mockResolvedValue({
+      id: 't-1',
+      status: 'IN_PROGRESS',
+      deletedAt: null,
+    });
+
+    await expect(
+      svc.update('t-1', { defectDescription: 'ลอง' } as any, OWNER),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+});
+
+// ─── RepairTicketsService.recalcWarranty ───────────────────────────────────
+
+describe('RepairTicketsService.recalcWarranty', () => {
+  let svc: RepairTicketsService;
+  let prisma: any;
+  let audit: any;
+
+  beforeEach(async () => {
+    ({ prisma, audit } = buildTransitionModule());
+    prisma.repairTicket.findUnique = jest.fn();
+    prisma.repairTicket.update = jest.fn();
+    svc = await buildSvc(prisma, audit, { nextTicketNumber: jest.fn() });
+  });
+
+  it('non-OPEN status → ConflictException', async () => {
+    prisma.repairTicket.findUnique.mockResolvedValue({
+      id: 't-1',
+      status: 'IN_PROGRESS',
+      deletedAt: null,
+    });
+
+    await expect(svc.recalcWarranty('t-1', OWNER)).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('OPEN status → recomputes warrantyStatus from live contract → IN_SHOP_WARRANTY', async () => {
+    const thirtyDaysFromNow = new Date(Date.now() + 30 * 86_400_000);
+    // 10 days ago — past the 7-day defect window but still within shop warranty
+    const tenDaysAgo = new Date(Date.now() - 10 * 86_400_000);
+
+    prisma.repairTicket.findUnique.mockResolvedValue({
+      id: 't-1',
+      status: 'OPEN',
+      deletedAt: null,
+      contractId: 'c-1',
+      productId: null,
+      warrantyStatus: 'WALK_IN',
+    });
+
+    // Return a contract that puts us in IN_SHOP_WARRANTY
+    prisma.contract.findUnique = jest.fn().mockResolvedValue({
+      id: 'c-1',
+      deviceReceivedAt: tenDaysAgo,    // 10 days old — past 7-day defect window
+      shopWarrantyEndDate: thirtyDaysFromNow, // still within shop warranty
+    });
+
+    prisma.repairTicket.update.mockImplementation(({ data }: any) => ({
+      id: 't-1',
+      warrantyStatus: data.warrantyStatus,
+    }));
+
+    const result = await svc.recalcWarranty('t-1', OWNER);
+
+    expect(result.warrantyStatus).toBe('IN_SHOP_WARRANTY');
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'REPAIR_TICKET_WARRANTY_RECALC' }),
+    );
+  });
+});
+
+// ─── RepairTicketsService.softDelete ───────────────────────────────────────
+
+describe('RepairTicketsService.softDelete', () => {
+  let svc: RepairTicketsService;
+  let prisma: any;
+  let audit: any;
+
+  beforeEach(async () => {
+    ({ prisma, audit } = buildTransitionModule());
+    prisma.repairTicket.findUnique = jest.fn();
+    prisma.repairTicket.update = jest.fn().mockResolvedValue({ id: 't-1' });
+    svc = await buildSvc(prisma, audit, { nextTicketNumber: jest.fn() });
+  });
+
+  it('CANCELLED status → sets deletedAt and writes REPAIR_TICKET_SOFT_DELETED audit', async () => {
+    prisma.repairTicket.findUnique.mockResolvedValue({
+      id: 't-1',
+      status: 'CANCELLED',
+      deletedAt: null,
+    });
+
+    await svc.softDelete('t-1', OWNER);
+
+    expect(prisma.repairTicket.update).toHaveBeenCalledWith({
+      where: { id: 't-1' },
+      data: { deletedAt: expect.any(Date) },
+    });
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'REPAIR_TICKET_SOFT_DELETED' }),
+    );
+  });
+
+  it('non-CANCELLED status → ConflictException', async () => {
+    prisma.repairTicket.findUnique.mockResolvedValue({
+      id: 't-1',
+      status: 'OPEN',
+      deletedAt: null,
+    });
+
+    await expect(svc.softDelete('t-1', OWNER)).rejects.toBeInstanceOf(ConflictException);
+  });
+});
+
 // ─── RepairTicketsService.returnToCustomer ─────────────────────────────────
 
 describe('RepairTicketsService.returnToCustomer', () => {

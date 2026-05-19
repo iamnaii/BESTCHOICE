@@ -20,6 +20,9 @@ import { SendBackDto } from './dto/send-back.dto';
 import { CancelDto } from './dto/cancel.dto';
 import { ReplaceDto } from './dto/replace.dto';
 import { ReturnToCustomerDto } from './dto/return-to-customer.dto';
+import { UpdateRepairTicketDto } from './dto/update-repair-ticket.dto';
+import { ListRepairTicketsDto } from './dto/list-repair-tickets.dto';
+import { hasCrossBranchAccess } from '../auth/branch-access.util';
 import { formatDevice } from './utils/format-device';
 
 /** SystemConfig key — CoA code for repair income when payer=CUSTOMER. Default: 42-1106 */
@@ -447,6 +450,188 @@ export class RepairTicketsService {
         expenseDocumentId,
         otherIncomeId,
       };
+    });
+  }
+
+  // ─── Query Methods ────────────────────────────────────────────────────────
+
+  /** Paginated list with filtering + branch scoping. */
+  async findAll(dto: ListRepairTicketsDto, user: ReqUser) {
+    const page = dto.page ?? 1;
+    const limit = dto.limit ?? 50;
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.RepairTicketWhereInput = { deletedAt: null };
+    if (dto.status) where.status = dto.status;
+    if (dto.customerId) where.customerId = dto.customerId;
+    if (dto.repairSupplierId) where.repairSupplierId = dto.repairSupplierId;
+    if (dto.from || dto.to) {
+      where.createdAt = {};
+      if (dto.from) where.createdAt.gte = new Date(dto.from);
+      if (dto.to) where.createdAt.lte = new Date(dto.to);
+    }
+
+    // Branch scope — OWNER/ACCOUNTANT/FINANCE_MANAGER are cross-branch
+    if (!hasCrossBranchAccess(user)) {
+      if (user.branchId) {
+        where.branchId = user.branchId;
+      }
+      // no branchId on user → scope to guaranteed-empty set
+      else {
+        return { data: [], total: 0, page, limit };
+      }
+    } else if (dto.branchId) {
+      where.branchId = dto.branchId;
+    }
+
+    // Search across ticketNumber / customer.name / deviceImei
+    if (dto.q) {
+      where.OR = [
+        { ticketNumber: { contains: dto.q, mode: 'insensitive' } },
+        { customer: { name: { contains: dto.q, mode: 'insensitive' } } },
+        { deviceImei: { contains: dto.q, mode: 'insensitive' } },
+      ];
+    }
+
+    const [data, total] = await Promise.all([
+      this.prisma.repairTicket.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          customer: { select: { id: true, name: true } },
+          repairSupplier: { select: { id: true, name: true } },
+        },
+      }),
+      this.prisma.repairTicket.count({ where }),
+    ]);
+    return { data, total, page, limit };
+  }
+
+  /** Full detail with relations + timeline. Branch-scoped defense. */
+  async findOne(id: string, user: ReqUser) {
+    const ticket = await this.prisma.repairTicket.findUnique({
+      where: { id, deletedAt: null },
+      include: {
+        customer: true,
+        contract: { include: { product: true } },
+        product: true,
+        repairSupplier: true,
+        branch: { select: { id: true, name: true } },
+        createdBy: { select: { id: true, name: true } },
+        expenseDocument: { select: { id: true, number: true, status: true, totalAmount: true } },
+        otherIncome: { select: { id: true, docNumber: true, status: true, totalAmount: true } },
+        replacementContract: { select: { id: true, contractNumber: true } },
+        statusLogs: {
+          include: { changedBy: { select: { id: true, name: true } } },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
+    });
+    if (!ticket) throw new NotFoundException('ไม่พบ ticket');
+
+    if (!hasCrossBranchAccess(user) && user.branchId && ticket.branchId !== user.branchId) {
+      throw new ForbiddenException('ไม่สามารถเข้าถึงสาขาอื่นได้');
+    }
+    return ticket;
+  }
+
+  /** OPEN-only edit of non-status fields. */
+  async update(id: string, dto: UpdateRepairTicketDto, user: ReqUser) {
+    return this.prisma.$transaction(async (tx) => {
+      const ticket = await tx.repairTicket.findUnique({ where: { id, deletedAt: null } });
+      if (!ticket) throw new NotFoundException('ไม่พบ ticket');
+      if (ticket.status !== 'OPEN') {
+        throw new ConflictException('แก้ไขได้เฉพาะ status=OPEN');
+      }
+
+      const updated = await tx.repairTicket.update({
+        where: { id },
+        data: {
+          defectDescription: dto.defectDescription,
+          repairSupplierId: dto.repairSupplierId,
+          estimatedCost:
+            dto.estimatedCost != null ? new Prisma.Decimal(dto.estimatedCost) : undefined,
+          notes: dto.notes,
+        },
+      });
+
+      await this.audit.log({
+        userId: user.id,
+        action: 'REPAIR_TICKET_EDITED',
+        entity: 'repair_ticket',
+        entityId: id,
+        oldValue: {
+          defectDescription: ticket.defectDescription,
+          repairSupplierId: ticket.repairSupplierId,
+          estimatedCost: ticket.estimatedCost,
+          notes: ticket.notes,
+        },
+        newValue: {
+          defectDescription: updated.defectDescription,
+          repairSupplierId: updated.repairSupplierId,
+          estimatedCost: updated.estimatedCost,
+          notes: updated.notes,
+        },
+      });
+
+      return updated;
+    });
+  }
+
+  /** OPEN-only re-detection of warranty status from live contract/product. */
+  async recalcWarranty(id: string, user: ReqUser) {
+    return this.prisma.$transaction(async (tx) => {
+      const ticket = await tx.repairTicket.findUnique({ where: { id, deletedAt: null } });
+      if (!ticket) throw new NotFoundException('ไม่พบ ticket');
+      if (ticket.status !== 'OPEN') {
+        throw new ConflictException('recalc warranty ทำได้เฉพาะ status=OPEN');
+      }
+
+      const contract = ticket.contractId
+        ? await tx.contract.findUnique({ where: { id: ticket.contractId } })
+        : null;
+      const product = ticket.productId
+        ? await tx.product.findUnique({ where: { id: ticket.productId } })
+        : null;
+      const warrantyStatus = detectWarrantyStatus({ contract, product });
+
+      const updated = await tx.repairTicket.update({
+        where: { id },
+        data: { warrantyStatus },
+      });
+
+      await this.audit.log({
+        userId: user.id,
+        action: 'REPAIR_TICKET_WARRANTY_RECALC',
+        entity: 'repair_ticket',
+        entityId: id,
+        newValue: { oldStatus: ticket.warrantyStatus, newStatus: warrantyStatus },
+      });
+
+      return updated;
+    });
+  }
+
+  /** OWNER-only, CANCELLED-only soft-delete. */
+  async softDelete(id: string, user: ReqUser) {
+    const ticket = await this.prisma.repairTicket.findUnique({
+      where: { id, deletedAt: null },
+    });
+    if (!ticket) throw new NotFoundException('ไม่พบ ticket');
+    if (ticket.status !== 'CANCELLED') {
+      throw new ConflictException('soft-delete ทำได้เฉพาะ status=CANCELLED');
+    }
+    await this.prisma.repairTicket.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
+    await this.audit.log({
+      userId: user.id,
+      action: 'REPAIR_TICKET_SOFT_DELETED',
+      entity: 'repair_ticket',
+      entityId: id,
     });
   }
 

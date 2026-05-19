@@ -47,6 +47,7 @@ export interface UiFlags {
     PAYROLL: string;
     VENDOR_SETTLEMENT: string;
     PETTY_CASH_REIMBURSEMENT: string;
+    REPAIR_SERVICE: string;
   };
   /**
    * D1.3.3.2 — bank reconciliation mode. INFORMATIONAL ONLY — auto-match
@@ -376,6 +377,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
     PAYROLL: 'PR',
     VENDOR_SETTLEMENT: 'SE',
     PETTY_CASH_REIMBURSEMENT: 'PC',
+    REPAIR_SERVICE: 'RS',
   },
   bankReconciliationMode: 'manual',
   ssoRateLocked: '5%',

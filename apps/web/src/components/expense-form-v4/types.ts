@@ -101,7 +101,8 @@ export interface SettlementFormFields {
 /**
  * C1 — Petty Cash Reimbursement. Per-line supplier (relaxes 1-doc-1-supplier).
  * No WHT support — vendors with WHT use regular EXPENSE flow. The cash leg
- * routes to the petty-cash float account (default 11-1201, configurable via
+ * routes to the petty-cash float account (default 11-1103 เงินสดพนักงานบัญชี —
+ * Imprest Fund pattern per Owner Response Q1 2026-05-17; configurable via
  * system_config.petty_cash_account).
  */
 export interface PettyCashLineForm {

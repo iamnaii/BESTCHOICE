@@ -175,6 +175,12 @@ const BalanceSheetPage = lazy(() => import('@/pages/finance/BalanceSheetPage'));
 const GeneralJournalPage = lazy(() => import('@/pages/finance/GeneralJournalPage'));
 const AgingReportPage = lazy(() => import('@/pages/finance/AgingReportPage'));
 const BadDebtReportPage = lazy(() => import('@/pages/finance/BadDebtReportPage'));
+// P4-SP2 — Tax UI pages (finance-tax endpoints + e-receipt config)
+const VatPage = lazy(() => import('@/pages/finance/VatPage'));
+const WhtPage = lazy(() => import('@/pages/finance/WhtPage'));
+const ETaxPage = lazy(() => import('@/pages/finance/ETaxPage'));
+const VatAutoJournalPage = lazy(() => import('@/pages/finance/VatAutoJournalPage'));
+const EReceiptAutoPage = lazy(() => import('@/pages/finance/EReceiptAutoPage'));
 const PeakSyncPage = lazy(() => import('@/pages/PeakSyncPage'));
 const PeakExportPage = lazy(() => import('@/pages/PeakExportPage'));
 const AiSettingsPage = lazy(() => import('@/pages/AiSettingsPage'));
@@ -814,12 +820,12 @@ function App() {
               </ProtectedRoute>
             }
           />
-          {/* SP3 — Tax module split */}
+          {/* P4-SP2 — Tax UI (finance-tax endpoints replace SP3 placeholders) */}
           <Route
             path="/finance/vat"
             element={
               <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
-                <VatReportPage />
+                <VatPage />
               </ProtectedRoute>
             }
           />
@@ -827,7 +833,7 @@ function App() {
             path="/finance/wht"
             element={
               <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
-                <WhtReportPage />
+                <WhtPage />
               </ProtectedRoute>
             }
           />
@@ -835,7 +841,15 @@ function App() {
             path="/finance/e-tax"
             element={
               <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
-                <ETaxInvoicePage />
+                <ETaxPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/finance/vat-auto-journal"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <VatAutoJournalPage />
               </ProtectedRoute>
             }
           />
@@ -1308,42 +1322,7 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/finance/vat"
-            element={
-              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
-                <ComingSoonPage
-                  feature="VAT (ภ.พ.30)"
-                  trackingSP="SP3"
-                  eta="ภายในไตรมาส 3/2026"
-                />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/finance/wht"
-            element={
-              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
-                <ComingSoonPage
-                  feature="ภาษีหัก ณ ที่จ่าย (ภ.ง.ด. 1/3/53)"
-                  trackingSP="SP3"
-                  eta="ภายในไตรมาส 3/2026"
-                />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/finance/e-tax"
-            element={
-              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
-                <ComingSoonPage
-                  feature="e-Tax Invoice"
-                  trackingSP="SP3"
-                  eta="ภายในไตรมาส 3/2026"
-                />
-              </ProtectedRoute>
-            }
-          />
+          {/* /finance/vat, /finance/wht, /finance/e-tax — handled by P4-SP2 routes above */}
           {/* /finance/cash-flow — handled by SP2 CashFlowPage route above (line ~763) */}
           {/* /finance/equity-statement — handled by SP2 EquityStatementPage route above (line ~773) */}
           {/* /finance/general-ledger — handled by SP2 GeneralLedgerPage route above (line ~780) */}
@@ -1451,7 +1430,7 @@ function App() {
             path="/finance/e-receipt-auto"
             element={
               <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
-                <ComingSoonPage feature="ใบเสร็จอิเล็กทรอนิกส์อัตโนมัติ" trackingSP="SP3" eta="ภายในไตรมาส 3/2026" />
+                <EReceiptAutoPage />
               </ProtectedRoute>
             }
           />

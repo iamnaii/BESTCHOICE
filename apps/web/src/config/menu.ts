@@ -340,10 +340,11 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'รายได้อื่น', path: '/other-income', icon: TrendingUp },
         { label: 'เอกสารร่าง', path: '/drafts', icon: Inbox },
         { label: 'กำไร-ขาดทุน', path: '/profit-loss', icon: PieChart },
-        // SP3 — Tax module split
+        // P4-SP2 — Tax module (finance-tax endpoints)
         { label: 'ภ.พ.30 (VAT)', path: '/finance/vat', icon: Calculator },
         { label: 'ภ.ง.ด. 1/3/53 (WHT)', path: '/finance/wht', icon: Calculator },
         { label: 'e-Tax Invoice', path: '/finance/e-tax', icon: FileText },
+        { label: 'VAT Auto Journal', path: '/finance/vat-auto-journal', icon: Calculator },
         // SP6 — Bank/Cash account directory
         { label: 'บัญชีเงินสด/ธนาคาร', path: '/finance/bank-accounts', icon: Landmark },
         { label: 'งวดบัญชี', path: '/accounting/periods', icon: CalendarDays },
@@ -403,10 +404,11 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
         { label: 'งบกระแสเงินสด', path: '/finance/cash-flow', icon: Banknote },
         { label: 'งบ Equity', path: '/finance/equity-statement', icon: Landmark },
         { label: 'สมุดแยกประเภท', path: '/finance/general-ledger', icon: BookOpen },
-        // SP3 — Tax module split (replaces /tax-reports)
+        // P4-SP2 — Tax module (finance-tax endpoints)
         { label: 'ภ.พ.30 (VAT)', path: '/finance/vat', icon: Calculator },
         { label: 'ภ.ง.ด. 1/3/53 (WHT)', path: '/finance/wht', icon: Calculator },
         { label: 'e-Tax Invoice', path: '/finance/e-tax', icon: FileText },
+        { label: 'VAT Auto Journal', path: '/finance/vat-auto-journal', icon: Calculator },
         { label: 'รายงาน', path: '/reports', icon: BarChart3 },
         // P3-SP5 — SHOP-side accounting reports
         { label: 'บัญชีหน้าร้าน (SHOP)', path: '/shop/accounting', icon: Store },
@@ -437,9 +439,10 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
       icon: Calculator,
       zone: 'fin',
       items: [
-        { label: 'VAT (ภ.พ.30)', path: '/finance/vat', icon: Receipt, placeholder: { trackingSP: 'SP3', eta: 'ภายในไตรมาส 3/2026' } },
-        { label: 'WHT (ภ.ง.ด. 1/3/53)', path: '/finance/wht', icon: Receipt, placeholder: { trackingSP: 'SP3', eta: 'ภายในไตรมาส 3/2026' } },
-        { label: 'e-Tax Invoice', path: '/finance/e-tax', icon: FileText, placeholder: { trackingSP: 'SP3', eta: 'ภายในไตรมาส 3/2026' } },
+        { label: 'VAT (ภ.พ.30)', path: '/finance/vat', icon: Receipt },
+        { label: 'WHT (ภ.ง.ด. 1/3/53)', path: '/finance/wht', icon: Receipt },
+        { label: 'e-Tax Invoice', path: '/finance/e-tax', icon: FileText },
+        { label: 'VAT Auto Journal', path: '/finance/vat-auto-journal', icon: Calculator },
       ],
     },
     {
@@ -602,9 +605,10 @@ const OWNER_CONFIG: RoleMenuConfig = {
       icon: Calculator,
       zone: 'fin',
       items: [
-        { label: 'VAT (ภ.พ.30)', path: '/finance/vat', icon: Receipt, placeholder: { trackingSP: 'SP3', eta: 'ภายในไตรมาส 3/2026' } },
-        { label: 'WHT (ภ.ง.ด. 1/3/53)', path: '/finance/wht', icon: Receipt, placeholder: { trackingSP: 'SP3', eta: 'ภายในไตรมาส 3/2026' } },
-        { label: 'e-Tax Invoice', path: '/finance/e-tax', icon: FileText, placeholder: { trackingSP: 'SP3', eta: 'ภายในไตรมาส 3/2026' } },
+        { label: 'VAT (ภ.พ.30)', path: '/finance/vat', icon: Receipt },
+        { label: 'WHT (ภ.ง.ด. 1/3/53)', path: '/finance/wht', icon: Receipt },
+        { label: 'e-Tax Invoice', path: '/finance/e-tax', icon: FileText },
+        { label: 'VAT Auto Journal', path: '/finance/vat-auto-journal', icon: Calculator },
       ],
     },
     {
@@ -772,8 +776,8 @@ const OWNER_CONFIG: RoleMenuConfig = {
       zone: 'fin',
       items: [
         { label: 'Dunning (เตือนค่างวด)', path: '/settings/dunning', icon: Bell },
-        // CSV §10 placeholder — "แจ้งสร้างอีเล็คทรอนิกส์รอบอินส์" = auto e-receipt
-        { label: 'ใบเสร็จอิเล็กทรอนิกส์อัตโนมัติ', path: '/finance/e-receipt-auto', icon: FileText, placeholder: { trackingSP: 'SP3', eta: 'ภายในไตรมาส 3/2026' } },
+        // P4-SP2 — auto e-receipt config (e_receipt_auto SystemConfig key)
+        { label: 'ใบเสร็จอิเล็กทรอนิกส์อัตโนมัติ', path: '/finance/e-receipt-auto', icon: FileText },
       ],
     },
     {

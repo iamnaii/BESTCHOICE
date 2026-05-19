@@ -121,4 +121,53 @@ describe('FinanceTaxService', () => {
       expect(callArgs.where.journalEntry.companyId).toBe('company-finance-uuid');
     });
   });
+
+  // ─── Task 3: getWhtMonthly ─────────────────────────────────────────────────
+
+  describe('getWhtMonthly', () => {
+    it('returns correct shape with zero totals when no lines exist', async () => {
+      prisma.journalLine.findMany.mockResolvedValue([]);
+
+      const result = await service.getWhtMonthly(2026, 5);
+
+      expect(result).toMatchObject({
+        period: { year: 2026, month: 5 },
+        PND1: { lines: [], total: 0 },
+        PND3: { lines: [], total: 0 },
+        PND53: { lines: [], total: 0 },
+        grandTotal: 0,
+      });
+    });
+
+    it('groups lines by WHT form type and computes totals correctly', async () => {
+      prisma.journalLine.findMany.mockResolvedValue([
+        makeLine('21-3101', '0', '500', 'JE-202605-0010'),   // PND1 accrual
+        makeLine('21-3102', '0', '1200', 'JE-202605-0011'),  // PND3 accrual
+        makeLine('21-3102', '300', '0', 'JE-202605-0020'),   // PND3 settlement (negative)
+        makeLine('21-3103', '0', '800', 'JE-202605-0012'),   // PND53 accrual
+      ]);
+
+      const result = await service.getWhtMonthly(2026, 5);
+
+      expect(result.PND1.total).toBe(500);
+      expect(result.PND1.lines).toHaveLength(1);
+
+      expect(result.PND3.total).toBe(900); // 1200 - 300
+      expect(result.PND3.lines).toHaveLength(2);
+
+      expect(result.PND53.total).toBe(800);
+      expect(result.PND53.lines).toHaveLength(1);
+
+      expect(result.grandTotal).toBe(2200); // 500 + 900 + 800
+    });
+
+    it('applies companyId filter when provided', async () => {
+      prisma.journalLine.findMany.mockResolvedValue([]);
+
+      await service.getWhtMonthly(2026, 6, 'company-finance-id');
+
+      const callArgs = prisma.journalLine.findMany.mock.calls[0][0];
+      expect(callArgs.where.journalEntry.companyId).toBe('company-finance-id');
+    });
+  });
 });

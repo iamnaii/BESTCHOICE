@@ -635,7 +635,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'รายงานลูกหนี้ + Aging', path: '/finance/aging-report', icon: AlertTriangle },
         { label: 'สมุดรายวัน', path: '/finance/general-journal', icon: BookOpen },
         { label: 'สมุดแยกประเภท', path: '/finance/general-ledger', icon: BookOpen },
-        { label: 'รายงานหนี้สูญ', path: '/finance/bad-debt-report', icon: TrendingDown, placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' } },
+        { label: 'รายงานหนี้สูญ', path: '/finance/bad-debt-report', icon: TrendingDown },
         { label: 'รายงานลูกหนี้ Inter-co', path: '/finance/intercompany-report', icon: Building2, placeholder: { trackingSP: 'SP6', eta: 'ภายในไตรมาส 4/2026' } },
         { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
         { label: 'ตรวจสอบบัญชี', path: '/financial-audit', icon: ClipboardList },

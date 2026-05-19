@@ -12,6 +12,7 @@ import {
 import { ThemeProvider } from 'next-themes';
 import { Toaster } from 'sonner';
 import { AuthProvider } from '@/contexts/AuthContext';
+import { EntityScopeProvider } from '@/contexts/EntityScopeContext';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import App from './App';
 import './index.css';
@@ -108,8 +109,10 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <QueryClientProvider client={queryClient}>
           <BrowserRouter>
             <AuthProvider>
-              <App />
-              <Toaster position="top-right" richColors closeButton />
+              <EntityScopeProvider>
+                <App />
+                <Toaster position="top-right" richColors closeButton />
+              </EntityScopeProvider>
             </AuthProvider>
           </BrowserRouter>
         </QueryClientProvider>

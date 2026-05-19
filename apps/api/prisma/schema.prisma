@@ -593,6 +593,13 @@ model User {
   lockedUntil         DateTime? @map("locked_until")
   lastLoginAt         DateTime? @map("last_login_at")
 
+  /// SP7.1 — รายชื่อ companies ที่ user เข้าถึงได้
+  /// OWNER/ACCOUNTANT = ["SHOP", "FINANCE"]; SALES/BM = ["SHOP"]; FM = ["FINANCE"]
+  accessibleCompanies String[] @default([]) @map("accessible_companies")
+
+  /// SP7.1 — Company context เริ่มต้นเมื่อ user login (default ใน pill switcher)
+  primaryCompany      String?  @map("primary_company")
+
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
@@ -6676,4 +6683,94 @@ enum PdpaBackfillStatus {
   COMPLETED
   /// Run aborted with error (see errorMessage); partial progress in processedRecords
   FAILED
+}
+
+// =============================================================================
+// SP7.2 — Outbox pattern for cross-entity (SHOP↔FINANCE) JE pairing
+// =============================================================================
+
+/// SP7.2 — Outbox-pattern events for cross-entity (SHOP↔FINANCE) JE pairing.
+/// Written in the SAME TX as the source JE; processed asynchronously by
+/// OutboxProcessorCron which writes the paired JE in the target DB.
+model OutboxEvent {
+  id             String            @id @default(uuid())
+  flowType       String            @map("flow_type")
+  sourceId       String            @map("source_id")
+  sourceEntity   String            @map("source_entity")
+  targetEntity   String            @map("target_entity")
+  payload        Json
+  status         OutboxEventStatus @default(PENDING)
+  attempts       Int               @default(0)
+  lastError      String?           @map("last_error")
+  idempotencyKey String            @unique @map("idempotency_key")
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+  processedAt    DateTime?         @map("processed_at")
+  deletedAt      DateTime?         @map("deleted_at")
+
+  @@index([status, createdAt])
+  @@index([flowType])
+  @@map("outbox_events")
+}
+
+enum OutboxEventStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  FAILED
+}
+
+// ============================================================
+// SP7.4 — External Finance Companies + Commission
+// ============================================================
+
+enum ExternalCommissionStatus {
+  PENDING
+  RECEIVED
+  CANCELLED
+}
+
+/// SP7.4 — ไฟแนนซ์ภายนอก เช่น GFIN, Krungsri Auto. SHOP รับ commission.
+model ExternalFinanceCompany {
+  id                    String    @id @default(uuid())
+  name                  String    @unique
+  contactPerson         String?   @map("contact_person")
+  contactPhone          String?   @map("contact_phone")
+  defaultCommissionRate Decimal?  @map("default_commission_rate") @db.Decimal(5, 4)
+  bankAccountInfo       Json?     @map("bank_account_info")
+  notes                 String?
+  isActive              Boolean   @default(true) @map("is_active")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+  deletedAt             DateTime? @map("deleted_at")
+
+  commissions ExternalFinanceCommission[]
+
+  @@map("external_finance_companies")
+}
+
+/// SP7.4 — Track commission accrual + receipt per external finance sale.
+model ExternalFinanceCommission {
+  id                       String                   @id @default(uuid())
+  externalFinanceCompanyId String                   @map("external_finance_company_id")
+  saleReferenceId          String?                  @map("sale_reference_id")
+  customerId               String?                  @map("customer_id")
+  financedAmount           Decimal                  @map("financed_amount") @db.Decimal(12, 2)
+  commissionRate           Decimal                  @map("commission_rate") @db.Decimal(5, 4)
+  commissionAmount         Decimal                  @map("commission_amount") @db.Decimal(12, 2)
+  receivedAt               DateTime?                @map("received_at")
+  bankSlipUrl              String?                  @map("bank_slip_url")
+  journalEntryId           String?                  @map("journal_entry_id")
+  status                   ExternalCommissionStatus @default(PENDING)
+  notes                    String?
+  createdAt                DateTime                 @default(now()) @map("created_at")
+  updatedAt                DateTime                 @updatedAt @map("updated_at")
+  deletedAt                DateTime?                @map("deleted_at")
+
+  externalFinanceCompany ExternalFinanceCompany @relation(fields: [externalFinanceCompanyId], references: [id])
+
+  @@index([externalFinanceCompanyId])
+  @@index([status])
+  @@index([receivedAt])
+  @@map("external_finance_commissions")
 }

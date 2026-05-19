@@ -129,9 +129,15 @@ import { ReportingModule } from './modules/reporting/reporting.module';
 import { CollectionsSessionModule } from './modules/collections-session/collections-session.module';
 // P3-SP2 — Off-site backup replication (GCS cross-region sync)
 import { BackupModule } from './modules/backup/backup.module';
+// SP7.4 — External Finance Companies + Commission (SHOP-side GFIN/Krungsri)
+import { ExternalFinanceModule } from './modules/external-finance/external-finance.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { SecurityMiddleware } from './modules/audit/security.middleware';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
+import { EntityScopeMiddleware } from './middleware/entity-scope.middleware';
+import { SentryEntityTagMiddleware } from './middleware/sentry-entity-tag.middleware';
+// SP7.10 — Maintenance-mode toggle for cutover window (MAINTENANCE_MODE=true blocks writes)
+import { MaintenanceModeMiddleware } from './middleware/maintenance-mode.middleware';
 // D1.1.3.1 — One-shot startup warning for VAT_RATE/vat_pct orphan keys.
 import { VatRateBootstrapService } from './utils/vat-rate-bootstrap.service';
 import { CsrfGuard } from './guards/csrf.guard';
@@ -355,6 +361,8 @@ import { AppCacheModule } from './cache/cache.module';
     ReportingModule,
     // P3-SP2 — Off-site backup replication (GCS cross-region sync, daily 03:30 BKK)
     BackupModule,
+    // SP7.4 — External Finance Companies + Commission (SHOP-side GFIN/Krungsri)
+    ExternalFinanceModule,
   ],
   controllers: [AppController],
   providers: [
@@ -388,8 +396,15 @@ export class AppModule implements NestModule {
     // NOTE: AdminPrefixMiddleware is applied at Express level in main.ts
     // (not here) because forRoutes('*') doesn't reliably run before the
     // NestJS routing layer rejects unknown /api/admin/* paths with 404.
+    // SP7.10 — MaintenanceModeMiddleware runs FIRST to gate writes during cutover.
+    // Activate: MAINTENANCE_MODE=true env + Cloud Run redeploy.
+    consumer.apply(MaintenanceModeMiddleware).forRoutes('*');
     // RequestIdMiddleware must run before SecurityMiddleware so Sentry scope is tagged first.
     consumer.apply(RequestIdMiddleware).forRoutes('*');
     consumer.apply(SecurityMiddleware).forRoutes('*');
+    // SP7.1 — Resolves req.entityScope after auth (runs after JwtAuthGuard populates req.user).
+    consumer.apply(EntityScopeMiddleware).forRoutes('*');
+    // SP7.8 — Tags the Sentry request scope with entity_scope (SHOP|FINANCE) for error segmentation.
+    consumer.apply(SentryEntityTagMiddleware).forRoutes('*');
   }
 }

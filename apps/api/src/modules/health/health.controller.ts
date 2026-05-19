@@ -14,11 +14,19 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { PrismaService } from '../../prisma/prisma.service';
+import { PrismaFinanceService } from '../../prisma/prisma-finance.service';
 import { ConfigService } from '@nestjs/config';
 
 interface CheckResult {
   status: 'ok' | 'error';
   message?: string;
+}
+
+interface DbProbeResult {
+  db: string;
+  status: 'ok' | 'error';
+  latency_ms?: number;
+  error?: string;
 }
 
 interface PublicHealthResponse {
@@ -28,7 +36,7 @@ interface PublicHealthResponse {
 
 interface DetailedHealthResponse extends PublicHealthResponse {
   checks: {
-    database: CheckResult;
+    databases: DbProbeResult[];
     storage: CheckResult;
   };
 }
@@ -54,6 +62,7 @@ export class HealthController {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly prismaFin: PrismaFinanceService,
     private readonly configService: ConfigService,
   ) {}
 
@@ -82,16 +91,16 @@ export class HealthController {
   })
   async checkDetailed(): Promise<DetailedHealthResponse> {
     const timestamp = new Date().toISOString();
-    const [dbCheck, storageCheck] = await Promise.all([
-      this.checkDatabase(),
+    const [dbProbes, storageCheck] = await Promise.all([
+      this.checkDatabases(),
       this.checkStorage(),
     ]);
 
-    const allOk = dbCheck.status === 'ok' && storageCheck.status === 'ok';
+    const allOk = dbProbes.every((p) => p.status === 'ok') && storageCheck.status === 'ok';
     const response: DetailedHealthResponse = {
       status: allOk ? 'ok' : 'error',
       timestamp,
-      checks: { database: dbCheck, storage: storageCheck },
+      checks: { databases: dbProbes, storage: storageCheck },
     };
 
     if (!allOk) {
@@ -105,23 +114,36 @@ export class HealthController {
 
   // ─── Private helpers ──────────────────────────────────────────────────────
 
-  private async checkDatabase(): Promise<CheckResult> {
+  /**
+   * SP7.8 — Probe both Prisma clients.
+   * Returns an array of DbProbeResult (one per DB) without leaking raw driver
+   * errors to the caller — specifics go to Sentry + server logs (T7-C3).
+   */
+  private async checkDatabases(): Promise<DbProbeResult[]> {
+    return Promise.all([
+      this.pingDb(this.prisma, 'shop'),
+      this.pingDb(this.prismaFin, 'finance'),
+    ]);
+  }
+
+  private async pingDb(
+    client: { $queryRaw: (...args: unknown[]) => Promise<unknown> },
+    label: string,
+  ): Promise<DbProbeResult> {
+    const start = Date.now();
     try {
-      await this.prisma.$queryRaw`SELECT 1`;
-      return { status: 'ok' };
+      await client.$queryRaw`SELECT 1`;
+      return { db: label, status: 'ok', latency_ms: Date.now() - start };
     } catch (err) {
       // Do not surface raw DB error to the client — it can reveal driver,
       // schema, or network topology. Keep the message generic and forward
       // specifics to Sentry + server logs for ops (T7-C3).
       const detail = err instanceof Error ? err.message : String(err);
-      this.logger.error(`Health: database check failed — ${detail}`);
+      this.logger.error(`Health: database '${label}' check failed — ${detail}`);
       Sentry.captureException(err instanceof Error ? err : new Error(detail), {
-        tags: { healthCheck: 'database' },
+        tags: { healthCheck: 'database', db: label },
       });
-      return {
-        status: 'error',
-        message: 'Database unavailable',
-      };
+      return { db: label, status: 'error', error: 'Database unavailable' };
     }
   }
 

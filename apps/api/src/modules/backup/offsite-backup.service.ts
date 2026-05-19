@@ -529,6 +529,85 @@ export class OffsiteBackupService {
       : msg;
   }
 
+  // ─── SP7.8 — Dual-DB Cloud SQL backup support ────────────────────────────
+
+  /**
+   * Cloud SQL instance references for SP7.8 dual-DB backup.
+   *
+   * Real Cloud SQL export trigger (gcloud SDK) is invoked per DB instance.
+   * Reads from env vars; skips gracefully when not set (second instance is
+   * owner-blocked pending bc_finance provisioning).
+   *
+   * Each entry maps a logical DB name to the env var that holds the
+   * Cloud SQL instance connection name (project:region:instance).
+   */
+  static readonly DB_INSTANCES: ReadonlyArray<{ name: string; urlEnv: string }> = [
+    { name: 'bc_shop', urlEnv: 'CLOUDSQL_SHOP_INSTANCE' },
+    { name: 'bc_finance', urlEnv: 'CLOUDSQL_FINANCE_INSTANCE' },
+  ];
+
+  /**
+   * Trigger Cloud SQL exports for both `bc_shop` and `bc_finance` databases.
+   *
+   * Iterates the DB_INSTANCES list. For each:
+   *  - Skips with a warning when the instance env var is not configured
+   *    (expected for bc_finance until the owner provisions the instance).
+   *  - Calls `backupSingleDatabase` — real implementation delegates to the
+   *    Cloud SQL Admin API export trigger; currently a logged stub pending
+   *    owner provisioning of the bc_finance Cloud SQL instance.
+   *
+   * Non-throwing: every error is captured individually so one DB failure
+   * does not block the other. Results array lets callers decide whether to
+   * treat partial failures as hard errors.
+   */
+  async backupAllDatabases(): Promise<
+    Array<{ db: string; status: 'ok' | 'error'; error?: string }>
+  > {
+    const results: Array<{ db: string; status: 'ok' | 'error'; error?: string }> = [];
+    for (const inst of OffsiteBackupService.DB_INSTANCES) {
+      const instanceUrl = process.env[inst.urlEnv];
+      if (!instanceUrl) {
+        this.logger.warn(
+          `backupAllDatabases: skip ${inst.name} — env ${inst.urlEnv} not set`,
+        );
+        results.push({ db: inst.name, status: 'error', error: 'env-not-set' });
+        continue;
+      }
+      try {
+        await this.backupSingleDatabase(inst.name, instanceUrl);
+        results.push({ db: inst.name, status: 'ok' });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.error(`backupAllDatabases: ${inst.name} failed — ${msg}`);
+        Sentry.captureException(err instanceof Error ? err : new Error(msg), {
+          tags: { kind: 'cron-job', cron: 'offsite-backup', step: 'cloud-sql-export', db: inst.name },
+        });
+        results.push({ db: inst.name, status: 'error', error: msg });
+      }
+    }
+    return results;
+  }
+
+  /**
+   * Trigger a Cloud SQL export for a single database instance.
+   *
+   * Real implementation: call Cloud SQL Admin API
+   * `POST /sql/v1beta4/projects/{project}/instances/{instance}/export`
+   * via gcloud SDK or googleapis client library.
+   *
+   * Currently a stub — owner must provision the bc_finance Cloud SQL
+   * instance before this can be wired up end-to-end. The GCS replication
+   * side (OffsiteBackupService.run) already handles copying the resulting
+   * dump files once they land in OFFSITE_BACKUP_SQL_SOURCE_BUCKET.
+   */
+  private async backupSingleDatabase(dbName: string, instanceUrl: string): Promise<void> {
+    // Stub — log intent for now; real Cloud SQL export trigger wired after
+    // owner provisions bc_finance instance + sets CLOUDSQL_FINANCE_INSTANCE.
+    this.logger.log(
+      `backupSingleDatabase (stub): would trigger Cloud SQL export for ${dbName} from ${instanceUrl}`,
+    );
+  }
+
   /**
    * History endpoint backing — newest first. Joins the user that triggered
    * a manual run so the UI can display a real name instead of a UUID slice.

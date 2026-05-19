@@ -222,4 +222,58 @@ export class PromiseService {
       orderBy: { createdAt: 'desc' },
     });
   }
+
+  /**
+   * Returns all promise slots due today (today 00:00–23:59 Asia/Bangkok).
+   * Only pending slots (keptAt=null, brokenAt=null) whose parent CallLog is active.
+   * Dashboard widget: ติดตามหนี้วันนี้.
+   */
+  async getPromisesDueToday() {
+    const now = new Date();
+    // Use UTC midnight offsets to represent Asia/Bangkok today (UTC+7)
+    // Today BKK start = today's UTC date minus 7h offset
+    const bkkOffsetMs = 7 * 60 * 60 * 1000;
+    const bkkNow = new Date(now.getTime() + bkkOffsetMs);
+    const bkkDateStr = bkkNow.toISOString().slice(0, 10); // YYYY-MM-DD in BKK
+    const [year, month, day] = bkkDateStr.split('-').map(Number);
+    // Compute UTC bounds for the full BKK day
+    const todayStart = new Date(Date.UTC(year, month - 1, day, 0, 0, 0) - bkkOffsetMs);
+    const todayEnd = new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999) - bkkOffsetMs);
+
+    const slots = await this.prisma.promiseSlot.findMany({
+      where: {
+        settlementDate: { gte: todayStart, lte: todayEnd },
+        keptAt: null,
+        brokenAt: null,
+        callLog: {
+          deletedAt: null,
+          canceledAt: null,
+          supersededAt: null,
+          result: 'PROMISED',
+        },
+      },
+      include: {
+        callLog: {
+          include: {
+            contract: {
+              include: {
+                customer: { select: { id: true, name: true, phone: true } },
+              },
+            },
+          },
+        },
+      },
+      orderBy: { settlementDate: 'asc' },
+    });
+
+    return slots.map((slot) => ({
+      promiseSlotId: slot.id,
+      contractId: slot.callLog.contractId,
+      contractNumber: slot.callLog.contract.contractNumber,
+      customerId: slot.callLog.contract.customer.id,
+      customerName: slot.callLog.contract.customer.name,
+      phone: slot.callLog.contract.customer.phone ?? '',
+      settlementAmount: Number(slot.settlementAmount),
+    }));
+  }
 }

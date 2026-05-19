@@ -18,6 +18,7 @@ import { AnalyticsRecoveryService } from './analytics-recovery.service';
 import { StuckContractsService } from './stuck-contracts.service';
 import { ContractSnoozeService } from './snooze.service';
 import { AutoBalanceService } from './auto-balance.service';
+import { PromiseService } from './promise.service';
 import { CreateSnoozeDto } from './dto/snooze.dto';
 import { AnalyticsQueryDto } from './dto/analytics-query.dto';
 import { CreateCallLogDto } from './dto/create-call-log.dto';
@@ -64,6 +65,7 @@ export class OverdueController {
     private stuckContractsService: StuckContractsService,
     private snoozeService: ContractSnoozeService,
     private autoBalanceService: AutoBalanceService,
+    private promiseService: PromiseService,
   ) {}
 
   // --- Collections Workflow Hub endpoints (Plan 2) ---
@@ -721,5 +723,12 @@ export class OverdueController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES', 'ACCOUNTANT')
   getOverdueInstallments(@Param('id') id: string) {
     return this.overdueService.getOverdueInstallments(id);
+  }
+
+  // P4-SP5: Dashboard widget — ติดตามหนี้วันนี้
+  @Get('promises/due-today')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'BRANCH_MANAGER')
+  getPromisesDueToday() {
+    return this.promiseService.getPromisesDueToday();
   }
 }

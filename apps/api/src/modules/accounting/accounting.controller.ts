@@ -48,7 +48,7 @@ export class AccountingController {
   // ============================================================
 
   @Get('ledger/trial-balance')
-  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER')
   getTrialBalance(
     @Query('asOfDate') asOfDate?: string,
     @Query('scope') scope?: 'FINANCE' | 'SHOP' | 'ALL',
@@ -60,7 +60,7 @@ export class AccountingController {
   }
 
   @Get('ledger/profit-loss')
-  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER')
   getProfitLossFromJournal(
     @Query('periodStart') periodStart: string,
     @Query('periodEnd') periodEnd: string,
@@ -88,13 +88,13 @@ export class AccountingController {
   // global guard will block it anyway.
 
   @Get('ledger/shop/trial-balance')
-  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER')
   getShopTrialBalance(@Query('asOfDate') asOfDate?: string) {
     return this.service.getTrialBalance(asOfDate ? new Date(asOfDate) : undefined, 'SHOP');
   }
 
   @Get('ledger/shop/profit-loss')
-  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER')
   getShopProfitLoss(
     @Query('periodStart') periodStart: string,
     @Query('periodEnd') periodEnd: string,
@@ -106,7 +106,7 @@ export class AccountingController {
   }
 
   @Get('ledger/balance-sheet')
-  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER')
   getBalanceSheetFromJournal(@Query('asOfDate') asOfDate?: string) {
     return this.service.getBalanceSheetFromJournal(asOfDate ? new Date(asOfDate) : undefined);
   }
@@ -114,7 +114,7 @@ export class AccountingController {
   // ─── P4-SP1: Aging Report ────────────────────────────────────────────────
 
   @Get('ledger/aging')
-  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER')
   getAgingReport(@Query('asOf') asOf?: string) {
     return this.service.getAgingReport(asOf ? new Date(asOf) : new Date());
   }
@@ -122,7 +122,7 @@ export class AccountingController {
   // ─── P4-SP1: Bad Debt Report ──────────────────────────────────────────────
 
   @Get('ledger/bad-debt')
-  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER')
   getBadDebtReport(
     @Query('start') start: string,
     @Query('end') end: string,
@@ -139,7 +139,7 @@ export class AccountingController {
   // ============================================================
 
   @Get('ledger/cash-flow')
-  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER')
   getCashFlowFromJournal(
     @Query('periodStart') periodStart: string,
     @Query('periodEnd') periodEnd: string,
@@ -152,7 +152,7 @@ export class AccountingController {
   }
 
   @Get('ledger/equity-statement')
-  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER')
   getEquityStatementFromJournal(
     @Query('periodStart') periodStart: string,
     @Query('periodEnd') periodEnd: string,
@@ -175,7 +175,7 @@ export class AccountingController {
    * can surface a warning banner.
    */
   @Get('journal/export-peak')
-  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER')
   async exportJournalPeak(
     @Query('startDate') startDate: string,
     @Query('endDate') endDate: string,
@@ -203,7 +203,7 @@ export class AccountingController {
   }
 
   @Get('ledger/general-journal')
-  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER')
   getGeneralJournal(
     @Query('start') start: string,
     @Query('end') end: string,
@@ -219,7 +219,7 @@ export class AccountingController {
   }
 
   @Get('ledger/general-ledger')
-  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER')
   getGeneralLedger(
     @Query('accountCode') accountCode: string,
     @Query('periodStart') periodStart: string,
@@ -237,7 +237,7 @@ export class AccountingController {
   // ============================================================
 
   @Get('period-status')
-  @Roles('OWNER')
+  @Roles('OWNER', 'VIEWER')
   getPeriodStatus() {
     return this.service.getAccountingPeriodStatus();
   }
@@ -262,7 +262,7 @@ export class AccountingController {
   }
 
   @Get('bad-debt/summary')
-  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER')
   getProvisionSummary() {
     return this.badDebtService.getProvisionSummary();
   }
@@ -287,7 +287,7 @@ export class AccountingController {
   // ============================================================
 
   @Get('periods/overview')
-  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER')
   getPeriodsOverview(
     @Query('companyId') companyId: string,
     @Query('year') year: string,
@@ -296,13 +296,13 @@ export class AccountingController {
   }
 
   @Get('periods/reopened')
-  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER')
   getReopenedPeriods() {
     return this.monthlyCloseService.listReopenedPeriods();
   }
 
   @Get('periods/:companyId/:year/:month')
-  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER')
   getMonthlyPeriodStatus(
     @Param('companyId') companyId: string,
     @Param('year') year: string,
@@ -357,7 +357,7 @@ export class AccountingController {
   // ============================================================
 
   @Get('inter-co/report')
-  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER')
   getInterCoReport(
     @Query('start') start: string,
     @Query('end') end: string,

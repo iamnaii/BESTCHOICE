@@ -55,6 +55,8 @@ const PaymentMethodSettingsPage = lazy(() => import('@/pages/PaymentMethodSettin
 const DefectExchangePage = lazy(() => import('@/pages/DefectExchangePage'));
 // SP5 — SHOP-side additions
 const InsurancePage = lazy(() => import('@/pages/InsurancePage'));
+const CreateRepairTicketPage = lazy(() => import('@/pages/insurance/CreateRepairTicketPage'));
+const RepairTicketDetailPage = lazy(() => import('@/pages/insurance/RepairTicketDetailPage'));
 const AuditLogsPage = lazy(() => import('@/pages/AuditLogsPage'));
 const FinancialAuditPage = lazy(() => import('@/pages/FinancialAuditPage'));
 const PaymentCsvImportPage = lazy(() => import('@/pages/PaymentCsvImportPage'));
@@ -599,6 +601,24 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES']}>
                 <InsurancePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/insurance/new"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'SALES']}>
+                <CreateRepairTicketPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/insurance/:id"
+            element={
+              <ProtectedRoute
+                roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES', 'ACCOUNTANT']}
+              >
+                <RepairTicketDetailPage />
               </ProtectedRoute>
             }
           />
@@ -1189,18 +1209,7 @@ function App() {
           {/* SP1 placeholder routes — to be replaced by SP2-SP6 implementations.
               Role gating mirrors the menu visibility in spec §3 / §6 so that
               users cannot direct-URL-jump into pages they aren't supposed to see. */}
-          <Route
-            path="/insurance"
-            element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES']}>
-                <ComingSoonPage
-                  feature="ลงทะเบียนประกัน + รับเครื่องคืน"
-                  trackingSP="SP5"
-                  eta="ภายในไตรมาส 3/2026"
-                />
-              </ProtectedRoute>
-            }
-          />
+          {/* /insurance + /insurance/new + /insurance/:id are now real pages — see SP5 routes above */}
           <Route
             path="/finance/vat"
             element={

@@ -157,7 +157,7 @@ const SALES_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
-        { label: 'รับประกัน/ส่งซ่อม', path: '/insurance', icon: ShieldCheck },
+        { label: 'รับซ่อม/รับประกัน', path: '/insurance', icon: ShieldCheck },
       ],
     },
     {
@@ -212,7 +212,7 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
         { label: 'จัดการอุปกรณ์', path: '/mdm', icon: Smartphone },
-        { label: 'รับประกัน/ส่งซ่อม', path: '/insurance', icon: ShieldCheck },
+        { label: 'รับซ่อม/รับประกัน', path: '/insurance', icon: ShieldCheck },
       ],
     },
     {
@@ -502,7 +502,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'ลูกค้า', path: '/customers', icon: Users },
         { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
-        { label: 'รับประกัน/ส่งซ่อม', path: '/insurance', icon: ShieldCheck },
+        { label: 'รับซ่อม/รับประกัน', path: '/insurance', icon: ShieldCheck },
       ],
     },
     {
@@ -512,12 +512,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
       zone: 'shop',
       items: [
         { label: 'เปลี่ยนเครื่องเสีย (7 วัน)', path: '/defect-exchange', icon: Wrench },
-        {
-          label: 'ลงทะเบียนประกัน',
-          path: '/insurance',
-          icon: Shield,
-          placeholder: { trackingSP: 'SP5', eta: 'ภายในไตรมาส 3/2026' },
-        },
+        { label: 'รับซ่อม/รับประกัน', path: '/insurance', icon: ShieldCheck },
       ],
     },
     {

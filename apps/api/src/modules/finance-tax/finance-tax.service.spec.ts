@@ -170,4 +170,58 @@ describe('FinanceTaxService', () => {
       expect(callArgs.where.journalEntry.companyId).toBe('company-finance-id');
     });
   });
+
+  // ─── Task 4: getVatAutoJournalHistory ──────────────────────────────────────
+
+  describe('getVatAutoJournalHistory', () => {
+    /** Helper: build a JournalEntry mock with nested VAT lines */
+    function makeEntry(
+      id: string,
+      entryNumber: string,
+      referenceType: string | null,
+      lines: Array<{ accountCode: string; debit: string; credit: string }>,
+    ) {
+      return {
+        id,
+        entryNumber,
+        postedAt: new Date('2026-05-15T10:00:00Z'),
+        referenceType,
+        description: 'auto journal entry',
+        lines: lines.map((l) => ({
+          accountCode: l.accountCode,
+          debit: new Decimal(l.debit),
+          credit: new Decimal(l.credit),
+        })),
+      };
+    }
+
+    it('returns empty entries list when no matching journal entries exist', async () => {
+      prisma.journalEntry.findMany.mockResolvedValue([]);
+
+      const result = await service.getVatAutoJournalHistory(2026, 5);
+
+      expect(result.entries).toEqual([]);
+      expect(result.period.year).toBe(2026);
+      expect(result.period.month).toBe(5);
+    });
+
+    it('maps entryNumber → documentNumber and referenceType → sourceType', async () => {
+      prisma.journalEntry.findMany.mockResolvedValue([
+        makeEntry('entry-uuid-1', 'JE-202605-0001', 'PAYMENT', [
+          { accountCode: '21-2101', debit: '0', credit: '700' },
+          { accountCode: '11-2105', debit: '700', credit: '0' },
+        ]),
+      ]);
+
+      const result = await service.getVatAutoJournalHistory(2026, 5);
+
+      const entry = result.entries[0];
+      expect(entry.documentNumber).toBe('JE-202605-0001'); // entryNumber → documentNumber
+      expect(entry.sourceType).toBe('PAYMENT'); // referenceType → sourceType
+      expect(entry.vatLines).toHaveLength(2);
+      expect(entry.vatLines[0].accountCode).toBe('21-2101');
+      expect(entry.vatLines[0].debit).toBe(0);
+      expect(entry.vatLines[0].credit).toBe(700);
+    });
+  });
 });

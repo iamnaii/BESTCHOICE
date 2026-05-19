@@ -170,6 +170,8 @@ const EquityStatementPage = lazy(() =>
 const GeneralLedgerPage = lazy(() =>
   import('@/pages/GeneralLedgerPage').then((m) => ({ default: m.GeneralLedgerPage })),
 );
+// P4-SP1 — Financial report pages
+const BalanceSheetPage = lazy(() => import('@/pages/finance/BalanceSheetPage'));
 const PeakSyncPage = lazy(() => import('@/pages/PeakSyncPage'));
 const PeakExportPage = lazy(() => import('@/pages/PeakExportPage'));
 const AiSettingsPage = lazy(() => import('@/pages/AiSettingsPage'));
@@ -1439,7 +1441,7 @@ function App() {
             path="/finance/balance-sheet"
             element={
               <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
-                <ComingSoonPage feature="งบดุล (Balance Sheet)" trackingSP="SP2" eta="ภายในไตรมาส 2/2026" />
+                <BalanceSheetPage />
               </ProtectedRoute>
             }
           />

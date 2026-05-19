@@ -618,7 +618,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'ปิดบัญชีสิ้นปี', path: '/finance/year-end-closing', icon: CalendarDays },
         { label: 'งวดบัญชี', path: '/accounting/periods', icon: CalendarDays },
         // CSV §5 — "งบ 4 ประเภท" (full 4-statement set per TFRS)
-        { label: 'งบดุล (Balance Sheet)', path: '/finance/balance-sheet', icon: PieChart, placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' } },
+        { label: 'งบดุล (Balance Sheet)', path: '/finance/balance-sheet', icon: PieChart },
         { label: 'กำไร-ขาดทุน (P&L)', path: '/profit-loss', icon: PieChart },
         { label: 'งบกระแสเงินสด', path: '/finance/cash-flow', icon: Banknote, placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' } },
         { label: 'งบ Equity', path: '/finance/equity-statement', icon: BarChart3, placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' } },

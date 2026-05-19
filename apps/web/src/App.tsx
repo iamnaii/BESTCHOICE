@@ -1423,6 +1423,131 @@ function App() {
               </ProtectedRoute>
             }
           />
+          {/* ── FIN menu CSV-driven placeholders (15 routes) ─────────
+              Owner CSV indicated these need to be reachable as menu
+              entries even before backend impl. ComingSoonPage handles
+              the user landing while SP2/3/4/5/6 ship their UIs. */}
+          <Route
+            path="/finance/contract-cancellation"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <ComingSoonPage feature="เอกสารยกเลิกสัญญา" trackingSP="SP5" eta="ภายในไตรมาส 3/2026" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/finance/balance-sheet"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <ComingSoonPage feature="งบดุล (Balance Sheet)" trackingSP="SP2" eta="ภายในไตรมาส 2/2026" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/finance/aging-report"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <ComingSoonPage feature="รายงานลูกหนี้ + วิเคราะห์อายุหนี้ (Aging)" trackingSP="SP2" eta="ภายในไตรมาส 2/2026" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/finance/general-journal"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <ComingSoonPage feature="สมุดรายวันทั่วไป" trackingSP="SP2" eta="ภายในไตรมาส 2/2026" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/finance/bad-debt-report"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <ComingSoonPage feature="รายงานหนี้สูญ" trackingSP="SP2" eta="ภายในไตรมาส 2/2026" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/finance/intercompany-report"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <ComingSoonPage feature="รายงานลูกหนี้ Inter-co (FINANCE ↔ SHOP)" trackingSP="SP6" eta="ภายในไตรมาส 4/2026" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/finance/e-receipt-auto"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <ComingSoonPage feature="ใบเสร็จอิเล็กทรอนิกส์อัตโนมัติ" trackingSP="SP3" eta="ภายในไตรมาส 3/2026" />
+              </ProtectedRoute>
+            }
+          />
+          {/* ตั้งค่าเอกสาร — 8 doc-type sub-pages (CSV §8 sub-grouping) */}
+          <Route
+            path="/settings/document-config/deposit-receipt"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <ComingSoonPage feature="ตั้งค่าใบรับเงินมัดจำ" trackingSP="SP4" eta="ภายในไตรมาส 3/2026" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings/document-config/receipt"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <ComingSoonPage feature="ตั้งค่าใบเสร็จรับเงิน" trackingSP="SP4" eta="ภายในไตรมาส 3/2026" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings/document-config/credit-note"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <ComingSoonPage feature="ตั้งค่าใบลดหนี้" trackingSP="SP4" eta="ภายในไตรมาส 3/2026" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings/document-config/purchase-order"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <ComingSoonPage feature="ตั้งค่าใบสั่งซื้อ (PO)" trackingSP="SP4" eta="ภายในไตรมาส 3/2026" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings/document-config/expense-doc"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <ComingSoonPage feature="ตั้งค่าเอกสารค่าใช้จ่าย" trackingSP="SP4" eta="ภายในไตรมาส 3/2026" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings/document-config/credit-note-received"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <ComingSoonPage feature="ตั้งค่ารับใบลดหนี้" trackingSP="SP4" eta="ภายในไตรมาส 3/2026" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings/document-config/payment-summary"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <ComingSoonPage feature="ตั้งค่าใบรวมจ่าย" trackingSP="SP4" eta="ภายในไตรมาส 3/2026" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings/document-config/asset-purchase"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <ComingSoonPage feature="ตั้งค่าเอกสารซื้อสินทรัพย์" trackingSP="SP4" eta="ภายในไตรมาส 3/2026" />
+              </ProtectedRoute>
+            }
+          />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

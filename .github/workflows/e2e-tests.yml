@@ -33,6 +33,21 @@ jobs:
         ports:
           - 5432:5432
 
+      # SP7.1 — bc_finance for dual-Prisma. API boots only when both DBs reachable.
+      postgres-finance:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test_finance_db
+        options: >-
+          --health-cmd "pg_isready -U test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5433:5432
+
     strategy:
       fail-fast: false
       matrix:
@@ -44,6 +59,8 @@ jobs:
 
     env:
       DATABASE_URL: postgresql://test:test@localhost:5432/test_db?schema=public
+      # SP7.1 — bc_finance side DB for dual-Prisma
+      DATABASE_URL_FINANCE: postgresql://test:test@localhost:5433/test_finance_db?schema=public
       JWT_SECRET: test-secret
       JWT_REFRESH_SECRET: test-refresh-secret
       JWT_EXPIRATION: 15m
@@ -69,8 +86,14 @@ jobs:
       - name: Generate Prisma Client
         run: npx prisma generate --schema=apps/api/prisma/schema.prisma
 
+      - name: Generate Prisma Client (finance — SP7.1)
+        run: npx prisma generate --schema=apps/api/prisma-finance/schema.prisma
+
       - name: Run DB migrations
         run: npx prisma migrate deploy --schema=apps/api/prisma/schema.prisma
+
+      - name: Run DB migrations (finance — SP7.1)
+        run: npx prisma migrate deploy --schema=apps/api/prisma-finance/schema.prisma
 
       - name: Build API
         run: npm run build --workspace=apps/api

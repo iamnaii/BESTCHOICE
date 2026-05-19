@@ -19,6 +19,15 @@ import { MarkRepairedDto } from './dto/mark-repaired.dto';
 import { SendBackDto } from './dto/send-back.dto';
 import { CancelDto } from './dto/cancel.dto';
 import { ReplaceDto } from './dto/replace.dto';
+import { ReturnToCustomerDto } from './dto/return-to-customer.dto';
+import { formatDevice } from './utils/format-device';
+
+/** SystemConfig key — CoA code for repair income when payer=CUSTOMER. Default: 42-1106 */
+const REPAIR_INCOME_ACCOUNT_CODE_KEY = 'REPAIR_INCOME_ACCOUNT_CODE';
+const REPAIR_INCOME_ACCOUNT_CODE_DEFAULT = '42-1106';
+/** SystemConfig key — CoA expense code for repair cost when payer=SHOP. Default: 53-1306 */
+const REPAIR_EXPENSE_ACCOUNT_CODE_KEY = 'REPAIR_EXPENSE_ACCOUNT_CODE';
+const REPAIR_EXPENSE_ACCOUNT_CODE_DEFAULT = '53-1306';
 
 type ReqUser = { id: string; role: string; branchId?: string | null };
 
@@ -27,12 +36,8 @@ export class RepairTicketsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-    // Injected for future use by send/receive/replace flows (PR3+)
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     private readonly expenseDocs: ExpenseDocumentsService,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     private readonly otherIncome: OtherIncomeService,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     private readonly settings: SettingsService,
     private readonly docNumber: RepairTicketDocNumberService,
   ) {}
@@ -298,6 +303,150 @@ export class RepairTicketsService {
       }
 
       return this.markReplaced(id, dto.replacementContractId, user, tx);
+    });
+  }
+
+  // ─── READY_FOR_PICKUP → CLOSED ─────────────────────────────────────────────
+
+  /**
+   * Customer picks up device. Transitions READY_FOR_PICKUP → CLOSED.
+   *
+   * Cross-module atomic auto-document creation (all inside one $transaction):
+   *   - payer=SHOP        → creates DRAFT ExpenseDocument (REPAIR_SERVICE type)
+   *                         linked to repair supplier; accountant posts later.
+   *   - payer=CUSTOMER    → creates DRAFT OtherIncome linked to customer;
+   *                         accountant posts + collects payment separately.
+   *   - payer=SUPPLIER_CLAIM → no doc created (supplier handles billing externally).
+   *
+   * The FK pointers (expenseDocumentId / otherIncomeId) on RepairTicket are
+   * @unique, so a second call after CLOSED will hit the CAS guard (count === 0)
+   * long before it can create a duplicate document.
+   */
+  async returnToCustomer(id: string, dto: ReturnToCustomerDto, user: ReqUser) {
+    return this.prisma.$transaction(async (tx) => {
+      const returnedAt = dto.returnedToCustomerAt ? new Date(dto.returnedToCustomerAt) : new Date();
+
+      // 1. CAS guard — atomically flip READY_FOR_PICKUP → CLOSED
+      const updated = await tx.repairTicket.updateMany({
+        where: { id, status: 'READY_FOR_PICKUP', deletedAt: null },
+        data: { status: 'CLOSED', returnedToCustomerAt: returnedAt },
+      });
+      if (updated.count === 0) {
+        throw new ConflictException('สถานะถูกเปลี่ยนไปแล้ว (ต้องเป็น READY_FOR_PICKUP)');
+      }
+
+      // 2. Load ticket with relations needed for doc creation
+      const ticket = await tx.repairTicket.findUnique({
+        where: { id },
+        include: {
+          customer: { select: { id: true, name: true } },
+          product: { select: { brand: true, model: true, storage: true } },
+          contract: { select: { product: { select: { brand: true, model: true, storage: true } } } },
+        },
+      });
+      if (!ticket) throw new NotFoundException('ไม่พบ ticket');
+
+      const deviceLabel = formatDevice(ticket);
+
+      // 3. Auto-create draft doc based on payer
+      let expenseDocumentId: string | null = null;
+      let otherIncomeId: string | null = null;
+
+      if (ticket.payer === 'SHOP' && ticket.actualCost && ticket.repairSupplierId) {
+        // Look up expense account code from SystemConfig (inside tx for consistency)
+        const accountCode =
+          (await tx.systemConfig
+            .findFirst({ where: { key: REPAIR_EXPENSE_ACCOUNT_CODE_KEY, deletedAt: null } })
+            .then((r) => r?.value ?? REPAIR_EXPENSE_ACCOUNT_CODE_DEFAULT)) ??
+          REPAIR_EXPENSE_ACCOUNT_CODE_DEFAULT;
+
+        // Fetch supplier name for the expense doc vendorName field
+        const supplier = await tx.supplier.findUnique({
+          where: { id: ticket.repairSupplierId },
+          select: { name: true },
+        });
+
+        const doc = await this.expenseDocs.createDraftForRepair(
+          {
+            vendorName: supplier?.name ?? ticket.repairSupplierId,
+            // NOTE: Number(Decimal) is used only to cross the module-boundary DTO
+            // that expects a Prisma.Decimal. The Decimal precision is preserved
+            // because actualCost has already been stored as Decimal(12,2) in DB.
+            amount: ticket.actualCost,
+            accountCode,
+            description: `ค่าซ่อม ${deviceLabel}: ${ticket.defectDescription.slice(0, 60)}`,
+            branchId: ticket.branchId,
+            createdById: user.id,
+            metadata: { flow: 'repair-ticket-close', repairTicketId: ticket.id },
+          },
+          tx,
+        );
+        expenseDocumentId = doc.id;
+      } else if (ticket.payer === 'CUSTOMER' && ticket.actualCost) {
+        const accountCode =
+          (await tx.systemConfig
+            .findFirst({ where: { key: REPAIR_INCOME_ACCOUNT_CODE_KEY, deletedAt: null } })
+            .then((r) => r?.value ?? REPAIR_INCOME_ACCOUNT_CODE_DEFAULT)) ??
+          REPAIR_INCOME_ACCOUNT_CODE_DEFAULT;
+
+        const oi = await this.otherIncome.createDraftForRepair(
+          {
+            accountCode,
+            counterpartyName: ticket.customer.name,
+            customerId: ticket.customerId,
+            amount: ticket.actualCost,
+            description: `ค่าบริการซ่อม ${deviceLabel}`,
+            receivedAt: returnedAt,
+            branchId: ticket.branchId,
+            createdById: user.id,
+            metadata: { flow: 'repair-ticket-close', repairTicketId: ticket.id },
+          },
+          tx,
+        );
+        otherIncomeId = oi.id;
+      }
+      // payer === 'SUPPLIER_CLAIM' → no doc; supplier bills externally
+
+      // 4. Link doc FKs back to ticket (only when a doc was created)
+      if (expenseDocumentId !== null || otherIncomeId !== null) {
+        await tx.repairTicket.update({
+          where: { id },
+          data: {
+            expenseDocumentId: expenseDocumentId ?? null,
+            otherIncomeId: otherIncomeId ?? null,
+          },
+        });
+      }
+
+      // 5. Status log
+      await tx.repairStatusLog.create({
+        data: {
+          ticketId: id,
+          fromStatus: 'READY_FOR_PICKUP',
+          toStatus: 'CLOSED',
+          changedById: user.id,
+        },
+      });
+
+      // 6. Audit log
+      await this.audit.log({
+        userId: user.id,
+        action: 'REPAIR_TICKET_RETURNED',
+        entity: 'repair_ticket',
+        entityId: id,
+        newValue: {
+          expenseDocumentId,
+          otherIncomeId,
+          actualCost: ticket.actualCost?.toString() ?? null,
+          payer: ticket.payer,
+        },
+      });
+
+      return {
+        ticket: { ...ticket, status: 'CLOSED' as const },
+        expenseDocumentId,
+        otherIncomeId,
+      };
     });
   }
 

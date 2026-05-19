@@ -206,15 +206,22 @@ function buildTransitionModule() {
   return { prisma, audit, docNumber };
 }
 
-async function buildSvc(prisma: any, audit: any, docNumber: any) {
+async function buildSvc(
+  prisma: any,
+  audit: any,
+  docNumber: any,
+  expenseDocs: any = {},
+  otherIncome: any = {},
+  settings: any = {},
+) {
   const mod: TestingModule = await Test.createTestingModule({
     providers: [
       RepairTicketsService,
       { provide: PrismaService, useValue: prisma },
       { provide: AuditService, useValue: audit },
-      { provide: ExpenseDocumentsService, useValue: {} },
-      { provide: OtherIncomeService, useValue: {} },
-      { provide: SettingsService, useValue: {} },
+      { provide: ExpenseDocumentsService, useValue: expenseDocs },
+      { provide: OtherIncomeService, useValue: otherIncome },
+      { provide: SettingsService, useValue: settings },
       { provide: RepairTicketDocNumberService, useValue: docNumber },
     ],
   }).compile();
@@ -529,5 +536,149 @@ describe('RepairTicketsService.replace', () => {
     await expect(
       svc.replace('t-1', { replacementContractId: 'contract-other' } as any, OWNER),
     ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+});
+
+// ─── RepairTicketsService.returnToCustomer ─────────────────────────────────
+
+describe('RepairTicketsService.returnToCustomer', () => {
+  let svc: RepairTicketsService;
+  let prisma: any;
+  let audit: any;
+  let expenseDocs: any;
+  let otherIncome: any;
+
+  /** Helper: build a ticket stub with sensible defaults. */
+  function stubTicket(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      id: 't-1',
+      branchId: 'br-1',
+      customerId: 'c-1',
+      payer: 'SHOP',
+      repairSupplierId: 'sup-1',
+      actualCost: new Prisma.Decimal(2500),
+      defectDescription: 'จอเสีย',
+      customer: { id: 'c-1', name: 'นาย ก' },
+      product: null,
+      contract: null,
+      ...overrides,
+    };
+  }
+
+  beforeEach(async () => {
+    ({ prisma, audit } = buildTransitionModule());
+
+    // Add repairTicket.update + systemConfig mock to the prisma stub
+    prisma.repairTicket.update = jest.fn().mockResolvedValue({ id: 't-1' });
+    prisma.systemConfig = { findFirst: jest.fn().mockResolvedValue(null) };
+    prisma.supplier = { findUnique: jest.fn().mockResolvedValue({ id: 'sup-1', name: 'ซัพพลายเออร์ A' }) };
+
+    expenseDocs = {
+      createDraftForRepair: jest.fn().mockResolvedValue({ id: 'ed-1' }),
+    };
+    otherIncome = {
+      createDraftForRepair: jest.fn().mockResolvedValue({ id: 'oi-1' }),
+    };
+
+    svc = await buildSvc(
+      prisma,
+      audit,
+      { nextTicketNumber: jest.fn() },
+      expenseDocs,
+      otherIncome,
+      {},
+    );
+  });
+
+  // Test 1: payer=SHOP → creates ExpenseDocument draft + links FK
+  it('payer=SHOP → creates ExpenseDocument draft and links expenseDocumentId', async () => {
+    prisma.repairTicket.updateMany.mockResolvedValue({ count: 1 });
+    prisma.repairTicket.findUnique.mockResolvedValue(stubTicket({ payer: 'SHOP' }));
+
+    await svc.returnToCustomer('t-1', {} as any, OWNER);
+
+    expect(expenseDocs.createDraftForRepair).toHaveBeenCalledWith(
+      expect.objectContaining({
+        vendorName: 'ซัพพลายเออร์ A',
+        amount: new Prisma.Decimal(2500),
+      }),
+      expect.anything(), // tx
+    );
+    expect(prisma.repairTicket.update).toHaveBeenCalledWith({
+      where: { id: 't-1' },
+      data: { expenseDocumentId: 'ed-1', otherIncomeId: null },
+    });
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'REPAIR_TICKET_RETURNED' }),
+    );
+  });
+
+  // Test 2: payer=CUSTOMER → creates OtherIncome draft + links FK
+  it('payer=CUSTOMER → creates OtherIncome draft and links otherIncomeId', async () => {
+    prisma.repairTicket.updateMany.mockResolvedValue({ count: 1 });
+    prisma.repairTicket.findUnique.mockResolvedValue(
+      stubTicket({
+        id: 't-2',
+        payer: 'CUSTOMER',
+        repairSupplierId: null,
+      }),
+    );
+
+    await svc.returnToCustomer('t-2', {} as any, OWNER);
+
+    expect(otherIncome.createDraftForRepair).toHaveBeenCalledWith(
+      expect.objectContaining({
+        counterpartyName: 'นาย ก',
+        customerId: 'c-1',
+        amount: new Prisma.Decimal(2500),
+      }),
+      expect.anything(), // tx
+    );
+    expect(prisma.repairTicket.update).toHaveBeenCalledWith({
+      where: { id: 't-2' },
+      data: { expenseDocumentId: null, otherIncomeId: 'oi-1' },
+    });
+  });
+
+  // Test 3: payer=SUPPLIER_CLAIM → no doc created, FKs remain null, no update call
+  it('payer=SUPPLIER_CLAIM → no doc created and repairTicket.update not called', async () => {
+    prisma.repairTicket.updateMany.mockResolvedValue({ count: 1 });
+    prisma.repairTicket.findUnique.mockResolvedValue(
+      stubTicket({ payer: 'SUPPLIER_CLAIM', actualCost: new Prisma.Decimal(0) }),
+    );
+
+    await svc.returnToCustomer('t-3', {} as any, OWNER);
+
+    expect(expenseDocs.createDraftForRepair).not.toHaveBeenCalled();
+    expect(otherIncome.createDraftForRepair).not.toHaveBeenCalled();
+    expect(prisma.repairTicket.update).not.toHaveBeenCalled();
+    // Status log + audit should still be written
+    expect(prisma.repairStatusLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ fromStatus: 'READY_FOR_PICKUP', toStatus: 'CLOSED' }),
+    });
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'REPAIR_TICKET_RETURNED' }),
+    );
+  });
+
+  // Test 4: idempotency — re-call throws ConflictException via CAS
+  it('re-call throws ConflictException when CAS returns count=0', async () => {
+    prisma.repairTicket.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(svc.returnToCustomer('t-1', {} as any, OWNER)).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+  });
+
+  // Test 5: tx rollback — expense doc creation throws → repairTicket.update never called
+  it('rolls back: when createDraftForRepair throws, repairTicket.update is not called', async () => {
+    prisma.repairTicket.updateMany.mockResolvedValue({ count: 1 });
+    prisma.repairTicket.findUnique.mockResolvedValue(stubTicket({ payer: 'SHOP' }));
+    expenseDocs.createDraftForRepair = jest
+      .fn()
+      .mockRejectedValue(new Error('vendor not found'));
+
+    await expect(svc.returnToCustomer('t-1', {} as any, OWNER)).rejects.toThrow('vendor not found');
+    expect(prisma.repairTicket.update).not.toHaveBeenCalled();
   });
 });

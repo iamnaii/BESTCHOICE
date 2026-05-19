@@ -15,6 +15,7 @@ import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { AccountingService } from './accounting.service';
 import { BadDebtService } from './bad-debt.service';
 import { MonthlyCloseService } from './monthly-close.service';
+import { IntercompanyReportService } from './intercompany-report.service';
 import { CloseMonthDto } from './dto/monthly-close.dto';
 import { ReopenPeriodDto } from './dto/reopen-period.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -39,6 +40,7 @@ export class AccountingController {
     private service: AccountingService,
     private badDebtService: BadDebtService,
     private monthlyCloseService: MonthlyCloseService,
+    private intercoReportService: IntercompanyReportService,
   ) {}
 
   // ============================================================
@@ -348,5 +350,21 @@ export class AccountingController {
     @Request() req: { user: { id: string }; ip?: string },
   ) {
     return this.monthlyCloseService.reopenPeriod(dto, req.user.id, req.ip);
+  }
+
+  // ============================================================
+  // P4-SP4: Inter-Company Report — FINANCE↔SHOP payables (21-1101, 21-1102)
+  // ============================================================
+
+  @Get('inter-co/report')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  getInterCoReport(
+    @Query('start') start: string,
+    @Query('end') end: string,
+  ) {
+    if (!start || !end) {
+      throw new BadRequestException('กรุณาระบุ start และ end (ISO date string)');
+    }
+    return this.intercoReportService.getReport(new Date(start), new Date(end));
   }
 }

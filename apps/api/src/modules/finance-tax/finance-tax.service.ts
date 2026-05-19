@@ -16,7 +16,7 @@ const WHT_PND3_ACCOUNTS = ['21-3102'];
 const WHT_PND53_ACCOUNTS = ['21-3103'];
 const ALL_WHT_ACCOUNTS = [...WHT_PND1_ACCOUNTS, ...WHT_PND3_ACCOUNTS, ...WHT_PND53_ACCOUNTS];
 
-interface PeriodBounds {
+export interface PeriodBounds {
   year: number;
   month: number;
   start: Date;
@@ -29,7 +29,7 @@ function buildPeriod(year: number, month: number): PeriodBounds {
   return { year, month, start, end };
 }
 
-interface VatLine {
+export interface VatLine {
   accountCode: string;
   documentNumber: string;
   postedAt: Date | null;
@@ -38,14 +38,14 @@ interface VatLine {
   credit: number;
 }
 
-interface WhtLine {
+export interface WhtLine {
   documentNumber: string;
   postedAt: Date | null;
   description: string | null;
   amount: number; // credit - debit (positive = payable accrual, negative = settlement)
 }
 
-interface VatAutoJournalVatLine {
+export interface VatAutoJournalVatLine {
   accountCode: string;
   debit: number;
   credit: number;

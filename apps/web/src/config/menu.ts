@@ -572,7 +572,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'ล็อคเครื่อง (MDM)', path: '/mdm', icon: Lock },
         { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
         // CSV §2 placeholder — owner-flagged ✏ "ต้องสร้าง"
-        { label: 'เอกสารยกเลิกสัญญา', path: '/finance/contract-cancellation', icon: FileText, placeholder: { trackingSP: 'SP5', eta: 'ภายในไตรมาส 3/2026' } },
+        { label: 'เอกสารยกเลิกสัญญา', path: '/finance/contract-cancellation', icon: FileText },
       ],
     },
     {
@@ -640,7 +640,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'สมุดรายวัน', path: '/finance/general-journal', icon: BookOpen },
         { label: 'สมุดแยกประเภท', path: '/finance/general-ledger', icon: BookOpen },
         { label: 'รายงานหนี้สูญ', path: '/finance/bad-debt-report', icon: TrendingDown },
-        { label: 'รายงานลูกหนี้ Inter-co', path: '/finance/intercompany-report', icon: Building2, placeholder: { trackingSP: 'SP6', eta: 'ภายในไตรมาส 4/2026' } },
+        { label: 'รายงานลูกหนี้ Inter-co', path: '/finance/intercompany-report', icon: Building2 },
         { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
         { label: 'ตรวจสอบบัญชี', path: '/financial-audit', icon: ClipboardList },
         // P3-SP3 — PEAK CSV export (mapping config lives in /settings#peak-mapping)

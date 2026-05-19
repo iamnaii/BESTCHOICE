@@ -114,6 +114,7 @@ describe('Approval Workflow (D1.2.1) — API integration', () => {
       findUnique: jest.fn(async () => null),
     } as any,
     $transaction: jest.fn(async (cb: any) => cb(prismaMock as PrismaService)),
+    $executeRawUnsafe: jest.fn(async () => 0) as any,
   };
 
   beforeAll(async () => {

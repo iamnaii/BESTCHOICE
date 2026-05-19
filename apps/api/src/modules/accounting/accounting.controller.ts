@@ -1,17 +1,21 @@
 import {
+  BadRequestException,
   Controller,
   Get,
   Post,
   Param,
   Body,
   Query,
+  Res,
   UseGuards,
   Request,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { AccountingService } from './accounting.service';
 import { BadDebtService } from './bad-debt.service';
 import { MonthlyCloseService } from './monthly-close.service';
+import { IntercompanyReportService } from './intercompany-report.service';
 import { CloseMonthDto } from './dto/monthly-close.dto';
 import { ReopenPeriodDto } from './dto/reopen-period.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -36,6 +40,7 @@ export class AccountingController {
     private service: AccountingService,
     private badDebtService: BadDebtService,
     private monthlyCloseService: MonthlyCloseService,
+    private intercoReportService: IntercompanyReportService,
   ) {}
 
   // ============================================================
@@ -43,38 +48,196 @@ export class AccountingController {
   // ============================================================
 
   @Get('ledger/trial-balance')
-  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
-  getTrialBalance(@Query('asOfDate') asOfDate?: string) {
-    return this.service.getTrialBalance(asOfDate ? new Date(asOfDate) : undefined);
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER')
+  getTrialBalance(
+    @Query('asOfDate') asOfDate?: string,
+    @Query('scope') scope?: 'FINANCE' | 'SHOP' | 'ALL',
+  ) {
+    return this.service.getTrialBalance(
+      asOfDate ? new Date(asOfDate) : undefined,
+      scope ?? 'FINANCE',
+    );
   }
 
   @Get('ledger/profit-loss')
-  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER')
   getProfitLossFromJournal(
+    @Query('periodStart') periodStart: string,
+    @Query('periodEnd') periodEnd: string,
+    @Query('scope') scope?: 'FINANCE' | 'SHOP' | 'ALL',
+  ) {
+    const start = new Date(periodStart);
+    const end = new Date(periodEnd);
+    end.setHours(23, 59, 59, 999);
+    return this.service.getProfitLossFromJournal(start, end, undefined, scope ?? 'FINANCE');
+  }
+
+  // ============================================================
+  // P3-SP5: SHOP-side reports (separate paths for sidebar UX)
+  // ============================================================
+  //
+  // POLICY (P3-SP5 W5): SHOP reports are cross-branch by design — these
+  // endpoints aggregate SHOP-side journal lines across ALL branches into
+  // ONE Trial Balance / P&L. BRANCH_MANAGER is NOT in CROSS_BRANCH_ROLES
+  // (see apps/api/src/modules/auth/branch-access.util.ts), so adding BM to
+  // @Roles here would actually 403 at BranchGuard. Roles intentionally
+  // limited to the cross-branch set: OWNER, FINANCE_MANAGER, ACCOUNTANT.
+  //
+  // If owner ever wants branch-scoped SHOP P&L for BM, add a `?branchId=`
+  // query and filter inside the service — do NOT just widen @Roles, the
+  // global guard will block it anyway.
+
+  @Get('ledger/shop/trial-balance')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER')
+  getShopTrialBalance(@Query('asOfDate') asOfDate?: string) {
+    return this.service.getTrialBalance(asOfDate ? new Date(asOfDate) : undefined, 'SHOP');
+  }
+
+  @Get('ledger/shop/profit-loss')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER')
+  getShopProfitLoss(
     @Query('periodStart') periodStart: string,
     @Query('periodEnd') periodEnd: string,
   ) {
     const start = new Date(periodStart);
     const end = new Date(periodEnd);
     end.setHours(23, 59, 59, 999);
-    return this.service.getProfitLossFromJournal(start, end);
+    return this.service.getProfitLossFromJournal(start, end, undefined, 'SHOP');
   }
 
   @Get('ledger/balance-sheet')
-  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER')
   getBalanceSheetFromJournal(@Query('asOfDate') asOfDate?: string) {
     return this.service.getBalanceSheetFromJournal(asOfDate ? new Date(asOfDate) : undefined);
+  }
+
+  // ─── P4-SP1: Aging Report ────────────────────────────────────────────────
+
+  @Get('ledger/aging')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER')
+  getAgingReport(@Query('asOf') asOf?: string) {
+    return this.service.getAgingReport(asOf ? new Date(asOf) : new Date());
+  }
+
+  // ─── P4-SP1: Bad Debt Report ──────────────────────────────────────────────
+
+  @Get('ledger/bad-debt')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER')
+  getBadDebtReport(
+    @Query('start') start: string,
+    @Query('end') end: string,
+    @Query('companyId') companyId?: string,
+  ) {
+    return this.service.getBadDebtReport(new Date(start), new Date(end), companyId);
   }
 
   // Balance Sheet & Cash Flow endpoints are in ReportsController (/reports/balance-sheet, /reports/cash-flow)
   // to avoid duplicate routes. See reports.controller.ts.
 
   // ============================================================
+  // SP2: Cash Flow Indirect / Equity Statement / General Ledger
+  // ============================================================
+
+  @Get('ledger/cash-flow')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER')
+  getCashFlowFromJournal(
+    @Query('periodStart') periodStart: string,
+    @Query('periodEnd') periodEnd: string,
+    @Query('companyId') companyId?: string,
+  ) {
+    const start = new Date(periodStart);
+    const end = new Date(periodEnd);
+    end.setHours(23, 59, 59, 999);
+    return this.service.getCashFlowFromJournal(start, end, companyId);
+  }
+
+  @Get('ledger/equity-statement')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER')
+  getEquityStatementFromJournal(
+    @Query('periodStart') periodStart: string,
+    @Query('periodEnd') periodEnd: string,
+    @Query('companyId') companyId?: string,
+  ) {
+    const start = new Date(periodStart);
+    const end = new Date(periodEnd);
+    end.setHours(23, 59, 59, 999);
+    return this.service.getEquityStatementFromJournal(start, end, companyId);
+  }
+
+  // ============================================================
+  // P3-SP3: PEAK CSV export
+  // ============================================================
+
+  /**
+   * Stream a CSV of journal lines (within the date range) tagged with their
+   * mapped PEAK code. Lines whose account has no PEAK mapping are skipped —
+   * the count is returned via the `X-Skipped-Lines` response header so the UI
+   * can surface a warning banner.
+   */
+  @Get('journal/export-peak')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER')
+  async exportJournalPeak(
+    @Query('startDate') startDate: string,
+    @Query('endDate') endDate: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    if (!startDate || !endDate) {
+      throw new BadRequestException('กรุณาระบุช่วงวันที่');
+    }
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      throw new BadRequestException('รูปแบบวันที่ไม่ถูกต้อง');
+    }
+    end.setHours(23, 59, 59, 999);
+
+    const result = await this.service.exportJournalWithPeakCodes(start, end);
+    const filename = `peak-journal-${startDate}_${endDate}.csv`;
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('X-Skipped-Lines', String(result.skippedLineCount));
+    res.setHeader('X-Row-Count', String(result.rowCount));
+    // Expose custom headers so the browser fetch() sees them through CORS.
+    res.setHeader('Access-Control-Expose-Headers', 'X-Skipped-Lines, X-Row-Count');
+    res.end(result.csv);
+  }
+
+  @Get('ledger/general-journal')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER')
+  getGeneralJournal(
+    @Query('start') start: string,
+    @Query('end') end: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('companyId') companyId?: string,
+  ) {
+    return this.service.getGeneralJournal(new Date(start), new Date(end), {
+      page: page ? parseInt(page, 10) : 1,
+      limit: limit ? parseInt(limit, 10) : 50,
+      companyId,
+    });
+  }
+
+  @Get('ledger/general-ledger')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER')
+  getGeneralLedger(
+    @Query('accountCode') accountCode: string,
+    @Query('periodStart') periodStart: string,
+    @Query('periodEnd') periodEnd: string,
+    @Query('companyId') companyId?: string,
+  ) {
+    const start = new Date(periodStart);
+    const end = new Date(periodEnd);
+    end.setHours(23, 59, 59, 999);
+    return this.service.getGeneralLedger(accountCode, start, end, companyId);
+  }
+
+  // ============================================================
   // W-013: Period Closing Lock
   // ============================================================
 
   @Get('period-status')
-  @Roles('OWNER')
+  @Roles('OWNER', 'VIEWER')
   getPeriodStatus() {
     return this.service.getAccountingPeriodStatus();
   }
@@ -99,7 +262,7 @@ export class AccountingController {
   }
 
   @Get('bad-debt/summary')
-  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER')
   getProvisionSummary() {
     return this.badDebtService.getProvisionSummary();
   }
@@ -124,7 +287,7 @@ export class AccountingController {
   // ============================================================
 
   @Get('periods/overview')
-  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER')
   getPeriodsOverview(
     @Query('companyId') companyId: string,
     @Query('year') year: string,
@@ -133,13 +296,13 @@ export class AccountingController {
   }
 
   @Get('periods/reopened')
-  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER')
   getReopenedPeriods() {
     return this.monthlyCloseService.listReopenedPeriods();
   }
 
   @Get('periods/:companyId/:year/:month')
-  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER')
   getMonthlyPeriodStatus(
     @Param('companyId') companyId: string,
     @Param('year') year: string,
@@ -187,5 +350,21 @@ export class AccountingController {
     @Request() req: { user: { id: string }; ip?: string },
   ) {
     return this.monthlyCloseService.reopenPeriod(dto, req.user.id, req.ip);
+  }
+
+  // ============================================================
+  // P4-SP4: Inter-Company Report — FINANCE↔SHOP payables (21-1101, 21-1102)
+  // ============================================================
+
+  @Get('inter-co/report')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER')
+  getInterCoReport(
+    @Query('start') start: string,
+    @Query('end') end: string,
+  ) {
+    if (!start || !end) {
+      throw new BadRequestException('กรุณาระบุ start และ end (ISO date string)');
+    }
+    return this.intercoReportService.getReport(new Date(start), new Date(end));
   }
 }

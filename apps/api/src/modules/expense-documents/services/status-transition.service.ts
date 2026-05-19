@@ -43,11 +43,13 @@ export class StatusTransitionService {
 
   /**
    * Determine the target status after posting given doc characteristics.
-   * - EXPENSE: POSTED if paid same day; ACCRUAL otherwise
+   * - EXPENSE / REPAIR_SERVICE: POSTED if paid same day; ACCRUAL otherwise
+   *   (REPAIR_SERVICE is always auto-created without a payment method → ACCRUAL,
+   *   which the accountant settles later via VendorSettlement)
    * - CREDIT_NOTE / PAYROLL / VENDOR_SETTLEMENT: always POSTED
    */
   resolveTargetStatus(type: DocumentType, hasPaymentMethod: boolean): DocumentStatus {
-    if (type === 'EXPENSE' && !hasPaymentMethod) return 'ACCRUAL';
+    if ((type === 'EXPENSE' || type === 'REPAIR_SERVICE') && !hasPaymentMethod) return 'ACCRUAL';
     return 'POSTED';
   }
 

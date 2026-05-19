@@ -1,10 +1,11 @@
-import { Controller, Get, Patch, Put, Body, Query, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Patch, Post, Put, Body, Query, Param, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { SettingsService } from './settings.service';
 import { BulkUpdateSettingsDto } from './dto/update-settings.dto';
 import { CollectionsConfigDto } from './dto/collections-config.dto';
 import { AssignPettyCashCustodianDto } from './dto/petty-cash-custodian.dto';
 import { UpdateRoleMapDto } from './dto/update-role-map.dto';
+import { ResetDocNumberDto } from './dto/reset-doc-number.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -15,12 +16,28 @@ import {
   ROLE_MAP_WRITE_ROLES,
 } from '../journal/account-role.service';
 import { RoleMapValidationService } from './role-map-validation.service';
+import { SettingsAccessGuard, AllowAnyAuthenticated } from './settings-access.guard';
 
+/**
+ * D1.3.2.2 — class-level `@Roles(...)` is widened to the SUPERSET of any
+ * value the dynamic SystemConfig key `settings_access_role` may select
+ * (OWNER+FINANCE_MANAGER+BRANCH_MANAGER+ACCOUNTANT). `SettingsAccessGuard`
+ * then narrows per-request based on the live SystemConfig value. Default
+ * `settings_access_role = 'OWNER'` preserves OWNER-only behavior, so
+ * flipping the SystemConfig row is opt-in.
+ *
+ * SALES is intentionally excluded from the superset — settings are not
+ * sales-team workflows; widening to SALES would require a fresh security
+ * review.
+ *
+ * Per-route `@Roles(...)` decorators (e.g. role-map endpoints) still
+ * narrow the class-level allowed set as before.
+ */
 @ApiTags('Settings')
 @ApiBearerAuth('JWT')
 @Controller('settings')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('OWNER')
+@UseGuards(JwtAuthGuard, RolesGuard, SettingsAccessGuard)
+@Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'ACCOUNTANT')
 export class SettingsController {
   constructor(
     private settingsService: SettingsService,
@@ -37,9 +54,14 @@ export class SettingsController {
    * D1.* — UI feature flags read by web app for non-OWNER users (payroll
    * editors, accountants etc.). Authenticated but NOT @Roles-gated so the
    * web app can fetch them in any role context.
+   *
+   * D1.3.2.2 — bypass SettingsAccessGuard so SALES (and any other
+   * authenticated role) can still fetch their ui-flags regardless of the
+   * `settings_access_role` SystemConfig value.
    */
   @Get('ui-flags')
   @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @AllowAnyAuthenticated()
   getUiFlags() {
     return this.settingsService.getUiFlags();
   }
@@ -88,8 +110,61 @@ export class SettingsController {
   }
 
   @Patch()
-  bulkUpdate(@Body() dto: BulkUpdateSettingsDto, @CurrentUser() user: { id: string }) {
-    return this.settingsService.bulkUpdate(dto.items, user.id);
+  bulkUpdate(
+    @Body() dto: BulkUpdateSettingsDto,
+    @CurrentUser() user: { id: string; role: string },
+  ) {
+    // D1.3.2.2 (S3) — pass role for service-side defense-in-depth check.
+    return this.settingsService.bulkUpdate(dto.items, user.id, user.role);
+  }
+
+  /**
+   * D1.1.2.5 — admin-only document-number sequence reset.
+   *
+   * OWNER-only. Returns a snapshot of the current MAX(docNumber) per
+   * DocumentType for diagnostic purposes + writes an AuditLog with action
+   * `DOC_SEQUENCE_RESET`. Does NOT actually mutate any sequence — current
+   * `DocNumberService` derives sequence from `MAX(docNumber)`, so deleting
+   * documents implicitly resets it. This endpoint exists as a future-proof
+   * stub for the planned `DocumentSequence` table migration (D1.1.2.4).
+   */
+  @Post('doc-number/reset')
+  @Roles('OWNER')
+  resetDocNumberSequence(
+    @Body() dto: ResetDocNumberDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.settingsService.resetDocSequence(dto.docType, dto.periodStart, user.id);
+  }
+
+  /**
+   * P2-SP2 — Document Number Config live-preview endpoint.
+   *
+   * OWNER-only. Returns a sample "next" doc number given optional overrides
+   * for format / prefix / resetCycle. When an override is omitted, the
+   * current persisted SystemConfig value (or spec default) is used. Pure read
+   * — never touches expense_documents or any sequence state.
+   *
+   * Query: ?docType=EXPENSE&format=PREFIX-YYMM-NNN&prefix=EX&resetCycle=MONTHLY
+   * Response: { sample, format, resetCycle, prefix }
+   */
+  @Get('doc-config/preview')
+  @Roles('OWNER')
+  previewDocNumber(
+    @Query('docType') docType: string,
+    @Query('format') format?: string,
+    @Query('prefix') prefix?: string,
+    @Query('resetCycle') resetCycle?: string,
+  ) {
+    // resetCycle from UI may be uppercase (DAILY/MONTHLY/YEARLY) per spec; the
+    // service expects lowercase. Normalise here so the UI doesn't have to.
+    const normalisedCycle = resetCycle ? resetCycle.toLowerCase() : undefined;
+    return this.settingsService.previewNumber(
+      docType,
+      format,
+      prefix,
+      normalisedCycle,
+    );
   }
 
   @Get('collections')
@@ -100,7 +175,7 @@ export class SettingsController {
   @Put('collections')
   async updateCollectionsConfig(
     @Body() dto: CollectionsConfigDto,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: { id: string; role: string },
   ) {
     // Reuse existing bulkUpdate plumbing so audit log + cache invalidation
     // continue to flow through the same path as the generic Patch endpoint.
@@ -113,6 +188,7 @@ export class SettingsController {
         { key: 'collections.selfClaimLockHours', value: String(dto.selfClaimLockHours) },
       ],
       user.id,
+      user.role,
     );
     return this.settingsService.getCollectionsConfig();
   }

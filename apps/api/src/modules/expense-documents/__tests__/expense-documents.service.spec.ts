@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { ExpenseDocumentsService } from '../expense-documents.service';
 import { LineAggregatorService } from '../services/line-aggregator.service';
@@ -32,7 +32,18 @@ describe('ExpenseDocumentsService', () => {
         count: jest.fn().mockResolvedValue(0),
         findFirst: jest.fn().mockResolvedValue(null),
         findUniqueOrThrow: jest.fn(),
-        update: jest.fn().mockResolvedValue({ id: 'doc-1' }),
+        // D1.2.1.1 — submitForApproval reads `result.totalAmount.toString()`,
+        // `result.number`, `result.documentType` from the update return value
+        // to build the APPROVAL_REQUESTED audit-log payload. Return a doc-shaped
+        // mock with totalAmount as Prisma.Decimal so .toString() works.
+        update: jest.fn().mockResolvedValue({
+          id: 'doc-1',
+          number: 'EX-20260510-0001',
+          documentType: 'EXPENSE',
+          totalAmount: new Decimal('1234.56'),
+          status: 'PENDING_APPROVAL',
+          deletedAt: null,
+        }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         aggregate: jest.fn(),
       },
@@ -78,12 +89,22 @@ describe('ExpenseDocumentsService', () => {
       auditLog: {
         create: jest.fn().mockResolvedValue({}),
       },
+      // D1.2.1.3 — approve() validates approvers_list against User table.
+      // Default: list is empty (only OWNER may approve).
+      user: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
     };
     docNumber = { next: jest.fn().mockResolvedValue('EX-20260510-0001') };
     transition = {
       assertCanPost: jest.fn(),
       assertCanVoid: jest.fn(),
       assertCanEdit: jest.fn(),
+      // D1.2.1.6 — approve() calls transition.assertCanApprove({ from: status }).
+      // Default to a no-op so tests that don't care about the gate (D1.2.1.3
+      // happy-path approve tests) just flow through; tests that need to assert
+      // rejection override with `transition.assertCanApprove = jest.fn(() => { throw ... })`.
+      assertCanApprove: jest.fn(),
       resolveTargetStatus: jest.fn().mockReturnValue('POSTED'),
     };
     sameDay = { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-1' }) };
@@ -845,7 +866,9 @@ describe('ExpenseDocumentsService', () => {
     // Spec calls real StatusTransitionService to anchor the contract.
     it('D1.2.1.6: post() permits source status APPROVED (manual post after approve)', async () => {
       // Replace mock transition with real one so its assertCanPost runs.
-      const realTransition = new (require('../services/status-transition.service').StatusTransitionService)();
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { StatusTransitionService } = require('../services/status-transition.service');
+      const realTransition = new StatusTransitionService();
       service = new ExpenseDocumentsService(
         prisma, docNumber, realTransition, sameDay, accrual, creditNote,
         payroll, settlement,
@@ -961,19 +984,23 @@ describe('ExpenseDocumentsService', () => {
       transition.resolveTargetStatus.mockReturnValue('POSTED');
     }
 
+    // NOTE: D1.2.1.6 tests pass `'OWNER'` as the third arg so the D1.2.1.3
+    // approver-list gate short-circuits. These tests focus on auto-post + audit
+    // behaviour, not on the approvers_list permission check (which is covered
+    // exhaustively in the `approve (D1.2.1.3)` describe block below).
     it('rejects when source status is not PENDING_APPROVAL', async () => {
       setupApprovableDoc({ status: 'DRAFT' });
       transition.assertCanApprove = jest.fn(() => {
         throw new BadRequestException('not pending');
       });
-      await expect(service.approve('doc-pend', 'user-1')).rejects.toThrow(BadRequestException);
+      await expect(service.approve('doc-pend', 'user-1', 'OWNER')).rejects.toThrow(BadRequestException);
     });
 
     it('auto_post_on_approve = true (default): flips to APPROVED then runs sameDay template', async () => {
       setupApprovableDoc();
       transition.assertCanApprove = jest.fn();
       // systemConfig.findFirst defaults to null → readBoolFlag returns true (default)
-      await service.approve('doc-pend', 'user-1');
+      await service.approve('doc-pend', 'user-1', 'OWNER');
       // First: update to APPROVED
       const updateCalls = prisma.expenseDocument.update.mock.calls;
       expect(updateCalls.some((c: unknown[]) => {
@@ -998,7 +1025,7 @@ describe('ExpenseDocumentsService', () => {
           return Promise.resolve(null);
         },
       );
-      await service.approve('doc-pend', 'user-1');
+      await service.approve('doc-pend', 'user-1', 'OWNER');
       // Status flip happens
       const updateCalls = prisma.expenseDocument.update.mock.calls;
       expect(updateCalls.some((c: unknown[]) => {
@@ -1013,13 +1040,13 @@ describe('ExpenseDocumentsService', () => {
     it('rejects when doc is soft-deleted', async () => {
       setupApprovableDoc({ deletedAt: new Date() });
       transition.assertCanApprove = jest.fn();
-      await expect(service.approve('doc-pend', 'user-1')).rejects.toThrow(NotFoundException);
+      await expect(service.approve('doc-pend', 'user-1', 'OWNER')).rejects.toThrow(NotFoundException);
     });
 
     it('auto-post chain dispatches PAYROLL through payroll template', async () => {
       setupApprovableDoc({ documentType: 'PAYROLL', paymentMethod: null, depositAccountCode: null });
       transition.assertCanApprove = jest.fn();
-      await service.approve('doc-pend', 'user-1');
+      await service.approve('doc-pend', 'user-1', 'OWNER');
       expect(payroll.execute).toHaveBeenCalledWith('doc-pend', expect.anything());
     });
 
@@ -1032,7 +1059,7 @@ describe('ExpenseDocumentsService', () => {
             ? { key: 'ATTACHMENT_REQUIRED_ABOVE_AMOUNT', value: '50000' }
             : null,
       );
-      await expect(service.approve('doc-pend', 'user-1')).rejects.toThrow(/ต้องแนบไฟล์ประกอบ/);
+      await expect(service.approve('doc-pend', 'user-1', 'OWNER')).rejects.toThrow(/ต้องแนบไฟล์ประกอบ/);
       expect(sameDay.execute).not.toHaveBeenCalled();
     });
 
@@ -1049,7 +1076,7 @@ describe('ExpenseDocumentsService', () => {
           return Promise.resolve(null);
         },
       );
-      await service.approve('doc-pend', 'user-1');
+      await service.approve('doc-pend', 'user-1', 'OWNER');
       const auditCalls = prisma.auditLog.create.mock.calls;
       const approvedCall = auditCalls.find((c: unknown[]) => {
         const arg = c[0] as { data?: { action?: string } };
@@ -1076,7 +1103,7 @@ describe('ExpenseDocumentsService', () => {
       setupApprovableDoc();
       transition.assertCanApprove = jest.fn();
       // Default systemConfig (null) → readBoolFlag returns true (default) → auto-post path
-      await service.approve('doc-pend', 'user-1');
+      await service.approve('doc-pend', 'user-1', 'OWNER');
       const auditCalls = prisma.auditLog.create.mock.calls;
       const actions = auditCalls
         .map((c: unknown[]) => (c[0] as { data?: { action?: string } })?.data?.action)
@@ -1095,6 +1122,136 @@ describe('ExpenseDocumentsService', () => {
       expect(autoPostedArg.data.userId).toBe('user-1');
       expect(autoPostedArg.data.newValue.status).toBe('POSTED');
       expect(autoPostedArg.data.newValue.autoPostedFromApproval).toBe(true);
+    });
+  });
+
+  // D1.2.1.3 — approvers_list role gate
+  describe('approve (D1.2.1.3)', () => {
+    function setupPendingDoc(overrides: Record<string, unknown> = {}) {
+      // Doc must include the fields executePostBody reads (totalAmount,
+      // documentType, paymentMethod, depositAccountCode, withholdingTax,
+      // whtFormType, receiptImageUrl, documentDate) — otherwise OWNER-approves
+      // / approver-approves tests hit `Cannot read properties of undefined`
+      // when the auto-post chain runs after the approver check passes.
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-app',
+        status: 'PENDING_APPROVAL',
+        documentType: 'EXPENSE',
+        paymentMethod: 'CASH',
+        depositAccountCode: '11-1101',
+        totalAmount: new Decimal('500.00'),
+        withholdingTax: new Decimal('0'),
+        whtFormType: null,
+        receiptImageUrl: null,
+        documentDate: new Date('2026-05-10'),
+        deletedAt: null,
+        ...overrides,
+      });
+      // Make assertCanApprove mirror the real StatusTransitionService so the
+      // "rejects when source status is not PENDING_APPROVAL" test gets a
+      // realistic error message — the global mock is a no-op which would let
+      // the call fall through to executePostBody.
+      transition.assertCanApprove = jest.fn((input: { from: string }) => {
+        if (input.from !== 'PENDING_APPROVAL') {
+          throw new BadRequestException(
+            `ไม่สามารถอนุมัติเอกสารในสถานะ ${input.from} ได้ (PENDING_APPROVAL เท่านั้น)`,
+          );
+        }
+      });
+    }
+
+    it('OWNER can always approve regardless of approvers_list', async () => {
+      setupPendingDoc();
+      // user.findMany returns [] (default) but OWNER short-circuits the check
+      await service.approve('doc-app', 'user-owner', 'OWNER');
+      const updateCalls = prisma.expenseDocument.update.mock.calls;
+      expect(
+        updateCalls.some((c: unknown[]) => {
+          const arg = c[0] as { data?: { status?: string } };
+          return arg?.data?.status === 'APPROVED';
+        }),
+      ).toBe(true);
+    });
+
+    it('rejects non-OWNER users not on the approvers_list', async () => {
+      setupPendingDoc();
+      prisma.systemConfig.findFirst.mockImplementation(
+        (args: { where: { key: string } }) => {
+          if (args.where.key === 'approvers_list') {
+            return Promise.resolve({ value: JSON.stringify(['user-other']) });
+          }
+          if (args.where.key === 'reverse_reason_required') return Promise.resolve({ value: 'false' });
+          return Promise.resolve(null);
+        },
+      );
+      prisma.user.findMany.mockResolvedValue([{ id: 'user-other' }]);
+      await expect(service.approve('doc-app', 'user-not-listed', 'ACCOUNTANT')).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+
+    it('accepts non-OWNER users that ARE on the approvers_list', async () => {
+      setupPendingDoc();
+      prisma.systemConfig.findFirst.mockImplementation(
+        (args: { where: { key: string } }) => {
+          if (args.where.key === 'approvers_list') {
+            return Promise.resolve({ value: JSON.stringify(['user-acc-1']) });
+          }
+          if (args.where.key === 'reverse_reason_required') return Promise.resolve({ value: 'false' });
+          return Promise.resolve(null);
+        },
+      );
+      prisma.user.findMany.mockResolvedValue([{ id: 'user-acc-1' }]);
+      await service.approve('doc-app', 'user-acc-1', 'ACCOUNTANT');
+      const updateCalls = prisma.expenseDocument.update.mock.calls;
+      expect(
+        updateCalls.some((c: unknown[]) => {
+          const arg = c[0] as { data?: { status?: string } };
+          return arg?.data?.status === 'APPROVED';
+        }),
+      ).toBe(true);
+    });
+
+    it('drops stale/inactive user IDs from approvers_list', async () => {
+      setupPendingDoc();
+      prisma.systemConfig.findFirst.mockImplementation(
+        (args: { where: { key: string } }) => {
+          if (args.where.key === 'approvers_list') {
+            return Promise.resolve({ value: JSON.stringify(['user-stale', 'user-active']) });
+          }
+          if (args.where.key === 'reverse_reason_required') return Promise.resolve({ value: 'false' });
+          return Promise.resolve(null);
+        },
+      );
+      // findMany only returns the active user; the stale ID is dropped
+      prisma.user.findMany.mockResolvedValue([{ id: 'user-active' }]);
+      // user-stale tries to approve but is filtered out → Forbidden
+      await expect(service.approve('doc-app', 'user-stale', 'ACCOUNTANT')).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+
+    it('rejects when source status is not PENDING_APPROVAL', async () => {
+      setupPendingDoc({ status: 'DRAFT' });
+      await expect(service.approve('doc-app', 'user-owner', 'OWNER')).rejects.toThrow(
+        /ไม่สามารถอนุมัติเอกสารในสถานะ DRAFT/,
+      );
+    });
+
+    it('falls back to "OWNER-only" when approvers_list JSON is malformed', async () => {
+      setupPendingDoc();
+      prisma.systemConfig.findFirst.mockImplementation(
+        (args: { where: { key: string } }) => {
+          if (args.where.key === 'approvers_list') {
+            return Promise.resolve({ value: 'not-json' });
+          }
+          return Promise.resolve(null);
+        },
+      );
+      // Non-OWNER can't approve when list is empty/malformed
+      await expect(service.approve('doc-app', 'user-x', 'ACCOUNTANT')).rejects.toThrow(
+        ForbiddenException,
+      );
     });
   });
 

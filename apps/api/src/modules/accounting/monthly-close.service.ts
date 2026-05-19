@@ -604,7 +604,10 @@ export class MonthlyCloseService {
     const branchIds = await this.accountingService.getBranchIdsForCompany(companyId);
 
     const [trialBalance, profitLoss, balanceSheet, vatSummary] = await Promise.allSettled([
-      this.accountingService.getTrialBalance(new Date(asOfDate)),
+      // P3-SP5 W1: pass explicit 'ALL' scope so the monthly-close snapshot
+      // includes BOTH FINANCE and SHOP rows. Without this the SHOP half
+      // gets silently dropped because the default scope is 'FINANCE'.
+      this.accountingService.getTrialBalance(new Date(asOfDate), 'ALL'),
       this.accountingService.getProfitLossReport(startDate, asOfDate, undefined, branchIds),
       this.accountingService.getBalanceSheet(asOfDate, undefined, branchIds),
       this.taxService.previewPP30(companyId, year, month),

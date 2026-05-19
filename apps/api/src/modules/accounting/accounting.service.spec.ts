@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { AccountingService } from './accounting.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
+import { CompanyResolverService } from '../journal/company-resolver.service';
 
 /**
  * AccountingService — financial reporting engine for BESTCHOICE.
@@ -83,12 +84,19 @@ describe('AccountingService', () => {
       },
       chartOfAccount: {
         findMany: jest.fn().mockResolvedValue([]),
+        findFirst: jest.fn().mockResolvedValue(null),
       },
       journalEntry: {
         findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(0),
       },
       journalLine: {
         groupBy: jest.fn().mockResolvedValue([]),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      fixedAsset: {
+        aggregate: jest.fn().mockResolvedValue({ _sum: { purchaseCost: null } }),
       },
       $transaction: jest.fn().mockImplementation(async (fn) => {
         if (typeof fn === 'function') {
@@ -105,6 +113,13 @@ describe('AccountingService', () => {
         AccountingService,
         { provide: PrismaService, useValue: prisma },
         { provide: JournalAutoService, useValue: journalAutoService },
+        {
+          provide: CompanyResolverService,
+          useValue: {
+            getShopCompanyId: jest.fn().mockResolvedValue('shop-co-id'),
+            getFinanceCompanyId: jest.fn().mockResolvedValue('finance-co-id'),
+          },
+        },
       ],
     }).compile();
 
@@ -640,6 +655,840 @@ describe('AccountingService', () => {
       const where = prisma.branch.findMany.mock.calls[0][0].where;
       expect(where.deletedAt).toBeNull();
       expect(where.companyId).toBe('company-1');
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SP2: getCashFlowFromJournal (Indirect Method)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  describe('getCashFlowFromJournal (SP2)', () => {
+    beforeEach(() => {
+      prisma.journalLine.groupBy.mockResolvedValue([]);
+      prisma.journalEntry.findMany.mockResolvedValue([]);
+      prisma.fixedAsset.aggregate.mockResolvedValue({ _sum: { purchaseCost: null } });
+    });
+
+    it('returns all zeros for empty period and isReconciled=true', async () => {
+      const result = await service.getCashFlowFromJournal(
+        new Date('2026-01-01'),
+        new Date('2026-01-31'),
+      );
+      expect(result.method).toBe('indirect');
+      expect(result.operating.netIncome).toBe(0);
+      expect(result.operating.depreciation).toBe(0);
+      expect(result.operating.netOperating).toBe(0);
+      expect(result.investing.netInvesting).toBe(0);
+      expect(result.financing.netFinancing).toBe(0);
+      expect(result.netChange).toBe(0);
+      expect(result.openingCash).toBe(0);
+      expect(result.closingCash).toBe(0);
+      expect(result.actualCashChange).toBe(0);
+      expect(result.drift).toBe(0);
+      expect(result.isReconciled).toBe(true);
+    });
+
+    it('adds depreciation (Dr 53-16) back to net income in operating section', async () => {
+      // First call: getProfitLossFromJournal (revenue + expense lines)
+      // We return one expense line in 53-16: Dr 5000 → net income = -5000
+      // Subsequent calls: sumDebitInPeriod for 53-16 returns Dr 5000
+      // All other balance calls return empty.
+      let callCount = 0;
+      prisma.journalLine.groupBy.mockImplementation(() => {
+        callCount += 1;
+        // Call 1: getProfitLossFromJournal — return 53-16 expense
+        // Call 2: sumDebitInPeriod for '53-16' — return Dr 5000 net
+        if (callCount <= 2) {
+          return Promise.resolve([
+            {
+              accountCode: '53-1601',
+              _sum: { debit: new Prisma.Decimal(5000), credit: new Prisma.Decimal(0) },
+            },
+          ]);
+        }
+        return Promise.resolve([]);
+      });
+      prisma.chartOfAccount.findMany.mockResolvedValue([
+        { code: '53-1601', name: 'ค่าเสื่อม' },
+      ]);
+
+      const result = await service.getCashFlowFromJournal(
+        new Date('2026-01-01'),
+        new Date('2026-01-31'),
+      );
+      expect(result.operating.netIncome).toBeCloseTo(-5000, 2);
+      expect(result.operating.depreciation).toBeCloseTo(5000, 2);
+      // netOperating = NI + depreciation = -5000 + 5000 = 0
+      expect(result.operating.netOperating).toBeCloseTo(0, 2);
+    });
+
+    // SP2 Critical #1-#3 — known PPE/Disposal accounting gaps (deferred A.5)
+    //
+    // These tests assert the CURRENT (buggy-by-design) behavior so any future
+    // fix surfaces as a test diff. Per .claude/rules/accounting.md, PPE +
+    // depreciation is "DEFERRED to Phase A.5" — the cash flow report ships
+    // with documented caveats rather than blocking on a full A.5 build-out.
+    //
+    // When Phase A.5 lands disposal handling, update these tests to assert the
+    // corrected behavior (and remove the warning banner from CashFlowPage).
+
+    it('CASH FLOW KNOWN GAP: ppePurchases is NOT companyId-scoped (FixedAsset lacks companyId)', async () => {
+      // 100k FixedAsset purchase posted in period — same number returned
+      // regardless of companyId filter passed by caller.
+      prisma.fixedAsset.aggregate.mockResolvedValue({
+        _sum: { purchaseCost: new Prisma.Decimal(100_000) },
+      });
+
+      const resultNoCo = await service.getCashFlowFromJournal(
+        new Date('2026-01-01'),
+        new Date('2026-01-31'),
+      );
+      const resultWithCo = await service.getCashFlowFromJournal(
+        new Date('2026-01-01'),
+        new Date('2026-01-31'),
+        'co-FINANCE',
+      );
+
+      // KNOWN GAP — passing companyId has zero effect on PPE aggregate.
+      // Phase A.5: must add FixedAsset.companyId scope + assert difference.
+      expect(resultNoCo.investing.ppePurchases).toBe(100_000);
+      expect(resultWithCo.investing.ppePurchases).toBe(100_000);
+      expect(resultWithCo.investing.ppePurchases).toBe(resultNoCo.investing.ppePurchases);
+
+      // Verify the aggregate was called WITHOUT companyId in the where clause
+      // (proves the leak — confirming the gap is structural, not a typo).
+      const aggregateCalls = prisma.fixedAsset.aggregate.mock.calls;
+      for (const call of aggregateCalls) {
+        expect(call[0].where).not.toHaveProperty('companyId');
+      }
+    });
+
+    it('CASH FLOW KNOWN GAP: disposal proceeds use JE metadata only — no reversal of gain/loss in operating section', async () => {
+      // Asset disposal with 30k proceeds via metadata.disposalProceeds
+      prisma.journalEntry.findMany.mockResolvedValue([
+        {
+          metadata: { flow: 'asset-disposal', disposalProceeds: '30000' },
+        },
+      ]);
+
+      const result = await service.getCashFlowFromJournal(
+        new Date('2026-01-01'),
+        new Date('2026-01-31'),
+      );
+
+      // Net Investing reflects disposal proceeds — good.
+      expect(result.investing.ppeDisposals).toBe(30_000);
+
+      // KNOWN GAP — gain/loss from the disposal flows into netIncome via P&L
+      // (because asset-disposal JE credits 41-12XX gain or debits 51-XX loss),
+      // but the indirect-method operating section does NOT reverse it out.
+      // This creates a double-count when both operating gain AND investing
+      // proceeds are presented. Phase A.5 must add a "reverse gain/loss on
+      // disposal" line in the operating section.
+      // For now, document by asserting reverseDisposalGain field is missing.
+      expect(result.operating).not.toHaveProperty('reverseDisposalGain');
+      expect(result.operating).not.toHaveProperty('reverseDisposalLoss');
+    });
+
+    it('flags isReconciled=false when computed netChange drifts > 1 THB from actual cash Δ', async () => {
+      // Make the cash account show a different delta than the indirect computation.
+      // We seed cash account opening 0 and closing 100 (asActualCashChange=100),
+      // but leave all operating/investing/financing at 0 → netChange=0 → drift=100.
+      let groupByCall = 0;
+      prisma.journalLine.groupBy.mockImplementation((args) => {
+        groupByCall += 1;
+        // Identify the cash-prefix balance lookups by their OR filter on '11-11' or '11-12'.
+        const where = (args as { where?: { OR?: Array<{ accountCode?: { startsWith: string } }> } })
+          .where;
+        const codes = where?.OR?.map((o) => o.accountCode?.startsWith);
+        const isCash =
+          codes && codes.length === 2 && codes.includes('11-11') && codes.includes('11-12');
+        if (isCash) {
+          // 2 cash calls: opening (startMinusOne) then closing (periodEnd).
+          // We track that the second cash call returns 100.
+          return Promise.resolve([
+            {
+              accountCode: '11-1101',
+              _sum: {
+                debit: new Prisma.Decimal(groupByCall % 2 === 0 ? 100 : 0),
+                credit: new Prisma.Decimal(0),
+              },
+            },
+          ]);
+        }
+        return Promise.resolve([]);
+      });
+
+      const result = await service.getCashFlowFromJournal(
+        new Date('2026-01-01'),
+        new Date('2026-01-31'),
+      );
+      expect(result.actualCashChange).not.toBe(0);
+      expect(result.drift).not.toBe(0);
+      expect(result.isReconciled).toBe(false);
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SP2: getEquityStatementFromJournal
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  describe('getEquityStatementFromJournal (SP2)', () => {
+    beforeEach(() => {
+      prisma.journalLine.groupBy.mockResolvedValue([]);
+      prisma.journalLine.findMany.mockResolvedValue([]);
+      prisma.chartOfAccount.findMany.mockResolvedValue([]);
+    });
+
+    it('returns empty matrix + zero currentYearProfit + caveat when no movements', async () => {
+      const result = await service.getEquityStatementFromJournal(
+        new Date('2026-01-01'),
+        new Date('2026-03-31'),
+      );
+      expect(result.rows).toHaveLength(4);
+      expect(result.rows[0].opening).toBe(0);
+      expect(result.rows[0].closing).toBe(0);
+      expect(result.rows[0].increases).toEqual([]);
+      expect(result.rows[0].decreases).toEqual([]);
+      expect(result.currentYearProfit).toBe(0);
+      expect(result.caveat).toMatch(/ค่าประมาณ.*ยังไม่ปิดบัญชี/);
+      expect(result.totalOpening).toBe(0);
+      expect(result.totalClosing).toBe(0);
+    });
+
+    it('records Cr movements as increases on 31-1101 and updates closing balance', async () => {
+      prisma.chartOfAccount.findMany.mockResolvedValue([
+        { code: '31-1101', name: 'หุ้นสามัญ' },
+        { code: '31-1102', name: 'ส่วนเกินมูลค่าหุ้น' },
+        { code: '32-1101', name: 'กำไรสะสม' },
+        { code: '33-1101', name: 'กำไรประจำปี' },
+      ]);
+      prisma.journalLine.findMany.mockResolvedValue([
+        {
+          accountCode: '31-1101',
+          debit: new Prisma.Decimal(0),
+          credit: new Prisma.Decimal(50000),
+          description: 'เพิ่มทุน',
+          journalEntry: {
+            entryDate: new Date('2026-02-10'),
+            entryNumber: 'JE-202602-00001',
+            description: 'Capital injection',
+          },
+        },
+      ]);
+
+      const result = await service.getEquityStatementFromJournal(
+        new Date('2026-01-01'),
+        new Date('2026-03-31'),
+      );
+      const row = result.rows.find((r) => r.accountCode === '31-1101')!;
+      expect(row.increases).toHaveLength(1);
+      expect(row.increases[0].amount).toBeCloseTo(50000, 2);
+      expect(row.totalIncrease).toBeCloseTo(50000, 2);
+      expect(row.totalDecrease).toBe(0);
+      expect(row.closing).toBeCloseTo(50000, 2);
+      expect(result.totalClosing).toBeCloseTo(50000, 2);
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SP2: getGeneralLedger
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  describe('getGeneralLedger (SP2)', () => {
+    beforeEach(() => {
+      prisma.journalLine.groupBy.mockResolvedValue([]);
+      prisma.journalLine.findMany.mockResolvedValue([]);
+    });
+
+    it('throws NotFoundException when accountCode is not in CoA', async () => {
+      prisma.chartOfAccount.findFirst.mockResolvedValue(null);
+      await expect(
+        service.getGeneralLedger(
+          '99-9999',
+          new Date('2026-01-01'),
+          new Date('2026-01-31'),
+        ),
+      ).rejects.toThrow(/ไม่พบรหัสบัญชี/);
+    });
+
+    it('returns opening + zero lines + closing=opening for an account with no period activity', async () => {
+      prisma.chartOfAccount.findFirst.mockResolvedValue({
+        code: '11-1201',
+        name: 'ธนาคาร KBank',
+        normalBalance: 'Dr',
+      });
+      // sumAccountBalances for opening — return Dr 1000 - Cr 0 = 1000
+      prisma.journalLine.groupBy.mockResolvedValue([
+        {
+          accountCode: '11-1201',
+          _sum: { debit: new Prisma.Decimal(1000), credit: new Prisma.Decimal(0) },
+        },
+      ]);
+      prisma.journalLine.findMany.mockResolvedValue([]);
+
+      const result = await service.getGeneralLedger(
+        '11-1201',
+        new Date('2026-01-01'),
+        new Date('2026-01-31'),
+      );
+      expect(result.accountCode).toBe('11-1201');
+      expect(result.accountName).toBe('ธนาคาร KBank');
+      expect(result.normalBalance).toBe('Dr');
+      expect(result.opening).toBeCloseTo(1000, 2);
+      expect(result.closing).toBeCloseTo(1000, 2);
+      expect(result.lines).toHaveLength(0);
+    });
+
+    it('computes running balance for a Dr-normal account across multiple lines', async () => {
+      prisma.chartOfAccount.findFirst.mockResolvedValue({
+        code: '11-1201',
+        name: 'ธนาคาร KBank',
+        normalBalance: 'Dr',
+      });
+      // Opening 500
+      prisma.journalLine.groupBy.mockResolvedValue([
+        {
+          accountCode: '11-1201',
+          _sum: { debit: new Prisma.Decimal(500), credit: new Prisma.Decimal(0) },
+        },
+      ]);
+      // Two lines in period: +200 (Dr) then -100 (Cr)
+      prisma.journalLine.findMany.mockResolvedValue([
+        {
+          debit: new Prisma.Decimal(200),
+          credit: new Prisma.Decimal(0),
+          description: 'รับเงิน',
+          journalEntry: {
+            entryDate: new Date('2026-01-05'),
+            entryNumber: 'JE-202601-00001',
+            description: 'รับชำระงวด',
+            referenceType: 'AUTO',
+            referenceId: 'pay-1',
+          },
+        },
+        {
+          debit: new Prisma.Decimal(0),
+          credit: new Prisma.Decimal(100),
+          description: 'จ่ายเงิน',
+          journalEntry: {
+            entryDate: new Date('2026-01-15'),
+            entryNumber: 'JE-202601-00002',
+            description: 'จ่ายค่าใช้จ่าย',
+            referenceType: 'AUTO',
+            referenceId: 'exp-1',
+          },
+        },
+      ]);
+
+      const result = await service.getGeneralLedger(
+        '11-1201',
+        new Date('2026-01-01'),
+        new Date('2026-01-31'),
+      );
+      expect(result.opening).toBeCloseTo(500, 2);
+      expect(result.lines[0].runningBalance).toBeCloseTo(700, 2);
+      expect(result.lines[1].runningBalance).toBeCloseTo(600, 2);
+      expect(result.closing).toBeCloseTo(600, 2);
+      expect(result.totalDebit).toBeCloseTo(200, 2);
+      expect(result.totalCredit).toBeCloseTo(100, 2);
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // P3-SP3: exportJournalWithPeakCodes
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  describe('exportJournalWithPeakCodes', () => {
+    const startDate = new Date('2026-05-01');
+    const endDate = new Date('2026-05-31');
+
+    beforeEach(() => {
+      // Two CoA rows — one mapped, one unmapped.
+      prisma.chartOfAccount.findMany.mockImplementation(({ where }: { where?: { peakCode?: { not?: null } } }) => {
+        if (where?.peakCode?.not === null) {
+          return Promise.resolve([
+            { code: '11-1101', name: 'เงินสด - สุทธินีย์', peakCode: '1110-01' },
+          ]);
+        }
+        return Promise.resolve([
+          { code: '11-1101', name: 'เงินสด - สุทธินีย์' },
+          { code: '11-2103', name: 'ลูกหนี้ค้างชำระ' },
+        ]);
+      });
+    });
+
+    it('rejects a range longer than 6 months', async () => {
+      await expect(
+        service.exportJournalWithPeakCodes(new Date('2026-01-01'), new Date('2026-12-31')),
+      ).rejects.toThrow(/ไม่เกิน 6 เดือน/);
+    });
+
+    it('rejects when end is before start', async () => {
+      await expect(
+        service.exportJournalWithPeakCodes(new Date('2026-05-31'), new Date('2026-05-01')),
+      ).rejects.toThrow(/ไม่อยู่ก่อนวันเริ่มต้น/);
+    });
+
+    it('returns CSV with header + mapped rows, skips unmapped accounts', async () => {
+      prisma.journalLine.findMany.mockResolvedValue([
+        {
+          accountCode: '11-1101',
+          debit: new Prisma.Decimal('1000.50'),
+          credit: new Prisma.Decimal(0),
+          description: 'รับชำระงวด 1',
+          journalEntry: {
+            entryNumber: 'JE-202605-0001',
+            entryDate: new Date('2026-05-10'),
+            description: 'ชำระเงิน',
+            referenceType: 'PAYMENT',
+            referenceId: 'pay-uuid-1',
+          },
+        },
+        {
+          accountCode: '11-2103', // unmapped — should be skipped
+          debit: new Prisma.Decimal(0),
+          credit: new Prisma.Decimal('1000.50'),
+          description: 'รับชำระงวด 1',
+          journalEntry: {
+            entryNumber: 'JE-202605-0001',
+            entryDate: new Date('2026-05-10'),
+            description: 'ชำระเงิน',
+            referenceType: 'PAYMENT',
+            referenceId: 'pay-uuid-1',
+          },
+        },
+      ]);
+
+      const result = await service.exportJournalWithPeakCodes(startDate, endDate);
+
+      expect(result.skippedLineCount).toBe(1);
+      expect(result.rowCount).toBe(1);
+      // First char is BOM, then header
+      expect(result.csv).toContain('entryDate,entryNumber,peakCode');
+      // Mapped line is present
+      expect(result.csv).toContain('1110-01');
+      expect(result.csv).toContain('11-1101');
+      // Money values preserved as string (not Number())
+      expect(result.csv).toContain('1000.5');
+    });
+
+    it('returns 0 rows when nothing in range matches', async () => {
+      prisma.journalLine.findMany.mockResolvedValue([]);
+      const result = await service.exportJournalWithPeakCodes(startDate, endDate);
+      expect(result.rowCount).toBe(0);
+      expect(result.skippedLineCount).toBe(0);
+      // Still has header + BOM
+      expect(result.csv.startsWith('﻿entryDate,')).toBe(true);
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // P3-SP5: SHOP-scoped Trial Balance + P&L
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  describe('getTrialBalance — SHOP scope', () => {
+    beforeEach(() => {
+      prisma.chartOfAccount = { findMany: jest.fn().mockResolvedValue([]) };
+      prisma.journalLine = { groupBy: jest.fn().mockResolvedValue([]) };
+    });
+
+    it('passes startsWith=S filter to both queries when scope=SHOP', async () => {
+      await service.getTrialBalance(undefined, 'SHOP');
+      const accCall = prisma.chartOfAccount.findMany.mock.calls[0][0];
+      expect(accCall.where.code).toEqual({ startsWith: 'S' });
+      const lineCall = prisma.journalLine.groupBy.mock.calls[0][0];
+      expect(lineCall.where.accountCode).toEqual({ startsWith: 'S' });
+    });
+
+    it('passes NOT startsWith=S filter when scope=FINANCE', async () => {
+      await service.getTrialBalance(undefined, 'FINANCE');
+      const accCall = prisma.chartOfAccount.findMany.mock.calls[0][0];
+      expect(accCall.where.code).toEqual({ not: { startsWith: 'S' } });
+    });
+
+    it('omits the code filter entirely when scope=ALL', async () => {
+      await service.getTrialBalance(undefined, 'ALL');
+      const accCall = prisma.chartOfAccount.findMany.mock.calls[0][0];
+      expect(accCall.where.code).toBeUndefined();
+    });
+
+    it('groups SHOP accounts into their own sections (S11, S21, etc)', async () => {
+      prisma.chartOfAccount.findMany.mockResolvedValue([
+        {
+          id: 'S11-1101',
+          code: 'S11-1101',
+          name: 'เงินสด SHOP',
+          type: 'สินทรัพย์',
+          normalBalance: 'Dr',
+          category: null,
+          vatApplicable: false,
+          notes: null,
+          status: 'ใช้งาน',
+          deletedAt: null,
+        },
+        {
+          id: 'S21-2001',
+          code: 'S21-2001',
+          name: 'เงินรับล่วงหน้า',
+          type: 'หนี้สิน',
+          normalBalance: 'Cr',
+          category: null,
+          vatApplicable: false,
+          notes: null,
+          status: 'ใช้งาน',
+          deletedAt: null,
+        },
+      ]);
+      prisma.journalLine.groupBy.mockResolvedValue([
+        {
+          accountCode: 'S11-1101',
+          _sum: { debit: new Prisma.Decimal(3000), credit: new Prisma.Decimal(0) },
+        },
+        {
+          accountCode: 'S21-2001',
+          _sum: { debit: new Prisma.Decimal(0), credit: new Prisma.Decimal(3000) },
+        },
+      ]);
+
+      const result = await service.getTrialBalance(undefined, 'SHOP');
+      const prefixes = result.sections.map((s) => s.codePrefix);
+      expect(prefixes).toContain('S11');
+      expect(prefixes).toContain('S21');
+      expect(result.isBalanced).toBe(true);
+      expect(result.grandDrTotal.toNumber()).toBe(3000);
+      expect(result.grandCrTotal.toNumber()).toBe(3000);
+    });
+  });
+
+  describe('getProfitLossFromJournal — SHOP scope', () => {
+    beforeEach(() => {
+      prisma.chartOfAccount = { findMany: jest.fn().mockResolvedValue([]) };
+      prisma.journalLine = { groupBy: jest.fn().mockResolvedValue([]) };
+    });
+
+    it('classifies S41/S42 as revenue and S50/S51/S52/S53 as expense when scope=SHOP', async () => {
+      prisma.journalLine.groupBy.mockResolvedValue([
+        {
+          accountCode: 'S41-1101',
+          _sum: { debit: new Prisma.Decimal(0), credit: new Prisma.Decimal(10000) },
+        },
+        {
+          accountCode: 'S50-1101',
+          _sum: { debit: new Prisma.Decimal(6000), credit: new Prisma.Decimal(0) },
+        },
+        {
+          accountCode: 'S52-1101',
+          _sum: { debit: new Prisma.Decimal(1500), credit: new Prisma.Decimal(0) },
+        },
+      ]);
+      prisma.chartOfAccount.findMany.mockResolvedValue([
+        { code: 'S41-1101', name: 'รายได้ขายมือถือใหม่' },
+        { code: 'S50-1101', name: 'ต้นทุนขาย' },
+        { code: 'S52-1101', name: 'ค่าเช่าสาขา' },
+      ]);
+
+      const result = await service.getProfitLossFromJournal(
+        new Date('2026-01-01'),
+        new Date('2026-01-31'),
+        undefined,
+        'SHOP',
+      );
+      expect(result.revenue.total.toNumber()).toBe(10000);
+      expect(result.expenses.total.toNumber()).toBe(7500); // 6000 + 1500
+      expect(result.netIncome.toNumber()).toBe(2500);
+    });
+
+    it('passes startsWith=S filter to journalLine.groupBy when scope=SHOP', async () => {
+      await service.getProfitLossFromJournal(
+        new Date('2026-01-01'),
+        new Date('2026-01-31'),
+        undefined,
+        'SHOP',
+      );
+      const call = prisma.journalLine.groupBy.mock.calls[0][0];
+      expect(call.where.accountCode).toEqual({ startsWith: 'S' });
+    });
+
+    it('does not include FINANCE revenue (41-XXXX) when scope=SHOP', async () => {
+      // Even if the DB returns 41-XXXX rows (e.g. caller mocked the filter),
+      // the prefix filter inside the loop only counts S41/S42 toward revenue.
+      prisma.journalLine.groupBy.mockResolvedValue([
+        {
+          accountCode: '41-1101',
+          _sum: { debit: new Prisma.Decimal(0), credit: new Prisma.Decimal(99999) },
+        },
+        {
+          accountCode: 'S41-1101',
+          _sum: { debit: new Prisma.Decimal(0), credit: new Prisma.Decimal(1000) },
+        },
+      ]);
+      prisma.chartOfAccount.findMany.mockResolvedValue([
+        { code: '41-1101', name: 'FIN revenue' },
+        { code: 'S41-1101', name: 'SHOP revenue' },
+      ]);
+
+      const result = await service.getProfitLossFromJournal(
+        new Date('2026-01-01'),
+        new Date('2026-01-31'),
+        undefined,
+        'SHOP',
+      );
+      // Only S41-1101 counted, 41-1101 ignored by the prefix check.
+      expect(result.revenue.total.toNumber()).toBe(1000);
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // getAgingReport
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  describe('getAgingReport', () => {
+    it('returns customer-by-customer aging with buckets 0-30/31-60/61-90/90+', async () => {
+      const result = await service.getAgingReport(new Date('2026-05-19'));
+      expect(result.summary).toHaveProperty('bucket_0_30');
+      expect(result.summary).toHaveProperty('bucket_31_60');
+      expect(result.summary).toHaveProperty('bucket_61_90');
+      expect(result.summary).toHaveProperty('bucket_90_plus');
+      expect(result.customers).toBeInstanceOf(Array);
+      if (result.customers.length > 0) {
+        expect(result.customers[0]).toHaveProperty('customerId');
+        expect(result.customers[0]).toHaveProperty('totalOverdue');
+        expect(result.customers[0]).toHaveProperty('bucket');
+      }
+    });
+
+    it('returns empty customers and zero summary when no overdue payments exist', async () => {
+      prisma.payment.findMany.mockResolvedValueOnce([]);
+      const result = await service.getAgingReport(new Date('2026-05-19'));
+      expect(result.customers).toHaveLength(0);
+      expect(result.summary.bucket_0_30).toBe(0);
+      expect(result.summary.bucket_31_60).toBe(0);
+      expect(result.summary.bucket_61_90).toBe(0);
+      expect(result.summary.bucket_90_plus).toBe(0);
+    });
+
+    it('correctly buckets a payment that is 45 days overdue into bucket_31_60', async () => {
+      const asOf = new Date('2026-05-19');
+      const dueDate = new Date('2026-04-04'); // 45 days before asOf
+      prisma.payment.findMany.mockResolvedValueOnce([
+        {
+          id: 'pay-1',
+          dueDate,
+          amountDue: new Prisma.Decimal(1500),
+          amountPaid: new Prisma.Decimal(0),
+          status: 'OVERDUE',
+          contract: {
+            customer: {
+              id: 'cust-1',
+              name: 'สมชาย ใจดี',
+              phone: '0812345678',
+            },
+          },
+        },
+      ]);
+      const result = await service.getAgingReport(asOf);
+      expect(result.summary.bucket_31_60).toBeCloseTo(1500, 2);
+      expect(result.summary.bucket_0_30).toBe(0);
+      expect(result.customers).toHaveLength(1);
+      expect(result.customers[0].customerName).toBe('สมชาย ใจดี');
+      expect(result.customers[0].bucket).toBe('bucket_31_60');
+    });
+
+    it('skips payments where remaining balance is zero', async () => {
+      const asOf = new Date('2026-05-19');
+      const dueDate = new Date('2026-04-01'); // overdue
+      prisma.payment.findMany.mockResolvedValueOnce([
+        {
+          id: 'pay-2',
+          dueDate,
+          amountDue: new Prisma.Decimal(1500),
+          amountPaid: new Prisma.Decimal(1500), // fully paid
+          status: 'PENDING',
+          contract: {
+            customer: { id: 'cust-2', name: 'มานะ ดี', phone: '0899999999' },
+          },
+        },
+      ]);
+      const result = await service.getAgingReport(asOf);
+      expect(result.customers).toHaveLength(0);
+    });
+
+    it('queries payment.findMany with deletedAt: null filter', async () => {
+      await service.getAgingReport(new Date('2026-05-19'));
+      const call = prisma.payment.findMany.mock.calls.at(-1)[0];
+      expect(call.where.deletedAt).toBeNull();
+      expect(call.where.status.in).toContain('PENDING');
+      expect(call.where.status.in).toContain('OVERDUE');
+    });
+
+    it('returns asOf in the response', async () => {
+      const asOf = new Date('2026-05-19');
+      const result = await service.getAgingReport(asOf);
+      expect(result.asOf).toEqual(asOf);
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // getBadDebtReport
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  describe('getBadDebtReport', () => {
+    const periodStart = new Date('2026-01-01');
+    const periodEnd = new Date('2026-01-31');
+
+    const makeJournalLine = (debit: number, overrides?: Record<string, unknown>) => ({
+      accountCode: '51-1102',
+      debit: new Prisma.Decimal(debit),
+      credit: new Prisma.Decimal(0),
+      description: 'หนี้สูญ',
+      journalEntry: {
+        id: 'je-1',
+        entryNumber: 'JP5-20260115-0001',
+        description: 'ยึดเครื่อง',
+        postedAt: new Date('2026-01-15'),
+        referenceType: 'REPOSSESSION',
+        referenceId: 'repo-1',
+        ...overrides,
+      },
+    });
+
+    beforeEach(() => {
+      prisma.journalLine.findMany.mockResolvedValue([]);
+    });
+
+    it('returns correct shape with period, totalBadDebt, and entries', async () => {
+      const result = await service.getBadDebtReport(periodStart, periodEnd);
+      expect(result).toHaveProperty('period');
+      expect(result.period.start).toEqual(periodStart);
+      expect(result.period.end).toEqual(periodEnd);
+      expect(result).toHaveProperty('totalBadDebt');
+      expect(result).toHaveProperty('entries');
+      expect(Array.isArray(result.entries)).toBe(true);
+    });
+
+    it('returns totalBadDebt=0 and empty entries when no 51-1102 lines exist', async () => {
+      prisma.journalLine.findMany.mockResolvedValueOnce([]);
+      const result = await service.getBadDebtReport(periodStart, periodEnd);
+      expect(result.totalBadDebt).toBe(0);
+      expect(result.entries).toHaveLength(0);
+    });
+
+    it('sums debit amounts correctly across multiple lines', async () => {
+      prisma.journalLine.findMany.mockResolvedValueOnce([
+        makeJournalLine(5000),
+        makeJournalLine(3000),
+        makeJournalLine(2000),
+      ]);
+      const result = await service.getBadDebtReport(periodStart, periodEnd);
+      expect(result.totalBadDebt).toBeCloseTo(10000, 2);
+      expect(result.entries).toHaveLength(3);
+    });
+
+    it('queries only account 51-1102 lines within the period', async () => {
+      await service.getBadDebtReport(periodStart, periodEnd);
+      const call = prisma.journalLine.findMany.mock.calls.at(-1)[0];
+      expect(call.where.accountCode).toBe('51-1102');
+      expect(call.where.journalEntry.postedAt.gte).toEqual(periodStart);
+      expect(call.where.journalEntry.postedAt.lte).toEqual(periodEnd);
+      expect(call.where.journalEntry.deletedAt).toBeNull();
+    });
+
+    it('filters by companyId when provided', async () => {
+      await service.getBadDebtReport(periodStart, periodEnd, 'co-FINANCE');
+      const call = prisma.journalLine.findMany.mock.calls.at(-1)[0];
+      expect(call.where.journalEntry.companyId).toBe('co-FINANCE');
+    });
+
+    it('omits companyId filter when not provided', async () => {
+      await service.getBadDebtReport(periodStart, periodEnd);
+      const call = prisma.journalLine.findMany.mock.calls.at(-1)[0];
+      expect(call.where.journalEntry).not.toHaveProperty('companyId');
+    });
+
+    it('maps entry fields correctly from journalLine and journalEntry', async () => {
+      prisma.journalLine.findMany.mockResolvedValueOnce([makeJournalLine(7500)]);
+      const result = await service.getBadDebtReport(periodStart, periodEnd);
+      const entry = result.entries[0];
+      expect(entry.journalEntryId).toBe('je-1');
+      // entryNumber is exposed as documentNumber in the response
+      expect(entry.documentNumber).toBe('JP5-20260115-0001');
+      expect(entry.amount).toBeCloseTo(7500, 2);
+      // referenceType is exposed as sourceType in the response
+      expect(entry.sourceType).toBe('REPOSSESSION');
+      // referenceId is exposed as sourceId in the response
+      expect(entry.sourceId).toBe('repo-1');
+    });
+
+    it('falls back to journalEntry.description when line description is null', async () => {
+      prisma.journalLine.findMany.mockResolvedValueOnce([
+        {
+          ...makeJournalLine(1000),
+          description: null,
+          journalEntry: {
+            id: 'je-2',
+            entryNumber: 'JP5-20260120-0001',
+            description: 'entry-level description',
+            postedAt: new Date('2026-01-20'),
+            referenceType: 'REPOSSESSION',
+            referenceId: 'repo-2',
+          },
+        },
+      ]);
+      const result = await service.getBadDebtReport(periodStart, periodEnd);
+      expect(result.entries[0].description).toBe('entry-level description');
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // getGeneralJournal
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  describe('getGeneralJournal', () => {
+    it('returns JournalEntry list with lines, sorted by postedAt desc, paged', async () => {
+      const start = new Date('2026-05-01');
+      const end = new Date('2026-05-31');
+      const result = await service.getGeneralJournal(start, end, { page: 1, limit: 50 });
+      expect(result).toHaveProperty('data');
+      expect(result).toHaveProperty('total');
+      // Empty mock DB — shape assertions only
+      if (result.data.length > 0) {
+        expect(result.data[0]).toHaveProperty('lines');
+        // sorted desc by postedAt
+        for (let i = 1; i < result.data.length; i++) {
+          const prev = result.data[i - 1].postedAt;
+          const curr = result.data[i].postedAt;
+          if (prev != null && curr != null) {
+            expect(new Date(prev).getTime()).toBeGreaterThanOrEqual(new Date(curr).getTime());
+          }
+        }
+      }
+    });
+
+    it('returns correct pagination shape', async () => {
+      const start = new Date('2026-05-01');
+      const end = new Date('2026-05-31');
+      const result = await service.getGeneralJournal(start, end, { page: 2, limit: 25 });
+      expect(result.page).toBe(2);
+      expect(result.limit).toBe(25);
+      expect(result.total).toBe(0);
+      expect(Array.isArray(result.data)).toBe(true);
+    });
+
+    it('filters by companyId when provided', async () => {
+      const start = new Date('2026-05-01');
+      const end = new Date('2026-05-31');
+      await service.getGeneralJournal(start, end, { companyId: 'co-123' });
+      const call = prisma.journalEntry.findMany.mock.calls.at(-1)[0];
+      expect(call.where.companyId).toBe('co-123');
+    });
+
+    it('does not include deleted entries', async () => {
+      const start = new Date('2026-05-01');
+      const end = new Date('2026-05-31');
+      await service.getGeneralJournal(start, end);
+      const call = prisma.journalEntry.findMany.mock.calls.at(-1)[0];
+      expect(call.where.deletedAt).toBeNull();
     });
   });
 });

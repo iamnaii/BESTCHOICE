@@ -10,6 +10,9 @@ export interface JwtPayload {
   role: string;
   branchId?: string | null;
   aud?: string;
+  // SP7.1 — dual-entity authorization. Mirrors DB; JwtStrategy.validate refetches.
+  accessibleCompanies?: string[];
+  primaryCompany?: string | null;
 }
 
 interface CachedUser {
@@ -19,6 +22,8 @@ interface CachedUser {
   role: string;
   branchId: string | null;
   isActive: boolean;
+  accessibleCompanies: string[];      // SP7.1
+  primaryCompany: string | null;      // SP7.1
   cachedAt: number;
 }
 
@@ -84,6 +89,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         role: true,
         branchId: true,
         isActive: true,
+        accessibleCompanies: true,   // SP7.1
+        primaryCompany: true,        // SP7.1
       },
     });
 

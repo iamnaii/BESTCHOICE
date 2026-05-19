@@ -38,11 +38,24 @@ const api = axios.create({
   withCredentials: true, // send httpOnly cookies for refresh token
 });
 
-// Request interceptor: attach JWT token from memory
+// Request interceptor: attach JWT token + entity scope from memory
 api.interceptors.request.use((config) => {
   if (accessToken) {
     config.headers.Authorization = `Bearer ${accessToken}`;
   }
+
+  // SP7.3 — attach current entity scope as ?company= so EntityScopeMiddleware
+  // on the backend can scope queries to the correct company.
+  // Read from localStorage (not React context) because axios lives outside the React tree.
+  try {
+    const scope = localStorage.getItem('bc-entity-scope');
+    if (scope && !config.params?.company) {
+      config.params = { ...(config.params || {}), company: scope.toLowerCase() };
+    }
+  } catch {
+    // localStorage unavailable (SSR / private browsing edge case) — skip
+  }
+
   return config;
 });
 

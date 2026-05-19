@@ -38,6 +38,38 @@ export interface UiFlags {
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
   /**
+   * D1.1.2.1 — DocumentType → 2-4 letter prefix mapping. Used to render the
+   * configured prefix in document-number badges across list/detail pages.
+   */
+  docPrefixMap: {
+    EXPENSE: string;
+    CREDIT_NOTE: string;
+    PAYROLL: string;
+    VENDOR_SETTLEMENT: string;
+    PETTY_CASH_REIMBURSEMENT: string;
+    REPAIR_SERVICE: string;
+  };
+  /**
+   * D1.3.3.2 — bank reconciliation mode. INFORMATIONAL ONLY — auto-match
+   * cron + UI haven't been built yet. When a future bank-reconciliation
+   * page exists, it should surface this value prominently (e.g. mode
+   * indicator badge). Default `'manual'`.
+   */
+  bankReconciliationMode: 'manual' | 'auto';
+  /**
+   * D1.1.3.3 — informational "SSO rate locked at 5%" string for Settings UI.
+   * Backed by `SSO_RATE` constant server-side. The SystemConfig key
+   * `sso_rate_locked` is read-only (server rejects writes).
+   */
+  ssoRateLocked: string;
+  /**
+   * D1.3.6.2 — pre-tick preference for the VENDOR_SETTLEMENT bill list.
+   *   'all'          — pre-tick every loaded bill
+   *   'none'         — pre-tick nothing (manual selection only)
+   *   'overdue_only' — pre-tick only bills past their due date (default)
+   */
+  settlementDefaultTick: 'all' | 'none' | 'overdue_only';
+  /**
    * D1.3.3.1 — when false, hide Excel / PDF / CSV export buttons in the UI.
    * Server-side ExportEnabledGuard returns 403 for PDF endpoints when this
    * is false (defence-in-depth against UI bypass). Default true.
@@ -48,6 +80,51 @@ export interface UiFlags {
    * frontend exposes the flag so an admin UI can render the current state.
    */
   auditLogArchiveEnabled: boolean;
+  /**
+   * D1.4.3.3 — legal document retention years (พ.ร.บ.บัญชี ม.7).
+   * Default 5. Informational; no auto-purge cron consumes this yet.
+   */
+  documentRetentionYears: number;
+  /**
+   * D1.4.2.4 — CSV import batch size (rows). Default 500, valid 50–5000.
+   * INFORMATIONAL: current Payments CSV import processes rows one-at-a-time;
+   * flag is exposed for future bulk-import paths.
+   */
+  batchSizeImport: number;
+  /**
+   * D1.4.3.4 — default format for data export dropdowns across the app.
+   * Whitelist `'JSON'` / `'CSV'` / `'XLSX'`. UIs that already render
+   * export buttons should pre-select this value; the user can still
+   * change per export.
+   */
+  dataExportFormat: 'JSON' | 'CSV' | 'XLSX';
+  /**
+   * D1.4.3.5 — master PII masking toggle (PDPA / พ.ร.บ.คุ้มครองข้อมูล
+   * ส่วนบุคคล policy surface). Default `true`. Informational — does not
+   * short-circuit existing per-call mask helpers; admin UI editing this
+   * key should render a bold PDPA warning before persisting `false`.
+   */
+  piiMaskingEnabled: boolean;
+  /**
+   * D1.4.2.5 — max concurrent BullMQ worker jobs. Default 5, valid 1–50.
+   * INFORMATIONAL for the SystemConfig key — @Processor decorator reads
+   * `MAX_CONCURRENT_JOBS` env var at module load; SystemConfig is the
+   * OWNER-visible source of truth until refactored.
+   */
+  maxConcurrentJobs: number;
+  /**
+   * D1.4.3.6 — gate the LoginAuditLog row INSERT. Default `true`. When
+   * `false`, no audit row is written for login attempts. Failed-attempt
+   * counters + account lockout (v3 hardening) are unaffected — those run
+   * independent of audit retention.
+   */
+  loginLogEnabled: boolean;
+  /**
+   * D1.3.4.2 — days threshold for the SAMEDAY→ACCRUAL auto-switch in
+   * `ExpenseFormV4`. Default `0` = any past date triggers (legacy
+   * behavior). Server clamps to 0–30; out-of-range / NaN → 0.
+   */
+  smartSwitchThresholdDays: number;
   /** D1.3.5.1 — default time-range preset for ExpenseDailySummaryPage. Default 'this_month'. */
   summaryDefaultRange: 'today' | 'this_week' | 'this_month' | 'last_month';
   /**
@@ -142,6 +219,30 @@ export interface UiFlags {
    */
   approvalEnabled: boolean;
   /**
+   * D1.2.1.2 — threshold (THB) above which docs require approval. The UI uses
+   * this only to surface helper text explaining why the doc was routed to
+   * approval. Backend remains source of truth for the gating decision.
+   * Defaults to 0 (= every doc needs approval when approvalEnabled is true).
+   */
+  approvalThreshold: number;
+  /**
+   * D1.2.1.3 — list of user IDs that may approve PENDING_APPROVAL docs (in
+   * addition to OWNER). OWNER can always approve regardless of this list.
+   * Defaults to empty array. Backend re-validates membership before approve().
+   */
+  approversList: string[];
+  /**
+   * D1.2.1.4 — document types that ALWAYS require approval (independent of
+   * threshold). OR-composed with approvalThreshold. Default `['PAYROLL']`.
+   */
+  approvalRequiredDocTypes: string[];
+  /**
+   * D1.2.1.5 — fan out IN_APP notifications when a doc enters
+   * PENDING_APPROVAL. Default `true`. Respects master gate
+   * `in_app_notifications_enabled`.
+   */
+  notificationOnPending: boolean;
+  /**
    * D1.1.6 — adjustment account codes for the V4 multi-line Adjustment row.
    * Frontend was hardcoding '52-1104' / '53-1503'; now reads from this flag
    * so OWNER can rebind the codes without a frontend deploy.
@@ -193,6 +294,63 @@ export interface UiFlags {
    * 30–7200. Wired into `ProfitLossPage`.
    */
   cacheTtlReports: number;
+  /**
+   * D1.3.6.3 — allow per-line partial settlement on VENDOR_SETTLEMENT. Default
+   * true. When false: server rejects underpaid lines (V12 adjustment logic is
+   * effectively disabled by the gate), web app forces the "จำนวนที่จ่าย"
+   * column to the full remaining cap and disables the input.
+   */
+  settlementPartialPaymentEnabled: boolean;
+  /**
+   * D1.3.2.1 — VIEWER role activation flag. Default false (Q4-gated).
+   * When true, future guards/widening code can extend @Roles() lists on
+   * expense / other-income / asset modules to include the VIEWER role.
+   * Schema enum value always exists (UserRole.VIEWER) so the flip is
+   * SystemConfig-only; no migration needed to roll forward/back.
+   */
+  viewerRoleEnabled: boolean;
+  /**
+   * D1.3.3.3 — outbound webhook dispatch master switch. **DEFAULT OFF**
+   * per accountant package. When false, the Webhooks admin page should
+   * surface an "outbound dispatch paused" banner so OWNER understands
+   * why registered subscriptions aren't firing.
+   */
+  webhooksEnabled: boolean;
+  /**
+   * D1.3.2.2 — dynamic bundle name controlling who can access Settings.
+   * Whitelisted: `'OWNER'` (default) / `'OWNER+FINANCE_MANAGER'` /
+   * `'OWNER+ACCOUNTANT'` / `'OWNER+ALL'`. The server's `SettingsAccessGuard`
+   * narrows per-request based on this value; the frontend uses it for the
+   * informational badge on /settings.
+   */
+  settingsAccessRole: 'OWNER' | 'OWNER+FINANCE_MANAGER' | 'OWNER+ACCOUNTANT' | 'OWNER+ALL';
+  /**
+   * D1.3.2.3 — dynamic bundle controlling who can POST expense documents
+   * (DRAFT → ACCRUAL). Whitelisted: `'OWNER+FINANCE_MANAGER+ACCOUNTANT'`
+   * (default) / `'OWNER+FINANCE_MANAGER'` / `'OWNER_ONLY'` /
+   * `'OWNER+ALL_NON_SALES'`. UI uses this to hide the "Post" button for
+   * roles that will be 403'd at the server.
+   */
+  postPermission:
+    | 'OWNER+FINANCE_MANAGER+ACCOUNTANT'
+    | 'OWNER+FINANCE_MANAGER'
+    | 'OWNER_ONLY'
+    | 'OWNER+ALL_NON_SALES';
+  /**
+   * D1.3.3.4 — restrict integration API-key management UI to OWNER. Default
+   * true. UI surfaces (IntegrationHubPage link, "Manage API keys" menu
+   * entries) should hide for non-OWNER roles when this is true. Server-side
+   * the IntegrationsController is already OWNER-gated by `@Roles`, so this
+   * flag is the documentary toggle for that policy.
+   */
+  apiKeysAdminOnly: boolean;
+  /**
+   * D1.3.2.4 — dynamic bundle controlling who can reverse/void expense
+   * documents. Whitelisted: `'OWNER+FINANCE_MANAGER'` (default) /
+   * `'OWNER_ONLY'`. UI uses this to hide the "Void" button for roles that
+   * will be 403'd at the server.
+   */
+  reversePermission: 'OWNER+FINANCE_MANAGER' | 'OWNER_ONLY';
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {
@@ -213,6 +371,17 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   voucherShowQrCode: true,
   themeColor: '#10b981',
   language: 'th',
+  docPrefixMap: {
+    EXPENSE: 'EX',
+    CREDIT_NOTE: 'CN',
+    PAYROLL: 'PR',
+    VENDOR_SETTLEMENT: 'SE',
+    PETTY_CASH_REIMBURSEMENT: 'PC',
+    REPAIR_SERVICE: 'RS',
+  },
+  bankReconciliationMode: 'manual',
+  ssoRateLocked: '5%',
+  settlementDefaultTick: 'overdue_only',
   whtRates: [
     { rate: 1, label: '1% — ดอกเบี้ย' },
     { rate: 3, label: '3% — ค่าบริการ' },
@@ -222,6 +391,13 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   ],
   exportEnabled: true,
   auditLogArchiveEnabled: true,
+  documentRetentionYears: 5,
+  batchSizeImport: 500,
+  dataExportFormat: 'JSON',
+  piiMaskingEnabled: true,
+  maxConcurrentJobs: 5,
+  loginLogEnabled: true,
+  smartSwitchThresholdDays: 0,
   summaryDefaultRange: 'this_month',
   smartDoctypeSwitchEnabled: true,
   settlementMaxBillsPerDoc: 100,
@@ -238,6 +414,10 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   decimalPlaces: 2,
   dateFormat: 'BE',
   approvalEnabled: false,
+  approvalThreshold: 0,
+  approversList: [],
+  approvalRequiredDocTypes: ['PAYROLL'],
+  notificationOnPending: true,
   paginationSize: 50,
   defaultTimeRange: 'this_month',
   apDueAlertsEnabled: false,
@@ -254,6 +434,13 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   emailProvider: 'smtp',
   cacheTtlDashboard: 60,
   cacheTtlReports: 300,
+  settlementPartialPaymentEnabled: true,
+  viewerRoleEnabled: false,
+  webhooksEnabled: false,
+  settingsAccessRole: 'OWNER',
+  postPermission: 'OWNER+FINANCE_MANAGER+ACCOUNTANT',
+  apiKeysAdminOnly: true,
+  reversePermission: 'OWNER+FINANCE_MANAGER',
 };
 
 export function useUiFlags(): UiFlags {

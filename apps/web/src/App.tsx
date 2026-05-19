@@ -51,8 +51,15 @@ const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
 const StickersSettingsPage = lazy(() => import('@/pages/SettingsPage/StickersPage'));
 const CollectionsSettingsPage = lazy(() => import('@/pages/SettingsPage/CollectionsPage'));
 const GeneralSettingsPage = lazy(() => import('@/pages/SettingsPage/GeneralSettingsPage'));
+const DocumentConfigPage = lazy(() => import('@/pages/DocumentConfigPage'));
 const PaymentMethodSettingsPage = lazy(() => import('@/pages/PaymentMethodSettingsPage'));
 const DefectExchangePage = lazy(() => import('@/pages/DefectExchangePage'));
+// SP5 — SHOP-side additions
+// P2-SP4 — การจอง / มัดจำ (SHOP-side reservation)
+const BookingsPage = lazy(() => import('@/pages/BookingsPage'));
+const InsurancePage = lazy(() => import('@/pages/InsurancePage'));
+const CreateRepairTicketPage = lazy(() => import('@/pages/insurance/CreateRepairTicketPage'));
+const RepairTicketDetailPage = lazy(() => import('@/pages/insurance/RepairTicketDetailPage'));
 const AuditLogsPage = lazy(() => import('@/pages/AuditLogsPage'));
 const FinancialAuditPage = lazy(() => import('@/pages/FinancialAuditPage'));
 const PaymentCsvImportPage = lazy(() => import('@/pages/PaymentCsvImportPage'));
@@ -99,7 +106,19 @@ const ExpenseFavoritesPage = lazy(() => import('@/pages/ExpenseFavoritesPage'));
 const ExpenseDailySummaryPage = lazy(() => import('@/pages/ExpenseDailySummaryPage'));
 const ProfitLossPage = lazy(() => import('@/pages/ProfitLossPage'));
 const CompanySettingsPage = lazy(() => import('@/pages/CompanySettingsPage'));
-const TaxReportsPage = lazy(() => import('@/pages/TaxReportsPage'));
+// SP3 — split /tax-reports into 3 dedicated pages (VAT / WHT / e-Tax)
+const VatReportPage = lazy(() =>
+  import('@/pages/VatReportPage').then((m) => ({ default: m.VatReportPage })),
+);
+const WhtReportPage = lazy(() =>
+  import('@/pages/WhtReportPage').then((m) => ({ default: m.WhtReportPage })),
+);
+const ETaxInvoicePage = lazy(() =>
+  import('@/pages/ETaxInvoicePage').then((m) => ({ default: m.ETaxInvoicePage })),
+);
+const ETaxConfigPage = lazy(() =>
+  import('@/pages/ETaxConfigPage').then((m) => ({ default: m.ETaxConfigPage })),
+);
 const CommissionsPage = lazy(() => import('@/pages/CommissionsPage'));
 const TradeInPage = lazy(() => import('@/pages/TradeInPage'));
 const PromotionsPage = lazy(() => import('@/pages/PromotionsPage'));
@@ -115,6 +134,7 @@ const AssetSummaryReportPage = lazy(() => import('@/pages/assets/AssetSummaryRep
 const AssetTransfersListPage = lazy(() => import('@/pages/transfers/AssetTransfersListPage'));
 const DepreciationPage = lazy(() => import('@/pages/depreciation/DepreciationPage'));
 const ChartOfAccountsPage = lazy(() => import('@/pages/ChartOfAccountsPage'));
+const BankAccountsPage = lazy(() => import('@/pages/BankAccountsPage'));
 // D1.1.1.4 — Admin UI for account_role_map (OWNER-only).
 const AccountRolesPage = lazy(() => import('@/pages/AccountRolesPage'));
 const TodosPage = lazy(() => import('@/pages/TodosPage'));
@@ -136,8 +156,36 @@ const CollectionsPage = lazy(() => import('@/pages/CollectionsPage'));
 const DunningSettingsPage = lazy(() => import('@/pages/DunningSettingsPage'));
 const SmsTemplatesPage = lazy(() => import('@/pages/SmsTemplatesPage'));
 const MonthlyClosePage = lazy(() => import('@/pages/MonthlyClosePage'));
+const YearEndClosingPage = lazy(() => import('@/pages/YearEndClosingPage'));
+// P3-SP5 — SHOP-side accounting (Trial Balance + P&L scoped to SHOP chart)
+const ShopAccountingPage = lazy(() => import('@/pages/ShopAccountingPage'));
 const IntercompanySettlementPage = lazy(() => import('@/pages/IntercompanySettlementPage'));
+// SP2 — Accounting Reports Gap
+const CashFlowPage = lazy(() =>
+  import('@/pages/CashFlowPage').then((m) => ({ default: m.CashFlowPage })),
+);
+const EquityStatementPage = lazy(() =>
+  import('@/pages/EquityStatementPage').then((m) => ({ default: m.EquityStatementPage })),
+);
+const GeneralLedgerPage = lazy(() =>
+  import('@/pages/GeneralLedgerPage').then((m) => ({ default: m.GeneralLedgerPage })),
+);
+// P4-SP1 — Financial report pages
+const BalanceSheetPage = lazy(() => import('@/pages/finance/BalanceSheetPage'));
+const GeneralJournalPage = lazy(() => import('@/pages/finance/GeneralJournalPage'));
+const AgingReportPage = lazy(() => import('@/pages/finance/AgingReportPage'));
+const BadDebtReportPage = lazy(() => import('@/pages/finance/BadDebtReportPage'));
+// P4-SP4 — Contract cancellation approval queue + Inter-co report
+const ContractCancellationPage = lazy(() => import('@/pages/finance/ContractCancellationPage'));
+const IntercompanyReportPage = lazy(() => import('@/pages/finance/IntercompanyReportPage'));
+// P4-SP2 — Tax UI pages (finance-tax endpoints + e-receipt config)
+const VatPage = lazy(() => import('@/pages/finance/VatPage'));
+const WhtPage = lazy(() => import('@/pages/finance/WhtPage'));
+const ETaxPage = lazy(() => import('@/pages/finance/ETaxPage'));
+const VatAutoJournalPage = lazy(() => import('@/pages/finance/VatAutoJournalPage'));
+const EReceiptAutoPage = lazy(() => import('@/pages/finance/EReceiptAutoPage'));
 const PeakSyncPage = lazy(() => import('@/pages/PeakSyncPage'));
+const PeakExportPage = lazy(() => import('@/pages/PeakExportPage'));
 const AiSettingsPage = lazy(() => import('@/pages/AiSettingsPage'));
 const AiTrainingPage = lazy(() => import('@/pages/AiTrainingPage'));
 const AiPerformancePage = lazy(() => import('@/pages/AiPerformancePage'));
@@ -166,6 +214,11 @@ const OtherIncomeTemplatesPage = lazy(() => import('@/pages/other-income/OtherIn
 const PeriodClosePage = lazy(() => import('@/pages/accounting/PeriodClosePage'));
 const TaxDisallowedSummaryPage = lazy(
   () => import('@/pages/accounting/TaxDisallowedSummaryPage'),
+);
+// SP1 placeholder shell — wraps ComingSoonPage for routes whose real implementations
+// land in SP2-SP6. Named export, so use .then() to map to default for lazy().
+const ComingSoonPage = lazy(() =>
+  import('@/components/ComingSoonPage').then((m) => ({ default: m.ComingSoonPage })),
 );
 
 const PageLoader = () => (
@@ -410,6 +463,7 @@ function App() {
           <Route path="/settings/stickers" element={<ProtectedRoute roles={['OWNER']}><StickersSettingsPage /></ProtectedRoute>} />
           <Route path="/settings/collections" element={<ProtectedRoute roles={['OWNER']}><CollectionsSettingsPage /></ProtectedRoute>} />
           <Route path="/settings/general" element={<ProtectedRoute roles={['OWNER']}><GeneralSettingsPage /></ProtectedRoute>} />
+          <Route path="/settings/document-config" element={<ProtectedRoute roles={['OWNER']}><DocumentConfigPage /></ProtectedRoute>} />
           <Route path="/chatbot-finance" element={<ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER']}><ChatbotFinanceAnalyticsPage /></ProtectedRoute>} />
           <Route path="/chatbot-finance/sessions" element={<ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}><ChatbotFinanceSessionsPage /></ProtectedRoute>} />
           <Route path="/chatbot-finance/knowledge" element={<ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER']}><ChatbotFinanceKnowledgePage /></ProtectedRoute>} />
@@ -566,6 +620,44 @@ function App() {
               </ProtectedRoute>
             }
           />
+          {/* SP5 — SHOP-side additions */}
+          {/* P2-SP4 — การจอง / มัดจำ */}
+          <Route
+            path="/bookings"
+            element={
+              <ProtectedRoute
+                roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES']}
+              >
+                <BookingsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/insurance"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES']}>
+                <InsurancePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/insurance/new"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'SALES']}>
+                <CreateRepairTicketPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/insurance/:id"
+            element={
+              <ProtectedRoute
+                roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES', 'ACCOUNTANT']}
+              >
+                <RepairTicketDetailPage />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/repossessions"
             element={
@@ -656,10 +748,54 @@ function App() {
             }
           />
           <Route
+            path="/finance/year-end-closing"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <YearEndClosingPage />
+              </ProtectedRoute>
+            }
+          />
+          {/* P3-SP5 — SHOP-side accounting (Trial Balance + P&L) */}
+          <Route
+            path="/shop/accounting"
+            element={
+              <ProtectedRoute
+                roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}
+              >
+                <ShopAccountingPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/accounting/intercompany"
             element={
               <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
                 <IntercompanySettlementPage />
+              </ProtectedRoute>
+            }
+          />
+          {/* SP2 — Accounting Reports Gap */}
+          <Route
+            path="/finance/cash-flow"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <CashFlowPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/finance/equity-statement"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <EquityStatementPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/finance/general-ledger"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <GeneralLedgerPage />
               </ProtectedRoute>
             }
           />
@@ -687,14 +823,50 @@ function App() {
               </ProtectedRoute>
             }
           />
+          {/* P4-SP2 — Tax UI (finance-tax endpoints replace SP3 placeholders) */}
           <Route
-            path="/tax-reports"
+            path="/finance/vat"
             element={
               <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
-                <TaxReportsPage />
+                <VatPage />
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/finance/wht"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <WhtPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/finance/e-tax"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <ETaxPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/finance/vat-auto-journal"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <VatAutoJournalPage />
+              </ProtectedRoute>
+            }
+          />
+          {/* P2-SP5 — OWNER-only e-Tax cert + RD creds configuration */}
+          <Route
+            path="/settings/e-tax-config"
+            element={
+              <ProtectedRoute roles={['OWNER']}>
+                <ETaxConfigPage />
+              </ProtectedRoute>
+            }
+          />
+          {/* Backwards-compat: legacy /tax-reports → /finance/vat */}
+          <Route path="/tax-reports" element={<Navigate to="/finance/vat" replace />} />
           <Route
             path="/settings/companies"
             element={
@@ -724,6 +896,14 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER', 'ACCOUNTANT']}>
                 <PeakSyncPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/finance/peak-export"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <PeakExportPage />
               </ProtectedRoute>
             }
           />
@@ -886,6 +1066,15 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
                 <ChartOfAccountsPage />
+              </ProtectedRoute>
+            }
+          />
+          {/* SP6 — Bank/Cash account directory (closes /finance/bank-accounts placeholder). */}
+          <Route
+            path="/finance/bank-accounts"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <BankAccountsPage />
               </ProtectedRoute>
             }
           />
@@ -1093,6 +1282,123 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
                 <TaxDisallowedSummaryPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* SP1 placeholder routes — to be replaced by SP2-SP6 implementations.
+              Role gating mirrors the menu visibility in spec §3 / §6 so that
+              users cannot direct-URL-jump into pages they aren't supposed to see. */}
+          {/* /insurance + /insurance/new + /insurance/:id are now real pages — see SP5 routes above */}
+          {/* /finance/vat, /finance/wht, /finance/e-tax — handled by P4-SP2 routes above */}
+          {/* /finance/cash-flow — handled by SP2 CashFlowPage route above (line ~763) */}
+          {/* /finance/equity-statement — handled by SP2 EquityStatementPage route above (line ~773) */}
+          {/* /finance/general-ledger — handled by SP2 GeneralLedgerPage route above (line ~780) */}
+          <Route
+            path="/finance/bank-accounts"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <ComingSoonPage
+                  feature="บัญชีธนาคาร"
+                  trackingSP="SP6"
+                  eta="ภายในไตรมาส 4/2026"
+                />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings/document-config"
+            element={
+              <ProtectedRoute roles={['OWNER', 'ACCOUNTANT']}>
+                <ComingSoonPage
+                  feature="ตั้งค่าเลขที่/รูปแบบเอกสาร"
+                  trackingSP="SP4"
+                  eta="ภายในไตรมาส 3/2026"
+                />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings/brands"
+            element={
+              <ProtectedRoute roles={['OWNER']}>
+                <ComingSoonPage
+                  feature="จัดการแบรนด์สินค้า"
+                  trackingSP="SP5"
+                  eta="ภายในไตรมาส 3/2026"
+                />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings/backup"
+            element={
+              <ProtectedRoute roles={['OWNER']}>
+                <ComingSoonPage
+                  feature="รายงาน Backup"
+                  trackingSP="SP6"
+                  eta="ภายในไตรมาส 4/2026"
+                />
+              </ProtectedRoute>
+            }
+          />
+          {/* ── FIN menu CSV-driven placeholders (15 routes) ─────────
+              Owner CSV indicated these need to be reachable as menu
+              entries even before backend impl. ComingSoonPage handles
+              the user landing while SP2/3/4/5/6 ship their UIs. */}
+          <Route
+            path="/finance/contract-cancellation"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <ContractCancellationPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/finance/balance-sheet"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <BalanceSheetPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/finance/aging-report"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <AgingReportPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/finance/general-journal"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <GeneralJournalPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/finance/bad-debt-report"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <BadDebtReportPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/finance/intercompany-report"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <IntercompanyReportPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/finance/e-receipt-auto"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <EReceiptAutoPage />
               </ProtectedRoute>
             }
           />

@@ -37,10 +37,29 @@ import { CreditNoteTemplate } from './cpa-templates/credit-note.template';
 import { PayrollTemplate } from './cpa-templates/payroll.template';
 import { VendorSettlementTemplate } from './cpa-templates/vendor-settlement.template';
 import { PettyCashTemplate } from './cpa-templates/petty-cash.template';
+import { YearEndClosingTemplate } from './cpa-templates/year-end-closing.template';
+// P3-SP5 — SHOP-side accounting
+import { CompanyResolverService } from './company-resolver.service';
+import { PairedJournalService } from './paired-journal.service';
+import { ShopCashSaleTemplate } from './cpa-templates/shop-cash-sale.template';
+import { ShopDownPaymentTemplate } from './cpa-templates/shop-down-payment.template';
+import { ShopDownPaymentReversalTemplate } from './cpa-templates/shop-down-payment-reversal.template';
+import { ShopFinanceReceiptTemplate } from './cpa-templates/shop-finance-receipt.template';
+import { ShopTradeInTemplate } from './cpa-templates/shop-trade-in.template';
+import { ShopExpenseTemplate } from './cpa-templates/shop-expense.template';
+import { ShopInventoryTransferTemplate } from './cpa-templates/shop-inventory-transfer.template';
+// SP7.2 — Outbox + saga infrastructure for cross-entity JE
+import { OutboxService } from './outbox.service';
+import { OutboxProcessorService } from './outbox-processor.service';
+import { OutboxProcessorCron } from './cron/outbox-processor.cron';
+import { ReconciliationCron } from './cron/reconciliation.cron';
+// P4-SP4 — Contract cancellation JE reversal
+import { ContractCancellationTemplate } from './cpa-templates/contract-cancellation.template';
+import { ReconcileController } from './reconcile.controller';
 
 @Module({
   imports: [PrismaModule],
-  controllers: [JournalController],
+  controllers: [JournalController, ReconcileController],
   providers: [
     JournalService,
     JournalAutoService,
@@ -78,6 +97,24 @@ import { PettyCashTemplate } from './cpa-templates/petty-cash.template';
     PayrollTemplate,
     VendorSettlementTemplate,
     PettyCashTemplate,
+    YearEndClosingTemplate,
+    // P3-SP5 — SHOP-side accounting
+    CompanyResolverService,
+    PairedJournalService,
+    ShopCashSaleTemplate,
+    ShopDownPaymentTemplate,
+    ShopDownPaymentReversalTemplate,
+    ShopFinanceReceiptTemplate,
+    ShopTradeInTemplate,
+    ShopExpenseTemplate,
+    ShopInventoryTransferTemplate,
+    // SP7.2 — Outbox + saga infrastructure
+    OutboxService,
+    OutboxProcessorService,
+    OutboxProcessorCron,
+    ReconciliationCron,
+    // P4-SP4 — Contract cancellation
+    ContractCancellationTemplate,
   ],
   exports: [
     JournalService,
@@ -113,6 +150,22 @@ import { PettyCashTemplate } from './cpa-templates/petty-cash.template';
     PayrollTemplate,
     VendorSettlementTemplate,
     PettyCashTemplate,
+    YearEndClosingTemplate,
+    // P3-SP5 — SHOP-side accounting
+    CompanyResolverService,
+    PairedJournalService,
+    ShopCashSaleTemplate,
+    ShopDownPaymentTemplate,
+    ShopDownPaymentReversalTemplate,
+    ShopFinanceReceiptTemplate,
+    ShopTradeInTemplate,
+    ShopExpenseTemplate,
+    ShopInventoryTransferTemplate,
+    // SP7.2 — Outbox + saga infrastructure
+    OutboxService,
+    OutboxProcessorService,
+    // P4-SP4 — Contract cancellation
+    ContractCancellationTemplate,
   ],
 })
 export class JournalModule {}

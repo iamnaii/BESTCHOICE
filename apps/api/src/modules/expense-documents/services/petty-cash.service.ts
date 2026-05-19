@@ -3,7 +3,12 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 
 export interface PettyCashConfig {
-  /** Float account code (Cr side of every JE). Default 11-1201. */
+  /**
+   * Float account code (Cr side of every JE). Default 11-1103 (เงินสดพนักงานบัญชี
+   * — Imprest Fund pattern, per Owner Response Q1 signed 2026-05-17). Migration
+   * 20260955000000_owner_q1q8_systemconfig_decisions seeds this into prod;
+   * the default here is defense in depth for fresh / un-migrated DBs.
+   */
   account: string;
   /** Max total per document. Default 5000฿. Set via system_config `petty_cash_limit`. */
   limit: Prisma.Decimal;
@@ -36,7 +41,7 @@ export class PettyCashService {
     });
     const byKey = new Map(rows.map((r) => [r.key, r.value]));
     return {
-      account: byKey.get('petty_cash_account') ?? '11-1201',
+      account: byKey.get('petty_cash_account') ?? '11-1103',
       limit: new Prisma.Decimal(byKey.get('petty_cash_limit') ?? '5000'),
       replenishThreshold:
         byKey.has('petty_cash_replenish_threshold')

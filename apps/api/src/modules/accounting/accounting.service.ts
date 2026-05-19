@@ -1,12 +1,15 @@
 import {
+  BadRequestException,
   Injectable,
   Logger,
+  NotFoundException,
   OnModuleInit,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StructuredLoggerService } from '../../common/logger';
 import { Prisma } from '@prisma/client';
 import { JournalAutoService } from '../journal/journal-auto.service';
+import { CompanyResolverService } from '../journal/company-resolver.service';
 
 /**
  * INVENTORY COSTING METHOD: Specific Identification
@@ -53,6 +56,8 @@ export class AccountingService implements OnModuleInit {
   constructor(
     private prisma: PrismaService,
     private journalAutoService: JournalAutoService,
+    // P3-SP5 W7: defense-in-depth filter on companyId for SHOP/FINANCE scoping.
+    private companyResolver: CompanyResolverService,
   ) {}
 
   /**
@@ -719,6 +724,7 @@ export class AccountingService implements OnModuleInit {
   //   55 = EXCLUDE from P&L (พีคโปรแกรม — ไม่นำมาแสดงในงบกำไรขาดทุน)
 
   private static readonly SECTION_MAP: Record<string, string> = {
+    // FINANCE chart (single-prefix)
     '11': 'สินทรัพย์หมุนเวียน',
     '12': 'สินทรัพย์ไม่หมุนเวียน',
     '21': 'หนี้สินหมุนเวียน',
@@ -733,7 +739,32 @@ export class AccountingService implements OnModuleInit {
     '53': 'ค่าใช้จ่ายบริหาร',
     '54': 'ค่าใช้จ่ายต้องห้ามทางภาษี',
     '55': 'ค่าใช้จ่ายโปรแกรมบัญชี (ยกเว้น P&L)',
+    // P3-SP5 — SHOP chart (S-prefix). Same logical grouping as FINANCE but
+    // labelled "(SHOP)" so a combined report makes it obvious which side a
+    // section came from.
+    'S11': 'สินทรัพย์หมุนเวียน (SHOP)',
+    'S12': 'สินทรัพย์ไม่หมุนเวียน (SHOP)',
+    'S21': 'หนี้สินหมุนเวียน (SHOP)',
+    'S22': 'หนี้สินไม่หมุนเวียน (SHOP)',
+    'S31': 'ทุนจดทะเบียน (SHOP)',
+    'S32': 'กำไรสะสม (SHOP)',
+    'S33': 'กำไรขาดทุนปีปัจจุบัน (SHOP)',
+    'S41': 'รายได้ (SHOP)',
+    'S42': 'รายได้อื่น (SHOP)',
+    'S50': 'ต้นทุนขาย (SHOP)',
+    'S51': 'ค่าใช้จ่ายขาย (SHOP)',
+    'S52': 'ค่าใช้จ่ายบริหาร (SHOP)',
+    'S53': 'ค่าใช้จ่ายอื่น (SHOP)',
   };
+
+  /**
+   * Extract the section-prefix from an account code.
+   * - FINANCE: `11-1101` → `11` (first 2 chars)
+   * - SHOP:    `S11-1101` → `S11` (first 3 chars, S + 2 digits)
+   */
+  private static codePrefix(code: string): string {
+    return code.startsWith('S') ? code.slice(0, 3) : code.slice(0, 2);
+  }
 
   /**
    * Get Trial Balance from journal lines as of a given date.
@@ -743,13 +774,46 @@ export class AccountingService implements OnModuleInit {
    *
    * Sections are grouped by the 2-digit prefix of the account code (11, 12, 21, …).
    * isBalanced = grandDrTotal equals grandCrTotal (accounting identity check).
+   *
+   * P3-SP5: `scope` filters by account code prefix:
+   *   - 'FINANCE' (default) — codes WITHOUT `S` prefix (the FINANCE chart)
+   *   - 'SHOP'              — codes WITH    `S` prefix (the SHOP chart)
+   *   - 'ALL'               — all accounts (combined report — both prefixes)
+   *
+   * Filtering happens on `chartOfAccount.code` and `journalLine.accountCode`
+   * at the DB level so SHOP/FINANCE running balances stay strictly separate.
    */
-  async getTrialBalance(asOfDate?: Date) {
+  async getTrialBalance(asOfDate?: Date, scope: 'FINANCE' | 'SHOP' | 'ALL' = 'FINANCE') {
     const cutoff = asOfDate ?? new Date();
 
-    // 1. Load all active chart of accounts
+    // Code-prefix filter: SHOP codes start with 'S' (S11-XXXX); FINANCE codes
+    // are bare digits (11-XXXX). Use Prisma `startsWith` for the SHOP filter
+    // and `not.startsWith` for FINANCE. 'ALL' skips the filter entirely.
+    const codeFilter: Prisma.StringFilter | undefined =
+      scope === 'SHOP'
+        ? { startsWith: 'S' }
+        : scope === 'FINANCE'
+          ? { not: { startsWith: 'S' } }
+          : undefined;
+
+    // P3-SP5 W7 — defense-in-depth: ALSO filter by JournalEntry.companyId.
+    // Code-prefix is the partition key but companyId guards against the
+    // edge case of a misposted JE (S-code lines under FINANCE companyId
+    // or vice versa). 'ALL' skips this filter so combined views work.
+    const companyIdFilter: string | undefined =
+      scope === 'SHOP'
+        ? await this.companyResolver.getShopCompanyId()
+        : scope === 'FINANCE'
+          ? await this.companyResolver.getFinanceCompanyId()
+          : undefined;
+
+    // 1. Load all active chart of accounts (scoped)
     const accounts = await this.prisma.chartOfAccount.findMany({
-      where: { deletedAt: null, status: 'ใช้งาน' },
+      where: {
+        deletedAt: null,
+        status: 'ใช้งาน',
+        ...(codeFilter ? { code: codeFilter } : {}),
+      },
       orderBy: { code: 'asc' },
     });
 
@@ -761,8 +825,10 @@ export class AccountingService implements OnModuleInit {
           status: 'POSTED',
           entryDate: { lte: cutoff },
           deletedAt: null,
+          ...(companyIdFilter ? { companyId: companyIdFilter } : {}),
         },
         deletedAt: null,
+        ...(codeFilter ? { accountCode: codeFilter } : {}),
       },
       _sum: { debit: true, credit: true },
     });
@@ -789,7 +855,7 @@ export class AccountingService implements OnModuleInit {
     }>();
 
     for (const acc of accounts) {
-      const prefix = acc.code.slice(0, 2);
+      const prefix = AccountingService.codePrefix(acc.code);
       const sectionName = AccountingService.SECTION_MAP[prefix] ?? `หมวด ${prefix}`;
 
       if (!sectionMap.has(prefix)) {
@@ -824,7 +890,7 @@ export class AccountingService implements OnModuleInit {
 
     // Also include any journal lines for codes not in CoA (orphan codes)
     for (const [code, sums] of sumMap) {
-      const prefix = code.slice(0, 2);
+      const prefix = AccountingService.codePrefix(code);
       if (!sectionMap.has(prefix)) {
         sectionMap.set(prefix, {
           sectionName: AccountingService.SECTION_MAP[prefix] ?? `หมวด ${prefix}`,
@@ -863,12 +929,61 @@ export class AccountingService implements OnModuleInit {
       grandCrTotal = grandCrTotal.add(s.crTotal);
     }
 
+    // P3-SP5 DEEP review C5 — per-scope subtotals + per-scope balance check.
+    //
+    // For scope='ALL' the combined Dr / Cr totals can sum to zero even if
+    // the SHOP half is unbalanced and the FINANCE half is unbalanced by
+    // the same magnitude in opposite directions. That hides real bugs.
+    // Always return strict per-scope totals so the UI can show TWO balance
+    // badges (SHOP balanced / FINANCE balanced) instead of one combined.
+    const shopDr = sections
+      .filter((s) => s.codePrefix.startsWith('S'))
+      .reduce((acc, s) => acc.add(s.drTotal), new Prisma.Decimal(0));
+    const shopCr = sections
+      .filter((s) => s.codePrefix.startsWith('S'))
+      .reduce((acc, s) => acc.add(s.crTotal), new Prisma.Decimal(0));
+    const financeDr = sections
+      .filter((s) => !s.codePrefix.startsWith('S'))
+      .reduce((acc, s) => acc.add(s.drTotal), new Prisma.Decimal(0));
+    const financeCr = sections
+      .filter((s) => !s.codePrefix.startsWith('S'))
+      .reduce((acc, s) => acc.add(s.crTotal), new Prisma.Decimal(0));
+
+    const shopBalanced = shopDr.equals(shopCr);
+    const financeBalanced = financeDr.equals(financeCr);
+    // isAllBalanced is STRICTER than the combined Dr=Cr check — both halves
+    // MUST balance independently. Combined Dr=Cr alone is not enough.
+    const isAllBalanced =
+      scope === 'ALL'
+        ? shopBalanced && financeBalanced
+        : scope === 'SHOP'
+          ? shopBalanced
+          : financeBalanced;
+
     return {
       asOfDate: cutoff,
+      scope,
       sections,
       grandDrTotal,
       grandCrTotal,
+      // Per-scope subtotals (always populated; consumers can show them per
+      // their needs — UI shows both badges when scope='ALL').
+      perScope: {
+        shop: {
+          drTotal: shopDr,
+          crTotal: shopCr,
+          isBalanced: shopBalanced,
+        },
+        finance: {
+          drTotal: financeDr,
+          crTotal: financeCr,
+          isBalanced: financeBalanced,
+        },
+      },
+      // Legacy combined balance check (kept for backward compatibility but
+      // do NOT rely on it for scope='ALL' — use `isAllBalanced` instead).
       isBalanced: grandDrTotal.equals(grandCrTotal),
+      isAllBalanced,
     };
   }
 
@@ -877,13 +992,59 @@ export class AccountingService implements OnModuleInit {
    *
    * Revenue = net Cr balance of accounts 41 + 42 for the period.
    * Expenses = net Dr balance of accounts 51 + 52 + 53 + 54 for the period.
+   * COGS    = net Dr balance of S50 (SHOP only — FINANCE does not carry COGS).
    * Accounts in prefix 55 are EXCLUDED per CPA chart note ("ไม่นำมาแสดงในงบกำไรขาดทุน").
    *
    * Period filter: JournalEntry.entryDate between periodStart and periodEnd (inclusive).
+   *
+   * Optional companyId scopes to JournalEntry.companyId — used by multi-entity
+   * reports (SP2 Cash Flow / Equity Statement / General Ledger).
+   *
+   * P3-SP5: `scope` filters by account code prefix:
+   *   - 'FINANCE' (default) — codes WITHOUT `S` prefix
+   *   - 'SHOP'              — codes WITH    `S` prefix (S41, S42, S50, S51, S52, S53)
+   *   - 'ALL'               — both
    */
-  async getProfitLossFromJournal(periodStart: Date, periodEnd: Date) {
-    const REVENUE_PREFIXES = ['41', '42'];
-    const EXPENSE_PREFIXES = ['51', '52', '53', '54']; // 55 excluded
+  async getProfitLossFromJournal(
+    periodStart: Date,
+    periodEnd: Date,
+    companyId?: string,
+    scope: 'FINANCE' | 'SHOP' | 'ALL' = 'FINANCE',
+  ) {
+    // Prefixes per scope. SHOP introduces S50-XXXX COGS (treated as
+    // expense in the P&L — separately reported under "ต้นทุนขาย").
+    const REVENUE_PREFIXES =
+      scope === 'SHOP'
+        ? ['S41', 'S42']
+        : scope === 'ALL'
+          ? ['41', '42', 'S41', 'S42']
+          : ['41', '42'];
+    const EXPENSE_PREFIXES =
+      scope === 'SHOP'
+        ? ['S50', 'S51', 'S52', 'S53']
+        : scope === 'ALL'
+          ? ['51', '52', '53', '54', 'S50', 'S51', 'S52', 'S53']
+          : ['51', '52', '53', '54']; // 55 excluded
+
+    const codeFilter: Prisma.StringFilter | undefined =
+      scope === 'SHOP'
+        ? { startsWith: 'S' }
+        : scope === 'FINANCE'
+          ? { not: { startsWith: 'S' } }
+          : undefined;
+
+    // P3-SP5 W7 — defense-in-depth companyId filter (see getTrialBalance for
+    // rationale). Honour an explicit `companyId` override from callers that
+    // already know the company; otherwise resolve from scope.
+    let companyIdFilter: string | undefined = companyId;
+    if (!companyIdFilter) {
+      if (scope === 'SHOP') {
+        companyIdFilter = await this.companyResolver.getShopCompanyId();
+      } else if (scope === 'FINANCE') {
+        companyIdFilter = await this.companyResolver.getFinanceCompanyId();
+      }
+      // scope === 'ALL' leaves companyIdFilter unset (cross-company view).
+    }
 
     const lineSums = await this.prisma.journalLine.groupBy({
       by: ['accountCode'],
@@ -892,8 +1053,10 @@ export class AccountingService implements OnModuleInit {
           status: 'POSTED',
           entryDate: { gte: periodStart, lte: periodEnd },
           deletedAt: null,
+          ...(companyIdFilter ? { companyId: companyIdFilter } : {}),
         },
         deletedAt: null,
+        ...(codeFilter ? { accountCode: codeFilter } : {}),
       },
       _sum: { debit: true, credit: true },
     });
@@ -913,22 +1076,34 @@ export class AccountingService implements OnModuleInit {
     let revenueTotal = new Prisma.Decimal(0);
     let expenseTotal = new Prisma.Decimal(0);
 
+    // P3-SP5 DEEP review C5 — per-scope subtotals so the UI can show SHOP
+    // vs FINANCE side-by-side without re-querying.
+    let shopRevenueTotal = new Prisma.Decimal(0);
+    let shopExpenseTotal = new Prisma.Decimal(0);
+    let financeRevenueTotal = new Prisma.Decimal(0);
+    let financeExpenseTotal = new Prisma.Decimal(0);
+
     for (const row of lineSums) {
-      const prefix = row.accountCode.slice(0, 2);
+      const prefix = AccountingService.codePrefix(row.accountCode);
       const dr = new Prisma.Decimal(row._sum.debit ?? 0);
       const cr = new Prisma.Decimal(row._sum.credit ?? 0);
       const name = nameMap.get(row.accountCode) ?? row.accountCode;
+      const isShop = row.accountCode.startsWith('S');
 
       if (REVENUE_PREFIXES.includes(prefix)) {
         // Revenue accounts are Cr-normal: net = Cr - Dr
         const amount = cr.sub(dr);
         revenueRows.push({ code: row.accountCode, name, amount });
         revenueTotal = revenueTotal.add(amount);
+        if (isShop) shopRevenueTotal = shopRevenueTotal.add(amount);
+        else financeRevenueTotal = financeRevenueTotal.add(amount);
       } else if (EXPENSE_PREFIXES.includes(prefix)) {
         // Expense accounts are Dr-normal: net = Dr - Cr
         const amount = dr.sub(cr);
         expenseRows.push({ code: row.accountCode, name, amount });
         expenseTotal = expenseTotal.add(amount);
+        if (isShop) shopExpenseTotal = shopExpenseTotal.add(amount);
+        else financeExpenseTotal = financeExpenseTotal.add(amount);
       }
       // prefix 55 and others: skip
     }
@@ -939,6 +1114,7 @@ export class AccountingService implements OnModuleInit {
     return {
       periodStart,
       periodEnd,
+      scope,
       revenue: {
         sectionName: 'รายได้รวม',
         rows: revenueRows,
@@ -950,6 +1126,21 @@ export class AccountingService implements OnModuleInit {
         total: expenseTotal,
       },
       netIncome: revenueTotal.sub(expenseTotal),
+      // P3-SP5 DEEP review C5 — per-scope subtotals (always populated).
+      // For scope='ALL' the UI displays BOTH side-by-side; for SHOP/FINANCE
+      // the other side will be 0.
+      perScope: {
+        shop: {
+          revenueTotal: shopRevenueTotal,
+          expenseTotal: shopExpenseTotal,
+          netIncome: shopRevenueTotal.sub(shopExpenseTotal),
+        },
+        finance: {
+          revenueTotal: financeRevenueTotal,
+          expenseTotal: financeExpenseTotal,
+          netIncome: financeRevenueTotal.sub(financeExpenseTotal),
+        },
+      },
     };
   }
 
@@ -965,7 +1156,9 @@ export class AccountingService implements OnModuleInit {
    */
   async getBalanceSheetFromJournal(asOfDate?: Date) {
     const cutoff = asOfDate ?? new Date();
-    const tb = await this.getTrialBalance(cutoff);
+    // P3-SP5 W1: explicit 'FINANCE' scope — this method historically reports
+    // the FINANCE-side balance sheet. SHOP balance sheet is deferred to SP7.
+    const tb = await this.getTrialBalance(cutoff, 'FINANCE');
 
     const zero = new Prisma.Decimal(0);
 
@@ -1131,6 +1324,858 @@ export class AccountingService implements OnModuleInit {
         netOperatingCashFlow: netOperatingNum,
       },
       netCashChange: netCashChange.toNumber(),
+    };
+  }
+
+  // ─── SP2: Cash Flow (Indirect Method) ─────────────────────────────────────────
+  //
+  // TFRS for NPAEs Indirect Method:
+  //   1. Net Income (from getProfitLossFromJournal)
+  //   2. + Non-cash adjustments (depreciation, bad-debt provision Δ, unearned interest Δ)
+  //   3. ± Working capital Δ (AR, Inventory, AP, VAT payable)
+  //   4. Investing (PPE purchases / disposals)
+  //   5. Financing (capital injections / dividends)
+  //   6. Net Change reconciled vs. actual cash account movement (±1 THB tolerance)
+
+  /**
+   * Sum net balance of a list of account-code prefixes as of a specific date.
+   * Aggregates over JournalLine on POSTED entries (entryDate <= asOfDate).
+   *
+   * normalSide controls signing:
+   *   - 'Dr' → returns (debit - credit). Positive = balance on debit side.
+   *   - 'Cr' → returns (credit - debit). Positive = balance on credit side.
+   *
+   * Optional companyId scopes to JournalEntry.companyId (multi-entity reports).
+   */
+  private async sumAccountBalances(
+    codePrefixes: string[],
+    asOfDate: Date,
+    normalSide: 'Dr' | 'Cr',
+    companyId?: string,
+  ): Promise<Prisma.Decimal> {
+    if (codePrefixes.length === 0) return new Prisma.Decimal(0);
+
+    const orFilters = codePrefixes.map((p) => ({ accountCode: { startsWith: p } }));
+    const lineSums = await this.prisma.journalLine.groupBy({
+      by: ['accountCode'],
+      where: {
+        OR: orFilters,
+        deletedAt: null,
+        journalEntry: {
+          status: 'POSTED',
+          entryDate: { lte: asOfDate },
+          deletedAt: null,
+          ...(companyId ? { companyId } : {}),
+        },
+      },
+      _sum: { debit: true, credit: true },
+    });
+
+    let total = new Prisma.Decimal(0);
+    for (const row of lineSums) {
+      const dr = new Prisma.Decimal(row._sum.debit ?? 0);
+      const cr = new Prisma.Decimal(row._sum.credit ?? 0);
+      const delta = normalSide === 'Cr' ? cr.sub(dr) : dr.sub(cr);
+      total = total.add(delta);
+    }
+    return total;
+  }
+
+  /**
+   * Sum the period-only debit total for accounts matching the given prefixes.
+   * Used for depreciation expense (Dr 53-16XX) where we want only Dr posted in the period,
+   * not the running balance.
+   */
+  private async sumDebitInPeriod(
+    codePrefixes: string[],
+    periodStart: Date,
+    periodEnd: Date,
+    companyId?: string,
+  ): Promise<Prisma.Decimal> {
+    if (codePrefixes.length === 0) return new Prisma.Decimal(0);
+
+    const orFilters = codePrefixes.map((p) => ({ accountCode: { startsWith: p } }));
+    const lineSums = await this.prisma.journalLine.groupBy({
+      by: ['accountCode'],
+      where: {
+        OR: orFilters,
+        deletedAt: null,
+        journalEntry: {
+          status: 'POSTED',
+          entryDate: { gte: periodStart, lte: periodEnd },
+          deletedAt: null,
+          ...(companyId ? { companyId } : {}),
+        },
+      },
+      _sum: { debit: true, credit: true },
+    });
+
+    let total = new Prisma.Decimal(0);
+    for (const row of lineSums) {
+      const dr = new Prisma.Decimal(row._sum.debit ?? 0);
+      const cr = new Prisma.Decimal(row._sum.credit ?? 0);
+      // Net debit posted in period: Dr - Cr (positive for expense buildup)
+      total = total.add(dr.sub(cr));
+    }
+    return total;
+  }
+
+  /**
+   * Cash Flow Statement — Indirect Method (TFRS for NPAEs).
+   *
+   * @param periodStart start of period (inclusive)
+   * @param periodEnd   end of period (inclusive — caller should set 23:59:59.999 if needed)
+   * @param companyId   optional CompanyInfo.id scope
+   */
+  async getCashFlowFromJournal(
+    periodStart: Date,
+    periodEnd: Date,
+    companyId?: string,
+  ) {
+    const startMinusOne = new Date(periodStart);
+    startMinusOne.setMilliseconds(startMinusOne.getMilliseconds() - 1);
+
+    // 1. Net Income for the period
+    // P3-SP5 W1: explicit 'FINANCE' scope — Cash Flow is FINANCE-only.
+    const pl = await this.getProfitLossFromJournal(periodStart, periodEnd, companyId, 'FINANCE');
+    const netIncome = pl.netIncome;
+
+    // 2. Non-cash adjustments
+    // Depreciation: Dr side of 53-16XX in the period
+    const depreciation = await this.sumDebitInPeriod(['53-16'], periodStart, periodEnd, companyId);
+    // Bad-debt provision change: Δ balance of 11-2102 (Cr-normal contra asset)
+    const allowanceOpening = await this.sumAccountBalances(['11-2102'], startMinusOne, 'Cr', companyId);
+    const allowanceClosing = await this.sumAccountBalances(['11-2102'], periodEnd, 'Cr', companyId);
+    const badDebtProvisionChange = allowanceClosing.sub(allowanceOpening);
+    // Unearned interest change: Δ balance of 11-2106 (Cr-normal contra asset)
+    const unearnedOpening = await this.sumAccountBalances(['11-2106'], startMinusOne, 'Cr', companyId);
+    const unearnedClosing = await this.sumAccountBalances(['11-2106'], periodEnd, 'Cr', companyId);
+    const unearnedInterestChange = unearnedClosing.sub(unearnedOpening);
+
+    // 3. Working capital changes
+    // AR (Dr-normal): 11-2101 + 11-2103. Increase consumes cash → subtract change.
+    const arOpening = await this.sumAccountBalances(['11-2101', '11-2103'], startMinusOne, 'Dr', companyId);
+    const arClosing = await this.sumAccountBalances(['11-2101', '11-2103'], periodEnd, 'Dr', companyId);
+    const arChange = arClosing.sub(arOpening); // positive = AR grew → cash OUT
+    // Inventory (Dr-normal): 11-3XXX
+    const invOpening = await this.sumAccountBalances(['11-3'], startMinusOne, 'Dr', companyId);
+    const invClosing = await this.sumAccountBalances(['11-3'], periodEnd, 'Dr', companyId);
+    const inventoryChange = invClosing.sub(invOpening); // positive = inventory grew → cash OUT
+    // AP (Cr-normal): 21-1101 + 21-1102 + 21-31XX. Increase frees cash → add change.
+    const apOpening = await this.sumAccountBalances(
+      ['21-1101', '21-1102', '21-31'],
+      startMinusOne,
+      'Cr',
+      companyId,
+    );
+    const apClosing = await this.sumAccountBalances(
+      ['21-1101', '21-1102', '21-31'],
+      periodEnd,
+      'Cr',
+      companyId,
+    );
+    const apChange = apClosing.sub(apOpening); // positive = AP grew → cash IN
+    // VAT payable (Cr-normal): 21-2101 + 21-2102
+    const vatOpening = await this.sumAccountBalances(
+      ['21-2101', '21-2102'],
+      startMinusOne,
+      'Cr',
+      companyId,
+    );
+    const vatClosing = await this.sumAccountBalances(
+      ['21-2101', '21-2102'],
+      periodEnd,
+      'Cr',
+      companyId,
+    );
+    const vatPayableChange = vatClosing.sub(vatOpening); // positive = VAT payable grew → cash IN
+
+    // Net Operating = NI + non-cash − ΔAR − ΔInventory + ΔAP + ΔVAT
+    // (depreciation, bad-debt provision, unearned interest are non-cash → add back)
+    const netOperating = netIncome
+      .add(depreciation)
+      .add(badDebtProvisionChange)
+      .add(unearnedInterestChange)
+      .sub(arChange)
+      .sub(inventoryChange)
+      .add(apChange)
+      .add(vatPayableChange);
+
+    // 4. Investing
+    // PPE purchases (cash OUT) — sum FixedAsset.purchaseCost where status=POSTED and
+    // postedAt in period. We use postedAt (the date the cost JE was posted) rather
+    // than purchaseDate to align with the cash effect — purchaseDate can lag well
+    // behind the actual cash settlement in an accrual system.
+    //
+    // SP2 KNOWN GAP — FixedAsset has no companyId column, so passing `companyId`
+    // filter has no effect on this aggregate. The number reflects ALL fixed
+    // assets across both SHOP+FINANCE entities. Phase A.5 will add companyId
+    // scoping on FixedAsset; until then we warn the caller.
+    if (companyId) {
+      this.logger.warn(
+        `Cash Flow getCashFlowFromJournal called with companyId=${companyId} but ` +
+          `FixedAsset lacks companyId. investing.ppePurchases will reflect company-wide PPE.`,
+      );
+    }
+    const ppePurchasesAgg = await this.prisma.fixedAsset.aggregate({
+      where: {
+        status: 'POSTED',
+        postedAt: { gte: periodStart, lte: periodEnd },
+        deletedAt: null,
+      },
+      _sum: { purchaseCost: true },
+    });
+    const ppePurchases = new Prisma.Decimal(ppePurchasesAgg._sum.purchaseCost ?? 0);
+
+    // PPE disposals (cash IN) — proceeds aren't a column on FixedAsset; they live in
+    // JE metadata under flow='asset-disposal'. We aggregate disposalProceeds from the
+    // metadata of POSTED disposal JEs whose entryDate falls in the period. This is
+    // the authoritative source (template asset-disposal.template.ts writes it).
+    const disposalEntries = await this.prisma.journalEntry.findMany({
+      where: {
+        status: 'POSTED',
+        entryDate: { gte: periodStart, lte: periodEnd },
+        deletedAt: null,
+        ...(companyId ? { companyId } : {}),
+        AND: [
+          { metadata: { path: ['flow'], equals: 'asset-disposal' } } as Prisma.JournalEntryWhereInput,
+        ],
+      },
+      select: { metadata: true },
+    });
+    let ppeDisposals = new Prisma.Decimal(0);
+    for (const e of disposalEntries) {
+      const meta = e.metadata as { disposalProceeds?: string | number } | null;
+      if (meta && meta.disposalProceeds != null) {
+        ppeDisposals = ppeDisposals.add(new Prisma.Decimal(meta.disposalProceeds.toString()));
+      }
+    }
+    const netInvesting = ppeDisposals.sub(ppePurchases);
+
+    // 5. Financing
+    // Capital injections (Cr-normal): Δ (31-1101 + 31-1102)
+    const capitalOpening = await this.sumAccountBalances(
+      ['31-1101', '31-1102'],
+      startMinusOne,
+      'Cr',
+      companyId,
+    );
+    const capitalClosing = await this.sumAccountBalances(
+      ['31-1101', '31-1102'],
+      periodEnd,
+      'Cr',
+      companyId,
+    );
+    const capitalInjections = capitalClosing.sub(capitalOpening); // positive = cash IN
+
+    // Dividends: Δ 32-1101 (Cr-normal). Decrease = cash OUT. We expose the raw
+    // delta — UI displays positive movements as injections (rare) and negative as
+    // dividends. Without year-end closing entries the line is approximate.
+    const dividendOpening = await this.sumAccountBalances(['32-1101'], startMinusOne, 'Cr', companyId);
+    const dividendClosing = await this.sumAccountBalances(['32-1101'], periodEnd, 'Cr', companyId);
+    const dividends = dividendOpening.sub(dividendClosing); // positive = paid out
+
+    const netFinancing = capitalInjections.sub(dividends);
+
+    const netChange = netOperating.add(netInvesting).add(netFinancing);
+
+    // 6. Reconciliation: compare with raw cash account movement
+    const CASH_PREFIXES = ['11-11', '11-12']; // 11-1101..11-1103 + 11-1201..11-1203
+    const openingCash = await this.sumAccountBalances(CASH_PREFIXES, startMinusOne, 'Dr', companyId);
+    const closingCash = await this.sumAccountBalances(CASH_PREFIXES, periodEnd, 'Dr', companyId);
+    const actualCashChange = closingCash.sub(openingCash);
+    const drift = netChange.sub(actualCashChange);
+    const isReconciled = drift.abs().lte(new Prisma.Decimal(1));
+
+    return {
+      periodStart,
+      periodEnd,
+      method: 'indirect' as const,
+      operating: {
+        netIncome: netIncome.toNumber(),
+        depreciation: depreciation.toNumber(),
+        badDebtProvisionChange: badDebtProvisionChange.toNumber(),
+        unearnedInterestChange: unearnedInterestChange.toNumber(),
+        arChange: arChange.toNumber(),
+        inventoryChange: inventoryChange.toNumber(),
+        apChange: apChange.toNumber(),
+        vatPayableChange: vatPayableChange.toNumber(),
+        netOperating: netOperating.toNumber(),
+      },
+      investing: {
+        ppePurchases: ppePurchases.toNumber(),
+        ppeDisposals: ppeDisposals.toNumber(),
+        netInvesting: netInvesting.toNumber(),
+      },
+      financing: {
+        capitalInjections: capitalInjections.toNumber(),
+        dividends: dividends.toNumber(),
+        netFinancing: netFinancing.toNumber(),
+      },
+      netChange: netChange.toNumber(),
+      openingCash: openingCash.toNumber(),
+      closingCash: closingCash.toNumber(),
+      actualCashChange: actualCashChange.toNumber(),
+      isReconciled,
+      drift: drift.toNumber(),
+    };
+  }
+
+  // ─── SP2: Equity Statement ────────────────────────────────────────────────────
+  //
+  // Matrix of equity accounts (31-1101, 31-1102, 32-1101, 33-1101) showing
+  // ยอดต้นงวด / +เพิ่ม / -ลด / ยอดปลายงวด with movement details.
+  // The current-year P&L line is derived from getProfitLossFromJournal — labelled
+  // with a caveat because year-end closing entries have not been posted to 33-1101.
+
+  private static readonly EQUITY_ACCOUNTS: { code: string; defaultName: string }[] = [
+    { code: '31-1101', defaultName: 'หุ้นสามัญ' },
+    { code: '31-1102', defaultName: 'ส่วนเกินมูลค่าหุ้น' },
+    { code: '32-1101', defaultName: 'กำไร(ขาดทุน)สะสม' },
+    { code: '33-1101', defaultName: 'กำไร(ขาดทุน)สุทธิประจำปี' },
+  ];
+
+  async getEquityStatementFromJournal(
+    periodStart: Date,
+    periodEnd: Date,
+    companyId?: string,
+  ) {
+    const codes = AccountingService.EQUITY_ACCOUNTS.map((a) => a.code);
+    const startMinusOne = new Date(periodStart);
+    startMinusOne.setMilliseconds(startMinusOne.getMilliseconds() - 1);
+
+    // Load CoA names (may be missing if not seeded)
+    const coa = await this.prisma.chartOfAccount.findMany({
+      where: { code: { in: codes }, deletedAt: null },
+      select: { code: true, name: true },
+    });
+    const nameMap = new Map(coa.map((c) => [c.code, c.name]));
+
+    // Load all journal lines that touched these accounts in the period
+    const lines = await this.prisma.journalLine.findMany({
+      where: {
+        accountCode: { in: codes },
+        deletedAt: null,
+        journalEntry: {
+          status: 'POSTED',
+          entryDate: { gte: periodStart, lte: periodEnd },
+          deletedAt: null,
+          ...(companyId ? { companyId } : {}),
+        },
+      },
+      select: {
+        accountCode: true,
+        debit: true,
+        credit: true,
+        description: true,
+        journalEntry: {
+          select: { entryDate: true, entryNumber: true, description: true },
+        },
+      },
+      orderBy: { journalEntry: { entryDate: 'asc' } },
+    });
+
+    type Movement = { entryDate: Date; entryNumber: string; description: string; amount: number };
+    const rows: Array<{
+      accountCode: string;
+      accountName: string;
+      opening: number;
+      increases: Movement[];
+      decreases: Movement[];
+      totalIncrease: number;
+      totalDecrease: number;
+      closing: number;
+    }> = [];
+
+    let totalOpening = new Prisma.Decimal(0);
+    let totalClosing = new Prisma.Decimal(0);
+
+    for (const accDef of AccountingService.EQUITY_ACCOUNTS) {
+      // Opening balance (Cr-normal): credits - debits before periodStart
+      const opening = await this.sumAccountBalances([accDef.code], startMinusOne, 'Cr', companyId);
+
+      const increases: Movement[] = [];
+      const decreases: Movement[] = [];
+      let increaseTotal = new Prisma.Decimal(0);
+      let decreaseTotal = new Prisma.Decimal(0);
+
+      for (const line of lines) {
+        if (line.accountCode !== accDef.code) continue;
+        const dr = new Prisma.Decimal(line.debit);
+        const cr = new Prisma.Decimal(line.credit);
+        const movement: Omit<Movement, 'amount'> = {
+          entryDate: line.journalEntry.entryDate,
+          entryNumber: line.journalEntry.entryNumber,
+          description: line.description ?? line.journalEntry.description,
+        };
+        // Equity is Cr-normal: Cr = increase, Dr = decrease.
+        if (cr.gt(0)) {
+          const amount = cr.toNumber();
+          increases.push({ ...movement, amount });
+          increaseTotal = increaseTotal.add(cr);
+        }
+        if (dr.gt(0)) {
+          const amount = dr.toNumber();
+          decreases.push({ ...movement, amount });
+          decreaseTotal = decreaseTotal.add(dr);
+        }
+      }
+
+      const closing = opening.add(increaseTotal).sub(decreaseTotal);
+
+      rows.push({
+        accountCode: accDef.code,
+        accountName: nameMap.get(accDef.code) ?? accDef.defaultName,
+        opening: opening.toNumber(),
+        increases,
+        decreases,
+        totalIncrease: increaseTotal.toNumber(),
+        totalDecrease: decreaseTotal.toNumber(),
+        closing: closing.toNumber(),
+      });
+
+      totalOpening = totalOpening.add(opening);
+      totalClosing = totalClosing.add(closing);
+    }
+
+    // Derive current-year P&L (yearStart .. periodEnd) for the caveat line.
+    // This represents the implicit profit not yet closed into 33-1101.
+    const yearStart = new Date(periodEnd.getFullYear(), 0, 1);
+    // P3-SP5 W1: explicit 'FINANCE' scope — Equity Statement is FINANCE-only.
+    const yearPL = await this.getProfitLossFromJournal(yearStart, periodEnd, companyId, 'FINANCE');
+    const currentYearProfit = yearPL.netIncome.toNumber();
+
+    return {
+      periodStart,
+      periodEnd,
+      rows,
+      currentYearProfit,
+      caveat:
+        'ค่าประมาณกำไรปีปัจจุบัน — ยังไม่ปิดบัญชีจริงเข้า 33-1101 / 32-1101 (รอปิดบัญชีสิ้นปี)',
+      totalOpening: totalOpening.toNumber(),
+      totalClosing: totalClosing.toNumber(),
+    };
+  }
+
+  // ─── SP2: General Ledger ──────────────────────────────────────────────────────
+
+  /**
+   * General Ledger for a single account over a period.
+   * Returns opening balance, every posted journal line, and running balance.
+   *
+   * Running balance is signed on the normal side:
+   *   - Dr-normal account: balance = Σ(debit - credit)
+   *   - Cr-normal account: balance = Σ(credit - debit)
+   *   - Dr/Cr account: treated as Dr-normal for display purposes.
+   */
+  async getGeneralLedger(
+    accountCode: string,
+    periodStart: Date,
+    periodEnd: Date,
+    companyId?: string,
+  ) {
+    const account = await this.prisma.chartOfAccount.findFirst({
+      where: { code: accountCode, deletedAt: null },
+      select: { code: true, name: true, normalBalance: true },
+    });
+    if (!account) {
+      throw new NotFoundException(`ไม่พบรหัสบัญชี ${accountCode} ในผังบัญชี`);
+    }
+
+    const normalBalance = account.normalBalance as 'Dr' | 'Cr' | 'Dr/Cr';
+    const startMinusOne = new Date(periodStart);
+    startMinusOne.setMilliseconds(startMinusOne.getMilliseconds() - 1);
+
+    // Opening balance (everything before periodStart)
+    const opening = await this.sumAccountBalances(
+      [accountCode],
+      startMinusOne,
+      normalBalance === 'Cr' ? 'Cr' : 'Dr',
+      companyId,
+    );
+
+    // All journal lines in the period
+    const rawLines = await this.prisma.journalLine.findMany({
+      where: {
+        accountCode,
+        deletedAt: null,
+        journalEntry: {
+          status: 'POSTED',
+          entryDate: { gte: periodStart, lte: periodEnd },
+          deletedAt: null,
+          ...(companyId ? { companyId } : {}),
+        },
+      },
+      select: {
+        debit: true,
+        credit: true,
+        description: true,
+        journalEntry: {
+          select: {
+            entryDate: true,
+            entryNumber: true,
+            description: true,
+            referenceType: true,
+            referenceId: true,
+          },
+        },
+      },
+      orderBy: [{ journalEntry: { entryDate: 'asc' } }, { journalEntry: { entryNumber: 'asc' } }],
+    });
+
+    let running = new Prisma.Decimal(opening);
+    let totalDebit = new Prisma.Decimal(0);
+    let totalCredit = new Prisma.Decimal(0);
+
+    const lines = rawLines.map((line) => {
+      const dr = new Prisma.Decimal(line.debit);
+      const cr = new Prisma.Decimal(line.credit);
+      // Running balance on normal side
+      const delta = normalBalance === 'Cr' ? cr.sub(dr) : dr.sub(cr);
+      running = running.add(delta);
+      totalDebit = totalDebit.add(dr);
+      totalCredit = totalCredit.add(cr);
+
+      return {
+        entryDate: line.journalEntry.entryDate,
+        entryNumber: line.journalEntry.entryNumber,
+        description: line.description ?? line.journalEntry.description,
+        referenceType: line.journalEntry.referenceType,
+        referenceId: line.journalEntry.referenceId,
+        debit: dr.toNumber(),
+        credit: cr.toNumber(),
+        runningBalance: running.toNumber(),
+      };
+    });
+
+    return {
+      accountCode: account.code,
+      accountName: account.name,
+      normalBalance,
+      periodStart,
+      periodEnd,
+      opening: opening.toNumber(),
+      closing: running.toNumber(),
+      totalDebit: totalDebit.toNumber(),
+      totalCredit: totalCredit.toNumber(),
+      lines,
+    };
+  }
+
+  // ============================================================
+  // P3-SP3: PEAK CSV export (journal lines tagged with PEAK code)
+  // ============================================================
+
+  /**
+   * Build a CSV of POSTED journal lines within `[periodStart, periodEnd]`
+   * joined with their `ChartOfAccount.peakCode`. Lines whose account has no
+   * PEAK mapping are SKIPPED (returned `skippedLineCount`) so the caller can
+   * surface a warning. Date range is capped at ~6 months (186 days) so accidental
+   * "give me everything" queries don't dump millions of rows.
+   *
+   * Output columns:
+   *   entryDate, entryNumber, peakCode, accountCode, accountName,
+   *   debit, credit, description, reference
+   *
+   * Money values are emitted via `.toString()` to preserve Decimal precision
+   * (matches the "DO NOT Number() on Prisma.Decimal in export" rule).
+   */
+  async exportJournalWithPeakCodes(
+    periodStart: Date,
+    periodEnd: Date,
+  ): Promise<{ csv: string; rowCount: number; skippedLineCount: number }> {
+    // Guard: max 186 days (~6 months) per spec — protects DB + filesystem.
+    const ms = periodEnd.getTime() - periodStart.getTime();
+    const MAX_DAYS = 186;
+    if (ms < 0) {
+      throw new BadRequestException('วันที่สิ้นสุดต้องไม่อยู่ก่อนวันเริ่มต้น');
+    }
+    if (ms > MAX_DAYS * 24 * 60 * 60 * 1000) {
+      throw new BadRequestException('ช่วงเวลาส่งออกต้องไม่เกิน 6 เดือนต่อครั้ง');
+    }
+
+    // 1) Build a peakCode lookup for every account that has one. Single query
+    //    is cheaper than joining inline because there are ~99 accounts total.
+    const mappedAccounts = await this.prisma.chartOfAccount.findMany({
+      where: { deletedAt: null, peakCode: { not: null } },
+      select: { code: true, name: true, peakCode: true },
+    });
+    const peakByCode = new Map(
+      mappedAccounts.map((a) => [a.code, { name: a.name, peakCode: a.peakCode! }]),
+    );
+
+    // Also load account names for un-mapped lines so we can report what was skipped.
+    const allAccounts = await this.prisma.chartOfAccount.findMany({
+      where: { deletedAt: null },
+      select: { code: true, name: true },
+    });
+    const nameByCode = new Map(allAccounts.map((a) => [a.code, a.name]));
+
+    // 2) Fetch journal lines in range. Order by entryDate then entryNumber so
+    //    the CSV is deterministic for reconciliation diffs.
+    const lines = await this.prisma.journalLine.findMany({
+      where: {
+        deletedAt: null,
+        journalEntry: {
+          status: 'POSTED',
+          entryDate: { gte: periodStart, lte: periodEnd },
+          deletedAt: null,
+        },
+      },
+      select: {
+        accountCode: true,
+        debit: true,
+        credit: true,
+        description: true,
+        journalEntry: {
+          select: {
+            entryNumber: true,
+            entryDate: true,
+            description: true,
+            referenceType: true,
+            referenceId: true,
+          },
+        },
+      },
+      orderBy: [
+        { journalEntry: { entryDate: 'asc' } },
+        { journalEntry: { entryNumber: 'asc' } },
+      ],
+    });
+
+    // 3) Render rows; skip un-mapped accounts.
+    const escape = (v: string | null | undefined) => {
+      if (v == null) return '';
+      const s = String(v);
+      if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+        return `"${s.replace(/"/g, '""')}"`;
+      }
+      return s;
+    };
+
+    const header = [
+      'entryDate',
+      'entryNumber',
+      'peakCode',
+      'accountCode',
+      'accountName',
+      'debit',
+      'credit',
+      'description',
+      'reference',
+    ].join(',');
+
+    const body: string[] = [];
+    let skipped = 0;
+    for (const ln of lines) {
+      const mapping = peakByCode.get(ln.accountCode);
+      if (!mapping) {
+        skipped++;
+        continue;
+      }
+      const ref = ln.journalEntry.referenceType
+        ? `${ln.journalEntry.referenceType}:${ln.journalEntry.referenceId ?? ''}`
+        : '';
+      body.push(
+        [
+          ln.journalEntry.entryDate.toISOString().slice(0, 10),
+          escape(ln.journalEntry.entryNumber),
+          escape(mapping.peakCode),
+          escape(ln.accountCode),
+          escape(nameByCode.get(ln.accountCode) ?? mapping.name),
+          // String form keeps full Decimal precision — never Number()
+          new Prisma.Decimal(ln.debit).toString(),
+          new Prisma.Decimal(ln.credit).toString(),
+          escape(ln.description ?? ln.journalEntry.description),
+          escape(ref),
+        ].join(','),
+      );
+    }
+
+    return {
+      // UTF-8 BOM so Excel renders Thai correctly.
+      csv: '﻿' + [header, ...body].join('\n'),
+      rowCount: body.length,
+      skippedLineCount: skipped,
+    };
+  }
+
+  // ─── General Journal ──────────────────────────────────────────────────────
+
+  /**
+   * Returns a paginated list of JournalEntries within the given date range,
+   * ordered by postedAt descending, with their lines included.
+   *
+   * Used by the GeneralJournalPage (P4-SP1, Task 7).
+   */
+  async getGeneralJournal(
+    periodStart: Date,
+    periodEnd: Date,
+    opts: { page?: number; limit?: number; companyId?: string } = {},
+  ) {
+    const page = opts.page ?? 1;
+    const limit = opts.limit ?? 50;
+    const where = {
+      postedAt: { gte: periodStart, lte: periodEnd },
+      deletedAt: null,
+      ...(opts.companyId ? { companyId: opts.companyId } : {}),
+    };
+    const [data, total] = await Promise.all([
+      this.prisma.journalEntry.findMany({
+        where,
+        include: {
+          lines: {
+            select: {
+              accountCode: true,
+              debit: true,
+              credit: true,
+              description: true,
+            },
+            orderBy: { id: 'asc' },
+          },
+        },
+        orderBy: { postedAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.journalEntry.count({ where }),
+    ]);
+    return { data, total, page, limit };
+  }
+
+  // ─── P4-SP1: Aging Report ────────────────────────────────────────────────
+
+  async getAgingReport(asOf: Date) {
+    const overduePayments = await this.prisma.payment.findMany({
+      where: {
+        status: { in: ['PENDING', 'OVERDUE'] },
+        dueDate: { lt: asOf },
+        deletedAt: null,
+      },
+      include: {
+        contract: {
+          include: {
+            customer: {
+              select: { id: true, name: true, phone: true },
+            },
+          },
+        },
+      },
+    });
+
+    const summary = {
+      bucket_0_30: 0,
+      bucket_31_60: 0,
+      bucket_61_90: 0,
+      bucket_90_plus: 0,
+    };
+
+    const customerMap = new Map<
+      string,
+      {
+        customerId: string;
+        customerName: string;
+        phone: string;
+        totalOverdue: number;
+        daysOverdue: number;
+        bucket: string;
+        contracts: number;
+      }
+    >();
+
+    const calcBucket = (days: number): keyof typeof summary => {
+      if (days <= 30) return 'bucket_0_30';
+      if (days <= 60) return 'bucket_31_60';
+      if (days <= 90) return 'bucket_61_90';
+      return 'bucket_90_plus';
+    };
+
+    for (const p of overduePayments) {
+      const daysOverdue = Math.floor(
+        (asOf.getTime() - p.dueDate.getTime()) / (1000 * 60 * 60 * 24),
+      );
+      const remaining = Number(p.amountDue) - Number(p.amountPaid ?? 0);
+      if (remaining <= 0) continue;
+
+      const bucket = calcBucket(daysOverdue);
+      summary[bucket] += remaining;
+
+      const cid = p.contract.customer.id;
+      const existing = customerMap.get(cid);
+      if (existing) {
+        existing.totalOverdue += remaining;
+        existing.daysOverdue = Math.max(existing.daysOverdue, daysOverdue);
+        existing.bucket = calcBucket(existing.daysOverdue);
+      } else {
+        customerMap.set(cid, {
+          customerId: cid,
+          customerName: p.contract.customer.name,
+          phone: p.contract.customer.phone ?? '',
+          totalOverdue: remaining,
+          daysOverdue,
+          bucket,
+          contracts: 1,
+        });
+      }
+    }
+
+    return {
+      asOf,
+      summary,
+      customers: Array.from(customerMap.values()).sort(
+        (a, b) => b.daysOverdue - a.daysOverdue,
+      ),
+    };
+  }
+
+  // ─── P4-SP1 Task 3: Bad Debt Report ─────────────────────────────────────────
+
+  /**
+   * Returns journal lines posted to account 51-1102 (หนี้สูญ/ขาดทุนจากยึดเครื่อง)
+   * within the given period. Used by BadDebtReportPage to display write-off history.
+   *
+   * Per .claude/rules/accounting.md:
+   *   51-1102 = หนี้สูญ/ขาดทุนจากยึดเครื่อง (RepossessionJP5Template loss branch)
+   */
+  async getBadDebtReport(periodStart: Date, periodEnd: Date, companyId?: string) {
+    const lines = await this.prisma.journalLine.findMany({
+      where: {
+        accountCode: '51-1102',
+        journalEntry: {
+          postedAt: { gte: periodStart, lte: periodEnd },
+          deletedAt: null,
+          ...(companyId ? { companyId } : {}),
+        },
+      },
+      include: {
+        journalEntry: {
+          select: {
+            id: true,
+            entryNumber: true,
+            description: true,
+            postedAt: true,
+            referenceType: true,
+            referenceId: true,
+          },
+        },
+      },
+      orderBy: { journalEntry: { postedAt: 'desc' } },
+    });
+
+    const total = lines.reduce((sum, l) => sum + Number(l.debit ?? 0), 0);
+
+    return {
+      period: { start: periodStart, end: periodEnd },
+      totalBadDebt: total,
+      entries: lines.map((l) => ({
+        journalEntryId: l.journalEntry.id,
+        documentNumber: l.journalEntry.entryNumber,
+        postedAt: l.journalEntry.postedAt,
+        description: l.description ?? l.journalEntry.description,
+        amount: Number(l.debit ?? 0),
+        sourceType: l.journalEntry.referenceType,
+        sourceId: l.journalEntry.referenceId,
+      })),
     };
   }
 }

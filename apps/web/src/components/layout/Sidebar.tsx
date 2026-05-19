@@ -1,14 +1,16 @@
-import { useMemo, useCallback, memo, useState } from 'react';
+import { useMemo, useCallback, memo, useState, useEffect } from 'react';
 import { useUnreadChat } from '@/hooks/useUnreadChat';
 import { Link, useLocation } from 'react-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import {
-  Home,
   LogOut,
   ChevronsRight,
   ChevronsLeft,
   ChevronRight,
+  ShoppingCart,
+  CircleDollarSign,
+  Settings,
 } from 'lucide-react';
 import {
   AccordionMenu,
@@ -31,11 +33,30 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { useLayout } from './LayoutContext';
-import { getMenuConfig } from '@/config/menu';
-import type { MenuSection, MenuBadgeKey } from '@/config/menu';
+import { getSidebarForRole, getZoneConfigForRole } from '@/config/menu';
+import type { MenuSection, MenuBadgeKey, Zone } from '@/config/menu';
 import { useCollectionsFlag } from '@/pages/CollectionsPage/hooks/useCollectionsFlag';
 import { useDraftAssetCount } from '@/hooks/useDraftAssetCount';
 import { VersionBadge } from './VersionBadge';
+import { PillSwitcher } from './PillSwitcher';
+import { GearButton } from './GearButton';
+
+/* ── NavBullet — small dot in place of leaf-item icons ──
+ * Owner directive: ลด icon รก — เก็บ icon เฉพาะที่ section header (top-level group);
+ * รายการใต้ section + sub-group ทั้งหมดใช้จุดกลม. Color inherits via bg-current
+ * so the bullet follows text color into active state (primary/accent). */
+function NavBullet({ size = 15 }: { size?: number }) {
+  return (
+    <span
+      aria-hidden="true"
+      data-slot="accordion-menu-icon"
+      className="inline-flex shrink-0 items-center justify-center"
+      style={{ width: size, height: size }}
+    >
+      <span className="size-[5px] rounded-full bg-current opacity-60" />
+    </span>
+  );
+}
 
 /* ── NavBadge — dynamic count badge for sidebar items ── */
 function NavBadge({ badgeKey }: { badgeKey: MenuBadgeKey }) {
@@ -86,10 +107,10 @@ const expandedMenuClassNames: AccordionMenuClassNames = {
 };
 
 /* ─── useRoleMenu ───────────────────────────────── */
-function useRoleMenu(role: string): MenuSection[] {
+function useRoleMenu(role: string, zone: Zone): MenuSection[] {
   const { enabled: collectionsEnabled } = useCollectionsFlag();
   return useMemo(() => {
-    const sections = getMenuConfig(role).sidebar;
+    const sections = getSidebarForRole(role, zone);
     if (!collectionsEnabled) return sections;
     // Swap /overdue → /collections when the flag is on
     return sections.map((section) => ({
@@ -98,7 +119,32 @@ function useRoleMenu(role: string): MenuSection[] {
         item.path === '/overdue' ? { ...item, path: '/collections' } : item,
       ),
     }));
-  }, [role, collectionsEnabled]);
+  }, [role, zone, collectionsEnabled]);
+}
+
+/* ─── useZoneValidator ────────────────────────────
+ * Falls back to defaultZone when the current zone is invalid for the active role.
+ * Shared between Expanded/Collapsed/Mobile variants.
+ */
+function useZoneValidator() {
+  const { currentZone, setCurrentZone } = useLayout();
+  const { user } = useAuth();
+  const role = user?.role ?? '';
+  const zoneConfig = getZoneConfigForRole(role);
+
+  useEffect(() => {
+    if (!zoneConfig) return;
+    // For non-settings zones: must be in role's zones[]
+    if (currentZone !== 'settings' && !zoneConfig.zones.includes(currentZone)) {
+      setCurrentZone(zoneConfig.defaultZone);
+    }
+    // For settings: must have gear access
+    if (currentZone === 'settings' && !zoneConfig.showSettingsGear) {
+      setCurrentZone(zoneConfig.defaultZone);
+    }
+  }, [zoneConfig, currentZone, setCurrentZone]);
+
+  return { role, zoneConfig, currentZone, setCurrentZone };
 }
 
 /* ─── Collapsed Icon Rail (70px wide) ────────────── */
@@ -106,8 +152,9 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
   const { user, logout } = useAuth();
   const { pathname } = useLocation();
   const [openPopover, setOpenPopover] = useState<string | null>(null);
+  const { role, zoneConfig, currentZone, setCurrentZone } = useZoneValidator();
 
-  const sections = useRoleMenu(user?.role ?? '');
+  const sections = useRoleMenu(role, currentZone);
 
   const isSectionActive = useCallback(
     (section: MenuSection): boolean =>
@@ -132,7 +179,6 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
     [pathname],
   );
 
-  const role = user?.role ?? '';
   const roleInfo = roleBadgeMap[role];
 
   return (
@@ -165,6 +211,45 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
+
+      {/* Zone icons (only for multi-zone roles, hidden while in settings mode) */}
+      {zoneConfig && zoneConfig.zones.length >= 2 && currentZone !== 'settings' && (
+        <>
+          <div className="w-8 h-px bg-sidebar-border my-1" />
+          <TooltipProvider delayDuration={0}>
+            {zoneConfig.zones
+              .filter((z): z is 'shop' | 'fin' => z === 'shop' || z === 'fin')
+              .map((zone) => {
+                const Icon = zone === 'shop' ? ShoppingCart : CircleDollarSign;
+                const active = currentZone === zone;
+                const label = zone === 'shop' ? 'หน้าร้าน' : 'ไฟแนนซ์';
+                return (
+                  <Tooltip key={zone}>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={() => setCurrentZone(zone)}
+                        aria-label={label}
+                        aria-pressed={active}
+                        className={cn(
+                          'flex items-center justify-center size-9 rounded-lg transition-all duration-200 mb-1',
+                          active
+                            ? 'bg-primary text-primary-foreground'
+                            : 'text-muted-foreground/70 hover:text-foreground hover:bg-sidebar-hover',
+                        )}
+                      >
+                        <Icon className="size-4" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="right" sideOffset={12} className="text-[12px]">
+                      {label}
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              })}
+          </TooltipProvider>
+        </>
+      )}
 
       {/* Divider */}
       <div className="w-8 h-px bg-sidebar-border my-2" />
@@ -219,7 +304,7 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
                   item.children && item.children.length > 0 ? (
                     <div key={item.path}>
                       <div className="flex items-center gap-2 px-2.5 pt-2 pb-1">
-                        <item.icon className="size-3.5 text-muted-foreground opacity-60" />
+                        <NavBullet size={14} />
                         <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
                           {item.label}
                         </span>
@@ -236,12 +321,7 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
                               : 'text-foreground/80 hover:text-primary hover:bg-primary/5 dark:hover:bg-primary/10',
                           )}
                         >
-                          <child.icon
-                            className={cn(
-                              'size-4 shrink-0',
-                              isItemActive(child.path) ? 'opacity-100' : 'opacity-70',
-                            )}
-                          />
+                          <NavBullet size={16} />
                           <span>{child.label}</span>
                           {isItemActive(child.path) && (
                             <ChevronRight className="size-3 ml-auto opacity-60" />
@@ -261,12 +341,7 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
                           : 'text-foreground/80 hover:text-primary hover:bg-primary/5 dark:hover:bg-primary/10',
                       )}
                     >
-                      <item.icon
-                        className={cn(
-                          'size-4 shrink-0',
-                          isItemActive(item.path) ? 'opacity-100' : 'opacity-70',
-                        )}
-                      />
+                      <NavBullet size={16} />
                       <span>{item.label}</span>
                       {isItemActive(item.path) && (
                         <ChevronRight className="size-3 ml-auto opacity-60" />
@@ -279,6 +354,38 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
           ))}
         </TooltipProvider>
       </div>
+
+      {/* Gear (settings) — only for roles with showSettingsGear */}
+      {zoneConfig?.showSettingsGear && (
+        <>
+          <div className="w-8 h-px bg-sidebar-border my-1" />
+          <TooltipProvider delayDuration={0}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setCurrentZone(currentZone === 'settings' ? zoneConfig.defaultZone : 'settings')
+                  }
+                  aria-label="ตั้งค่ากลาง"
+                  aria-pressed={currentZone === 'settings'}
+                  className={cn(
+                    'flex items-center justify-center size-9 rounded-lg transition-all duration-200',
+                    currentZone === 'settings'
+                      ? 'bg-primary/10 text-primary'
+                      : 'text-muted-foreground/70 hover:text-foreground hover:bg-sidebar-hover',
+                  )}
+                >
+                  <Settings className="size-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right" sideOffset={12} className="text-[12px]">
+                ตั้งค่ากลาง
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </>
+      )}
 
       {/* Divider */}
       <div className="w-8 h-px bg-sidebar-border mt-2 mb-3" />
@@ -327,6 +434,7 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
 function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
   const { user, logout } = useAuth();
   const { pathname } = useLocation();
+  const { role, zoneConfig, currentZone, setCurrentZone } = useZoneValidator();
 
   const matchPath = useCallback(
     (path: string): boolean =>
@@ -334,9 +442,7 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
     [pathname],
   );
 
-  const sections = useRoleMenu(user?.role ?? '');
-
-  const role = user?.role ?? '';
+  const sections = useRoleMenu(role, currentZone);
   const roleInfo = roleBadgeMap[role];
 
   return (
@@ -381,6 +487,15 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
         </div>
       )}
 
+      {/* ── PillSwitcher (only if role has 2+ zones AND not in settings mode) ── */}
+      {zoneConfig && zoneConfig.zones.length >= 2 && currentZone !== 'settings' && (
+        <PillSwitcher
+          zones={zoneConfig.zones}
+          current={currentZone}
+          onSwitch={setCurrentZone}
+        />
+      )}
+
       {/* ── Navigation ──────────────────────────────── */}
       <ScrollArea className="flex-1 pb-4 px-3">
         <AccordionMenu
@@ -402,7 +517,7 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
                     // (e.g. parent "/assets" and first child "/assets" share the same path)
                     <AccordionMenuSub key={item.path} value={`group-${item.path}`} data-testid={`nav-${item.path}`}>
                       <AccordionMenuSubTrigger>
-                        <item.icon data-slot="accordion-menu-icon" className="size-[15px] shrink-0 opacity-70" />
+                        <NavBullet />
                         <span data-slot="accordion-menu-title">{item.label}</span>
                         {item.badgeKey && <NavBadge badgeKey={item.badgeKey} />}
                       </AccordionMenuSubTrigger>
@@ -410,7 +525,7 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
                         {item.children.map((child) => (
                           <AccordionMenuItem key={child.path} value={child.path} className="text-[15px]">
                             <Link to={child.path} className="flex items-center gap-2.5 w-full">
-                              <child.icon data-slot="accordion-menu-icon" className="size-[15px] shrink-0 opacity-70" />
+                              <NavBullet />
                               <span data-slot="accordion-menu-title">{child.label}</span>
                             </Link>
                           </AccordionMenuItem>
@@ -420,10 +535,7 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
                   ) : (
                     <AccordionMenuItem key={item.path} value={item.path} className="text-[15px]">
                       <Link to={item.path} className="flex items-center gap-2.5 w-full">
-                        <item.icon
-                          data-slot="accordion-menu-icon"
-                          className="size-[15px] shrink-0 opacity-70"
-                        />
+                        <NavBullet />
                         <span data-slot="accordion-menu-title">{item.label}</span>
                         {item.badgeKey && <NavBadge badgeKey={item.badgeKey} />}
                       </Link>
@@ -435,6 +547,16 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
           ))}
         </AccordionMenu>
       </ScrollArea>
+
+      {/* ── GearButton (only if role has showSettingsGear) ── */}
+      {zoneConfig?.showSettingsGear && (
+        <GearButton
+          active={currentZone === 'settings'}
+          onClick={() =>
+            setCurrentZone(currentZone === 'settings' ? zoneConfig.defaultZone : 'settings')
+          }
+        />
+      )}
 
       {/* ── Footer (collapse toggle + logout) ───────── */}
       <div className="px-4 py-3 border-t border-sidebar-border shrink-0 flex items-center justify-between">
@@ -462,6 +584,7 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
 function MobileSidebarContent() {
   const { user, logout } = useAuth();
   const { pathname } = useLocation();
+  const { role, zoneConfig, currentZone, setCurrentZone } = useZoneValidator();
 
   const matchPath = useCallback(
     (path: string): boolean =>
@@ -469,8 +592,7 @@ function MobileSidebarContent() {
     [pathname],
   );
 
-  const sections = useRoleMenu(user?.role ?? '');
-  const role = user?.role ?? '';
+  const sections = useRoleMenu(role, currentZone);
   const roleInfo = roleBadgeMap[role];
 
   return (
@@ -508,6 +630,15 @@ function MobileSidebarContent() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* PillSwitcher (only if role has 2+ zones AND not in settings mode) */}
+      {zoneConfig && zoneConfig.zones.length >= 2 && currentZone !== 'settings' && (
+        <PillSwitcher
+          zones={zoneConfig.zones}
+          current={currentZone}
+          onSwitch={setCurrentZone}
+        />
       )}
 
       {/* Navigation */}
@@ -564,6 +695,16 @@ function MobileSidebarContent() {
           ))}
         </AccordionMenu>
       </ScrollArea>
+
+      {/* GearButton (only if role has showSettingsGear) */}
+      {zoneConfig?.showSettingsGear && (
+        <GearButton
+          active={currentZone === 'settings'}
+          onClick={() =>
+            setCurrentZone(currentZone === 'settings' ? zoneConfig.defaultZone : 'settings')
+          }
+        />
+      )}
 
       {/* Footer (logout) */}
       <div className="px-4 py-3 border-t border-sidebar-border shrink-0 flex items-center justify-between">

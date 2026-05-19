@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { ContractsService } from './contracts.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -1086,6 +1086,186 @@ describe('ContractsService', () => {
               overrideReason: 'OWNER_OVERRIDE_AFTER_LOCK',
             }),
           }),
+        }),
+      );
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // P4-SP4: Contract Cancellation
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  describe('requestCancellation', () => {
+    it('creates a PENDING cancellation row for an ACTIVE contract', async () => {
+      prisma.contract.findUnique.mockResolvedValue({
+        ...mockContract,
+        status: 'ACTIVE',
+        deletedAt: null,
+      });
+      prisma.contractCancellation = {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({
+          id: 'cancel-1',
+          contractId: 'contract-1',
+          status: 'PENDING',
+          reason: 'ลูกค้าขอยกเลิก',
+          refundAmount: 500,
+          requestedBy: { id: 'user-1', name: 'พนักงาน 1' },
+          contract: { id: 'contract-1', contractNumber: 'BC-2026-001', status: 'ACTIVE' },
+        }),
+      };
+
+      const result = await service.requestCancellation(
+        'contract-1',
+        'user-1',
+        'ลูกค้าขอยกเลิก',
+        500,
+      );
+
+      expect(result.status).toBe('PENDING');
+      expect(prisma.contractCancellation.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            contractId: 'contract-1',
+            requestedById: 'user-1',
+            reason: 'ลูกค้าขอยกเลิก',
+            status: 'PENDING',
+          }),
+        }),
+      );
+    });
+
+    it('throws ConflictException when a PENDING cancellation already exists', async () => {
+      prisma.contract.findUnique.mockResolvedValue({
+        ...mockContract,
+        status: 'ACTIVE',
+        deletedAt: null,
+      });
+      prisma.contractCancellation = {
+        findFirst: jest.fn().mockResolvedValue({ id: 'cancel-existing', status: 'PENDING' }),
+        create: jest.fn(),
+      };
+
+      await expect(
+        service.requestCancellation('contract-1', 'user-1', 'เหตุผล', 0),
+      ).rejects.toThrow(ConflictException);
+      expect(prisma.contractCancellation.create).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when contract is already CANCELED', async () => {
+      prisma.contract.findUnique.mockResolvedValue({
+        ...mockContract,
+        status: 'CANCELED',
+        deletedAt: null,
+      });
+      prisma.contractCancellation = {
+        findFirst: jest.fn(),
+        create: jest.fn(),
+      };
+
+      await expect(
+        service.requestCancellation('contract-1', 'user-1', 'เหตุผล', 0),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('approveCancellation', () => {
+    it('posts JE + updates cancellation to APPROVED + updates contract to CANCELED', async () => {
+      const mockCancellationTemplate = {
+        execute: jest.fn().mockResolvedValue({
+          entryNumber: 'JE-202601-00010',
+          refundEntryNumber: undefined,
+        }),
+      };
+
+      // Re-create service with template injected
+      const moduleWithTemplate = await Test.createTestingModule({
+        providers: [
+          ContractsService,
+          { provide: PrismaService, useValue: prisma },
+          { provide: 'ContractCancellationTemplate', useValue: mockCancellationTemplate },
+        ],
+      }).compile();
+      const svcWithTemplate = moduleWithTemplate.get<ContractsService>(ContractsService);
+      // Inject template via the Optional private property
+      (svcWithTemplate as any).cancellationTemplate = mockCancellationTemplate;
+
+      const mockCancellation = {
+        id: 'cancel-1',
+        contractId: 'contract-1',
+        status: 'PENDING',
+        refundAmount: { toString: () => '0' },
+        deletedAt: null,
+        contract: { ...mockContract, status: 'ACTIVE' },
+      };
+
+      prisma.contractCancellation = {
+        findUnique: jest.fn().mockResolvedValue(mockCancellation),
+        update: jest.fn().mockResolvedValue({ ...mockCancellation, status: 'APPROVED' }),
+      };
+
+      prisma.journalEntry = {
+        findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'je-reversal-1' }),
+      };
+
+      prisma.$transaction = jest.fn().mockImplementation(async (fn: (tx: any) => Promise<any>) => {
+        return fn({
+          ...prisma,
+          contractCancellation: prisma.contractCancellation,
+          contract: prisma.contract,
+          journalEntry: prisma.journalEntry,
+          auditLog: prisma.auditLog,
+        });
+      });
+
+      const result = await svcWithTemplate.approveCancellation('cancel-1', 'approver-1');
+
+      expect(result.status).toBe('APPROVED');
+      expect(mockCancellationTemplate.execute).toHaveBeenCalled();
+      expect(prisma.contractCancellation.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'cancel-1' },
+          data: expect.objectContaining({ status: 'APPROVED', approvedById: 'approver-1' }),
+        }),
+      );
+      expect(prisma.contract.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'contract-1' },
+          data: expect.objectContaining({ status: 'CANCELED' }),
+        }),
+      );
+    });
+  });
+
+  describe('rejectCancellation', () => {
+    it('updates cancellation to REJECTED without posting any JE', async () => {
+      const mockCancellationTemplate = {
+        execute: jest.fn(),
+      };
+
+      prisma.contractCancellation = {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'cancel-1',
+          status: 'PENDING',
+          deletedAt: null,
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: 'cancel-1',
+          contractId: 'contract-1',
+          status: 'REJECTED',
+          contract: { id: 'contract-1', contractNumber: 'BC-2026-001' },
+          requestedBy: { id: 'user-1', name: 'พนักงาน 1' },
+          approvedBy: { id: 'approver-1', name: 'ผู้อนุมัติ' },
+        }),
+      };
+
+      const result = await service.rejectCancellation('cancel-1', 'approver-1', 'ไม่อนุมัติ');
+
+      expect(result.status).toBe('REJECTED');
+      expect(mockCancellationTemplate.execute).not.toHaveBeenCalled();
+      expect(prisma.contractCancellation.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: 'REJECTED' }),
         }),
       );
     });

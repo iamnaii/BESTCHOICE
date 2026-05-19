@@ -5,6 +5,7 @@ import { PiiAuditService } from '../pii/pii-audit.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
+import { PrismaService } from '../../prisma/prisma.service';
 
 describe('TradeInController PII (Phase 5)', () => {
   let controller: TradeInController;
@@ -24,6 +25,17 @@ describe('TradeInController PII (Phase 5)', () => {
       providers: [
         { provide: TradeInService, useValue: service },
         { provide: PiiAuditService, useValue: piiAudit },
+        // D1.3.3.1 — ExportEnabledGuard (applied on export endpoints) depends
+        // on PrismaService. Stub returns no flag row so the guard defaults to
+        // allow; tests don't exercise export endpoints, but Nest still needs
+        // to resolve the guard at TestingModule.compile().
+        {
+          provide: PrismaService,
+          useValue: {
+            systemConfig: { findFirst: jest.fn().mockResolvedValue(null) },
+            auditLog: { create: jest.fn().mockResolvedValue({}) },
+          },
+        },
       ],
     })
       .overrideGuard(JwtAuthGuard)

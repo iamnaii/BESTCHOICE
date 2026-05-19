@@ -74,6 +74,7 @@ describe('ExpenseDocumentsService.createSettlement', () => {
       { execute: jest.fn() } as never,
       { getConfig: jest.fn(), validate: jest.fn() } as never,
       { loadWhitelist: jest.fn().mockResolvedValue(new Set()), validateLine: jest.fn() } as never,
+      { send: jest.fn().mockResolvedValue({ id: 'notif-1', status: 'SENT' }) } as never,
     );
   });
 
@@ -449,6 +450,119 @@ describe('ExpenseDocumentsService.createSettlement', () => {
           owner,
         ),
       ).rejects.toThrow(/100 ใบ ต่อเอกสาร/);
+    });
+  });
+
+  // D1.3.6.3 — settlement_partial_payment_enabled
+  describe('D1.3.6.3 partial-payment gate', () => {
+    it('default (flag absent = true): accepts partial settlement', async () => {
+      // Cap = 1000, amountSettled = 600 (partial) — default behavior allows
+      // this since V12 adjustment plumbing handles the gap.
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: EX_ID,
+        number: 'EX-1',
+        branchId: 'b1',
+        documentType: 'EXPENSE',
+        status: 'ACCRUAL',
+        totalAmount: new Decimal('1000.00'),
+        deletedAt: null,
+      });
+      await expect(
+        service.createSettlement(
+          {
+            branchId: 'b1',
+            documentDate: '2026-05-10',
+            depositAccountCode: '11-1101',
+            lines: [{ clearedDocumentId: EX_ID, amountSettled: 600 }],
+          } as never,
+          owner,
+        ),
+      ).resolves.toBeDefined();
+    });
+
+    it('flag OFF: rejects partial settlement (amount < cap)', async () => {
+      prisma.systemConfig.findFirst.mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'settlement_partial_payment_enabled')
+          return Promise.resolve({ value: 'false' });
+        return Promise.resolve(null);
+      });
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: EX_ID,
+        number: 'EX-1',
+        branchId: 'b1',
+        documentType: 'EXPENSE',
+        status: 'ACCRUAL',
+        totalAmount: new Decimal('1000.00'),
+        deletedAt: null,
+      });
+      await expect(
+        service.createSettlement(
+          {
+            branchId: 'b1',
+            documentDate: '2026-05-10',
+            depositAccountCode: '11-1101',
+            lines: [{ clearedDocumentId: EX_ID, amountSettled: 600 }],
+          } as never,
+          owner,
+        ),
+      ).rejects.toThrow(/ต้องชำระเต็มจำนวน|ปิดในการตั้งค่า/);
+    });
+
+    it('flag OFF: accepts full settlement (amount === cap)', async () => {
+      prisma.systemConfig.findFirst.mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'settlement_partial_payment_enabled')
+          return Promise.resolve({ value: 'false' });
+        return Promise.resolve(null);
+      });
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: EX_ID,
+        number: 'EX-1',
+        branchId: 'b1',
+        documentType: 'EXPENSE',
+        status: 'ACCRUAL',
+        totalAmount: new Decimal('1000.00'),
+        deletedAt: null,
+      });
+      await expect(
+        service.createSettlement(
+          {
+            branchId: 'b1',
+            documentDate: '2026-05-10',
+            depositAccountCode: '11-1101',
+            lines: [{ clearedDocumentId: EX_ID, amountSettled: 1000 }],
+          } as never,
+          owner,
+        ),
+      ).resolves.toBeDefined();
+    });
+
+    it('flag OFF: tolerates ≤0.01 rounding slop (cap − amount ≤ 0.01)', async () => {
+      prisma.systemConfig.findFirst.mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'settlement_partial_payment_enabled')
+          return Promise.resolve({ value: 'false' });
+        return Promise.resolve(null);
+      });
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: EX_ID,
+        number: 'EX-1',
+        branchId: 'b1',
+        documentType: 'EXPENSE',
+        status: 'ACCRUAL',
+        totalAmount: new Decimal('1000.00'),
+        deletedAt: null,
+      });
+      // amount = 999.99 → cap.minus(amount) = 0.01 → NOT greater than 0.01 → allowed
+      await expect(
+        service.createSettlement(
+          {
+            branchId: 'b1',
+            documentDate: '2026-05-10',
+            depositAccountCode: '11-1101',
+            lines: [{ clearedDocumentId: EX_ID, amountSettled: 999.99 }],
+          } as never,
+          owner,
+        ),
+      ).resolves.toBeDefined();
     });
   });
 });

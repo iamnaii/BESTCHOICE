@@ -50,6 +50,21 @@ export class IntegrationConfigService implements OnModuleInit {
     return `••••${value.slice(-4)}`;
   }
 
+  /**
+   * C2 — Detect a value that looks like a mask round-trip from the UI.
+   * GET returns `••••abcd`; if the user doesn't edit the field, the same
+   * mask is POSTed back on save. We must NOT persist that literal — it
+   * would corrupt the real secret. Treat any value that contains the
+   * mask bullet `•` as "unchanged" and skip the write for that key.
+   *
+   * Public so service callers (e.g. specialized integration controllers)
+   * can apply the same guard before invoking saveConfig.
+   */
+  isMaskedValue(value: string | undefined | null): boolean {
+    if (!value) return false;
+    return value.includes('•');
+  }
+
   /** Check if cached entry is still fresh. */
   private getCached(integrationKey: string): IntegrationConfig | null {
     const entry = this.cache.get(integrationKey);
@@ -146,6 +161,18 @@ export class IntegrationConfigService implements OnModuleInit {
       const field = def.fields.find((f) => f.key === fieldKey);
       if (!field) {
         this.logger.warn(`Ignoring unknown field '${fieldKey}' for integration '${integrationKey}'`);
+        continue;
+      }
+
+      // C2 — Round-trip mask guard. The UI hydrates the form from
+      // getMaskedConfig() and naïvely POSTs the form back on save, which
+      // would persist `••••abcd` literally and corrupt the stored secret.
+      // For any sensitive field whose incoming value still contains the
+      // mask bullet, skip the write — preserves the original ciphertext.
+      if (field.sensitive && this.isMaskedValue(rawValue)) {
+        this.logger.debug(
+          `Skipping masked round-trip for '${integrationKey}.${fieldKey}' — value unchanged`,
+        );
         continue;
       }
 

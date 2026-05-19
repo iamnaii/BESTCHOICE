@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { maskNationalId, formatNationalId, maskPhone } from './mask.util';
+import { maskNationalId, formatNationalId, maskPhone, maskAccountNumber } from './mask.util';
 
 describe('mask.util — PDPA masking', () => {
   describe('maskNationalId', () => {
@@ -53,6 +53,25 @@ describe('mask.util — PDPA masking', () => {
 
     it('passes through very short numbers as-is', () => {
       expect(maskPhone('123')).toBe('123');
+    });
+  });
+
+  describe('maskAccountNumber', () => {
+    it('keeps last 5 digits, masks others, preserves separators', () => {
+      expect(maskAccountNumber('123-4-56789-0')).toBe('xxx-x-x6789-0');
+    });
+
+    it('handles plain 10-digit account number', () => {
+      expect(maskAccountNumber('1234567890')).toBe('xxxxx67890');
+    });
+
+    it('returns short numbers unchanged (<=5 digits)', () => {
+      expect(maskAccountNumber('12345')).toBe('12345');
+    });
+
+    it('returns "-" for null/empty input', () => {
+      expect(maskAccountNumber(null)).toBe('-');
+      expect(maskAccountNumber('')).toBe('-');
     });
   });
 });

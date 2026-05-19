@@ -4,6 +4,7 @@ import { ExpenseLineForm, newLine } from './types';
 import { formatNumberDecimal } from '@/utils/formatters';
 import { useUiFlags } from '@/hooks/useUiFlags';
 import { whtRatesToSelectOptions } from '@/lib/wht-rates';
+import TaxDisallowedHint from './TaxDisallowedHint';
 
 interface Props {
   lines: ExpenseLineForm[];
@@ -123,18 +124,24 @@ export function ItemLinesSection({ lines, onChange, priceTypeLabel }: Props) {
             {/* Phase A.5 — Per-line tax-disallowed override.
                 Rare path — set only when this single line is non-deductible
                 while the rest of the doc is deductible (or vice versa).
-                Effective rule = doc-level OR line-level. */}
-            <label className="flex items-start gap-2 text-xs cursor-pointer text-muted-foreground hover:text-foreground transition-colors">
-              <input
-                type="checkbox"
-                checked={line.taxDisallowed === true}
-                onChange={(e) => updateLine(line.uid, { taxDisallowed: e.target.checked })}
-                className="mt-0.5"
-              />
-              <span>
-                บรรทัดนี้เป็น <span className="font-medium">ค่าใช้จ่ายต้องห้าม</span> (ใช้เฉพาะกรณีเอกสารปนรายการที่หักได้+หักไม่ได้ — ปกติติ๊กที่ระดับเอกสารแทน)
-              </span>
-            </label>
+                Effective rule = doc-level OR line-level.
+                Owner B2 (2026-05-17): compact ม.65 ตรี popover next to
+                the checkbox so line-level users see the same category
+                list. */}
+            <div className="flex items-start gap-2">
+              <label className="flex items-start gap-2 text-xs cursor-pointer text-muted-foreground hover:text-foreground transition-colors flex-1">
+                <input
+                  type="checkbox"
+                  checked={line.taxDisallowed === true}
+                  onChange={(e) => updateLine(line.uid, { taxDisallowed: e.target.checked })}
+                  className="mt-0.5"
+                />
+                <span>
+                  บรรทัดนี้เป็น <span className="font-medium">ค่าใช้จ่ายต้องห้าม</span> (ใช้เฉพาะกรณีเอกสารปนรายการที่หักได้+หักไม่ได้ — ปกติติ๊กที่ระดับเอกสารแทน)
+                </span>
+              </label>
+              <TaxDisallowedHint compact />
+            </div>
           </div>
         </div>
       ))}

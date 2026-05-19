@@ -15,6 +15,8 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { PostPermissionGuard } from './post-permission.guard';
+import { ReversePermissionGuard } from './reverse-permission.guard';
 import { ExpenseDocumentsService } from './expense-documents.service';
 import { CreateExpenseDocumentDto } from './dto/create.dto';
 import { UpdateExpenseDocumentDto } from './dto/update.dto';
@@ -176,10 +178,25 @@ export class ExpenseDocumentsController {
     return this.service.update(id, dto, user.id);
   }
 
+  /**
+   * D1.3.2.3 — Post DRAFT → ACCRUAL.
+   *
+   * Class-level guards (JwtAuthGuard, RolesGuard, BranchGuard) run first.
+   * The method-level `@Roles(...)` decorator is widened to the SUPERSET of
+   * any value the dynamic SystemConfig key `post_permission` may select
+   * (OWNER + FINANCE_MANAGER + BRANCH_MANAGER + ACCOUNTANT). The
+   * `PostPermissionGuard` then narrows per-request based on the live
+   * SystemConfig value. Default `post_permission =
+   * 'OWNER+FINANCE_MANAGER+ACCOUNTANT'` preserves current behavior.
+   *
+   * SALES is intentionally excluded from the superset — they don't post
+   * accounting documents.
+   */
   @Post(':id/post')
-  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
-  post(@Param('id') id: string, @CurrentUser() user: { id: string }) {
-    return this.service.post(id, user.id);
+  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  @UseGuards(PostPermissionGuard)
+  post(@Param('id') id: string, @CurrentUser() user: { id: string; role: string }) {
+    return this.service.post(id, user.id, user.role);
   }
 
   /**
@@ -201,24 +218,40 @@ export class ExpenseDocumentsController {
    * immediately auto-posted in the same transaction (status: POSTED).
    * When false the doc stays APPROVED and an OWNER can call /post later.
    *
-   * Approver role gating is widened in D1.2.1.3 (approvers_list). Until that
-   * lands, only OWNER + FINANCE_MANAGER can approve — the same roles allowed
-   * to post today.
+   * D1.2.1.3 — approver gating is the runtime membership check inside
+   * service.approve() against SystemConfig `approvers_list`. The @Roles
+   * decorator widens beyond OWNER so any listed user (including SALES /
+   * ACCOUNTANT) is not blocked at the controller before that runtime check
+   * runs. OWNER is always allowed regardless of list contents.
    */
   @Post(':id/approve')
-  @Roles('OWNER', 'FINANCE_MANAGER')
-  approve(@Param('id') id: string, @CurrentUser() user: { id: string }) {
-    return this.service.approve(id, user.id);
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  approve(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string; role?: string },
+  ) {
+    return this.service.approve(id, user.id, user.role);
   }
 
+  /**
+   * D1.3.2.4 — Reverse / void a posted doc.
+   *
+   * Class-level guards (JwtAuthGuard, RolesGuard, BranchGuard) run first.
+   * Method-level `@Roles(...)` matches the SUPERSET of any value that the
+   * dynamic SystemConfig key `reverse_permission` may select (OWNER +
+   * FINANCE_MANAGER). The `ReversePermissionGuard` then narrows
+   * per-request. Default `reverse_permission = 'OWNER+FINANCE_MANAGER'`
+   * preserves current behavior.
+   */
   @Post(':id/void')
   @Roles('OWNER', 'FINANCE_MANAGER')
+  @UseGuards(ReversePermissionGuard)
   void(
     @Param('id') id: string,
     @Body() dto: VoidExpenseDocumentDto,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: { id: string; role: string },
   ) {
-    return this.service.voidDocument(id, user.id, dto);
+    return this.service.voidDocument(id, user.id, dto, user.role);
   }
 
   @Delete(':id')

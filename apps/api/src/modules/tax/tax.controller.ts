@@ -1,22 +1,27 @@
 import {
+  BadRequestException,
+  Body,
   Controller,
   Get,
-  Post,
-  Patch,
   Param,
-  Body,
+  Patch,
+  Post,
   Query,
+  Req,
+  Res,
   UseGuards,
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
-import { TaxService } from './tax.service';
+import type { Request, Response } from 'express';
+import { TaxFormCode, TaxService } from './tax.service';
 import { GenerateTaxReportDto } from './dto/tax.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { EntityScope } from './tax-entity.util';
 
 @ApiTags('Tax')
 @ApiBearerAuth('JWT')
@@ -29,6 +34,7 @@ export class TaxController {
   @Get()
   @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   findAll(
+    @Req() req: Request,
     @Query('companyId') companyId?: string,
     @Query('reportType') reportType?: string,
     @Query('year') year?: string,
@@ -43,17 +49,34 @@ export class TaxController {
       status,
       page ? parseInt(page) : 1,
       limit ? parseInt(limit) : 50,
+      req.entityScope as EntityScope | undefined,
     );
   }
 
   @Get('pp30-preview')
   @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   previewPP30(
+    @Req() req: Request,
     @Query('companyId') companyId: string,
     @Query('year') year: string,
     @Query('month') month: string,
   ) {
-    return this.taxService.previewPP30(companyId, parseInt(year), parseInt(month));
+    return this.taxService.previewPP30(
+      companyId,
+      parseInt(year),
+      parseInt(month),
+      req.entityScope as EntityScope | undefined,
+    );
+  }
+
+  @Get('pnd1-preview')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  previewPND1(
+    @Query('companyId') companyId: string,
+    @Query('year') year: string,
+    @Query('month') month: string,
+  ) {
+    return this.taxService.previewPND1(companyId, parseInt(year), parseInt(month));
   }
 
   @Get('pnd3-preview')
@@ -76,6 +99,41 @@ export class TaxController {
     return this.taxService.previewPND53(companyId, parseInt(year), parseInt(month));
   }
 
+  @Get('export-xlsx')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  async exportXlsx(
+    @Query('form') form: string,
+    @Query('companyId') companyId: string,
+    @Query('year') year: string,
+    @Query('month') month: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const ALLOWED: TaxFormCode[] = ['PP30', 'PND1', 'PND3', 'PND53'];
+    if (!ALLOWED.includes(form as TaxFormCode)) {
+      throw new BadRequestException('รูปแบบฟอร์มภาษีไม่ถูกต้อง');
+    }
+    if (!companyId) throw new BadRequestException('กรุณาระบุบริษัท');
+    const y = parseInt(year);
+    const m = parseInt(month);
+    if (!Number.isInteger(y) || !Number.isInteger(m) || m < 1 || m > 12) {
+      throw new BadRequestException('ปี/เดือนไม่ถูกต้อง');
+    }
+    const buffer = await this.taxService.exportTaxFormXlsx(
+      form as TaxFormCode,
+      companyId,
+      y,
+      m,
+    );
+    const filename = `${form}-${y}-${String(m).padStart(2, '0')}.xlsx`;
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', buffer.length.toString());
+    res.end(buffer);
+  }
+
   @Get(':id')
   @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   findOne(@Param('id') id: string) {
@@ -84,8 +142,12 @@ export class TaxController {
 
   @Post('generate')
   @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
-  generate(@Body() dto: GenerateTaxReportDto, @CurrentUser('id') userId: string) {
-    return this.taxService.generate(dto, userId);
+  generate(
+    @Body() dto: GenerateTaxReportDto,
+    @CurrentUser('id') userId: string,
+    @Req() req: Request,
+  ) {
+    return this.taxService.generate(dto, userId, req.entityScope as EntityScope | undefined);
   }
 
   @Patch(':id/submit')

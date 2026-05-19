@@ -13,6 +13,7 @@
  */
 import { PrismaClient } from '@prisma/client';
 import { seedFinanceCoa } from '../../prisma/seed-coa-finance';
+import { seedShopCoa } from '../../prisma/seed-coa-shop';
 
 const REQUIRED_CONSENT = 'YES_I_AM_SURE';
 
@@ -115,14 +116,22 @@ async function main(): Promise<void> {
     }
     if (canSeed) {
       const result = await seedFinanceCoa(prisma);
-      console.log(`[wipe-accounting]   Reseed complete: ${result.created} created, ${result.updated} updated`);
+      console.log(`[wipe-accounting]   FINANCE Reseed complete: ${result.created} created, ${result.updated} updated`);
+      // P3-SP5: also seed SHOP-side chart (S-prefixed codes). Same idempotent
+      // upsert pattern; safe to re-run.
+      const shopResult = await seedShopCoa(prisma);
+      console.log(`[wipe-accounting]   SHOP Reseed complete: ${shopResult.created} created, ${shopResult.updated} updated`);
     }
     console.log('');
     console.log('[wipe-accounting] Wipe & reseed finished successfully.');
     console.log('[wipe-accounting] Next steps:');
-    console.log('  1. Verify CoA count: SELECT COUNT(*) FROM chart_of_accounts;  -- expected 99');
+    console.log('  1. Verify CoA count: ');
+    console.log("     SELECT COUNT(*) FROM chart_of_accounts WHERE code NOT LIKE 'S%';  -- expected 99 (FINANCE)");
+    console.log("     SELECT COUNT(*) FROM chart_of_accounts WHERE code LIKE 'S%';      -- expected ~56 (SHOP)");
     console.log('  2. Smoke test: create one contract end-to-end via UI');
-    console.log('  3. Run TB report and confirm it balances');
+    console.log('  3. Run TB report (scope=FINANCE) and confirm it balances');
+    console.log('  4. Run TB report (scope=SHOP) and confirm it balances');
+    console.log('  5. Run TB report (scope=ALL) and confirm BOTH halves balance independently');
   } finally {
     await prisma.$disconnect();
   }

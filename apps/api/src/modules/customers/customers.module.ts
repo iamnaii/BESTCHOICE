@@ -4,10 +4,11 @@ import { CustomersService } from './customers.service';
 import { CustomerTierService } from './customer-tier.service';
 import { CustomerPreCheckService } from './customer-precheck.service';
 import { SkipTracingService } from './skip-tracing.service';
+import { CustomerPiiModule } from './customer-pii.module';
 import { OverdueModule } from '../overdue/overdue.module';
 
 @Module({
-  imports: [OverdueModule],
+  imports: [OverdueModule, CustomerPiiModule],
   controllers: [CustomersController],
   providers: [
     CustomersService,
@@ -20,6 +21,7 @@ import { OverdueModule } from '../overdue/overdue.module';
     CustomerTierService,
     CustomerPreCheckService,
     SkipTracingService,
+    CustomerPiiModule,
   ],
 })
 export class CustomersModule {}

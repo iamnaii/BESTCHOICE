@@ -25,6 +25,7 @@ import { CustomerTagsModule } from './modules/customer-tags/customer-tags.module
 import { SmsTemplatesModule } from './modules/sms-templates/sms-templates.module';
 import { FilterPresetsModule } from './modules/filter-presets/filter-presets.module';
 import { DefectExchangeModule } from './modules/defect-exchange/defect-exchange.module';
+import { RepairTicketsModule } from './modules/repair-tickets/repair-tickets.module';
 import { RepossessionsModule } from './modules/repossessions/repossessions.module';
 import { PurchaseOrdersModule } from './modules/purchase-orders/purchase-orders.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
@@ -59,6 +60,7 @@ import { PaySolutionsModule } from './modules/paysolutions/paysolutions.module';
 import { FinanceReceivableModule } from './modules/finance-receivable/finance-receivable.module';
 import { AccountingModule } from './modules/accounting/accounting.module';
 import { OtherIncomeModule } from './modules/other-income/other-income.module';
+import { BookingsModule } from './modules/bookings/bookings.module';
 import { ExpenseDocumentsModule } from './modules/expense-documents/expense-documents.module';
 import { PaymentMethodConfigModule } from './modules/payment-method-config/payment-method-config.module';
 import { CompanyModule } from './modules/company/company.module';
@@ -66,7 +68,10 @@ import { InterCompanyModule } from './modules/inter-company/inter-company.module
 import { IntercompanyModule } from './modules/intercompany/intercompany.module';
 import { JournalModule } from './modules/journal/journal.module';
 import { ChartOfAccountsModule } from './modules/chart-of-accounts/chart-of-accounts.module';
+import { BankAccountsModule } from './modules/bank-accounts/bank-accounts.module';
 import { TaxModule } from './modules/tax/tax.module';
+import { ETaxModule } from './modules/e-tax/e-tax.module';
+import { ETaxXmlModule } from './modules/e-tax-xml/e-tax-xml.module';
 import { CommissionModule } from './modules/commission/commission.module';
 import { TradeInModule } from './modules/trade-in/trade-in.module';
 import { PromotionsModule } from './modules/promotions/promotions.module';
@@ -121,9 +126,19 @@ import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { TwoFactorModule } from './modules/two-factor/two-factor.module';
 import { ReportingModule } from './modules/reporting/reporting.module';
 import { CollectionsSessionModule } from './modules/collections-session/collections-session.module';
+// P3-SP2 — Off-site backup replication (GCS cross-region sync)
+import { BackupModule } from './modules/backup/backup.module';
+// SP7.4 — External Finance Companies + Commission (SHOP-side GFIN/Krungsri)
+import { ExternalFinanceModule } from './modules/external-finance/external-finance.module';
+// P4-SP2 — Finance Tax (VAT/WHT monthly aggregation + auto-journal history)
+import { FinanceTaxModule } from './modules/finance-tax/finance-tax.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { SecurityMiddleware } from './modules/audit/security.middleware';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
+import { EntityScopeMiddleware } from './middleware/entity-scope.middleware';
+import { SentryEntityTagMiddleware } from './middleware/sentry-entity-tag.middleware';
+// SP7.10 — Maintenance-mode toggle for cutover window (MAINTENANCE_MODE=true blocks writes)
+import { MaintenanceModeMiddleware } from './middleware/maintenance-mode.middleware';
 // D1.1.3.1 — One-shot startup warning for VAT_RATE/vat_pct orphan keys.
 import { VatRateBootstrapService } from './utils/vat-rate-bootstrap.service';
 import { CsrfGuard } from './guards/csrf.guard';
@@ -177,6 +192,8 @@ import { AppCacheModule } from './cache/cache.module';
     SmsTemplatesModule,
     FilterPresetsModule,
     DefectExchangeModule,
+    // SP5 Phase 2 — Insurance / Repair Ticket
+    RepairTicketsModule,
     RepossessionsModule,
     PurchaseOrdersModule,
     InventoryModule,
@@ -215,6 +232,8 @@ import { AppCacheModule } from './cache/cache.module';
     AccountingModule,
     // Other Income (รายได้อื่น — FINANCE only)
     OtherIncomeModule,
+    // P2-SP4 — การจอง / มัดจำ (SHOP-side reservation + deposit)
+    BookingsModule,
     // Expense Documents (เอกสารค่าใช้จ่าย — accrual workflow)
     ExpenseDocumentsModule,
     // Payment method ↔ Cash account mapping (cashier wizard filter)
@@ -228,8 +247,14 @@ import { AppCacheModule } from './cache/cache.module';
     // Journal Entries (double-entry accounting)
     JournalModule,
     ChartOfAccountsModule,
-    // Tax Reports (ภ.พ.30, ภ.ง.ด.3, ภ.ง.ด.53)
+    // SP6 — Bank/Cash account directory (mirrors CoA 11-1101..1203)
+    BankAccountsModule,
+    // Tax Reports (ภ.พ.30, ภ.ง.ด.1/3/53)
     TaxModule,
+    // e-Tax Invoice (Phase 1: list + PDF + CSV)
+    ETaxModule,
+    // P2-SP5 — e-Tax XML submission to สรรพากร (scaffolding, cert pluggable)
+    ETaxXmlModule,
     // Sales Commission
     CommissionModule,
     // Trade-In & Promotions
@@ -333,6 +358,12 @@ import { AppCacheModule } from './cache/cache.module';
     TwoFactorModule,
     // Reporting — weekly PDF analytics report + compliance dashboard (P3 D1+D2)
     ReportingModule,
+    // P3-SP2 — Off-site backup replication (GCS cross-region sync, daily 03:30 BKK)
+    BackupModule,
+    // SP7.4 — External Finance Companies + Commission (SHOP-side GFIN/Krungsri)
+    ExternalFinanceModule,
+    // P4-SP2 — Finance Tax (VAT/WHT monthly aggregation + auto-journal history)
+    FinanceTaxModule,
   ],
   controllers: [AppController],
   providers: [
@@ -366,8 +397,15 @@ export class AppModule implements NestModule {
     // NOTE: AdminPrefixMiddleware is applied at Express level in main.ts
     // (not here) because forRoutes('*') doesn't reliably run before the
     // NestJS routing layer rejects unknown /api/admin/* paths with 404.
+    // SP7.10 — MaintenanceModeMiddleware runs FIRST to gate writes during cutover.
+    // Activate: MAINTENANCE_MODE=true env + Cloud Run redeploy.
+    consumer.apply(MaintenanceModeMiddleware).forRoutes('*');
     // RequestIdMiddleware must run before SecurityMiddleware so Sentry scope is tagged first.
     consumer.apply(RequestIdMiddleware).forRoutes('*');
     consumer.apply(SecurityMiddleware).forRoutes('*');
+    // SP7.1 — Resolves req.entityScope after auth (runs after JwtAuthGuard populates req.user).
+    consumer.apply(EntityScopeMiddleware).forRoutes('*');
+    // SP7.8 — Tags the Sentry request scope with entity_scope (SHOP|FINANCE) for error segmentation.
+    consumer.apply(SentryEntityTagMiddleware).forRoutes('*');
   }
 }

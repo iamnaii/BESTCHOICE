@@ -21,7 +21,7 @@ interface Props {
 const PAYER_DOC_HINT: Record<Props['payer'], string> = {
   SHOP: 'เอกสารค่าใช้จ่าย (ExpenseDoc) ร่าง — ประกันร้าน',
   CUSTOMER: 'เอกสารรายได้อื่น (OtherIncome) ร่าง — ลูกค้าจ่ายค่าซ่อม',
-  SUPPLIER_CLAIM: 'เอกสารค่าใช้จ่าย (ExpenseDoc) ร่าง — เคลมกับศูนย์',
+  SUPPLIER_CLAIM: 'ไม่สร้างเอกสารบัญชี — ศูนย์ออกบิลให้ลูกค้าเอง',
 };
 
 export function ReturnToCustomerDialog({ ticketId, payer, onClose, onSuccess }: Props) {

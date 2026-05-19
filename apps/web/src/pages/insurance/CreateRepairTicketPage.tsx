@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -145,6 +145,7 @@ function CustomerSearchSection({
 interface SupplierHit {
   id: string;
   name: string;
+  isRepairCenter?: boolean;
 }
 
 function RepairSupplierSection({
@@ -164,10 +165,14 @@ function RepairSupplierSection({
     queryKey: ['suppliers-repair-search', debouncedSearch],
     queryFn: async () => {
       if (!debouncedSearch || debouncedSearch.length < 1) return [];
+      // NOTE: The suppliers API does not yet filter on isRepairCenter server-side —
+      // filter client-side until backend exposes the param (TODO: add isRepairCenter
+      // query param to suppliers controller GET /suppliers).
       const res = await api.get(
-        `/suppliers?search=${encodeURIComponent(debouncedSearch)}&isRepairCenter=true&limit=10`,
+        `/suppliers?search=${encodeURIComponent(debouncedSearch)}&limit=20`,
       );
-      return res.data?.data ?? [];
+      const all: SupplierHit[] = res.data?.data ?? [];
+      return all.filter((s) => s.isRepairCenter === true);
     },
     enabled: debouncedSearch.length >= 1,
   });
@@ -244,7 +249,63 @@ export default function CreateRepairTicketPage() {
   const [repairSupplierId, setRepairSupplierId] = useState('');
   const [supplierName, setSupplierName] = useState('');
   const [notes, setNotes] = useState('');
-  const [warrantyPreview] = useState<WarrantyStatus>('WALK_IN');
+  const [warrantyPreview, setWarrantyPreview] = useState<WarrantyStatus>('WALK_IN');
+
+  // Fetch latest contract + product for selected customer to compute warranty preview
+  const { data: warrantyData } = useQuery({
+    queryKey: ['warranty-preview', customerId],
+    queryFn: async () => {
+      if (!customerId) return null;
+      // Get active contracts for this customer (sorted newest first)
+      const contractsRes = await api.get(
+        `/contracts?customerId=${customerId}&limit=1&sortBy=createdAt&sortDir=desc`,
+      );
+      const contracts: Array<{
+        id: string;
+        deviceReceivedAt?: string | null;
+        shopWarrantyEndDate?: string | null;
+        product?: { warrantyExpireDate?: string | null };
+      }> = contractsRes.data?.data ?? [];
+      return contracts[0] ?? null;
+    },
+    enabled: !!customerId,
+    staleTime: 60_000,
+  });
+
+  // Client-side mirror of backend detectWarrantyStatus()
+  useEffect(() => {
+    if (!customerId) {
+      setWarrantyPreview('WALK_IN');
+      return;
+    }
+    if (!warrantyData) {
+      // Query enabled but data not yet resolved — keep current value (avoid flicker)
+      return;
+    }
+    if (!warrantyData.id) {
+      // No contract found for customer
+      setWarrantyPreview('WALK_IN');
+      return;
+    }
+    const now = Date.now();
+    const c = warrantyData;
+    if (c.deviceReceivedAt) {
+      const days = (now - new Date(c.deviceReceivedAt).getTime()) / 86_400_000;
+      if (days <= 7) {
+        setWarrantyPreview('IN_7DAY_DEFECT');
+        return;
+      }
+    }
+    if (c.shopWarrantyEndDate && new Date(c.shopWarrantyEndDate).getTime() > now) {
+      setWarrantyPreview('IN_SHOP_WARRANTY');
+      return;
+    }
+    if (c.product?.warrantyExpireDate && new Date(c.product.warrantyExpireDate).getTime() > now) {
+      setWarrantyPreview('IN_MANUFACTURER');
+      return;
+    }
+    setWarrantyPreview('OUT_OF_WARRANTY');
+  }, [customerId, warrantyData]);
 
   // Validation errors
   const [errors, setErrors] = useState<Partial<Record<keyof FormValues, string>>>({});
@@ -261,22 +322,20 @@ export default function CreateRepairTicketPage() {
   const create = useMutation({
     mutationFn: async () => {
       if (!validate()) throw new Error('validation');
-      const payload: FormValues = {
+      const payload = {
         customerId,
         defectDescription: defectDescription.trim(),
         deviceBrand: deviceBrand || undefined,
         deviceModel: deviceModel || undefined,
         deviceImei: deviceImei || undefined,
         deviceSerial: deviceSerial || undefined,
-        estimatedCost: estimatedCost || undefined,
+        estimatedCost: estimatedCost ? Number(estimatedCost) : undefined,
         payer,
         repairSupplierId: repairSupplierId || undefined,
         notes: notes || undefined,
-      };
-      const { data } = await api.post('/repair-tickets', {
-        ...payload,
         branchId: user?.branchId,
-      });
+      };
+      const { data } = await api.post('/repair-tickets', payload);
       return data;
     },
     onSuccess: (ticket: { id: string; ticketNumber: string }) => {

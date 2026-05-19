@@ -502,7 +502,6 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'ลูกค้า', path: '/customers', icon: Users },
         { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
-        { label: 'รับซ่อม/รับประกัน', path: '/insurance', icon: ShieldCheck },
       ],
     },
     {

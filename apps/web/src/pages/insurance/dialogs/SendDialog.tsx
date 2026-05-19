@@ -30,6 +30,7 @@ interface FormVals {
 interface SupplierHit {
   id: string;
   name: string;
+  isRepairCenter?: boolean;
 }
 
 export function SendDialog({ ticketId, onClose, onSuccess }: Props) {
@@ -48,10 +49,14 @@ export function SendDialog({ ticketId, onClose, onSuccess }: Props) {
     queryKey: ['suppliers-repair-send', debouncedSearch],
     queryFn: async () => {
       if (!debouncedSearch || debouncedSearch.length < 1) return [];
+      // NOTE: The suppliers API does not yet filter on isRepairCenter server-side —
+      // filter client-side until backend exposes the param (TODO: add isRepairCenter
+      // query param to suppliers controller GET /suppliers).
       const res = await api.get(
-        `/suppliers?search=${encodeURIComponent(debouncedSearch)}&isRepairCenter=true&limit=10`,
+        `/suppliers?search=${encodeURIComponent(debouncedSearch)}&limit=20`,
       );
-      return res.data?.data ?? [];
+      const all: SupplierHit[] = res.data?.data ?? [];
+      return all.filter((s) => s.isRepairCenter === true);
     },
     enabled: debouncedSearch.length >= 1,
   });

@@ -138,7 +138,7 @@ function InsuranceListContent() {
     queryKey: ['repair-tickets', debouncedSearch, statusFilter, page],
     queryFn: async () => {
       const params = new URLSearchParams({ page: String(page), limit: '50' });
-      if (debouncedSearch) params.set('search', debouncedSearch);
+      if (debouncedSearch) params.set('q', debouncedSearch);
       if (statusFilter) params.set('status', statusFilter);
       const res = await api.get(`/repair-tickets?${params.toString()}`);
       return res.data;

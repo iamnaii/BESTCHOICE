@@ -53,6 +53,8 @@ import { OutboxService } from './outbox.service';
 import { OutboxProcessorService } from './outbox-processor.service';
 import { OutboxProcessorCron } from './cron/outbox-processor.cron';
 import { ReconciliationCron } from './cron/reconciliation.cron';
+// P4-SP4 — Contract cancellation JE reversal
+import { ContractCancellationTemplate } from './cpa-templates/contract-cancellation.template';
 import { ReconcileController } from './reconcile.controller';
 
 @Module({
@@ -111,6 +113,8 @@ import { ReconcileController } from './reconcile.controller';
     OutboxProcessorService,
     OutboxProcessorCron,
     ReconciliationCron,
+    // P4-SP4 — Contract cancellation
+    ContractCancellationTemplate,
   ],
   exports: [
     JournalService,
@@ -160,6 +164,8 @@ import { ReconcileController } from './reconcile.controller';
     // SP7.2 — Outbox + saga infrastructure
     OutboxService,
     OutboxProcessorService,
+    // P4-SP4 — Contract cancellation
+    ContractCancellationTemplate,
   ],
 })
 export class JournalModule {}

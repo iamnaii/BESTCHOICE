@@ -139,3 +139,19 @@ export class RejectContractDto {
   @IsString()
   reviewNotes: string; // เหตุผลปฏิเสธ (บังคับ)
 }
+
+// ─── P4-SP4: Contract Cancellation DTOs ──────────────────────────────────────
+
+export class RequestCancellationDto {
+  @IsString()
+  reason: string;
+
+  @IsNumber()
+  @Min(0, { message: 'จำนวนเงินคืนต้องไม่ติดลบ' })
+  refundAmount: number;
+}
+
+export class RejectCancellationDto {
+  @IsString()
+  reason: string;
+}

@@ -1342,18 +1342,7 @@ function App() {
             }
           />
           {/* /finance/cash-flow — handled by SP2 CashFlowPage route above (line ~763) */}
-          <Route
-            path="/finance/equity-statement"
-            element={
-              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
-                <ComingSoonPage
-                  feature="งบแสดงการเปลี่ยนแปลงในส่วนของผู้ถือหุ้น"
-                  trackingSP="SP2"
-                  eta="ภายในไตรมาส 2/2026"
-                />
-              </ProtectedRoute>
-            }
-          />
+          {/* /finance/equity-statement — handled by SP2 EquityStatementPage route above (line ~773) */}
           <Route
             path="/finance/general-ledger"
             element={

@@ -551,7 +551,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
     },
     {
       key: 'owner-accounting',
-      label: 'บัญชี & รายงาน',
+      label: 'บัญชี',
       icon: Calculator,
       zone: 'fin',
       items: [
@@ -559,27 +559,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
         { label: 'รายจ่าย', path: '/expenses', icon: Receipt },
         { label: 'รายได้อื่น', path: '/other-income', icon: TrendingUp },
-        { label: 'ผังบัญชี', path: '/settings/chart-of-accounts', icon: ClipboardList },
-        // SP6 — Bank/Cash account directory (mirrors CoA 11-1101..1203)
-        { label: 'บัญชีเงินสด/ธนาคาร', path: '/finance/bank-accounts', icon: Landmark },
-        // Reports & period-close grouped under collapsible parents
-        {
-          label: 'รายงาน',
-          path: '/reports',
-          icon: BarChart3,
-          children: [
-            { label: 'รายงานรวม', path: '/reports', icon: BarChart3 },
-            { label: 'งบกระแสเงินสด', path: '/finance/cash-flow', icon: Banknote },
-            { label: 'งบ Equity', path: '/finance/equity-statement', icon: Landmark },
-            { label: 'สมุดแยกประเภท', path: '/finance/general-ledger', icon: BookOpen },
-            { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
-            // SP3 — Tax module split
-            { label: 'ภ.พ.30 (VAT)', path: '/finance/vat', icon: Calculator },
-            { label: 'ภ.ง.ด. 1/3/53 (WHT)', path: '/finance/wht', icon: Calculator },
-            { label: 'e-Tax Invoice', path: '/finance/e-tax', icon: FileText },
-            { label: 'ตรวจสอบบัญชี', path: '/financial-audit', icon: ClipboardList },
-          ],
-        },
+        // Period-close grouped under collapsible parent
         {
           label: 'ปิดบัญชี',
           path: '/monthly-close',
@@ -593,6 +573,28 @@ const OWNER_CONFIG: RoleMenuConfig = {
             { label: 'ส่งออก PEAK CSV', path: '/finance/peak-export', icon: Plug },
           ],
         },
+      ],
+    },
+    {
+      // Promoted from collapsible inside "บัญชี & รายงาน" — owner directive
+      // "ดึงรายงานออกมา" (find-menu friction reduction follow-up to PR #849).
+      // Items intentionally mirror entries in owner-tax / owner-statements
+      // — this is the curated report index for one-click discovery.
+      key: 'owner-reports',
+      label: 'รายงาน',
+      icon: BarChart3,
+      zone: 'fin',
+      items: [
+        { label: 'รายงานรวม', path: '/reports', icon: BarChart3 },
+        { label: 'งบกระแสเงินสด', path: '/finance/cash-flow', icon: Banknote },
+        { label: 'งบ Equity', path: '/finance/equity-statement', icon: Landmark },
+        { label: 'สมุดแยกประเภท', path: '/finance/general-ledger', icon: BookOpen },
+        { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
+        // SP3 — Tax module split
+        { label: 'ภ.พ.30 (VAT)', path: '/finance/vat', icon: Calculator },
+        { label: 'ภ.ง.ด. 1/3/53 (WHT)', path: '/finance/wht', icon: Calculator },
+        { label: 'e-Tax Invoice', path: '/finance/e-tax', icon: FileText },
+        { label: 'ตรวจสอบบัญชี', path: '/financial-audit', icon: ClipboardList },
       ],
     },
     {
@@ -654,12 +656,9 @@ const OWNER_CONFIG: RoleMenuConfig = {
       icon: Landmark,
       zone: 'fin',
       items: [
-        {
-          label: 'บัญชีธนาคาร',
-          path: '/finance/bank-accounts',
-          icon: Landmark,
-          placeholder: { trackingSP: 'SP6', eta: 'ภายในไตรมาส 4/2026' },
-        },
+        { label: 'ผังบัญชี', path: '/settings/chart-of-accounts', icon: ClipboardList },
+        // SP6 — Bank/Cash account directory (mirrors CoA 11-1101..1203)
+        { label: 'บัญชีเงินสด/ธนาคาร', path: '/finance/bank-accounts', icon: Landmark },
       ],
     },
     {

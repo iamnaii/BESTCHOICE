@@ -78,17 +78,18 @@ describe('getSidebarForRole — populated ZONE_CONFIG', () => {
       'owner-overview',
       'owner-inventory',
       'owner-sales',
-      'owner-drafts',
       'owner-collection',
       'owner-online-shop',
+      'owner-shop-accounting',
       'owner-marketing',
     ]);
   });
 
   it('OWNER fin sections include all FIN-zone keys (regression guard)', () => {
     const keys = getSidebarForRole('OWNER', 'fin').map((s) => s.key);
-    // Order should be: accounting, tax, statements, bank, asset, fin-tools
+    // Order should be: accounting, reports, tax, statements, bank, asset, fin-tools
     expect(keys).toContain('owner-accounting');
+    expect(keys).toContain('owner-reports');
     expect(keys).toContain('owner-tax');
     expect(keys).toContain('owner-statements');
     expect(keys).toContain('owner-bank');

@@ -1,4 +1,5 @@
 import { Mail, Copy, Clock } from 'lucide-react';
+import { useUiFlags } from '@/hooks/useUiFlags';
 import { roleLabels, inputClass, labelClass } from '../types';
 
 interface InviteForm {
@@ -28,6 +29,13 @@ export default function InviteModal({
   onSubmit,
   onCopyUrl,
 }: InviteModalProps) {
+  // Owner Q4 (2026-05-17): VIEWER role only appears in the picker when
+  // `viewer_role_enabled = 'true'`. Otherwise OWNER shouldn't be inviting
+  // auditors yet — backend would deny their requests anyway.
+  const { viewerRoleEnabled } = useUiFlags();
+  const availableRoles = Object.entries(roleLabels).filter(
+    ([k]) => k !== 'VIEWER' || viewerRoleEnabled,
+  );
   return (
     <div
       className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-start justify-center pt-8 pb-8"
@@ -110,7 +118,7 @@ export default function InviteModal({
                     onChange={(e) => setInviteForm({ ...inviteForm, role: e.target.value })}
                     className={inputClass}
                   >
-                    {Object.entries(roleLabels).map(([k, v]) => (
+                    {availableRoles.map(([k, v]) => (
                       <option key={k} value={k}>
                         {v}
                       </option>

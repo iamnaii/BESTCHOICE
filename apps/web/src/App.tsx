@@ -173,6 +173,7 @@ const GeneralLedgerPage = lazy(() =>
 // P4-SP1 — Financial report pages
 const BalanceSheetPage = lazy(() => import('@/pages/finance/BalanceSheetPage'));
 const GeneralJournalPage = lazy(() => import('@/pages/finance/GeneralJournalPage'));
+const AgingReportPage = lazy(() => import('@/pages/finance/AgingReportPage'));
 const PeakSyncPage = lazy(() => import('@/pages/PeakSyncPage'));
 const PeakExportPage = lazy(() => import('@/pages/PeakExportPage'));
 const AiSettingsPage = lazy(() => import('@/pages/AiSettingsPage'));
@@ -1417,7 +1418,7 @@ function App() {
             path="/finance/aging-report"
             element={
               <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
-                <ComingSoonPage feature="รายงานลูกหนี้ + วิเคราะห์อายุหนี้ (Aging)" trackingSP="SP2" eta="ภายในไตรมาส 2/2026" />
+                <AgingReportPage />
               </ProtectedRoute>
             }
           />

@@ -2127,4 +2127,55 @@ export class AccountingService implements OnModuleInit {
       ),
     };
   }
+
+  // ─── P4-SP1 Task 3: Bad Debt Report ─────────────────────────────────────────
+
+  /**
+   * Returns journal lines posted to account 51-1102 (หนี้สูญ/ขาดทุนจากยึดเครื่อง)
+   * within the given period. Used by BadDebtReportPage to display write-off history.
+   *
+   * Per .claude/rules/accounting.md:
+   *   51-1102 = หนี้สูญ/ขาดทุนจากยึดเครื่อง (RepossessionJP5Template loss branch)
+   */
+  async getBadDebtReport(periodStart: Date, periodEnd: Date, companyId?: string) {
+    const lines = await this.prisma.journalLine.findMany({
+      where: {
+        accountCode: '51-1102',
+        journalEntry: {
+          postedAt: { gte: periodStart, lte: periodEnd },
+          deletedAt: null,
+          ...(companyId ? { companyId } : {}),
+        },
+      },
+      include: {
+        journalEntry: {
+          select: {
+            id: true,
+            entryNumber: true,
+            description: true,
+            postedAt: true,
+            referenceType: true,
+            referenceId: true,
+          },
+        },
+      },
+      orderBy: { journalEntry: { postedAt: 'desc' } },
+    });
+
+    const total = lines.reduce((sum, l) => sum + Number(l.debit ?? 0), 0);
+
+    return {
+      period: { start: periodStart, end: periodEnd },
+      totalBadDebt: total,
+      entries: lines.map((l) => ({
+        journalEntryId: l.journalEntry.id,
+        documentNumber: l.journalEntry.entryNumber,
+        postedAt: l.journalEntry.postedAt,
+        description: l.description ?? l.journalEntry.description,
+        amount: Number(l.debit ?? 0),
+        sourceType: l.journalEntry.referenceType,
+        sourceId: l.journalEntry.referenceId,
+      })),
+    };
+  }
 }

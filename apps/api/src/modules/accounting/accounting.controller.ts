@@ -117,6 +117,18 @@ export class AccountingController {
     return this.service.getAgingReport(asOf ? new Date(asOf) : new Date());
   }
 
+  // ─── P4-SP1: Bad Debt Report ──────────────────────────────────────────────
+
+  @Get('ledger/bad-debt')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  getBadDebtReport(
+    @Query('start') start: string,
+    @Query('end') end: string,
+    @Query('companyId') companyId?: string,
+  ) {
+    return this.service.getBadDebtReport(new Date(start), new Date(end), companyId);
+  }
+
   // Balance Sheet & Cash Flow endpoints are in ReportsController (/reports/balance-sheet, /reports/cash-flow)
   // to avoid duplicate routes. See reports.controller.ts.
 

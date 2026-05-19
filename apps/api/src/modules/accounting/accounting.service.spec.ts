@@ -1330,6 +1330,117 @@ describe('AccountingService', () => {
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // getBadDebtReport
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  describe('getBadDebtReport', () => {
+    const periodStart = new Date('2026-01-01');
+    const periodEnd = new Date('2026-01-31');
+
+    const makeJournalLine = (debit: number, overrides?: Record<string, unknown>) => ({
+      accountCode: '51-1102',
+      debit: new Prisma.Decimal(debit),
+      credit: new Prisma.Decimal(0),
+      description: 'หนี้สูญ',
+      journalEntry: {
+        id: 'je-1',
+        entryNumber: 'JP5-20260115-0001',
+        description: 'ยึดเครื่อง',
+        postedAt: new Date('2026-01-15'),
+        referenceType: 'REPOSSESSION',
+        referenceId: 'repo-1',
+        ...overrides,
+      },
+    });
+
+    beforeEach(() => {
+      prisma.journalLine.findMany.mockResolvedValue([]);
+    });
+
+    it('returns correct shape with period, totalBadDebt, and entries', async () => {
+      const result = await service.getBadDebtReport(periodStart, periodEnd);
+      expect(result).toHaveProperty('period');
+      expect(result.period.start).toEqual(periodStart);
+      expect(result.period.end).toEqual(periodEnd);
+      expect(result).toHaveProperty('totalBadDebt');
+      expect(result).toHaveProperty('entries');
+      expect(Array.isArray(result.entries)).toBe(true);
+    });
+
+    it('returns totalBadDebt=0 and empty entries when no 51-1102 lines exist', async () => {
+      prisma.journalLine.findMany.mockResolvedValueOnce([]);
+      const result = await service.getBadDebtReport(periodStart, periodEnd);
+      expect(result.totalBadDebt).toBe(0);
+      expect(result.entries).toHaveLength(0);
+    });
+
+    it('sums debit amounts correctly across multiple lines', async () => {
+      prisma.journalLine.findMany.mockResolvedValueOnce([
+        makeJournalLine(5000),
+        makeJournalLine(3000),
+        makeJournalLine(2000),
+      ]);
+      const result = await service.getBadDebtReport(periodStart, periodEnd);
+      expect(result.totalBadDebt).toBeCloseTo(10000, 2);
+      expect(result.entries).toHaveLength(3);
+    });
+
+    it('queries only account 51-1102 lines within the period', async () => {
+      await service.getBadDebtReport(periodStart, periodEnd);
+      const call = prisma.journalLine.findMany.mock.calls.at(-1)[0];
+      expect(call.where.accountCode).toBe('51-1102');
+      expect(call.where.journalEntry.postedAt.gte).toEqual(periodStart);
+      expect(call.where.journalEntry.postedAt.lte).toEqual(periodEnd);
+      expect(call.where.journalEntry.deletedAt).toBeNull();
+    });
+
+    it('filters by companyId when provided', async () => {
+      await service.getBadDebtReport(periodStart, periodEnd, 'co-FINANCE');
+      const call = prisma.journalLine.findMany.mock.calls.at(-1)[0];
+      expect(call.where.journalEntry.companyId).toBe('co-FINANCE');
+    });
+
+    it('omits companyId filter when not provided', async () => {
+      await service.getBadDebtReport(periodStart, periodEnd);
+      const call = prisma.journalLine.findMany.mock.calls.at(-1)[0];
+      expect(call.where.journalEntry).not.toHaveProperty('companyId');
+    });
+
+    it('maps entry fields correctly from journalLine and journalEntry', async () => {
+      prisma.journalLine.findMany.mockResolvedValueOnce([makeJournalLine(7500)]);
+      const result = await service.getBadDebtReport(periodStart, periodEnd);
+      const entry = result.entries[0];
+      expect(entry.journalEntryId).toBe('je-1');
+      // entryNumber is exposed as documentNumber in the response
+      expect(entry.documentNumber).toBe('JP5-20260115-0001');
+      expect(entry.amount).toBeCloseTo(7500, 2);
+      // referenceType is exposed as sourceType in the response
+      expect(entry.sourceType).toBe('REPOSSESSION');
+      // referenceId is exposed as sourceId in the response
+      expect(entry.sourceId).toBe('repo-1');
+    });
+
+    it('falls back to journalEntry.description when line description is null', async () => {
+      prisma.journalLine.findMany.mockResolvedValueOnce([
+        {
+          ...makeJournalLine(1000),
+          description: null,
+          journalEntry: {
+            id: 'je-2',
+            entryNumber: 'JP5-20260120-0001',
+            description: 'entry-level description',
+            postedAt: new Date('2026-01-20'),
+            referenceType: 'REPOSSESSION',
+            referenceId: 'repo-2',
+          },
+        },
+      ]);
+      const result = await service.getBadDebtReport(periodStart, periodEnd);
+      expect(result.entries[0].description).toBe('entry-level description');
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // getGeneralJournal
   // ═══════════════════════════════════════════════════════════════════════════
 

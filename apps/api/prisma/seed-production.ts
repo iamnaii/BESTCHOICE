@@ -137,6 +137,17 @@ async function main() {
       }),
       label: 'อัตราค่าเผื่อหนี้สงสัยจะสูญ ตามอายุหนี้',
     },
+    // SP5 Phase 2 — Repair ticket CoA defaults (SHOP-side, no VAT)
+    {
+      key: 'REPAIR_EXPENSE_ACCOUNT_CODE',
+      value: '53-1306',
+      label: 'SHOP CoA — ค่าซ่อมเครื่องลูกค้า (Dr leg, payer=SHOP)',
+    },
+    {
+      key: 'REPAIR_INCOME_ACCOUNT_CODE',
+      value: '42-1106',
+      label: 'SHOP CoA — รายได้บริการซ่อม (Cr leg, payer=CUSTOMER)',
+    },
   ];
 
   for (const c of configs) {

@@ -253,7 +253,7 @@ scripts/                     # Deploy & backup scripts
 `/stock(/transfers/alerts/count/adjustments)`, `/suppliers(/:id)`, `/purchase-orders`, `/stickers`
 
 ### Collections & Risk
-`/overdue`, `/exchange`, `/repossessions`, `/credit-checks`, `/slip-review`
+`/overdue`, `/exchange`, `/repossessions`, `/credit-checks`, `/slip-review`, `/insurance(/:id|/new)` (SP5 Phase 2)
 
 ### Revenue & Tax
 `/commissions`, `/tax-reports`, `/trade-in`, `/promotions`
@@ -438,6 +438,17 @@ scripts/                      # Existing project scripts
 - **Backfill script** `npm run backfill:promise-slots` (in apps/api) — migrates legacy `secondSettlementDate/Amount` to PromiseSlot rows + computes historical `keptAt`/`keptPromiseCount`
 - **`Payment` IS the installment** (not separate `Installment` model — discovered during impl, plan/spec adjusted)
 - **AuditLog conventions** confirmed: `entity` (lowercase), `userId` real UUID FK, `ipAddress` optional. New actions: `BROKEN_PROMISE`, `KEPT_PROMISE`, `MDM_AUTO_LOCK`, `MDM_AUTO_UNLOCK`
+
+### v6 (PR #__ — SP5 Phase 2 Insurance / Repair Ticket)
+- **RepairTicket** model with 6-status lifecycle (OPEN → IN_PROGRESS → READY_FOR_PICKUP → CLOSED/REPLACED/CANCELLED)
+- Auto-detect warranty status (IN_7DAY_DEFECT / IN_SHOP_WARRANTY / IN_MANUFACTURER / OUT_OF_WARRANTY / WALK_IN) from contract.deviceReceivedAt + shopWarrantyEndDate + product.warrantyExpireDate
+- Auto-create ExpenseDocument (payer=SHOP) or OtherIncome (payer=CUSTOMER) draft on ticket close — atomic via `$transaction`
+- Reuses `Supplier` model + new `isRepairCenter` flag (repair centers are SHOP suppliers)
+- Replace flow integrates with existing `/defect-exchange` via `bypassWindowCheck` flag (OWNER/BM only) — atomic markReplaced across both modules
+- Audit trail: 9 new AuditLog action strings + per-status-transition RepairStatusLog rows
+- SystemConfig keys: `REPAIR_EXPENSE_ACCOUNT_CODE` (53-1306) + `REPAIR_INCOME_ACCOUNT_CODE` (42-1106)
+- Test counts: API +62 (repair-tickets) +5 (defect-exchange bypass) = +67 tests
+- Frontend: `/insurance` promoted from redirect stub → full list/detail/create UI with 5 action dialogs + 3 reusable badge/timeline components
 
 ### Test counts after v4
 - API: **577 tests** (26 suites)

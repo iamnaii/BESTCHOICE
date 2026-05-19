@@ -383,5 +383,39 @@ describe('SettingsService audit trail', () => {
       const flags = await service.getUiFlags();
       expect(flags.summaryAllRangeWarning).toBe(false);
     });
+
+    // D1.3.5.3 — summary_pagination_size
+    it('summaryPaginationSize defaults to 100 when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const flags = await service.getUiFlags();
+      expect(flags.summaryPaginationSize).toBe(100);
+    });
+
+    it('summaryPaginationSize accepts valid 10-500 range from SystemConfig', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'summary_pagination_size') return Promise.resolve({ value: '250' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.summaryPaginationSize).toBe(250);
+    });
+
+    it('summaryPaginationSize clamps to default when above 500', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'summary_pagination_size') return Promise.resolve({ value: '1000' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.summaryPaginationSize).toBe(100);
+    });
+
+    it('summaryPaginationSize clamps to default when below 10 (incl. zero/negative)', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'summary_pagination_size') return Promise.resolve({ value: '5' });
+        return Promise.resolve(null);
+      });
+      const flags = await service.getUiFlags();
+      expect(flags.summaryPaginationSize).toBe(100);
+    });
   });
 });

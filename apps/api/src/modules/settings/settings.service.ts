@@ -200,6 +200,16 @@ export class SettingsService {
      * banner sits ready for when the page exposes an explicit all-range UI.
      */
     summaryAllRangeWarning: boolean;
+    /**
+     * D1.3.5.3 — default page-size for the ExpenseDailySummaryPage result
+     * table. Default 100. Valid range 10–500 (clamped on read). This is a
+     * SUMMARY-SPECIFIC override of the generic `paginationSize`
+     * (D1.2.3.2) — summary tables tend to want larger pages because the
+     * accountant is reviewing a full day/period, not paging through it.
+     * When D1.2.3.2 ships, the summary page should prefer this value
+     * over `paginationSize`.
+     */
+    summaryPaginationSize: number;
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -261,6 +271,16 @@ export class SettingsService {
     // D1.3.5.2 — show performance warning banner when the user picks "all"
     // range on the summary page. Default true (warn on heavy queries).
     const summaryAllRangeWarning = await this.readBoolean('summary_all_range_warning', true);
+    // D1.3.5.3 — summary-page pagination size. Clamp to 10–500 on read so a
+    // bad SystemConfig row can't surface a zero/negative/giant page size to
+    // the UI. Integer-only — fractional values fall through to the default.
+    const summaryPaginationSizeRaw = await this.readNumber('summary_pagination_size', 100);
+    const summaryPaginationSize =
+      Number.isInteger(summaryPaginationSizeRaw) &&
+      summaryPaginationSizeRaw >= 10 &&
+      summaryPaginationSizeRaw <= 500
+        ? summaryPaginationSizeRaw
+        : 100;
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,
@@ -275,6 +295,7 @@ export class SettingsService {
       defaultTimeRange,
       summaryDefaultRange,
       summaryAllRangeWarning,
+      summaryPaginationSize,
     };
   }
 

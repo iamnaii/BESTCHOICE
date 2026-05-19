@@ -97,6 +97,11 @@ COPY --from=deps --chown=appuser:appgroup /app/node_modules ./node_modules
 COPY --from=deps --chown=appuser:appgroup /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=builder --chown=appuser:appgroup /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder --chown=appuser:appgroup /app/apps/api/prisma ./apps/api/prisma
+# SP7.1 — finance Prisma client generated to apps/api/node_modules/@prisma/client-finance
+# (per generator output="../node_modules/@prisma/client-finance" in prisma-finance/schema.prisma).
+# Dep-stage copy at line 97 doesn't include generated client — must pull from builder explicitly.
+COPY --from=builder --chown=appuser:appgroup /app/apps/api/node_modules/@prisma/client-finance ./apps/api/node_modules/@prisma/client-finance
+COPY --from=builder --chown=appuser:appgroup /app/apps/api/prisma-finance ./apps/api/prisma-finance
 
 # ⚠️ TEMPORARY: Legacy migration data — remove after migration done
 COPY --chown=appuser:appgroup apps/api/scripts/import-legacy/data ./apps/api/scripts/import-legacy/data

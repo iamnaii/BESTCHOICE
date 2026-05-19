@@ -633,7 +633,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'รายงานรวม', path: '/reports', icon: BarChart3 },
         // CSV §6 placeholders — flagged "ต้องสร้าง"
         { label: 'รายงานลูกหนี้ + Aging', path: '/finance/aging-report', icon: AlertTriangle, placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' } },
-        { label: 'สมุดรายวัน', path: '/finance/general-journal', icon: BookOpen, placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' } },
+        { label: 'สมุดรายวัน', path: '/finance/general-journal', icon: BookOpen },
         { label: 'สมุดแยกประเภท', path: '/finance/general-ledger', icon: BookOpen, placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' } },
         { label: 'รายงานหนี้สูญ', path: '/finance/bad-debt-report', icon: TrendingDown, placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' } },
         { label: 'รายงานลูกหนี้ Inter-co', path: '/finance/intercompany-report', icon: Building2, placeholder: { trackingSP: 'SP6', eta: 'ภายในไตรมาส 4/2026' } },

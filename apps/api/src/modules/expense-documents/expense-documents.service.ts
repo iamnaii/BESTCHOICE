@@ -618,7 +618,9 @@ export class ExpenseDocumentsService implements OnModuleInit {
         status: 'DRAFT',
         taxDisallowed: false,
         createdById: dto.createdById,
-        note: JSON.stringify(dto.metadata),
+        // W6: human-readable note (metadata traceability via FK repairTicketId on
+        // the RepairTicket → expenseDocumentId back-reference; no need to embed JSON).
+        note: `Auto-created from repair ticket ${(dto.metadata as { repairTicketId?: string }).repairTicketId ?? ''}`,
         expenseDetail: {
           create: {
             priceType: 'EXCLUSIVE',
@@ -2174,8 +2176,12 @@ export class ExpenseDocumentsService implements OnModuleInit {
       );
     }
 
-    // EXPENSE + CREDIT_NOTE + PAYROLL + VENDOR_SETTLEMENT supported
-    if (!['EXPENSE', 'CREDIT_NOTE', 'PAYROLL', 'VENDOR_SETTLEMENT'].includes(doc.documentType)) {
+    // EXPENSE + CREDIT_NOTE + PAYROLL + VENDOR_SETTLEMENT + REPAIR_SERVICE supported
+    if (
+      !['EXPENSE', 'CREDIT_NOTE', 'PAYROLL', 'VENDOR_SETTLEMENT', 'REPAIR_SERVICE'].includes(
+        doc.documentType,
+      )
+    ) {
       throw new BadRequestException(`type ${doc.documentType} not supported`);
     }
 

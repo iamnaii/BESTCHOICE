@@ -137,12 +137,14 @@ export class OtherIncomeService {
     },
     tx: Prisma.TransactionClient,
   ): Promise<{ id: string }> {
+    // Repair income belongs to SHOP entity (SHOP is not VAT-registered — no VAT
+    // on repair service fees). Always 'SHOP', never 'FINANCE'. C2 fix.
     const companyId = await tx.companyInfo
-      .findFirst({ where: { companyCode: 'FINANCE', deletedAt: null }, select: { id: true } })
+      .findFirst({ where: { companyCode: 'SHOP', deletedAt: null }, select: { id: true } })
       .then((co) => {
         if (!co) {
           throw new BadRequestException(
-            'CompanyInfo with companyCode=FINANCE not found — seed accounting data first',
+            'CompanyInfo with companyCode=SHOP not found — seed accounting data first',
           );
         }
         return co.id;

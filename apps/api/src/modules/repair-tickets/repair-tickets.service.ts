@@ -355,7 +355,13 @@ export class RepairTicketsService {
       let expenseDocumentId: string | null = null;
       let otherIncomeId: string | null = null;
 
-      if (ticket.payer === 'SHOP' && ticket.actualCost && ticket.repairSupplierId) {
+      // W10: Prisma.Decimal(0) is truthy — use .gt(0) to avoid creating $0 drafts.
+      if (
+        ticket.payer === 'SHOP' &&
+        ticket.actualCost &&
+        new Prisma.Decimal(ticket.actualCost).gt(0) &&
+        ticket.repairSupplierId
+      ) {
         // Look up expense account code from SystemConfig (inside tx for consistency)
         const accountCode =
           (await tx.systemConfig
@@ -372,9 +378,7 @@ export class RepairTicketsService {
         const doc = await this.expenseDocs.createDraftForRepair(
           {
             vendorName: supplier?.name ?? ticket.repairSupplierId,
-            // NOTE: Number(Decimal) is used only to cross the module-boundary DTO
-            // that expects a Prisma.Decimal. The Decimal precision is preserved
-            // because actualCost has already been stored as Decimal(12,2) in DB.
+            // actualCost is Prisma.Decimal from DB — passed through unchanged (no Number() drift).
             amount: ticket.actualCost,
             accountCode,
             description: `ค่าซ่อม ${deviceLabel}: ${ticket.defectDescription.slice(0, 60)}`,
@@ -385,7 +389,11 @@ export class RepairTicketsService {
           tx,
         );
         expenseDocumentId = doc.id;
-      } else if (ticket.payer === 'CUSTOMER' && ticket.actualCost) {
+      } else if (
+        ticket.payer === 'CUSTOMER' &&
+        ticket.actualCost &&
+        new Prisma.Decimal(ticket.actualCost).gt(0)
+      ) {
         const accountCode =
           (await tx.systemConfig
             .findFirst({ where: { key: REPAIR_INCOME_ACCOUNT_CODE_KEY, deletedAt: null } })
@@ -614,24 +622,26 @@ export class RepairTicketsService {
     });
   }
 
-  /** OWNER-only, CANCELLED-only soft-delete. */
+  /** OWNER-only, CANCELLED-only soft-delete. I6: update + audit are atomic. */
   async softDelete(id: string, user: ReqUser) {
-    const ticket = await this.prisma.repairTicket.findUnique({
-      where: { id, deletedAt: null },
-    });
-    if (!ticket) throw new NotFoundException('ไม่พบ ticket');
-    if (ticket.status !== 'CANCELLED') {
-      throw new ConflictException('soft-delete ทำได้เฉพาะ status=CANCELLED');
-    }
-    await this.prisma.repairTicket.update({
-      where: { id },
-      data: { deletedAt: new Date() },
-    });
-    await this.audit.log({
-      userId: user.id,
-      action: 'REPAIR_TICKET_SOFT_DELETED',
-      entity: 'repair_ticket',
-      entityId: id,
+    return this.prisma.$transaction(async (tx) => {
+      const ticket = await tx.repairTicket.findUnique({
+        where: { id, deletedAt: null },
+      });
+      if (!ticket) throw new NotFoundException('ไม่พบ ticket');
+      if (ticket.status !== 'CANCELLED') {
+        throw new ConflictException('soft-delete ทำได้เฉพาะ status=CANCELLED');
+      }
+      await tx.repairTicket.update({
+        where: { id },
+        data: { deletedAt: new Date() },
+      });
+      await this.audit.log({
+        userId: user.id,
+        action: 'REPAIR_TICKET_SOFT_DELETED',
+        entity: 'repair_ticket',
+        entityId: id,
+      });
     });
   }
 
@@ -647,6 +657,15 @@ export class RepairTicketsService {
   ) {
     const replacedAt = new Date();
 
+    // W1: read actual status before CAS so RepairStatusLog reflects the real
+    // from-state (matches cancel() pattern — not a placeholder).
+    const before = await tx.repairTicket.findUnique({
+      where: { id, deletedAt: null },
+      select: { status: true },
+    });
+    if (!before) throw new NotFoundException('ไม่พบ ticket');
+    const fromStatus = before.status;
+
     const updated = await tx.repairTicket.updateMany({
       where: { id, status: { in: ['OPEN', 'IN_PROGRESS', 'READY_FOR_PICKUP'] }, deletedAt: null },
       data: { status: 'REPLACED', replacedAt, replacementContractId },
@@ -660,7 +679,7 @@ export class RepairTicketsService {
     await tx.repairStatusLog.create({
       data: {
         ticketId: id,
-        fromStatus: 'OPEN', // placeholder — precise from-state can be looked up if needed
+        fromStatus,
         toStatus: 'REPLACED',
         changedById: user.id,
         note: `replacement contract ${replacementContractId}`,

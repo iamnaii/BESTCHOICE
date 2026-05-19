@@ -500,7 +500,8 @@ describe('RepairTicketsService.replace', () => {
 
   it('happy path: contract.customerId matches → calls updateMany + status log + audit', async () => {
     prisma.repairTicket.findUnique
-      .mockResolvedValueOnce({ id: 't-1', customerId: 'cust-1', status: 'OPEN', deletedAt: null })
+      .mockResolvedValueOnce({ id: 't-1', customerId: 'cust-1', status: 'OPEN', deletedAt: null }) // replace() lookup
+      .mockResolvedValueOnce({ id: 't-1', status: 'OPEN', deletedAt: null }) // markReplaced() before-CAS lookup (W1)
       .mockResolvedValueOnce({ id: 't-1', status: 'REPLACED' }); // final findUnique return
     prisma.contract.findUnique.mockResolvedValue({
       id: 'contract-new',
@@ -519,6 +520,25 @@ describe('RepairTicketsService.replace', () => {
     expect(audit.log).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'REPAIR_TICKET_REPLACED' }),
     );
+  });
+
+  it('W1: markReplaced writes real fromStatus (READY_FOR_PICKUP) not placeholder OPEN', async () => {
+    prisma.repairTicket.findUnique
+      .mockResolvedValueOnce({ id: 't-1', customerId: 'cust-1', status: 'READY_FOR_PICKUP', deletedAt: null })
+      .mockResolvedValueOnce({ id: 't-1', status: 'READY_FOR_PICKUP', deletedAt: null }) // before-CAS
+      .mockResolvedValueOnce({ id: 't-1', status: 'REPLACED' }); // final return
+    prisma.contract.findUnique.mockResolvedValue({
+      id: 'contract-new',
+      customerId: 'cust-1',
+      deletedAt: null,
+    });
+    prisma.repairTicket.updateMany.mockResolvedValue({ count: 1 });
+
+    await svc.replace('t-1', { replacementContractId: 'contract-new' } as any, OWNER);
+
+    const statusLogCall = prisma.repairStatusLog.create.mock.calls[0][0];
+    expect(statusLogCall.data.fromStatus).toBe('READY_FOR_PICKUP');
+    expect(statusLogCall.data.toStatus).toBe('REPLACED');
   });
 
   it('throws ForbiddenException when contract.customerId mismatches ticket.customerId', async () => {
@@ -979,6 +999,32 @@ describe('RepairTicketsService.returnToCustomer', () => {
       .mockRejectedValue(new Error('vendor not found'));
 
     await expect(svc.returnToCustomer('t-1', {} as any, OWNER)).rejects.toThrow('vendor not found');
+    expect(prisma.repairTicket.update).not.toHaveBeenCalled();
+  });
+
+  // Test 6 (W10): payer=SHOP with actualCost=Decimal(0) → no doc created (Decimal(0) is truthy)
+  it('W10: payer=SHOP with actualCost=Decimal(0) → no ExpenseDoc created', async () => {
+    prisma.repairTicket.updateMany.mockResolvedValue({ count: 1 });
+    prisma.repairTicket.findUnique.mockResolvedValue(
+      stubTicket({ payer: 'SHOP', actualCost: new Prisma.Decimal(0) }),
+    );
+
+    await svc.returnToCustomer('t-6', {} as any, OWNER);
+
+    expect(expenseDocs.createDraftForRepair).not.toHaveBeenCalled();
+    expect(prisma.repairTicket.update).not.toHaveBeenCalled();
+  });
+
+  // Test 7 (W10): payer=CUSTOMER with actualCost=Decimal(0) → no OtherIncome created
+  it('W10: payer=CUSTOMER with actualCost=Decimal(0) → no OtherIncome created', async () => {
+    prisma.repairTicket.updateMany.mockResolvedValue({ count: 1 });
+    prisma.repairTicket.findUnique.mockResolvedValue(
+      stubTicket({ payer: 'CUSTOMER', repairSupplierId: null, actualCost: new Prisma.Decimal(0) }),
+    );
+
+    await svc.returnToCustomer('t-7', {} as any, OWNER);
+
+    expect(otherIncome.createDraftForRepair).not.toHaveBeenCalled();
     expect(prisma.repairTicket.update).not.toHaveBeenCalled();
   });
 });

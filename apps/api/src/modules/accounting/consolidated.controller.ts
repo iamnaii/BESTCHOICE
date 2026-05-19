@@ -10,7 +10,7 @@ import { ConsolidatedService } from './consolidated.service';
  */
 @Controller('accounting/consolidated')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('OWNER', 'ACCOUNTANT')
+@Roles('OWNER', 'ACCOUNTANT', 'VIEWER')
 export class ConsolidatedController {
   constructor(private readonly svc: ConsolidatedService) {}
 

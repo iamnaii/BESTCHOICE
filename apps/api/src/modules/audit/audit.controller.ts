@@ -14,7 +14,7 @@ export class AuditController {
   constructor(private auditService: AuditService) {}
 
   @Get('financial/:contractId')
-  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER')
   getFinancialTrail(
     @Param('contractId') contractId: string,
     @Query('page') page?: string,
@@ -27,7 +27,7 @@ export class AuditController {
   }
 
   @Get('logs')
-  @Roles('OWNER')
+  @Roles('OWNER', 'VIEWER')
   getLogs(
     @Query('userId') userId?: string,
     @Query('entity') entity?: string,
@@ -62,17 +62,21 @@ export class AuditController {
   }
 
   @Get('stats')
-  @Roles('OWNER')
+  @Roles('OWNER', 'VIEWER')
   getStats() {
     return this.auditService.getAuditStats();
   }
 
   /**
    * T2-C4 ext: walk the Merkle hash chain over AuditLog and return
-   * ok/first-mismatch. OWNER only — information leak potential.
+   * ok/first-mismatch. OWNER + VIEWER (external auditor, gated by
+   * `viewer_role_enabled` SystemConfig per Owner Q4 2026-05-17) — both
+   * roles need chain-integrity verification, and the response surface
+   * (ok / rowsChecked / firstMismatchSeq / firstMismatchId) is what an
+   * auditor needs to certify the log.
    */
   @Get('verify-chain')
-  @Roles('OWNER')
+  @Roles('OWNER', 'VIEWER')
   async verifyChain() {
     const result = await this.auditService.verifyChain({ maxRows: 50_000 });
     return {

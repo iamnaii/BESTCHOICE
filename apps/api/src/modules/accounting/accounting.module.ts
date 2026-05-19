@@ -9,6 +9,7 @@ import { MonthlyCloseService } from './monthly-close.service';
 import { AccountingClosingService } from './closing.service';
 import { ConsolidatedService } from './consolidated.service';
 import { ConsolidatedController } from './consolidated.controller';
+import { IntercompanyReportService } from './intercompany-report.service';
 import { JournalModule } from '../journal/journal.module';
 import { TaxModule } from '../tax/tax.module';
 import { PeakModule } from '../peak/peak.module';
@@ -24,6 +25,7 @@ import { PeakModule } from '../peak/peak.module';
     MonthlyCloseService,
     AccountingClosingService,
     ConsolidatedService,
+    IntercompanyReportService,
   ],
   exports: [
     AccountingService,
@@ -32,6 +34,7 @@ import { PeakModule } from '../peak/peak.module';
     MonthlyCloseService,
     AccountingClosingService,
     ConsolidatedService,
+    IntercompanyReportService,
   ],
 })
 export class AccountingModule {}

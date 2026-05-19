@@ -175,6 +175,9 @@ const BalanceSheetPage = lazy(() => import('@/pages/finance/BalanceSheetPage'));
 const GeneralJournalPage = lazy(() => import('@/pages/finance/GeneralJournalPage'));
 const AgingReportPage = lazy(() => import('@/pages/finance/AgingReportPage'));
 const BadDebtReportPage = lazy(() => import('@/pages/finance/BadDebtReportPage'));
+// P4-SP4 — Contract cancellation approval queue + Inter-co report
+const ContractCancellationPage = lazy(() => import('@/pages/finance/ContractCancellationPage'));
+const IntercompanyReportPage = lazy(() => import('@/pages/finance/IntercompanyReportPage'));
 // P4-SP2 — Tax UI pages (finance-tax endpoints + e-receipt config)
 const VatPage = lazy(() => import('@/pages/finance/VatPage'));
 const WhtPage = lazy(() => import('@/pages/finance/WhtPage'));
@@ -1382,7 +1385,7 @@ function App() {
             path="/finance/contract-cancellation"
             element={
               <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
-                <ComingSoonPage feature="เอกสารยกเลิกสัญญา" trackingSP="SP5" eta="ภายในไตรมาส 3/2026" />
+                <ContractCancellationPage />
               </ProtectedRoute>
             }
           />
@@ -1422,7 +1425,7 @@ function App() {
             path="/finance/intercompany-report"
             element={
               <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
-                <ComingSoonPage feature="รายงานลูกหนี้ Inter-co (FINANCE ↔ SHOP)" trackingSP="SP6" eta="ภายในไตรมาส 4/2026" />
+                <IntercompanyReportPage />
               </ProtectedRoute>
             }
           />

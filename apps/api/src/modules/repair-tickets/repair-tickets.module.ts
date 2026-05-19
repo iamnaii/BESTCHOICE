@@ -3,6 +3,7 @@ import { AuditModule } from '../audit/audit.module';
 import { ExpenseDocumentsModule } from '../expense-documents/expense-documents.module';
 import { OtherIncomeModule } from '../other-income/other-income.module';
 import { SettingsModule } from '../settings/settings.module';
+import { RepairTicketsController } from './repair-tickets.controller';
 import { RepairTicketsService } from './repair-tickets.service';
 import { RepairTicketDocNumberService } from './services/doc-number.service';
 
@@ -10,7 +11,7 @@ import { RepairTicketDocNumberService } from './services/doc-number.service';
 
 @Module({
   imports: [AuditModule, ExpenseDocumentsModule, OtherIncomeModule, SettingsModule],
-  controllers: [],
+  controllers: [RepairTicketsController],
   providers: [RepairTicketsService, RepairTicketDocNumberService],
   exports: [RepairTicketsService],
 })

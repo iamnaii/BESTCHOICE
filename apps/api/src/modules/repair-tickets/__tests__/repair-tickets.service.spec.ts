@@ -1,5 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException } from '@nestjs/common';
+import {
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+} from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { RepairTicketsService } from '../repair-tickets.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
@@ -179,5 +185,349 @@ describe('RepairTicketsService.create', () => {
         entity: 'repair_ticket',
       }),
     );
+  });
+});
+
+// ─── Shared factory for transition tests ───────────────────────────────────
+
+function buildTransitionModule() {
+  const prisma: any = {
+    $transaction: jest.fn().mockImplementation((cb: any) => cb(prisma)),
+    supplier: { findUnique: jest.fn() },
+    contract: { findUnique: jest.fn() },
+    repairTicket: {
+      findUnique: jest.fn(),
+      updateMany: jest.fn(),
+    },
+    repairStatusLog: { create: jest.fn().mockResolvedValue({ id: 'sl-1' }) },
+  };
+  const audit = { log: jest.fn().mockResolvedValue(undefined) };
+  const docNumber = { nextTicketNumber: jest.fn().mockResolvedValue('RT-20260519-0001') };
+  return { prisma, audit, docNumber };
+}
+
+async function buildSvc(prisma: any, audit: any, docNumber: any) {
+  const mod: TestingModule = await Test.createTestingModule({
+    providers: [
+      RepairTicketsService,
+      { provide: PrismaService, useValue: prisma },
+      { provide: AuditService, useValue: audit },
+      { provide: ExpenseDocumentsService, useValue: {} },
+      { provide: OtherIncomeService, useValue: {} },
+      { provide: SettingsService, useValue: {} },
+      { provide: RepairTicketDocNumberService, useValue: docNumber },
+    ],
+  }).compile();
+  return mod.get(RepairTicketsService);
+}
+
+// ─── RepairTicketsService.send ──────────────────────────────────────────────
+
+describe('RepairTicketsService.send', () => {
+  let svc: RepairTicketsService;
+  let prisma: any;
+  let audit: any;
+
+  beforeEach(async () => {
+    ({ prisma, audit } = buildTransitionModule());
+    svc = await buildSvc(prisma, audit, { nextTicketNumber: jest.fn() });
+  });
+
+  it('happy path OPEN → IN_PROGRESS', async () => {
+    prisma.supplier.findUnique.mockResolvedValue({ id: 'sup-1', isRepairCenter: true });
+    prisma.repairTicket.updateMany.mockResolvedValue({ count: 1 });
+    prisma.repairTicket.findUnique.mockResolvedValue({ id: 't-1', status: 'IN_PROGRESS' });
+
+    await svc.send('t-1', { repairSupplierId: 'sup-1' } as any, OWNER);
+
+    expect(prisma.repairTicket.updateMany).toHaveBeenCalledWith({
+      where: { id: 't-1', status: 'OPEN', deletedAt: null },
+      data: expect.objectContaining({ status: 'IN_PROGRESS', repairSupplierId: 'sup-1' }),
+    });
+    expect(prisma.repairStatusLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ fromStatus: 'OPEN', toStatus: 'IN_PROGRESS' }),
+    });
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'REPAIR_TICKET_SENT' }),
+    );
+  });
+
+  it('throws ConflictException when ticket not in OPEN', async () => {
+    prisma.supplier.findUnique.mockResolvedValue({ id: 'sup-1', isRepairCenter: true });
+    prisma.repairTicket.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(svc.send('t-1', { repairSupplierId: 'sup-1' } as any, OWNER)).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+  });
+
+  it('throws BadRequestException when supplier.isRepairCenter = false', async () => {
+    prisma.supplier.findUnique.mockResolvedValue({ id: 'sup-1', isRepairCenter: false });
+
+    await expect(svc.send('t-1', { repairSupplierId: 'sup-1' } as any, OWNER)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+  });
+
+  it('throws NotFoundException when supplier does not exist', async () => {
+    prisma.supplier.findUnique.mockResolvedValue(null);
+
+    await expect(svc.send('t-1', { repairSupplierId: 'sup-missing' } as any, OWNER)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+  });
+
+  it('persists optional externalClaimNo and estimatedCost in update data', async () => {
+    prisma.supplier.findUnique.mockResolvedValue({ id: 'sup-1', isRepairCenter: true });
+    prisma.repairTicket.updateMany.mockResolvedValue({ count: 1 });
+    prisma.repairTicket.findUnique.mockResolvedValue({ id: 't-1', status: 'IN_PROGRESS' });
+
+    await svc.send(
+      't-1',
+      { repairSupplierId: 'sup-1', externalClaimNo: 'CLM-001', estimatedCost: 500 } as any,
+      OWNER,
+    );
+
+    expect(prisma.repairTicket.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          externalClaimNo: 'CLM-001',
+          estimatedCost: new Prisma.Decimal(500),
+        }),
+      }),
+    );
+  });
+});
+
+// ─── RepairTicketsService.markRepaired ─────────────────────────────────────
+
+describe('RepairTicketsService.markRepaired', () => {
+  let svc: RepairTicketsService;
+  let prisma: any;
+  let audit: any;
+
+  beforeEach(async () => {
+    ({ prisma, audit } = buildTransitionModule());
+    svc = await buildSvc(prisma, audit, { nextTicketNumber: jest.fn() });
+  });
+
+  it('happy path IN_PROGRESS → READY_FOR_PICKUP', async () => {
+    prisma.repairTicket.updateMany.mockResolvedValue({ count: 1 });
+    prisma.repairTicket.findUnique.mockResolvedValue({ id: 't-1', status: 'READY_FOR_PICKUP' });
+
+    await svc.markRepaired(
+      't-1',
+      { actualCost: 1500, payer: 'SHOP' } as any,
+      OWNER,
+    );
+
+    expect(prisma.repairTicket.updateMany).toHaveBeenCalledWith({
+      where: { id: 't-1', status: 'IN_PROGRESS', deletedAt: null },
+      data: expect.objectContaining({ status: 'READY_FOR_PICKUP' }),
+    });
+    expect(prisma.repairStatusLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ fromStatus: 'IN_PROGRESS', toStatus: 'READY_FOR_PICKUP' }),
+    });
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'REPAIR_TICKET_MARKED_REPAIRED' }),
+    );
+  });
+
+  it('throws ConflictException when not in IN_PROGRESS', async () => {
+    prisma.repairTicket.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(
+      svc.markRepaired('t-1', { actualCost: 1500, payer: 'SHOP' } as any, OWNER),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('stores actualCost as Prisma.Decimal, not raw Number', async () => {
+    prisma.repairTicket.updateMany.mockResolvedValue({ count: 1 });
+    prisma.repairTicket.findUnique.mockResolvedValue({ id: 't-1' });
+
+    await svc.markRepaired('t-1', { actualCost: 999.99, payer: 'CUSTOMER' } as any, OWNER);
+
+    const callArgs = prisma.repairTicket.updateMany.mock.calls[0][0];
+    expect(callArgs.data.actualCost).toBeInstanceOf(Prisma.Decimal);
+    expect(callArgs.data.actualCost.toString()).toBe('999.99');
+  });
+
+  it('accepts SUPPLIER_CLAIM payer override', async () => {
+    prisma.repairTicket.updateMany.mockResolvedValue({ count: 1 });
+    prisma.repairTicket.findUnique.mockResolvedValue({ id: 't-1' });
+
+    await svc.markRepaired(
+      't-1',
+      { actualCost: 0, payer: 'SUPPLIER_CLAIM' } as any,
+      OWNER,
+    );
+
+    const callArgs = prisma.repairTicket.updateMany.mock.calls[0][0];
+    expect(callArgs.data.payer).toBe('SUPPLIER_CLAIM');
+  });
+});
+
+// ─── RepairTicketsService.sendBack ─────────────────────────────────────────
+
+describe('RepairTicketsService.sendBack', () => {
+  let svc: RepairTicketsService;
+  let prisma: any;
+  let audit: any;
+
+  beforeEach(async () => {
+    ({ prisma, audit } = buildTransitionModule());
+    svc = await buildSvc(prisma, audit, { nextTicketNumber: jest.fn() });
+  });
+
+  it('happy path READY_FOR_PICKUP → IN_PROGRESS', async () => {
+    prisma.repairTicket.updateMany.mockResolvedValue({ count: 1 });
+    prisma.repairTicket.findUnique.mockResolvedValue({ id: 't-1', status: 'IN_PROGRESS' });
+
+    await svc.sendBack('t-1', { note: 'ซ่อมยังไม่สำเร็จ' } as any, OWNER);
+
+    expect(prisma.repairTicket.updateMany).toHaveBeenCalledWith({
+      where: { id: 't-1', status: 'READY_FOR_PICKUP', deletedAt: null },
+      data: expect.objectContaining({ status: 'IN_PROGRESS' }),
+    });
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'REPAIR_TICKET_SENT_BACK' }),
+    );
+  });
+
+  it('clears repairedAt when sending back', async () => {
+    prisma.repairTicket.updateMany.mockResolvedValue({ count: 1 });
+    prisma.repairTicket.findUnique.mockResolvedValue({ id: 't-1' });
+
+    await svc.sendBack('t-1', { note: 'QC fail' } as any, OWNER);
+
+    const callArgs = prisma.repairTicket.updateMany.mock.calls[0][0];
+    expect(callArgs.data.repairedAt).toBeNull();
+  });
+
+  it('status log includes the dto.note', async () => {
+    prisma.repairTicket.updateMany.mockResolvedValue({ count: 1 });
+    prisma.repairTicket.findUnique.mockResolvedValue({ id: 't-1' });
+
+    const note = 'เสียงลำโพงยังดัง';
+    await svc.sendBack('t-1', { note } as any, OWNER);
+
+    expect(prisma.repairStatusLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ note }),
+    });
+  });
+});
+
+// ─── RepairTicketsService.cancel ───────────────────────────────────────────
+
+describe('RepairTicketsService.cancel', () => {
+  let svc: RepairTicketsService;
+  let prisma: any;
+  let audit: any;
+
+  beforeEach(async () => {
+    ({ prisma, audit } = buildTransitionModule());
+    svc = await buildSvc(prisma, audit, { nextTicketNumber: jest.fn() });
+  });
+
+  it('happy path OPEN → CANCELLED', async () => {
+    prisma.repairTicket.findUnique.mockResolvedValue({ id: 't-1', status: 'OPEN', deletedAt: null });
+    prisma.repairTicket.updateMany.mockResolvedValue({ count: 1 });
+    prisma.repairTicket.findUnique
+      .mockResolvedValueOnce({ id: 't-1', status: 'OPEN', deletedAt: null })
+      .mockResolvedValueOnce({ id: 't-1', status: 'CANCELLED' });
+
+    await svc.cancel('t-1', { note: 'ลูกค้ายกเลิก' } as any, OWNER);
+
+    expect(prisma.repairTicket.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 't-1',
+          status: { in: ['OPEN', 'IN_PROGRESS', 'READY_FOR_PICKUP'] },
+        }),
+        data: expect.objectContaining({ status: 'CANCELLED' }),
+      }),
+    );
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'REPAIR_TICKET_CANCELLED' }),
+    );
+  });
+
+  it('happy path IN_PROGRESS → CANCELLED', async () => {
+    prisma.repairTicket.findUnique
+      .mockResolvedValueOnce({ id: 't-1', status: 'IN_PROGRESS', deletedAt: null })
+      .mockResolvedValueOnce({ id: 't-1', status: 'CANCELLED' });
+    prisma.repairTicket.updateMany.mockResolvedValue({ count: 1 });
+
+    await svc.cancel('t-1', { note: 'ลูกค้าเปลี่ยนใจ' } as any, OWNER);
+
+    const statusLogCall = prisma.repairStatusLog.create.mock.calls[0][0];
+    expect(statusLogCall.data.fromStatus).toBe('IN_PROGRESS');
+    expect(statusLogCall.data.toStatus).toBe('CANCELLED');
+  });
+
+  it('throws ConflictException when already in terminal state', async () => {
+    prisma.repairTicket.findUnique.mockResolvedValue({
+      id: 't-1',
+      status: 'CANCELLED',
+      deletedAt: null,
+    });
+    prisma.repairTicket.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(
+      svc.cancel('t-1', { note: 'ลูกค้ายกเลิกอีก' } as any, OWNER),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+});
+
+// ─── RepairTicketsService.replace ──────────────────────────────────────────
+
+describe('RepairTicketsService.replace', () => {
+  let svc: RepairTicketsService;
+  let prisma: any;
+  let audit: any;
+
+  beforeEach(async () => {
+    ({ prisma, audit } = buildTransitionModule());
+    svc = await buildSvc(prisma, audit, { nextTicketNumber: jest.fn() });
+  });
+
+  it('happy path: contract.customerId matches → calls updateMany + status log + audit', async () => {
+    prisma.repairTicket.findUnique
+      .mockResolvedValueOnce({ id: 't-1', customerId: 'cust-1', status: 'OPEN', deletedAt: null })
+      .mockResolvedValueOnce({ id: 't-1', status: 'REPLACED' }); // final findUnique return
+    prisma.contract.findUnique.mockResolvedValue({
+      id: 'contract-new',
+      customerId: 'cust-1',
+      deletedAt: null,
+    });
+    prisma.repairTicket.updateMany.mockResolvedValue({ count: 1 });
+
+    await svc.replace('t-1', { replacementContractId: 'contract-new' } as any, OWNER);
+
+    expect(prisma.repairTicket.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'REPLACED', replacementContractId: 'contract-new' }),
+      }),
+    );
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'REPAIR_TICKET_REPLACED' }),
+    );
+  });
+
+  it('throws ForbiddenException when contract.customerId mismatches ticket.customerId', async () => {
+    prisma.repairTicket.findUnique.mockResolvedValueOnce({
+      id: 't-1',
+      customerId: 'cust-1',
+      deletedAt: null,
+    });
+    prisma.contract.findUnique.mockResolvedValue({
+      id: 'contract-other',
+      customerId: 'cust-OTHER',
+      deletedAt: null,
+    });
+
+    await expect(
+      svc.replace('t-1', { replacementContractId: 'contract-other' } as any, OWNER),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 });

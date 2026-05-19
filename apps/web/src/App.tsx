@@ -1341,18 +1341,7 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/finance/cash-flow"
-            element={
-              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
-                <ComingSoonPage
-                  feature="งบกระแสเงินสด"
-                  trackingSP="SP2"
-                  eta="ภายในไตรมาส 2/2026"
-                />
-              </ProtectedRoute>
-            }
-          />
+          {/* /finance/cash-flow — handled by SP2 CashFlowPage route above (line ~763) */}
           <Route
             path="/finance/equity-statement"
             element={

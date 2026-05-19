@@ -449,9 +449,9 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
       zone: 'fin',
       items: [
         { label: 'กำไร-ขาดทุน (P&L)', path: '/profit-loss', icon: PieChart },
-        { label: 'งบกระแสเงินสด', path: '/finance/cash-flow', icon: TrendingUp, placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' } },
-        { label: 'งบ Equity', path: '/finance/equity-statement', icon: BarChart3, placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' } },
-        { label: 'สมุดแยกประเภท', path: '/finance/general-ledger', icon: BookOpen, placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' } },
+        { label: 'งบกระแสเงินสด', path: '/finance/cash-flow', icon: TrendingUp },
+        { label: 'งบ Equity', path: '/finance/equity-statement', icon: BarChart3 },
+        { label: 'สมุดแยกประเภท', path: '/finance/general-ledger', icon: BookOpen },
       ],
     },
     {
@@ -620,8 +620,8 @@ const OWNER_CONFIG: RoleMenuConfig = {
         // CSV §5 — "งบ 4 ประเภท" (full 4-statement set per TFRS)
         { label: 'งบดุล (Balance Sheet)', path: '/finance/balance-sheet', icon: PieChart },
         { label: 'กำไร-ขาดทุน (P&L)', path: '/profit-loss', icon: PieChart },
-        { label: 'งบกระแสเงินสด', path: '/finance/cash-flow', icon: Banknote, placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' } },
-        { label: 'งบ Equity', path: '/finance/equity-statement', icon: BarChart3, placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' } },
+        { label: 'งบกระแสเงินสด', path: '/finance/cash-flow', icon: Banknote },
+        { label: 'งบ Equity', path: '/finance/equity-statement', icon: BarChart3 },
       ],
     },
     {

@@ -1,5 +1,5 @@
 import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
+import { standardSchemaResolver } from '@hookform/resolvers/standard-schema';
 import * as z from 'zod';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -32,7 +32,7 @@ export function CancelDialog({ ticketId, onClose, onSuccess }: Props) {
     register,
     handleSubmit,
     formState: { errors },
-  } = useForm<FormVals>({ resolver: zodResolver(schema) });
+  } = useForm<FormVals>({ resolver: standardSchemaResolver(schema) });
 
   const mut = useMutation({
     mutationFn: async (v: FormVals) =>

@@ -1,10 +1,9 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Edit2 } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
-import QueryBoundary from '@/components/QueryBoundary';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { formatDateShort, formatNumber } from '@/utils/formatters';
@@ -168,13 +167,23 @@ function RepairTicketDetailContent({ id }: { id: string }) {
   const queryClient = useQueryClient();
   const [activeDialog, setActiveDialog] = useState<ActiveDialog>(null);
 
-  const { data: ticket } = useQuery<RepairTicketDetail>({
+  const ticketQuery = useQuery<RepairTicketDetail>({
     queryKey: ['repair-ticket', id],
     queryFn: async () => {
       const res = await api.get(`/repair-tickets/${id}`);
       return res.data;
     },
   });
+
+  const ticket = ticketQuery.data;
+
+  if (ticketQuery.isLoading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+      </div>
+    );
+  }
 
   if (!ticket) return null;
 
@@ -191,13 +200,11 @@ function RepairTicketDetailContent({ id }: { id: string }) {
     <>
       <PageHeader
         title={`ตั๋วซ่อม ${ticket.ticketNumber}`}
-        actions={
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => navigate(-1)}>
-              <ArrowLeft className="mr-1 h-4 w-4" />
-              กลับ
-            </Button>
-          </div>
+        action={
+          <Button variant="outline" size="sm" onClick={() => navigate(-1)}>
+            <ArrowLeft className="mr-1 h-4 w-4" />
+            กลับ
+          </Button>
         }
       />
 
@@ -384,9 +391,7 @@ export default function RepairTicketDetailPage() {
 
   return (
     <div className="space-y-4 p-4 md:p-6">
-      <QueryBoundary>
-        <RepairTicketDetailContent id={id} />
-      </QueryBoundary>
+      <RepairTicketDetailContent id={id} />
     </div>
   );
 }

@@ -1,7 +1,4 @@
 import { useState } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
 import { useNavigate } from 'react-router';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -28,22 +25,18 @@ import { WarrantyBadge, type WarrantyStatus } from './components/WarrantyBadge';
 // Schema
 // ---------------------------------------------------------------------------
 
-const schema = z.object({
-  customerId: z.string().uuid('ต้องเลือกลูกค้า'),
-  contractId: z.string().uuid().optional().or(z.literal('')),
-  productId: z.string().uuid().optional().or(z.literal('')),
-  deviceBrand: z.string().optional(),
-  deviceModel: z.string().optional(),
-  deviceImei: z.string().optional(),
-  deviceSerial: z.string().optional(),
-  defectDescription: z.string().min(5, 'อาการเสียอย่างน้อย 5 ตัวอักษร'),
-  estimatedCost: z.coerce.number().min(0).optional().or(z.literal('')),
-  repairSupplierId: z.string().uuid().optional().or(z.literal('')),
-  notes: z.string().optional(),
-  payer: z.enum(['SHOP', 'CUSTOMER', 'SUPPLIER_CLAIM']).optional(),
-});
-
-type FormValues = z.infer<typeof schema>;
+interface FormValues {
+  customerId: string;
+  defectDescription: string;
+  deviceBrand?: string;
+  deviceModel?: string;
+  deviceImei?: string;
+  deviceSerial?: string;
+  estimatedCost?: string;
+  repairSupplierId?: string;
+  notes?: string;
+  payer?: 'SHOP' | 'CUSTOMER' | 'SUPPLIER_CLAIM';
+}
 
 // ---------------------------------------------------------------------------
 // Customer search sub-component
@@ -238,44 +231,70 @@ function RepairSupplierSection({
 export default function CreateRepairTicketPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [warrantyPreview] = useState<WarrantyStatus>('WALK_IN');
+
+  // Controlled state — avoids react-hook-form resolver type conflicts with Zod v4
+  const [customerId, setCustomerId] = useState('');
+  const [defectDescription, setDefectDescription] = useState('');
+  const [deviceBrand, setDeviceBrand] = useState('');
+  const [deviceModel, setDeviceModel] = useState('');
+  const [deviceImei, setDeviceImei] = useState('');
+  const [deviceSerial, setDeviceSerial] = useState('');
+  const [estimatedCost, setEstimatedCost] = useState('');
+  const [payer, setPayer] = useState<'SHOP' | 'CUSTOMER' | 'SUPPLIER_CLAIM'>('SHOP');
+  const [repairSupplierId, setRepairSupplierId] = useState('');
   const [supplierName, setSupplierName] = useState('');
+  const [notes, setNotes] = useState('');
+  const [warrantyPreview] = useState<WarrantyStatus>('WALK_IN');
 
-  const {
-    register,
-    handleSubmit,
-    setValue,
-    watch,
-    formState: { errors },
-  } = useForm<FormValues>({ resolver: zodResolver(schema) });
+  // Validation errors
+  const [errors, setErrors] = useState<Partial<Record<keyof FormValues, string>>>({});
 
-  const customerId = watch('customerId');
+  function validate(): boolean {
+    const next: Partial<Record<keyof FormValues, string>> = {};
+    if (!customerId) next.customerId = 'ต้องเลือกลูกค้า';
+    if (!defectDescription || defectDescription.trim().length < 5)
+      next.defectDescription = 'อาการเสียอย่างน้อย 5 ตัวอักษร';
+    setErrors(next);
+    return Object.keys(next).length === 0;
+  }
 
   const create = useMutation({
-    mutationFn: async (values: FormValues) => {
-      const payload = {
-        ...values,
-        contractId: values.contractId || undefined,
-        productId: values.productId || undefined,
-        repairSupplierId: values.repairSupplierId || undefined,
-        estimatedCost: values.estimatedCost === '' ? undefined : values.estimatedCost,
-        branchId: user?.branchId,
+    mutationFn: async () => {
+      if (!validate()) throw new Error('validation');
+      const payload: FormValues = {
+        customerId,
+        defectDescription: defectDescription.trim(),
+        deviceBrand: deviceBrand || undefined,
+        deviceModel: deviceModel || undefined,
+        deviceImei: deviceImei || undefined,
+        deviceSerial: deviceSerial || undefined,
+        estimatedCost: estimatedCost || undefined,
+        payer,
+        repairSupplierId: repairSupplierId || undefined,
+        notes: notes || undefined,
       };
-      const { data } = await api.post('/repair-tickets', payload);
+      const { data } = await api.post('/repair-tickets', {
+        ...payload,
+        branchId: user?.branchId,
+      });
       return data;
     },
     onSuccess: (ticket: { id: string; ticketNumber: string }) => {
       toast.success(`รับเครื่องเข้า ${ticket.ticketNumber}`);
       navigate(`/insurance/${ticket.id}`);
     },
-    onError: (err) => toast.error(getErrorMessage(err)),
+    onError: (err) => {
+      if ((err as Error).message !== 'validation') {
+        toast.error(getErrorMessage(err));
+      }
+    },
   });
 
   return (
     <div className="space-y-4 p-4 md:p-6 max-w-3xl">
       <PageHeader
         title="รับเครื่องใหม่"
-        actions={
+        action={
           <Button type="button" variant="outline" onClick={() => navigate(-1)}>
             <ArrowLeft className="mr-2 h-4 w-4" />
             กลับ
@@ -283,33 +302,55 @@ export default function CreateRepairTicketPage() {
         }
       />
 
-      <form onSubmit={handleSubmit((v) => create.mutate(v))} className="space-y-6">
+      <div className="space-y-6">
         {/* ── Section 1: ลูกค้า + เครื่อง ── */}
         <Card className="p-6 space-y-4">
           <h3 className="font-medium">1. ลูกค้า + เครื่อง</h3>
 
           <CustomerSearchSection
-            selectedId={customerId}
-            onSelect={(id, _name) => setValue('customerId', id, { shouldValidate: true })}
-            error={errors.customerId?.message}
+            selectedId={customerId || undefined}
+            onSelect={(id, _name) => {
+              setCustomerId(id);
+              setErrors((prev) => ({ ...prev, customerId: undefined }));
+            }}
+            error={errors.customerId}
           />
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <Label htmlFor="deviceBrand">ยี่ห้อ</Label>
-              <Input id="deviceBrand" {...register('deviceBrand')} placeholder="เช่น Samsung" />
+              <Input
+                id="deviceBrand"
+                value={deviceBrand}
+                onChange={(e) => setDeviceBrand(e.target.value)}
+                placeholder="เช่น Samsung"
+              />
             </div>
             <div className="space-y-1">
               <Label htmlFor="deviceModel">รุ่น</Label>
-              <Input id="deviceModel" {...register('deviceModel')} placeholder="เช่น Galaxy A55" />
+              <Input
+                id="deviceModel"
+                value={deviceModel}
+                onChange={(e) => setDeviceModel(e.target.value)}
+                placeholder="เช่น Galaxy A55"
+              />
             </div>
             <div className="space-y-1">
               <Label htmlFor="deviceImei">IMEI</Label>
-              <Input id="deviceImei" {...register('deviceImei')} placeholder="15 หลัก" />
+              <Input
+                id="deviceImei"
+                value={deviceImei}
+                onChange={(e) => setDeviceImei(e.target.value)}
+                placeholder="15 หลัก"
+              />
             </div>
             <div className="space-y-1">
               <Label htmlFor="deviceSerial">Serial No.</Label>
-              <Input id="deviceSerial" {...register('deviceSerial')} />
+              <Input
+                id="deviceSerial"
+                value={deviceSerial}
+                onChange={(e) => setDeviceSerial(e.target.value)}
+              />
             </div>
           </div>
 
@@ -325,14 +366,13 @@ export default function CreateRepairTicketPage() {
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
               <span>
                 เครื่องยังอยู่ในช่วง 7 วัน — พิจารณาใช้{' '}
-                <Button
+                <button
                   type="button"
-                  variant="link"
-                  className="h-auto p-0 text-orange-800 underline"
+                  className="underline font-medium hover:opacity-75 transition-opacity"
                   onClick={() => navigate('/defect-exchange')}
                 >
                   หน้าเปลี่ยนเครื่องเสีย
-                </Button>{' '}
+                </button>{' '}
                 แทน
               </span>
             </div>
@@ -349,12 +389,16 @@ export default function CreateRepairTicketPage() {
             <Textarea
               id="defectDescription"
               placeholder="เช่น จอเสีย รอยร้าวด้านขวา, ไมค์ไม่ทำงาน"
-              {...register('defectDescription')}
+              value={defectDescription}
+              onChange={(e) => {
+                setDefectDescription(e.target.value);
+                setErrors((prev) => ({ ...prev, defectDescription: undefined }));
+              }}
               rows={4}
             />
             {errors.defectDescription && (
               <p className="text-xs text-destructive leading-snug">
-                {errors.defectDescription.message}
+                {errors.defectDescription}
               </p>
             )}
           </div>
@@ -371,19 +415,15 @@ export default function CreateRepairTicketPage() {
               type="number"
               min="0"
               step="0.01"
-              {...register('estimatedCost')}
+              value={estimatedCost}
+              onChange={(e) => setEstimatedCost(e.target.value)}
               placeholder="0"
             />
           </div>
 
           <div className="space-y-1">
             <Label>ผู้รับผิดชอบค่าซ่อม</Label>
-            <Select
-              onValueChange={(v) =>
-                setValue('payer', v as 'SHOP' | 'CUSTOMER' | 'SUPPLIER_CLAIM')
-              }
-              defaultValue="SHOP"
-            >
+            <Select onValueChange={(v) => setPayer(v as typeof payer)} defaultValue="SHOP">
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -396,17 +436,22 @@ export default function CreateRepairTicketPage() {
           </div>
 
           <RepairSupplierSection
-            selectedId={watch('repairSupplierId') || undefined}
+            selectedId={repairSupplierId || undefined}
             selectedName={supplierName}
             onChange={(id, name) => {
-              setValue('repairSupplierId', id, { shouldValidate: false });
+              setRepairSupplierId(id);
               setSupplierName(name);
             }}
           />
 
           <div className="space-y-1">
             <Label htmlFor="notes">หมายเหตุ</Label>
-            <Textarea id="notes" {...register('notes')} rows={2} />
+            <Textarea
+              id="notes"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={2}
+            />
           </div>
         </Card>
 
@@ -414,11 +459,11 @@ export default function CreateRepairTicketPage() {
           <Button type="button" variant="outline" onClick={() => navigate(-1)}>
             ยกเลิก
           </Button>
-          <Button type="submit" disabled={create.isPending}>
+          <Button onClick={() => create.mutate()} disabled={create.isPending}>
             {create.isPending ? 'กำลังบันทึก...' : 'บันทึกรับเครื่อง'}
           </Button>
         </div>
-      </form>
+      </div>
     </div>
   );
 }

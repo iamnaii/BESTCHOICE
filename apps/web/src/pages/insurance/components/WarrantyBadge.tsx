@@ -24,10 +24,12 @@ const ICON: Record<WarrantyStatus, React.ComponentType<{ className?: string }>> 
   WALK_IN: Shield,
 };
 
-const VARIANT: Record<WarrantyStatus, 'default' | 'secondary' | 'outline'> = {
-  IN_7DAY_DEFECT: 'default',
-  IN_SHOP_WARRANTY: 'default',
-  IN_MANUFACTURER: 'default',
+type BadgeVariant = 'primary' | 'secondary' | 'warning' | 'outline';
+
+const VARIANT: Record<WarrantyStatus, BadgeVariant> = {
+  IN_7DAY_DEFECT: 'warning',
+  IN_SHOP_WARRANTY: 'primary',
+  IN_MANUFACTURER: 'primary',
   OUT_OF_WARRANTY: 'secondary',
   WALK_IN: 'outline',
 };

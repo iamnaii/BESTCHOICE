@@ -134,7 +134,7 @@ function InsuranceListContent() {
   const [page, setPage] = useState(1);
   const debouncedSearch = useDebounce(search, 350);
 
-  const { data } = useQuery<TicketsResponse>({
+  const q = useQuery<TicketsResponse>({
     queryKey: ['repair-tickets', debouncedSearch, statusFilter, page],
     queryFn: async () => {
       const params = new URLSearchParams({ page: String(page), limit: '50' });
@@ -146,11 +146,12 @@ function InsuranceListContent() {
     staleTime: 30_000,
   });
 
-  const tickets = data?.data ?? [];
-  const total = data?.total ?? 0;
+  const tickets = q.data?.data ?? [];
+  const total = q.data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / 50));
 
   return (
+    <QueryBoundary isLoading={q.isLoading} isError={q.isError} error={q.error} onRetry={q.refetch}>
     <div className="space-y-4">
       {/* Filters */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -230,6 +231,7 @@ function InsuranceListContent() {
         </div>
       )}
     </div>
+    </QueryBoundary>
   );
 }
 
@@ -240,7 +242,7 @@ export default function InsurancePage() {
     <div className="space-y-4 p-4 md:p-6">
       <PageHeader
         title="รับซ่อม/รับประกัน"
-        actions={
+        action={
           <Button onClick={() => navigate('/insurance/new')}>
             <Plus className="mr-2 h-4 w-4" />
             รับเครื่องใหม่
@@ -248,9 +250,7 @@ export default function InsurancePage() {
         }
       />
 
-      <QueryBoundary>
-        <InsuranceListContent />
-      </QueryBoundary>
+      <InsuranceListContent />
     </div>
   );
 }

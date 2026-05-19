@@ -17,11 +17,13 @@ const LABEL: Record<RepairStatus, string> = {
   CANCELLED: 'ยกเลิก',
 };
 
-const VARIANT: Record<RepairStatus, 'default' | 'secondary' | 'outline'> = {
-  OPEN: 'default',
-  IN_PROGRESS: 'default',
-  READY_FOR_PICKUP: 'default',
-  CLOSED: 'secondary',
+type BadgeVariant = 'primary' | 'secondary' | 'info' | 'success' | 'warning' | 'outline';
+
+const VARIANT: Record<RepairStatus, BadgeVariant> = {
+  OPEN: 'primary',
+  IN_PROGRESS: 'warning',
+  READY_FOR_PICKUP: 'info',
+  CLOSED: 'success',
   REPLACED: 'secondary',
   CANCELLED: 'outline',
 };

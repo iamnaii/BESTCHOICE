@@ -37,6 +37,8 @@ export const DEFAULT_DOC_PREFIX_MAP: Record<DocumentType, string> = {
   PAYROLL: 'PR',
   VENDOR_SETTLEMENT: 'SE',
   PETTY_CASH_REIMBURSEMENT: 'PC',
+  // SP5 Phase 2 — Repair service expense doc
+  REPAIR_SERVICE: 'RS',
 };
 
 /** Validation regex — 2 to 4 uppercase Latin letters. Mirrors A-Z constraint

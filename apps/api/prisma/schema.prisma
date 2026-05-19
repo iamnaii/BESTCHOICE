@@ -546,6 +546,9 @@ model Branch {
   // P1 Collections UI — branch-scoped saved filter presets
   filterPresets FilterPreset[]
 
+  // SP5 Phase 2 — Repair tickets at this branch
+  repairTickets RepairTicket[] @relation("BranchRepairTickets")
+
   // SP5 — ใบเสนอราคา
 
   @@index([companyId])
@@ -722,6 +725,10 @@ model User {
   // it's an organizational policy that lives in service-layer validation.
   custodianForCompanies CompanyInfo[] @relation("CompanyPettyCashCustodian")
 
+  // SP5 Phase 2 — Repair ticket audit trail
+  repairTicketsCreated    RepairTicket[]    @relation("RepairTicketCreatedBy")
+  repairStatusLogsChanged RepairStatusLog[] @relation("RepairStatusLogChangedBy")
+
   // SP5 — ใบเสนอราคา (created by this user)
 
   @@index([branchId])
@@ -855,6 +862,9 @@ model Customer {
 
   // Cashier-initiated partial-payment QR sent to this customer
   partialPaymentLinks PartialPaymentLink[]
+
+  // SP5 Phase 2 — Repair tickets linked to this customer
+  repairTickets RepairTicket[] @relation("CustomerRepairTickets")
 
   // SP5 — ใบเสนอราคา
 
@@ -1038,6 +1048,11 @@ model Contract {
 
   // Phase A.4 — installment schedule rows
   installmentSchedules InstallmentSchedule[]
+
+  // SP5 Phase 2 — Repair tickets linked to this contract (as the source/original contract)
+  repairTickets      RepairTicket[] @relation("ContractRepairTickets")
+  // SP5 Phase 2 — Repair ticket that resulted in this contract as a replacement
+  originRepairTicket RepairTicket?  @relation("ReplacementContractRepairs")
 
   @@index([customerId])
   @@index([branchId])
@@ -1287,10 +1302,14 @@ model Supplier {
   updatedAt       DateTime     @updatedAt @map("updated_at")
   deletedAt       DateTime?    @map("deleted_at")
 
+  // SP5 Phase 2 — flag ร้านซ่อม/ศูนย์บริการ (ศูนย์ Apple, ร้านซ่อมทั่วไป)
+  isRepairCenter Boolean @default(false) @map("is_repair_center")
+
   products       Product[]
   purchaseOrders PurchaseOrder[]
   paymentMethods SupplierPaymentMethod[]
   fixedAssets    FixedAsset[]            @relation("FixedAssetVendor")
+  repairTickets  RepairTicket[]          @relation("RepairCenterTickets")
 
   @@index([deletedAt])
   @@map("suppliers")
@@ -1478,6 +1497,9 @@ model Product {
   savingPlansTargetingThis SavingPlan[]                   @relation("SavingPlanTarget")
   reviews                  Review[]
   onlineApplications       OnlineInstallmentApplication[]
+
+  // SP5 Phase 2 — Repair tickets for this product
+  repairTickets RepairTicket[] @relation("ProductRepairs")
 
   // SP5 — ใบเสนอราคา
 
@@ -3584,6 +3606,10 @@ enum DocumentType {
   /// moving supplier_name from doc level to per-line. JE: Dr each line +
   /// optional VAT / Cr 11-1201 (petty cash float).
   PETTY_CASH_REIMBURSEMENT
+  /// SP5 Phase 2 — Used only by ExpenseDocument auto-created when RepairTicket
+  /// closes with payer=SHOP. Routes to REPAIR_EXPENSE_ACCOUNT_CODE (default 53-1306).
+  /// payer=CUSTOMER creates OtherIncome (not this DocumentType); payer=SUPPLIER_CLAIM creates no doc.
+  REPAIR_SERVICE
 }
 
 enum DocumentStatus {
@@ -3663,6 +3689,9 @@ model ExpenseDocument {
   createdBy    User             @relation("ExpenseDocumentCreator", fields: [createdById], references: [id])
   approvedBy   User?            @relation("ExpenseDocumentApprover", fields: [approvedById], references: [id])
   fromTemplate ExpenseTemplate? @relation("ExpenseDocumentFromTemplate", fields: [fromTemplateId], references: [id], onDelete: SetNull)
+
+  // SP5 Phase 2 — optional back-link to repair ticket that auto-created this doc
+  repairTicket RepairTicket?
 
   @@index([branchId, documentDate])
   @@index([branchId, deletedAt])
@@ -4056,15 +4085,15 @@ model InterCompanyTransaction {
   shopProfit    Decimal @map("shop_profit") @db.Decimal(12, 2) // downPayment + principal + commission - costPrice
   financeProfit Decimal @map("finance_profit") @db.Decimal(12, 2) // interestTotal - commission (+ lateFees later)
 
-  note         String?
-  reconciledAt DateTime? @map("reconciled_at")
+  note           String?
+  reconciledAt   DateTime? @map("reconciled_at")
   /// SP2: link to the JournalEntry that posted the settlement
   /// (Dr 21-1101 + Dr 21-1102 / Cr <cash>). Set when status flips to RECONCILED.
   /// ON DELETE SET NULL — voiding the JE leaves the txn intact but unlinked.
-  journalEntryId String? @map("journal_entry_id")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
-  deletedAt    DateTime? @map("deleted_at")
+  journalEntryId String?   @map("journal_entry_id")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
 
   sale         Sale          @relation(fields: [saleId], references: [id])
   contract     Contract?     @relation(fields: [contractId], references: [id])
@@ -6060,6 +6089,30 @@ enum OtherIncomeReverseReason {
   OTHER
 }
 
+// SP5 Phase 2 — Repair Ticket enums
+enum RepairStatus {
+  OPEN
+  IN_PROGRESS
+  READY_FOR_PICKUP
+  CLOSED
+  REPLACED
+  CANCELLED
+}
+
+enum WarrantyStatus {
+  IN_7DAY_DEFECT
+  IN_SHOP_WARRANTY
+  IN_MANUFACTURER
+  OUT_OF_WARRANTY
+  WALK_IN
+}
+
+enum RepairPayer {
+  SHOP
+  CUSTOMER
+  SUPPLIER_CLAIM
+}
+
 model OtherIncome {
   id        String            @id @default(uuid())
   docNumber String            @unique @map("doc_number") // OI-YYYYMMDD-NNNN
@@ -6138,6 +6191,9 @@ model OtherIncome {
   items       OtherIncomeItem[]
   adjustments OtherIncomeAdjustment[]
   attachments OtherIncomeAttachment[]
+
+  // SP5 Phase 2 — optional back-link to repair ticket that auto-created this doc
+  repairTicket RepairTicket?
 
   @@index([companyId])
   @@index([status, issueDate])
@@ -6304,6 +6360,93 @@ model PartialPaymentLink {
   @@index([contractId])
   @@index([status, expiresAt])
   @@map("partial_payment_links")
+}
+
+// ============================================================
+// SP5 Phase 2 — REPAIR TICKETS
+// ============================================================
+
+/// SP5 Phase 2 — Repair ticket lifecycle.
+/// Customer required; Contract/Product optional with free-text fallback.
+/// Warranty status detected at create-time; recalc allowed in OPEN state only.
+model RepairTicket {
+  id           String       @id @default(uuid())
+  ticketNumber String       @unique @map("ticket_number")
+  status       RepairStatus @default(OPEN)
+
+  customerId String  @map("customer_id")
+  contractId String? @map("contract_id")
+  productId  String? @map("product_id")
+
+  deviceBrand  String? @map("device_brand")
+  deviceModel  String? @map("device_model")
+  deviceImei   String? @map("device_imei")
+  deviceSerial String? @map("device_serial")
+
+  defectDescription String         @map("defect_description") @db.Text
+  warrantyStatus    WarrantyStatus @default(WALK_IN) @map("warranty_status")
+
+  repairSupplierId String? @map("repair_supplier_id")
+  externalClaimNo  String? @map("external_claim_no")
+
+  sentToRepairAt       DateTime? @map("sent_to_repair_at")
+  repairedAt           DateTime? @map("repaired_at")
+  returnedToCustomerAt DateTime? @map("returned_to_customer_at")
+  cancelledAt          DateTime? @map("cancelled_at")
+  replacedAt           DateTime? @map("replaced_at")
+
+  estimatedCost Decimal?    @map("estimated_cost") @db.Decimal(12, 2)
+  actualCost    Decimal?    @map("actual_cost") @db.Decimal(12, 2)
+  payer         RepairPayer @default(SHOP)
+
+  expenseDocumentId     String? @unique @map("expense_document_id")
+  otherIncomeId         String? @unique @map("other_income_id")
+  replacementContractId String? @unique @map("replacement_contract_id")
+
+  notes       String? @db.Text
+  branchId    String  @map("branch_id")
+  createdById String  @map("created_by_id")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  customer            Customer          @relation("CustomerRepairTickets", fields: [customerId], references: [id])
+  contract            Contract?         @relation("ContractRepairTickets", fields: [contractId], references: [id])
+  product             Product?          @relation("ProductRepairs", fields: [productId], references: [id])
+  repairSupplier      Supplier?         @relation("RepairCenterTickets", fields: [repairSupplierId], references: [id])
+  branch              Branch            @relation("BranchRepairTickets", fields: [branchId], references: [id])
+  createdBy           User              @relation("RepairTicketCreatedBy", fields: [createdById], references: [id])
+  expenseDocument     ExpenseDocument?  @relation(fields: [expenseDocumentId], references: [id])
+  otherIncome         OtherIncome?      @relation(fields: [otherIncomeId], references: [id])
+  replacementContract Contract?         @relation("ReplacementContractRepairs", fields: [replacementContractId], references: [id])
+  statusLogs          RepairStatusLog[]
+
+  @@index([customerId, deletedAt])
+  @@index([branchId, status, deletedAt])
+  @@index([status])
+  @@index([createdAt])
+  @@index([contractId])
+  @@index([productId])
+  @@index([repairSupplierId])
+  @@map("repair_tickets")
+}
+
+/// SP5 Phase 2 — Audit log per status transition. Immutable — no updatedAt/deletedAt.
+model RepairStatusLog {
+  id          String       @id @default(uuid())
+  ticketId    String       @map("ticket_id")
+  fromStatus  RepairStatus @map("from_status")
+  toStatus    RepairStatus @map("to_status")
+  changedById String       @map("changed_by_id")
+  note        String?      @db.Text
+  createdAt   DateTime     @default(now()) @map("created_at")
+
+  ticket    RepairTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  changedBy User         @relation("RepairStatusLogChangedBy", fields: [changedById], references: [id])
+
+  @@index([ticketId, createdAt])
+  @@map("repair_status_logs")
 }
 
 /// SP6 — Bank/Cash Account directory.

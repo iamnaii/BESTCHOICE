@@ -25,6 +25,9 @@ export const roleAvatarColors: Record<string, string> = {
   FINANCE_MANAGER: 'bg-info/15 text-info',
   SALES: 'bg-success/15 text-success',
   ACCOUNTANT: 'bg-warning/15 text-warning',
+  // Owner Q4 (2026-05-17) — external auditor (CPA / สรรพากร). Read-only;
+  // backend RolesGuard gates via `viewer_role_enabled` SystemConfig.
+  VIEWER: 'bg-secondary text-secondary-foreground',
 };
 
 export interface InviteToken {
@@ -45,6 +48,7 @@ export const roleLabels: Record<string, string> = {
   FINANCE_MANAGER: 'ผู้จัดการการเงิน',
   SALES: 'พนักงานขาย',
   ACCOUNTANT: 'ฝ่ายบัญชี',
+  VIEWER: 'ผู้ตรวจสอบ (Read-only)',
 };
 
 export const roleColors: Record<string, string> = {
@@ -53,6 +57,7 @@ export const roleColors: Record<string, string> = {
   FINANCE_MANAGER: 'bg-info/10 text-info dark:bg-info/15',
   SALES: 'bg-success/10 text-success dark:bg-success/15',
   ACCOUNTANT: 'bg-warning/10 text-warning dark:bg-warning/15',
+  VIEWER: 'bg-secondary text-secondary-foreground',
 };
 
 export const inputClass =

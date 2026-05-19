@@ -120,3 +120,48 @@ describe('getSidebarForRole — populated ZONE_CONFIG', () => {
     expect(keys).toContain('acc-bank');
   });
 });
+
+describe('VIEWER role (Owner Q4 2026-05-17)', () => {
+  it('VIEWER zone config is fin-only with no settings gear', () => {
+    const cfg = getZoneConfigForRole('VIEWER');
+    expect(cfg).toBeDefined();
+    expect(cfg?.zones).toEqual(['fin']);
+    expect(cfg?.defaultZone).toBe('fin');
+    expect(cfg?.showSettingsGear).toBe(false);
+  });
+
+  it('VIEWER + fin returns the 4 expected read-only sections', () => {
+    const keys = getSidebarForRole('VIEWER', 'fin').map((s) => s.key);
+    expect(keys).toEqual([
+      'viewer-accounting',
+      'viewer-reports',
+      'viewer-shop-accounting',
+      'viewer-audit',
+    ]);
+  });
+
+  it('VIEWER + shop returns empty (out of read-only scope)', () => {
+    expect(getSidebarForRole('VIEWER', 'shop')).toEqual([]);
+  });
+
+  it('VIEWER + settings returns empty (no gear)', () => {
+    expect(getSidebarForRole('VIEWER', 'settings')).toEqual([]);
+  });
+
+  it('VIEWER menu paths stay inside the Q4-approved scope', () => {
+    const sections = getSidebarForRole('VIEWER', 'fin');
+    const paths = sections.flatMap((s) => s.items.map((i) => i.path));
+    // Every path must read /reports, /accounting/*, /audit-logs, /finance/*,
+    // /profit-loss, /shop/accounting, or /financial-audit — all map to
+    // backend GETs that PR #1036 wired with @Roles('VIEWER').
+    const allowed = (p: string) =>
+      p.startsWith('/reports') ||
+      p.startsWith('/accounting') ||
+      p === '/audit-logs' ||
+      p.startsWith('/finance/') ||
+      p === '/profit-loss' ||
+      p === '/shop/accounting' ||
+      p === '/financial-audit';
+    expect(paths.every(allowed)).toBe(true);
+  });
+});

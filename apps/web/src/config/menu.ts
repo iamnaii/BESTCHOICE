@@ -801,6 +801,70 @@ const OWNER_CONFIG: RoleMenuConfig = {
   ],
 };
 
+/* ── VIEWER — ผู้ตรวจสอบ Read-only (Owner Q4 2026-05-17) ─
+ * Scope per Owner Response Q4: /accounting/*, /audit-logs, /reports/* —
+ * external auditor view (CPA / สรรพากร). Backend RolesGuard gates
+ * VIEWER via `viewer_role_enabled` SystemConfig flag (PR #1036). The
+ * menu mirrors that scope: no SHOP zone, no settings gear, no mutating
+ * action links. Pages reached via this menu serve read-only data; any
+ * action button on them returns 403 via the gated @Roles().
+ */
+const VIEWER_CONFIG: RoleMenuConfig = {
+  sidebar: [
+    {
+      key: 'viewer-accounting',
+      label: 'บัญชี + งบการเงิน',
+      icon: PieChart,
+      zone: 'fin',
+      items: [
+        { label: 'งบดุล (Balance Sheet)', path: '/finance/balance-sheet', icon: PieChart },
+        { label: 'กำไร-ขาดทุน (P&L)', path: '/profit-loss', icon: PieChart },
+        { label: 'งบกระแสเงินสด', path: '/finance/cash-flow', icon: Banknote },
+        { label: 'งบ Equity', path: '/finance/equity-statement', icon: BarChart3 },
+      ],
+    },
+    {
+      key: 'viewer-reports',
+      label: 'รายงาน',
+      icon: BarChart3,
+      zone: 'fin',
+      items: [
+        { label: 'รายงานรวม', path: '/reports', icon: BarChart3 },
+        { label: 'รายงานลูกหนี้ + Aging', path: '/finance/aging-report', icon: AlertTriangle },
+        { label: 'สมุดรายวัน', path: '/finance/general-journal', icon: BookOpen },
+        { label: 'สมุดแยกประเภท', path: '/finance/general-ledger', icon: BookOpen },
+        { label: 'รายงานหนี้สูญ', path: '/finance/bad-debt-report', icon: TrendingDown },
+        { label: 'รายงานลูกหนี้ Inter-co', path: '/finance/intercompany-report', icon: Building2 },
+        { label: 'ตรวจสอบบัญชี', path: '/financial-audit', icon: ClipboardList },
+      ],
+    },
+    {
+      key: 'viewer-shop-accounting',
+      label: 'บัญชีหน้าร้าน (SHOP)',
+      icon: Store,
+      zone: 'fin',
+      items: [
+        { label: 'งบทดลอง + P&L', path: '/shop/accounting', icon: PieChart },
+      ],
+    },
+    {
+      key: 'viewer-audit',
+      label: 'บันทึกระบบ',
+      icon: ScrollText,
+      zone: 'fin',
+      items: [
+        { label: 'Audit Log', path: '/audit-logs', icon: ScrollText },
+      ],
+    },
+  ],
+  bottomNav: [
+    { label: 'รายงาน', path: '/reports', icon: BarChart3 },
+    { label: 'งบดุล', path: '/finance/balance-sheet', icon: PieChart },
+    { label: 'P&L', path: '/profit-loss', icon: PieChart },
+    { label: 'Audit Log', path: '/audit-logs', icon: ScrollText },
+  ],
+};
+
 /* ── Config map ────────────────────────────────────── */
 
 const MENU_CONFIG: Record<string, RoleMenuConfig> = {
@@ -809,6 +873,7 @@ const MENU_CONFIG: Record<string, RoleMenuConfig> = {
   FINANCE_MANAGER: FINANCE_MANAGER_CONFIG,
   ACCOUNTANT: ACCOUNTANT_CONFIG,
   OWNER: OWNER_CONFIG,
+  VIEWER: VIEWER_CONFIG,
 };
 
 export function getMenuConfig(role: string): RoleMenuConfig {
@@ -892,6 +957,17 @@ const ZONE_CONFIG: Record<string, RoleZoneConfig> = {
     bottomNav: {
       shop: [],
       fin: ACCOUNTANT_CONFIG.bottomNav,
+      settings: [],
+    },
+  },
+  VIEWER: {
+    zones: ['fin'],
+    defaultZone: 'fin',
+    showSettingsGear: false,
+    sections: VIEWER_CONFIG.sidebar,
+    bottomNav: {
+      shop: [],
+      fin: VIEWER_CONFIG.bottomNav,
       settings: [],
     },
   },

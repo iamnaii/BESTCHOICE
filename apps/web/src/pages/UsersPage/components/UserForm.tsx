@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { Camera, X, CreditCard } from 'lucide-react';
 import { compressImageForOcr } from '@/lib/compressImage';
 import { checkCardReaderStatus, readSmartCard } from '@/lib/cardReader';
+import { useUiFlags } from '@/hooks/useUiFlags';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { User, roleLabels, inputClass, labelClass, emptyForm } from '../types';
 
@@ -29,6 +30,15 @@ export default function UserForm({
 }: UserFormProps) {
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [isReadingCard, setIsReadingCard] = useState(false);
+  // Owner Q4 (2026-05-17): VIEWER role only appears in the role dropdown
+  // when `viewer_role_enabled = 'true'`. When OWNER edits an EXISTING
+  // VIEWER user we keep VIEWER visible in the picker regardless of the
+  // flag so the role doesn't silently disappear from the form.
+  const { viewerRoleEnabled } = useUiFlags();
+  const isEditingViewer = editingUser?.role === 'VIEWER';
+  const availableRoles = Object.entries(roleLabels).filter(
+    ([k]) => k !== 'VIEWER' || viewerRoleEnabled || isEditingViewer,
+  );
 
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -271,7 +281,7 @@ export default function UserForm({
                   onChange={(e) => setForm({ ...form, role: e.target.value })}
                   className={inputClass}
                 >
-                  {Object.entries(roleLabels).map(([k, v]) => (
+                  {availableRoles.map(([k, v]) => (
                     <option key={k} value={k}>
                       {v}
                     </option>

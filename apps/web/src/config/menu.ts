@@ -549,52 +549,49 @@ const OWNER_CONFIG: RoleMenuConfig = {
         },
       ],
     },
+    /* ── FIN zone restructure (per owner CSV) ───────────────────
+     * 9 sections mirroring the CSV "BESTCHOICE FINANCE" outline:
+     * รายรับ / รายจ่าย / ภาษี / บัญชี+งบ / รายงาน /
+     * ผังบัญชี+ธนาคาร / ตั้งค่าเอกสาร / เครื่องมือเชื่อมต่อ / การแจ้งเตือน
+     * SHOP-zone duplicates (overdue/defect/mdm/repo) intentional —
+     * OWNER sees them from both zones; FM/ACC already have them in FIN.
+     * Asset menu items embedded as sub-group inside "รายจ่าย" → ซื้อทรัพย์สิน
+     * (mirrors `assetMenuSection.items` — kept in sync manually). */
     {
-      key: 'owner-accounting',
-      label: 'บัญชี',
-      icon: Calculator,
+      key: 'owner-fin-revenue',
+      label: 'รายรับ',
+      icon: TrendingUp,
       zone: 'fin',
       items: [
-        // Daily-use direct items (one-click access)
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
-        { label: 'รายจ่าย', path: '/expenses', icon: Receipt },
-        { label: 'รายได้อื่น', path: '/other-income', icon: TrendingUp },
-        // Period-close grouped under collapsible parent
-        {
-          label: 'ปิดบัญชี',
-          path: '/monthly-close',
-          icon: CalendarDays,
-          children: [
-            { label: 'ปิดบัญชีรายเดือน', path: '/monthly-close', icon: CalendarDays },
-            { label: 'ปิดบัญชีสิ้นปี', path: '/finance/year-end-closing', icon: CalendarDays },
-            { label: 'งวดบัญชี', path: '/accounting/periods', icon: CalendarDays },
-            { label: 'ชำระเงินระหว่างบริษัท', path: '/accounting/intercompany', icon: ClipboardList },
-            // P3-SP3 — PEAK CSV export (mapping config lives in /settings#peak-mapping)
-            { label: 'ส่งออก PEAK CSV', path: '/finance/peak-export', icon: Plug },
-          ],
-        },
+        { label: 'ติดตามลูกค้าค้างชำระ', path: '/overdue', icon: AlertTriangle },
+        { label: 'เปลี่ยนเครื่องเสีย (7 วัน)', path: '/defect-exchange', icon: Wrench },
+        { label: 'ล็อคเครื่อง (MDM)', path: '/mdm', icon: Lock },
+        { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
       ],
     },
     {
-      // Promoted from collapsible inside "บัญชี & รายงาน" — owner directive
-      // "ดึงรายงานออกมา" (find-menu friction reduction follow-up to PR #849).
-      // Items intentionally mirror entries in owner-tax / owner-statements
-      // — this is the curated report index for one-click discovery.
-      key: 'owner-reports',
-      label: 'รายงาน',
-      icon: BarChart3,
+      key: 'owner-fin-expense',
+      label: 'รายจ่าย',
+      icon: TrendingDown,
       zone: 'fin',
       items: [
-        { label: 'รายงานรวม', path: '/reports', icon: BarChart3 },
-        { label: 'งบกระแสเงินสด', path: '/finance/cash-flow', icon: Banknote },
-        { label: 'งบ Equity', path: '/finance/equity-statement', icon: Landmark },
-        { label: 'สมุดแยกประเภท', path: '/finance/general-ledger', icon: BookOpen },
-        { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
-        // SP3 — Tax module split
-        { label: 'ภ.พ.30 (VAT)', path: '/finance/vat', icon: Calculator },
-        { label: 'ภ.ง.ด. 1/3/53 (WHT)', path: '/finance/wht', icon: Calculator },
-        { label: 'e-Tax Invoice', path: '/finance/e-tax', icon: FileText },
-        { label: 'ตรวจสอบบัญชี', path: '/financial-audit', icon: ClipboardList },
+        { label: 'จ่ายให้หน้าร้าน (Inter-co)', path: '/accounting/intercompany', icon: ClipboardList },
+        { label: 'ค่าใช้จ่ายดำเนินงาน', path: '/expenses', icon: Receipt },
+        { label: 'รายได้อื่น', path: '/other-income', icon: TrendingUp },
+        {
+          label: 'ซื้อทรัพย์สิน',
+          path: '/assets',
+          icon: Landmark,
+          children: [
+            { label: 'บันทึกซื้อ', path: '/assets', icon: FileText, badgeKey: 'asset-draft-count' },
+            { label: 'ทะเบียน + NBV', path: '/assets/register', icon: BookOpen },
+            { label: 'สมุดรายวัน', path: '/assets/journal', icon: FileText },
+            { label: 'สรุปแยกหมวด', path: '/assets/summary-report', icon: BarChart3 },
+            { label: 'ค่าเสื่อม', path: '/depreciation', icon: TrendingDown },
+            { label: 'ประวัติสินทรัพย์', path: '/assets/audit', icon: History },
+          ],
+        },
       ],
     },
     {
@@ -603,51 +600,38 @@ const OWNER_CONFIG: RoleMenuConfig = {
       icon: Calculator,
       zone: 'fin',
       items: [
-        {
-          label: 'VAT (ภ.พ.30)',
-          path: '/finance/vat',
-          icon: Receipt,
-          placeholder: { trackingSP: 'SP3', eta: 'ภายในไตรมาส 3/2026' },
-        },
-        {
-          label: 'WHT (ภ.ง.ด. 1/3/53)',
-          path: '/finance/wht',
-          icon: Receipt,
-          placeholder: { trackingSP: 'SP3', eta: 'ภายในไตรมาส 3/2026' },
-        },
-        {
-          label: 'e-Tax Invoice',
-          path: '/finance/e-tax',
-          icon: FileText,
-          placeholder: { trackingSP: 'SP3', eta: 'ภายในไตรมาส 3/2026' },
-        },
+        { label: 'VAT (ภ.พ.30)', path: '/finance/vat', icon: Receipt, placeholder: { trackingSP: 'SP3', eta: 'ภายในไตรมาส 3/2026' } },
+        { label: 'WHT (ภ.ง.ด. 1/3/53)', path: '/finance/wht', icon: Receipt, placeholder: { trackingSP: 'SP3', eta: 'ภายในไตรมาส 3/2026' } },
+        { label: 'e-Tax Invoice', path: '/finance/e-tax', icon: FileText, placeholder: { trackingSP: 'SP3', eta: 'ภายในไตรมาส 3/2026' } },
       ],
     },
     {
-      key: 'owner-statements',
-      label: 'งบการเงิน',
+      // CSV §5 — "บัญชี + บันทึกเริ่ม" merged "บัญชี" + "งบการเงิน" groups
+      key: 'owner-accounting',
+      label: 'บัญชี + งบการเงิน',
       icon: PieChart,
       zone: 'fin',
       items: [
+        { label: 'ปิดบัญชีรายเดือน', path: '/monthly-close', icon: CalendarDays },
+        { label: 'ปิดบัญชีสิ้นปี', path: '/finance/year-end-closing', icon: CalendarDays },
+        { label: 'งวดบัญชี', path: '/accounting/periods', icon: CalendarDays },
         { label: 'กำไร-ขาดทุน (P&L)', path: '/profit-loss', icon: PieChart },
-        {
-          label: 'งบกระแสเงินสด',
-          path: '/finance/cash-flow',
-          icon: TrendingUp,
-          placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' },
-        },
-        {
-          label: 'งบ Equity',
-          path: '/finance/equity-statement',
-          icon: BarChart3,
-          placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' },
-        },
-        {
-          label: 'สมุดแยกประเภท',
-          path: '/finance/general-ledger',
-          icon: BookOpen,
-          placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' },
-        },
+        { label: 'งบกระแสเงินสด', path: '/finance/cash-flow', icon: Banknote, placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' } },
+        { label: 'งบ Equity', path: '/finance/equity-statement', icon: BarChart3, placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' } },
+      ],
+    },
+    {
+      key: 'owner-reports',
+      label: 'รายงาน',
+      icon: BarChart3,
+      zone: 'fin',
+      items: [
+        { label: 'รายงานรวม', path: '/reports', icon: BarChart3 },
+        { label: 'สมุดแยกประเภท', path: '/finance/general-ledger', icon: BookOpen, placeholder: { trackingSP: 'SP2', eta: 'ภายในไตรมาส 2/2026' } },
+        { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
+        { label: 'ตรวจสอบบัญชี', path: '/financial-audit', icon: ClipboardList },
+        // P3-SP3 — PEAK CSV export (mapping config lives in /settings#peak-mapping)
+        { label: 'ส่งออก PEAK CSV', path: '/finance/peak-export', icon: Plug },
       ],
     },
     {
@@ -662,22 +646,17 @@ const OWNER_CONFIG: RoleMenuConfig = {
       ],
     },
     {
+      // MOVED from `zone: 'settings'` → `zone: 'fin'` per CSV §8.
+      // SystemConfig backend (D1.1.2.x) is shared but UX-wise this is a
+      // finance-team config, so it belongs in the FIN zone for OWNER.
       key: 'owner-doc-config',
       label: 'ตั้งค่าเอกสาร',
       icon: FileText,
-      zone: 'settings',
+      zone: 'fin',
       items: [
-        // P2-SP2 — live page (D1.1.2.x SystemConfig backend wired through
-        // DocumentConfigPage). Previously a placeholder; promoted to a real
-        // link once the UI shipped.
-        {
-          label: 'เลขที่/รูปแบบเอกสาร',
-          path: '/settings/document-config',
-          icon: FileText,
-        },
+        { label: 'เลขที่/รูปแบบเอกสาร', path: '/settings/document-config', icon: FileText },
       ],
     },
-    assetMenuSection,
     {
       key: 'owner-online-shop',
       label: 'ร้านค้าออนไลน์',
@@ -730,11 +709,17 @@ const OWNER_CONFIG: RoleMenuConfig = {
       ],
     },
     {
-      key: 'owner-fin-tools',
-      label: 'เครื่องมือไฟแนนซ์',
+      // CSV §9 — split from old "เครื่องมือไฟแนนซ์" — Dunning moved to its
+      // own section (#10) since it's customer-facing notifications, not
+      // an integration target.
+      key: 'owner-fin-integrations',
+      label: 'เครื่องมือเชื่อมต่อ',
       icon: Plug,
       zone: 'fin',
       items: [
+        { label: 'จัดการอุปกรณ์ (MDM)', path: '/mdm', icon: Smartphone },
+        { label: 'LINE OA', path: '/settings/rich-menu', icon: MessageSquareMore },
+        { label: 'การเชื่อมต่อ (PaySolutions / สรรพากร ฯลฯ)', path: '/settings/integrations', icon: Plug },
         {
           label: 'AI',
           path: '/settings/ai-admin',
@@ -744,9 +729,16 @@ const OWNER_CONFIG: RoleMenuConfig = {
             { label: 'AI Assistant', path: '/settings/ai-chat', icon: Sparkles },
           ],
         },
-        { label: 'การเชื่อมต่อ', path: '/settings/integrations', icon: Plug },
-        { label: 'LINE OA', path: '/settings/rich-menu', icon: MessageSquareMore },
-        { label: 'Dunning', path: '/settings/dunning', icon: Bell },
+      ],
+    },
+    {
+      // CSV §10 — separated from เครื่องมือ since this is customer comms
+      key: 'owner-fin-notifications',
+      label: 'การแจ้งเตือนลูกค้า',
+      icon: Bell,
+      zone: 'fin',
+      items: [
+        { label: 'Dunning (เตือนค่างวด)', path: '/settings/dunning', icon: Bell },
       ],
     },
     {

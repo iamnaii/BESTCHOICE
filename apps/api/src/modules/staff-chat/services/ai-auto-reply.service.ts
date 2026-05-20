@@ -99,7 +99,7 @@ export class AiAutoReplyService {
         : Number(this.config.get<string>('AI_AUTO_CONFIDENCE_THRESHOLD') ?? '80'),
       aiAutoMaxRepliesPerSession: configMap.has('ai.autoMaxRepliesPerSession')
         ? Number(configMap.get('ai.autoMaxRepliesPerSession'))
-        : Number(this.config.get<string>('AI_AUTO_MAX_REPLIES') ?? '5'),
+        : Number(this.config.get<string>('AI_AUTO_MAX_REPLIES') ?? '50'),
     };
   }
 

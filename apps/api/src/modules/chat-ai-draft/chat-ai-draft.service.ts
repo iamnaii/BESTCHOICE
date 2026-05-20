@@ -23,8 +23,8 @@ export class ChatAiDraftService {
       include: { room: true },
     });
     if (!inbound || !inbound.text) throw new NotFoundException('inbound message not found');
-    if (inbound.room.aiPaused) {
-      this.logger.log(`Room ${inbound.room.id} AI paused — skipping draft`);
+    if (inbound.room.aiPaused || inbound.room.handoffMode) {
+      this.logger.log(`Room ${inbound.room.id} AI paused/handoff — skipping draft`);
       return { draftMessageId: '' };
     }
 

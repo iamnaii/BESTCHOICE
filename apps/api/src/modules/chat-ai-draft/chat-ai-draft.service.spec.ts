@@ -270,6 +270,44 @@ describe('ChatAiDraftService', () => {
     );
   });
 
+  it('skips draft when room.handoffMode is true', async () => {
+    const handoffRoom = {
+      id: 'room-handoff',
+      aiPaused: false,
+      handoffMode: true,
+      customerId: 'c1',
+      lineUserId: 'u1',
+      channel: 'LINE_SHOP',
+    };
+    const prisma = {
+      chatMessage: {
+        findUnique: jest.fn().mockResolvedValueOnce({
+          id: 'msg-1',
+          roomId: handoffRoom.id,
+          text: 'hi',
+          room: handoffRoom,
+        }),
+        findMany: jest.fn(),
+        create: jest.fn(),
+      },
+      aiSettings: { findUnique: jest.fn() },
+    };
+    const mod = await Test.createTestingModule({
+      providers: [
+        ChatAiDraftService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: ChatIntentRouterService, useValue: { classify: jest.fn() } },
+        { provide: SalesBotService, useValue: { generateReply: jest.fn() } },
+        { provide: FinanceAiService, useValue: { generateReply: jest.fn() } },
+        { provide: LineFinanceClientService, useValue: { pushText: jest.fn() } },
+      ],
+    }).compile();
+    const service = mod.get(ChatAiDraftService);
+    const result = await service.generateDraft('msg-1');
+    expect(result.draftMessageId).toBe('');
+    expect(prisma.chatMessage.create).not.toHaveBeenCalled();
+  });
+
   it('takeOver pauses AI and assigns room to staff', async () => {
     const prisma = {
       chatRoom: { update: jest.fn().mockResolvedValue({}) },

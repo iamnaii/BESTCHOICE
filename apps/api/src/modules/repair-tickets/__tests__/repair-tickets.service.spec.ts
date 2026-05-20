@@ -1029,7 +1029,7 @@ describe('RepairTicketsService.returnToCustomer', () => {
   });
 });
 
-// ─── RepairTicketsService.warrantyPreview ──────────────────────────────────
+// ─── SALES_USER shared for warrantyPreview + warrantyLookup ───────────────
 
 const SALES_USER: { id: string; role: string; branchId: string } = {
   id: 'u-sales',
@@ -1165,5 +1165,147 @@ describe('RepairTicketsService.warrantyPreview', () => {
     // sevenDayDefect must be 0 (not negative)
     expect(result.daysRemaining.sevenDayDefect).toBe(0);
     expect(result.daysRemaining.sevenDayDefect).toBeGreaterThanOrEqual(0);
+  });
+});
+
+// ─── RepairTicketsService.warrantyLookup ──────────────────────────────────
+
+describe('RepairTicketsService.warrantyLookup', () => {
+  let svc: RepairTicketsService;
+  let prisma: any;
+  let audit: any;
+
+  beforeEach(async () => {
+    ({ prisma, audit } = buildTransitionModule());
+    // Additional prisma methods needed for warrantyLookup
+    prisma.customer = { findUnique: jest.fn().mockResolvedValue(null) };
+    prisma.contract.findMany = jest.fn().mockResolvedValue([]);
+    prisma.contract.findFirst = jest.fn().mockResolvedValue(null);
+    prisma.product = {
+      findUnique: jest.fn().mockResolvedValue(null),
+      findFirst: jest.fn().mockResolvedValue(null),
+    };
+    svc = await buildSvc(prisma, audit, { nextTicketNumber: jest.fn() });
+  });
+
+  // Test 1: lookup by customerId returns all PHONE devices for the customer with warranty windows
+  it('lookup by customerId returns devices with warranty windows and forExchange=true when 7-day window active', async () => {
+    const twoDaysAgo = new Date(Date.now() - 2 * 86_400_000);
+    const customer = { id: 'c-1', name: 'นาย ก', phone: '0891234567' };
+    const product = {
+      id: 'p-1',
+      brand: 'Samsung',
+      model: 'A55',
+      imeiSerial: 'IMEI-001',
+      category: 'PHONE_USED',
+      warrantyExpireDate: null,
+    };
+    const contract = {
+      id: 'ct-1',
+      contractNumber: 'CN-2026-0001',
+      status: 'ACTIVE',
+      customerId: 'c-1',
+      deviceReceivedAt: twoDaysAgo,
+      shopWarrantyEndDate: null,
+      customer,
+      product,
+    };
+
+    prisma.customer.findUnique.mockResolvedValue(customer);
+    prisma.contract.findMany.mockResolvedValue([contract]);
+
+    const result = await svc.warrantyLookup({ customerId: 'c-1' }, SALES_USER);
+
+    expect(result.customer).toEqual(customer);
+    expect(result.devices).toHaveLength(1);
+    expect(result.devices[0].warrantyWindows.sevenDayDefect).toBe(5);
+    expect(result.devices[0].eligibility.forExchange).toBe(true);
+    expect(result.devices[0].eligibility.forRepair).toBe(true);
+  });
+
+  // Test 2: lookup by IMEI returns single device
+  it('lookup by IMEI returns single device tied to that product', async () => {
+    const customer = { id: 'c-2', name: 'นาง ข', phone: null };
+    const product = {
+      id: 'p-2',
+      brand: 'Apple',
+      model: 'iPhone 14',
+      imeiSerial: 'IMEI-999',
+      category: 'PHONE_USED',
+      warrantyExpireDate: null,
+    };
+    const contract = {
+      id: 'ct-2',
+      contractNumber: 'CN-2026-0002',
+      status: 'ACTIVE',
+      customerId: 'c-2',
+      deviceReceivedAt: null,
+      shopWarrantyEndDate: null,
+      customer,
+    };
+
+    prisma.product.findFirst.mockResolvedValue({ ...product, contracts: [contract] });
+
+    const result = await svc.warrantyLookup({ imei: 'IMEI-999' }, SALES_USER);
+
+    expect(result.devices).toHaveLength(1);
+    expect(result.devices[0].product!.imeiSerial).toBe('IMEI-999');
+    expect(result.devices[0].contract!.contractNumber).toBe('CN-2026-0002');
+  });
+
+  // Test 3: lookup by contractNumber returns device tied to that contract
+  it('lookup by contractNumber returns device with matching contract', async () => {
+    const customer = { id: 'c-3', name: 'นาย ค', phone: '0812345678' };
+    const product = {
+      id: 'p-3',
+      brand: 'Oppo',
+      model: 'Reno 12',
+      imeiSerial: 'SN-ABC',
+      category: 'PHONE_NEW',
+      warrantyExpireDate: new Date(Date.now() + 300 * 86_400_000),
+    };
+    const contract = {
+      id: 'ct-3',
+      contractNumber: 'CN-2026-0001',
+      status: 'ACTIVE',
+      customerId: 'c-3',
+      deviceReceivedAt: null,
+      shopWarrantyEndDate: null,
+      customer,
+      product,
+    };
+
+    prisma.contract.findFirst.mockResolvedValue(contract);
+
+    const result = await svc.warrantyLookup({ contractNumber: 'CN-2026-0001' }, SALES_USER);
+
+    expect(result.devices).toHaveLength(1);
+    expect(result.devices[0].contract!.contractNumber).toBe('CN-2026-0001');
+    expect(result.customer).toEqual(customer);
+  });
+
+  // Test 4: not-found returns empty devices array and null customer
+  it('not-found input returns empty devices array and null customer', async () => {
+    // All mocks return null/empty by default in beforeEach
+    const result = await svc.warrantyLookup({ contractNumber: 'NOT-EXIST' }, SALES_USER);
+
+    expect(result.devices).toHaveLength(0);
+    expect(result.customer).toBeNull();
+  });
+
+  // Test 5: SALES role → branchId scope is applied in the where clause
+  it('SALES role applies branchId scope to contract query', async () => {
+    const findMany = jest.fn().mockImplementation((args: any) => {
+      // Assert scope is applied — branchId must equal the SALES user's branchId
+      expect(args.where.branchId).toBe(SALES_USER.branchId);
+      return [];
+    });
+    prisma.contract.findMany = findMany;
+    prisma.customer.findUnique.mockResolvedValue({ id: 'c-99', name: 'ทดสอบ', phone: null });
+
+    const result = await svc.warrantyLookup({ customerId: 'c-99' }, SALES_USER);
+
+    expect(findMany).toHaveBeenCalledTimes(1);
+    expect(result.devices).toHaveLength(0);
   });
 });

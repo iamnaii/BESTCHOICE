@@ -26,6 +26,7 @@ import { ReturnToCustomerDto } from './dto/return-to-customer.dto';
 import { CancelDto } from './dto/cancel.dto';
 import { ReplaceDto } from './dto/replace.dto';
 import { WarrantyPreviewDto } from './dto/warranty-preview.dto';
+import { WarrantyLookupDto } from './dto/warranty-lookup.dto';
 
 @Controller('repair-tickets')
 @UseGuards(JwtAuthGuard, RolesGuard, BranchGuard)
@@ -44,12 +45,18 @@ export class RepairTicketsController {
     return this.svc.findAll(dto, req.user);
   }
 
-  // IMPORTANT: static route must come before ':id' to avoid Nest treating
-  // "warranty-preview" as a UUID param.
+  // IMPORTANT: static routes must come before ':id' to avoid Nest treating
+  // the route segment as a UUID param.
   @Get('warranty-preview')
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
   warrantyPreview(@Query() dto: WarrantyPreviewDto, @Req() req: any) {
     return this.svc.warrantyPreview(dto, req.user);
+  }
+
+  @Get('warranty-lookup')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES', 'ACCOUNTANT')
+  warrantyLookup(@Query() dto: WarrantyLookupDto, @Req() req: any) {
+    return this.svc.warrantyLookup(dto, req.user);
   }
 
   @Get(':id')

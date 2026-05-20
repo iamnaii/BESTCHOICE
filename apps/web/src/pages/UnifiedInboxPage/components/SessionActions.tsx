@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { UserPlus, CheckCircle, Bot, X, FileSignature, ArrowRightLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { UserPlus, CheckCircle, Bot, X, FileSignature, ArrowRightLeft, ChevronRight, Loader2, Hand } from 'lucide-react';
 import { useNavigate } from 'react-router';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import api from '@/lib/api';
+import { takeOver } from '@/pages/chat/lib/chat-api';
 
 interface SessionActionsProps {
   session: any;
@@ -24,7 +26,9 @@ export default function SessionActions({
   currentUserId,
 }: SessionActionsProps) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [showStaffList, setShowStaffList] = useState(false);
+  const [isTakingOver, setIsTakingOver] = useState(false);
 
   // Fetch online staff only when transfer dropdown is opened
   const staffQuery = useQuery({
@@ -36,6 +40,14 @@ export default function SessionActions({
 
   const assignedToMe = session?.assignedStaffId === currentUserId;
   const assignedStaffName = session?.assignedStaff?.name ?? session?.assignedStaff?.email ?? null;
+
+  // Take-over is the symmetric inverse of "Return to AI Bot": shows only when
+  // AI is actively replying (not paused, not in handoff). Once clicked, the
+  // room is aiPaused → button disappears and the existing "Return to AI Bot"
+  // button takes its place (it renders when session.handoffMode, but the
+  // post-takeOver state has aiPaused=true, so neither button is shown until
+  // the bot escalates — same parity as ChatInboxPage).
+  const canTakeOver = !session?.aiPaused && !session?.handoffMode;
 
   return (
     <div className="border-b border-border bg-muted px-4 py-2">
@@ -125,6 +137,34 @@ export default function SessionActions({
           >
             <FileSignature className="w-3.5 h-3.5" />
             สร้างสัญญา
+          </button>
+        )}
+
+        {/* Take over from AI (symmetric inverse of "ส่งกลับ Bot") */}
+        {canTakeOver && (
+          <button
+            onClick={async () => {
+              if (!session?.id || isTakingOver) return;
+              setIsTakingOver(true);
+              try {
+                await takeOver(session.id);
+                queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
+                queryClient.invalidateQueries({ queryKey: ['chat-room', session.id] });
+                toast.success('รับช่วงต่อแล้ว — AI หยุดตอบห้องนี้');
+              } catch (err) {
+                toast.error(
+                  err instanceof Error ? err.message : 'รับช่วงต่อไม่สำเร็จ',
+                );
+              } finally {
+                setIsTakingOver(false);
+              }
+            }}
+            disabled={isTakingOver}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-amber-500/10 text-amber-700 rounded-lg hover:bg-amber-500/20 transition-colors disabled:opacity-50"
+            title="หยุด AI แล้วตอบเอง"
+          >
+            <Hand className="w-3.5 h-3.5" />
+            รับช่วงต่อ
           </button>
         )}
 

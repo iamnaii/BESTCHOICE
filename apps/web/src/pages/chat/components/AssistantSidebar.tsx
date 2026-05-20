@@ -88,7 +88,18 @@ export function AssistantSidebar({ roomId }: { roomId: string | null }) {
         </Card>
       )}
 
-      {room?.aiPaused ? (
+      {room?.handoffMode ? (
+        <Card className="mt-auto border-destructive/40 bg-destructive/5">
+          <CardContent className="p-3">
+            <div className="text-sm leading-snug text-foreground">
+              🎯 ห้องนี้กำลังรอ SALES ดำเนินการ
+            </div>
+            <div className="mt-1 text-xs leading-snug text-muted-foreground">
+              AI หยุดตอบแล้ว — รอพนักงานปิดดีล (capture_lead fired)
+            </div>
+          </CardContent>
+        </Card>
+      ) : room?.aiPaused ? (
         <Button
           variant="outline"
           size="sm"

@@ -51,7 +51,8 @@ function AiSettingsForm({ initial }: { initial: AiSettings }) {
     }),
     onSuccess: () => {
       toast.success('บันทึกการตั้งค่า AI เรียบร้อย');
-      queryClient.invalidateQueries({ queryKey: ['ai-settings'] });
+      queryClient.invalidateQueries({ queryKey: ['ai-settings', 'full'] });
+      queryClient.invalidateQueries({ queryKey: ['ai-settings', 'lite'] });
     },
     onError: () => {
       toast.error('ไม่สามารถบันทึกการตั้งค่าได้');
@@ -228,7 +229,8 @@ function ShopBotSetupForm() {
     onSuccess: () => {
       toast.success('บันทึก SHOP Bot Setup เรียบร้อย');
       queryClient.invalidateQueries({ queryKey: ['ai-settings-shop-bot'] });
-      queryClient.invalidateQueries({ queryKey: ['ai-settings'] });
+      queryClient.invalidateQueries({ queryKey: ['ai-settings', 'full'] });
+      queryClient.invalidateQueries({ queryKey: ['ai-settings', 'lite'] });
     },
     onError: () => {
       toast.error('ไม่สามารถบันทึก SHOP Bot Setup ได้');
@@ -429,7 +431,7 @@ function ChannelRoutingCard() {
 
 export default function AiSettingsPage() {
   const settingsQuery = useQuery<AiSettings>({
-    queryKey: ['ai-settings'],
+    queryKey: ['ai-settings', 'full'],
     queryFn: () => api.get('/staff-chat/ai/settings').then((r: any) => {
       const d = r.data?.data ?? r.data;
       return {

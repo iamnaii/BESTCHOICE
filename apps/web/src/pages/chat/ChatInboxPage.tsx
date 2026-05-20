@@ -21,7 +21,7 @@ export default function ChatInboxPage() {
   const [aiFilter, setAiFilter] = useState<AiStatusFilter>('all');
 
   const aiSettingsQuery = useQuery<AiSettingsLite>({
-    queryKey: ['ai-settings'],
+    queryKey: ['ai-settings', 'lite'],
     queryFn: () =>
       api.get('/staff-chat/ai/settings').then((r: any) => {
         const d = r.data?.data ?? r.data;

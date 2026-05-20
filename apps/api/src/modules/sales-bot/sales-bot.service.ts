@@ -149,10 +149,19 @@ export class SalesBotService {
     }
   }
 
+  /**
+   * Confidence used by AiAutoReplyService threshold gating (default 0.80).
+   *
+   * Mapping (Phase A — see spec §6 #5):
+   * - handoff_to_human used        → 0.3  (signal to handoff path, do not auto-send)
+   * - short/incomplete (< 20 char) → 0.6  (below default threshold; skip)
+   * - tool-used reply              → 0.95 (high confidence: fact-grounded)
+   * - greeting/qualifier (no tool) → 0.9  (high: opener doesn't need data)
+   */
   private estimateConfidence(reply: string, toolsUsed: string[]): number {
-    if (reply.length < 10) return 0.3;
-    if (toolsUsed.includes('handoff_to_human')) return 0.2;
-    if (toolsUsed.length === 0) return 0.5;
-    return 0.8;
+    if (toolsUsed.includes('handoff_to_human')) return 0.3;
+    if (reply.trim().length < 20) return 0.6;
+    if (toolsUsed.length > 0) return 0.95;
+    return 0.9;
   }
 }

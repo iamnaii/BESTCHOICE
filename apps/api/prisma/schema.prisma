@@ -865,7 +865,7 @@ model Customer {
   // Phase A SHOP Sales AI — channel/source that produced this lead
   // (e.g. "line-shop", "facebook", "tiktok", "walk-in"). Free-text label so
   // marketing can add new sources without a migration. Null = legacy/unknown.
-  acquisitionSource String? @map("acquisition_source")
+  acquisitionSource String? @db.VarChar(50) @map("acquisition_source")
 
   // LINE notification preferences
   notifPaymentReminder Boolean @default(true) @map("notif_payment_reminder")
@@ -913,7 +913,6 @@ model Customer {
   @@index([deletedAt])
   @@index([referredById])
   @@index([phoneHash])
-  @@index([acquisitionSource])
   @@map("customers")
 }
 

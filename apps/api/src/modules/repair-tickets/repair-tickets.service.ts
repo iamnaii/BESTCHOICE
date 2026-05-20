@@ -678,11 +678,16 @@ export class RepairTicketsService {
           )
         : null;
 
+    // W1: use BKK calendar-day math for shopWarranty + mfrWarranty (same as sevenDayDefect)
+    // so all 3 windows are measured with consistent BKK midnight boundaries.
     const shopWarranty =
       shopWarrantyEndDate != null
         ? Math.max(
             0,
-            Math.floor((shopWarrantyEndDate.getTime() - now.getTime()) / 86400_000),
+            Math.floor(
+              (bkkCalendarDay(shopWarrantyEndDate).getTime() - bkkCalendarDay(now).getTime()) /
+                86400_000,
+            ),
           )
         : null;
 
@@ -690,7 +695,10 @@ export class RepairTicketsService {
       warrantyExpireDate != null
         ? Math.max(
             0,
-            Math.floor((warrantyExpireDate.getTime() - now.getTime()) / 86400_000),
+            Math.floor(
+              (bkkCalendarDay(warrantyExpireDate).getTime() - bkkCalendarDay(now).getTime()) /
+                86400_000,
+            ),
           )
         : null;
 
@@ -731,11 +739,15 @@ export class RepairTicketsService {
       product?.warrantyExpireDate,
     );
 
+    // C2: tie forExchange to warrantyStatus === IN_7DAY_DEFECT (source of truth from detectWarrantyStatus).
+    // Do NOT use sevenDayDefect > 0 — on day-7 exactly, sevenDayDefect === 0 yet warrantyStatus
+    // is still IN_7DAY_DEFECT (daysSinceReceipt === 7 <= 7). sevenDayDefect is Math.max(0, ...)
+    // so it bottoms out at 0 regardless of days-past-7, making sevenDayDefect === 0 ambiguous.
+    // Using warrantyStatus directly is the single source of truth.
     const forExchange =
+      warrantyStatus === 'IN_7DAY_DEFECT' &&
       !!contract &&
       contract.status === 'ACTIVE' &&
-      sevenDayDefect !== null &&
-      sevenDayDefect > 0 &&
       product?.category === 'PHONE_USED';
 
     const defaultFlow: 'repair' | 'exchange' =
@@ -744,12 +756,17 @@ export class RepairTicketsService {
     const defaultPayerValue = defaultPayer(warrantyStatus);
 
     // Audit log (fire-and-forget — non-blocking, throttled per-user upstream)
+    // C1: do NOT include dto in the log — it contains UUIDs (customerId/contractId/productId) = PII
     this.audit
       .log({
         userId: user.id,
         action: 'WARRANTY_LOOKED_UP',
         entity: 'repair_ticket',
-        newValue: { searchMode: 'preview', query: dto, resultCount: 1 },
+        newValue: {
+          searchMode: 'preview',
+          inputType: dto.contractId ? 'contract' : dto.productId ? 'product' : 'customer',
+          resultCount: 1,
+        },
       })
       .catch(() => {});
 
@@ -783,15 +800,18 @@ export class RepairTicketsService {
     let customer: any = null;
 
     if (dto.customerId) {
+      // C3: verify customer exists — throw if not, but empty devices is OK (customer has no phones)
       customer = await this.prisma.customer.findUnique({
         where: { id: dto.customerId, deletedAt: null },
       });
+      if (!customer) throw new NotFoundException('ไม่พบลูกค้า');
       contracts = await this.prisma.contract.findMany({
         where: { customerId: dto.customerId, deletedAt: null, ...branchScope },
         include: { product: true, customer: true },
       });
     } else if (dto.imei || dto.serial) {
       const search = dto.imei ?? dto.serial!;
+      // C3: exact-match lookup — throw NotFoundException when the device doesn't exist at all
       const product = await this.prisma.product.findFirst({
         where: { imeiSerial: search, deletedAt: null },
         include: {
@@ -801,10 +821,13 @@ export class RepairTicketsService {
           },
         },
       });
-      if (product?.contracts?.length) {
+      if (!product) {
+        throw new NotFoundException(`ไม่พบเครื่องที่ ${dto.imei ? 'IMEI' : 'Serial'} นี้`);
+      }
+      if (product.contracts?.length) {
         customer = product.contracts[0].customer;
         contracts = product.contracts.map((c: any) => ({ ...c, product }));
-      } else if (product) {
+      } else {
         // Product exists but no contract in scope — walk-in style row (no contract)
         contracts = [
           {
@@ -817,14 +840,14 @@ export class RepairTicketsService {
         ];
       }
     } else if (dto.contractNumber) {
+      // C3: exact-match lookup — throw NotFoundException when contract doesn't exist at all
       const c = await this.prisma.contract.findFirst({
         where: { contractNumber: dto.contractNumber, deletedAt: null, ...branchScope },
         include: { product: true, customer: true },
       });
-      if (c) {
-        customer = c.customer;
-        contracts = [c];
-      }
+      if (!c) throw new NotFoundException(`ไม่พบสัญญาเลขที่ ${dto.contractNumber}`);
+      customer = c.customer;
+      contracts = [c];
     }
 
     const devices = contracts
@@ -834,13 +857,16 @@ export class RepairTicketsService {
           c.shopWarrantyEndDate,
           c.product?.warrantyExpireDate,
         );
-        const { sevenDayDefect } = warrantyWindows;
 
+        // C2: use detectWarrantyStatus as the single source of truth for the 7-day boundary.
+        // sevenDayDefect bottoms at 0 via Math.max, making sevenDayDefect === 0 ambiguous
+        // (could be day-7 in-window OR any expired day). warrantyStatus === IN_7DAY_DEFECT
+        // correctly captures the inclusive-7 boundary from BKK calendar-day arithmetic.
+        const warrantyStatus = detectWarrantyStatus({ contract: c, product: c.product });
         const forExchange =
+          warrantyStatus === 'IN_7DAY_DEFECT' &&
           !!c.id &&
           c.status === 'ACTIVE' &&
-          sevenDayDefect !== null &&
-          sevenDayDefect > 0 &&
           c.product?.category === 'PHONE_USED';
 
         return {

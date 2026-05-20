@@ -2,21 +2,21 @@ import { IsOptional, IsUUID, IsString, MinLength } from 'class-validator';
 
 export class WarrantyLookupDto {
   @IsOptional()
-  @IsUUID()
+  @IsUUID('all', { message: 'customerId ต้องเป็น UUID' })
   customerId?: string;
 
   @IsOptional()
-  @IsString()
-  @MinLength(4)
+  @IsString({ message: 'imei ต้องเป็น string' })
+  @MinLength(4, { message: 'imei ต้องมีอย่างน้อย 4 ตัวอักษร' })
   imei?: string;
 
   @IsOptional()
-  @IsString()
-  @MinLength(4)
+  @IsString({ message: 'serial ต้องเป็น string' })
+  @MinLength(4, { message: 'serial ต้องมีอย่างน้อย 4 ตัวอักษร' })
   serial?: string;
 
   @IsOptional()
-  @IsString()
-  @MinLength(3)
+  @IsString({ message: 'contractNumber ต้องเป็น string' })
+  @MinLength(3, { message: 'contractNumber ต้องมีอย่างน้อย 3 ตัวอักษร' })
   contractNumber?: string;
 }

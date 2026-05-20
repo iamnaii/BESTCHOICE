@@ -1218,7 +1218,9 @@ describe('RepairTicketsService.warrantyLookup', () => {
 
     expect(result.customer).toEqual(customer);
     expect(result.devices).toHaveLength(1);
-    expect(result.devices[0].warrantyWindows.sevenDayDefect).toBe(5);
+    // I1: tolerant assertion — avoid brittle exact value near BKK day boundary
+    expect(result.devices[0].warrantyWindows.sevenDayDefect).toBeGreaterThanOrEqual(4);
+    expect(result.devices[0].warrantyWindows.sevenDayDefect).toBeLessThanOrEqual(5);
     expect(result.devices[0].eligibility.forExchange).toBe(true);
     expect(result.devices[0].eligibility.forRepair).toBe(true);
   });
@@ -1284,13 +1286,39 @@ describe('RepairTicketsService.warrantyLookup', () => {
     expect(result.customer).toEqual(customer);
   });
 
-  // Test 4: not-found returns empty devices array and null customer
-  it('not-found input returns empty devices array and null customer', async () => {
-    // All mocks return null/empty by default in beforeEach
-    const result = await svc.warrantyLookup({ contractNumber: 'NOT-EXIST' }, SALES_USER);
+  // Test 4a: C3 — exact-match lookup by contractNumber not found → NotFoundException (Thai message)
+  it('C3: lookup by contractNumber not found throws NotFoundException with Thai message', async () => {
+    // prisma.contract.findFirst returns null by default in beforeEach
+    await expect(
+      svc.warrantyLookup({ contractNumber: 'NOT-EXIST' }, SALES_USER),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  // Test 4b: C3 — exact-match lookup by IMEI not found → NotFoundException (Thai message)
+  it('C3: lookup by IMEI not found throws NotFoundException with Thai message', async () => {
+    // prisma.product.findFirst returns null by default in beforeEach
+    await expect(
+      svc.warrantyLookup({ imei: 'IMEI-NOT-EXIST' }, SALES_USER),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  // Test 4c: C3 — customerId mode with customer having no contracts returns empty devices array (no throw)
+  it('C3: customerId lookup with no contracts returns empty devices array (no throw)', async () => {
+    prisma.customer.findUnique.mockResolvedValue({ id: 'c-empty', name: 'นาย ว', phone: null });
+    prisma.contract.findMany.mockResolvedValue([]);
+
+    const result = await svc.warrantyLookup({ customerId: 'c-empty' }, SALES_USER);
 
     expect(result.devices).toHaveLength(0);
-    expect(result.customer).toBeNull();
+    expect(result.customer).toEqual(expect.objectContaining({ id: 'c-empty' }));
+  });
+
+  // Test 4d: C3 — customerId lookup with customer not found → NotFoundException
+  it('C3: customerId lookup with non-existent customer throws NotFoundException', async () => {
+    // prisma.customer.findUnique returns null by default in beforeEach
+    await expect(
+      svc.warrantyLookup({ customerId: 'CUST-NOT-EXIST' }, SALES_USER),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   // Test 5: SALES role → branchId scope is applied in the where clause

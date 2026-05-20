@@ -132,6 +132,9 @@ export class AiAutoReplyService {
       'ai.autoChannels',
       'ai.autoConfidenceThreshold',
       'ai.autoMaxRepliesPerSession',
+      'shop_bot_central_branch_id',
+      'shop_bot_promptpay_id',
+      'shop_bot_test_user_id',
     ];
 
     const configs = await this.prisma.systemConfig.findMany({
@@ -153,6 +156,9 @@ export class AiAutoReplyService {
       aiAutoMaxRepliesPerSession: configMap.has('ai.autoMaxRepliesPerSession')
         ? Number(configMap.get('ai.autoMaxRepliesPerSession'))
         : Number(this.config.get<string>('AI_AUTO_MAX_REPLIES') ?? '50'),
+      shopBotCentralBranchId: configMap.get('shop_bot_central_branch_id') ?? null,
+      shopBotPromptpayId: configMap.get('shop_bot_promptpay_id') ?? null,
+      shopBotTestUserId: configMap.get('shop_bot_test_user_id') ?? null,
     };
   }
 
@@ -185,6 +191,27 @@ export class AiAutoReplyService {
         key: 'ai.autoMaxRepliesPerSession',
         value: String(dto.aiAutoMaxRepliesPerSession),
         label: 'AI Max Replies per Session',
+      });
+    }
+    if (dto.shopBotCentralBranchId !== undefined) {
+      entries.push({
+        key: 'shop_bot_central_branch_id',
+        value: dto.shopBotCentralBranchId,
+        label: 'SHOP Bot central branch ID',
+      });
+    }
+    if (dto.shopBotPromptpayId !== undefined) {
+      entries.push({
+        key: 'shop_bot_promptpay_id',
+        value: dto.shopBotPromptpayId,
+        label: 'SHOP Bot PromptPay ID',
+      });
+    }
+    if (dto.shopBotTestUserId !== undefined) {
+      entries.push({
+        key: 'shop_bot_test_user_id',
+        value: dto.shopBotTestUserId,
+        label: 'SHOP Bot test LINE userId',
       });
     }
 

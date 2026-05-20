@@ -26,6 +26,11 @@ export class AiAutoReplyService {
     if (session.aiPaused) return false;
     if (session.handoffMode) return false;
 
+    // Defense-in-depth: skip channels whose adapter is stub (TikTok)
+    // Even if aiAutoChannels misconfigured to include TIKTOK, prevent wasted Claude tokens.
+    const STUB_CHANNELS = new Set(['TIKTOK']);
+    if (STUB_CHANNELS.has(session.channel)) return false;
+
     const settings = await this.getSettings();
 
     if (!settings.aiAutoEnabled) return false;

@@ -58,6 +58,16 @@ describe('AiAutoReplyService.shouldAutoReply', () => {
     const session = { id: 'r-c', channel: 'LINE_SHOP', aiPaused: false, handoffMode: false };
     expect(await svc.shouldAutoReply(session)).toBe(false);
   });
+
+  it('returns false for TIKTOK channel even if in aiAutoChannels allowlist (adapter is stub)', async () => {
+    prisma.systemConfig.findMany.mockResolvedValueOnce([
+      { key: 'ai.autoEnabled', value: 'true' },
+      { key: 'ai.autoChannels', value: '["LINE_SHOP","TIKTOK"]' },
+      { key: 'ai.autoMaxRepliesPerSession', value: '50' },
+    ]);
+    const session = { id: 'r-tt', channel: 'TIKTOK', aiPaused: false, handoffMode: false };
+    expect(await svc.shouldAutoReply(session)).toBe(false);
+  });
 });
 
 describe('AiAutoReplyService.autoReply', () => {

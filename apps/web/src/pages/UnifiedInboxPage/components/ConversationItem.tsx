@@ -17,6 +17,57 @@ function formatMessagePreview(text: string | null | undefined): string {
   return text;
 }
 
+/**
+ * AiStatusBadge — surfaces the AI / handoff state of a room in the conversation list.
+ *
+ * Precedence (most urgent first):
+ *  1. handoffMode → "ต้องตอบ" (red) — bot escalated, staff must reply
+ *  2. aiPaused    → "พนักงาน"  (amber) — staff took over, AI muted for this room
+ *  3. AI eligible → "AI"       (emerald) — auto-mode on AND channel allow-listed
+ *  4. otherwise   → null (no badge)
+ */
+function AiStatusBadge({
+  aiAutoEnabled,
+  channel,
+  enabledChannels,
+  aiPaused,
+  handoffMode,
+}: {
+  aiAutoEnabled: boolean;
+  channel: string;
+  enabledChannels: string[];
+  aiPaused: boolean;
+  handoffMode: boolean;
+}) {
+  if (handoffMode) {
+    return (
+      <span className="inline-flex items-center gap-1 text-[9px] text-destructive">
+        <span className="size-1.5 rounded-full bg-destructive" />
+        ต้องตอบ
+      </span>
+    );
+  }
+  if (aiPaused) {
+    return (
+      <span className="inline-flex items-center gap-1 text-[9px] text-amber-600">
+        <span className="size-1.5 rounded-full bg-amber-500" />
+        พนักงาน
+      </span>
+    );
+  }
+  const channelAllowed =
+    aiAutoEnabled && enabledChannels.length > 0 && enabledChannels.includes(channel);
+  if (channelAllowed) {
+    return (
+      <span className="inline-flex items-center gap-1 text-[9px] text-emerald-600">
+        <span className="size-1.5 rounded-full bg-emerald-500" />
+        AI
+      </span>
+    );
+  }
+  return null;
+}
+
 interface ConversationItemProps {
   session: {
     id: string;
@@ -26,6 +77,8 @@ interface ConversationItemProps {
     leadScore?: number | null;
     pinnedAt?: string | null;
     unreadCount?: number;
+    aiPaused?: boolean;
+    handoffMode?: boolean;
     customer?: { id: string; name: string; phone?: string; avatarUrl?: string | null; lineAvatarUrl?: string | null } | null;
     assignedTo?: { id: string; name: string; avatarUrl?: string | null } | null;
     tags?: { tag: string }[];
@@ -39,6 +92,7 @@ interface ConversationItemProps {
   isActive: boolean;
   onClick: () => void;
   onPin?: (roomId: string, isPinned: boolean) => void;
+  aiSettings?: { autoModeEnabled: boolean; enabledChannels: string[] };
 }
 
 const CHANNEL_CONFIG: Record<string, { bg: string; label: string; text: string }> = {
@@ -88,7 +142,7 @@ function Avatar({ session, displayName }: { session: ConversationItemProps['sess
   );
 }
 
-export default function ConversationItem({ session, isActive, onClick, onPin }: ConversationItemProps) {
+export default function ConversationItem({ session, isActive, onClick, onPin, aiSettings }: ConversationItemProps) {
   const lastMessage = session.messages?.[0];
   const displayName =
     session.customer?.name ??
@@ -98,6 +152,10 @@ export default function ConversationItem({ session, isActive, onClick, onPin }: 
   const isPinned = session.pinnedAt != null;
   const unreadCount = session.unreadCount ?? 0;
   const hasUnread = unreadCount > 0;
+  const aiAutoEnabled = aiSettings?.autoModeEnabled ?? false;
+  const enabledChannels = aiSettings?.enabledChannels ?? [];
+  const aiPaused = session.aiPaused ?? false;
+  const handoffMode = session.handoffMode ?? false;
 
   return (
     <div
@@ -146,9 +204,14 @@ export default function ConversationItem({ session, isActive, onClick, onPin }: 
           )}
         </div>
 
-        {/* Tags + priority + assigned */}
-        {(session.tags?.length || (session.priority && session.priority !== 'NORMAL' && session.priority !== 'LOW') || session.assignedTo) && (
-          <div className="flex items-center gap-1 mt-1.5">
+        {/* Tags + priority + assigned + AI status */}
+        {(session.tags?.length ||
+          (session.priority && session.priority !== 'NORMAL' && session.priority !== 'LOW') ||
+          session.assignedTo ||
+          aiPaused ||
+          handoffMode ||
+          (aiAutoEnabled && enabledChannels.includes(session.channel))) && (
+          <div className="flex items-center gap-1.5 mt-1.5">
             {session.tags?.some((t: { tag: string }) => t.tag === 'overdue') && (
               <Badge variant="destructive" appearance="light" className="text-[9px] px-1.5 py-0 h-4">
                 ค้างชำระ
@@ -164,6 +227,13 @@ export default function ConversationItem({ session, isActive, onClick, onPin }: 
                 );
               })()
             )}
+            <AiStatusBadge
+              aiAutoEnabled={aiAutoEnabled}
+              channel={session.channel}
+              enabledChannels={enabledChannels}
+              aiPaused={aiPaused}
+              handoffMode={handoffMode}
+            />
             {session.assignedTo && (
               <span className="text-[10px] text-muted-foreground/60 ml-auto truncate max-w-[80px]">
                 {session.assignedTo.name}

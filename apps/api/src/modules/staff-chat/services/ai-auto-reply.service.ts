@@ -1,7 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { MessageRole } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { AiSuggestService } from './ai-suggest.service';
+import { SalesBotService, SalesBotResult } from '../../sales-bot/sales-bot.service';
 import type { AiAutoSettings, UpdateAiSettingsDto } from '../dto/ai-settings.dto';
 
 @Injectable()
@@ -12,6 +14,7 @@ export class AiAutoReplyService {
     private config: ConfigService,
     private prisma: PrismaService,
     private aiSuggest: AiSuggestService,
+    private salesBot: SalesBotService,
   ) {}
 
   async shouldAutoReply(session: any): Promise<boolean> {
@@ -39,18 +42,46 @@ export class AiAutoReplyService {
   async autoReply(
     roomId: string,
     customerMessage: string,
-  ): Promise<{ reply: string; confidence: number } | null> {
+  ): Promise<({ reply: string; confidence: number } & Partial<SalesBotResult>) | null> {
     const settings = await this.getSettings();
-    // Convert scale 0-100 → 0-1 for comparison with suggestion confidence
+    // Convert scale 0-100 → 0-1 for comparison with SalesBot confidence
     const threshold = settings.aiAutoConfidenceThreshold / 100;
 
-    const result = await this.aiSuggest.suggest(roomId);
-    if (!result.suggestions.length) return null;
+    // Fetch room context (customerId) + last 5 prior messages (duplicate of loadPrior pattern)
+    const room = await this.prisma.chatRoom.findUnique({
+      where: { id: roomId },
+      select: { customerId: true },
+    });
 
-    const top = result.suggestions[0];
-    if (top.confidence < threshold) return null;
+    const priorRows = await this.prisma.chatMessage.findMany({
+      where: { roomId, deletedAt: null, text: { not: null } },
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+      select: { role: true, text: true },
+    });
+    const priorMessages = priorRows.reverse().map((r) => ({
+      role: (r.role === MessageRole.BOT || r.role === MessageRole.STAFF
+        ? 'assistant'
+        : 'user') as 'assistant' | 'user',
+      content: r.text ?? '',
+    }));
 
-    return { reply: top.text, confidence: top.confidence };
+    const result = await this.salesBot.generateReply({
+      text: customerMessage,
+      roomId,
+      customerId: room?.customerId ?? null,
+      priorMessages,
+    });
+
+    if (result.confidence < threshold) return null;
+
+    return {
+      reply: result.reply,
+      confidence: result.confidence,
+      toolsUsed: result.toolsUsed,
+      inputTokens: result.inputTokens,
+      outputTokens: result.outputTokens,
+    };
   }
 
   async logAutoReply(params: {

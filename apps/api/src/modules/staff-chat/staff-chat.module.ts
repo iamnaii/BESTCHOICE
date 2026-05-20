@@ -33,6 +33,7 @@ import { ProductDetectService } from './services/product-detect.service';
 import { LeadScoringService } from './services/lead-scoring.service';
 import { ChatEngineModule } from '../chat-engine/chat-engine.module';
 import { ChatbotFinanceModule } from '../chatbot-finance/chatbot-finance.module';
+import { SalesBotModule } from '../sales-bot/sales-bot.module';
 import { CHAT_GATEWAY_TOKEN } from '../chat-engine/interfaces/chat-gateway.interface';
 // PaySolutions integration handled via forwardRef in ChatCommerceService
 
@@ -49,6 +50,7 @@ import { CHAT_GATEWAY_TOKEN } from '../chat-engine/interfaces/chat-gateway.inter
   imports: [
     ChatEngineModule,
     forwardRef(() => ChatbotFinanceModule),
+    SalesBotModule,
     JwtModule.registerAsync({
       useFactory: (configService: ConfigService) => ({
         secret: configService.get<string>('JWT_SECRET'),

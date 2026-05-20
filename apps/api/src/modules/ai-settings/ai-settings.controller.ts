@@ -3,7 +3,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { AiSettingsService } from './ai-settings.service';
-import { SHOP_SALES_PERSONA } from '../staff-chat/prompts/sales-persona';
+import { SALES_BOT_SYSTEM_PROMPT } from '../sales-bot/prompts/sales-bot.system';
 import { FINANCE_BOT_SYSTEM_PROMPT } from '../chatbot-finance/prompts/system-prompt';
 
 type UpdateAiSettingsBody = {
@@ -39,7 +39,7 @@ export class AiSettingsController {
         channels: ['LINE SHOP', 'Facebook', 'TikTok', 'Web'],
         source: 'apps/api/src/modules/staff-chat/prompts/sales-persona.ts',
         editable: false,
-        prompt: SHOP_SALES_PERSONA,
+        prompt: SALES_BOT_SYSTEM_PROMPT,
       },
       serviceBot: {
         name: 'น้องเบส (Service Bot)',

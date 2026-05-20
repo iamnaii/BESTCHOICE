@@ -4,7 +4,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ProductDetectService } from './product-detect.service';
 import { AiTrainingService } from './ai-training.service';
-import { SHOP_SALES_PERSONA } from '../prompts/sales-persona';
+import { SHOP_SALES_PERSONA_BASE } from '../prompts/sales-persona';
 import type { AiSuggestion, AiSuggestResponse } from '../dto/ai-suggest.dto';
 
 @Injectable()
@@ -116,7 +116,7 @@ export class AiSuggestService {
         ? promotions.map((p) => `- ${p.name}: ${p.description ?? ''}`).join('\n')
         : 'ไม่มีโปรโมชันที่ active';
 
-    const systemPrompt = `${SHOP_SALES_PERSONA}
+    const systemPrompt = `${SHOP_SALES_PERSONA_BASE}
 
 # Output format
 แนะนำข้อความตอบลูกค้า 2-3 ข้อความ ตอบเป็น JSON array เท่านั้น:

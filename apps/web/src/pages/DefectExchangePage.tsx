@@ -77,14 +77,19 @@ export default function DefectExchangePage(props?: DefectExchangePageProps) {
   // Resolve effective values: explicit props win, then URL query params, then defaults.
   const presetContractId =
     props?.presetContractId ?? params.get('contractId') ?? undefined;
-  const bypassWindow =
-    props?.bypassWindow ?? params.get('bypassWindow') === 'true';
-  const originRepairTicketId =
-    props?.originRepairTicketId ?? params.get('originRepairTicketId') ?? undefined;
-
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const canExecute = user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER';
+
+  // Role-gate the URL-derived bypass: a SALES user crafting ?bypassWindow=true
+  // must not propagate the flag to the API. canExecute acts as the FE guard;
+  // the backend also enforces this server-side (defence in depth).
+  const bypassWindowRaw =
+    props?.bypassWindow ?? params.get('bypassWindow') === 'true';
+  const bypassWindow = bypassWindowRaw && canExecute;
+
+  const originRepairTicketId =
+    props?.originRepairTicketId ?? params.get('originRepairTicketId') ?? undefined;
 
   const [selectedContractId, setSelectedContractId] = useState(presetContractId ?? '');
   const [selectedProductId, setSelectedProductId] = useState('');

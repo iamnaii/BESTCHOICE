@@ -58,6 +58,9 @@ export default function CreateInsuranceWizardPage() {
     skipWarrantyPreview ? 'exchange' : null,
   );
 
+  // defaultPayer from warranty-preview API — propagated into DefectDescriptionStep
+  const [defaultPayer, setDefaultPayer] = useState<'SHOP' | 'CUSTOMER' | 'SUPPLIER_CLAIM'>('SHOP');
+
   // Walk-in customer creation status (prevents double-fire)
   const [creatingCustomer, setCreatingCustomer] = useState(false);
 
@@ -66,10 +69,14 @@ export default function CreateInsuranceWizardPage() {
   // create the customer record first so DefectDescriptionStep / ExchangeProductPickerStep
   // can pass a valid customerId to POST /repair-tickets.
   //
-  // Required fields per CreateCustomerDto: name + phone (nationalId is @IsString but
-  // walk-in customer won't have it yet — the DTO marks it required, so we pass a
-  // placeholder value "0000000000000" per business rule for walk-in quick-create;
-  // a proper KYC update can happen later from the customer detail page).
+  // nationalId is intentionally omitted — CreateCustomerDto.nationalId is optional
+  // since Customer.nationalId is nullable in the DB (PostgreSQL allows multiple NULLs
+  // on unique indexes). Staff can fill in the real ID later from the customer detail page.
+  //
+  // Double-fire safety (React 18 StrictMode): the `creatingCustomer` flag blocks a
+  // second effect invocation while the POST is in-flight. After success,
+  // `customer.customerId` is set → `!customer.customerId` guard skips re-evaluation.
+  // Together these two guards are race-safe under React 18 concurrent batching.
   useEffect(() => {
     if (
       step === 4 &&
@@ -83,8 +90,9 @@ export default function CreateInsuranceWizardPage() {
         .post('/customers', {
           name: customer.customerName,
           phone: customer.customerPhone,
-          // Walk-in placeholder — staff can update national ID later
-          nationalId: '0000000000000',
+          // Walk-in: nationalId omitted — staff updates from customer detail page later.
+          // Do NOT pass nationalId: '0000000000000' — that caused a unique collision on
+          // the second walk-in customer (Customer.nationalId is @unique in DB).
         })
         .then(({ data }) => {
           setCustomer((prev) => ({ ...prev, customerId: data.id }));
@@ -106,6 +114,7 @@ export default function CreateInsuranceWizardPage() {
     setCustomer({});
     setDevice({});
     setChosenFlow(null);
+    setDefaultPayer('SHOP');
   };
 
   const goNext = (from: Step) => {
@@ -202,6 +211,7 @@ export default function CreateInsuranceWizardPage() {
           productId={device.productId}
           chosenFlow={chosenFlow}
           onChoose={setChosenFlow}
+          onPayerDetected={setDefaultPayer}
           onNext={() => goNext(3)}
           onBack={() => goBack(3)}
         />
@@ -228,6 +238,7 @@ export default function CreateInsuranceWizardPage() {
             deviceImei: device.deviceImei,
             deviceSerial: device.deviceSerial,
           }}
+          defaultPayer={defaultPayer}
           onBack={() => goBack(4)}
         />
       )}

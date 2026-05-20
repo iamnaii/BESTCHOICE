@@ -157,18 +157,21 @@ function RepairSupplierSection({
  * supplier, then POSTs to /repair-tickets. On success navigates to
  * /insurance/:id (the newly created ticket detail page).
  *
- * TODO (B.3 implementer): Walk-in customers (no customerId) need a real
- * customer record before this step can submit — the orchestrating
- * CreateInsuranceWizardPage must create the customer via POST /customers first
- * (using wizardState.customerName + customerPhone) and then set customerId on
- * the wizard state before mounting this step. Without a customerId the API
- * will reject the payload.
+ * Walk-in customers: the orchestrating CreateInsuranceWizardPage creates the
+ * customer record (POST /customers) before mounting this step and populates
+ * wizardState.customerId. Without a customerId the API will reject the payload.
  */
 export function DefectDescriptionStep({
   wizardState,
+  defaultPayer = 'SHOP',
   onBack,
 }: {
   wizardState: DefectDescriptionWizardState;
+  /**
+   * API-recommended payer from the warranty-preview response (defaultFlow).
+   * Defaults to 'SHOP' when the warranty step was skipped (bypass path).
+   */
+  defaultPayer?: 'SHOP' | 'CUSTOMER' | 'SUPPLIER_CLAIM';
   onBack: () => void;
 }) {
   const navigate = useNavigate();
@@ -183,7 +186,7 @@ export function DefectDescriptionStep({
     defaultValues: {
       defectDescription: '',
       estimatedCost: undefined,
-      payer: 'SHOP',
+      payer: defaultPayer,
       repairSupplierId: '',
       notes: '',
     },
@@ -278,7 +281,7 @@ export function DefectDescriptionStep({
         <div className="space-y-1">
           <Label>ผู้รับผิดชอบค่าซ่อม</Label>
           <Select
-            defaultValue="SHOP"
+            defaultValue={defaultPayer}
             onValueChange={(v) =>
               form.setValue('payer', v as 'SHOP' | 'CUSTOMER' | 'SUPPLIER_CLAIM')
             }

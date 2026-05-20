@@ -26,6 +26,7 @@ export function WarrantyPreviewStep({
   productId,
   chosenFlow,
   onChoose,
+  onPayerDetected,
   onNext,
   onBack,
 }: {
@@ -34,6 +35,8 @@ export function WarrantyPreviewStep({
   productId?: string;
   chosenFlow: WizardFlow | null;
   onChoose: (flow: WizardFlow) => void;
+  /** Called once when the API response first arrives, with the API-recommended payer. */
+  onPayerDetected?: (payer: 'SHOP' | 'CUSTOMER' | 'SUPPLIER_CLAIM') => void;
   onNext: () => void;
   onBack: () => void;
 }) {
@@ -49,13 +52,17 @@ export function WarrantyPreviewStep({
     },
   });
 
-  // Auto-select defaultFlow on first load (smart default B3)
+  // Auto-select defaultFlow + propagate defaultPayer on first load (smart default B3).
+  // onChoose is stable (useState setter in parent); intentionally excluded from deps
+  // to avoid re-firing when parent re-renders with the same data.
   useEffect(() => {
-    if (data && !chosenFlow) {
+    if (data && chosenFlow === null) {
       onChoose(data.defaultFlow);
+      onPayerDetected?.(data.defaultPayer);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- onChoose + onPayerDetected are stable
+  // useState setters in parent; only run when data first arrives (chosenFlow guards re-fire)
+  }, [data, chosenFlow]);
 
   if (isLoading) {
     return (

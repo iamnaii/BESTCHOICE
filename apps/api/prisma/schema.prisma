@@ -769,7 +769,7 @@ model User {
 
 model Customer {
   id                 String    @id @default(uuid())
-  nationalId         String    @unique @map("national_id") // encrypted AES-256
+  nationalId         String?   @unique @map("national_id") // encrypted AES-256 — nullable for walk-in quick-create
   prefix             String? // คำนำหน้า (นาย, นาง, นางสาว)
   name               String
   nickname           String? // ชื่อเล่น

@@ -535,31 +535,37 @@ export class CustomersService {
   }
 
   async create(dto: CreateCustomerDto) {
-    const normalizedNid = this.normalizeNationalId(dto.nationalId);
+    // nationalId is optional (walk-in quick-create path omits it).
+    // When provided, normalize + deduplicate; when absent, skip all nationalId checks.
+    const normalizedNid = dto.nationalId ? this.normalizeNationalId(dto.nationalId) : undefined;
     const normalizedPhone = this.normalizePhone(dto.phone);
     const normalizedPhoneSecondary = this.normalizePhone(dto.phoneSecondary);
     const normalizedEmail = this.normalizeEmail(dto.email);
 
-    // Phase 5: use nationalIdHash for dedup (faster + correct post-Phase 6 drop of plaintext)
-    const nidHash = hashPII(normalizedNid, this.hashSalt);
-    const existing = await this.prisma.customer.findUnique({
-      where: { nationalIdHash: nidHash },
-    });
-    if (existing && !existing.deletedAt) {
-      throw new ConflictException({
-        message: 'ลูกค้าที่มีเลขบัตรประชาชนนี้มีอยู่แล้ว',
-        existingCustomer: { id: existing.id, name: existing.name },
-      });
-    }
-    // Soft-deleted ghost with the same nationalIdHash would otherwise break
-    // the create() below with a P2002 on the unique column. Treat it as the
-    // same person being re-registered: revive + update with the new form data
-    // instead of crashing.
-    const reviveGhostId: string | null = existing?.deletedAt ? existing.id : null;
+    let reviveGhostId: string | null = null;
 
-    // Validate Thai national ID checksum (skip for foreigners)
-    if (!dto.isForeigner && !this.validateNationalId(normalizedNid)) {
-      throw new ConflictException('เลขบัตรประชาชนไม่ถูกต้อง');
+    if (normalizedNid) {
+      // Phase 5: use nationalIdHash for dedup (faster + correct post-Phase 6 drop of plaintext)
+      const nidHash = hashPII(normalizedNid, this.hashSalt);
+      const existing = await this.prisma.customer.findUnique({
+        where: { nationalIdHash: nidHash },
+      });
+      if (existing && !existing.deletedAt) {
+        throw new ConflictException({
+          message: 'ลูกค้าที่มีเลขบัตรประชาชนนี้มีอยู่แล้ว',
+          existingCustomer: { id: existing.id, name: existing.name },
+        });
+      }
+      // Soft-deleted ghost with the same nationalIdHash would otherwise break
+      // the create() below with a P2002 on the unique column. Treat it as the
+      // same person being re-registered: revive + update with the new form data
+      // instead of crashing.
+      reviveGhostId = existing?.deletedAt ? existing.id : null;
+
+      // Validate Thai national ID checksum (skip for foreigners)
+      if (!dto.isForeigner && !this.validateNationalId(normalizedNid)) {
+        throw new ConflictException('เลขบัตรประชาชนไม่ถูกต้อง');
+      }
     }
 
     // T3-C9: reject duplicate phone / email at application level.
@@ -567,13 +573,15 @@ export class CustomersService {
 
     const dataPlaintext = {
       ...dto,
-      nationalId: normalizedNid,
+      // Walk-in: normalizedNid is undefined → store null (field is nullable in DB)
+      nationalId: normalizedNid ?? null,
       phone: normalizedPhone ?? dto.phone,
       phoneSecondary: normalizedPhoneSecondary ?? dto.phoneSecondary ?? null,
       email: normalizedEmail ?? dto.email ?? null,
     };
     const piiEncrypted = this.buildPiiEncryptedFields({
-      nationalId: dataPlaintext.nationalId,
+      // Only encrypt nationalId when it was actually provided
+      nationalId: normalizedNid ?? undefined,
       phone: dataPlaintext.phone,
       phoneSecondary: dataPlaintext.phoneSecondary,
       email: dataPlaintext.email,

@@ -86,10 +86,13 @@ export function DevicePickerStep({
             จากสัญญา
           </Button>
         )}
+        {/* "เลือกจากสต็อก" tab is disabled until the real ProductPicker component is integrated.
+            The raw UUID input ships broken UX — hide behind disabled until follow-up PR. */}
         <Button
-          variant={tab === 'product' ? 'primary' : 'outline'}
+          variant="outline"
           size="sm"
-          onClick={() => setTab('product')}
+          disabled
+          title="กำลังพัฒนา — ใช้ &quot;จากสัญญา&quot; หรือ &quot;กรอกข้อมูลเอง&quot;"
         >
           เลือกจากสต็อก
         </Button>
@@ -133,20 +136,11 @@ export function DevicePickerStep({
       )}
 
       {tab === 'product' && (
-        <>
-          <p className="text-sm text-muted-foreground">
-            {/* TODO: integrate existing ProductPicker component — search for usage of product stock picker
-                (POS / stickers / stock-transfers page). For now allow direct UUID input. */}
-            เลือกจาก stock — รอ integration. ใส่ Product UUID ชั่วคราว:
-          </p>
-          <Input
-            placeholder="Product UUID"
-            value={value.productId ?? ''}
-            onChange={(e) =>
-              onChange({ productId: e.target.value || undefined })
-            }
-          />
-        </>
+        /* This branch is unreachable while the tab button is disabled.
+           Kept as a placeholder for when ProductPicker is integrated (follow-up PR). */
+        <p className="text-sm text-muted-foreground">
+          กำลังพัฒนา — ฟีเจอร์นี้จะเปิดใช้งานในเวอร์ชันถัดไป
+        </p>
       )}
 
       {tab === 'freetext' && (

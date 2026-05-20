@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { Plus, Search, Wrench } from 'lucide-react';
+import { Plus, Search, Wrench, ShieldCheck } from 'lucide-react';
 import api from '@/lib/api';
 import { useDebounce } from '@/hooks/useDebounce';
 import PageHeader from '@/components/ui/PageHeader';
@@ -243,10 +243,16 @@ export default function InsurancePage() {
       <PageHeader
         title="รับซ่อม/รับประกัน"
         action={
-          <Button onClick={() => navigate('/insurance/new')}>
-            <Plus className="mr-2 h-4 w-4" />
-            รับเครื่องใหม่
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => navigate('/insurance/warranty-check')}>
+              <ShieldCheck className="mr-2 h-4 w-4" />
+              เช็คประกัน
+            </Button>
+            <Button onClick={() => navigate('/insurance/new')}>
+              <Plus className="mr-2 h-4 w-4" />
+              รับเครื่องใหม่
+            </Button>
+          </div>
         }
       />
 

@@ -744,6 +744,18 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'แบบสัญญา', path: '/contract-templates', icon: FileCheck },
         { label: 'ตั้งราคา', path: '/settings/pricing-templates', icon: CircleDollarSign },
         { label: 'โปรโมชัน', path: '/promotions', icon: BadgePercent },
+        {
+          label: 'AI',
+          path: '/settings/ai-admin',
+          icon: Sparkles,
+          children: [
+            { label: 'AI Admin', path: '/settings/ai-admin', icon: Sparkles },
+            { label: 'AI Persona', path: '/settings/ai-persona', icon: Sparkles },
+            { label: 'AI Assistant', path: '/settings/ai-chat', icon: Sparkles },
+            { label: 'AI Training', path: '/settings/ai-training', icon: Sparkles },
+            { label: 'AI Performance', path: '/settings/ai-performance', icon: Sparkles },
+          ],
+        },
         { label: 'PDPA', path: '/pdpa', icon: Shield },
       ],
     },
@@ -759,15 +771,6 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'จัดการอุปกรณ์ (MDM)', path: '/mdm', icon: Smartphone },
         { label: 'LINE OA', path: '/settings/rich-menu', icon: MessageSquareMore },
         { label: 'การเชื่อมต่อ (PaySolutions / สรรพากร ฯลฯ)', path: '/settings/integrations', icon: Plug },
-        {
-          label: 'AI',
-          path: '/settings/ai-admin',
-          icon: Sparkles,
-          children: [
-            { label: 'AI Admin', path: '/settings/ai-admin', icon: Sparkles },
-            { label: 'AI Assistant', path: '/settings/ai-chat', icon: Sparkles },
-          ],
-        },
       ],
     },
     {

@@ -13,12 +13,32 @@ interface MessageBubbleProps {
     mediaUrl?: string | null;
     mediaType?: string | null;
     flexJson?: unknown;
+    intent?: string | null;
     createdAt: string;
     readAt?: string | null;
     staff?: { id: string; name: string; avatarUrl?: string | null } | null;
   };
   customerAvatar?: string;
   customerInitial?: string;
+}
+
+/**
+ * AI auto-reply indicator — chat-engine tags auto-sent bot messages with
+ * intent prefix "AUTO:<route>" (see AiAutoReplyService). When present we
+ * render a small 🤖 next to the timestamp so staff can tell at a glance
+ * which messages were sent by AI vs. drafted-then-approved by a human.
+ */
+function AiAutoIndicator({ intent, role }: { intent?: string | null; role: string }) {
+  if (role !== 'BOT' || !intent?.startsWith('AUTO:')) return null;
+  return (
+    <span
+      className="ml-1 text-[10px] text-emerald-600"
+      title="AI ตอบอัตโนมัติ"
+      aria-label="AI ตอบอัตโนมัติ"
+    >
+      🤖
+    </span>
+  );
 }
 
 export default function MessageBubble({ message, customerAvatar, customerInitial }: MessageBubbleProps) {
@@ -52,6 +72,7 @@ export default function MessageBubble({ message, customerAvatar, customerInitial
             <span className="text-[10px] text-muted-foreground">
               {format(new Date(message.createdAt), 'HH:mm')}
             </span>
+            <AiAutoIndicator intent={message.intent} role={message.role} />
             {isStaff && (
               <span className={cn('text-[10px] ml-1', message.readAt ? 'text-primary' : 'text-muted-foreground')}>
                 {message.readAt ? <CheckCheck className="size-3" /> : <Check className="size-3" />}
@@ -89,6 +110,7 @@ export default function MessageBubble({ message, customerAvatar, customerInitial
             <span className="text-[10px] text-muted-foreground">
               {format(new Date(message.createdAt), 'HH:mm')}
             </span>
+            <AiAutoIndicator intent={message.intent} role={message.role} />
             {isStaff && (
               <span className={cn('text-[10px] ml-1', message.readAt ? 'text-info' : 'text-muted-foreground')}>
                 {message.readAt ? <CheckCheck className="size-3" /> : <Check className="size-3" />}
@@ -116,6 +138,7 @@ export default function MessageBubble({ message, customerAvatar, customerInitial
             <span className="text-[10px] text-muted-foreground">
               {format(new Date(message.createdAt), 'HH:mm')}
             </span>
+            <AiAutoIndicator intent={message.intent} role={message.role} />
             {isStaff && (
               <span className={cn('text-[10px] ml-1', message.readAt ? 'text-primary' : 'text-muted-foreground')}>
                 {message.readAt ? <CheckCheck className="size-3" /> : <Check className="size-3" />}
@@ -158,6 +181,7 @@ export default function MessageBubble({ message, customerAvatar, customerInitial
             <span className="text-[10px] text-muted-foreground">
               {format(new Date(message.createdAt), 'HH:mm')}
             </span>
+            <AiAutoIndicator intent={message.intent} role={message.role} />
           </span>
         </div>
       </div>
@@ -192,6 +216,7 @@ export default function MessageBubble({ message, customerAvatar, customerInitial
             <span className="text-[10px] text-muted-foreground">
               {format(new Date(message.createdAt), 'HH:mm')}
             </span>
+            <AiAutoIndicator intent={message.intent} role={message.role} />
             {isStaff && (
               <span className={cn('text-[10px] ml-1', message.readAt ? 'text-info' : 'text-muted-foreground')}>
                 {message.readAt ? <CheckCheck className="size-3" /> : <Check className="size-3" />}
@@ -262,6 +287,7 @@ export default function MessageBubble({ message, customerAvatar, customerInitial
           <span className="text-[10px] text-muted-foreground">
             {format(new Date(message.createdAt), 'HH:mm')}
           </span>
+          <AiAutoIndicator intent={message.intent} role={message.role} />
           {message.role === 'STAFF' && (
             <span className={cn('text-[10px] ml-1', message.readAt ? 'text-primary' : 'text-muted-foreground')}>
               {message.readAt ? <CheckCheck className="size-3" /> : <Check className="size-3" />}

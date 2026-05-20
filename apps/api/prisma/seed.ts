@@ -180,8 +180,8 @@ async function main() {
     { key: 'line_oa_overdue_template', value: 'แจ้งเตือน: สัญญา {contractNo} เลยกำหนดชำระ {overdueDays} วัน กรุณาชำระโดยเร็ว', label: 'เทมเพลตแจ้งเตือนค้างชำระ LINE OA' },
     { key: 'bad_debt_provision_rates', value: JSON.stringify({ '1-30': 0.02, '31-60': 0.10, '61-90': 0.25, '91-180': 0.50, '181-360': 0.75, '360+': 1.00 }), label: 'อัตราค่าเผื่อหนี้สงสัยจะสูญ ตามอายุหนี้' },
     // SP5 Phase 2 — Repair ticket CoA defaults (SHOP-side, no VAT)
-    { key: 'REPAIR_EXPENSE_ACCOUNT_CODE', value: '53-1306', label: 'SHOP CoA — ค่าซ่อมเครื่องลูกค้า (Dr leg, payer=SHOP)' },
-    { key: 'REPAIR_INCOME_ACCOUNT_CODE', value: '42-1106', label: 'SHOP CoA — รายได้บริการซ่อม (Cr leg, payer=CUSTOMER)' },
+    { key: 'REPAIR_EXPENSE_ACCOUNT_CODE', value: 'S51-1105', label: 'SHOP CoA — ค่าซ่อมอุปกรณ์ลูกค้า (Dr leg, payer=SHOP)' },
+    { key: 'REPAIR_INCOME_ACCOUNT_CODE', value: 'S42-1101', label: 'SHOP CoA — รายได้บริการซ่อม (Cr leg, payer=CUSTOMER)' },
   ];
 
   for (const c of configs) {

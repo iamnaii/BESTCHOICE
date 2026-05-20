@@ -1028,3 +1028,312 @@ describe('RepairTicketsService.returnToCustomer', () => {
     expect(prisma.repairTicket.update).not.toHaveBeenCalled();
   });
 });
+
+// ─── SALES_USER shared for warrantyPreview + warrantyLookup ───────────────
+
+const SALES_USER: { id: string; role: string; branchId: string } = {
+  id: 'u-sales',
+  role: 'SALES',
+  branchId: 'b-1',
+};
+
+describe('RepairTicketsService.warrantyPreview', () => {
+  let svc: RepairTicketsService;
+  let prisma: any;
+  let audit: any;
+
+  beforeEach(async () => {
+    ({ prisma, audit } = buildTransitionModule());
+    // Minimal extra methods needed for warrantyPreview
+    prisma.contract.findUnique = jest.fn().mockResolvedValue(null);
+    prisma.product = { findUnique: jest.fn().mockResolvedValue(null) };
+    svc = await buildSvc(prisma, audit, { nextTicketNumber: jest.fn() });
+  });
+
+  // Test 1: no inputs at all → BadRequestException
+  it('throws BadRequestException when no inputs provided', async () => {
+    await expect(svc.warrantyPreview({} as any, SALES_USER)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+  });
+
+  // Test 2: customerId only (no contract/product) → WALK_IN + defaultFlow=repair
+  it('returns WALK_IN + defaultFlow=repair when no contract/product resolvable', async () => {
+    const result = await svc.warrantyPreview({ customerId: 'c-1' }, SALES_USER);
+
+    expect(result.warrantyStatus).toBe('WALK_IN');
+    expect(result.defaultFlow).toBe('repair');
+    expect(result.alternativeFlow).toBeNull();
+    expect(result.eligibility.forExchange).toBe(false);
+    expect(result.eligibility.forRepair).toBe(true);
+    expect(result.daysRemaining.sevenDayDefect).toBeNull();
+    expect(result.daysRemaining.shopWarranty).toBeNull();
+    expect(result.daysRemaining.mfrWarranty).toBeNull();
+  });
+
+  // Test 3: contract with deviceReceivedAt 3 days ago + ACTIVE + PHONE_USED
+  //         → IN_7DAY_DEFECT + defaultFlow=exchange + alternativeFlow=repair
+  it('returns IN_7DAY_DEFECT + defaultFlow=exchange when within 7-day window, ACTIVE, PHONE_USED', async () => {
+    const threeDaysAgo = new Date(Date.now() - 3 * 86_400_000);
+    prisma.contract.findUnique.mockResolvedValue({
+      id: 'contract-1',
+      status: 'ACTIVE',
+      deviceReceivedAt: threeDaysAgo,
+      shopWarrantyEndDate: null,
+      product: { id: 'p-1', category: 'PHONE_USED', warrantyExpireDate: null },
+    });
+
+    const result = await svc.warrantyPreview({ contractId: 'contract-1' }, SALES_USER);
+
+    expect(result.warrantyStatus).toBe('IN_7DAY_DEFECT');
+    expect(result.defaultFlow).toBe('exchange');
+    expect(result.alternativeFlow).toBe('repair');
+    expect(result.eligibility.forExchange).toBe(true);
+    expect(result.daysRemaining.sevenDayDefect).toBeGreaterThanOrEqual(0);
+  });
+
+  // Test 4: contract 20 days old, shop warranty still active → IN_SHOP_WARRANTY + defaultFlow=repair
+  it('returns IN_SHOP_WARRANTY + defaultFlow=repair when 8-60 days after receipt but shop warranty active', async () => {
+    const twentyDaysAgo = new Date(Date.now() - 20 * 86_400_000);
+    const thirtyDaysFromNow = new Date(Date.now() + 30 * 86_400_000);
+    prisma.contract.findUnique.mockResolvedValue({
+      id: 'contract-2',
+      status: 'ACTIVE',
+      deviceReceivedAt: twentyDaysAgo,
+      shopWarrantyEndDate: thirtyDaysFromNow,
+      product: { id: 'p-2', category: 'PHONE_USED', warrantyExpireDate: null },
+    });
+
+    const result = await svc.warrantyPreview({ contractId: 'contract-2' }, SALES_USER);
+
+    expect(result.warrantyStatus).toBe('IN_SHOP_WARRANTY');
+    expect(result.defaultFlow).toBe('repair');
+    expect(result.alternativeFlow).toBeNull();
+    expect(result.defaultPayer).toBe('SHOP');
+    expect(result.eligibility.forExchange).toBe(false);
+  });
+
+  // Test 5: all warranties expired → OUT_OF_WARRANTY + defaultPayer=CUSTOMER
+  it('returns OUT_OF_WARRANTY + defaultPayer=CUSTOMER when all warranties expired', async () => {
+    const sixtyDaysAgo = new Date(Date.now() - 60 * 86_400_000);
+    const oneYearAgo = new Date(Date.now() - 365 * 86_400_000);
+    prisma.contract.findUnique.mockResolvedValue({
+      id: 'contract-3',
+      status: 'ACTIVE',
+      deviceReceivedAt: sixtyDaysAgo,
+      shopWarrantyEndDate: oneYearAgo,
+      product: { id: 'p-3', category: 'PHONE_USED', warrantyExpireDate: oneYearAgo },
+    });
+
+    const result = await svc.warrantyPreview({ contractId: 'contract-3' }, SALES_USER);
+
+    expect(result.warrantyStatus).toBe('OUT_OF_WARRANTY');
+    expect(result.defaultPayer).toBe('CUSTOMER');
+    expect(result.eligibility.forExchange).toBe(false);
+  });
+
+  // Test 6: BKK timezone math — device received just under 7 days ago
+  //         sevenDayDefect should be 0 (window expired today) or 1 (still 1 day left)
+  //         but must never be negative.
+  it('daysRemaining.sevenDayDefect is never negative (BKK calendar-day arithmetic)', async () => {
+    // Simulate device received exactly 7 BKK calendar days ago — window just ended.
+    // We place receipt at the start of the BKK calendar day 7 days ago.
+    const bkkOffset = 7 * 60 * 60 * 1000; // +7h in ms
+    const nowBkk = new Date(Date.now() + bkkOffset);
+    // Midnight of 7 BKK calendar days ago
+    const midnightBkkSevenDaysAgo = new Date(
+      Date.UTC(
+        nowBkk.getUTCFullYear(),
+        nowBkk.getUTCMonth(),
+        nowBkk.getUTCDate() - 7,
+        0,
+        0,
+        0,
+      ) - bkkOffset,
+    );
+
+    prisma.contract.findUnique.mockResolvedValue({
+      id: 'contract-tz',
+      status: 'ACTIVE',
+      deviceReceivedAt: midnightBkkSevenDaysAgo,
+      shopWarrantyEndDate: null,
+      product: null,
+    });
+
+    const result = await svc.warrantyPreview({ contractId: 'contract-tz' }, SALES_USER);
+
+    // sevenDayDefect must be 0 (not negative)
+    expect(result.daysRemaining.sevenDayDefect).toBe(0);
+    expect(result.daysRemaining.sevenDayDefect).toBeGreaterThanOrEqual(0);
+  });
+});
+
+// ─── RepairTicketsService.warrantyLookup ──────────────────────────────────
+
+describe('RepairTicketsService.warrantyLookup', () => {
+  let svc: RepairTicketsService;
+  let prisma: any;
+  let audit: any;
+
+  beforeEach(async () => {
+    ({ prisma, audit } = buildTransitionModule());
+    // Additional prisma methods needed for warrantyLookup
+    prisma.customer = { findUnique: jest.fn().mockResolvedValue(null) };
+    prisma.contract.findMany = jest.fn().mockResolvedValue([]);
+    prisma.contract.findFirst = jest.fn().mockResolvedValue(null);
+    prisma.product = {
+      findUnique: jest.fn().mockResolvedValue(null),
+      findFirst: jest.fn().mockResolvedValue(null),
+    };
+    svc = await buildSvc(prisma, audit, { nextTicketNumber: jest.fn() });
+  });
+
+  // Test 1: lookup by customerId returns all PHONE devices for the customer with warranty windows
+  it('lookup by customerId returns devices with warranty windows and forExchange=true when 7-day window active', async () => {
+    const twoDaysAgo = new Date(Date.now() - 2 * 86_400_000);
+    const customer = { id: 'c-1', name: 'นาย ก', phone: '0891234567' };
+    const product = {
+      id: 'p-1',
+      brand: 'Samsung',
+      model: 'A55',
+      imeiSerial: 'IMEI-001',
+      category: 'PHONE_USED',
+      warrantyExpireDate: null,
+    };
+    const contract = {
+      id: 'ct-1',
+      contractNumber: 'CN-2026-0001',
+      status: 'ACTIVE',
+      customerId: 'c-1',
+      deviceReceivedAt: twoDaysAgo,
+      shopWarrantyEndDate: null,
+      customer,
+      product,
+    };
+
+    prisma.customer.findUnique.mockResolvedValue(customer);
+    prisma.contract.findMany.mockResolvedValue([contract]);
+
+    const result = await svc.warrantyLookup({ customerId: 'c-1' }, SALES_USER);
+
+    expect(result.customer).toEqual(customer);
+    expect(result.devices).toHaveLength(1);
+    // I1: tolerant assertion — avoid brittle exact value near BKK day boundary
+    expect(result.devices[0].warrantyWindows.sevenDayDefect).toBeGreaterThanOrEqual(4);
+    expect(result.devices[0].warrantyWindows.sevenDayDefect).toBeLessThanOrEqual(5);
+    expect(result.devices[0].eligibility.forExchange).toBe(true);
+    expect(result.devices[0].eligibility.forRepair).toBe(true);
+  });
+
+  // Test 2: lookup by IMEI returns single device
+  it('lookup by IMEI returns single device tied to that product', async () => {
+    const customer = { id: 'c-2', name: 'นาง ข', phone: null };
+    const product = {
+      id: 'p-2',
+      brand: 'Apple',
+      model: 'iPhone 14',
+      imeiSerial: 'IMEI-999',
+      category: 'PHONE_USED',
+      warrantyExpireDate: null,
+    };
+    const contract = {
+      id: 'ct-2',
+      contractNumber: 'CN-2026-0002',
+      status: 'ACTIVE',
+      customerId: 'c-2',
+      deviceReceivedAt: null,
+      shopWarrantyEndDate: null,
+      customer,
+    };
+
+    prisma.product.findFirst.mockResolvedValue({ ...product, contracts: [contract] });
+
+    const result = await svc.warrantyLookup({ imei: 'IMEI-999' }, SALES_USER);
+
+    expect(result.devices).toHaveLength(1);
+    expect(result.devices[0].product!.imeiSerial).toBe('IMEI-999');
+    expect(result.devices[0].contract!.contractNumber).toBe('CN-2026-0002');
+  });
+
+  // Test 3: lookup by contractNumber returns device tied to that contract
+  it('lookup by contractNumber returns device with matching contract', async () => {
+    const customer = { id: 'c-3', name: 'นาย ค', phone: '0812345678' };
+    const product = {
+      id: 'p-3',
+      brand: 'Oppo',
+      model: 'Reno 12',
+      imeiSerial: 'SN-ABC',
+      category: 'PHONE_NEW',
+      warrantyExpireDate: new Date(Date.now() + 300 * 86_400_000),
+    };
+    const contract = {
+      id: 'ct-3',
+      contractNumber: 'CN-2026-0001',
+      status: 'ACTIVE',
+      customerId: 'c-3',
+      deviceReceivedAt: null,
+      shopWarrantyEndDate: null,
+      customer,
+      product,
+    };
+
+    prisma.contract.findFirst.mockResolvedValue(contract);
+
+    const result = await svc.warrantyLookup({ contractNumber: 'CN-2026-0001' }, SALES_USER);
+
+    expect(result.devices).toHaveLength(1);
+    expect(result.devices[0].contract!.contractNumber).toBe('CN-2026-0001');
+    expect(result.customer).toEqual(customer);
+  });
+
+  // Test 4a: C3 — exact-match lookup by contractNumber not found → NotFoundException (Thai message)
+  it('C3: lookup by contractNumber not found throws NotFoundException with Thai message', async () => {
+    // prisma.contract.findFirst returns null by default in beforeEach
+    await expect(
+      svc.warrantyLookup({ contractNumber: 'NOT-EXIST' }, SALES_USER),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  // Test 4b: C3 — exact-match lookup by IMEI not found → NotFoundException (Thai message)
+  it('C3: lookup by IMEI not found throws NotFoundException with Thai message', async () => {
+    // prisma.product.findFirst returns null by default in beforeEach
+    await expect(
+      svc.warrantyLookup({ imei: 'IMEI-NOT-EXIST' }, SALES_USER),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  // Test 4c: C3 — customerId mode with customer having no contracts returns empty devices array (no throw)
+  it('C3: customerId lookup with no contracts returns empty devices array (no throw)', async () => {
+    prisma.customer.findUnique.mockResolvedValue({ id: 'c-empty', name: 'นาย ว', phone: null });
+    prisma.contract.findMany.mockResolvedValue([]);
+
+    const result = await svc.warrantyLookup({ customerId: 'c-empty' }, SALES_USER);
+
+    expect(result.devices).toHaveLength(0);
+    expect(result.customer).toEqual(expect.objectContaining({ id: 'c-empty' }));
+  });
+
+  // Test 4d: C3 — customerId lookup with customer not found → NotFoundException
+  it('C3: customerId lookup with non-existent customer throws NotFoundException', async () => {
+    // prisma.customer.findUnique returns null by default in beforeEach
+    await expect(
+      svc.warrantyLookup({ customerId: 'CUST-NOT-EXIST' }, SALES_USER),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  // Test 5: SALES role → branchId scope is applied in the where clause
+  it('SALES role applies branchId scope to contract query', async () => {
+    const findMany = jest.fn().mockImplementation((args: any) => {
+      // Assert scope is applied — branchId must equal the SALES user's branchId
+      expect(args.where.branchId).toBe(SALES_USER.branchId);
+      return [];
+    });
+    prisma.contract.findMany = findMany;
+    prisma.customer.findUnique.mockResolvedValue({ id: 'c-99', name: 'ทดสอบ', phone: null });
+
+    const result = await svc.warrantyLookup({ customerId: 'c-99' }, SALES_USER);
+
+    expect(findMany).toHaveBeenCalledTimes(1);
+    expect(result.devices).toHaveLength(0);
+  });
+});

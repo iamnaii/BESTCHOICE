@@ -3,7 +3,7 @@
  *
  * Verifies that:
  * 1. The production seed file contains REPAIR_EXPENSE_ACCOUNT_CODE + REPAIR_INCOME_ACCOUNT_CODE
- *    with the correct CoA codes (53-1306 / 42-1106).
+ *    with the correct SHOP CoA codes (S51-1105 / S42-1101).
  * 2. SettingsService.getKey returns the seeded value when the DB row exists.
  *
  * No `bootstrapDefaults()` method exists in SettingsService — defaults are applied
@@ -30,14 +30,14 @@ describe('Repair ticket SystemConfig defaults', () => {
       seedSrc = fs.readFileSync(SEED_PROD_PATH, 'utf-8');
     });
 
-    it('contains REPAIR_EXPENSE_ACCOUNT_CODE with value 53-1306', () => {
+    it('contains REPAIR_EXPENSE_ACCOUNT_CODE with value S51-1105', () => {
       expect(seedSrc).toContain("key: 'REPAIR_EXPENSE_ACCOUNT_CODE'");
-      expect(seedSrc).toContain("value: '53-1306'");
+      expect(seedSrc).toContain("value: 'S51-1105'");
     });
 
-    it('contains REPAIR_INCOME_ACCOUNT_CODE with value 42-1106', () => {
+    it('contains REPAIR_INCOME_ACCOUNT_CODE with value S42-1101', () => {
       expect(seedSrc).toContain("key: 'REPAIR_INCOME_ACCOUNT_CODE'");
-      expect(seedSrc).toContain("value: '42-1106'");
+      expect(seedSrc).toContain("value: 'S42-1101'");
     });
   });
 
@@ -73,8 +73,8 @@ describe('Repair ticket SystemConfig defaults', () => {
       prisma.systemConfig.findFirst.mockImplementation(
         (args: { where: { key: string } }) => {
           const map: Record<string, string> = {
-            REPAIR_EXPENSE_ACCOUNT_CODE: '53-1306',
-            REPAIR_INCOME_ACCOUNT_CODE: '42-1106',
+            REPAIR_EXPENSE_ACCOUNT_CODE: 'S51-1105',
+            REPAIR_INCOME_ACCOUNT_CODE: 'S42-1101',
           };
           const val = map[args.where.key];
           return Promise.resolve(val ? { value: val } : null);
@@ -84,8 +84,8 @@ describe('Repair ticket SystemConfig defaults', () => {
       const expense = await service.getKey('REPAIR_EXPENSE_ACCOUNT_CODE');
       const income = await service.getKey('REPAIR_INCOME_ACCOUNT_CODE');
 
-      expect(expense).toBe('53-1306');
-      expect(income).toBe('42-1106');
+      expect(expense).toBe('S51-1105');
+      expect(income).toBe('S42-1101');
     });
   });
 });

@@ -862,6 +862,11 @@ model Customer {
   chatConsent      Boolean            @default(false) @map("chat_consent")
   chatConsentAt    DateTime?          @map("chat_consent_at")
 
+  // Phase A SHOP Sales AI — channel/source that produced this lead
+  // (e.g. "line-shop", "facebook", "tiktok", "walk-in"). Free-text label so
+  // marketing can add new sources without a migration. Null = legacy/unknown.
+  acquisitionSource String? @map("acquisition_source")
+
   // LINE notification preferences
   notifPaymentReminder Boolean @default(true) @map("notif_payment_reminder")
   notifOverdueNotice   Boolean @default(true) @map("notif_overdue_notice")
@@ -908,6 +913,7 @@ model Customer {
   @@index([deletedAt])
   @@index([referredById])
   @@index([phoneHash])
+  @@index([acquisitionSource])
   @@map("customers")
 }
 

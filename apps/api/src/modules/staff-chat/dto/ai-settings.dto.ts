@@ -18,7 +18,7 @@ export class UpdateAiSettingsDto {
   @IsNumber()
   @IsOptional()
   @Min(1)
-  @Max(20)
+  @Max(100)
   aiAutoMaxRepliesPerSession?: number;
 
   @IsOptional()

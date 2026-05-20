@@ -7,6 +7,15 @@ import api from '@/lib/api';
 import ConversationItem from './ConversationItem';
 import ChannelFilter, { type InboxTab } from './ChannelFilter';
 
+type AiFilter = 'all' | 'ai' | 'human' | 'pending';
+
+const AI_FILTER_LABELS: Record<AiFilter, string> = {
+  all: 'ทั้งหมด',
+  ai: 'AI',
+  human: 'พนักงาน',
+  pending: 'รอตอบ',
+};
+
 interface ConversationListProps {
   sessions: any[];
   activeRoomId: string | null;
@@ -19,6 +28,7 @@ interface ConversationListProps {
   };
   onFiltersChange: (filters: any) => void;
   currentUserId?: string;
+  aiSettings?: { autoModeEnabled: boolean; enabledChannels: string[] };
 }
 
 export default function ConversationList({
@@ -29,9 +39,11 @@ export default function ConversationList({
   filters,
   onFiltersChange,
   currentUserId,
+  aiSettings,
 }: ConversationListProps) {
   const [searchInput, setSearchInput] = useState(filters.search ?? '');
   const [searchFocused, setSearchFocused] = useState(false);
+  const [aiFilter, setAiFilter] = useState<AiFilter>('all');
   const debouncedSearch = useDebounce(searchInput, 300);
 
   const queryClient = useQueryClient();
@@ -77,6 +89,18 @@ export default function ConversationList({
       list = list.filter((r) => filters.channels.includes(r.channel));
     }
 
+    // AI filter (ChatInboxPage parity)
+    // - 'ai'      — AI is replying (not paused, not in handoff)
+    // - 'human'   — staff has taken over (aiPaused)
+    // - 'pending' — bot escalated to a human (handoffMode)
+    if (aiFilter === 'ai') {
+      list = list.filter((r) => !r.aiPaused && !r.handoffMode);
+    } else if (aiFilter === 'human') {
+      list = list.filter((r) => r.aiPaused);
+    } else if (aiFilter === 'pending') {
+      list = list.filter((r) => r.handoffMode);
+    }
+
     // Search filter
     if (filters.search) {
       const q = filters.search.toLowerCase();
@@ -97,7 +121,7 @@ export default function ConversationList({
     });
 
     return list;
-  }, [sessions, filters, currentUserId]);
+  }, [sessions, filters, currentUserId, aiFilter]);
 
   return (
     <div className="flex flex-col h-full border-r border-border/60">
@@ -125,6 +149,24 @@ export default function ConversationList({
         onTabChange={(tab) => onFiltersChange({ ...filters, tab })}
         onChannelToggle={handleChannelToggle}
       />
+
+      {/* AI status filter chips — owner asked "หาแต่แชทที่รอตอบ" → 'pending' */}
+      <div className="flex gap-1.5 px-4 pb-2 pt-1">
+        {(['all', 'ai', 'human', 'pending'] as const).map((key) => (
+          <button
+            key={key}
+            onClick={() => setAiFilter(key)}
+            className={cn(
+              'px-2 py-0.5 text-[10px] rounded-full border transition-colors',
+              aiFilter === key
+                ? 'bg-primary text-primary-foreground border-primary'
+                : 'bg-background text-muted-foreground border-border/60 hover:bg-muted',
+            )}
+          >
+            {AI_FILTER_LABELS[key]}
+          </button>
+        ))}
+      </div>
 
       {/* Divider */}
       <div className="h-px bg-border/60" />
@@ -159,6 +201,7 @@ export default function ConversationList({
               isActive={session.id === activeRoomId}
               onClick={() => onSelectRoom(session.id)}
               onPin={(roomId, isPinned) => pinMutation.mutate({ roomId, isPinned })}
+              aiSettings={aiSettings}
             />
           ))
         )}

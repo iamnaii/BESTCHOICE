@@ -237,6 +237,22 @@ function ShopBotSetupForm() {
     },
   });
 
+  const testSendMutation = useMutation({
+    mutationFn: () =>
+      api.post<{ success: boolean; error?: string }>('/staff-chat/ai/test-send'),
+    onSuccess: (res: any) => {
+      const data = res.data?.data ?? res.data;
+      if (data?.success) {
+        toast.success('ส่งข้อความทดสอบสำเร็จ — เช็คใน LINE');
+      } else {
+        toast.error(`ส่งไม่สำเร็จ: ${data?.error ?? 'unknown'}`);
+      }
+    },
+    onError: (err: any) => {
+      toast.error(`Error: ${err?.response?.data?.message ?? err.message}`);
+    },
+  });
+
   return (
     <Card>
       <CardHeader>
@@ -281,7 +297,16 @@ function ShopBotSetupForm() {
             placeholder="U1234567890abcdef..."
           />
         </div>
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-2">
+          <Button
+            variant="outline"
+            onClick={() => testSendMutation.mutate()}
+            disabled={
+              testSendMutation.isPending || !shopBotQuery.data?.shopBotTestUserId
+            }
+          >
+            {testSendMutation.isPending ? 'กำลังส่ง...' : '🧪 ส่งข้อความทดสอบไปยัง LINE'}
+          </Button>
           <Button
             onClick={() => saveMutation.mutate()}
             disabled={saveMutation.isPending || shopBotQuery.isLoading}

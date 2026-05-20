@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { AiAutoReplyService } from './ai-auto-reply.service';
 import { AiSuggestService } from './ai-suggest.service';
 import { SalesBotService } from '../../sales-bot/sales-bot.service';
+import { MessageRouterService } from '../../chat-engine/services/message-router.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 
 describe('AiAutoReplyService.shouldAutoReply', () => {
@@ -25,6 +26,7 @@ describe('AiAutoReplyService.shouldAutoReply', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: AiSuggestService, useValue: {} },
         { provide: SalesBotService, useValue: { generateReply: jest.fn() } },
+        { provide: MessageRouterService, useValue: { getAdapter: jest.fn() } },
       ],
     }).compile();
     svc = mod.get(AiAutoReplyService);
@@ -80,6 +82,7 @@ describe('AiAutoReplyService.autoReply', () => {
         { provide: AiSuggestService, useValue: { suggest: jest.fn() } },
         // NEW dep: SalesBotService
         { provide: SalesBotService, useValue: salesBot },
+        { provide: MessageRouterService, useValue: { getAdapter: jest.fn() } },
       ],
     }).compile();
     svc = mod.get(AiAutoReplyService);
@@ -116,5 +119,78 @@ describe('AiAutoReplyService.autoReply', () => {
     });
     const result = await svc.autoReply('room-2', 'ขอผ่อน iPhone 5 เครื่อง');
     expect(result).toBeNull();
+  });
+});
+
+describe('AiAutoReplyService.testSend', () => {
+  let svc: AiAutoReplyService;
+  let prisma: any;
+  let adapter: { channel: string; sendMessage: jest.Mock };
+  let messageRouter: { getAdapter: jest.Mock };
+
+  beforeEach(async () => {
+    adapter = {
+      channel: 'LINE_SHOP',
+      sendMessage: jest.fn(),
+    };
+    messageRouter = {
+      getAdapter: jest.fn().mockReturnValue(adapter),
+    };
+    prisma = {
+      systemConfig: { findMany: jest.fn() },
+    };
+    const mod: TestingModule = await Test.createTestingModule({
+      providers: [
+        AiAutoReplyService,
+        { provide: ConfigService, useValue: { get: () => undefined } },
+        { provide: PrismaService, useValue: prisma },
+        { provide: AiSuggestService, useValue: {} },
+        { provide: SalesBotService, useValue: {} },
+        { provide: MessageRouterService, useValue: messageRouter },
+      ],
+    }).compile();
+    svc = mod.get(AiAutoReplyService);
+  });
+
+  it('returns error when shop_bot_test_user_id is not configured', async () => {
+    // getSettings will return shopBotTestUserId: null when key absent
+    prisma.systemConfig.findMany.mockResolvedValue([]);
+
+    const result = await svc.testSend();
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('ยังไม่ตั้งค่า');
+    expect(adapter.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('sends test message via LINE_SHOP adapter and returns success', async () => {
+    prisma.systemConfig.findMany.mockResolvedValue([
+      { key: 'shop_bot_test_user_id', value: 'U-line-test' },
+    ]);
+    adapter.sendMessage.mockResolvedValue({ success: true });
+
+    const result = await svc.testSend();
+
+    expect(result.success).toBe(true);
+    expect(messageRouter.getAdapter).toHaveBeenCalledWith('LINE_SHOP');
+    expect(adapter.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        externalUserId: 'U-line-test',
+        channel: 'LINE_SHOP',
+        text: expect.stringContaining('🧪'),
+      }),
+    );
+  });
+
+  it('returns adapter error when sendMessage fails', async () => {
+    prisma.systemConfig.findMany.mockResolvedValue([
+      { key: 'shop_bot_test_user_id', value: 'U-line-test' },
+    ]);
+    adapter.sendMessage.mockResolvedValue({ success: false, error: 'token invalid' });
+
+    const result = await svc.testSend();
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('token invalid');
   });
 });

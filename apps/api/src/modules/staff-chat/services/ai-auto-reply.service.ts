@@ -1,9 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, Optional, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { MessageRole } from '@prisma/client';
+import { ChatChannel, MessageRole, MessageType } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { AiSuggestService } from './ai-suggest.service';
 import { SalesBotService, SalesBotResult } from '../../sales-bot/sales-bot.service';
+import { MessageRouterService } from '../../chat-engine/services/message-router.service';
 import type { AiAutoSettings, UpdateAiSettingsDto } from '../dto/ai-settings.dto';
 
 @Injectable()
@@ -15,6 +16,9 @@ export class AiAutoReplyService {
     private prisma: PrismaService,
     private aiSuggest: AiSuggestService,
     private salesBot: SalesBotService,
+    @Optional()
+    @Inject(forwardRef(() => MessageRouterService))
+    private messageRouter?: MessageRouterService,
   ) {}
 
   async shouldAutoReply(session: any): Promise<boolean> {
@@ -224,5 +228,51 @@ export class AiAutoReplyService {
     }
 
     return this.getSettings();
+  }
+
+  /**
+   * Send a fixed test message to the configured `shop_bot_test_user_id` via the
+   * LINE Shop adapter. Used by the SHOP Bot Setup "🧪 ส่งข้อความทดสอบ" button so
+   * the owner can verify LINE Shop OA + adapter wiring before flipping
+   * `ai.autoEnabled=true`.
+   *
+   * Phase A: LINE Shop only. Returns structured `{ success, error? }` instead
+   * of throwing so the controller can pass the failure straight to a toast.
+   */
+  async testSend(): Promise<{ success: boolean; error?: string }> {
+    const settings = await this.getSettings();
+    const testUserId = settings.shopBotTestUserId;
+
+    if (!testUserId) {
+      return {
+        success: false,
+        error:
+          'shop_bot_test_user_id ยังไม่ตั้งค่า — กรุณากรอกใน SHOP Bot Setup ก่อน',
+      };
+    }
+
+    if (!this.messageRouter) {
+      return {
+        success: false,
+        error: 'MessageRouterService ไม่พร้อมใช้งาน',
+      };
+    }
+
+    const adapter = this.messageRouter.getAdapter(ChatChannel.LINE_SHOP);
+    if (!adapter) {
+      return { success: false, error: 'LINE Shop adapter not registered' };
+    }
+
+    const result = await adapter.sendMessage({
+      externalUserId: testUserId,
+      channel: ChatChannel.LINE_SHOP,
+      type: MessageType.TEXT,
+      text: '🧪 SHOP Bot test — ถ้าได้ข้อความนี้แสดงว่า LINE Shop OA + adapter wiring ทำงานปกติ ✅',
+    });
+
+    if (!result.success) {
+      return { success: false, error: result.error ?? 'adapter sendMessage failed' };
+    }
+    return { success: true };
   }
 }

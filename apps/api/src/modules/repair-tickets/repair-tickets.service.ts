@@ -25,12 +25,12 @@ import { ListRepairTicketsDto } from './dto/list-repair-tickets.dto';
 import { hasCrossBranchAccess } from '../auth/branch-access.util';
 import { formatDevice } from './utils/format-device';
 
-/** SystemConfig key — CoA code for repair income when payer=CUSTOMER. Default: 42-1106 */
+/** SystemConfig key — CoA code for repair income when payer=CUSTOMER. Default: S42-1101 */
 const REPAIR_INCOME_ACCOUNT_CODE_KEY = 'REPAIR_INCOME_ACCOUNT_CODE';
-const REPAIR_INCOME_ACCOUNT_CODE_DEFAULT = '42-1106';
-/** SystemConfig key — CoA expense code for repair cost when payer=SHOP. Default: 53-1306 */
+const REPAIR_INCOME_ACCOUNT_CODE_DEFAULT = 'S42-1101';
+/** SystemConfig key — CoA expense code for repair cost when payer=SHOP. Default: S51-1105 */
 const REPAIR_EXPENSE_ACCOUNT_CODE_KEY = 'REPAIR_EXPENSE_ACCOUNT_CODE';
-const REPAIR_EXPENSE_ACCOUNT_CODE_DEFAULT = '53-1306';
+const REPAIR_EXPENSE_ACCOUNT_CODE_DEFAULT = 'S51-1105';
 
 type ReqUser = { id: string; role: string; branchId?: string | null };
 

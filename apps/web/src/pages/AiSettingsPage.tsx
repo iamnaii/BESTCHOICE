@@ -17,7 +17,7 @@ import {
   SelectContent,
   SelectItem,
 } from '@/components/ui/select';
-import { Sparkles, Bot, Route } from 'lucide-react';
+import { Sparkles, Bot, Route, Store } from 'lucide-react';
 
 const CHANNELS = [
   { value: 'LINE_FINANCE', label: 'LINE Finance' },
@@ -175,6 +175,117 @@ function AiSettingsForm({ initial }: { initial: AiSettings }) {
         </Button>
       </div>
     </form>
+  );
+}
+
+interface ShopBotConfig {
+  shopBotCentralBranchId: string | null;
+  shopBotPromptpayId: string | null;
+  shopBotTestUserId: string | null;
+}
+
+function ShopBotSetupForm() {
+  const queryClient = useQueryClient();
+  const [branchId, setBranchId] = useState('');
+  const [promptpayId, setPromptpayId] = useState('');
+  const [testUserId, setTestUserId] = useState('');
+
+  // Read SHOP bot config from same ai-settings endpoint (extended in Task 20a).
+  // Use a distinct query key so the raw response shape doesn't conflict with
+  // the existing transformed ['ai-settings'] cache entry.
+  const shopBotQuery = useQuery<ShopBotConfig>({
+    queryKey: ['ai-settings-shop-bot'],
+    queryFn: () =>
+      api.get('/staff-chat/ai/settings').then((r: any) => {
+        const d = r.data?.data ?? r.data;
+        return {
+          shopBotCentralBranchId: d.shopBotCentralBranchId ?? null,
+          shopBotPromptpayId: d.shopBotPromptpayId ?? null,
+          shopBotTestUserId: d.shopBotTestUserId ?? null,
+        };
+      }),
+  });
+
+  const branchesQuery = useQuery<{ id: string; name: string }[]>({
+    queryKey: ['branches'],
+    queryFn: () => api.get('/branches').then((r: any) => r.data),
+  });
+
+  useEffect(() => {
+    if (!shopBotQuery.data) return;
+    setBranchId(shopBotQuery.data.shopBotCentralBranchId ?? '');
+    setPromptpayId(shopBotQuery.data.shopBotPromptpayId ?? '');
+    setTestUserId(shopBotQuery.data.shopBotTestUserId ?? '');
+  }, [shopBotQuery.data]);
+
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      api.patch('/staff-chat/ai/settings', {
+        shopBotCentralBranchId: branchId || null,
+        shopBotPromptpayId: promptpayId || null,
+        shopBotTestUserId: testUserId || null,
+      }),
+    onSuccess: () => {
+      toast.success('บันทึก SHOP Bot Setup เรียบร้อย');
+      queryClient.invalidateQueries({ queryKey: ['ai-settings-shop-bot'] });
+      queryClient.invalidateQueries({ queryKey: ['ai-settings'] });
+    },
+    onError: () => {
+      toast.error('ไม่สามารถบันทึก SHOP Bot Setup ได้');
+    },
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2 leading-snug">
+          <Store className="w-4 h-4 text-muted-foreground" />
+          SHOP Bot Setup
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="space-y-2">
+          <Label className="leading-snug">Central Branch (เก็บ AI-captured leads)</Label>
+          <Select value={branchId} onValueChange={setBranchId}>
+            <SelectTrigger>
+              <SelectValue placeholder="เลือกสาขา" />
+            </SelectTrigger>
+            <SelectContent>
+              {(branchesQuery.data ?? []).map((b) => (
+                <SelectItem key={b.id} value={b.id}>
+                  {b.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label className="leading-snug">
+            PromptPay ID (เบอร์มือถือ / เลข ปชช. / เลขผู้เสียภาษีนิติบุคคล)
+          </Label>
+          <Input
+            value={promptpayId}
+            onChange={(e) => setPromptpayId(e.target.value)}
+            placeholder="เช่น 0812345678"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label className="leading-snug">
+            Test LINE userId (owner — ใช้ส่งข้อความทดสอบ)
+          </Label>
+          <Input
+            value={testUserId}
+            onChange={(e) => setTestUserId(e.target.value)}
+            placeholder="U1234567890abcdef..."
+          />
+        </div>
+        <div className="flex justify-end">
+          <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
+            {saveMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -351,6 +462,7 @@ export default function AiSettingsPage() {
         >
           <AiSettingsForm initial={settingsQuery.data ?? defaultSettings} />
         </QueryBoundary>
+        <ShopBotSetupForm />
       </div>
     </div>
   );

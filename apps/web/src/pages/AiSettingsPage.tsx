@@ -282,7 +282,10 @@ function ShopBotSetupForm() {
           />
         </div>
         <div className="flex justify-end">
-          <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
+          <Button
+            onClick={() => saveMutation.mutate()}
+            disabled={saveMutation.isPending || shopBotQuery.isLoading}
+          >
             {saveMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
           </Button>
         </div>

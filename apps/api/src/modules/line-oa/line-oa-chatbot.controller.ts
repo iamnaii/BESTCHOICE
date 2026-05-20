@@ -222,13 +222,6 @@ export class LineOaChatbotController {
 
   // ─── Text Message Handler ─────────────────────────────
 
-  private isBusinessHours(): boolean {
-    const now = new Date();
-    const bangkokOffset = 7 * 60;
-    const localMinutes = (now.getUTCHours() * 60 + now.getUTCMinutes() + bangkokOffset) % (24 * 60);
-    return localMinutes >= 9 * 60 && localMinutes < 18 * 60;
-  }
-
   private async handleTextMessage(event: LineMessageEvent): Promise<void> {
     if (event.message.type !== 'text') return;
     const text = event.message.text.trim();
@@ -283,14 +276,6 @@ export class LineOaChatbotController {
         ], 'line-shop');
         return;
       }
-    }
-
-    // Outside-hours auto-reply
-    if (!this.isBusinessHours()) {
-      await this.lineOaService.replyMessage(event.replyToken, [
-        { type: 'text', text: CHATBOT_RESPONSES.outsideHours },
-      ], 'line-shop');
-      return;
     }
 
     if (['ยอด', 'เช็คยอด', 'ยอดค้าง', 'balance'].includes(textLower)) {

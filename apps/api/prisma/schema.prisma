@@ -5911,12 +5911,13 @@ model KnownDevice {
 }
 
 /// Single-row settings for AI behavior (id = 'singleton').
-/// Controls per-bot mode (OFF | HYBRID | FULL) and confidence thresholds
+/// Controls per-bot mode (OFF | HYBRID) and confidence thresholds
 /// used by the draft orchestrator for Chat AI Hybrid C.
+/// (FULL deprecated 2026-05-20 — auto-send now controlled via ai.autoEnabled SystemConfig.)
 model AiSettings {
   id                            String   @id @default("singleton")
-  salesBotMode                  String   @default("HYBRID") @map("sales_bot_mode") // OFF | HYBRID | FULL
-  serviceBotMode                String   @default("HYBRID") @map("service_bot_mode") // OFF | HYBRID | FULL
+  salesBotMode                  String   @default("HYBRID") @map("sales_bot_mode") // OFF | HYBRID (FULL deprecated 2026-05-20 — use ai.autoEnabled SystemConfig instead)
+  serviceBotMode                String   @default("HYBRID") @map("service_bot_mode") // OFF | HYBRID
   salesBotConfidenceThreshold   Float    @default(0.70) @map("sales_bot_confidence_threshold")
   serviceBotConfidenceThreshold Float    @default(0.75) @map("service_bot_confidence_threshold")
   updatedAt                     DateTime @updatedAt @map("updated_at")

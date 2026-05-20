@@ -237,7 +237,6 @@ function PerBotModeCard() {
                 <SelectContent>
                   <SelectItem value="OFF">OFF (ปิด)</SelectItem>
                   <SelectItem value="HYBRID">HYBRID (แนะนำ)</SelectItem>
-                  <SelectItem value="FULL">FULL (Week 2)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -254,12 +253,11 @@ function PerBotModeCard() {
                 <SelectContent>
                   <SelectItem value="OFF">OFF (ปิด)</SelectItem>
                   <SelectItem value="HYBRID">HYBRID (แนะนำ)</SelectItem>
-                  <SelectItem value="FULL">FULL (Week 2)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <p className="text-xs text-muted-foreground leading-snug">
-              HYBRID: AI สร้าง draft ให้พนักงานตรวจก่อนส่ง · FULL: AI ส่งเองทันที (Week 2) · OFF: ไม่สร้าง draft
+              HYBRID: AI สร้าง draft ให้พนักงานตรวจก่อนส่ง · OFF: ไม่สร้าง draft. การส่งอัตโนมัติควบคุมที่ SystemConfig `ai.autoEnabled`
             </p>
           </>
         ) : (

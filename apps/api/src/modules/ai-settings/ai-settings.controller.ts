@@ -1,17 +1,34 @@
 import { Body, Controller, Get, Patch, Req, UseGuards } from '@nestjs/common';
+import { IsIn, IsNumber, IsOptional, Max, Min } from 'class-validator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { AiSettingsService } from './ai-settings.service';
-import { SHOP_SALES_PERSONA } from '../staff-chat/prompts/sales-persona';
+import { SALES_BOT_SYSTEM_PROMPT } from '../sales-bot/prompts/sales-bot.system';
 import { FINANCE_BOT_SYSTEM_PROMPT } from '../chatbot-finance/prompts/system-prompt';
 
-type UpdateAiSettingsBody = {
+// FULL was deprecated 2026-05-20 — auto-send now controlled via ai.autoEnabled SystemConfig.
+class UpdateAiSettingsBody {
+  @IsOptional()
+  @IsIn(['OFF', 'HYBRID'], { message: 'salesBotMode ต้องเป็น OFF หรือ HYBRID' })
   salesBotMode?: string;
+
+  @IsOptional()
+  @IsIn(['OFF', 'HYBRID'], { message: 'serviceBotMode ต้องเป็น OFF หรือ HYBRID' })
   serviceBotMode?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(1)
   salesBotConfidenceThreshold?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(1)
   serviceBotConfidenceThreshold?: number;
-};
+}
 
 @Controller('ai-settings')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -39,7 +56,7 @@ export class AiSettingsController {
         channels: ['LINE SHOP', 'Facebook', 'TikTok', 'Web'],
         source: 'apps/api/src/modules/staff-chat/prompts/sales-persona.ts',
         editable: false,
-        prompt: SHOP_SALES_PERSONA,
+        prompt: SALES_BOT_SYSTEM_PROMPT,
       },
       serviceBot: {
         name: 'น้องเบส (Service Bot)',

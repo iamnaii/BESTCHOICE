@@ -33,4 +33,10 @@ export class ChatAiDraftController {
   async takeOver(@Param('roomId') id: string, @Req() req: { user: { id: string } }) {
     return this.svc.takeOver(id, req.user.id);
   }
+
+  @Post('release-to-ai/:roomId')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  async releaseToAi(@Param('roomId') id: string, @Req() req: { user: { id: string } }) {
+    return this.svc.releaseToAi(id, req.user.id);
+  }
 }

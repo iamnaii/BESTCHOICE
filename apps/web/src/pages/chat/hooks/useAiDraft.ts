@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { approveDraft, fetchMessages, skipDraft, takeOver } from '../lib/chat-api';
+import { approveDraft, fetchMessages, releaseToAi, skipDraft, takeOver } from '../lib/chat-api';
 import type { Message } from '../components/MessageBubble';
 
 /**
@@ -63,6 +63,18 @@ export function useTakeOver() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (roomId: string) => takeOver(roomId),
+    onSuccess: (_data, roomId) => {
+      qc.invalidateQueries({ queryKey: ['chat-rooms'] });
+      qc.invalidateQueries({ queryKey: ['chat-room', roomId] });
+      qc.invalidateQueries({ queryKey: ['chat-latest-draft', roomId] });
+    },
+  });
+}
+
+export function useReleaseToAi() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (roomId: string) => releaseToAi(roomId),
     onSuccess: (_data, roomId) => {
       qc.invalidateQueries({ queryKey: ['chat-rooms'] });
       qc.invalidateQueries({ queryKey: ['chat-room', roomId] });

@@ -1,11 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
-import { Hand } from 'lucide-react';
+import { Hand, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { AiDraftCard } from './AiDraftCard';
 import { CustomerCard } from './CustomerCard';
-import { useLatestDraft, useTakeOver } from '../hooks/useAiDraft';
+import { useLatestDraft, useReleaseToAi, useTakeOver } from '../hooks/useAiDraft';
 import { fetchRoom } from '../lib/chat-api';
 
 /**
@@ -14,13 +14,15 @@ import { fetchRoom } from '../lib/chat-api';
  * Composes three blocks:
  *   1. CustomerCard — if the room is linked to a customer.
  *   2. AiDraftCard  — if there's a pending AI draft (polled every 5s).
- *   3. Take-Over button — pauses AI for the room (sets `aiPaused=true`).
+ *   3. Take-Over / Release toggle — pauses AI (`aiPaused=true`) or releases
+ *      control back to AI (`aiPaused=false`) for the room.
  *
  * Week 1 intentionally omits the "Suggested actions" block (Week 2 scope).
  */
 export function AssistantSidebar({ roomId }: { roomId: string | null }) {
   const { data: draft } = useLatestDraft(roomId);
   const takeOver = useTakeOver();
+  const releaseToAi = useReleaseToAi();
 
   const { data: room } = useQuery({
     queryKey: ['chat-room', roomId],
@@ -42,8 +44,15 @@ export function AssistantSidebar({ roomId }: { roomId: string | null }) {
 
   const handleTakeOver = () => {
     takeOver.mutate(roomId, {
-      onSuccess: () => toast.success('ถือห้องแล้ว AI จะหยุดตอบ'),
+      onSuccess: () => toast.success('รับช่วงต่อแล้ว — AI หยุดตอบห้องนี้'),
       onError: () => toast.error('ถือห้องไม่สำเร็จ'),
+    });
+  };
+
+  const handleReleaseToAi = () => {
+    releaseToAi.mutate(roomId, {
+      onSuccess: () => toast.success('ส่งกลับให้ AI ตอบต่อแล้ว'),
+      onError: () => toast.error('ส่งกลับ AI ไม่สำเร็จ'),
     });
   };
 
@@ -79,16 +88,40 @@ export function AssistantSidebar({ roomId }: { roomId: string | null }) {
         </Card>
       )}
 
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={handleTakeOver}
-        disabled={takeOver.isPending || room?.aiPaused === true}
-        className="mt-auto"
-      >
-        <Hand className="mr-1 h-3 w-3" />
-        {room?.aiPaused ? 'กำลังถือห้องอยู่' : 'ถือห้อง (หยุด AI)'}
-      </Button>
+      {room?.handoffMode ? (
+        <Card className="mt-auto border-destructive/40 bg-destructive/5">
+          <CardContent className="p-3">
+            <div className="text-sm leading-snug text-foreground">
+              🎯 ห้องนี้กำลังรอ SALES ดำเนินการ
+            </div>
+            <div className="mt-1 text-xs leading-snug text-muted-foreground">
+              AI หยุดตอบแล้ว — รอพนักงานปิดดีล (capture_lead fired)
+            </div>
+          </CardContent>
+        </Card>
+      ) : room?.aiPaused ? (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleReleaseToAi}
+          disabled={releaseToAi.isPending}
+          className="mt-auto w-full"
+        >
+          <Undo2 className="mr-1 h-3 w-3" />
+          ส่งกลับให้ AI
+        </Button>
+      ) : (
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={handleTakeOver}
+          disabled={takeOver.isPending}
+          className="mt-auto w-full"
+        >
+          <Hand className="mr-1 h-3 w-3" />
+          รับช่วงต่อ
+        </Button>
+      )}
     </aside>
   );
 }

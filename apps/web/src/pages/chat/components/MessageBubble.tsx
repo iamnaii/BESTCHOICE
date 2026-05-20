@@ -25,6 +25,8 @@ export function MessageBubble({ message }: { message: Message }) {
   const isCustomer = message.role === 'CUSTOMER';
   const isSystem = message.role === 'SYSTEM' || message.role === 'AUTO_TRIGGER';
   const isDraft = !!message.intent?.startsWith('DRAFT:') && !message.deliveredAt;
+  const isAutoSent =
+    message.role === 'BOT' && !!message.intent?.startsWith('AUTO:');
 
   if (isSystem) {
     return (
@@ -51,6 +53,11 @@ export function MessageBubble({ message }: { message: Message }) {
         {message.role === 'BOT' && (
           <div className="mt-1 flex items-center gap-1 text-[10px] leading-snug opacity-70">
             <span>AI</span>
+            {isAutoSent && (
+              <span title="AI ตอบอัตโนมัติ" aria-label="AI ตอบอัตโนมัติ">
+                🤖
+              </span>
+            )}
             {isDraft && (
               <Badge variant="outline" className="h-4 px-1 text-[9px]">
                 Draft

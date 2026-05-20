@@ -23,8 +23,8 @@ export class ChatAiDraftService {
       include: { room: true },
     });
     if (!inbound || !inbound.text) throw new NotFoundException('inbound message not found');
-    if (inbound.room.aiPaused) {
-      this.logger.log(`Room ${inbound.room.id} AI paused — skipping draft`);
+    if (inbound.room.aiPaused || inbound.room.handoffMode) {
+      this.logger.log(`Room ${inbound.room.id} AI paused/handoff — skipping draft`);
       return { draftMessageId: '' };
     }
 
@@ -189,6 +189,25 @@ export class ChatAiDraftService {
       },
     });
     return { paused: true };
+  }
+
+  async releaseToAi(roomId: string, staffId: string): Promise<{ released: boolean }> {
+    await this.prisma.$transaction(async (tx) => {
+      await tx.chatRoom.update({
+        where: { id: roomId },
+        data: { aiPaused: false, aiPausedAt: null, aiPausedById: null },
+      });
+      await tx.auditLog.create({
+        data: {
+          userId: staffId,
+          action: 'AI_RELEASED',
+          entity: 'chat_room',
+          entityId: roomId,
+        },
+      });
+    });
+    this.logger.log(`Room ${roomId} released back to AI by staff ${staffId}`);
+    return { released: true };
   }
 
   private async loadPrior(roomId: string, n: number) {

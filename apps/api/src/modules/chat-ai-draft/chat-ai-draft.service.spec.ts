@@ -270,6 +270,44 @@ describe('ChatAiDraftService', () => {
     );
   });
 
+  it('skips draft when room.handoffMode is true', async () => {
+    const handoffRoom = {
+      id: 'room-handoff',
+      aiPaused: false,
+      handoffMode: true,
+      customerId: 'c1',
+      lineUserId: 'u1',
+      channel: 'LINE_SHOP',
+    };
+    const prisma = {
+      chatMessage: {
+        findUnique: jest.fn().mockResolvedValueOnce({
+          id: 'msg-1',
+          roomId: handoffRoom.id,
+          text: 'hi',
+          room: handoffRoom,
+        }),
+        findMany: jest.fn(),
+        create: jest.fn(),
+      },
+      aiSettings: { findUnique: jest.fn() },
+    };
+    const mod = await Test.createTestingModule({
+      providers: [
+        ChatAiDraftService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: ChatIntentRouterService, useValue: { classify: jest.fn() } },
+        { provide: SalesBotService, useValue: { generateReply: jest.fn() } },
+        { provide: FinanceAiService, useValue: { generateReply: jest.fn() } },
+        { provide: LineFinanceClientService, useValue: { pushText: jest.fn() } },
+      ],
+    }).compile();
+    const service = mod.get(ChatAiDraftService);
+    const result = await service.generateDraft('msg-1');
+    expect(result.draftMessageId).toBe('');
+    expect(prisma.chatMessage.create).not.toHaveBeenCalled();
+  });
+
   it('takeOver pauses AI and assigns room to staff', async () => {
     const prisma = {
       chatRoom: { update: jest.fn().mockResolvedValue({}) },
@@ -297,5 +335,41 @@ describe('ChatAiDraftService', () => {
         }),
       }),
     );
+  });
+
+  describe('releaseToAi', () => {
+    it('resets aiPaused flags + writes AI_RELEASED audit log in $transaction', async () => {
+      const prisma: any = {
+        chatRoom: { update: jest.fn().mockResolvedValue({ id: 'room-1' }) },
+        auditLog: { create: jest.fn().mockResolvedValue({ id: 'audit-1' }) },
+        $transaction: jest.fn((fn: any) => fn(prisma)),
+      };
+      const mod = await Test.createTestingModule({
+        providers: [
+          ChatAiDraftService,
+          { provide: PrismaService, useValue: prisma },
+          { provide: ChatIntentRouterService, useValue: { classify: jest.fn() } },
+          { provide: SalesBotService, useValue: { generateReply: jest.fn() } },
+          { provide: FinanceAiService, useValue: { generateReply: jest.fn() } },
+          { provide: LineFinanceClientService, useValue: { pushText: jest.fn() } },
+        ],
+      }).compile();
+      const svc = mod.get(ChatAiDraftService);
+      const result = await svc.releaseToAi('room-1', 'staff-1');
+      expect(prisma.$transaction).toHaveBeenCalled();
+      expect(prisma.chatRoom.update).toHaveBeenCalledWith({
+        where: { id: 'room-1' },
+        data: { aiPaused: false, aiPausedAt: null, aiPausedById: null },
+      });
+      expect(prisma.auditLog.create).toHaveBeenCalledWith({
+        data: {
+          userId: 'staff-1',
+          action: 'AI_RELEASED',
+          entity: 'chat_room',
+          entityId: 'room-1',
+        },
+      });
+      expect(result.released).toBe(true);
+    });
   });
 });

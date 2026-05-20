@@ -5,6 +5,7 @@ import { SearchProductsTool } from './tools/search-products.tool';
 import { CalculateInstallmentTool } from './tools/calculate-installment.tool';
 import { ListPromotionsTool } from './tools/list-promotions.tool';
 import { HandoffToHumanTool } from './tools/handoff-to-human.tool';
+import { CaptureLeadTool } from './tools/capture-lead.tool';
 
 jest.mock('@anthropic-ai/sdk');
 
@@ -17,6 +18,7 @@ describe('SalesBotService', () => {
     const calcInstallment = { run: jest.fn() };
     const listPromotions = { run: jest.fn() };
     const handoff = { run: jest.fn() };
+    const captureLead = { run: jest.fn() };
     const mod = await Test.createTestingModule({
       providers: [
         SalesBotService,
@@ -24,10 +26,11 @@ describe('SalesBotService', () => {
         { provide: CalculateInstallmentTool, useValue: calcInstallment },
         { provide: ListPromotionsTool, useValue: listPromotions },
         { provide: HandoffToHumanTool, useValue: handoff },
+        { provide: CaptureLeadTool, useValue: captureLead },
       ],
     }).compile();
     const svc = mod.get(SalesBotService);
-    return { svc, searchProducts, calcInstallment, listPromotions, handoff };
+    return { svc, searchProducts, calcInstallment, listPromotions, handoff, captureLead };
   }
 
   it('returns reply without tool calls when Claude answers directly', async () => {
@@ -140,5 +143,32 @@ describe('SalesBotService', () => {
     expect(result.confidence).toBeLessThanOrEqual(0.3);
     // 3 hops × 1 tool call each.
     expect(searchProducts.run).toHaveBeenCalledTimes(3);
+  });
+
+  describe('estimateConfidence (reworked)', () => {
+    // Use bracket-access for the private method (already pattern in some specs)
+    const svc = new SalesBotService(
+      {} as any, {} as any, {} as any, {} as any, {} as any,
+    );
+
+    it('greeting/qualifier (no tool, complete sentence) → 0.9', () => {
+      const c = (svc as any).estimateConfidence('สวัสดีค่ะพี่ สนใจรุ่นไหนคะ?', []);
+      expect(c).toBe(0.9);
+    });
+
+    it('tool-used reply → 0.95', () => {
+      const c = (svc as any).estimateConfidence('iPhone 15 ราคา 28,900 ค่ะ', ['calculate_installment']);
+      expect(c).toBe(0.95);
+    });
+
+    it('short/incomplete reply → 0.6', () => {
+      const c = (svc as any).estimateConfidence('ค่ะ', []);
+      expect(c).toBe(0.6);
+    });
+
+    it('handoff_to_human used → 0.3', () => {
+      const c = (svc as any).estimateConfidence('ขออนุญาตเรียกแอดมินมาช่วยตอบนะคะ', ['handoff_to_human']);
+      expect(c).toBe(0.3);
+    });
   });
 });

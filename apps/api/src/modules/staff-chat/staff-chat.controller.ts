@@ -623,6 +623,12 @@ export class StaffChatController {
     return this.aiAutoReply.updateSettings(dto);
   }
 
+  @Post('ai/test-send')
+  @Roles('OWNER')
+  async testSendAi() {
+    return this.aiAutoReply.testSend();
+  }
+
   // ─── AI Import & Metrics ──────────────────────────────
 
   @Post('ai/import')

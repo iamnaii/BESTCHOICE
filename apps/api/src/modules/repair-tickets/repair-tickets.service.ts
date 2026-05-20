@@ -22,6 +22,7 @@ import { ReplaceDto } from './dto/replace.dto';
 import { ReturnToCustomerDto } from './dto/return-to-customer.dto';
 import { UpdateRepairTicketDto } from './dto/update-repair-ticket.dto';
 import { ListRepairTicketsDto } from './dto/list-repair-tickets.dto';
+import { WarrantyPreviewDto } from './dto/warranty-preview.dto';
 import { hasCrossBranchAccess } from '../auth/branch-access.util';
 import { formatDevice } from './utils/format-device';
 
@@ -643,6 +644,106 @@ export class RepairTicketsService {
         entityId: id,
       });
     });
+  }
+
+  /**
+   * Server-side warranty decision for the wizard Step 3 routing.
+   * Determines warranty status, smart-default flow, days-remaining windows,
+   * and eligibility flags without any re-implementation in the frontend.
+   */
+  async warrantyPreview(dto: WarrantyPreviewDto, user: ReqUser) {
+    if (!dto.customerId && !dto.contractId && !dto.productId) {
+      throw new BadRequestException(
+        'ต้องระบุ customerId หรือ productId หรือ contractId อย่างน้อย 1 อย่าง',
+      );
+    }
+
+    const contract = dto.contractId
+      ? await this.prisma.contract.findUnique({
+          where: { id: dto.contractId, deletedAt: null },
+          include: { product: true },
+        })
+      : null;
+
+    const product = dto.productId
+      ? await this.prisma.product.findUnique({
+          where: { id: dto.productId, deletedAt: null },
+        })
+      : (contract?.product ?? null);
+
+    // detectWarrantyStatus accepts { contract?, product? } — BKK calendar-day arithmetic inside
+    const warrantyStatus = detectWarrantyStatus({ contract, product });
+
+    const now = new Date();
+
+    // Days remaining — BKK calendar-day arithmetic (UTC+7 offset) consistent with detectWarrantyStatus
+    function bkkCalendarDay(d: Date): Date {
+      const shifted = new Date(d.getTime() + 7 * 60 * 60 * 1000);
+      return new Date(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate());
+    }
+
+    const sevenDayDefect =
+      contract?.deviceReceivedAt != null
+        ? Math.max(
+            0,
+            Math.floor(
+              (bkkCalendarDay(contract.deviceReceivedAt).getTime() +
+                7 * 86400_000 -
+                bkkCalendarDay(now).getTime()) /
+                86400_000,
+            ),
+          )
+        : null;
+
+    const shopWarranty =
+      contract?.shopWarrantyEndDate != null
+        ? Math.max(
+            0,
+            Math.floor(
+              (contract.shopWarrantyEndDate.getTime() - now.getTime()) / 86400_000,
+            ),
+          )
+        : null;
+
+    const mfrWarranty =
+      product?.warrantyExpireDate != null
+        ? Math.max(
+            0,
+            Math.floor((product.warrantyExpireDate.getTime() - now.getTime()) / 86400_000),
+          )
+        : null;
+
+    const forExchange =
+      !!contract &&
+      contract.status === 'ACTIVE' &&
+      sevenDayDefect !== null &&
+      sevenDayDefect > 0 &&
+      product?.category === 'PHONE_USED';
+
+    const defaultFlow: 'repair' | 'exchange' =
+      warrantyStatus === 'IN_7DAY_DEFECT' && forExchange ? 'exchange' : 'repair';
+    const alternativeFlow: 'repair' | null = defaultFlow === 'exchange' ? 'repair' : null;
+    const defaultPayerValue = defaultPayer(warrantyStatus);
+
+    // Audit log (fire-and-forget — non-blocking, throttled per-user upstream)
+    this.audit
+      .log({
+        userId: user.id,
+        action: 'WARRANTY_LOOKED_UP',
+        entity: 'repair_ticket',
+        newValue: { searchMode: 'preview', query: dto, resultCount: 1 },
+      })
+      .catch(() => {});
+
+    return {
+      warrantyStatus,
+      defaultFlow,
+      alternativeFlow,
+      defaultPayer: defaultPayerValue,
+      daysRemaining: { sevenDayDefect, shopWarranty, mfrWarranty },
+      eligibility: { forExchange, forRepair: true },
+      blockingReasons: undefined as string[] | undefined,
+    };
   }
 
   /**

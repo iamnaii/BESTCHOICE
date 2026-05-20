@@ -84,32 +84,62 @@ export class CaptureLeadTool {
     }
 
     const customerId = await this.prisma.$transaction(async (tx) => {
-      const existing = await tx.customer.findFirst({
-        where: {
-          phone: input.phone,
-          lineIdShop: room.lineUserId,
-          deletedAt: null,
-        },
-      });
-
       let cId: string;
-      if (existing) {
+
+      // Branch 1: room already bound to a customer (SALES-linked OR prior capture)
+      // → update that customer, never overwrite room.customerId
+      if (room.customerId) {
         await tx.customer.update({
-          where: { id: existing.id },
+          where: { id: room.customerId },
           data: {
             name: input.customerName,
             acquisitionSource: 'AI_CHAT_RETURN',
           },
         });
-        cId = existing.id;
+        cId = room.customerId;
+      } else if (room.lineUserId) {
+        // Branch 2: LINE channel with lineUserId set — composite match safe
+        const existing = await tx.customer.findFirst({
+          where: {
+            phone: input.phone,
+            lineIdShop: room.lineUserId,
+            deletedAt: null,
+          },
+        });
+        if (existing) {
+          await tx.customer.update({
+            where: { id: existing.id },
+            data: {
+              name: input.customerName,
+              acquisitionSource: 'AI_CHAT_RETURN',
+            },
+          });
+          cId = existing.id;
+        } else {
+          const created = await tx.customer.create({
+            data: {
+              name: input.customerName,
+              phone: input.phone,
+              chatConsent: true,
+              chatConsentAt: new Date(),
+              lineIdShop: room.lineUserId,
+              status: 'ACTIVE',
+              acquisitionSource: 'AI_CHAT',
+            },
+          });
+          cId = created.id;
+        }
       } else {
+        // Branch 3: FB/Web/TikTok (no lineUserId) → always create new.
+        // Cannot composite-match safely (null=null in SQL would attribute to
+        // wrong existing customer). SALES merges duplicates later.
         const created = await tx.customer.create({
           data: {
             name: input.customerName,
             phone: input.phone,
             chatConsent: true,
             chatConsentAt: new Date(),
-            lineIdShop: room.lineUserId,
+            lineIdShop: room.lineUserId, // null for non-LINE channels — correct
             status: 'ACTIVE',
             acquisitionSource: 'AI_CHAT',
           },

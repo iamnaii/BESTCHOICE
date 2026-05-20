@@ -150,4 +150,74 @@ describe('CaptureLeadTool', () => {
       }),
     ).rejects.toThrow('System user');
   });
+
+  it('Blocker 2: uses room.customerId when already bound — never overwrites with phone match', async () => {
+    prisma.chatRoom.findUnique.mockResolvedValue({
+      id: 'room-bound',
+      lineUserId: 'line-user-X',
+      customerId: 'cust-bound-by-sales', // ← pre-existing binding
+    });
+    prisma.systemConfig.findMany.mockResolvedValue([
+      { key: 'shop_bot_central_branch_id', value: 'branch-central' },
+    ]);
+    // simulate a different customer with same phone exists
+    txClient.customer.findFirst.mockResolvedValue({ id: 'cust-different-person' });
+
+    const result = await tool.run({
+      customerName: 'พี่ใหม่',
+      phone: '0888888888',
+      productId: 'prod-1',
+      packageChoice: 'B',
+      downAmount: 2900,
+      roomId: 'room-bound',
+    });
+
+    // Must use pre-bound customer, NOT the phone-matched one
+    expect(result.customerId).toBe('cust-bound-by-sales');
+    expect(txClient.customer.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'cust-bound-by-sales' },
+    }));
+    // Must NOT findFirst by phone (room.customerId path skips that lookup)
+    expect(txClient.customer.findFirst).not.toHaveBeenCalled();
+    // Must NOT create a new customer
+    expect(txClient.customer.create).not.toHaveBeenCalled();
+  });
+
+  it('Blocker 1: FB room (lineUserId=null) always creates new — never matches null=null on phone', async () => {
+    prisma.chatRoom.findUnique.mockResolvedValue({
+      id: 'room-fb',
+      lineUserId: null,  // FB Page customer, no LINE id
+      customerId: null,  // no prior binding
+    });
+    prisma.systemConfig.findMany.mockResolvedValue([
+      { key: 'shop_bot_central_branch_id', value: 'branch-central' },
+    ]);
+    // simulate that ANOTHER customer (walk-in) exists with same phone + null lineIdShop
+    // Current buggy code would match this one — fix must NOT match
+    txClient.customer.findFirst.mockResolvedValue({ id: 'cust-walkin-unrelated' });
+    txClient.customer.create.mockResolvedValue({ id: 'cust-fb-new' });
+
+    const result = await tool.run({
+      customerName: 'พี่เอฟบี',
+      phone: '0877777777',
+      productId: 'prod-1',
+      packageChoice: 'A',
+      downAmount: 490,
+      roomId: 'room-fb',
+    });
+
+    // Must create new customer (no LINE lineUserId → cannot composite-match safely)
+    expect(result.customerId).toBe('cust-fb-new');
+    expect(txClient.customer.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        name: 'พี่เอฟบี',
+        phone: '0877777777',
+        lineIdShop: null, // correctly nulls lineIdShop for non-LINE
+        acquisitionSource: 'AI_CHAT',
+      }),
+    }));
+    // findFirst MUST NOT be called for non-LINE channels (no safe composite key)
+    expect(txClient.customer.findFirst).not.toHaveBeenCalled();
+    expect(txClient.customer.update).not.toHaveBeenCalled();
+  });
 });

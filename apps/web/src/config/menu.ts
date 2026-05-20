@@ -18,7 +18,6 @@ import {
   CircleDollarSign,
   Banknote,
   FileText,
-  Wrench,
   Lock,
   Receipt,
   PieChart,
@@ -162,7 +161,15 @@ const SALES_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
-        { label: 'รับซ่อม/รับประกัน', path: '/insurance', icon: ShieldCheck },
+        {
+          label: 'รับซ่อม/รับประกัน',
+          path: '/insurance',
+          icon: ShieldCheck,
+          children: [
+            { label: 'รายการ ticket', path: '/insurance', icon: ShieldCheck },
+            { label: 'เช็คประกัน', path: '/insurance/warranty-check', icon: ShieldCheck },
+          ],
+        },
       ],
     },
     {
@@ -218,7 +225,15 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
         { label: 'จัดการอุปกรณ์', path: '/mdm', icon: Smartphone },
-        { label: 'รับซ่อม/รับประกัน', path: '/insurance', icon: ShieldCheck },
+        {
+          label: 'รับซ่อม/รับประกัน',
+          path: '/insurance',
+          icon: ShieldCheck,
+          children: [
+            { label: 'รายการ ticket', path: '/insurance', icon: ShieldCheck },
+            { label: 'เช็คประกัน', path: '/insurance/warranty-check', icon: ShieldCheck },
+          ],
+        },
       ],
     },
     {
@@ -320,7 +335,6 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
       zone: 'fin',
       items: [
         { label: 'ติดตามหนี้', path: '/overdue', icon: AlertTriangle },
-        { label: 'เปลี่ยนเครื่องเสีย (7 วัน)', path: '/defect-exchange', icon: Wrench },
         { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
         { label: 'รวมแชท', path: '/chat', icon: MessageSquareMore },
       ],
@@ -539,8 +553,15 @@ const OWNER_CONFIG: RoleMenuConfig = {
       icon: Shield,
       zone: 'shop',
       items: [
-        { label: 'เปลี่ยนเครื่องเสีย (7 วัน)', path: '/defect-exchange', icon: Wrench },
-        { label: 'รับซ่อม/รับประกัน', path: '/insurance', icon: ShieldCheck },
+        {
+          label: 'รับซ่อม/รับประกัน',
+          path: '/insurance',
+          icon: ShieldCheck,
+          children: [
+            { label: 'รายการ ticket', path: '/insurance', icon: ShieldCheck },
+            { label: 'เช็คประกัน', path: '/insurance/warranty-check', icon: ShieldCheck },
+          ],
+        },
       ],
     },
     /* ── FIN zone restructure (per owner CSV) ───────────────────
@@ -559,7 +580,6 @@ const OWNER_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
         { label: 'ติดตามลูกค้าค้างชำระ', path: '/overdue', icon: AlertTriangle },
-        { label: 'เปลี่ยนเครื่องเสีย (7 วัน)', path: '/defect-exchange', icon: Wrench },
         { label: 'ล็อคเครื่อง (MDM)', path: '/mdm', icon: Lock },
         { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
         // CSV §2 placeholder — owner-flagged ✏ "ต้องสร้าง"

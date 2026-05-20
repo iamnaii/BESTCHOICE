@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router';
 import { useAuth } from '@/contexts/AuthContext';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import MainLayout from '@/components/layout/MainLayout';
+import { DefectExchangeRedirect } from '@/components/DefectExchangeRedirect';
 
 // Redirect to a non-router URL (used for static HTML pages served from /public).
 function ExternalRedirect({ to }: { to: string }) {
@@ -53,8 +54,10 @@ const CollectionsSettingsPage = lazy(() => import('@/pages/SettingsPage/Collecti
 const GeneralSettingsPage = lazy(() => import('@/pages/SettingsPage/GeneralSettingsPage'));
 const DocumentConfigPage = lazy(() => import('@/pages/DocumentConfigPage'));
 const PaymentMethodSettingsPage = lazy(() => import('@/pages/PaymentMethodSettingsPage'));
-const DefectExchangePage = lazy(() => import('@/pages/DefectExchangePage'));
 // SP5 — SHOP-side additions
+// Note: DefectExchangePage is NOT imported here — it is used as a sub-component
+// inside ExchangeProductPickerStep.tsx (not routed). The /defect-exchange route
+// now redirects to /insurance/new?intent=exchange via DefectExchangeRedirect.
 // P2-SP4 — การจอง / มัดจำ (SHOP-side reservation)
 const BookingsPage = lazy(() => import('@/pages/BookingsPage'));
 const InsurancePage = lazy(() => import('@/pages/InsurancePage'));
@@ -614,14 +617,9 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/defect-exchange"
-            element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES']}>
-                <DefectExchangePage />
-              </ProtectedRoute>
-            }
-          />
+          {/* /defect-exchange* → unified /insurance/new?intent=exchange (SP5 Phase 2 C.2) */}
+          <Route path="/defect-exchange" element={<DefectExchangeRedirect />} />
+          <Route path="/defect-exchange/*" element={<DefectExchangeRedirect />} />
           {/* SP5 — SHOP-side additions */}
           {/* P2-SP4 — การจอง / มัดจำ */}
           <Route

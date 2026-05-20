@@ -428,7 +428,7 @@ export default function CreateRepairTicketPage() {
                 <button
                   type="button"
                   className="underline font-medium hover:opacity-75 transition-opacity"
-                  onClick={() => navigate('/defect-exchange')}
+                  onClick={() => navigate('/insurance/new?intent=exchange')}
                 >
                   หน้าเปลี่ยนเครื่องเสีย
                 </button>{' '}

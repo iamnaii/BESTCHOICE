@@ -15,6 +15,10 @@ export class AiAutoReplyService {
   ) {}
 
   async shouldAutoReply(session: any): Promise<boolean> {
+    // Blocker fixes: respect take-over + handoff signals
+    if (session.aiPaused) return false;
+    if (session.handoffMode) return false;
+
     const settings = await this.getSettings();
 
     if (!settings.aiAutoEnabled) return false;

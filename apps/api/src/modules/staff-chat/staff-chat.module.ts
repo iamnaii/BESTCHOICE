@@ -50,7 +50,10 @@ import { CHAT_GATEWAY_TOKEN } from '../chat-engine/interfaces/chat-gateway.inter
   imports: [
     ChatEngineModule,
     forwardRef(() => ChatbotFinanceModule),
-    SalesBotModule,
+    // SalesBotModule now imports StaffChatModule (forwardRef) to access
+    // CHAT_GATEWAY_TOKEN for chat:room:update emits on handoff/capture_lead.
+    // Wrap with forwardRef to break the cycle.
+    forwardRef(() => SalesBotModule),
     JwtModule.registerAsync({
       useFactory: (configService: ConfigService) => ({
         secret: configService.get<string>('JWT_SECRET'),

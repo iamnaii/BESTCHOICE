@@ -1,7 +1,11 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional, Inject } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import generatePayload from 'promptpay-qr';
 import * as QRCode from 'qrcode';
+import {
+  IChatGateway,
+  CHAT_GATEWAY_TOKEN,
+} from '../../chat-engine/interfaces/chat-gateway.interface';
 
 export const CAPTURE_LEAD_TOOL = {
   name: 'capture_lead',
@@ -46,7 +50,12 @@ export interface CaptureLeadResult {
 export class CaptureLeadTool {
   private readonly logger = new Logger(CaptureLeadTool.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional()
+    @Inject(CHAT_GATEWAY_TOKEN)
+    private readonly gateway?: IChatGateway,
+  ) {}
 
   async run(input: CaptureLeadInput): Promise<CaptureLeadResult> {
     const room = await this.prisma.chatRoom.findUnique({
@@ -176,6 +185,14 @@ export class CaptureLeadTool {
       });
 
       return cId;
+    });
+
+    // Real-time refresh so the "ต้องตอบ" badge + "รอตอบ" filter chip
+    // light up in UnifiedInboxPage's ConversationList immediately.
+    this.gateway?.emitRoomUpdate(input.roomId, {
+      roomId: input.roomId,
+      handoffMode: true,
+      customerId,
     });
 
     // Generate PromptPay QR if configured; fall back to lead-only otherwise

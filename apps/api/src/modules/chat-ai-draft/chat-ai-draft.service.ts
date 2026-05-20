@@ -1,9 +1,13 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, Optional, Inject } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ChatIntentRouterService } from '../chat-intent-router/chat-intent-router.service';
 import { SalesBotService } from '../sales-bot/sales-bot.service';
 import { FinanceAiService } from '../chatbot-finance/services/finance-ai.service';
 import { LineFinanceClientService } from '../chatbot-finance/services/line-finance-client.service';
+import {
+  IChatGateway,
+  CHAT_GATEWAY_TOKEN,
+} from '../chat-engine/interfaces/chat-gateway.interface';
 
 @Injectable()
 export class ChatAiDraftService {
@@ -15,6 +19,9 @@ export class ChatAiDraftService {
     private readonly salesBot: SalesBotService,
     private readonly financeAi: FinanceAiService,
     private readonly lineClient: LineFinanceClientService,
+    @Optional()
+    @Inject(CHAT_GATEWAY_TOKEN)
+    private readonly gateway?: IChatGateway,
   ) {}
 
   async generateDraft(inboundMessageId: string): Promise<{ draftMessageId: string }> {
@@ -188,6 +195,14 @@ export class ChatAiDraftService {
         assignedToId: staffId,
       },
     });
+    // Real-time refresh — ConversationList in UnifiedInboxPage listens for
+    // chat:room:update and invalidates ['chat-rooms']. Without this emit
+    // the AI badge/filter chips stay stale until the user clicks refresh.
+    this.gateway?.emitRoomUpdate(roomId, {
+      roomId,
+      aiPaused: true,
+      aiPausedById: staffId,
+    });
     return { paused: true };
   }
 
@@ -205,6 +220,10 @@ export class ChatAiDraftService {
           entityId: roomId,
         },
       });
+    });
+    this.gateway?.emitRoomUpdate(roomId, {
+      roomId,
+      aiPaused: false,
     });
     this.logger.log(`Room ${roomId} released back to AI by staff ${staffId}`);
     return { released: true };

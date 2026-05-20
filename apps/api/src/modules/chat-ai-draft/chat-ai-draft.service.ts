@@ -191,6 +191,25 @@ export class ChatAiDraftService {
     return { paused: true };
   }
 
+  async releaseToAi(roomId: string, staffId: string): Promise<{ released: boolean }> {
+    await this.prisma.$transaction(async (tx) => {
+      await tx.chatRoom.update({
+        where: { id: roomId },
+        data: { aiPaused: false, aiPausedAt: null, aiPausedById: null },
+      });
+      await tx.auditLog.create({
+        data: {
+          userId: staffId,
+          action: 'AI_RELEASED',
+          entity: 'chat_room',
+          entityId: roomId,
+        },
+      });
+    });
+    this.logger.log(`Room ${roomId} released back to AI by staff ${staffId}`);
+    return { released: true };
+  }
+
   private async loadPrior(roomId: string, n: number) {
     const rows = await this.prisma.chatMessage.findMany({
       where: { roomId, deletedAt: null, text: { not: null } },

@@ -17,7 +17,7 @@ import {
   SelectContent,
   SelectItem,
 } from '@/components/ui/select';
-import { Sparkles, Bot } from 'lucide-react';
+import { Sparkles, Bot, Route } from 'lucide-react';
 
 const CHANNELS = [
   { value: 'LINE_FINANCE', label: 'LINE Finance' },
@@ -270,6 +270,54 @@ function PerBotModeCard() {
   );
 }
 
+const CHANNEL_BOT_ROUTING = [
+  { channel: 'LINE FINANCE', bot: 'น้องเบส (Service Bot)', desc: 'ลูกค้าผ่อน — ตอบยอดค้าง/วันครบกำหนด/ติดต่อ' },
+  { channel: 'LINE SHOP', bot: 'บอทขาย (Sales Bot)', desc: 'ลูกค้าใหม่ — ตอบสินค้า/ราคา/โปร/สาขา' },
+  { channel: 'Facebook', bot: 'บอทขาย (Sales Bot)', desc: 'ลูกค้าใหม่ — ตอบสินค้า/ราคา/โปร/สาขา' },
+  { channel: 'TikTok', bot: 'บอทขาย (Sales Bot)', desc: 'ลูกค้าใหม่ — ตอบสินค้า/ราคา/โปร/สาขา' },
+  { channel: 'Web', bot: 'บอทขาย (Sales Bot)', desc: 'ลูกค้าใหม่ — ตอบสินค้า/ราคา/โปร/สาขา' },
+];
+
+function ChannelRoutingCard() {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2 leading-snug">
+          <Route className="w-4 h-4 text-muted-foreground" />
+          ช่องทาง → บอท ที่ใช้ตอบ
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        <p className="text-xs text-muted-foreground leading-snug mb-3">
+          การจับคู่อ้างอิงประเภทห้องแชท: ห้องที่มาจาก LINE FINANCE ใช้ Service Bot ส่วนช่องทางอื่น ๆ ใช้ Sales Bot
+          ตัวเดียวกัน (knowledge base เดียวกัน — สินค้า/ราคา/โปร/สาขา)
+        </p>
+        <div className="rounded-lg border border-border divide-y divide-border">
+          {CHANNEL_BOT_ROUTING.map((row) => (
+            <div key={row.channel} className="flex items-start justify-between gap-3 p-3">
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-foreground leading-snug">{row.channel}</p>
+                <p className="text-xs text-muted-foreground leading-snug mt-0.5">{row.desc}</p>
+              </div>
+              <div className="shrink-0 text-right">
+                <span
+                  className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium leading-snug ${
+                    row.bot.startsWith('น้องเบส')
+                      ? 'bg-primary/10 text-primary'
+                      : 'bg-accent text-accent-foreground'
+                  }`}
+                >
+                  {row.bot}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function AiSettingsPage() {
   const settingsQuery = useQuery<AiSettings>({
     queryKey: ['ai-settings'],
@@ -295,6 +343,7 @@ export default function AiSettingsPage() {
     <div>
       <PageHeader title="AI Settings" subtitle="ตั้งค่า AI Auto Mode สำหรับตอบแชทอัตโนมัติ" />
       <div className="max-w-2xl space-y-6">
+        <ChannelRoutingCard />
         <PerBotModeCard />
         <QueryBoundary
           isLoading={settingsQuery.isLoading}

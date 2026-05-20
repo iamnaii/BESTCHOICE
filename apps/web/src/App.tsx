@@ -163,6 +163,8 @@ const PeakSyncPage = lazy(() => import('@/pages/PeakSyncPage'));
 const AiSettingsPage = lazy(() => import('@/pages/AiSettingsPage'));
 const AiTrainingPage = lazy(() => import('@/pages/AiTrainingPage'));
 const AiPerformancePage = lazy(() => import('@/pages/AiPerformancePage'));
+// SP — AI Persona viewer (Phase A read-only)
+const AiPersonaPage = lazy(() => import('@/pages/AiPersonaPage'));
 const AiAdminPage = lazy(() => import('@/pages/AiAdminPage'));
 const IntegrationHubPage = lazy(() => import('@/pages/IntegrationHubPage'));
 const MdmTestPage = lazy(() => import('@/pages/MdmTestPage'));
@@ -1048,6 +1050,14 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER']}>
                 <AiAdminPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings/ai-persona"
+            element={
+              <ProtectedRoute roles={['OWNER']}>
+                <AiPersonaPage />
               </ProtectedRoute>
             }
           />

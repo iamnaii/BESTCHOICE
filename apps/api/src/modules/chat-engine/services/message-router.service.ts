@@ -180,6 +180,10 @@ export class MessageRouterService {
               roomId: room.id,
               role: MessageRole.BOT,
               text: result.reply,
+              intent: 'AUTO:sales', // Phase A: SHOP channels always sales (intent router skipped)
+              toolsUsed: result.toolsUsed,
+              inputTokens: result.inputTokens,
+              outputTokens: result.outputTokens,
             });
           }
           await this.aiAutoReplyService.logAutoReply({
@@ -188,6 +192,10 @@ export class MessageRouterService {
             aiReply: result.reply,
             confidence: result.confidence,
             autoSent: true,
+            intent: 'AUTO:sales',
+            toolsUsed: result.toolsUsed,
+            inputTokens: result.inputTokens,
+            outputTokens: result.outputTokens,
           });
           this.logger.log(
             `[AiAutoReply] Replied to room ${room.id} with confidence=${result.confidence}`,

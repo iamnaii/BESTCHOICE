@@ -91,6 +91,10 @@ export class AiAutoReplyService {
     confidence: number;
     autoSent: boolean;
     handoffReason?: string;
+    intent?: string;
+    toolsUsed?: string[];
+    inputTokens?: number;
+    outputTokens?: number;
   }): Promise<void> {
     await this.prisma.aiAutoReplyLog.create({
       data: {
@@ -100,6 +104,10 @@ export class AiAutoReplyService {
         confidence: params.confidence,
         autoSent: params.autoSent,
         handoffReason: params.handoffReason,
+        intent: params.intent,
+        toolsUsed: params.toolsUsed ?? [],
+        inputTokens: params.inputTokens,
+        outputTokens: params.outputTokens,
       },
     });
   }

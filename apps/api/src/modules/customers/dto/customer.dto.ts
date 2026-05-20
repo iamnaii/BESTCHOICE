@@ -1,10 +1,18 @@
-import { IsString, IsOptional, IsArray, IsBoolean, IsDateString, IsEmail, IsNumber, Length, Matches } from 'class-validator';
+import { IsString, IsOptional, IsArray, IsBoolean, IsDateString, IsEmail, IsNumber, Length, Matches, ValidateIf } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 
 export class CreateCustomerDto {
+  /**
+   * เลขบัตรประชาชน — optional for walk-in quick-create (staff fills later).
+   * When provided, must be exactly 13 digits.
+   * Customer.nationalId is nullable in the DB; PostgreSQL unique indexes
+   * allow multiple NULLs so concurrent walk-in customers are safe.
+   */
+  @IsOptional()
+  @ValidateIf((o) => !!o.nationalId)
   @IsString()
   @Length(13, 13, { message: 'เลขบัตรประชาชนต้อง 13 หลัก' })
-  nationalId: string;
+  nationalId?: string;
 
   @IsString()
   @IsOptional()

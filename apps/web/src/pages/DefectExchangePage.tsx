@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useSearchParams } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { AlertTriangle, CheckCircle2, ArrowRight, ShieldCheck } from 'lucide-react';
@@ -9,6 +10,15 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { formatNumber } from '@/utils/formatters';
 import { useAuth } from '@/contexts/AuthContext';
+
+interface DefectExchangePageProps {
+  /** Pre-select a contract when mounted from within the insurance wizard. */
+  presetContractId?: string;
+  /** Skip the 7-day window eligibility check (wizard: repair-ticket exit path). */
+  bypassWindow?: boolean;
+  /** Repair ticket ID that triggered this exchange (required when bypassWindow=true). */
+  originRepairTicketId?: string;
+}
 
 interface ContractRow {
   id: string;
@@ -61,12 +71,27 @@ interface HistoryRow {
   };
 }
 
-export default function DefectExchangePage() {
+export default function DefectExchangePage(props?: DefectExchangePageProps) {
+  const [params] = useSearchParams();
+
+  // Resolve effective values: explicit props win, then URL query params, then defaults.
+  const presetContractId =
+    props?.presetContractId ?? params.get('contractId') ?? undefined;
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const canExecute = user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER';
 
-  const [selectedContractId, setSelectedContractId] = useState('');
+  // Role-gate the URL-derived bypass: a SALES user crafting ?bypassWindow=true
+  // must not propagate the flag to the API. canExecute acts as the FE guard;
+  // the backend also enforces this server-side (defence in depth).
+  const bypassWindowRaw =
+    props?.bypassWindow ?? params.get('bypassWindow') === 'true';
+  const bypassWindow = bypassWindowRaw && canExecute;
+
+  const originRepairTicketId =
+    props?.originRepairTicketId ?? params.get('originRepairTicketId') ?? undefined;
+
+  const [selectedContractId, setSelectedContractId] = useState(presetContractId ?? '');
   const [selectedProductId, setSelectedProductId] = useState('');
   const [defectReason, setDefectReason] = useState('');
   const [notes, setNotes] = useState('');
@@ -121,6 +146,9 @@ export default function DefectExchangePage() {
         newProductId: selectedProductId,
         defectReason,
         notes: notes || undefined,
+        // Wizard bypass path: skip 7-day window check when coming from a repair ticket.
+        ...(bypassWindow && { bypassWindowCheck: true }),
+        ...(originRepairTicketId && { originRepairTicketId }),
       });
       return data;
     },
@@ -165,7 +193,9 @@ export default function DefectExchangePage() {
                     setSelectedContractId(e.target.value);
                     setSelectedProductId('');
                   }}
-                  className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background"
+                  // Lock picker when contract is pre-filled from wizard/props
+                  disabled={!!presetContractId}
+                  className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background disabled:opacity-70 disabled:cursor-not-allowed"
                 >
                   <option value="">-- เลือกสัญญา --</option>
                   {contractsQ.data?.map((c) => (

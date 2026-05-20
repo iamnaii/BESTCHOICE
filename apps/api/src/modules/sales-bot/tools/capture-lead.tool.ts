@@ -1,5 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const generatePayload = require('promptpay-qr');
+import * as QRCode from 'qrcode';
 
 export const CAPTURE_LEAD_TOOL = {
   name: 'capture_lead',
@@ -67,12 +70,13 @@ export class CaptureLeadTool {
 
     const configs = await this.prisma.systemConfig.findMany({
       where: {
-        key: { in: ['shop_bot_central_branch_id'] },
+        key: { in: ['shop_bot_central_branch_id', 'shop_bot_promptpay_id'] },
         deletedAt: null,
       },
     });
     const configMap = new Map(configs.map((c) => [c.key, c.value]));
     const branchId = configMap.get('shop_bot_central_branch_id');
+    const promptpayId = configMap.get('shop_bot_promptpay_id');
 
     // Validate central branch is configured — it's required downstream when
     // SALES converts this lead into a Contract (Contract.branchId is NOT NULL).
@@ -175,13 +179,26 @@ export class CaptureLeadTool {
       return cId;
     });
 
-    // Phase A: PromptPay QR generation deferred — SALES sends QR manually in chat.
-    // To enable QR: install `promptpay-qr` lib + use shop_bot_promptpay_id config.
-    const handoffMessage = `ทางแอดมินจะส่ง QR ดาวน์ ${input.downAmount.toLocaleString()} บาท ให้พี่ในแชทนี้นะคะ 🙏`;
+    // Generate PromptPay QR if configured; fall back to lead-only otherwise
+    let promptPayQr: string | null = null;
+    let handoffMessage = `ทางแอดมินจะส่ง QR ดาวน์ ${input.downAmount.toLocaleString()} บาท ให้พี่ในแชทนี้นะคะ 🙏`;
+
+    if (promptpayId) {
+      try {
+        const payload = generatePayload(promptpayId, { amount: input.downAmount });
+        promptPayQr = await QRCode.toDataURL(payload);
+        handoffMessage = `ส่ง QR ดาวน์ ${input.downAmount.toLocaleString()} บาท แล้วนะคะ พอโอนเสร็จแอดมินจะติดต่อกลับเพื่อยืนยันสัญญาค่ะ 🙏`;
+      } catch (err) {
+        this.logger.error(
+          `PromptPay QR generation failed for room ${input.roomId}: ${err instanceof Error ? err.message : err}`,
+        );
+        // Fall through to lead-only mode
+      }
+    }
 
     return {
       customerId,
-      promptPayQr: null,
+      promptPayQr,
       downAmount: input.downAmount,
       handoffMessage,
     };

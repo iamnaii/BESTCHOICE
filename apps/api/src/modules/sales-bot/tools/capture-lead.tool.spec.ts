@@ -220,4 +220,32 @@ describe('CaptureLeadTool', () => {
     expect(txClient.customer.findFirst).not.toHaveBeenCalled();
     expect(txClient.customer.update).not.toHaveBeenCalled();
   });
+
+  it('generates PromptPay QR data URL when shop_bot_promptpay_id is configured', async () => {
+    prisma.chatRoom.findUnique.mockResolvedValue({
+      id: 'room-qr',
+      lineUserId: 'line-qr-user',
+      customerId: null,
+    });
+    prisma.systemConfig.findMany.mockResolvedValue([
+      { key: 'shop_bot_central_branch_id', value: 'branch-central' },
+      { key: 'shop_bot_promptpay_id', value: '0812345678' }, // owner's promptpay
+    ]);
+    txClient.customer.findFirst.mockResolvedValue(null);
+    txClient.customer.create.mockResolvedValue({ id: 'cust-qr' });
+
+    const result = await tool.run({
+      customerName: 'พี่คิวอาร์',
+      phone: '0866666666',
+      productId: 'prod-qr',
+      packageChoice: 'B',
+      downAmount: 2900,
+      roomId: 'room-qr',
+    });
+
+    expect(result.customerId).toBe('cust-qr');
+    expect(result.promptPayQr).toMatch(/^data:image\/png;base64,/);
+    expect(result.handoffMessage).toContain('ส่ง QR ดาวน์');
+    expect(result.handoffMessage).toContain('2,900');
+  });
 });

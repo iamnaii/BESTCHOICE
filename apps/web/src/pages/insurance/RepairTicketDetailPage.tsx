@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react';
 import api from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 import PageHeader from '@/components/ui/PageHeader';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -72,9 +73,11 @@ type ActiveDialog = 'send' | 'mark-repaired' | 'send-back' | 'return' | 'cancel'
 function ActionButtons({
   ticket,
   onAction,
+  currentUserRole,
 }: {
   ticket: RepairTicketDetail;
   onAction: (d: ActiveDialog) => void;
+  currentUserRole: string | undefined;
 }) {
   const navigate = useNavigate();
   const { status } = ticket;
@@ -83,6 +86,10 @@ function ActionButtons({
     return null;
   }
 
+  const canReplace = currentUserRole === 'OWNER' || currentUserRole === 'BRANCH_MANAGER';
+  const onReplace = () =>
+    navigate(`/insurance/new?intent=exchange&originRepairTicketId=${ticket.id}&bypassWindow=true`);
+
   return (
     <div className="flex flex-wrap gap-2">
       {status === 'OPEN' && (
@@ -90,13 +97,11 @@ function ActionButtons({
           <Button size="sm" onClick={() => onAction('send')}>
             ส่งซ่อม
           </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => navigate('/defect-exchange')}
-          >
-            เปลี่ยนเครื่องแทน
-          </Button>
+          {canReplace && (
+            <Button size="sm" variant="outline" onClick={onReplace}>
+              ซ่อมไม่ได้ — ออกใหม่
+            </Button>
+          )}
           <Button size="sm" variant="outline" onClick={() => onAction('cancel')}>
             ยกเลิก
           </Button>
@@ -108,13 +113,11 @@ function ActionButtons({
           <Button size="sm" onClick={() => onAction('mark-repaired')}>
             บันทึกซ่อมเสร็จ
           </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => navigate('/defect-exchange')}
-          >
-            เปลี่ยนเครื่องแทน
-          </Button>
+          {canReplace && (
+            <Button size="sm" variant="outline" onClick={onReplace}>
+              ซ่อมไม่ได้ — ออกใหม่
+            </Button>
+          )}
           <Button size="sm" variant="outline" onClick={() => onAction('cancel')}>
             ยกเลิก
           </Button>
@@ -129,13 +132,11 @@ function ActionButtons({
           <Button size="sm" variant="outline" onClick={() => onAction('send-back')}>
             ส่งซ่อมต่อ
           </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => navigate('/defect-exchange')}
-          >
-            เปลี่ยนเครื่องแทน
-          </Button>
+          {canReplace && (
+            <Button size="sm" variant="outline" onClick={onReplace}>
+              ซ่อมไม่ได้ — ออกใหม่
+            </Button>
+          )}
           <Button size="sm" variant="outline" onClick={() => onAction('cancel')}>
             ยกเลิก
           </Button>
@@ -166,6 +167,8 @@ function RepairTicketDetailContent({ id }: { id: string }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [activeDialog, setActiveDialog] = useState<ActiveDialog>(null);
+  const { user } = useAuth();
+  const currentUserRole = user?.role;
 
   const ticketQuery = useQuery<RepairTicketDetail>({
     queryKey: ['repair-ticket', id],
@@ -217,7 +220,7 @@ function RepairTicketDetailContent({ id }: { id: string }) {
               <RepairStatusBadge status={ticket.status} />
               <WarrantyBadge status={ticket.warrantyStatus} />
             </div>
-            <ActionButtons ticket={ticket} onAction={setActiveDialog} />
+            <ActionButtons ticket={ticket} onAction={setActiveDialog} currentUserRole={currentUserRole} />
           </Card>
 
           {/* Customer + device */}

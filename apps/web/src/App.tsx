@@ -61,7 +61,6 @@ const PaymentMethodSettingsPage = lazy(() => import('@/pages/PaymentMethodSettin
 // P2-SP4 — การจอง / มัดจำ (SHOP-side reservation)
 const BookingsPage = lazy(() => import('@/pages/BookingsPage'));
 const InsurancePage = lazy(() => import('@/pages/InsurancePage'));
-const CreateRepairTicketPage = lazy(() => import('@/pages/insurance/CreateRepairTicketPage'));
 const CreateInsuranceWizardPage = lazy(() => import('@/pages/insurance/CreateInsuranceWizardPage'));
 const WarrantyCheckPage = lazy(() => import('@/pages/insurance/WarrantyCheckPage'));
 const RepairTicketDetailPage = lazy(() => import('@/pages/insurance/RepairTicketDetailPage'));

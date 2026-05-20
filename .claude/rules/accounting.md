@@ -608,11 +608,11 @@ Auto-created on RepairTicket close (`returnToCustomer()`) depending on who pays 
 
 ### Payer routing
 
-| Payer | Document Created | Account Dr | Account Cr |
-|-------|-----------------|-----------|-----------|
-| `SHOP` | `ExpenseDocument` (DRAFT) | `REPAIR_EXPENSE_ACCOUNT_CODE` SystemConfig key (default `53-1306` ค่าซ่อมเครื่องลูกค้า) | A/P-supplier (ExpenseDocument standard Cr) |
-| `CUSTOMER` | `OtherIncome` (DRAFT) | Cash/receivable (OtherIncome standard Dr) | `REPAIR_INCOME_ACCOUNT_CODE` SystemConfig key (default `42-1106` รายได้บริการซ่อม) |
-| `SUPPLIER_CLAIM` | No accounting document | — | — (supplier handles physically) |
+| Payer | Document Created | Account | Notes |
+|-------|-----------------|---------|-------|
+| `SHOP` | `ExpenseDocument` (DRAFT) | `S51-1105` ค่าซ่อมอุปกรณ์ลูกค้า (SHOP CoA) | Dr. SystemConfig key: `REPAIR_EXPENSE_ACCOUNT_CODE` |
+| `CUSTOMER` | `OtherIncome` (DRAFT) | `S42-1101` รายได้บริการซ่อม (SHOP CoA, new S42 service-revenue group) | Cr. SystemConfig key: `REPAIR_INCOME_ACCOUNT_CODE` |
+| `SUPPLIER_CLAIM` | No accounting document | n/a | Physical supplier claim — no JE |
 
 ### Key design points
 - Vendor = `repairSupplierId` from the repair ticket (must be a Supplier with `isRepairCenter = true`).
@@ -624,8 +624,10 @@ Auto-created on RepairTicket close (`returnToCustomer()`) depending on who pays 
 ### SystemConfig keys
 | Key | Default | Type |
 |-----|---------|------|
-| `REPAIR_EXPENSE_ACCOUNT_CODE` | `53-1306` | CoA code (SHOP expense) |
-| `REPAIR_INCOME_ACCOUNT_CODE` | `42-1106` | CoA code (FINANCE revenue) |
+| `REPAIR_EXPENSE_ACCOUNT_CODE` | `S51-1105` | SHOP CoA code (ค่าซ่อมอุปกรณ์ลูกค้า) |
+| `REPAIR_INCOME_ACCOUNT_CODE` | `S42-1101` | SHOP CoA code (รายได้บริการซ่อม — new S42 service-revenue group) |
+
+Owner sign-off on codes: 2026-05-20 (S51-1105 + S42-1101 + new S42 service-revenue group).
 
 ### Source
 `apps/api/src/modules/repair-tickets/repair-tickets.service.ts` → `returnToCustomer()` for the atomic cross-module flow.

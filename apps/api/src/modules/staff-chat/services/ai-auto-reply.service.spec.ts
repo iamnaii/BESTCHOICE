@@ -44,6 +44,18 @@ describe('AiAutoReplyService.shouldAutoReply', () => {
     const session = { id: 'r1', channel: 'LINE_SHOP', aiPaused: false, handoffMode: false };
     expect(await svc.shouldAutoReply(session)).toBe(true);
   });
+
+  it('returns false when shop_bot_central_branch_id is not configured', async () => {
+    prisma.systemConfig.findMany
+      .mockResolvedValueOnce([
+        { key: 'ai.autoEnabled', value: 'true' },
+        { key: 'ai.autoChannels', value: '["LINE_SHOP"]' },
+        { key: 'ai.autoMaxRepliesPerSession', value: '50' },
+      ])
+      .mockResolvedValueOnce([]); // shop_bot_central_branch_id missing
+    const session = { id: 'r-c', channel: 'LINE_SHOP', aiPaused: false, handoffMode: false };
+    expect(await svc.shouldAutoReply(session)).toBe(false);
+  });
 });
 
 describe('AiAutoReplyService.autoReply', () => {

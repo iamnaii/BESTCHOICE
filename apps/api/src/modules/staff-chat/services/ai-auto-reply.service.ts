@@ -36,6 +36,20 @@ export class AiAutoReplyService {
     });
     if (sentCount >= settings.aiAutoMaxRepliesPerSession) return false;
 
+    // Fail-loud guard: SHOP channels require central branch + promptpay configured
+    const SHOP_CHANNELS = new Set(['LINE_SHOP', 'FACEBOOK', 'WEB']);
+    if (SHOP_CHANNELS.has(session.channel)) {
+      const cfg = await this.prisma.systemConfig.findMany({
+        where: { key: 'shop_bot_central_branch_id', deletedAt: null },
+      });
+      if (cfg.length === 0 || !cfg[0].value) {
+        this.logger.warn(
+          `shop_bot_central_branch_id not configured — AI auto-reply disabled for ${session.channel}`,
+        );
+        return false;
+      }
+    }
+
     return true;
   }
 

@@ -8,6 +8,7 @@ import {
 } from './tools/calculate-installment.tool';
 import { ListPromotionsTool, LIST_PROMOTIONS_TOOL } from './tools/list-promotions.tool';
 import { HandoffToHumanTool, HANDOFF_TO_HUMAN_TOOL } from './tools/handoff-to-human.tool';
+import { CaptureLeadTool, CAPTURE_LEAD_TOOL } from './tools/capture-lead.tool';
 
 export interface SalesBotInput {
   text: string;
@@ -40,6 +41,7 @@ export class SalesBotService {
     private readonly calcInstallment: CalculateInstallmentTool,
     private readonly listPromotions: ListPromotionsTool,
     private readonly handoff: HandoffToHumanTool,
+    private readonly captureLead: CaptureLeadTool,
   ) {}
 
   async generateReply(input: SalesBotInput): Promise<SalesBotResult> {
@@ -48,6 +50,7 @@ export class SalesBotService {
       CALCULATE_INSTALLMENT_TOOL,
       LIST_PROMOTIONS_TOOL,
       HANDOFF_TO_HUMAN_TOOL,
+      CAPTURE_LEAD_TOOL,
     ];
     const messages: Anthropic.MessageParam[] = [
       ...(input.priorMessages ?? []).map((m) => ({ role: m.role, content: m.content })),
@@ -129,6 +132,16 @@ export class SalesBotService {
       case 'handoff_to_human':
         return this.handoff.run({
           reason: String(input.reason ?? 'bot_uncertain'),
+          roomId,
+        });
+      case 'capture_lead':
+        return this.captureLead.run({
+          customerName: String(input.customerName ?? ''),
+          phone: String(input.phone ?? ''),
+          address: input.address as string | undefined,
+          productId: String(input.productId ?? ''),
+          packageChoice: input.packageChoice as 'A' | 'B' | 'C',
+          downAmount: Number(input.downAmount ?? 0),
           roomId,
         });
       default:

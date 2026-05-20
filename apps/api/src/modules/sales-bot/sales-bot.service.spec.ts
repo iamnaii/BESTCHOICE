@@ -5,6 +5,7 @@ import { SearchProductsTool } from './tools/search-products.tool';
 import { CalculateInstallmentTool } from './tools/calculate-installment.tool';
 import { ListPromotionsTool } from './tools/list-promotions.tool';
 import { HandoffToHumanTool } from './tools/handoff-to-human.tool';
+import { CaptureLeadTool } from './tools/capture-lead.tool';
 
 jest.mock('@anthropic-ai/sdk');
 
@@ -17,6 +18,7 @@ describe('SalesBotService', () => {
     const calcInstallment = { run: jest.fn() };
     const listPromotions = { run: jest.fn() };
     const handoff = { run: jest.fn() };
+    const captureLead = { run: jest.fn() };
     const mod = await Test.createTestingModule({
       providers: [
         SalesBotService,
@@ -24,10 +26,11 @@ describe('SalesBotService', () => {
         { provide: CalculateInstallmentTool, useValue: calcInstallment },
         { provide: ListPromotionsTool, useValue: listPromotions },
         { provide: HandoffToHumanTool, useValue: handoff },
+        { provide: CaptureLeadTool, useValue: captureLead },
       ],
     }).compile();
     const svc = mod.get(SalesBotService);
-    return { svc, searchProducts, calcInstallment, listPromotions, handoff };
+    return { svc, searchProducts, calcInstallment, listPromotions, handoff, captureLead };
   }
 
   it('returns reply without tool calls when Claude answers directly', async () => {

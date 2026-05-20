@@ -59,6 +59,7 @@ const DefectExchangePage = lazy(() => import('@/pages/DefectExchangePage'));
 const BookingsPage = lazy(() => import('@/pages/BookingsPage'));
 const InsurancePage = lazy(() => import('@/pages/InsurancePage'));
 const CreateRepairTicketPage = lazy(() => import('@/pages/insurance/CreateRepairTicketPage'));
+const CreateInsuranceWizardPage = lazy(() => import('@/pages/insurance/CreateInsuranceWizardPage'));
 const RepairTicketDetailPage = lazy(() => import('@/pages/insurance/RepairTicketDetailPage'));
 const AuditLogsPage = lazy(() => import('@/pages/AuditLogsPage'));
 const FinancialAuditPage = lazy(() => import('@/pages/FinancialAuditPage'));
@@ -644,7 +645,7 @@ function App() {
             path="/insurance/new"
             element={
               <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'SALES']}>
-                <CreateRepairTicketPage />
+                <CreateInsuranceWizardPage />
               </ProtectedRoute>
             }
           />

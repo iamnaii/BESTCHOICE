@@ -190,56 +190,64 @@ export class AiAutoReplyService {
   async updateSettings(dto: UpdateAiSettingsDto): Promise<AiAutoSettings> {
     const entries: { key: string; value: string; label: string }[] = [];
 
-    if (dto.aiAutoEnabled !== undefined) {
+    // `!= null` covers both `undefined` (key absent from PATCH body) AND `null`
+    // (key explicitly cleared by client). SystemConfig.value is non-nullable,
+    // so passing null straight through to upsert crashes with
+    // `PrismaClientValidationError: Argument value must not be null` and the
+    // whole PATCH returns 500 — observed in prod 2026-05-21 when the
+    // ShopBotSetupForm save mutation sent `shopBotPromptpayId: null` for an
+    // empty input. Skipping the entry preserves the previously-saved value;
+    // explicit clearing of a value isn't a flow we expose today.
+    if (dto.aiAutoEnabled != null) {
       entries.push({
         key: 'ai.autoEnabled',
         value: String(dto.aiAutoEnabled),
         label: 'AI Auto Mode เปิด/ปิด',
       });
     }
-    if (dto.aiAutoChannels !== undefined) {
+    if (dto.aiAutoChannels != null) {
       entries.push({
         key: 'ai.autoChannels',
         value: JSON.stringify(dto.aiAutoChannels),
         label: 'AI Auto Channels',
       });
     }
-    if (dto.aiAutoConfidenceThreshold !== undefined) {
+    if (dto.aiAutoConfidenceThreshold != null) {
       entries.push({
         key: 'ai.autoConfidenceThreshold',
         value: String(dto.aiAutoConfidenceThreshold),
         label: 'AI Confidence Threshold',
       });
     }
-    if (dto.aiAutoMaxRepliesPerSession !== undefined) {
+    if (dto.aiAutoMaxRepliesPerSession != null) {
       entries.push({
         key: 'ai.autoMaxRepliesPerSession',
         value: String(dto.aiAutoMaxRepliesPerSession),
         label: 'AI Max Replies per Session',
       });
     }
-    if (dto.shopBotCentralBranchId !== undefined) {
+    if (dto.shopBotCentralBranchId != null) {
       entries.push({
         key: 'shop_bot_central_branch_id',
         value: dto.shopBotCentralBranchId,
         label: 'SHOP Bot central branch ID',
       });
     }
-    if (dto.shopBotPromptpayId !== undefined) {
+    if (dto.shopBotPromptpayId != null) {
       entries.push({
         key: 'shop_bot_promptpay_id',
         value: dto.shopBotPromptpayId,
         label: 'SHOP Bot PromptPay ID',
       });
     }
-    if (dto.shopBotTestUserId !== undefined) {
+    if (dto.shopBotTestUserId != null) {
       entries.push({
         key: 'shop_bot_test_user_id',
         value: dto.shopBotTestUserId,
         label: 'SHOP Bot test LINE userId',
       });
     }
-    if (dto.llmProvider !== undefined) {
+    if (dto.llmProvider != null) {
       entries.push({
         key: 'shop_bot_llm_provider',
         value: dto.llmProvider,
@@ -259,8 +267,9 @@ export class AiAutoReplyService {
     // the next customer message routes to the new provider immediately instead
     // of after the 60-second TTL. Cheap (single field assignment) and
     // idempotent, so it's safe to call unconditionally when llmProvider is in
-    // the patch — even if the value didn't actually change.
-    if (dto.llmProvider !== undefined) {
+    // the patch — even if the value didn't actually change. Skip on null so
+    // we don't churn the cache for clients that send the field cleared.
+    if (dto.llmProvider != null) {
       this.llmRegistry.invalidateCache();
     }
 

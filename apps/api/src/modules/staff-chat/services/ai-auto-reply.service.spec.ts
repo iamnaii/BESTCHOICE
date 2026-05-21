@@ -288,4 +288,35 @@ describe('AiAutoReplyService.llmProvider — get + update + cache invalidation',
     await svc.updateSettings({ aiAutoEnabled: true });
     expect(llmRegistry.invalidateCache).not.toHaveBeenCalled();
   });
+
+  // Regression — 2026-05-21 prod incident.
+  // Saving SHOP Bot Setup with empty PromptPay / Test userId inputs sent
+  // `shopBotPromptpayId: null`, which the old `!== undefined` guard let pass
+  // through to prisma.systemConfig.upsert with `value: null`. Prisma rejected
+  // (SystemConfig.value is non-nullable) and the whole PATCH returned 500.
+  // Fix: skip null entries so the previously-saved value stays intact.
+  it('updateSettings skips entries where value is null (does not crash upsert)', async () => {
+    prisma.systemConfig.findMany.mockResolvedValue([]);
+    await svc.updateSettings({
+      shopBotCentralBranchId: 'branch-uuid',
+      shopBotPromptpayId: null as unknown as string, // simulating frontend `|| null`
+      shopBotTestUserId: null as unknown as string,
+      llmProvider: 'gemini',
+    });
+    const calls = prisma.systemConfig.upsert.mock.calls.map(
+      (c: any[]) => c[0].where.key as string,
+    );
+    expect(calls).toContain('shop_bot_central_branch_id');
+    expect(calls).toContain('shop_bot_llm_provider');
+    expect(calls).not.toContain('shop_bot_promptpay_id');
+    expect(calls).not.toContain('shop_bot_test_user_id');
+    // Cache invalidation still happens because llmProvider was non-null in this patch.
+    expect(llmRegistry.invalidateCache).toHaveBeenCalledTimes(1);
+  });
+
+  it('updateSettings with all-null llmProvider does NOT invalidate cache', async () => {
+    prisma.systemConfig.findMany.mockResolvedValue([]);
+    await svc.updateSettings({ llmProvider: null as unknown as 'claude' });
+    expect(llmRegistry.invalidateCache).not.toHaveBeenCalled();
+  });
 });

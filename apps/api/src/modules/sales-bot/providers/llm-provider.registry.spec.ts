@@ -6,9 +6,17 @@ import { PrismaService } from '../../../prisma/prisma.service';
 
 describe('LlmProviderRegistry', () => {
   const fakeClaude = { providerName: 'claude' as const, chat: jest.fn() };
-  const fakeGemini = { providerName: 'gemini' as const, chat: jest.fn() };
+  // Gemini stub defaults to ready=true. Override per-test for misconfigured case.
+  const makeFakeGemini = (isReady = true) => ({
+    providerName: 'gemini' as const,
+    chat: jest.fn(),
+    isReady: () => isReady,
+  });
 
-  function build(systemConfigValue: string | null) {
+  function build(
+    systemConfigValue: string | null,
+    geminiReady = true,
+  ) {
     const prisma = {
       systemConfig: {
         findFirst: jest.fn().mockResolvedValue(
@@ -21,7 +29,7 @@ describe('LlmProviderRegistry', () => {
         LlmProviderRegistry,
         { provide: PrismaService, useValue: prisma },
         { provide: ClaudeProvider, useValue: fakeClaude },
-        { provide: GeminiProvider, useValue: fakeGemini },
+        { provide: GeminiProvider, useValue: makeFakeGemini(geminiReady) },
       ],
     })
       .compile()
@@ -37,10 +45,16 @@ describe('LlmProviderRegistry', () => {
     expect(p.providerName).toBe('claude');
   });
 
-  it('returns gemini when config = "gemini"', async () => {
-    const { registry } = await build('gemini');
+  it('returns gemini when config = "gemini" AND gemini.isReady() = true', async () => {
+    const { registry } = await build('gemini', true);
     const p = await registry.getActive();
     expect(p.providerName).toBe('gemini');
+  });
+
+  it('falls back to claude when config = "gemini" but gemini.isReady() = false', async () => {
+    const { registry } = await build('gemini', false);
+    const p = await registry.getActive();
+    expect(p.providerName).toBe('claude');
   });
 
   it('case-insensitive — "GEMINI" still selects gemini', async () => {
@@ -62,14 +76,6 @@ describe('LlmProviderRegistry', () => {
     expect(prisma.systemConfig.findFirst).toHaveBeenCalledTimes(1);
   });
 
-  it('invalidateCache forces re-read', async () => {
-    const { registry, prisma } = await build('gemini');
-    await registry.getActive();
-    registry.invalidateCache();
-    await registry.getActive();
-    expect(prisma.systemConfig.findFirst).toHaveBeenCalledTimes(2);
-  });
-
   it('falls back to claude when DB errors', async () => {
     const prisma = {
       systemConfig: {
@@ -81,7 +87,7 @@ describe('LlmProviderRegistry', () => {
         LlmProviderRegistry,
         { provide: PrismaService, useValue: prisma },
         { provide: ClaudeProvider, useValue: fakeClaude },
-        { provide: GeminiProvider, useValue: fakeGemini },
+        { provide: GeminiProvider, useValue: makeFakeGemini(true) },
       ],
     }).compile();
     const registry = mod.get(LlmProviderRegistry);

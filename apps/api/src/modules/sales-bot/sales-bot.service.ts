@@ -67,7 +67,17 @@ export class SalesBotService {
     private readonly captureLead: CaptureLeadTool,
   ) {}
 
-  async generateReply(input: SalesBotInput): Promise<SalesBotResult> {
+  /**
+   * Generate a SHOP sales reply.
+   *
+   * Default path: provider is resolved from SystemConfig via LlmProviderRegistry.
+   * Bench-test override: pass `explicitProvider` to bypass registry and target
+   * a specific provider implementation (used by shop-ai-bench CLI).
+   */
+  async generateReply(
+    input: SalesBotInput,
+    explicitProvider?: import('./providers/llm-provider.interface').ILlmProvider,
+  ): Promise<SalesBotResult> {
     const tools: LlmToolDefinition[] = [
       SEARCH_PRODUCTS_TOOL,
       CALCULATE_INSTALLMENT_TOOL,
@@ -83,7 +93,7 @@ export class SalesBotService {
       { role: 'user', content: input.text },
     ];
 
-    const provider = await this.providerRegistry.getActive();
+    const provider = explicitProvider ?? (await this.providerRegistry.getActive());
     const toolsUsed: string[] = [];
     let totalIn = 0;
     let totalOut = 0;
@@ -190,80 +200,5 @@ export class SalesBotService {
     if (reply.trim().length < 20) return 0.6;
     if (toolsUsed.length > 0) return 0.95;
     return 0.9;
-  }
-
-  /** Internal accessor for bench CLI — bypasses registry to test specific provider */
-  async _generateReplyWithProvider(
-    input: SalesBotInput,
-    explicitProvider: import('./providers/llm-provider.interface').ILlmProvider,
-  ): Promise<SalesBotResult> {
-    const tools: LlmToolDefinition[] = [
-      SEARCH_PRODUCTS_TOOL,
-      CALCULATE_INSTALLMENT_TOOL,
-      LIST_PROMOTIONS_TOOL,
-      HANDOFF_TO_HUMAN_TOOL,
-      CAPTURE_LEAD_TOOL,
-    ].map(adaptTool);
-
-    const messages: LlmChatMessage[] = [
-      ...(input.priorMessages ?? []).map(
-        (m): LlmChatMessage => ({ role: m.role, content: m.content }),
-      ),
-      { role: 'user', content: input.text },
-    ];
-
-    const toolsUsed: string[] = [];
-    let totalIn = 0;
-    let totalOut = 0;
-    let modelUsed = '';
-
-    for (let hop = 0; hop < MAX_TOOL_HOPS; hop++) {
-      const resp = await explicitProvider.chat({
-        systemPrompt: SALES_BOT_SYSTEM_PROMPT,
-        messages,
-        tools,
-      });
-      totalIn += resp.inputTokens;
-      totalOut += resp.outputTokens;
-      modelUsed = resp.modelName;
-
-      if (resp.toolCalls.length === 0) {
-        return {
-          reply: resp.text,
-          confidence: this.estimateConfidence(resp.text, toolsUsed),
-          toolsUsed,
-          inputTokens: totalIn,
-          outputTokens: totalOut,
-          modelUsed,
-        };
-      }
-
-      const toolResults: LlmChatMessage[] = [];
-      for (const tc of resp.toolCalls) {
-        toolsUsed.push(tc.name);
-        const result = await this.runTool(tc.name, tc.input, input.roomId);
-        toolResults.push({
-          role: 'tool',
-          toolCallId: tc.id,
-          content: JSON.stringify(result),
-        });
-      }
-
-      messages.push({
-        role: 'assistant',
-        content: resp.text,
-        toolCalls: resp.toolCalls,
-      });
-      messages.push(...toolResults);
-    }
-
-    return {
-      reply: 'ขออนุญาตให้พี่ staff เช็คข้อมูลเพิ่มเติมสักครู่นะคะ',
-      confidence: 0.3,
-      toolsUsed,
-      inputTokens: totalIn,
-      outputTokens: totalOut,
-      modelUsed,
-    };
   }
 }

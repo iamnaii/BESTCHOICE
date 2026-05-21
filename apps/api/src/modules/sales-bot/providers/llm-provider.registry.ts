@@ -22,7 +22,15 @@ export class LlmProviderRegistry {
 
   async getActive(): Promise<ILlmProvider> {
     const name = await this.resolveName();
-    if (name === 'gemini') return this.gemini;
+    if (name === 'gemini') {
+      // Defensive: even if SystemConfig says gemini, never hand back a provider
+      // that will throw on every call. Cloud Run env without GOOGLE_CLOUD_PROJECT
+      // would otherwise silence the AI for all customers.
+      if (this.gemini.isReady()) return this.gemini;
+      this.logger.warn(
+        'shop_bot_llm_provider=gemini but GeminiProvider not ready (missing GOOGLE_CLOUD_PROJECT?) — falling back to claude',
+      );
+    }
     return this.claude;
   }
 
@@ -55,10 +63,5 @@ export class LlmProviderRegistry {
 
     this.cached = { name, readAt: Date.now() };
     return name;
-  }
-
-  /** Force re-read on next getActive() — used by admin flip endpoint + tests */
-  invalidateCache(): void {
-    this.cached = null;
   }
 }

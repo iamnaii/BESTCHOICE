@@ -25,6 +25,8 @@ import { AppModule } from '../app.module';
 import { SalesBotService } from '../modules/sales-bot/sales-bot.service';
 import { ClaudeProvider } from '../modules/sales-bot/providers/claude.provider';
 import { GeminiProvider } from '../modules/sales-bot/providers/gemini.provider';
+import { CaptureLeadTool } from '../modules/sales-bot/tools/capture-lead.tool';
+import { HandoffToHumanTool } from '../modules/sales-bot/tools/handoff-to-human.tool';
 
 interface TestMessage {
   id: string;
@@ -93,8 +95,31 @@ async function main(): Promise<void> {
     logger.error('GOOGLE_CLOUD_PROJECT not set — Gemini provider will fail');
   }
 
+  // Stub side-effecting tools so we can run against synthetic roomId without
+  // hitting Prisma. capture_lead in particular would throw RecordNotFound on
+  // a placeholder roomId — that error would pollute 5/30 bench rows for
+  // buying-signal messages. Read-only tools (search_products, calculate_installment,
+  // list_promotions) stay live so we see real catalog data in the comparison.
+  const captureLead = app.get(CaptureLeadTool);
+  const handoff = app.get(HandoffToHumanTool);
+  (captureLead as unknown as { run: (input: unknown) => Promise<unknown> }).run =
+    async (input: unknown) => ({
+      ok: true,
+      customerId: 'bench-stub-customer',
+      handoffMessage: 'ขอบคุณค่ะ พี่ staff จะติดต่อกลับสักครู่นะคะ',
+      __stub: true,
+      input,
+    });
+  (handoff as unknown as { run: (input: unknown) => Promise<unknown> }).run =
+    async (input: unknown) => ({
+      ok: true,
+      handoffAccepted: true,
+      __stub: true,
+      input,
+    });
+
   const results: PairedResult[] = [];
-  const roomId = 'bench-room-placeholder'; // tools use this for AuditLog only
+  const roomId = 'bench-room-placeholder'; // tools use this for AuditLog only (stubs ignore)
 
   for (const t of tests) {
     logger.log(`[${t.id}] ${t.category}: ${t.text.slice(0, 50)}`);
@@ -133,7 +158,7 @@ async function runOne(
 ): Promise<BenchResult> {
   const t0 = Date.now();
   try {
-    const r = await salesBot._generateReplyWithProvider(
+    const r = await salesBot.generateReply(
       { text: t.text, roomId, customerId: null, priorMessages: [] },
       provider,
     );

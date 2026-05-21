@@ -34,6 +34,17 @@ export class LlmProviderRegistry {
     return this.claude;
   }
 
+  /**
+   * Force the next `getActive()` call to re-read SystemConfig. Called by
+   * `AiAutoReplyService.updateSettings` when the owner flips
+   * `shop_bot_llm_provider` from the UI so the change takes effect immediately
+   * instead of after the 60-second TTL. Idempotent — clearing an already-empty
+   * cache is a no-op.
+   */
+  invalidateCache(): void {
+    this.cached = null;
+  }
+
   private async resolveName(): Promise<LlmProviderName> {
     if (this.cached && Date.now() - this.cached.readAt < CACHE_TTL_MS) {
       return this.cached.name;

@@ -179,10 +179,13 @@ function AiSettingsForm({ initial }: { initial: AiSettings }) {
   );
 }
 
+type LlmProviderChoice = 'claude' | 'gemini';
+
 interface ShopBotConfig {
   shopBotCentralBranchId: string | null;
   shopBotPromptpayId: string | null;
   shopBotTestUserId: string | null;
+  llmProvider: LlmProviderChoice;
 }
 
 function ShopBotSetupForm() {
@@ -190,6 +193,7 @@ function ShopBotSetupForm() {
   const [branchId, setBranchId] = useState('');
   const [promptpayId, setPromptpayId] = useState('');
   const [testUserId, setTestUserId] = useState('');
+  const [llmProvider, setLlmProvider] = useState<LlmProviderChoice>('claude');
 
   // Read SHOP bot config from same ai-settings endpoint (extended in Task 20a).
   // Use a distinct query key so the raw response shape doesn't conflict with
@@ -199,10 +203,12 @@ function ShopBotSetupForm() {
     queryFn: () =>
       api.get('/staff-chat/ai/settings').then((r: any) => {
         const d = r.data?.data ?? r.data;
+        const provider: LlmProviderChoice = d.llmProvider === 'gemini' ? 'gemini' : 'claude';
         return {
           shopBotCentralBranchId: d.shopBotCentralBranchId ?? null,
           shopBotPromptpayId: d.shopBotPromptpayId ?? null,
           shopBotTestUserId: d.shopBotTestUserId ?? null,
+          llmProvider: provider,
         };
       }),
   });
@@ -217,6 +223,7 @@ function ShopBotSetupForm() {
     setBranchId(shopBotQuery.data.shopBotCentralBranchId ?? '');
     setPromptpayId(shopBotQuery.data.shopBotPromptpayId ?? '');
     setTestUserId(shopBotQuery.data.shopBotTestUserId ?? '');
+    setLlmProvider(shopBotQuery.data.llmProvider);
   }, [shopBotQuery.data]);
 
   const saveMutation = useMutation({
@@ -225,6 +232,7 @@ function ShopBotSetupForm() {
         shopBotCentralBranchId: branchId || null,
         shopBotPromptpayId: promptpayId || null,
         shopBotTestUserId: testUserId || null,
+        llmProvider,
       }),
     onSuccess: () => {
       toast.success('บันทึก SHOP Bot Setup เรียบร้อย');
@@ -296,6 +304,29 @@ function ShopBotSetupForm() {
             onChange={(e) => setTestUserId(e.target.value)}
             placeholder="U1234567890abcdef..."
           />
+        </div>
+        <div className="space-y-2">
+          <Label className="leading-snug">AI Provider</Label>
+          <Select
+            value={llmProvider}
+            onValueChange={(v) => setLlmProvider(v as LlmProviderChoice)}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="เลือก AI provider" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="claude">
+                Claude (Anthropic) — default, persona-refined Thai
+              </SelectItem>
+              <SelectItem value="gemini">
+                Gemini 2.5-flash (Vertex) — ~8x ถูกกว่า, thinking-mode ปิด
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground leading-snug">
+            เปลี่ยน provider จะมีผลทันทีหลังกดบันทึก (cache ถูกล้างพร้อมกัน) —
+            ไม่ต้องรอ 60 วินาที, ไม่ต้อง redeploy
+          </p>
         </div>
         <div className="flex justify-end gap-2">
           <Button

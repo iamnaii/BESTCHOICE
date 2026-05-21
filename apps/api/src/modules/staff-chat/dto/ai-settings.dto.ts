@@ -1,4 +1,7 @@
-import { IsBoolean, IsNumber, IsArray, IsOptional, IsString, Min, Max } from 'class-validator';
+import { IsBoolean, IsNumber, IsArray, IsIn, IsOptional, IsString, Min, Max } from 'class-validator';
+
+export const LLM_PROVIDERS = ['claude', 'gemini'] as const;
+export type LlmProviderChoice = (typeof LLM_PROVIDERS)[number];
 
 export class UpdateAiSettingsDto {
   @IsBoolean()
@@ -32,6 +35,10 @@ export class UpdateAiSettingsDto {
   @IsOptional()
   @IsString()
   shopBotTestUserId?: string;
+
+  @IsOptional()
+  @IsIn(LLM_PROVIDERS, { message: 'llmProvider ต้องเป็น "claude" หรือ "gemini" เท่านั้น' })
+  llmProvider?: LlmProviderChoice;
 }
 
 export interface AiAutoSettings {
@@ -42,4 +49,5 @@ export interface AiAutoSettings {
   shopBotCentralBranchId: string | null;
   shopBotPromptpayId: string | null;
   shopBotTestUserId: string | null;
+  llmProvider: LlmProviderChoice;
 }

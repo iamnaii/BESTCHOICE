@@ -4,8 +4,14 @@ import { ChatChannel, MessageRole, MessageType } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { AiSuggestService } from './ai-suggest.service';
 import { SalesBotService, SalesBotResult } from '../../sales-bot/sales-bot.service';
+import { LlmProviderRegistry } from '../../sales-bot/providers/llm-provider.registry';
 import { MessageRouterService } from '../../chat-engine/services/message-router.service';
-import type { AiAutoSettings, UpdateAiSettingsDto } from '../dto/ai-settings.dto';
+import {
+  LLM_PROVIDERS,
+  type AiAutoSettings,
+  type LlmProviderChoice,
+  type UpdateAiSettingsDto,
+} from '../dto/ai-settings.dto';
 
 @Injectable()
 export class AiAutoReplyService {
@@ -16,6 +22,7 @@ export class AiAutoReplyService {
     private prisma: PrismaService,
     private aiSuggest: AiSuggestService,
     private salesBot: SalesBotService,
+    private llmRegistry: LlmProviderRegistry,
     @Optional()
     @Inject(forwardRef(() => MessageRouterService))
     private messageRouter?: MessageRouterService,
@@ -144,6 +151,7 @@ export class AiAutoReplyService {
       'shop_bot_central_branch_id',
       'shop_bot_promptpay_id',
       'shop_bot_test_user_id',
+      'shop_bot_llm_provider',
     ];
 
     const configs = await this.prisma.systemConfig.findMany({
@@ -151,6 +159,13 @@ export class AiAutoReplyService {
     });
 
     const configMap = new Map(configs.map((c) => [c.key, c.value]));
+
+    const rawProvider = (configMap.get('shop_bot_llm_provider') ?? '').trim().toLowerCase();
+    const llmProvider: LlmProviderChoice = (LLM_PROVIDERS as readonly string[]).includes(
+      rawProvider,
+    )
+      ? (rawProvider as LlmProviderChoice)
+      : 'claude';
 
     return {
       aiAutoEnabled: configMap.has('ai.autoEnabled')
@@ -168,6 +183,7 @@ export class AiAutoReplyService {
       shopBotCentralBranchId: configMap.get('shop_bot_central_branch_id') ?? null,
       shopBotPromptpayId: configMap.get('shop_bot_promptpay_id') ?? null,
       shopBotTestUserId: configMap.get('shop_bot_test_user_id') ?? null,
+      llmProvider,
     };
   }
 
@@ -223,6 +239,13 @@ export class AiAutoReplyService {
         label: 'SHOP Bot test LINE userId',
       });
     }
+    if (dto.llmProvider !== undefined) {
+      entries.push({
+        key: 'shop_bot_llm_provider',
+        value: dto.llmProvider,
+        label: 'SHOP Bot LLM provider (claude | gemini)',
+      });
+    }
 
     for (const entry of entries) {
       await this.prisma.systemConfig.upsert({
@@ -230,6 +253,15 @@ export class AiAutoReplyService {
         create: { key: entry.key, value: entry.value, label: entry.label },
         update: { value: entry.value, deletedAt: null },
       });
+    }
+
+    // If the LLM provider was flipped, drop the in-memory registry cache so
+    // the next customer message routes to the new provider immediately instead
+    // of after the 60-second TTL. Cheap (single field assignment) and
+    // idempotent, so it's safe to call unconditionally when llmProvider is in
+    // the patch — even if the value didn't actually change.
+    if (dto.llmProvider !== undefined) {
+      this.llmRegistry.invalidateCache();
     }
 
     return this.getSettings();

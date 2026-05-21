@@ -53,28 +53,39 @@ export class SearchProductsTool {
       orderBy: { createdAt: 'desc' },
     });
 
-    // Use the default ProductPrice (selling price). Products without a
-    // default price configured are SKIPPED from results — they cannot be
-    // quoted to a customer and the bot must not invent a price.
-    let products = rows
-      .map((r) => {
-        const price = r.prices[0]?.amount;
-        if (price == null) return null;
-        return {
-          id: r.id,
-          name: r.name,
-          brand: r.brand,
-          model: r.model,
-          priceThb: Number(price),
-          condition: r.conditionGrade ?? 'NEW',
-        };
-      })
-      .filter((p): p is NonNullable<typeof p> => p !== null);
+    // Use the default ProductPrice (selling price) when available. Products
+    // without a default ProductPrice row come back with `priceMissing: true`
+    // and NO priceThb field — the persona's "no-data → handoff" rule then
+    // takes over instead of the bot inventing a price. (Earlier draft of
+    // this fix dropped them silently — too aggressive when owner hasn't
+    // backfilled ProductPrice rows yet, would have nuked all bot quotes.)
+    type Hit =
+      | { id: string; name: string; brand: string; model: string; condition: string; priceThb: number }
+      | { id: string; name: string; brand: string; model: string; condition: string; priceMissing: true };
+
+    let products: Hit[] = rows.map((r): Hit => {
+      const base = {
+        id: r.id,
+        name: r.name,
+        brand: r.brand,
+        model: r.model,
+        condition: r.conditionGrade ?? 'NEW',
+      };
+      const price = r.prices[0]?.amount;
+      if (price == null) return { ...base, priceMissing: true };
+      return { ...base, priceThb: Number(price) };
+    });
 
     if (input.maxPriceThb !== undefined) {
-      products = products.filter((p) => p.priceThb <= input.maxPriceThb!);
+      const cap = input.maxPriceThb;
+      products = products.filter((p) => !('priceThb' in p) || p.priceThb <= cap);
     }
-    products.sort((a, b) => a.priceThb - b.priceThb);
+    // Sort: priced items by price ascending, missing-price items at the end.
+    products.sort((a, b) => {
+      const aP = 'priceThb' in a ? a.priceThb : Number.MAX_SAFE_INTEGER;
+      const bP = 'priceThb' in b ? b.priceThb : Number.MAX_SAFE_INTEGER;
+      return aP - bP;
+    });
     return { products: products.slice(0, 5) };
   }
 }

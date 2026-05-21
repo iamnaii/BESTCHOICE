@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8" />
+<title>Deploy Audit — Other Income v2.1 · 2026-05-12</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #fafaf9;
+    --card: #ffffff;
+    --ink: #18181b;
+    --muted: #71717a;
+    --line: #e4e4e7;
+    --line-soft: #f4f4f5;
+    --accent: #047857;
+    --accent-soft: #ecfdf5;
+    --warn: #b45309;
+    --warn-soft: #fffbeb;
+    --danger: #b91c1c;
+    --danger-soft: #fef2f2;
+    --code-bg: #18181b;
+    --code-ink: #d4d4d8;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "IBM Plex Sans Thai", system-ui, -apple-system, "Segoe UI", sans-serif;
+    line-height: 1.55;
+    font-size: 14px;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 48px 24px 96px; }
+  header { margin-bottom: 36px; }
+  .eyebrow {
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  h1 {
+    margin: 0 0 8px;
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  .sub { color: var(--muted); font-size: 14px; }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 500;
+    background: var(--accent-soft);
+    color: var(--accent);
+    border: 1px solid #a7f3d0;
+  }
+  .badge.warn { background: var(--warn-soft); color: var(--warn); border-color: #fde68a; }
+  .badge.danger { background: var(--danger-soft); color: var(--danger); border-color: #fecaca; }
+
+  section { margin-top: 40px; }
+  section > h2 {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0 0 14px;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+  section > h2 .num {
+    font-family: "JetBrains Mono", monospace;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 500;
+  }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 20px 22px;
+  }
+
+  .grid-summary {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+  .stat {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .stat .label { color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+  .stat .value { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+  .stat .hint { color: var(--muted); font-size: 11px; margin-top: 2px; font-family: "JetBrains Mono", monospace; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 12px 14px; text-align: left; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; background: #fafafa; }
+  tbody tr:last-child td { border-bottom: none; }
+  td.code { font-family: "JetBrains Mono", monospace; font-size: 12px; }
+  td.right { text-align: right; }
+
+  .check { color: var(--accent); font-weight: 600; }
+  .miss { color: var(--danger); font-weight: 600; }
+
+  .pr-row td:first-child { font-weight: 600; }
+  .pr-row .desc { color: var(--muted); font-weight: 400; font-size: 13px; display: block; margin-top: 2px; }
+
+  pre {
+    background: var(--code-bg);
+    color: var(--code-ink);
+    border-radius: 10px;
+    padding: 16px;
+    overflow-x: auto;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    margin: 0;
+  }
+  pre .ok { color: #86efac; }
+  pre .info { color: #93c5fd; }
+  pre .key { color: #fcd34d; }
+
+  ul { padding-left: 20px; margin: 8px 0; }
+  ul li { margin: 4px 0; color: var(--ink); }
+  ul li .meta { color: var(--muted); font-family: "JetBrains Mono", monospace; font-size: 12px; }
+
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+  footer { margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+
+  @media (max-width: 720px) {
+    .grid-summary { grid-template-columns: repeat(2, 1fr); }
+    .row2 { grid-template-columns: 1fr; }
+    table, thead, tbody, tr, td, th { display: block; }
+    th { display: none; }
+    td { padding: 8px 0; border: none; }
+    .pr-row td:first-child { padding-top: 14px; border-top: 1px solid var(--line-soft); }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">Deploy Audit · BESTCHOICE</div>
+  <h1>Other Income v2.1 — Production Sync</h1>
+  <div class="sub">2026-05-12 · เทียบ Local main ↔ Production (Cloud Run · Firebase · Cloud SQL)</div>
+  <div style="margin-top: 14px;"><span class="badge">PRODUCTION SYNC 100%</span></div>
+</header>
+
+<section>
+  <h2>สรุปภาพรวม</h2>
+  <div class="grid-summary">
+    <div class="stat">
+      <div class="label">Main branch HEAD</div>
+      <div class="value">b1ef6651</div>
+      <div class="hint">PR #825</div>
+    </div>
+    <div class="stat">
+      <div class="label">Deployed API image</div>
+      <div class="value">b1ef6651</div>
+      <div class="hint">revision 00510-59g</div>
+    </div>
+    <div class="stat">
+      <div class="label">Migrations applied</div>
+      <div class="value">2 new</div>
+      <div class="hint">maker-checker + templates</div>
+    </div>
+    <div class="stat">
+      <div class="label">Health</div>
+      <div class="value" style="color: var(--accent);">200 · 0.13s</div>
+      <div class="hint">/api/health · status ok</div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>PR Shipments</h2>
+  <div class="card" style="padding: 0;">
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 90px;">PR</th>
+          <th>เนื้อหา</th>
+          <th style="width: 140px;">API Deploy</th>
+          <th style="width: 110px;">Migration</th>
+          <th style="width: 120px;">Web Deploy</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="pr-row">
+          <td>#823</td>
+          <td>
+            Combined: B1-B6 + Maker-Checker + Templates
+            <span class="desc">31 work commits · 3 review-fix rounds · Schema migrations 2 ตัว</span>
+          </td>
+          <td><span class="check">✓</span> GHA · 7m47s</td>
+          <td><span class="check">✓</span> 9jdr4 · 07:29 UTC</td>
+          <td><span class="check">✓</span> GHA</td>
+        </tr>
+        <tr class="pr-row">
+          <td>#824</td>
+          <td>
+            T4 — Renumber validation rules → PDF Spec V1-V14
+            <span class="desc">Reorder blocks + JSDoc rule mapping (no behavior change)</span>
+          </td>
+          <td><span class="check">✓</span> GHA · 8m08s</td>
+          <td><span class="check">✓</span> xb52j · 07:57 UTC</td>
+          <td><span class="check">✓</span> GHA</td>
+        </tr>
+        <tr class="pr-row">
+          <td>#825</td>
+          <td>
+            Review followup — TOCTOU race + role consistency + Thai errors
+            <span class="desc">GHA budget หมด → ต้อง manual deploy via gcloud + firebase</span>
+          </td>
+          <td><span class="check">✓</span> Manual · 5m57s</td>
+          <td>—</td>
+          <td><span class="check">✓</span> Manual · 30s</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2>Layer-by-Layer Verification</h2>
+  <div class="card" style="padding: 0;">
+    <table>
+      <thead>
+        <tr>
+          <th>Layer</th>
+          <th>Local</th>
+          <th>Production</th>
+          <th>Match</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Git main HEAD</td>
+          <td class="code">b1ef6651</td>
+          <td class="code">b1ef6651 (image tag)</td>
+          <td><span class="check">ตรง</span></td>
+        </tr>
+        <tr>
+          <td>Cloud Run revision</td>
+          <td>—</td>
+          <td class="code">bestchoice-api-00510-59g</td>
+          <td><span class="check">ready=True · 100% traffic</span></td>
+        </tr>
+        <tr>
+          <td>Prisma schema</td>
+          <td class="code">apps/api/prisma/schema.prisma @ b1ef6651</td>
+          <td>migrations 0001 → 20260921000000 applied</td>
+          <td><span class="check">ตรง</span></td>
+        </tr>
+        <tr>
+          <td>Firebase Hosting (admin)</td>
+          <td class="code">apps/web/dist (Vite build)</td>
+          <td><a href="https://bestchoice-prod.web.app" style="color: var(--accent);">bestchoice-prod.web.app</a> · 322 files</td>
+          <td><span class="check">ตรง</span></td>
+        </tr>
+        <tr>
+          <td>Unpushed commits</td>
+          <td><span class="code">0</span></td>
+          <td>—</td>
+          <td><span class="check">ไม่มี</span></td>
+        </tr>
+        <tr>
+          <td>Untracked files</td>
+          <td>2 (.firebase/ cache + audit html)</td>
+          <td>—</td>
+          <td><span class="check">ปลอดภัย (ไม่ commit)</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2>สิ่งที่ Live บน Production ตอนนี้</h2>
+  <div class="row2">
+    <div class="card">
+      <div class="eyebrow">Backend (Cloud Run)</div>
+      <h3 style="margin: 6px 0 12px; font-size: 15px;">Other Income API endpoints</h3>
+      <ul>
+        <li><b>Bug fixes</b><br/><span class="meta">B1 companyId · B2 V15 warning drop · B3 default whtPct=1 · B5 tooltip · B6 mobile verified</span></li>
+        <li><b>Maker-Checker (opt-in)</b><br/><span class="meta">GET /maker-checker-enabled · POST /:id/request-approval · /approve · /reject</span></li>
+        <li><b>Templates (CRUD + use)</b><br/><span class="meta">GET/POST/PATCH/DELETE /templates · POST /from-doc/:id/save-template · POST /templates/:id/use</span></li>
+        <li><b>TOCTOU race fix</b><br/><span class="meta">CAS-claim via updateMany() in approve()/reject() — concurrent OWNERs cannot double-JE</span></li>
+        <li><b>V9 maker ≠ approver</b><br/><span class="meta">Enforced in approve() service method · Approver = OWNER only</span></li>
+        <li><b>Thai error messages</b><br/><span class="meta">English strings translated · ม.81(1)(ฏ) VAT-exempt 42-1102 still enforced (V15)</span></li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="eyebrow">Frontend (Firebase Hosting)</div>
+      <h3 style="margin: 6px 0 12px; font-size: 15px;">Other Income UI</h3>
+      <ul>
+        <li><b>ListPage</b><br/><span class="meta">5 status cards เมื่อ flag เปิด (DRAFT · READY · POSTED · REVERSED · DAILY)</span></li>
+        <li><b>EntryPage</b><br/><span class="meta">TemplatePickerCombobox · ?fromTemplate=1 prefill · submit label adapts</span></li>
+        <li><b>ViewPage</b><br/><span class="meta">Status-aware action bar · RejectModal · SaveAsTemplateModal · บันทึกเป็น Template</span></li>
+        <li><b>PendingApprovalPage</b><br/><span class="meta">Route /other-income/pending-approval · READY queue · OWNER inline approve/reject</span></li>
+        <li><b>TemplatesPage</b><br/><span class="meta">Route /other-income/templates · favorites · search · RenameModal · ConfirmDialog delete</span></li>
+        <li><b>WHT suggestion tooltip</b><br/><span class="meta">42-1102 → แนะนำ 1% (นิติบุคคล ออมทรัพย์ ท.ป.4/2528)</span></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>คำสั่งตรวจสอบที่ใช้</h2>
+  <div class="card" style="padding: 0; overflow: hidden;">
+    <pre>$ git log --oneline -1
+<span class="info">b1ef6651</span> fix(other-income): post-merge review followups (#825)
+
+$ gcloud run services describe bestchoice-api --region=asia-southeast1 \
+    --format=<span class="key">"value(spec.template.spec.containers[0].image,status.latestReadyRevisionName,status.conditions[0].status)"</span>
+asia-southeast1-docker.pkg.dev/bestchoice-prod/bestchoice/api:<span class="info">b1ef6651</span>
+<span class="ok">bestchoice-api-00510-59g</span>     <span class="ok">True</span>
+
+$ curl https://api.bestchoicephone.app/api/health
+<span class="ok">HTTP 200</span> (0.13s)
+{"success":true,"data":{"status":"ok","timestamp":"2026-05-12T09:00:15Z"}}
+
+$ gcloud run jobs executions list --job=bestchoice-migrate --limit=3
+bestchoice-migrate-<span class="info">xb52j</span>   2026-05-12T07:57:10Z   <span class="ok">SUCCEEDED</span>
+bestchoice-migrate-<span class="info">9jdr4</span>   2026-05-12T07:29:54Z   <span class="ok">SUCCEEDED</span>
+bestchoice-migrate-8w6dz   2026-05-11T11:16:26Z   <span class="ok">SUCCEEDED</span>
+
+$ git status --short
+<span class="key">?? .firebase/</span>
+<span class="key">?? docs/accounting/changes-audit-2026-05-11.html</span>
+<span class="key">?? docs/accounting/deploy-audit-other-income-v2-1-2026-05-12.html</span>
+
+$ git log origin/main..HEAD --oneline
+(no output — no unpushed commits)</pre>
+  </div>
+</section>
+
+<section>
+  <h2>สถานะ Maker-Checker Feature Flag</h2>
+  <div class="card" style="background: var(--warn-soft); border-color: #fde68a;">
+    <p style="margin: 0;">
+      <b>SystemConfig key:</b> <code style="font-family: 'JetBrains Mono', monospace; background: rgba(0,0,0,0.05); padding: 1px 6px; border-radius: 4px;">OTHER_INCOME_MAKER_CHECKER_ENABLED</code>
+    </p>
+    <p style="margin: 8px 0 0;">
+      Default = <code style="font-family: 'JetBrains Mono', monospace;">false</code> · ระบบทำงานเหมือนเดิม 100% (DRAFT → POSTED ปกติ)
+    </p>
+    <p style="margin: 8px 0 0;">
+      เมื่อพร้อมเปิดใช้ Maker-Checker workflow → toggle เป็น <code style="font-family: 'JetBrains Mono', monospace;">'true'</code> ใน SystemConfig table ผ่าน admin UI หรือ direct SQL.
+    </p>
+  </div>
+</section>
+
+<footer>
+  Generated 2026-05-12 16:18 ICT · BESTCHOICE Other Income v2.1 deployment audit · Compare local <code>b1ef6651</code> ↔ Cloud Run revision <code>00510-59g</code>
+</footer>
+
+</div>
+</body>
+</html>

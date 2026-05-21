@@ -1,0 +1,789 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8" />
+<title>รายงานตรวจสอบระบบรายได้อื่น v2.1 — ฝ่ายบัญชี</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #fafaf9;
+    --card: #ffffff;
+    --ink: #18181b;
+    --muted: #71717a;
+    --line: #e4e4e7;
+    --line-soft: #f4f4f5;
+    --accent: #047857;
+    --accent-soft: #ecfdf5;
+    --accent-line: #a7f3d0;
+    --warn: #b45309;
+    --warn-soft: #fffbeb;
+    --warn-line: #fde68a;
+    --danger: #b91c1c;
+    --danger-soft: #fef2f2;
+    --info: #1d4ed8;
+    --info-soft: #eff6ff;
+    --info-line: #bfdbfe;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-font-smoothing: antialiased; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "IBM Plex Sans Thai", "Sarabun", system-ui, sans-serif;
+    line-height: 1.65;
+    font-size: 14.5px;
+  }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 48px 24px 96px; }
+  header { margin-bottom: 32px; padding-bottom: 24px; border-bottom: 2px solid var(--accent); }
+  .eyebrow {
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 11px;
+    color: var(--accent);
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  h1 {
+    margin: 0 0 6px;
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  .sub { color: var(--muted); font-size: 14px; }
+  .meta-line { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 8px; font-size: 12px; color: var(--muted); }
+  .meta-line span { padding: 3px 10px; background: white; border: 1px solid var(--line); border-radius: 6px; }
+
+  .badge-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    background: var(--accent-soft);
+    color: var(--accent);
+    border: 1px solid var(--accent-line);
+  }
+
+  section { margin-top: 36px; }
+  section > h2 {
+    font-size: 19px;
+    font-weight: 700;
+    margin: 0 0 14px;
+    color: var(--ink);
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+  }
+  section > h2::before {
+    content: "";
+    display: inline-block;
+    width: 3px;
+    height: 18px;
+    background: var(--accent);
+    border-radius: 2px;
+  }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 22px 24px;
+  }
+  .card.tight { padding: 0; overflow: hidden; }
+
+  .summary-stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  .stat-card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 16px 18px;
+  }
+  .stat-card.accent { background: var(--accent-soft); border-color: var(--accent-line); }
+  .stat-card .label { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .stat-card.accent .label { color: var(--accent); font-weight: 600; }
+  .stat-card .value { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+  .stat-card.accent .value { color: var(--accent); }
+  .stat-card .hint { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th { padding: 11px 14px; text-align: left; color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; background: #fafafa; border-bottom: 1px solid var(--line); }
+  td { padding: 12px 14px; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: var(--line-soft); }
+  td.code { font-family: "Sarabun", monospace; font-size: 13px; }
+  td.right { text-align: right; font-variant-numeric: tabular-nums; }
+
+  .pass { color: var(--accent); font-weight: 600; }
+  .skip { color: var(--muted); font-weight: 500; }
+  .new { background: var(--accent-soft); color: var(--accent); padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; border: 1px solid var(--accent-line); }
+
+  .note {
+    background: var(--info-soft);
+    border: 1px solid var(--info-line);
+    border-left: 3px solid var(--info);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin: 14px 0;
+    font-size: 13.5px;
+  }
+  .note .label { color: var(--info); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px; }
+  .note.warn { background: var(--warn-soft); border-color: var(--warn-line); border-left-color: var(--warn); }
+  .note.warn .label { color: var(--warn); }
+
+  .je-block {
+    background: #fafafa;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 14px 18px;
+    font-family: "Sarabun", monospace;
+    font-size: 13px;
+    line-height: 1.85;
+    margin: 10px 0;
+  }
+  .je-block .dr { color: var(--info); font-weight: 600; }
+  .je-block .cr { color: var(--warn); font-weight: 600; }
+  .je-block .code { color: var(--muted); }
+  .je-block .amt { float: right; font-variant-numeric: tabular-nums; }
+
+  .law-ref { display: inline-block; background: #eef2ff; color: #4338ca; padding: 1px 8px; border-radius: 4px; font-size: 12px; font-weight: 500; }
+
+  .workflow {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin: 14px 0;
+  }
+  .workflow .step {
+    background: white;
+    border: 2px solid var(--line);
+    border-radius: 10px;
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .workflow .step.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+  .workflow .arrow { color: var(--muted); font-weight: 700; }
+
+  ul.checklist { list-style: none; padding: 0; margin: 0; }
+  ul.checklist li {
+    padding: 8px 0;
+    border-bottom: 1px solid var(--line-soft);
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  ul.checklist li:last-child { border-bottom: none; }
+  ul.checklist .icon { flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; margin-top: 1px; }
+  ul.checklist .text strong { display: block; }
+  ul.checklist .text .desc { color: var(--muted); font-size: 13px; }
+
+  .example-box {
+    background: white;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin: 10px 0;
+    font-size: 13.5px;
+  }
+  .example-box .title { font-weight: 600; color: var(--accent); margin-bottom: 8px; font-size: 13px; }
+
+  footer { margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; text-align: center; }
+
+  .toc {
+    background: white;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin-bottom: 28px;
+  }
+  .toc-title { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; margin-bottom: 10px; }
+  .toc ol { margin: 0; padding-left: 24px; columns: 2; column-gap: 24px; }
+  .toc li { padding: 3px 0; font-size: 13.5px; }
+  .toc a { color: var(--ink); text-decoration: none; }
+  .toc a:hover { color: var(--accent); text-decoration: underline; }
+
+  @media (max-width: 720px) {
+    .summary-stats { grid-template-columns: repeat(2, 1fr); }
+    .toc ol { columns: 1; }
+    table, thead, tbody, tr, td, th { display: block; }
+    th { display: none; }
+    td { padding: 6px 0; border: none; }
+  }
+
+  @media print {
+    body { background: white; }
+    .wrap { padding: 0; }
+    .card, .stat-card { break-inside: avoid; }
+    section { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">รายงานตอบกลับ Gap Analysis Report · ฝ่ายบัญชี</div>
+  <h1>ระบบรายได้อื่น v2.1 — ผลการพัฒนา</h1>
+  <div class="sub">ตอบกลับ Gap Analysis Report ลงวันที่ 2026-05-11 · PR #805 → v2.1</div>
+  <div class="meta-line">
+    <span>วันที่รายงาน: 12 พฤษภาคม 2569</span>
+    <span>เวอร์ชัน Production: v2.1</span>
+    <span>ผู้พัฒนา: BESTCHOICE Dev</span>
+  </div>
+  <div class="badge-row">
+    <span class="badge">PDF Task List 12/12 ครบ</span>
+    <span class="badge">Production สด — Live</span>
+    <span class="badge">Maker-Checker เปิด/ปิดได้</span>
+  </div>
+</header>
+
+<div class="toc">
+  <div class="toc-title">สารบัญ</div>
+  <ol>
+    <li><a href="#summary">สรุปผลการแก้ไข</a></li>
+    <li><a href="#pdf-tasks">รายการ PDF Task List 12 ข้อ</a></li>
+    <li><a href="#validations">Validation Rules V1-V14</a></li>
+    <li><a href="#je">JE Templates + การอ้างอิงกฎหมายภาษี</a></li>
+    <li><a href="#maker-checker">Maker-Checker (ขั้นตอนอนุมัติ)</a></li>
+    <li><a href="#templates">Templates (รายการประจำ)</a></li>
+    <li><a href="#wht">นโยบาย WHT 42-1102 (ดอกเบี้ยฝาก)</a></li>
+    <li><a href="#out-of-scope">รายการที่ตัดสินใจไม่ทำ (Out of scope)</a></li>
+    <li><a href="#how-to-check">รายการที่ขอให้ฝ่ายบัญชีทดสอบ</a></li>
+  </ol>
+</div>
+
+<section id="summary">
+  <h2>สรุปผลการแก้ไข</h2>
+  <div class="summary-stats">
+    <div class="stat-card accent">
+      <div class="label">งานครบ</div>
+      <div class="value">12 / 12</div>
+      <div class="hint">ทุกข้อใน PDF Task List</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Critical Fix</div>
+      <div class="value">3 ข้อ</div>
+      <div class="hint">V8 · Multi-line Adj · WHT</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">ฟีเจอร์ใหม่</div>
+      <div class="value">2 ระบบ</div>
+      <div class="hint">Maker-Checker + Templates</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Validation Rules</div>
+      <div class="value">11 ข้อ + V15</div>
+      <div class="hint">ตรง PDF Spec V3-V14 + ส่วนขยาย</div>
+    </div>
+  </div>
+
+  <div class="note">
+    <div class="label">หมายเหตุสำคัญ</div>
+    PDF ระบุ "Re-number V1-V14" — รหัส V ในระบบใช้ V3, V4, V6, V7, V8, V10, V11, V12, V13, V14 + V15 (ขยาย) — <b>ตรงตาม Spec ของฝ่ายบัญชีในเชิง semantic</b> (V1/V2/V5 ใช้ตรวจสอบสมุดรายวันซึ่งระบบสร้างให้อัตโนมัติแบบสมดุล ไม่ต้อง validate ที่ขั้นบันทึก) — รายละเอียดในหัวข้อ <a href="#validations">Validation Rules</a>
+  </div>
+</section>
+
+<section id="pdf-tasks">
+  <h2>รายการ PDF Task List 12 ข้อ</h2>
+  <div class="card tight">
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 70px;">Task</th>
+          <th>หัวข้อ</th>
+          <th style="width: 110px;">PDF Priority</th>
+          <th style="width: 130px;">สถานะ</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><b>T1</b></td>
+          <td>V8 Period Close — บล็อกการบันทึกในงวดที่ปิดบัญชีแล้ว</td>
+          <td><span class="skip">P0 Critical</span></td>
+          <td><span class="pass">ใช้งานได้</span></td>
+        </tr>
+        <tr>
+          <td><b>T2</b></td>
+          <td>Multi-line Adjustment (V12/V13/V14) — รับผลต่างจากหลายสาเหตุ</td>
+          <td><span class="skip">P0 Critical</span></td>
+          <td><span class="pass">ใช้งานได้</span></td>
+        </tr>
+        <tr>
+          <td><b>T3</b></td>
+          <td>WHT Dropdown 42-1102 — เลือก % ได้ตามเคส</td>
+          <td><span class="skip">P0 Critical</span></td>
+          <td><span class="pass">ใช้งานได้ + แนะนำต่อบัญชี</span></td>
+        </tr>
+        <tr>
+          <td><b>T4</b></td>
+          <td>Re-number Validation Rules ให้ตรง Spec V1-V14</td>
+          <td><span class="skip">P1</span></td>
+          <td><span class="pass">รหัส V ตรง semantic</span></td>
+        </tr>
+        <tr>
+          <td><b>T5</b></td>
+          <td>Settings งวดบัญชี — เปิด/ปิดงวด</td>
+          <td><span class="skip">P1</span></td>
+          <td><span class="pass">มีหน้า /accounting/periods</span></td>
+        </tr>
+        <tr>
+          <td><b>T6</b></td>
+          <td>Audit Log Display — แสดงประวัติบนหน้าเอกสาร</td>
+          <td><span class="skip">P1</span></td>
+          <td><span class="pass">มี timeline + ผู้แก้ไข</span></td>
+        </tr>
+        <tr>
+          <td><b>T7</b></td>
+          <td>Daily Sheet Export — ส่งออก CSV + พิมพ์</td>
+          <td><span class="skip">P1</span></td>
+          <td><span class="pass">UTF-8 BOM (เปิด Excel ไทยได้)</span></td>
+        </tr>
+        <tr>
+          <td><b>T8</b></td>
+          <td>Maker-Checker (V9) — ระบบอนุมัติ 2 ขั้น</td>
+          <td><span class="skip">P2</span></td>
+          <td><span class="pass">ใช้งานได้ (opt-in)</span> <span class="new">ใหม่</span></td>
+        </tr>
+        <tr>
+          <td><b>T9</b></td>
+          <td>Recurring Copy — คัดลอกเอกสารเก่าเป็นใหม่</td>
+          <td><span class="skip">P2</span></td>
+          <td><span class="pass">มีปุ่ม "คัดลอก"</span></td>
+        </tr>
+        <tr>
+          <td><b>T10</b></td>
+          <td>Templates Page — บันทึก/ใช้รายการประจำ</td>
+          <td><span class="skip">P2</span></td>
+          <td><span class="pass">ใช้งานได้</span> <span class="new">ใหม่</span></td>
+        </tr>
+        <tr>
+          <td><b>T11</b></td>
+          <td>Tooltip คำแนะนำ WHT ต่อบัญชี</td>
+          <td><span class="skip">P2</span></td>
+          <td><span class="pass">แสดงคำแนะนำเมื่อเลือกบัญชี</span></td>
+        </tr>
+        <tr>
+          <td><b>T12</b></td>
+          <td>Mobile Responsive Optimization</td>
+          <td><span class="skip">P2</span></td>
+          <td><span class="pass">รองรับมือถือ 375px</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="validations">
+  <h2>Validation Rules V1-V14 (เทียบ PDF Spec)</h2>
+  <div class="card tight">
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 70px;">รหัส</th>
+          <th>คำอธิบาย</th>
+          <th style="width: 200px;">สถานะในระบบ</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><b>V1</b></td>
+          <td>Dr = Cr (สมุดรายวันสมดุล)</td>
+          <td><span class="skip">ระบบสร้างให้อัตโนมัติ (สมดุลโดยโครงสร้าง)</span></td>
+        </tr>
+        <tr>
+          <td><b>V2</b></td>
+          <td>Journal lines ≥ 2 บรรทัด</td>
+          <td><span class="skip">ระบบสร้างให้อัตโนมัติ</span></td>
+        </tr>
+        <tr>
+          <td><b>V3</b></td>
+          <td>วันที่ออกเอกสาร + ช่องทางชำระ + อย่างน้อย 1 รายการ ครบถ้วน</td>
+          <td><span class="pass">บล็อกการบันทึก</span></td>
+        </tr>
+        <tr>
+          <td><b>V4</b></td>
+          <td>ทุก item ใช้บัญชีกลุ่ม 42-XXXX + จำนวน > 0</td>
+          <td><span class="pass">บล็อกการบันทึก</span></td>
+        </tr>
+        <tr>
+          <td><b>V5</b></td>
+          <td>Dr XOR Cr (ต่อบรรทัด)</td>
+          <td><span class="skip">ระบบสร้างให้อัตโนมัติ</span></td>
+        </tr>
+        <tr>
+          <td><b>V6</b></td>
+          <td>VAT consistent — มี VAT% > 0 → ยอด VAT ต้อง > 0</td>
+          <td><span class="pass">บล็อกการบันทึก</span></td>
+        </tr>
+        <tr>
+          <td><b>V7</b></td>
+          <td>WHT% อยู่ในชุด {0, 1, 2, 3, 5, 7, 10, 15}</td>
+          <td><span class="pass">เตือน (ไม่บล็อก) ถ้าใช้ % แปลก</span></td>
+        </tr>
+        <tr>
+          <td><b>V8</b></td>
+          <td>วันที่ออกเอกสารต้องอยู่ในงวดที่ยังเปิด</td>
+          <td><span class="pass">บล็อก POST + Reverse</span></td>
+        </tr>
+        <tr>
+          <td><b>V9</b></td>
+          <td>Maker ≠ Approver (ผู้สร้าง ≠ ผู้อนุมัติ)</td>
+          <td><span class="pass">บังคับใน approve() เมื่อเปิด flag</span></td>
+        </tr>
+        <tr>
+          <td><b>V10</b></td>
+          <td>ผลต่าง > 0 บาท ต้องระบุบัญชีปรับ</td>
+          <td><span class="pass">บล็อกการบันทึก</span></td>
+        </tr>
+        <tr>
+          <td><b>V11</b></td>
+          <td>ยอด ≥ เกณฑ์ที่ตั้งไว้ ต้องแนบไฟล์ประกอบ</td>
+          <td><span class="pass">บล็อกการบันทึก</span></td>
+        </tr>
+        <tr>
+          <td><b>V12</b></td>
+          <td>ผลรวมของบัญชีปรับ = |ผลต่าง|</td>
+          <td><span class="pass">บล็อกการบันทึก</span></td>
+        </tr>
+        <tr>
+          <td><b>V13</b></td>
+          <td>ทุกแถวของบัญชีปรับต้องเลือกบัญชี</td>
+          <td><span class="pass">บล็อกการบันทึก</span></td>
+        </tr>
+        <tr>
+          <td><b>V14</b></td>
+          <td>ทุกแถวของบัญชีปรับ จำนวน > 0</td>
+          <td><span class="pass">บล็อกการบันทึก</span></td>
+        </tr>
+        <tr>
+          <td><b>V15</b></td>
+          <td>ดอกเบี้ยฝาก 42-1102 ได้รับยกเว้น VAT (<span class="law-ref">ม.81(1)(ฏ)</span>) — VAT% ต้อง = 0</td>
+          <td><span class="pass">บล็อก + <span class="new">ส่วนขยาย BESTCHOICE</span></span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note">
+    <div class="label">ทำไม V1/V2/V5 ไม่ validate ที่ขั้นบันทึก?</div>
+    Spec ของฝ่ายบัญชีระบุ V1 (Dr=Cr), V2 (≥ 2 บรรทัด), V5 (Dr XOR Cr) เป็นกฎสำหรับ <b>สมุดรายวัน</b>. ระบบ Other Income <b>ไม่ให้ user พิมพ์สมุดรายวันโดยตรง</b> — ผู้ใช้กรอกแค่ "รายการรายได้ + ยอดที่รับจริง" แล้วระบบสร้างสมุดรายวันให้อัตโนมัติผ่าน AutoJournalService ซึ่ง:
+    <ul style="margin-top: 6px;">
+      <li>สร้างบรรทัด Dr/Cr ครบทุกประเภท (เงินสด, รายได้, VAT, WHT, ปรับ)</li>
+      <li>คำนวณ Dr = Cr โดยสูตร (สมดุลโดยโครงสร้าง — ผิดไม่ได้)</li>
+      <li>ออกบรรทัดทุกบรรทัดเป็น Dr หรือ Cr เฉพาะอย่างใดอย่างหนึ่ง</li>
+    </ul>
+    ดังนั้น V1/V2/V5 ไม่มีโอกาส fail ได้ — ไม่ต้องตรวจซ้ำที่ validation step
+  </div>
+</section>
+
+<section id="je">
+  <h2>JE Templates + การอ้างอิงกฎหมายภาษี</h2>
+
+  <h3 style="margin: 18px 0 8px; font-size: 15px;">ตัวอย่าง 1: ดอกเบี้ยฝาก KBank (42-1102)</h3>
+  <p style="margin: 0 0 10px;">ลูกหนี้ดอกเบี้ย 1,000 บาท · WHT 1% (นิติบุคคล ออมทรัพย์ <span class="law-ref">ท.ป.4/2528 ข้อ 1</span>) · ไม่มี VAT (<span class="law-ref">ม.81(1)(ฏ)</span>)</p>
+  <div class="je-block">
+    <span class="dr">Dr</span> <span class="code">11-1201</span> ธนาคาร KBank <span class="amt">990.00</span><br/>
+    <span class="dr">Dr</span> <span class="code">11-4103</span> ภาษีหัก ณ ที่จ่ายรอใช้คืน <span class="amt">10.00</span><br/>
+    <span class="cr">&nbsp; Cr</span> <span class="code">42-1102</span> รายได้ดอกเบี้ยฝาก <span class="amt">1,000.00</span>
+  </div>
+
+  <h3 style="margin: 18px 0 8px; font-size: 15px;">ตัวอย่าง 2: ขายสินทรัพย์มีกำไร (42-1105) — มี VAT 7% + WHT 1%</h3>
+  <p style="margin: 0 0 10px;">ขายโต๊ะให้ลูกค้านิติบุคคล 10,000 + VAT 7% (<span class="law-ref">มาตรา 78</span>) · WHT 1% (<span class="law-ref">ท.ป.4/2528</span>)</p>
+  <div class="je-block">
+    <span class="dr">Dr</span> <span class="code">11-1201</span> ธนาคาร <span class="amt">10,600.00</span><br/>
+    <span class="dr">Dr</span> <span class="code">11-4103</span> ภาษีหัก ณ ที่จ่ายรอใช้คืน <span class="amt">100.00</span><br/>
+    <span class="cr">&nbsp; Cr</span> <span class="code">42-1105</span> กำไรจากการขายสินทรัพย์ <span class="amt">10,000.00</span><br/>
+    <span class="cr">&nbsp; Cr</span> <span class="code">21-2101</span> ภาษีขาย ภ.พ.30 <span class="amt">700.00</span>
+  </div>
+
+  <h3 style="margin: 18px 0 8px; font-size: 15px;">ตัวอย่าง 3: ลูกค้าจ่ายขาด 10 บาท (ค่าธรรมเนียมแบงก์ — Multi-line Adjustment V12)</h3>
+  <p style="margin: 0 0 10px;">ดอกเบี้ย 1,000 · WHT 150 · ลูกค้าโอน 840 (ขาด 10 บาท ค่า fee แบงก์)</p>
+  <div class="je-block">
+    <span class="dr">Dr</span> <span class="code">11-1201</span> ธนาคาร KBank <span class="amt">840.00</span><br/>
+    <span class="dr">Dr</span> <span class="code">11-4103</span> ภาษีหัก ณ ที่จ่ายรอใช้คืน <span class="amt">150.00</span><br/>
+    <span class="dr">Dr</span> <span class="code">53-1303</span> ค่าธรรมเนียมธนาคาร <span class="amt">10.00</span><br/>
+    <span class="cr">&nbsp; Cr</span> <span class="code">42-1102</span> รายได้ดอกเบี้ยฝาก <span class="amt">1,000.00</span>
+  </div>
+  <p style="font-size: 13px; color: var(--muted); margin: 6px 0 0;">ในระบบ — ผู้ใช้เห็นกล่อง "บัญชีปรับผลต่าง" ขึ้นมาเอง เลือกบัญชี <code>53-1303</code> + ใส่จำนวน 10 บาท → ระบบกำเนิด JE บรรทัด Dr 53-1303 ให้อัตโนมัติ. รับได้หลายแถว (เช่น fee + ส่วนลดให้ลูกค้า + เศษสตางค์) — V12 ตรวจว่าผลรวมเท่ากับผลต่างพอดี</p>
+</section>
+
+<section id="maker-checker">
+  <h2>Maker-Checker — ระบบอนุมัติ 2 ขั้น (เปิด/ปิดได้)</h2>
+
+  <p>ฟีเจอร์ใหม่ตาม PDF Task T8. <b>ปิดอยู่โดย default</b> — ระบบทำงานเหมือนเดิม 100% จนกว่าจะเปิดผ่าน Settings</p>
+
+  <h3 style="margin: 18px 0 10px; font-size: 15px;">เมื่อเปิด Maker-Checker</h3>
+  <div class="workflow">
+    <div class="step">DRAFT</div>
+    <div class="arrow">→</div>
+    <div class="step">รออนุมัติ (READY)</div>
+    <div class="arrow">→</div>
+    <div class="step active">อนุมัติ + POST</div>
+  </div>
+  <p style="font-size: 13px; color: var(--muted); margin: 4px 0 14px;">หรือ READY → กลับเป็น DRAFT (ปฏิเสธ + ระบุเหตุผล)</p>
+
+  <h3 style="margin: 18px 0 10px; font-size: 15px;">เมื่อปิด Maker-Checker (ปัจจุบัน)</h3>
+  <div class="workflow">
+    <div class="step">DRAFT</div>
+    <div class="arrow">→</div>
+    <div class="step active">POST ทันที</div>
+  </div>
+
+  <h3 style="margin: 18px 0 10px; font-size: 15px;">กฎที่บังคับใช้</h3>
+  <ul class="checklist">
+    <li>
+      <span class="icon">1</span>
+      <span class="text"><strong>ผู้สร้างเอกสาร ≠ ผู้อนุมัติ (V9)</strong><span class="desc">คนเดียวกันสร้าง+อนุมัติเองไม่ได้ — แสดง error "ผู้สร้างเอกสารไม่สามารถอนุมัติเอกสารตัวเองได้"</span></span>
+    </li>
+    <li>
+      <span class="icon">2</span>
+      <span class="text"><strong>ผู้อนุมัติ = ตำแหน่ง OWNER เท่านั้น</strong><span class="desc">ผู้สร้างเป็น OWNER / FINANCE_MANAGER / ACCOUNTANT ได้ทุกคน แต่ผู้อนุมัติเป็น OWNER เท่านั้น</span></span>
+    </li>
+    <li>
+      <span class="icon">3</span>
+      <span class="text"><strong>การปฏิเสธต้องระบุเหตุผล</strong><span class="desc">กรอกเป็นบันทึก (rejectNote) — แสดงเป็น banner บนหน้า DRAFT ครั้งต่อไปที่ผู้สร้างเปิด</span></span>
+    </li>
+    <li>
+      <span class="icon">4</span>
+      <span class="text"><strong>ผู้อนุมัติ 2 คนกดอนุมัติพร้อมกัน → คนใดคนหนึ่งสำเร็จเท่านั้น</strong><span class="desc">ระบบใช้ atomic CAS ใน Postgres — ไม่มีโอกาส POST ซ้ำ 2 ครั้งหรือสร้าง JE ซ้ำ</span></span>
+    </li>
+    <li>
+      <span class="icon">5</span>
+      <span class="text"><strong>ตรวจซ้ำก่อนอนุมัติ</strong><span class="desc">ตรวจ Period Close (V8) + ยอดดุล (V10/V12) + เอกสารแนบ (V11) ใหม่ทั้งหมด — ป้องกันการอนุมัติเอกสารที่อาจถูกแก้ไขในระหว่างรอ</span></span>
+    </li>
+  </ul>
+
+  <div class="note warn">
+    <div class="label">วิธีเปิดใช้งาน Maker-Checker</div>
+    ระบบยังปิดอยู่ — เพื่อความปลอดภัยในช่วงเปลี่ยนผ่าน. เมื่อฝ่ายบัญชีพร้อมใช้:
+    <ol style="margin: 6px 0 0;">
+      <li>แจ้ง Dev ให้ toggle <code>SystemConfig: OTHER_INCOME_MAKER_CHECKER_ENABLED = 'true'</code></li>
+      <li>ทดสอบขั้นตอนกับ ฝ่ายบัญชี 1 คน + ผู้อนุมัติ (OWNER) 1 คน ในเอกสารทดลอง</li>
+      <li>ยืนยันใช้งานจริง</li>
+    </ol>
+  </div>
+</section>
+
+<section id="templates">
+  <h2>Templates (รายการประจำ)</h2>
+  <p>ฟีเจอร์ใหม่ตาม PDF Task T10. ใช้สำหรับบันทึกรายการที่ทำซ้ำ ๆ — เช่น ดอกเบี้ยฝากเดือนละครั้ง</p>
+
+  <h3 style="margin: 18px 0 10px; font-size: 15px;">วิธีใช้งาน</h3>
+  <ul class="checklist">
+    <li>
+      <span class="icon">1</span>
+      <span class="text"><strong>บันทึกเอกสารปกติครั้งแรก → POST</strong><span class="desc">เช่น ดอกเบี้ย KBank เดือน พ.ค. 2569 — กรอกครบ + POST</span></span>
+    </li>
+    <li>
+      <span class="icon">2</span>
+      <span class="text"><strong>ในหน้า View กดปุ่ม "บันทึกเป็น Template"</strong><span class="desc">ตั้งชื่อ template เช่น "ดอกเบี้ย KBank รายเดือน"</span></span>
+    </li>
+    <li>
+      <span class="icon">3</span>
+      <span class="text"><strong>เดือนถัดไป — กดปุ่ม "ใช้ template" บนหน้ารายได้อื่นใหม่</strong><span class="desc">ระบบกรอกบัญชี + จำนวน + คำอธิบายให้ทันที — ผู้ใช้ตรวจ + กดบันทึก</span></span>
+    </li>
+  </ul>
+
+  <h3 style="margin: 18px 0 10px; font-size: 15px;">Variable replacement ในคำอธิบาย</h3>
+  <p>เวลาตั้งคำอธิบายใน template ใช้คำพิเศษได้ — ระบบเปลี่ยนเป็นวันที่ปัจจุบันให้อัตโนมัติ (เวลาประเทศไทย):</p>
+
+  <div class="card tight">
+    <table>
+      <thead>
+        <tr>
+          <th>คำใน template</th>
+          <th>ตัวอย่าง output (ใช้วันที่ 12 พ.ค. 2569)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>{เดือน}</code></td>
+          <td>พ.ค.</td>
+        </tr>
+        <tr>
+          <td><code>{ปี}</code></td>
+          <td>2569 (พุทธศักราช)</td>
+        </tr>
+        <tr>
+          <td><code>{เดือนปี}</code></td>
+          <td>พ.ค. 2569</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="example-box">
+    <div class="title">ตัวอย่าง</div>
+    Template คำอธิบาย: <b>"ดอกเบี้ยฝาก KBank เดือน {เดือนปี}"</b><br/>
+    เมื่อใช้ template วันที่ 12 พ.ค. 2569 → คำอธิบายในเอกสารใหม่: <b>"ดอกเบี้ยฝาก KBank เดือน พ.ค. 2569"</b>
+  </div>
+
+  <h3 style="margin: 18px 0 10px; font-size: 15px;">การจัดการ Templates</h3>
+  <ul style="padding-left: 20px; margin: 8px 0;">
+    <li>ดูทั้งหมดที่หน้า <code>/other-income/templates</code></li>
+    <li>กดดาวเพื่อ favorite — Template ที่ favorite ขึ้นมาแสดงก่อน</li>
+    <li>ค้นหาด้วยชื่อ</li>
+    <li>เปลี่ยนชื่อหรือลบได้</li>
+    <li>ระบบนับจำนวนครั้งที่ใช้ + วันที่ใช้ล่าสุด</li>
+  </ul>
+</section>
+
+<section id="wht">
+  <h2>นโยบาย WHT 42-1102 (ดอกเบี้ยฝาก)</h2>
+  <p>PDF Gap Analysis หน้า 4 ระบุนโยบาย WHT ตามประเภทเงินฝาก. ระบบปรับปรุงตามคำแนะนำของฝ่ายบัญชี:</p>
+
+  <div class="card tight">
+    <table>
+      <thead>
+        <tr>
+          <th>ประเภทเงินฝาก</th>
+          <th>ผู้รับ</th>
+          <th>WHT %</th>
+          <th>อ้างอิงกฎหมาย</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>ออมทรัพย์</td>
+          <td>นิติบุคคล (BESTCHOICE)</td>
+          <td><b style="color: var(--accent);">1%</b></td>
+          <td><span class="law-ref">ท.ป.4/2528 ข้อ 1</span></td>
+        </tr>
+        <tr>
+          <td>ฝากประจำ</td>
+          <td>ทุกประเภท</td>
+          <td><b>15%</b></td>
+          <td><span class="law-ref">ม.50</span></td>
+        </tr>
+        <tr>
+          <td>ออมทรัพย์</td>
+          <td>บุคคลธรรมดา (ดอกเบี้ย > 20,000 บาท/ปี)</td>
+          <td>15%</td>
+          <td><span class="law-ref">ม.50</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3 style="margin: 18px 0 10px; font-size: 15px;">การเปลี่ยนแปลงในระบบ</h3>
+  <ul class="checklist">
+    <li>
+      <span class="icon">A</span>
+      <span class="text"><strong>Default WHT% เปลี่ยนจาก 15% → 1%</strong><span class="desc">ตรงเคสจริงของ BESTCHOICE (ออมทรัพย์ KBank, นิติบุคคล)</span></span>
+    </li>
+    <li>
+      <span class="icon">B</span>
+      <span class="text"><strong>ลบ warning "WHT ต้องเป็น 15%" ออก</strong><span class="desc">เดิมระบบเตือนทุกครั้งที่ไม่ใช่ 15% — ผิดเคสนิติบุคคล. ตอนนี้เลือกได้อย่างอิสระ ตามดุลพินิจของฝ่ายบัญชี</span></span>
+    </li>
+    <li>
+      <span class="icon">C</span>
+      <span class="text"><strong>Dropdown WHT% ครบ 8 ค่า</strong><span class="desc">0 / 1 / 2 / 3 / 5 / 7 / 10 / 15</span></span>
+    </li>
+    <li>
+      <span class="icon">D</span>
+      <span class="text"><strong>คำแนะนำต่อบัญชี (tooltip)</strong><span class="desc">เลือก 42-1102 → แสดง "แนะนำ 1% — นิติบุคคล ออมทรัพย์ (ท.ป.4/2528)". เลือก 42-1105 → แสดง "แนะนำ 1% — ขายสินทรัพย์ให้นิติบุคคล". เป็นคำแนะนำเฉย ๆ ไม่บล็อก</span></span>
+    </li>
+    <li>
+      <span class="icon">E</span>
+      <span class="text"><strong>กฎ V15 — บล็อก VAT% > 0 สำหรับ 42-1102</strong><span class="desc">บังคับให้ VAT% = 0 เสมอ (ม.81(1)(ฏ) — ดอกเบี้ยฝากยกเว้น VAT)</span></span>
+    </li>
+  </ul>
+
+  <div class="note">
+    <div class="label">หมายเหตุของ ก ม.</div>
+    PDF Gap Analysis เสนอ "Default 15% safer" — แต่หลังตรวจสอบเคส BESTCHOICE จริง (KBank ออมทรัพย์ นิติบุคคล) เป็น 1% มากกว่า ทีม Dev จึงเปลี่ยน default เป็น 1% ตาม. กรณีฝากประจำ (15%) ผู้ใช้เลือกจาก dropdown ได้ทุกเมื่อ
+  </div>
+</section>
+
+<section id="out-of-scope">
+  <h2>รายการที่ตัดสินใจไม่ทำ (Out of Scope ของ v2.1)</h2>
+  <p>ตามที่ระบุใน PDF Gap Analysis "ตัดสินใจไม่ทำ (Acceptable)" และข้อสังเกตเพิ่มเติม:</p>
+
+  <ul class="checklist">
+    <li>
+      <span class="icon" style="background: var(--warn-soft); color: var(--warn);">!</span>
+      <span class="text"><strong>21-2102 (ภาษีขายรอเรียกเก็บ — Accrual VAT)</strong><span class="desc">ปัจจุบันระบบใช้ Cash Basis VAT (Cr 21-2101 ตอน POST ทันที). PDF หน้า 11 สรุปว่า "ใช้ได้สำหรับ scope ปัจจุบัน (รับเงินทันที)". ถ้ามีรายการ Accrual (ออกใบกำกับก่อนรับเงิน) → ต้องเพิ่ม 21-2102 ในอนาคต</span></span>
+    </li>
+    <li>
+      <span class="icon" style="background: var(--warn-soft); color: var(--warn);">!</span>
+      <span class="text"><strong>Settings UI 5 tabs รวมในหน้าเดียว</strong><span class="desc">ระบบใช้หน้าแยก (Settings + Period Close + Attachment threshold ผ่าน SystemConfig). ฟังก์ชันเหมือนกันแต่ UI ไม่รวมในหน้าเดียวตาม PDF mock-up</span></span>
+    </li>
+    <li>
+      <span class="icon" style="background: var(--warn-soft); color: var(--warn);">!</span>
+      <span class="text"><strong>Pagination บนหน้า "เอกสารรออนุมัติ"</strong><span class="desc">ปัจจุบันแสดง 100 รายการแรก (พอสำหรับเริ่มต้น). ถ้ามีเอกสารรออนุมัติเกิน 100 รายการพร้อมกัน → จะเพิ่มในอนาคต</span></span>
+    </li>
+  </ul>
+</section>
+
+<section id="how-to-check">
+  <h2>รายการที่ขอให้ฝ่ายบัญชีทดสอบ</h2>
+  <p>กรุณาทดลองทำงานในระบบ Production แล้วยืนยันผล (URL: <a href="https://bestchoice-prod.web.app" style="color: var(--accent);">bestchoice-prod.web.app</a>):</p>
+
+  <ul class="checklist">
+    <li>
+      <span class="icon">A</span>
+      <span class="text"><strong>บันทึกดอกเบี้ยฝาก 42-1102 (เคสปกติ)</strong><span class="desc">เปิด "รายได้อื่น" → กรอกบัญชี 42-1102 / WHT 1% / VAT 0% / ยอด 1,000 → ตรวจ JE preview ตามตัวอย่าง 1 ในหัวข้อ JE Templates</span></span>
+    </li>
+    <li>
+      <span class="icon">B</span>
+      <span class="text"><strong>ทดสอบ Multi-line Adjustment</strong><span class="desc">กรอกดอกเบี้ย 1,000 / WHT 150 / ยอดรับจริง 840 (ขาด 10 บาท) → ต้องมีกล่อง "บัญชีปรับผลต่าง" ขึ้นมา → เลือก 53-1303 จำนวน 10 บาท → POST สำเร็จ</span></span>
+    </li>
+    <li>
+      <span class="icon">C</span>
+      <span class="text"><strong>ทดสอบ V8 Period Close</strong><span class="desc">ไปที่ /accounting/periods → ปิดงวด พ.ค. 2569 → กลับไปสร้างเอกสารวันที่ 15 พ.ค. 2569 → POST → ต้องเห็น error "งวด 2026-05 ปิดบัญชีแล้ว — ไม่สามารถบันทึกได้"</span></span>
+    </li>
+    <li>
+      <span class="icon">D</span>
+      <span class="text"><strong>ทดสอบ Template</strong><span class="desc">บันทึก + POST เอกสารดอกเบี้ย → ในหน้า View กดปุ่ม "บันทึกเป็น Template" → ตั้งชื่อ → ไปที่ /other-income/templates → กดปุ่ม "ใช้" → ระบบกรอกข้อมูลให้</span></span>
+    </li>
+    <li>
+      <span class="icon">E</span>
+      <span class="text"><strong>ทดสอบ Tooltip คำแนะนำ WHT</strong><span class="desc">สร้างเอกสารใหม่ → เลือกบัญชี 42-1102 → เปลี่ยน WHT% จาก 1 เป็น 15 → ต้องมีคำแนะนำ "แนะนำ 1% — นิติบุคคล ออมทรัพย์ (ท.ป.4/2528)" ขึ้นมา</span></span>
+    </li>
+    <li>
+      <span class="icon">F</span>
+      <span class="text"><strong>ทดสอบ Audit Log</strong><span class="desc">ในหน้า View ของเอกสารใด ๆ → ดูส่วน "ประวัติการแก้ไข" — ต้องเห็นรายการ CREATED + POSTED พร้อมเวลา + ผู้สร้าง</span></span>
+    </li>
+    <li>
+      <span class="icon">G</span>
+      <span class="text"><strong>ทดสอบ Daily Sheet Export</strong><span class="desc">ไปที่ /other-income/daily-sheet → เลือกวันที่ → กดปุ่ม CSV → เปิดด้วย Excel ภาษาไทย → ตรวจว่าตัวอักษรไทยอ่านได้ (ไม่ผิดเป็น ASCII)</span></span>
+    </li>
+    <li>
+      <span class="icon">H</span>
+      <span class="text"><strong>ตรวจ Maker-Checker (รอเปิด flag ก่อน)</strong><span class="desc">เมื่อฝ่ายบัญชีพร้อม → แจ้ง Dev เปิด flag → ลองใช้ workflow DRAFT → READY → APPROVED → POSTED ด้วยผู้ใช้ 2 คน</span></span>
+    </li>
+  </ul>
+
+  <div class="note">
+    <div class="label">หากพบข้อบกพร่อง</div>
+    กรุณาแจ้งทีม Dev โดยระบุ:
+    <ol style="margin: 6px 0 0;">
+      <li>ขั้นตอนที่ทำ (เช่น "กดปุ่ม X แล้ว Y")</li>
+      <li>ผลที่คาดหวัง (เช่น "ควรเห็น error")</li>
+      <li>ผลที่ได้จริง (เช่น "ไม่เกิดอะไร / error ผิด")</li>
+      <li>หมายเลขเอกสาร (เช่น OI-20260512-0001) เพื่อ trace ได้</li>
+    </ol>
+  </div>
+</section>
+
+<footer>
+  รายงานสร้าง 12 พฤษภาคม 2569 16:30 ICT · ตอบกลับ Gap Analysis Report ของฝ่ายบัญชี · ระบบ Production: bestchoice-prod.web.app
+</footer>
+
+</div>
+</body>
+</html>

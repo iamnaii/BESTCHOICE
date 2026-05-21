@@ -101,6 +101,11 @@ export class SalesBotService {
     // time anyway.
     const systemPrompt = await this.persona.getBot();
     const toolsUsed: string[] = [];
+    // Grounding ledger: every priceThb the model has seen via tool results
+    // this session. Used by guardGrounding() to catch hallucinated prices
+    // (e.g. Gemini 2.5 ignored PR #1064 anti-hallucinate rules and replied
+    // "iPhone 15 7,000" though tool returned only iPhone 13/16 at 14,691/17,000).
+    const groundedPrices = new Set<number>();
     let totalIn = 0;
     let totalOut = 0;
     let modelUsed = '';
@@ -119,6 +124,20 @@ export class SalesBotService {
         this.logger.log(
           `[FinalReply] room=${input.roomId} hop=${hop} toolsUsed=${JSON.stringify(toolsUsed)} reply=${JSON.stringify(resp.text).slice(0, 400)}`,
         );
+        const grounding = this.guardGrounding(resp.text, groundedPrices);
+        if (!grounding.ok) {
+          this.logger.warn(
+            `[GroundingGuard] room=${input.roomId} HALLUCINATION_BLOCKED reason=${grounding.reason} reply=${JSON.stringify(resp.text).slice(0, 200)} grounded=${JSON.stringify([...groundedPrices])}`,
+          );
+          return {
+            reply: 'ขออนุญาตให้พี่ staff เช็คข้อมูลเพิ่มเติมสักครู่นะคะ',
+            confidence: 0.3,
+            toolsUsed,
+            inputTokens: totalIn,
+            outputTokens: totalOut,
+            modelUsed,
+          };
+        }
         return {
           reply: resp.text,
           confidence: this.estimateConfidence(resp.text, toolsUsed),
@@ -135,6 +154,7 @@ export class SalesBotService {
       for (const tc of resp.toolCalls) {
         toolsUsed.push(tc.name);
         const result = await this.runTool(tc.name, tc.input, input.roomId);
+        this.collectGroundedPrices(result, groundedPrices);
         this.logger.log(
           `[ToolCall] room=${input.roomId} tool=${tc.name} args=${JSON.stringify(tc.input).slice(0, 300)} result=${JSON.stringify(result).slice(0, 600)}`,
         );
@@ -212,5 +232,64 @@ export class SalesBotService {
     if (reply.trim().length < 20) return 0.6;
     if (toolsUsed.length > 0) return 0.95;
     return 0.9;
+  }
+
+  // Walk a tool result and collect every `priceThb` / `monthly` / `minPrice`
+  // numeric field. The model can name any of these as a "price" in its reply,
+  // so all three are valid grounding sources. We accept Decimal/string/number
+  // and coerce to Number — Decimal serialised across the LlmProvider boundary.
+  private collectGroundedPrices(value: unknown, into: Set<number>): void {
+    if (value == null) return;
+    if (Array.isArray(value)) {
+      for (const v of value) this.collectGroundedPrices(v, into);
+      return;
+    }
+    if (typeof value === 'object') {
+      for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+        if (
+          (k === 'priceThb' || k === 'monthly' || k === 'minPrice' || k === 'maxPrice') &&
+          v != null
+        ) {
+          const n = Number(v);
+          if (Number.isFinite(n) && n > 0) into.add(n);
+        }
+        this.collectGroundedPrices(v, into);
+      }
+    }
+  }
+
+  // Cheap programmatic grounding guard. After Gemini 2.5 ignored the
+  // anti-hallucinate persona rules in PR #1064 and replied "iPhone 15 7,000"
+  // though tool only returned iPhone 13 (14,691) + iPhone 16 (17,000), we
+  // need a deterministic backstop independent of model behaviour.
+  //
+  // Rule: every "<number> บาท|฿|baht" mention in the final reply must match
+  // (±5%) at least one price the model saw via a tool result this session.
+  // Sub-1000 numbers are skipped (could be late fee / interest rate / day
+  // count / etc — false-positive risk too high).
+  private guardGrounding(
+    reply: string,
+    grounded: Set<number>,
+  ): { ok: true } | { ok: false; reason: string } {
+    // Common Thai/English price suffix patterns
+    const priceRegex = /([\d][\d,]{2,})\s*(?:บาท|฿|baht|THB)/gi;
+    const matches = [...reply.matchAll(priceRegex)];
+    if (matches.length === 0) return { ok: true };
+
+    // If the bot mentions ANY price but no tool returned one, it cannot
+    // possibly be grounded — block.
+    if (grounded.size === 0) {
+      return { ok: false, reason: 'price-mentioned-no-tool-result' };
+    }
+
+    for (const m of matches) {
+      const num = Number(m[1].replace(/,/g, ''));
+      if (!Number.isFinite(num) || num < 1000) continue;
+      const closeMatch = [...grounded].some((g) => Math.abs(g - num) / g <= 0.05);
+      if (!closeMatch) {
+        return { ok: false, reason: `unmatched-price=${num}` };
+      }
+    }
+    return { ok: true };
   }
 }

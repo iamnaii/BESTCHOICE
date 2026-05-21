@@ -24,13 +24,21 @@ export class CalculateInstallmentTool {
   async run(input: { productId: string; downPct?: number; tenureMonths: number }) {
     const product = await this.prisma.product.findFirst({
       where: { id: input.productId, deletedAt: null },
-      select: { costPrice: true, name: true },
+      select: {
+        name: true,
+        prices: {
+          where: { deletedAt: null, isDefault: true },
+          select: { amount: true },
+          take: 1,
+        },
+      },
     });
     if (!product) return { error: 'product_not_found' };
+    const sellingPrice = product.prices[0]?.amount;
+    if (sellingPrice == null) return { error: 'price_not_configured' };
 
     const downPct = input.downPct ?? 20;
-    // See search-products.tool.ts — using costPrice as selling-price proxy.
-    const price = Number(product.costPrice);
+    const price = Number(sellingPrice);
     const downAmount = Math.round(price * (downPct / 100));
     const financed = price - downAmount;
     const ratePct = await this.loadRatePct(input.tenureMonths);

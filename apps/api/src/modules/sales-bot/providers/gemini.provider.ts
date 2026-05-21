@@ -216,15 +216,38 @@ export class GeminiProvider implements ILlmProvider {
    * - user → { role: 'user', parts: [{ text }] }
    * - assistant text → { role: 'model', parts: [{ text }] }
    * - assistant tool_calls → { role: 'model', parts: [{ functionCall }, ...] }
-   * - tool result → { role: 'user', parts: [{ functionResponse: { name, response } }] }
+   * - tool result(s) → { role: 'user', parts: [{ functionResponse }, ...] }
    *
-   * Gemini does NOT use tool_call ids. The `functionResponse.name` must match
-   * the original functionCall name; the response object is opaque payload.
-   * If multiple tool calls/results exist for the same name, Gemini matches by
-   * position — order is preserved in projection.
+   * **Multi-tool turn handling** (Gemini-specific contract):
+   * When the assistant turn contains N functionCall parts, Gemini requires
+   * the next user turn to contain ALL N functionResponse parts in a SINGLE
+   * turn — NOT N separate user turns. Pushing N separate turns triggers a
+   * 400 INVALID_ARGUMENT: "Please ensure that the number of function
+   * response parts is equal to the number of function call parts of the
+   * function call turn."
+   *
+   * The persona's "3-Combo Anchor Pricing" playbook routinely calls 4 tools
+   * at once (search_products + calculate_installment × 3), so this isn't a
+   * corner case — it's the dominant tool-using path.
+   *
+   * Implementation: when projecting a `role: 'tool'` message, check whether
+   * the previous projected turn is already a user turn containing only
+   * functionResponse parts. If yes, APPEND the new functionResponse to that
+   * turn. Otherwise, start a fresh user turn. Single-tool flows still work
+   * — they just produce a user turn with one functionResponse part, same
+   * wire format.
+   *
+   * Repro that drove this fix (2026-05-21 prod): Nai sent "15 ธรรมดา" →
+   * Gemini called search + calc×3 in one turn → our service pushed 4
+   * separate user turns → Gemini 400 → no reply.
+   *
+   * Gemini does NOT use tool_call ids. The `functionResponse.name` must
+   * match the original functionCall name; the response object is opaque
+   * payload. Multiple tool calls/results with the same name match by
+   * position — preserved by iterating `messages` in order.
    */
   private projectMessages(messages: LlmChatMessage[]): unknown[] {
-    const out: unknown[] = [];
+    const out: { role: string; parts: unknown[] }[] = [];
     const idToName = new Map<string, string>();
 
     for (const msg of messages) {
@@ -253,18 +276,33 @@ export class GeminiProvider implements ILlmProvider {
       }
 
       // role === 'tool'
-      const name = idToName.get(msg.toolCallId) ?? msg.toolCallId.replace(/^fn_\d+_/, '');
-      out.push({
-        role: 'user',
-        parts: [
-          {
-            functionResponse: {
-              name,
-              response: this.parseToolContent(msg.content),
-            },
-          },
-        ],
-      });
+      const name =
+        idToName.get(msg.toolCallId) ?? msg.toolCallId.replace(/^fn_\d+_/, '');
+      const responsePart = {
+        functionResponse: {
+          name,
+          response: this.parseToolContent(msg.content),
+        },
+      };
+
+      // Group with previous tool-result turn if it's still "open" (i.e. the
+      // last projected turn is a user turn made entirely of functionResponse
+      // parts). Defensive `every()` check makes sure we never sneak a
+      // functionResponse into a turn that also carries `text` parts.
+      const last = out[out.length - 1];
+      const isOpenToolResultTurn =
+        last !== undefined &&
+        last.role === 'user' &&
+        last.parts.length > 0 &&
+        last.parts.every(
+          (p) => p !== null && typeof p === 'object' && 'functionResponse' in p,
+        );
+
+      if (isOpenToolResultTurn) {
+        last.parts.push(responsePart);
+      } else {
+        out.push({ role: 'user', parts: [responsePart] });
+      }
     }
 
     return out;

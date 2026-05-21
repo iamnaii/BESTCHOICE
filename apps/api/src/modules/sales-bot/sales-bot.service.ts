@@ -116,6 +116,9 @@ export class SalesBotService {
       modelUsed = resp.modelName;
 
       if (resp.toolCalls.length === 0) {
+        this.logger.log(
+          `[FinalReply] room=${input.roomId} hop=${hop} toolsUsed=${JSON.stringify(toolsUsed)} reply=${JSON.stringify(resp.text).slice(0, 400)}`,
+        );
         return {
           reply: resp.text,
           confidence: this.estimateConfidence(resp.text, toolsUsed),
@@ -132,6 +135,9 @@ export class SalesBotService {
       for (const tc of resp.toolCalls) {
         toolsUsed.push(tc.name);
         const result = await this.runTool(tc.name, tc.input, input.roomId);
+        this.logger.log(
+          `[ToolCall] room=${input.roomId} tool=${tc.name} args=${JSON.stringify(tc.input).slice(0, 300)} result=${JSON.stringify(result).slice(0, 600)}`,
+        );
         toolResults.push({
           role: 'tool',
           toolCallId: tc.id,

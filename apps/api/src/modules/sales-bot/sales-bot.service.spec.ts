@@ -1,19 +1,23 @@
 import { Test } from '@nestjs/testing';
-import Anthropic from '@anthropic-ai/sdk';
 import { SalesBotService } from './sales-bot.service';
 import { SearchProductsTool } from './tools/search-products.tool';
 import { CalculateInstallmentTool } from './tools/calculate-installment.tool';
 import { ListPromotionsTool } from './tools/list-promotions.tool';
 import { HandoffToHumanTool } from './tools/handoff-to-human.tool';
 import { CaptureLeadTool } from './tools/capture-lead.tool';
-
-jest.mock('@anthropic-ai/sdk');
+import { LlmProviderRegistry } from './providers/llm-provider.registry';
+import {
+  ILlmProvider,
+  LlmChatResponse,
+} from './providers/llm-provider.interface';
 
 describe('SalesBotService', () => {
-  async function build(anthropicMock: jest.Mock) {
-    (Anthropic as unknown as jest.Mock).mockImplementation(() => ({
-      messages: { create: anthropicMock },
-    }));
+  async function build(chatMock: jest.Mock) {
+    const fakeProvider: ILlmProvider = {
+      providerName: 'claude',
+      chat: chatMock as unknown as (...args: any[]) => Promise<LlmChatResponse>,
+    };
+    const registry = { getActive: jest.fn().mockResolvedValue(fakeProvider) };
     const searchProducts = { run: jest.fn() };
     const calcInstallment = { run: jest.fn() };
     const listPromotions = { run: jest.fn() };
@@ -22,6 +26,7 @@ describe('SalesBotService', () => {
     const mod = await Test.createTestingModule({
       providers: [
         SalesBotService,
+        { provide: LlmProviderRegistry, useValue: registry },
         { provide: SearchProductsTool, useValue: searchProducts },
         { provide: CalculateInstallmentTool, useValue: calcInstallment },
         { provide: ListPromotionsTool, useValue: listPromotions },
@@ -30,15 +35,26 @@ describe('SalesBotService', () => {
       ],
     }).compile();
     const svc = mod.get(SalesBotService);
-    return { svc, searchProducts, calcInstallment, listPromotions, handoff, captureLead };
+    return {
+      svc,
+      registry,
+      searchProducts,
+      calcInstallment,
+      listPromotions,
+      handoff,
+      captureLead,
+    };
   }
 
-  it('returns reply without tool calls when Claude answers directly', async () => {
-    const create = jest.fn().mockResolvedValue({
-      content: [{ type: 'text', text: 'สวัสดีค่ะ สนใจรุ่นไหนคะ' }],
-      usage: { input_tokens: 100, output_tokens: 20 },
-    });
-    const { svc } = await build(create);
+  it('returns reply without tool calls when provider answers directly', async () => {
+    const chat = jest.fn().mockResolvedValue({
+      text: 'สวัสดีค่ะ สนใจรุ่นไหนคะ',
+      toolCalls: [],
+      inputTokens: 100,
+      outputTokens: 20,
+      modelName: 'claude-sonnet-4-6',
+    } satisfies LlmChatResponse);
+    const { svc } = await build(chat);
     const result = await svc.generateReply({
       text: 'สวัสดีครับ',
       roomId: 'r1',
@@ -48,27 +64,29 @@ describe('SalesBotService', () => {
     expect(result.toolsUsed).toHaveLength(0);
     expect(result.inputTokens).toBe(100);
     expect(result.outputTokens).toBe(20);
+    expect(result.modelUsed).toBe('claude-sonnet-4-6');
   });
 
   it('runs a tool and feeds the result back for a second turn', async () => {
-    const create = jest
+    const chat = jest
       .fn()
       .mockResolvedValueOnce({
-        content: [
-          {
-            type: 'tool_use',
-            id: 'tu_1',
-            name: 'search_products',
-            input: { query: 'iPhone 15' },
-          },
+        text: '',
+        toolCalls: [
+          { id: 'tu_1', name: 'search_products', input: { query: 'iPhone 15' } },
         ],
-        usage: { input_tokens: 120, output_tokens: 30 },
-      })
+        inputTokens: 120,
+        outputTokens: 30,
+        modelName: 'claude-sonnet-4-6',
+      } satisfies LlmChatResponse)
       .mockResolvedValueOnce({
-        content: [{ type: 'text', text: 'มี iPhone 15 ในสต็อกค่ะ ราคา 32,900 บาท' }],
-        usage: { input_tokens: 140, output_tokens: 40 },
-      });
-    const { svc, searchProducts } = await build(create);
+        text: 'มี iPhone 15 ในสต็อกค่ะ ราคา 32,900 บาท',
+        toolCalls: [],
+        inputTokens: 140,
+        outputTokens: 40,
+        modelName: 'claude-sonnet-4-6',
+      } satisfies LlmChatResponse);
+    const { svc, searchProducts } = await build(chat);
     searchProducts.run.mockResolvedValue({
       products: [{ id: 'p1', name: 'iPhone 15', priceThb: 32900 }],
     });
@@ -86,24 +104,29 @@ describe('SalesBotService', () => {
   });
 
   it('lowers confidence when handoff_to_human is called', async () => {
-    const create = jest
+    const chat = jest
       .fn()
       .mockResolvedValueOnce({
-        content: [
+        text: '',
+        toolCalls: [
           {
-            type: 'tool_use',
             id: 'tu_h',
             name: 'handoff_to_human',
             input: { reason: 'customer_wants_staff', roomId: 'r1' },
           },
         ],
-        usage: { input_tokens: 80, output_tokens: 10 },
-      })
+        inputTokens: 80,
+        outputTokens: 10,
+        modelName: 'claude-sonnet-4-6',
+      } satisfies LlmChatResponse)
       .mockResolvedValueOnce({
-        content: [{ type: 'text', text: 'ส่งเรื่องให้พี่ staff แล้วค่ะ รอสักครู่นะคะ' }],
-        usage: { input_tokens: 90, output_tokens: 15 },
-      });
-    const { svc, handoff } = await build(create);
+        text: 'ส่งเรื่องให้พี่ staff แล้วค่ะ รอสักครู่นะคะ',
+        toolCalls: [],
+        inputTokens: 90,
+        outputTokens: 15,
+        modelName: 'claude-sonnet-4-6',
+      } satisfies LlmChatResponse);
+    const { svc, handoff } = await build(chat);
     handoff.run.mockResolvedValue({ handoffAccepted: true });
     const result = await svc.generateReply({
       text: 'ขอคุยกับคนได้ไหม',
@@ -121,18 +144,16 @@ describe('SalesBotService', () => {
   });
 
   it('falls back to staff message after 3 unresolved hops', async () => {
-    const create = jest.fn().mockResolvedValue({
-      content: [
-        {
-          type: 'tool_use',
-          id: 'tu_loop',
-          name: 'search_products',
-          input: { query: 'x' },
-        },
+    const chat = jest.fn().mockResolvedValue({
+      text: '',
+      toolCalls: [
+        { id: 'tu_loop', name: 'search_products', input: { query: 'x' } },
       ],
-      usage: { input_tokens: 50, output_tokens: 5 },
-    });
-    const { svc, searchProducts } = await build(create);
+      inputTokens: 50,
+      outputTokens: 5,
+      modelName: 'claude-sonnet-4-6',
+    } satisfies LlmChatResponse);
+    const { svc, searchProducts } = await build(chat);
     searchProducts.run.mockResolvedValue({ products: [] });
     const result = await svc.generateReply({
       text: '???',
@@ -148,7 +169,12 @@ describe('SalesBotService', () => {
   describe('estimateConfidence (reworked)', () => {
     // Use bracket-access for the private method (already pattern in some specs)
     const svc = new SalesBotService(
-      {} as any, {} as any, {} as any, {} as any, {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
     );
 
     it('greeting/qualifier (no tool, complete sentence) → 0.9', () => {

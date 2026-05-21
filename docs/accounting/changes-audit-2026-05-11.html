@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BESTCHOICE — สรุปการแก้ไขระบบบัญชี 2026-05-11 (ให้ฝ่ายบัญชีตรวจ)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #fafaf9;
+    --paper: #ffffff;
+    --border: #d6d3d1;
+    --line: #e7e5e4;
+    --text: #0c0a09;
+    --muted: #57534e;
+    --subtle: #78716c;
+    --emerald: #047857;
+    --emerald-bg: #ecfdf5;
+    --emerald-border: #a7f3d0;
+    --rose: #be123c;
+    --rose-bg: #fef2f2;
+    --rose-border: #fecaca;
+    --amber: #b45309;
+    --amber-bg: #fffbeb;
+    --amber-border: #fde68a;
+    --blue: #1d4ed8;
+    --blue-bg: #eff6ff;
+    --blue-border: #bfdbfe;
+    --violet: #6d28d9;
+    --violet-bg: #f5f3ff;
+    --violet-border: #ddd6fe;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans Thai', system-ui, sans-serif; font-size: 15px; line-height: 1.7; }
+  .page { max-width: 1024px; margin: 0 auto; padding: 56px 40px 80px; background: var(--paper); box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  .doc-header { border-bottom: 2px solid var(--text); padding-bottom: 20px; margin-bottom: 36px; }
+  .doc-header .org { font-size: 13px; color: var(--subtle); letter-spacing: 0.05em; margin-bottom: 6px; text-transform: uppercase; }
+  h1 { font-size: 28px; font-weight: 700; margin: 0 0 8px; letter-spacing: -0.01em; }
+  .doc-header .sub { color: var(--muted); font-size: 15px; margin: 0; }
+  .doc-meta { display: flex; gap: 28px; margin-top: 14px; font-size: 12px; color: var(--subtle); flex-wrap: wrap; }
+  .doc-meta strong { color: var(--text); }
+
+  .summary-box { background: var(--emerald-bg); border: 1px solid var(--emerald-border); border-radius: 10px; padding: 20px 24px; margin: 0 0 28px; }
+  .summary-box h3 { font-size: 14px; margin: 0 0 10px; font-weight: 700; color: var(--emerald); letter-spacing: 0.04em; text-transform: uppercase; }
+  .summary-list { margin: 0; padding-left: 20px; font-size: 14px; }
+  .summary-list li { margin-bottom: 6px; }
+  .summary-list strong { color: var(--text); }
+  .summary-list code { font-family: 'IBM Plex Mono', monospace; font-size: 12px; background: white; padding: 1px 6px; border-radius: 3px; border: 1px solid var(--emerald-border); }
+
+  section { margin-bottom: 44px; }
+  h2 { font-size: 20px; font-weight: 700; margin: 0 0 18px; padding-bottom: 8px; border-bottom: 1px solid var(--border); letter-spacing: -0.01em; }
+  h2 .badge-section { display: inline-block; background: var(--text); color: white; padding: 2px 10px; border-radius: 4px; font-size: 12px; font-weight: 600; margin-right: 10px; vertical-align: middle; }
+  h3 { font-size: 16px; margin: 24px 0 10px; font-weight: 600; }
+  h4 { font-size: 14px; margin: 16px 0 8px; font-weight: 600; color: var(--muted); }
+
+  .change { background: var(--paper); border: 1px solid var(--border); border-radius: 8px; padding: 18px 22px; margin: 14px 0; }
+  .change .title { font-size: 14px; font-weight: 600; margin: 0 0 4px; }
+  .change .meta { font-size: 12px; color: var(--subtle); margin: 0 0 12px; }
+  .change.fix { border-left: 4px solid var(--rose); }
+  .change.feature { border-left: 4px solid var(--emerald); }
+  .change.docs { border-left: 4px solid var(--blue); }
+
+  table.je { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 13px; }
+  table.je th, table.je td { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--line); }
+  table.je th { background: var(--bg); color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+  table.je td.amt { text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 12px; }
+  table.je td.code { font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 500; color: var(--blue); white-space: nowrap; }
+  table.je tr.total td { font-weight: 700; background: var(--bg); border-top: 2px solid var(--text); border-bottom: none; }
+  table.je tr.total td.balanced { color: var(--emerald); }
+
+  table.before-after { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13px; }
+  table.before-after th, table.before-after td { padding: 8px 12px; text-align: left; border: 1px solid var(--border); vertical-align: top; }
+  table.before-after thead th { background: var(--bg); font-weight: 600; }
+  table.before-after .col-before { background: var(--rose-bg); width: 50%; }
+  table.before-after .col-after { background: var(--emerald-bg); width: 50%; }
+  table.before-after code { font-family: 'IBM Plex Mono', monospace; font-size: 11px; }
+
+  .callout { padding: 14px 18px; border-radius: 8px; margin: 14px 0; border-left: 4px solid; font-size: 14px; }
+  .callout.info { background: var(--blue-bg); border-color: var(--blue); }
+  .callout.warn { background: var(--amber-bg); border-color: var(--amber); }
+  .callout.error { background: var(--rose-bg); border-color: var(--rose); }
+  .callout.success { background: var(--emerald-bg); border-color: var(--emerald); }
+  .callout p { margin: 0; }
+  .callout strong { color: var(--text); }
+  .callout p + p { margin-top: 6px; }
+
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .badge.critical { background: var(--rose-bg); color: var(--rose); border: 1px solid var(--rose-border); }
+  .badge.high { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber-border); }
+  .badge.medium { background: var(--blue-bg); color: var(--blue); border: 1px solid var(--blue-border); }
+  .badge.done { background: var(--emerald-bg); color: var(--emerald); border: 1px solid var(--emerald-border); }
+  .badge.pr { background: var(--violet-bg); color: var(--violet); border: 1px solid var(--violet-border); font-family: 'IBM Plex Mono', monospace; }
+
+  ul.compact, ol.compact { margin: 8px 0; padding-left: 24px; }
+  ul.compact li, ol.compact li { margin-bottom: 4px; font-size: 14px; }
+  code { font-family: 'IBM Plex Mono', monospace; font-size: 12px; background: var(--bg); padding: 1px 6px; border-radius: 3px; border: 1px solid var(--border); }
+
+  table.ref { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 13px; }
+  table.ref th, table.ref td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.ref th { background: var(--bg); color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+  table.ref code { font-size: 11px; }
+  table.ref tr.section td { background: var(--bg); font-weight: 600; text-align: center; font-size: 11px; color: var(--muted); }
+
+  .toc { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 16px 20px; margin-bottom: 36px; }
+  .toc h3 { margin: 0 0 8px; font-size: 13px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+  .toc ol { margin: 0; padding-left: 22px; }
+  .toc li { margin-bottom: 4px; font-size: 14px; }
+  .toc a { color: var(--text); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+
+  .pr-grid { display: grid; grid-template-columns: 70px 1fr 90px; gap: 8px 14px; align-items: center; margin: 12px 0; font-size: 13px; }
+  .pr-grid .pr-num { font-family: 'IBM Plex Mono', monospace; font-weight: 600; color: var(--violet); }
+  .pr-grid .pr-label { color: var(--text); }
+  .pr-grid .pr-tag { text-align: right; }
+
+  .check-list li { margin-bottom: 8px; }
+  .check-list li::marker { color: var(--emerald); content: '✓ '; }
+
+  @media print {
+    body { background: white; }
+    .page { box-shadow: none; padding: 0; max-width: none; }
+    section { break-inside: avoid; }
+    .change { break-inside: avoid; }
+    table.je { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+<header class="doc-header">
+  <div class="org">BESTCHOICE FINANCE × SHOP</div>
+  <h1>สรุปการแก้ไขระบบบัญชี — รอบ Audit 2026-05-11</h1>
+  <p class="sub">เอกสารสำหรับฝ่ายบัญชีตรวจสอบ — ครอบคลุมการแก้ไขทั้ง 13 PR ตั้งแต่เริ่มต้นจนปิดงาน</p>
+  <div class="doc-meta">
+    <span><strong>วันที่:</strong> 2026-05-11</span>
+    <span><strong>PRs:</strong> #806–#819 (13 ฉบับ)</span>
+    <span><strong>Fix Report:</strong> 13/13 ปิด</span>
+    <span><strong>Bug fixes:</strong> 7 critical + 6 warning</span>
+    <span><strong>Production:</strong> deploy แล้วทั้งหมด</span>
+  </div>
+</header>
+
+<div class="summary-box">
+  <h3>ทำไมต้องอ่านเอกสารนี้</h3>
+  <ul class="summary-list">
+    <li>มีการแก้ไขที่ <strong>กระทบหลักบัญชีและกฎหมายภาษี</strong> 5 จุด — ฝ่ายบัญชีต้องยืนยันก่อนปิดงวด พ.ค. 2569</li>
+    <li><strong>ค่าเสื่อมรายเดือนกลับมาทำงาน</strong> หลังพบบัค cron ไม่เคย fire (UTC vs BKK timezone) — ผลกระทบงวดก่อนหน้านี้ต้องตรวจสอบ</li>
+    <li><strong>ภาษีซื้อบัญชีถูกต้อง</strong> — เปลี่ยนจาก 11-2104 (ใช้กับ ม.83/6 เท่านั้น) → 11-4101 (เครดิตได้ใน ภ.พ.30)</li>
+    <li><strong>เพิ่มผังบัญชี 2 รหัส</strong> — 21-3105/21-3106 สำหรับ SSO เพื่อแยกฝั่งพนักงาน/นายจ้างชัดเจน</li>
+    <li>เพิ่มการตรวจ <strong>ม.50 ป.รัษฎากร</strong> — ห้ามตั้งหนี้ ACCRUAL พร้อม WHT (V15)</li>
+    <li>เพิ่มหน้า <strong>ใบสำคัญจ่าย A4 + ใบ 50 ทวิ</strong> + AP Aging 5 buckets สำหรับวางแผน Settlement</li>
+  </ul>
+</div>
+
+<div class="toc">
+  <h3>สารบัญ</h3>
+  <ol>
+    <li><a href="#s1">ภาพรวม 13 PR (Executive Summary)</a></li>
+    <li><a href="#s2">การแก้บัคหลักบัญชี 7 รายการ (Critical Bug Fixes)</a></li>
+    <li><a href="#s3">ผังบัญชีใหม่ 2 รหัส + Role Map 19 roles</a></li>
+    <li><a href="#s4">JE Templates ที่เปลี่ยน — ก่อน/หลัง</a></li>
+    <li><a href="#s5">Validation Rules ใหม่ V12–V17</a></li>
+    <li><a href="#s6">Multi-line Adjustment (P0-4) — การปรับผลต่างยอดจ่าย</a></li>
+    <li><a href="#s7">หน้าใหม่ — APAging + PaymentVoucher</a></li>
+    <li><a href="#s8">Schema Migrations + Data Migration SQL</a></li>
+    <li><a href="#s9">CPA References — TFRS / TAS / ป.รัษฎากร / พ.ร.ฎ.</a></li>
+    <li><a href="#s10">Manual Production Rollout Steps</a></li>
+    <li><a href="#s11">เช็คลิสต์การตรวจสอบของฝ่ายบัญชี</a></li>
+    <li><a href="#s12">FAQ</a></li>
+  </ol>
+</div>
+
+<!-- ───────────────────────────────────────────── Section 1 ───────── -->
+<section id="s1">
+  <h2><span class="badge-section">1</span>ภาพรวม 13 PR (Executive Summary)</h2>
+
+  <p>วันที่ 2026-05-11 มีการ deploy แก้ไข <strong>13 PR ภายในวันเดียว</strong> โดยทุกฉบับผ่าน TypeScript check + unit tests + emoji scan + design tokens compliance ก่อน merge สู่ <code>main</code> ซึ่ง CI/CD จะ auto-deploy ขึ้น GCP Cloud Run + Firebase Hosting ทันที</p>
+
+  <h3>กลุ่ม A — Module ใหม่ + UI Redesign</h3>
+  <div class="pr-grid">
+    <span class="pr-num">PR #806</span>
+    <span class="pr-label">รวม Asset + Other Income เป็น "ระบบบัญชี" hub เดียว + Asset Acquisition v3 redesign</span>
+    <span class="pr-tag"><span class="badge done">DONE</span></span>
+
+    <span class="pr-num">PR #807</span>
+    <span class="pr-label">Journey doc สำหรับ Other Income</span>
+    <span class="pr-tag"><span class="badge done">DONE</span></span>
+
+    <span class="pr-num">PR #814</span>
+    <span class="pr-label">หน้าใหม่ <strong>APAgingPage</strong> — 5 buckets + batch settlement CTA</span>
+    <span class="pr-tag"><span class="badge done">DONE</span></span>
+
+    <span class="pr-num">PR #815</span>
+    <span class="pr-label">หน้าใหม่ <strong>PaymentVoucher A4</strong> + numToThaiText + ใบ 50 ทวิ</span>
+    <span class="pr-tag"><span class="badge done">DONE</span></span>
+  </div>
+
+  <h3>กลุ่ม B — Bug Fixes (Critical)</h3>
+  <div class="pr-grid">
+    <span class="pr-num">PR #808</span>
+    <span class="pr-label">Cross-module bug bash — 7 critical bugs (Asset + Other Income + CPA audit)</span>
+    <span class="pr-tag"><span class="badge critical">CRITICAL</span></span>
+
+    <span class="pr-num">PR #810</span>
+    <span class="pr-label">Expense P0-1/2/3: VAT 11-2104→11-4101 + V15 + SSO accounts</span>
+    <span class="pr-tag"><span class="badge critical">CRITICAL</span></span>
+  </div>
+
+  <h3>กลุ่ม C — Fix Report v1.0 ปิดครบ 13/13</h3>
+  <div class="pr-grid">
+    <span class="pr-num">PR #811</span>
+    <span class="pr-label">P0-4 Multi-line Adjustment <strong>backend</strong> + ปิด P0-1 รอบสุดท้าย (same-day template)</span>
+    <span class="pr-tag"><span class="badge high">P0-4</span></span>
+
+    <span class="pr-num">PR #812</span>
+    <span class="pr-label">P1-4 ปรับรูล <code>.claude/rules/accounting.md</code> — V17 + P0-1 + V15 + SSO</span>
+    <span class="pr-tag"><span class="badge medium">P1-4</span></span>
+
+    <span class="pr-num">PR #813</span>
+    <span class="pr-label">P0-4 Multi-line Adjustment <strong>frontend</strong> — Section 5 UI</span>
+    <span class="pr-tag"><span class="badge high">P0-4</span></span>
+
+    <span class="pr-num">PR #816</span>
+    <span class="pr-label">P2-3 docPrefix convention + P2-4 per-line WHT routing (PND3 + PND53 ในใบเดียวกัน)</span>
+    <span class="pr-tag"><span class="badge medium">P2-3/4</span></span>
+
+    <span class="pr-num">PR #817</span>
+    <span class="pr-label">P1-3 <code>account_role_map</code> table + AccountRoleService + payroll POC</span>
+    <span class="pr-tag"><span class="badge high">P1-3</span></span>
+
+    <span class="pr-num">PR #818</span>
+    <span class="pr-label">P2-2 Line-level <code>journal_lines</code> (เลิก collapse-by-category) — 3 templates</span>
+    <span class="pr-tag"><span class="badge medium">P2-2</span></span>
+
+    <span class="pr-num">PR #819</span>
+    <span class="pr-label">P2-1 DocTypePicker chip cards + "แนะนำ" badge</span>
+    <span class="pr-tag"><span class="badge medium">P2-1</span></span>
+  </div>
+
+  <h3>กลุ่ม D — Routine</h3>
+  <div class="pr-grid">
+    <span class="pr-num">PR #809</span>
+    <span class="pr-label">Weekly dep updates 18 packages + progress report (rebase + lint fix)</span>
+    <span class="pr-tag"><span class="badge done">DONE</span></span>
+  </div>
+
+  <div class="callout info">
+    <p><strong>การยืนยัน:</strong> ทุก PR ผ่าน <code>tsc --noEmit</code> = 0 errors, unit tests ~210 ผ่าน, ไม่มี emoji, ไม่มี hardcoded color, ใช้ design tokens ทั้งหมด</p>
+  </div>
+</section>
+
+<!-- ───────────────────────────────────────────── Section 2 ───────── -->
+<section id="s2">
+  <h2><span class="badge-section">2</span>การแก้บัคหลักบัญชี 7 รายการ (Critical Bug Fixes)</h2>
+
+  <h3>2.1 ค่าเสื่อมราคา cron ไม่เคยรันจริง (CPA C-1) <span class="badge critical">P0</span></h3>
+
+  <div class="change fix">
+    <p class="title">บัค: TAS 16 ¶49 compliance — งบขาดค่าเสื่อมราคาทุกเดือน</p>
+    <p class="meta">PR #808 · ไฟล์: <code>apps/api/src/modules/journal/cron/depreciation.cron.ts</code></p>
+
+    <p>Cron schedule ใช้ <code>'0 1 28-31 * *'</code> + <code>timeZone: 'Asia/Bangkok'</code> ซึ่ง fire ที่ 01:00 BKK = 18:00 UTC ของวันก่อนหน้า แต่ guard ภายในใช้ <code>new Date().getMonth()</code> ที่อ่าน UTC date — เงื่อนไข "พรุ่งนี้เดือนใหม่หรือยัง" ไม่เคยเป็นจริง → cron return early ทุกครั้ง → <strong>ไม่มี JE ค่าเสื่อมโพสต์อัตโนมัติเลย</strong></p>
+
+    <p><strong>ผลกระทบ:</strong> งบกำไรขาดทุนทุกเดือนขาดค่าเสื่อม, NBV บนงบดุลไม่ลดลง, asset_register ไม่ update accumulatedDepr</p>
+
+    <p><strong>แก้:</strong> compute "today BKK" + "tomorrow BKK" ด้วย <code>Intl.toLocaleString('en-CA', { timeZone: 'Asia/Bangkok' })</code> แล้วเทียบเดือน — guard ทำงานถูกต้องที่วันสุดท้ายของเดือน BKK</p>
+
+    <p><strong>ฝ่ายบัญชีต้องทำ:</strong> ตรวจสอบ JE_DEPRECIATION ของงวดก่อนหน้านี้ (มี.ค.-เม.ย. 2569) ว่ามีโพสต์ครบหรือไม่ ถ้าไม่ครบต้อง <strong>post manually ผ่าน endpoint <code>POST /depreciation/run</code></strong> หรือสร้าง JE adjusting</p>
+  </div>
+
+  <h3>2.2 VAT ซื้อบัญชีผิด (P0-1) <span class="badge critical">P0</span></h3>
+
+  <div class="change fix">
+    <p class="title">บัค: ใช้ 11-2104 (ลูกหนี้-VAT ที่ออกแทน) แทน 11-4101 (ภาษีซื้อ) → ขอคืน VAT ไม่ได้</p>
+    <p class="meta">PR #810, #811 · ไฟล์: <code>expense-accrual.template.ts</code> + <code>credit-note.template.ts</code> + <code>expense-same-day.template.ts</code></p>
+
+    <table class="before-after">
+      <thead>
+        <tr><th class="col-before">ก่อน (ผิด)</th><th class="col-after">หลัง (ถูก)</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="col-before">
+            Dr 11-2104 ลูกหนี้-VAT ที่ออกแทน · vatAmount<br>
+            <small style="color: var(--rose)">ใช้กับ ม.83/6 (Import service) เท่านั้น — ขอคืนใน ภ.พ.30 ไม่ได้</small>
+          </td>
+          <td class="col-after">
+            Dr 11-4101 ภาษีซื้อ · vatAmount<br>
+            <small style="color: var(--emerald)">Input Tax Credit — เครดิตได้ทันทีใน ภ.พ.30</small>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p><strong>ผลกระทบที่เลี่ยงได้:</strong> งบดุลแสดง "ลูกหนี้" บวมผิด — Trial Balance check ของ 11-4101 ไม่ตรงกับ ภ.พ.30 และ auditor reject ตอน reconcile</p>
+
+    <p><strong>ฝ่ายบัญชีต้องทำ:</strong> ตรวจ JE ของ expense ที่ POST ก่อนวันที่ deploy — ถ้าใช้ 11-2104 ผิดต้อง reclassify (สร้าง adjusting JE <code>Dr 11-4101 / Cr 11-2104</code>)</p>
+  </div>
+
+  <h3>2.3 ACCRUAL ตั้งหนี้พร้อม WHT (P0-2 / V15) <span class="badge critical">P0</span></h3>
+
+  <div class="change fix">
+    <p class="title">บัค: ขัด ม.50 ป.รัษฎากร — WHT ต้องเกิด "ขณะที่จ่ายเงินได้" ไม่ใช่ตอนตั้งหนี้</p>
+    <p class="meta">PR #810 · ไฟล์: <code>expense-documents.service.ts</code></p>
+
+    <p>เดิมระบบยอมให้ตั้งหนี้ ACCRUAL ที่มี WHT พร้อมกันใน JE เดียว — ถ้าตั้งหนี้ 30/04 แต่จ่ายจริง 05/05 → WHT จะถูกบันทึกในงวด 04 ผิดวันที่ → ภ.ง.ด.3/53 นำส่งผิดงวด → เบี้ยปรับ</p>
+
+    <p><strong>แก้:</strong> เพิ่ม Validation V15 ใน <code>service.post()</code> — โยน <code>BadRequestException</code> ถ้า <code>doc.withholdingTax &gt; 0</code> และเป็น ACCRUAL</p>
+
+    <p><strong>วิธีใช้ที่ถูกต้อง:</strong> ตั้งหนี้ ACCRUAL <em>ไม่มี WHT</em> → เมื่อจ่ายเงินจริงให้สร้าง VENDOR_SETTLEMENT ระบุ WHT ที่ตอนนั้น (WHT ลงงวดเดือนที่จ่าย)</p>
+  </div>
+
+  <h3>2.4 Asset Disposal NBV stale race (CPA C-2) <span class="badge critical">P0</span></h3>
+
+  <div class="change fix">
+    <p class="title">บัค: อ่าน <code>asset.accumulatedDepr</code> นอก <code>$transaction</code> — ถ้า cron ค่าเสื่อมรันพร้อมกัน → กำไร/ขาดทุนผิด</p>
+    <p class="meta">PR #808 · ไฟล์: <code>apps/api/src/modules/journal/cpa-templates/asset-disposal.template.ts</code></p>
+
+    <p>Template เดิมอ่าน asset + สร้าง JE lines <em>นอก</em> <code>$transaction</code> ก่อนเปิด tx — ถ้า depreciation cron วิ่งระหว่างช่วงนี้, <code>accumulatedDepr</code> stale → NBV ผิด → กำไร/ขาดทุนผิด → P&L งวดนั้นผิด</p>
+
+    <p><strong>แก้:</strong> ย้าย findFirst + line building ทั้งหมดเข้าใน <code>run</code> closure (TAS 16 ¶71 compliance) + เพิ่ม guard fail-fast ถ้า <code>accumulatedDepr &gt; purchaseCost</code> (impossible state, ป้องกัน GL corruption)</p>
+  </div>
+
+  <h3>2.5 Depreciation last-month rounding drift (Asset C3)</h3>
+
+  <div class="change fix">
+    <p class="title">บัค: 107,000 / 36 = 2,972.22 → 36 × 2,972.22 = 106,999.92 → NBV ค้าง 0.08 ฿</p>
+    <p class="meta">PR #808 · ไฟล์: <code>apps/api/src/modules/journal/cpa-templates/depreciation.template.ts</code></p>
+
+    <p>Straight-line depreciation ใช้ <code>ROUND_DOWN 2dp</code> ทุกเดือน — เมื่อหารไม่ลงตัว เดือนสุดท้ายจะค้างเศษเล็กน้อย (0.01–0.99 ฿) → NBV ไม่ถึง residualValue ที่กำหนด → งบดุลผิดเล็กน้อยตลอดอายุสินทรัพย์</p>
+
+    <p><strong>แก้:</strong> ใช้ <code>tx.depreciationEntry.count({ where: { assetId } })</code> ตรวจว่าเป็นเดือนสุดท้าย — ถ้าใช่ post <code>remainingBase</code> แทน <code>monthlyAmount</code> ทำให้ Σ posts = depreciableBase พอดี</p>
+  </div>
+
+  <h3>2.6 Other Income reversedBy link ไม่ทำงาน</h3>
+
+  <div class="change fix">
+    <p class="title">บัค: ลิงก์ "ดูเอกสาร Reversing Entry" ไม่เคย render เพราะ field ไม่มีจริงใน DB</p>
+    <p class="meta">PR #808 · ไฟล์: <code>other-income.service.ts</code> + <code>OtherIncomeViewPage.tsx</code></p>
+
+    <p>Frontend อ้าง <code>doc.reversedById</code> แต่ Prisma schema มีแค่ self-relation <code>reversedBy</code> (no scalar FK) → undefined ตลอด → ลิงก์ไม่เคยแสดง</p>
+
+    <p><strong>แก้:</strong> Backend <code>include: { reversedBy: { select: { id, docNumber } } }</code> + Frontend ใช้ <code>doc.reversedBy?.id</code></p>
+  </div>
+
+  <h3>2.7 dailySheet timezone drift</h3>
+
+  <div class="change fix">
+    <p class="title">บัค: ใบที่ออกหลัง 17:00 UTC (00:00 BKK) ตกใน daily sheet ของวันถัดไป</p>
+    <p class="meta">PR #808 · ไฟล์: <code>other-income.service.ts</code></p>
+
+    <p><code>new Date(date).setHours(0,0,0,0)</code> อ่าน server timezone (UTC บน Cloud Run) → ทำให้ใบรายได้อื่นที่ออก 00:00–06:59 BKK หายจาก daily sheet ของวันนั้น</p>
+
+    <p><strong>แก้:</strong> ใช้ Intl-based BKK day bounds (เหมือน <code>DocNumberService.getBkkDayBounds()</code>)</p>
+  </div>
+</section>
+
+<!-- ───────────────────────────────────────────── Section 3 ───────── -->
+<section id="s3">
+  <h2><span class="badge-section">3</span>ผังบัญชีใหม่ 2 รหัส + Role Map 19 roles</h2>
+
+  <h3>3.1 บัญชีใหม่ใน chart_of_accounts</h3>
+
+  <table class="ref">
+    <thead>
+      <tr><th>รหัส</th><th>ชื่อ</th><th>ประเภท</th><th>Normal</th><th>ใช้ใน</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>21-3105</code></td>
+        <td>เงินสมทบประกันสังคม-พนักงานค้างนำส่ง</td>
+        <td>หนี้สิน</td>
+        <td>Cr</td>
+        <td>Payroll JE — เงินสมทบ 5% ที่หักจากพนักงาน (เพดาน 750 ฿/คน) รอนำส่ง สปส.1-10</td>
+      </tr>
+      <tr>
+        <td><code>21-3106</code></td>
+        <td>เงินสมทบประกันสังคม-นายจ้างค้างนำส่ง</td>
+        <td>หนี้สิน</td>
+        <td>Cr</td>
+        <td>Payroll JE — เงินสมทบ 5% ฝั่งนายจ้างจ่าย รอนำส่ง สปส.1-10</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout success">
+    <p><strong>เหตุผล:</strong> เดิมระบบใช้ <code>21-1104 เจ้าหนี้ค่าใช้จ่ายกิจการ</code> เป็น placeholder สำหรับ SSO → ทำให้ Trial Balance ของ 21-1104 ปนกัน 2 ความหมาย (AP จริง + SSO placeholder) — แยกบัญชีแล้วทำให้สปส.1-10 ดูง่าย</p>
+  </div>
+
+  <h3>3.2 Role Map (account_role_map) — 19 roles ใหม่</h3>
+
+  <p>เพิ่มตาราง <code>account_role_map</code> ที่ map "role" → "accountCode" ทำให้ JE templates เรียกใช้ <code>roles.code('vat_input')</code> แทน hardcoded <code>'11-4101'</code> — owner แก้ผ่าน admin UI ได้โดยไม่ต้อง deploy</p>
+
+  <table class="ref">
+    <thead><tr><th>Role</th><th>Account</th><th>ใช้กับ</th></tr></thead>
+    <tbody>
+      <tr class="section"><td colspan="3">VAT</td></tr>
+      <tr><td><code>vat_input</code></td><td><code>11-4101</code></td><td>ภาษีซื้อ — ทุก purchase JE</td></tr>
+      <tr><td><code>vat_input_pending</code></td><td><code>11-4102</code></td><td>ภาษีซื้อยังไม่ถึงกำหนด</td></tr>
+      <tr><td><code>vat_output</code></td><td><code>21-2101</code></td><td>ภาษีขาย ภ.พ.30</td></tr>
+
+      <tr class="section"><td colspan="3">WHT</td></tr>
+      <tr><td><code>wht_individual</code></td><td><code>21-3102</code></td><td>ภ.ง.ด. 3 — บุคคล (SAMEDAY, SETTLEMENT)</td></tr>
+      <tr><td><code>wht_juristic</code></td><td><code>21-3103</code></td><td>ภ.ง.ด. 53 — นิติบุคคล</td></tr>
+      <tr><td><code>wht_payroll</code></td><td><code>21-3101</code></td><td>ภ.ง.ด. 1 — WHT พนักงาน</td></tr>
+      <tr><td><code>wht_dividend</code></td><td><code>21-3104</code></td><td>ภ.ง.ด. 2 — WHT ปันผล (future)</td></tr>
+
+      <tr class="section"><td colspan="3">SSO</td></tr>
+      <tr><td><code>sso_employee</code></td><td><code>21-3105</code></td><td>PAYROLL — SSO พนักงาน</td></tr>
+      <tr><td><code>sso_employer</code></td><td><code>21-3106</code></td><td>PAYROLL — SSO นายจ้าง</td></tr>
+
+      <tr class="section"><td colspan="3">AP / Expenses</td></tr>
+      <tr><td><code>payable_default</code></td><td><code>21-1104</code></td><td>ACCRUAL, SETTLEMENT — AP ทั่วไป</td></tr>
+      <tr><td><code>payable_canva</code></td><td><code>21-1105</code></td><td>ACCRUAL context=CANVA</td></tr>
+
+      <tr class="section"><td colspan="3">Payroll Expense</td></tr>
+      <tr><td><code>payroll_expense</code></td><td><code>53-1101</code></td><td>เงินเดือน ค่าจ้าง</td></tr>
+      <tr><td><code>payroll_sso_expense</code></td><td><code>53-1102</code></td><td>เงินสมทบประกันสังคม (นายจ้าง)</td></tr>
+      <tr><td><code>payroll_overtime</code></td><td><code>53-1103</code></td><td>ค่าล่วงเวลา</td></tr>
+      <tr><td><code>payroll_bonus</code></td><td><code>53-1104</code></td><td>โบนัส</td></tr>
+      <tr><td><code>payroll_deduction</code></td><td><code>42-1104</code></td><td>รายได้จากการหักค่าจ้าง</td></tr>
+      <tr><td><code>employee_bond</code></td><td><code>21-4102</code></td><td>เงินค้ำประกันพนักงาน</td></tr>
+
+      <tr class="section"><td colspan="3">Adjustment (P0-4)</td></tr>
+      <tr><td><code>adj_overpay</code></td><td><code>53-1503</code></td><td>กำไร/ขาดทุน-สุทธิปัดเศษ (จ่ายเกิน → Cr)</td></tr>
+      <tr><td><code>adj_underpay</code></td><td><code>52-1104</code></td><td>ส่วนลดไม่จ่ายเศษสตางค์ (จ่ายน้อย → Dr)</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout info">
+    <p><strong>Boot-time validation:</strong> <code>AccountRoleService.onModuleInit()</code> เช็คทุก role ที่ใช้จริงต้องมีใน chart_of_accounts — ถ้าไม่มี boot ล้มเหลวก่อน serve traffic ป้องกัน drift</p>
+  </div>
+</section>
+
+<!-- ───────────────────────────────────────────── Section 4 ───────── -->
+<section id="s4">
+  <h2><span class="badge-section">4</span>JE Templates ที่เปลี่ยน — ก่อน/หลัง</h2>
+
+  <h3>4.1 PAYROLL JE — แยก SSO ฝั่งพนักงาน/นายจ้าง (P0-3)</h3>
+
+  <p><strong>ตัวอย่าง:</strong> เงินเดือน 71,000 + WHT 850 + SSO พนักงาน 2,250 + SSO นายจ้าง 2,250</p>
+
+  <table class="before-after">
+    <thead><tr><th class="col-before">ก่อน (ปนกัน)</th><th class="col-after">หลัง (แยกชัด)</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="col-before">
+          <code>Dr 53-1101 เงินเดือน 71,000</code><br>
+          <code>&nbsp;&nbsp;Cr 11-1201 ธ.KBank 67,900</code><br>
+          <code>&nbsp;&nbsp;Cr 21-3101 ภงด.1 850</code><br>
+          <code>&nbsp;&nbsp;Cr 21-1104 SSO placeholder 2,250</code> ← <span style="color: var(--rose);">ผิด</span><br>
+          <small style="color: var(--rose);">นายจ้างไม่ลงค่าใช้จ่าย, SSO ปนกับ AP</small>
+        </td>
+        <td class="col-after">
+          <code>Dr 53-1101 เงินเดือน 71,000</code><br>
+          <code>Dr 53-1102 SSO นายจ้าง 2,250</code> ← <span style="color: var(--emerald);">ใหม่</span><br>
+          <code>&nbsp;&nbsp;Cr 11-1201 ธ.KBank 67,900</code><br>
+          <code>&nbsp;&nbsp;Cr 21-3101 ภงด.1 850</code><br>
+          <code>&nbsp;&nbsp;Cr 21-3105 SSO พนักงาน 2,250</code> ← <span style="color: var(--emerald);">ใหม่</span><br>
+          <code>&nbsp;&nbsp;Cr 21-3106 SSO นายจ้าง 2,250</code> ← <span style="color: var(--emerald);">ใหม่</span><br>
+          <small style="color: var(--emerald);">Σ Dr = Σ Cr = 73,250 ✓ Balanced</small>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>4.2 EXPENSE same-day JE — VAT input + per-line WHT (P0-1 + P2-4)</h3>
+
+  <p><strong>ตัวอย่าง mixed PND3+PND53:</strong> 2 ค่าบริการ คน 1 บุคคล (WHT 3% ใน PND3) + คน 2 นิติบุคคล (WHT 5% ใน PND53)</p>
+
+  <div class="change feature">
+    <table class="je">
+      <thead><tr><th>รหัส</th><th>ชื่อบัญชี</th><th>Dr (฿)</th><th>Cr (฿)</th></tr></thead>
+      <tbody>
+        <tr><td class="code">53-1702</td><td>ค่าจ้างผู้รับจ้างทำงาน — บริการ A (บุคคล)</td><td class="amt">1,000.00</td><td class="amt">-</td></tr>
+        <tr><td class="code">53-1303</td><td>ค่าจ้างผู้รับจ้างทำงาน — บริการ B (นิติบุคคล)</td><td class="amt">1,000.00</td><td class="amt">-</td></tr>
+        <tr><td class="code">11-4101</td><td>ภาษีซื้อ (ใช้แทน 11-2104 เดิม)</td><td class="amt">140.00</td><td class="amt">-</td></tr>
+        <tr><td class="code">11-1201</td><td>ธนาคาร KBank — จ่ายสุทธิ</td><td class="amt">-</td><td class="amt">2,060.00</td></tr>
+        <tr><td class="code">21-3102</td><td>ภ.ง.ด. 3 ค้างจ่าย — บริการ A (3%)</td><td class="amt">-</td><td class="amt">30.00</td></tr>
+        <tr><td class="code">21-3103</td><td>ภ.ง.ด. 53 ค้างจ่าย — บริการ B (5%)</td><td class="amt">-</td><td class="amt">50.00</td></tr>
+        <tr class="total"><td colspan="2">รวม <span class="badge done">สมดุล</span></td><td class="amt balanced">2,140.00</td><td class="amt balanced">2,140.00</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout info">
+    <p><strong>การเปลี่ยนสำคัญ:</strong> เดิมต้องสร้าง 2 ใบ EX แยกตาม form type — ตอนนี้ใส่ <code>whtFormType</code> ต่อ line ในใบเดียวกันได้</p>
+  </div>
+
+  <h3>4.3 Line-level journal_lines — เลิก collapse-by-category (P2-2)</h3>
+
+  <p><strong>ตัวอย่าง:</strong> 3 ค่าใช้จ่ายในใบเดียว 2 รายการ category เดียวกัน (53-1101)</p>
+
+  <table class="before-after">
+    <thead><tr><th class="col-before">ก่อน (รวมก้อน)</th><th class="col-after">หลัง (แยก line)</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="col-before">
+          <code>Dr 53-1101 ค่าใช้จ่าย — EX-...#0011 1,500</code> ← <span style="color: var(--rose);">รวม 2 line</span><br>
+          <code>Dr 53-1404 ค่าใช้จ่าย — EX-...#0011 800</code><br>
+          <small style="color: var(--rose);">trace กลับไป line ต้นไม่ได้</small>
+        </td>
+        <td class="col-after">
+          <code>Dr 53-1101 ค่าใช้จ่าย — รายการ A 1,000</code><br>
+          <code>Dr 53-1404 ค่าใช้จ่าย — รายการ B 800</code><br>
+          <code>Dr 53-1101 ค่าใช้จ่าย — รายการ C 500</code><br>
+          <small style="color: var(--emerald);">trace ผ่าน description ตรงตาม ExpenseLine</small>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ───────────────────────────────────────────── Section 5 ───────── -->
+<section id="s5">
+  <h2><span class="badge-section">5</span>Validation Rules ใหม่ V12–V17</h2>
+
+  <table class="ref">
+    <thead><tr><th>Rule</th><th>กฎ</th><th>เหตุผล (อ้างอิงกฎหมาย/มาตรฐาน)</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>V12</code></td>
+        <td>Σ signed(adjustments) = amountPaid − netExpected</td>
+        <td>P0-4 — Multi-line Adjustment ต้องปิด diff ครบ มิฉะนั้น JE ไม่ balance</td>
+      </tr>
+      <tr>
+        <td><code>V13</code></td>
+        <td>ทุก adjustment row ต้องมี accountCode + อยู่ใน CoA</td>
+        <td>P0-4 — กันการตั้งบัญชีผิดที่ไม่มีในผัง</td>
+      </tr>
+      <tr>
+        <td><code>V14</code></td>
+        <td>adjustment.amount &gt; 0 (ทิศทางใช้ field <code>side</code>)</td>
+        <td>P0-4 — Decimal positivity guard</td>
+      </tr>
+      <tr>
+        <td><code>V15</code></td>
+        <td>ACCRUAL ห้ามมี WHT &gt; 0</td>
+        <td>ป.รัษฎากร ม.50 — WHT เกิด "ขณะที่จ่ายเงินได้" ไม่ใช่ตอนตั้งหนี้</td>
+      </tr>
+      <tr>
+        <td><code>V15 (OI)</code></td>
+        <td>42-1102 ดอกเบี้ยเงินฝาก: VAT% = 0 + warn WHT% ≠ 15</td>
+        <td>ป.รัษฎากร ม.81(1)(ฏ) — ดอกเบี้ยฝากยกเว้น VAT + ม.50(2)(ข) ธนาคารหัก 15%</td>
+      </tr>
+      <tr>
+        <td><code>V17</code></td>
+        <td>WHT base = <code>amountBeforeVat</code> ไม่ใช่ <code>totalAmount</code></td>
+        <td>ป.รัษฎากร — WHT คำนวณบนฐานเงินได้สุทธิ ไม่รวมภาษีมูลค่าเพิ่ม</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ───────────────────────────────────────────── Section 6 ───────── -->
+<section id="s6">
+  <h2><span class="badge-section">6</span>Multi-line Adjustment (P0-4) — การปรับผลต่างยอดจ่าย</h2>
+
+  <h3>6.1 Use case</h3>
+
+  <p>เมื่อจ่ายเงินจริง <em>ไม่ตรง</em> กับยอดในใบกำกับ — เช่น ใบกำกับ 100.00 ฿ จ่ายจริง 99.50 ฿ (ส่วนลด/ปัดเศษ)</p>
+
+  <h3>6.2 หน้า UI — Section 5 ใน ExpenseFormV4</h3>
+
+  <ul class="compact">
+    <li>3 tile บน: <strong>ยอดที่จ่ายจริง</strong> (input) / <strong>net expected</strong> (read-only = totalAmount − wht) / <strong>diff</strong> (computed)</li>
+    <li>Row repeater: เลือกบัญชี + Dr/Cr + จำนวน + note</li>
+    <li>Live "ผลต่างปรับครบ" (เขียว) / "V12: ยังขาด X" (แดง)</li>
+  </ul>
+
+  <h3>6.3 JE ตัวอย่าง — จ่ายน้อยกว่า 0.50 ฿</h3>
+
+  <div class="change feature">
+    <p class="title">ใบกำกับ 100 ฿ (subtotal) + VAT 7 ฿ = 107 ฿, จ่ายจริง 106.50 ฿</p>
+    <table class="je">
+      <thead><tr><th>รหัส</th><th>ชื่อบัญชี</th><th>Dr (฿)</th><th>Cr (฿)</th></tr></thead>
+      <tbody>
+        <tr><td class="code">53-1302</td><td>ค่าใช้จ่าย</td><td class="amt">100.00</td><td class="amt">-</td></tr>
+        <tr><td class="code">11-4101</td><td>ภาษีซื้อ</td><td class="amt">7.00</td><td class="amt">-</td></tr>
+        <tr><td class="code">11-1101</td><td>เงินสด — จ่ายจริง</td><td class="amt">-</td><td class="amt">106.50</td></tr>
+        <tr><td class="code">53-1503</td><td>กำไร/ขาดทุน-สุทธิปัดเศษ <em>(adjustment Cr)</em></td><td class="amt">-</td><td class="amt">0.50</td></tr>
+        <tr class="total"><td colspan="2">รวม <span class="badge done">สมดุล</span></td><td class="amt balanced">107.00</td><td class="amt balanced">107.00</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout warn">
+    <p><strong>ข้อจำกัด:</strong> Adjustment รองรับเฉพาะ EXPENSE_SAMEDAY เท่านั้น — ACCRUAL/CN/PAYROLL ยังไม่ support (ACCRUAL ไม่มี cash leg, CN เป็น reversal, PAYROLL มีโครงสร้างต่าง)</p>
+  </div>
+</section>
+
+<!-- ───────────────────────────────────────────── Section 7 ───────── -->
+<section id="s7">
+  <h2><span class="badge-section">7</span>หน้าใหม่ — APAging + PaymentVoucher</h2>
+
+  <h3>7.1 APAgingPage <code>/expenses/ap-aging</code></h3>
+
+  <div class="change feature">
+    <ul class="compact">
+      <li>5 bucket cards: <code>0-30</code> · <code>31-60</code> · <code>61-90</code> · <code>90+</code> · <code>Total</code></li>
+      <li>นับ ACCRUAL ที่ยังไม่จ่าย (status=ACCRUAL + paidAt=null)</li>
+      <li>Age คำนวณจาก <strong>today BKK start-of-day</strong> — ไม่ใช่ server timezone</li>
+      <li>Filter: ค้นหาผู้ขาย + คลิก bucket → filter เฉพาะช่วงนั้น</li>
+      <li>Multi-select row → ปุ่ม <strong>"สร้างใบ Settlement"</strong> ส่ง ids ไป <code>/expenses/new?type=VENDOR_SETTLEMENT</code></li>
+      <li><strong>Same-vendor enforcement:</strong> เลือกได้เฉพาะใบจากผู้ขายเดียวกัน (ตาม VENDOR_SETTLEMENT model constraint)</li>
+    </ul>
+  </div>
+
+  <h3>7.2 PaymentVoucher A4 <code>/expenses/:id/voucher</code></h3>
+
+  <div class="change feature">
+    <p>2 A4 sheets ในเอกสารเดียว:</p>
+    <ol class="compact">
+      <li><strong>ใบสำคัญจ่าย</strong> — company header + doc meta + items table + totals + <strong>amount-in-thai-text</strong> (ผ่าน <code>numToThaiText</code> helper) + Auto Journal preview + 4 signature slots (ผู้จัดทำ / ผู้อนุมัติ / ผู้รับเงิน / ตราประทับ)</li>
+      <li><strong>ใบรับรองการหักภาษี ณ ที่จ่าย (ม.50 ทวิ)</strong> — แสดงเฉพาะเมื่อ WHT &gt; 0 — auto-route PND3/PND53 ตาม <code>whtFormType</code></li>
+    </ol>
+    <p>Print-friendly: <code>@page A4</code> + screen chrome ซ่อนผ่าน <code>.no-print</code> + page-break ระหว่าง sheets — browser print dialog ส่งออก PDF ได้</p>
+  </div>
+
+  <p><strong>numToThaiText helper</strong> — convert ตัวเลขเป็นข้อความไทย ("สี่พันแปดร้อยสิบห้าบาทถ้วน") ตามหลักราชบัณฑิตยสภา รองรับ เอ็ด/ยี่สิบ/สิบ + ล้าน groups + สตางค์ + negative + 9 unit tests pass</p>
+</section>
+
+<!-- ───────────────────────────────────────────── Section 8 ───────── -->
+<section id="s8">
+  <h2><span class="badge-section">8</span>Schema Migrations + Data Migration SQL</h2>
+
+  <h3>8.1 Auto migrations (4 ฉบับ)</h3>
+
+  <table class="ref">
+    <thead><tr><th>Migration</th><th>เปลี่ยน</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>20260917000000_add_expense_adjustments</code></td>
+        <td>เพิ่มตาราง <code>expense_adjustments</code> + enum <code>ExpenseAdjustmentSide</code> (DR/CR)</td>
+      </tr>
+      <tr>
+        <td><code>20260918000000_add_expense_line_wht_form_type</code></td>
+        <td>เพิ่ม column <code>expense_lines.wht_form_type</code> (nullable, PND3/PND53)</td>
+      </tr>
+      <tr>
+        <td><code>20260919000000_add_account_role_map</code></td>
+        <td>เพิ่มตาราง <code>account_role_map</code> + seed 19 roles canonical</td>
+      </tr>
+      <tr>
+        <td>finance-coa.csv updates</td>
+        <td>เพิ่ม 21-3105 + 21-3106 ใน CoA seed (รัน via <code>seed:coa</code> idempotent CLI)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>8.2 Manual SQL — Legacy SSO reclassification</h3>
+
+  <div class="change docs">
+    <p class="title"><code>apps/api/prisma/migrations-manual/2026-05-11-reclassify-sso-21-1104-to-21-3105.sql</code></p>
+    <p><strong>Idempotent</strong> — รันซ้ำได้ปลอดภัย (filter <code>NOT ILIKE '%[migrated 2026-05-11%'</code>)</p>
+    <p><strong>Scope:</strong> หา JL ที่ flow=expense-payroll + accountCode=21-1104 + description ILIKE '%ประกันสังคม%' → update เป็น 21-3105 + tag note</p>
+    <p><strong>คำเตือน:</strong> Backup DB ก่อนรัน, ทำใน maintenance window, ตรวจ Trial Balance ก่อน/หลัง</p>
+  </div>
+</section>
+
+<!-- ───────────────────────────────────────────── Section 9 ───────── -->
+<section id="s9">
+  <h2><span class="badge-section">9</span>CPA References — TFRS / TAS / ป.รัษฎากร / พ.ร.ฎ.</h2>
+
+  <table class="ref">
+    <thead><tr><th>มาตรฐาน/กฎหมาย</th><th>ใช้ใน</th></tr></thead>
+    <tbody>
+      <tr><td><strong>TFRS for NPAEs</strong></td><td>มาตรฐานหลัก — ทุก JE ผ่าน <code>JournalAutoService.createAndPost</code> ที่บังคับ Σ Dr = Σ Cr</td></tr>
+      <tr><td><strong>TAS 16</strong> (Property, Plant and Equipment)</td><td>Asset acquisition + depreciation + disposal — capitalize cost (¶16), straight-line (¶49), derecognition (¶71)</td></tr>
+      <tr><td><strong>TFRS 15</strong></td><td>Revenue recognition — รายได้รับรู้ตามงวด</td></tr>
+      <tr><td><strong>ป.รัษฎากร ม.50</strong></td><td>WHT เกิดขณะจ่ายเงิน — V15 ENforce</td></tr>
+      <tr><td><strong>ม.50 ทวิ + ทป.4/2528</strong></td><td>หัก WHT เฉพาะค่าบริการ ไม่ใช่ค่าสินค้า</td></tr>
+      <tr><td><strong>ม.81(1)(ฏ)</strong></td><td>ดอกเบี้ยเงินฝากยกเว้น VAT — V15 OI</td></tr>
+      <tr><td><strong>ม.50(2)(ข)</strong></td><td>ธนาคารหัก WHT 15% บนดอกเบี้ยเงินฝาก — V15 OI warn</td></tr>
+      <tr><td><strong>ม.82/3</strong></td><td>VAT 7% — input/output</td></tr>
+      <tr><td><strong>ม.83/6</strong></td><td>VAT ออกแทน (Import service) — สาเหตุที่ 11-2104 ใช้เฉพาะ case นี้</td></tr>
+      <tr><td><strong>พ.ร.ฎ. ฉบับ 145</strong></td><td>อัตราหักค่าสึกหรอภาษีขั้นต่ำ (ทรัพย์สิน 5 ปี = 60 เดือน)</td></tr>
+      <tr><td><strong>สปส.1-10</strong></td><td>นำส่งเงินสมทบประกันสังคม — แยก 21-3105/21-3106 ทำให้รายงานง่าย</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ───────────────────────────────────────────── Section 10 ───────── -->
+<section id="s10">
+  <h2><span class="badge-section">10</span>Manual Production Rollout Steps</h2>
+
+  <div class="callout warn">
+    <p><strong>ทำตามลำดับนี้บน Production:</strong></p>
+  </div>
+
+  <ol class="compact">
+    <li><strong>Auto-deploy เสร็จแล้ว</strong> (push to main triggers CI/CD → Cloud Run + Firebase)</li>
+    <li><strong>รัน seed-coa-prod</strong> — upsert บัญชีใหม่ 21-3105 + 21-3106:
+      <pre style="background: var(--bg); padding: 12px; border-radius: 6px; font-size: 12px; margin: 8px 0;"><code>gcloud run jobs execute seed-coa-prod \
+  --region=asia-southeast1 \
+  --project=bestchoice-prod --wait</code></pre>
+    </li>
+    <li><strong>Maintenance window — รัน Migration SQL</strong> เพื่อ reclassify SSO เก่า:
+      <pre style="background: var(--bg); padding: 12px; border-radius: 6px; font-size: 12px; margin: 8px 0;"><code># 1. Backup DB ก่อน
+# 2. รัน SQL ใน staging ก่อน production
+# 3. ทำใน maintenance window
+psql $DB_URL -f \
+  apps/api/prisma/migrations-manual/\
+2026-05-11-reclassify-sso-21-1104-to-21-3105.sql</code></pre>
+    </li>
+    <li><strong>Verification queries:</strong>
+      <pre style="background: var(--bg); padding: 12px; border-radius: 6px; font-size: 11px; margin: 8px 0;"><code>-- 21-3105 ต้องมี rows หลัง migration
+SELECT account_code, COUNT(*), SUM(credit_amount)
+FROM journal_lines jl
+JOIN journal_entries je ON je.id = jl.journal_entry_id
+WHERE je.metadata-&gt;&gt;'flow' = 'expense-payroll'
+  AND jl.account_code IN ('21-1104', '21-3105')
+GROUP BY account_code;
+
+-- Expected: 21-3105 has rows, 21-1104 PAYROLL count = 0</code></pre>
+    </li>
+    <li><strong>Smoke test:</strong> สร้างเอกสาร EX + PAYROLL test 1 ใบแต่ละชนิด ผ่าน UI → ดู JE Preview ครบบรรทัด → POST → ตรวจ Trial Balance ของ 21-3105/21-3106</li>
+    <li><strong>Pod restart</strong> (อัตโนมัติ — AccountRoleService เลือดเข้า cache ที่ <code>onModuleInit</code>)</li>
+  </ol>
+</section>
+
+<!-- ───────────────────────────────────────────── Section 11 ───────── -->
+<section id="s11">
+  <h2><span class="badge-section">11</span>เช็คลิสต์การตรวจสอบของฝ่ายบัญชี</h2>
+
+  <h3>11.1 ตรวจ JE Historic ก่อน Deploy</h3>
+  <ul class="check-list">
+    <li>เปิด <code>/financial-audit</code> ตรวจ Trial Balance ของ <strong>11-4101 vs 11-2104</strong> ก่อนวันที่ deploy</li>
+    <li>หา expense JE ที่ POST ก่อน 2026-05-11 ที่ใช้ <code>11-2104</code> ใน Dr (น่าจะเป็น misclassified VAT input)</li>
+    <li>ถ้ามีจำนวนเงินมาก → สร้าง adjusting JE <code>Dr 11-4101 / Cr 11-2104</code> ก่อนยื่น ภ.พ.30 รอบถัดไป</li>
+    <li>ตรวจ <code>21-1104 PAYROLL flow</code> มี SSO ปนอยู่หรือไม่ — ถ้ามี รัน migration SQL ในขั้น §10.3</li>
+  </ul>
+
+  <h3>11.2 ตรวจ Depreciation Historic</h3>
+  <ul class="check-list">
+    <li>เปิด <code>/assets/journal?type=DEPRECIATION&period=2026-03</code> ดูว่ามี JE depreciation เดือน มี.ค.-เม.ย. 2569 ครบหรือไม่</li>
+    <li>ถ้าไม่มี → call <code>POST /depreciation/run</code> สำหรับ period ที่หาย — ผ่าน admin endpoint (idempotent)</li>
+    <li>หรือสร้าง adjusting JE manual: <code>Dr 53-16XX / Cr 12-22XX</code> ตามผัง</li>
+  </ul>
+
+  <h3>11.3 ตรวจ JE ใหม่หลัง Deploy</h3>
+  <ul class="check-list">
+    <li>สร้าง expense PAYROLL test 1 ใบ → ตรวจว่า JE มี 53-1102 (Dr employer SSO) + 21-3105 + 21-3106 (Cr both sides) + 21-3101 (WHT) ครบ</li>
+    <li>สร้าง expense EXPENSE มี VAT 7% test → ตรวจว่า JE ใช้ <strong>Dr 11-4101</strong> ไม่ใช่ 11-2104</li>
+    <li>ลองตั้งหนี้ ACCRUAL พร้อม WHT &gt; 0 → ระบบควรปฏิเสธด้วยข้อความ "V15: เอกสารตั้งหนี้ (ACCRUAL) ห้ามมี WHT (มาตรา 50 ป.รัษฎากร)"</li>
+    <li>สร้าง expense มี mixed line PND3+PND53 → ตรวจว่า JE มี Cr 21-3102 + Cr 21-3103 พร้อมกัน 2 บรรทัด</li>
+    <li>สิ้นเดือน 2026-05 → ตรวจ JE_DEPRECIATION ของ asset POSTED ทั้งหมด post ครบ (cron กลับมาทำงานแล้ว)</li>
+  </ul>
+
+  <h3>11.4 ตรวจ Reports</h3>
+  <ul class="check-list">
+    <li>ภ.พ.30 — ยอด <strong>11-4101</strong> (ภาษีซื้อขอคืน) ตรงกับใบกำกับซื้อในเดือน</li>
+    <li>ภ.ง.ด.3/53 — ยอด 21-3102 + 21-3103 ตรงกับ WHT ที่หักจาก vendor ในเดือน</li>
+    <li>ภ.ง.ด.1 — ยอด 21-3101 ตรงกับเงินเดือนพนักงานในเดือน</li>
+    <li>สปส.1-10 — ยอด 21-3105 + 21-3106 (รวม 5%×2 = 10%) ตรงกับ payroll register ในเดือน</li>
+  </ul>
+</section>
+
+<!-- ───────────────────────────────────────────── Section 12 ───────── -->
+<section id="s12">
+  <h2><span class="badge-section">12</span>FAQ</h2>
+
+  <h3>Q1: ทำไมต้องแยก 21-3105/21-3106 จาก 21-1104?</h3>
+  <p>เดิม 21-1104 ปนกัน 2 ความหมาย: AP จริง + SSO ค้างนำส่ง. แยกแล้วทำให้ Trial Balance ตรวจสอบง่าย + สปส.1-10 รายงานชัดเจน + auditor reconcile ได้</p>
+
+  <h3>Q2: ถ้ามี JE เก่าที่ใช้ 11-2104 ผิด ต้องทำยังไง?</h3>
+  <p>สร้าง adjusting JE manual: <code>Dr 11-4101 / Cr 11-2104</code> ตามยอดที่ผิด — postedAt = วันที่ทำ adjustment, reference = "Reclass VAT input per audit 2026-05-11" — ทำก่อนยื่น ภ.พ.30 รอบถัดไป</p>
+
+  <h3>Q3: V15 บล็อก ACCRUAL+WHT ใช่ไหม? ถ้าจริงๆ ต้องตั้งหนี้พร้อม WHT?</h3>
+  <p>ไม่ใช่ — ตั้งหนี้ ACCRUAL <em>ไม่ใส่ WHT</em> ก่อน → เวลาจ่ายเงินจริง สร้าง <strong>VENDOR_SETTLEMENT</strong> ระบุ WHT ที่ขั้นนั้น. WHT ลงงวดเดือนที่จ่าย ตรงตาม ม.50</p>
+
+  <h3>Q4: ค่าเสื่อม cron จะเริ่มทำงานเมื่อไหร่?</h3>
+  <p>สิ้นเดือน 2026-05 (วันที่ 31 พ.ค.) 01:00 BKK — fix นี้ deploy ก่อนสิ้นเดือนแน่นอน. งวด มี.ค.-เม.ย. ที่หายไป ต้อง run manual ผ่าน <code>runManual()</code> endpoint</p>
+
+  <h3>Q5: ทำไมต้องเพิ่ม account_role_map?</h3>
+  <p>เพื่อให้ owner แก้ <strong>routing ของบัญชี</strong> ผ่าน admin UI โดยไม่ต้อง deploy code ใหม่ — เช่น เปลี่ยน wht_individual จาก 21-3102 → บัญชีอื่นในอนาคต. ปัจจุบัน payroll template เป็น POC ใช้ <code>roles.code()</code> แล้ว, templates อื่นจะ migrate ตามใน PR ถัดไป</p>
+
+  <h3>Q6: PR #809 (weekly deps) เกี่ยวกับบัญชีไหม?</h3>
+  <p>ไม่เกี่ยว — แค่อัปเดต 18 npm packages (patch/minor) ของ React, AWS SDK, Sentry, ฯลฯ + เอกสาร progress report. ไม่มี code change ในระบบบัญชี</p>
+
+  <h3>Q7: หน้า /expenses/:id/voucher (PaymentVoucher) เปิดเมื่อไหร่?</h3>
+  <p>เปิดได้ทันที — URL <code>https://bestchoicephone.app/expenses/&lt;doc-id&gt;/voucher</code>. ต้อง login + มี role OWNER/BRANCH_MANAGER/FINANCE_MANAGER/ACCOUNTANT. ปุ่ม Print ใช้ <code>window.print()</code> — export PDF ผ่าน browser dialog ได้</p>
+</section>
+
+<footer style="margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--border); font-size: 12px; color: var(--subtle); text-align: center;">
+  <p>BESTCHOICE FINANCE × SHOP — สรุปการแก้ไขระบบบัญชี รอบ Audit 2026-05-11</p>
+  <p>เอกสารฉบับนี้สำหรับฝ่ายบัญชีตรวจสอบ — ถ้ามีคำถาม ติดต่อ owner หรือทีม dev</p>
+</footer>
+
+</div>
+</body>
+</html>

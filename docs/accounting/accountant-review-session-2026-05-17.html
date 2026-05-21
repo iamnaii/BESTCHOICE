@@ -1,0 +1,1267 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>การตรวจสอบเอกสารบัญชี · BESTCHOICE Expense v2.0 · 2026-05-17</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --paper: #faf6ee;
+  --paper-edge: #f1ebde;
+  --ink: #1a1b21;
+  --ink-soft: #3a3b42;
+  --muted: #837a6c;
+  --rule: #cbc2ad;
+  --rule-soft: #e6dfcb;
+  --accent-burgundy: #8b1e3f;
+  --accent-ledger: #2c5c4a;
+  --accent-warn: #b85c00;
+  --highlight: #fdf3d0;
+  --cr-bg: #f0eadb;
+  --dr-bg: #f8efe1;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  background: #ebe3cf;
+}
+
+body {
+  font-family: 'Sarabun', sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  line-height: 1.65;
+  font-size: 15px;
+  background-image:
+    radial-gradient(circle at 20% 10%, rgba(139, 30, 63, 0.02) 0, transparent 40%),
+    radial-gradient(circle at 80% 90%, rgba(44, 92, 74, 0.025) 0, transparent 50%),
+    repeating-linear-gradient(0deg, transparent, transparent 24px, rgba(0,0,0,0.012) 24px, rgba(0,0,0,0.012) 25px);
+  min-height: 100vh;
+  padding: 0;
+}
+
+.page {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 64px 56px 80px;
+  background: var(--paper);
+  box-shadow: 0 0 0 1px var(--rule-soft), 0 24px 60px -20px rgba(0,0,0,0.18);
+  position: relative;
+}
+
+.page::before {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; top: 0;
+  height: 6px;
+  background: linear-gradient(90deg, var(--accent-burgundy) 0%, var(--accent-burgundy) 33%, var(--accent-ledger) 33%, var(--accent-ledger) 100%);
+}
+
+/* HEADER */
+header.doc-header {
+  border-bottom: 2px solid var(--ink);
+  padding-bottom: 28px;
+  margin-bottom: 48px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 24px;
+  align-items: end;
+}
+
+.doc-eyebrow {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--accent-burgundy);
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.doc-title {
+  font-family: 'Cormorant Garamond', serif;
+  font-weight: 600;
+  font-size: 38px;
+  line-height: 1.08;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  margin-bottom: 8px;
+}
+
+.doc-title .thai {
+  font-family: 'Sarabun', sans-serif;
+  font-weight: 600;
+  font-size: 36px;
+  display: block;
+  margin-bottom: 4px;
+  letter-spacing: -0.005em;
+}
+
+.doc-subtitle {
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic;
+  font-size: 18px;
+  color: var(--muted);
+}
+
+.doc-meta {
+  text-align: right;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10.5px;
+  line-height: 1.6;
+  color: var(--ink-soft);
+}
+
+.doc-meta dt {
+  display: inline;
+  color: var(--muted);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-size: 9.5px;
+}
+
+.doc-meta dd {
+  display: inline;
+  margin-left: 6px;
+  font-weight: 500;
+}
+
+.doc-meta dl + dl {
+  margin-top: 2px;
+}
+
+/* INTRO */
+.intro {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 17px;
+  line-height: 1.65;
+  color: var(--ink-soft);
+  margin-bottom: 56px;
+  padding-bottom: 32px;
+  border-bottom: 1px solid var(--rule-soft);
+  font-style: italic;
+}
+
+.intro .lead-thai {
+  font-family: 'Sarabun', sans-serif;
+  font-style: normal;
+  font-size: 16px;
+  color: var(--ink);
+  line-height: 1.7;
+  margin-bottom: 14px;
+}
+
+.intro strong {
+  color: var(--accent-burgundy);
+  font-weight: 600;
+}
+
+/* PART HEADER */
+.part {
+  margin-bottom: 64px;
+}
+
+.part-mark {
+  display: flex;
+  align-items: baseline;
+  gap: 20px;
+  margin-bottom: 36px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.part-number {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 84px;
+  font-weight: 500;
+  line-height: 0.9;
+  color: var(--accent-burgundy);
+  font-style: italic;
+}
+
+.part-titleblock h2 {
+  font-family: 'Sarabun', sans-serif;
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  line-height: 1.2;
+  margin-bottom: 4px;
+}
+
+.part-titleblock .latin {
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic;
+  font-size: 16px;
+  color: var(--muted);
+  letter-spacing: 0.01em;
+}
+
+/* CHECKLIST ITEM */
+.check-item {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: 18px;
+  padding: 22px 0;
+  border-bottom: 1px dotted var(--rule);
+  position: relative;
+}
+
+.check-item:first-child {
+  padding-top: 4px;
+}
+
+.check-item:last-of-type {
+  border-bottom: 2px solid var(--ink);
+  margin-bottom: 4px;
+}
+
+.check-box {
+  width: 22px;
+  height: 22px;
+  border: 1.5px solid var(--ink);
+  background: var(--paper);
+  margin-top: 3px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Cormorant Garamond', serif;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.check-box:hover {
+  background: var(--highlight);
+}
+
+.check-box::after {
+  content: '';
+  position: absolute;
+  font-size: 28px;
+  color: var(--accent-burgundy);
+  line-height: 1;
+  font-style: italic;
+  font-weight: 600;
+  display: none;
+  margin-top: -8px;
+}
+
+.check-box.checked::after {
+  content: '✓';
+  display: block;
+}
+
+.check-content .id {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+
+.check-content .title {
+  font-family: 'Sarabun', sans-serif;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 6px;
+  line-height: 1.35;
+}
+
+.check-content .description {
+  font-size: 14px;
+  color: var(--ink-soft);
+  line-height: 1.6;
+  margin-bottom: 10px;
+}
+
+.check-content .pr-refs {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.check-content .pr-refs strong {
+  color: var(--accent-ledger);
+  font-weight: 600;
+}
+
+/* JOURNAL ENTRY DISPLAY */
+.je {
+  margin: 14px 0 10px;
+  padding: 14px 16px;
+  background: var(--paper-edge);
+  border-left: 3px solid var(--accent-ledger);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  line-height: 1.9;
+}
+
+.je .je-label {
+  font-family: 'Sarabun', sans-serif;
+  font-size: 10.5px;
+  color: var(--muted);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.je-line {
+  display: grid;
+  grid-template-columns: 24px 80px 1fr 80px 80px;
+  gap: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.je-line.dr { color: var(--ink); }
+.je-line.cr { color: var(--ink-soft); padding-left: 18px; }
+
+.je-code {
+  color: var(--accent-burgundy);
+  font-weight: 600;
+}
+
+.je-amount-dr {
+  text-align: right;
+  background: var(--dr-bg);
+  padding: 0 8px;
+}
+
+.je-amount-cr {
+  text-align: right;
+  background: var(--cr-bg);
+  padding: 0 8px;
+}
+
+/* CoA badges */
+.coa {
+  display: inline-block;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11.5px;
+  font-weight: 500;
+  padding: 2px 8px;
+  background: var(--paper-edge);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  color: var(--accent-burgundy);
+  margin: 0 1px;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.coa.dr { border-left: 3px solid var(--accent-burgundy); }
+.coa.cr { border-left: 3px solid var(--accent-ledger); }
+
+/* SPEC TABLE */
+.spec-row {
+  display: grid;
+  grid-template-columns: 110px 1fr 1fr;
+  gap: 12px;
+  padding: 8px 10px;
+  background: var(--paper-edge);
+  font-size: 12px;
+  margin-top: 8px;
+  border-radius: 2px;
+}
+
+.spec-row + .spec-row {
+  margin-top: 2px;
+}
+
+.spec-label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10.5px;
+  color: var(--muted);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.spec-value {
+  font-family: 'IBM Plex Mono', monospace;
+  font-weight: 500;
+  font-size: 12px;
+}
+
+.spec-value.match { color: var(--accent-ledger); }
+
+/* QUESTIONS */
+.question {
+  margin-bottom: 44px;
+  padding: 28px 30px;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-left: 4px solid var(--accent-burgundy);
+  position: relative;
+  break-inside: avoid;
+}
+
+.question-head {
+  display: flex;
+  align-items: baseline;
+  gap: 18px;
+  margin-bottom: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--rule-soft);
+}
+
+.q-number {
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic;
+  font-size: 42px;
+  font-weight: 600;
+  color: var(--accent-burgundy);
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.q-title {
+  flex: 1;
+  font-family: 'Sarabun', sans-serif;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.35;
+}
+
+.q-tag {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--accent-warn);
+  border: 1px solid var(--accent-warn);
+  padding: 2px 8px;
+  background: rgba(184, 92, 0, 0.05);
+  margin-bottom: 4px;
+}
+
+.q-context {
+  font-size: 14px;
+  color: var(--ink-soft);
+  line-height: 1.65;
+  margin-bottom: 16px;
+}
+
+.q-context p + p { margin-top: 10px; }
+
+.q-current {
+  background: var(--highlight);
+  border-left: 3px solid var(--accent-warn);
+  padding: 10px 14px;
+  margin: 12px 0 16px;
+  font-size: 13px;
+}
+
+.q-current::before {
+  content: 'สมมติฐานที่ใช้';
+  display: block;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--accent-warn);
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.q-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.q-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--paper-edge);
+  border: 1px solid var(--rule-soft);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.q-option:hover {
+  background: var(--highlight);
+  border-color: var(--accent-burgundy);
+}
+
+.q-radio {
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--ink);
+  border-radius: 50%;
+  margin-top: 3px;
+  flex-shrink: 0;
+  background: var(--paper);
+  position: relative;
+  cursor: pointer;
+}
+
+.q-radio.selected::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  background: var(--accent-burgundy);
+  border-radius: 50%;
+}
+
+.q-option-text {
+  flex: 1;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.q-option-text .accent {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  color: var(--accent-ledger);
+  font-weight: 600;
+  display: inline-block;
+  margin-right: 4px;
+}
+
+.q-note-label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 600;
+  margin-bottom: 6px;
+  display: block;
+}
+
+.q-note {
+  width: 100%;
+  min-height: 56px;
+  padding: 10px 12px;
+  background: var(--paper-edge);
+  border: 1px solid var(--rule);
+  font-family: 'Sarabun', sans-serif;
+  font-size: 13px;
+  color: var(--ink);
+  line-height: 1.5;
+  resize: vertical;
+  outline: none;
+}
+
+.q-note:focus { border-color: var(--accent-burgundy); }
+
+/* RECAP */
+.recap {
+  margin: 64px 0 0;
+  padding: 36px;
+  background: linear-gradient(135deg, var(--paper-edge) 0%, var(--paper) 100%);
+  border: 1px solid var(--rule);
+  border-left: 6px solid var(--accent-ledger);
+}
+
+.recap h3 {
+  font-family: 'Sarabun', sans-serif;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 16px;
+  letter-spacing: -0.005em;
+}
+
+.recap ul {
+  list-style: none;
+  font-size: 13.5px;
+  line-height: 1.7;
+}
+
+.recap li {
+  padding-left: 22px;
+  position: relative;
+  color: var(--ink-soft);
+}
+
+.recap li::before {
+  content: '§';
+  position: absolute;
+  left: 0;
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 17px;
+  color: var(--accent-burgundy);
+  font-style: italic;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+/* SIGNATURE */
+.signature {
+  margin-top: 56px;
+  padding-top: 32px;
+  border-top: 2px solid var(--ink);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 56px;
+}
+
+.sig-block {
+  text-align: center;
+}
+
+.sig-line {
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--ink);
+  height: 50px;
+}
+
+.sig-label {
+  font-size: 12px;
+  color: var(--muted);
+  font-family: 'IBM Plex Mono', monospace;
+  letter-spacing: 0.1em;
+}
+
+.sig-date {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  margin-top: 4px;
+  color: var(--ink-soft);
+}
+
+/* FOOTER */
+footer.doc-footer {
+  margin-top: 56px;
+  padding-top: 18px;
+  border-top: 1px solid var(--rule);
+  display: flex;
+  justify-content: space-between;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.footer-mark {
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic;
+  font-size: 13px;
+  letter-spacing: 0;
+  color: var(--accent-burgundy);
+  text-transform: none;
+}
+
+/* PRINT */
+@media print {
+  html, body {
+    background: white !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .page {
+    box-shadow: none;
+    padding: 0;
+    max-width: 100%;
+  }
+  .page::before { height: 4px; }
+  .question { break-inside: avoid; }
+  .check-item { break-inside: avoid; }
+  .recap { break-inside: avoid; }
+  .part { break-inside: auto; }
+  .doc-header { break-after: avoid; }
+  @page {
+    size: A4;
+    margin: 18mm 16mm 14mm;
+  }
+}
+
+/* RESPONSIVE */
+@media (max-width: 720px) {
+  .page { padding: 36px 24px; }
+  header.doc-header { grid-template-columns: 1fr; gap: 16px; }
+  .doc-meta { text-align: left; }
+  .doc-title { font-size: 28px; }
+  .doc-title .thai { font-size: 26px; }
+  .part-mark { gap: 12px; }
+  .part-number { font-size: 64px; }
+  .je-line { grid-template-columns: 22px 70px 1fr; }
+  .je-line .je-amount-dr, .je-line .je-amount-cr { grid-column: 1 / -1; padding-left: 92px; text-align: left; background: transparent; }
+  .signature { grid-template-columns: 1fr; gap: 32px; }
+}
+
+/* MAIN INTERACTIVITY HINT */
+.helper-banner {
+  margin-bottom: 36px;
+  padding: 14px 18px;
+  background: var(--highlight);
+  border: 1px dashed var(--accent-warn);
+  font-size: 13px;
+  color: var(--ink-soft);
+  font-family: 'Sarabun', sans-serif;
+}
+
+.helper-banner strong {
+  color: var(--accent-warn);
+  font-weight: 600;
+}
+
+@media print {
+  .helper-banner { display: none; }
+}
+
+</style>
+</head>
+<body>
+<main class="page">
+
+<header class="doc-header">
+  <div>
+    <div class="doc-eyebrow">เอกสารตรวจสอบ · TFRS for NPAEs · Phase A.4+</div>
+    <h1 class="doc-title">
+      <span class="thai">การตรวจรับงานบัญชี</span>
+      <em style="font-style: italic; font-weight: 500;">Accountant Verification Sheet</em>
+    </h1>
+    <div class="doc-subtitle">BESTCHOICE Expense Module v2.0 — Session Output 2026-05-17</div>
+  </div>
+  <div class="doc-meta">
+    <dl><dt>Owner</dt> <dd>akenarin.ak</dd></dl>
+    <dl><dt>Session</dt> <dd>2026-05-17</dd></dl>
+    <dl><dt>PRs Total</dt> <dd>89</dd></dl>
+    <dl><dt>D1 Coverage</dt> <dd>75/75</dd></dl>
+    <dl><dt>Master TOTAL</dt> <dd>159/159</dd></dl>
+    <dl><dt>Reviewer</dt> <dd>__________</dd></dl>
+  </div>
+</header>
+
+<div class="helper-banner">
+  <strong>วิธีใช้:</strong> เอกสารนี้สำหรับให้นักบัญชี/ผู้ตรวจสอบทำเครื่องหมาย ✓ ในส่วนที่ <em>ตรวจสอบแล้วถูกต้อง</em> และตอบคำถาม Q1–Q8 ในส่วนที่ <em>ต้องการการตัดสินใจ</em> · พิมพ์ออกได้เลย (A4) ผ่าน <code style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; background: white; padding: 1px 5px;">Ctrl/Cmd + P</code>
+</div>
+
+<div class="intro">
+  <p class="lead-thai">เอกสารฉบับนี้สรุปการเปลี่ยนแปลงด้านบัญชีในระบบ BESTCHOICE Expense Module v2.0 ที่จัดทำในวันที่ 17 พฤษภาคม 2569 รวม <strong>89 Pull Requests</strong> ที่ครอบคลุมงานทั้งหมดของ A1 Settings Audit (102/102 รายการ) และเปิด Phase A.5 ด้วย <em>tax-disallowed expense flag</em></p>
+  <p style="font-family: 'Cormorant Garamond', serif; font-style: italic;">All changes follow TFRS for NPAEs full-accrual policy and the 99-account FINANCE chart of accounts as ratified in Phase A.4.</p>
+</div>
+
+<!-- ======================== PART 1 ======================== -->
+<section class="part">
+  <div class="part-mark">
+    <div class="part-number">I</div>
+    <div class="part-titleblock">
+      <h2>รายการเปลี่ยนแปลงที่กระทบบัญชี</h2>
+      <div class="latin">Verification Checklist — JE / VAT / WHT / SSO / Audit</div>
+    </div>
+  </div>
+
+  <!-- ITEM 1 -->
+  <div class="check-item">
+    <div class="check-box" onclick="this.classList.toggle('checked')"></div>
+    <div class="check-content">
+      <div class="id">PR #907 · #914 · #926 · D1.1.6.x</div>
+      <div class="title">การจัดเส้นทาง Adjustment Routing ผ่าน AccountRoleService</div>
+      <div class="description">
+        ใช้ <code style="font-family: 'IBM Plex Mono', monospace; font-size: 12px;">AccountRoleService.code('adj_underpay')</code> และ <code style="font-family: 'IBM Plex Mono', monospace; font-size: 12px;">'adj_overpay'</code> แทนการ hardcode รหัสบัญชีใน Payment Receipt 2B Template · มีปุ่ม <em>adj_auto_route</em> ปิดได้เมื่อต้องการ manual adjustment เท่านั้น
+      </div>
+      <div class="je">
+        <div class="je-label">รับชำระ ลูกหนี้ขาดส่วน (Underpay ≤1฿ — Policy C)</div>
+        <div class="je-line dr"><span>Dr</span><span class="je-code">11-1201</span><span>ธนาคาร KBank</span><span class="je-amount-dr">9.17</span><span></span></div>
+        <div class="je-line dr"><span>Dr</span><span class="je-code">52-1104</span><span>ส่วนลดเศษสตางค์ <em style="font-style: italic;">(adj_underpay)</em></span><span class="je-amount-dr">0.83</span><span></span></div>
+        <div class="je-line cr"><span>Cr</span><span class="je-code">11-2103</span><span>ลูกหนี้ค้างชำระ</span><span></span><span class="je-amount-cr">10.00</span></div>
+      </div>
+      <div class="pr-refs">บัญชีที่ใช้: <span class="coa dr">52-1104 ส่วนลดเศษสตางค์</span> <span class="coa cr">53-1503 กำไรปัดเศษ</span> · ค่า default มาจาก seed <strong>account_role_map</strong> migration 20260919000000</div>
+    </div>
+  </div>
+
+  <!-- ITEM 2 -->
+  <div class="check-item">
+    <div class="check-box" onclick="this.classList.toggle('checked')"></div>
+    <div class="check-content">
+      <div class="id">PR #940 · D1.1.3.1 · P0 Bug Fix</div>
+      <div class="title">แก้ไข VAT_RATE / vat_pct orphan-key</div>
+      <div class="description">
+        ใช้ canonical key <code style="font-family: 'IBM Plex Mono', monospace; font-size: 12px;">VAT_RATE</code> เป็นหลัก + fallback legacy keys (<code style="font-family: 'IBM Plex Mono', monospace; font-size: 12px;">vat_pct</code>, <code style="font-family: 'IBM Plex Mono', monospace; font-size: 12px;">vat_rate</code>) · มี VatRateBootstrapService log WARN เมื่อพบ orphan
+      </div>
+      <div class="spec-row">
+        <span class="spec-label">parseVatValue</span>
+        <span class="spec-value">value ≥ 1 = percent (เช่น 7)</span>
+        <span class="spec-value">value &lt; 1 = decimal (เช่น 0.07)</span>
+      </div>
+      <div class="spec-row">
+        <span class="spec-label">Default</span>
+        <span class="spec-value">VAT 7%</span>
+        <span class="spec-value match">ตรงตาม TFRS for NPAEs</span>
+      </div>
+      <div class="pr-refs">Manual SQL backfill (operator confirmation gate): <code style="font-family: 'IBM Plex Mono', monospace; font-size: 12px;">apps/api/prisma/migrations-manual/2026-05-17-merge-vat-rate-keys.sql</code></div>
+    </div>
+  </div>
+
+  <!-- ITEM 3 -->
+  <div class="check-item">
+    <div class="check-box" onclick="this.classList.toggle('checked')"></div>
+    <div class="check-content">
+      <div class="id">PR #934 · #944 · D1.1.3.2 + .3.5</div>
+      <div class="title">ตาราง WHT Rates Configurable + Effective Date</div>
+      <div class="description">
+        WHT rates จาก hardcoded <code style="font-family: 'IBM Plex Mono', monospace; font-size: 12px;">[0,1,3,5]</code> → JSON array ที่ configurable: <em>1% ดอกเบี้ย</em>, <em>3% ค่าบริการ</em>, <em>5% ค่าเช่า</em>, <em>10% ค่าวิชาชีพ</em>, <em>15% ต่างประเทศ</em> · มี effectiveDate per rate (frontend filters future-dated)
+      </div>
+      <div class="pr-refs">ถ้าเปลี่ยนอัตราในอนาคต OWNER สามารถ tune จาก <code style="font-family: 'IBM Plex Mono', monospace; font-size: 12px;">/settings/tax-rates</code> (PR #948) — ไม่ต้องแก้โค้ด</div>
+    </div>
+  </div>
+
+  <!-- ITEM 4 -->
+  <div class="check-item">
+    <div class="check-box" onclick="this.classList.toggle('checked')"></div>
+    <div class="check-content">
+      <div class="id">PR #936 · D1.1.3.3</div>
+      <div class="title">SSO Rate Locked at 5% (พ.ร.บ.ประกันสังคม)</div>
+      <div class="description">
+        อัตราเงินสมทบล็อคที่ 5% ตามกฎหมาย ไม่ configurable · มี comment อ้างอิงกฎหมาย (§46 + กฎกระทรวง) · SystemConfig <code style="font-family: 'IBM Plex Mono', monospace; font-size: 12px;">sso_rate_locked</code> เป็น <em>read-only informational</em> เท่านั้น
+      </div>
+      <div class="je">
+        <div class="je-label">บันทึกเงินเดือน — SSO 5% ทั้งสองฝั่ง</div>
+        <div class="je-line dr"><span>Dr</span><span class="je-code">53-1101</span><span>เงินเดือน-ค่าจ้าง</span><span class="je-amount-dr">XXX</span><span></span></div>
+        <div class="je-line dr"><span>Dr</span><span class="je-code">53-1102</span><span>SSO นายจ้าง <em style="font-style: italic;">(5%)</em></span><span class="je-amount-dr">5%</span><span></span></div>
+        <div class="je-line cr"><span>Cr</span><span class="je-code">21-3101</span><span>WHT พนักงานค้างจ่าย</span><span></span><span class="je-amount-cr">XXX</span></div>
+        <div class="je-line cr"><span>Cr</span><span class="je-code">21-3105</span><span>SSO พนักงาน (หัก 5%)</span><span></span><span class="je-amount-cr">5%</span></div>
+        <div class="je-line cr"><span>Cr</span><span class="je-code">21-3106</span><span>SSO นายจ้างค้างนำส่ง</span><span></span><span class="je-amount-cr">5%</span></div>
+        <div class="je-line cr"><span>Cr</span><span class="je-code">11-1201</span><span>ธนาคาร (จ่ายสุทธิ)</span><span></span><span class="je-amount-cr">XXX</span></div>
+      </div>
+      <div class="pr-refs">เพดาน 750/คน/เดือน — configurable per effective period (PR #861 D1.B1)</div>
+    </div>
+  </div>
+
+  <!-- ITEM 5 -->
+  <div class="check-item">
+    <div class="check-box" onclick="this.classList.toggle('checked')"></div>
+    <div class="check-content">
+      <div class="id">PR #990 · A.5.1 · NEW</div>
+      <div class="title">Tax-Disallowed Expense Flag (ภ.ง.ด.50/51)</div>
+      <div class="description">
+        เพิ่ม flag <code style="font-family: 'IBM Plex Mono', monospace; font-size: 12px;">taxDisallowed Boolean</code> ใน ExpenseDocument + ExpenseLine สำหรับค่าใช้จ่ายที่หักไม่ได้ตาม ม.65 ตรี (เช่น ของขวัญ &gt; 2,000฿, ค่าปรับ, ค่าใช้จ่ายส่วนตัว) — บันทึกบัญชี<strong>เหมือนเดิม</strong>แต่ flag จะถูกใช้กรองออกตอนกรอก ภ.ง.ด.50/51
+      </div>
+      <div class="spec-row">
+        <span class="spec-label">Endpoint</span>
+        <span class="spec-value">GET /expense-documents/tax-disallowed</span>
+        <span class="spec-value">?from=&amp;to=&amp;branchId=</span>
+      </div>
+      <div class="spec-row">
+        <span class="spec-label">Page</span>
+        <span class="spec-value">/accounting/tax-disallowed-summary</span>
+        <span class="spec-value match">3-card year picker</span>
+      </div>
+      <div class="pr-refs">ไม่กระทบ JE — เป็น meta-data ของเอกสารเท่านั้น</div>
+    </div>
+  </div>
+
+  <!-- ITEM 6 -->
+  <div class="check-item">
+    <div class="check-box" onclick="this.classList.toggle('checked')"></div>
+    <div class="check-content">
+      <div class="id">PR #912 · D1.2.1.6 + 5 PRs</div>
+      <div class="title">Approval Workflow + DocumentStatus Enum</div>
+      <div class="description">
+        เพิ่มสถานะ <code style="font-family: 'IBM Plex Mono', monospace; font-size: 12px;">PENDING_APPROVAL</code> และ <code style="font-family: 'IBM Plex Mono', monospace; font-size: 12px;">APPROVED</code> · เอกสาร PAYROLL หรือ amount ≥ 50,000฿ จะต้องผ่านอนุมัติก่อน POST (เปิดได้ผ่าน <em>approval_enabled=true</em>) · เขียน AuditLog ทุก transition (<code style="font-family: 'IBM Plex Mono', monospace; font-size: 12px;">APPROVAL_REQUESTED</code>, <code style="font-family: 'IBM Plex Mono', monospace; font-size: 12px;">APPROVED</code>, <code style="font-family: 'IBM Plex Mono', monospace; font-size: 12px;">AUTO_POSTED</code>)
+      </div>
+      <div class="spec-row">
+        <span class="spec-label">Flow</span>
+        <span class="spec-value">DRAFT → PENDING_APPROVAL → APPROVED → POSTED</span>
+        <span class="spec-value match">auto-post optional</span>
+      </div>
+      <div class="pr-refs">Lifecycle integration: <strong>#912 → #923 → #930 → #932 → #931 → #933</strong> · UI ปุ่ม: #967 · E2E: #966 · helper refactor: #965 (-81 LOC dedupe)</div>
+    </div>
+  </div>
+
+  <!-- ITEM 7 -->
+  <div class="check-item">
+    <div class="check-box" onclick="this.classList.toggle('checked')"></div>
+    <div class="check-content">
+      <div class="id">PR #882 + #976 · D1.4.3</div>
+      <div class="title">Audit Log Retention + Archive (พ.ร.บ.บัญชี ม.7)</div>
+      <div class="description">
+        ระยะเวลาเก็บ audit log: <strong>180 วัน → 1,825 วัน (5 ปี)</strong> ตาม พ.ร.บ.การบัญชี ม.7 · มี <em>audit_log_archive_enabled</em> flag ที่ archive ก่อนลบ (default true) · login_log gate-able แต่ failed-login lockout counter ยังนับเสมอ (v3 hardening)
+      </div>
+      <div class="pr-refs">เอกสารทางบัญชีต้องเก็บ <strong>5 ปี</strong> ตามกฎหมายไทย — ค่า default ตรง</div>
+    </div>
+  </div>
+
+  <!-- ITEM 8 -->
+  <div class="check-item">
+    <div class="check-box" onclick="this.classList.toggle('checked')"></div>
+    <div class="check-content">
+      <div class="id">PR #921 · #906 · D1.3.6</div>
+      <div class="title">VENDOR_SETTLEMENT — V12 Partial Payment Gate</div>
+      <div class="description">
+        Settlement พร้อม partial payment toggleable (<em>settlement_partial_payment_enabled</em>) · cap จำกัด bills ต่อ document (default 100, 1-500) · default tick behavior: <strong>overdue_only</strong> (เลือกเฉพาะใบที่เกินกำหนด)
+      </div>
+      <div class="pr-refs">Atomicity: cap check<strong>ก่อน</strong> $transaction (ไม่เสีย advisory lock) · V12 ถูก gate เฉพาะ VENDOR_SETTLEMENT — EXPENSE callers ไม่กระทบ</div>
+    </div>
+  </div>
+
+  <!-- ITEM 9 -->
+  <div class="check-item">
+    <div class="check-box" onclick="this.classList.toggle('checked')"></div>
+    <div class="check-content">
+      <div class="id">PR #937 → #955 · D1.1.2</div>
+      <div class="title">Document Numbering — Format + Reset Cycle</div>
+      <div class="description">
+        เปลี่ยน default จาก <code style="font-family: 'IBM Plex Mono', monospace; font-size: 12px;">EX-YYYYMMDD-NNNN</code> เป็น <code style="font-family: 'IBM Plex Mono', monospace; font-size: 12px;">EX-YYMM-NNN</code> (3 ตัวเลข, รีเซ็ตทุกปี) · OWNER สามารถ tune ผ่าน SystemConfig
+      </div>
+      <div class="spec-row">
+        <span class="spec-label">Default ใหม่</span>
+        <span class="spec-value">PREFIX-YYMM-NNN</span>
+        <span class="spec-value match">ตรง spec accountant</span>
+      </div>
+      <div class="spec-row">
+        <span class="spec-label">Reset Cycle</span>
+        <span class="spec-value">yearly</span>
+        <span class="spec-value">รีเซ็ต seq ต้นปี</span>
+      </div>
+      <div class="pr-refs">Advisory lock per (type, cycle, periodStart) · เอกสารเก่ายัง parseable เพราะ extractTrailingSeq()</div>
+    </div>
+  </div>
+
+  <!-- ITEM 10 -->
+  <div class="check-item">
+    <div class="check-box" onclick="this.classList.toggle('checked')"></div>
+    <div class="check-content">
+      <div class="id">PR #867 + #938 + #943 + #950 · D1.1.5</div>
+      <div class="title">Petty Cash — Custodian + Replenish Alert</div>
+      <div class="description">
+        เพิ่ม <em>pettyCashCustodianId</em> FK บน CompanyInfo + assignment UI · มี Cron <strong>PettyCashReplenishAlertCron</strong> ส่ง IN_APP แจ้ง OWNER เมื่อ <code style="font-family: 'IBM Plex Mono', monospace; font-size: 12px;">balance &lt; petty_cash_replenish_threshold</code> (default 5,000฿)
+      </div>
+      <div class="je">
+        <div class="je-label">เบิกเงินสดย่อย — Petty Cash Reimbursement</div>
+        <div class="je-line dr"><span>Dr</span><span class="je-code">53-XXXX</span><span>ค่าใช้จ่ายต่างๆ (per receipt)</span><span class="je-amount-dr">XXX</span><span></span></div>
+        <div class="je-line cr"><span>Cr</span><span class="je-code">11-1103</span><span>เงินสด — พนักงานบัญชี</span><span></span><span class="je-amount-cr">XXX</span></div>
+      </div>
+      <div class="pr-refs">Threshold = 0 ทำหน้าที่เป็น kill switch (ไม่ alert เลย)</div>
+    </div>
+  </div>
+
+</section>
+
+<!-- ======================== PART 2 ======================== -->
+<section class="part">
+  <div class="part-mark">
+    <div class="part-number">II</div>
+    <div class="part-titleblock">
+      <h2>คำถามที่ต้องการการตัดสินใจ</h2>
+      <div class="latin">Q&amp;A — Owner / Accountant Input Required (Q1–Q8)</div>
+    </div>
+  </div>
+
+  <!-- Q1 -->
+  <div class="question">
+    <div class="q-tag">Q1 · Petty Cash Account</div>
+    <div class="question-head">
+      <div class="q-number">i</div>
+      <div class="q-title">บัญชี Petty Cash จะใช้ <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px;">11-1201</code> ธนาคาร KBank หรือ <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px;">11-1103</code> เงินสดพนักงานบัญชี?</div>
+    </div>
+    <div class="q-context">
+      <p>การเบิกชดเชยเงินสดย่อย (PETTY_CASH_REIMBURSEMENT) ต้องเลือกบัญชีฝั่ง <strong>Cr</strong> ระหว่าง:</p>
+      <p>(ก) <span class="coa cr">11-1201</span> ธนาคาร KBank — ในกรณีที่นโยบายให้พนักงานบัญชีออกเงินส่วนตัวแล้วเบิกคืนจากบัญชีบริษัท</p>
+      <p>(ข) <span class="coa cr">11-1103</span> เงินสดพนักงานบัญชี — ในกรณีที่บริษัทถือ <em>imprest fund</em> ในมือพนักงาน</p>
+    </div>
+    <div class="q-current">ปัจจุบัน wire เป็น 11-1103 (imprest fund pattern). ถ้านโยบายจริงเป็น 11-1201 ต้อง revise PRs #867, #938, #943, #950</div>
+    <div class="q-options">
+      <div class="q-option" onclick="toggleRadio(this, 'q1')">
+        <div class="q-radio"></div>
+        <div class="q-option-text"><span class="accent">11-1103</span>เงินสดพนักงานบัญชี (imprest) — ตรงกับที่ wire ไว้</div>
+      </div>
+      <div class="q-option" onclick="toggleRadio(this, 'q1')">
+        <div class="q-radio"></div>
+        <div class="q-option-text"><span class="accent">11-1201</span>ธนาคาร KBank — ต้อง revise PRs</div>
+      </div>
+      <div class="q-option" onclick="toggleRadio(this, 'q1')">
+        <div class="q-radio"></div>
+        <div class="q-option-text"><span class="accent">อื่นๆ</span>โปรดระบุในช่องด้านล่าง</div>
+      </div>
+    </div>
+    <label class="q-note-label">หมายเหตุ / ข้อเสนอแนะ</label>
+    <textarea class="q-note" placeholder="โปรดระบุข้อมูลเพิ่มเติม..."></textarea>
+  </div>
+
+  <!-- Q2 -->
+  <div class="question">
+    <div class="q-tag">Q2 · Audit Log Retention</div>
+    <div class="question-head">
+      <div class="q-number">ii</div>
+      <div class="q-title">ยืนยันระยะเวลาเก็บ Audit Log ที่ 1,825 วัน (5 ปี) ตาม พ.ร.บ.การบัญชี ม.7</div>
+    </div>
+    <div class="q-context">
+      <p>ค่าก่อนหน้าคือ 180 วัน (ไม่พอตามกฎหมาย) · ค่าใหม่ที่ wire ไว้คือ 1,825 วัน · กฎหมายไทยกำหนดเก็บ 5 ปีนับตั้งแต่วันปิดบัญชี</p>
+      <p>หากต้องการเก็บนานกว่านี้ (เช่น 7 ปี สำหรับ transactions ที่อ้างอิง ภ.ง.ด.50) สามารถ tune SystemConfig <code style="font-family: 'IBM Plex Mono', monospace; font-size: 13px;">audit_log_retention_days</code> ได้</p>
+    </div>
+    <div class="q-current">Current: 1,825 days (5 ปี) — เป็น minimum legal requirement</div>
+    <div class="q-options">
+      <div class="q-option" onclick="toggleRadio(this, 'q2')">
+        <div class="q-radio"></div>
+        <div class="q-option-text"><span class="accent">✓</span>1,825 วัน (5 ปี) — เพียงพอตามกฎหมาย</div>
+      </div>
+      <div class="q-option" onclick="toggleRadio(this, 'q2')">
+        <div class="q-radio"></div>
+        <div class="q-option-text"><span class="accent">+</span>2,555 วัน (7 ปี) — เพิ่มเพื่อปลอดภัย</div>
+      </div>
+      <div class="q-option" onclick="toggleRadio(this, 'q2')">
+        <div class="q-radio"></div>
+        <div class="q-option-text"><span class="accent">อื่นๆ</span>โปรดระบุจำนวนวัน</div>
+      </div>
+    </div>
+    <label class="q-note-label">หมายเหตุ</label>
+    <textarea class="q-note" placeholder="ระบุจำนวนวันหรือเหตุผล..."></textarea>
+  </div>
+
+  <!-- Q3 -->
+  <div class="question">
+    <div class="q-tag">Q3 · Doc Numbering Format</div>
+    <div class="question-head">
+      <div class="q-number">iii</div>
+      <div class="q-title">รูปแบบเลขที่เอกสาร — ใช้ <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px;">YYMMNNN</code> ตาม spec หรือคงรูปแบบเดิม?</div>
+    </div>
+    <div class="q-context">
+      <p>Spec accountant กำหนด default ใหม่: <strong>PREFIX-YYMM-NNN</strong> เช่น <code style="font-family: 'IBM Plex Mono', monospace; font-size: 13px;">EX-2605-001</code> (พ.ค. 2569 ฉบับที่ 1)</p>
+      <p>รูปแบบเดิม (PRs ก่อน): <code style="font-family: 'IBM Plex Mono', monospace; font-size: 13px;">EX-20260510-0001</code> (เต็มวัน, 4 หลัก, reset daily)</p>
+      <p>หาก <em>migrate กลางเดือน</em> ระบบจะใช้ลำดับต่อจากปัจจุบัน (ไม่ reset) จนถึงเดือนถัดไป — เลขเก่ายัง parseable</p>
+    </div>
+    <div class="q-current">ที่ ship: PREFIX-YYMM-NNN (spec) + reset_cycle=yearly. ถ้าต้องการคงเดิม ต้อง revise #941 + #947</div>
+    <div class="q-options">
+      <div class="q-option" onclick="toggleRadio(this, 'q3')">
+        <div class="q-radio"></div>
+        <div class="q-option-text"><span class="accent">A</span>PREFIX-YYMM-NNN + yearly reset (ตาม spec — ที่ ship ไว้)</div>
+      </div>
+      <div class="q-option" onclick="toggleRadio(this, 'q3')">
+        <div class="q-radio"></div>
+        <div class="q-option-text"><span class="accent">B</span>PREFIX-YYYYMMDD-NNNN + daily reset (รูปแบบเดิม)</div>
+      </div>
+      <div class="q-option" onclick="toggleRadio(this, 'q3')">
+        <div class="q-radio"></div>
+        <div class="q-option-text"><span class="accent">C</span>PREFIX-YYYYMM-NNNNN + monthly reset</div>
+      </div>
+    </div>
+    <label class="q-note-label">หมายเหตุ — รูปแบบสำหรับ EX/CN/PR/SE/PC แยกกันได้ไหม?</label>
+    <textarea class="q-note" placeholder="โปรดระบุ..."></textarea>
+  </div>
+
+  <!-- Q4 -->
+  <div class="question">
+    <div class="q-tag">Q4 · UserRole — Viewer?</div>
+    <div class="question-head">
+      <div class="q-number">iv</div>
+      <div class="q-title">เพิ่ม Role <strong>VIEWER</strong> สำหรับ external auditor เข้าดูข้อมูลแบบ read-only หรือไม่?</div>
+    </div>
+    <div class="q-context">
+      <p>Role ปัจจุบัน: OWNER · BRANCH_MANAGER · FINANCE_MANAGER · ACCOUNTANT · SALES</p>
+      <p>หากเพิ่ม VIEWER จะเหมาะกับ <strong>ผู้ตรวจสอบบัญชีภายนอก</strong> (CPA, สรรพากร) ที่ต้องการดูข้อมูลแต่ห้ามแก้ไข</p>
+      <p>Schema เพิ่มแล้ว (PR #957) แต่ permission ยังเป็น <em>0 endpoints</em> — รอ owner ระบุ scope</p>
+    </div>
+    <div class="q-current">VIEWER enum เพิ่มแล้ว แต่ไม่ทำงานจนกว่า viewer_role_enabled=true + permissions wired</div>
+    <div class="q-options">
+      <div class="q-option" onclick="toggleRadio(this, 'q4')">
+        <div class="q-radio"></div>
+        <div class="q-option-text"><span class="accent">A</span>เปิดใช้งาน VIEWER + ให้อ่าน <em>ทุก list page</em> (audit-friendly)</div>
+      </div>
+      <div class="q-option" onclick="toggleRadio(this, 'q4')">
+        <div class="q-radio"></div>
+        <div class="q-option-text"><span class="accent">B</span>เปิดใช้งาน VIEWER + จำกัดเฉพาะ /accounting/* + /audit-logs</div>
+      </div>
+      <div class="q-option" onclick="toggleRadio(this, 'q4')">
+        <div class="q-radio"></div>
+        <div class="q-option-text"><span class="accent">C</span>ไม่ใช้ — ลบ VIEWER enum ออก (revert #957)</div>
+      </div>
+    </div>
+    <label class="q-note-label">หมายเหตุ</label>
+    <textarea class="q-note" placeholder="โปรดระบุ scope ที่ต้องการ..."></textarea>
+  </div>
+
+  <!-- Q5 -->
+  <div class="question">
+    <div class="q-tag">Q5 · Email Provider</div>
+    <div class="question-head">
+      <div class="q-number">v</div>
+      <div class="q-title">เลือก Email Provider — SMTP (ใช้ env vars เดิม) หรือ Sendgrid (API key ใหม่)?</div>
+    </div>
+    <div class="q-context">
+      <p>ระบบส่ง email จาก ApDueAlertsCron, DraftAlertsCron, Approval notifier ในอนาคต</p>
+      <p>SMTP ใช้ <code style="font-family: 'IBM Plex Mono', monospace; font-size: 13px;">SMTP_HOST/PORT/USER/PASS</code> ที่อาจมีอยู่แล้ว · Sendgrid ใช้ <code style="font-family: 'IBM Plex Mono', monospace; font-size: 13px;">SENDGRID_API_KEY</code> + reputation/deliverability ดีกว่า</p>
+    </div>
+    <div class="q-current">SMTP default + Sendgrid stub (throws NotImplementedException). ถ้าเลือก Sendgrid ต้อง wire API key</div>
+    <div class="q-options">
+      <div class="q-option" onclick="toggleRadio(this, 'q5')">
+        <div class="q-radio"></div>
+        <div class="q-option-text"><span class="accent">SMTP</span>ใช้ SMTP server ของบริษัท (Gmail/Office365/อื่นๆ)</div>
+      </div>
+      <div class="q-option" onclick="toggleRadio(this, 'q5')">
+        <div class="q-radio"></div>
+        <div class="q-option-text"><span class="accent">Sendgrid</span>สมัคร Sendgrid + wire API key</div>
+      </div>
+      <div class="q-option" onclick="toggleRadio(this, 'q5')">
+        <div class="q-radio"></div>
+        <div class="q-option-text"><span class="accent">Skip</span>ไม่ใช้ email — ส่งแค่ LINE/IN_APP</div>
+      </div>
+    </div>
+    <label class="q-note-label">หมายเหตุ — ถ้า SMTP โปรดระบุ host/port</label>
+    <textarea class="q-note" placeholder="SMTP_HOST=, SMTP_PORT=, SMTP_USER=..."></textarea>
+  </div>
+
+  <!-- Q6 -->
+  <div class="question">
+    <div class="q-tag">Q6 · VAT Bug Fix Path</div>
+    <div class="question-head">
+      <div class="q-number">vi</div>
+      <div class="q-title">VAT_RATE / vat_pct orphan-key — ลบ legacy keys หลัง backfill?</div>
+    </div>
+    <div class="q-context">
+      <p>PR #940 + #963 จัดการ orphan keys (vat_pct, vat_rate) โดย:</p>
+      <p>(1) Reader fallback ครอบทั้ง 3 keys — ถ้า VAT_RATE หาย ยังอ่าน vat_pct ได้</p>
+      <p>(2) Manual SQL backfill — ใส่ VAT_RATE ลงตาราง พร้อม operator confirmation gate</p>
+      <p>(3) Bootstrap warner — WARN log ถ้าเจอ key ซ้อน</p>
+    </div>
+    <div class="q-current">หลัง backfill verify ค่าใน VAT_RATE ตรงแล้ว ลบ legacy keys (vat_pct, vat_rate) ได้</div>
+    <div class="q-options">
+      <div class="q-option" onclick="toggleRadio(this, 'q6')">
+        <div class="q-radio"></div>
+        <div class="q-option-text"><span class="accent">A</span>หลัง backfill — soft-delete legacy keys (deletedAt = now) — ปลอดภัยที่สุด</div>
+      </div>
+      <div class="q-option" onclick="toggleRadio(this, 'q6')">
+        <div class="q-radio"></div>
+        <div class="q-option-text"><span class="accent">B</span>หลัง backfill — hard-delete legacy keys — กระชับสุด</div>
+      </div>
+      <div class="q-option" onclick="toggleRadio(this, 'q6')">
+        <div class="q-radio"></div>
+        <div class="q-option-text"><span class="accent">C</span>เก็บ legacy keys ไว้ ใช้ fallback ไปก่อน — WARN จะเด้งทุก boot</div>
+      </div>
+    </div>
+    <label class="q-note-label">หมายเหตุ</label>
+    <textarea class="q-note" placeholder="..."></textarea>
+  </div>
+
+  <!-- Q7 -->
+  <div class="question">
+    <div class="q-tag">Q7 · AccountRoleMap Admin</div>
+    <div class="question-head">
+      <div class="q-number">vii</div>
+      <div class="q-title">Account Role Map Admin UI — เก็บไว้ wire ต่อ หรือลบทิ้ง?</div>
+    </div>
+    <div class="q-context">
+      <p>ตาราง <code style="font-family: 'IBM Plex Mono', monospace; font-size: 13px;">account_role_map</code> มี 19 roles seed (vat_input → 11-4101 ฯลฯ) ที่ JE templates ใช้</p>
+      <p>Admin UI ที่ wire ใน PR #935 + #939 + #945 ให้ OWNER แก้ mapping ผ่าน <code style="font-family: 'IBM Plex Mono', monospace; font-size: 13px;">/settings/account-roles</code> — มี normal-balance validation (Dr/Cr side check)</p>
+      <p>คำถามคือ: ถ้าไม่ต้องการให้ OWNER แก้ JE routing เอง (เก็บไว้เปลี่ยนใน code เท่านั้น) สามารถลบ UI ทิ้งได้</p>
+    </div>
+    <div class="q-current">UI wire แล้ว — OWNER สามารถ remap ได้ พร้อม REQUIRED_ROLES lock 19 roles หลัก</div>
+    <div class="q-options">
+      <div class="q-option" onclick="toggleRadio(this, 'q7')">
+        <div class="q-radio"></div>
+        <div class="q-option-text"><span class="accent">A</span>เก็บ UI ไว้ — flexible ปรับ chart of accounts ได้</div>
+      </div>
+      <div class="q-option" onclick="toggleRadio(this, 'q7')">
+        <div class="q-radio"></div>
+        <div class="q-option-text"><span class="accent">B</span>ลบ UI ทิ้ง — เก็บ DB seed ไว้ (revert PRs #935/#939/#945)</div>
+      </div>
+      <div class="q-option" onclick="toggleRadio(this, 'q7')">
+        <div class="q-radio"></div>
+        <div class="q-option-text"><span class="accent">C</span>UI read-only — ดูได้แต่แก้ไม่ได้ (audit transparency)</div>
+      </div>
+    </div>
+    <label class="q-note-label">หมายเหตุ</label>
+    <textarea class="q-note" placeholder="..."></textarea>
+  </div>
+
+  <!-- Q8 -->
+  <div class="question">
+    <div class="q-tag">Q8 · Petty Cash Replenish Alert</div>
+    <div class="question-head">
+      <div class="q-number">viii</div>
+      <div class="q-title">Petty Cash Replenish Threshold — keep (wired) หรือ kill (ลบ setting)?</div>
+    </div>
+    <div class="q-context">
+      <p>PR #943 wire <em>petty_cash_replenish_threshold</em> (default 5,000฿) เป็น kill switch ที่ wire เข้า Cron · เมื่อ balance ต่ำกว่าจะแจ้ง OWNER ผ่าน IN_APP</p>
+      <p>หรือถ้านโยบายจริงไม่ต้องการ alert อัตโนมัติ (วัด eyeball เอา) สามารถ revert PR นี้</p>
+    </div>
+    <div class="q-current">Wire ไว้แล้ว — threshold=0 ปิด alert · threshold=5000 (default) แจ้งเมื่อ balance &lt; 5,000฿</div>
+    <div class="q-options">
+      <div class="q-option" onclick="toggleRadio(this, 'q8')">
+        <div class="q-radio"></div>
+        <div class="q-option-text"><span class="accent">A</span>เก็บ Alert — default 5,000฿ (ตาม PR)</div>
+      </div>
+      <div class="q-option" onclick="toggleRadio(this, 'q8')">
+        <div class="q-radio"></div>
+        <div class="q-option-text"><span class="accent">B</span>เก็บ Alert — เปลี่ยน threshold เป็นค่าอื่น</div>
+      </div>
+      <div class="q-option" onclick="toggleRadio(this, 'q8')">
+        <div class="q-radio"></div>
+        <div class="q-option-text"><span class="accent">C</span>Kill — revert PR #943 (ไม่ alert)</div>
+      </div>
+    </div>
+    <label class="q-note-label">หมายเหตุ — ระบุค่า threshold ถ้าเลือก B</label>
+    <textarea class="q-note" placeholder="..."></textarea>
+  </div>
+
+  <!-- BONUS -->
+  <div class="question" style="border-left-color: var(--accent-ledger);">
+    <div class="q-tag" style="color: var(--accent-ledger); border-color: var(--accent-ledger); background: rgba(44, 92, 74, 0.05);">Bonus · ความเห็นทั่วไป</div>
+    <div class="question-head">
+      <div class="q-number" style="color: var(--accent-ledger);">⁂</div>
+      <div class="q-title">มีความเห็นเพิ่มเติมเกี่ยวกับ JE / VAT / WHT / SSO ตาม TFRS for NPAEs ที่ต้องการแจ้ง?</div>
+    </div>
+    <div class="q-context">
+      <p>เช่น: VAT-on-interest (CR-001), Interest recognition upfront vs accrual (N-005), Unearned interest field (W-003), SHOP-side accounting (paired SHOP+FINANCE JEs)</p>
+    </div>
+    <label class="q-note-label">ข้อสังเกตจากนักบัญชี</label>
+    <textarea class="q-note" style="min-height: 120px;" placeholder="โปรดระบุข้อเสนอแนะใดๆ..."></textarea>
+  </div>
+
+</section>
+
+<!-- RECAP -->
+<div class="recap">
+  <h3>หมายเหตุท้ายเอกสาร — สรุปสิ่งที่ครอบคลุม</h3>
+  <ul>
+    <li>89 Pull Requests · 75/75 D1 items · 102/102 A1 Settings Audit items · Master TOTAL 159/159 (post-merge projection)</li>
+    <li>JE templates ตาม Phase A.4 — TFRS for NPAEs full-accrual ผ่าน Unearned Interest 11-2106 + Deferred Output VAT 21-2102</li>
+    <li>Tax-disallowed expense flag (PR #990) เปิด Phase A.5 — รองรับ ภ.ง.ด.50/51</li>
+    <li>Audit log retention 5 ปี + archive (พ.ร.บ.การบัญชี ม.7)</li>
+    <li>WHT rates configurable (1/3/5/10/15%) + effectiveDate per rate · SSO locked at 5% (พ.ร.บ.ประกันสังคม §46)</li>
+    <li>Approval Workflow — PAYROLL หรือ amount ≥ 50,000฿ ต้องอนุมัติก่อน POST · ทุก transition มี AuditLog</li>
+  </ul>
+</div>
+
+<!-- SIGNATURE -->
+<div class="signature">
+  <div class="sig-block">
+    <div class="sig-line"></div>
+    <div class="sig-label">นักบัญชี / ผู้ตรวจสอบ</div>
+    <div class="sig-date">วันที่ ___ / ___ / 2569</div>
+  </div>
+  <div class="sig-block">
+    <div class="sig-line"></div>
+    <div class="sig-label">เจ้าของกิจการ — akenarin.ak</div>
+    <div class="sig-date">วันที่ ___ / ___ / 2569</div>
+  </div>
+</div>
+
+<footer class="doc-footer">
+  <div>BESTCHOICE · expense module v2.0 · session 2026-05-17</div>
+  <div class="footer-mark">— fin —</div>
+</footer>
+
+</main>
+
+<script>
+function toggleRadio(option, group) {
+  // Clear other radios in same group
+  const question = option.closest('.question');
+  question.querySelectorAll('.q-radio').forEach(r => r.classList.remove('selected'));
+  // Mark this one
+  option.querySelector('.q-radio').classList.add('selected');
+}
+</script>
+
+</body>
+</html>

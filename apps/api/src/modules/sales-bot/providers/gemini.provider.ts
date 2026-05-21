@@ -15,7 +15,7 @@ import {
   LlmToolDefinition,
 } from './llm-provider.interface';
 
-const DEFAULT_MODEL = 'gemini-2.0-flash';
+const DEFAULT_MODEL = 'gemini-2.5-flash';
 const DEFAULT_LOCATION = 'us-central1';
 const VERTEX_SCOPE = 'https://www.googleapis.com/auth/cloud-platform';
 const DEFAULT_MAX_TOKENS = 1024;
@@ -178,13 +178,26 @@ export class GeminiProvider implements ILlmProvider {
 
   private buildRequestBody(req: LlmChatRequest): Record<string, unknown> {
     const contents = this.projectMessages(req.messages);
+    const generationConfig: Record<string, unknown> = {
+      maxOutputTokens: req.maxOutputTokens ?? DEFAULT_MAX_TOKENS,
+      temperature: 0.7,
+    };
+
+    // Gemini 2.5+ defaults to "thinking mode" — model consumes hundreds of
+    // hidden reasoning tokens before producing user-visible output. For a
+    // sales chat (latency-sensitive, short replies) that's pure overhead:
+    // it makes greetings hit MAX_TOKENS truncation and inflates cost ~8x.
+    // Verified empirically on 2026-05-21: same Thai greeting prompt used
+    // 190 thoughtsTokens at default vs 0 with thinkingBudget=0, output
+    // identical-quality and complete instead of truncated.
+    if (this.model.startsWith('gemini-2.5')) {
+      generationConfig.thinkingConfig = { thinkingBudget: 0 };
+    }
+
     const body: Record<string, unknown> = {
       systemInstruction: { parts: [{ text: req.systemPrompt }] },
       contents,
-      generationConfig: {
-        maxOutputTokens: req.maxOutputTokens ?? DEFAULT_MAX_TOKENS,
-        temperature: 0.7,
-      },
+      generationConfig,
     };
 
     if (req.tools && req.tools.length > 0) {

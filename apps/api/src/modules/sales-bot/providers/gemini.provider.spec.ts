@@ -12,7 +12,7 @@ jest.mock('google-auth-library', () => ({
 
 function makeConfig(overrides: Record<string, string | undefined> = {}) {
   const base: Record<string, string | undefined> = {
-    GEMINI_MODEL: 'gemini-2.0-flash',
+    GEMINI_MODEL: 'gemini-2.5-flash',
     VERTEX_LOCATION: 'us-central1',
     ...overrides,
   };
@@ -116,7 +116,7 @@ describe('GeminiProvider', () => {
       expect(resp.toolCalls).toHaveLength(0);
       expect(resp.inputTokens).toBe(50);
       expect(resp.outputTokens).toBe(12);
-      expect(resp.modelName).toBe('gemini-2.0-flash (aistudio)');
+      expect(resp.modelName).toBe('gemini-2.5-flash (aistudio)');
     });
 
     it('does NOT send Authorization header (uses key param)', async () => {
@@ -177,7 +177,7 @@ describe('GeminiProvider', () => {
       expect(resp.toolCalls[0].name).toBe('search_products');
       expect(resp.toolCalls[0].input).toEqual({ query: 'iPhone 15' });
       expect(resp.toolCalls[0].id).toMatch(/^fn_\d+_search_products$/);
-      expect(resp.modelName).toBe('gemini-2.0-flash (vertex)');
+      expect(resp.modelName).toBe('gemini-2.5-flash (vertex)');
     });
 
     it('sends system instruction + tools as functionDeclarations + sanitizes schema', async () => {
@@ -268,6 +268,44 @@ describe('GeminiProvider', () => {
       await expect(
         p.chat({ systemPrompt: 'x', messages: [{ role: 'user', content: 'hi' }] }),
       ).rejects.toThrow(/Gemini vertex failed: 429/);
+    });
+  });
+
+  describe('thinkingConfig (2.5-series only)', () => {
+    it('sets thinkingBudget=0 on gemini-2.5-flash to skip hidden reasoning', async () => {
+      const p = await buildProvider({
+        GOOGLE_CLOUD_PROJECT: 'bestchoice-prod',
+        GEMINI_MODEL: 'gemini-2.5-flash',
+      });
+      fakeFetchResponse(fetchSpy, {
+        candidates: [{ content: { parts: [{ text: 'ok' }] } }],
+        usageMetadata: { promptTokenCount: 5, candidatesTokenCount: 1 },
+      });
+      await p.chat({
+        systemPrompt: 'x',
+        messages: [{ role: 'user', content: 'hi' }],
+      });
+      const [, init] = fetchSpy.mock.calls[0];
+      const body = JSON.parse(init.body as string);
+      expect(body.generationConfig.thinkingConfig).toEqual({ thinkingBudget: 0 });
+    });
+
+    it('does NOT set thinkingConfig on pre-2.5 models', async () => {
+      const p = await buildProvider({
+        GOOGLE_CLOUD_PROJECT: 'bestchoice-prod',
+        GEMINI_MODEL: 'gemini-2.0-flash',
+      });
+      fakeFetchResponse(fetchSpy, {
+        candidates: [{ content: { parts: [{ text: 'ok' }] } }],
+        usageMetadata: { promptTokenCount: 5, candidatesTokenCount: 1 },
+      });
+      await p.chat({
+        systemPrompt: 'x',
+        messages: [{ role: 'user', content: 'hi' }],
+      });
+      const [, init] = fetchSpy.mock.calls[0];
+      const body = JSON.parse(init.body as string);
+      expect(body.generationConfig.thinkingConfig).toBeUndefined();
     });
   });
 });

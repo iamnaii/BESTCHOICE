@@ -1,0 +1,38 @@
+[
+  { "id": "g01", "category": "greeting", "text": "สวัสดีครับ" },
+  { "id": "g02", "category": "greeting", "text": "ทักนิดนึง" },
+  { "id": "g03", "category": "greeting", "text": "👋" },
+  { "id": "g04", "category": "greeting", "text": "ขอสอบถามหน่อย" },
+  { "id": "g05", "category": "greeting", "text": "ฮัลโหลครับ" },
+  { "id": "g06", "category": "greeting", "text": "สนใจครับ" },
+
+  { "id": "p01", "category": "price_direct", "text": "iPhone 15 ราคาเท่าไหร่" },
+  { "id": "p02", "category": "price_direct", "text": "Samsung A55 ผ่อนได้ไหม" },
+  { "id": "p03", "category": "price_direct", "text": "iPhone 14 Pro Max มีไหม" },
+  { "id": "p04", "category": "price_indirect", "text": "อยากได้เครื่องเล่นเกมงบ 20k" },
+  { "id": "p05", "category": "price_indirect", "text": "งบ 10000 มีรุ่นไหนแนะนำมั้ย" },
+  { "id": "p06", "category": "price_indirect", "text": "อยากได้กล้องดีๆ ผ่อนได้ไหมครับ" },
+  { "id": "p07", "category": "price_indirect", "text": "มีมือสองสภาพดีๆ มั้ย ราคาไม่แพง" },
+  { "id": "p08", "category": "spec_question", "text": "iPhone 15 กับ 15 Pro ต่างกันยังไงครับ" },
+
+  { "id": "b01", "category": "buying_signal", "text": "เอา iPhone 15 ครับ ขอผ่อน 12 งวด" },
+  { "id": "b02", "category": "buying_signal", "text": "โอเคครับ เอาเลย ส่งของยังไง" },
+  { "id": "b03", "category": "buying_signal", "text": "สนใจครับ จ่ายดาวน์ยังไง" },
+  { "id": "b04", "category": "buying_signal", "text": "เก็บปลายทางได้ไหมครับ" },
+  { "id": "b05", "category": "buying_signal_with_info", "text": "เอา iPhone 15 256GB ครับ ผมชื่อสมชาย เบอร์ 0812345678" },
+
+  { "id": "o01", "category": "objection", "text": "แพงไปครับ ลดได้ไหม" },
+  { "id": "o02", "category": "objection", "text": "ขอคิดดูก่อนนะครับ" },
+  { "id": "o03", "category": "objection", "text": "เป็นของก๊อปรึเปล่า ติด iCloud ไหม" },
+  { "id": "o04", "category": "objection", "text": "Samsung Finance+ ดอกถูกกว่ามั้ย" },
+
+  { "id": "r01", "category": "red_flag", "text": "ขอผ่อน iPhone 15 3 เครื่องครับ คนละชื่อกัน" },
+  { "id": "r02", "category": "red_flag", "text": "เอา iPhone 15 Pro Max 1TB ดาวน์น้อยสุดได้ไหม" },
+  { "id": "r03", "category": "red_flag", "text": "ผมเคยซื้อแล้วโดนโกง ร้านนี้รับประกันได้ไหม" },
+
+  { "id": "m01", "category": "mdm_question", "text": "ถ้าจ่ายช้าเครื่องโดนล็อคใช่ไหมครับ" },
+  { "id": "m02", "category": "mdm_question", "text": "เครื่องนี้ติดอะไรไหม ถ้าผมขายต่อ" },
+
+  { "id": "x01", "category": "off_topic", "text": "เครื่องเสีย เคลมยังไงครับ" },
+  { "id": "x02", "category": "off_topic", "text": "ผมจ่ายงวดที่แล้วยังไม่ครบ เอาเครื่องคืน" }
+]

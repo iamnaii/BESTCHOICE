@@ -155,6 +155,9 @@ export class MessageRouterService {
         .map((s) => s.trim())
         .filter(Boolean);
       if (!whitelist.includes(message.externalUserId ?? '')) {
+        this.logger.log(
+          `[FbBotKillSwitch] room=${room.id} psid=${message.externalUserId} not in whitelist=${JSON.stringify(whitelist)} — skipped`,
+        );
         return;
       }
     }

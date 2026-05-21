@@ -1,4 +1,5 @@
 import { Injectable, Logger, NotFoundException, Optional, Inject } from '@nestjs/common';
+import { ChatChannel } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ChatIntentRouterService } from '../chat-intent-router/chat-intent-router.service';
 import { SalesBotService } from '../sales-bot/sales-bot.service';
@@ -8,6 +9,16 @@ import {
   IChatGateway,
   CHAT_GATEWAY_TOKEN,
 } from '../chat-engine/interfaces/chat-gateway.interface';
+
+// Phase A: SHOP channels (LINE_SHOP, FACEBOOK, WEB) are handled by
+// AiAutoReplyService directly — they MUST NOT pass through this legacy
+// draft pipeline, whose catch-all else silently flips handoffMode=true
+// (reason 'router_handoff') and blocks all subsequent AI replies.
+const SHOP_CHANNELS: ReadonlySet<ChatChannel> = new Set([
+  ChatChannel.LINE_SHOP,
+  ChatChannel.FACEBOOK,
+  ChatChannel.WEB,
+]);
 
 @Injectable()
 export class ChatAiDraftService {
@@ -30,6 +41,12 @@ export class ChatAiDraftService {
       include: { room: true },
     });
     if (!inbound || !inbound.text) throw new NotFoundException('inbound message not found');
+    if (SHOP_CHANNELS.has(inbound.room.channel)) {
+      this.logger.debug(
+        `Room ${inbound.room.id} on SHOP channel ${inbound.room.channel} — Phase A AiAutoReplyService owns this; skipping legacy draft pipeline`,
+      );
+      return { draftMessageId: '' };
+    }
     if (inbound.room.aiPaused || inbound.room.handoffMode) {
       this.logger.log(`Room ${inbound.room.id} AI paused/handoff — skipping draft`);
       return { draftMessageId: '' };
@@ -122,6 +139,9 @@ export class ChatAiDraftService {
       inputTokens = r.inputTokens;
       outputTokens = r.outputTokens;
     } else {
+      this.logger.warn(
+        `[ChatAiDraft] router_handoff triggered for room ${inbound.room.id} channel=${inbound.room.channel} text="${inbound.text}"`,
+      );
       await this.prisma.chatRoom.update({
         where: { id: inbound.roomId },
         data: { handoffMode: true, handoffReason: 'router_handoff', handoffTaggedAt: new Date() },

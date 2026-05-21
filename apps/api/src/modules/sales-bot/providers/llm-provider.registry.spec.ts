@@ -76,6 +76,22 @@ describe('LlmProviderRegistry', () => {
     expect(prisma.systemConfig.findFirst).toHaveBeenCalledTimes(1);
   });
 
+  it('invalidateCache() forces next call to re-read SystemConfig', async () => {
+    const { registry, prisma } = await build('gemini');
+    await registry.getActive();
+    registry.invalidateCache();
+    await registry.getActive();
+    expect(prisma.systemConfig.findFirst).toHaveBeenCalledTimes(2);
+  });
+
+  it('invalidateCache() is idempotent — safe to call when cache empty', async () => {
+    const { registry } = await build('gemini');
+    expect(() => registry.invalidateCache()).not.toThrow();
+    expect(() => registry.invalidateCache()).not.toThrow();
+    const p = await registry.getActive();
+    expect(p.providerName).toBe('gemini');
+  });
+
   it('falls back to claude when DB errors', async () => {
     const prisma = {
       systemConfig: {

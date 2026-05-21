@@ -3,8 +3,11 @@ import { ConfigService } from '@nestjs/config';
 import { AiAutoReplyService } from './ai-auto-reply.service';
 import { AiSuggestService } from './ai-suggest.service';
 import { SalesBotService } from '../../sales-bot/sales-bot.service';
+import { LlmProviderRegistry } from '../../sales-bot/providers/llm-provider.registry';
 import { MessageRouterService } from '../../chat-engine/services/message-router.service';
 import { PrismaService } from '../../../prisma/prisma.service';
+
+const makeLlmRegistryMock = () => ({ invalidateCache: jest.fn() });
 
 describe('AiAutoReplyService.shouldAutoReply', () => {
   let svc: AiAutoReplyService;
@@ -27,6 +30,7 @@ describe('AiAutoReplyService.shouldAutoReply', () => {
         { provide: AiSuggestService, useValue: {} },
         { provide: SalesBotService, useValue: { generateReply: jest.fn() } },
         { provide: MessageRouterService, useValue: { getAdapter: jest.fn() } },
+        { provide: LlmProviderRegistry, useValue: makeLlmRegistryMock() },
       ],
     }).compile();
     svc = mod.get(AiAutoReplyService);
@@ -93,6 +97,7 @@ describe('AiAutoReplyService.autoReply', () => {
         // NEW dep: SalesBotService
         { provide: SalesBotService, useValue: salesBot },
         { provide: MessageRouterService, useValue: { getAdapter: jest.fn() } },
+        { provide: LlmProviderRegistry, useValue: makeLlmRegistryMock() },
       ],
     }).compile();
     svc = mod.get(AiAutoReplyService);
@@ -157,6 +162,7 @@ describe('AiAutoReplyService.testSend', () => {
         { provide: AiSuggestService, useValue: {} },
         { provide: SalesBotService, useValue: {} },
         { provide: MessageRouterService, useValue: messageRouter },
+        { provide: LlmProviderRegistry, useValue: makeLlmRegistryMock() },
       ],
     }).compile();
     svc = mod.get(AiAutoReplyService);
@@ -202,5 +208,84 @@ describe('AiAutoReplyService.testSend', () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toBe('token invalid');
+  });
+});
+
+describe('AiAutoReplyService.llmProvider — get + update + cache invalidation', () => {
+  let svc: AiAutoReplyService;
+  let prisma: any;
+  let llmRegistry: { invalidateCache: jest.Mock };
+
+  beforeEach(async () => {
+    llmRegistry = makeLlmRegistryMock();
+    prisma = {
+      systemConfig: {
+        findMany: jest.fn(),
+        upsert: jest.fn().mockResolvedValue({}),
+      },
+    };
+    const mod: TestingModule = await Test.createTestingModule({
+      providers: [
+        AiAutoReplyService,
+        { provide: ConfigService, useValue: { get: () => undefined } },
+        { provide: PrismaService, useValue: prisma },
+        { provide: AiSuggestService, useValue: {} },
+        { provide: SalesBotService, useValue: {} },
+        { provide: MessageRouterService, useValue: { getAdapter: jest.fn() } },
+        { provide: LlmProviderRegistry, useValue: llmRegistry },
+      ],
+    }).compile();
+    svc = mod.get(AiAutoReplyService);
+  });
+
+  it('getSettings defaults llmProvider to "claude" when config row absent', async () => {
+    prisma.systemConfig.findMany.mockResolvedValue([]);
+    const s = await svc.getSettings();
+    expect(s.llmProvider).toBe('claude');
+  });
+
+  it('getSettings returns "gemini" when shop_bot_llm_provider=gemini', async () => {
+    prisma.systemConfig.findMany.mockResolvedValue([
+      { key: 'shop_bot_llm_provider', value: 'gemini' },
+    ]);
+    const s = await svc.getSettings();
+    expect(s.llmProvider).toBe('gemini');
+  });
+
+  it('getSettings is case-insensitive — "GEMINI" still parses as gemini', async () => {
+    prisma.systemConfig.findMany.mockResolvedValue([
+      { key: 'shop_bot_llm_provider', value: 'GEMINI' },
+    ]);
+    const s = await svc.getSettings();
+    expect(s.llmProvider).toBe('gemini');
+  });
+
+  it('getSettings falls back to "claude" on unknown value (matches registry behavior)', async () => {
+    prisma.systemConfig.findMany.mockResolvedValue([
+      { key: 'shop_bot_llm_provider', value: 'llama' },
+    ]);
+    const s = await svc.getSettings();
+    expect(s.llmProvider).toBe('claude');
+  });
+
+  it('updateSettings({llmProvider: "gemini"}) upserts SystemConfig + invalidates registry cache', async () => {
+    prisma.systemConfig.findMany.mockResolvedValue([
+      { key: 'shop_bot_llm_provider', value: 'gemini' },
+    ]);
+    await svc.updateSettings({ llmProvider: 'gemini' });
+    expect(prisma.systemConfig.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { key: 'shop_bot_llm_provider' },
+        create: expect.objectContaining({ key: 'shop_bot_llm_provider', value: 'gemini' }),
+        update: expect.objectContaining({ value: 'gemini' }),
+      }),
+    );
+    expect(llmRegistry.invalidateCache).toHaveBeenCalledTimes(1);
+  });
+
+  it('updateSettings without llmProvider does NOT invalidate cache (no LLM-touching change)', async () => {
+    prisma.systemConfig.findMany.mockResolvedValue([]);
+    await svc.updateSettings({ aiAutoEnabled: true });
+    expect(llmRegistry.invalidateCache).not.toHaveBeenCalled();
   });
 });

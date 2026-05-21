@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { AiAutoReplyService } from '../ai-auto-reply.service';
 import { AiSuggestService } from '../ai-suggest.service';
 import { SalesBotService } from '../../../sales-bot/sales-bot.service';
+import { LlmProviderRegistry } from '../../../sales-bot/providers/llm-provider.registry';
 import { PrismaService } from '../../../../prisma/prisma.service';
 
 describe('SHOP AI integration — autoReply with SalesBot mock', () => {
@@ -26,6 +27,7 @@ describe('SHOP AI integration — autoReply with SalesBot mock', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: AiSuggestService, useValue: { suggest: jest.fn() } },
         { provide: SalesBotService, useValue: salesBot },
+        { provide: LlmProviderRegistry, useValue: { invalidateCache: jest.fn() } },
       ],
     }).compile();
     svc = mod.get(AiAutoReplyService);

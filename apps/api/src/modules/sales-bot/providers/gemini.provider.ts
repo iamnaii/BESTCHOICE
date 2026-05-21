@@ -15,12 +15,12 @@ import {
   LlmToolDefinition,
 } from './llm-provider.interface';
 
-const DEFAULT_MODEL = 'gemini-2.0-flash-001';
+const DEFAULT_MODEL = 'gemini-2.0-flash';
 const DEFAULT_LOCATION = 'us-central1';
 const VERTEX_SCOPE = 'https://www.googleapis.com/auth/cloud-platform';
 const DEFAULT_MAX_TOKENS = 1024;
 
-interface VertexGeminiResponse {
+interface GeminiResponse {
   candidates?: {
     content?: {
       parts?: Array<
@@ -37,91 +37,119 @@ interface VertexGeminiResponse {
   };
 }
 
+type Mode = 'aistudio' | 'vertex';
+
 /**
- * Wraps Vertex AI's Gemini generateContent endpoint behind ILlmProvider.
+ * Wraps Google's Gemini chat API behind ILlmProvider.
  *
- * Auth: reuses Application Default Credentials (same as EmbeddingService).
- * Tool calling: converts JSON Schema → OpenAPI subset (Gemini's `parameters`).
+ * Two transport paths supported, selected at startup:
+ *
+ * 1. **AI Studio** (`mode='aistudio'`) — used when `GEMINI_API_KEY` env is set.
+ *    Hits `generativelanguage.googleapis.com` with API key auth.
+ *    Faster to set up: paid tier API key (https://aistudio.google.com/app/apikey),
+ *    no GCP project approval needed. **Paid tier opts out of data training**
+ *    (free tier does train, so we explicitly require paid).
+ *
+ * 2. **Vertex AI** (`mode='vertex'`) — used when GEMINI_API_KEY absent but
+ *    `GOOGLE_CLOUD_PROJECT` is set. Hits
+ *    `${LOCATION}-aiplatform.googleapis.com` with ADC (GoogleAuth).
+ *    Requires owner to accept Gemini terms in GCP console first.
+ *    Better long-term: GCP-native IAM, single billing, enterprise compliance.
+ *
+ * If neither env present → isReady() returns false → registry falls back to Claude.
+ *
+ * Tool calling: converts JSON Schema → OpenAPI subset (same wire format for both).
  * Function-call id: Gemini doesn't return one — we synthesize `fn_<i>_<name>`
- * so SalesBotService can correlate tool result back to the call. The synthetic
- * id round-trips correctly because both halves of the loop live in
- * SalesBotService memory — Gemini itself never sees the id field.
+ * so SalesBotService can correlate tool result back to the call.
  */
 @Injectable()
 export class GeminiProvider implements ILlmProvider {
   readonly providerName: LlmProviderName = 'gemini';
   private readonly logger = new Logger(GeminiProvider.name);
+  private readonly mode: Mode | null;
+  private readonly model: string;
+  // Vertex-only fields
   private readonly auth: GoogleAuth;
   private readonly project: string | undefined;
   private readonly location: string;
-  private readonly model: string;
+  // AI Studio-only fields
+  private readonly apiKey: string | undefined;
 
   constructor(private config: ConfigService) {
+    this.apiKey = this.config.get<string>('GEMINI_API_KEY');
     this.project =
       this.config.get<string>('GOOGLE_CLOUD_PROJECT') ??
       this.config.get<string>('GCP_PROJECT_ID');
     this.location = this.config.get<string>('VERTEX_LOCATION') ?? DEFAULT_LOCATION;
-    this.model = this.config.get<string>('VERTEX_GEMINI_MODEL') ?? DEFAULT_MODEL;
+    this.model = this.config.get<string>('GEMINI_MODEL') ?? DEFAULT_MODEL;
     this.auth = new GoogleAuth({ scopes: [VERTEX_SCOPE] });
 
-    if (!this.project) {
+    if (this.apiKey) {
+      this.mode = 'aistudio';
+      this.logger.log(`GeminiProvider: AI Studio mode (model=${this.model})`);
+    } else if (this.project) {
+      this.mode = 'vertex';
+      this.logger.log(
+        `GeminiProvider: Vertex mode (project=${this.project}, location=${this.location}, model=${this.model})`,
+      );
+    } else {
+      this.mode = null;
       this.logger.warn(
-        'GOOGLE_CLOUD_PROJECT not set — GeminiProvider will fail at call time. Set env var or run `gcloud auth application-default login`.',
+        'GeminiProvider: neither GEMINI_API_KEY nor GOOGLE_CLOUD_PROJECT set — provider not ready, registry will fall back to Claude',
       );
     }
   }
 
   isReady(): boolean {
-    return Boolean(this.project);
+    return this.mode !== null;
   }
 
   async chat(req: LlmChatRequest): Promise<LlmChatResponse> {
-    if (!this.project) {
+    if (this.mode === null) {
       throw new ServiceUnavailableException(
-        'GOOGLE_CLOUD_PROJECT ไม่ได้ตั้งค่า — GeminiProvider ใช้ไม่ได้',
+        'GeminiProvider not configured — set GEMINI_API_KEY (AI Studio) or GOOGLE_CLOUD_PROJECT (Vertex)',
       );
     }
 
-    const endpoint = `https://${this.location}-aiplatform.googleapis.com/v1/projects/${this.project}/locations/${this.location}/publishers/google/models/${this.model}:generateContent`;
+    const body = this.buildRequestBody(req);
 
-    const client = await this.auth.getClient();
-    const accessToken = (await client.getAccessToken()).token;
-    if (!accessToken) {
-      throw new ServiceUnavailableException(
-        'ไม่สามารถขอ access token ของ Google Cloud ได้ — ตรวจสอบ ADC',
-      );
-    }
+    const endpoint =
+      this.mode === 'aistudio'
+        ? `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`
+        : `https://${this.location}-aiplatform.googleapis.com/v1/projects/${this.project}/locations/${this.location}/publishers/google/models/${this.model}:generateContent`;
 
-    const contents = this.projectMessages(req.messages);
-    const body: Record<string, unknown> = {
-      systemInstruction: { parts: [{ text: req.systemPrompt }] },
-      contents,
-      generationConfig: {
-        maxOutputTokens: req.maxOutputTokens ?? DEFAULT_MAX_TOKENS,
-        temperature: 0.7,
-      },
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
     };
 
-    if (req.tools && req.tools.length > 0) {
-      body.tools = [{ functionDeclarations: req.tools.map((t) => this.toVertexTool(t)) }];
+    if (this.mode === 'vertex') {
+      const client = await this.auth.getClient();
+      const accessToken = (await client.getAccessToken()).token;
+      if (!accessToken) {
+        throw new ServiceUnavailableException(
+          'ไม่สามารถขอ access token ของ Google Cloud ได้ — ตรวจสอบ ADC',
+        );
+      }
+      headers.Authorization = `Bearer ${accessToken}`;
     }
 
     const res = await fetch(endpoint, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
+      headers,
       body: JSON.stringify(body),
     });
 
     if (!res.ok) {
       const errBody = await res.text().catch(() => '');
-      this.logger.error(`Vertex Gemini failed (${res.status}): ${errBody}`);
-      throw new ServiceUnavailableException(`Vertex Gemini failed: ${res.status}`);
+      this.logger.error(
+        `Gemini ${this.mode} failed (${res.status}): ${errBody.slice(0, 300)}`,
+      );
+      throw new ServiceUnavailableException(
+        `Gemini ${this.mode} failed: ${res.status}`,
+      );
     }
 
-    const json = (await res.json()) as VertexGeminiResponse;
+    const json = (await res.json()) as GeminiResponse;
     const candidate = json.candidates?.[0];
     const parts = candidate?.content?.parts ?? [];
 
@@ -144,14 +172,34 @@ export class GeminiProvider implements ILlmProvider {
       toolCalls,
       inputTokens: json.usageMetadata?.promptTokenCount ?? 0,
       outputTokens: json.usageMetadata?.candidatesTokenCount ?? 0,
-      modelName: this.model,
+      modelName: `${this.model} (${this.mode})`,
     };
   }
 
+  private buildRequestBody(req: LlmChatRequest): Record<string, unknown> {
+    const contents = this.projectMessages(req.messages);
+    const body: Record<string, unknown> = {
+      systemInstruction: { parts: [{ text: req.systemPrompt }] },
+      contents,
+      generationConfig: {
+        maxOutputTokens: req.maxOutputTokens ?? DEFAULT_MAX_TOKENS,
+        temperature: 0.7,
+      },
+    };
+
+    if (req.tools && req.tools.length > 0) {
+      body.tools = [
+        { functionDeclarations: req.tools.map((t) => this.toGeminiTool(t)) },
+      ];
+    }
+
+    return body;
+  }
+
   /**
-   * Project provider-agnostic LlmChatMessage[] to Vertex `contents` array.
+   * Project provider-agnostic LlmChatMessage[] to Gemini `contents` array.
    *
-   * Vertex maps:
+   * Wire format is identical between Vertex and AI Studio for chat content:
    * - user → { role: 'user', parts: [{ text }] }
    * - assistant text → { role: 'model', parts: [{ text }] }
    * - assistant tool_calls → { role: 'model', parts: [{ functionCall }, ...] }
@@ -164,10 +212,6 @@ export class GeminiProvider implements ILlmProvider {
    */
   private projectMessages(messages: LlmChatMessage[]): unknown[] {
     const out: unknown[] = [];
-    /**
-     * Map from synthesized toolCallId → original tool name. SalesBotService
-     * accumulates tool messages by id, but Gemini wants name. We track here.
-     */
     const idToName = new Map<string, string>();
 
     for (const msg of messages) {
@@ -225,14 +269,7 @@ export class GeminiProvider implements ILlmProvider {
     }
   }
 
-  /**
-   * Convert tool definition from neutral JSON Schema → Vertex FunctionDeclaration.
-   *
-   * Vertex's `parameters` accepts OpenAPI schema subset. Most JSON Schema
-   * features map 1:1. Strip unsupported keys (e.g. $schema, definitions) to
-   * avoid 400 INVALID_ARGUMENT.
-   */
-  private toVertexTool(t: LlmToolDefinition): {
+  private toGeminiTool(t: LlmToolDefinition): {
     name: string;
     description: string;
     parameters: Record<string, unknown>;
@@ -244,6 +281,10 @@ export class GeminiProvider implements ILlmProvider {
     };
   }
 
+  /**
+   * Sanitize JSON Schema → Gemini-accepted OpenAPI subset.
+   * Both Vertex and AI Studio accept the same schema shape.
+   */
   private sanitizeSchema(schema: Record<string, unknown>): Record<string, unknown> {
     const out: Record<string, unknown> = {};
     const allowed = new Set([

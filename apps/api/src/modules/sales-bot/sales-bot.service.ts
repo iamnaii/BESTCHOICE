@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import Anthropic from '@anthropic-ai/sdk';
 import { SALES_BOT_SYSTEM_PROMPT } from './prompts/sales-bot.system';
 import { SearchProductsTool, SEARCH_PRODUCTS_TOOL } from './tools/search-products.tool';
 import {
@@ -9,6 +8,12 @@ import {
 import { ListPromotionsTool, LIST_PROMOTIONS_TOOL } from './tools/list-promotions.tool';
 import { HandoffToHumanTool, HANDOFF_TO_HUMAN_TOOL } from './tools/handoff-to-human.tool';
 import { CaptureLeadTool, CAPTURE_LEAD_TOOL } from './tools/capture-lead.tool';
+import { LlmProviderRegistry } from './providers/llm-provider.registry';
+import {
+  LlmChatMessage,
+  LlmToolCall,
+  LlmToolDefinition,
+} from './providers/llm-provider.interface';
 
 export interface SalesBotInput {
   text: string;
@@ -23,20 +28,38 @@ export interface SalesBotResult {
   toolsUsed: string[];
   inputTokens: number;
   outputTokens: number;
+  modelUsed: string;
+}
+
+const MAX_TOOL_HOPS = 3;
+
+/**
+ * Convert legacy Anthropic-style tool definition (uses `input_schema`)
+ * to the provider-agnostic LlmToolDefinition (uses `inputSchema`).
+ *
+ * The tool definitions live as constants in each `tools/*.ts` file in
+ * Anthropic shape. Rather than touching every file, we do a small adapter
+ * here. Once we have confidence on Gemini parity, we can promote
+ * LlmToolDefinition into the tool files directly.
+ */
+function adaptTool(t: {
+  name: string;
+  description: string;
+  input_schema: Record<string, unknown>;
+}): LlmToolDefinition {
+  return {
+    name: t.name,
+    description: t.description,
+    inputSchema: t.input_schema,
+  };
 }
 
 @Injectable()
 export class SalesBotService {
   private readonly logger = new Logger(SalesBotService.name);
-  private _client: Anthropic | null = null;
-  private get client(): Anthropic {
-    if (!this._client) {
-      this._client = new Anthropic();
-    }
-    return this._client;
-  }
 
   constructor(
+    private readonly providerRegistry: LlmProviderRegistry,
     private readonly searchProducts: SearchProductsTool,
     private readonly calcInstallment: CalculateInstallmentTool,
     private readonly listPromotions: ListPromotionsTool,
@@ -45,65 +68,68 @@ export class SalesBotService {
   ) {}
 
   async generateReply(input: SalesBotInput): Promise<SalesBotResult> {
-    const tools = [
+    const tools: LlmToolDefinition[] = [
       SEARCH_PRODUCTS_TOOL,
       CALCULATE_INSTALLMENT_TOOL,
       LIST_PROMOTIONS_TOOL,
       HANDOFF_TO_HUMAN_TOOL,
       CAPTURE_LEAD_TOOL,
-    ];
-    const messages: Anthropic.MessageParam[] = [
-      ...(input.priorMessages ?? []).map((m) => ({ role: m.role, content: m.content })),
+    ].map(adaptTool);
+
+    const messages: LlmChatMessage[] = [
+      ...(input.priorMessages ?? []).map(
+        (m): LlmChatMessage => ({ role: m.role, content: m.content }),
+      ),
       { role: 'user', content: input.text },
     ];
 
+    const provider = await this.providerRegistry.getActive();
     const toolsUsed: string[] = [];
     let totalIn = 0;
     let totalOut = 0;
+    let modelUsed = '';
 
-    for (let hop = 0; hop < 3; hop++) {
-      const resp = await this.client.messages.create({
-        // Customer-facing reply loop — Sonnet for quality. Do NOT drop to Haiku.
-        model: 'claude-sonnet-4-6',
-        max_tokens: 1024,
-        system: SALES_BOT_SYSTEM_PROMPT,
-        tools: tools as Anthropic.Tool[],
+    for (let hop = 0; hop < MAX_TOOL_HOPS; hop++) {
+      const resp = await provider.chat({
+        systemPrompt: SALES_BOT_SYSTEM_PROMPT,
         messages,
+        tools,
       });
-      totalIn += resp.usage.input_tokens;
-      totalOut += resp.usage.output_tokens;
+      totalIn += resp.inputTokens;
+      totalOut += resp.outputTokens;
+      modelUsed = resp.modelName;
 
-      const toolUse = resp.content.find((c) => c.type === 'tool_use');
-      if (!toolUse || toolUse.type !== 'tool_use') {
-        const text = resp.content.find((c) => c.type === 'text');
-        const reply = text && text.type === 'text' ? text.text : '';
+      if (resp.toolCalls.length === 0) {
         return {
-          reply,
-          confidence: this.estimateConfidence(reply, toolsUsed),
+          reply: resp.text,
+          confidence: this.estimateConfidence(resp.text, toolsUsed),
           toolsUsed,
           inputTokens: totalIn,
           outputTokens: totalOut,
+          modelUsed,
         };
       }
 
-      toolsUsed.push(toolUse.name);
-      const toolResult = await this.runTool(
-        toolUse.name,
-        toolUse.input as Record<string, unknown>,
-        input.roomId,
-      );
+      // Record + execute every tool call from this turn (typically 1, but
+      // models can request several at once).
+      const toolResults: LlmChatMessage[] = [];
+      for (const tc of resp.toolCalls) {
+        toolsUsed.push(tc.name);
+        const result = await this.runTool(tc.name, tc.input, input.roomId);
+        toolResults.push({
+          role: 'tool',
+          toolCallId: tc.id,
+          content: JSON.stringify(result),
+        });
+      }
 
-      messages.push({ role: 'assistant', content: resp.content });
+      // Conversation grows: assistant turn (text + tool_calls) then tool results.
       messages.push({
-        role: 'user',
-        content: [
-          {
-            type: 'tool_result',
-            tool_use_id: toolUse.id,
-            content: JSON.stringify(toolResult),
-          },
-        ],
+        role: 'assistant',
+        content: resp.text,
+        toolCalls: resp.toolCalls,
       });
+      messages.push(...toolResults);
     }
 
     return {
@@ -112,6 +138,7 @@ export class SalesBotService {
       toolsUsed,
       inputTokens: totalIn,
       outputTokens: totalOut,
+      modelUsed,
     };
   }
 
@@ -163,5 +190,80 @@ export class SalesBotService {
     if (reply.trim().length < 20) return 0.6;
     if (toolsUsed.length > 0) return 0.95;
     return 0.9;
+  }
+
+  /** Internal accessor for bench CLI — bypasses registry to test specific provider */
+  async _generateReplyWithProvider(
+    input: SalesBotInput,
+    explicitProvider: import('./providers/llm-provider.interface').ILlmProvider,
+  ): Promise<SalesBotResult> {
+    const tools: LlmToolDefinition[] = [
+      SEARCH_PRODUCTS_TOOL,
+      CALCULATE_INSTALLMENT_TOOL,
+      LIST_PROMOTIONS_TOOL,
+      HANDOFF_TO_HUMAN_TOOL,
+      CAPTURE_LEAD_TOOL,
+    ].map(adaptTool);
+
+    const messages: LlmChatMessage[] = [
+      ...(input.priorMessages ?? []).map(
+        (m): LlmChatMessage => ({ role: m.role, content: m.content }),
+      ),
+      { role: 'user', content: input.text },
+    ];
+
+    const toolsUsed: string[] = [];
+    let totalIn = 0;
+    let totalOut = 0;
+    let modelUsed = '';
+
+    for (let hop = 0; hop < MAX_TOOL_HOPS; hop++) {
+      const resp = await explicitProvider.chat({
+        systemPrompt: SALES_BOT_SYSTEM_PROMPT,
+        messages,
+        tools,
+      });
+      totalIn += resp.inputTokens;
+      totalOut += resp.outputTokens;
+      modelUsed = resp.modelName;
+
+      if (resp.toolCalls.length === 0) {
+        return {
+          reply: resp.text,
+          confidence: this.estimateConfidence(resp.text, toolsUsed),
+          toolsUsed,
+          inputTokens: totalIn,
+          outputTokens: totalOut,
+          modelUsed,
+        };
+      }
+
+      const toolResults: LlmChatMessage[] = [];
+      for (const tc of resp.toolCalls) {
+        toolsUsed.push(tc.name);
+        const result = await this.runTool(tc.name, tc.input, input.roomId);
+        toolResults.push({
+          role: 'tool',
+          toolCallId: tc.id,
+          content: JSON.stringify(result),
+        });
+      }
+
+      messages.push({
+        role: 'assistant',
+        content: resp.text,
+        toolCalls: resp.toolCalls,
+      });
+      messages.push(...toolResults);
+    }
+
+    return {
+      reply: 'ขออนุญาตให้พี่ staff เช็คข้อมูลเพิ่มเติมสักครู่นะคะ',
+      confidence: 0.3,
+      toolsUsed,
+      inputTokens: totalIn,
+      outputTokens: totalOut,
+      modelUsed,
+    };
   }
 }

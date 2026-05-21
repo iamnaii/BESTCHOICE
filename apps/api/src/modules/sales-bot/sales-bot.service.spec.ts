@@ -207,4 +207,97 @@ describe('SalesBotService', () => {
       expect(c).toBe(0.3);
     });
   });
+
+  // Regression coverage for the 2026-05-21 Nai 7,000 hallucination: Gemini 2.5
+  // ignored anti-hallucinate persona rules in PR #1064 and reported "iPhone 15
+  // 7,000 บาท" though the tool returned only iPhone 13/16 at 14,691/17,000.
+  // The guard catches this without depending on model behaviour.
+  it('blocks reply with hallucinated price not seen in any tool result', async () => {
+    const chat = jest
+      .fn()
+      .mockResolvedValueOnce({
+        text: '',
+        toolCalls: [
+          { id: 'tu_1', name: 'search_products', input: { query: 'iPhone' } },
+        ],
+        inputTokens: 100,
+        outputTokens: 10,
+        modelName: 'gemini-2.5-flash',
+      } satisfies LlmChatResponse)
+      .mockResolvedValueOnce({
+        // Hallucinated reply: tool only returned 14,691 + 17,000.
+        text: 'iPhone 15 ราคาเริ่มต้น 7,000 บาทค่ะ',
+        toolCalls: [],
+        inputTokens: 120,
+        outputTokens: 25,
+        modelName: 'gemini-2.5-flash',
+      } satisfies LlmChatResponse);
+    const { svc, searchProducts } = await build(chat);
+    searchProducts.run.mockResolvedValue({
+      products: [
+        { id: 'p1', name: 'iPhone 13', priceThb: 14691 },
+        { id: 'p2', name: 'iPhone 16', priceThb: 17000 },
+      ],
+    });
+    const result = await svc.generateReply({
+      text: 'iPhone 15 มีไหม',
+      roomId: 'r1',
+      customerId: null,
+    });
+    // Should NOT auto-send the hallucinated reply — force handoff instead.
+    expect(result.reply).not.toContain('7,000');
+    expect(result.reply).toContain('staff');
+    expect(result.confidence).toBeLessThanOrEqual(0.3);
+  });
+
+  it('accepts reply citing a price within ±5% of a grounded tool result', async () => {
+    const chat = jest
+      .fn()
+      .mockResolvedValueOnce({
+        text: '',
+        toolCalls: [
+          { id: 'tu_1', name: 'search_products', input: { query: 'iPhone' } },
+        ],
+        inputTokens: 100,
+        outputTokens: 10,
+        modelName: 'claude-sonnet-4-6',
+      } satisfies LlmChatResponse)
+      .mockResolvedValueOnce({
+        // Tool returned 14,691; reply says 14,700 (rounded) — within 5% tolerance.
+        text: 'iPhone 13 ราคาเริ่มต้น 14,700 บาทค่ะ',
+        toolCalls: [],
+        inputTokens: 120,
+        outputTokens: 25,
+        modelName: 'claude-sonnet-4-6',
+      } satisfies LlmChatResponse);
+    const { svc, searchProducts } = await build(chat);
+    searchProducts.run.mockResolvedValue({
+      products: [{ id: 'p1', name: 'iPhone 13', priceThb: 14691 }],
+    });
+    const result = await svc.generateReply({
+      text: 'iPhone 13 ราคา',
+      roomId: 'r1',
+      customerId: null,
+    });
+    expect(result.reply).toContain('14,700');
+    expect(result.confidence).toBeGreaterThanOrEqual(0.8);
+  });
+
+  it('passes reply without any price mention even if no tools used', async () => {
+    const chat = jest.fn().mockResolvedValue({
+      text: 'สวัสดีค่ะ สนใจรุ่นไหนเป็นพิเศษคะ',
+      toolCalls: [],
+      inputTokens: 80,
+      outputTokens: 18,
+      modelName: 'claude-sonnet-4-6',
+    } satisfies LlmChatResponse);
+    const { svc } = await build(chat);
+    const result = await svc.generateReply({
+      text: 'สวัสดี',
+      roomId: 'r1',
+      customerId: null,
+    });
+    expect(result.reply).toContain('สวัสดี');
+    expect(result.confidence).toBeGreaterThanOrEqual(0.8);
+  });
 });

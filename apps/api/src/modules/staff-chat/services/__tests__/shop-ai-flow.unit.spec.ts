@@ -4,6 +4,7 @@ import { AiAutoReplyService } from '../ai-auto-reply.service';
 import { AiSuggestService } from '../ai-suggest.service';
 import { SalesBotService } from '../../../sales-bot/sales-bot.service';
 import { LlmProviderRegistry } from '../../../sales-bot/providers/llm-provider.registry';
+import { PersonaService } from '../persona.service';
 import { PrismaService } from '../../../../prisma/prisma.service';
 
 describe('SHOP AI integration — autoReply with SalesBot mock', () => {
@@ -28,6 +29,16 @@ describe('SHOP AI integration — autoReply with SalesBot mock', () => {
         { provide: AiSuggestService, useValue: { suggest: jest.fn() } },
         { provide: SalesBotService, useValue: salesBot },
         { provide: LlmProviderRegistry, useValue: { invalidateCache: jest.fn() } },
+        {
+          provide: PersonaService,
+          useValue: {
+            getBase: jest.fn().mockResolvedValue('base'),
+            getBotExtras: jest.fn().mockResolvedValue('extras'),
+            getBot: jest.fn().mockResolvedValue('base+extras'),
+            invalidateCache: jest.fn(),
+            isCustomized: jest.fn().mockResolvedValue({ base: false, extras: false }),
+          },
+        },
       ],
     }).compile();
     svc = mod.get(AiAutoReplyService);

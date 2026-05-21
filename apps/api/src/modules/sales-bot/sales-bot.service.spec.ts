@@ -6,6 +6,7 @@ import { ListPromotionsTool } from './tools/list-promotions.tool';
 import { HandoffToHumanTool } from './tools/handoff-to-human.tool';
 import { CaptureLeadTool } from './tools/capture-lead.tool';
 import { LlmProviderRegistry } from './providers/llm-provider.registry';
+import { PersonaService } from '../staff-chat/services/persona.service';
 import {
   ILlmProvider,
   LlmChatResponse,
@@ -23,6 +24,13 @@ describe('SalesBotService', () => {
     const listPromotions = { run: jest.fn() };
     const handoff = { run: jest.fn() };
     const captureLead = { run: jest.fn() };
+    const persona = {
+      getBase: jest.fn().mockResolvedValue('test-base'),
+      getBotExtras: jest.fn().mockResolvedValue('-extras'),
+      getBot: jest.fn().mockResolvedValue('test-bot-prompt'),
+      invalidateCache: jest.fn(),
+      isCustomized: jest.fn().mockResolvedValue({ base: false, extras: false }),
+    };
     const mod = await Test.createTestingModule({
       providers: [
         SalesBotService,
@@ -32,6 +40,7 @@ describe('SalesBotService', () => {
         { provide: ListPromotionsTool, useValue: listPromotions },
         { provide: HandoffToHumanTool, useValue: handoff },
         { provide: CaptureLeadTool, useValue: captureLead },
+        { provide: PersonaService, useValue: persona },
       ],
     }).compile();
     const svc = mod.get(SalesBotService);
@@ -175,6 +184,7 @@ describe('SalesBotService', () => {
       {} as any,
       {} as any,
       {} as any,
+      {} as any, // PersonaService — unused by the private estimateConfidence path
     );
 
     it('greeting/qualifier (no tool, complete sentence) → 0.9', () => {

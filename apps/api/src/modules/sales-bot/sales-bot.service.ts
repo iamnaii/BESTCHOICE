@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { SALES_BOT_SYSTEM_PROMPT } from './prompts/sales-bot.system';
+import { PersonaService } from '../staff-chat/services/persona.service';
 import { SearchProductsTool, SEARCH_PRODUCTS_TOOL } from './tools/search-products.tool';
 import {
   CalculateInstallmentTool,
@@ -65,6 +65,7 @@ export class SalesBotService {
     private readonly listPromotions: ListPromotionsTool,
     private readonly handoff: HandoffToHumanTool,
     private readonly captureLead: CaptureLeadTool,
+    private readonly persona: PersonaService,
   ) {}
 
   /**
@@ -94,6 +95,11 @@ export class SalesBotService {
     ];
 
     const provider = explicitProvider ?? (await this.providerRegistry.getActive());
+    // Resolve persona ONCE per generateReply call (not per hop) so a mid-stream
+    // edit from /settings/ai-persona doesn't flip the system prompt halfway
+    // through a tool loop. PersonaService cache makes this O(1) most of the
+    // time anyway.
+    const systemPrompt = await this.persona.getBot();
     const toolsUsed: string[] = [];
     let totalIn = 0;
     let totalOut = 0;
@@ -101,7 +107,7 @@ export class SalesBotService {
 
     for (let hop = 0; hop < MAX_TOOL_HOPS; hop++) {
       const resp = await provider.chat({
-        systemPrompt: SALES_BOT_SYSTEM_PROMPT,
+        systemPrompt,
         messages,
         tools,
       });

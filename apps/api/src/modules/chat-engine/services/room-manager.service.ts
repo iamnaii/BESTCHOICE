@@ -324,6 +324,11 @@ export class RoomManagerService {
         { customer: { name: { contains: params.search, mode: 'insensitive' } } },
         { customer: { phone: { contains: params.search } } },
         { lineUserId: { contains: params.search } },
+        // FB/TikTok/Web rooms often have no linked Customer yet — match on
+        // the platform-fetched displayName + the channel-specific user id
+        // (FB PSID, TikTok user id, web visitor id).
+        { displayName: { contains: params.search, mode: 'insensitive' } },
+        { externalUserId: { contains: params.search } },
       ];
     }
 

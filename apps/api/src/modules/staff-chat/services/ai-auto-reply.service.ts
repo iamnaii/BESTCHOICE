@@ -6,6 +6,7 @@ import { AiSuggestService } from './ai-suggest.service';
 import { SalesBotService, SalesBotResult } from '../../sales-bot/sales-bot.service';
 import { LlmProviderRegistry } from '../../sales-bot/providers/llm-provider.registry';
 import { MessageRouterService } from '../../chat-engine/services/message-router.service';
+import { PersonaService } from './persona.service';
 import {
   LLM_PROVIDERS,
   type AiAutoSettings,
@@ -23,6 +24,7 @@ export class AiAutoReplyService {
     private aiSuggest: AiSuggestService,
     private salesBot: SalesBotService,
     private llmRegistry: LlmProviderRegistry,
+    private personaService: PersonaService,
     @Optional()
     @Inject(forwardRef(() => MessageRouterService))
     private messageRouter?: MessageRouterService,
@@ -255,11 +257,56 @@ export class AiAutoReplyService {
       });
     }
 
+    // Persona fields use the empty-string-as-revert sentinel: `''` means
+    // "soft-delete the row so PersonaService falls back to the hardcoded
+    // default". Non-empty = upsert as override. `null`/`undefined` continues
+    // to skip the field entirely (per PR #1059 null-skip pattern).
+    const personaKeysToRevert: string[] = [];
+    let personaTouched = false;
+    if (dto.shopBotPersonaBase !== undefined && dto.shopBotPersonaBase !== null) {
+      personaTouched = true;
+      if (dto.shopBotPersonaBase === '') {
+        personaKeysToRevert.push('shop_bot_persona_base');
+      } else {
+        entries.push({
+          key: 'shop_bot_persona_base',
+          value: dto.shopBotPersonaBase,
+          label: 'SHOP Sales Persona — BASE (identity + tone)',
+        });
+      }
+    }
+    if (
+      dto.shopBotPersonaBotExtras !== undefined &&
+      dto.shopBotPersonaBotExtras !== null
+    ) {
+      personaTouched = true;
+      if (dto.shopBotPersonaBotExtras === '') {
+        personaKeysToRevert.push('shop_bot_persona_bot_extras');
+      } else {
+        entries.push({
+          key: 'shop_bot_persona_bot_extras',
+          value: dto.shopBotPersonaBotExtras,
+          label: 'SHOP Sales Persona — BOT_EXTRAS (tool playbook)',
+        });
+      }
+    }
+
     for (const entry of entries) {
       await this.prisma.systemConfig.upsert({
         where: { key: entry.key },
         create: { key: entry.key, value: entry.value, label: entry.label },
         update: { value: entry.value, deletedAt: null },
+      });
+    }
+
+    // Soft-delete persona rows the owner asked to revert. Uses updateMany so
+    // a missing row is a no-op instead of a 404 — matches the "revert is
+    // idempotent" intent. PersonaService.getX() will then fall back to the
+    // hardcoded const on next read.
+    if (personaKeysToRevert.length > 0) {
+      await this.prisma.systemConfig.updateMany({
+        where: { key: { in: personaKeysToRevert }, deletedAt: null },
+        data: { deletedAt: new Date() },
       });
     }
 
@@ -271,6 +318,13 @@ export class AiAutoReplyService {
     // we don't churn the cache for clients that send the field cleared.
     if (dto.llmProvider != null) {
       this.llmRegistry.invalidateCache();
+    }
+
+    // If either persona layer was edited or reverted, drop the persona cache so
+    // the next AI reply uses the new prompt instead of waiting for the 60-second
+    // TTL. Same idempotent / cheap call pattern as the registry cache.
+    if (personaTouched) {
+      this.personaService.invalidateCache();
     }
 
     return this.getSettings();

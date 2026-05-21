@@ -5,9 +5,17 @@ import { AiSuggestService } from './ai-suggest.service';
 import { SalesBotService } from '../../sales-bot/sales-bot.service';
 import { LlmProviderRegistry } from '../../sales-bot/providers/llm-provider.registry';
 import { MessageRouterService } from '../../chat-engine/services/message-router.service';
+import { PersonaService } from './persona.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 
 const makeLlmRegistryMock = () => ({ invalidateCache: jest.fn() });
+const makePersonaMock = () => ({
+  getBase: jest.fn().mockResolvedValue('base'),
+  getBotExtras: jest.fn().mockResolvedValue('extras'),
+  getBot: jest.fn().mockResolvedValue('base+extras'),
+  invalidateCache: jest.fn(),
+  isCustomized: jest.fn().mockResolvedValue({ base: false, extras: false }),
+});
 
 describe('AiAutoReplyService.shouldAutoReply', () => {
   let svc: AiAutoReplyService;
@@ -31,6 +39,7 @@ describe('AiAutoReplyService.shouldAutoReply', () => {
         { provide: SalesBotService, useValue: { generateReply: jest.fn() } },
         { provide: MessageRouterService, useValue: { getAdapter: jest.fn() } },
         { provide: LlmProviderRegistry, useValue: makeLlmRegistryMock() },
+        { provide: PersonaService, useValue: makePersonaMock() },
       ],
     }).compile();
     svc = mod.get(AiAutoReplyService);
@@ -98,6 +107,7 @@ describe('AiAutoReplyService.autoReply', () => {
         { provide: SalesBotService, useValue: salesBot },
         { provide: MessageRouterService, useValue: { getAdapter: jest.fn() } },
         { provide: LlmProviderRegistry, useValue: makeLlmRegistryMock() },
+        { provide: PersonaService, useValue: makePersonaMock() },
       ],
     }).compile();
     svc = mod.get(AiAutoReplyService);
@@ -163,6 +173,7 @@ describe('AiAutoReplyService.testSend', () => {
         { provide: SalesBotService, useValue: {} },
         { provide: MessageRouterService, useValue: messageRouter },
         { provide: LlmProviderRegistry, useValue: makeLlmRegistryMock() },
+        { provide: PersonaService, useValue: makePersonaMock() },
       ],
     }).compile();
     svc = mod.get(AiAutoReplyService);
@@ -215,13 +226,16 @@ describe('AiAutoReplyService.llmProvider — get + update + cache invalidation',
   let svc: AiAutoReplyService;
   let prisma: any;
   let llmRegistry: { invalidateCache: jest.Mock };
+  let persona: ReturnType<typeof makePersonaMock>;
 
   beforeEach(async () => {
     llmRegistry = makeLlmRegistryMock();
+    persona = makePersonaMock();
     prisma = {
       systemConfig: {
         findMany: jest.fn(),
         upsert: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
     };
     const mod: TestingModule = await Test.createTestingModule({
@@ -233,6 +247,7 @@ describe('AiAutoReplyService.llmProvider — get + update + cache invalidation',
         { provide: SalesBotService, useValue: {} },
         { provide: MessageRouterService, useValue: { getAdapter: jest.fn() } },
         { provide: LlmProviderRegistry, useValue: llmRegistry },
+        { provide: PersonaService, useValue: persona },
       ],
     }).compile();
     svc = mod.get(AiAutoReplyService);
@@ -318,5 +333,111 @@ describe('AiAutoReplyService.llmProvider — get + update + cache invalidation',
     prisma.systemConfig.findMany.mockResolvedValue([]);
     await svc.updateSettings({ llmProvider: null as unknown as 'claude' });
     expect(llmRegistry.invalidateCache).not.toHaveBeenCalled();
+  });
+
+  // Persona editor flow — see DTO sentinel docstring for the three states:
+  // undefined/null = skip, '' = revert (soft-delete row), non-empty = upsert.
+  describe('persona fields', () => {
+    it('non-empty BASE → upsert + invalidate persona cache', async () => {
+      prisma.systemConfig.findMany.mockResolvedValue([]);
+      await svc.updateSettings({ shopBotPersonaBase: 'new BASE prompt' });
+      expect(prisma.systemConfig.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { key: 'shop_bot_persona_base' },
+          create: expect.objectContaining({
+            key: 'shop_bot_persona_base',
+            value: 'new BASE prompt',
+          }),
+        }),
+      );
+      expect(persona.invalidateCache).toHaveBeenCalledTimes(1);
+      expect(prisma.systemConfig.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('non-empty BOT_EXTRAS → upsert + invalidate', async () => {
+      prisma.systemConfig.findMany.mockResolvedValue([]);
+      await svc.updateSettings({ shopBotPersonaBotExtras: '\n\n# my playbook' });
+      expect(prisma.systemConfig.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { key: 'shop_bot_persona_bot_extras' },
+        }),
+      );
+      expect(persona.invalidateCache).toHaveBeenCalledTimes(1);
+    });
+
+    it('empty-string BASE → soft-delete row + invalidate (revert sentinel)', async () => {
+      prisma.systemConfig.findMany.mockResolvedValue([]);
+      await svc.updateSettings({ shopBotPersonaBase: '' });
+      expect(prisma.systemConfig.updateMany).toHaveBeenCalledWith({
+        where: { key: { in: ['shop_bot_persona_base'] }, deletedAt: null },
+        data: { deletedAt: expect.any(Date) },
+      });
+      // Empty-string is NOT a regular upsert
+      const upsertCalls = prisma.systemConfig.upsert.mock.calls.filter(
+        (c: any[]) => c[0].where.key === 'shop_bot_persona_base',
+      );
+      expect(upsertCalls).toHaveLength(0);
+      expect(persona.invalidateCache).toHaveBeenCalledTimes(1);
+    });
+
+    it('empty-string BOTH → soft-delete both rows in one updateMany', async () => {
+      prisma.systemConfig.findMany.mockResolvedValue([]);
+      await svc.updateSettings({
+        shopBotPersonaBase: '',
+        shopBotPersonaBotExtras: '',
+      });
+      expect(prisma.systemConfig.updateMany).toHaveBeenCalledWith({
+        where: {
+          key: { in: ['shop_bot_persona_base', 'shop_bot_persona_bot_extras'] },
+          deletedAt: null,
+        },
+        data: { deletedAt: expect.any(Date) },
+      });
+      expect(persona.invalidateCache).toHaveBeenCalledTimes(1);
+    });
+
+    it('mixed: upsert one + revert the other in same call', async () => {
+      prisma.systemConfig.findMany.mockResolvedValue([]);
+      await svc.updateSettings({
+        shopBotPersonaBase: 'new BASE',
+        shopBotPersonaBotExtras: '',
+      });
+      // BASE upserted
+      expect(prisma.systemConfig.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { key: 'shop_bot_persona_base' } }),
+      );
+      // EXTRAS soft-deleted
+      expect(prisma.systemConfig.updateMany).toHaveBeenCalledWith({
+        where: {
+          key: { in: ['shop_bot_persona_bot_extras'] },
+          deletedAt: null,
+        },
+        data: { deletedAt: expect.any(Date) },
+      });
+      expect(persona.invalidateCache).toHaveBeenCalledTimes(1);
+    });
+
+    it('absent persona fields → no upsert, no updateMany, no invalidate (null-skip)', async () => {
+      prisma.systemConfig.findMany.mockResolvedValue([]);
+      await svc.updateSettings({ aiAutoEnabled: true });
+      expect(persona.invalidateCache).not.toHaveBeenCalled();
+      expect(prisma.systemConfig.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('explicit-null persona fields → skipped (matches PR #1059 pattern)', async () => {
+      prisma.systemConfig.findMany.mockResolvedValue([]);
+      await svc.updateSettings({
+        shopBotPersonaBase: null as unknown as string,
+        shopBotPersonaBotExtras: null as unknown as string,
+      });
+      expect(persona.invalidateCache).not.toHaveBeenCalled();
+      expect(prisma.systemConfig.updateMany).not.toHaveBeenCalled();
+      const personaUpserts = prisma.systemConfig.upsert.mock.calls.filter(
+        (c: any[]) =>
+          c[0].where.key === 'shop_bot_persona_base' ||
+          c[0].where.key === 'shop_bot_persona_bot_extras',
+      );
+      expect(personaUpserts).toHaveLength(0);
+    });
   });
 });

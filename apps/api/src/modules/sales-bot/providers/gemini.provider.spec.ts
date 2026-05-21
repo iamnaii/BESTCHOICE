@@ -271,6 +271,123 @@ describe('GeminiProvider', () => {
     });
   });
 
+  // Regression — 2026-05-21 prod: Nai's "15 ธรรมดา" triggered persona's
+  // 3-Combo Anchor (search + calc×3 in one turn). Service pushed 4 tool
+  // results as 4 separate user turns; Gemini returned 400 "function response
+  // parts ≠ function call parts of the function call turn". This block
+  // verifies the grouping fix.
+  describe('multi-tool-call response grouping', () => {
+    it('groups N consecutive tool results into ONE user turn (the Nai case)', async () => {
+      const p = await buildProvider({ GOOGLE_CLOUD_PROJECT: 'bestchoice-prod' });
+      fakeFetchResponse(fetchSpy, {
+        candidates: [{ content: { parts: [{ text: 'ok' }] } }],
+        usageMetadata: { promptTokenCount: 100, candidatesTokenCount: 5 },
+      });
+
+      await p.chat({
+        systemPrompt: 'persona',
+        messages: [
+          { role: 'user', content: '15 ธรรมดา' },
+          {
+            role: 'assistant',
+            content: '',
+            toolCalls: [
+              { id: 'fn_0_search_products', name: 'search_products', input: { query: 'iPhone 15' } },
+              { id: 'fn_1_calculate_installment', name: 'calculate_installment', input: { productId: 'p1', downPct: 10, tenureMonths: 12 } },
+              { id: 'fn_2_calculate_installment', name: 'calculate_installment', input: { productId: 'p1', downPct: 20, tenureMonths: 12 } },
+              { id: 'fn_3_calculate_installment', name: 'calculate_installment', input: { productId: 'p1', downPct: 30, tenureMonths: 12 } },
+            ],
+          },
+          { role: 'tool', toolCallId: 'fn_0_search_products', content: '{"products":[{"id":"p1","priceThb":28900}]}' },
+          { role: 'tool', toolCallId: 'fn_1_calculate_installment', content: '{"monthly":2890}' },
+          { role: 'tool', toolCallId: 'fn_2_calculate_installment', content: '{"monthly":2570}' },
+          { role: 'tool', toolCallId: 'fn_3_calculate_installment', content: '{"monthly":2250}' },
+        ],
+      });
+
+      const [, init] = fetchSpy.mock.calls[0];
+      const body = JSON.parse(init.body as string);
+
+      // Expected shape: 3 turns total — user (text), model (4 functionCalls),
+      // user (4 functionResponses grouped). NOT 6 turns (1+1+4 separate).
+      expect(body.contents).toHaveLength(3);
+      expect(body.contents[0]).toEqual({
+        role: 'user',
+        parts: [{ text: '15 ธรรมดา' }],
+      });
+      expect(body.contents[1].role).toBe('model');
+      expect(body.contents[1].parts).toHaveLength(4);
+      expect(body.contents[1].parts.every((p: any) => 'functionCall' in p)).toBe(true);
+      // The critical assertion: all 4 functionResponses live in ONE user turn,
+      // not split across 4 separate user turns.
+      expect(body.contents[2].role).toBe('user');
+      expect(body.contents[2].parts).toHaveLength(4);
+      expect(body.contents[2].parts.every((p: any) => 'functionResponse' in p)).toBe(true);
+      // Names preserved in correct order via positional iteration.
+      expect(body.contents[2].parts.map((p: any) => p.functionResponse.name)).toEqual([
+        'search_products',
+        'calculate_installment',
+        'calculate_installment',
+        'calculate_installment',
+      ]);
+    });
+
+    it('single tool result still produces its own user turn (no regression)', async () => {
+      const p = await buildProvider({ GOOGLE_CLOUD_PROJECT: 'bestchoice-prod' });
+      fakeFetchResponse(fetchSpy, {
+        candidates: [{ content: { parts: [{ text: 'ok' }] } }],
+        usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 1 },
+      });
+
+      await p.chat({
+        systemPrompt: 'persona',
+        messages: [
+          { role: 'user', content: 'iPhone 15 ราคา' },
+          {
+            role: 'assistant',
+            content: '',
+            toolCalls: [
+              { id: 'fn_0_search_products', name: 'search_products', input: { query: 'iPhone 15' } },
+            ],
+          },
+          { role: 'tool', toolCallId: 'fn_0_search_products', content: '{"products":[]}' },
+        ],
+      });
+
+      const body = JSON.parse(fetchSpy.mock.calls[0][1].body as string);
+      // 3 turns: user, model (1 functionCall), user (1 functionResponse).
+      expect(body.contents).toHaveLength(3);
+      expect(body.contents[2].role).toBe('user');
+      expect(body.contents[2].parts).toHaveLength(1);
+      expect(body.contents[2].parts[0]).toHaveProperty('functionResponse.name', 'search_products');
+    });
+
+    it('does NOT group tool result into a user turn that contains text', async () => {
+      // Defensive: if a `tool` message arrives right after a regular user
+      // text turn (shouldn't happen via our service, but could via test or
+      // future caller), don't pollute the text turn. Start a fresh user turn.
+      const p = await buildProvider({ GOOGLE_CLOUD_PROJECT: 'bestchoice-prod' });
+      fakeFetchResponse(fetchSpy, {
+        candidates: [{ content: { parts: [{ text: 'ok' }] } }],
+        usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 1 },
+      });
+
+      await p.chat({
+        systemPrompt: 'persona',
+        messages: [
+          { role: 'user', content: 'some text' },
+          { role: 'tool', toolCallId: 'fn_0_foo', content: '{"x":1}' },
+        ],
+      });
+
+      const body = JSON.parse(fetchSpy.mock.calls[0][1].body as string);
+      // 2 turns: user (text) + user (functionResponse). Separate.
+      expect(body.contents).toHaveLength(2);
+      expect(body.contents[0].parts[0]).toHaveProperty('text', 'some text');
+      expect(body.contents[1].parts[0]).toHaveProperty('functionResponse.name', 'foo');
+    });
+  });
+
   describe('thinkingConfig (2.5-series only)', () => {
     it('sets thinkingBudget=0 on gemini-2.5-flash to skip hidden reasoning', async () => {
       const p = await buildProvider({

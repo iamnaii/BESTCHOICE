@@ -145,11 +145,18 @@ export class MessageRouterService {
 
     // 3a. Global FB kill switch — stop ALL bot pathways (welcome, AI, after-hours)
     // when FB_BOT_DISABLED=true. Inbound is still saved and staff are notified above.
+    // FB_BOT_WHITELIST_PSIDS (comma-separated) bypasses the kill switch for staged testing.
     if (
       message.channel === ChatChannel.FACEBOOK &&
       this.configService.get<string>('FB_BOT_DISABLED') === 'true'
     ) {
-      return;
+      const whitelist = (this.configService.get<string>('FB_BOT_WHITELIST_PSIDS') ?? '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (!whitelist.includes(message.externalUserId ?? '')) {
+        return;
+      }
     }
 
     // 3b. Check handoff mode — if staff is handling, don't run AI

@@ -32,27 +32,48 @@ export class AiAutoReplyService {
 
   async shouldAutoReply(session: any): Promise<boolean> {
     // Blocker fixes: respect take-over + handoff signals
-    if (session.aiPaused) return false;
-    if (session.handoffMode) return false;
+    if (session.aiPaused) {
+      this.logger.log(`[ShouldAutoReply] room=${session.id} skip=aiPaused`);
+      return false;
+    }
+    if (session.handoffMode) {
+      this.logger.log(`[ShouldAutoReply] room=${session.id} skip=handoffMode`);
+      return false;
+    }
 
     // Defense-in-depth: skip channels whose adapter is stub (TikTok)
     // Even if aiAutoChannels misconfigured to include TIKTOK, prevent wasted Claude tokens.
     const STUB_CHANNELS = new Set(['TIKTOK']);
-    if (STUB_CHANNELS.has(session.channel)) return false;
+    if (STUB_CHANNELS.has(session.channel)) {
+      this.logger.log(`[ShouldAutoReply] room=${session.id} skip=stubChannel channel=${session.channel}`);
+      return false;
+    }
 
     const settings = await this.getSettings();
 
-    if (!settings.aiAutoEnabled) return false;
+    if (!settings.aiAutoEnabled) {
+      this.logger.log(`[ShouldAutoReply] room=${session.id} skip=aiAutoEnabled=false`);
+      return false;
+    }
 
     // Check channel allowlist
-    if (settings.aiAutoChannels.length > 0 && !settings.aiAutoChannels.includes(session.channel))
+    if (settings.aiAutoChannels.length > 0 && !settings.aiAutoChannels.includes(session.channel)) {
+      this.logger.log(
+        `[ShouldAutoReply] room=${session.id} skip=channelNotInAllowlist channel=${session.channel} allowlist=${JSON.stringify(settings.aiAutoChannels)}`,
+      );
       return false;
+    }
 
     // Check per-room reply cap
     const sentCount = await this.prisma.aiAutoReplyLog.count({
       where: { roomId: session.id, autoSent: true },
     });
-    if (sentCount >= settings.aiAutoMaxRepliesPerSession) return false;
+    if (sentCount >= settings.aiAutoMaxRepliesPerSession) {
+      this.logger.log(
+        `[ShouldAutoReply] room=${session.id} skip=capHit sentCount=${sentCount} cap=${settings.aiAutoMaxRepliesPerSession}`,
+      );
+      return false;
+    }
 
     // Fail-loud guard: SHOP channels require central branch + promptpay configured
     const SHOP_CHANNELS = new Set(['LINE_SHOP', 'FACEBOOK', 'WEB']);
@@ -68,6 +89,7 @@ export class AiAutoReplyService {
       }
     }
 
+    this.logger.log(`[ShouldAutoReply] room=${session.id} pass channel=${session.channel}`);
     return true;
   }
 

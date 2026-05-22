@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import Decimal from 'decimal.js';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
-import { findGfinMapping } from '../../../../../packages/shared/src/installment-calc';
+import { findGfinMapping } from '../../utils/installment-calc.util';
 import {
   CreateMaxPriceDto,
   UpdateMaxPriceDto,

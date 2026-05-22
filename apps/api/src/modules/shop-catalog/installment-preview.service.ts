@@ -6,7 +6,7 @@ import {
   calcGfinInstallment,
   findGfinMapping,
   findGfinOverpriceRule,
-} from '../../../../../packages/shared/src/installment-calc';
+} from '../../utils/installment-calc.util';
 import { InstallmentPreviewDto } from './dto/installment-preview.dto';
 
 interface PreviewResult {

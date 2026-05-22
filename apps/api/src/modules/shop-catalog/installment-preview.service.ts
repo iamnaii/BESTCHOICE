@@ -9,7 +9,7 @@ import {
 } from '../../utils/installment-calc.util';
 import { InstallmentPreviewDto } from './dto/installment-preview.dto';
 
-interface PreviewResult {
+export interface PreviewResult {
   available: boolean;
   reason?: string;
   errors?: string[];

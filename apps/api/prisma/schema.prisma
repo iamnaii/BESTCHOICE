@@ -862,6 +862,11 @@ model Customer {
   chatConsent      Boolean            @default(false) @map("chat_consent")
   chatConsentAt    DateTime?          @map("chat_consent_at")
 
+  // Phase A SHOP Sales AI — channel/source that produced this lead
+  // (e.g. "line-shop", "facebook", "tiktok", "walk-in"). Free-text label so
+  // marketing can add new sources without a migration. Null = legacy/unknown.
+  acquisitionSource String? @db.VarChar(50) @map("acquisition_source")
+
   // LINE notification preferences
   notifPaymentReminder Boolean @default(true) @map("notif_payment_reminder")
   notifOverdueNotice   Boolean @default(true) @map("notif_overdue_notice")
@@ -5470,6 +5475,10 @@ model AiAutoReplyLog {
   confidence      Float
   autoSent        Boolean  @map("auto_sent")
   handoffReason   String?  @map("handoff_reason")
+  intent          String?
+  toolsUsed       String[] @default([]) @map("tools_used")
+  inputTokens     Int?     @map("input_tokens")
+  outputTokens    Int?     @map("output_tokens")
   createdAt       DateTime @default(now()) @map("created_at")
 
   @@index([roomId])
@@ -5901,12 +5910,13 @@ model KnownDevice {
 }
 
 /// Single-row settings for AI behavior (id = 'singleton').
-/// Controls per-bot mode (OFF | HYBRID | FULL) and confidence thresholds
+/// Controls per-bot mode (OFF | HYBRID) and confidence thresholds
 /// used by the draft orchestrator for Chat AI Hybrid C.
+/// (FULL deprecated 2026-05-20 — auto-send now controlled via ai.autoEnabled SystemConfig.)
 model AiSettings {
   id                            String   @id @default("singleton")
-  salesBotMode                  String   @default("HYBRID") @map("sales_bot_mode") // OFF | HYBRID | FULL
-  serviceBotMode                String   @default("HYBRID") @map("service_bot_mode") // OFF | HYBRID | FULL
+  salesBotMode                  String   @default("HYBRID") @map("sales_bot_mode") // OFF | HYBRID (FULL deprecated 2026-05-20 — use ai.autoEnabled SystemConfig instead)
+  serviceBotMode                String   @default("HYBRID") @map("service_bot_mode") // OFF | HYBRID
   salesBotConfidenceThreshold   Float    @default(0.70) @map("sales_bot_confidence_threshold")
   serviceBotConfidenceThreshold Float    @default(0.75) @map("service_bot_confidence_threshold")
   updatedAt                     DateTime @updatedAt @map("updated_at")

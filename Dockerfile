@@ -105,7 +105,9 @@ COPY --from=builder --chown=appuser:appgroup /app/apps/api/prisma-finance ./apps
 
 # ⚠️ TEMPORARY: Legacy migration data — remove after migration done
 COPY --chown=appuser:appgroup apps/api/scripts/import-legacy/data ./apps/api/scripts/import-legacy/data
-COPY --chown=appuser:appgroup ["ข้อมูลโปรแกรมเขียว4-7-2026", "./ข้อมูลโปรแกรมเขียว4-7-2026"]
+# Note: the "ข้อมูลโปรแกรมเขียว4-7-2026" data dump was deleted from the repo in
+# PR #1048 (build context no longer contains the folder, so the COPY would
+# fail). The data lives in Cloud SQL now — no longer needed at build time.
 
 # Copy entrypoint script
 COPY --chown=appuser:appgroup docker-entrypoint.sh ./

@@ -74,6 +74,10 @@ export async function takeOver(roomId: string) {
   return api.post(`/chat-ai/take-over/${roomId}`);
 }
 
+export async function releaseToAi(roomId: string) {
+  return api.post<{ released: true }>(`/chat-ai/release-to-ai/${roomId}`);
+}
+
 export async function sendStaffMessage(roomId: string, text: string) {
   return api.post(`/staff-chat/rooms/${roomId}/messages`, { text });
 }

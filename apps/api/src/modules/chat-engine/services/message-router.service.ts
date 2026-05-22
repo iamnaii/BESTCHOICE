@@ -145,11 +145,21 @@ export class MessageRouterService {
 
     // 3a. Global FB kill switch — stop ALL bot pathways (welcome, AI, after-hours)
     // when FB_BOT_DISABLED=true. Inbound is still saved and staff are notified above.
+    // FB_BOT_WHITELIST_PSIDS (comma-separated) bypasses the kill switch for staged testing.
     if (
       message.channel === ChatChannel.FACEBOOK &&
       this.configService.get<string>('FB_BOT_DISABLED') === 'true'
     ) {
-      return;
+      const whitelist = (this.configService.get<string>('FB_BOT_WHITELIST_PSIDS') ?? '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (!whitelist.includes(message.externalUserId ?? '')) {
+        this.logger.log(
+          `[FbBotKillSwitch] room=${room.id} psid=${message.externalUserId} not in whitelist=${JSON.stringify(whitelist)} — skipped`,
+        );
+        return;
+      }
     }
 
     // 3b. Check handoff mode — if staff is handling, don't run AI
@@ -180,6 +190,10 @@ export class MessageRouterService {
               roomId: room.id,
               role: MessageRole.BOT,
               text: result.reply,
+              intent: 'AUTO:sales', // Phase A: SHOP channels always sales (intent router skipped)
+              toolsUsed: result.toolsUsed,
+              inputTokens: result.inputTokens,
+              outputTokens: result.outputTokens,
             });
           }
           await this.aiAutoReplyService.logAutoReply({
@@ -188,6 +202,10 @@ export class MessageRouterService {
             aiReply: result.reply,
             confidence: result.confidence,
             autoSent: true,
+            intent: 'AUTO:sales',
+            toolsUsed: result.toolsUsed,
+            inputTokens: result.inputTokens,
+            outputTokens: result.outputTokens,
           });
           this.logger.log(
             `[AiAutoReply] Replied to room ${room.id} with confidence=${result.confidence}`,

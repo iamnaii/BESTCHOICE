@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
@@ -13,6 +13,11 @@ export function useContractCreateData() {
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const preselectedCustomerId = searchParams.get('customerId');
+  // URL prefill params from BcCalculatorCard "ใช้ราคานี้ทำสัญญา" button
+  const prefillProductId = searchParams.get('productId');
+  const prefillDownAmount = searchParams.get('downAmount');
+  const prefillMonths = searchParams.get('months');
+  const hasPrefilled = useRef(false);
   const [step, setStep] = useState(0);
   const draft = useDraftStorage();
 
@@ -172,6 +177,35 @@ export function useContractCreateData() {
     },
     enabled: !!preselectedCustomerId && !selectedCustomer,
   });
+
+  // Pre-select product from URL param ?productId= (from BcCalculatorCard "ใช้ราคานี้ทำสัญญา")
+  useQuery<Product | null>({
+    queryKey: ['preselect-product', prefillProductId],
+    queryFn: async () => {
+      if (!prefillProductId) return null;
+      const { data } = await api.get(`/products/${prefillProductId}`);
+      if (data) setSelectedProduct(data);
+      return data;
+    },
+    enabled: !!prefillProductId && !selectedProduct,
+  });
+
+  // Pre-fill downPayment and totalMonths from URL params (run once on mount)
+  useEffect(() => {
+    if (hasPrefilled.current) return;
+    if (!prefillDownAmount && !prefillMonths) return;
+    hasPrefilled.current = true;
+
+    if (prefillDownAmount) {
+      const parsed = Number(prefillDownAmount);
+      if (!isNaN(parsed)) setDownPayment(parsed);
+    }
+    if (prefillMonths) {
+      const parsed = Number(prefillMonths);
+      if (!isNaN(parsed)) setTotalMonths(parsed);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const { data: latestCreditCheck } = useQuery<{ id: string; status: string; aiScore: number | null } | null>({
     queryKey: ['customer-latest-credit', selectedCustomer?.id],

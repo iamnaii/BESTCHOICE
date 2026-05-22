@@ -197,6 +197,8 @@ const AiPerformancePage = lazy(() => import('@/pages/AiPerformancePage'));
 const AiPersonaPage = lazy(() => import('@/pages/AiPersonaPage'));
 const AiAdminPage = lazy(() => import('@/pages/AiAdminPage'));
 const IntegrationHubPage = lazy(() => import('@/pages/IntegrationHubPage'));
+// F-Phase — GFIN rate table admin (OWNER-only)
+const GfinConfigPage = lazy(() => import('@/pages/GfinConfigPage'));
 const MdmTestPage = lazy(() => import('@/pages/MdmTestPage'));
 const MdmDashboardPage = lazy(() => import('@/pages/MdmDashboardPage'));
 const BroadcastPage = lazy(() => import('@/pages/BroadcastPage'));
@@ -731,6 +733,14 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER']}>
                 <PricingTemplatesPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings/gfin-rates"
+            element={
+              <ProtectedRoute roles={['OWNER']}>
+                <GfinConfigPage />
               </ProtectedRoute>
             }
           />

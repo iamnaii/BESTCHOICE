@@ -12,6 +12,7 @@ import Modal from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
 import { transferableStatuses } from '@/lib/constants';
 import ProductInfo from './components/ProductInfo';
+import { getDisplayPrices } from '@/utils/getDisplayPrices';
 import ProductPhotos from './components/ProductPhotos';
 import EditProductModal from './components/EditProductModal';
 
@@ -121,9 +122,14 @@ export default function ProductDetailPage() {
   const { defaultPrice, profit } = useMemo(() => {
     if (!product) return { defaultPrice: undefined, profit: null };
     const dp = product.prices.find((p) => p.isDefault);
+    // Use getDisplayPrices to derive the canonical selling price (prefers cashPrice/installmentPrice
+    // on Product when set; falls back to prices[] label lookup)
+    const { installment, cash } = getDisplayPrices(product);
+    const displayPrice = installment ?? cash;
     return {
       defaultPrice: dp,
-      profit: dp ? parseFloat(dp.amount) - parseFloat(product.costPrice) : null,
+      profit:
+        displayPrice != null ? displayPrice - parseFloat(product.costPrice) : null,
     };
   }, [product]);
 

@@ -66,3 +66,82 @@ describe('calcBcInstallment — canonical worked example (iPhone 14 Pro 128GB, 1
     expect(out.financeToShop.toFixed(2)).toBe('18606.50');
   });
 });
+
+describe('calcBcInstallment — edge cases', () => {
+  it('returns error when months not in allowed list', () => {
+    const out = calcBcInstallment({
+      installmentPrice: new Decimal('19900'),
+      months: 9,                                  // not in 5,6,7,8,10,12
+      config: DEFAULT_CONFIG,
+    });
+    expect(out.isValid).toBe(false);
+    expect(out.errors.some(e => e.includes('9'))).toBe(true);
+  });
+
+  it('returns error when down < minDown', () => {
+    const out = calcBcInstallment({
+      installmentPrice: new Decimal('19900'),
+      months: 12,
+      downPct: new Decimal('0.10'),
+      config: DEFAULT_CONFIG,
+    });
+    expect(out.isValid).toBe(false);
+    expect(out.errors.some(e => e.includes('ต่ำกว่าขั้นต่ำ'))).toBe(true);
+  });
+
+  it('returns error when down >= price', () => {
+    const out = calcBcInstallment({
+      installmentPrice: new Decimal('19900'),
+      months: 12,
+      customDownAmount: new Decimal('20000'),
+      config: DEFAULT_CONFIG,
+    });
+    expect(out.isValid).toBe(false);
+    expect(out.errors.some(e => e.includes('ต้องน้อยกว่าราคาขาย'))).toBe(true);
+  });
+
+  it('accepts custom down higher than min (50% down at 12 mo)', () => {
+    const out = calcBcInstallment({
+      installmentPrice: new Decimal('19900'),
+      months: 12,
+      downPct: new Decimal('0.50'),
+      config: DEFAULT_CONFIG,
+    });
+    expect(out.isValid).toBe(true);
+    expect(out.downAmount.toFixed(2)).toBe('9950.00');
+    expect(out.financedAmount.toFixed(2)).toBe('9950.00');
+  });
+
+  it('handles 5-mo with 40% rate', () => {
+    const out = calcBcInstallment({
+      installmentPrice: new Decimal('19900'),
+      months: 5,
+      config: DEFAULT_CONFIG,
+    });
+    expect(out.isValid).toBe(true);
+    expect(out.interestPct.toFixed(2)).toBe('0.40');
+    // financed = 16915, interest = 16915 × 0.40 = 6766
+    expect(out.interestAmount.toFixed(2)).toBe('6766.00');
+  });
+
+  it('handles 7-mo with 50% rate (transition boundary)', () => {
+    const out = calcBcInstallment({
+      installmentPrice: new Decimal('19900'),
+      months: 7,
+      config: DEFAULT_CONFIG,
+    });
+    expect(out.isValid).toBe(true);
+    expect(out.interestPct.toFixed(2)).toBe('0.50');
+  });
+
+  it('customDownAmount overrides downPct correctly', () => {
+    const out = calcBcInstallment({
+      installmentPrice: new Decimal('19900'),
+      months: 12,
+      customDownAmount: new Decimal('5000'),
+      config: DEFAULT_CONFIG,
+    });
+    expect(out.downAmount.toFixed(2)).toBe('5000.00');
+    expect(out.financedAmount.toFixed(2)).toBe('14900.00');
+  });
+});

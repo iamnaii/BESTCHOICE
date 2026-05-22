@@ -69,9 +69,43 @@ export function calcBcInstallment(input: BcCalcInput): BcCalcOutput {
   };
 }
 
-// GFIN implementation added in Task 5 — placeholder to keep imports stable
-export function calcGfinInstallment(_input: GfinCalcInput): GfinCalcOutput {
-  throw new Error('Not yet implemented');
+export function calcGfinInstallment(input: GfinCalcInput): GfinCalcOutput {
+  const { installmentPrice, months, downPct, mapping, overpriceRule, rateFactor } = input;
+  const errors: string[] = [];
+
+  const allowance = overpriceRule?.allowance ?? new Decimal(0);
+  const gfinSubmitPrice = round2(mapping.maxPrice.add(allowance));
+  const downDiscount = round2(Decimal.max(gfinSubmitPrice.sub(installmentPrice), 0));
+
+  const resolvedDownPct = downPct ?? new Decimal('0.30');
+  const downAmountByFormula = round2(gfinSubmitPrice.mul(resolvedDownPct));
+  const downAmountActual = round2(Decimal.max(downAmountByFormula.sub(downDiscount), 0));
+  const financedAmount = round2(gfinSubmitPrice.sub(downAmountByFormula));
+
+  if (rateFactor.months !== months) {
+    errors.push(`ตารางอัตราสำหรับ ${months} งวด ไม่ตรงกับ rate factor ที่ส่งเข้ามา`);
+  }
+  if (!rateFactor.isActive) {
+    errors.push('อัตราดอกเบี้ย GFIN ปิดใช้งาน');
+  }
+
+  const interestPart = round2(rateFactor.factor.mul(financedAmount));
+  const monthlyPayment = round2(interestPart.add(rateFactor.feePerInstallment));
+  const totalPayback = months > 0 ? round2(monthlyPayment.mul(months)) : new Decimal(0);
+
+  return {
+    gfinSubmitPrice,
+    downDiscount,
+    downPct: resolvedDownPct,
+    downAmountByFormula,
+    downAmountActual,
+    financedAmount,
+    monthlyPayment,
+    totalPayback,
+    feePerInstallment: rateFactor.feePerInstallment,
+    isValid: errors.length === 0,
+    errors,
+  };
 }
 
 export function findGfinMapping(
@@ -80,14 +114,22 @@ export function findGfinMapping(
 ): GfinModelMappingRow | null {
   const normStorage = product.storage.replace(/\s+/g, '').toUpperCase();
   const condition = product.category === 'PHONE_NEW' ? 'HAND_1' : 'HAND_2';
+  const modelLower = product.model.toLowerCase();
 
-  for (const m of mappings) {
+  // Sort by pattern length descending so more-specific patterns (e.g. "iPhone 14 Pro Max")
+  // are checked before shorter ones (e.g. "iPhone 14 Pro") — prevents false substring matches.
+  const sorted = [...mappings].sort((a, b) => b.modelMatchPattern.length - a.modelMatchPattern.length);
+
+  for (const m of sorted) {
     if (!m.isActive) continue;
     if (m.condition !== condition) continue;
     if (m.storage.replace(/\s+/g, '').toUpperCase() !== normStorage) continue;
-    const modelLower = product.model.toLowerCase();
     const patternLower = m.modelMatchPattern.toLowerCase();
-    if (!modelLower.includes(patternLower)) continue;
+    // Match whole-pattern: after the match position, ensure no additional word characters follow.
+    const idx = modelLower.indexOf(patternLower);
+    if (idx === -1) continue;
+    const after = modelLower[idx + patternLower.length];
+    if (after !== undefined && /\w/.test(after)) continue;
     return m;
   }
   return null;

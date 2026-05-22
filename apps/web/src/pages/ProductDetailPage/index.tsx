@@ -15,6 +15,7 @@ import ProductInfo from './components/ProductInfo';
 import { getDisplayPrices } from '@/utils/getDisplayPrices';
 import ProductPhotos from './components/ProductPhotos';
 import EditProductModal from './components/EditProductModal';
+import { InstallmentCalculatorCard } from './components/InstallmentCalculatorCard';
 
 interface Price {
   id: string;
@@ -376,21 +377,28 @@ export default function ProductDetailPage() {
 
       {/* Tab: Info (or always show for non-PHONE_USED) */}
       {(activeTab === 'info' || product.category !== 'PHONE_USED') && (
-        <ProductInfo
-          product={product}
-          isManager={isManager}
-          defaultPrice={defaultPrice}
-          profit={profit}
-          onAddPrice={openAddPrice}
-          onEditPrice={openEditPrice}
-          onDeletePrice={(priceId) => {
-            setConfirmDialog({
-              open: true,
-              message: 'ต้องการลบราคานี้?',
-              action: () => deletePriceMutation.mutate(priceId),
-            });
-          }}
-        />
+        <>
+          <ProductInfo
+            product={product}
+            isManager={isManager}
+            defaultPrice={defaultPrice}
+            profit={profit}
+            onAddPrice={openAddPrice}
+            onEditPrice={openEditPrice}
+            onDeletePrice={(priceId) => {
+              setConfirmDialog({
+                open: true,
+                message: 'ต้องการลบราคานี้?',
+                action: () => deletePriceMutation.mutate(priceId),
+              });
+            }}
+          />
+          {(product.category === 'PHONE_NEW' || product.category === 'PHONE_USED') && (
+            <div className="mt-6">
+              <InstallmentCalculatorCard product={product} />
+            </div>
+          )}
+        </>
       )}
 
       {/* Price Add/Edit Modal */}

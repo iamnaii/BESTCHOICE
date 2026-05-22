@@ -1,4 +1,15 @@
-import { Controller, Get, Post, Put, Delete, Param, Body, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Param,
+  Body,
+  Query,
+  BadRequestException,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { InterestConfigService } from './interest-config.service';
 import { CreateInterestConfigDto, UpdateInterestConfigDto } from './dto/interest-config.dto';
@@ -23,6 +34,13 @@ export class InterestConfigController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   findByCategory(@Param('category') category: string) {
     return this.service.findByCategory(category);
+  }
+
+  @Get('resolved')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  resolveConfig(@Query('category') category: string) {
+    if (!category) throw new BadRequestException('กรุณาระบุ category');
+    return this.service.resolveConfig(category);
   }
 
   @Get(':id')

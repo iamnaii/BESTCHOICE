@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import { Download, Plus, LayoutGrid, List, Calendar, DollarSign, User } from 'lucide-react';
 import { KanbanBoard, type KanbanColumn } from '@/components/ui/KanbanBoard';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
+import { DateRangeChips } from '@/components/ui/DateRangeChips';
 import { exportToExcel } from '@/utils/excel.util';
 import { formatDateShort, formatDateShortThai } from '@/utils/formatters';
 import QueryBoundary from '@/components/QueryBoundary';
@@ -420,33 +421,44 @@ export default function ContractsPage() {
 
       {/* Date Range Picker */}
       {showDatePicker && (
-        <div className="flex gap-3 mb-4 p-4 bg-muted/60 rounded-xl border border-border/40">
-          <div className="flex-1">
-            <label className="text-xs text-muted-foreground block mb-1">วันเริ่มต้น</label>
-            <ThaiDateInput
-              value={startDateFilter}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="w-full px-3 py-2 border border-input rounded-lg text-sm"
-            />
-          </div>
-          <div className="flex-1">
-            <label className="text-xs text-muted-foreground block mb-1">วันสิ้นสุด</label>
-            <ThaiDateInput
-              value={endDateFilter}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="w-full px-3 py-2 border border-input rounded-lg text-sm"
-            />
-          </div>
-          {(startDateFilter || endDateFilter) && (
-            <div className="flex items-end">
-              <button
-                onClick={() => { setStartDate(''); setEndDate(''); }}
-                className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
-              >
-                ล้าง
-              </button>
+        <div className="mb-4 p-4 bg-muted/60 rounded-xl border border-border/40 space-y-3">
+          <DateRangeChips
+            startDate={startDateFilter}
+            endDate={endDateFilter}
+            onChange={({ startDate: sd, endDate: ed }) => {
+              setStartDate(sd);
+              setEndDate(ed);
+            }}
+          />
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label className="text-xs text-muted-foreground block mb-1">วันเริ่มต้น</label>
+              <ThaiDateInput
+                data-date-range-custom-start="true"
+                value={startDateFilter}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+              />
             </div>
-          )}
+            <div className="flex-1">
+              <label className="text-xs text-muted-foreground block mb-1">วันสิ้นสุด</label>
+              <ThaiDateInput
+                value={endDateFilter}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+              />
+            </div>
+            {(startDateFilter || endDateFilter) && (
+              <div className="flex items-end">
+                <button
+                  onClick={() => { setStartDate(''); setEndDate(''); }}
+                  className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
+                >
+                  ล้าง
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

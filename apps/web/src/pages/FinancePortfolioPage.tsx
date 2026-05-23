@@ -5,6 +5,8 @@ import api from '@/lib/api';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import QueryBoundary from '@/components/QueryBoundary';
 import PageHeader from '@/components/ui/PageHeader';
+import ThaiDateInput from '@/components/ui/ThaiDateInput';
+import { DateRangeChips } from '@/components/ui/DateRangeChips';
 import DataTable from '@/components/ui/DataTable';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -96,6 +98,8 @@ export default function FinancePortfolioPage() {
   const navigate = useNavigate();
 
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [page, setPage] = useState(1);
   const limit = 50;
 
@@ -106,10 +110,12 @@ export default function FinancePortfolioPage() {
     error,
     refetch,
   } = useQuery<PortfolioResponse>({
-    queryKey: ['finance-portfolio', statusFilter, page],
+    queryKey: ['finance-portfolio', statusFilter, startDate, endDate, page],
     queryFn: async () => {
       const params = new URLSearchParams({ page: String(page), limit: String(limit) });
       if (statusFilter !== 'ALL') params.set('status', statusFilter);
+      if (startDate) params.set('startDate', startDate);
+      if (endDate) params.set('endDate', endDate);
       const { data } = await api.get(`/reports/finance-portfolio?${params}`);
       return data;
     },
@@ -361,6 +367,33 @@ export default function FinancePortfolioPage() {
       {/* Filter + Table */}
       <Card>
         <CardContent className="p-0">
+          {/* Date range filter (filters Contract.createdAt) */}
+          <div className="p-4 border-b space-y-3">
+            <DateRangeChips
+              startDate={startDate}
+              endDate={endDate}
+              onChange={({ startDate: sd, endDate: ed }) => {
+                setStartDate(sd);
+                setEndDate(ed);
+                setPage(1);
+              }}
+            />
+            <div className="flex flex-wrap items-center gap-2">
+              <ThaiDateInput
+                data-date-range-custom-start="true"
+                value={startDate}
+                onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
+                className="w-40"
+              />
+              <span className="text-sm text-muted-foreground">ถึง</span>
+              <ThaiDateInput
+                value={endDate}
+                onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
+                className="w-40"
+              />
+            </div>
+          </div>
+
           {/* Status filter */}
           <div className="flex flex-wrap gap-2 p-4 border-b">
             {STATUS_OPTIONS.map((s) => (

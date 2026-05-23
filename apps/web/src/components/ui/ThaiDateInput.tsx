@@ -40,6 +40,8 @@ interface ThaiDateInputProps {
   placeholder?: string;
   min?: string;
   max?: string;
+  /** Marks this input as the "custom start" target for DateRangeChips focus. */
+  'data-date-range-custom-start'?: 'true';
 }
 
 export default function ThaiDateInput({
@@ -51,6 +53,7 @@ export default function ThaiDateInput({
   placeholder = 'วว/ดด/ปปปป',
   min,
   max,
+  ...dataProps
 }: ThaiDateInputProps) {
   const [open, setOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'days' | 'months' | 'years'>('days');
@@ -164,6 +167,7 @@ export default function ThaiDateInput({
             placeholder={placeholder}
             required={required}
             disabled={disabled}
+            {...dataProps}
             className={cn(
               'w-full px-3 py-2 pr-9 border border-input rounded-lg text-sm bg-background cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-ring/30',
               className,

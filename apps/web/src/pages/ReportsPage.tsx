@@ -9,6 +9,7 @@ import AnimatedCounter from '@/components/ui/animated-counter';
 import { toast } from 'sonner';
 import { Download } from 'lucide-react';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
+import { DateRangeChips } from '@/components/ui/DateRangeChips';
 import {
   BarChart,
   Bar,
@@ -482,10 +483,24 @@ function EntityProfitReport() {
     <div className="space-y-5">
       {/* Date Filters */}
       <div className="bg-card rounded-xl border border-border p-4">
+        <div className="mb-3">
+          <DateRangeChips
+            startDate={startDate}
+            endDate={endDate}
+            onChange={({ startDate: sd, endDate: ed }) => {
+              setStartDate(sd);
+              setEndDate(ed);
+            }}
+          />
+        </div>
         <div className="flex flex-wrap gap-3 items-end">
           <div>
             <label className="text-2xs font-medium text-muted-foreground block mb-1">จากวันที่</label>
-            <ThaiDateInput value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+            <ThaiDateInput
+              data-date-range-custom-start="true"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+            />
           </div>
           <div>
             <label className="text-2xs font-medium text-muted-foreground block mb-1">ถึงวันที่</label>

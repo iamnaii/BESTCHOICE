@@ -1,4 +1,5 @@
 import type { Product } from '../types';
+import { getDisplayPrices } from '@/utils/getDisplayPrices';
 
 export interface ProductSelectStepProps {
   products: Product[];
@@ -45,13 +46,26 @@ export function ProductSelectStep({
                 </div>
               </div>
               <div className="text-right">
-                {p.prices.map((pr) => (
-                  <div key={pr.id} className="text-xs">
-                    <span className="text-muted-foreground">{pr.label}: </span>
-                    <span className="font-medium">{parseFloat(pr.amount).toLocaleString()} ฿</span>
-                    {pr.isDefault && <span className="ml-1 text-primary">(หลัก)</span>}
-                  </div>
-                ))}
+                {(() => {
+                  const { installment, cash } = getDisplayPrices(p);
+                  const displayPrice = installment ?? cash;
+                  return (
+                    <>
+                      {displayPrice != null && (
+                        <div className="text-sm font-semibold text-primary mb-1">
+                          {displayPrice.toLocaleString()} ฿
+                        </div>
+                      )}
+                      {p.prices.map((pr) => (
+                        <div key={pr.id} className="text-xs">
+                          <span className="text-muted-foreground">{pr.label}: </span>
+                          <span className="font-medium">{parseFloat(pr.amount).toLocaleString()} ฿</span>
+                          {pr.isDefault && <span className="ml-1 text-primary">(หลัก)</span>}
+                        </div>
+                      ))}
+                    </>
+                  );
+                })()}
               </div>
             </div>
           </div>

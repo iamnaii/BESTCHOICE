@@ -13,6 +13,7 @@ import QueryBoundary from '@/components/QueryBoundary';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { posSaleSchema, type PosSaleFormData } from '@/lib/schemas';
 import type { Product, Customer, PosConfig, TopProduct } from './types';
+import { getDisplayPrices } from '@/utils/getDisplayPrices';
 
 import ProductSearch from './components/ProductSearch';
 import BundleSearch from './components/BundleSearch';
@@ -127,12 +128,15 @@ export default function POSPage() {
   const handleSelectProduct = (product: Product) => {
     setSelectedProduct(product);
     setProductSearch('');
-    const defaultPrice = product.prices.find((p) => p.isDefault);
-    if (defaultPrice) {
-      setSelectedPriceId(defaultPrice.id);
-      saleForm.setValue('sellingPrice', parseFloat(defaultPrice.amount), {
-        shouldValidate: true,
-      });
+    const { installment, cash } = getDisplayPrices(product);
+    const sellingPriceValue = installment ?? cash;
+    if (sellingPriceValue != null) {
+      // Try to find the matching price entry so we can track selectedPriceId
+      const matchingPrice = product.prices.find(
+        (p) => parseFloat(p.amount) === sellingPriceValue,
+      );
+      setSelectedPriceId(matchingPrice?.id ?? product.prices[0]?.id ?? '');
+      saleForm.setValue('sellingPrice', sellingPriceValue, { shouldValidate: true });
     } else if (product.prices.length > 0) {
       setSelectedPriceId(product.prices[0].id);
       saleForm.setValue('sellingPrice', parseFloat(product.prices[0].amount), {

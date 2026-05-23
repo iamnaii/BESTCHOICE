@@ -8,6 +8,7 @@ import QueryBoundary from '@/components/QueryBoundary';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import { statusLabels, categoryLabels } from '@/lib/constants';
 import { ArrowRightLeft, BarChart3, Check, Copy, Download, Eye, Plus, Printer } from 'lucide-react';
+import { getDisplayPrices } from '@/utils/getDisplayPrices';
 import { StockProduct } from './types';
 import { useStockProducts, useEditingProductSync } from './hooks/useStockProducts';
 import { StockListTab } from './components/StockListTab';
@@ -182,8 +183,8 @@ export default function StockProductsPage() {
         sortable: false,
         hideable: false,
         render: (p: StockProduct) => {
-          const defaultPrice = p.prices?.find((pr) => pr.isDefault) || p.prices?.[0];
-          const priceValue = defaultPrice ? parseFloat(defaultPrice.amount) : 0;
+          const { installment, cash } = getDisplayPrices({ prices: p.prices ?? [] });
+          const priceValue = installment ?? cash ?? 0;
           const costValue = parseFloat(p.costPrice);
           return (
             <div className="flex items-center gap-1.5">

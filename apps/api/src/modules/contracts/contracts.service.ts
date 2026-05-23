@@ -14,7 +14,8 @@ export interface BranchAccessUser {
   branchId: string | null;
 }
 import { CreateContractDto, UpdateContractDto } from './dto/contract.dto';
-import { calculateInstallment, generatePaymentSchedule } from '../../utils/installment.util';
+import { calculateInstallmentWithInterest, generatePaymentSchedule, roundBaht } from '../../utils/installment.util';
+import { getRateForMonths } from '../../utils/get-rate-for-months.util';
 import { loadInstallmentConfig, resolveInstallmentParams, resolveVatPctForBranch } from '../../utils/config.util';
 import { generateContractNumber } from '../../utils/sequence.util';
 import { d } from '../../utils/decimal.util';
@@ -321,7 +322,20 @@ export class ContractsService {
     }
 
     // Calculate installment using shared utility
-    const calc = calculateInstallment(dto.sellingPrice, dto.downPayment, params.interestRate, dto.totalMonths, params.storeCommissionPct, params.vatPct);
+    // Resolve total-contract rate via new lookup (feature-flagged; fallback = legacy rate × months)
+    const ratePct = interestConfig
+      ? Number(await getRateForMonths(this.prisma, interestConfig.id, dto.totalMonths))
+      : params.interestRate * dto.totalMonths;
+    const principal = roundBaht(dto.sellingPrice - dto.downPayment);
+    const resolvedInterestTotal = roundBaht(principal * ratePct);
+    const calc = calculateInstallmentWithInterest(
+      dto.sellingPrice,
+      dto.downPayment,
+      resolvedInterestTotal,
+      dto.totalMonths,
+      params.storeCommissionPct,
+      params.vatPct,
+    );
     const { interestTotal, financedAmount, monthlyPayment } = calc;
 
     // Create contract + payment schedule in transaction
@@ -542,8 +556,21 @@ export class ContractsService {
     }
 
     // Recalculate financials using shared utility
-    const interestRate = params.interestRate;
-    const calc = calculateInstallment(sellingPrice, downPayment, interestRate, totalMonths, params.storeCommissionPct, params.vatPct);
+    const interestRate = params.interestRate; // stored on Contract.interestRate (legacy per-month field — kept as-is)
+    // Resolve total-contract rate via new lookup (feature-flagged; fallback = legacy rate × months)
+    const ratePct = interestConfig
+      ? Number(await getRateForMonths(this.prisma, interestConfig.id, totalMonths))
+      : params.interestRate * totalMonths;
+    const principalAmt = roundBaht(sellingPrice - downPayment);
+    const interestAmt = roundBaht(principalAmt * ratePct);
+    const calc = calculateInstallmentWithInterest(
+      sellingPrice,
+      downPayment,
+      interestAmt,
+      totalMonths,
+      params.storeCommissionPct,
+      params.vatPct,
+    );
     const { interestTotal, financedAmount, monthlyPayment } = calc;
 
     // Update contract + recreate payment schedule

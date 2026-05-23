@@ -22,6 +22,8 @@ export interface ProductDetail {
   gallery: string[];
   gallery360: string[];
   tiers: Record<string, { minPrice: number; maxPrice: number; units: ProductUnit[] }>;
+  cashPrice: number | null;
+  installmentPrice: number | null;
 }
 
 export interface ProductUnit {
@@ -159,6 +161,8 @@ export class ShopCatalogService {
       gallery: product.gallery,
       gallery360: product.gallery360,
       tiers,
+      cashPrice: product.cashPrice !== null ? Number(product.cashPrice) : null,
+      installmentPrice: product.installmentPrice !== null ? Number(product.installmentPrice) : null,
     };
   }
 

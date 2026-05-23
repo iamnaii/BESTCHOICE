@@ -7,7 +7,12 @@ import {
 import { PaymentMethod, PlanType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateSaleDto } from './dto/sale.dto';
-import { calculateInstallment, generatePaymentSchedule } from '../../utils/installment.util';
+import {
+  calculateInstallmentWithInterest,
+  generatePaymentSchedule,
+  roundBaht,
+} from '../../utils/installment.util';
+import { getRateForMonths } from '../../utils/get-rate-for-months.util';
 import { loadInstallmentConfig, resolveInstallmentParams, resolveVatPctForBranch } from '../../utils/config.util';
 import { generateContractNumber, generateSaleNumber } from '../../utils/sequence.util';
 import { InterCompanyService } from '../inter-company/inter-company.service';
@@ -496,7 +501,20 @@ export class SalesService {
       throw new BadRequestException(`จำนวนงวดต้องอยู่ระหว่าง ${params.minInstallmentMonths}-${params.maxInstallmentMonths} เดือน`);
     }
 
-    const calc = calculateInstallment(netAmount, dto.downPayment, params.interestRate, dto.totalMonths, params.storeCommissionPct, params.vatPct);
+    // Resolve total-contract rate via new lookup (feature-flagged; fallback = legacy rate × months)
+    const ratePct = interestConfig
+      ? Number(await getRateForMonths(this.prisma, interestConfig.id, dto.totalMonths))
+      : params.interestRate * dto.totalMonths;
+    const principalForInterest = roundBaht(netAmount - dto.downPayment);
+    const interestTotal = roundBaht(principalForInterest * ratePct);
+    const calc = calculateInstallmentWithInterest(
+      netAmount,
+      dto.downPayment,
+      interestTotal,
+      dto.totalMonths,
+      params.storeCommissionPct,
+      params.vatPct,
+    );
 
     return this.prisma.$transaction(async (tx) => {
       await this.verifyProductInStock(tx, dto.productId);

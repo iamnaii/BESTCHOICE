@@ -16,7 +16,20 @@ jest.mock('../../utils/installment.util', () => ({
     financedAmount: 21800,
     monthlyPayment: 1817,
   }),
+  calculateInstallmentWithInterest: jest.fn().mockReturnValue({
+    principal: 19800,
+    interestTotal: 1800,
+    storeCommission: 0,
+    vatAmount: 0,
+    financedAmount: 21800,
+    monthlyPayment: 1817,
+  }),
+  roundBaht: jest.fn().mockImplementation((v: number) => Math.round(v * 100) / 100),
   generatePaymentSchedule: jest.fn().mockReturnValue([]),
+}));
+
+jest.mock('../../utils/get-rate-for-months.util', () => ({
+  getRateForMonths: jest.fn().mockResolvedValue(9 * 24), // legacy: rate × months
 }));
 
 jest.mock('../../utils/config.util', () => ({

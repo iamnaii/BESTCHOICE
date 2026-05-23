@@ -1,35 +1,49 @@
-# Insurance Wizard SP2 — Unified Device Exchange (Upgrade Flow)
+# Insurance Wizard SP2 — Device Swap (Same-Price Exchange)
 
-**Date:** 2026-05-23 (revised 2026-05-23 per owner clarification)
-**Status:** Design — REVISED, awaiting plan
-**Scope:** Device exchange = upgrade flow that works for **all 3 channels** (CASH / INSTALLMENT / GFIN-blocked). New sale is ALWAYS a fresh INSTALLMENT contract; old device returns to SHOP inventory as 2nd-hand.
+**Date:** 2026-05-23 (revised TWICE per owner clarification)
+**Status:** Design — REVISED v3, awaiting plan
+**Scope:** Same-price device swap for INSTALLMENT (BC FINANCE) — customer carries remaining installments to new device. No upgrade. No cash flow. CASH + GFIN exchange explicitly out of scope.
 **Depends on:** SP1 (IMEI UX) — shipped via PR #1076 + hotfixes
-**Awaiting before plan:** CPA sign-off on JE templates for each channel (Case 8 for INSTALLMENT; new templates for CASH)
+**Awaiting before plan:** CPA sign-off on simplified Case 8 JE chain (perfect-offset only — no cash-diff sub-cases needed)
 
 ---
 
-## ⚠️ Owner clarification (2026-05-23) — supersedes earlier draft
+## ⚠️ Owner clarification v3 (2026-05-23) — supersedes ALL earlier drafts
 
-The original draft of this spec treated "เปลี่ยนเครื่อง" as a **defect-warranty replacement** with manual buyback valuation. Owner clarified during local testing that the real business meaning is broader:
+After 2 rounds of clarification during local testing, owner's final business rule:
 
-> เปลี่ยนเครื่อง = customer gives back old device + gets NEW device of equal or higher price.
-> - If new > old → customer pays the difference as ดาวน์ on a new installment contract.
-> - Buyback value of old device = **what FINANCE already paid SHOP for it** (= `financedAmount + commissionAmount` for INSTALLMENT). No manual valuation. No ±% threshold.
-> - New sale always becomes a fresh INSTALLMENT contract (even if old was CASH).
-> - Old device → SHOP inventory (status `REFURBISHED` or similar) → re-sold as 2nd-hand later.
+> เปลี่ยนเครื่อง = customer brings back old device + gets **identical-price** replacement device.
+> - **Same brand + model + storage + sellingPrice ONLY** — no upgrade
+> - **Customer pays ฿0 today** — no cash flow, no down-payment diff
+> - **Carry remaining installments** — new contract opens with REMAINING schedule from old (e.g. paid 3 of 12 → new contract has 9 months left to pay)
+> - Monthly payment stays identical
+> - Old device → SHOP inventory as 2nd-hand → re-sold later
+> - Only INSTALLMENT (BC FINANCE) supported. CASH = no exchange (just trade-in + new sale separately). GFIN blocked.
 
-**Supersedes:**
-- ❌ Trade-in valuation lookup endpoint (no manual buyback)
-- ❌ `buybackPrice` / `buybackPriceFromTable` / `variancePercent` / `overrideReason` fields on `ContractExchangeRequest`
-- ❌ `±20%` SystemConfig threshold (`EXCHANGE_BUYBACK_VARIANCE_THRESHOLD`)
-- ❌ Required device-condition photos (still useful but not gating)
+**Supersedes (v1 + v2 dropped):**
+- ❌ Trade-in valuation table / manual buyback price input
+- ❌ ±20% variance threshold + override reason
+- ❌ Device condition photos as gating requirement
+- ❌ New `sellingPrice` input (locked to old)
+- ❌ `newPlanMonths` / `newPlanInterestRate` input (locked to remaining old)
+- ❌ `customerDownPayment` field (always 0)
+- ❌ JE3 sub-case A (customer pays cash diff) — no longer reachable
+- ❌ JE3 sub-case C (refund cash to customer) — no longer reachable
+- ❌ `cashAccountCode` for JE3 (no cash leg)
+- ❌ CASH exchange flow (CHANNEL B in v2) — explicitly out of scope
+- ❌ Multi-channel scope expansion
 
 **Still applies:**
-- ✅ Case 8 JE chain for INSTALLMENT (new contract + close old + clear 21-1106 vendor)
-- ✅ Maker-checker approval queue
-- ✅ Always create new contract (always INSTALLMENT, even if old was CASH)
+- ✅ Case 8 JE chain for INSTALLMENT — but JE3 reduces to perfect-offset always
+- ✅ Maker-checker approval queue (SALES/BM submits, OWNER approves)
+- ✅ New contract creation linked to old via FK (`exchangedFromContractId`)
+- ✅ Old contract → status `EXCHANGED`
+- ✅ Old Product → status `REFURBISHED` in same branch inventory
 - ✅ `21-1106` clearing account usage
-- ✅ Concurrent approval guard (updateMany + count===1)
+- ✅ Atomic `$transaction` with `updateMany` lock-acquire pattern
+- ✅ Optional condition note + photos (not gating, just record)
+
+**Net effect:** SP2 is now 30-40% smaller than v2. JE3 has 1 sub-case instead of 3. ContractExchangeRequest schema drops 6 fields. UI has no inputs to validate beyond replacement product selection.
 
 ---
 
@@ -49,21 +63,21 @@ This spec adds the **unified exchange destination** that handles all 3 channels 
 
 ---
 
-## Design Decisions (revised)
+## Design Decisions (v3)
 
 | Topic | Decision |
 |---|---|
-| Channel scope | CASH + INSTALLMENT (BC FINANCE) supported. GFIN blocked in UI (button disabled) |
-| New sale type | **Always INSTALLMENT** — even if old was CASH. Owner: "ทำสัญญาผ่อนใหม่" |
-| Approval flow | **Maker-checker** — SALES/BM submits → OWNER approves → atomic JE post + new contract |
-| Buyback value (auto-derived, NO manual input) | INSTALLMENT: `oldContract.financedAmount + oldContract.commissionAmount` (= what FINANCE paid SHOP). CASH: `oldSale.sellingPrice` (= original cash price — owner-confirmed proxy for FINANCE-equivalent value) |
-| Required customer payment | Down payment = `newSellingPrice − buybackValue`. Must be ≥ 0 (UI blocks if new < old) |
-| Out-of-7-day window | Not applicable to upgrade flow — owner clarified this is a customer-initiated upgrade, not defect-driven. Any active contract / any CASH sale eligible |
-| Old device disposition | Mark `Product.status = REFURBISHED` (or new enum value). Stays in same branch's inventory. Re-sold later as 2nd-hand. Optional condition note + photo (not gating) |
-| Contract strategy | Always create new INSTALLMENT contract. Old contract (if any) → status `EXCHANGED`, both linked via FK |
-| Old → new carry-over | `customerId` always; KYC docs / signed agreement template / deposit — only if old was a contract (no contract for CASH) |
-| `Sale.saleType === null` | Treat as EXTERNAL_FINANCE — block exchange |
+| Channel scope | **INSTALLMENT (BC FINANCE) only.** CASH = out of scope (handle via trade-in + new sale separately). GFIN = UI blocked |
+| Replacement device filter | Same `brand` + `model` + `storage` + **`sellingPrice`** as old. Server-enforced. |
+| Customer cash today | **Always ฿0.** No down payment, no diff, no cash flow |
+| New contract plan | **Carry remaining schedule.** New contract opens with: `totalMonths = old.totalMonths − paidInstallments`, `monthlyPayment` = same, `financedAmount` = `monthlyPayment × remainingMonths` |
+| Old device disposition | `Product.status = REFURBISHED` (or reuse existing enum value). Stays in same branch's inventory. Optional condition note + photos. |
+| Contract strategy | Create new INSTALLMENT contract. Old → status `EXCHANGED`. Both linked via FK `exchangedFromContractId`. |
+| Old → new carry-over | `customerId` + KYC documents + signed agreement template. Payment history STAYS attached to old contract. |
+| Approval flow | **Maker-checker** — SALES/BM submits → OWNER approves → atomic JE post + new contract created |
+| 7-day window | **Not applicable** — exchange is customer-initiated swap, not defect repair. Any ACTIVE contract eligible |
 | Concurrent approval | `updateMany({ where: { id, status: 'PENDING' }, data: {...} })` inside `$transaction`, assert count === 1; otherwise `ConflictException` |
+| Buyback value (internal accounting) | Auto-derived = `oldContract.financedAmount + oldContract.commissionAmount` (= what FINANCE paid SHOP). Hidden from UI. Used only in JE templates. |
 
 ---
 
@@ -75,41 +89,23 @@ This spec adds the **unified exchange destination** that handles all 3 channels 
 model ContractExchangeRequest {
   id                    String    @id @default(uuid())
 
-  // Origin: either old contract (INSTALLMENT) OR old sale (CASH). Exactly one is set.
-  oldContractId         String?   @map("old_contract_id")
-  oldContract           Contract? @relation("ExchangeRequestsFromOldContract", fields: [oldContractId], references: [id])
-  oldSaleId             String?   @map("old_sale_id")
-  oldSale               Sale?     @relation("ExchangeRequestsFromOldSale", fields: [oldSaleId], references: [id])
+  // Old contract being exchanged (INSTALLMENT only — CASH is out of scope)
+  oldContractId         String    @map("old_contract_id")
+  oldContract           Contract  @relation("ExchangeRequestsFromOldContract", fields: [oldContractId], references: [id])
   oldProductId          String    @map("old_product_id")  // for inventory return
   oldProduct            Product   @relation("ExchangeRequestsOldProduct", fields: [oldProductId], references: [id])
 
-  // Buyback value — AUTO-derived from old sale/contract; stored for audit (no manual input)
-  // - INSTALLMENT: financedAmount + commissionAmount of old contract
-  // - CASH:        sellingPrice of old sale
-  buybackValue          Decimal   @map("buyback_value") @db.Decimal(12, 2)
-  buybackSource         String    @map("buyback_source")  // 'OLD_CONTRACT_FINANCED' | 'OLD_SALE_SELLING_PRICE'
-
-  // New product + new INSTALLMENT plan
+  // New device (server-enforced same brand+model+storage+sellingPrice)
   newProductId          String    @map("new_product_id")
   newProduct            Product   @relation("ExchangeRequestNewProduct", fields: [newProductId], references: [id])
-  newSellingPrice       Decimal   @map("new_selling_price") @db.Decimal(12, 2)
-  newPlanCommission     Decimal   @map("new_plan_commission") @db.Decimal(12, 2)
-  newPlanMonths         Int       @map("new_plan_months")
-  newPlanInterestRate   Decimal   @map("new_plan_interest_rate") @db.Decimal(5, 2)
-
-  // Computed: customer pays this as down payment (newSellingPrice - buybackValue). 0 if equal.
-  customerDownPayment   Decimal   @map("customer_down_payment") @db.Decimal(12, 2)
 
   // Optional condition record (not gating)
   conditionNote         String?   @map("condition_note")
-  conditionPhotos       String[]  @map("condition_photos")  // S3 URLs; optional
+  conditionPhotos       String[]  @map("condition_photos")  // S3 URLs
 
   // Status flow
   status                ExchangeRequestStatus @default(PENDING)
   rejectionReason       String?   @map("rejection_reason")
-
-  // Cash account for receiving customer's down payment (defaulted from User.defaultCashAccountCode)
-  cashAccountCode       String?   @map("cash_account_code")  // one of 11-1101..1103 or 11-1201..1203
 
   // People
   requestedById         String    @map("requested_by_id")
@@ -118,7 +114,7 @@ model ContractExchangeRequest {
   approvedBy            User?     @relation("ExchangeRequestsApproved", fields: [approvedById], references: [id])
   approvedAt            DateTime? @map("approved_at")
 
-  // Linked after approval
+  // Linked after approval (3 JEs — 1A activation, 2 close-old, 3 clear vendor)
   newContractId         String?   @unique @map("new_contract_id")
   newContract           Contract? @relation("ExchangeRequestsToNewContract", fields: [newContractId], references: [id])
   je1aId                String?   @map("je_1a_id")
@@ -131,7 +127,6 @@ model ContractExchangeRequest {
 
   @@index([status, createdAt])
   @@index([oldContractId])
-  @@index([oldSaleId])
   @@index([oldProductId])
   @@map("contract_exchange_requests")
 }
@@ -182,150 +177,75 @@ Old device gets `status = REFURBISHED` after exchange approval. Stays in same br
 
 ## JE Templates by channel
 
-Templates live at `apps/api/src/modules/journal/cpa-templates/`. All execute inside one `$transaction` per approval; share `metadata.batchId`; balance asserts per template.
+Templates live at `apps/api/src/modules/journal/cpa-templates/`. All 3 execute inside one `$transaction`; share `metadata.batchId`; balance asserts per template.
 
-### CHANNEL A — INSTALLMENT (BC FINANCE) exchange = Case 8 JE chain
+Because the exchange is **same-price + carry remaining schedule**:
+- New contract's `financedAmount + commission` (= new vendor sum) **equals** old contract's `financedAmount + commission` (= buyback)
+- JE3 always reduces to **perfect-offset** sub-case — no cash legs ever
+- JE2 plug-balance line (loss `51-1102` or gain `41-1102`) still exists because old contract's remaining receivable (Gross + VAT) ≠ buyback in general
 
-3 templates, atomically chained, identical to original draft:
+### Template A.1 — `ExchangeNewContract1ATemplate`
 
-#### A.1 — `ExchangeNewContract1ATemplate`
-
-Identical structure to existing `ContractActivation1ATemplate` but invoked from exchange approval. Posts on the **new** contract.
-
-```
-Dr 11-2101 [new contract gross]
-Dr 11-2105 [new contract VAT receivable]
-   Cr 21-1101 [new vendor yodjat]
-   Cr 21-1102 [new vendor commission]
-   Cr 11-2106 [new unearned interest]
-   Cr 21-2102 [new deferred VAT output]
-```
-
-Rounding per `accounting.md` (ROUND_DOWN principal, ROUND_HALF_UP VAT).
-
-### Template 1 — `ExchangeNewContract1ATemplate`
-
-Identical structure to existing `ContractActivation1ATemplate` but invoked from the exchange approval service. Posts on the **new** contract.
+Same shape as existing `ContractActivation1ATemplate`, called from exchange approval. Posts on the new contract using the **remaining-installment** plan (totalMonths = old.totalMonths − paidInstallments; monthlyPayment = same as old).
 
 ```
-Dr 11-2101 [new contract gross]
-Dr 11-2105 [new contract VAT receivable]
-   Cr 21-1101 [new vendor head — yodjat]
-   Cr 21-1102 [new vendor commission]
-   Cr 11-2106 [new unearned interest]
-   Cr 21-2102 [new deferred VAT output]
+Dr 11-2101 [new contract gross — based on REMAINING months]
+Dr 11-2105 [new contract VAT receivable — pro-rated to remaining]
+   Cr 21-1101 [new vendor yodjat — same as old yodjat]
+   Cr 21-1102 [new vendor commission — same as old]
+   Cr 11-2106 [new unearned interest — for remaining months]
+   Cr 21-2102 [new deferred VAT output — pro-rated]
 ```
 
-Rounding rules per `accounting.md` (ROUND_DOWN for principal, ROUND_HALF_UP for VAT).
+Rounding per `accounting.md`.
 
-#### A.2 — `ExchangeCloseOld21_1106Template`
+### Template A.2 — `ExchangeCloseOld21_1106Template`
 
-Closes the old contract and stages the buyback credit into `21-1106`. Loss / gain plug computed from buyback vs **gross receivable remaining + VAT receivable remaining** (i.e. `11-2101 outstanding + 11-2105 outstanding`).
-
-Plug-balance threshold: `threshold = (11-2101 + 11-2105) outstanding`
-
-- If `buyback < threshold` → Dr `51-1102` (loss) for the difference
-- If `buyback > threshold` → Cr `41-1102` (gain) for the difference
-- If `buyback == threshold` → no P&L line
-
-**Note**: this threshold does NOT match the JE3 cash-flow sub-cases (which compare buyback vs new vendor sum). All three JE3 sub-cases can independently produce a JE2 loss or gain. Implementer must treat JE2 P&L and JE3 cash flow as orthogonal.
+Closes the old contract, stages buyback into `21-1106`. Loss/gain plug from buyback vs (Gross + VAT receivable outstanding).
 
 ```
-Dr 21-1106 [buyback price]
+Dr 21-1106 [buyback = old.financedAmount + old.commissionAmount]
 Dr 11-2106 [old unearned interest remaining]
 Dr 21-2102 [old deferred VAT remaining]
-Dr 51-1102 [loss — if buyback < (11-2101 + 11-2105) remaining]
-   Cr 11-2101 [old receivable Gross remaining]
-   Cr 11-2105 [old VAT receivable remaining]
-   Cr 21-2101 [old VAT recognized to ภ.พ.30]
-   Cr 41-1101 [old interest revenue recognized]
-   Cr 41-1102 [gain — if buyback > (11-2101 + 11-2105) remaining]
+Dr 51-1102 [loss — if buyback < (11-2101 + 11-2105) outstanding]
+   Cr 11-2101 [old receivable Gross outstanding]
+   Cr 11-2105 [old VAT receivable outstanding]
+   Cr 21-2101 [old VAT to ภ.พ.30]
+   Cr 41-1101 [old unearned interest recognized]
+   Cr 41-1102 [gain — if buyback > (11-2101 + 11-2105) outstanding]
 ```
 
-CSV verification (using Case 8 fixture values: old gross 11,333.28 + old VAT receivable 793.36 = threshold 12,126.64):
+Loss/gain handles the difference between "what SHOP receives back from FINANCE perspective" vs "what was still owed". Even with same-price swap this can be non-zero because customer has paid down some principal.
 
-| Sub-case | buyback | vs threshold | P&L line | Amount |
-|---|---:|---|---|---:|
-| A | 8,000 | < 12,126.64 | Dr 51-1102 | 4,126.64 |
-| B | 11,000 | < 12,126.64 | Dr 51-1102 | 1,126.64 |
-| C | 13,000 | > 12,126.64 | Cr 41-1102 | 873.36 |
+### Template A.3 — `ExchangeClearVendor21_1106Template` (perfect offset only)
 
-#### A.3 — `ExchangeClearVendor21_1106Template`
+Same-price constraint → new vendor sum = buyback → only one form:
 
-Clears `21-1106` against new contract's vendor payables. Three sub-cases based on `buyback vs (new vendor yodjat + new vendor commission)`:
-
-**Sub-case A: buyback < new vendor sum** — customer adds cash diff
 ```
-Dr 21-1101 [new vendor yodjat]
-Dr 21-1102 [new vendor commission]
-   Cr 21-1106 [buyback price]
-   Cr [cashAccountCode] [cash diff received from customer]
+Dr 21-1101 [new vendor yodjat = same as old]
+Dr 21-1102 [new vendor commission = same as old]
+   Cr 21-1106 [buyback = new vendor sum]
 ```
 
-**Sub-case B: buyback == new vendor sum** — no cash flow, perfect offset
-```
-Dr 21-1101 [new vendor yodjat]
-Dr 21-1102 [new vendor commission]
-   Cr 21-1106 [buyback price = new vendor sum]
-```
+No cash leg. No sub-cases. No `cashAccountCode` needed.
 
-**Sub-case C: buyback > new vendor sum** — refund cash to customer
-```
-Dr 21-1101 [new vendor yodjat]
-Dr 21-1102 [new vendor commission]
-Dr [cashAccountCode] [cash diff paid to customer]
-   Cr 21-1106 [buyback price]
-```
-
-`cashAccountCode` follows the same pattern as `Payment.depositAccountCode` — defaulted from the approver's `User.defaultCashAccountCode` and pickable at approval time. Must be one of the 6 valid codes (11-1101..1103 or 11-1201..1203). Sub-case is auto-determined by the service.
+Asserts in service: `newVendorYodjat + newVendorCommission === buyback`. If false → throw (defensive — should never trigger given same-price filter, but catches bugs in plan-calc).
 
 ---
 
-### CHANNEL B — CASH exchange (no old contract)
+### Out-of-scope channels
 
-For CASH sale exchange, **no old contract to close** → drop JE A.2. Buyback value = `oldSale.sellingPrice` (full original cash price). The old device returns to SHOP inventory; customer signs a new INSTALLMENT contract.
-
-Two templates instead of three:
-
-#### B.1 — `ExchangeNewContract1ATemplate` (same as A.1)
-
-Same template, same logic. New INSTALLMENT contract activation.
-
-#### B.2 — `ExchangeClearVendor21_1106TemplateCash`
-
-Differs from A.3 in the source of the credit balancing `21-1101` + `21-1102`. For CASH there's no `21-1106` buyback liability from the closed contract — instead, the buyback equivalent is the inventory value SHOP gains by receiving the device back.
-
-```
-Dr 21-1101 [new vendor yodjat]
-Dr 21-1102 [new vendor commission]
-   Cr 11-3101 [old device → SHOP inventory at buyback value = oldSale.sellingPrice]
-   ± [cashAccountCode] (depending on direction of customer down payment vs sum)
-```
-
-(11-3101 is the existing "สินค้าคงเหลือ-เครื่องยึดคืน" inventory account per `accounting.md`. CPA must confirm this is the correct account for re-entered exchange devices, or assign a new one.)
-
-Sub-cases for cash flow same pattern as A.3:
-- buyback < new vendor sum → customer pays diff (Cr cash from customer)
-- buyback == new vendor sum → no cash flow
-- buyback > new vendor sum → refund cash to customer
-
-> **Open question for CPA:** Should CASH exchange also realize gain/loss vs original sale's COGS? Defer until CPA review. For initial design, treat the buyback at full `oldSale.sellingPrice` (no gain/loss line) and let SP2.1 add the depreciation/markdown logic if needed.
-
----
-
-### CHANNEL C — GFIN (EXTERNAL_FINANCE) exchange
-
-**BLOCKED in UI.** No JE templates needed. Customer must close GFIN contract externally first; then they appear in BC system as a walk-in or new INSTALLMENT customer.
-
----
+- **CASH** — handle via existing trade-in module + new POS sale (2 transactions). NOT supported by this exchange flow.
+- **GFIN (EXTERNAL_FINANCE)** — UI blocked. Customer must close GFIN contract externally first.
 
 ### Atomicity guarantees
 
-All three templates execute inside one Prisma `$transaction`:
+All 3 templates execute inside one Prisma `$transaction`:
 - Each template internally validates Dr=Cr balance (throws if unbalanced)
 - `Contract.status` of old → `EXCHANGED` updated
-- New `Contract` row created with full installment schedule
-- `21-1106` ending balance after JE3 must equal `0` for the batch — assertion guard
+- New `Contract` row created with REMAINING-installment plan
+- `Product.status` of old → `REFURBISHED`
+- `21-1106` ending balance after A.3 must equal `0` for the batch — assertion guard
 
 Failure at any step rolls back; no partial state.
 
@@ -333,31 +253,22 @@ Failure at any step rolls back; no partial state.
 
 ## API Endpoints
 
-### ~~(NEW) `GET /trade-in/buyback-suggest`~~ — DROPPED
-
-No manual valuation in the revised design — buyback is auto-derived server-side from `oldContract.financedAmount + commissionAmount` (INSTALLMENT) or `oldSale.sellingPrice` (CASH). The IMEI lookup endpoint already exposes everything the form needs.
-
 ### (NEW) `POST /insurance/exchange-requests`
 ```
 Body: {
-  oldProductId,           // required — anchors old device for inventory return
-  oldContractId?,         // present iff INSTALLMENT
-  oldSaleId?,             // present iff CASH (alternative anchor; mutually exclusive with oldContractId)
-  newProductId,
-  newSellingPrice,        // owner-set; UI validates ≥ buyback
-  newPlanCommission,
-  newPlanMonths,
-  newPlanInterestRate,
-  conditionNote?,         // optional
-  conditionPhotos?: [],   // optional, S3 URLs, ≤5 photos, ≤8MB each, jpg/png/webp
+  oldContractId,        // required — INSTALLMENT only
+  oldProductId,         // for inventory return
+  newProductId,         // server validates: same brand+model+storage+sellingPrice as old
+  conditionNote?,       // optional
+  conditionPhotos?: [], // optional, S3 URLs, ≤5 photos
 }
 Response: ContractExchangeRequest (status=PENDING)
 ```
 
-Server-side computation:
-- Lookup old contract/sale → derive `buybackValue` + `buybackSource`
-- `customerDownPayment = newSellingPrice − buybackValue`. Reject if < 0.
-- Validate channel: if EXTERNAL_FINANCE → 403 ("ผ่อน GFIN ใช้ exchange ไม่ได้")
+Server validation:
+- Old contract: must exist + status=ACTIVE + linked to INSTALLMENT sale
+- New product: must IN_STOCK + same brand + same model + same storage + **same sellingPrice** as old's product
+- 400 if new product sellingPrice ≠ old product sellingPrice (carry-over math requires this)
 
 Roles: SALES, BM, OWNER.
 
@@ -369,19 +280,20 @@ Roles: OWNER only.
 
 ### (NEW) `POST /insurance/exchange-requests/:id/approve`
 ```
-Body: { cashAccountCode: string }  // required, used in B.2 cash diff line
+Body: {} // no body — all values auto-derived
 ```
 Process (inside `$transaction`):
 1. Lock-acquire via `updateMany({ where: { id, status: 'PENDING' }, data: {...} })` — assert count === 1
-2. Re-fetch full request with old contract/sale + new product
-3. Branch on channel:
-   - **INSTALLMENT** → run A.1 (new contract activation) → A.2 (close old contract) → A.3 (clear 21-1106 + cash diff)
-   - **CASH** → run B.1 (new contract activation) → B.2 (clear 21-1101/02 against 11-3101 inventory + cash diff)
-4. Update old device: `Product.status = REFURBISHED` (still in branch inventory, ready for resale)
-5. If INSTALLMENT: update old Contract → `status='EXCHANGED'`, `exchangedAt=now`, link `replacedByContractId`
-6. Update request: `newContractId`, JE IDs, status=APPROVED
-7. Copy carry-over fields from old contract (INSTALLMENT) → new contract: `customerId`, `kycDocuments[]`, `signedAgreementUrl`. For CASH: only `customerId`.
-8. AuditLog `EXCHANGE_REQUEST_APPROVED` with full diff (channel, buyback source/value, customer down)
+2. Re-fetch full request with old contract + old product + new product
+3. Compute new plan: `remainingMonths = old.totalMonths − paidInstallments(old.id)`; `newFinancedAmount = old.monthlyPayment × remainingMonths`; `newMonthlyPayment = old.monthlyPayment` (same)
+4. Run A.1 (new contract activation with remaining-installment plan)
+5. Run A.2 (close old contract → 21-1106 + P&L plug)
+6. Run A.3 (clear 21-1106 vs new vendor — perfect offset assertion)
+7. Update old Product: `status = REFURBISHED`
+8. Update old Contract: `status = EXCHANGED`, `exchangedAt = now`, link `replacedByContractId`
+9. Update request: `newContractId`, JE IDs, status=APPROVED
+10. Copy carry-over: `customerId`, `kycDocuments[]`, `signedAgreementUrl` → new contract
+11. AuditLog `EXCHANGE_REQUEST_APPROVED` with full diff
 
 Roles: OWNER only.
 
@@ -402,19 +314,18 @@ Roles: OWNER only.
 - `InsurancePage.tsx` — add tab "เปลี่ยนเครื่องรอ approval" with count badge (OWNER only)
 
 ### New pages
-- `/insurance/exchange-request/new?productId=…` — `ExchangeRequestForm`:
-  - Auto-display: old device info + **auto-derived buyback value** (no input field for it) — labeled either "ราคาที่ FINANCE จ่ายให้ SHOP" (INSTALLMENT) or "ราคาเดิมที่ขายเงินสด" (CASH)
+- `/insurance/exchange-request/new?contractId=…` — `ExchangeRequestForm`:
+  - Auto-display: old device info + old contract plan (read-only)
   - Required input:
-    - ① New product picker (filtered to `sellingPrice ≥ buybackValue` — owner rule)
-    - ② New `sellingPrice` (auto-populated from product but editable)
-    - ③ New `commission`, `months`, `interestRate` (use existing plan calc utility)
-  - Live preview:
-    - "ลูกค้าจ่ายดาวน์" = `newSellingPrice − buybackValue` (≥ 0)
-    - Monthly payment + total interest from plan calc
-  - Optional: condition note + photos (not gating)
-  - Submit → POST `/insurance/exchange-requests` → toast + redirect to /insurance
+    - **New product picker** — filtered server-side to: same brand + model + storage + sellingPrice + IN_STOCK
+  - Preview (read-only):
+    - "ลูกค้าจ่ายเพิ่ม: ฿0" (always 0 due to same-price constraint)
+    - "งวดที่เหลือ: N จาก M" (auto from old contract paid count)
+    - "งวดละ: ฿X" (same as old)
+  - Optional: condition note + photos
+  - Submit button enabled when new product selected → POST `/insurance/exchange-requests` → toast + redirect
 - `/insurance/exchange-requests` — OWNER queue (list + detail + approve/reject). Mirrors `/finance/contract-cancellation` structure.
-  - Approve dialog: select `cashAccountCode`
+  - Approve dialog: confirm only — no inputs needed (no cashAccountCode, no manual valuation)
 
 ### Menu changes (`config/menu.ts`)
 - OWNER: under "หลังการขาย" zone add "คำขอเปลี่ยนเครื่อง" with `badgeKey: 'exchange-requests-pending'`
@@ -428,38 +339,41 @@ Keep working (#1078 restored it as standalone DefectExchangePage). After SP2 shi
 ## Testing Strategy
 
 ### Unit tests (apps/api)
-- JE templates A.1 / A.2 / A.3 — validate Dr=Cr balance for sub-cases A/B/C against CSV golden values (`case-8-A.csv`, `case-8-B.csv`, `case-8-C.csv`)
-- JE template B.1 (= A.1 reuse) + B.2 (new) — validate against `case-8-cash-{A,B,C}.csv` golden values (NEW fixture, to be authored)
-- A.2 plug-balance: buyback vs (Gross + VAT receivable) thresholds
-- `ExchangeRequestService.submit`: buyback auto-derivation per channel + customerDownPayment ≥ 0 guard
-- `ExchangeRequestService.approve`: full atomic flow per channel + rollback test
-- Concurrent approval: spawn 2 approves, exactly 1 succeeds, other → 409
-- Old device status flip to REFURBISHED + correct branch retention
+- JE template A.1 — validate against existing ContractActivation golden values (reuse, parameterized for remaining-months)
+- JE template A.2 plug-balance — buyback vs (Gross + VAT receivable outstanding) → loss / gain / zero
+- JE template A.3 perfect-offset — asserts vendor sum equals buyback (defensive); throws otherwise
+- `ExchangeRequestService.submit` — same-price validation rejects mismatched sellingPrice with 400
+- `ExchangeRequestService.approve` — full atomic flow + rollback test (force A.2 to throw, verify nothing partial)
+- Remaining-installment math — `remainingMonths = old.totalMonths − count(payments where status=PAID)`
+- Concurrent approval — spawn 2 approves, exactly 1 succeeds, other → 409
+- Old Product → REFURBISHED status flip; new Product → status update on activation
+- CSV golden fixture: `case-8-same-price.csv` (NEW — single sub-case, no cash legs)
 
 ### Integration tests
-- INSTALLMENT submission → approve → new Contract + 3 JEs + old.status=EXCHANGED + product.status=REFURBISHED
-- CASH submission → approve → new Contract + 2 JEs (B.1 + B.2) + product.status=REFURBISHED
-- Reject path (both channels)
-- Block path: GFIN attempt → 403
+- Submit → approve → new Contract + 3 JEs + old.status=EXCHANGED + product.status=REFURBISHED
+- Submit with non-matching price → 400
+- Submit with GFIN sale → 403
+- Reject path
 
 ### E2E (Playwright)
-- SALES submits CASH exchange → OWNER approves → new INSTALLMENT contract appears + old product status changed
-- SALES submits INSTALLMENT exchange → OWNER approves → as above + old contract status EXCHANGED
+- SALES picks PHONE_USED contract → /insurance/exchange-request/new → select replacement → submit → OWNER queue → approve → verify new contract appears with carried-over remaining schedule
 
 ---
 
 ## Acceptance Criteria
 
-- [ ] SALES/BM submits request in ≤ 30 sec (excluding optional photo upload)
-- [ ] OWNER approves clean request in ≤ 15 sec (select cashAccountCode → confirm)
+- [ ] SALES/BM submits request in ≤ 15 sec (only pick new product)
+- [ ] OWNER approves clean request in ≤ 5 sec (confirm only — no inputs)
 - [ ] SALES user cannot approve their own request
-- [ ] CASH exchange creates new INSTALLMENT contract (not new CASH sale)
-- [ ] All JEs balance (Dr = Cr) per template and across batch
+- [ ] New product picker only shows same-brand+model+storage+sellingPrice IN_STOCK options
+- [ ] Customer pays ฿0 — no cash leg in any JE
+- [ ] All 3 JEs balance (Dr = Cr) per template and across batch
 - [ ] Old INSTALLMENT contract → EXCHANGED exactly when JEs post (atomic)
 - [ ] Old Product → REFURBISHED status retained in same branch
+- [ ] New contract has remaining-installment plan (NOT a fresh 12 months)
 - [ ] Failed JE leaves request PENDING + no Contract / Product status change
-- [ ] Trial Balance: `21-1106` = 0 net after INSTALLMENT batch
-- [ ] Audit log: `EXCHANGE_REQUEST_SUBMITTED` + `EXCHANGE_REQUEST_APPROVED|REJECTED` with full diff (channel, buyback source/value, customer down payment, JE batch ID)
+- [ ] Trial Balance: `21-1106` = 0 net after batch
+- [ ] Audit log: `EXCHANGE_REQUEST_SUBMITTED` + `EXCHANGE_REQUEST_APPROVED|REJECTED` with full diff
 - [ ] Concurrent approve: 2 OWNERs simultaneous → exactly 1 succeeds, other gets 409
 
 ---
@@ -468,14 +382,12 @@ Keep working (#1078 restored it as standalone DefectExchangePage). After SP2 shi
 
 1. **Pre-plan checks** (block plan kickoff until done):
    - CPA confirms `21-1106` label fits Case 8 clearing-account intent
-   - CPA reviews JE template designs (A.1/A.2/A.3 + B.1/B.2) against golden CSVs
-   - CPA decides: CASH exchange B.2 buyback-account question (11-3101 vs new account?)
-   - CPA decides: should CASH exchange realize gain/loss vs original sale's cost? (currently spec defers)
-2. Schema migration: add `ContractExchangeRequest` + `Contract.exchangedFromContractId` + `EXCHANGED` enum value + Product.status `REFURBISHED` (if absent)
-3. Backend: 5 templates total (A.1 = B.1 reuse, A.2, A.3, B.2) + service + controller + 4 endpoints
-4. Frontend: new `ExchangeRequestForm` + `/insurance/exchange-requests` queue + menu entry + remove hotfix #1079's split routing (CASH/INSTALLMENT now both → /insurance/exchange-request/new)
-5. CSV golden fixtures: case-8-{A,B,C}.csv (INSTALLMENT) + case-8-cash-{A,B,C}.csv (CASH)
-6. Tests + E2E + deploy + smoke test one exchange per channel in dev
+   - CPA reviews JE templates (A.1/A.2/A.3) against golden CSV — A.2 plug-balance edge cases especially
+2. Schema migration: add `ContractExchangeRequest` table + `Contract.exchangedFromContractId` FK + `EXCHANGED` enum value + Product.status `REFURBISHED` (if absent)
+3. Backend: 3 templates (A.1, A.2, A.3) + service + controller + 3 endpoints (submit / list-pending / approve / reject — body-less approve)
+4. Frontend: new `ExchangeRequestForm` + `/insurance/exchange-requests` queue + menu entry + replace hotfix #1079's INSTALLMENT route (`/defect-exchange`) with `/insurance/exchange-request/new`
+5. CSV golden fixture: `case-8-same-price.csv` (single sub-case)
+6. Tests + E2E + deploy + smoke test one exchange in dev
 
 No data backfill — feature is forward-only.
 
@@ -483,9 +395,10 @@ No data backfill — feature is forward-only.
 
 ## Out of scope / deferred
 
-- **GFIN integration** for exchange — needs GFIN API contract; current scope only **blocks** the UI (consistent with SP1)
+- **CASH exchange** — out of scope per owner. Handle via existing trade-in + new POS sale (2 transactions, no JE chain).
+- **GFIN integration** for exchange — UI blocked; customer closes GFIN externally
+- **Upgrade exchange** (different sellingPrice) — explicitly disallowed per owner v3
 - **Multi-device exchange** in one request — single-device only
 - **Partial exchange / split contract** — not requested
-- **Reverse exchange** (undo an APPROVED exchange) — needs separate "exchange reversal" template; deferred
-- **Old `/defect-exchange` deprecation** — keep working, plan later removal after SP2 settles
-- **Auto-detect buyback table refresh** — manual via admin tool, not auto-sync
+- **Reverse exchange** (undo an APPROVED exchange) — separate "exchange reversal" template; deferred
+- **Old `/defect-exchange` deprecation** — keep working after SP2 ships (defect-only path still has value); plan removal later

@@ -67,7 +67,7 @@ Preview card content (from IMEI lookup):
 Button states by channel:
 - CASH: both buttons active
 - EXTERNAL_FINANCE: only "รับเข้าซ่อม" active; "เปลี่ยนเครื่อง" disabled with hover tooltip "ผ่อนกับ GFIN — ติดต่อ GFIN เพื่อปิดสัญญาก่อน"
-- INSTALLMENT: both active; "เปลี่ยนเครื่อง" with 7-day check (OWNER/BM can bypass)
+- INSTALLMENT: both active; "เปลี่ยนเครื่อง" with 7-day check. If outside window: button shows "🔒 นอกช่วงประกัน 7 วัน" — only OWNER/BM see a "เปิดด้วยสิทธิ์พิเศษ" link that reveals the form anyway, and the resulting request is flagged `requiresOwnerBypass = true` (stored on the request, surfaced in approval queue as a yellow badge for visibility).
 
 ### Step 2 — Per-action form
 
@@ -116,6 +116,7 @@ model ContractExchangeRequest {
   buybackPriceFromTable Decimal   @map("buyback_price_from_table") @db.Decimal(12, 2)
   variancePercent       Decimal   @map("variance_percent") @db.Decimal(5, 2)  // signed: -25.00 = 25% below table
   overrideReason        String?   @map("override_reason")  // required if |variance| > threshold
+  requiresOwnerBypass   Boolean   @default(false) @map("requires_owner_bypass")  // true if submitted outside 7-day window
 
   // New product + plan
   newProductId          String    @map("new_product_id")
@@ -240,8 +241,10 @@ Clears `21-1106` against new contract's vendor payables. Three sub-cases based o
 Dr 21-1101 [new vendor yodjat]
 Dr 21-1102 [new vendor commission]
    Cr 21-1106 [buyback price]
-   Cr 11-1101/1201 [cash diff received from customer]
+   Cr [cashAccountCode] [cash diff received from customer]
 ```
+
+Cash account follows the same pattern as `Payment.depositAccountCode` — defaulted from the approver's `User.defaultCashAccountCode` and pickable at approval time. Must be one of the 6 valid cash/bank codes (11-1101..1103 person cash, 11-1201..1203 banks).
 
 **Sub-case B: buyback == new vendor** — no cash flow, perfect offset
 ```
@@ -252,7 +255,7 @@ Dr 21-1101 + Dr 21-1102
 **Sub-case C: buyback > new vendor** — refund cash to customer
 ```
 Dr 21-1101 + Dr 21-1102
-Dr 11-1101/1201 [cash diff paid to customer]
+Dr [cashAccountCode] [cash diff paid to customer]
    Cr 21-1106 [buyback price]
 ```
 

@@ -25,6 +25,12 @@ const SIDEBAR_COLLAPSED_W = 70;  // px
 const ZONE_LOOKUP_ORDER: Zone[] = ['shop', 'fin', 'settings'];
 const ALL_ROLES = ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES', 'ACCOUNTANT'];
 
+/** Paths shared across every authenticated role — never treat as access-denied
+ * even if a role's menu config forgets to list them. Defense-in-depth against
+ * the bug pattern where a role omits a universal route (e.g. `/`) and the
+ * auto-zone resolver bogusly fires the "no permission" toast. */
+const COMMON_PATHS = new Set<string>(['/']);
+
 /**
  * Find which zone a path belongs to across the role's accessible zones.
  * Returns null if the path isn't in any of the role's zones (caller decides
@@ -108,6 +114,10 @@ function MainContent() {
     if (targetZone === null) {
       // Path is not in THIS role's sidebar — check if it's in any other role's
       // sidebar; if yes, it's an access-denied case; if no, it's a "common" route.
+      // COMMON_PATHS short-circuits the check for universally-accessible routes
+      // (e.g. `/` Dashboard) to prevent bogus access-denied toasts when a role's
+      // menu config omits them.
+      if (COMMON_PATHS.has(pathname)) return;
       const anyRoleHasIt = ALL_ROLES.some(
         (r) => r !== role && resolveZoneForPath(r, pathname) !== null
       );

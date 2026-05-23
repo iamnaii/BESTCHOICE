@@ -507,6 +507,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
       icon: Home,
       zone: 'fin',
       items: [
+        { label: 'Dashboard', path: '/', icon: Home },
         { label: 'Finance Overview', path: '/finance-portfolio', icon: CircleDollarSign },
       ],
     },

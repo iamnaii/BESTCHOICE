@@ -915,7 +915,7 @@ export class RepairTicketsService {
    * Returns structured data covering product, customer, contract, and computed warranty status.
    * No audit log — read-only, called frequently during wizard UX.
    */
-  async lookupByImei(imei: string) {
+  async lookupByImei(imei: string, user: ReqUser) {
     const product = await this.prisma.product.findFirst({
       where: { imeiSerial: imei, deletedAt: null },
       select: {
@@ -925,14 +925,22 @@ export class RepairTicketsService {
         storage: true,
         imeiSerial: true,
         category: true,
+        warrantyExpireDate: true,
       },
     });
 
     if (!product) return { found: false } as const;
 
-    // Find the latest non-deleted Sale for this product
+    // Branch scoping: SALES + BRANCH_MANAGER (non-cross-branch roles) only see
+    // Sales from their own branch. OWNER / FINANCE_MANAGER / ACCOUNTANT see all.
+    // Without this, scanning a foreign branch's IMEI leaks customer name/phone
+    // — PDPA violation. Mirrors warrantyLookup's branchScope at line ~795.
+    const branchScope = hasCrossBranchAccess(user)
+      ? {}
+      : { branchId: user.branchId ?? undefined };
+
     const sale = await this.prisma.sale.findFirst({
-      where: { productId: product.id, deletedAt: null },
+      where: { productId: product.id, deletedAt: null, ...branchScope },
       orderBy: { createdAt: 'desc' },
       select: {
         id: true,
@@ -950,12 +958,24 @@ export class RepairTicketsService {
       },
     });
 
-    // Compute warranty status (reuse logic style from DefectExchangePage eligibility)
-    const warrantyStatus = this.computeWarrantyStatus(sale?.contract);
+    // Use canonical detectWarrantyStatus utility (handles IN_MANUFACTURER + BKK
+    // calendar-day arithmetic correctly). Never duplicate this logic — see W8
+    // discipline in detect-warranty-status.ts.
+    const warrantyStatus = detectWarrantyStatus({
+      contract: sale?.contract ?? null,
+      product,
+    });
 
     return {
       found: true,
-      product,
+      product: {
+        id: product.id,
+        brand: product.brand,
+        model: product.model,
+        storage: product.storage,
+        imeiSerial: product.imeiSerial,
+        category: product.category,
+      },
       sale: sale ? { id: sale.id, saleType: sale.saleType } : null,
       customer: sale?.customer ?? null,
       contract: sale?.contract
@@ -970,27 +990,20 @@ export class RepairTicketsService {
     } as const;
   }
 
-  private computeWarrantyStatus(contract: any): string | null {
+  private computeDaysRemainingIn7Day(contract: { deviceReceivedAt?: Date | null } | null | undefined): number | null {
     if (!contract?.deviceReceivedAt) return null;
-    const now = new Date();
-    const received = new Date(contract.deviceReceivedAt);
-    const sevenDayEnd = new Date(received.getTime() + 7 * 24 * 60 * 60 * 1000);
-    if (now <= sevenDayEnd) return 'IN_7DAY_DEFECT';
-    if (contract.shopWarrantyEndDate && now <= new Date(contract.shopWarrantyEndDate)) {
-      return 'IN_SHOP_WARRANTY';
-    }
-    return 'OUT_OF_WARRANTY';
-  }
-
-  private computeDaysRemainingIn7Day(contract: any): number | null {
-    if (!contract?.deviceReceivedAt) return null;
-    const now = new Date();
-    const sevenDayEnd = new Date(
-      new Date(contract.deviceReceivedAt).getTime() + 7 * 24 * 60 * 60 * 1000,
-    );
-    const diffMs = sevenDayEnd.getTime() - now.getTime();
-    if (diffMs < 0) return 0;
-    return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+    // BKK calendar-day arithmetic (matches detect-warranty-status.ts convention).
+    // A device received at 23:00 BKK on day 0 → still has 7 days remaining at midnight UTC.
+    const bkkOffsetMs = 7 * 60 * 60 * 1000;
+    const toBkkMidnight = (d: Date) => {
+      const bkk = new Date(d.getTime() + bkkOffsetMs);
+      return new Date(bkk.getUTCFullYear(), bkk.getUTCMonth(), bkk.getUTCDate());
+    };
+    const daysSince =
+      (toBkkMidnight(new Date()).getTime() - toBkkMidnight(new Date(contract.deviceReceivedAt)).getTime()) /
+      86_400_000;
+    const remaining = 7 - daysSince;
+    return remaining < 0 ? 0 : Math.ceil(remaining);
   }
 
   /**

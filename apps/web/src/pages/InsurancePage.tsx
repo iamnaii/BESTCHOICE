@@ -226,7 +226,7 @@ function InsuranceListContent() {
           <p className="text-sm font-medium mb-2">ยังไม่มีรายการซ่อม</p>
           <Button size="sm" onClick={() => navigate('/insurance/new')}>
             <Plus className="mr-2 h-4 w-4" />
-            รับเครื่องใหม่
+            รับเครื่องเข้าซ่อม
           </Button>
         </div>
       )}
@@ -250,7 +250,7 @@ export default function InsurancePage() {
             </Button>
             <Button onClick={() => navigate('/insurance/new')}>
               <Plus className="mr-2 h-4 w-4" />
-              รับเครื่องใหม่
+              รับเครื่องเข้าซ่อม
             </Button>
           </div>
         }

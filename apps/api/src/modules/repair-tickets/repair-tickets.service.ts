@@ -910,6 +910,90 @@ export class RepairTicketsService {
   }
 
   /**
+   * IMEI-based lookup for the insurance wizard Step 1 pre-fill.
+   * Finds the product by IMEI/serial, then the most recent non-deleted Sale for that product.
+   * Returns structured data covering product, customer, contract, and computed warranty status.
+   * No audit log — read-only, called frequently during wizard UX.
+   */
+  async lookupByImei(imei: string) {
+    const product = await this.prisma.product.findFirst({
+      where: { imeiSerial: imei, deletedAt: null },
+      select: {
+        id: true,
+        brand: true,
+        model: true,
+        storage: true,
+        imeiSerial: true,
+        category: true,
+      },
+    });
+
+    if (!product) return { found: false } as const;
+
+    // Find the latest non-deleted Sale for this product
+    const sale = await this.prisma.sale.findFirst({
+      where: { productId: product.id, deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        saleType: true,
+        customer: { select: { id: true, name: true, phone: true } },
+        contract: {
+          select: {
+            id: true,
+            contractNumber: true,
+            status: true,
+            deviceReceivedAt: true,
+            shopWarrantyEndDate: true,
+          },
+        },
+      },
+    });
+
+    // Compute warranty status (reuse logic style from DefectExchangePage eligibility)
+    const warrantyStatus = this.computeWarrantyStatus(sale?.contract);
+
+    return {
+      found: true,
+      product,
+      sale: sale ? { id: sale.id, saleType: sale.saleType } : null,
+      customer: sale?.customer ?? null,
+      contract: sale?.contract
+        ? {
+            id: sale.contract.id,
+            contractNumber: sale.contract.contractNumber,
+            status: sale.contract.status,
+          }
+        : null,
+      warrantyStatus,
+      daysRemainingIn7Day: this.computeDaysRemainingIn7Day(sale?.contract),
+    } as const;
+  }
+
+  private computeWarrantyStatus(contract: any): string | null {
+    if (!contract?.deviceReceivedAt) return null;
+    const now = new Date();
+    const received = new Date(contract.deviceReceivedAt);
+    const sevenDayEnd = new Date(received.getTime() + 7 * 24 * 60 * 60 * 1000);
+    if (now <= sevenDayEnd) return 'IN_7DAY_DEFECT';
+    if (contract.shopWarrantyEndDate && now <= new Date(contract.shopWarrantyEndDate)) {
+      return 'IN_SHOP_WARRANTY';
+    }
+    return 'OUT_OF_WARRANTY';
+  }
+
+  private computeDaysRemainingIn7Day(contract: any): number | null {
+    if (!contract?.deviceReceivedAt) return null;
+    const now = new Date();
+    const sevenDayEnd = new Date(
+      new Date(contract.deviceReceivedAt).getTime() + 7 * 24 * 60 * 60 * 1000,
+    );
+    const diffMs = sevenDayEnd.getTime() - now.getTime();
+    if (diffMs < 0) return 0;
+    return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+  }
+
+  /**
    * PUBLIC helper — also called by defect-exchange.service (PR3) within its own $transaction.
    * Accepts an optional `tx` parameter; defaults to `this.prisma` for standalone use.
    */

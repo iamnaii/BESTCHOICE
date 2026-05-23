@@ -10,6 +10,7 @@ import { useCartStore } from '@/stores/cartStore';
 import { useTrackEvent } from '@/hooks/useTrackEvent';
 import ShopLayout from '@/components/layout/ShopLayout';
 import ReviewsSection from '@/components/reviews/ReviewsSection';
+import { InstallmentCalculatorCard } from '@/components/InstallmentCalculatorCard';
 import {
   Container,
   Section,
@@ -47,6 +48,8 @@ interface ProductDetail {
   gallery: string[];
   gallery360: string[];
   tiers: Record<string, { minPrice: number; maxPrice: number; units: ProductUnit[] }>;
+  cashPrice: number | null;
+  installmentPrice: number | null;
 }
 
 function lowestPrice(tiers: ProductDetail['tiers']): number {
@@ -230,6 +233,16 @@ export default function ProductDetailPage() {
           </Stack>
         </div>
       </Container>
+
+      <Section padding="md">
+        <Container>
+          <InstallmentCalculatorCard
+            productId={data.id}
+            cashPrice={data.cashPrice ?? null}
+            installmentPrice={data.installmentPrice ?? null}
+          />
+        </Container>
+      </Section>
 
       <Section tone="muted" padding="sm">
         <Container>

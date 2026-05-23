@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import Decimal from 'decimal.js';
+import { calcBcInstallment } from '@installment/shared';
 import type { Product, InterestConfig } from '../types';
 
 // (Audit finding P0) The backend stores all money values as Prisma.Decimal(12,2).
@@ -9,6 +10,8 @@ import type { Product, InterestConfig } from '../types';
 // `1500.00`, and the final installment occasionally diverged by a few satang.
 // All arithmetic now goes through decimal.js with explicit toDecimalPlaces(2)
 // at each step; only the final hand-off to React state uses .toNumber().
+// Refactored (Task 17): math delegated to calcBcInstallment from @installment/shared.
+// Per-month rate map is built from legacy rate × months to preserve identical output.
 
 interface UseContractCalculationParams {
   selectedProduct: Product | null;
@@ -66,12 +69,42 @@ export function useContractCalculation({
     });
   }, [minMonths, maxMonths]);
 
-  const dPrincipal = Decimal.max(new Decimal(sellingPrice).sub(downPayment), 0);
-  const dStoreCommission = dPrincipal.mul(storeCommPct).toDecimalPlaces(2);
-  const dInterestTotal = dPrincipal.mul(interestRate).mul(totalMonths).toDecimalPlaces(2);
-  const dVatAmount = dPrincipal.add(dStoreCommission).add(dInterestTotal).mul(vatPct).toDecimalPlaces(2);
-  const dFinancedAmount = dPrincipal.add(dStoreCommission).add(dInterestTotal).add(dVatAmount).toDecimalPlaces(2);
-  const dMonthlyPayment = totalMonths > 0 ? dFinancedAmount.div(totalMonths).toDecimalPlaces(2) : new Decimal(0);
+  // Build per-month rate map from legacy single rate × months.
+  // When InterestConfigRate is wired (future PR), this can read config.rates directly.
+  const allowedMonths = Array.from(
+    { length: maxMonths - minMonths + 1 },
+    (_, i) => minMonths + i,
+  );
+  const ratePctByMonths = new Map<number, Decimal>(
+    allowedMonths.map((m) => [m, new Decimal(interestRate).mul(m)]),
+  );
+
+  // Clamp downPayment to sellingPrice to preserve the old hook's Decimal.max(…, 0)
+  // behaviour: if downPayment >= sellingPrice the util produces 0 for all fields.
+  const clampedDownAmount = new Decimal(Math.min(downPayment, sellingPrice));
+
+  const out = calcBcInstallment({
+    installmentPrice: new Decimal(sellingPrice),
+    months: totalMonths,
+    customDownAmount: clampedDownAmount,
+    config: {
+      minDownPct: new Decimal(minDownPct),
+      commissionPct: new Decimal(storeCommPct),
+      vatPct: new Decimal(vatPct),
+      ratePctByMonths,
+      allowedMonths,
+    },
+  });
+
+  // Map shared utility output to existing return shape.
+  // Note: hook's "financedAmount" = util's "totalWithVat" (total customers owes).
+  //       hook's "principal"       = util's "financedAmount" (price − down).
+  const dPrincipal = out.financedAmount;
+  const dStoreCommission = out.commissionAmount;
+  const dInterestTotal = out.interestAmount;
+  const dVatAmount = out.vatAmount;
+  const dFinancedAmount = out.totalWithVat;
+  const dMonthlyPayment = out.monthlyPayment;
 
   const principal = dPrincipal.toNumber();
   const storeCommission = dStoreCommission.toNumber();

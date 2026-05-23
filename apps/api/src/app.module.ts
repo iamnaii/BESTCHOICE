@@ -132,6 +132,8 @@ import { BackupModule } from './modules/backup/backup.module';
 import { ExternalFinanceModule } from './modules/external-finance/external-finance.module';
 // P4-SP2 — Finance Tax (VAT/WHT monthly aggregation + auto-journal history)
 import { FinanceTaxModule } from './modules/finance-tax/finance-tax.module';
+// Task 18 — GFIN admin config (max prices, overprice rules, rate factors)
+import { GfinConfigModule } from './modules/gfin-config/gfin-config.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { SecurityMiddleware } from './modules/audit/security.middleware';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
@@ -364,6 +366,8 @@ import { AppCacheModule } from './cache/cache.module';
     ExternalFinanceModule,
     // P4-SP2 — Finance Tax (VAT/WHT monthly aggregation + auto-journal history)
     FinanceTaxModule,
+    // Task 18 — GFIN admin config (max prices, overprice rules, rate factors)
+    GfinConfigModule,
   ],
   controllers: [AppController],
   providers: [

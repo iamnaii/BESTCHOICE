@@ -61,6 +61,45 @@ export function calculateInstallment(
   return { principal, interestTotal, storeCommission, vatAmount, financedAmount, monthlyPayment };
 }
 
+/**
+ * Same math as calculateInstallment, but interest is passed as TOTAL amount
+ * already resolved by caller (via getRateForMonths). Used during refactor
+ * to bridge legacy callers and new rate-lookup pattern. Both routes share
+ * the same downstream formula for storeCommission, vatAmount, financedAmount,
+ * monthlyPayment so callers can flip from one to the other without changing
+ * the output for the same inputs.
+ */
+export function calculateInstallmentWithInterest(
+  sellingPrice: number,
+  downPayment: number,
+  interestTotal: number,
+  totalMonths: number,
+  storeCommissionPct: number = 0,
+  vatPct: number = 0,
+): InstallmentCalculation {
+  if (sellingPrice <= 0) throw new BadRequestException('ราคาขายต้องมากกว่า 0');
+  if (downPayment < 0) throw new BadRequestException('เงินดาวน์ต้องไม่ติดลบ');
+  if (downPayment >= sellingPrice) throw new BadRequestException('เงินดาวน์ต้องน้อยกว่าราคาขาย');
+  if (totalMonths <= 0) throw new BadRequestException('จำนวนงวดต้องมากกว่า 0');
+  if (interestTotal < 0) throw new BadRequestException('ยอดดอกเบี้ยต้องไม่ติดลบ');
+
+  const principal = roundBaht(sellingPrice - downPayment);
+  const storeCommission = roundBaht(principal * storeCommissionPct);
+  const interestRounded = roundBaht(interestTotal);
+  const vatAmount = roundBaht((principal + storeCommission + interestRounded) * vatPct);
+  const financedAmount = roundBaht(principal + storeCommission + interestRounded + vatAmount);
+  const monthlyPayment = roundBaht(financedAmount / totalMonths);
+
+  return {
+    principal,
+    interestTotal: interestRounded,
+    storeCommission,
+    vatAmount,
+    financedAmount,
+    monthlyPayment,
+  };
+}
+
 export interface PaymentScheduleItem {
   contractId: string;
   installmentNo: number;

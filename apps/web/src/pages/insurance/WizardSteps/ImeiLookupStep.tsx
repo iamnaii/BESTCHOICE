@@ -52,7 +52,12 @@ export function ImeiLookupStep({ onRepairChosen, presetImei }: ImeiLookupStepPro
   const handleExchange = () => {
     if (!result || !result.found || !result.sale) return;
     if (result.sale.saleType === 'CASH') {
-      navigate(`/trade-in/new?customerId=${result.customer?.id}&productId=${result.product.id}`);
+      // /trade-in (list page) — direct-deep-link to a new trade-in form is SP2 scope.
+      // Pre-fill customer + product via query so the trade-in page can pick them up.
+      const qs = new URLSearchParams();
+      if (result.customer?.id) qs.set('customerId', result.customer.id);
+      qs.set('productId', result.product.id);
+      navigate(`/trade-in?${qs.toString()}`);
     } else if (result.sale.saleType === 'INSTALLMENT' && result.contract) {
       navigate(`/defect-exchange?contractId=${result.contract.id}`);
     }

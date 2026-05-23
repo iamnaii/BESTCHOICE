@@ -62,8 +62,8 @@ export class RepairTicketsController {
 
   @Get('lookup-by-imei')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
-  lookupByImei(@Query() dto: LookupByImeiDto) {
-    return this.svc.lookupByImei(dto.imei);
+  lookupByImei(@Query() dto: LookupByImeiDto, @Req() req: any) {
+    return this.svc.lookupByImei(dto.imei, req.user);
   }
 
   @Get(':id')

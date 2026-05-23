@@ -30,44 +30,73 @@ export default function CreateInsuranceWizardPage() {
 
   // ── URL search-param pre-fill ─────────────────────────────────────────────
   const presetContractId = params.get('contractId') ?? undefined;
+  const presetCustomerId = params.get('customerId') ?? undefined;
+  const presetProductId = params.get('productId') ?? undefined;
+  const intent = params.get('intent') ?? undefined;
+  const originRepairTicketId = params.get('originRepairTicketId') ?? undefined;
+  const bypassWindow = params.get('bypassWindow') === 'true';
+
+  // ── C1 FIX: intent=exchange routes to the legacy DefectExchangePage ───────
+  // RepairTicketDetailPage's "Replace" button + LIFF deep links send
+  // ?intent=exchange[&originRepairTicketId=X&bypassWindow=true]. The new
+  // 2-step wizard handles REPAIR only; exchange flow continues to live on
+  // /defect-exchange until SP2 ships the formal request queue. Redirecting
+  // here preserves all params including bypassWindow.
+  useEffect(() => {
+    if (intent !== 'exchange') return;
+    const qs = new URLSearchParams();
+    if (presetContractId) qs.set('contractId', presetContractId);
+    if (presetCustomerId) qs.set('customerId', presetCustomerId);
+    if (presetProductId) qs.set('productId', presetProductId);
+    if (originRepairTicketId) qs.set('originRepairTicketId', originRepairTicketId);
+    if (bypassWindow) qs.set('bypassWindow', 'true');
+    navigate(`/defect-exchange?${qs.toString()}`, { replace: true });
+  }, [intent, presetContractId, presetCustomerId, presetProductId, originRepairTicketId, bypassWindow, navigate]);
 
   // ── State ─────────────────────────────────────────────────────────────────
   // null = still in ImeiLookupStep; non-null = moved to DefectDescriptionStep
   const [imeiResult, setImeiResult] = useState<FoundResult | null>(null);
 
-  // ── Preset-contract auto-lookup ───────────────────────────────────────────
-  // If the page was opened from WarrantyCheckPage or a defect-exchange redirect
-  // with presetContractId, silently fetch the IMEI and run the lookup so the
-  // user skips the scan step.
+  // ── Preset auto-lookup ────────────────────────────────────────────────────
+  // Two pathways for skipping the manual IMEI scan:
+  //   1. presetContractId — from WarrantyCheckPage (INSTALLMENT case) or
+  //      /defect-exchange redirect. Fetch contract → IMEI → lookup.
+  //   2. presetProductId — from WarrantyCheckPage CASH-sale case (no contract).
+  //      Fetch product → IMEI → lookup directly. (W1 fix)
   const didAutoLookup = useRef(false);
 
   useEffect(() => {
-    if (!presetContractId || imeiResult || didAutoLookup.current) return;
-    didAutoLookup.current = true;
+    if (intent === 'exchange') return; // C1: redirect-in-progress
+    if (imeiResult || didAutoLookup.current) return;
+    if (!presetContractId && !presetProductId) return;
 
+    didAutoLookup.current = true;
     let cancelled = false;
 
     (async () => {
       try {
-        // Step 1: fetch contract to get the product's IMEI
-        const contractRes = await api.get(`/contracts/${presetContractId}`);
-        const contract = contractRes.data as {
-          id: string;
-          product?: { imeiSerial?: string | null };
-        };
-        const imei = contract.product?.imeiSerial;
+        let imei: string | null | undefined;
+
+        if (presetContractId) {
+          const contractRes = await api.get(`/contracts/${presetContractId}`);
+          const contract = contractRes.data as { product?: { imeiSerial?: string | null } };
+          imei = contract.product?.imeiSerial;
+        } else if (presetProductId) {
+          // W1: CASH-sale path — no contract, fetch product directly
+          const productRes = await api.get(`/products/${presetProductId}`);
+          const product = productRes.data as { imeiSerial?: string | null };
+          imei = product.imeiSerial;
+        }
+
         if (!imei || cancelled) return;
 
-        // Step 2: run IMEI lookup
         const lookupRes = await api.get<LookupResult>('/repair-tickets/lookup-by-imei', {
           params: { imei },
         });
         if (cancelled) return;
 
         const data = lookupRes.data;
-        if (data.found) {
-          setImeiResult(data);
-        }
+        if (data.found) setImeiResult(data);
       } catch {
         // Silently ignore — user can scan manually
       }
@@ -76,7 +105,7 @@ export default function CreateInsuranceWizardPage() {
     return () => {
       cancelled = true;
     };
-  }, [presetContractId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [presetContractId, presetProductId, intent]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (

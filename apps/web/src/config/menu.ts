@@ -161,15 +161,8 @@ const SALES_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
-        {
-          label: 'รับซ่อม/รับประกัน',
-          path: '/insurance',
-          icon: ShieldCheck,
-          children: [
-            { label: 'รายการ ticket', path: '/insurance', icon: ShieldCheck },
-            { label: 'เช็คประกัน', path: '/insurance/warranty-check', icon: ShieldCheck },
-          ],
-        },
+        { label: 'รับซ่อม/รับประกัน', path: '/insurance', icon: ShieldCheck },
+        { label: 'เช็คประกัน', path: '/insurance/warranty-check', icon: ShieldCheck },
       ],
     },
     {
@@ -225,15 +218,8 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
         { label: 'จัดการอุปกรณ์', path: '/mdm', icon: Smartphone },
-        {
-          label: 'รับซ่อม/รับประกัน',
-          path: '/insurance',
-          icon: ShieldCheck,
-          children: [
-            { label: 'รายการ ticket', path: '/insurance', icon: ShieldCheck },
-            { label: 'เช็คประกัน', path: '/insurance/warranty-check', icon: ShieldCheck },
-          ],
-        },
+        { label: 'รับซ่อม/รับประกัน', path: '/insurance', icon: ShieldCheck },
+        { label: 'เช็คประกัน', path: '/insurance/warranty-check', icon: ShieldCheck },
       ],
     },
     {
@@ -401,22 +387,12 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
     },
     {
       key: 'acc-reports',
-      label: 'บัญชี & รายงาน',
+      label: 'รายได้ & รายงาน',
       icon: BarChart3,
       zone: 'fin',
       items: [
         { label: 'รายได้อื่น', path: '/other-income', icon: TrendingUp },
-        { label: 'กำไร-ขาดทุน', path: '/profit-loss', icon: PieChart },
-        // SP2 — Accounting reports
-        { label: 'งบกระแสเงินสด', path: '/finance/cash-flow', icon: Banknote },
-        { label: 'งบ Equity', path: '/finance/equity-statement', icon: Landmark },
-        { label: 'สมุดแยกประเภท', path: '/finance/general-ledger', icon: BookOpen },
-        // P4-SP2 — Tax module (finance-tax endpoints)
-        { label: 'ภ.พ.30 (VAT)', path: '/finance/vat', icon: Calculator },
-        { label: 'ภ.ง.ด. 1/3/53 (WHT)', path: '/finance/wht', icon: Calculator },
-        { label: 'e-Tax Invoice', path: '/finance/e-tax', icon: FileText },
-        { label: 'VAT Auto Journal', path: '/finance/vat-auto-journal', icon: Calculator },
-        { label: 'รายงาน', path: '/reports', icon: BarChart3 },
+        { label: 'รายงานรวม', path: '/reports', icon: BarChart3 },
         // P3-SP5 — SHOP-side accounting reports
         { label: 'บัญชีหน้าร้าน (SHOP)', path: '/shop/accounting', icon: Store },
       ],
@@ -433,8 +409,6 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
         { label: 'งวดบัญชี', path: '/accounting/periods', icon: CalendarDays },
         { label: 'ชำระเงินระหว่างบริษัท', path: '/accounting/intercompany', icon: ClipboardList },
         { label: 'ผังบัญชี', path: '/settings/chart-of-accounts', icon: ClipboardList },
-        // SP6 — Bank/Cash account directory
-        { label: 'บัญชีเงินสด/ธนาคาร', path: '/finance/bank-accounts', icon: Landmark },
         { label: 'ตรวจสอบบัญชี', path: '/financial-audit', icon: ClipboardList },
         { label: 'PEAK Sync', path: '/settings/peak-sync', icon: Plug },
         { label: 'ส่งออก PEAK CSV', path: '/finance/peak-export', icon: Plug },
@@ -541,15 +515,8 @@ const OWNER_CONFIG: RoleMenuConfig = {
       icon: Shield,
       zone: 'shop',
       items: [
-        {
-          label: 'รับซ่อม/รับประกัน',
-          path: '/insurance',
-          icon: ShieldCheck,
-          children: [
-            { label: 'รายการ ticket', path: '/insurance', icon: ShieldCheck },
-            { label: 'เช็คประกัน', path: '/insurance/warranty-check', icon: ShieldCheck },
-          ],
-        },
+        { label: 'รับซ่อม/รับประกัน', path: '/insurance', icon: ShieldCheck },
+        { label: 'เช็คประกัน', path: '/insurance/warranty-check', icon: ShieldCheck },
       ],
     },
     /* ── FIN zone restructure (per owner CSV) ───────────────────
@@ -583,30 +550,18 @@ const OWNER_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'จ่ายให้หน้าร้าน (Inter-co)', path: '/accounting/intercompany', icon: ClipboardList },
         { label: 'ค่าใช้จ่ายดำเนินงาน', path: '/expenses', icon: Receipt },
-        // Period-close grouped under collapsible parent
-        {
-          label: 'ปิดบัญชี',
-          path: '/monthly-close',
-          icon: CalendarDays,
-          children: [
-            { label: 'ปิดบัญชีรายเดือน', path: '/monthly-close', icon: CalendarDays },
-            { label: 'งวดบัญชี', path: '/accounting/periods', icon: CalendarDays },
-            { label: 'ชำระเงินระหว่างบริษัท', path: '/accounting/intercompany', icon: ClipboardList },
-          ],
-        },
-        {
-          label: 'ซื้อทรัพย์สิน',
-          path: '/assets',
-          icon: Landmark,
-          children: [
-            { label: 'บันทึกซื้อ', path: '/assets', icon: FileText, badgeKey: 'asset-draft-count' },
-            { label: 'ทะเบียน + NBV', path: '/assets/register', icon: BookOpen },
-            { label: 'สมุดรายวัน', path: '/assets/journal', icon: FileText },
-            { label: 'สรุปแยกหมวด', path: '/assets/summary-report', icon: BarChart3 },
-            { label: 'ค่าเสื่อม', path: '/depreciation', icon: TrendingDown },
-            { label: 'ประวัติสินทรัพย์', path: '/assets/audit', icon: History },
-          ],
-        },
+      ],
+    },
+    assetMenuSection,
+    {
+      key: 'owner-period-close',
+      label: 'ปิดบัญชี',
+      icon: CalendarDays,
+      zone: 'fin',
+      items: [
+        { label: 'ปิดบัญชีรายเดือน', path: '/monthly-close', icon: CalendarDays },
+        { label: 'ปิดบัญชีสิ้นปี', path: '/finance/year-end-closing', icon: CalendarDays },
+        { label: 'งวดบัญชี', path: '/accounting/periods', icon: CalendarDays },
       ],
     },
     {
@@ -622,15 +577,11 @@ const OWNER_CONFIG: RoleMenuConfig = {
       ],
     },
     {
-      // CSV §5 — "บัญชี + บันทึกเริ่ม" merged "บัญชี" + "งบการเงิน" groups
       key: 'owner-accounting',
-      label: 'บัญชี + งบการเงิน',
+      label: 'งบการเงิน',
       icon: PieChart,
       zone: 'fin',
       items: [
-        { label: 'ปิดบัญชีรายเดือน', path: '/monthly-close', icon: CalendarDays },
-        { label: 'ปิดบัญชีสิ้นปี', path: '/finance/year-end-closing', icon: CalendarDays },
-        { label: 'งวดบัญชี', path: '/accounting/periods', icon: CalendarDays },
         // CSV §5 — "งบ 4 ประเภท" (full 4-statement set per TFRS)
         { label: 'งบดุล (Balance Sheet)', path: '/finance/balance-sheet', icon: PieChart },
         { label: 'กำไร-ขาดทุน (P&L)', path: '/profit-loss', icon: PieChart },
@@ -781,7 +732,6 @@ const OWNER_CONFIG: RoleMenuConfig = {
       icon: Plug,
       zone: 'fin',
       items: [
-        { label: 'จัดการอุปกรณ์ (MDM)', path: '/mdm', icon: Smartphone },
         { label: 'LINE OA', path: '/settings/rich-menu', icon: MessageSquareMore },
         { label: 'การเชื่อมต่อ (PaySolutions / สรรพากร ฯลฯ)', path: '/settings/integrations', icon: Plug },
       ],

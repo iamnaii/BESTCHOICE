@@ -88,7 +88,7 @@ describe('getSidebarForRole — populated ZONE_CONFIG', () => {
     const keys = getSidebarForRole('OWNER', 'fin').map((s) => s.key);
     // Union of all FIN zone sections (SP5 + P4 SP1-5)
     expect(keys).toContain('owner-overview');
-    expect(keys).toContain('owner-fin-collection');
+    // owner-fin-collection removed — collection links merged into owner-fin-revenue
     expect(keys).toContain('owner-fin-revenue');
     expect(keys).toContain('owner-fin-expense');
     expect(keys).toContain('owner-tax');

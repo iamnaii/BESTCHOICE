@@ -510,17 +510,6 @@ const OWNER_CONFIG: RoleMenuConfig = {
       ],
     },
     {
-      key: 'owner-fin-collection',
-      label: 'ติดตามหนี้',
-      icon: AlertTriangle,
-      zone: 'fin',
-      items: [
-        { label: 'ติดตามหนี้', path: '/overdue', icon: AlertTriangle },
-        { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
-        { label: 'จัดการอุปกรณ์', path: '/mdm', icon: Smartphone },
-      ],
-    },
-    {
       key: 'owner-inventory',
       label: 'คลัง & จัดซื้อ',
       icon: Warehouse,
@@ -578,6 +567,9 @@ const OWNER_CONFIG: RoleMenuConfig = {
       zone: 'fin',
       items: [
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
+        { label: 'ติดตามลูกค้าค้างชำระ', path: '/overdue', icon: AlertTriangle },
+        { label: 'ล็อคเครื่อง (MDM)', path: '/mdm', icon: Lock },
+        { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
         // CSV §2 placeholder — owner-flagged ✏ "ต้องสร้าง"
         { label: 'เอกสารยกเลิกสัญญา', path: '/finance/contract-cancellation', icon: FileText },
         { label: 'รายได้อื่น', path: '/other-income', icon: TrendingUp },

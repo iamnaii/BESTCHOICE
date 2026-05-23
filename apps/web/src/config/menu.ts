@@ -298,8 +298,7 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
       icon: Home,
       zone: 'fin',
       items: [
-        { label: 'Dashboard', path: '/', icon: Home },
-        { label: 'Finance Overview', path: '/finance-portfolio', icon: CircleDollarSign },
+        { label: 'Dashboard', path: '/finance-portfolio', icon: CircleDollarSign },
         { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
       ],
     },
@@ -376,7 +375,7 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
     },
   ],
   bottomNav: [
-    { label: 'Dashboard', path: '/', icon: Home },
+    { label: 'Dashboard', path: '/finance-portfolio', icon: CircleDollarSign },
     { label: 'ค้างชำระ', path: '/overdue', icon: AlertTriangle },
     { label: 'ชำระ', path: '/payments', icon: HandCoins },
     { label: 'แชท', path: '/inbox', icon: MessageSquareMore, badgeKey: 'chat-unread' },
@@ -504,11 +503,10 @@ const OWNER_CONFIG: RoleMenuConfig = {
     {
       key: 'owner-overview',
       label: 'ภาพรวม',
-      icon: Home,
+      icon: CircleDollarSign,
       zone: 'fin',
       items: [
-        { label: 'Dashboard', path: '/', icon: Home },
-        { label: 'Finance Overview', path: '/finance-portfolio', icon: CircleDollarSign },
+        { label: 'Dashboard', path: '/finance-portfolio', icon: CircleDollarSign },
       ],
     },
     {
@@ -585,6 +583,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
         // CSV §2 placeholder — owner-flagged ✏ "ต้องสร้าง"
         { label: 'เอกสารยกเลิกสัญญา', path: '/finance/contract-cancellation', icon: FileText },
+        { label: 'รายได้อื่น', path: '/other-income', icon: TrendingUp },
       ],
     },
     {
@@ -595,7 +594,6 @@ const OWNER_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'จ่ายให้หน้าร้าน (Inter-co)', path: '/accounting/intercompany', icon: ClipboardList },
         { label: 'ค่าใช้จ่ายดำเนินงาน', path: '/expenses', icon: Receipt },
-        { label: 'รายได้อื่น', path: '/other-income', icon: TrendingUp },
         // Period-close grouped under collapsible parent
         {
           label: 'ปิดบัญชี',
@@ -821,7 +819,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
     },
   ],
   bottomNav: [
-    { label: 'Dashboard', path: '/', icon: Home },
+    { label: 'Dashboard', path: '/finance-portfolio', icon: CircleDollarSign },
     { label: 'รายงาน', path: '/reports', icon: BarChart3 },
     { label: 'Collection', path: '/overdue', icon: AlertTriangle },
     { label: 'แชท', path: '/inbox', icon: MessageSquareMore, badgeKey: 'chat-unread' as const },
@@ -1020,6 +1018,20 @@ export function getSidebarForRole(role: string, currentZone: Zone): MenuSection[
 /** Returns the RoleZoneConfig for a role (or undefined). Used by Sidebar to check pills/gear visibility. */
 export function getZoneConfigForRole(role: string): RoleZoneConfig | undefined {
   return ZONE_CONFIG[role];
+}
+
+/** Landing route for each zone — used by LoginPage + PillSwitcher to pick where to navigate. */
+export const ZONE_LANDING: Record<Zone, string> = {
+  shop: '/',
+  fin: '/finance-portfolio',
+  settings: '/settings',
+};
+
+/** Landing path for a role on first login — based on the role's defaultZone. */
+export function getLandingPathForRole(role: string): string {
+  const config = ZONE_CONFIG[role];
+  if (!config) return '/';
+  return ZONE_LANDING[config.defaultZone];
 }
 
 /* ── Chat visibility per role ──────────────────────── */

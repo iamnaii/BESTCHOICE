@@ -1,6 +1,7 @@
 import { ShoppingCart, CircleDollarSign } from 'lucide-react';
+import { useNavigate } from 'react-router';
 import { cn } from '@/lib/utils';
-import type { Zone } from '@/config/menu';
+import { ZONE_LANDING, type Zone } from '@/config/menu';
 
 interface PillSwitcherProps {
   zones: Zone[];
@@ -14,6 +15,7 @@ const ZONE_META: Record<Exclude<Zone, 'settings'>, { label: string; icon: typeof
 };
 
 export function PillSwitcher({ zones, current, onSwitch }: PillSwitcherProps) {
+  const navigate = useNavigate();
   // Only render pills for shop+fin (settings is accessed via GearButton)
   const pillZones = zones.filter((z): z is 'shop' | 'fin' => z === 'shop' || z === 'fin');
   if (pillZones.length < 2) return null;
@@ -34,7 +36,12 @@ export function PillSwitcher({ zones, current, onSwitch }: PillSwitcherProps) {
             type="button"
             role="tab"
             aria-selected={active}
-            onClick={() => onSwitch(zone)}
+            onClick={() => {
+              if (zone !== current) {
+                onSwitch(zone);
+                navigate(ZONE_LANDING[zone]);
+              }
+            }}
             className={cn(
               'flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[12px] font-semibold leading-snug transition-colors duration-150',
               active

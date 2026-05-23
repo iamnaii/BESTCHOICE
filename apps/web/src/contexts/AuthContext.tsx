@@ -50,14 +50,14 @@ interface AuthContextType {
   /** Result of password-phase login — null when fully authenticated */
   pendingTwoFa: PendingTwoFa | null;
   /** Submit email+password. Returns AUTHENTICATED immediately or sets pendingTwoFa. */
-  login: (email: string, password: string) => Promise<{ state: string }>;
-  /** Complete OTP phase — call after user enters 6-digit TOTP. */
-  completeOtpPhase: (token: string) => void;
+  login: (email: string, password: string) => Promise<{ state: string; role?: string }>;
+  /** Complete OTP phase — call after user enters 6-digit TOTP. Returns loaded user (or null). */
+  completeOtpPhase: (token: string) => Promise<User | null>;
   /** Clear pendingTwoFa (e.g. user cancels back to login). */
   clearTempToken: () => void;
   logout: () => void;
   /** Re-fetch /auth/me — used by hooks that mutate user-scoped data (e.g. preferences). */
-  refresh: () => Promise<void>;
+  refresh: () => Promise<User | null>;
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -79,7 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSentryUser(null);
   }, []);
 
-  const fetchMe = useCallback(async () => {
+  const fetchMe = useCallback(async (): Promise<User | null> => {
     try {
       // Always try /auth/me — even without an in-memory token.
       // On page refresh the token is lost (in-memory), but the refresh
@@ -99,6 +99,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       };
       setUser(nextUser);
       setSentryUser(nextUser);
+      return nextUser;
     } catch (error: unknown) {
       const axiosError = error as { response?: { status?: number }; code?: string };
       // Only logout on explicit 401 (unauthorized) - token refresh is handled by api.ts interceptor
@@ -106,6 +107,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (axiosError.response?.status === 401) {
         logout();
       }
+      return null;
     } finally {
       setIsLoading(false);
     }
@@ -144,7 +146,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * - 'AUTHENTICATED' → sets token + user immediately.
    * - 'OTP_REQUIRED' / '2FA_SETUP_REQUIRED' → sets pendingTwoFa, caller handles next step.
    */
-  const login = useCallback(async (email: string, password: string): Promise<{ state: string }> => {
+  const login = useCallback(async (email: string, password: string): Promise<{ state: string; role?: string }> => {
     const doLogin = () => api.post('/auth/login', { email, password }, { timeout: 30000 });
     let res;
     try {
@@ -179,15 +181,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setPendingTwoFa({ phase: data.state as TwoFaPhase, tempToken: data.tempToken });
     }
 
-    return { state: data.state };
+    return { state: data.state, role: data.user?.role };
   }, []);
 
-  /** Called after successful /auth/login/2fa — receives full access token. */
-  const completeOtpPhase = useCallback((token: string) => {
+  /** Called after successful /auth/login/2fa — receives full access token. Returns the loaded user (for landing-path derivation). */
+  const completeOtpPhase = useCallback(async (token: string): Promise<User | null> => {
     setAccessToken(token);
     setPendingTwoFa(null);
     // Fetch user profile now that we have a full token
-    fetchMe();
+    return fetchMe();
   }, [fetchMe]);
 
   const clearTempToken = useCallback(() => {

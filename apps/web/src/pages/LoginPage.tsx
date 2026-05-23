@@ -1,6 +1,7 @@
 import { useState, FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router';
 import { useAuth } from '@/contexts/AuthContext';
+import { getLandingPathForRole } from '@/config/menu';
 import { toast } from 'sonner';
 import AuthLayout from '@/components/layout/AuthLayout';
 import { Input } from '@/components/ui/input';
@@ -32,7 +33,7 @@ export default function LoginPage() {
 
       if (result.state === 'AUTHENTICATED') {
         toast.success('เข้าสู่ระบบสำเร็จ');
-        navigate('/');
+        navigate(getLandingPathForRole(result.role ?? ''));
       } else if (result.state === 'OTP_REQUIRED') {
         setLoginState('OTP');
       } else if (result.state === '2FA_SETUP_REQUIRED') {
@@ -70,9 +71,9 @@ export default function LoginPage() {
         tempToken: token,
         otp: code,
       });
-      completeOtpPhase(data.accessToken);
+      const loadedUser = await completeOtpPhase(data.accessToken);
       toast.success('เข้าสู่ระบบสำเร็จ');
-      navigate('/');
+      navigate(getLandingPathForRole(loadedUser?.role ?? ''));
     } catch (err: unknown) {
       const e = err as { response?: { status?: number } };
       if (e.response?.status === 401) {
@@ -100,7 +101,7 @@ export default function LoginPage() {
       const result = await login(emailVal, pw);
       if (result.state === 'AUTHENTICATED') {
         toast.success(`เข้าสู่ระบบเป็น ${label}`);
-        navigate('/');
+        navigate(getLandingPathForRole(result.role ?? ''));
       } else if (result.state === 'OTP_REQUIRED') {
         setLoginState('OTP');
       } else if (result.state === '2FA_SETUP_REQUIRED') {

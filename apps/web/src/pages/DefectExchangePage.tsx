@@ -118,7 +118,7 @@ export default function DefectExchangePage(props?: DefectExchangePageProps) {
 
   const productsQ = useQuery<ProductRow[]>({
     queryKey: ['defect-exchange-products'],
-    queryFn: async () => (await api.get('/products?status=IN_STOCK&category=PHONE_USED&limit=300')).data.data || [],
+    queryFn: async () => (await api.get('/products?status=IN_STOCK&category=PHONE_USED&limit=200')).data.data || [],
   });
 
   const eligibilityQ = useQuery<Eligibility>({

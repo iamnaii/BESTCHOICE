@@ -27,6 +27,7 @@ import { CancelDto } from './dto/cancel.dto';
 import { ReplaceDto } from './dto/replace.dto';
 import { WarrantyPreviewDto } from './dto/warranty-preview.dto';
 import { WarrantyLookupDto } from './dto/warranty-lookup.dto';
+import { LookupByImeiDto } from './dto/lookup-by-imei.dto';
 
 @Controller('repair-tickets')
 @UseGuards(JwtAuthGuard, RolesGuard, BranchGuard)
@@ -57,6 +58,12 @@ export class RepairTicketsController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES', 'ACCOUNTANT')
   warrantyLookup(@Query() dto: WarrantyLookupDto, @Req() req: any) {
     return this.svc.warrantyLookup(dto, req.user);
+  }
+
+  @Get('lookup-by-imei')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  lookupByImei(@Query() dto: LookupByImeiDto) {
+    return this.svc.lookupByImei(dto.imei);
   }
 
   @Get(':id')

@@ -7,6 +7,7 @@ import api from '@/lib/api';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { useAuth } from '@/contexts/AuthContext';
 
 export type LookupResult =
   | { found: false }
@@ -54,14 +55,9 @@ export function ImeiLookupStep({ onRepairChosen, presetImei }: ImeiLookupStepPro
 
   const handleExchange = () => {
     if (!result || !result.found || !result.sale) return;
-    if (result.sale.saleType === 'CASH') {
-      // /trade-in (list page) — direct-deep-link to a new trade-in form is SP2 scope.
-      // Pre-fill customer + product via query so the trade-in page can pick them up.
-      const qs = new URLSearchParams();
-      if (result.customer?.id) qs.set('customerId', result.customer.id);
-      qs.set('productId', result.product.id);
-      navigate(`/trade-in?${qs.toString()}`);
-    } else if (result.sale.saleType === 'INSTALLMENT' && result.contract) {
+    // CASH exchange = 2 separate transactions (trade-in + new POS sale) — button
+    // hidden via ActionButtons; this branch is defensive only.
+    if (result.sale.saleType === 'INSTALLMENT' && result.contract) {
       navigate(`/defect-exchange?contractId=${result.contract.id}`);
     }
     // EXTERNAL_FINANCE handled by disabled button
@@ -167,11 +163,16 @@ function formatThaiDate(iso: string | null | undefined): string {
 function warrantyEndSubtitle(
   result: Extract<LookupResult, { found: true }>,
 ): string | undefined {
-  const hasShop = !!result.shopWarrantyEndDate;
-  const hasMfr = !!result.manufacturerWarrantyEndDate;
-  if (hasMfr && hasShop) return `ประกันโรงงาน (ร้านหมด ${formatThaiDate(result.shopWarrantyEndDate)})`;
-  if (hasMfr) return 'ประกันโรงงาน';
-  if (hasShop) return 'ประกันร้าน';
+  // F5: only label active warranties — expired dates shown above already.
+  // Showing "ร้านหมด 27/07/2568" when 27/07/2568 is in the past confuses staff.
+  const now = Date.now();
+  const isActive = (iso: string | null) => !!iso && new Date(iso).getTime() > now;
+  const shopActive = isActive(result.shopWarrantyEndDate);
+  const mfrActive = isActive(result.manufacturerWarrantyEndDate);
+  if (mfrActive && shopActive)
+    return `ประกันโรงงาน (ร้านหมด ${formatThaiDate(result.shopWarrantyEndDate)})`;
+  if (mfrActive) return 'ประกันโรงงาน';
+  if (shopActive) return 'ประกันร้าน';
   return undefined;
 }
 
@@ -194,24 +195,47 @@ function ActionButtons({
   onRepair: () => void;
   onExchange: () => void;
 }) {
-  const exchangeDisabled =
-    !result.sale ||
-    result.sale.saleType === 'EXTERNAL_FINANCE';
+  const { user } = useAuth();
+  const canBypassWindow =
+    user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER';
+
+  // F1: CASH exchange = trade-in + new POS sale (2 transactions). Hide the
+  // single-button mental model entirely.
+  // F4: contract must be ACTIVE (cancelled / closed contracts can't be exchanged)
+  // F3: INSTALLMENT outside 7-day window — disable unless OWNER/BM (who can bypass on DefectExchangePage)
+  const reason = ((): string | null => {
+    if (!result.sale) return 'ไม่มีข้อมูลการขาย';
+    if (result.sale.saleType === 'CASH')
+      return 'เครื่องเงินสด: ใช้เมนู "รับซื้อมือสอง" + POS แยก 2 ขั้นตอน';
+    if (result.sale.saleType === 'EXTERNAL_FINANCE')
+      return 'ผ่อนกับ GFIN — ติดต่อ GFIN เพื่อปิดสัญญาก่อน';
+    if (!result.contract) return 'ไม่พบสัญญา';
+    if (result.contract.status !== 'ACTIVE')
+      return `สัญญาสถานะ ${result.contract.status} — เปลี่ยนเครื่องได้เฉพาะสัญญา ACTIVE`;
+    if (result.warrantyStatus !== 'IN_7DAY_DEFECT' && !canBypassWindow)
+      return 'นอกช่วงประกัน 7 วัน — ต้องเป็น OWNER หรือ BRANCH_MANAGER';
+    return null;
+  })();
+
+  const exchangeDisabled = reason !== null;
+  const showExchangeButton = result.sale?.saleType !== 'CASH';
 
   return (
-    <div className="mt-4 grid grid-cols-2 gap-3">
+    <div className={`mt-4 grid gap-3 ${showExchangeButton ? 'grid-cols-2' : 'grid-cols-1'}`}>
       <Button onClick={onRepair} className="flex items-center gap-2">
         <Wrench className="size-4" /> รับเข้าซ่อม
       </Button>
-      <Button
-        variant="outline"
-        onClick={onExchange}
-        disabled={exchangeDisabled}
-        title={exchangeDisabled ? 'ผ่อนกับ GFIN — ติดต่อ GFIN เพื่อปิดสัญญาก่อน' : undefined}
-        className="flex items-center gap-2"
-      >
-        <ArrowLeftRight className="size-4" /> เปลี่ยนเครื่อง
-      </Button>
+      {showExchangeButton && (
+        <Button
+          variant="outline"
+          onClick={onExchange}
+          disabled={exchangeDisabled}
+          title={reason ?? undefined}
+          className="flex items-center gap-2"
+        >
+          <ArrowLeftRight className="size-4" /> เปลี่ยนเครื่อง
+        </Button>
+      )}
     </div>
   );
 }

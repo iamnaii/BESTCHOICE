@@ -10,6 +10,12 @@ vi.mock('@/lib/api', () => ({
 }));
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 
+// useAuth mock — default to SALES role; tests can override per case
+const useAuthMock = vi.fn(() => ({ user: { role: 'SALES', branchId: 'br-A' } }));
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => useAuthMock(),
+}));
+
 function renderWith(props: Partial<React.ComponentProps<typeof ImeiLookupStep>> = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const onRepairChosen = vi.fn();
@@ -26,7 +32,10 @@ function renderWith(props: Partial<React.ComponentProps<typeof ImeiLookupStep>> 
 }
 
 describe('ImeiLookupStep', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useAuthMock.mockReturnValue({ user: { role: 'SALES', branchId: 'br-A' } });
+  });
 
   it('blocks lookup when IMEI < 4 chars', async () => {
     renderWith();
@@ -43,7 +52,7 @@ describe('ImeiLookupStep', () => {
     expect(await screen.findByText(/ไม่พบเครื่องในระบบ/)).toBeInTheDocument();
   });
 
-  it('shows preview + active buttons when CASH sale found', async () => {
+  it('F1: HIDES เปลี่ยนเครื่อง button for CASH sale (single-button mental model wrong)', async () => {
     (api.get as any).mockResolvedValue({
       data: {
         found: true,
@@ -60,7 +69,8 @@ describe('ImeiLookupStep', () => {
     fireEvent.click(screen.getByText('ค้นหา'));
     expect(await screen.findByText('สมชาย')).toBeInTheDocument();
     expect(screen.getByText('ซื้อสด')).toBeInTheDocument();
-    expect(screen.getByText('เปลี่ยนเครื่อง').closest('button')).not.toBeDisabled();
+    expect(screen.getByText('รับเข้าซ่อม')).toBeInTheDocument();
+    expect(screen.queryByText('เปลี่ยนเครื่อง')).not.toBeInTheDocument();
   });
 
   it('disables เปลี่ยนเครื่อง for GFIN (EXTERNAL_FINANCE)', async () => {
@@ -80,6 +90,65 @@ describe('ImeiLookupStep', () => {
     fireEvent.click(screen.getByText('ค้นหา'));
     await screen.findByText('GFIN');
     expect(screen.getByText('เปลี่ยนเครื่อง').closest('button')).toBeDisabled();
+  });
+
+  it('F4: disables เปลี่ยนเครื่อง when contract is CANCELED', async () => {
+    (api.get as any).mockResolvedValue({
+      data: {
+        found: true,
+        product: { id: 'p1', brand: 'X', model: 'Y', storage: null, imeiSerial: '12345' },
+        sale: { id: 's1', saleType: 'INSTALLMENT' },
+        customer: { id: 'c1', name: 'A', phone: '0' },
+        contract: { id: 'ctr', contractNumber: 'BC-CANCELED', status: 'CANCELED' },
+        warrantyStatus: 'IN_7DAY_DEFECT',
+        daysRemainingIn7Day: 5,
+      },
+    });
+    renderWith();
+    fireEvent.change(screen.getByPlaceholderText(/359/), { target: { value: '12345' } });
+    fireEvent.click(screen.getByText('ค้นหา'));
+    await screen.findByText('BC-CANCELED');
+    expect(screen.getByText('เปลี่ยนเครื่อง').closest('button')).toBeDisabled();
+  });
+
+  it('F3: disables เปลี่ยนเครื่อง for SALES when outside 7-day defect window', async () => {
+    useAuthMock.mockReturnValue({ user: { role: 'SALES', branchId: 'br-A' } });
+    (api.get as any).mockResolvedValue({
+      data: {
+        found: true,
+        product: { id: 'p1', brand: 'X', model: 'Y', storage: null, imeiSerial: '54321' },
+        sale: { id: 's1', saleType: 'INSTALLMENT' },
+        customer: { id: 'c1', name: 'A', phone: '0' },
+        contract: { id: 'ctr', contractNumber: 'BC-LATE', status: 'ACTIVE' },
+        warrantyStatus: 'IN_SHOP_WARRANTY',
+        daysRemainingIn7Day: 0,
+      },
+    });
+    renderWith();
+    fireEvent.change(screen.getByPlaceholderText(/359/), { target: { value: '54321' } });
+    fireEvent.click(screen.getByText('ค้นหา'));
+    await screen.findByText('BC-LATE');
+    expect(screen.getByText('เปลี่ยนเครื่อง').closest('button')).toBeDisabled();
+  });
+
+  it('F3: ENABLES เปลี่ยนเครื่อง for OWNER when outside 7-day window (bypass)', async () => {
+    useAuthMock.mockReturnValue({ user: { role: 'OWNER', branchId: 'br-A' } });
+    (api.get as any).mockResolvedValue({
+      data: {
+        found: true,
+        product: { id: 'p1', brand: 'X', model: 'Y', storage: null, imeiSerial: '54321' },
+        sale: { id: 's1', saleType: 'INSTALLMENT' },
+        customer: { id: 'c1', name: 'A', phone: '0' },
+        contract: { id: 'ctr', contractNumber: 'BC-LATE', status: 'ACTIVE' },
+        warrantyStatus: 'IN_SHOP_WARRANTY',
+        daysRemainingIn7Day: 0,
+      },
+    });
+    renderWith();
+    fireEvent.change(screen.getByPlaceholderText(/359/), { target: { value: '54321' } });
+    fireEvent.click(screen.getByText('ค้นหา'));
+    await screen.findByText('BC-LATE');
+    expect(screen.getByText('เปลี่ยนเครื่อง').closest('button')).not.toBeDisabled();
   });
 
   it('calls onRepairChosen when repair button clicked', async () => {

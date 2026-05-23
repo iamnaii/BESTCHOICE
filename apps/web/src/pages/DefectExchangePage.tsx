@@ -98,11 +98,17 @@ export default function DefectExchangePage(props?: DefectExchangePageProps) {
   const [showConfirm, setShowConfirm] = useState(false);
 
   const contractsQ = useQuery<ContractRow[]>({
-    queryKey: ['defect-exchange-contracts'],
+    queryKey: ['defect-exchange-contracts', presetContractId ?? null],
     queryFn: async () => {
       const { data } = await api.get('/contracts?status=ACTIVE&limit=200');
       const rows: ContractRow[] = data.data || [];
-      return rows.filter((c) => c.product.category === 'PHONE_USED');
+      // Always include the preset contract (even if PHONE_NEW / outside filter) so
+      // the user sees the contract they came from. Eligibility check below will
+      // surface any rule violations as readable reasons — better than an empty
+      // dropdown that gives no feedback.
+      return rows.filter(
+        (c) => c.product.category === 'PHONE_USED' || c.id === presetContractId,
+      );
     },
   });
 

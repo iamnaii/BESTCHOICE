@@ -199,43 +199,44 @@ function ActionButtons({
   const canBypassWindow =
     user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER';
 
-  // F1: CASH exchange = trade-in + new POS sale (2 transactions). Hide the
-  // single-button mental model entirely.
-  // F4: contract must be ACTIVE (cancelled / closed contracts can't be exchanged)
-  // F3: INSTALLMENT outside 7-day window — disable unless OWNER/BM (who can bypass on DefectExchangePage)
+  // Owner clarified: "เปลี่ยนเครื่อง" = upgrade flow that always ends in a NEW
+  // installment contract + old device goes back into SHOP inventory.
+  // Applies to ALL channels (CASH / INSTALLMENT / GFIN), not just defect cases.
+  // SP2 will build the unified destination page; SP1 wires the button.
+  //
+  // F4: contract must be ACTIVE (cancelled/closed contracts can't be re-exchanged)
+  // F3: INSTALLMENT outside 7-day → disable unless OWNER/BM (existing bypass)
   const reason = ((): string | null => {
     if (!result.sale) return 'ไม่มีข้อมูลการขาย';
-    if (result.sale.saleType === 'CASH')
-      return 'เครื่องเงินสด: ใช้เมนู "รับซื้อมือสอง" + POS แยก 2 ขั้นตอน';
     if (result.sale.saleType === 'EXTERNAL_FINANCE')
-      return 'ผ่อนกับ GFIN — ติดต่อ GFIN เพื่อปิดสัญญาก่อน';
-    if (!result.contract) return 'ไม่พบสัญญา';
-    if (result.contract.status !== 'ACTIVE')
-      return `สัญญาสถานะ ${result.contract.status} — เปลี่ยนเครื่องได้เฉพาะสัญญา ACTIVE`;
-    if (result.warrantyStatus !== 'IN_7DAY_DEFECT' && !canBypassWindow)
-      return 'นอกช่วงประกัน 7 วัน — ต้องเป็น OWNER หรือ BRANCH_MANAGER';
+      return 'ผ่อนกับ GFIN — ต้องปิดสัญญากับ GFIN ก่อน';
+    if (result.sale.saleType === 'INSTALLMENT') {
+      if (!result.contract) return 'ไม่พบสัญญา';
+      if (result.contract.status !== 'ACTIVE')
+        return `สัญญาสถานะ ${result.contract.status} — เปลี่ยนเครื่องได้เฉพาะ ACTIVE`;
+      if (result.warrantyStatus !== 'IN_7DAY_DEFECT' && !canBypassWindow)
+        return 'นอกช่วงประกัน 7 วัน — ต้องเป็น OWNER หรือ BRANCH_MANAGER';
+    }
+    // CASH: no preflight block — destination wizard (SP2) handles its own checks
     return null;
   })();
 
   const exchangeDisabled = reason !== null;
-  const showExchangeButton = result.sale?.saleType !== 'CASH';
 
   return (
-    <div className={`mt-4 grid gap-3 ${showExchangeButton ? 'grid-cols-2' : 'grid-cols-1'}`}>
+    <div className="mt-4 grid grid-cols-2 gap-3">
       <Button onClick={onRepair} className="flex items-center gap-2">
         <Wrench className="size-4" /> รับเข้าซ่อม
       </Button>
-      {showExchangeButton && (
-        <Button
-          variant="outline"
-          onClick={onExchange}
-          disabled={exchangeDisabled}
-          title={reason ?? undefined}
-          className="flex items-center gap-2"
-        >
-          <ArrowLeftRight className="size-4" /> เปลี่ยนเครื่อง
-        </Button>
-      )}
+      <Button
+        variant="outline"
+        onClick={onExchange}
+        disabled={exchangeDisabled}
+        title={reason ?? undefined}
+        className="flex items-center gap-2"
+      >
+        <ArrowLeftRight className="size-4" /> เปลี่ยนเครื่อง
+      </Button>
     </div>
   );
 }

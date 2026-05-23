@@ -52,7 +52,7 @@ describe('ImeiLookupStep', () => {
     expect(await screen.findByText(/ไม่พบเครื่องในระบบ/)).toBeInTheDocument();
   });
 
-  it('F1: HIDES เปลี่ยนเครื่อง button for CASH sale (single-button mental model wrong)', async () => {
+  it('CASH sale: BOTH buttons shown (exchange = upgrade flow, works for all channels)', async () => {
     (api.get as any).mockResolvedValue({
       data: {
         found: true,
@@ -70,7 +70,9 @@ describe('ImeiLookupStep', () => {
     expect(await screen.findByText('สมชาย')).toBeInTheDocument();
     expect(screen.getByText('ซื้อสด')).toBeInTheDocument();
     expect(screen.getByText('รับเข้าซ่อม')).toBeInTheDocument();
-    expect(screen.queryByText('เปลี่ยนเครื่อง')).not.toBeInTheDocument();
+    // Owner clarified: เปลี่ยนเครื่อง = upgrade flow works for CASH too —
+    // SP2 destination uses old contract's yodjat+commission as buyback value.
+    expect(screen.getByText('เปลี่ยนเครื่อง').closest('button')).not.toBeDisabled();
   });
 
   it('disables เปลี่ยนเครื่อง for GFIN (EXTERNAL_FINANCE)', async () => {

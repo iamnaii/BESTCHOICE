@@ -23,6 +23,7 @@ import {
 import { BookOpen, ChevronsUpDown, Check, Download, FileSpreadsheet } from 'lucide-react';
 import { formatDateMedium } from '@/utils/formatters';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
+import { DateRangeChips } from '@/components/ui/DateRangeChips';
 import CompanyFilter from '@/components/CompanyFilter';
 import { useCoaGroups } from '@/hooks/useCoa';
 import { useUiFlags } from '@/hooks/useUiFlags';
@@ -205,6 +206,16 @@ export function GeneralLedgerPage() {
       />
 
       {/* Filters */}
+      <div className="mb-3">
+        <DateRangeChips
+          startDate={startDate}
+          endDate={endDate}
+          onChange={({ startDate: sd, endDate: ed }) => {
+            setStartDate(sd);
+            setEndDate(ed);
+          }}
+        />
+      </div>
       <div className="flex flex-wrap gap-3 mb-6">
         <div className="min-w-[260px]">
           <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
@@ -276,6 +287,7 @@ export function GeneralLedgerPage() {
             ตั้งแต่
           </label>
           <ThaiDateInput
+            data-date-range-custom-start="true"
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
             className={`${inputClass} w-auto`}

@@ -228,6 +228,8 @@ export class ReportsController {
     @Query('status') status?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
   ) {
     const parsedPage = page ? parseInt(page, 10) : undefined;
     const parsedLimit = limit ? Math.min(parseInt(limit, 10), 100) : undefined;
@@ -235,6 +237,8 @@ export class ReportsController {
       status,
       parsedPage && !isNaN(parsedPage) ? parsedPage : 1,
       parsedLimit && !isNaN(parsedLimit) ? parsedLimit : 50,
+      startDate,
+      endDate,
     );
   }
 

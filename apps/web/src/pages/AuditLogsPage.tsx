@@ -9,6 +9,7 @@ import { useDebounce } from '@/hooks/useDebounce';
 import QueryBoundary from '@/components/QueryBoundary';
 import { formatDateTimeSeconds } from '@/utils/formatters';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
+import { DateRangeChips } from '@/components/ui/DateRangeChips';
 import { toast } from 'sonner';
 import { exportToExcel } from '@/utils/excel.util';
 import { Download } from 'lucide-react';
@@ -282,6 +283,17 @@ export default function AuditLogsPage() {
 
       {/* Filters */}
       <div className="rounded-xl border border-border/50 bg-card shadow-sm p-5 mb-6">
+        <div className="mb-4">
+          <DateRangeChips
+            startDate={dateFrom}
+            endDate={dateTo}
+            onChange={({ startDate, endDate }) => {
+              setDateFrom(startDate);
+              setDateTo(endDate);
+              setPage(1);
+            }}
+          />
+        </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-1">Entity</label>
@@ -314,6 +326,7 @@ export default function AuditLogsPage() {
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-1">จากวันที่</label>
             <ThaiDateInput
+              data-date-range-custom-start="true"
               value={dateFrom}
               onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
               className="w-full border rounded-lg px-3 py-2 text-sm"

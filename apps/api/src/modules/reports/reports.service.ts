@@ -670,7 +670,13 @@ export class ReportsService {
    * FINANCE Portfolio: all contracts owned by BESTCHOICE FINANCE
    * Returns per-contract receivable calculations + portfolio summary + aging.
    */
-  async getFinancePortfolio(status?: string, page = 1, limit = 50) {
+  async getFinancePortfolio(
+    status?: string,
+    page = 1,
+    limit = 50,
+    startDate?: string,
+    endDate?: string,
+  ) {
     const safeLimit = Math.min(limit, 100);
 
     const financeCompany = await this.prisma.companyInfo.findFirst({
@@ -707,10 +713,22 @@ export class ReportsService {
         ? [status as ContractStatus]
         : [...defaultStatuses];
 
+    // Date range filters Contract.createdAt — empty string = no filter (open-ended)
+    const createdAtFilter: { gte?: Date; lte?: Date } = {};
+    if (startDate) {
+      const d = new Date(`${startDate}T00:00:00`);
+      if (!isNaN(d.getTime())) createdAtFilter.gte = d;
+    }
+    if (endDate) {
+      const d = new Date(`${endDate}T23:59:59.999`);
+      if (!isNaN(d.getTime())) createdAtFilter.lte = d;
+    }
+
     const where = {
       deletedAt: null,
       status: { in: statusFilter },
       product: { ownedByCompanyId: financeCompany.id, deletedAt: null },
+      ...(createdAtFilter.gte || createdAtFilter.lte ? { createdAt: createdAtFilter } : {}),
     };
 
     const [contracts, total] = await Promise.all([

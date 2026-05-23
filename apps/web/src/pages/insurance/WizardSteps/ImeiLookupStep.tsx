@@ -18,6 +18,9 @@ export type LookupResult =
       contract: { id: string; contractNumber: string; status: string } | null;
       warrantyStatus: string | null;
       daysRemainingIn7Day: number | null;
+      purchasedAt: string | null;
+      shopWarrantyEndDate: string | null;
+      manufacturerWarrantyEndDate: string | null;
     };
 
 export interface ImeiLookupStepProps {
@@ -135,8 +138,41 @@ function PreviewCard({ result }: { result: Extract<LookupResult, { found: true }
         value={channelLabel(result.sale?.saleType)}
         subvalue={channelSubtitle(result.sale?.saleType)}
       />
+      <Field
+        label="วันที่ซื้อ"
+        value={formatThaiDate(result.purchasedAt)}
+      />
+      <Field
+        label="ประกันหมด"
+        value={formatThaiDate(
+          result.manufacturerWarrantyEndDate ?? result.shopWarrantyEndDate,
+        )}
+        subvalue={warrantyEndSubtitle(result)}
+      />
     </div>
   );
+}
+
+function formatThaiDate(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  // วันที่ พ.ศ.: dd/MM/yyyy where yyyy = christian year + 543
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yy = d.getFullYear() + 543;
+  return `${dd}/${mm}/${yy}`;
+}
+
+function warrantyEndSubtitle(
+  result: Extract<LookupResult, { found: true }>,
+): string | undefined {
+  const hasShop = !!result.shopWarrantyEndDate;
+  const hasMfr = !!result.manufacturerWarrantyEndDate;
+  if (hasMfr && hasShop) return `ประกันโรงงาน (ร้านหมด ${formatThaiDate(result.shopWarrantyEndDate)})`;
+  if (hasMfr) return 'ประกันโรงงาน';
+  if (hasShop) return 'ประกันร้าน';
+  return undefined;
 }
 
 function Field({ label, value, subvalue }: { label: string; value: string; subvalue?: string | null }) {

@@ -945,6 +945,7 @@ export class RepairTicketsService {
       select: {
         id: true,
         saleType: true,
+        createdAt: true,
         customer: { select: { id: true, name: true, phone: true } },
         contract: {
           select: {
@@ -987,6 +988,10 @@ export class RepairTicketsService {
         : null,
       warrantyStatus,
       daysRemainingIn7Day: this.computeDaysRemainingIn7Day(sale?.contract),
+      // วันที่ซื้อ + วันที่หมดประกัน (both warranties when present)
+      purchasedAt: sale?.createdAt ?? null,
+      shopWarrantyEndDate: sale?.contract?.shopWarrantyEndDate ?? null,
+      manufacturerWarrantyEndDate: product.warrantyExpireDate ?? null,
     } as const;
   }
 

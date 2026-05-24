@@ -1,10 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { FileText } from 'lucide-react';
 import { toast } from 'sonner';
+import BubbleList from './BubbleList';
 import type { CannedResponse } from './types';
 
 interface Props {
@@ -13,33 +13,20 @@ interface Props {
   onSave: (patch: Partial<CannedResponse>) => Promise<void>;
 }
 
-const VARIABLES = [
-  '{customerName}',
-  '{customerPhone}',
-  '{contractNumber}',
-  '{amountDue}',
-  '{dueDate}',
-  '{installmentNo}',
-  '{branchName}',
-];
-
 export default function TemplateEditorPane({ template, existingCategories, onSave }: Props) {
   const [form, setForm] = useState({
     title: '',
     shortcut: '',
-    content: '',
     category: '',
     isActive: true,
   });
   const [saving, setSaving] = useState(false);
-  const contentRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (template) {
       setForm({
         title: template.title,
         shortcut: template.shortcut,
-        content: template.content,
         category: template.category ?? '',
         isActive: template.isActive,
       });
@@ -60,7 +47,6 @@ export default function TemplateEditorPane({ template, existingCategories, onSav
   const isDirty =
     form.title !== template.title ||
     form.shortcut !== template.shortcut ||
-    form.content !== template.content ||
     (form.category || null) !== template.category ||
     form.isActive !== template.isActive;
 
@@ -79,7 +65,6 @@ export default function TemplateEditorPane({ template, existingCategories, onSav
       await onSave({
         title: form.title.trim(),
         shortcut: normalizedShortcut,
-        content: form.content,
         category: form.category.trim() || null,
         isActive: form.isActive,
       });
@@ -89,22 +74,6 @@ export default function TemplateEditorPane({ template, existingCategories, onSav
     } finally {
       setSaving(false);
     }
-  };
-
-  const insertVariable = (v: string) => {
-    const ta = contentRef.current;
-    if (!ta) {
-      setForm({ ...form, content: form.content + v });
-      return;
-    }
-    const start = ta.selectionStart;
-    const end = ta.selectionEnd;
-    const next = form.content.slice(0, start) + v + form.content.slice(end);
-    setForm({ ...form, content: next });
-    requestAnimationFrame(() => {
-      ta.focus();
-      ta.selectionStart = ta.selectionEnd = start + v.length;
-    });
   };
 
   return (
@@ -118,7 +87,6 @@ export default function TemplateEditorPane({ template, existingCategories, onSav
             onClick={() => template && setForm({
               title: template.title,
               shortcut: template.shortcut,
-              content: template.content,
               category: template.category ?? '',
               isActive: template.isActive,
             })}
@@ -155,30 +123,7 @@ export default function TemplateEditorPane({ template, existingCategories, onSav
             {existingCategories.map((c) => <option key={c} value={c} />)}
           </datalist>
         </div>
-        <div>
-          <Label htmlFor="content" className="text-xs">เนื้อหา</Label>
-          <Textarea
-            id="content"
-            ref={contentRef}
-            value={form.content}
-            onChange={(e) => setForm({ ...form, content: e.target.value })}
-            className="min-h-[200px] font-mono text-sm leading-relaxed"
-          />
-        </div>
-        <div>
-          <Label className="text-xs">ตัวแปร (คลิกเพื่อใส่ที่ตำแหน่ง cursor)</Label>
-          <div className="flex flex-wrap gap-1 mt-1">
-            {VARIABLES.map((v) => (
-              <button
-                key={v}
-                onClick={() => insertVariable(v)}
-                className="px-2 py-1 text-[11px] font-mono bg-muted hover:bg-emerald-50 hover:text-emerald-700 rounded border border-border"
-              >
-                {v}
-              </button>
-            ))}
-          </div>
-        </div>
+        <BubbleList cannedResponseId={template.id} />
         <div className="flex items-center gap-2">
           <input
             type="checkbox"

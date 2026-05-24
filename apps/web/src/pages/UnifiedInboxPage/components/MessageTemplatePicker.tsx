@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Check, ChevronDown, ChevronRight, FileText, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 import api from '@/lib/api';
 
 interface CannedResponse {
@@ -22,12 +23,24 @@ interface CannedResponse {
   sortOrder?: number;
 }
 
+interface PreviewBubble {
+  id: string;
+  type: 'TEXT' | 'IMAGE' | 'STICKER';
+  sortOrder: number;
+  text: string | null;
+  mediaUrl: string | null;
+  thumbnailUrl: string | null;
+  stickerPackageId: string | null;
+  stickerId: string | null;
+}
+
 interface PreviewResponse {
   id: string;
   shortcut: string;
   title: string;
   content: string;
   expandedContent: string;
+  bubbles?: PreviewBubble[];
 }
 
 interface Props {
@@ -75,7 +88,15 @@ export default function MessageTemplatePicker({ isOpen, onClose, onInsert, roomI
 
   const handleInsert = () => {
     if (!preview) return;
-    onInsert(preview.expandedContent);
+    const textBubbles = (preview.bubbles ?? []).filter((b) => b.type === 'TEXT' && b.text);
+    const nonTextCount = (preview.bubbles ?? []).filter((b) => b.type !== 'TEXT').length;
+    if (nonTextCount > 0) {
+      toast.warning(`มี ${nonTextCount} bubble (image/sticker) ที่ไม่ใช่ text — Phase 1 ส่งเฉพาะ text. รอ Phase 2 จะส่งทุก type`);
+    }
+    const content = textBubbles.length > 0
+      ? textBubbles.map((b) => b.text).join('\n\n')
+      : (preview.expandedContent ?? '');
+    onInsert(content);
     onClose();
   };
 
@@ -246,15 +267,54 @@ export default function MessageTemplatePicker({ isOpen, onClose, onInsert, roomI
                   </div>
                 </div>
                 <div className="flex-1 overflow-y-auto p-5">
-                  <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2">ตัวอย่าง (แทนค่าตัวแปรจากลูกค้า)</div>
-                  <div className="bg-card border border-border rounded-lg p-4 text-sm leading-relaxed whitespace-pre-line min-h-[80px]">
-                    {isPreviewLoading && <span className="text-muted-foreground">กำลังโหลด...</span>}
-                    {!isPreviewLoading && isPreviewError && (
+                  {isPreviewLoading && (
+                    <div className="bg-card border border-border rounded-lg p-4 text-sm leading-relaxed min-h-[80px]">
+                      <span className="text-muted-foreground">กำลังโหลด...</span>
+                    </div>
+                  )}
+                  {!isPreviewLoading && isPreviewError && (
+                    <div className="bg-card border border-border rounded-lg p-4 text-sm leading-relaxed min-h-[80px]">
                       <span className="text-destructive">โหลดตัวอย่างไม่สำเร็จ — ลองเลือกใหม่หรือปิด/เปิด modal</span>
-                    )}
-                    {!isPreviewLoading && !isPreviewError && preview?.expandedContent}
-                  </div>
-                  {preview?.content && preview.content !== preview.expandedContent && (
+                    </div>
+                  )}
+                  {!isPreviewLoading && !isPreviewError && (
+                    preview?.bubbles && preview.bubbles.length > 0 ? (
+                      <div className="space-y-2">
+                        <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                          ตัวอย่าง ({preview.bubbles.length} บับเบิ้ล)
+                        </div>
+                        {preview.bubbles.map((b) => (
+                          <div key={b.id} className="bg-card border border-border rounded-lg p-3">
+                            {b.type === 'TEXT' && (
+                              <div className="text-sm whitespace-pre-line leading-relaxed">{b.text}</div>
+                            )}
+                            {b.type === 'IMAGE' && b.mediaUrl && (
+                              <img src={b.mediaUrl} alt="" className="max-w-full max-h-48 rounded" />
+                            )}
+                            {b.type === 'STICKER' && b.stickerPackageId && (
+                              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                <img
+                                  src={`https://stickershop.line-scdn.net/stickershop/v1/sticker/${b.stickerId}/android/sticker.png`}
+                                  alt="sticker"
+                                  className="w-16 h-16"
+                                  onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                                />
+                                <span>Sticker {b.stickerPackageId}/{b.stickerId}</span>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <>
+                        <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2">ตัวอย่าง (แทนค่าตัวแปรจากลูกค้า)</div>
+                        <div className="bg-card border border-border rounded-lg p-4 text-sm leading-relaxed whitespace-pre-line min-h-[80px]">
+                          {preview?.expandedContent}
+                        </div>
+                      </>
+                    )
+                  )}
+                  {!isPreviewLoading && !isPreviewError && preview?.content && preview.content !== preview.expandedContent && (!preview.bubbles || preview.bubbles.length === 0) && (
                     <>
                       <div className="text-[11px] uppercase tracking-wider text-muted-foreground mt-4 mb-2">เนื้อหาต้นฉบับ</div>
                       <div className="bg-muted border border-border rounded-lg p-3 text-xs font-mono text-muted-foreground whitespace-pre-line">

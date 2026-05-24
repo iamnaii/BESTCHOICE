@@ -1,3 +1,18 @@
+export type BubbleType = 'TEXT' | 'IMAGE' | 'STICKER';
+
+export interface CannedResponseBubble {
+  id: string;
+  cannedResponseId: string;
+  type: BubbleType;
+  sortOrder: number;
+  text: string | null;
+  mediaUrl: string | null;
+  thumbnailUrl: string | null;
+  stickerPackageId: string | null;
+  stickerId: string | null;
+  createdAt: string;
+}
+
 export interface CannedResponse {
   id: string;
   shortcut: string;
@@ -7,6 +22,7 @@ export interface CannedResponse {
   sortOrder: number;
   isActive: boolean;
   createdAt: string;
+  bubbles?: CannedResponseBubble[];
 }
 
 export interface ReorderItem {

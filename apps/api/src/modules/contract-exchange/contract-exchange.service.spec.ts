@@ -1,5 +1,6 @@
 import { Test } from '@nestjs/testing';
 import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { ContractExchangeService } from './contract-exchange.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -174,6 +175,10 @@ describe('ContractExchangeService.approve', () => {
       },
       payment: { count: jest.fn() },
       product: { update: jest.fn() },
+      // Issue #1086 item 3 — journal_lines aggregation source for computeOldOutstanding.
+      // Default: empty ledger → all outstandings = 0 (which is fine for the legacy
+      // happy-path tests below; the dedicated describe block exercises non-empty cases).
+      journalLine: { findMany: jest.fn().mockResolvedValue([]) },
     };
     templates = {
       t1a: { execute: jest.fn().mockResolvedValue({ id: 'je1-id', entryNumber: 'JV-A1' }) },
@@ -268,6 +273,81 @@ describe('ContractExchangeService.approve', () => {
     const createData = prisma.contract.create.mock.calls[0][0].data;
     // The new contract's downPayment must be a zero Decimal, not the old 4000.
     expect(createData.downPayment.toString()).toBe('0');
+  });
+
+  // Issue #1086 item 3 — aggregate from journal_lines, not straight-line proration
+  describe('computeOldOutstanding from journal_lines (Issue #1086 item 3)', () => {
+    beforeEach(() => {
+      prisma.contractExchangeRequest.updateMany.mockResolvedValue({ count: 1 });
+      prisma.contractExchangeRequest.findUniqueOrThrow.mockResolvedValue({
+        id: 'r1', oldContractId: 'old-c', oldProductId: 'op', newProductId: 'np',
+        oldContract: makeOldContract(12, 4),
+      });
+      prisma.payment.count.mockResolvedValue(4);
+      prisma.contract.create.mockResolvedValue({ id: 'nc', contractNumber: 'EX' });
+    });
+
+    it('queries journalLine.findMany for the 4 relevant accounts', async () => {
+      await service.approve('r1', 'u1');
+      expect(prisma.journalLine.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            accountCode: { in: ['11-2101', '11-2105', '11-2106', '21-2102'] },
+            deletedAt: null,
+            journalEntry: expect.objectContaining({
+              deletedAt: null,
+              status: 'POSTED',
+              OR: expect.any(Array),
+            }),
+          }),
+        }),
+      );
+    });
+
+    it('queries by BOTH referenceId AND metadata.contractId', async () => {
+      await service.approve('r1', 'u1');
+      const call = prisma.journalLine.findMany.mock.calls[0][0];
+      const or = call.where.journalEntry.OR;
+      expect(or).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ referenceId: 'old-c' }),
+          expect.objectContaining({
+            metadata: expect.objectContaining({ path: ['contractId'], equals: 'old-c' }),
+          }),
+        ]),
+      );
+    });
+
+    it('aggregates Dr-Cr per account into expected outstanding figures', async () => {
+      // Realistic 5-line ledger:
+      //  11-2101: Dr 20000, Cr 3000  → net Dr 17000 (gross outstanding)
+      //  11-2105: Dr 1400,  Cr 200   → net Dr 1200  (vat receivable outstanding)
+      //  11-2106: Dr 1000,  Cr 5000  → net Cr 4000  (unearned interest remaining)
+      //  21-2102: Dr 100,   Cr 1300  → net Cr 1200  (deferred VAT outstanding)
+      prisma.journalLine.findMany.mockResolvedValue([
+        { accountCode: '11-2101', debit: new Prisma.Decimal(20000), credit: new Prisma.Decimal(0) },
+        { accountCode: '11-2101', debit: new Prisma.Decimal(0), credit: new Prisma.Decimal(3000) },
+        { accountCode: '11-2105', debit: new Prisma.Decimal(1400), credit: new Prisma.Decimal(200) },
+        { accountCode: '11-2106', debit: new Prisma.Decimal(1000), credit: new Prisma.Decimal(5000) },
+        { accountCode: '21-2102', debit: new Prisma.Decimal(100), credit: new Prisma.Decimal(1300) },
+      ]);
+      await service.approve('r1', 'u1');
+      const t2Call = templates.t2.execute.mock.calls[0][0];
+      expect(t2Call.oldGrossOutstanding.toString()).toBe('17000');
+      expect(t2Call.oldVatReceivableOutstanding.toString()).toBe('1200');
+      expect(t2Call.oldUnearnedInterestOutstanding.toString()).toBe('4000');
+      expect(t2Call.oldDeferredVatOutstanding.toString()).toBe('1200');
+    });
+
+    it('returns all zeroes when contract has no journal lines yet', async () => {
+      prisma.journalLine.findMany.mockResolvedValue([]);
+      await service.approve('r1', 'u1');
+      const t2Call = templates.t2.execute.mock.calls[0][0];
+      expect(t2Call.oldGrossOutstanding.toString()).toBe('0');
+      expect(t2Call.oldVatReceivableOutstanding.toString()).toBe('0');
+      expect(t2Call.oldUnearnedInterestOutstanding.toString()).toBe('0');
+      expect(t2Call.oldDeferredVatOutstanding.toString()).toBe('0');
+    });
   });
 });
 

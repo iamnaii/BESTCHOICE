@@ -191,9 +191,12 @@ export class ContractExchangeService {
         } as any,
       });
 
-      // 5. Post JE chain atomically
+      // 5. Post JE chain atomically. Outstanding balances come from the real
+      // ledger (issue #1086 item 3) — straight-line proration missed
+      // reschedules / VAT 60-day / tolerance / late-fee / early-payoff
+      // adjustments.
       const buyback = newFinanced.plus(newCommission);
-      const oldOutstanding = await this.computeOldOutstanding(tx, old, paidCount);
+      const oldOutstanding = await this.computeOldOutstanding(tx, old.id);
 
       const je1a = await this.t1a.execute(newContract.id, tx);
       const je2 = await this.t2.execute(
@@ -299,30 +302,82 @@ export class ContractExchangeService {
     });
   }
 
+  /**
+   * Compute the actual outstanding balance per account for the old contract,
+   * from the real ledger (journal_lines). Replaces the previous straight-line
+   * proration which silently missed:
+   *   - reschedules (21-1103 reclassifications, JP6a/6b)
+   *   - VAT 60-day mandatory entries (21-2103)
+   *   - tolerance over/under (53-1503 / 52-1104)
+   *   - late fees, partial payments
+   *   - early-payoff discounts (52-1106)
+   *
+   * Aggregation rules per account (sign convention = absolute outstanding,
+   * so caller can use values directly as Cr amounts in the JE A.2 closing):
+   *   - 11-2101 HP Receivable Gross  : Dr - Cr (debit-normal asset)
+   *   - 11-2105 VAT Receivable       : Dr - Cr (debit-normal asset)
+   *   - 11-2106 Unearned Interest    : Cr - Dr (contra-asset, credit-normal)
+   *   - 21-2102 Deferred VAT Output  : Cr - Dr (liability, credit-normal)
+   *
+   * Lines are scoped to the contract via metadata.contractId (the consistent
+   * tag across all templates) OR JournalEntry.referenceId (some templates set
+   * this to the contractId — e.g. ContractActivation1ATemplate). Both filters
+   * are ORed so a template using either convention is captured.
+   */
   private async computeOldOutstanding(
     tx: Prisma.TransactionClient,
-    old: {
-      id: string;
-      totalMonths: number;
-      monthlyPayment: { toString(): string };
-      vatAmount: { toString(): string } | null;
-      interestTotal: { toString(): string };
-    },
-    paidCount: number,
-  ) {
-    const remaining = old.totalMonths - paidCount;
-    const monthly = new Decimal(old.monthlyPayment.toString());
-    const totalVat = old.vatAmount ? new Decimal(old.vatAmount.toString()) : new Decimal(0);
-    const vatPerMonth = totalVat.div(old.totalMonths);
-    const grossExclVatPerMonth = monthly.minus(vatPerMonth);
+    oldContractId: string,
+  ): Promise<{
+    gross: Decimal;
+    vatReceivable: Decimal;
+    unearnedInterest: Decimal;
+    deferredVat: Decimal;
+  }> {
+    const accounts = ['11-2101', '11-2105', '11-2106', '21-2102'];
+    const lines = await tx.journalLine.findMany({
+      where: {
+        accountCode: { in: accounts },
+        deletedAt: null,
+        journalEntry: {
+          deletedAt: null,
+          status: 'POSTED',
+          OR: [
+            { referenceId: oldContractId },
+            {
+              metadata: {
+                path: ['contractId'],
+                equals: oldContractId,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              } as any,
+            },
+          ],
+        },
+      },
+      select: { accountCode: true, debit: true, credit: true },
+    });
+
+    const sums = new Map<string, { dr: Decimal; cr: Decimal }>();
+    for (const code of accounts) sums.set(code, { dr: new Decimal(0), cr: new Decimal(0) });
+    for (const line of lines) {
+      const entry = sums.get(line.accountCode)!;
+      entry.dr = entry.dr.plus(new Decimal(line.debit.toString()));
+      entry.cr = entry.cr.plus(new Decimal(line.credit.toString()));
+    }
+
+    const debitNormal = (code: string) => {
+      const s = sums.get(code)!;
+      return s.dr.minus(s.cr).toDecimalPlaces(2);
+    };
+    const creditNormal = (code: string) => {
+      const s = sums.get(code)!;
+      return s.cr.minus(s.dr).toDecimalPlaces(2);
+    };
+
     return {
-      gross: grossExclVatPerMonth.times(remaining).toDecimalPlaces(2),
-      vatReceivable: vatPerMonth.times(remaining).toDecimalPlaces(2),
-      unearnedInterest: new Decimal(old.interestTotal.toString())
-        .div(old.totalMonths)
-        .times(remaining)
-        .toDecimalPlaces(2),
-      deferredVat: vatPerMonth.times(remaining).toDecimalPlaces(2),
+      gross: debitNormal('11-2101'),
+      vatReceivable: debitNormal('11-2105'),
+      unearnedInterest: creditNormal('11-2106'),
+      deferredVat: creditNormal('21-2102'),
     };
   }
 }

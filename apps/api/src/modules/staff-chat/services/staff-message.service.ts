@@ -74,6 +74,21 @@ export class StaffMessageService {
     });
   }
 
+  /** Bulk reorder canned responses — used by admin drag-and-drop */
+  async reorderCannedResponses(
+    items: Array<{ id: string; sortOrder: number; category: string | null }>,
+  ): Promise<{ updated: number }> {
+    await this.prisma.$transaction(
+      items.map((item) =>
+        this.prisma.cannedResponse.update({
+          where: { id: item.id },
+          data: { sortOrder: item.sortOrder, category: item.category },
+        }),
+      ),
+    );
+    return { updated: items.length };
+  }
+
   /** Get a canned response with variables expanded using session context */
   async getCannedResponseExpanded(
     id: string,

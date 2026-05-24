@@ -270,6 +270,35 @@ export class StaffChatController {
     return this.staffMessage.createCannedResponse(body);
   }
 
+  @Patch('canned-responses/reorder')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  async reorderCannedResponses(
+    @Body() body: { items: Array<{ id: string; sortOrder: number; category: string | null }> },
+  ) {
+    const items = body?.items ?? [];
+    if (!Array.isArray(items)) {
+      throw new BadRequestException('items ต้องเป็น array');
+    }
+    if (items.length > 200) {
+      throw new BadRequestException('reorder รับสูงสุด 200 รายการต่อครั้ง');
+    }
+    for (const item of items) {
+      if (typeof item.id !== 'string' || !item.id) {
+        throw new BadRequestException('item.id ต้องเป็น string');
+      }
+      if (!Number.isInteger(item.sortOrder) || item.sortOrder < 0) {
+        throw new BadRequestException('sortOrder ต้องเป็นจำนวนเต็ม >= 0');
+      }
+      if (item.category !== null && typeof item.category !== 'string') {
+        throw new BadRequestException('category ต้องเป็น string หรือ null');
+      }
+      if (typeof item.category === 'string' && item.category.length > 100) {
+        throw new BadRequestException('category ยาวเกิน 100 ตัวอักษร');
+      }
+    }
+    return this.staffMessage.reorderCannedResponses(items);
+  }
+
   @Patch('canned-responses/:id')
   @Roles('OWNER', 'BRANCH_MANAGER')
   async updateCannedResponse(@Param('id') id: string, @Body() body: any) {

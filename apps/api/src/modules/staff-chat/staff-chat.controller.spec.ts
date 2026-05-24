@@ -40,7 +40,10 @@ describe('StaffChatController', () => {
         { provide: HandoffManagerService, useValue: {} },
         {
           provide: StaffMessageService,
-          useValue: { getCannedResponseExpanded: jest.fn() },
+          useValue: {
+            getCannedResponseExpanded: jest.fn(),
+            reorderCannedResponses: jest.fn(),
+          },
         },
         { provide: AiAssistantService, useValue: {} },
         { provide: MediaContentService, useValue: {} },
@@ -94,6 +97,34 @@ describe('StaffChatController', () => {
       await expect(controller.previewCannedResponse('room-1', 'missing')).rejects.toThrow(
         'ไม่พบข้อความสำเร็จรูป',
       );
+    });
+  });
+
+  describe('PATCH /staff-chat/canned-responses/reorder', () => {
+    it('updates sortOrder + category for each item', async () => {
+      jest.spyOn(staffMessage, 'reorderCannedResponses').mockResolvedValue({ updated: 2 });
+
+      const body = {
+        items: [
+          { id: 'a', sortOrder: 10, category: 'X' },
+          { id: 'b', sortOrder: 11, category: 'X' },
+        ],
+      };
+      const result = await controller.reorderCannedResponses(body);
+
+      expect(result).toEqual({ updated: 2 });
+      expect(staffMessage.reorderCannedResponses).toHaveBeenCalledWith(body.items);
+    });
+
+    it('rejects payload with > 200 items', async () => {
+      const items = Array.from({ length: 201 }, (_, i) => ({ id: `id-${i}`, sortOrder: i, category: 'X' }));
+      await expect(controller.reorderCannedResponses({ items })).rejects.toThrow(/200/);
+    });
+
+    it('rejects payload with non-integer sortOrder', async () => {
+      await expect(
+        controller.reorderCannedResponses({ items: [{ id: 'a', sortOrder: 1.5, category: 'X' }] }),
+      ).rejects.toThrow();
     });
   });
 });

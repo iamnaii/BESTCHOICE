@@ -90,21 +90,15 @@ export class StaffMessageService {
   }
 
   /** Get a canned response with variables expanded using session context */
-  async getCannedResponseExpanded(
-    id: string,
-    roomId: string,
-  ): Promise<{
-    id: string;
-    shortcut: string;
-    title: string;
-    content: string;
-    expandedContent: string;
-  }> {
+  async getCannedResponseExpanded(id: string, roomId: string) {
     // 1. Find canned response by id — must be active + not soft-deleted
     //    (matches getCannedResponses list filter so deactivated templates
     //     are not reachable via preview either)
     const cannedResponse = await this.prisma.cannedResponse.findFirst({
       where: { id, deletedAt: null, isActive: true },
+      include: {
+        bubbles: { where: { deletedAt: null }, orderBy: { sortOrder: 'asc' } },
+      },
     });
 
     if (!cannedResponse) {
@@ -119,19 +113,38 @@ export class StaffMessageService {
 
     const customerId = room?.customerId ?? undefined;
 
-    // 3. Call expandVariables with context
-    const expandedContent = await this.cannedResponseVariableService.expandVariables(
-      cannedResponse.content,
-      { roomId, customerId },
+    // 3. Expand variables on bubble TEXT entries
+    const expandedBubbles = await Promise.all(
+      cannedResponse.bubbles.map(async (b: any) => {
+        if (b.type === 'TEXT' && b.text) {
+          return {
+            ...b,
+            text: await this.cannedResponseVariableService.expandVariables(b.text, {
+              roomId,
+              customerId,
+            }),
+          };
+        }
+        return b;
+      }),
     );
 
-    // 4. Return original + expanded
+    // 4. Expand legacy single-content field
+    const expandedContent = cannedResponse.content
+      ? await this.cannedResponseVariableService.expandVariables(cannedResponse.content, {
+          roomId,
+          customerId,
+        })
+      : '';
+
+    // 5. Return original + expanded + bubbles
     return {
       id: cannedResponse.id,
       shortcut: cannedResponse.shortcut,
       title: cannedResponse.title,
       content: cannedResponse.content,
       expandedContent,
+      bubbles: expandedBubbles,
     };
   }
 }

@@ -27,6 +27,7 @@ import { AssignmentService } from '../chat-engine/services/assignment.service';
 import { ConversationTagService } from '../chat-engine/services/conversation-tag.service';
 import { HandoffManagerService } from '../chat-engine/services/handoff-manager.service';
 import { StaffMessageService } from './services/staff-message.service';
+import { CannedResponseBubbleService } from './services/canned-response-bubble.service';
 import { AiAssistantService } from './services/ai-assistant.service';
 import { MediaContentService } from './services/media-content.service';
 import { ChatToContractService } from './services/chat-to-contract.service';
@@ -73,6 +74,7 @@ export class StaffChatController {
     private config: ConfigService,
     private trainingExtractCron: TrainingExtractCron,
     private staffChatGateway: StaffChatGateway,
+    private cannedResponseBubble: CannedResponseBubbleService,
   ) {}
 
   // ─── Rooms ────────────────────────────────────────────
@@ -297,6 +299,41 @@ export class StaffChatController {
       }
     }
     return this.staffMessage.reorderCannedResponses(items);
+  }
+
+  // ─── Bubble CRUD (Phase 1) ───────────────────────────
+
+  @Get('canned-responses/:id/bubbles')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  async listBubbles(@Param('id') id: string) {
+    return this.cannedResponseBubble.listBubbles(id);
+  }
+
+  @Post('canned-responses/:id/bubbles')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  async createBubble(
+    @Param('id') id: string,
+    @Body() body: { type: 'TEXT' | 'IMAGE' | 'STICKER'; text?: string; mediaUrl?: string; thumbnailUrl?: string; stickerPackageId?: string; stickerId?: string },
+  ) {
+    return this.cannedResponseBubble.createBubble(id, body);
+  }
+
+  @Patch('canned-responses/bubbles/reorder')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  async reorderBubbles(@Body() body: { items: Array<{ id: string; sortOrder: number }> }) {
+    return this.cannedResponseBubble.reorderBubbles(body.items);
+  }
+
+  @Patch('canned-responses/bubbles/:bubbleId')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  async updateBubble(@Param('bubbleId') bubbleId: string, @Body() body: any) {
+    return this.cannedResponseBubble.updateBubble(bubbleId, body);
+  }
+
+  @Delete('canned-responses/bubbles/:bubbleId')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  async deleteBubble(@Param('bubbleId') bubbleId: string) {
+    return this.cannedResponseBubble.deleteBubble(bubbleId);
   }
 
   @Patch('canned-responses/:id')

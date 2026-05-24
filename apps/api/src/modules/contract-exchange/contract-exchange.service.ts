@@ -3,6 +3,7 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -14,6 +15,8 @@ import { SubmitExchangeRequestDto } from './dto/submit-exchange-request.dto';
 import { ExchangeNewContract1ATemplate } from '../journal/cpa-templates/exchange-new-contract-1a.template';
 import { ExchangeCloseOld21_1106Template } from '../journal/cpa-templates/exchange-close-old-21-1106.template';
 import { ExchangeClearVendor21_1106Template } from '../journal/cpa-templates/exchange-clear-vendor-21-1106.template';
+import { ShopExchangeReturnTemplate } from '../journal/cpa-templates/shop-exchange-return.template';
+import { CompanyResolverService } from '../journal/company-resolver.service';
 
 /**
  * Subset of the request user that submit() needs to perform branch scoping.
@@ -44,6 +47,8 @@ export class ContractExchangeService {
     private readonly t1a: ExchangeNewContract1ATemplate,
     private readonly t2: ExchangeCloseOld21_1106Template,
     private readonly t3: ExchangeClearVendor21_1106Template,
+    private readonly t4: ShopExchangeReturnTemplate,
+    private readonly companyResolver: CompanyResolverService,
   ) {}
 
   async submit(dto: SubmitExchangeRequestDto, user: RequestUser) {
@@ -163,10 +168,13 @@ export class ContractExchangeService {
         : new Decimal(0);
       const newInterest = monthlyPayment.times(remainingMonths).minus(newFinanced);
 
-      // 4. Create new contract (mirror old plan w/ remaining months)
+      // 4. Create new contract (mirror old plan w/ remaining months).
+      // Issue #1086 item 4 — use EXCH-YYYYMMDD-NNNN to avoid grep-collision
+      // with ExpenseDocument's EX- prefix.
+      const contractNumber = await this.nextExchangeContractNumber(tx);
       const newContract = await tx.contract.create({
         data: {
-          contractNumber: `EX-${Date.now()}`,
+          contractNumber,
           customerId: old.customerId,
           productId: req.newProductId,
           branchId: old.branchId,
@@ -191,9 +199,12 @@ export class ContractExchangeService {
         } as any,
       });
 
-      // 5. Post JE chain atomically
+      // 5. Post JE chain atomically. Outstanding balances come from the real
+      // ledger (issue #1086 item 3) — straight-line proration missed
+      // reschedules / VAT 60-day / tolerance / late-fee / early-payoff
+      // adjustments.
       const buyback = newFinanced.plus(newCommission);
-      const oldOutstanding = await this.computeOldOutstanding(tx, old, paidCount);
+      const oldOutstanding = await this.computeOldOutstanding(tx, old.id);
 
       const je1a = await this.t1a.execute(newContract.id, tx);
       const je2 = await this.t2.execute(
@@ -217,6 +228,27 @@ export class ContractExchangeService {
         tx,
       );
 
+      // Issue #1086 item 6 — old device must be re-intaken to SHOP inventory
+      // BOTH in the ledger (Dr S11-2002 / Cr S50-1102) AND in the Product
+      // ownership column (ownedByCompanyId → SHOP). Without this, the device
+      // is REFURBISHED but still owned by FINANCE → SHOP can't legally resell.
+      const oldProduct = await tx.product.findUniqueOrThrow({
+        where: { id: req.oldProductId },
+        select: { id: true, costPrice: true },
+      });
+      if (oldProduct.costPrice == null) {
+        throw new InternalServerErrorException(
+          'ไม่พบ costPrice ของเครื่องเดิม — ตั้งค่าก่อนอนุมัติเปลี่ยนเครื่อง',
+        );
+      }
+      const cost = new Decimal(oldProduct.costPrice.toString());
+      const je4 = await this.t4.execute(
+        { oldProductId: req.oldProductId, oldContractId: old.id, cost },
+        tx,
+      );
+
+      const shopCompanyId = await this.companyResolver.getShopCompanyId(tx);
+
       // 6. Status flips
       await tx.contract.update({
         where: { id: old.id },
@@ -224,10 +256,11 @@ export class ContractExchangeService {
       });
       await tx.product.update({
         where: { id: req.oldProductId },
-        data: { status: 'REFURBISHED' },
+        data: { status: 'REFURBISHED', ownedByCompanyId: shopCompanyId } as any,
       });
 
-      // 7. Link request to outputs
+      // 7. Link request to outputs (je4Id captured on the request row so
+      // the SHOP re-intake JE is traceable from the exchange request).
       await (tx as any).contractExchangeRequest.update({
         where: { id },
         data: {
@@ -235,6 +268,7 @@ export class ContractExchangeService {
           je1aId: je1a.id,
           je2Id: je2.id,
           je3Id: je3.id,
+          je4Id: je4.id,
         },
       });
 
@@ -251,8 +285,30 @@ export class ContractExchangeService {
           remainingMonths,
         },
       });
+      // Separate event for the SHOP-side ownership flip + re-intake JE —
+      // makes it greppable in the audit log without parsing the parent event.
+      await this.audit.log({
+        action: 'EXCHANGE_DEVICE_RETURNED_TO_SHOP',
+        entity: 'product',
+        entityId: req.oldProductId,
+        userId,
+        newValue: {
+          exchangeRequestId: id,
+          oldContractId: old.id,
+          jeId: je4.id,
+          ownedByCompanyId: shopCompanyId,
+          cost: cost.toString(),
+        },
+      });
 
-      return { id, newContractId: newContract.id, je1aId: je1a.id, je2Id: je2.id, je3Id: je3.id };
+      return {
+        id,
+        newContractId: newContract.id,
+        je1aId: je1a.id,
+        je2Id: je2.id,
+        je3Id: je3.id,
+        je4Id: je4.id,
+      };
     });
   }
 
@@ -299,30 +355,128 @@ export class ContractExchangeService {
     });
   }
 
+  /**
+   * Compute the actual outstanding balance per account for the old contract,
+   * from the real ledger (journal_lines). Replaces the previous straight-line
+   * proration which silently missed:
+   *   - reschedules (21-1103 reclassifications, JP6a/6b)
+   *   - VAT 60-day mandatory entries (21-2103)
+   *   - tolerance over/under (53-1503 / 52-1104)
+   *   - late fees, partial payments
+   *   - early-payoff discounts (52-1106)
+   *
+   * Aggregation rules per account (sign convention = absolute outstanding,
+   * so caller can use values directly as Cr amounts in the JE A.2 closing):
+   *   - 11-2101 HP Receivable Gross  : Dr - Cr (debit-normal asset)
+   *   - 11-2105 VAT Receivable       : Dr - Cr (debit-normal asset)
+   *   - 11-2106 Unearned Interest    : Cr - Dr (contra-asset, credit-normal)
+   *   - 21-2102 Deferred VAT Output  : Cr - Dr (liability, credit-normal)
+   *
+   * Lines are scoped to the contract via metadata.contractId (the consistent
+   * tag across all templates) OR JournalEntry.referenceId (some templates set
+   * this to the contractId — e.g. ContractActivation1ATemplate). Both filters
+   * are ORed so a template using either convention is captured.
+   */
   private async computeOldOutstanding(
     tx: Prisma.TransactionClient,
-    old: {
-      id: string;
-      totalMonths: number;
-      monthlyPayment: { toString(): string };
-      vatAmount: { toString(): string } | null;
-      interestTotal: { toString(): string };
-    },
-    paidCount: number,
-  ) {
-    const remaining = old.totalMonths - paidCount;
-    const monthly = new Decimal(old.monthlyPayment.toString());
-    const totalVat = old.vatAmount ? new Decimal(old.vatAmount.toString()) : new Decimal(0);
-    const vatPerMonth = totalVat.div(old.totalMonths);
-    const grossExclVatPerMonth = monthly.minus(vatPerMonth);
-    return {
-      gross: grossExclVatPerMonth.times(remaining).toDecimalPlaces(2),
-      vatReceivable: vatPerMonth.times(remaining).toDecimalPlaces(2),
-      unearnedInterest: new Decimal(old.interestTotal.toString())
-        .div(old.totalMonths)
-        .times(remaining)
-        .toDecimalPlaces(2),
-      deferredVat: vatPerMonth.times(remaining).toDecimalPlaces(2),
+    oldContractId: string,
+  ): Promise<{
+    gross: Decimal;
+    vatReceivable: Decimal;
+    unearnedInterest: Decimal;
+    deferredVat: Decimal;
+  }> {
+    const accounts = ['11-2101', '11-2105', '11-2106', '21-2102'];
+    const lines = await tx.journalLine.findMany({
+      where: {
+        accountCode: { in: accounts },
+        deletedAt: null,
+        journalEntry: {
+          deletedAt: null,
+          status: 'POSTED',
+          OR: [
+            { referenceId: oldContractId },
+            {
+              metadata: {
+                path: ['contractId'],
+                equals: oldContractId,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              } as any,
+            },
+          ],
+        },
+      },
+      select: { accountCode: true, debit: true, credit: true },
+    });
+
+    const sums = new Map<string, { dr: Decimal; cr: Decimal }>();
+    for (const code of accounts) sums.set(code, { dr: new Decimal(0), cr: new Decimal(0) });
+    for (const line of lines) {
+      const entry = sums.get(line.accountCode)!;
+      entry.dr = entry.dr.plus(new Decimal(line.debit.toString()));
+      entry.cr = entry.cr.plus(new Decimal(line.credit.toString()));
+    }
+
+    const debitNormal = (code: string) => {
+      const s = sums.get(code)!;
+      return s.dr.minus(s.cr).toDecimalPlaces(2);
     };
+    const creditNormal = (code: string) => {
+      const s = sums.get(code)!;
+      return s.cr.minus(s.dr).toDecimalPlaces(2);
+    };
+
+    return {
+      gross: debitNormal('11-2101'),
+      vatReceivable: debitNormal('11-2105'),
+      unearnedInterest: creditNormal('11-2106'),
+      deferredVat: creditNormal('21-2102'),
+    };
+  }
+
+  /**
+   * Generate next exchange-contract number in format EXCH-YYYYMMDD-NNNN.
+   * Sequence resets at Asia/Bangkok midnight. Advisory lock per BKK-day
+   * prevents race conditions when 2 exchanges are approved concurrently.
+   *
+   * Issue #1086 item 4 — must NOT use EX- prefix (collides with the
+   * ExpenseDocument grep used by accounting reports). Mirrors the
+   * `RepairTicketDocNumberService` BKK-day-bounds + advisory-lock pattern.
+   */
+  private async nextExchangeContractNumber(
+    tx: Prisma.TransactionClient,
+    now: Date = new Date(),
+  ): Promise<string> {
+    const yyyymmdd = this.bkkYyyymmdd(now);
+    const lockKey = this.hashLockKey(`exch:${yyyymmdd}`);
+    await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${lockKey})`);
+
+    const last = await tx.contract.findFirst({
+      where: { contractNumber: { startsWith: `EXCH-${yyyymmdd}-` } },
+      orderBy: { contractNumber: 'desc' },
+      select: { contractNumber: true },
+    });
+    const lastSeq = last ? parseInt(last.contractNumber.split('-')[2], 10) || 0 : 0;
+    const seq = String(lastSeq + 1).padStart(4, '0');
+    return `EXCH-${yyyymmdd}-${seq}`;
+  }
+
+  private bkkYyyymmdd(date: Date): string {
+    const parts = date.toLocaleString('en-CA', {
+      timeZone: 'Asia/Bangkok',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    const [y, m, d] = parts.split('-').map((s) => parseInt(s, 10));
+    return `${y}${String(m).padStart(2, '0')}${String(d).padStart(2, '0')}`;
+  }
+
+  private hashLockKey(key: string): number {
+    let h = 0;
+    for (let i = 0; i < key.length; i++) {
+      h = (h * 31 + key.charCodeAt(i)) | 0;
+    }
+    return h;
   }
 }

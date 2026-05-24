@@ -130,12 +130,51 @@ export class FacebookAdapter implements IChannelAdapter {
 
   async getUserProfile(externalUserId: string): Promise<UserProfile | null> {
     if (!this.pageAccessToken || !this.pageId) return null;
+
+    // Try 1 — Messenger User Profile API (returns name + profile_pic).
+    // Works only when pages_messaging is at Advanced Access tier (post App Review).
+    // Currently returns 400/100/33 in dev mode; falls through silently.
+    const direct = await this.fetchDirectProfile(externalUserId);
+    if (direct) return direct;
+
+    // Try 2 — Workaround via /me/conversations participants (returns name only,
+    // no profile_pic). Always works while pages_messaging is granted.
+    return this.fetchProfileViaConversations(externalUserId);
+  }
+
+  private async fetchDirectProfile(externalUserId: string): Promise<UserProfile | null> {
     try {
-      // FB v25 deprecated direct /{psid}?fields=name lookups even with pages_messaging.
-      // Targeted conversation lookup via user_id returns participants with name.
+      const url =
+        `https://graph.facebook.com/v25.0/${encodeURIComponent(externalUserId)}` +
+        `?fields=name,profile_pic&access_token=${encodeURIComponent(this.pageAccessToken!)}`;
+      const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+      if (!res.ok) return null;
+      const json = (await res.json()) as { name?: string; profile_pic?: string };
+      if (!json.name) return null;
+      return { displayName: json.name, avatarUrl: json.profile_pic };
+    } catch (err) {
+      const isTimeout = err instanceof Error && err.name === 'TimeoutError';
+      if (isTimeout) {
+        this.logger.warn(`[FB] fetchDirectProfile timeout for PSID ${externalUserId}`);
+        Sentry.captureException(err, {
+          tags: {
+            module: 'chat-adapter-facebook',
+            action: 'fetch_direct_profile',
+            reason: 'timeout',
+          },
+        });
+      }
+      return null;
+    }
+  }
+
+  private async fetchProfileViaConversations(
+    externalUserId: string,
+  ): Promise<UserProfile | null> {
+    try {
       const url =
         `https://graph.facebook.com/v25.0/me/conversations?user_id=${encodeURIComponent(externalUserId)}` +
-        `&fields=participants&access_token=${encodeURIComponent(this.pageAccessToken)}`;
+        `&fields=participants&access_token=${encodeURIComponent(this.pageAccessToken!)}`;
       const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
       if (!res.ok) return null;
       const json = (await res.json()) as {
@@ -148,9 +187,15 @@ export class FacebookAdapter implements IChannelAdapter {
     } catch (err) {
       const isTimeout = err instanceof Error && err.name === 'TimeoutError';
       if (isTimeout) {
-        this.logger.warn(`[FB] getUserProfile timeout for PSID ${externalUserId}`);
+        this.logger.warn(
+          `[FB] fetchProfileViaConversations timeout for PSID ${externalUserId}`,
+        );
         Sentry.captureException(err, {
-          tags: { module: 'chat-adapter-facebook', action: 'get_user_profile', reason: 'timeout' },
+          tags: {
+            module: 'chat-adapter-facebook',
+            action: 'fetch_profile_via_conversations',
+            reason: 'timeout',
+          },
         });
       }
       return null;

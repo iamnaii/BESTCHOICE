@@ -299,7 +299,12 @@ export default function UnifiedInboxPage() {
 
       {/* Right panel: Customer 360 — always visible on xl+ */}
       <div className="hidden xl:block">
-        <Customer360Panel customerId={customerId} activeRoomId={activeRoomId} onSelectRoom={handleSelectRoom} />
+        <Customer360Panel
+          customerId={customerId}
+          activeRoomId={activeRoomId}
+          onSelectRoom={handleSelectRoom}
+          session={sessionQuery.data}
+        />
       </div>
 
       {/* Right panel as Drawer on < xl */}
@@ -313,6 +318,7 @@ export default function UnifiedInboxPage() {
               handleSelectRoom(id);
               setCustomerPanelOpen(false);
             }}
+            session={sessionQuery.data}
           />
         </SheetContent>
       </Sheet>

@@ -4,6 +4,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { th } from 'date-fns/locale';
 import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, sessionPriorityMap } from '@/lib/status-badges';
+import { getGeneratedAvatarUrl } from '@/lib/avatar';
 import { useState } from 'react';
 
 /** Map sentinel-prefixed message bodies to a human-friendly preview. */
@@ -106,7 +107,10 @@ const CHANNEL_CONFIG: Record<string, { bg: string; label: string; text: string }
 function Avatar({ session, displayName }: { session: ConversationItemProps['session']; displayName: string }) {
   const [imgError, setImgError] = useState(false);
   const avatarUrl =
-    session.customer?.avatarUrl || session.customer?.lineAvatarUrl || session.pictureUrl;
+    session.customer?.avatarUrl ||
+    session.customer?.lineAvatarUrl ||
+    session.pictureUrl ||
+    getGeneratedAvatarUrl(session.id);
   const channelCfg = CHANNEL_CONFIG[session.channel] ?? { bg: 'bg-muted-foreground', label: '?' };
 
   return (

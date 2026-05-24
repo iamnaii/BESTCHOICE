@@ -37,6 +37,9 @@ import { format, isPast, differenceInDays } from 'date-fns';
 import { th } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
+import { UserPlus } from 'lucide-react';
+import { getGeneratedAvatarUrl } from '@/lib/avatar';
 
 type DialogView = null | 'send-link';
 
@@ -110,6 +113,17 @@ interface Customer360PanelProps {
   customerId: string | null;
   activeRoomId?: string | null;
   onSelectRoom?: (roomId: string) => void;
+  /**
+   * Lightweight session shape for rendering the no-customer-link empty state.
+   * Used only when `customerId` is null. Optional so existing call sites that
+   * don't pass it still compile (they just see the generic empty state).
+   */
+  session?: {
+    id?: string;
+    channel?: string;
+    displayName?: string | null;
+    pictureUrl?: string | null;
+  } | null;
 }
 
 const channelLabel: Record<string, string> = {
@@ -145,7 +159,7 @@ const sessionStatusLabel: Record<string, string> = {
   ARCHIVED: 'เก็บ',
 };
 
-export default function Customer360Panel({ customerId, activeRoomId, onSelectRoom }: Customer360PanelProps) {
+export default function Customer360Panel({ customerId, activeRoomId, onSelectRoom, session }: Customer360PanelProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [dialogView, setDialogView] = useState<DialogView>(null);
@@ -342,6 +356,61 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
   };
 
   if (!customerId) {
+    if (session && (session.displayName || session.id)) {
+      const fallbackName = session.displayName ?? 'ไม่ระบุชื่อ';
+      const avatarUrl = session.pictureUrl ?? getGeneratedAvatarUrl(session.id);
+      const channelName = session.channel ? channelLabel[session.channel] ?? session.channel : null;
+      const channelTone = session.channel ? channelColor[session.channel] : 'bg-muted text-muted-foreground';
+      return (
+        <div className="w-80 border-l border-border flex flex-col p-4 gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-full overflow-hidden bg-muted shrink-0 ring-1 ring-border">
+              {avatarUrl ? (
+                <img src={avatarUrl} alt={fallbackName} className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-sm font-bold text-muted-foreground">
+                  {fallbackName.charAt(0)}
+                </div>
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-semibold leading-snug text-foreground truncate">
+                {fallbackName}
+              </div>
+              {channelName && (
+                <span
+                  className={cn(
+                    'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold mt-1',
+                    channelTone,
+                  )}
+                >
+                  {channelName}
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-md border border-dashed border-border bg-muted/30 p-3 text-[11px] leading-relaxed text-muted-foreground">
+            ยังไม่ได้จับคู่ลูกค้านี้กับบันทึกในระบบ — ข้อมูลสัญญา/ผ่อนชำระจะปรากฏหลังสร้างหรือผูกลูกค้า
+          </div>
+
+          <Button
+            variant="primary"
+            size="sm"
+            className="w-full"
+            onClick={() => {
+              const params = new URLSearchParams({ new: '1' });
+              if (session.displayName) params.set('name', session.displayName);
+              if (activeRoomId) params.set('fromRoomId', activeRoomId);
+              navigate(`/customers?${params.toString()}`);
+            }}
+          >
+            <UserPlus className="w-3.5 h-3.5 mr-1.5" />
+            สร้างลูกค้าจากแชทนี้
+          </Button>
+        </div>
+      );
+    }
     return (
       <div className="w-80 border-l border-border flex flex-col items-center justify-center text-center p-6">
         <div className="relative mb-4">

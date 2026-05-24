@@ -293,6 +293,35 @@ export class RoomManagerService {
     });
   }
 
+  /**
+   * Link an existing Customer record to a ChatRoom. Throws if the room is
+   * already linked to a different customer — relinking requires explicit
+   * unlink-then-link, not silent overwrite.
+   */
+  async linkCustomer(roomId: string, customerId: string) {
+    const room = await this.prisma.chatRoom.findUnique({
+      where: { id: roomId },
+      select: { id: true, customerId: true, deletedAt: true },
+    });
+    if (!room || room.deletedAt) {
+      throw new Error('ห้องแชทไม่พบหรือถูกลบ');
+    }
+    if (room.customerId && room.customerId !== customerId) {
+      throw new Error('ห้องแชทนี้ผูกกับลูกค้ารายอื่นอยู่แล้ว');
+    }
+    const customer = await this.prisma.customer.findUnique({
+      where: { id: customerId },
+      select: { id: true, deletedAt: true },
+    });
+    if (!customer || customer.deletedAt) {
+      throw new Error('ไม่พบลูกค้า');
+    }
+    return this.prisma.chatRoom.update({
+      where: { id: roomId },
+      data: { customerId },
+    });
+  }
+
   /** List rooms for the unified inbox with pagination and filters */
   async listRooms(params: {
     channel?: ChatChannel;

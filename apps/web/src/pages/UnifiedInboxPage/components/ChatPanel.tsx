@@ -12,6 +12,7 @@ import CommandPalette from './CommandPalette';
 import AiSuggestPanel from './AiSuggestPanel';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import api from '@/lib/api';
+import { getGeneratedAvatarUrl } from '@/lib/avatar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 // ─── Emoji data ───────────────────────────────────────────────────────────────
@@ -288,7 +289,10 @@ export default function ChatPanel({
     session.lineUserId?.slice(0, 12) ??
     'ไม่ทราบชื่อ';
   const avatarUrl =
-    session.customer?.avatarUrl || session.customer?.lineAvatarUrl || session.pictureUrl;
+    session.customer?.avatarUrl ||
+    session.customer?.lineAvatarUrl ||
+    session.pictureUrl ||
+    getGeneratedAvatarUrl(session.id);
   const isResolved = session.sessionStatus === 'RESOLVED';
 
   return (

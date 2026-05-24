@@ -147,3 +147,51 @@ describe('MessageTemplatePicker — preview', () => {
     expect(onClose).toHaveBeenCalled();
   });
 });
+
+describe('MessageTemplatePicker — search', () => {
+  beforeEach(() => {
+    vi.mocked(api.get).mockResolvedValue({
+      data: [
+        { id: 't1', shortcut: 'iphone', title: 'iPhone 16', content: 'iPhone content', category: 'A', sortOrder: 1 },
+        { id: 't2', shortcut: 'samsung', title: 'Samsung S25', content: 'samsung content', category: 'B', sortOrder: 2 },
+        { id: 't3', shortcut: 'hello', title: 'ทักทาย', content: 'สวัสดี iphone user', category: 'C', sortOrder: 3 },
+      ],
+    });
+  });
+
+  it('filters by title (case-insensitive) and auto-expands matching categories', async () => {
+    render(wrap(<MessageTemplatePicker isOpen={true} onClose={vi.fn()} onInsert={vi.fn()} roomId="r1" />));
+    await screen.findByText('A');
+    const search = screen.getByPlaceholderText(/ค้นหา/);
+    fireEvent.change(search, { target: { value: 'iphone' } });
+    // iPhone matches by title
+    expect(await screen.findByText('iPhone 16')).toBeInTheDocument();
+    // ทักทาย matches by content ("สวัสดี iphone user")
+    expect(screen.getByText('ทักทาย')).toBeInTheDocument();
+    // Samsung does NOT match
+    expect(screen.queryByText('Samsung S25')).not.toBeInTheDocument();
+  });
+
+  it('clears filter when search emptied', async () => {
+    render(wrap(<MessageTemplatePicker isOpen={true} onClose={vi.fn()} onInsert={vi.fn()} roomId="r1" />));
+    await screen.findByText('A');
+    const search = screen.getByPlaceholderText(/ค้นหา/);
+    fireEvent.change(search, { target: { value: 'iphone' } });
+    await screen.findByText('iPhone 16');
+    fireEvent.change(search, { target: { value: '' } });
+    // All categories present, none auto-expanded → expanded items hidden again
+    await waitFor(() => {
+      expect(screen.queryByText('iPhone 16')).not.toBeInTheDocument();
+    });
+    expect(screen.getByText('A')).toBeInTheDocument();
+    expect(screen.getByText('B')).toBeInTheDocument();
+  });
+
+  it('Escape key closes modal', async () => {
+    const onClose = vi.fn();
+    render(wrap(<MessageTemplatePicker isOpen={true} onClose={onClose} onInsert={vi.fn()} roomId="r1" />));
+    await screen.findByText('A');
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalled();
+  });
+});

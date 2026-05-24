@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Dialog,
@@ -65,23 +65,46 @@ export default function MessageTemplatePicker({ isOpen, onClose, onInsert, roomI
     onClose();
   };
 
-  // Group templates by category (null → "อื่นๆ")
+  // Apply search filter, then group
   const grouped = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    const filtered = q
+      ? templates.filter(
+          (t) =>
+            t.title.toLowerCase().includes(q) ||
+            t.content.toLowerCase().includes(q) ||
+            t.shortcut.toLowerCase().includes(q),
+        )
+      : templates;
+
     const map = new Map<string, CannedResponse[]>();
-    for (const t of templates) {
+    for (const t of filtered) {
       const key = t.category ?? 'อื่นๆ';
       const list = map.get(key) ?? [];
       list.push(t);
       map.set(key, list);
     }
-    // Sort: by min(sortOrder) ascending, then category name
     return [...map.entries()].sort(([keyA, listA], [keyB, listB]) => {
       const minA = Math.min(...listA.map((t) => t.sortOrder ?? 999));
       const minB = Math.min(...listB.map((t) => t.sortOrder ?? 999));
       if (minA !== minB) return minA - minB;
       return keyA.localeCompare(keyB, 'th');
     });
-  }, [templates]);
+  }, [templates, searchQuery]);
+
+  // Auto-expand all categories during search; collapse when cleared.
+  // Bail out when value would not change — a fresh `new Set()` every render
+  // would otherwise loop with Radix Dialog's Presence transitions.
+  useEffect(() => {
+    setExpandedCategories((prev) => {
+      if (searchQuery.trim()) {
+        const all = new Set(grouped.map(([cat]) => cat));
+        if (prev.size === all.size && [...all].every((c) => prev.has(c))) return prev;
+        return all;
+      }
+      return prev.size === 0 ? prev : new Set();
+    });
+  }, [searchQuery, grouped]);
 
   const toggleCategory = (cat: string) => {
     setExpandedCategories((prev) => {

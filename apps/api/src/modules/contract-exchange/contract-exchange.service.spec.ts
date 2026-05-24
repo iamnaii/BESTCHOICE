@@ -162,6 +162,8 @@ describe('ContractExchangeService.approve', () => {
   beforeEach(async () => {
     prisma = {
       $transaction: jest.fn(async (fn: any) => fn(prisma)),
+      // Issue #1086 item 4 — advisory-lock for the EXCH contract-number generator.
+      $executeRawUnsafe: jest.fn().mockResolvedValue(undefined),
       contractExchangeRequest: {
         updateMany: jest.fn(),
         findUniqueOrThrow: jest.fn(),
@@ -170,6 +172,9 @@ describe('ContractExchangeService.approve', () => {
       },
       contract: {
         findUniqueOrThrow: jest.fn(),
+        // Issue #1086 item 4 — used to find the last EXCH-YYYYMMDD-NNNN for the day.
+        // Default: null (first of the day).
+        findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn(),
         update: jest.fn(),
       },
@@ -273,6 +278,70 @@ describe('ContractExchangeService.approve', () => {
     const createData = prisma.contract.create.mock.calls[0][0].data;
     // The new contract's downPayment must be a zero Decimal, not the old 4000.
     expect(createData.downPayment.toString()).toBe('0');
+  });
+
+  // Issue #1086 item 4 — EXCH-YYYYMMDD-NNNN doc number (no EX-${Date.now()} collision)
+  describe('contract number (Issue #1086 item 4)', () => {
+    beforeEach(() => {
+      prisma.contractExchangeRequest.updateMany.mockResolvedValue({ count: 1 });
+      prisma.contractExchangeRequest.findUniqueOrThrow.mockResolvedValue({
+        id: 'r1', oldContractId: 'old', oldProductId: 'op', newProductId: 'np',
+        oldContract: makeOldContract(12, 4),
+      });
+      prisma.payment.count.mockResolvedValue(4);
+      prisma.contract.create.mockImplementation(async ({ data }: any) => ({ id: 'nc', contractNumber: data.contractNumber }));
+    });
+
+    it('uses EXCH-YYYYMMDD-NNNN format (NOT EX-<timestamp>)', async () => {
+      prisma.contract.findFirst.mockResolvedValue(null); // first of the day
+      const result = await service.approve('r1', 'u1');
+      const createData = prisma.contract.create.mock.calls[0][0].data;
+      expect(createData.contractNumber).toMatch(/^EXCH-\d{8}-\d{4}$/);
+      // Must NOT collide with ExpenseDocument EX- prefix:
+      expect(createData.contractNumber).not.toMatch(/^EX-\d+$/);
+      expect(result.newContractId).toBe('nc');
+    });
+
+    it('acquires advisory lock per BKK day', async () => {
+      prisma.contract.findFirst.mockResolvedValue(null);
+      await service.approve('r1', 'u1');
+      expect(prisma.$executeRawUnsafe).toHaveBeenCalledWith(
+        expect.stringContaining('pg_advisory_xact_lock'),
+      );
+    });
+
+    it('increments sequence within the same BKK day', async () => {
+      // Simulate three sequential approvals on the same day:
+      const seqs: string[] = [];
+      let pretendCount = 0;
+      prisma.contract.findFirst.mockImplementation(async () =>
+        pretendCount === 0
+          ? null
+          : { contractNumber: `EXCH-${todayBkk()}-${String(pretendCount).padStart(4, '0')}` },
+      );
+      prisma.contract.create.mockImplementation(async ({ data }: any) => {
+        pretendCount += 1;
+        seqs.push(data.contractNumber);
+        return { id: `nc-${pretendCount}`, contractNumber: data.contractNumber };
+      });
+
+      await service.approve('r1', 'u1');
+      await service.approve('r1', 'u1');
+      await service.approve('r1', 'u1');
+
+      expect(seqs[0]).toMatch(/^EXCH-\d{8}-0001$/);
+      expect(seqs[1]).toMatch(/^EXCH-\d{8}-0002$/);
+      expect(seqs[2]).toMatch(/^EXCH-\d{8}-0003$/);
+    });
+
+    it('pads sequence to 4 digits past 99', async () => {
+      prisma.contract.findFirst.mockResolvedValue({
+        contractNumber: `EXCH-${todayBkk()}-0099`,
+      });
+      await service.approve('r1', 'u1');
+      const createData = prisma.contract.create.mock.calls[0][0].data;
+      expect(createData.contractNumber).toMatch(/^EXCH-\d{8}-0100$/);
+    });
   });
 
   // Issue #1086 item 3 — aggregate from journal_lines, not straight-line proration
@@ -415,4 +484,15 @@ function makeOldContract(totalMonths: number, _paid: number) {
     downPayment: { toString: () => '4000' } as any,
     creditBalance: { toString: () => '0' } as any,
   };
+}
+
+function todayBkk(): string {
+  const parts = new Date().toLocaleString('en-CA', {
+    timeZone: 'Asia/Bangkok',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const [y, m, d] = parts.split('-').map((s) => parseInt(s, 10));
+  return `${y}${String(m).padStart(2, '0')}${String(d).padStart(2, '0')}`;
 }

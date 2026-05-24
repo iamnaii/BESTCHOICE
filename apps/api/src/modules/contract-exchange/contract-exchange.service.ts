@@ -163,10 +163,13 @@ export class ContractExchangeService {
         : new Decimal(0);
       const newInterest = monthlyPayment.times(remainingMonths).minus(newFinanced);
 
-      // 4. Create new contract (mirror old plan w/ remaining months)
+      // 4. Create new contract (mirror old plan w/ remaining months).
+      // Issue #1086 item 4 — use EXCH-YYYYMMDD-NNNN to avoid grep-collision
+      // with ExpenseDocument's EX- prefix.
+      const contractNumber = await this.nextExchangeContractNumber(tx);
       const newContract = await tx.contract.create({
         data: {
-          contractNumber: `EX-${Date.now()}`,
+          contractNumber,
           customerId: old.customerId,
           productId: req.newProductId,
           branchId: old.branchId,
@@ -379,5 +382,51 @@ export class ContractExchangeService {
       unearnedInterest: creditNormal('11-2106'),
       deferredVat: creditNormal('21-2102'),
     };
+  }
+
+  /**
+   * Generate next exchange-contract number in format EXCH-YYYYMMDD-NNNN.
+   * Sequence resets at Asia/Bangkok midnight. Advisory lock per BKK-day
+   * prevents race conditions when 2 exchanges are approved concurrently.
+   *
+   * Issue #1086 item 4 — must NOT use EX- prefix (collides with the
+   * ExpenseDocument grep used by accounting reports). Mirrors the
+   * `RepairTicketDocNumberService` BKK-day-bounds + advisory-lock pattern.
+   */
+  private async nextExchangeContractNumber(
+    tx: Prisma.TransactionClient,
+    now: Date = new Date(),
+  ): Promise<string> {
+    const yyyymmdd = this.bkkYyyymmdd(now);
+    const lockKey = this.hashLockKey(`exch:${yyyymmdd}`);
+    await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${lockKey})`);
+
+    const last = await tx.contract.findFirst({
+      where: { contractNumber: { startsWith: `EXCH-${yyyymmdd}-` } },
+      orderBy: { contractNumber: 'desc' },
+      select: { contractNumber: true },
+    });
+    const lastSeq = last ? parseInt(last.contractNumber.split('-')[2], 10) || 0 : 0;
+    const seq = String(lastSeq + 1).padStart(4, '0');
+    return `EXCH-${yyyymmdd}-${seq}`;
+  }
+
+  private bkkYyyymmdd(date: Date): string {
+    const parts = date.toLocaleString('en-CA', {
+      timeZone: 'Asia/Bangkok',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    const [y, m, d] = parts.split('-').map((s) => parseInt(s, 10));
+    return `${y}${String(m).padStart(2, '0')}${String(d).padStart(2, '0')}`;
+  }
+
+  private hashLockKey(key: string): number {
+    let h = 0;
+    for (let i = 0; i < key.length; i++) {
+      h = (h * 31 + key.charCodeAt(i)) | 0;
+    }
+    return h;
   }
 }

@@ -1,5 +1,11 @@
 import { Test } from '@nestjs/testing';
-import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { ContractExchangeService } from './contract-exchange.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -7,6 +13,8 @@ import { AuditService } from '../audit/audit.service';
 import { ExchangeNewContract1ATemplate } from '../journal/cpa-templates/exchange-new-contract-1a.template';
 import { ExchangeCloseOld21_1106Template } from '../journal/cpa-templates/exchange-close-old-21-1106.template';
 import { ExchangeClearVendor21_1106Template } from '../journal/cpa-templates/exchange-clear-vendor-21-1106.template';
+import { ShopExchangeReturnTemplate } from '../journal/cpa-templates/shop-exchange-return.template';
+import { CompanyResolverService } from '../journal/company-resolver.service';
 
 // Default user shape used by submit() tests after Fix 2 (issue #1086 item 2).
 // SALES_BR1 matches the mock contract's branchId ('br-1') so legacy tests
@@ -33,6 +41,8 @@ describe('ContractExchangeService.submit', () => {
         { provide: ExchangeNewContract1ATemplate, useValue: {} },
         { provide: ExchangeCloseOld21_1106Template, useValue: {} },
         { provide: ExchangeClearVendor21_1106Template, useValue: {} },
+        { provide: ShopExchangeReturnTemplate, useValue: {} },
+        { provide: CompanyResolverService, useValue: { getShopCompanyId: jest.fn() } },
       ],
     }).compile();
     service = mod.get(ContractExchangeService);
@@ -158,11 +168,11 @@ describe('ContractExchangeService.approve', () => {
   let prisma: any;
   let templates: any;
   let audit: any;
+  let companyResolver: any;
 
   beforeEach(async () => {
     prisma = {
       $transaction: jest.fn(async (fn: any) => fn(prisma)),
-      // Issue #1086 item 4 — advisory-lock for the EXCH contract-number generator.
       $executeRawUnsafe: jest.fn().mockResolvedValue(undefined),
       contractExchangeRequest: {
         updateMany: jest.fn(),
@@ -172,25 +182,25 @@ describe('ContractExchangeService.approve', () => {
       },
       contract: {
         findUniqueOrThrow: jest.fn(),
-        // Issue #1086 item 4 — used to find the last EXCH-YYYYMMDD-NNNN for the day.
-        // Default: null (first of the day).
-        findFirst: jest.fn().mockResolvedValue(null),
+        findFirst: jest.fn().mockResolvedValue(null), // for nextExchangeContractNumber
         create: jest.fn(),
         update: jest.fn(),
       },
       payment: { count: jest.fn() },
-      product: { update: jest.fn() },
-      // Issue #1086 item 3 — journal_lines aggregation source for computeOldOutstanding.
-      // Default: empty ledger → all outstandings = 0 (which is fine for the legacy
-      // happy-path tests below; the dedicated describe block exercises non-empty cases).
+      product: {
+        update: jest.fn(),
+        findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'old-p', costPrice: '15000' }),
+      },
       journalLine: { findMany: jest.fn().mockResolvedValue([]) },
     };
     templates = {
       t1a: { execute: jest.fn().mockResolvedValue({ id: 'je1-id', entryNumber: 'JV-A1' }) },
       t2: { execute: jest.fn().mockResolvedValue({ id: 'je2-id', entryNumber: 'JV-A2' }) },
       t3: { execute: jest.fn().mockResolvedValue({ id: 'je3-id', entryNumber: 'JV-A3' }) },
+      t4: { execute: jest.fn().mockResolvedValue({ id: 'je4-id', entryNumber: 'JV-A4' }) },
     };
     audit = { log: jest.fn() };
+    companyResolver = { getShopCompanyId: jest.fn().mockResolvedValue('shop-co-id') };
     const mod = await Test.createTestingModule({
       providers: [
         ContractExchangeService,
@@ -199,6 +209,8 @@ describe('ContractExchangeService.approve', () => {
         { provide: ExchangeNewContract1ATemplate, useValue: templates.t1a },
         { provide: ExchangeCloseOld21_1106Template, useValue: templates.t2 },
         { provide: ExchangeClearVendor21_1106Template, useValue: templates.t3 },
+        { provide: ShopExchangeReturnTemplate, useValue: templates.t4 },
+        { provide: CompanyResolverService, useValue: companyResolver },
       ],
     }).compile();
     service = mod.get(ContractExchangeService);
@@ -209,7 +221,7 @@ describe('ContractExchangeService.approve', () => {
     await expect(service.approve('r1', 'u1')).rejects.toThrow(/อาจถูกอนุมัติแล้ว/);
   });
 
-  it('runs A.1 → A.2 → A.3 atomically + flips statuses + audit', async () => {
+  it('runs A.1 → A.2 → A.3 → A.4 atomically + flips statuses + audit', async () => {
     prisma.contractExchangeRequest.updateMany.mockResolvedValue({ count: 1 });
     prisma.contractExchangeRequest.findUniqueOrThrow.mockResolvedValue({
       id: 'r1', oldContractId: 'old-c', oldProductId: 'old-p', newProductId: 'new-p',
@@ -217,23 +229,25 @@ describe('ContractExchangeService.approve', () => {
     });
     prisma.payment.count.mockResolvedValue(4);
     prisma.contract.findUniqueOrThrow.mockResolvedValue(makeOldContract(12, 4));
-    prisma.contract.create.mockResolvedValue({ id: 'new-c', contractNumber: 'EX-001' });
+    prisma.contract.create.mockResolvedValue({ id: 'new-c', contractNumber: 'EXCH-20260524-0001' });
 
     const result = await service.approve('r1', 'owner-1');
 
     expect(templates.t1a.execute).toHaveBeenCalledWith('new-c', expect.anything());
     expect(templates.t2.execute).toHaveBeenCalled();
     expect(templates.t3.execute).toHaveBeenCalled();
+    expect(templates.t4.execute).toHaveBeenCalled();
     expect(prisma.contract.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'old-c' }, data: expect.objectContaining({ status: 'EXCHANGED' }),
     }));
     expect(prisma.product.update).toHaveBeenCalledWith(expect.objectContaining({
-      where: { id: 'old-p' }, data: expect.objectContaining({ status: 'REFURBISHED' }),
+      where: { id: 'old-p' },
+      data: expect.objectContaining({ status: 'REFURBISHED', ownedByCompanyId: 'shop-co-id' }),
     }));
     expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({
       action: 'EXCHANGE_REQUEST_APPROVED',
     }));
-    expect(result).toMatchObject({ id: 'r1', newContractId: 'new-c' });
+    expect(result).toMatchObject({ id: 'r1', newContractId: 'new-c', je4Id: 'je4-id' });
   });
 
   it('creates new contract with remaining-installment plan (8 of 12)', async () => {
@@ -244,7 +258,7 @@ describe('ContractExchangeService.approve', () => {
     });
     prisma.payment.count.mockResolvedValue(4);
     prisma.contract.findUniqueOrThrow.mockResolvedValue(makeOldContract(12, 4));
-    prisma.contract.create.mockResolvedValue({ id: 'nc', contractNumber: 'EX' });
+    prisma.contract.create.mockResolvedValue({ id: 'nc', contractNumber: 'EXCH-20260524-0001' });
 
     await service.approve('r1', 'u1');
 
@@ -271,7 +285,7 @@ describe('ContractExchangeService.approve', () => {
       oldContract: makeOldContract(12, 4), // makeOldContract sets downPayment=4000
     });
     prisma.payment.count.mockResolvedValue(4);
-    prisma.contract.create.mockResolvedValue({ id: 'nc', contractNumber: 'EX' });
+    prisma.contract.create.mockResolvedValue({ id: 'nc', contractNumber: 'EXCH-20260524-0001' });
 
     await service.approve('r1', 'u1');
 
@@ -353,7 +367,8 @@ describe('ContractExchangeService.approve', () => {
         oldContract: makeOldContract(12, 4),
       });
       prisma.payment.count.mockResolvedValue(4);
-      prisma.contract.create.mockResolvedValue({ id: 'nc', contractNumber: 'EX' });
+      prisma.contract.findFirst.mockResolvedValue(null);
+      prisma.contract.create.mockResolvedValue({ id: 'nc', contractNumber: 'EXCH-20260524-0001' });
     });
 
     it('queries journalLine.findMany for the 4 relevant accounts', async () => {
@@ -418,6 +433,103 @@ describe('ContractExchangeService.approve', () => {
       expect(t2Call.oldDeferredVatOutstanding.toString()).toBe('0');
     });
   });
+
+  // Issue #1086 item 6 — SHOP re-intake JE + ownership flip
+  describe('SHOP re-intake (Issue #1086 item 6)', () => {
+    beforeEach(() => {
+      prisma.contractExchangeRequest.updateMany.mockResolvedValue({ count: 1 });
+      prisma.contractExchangeRequest.findUniqueOrThrow.mockResolvedValue({
+        id: 'r1', oldContractId: 'old-c', oldProductId: 'old-p', newProductId: 'new-p',
+        oldContract: makeOldContract(12, 4),
+      });
+      prisma.payment.count.mockResolvedValue(4);
+      prisma.contract.findFirst.mockResolvedValue(null);
+      prisma.contract.create.mockResolvedValue({ id: 'nc', contractNumber: 'EXCH-20260524-0001' });
+    });
+
+    it('invokes ShopExchangeReturnTemplate.execute AFTER the 3 existing JEs', async () => {
+      // Order matters — the SHOP re-intake should happen after the FINANCE-side
+      // close (t2) so a rollback can wipe both halves atomically.
+      const callOrder: string[] = [];
+      templates.t1a.execute.mockImplementation(async () => {
+        callOrder.push('t1a');
+        return { id: 'je1-id', entryNumber: 'JV-A1' };
+      });
+      templates.t2.execute.mockImplementation(async () => {
+        callOrder.push('t2');
+        return { id: 'je2-id', entryNumber: 'JV-A2' };
+      });
+      templates.t3.execute.mockImplementation(async () => {
+        callOrder.push('t3');
+        return { id: 'je3-id', entryNumber: 'JV-A3' };
+      });
+      templates.t4.execute.mockImplementation(async () => {
+        callOrder.push('t4');
+        return { id: 'je4-id', entryNumber: 'JV-A4' };
+      });
+
+      await service.approve('r1', 'u1');
+      expect(callOrder).toEqual(['t1a', 't2', 't3', 't4']);
+    });
+
+    it('passes costPrice from Product.costPrice to the re-intake template', async () => {
+      prisma.product.findUniqueOrThrow.mockResolvedValue({ id: 'old-p', costPrice: '12345.67' });
+      await service.approve('r1', 'u1');
+      const t4Call = templates.t4.execute.mock.calls[0][0];
+      expect(t4Call.oldProductId).toBe('old-p');
+      expect(t4Call.oldContractId).toBe('old-c');
+      expect(t4Call.cost.toString()).toBe('12345.67');
+    });
+
+    it('throws InternalServerErrorException when costPrice is null', async () => {
+      prisma.product.findUniqueOrThrow.mockResolvedValue({ id: 'old-p', costPrice: null });
+      await expect(service.approve('r1', 'u1')).rejects.toThrow(InternalServerErrorException);
+      await expect(service.approve('r1', 'u1')).rejects.toThrow(/costPrice/);
+      // The re-intake template must NOT have been invoked when cost is missing.
+      expect(templates.t4.execute).not.toHaveBeenCalled();
+    });
+
+    it('flips Product.ownedByCompanyId to SHOP companyId on success', async () => {
+      await service.approve('r1', 'u1');
+      expect(companyResolver.getShopCompanyId).toHaveBeenCalled();
+      expect(prisma.product.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'old-p' },
+          data: expect.objectContaining({
+            status: 'REFURBISHED',
+            ownedByCompanyId: 'shop-co-id',
+          }),
+        }),
+      );
+    });
+
+    it('writes EXCHANGE_DEVICE_RETURNED_TO_SHOP audit log with jeId + ownership info', async () => {
+      await service.approve('r1', 'u1');
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'EXCHANGE_DEVICE_RETURNED_TO_SHOP',
+          entity: 'product',
+          entityId: 'old-p',
+          newValue: expect.objectContaining({
+            exchangeRequestId: 'r1',
+            oldContractId: 'old-c',
+            jeId: 'je4-id',
+            ownedByCompanyId: 'shop-co-id',
+          }),
+        }),
+      );
+    });
+
+    it('stores je4Id on the contract_exchange_requests row', async () => {
+      await service.approve('r1', 'u1');
+      expect(prisma.contractExchangeRequest.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'r1' },
+          data: expect.objectContaining({ je4Id: 'je4-id' }),
+        }),
+      );
+    });
+  });
 });
 
 describe('ContractExchangeService.reject', () => {
@@ -442,6 +554,8 @@ describe('ContractExchangeService.reject', () => {
         { provide: ExchangeNewContract1ATemplate, useValue: {} },
         { provide: ExchangeCloseOld21_1106Template, useValue: {} },
         { provide: ExchangeClearVendor21_1106Template, useValue: {} },
+        { provide: ShopExchangeReturnTemplate, useValue: {} },
+        { provide: CompanyResolverService, useValue: { getShopCompanyId: jest.fn() } },
       ],
     }).compile();
     service = mod.get(ContractExchangeService);

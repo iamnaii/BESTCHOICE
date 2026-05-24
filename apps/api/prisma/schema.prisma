@@ -7025,6 +7025,9 @@ model ContractExchangeRequest {
   je1aId        String?   @map("je_1a_id")
   je2Id         String?   @map("je_2_id")
   je3Id         String?   @map("je_3_id")
+  /// SHOP re-intake JE (Dr S11-2002 / Cr S50-1102) — back-ref so the
+  /// audit trail can pin the inventory return to its exchange request.
+  je4Id         String?   @map("je_4_id")
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")

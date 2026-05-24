@@ -3,6 +3,7 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -14,6 +15,8 @@ import { SubmitExchangeRequestDto } from './dto/submit-exchange-request.dto';
 import { ExchangeNewContract1ATemplate } from '../journal/cpa-templates/exchange-new-contract-1a.template';
 import { ExchangeCloseOld21_1106Template } from '../journal/cpa-templates/exchange-close-old-21-1106.template';
 import { ExchangeClearVendor21_1106Template } from '../journal/cpa-templates/exchange-clear-vendor-21-1106.template';
+import { ShopExchangeReturnTemplate } from '../journal/cpa-templates/shop-exchange-return.template';
+import { CompanyResolverService } from '../journal/company-resolver.service';
 
 /**
  * Subset of the request user that submit() needs to perform branch scoping.
@@ -44,6 +47,8 @@ export class ContractExchangeService {
     private readonly t1a: ExchangeNewContract1ATemplate,
     private readonly t2: ExchangeCloseOld21_1106Template,
     private readonly t3: ExchangeClearVendor21_1106Template,
+    private readonly t4: ShopExchangeReturnTemplate,
+    private readonly companyResolver: CompanyResolverService,
   ) {}
 
   async submit(dto: SubmitExchangeRequestDto, user: RequestUser) {
@@ -223,6 +228,27 @@ export class ContractExchangeService {
         tx,
       );
 
+      // Issue #1086 item 6 — old device must be re-intaken to SHOP inventory
+      // BOTH in the ledger (Dr S11-2002 / Cr S50-1102) AND in the Product
+      // ownership column (ownedByCompanyId → SHOP). Without this, the device
+      // is REFURBISHED but still owned by FINANCE → SHOP can't legally resell.
+      const oldProduct = await tx.product.findUniqueOrThrow({
+        where: { id: req.oldProductId },
+        select: { id: true, costPrice: true },
+      });
+      if (oldProduct.costPrice == null) {
+        throw new InternalServerErrorException(
+          'ไม่พบ costPrice ของเครื่องเดิม — ตั้งค่าก่อนอนุมัติเปลี่ยนเครื่อง',
+        );
+      }
+      const cost = new Decimal(oldProduct.costPrice.toString());
+      const je4 = await this.t4.execute(
+        { oldProductId: req.oldProductId, oldContractId: old.id, cost },
+        tx,
+      );
+
+      const shopCompanyId = await this.companyResolver.getShopCompanyId(tx);
+
       // 6. Status flips
       await tx.contract.update({
         where: { id: old.id },
@@ -230,10 +256,11 @@ export class ContractExchangeService {
       });
       await tx.product.update({
         where: { id: req.oldProductId },
-        data: { status: 'REFURBISHED' },
+        data: { status: 'REFURBISHED', ownedByCompanyId: shopCompanyId } as any,
       });
 
-      // 7. Link request to outputs
+      // 7. Link request to outputs (je4Id captured on the request row so
+      // the SHOP re-intake JE is traceable from the exchange request).
       await (tx as any).contractExchangeRequest.update({
         where: { id },
         data: {
@@ -241,6 +268,7 @@ export class ContractExchangeService {
           je1aId: je1a.id,
           je2Id: je2.id,
           je3Id: je3.id,
+          je4Id: je4.id,
         },
       });
 
@@ -257,8 +285,30 @@ export class ContractExchangeService {
           remainingMonths,
         },
       });
+      // Separate event for the SHOP-side ownership flip + re-intake JE —
+      // makes it greppable in the audit log without parsing the parent event.
+      await this.audit.log({
+        action: 'EXCHANGE_DEVICE_RETURNED_TO_SHOP',
+        entity: 'product',
+        entityId: req.oldProductId,
+        userId,
+        newValue: {
+          exchangeRequestId: id,
+          oldContractId: old.id,
+          jeId: je4.id,
+          ownedByCompanyId: shopCompanyId,
+          cost: cost.toString(),
+        },
+      });
 
-      return { id, newContractId: newContract.id, je1aId: je1a.id, je2Id: je2.id, je3Id: je3.id };
+      return {
+        id,
+        newContractId: newContract.id,
+        je1aId: je1a.id,
+        je2Id: je2.id,
+        je3Id: je3.id,
+        je4Id: je4.id,
+      };
     });
   }
 

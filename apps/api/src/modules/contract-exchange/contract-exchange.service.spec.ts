@@ -74,6 +74,27 @@ describe('ContractExchangeService.submit', () => {
     ).rejects.toThrow(/ราคา/);
   });
 
+  // Issue #1086 item 1 — silent same-price bypass when prices are null
+  it('BadRequestException when new product has BOTH sellingPrice and installmentPrice null (no silent same-price bypass)', async () => {
+    prisma.contract.findUnique.mockResolvedValue({ id: 'old', status: 'ACTIVE', productId: 'op', deletedAt: null });
+    prisma.product.findUnique
+      .mockResolvedValueOnce({ id: 'op', brand: 'Apple', model: 'iPhone 15', storage: '256', sellingPrice: '28000', installmentPrice: '28000' })
+      .mockResolvedValueOnce({ id: 'np', brand: 'Apple', model: 'iPhone 15', storage: '256', sellingPrice: null, installmentPrice: null, status: 'IN_STOCK' });
+    await expect(
+      service.submit({ oldContractId: 'old', oldProductId: 'op', newProductId: 'np' }, 'u-1'),
+    ).rejects.toThrow(/ราคาเครื่องไม่ถูกตั้งค่า/);
+  });
+
+  it('BadRequestException when OLD product has BOTH sellingPrice and installmentPrice null', async () => {
+    prisma.contract.findUnique.mockResolvedValue({ id: 'old', status: 'ACTIVE', productId: 'op', deletedAt: null });
+    prisma.product.findUnique
+      .mockResolvedValueOnce({ id: 'op', brand: 'Apple', model: 'iPhone 15', storage: '256', sellingPrice: null, installmentPrice: null })
+      .mockResolvedValueOnce({ id: 'np', brand: 'Apple', model: 'iPhone 15', storage: '256', sellingPrice: '28000', installmentPrice: '28000', status: 'IN_STOCK' });
+    await expect(
+      service.submit({ oldContractId: 'old', oldProductId: 'op', newProductId: 'np' }, 'u-1'),
+    ).rejects.toThrow(/ราคาเครื่องไม่ถูกตั้งค่า/);
+  });
+
   it('creates PENDING request when all checks pass', async () => {
     prisma.contract.findUnique.mockResolvedValue({ id: 'old', status: 'ACTIVE', productId: 'op', deletedAt: null });
     const same = { brand: 'Apple', model: 'iPhone 15', storage: '256', sellingPrice: '28000' };

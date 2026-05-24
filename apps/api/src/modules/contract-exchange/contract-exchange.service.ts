@@ -49,17 +49,27 @@ export class ContractExchangeService {
       this.prisma.product.findUnique({ where: { id: dto.newProductId } }) as Promise<ProductPriceSnapshot | null>,
     ]);
 
-    // Resolve whichever price field is populated (installmentPrice in prod, sellingPrice in tests)
-    const resolvePrice = (p: any): Decimal =>
-      new Decimal(
-        ((p.sellingPrice ?? p.installmentPrice ?? '0') as { toString(): string } | string).toString(),
-      );
-
     if (!oldRaw) throw new NotFoundException('ไม่พบเครื่องเดิม');
     if (!newRaw) throw new NotFoundException('ไม่พบเครื่องใหม่');
 
     const oldProduct = oldRaw as any;
     const newProduct = newRaw as any;
+
+    // Resolve whichever price field is populated (installmentPrice in prod, sellingPrice in tests).
+    // Return null when both fields are null/missing so the caller can reject — silently
+    // coercing to 0 would let two null-priced products pass the same-price check.
+    // (Issue #1086 item 1.)
+    const resolvePriceOrNull = (p: any): Decimal | null => {
+      const raw = p?.sellingPrice ?? p?.installmentPrice;
+      if (raw === null || raw === undefined) return null;
+      return new Decimal((raw as { toString(): string } | string).toString());
+    };
+
+    const oldPrice = resolvePriceOrNull(oldProduct);
+    const newPrice = resolvePriceOrNull(newProduct);
+    if (oldPrice === null || newPrice === null) {
+      throw new BadRequestException('ราคาเครื่องไม่ถูกตั้งค่า — ตรวจสอบเครื่องในระบบ');
+    }
 
     if (newProduct.status !== 'IN_STOCK') {
       throw new BadRequestException('เครื่องใหม่ต้องอยู่ในสต็อก (IN_STOCK)');
@@ -71,8 +81,6 @@ export class ContractExchangeService {
     ) {
       throw new BadRequestException('เครื่องใหม่ต้องเป็นรุ่นเดียวกัน (brand/model/storage)');
     }
-    const oldPrice = resolvePrice(oldProduct);
-    const newPrice = resolvePrice(newProduct);
     if (!oldPrice.equals(newPrice)) {
       throw new BadRequestException(`ราคาเครื่องใหม่ต้องเท่ากับเครื่องเดิม (${oldPrice} vs ${newPrice})`);
     }

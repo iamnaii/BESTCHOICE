@@ -163,7 +163,14 @@ describe('ContractExchangeService.submit', () => {
   });
 });
 
-describe('ContractExchangeService.approve', () => {
+// ============================================================================
+// approve() — SP2 v2 sign-then-activate flow
+// approve() ONLY creates a DRAFT contract + reserves the new product + flips
+// the request to APPROVED. It does NOT post JEs or flip the old contract /
+// product. The JE chain + old-side flips are tested under finalizeAfterActivation
+// below.
+// ============================================================================
+describe('ContractExchangeService.approve (sign-then-activate)', () => {
   let service: ContractExchangeService;
   let prisma: any;
   let templates: any;
@@ -177,6 +184,7 @@ describe('ContractExchangeService.approve', () => {
       contractExchangeRequest: {
         updateMany: jest.fn(),
         findUniqueOrThrow: jest.fn(),
+        findFirst: jest.fn(),
         update: jest.fn(),
         findMany: jest.fn(),
       },
@@ -188,19 +196,19 @@ describe('ContractExchangeService.approve', () => {
       },
       payment: { count: jest.fn() },
       product: {
-        update: jest.fn(),
-        findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'old-p', costPrice: '15000' }),
+        update: jest.fn().mockResolvedValue({}),
+        findUniqueOrThrow: jest.fn(),
       },
       journalLine: { findMany: jest.fn().mockResolvedValue([]) },
     };
     templates = {
-      t1a: { execute: jest.fn().mockResolvedValue({ id: 'je1-id', entryNumber: 'JV-A1' }) },
-      t2: { execute: jest.fn().mockResolvedValue({ id: 'je2-id', entryNumber: 'JV-A2' }) },
-      t3: { execute: jest.fn().mockResolvedValue({ id: 'je3-id', entryNumber: 'JV-A3' }) },
-      t4: { execute: jest.fn().mockResolvedValue({ id: 'je4-id', entryNumber: 'JV-A4' }) },
+      t1a: { execute: jest.fn() },
+      t2: { execute: jest.fn() },
+      t3: { execute: jest.fn() },
+      t4: { execute: jest.fn() },
     };
     audit = { log: jest.fn() };
-    companyResolver = { getShopCompanyId: jest.fn().mockResolvedValue('shop-co-id') };
+    companyResolver = { getShopCompanyId: jest.fn() };
     const mod = await Test.createTestingModule({
       providers: [
         ContractExchangeService,
@@ -221,33 +229,72 @@ describe('ContractExchangeService.approve', () => {
     await expect(service.approve('r1', 'u1')).rejects.toThrow(/อาจถูกอนุมัติแล้ว/);
   });
 
-  it('runs A.1 → A.2 → A.3 → A.4 atomically + flips statuses + audit', async () => {
+  it('creates DRAFT new contract + reserves new product + APPROVED workflow + audit (no JE, no old-side flips)', async () => {
     prisma.contractExchangeRequest.updateMany.mockResolvedValue({ count: 1 });
     prisma.contractExchangeRequest.findUniqueOrThrow.mockResolvedValue({
       id: 'r1', oldContractId: 'old-c', oldProductId: 'old-p', newProductId: 'new-p',
       oldContract: makeOldContract(12, 4),
     });
     prisma.payment.count.mockResolvedValue(4);
-    prisma.contract.findUniqueOrThrow.mockResolvedValue(makeOldContract(12, 4));
     prisma.contract.create.mockResolvedValue({ id: 'new-c', contractNumber: 'EXCH-20260524-0001' });
 
     const result = await service.approve('r1', 'owner-1');
 
-    expect(templates.t1a.execute).toHaveBeenCalledWith('new-c', expect.anything());
-    expect(templates.t2.execute).toHaveBeenCalled();
-    expect(templates.t3.execute).toHaveBeenCalled();
-    expect(templates.t4.execute).toHaveBeenCalled();
-    expect(prisma.contract.update).toHaveBeenCalledWith(expect.objectContaining({
-      where: { id: 'old-c' }, data: expect.objectContaining({ status: 'EXCHANGED' }),
-    }));
+    // New contract created as DRAFT + workflowStatus APPROVED (sign-then-activate gate)
+    const createData = prisma.contract.create.mock.calls[0][0].data;
+    expect(createData.status).toBe('DRAFT');
+    expect(createData.workflowStatus).toBe('APPROVED');
+    expect(createData.exchangedFromContractId).toBe('old-c');
+
+    // New product reserved
     expect(prisma.product.update).toHaveBeenCalledWith(expect.objectContaining({
-      where: { id: 'old-p' },
-      data: expect.objectContaining({ status: 'REFURBISHED', ownedByCompanyId: 'shop-co-id' }),
+      where: { id: 'new-p' },
+      data: expect.objectContaining({ status: 'RESERVED' }),
     }));
+
+    // Request linked to new contract
+    expect(prisma.contractExchangeRequest.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'r1' },
+      data: expect.objectContaining({ newContractId: 'new-c' }),
+    }));
+
+    // NO JE posted, NO old contract flip, NO old product flip
+    expect(templates.t1a.execute).not.toHaveBeenCalled();
+    expect(templates.t2.execute).not.toHaveBeenCalled();
+    expect(templates.t3.execute).not.toHaveBeenCalled();
+    expect(templates.t4.execute).not.toHaveBeenCalled();
+    expect(prisma.contract.update).not.toHaveBeenCalled();
+    // Only the new-product update fired; old product should NOT have been touched.
+    const updatedProductIds = (prisma.product.update.mock.calls as any[]).map(
+      (c) => c[0]?.where?.id,
+    );
+    expect(updatedProductIds).not.toContain('old-p');
+
+    // Audit log — phase tag highlights "no money has moved yet"
     expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({
       action: 'EXCHANGE_REQUEST_APPROVED',
+      newValue: expect.objectContaining({
+        phase: 'awaiting-sign-then-activate',
+      }),
     }));
-    expect(result).toMatchObject({ id: 'r1', newContractId: 'new-c', je4Id: 'je4-id' });
+
+    expect(result).toEqual({ id: 'r1', newContractId: 'new-c' });
+  });
+
+  it('carries pdpaConsentId from old contract onto new contract', async () => {
+    prisma.contractExchangeRequest.updateMany.mockResolvedValue({ count: 1 });
+    const old = { ...makeOldContract(12, 4), pdpaConsentId: 'pdpa-old-123' };
+    prisma.contractExchangeRequest.findUniqueOrThrow.mockResolvedValue({
+      id: 'r1', oldContractId: 'old', oldProductId: 'op', newProductId: 'np',
+      oldContract: old,
+    });
+    prisma.payment.count.mockResolvedValue(4);
+    prisma.contract.create.mockResolvedValue({ id: 'nc', contractNumber: 'EXCH-20260524-0001' });
+
+    await service.approve('r1', 'u1');
+
+    const createData = prisma.contract.create.mock.calls[0][0].data;
+    expect(createData.pdpaConsentId).toBe('pdpa-old-123');
   });
 
   it('creates new contract with remaining-installment plan (8 of 12)', async () => {
@@ -257,7 +304,6 @@ describe('ContractExchangeService.approve', () => {
       oldContract: makeOldContract(12, 4),
     });
     prisma.payment.count.mockResolvedValue(4);
-    prisma.contract.findUniqueOrThrow.mockResolvedValue(makeOldContract(12, 4));
     prisma.contract.create.mockResolvedValue({ id: 'nc', contractNumber: 'EXCH-20260524-0001' });
 
     await service.approve('r1', 'u1');
@@ -357,23 +403,188 @@ describe('ContractExchangeService.approve', () => {
       expect(createData.contractNumber).toMatch(/^EXCH-\d{8}-0100$/);
     });
   });
+});
 
-  // Issue #1086 item 3 — aggregate from journal_lines, not straight-line proration
-  describe('computeOldOutstanding from journal_lines (Issue #1086 item 3)', () => {
-    beforeEach(() => {
-      prisma.contractExchangeRequest.updateMany.mockResolvedValue({ count: 1 });
-      prisma.contractExchangeRequest.findUniqueOrThrow.mockResolvedValue({
-        id: 'r1', oldContractId: 'old-c', oldProductId: 'op', newProductId: 'np',
-        oldContract: makeOldContract(12, 4),
-      });
-      prisma.payment.count.mockResolvedValue(4);
-      prisma.contract.findFirst.mockResolvedValue(null);
-      prisma.contract.create.mockResolvedValue({ id: 'nc', contractNumber: 'EXCH-20260524-0001' });
+// ============================================================================
+// finalizeAfterActivation() — SP2 v2 sign-then-activate flow
+// Triggered by ContractWorkflowService.activate() when the contract being
+// activated has exchangedFromContractId non-null. This is where the JE chain
+// posts + the old-side status flips happen.
+// ============================================================================
+describe('ContractExchangeService.finalizeAfterActivation', () => {
+  let service: ContractExchangeService;
+  let tx: any;
+  let templates: any;
+  let audit: any;
+  let companyResolver: any;
+
+  // Make a typical exchange-contract object to pass through.
+  const newContract = {
+    id: 'new-c',
+    productId: 'new-p',
+    exchangedFromContractId: 'old-c',
+    financedAmount: '10000',
+    storeCommission: '1000',
+  };
+
+  beforeEach(async () => {
+    tx = {
+      contractExchangeRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'r1',
+          oldContractId: 'old-c',
+          oldProductId: 'old-p',
+          newContractId: 'new-c',
+        }),
+        update: jest.fn(),
+      },
+      contract: {
+        update: jest.fn(),
+      },
+      product: {
+        update: jest.fn(),
+        findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'old-p', costPrice: '15000' }),
+      },
+      journalLine: { findMany: jest.fn().mockResolvedValue([]) },
+    };
+    templates = {
+      t1a: { execute: jest.fn().mockResolvedValue({ id: 'je1-id', entryNumber: 'JV-A1' }) },
+      t2: { execute: jest.fn().mockResolvedValue({ id: 'je2-id', entryNumber: 'JV-A2' }) },
+      t3: { execute: jest.fn().mockResolvedValue({ id: 'je3-id', entryNumber: 'JV-A3' }) },
+      t4: { execute: jest.fn().mockResolvedValue({ id: 'je4-id', entryNumber: 'JV-A4' }) },
+    };
+    audit = { log: jest.fn() };
+    companyResolver = { getShopCompanyId: jest.fn().mockResolvedValue('shop-co-id') };
+    const mod = await Test.createTestingModule({
+      providers: [
+        ContractExchangeService,
+        { provide: PrismaService, useValue: {} },
+        { provide: AuditService, useValue: audit },
+        { provide: ExchangeNewContract1ATemplate, useValue: templates.t1a },
+        { provide: ExchangeCloseOld21_1106Template, useValue: templates.t2 },
+        { provide: ExchangeClearVendor21_1106Template, useValue: templates.t3 },
+        { provide: ShopExchangeReturnTemplate, useValue: templates.t4 },
+        { provide: CompanyResolverService, useValue: companyResolver },
+      ],
+    }).compile();
+    service = mod.get(ContractExchangeService);
+  });
+
+  it('runs A.1 → A.2 → A.3 → A.4 in order + flips old contract + old product + returns ids', async () => {
+    const callOrder: string[] = [];
+    templates.t1a.execute.mockImplementation(async () => {
+      callOrder.push('t1a');
+      return { id: 'je1-id' };
+    });
+    templates.t2.execute.mockImplementation(async () => {
+      callOrder.push('t2');
+      return { id: 'je2-id' };
+    });
+    templates.t3.execute.mockImplementation(async () => {
+      callOrder.push('t3');
+      return { id: 'je3-id' };
+    });
+    templates.t4.execute.mockImplementation(async () => {
+      callOrder.push('t4');
+      return { id: 'je4-id' };
     });
 
+    const result = await service.finalizeAfterActivation(newContract, tx);
+
+    expect(callOrder).toEqual(['t1a', 't2', 't3', 't4']);
+    expect(templates.t1a.execute).toHaveBeenCalledWith('new-c', tx);
+
+    // Old contract flip
+    expect(tx.contract.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'old-c' },
+      data: expect.objectContaining({ status: 'EXCHANGED' }),
+    }));
+    // Old product flip — REFURBISHED + ownedByCompanyId = SHOP
+    expect(tx.product.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'old-p' },
+      data: expect.objectContaining({ status: 'REFURBISHED', ownedByCompanyId: 'shop-co-id' }),
+    }));
+
+    // Return shape
+    expect(result).toEqual({
+      je1aId: 'je1-id',
+      je2Id: 'je2-id',
+      je3Id: 'je3-id',
+      je4Id: 'je4-id',
+    });
+  });
+
+  it('throws InternalServerErrorException when no exchange request matches the new contract', async () => {
+    tx.contractExchangeRequest.findFirst.mockResolvedValue(null);
+    await expect(service.finalizeAfterActivation(newContract, tx)).rejects.toThrow(
+      InternalServerErrorException,
+    );
+    expect(templates.t1a.execute).not.toHaveBeenCalled();
+  });
+
+  it('throws InternalServerErrorException when old product costPrice is null', async () => {
+    tx.product.findUniqueOrThrow.mockResolvedValue({ id: 'old-p', costPrice: null });
+    await expect(service.finalizeAfterActivation(newContract, tx)).rejects.toThrow(
+      InternalServerErrorException,
+    );
+    // A.4 must NOT have fired when cost is missing
+    expect(templates.t4.execute).not.toHaveBeenCalled();
+    // But A.1-A.3 already ran (no rollback at unit level — that's the caller's $tx job)
+    expect(templates.t1a.execute).toHaveBeenCalled();
+  });
+
+  it('passes costPrice to A.4 template', async () => {
+    tx.product.findUniqueOrThrow.mockResolvedValue({ id: 'old-p', costPrice: '12345.67' });
+    await service.finalizeAfterActivation(newContract, tx);
+    const t4Call = templates.t4.execute.mock.calls[0][0];
+    expect(t4Call.oldProductId).toBe('old-p');
+    expect(t4Call.oldContractId).toBe('old-c');
+    expect(t4Call.cost.toString()).toBe('12345.67');
+  });
+
+  it('stores je*Id refs on the exchange request', async () => {
+    await service.finalizeAfterActivation(newContract, tx);
+    expect(tx.contractExchangeRequest.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'r1' },
+      data: expect.objectContaining({
+        je1aId: 'je1-id',
+        je2Id: 'je2-id',
+        je3Id: 'je3-id',
+        je4Id: 'je4-id',
+      }),
+    }));
+  });
+
+  it('writes EXCHANGE_FINALIZED + EXCHANGE_DEVICE_RETURNED_TO_SHOP audit logs', async () => {
+    await service.finalizeAfterActivation(newContract, tx);
+    expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'EXCHANGE_FINALIZED',
+      entity: 'contract_exchange_request',
+      entityId: 'r1',
+      newValue: expect.objectContaining({
+        oldContractId: 'old-c',
+        newContractId: 'new-c',
+        jeIds: expect.objectContaining({ je4Id: 'je4-id' }),
+      }),
+    }));
+    expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'EXCHANGE_DEVICE_RETURNED_TO_SHOP',
+      entity: 'product',
+      entityId: 'old-p',
+      newValue: expect.objectContaining({
+        exchangeRequestId: 'r1',
+        oldContractId: 'old-c',
+        jeId: 'je4-id',
+        ownedByCompanyId: 'shop-co-id',
+      }),
+    }));
+  });
+
+  // Issue #1086 item 3 — aggregate from journal_lines, not straight-line proration
+  describe('computeOldOutstanding from journal_lines', () => {
     it('queries journalLine.findMany for the 4 relevant accounts', async () => {
-      await service.approve('r1', 'u1');
-      expect(prisma.journalLine.findMany).toHaveBeenCalledWith(
+      await service.finalizeAfterActivation(newContract, tx);
+      expect(tx.journalLine.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
             accountCode: { in: ['11-2101', '11-2105', '11-2106', '21-2102'] },
@@ -389,8 +600,8 @@ describe('ContractExchangeService.approve', () => {
     });
 
     it('queries by BOTH referenceId AND metadata.contractId', async () => {
-      await service.approve('r1', 'u1');
-      const call = prisma.journalLine.findMany.mock.calls[0][0];
+      await service.finalizeAfterActivation(newContract, tx);
+      const call = tx.journalLine.findMany.mock.calls[0][0];
       const or = call.where.journalEntry.OR;
       expect(or).toEqual(
         expect.arrayContaining([
@@ -408,14 +619,14 @@ describe('ContractExchangeService.approve', () => {
       //  11-2105: Dr 1400,  Cr 200   → net Dr 1200  (vat receivable outstanding)
       //  11-2106: Dr 1000,  Cr 5000  → net Cr 4000  (unearned interest remaining)
       //  21-2102: Dr 100,   Cr 1300  → net Cr 1200  (deferred VAT outstanding)
-      prisma.journalLine.findMany.mockResolvedValue([
+      tx.journalLine.findMany.mockResolvedValue([
         { accountCode: '11-2101', debit: new Prisma.Decimal(20000), credit: new Prisma.Decimal(0) },
         { accountCode: '11-2101', debit: new Prisma.Decimal(0), credit: new Prisma.Decimal(3000) },
         { accountCode: '11-2105', debit: new Prisma.Decimal(1400), credit: new Prisma.Decimal(200) },
         { accountCode: '11-2106', debit: new Prisma.Decimal(1000), credit: new Prisma.Decimal(5000) },
         { accountCode: '21-2102', debit: new Prisma.Decimal(100), credit: new Prisma.Decimal(1300) },
       ]);
-      await service.approve('r1', 'u1');
+      await service.finalizeAfterActivation(newContract, tx);
       const t2Call = templates.t2.execute.mock.calls[0][0];
       expect(t2Call.oldGrossOutstanding.toString()).toBe('17000');
       expect(t2Call.oldVatReceivableOutstanding.toString()).toBe('1200');
@@ -424,110 +635,10 @@ describe('ContractExchangeService.approve', () => {
     });
 
     it('returns all zeroes when contract has no journal lines yet', async () => {
-      prisma.journalLine.findMany.mockResolvedValue([]);
-      await service.approve('r1', 'u1');
+      tx.journalLine.findMany.mockResolvedValue([]);
+      await service.finalizeAfterActivation(newContract, tx);
       const t2Call = templates.t2.execute.mock.calls[0][0];
       expect(t2Call.oldGrossOutstanding.toString()).toBe('0');
-      expect(t2Call.oldVatReceivableOutstanding.toString()).toBe('0');
-      expect(t2Call.oldUnearnedInterestOutstanding.toString()).toBe('0');
-      expect(t2Call.oldDeferredVatOutstanding.toString()).toBe('0');
-    });
-  });
-
-  // Issue #1086 item 6 — SHOP re-intake JE + ownership flip
-  describe('SHOP re-intake (Issue #1086 item 6)', () => {
-    beforeEach(() => {
-      prisma.contractExchangeRequest.updateMany.mockResolvedValue({ count: 1 });
-      prisma.contractExchangeRequest.findUniqueOrThrow.mockResolvedValue({
-        id: 'r1', oldContractId: 'old-c', oldProductId: 'old-p', newProductId: 'new-p',
-        oldContract: makeOldContract(12, 4),
-      });
-      prisma.payment.count.mockResolvedValue(4);
-      prisma.contract.findFirst.mockResolvedValue(null);
-      prisma.contract.create.mockResolvedValue({ id: 'nc', contractNumber: 'EXCH-20260524-0001' });
-    });
-
-    it('invokes ShopExchangeReturnTemplate.execute AFTER the 3 existing JEs', async () => {
-      // Order matters — the SHOP re-intake should happen after the FINANCE-side
-      // close (t2) so a rollback can wipe both halves atomically.
-      const callOrder: string[] = [];
-      templates.t1a.execute.mockImplementation(async () => {
-        callOrder.push('t1a');
-        return { id: 'je1-id', entryNumber: 'JV-A1' };
-      });
-      templates.t2.execute.mockImplementation(async () => {
-        callOrder.push('t2');
-        return { id: 'je2-id', entryNumber: 'JV-A2' };
-      });
-      templates.t3.execute.mockImplementation(async () => {
-        callOrder.push('t3');
-        return { id: 'je3-id', entryNumber: 'JV-A3' };
-      });
-      templates.t4.execute.mockImplementation(async () => {
-        callOrder.push('t4');
-        return { id: 'je4-id', entryNumber: 'JV-A4' };
-      });
-
-      await service.approve('r1', 'u1');
-      expect(callOrder).toEqual(['t1a', 't2', 't3', 't4']);
-    });
-
-    it('passes costPrice from Product.costPrice to the re-intake template', async () => {
-      prisma.product.findUniqueOrThrow.mockResolvedValue({ id: 'old-p', costPrice: '12345.67' });
-      await service.approve('r1', 'u1');
-      const t4Call = templates.t4.execute.mock.calls[0][0];
-      expect(t4Call.oldProductId).toBe('old-p');
-      expect(t4Call.oldContractId).toBe('old-c');
-      expect(t4Call.cost.toString()).toBe('12345.67');
-    });
-
-    it('throws InternalServerErrorException when costPrice is null', async () => {
-      prisma.product.findUniqueOrThrow.mockResolvedValue({ id: 'old-p', costPrice: null });
-      await expect(service.approve('r1', 'u1')).rejects.toThrow(InternalServerErrorException);
-      await expect(service.approve('r1', 'u1')).rejects.toThrow(/costPrice/);
-      // The re-intake template must NOT have been invoked when cost is missing.
-      expect(templates.t4.execute).not.toHaveBeenCalled();
-    });
-
-    it('flips Product.ownedByCompanyId to SHOP companyId on success', async () => {
-      await service.approve('r1', 'u1');
-      expect(companyResolver.getShopCompanyId).toHaveBeenCalled();
-      expect(prisma.product.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { id: 'old-p' },
-          data: expect.objectContaining({
-            status: 'REFURBISHED',
-            ownedByCompanyId: 'shop-co-id',
-          }),
-        }),
-      );
-    });
-
-    it('writes EXCHANGE_DEVICE_RETURNED_TO_SHOP audit log with jeId + ownership info', async () => {
-      await service.approve('r1', 'u1');
-      expect(audit.log).toHaveBeenCalledWith(
-        expect.objectContaining({
-          action: 'EXCHANGE_DEVICE_RETURNED_TO_SHOP',
-          entity: 'product',
-          entityId: 'old-p',
-          newValue: expect.objectContaining({
-            exchangeRequestId: 'r1',
-            oldContractId: 'old-c',
-            jeId: 'je4-id',
-            ownedByCompanyId: 'shop-co-id',
-          }),
-        }),
-      );
-    });
-
-    it('stores je4Id on the contract_exchange_requests row', async () => {
-      await service.approve('r1', 'u1');
-      expect(prisma.contractExchangeRequest.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { id: 'r1' },
-          data: expect.objectContaining({ je4Id: 'je4-id' }),
-        }),
-      );
     });
   });
 });
@@ -586,6 +697,7 @@ function makeOldContract(totalMonths: number, _paid: number) {
     productId: 'old-p',
     branchId: 'br',
     salespersonId: 'sp',
+    pdpaConsentId: null,
     planType: 'STORE_DIRECT',
     totalMonths,
     monthlyPayment: { toString: () => '1416.66' } as any,

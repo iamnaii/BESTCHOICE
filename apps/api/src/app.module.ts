@@ -25,6 +25,7 @@ import { CustomerTagsModule } from './modules/customer-tags/customer-tags.module
 import { SmsTemplatesModule } from './modules/sms-templates/sms-templates.module';
 import { FilterPresetsModule } from './modules/filter-presets/filter-presets.module';
 import { DefectExchangeModule } from './modules/defect-exchange/defect-exchange.module';
+import { ContractExchangeModule } from './modules/contract-exchange/contract-exchange.module';
 import { RepairTicketsModule } from './modules/repair-tickets/repair-tickets.module';
 import { RepossessionsModule } from './modules/repossessions/repossessions.module';
 import { PurchaseOrdersModule } from './modules/purchase-orders/purchase-orders.module';
@@ -194,6 +195,8 @@ import { AppCacheModule } from './cache/cache.module';
     SmsTemplatesModule,
     FilterPresetsModule,
     DefectExchangeModule,
+    // SP2 — Same-price contract exchange
+    ContractExchangeModule,
     // SP5 Phase 2 — Insurance / Repair Ticket
     RepairTicketsModule,
     RepossessionsModule,

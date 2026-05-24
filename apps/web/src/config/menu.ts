@@ -53,6 +53,8 @@ import {
   Store,
   // P2-SP2 / P4 — document config menu
   ReceiptText,
+  // P2-SP2 — exchange requests
+  ArrowLeftRight,
 } from 'lucide-react';
 
 /* ── Types ─────────────────────────────────────────── */
@@ -517,6 +519,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'รับซ่อม/รับประกัน', path: '/insurance', icon: ShieldCheck },
         { label: 'เช็คประกัน', path: '/insurance/warranty-check', icon: ShieldCheck },
+        { label: 'คำขอเปลี่ยนเครื่อง', path: '/insurance/exchange-requests', icon: ArrowLeftRight },
       ],
     },
     /* ── FIN zone restructure (per owner CSV) ───────────────────

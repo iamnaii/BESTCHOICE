@@ -15,6 +15,7 @@ import { generateSaleNumber } from '../../utils/sequence.util';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { ContractActivation1ATemplate } from '../journal/cpa-templates/contract-activation-1a.template';
 import { ProductsService } from '../products/products.service';
+import { ContractExchangeService } from '../contract-exchange/contract-exchange.service';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -26,6 +27,7 @@ export class ContractWorkflowService {
     private journalAutoService: JournalAutoService,
     private contractActivation1ATemplate: ContractActivation1ATemplate,
     private productsService: ProductsService,
+    private contractExchangeService: ContractExchangeService,
   ) {}
 
   /**
@@ -395,6 +397,17 @@ export class ContractWorkflowService {
       throw new InternalServerErrorException('SHOP company not configured');
     }
 
+    // SP2 sign-then-activate branch: if this contract was born from an
+    // exchange request (exchangedFromContractId non-null), the activation
+    // path swaps the normal ContractActivation1A JE + Sale-record creation
+    // for the exchange-specific JE chain (A.1-A.4) + old-side flips. The
+    // new contract still becomes ACTIVE and the new product still flips to
+    // SOLD_INSTALLMENT + FINANCE ownership — that part is identical.
+    //
+    // Capture as a plain bool so the closure inside $transaction reads it
+    // without re-deriving from the contract object.
+    const isExchangeContract = !!(contract as any).exchangedFromContractId;
+
     await this.prisma.$transaction(async (tx) => {
       // Re-check product status inside transaction to prevent race condition
       const prod = await tx.product.findUnique({ where: { id: contract.productId } });
@@ -423,37 +436,56 @@ export class ContractWorkflowService {
         tx,
       );
 
-      // Auto-create Sale record for this contract activation
-      const saleNumber = await generateSaleNumber(tx);
-      await tx.sale.create({
-        data: {
-          saleNumber,
-          saleType: 'INSTALLMENT',
-          customerId: contract.customerId,
-          productId: contract.productId,
-          branchId: contract.branchId,
-          salespersonId: contract.salespersonId,
-          sellingPrice: contract.sellingPrice,
-          discount: 0,
-          netAmount: contract.sellingPrice,
-          paymentMethod: 'CASH',
-          amountReceived: contract.downPayment,
-          downPaymentAmount: contract.downPayment,
-          contractId: contract.id,
-          bundleProductIds: [],
-          notes: `สร้างอัตโนมัติจากสัญญา ${contract.contractNumber}`,
-        },
-      });
+      if (isExchangeContract) {
+        // SP2 finalize: the exchange-specific JE chain (A.1 + A.2 + A.3 + A.4)
+        // posts here + old contract flips to EXCHANGED + old product flips to
+        // REFURBISHED+SHOP. Skip the normal ContractActivation1A JE (replaced
+        // by A.1 inside finalizeAfterActivation) and the Sale row (an exchange
+        // is not a fresh retail sale — no down payment, no new revenue
+        // recognition; FINANCE side just rolls outstanding from old → new).
+        await this.contractExchangeService.finalizeAfterActivation(
+          {
+            id: contract.id,
+            productId: contract.productId,
+            exchangedFromContractId: (contract as any).exchangedFromContractId,
+            financedAmount: contract.financedAmount,
+            storeCommission: contract.storeCommission,
+          },
+          tx,
+        );
+      } else {
+        // Standard activation flow — auto-create Sale record + post 1A JE.
+        const saleNumber = await generateSaleNumber(tx);
+        await tx.sale.create({
+          data: {
+            saleNumber,
+            saleType: 'INSTALLMENT',
+            customerId: contract.customerId,
+            productId: contract.productId,
+            branchId: contract.branchId,
+            salespersonId: contract.salespersonId,
+            sellingPrice: contract.sellingPrice,
+            discount: 0,
+            netAmount: contract.sellingPrice,
+            paymentMethod: 'CASH',
+            amountReceived: contract.downPayment,
+            downPaymentAmount: contract.downPayment,
+            contractId: contract.id,
+            bundleProductIds: [],
+            notes: `สร้างอัตโนมัติจากสัญญา ${contract.contractNumber}`,
+          },
+        });
 
-      // Auto journal entry — record contract activation (HP receivable).
-      // Wave 1 / Task 4: 1A JE now runs inside the outer $transaction by
-      // passing `tx` to the template. If the JE fails (unbalanced, FK, etc.)
-      // the entire activation rolls back — contract stays DRAFT, product
-      // ownership is not transferred, sale row is not created. This closes
-      // audit Wave 1 P0 W-1 (ปพพ.386 termination atomicity) which the prior
-      // fire-and-forget pattern violated by leaving contracts ACTIVE without
-      // any ledger entry when the JE failed.
-      await this.contractActivation1ATemplate.execute(contract.id, tx);
+        // Auto journal entry — record contract activation (HP receivable).
+        // Wave 1 / Task 4: 1A JE now runs inside the outer $transaction by
+        // passing `tx` to the template. If the JE fails (unbalanced, FK, etc.)
+        // the entire activation rolls back — contract stays DRAFT, product
+        // ownership is not transferred, sale row is not created. This closes
+        // audit Wave 1 P0 W-1 (ปพพ.386 termination atomicity) which the prior
+        // fire-and-forget pattern violated by leaving contracts ACTIVE without
+        // any ledger entry when the JE failed.
+        await this.contractActivation1ATemplate.execute(contract.id, tx);
+      }
 
       // Phase A.4 — generate installment_schedules rows so accrual cron + payment
       // preview API can find them. Per-installment due_date = startDate + (i × 1 month).

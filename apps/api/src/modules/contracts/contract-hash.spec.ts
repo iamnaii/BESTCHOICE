@@ -6,6 +6,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { ProductsService } from '../products/products.service';
 import { ContractActivation1ATemplate } from '../journal/cpa-templates/contract-activation-1a.template';
+import { ContractExchangeService } from '../contract-exchange/contract-exchange.service';
 
 /**
  * T5-C20 — extended contract integrity hash.
@@ -27,6 +28,7 @@ describe('ContractWorkflowService — hash integrity (T5-C20)', () => {
         { provide: JournalAutoService, useValue: {} },
         { provide: ProductsService, useValue: {} },
         { provide: ContractActivation1ATemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK' }) } },
+        { provide: ContractExchangeService, useValue: { finalizeAfterActivation: jest.fn() } },
       ],
     }).compile();
     service = module.get(ContractWorkflowService);

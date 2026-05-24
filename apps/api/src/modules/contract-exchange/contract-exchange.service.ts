@@ -39,6 +39,18 @@ interface ProductPriceSnapshot {
   installmentPrice: { toString(): string } | string | null;
 }
 
+/**
+ * Minimal contract shape needed by finalizeAfterActivation.
+ * Mirrors the subset of `Contract` columns the JE chain + flips require.
+ */
+export interface ExchangeContractForFinalize {
+  id: string;
+  productId: string;
+  exchangedFromContractId: string;
+  financedAmount: Prisma.Decimal | string | number;
+  storeCommission: Prisma.Decimal | string | number | null;
+}
+
 @Injectable()
 export class ContractExchangeService {
   constructor(
@@ -131,6 +143,24 @@ export class ContractExchangeService {
     });
   }
 
+  /**
+   * Sign-then-activate flow (SP2 v2): approve() now ONLY creates a DRAFT
+   * exchange contract + marks the request APPROVED + reserves the new product.
+   *
+   * The JE chain (A.1 → A.2 → A.3 → A.4) and the old-contract / old-product
+   * status flips are deferred to `finalizeAfterActivation()` which fires from
+   * `ContractWorkflowService.activate()` once the customer has signed.
+   *
+   * Why: the new contract has a different contractNumber + IMEI than the
+   * original. If the debtor disputes the swap and never signed, the JE chain
+   * already posted would represent an unsigned obligation. Owner direction
+   * (option B): post NO journal entries until the customer signs + OWNER/BM/FM
+   * activates the new contract via the existing "เปิดใช้สัญญา" flow.
+   *
+   * Convention: DRAFT + workflowStatus=APPROVED is the pre-existing pattern
+   * for "ready to sign then activate" (see ContractWorkflowService.activate),
+   * so we don't need a new lifecycle state.
+   */
   async approve(id: string, userId: string) {
     return this.prisma.$transaction(async (tx) => {
       // 1. Lock-acquire (race-safe via updateMany count===1)
@@ -168,9 +198,16 @@ export class ContractExchangeService {
         : new Decimal(0);
       const newInterest = monthlyPayment.times(remainingMonths).minus(newFinanced);
 
-      // 4. Create new contract (mirror old plan w/ remaining months).
+      // 4. Create new contract as DRAFT (sign-then-activate gate).
       // Issue #1086 item 4 — use EXCH-YYYYMMDD-NNNN to avoid grep-collision
       // with ExpenseDocument's EX- prefix.
+      //
+      // workflowStatus = 'APPROVED' because the OWNER's exchange-request
+      // approval IS the workflow approval — the customer doesn't need a
+      // second review pass before signing.
+      //
+      // pdpaConsentId is carried from the old contract — the customer already
+      // consented to the deal; the swap doesn't introduce new personal data.
       const contractNumber = await this.nextExchangeContractNumber(tx);
       const newContract = await tx.contract.create({
         data: {
@@ -179,7 +216,9 @@ export class ContractExchangeService {
           productId: req.newProductId,
           branchId: old.branchId,
           salespersonId: old.salespersonId,
-          status: 'ACTIVE',
+          status: 'DRAFT',
+          workflowStatus: 'APPROVED',
+          pdpaConsentId: old.pdpaConsentId ?? null,
           planType: old.planType,
           totalMonths: remainingMonths,
           monthlyPayment,
@@ -193,86 +232,30 @@ export class ContractExchangeService {
           // old.downPayment would distort payment-history view and corrupt
           // early-payoff calcs that reference downPayment. (Issue #1086 item 5.)
           downPayment: new Decimal(0),
-          creditBalance: new Decimal(0),
-          contractDate: new Date(),
+          advanceBalance: new Decimal(0),
           exchangedFromContractId: old.id,
         } as any,
       });
 
-      // 5. Post JE chain atomically. Outstanding balances come from the real
-      // ledger (issue #1086 item 3) — straight-line proration missed
-      // reschedules / VAT 60-day / tolerance / late-fee / early-payoff
-      // adjustments.
-      const buyback = newFinanced.plus(newCommission);
-      const oldOutstanding = await this.computeOldOutstanding(tx, old.id);
-
-      const je1a = await this.t1a.execute(newContract.id, tx);
-      const je2 = await this.t2.execute(
-        {
-          oldContractId: old.id,
-          buyback,
-          oldGrossOutstanding: oldOutstanding.gross,
-          oldVatReceivableOutstanding: oldOutstanding.vatReceivable,
-          oldUnearnedInterestOutstanding: oldOutstanding.unearnedInterest,
-          oldDeferredVatOutstanding: oldOutstanding.deferredVat,
-        },
-        tx,
-      );
-      const je3 = await this.t3.execute(
-        {
-          newContractId: newContract.id,
-          buyback,
-          newVendorYodjat: newFinanced,
-          newVendorCommission: newCommission,
-        },
-        tx,
-      );
-
-      // Issue #1086 item 6 — old device must be re-intaken to SHOP inventory
-      // BOTH in the ledger (Dr S11-2002 / Cr S50-1102) AND in the Product
-      // ownership column (ownedByCompanyId → SHOP). Without this, the device
-      // is REFURBISHED but still owned by FINANCE → SHOP can't legally resell.
-      const oldProduct = await tx.product.findUniqueOrThrow({
-        where: { id: req.oldProductId },
-        select: { id: true, costPrice: true },
-      });
-      if (oldProduct.costPrice == null) {
-        throw new InternalServerErrorException(
-          'ไม่พบ costPrice ของเครื่องเดิม — ตั้งค่าก่อนอนุมัติเปลี่ยนเครื่อง',
-        );
-      }
-      const cost = new Decimal(oldProduct.costPrice.toString());
-      const je4 = await this.t4.execute(
-        { oldProductId: req.oldProductId, oldContractId: old.id, cost },
-        tx,
-      );
-
-      const shopCompanyId = await this.companyResolver.getShopCompanyId(tx);
-
-      // 6. Status flips
-      await tx.contract.update({
-        where: { id: old.id },
-        data: { status: 'EXCHANGED', exchangedAt: new Date() } as any,
-      });
+      // 5. Reserve the new product so it can't be sold to anyone else
+      // between approval and activation. The new-contract activation flow
+      // (ContractWorkflowService.activate) accepts both RESERVED and IN_STOCK,
+      // and flips to SOLD_INSTALLMENT once the customer signs.
       await tx.product.update({
-        where: { id: req.oldProductId },
-        data: { status: 'REFURBISHED', ownedByCompanyId: shopCompanyId } as any,
+        where: { id: req.newProductId },
+        data: { status: 'RESERVED' } as any,
       });
 
-      // 7. Link request to outputs (je4Id captured on the request row so
-      // the SHOP re-intake JE is traceable from the exchange request).
+      // 6. Link request to new contract (jeXIds are written later by
+      // finalizeAfterActivation when the JE chain actually posts).
       await (tx as any).contractExchangeRequest.update({
         where: { id },
         data: {
           newContractId: newContract.id,
-          je1aId: je1a.id,
-          je2Id: je2.id,
-          je3Id: je3.id,
-          je4Id: je4.id,
         },
       });
 
-      // 8. Audit
+      // 7. Audit
       await this.audit.log({
         action: 'EXCHANGE_REQUEST_APPROVED',
         entity: 'contract_exchange_request',
@@ -281,35 +264,169 @@ export class ContractExchangeService {
         newValue: {
           oldContractId: old.id,
           newContractId: newContract.id,
-          buyback: buyback.toString(),
           remainingMonths,
-        },
-      });
-      // Separate event for the SHOP-side ownership flip + re-intake JE —
-      // makes it greppable in the audit log without parsing the parent event.
-      await this.audit.log({
-        action: 'EXCHANGE_DEVICE_RETURNED_TO_SHOP',
-        entity: 'product',
-        entityId: req.oldProductId,
-        userId,
-        newValue: {
-          exchangeRequestId: id,
-          oldContractId: old.id,
-          jeId: je4.id,
-          ownedByCompanyId: shopCompanyId,
-          cost: cost.toString(),
+          // Highlight the deferred-finalization design so an auditor scanning
+          // the log understands no money has moved at this point.
+          phase: 'awaiting-sign-then-activate',
         },
       });
 
       return {
         id,
         newContractId: newContract.id,
+      };
+    });
+  }
+
+  /**
+   * Sign-then-activate flow (SP2 v2): fire the JE chain + old-side flips
+   * AFTER the customer signs the new contract and OWNER/BM/FM activates it.
+   *
+   * Called from `ContractWorkflowService.activate()` inside its `$transaction`
+   * when the contract being activated has `exchangedFromContractId` non-null.
+   * The new contract is already flipped to ACTIVE + the new product to
+   * SOLD_INSTALLMENT + ownership transferred to FINANCE by the caller — this
+   * method only handles the EXCHANGE-specific side-effects:
+   *
+   *   - A.1 ExchangeNewContract1ATemplate — open new HP receivable
+   *   - A.2 ExchangeCloseOld21_1106Template — close old contract's outstanding
+   *   - A.3 ExchangeClearVendor21_1106Template — clear vendor liability
+   *   - A.4 ShopExchangeReturnTemplate — re-intake old device into SHOP inventory
+   *   - flip OLD contract → EXCHANGED
+   *   - flip OLD product → REFURBISHED + ownedByCompanyId = SHOP
+   *   - write je*Id refs onto the exchange request
+   *   - EXCHANGE_FINALIZED + EXCHANGE_DEVICE_RETURNED_TO_SHOP audit logs
+   */
+  async finalizeAfterActivation(
+    newContract: ExchangeContractForFinalize,
+    tx: Prisma.TransactionClient,
+  ): Promise<{ je1aId: string; je2Id: string; je3Id: string; je4Id: string }> {
+    // 1. Resolve SHOP companyId
+    const shopCompanyId = await this.companyResolver.getShopCompanyId(tx);
+
+    // 2. Look up the request that birthed this contract, and the linked old
+    // contract + old product. We trust the caller's contract object for the
+    // new-side identity but re-fetch the request so this method is idempotent
+    // on its own (a callsite can pass just the contract).
+    const oldContractId = newContract.exchangedFromContractId;
+    const request = await (tx as any).contractExchangeRequest.findFirst({
+      where: {
+        newContractId: newContract.id,
+        oldContractId,
+        deletedAt: null,
+      },
+    });
+    if (!request) {
+      throw new InternalServerErrorException(
+        'ไม่พบ contract_exchange_request สำหรับสัญญานี้ — ไม่สามารถ finalize ได้',
+      );
+    }
+
+    // 3. Outstanding from the real ledger (not straight-line proration).
+    const newFinanced = new Decimal(newContract.financedAmount.toString());
+    const newCommission = newContract.storeCommission
+      ? new Decimal(newContract.storeCommission.toString())
+      : new Decimal(0);
+    const buyback = newFinanced.plus(newCommission);
+    const oldOutstanding = await this.computeOldOutstanding(tx, oldContractId);
+
+    // 4. JE A.1 — open new HP receivable
+    const je1a = await this.t1a.execute(newContract.id, tx);
+
+    // 5. JE A.2 — close old contract's outstanding
+    const je2 = await this.t2.execute(
+      {
+        oldContractId,
+        buyback,
+        oldGrossOutstanding: oldOutstanding.gross,
+        oldVatReceivableOutstanding: oldOutstanding.vatReceivable,
+        oldUnearnedInterestOutstanding: oldOutstanding.unearnedInterest,
+        oldDeferredVatOutstanding: oldOutstanding.deferredVat,
+      },
+      tx,
+    );
+
+    // 6. JE A.3 — clear vendor liability for the new contract
+    const je3 = await this.t3.execute(
+      {
+        newContractId: newContract.id,
+        buyback,
+        newVendorYodjat: newFinanced,
+        newVendorCommission: newCommission,
+      },
+      tx,
+    );
+
+    // 7. JE A.4 — SHOP re-intake the old device.
+    // Old product must have a costPrice so the inventory line lands correctly.
+    const oldProduct = await tx.product.findUniqueOrThrow({
+      where: { id: request.oldProductId },
+      select: { id: true, costPrice: true },
+    });
+    if (oldProduct.costPrice == null) {
+      throw new InternalServerErrorException(
+        'ไม่พบ costPrice ของเครื่องเดิม — ตั้งค่าก่อน finalize เปลี่ยนเครื่อง',
+      );
+    }
+    const cost = new Decimal(oldProduct.costPrice.toString());
+    const je4 = await this.t4.execute(
+      { oldProductId: request.oldProductId, oldContractId, cost },
+      tx,
+    );
+
+    // 8. Old-side status flips
+    await tx.contract.update({
+      where: { id: oldContractId },
+      data: { status: 'EXCHANGED', exchangedAt: new Date() } as any,
+    });
+    await tx.product.update({
+      where: { id: request.oldProductId },
+      data: { status: 'REFURBISHED', ownedByCompanyId: shopCompanyId } as any,
+    });
+
+    // 9. Link the JE ids onto the request row for traceability
+    await (tx as any).contractExchangeRequest.update({
+      where: { id: request.id },
+      data: {
         je1aId: je1a.id,
         je2Id: je2.id,
         je3Id: je3.id,
         je4Id: je4.id,
-      };
+      },
     });
+
+    // 10. Audit — one event for the finalize (umbrella), one for the SHOP
+    // ownership flip so it's greppable independently.
+    await this.audit.log({
+      action: 'EXCHANGE_FINALIZED',
+      entity: 'contract_exchange_request',
+      entityId: request.id,
+      newValue: {
+        oldContractId,
+        newContractId: newContract.id,
+        buyback: buyback.toString(),
+        jeIds: { je1aId: je1a.id, je2Id: je2.id, je3Id: je3.id, je4Id: je4.id },
+      },
+    });
+    await this.audit.log({
+      action: 'EXCHANGE_DEVICE_RETURNED_TO_SHOP',
+      entity: 'product',
+      entityId: request.oldProductId,
+      newValue: {
+        exchangeRequestId: request.id,
+        oldContractId,
+        jeId: je4.id,
+        ownedByCompanyId: shopCompanyId,
+        cost: cost.toString(),
+      },
+    });
+
+    return {
+      je1aId: je1a.id,
+      je2Id: je2.id,
+      je3Id: je3.id,
+      je4Id: je4.id,
+    };
   }
 
   async reject(id: string, reason: string, userId: string) {

@@ -97,7 +97,9 @@ export default function ExchangeRequestForm() {
       return res.data;
     },
     onSuccess: () => {
-      toast.success('ส่งคำขอเปลี่ยนเครื่องสำเร็จ — รออนุมัติ');
+      toast.success(
+        'ส่งคำขอเปลี่ยนเครื่องสำเร็จ — รออนุมัติจาก OWNER (จากนั้นลูกค้าต้องลงนามสัญญาใหม่)',
+      );
       navigate('/insurance');
     },
     onError: (err) => toast.error(getErrorMessage(err)),
@@ -200,6 +202,9 @@ export default function ExchangeRequestForm() {
             <CheckCircle2 className="size-4 text-primary mt-0.5" />
             <div>
               <strong>ลูกค้าไม่จ่ายเงินเพิ่ม</strong> — สัญญาใหม่ผ่อนต่อจากเดิม งวดละเท่าเดิม
+              <div className="mt-1 text-xs text-muted-foreground">
+                หลังอนุมัติ ลูกค้าต้องลงนามสัญญาใหม่ก่อนจึงจะใช้งานได้
+              </div>
             </div>
           </div>
         </Card>

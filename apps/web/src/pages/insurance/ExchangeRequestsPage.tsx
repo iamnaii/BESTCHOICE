@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
@@ -46,6 +46,7 @@ function productLabel(p: PendingExchangeRequest['oldProduct']): string {
 
 export default function ExchangeRequestsPage() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [target, setTarget] = useState<ActionTarget | null>(null);
   const [rejectReason, setRejectReason] = useState('');
 
@@ -63,10 +64,20 @@ export default function ExchangeRequestsPage() {
   const approveMutation = useMutation({
     mutationFn: (requestId: string) =>
       api.post(`/insurance/exchange-requests/${requestId}/approve`),
-    onSuccess: () => {
-      toast.success('อนุมัติการเปลี่ยนเครื่องสำเร็จ');
+    onSuccess: (response) => {
+      // SP2 sign-then-activate (option B): approve() now produces a DRAFT
+      // new contract. Customer must sign + OWNER/BM/FM must activate before
+      // the JE chain fires. Jump straight to the new contract detail page
+      // so the operator can collect signatures + click "เปิดใช้สัญญา".
+      const newContractId = response.data?.newContractId;
+      toast.success(
+        'อนุมัติแล้ว — กรุณาให้ลูกค้าลงนามและกดเปิดใช้สัญญา',
+      );
       queryClient.invalidateQueries({ queryKey: ['exchange-requests-pending'] });
       setTarget(null);
+      if (newContractId) {
+        navigate(`/contracts/${newContractId}`);
+      }
     },
     onError: (err: unknown) => {
       toast.error(getErrorMessage(err));
@@ -227,7 +238,7 @@ export default function ExchangeRequestsPage() {
         open={target?.action === 'approve'}
         onOpenChange={(open) => !open && setTarget(null)}
         title="ยืนยันการอนุมัติเปลี่ยนเครื่อง"
-        description={`อนุมัติการเปลี่ยนเครื่อง สัญญา ${target?.contractNumber ?? ''} — ระบบจะสร้างสัญญาใหม่ + post JE 3 ชุดอัตโนมัติ`}
+        description={`อนุมัติการเปลี่ยนเครื่อง สัญญา ${target?.contractNumber ?? ''} — ระบบจะสร้างสัญญาใหม่ (สถานะ DRAFT) ลูกค้าต้องลงนามและกด "เปิดใช้สัญญา" ก่อนจึงจะเริ่มใช้งานและบันทึก JE`}
         confirmLabel="อนุมัติ"
         cancelLabel="ยกเลิก"
         variant="default"

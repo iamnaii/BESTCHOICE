@@ -6,6 +6,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { ProductsService } from '../products/products.service';
 import { ContractActivation1ATemplate } from '../journal/cpa-templates/contract-activation-1a.template';
+import { ContractExchangeService } from '../contract-exchange/contract-exchange.service';
 
 /**
  * ContractWorkflowService unit tests.
@@ -40,6 +41,7 @@ describe('ContractWorkflowService', () => {
   let contractActivationTemplateMock: { execute: jest.Mock };
   let productsMock: { transferOwnership: jest.Mock };
   let notificationsMock: { send: jest.Mock };
+  let exchangeServiceMock: { finalizeAfterActivation: jest.Mock };
 
   const mockProduct = {
     id: 'product-1',
@@ -151,6 +153,11 @@ describe('ContractWorkflowService', () => {
     notificationsMock = {
       send: jest.fn().mockResolvedValue(undefined),
     };
+    exchangeServiceMock = {
+      finalizeAfterActivation: jest.fn().mockResolvedValue({
+        je1aId: 'je-a1', je2Id: 'je-a2', je3Id: 'je-a3', je4Id: 'je-a4',
+      }),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -160,6 +167,7 @@ describe('ContractWorkflowService', () => {
         { provide: JournalAutoService, useValue: journalAutoMock },
         { provide: ProductsService, useValue: productsMock },
         { provide: ContractActivation1ATemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK' }) } },
+        { provide: ContractExchangeService, useValue: exchangeServiceMock },
       ],
     }).compile();
 
@@ -213,6 +221,80 @@ describe('ContractWorkflowService', () => {
       // Atomicity assertion: in real Prisma the $transaction would roll back
       // every prior write. We can't assert against a real DB here, but we do
       // confirm the error escapes activate() rather than being swallowed.
+    });
+
+    // SP2 sign-then-activate: when a contract was born from an exchange request,
+    // activate() must call ContractExchangeService.finalizeAfterActivation()
+    // INSTEAD OF the standard ContractActivation1ATemplate (and skip Sale row).
+    describe('exchange contract branch (SP2 sign-then-activate)', () => {
+      const exchangeContract = {
+        ...mockContract,
+        id: 'contract-exch',
+        contractNumber: 'EXCH-20260524-0001',
+        exchangedFromContractId: 'contract-original',
+      };
+
+      beforeEach(() => {
+        prisma.contract.findUnique.mockResolvedValue(exchangeContract);
+      });
+
+      it('calls finalizeAfterActivation with the contract identity + plan numbers', async () => {
+        await service.activate('contract-exch');
+
+        expect(exchangeServiceMock.finalizeAfterActivation).toHaveBeenCalledTimes(1);
+        const [arg, tx] = exchangeServiceMock.finalizeAfterActivation.mock.calls[0];
+        expect(arg).toMatchObject({
+          id: 'contract-exch',
+          productId: 'product-1',
+          exchangedFromContractId: 'contract-original',
+        });
+        // Plan numbers are passed through so the finalize step can build A.3
+        // without re-querying the contract row.
+        expect(arg.financedAmount).toBeDefined();
+        expect(arg.storeCommission).toBeDefined();
+        // tx is the prisma transaction client
+        expect(tx).toBeDefined();
+      });
+
+      it('does NOT call the standard ContractActivation1ATemplate for exchange contracts', async () => {
+        await service.activate('contract-exch');
+        expect(contractActivationTemplateMock.execute).not.toHaveBeenCalled();
+      });
+
+      it('does NOT create a Sale row for exchange contracts', async () => {
+        await service.activate('contract-exch');
+        expect(prisma.sale.create).not.toHaveBeenCalled();
+      });
+
+      it('still flips the new contract to ACTIVE + transfers product ownership to FINANCE', async () => {
+        await service.activate('contract-exch');
+        expect(prisma.contract.update).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: { id: 'contract-exch' },
+            data: expect.objectContaining({ status: 'ACTIVE' }),
+          }),
+        );
+        expect(prisma.product.update).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: { id: 'product-1' },
+            data: expect.objectContaining({ status: 'SOLD_INSTALLMENT' }),
+          }),
+        );
+        expect(productsMock.transferOwnership).toHaveBeenCalledWith(
+          'product-1',
+          'finance-co-1',
+          expect.anything(),
+        );
+      });
+
+      it('rolls back activation when finalizeAfterActivation throws', async () => {
+        exchangeServiceMock.finalizeAfterActivation.mockRejectedValueOnce(
+          new Error('finalize fail'),
+        );
+        await expect(service.activate('contract-exch')).rejects.toThrow('finalize fail');
+        // standard 1A path was not used here
+        expect(contractActivationTemplateMock.execute).not.toHaveBeenCalled();
+      });
     });
   });
 });

@@ -8,6 +8,7 @@ import { JournalAutoService } from '../journal/journal-auto.service';
 import { ProductsService } from '../products/products.service';
 import { DocumentsService } from './documents.service';
 import { ContractActivation1ATemplate } from '../journal/cpa-templates/contract-activation-1a.template';
+import { ContractExchangeService } from '../contract-exchange/contract-exchange.service';
 
 // Mock utility modules
 jest.mock('../../utils/installment.util', () => ({
@@ -212,6 +213,7 @@ describe('Contract Signing & Workflow', () => {
         { provide: JournalAutoService, useValue: { recordContractActivation: jest.fn(), recordPayment: jest.fn(), recordExpense: jest.fn(), createContractActivationJournal: jest.fn() } },
         { provide: ProductsService, useValue: { transferOwnership: jest.fn() } },
         { provide: ContractActivation1ATemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK' }) } },
+        { provide: ContractExchangeService, useValue: { finalizeAfterActivation: jest.fn() } },
       ],
     }).compile();
 

@@ -16,9 +16,22 @@ import { SettingsModule } from '../settings/settings.module';
 import { JournalModule } from '../journal/journal.module';
 import { ProductsModule } from '../products/products.module';
 import { WarrantyModule } from '../warranty/warranty.module';
+import { ContractExchangeModule } from '../contract-exchange/contract-exchange.module';
 
 @Module({
-  imports: [NotificationsModule, OcrModule, SettingsModule, JournalModule, ProductsModule, WarrantyModule],
+  imports: [
+    NotificationsModule,
+    OcrModule,
+    SettingsModule,
+    JournalModule,
+    ProductsModule,
+    WarrantyModule,
+    // SP2 sign-then-activate: ContractWorkflowService.activate() branches to
+    // ContractExchangeService.finalizeAfterActivation() when the contract
+    // being activated has exchangedFromContractId. No circular dep because
+    // ContractExchangeModule only depends on Prisma + Audit (global) + Journal.
+    ContractExchangeModule,
+  ],
   controllers: [ContractsController, ContractDocumentsController, DocumentsController],
   providers: [ContractsService, ContractWorkflowService, ContractPaymentService, ContractDocumentService, ContractSnapshotService, ContractDocumentsService, DocumentsService, GhostSaleCron],
   exports: [ContractsService, ContractWorkflowService, ContractPaymentService, ContractDocumentService, ContractSnapshotService, ContractDocumentsService, DocumentsService],

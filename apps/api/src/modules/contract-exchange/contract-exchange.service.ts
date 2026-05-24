@@ -232,8 +232,7 @@ export class ContractExchangeService {
           // old.downPayment would distort payment-history view and corrupt
           // early-payoff calcs that reference downPayment. (Issue #1086 item 5.)
           downPayment: new Decimal(0),
-          creditBalance: new Decimal(0),
-          contractDate: new Date(),
+          advanceBalance: new Decimal(0),
           exchangedFromContractId: old.id,
         } as any,
       });

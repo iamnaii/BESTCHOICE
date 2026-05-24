@@ -1,4 +1,4 @@
-export type BubbleType = 'TEXT' | 'IMAGE' | 'STICKER';
+export type BubbleType = 'TEXT' | 'IMAGE' | 'STICKER' | 'CARD' | 'LOCATION' | 'VIDEO' | 'JSON';
 
 export interface CannedResponseBubble {
   id: string;
@@ -10,6 +10,11 @@ export interface CannedResponseBubble {
   thumbnailUrl: string | null;
   stickerPackageId: string | null;
   stickerId: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  address?: string | null;
+  locationTitle?: string | null;
+  json?: any;
   channels: string[]; // empty = all
   createdAt: string;
 }

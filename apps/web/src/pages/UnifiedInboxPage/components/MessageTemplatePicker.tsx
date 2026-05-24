@@ -25,13 +25,18 @@ interface CannedResponse {
 
 interface PreviewBubble {
   id: string;
-  type: 'TEXT' | 'IMAGE' | 'STICKER';
+  type: 'TEXT' | 'IMAGE' | 'STICKER' | 'CARD' | 'LOCATION' | 'VIDEO' | 'JSON';
   sortOrder: number;
   text: string | null;
   mediaUrl: string | null;
   thumbnailUrl: string | null;
   stickerPackageId: string | null;
   stickerId: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  address?: string | null;
+  locationTitle?: string | null;
+  json?: any;
 }
 
 interface PreviewResponse {
@@ -283,7 +288,7 @@ export default function MessageTemplatePicker({ isOpen, onClose, onInsert, roomI
                         <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
                           ตัวอย่าง ({preview.bubbles.length} บับเบิ้ล)
                         </div>
-                        {preview.bubbles.map((b) => (
+                        {preview.bubbles.map((b: any) => (
                           <div key={b.id} className="bg-card border border-border rounded-lg p-3">
                             {b.type === 'TEXT' && (
                               <div className="text-sm whitespace-pre-line leading-relaxed">{b.text}</div>
@@ -301,6 +306,40 @@ export default function MessageTemplatePicker({ isOpen, onClose, onInsert, roomI
                                 />
                                 <span>Sticker {b.stickerPackageId}/{b.stickerId}</span>
                               </div>
+                            )}
+                            {b.type === 'CARD' && (
+                              <div className="border border-border rounded overflow-hidden">
+                                {b.json?.heroImageUrl && <img src={b.json.heroImageUrl} alt="" className="w-full max-h-32 object-cover" />}
+                                {b.json?.title && <div className="px-3 py-2 text-sm font-semibold">{b.json.title}</div>}
+                                {b.json?.subtitle && <div className="px-3 pb-2 text-xs text-muted-foreground">{b.json.subtitle}</div>}
+                                {Array.isArray(b.json?.buttons) && b.json.buttons.length > 0 && (
+                                  <div className="px-3 pb-2 flex flex-col gap-1">
+                                    {b.json.buttons.map((btn: any, i: number) => (
+                                      <span key={i} className="text-xs border border-border rounded py-1 text-center text-primary">{btn.label}</span>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                            {b.type === 'LOCATION' && (
+                              <div className="text-xs">
+                                <div className="font-medium">{b.locationTitle ?? '(ไม่มีชื่อ)'}</div>
+                                {b.address && <div className="text-muted-foreground">{b.address}</div>}
+                                {b.latitude && b.longitude && (
+                                  <a href={`https://www.google.com/maps?q=${b.latitude},${b.longitude}`} target="_blank" rel="noreferrer" className="text-primary hover:underline">
+                                    {b.latitude}, {b.longitude}
+                                  </a>
+                                )}
+                              </div>
+                            )}
+                            {b.type === 'VIDEO' && b.mediaUrl && (
+                              <video src={b.mediaUrl} poster={b.thumbnailUrl ?? undefined} controls className="max-w-full max-h-48 rounded" />
+                            )}
+                            {b.type === 'JSON' && (
+                              <details className="text-xs">
+                                <summary className="cursor-pointer text-muted-foreground">JSON payload</summary>
+                                <pre className="mt-1 p-2 bg-muted rounded font-mono text-[10px] overflow-x-auto">{JSON.stringify(b.json, null, 2)}</pre>
+                              </details>
                             )}
                           </div>
                         ))}

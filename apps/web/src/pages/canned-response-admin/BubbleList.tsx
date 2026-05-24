@@ -5,7 +5,7 @@ import {
 } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, Trash2, Type, Image as ImageIcon, Smile } from 'lucide-react';
+import { GripVertical, Trash2, Type, Image as ImageIcon, Smile, CreditCard, MapPin, Video, Braces } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import api from '@/lib/api';
@@ -15,8 +15,24 @@ import type { CannedResponseBubble, BubbleType } from './types';
 
 interface Props { cannedResponseId: string; }
 
-const TYPE_LABEL: Record<BubbleType, string> = { TEXT: 'ข้อความ', IMAGE: 'รูป', STICKER: 'สติ๊กเกอร์' };
-const TYPE_ICON = { TEXT: Type, IMAGE: ImageIcon, STICKER: Smile } as const;
+const TYPE_LABEL: Record<BubbleType, string> = {
+  TEXT: 'ข้อความ',
+  IMAGE: 'รูป',
+  STICKER: 'สติ๊กเกอร์',
+  CARD: 'การ์ด',
+  LOCATION: 'สถานที่',
+  VIDEO: 'วิดีโอ',
+  JSON: 'JSON',
+};
+const TYPE_ICON = {
+  TEXT: Type,
+  IMAGE: ImageIcon,
+  STICKER: Smile,
+  CARD: CreditCard,
+  LOCATION: MapPin,
+  VIDEO: Video,
+  JSON: Braces,
+} as const;
 
 function SortableBubbleRow({ bubble, onChange, onDelete }: { bubble: CannedResponseBubble; onChange: (p: Partial<CannedResponseBubble>) => void; onDelete: () => void; }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: bubble.id });
@@ -123,17 +139,16 @@ export default function BubbleList({ cannedResponseId }: Props) {
         </SortableContext>
       </DndContext>
       {canAdd ? (
-        <div className="flex items-center gap-2 pt-2 border-t border-border">
-          <span className="text-xs text-muted-foreground">เพิ่มประเภท:</span>
-          <Button size="sm" variant="outline" onClick={() => createMut.mutate('TEXT')}>
-            <Type className="w-3.5 h-3.5 mr-1.5" /> ข้อความ
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => createMut.mutate('IMAGE')}>
-            <ImageIcon className="w-3.5 h-3.5 mr-1.5" /> รูป
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => createMut.mutate('STICKER')}>
-            <Smile className="w-3.5 h-3.5 mr-1.5" /> สติ๊กเกอร์
-          </Button>
+        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-border">
+          <span className="text-xs text-muted-foreground w-full">เพิ่มประเภท:</span>
+          {(['TEXT', 'IMAGE', 'STICKER', 'CARD', 'LOCATION', 'VIDEO', 'JSON'] as const).map((t) => {
+            const Icon = TYPE_ICON[t];
+            return (
+              <Button key={t} size="sm" variant="outline" onClick={() => createMut.mutate(t)}>
+                <Icon className="w-3.5 h-3.5 mr-1.5" /> {TYPE_LABEL[t]}
+              </Button>
+            );
+          })}
         </div>
       ) : (
         <p className="text-xs text-muted-foreground">ถึงขีดจำกัด 5 บับเบิ้ลแล้ว — ลบบางบับเบิ้ลก่อนเพิ่มใหม่</p>

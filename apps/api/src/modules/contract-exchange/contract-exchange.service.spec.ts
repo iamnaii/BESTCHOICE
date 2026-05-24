@@ -252,6 +252,23 @@ describe('ContractExchangeService.approve', () => {
 
     await expect(service.approve('r1', 'u1')).rejects.toThrow(/จ่ายครบงวด/);
   });
+
+  // Issue #1086 item 5 — new contract must have downPayment=0
+  it('new contract is created with downPayment=0 even when old contract had a non-zero downPayment', async () => {
+    prisma.contractExchangeRequest.updateMany.mockResolvedValue({ count: 1 });
+    prisma.contractExchangeRequest.findUniqueOrThrow.mockResolvedValue({
+      id: 'r1', oldContractId: 'old', oldProductId: 'op', newProductId: 'np',
+      oldContract: makeOldContract(12, 4), // makeOldContract sets downPayment=4000
+    });
+    prisma.payment.count.mockResolvedValue(4);
+    prisma.contract.create.mockResolvedValue({ id: 'nc', contractNumber: 'EX' });
+
+    await service.approve('r1', 'u1');
+
+    const createData = prisma.contract.create.mock.calls[0][0].data;
+    // The new contract's downPayment must be a zero Decimal, not the old 4000.
+    expect(createData.downPayment.toString()).toBe('0');
+  });
 });
 
 describe('ContractExchangeService.reject', () => {

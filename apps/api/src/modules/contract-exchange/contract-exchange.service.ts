@@ -181,7 +181,10 @@ export class ContractExchangeService {
           interestRate: old.interestRate,
           vatAmount: old.vatAmount,
           sellingPrice: old.sellingPrice,
-          downPayment: old.downPayment,
+          // Same-price exchange: customer pays ฿0 at swap (spec v3). Copying
+          // old.downPayment would distort payment-history view and corrupt
+          // early-payoff calcs that reference downPayment. (Issue #1086 item 5.)
+          downPayment: new Decimal(0),
           creditBalance: new Decimal(0),
           contractDate: new Date(),
           exchangedFromContractId: old.id,

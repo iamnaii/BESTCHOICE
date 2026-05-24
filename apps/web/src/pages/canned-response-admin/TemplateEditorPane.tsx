@@ -5,6 +5,7 @@ import { Label } from '@/components/ui/label';
 import { FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import BubbleList from './BubbleList';
+import QuickReplyEditor from './QuickReplyEditor';
 import type { CannedResponse } from './types';
 
 interface Props {
@@ -19,6 +20,8 @@ export default function TemplateEditorPane({ template, existingCategories, onSav
     shortcut: '',
     category: '',
     isActive: true,
+    hideFromChat: false,
+    verifiedOnly: false,
   });
   const [saving, setSaving] = useState(false);
 
@@ -29,6 +32,8 @@ export default function TemplateEditorPane({ template, existingCategories, onSav
         shortcut: template.shortcut,
         category: template.category ?? '',
         isActive: template.isActive,
+        hideFromChat: template.hideFromChat ?? false,
+        verifiedOnly: template.verifiedOnly ?? false,
       });
     }
   }, [template]);
@@ -48,7 +53,9 @@ export default function TemplateEditorPane({ template, existingCategories, onSav
     form.title !== template.title ||
     form.shortcut !== template.shortcut ||
     (form.category || null) !== template.category ||
-    form.isActive !== template.isActive;
+    form.isActive !== template.isActive ||
+    form.hideFromChat !== (template.hideFromChat ?? false) ||
+    form.verifiedOnly !== (template.verifiedOnly ?? false);
 
   const handleSave = async () => {
     if (!form.title.trim()) {
@@ -67,6 +74,8 @@ export default function TemplateEditorPane({ template, existingCategories, onSav
         shortcut: normalizedShortcut,
         category: form.category.trim() || null,
         isActive: form.isActive,
+        hideFromChat: form.hideFromChat,
+        verifiedOnly: form.verifiedOnly,
       });
       toast.success('บันทึกแล้ว');
     } catch (err: any) {
@@ -89,6 +98,8 @@ export default function TemplateEditorPane({ template, existingCategories, onSav
               shortcut: template.shortcut,
               category: template.category ?? '',
               isActive: template.isActive,
+              hideFromChat: template.hideFromChat ?? false,
+              verifiedOnly: template.verifiedOnly ?? false,
             })}
             disabled={!isDirty || saving}
           >
@@ -124,6 +135,9 @@ export default function TemplateEditorPane({ template, existingCategories, onSav
           </datalist>
         </div>
         <BubbleList cannedResponseId={template.id} />
+        <div className="border-t border-border pt-4">
+          <QuickReplyEditor cannedResponseId={template.id} />
+        </div>
         <div className="flex items-center gap-2">
           <input
             type="checkbox"
@@ -133,6 +147,26 @@ export default function TemplateEditorPane({ template, existingCategories, onSav
             className="rounded"
           />
           <Label htmlFor="isActive" className="text-sm leading-snug">เปิดใช้งาน (ปิด = ซ่อนจาก picker)</Label>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="hideFromChat"
+            checked={form.hideFromChat}
+            onChange={(e) => setForm({ ...form, hideFromChat: e.target.checked })}
+            className="rounded"
+          />
+          <Label htmlFor="hideFromChat" className="text-sm leading-snug">ซ่อนจากหน้าแชท (เก็บไว้ในระบบแต่ไม่โชว์ใน picker)</Label>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="verifiedOnly"
+            checked={form.verifiedOnly}
+            onChange={(e) => setForm({ ...form, verifiedOnly: e.target.checked })}
+            className="rounded"
+          />
+          <Label htmlFor="verifiedOnly" className="text-sm leading-snug">สำหรับลูกค้าที่ยืนยันตัวตนแล้วเท่านั้น</Label>
         </div>
       </div>
     </div>

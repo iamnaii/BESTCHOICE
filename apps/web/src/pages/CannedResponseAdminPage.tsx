@@ -27,7 +27,7 @@ export default function CannedResponseAdminPage() {
 
   const query = useQuery<CannedResponse[]>({
     queryKey: ['canned-responses-admin'],
-    queryFn: () => api.get('/staff-chat/canned-responses').then((r: any) => r.data),
+    queryFn: () => api.get('/staff-chat/canned-responses?includeHidden=true').then((r: any) => r.data),
   });
 
   const templates = query.data ?? [];

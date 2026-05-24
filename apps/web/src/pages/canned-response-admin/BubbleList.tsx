@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import api from '@/lib/api';
 import BubbleEditor from './BubbleEditor';
+import ChannelChips from './ChannelChips';
 import type { CannedResponseBubble, BubbleType } from './types';
 
 interface Props { cannedResponseId: string; }
@@ -33,6 +34,12 @@ function SortableBubbleRow({ bubble, onChange, onDelete }: { bubble: CannedRespo
         <button onClick={onDelete} className="p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded" title="ลบ">
           <Trash2 className="w-3.5 h-3.5" />
         </button>
+      </div>
+      <div className="mb-2">
+        <ChannelChips
+          selectedChannels={bubble.channels ?? []}
+          onChange={(channels) => onChange({ channels })}
+        />
       </div>
       <BubbleEditor bubble={bubble} onChange={onChange} />
     </div>

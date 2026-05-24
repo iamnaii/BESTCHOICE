@@ -206,8 +206,32 @@ export class ContractExchangeService {
       // approval IS the workflow approval — the customer doesn't need a
       // second review pass before signing.
       //
-      // pdpaConsentId is carried from the old contract — the customer already
-      // consented to the deal; the swap doesn't introduce new personal data.
+      // PDPA consent: Contract.pdpaConsentId is @unique so we can't reuse
+      // the old contract's consent row. Clone it for the new contract — same
+      // customer + same consent semantics + fresh row id satisfies the unique
+      // constraint AND keeps the audit trail per-contract.
+      let clonedPdpaConsentId: string | null = null;
+      if (old.pdpaConsentId) {
+        const oldConsent = await tx.pDPAConsent.findUnique({
+          where: { id: old.pdpaConsentId },
+        });
+        if (oldConsent) {
+          const cloned = await tx.pDPAConsent.create({
+            data: {
+              customerId: oldConsent.customerId,
+              consentVersion: oldConsent.consentVersion,
+              privacyNoticeText: oldConsent.privacyNoticeText,
+              purposes: oldConsent.purposes,
+              status: oldConsent.status,
+              grantedAt: oldConsent.grantedAt,
+              ipAddress: oldConsent.ipAddress,
+              deviceInfo: oldConsent.deviceInfo,
+              signatureImage: oldConsent.signatureImage,
+            },
+          });
+          clonedPdpaConsentId = cloned.id;
+        }
+      }
       const contractNumber = await this.nextExchangeContractNumber(tx);
       const newContract = await tx.contract.create({
         data: {
@@ -218,7 +242,7 @@ export class ContractExchangeService {
           salespersonId: old.salespersonId,
           status: 'DRAFT',
           workflowStatus: 'APPROVED',
-          pdpaConsentId: old.pdpaConsentId ?? null,
+          pdpaConsentId: clonedPdpaConsentId,
           planType: old.planType,
           totalMonths: remainingMonths,
           monthlyPayment,

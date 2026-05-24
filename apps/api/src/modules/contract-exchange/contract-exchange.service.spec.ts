@@ -200,6 +200,10 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
         findUniqueOrThrow: jest.fn(),
       },
       journalLine: { findMany: jest.fn().mockResolvedValue([]) },
+      pDPAConsent: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'cloned-pdpa-uuid' }),
+      },
     };
     templates = {
       t1a: { execute: jest.fn() },
@@ -281,9 +285,53 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
     expect(result).toEqual({ id: 'r1', newContractId: 'new-c' });
   });
 
-  it('carries pdpaConsentId from old contract onto new contract', async () => {
+  it('clones PDPA consent from old contract for new contract (unique constraint workaround)', async () => {
+    // Contract.pdpaConsentId is @unique so we can't reuse the old contract's
+    // consent row. Service clones into a new row so the new contract gets
+    // a fresh consent id while preserving the customer's consent semantics.
     prisma.contractExchangeRequest.updateMany.mockResolvedValue({ count: 1 });
     const old = { ...makeOldContract(12, 4), pdpaConsentId: 'pdpa-old-123' };
+    prisma.contractExchangeRequest.findUniqueOrThrow.mockResolvedValue({
+      id: 'r1', oldContractId: 'old', oldProductId: 'op', newProductId: 'np',
+      oldContract: old,
+    });
+    prisma.payment.count.mockResolvedValue(4);
+    prisma.pDPAConsent.findUnique.mockResolvedValue({
+      id: 'pdpa-old-123',
+      customerId: 'cust-1',
+      consentVersion: 'v1.0',
+      privacyNoticeText: 'Notice',
+      purposes: ['CONTRACT_PROCESSING'],
+      status: 'GRANTED',
+      grantedAt: new Date('2026-01-01'),
+      ipAddress: '127.0.0.1',
+      deviceInfo: null,
+      signatureImage: null,
+    });
+    prisma.pDPAConsent.create.mockResolvedValue({ id: 'pdpa-cloned-456' });
+    prisma.contract.create.mockResolvedValue({ id: 'nc', contractNumber: 'EXCH-20260524-0001' });
+
+    await service.approve('r1', 'u1');
+
+    expect(prisma.pDPAConsent.findUnique).toHaveBeenCalledWith({
+      where: { id: 'pdpa-old-123' },
+    });
+    expect(prisma.pDPAConsent.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        customerId: 'cust-1',
+        consentVersion: 'v1.0',
+        status: 'GRANTED',
+      }),
+    }));
+
+    const createData = prisma.contract.create.mock.calls[0][0].data;
+    expect(createData.pdpaConsentId).toBe('pdpa-cloned-456');
+    expect(createData.pdpaConsentId).not.toBe('pdpa-old-123');
+  });
+
+  it('sets pdpaConsentId=null when old contract has no consent', async () => {
+    prisma.contractExchangeRequest.updateMany.mockResolvedValue({ count: 1 });
+    const old = { ...makeOldContract(12, 4), pdpaConsentId: null };
     prisma.contractExchangeRequest.findUniqueOrThrow.mockResolvedValue({
       id: 'r1', oldContractId: 'old', oldProductId: 'op', newProductId: 'np',
       oldContract: old,
@@ -293,8 +341,10 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
 
     await service.approve('r1', 'u1');
 
+    expect(prisma.pDPAConsent.findUnique).not.toHaveBeenCalled();
+    expect(prisma.pDPAConsent.create).not.toHaveBeenCalled();
     const createData = prisma.contract.create.mock.calls[0][0].data;
-    expect(createData.pdpaConsentId).toBe('pdpa-old-123');
+    expect(createData.pdpaConsentId).toBeNull();
   });
 
   it('creates new contract with remaining-installment plan (8 of 12)', async () => {

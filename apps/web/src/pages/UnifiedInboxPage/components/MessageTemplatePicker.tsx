@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Check, ChevronDown, ChevronRight, Search } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, FileText, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import api from '@/lib/api';
 
@@ -22,6 +22,14 @@ interface CannedResponse {
   sortOrder?: number;
 }
 
+interface PreviewResponse {
+  id: string;
+  shortcut: string;
+  title: string;
+  content: string;
+  expandedContent: string;
+}
+
 interface Props {
   isOpen: boolean;
   onClose: () => void;
@@ -30,12 +38,6 @@ interface Props {
 }
 
 export default function MessageTemplatePicker({ isOpen, onClose, onInsert, roomId }: Props) {
-  // NOTE: roomId is reserved for future use (Task 5: preview pane will fetch
-  // /staff-chat/canned-responses/:id/preview?roomId=... to expand variables).
-  // onInsert is wired in Task 5 (preview pane "ใส่ข้อความ" button).
-  void roomId;
-  void onInsert;
-
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
@@ -46,6 +48,22 @@ export default function MessageTemplatePicker({ isOpen, onClose, onInsert, roomI
     enabled: isOpen,
     refetchOnWindowFocus: false,
   });
+
+  const { data: preview, isLoading: isPreviewLoading } = useQuery<PreviewResponse>({
+    queryKey: ['canned-response-preview', roomId, selectedId],
+    queryFn: () =>
+      api
+        .get(`/staff-chat/rooms/${roomId}/canned-responses/${selectedId}/preview`)
+        .then((r: any) => r.data),
+    enabled: !!selectedId && !!roomId,
+    refetchOnWindowFocus: false,
+  });
+
+  const handleInsert = () => {
+    if (!preview) return;
+    onInsert(preview.expandedContent);
+    onClose();
+  };
 
   // Group templates by category (null → "อื่นๆ")
   const grouped = useMemo(() => {
@@ -166,9 +184,49 @@ export default function MessageTemplatePicker({ isOpen, onClose, onInsert, roomI
             })}
           </div>
 
-          {/* Right: preview placeholder (built in Task 5) */}
-          <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
-            {selectedId ? 'preview pending' : 'เลือก template เพื่อดูตัวอย่าง'}
+          {/* Right: preview */}
+          <div className="flex-1 flex flex-col overflow-hidden bg-muted/10">
+            {!selectedId && (
+              <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground leading-snug">
+                <div className="text-center">
+                  <FileText className="w-10 h-10 mx-auto mb-2 text-muted-foreground/40" />
+                  เลือก template เพื่อดูตัวอย่าง
+                </div>
+              </div>
+            )}
+            {selectedId && (
+              <>
+                <div className="flex items-center justify-between px-5 py-2.5 border-b border-border bg-card">
+                  <div className="flex items-center gap-2 leading-snug">
+                    <span className="text-sm font-semibold text-foreground">{preview?.title ?? '...'}</span>
+                    {preview?.shortcut && (
+                      <>
+                        <span className="text-xs text-muted-foreground">·</span>
+                        <code className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">/{preview.shortcut}</code>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <div className="flex-1 overflow-y-auto p-5">
+                  <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2">ตัวอย่าง (แทนค่าตัวแปรจากลูกค้า)</div>
+                  <div className="bg-card border border-border rounded-lg p-4 text-sm leading-relaxed whitespace-pre-line min-h-[80px]">
+                    {isPreviewLoading ? (
+                      <span className="text-muted-foreground">กำลังโหลด...</span>
+                    ) : (
+                      preview?.expandedContent
+                    )}
+                  </div>
+                  {preview?.content && preview.content !== preview.expandedContent && (
+                    <>
+                      <div className="text-[11px] uppercase tracking-wider text-muted-foreground mt-4 mb-2">เนื้อหาต้นฉบับ</div>
+                      <div className="bg-muted border border-border rounded-lg p-3 text-xs font-mono text-muted-foreground whitespace-pre-line">
+                        {preview.content}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         </div>
 
@@ -177,7 +235,7 @@ export default function MessageTemplatePicker({ isOpen, onClose, onInsert, roomI
           <Button variant="ghost" onClick={onClose}>
             ยกเลิก
           </Button>
-          <Button disabled={!selectedId}>
+          <Button disabled={!preview} onClick={handleInsert}>
             <Check className="w-4 h-4 mr-1.5" />
             ใส่ข้อความ
           </Button>

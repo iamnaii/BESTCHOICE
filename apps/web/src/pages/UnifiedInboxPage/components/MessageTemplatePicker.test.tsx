@@ -89,3 +89,61 @@ describe('MessageTemplatePicker — tree', () => {
     });
   });
 });
+
+describe('MessageTemplatePicker — preview', () => {
+  beforeEach(() => {
+    vi.mocked(api.get).mockImplementation((url: string) => {
+      if (url === '/staff-chat/canned-responses') {
+        return Promise.resolve({
+          data: [
+            { id: 't1', shortcut: 'iphone16', title: 'iPhone 16', content: 'สวัสดีคุณ {customerName}', category: 'เรทผ่อน iPhone', sortOrder: 1 },
+          ],
+        });
+      }
+      if (url.includes('/preview')) {
+        return Promise.resolve({
+          data: {
+            id: 't1',
+            shortcut: 'iphone16',
+            title: 'iPhone 16',
+            content: 'สวัสดีคุณ {customerName}',
+            expandedContent: 'สวัสดีคุณ สมชาย',
+          },
+        });
+      }
+      return Promise.resolve({ data: null });
+    });
+  });
+
+  it('shows empty state when no template selected', async () => {
+    render(wrap(<MessageTemplatePicker isOpen={true} onClose={vi.fn()} onInsert={vi.fn()} roomId="r1" />));
+    expect(await screen.findByText('เลือก template เพื่อดูตัวอย่าง')).toBeInTheDocument();
+  });
+
+  it('fetches preview when template selected', async () => {
+    render(wrap(<MessageTemplatePicker isOpen={true} onClose={vi.fn()} onInsert={vi.fn()} roomId="r1" />));
+    fireEvent.click(await screen.findByText('เรทผ่อน iPhone'));
+    fireEvent.click(await screen.findByText('iPhone 16'));
+    await waitFor(() => {
+      expect(api.get).toHaveBeenCalledWith('/staff-chat/rooms/r1/canned-responses/t1/preview');
+    });
+    expect(await screen.findByText('สวัสดีคุณ สมชาย')).toBeInTheDocument();
+  });
+
+  it('insert button disabled when no selection', () => {
+    render(wrap(<MessageTemplatePicker isOpen={true} onClose={vi.fn()} onInsert={vi.fn()} roomId="r1" />));
+    expect(screen.getByRole('button', { name: /ใส่ข้อความ/ })).toBeDisabled();
+  });
+
+  it('insert button calls onInsert with expandedContent then onClose', async () => {
+    const onInsert = vi.fn();
+    const onClose = vi.fn();
+    render(wrap(<MessageTemplatePicker isOpen={true} onClose={onClose} onInsert={onInsert} roomId="r1" />));
+    fireEvent.click(await screen.findByText('เรทผ่อน iPhone'));
+    fireEvent.click(await screen.findByText('iPhone 16'));
+    await screen.findByText('สวัสดีคุณ สมชาย'); // preview loaded
+    fireEvent.click(screen.getByRole('button', { name: /ใส่ข้อความ/ }));
+    expect(onInsert).toHaveBeenCalledWith('สวัสดีคุณ สมชาย');
+    expect(onClose).toHaveBeenCalled();
+  });
+});

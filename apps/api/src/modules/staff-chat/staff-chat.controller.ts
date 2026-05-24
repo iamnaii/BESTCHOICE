@@ -14,6 +14,7 @@ import {
   ParseFilePipe,
   MaxFileSizeValidator,
   FileTypeValidator,
+  BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ConfigService } from '@nestjs/config';
@@ -168,6 +169,19 @@ export class StaffChatController {
     @Body('staffId') staffId: string,
   ) {
     await this.assignment.assign(id, staffId);
+    return { success: true };
+  }
+
+  @Patch('rooms/:id/customer')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  async linkCustomerToRoom(
+    @Param('id') id: string,
+    @Body('customerId') customerId: string,
+  ) {
+    if (!customerId || typeof customerId !== 'string') {
+      throw new BadRequestException('กรุณาระบุ customerId');
+    }
+    await this.roomManager.linkCustomer(id, customerId);
     return { success: true };
   }
 

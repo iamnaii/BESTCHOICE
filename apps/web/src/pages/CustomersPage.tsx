@@ -3,7 +3,7 @@ import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useForm } from 'react-hook-form';
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import { exportToExcel, type ExcelColumn } from '@/utils/excel.util';
 import { formatDateShort } from '@/utils/formatters';
 import { toast } from 'sonner';
@@ -161,6 +161,8 @@ export default function CustomersPage() {
   const [sortBy, setSortBy] = useState('');
   const [sortOrder, setSortOrder] = useState('asc');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [linkAfterCreate, setLinkAfterCreate] = useState<{ roomId: string } | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
   const form = useForm<CustomerFormData>({
     resolver: standardSchemaResolver(customerSchema),
     defaultValues: emptyForm,
@@ -181,6 +183,30 @@ export default function CustomersPage() {
   const [cardReaderLoading, setCardReaderLoading] = useState(false);
 
   useEffect(() => { setPage(1); }, [debouncedSearch, contractStatusFilter, hasOverdueFilter, creditStatusFilter, branchFilter, tierFilter, sortBy, sortOrder]);
+
+  // Prefill + auto-open modal when arriving from a chat room "create customer" CTA
+  // Expected query params: ?new=1&name=<displayName>&fromRoomId=<roomId>
+  useEffect(() => {
+    if (searchParams.get('new') !== '1') return;
+    const prefillName = searchParams.get('name') ?? '';
+    const fromRoomId = searchParams.get('fromRoomId');
+    if (prefillName) {
+      const parts = prefillName.trim().split(/\s+/);
+      form.setValue('firstName', parts[0] ?? '');
+      form.setValue('lastName', parts.slice(1).join(' '));
+    }
+    if (fromRoomId) {
+      setLinkAfterCreate({ roomId: fromRoomId });
+    }
+    setIsModalOpen(true);
+    // Clear params so refresh doesn't re-open the modal
+    const next = new URLSearchParams(searchParams);
+    next.delete('new');
+    next.delete('name');
+    next.delete('fromRoomId');
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Sync current address when "same as ID card" is checked
   useEffect(() => {
@@ -255,10 +281,26 @@ export default function CustomersPage() {
 
       return api.post('/customers', payload);
     },
-    onSuccess: (res) => {
+    onSuccess: async (res) => {
       queryClient.invalidateQueries({ queryKey: ['customers'] });
       toast.success('เพิ่มลูกค้าสำเร็จ');
       setIsModalOpen(false);
+      // If we arrived here from a chat-room CTA, link the new customer to that room
+      if (linkAfterCreate?.roomId) {
+        try {
+          await api.patch(`/staff-chat/rooms/${linkAfterCreate.roomId}/customer`, {
+            customerId: res.data.id,
+          });
+          queryClient.invalidateQueries({ queryKey: ['chat-room', linkAfterCreate.roomId] });
+          toast.success('ผูกลูกค้ากับแชทแล้ว');
+          setLinkAfterCreate(null);
+          navigate('/inbox');
+          return;
+        } catch (err) {
+          toast.error(`ผูกลูกค้ากับแชทไม่สำเร็จ: ${getErrorMessage(err)}`);
+          // Fall through to default navigation
+        }
+      }
       navigate(`/customers/${res.data.id}`);
     },
     onError: (err: unknown) => {

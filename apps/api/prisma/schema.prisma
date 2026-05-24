@@ -4707,6 +4707,13 @@ enum MessageType {
   TEMPLATE
 }
 
+/// Phase 1: bubble content type for CannedResponseBubble (multi-bubble templates)
+enum BubbleType {
+  TEXT
+  IMAGE
+  STICKER
+}
+
 /// Z10: outbound LINE message delivery state, populated from
 /// `events[].deliveryContext` on the LINE webhook + custom replies. Used by
 /// queue.service `lineResponse` post-filter to surface RESPONDED/IGNORED/
@@ -5108,9 +5115,33 @@ model CannedResponse {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
+  bubbles CannedResponseBubble[]
+
   @@index([isActive, category])
   @@index([deletedAt])
   @@map("canned_responses")
+}
+
+/// Phase 1: rich-content bubbles for CannedResponse (max 5 bubbles per template).
+/// Each bubble is one of TEXT / IMAGE / STICKER. Ordered by sortOrder.
+model CannedResponseBubble {
+  id               String     @id @default(uuid())
+  cannedResponseId String     @map("canned_response_id")
+  type             BubbleType
+  sortOrder        Int        @default(0) @map("sort_order")
+  text             String?    @db.Text
+  mediaUrl         String?    @map("media_url")
+  thumbnailUrl     String?    @map("thumbnail_url")
+  stickerPackageId String?    @map("sticker_package_id")
+  stickerId        String?    @map("sticker_id")
+  createdAt        DateTime   @default(now()) @map("created_at")
+  updatedAt        DateTime   @updatedAt @map("updated_at")
+  deletedAt        DateTime?  @map("deleted_at")
+
+  cannedResponse CannedResponse @relation(fields: [cannedResponseId], references: [id], onDelete: Cascade)
+
+  @@index([cannedResponseId, sortOrder])
+  @@map("canned_response_bubbles")
 }
 
 /// Tracks staff online/offline + activity inside the chat system

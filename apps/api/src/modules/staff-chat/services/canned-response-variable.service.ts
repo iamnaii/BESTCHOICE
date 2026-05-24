@@ -42,7 +42,7 @@ export class CannedResponseVariableService {
     if (template.includes('{branchName}')) {
       try {
         const room = await this.prisma.chatRoom.findFirst({
-          where: { id: context.roomId },
+          where: { id: context.roomId, deletedAt: null },
           select: {
             assignedTo: {
               select: { branch: { select: { name: true } } },

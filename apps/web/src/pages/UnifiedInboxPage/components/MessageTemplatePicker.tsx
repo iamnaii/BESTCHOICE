@@ -42,6 +42,16 @@ export default function MessageTemplatePicker({ isOpen, onClose, onInsert, roomI
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
 
+  // Reset local state when modal opens — prevents stale selection/search from
+  // a previous conversation leaking into the current one.
+  useEffect(() => {
+    if (isOpen) {
+      setSelectedId(null);
+      setSearchQuery('');
+      setExpandedCategories(new Set());
+    }
+  }, [isOpen]);
+
   const { data: templates = [], isError } = useQuery<CannedResponse[]>({
     queryKey: ['canned-responses-picker'],
     queryFn: () => api.get('/staff-chat/canned-responses').then((r: any) => r.data),
@@ -49,7 +59,11 @@ export default function MessageTemplatePicker({ isOpen, onClose, onInsert, roomI
     refetchOnWindowFocus: false,
   });
 
-  const { data: preview, isLoading: isPreviewLoading } = useQuery<PreviewResponse>({
+  const {
+    data: preview,
+    isLoading: isPreviewLoading,
+    isError: isPreviewError,
+  } = useQuery<PreviewResponse>({
     queryKey: ['canned-response-preview', roomId, selectedId],
     queryFn: () =>
       api
@@ -117,7 +131,7 @@ export default function MessageTemplatePicker({ isOpen, onClose, onInsert, roomI
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-4xl p-0 gap-0 flex flex-col" style={{ height: 600 }}>
+      <DialogContent className="max-w-4xl p-0 gap-0 flex flex-col h-[min(600px,80vh)]">
         <DialogHeader className="px-5 py-3.5 border-b border-border">
           <DialogTitle className="text-base font-semibold leading-snug">
             เลือกข้อความสำเร็จรูป
@@ -132,6 +146,7 @@ export default function MessageTemplatePicker({ isOpen, onClose, onInsert, roomI
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
+              autoFocus
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="ค้นหาตามชื่อ, เนื้อหา, หรือ shortcut..."
@@ -225,7 +240,7 @@ export default function MessageTemplatePicker({ isOpen, onClose, onInsert, roomI
                     {preview?.shortcut && (
                       <>
                         <span className="text-xs text-muted-foreground">·</span>
-                        <code className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">/{preview.shortcut}</code>
+                        <code className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{preview.shortcut.startsWith('/') ? preview.shortcut : `/${preview.shortcut}`}</code>
                       </>
                     )}
                   </div>
@@ -233,11 +248,11 @@ export default function MessageTemplatePicker({ isOpen, onClose, onInsert, roomI
                 <div className="flex-1 overflow-y-auto p-5">
                   <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2">ตัวอย่าง (แทนค่าตัวแปรจากลูกค้า)</div>
                   <div className="bg-card border border-border rounded-lg p-4 text-sm leading-relaxed whitespace-pre-line min-h-[80px]">
-                    {isPreviewLoading ? (
-                      <span className="text-muted-foreground">กำลังโหลด...</span>
-                    ) : (
-                      preview?.expandedContent
+                    {isPreviewLoading && <span className="text-muted-foreground">กำลังโหลด...</span>}
+                    {!isPreviewLoading && isPreviewError && (
+                      <span className="text-destructive">โหลดตัวอย่างไม่สำเร็จ — ลองเลือกใหม่หรือปิด/เปิด modal</span>
                     )}
+                    {!isPreviewLoading && !isPreviewError && preview?.expandedContent}
                   </div>
                   {preview?.content && preview.content !== preview.expandedContent && (
                     <>

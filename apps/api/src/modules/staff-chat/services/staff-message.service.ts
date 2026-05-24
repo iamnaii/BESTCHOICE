@@ -85,18 +85,20 @@ export class StaffMessageService {
     content: string;
     expandedContent: string;
   }> {
-    // 1. Find canned response by id
+    // 1. Find canned response by id — must be active + not soft-deleted
+    //    (matches getCannedResponses list filter so deactivated templates
+    //     are not reachable via preview either)
     const cannedResponse = await this.prisma.cannedResponse.findFirst({
-      where: { id, deletedAt: null },
+      where: { id, deletedAt: null, isActive: true },
     });
 
     if (!cannedResponse) {
       throw new NotFoundException('ไม่พบข้อความสำเร็จรูป');
     }
 
-    // 2. Find room to get customerId
+    // 2. Find room to get customerId — skip soft-deleted rooms
     const room = await this.prisma.chatRoom.findFirst({
-      where: { id: roomId },
+      where: { id: roomId, deletedAt: null },
       select: { id: true, customerId: true },
     });
 

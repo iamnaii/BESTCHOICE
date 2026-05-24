@@ -66,6 +66,8 @@ const InsurancePage = lazy(() => import('@/pages/InsurancePage'));
 const CreateInsuranceWizardPage = lazy(() => import('@/pages/insurance/CreateInsuranceWizardPage'));
 const WarrantyCheckPage = lazy(() => import('@/pages/insurance/WarrantyCheckPage'));
 const RepairTicketDetailPage = lazy(() => import('@/pages/insurance/RepairTicketDetailPage'));
+const ExchangeRequestForm = lazy(() => import('@/pages/insurance/ExchangeRequestForm'));
+const ExchangeRequestsPage = lazy(() => import('@/pages/insurance/ExchangeRequestsPage'));
 const AuditLogsPage = lazy(() => import('@/pages/AuditLogsPage'));
 const FinancialAuditPage = lazy(() => import('@/pages/FinancialAuditPage'));
 const PaymentCsvImportPage = lazy(() => import('@/pages/PaymentCsvImportPage'));
@@ -669,6 +671,22 @@ function App() {
                 roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES', 'ACCOUNTANT']}
               >
                 <RepairTicketDetailPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/insurance/exchange-request/new"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'SALES']}>
+                <ExchangeRequestForm />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/insurance/exchange-requests"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'SALES', 'FINANCE_MANAGER']}>
+                <ExchangeRequestsPage />
               </ProtectedRoute>
             }
           />

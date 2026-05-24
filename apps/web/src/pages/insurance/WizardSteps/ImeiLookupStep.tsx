@@ -58,7 +58,7 @@ export function ImeiLookupStep({ onRepairChosen, presetImei }: ImeiLookupStepPro
     // CASH exchange = 2 separate transactions (trade-in + new POS sale) — button
     // hidden via ActionButtons; this branch is defensive only.
     if (result.sale.saleType === 'INSTALLMENT' && result.contract) {
-      navigate(`/defect-exchange?contractId=${result.contract.id}`);
+      navigate(`/insurance/exchange-request/new?contractId=${result.contract.id}`);
     }
     // EXTERNAL_FINANCE handled by disabled button
   };

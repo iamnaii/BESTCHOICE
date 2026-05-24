@@ -1,12 +1,29 @@
-import { Injectable, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { hasCrossBranchAccess } from '../auth/branch-access.util';
 import { SubmitExchangeRequestDto } from './dto/submit-exchange-request.dto';
 import { ExchangeNewContract1ATemplate } from '../journal/cpa-templates/exchange-new-contract-1a.template';
 import { ExchangeCloseOld21_1106Template } from '../journal/cpa-templates/exchange-close-old-21-1106.template';
 import { ExchangeClearVendor21_1106Template } from '../journal/cpa-templates/exchange-clear-vendor-21-1106.template';
+
+/**
+ * Subset of the request user that submit() needs to perform branch scoping.
+ * Matches the shape attached to `request.user` by JwtAuthGuard.
+ */
+interface RequestUser {
+  id: string;
+  role?: string | null;
+  branchId?: string | null;
+}
 
 /** Minimal product shape for same-price validation */
 interface ProductPriceSnapshot {
@@ -29,7 +46,7 @@ export class ContractExchangeService {
     private readonly t3: ExchangeClearVendor21_1106Template,
   ) {}
 
-  async submit(dto: SubmitExchangeRequestDto, userId: string) {
+  async submit(dto: SubmitExchangeRequestDto, user: RequestUser) {
     // 1. Old contract must exist + ACTIVE + not deleted
     const oldContract = await this.prisma.contract.findUnique({
       where: { id: dto.oldContractId },
@@ -37,6 +54,15 @@ export class ContractExchangeService {
     if (!oldContract || oldContract.deletedAt) {
       throw new NotFoundException('ไม่พบสัญญาเดิม');
     }
+
+    // Branch scoping (in-service because the DTO doesn't carry branchId — see
+    // issue #1086 item 2). BranchGuard isn't reachable from oldContractId
+    // without an extra controller-level resolver; doing the check here keeps
+    // the existing controller surface area unchanged.
+    if (!hasCrossBranchAccess(user) && oldContract.branchId !== user.branchId) {
+      throw new ForbiddenException('ไม่สามารถสร้างคำขอเปลี่ยนเครื่องของสาขาอื่นได้');
+    }
+
     if (oldContract.status !== 'ACTIVE') {
       throw new BadRequestException(`สัญญาเดิมสถานะ ${oldContract.status} — ต้องเป็น ACTIVE`);
     }
@@ -95,7 +121,7 @@ export class ContractExchangeService {
         conditionNote: dto.conditionNote,
         conditionPhotos: dto.conditionPhotos ?? [],
         status: 'PENDING',
-        requestedById: userId,
+        requestedById: user.id,
       },
     });
   }

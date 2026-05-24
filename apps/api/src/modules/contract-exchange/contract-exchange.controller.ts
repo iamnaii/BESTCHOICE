@@ -14,7 +14,9 @@ export class ContractExchangeController {
   @Post()
   @Roles('SALES', 'BRANCH_MANAGER', 'OWNER')
   submit(@Body() dto: SubmitExchangeRequestDto, @Req() req: any) {
-    return this.svc.submit(dto, req.user.id);
+    // Pass the full user object — the service does an in-service branch check
+    // (issue #1086 item 2) and needs role + branchId, not just the id.
+    return this.svc.submit(dto, req.user);
   }
 
   @Get('pending')

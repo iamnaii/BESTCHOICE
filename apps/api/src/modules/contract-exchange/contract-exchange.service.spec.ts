@@ -1,11 +1,18 @@
 import { Test } from '@nestjs/testing';
-import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { ContractExchangeService } from './contract-exchange.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { ExchangeNewContract1ATemplate } from '../journal/cpa-templates/exchange-new-contract-1a.template';
 import { ExchangeCloseOld21_1106Template } from '../journal/cpa-templates/exchange-close-old-21-1106.template';
 import { ExchangeClearVendor21_1106Template } from '../journal/cpa-templates/exchange-clear-vendor-21-1106.template';
+
+// Default user shape used by submit() tests after Fix 2 (issue #1086 item 2).
+// SALES_BR1 matches the mock contract's branchId ('br-1') so legacy tests
+// pass the in-service branch check. Specific tests override as needed.
+const SALES_BR1 = { id: 'u-1', role: 'SALES', branchId: 'br-1' };
+const SALES_BR2 = { id: 'u-2', role: 'SALES', branchId: 'br-2' };
+const OWNER_USER = { id: 'owner-1', role: 'OWNER', branchId: null };
 
 describe('ContractExchangeService.submit', () => {
   let service: ContractExchangeService;
@@ -33,49 +40,93 @@ describe('ContractExchangeService.submit', () => {
   it('NotFoundException when old contract does not exist', async () => {
     prisma.contract.findUnique.mockResolvedValue(null);
     await expect(
-      service.submit({ oldContractId: 'old', oldProductId: 'op', newProductId: 'np' }, 'u-1'),
+      service.submit({ oldContractId: 'old', oldProductId: 'op', newProductId: 'np' }, SALES_BR1),
     ).rejects.toThrow(NotFoundException);
   });
 
   it('BadRequestException when old contract is not ACTIVE', async () => {
-    prisma.contract.findUnique.mockResolvedValue({ id: 'old', status: 'CANCELED', deletedAt: null });
+    prisma.contract.findUnique.mockResolvedValue({ id: 'old', branchId: 'br-1', status: 'CANCELED', deletedAt: null });
     await expect(
-      service.submit({ oldContractId: 'old', oldProductId: 'op', newProductId: 'np' }, 'u-1'),
+      service.submit({ oldContractId: 'old', oldProductId: 'op', newProductId: 'np' }, SALES_BR1),
     ).rejects.toThrow(BadRequestException);
   });
 
   it('BadRequestException when new product is not IN_STOCK', async () => {
-    prisma.contract.findUnique.mockResolvedValue({ id: 'old', status: 'ACTIVE', productId: 'op', deletedAt: null });
+    prisma.contract.findUnique.mockResolvedValue({ id: 'old', branchId: 'br-1', status: 'ACTIVE', productId: 'op', deletedAt: null });
     prisma.product.findUnique
       .mockResolvedValueOnce({ id: 'op', brand: 'A', model: 'X', storage: '256', sellingPrice: '28000', status: 'SOLD_INSTALLMENT' })
       .mockResolvedValueOnce({ id: 'np', brand: 'A', model: 'X', storage: '256', sellingPrice: '28000', status: 'SOLD_INSTALLMENT' });
     await expect(
-      service.submit({ oldContractId: 'old', oldProductId: 'op', newProductId: 'np' }, 'u-1'),
+      service.submit({ oldContractId: 'old', oldProductId: 'op', newProductId: 'np' }, SALES_BR1),
     ).rejects.toThrow(/IN_STOCK/);
   });
 
   it('BadRequestException when brand differs', async () => {
-    prisma.contract.findUnique.mockResolvedValue({ id: 'old', status: 'ACTIVE', productId: 'op', deletedAt: null });
+    prisma.contract.findUnique.mockResolvedValue({ id: 'old', branchId: 'br-1', status: 'ACTIVE', productId: 'op', deletedAt: null });
     prisma.product.findUnique
       .mockResolvedValueOnce({ id: 'op', brand: 'Apple', model: 'iPhone 15', storage: '256', sellingPrice: '28000' })
       .mockResolvedValueOnce({ id: 'np', brand: 'Samsung', model: 'iPhone 15', storage: '256', sellingPrice: '28000', status: 'IN_STOCK' });
     await expect(
-      service.submit({ oldContractId: 'old', oldProductId: 'op', newProductId: 'np' }, 'u-1'),
+      service.submit({ oldContractId: 'old', oldProductId: 'op', newProductId: 'np' }, SALES_BR1),
     ).rejects.toThrow(/รุ่นเดียวกัน/);
   });
 
   it('BadRequestException when sellingPrice differs', async () => {
-    prisma.contract.findUnique.mockResolvedValue({ id: 'old', status: 'ACTIVE', productId: 'op', deletedAt: null });
+    prisma.contract.findUnique.mockResolvedValue({ id: 'old', branchId: 'br-1', status: 'ACTIVE', productId: 'op', deletedAt: null });
     prisma.product.findUnique
       .mockResolvedValueOnce({ id: 'op', brand: 'Apple', model: 'iPhone 15', storage: '256', sellingPrice: '28000' })
       .mockResolvedValueOnce({ id: 'np', brand: 'Apple', model: 'iPhone 15', storage: '256', sellingPrice: '30000', status: 'IN_STOCK' });
     await expect(
-      service.submit({ oldContractId: 'old', oldProductId: 'op', newProductId: 'np' }, 'u-1'),
+      service.submit({ oldContractId: 'old', oldProductId: 'op', newProductId: 'np' }, SALES_BR1),
     ).rejects.toThrow(/ราคา/);
   });
 
+  // Issue #1086 item 1 — silent same-price bypass when prices are null
+  it('BadRequestException when new product has BOTH sellingPrice and installmentPrice null (no silent same-price bypass)', async () => {
+    prisma.contract.findUnique.mockResolvedValue({ id: 'old', branchId: 'br-1', status: 'ACTIVE', productId: 'op', deletedAt: null });
+    prisma.product.findUnique
+      .mockResolvedValueOnce({ id: 'op', brand: 'Apple', model: 'iPhone 15', storage: '256', sellingPrice: '28000', installmentPrice: '28000' })
+      .mockResolvedValueOnce({ id: 'np', brand: 'Apple', model: 'iPhone 15', storage: '256', sellingPrice: null, installmentPrice: null, status: 'IN_STOCK' });
+    await expect(
+      service.submit({ oldContractId: 'old', oldProductId: 'op', newProductId: 'np' }, SALES_BR1),
+    ).rejects.toThrow(/ราคาเครื่องไม่ถูกตั้งค่า/);
+  });
+
+  it('BadRequestException when OLD product has BOTH sellingPrice and installmentPrice null', async () => {
+    prisma.contract.findUnique.mockResolvedValue({ id: 'old', branchId: 'br-1', status: 'ACTIVE', productId: 'op', deletedAt: null });
+    prisma.product.findUnique
+      .mockResolvedValueOnce({ id: 'op', brand: 'Apple', model: 'iPhone 15', storage: '256', sellingPrice: null, installmentPrice: null })
+      .mockResolvedValueOnce({ id: 'np', brand: 'Apple', model: 'iPhone 15', storage: '256', sellingPrice: '28000', installmentPrice: '28000', status: 'IN_STOCK' });
+    await expect(
+      service.submit({ oldContractId: 'old', oldProductId: 'op', newProductId: 'np' }, SALES_BR1),
+    ).rejects.toThrow(/ราคาเครื่องไม่ถูกตั้งค่า/);
+  });
+
+  // Issue #1086 item 2 — in-service branch check
+  it('ForbiddenException when SALES user from another branch tries to submit', async () => {
+    prisma.contract.findUnique.mockResolvedValue({ id: 'old', branchId: 'br-1', status: 'ACTIVE', productId: 'op', deletedAt: null });
+    await expect(
+      service.submit({ oldContractId: 'old', oldProductId: 'op', newProductId: 'np' }, SALES_BR2),
+    ).rejects.toThrow(ForbiddenException);
+  });
+
+  it('OWNER (cross-branch role) can submit for a contract in any branch', async () => {
+    prisma.contract.findUnique.mockResolvedValue({ id: 'old', branchId: 'br-1', status: 'ACTIVE', productId: 'op', deletedAt: null });
+    const same = { brand: 'Apple', model: 'iPhone 15', storage: '256', sellingPrice: '28000' };
+    prisma.product.findUnique
+      .mockResolvedValueOnce({ id: 'op', ...same })
+      .mockResolvedValueOnce({ id: 'np', ...same, status: 'IN_STOCK' });
+    prisma.contractExchangeRequest.create.mockResolvedValue({ id: 'req-owner', status: 'PENDING' });
+
+    const result = await service.submit(
+      { oldContractId: 'old', oldProductId: 'op', newProductId: 'np' },
+      OWNER_USER,
+    );
+    expect(result.id).toBe('req-owner');
+  });
+
   it('creates PENDING request when all checks pass', async () => {
-    prisma.contract.findUnique.mockResolvedValue({ id: 'old', status: 'ACTIVE', productId: 'op', deletedAt: null });
+    prisma.contract.findUnique.mockResolvedValue({ id: 'old', branchId: 'br-1', status: 'ACTIVE', productId: 'op', deletedAt: null });
     const same = { brand: 'Apple', model: 'iPhone 15', storage: '256', sellingPrice: '28000' };
     prisma.product.findUnique
       .mockResolvedValueOnce({ id: 'op', ...same })
@@ -84,7 +135,7 @@ describe('ContractExchangeService.submit', () => {
 
     const result = await service.submit(
       { oldContractId: 'old', oldProductId: 'op', newProductId: 'np', conditionNote: 'good' },
-      'u-1',
+      SALES_BR1,
     );
 
     expect(result.id).toBe('req-1');
@@ -200,6 +251,23 @@ describe('ContractExchangeService.approve', () => {
     prisma.payment.count.mockResolvedValue(12);
 
     await expect(service.approve('r1', 'u1')).rejects.toThrow(/จ่ายครบงวด/);
+  });
+
+  // Issue #1086 item 5 — new contract must have downPayment=0
+  it('new contract is created with downPayment=0 even when old contract had a non-zero downPayment', async () => {
+    prisma.contractExchangeRequest.updateMany.mockResolvedValue({ count: 1 });
+    prisma.contractExchangeRequest.findUniqueOrThrow.mockResolvedValue({
+      id: 'r1', oldContractId: 'old', oldProductId: 'op', newProductId: 'np',
+      oldContract: makeOldContract(12, 4), // makeOldContract sets downPayment=4000
+    });
+    prisma.payment.count.mockResolvedValue(4);
+    prisma.contract.create.mockResolvedValue({ id: 'nc', contractNumber: 'EX' });
+
+    await service.approve('r1', 'u1');
+
+    const createData = prisma.contract.create.mock.calls[0][0].data;
+    // The new contract's downPayment must be a zero Decimal, not the old 4000.
+    expect(createData.downPayment.toString()).toBe('0');
   });
 });
 

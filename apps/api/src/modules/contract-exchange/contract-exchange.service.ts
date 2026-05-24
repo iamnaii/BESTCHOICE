@@ -1,12 +1,29 @@
-import { Injectable, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { hasCrossBranchAccess } from '../auth/branch-access.util';
 import { SubmitExchangeRequestDto } from './dto/submit-exchange-request.dto';
 import { ExchangeNewContract1ATemplate } from '../journal/cpa-templates/exchange-new-contract-1a.template';
 import { ExchangeCloseOld21_1106Template } from '../journal/cpa-templates/exchange-close-old-21-1106.template';
 import { ExchangeClearVendor21_1106Template } from '../journal/cpa-templates/exchange-clear-vendor-21-1106.template';
+
+/**
+ * Subset of the request user that submit() needs to perform branch scoping.
+ * Matches the shape attached to `request.user` by JwtAuthGuard.
+ */
+interface RequestUser {
+  id: string;
+  role?: string | null;
+  branchId?: string | null;
+}
 
 /** Minimal product shape for same-price validation */
 interface ProductPriceSnapshot {
@@ -29,7 +46,7 @@ export class ContractExchangeService {
     private readonly t3: ExchangeClearVendor21_1106Template,
   ) {}
 
-  async submit(dto: SubmitExchangeRequestDto, userId: string) {
+  async submit(dto: SubmitExchangeRequestDto, user: RequestUser) {
     // 1. Old contract must exist + ACTIVE + not deleted
     const oldContract = await this.prisma.contract.findUnique({
       where: { id: dto.oldContractId },
@@ -37,6 +54,15 @@ export class ContractExchangeService {
     if (!oldContract || oldContract.deletedAt) {
       throw new NotFoundException('ไม่พบสัญญาเดิม');
     }
+
+    // Branch scoping (in-service because the DTO doesn't carry branchId — see
+    // issue #1086 item 2). BranchGuard isn't reachable from oldContractId
+    // without an extra controller-level resolver; doing the check here keeps
+    // the existing controller surface area unchanged.
+    if (!hasCrossBranchAccess(user) && oldContract.branchId !== user.branchId) {
+      throw new ForbiddenException('ไม่สามารถสร้างคำขอเปลี่ยนเครื่องของสาขาอื่นได้');
+    }
+
     if (oldContract.status !== 'ACTIVE') {
       throw new BadRequestException(`สัญญาเดิมสถานะ ${oldContract.status} — ต้องเป็น ACTIVE`);
     }
@@ -49,17 +75,27 @@ export class ContractExchangeService {
       this.prisma.product.findUnique({ where: { id: dto.newProductId } }) as Promise<ProductPriceSnapshot | null>,
     ]);
 
-    // Resolve whichever price field is populated (installmentPrice in prod, sellingPrice in tests)
-    const resolvePrice = (p: any): Decimal =>
-      new Decimal(
-        ((p.sellingPrice ?? p.installmentPrice ?? '0') as { toString(): string } | string).toString(),
-      );
-
     if (!oldRaw) throw new NotFoundException('ไม่พบเครื่องเดิม');
     if (!newRaw) throw new NotFoundException('ไม่พบเครื่องใหม่');
 
     const oldProduct = oldRaw as any;
     const newProduct = newRaw as any;
+
+    // Resolve whichever price field is populated (installmentPrice in prod, sellingPrice in tests).
+    // Return null when both fields are null/missing so the caller can reject — silently
+    // coercing to 0 would let two null-priced products pass the same-price check.
+    // (Issue #1086 item 1.)
+    const resolvePriceOrNull = (p: any): Decimal | null => {
+      const raw = p?.sellingPrice ?? p?.installmentPrice;
+      if (raw === null || raw === undefined) return null;
+      return new Decimal((raw as { toString(): string } | string).toString());
+    };
+
+    const oldPrice = resolvePriceOrNull(oldProduct);
+    const newPrice = resolvePriceOrNull(newProduct);
+    if (oldPrice === null || newPrice === null) {
+      throw new BadRequestException('ราคาเครื่องไม่ถูกตั้งค่า — ตรวจสอบเครื่องในระบบ');
+    }
 
     if (newProduct.status !== 'IN_STOCK') {
       throw new BadRequestException('เครื่องใหม่ต้องอยู่ในสต็อก (IN_STOCK)');
@@ -71,8 +107,6 @@ export class ContractExchangeService {
     ) {
       throw new BadRequestException('เครื่องใหม่ต้องเป็นรุ่นเดียวกัน (brand/model/storage)');
     }
-    const oldPrice = resolvePrice(oldProduct);
-    const newPrice = resolvePrice(newProduct);
     if (!oldPrice.equals(newPrice)) {
       throw new BadRequestException(`ราคาเครื่องใหม่ต้องเท่ากับเครื่องเดิม (${oldPrice} vs ${newPrice})`);
     }
@@ -87,7 +121,7 @@ export class ContractExchangeService {
         conditionNote: dto.conditionNote,
         conditionPhotos: dto.conditionPhotos ?? [],
         status: 'PENDING',
-        requestedById: userId,
+        requestedById: user.id,
       },
     });
   }
@@ -147,7 +181,10 @@ export class ContractExchangeService {
           interestRate: old.interestRate,
           vatAmount: old.vatAmount,
           sellingPrice: old.sellingPrice,
-          downPayment: old.downPayment,
+          // Same-price exchange: customer pays ฿0 at swap (spec v3). Copying
+          // old.downPayment would distort payment-history view and corrupt
+          // early-payoff calcs that reference downPayment. (Issue #1086 item 5.)
+          downPayment: new Decimal(0),
           creditBalance: new Decimal(0),
           contractDate: new Date(),
           exchangedFromContractId: old.id,

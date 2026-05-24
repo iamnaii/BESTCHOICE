@@ -1,4 +1,5 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -91,14 +92,200 @@ export class ContractExchangeService {
     });
   }
 
-  // approve + reject + listPending implemented in Task 8
-  async approve(_id: string, _userId: string): Promise<any> {
-    throw new Error('not yet');
+  async approve(id: string, userId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      // 1. Lock-acquire (race-safe via updateMany count===1)
+      const lock = await (tx as any).contractExchangeRequest.updateMany({
+        where: { id, status: 'PENDING', deletedAt: null },
+        data: {
+          status: 'APPROVED',
+          approvedById: userId,
+          approvedAt: new Date(),
+        },
+      });
+      if (lock.count !== 1) {
+        throw new ConflictException('คำขออาจถูกอนุมัติแล้ว หรือสถานะเปลี่ยน');
+      }
+
+      // 2. Re-fetch with full data
+      const req = await (tx as any).contractExchangeRequest.findUniqueOrThrow({
+        where: { id },
+        include: { oldContract: true },
+      });
+      const old = req.oldContract;
+
+      // 3. Remaining-installment plan
+      const paidCount = await tx.payment.count({
+        where: { contractId: old.id, status: 'PAID', deletedAt: null },
+      });
+      const remainingMonths = old.totalMonths - paidCount;
+      if (remainingMonths <= 0) {
+        throw new BadRequestException('สัญญาเดิมจ่ายครบงวดแล้ว — เปลี่ยนเครื่องไม่ได้');
+      }
+      const monthlyPayment = new Decimal(old.monthlyPayment.toString());
+      const newFinanced = new Decimal(old.financedAmount.toString());
+      const newCommission = old.storeCommission
+        ? new Decimal(old.storeCommission.toString())
+        : new Decimal(0);
+      const newInterest = monthlyPayment.times(remainingMonths).minus(newFinanced);
+
+      // 4. Create new contract (mirror old plan w/ remaining months)
+      const newContract = await tx.contract.create({
+        data: {
+          contractNumber: `EX-${Date.now()}`,
+          customerId: old.customerId,
+          productId: req.newProductId,
+          branchId: old.branchId,
+          salespersonId: old.salespersonId,
+          status: 'ACTIVE',
+          planType: old.planType,
+          totalMonths: remainingMonths,
+          monthlyPayment,
+          financedAmount: newFinanced,
+          storeCommission: newCommission,
+          interestTotal: newInterest,
+          interestRate: old.interestRate,
+          vatAmount: old.vatAmount,
+          sellingPrice: old.sellingPrice,
+          downPayment: old.downPayment,
+          creditBalance: new Decimal(0),
+          contractDate: new Date(),
+          exchangedFromContractId: old.id,
+        } as any,
+      });
+
+      // 5. Post JE chain atomically
+      const buyback = newFinanced.plus(newCommission);
+      const oldOutstanding = await this.computeOldOutstanding(tx, old, paidCount);
+
+      const je1a = await this.t1a.execute(newContract.id, tx);
+      const je2 = await this.t2.execute(
+        {
+          oldContractId: old.id,
+          buyback,
+          oldGrossOutstanding: oldOutstanding.gross,
+          oldVatReceivableOutstanding: oldOutstanding.vatReceivable,
+          oldUnearnedInterestOutstanding: oldOutstanding.unearnedInterest,
+          oldDeferredVatOutstanding: oldOutstanding.deferredVat,
+        },
+        tx,
+      );
+      const je3 = await this.t3.execute(
+        {
+          newContractId: newContract.id,
+          buyback,
+          newVendorYodjat: newFinanced,
+          newVendorCommission: newCommission,
+        },
+        tx,
+      );
+
+      // 6. Status flips
+      await tx.contract.update({
+        where: { id: old.id },
+        data: { status: 'EXCHANGED', exchangedAt: new Date() } as any,
+      });
+      await tx.product.update({
+        where: { id: req.oldProductId },
+        data: { status: 'REFURBISHED' },
+      });
+
+      // 7. Link request to outputs
+      await (tx as any).contractExchangeRequest.update({
+        where: { id },
+        data: {
+          newContractId: newContract.id,
+          je1aId: je1a.id,
+          je2Id: je2.id,
+          je3Id: je3.id,
+        },
+      });
+
+      // 8. Audit
+      await this.audit.log({
+        action: 'EXCHANGE_REQUEST_APPROVED',
+        entity: 'contract_exchange_request',
+        entityId: id,
+        userId,
+        newValue: {
+          oldContractId: old.id,
+          newContractId: newContract.id,
+          buyback: buyback.toString(),
+          remainingMonths,
+        },
+      });
+
+      return { id, newContractId: newContract.id, je1aId: je1a.id, je2Id: je2.id, je3Id: je3.id };
+    });
   }
-  async reject(_id: string, _reason: string, _userId: string): Promise<any> {
-    throw new Error('not yet');
+
+  async reject(id: string, reason: string, userId: string) {
+    if (reason.trim().length < 10) {
+      throw new BadRequestException('เหตุผลปฏิเสธอย่างน้อย 10 ตัวอักษร');
+    }
+    return this.prisma.$transaction(async (tx) => {
+      const lock = await (tx as any).contractExchangeRequest.updateMany({
+        where: { id, status: 'PENDING', deletedAt: null },
+        data: {
+          status: 'REJECTED',
+          rejectionReason: reason,
+          approvedById: userId,
+          approvedAt: new Date(),
+        },
+      });
+      if (lock.count !== 1) {
+        throw new ConflictException('คำขออาจถูกตอบกลับแล้ว');
+      }
+      await this.audit.log({
+        action: 'EXCHANGE_REQUEST_REJECTED',
+        entity: 'contract_exchange_request',
+        entityId: id,
+        userId,
+        newValue: { reason },
+      });
+      return (tx as any).contractExchangeRequest.findUniqueOrThrow({ where: { id } });
+    });
   }
+
   async listPending(): Promise<any[]> {
-    throw new Error('not yet');
+    return (this.prisma as any).contractExchangeRequest.findMany({
+      where: { status: 'PENDING', deletedAt: null },
+      include: {
+        oldContract: {
+          include: { customer: { select: { id: true, name: true, phone: true } } },
+        },
+        oldProduct: true,
+        newProduct: true,
+        requestedBy: { select: { id: true, name: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  private async computeOldOutstanding(
+    tx: Prisma.TransactionClient,
+    old: {
+      id: string;
+      totalMonths: number;
+      monthlyPayment: { toString(): string };
+      vatAmount: { toString(): string } | null;
+      interestTotal: { toString(): string };
+    },
+    paidCount: number,
+  ) {
+    const remaining = old.totalMonths - paidCount;
+    const monthly = new Decimal(old.monthlyPayment.toString());
+    const totalVat = old.vatAmount ? new Decimal(old.vatAmount.toString()) : new Decimal(0);
+    const vatPerMonth = totalVat.div(old.totalMonths);
+    const grossExclVatPerMonth = monthly.minus(vatPerMonth);
+    return {
+      gross: grossExclVatPerMonth.times(remaining).toDecimalPlaces(2),
+      vatReceivable: vatPerMonth.times(remaining).toDecimalPlaces(2),
+      unearnedInterest: new Decimal(old.interestTotal.toString())
+        .div(old.totalMonths)
+        .times(remaining)
+        .toDecimalPlaces(2),
+      deferredVat: vatPerMonth.times(remaining).toDecimalPlaces(2),
+    };
   }
 }

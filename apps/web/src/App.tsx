@@ -23,6 +23,7 @@ function PeriodsRedirect() {
 // Lazy-load all pages (separate chunks, loaded on demand)
 const LandingPage = lazy(() => import('@/pages/LandingPage'));
 const PrivacyPolicyPage = lazy(() => import('@/pages/PrivacyPolicyPage'));
+const DataDeletionPage = lazy(() => import('@/pages/DataDeletionPage'));
 const LoginPage = lazy(() => import('@/pages/LoginPage'));
 const ForgotPasswordPage = lazy(() => import('@/pages/ForgotPasswordPage'));
 const ResetPasswordPage = lazy(() => import('@/pages/ResetPasswordPage'));
@@ -266,6 +267,7 @@ function App() {
           element={isAuthenticated ? <Navigate to="/" replace /> : <LoginPage />}
         />
         <Route path="/privacy" element={<PrivacyPolicyPage />} />
+        <Route path="/privacy/data-deletion" element={<DataDeletionPage />} />
         {/* /terms — static HTML in apps/web/public/terms.html (Meta-readable).
             Route here only handles direct user nav; redirects to static file. */}
         <Route

@@ -18,6 +18,9 @@ describe('CannedResponseVariableService.expandVariables', () => {
       payment: {
         findFirst: jest.fn().mockResolvedValue(null),
       },
+      chatRoom: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
     };
     const mod: TestingModule = await Test.createTestingModule({
       providers: [
@@ -125,5 +128,40 @@ describe('CannedResponseVariableService.expandVariables', () => {
     const contractWhere = prisma.contract.findFirst.mock.calls[0][0].where;
     expect(contractWhere.status).toBe('ACTIVE');
     expect(contractWhere.deletedAt).toBeNull();
+  });
+
+  describe('{branchName} expansion', () => {
+    it('expands {branchName} from assignedTo.branch.name when room has assigned staff with branch', async () => {
+      prisma.customer.findFirst.mockResolvedValue({
+        id: 'c1',
+        name: 'สมชาย',
+        phone: '0812345678',
+      });
+      prisma.contract.findFirst.mockResolvedValue(null);
+      prisma.chatRoom.findFirst.mockResolvedValue({
+        id: 'r1',
+        assignedTo: { branch: { name: 'ลาดพร้าว' } },
+      });
+
+      const result = await service.expandVariables(
+        'รับเครื่องที่สาขา {branchName} ครับ',
+        { roomId: 'r1', customerId: 'c1' },
+      );
+
+      expect(result).toBe('รับเครื่องที่สาขา ลาดพร้าว ครับ');
+    });
+
+    it('falls back to "-" when room has no assigned staff', async () => {
+      prisma.customer.findFirst.mockResolvedValue({ id: 'c1', name: 'สมชาย', phone: '0' });
+      prisma.contract.findFirst.mockResolvedValue(null);
+      prisma.chatRoom.findFirst.mockResolvedValue({ id: 'r1', assignedTo: null });
+
+      const result = await service.expandVariables(
+        'สาขา {branchName}',
+        { roomId: 'r1', customerId: 'c1' },
+      );
+
+      expect(result).toBe('สาขา -');
+    });
   });
 });

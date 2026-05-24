@@ -255,6 +255,15 @@ export class StaffChatController {
     return this.staffMessage.getCannedResponses(category);
   }
 
+  @Get('rooms/:roomId/canned-responses/:id/preview')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  async previewCannedResponse(
+    @Param('roomId') roomId: string,
+    @Param('id') id: string,
+  ) {
+    return this.staffMessage.getCannedResponseExpanded(id, roomId);
+  }
+
   @Post('canned-responses')
   @Roles('OWNER', 'BRANCH_MANAGER')
   async createCannedResponse(@Body() body: { shortcut: string; title: string; content: string; category?: string; sortOrder?: number }) {

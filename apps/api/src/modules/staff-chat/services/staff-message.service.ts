@@ -35,12 +35,16 @@ export class StaffMessageService {
     });
   }
 
-  /** Get canned responses, optionally filtered by category */
-  async getCannedResponses(category?: string) {
+  /** Get canned responses, optionally filtered by category.
+   * `includeHidden=true` is used by admin pages to show templates flagged
+   * `hideFromChat` (which would otherwise be excluded from the chat picker).
+   */
+  async getCannedResponses(category?: string, includeHidden = false) {
     return this.prisma.cannedResponse.findMany({
       where: {
         deletedAt: null,
         isActive: true,
+        ...(includeHidden ? {} : { hideFromChat: false }),
         ...(category ? { category } : {}),
       },
       orderBy: [{ sortOrder: 'asc' }, { title: 'asc' }],
@@ -98,6 +102,7 @@ export class StaffMessageService {
       where: { id, deletedAt: null, isActive: true },
       include: {
         bubbles: { where: { deletedAt: null }, orderBy: { sortOrder: 'asc' } },
+        quickReplies: { where: { deletedAt: null }, orderBy: { sortOrder: 'asc' } },
       },
     });
 
@@ -137,7 +142,7 @@ export class StaffMessageService {
         })
       : '';
 
-    // 5. Return original + expanded + bubbles
+    // 5. Return original + expanded + bubbles + quick replies (Phase 2)
     return {
       id: cannedResponse.id,
       shortcut: cannedResponse.shortcut,
@@ -145,6 +150,7 @@ export class StaffMessageService {
       content: cannedResponse.content,
       expandedContent,
       bubbles: expandedBubbles,
+      quickReplies: cannedResponse.quickReplies,
     };
   }
 }

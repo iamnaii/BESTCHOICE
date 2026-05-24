@@ -28,6 +28,7 @@ import { ConversationTagService } from '../chat-engine/services/conversation-tag
 import { HandoffManagerService } from '../chat-engine/services/handoff-manager.service';
 import { StaffMessageService } from './services/staff-message.service';
 import { CannedResponseBubbleService } from './services/canned-response-bubble.service';
+import { CannedResponseQuickReplyService } from './services/canned-response-quickreply.service';
 import { AiAssistantService } from './services/ai-assistant.service';
 import { MediaContentService } from './services/media-content.service';
 import { ChatToContractService } from './services/chat-to-contract.service';
@@ -75,6 +76,7 @@ export class StaffChatController {
     private trainingExtractCron: TrainingExtractCron,
     private staffChatGateway: StaffChatGateway,
     private cannedResponseBubble: CannedResponseBubbleService,
+    private cannedResponseQuickReply: CannedResponseQuickReplyService,
   ) {}
 
   // ─── Rooms ────────────────────────────────────────────
@@ -253,8 +255,11 @@ export class StaffChatController {
 
   @Get('canned-responses')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
-  async getCannedResponses(@Query('category') category?: string) {
-    return this.staffMessage.getCannedResponses(category);
+  async getCannedResponses(
+    @Query('category') category?: string,
+    @Query('includeHidden') includeHidden?: string,
+  ) {
+    return this.staffMessage.getCannedResponses(category, includeHidden === 'true');
   }
 
   @Get('rooms/:roomId/canned-responses/:id/preview')
@@ -334,6 +339,48 @@ export class StaffChatController {
   @Roles('OWNER', 'BRANCH_MANAGER')
   async deleteBubble(@Param('bubbleId') bubbleId: string) {
     return this.cannedResponseBubble.deleteBubble(bubbleId);
+  }
+
+  // ─── Quick Reply CRUD (Phase 2) ──────────────────────
+
+  @Get('canned-responses/:id/quick-replies')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  async listQuickReplies(@Param('id') id: string) {
+    return this.cannedResponseQuickReply.list(id);
+  }
+
+  @Post('canned-responses/:id/quick-replies')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  async createQuickReply(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      label: string;
+      type: 'POSTBACK' | 'URL' | 'MESSAGE';
+      payload?: string;
+      url?: string;
+      message?: string;
+    },
+  ) {
+    return this.cannedResponseQuickReply.create(id, body);
+  }
+
+  @Patch('canned-responses/quick-replies/reorder')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  async reorderQuickReplies(@Body() body: { items: Array<{ id: string; sortOrder: number }> }) {
+    return this.cannedResponseQuickReply.reorder(body.items);
+  }
+
+  @Patch('canned-responses/quick-replies/:qrId')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  async updateQuickReply(@Param('qrId') qrId: string, @Body() body: any) {
+    return this.cannedResponseQuickReply.update(qrId, body);
+  }
+
+  @Delete('canned-responses/quick-replies/:qrId')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  async deleteQuickReply(@Param('qrId') qrId: string) {
+    return this.cannedResponseQuickReply.delete(qrId);
   }
 
   @Patch('canned-responses/:id')

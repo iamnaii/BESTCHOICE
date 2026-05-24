@@ -4714,6 +4714,13 @@ enum BubbleType {
   STICKER
 }
 
+/// Phase 2: quick reply action type for CannedResponseQuickReply
+enum QuickReplyType {
+  POSTBACK
+  URL
+  MESSAGE
+}
+
 /// Z10: outbound LINE message delivery state, populated from
 /// `events[].deliveryContext` on the LINE webhook + custom replies. Used by
 /// queue.service `lineResponse` post-filter to surface RESPONDED/IGNORED/
@@ -5111,11 +5118,16 @@ model CannedResponse {
   sortOrder    Int     @default(0) @map("sort_order")
   isActive     Boolean @default(true) @map("is_active")
 
+  // Phase 2: visibility / verification flags
+  hideFromChat Boolean @default(false) @map("hide_from_chat")
+  verifiedOnly Boolean @default(false) @map("verified_only")
+
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  bubbles CannedResponseBubble[]
+  bubbles      CannedResponseBubble[]
+  quickReplies CannedResponseQuickReply[]
 
   @@index([isActive, category])
   @@index([deletedAt])
@@ -5134,6 +5146,8 @@ model CannedResponseBubble {
   thumbnailUrl     String?    @map("thumbnail_url")
   stickerPackageId String?    @map("sticker_package_id")
   stickerId        String?    @map("sticker_id")
+  /// Phase 2: per-bubble channel filter; empty array = all channels
+  channels         String[]   @default([])
   createdAt        DateTime   @default(now()) @map("created_at")
   updatedAt        DateTime   @updatedAt @map("updated_at")
   deletedAt        DateTime?  @map("deleted_at")
@@ -5142,6 +5156,26 @@ model CannedResponseBubble {
 
   @@index([cannedResponseId, sortOrder])
   @@map("canned_response_bubbles")
+}
+
+/// Phase 2: quick replies attached to a CannedResponse (max 13 per LINE limit).
+model CannedResponseQuickReply {
+  id               String         @id @default(uuid())
+  cannedResponseId String         @map("canned_response_id")
+  label            String
+  type             QuickReplyType
+  payload          String?
+  url              String?
+  message          String?
+  sortOrder        Int            @default(0) @map("sort_order")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+  deletedAt        DateTime?      @map("deleted_at")
+
+  cannedResponse CannedResponse @relation(fields: [cannedResponseId], references: [id], onDelete: Cascade)
+
+  @@index([cannedResponseId, sortOrder])
+  @@map("canned_response_quick_replies")
 }
 
 /// Tracks staff online/offline + activity inside the chat system

@@ -12,6 +12,7 @@ import { HandoffManagerService } from '../chat-engine/services/handoff-manager.s
 import { MessageRouterService } from '../chat-engine/services/message-router.service';
 import { StaffMessageService } from './services/staff-message.service';
 import { CannedResponseBubbleService } from './services/canned-response-bubble.service';
+import { CannedResponseQuickReplyService } from './services/canned-response-quickreply.service';
 import { AiAssistantService } from './services/ai-assistant.service';
 import { MediaContentService } from './services/media-content.service';
 import { ChatToContractService } from './services/chat-to-contract.service';
@@ -30,6 +31,7 @@ describe('StaffChatController', () => {
   let controller: StaffChatController;
   let staffMessage: StaffMessageService;
   let cannedResponseBubble: CannedResponseBubbleService;
+  let cannedResponseQuickReply: CannedResponseQuickReplyService;
 
   beforeEach(async () => {
     const module = await Test.createTestingModule({
@@ -72,6 +74,16 @@ describe('StaffChatController', () => {
             reorderBubbles: jest.fn(),
           },
         },
+        {
+          provide: CannedResponseQuickReplyService,
+          useValue: {
+            list: jest.fn(),
+            create: jest.fn(),
+            update: jest.fn(),
+            delete: jest.fn(),
+            reorder: jest.fn(),
+          },
+        },
       ],
     })
       .overrideGuard(JwtAuthGuard)
@@ -83,6 +95,7 @@ describe('StaffChatController', () => {
     controller = module.get(StaffChatController);
     staffMessage = module.get(StaffMessageService);
     cannedResponseBubble = module.get(CannedResponseBubbleService);
+    cannedResponseQuickReply = module.get(CannedResponseQuickReplyService);
   });
 
   describe('GET /staff-chat/rooms/:roomId/canned-responses/:id/preview', () => {
@@ -94,6 +107,7 @@ describe('StaffChatController', () => {
         content: 'สวัสดีคุณ {customerName}',
         expandedContent: 'สวัสดีคุณ สมชาย',
         bubbles: [],
+        quickReplies: [],
       };
       jest.spyOn(staffMessage, 'getCannedResponseExpanded').mockResolvedValue(mockResult);
 
@@ -171,6 +185,21 @@ describe('StaffChatController', () => {
       jest.spyOn(cannedResponseBubble, 'reorderBubbles').mockResolvedValue({ updated: 2 } as any);
       await controller.reorderBubbles({ items: [{ id: 'a', sortOrder: 0 }, { id: 'b', sortOrder: 1 }] });
       expect(cannedResponseBubble.reorderBubbles).toHaveBeenCalledWith([{ id: 'a', sortOrder: 0 }, { id: 'b', sortOrder: 1 }]);
+    });
+  });
+
+  describe('Quick Reply endpoints (Phase 2)', () => {
+    it('GET listQuickReplies delegates', async () => {
+      jest.spyOn(cannedResponseQuickReply, 'list').mockResolvedValue([] as any);
+      await controller.listQuickReplies('cr-1');
+      expect(cannedResponseQuickReply.list).toHaveBeenCalledWith('cr-1');
+    });
+
+    it('POST createQuickReply delegates', async () => {
+      jest.spyOn(cannedResponseQuickReply, 'create').mockResolvedValue({} as any);
+      const body = { label: 'ตกลง', type: 'POSTBACK' as const, payload: 'OK' };
+      await controller.createQuickReply('cr-1', body);
+      expect(cannedResponseQuickReply.create).toHaveBeenCalledWith('cr-1', body);
     });
   });
 });

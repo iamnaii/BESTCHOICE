@@ -2,12 +2,17 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../../../prisma/prisma.service';
 
 interface CreateBubbleDto {
-  type: 'TEXT' | 'IMAGE' | 'STICKER';
+  type: 'TEXT' | 'IMAGE' | 'STICKER' | 'CARD' | 'LOCATION' | 'VIDEO' | 'JSON';
   text?: string;
   mediaUrl?: string;
   thumbnailUrl?: string;
   stickerPackageId?: string;
   stickerId?: string;
+  latitude?: number;
+  longitude?: number;
+  address?: string;
+  locationTitle?: string;
+  json?: any;
 }
 
 interface UpdateBubbleDto extends Partial<CreateBubbleDto> {
@@ -41,6 +46,11 @@ export class CannedResponseBubbleService {
         thumbnailUrl: dto.thumbnailUrl,
         stickerPackageId: dto.stickerPackageId,
         stickerId: dto.stickerId,
+        latitude: dto.latitude,
+        longitude: dto.longitude,
+        address: dto.address,
+        locationTitle: dto.locationTitle,
+        json: dto.json,
         sortOrder: count,
       },
     });

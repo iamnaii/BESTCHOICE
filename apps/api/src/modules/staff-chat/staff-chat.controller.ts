@@ -318,7 +318,7 @@ export class StaffChatController {
   @Roles('OWNER', 'BRANCH_MANAGER')
   async createBubble(
     @Param('id') id: string,
-    @Body() body: { type: 'TEXT' | 'IMAGE' | 'STICKER'; text?: string; mediaUrl?: string; thumbnailUrl?: string; stickerPackageId?: string; stickerId?: string },
+    @Body() body: { type: 'TEXT' | 'IMAGE' | 'STICKER' | 'CARD' | 'LOCATION' | 'VIDEO' | 'JSON'; text?: string; mediaUrl?: string; thumbnailUrl?: string; stickerPackageId?: string; stickerId?: string; latitude?: number; longitude?: number; address?: string; locationTitle?: string; json?: any },
   ) {
     return this.cannedResponseBubble.createBubble(id, body);
   }

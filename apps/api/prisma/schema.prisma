@@ -4708,10 +4708,15 @@ enum MessageType {
 }
 
 /// Phase 1: bubble content type for CannedResponseBubble (multi-bubble templates)
+/// Phase 3: expand with CARD/LOCATION/VIDEO/JSON for rich content
 enum BubbleType {
   TEXT
   IMAGE
   STICKER
+  CARD
+  LOCATION
+  VIDEO
+  JSON
 }
 
 /// Phase 2: quick reply action type for CannedResponseQuickReply
@@ -5146,6 +5151,13 @@ model CannedResponseBubble {
   thumbnailUrl     String?    @map("thumbnail_url")
   stickerPackageId String?    @map("sticker_package_id")
   stickerId        String?    @map("sticker_id")
+  /// Phase 3: LOCATION
+  latitude         Float?
+  longitude        Float?
+  address          String?
+  locationTitle    String?    @map("location_title")
+  /// Phase 3: CARD / VIDEO / JSON / complex payloads
+  json             Json?
   /// Phase 2: per-bubble channel filter; empty array = all channels
   channels         String[]   @default([])
   createdAt        DateTime   @default(now()) @map("created_at")

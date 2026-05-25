@@ -9,6 +9,7 @@ import { FinanceAiService } from './finance-ai.service';
 import { HandoffService } from './handoff.service';
 import { SlipProcessingService } from './slip-processing.service';
 import { FeedbackService } from './feedback.service';
+import { QuickReplyPostbackRouterService } from '../../staff-chat/services/quick-reply-postback-router.service';
 
 describe('ChatbotFinanceService', () => {
   let service: ChatbotFinanceService;
@@ -33,6 +34,10 @@ describe('ChatbotFinanceService', () => {
   beforeEach(async () => {
     prisma = {
       systemConfig: { findUnique: jest.fn().mockResolvedValue({ value: 'liff-123' }) },
+      // Phase 5 — postback handler looks up the LINE_FINANCE ChatRoom before
+      // dispatching to QuickReplyPostbackRouterService. Default: no room
+      // (router stub also returns handled:false → existing feedback flow runs).
+      chatRoom: { findUnique: jest.fn().mockResolvedValue(null) },
     };
     lineClient = {
       replyText: jest.fn().mockResolvedValue(undefined),
@@ -80,6 +85,13 @@ describe('ChatbotFinanceService', () => {
         // (used for FB_BOT_DISABLED / LINE token reads). Tests don't exercise
         // those paths — a no-op stub keeps DI happy without affecting assertions.
         { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue(undefined) } },
+        // Phase 5 — QuickReplyPostbackRouterService injected via forwardRef
+        // for TEMPLATE:<id> Quick Reply routing. Stub returns handled:false so
+        // existing postback specs (feedback flow) fall through unchanged.
+        {
+          provide: QuickReplyPostbackRouterService,
+          useValue: { route: jest.fn().mockResolvedValue({ handled: false }) },
+        },
       ],
     }).compile();
 

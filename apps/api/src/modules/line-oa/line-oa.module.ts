@@ -25,6 +25,7 @@ import { PDPAModule } from '../pdpa/pdpa.module';
 import { ChatbotFinanceModule } from '../chatbot-finance/chatbot-finance.module';
 import { IntegrationsModule } from '../integrations/integrations.module';
 import { ChatEngineModule } from '../chat-engine/chat-engine.module';
+import { StaffChatModule } from '../staff-chat/staff-chat.module';
 
 @Module({
   imports: [
@@ -33,6 +34,11 @@ import { ChatEngineModule } from '../chat-engine/chat-engine.module';
     forwardRef(() => ChatbotFinanceModule),
     IntegrationsModule,
     forwardRef(() => ChatEngineModule),
+    // Phase 5 — Quick Reply postback routing (LineOaChatbotController
+    // injects QuickReplyPostbackRouterService). StaffChatModule already
+    // depends transitively on LineOaModule via ChatEngineModule, so we
+    // wrap with forwardRef to break the cycle.
+    forwardRef(() => StaffChatModule),
   ],
   controllers: [LineOaController, LineOaChatbotController, LineOaPaymentController, LineOaCampaignController, LiffApiController, LineLoginController, BroadcastController],
   providers: [

@@ -1,4 +1,4 @@
-import { Module, OnModuleInit } from '@nestjs/common';
+import { Module, OnModuleInit, forwardRef } from '@nestjs/common';
 import { LineFinanceAdapter } from './line-finance.adapter';
 import { LineShopAdapter } from './line-shop.adapter';
 import { FacebookAdapter } from './facebook.adapter';
@@ -11,6 +11,7 @@ import { LineOaModule } from '../line-oa/line-oa.module';
 import { ChatEngineModule } from '../chat-engine/chat-engine.module';
 import { FacebookDomainModule } from '../facebook-domain/facebook-domain.module';
 import { MessageRouterService } from '../chat-engine/services/message-router.service';
+import { StaffChatModule } from '../staff-chat/staff-chat.module';
 
 /**
  * ChatAdaptersModule — provides IChannelAdapter implementations for all channels.
@@ -22,7 +23,14 @@ import { MessageRouterService } from '../chat-engine/services/message-router.ser
  * can collect and route messages through them.
  */
 @Module({
-  imports: [ChatbotFinanceModule, LineOaModule, ChatEngineModule, FacebookDomainModule],
+  imports: [
+    ChatbotFinanceModule,
+    LineOaModule,
+    ChatEngineModule,
+    FacebookDomainModule,
+    // Phase 5 — FacebookWebhookController injects QuickReplyPostbackRouterService.
+    forwardRef(() => StaffChatModule),
+  ],
   controllers: [FacebookWebhookController],
   providers: [
     LineFinanceAdapter,

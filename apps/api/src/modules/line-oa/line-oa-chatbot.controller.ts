@@ -34,6 +34,7 @@ import { SkipCsrf } from '../../guards/skip-csrf.decorator';
 import { StorageService } from '../storage/storage.service';
 import { WebhookDedupService } from '../chatbot-finance/services/webhook-dedup.service';
 import { MessageRouterService } from '../chat-engine/services/message-router.service';
+import { QuickReplyPostbackRouterService } from '../staff-chat/services/quick-reply-postback-router.service';
 import { formatStickerToken } from '../chat-engine/utils/sticker-token.util';
 import { ChatChannel, MessageType } from '@prisma/client';
 import { toNum as d, calcOutstanding as sumOutstanding } from '../../utils/decimal.util';
@@ -60,6 +61,7 @@ export class LineOaChatbotController {
     private webhookDedupService: WebhookDedupService,
     private messageRouter: MessageRouterService,
     private configService: ConfigService,
+    private postbackRouter: QuickReplyPostbackRouterService,
   ) {}
 
   // ─── LINE Webhook ─────────────────────────────────────
@@ -530,10 +532,42 @@ export class LineOaChatbotController {
   }
 
   private async handlePostback(event: LinePostbackEvent): Promise<void> {
-    const params = new URLSearchParams(event.postback.data);
+    const userId = event.source.userId;
+    const data = event.postback.data;
+
+    // Phase 5 — Quick Reply postback router (handles TEMPLATE:<id> payloads).
+    // Try this BEFORE the hardcoded action switch so canned-response Quick
+    // Replies route through CannedResponseSenderService. Returns
+    // { handled: false } for any payload that doesn't match a known format,
+    // which lets the existing URLSearchParams action switch run unchanged.
+    try {
+      const room = await this.prisma.chatRoom.findUnique({
+        where: {
+          lineUserId_channel: { lineUserId: userId, channel: ChatChannel.LINE_SHOP },
+        },
+        select: { id: true },
+      });
+      if (room) {
+        const routeResult = await this.postbackRouter.route(room.id, data);
+        if (routeResult.handled) {
+          if (routeResult.error) {
+            this.logger.warn(
+              `[SHOP postback router] ${routeResult.action ?? 'unknown'}: ${routeResult.error}`,
+            );
+          }
+          return;
+        }
+      }
+    } catch (err) {
+      this.logger.warn(
+        `[SHOP postback router] failed: ${err instanceof Error ? err.message : err}`,
+      );
+      // fall through to existing action switch
+    }
+
+    const params = new URLSearchParams(data);
     const action = params.get('action');
     const contractNumber = params.get('contract') || undefined;
-    const userId = event.source.userId;
     switch (action) {
       case 'check_balance': await this.handleCheckBalance(userId, event.replyToken); break;
       case 'check_installments': await this.handleCheckInstallments(userId, event.replyToken, contractNumber); break;

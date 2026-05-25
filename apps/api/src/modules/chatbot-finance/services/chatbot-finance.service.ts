@@ -1,6 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { MessageRole } from '@prisma/client';
+import { ChatChannel, MessageRole } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import {
   LineFinanceWebhookEvent,
@@ -16,6 +16,7 @@ import { FinanceAiService } from './finance-ai.service';
 import { HandoffService } from './handoff.service';
 import { SlipProcessingService } from './slip-processing.service';
 import { FeedbackService } from './feedback.service';
+import { QuickReplyPostbackRouterService } from '../../staff-chat/services/quick-reply-postback-router.service';
 import { INTENTS } from '../constants/intents';
 import { buildBrowserUrl } from '../../../utils/line-login.util';
 import { formatStickerToken } from '../../chat-engine/utils/sticker-token.util';
@@ -47,6 +48,8 @@ export class ChatbotFinanceService {
     private slipProcessing: SlipProcessingService,
     private feedback: FeedbackService,
     private configService: ConfigService,
+    @Inject(forwardRef(() => QuickReplyPostbackRouterService))
+    private postbackRouter: QuickReplyPostbackRouterService,
   ) {}
 
   /** Flex card สำหรับ prompt ยืนยันตัวตน — ปุ่มเปิด LINE Login OAuth */
@@ -380,6 +383,38 @@ export class ChatbotFinanceService {
   private async handlePostback(event: LinePostbackEvent): Promise<void> {
     const data = event.postback.data;
     this.logger.log(`[Finance] Postback: ${data}`);
+
+    // Phase 5 — Quick Reply postback router (handles TEMPLATE:<id> payloads).
+    // Runs BEFORE the existing feedback action handler. Returns
+    // { handled: false } when the payload isn't a TEMPLATE: format so the
+    // existing feedback flow is untouched.
+    const userId = event.source.userId;
+    if (userId) {
+      try {
+        const room = await this.prisma.chatRoom.findUnique({
+          where: {
+            lineUserId_channel: { lineUserId: userId, channel: ChatChannel.LINE_FINANCE },
+          },
+          select: { id: true },
+        });
+        if (room) {
+          const routeResult = await this.postbackRouter.route(room.id, data);
+          if (routeResult.handled) {
+            if (routeResult.error) {
+              this.logger.warn(
+                `[Finance postback router] ${routeResult.action ?? 'unknown'}: ${routeResult.error}`,
+              );
+            }
+            return;
+          }
+        }
+      } catch (err) {
+        this.logger.warn(
+          `[Finance postback router] failed: ${err instanceof Error ? err.message : err}`,
+        );
+        // fall through to existing flow
+      }
+    }
 
     const params = new URLSearchParams(data);
     const action = params.get('action');

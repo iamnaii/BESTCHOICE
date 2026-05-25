@@ -33,11 +33,43 @@ export class CannedResponseSenderService {
     private messageRouter: MessageRouterService,
   ) {}
 
+  /**
+   * Lazily bootstrap (or fetch) the system bot user used when a send is
+   * initiated by an automated path (e.g. Quick Reply postback router) rather
+   * than a real staff member. Idempotent — first call creates, subsequent
+   * calls reuse.
+   *
+   * The system user is marked `isActive=false` so it cannot log in via the
+   * normal auth flow; its password placeholder is intentionally unusable.
+   */
+  private async getSystemUserId(): Promise<string> {
+    let user = await this.prisma.user.findFirst({
+      where: { isSystemUser: true, deletedAt: null },
+      select: { id: true },
+    });
+    if (!user) {
+      user = await this.prisma.user.create({
+        data: {
+          email: 'system@bestchoice.internal',
+          password: 'NEVER_LOGIN_SYSTEM_USER',
+          name: 'System Bot',
+          role: 'OWNER',
+          isActive: false,
+          isSystemUser: true,
+        },
+        select: { id: true },
+      });
+      this.logger.log(`Bootstrapped system user ${user.id} for automated sends`);
+    }
+    return user.id;
+  }
+
   async send(
     roomId: string,
     templateId: string,
-    staffId: string,
+    staffId: string | null,
   ): Promise<{ sent: number; dropped: number; errors: string[] }> {
+    const effectiveStaffId = staffId ?? (await this.getSystemUserId());
     // 1. Resolve room
     const room = await this.prisma.chatRoom.findFirst({
       where: { id: roomId, deletedAt: null },
@@ -141,7 +173,7 @@ export class CannedResponseSenderService {
 
     for (const msg of outbound) {
       try {
-        const result = await this.messageRouter.sendStaffOutbound(roomId, msg, staffId);
+        const result = await this.messageRouter.sendStaffOutbound(roomId, msg, effectiveStaffId);
         if (result.success) {
           if (result.droppedReason) {
             dropped++;

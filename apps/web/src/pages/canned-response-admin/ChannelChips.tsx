@@ -43,7 +43,7 @@ export default function ChannelChips({ selectedChannels, onChange }: Props) {
             onClick={() => toggle(c)}
             className={cn(
               'text-[11px] px-2 py-0.5 rounded border',
-              active ? 'bg-emerald-100 text-emerald-700 border-emerald-300' : 'bg-background text-muted-foreground border-border hover:bg-muted',
+              active ? 'bg-primary/10 text-primary border-primary/50' : 'bg-background text-muted-foreground border-border hover:bg-muted',
             )}
           >
             {CHANNEL_LABELS[c]}

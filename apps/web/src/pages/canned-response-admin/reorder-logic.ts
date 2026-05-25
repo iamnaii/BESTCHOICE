@@ -1,7 +1,12 @@
 import type { CannedResponse, CategoryGroup, ReorderItem } from './types';
 
+// Display label shown to the user for templates with no category.
+const NULL_CATEGORY_LABEL = 'อื่นๆ';
+// Internal sentinel — zero-width-space wrapped, user input can never produce this.
+const NULL_CATEGORY_KEY = '​__null__​';
+
 function categoryKey(c: string | null): string {
-  return c ?? 'อื่นๆ';
+  return c ?? NULL_CATEGORY_KEY;
 }
 
 export function groupByCategory(list: CannedResponse[]): CategoryGroup[] {
@@ -15,7 +20,9 @@ export function groupByCategory(list: CannedResponse[]): CategoryGroup[] {
   const groups: CategoryGroup[] = [];
   for (const [name, items] of map) {
     items.sort((a, b) => a.sortOrder - b.sortOrder);
-    groups.push({ name, items });
+    // Render the null-bucket under the user-facing label so the rest of the
+    // tree (drag handlers + display) can still reason about it by name.
+    groups.push({ name: name === NULL_CATEGORY_KEY ? NULL_CATEGORY_LABEL : name, items });
   }
   groups.sort((a, b) => {
     const minA = Math.min(...a.items.map((i) => i.sortOrder));
@@ -63,7 +70,10 @@ export function moveItemAcrossCategories(
   const without = list.filter((x) => x.id !== itemId);
   const updated: CannedResponse = {
     ...item,
-    category: toCategory === 'อื่นๆ' ? null : toCategory,
+    // The displayed group "อื่นๆ" represents `category === null`. Anything
+    // else (even a user-created category literally named "อื่นๆ" — though we
+    // discourage that) routes by its actual string key.
+    category: toCategory === NULL_CATEGORY_LABEL ? null : toCategory,
   };
   const groups = groupByCategory(without);
   const targetGroup =

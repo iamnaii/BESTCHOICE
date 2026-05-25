@@ -34,6 +34,7 @@ export default function TemplateItem({ template, isSelected, onSelect, onDuplica
         {...listeners}
         className="opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground p-0.5"
         title="ลากเพื่อย้าย"
+        aria-label="ลากเพื่อย้าย"
         onClick={(e) => e.stopPropagation()}
       >
         <GripVertical className="w-3.5 h-3.5" />
@@ -44,6 +45,7 @@ export default function TemplateItem({ template, isSelected, onSelect, onDuplica
           onClick={(e) => { e.stopPropagation(); onDuplicate(); }}
           className="p-1 text-muted-foreground hover:text-foreground hover:bg-muted rounded"
           title="ทำซ้ำ"
+          aria-label="ทำซ้ำ"
         >
           <Copy className="w-3.5 h-3.5" />
         </button>
@@ -51,6 +53,7 @@ export default function TemplateItem({ template, isSelected, onSelect, onDuplica
           onClick={(e) => { e.stopPropagation(); onDelete(); }}
           className="p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded"
           title="ลบ"
+          aria-label="ลบ"
         >
           <Trash2 className="w-3.5 h-3.5" />
         </button>

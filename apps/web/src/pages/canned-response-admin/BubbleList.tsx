@@ -47,7 +47,7 @@ function SortableBubbleRow({ bubble, onChange, onDelete }: { bubble: CannedRespo
         <Icon className="w-4 h-4 text-muted-foreground" />
         <span className="text-xs font-medium text-muted-foreground">{TYPE_LABEL[bubble.type]}</span>
         <div className="flex-1" />
-        <button onClick={onDelete} className="p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded" title="ลบ">
+        <button onClick={onDelete} className="p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded" title="ลบ" aria-label="ลบ">
           <Trash2 className="w-3.5 h-3.5" />
         </button>
       </div>
@@ -138,6 +138,11 @@ export default function BubbleList({ cannedResponseId }: Props) {
           </div>
         </SortableContext>
       </DndContext>
+      {bubbles.length === 0 && (
+        <div className="text-center py-6 text-sm text-muted-foreground leading-snug border border-dashed border-border rounded-lg">
+          ยังไม่มี bubble — เพิ่มประเภทข้อความด้านล่าง
+        </div>
+      )}
       {canAdd ? (
         <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-border">
           <span className="text-xs text-muted-foreground w-full">เพิ่มประเภท:</span>

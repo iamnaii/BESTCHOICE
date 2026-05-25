@@ -22,7 +22,7 @@ export default function TextBubbleEditor({ bubble, onChange }: Props) {
           <button
             key={v}
             onClick={() => onChange({ text: (bubble.text ?? '') + v })}
-            className="px-2 py-0.5 text-[11px] font-mono bg-muted hover:bg-emerald-50 hover:text-emerald-700 rounded border border-border"
+            className="px-2 py-0.5 text-[11px] font-mono bg-muted hover:bg-primary/5 hover:text-primary rounded border border-border"
           >
             {v}
           </button>

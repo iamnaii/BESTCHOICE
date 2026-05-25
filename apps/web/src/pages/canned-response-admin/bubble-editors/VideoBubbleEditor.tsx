@@ -23,6 +23,8 @@ export default function VideoBubbleEditor({ bubble, onChange }: Props) {
       )}
       <p className="text-xs text-muted-foreground leading-snug">
         ใช้ video URL ที่ public — LINE ต้องเป็น HTTPS + mp4 ≤ 200MB ≤ 1 นาที
+        <br />
+        รูปปก (preview) ต้องระบุเสมอเป็น JPEG/PNG — LINE จะ reject ถ้าไม่มี
       </p>
     </div>
   );

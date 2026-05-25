@@ -48,7 +48,7 @@ export default function CategoryTreePane(props: Props) {
     return templates.filter(
       (t) =>
         t.title.toLowerCase().includes(q) ||
-        t.content.toLowerCase().includes(q) ||
+        (t.content ?? '').toLowerCase().includes(q) ||
         t.shortcut.toLowerCase().includes(q) ||
         (t.category ?? '').toLowerCase().includes(q),
     );

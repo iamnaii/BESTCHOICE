@@ -57,12 +57,18 @@ function SortableQuickReplyRow({
           />
         )}
         {qr.type === 'URL' && (
-          <Input
-            value={qr.url ?? ''}
-            onChange={(e) => onChange({ url: e.target.value })}
-            placeholder="https://..."
-            className="text-xs font-mono"
-          />
+          <>
+            <Input
+              value={qr.url ?? ''}
+              onChange={(e) => onChange({ url: e.target.value })}
+              placeholder="https://..."
+              className="text-xs font-mono"
+            />
+            <p className="text-[11px] text-amber-700 leading-snug">
+              ⚠ URL quick reply ใช้ได้กับ LINE เต็มที่ — บน Facebook จะเปลี่ยนเป็น text+payload
+              (ลูกค้าต้องกดส่งเอง URL ไม่เปิด browser)
+            </p>
+          </>
         )}
         {qr.type === 'MESSAGE' && (
           <Input

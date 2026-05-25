@@ -6,6 +6,14 @@ import api, { getErrorMessage } from '@/lib/api';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import PageHeader from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import QueryBoundary from '@/components/QueryBoundary';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import CategoryTreePane from './canned-response-admin/CategoryTreePane';
@@ -24,6 +32,10 @@ export default function CannedResponseAdminPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<DeleteTarget | null>(null);
+  const [newCategoryDialog, setNewCategoryDialog] = useState<{ open: boolean; value: string }>({
+    open: false,
+    value: '',
+  });
 
   const query = useQuery<CannedResponse[]>({
     queryKey: ['canned-responses-admin'],
@@ -106,21 +118,53 @@ export default function CannedResponseAdminPage() {
   const duplicateCategoryMutation = useMutation({
     mutationFn: async (name: string) => {
       const inCat = templates.filter((t) => (t.category ?? 'อื่นๆ') === name);
-      await Promise.all(
-        inCat.map((t) =>
-          api.post('/staff-chat/canned-responses', {
+      for (const t of inCat) {
+        // 1. Create parent
+        const newTpl: any = await api
+          .post('/staff-chat/canned-responses', {
             shortcut: `${t.shortcut}-copy-${Date.now().toString(36).slice(-4)}`,
             title: `${t.title} (สำเนา)`,
             content: t.content,
             category: `${name} (สำเนา)`,
             sortOrder: t.sortOrder + 1000,
-          }),
-        ),
-      );
+          })
+          .then((r: any) => r.data);
+        // 2. Fetch source bubbles + quick replies
+        const [srcBubbles, srcQrs] = await Promise.all([
+          api.get(`/staff-chat/canned-responses/${t.id}/bubbles`).then((r: any) => r.data),
+          api.get(`/staff-chat/canned-responses/${t.id}/quick-replies`).then((r: any) => r.data),
+        ]);
+        // 3. Copy bubbles + quick replies to new template
+        for (const b of srcBubbles) {
+          await api.post(`/staff-chat/canned-responses/${newTpl.id}/bubbles`, {
+            type: b.type,
+            text: b.text,
+            mediaUrl: b.mediaUrl,
+            thumbnailUrl: b.thumbnailUrl,
+            stickerPackageId: b.stickerPackageId,
+            stickerId: b.stickerId,
+            latitude: b.latitude,
+            longitude: b.longitude,
+            address: b.address,
+            locationTitle: b.locationTitle,
+            json: b.json,
+            channels: b.channels,
+          });
+        }
+        for (const qr of srcQrs) {
+          await api.post(`/staff-chat/canned-responses/${newTpl.id}/quick-replies`, {
+            label: qr.label,
+            type: qr.type,
+            payload: qr.payload,
+            url: qr.url,
+            message: qr.message,
+          });
+        }
+      }
     },
     onSuccess: () => {
       invalidate();
-      toast.success('ทำซ้ำหมวดแล้ว');
+      toast.success('ทำซ้ำหมวดแล้ว (รวม bubbles + quick replies ทุก template)');
     },
     onError: (e: any) => toast.error(getErrorMessage(e) ?? 'ทำซ้ำหมวดไม่สำเร็จ'),
   });
@@ -129,7 +173,8 @@ export default function CannedResponseAdminPage() {
     mutationFn: async (id: string) => {
       const src = templates.find((t) => t.id === id);
       if (!src) throw new Error('not found');
-      return api
+      // 1. Create new template
+      const newTpl: any = await api
         .post('/staff-chat/canned-responses', {
           shortcut: `${src.shortcut}-copy-${Date.now().toString(36).slice(-4)}`,
           title: `${src.title} (สำเนา)`,
@@ -138,11 +183,43 @@ export default function CannedResponseAdminPage() {
           sortOrder: src.sortOrder + 1,
         })
         .then((r: any) => r.data);
+      // 2. Fetch source bubbles + quick replies
+      const [srcBubbles, srcQrs] = await Promise.all([
+        api.get(`/staff-chat/canned-responses/${id}/bubbles`).then((r: any) => r.data),
+        api.get(`/staff-chat/canned-responses/${id}/quick-replies`).then((r: any) => r.data),
+      ]);
+      // 3. Copy bubbles + quick replies to new template
+      for (const b of srcBubbles) {
+        await api.post(`/staff-chat/canned-responses/${newTpl.id}/bubbles`, {
+          type: b.type,
+          text: b.text,
+          mediaUrl: b.mediaUrl,
+          thumbnailUrl: b.thumbnailUrl,
+          stickerPackageId: b.stickerPackageId,
+          stickerId: b.stickerId,
+          latitude: b.latitude,
+          longitude: b.longitude,
+          address: b.address,
+          locationTitle: b.locationTitle,
+          json: b.json,
+          channels: b.channels,
+        });
+      }
+      for (const qr of srcQrs) {
+        await api.post(`/staff-chat/canned-responses/${newTpl.id}/quick-replies`, {
+          label: qr.label,
+          type: qr.type,
+          payload: qr.payload,
+          url: qr.url,
+          message: qr.message,
+        });
+      }
+      return newTpl;
     },
     onSuccess: (created: any) => {
       invalidate();
       setSelectedId(created?.id ?? null);
-      toast.success('ทำซ้ำแล้ว');
+      toast.success('ทำซ้ำแล้ว (รวม bubbles + quick replies)');
     },
     onError: (e: any) => toast.error(getErrorMessage(e) ?? 'ทำซ้ำไม่สำเร็จ'),
   });
@@ -159,15 +236,23 @@ export default function CannedResponseAdminPage() {
   };
 
   const handleAddCategory = () => {
-    const name = window.prompt('ชื่อหมวดใหม่');
-    if (!name || !name.trim()) return;
+    setNewCategoryDialog({ open: true, value: '' });
+  };
+
+  const confirmNewCategory = () => {
+    const name = newCategoryDialog.value.trim();
+    if (!name) {
+      setNewCategoryDialog({ open: false, value: '' });
+      return;
+    }
     createMutation.mutate({
       shortcut: `/new-${Date.now().toString(36).slice(-4)}`,
       title: 'Template ใหม่',
       content: '',
-      category: name.trim(),
+      category: name,
       sortOrder: Math.max(0, ...templates.map((t) => t.sortOrder)) + 1,
     });
+    setNewCategoryDialog({ open: false, value: '' });
   };
 
   const handleConfirmDelete = () => {
@@ -256,6 +341,41 @@ export default function CannedResponseAdminPage() {
         loading={deleteLoading}
         onConfirm={handleConfirmDelete}
       />
+
+      <Dialog
+        open={newCategoryDialog.open}
+        onOpenChange={(open) => !open && setNewCategoryDialog({ open: false, value: '' })}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>สร้างหมวดใหม่</DialogTitle>
+          </DialogHeader>
+          <div className="py-2">
+            <Input
+              autoFocus
+              value={newCategoryDialog.value}
+              onChange={(e) =>
+                setNewCategoryDialog({ ...newCategoryDialog, value: e.target.value })
+              }
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') confirmNewCategory();
+              }}
+              placeholder="ชื่อหมวด เช่น 'เรทผ่อน iPhone'"
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => setNewCategoryDialog({ open: false, value: '' })}
+            >
+              ยกเลิก
+            </Button>
+            <Button onClick={confirmNewCategory} disabled={!newCategoryDialog.value.trim()}>
+              สร้าง
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -33,13 +33,12 @@ export interface CannedResponseQuickReply {
   createdAt: string;
 }
 
-export type Channel = 'LINE_FINANCE' | 'LINE_SHOP' | 'FACEBOOK' | 'INSTAGRAM' | 'TIKTOK' | 'WEB';
-export const ALL_CHANNELS: Channel[] = ['LINE_FINANCE', 'LINE_SHOP', 'FACEBOOK', 'INSTAGRAM', 'TIKTOK', 'WEB'];
+export type Channel = 'LINE_FINANCE' | 'LINE_SHOP' | 'FACEBOOK' | 'TIKTOK' | 'WEB';
+export const ALL_CHANNELS: Channel[] = ['LINE_FINANCE', 'LINE_SHOP', 'FACEBOOK', 'TIKTOK', 'WEB'];
 export const CHANNEL_LABELS: Record<Channel, string> = {
   LINE_FINANCE: 'LINE การเงิน',
   LINE_SHOP: 'LINE ร้าน',
   FACEBOOK: 'Facebook',
-  INSTAGRAM: 'Instagram',
   TIKTOK: 'TikTok',
   WEB: 'Web Widget',
 };

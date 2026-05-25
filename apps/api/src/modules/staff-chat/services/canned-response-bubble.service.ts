@@ -13,6 +13,7 @@ interface CreateBubbleDto {
   address?: string;
   locationTitle?: string;
   json?: any;
+  channels?: string[];
 }
 
 interface UpdateBubbleDto extends Partial<CreateBubbleDto> {
@@ -51,6 +52,7 @@ export class CannedResponseBubbleService {
         address: dto.address,
         locationTitle: dto.locationTitle,
         json: dto.json,
+        channels: dto.channels ?? [],
         sortOrder: count,
       },
     });

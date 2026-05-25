@@ -43,8 +43,9 @@ export class StaffMessageService {
     return this.prisma.cannedResponse.findMany({
       where: {
         deletedAt: null,
-        isActive: true,
-        ...(includeHidden ? {} : { hideFromChat: false }),
+        // includeHidden=true (admin) → show deactivated AND hide-from-chat
+        // templates. Default (picker) → only active + not hidden.
+        ...(includeHidden ? {} : { isActive: true, hideFromChat: false }),
         ...(category ? { category } : {}),
       },
       orderBy: [{ sortOrder: 'asc' }, { title: 'asc' }],
@@ -65,8 +66,24 @@ export class StaffMessageService {
   /** Update a canned response */
   async updateCannedResponse(
     id: string,
-    data: { title?: string; content?: string; category?: string; sortOrder?: number; isActive?: boolean },
+    data: {
+      title?: string;
+      content?: string;
+      category?: string;
+      sortOrder?: number;
+      isActive?: boolean;
+      hideFromChat?: boolean;
+      verifiedOnly?: boolean;
+    },
   ) {
+    // W8: guard against updating a soft-deleted row. Without this, a stale
+    // admin client could resurrect a deleted template silently.
+    const existing = await this.prisma.cannedResponse.findFirst({
+      where: { id, deletedAt: null },
+    });
+    if (!existing) {
+      throw new NotFoundException('ไม่พบข้อความสำเร็จรูป');
+    }
     return this.prisma.cannedResponse.update({ where: { id }, data });
   }
 

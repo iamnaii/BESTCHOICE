@@ -34,7 +34,13 @@ describe('CannedResponseBubbleService', () => {
       prisma.cannedResponseBubble.create.mockResolvedValue({ id: 'b3', type: 'TEXT', sortOrder: 2 });
       const result = await service.createBubble('cr-1', { type: 'TEXT', text: 'hi' });
       expect(prisma.cannedResponseBubble.create).toHaveBeenCalledWith({
-        data: { cannedResponseId: 'cr-1', type: 'TEXT', text: 'hi', mediaUrl: undefined, thumbnailUrl: undefined, stickerPackageId: undefined, stickerId: undefined, sortOrder: 2 },
+        data: expect.objectContaining({
+          cannedResponseId: 'cr-1',
+          type: 'TEXT',
+          text: 'hi',
+          channels: [],
+          sortOrder: 2,
+        }),
       });
       expect(result.id).toBe('b3');
     });

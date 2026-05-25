@@ -44,6 +44,11 @@ import { TrainingExtractCron } from './cron/training-extract.cron';
 import { AiSuggestRequestDto } from './dto/ai-suggest.dto';
 import { SaveFeedbackDto } from './dto/ai-training.dto';
 import { UpdateAiSettingsDto } from './dto/ai-settings.dto';
+import { CreateBubbleDto } from './dto/create-bubble.dto';
+import { UpdateBubbleDto } from './dto/update-bubble.dto';
+import { CreateQuickReplyDto } from './dto/create-quick-reply.dto';
+import { UpdateQuickReplyDto } from './dto/update-quick-reply.dto';
+import { UpdateCannedResponseDto } from './dto/update-canned-response.dto';
 import { SessionQueryDto } from '../chat-engine/dto/session-query.dto';
 import { ChatRoomStatus, ChatChannel, ChatPriority, MessageRole, MessageType } from '@prisma/client';
 import { StorageService } from '../storage/storage.service';
@@ -338,10 +343,7 @@ export class StaffChatController {
 
   @Post('canned-responses/:id/bubbles')
   @Roles('OWNER', 'BRANCH_MANAGER')
-  async createBubble(
-    @Param('id') id: string,
-    @Body() body: { type: 'TEXT' | 'IMAGE' | 'STICKER' | 'CARD' | 'LOCATION' | 'VIDEO' | 'JSON'; text?: string; mediaUrl?: string; thumbnailUrl?: string; stickerPackageId?: string; stickerId?: string; latitude?: number; longitude?: number; address?: string; locationTitle?: string; json?: any },
-  ) {
+  async createBubble(@Param('id') id: string, @Body() body: CreateBubbleDto) {
     return this.cannedResponseBubble.createBubble(id, body);
   }
 
@@ -353,7 +355,7 @@ export class StaffChatController {
 
   @Patch('canned-responses/bubbles/:bubbleId')
   @Roles('OWNER', 'BRANCH_MANAGER')
-  async updateBubble(@Param('bubbleId') bubbleId: string, @Body() body: any) {
+  async updateBubble(@Param('bubbleId') bubbleId: string, @Body() body: UpdateBubbleDto) {
     return this.cannedResponseBubble.updateBubble(bubbleId, body);
   }
 
@@ -373,17 +375,7 @@ export class StaffChatController {
 
   @Post('canned-responses/:id/quick-replies')
   @Roles('OWNER', 'BRANCH_MANAGER')
-  async createQuickReply(
-    @Param('id') id: string,
-    @Body()
-    body: {
-      label: string;
-      type: 'POSTBACK' | 'URL' | 'MESSAGE';
-      payload?: string;
-      url?: string;
-      message?: string;
-    },
-  ) {
+  async createQuickReply(@Param('id') id: string, @Body() body: CreateQuickReplyDto) {
     return this.cannedResponseQuickReply.create(id, body);
   }
 
@@ -395,7 +387,7 @@ export class StaffChatController {
 
   @Patch('canned-responses/quick-replies/:qrId')
   @Roles('OWNER', 'BRANCH_MANAGER')
-  async updateQuickReply(@Param('qrId') qrId: string, @Body() body: any) {
+  async updateQuickReply(@Param('qrId') qrId: string, @Body() body: UpdateQuickReplyDto) {
     return this.cannedResponseQuickReply.update(qrId, body);
   }
 
@@ -407,7 +399,7 @@ export class StaffChatController {
 
   @Patch('canned-responses/:id')
   @Roles('OWNER', 'BRANCH_MANAGER')
-  async updateCannedResponse(@Param('id') id: string, @Body() body: any) {
+  async updateCannedResponse(@Param('id') id: string, @Body() body: UpdateCannedResponseDto) {
     return this.staffMessage.updateCannedResponse(id, body);
   }
 

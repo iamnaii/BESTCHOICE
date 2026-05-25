@@ -33,11 +33,47 @@ export class CannedResponseSenderService {
     private messageRouter: MessageRouterService,
   ) {}
 
+  /**
+   * Lazily bootstrap (or fetch) the system bot user used when a send is
+   * initiated by an automated path (e.g. Quick Reply postback router) rather
+   * than a real staff member. Idempotent — `upsert` is atomic at the DB
+   * level so concurrent first-time postbacks cannot race (Postgres handles
+   * the unique-email constraint internally, eliminating the P2002 window
+   * that `findFirst` → `create` had).
+   *
+   * The system user is marked `isActive=false` so it cannot log in via the
+   * normal auth flow; its password placeholder is intentionally unusable.
+   *
+   * Role is `SALES` (lowest practical role) — the bot must NOT appear in
+   * OWNER-only queries (audit recipients, role-filtered admin lists, etc.).
+   * Matches the existing `collections-foundation.seed` row whose update
+   * path also keeps it in the system-user pool; if the seed has already
+   * created an `OWNER`-role row, the `update: {}` no-op preserves it
+   * (only first-ever create stamps `SALES`).
+   */
+  private async getSystemUserId(): Promise<string> {
+    const user = await this.prisma.user.upsert({
+      where: { email: 'system@bestchoice.internal' },
+      update: {},
+      create: {
+        email: 'system@bestchoice.internal',
+        password: 'NEVER_LOGIN_SYSTEM_USER',
+        name: 'System Bot',
+        role: 'SALES',
+        isActive: false,
+        isSystemUser: true,
+      },
+      select: { id: true },
+    });
+    return user.id;
+  }
+
   async send(
     roomId: string,
     templateId: string,
-    staffId: string,
+    staffId: string | null,
   ): Promise<{ sent: number; dropped: number; errors: string[] }> {
+    const effectiveStaffId = staffId ?? (await this.getSystemUserId());
     // 1. Resolve room
     const room = await this.prisma.chatRoom.findFirst({
       where: { id: roomId, deletedAt: null },
@@ -141,7 +177,7 @@ export class CannedResponseSenderService {
 
     for (const msg of outbound) {
       try {
-        const result = await this.messageRouter.sendStaffOutbound(roomId, msg, staffId);
+        const result = await this.messageRouter.sendStaffOutbound(roomId, msg, effectiveStaffId);
         if (result.success) {
           if (result.droppedReason) {
             dropped++;

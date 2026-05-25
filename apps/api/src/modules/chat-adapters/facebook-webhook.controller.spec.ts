@@ -7,6 +7,8 @@ import { ChatChannel, MessageRole } from '@prisma/client';
 import { FacebookWebhookController } from './facebook-webhook.controller';
 import { MessageRouterService } from '../chat-engine/services/message-router.service';
 import { WebhookAnomalyService } from '../webhook-security/webhook-anomaly.service';
+import { QuickReplyPostbackRouterService } from '../staff-chat/services/quick-reply-postback-router.service';
+import { PrismaService } from '../../prisma/prisma.service';
 
 jest.mock('@sentry/nestjs', () => ({
   captureException: jest.fn(),
@@ -42,6 +44,8 @@ describe('FacebookWebhookController.handleWebhook — rawBody SLO alert (T6-C14)
         return undefined;
       }),
     };
+    const postbackRouter = { route: jest.fn().mockResolvedValue({ handled: false }) };
+    const prisma = { chatRoom: { findFirst: jest.fn().mockResolvedValue(null) } };
 
     const mod: TestingModule = await Test.createTestingModule({
       controllers: [FacebookWebhookController],
@@ -49,6 +53,8 @@ describe('FacebookWebhookController.handleWebhook — rawBody SLO alert (T6-C14)
         { provide: MessageRouterService, useValue: router },
         { provide: ConfigService, useValue: config },
         { provide: WebhookAnomalyService, useValue: anomaly },
+        { provide: QuickReplyPostbackRouterService, useValue: postbackRouter },
+        { provide: PrismaService, useValue: prisma },
       ],
     }).compile();
 
@@ -105,6 +111,16 @@ describe('FacebookWebhookController.handleWebhook — message_echoes', () => {
       }),
     };
     const anomaly = { record: jest.fn().mockResolvedValue(undefined) };
+    // Phase 5 — postback router only fires when chatRoom.findFirst returns a
+    // room AND payload matches TEMPLATE:<id>. Existing FB postback specs use
+    // legacy payloads (e.g. PERSISTENT_MENU_GET_STARTED) which never match —
+    // so a default no-room mock + handled:false stub preserves behavior.
+    const prisma = {
+      chatRoom: { findFirst: jest.fn().mockResolvedValue(null) },
+    };
+    const postbackRouter = {
+      route: jest.fn().mockResolvedValue({ handled: false }),
+    };
 
     const mod: TestingModule = await Test.createTestingModule({
       controllers: [FacebookWebhookController],
@@ -112,6 +128,8 @@ describe('FacebookWebhookController.handleWebhook — message_echoes', () => {
         { provide: MessageRouterService, useValue: router },
         { provide: ConfigService, useValue: config },
         { provide: WebhookAnomalyService, useValue: anomaly },
+        { provide: QuickReplyPostbackRouterService, useValue: postbackRouter },
+        { provide: PrismaService, useValue: prisma },
       ],
     }).compile();
 
@@ -189,12 +207,16 @@ describe('FacebookWebhookController.handleWebhook — message_echoes', () => {
       }),
     };
     const anomaly = { record: jest.fn().mockResolvedValue(undefined) };
+    const postbackRouter = { route: jest.fn().mockResolvedValue({ handled: false }) };
+    const prisma = { chatRoom: { findFirst: jest.fn().mockResolvedValue(null) } };
     const mod = await Test.createTestingModule({
       controllers: [FacebookWebhookController],
       providers: [
         { provide: MessageRouterService, useValue: localRouter },
         { provide: ConfigService, useValue: config },
         { provide: WebhookAnomalyService, useValue: anomaly },
+        { provide: QuickReplyPostbackRouterService, useValue: postbackRouter },
+        { provide: PrismaService, useValue: prisma },
       ],
     }).compile();
     const localController = mod.get(FacebookWebhookController);

@@ -22,6 +22,8 @@ import { createHmac, timingSafeEqual } from 'crypto';
 import { ChatChannel, MessageRole, MessageType } from '@prisma/client';
 import { RawBodyRequest } from '../../common/types/raw-body-request';
 import { WebhookAnomalyService } from '../webhook-security/webhook-anomaly.service';
+import { QuickReplyPostbackRouterService } from '../staff-chat/services/quick-reply-postback-router.service';
+import { PrismaService } from '../../prisma/prisma.service';
 
 /**
  * Facebook Messenger Webhook Controller
@@ -46,6 +48,8 @@ export class FacebookWebhookController {
     private messageRouter: MessageRouterService,
     private configService: ConfigService,
     private anomaly: WebhookAnomalyService,
+    private postbackRouter: QuickReplyPostbackRouterService,
+    private prisma: PrismaService,
   ) {}
 
   /**
@@ -172,6 +176,43 @@ export class FacebookWebhookController {
 
     // Handle postback events (persistent menu clicks, button taps)
     if (postback && !message) {
+      const payload: string = postback.payload ?? postback.title ?? '';
+
+      // Phase 5 — Quick Reply postback router. If the payload matches a
+      // known canned-response format (e.g. `TEMPLATE:<id>`), dispatch it
+      // here and DON'T pollute the message log with a fake TEXT entry.
+      // Falls through to the routeInbound() path below for any unrecognised
+      // payload, preserving the original behavior for menu clicks etc.
+      try {
+        // C2: Order by lastMessageAt desc — a PSID with multiple active rooms
+        // (re-engagement scenario: room A archived/deleted, room B current)
+        // would otherwise resolve to the oldest one in insertion order. Newest
+        // is always the live chat the customer is actually using.
+        const room = await this.prisma.chatRoom.findFirst({
+          where: {
+            externalUserId: senderId,
+            channel: ChatChannel.FACEBOOK,
+            deletedAt: null,
+          },
+          orderBy: { lastMessageAt: 'desc' },
+          select: { id: true },
+        });
+        if (room) {
+          const routeResult = await this.postbackRouter.route(room.id, payload);
+          if (routeResult.handled) {
+            this.logger.log(
+              `[FB postback router] PSID ${senderId} payload "${payload}" → ${routeResult.action ?? 'unknown'}${routeResult.error ? ` (error: ${routeResult.error})` : ''}`,
+            );
+            return;
+          }
+        }
+      } catch (err) {
+        this.logger.warn(
+          `[FB postback router] failed: ${err instanceof Error ? err.message : err}`,
+        );
+        // fall through to legacy routeInbound path
+      }
+
       const referral = postback.referral ?? event.referral;
       const attribution = referral
         ? {
@@ -187,7 +228,7 @@ export class FacebookWebhookController {
         externalUserId: senderId,
         channel: ChatChannel.FACEBOOK,
         type: MessageType.TEXT,
-        text: postback.payload ?? postback.title ?? '',
+        text: payload,
         rawPayload: event,
         timestamp: event.timestamp ? new Date(event.timestamp) : new Date(),
         attribution,

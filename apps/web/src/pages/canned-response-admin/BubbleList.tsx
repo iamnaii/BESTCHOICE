@@ -15,6 +15,7 @@ import ChannelChips from './ChannelChips';
 import type { CannedResponseBubble, BubbleType, Channel } from './types';
 import { CHANNEL_LABELS } from './types';
 import type { ChannelTabValue } from './ChannelTabs';
+import { reorderBubbles } from './bubble-reorder-logic';
 
 interface Props {
   cannedResponseId: string;
@@ -144,14 +145,9 @@ export default function BubbleList({ cannedResponseId, channelFilter = 'ALL', on
     const { active, over } = e;
     if (!over || active.id === over.id) return;
     // Reorder uses ALL bubbles' sortOrder, not just visible ones — preserves
-    // cross-channel ordering when active tab is filtered.
-    const fromIdx = allBubbles.findIndex((b) => b.id === active.id);
-    const toIdx = allBubbles.findIndex((b) => b.id === over.id);
-    if (fromIdx < 0 || toIdx < 0) return;
-    const reordered = [...allBubbles];
-    const [moved] = reordered.splice(fromIdx, 1);
-    reordered.splice(toIdx, 0, moved);
-    reorderMut.mutate(reordered.map((b, i) => ({ id: b.id, sortOrder: i })));
+    // cross-channel ordering when active tab is filtered. Logic extracted into
+    // `reorderBubbles` so it can be unit-tested (bubble-reorder-logic.test.ts).
+    reorderMut.mutate(reorderBubbles(allBubbles, String(active.id), String(over.id)));
   };
 
   // Cap of 5 applies to TOTAL bubbles in the template (LINE push limit).
@@ -206,7 +202,9 @@ export default function BubbleList({ cannedResponseId, channelFilter = 'ALL', on
           })}
         </div>
       ) : (
-        <p className="text-xs text-muted-foreground">ถึงขีดจำกัด 5 บับเบิ้ลแล้ว — ลบบางบับเบิ้ลก่อนเพิ่มใหม่</p>
+        <p className="text-xs text-muted-foreground leading-snug">
+          ถึงขีดจำกัด 5 บับเบิ้ลแล้ว (รวมทุก channel) — ลบบางบับเบิ้ลก่อนเพิ่มใหม่
+        </p>
       )}
     </div>
   );

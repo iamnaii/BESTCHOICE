@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   Dialog,
   DialogContent,
@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Check, ChevronDown, ChevronRight, FileText, Search } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, FileText, Search, Send } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import api from '@/lib/api';
@@ -96,13 +96,43 @@ export default function MessageTemplatePicker({ isOpen, onClose, onInsert, roomI
     const textBubbles = (preview.bubbles ?? []).filter((b) => b.type === 'TEXT' && b.text);
     const nonTextCount = (preview.bubbles ?? []).filter((b) => b.type !== 'TEXT').length;
     if (nonTextCount > 0) {
-      toast.warning(`มี ${nonTextCount} bubble (image/sticker) ที่ไม่ใช่ text — Phase 1 ส่งเฉพาะ text. รอ Phase 2 จะส่งทุก type`);
+      toast.warning(
+        `มี ${nonTextCount} bubble ที่ไม่ใช่ข้อความ — "ใส่ข้อความ" จะใส่เฉพาะ text. กด "ส่งทันที" เพื่อส่งทุก bubble`,
+      );
     }
-    const content = textBubbles.length > 0
-      ? textBubbles.map((b) => b.text).join('\n\n')
-      : (preview.expandedContent ?? '');
+    const content =
+      textBubbles.length > 0
+        ? textBubbles.map((b) => b.text).join('\n\n')
+        : (preview.expandedContent ?? '');
     onInsert(content);
     onClose();
+  };
+
+  const sendDirectMut = useMutation({
+    mutationFn: () =>
+      api.post(`/staff-chat/rooms/${roomId}/send-canned-response`, { templateId: selectedId }),
+    onSuccess: (res: any) => {
+      const data = res?.data ?? res;
+      const sent = data?.sent ?? 0;
+      const dropped = data?.dropped ?? 0;
+      const errors: string[] = data?.errors ?? [];
+      if (errors.length > 0) {
+        toast.error(`ส่งสำเร็จ ${sent}/${sent + errors.length} bubble — บาง bubble ล้มเหลว`);
+      } else if (dropped > 0) {
+        toast.success(`ส่ง ${sent} bubble แล้ว (${dropped} bubble ถูก drop เพราะ channel ไม่รองรับ)`);
+      } else {
+        toast.success(`ส่ง ${sent} bubble แล้ว`);
+      }
+      onClose();
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.message ?? 'ส่งไม่สำเร็จ');
+    },
+  });
+
+  const handleSendDirect = () => {
+    if (!preview || !roomId || !selectedId) return;
+    sendDirectMut.mutate();
   };
 
   // Apply search filter, then group
@@ -372,9 +402,17 @@ export default function MessageTemplatePicker({ isOpen, onClose, onInsert, roomI
           <Button variant="ghost" onClick={onClose}>
             ยกเลิก
           </Button>
-          <Button disabled={!preview} onClick={handleInsert}>
+          <Button variant="outline" disabled={!preview} onClick={handleInsert}>
             <Check className="w-4 h-4 mr-1.5" />
             ใส่ข้อความ
+          </Button>
+          <Button
+            disabled={!preview || !roomId || sendDirectMut.isPending}
+            onClick={handleSendDirect}
+            title="ส่งทุก bubble + Quick Reply ทันทีโดยไม่ผ่านช่องตอบ"
+          >
+            <Send className="w-4 h-4 mr-1.5" />
+            {sendDirectMut.isPending ? 'กำลังส่ง...' : 'ส่งทันที'}
           </Button>
         </div>
       </DialogContent>

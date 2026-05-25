@@ -79,19 +79,49 @@ export class CannedResponseSenderService {
       throw new BadRequestException('ไม่มี bubble ที่ใช้กับ channel นี้');
     }
 
-    // 5. Expand variables in TEXT bubbles
-    const expandedBubbles = await Promise.all(
-      applicableBubbles.map(async (b) => {
-        if (b.type === 'TEXT' && b.text) {
-          const expandedText = await this.variableService.expandVariables(b.text, {
-            roomId,
-            customerId: room.customerId ?? undefined,
-          });
-          return { ...b, text: expandedText };
-        }
-        return b;
-      }),
-    );
+    // 5. Expand variables in TEXT bubbles.
+    //
+    // To avoid N+1 DB queries (each expandVariables call hits customer +
+    // contract + payment + chatRoom), resolve every supported variable
+    // ONCE via a probe string, build a substitution map, then apply it
+    // locally to each TEXT bubble.
+    //
+    // The probe uses the ASCII SOH control char (U+0001) as a delimiter
+    // that the variable service's final `result.replace(/\{(\w+)\}/g, ...)`
+    // preserves verbatim — only `{name}` tokens are substituted, the
+    // separator passes through unchanged. SOH was chosen because it
+    // cannot appear in any user-facing value (name, phone, amount, etc.).
+    const VARIABLE_KEYS = [
+      'customerName',
+      'customerPhone',
+      'contractNumber',
+      'amountDue',
+      'dueDate',
+      'installmentNo',
+      'branchName',
+    ] as const;
+    const SEP = ''; // unlikely to appear in any resolved value
+    const probe = VARIABLE_KEYS.map((k) => `{${k}}`).join(SEP);
+    const expandedProbe = await this.variableService.expandVariables(probe, {
+      roomId,
+      customerId: room.customerId ?? undefined,
+    });
+    const resolvedParts = expandedProbe.split(SEP);
+    const resolvedValues: Record<string, string> = {};
+    VARIABLE_KEYS.forEach((k, i) => {
+      resolvedValues[k] = resolvedParts[i] ?? '-';
+    });
+
+    const expandedBubbles = applicableBubbles.map((b) => {
+      if (b.type === 'TEXT' && b.text) {
+        const text = b.text.replace(
+          /\{(\w+)\}/g,
+          (_match, key: string) => resolvedValues[key] ?? '-',
+        );
+        return { ...b, text };
+      }
+      return b;
+    });
 
     // 6. Translate to OutboundMessage[] and attach quick replies to LAST one
     const quickReplies = this.translator.translateQuickReplies(

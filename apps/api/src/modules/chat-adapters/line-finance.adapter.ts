@@ -87,10 +87,16 @@ export class LineFinanceAdapter implements IChannelAdapter {
       });
     }
     if (message.videoUrl) {
+      // LINE rejects video messages whose previewImageUrl is not an image
+      // (it must be a valid JPEG/PNG). Falling back to videoUrl produces a
+      // silent 400 from the LINE API. Fail fast with a clear message instead.
+      if (!message.thumbnailUrl) {
+        throw new Error('VIDEO bubble ต้องมี thumbnailUrl (LINE ต้องการ preview image)');
+      }
       return withQr({
         type: 'video',
         originalContentUrl: message.videoUrl,
-        previewImageUrl: message.thumbnailUrl ?? message.videoUrl,
+        previewImageUrl: message.thumbnailUrl,
       });
     }
     if (message.flexJson) {

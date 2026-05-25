@@ -315,6 +315,7 @@ export default function CannedResponseAdminPage() {
           <TemplateEditorPane
             template={selected}
             existingCategories={existingCategories}
+            allTemplates={templates}
             onSave={async (patch) => {
               if (!selected) return;
               await updateMutation.mutateAsync({ id: selected.id, patch });

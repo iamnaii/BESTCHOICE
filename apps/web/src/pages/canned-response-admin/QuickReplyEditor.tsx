@@ -7,16 +7,39 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import api from '@/lib/api';
-import type { CannedResponseQuickReply, QuickReplyType } from './types';
+import type { CannedResponse, CannedResponseQuickReply, QuickReplyType } from './types';
 
-interface Props { cannedResponseId: string; }
+interface Props {
+  cannedResponseId: string;
+  /** Used for the POSTBACK template-picker helper — excludes self (avoid self-reference) */
+  allTemplates?: CannedResponse[];
+}
+
+/**
+ * POSTBACK payload helper.
+ * Format used by the backend QuickReplyPostbackRouterService:
+ *   TEMPLATE:<canned-response-id>   → send that template back as bot reply
+ */
+const POSTBACK_TEMPLATE_PREFIX = 'TEMPLATE:';
+
+function parseTemplatePostback(payload: string | null): string | null {
+  if (!payload || !payload.startsWith(POSTBACK_TEMPLATE_PREFIX)) return null;
+  const id = payload.slice(POSTBACK_TEMPLATE_PREFIX.length).trim();
+  return id || null;
+}
 
 function SortableQuickReplyRow({
-  qr, onChange, onDelete,
+  qr,
+  onChange,
+  onDelete,
+  allTemplates,
+  selfId,
 }: {
   qr: CannedResponseQuickReply;
   onChange: (patch: Partial<CannedResponseQuickReply>) => void;
   onDelete: () => void;
+  allTemplates: CannedResponse[];
+  selfId: string;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: qr.id });
   const style = { transform: CSS.Transform.toString(transform), transition };
@@ -49,12 +72,41 @@ function SortableQuickReplyRow({
           className="text-sm"
         />
         {qr.type === 'POSTBACK' && (
-          <Input
-            value={qr.payload ?? ''}
-            onChange={(e) => onChange({ payload: e.target.value })}
-            placeholder="Payload (ส่งเข้าระบบ bot)"
-            className="text-xs font-mono"
-          />
+          <>
+            <div className="flex items-center gap-2">
+              <label className="text-[11px] text-muted-foreground shrink-0">เมื่อกด:</label>
+              <select
+                value={parseTemplatePostback(qr.payload) ?? ''}
+                onChange={(e) => {
+                  const tplId = e.target.value;
+                  onChange({ payload: tplId ? `${POSTBACK_TEMPLATE_PREFIX}${tplId}` : '' });
+                }}
+                className="text-xs border border-border rounded px-2 py-1 bg-background flex-1"
+              >
+                <option value="">— ตั้งเอง (custom payload) —</option>
+                <optgroup label="ส่ง template ตอบกลับ">
+                  {allTemplates
+                    .filter((t) => t.id !== selfId && t.isActive !== false)
+                    .map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.title}
+                        {t.category ? ` · ${t.category}` : ''}
+                      </option>
+                    ))}
+                </optgroup>
+              </select>
+            </div>
+            <Input
+              value={qr.payload ?? ''}
+              onChange={(e) => onChange({ payload: e.target.value })}
+              placeholder="Payload (ส่งเข้าระบบ bot)"
+              className="text-xs font-mono"
+            />
+            <p className="text-[11px] text-muted-foreground leading-snug">
+              เลือก template ด้านบนเพื่อให้บอทส่ง template นั้นตอบกลับเมื่อลูกค้ากดปุ่ม — หรือพิมพ์ payload เอง
+              (รูปแบบ <code>TEMPLATE:&lt;id&gt;</code> สำหรับ template, payload อื่นจะถูก route ไปยัง intent matcher)
+            </p>
+          </>
         )}
         {qr.type === 'URL' && (
           <>
@@ -83,7 +135,7 @@ function SortableQuickReplyRow({
   );
 }
 
-export default function QuickReplyEditor({ cannedResponseId }: Props) {
+export default function QuickReplyEditor({ cannedResponseId, allTemplates = [] }: Props) {
   const qc = useQueryClient();
 
   const listQ = useQuery<CannedResponseQuickReply[]>({
@@ -155,6 +207,8 @@ export default function QuickReplyEditor({ cannedResponseId }: Props) {
                 qr={qr}
                 onChange={(patch) => updateMut.mutate({ id: qr.id, patch })}
                 onDelete={() => deleteMut.mutate(qr.id)}
+                allTemplates={allTemplates}
+                selfId={cannedResponseId}
               />
             ))}
             {items.length === 0 && (

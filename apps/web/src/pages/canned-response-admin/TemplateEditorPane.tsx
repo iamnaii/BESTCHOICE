@@ -11,10 +11,12 @@ import type { CannedResponse } from './types';
 interface Props {
   template: CannedResponse | null;
   existingCategories: string[];
+  /** All templates from the list query — used for POSTBACK Quick Reply template picker */
+  allTemplates?: CannedResponse[];
   onSave: (patch: Partial<CannedResponse>) => Promise<void>;
 }
 
-export default function TemplateEditorPane({ template, existingCategories, onSave }: Props) {
+export default function TemplateEditorPane({ template, existingCategories, allTemplates = [], onSave }: Props) {
   const [form, setForm] = useState({
     title: '',
     shortcut: '',
@@ -136,7 +138,7 @@ export default function TemplateEditorPane({ template, existingCategories, onSav
         </div>
         <BubbleList cannedResponseId={template.id} />
         <div className="border-t border-border pt-4">
-          <QuickReplyEditor cannedResponseId={template.id} />
+          <QuickReplyEditor cannedResponseId={template.id} allTemplates={allTemplates} />
         </div>
         <div className="flex items-center gap-2">
           <input

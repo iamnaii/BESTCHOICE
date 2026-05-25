@@ -13,6 +13,7 @@ import { MessageRouterService } from '../chat-engine/services/message-router.ser
 import { StaffMessageService } from './services/staff-message.service';
 import { CannedResponseBubbleService } from './services/canned-response-bubble.service';
 import { CannedResponseQuickReplyService } from './services/canned-response-quickreply.service';
+import { CannedResponseSenderService } from './services/canned-response-sender.service';
 import { AiAssistantService } from './services/ai-assistant.service';
 import { MediaContentService } from './services/media-content.service';
 import { ChatToContractService } from './services/chat-to-contract.service';
@@ -82,6 +83,12 @@ describe('StaffChatController', () => {
             update: jest.fn(),
             delete: jest.fn(),
             reorder: jest.fn(),
+          },
+        },
+        {
+          provide: CannedResponseSenderService,
+          useValue: {
+            send: jest.fn(),
           },
         },
       ],

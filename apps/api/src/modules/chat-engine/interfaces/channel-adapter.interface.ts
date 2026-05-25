@@ -33,6 +33,20 @@ export interface InboundMessage {
 }
 
 /**
+ * Quick reply attachment — works alongside any OutboundMessage type.
+ * POSTBACK → adapter sends a button that posts data back to the bot.
+ * URL → adapter opens an external URL on tap.
+ * MESSAGE → adapter sends a literal message text on the customer's behalf.
+ */
+export interface OutboundQuickReply {
+  label: string;
+  type: 'POSTBACK' | 'URL' | 'MESSAGE';
+  payload?: string;
+  url?: string;
+  message?: string;
+}
+
+/**
  * Outbound message to be sent through a channel adapter.
  * The engine produces this; adapters convert it to platform format.
  */
@@ -49,6 +63,23 @@ export interface OutboundMessage {
   mediaUrl?: string;
   /** Platform-specific template payload (e.g. LINE Flex, FB template) */
   templatePayload?: Record<string, unknown>;
+  // ─── Phase 4 multi-bubble fields (channel-agnostic) ───
+  /** Image URL — IMAGE bubbles */
+  imageUrl?: string;
+  /** Thumbnail (preview) URL — used by IMAGE/VIDEO on LINE; FB ignores */
+  thumbnailUrl?: string;
+  /** Sticker — LINE only; FB drops gracefully */
+  sticker?: { packageId: string; stickerId: string };
+  /** Location pin — LINE supports natively; FB drops gracefully */
+  location?: { title: string; address: string; latitude: number; longitude: number };
+  /** Video URL — VIDEO bubbles */
+  videoUrl?: string;
+  /** LINE Flex Bubble or Carousel — adapter-specific translation for non-LINE */
+  flexJson?: any;
+  /** Raw JSON payload for advanced/manual cases */
+  jsonPayload?: any;
+  /** Quick reply buttons — attach to ANY message type */
+  quickReplies?: OutboundQuickReply[];
 }
 
 /** Result of sending a message through an adapter */
@@ -57,6 +88,8 @@ export interface SendResult {
   /** Platform's message ID for the sent message */
   externalMessageId?: string;
   error?: string;
+  /** Set when an adapter drops the bubble because the channel doesn't support it. */
+  droppedReason?: string;
 }
 
 /**
@@ -70,6 +103,12 @@ export interface IChannelAdapter {
 
   /** Send a message to the customer */
   sendMessage(message: OutboundMessage): Promise<SendResult>;
+
+  /** Optional batch-send for multi-bubble templates — when present, the engine
+   *  can group all bubbles into one platform call (e.g. LINE allows up to 5
+   *  messages per push). When absent, the engine falls back to N sequential
+   *  sendMessage() calls. */
+  sendBatch?(messages: OutboundMessage[]): Promise<SendResult[]>;
 
   /** Send a typing indicator (best-effort, adapters may no-op) */
   sendTypingIndicator?(externalUserId: string): Promise<void>;

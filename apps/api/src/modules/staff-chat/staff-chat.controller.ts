@@ -29,6 +29,7 @@ import { HandoffManagerService } from '../chat-engine/services/handoff-manager.s
 import { StaffMessageService } from './services/staff-message.service';
 import { CannedResponseBubbleService } from './services/canned-response-bubble.service';
 import { CannedResponseQuickReplyService } from './services/canned-response-quickreply.service';
+import { CannedResponseSenderService } from './services/canned-response-sender.service';
 import { AiAssistantService } from './services/ai-assistant.service';
 import { MediaContentService } from './services/media-content.service';
 import { ChatToContractService } from './services/chat-to-contract.service';
@@ -77,6 +78,7 @@ export class StaffChatController {
     private staffChatGateway: StaffChatGateway,
     private cannedResponseBubble: CannedResponseBubbleService,
     private cannedResponseQuickReply: CannedResponseQuickReplyService,
+    private cannedResponseSender: CannedResponseSenderService,
   ) {}
 
   // ─── Rooms ────────────────────────────────────────────
@@ -269,6 +271,26 @@ export class StaffChatController {
     @Param('id') id: string,
   ) {
     return this.staffMessage.getCannedResponseExpanded(id, roomId);
+  }
+
+  /**
+   * Phase 4a — multi-bubble send. Loads the template, filters bubbles by
+   * the room's channel, expands variables, then dispatches each bubble
+   * sequentially through the channel adapter. Returns counts of sent /
+   * dropped (unsupported on channel) / errors so the UI can surface
+   * partial-success states.
+   */
+  @Post('rooms/:roomId/send-canned-response')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  async sendCannedResponse(
+    @Param('roomId') roomId: string,
+    @Body() body: { templateId: string },
+    @Req() req: { user: { id: string } },
+  ) {
+    if (!body?.templateId || typeof body.templateId !== 'string') {
+      throw new BadRequestException('กรุณาระบุ templateId');
+    }
+    return this.cannedResponseSender.send(roomId, body.templateId, req.user.id);
   }
 
   @Post('canned-responses')

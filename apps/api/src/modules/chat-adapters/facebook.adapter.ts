@@ -5,6 +5,7 @@ import * as Sentry from '@sentry/nestjs';
 import {
   IChannelAdapter,
   OutboundMessage,
+  OutboundQuickReply,
   SendResult,
   UserProfile,
 } from '../chat-engine/interfaces/channel-adapter.interface';
@@ -55,20 +56,55 @@ export class FacebookAdapter implements IChannelAdapter {
     try {
       const fbMessage: Record<string, unknown> = {};
 
-      if (message.templatePayload) {
-        // Check if templatePayload is a Facebook attachment (has type + payload)
+      // Phase 4 multi-bubble — channel-agnostic OutboundMessage fields take
+      // priority over legacy templatePayload. FB supports text/image/video/
+      // generic-template; STICKER, LOCATION, FLEX, JSON are unsupported and
+      // are dropped gracefully with a droppedReason.
+      if (message.imageUrl) {
+        fbMessage.attachment = {
+          type: 'image',
+          payload: { url: message.imageUrl, is_reusable: true },
+        };
+      } else if (message.videoUrl) {
+        fbMessage.attachment = {
+          type: 'video',
+          payload: { url: message.videoUrl, is_reusable: true },
+        };
+      } else if (message.flexJson) {
+        // Translate simplified card JSON → FB generic template
+        fbMessage.attachment = {
+          type: 'template',
+          payload: this.cardToFbGenericTemplate(message.flexJson),
+        };
+      } else if (message.text) {
+        fbMessage.text = message.text;
+      } else if (message.templatePayload) {
+        // Legacy templatePayload path — preserved for back-compat with existing
+        // callers that hand-build FB attachments.
         if (message.templatePayload.type && message.templatePayload.payload) {
           fbMessage.attachment = message.templatePayload;
         }
-
-        // Quick replies can be set on templatePayload
         if (message.templatePayload.quick_replies) {
           fbMessage.quick_replies = message.templatePayload.quick_replies;
         }
+      } else if (message.sticker || message.location || message.jsonPayload) {
+        const reason = message.sticker
+          ? 'sticker_unsupported_on_facebook'
+          : message.location
+            ? 'location_unsupported_on_facebook'
+            : 'raw_json_unsupported_on_facebook';
+        this.logger.warn(
+          `[FB] drops unsupported bubble (${reason}) for ${message.externalUserId}`,
+        );
+        return { success: true, droppedReason: reason };
+      } else {
+        return { success: false, error: 'no message content' };
       }
 
-      if (message.text && !fbMessage.attachment) {
-        fbMessage.text = message.text;
+      // Phase 4 — attach quick replies (overrides any legacy quick_replies on
+      // templatePayload that we don't already have on fbMessage).
+      if (message.quickReplies && message.quickReplies.length > 0 && !fbMessage.quick_replies) {
+        fbMessage.quick_replies = this.buildFbQuickReplies(message.quickReplies);
       }
 
       const body: Record<string, unknown> = {
@@ -106,6 +142,52 @@ export class FacebookAdapter implements IChannelAdapter {
       }
       return { success: false, error: errorMsg };
     }
+  }
+
+  /**
+   * Build FB Messenger quick_replies[]. FB supports up to 13 entries
+   * (current API limit). URL quick replies don't exist on FB — degrade to
+   * text type with the URL stuffed into the payload so a staff postback
+   * handler can still route it.
+   */
+  private buildFbQuickReplies(qrs: OutboundQuickReply[]): Array<Record<string, unknown>> {
+    return qrs.slice(0, 13).map((q) => ({
+      content_type: 'text',
+      title: q.label,
+      payload:
+        q.type === 'POSTBACK'
+          ? (q.payload ?? '')
+          : q.type === 'URL'
+            ? (q.url ?? '')
+            : (q.message ?? q.label),
+    }));
+  }
+
+  /**
+   * Translate a simplified card JSON (Phase 4 CARD bubble) to an FB
+   * generic-template payload. Card shape:
+   *   { title, subtitle?, heroImageUrl?, buttons?: [{ label, type: 'URL'|'POSTBACK', value }] }
+   */
+  private cardToFbGenericTemplate(card: any): Record<string, unknown> {
+    const buttons = Array.isArray(card?.buttons)
+      ? card.buttons.slice(0, 3).map((b: any) => {
+          if (b?.type === 'URL') {
+            return { type: 'web_url', title: b.label, url: b.value };
+          }
+          return { type: 'postback', title: b.label, payload: b.value ?? '' };
+        })
+      : undefined;
+    return {
+      template_type: 'generic',
+      elements: [
+        {
+          title: card?.title ?? 'Card',
+          subtitle: card?.subtitle ?? '',
+          image_url: card?.heroImageUrl,
+          ...(buttons && buttons.length > 0 ? { buttons } : {}),
+        },
+      ],
+    };
   }
 
   async sendTypingIndicator(externalUserId: string): Promise<void> {

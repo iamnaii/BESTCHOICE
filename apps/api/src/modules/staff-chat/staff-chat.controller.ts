@@ -27,6 +27,9 @@ import { AssignmentService } from '../chat-engine/services/assignment.service';
 import { ConversationTagService } from '../chat-engine/services/conversation-tag.service';
 import { HandoffManagerService } from '../chat-engine/services/handoff-manager.service';
 import { StaffMessageService } from './services/staff-message.service';
+import { CannedResponseBubbleService } from './services/canned-response-bubble.service';
+import { CannedResponseQuickReplyService } from './services/canned-response-quickreply.service';
+import { CannedResponseSenderService } from './services/canned-response-sender.service';
 import { AiAssistantService } from './services/ai-assistant.service';
 import { MediaContentService } from './services/media-content.service';
 import { ChatToContractService } from './services/chat-to-contract.service';
@@ -41,6 +44,11 @@ import { TrainingExtractCron } from './cron/training-extract.cron';
 import { AiSuggestRequestDto } from './dto/ai-suggest.dto';
 import { SaveFeedbackDto } from './dto/ai-training.dto';
 import { UpdateAiSettingsDto } from './dto/ai-settings.dto';
+import { CreateBubbleDto } from './dto/create-bubble.dto';
+import { UpdateBubbleDto } from './dto/update-bubble.dto';
+import { CreateQuickReplyDto } from './dto/create-quick-reply.dto';
+import { UpdateQuickReplyDto } from './dto/update-quick-reply.dto';
+import { UpdateCannedResponseDto } from './dto/update-canned-response.dto';
 import { SessionQueryDto } from '../chat-engine/dto/session-query.dto';
 import { ChatRoomStatus, ChatChannel, ChatPriority, MessageRole, MessageType } from '@prisma/client';
 import { StorageService } from '../storage/storage.service';
@@ -73,6 +81,9 @@ export class StaffChatController {
     private config: ConfigService,
     private trainingExtractCron: TrainingExtractCron,
     private staffChatGateway: StaffChatGateway,
+    private cannedResponseBubble: CannedResponseBubbleService,
+    private cannedResponseQuickReply: CannedResponseQuickReplyService,
+    private cannedResponseSender: CannedResponseSenderService,
   ) {}
 
   // ─── Rooms ────────────────────────────────────────────
@@ -251,8 +262,40 @@ export class StaffChatController {
 
   @Get('canned-responses')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
-  async getCannedResponses(@Query('category') category?: string) {
-    return this.staffMessage.getCannedResponses(category);
+  async getCannedResponses(
+    @Query('category') category?: string,
+    @Query('includeHidden') includeHidden?: string,
+  ) {
+    return this.staffMessage.getCannedResponses(category, includeHidden === 'true');
+  }
+
+  @Get('rooms/:roomId/canned-responses/:id/preview')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  async previewCannedResponse(
+    @Param('roomId') roomId: string,
+    @Param('id') id: string,
+  ) {
+    return this.staffMessage.getCannedResponseExpanded(id, roomId);
+  }
+
+  /**
+   * Phase 4a — multi-bubble send. Loads the template, filters bubbles by
+   * the room's channel, expands variables, then dispatches each bubble
+   * sequentially through the channel adapter. Returns counts of sent /
+   * dropped (unsupported on channel) / errors so the UI can surface
+   * partial-success states.
+   */
+  @Post('rooms/:roomId/send-canned-response')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  async sendCannedResponse(
+    @Param('roomId') roomId: string,
+    @Body() body: { templateId: string },
+    @Req() req: { user: { id: string } },
+  ) {
+    if (!body?.templateId || typeof body.templateId !== 'string') {
+      throw new BadRequestException('กรุณาระบุ templateId');
+    }
+    return this.cannedResponseSender.send(roomId, body.templateId, req.user.id);
   }
 
   @Post('canned-responses')
@@ -261,9 +304,102 @@ export class StaffChatController {
     return this.staffMessage.createCannedResponse(body);
   }
 
+  @Patch('canned-responses/reorder')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  async reorderCannedResponses(
+    @Body() body: { items: Array<{ id: string; sortOrder: number; category: string | null }> },
+  ) {
+    const items = body?.items ?? [];
+    if (!Array.isArray(items)) {
+      throw new BadRequestException('items ต้องเป็น array');
+    }
+    if (items.length > 200) {
+      throw new BadRequestException('reorder รับสูงสุด 200 รายการต่อครั้ง');
+    }
+    for (const item of items) {
+      if (typeof item.id !== 'string' || !item.id) {
+        throw new BadRequestException('item.id ต้องเป็น string');
+      }
+      if (!Number.isInteger(item.sortOrder) || item.sortOrder < 0) {
+        throw new BadRequestException('sortOrder ต้องเป็นจำนวนเต็ม >= 0');
+      }
+      if (item.category !== null && typeof item.category !== 'string') {
+        throw new BadRequestException('category ต้องเป็น string หรือ null');
+      }
+      if (typeof item.category === 'string' && item.category.length > 100) {
+        throw new BadRequestException('category ยาวเกิน 100 ตัวอักษร');
+      }
+    }
+    return this.staffMessage.reorderCannedResponses(items);
+  }
+
+  // ─── Bubble CRUD (Phase 1) ───────────────────────────
+
+  @Get('canned-responses/:id/bubbles')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  async listBubbles(@Param('id') id: string) {
+    return this.cannedResponseBubble.listBubbles(id);
+  }
+
+  @Post('canned-responses/:id/bubbles')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  async createBubble(@Param('id') id: string, @Body() body: CreateBubbleDto) {
+    return this.cannedResponseBubble.createBubble(id, body);
+  }
+
+  @Patch('canned-responses/bubbles/reorder')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  async reorderBubbles(@Body() body: { items: Array<{ id: string; sortOrder: number }> }) {
+    return this.cannedResponseBubble.reorderBubbles(body.items);
+  }
+
+  @Patch('canned-responses/bubbles/:bubbleId')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  async updateBubble(@Param('bubbleId') bubbleId: string, @Body() body: UpdateBubbleDto) {
+    return this.cannedResponseBubble.updateBubble(bubbleId, body);
+  }
+
+  @Delete('canned-responses/bubbles/:bubbleId')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  async deleteBubble(@Param('bubbleId') bubbleId: string) {
+    return this.cannedResponseBubble.deleteBubble(bubbleId);
+  }
+
+  // ─── Quick Reply CRUD (Phase 2) ──────────────────────
+
+  @Get('canned-responses/:id/quick-replies')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  async listQuickReplies(@Param('id') id: string) {
+    return this.cannedResponseQuickReply.list(id);
+  }
+
+  @Post('canned-responses/:id/quick-replies')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  async createQuickReply(@Param('id') id: string, @Body() body: CreateQuickReplyDto) {
+    return this.cannedResponseQuickReply.create(id, body);
+  }
+
+  @Patch('canned-responses/quick-replies/reorder')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  async reorderQuickReplies(@Body() body: { items: Array<{ id: string; sortOrder: number }> }) {
+    return this.cannedResponseQuickReply.reorder(body.items);
+  }
+
+  @Patch('canned-responses/quick-replies/:qrId')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  async updateQuickReply(@Param('qrId') qrId: string, @Body() body: UpdateQuickReplyDto) {
+    return this.cannedResponseQuickReply.update(qrId, body);
+  }
+
+  @Delete('canned-responses/quick-replies/:qrId')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  async deleteQuickReply(@Param('qrId') qrId: string) {
+    return this.cannedResponseQuickReply.delete(qrId);
+  }
+
   @Patch('canned-responses/:id')
   @Roles('OWNER', 'BRANCH_MANAGER')
-  async updateCannedResponse(@Param('id') id: string, @Body() body: any) {
+  async updateCannedResponse(@Param('id') id: string, @Body() body: UpdateCannedResponseDto) {
     return this.staffMessage.updateCannedResponse(id, body);
   }
 

@@ -4,6 +4,7 @@ import { ChatChannel, MessageRole, MessageType } from '@prisma/client';
 import {
   IChannelAdapter,
   InboundMessage,
+  OutboundMessage,
   CHANNEL_ADAPTER_TOKEN,
 } from '../interfaces/channel-adapter.interface';
 import {
@@ -492,6 +493,77 @@ export class MessageRouterService {
     }
 
     return { success: true };
+  }
+
+  /**
+   * Send a pre-built OutboundMessage as the staff. Used by canned-response
+   * sender for multi-bubble flows where bubble-type-specific fields (imageUrl,
+   * sticker, location, flexJson, etc.) must reach the adapter unchanged.
+   *
+   * Returns the adapter's SendResult so the caller can surface droppedReason
+   * (unsupported bubble on the channel) and per-bubble errors.
+   */
+  async sendStaffOutbound(
+    roomId: string,
+    message: Partial<OutboundMessage>,
+    staffId: string,
+  ): Promise<{
+    success: boolean;
+    error?: string;
+    externalMessageId?: string;
+    droppedReason?: string;
+  }> {
+    const room = await this.roomManager.findById(roomId);
+    if (!room) {
+      this.logger.error(`Room not found: ${roomId}`);
+      return { success: false, error: 'Room not found' };
+    }
+
+    const adapter = this.adapterMap.get(room.channel);
+    if (!adapter) {
+      const error = `No adapter registered for channel ${room.channel}`;
+      this.logger.error(error);
+      return { success: false, error };
+    }
+
+    const externalUserId = room.externalUserId ?? room.lineUserId ?? '';
+
+    // Persist to ChatMessage log so the staff inbox renders the outbound bubble.
+    // Type is best-effort guessed from the dominant field.
+    const type: MessageType = message.imageUrl
+      ? MessageType.IMAGE
+      : message.sticker
+        ? MessageType.STICKER
+        : message.videoUrl
+          ? MessageType.VIDEO
+          : message.location
+            ? MessageType.LOCATION
+            : message.flexJson || message.jsonPayload
+              ? MessageType.TEMPLATE
+              : MessageType.TEXT;
+
+    await this.roomManager.saveMessage({
+      roomId,
+      role: MessageRole.STAFF,
+      type,
+      text: message.text,
+      mediaUrl: message.imageUrl ?? message.videoUrl,
+      staffId,
+    });
+
+    const result = await adapter.sendMessage({
+      ...(message as any),
+      externalUserId,
+      channel: room.channel,
+      type,
+    });
+
+    if (!result.success) {
+      this.logger.error(
+        `Failed to send staff outbound on ${room.channel}: ${result.error}`,
+      );
+    }
+    return result;
   }
 
   /** Get registered adapter for a channel */

@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState, useMemo } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
-import { Send, MoreVertical, ArrowLeft, Paperclip, Smile, Pin, PinOff, MessageSquare, UserCircle2 } from 'lucide-react';
+import { Send, MoreVertical, ArrowLeft, Paperclip, Smile, Pin, PinOff, MessageSquare, UserCircle2, MessageSquareQuote } from 'lucide-react';
 import { format, isSameDay } from 'date-fns';
 import { th } from 'date-fns/locale/th';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -8,7 +8,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import MessageBubble from './MessageBubble';
 import SessionActions from './SessionActions';
-import CommandPalette from './CommandPalette';
+import MessageTemplatePicker from './MessageTemplatePicker';
 import AiSuggestPanel from './AiSuggestPanel';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import api from '@/lib/api';
@@ -116,7 +116,7 @@ export default function ChatPanel({
   const [selectedSuggestion, setSelectedSuggestion] = useState<{ aiDraft: string; intent: string } | null>(null);
   const [showActions, setShowActions] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
-  const [showPalette, setShowPalette] = useState(false);
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   // picker top-level tab
   type PickerTab = 'emoji' | 'sticker' | 'gif';
   const [pickerTab, setPickerTab] = useState<PickerTab>('emoji');
@@ -150,9 +150,9 @@ export default function ChatPanel({
   // Keyboard shortcuts
   const shortcutActions = useMemo(
     () => ({
-      onOpenPalette: () => setShowPalette(true),
+      onOpenPalette: () => setShowTemplatePicker(true),
       onResolve,
-      onEscape: () => setShowPalette(false),
+      onEscape: () => setShowTemplatePicker(false),
     }),
     [onResolve],
   );
@@ -246,11 +246,6 @@ export default function ChatPanel({
       e.preventDefault();
       handleSend();
     }
-  };
-
-  const handleCannedResponse = (content: string) => {
-    setInputText((prev) => (prev ? prev + ' ' + content : content));
-    inputRef.current?.focus();
   };
 
   const lastMessageAt =
@@ -670,6 +665,15 @@ export default function ChatPanel({
                 )}
               </PopoverContent>
             </Popover>
+            {/* Message template picker */}
+            <button
+              onClick={() => setShowTemplatePicker(true)}
+              disabled={!session?.id}
+              className="p-2 text-muted-foreground/60 hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              title="ข้อความสำเร็จรูป (Ctrl+K)"
+            >
+              <MessageSquareQuote className="w-4 h-4" />
+            </button>
             <textarea
               ref={inputRef}
               value={inputText}
@@ -695,12 +699,15 @@ export default function ChatPanel({
         </div>
       )}
 
-      {/* Command Palette */}
-      <CommandPalette
-        isOpen={showPalette}
-        onClose={() => setShowPalette(false)}
-        onSelectCannedResponse={handleCannedResponse}
-        onResolve={onResolve}
+      {/* Message Template Picker */}
+      <MessageTemplatePicker
+        isOpen={showTemplatePicker}
+        onClose={() => setShowTemplatePicker(false)}
+        onInsert={(content) => {
+          setInputText((prev) => prev + (prev ? '\n' : '') + content);
+          // focus textarea after insert
+          requestAnimationFrame(() => inputRef.current?.focus());
+        }}
         roomId={session?.id ?? null}
       />
     </div>

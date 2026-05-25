@@ -1584,16 +1584,50 @@ async function main() {
   // ─── Canned Responses (Unified Chat) ─────────────────
   console.log('\nSeeding canned responses...');
   const cannedResponses = [
-    { shortcut: '/สวัสดี', title: 'ทักทาย', content: 'สวัสดีค่ะ มีอะไรให้ช่วยเหลือไหมคะ?', category: 'greeting', sortOrder: 1 },
-    { shortcut: '/ขอบคุณ', title: 'ขอบคุณ', content: 'ขอบคุณค่ะ มีอะไรสอบถามเพิ่มเติมได้เลยนะคะ', category: 'greeting', sortOrder: 2 },
-    { shortcut: '/รอ', title: 'รอสักครู่', content: 'รบกวนรอสักครู่นะคะ กำลังตรวจสอบข้อมูลให้ค่ะ', category: 'general', sortOrder: 3 },
-    { shortcut: '/งวด', title: 'สอบถามยอดค้าง', content: 'สอบถามเรื่องยอดค้างชำระใช่ไหมคะ? รบกวนแจ้งเลขสัญญาหรือชื่อ-นามสกุลด้วยนะคะ', category: 'payment', sortOrder: 4 },
-    { shortcut: '/สลิป', title: 'ขอสลิป', content: 'รบกวนส่งรูปสลิปการโอนเงินมาได้เลยค่ะ ระบบจะตรวจสอบให้อัตโนมัตินะคะ', category: 'payment', sortOrder: 5 },
-    { shortcut: '/ปิด', title: 'ปิดบทสนทนา', content: 'ขอบคุณที่ติดต่อมาค่ะ หากมีข้อสงสัยเพิ่มเติม สอบถามได้ตลอดเวลานะคะ', category: 'closing', sortOrder: 6 },
-    { shortcut: '/เวลา', title: 'เวลาทำการ', content: 'ร้านเปิดให้บริการทุกวัน 10:00 - 20:00 น. ค่ะ', category: 'general', sortOrder: 7 },
-    { shortcut: '/ที่อยู่', title: 'ที่อยู่ร้าน', content: 'สามารถดูที่อยู่สาขาได้ที่เว็บไซต์ของเราค่ะ หรือแจ้งสาขาที่สนใจ เราจะส่งแผนที่ให้ค่ะ', category: 'general', sortOrder: 8 },
-    { shortcut: '/ผ่อน', title: 'สอบถามผ่อน', content: 'สนใจผ่อนมือถือใช่ไหมคะ? มีทั้งเครื่องใหม่และมือสอง ผ่อนได้สูงสุด 12 งวด ดาวน์เริ่มต้น 30% ค่ะ', category: 'sales', sortOrder: 9 },
-    { shortcut: '/โอน', title: 'แจ้งบัญชีโอน', content: 'สามารถชำระผ่าน QR Code PromptPay ในระบบได้เลยค่ะ หรือจะโอนเข้าบัญชีบริษัทก็ได้นะคะ', category: 'payment', sortOrder: 10 },
+    // ─── Generic (legacy) ──────────────────────
+    { shortcut: '/สวัสดี', title: 'ทักทาย', content: 'สวัสดีค่ะ มีอะไรให้ช่วยเหลือไหมคะ?', category: 'พูดคุยทั่วไป', sortOrder: 1 },
+    { shortcut: '/ขอบคุณ', title: 'ขอบคุณ', content: 'ขอบคุณค่ะ มีอะไรสอบถามเพิ่มเติมได้เลยนะคะ', category: 'พูดคุยทั่วไป', sortOrder: 2 },
+    { shortcut: '/รอ', title: 'รอสักครู่', content: 'รบกวนรอสักครู่นะคะ กำลังตรวจสอบข้อมูลให้ค่ะ', category: 'พูดคุยทั่วไป', sortOrder: 3 },
+    { shortcut: '/ปิด', title: 'ปิดบทสนทนา', content: 'ขอบคุณที่ติดต่อมาค่ะ หากมีข้อสงสัยเพิ่มเติม สอบถามได้ตลอดเวลานะคะ', category: 'พูดคุยทั่วไป', sortOrder: 4 },
+
+    // ─── เรทผ่อน iPhone ────────────────────────
+    { shortcut: '/iphone15-256', title: 'iPhone 15 Pro 256GB', content: 'สวัสดีคุณ {customerName} ครับ\n\n📱 iPhone 15 Pro 256GB\nราคา 39,900 บาท\n\n💳 ผ่อน 12 งวด ดาวน์ 30%\n• ดาวน์ 11,970 บาท\n• งวดละ 2,618 บาท\n\n📍 รับเครื่องที่สาขา {branchName}', category: 'เรทผ่อน iPhone', sortOrder: 10 },
+    { shortcut: '/iphone15-512', title: 'iPhone 15 Pro 512GB', content: 'สวัสดีคุณ {customerName} ครับ\n\n📱 iPhone 15 Pro 512GB\nราคา 46,900 บาท\n\n💳 ผ่อน 12 งวด ดาวน์ 30%\n• ดาวน์ 14,070 บาท\n• งวดละ 3,078 บาท\n\n📍 รับเครื่องที่สาขา {branchName}', category: 'เรทผ่อน iPhone', sortOrder: 11 },
+    { shortcut: '/iphone16-256', title: 'iPhone 16 Pro 256GB', content: 'สวัสดีคุณ {customerName} ครับ\n\n📱 iPhone 16 Pro 256GB\nราคา 44,900 บาท\n\n💳 ผ่อน 12 งวด ดาวน์ 30%\n• ดาวน์ 13,470 บาท\n• งวดละ 2,946 บาท\n\n🎁 รวมประกัน 7 วัน + ฟิล์มกระจก\n📍 รับเครื่องที่สาขา {branchName}', category: 'เรทผ่อน iPhone', sortOrder: 12 },
+    { shortcut: '/iphone16-512', title: 'iPhone 16 Pro 512GB', content: 'สวัสดีคุณ {customerName} ครับ\n\n📱 iPhone 16 Pro 512GB\nราคา 52,900 บาท\n\n💳 ผ่อน 12 งวด ดาวน์ 30%\n• ดาวน์ 15,870 บาท\n• งวดละ 3,471 บาท\n\n📍 รับเครื่องที่สาขา {branchName}', category: 'เรทผ่อน iPhone', sortOrder: 13 },
+    { shortcut: '/iphone16-max', title: 'iPhone 16 Pro Max', content: 'สวัสดีคุณ {customerName} ครับ\n\n📱 iPhone 16 Pro Max 256GB\nราคา 49,900 บาท\n\n💳 ผ่อน 12 งวด ดาวน์ 30%\n• ดาวน์ 14,970 บาท\n• งวดละ 3,275 บาท\n\n📍 รับเครื่องที่สาขา {branchName}', category: 'เรทผ่อน iPhone', sortOrder: 14 },
+
+    // ─── เรทผ่อน Samsung ───────────────────────
+    { shortcut: '/s25', title: 'Samsung Galaxy S25', content: 'สวัสดีคุณ {customerName} ครับ\n\n📱 Samsung Galaxy S25 256GB\nราคา 32,900 บาท\n\n💳 ผ่อน 12 งวด ดาวน์ 30%\n• ดาวน์ 9,870 บาท\n• งวดละ 2,159 บาท\n\n📍 รับเครื่องที่สาขา {branchName}', category: 'เรทผ่อน Samsung', sortOrder: 20 },
+    { shortcut: '/s25-ultra', title: 'Samsung Galaxy S25 Ultra', content: 'สวัสดีคุณ {customerName} ครับ\n\n📱 Samsung Galaxy S25 Ultra 256GB\nราคา 49,900 บาท\n\n💳 ผ่อน 12 งวด ดาวน์ 30%\n• ดาวน์ 14,970 บาท\n• งวดละ 3,275 บาท\n\n📍 รับเครื่องที่สาขา {branchName}', category: 'เรทผ่อน Samsung', sortOrder: 21 },
+    { shortcut: '/a55', title: 'Samsung Galaxy A55', content: 'สวัสดีคุณ {customerName} ครับ\n\n📱 Samsung Galaxy A55 256GB\nราคา 14,900 บาท\n\n💳 ผ่อน 10 งวด ดาวน์ 30%\n• ดาวน์ 4,470 บาท\n• งวดละ 1,148 บาท\n\n📍 รับเครื่องที่สาขา {branchName}', category: 'เรทผ่อน Samsung', sortOrder: 22 },
+
+    // ─── เรทผ่อน iPad ──────────────────────────
+    { shortcut: '/ipad-air', title: 'iPad Air 11" M3', content: 'สวัสดีคุณ {customerName} ครับ\n\n📱 iPad Air 11" M3 128GB Wi-Fi\nราคา 22,900 บาท\n\n💳 ผ่อน 10 งวด ดาวน์ 30%\n• ดาวน์ 6,870 บาท\n• งวดละ 1,761 บาท\n\n📍 รับเครื่องที่สาขา {branchName}', category: 'เรทผ่อน iPad', sortOrder: 30 },
+    { shortcut: '/ipad-pro', title: 'iPad Pro 11" M4', content: 'สวัสดีคุณ {customerName} ครับ\n\n📱 iPad Pro 11" M4 256GB Wi-Fi\nราคา 38,900 บาท\n\n💳 ผ่อน 12 งวด ดาวน์ 30%\n• ดาวน์ 11,670 บาท\n• งวดละ 2,553 บาท\n\n📍 รับเครื่องที่สาขา {branchName}', category: 'เรทผ่อน iPad', sortOrder: 31 },
+
+    // ─── โปรลดวันสงกรานต์ ─────────────────────
+    { shortcut: '/songkran-iphone', title: 'โปรสงกรานต์ iPhone', content: '🎉 โปรสงกรานต์! iPhone ทุกรุ่น\n\n💰 ลดราคา 1,000 บาท\n🎁 แถมฟิล์มกระจก + เคส (มูลค่า 590 บาท)\n💳 ผ่อน 0% 6 งวด หรือ flat rate ปกติ 12 งวด\n\n📅 ถึงวันที่ 30 เม.ย. นี้เท่านั้น\n📍 ทุกสาขา BESTCHOICE', category: 'โปรลดวันสงกรานต์', sortOrder: 40 },
+    { shortcut: '/songkran-samsung', title: 'โปรสงกรานต์ Samsung', content: '🎉 โปรสงกรานต์! Samsung Galaxy\n\n💰 ลดราคา 500-1,500 บาท\n🎁 แถม Galaxy Buds FE (มูลค่า 2,990 บาท) เมื่อซื้อ S25 Ultra\n💳 ผ่อน 0% 6 งวด\n\n📅 ถึงวันที่ 30 เม.ย. นี้เท่านั้น', category: 'โปรลดวันสงกรานต์', sortOrder: 41 },
+
+    // ─── การบริการหลังการขาย ──────────────────
+    { shortcut: '/warranty', title: 'การรับประกัน', content: 'การรับประกันของ BESTCHOICE\n\n✅ ประกันร้าน 7 วัน (เปลี่ยนเครื่องใหม่)\n✅ ประกันร้าน 1 ปี (ซ่อมฟรีค่าแรง)\n✅ ประกันศูนย์ตามผู้ผลิต\n\nนำเครื่อง + ใบเสร็จมาที่สาขา {branchName} หรือสาขาใดก็ได้ค่ะ', category: 'หลังการขาย', sortOrder: 50 },
+    { shortcut: '/repair', title: 'รับซ่อม', content: 'รับซ่อมเครื่องที่ซื้อจาก BESTCHOICE\n\n📍 นำเครื่องมาที่สาขา {branchName}\n📋 ใช้บัตรประชาชน + ใบเสร็จ (ถ้ามี)\n⏰ ใช้เวลา 3-7 วันทำการ\n\nสอบถามเพิ่มเติม โทร 02-xxx-xxxx', category: 'หลังการขาย', sortOrder: 51 },
+    { shortcut: '/insurance-claim', title: 'เคลมประกัน', content: 'การเคลมประกันมือถือ\n\n📋 เอกสาร: บัตรประชาชน + ใบเสร็จ + เครื่อง\n📍 นำมาที่สาขา {branchName}\n💰 ค่าใช้จ่ายขึ้นอยู่กับเงื่อนไขประกัน\n\nสอบถามเพิ่มเติมได้นะคะ', category: 'หลังการขาย', sortOrder: 52 },
+
+    // ─── ข้อมูลร้าน ──────────────────────────
+    { shortcut: '/เวลา', title: 'เวลาทำการ', content: 'ร้านเปิดให้บริการทุกวัน\n🕙 10:00 - 20:00 น.\n\nสาขาที่ใกล้คุณ:\nhttps://bestchoicephone.com/branches', category: 'ข้อมูลร้าน', sortOrder: 60 },
+    { shortcut: '/ที่อยู่', title: 'ที่อยู่ร้าน', content: 'สาขา {branchName}\nที่อยู่: ดูแผนที่ → https://bestchoicephone.com/map\n\nหรือบอกสาขาที่สะดวก จะส่งแผนที่ให้ค่ะ', category: 'ข้อมูลร้าน', sortOrder: 61 },
+    { shortcut: '/ติดต่อ', title: 'ช่องทางติดต่อ', content: '📞 02-xxx-xxxx (จ-อา 10:00-20:00)\n💬 LINE: @bestchoice\n📧 contact@bestchoicephone.com\n📍 https://bestchoicephone.com/branches', category: 'ข้อมูลร้าน', sortOrder: 62 },
+
+    // ─── การชำระ ─────────────────────────────
+    { shortcut: '/งวด', title: 'สอบถามยอดค้าง', content: 'สวัสดีคุณ {customerName} ค่ะ\n\nยอดค้างชำระล่าสุด:\n• เลขสัญญา: {contractNumber}\n• งวดที่ {installmentNo}\n• จำนวน {amountDue} บาท\n• กำหนดชำระ: {dueDate}\n\nชำระผ่าน QR PromptPay ในแชทได้เลยค่ะ', category: 'การชำระ', sortOrder: 70 },
+    { shortcut: '/สลิป', title: 'ขอสลิป', content: 'รบกวนส่งรูปสลิปการโอนเงินมาได้เลยค่ะ ระบบจะตรวจสอบให้อัตโนมัตินะคะ', category: 'การชำระ', sortOrder: 71 },
+    { shortcut: '/โอน', title: 'แจ้งบัญชีโอน', content: 'สามารถชำระผ่าน QR Code PromptPay ในระบบได้เลยค่ะ\nหรือโอนเข้าบัญชี:\n• ธ.กสิกรไทย\n• เลขที่ xxx-x-xxxxx-x\n• ชื่อบัญชี: BESTCHOICE FINANCE', category: 'การชำระ', sortOrder: 72 },
+
+    // ─── G-FIN (ไฟแนนซ์ภายนอก) ────────────────
+    { shortcut: '/gfin-intro', title: 'G-FIN คืออะไร', content: 'G-FIN เป็นไฟแนนซ์ภายนอกที่เราเป็นพาร์ทเนอร์อยู่ค่ะ\n\n💳 อนุมัติเร็ว 15 นาที\n📋 ใช้บัตรประชาชน + สลิปเงินเดือน\n🎯 เครดิตขั้นต่ำ 15,000 บาท/เดือน\n\nสนใจไหมคะ ส่งเอกสารมาให้ลองตรวจสอบได้เลย', category: 'G-FIN', sortOrder: 80 },
+    { shortcut: '/gfin-docs', title: 'เอกสารสมัคร G-FIN', content: 'เอกสารสมัคร G-FIN:\n\n1. บัตรประชาชน (ตัวจริง)\n2. สลิปเงินเดือนล่าสุด 1 ใบ\n3. สเตทเมนต์ย้อนหลัง 3 เดือน (ถ้ามี)\n4. ทะเบียนบ้าน (ถ้ามี)\n\nส่งรูปมาในแชทนี้ได้เลยค่ะ', category: 'G-FIN', sortOrder: 81 },
   ];
   for (const cr of cannedResponses) {
     await prisma.cannedResponse.upsert({

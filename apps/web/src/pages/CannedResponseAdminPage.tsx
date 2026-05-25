@@ -1,406 +1,381 @@
-import { useState } from 'react';
-import { useDocumentTitle } from '@/hooks/useDocumentTitle';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { Plus } from 'lucide-react';
 import api, { getErrorMessage } from '@/lib/api';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import PageHeader from '@/components/ui/PageHeader';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import QueryBoundary from '@/components/QueryBoundary';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { Plus, Pencil, Trash2, X, Save, MessageSquareText } from 'lucide-react';
+import CategoryTreePane from './canned-response-admin/CategoryTreePane';
+import TemplateEditorPane from './canned-response-admin/TemplateEditorPane';
+import { useReorderMutation } from './canned-response-admin/useReorderMutation';
+import type { CannedResponse } from './canned-response-admin/types';
 
-interface CannedResponse {
-  id: string;
-  shortcut: string;
-  title: string;
-  content: string;
-  category: string | null;
-  sortOrder: number;
-  createdAt: string;
-}
-
-const CATEGORIES = [
-  { value: 'greeting', label: 'ทักทาย' },
-  { value: 'payment', label: 'การชำระเงิน' },
-  { value: 'sales', label: 'การขาย' },
-  { value: 'general', label: 'ทั่วไป' },
-  { value: 'closing', label: 'ปิดการสนทนา' },
-];
-
-const CATEGORY_LABEL_MAP: Record<string, string> = Object.fromEntries(
-  CATEGORIES.map((c) => [c.value, c.label])
-);
-
-const emptyForm = {
-  shortcut: '',
-  title: '',
-  content: '',
-  category: 'general',
-  sortOrder: 0,
-};
+type DeleteTarget =
+  | { kind: 'template'; id: string; name: string }
+  | { kind: 'category'; name: string; count: number };
 
 export default function CannedResponseAdminPage() {
   useDocumentTitle('ข้อความสำเร็จรูป');
   const queryClient = useQueryClient();
 
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [isCreating, setIsCreating] = useState(false);
-  const [form, setForm] = useState(emptyForm);
-  const [deleteConfirm, setDeleteConfirm] = useState<{
-    open: boolean;
-    id: string;
-    title: string;
-  }>({ open: false, id: '', title: '' });
-
-  const {
-    data: responses = [],
-    isLoading,
-    isError,
-    error,
-    refetch,
-  } = useQuery<CannedResponse[]>({
-    queryKey: ['canned-responses'],
-    queryFn: async () => {
-      const { data } = await api.get('/staff-chat/canned-responses');
-      return data;
-    },
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState<DeleteTarget | null>(null);
+  const [newCategoryDialog, setNewCategoryDialog] = useState<{ open: boolean; value: string }>({
+    open: false,
+    value: '',
   });
 
+  const query = useQuery<CannedResponse[]>({
+    queryKey: ['canned-responses-admin'],
+    queryFn: () => api.get('/staff-chat/canned-responses?includeHidden=true').then((r: any) => r.data),
+  });
+
+  const templates = query.data ?? [];
+  const selected = templates.find((t) => t.id === selectedId) ?? null;
+
+  const existingCategories = useMemo(
+    () =>
+      [...new Set(templates.map((t) => t.category).filter((c): c is string => !!c))].sort((a, b) =>
+        a.localeCompare(b, 'th'),
+      ),
+    [templates],
+  );
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ['canned-responses-admin'] });
+    queryClient.invalidateQueries({ queryKey: ['canned-responses-picker'] });
+  };
+
   const createMutation = useMutation({
-    mutationFn: async (payload: typeof emptyForm) => {
-      const { data } = await api.post('/staff-chat/canned-responses', {
-        ...payload,
-        shortcut: payload.shortcut.startsWith('/')
-          ? payload.shortcut
-          : `/${payload.shortcut}`,
-        sortOrder: Number(payload.sortOrder) || 0,
-      });
-      return data;
+    mutationFn: (data: Partial<CannedResponse>) =>
+      api.post('/staff-chat/canned-responses', data).then((r: any) => r.data),
+    onSuccess: (created: CannedResponse) => {
+      invalidate();
+      setSelectedId(created.id);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['canned-responses'] });
-      toast.success('สร้างข้อความสำเร็จรูปแล้ว');
-      resetForm();
-    },
-    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+    onError: (e: any) => toast.error(getErrorMessage(e) ?? 'สร้างไม่สำเร็จ'),
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, payload }: { id: string; payload: typeof emptyForm }) => {
-      const { data } = await api.patch(`/staff-chat/canned-responses/${id}`, {
-        ...payload,
-        shortcut: payload.shortcut.startsWith('/')
-          ? payload.shortcut
-          : `/${payload.shortcut}`,
-        sortOrder: Number(payload.sortOrder) || 0,
-      });
-      return data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['canned-responses'] });
-      toast.success('แก้ไขข้อความสำเร็จรูปแล้ว');
-      resetForm();
-    },
-    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+    mutationFn: ({ id, patch }: { id: string; patch: Partial<CannedResponse> }) =>
+      api.patch(`/staff-chat/canned-responses/${id}`, patch).then((r: any) => r.data),
+    onSuccess: () => invalidate(),
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      await api.delete(`/staff-chat/canned-responses/${id}`);
-    },
+    mutationFn: (id: string) => api.delete(`/staff-chat/canned-responses/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['canned-responses'] });
-      toast.success('ลบข้อความสำเร็จรูปแล้ว');
+      invalidate();
+      setSelectedId(null);
+      toast.success('ลบแล้ว');
     },
-    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+    onError: (e: any) => toast.error(getErrorMessage(e) ?? 'ลบไม่สำเร็จ'),
   });
 
-  const resetForm = () => {
-    setForm(emptyForm);
-    setEditingId(null);
-    setIsCreating(false);
-  };
+  const reorderMutation = useReorderMutation();
 
-  const startEdit = (item: CannedResponse) => {
-    setEditingId(item.id);
-    setIsCreating(false);
-    setForm({
-      shortcut: item.shortcut,
-      title: item.title,
-      content: item.content,
-      category: item.category || 'general',
-      sortOrder: item.sortOrder,
+  const renameCategoryMutation = useMutation({
+    mutationFn: async ({ oldName, newName }: { oldName: string; newName: string }) => {
+      const inCat = templates.filter((t) => (t.category ?? 'อื่นๆ') === oldName);
+      await Promise.all(
+        inCat.map((t) =>
+          api.patch(`/staff-chat/canned-responses/${t.id}`, { category: newName }),
+        ),
+      );
+    },
+    onSuccess: () => {
+      invalidate();
+      toast.success('แก้ชื่อหมวดแล้ว');
+    },
+    onError: (e: any) => toast.error(getErrorMessage(e) ?? 'แก้ชื่อหมวดไม่สำเร็จ'),
+  });
+
+  const deleteCategoryMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const inCat = templates.filter((t) => (t.category ?? 'อื่นๆ') === name);
+      await Promise.all(inCat.map((t) => api.delete(`/staff-chat/canned-responses/${t.id}`)));
+    },
+    onSuccess: () => {
+      invalidate();
+      setSelectedId(null);
+      toast.success('ลบหมวดแล้ว');
+    },
+    onError: (e: any) => toast.error(getErrorMessage(e) ?? 'ลบหมวดไม่สำเร็จ'),
+  });
+
+  const duplicateCategoryMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const inCat = templates.filter((t) => (t.category ?? 'อื่นๆ') === name);
+      for (const t of inCat) {
+        // 1. Create parent
+        const newTpl: any = await api
+          .post('/staff-chat/canned-responses', {
+            shortcut: `${t.shortcut}-copy-${Date.now().toString(36).slice(-4)}`,
+            title: `${t.title} (สำเนา)`,
+            content: t.content,
+            category: `${name} (สำเนา)`,
+            sortOrder: t.sortOrder + 1000,
+          })
+          .then((r: any) => r.data);
+        // 2. Fetch source bubbles + quick replies
+        const [srcBubbles, srcQrs] = await Promise.all([
+          api.get(`/staff-chat/canned-responses/${t.id}/bubbles`).then((r: any) => r.data),
+          api.get(`/staff-chat/canned-responses/${t.id}/quick-replies`).then((r: any) => r.data),
+        ]);
+        // 3. Copy bubbles + quick replies to new template
+        for (const b of srcBubbles) {
+          await api.post(`/staff-chat/canned-responses/${newTpl.id}/bubbles`, {
+            type: b.type,
+            text: b.text,
+            mediaUrl: b.mediaUrl,
+            thumbnailUrl: b.thumbnailUrl,
+            stickerPackageId: b.stickerPackageId,
+            stickerId: b.stickerId,
+            latitude: b.latitude,
+            longitude: b.longitude,
+            address: b.address,
+            locationTitle: b.locationTitle,
+            json: b.json,
+            channels: b.channels,
+          });
+        }
+        for (const qr of srcQrs) {
+          await api.post(`/staff-chat/canned-responses/${newTpl.id}/quick-replies`, {
+            label: qr.label,
+            type: qr.type,
+            payload: qr.payload,
+            url: qr.url,
+            message: qr.message,
+          });
+        }
+      }
+    },
+    onSuccess: () => {
+      invalidate();
+      toast.success('ทำซ้ำหมวดแล้ว (รวม bubbles + quick replies ทุก template)');
+    },
+    onError: (e: any) => toast.error(getErrorMessage(e) ?? 'ทำซ้ำหมวดไม่สำเร็จ'),
+  });
+
+  const duplicateTemplateMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const src = templates.find((t) => t.id === id);
+      if (!src) throw new Error('not found');
+      // 1. Create new template
+      const newTpl: any = await api
+        .post('/staff-chat/canned-responses', {
+          shortcut: `${src.shortcut}-copy-${Date.now().toString(36).slice(-4)}`,
+          title: `${src.title} (สำเนา)`,
+          content: src.content,
+          category: src.category,
+          sortOrder: src.sortOrder + 1,
+        })
+        .then((r: any) => r.data);
+      // 2. Fetch source bubbles + quick replies
+      const [srcBubbles, srcQrs] = await Promise.all([
+        api.get(`/staff-chat/canned-responses/${id}/bubbles`).then((r: any) => r.data),
+        api.get(`/staff-chat/canned-responses/${id}/quick-replies`).then((r: any) => r.data),
+      ]);
+      // 3. Copy bubbles + quick replies to new template
+      for (const b of srcBubbles) {
+        await api.post(`/staff-chat/canned-responses/${newTpl.id}/bubbles`, {
+          type: b.type,
+          text: b.text,
+          mediaUrl: b.mediaUrl,
+          thumbnailUrl: b.thumbnailUrl,
+          stickerPackageId: b.stickerPackageId,
+          stickerId: b.stickerId,
+          latitude: b.latitude,
+          longitude: b.longitude,
+          address: b.address,
+          locationTitle: b.locationTitle,
+          json: b.json,
+          channels: b.channels,
+        });
+      }
+      for (const qr of srcQrs) {
+        await api.post(`/staff-chat/canned-responses/${newTpl.id}/quick-replies`, {
+          label: qr.label,
+          type: qr.type,
+          payload: qr.payload,
+          url: qr.url,
+          message: qr.message,
+        });
+      }
+      return newTpl;
+    },
+    onSuccess: (created: any) => {
+      invalidate();
+      setSelectedId(created?.id ?? null);
+      toast.success('ทำซ้ำแล้ว (รวม bubbles + quick replies)');
+    },
+    onError: (e: any) => toast.error(getErrorMessage(e) ?? 'ทำซ้ำไม่สำเร็จ'),
+  });
+
+  const handleAddTemplate = (category: string) => {
+    const cat = category === 'อื่นๆ' ? null : category;
+    createMutation.mutate({
+      shortcut: `/new-${Date.now().toString(36).slice(-4)}`,
+      title: 'Template ใหม่',
+      content: '',
+      category: cat,
+      sortOrder: Math.max(0, ...templates.map((t) => t.sortOrder)) + 1,
     });
   };
 
-  const startCreate = () => {
-    setEditingId(null);
-    setIsCreating(true);
-    setForm(emptyForm);
+  const handleAddCategory = () => {
+    setNewCategoryDialog({ open: true, value: '' });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.shortcut.trim() || !form.title.trim() || !form.content.trim()) {
-      toast.error('กรุณากรอกข้อมูลให้ครบถ้วน');
+  const confirmNewCategory = () => {
+    const name = newCategoryDialog.value.trim();
+    if (!name) {
+      setNewCategoryDialog({ open: false, value: '' });
       return;
     }
-    if (editingId) {
-      updateMutation.mutate({ id: editingId, payload: form });
+    createMutation.mutate({
+      shortcut: `/new-${Date.now().toString(36).slice(-4)}`,
+      title: 'Template ใหม่',
+      content: '',
+      category: name,
+      sortOrder: Math.max(0, ...templates.map((t) => t.sortOrder)) + 1,
+    });
+    setNewCategoryDialog({ open: false, value: '' });
+  };
+
+  const handleConfirmDelete = () => {
+    if (!confirmDelete) return;
+    if (confirmDelete.kind === 'template') {
+      deleteMutation.mutate(confirmDelete.id);
     } else {
-      createMutation.mutate(form);
+      deleteCategoryMutation.mutate(confirmDelete.name);
     }
+    setConfirmDelete(null);
   };
 
-  const confirmDelete = (item: CannedResponse) => {
-    setDeleteConfirm({ open: true, id: item.id, title: item.title });
-  };
-
-  const handleDelete = () => {
-    deleteMutation.mutate(deleteConfirm.id);
-    setDeleteConfirm({ open: false, id: '', title: '' });
-  };
-
-  const isSaving = createMutation.isPending || updateMutation.isPending;
+  const isCategoryDelete = confirmDelete?.kind === 'category';
+  const deleteLoading = deleteMutation.isPending || deleteCategoryMutation.isPending;
 
   return (
-    <div>
+    <div className="h-[calc(100vh-4rem)] flex flex-col">
       <PageHeader
-        title="จัดการข้อความสำเร็จรูป"
-        subtitle="สร้าง แก้ไข ลบ Quick Reply สำหรับพนักงานแชท"
-        icon={<MessageSquareText className="size-5" />}
+        title="ข้อความสำเร็จรูป"
         action={
-          !isCreating && !editingId ? (
-            <button
-              onClick={startCreate}
-              className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-            >
-              <Plus className="size-4" />
-              เพิ่มข้อความ
-            </button>
-          ) : undefined
+          <Button onClick={handleAddCategory} size="sm">
+            <Plus className="w-4 h-4 mr-1.5" />
+            สร้างชุดข้อความ
+          </Button>
         }
       />
-
-      {/* Create / Edit Form */}
-      {(isCreating || editingId) && (
-        <div className="mb-6 rounded-xl border border-border bg-card p-5 shadow-sm">
-          <h3 className="mb-4 text-base font-semibold text-foreground">
-            {editingId ? 'แก้ไขข้อความสำเร็จรูป' : 'เพิ่มข้อความสำเร็จรูปใหม่'}
-          </h3>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {/* Shortcut */}
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-foreground">
-                  Shortcut <span className="text-destructive">*</span>
-                </label>
-                <div className="relative">
-                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-                    /
-                  </span>
-                  <input
-                    type="text"
-                    value={form.shortcut.replace(/^\//, '')}
-                    onChange={(e) =>
-                      setForm({ ...form, shortcut: e.target.value.replace(/^\//, '') })
-                    }
-                    placeholder="greeting"
-                    className="w-full rounded-lg border border-input bg-background py-2 pl-7 pr-3 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                  />
-                </div>
-              </div>
-
-              {/* Title */}
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-foreground">
-                  ชื่อ <span className="text-destructive">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={form.title}
-                  onChange={(e) => setForm({ ...form, title: e.target.value })}
-                  placeholder="ทักทายลูกค้า"
-                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                />
-              </div>
-
-              {/* Category */}
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-foreground">
-                  หมวดหมู่
-                </label>
-                <select
-                  value={form.category}
-                  onChange={(e) => setForm({ ...form, category: e.target.value })}
-                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                >
-                  {CATEGORIES.map((cat) => (
-                    <option key={cat.value} value={cat.value}>
-                      {cat.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Sort Order */}
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-foreground">
-                  ลำดับ
-                </label>
-                <input
-                  type="number"
-                  value={form.sortOrder}
-                  onChange={(e) =>
-                    setForm({ ...form, sortOrder: Number(e.target.value) || 0 })
-                  }
-                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                />
-              </div>
-            </div>
-
-            {/* Content */}
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-foreground">
-                เนื้อหา <span className="text-destructive">*</span>
-              </label>
-              <textarea
-                value={form.content}
-                onChange={(e) => setForm({ ...form, content: e.target.value })}
-                rows={3}
-                placeholder="สวัสดีค่ะ {customerName} ยินดีให้บริการค่ะ"
-                className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-              />
-              <p className="mt-1.5 text-xs text-muted-foreground">
-                ตัวแปรที่ใช้ได้: <code className="rounded bg-muted px-1 py-0.5">{'{customerName}'}</code>{' '}
-                <code className="rounded bg-muted px-1 py-0.5">{'{amountDue}'}</code>{' '}
-                <code className="rounded bg-muted px-1 py-0.5">{'{dueDate}'}</code>
-              </p>
-            </div>
-
-            {/* Actions */}
-            <div className="flex items-center gap-3">
-              <button
-                type="submit"
-                disabled={isSaving}
-                className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
-              >
-                <Save className="size-4" />
-                {isSaving ? 'กำลังบันทึก...' : 'บันทึก'}
-              </button>
-              <button
-                type="button"
-                onClick={resetForm}
-                className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted transition-colors"
-              >
-                <X className="size-4" />
-                ยกเลิก
-              </button>
-            </div>
-          </form>
+      <QueryBoundary
+        isLoading={query.isLoading}
+        isError={query.isError}
+        error={query.error}
+        onRetry={query.refetch}
+      >
+        <div className="flex-1 flex overflow-hidden border border-border rounded-lg m-3">
+          <div className="w-96 flex-shrink-0">
+            <CategoryTreePane
+              templates={templates}
+              selectedId={selectedId}
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+              onSelectTemplate={setSelectedId}
+              onAddTemplate={handleAddTemplate}
+              onDuplicateTemplate={(id) => duplicateTemplateMutation.mutate(id)}
+              onDeleteTemplate={(id) => {
+                const t = templates.find((x) => x.id === id);
+                if (t) {
+                  setConfirmDelete({ kind: 'template', id, name: t.title });
+                }
+              }}
+              onRenameCategory={(oldName, newName) =>
+                renameCategoryMutation.mutate({ oldName, newName })
+              }
+              onDuplicateCategory={(name) => duplicateCategoryMutation.mutate(name)}
+              onDeleteCategory={(name) => {
+                const count = templates.filter((t) => (t.category ?? 'อื่นๆ') === name).length;
+                setConfirmDelete({ kind: 'category', name, count });
+              }}
+              onReorder={(items) => reorderMutation.mutate(items)}
+            />
+          </div>
+          <TemplateEditorPane
+            template={selected}
+            existingCategories={existingCategories}
+            onSave={async (patch) => {
+              if (!selected) return;
+              await updateMutation.mutateAsync({ id: selected.id, patch });
+            }}
+          />
         </div>
-      )}
-
-      {/* Table */}
-      <QueryBoundary isLoading={isLoading} isError={isError} error={error} onRetry={refetch}>
-        {responses.length === 0 ? (
-          <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-16 text-center">
-            <MessageSquareText className="mb-3 size-10 text-muted-foreground/50" />
-            <p className="text-sm font-medium text-muted-foreground">
-              ยังไม่มีข้อความสำเร็จรูป
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              กดปุ่ม "เพิ่มข้อความ" เพื่อเริ่มสร้าง
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-muted/50">
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-                    Shortcut
-                  </th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-                    ชื่อ
-                  </th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-                    เนื้อหา
-                  </th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-                    หมวดหมู่
-                  </th>
-                  <th className="px-4 py-3 text-center font-medium text-muted-foreground">
-                    ลำดับ
-                  </th>
-                  <th className="px-4 py-3 text-right font-medium text-muted-foreground">
-                    จัดการ
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {responses.map((item) => (
-                  <tr
-                    key={item.id}
-                    className="border-b border-border last:border-b-0 hover:bg-muted/30 transition-colors"
-                  >
-                    <td className="px-4 py-3">
-                      <code className="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-primary">
-                        {item.shortcut}
-                      </code>
-                    </td>
-                    <td className="px-4 py-3 font-medium text-foreground">{item.title}</td>
-                    <td className="max-w-xs truncate px-4 py-3 text-muted-foreground">
-                      {item.content.length > 60
-                        ? `${item.content.slice(0, 60)}...`
-                        : item.content}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="inline-block rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
-                        {CATEGORY_LABEL_MAP[item.category || ''] || item.category || '-'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-center text-muted-foreground">
-                      {item.sortOrder}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1">
-                        <button
-                          onClick={() => startEdit(item)}
-                          className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-muted transition-colors"
-                          title="แก้ไข"
-                        >
-                          <Pencil className="size-3.5" />
-                          แก้ไข
-                        </button>
-                        <button
-                          onClick={() => confirmDelete(item)}
-                          className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/10 transition-colors"
-                          title="ลบ"
-                        >
-                          <Trash2 className="size-3.5" />
-                          ลบ
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
       </QueryBoundary>
 
-      {/* Delete Confirmation */}
       <ConfirmDialog
-        open={deleteConfirm.open}
-        onOpenChange={(open) => setDeleteConfirm({ ...deleteConfirm, open })}
-        title="ยืนยันการลบ"
-        description={`ต้องการลบข้อความ "${deleteConfirm.title}" หรือไม่?`}
+        open={!!confirmDelete}
+        onOpenChange={(open) => {
+          if (!open) setConfirmDelete(null);
+        }}
+        title={isCategoryDelete ? 'ลบหมวดทั้งหมด' : 'ลบ Template'}
+        description={
+          confirmDelete
+            ? confirmDelete.kind === 'category'
+              ? `ลบหมวด "${confirmDelete.name}"? จะลบ template ${confirmDelete.count} ตัวในหมวดนี้ด้วย`
+              : `ลบ template "${confirmDelete.name}"?`
+            : ''
+        }
         confirmLabel="ลบ"
         variant="destructive"
-        loading={deleteMutation.isPending}
-        onConfirm={handleDelete}
+        loading={deleteLoading}
+        onConfirm={handleConfirmDelete}
       />
+
+      <Dialog
+        open={newCategoryDialog.open}
+        onOpenChange={(open) => !open && setNewCategoryDialog({ open: false, value: '' })}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>สร้างหมวดใหม่</DialogTitle>
+          </DialogHeader>
+          <div className="py-2">
+            <Input
+              autoFocus
+              value={newCategoryDialog.value}
+              onChange={(e) =>
+                setNewCategoryDialog({ ...newCategoryDialog, value: e.target.value })
+              }
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') confirmNewCategory();
+              }}
+              placeholder="ชื่อหมวด เช่น 'เรทผ่อน iPhone'"
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => setNewCategoryDialog({ open: false, value: '' })}
+            >
+              ยกเลิก
+            </Button>
+            <Button onClick={confirmNewCategory} disabled={!newCategoryDialog.value.trim()}>
+              สร้าง
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

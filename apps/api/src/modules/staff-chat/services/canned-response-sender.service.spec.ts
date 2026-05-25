@@ -230,4 +230,51 @@ describe('CannedResponseSenderService', () => {
     expect(variableService.expandVariables).toHaveBeenCalledTimes(1);
     expect(messageRouter.sendStaffOutbound).toHaveBeenCalledTimes(4);
   });
+
+  it('probe pattern substitutes variables correctly end-to-end', async () => {
+    // Make expandVariables behave realistically: replace each {key} with
+    // a known value, preserving the SOH separator from the sender's probe.
+    const VALUES: Record<string, string> = {
+      customerName: 'สมชาย',
+      customerPhone: '0812345678',
+      contractNumber: 'CTR-001',
+      amountDue: '1,234.56',
+      dueDate: '15/05/2569',
+      installmentNo: '3',
+      branchName: 'ลาดพร้าว',
+    };
+    variableService.expandVariables.mockImplementation(async (tpl: string) =>
+      tpl.replace(/\{(\w+)\}/g, (_: string, key: string) => VALUES[key] ?? '-'),
+    );
+
+    prisma.chatRoom.findFirst.mockResolvedValue(baseRoom);
+    prisma.cannedResponse.findFirst.mockResolvedValue({
+      id: 'tpl-1',
+      verifiedOnly: false,
+      bubbles: [
+        makeBubble({
+          id: 'b1',
+          type: 'TEXT',
+          text: 'สวัสดีคุณ {customerName} ที่สาขา {branchName}',
+        }),
+        makeBubble({
+          id: 'b2',
+          type: 'TEXT',
+          text: 'ยอดค้าง {amountDue} กำหนด {dueDate}',
+        }),
+      ],
+      quickReplies: [],
+    });
+
+    await service.send('room-1', 'tpl-1', 'staff-1');
+
+    // Assert resolved values landed in the OutboundMessage text for each bubble
+    const sentTexts = messageRouter.sendStaffOutbound.mock.calls.map(
+      (c: any[]) => c[1].text,
+    );
+    expect(sentTexts).toEqual([
+      'สวัสดีคุณ สมชาย ที่สาขา ลาดพร้าว',
+      'ยอดค้าง 1,234.56 กำหนด 15/05/2569',
+    ]);
+  });
 });

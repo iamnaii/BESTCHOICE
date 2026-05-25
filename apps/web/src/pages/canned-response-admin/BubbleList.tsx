@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
@@ -11,9 +12,18 @@ import { toast } from 'sonner';
 import api from '@/lib/api';
 import BubbleEditor from './BubbleEditor';
 import ChannelChips from './ChannelChips';
-import type { CannedResponseBubble, BubbleType } from './types';
+import type { CannedResponseBubble, BubbleType, Channel } from './types';
+import { CHANNEL_LABELS } from './types';
+import type { ChannelTabValue } from './ChannelTabs';
+import { reorderBubbles } from './bubble-reorder-logic';
 
-interface Props { cannedResponseId: string; }
+interface Props {
+  cannedResponseId: string;
+  /** Active channel tab — filters visible bubbles + scopes newly-created bubbles. 'ALL' = no filter. */
+  channelFilter?: ChannelTabValue;
+  /** Reports total bubble count per channel for tab badges */
+  onCountsChange?: (counts: Partial<Record<ChannelTabValue, number>>) => void;
+}
 
 const TYPE_LABEL: Record<BubbleType, string> = {
   TEXT: 'ข้อความ',
@@ -62,7 +72,7 @@ function SortableBubbleRow({ bubble, onChange, onDelete }: { bubble: CannedRespo
   );
 }
 
-export default function BubbleList({ cannedResponseId }: Props) {
+export default function BubbleList({ cannedResponseId, channelFilter = 'ALL', onCountsChange }: Props) {
   const qc = useQueryClient();
 
   const bubblesQ = useQuery<CannedResponseBubble[]>({
@@ -70,7 +80,28 @@ export default function BubbleList({ cannedResponseId }: Props) {
     queryFn: () => api.get(`/staff-chat/canned-responses/${cannedResponseId}/bubbles`).then((r: any) => r.data),
   });
 
-  const bubbles = bubblesQ.data ?? [];
+  const allBubbles = bubblesQ.data ?? [];
+
+  // Bubble is visible in a channel tab if channels[] is empty (= all-channels)
+  // OR explicitly includes the active channel.
+  const visibleBubbles =
+    channelFilter === 'ALL'
+      ? allBubbles
+      : allBubbles.filter(
+          (b) => (b.channels ?? []).length === 0 || (b.channels ?? []).includes(channelFilter),
+        );
+
+  // Report counts to parent for tab badges (visibility per tab)
+  useEffect(() => {
+    if (!onCountsChange) return;
+    const counts: Partial<Record<ChannelTabValue, number>> = { ALL: allBubbles.length };
+    for (const ch of Object.keys(CHANNEL_LABELS) as Channel[]) {
+      counts[ch] = allBubbles.filter(
+        (b) => (b.channels ?? []).length === 0 || (b.channels ?? []).includes(ch),
+      ).length;
+    }
+    onCountsChange(counts);
+  }, [allBubbles, onCountsChange]);
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['canned-response-bubbles', cannedResponseId] });
@@ -80,7 +111,12 @@ export default function BubbleList({ cannedResponseId }: Props) {
 
   const createMut = useMutation({
     mutationFn: (type: BubbleType) =>
-      api.post(`/staff-chat/canned-responses/${cannedResponseId}/bubbles`, { type }),
+      api.post(`/staff-chat/canned-responses/${cannedResponseId}/bubbles`, {
+        type,
+        // When a specific channel tab is active, scope the new bubble to that channel.
+        // ALL → empty array (applies to every channel — default behaviour).
+        channels: channelFilter === 'ALL' ? [] : [channelFilter],
+      }),
     onSuccess: () => invalidate(),
     onError: (e: any) => toast.error(e?.response?.data?.message ?? 'สร้างไม่สำเร็จ'),
   });
@@ -108,26 +144,34 @@ export default function BubbleList({ cannedResponseId }: Props) {
   const handleDragEnd = (e: DragEndEvent) => {
     const { active, over } = e;
     if (!over || active.id === over.id) return;
-    const fromIdx = bubbles.findIndex((b) => b.id === active.id);
-    const toIdx = bubbles.findIndex((b) => b.id === over.id);
-    if (fromIdx < 0 || toIdx < 0) return;
-    const reordered = [...bubbles];
-    const [moved] = reordered.splice(fromIdx, 1);
-    reordered.splice(toIdx, 0, moved);
-    reorderMut.mutate(reordered.map((b, i) => ({ id: b.id, sortOrder: i })));
+    // Reorder uses ALL bubbles' sortOrder, not just visible ones — preserves
+    // cross-channel ordering when active tab is filtered. Logic extracted into
+    // `reorderBubbles` so it can be unit-tested (bubble-reorder-logic.test.ts).
+    reorderMut.mutate(reorderBubbles(allBubbles, String(active.id), String(over.id)));
   };
 
-  const canAdd = bubbles.length < 5;
+  // Cap of 5 applies to TOTAL bubbles in the template (LINE push limit).
+  const canAdd = allBubbles.length < 5;
+  const isFiltered = channelFilter !== 'ALL';
+  const filterLabel = isFiltered ? CHANNEL_LABELS[channelFilter as Channel] : '';
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h4 className="text-sm font-semibold leading-snug">ข้อความ ({bubbles.length}/5 บับเบิ้ล)</h4>
+        <h4 className="text-sm font-semibold leading-snug">
+          ข้อความ ({visibleBubbles.length}/{allBubbles.length} แสดง · {allBubbles.length}/5 บับเบิ้ล)
+        </h4>
       </div>
+      {isFiltered && (
+        <p className="text-[11px] text-muted-foreground leading-snug">
+          แสดงเฉพาะ bubble ที่ใช้กับ <strong>{filterLabel}</strong> — bubble ที่สร้างใหม่จะถูกตั้ง channel เป็น{' '}
+          {filterLabel} โดยอัตโนมัติ (แก้ได้ผ่าน chips ในแต่ละ bubble)
+        </p>
+      )}
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <SortableContext items={bubbles.map((b) => b.id)} strategy={verticalListSortingStrategy}>
+        <SortableContext items={visibleBubbles.map((b) => b.id)} strategy={verticalListSortingStrategy}>
           <div className="space-y-2">
-            {bubbles.map((bubble) => (
+            {visibleBubbles.map((bubble) => (
               <SortableBubbleRow
                 key={bubble.id}
                 bubble={bubble}
@@ -138,9 +182,11 @@ export default function BubbleList({ cannedResponseId }: Props) {
           </div>
         </SortableContext>
       </DndContext>
-      {bubbles.length === 0 && (
+      {visibleBubbles.length === 0 && (
         <div className="text-center py-6 text-sm text-muted-foreground leading-snug border border-dashed border-border rounded-lg">
-          ยังไม่มี bubble — เพิ่มประเภทข้อความด้านล่าง
+          {isFiltered
+            ? `ยังไม่มี bubble สำหรับ ${filterLabel} — เพิ่มด้านล่าง`
+            : 'ยังไม่มี bubble — เพิ่มประเภทข้อความด้านล่าง'}
         </div>
       )}
       {canAdd ? (
@@ -156,7 +202,9 @@ export default function BubbleList({ cannedResponseId }: Props) {
           })}
         </div>
       ) : (
-        <p className="text-xs text-muted-foreground">ถึงขีดจำกัด 5 บับเบิ้ลแล้ว — ลบบางบับเบิ้ลก่อนเพิ่มใหม่</p>
+        <p className="text-xs text-muted-foreground leading-snug">
+          ถึงขีดจำกัด 5 บับเบิ้ลแล้ว (รวมทุก channel) — ลบบางบับเบิ้ลก่อนเพิ่มใหม่
+        </p>
       )}
     </div>
   );

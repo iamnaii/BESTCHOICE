@@ -5,6 +5,7 @@ import { Label } from '@/components/ui/label';
 import { FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import BubbleList from './BubbleList';
+import ChannelTabs, { type ChannelTabValue } from './ChannelTabs';
 import QuickReplyEditor from './QuickReplyEditor';
 import type { CannedResponse } from './types';
 
@@ -26,6 +27,13 @@ export default function TemplateEditorPane({ template, existingCategories, allTe
     verifiedOnly: false,
   });
   const [saving, setSaving] = useState(false);
+  const [activeChannel, setActiveChannel] = useState<ChannelTabValue>('ALL');
+  const [bubbleCounts, setBubbleCounts] = useState<Partial<Record<ChannelTabValue, number>>>({});
+
+  // Reset channel tab when switching to a different template
+  useEffect(() => {
+    setActiveChannel('ALL');
+  }, [template?.id]);
 
   useEffect(() => {
     if (template) {
@@ -136,7 +144,14 @@ export default function TemplateEditorPane({ template, existingCategories, allTe
             {existingCategories.map((c) => <option key={c} value={c} />)}
           </datalist>
         </div>
-        <BubbleList cannedResponseId={template.id} />
+        <div className="border-t border-border pt-3 space-y-3">
+          <ChannelTabs value={activeChannel} onChange={setActiveChannel} counts={bubbleCounts} />
+          <BubbleList
+            cannedResponseId={template.id}
+            channelFilter={activeChannel}
+            onCountsChange={setBubbleCounts}
+          />
+        </div>
         <div className="border-t border-border pt-4">
           <QuickReplyEditor cannedResponseId={template.id} allTemplates={allTemplates} />
         </div>

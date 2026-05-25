@@ -184,12 +184,17 @@ export class FacebookWebhookController {
       // Falls through to the routeInbound() path below for any unrecognised
       // payload, preserving the original behavior for menu clicks etc.
       try {
+        // C2: Order by lastMessageAt desc — a PSID with multiple active rooms
+        // (re-engagement scenario: room A archived/deleted, room B current)
+        // would otherwise resolve to the oldest one in insertion order. Newest
+        // is always the live chat the customer is actually using.
         const room = await this.prisma.chatRoom.findFirst({
           where: {
             externalUserId: senderId,
             channel: ChatChannel.FACEBOOK,
             deletedAt: null,
           },
+          orderBy: { lastMessageAt: 'desc' },
           select: { id: true },
         });
         if (room) {

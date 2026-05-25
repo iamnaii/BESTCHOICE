@@ -36,31 +36,35 @@ export class CannedResponseSenderService {
   /**
    * Lazily bootstrap (or fetch) the system bot user used when a send is
    * initiated by an automated path (e.g. Quick Reply postback router) rather
-   * than a real staff member. Idempotent — first call creates, subsequent
-   * calls reuse.
+   * than a real staff member. Idempotent — `upsert` is atomic at the DB
+   * level so concurrent first-time postbacks cannot race (Postgres handles
+   * the unique-email constraint internally, eliminating the P2002 window
+   * that `findFirst` → `create` had).
    *
    * The system user is marked `isActive=false` so it cannot log in via the
    * normal auth flow; its password placeholder is intentionally unusable.
+   *
+   * Role is `SALES` (lowest practical role) — the bot must NOT appear in
+   * OWNER-only queries (audit recipients, role-filtered admin lists, etc.).
+   * Matches the existing `collections-foundation.seed` row whose update
+   * path also keeps it in the system-user pool; if the seed has already
+   * created an `OWNER`-role row, the `update: {}` no-op preserves it
+   * (only first-ever create stamps `SALES`).
    */
   private async getSystemUserId(): Promise<string> {
-    let user = await this.prisma.user.findFirst({
-      where: { isSystemUser: true, deletedAt: null },
+    const user = await this.prisma.user.upsert({
+      where: { email: 'system@bestchoice.internal' },
+      update: {},
+      create: {
+        email: 'system@bestchoice.internal',
+        password: 'NEVER_LOGIN_SYSTEM_USER',
+        name: 'System Bot',
+        role: 'SALES',
+        isActive: false,
+        isSystemUser: true,
+      },
       select: { id: true },
     });
-    if (!user) {
-      user = await this.prisma.user.create({
-        data: {
-          email: 'system@bestchoice.internal',
-          password: 'NEVER_LOGIN_SYSTEM_USER',
-          name: 'System Bot',
-          role: 'OWNER',
-          isActive: false,
-          isSystemUser: true,
-        },
-        select: { id: true },
-      });
-      this.logger.log(`Bootstrapped system user ${user.id} for automated sends`);
-    }
     return user.id;
   }
 

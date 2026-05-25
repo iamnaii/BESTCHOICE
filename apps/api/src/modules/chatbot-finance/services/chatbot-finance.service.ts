@@ -1,4 +1,4 @@
-import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ChatChannel, MessageRole } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -48,7 +48,10 @@ export class ChatbotFinanceService {
     private slipProcessing: SlipProcessingService,
     private feedback: FeedbackService,
     private configService: ConfigService,
-    @Inject(forwardRef(() => QuickReplyPostbackRouterService))
+    // W4: module-level `forwardRef(() => StaffChatModule)` in
+    // chatbot-finance.module.ts already breaks the circular import — a
+    // constructor-level @Inject(forwardRef(...)) on the same provider is
+    // redundant for Nest's DI graph.
     private postbackRouter: QuickReplyPostbackRouterService,
   ) {}
 

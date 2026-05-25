@@ -23,6 +23,11 @@ describe('CannedResponseSenderService', () => {
     prisma = {
       chatRoom: { findFirst: jest.fn() },
       cannedResponse: { findFirst: jest.fn() },
+      user: {
+        findFirst: jest.fn(),
+        create: jest.fn(),
+        upsert: jest.fn(),
+      },
     };
     translator = {
       filterByChannel: jest.fn((bubbles: any[], channel: string) =>
@@ -276,5 +281,103 @@ describe('CannedResponseSenderService', () => {
       'สวัสดีคุณ สมชาย ที่สาขา ลาดพร้าว',
       'ยอดค้าง 1,234.56 กำหนด 15/05/2569',
     ]);
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // System user bootstrap (Phase 5 postback path — staffId=null)
+  // ──────────────────────────────────────────────────────────────────────────
+
+  describe('getSystemUserId (staffId=null path)', () => {
+    const minimalTemplate = {
+      id: 'tpl-1',
+      verifiedOnly: false,
+      bubbles: [
+        {
+          id: 'b1',
+          type: 'TEXT',
+          channels: [],
+          text: 'hi',
+          mediaUrl: null,
+          thumbnailUrl: null,
+          stickerPackageId: null,
+          stickerId: null,
+          latitude: null,
+          longitude: null,
+          address: null,
+          locationTitle: null,
+          json: null,
+          sortOrder: 0,
+          deletedAt: null,
+        },
+      ],
+      quickReplies: [],
+    };
+
+    it('C1: 3 concurrent sends with null staffId all succeed (no race) via upsert', async () => {
+      prisma.chatRoom.findFirst.mockResolvedValue(baseRoom);
+      prisma.cannedResponse.findFirst.mockResolvedValue(minimalTemplate);
+
+      // Upsert is atomic at the DB level — Postgres handles uniqueness internally,
+      // so even under concurrent calls every invocation resolves to the same user.
+      prisma.user.upsert.mockResolvedValue({ id: 'system-user-id' });
+
+      const results = await Promise.all([
+        service.send('room-1', 'tpl-1', null),
+        service.send('room-1', 'tpl-1', null),
+        service.send('room-1', 'tpl-1', null),
+      ]);
+
+      // No call rejected, no P2002 unique violation surfaced
+      results.forEach((r) => {
+        expect(r.errors).toEqual([]);
+        expect(r.sent).toBe(1);
+      });
+
+      // Every concurrent send hit upsert (not findFirst→create)
+      expect(prisma.user.upsert).toHaveBeenCalledTimes(3);
+      expect(prisma.user.create).not.toHaveBeenCalled();
+    });
+
+    it('C1: getSystemUserId calls prisma.user.upsert with email key + SYSTEM_BOT defaults', async () => {
+      prisma.chatRoom.findFirst.mockResolvedValue(baseRoom);
+      prisma.cannedResponse.findFirst.mockResolvedValue(minimalTemplate);
+      prisma.user.upsert.mockResolvedValue({ id: 'system-user-id' });
+
+      await service.send('room-1', 'tpl-1', null);
+
+      expect(prisma.user.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { email: 'system@bestchoice.internal' },
+          update: {},
+          create: expect.objectContaining({
+            email: 'system@bestchoice.internal',
+            isSystemUser: true,
+            isActive: false,
+          }),
+          select: { id: true },
+        }),
+      );
+    });
+
+    it('W6: system user is created with SALES role (not OWNER)', async () => {
+      prisma.chatRoom.findFirst.mockResolvedValue(baseRoom);
+      prisma.cannedResponse.findFirst.mockResolvedValue(minimalTemplate);
+      prisma.user.upsert.mockResolvedValue({ id: 'system-user-id' });
+
+      await service.send('room-1', 'tpl-1', null);
+
+      const callArgs = prisma.user.upsert.mock.calls[0][0];
+      expect(callArgs.create.role).toBe('SALES');
+      expect(callArgs.create.role).not.toBe('OWNER');
+    });
+
+    it('staffId provided → upsert NOT called (real staff path)', async () => {
+      prisma.chatRoom.findFirst.mockResolvedValue(baseRoom);
+      prisma.cannedResponse.findFirst.mockResolvedValue(minimalTemplate);
+
+      await service.send('room-1', 'tpl-1', 'real-staff-id');
+
+      expect(prisma.user.upsert).not.toHaveBeenCalled();
+    });
   });
 });

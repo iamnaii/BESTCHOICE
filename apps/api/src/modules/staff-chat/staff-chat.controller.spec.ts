@@ -1,5 +1,5 @@
 import { Test } from '@nestjs/testing';
-import { NotFoundException } from '@nestjs/common';
+import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { StaffChatController } from './staff-chat.controller';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -33,6 +33,7 @@ describe('StaffChatController', () => {
   let staffMessage: StaffMessageService;
   let cannedResponseBubble: CannedResponseBubbleService;
   let cannedResponseQuickReply: CannedResponseQuickReplyService;
+  let cannedResponseSender: CannedResponseSenderService;
 
   beforeEach(async () => {
     const module = await Test.createTestingModule({
@@ -103,6 +104,7 @@ describe('StaffChatController', () => {
     staffMessage = module.get(StaffMessageService);
     cannedResponseBubble = module.get(CannedResponseBubbleService);
     cannedResponseQuickReply = module.get(CannedResponseQuickReplyService);
+    cannedResponseSender = module.get(CannedResponseSenderService);
   });
 
   describe('GET /staff-chat/rooms/:roomId/canned-responses/:id/preview', () => {
@@ -207,6 +209,52 @@ describe('StaffChatController', () => {
       const body = { label: 'ตกลง', type: 'POSTBACK' as const, payload: 'OK' };
       await controller.createQuickReply('cr-1', body);
       expect(cannedResponseQuickReply.create).toHaveBeenCalledWith('cr-1', body);
+    });
+  });
+
+  describe('POST /staff-chat/rooms/:roomId/send-canned-response', () => {
+    it('delegates to sender service with templateId and current user id', async () => {
+      jest
+        .spyOn(cannedResponseSender, 'send')
+        .mockResolvedValue({ sent: 2, dropped: 0, errors: [] });
+
+      const result = await controller.sendCannedResponse(
+        'room-1',
+        { templateId: 'tpl-1' },
+        { user: { id: 'user-1' } } as any,
+      );
+
+      expect(cannedResponseSender.send).toHaveBeenCalledWith('room-1', 'tpl-1', 'user-1');
+      expect(result).toEqual({ sent: 2, dropped: 0, errors: [] });
+    });
+
+    it('propagates BadRequest when verified-only template + unverified room', async () => {
+      jest
+        .spyOn(cannedResponseSender, 'send')
+        .mockRejectedValue(
+          new BadRequestException(
+            'Template นี้ใช้ได้เฉพาะลูกค้าที่ยืนยันตัวตนแล้ว',
+          ),
+        );
+
+      await expect(
+        controller.sendCannedResponse(
+          'room-1',
+          { templateId: 'tpl-1' },
+          { user: { id: 'user-1' } } as any,
+        ),
+      ).rejects.toThrow('ยืนยันตัวตน');
+    });
+
+    it('rejects empty templateId with BadRequestException', async () => {
+      await expect(
+        controller.sendCannedResponse(
+          'room-1',
+          { templateId: '' },
+          { user: { id: 'user-1' } } as any,
+        ),
+      ).rejects.toThrow('templateId');
+      expect(cannedResponseSender.send).not.toHaveBeenCalled();
     });
   });
 });

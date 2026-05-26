@@ -46,10 +46,12 @@ test.describe('/letters page', () => {
 
   test('SALES role: no row Cancel button (X icon)', async ({ page }) => {
     await loginAsRole(page, 'SALES');
-    await page.goto('/letters', { waitUntil: 'domcontentloaded' });
 
-    // Allow some time for data to load
-    await page.waitForTimeout(500);
+    const lettersResponse = page.waitForResponse(
+      (r) => r.url().includes('/overdue/letters') && r.status() === 200,
+    );
+    await page.goto('/letters', { waitUntil: 'domcontentloaded' });
+    await lettersResponse;
 
     // Bulk Cancel button text should not appear for SALES role
     // (only OWNER/BRANCH_MANAGER can cancel letters)

@@ -4,10 +4,27 @@ import { Button } from '@/components/ui/button';
 import { Download, Printer, X, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
-import { mergeLetterPdfs } from '../utils/mergeLetterPdfs';
-import { buildLetterTemplateData } from '@/pages/CollectionsPage/utils/buildLetterTemplateData';
+import { PDFDocument } from 'pdf-lib';
 import api from '@/lib/api';
 import type { LetterRow } from '../types';
+
+/**
+ * Fetch each letter PDF from the backend (Puppeteer-rendered), then merge
+ * with pdf-lib into a single multi-page PDF Blob. The backend endpoint
+ * handles font embedding + pagination — frontend just stitches the bytes.
+ */
+async function fetchAndMergeLetterPdfs(rows: LetterRow[]): Promise<Blob> {
+  if (rows.length === 0) throw new Error('no letters');
+  const merged = await PDFDocument.create();
+  for (const r of rows) {
+    const res = await api.get(`/overdue/letters/${r.id}/pdf`, { responseType: 'arraybuffer' });
+    const doc = await PDFDocument.load(res.data as ArrayBuffer);
+    const pages = await merged.copyPages(doc, doc.getPageIndices());
+    pages.forEach((p) => merged.addPage(p));
+  }
+  const bytes = await merged.save();
+  return new Blob([new Uint8Array(bytes)], { type: 'application/pdf' });
+}
 
 interface Props {
   open: boolean;
@@ -32,8 +49,7 @@ export default function BulkPrintDialog({ open, rows, onClose }: Props) {
     setBuilding(true);
     (async () => {
       try {
-        const templateData = await Promise.all(rows.map(buildLetterTemplateData));
-        const blob = await mergeLetterPdfs(templateData);
+        const blob = await fetchAndMergeLetterPdfs(rows);
         setBlobUrl(URL.createObjectURL(blob));
       } catch (err: any) {
         toast.error(`สร้าง PDF ล้มเหลว: ${err.message}`);

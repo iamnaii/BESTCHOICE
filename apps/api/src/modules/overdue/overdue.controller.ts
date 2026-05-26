@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, BadRequestException, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { OverdueService } from './overdue.service';
 import { DunningRuleService } from './dunning-rule.service';
@@ -10,6 +11,7 @@ import { MdmLockService } from './mdm-lock.service';
 import { OverdueTimelineService } from './timeline.service';
 import { OverdueBulkService } from './bulk.service';
 import { ContractLetterService } from './contract-letter.service';
+import { LetterPdfService } from './letter-pdf.service';
 import { DunningRetryService } from './dunning-retry.service';
 import { OverdueAnalyticsService } from './analytics.service';
 import { AnalyticsAgingService } from './analytics-aging.service';
@@ -58,6 +60,7 @@ export class OverdueController {
     private timelineService: OverdueTimelineService,
     private bulkService: OverdueBulkService,
     private contractLetterService: ContractLetterService,
+    private letterPdfService: LetterPdfService,
     private dunningRetryService: DunningRetryService,
     private analyticsService: OverdueAnalyticsService,
     private analyticsAgingService: AnalyticsAgingService,
@@ -596,6 +599,23 @@ export class OverdueController {
     @CurrentUser() user: { id: string },
   ) {
     return this.contractLetterService.bulkDispatch(dto.items, user.id);
+  }
+
+  /**
+   * Stream the rendered letter as a single-page A4 PDF via Puppeteer.
+   * Frontend uses this for preview, dispatch dialog, AND bulk-print (loops
+   * and merges with pdf-lib client-side).
+   */
+  @Get('letters/:id/pdf')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  async getLetterPdf(@Param('id') id: string, @Res() res: Response) {
+    const buffer = await this.letterPdfService.generatePdfBuffer(id);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="letter-${id}.pdf"`,
+      'Content-Length': buffer.length.toString(),
+    });
+    res.send(buffer);
   }
 
   @Post('letters/:id/delivered')

@@ -228,16 +228,32 @@ function addressBlock(doc: jsPDF, data: LetterTemplateData, yStart: number): num
   doc.setFontSize(14);
   let y = yStart;
 
-  doc.text(`เรียน  ${data.customer.name}`, MARGIN, y);
+  // "เรียน" label is bold, name is normal — matches reference letterhead
+  doc.setFont(PDF_FONT_FAMILY, 'bold');
+  const greetLabel = 'เรียน  ';
+  doc.text(greetLabel, MARGIN, y);
+  doc.setFont(PDF_FONT_FAMILY, 'normal');
+  doc.text(data.customer.name, MARGIN + doc.getTextWidth(greetLabel), y);
   y += 9;
 
-  const refText = data.contract.contractDate
-    ? `อ้างถึง  สัญญาเช่าซื้อโทรศัพท์มือถือ เลขที่ ${data.contract.contractNumber} ` +
+  // "อ้างถึง" label bold + content normal, single-line wraps at right margin
+  doc.setFont(PDF_FONT_FAMILY, 'bold');
+  const refLabel = 'อ้างถึง  ';
+  doc.text(refLabel, MARGIN, y);
+  doc.setFont(PDF_FONT_FAMILY, 'normal');
+  const refLabelW = doc.getTextWidth(refLabel);
+  const refContent = data.contract.contractDate
+    ? `สัญญาเช่าซื้อโทรศัพท์มือถือ เลขที่ ${data.contract.contractNumber} ` +
       `ลงวันที่ ${formatThaiDate(data.contract.contractDate)}`
-    : `อ้างถึง  สัญญาเช่าซื้อโทรศัพท์มือถือ เลขที่ ${data.contract.contractNumber}`;
-  const refLines = doc.splitTextToSize(refText, CONTENT_W);
-  doc.text(refLines, MARGIN, y);
-  y += refLines.length * 7;
+    : `สัญญาเช่าซื้อโทรศัพท์มือถือ เลขที่ ${data.contract.contractNumber}`;
+  const refLines = doc.splitTextToSize(refContent, CONTENT_W - refLabelW);
+  doc.text(refLines[0] ?? '', MARGIN + refLabelW, y);
+  y += 7;
+  if (refLines.length > 1) {
+    const rest = doc.splitTextToSize(refLines.slice(1).join(' '), CONTENT_W - refLabelW);
+    doc.text(rest, MARGIN + refLabelW, y);
+    y += rest.length * 7;
+  }
 
   return y + 4;
 }

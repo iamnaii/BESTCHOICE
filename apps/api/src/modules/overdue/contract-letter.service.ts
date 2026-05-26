@@ -7,6 +7,7 @@ import {
 import { LetterType, LetterStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DunningEngineService } from './dunning-engine.service';
+import { getBranchScope } from '../auth/branch-access.util';
 
 @Injectable()
 export class ContractLetterService {
@@ -77,36 +78,81 @@ export class ContractLetterService {
   }
 
   /**
-   * List letters matching a status filter, newest-triggered first.
-   * Includes contract + customer for display in OWNER queue.
+   * List letters with pagination, search, and branch scope enforcement.
+   * Returns { data, total, page, limit } instead of a plain array.
+   * Branch-scoped roles (SALES, BRANCH_MANAGER) are automatically filtered
+   * to their assigned branchId via getBranchScope(). Cross-branch roles
+   * (OWNER, FINANCE_MANAGER, ACCOUNTANT) see all branches.
    */
   async list(params: {
     status?: LetterStatus;
     letterType?: LetterType;
     branchId?: string;
+    from?: string;
+    to?: string;
+    q?: string;
+    page?: number;
     limit?: number;
-  }) {
+    user?: { role?: string | null; branchId?: string | null };
+  }): Promise<{
+    data: Awaited<ReturnType<typeof this.prisma.contractLetter.findMany>>;
+    total: number;
+    page: number;
+    limit: number;
+  }> {
+    const page = Math.max(1, params.page ?? 1);
+    const limit = Math.min(200, Math.max(1, params.limit ?? 50));
+
+    const scope = getBranchScope(params.user);
+    if (!scope.all && !scope.branchId) {
+      return { data: [], total: 0, page, limit };
+    }
+
+    const effectiveBranchId = !scope.all ? scope.branchId! : params.branchId;
+
     const where: Prisma.ContractLetterWhereInput = {
       deletedAt: null,
       ...(params.status && { status: params.status }),
       ...(params.letterType && { letterType: params.letterType }),
-      ...(params.branchId && { contract: { branchId: params.branchId } }),
+      ...((params.from || params.to) && {
+        triggeredAt: {
+          ...(params.from && { gte: new Date(params.from) }),
+          ...(params.to && { lte: new Date(params.to) }),
+        },
+      }),
+      ...(effectiveBranchId && {
+        contract: { branchId: effectiveBranchId },
+      }),
+      ...(params.q && {
+        OR: [
+          { letterNumber: { contains: params.q, mode: 'insensitive' as const } },
+          { contract: { contractNumber: { contains: params.q, mode: 'insensitive' as const } } },
+          { contract: { customer: { name: { contains: params.q, mode: 'insensitive' as const } } } },
+        ],
+      }),
     };
-    return this.prisma.contractLetter.findMany({
-      where,
-      include: {
-        contract: {
-          select: {
-            id: true,
-            contractNumber: true,
-            customer: { select: { id: true, name: true, phone: true, addressCurrent: true } },
-            branch: { select: { id: true, name: true } },
+
+    const [data, total] = await Promise.all([
+      this.prisma.contractLetter.findMany({
+        where,
+        include: {
+          contract: {
+            select: {
+              id: true,
+              contractNumber: true,
+              customer: { select: { id: true, name: true, phone: true, addressCurrent: true } },
+              branch: { select: { id: true, name: true } },
+            },
           },
         },
-      },
-      orderBy: { triggeredAt: 'desc' },
-      take: params.limit ?? 100,
-    });
+        orderBy: { triggeredAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.contractLetter.count({ where }),
+    ]);
+
+    return { data, total, page, limit };
   }
 
   /** After client generates PDF and uploads to S3, backend records the URL. */

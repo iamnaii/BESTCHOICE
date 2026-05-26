@@ -123,31 +123,37 @@ describe('ContractLetterService', () => {
       { id: 'l2', status: 'PDF_GENERATED', letterType: 'CONTRACT_TERMINATION_60D' },
     ];
 
-    it('returns letters without filter', async () => {
+    it('returns paginated shape without filter (OWNER sees all)', async () => {
       mockPrisma.contractLetter.findMany.mockResolvedValueOnce(mockLetters);
-      const result = await service.list({});
-      expect(result).toBe(mockLetters);
+      mockPrisma.contractLetter.count.mockResolvedValueOnce(2);
+      const result = await service.list({ user: { role: 'OWNER', branchId: null } });
+      expect(result.data).toBe(mockLetters);
+      expect(result.total).toBe(2);
+      expect(result.page).toBe(1);
       const findArg = mockPrisma.contractLetter.findMany.mock.calls[0][0];
       expect(findArg.where.deletedAt).toBeNull();
     });
 
     it('filters by status', async () => {
       mockPrisma.contractLetter.findMany.mockResolvedValueOnce([mockLetters[0]]);
-      await service.list({ status: 'PENDING_DISPATCH' });
+      mockPrisma.contractLetter.count.mockResolvedValueOnce(1);
+      await service.list({ status: 'PENDING_DISPATCH', user: { role: 'OWNER', branchId: null } });
       const findArg = mockPrisma.contractLetter.findMany.mock.calls[0][0];
       expect(findArg.where.status).toBe('PENDING_DISPATCH');
     });
 
     it('filters by letterType', async () => {
       mockPrisma.contractLetter.findMany.mockResolvedValueOnce([mockLetters[1]]);
-      await service.list({ letterType: 'CONTRACT_TERMINATION_60D' });
+      mockPrisma.contractLetter.count.mockResolvedValueOnce(1);
+      await service.list({ letterType: 'CONTRACT_TERMINATION_60D', user: { role: 'OWNER', branchId: null } });
       const findArg = mockPrisma.contractLetter.findMany.mock.calls[0][0];
       expect(findArg.where.letterType).toBe('CONTRACT_TERMINATION_60D');
     });
 
-    it('filters by branchId via contract relation', async () => {
+    it('filters by branchId via contract relation when OWNER passes branchId', async () => {
       mockPrisma.contractLetter.findMany.mockResolvedValueOnce([]);
-      await service.list({ branchId: 'branch-1' });
+      mockPrisma.contractLetter.count.mockResolvedValueOnce(0);
+      await service.list({ branchId: 'branch-1', user: { role: 'OWNER', branchId: null } });
       const findArg = mockPrisma.contractLetter.findMany.mock.calls[0][0];
       expect(findArg.where.contract).toEqual({ branchId: 'branch-1' });
     });

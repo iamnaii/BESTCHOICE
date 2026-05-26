@@ -538,8 +538,8 @@ describe('bulkDispatch', () => {
     expect(prismaMock.contractLetter.update).toHaveBeenCalledTimes(2);
     expect(prismaMock.auditLog.create).toHaveBeenCalledTimes(2);
     const auditCalls = (prismaMock.auditLog.create as jest.Mock).mock.calls;
-    expect(auditCalls[0][0].data.metadata.batchId).toBe(result.batchId);
-    expect(auditCalls[1][0].data.metadata.batchId).toBe(result.batchId);
+    expect(auditCalls[0][0].data.newValue.batchId).toBe(result.batchId);
+    expect(auditCalls[1][0].data.newValue.batchId).toBe(result.batchId);
   });
 });
 

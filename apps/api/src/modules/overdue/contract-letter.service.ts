@@ -467,9 +467,8 @@ export class ContractLetterService {
           action: 'LETTER_DISPATCHED',
           entity: 'contract_letter',
           entityId: item.id,
-          newValue: { trackingNumber: item.trackingNumber },
-          metadata: { batchId, source: 'bulk' },
-        } as any,
+          newValue: { trackingNumber: item.trackingNumber, batchId, source: 'bulk' },
+        },
       }),
     ]);
 

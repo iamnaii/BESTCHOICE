@@ -54,8 +54,39 @@ export class LetterPdfService {
     const cfg = new Map(configs.map((c) => [c.key, c.value]));
 
     const data = this.buildTemplateData(letter, company, cfg);
-    const html = this.renderHtml(data);
+    // Embed logo as base64 — puppeteer's setContent() can't resolve
+    // relative URLs like "/logo-bestchoice.png" (no base URL context).
+    const logoDataUrl = data.company.logoUrl ? this.resolveLogoDataUrl(data.company.logoUrl) : null;
+    const dataWithLogo = {
+      ...data,
+      company: { ...data.company, logoUrl: logoDataUrl ?? data.company.logoUrl },
+    };
+    const html = this.renderHtml(dataWithLogo);
     return this.htmlToPdf(html, letter.letterNumber);
+  }
+
+  /**
+   * Convert "/logo-foo.png" or "logo-foo.png" → base64 data URL by reading
+   * from the web app's public/ directory at runtime. Returns null if the
+   * URL is already absolute (http/https/data:) or the file is missing.
+   */
+  private resolveLogoDataUrl(urlOrPath: string): string | null {
+    if (/^(https?:|data:)/i.test(urlOrPath)) return null;
+    const relPath = urlOrPath.replace(/^\//, '');
+    const candidates = [
+      path.join(process.cwd(), '..', 'web', 'public', relPath),
+      path.join(process.cwd(), 'public', relPath),
+      path.join(__dirname, '..', '..', '..', '..', '..', 'web', 'public', relPath),
+    ];
+    const found = candidates.find((p) => fs.existsSync(p));
+    if (!found) {
+      this.logger.warn(`Logo not found at any candidate path for ${urlOrPath}`);
+      return null;
+    }
+    const ext = path.extname(found).slice(1).toLowerCase();
+    const mime = ext === 'svg' ? 'image/svg+xml' : `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+    const buf = fs.readFileSync(found);
+    return `data:${mime};base64,${buf.toString('base64')}`;
   }
 
   // ─── Template data assembly ─────────────────────────────────────────────
@@ -199,20 +230,43 @@ export class LetterPdfService {
   @page { size: A4; margin: 18mm 22mm 22mm 22mm; }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; font-family: 'TH Sarabun PSK', sans-serif; font-size: 16pt; line-height: 1.55; color: #000; }
-  .header { display: flex; align-items: center; gap: 14mm; padding-bottom: 8px; border-bottom: 1.5px solid #555; }
-  .header img.logo { width: 22mm; height: 22mm; object-fit: contain; }
-  .header .company { display: flex; flex-direction: column; gap: 2px; }
-  .header .company-name { font-size: 18pt; font-weight: 700; }
-  .header .company-addr { font-size: 13pt; }
-  .date-line { text-align: right; margin: 12px 0 10px; }
-  .subject { font-weight: 700; margin-bottom: 8px; }
-  .field { margin: 4px 0; }
+  /* Header — logo left, company name+address right of logo. Bottom rule
+     is the company brand green (#059669 emerald) for a subtle accent. */
+  .header {
+    display: flex;
+    align-items: center;
+    gap: 12mm;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #059669;
+  }
+  .header img.logo {
+    width: 24mm;
+    height: 24mm;
+    object-fit: contain;
+    flex-shrink: 0;
+  }
+  .header .company { display: flex; flex-direction: column; gap: 3px; }
+  .header .company-name {
+    font-size: 20pt;
+    font-weight: 700;
+    color: #1a4d3a;
+    letter-spacing: 0.5px;
+    line-height: 1.2;
+  }
+  .header .company-addr {
+    font-size: 13pt;
+    color: #444;
+    line-height: 1.35;
+  }
+  .date-line { text-align: right; margin: 14px 0 10px; color: #333; }
+  .subject { font-weight: 700; margin: 8px 0 10px; }
+  .field { margin: 5px 0; }
   .field .label { font-weight: 700; }
   .body p { margin: 6px 0; text-indent: 24px; text-align: justify; }
   .body p.indent-none { text-indent: 0; }
   ol.demand { padding-left: 24px; margin: 8px 0; }
   ol.demand li { margin: 4px 0; }
-  .section-heading { font-weight: 700; margin: 14px 0 6px; }
+  .section-heading { font-weight: 700; margin: 14px 0 6px; color: #1a4d3a; }
   ol.legal { padding-left: 24px; margin: 6px 0; }
   ol.legal li { margin: 4px 0; }
   ol.legal li .legal-title { font-weight: 700; }
@@ -222,10 +276,10 @@ export class LetterPdfService {
   ul.bullets li .bullet-label { font-weight: 700; }
   .coord-line { margin: 14px 0 6px; text-indent: 24px; }
   .coord-line .strong { font-weight: 700; }
-  .closing { font-weight: 700; margin: 12px 0 24px; text-indent: 24px; }
-  .signature { text-align: center; margin-top: 8px; }
-  .signature .salutation { margin-bottom: 6px; }
-  .signature .sig-line { letter-spacing: 1px; }
+  .closing { font-weight: 700; margin: 12px 0 24px; text-indent: 24px; color: #b91c1c; }
+  .signature { text-align: center; margin-top: 16px; }
+  .signature .salutation { margin-bottom: 8px; }
+  .signature .sig-line { letter-spacing: 1px; color: #555; }
   .signature img.sig-img { width: 50mm; height: 22mm; object-fit: contain; }
   .signature .director { font-weight: 700; margin-top: 4px; }
   .signature .position { font-size: 14pt; }

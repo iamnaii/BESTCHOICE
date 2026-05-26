@@ -48,9 +48,12 @@ export async function buildLetterTemplateData(letter: LetterInput): Promise<Lett
     settings.find((s) => s.key === key)?.value ?? null;
   const signatureUrl = findConfig('letter_signature_url');
   const letterheadUrl = findConfig('letter_letterhead_url');
+  const coordinatorName = findConfig('letter_coordinator_name');
+  const coordinatorPhone = findConfig('letter_coordinator_phone');
 
   const payments: Array<{
     status: string;
+    installmentNo?: number;
     amountDue: string;
     amountPaid: string;
     lateFee: string | null;
@@ -59,15 +62,18 @@ export async function buildLetterTemplateData(letter: LetterInput): Promise<Lett
     ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'].includes(p.status),
   );
 
-  const outstandingDec = payments.reduce(
+  const principalDec = payments.reduce(
     (sum, p) =>
-      sum
-        .plus(new Decimal(p.amountDue ?? '0'))
-        .minus(new Decimal(p.amountPaid ?? '0'))
-        .plus(new Decimal(p.lateFee ?? '0')),
+      sum.plus(new Decimal(p.amountDue ?? '0')).minus(new Decimal(p.amountPaid ?? '0')),
     new Decimal(0),
   );
-  const outstanding = outstandingDec.toNumber();
+  const lateFeeDec = payments.reduce(
+    (sum, p) => sum.plus(new Decimal(p.lateFee ?? '0')),
+    new Decimal(0),
+  );
+  const outstanding = principalDec.plus(lateFeeDec).toNumber();
+  const principalAmount = principalDec.toNumber();
+  const lateFeeAmount = lateFeeDec.toNumber();
 
   const now = new Date();
   const oldest = payments
@@ -76,6 +82,60 @@ export async function buildLetterTemplateData(letter: LetterInput): Promise<Lett
   const daysOverdue = oldest
     ? Math.max(0, Math.floor((now.getTime() - oldest.getTime()) / 86400000))
     : 0;
+
+  // Distinct overdue months in Thai (BE year), oldest first
+  const THAI_MONTHS = [
+    'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
+    'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม',
+  ];
+  const overdueMonths = Array.from(
+    new Set(
+      payments
+        .map((p) => new Date(p.dueDate))
+        .filter((d) => d.getTime() < now.getTime())
+        .sort((a, b) => a.getTime() - b.getTime())
+        .map((d) => `${THAI_MONTHS[d.getMonth()]} ${d.getFullYear() + 543}`),
+    ),
+  );
+  const overdueInstallments = payments.filter(
+    (p) => new Date(p.dueDate).getTime() < now.getTime(),
+  ).length;
+
+  // First-due date = installmentNo=1 dueDate, else earliest payment overall
+  const allPayments: Array<{ installmentNo?: number; dueDate: string }> =
+    contractRes.payments ?? [];
+  const firstInstallment = allPayments.find((p) => p.installmentNo === 1) ?? allPayments[0];
+  const firstDueDate = firstInstallment?.dueDate ? new Date(firstInstallment.dueDate) : null;
+
+  // Product info — guard against legacy contracts where product was deleted
+  const productRaw = contractRes.product ?? null;
+  const product = productRaw
+    ? {
+        brand: productRaw.brand ?? '',
+        model: productRaw.model ?? '',
+        storage: productRaw.storage ?? null,
+        color: productRaw.color ?? null,
+        imei: productRaw.imeiSerial ?? null,
+      }
+    : undefined;
+
+  const totalMonths = Number(contractRes.totalMonths ?? 0);
+  const monthlyPayment = Number(contractRes.monthlyPayment ?? 0);
+  const paymentDueDay = contractRes.paymentDueDay ?? null;
+  const paymentSchedule =
+    totalMonths > 0
+      ? {
+          totalMonths,
+          monthlyPayment,
+          paymentDueDay,
+          firstDueDate,
+        }
+      : undefined;
+
+  const coordinator =
+    coordinatorName && coordinatorPhone
+      ? { name: coordinatorName, phone: coordinatorPhone }
+      : undefined;
 
   return {
     letterType: letter.letterType,
@@ -101,5 +161,14 @@ export async function buildLetterTemplateData(letter: LetterInput): Promise<Lett
       outstanding,
       daysOverdue,
     },
+    product,
+    paymentSchedule,
+    overdueDetail: {
+      overdueMonths,
+      overdueInstallments,
+      principalAmount,
+      lateFeeAmount,
+    },
+    coordinator,
   };
 }

@@ -450,7 +450,7 @@ export class ContractLetterService {
     const batchId = randomUUID();
     const now = new Date();
 
-    const ops = items.flatMap((item) => [
+    const updateOps = items.map((item) =>
       this.prisma.contractLetter.update({
         where: { id: item.id },
         data: {
@@ -461,6 +461,9 @@ export class ContractLetterService {
           evidencePhotoUrl: item.evidencePhotoUrl ?? null,
         },
       }),
+    );
+
+    const auditOps = items.map((item) =>
       this.prisma.auditLog.create({
         data: {
           userId,
@@ -470,11 +473,73 @@ export class ContractLetterService {
           newValue: { trackingNumber: item.trackingNumber, batchId, source: 'bulk' },
         },
       }),
-    ]);
+    );
 
-    const results = (await this.prisma.$transaction(ops)) as Array<{ id: string }>;
-    const updated = results.filter((_, idx) => idx % 2 === 0);
+    const results = (await this.prisma.$transaction([...updateOps, ...auditOps])) as Array<unknown>;
+    const updated = results.slice(0, items.length) as Array<{ id: string }>;
+
     return { updated, batchId };
+  }
+
+  async getCountsByStatus(params: {
+    branchId?: string;
+    letterType?: LetterType;
+    from?: string;
+    to?: string;
+    q?: string;
+    user: { role?: string | null; branchId?: string | null };
+  }): Promise<Record<LetterStatus, number>> {
+    const scope = getBranchScope(params.user);
+    if (!scope.all && !scope.branchId) {
+      return {
+        PENDING_DISPATCH: 0,
+        PDF_GENERATED: 0,
+        DISPATCHED: 0,
+        DELIVERED: 0,
+        UNDELIVERABLE: 0,
+        CANCELLED: 0,
+      };
+    }
+
+    const effectiveBranchId = !scope.all ? scope.branchId! : params.branchId;
+
+    const where: Prisma.ContractLetterWhereInput = {
+      deletedAt: null,
+      ...(params.letterType && { letterType: params.letterType }),
+      ...((params.from || params.to) && {
+        triggeredAt: {
+          ...(params.from && { gte: new Date(params.from) }),
+          ...(params.to && { lte: new Date(params.to) }),
+        },
+      }),
+      ...(effectiveBranchId && { contract: { branchId: effectiveBranchId } }),
+      ...(params.q && {
+        OR: [
+          { letterNumber: { contains: params.q, mode: 'insensitive' as const } },
+          { contract: { contractNumber: { contains: params.q, mode: 'insensitive' as const } } },
+          { contract: { customer: { name: { contains: params.q, mode: 'insensitive' as const } } } },
+        ],
+      }),
+    };
+
+    const grouped = await this.prisma.contractLetter.groupBy({
+      by: ['status'],
+      where,
+      _count: { _all: true },
+    });
+
+    const result: Record<LetterStatus, number> = {
+      PENDING_DISPATCH: 0,
+      PDF_GENERATED: 0,
+      DISPATCHED: 0,
+      DELIVERED: 0,
+      UNDELIVERABLE: 0,
+      CANCELLED: 0,
+    };
+    for (const row of grouped) {
+      result[row.status as LetterStatus] = row._count._all;
+    }
+    return result;
   }
 
   private async nextSequence(year: number): Promise<number> {

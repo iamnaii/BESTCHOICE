@@ -541,6 +541,59 @@ describe('bulkDispatch', () => {
     expect(auditCalls[0][0].data.newValue.batchId).toBe(result.batchId);
     expect(auditCalls[1][0].data.newValue.batchId).toBe(result.batchId);
   });
+
+  it('returned updated array length equals input length', async () => {
+    const prismaMock = makePrismaMock([
+      { id: 'l1', status: 'PDF_GENERATED' },
+      { id: 'l2', status: 'PDF_GENERATED' },
+      { id: 'l3', status: 'PDF_GENERATED' },
+    ]);
+    const svc = new ContractLetterService(prismaMock as any, {} as any);
+    const result = await svc.bulkDispatch(
+      [
+        { id: 'l1', trackingNumber: 'EM111111111TH' },
+        { id: 'l2', trackingNumber: 'EM222222222TH' },
+        { id: 'l3', trackingNumber: 'EM333333333TH' },
+      ],
+      'user-1',
+    );
+    expect(result.updated).toHaveLength(3);
+  });
+});
+
+describe('getCountsByStatus', () => {
+  it('returns zero counts when SALES has no branch', async () => {
+    const prismaMock = {
+      contractLetter: { groupBy: jest.fn() },
+    };
+    const svc = new ContractLetterService(prismaMock as any, {} as any);
+    const result = await svc.getCountsByStatus({ user: { role: 'SALES', branchId: null } });
+    expect(result).toEqual({
+      PENDING_DISPATCH: 0,
+      PDF_GENERATED: 0,
+      DISPATCHED: 0,
+      DELIVERED: 0,
+      UNDELIVERABLE: 0,
+      CANCELLED: 0,
+    });
+    expect(prismaMock.contractLetter.groupBy).not.toHaveBeenCalled();
+  });
+
+  it('groups by status and returns counts', async () => {
+    const prismaMock = {
+      contractLetter: {
+        groupBy: jest.fn().mockResolvedValue([
+          { status: 'PENDING_DISPATCH', _count: { _all: 5 } },
+          { status: 'DISPATCHED', _count: { _all: 12 } },
+        ]),
+      },
+    };
+    const svc = new ContractLetterService(prismaMock as any, {} as any);
+    const result = await svc.getCountsByStatus({ user: { role: 'OWNER', branchId: null } });
+    expect(result.PENDING_DISPATCH).toBe(5);
+    expect(result.DISPATCHED).toBe(12);
+    expect(result.PDF_GENERATED).toBe(0); // zero default
+  });
 });
 
 describe('ContractLetterService.list (v2)', () => {

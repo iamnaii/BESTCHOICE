@@ -156,10 +156,14 @@ const formatMoney = (n: number): string => formatNumberDecimal(n, 2);
 // ── Section renderers ─────────────────────────────────────────────────────────
 
 /**
- * Renders the top-of-page header:
+ * Renders the top-of-page header (matches the company's printed letterhead):
  *   • Optional company logo top-left
- *   • Letter number + date top-right
+ *   • Company name (bold) beside logo
+ *   • Company address (smaller) beneath the company name
  *   • Thin rule beneath
+ *
+ * Date now renders right-aligned BELOW the rule (handled by the caller in
+ * renderLetterPdfDoc) — matches the reference PDF.
  */
 function headerBlock(
   doc: jsPDF,
@@ -168,38 +172,35 @@ function headerBlock(
 ): void {
   const topY = MARGIN;
 
-  // Logo (30mm × 20mm)
+  // Logo (20mm × 20mm — square to match reference)
   if (logoDataUrl) {
     try {
-      doc.addImage(logoDataUrl, 'PNG', MARGIN, topY, 30, 20);
+      doc.addImage(logoDataUrl, 'PNG', MARGIN, topY, 20, 20);
     } catch {
       // Ignore — logo rendering is best-effort
     }
   }
 
-  // Letter reference block, right-aligned
+  const textX = logoDataUrl ? MARGIN + 24 : MARGIN;
+
+  // Company name (bold, larger)
+  doc.setFontSize(15);
+  doc.setFont(PDF_FONT_FAMILY, 'bold');
+  doc.text(data.company.nameTh, textX, topY + 7);
+
+  // Company address (small, normal weight)
   doc.setFontSize(11);
   doc.setFont(PDF_FONT_FAMILY, 'normal');
-  doc.setTextColor(0);
-  doc.text(`เลขที่ ${data.letterNumber}`, PAGE_W - MARGIN, topY + 5, { align: 'right' });
-  doc.text(
-    `วันที่ ${formatThaiDate(data.letterDate)}`,
-    PAGE_W - MARGIN,
-    topY + 11,
-    { align: 'right' },
+  const addressLines = doc.splitTextToSize(
+    data.company.address,
+    PAGE_W - textX - MARGIN,
   );
-
-  // Company name beneath logo area (or left-aligned if no logo)
-  doc.setFontSize(13);
-  doc.setFont(PDF_FONT_FAMILY, 'bold');
-  doc.text(data.company.nameTh, MARGIN, topY + 6);
+  doc.text(addressLines, textX, topY + 13);
 
   // Rule
-  doc.setDrawColor(180);
-  doc.setLineWidth(0.4);
-  doc.line(MARGIN, topY + 22, PAGE_W - MARGIN, topY + 22);
-
-  doc.setFont(PDF_FONT_FAMILY, 'normal');
+  doc.setDrawColor(120);
+  doc.setLineWidth(0.5);
+  doc.line(MARGIN, topY + 25, PAGE_W - MARGIN, topY + 25);
 }
 
 /**
@@ -217,49 +218,28 @@ function titleBlock(doc: jsPDF, title: string, yStart: number): number {
 /**
  * Renders the "เรียน / อ้างถึง" address block.
  * Returns the Y position after the block.
+ *
+ * Layout matches the company's printed reference:
+ *   - "เรียน คุณ[name]"  (no separate "ที่อยู่" line)
+ *   - "อ้างถึง สัญญาเช่าซื้อโทรศัพท์มือถือ เลขที่ X ลงวันที่ Y"  (single line, wraps if too long)
+ *   - No separator line below — body follows directly
  */
 function addressBlock(doc: jsPDF, data: LetterTemplateData, yStart: number): number {
   doc.setFontSize(14);
   let y = yStart;
 
   doc.text(`เรียน  ${data.customer.name}`, MARGIN, y);
-  y += 7;
+  y += 9;
 
-  if (data.customer.address) {
-    doc.setTextColor(60);
-    const addressLines = doc.splitTextToSize(
-      `ที่อยู่  ${data.customer.address}`,
-      CONTENT_W - 8,
-    );
-    doc.text(addressLines, MARGIN + 8, y);
-    y += addressLines.length * 7;
-    doc.setTextColor(0);
-  }
+  const refText = data.contract.contractDate
+    ? `อ้างถึง  สัญญาเช่าซื้อโทรศัพท์มือถือ เลขที่ ${data.contract.contractNumber} ` +
+      `ลงวันที่ ${formatThaiDate(data.contract.contractDate)}`
+    : `อ้างถึง  สัญญาเช่าซื้อโทรศัพท์มือถือ เลขที่ ${data.contract.contractNumber}`;
+  const refLines = doc.splitTextToSize(refText, CONTENT_W);
+  doc.text(refLines, MARGIN, y);
+  y += refLines.length * 7;
 
-  y += 3;
-
-  doc.text(
-    `อ้างถึง  สัญญาเช่าซื้อเลขที่ ${data.contract.contractNumber}`,
-    MARGIN,
-    y,
-  );
-  y += 7;
-
-  if (data.contract.contractDate) {
-    doc.text(
-      `              ลงวันที่ ${formatThaiDate(data.contract.contractDate)}`,
-      MARGIN,
-      y,
-    );
-    y += 7;
-  }
-
-  // Thin separator
-  doc.setDrawColor(210);
-  doc.setLineWidth(0.2);
-  doc.line(MARGIN, y + 1, PAGE_W - MARGIN, y + 1);
-
-  return y + 6;
+  return y + 4;
 }
 
 /**
@@ -617,7 +597,14 @@ function bodyContractTermination60D(
 
 /**
  * Renders the closing "ขอแสดงความนับถือ" + signature block.
- * Signature image floats above the printed name.
+ *
+ * Layout matches the reference letterhead:
+ *   - center-aligned (slightly right of page center)
+ *   - "ขอแสดงความนับถือ"
+ *   - signature image OR dotted placeholder line "(...........................................)"
+ *   - "[ ชื่อกรรมการ ]"
+ *   - (optional position)
+ *   - company name
  */
 function signatureBlock(
   doc: jsPDF,
@@ -625,39 +612,42 @@ function signatureBlock(
   yStart: number,
   signatureDataUrl: string | null,
 ): void {
-  const rightX = PAGE_W - MARGIN - 65;
+  // Slightly right of page center — matches printed letterhead convention
+  const centerX = PAGE_W * 0.62;
   let y = yStart;
 
   doc.setFontSize(14);
   doc.setFont(PDF_FONT_FAMILY, 'normal');
-  doc.text('ขอแสดงความนับถือ', rightX, y);
-  y += 6;
+  doc.text('ขอแสดงความนับถือ', centerX, y, { align: 'center' });
+  y += 7;
 
   if (signatureDataUrl) {
     try {
-      doc.addImage(signatureDataUrl, 'PNG', rightX, y, 50, 20);
+      // Centered image (50mm wide × 20mm tall)
+      doc.addImage(signatureDataUrl, 'PNG', centerX - 25, y, 50, 20);
     } catch {
       // Signature image is best-effort
     }
     y += 22;
   } else {
-    // Blank signature line
-    doc.setDrawColor(150);
-    doc.setLineWidth(0.3);
-    doc.line(rightX, y + 12, rightX + 60, y + 12);
-    y += 18;
+    // Dotted placeholder line — matches the printed convention
+    doc.text('(...........................................)', centerX, y + 4, {
+      align: 'center',
+    });
+    y += 9;
   }
 
   doc.setFont(PDF_FONT_FAMILY, 'bold');
-  doc.text(`(${data.company.directorName})`, rightX, y);
-  y += 6;
+  doc.text(`[ ${data.company.directorName} ]`, centerX, y, { align: 'center' });
+  y += 7;
   doc.setFont(PDF_FONT_FAMILY, 'normal');
-  doc.setFontSize(12);
   if (data.company.directorPosition) {
-    doc.text(data.company.directorPosition, rightX, y);
+    doc.setFontSize(13);
+    doc.text(data.company.directorPosition, centerX, y, { align: 'center' });
     y += 6;
   }
-  doc.text(data.company.nameTh, rightX, y);
+  doc.setFontSize(13);
+  doc.text(data.company.nameTh, centerX, y, { align: 'center' });
 }
 
 /**
@@ -711,8 +701,26 @@ export async function renderLetterPdfDoc(data: LetterTemplateData): Promise<jsPD
   headerBlock(doc, data, logoDataUrl);
 
   // Both templates mirror the company's printed format — no centered title
-  // above the body; jumps straight from header → "เรื่อง:" subject line →
-  // recipient address → body.
+  // above the body; flow is:
+  //   header (logo + company + address + rule)
+  //   → date (right-aligned, below rule)
+  //   → "เรื่อง:" subject line
+  //   → "เรียน" + "อ้างถึง" (addressBlock)
+  //   → body
+  //   → signature
+  let y = MARGIN + 32; // first content y, below the rule
+
+  // Date right-aligned (matches reference: date sits alone above the subject)
+  doc.setFontSize(14);
+  doc.setFont(PDF_FONT_FAMILY, 'normal');
+  doc.text(
+    `วันที่ ${formatThaiDate(data.letterDate)}`,
+    PAGE_W - MARGIN,
+    y,
+    { align: 'right' },
+  );
+  y += 10;
+
   const subjectMap: Record<LetterTemplateData['letterType'], string> = {
     RETURN_DEVICE_45D:
       'เรื่อง  แจ้งเตือนให้ชำระค่าเช่าซื้อที่ค้างชำระ และ/หรือ ส่งมอบโทรศัพท์มือถือที่เช่าซื้อคืน',
@@ -720,8 +728,6 @@ export async function renderLetterPdfDoc(data: LetterTemplateData): Promise<jsPD
       'เรื่อง  บอกเลิกสัญญาเช่าซื้อ และขอให้ส่งคืนทรัพย์สินที่เช่าซื้อพร้อมชำระหนี้ค้างชำระ',
   };
 
-  let y = MARGIN + 32;
-  doc.setFontSize(14);
   doc.setFont(PDF_FONT_FAMILY, 'bold');
   const subjectLines = doc.splitTextToSize(subjectMap[data.letterType], CONTENT_W);
   doc.text(subjectLines, MARGIN, y);

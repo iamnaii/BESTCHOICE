@@ -307,11 +307,18 @@ ${coord}
   private renderTerminationBody(
     d: TemplateData,
     productDesc: string,
-    scheduleDesc: string,
+    _scheduleDesc: string,
   ): string {
     const startMonth = d.overdue.firstMonth
       ? `ตั้งแต่งวดประจำเดือน ${esc(d.overdue.firstMonth)} เป็นต้นมา `
       : '';
+
+    // Termination letter uses a different schedule phrasing than the 45D
+    // demand letter — "เดือนละ X บาท จำนวน N งวด" (vs "จำนวน N งวด งวดละ X")
+    const terminationSchedule =
+      d.contract.totalMonths > 0
+        ? ` โดยตกลงชำระค่าเช่าซื้อเป็นรายเดือน เดือนละ ${fmtMoney(d.contract.monthlyPayment)} บาท จำนวน ${d.contract.totalMonths} งวด นั้น`
+        : ' นั้น';
 
     const coord =
       d.coordinator.name && d.coordinator.phone
@@ -319,7 +326,7 @@ ${coord}
         : '';
 
     return `
-<p>ตามที่ท่านได้ทำสัญญาเช่าซื้อโทรศัพท์มือถือ ${productDesc} ("ทรัพย์สินที่เช่าซื้อ") จากกับ ${esc(d.company.nameTh)} ("บริษัทฯ")${scheduleDesc.replace('จำนวน', 'จำนวน').replace(' จำนวน ', ' โดยตกลงชำระค่าเช่าซื้อเป็นรายเดือน เดือนละ ' + fmtMoney(d.contract.monthlyPayment) + ' บาท จำนวน ').replace(/งวดละ [\d,.]+ บาท/, '').replace(/  +/g, ' ')} นั้น</p>
+<p>ตามที่ท่านได้ทำสัญญาเช่าซื้อโทรศัพท์มือถือ ${productDesc} ("ทรัพย์สินที่เช่าซื้อ") จากกับ ${esc(d.company.nameTh)} ("บริษัทฯ")${terminationSchedule}</p>
 
 <p>ปรากฏว่าท่านได้ผิดนัดชำระค่าเช่าซื้อ${startMonth}จนถึงปัจจุบันท่านมียอดค้างชำระสะสมรวมทั้งสิ้น ${fmtMoney(d.overdue.total)} บาท ซึ่งบริษัทฯ ได้เคยมีจดหมายแจ้งเตือนให้ท่านชำระหนี้แล้ว แต่ท่านยังคงเพิกเฉยอันเป็นการผิดนัดสัญญาข้อ 5 และ ข้อ 20 นั้น</p>
 

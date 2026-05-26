@@ -622,7 +622,7 @@ export class OverdueController {
   }
 
   @Post('letters/:id/cancel')
-  @Roles('OWNER', 'FINANCE_MANAGER')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER')
   cancelLetter(
     @Param('id') id: string,
     @Body() body: { reason: string },

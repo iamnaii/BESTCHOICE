@@ -533,6 +533,7 @@ export class OverdueController {
       status: status as any,
       letterType: letterType as any,
       branchId: user?.role === 'BRANCH_MANAGER' ? user.branchId ?? undefined : undefined,
+      user: { role: user?.role ?? null, branchId: user?.branchId ?? null },
     });
   }
 

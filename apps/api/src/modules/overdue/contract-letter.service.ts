@@ -93,7 +93,7 @@ export class ContractLetterService {
     q?: string;
     page?: number;
     limit?: number;
-    user?: { role?: string | null; branchId?: string | null };
+    user: { role?: string | null; branchId?: string | null };
   }): Promise<{
     data: Awaited<ReturnType<typeof this.prisma.contractLetter.findMany>>;
     total: number;

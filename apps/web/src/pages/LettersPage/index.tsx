@@ -38,24 +38,21 @@ export default function LettersPage() {
   const fullFilters: LettersListFilters = { ...filters, status: activeStatus, page, limit: 50 };
   const listQuery = useLettersList(fullFilters);
 
+  const stripUndefined = (obj: Record<string, unknown>) => {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(obj)) {
+      if (v !== undefined && v !== '') out[k] = v;
+    }
+    return out;
+  };
+
   const countsQuery = useQuery({
     queryKey: ['letters-counts', filters],
     queryFn: async () => {
-      const statuses: LetterStatus[] = [
-        'PENDING_DISPATCH',
-        'PDF_GENERATED',
-        'DISPATCHED',
-        'UNDELIVERABLE',
-        'CANCELLED',
-      ];
-      const results = await Promise.all(
-        statuses.map((s) =>
-          api.get('/overdue/letters', { params: { ...filters, status: s, page: 1, limit: 1 } }),
-        ),
-      );
-      return Object.fromEntries(
-        statuses.map((s, idx) => [s, results[idx].data.total ?? 0]),
-      ) as Record<LetterStatus, number>;
+      const { data } = await api.get<Record<LetterStatus, number>>('/overdue/letters/counts', {
+        params: stripUndefined(filters as Record<string, unknown>),
+      });
+      return data;
     },
   });
 

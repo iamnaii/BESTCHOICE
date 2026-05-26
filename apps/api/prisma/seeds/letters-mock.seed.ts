@@ -27,6 +27,16 @@ async function main() {
 
   console.log('=== Letters mock seed ===');
 
+  // Clean slate — delete any prior ST-MOCK-* letters so re-running with a
+  // different contract pool doesn't hit the (contract_id, letter_type)
+  // unique constraint. Other (real) letters are untouched.
+  const deleted = await prisma.contractLetter.deleteMany({
+    where: { letterNumber: { startsWith: LETTER_NUMBER_PREFIX } },
+  });
+  if (deleted.count > 0) {
+    console.log(`Cleared ${deleted.count} prior ST-MOCK letters`);
+  }
+
   // Find any active user to attribute dispatches to
   const dispatcher = await prisma.user.findFirst({
     where: { role: { in: ['OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'ACCOUNTANT'] } },
@@ -37,18 +47,36 @@ async function main() {
   }
   console.log(`Dispatcher: ${dispatcher.name} (${dispatcher.email})`);
 
-  // Find contracts to attach letters to. Prefer overdue/active contracts with
-  // a real customer. We need at least 15 unique contracts (one letter per
-  // contract because schema has @@unique([contractId, letterType]) — but we
-  // can use 2 letter types per contract if needed).
+  // Find contracts to attach letters to. Schema has @@unique([contractId, letterType])
+  // so each contract supports at most 2 letters (one per type).
+  //
+  // For realistic letter content the contract needs at least one payment
+  // with amountDue > amountPaid (otherwise outstanding = 0 in the rendered
+  // letter). We MUTATE selected contracts to ensure their earliest unpaid
+  // payment looks overdue: dueDate ~50 days ago + status OVERDUE + lateFee=200.
+  // Falls back to any contract with payments if dev DB has nothing overdue.
   const contracts = await prisma.contract.findMany({
-    where: {
-      deletedAt: null,
-    },
+    where: { deletedAt: null },
     select: {
       id: true,
       contractNumber: true,
+      monthlyPayment: true,
+      totalMonths: true,
+      paymentDueDay: true,
       customer: { select: { name: true } },
+      payments: {
+        where: { deletedAt: null },
+        select: {
+          id: true,
+          installmentNo: true,
+          dueDate: true,
+          amountDue: true,
+          amountPaid: true,
+          lateFee: true,
+          status: true,
+        },
+        orderBy: { installmentNo: 'asc' },
+      },
     },
     take: 20,
     orderBy: { createdAt: 'desc' },
@@ -56,10 +84,100 @@ async function main() {
 
   if (contracts.length < 8) {
     throw new Error(
-      `❌ Need at least 8 contracts in DB (found ${contracts.length}). Run \`npm run prisma:seed\` first.`,
+      `❌ Need at least 8 contracts (found ${contracts.length}). ` +
+        `Run \`npm run prisma:seed\` first.`,
     );
   }
-  console.log(`Found ${contracts.length} contracts to use`);
+  console.log(`Found ${contracts.length} contracts`);
+
+  // Generate payment schedule for contracts that don't have one yet.
+  // Test data sometimes has Contract rows without Payment children, which
+  // would produce 0.00 baht outstanding in the rendered letter.
+  const fiftyDaysAgo = new Date(Date.now() - 50 * 86400000);
+  let generated = 0;
+  for (const c of contracts) {
+    if (c.payments.length > 0) continue;
+    const months = c.totalMonths || 12;
+    const monthly = Number(c.monthlyPayment) || 1500;
+    const dueDay = c.paymentDueDay ?? 30;
+    const today = new Date();
+    const startMonth = new Date(today.getFullYear(), today.getMonth() - 1, dueDay);
+    const data = Array.from({ length: months }, (_, i) => ({
+      contractId: c.id,
+      installmentNo: i + 1,
+      dueDate: new Date(startMonth.getFullYear(), startMonth.getMonth() + i, dueDay),
+      amountDue: monthly,
+      status: 'PENDING' as const,
+    }));
+    await prisma.payment.createMany({ data, skipDuplicates: true });
+    generated++;
+  }
+  if (generated > 0) {
+    console.log(`Generated payment schedules for ${generated} contracts`);
+  }
+
+  // Re-fetch contracts to pick up the freshly created payments
+  const enriched = await prisma.contract.findMany({
+    where: { id: { in: contracts.map((c) => c.id) } },
+    select: {
+      id: true,
+      contractNumber: true,
+      customer: { select: { name: true } },
+      payments: {
+        where: { deletedAt: null },
+        select: {
+          id: true,
+          installmentNo: true,
+          dueDate: true,
+          amountDue: true,
+          amountPaid: true,
+          lateFee: true,
+          status: true,
+        },
+        orderBy: { installmentNo: 'asc' },
+      },
+    },
+  });
+
+  // Mutate the earliest unpaid payment of each contract to look overdue
+  // (dueDate 50d ago + status OVERDUE + lateFee 200 + amountPaid 0).
+  let mutated = 0;
+  for (const c of enriched) {
+    const target =
+      c.payments.find(
+        (p) =>
+          ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'].includes(p.status) &&
+          Number(p.amountDue) > Number(p.amountPaid ?? 0),
+      ) ?? c.payments[0];
+    if (!target) continue;
+
+    const needsUpdate =
+      new Date(target.dueDate).getTime() > Date.now() ||
+      target.status !== 'OVERDUE' ||
+      !target.lateFee ||
+      Number(target.lateFee) === 0 ||
+      Number(target.amountPaid ?? 0) > 0;
+
+    if (needsUpdate) {
+      await prisma.payment.update({
+        where: { id: target.id },
+        data: {
+          status: 'OVERDUE',
+          dueDate: fiftyDaysAgo,
+          lateFee: 200,
+          amountPaid: 0,
+        },
+      });
+      mutated++;
+    }
+  }
+  if (mutated > 0) {
+    console.log(`Marked ${mutated} payments as OVERDUE (50d ago, lateFee 200)`);
+  }
+
+  // Replace original `contracts` with the enriched + mutated version for
+  // the rest of the script (letter creation loop below uses `contracts[i]`).
+  contracts.splice(0, contracts.length, ...enriched as any);
 
   // Distribution plan: 5 PENDING_DISPATCH, 3 PDF_GENERATED, 5 DISPATCHED,
   // 1 DELIVERED, 1 UNDELIVERABLE, 1 CANCELLED = 16 letters total.

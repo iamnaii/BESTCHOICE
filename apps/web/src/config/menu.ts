@@ -55,6 +55,7 @@ import {
   ReceiptText,
   // P2-SP2 — exchange requests
   ArrowLeftRight,
+  Mail,
 } from 'lucide-react';
 
 /* ── Types ─────────────────────────────────────────── */
@@ -244,6 +245,7 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
       zone: 'shop',
       items: [
         { label: 'ค้างชำระ', path: '/overdue', icon: AlertTriangle },
+        { label: 'จัดการจดหมาย', path: '/letters', icon: Mail },
         { label: 'CRM Pipeline', path: '/crm', icon: Kanban },
         { label: 'รวมแชท', path: '/chat', icon: MessageSquareMore },
         { label: 'รายงาน', path: '/reports', icon: BarChart3 },
@@ -322,6 +324,7 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
       zone: 'fin',
       items: [
         { label: 'ติดตามหนี้', path: '/overdue', icon: AlertTriangle },
+        { label: 'จัดการจดหมาย', path: '/letters', icon: Mail },
         { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
         { label: 'รวมแชท', path: '/chat', icon: MessageSquareMore },
       ],
@@ -365,6 +368,7 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
   bottomNav: [
     { label: 'Dashboard', path: '/finance-portfolio', icon: CircleDollarSign },
     { label: 'ค้างชำระ', path: '/overdue', icon: AlertTriangle },
+    { label: 'จัดการจดหมาย', path: '/letters', icon: Mail },
     { label: 'ชำระ', path: '/payments', icon: HandCoins },
     { label: 'แชท', path: '/inbox', icon: MessageSquareMore, badgeKey: 'chat-unread' },
     { label: 'เพิ่มเติม', path: '#more', icon: MoreHorizontal, action: 'sidebar' },
@@ -538,6 +542,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
         { label: 'ติดตามลูกค้าค้างชำระ', path: '/overdue', icon: AlertTriangle },
+        { label: 'จัดการจดหมาย', path: '/letters', icon: Mail },
         { label: 'ล็อคเครื่อง (MDM)', path: '/mdm', icon: Lock },
         { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
         // CSV §2 placeholder — owner-flagged ✏ "ต้องสร้าง"
@@ -765,6 +770,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
     { label: 'Dashboard', path: '/finance-portfolio', icon: CircleDollarSign },
     { label: 'รายงาน', path: '/reports', icon: BarChart3 },
     { label: 'Collection', path: '/overdue', icon: AlertTriangle },
+    { label: 'จัดการจดหมาย', path: '/letters', icon: Mail },
     { label: 'แชท', path: '/inbox', icon: MessageSquareMore, badgeKey: 'chat-unread' as const },
     { label: 'เพิ่มเติม', path: '#more', icon: MoreHorizontal, action: 'sidebar' as const },
   ],
@@ -861,6 +867,7 @@ const ZONE_CONFIG: Record<string, RoleZoneConfig> = {
       fin: [
         { label: 'Dashboard', path: '/finance-portfolio', icon: CircleDollarSign },
         { label: 'ค้างชำระ', path: '/overdue', icon: AlertTriangle },
+        { label: 'จัดการจดหมาย', path: '/letters', icon: Mail },
         { label: 'ชำระ', path: '/payments', icon: HandCoins },
         { label: 'แชท', path: '/inbox', icon: MessageSquareMore, badgeKey: 'chat-unread' },
         { label: 'เพิ่มเติม', path: '#more', icon: MoreHorizontal, action: 'sidebar' },
@@ -883,6 +890,7 @@ const ZONE_CONFIG: Record<string, RoleZoneConfig> = {
       shop: BRANCH_MANAGER_CONFIG.bottomNav,
       fin: [
         { label: 'ค้างชำระ', path: '/overdue', icon: AlertTriangle },
+        { label: 'จัดการจดหมาย', path: '/letters', icon: Mail },
         { label: 'รายงาน', path: '/reports', icon: BarChart3 },
         { label: 'แชท', path: '/inbox', icon: MessageSquareMore, badgeKey: 'chat-unread' },
         { label: 'เพิ่มเติม', path: '#more', icon: MoreHorizontal, action: 'sidebar' },

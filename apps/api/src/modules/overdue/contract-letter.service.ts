@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import {
   BadRequestException,
   ForbiddenException,
@@ -417,6 +418,64 @@ export class ContractLetterService {
       }),
     ]);
     return updated;
+  }
+
+  async bulkDispatch(
+    items: Array<{ id: string; trackingNumber: string; evidencePhotoUrl?: string }>,
+    userId: string,
+  ): Promise<{ updated: Array<{ id: string }>; batchId: string }> {
+    if (items.length === 0) {
+      throw new BadRequestException('ต้องเลือกอย่างน้อย 1 ฉบับ');
+    }
+
+    const ids = items.map((i) => i.id);
+    const letters = await this.prisma.contractLetter.findMany({
+      where: { id: { in: ids }, deletedAt: null },
+      select: { id: true, status: true },
+    });
+
+    if (letters.length !== ids.length) {
+      const found = new Set(letters.map((l) => l.id));
+      const missing = ids.filter((id) => !found.has(id));
+      throw new BadRequestException(`ไม่พบจดหมาย: ${missing.join(', ')}`);
+    }
+
+    const invalidStatus = letters.filter((l) => l.status !== 'PDF_GENERATED');
+    if (invalidStatus.length > 0) {
+      throw new BadRequestException(
+        `สถานะไม่ถูกต้อง — ต้อง PDF_GENERATED: ${invalidStatus.map((l) => l.id).join(', ')}`,
+      );
+    }
+
+    const batchId = randomUUID();
+    const now = new Date();
+
+    const ops = items.flatMap((item) => [
+      this.prisma.contractLetter.update({
+        where: { id: item.id },
+        data: {
+          status: 'DISPATCHED' as const,
+          dispatchedAt: now,
+          dispatchedById: userId,
+          trackingNumber: item.trackingNumber.trim(),
+          evidencePhotoUrl: item.evidencePhotoUrl ?? null,
+        },
+      }),
+      this.prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'LETTER_DISPATCHED',
+          entity: 'contract_letter',
+          entityId: item.id,
+          newValue: { trackingNumber: item.trackingNumber },
+          metadata: { batchId, source: 'bulk' },
+        } as any,
+      }),
+    ]);
+
+    const results = (await this.prisma.$transaction(ops)) as Array<{ id: string }>;
+    const updated = results.filter((_, idx) => idx % 2 === 0);
+    return { updated, batchId };
   }
 
   private async nextSequence(year: number): Promise<number> {

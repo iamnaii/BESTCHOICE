@@ -477,6 +477,72 @@ describe('ContractLetterService', () => {
   });
 });
 
+describe('bulkDispatch', () => {
+  const makePrismaMock = (letters: any[]) => ({
+    contractLetter: {
+      findMany: jest.fn().mockResolvedValue(letters),
+      update: jest.fn((args) => Promise.resolve({ id: args.where.id, ...args.data })),
+    },
+    auditLog: { create: jest.fn() },
+    $transaction: jest.fn((ops) => Promise.all(ops.map((op: any) => op))),
+  });
+
+  it('rejects whole batch if any letter has wrong status', async () => {
+    const prismaMock = makePrismaMock([
+      { id: 'l1', status: 'PDF_GENERATED' },
+      { id: 'l2', status: 'PENDING_DISPATCH' }, // wrong
+    ]);
+    const svc = new ContractLetterService(prismaMock as any, {} as any);
+
+    await expect(
+      svc.bulkDispatch(
+        [
+          { id: 'l1', trackingNumber: 'EM123456789TH' },
+          { id: 'l2', trackingNumber: 'EM123456790TH' },
+        ],
+        'user-1',
+      ),
+    ).rejects.toThrow(/สถานะไม่ถูกต้อง/);
+    expect(prismaMock.contractLetter.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects if any id not found', async () => {
+    const prismaMock = makePrismaMock([{ id: 'l1', status: 'PDF_GENERATED' }]);
+    const svc = new ContractLetterService(prismaMock as any, {} as any);
+    await expect(
+      svc.bulkDispatch(
+        [
+          { id: 'l1', trackingNumber: 'EM111111111TH' },
+          { id: 'missing', trackingNumber: 'EM222222222TH' },
+        ],
+        'user-1',
+      ),
+    ).rejects.toThrow(/ไม่พบ/);
+  });
+
+  it('updates all + audit logs share batchId on success', async () => {
+    const prismaMock = makePrismaMock([
+      { id: 'l1', status: 'PDF_GENERATED' },
+      { id: 'l2', status: 'PDF_GENERATED' },
+    ]);
+    const svc = new ContractLetterService(prismaMock as any, {} as any);
+    const result = await svc.bulkDispatch(
+      [
+        { id: 'l1', trackingNumber: 'EM111111111TH' },
+        { id: 'l2', trackingNumber: 'EM222222222TH' },
+      ],
+      'user-1',
+    );
+
+    expect(result.batchId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(prismaMock.contractLetter.update).toHaveBeenCalledTimes(2);
+    expect(prismaMock.auditLog.create).toHaveBeenCalledTimes(2);
+    const auditCalls = (prismaMock.auditLog.create as jest.Mock).mock.calls;
+    expect(auditCalls[0][0].data.metadata.batchId).toBe(result.batchId);
+    expect(auditCalls[1][0].data.metadata.batchId).toBe(result.batchId);
+  });
+});
+
 describe('ContractLetterService.list (v2)', () => {
   let service: ContractLetterService;
   let prisma: PrismaService;

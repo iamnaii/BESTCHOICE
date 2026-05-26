@@ -8,7 +8,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { renderLetterPdf } from '../utils/letterPdfRenderer';
 import { buildLetterTemplateData } from '../utils/buildLetterTemplateData';
 import { useLetterActions } from '../hooks/useLetterActions';
-import type { LetterRow } from '../hooks/useLetterQueue';
+import type { LetterRow } from '../types/letter';
 import { EvidenceThumbnailGrid } from './EvidenceThumbnailGrid';
 import LetterPdfPreviewDialog from './LetterPdfPreviewDialog';
 

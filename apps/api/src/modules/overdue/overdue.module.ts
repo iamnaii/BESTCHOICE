@@ -2,6 +2,7 @@ import { OverdueController } from './overdue.controller';
 import { OverdueService } from './overdue.service';
 import { OverdueChatService } from './overdue-chat.service';
 import { ContractLetterService } from './contract-letter.service';
+import { LetterPdfService } from './letter-pdf.service';
 import { DunningRuleService } from './dunning-rule.service';
 import { DunningEngineService } from './dunning-engine.service';
 import { DunningRuleResolverService } from './dunning-rule-resolver.service';
@@ -42,6 +43,7 @@ import { PaymentsModule } from '../payments/payments.module';
     OverdueService,
     OverdueChatService,
     ContractLetterService,
+    LetterPdfService,
     DunningRuleService,
     DunningEngineService,
     DunningRuleResolverService,

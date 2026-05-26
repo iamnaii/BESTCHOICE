@@ -569,6 +569,26 @@ export class OverdueController {
     return this.contractLetterService.markDispatched(id, user.id, body);
   }
 
+  @Get('letters/counts')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  getLetterCounts(
+    @Query('branchId') branchId?: string,
+    @Query('letterType') letterType?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('q') q?: string,
+    @CurrentUser() user?: { role: string; branchId: string | null },
+  ) {
+    return this.contractLetterService.getCountsByStatus({
+      branchId,
+      letterType: letterType as any,
+      from,
+      to,
+      q,
+      user: user ?? { role: undefined, branchId: undefined },
+    });
+  }
+
   @Post('letters/bulk/dispatch')
   @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   bulkDispatchLetters(

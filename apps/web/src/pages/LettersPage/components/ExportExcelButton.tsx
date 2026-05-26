@@ -25,7 +25,7 @@ export default function ExportExcelButton({ filters }: Props) {
         toast.error('เกินจำนวนที่ export ได้ — กรุณาแคบ filter');
         return;
       }
-      const blob = await lettersToExcel(data.data as any);
+      const blob = await lettersToExcel(data.data);
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
       a.download = `letters-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}.xlsx`;

@@ -1,40 +1,7 @@
-export type LetterStatus =
-  | 'PENDING_DISPATCH'
-  | 'PDF_GENERATED'
-  | 'DISPATCHED'
-  | 'DELIVERED'
-  | 'UNDELIVERABLE'
-  | 'CANCELLED';
+export type { LetterStatus, LetterType, LetterRow } from '@/pages/CollectionsPage/types/letter';
 
-export type LetterType = 'RETURN_DEVICE_45D' | 'CONTRACT_TERMINATION_60D';
-
-export interface LetterRow {
-  id: string;
-  letterNumber: string;
-  letterType: LetterType;
-  status: LetterStatus;
-  triggeredAt: string;
-  pdfUrl: string | null;
-  pdfGeneratedAt: string | null;
-  dispatchedAt: string | null;
-  trackingNumber: string | null;
-  evidencePhotoUrl?: string | null;
-  deliveredAt: string | null;
-  cancelledAt?: string | null;
-  cancelReason: string | null;
-  dispatchedBy?: { name: string } | null;
-  contract: {
-    id: string;
-    contractNumber: string;
-    customer: {
-      id: string;
-      name: string;
-      phone: string;
-      addressCurrent: string | null;
-    };
-    branch: { id: string; name: string };
-  };
-}
+import type { LetterStatus, LetterType } from '@/pages/CollectionsPage/types/letter';
+import type { LetterRow } from '@/pages/CollectionsPage/types/letter';
 
 export interface LettersListResponse {
   data: LetterRow[];

@@ -192,7 +192,7 @@ export default function LettersPage() {
       {dispatchRow && (
         <LetterDispatchDialog
           open={!!dispatchRow}
-          letter={dispatchRow as any}
+          letter={dispatchRow}
           initialMode={dispatchRow.pdfUrl ? 'dispatch' : 'generate'}
           onClose={() => setDispatchRow(null)}
         />

@@ -24,6 +24,8 @@ export interface LetterRow {
   deliveredAt: string | null;
   cancelledAt: string | null;
   cancelReason: string | null;
+  /** Set when letter has been dispatched via the dispatch form */
+  dispatchedBy?: { name: string } | null;
   contract: {
     id: string;
     contractNumber: string;

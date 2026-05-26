@@ -156,7 +156,7 @@ export class ContractLetterService {
   }
 
   /** After client generates PDF and uploads to S3, backend records the URL. */
-  async markPdfGenerated(letterId: string, pdfUrl: string, userId: string) {
+  async markPdfGenerated(letterId: string, pdfUrl: string | null, userId: string) {
     const letter = await this.prisma.contractLetter.findFirst({
       where: { id: letterId, deletedAt: null },
     });
@@ -168,7 +168,7 @@ export class ContractLetterService {
       .$transaction([
         this.prisma.contractLetter.update({
           where: { id: letterId },
-          data: { status: 'PDF_GENERATED', pdfUrl, pdfGeneratedAt: new Date() },
+          data: { status: 'PDF_GENERATED', pdfUrl: pdfUrl ?? null, pdfGeneratedAt: new Date() },
         }),
         this.prisma.auditLog.create({
           data: {

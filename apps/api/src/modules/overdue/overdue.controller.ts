@@ -538,13 +538,13 @@ export class OverdueController {
   }
 
   @Post('letters/:id/pdf-generated')
-  @Roles('OWNER', 'FINANCE_MANAGER')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   markPdfGenerated(
     @Param('id') id: string,
-    @Body() body: { pdfUrl: string },
+    @Body() body: { pdfUrl?: string | null },
     @CurrentUser() user: { id: string },
   ) {
-    return this.contractLetterService.markPdfGenerated(id, body.pdfUrl, user.id);
+    return this.contractLetterService.markPdfGenerated(id, body.pdfUrl ?? null, user.id);
   }
 
   @Post('letters/:id/dispatch')

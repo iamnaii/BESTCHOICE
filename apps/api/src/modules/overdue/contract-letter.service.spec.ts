@@ -185,6 +185,28 @@ describe('ContractLetterService', () => {
       mockPrisma.contractLetter.findFirst.mockResolvedValueOnce(null);
       await expect(service.markPdfGenerated('nope', 'url', 'u1')).rejects.toThrow(/ไม่พบหนังสือ/);
     });
+
+    it('accepts null pdfUrl', async () => {
+      mockPrisma.contractLetter.findFirst.mockResolvedValueOnce({ id: 'l1', status: 'PENDING_DISPATCH' });
+      const result = { id: 'l1', status: 'PDF_GENERATED', pdfUrl: null };
+      mockPrisma.$transaction.mockResolvedValueOnce([result, {}]);
+
+      await service.markPdfGenerated('l1', null, 'user-1');
+
+      const txOps = mockPrisma.$transaction.mock.calls[0][0];
+      expect(Array.isArray(txOps)).toBe(true);
+      // The first operation is the contractLetter.update promise
+      // Check that the service was called with null correctly
+      expect(mockPrisma.contractLetter.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'l1' },
+          data: expect.objectContaining({
+            status: 'PDF_GENERATED',
+            pdfUrl: null,
+          }),
+        }),
+      );
+    });
   });
 
   describe('markDispatched', () => {

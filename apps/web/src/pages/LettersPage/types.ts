@@ -14,10 +14,13 @@ export interface LetterRow {
   letterType: LetterType;
   status: LetterStatus;
   triggeredAt: string;
+  pdfUrl: string | null;
   pdfGeneratedAt: string | null;
   dispatchedAt: string | null;
   trackingNumber: string | null;
+  evidencePhotoUrl?: string | null;
   deliveredAt: string | null;
+  cancelledAt?: string | null;
   cancelReason: string | null;
   dispatchedBy?: { name: string } | null;
   contract: {

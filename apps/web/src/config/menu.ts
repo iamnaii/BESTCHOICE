@@ -164,6 +164,7 @@ const SALES_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
+        { label: 'จัดการจดหมาย', path: '/letters', icon: Mail },
         { label: 'รับซ่อม/รับประกัน', path: '/insurance', icon: ShieldCheck },
         { label: 'เช็คประกัน', path: '/insurance/warranty-check', icon: ShieldCheck },
       ],
@@ -387,6 +388,7 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
         { label: 'บันทึกรายจ่าย', path: '/expenses', icon: Receipt },
+        { label: 'จัดการจดหมาย', path: '/letters', icon: Mail },
         { label: 'พิมพ์สติกเกอร์', path: '/stickers', icon: Tag },
         { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
       ],

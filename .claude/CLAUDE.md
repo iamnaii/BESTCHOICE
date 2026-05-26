@@ -253,7 +253,7 @@ scripts/                     # Deploy & backup scripts
 `/stock(/transfers/alerts/count/adjustments)`, `/suppliers(/:id)`, `/purchase-orders`, `/stickers`
 
 ### Collections & Risk
-`/overdue`, `/exchange`, `/repossessions`, `/credit-checks`, `/slip-review`, `/insurance(/:id|/new)` (SP5 Phase 2)
+`/overdue`, `/letters` (queue + bulk print + dispatch tracking), `/exchange`, `/repossessions`, `/credit-checks`, `/slip-review`, `/insurance(/:id|/new)` (SP5 Phase 2)
 
 ### Revenue & Tax
 `/commissions`, `/tax-reports`, `/trade-in`, `/promotions`

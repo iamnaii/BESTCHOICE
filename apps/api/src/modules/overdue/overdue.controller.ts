@@ -34,6 +34,7 @@ import { BulkAssignDto, BulkProposeLockDto, BulkSendLineDto } from './dto/bulk.d
 import { SendLineAdHocDto } from './dto/send-line-adhoc.dto';
 import { ApproveMdmDto } from './dto/approve-mdm.dto';
 import { UpdateLetterEvidenceDto } from './dto/update-letter-evidence.dto';
+import { BulkDispatchLettersDto } from './dto/bulk-dispatch-letters.dto';
 import { RejectMdmDto } from './dto/reject-mdm.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -523,31 +524,43 @@ export class OverdueController {
   // --- Contract letters ---
 
   @Get('letters')
-  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   listLetters(
     @Query('status') status?: string,
     @Query('letterType') letterType?: string,
+    @Query('branchId') branchId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('q') q?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
     @CurrentUser() user?: { role: string; branchId: string | null },
   ) {
     return this.contractLetterService.list({
       status: status as any,
       letterType: letterType as any,
-      branchId: user?.role === 'BRANCH_MANAGER' ? user.branchId ?? undefined : undefined,
+      branchId,
+      from,
+      to,
+      q,
+      page: page ? parseInt(page, 10) : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
+      user: user ?? { role: undefined, branchId: undefined },
     });
   }
 
   @Post('letters/:id/pdf-generated')
-  @Roles('OWNER', 'FINANCE_MANAGER')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   markPdfGenerated(
     @Param('id') id: string,
-    @Body() body: { pdfUrl: string },
+    @Body() body: { pdfUrl?: string | null },
     @CurrentUser() user: { id: string },
   ) {
-    return this.contractLetterService.markPdfGenerated(id, body.pdfUrl, user.id);
+    return this.contractLetterService.markPdfGenerated(id, body.pdfUrl ?? null, user.id);
   }
 
   @Post('letters/:id/dispatch')
-  @Roles('OWNER', 'FINANCE_MANAGER')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   dispatchLetter(
     @Param('id') id: string,
     @Body() body: { trackingNumber: string; evidencePhotoUrl?: string },
@@ -556,8 +569,37 @@ export class OverdueController {
     return this.contractLetterService.markDispatched(id, user.id, body);
   }
 
+  @Get('letters/counts')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  getLetterCounts(
+    @Query('branchId') branchId?: string,
+    @Query('letterType') letterType?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('q') q?: string,
+    @CurrentUser() user?: { role: string; branchId: string | null },
+  ) {
+    return this.contractLetterService.getCountsByStatus({
+      branchId,
+      letterType: letterType as any,
+      from,
+      to,
+      q,
+      user: user ?? { role: undefined, branchId: undefined },
+    });
+  }
+
+  @Post('letters/bulk/dispatch')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  bulkDispatchLetters(
+    @Body() dto: BulkDispatchLettersDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.contractLetterService.bulkDispatch(dto.items, user.id);
+  }
+
   @Post('letters/:id/delivered')
-  @Roles('OWNER', 'FINANCE_MANAGER')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   markLetterDelivered(
     @Param('id') id: string,
     @CurrentUser() user: { id: string },
@@ -566,7 +608,7 @@ export class OverdueController {
   }
 
   @Patch('letters/:id/evidence')
-  @Roles('OWNER', 'FINANCE_MANAGER')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   updateLetterEvidence(
     @Param('id') id: string,
     @Body() dto: UpdateLetterEvidenceDto,
@@ -576,7 +618,7 @@ export class OverdueController {
   }
 
   @Post('letters/:id/undeliverable')
-  @Roles('OWNER', 'FINANCE_MANAGER')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   markLetterUndeliverable(
     @Param('id') id: string,
     @Body() body: { reason: string },
@@ -591,7 +633,7 @@ export class OverdueController {
    * OWNER) may revert, and only while status === UNDELIVERABLE.
    */
   @Post('letters/:id/revert-undeliverable')
-  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   revertLetterUndeliverable(
     @Param('id') id: string,
     @CurrentUser() user: { id: string; role: string },
@@ -600,7 +642,7 @@ export class OverdueController {
   }
 
   @Post('letters/:id/cancel')
-  @Roles('OWNER', 'FINANCE_MANAGER')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER')
   cancelLetter(
     @Param('id') id: string,
     @Body() body: { reason: string },

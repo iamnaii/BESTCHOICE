@@ -123,31 +123,37 @@ describe('ContractLetterService', () => {
       { id: 'l2', status: 'PDF_GENERATED', letterType: 'CONTRACT_TERMINATION_60D' },
     ];
 
-    it('returns letters without filter', async () => {
+    it('returns paginated shape without filter (OWNER sees all)', async () => {
       mockPrisma.contractLetter.findMany.mockResolvedValueOnce(mockLetters);
-      const result = await service.list({});
-      expect(result).toBe(mockLetters);
+      mockPrisma.contractLetter.count.mockResolvedValueOnce(2);
+      const result = await service.list({ user: { role: 'OWNER', branchId: null } });
+      expect(result.data).toBe(mockLetters);
+      expect(result.total).toBe(2);
+      expect(result.page).toBe(1);
       const findArg = mockPrisma.contractLetter.findMany.mock.calls[0][0];
       expect(findArg.where.deletedAt).toBeNull();
     });
 
     it('filters by status', async () => {
       mockPrisma.contractLetter.findMany.mockResolvedValueOnce([mockLetters[0]]);
-      await service.list({ status: 'PENDING_DISPATCH' });
+      mockPrisma.contractLetter.count.mockResolvedValueOnce(1);
+      await service.list({ status: 'PENDING_DISPATCH', user: { role: 'OWNER', branchId: null } });
       const findArg = mockPrisma.contractLetter.findMany.mock.calls[0][0];
       expect(findArg.where.status).toBe('PENDING_DISPATCH');
     });
 
     it('filters by letterType', async () => {
       mockPrisma.contractLetter.findMany.mockResolvedValueOnce([mockLetters[1]]);
-      await service.list({ letterType: 'CONTRACT_TERMINATION_60D' });
+      mockPrisma.contractLetter.count.mockResolvedValueOnce(1);
+      await service.list({ letterType: 'CONTRACT_TERMINATION_60D', user: { role: 'OWNER', branchId: null } });
       const findArg = mockPrisma.contractLetter.findMany.mock.calls[0][0];
       expect(findArg.where.letterType).toBe('CONTRACT_TERMINATION_60D');
     });
 
-    it('filters by branchId via contract relation', async () => {
+    it('filters by branchId via contract relation when OWNER passes branchId', async () => {
       mockPrisma.contractLetter.findMany.mockResolvedValueOnce([]);
-      await service.list({ branchId: 'branch-1' });
+      mockPrisma.contractLetter.count.mockResolvedValueOnce(0);
+      await service.list({ branchId: 'branch-1', user: { role: 'OWNER', branchId: null } });
       const findArg = mockPrisma.contractLetter.findMany.mock.calls[0][0];
       expect(findArg.where.contract).toEqual({ branchId: 'branch-1' });
     });
@@ -178,6 +184,28 @@ describe('ContractLetterService', () => {
     it('throws NotFound for unknown letter', async () => {
       mockPrisma.contractLetter.findFirst.mockResolvedValueOnce(null);
       await expect(service.markPdfGenerated('nope', 'url', 'u1')).rejects.toThrow(/ไม่พบหนังสือ/);
+    });
+
+    it('accepts null pdfUrl', async () => {
+      mockPrisma.contractLetter.findFirst.mockResolvedValueOnce({ id: 'l1', status: 'PENDING_DISPATCH' });
+      const result = { id: 'l1', status: 'PDF_GENERATED', pdfUrl: null };
+      mockPrisma.$transaction.mockResolvedValueOnce([result, {}]);
+
+      await service.markPdfGenerated('l1', null, 'user-1');
+
+      const txOps = mockPrisma.$transaction.mock.calls[0][0];
+      expect(Array.isArray(txOps)).toBe(true);
+      // The first operation is the contractLetter.update promise
+      // Check that the service was called with null correctly
+      expect(mockPrisma.contractLetter.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'l1' },
+          data: expect.objectContaining({
+            status: 'PDF_GENERATED',
+            pdfUrl: null,
+          }),
+        }),
+      );
     });
   });
 
@@ -446,5 +474,176 @@ describe('ContractLetterService', () => {
       });
       await expect(service.updateEvidence('l12', '   ', 'u1')).rejects.toThrow(/อัปโหลด/);
     });
+  });
+});
+
+describe('bulkDispatch', () => {
+  const makePrismaMock = (letters: any[]) => ({
+    contractLetter: {
+      findMany: jest.fn().mockResolvedValue(letters),
+      update: jest.fn((args) => Promise.resolve({ id: args.where.id, ...args.data })),
+    },
+    auditLog: { create: jest.fn() },
+    $transaction: jest.fn((ops) => Promise.all(ops.map((op: any) => op))),
+  });
+
+  it('rejects whole batch if any letter has wrong status', async () => {
+    const prismaMock = makePrismaMock([
+      { id: 'l1', status: 'PDF_GENERATED' },
+      { id: 'l2', status: 'PENDING_DISPATCH' }, // wrong
+    ]);
+    const svc = new ContractLetterService(prismaMock as any, {} as any);
+
+    await expect(
+      svc.bulkDispatch(
+        [
+          { id: 'l1', trackingNumber: 'EM123456789TH' },
+          { id: 'l2', trackingNumber: 'EM123456790TH' },
+        ],
+        'user-1',
+      ),
+    ).rejects.toThrow(/สถานะไม่ถูกต้อง/);
+    expect(prismaMock.contractLetter.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects if any id not found', async () => {
+    const prismaMock = makePrismaMock([{ id: 'l1', status: 'PDF_GENERATED' }]);
+    const svc = new ContractLetterService(prismaMock as any, {} as any);
+    await expect(
+      svc.bulkDispatch(
+        [
+          { id: 'l1', trackingNumber: 'EM111111111TH' },
+          { id: 'missing', trackingNumber: 'EM222222222TH' },
+        ],
+        'user-1',
+      ),
+    ).rejects.toThrow(/ไม่พบ/);
+  });
+
+  it('updates all + audit logs share batchId on success', async () => {
+    const prismaMock = makePrismaMock([
+      { id: 'l1', status: 'PDF_GENERATED' },
+      { id: 'l2', status: 'PDF_GENERATED' },
+    ]);
+    const svc = new ContractLetterService(prismaMock as any, {} as any);
+    const result = await svc.bulkDispatch(
+      [
+        { id: 'l1', trackingNumber: 'EM111111111TH' },
+        { id: 'l2', trackingNumber: 'EM222222222TH' },
+      ],
+      'user-1',
+    );
+
+    expect(result.batchId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(prismaMock.contractLetter.update).toHaveBeenCalledTimes(2);
+    expect(prismaMock.auditLog.create).toHaveBeenCalledTimes(2);
+    const auditCalls = (prismaMock.auditLog.create as jest.Mock).mock.calls;
+    expect(auditCalls[0][0].data.newValue.batchId).toBe(result.batchId);
+    expect(auditCalls[1][0].data.newValue.batchId).toBe(result.batchId);
+  });
+
+  it('returned updated array length equals input length', async () => {
+    const prismaMock = makePrismaMock([
+      { id: 'l1', status: 'PDF_GENERATED' },
+      { id: 'l2', status: 'PDF_GENERATED' },
+      { id: 'l3', status: 'PDF_GENERATED' },
+    ]);
+    const svc = new ContractLetterService(prismaMock as any, {} as any);
+    const result = await svc.bulkDispatch(
+      [
+        { id: 'l1', trackingNumber: 'EM111111111TH' },
+        { id: 'l2', trackingNumber: 'EM222222222TH' },
+        { id: 'l3', trackingNumber: 'EM333333333TH' },
+      ],
+      'user-1',
+    );
+    expect(result.updated).toHaveLength(3);
+  });
+});
+
+describe('getCountsByStatus', () => {
+  it('returns zero counts when SALES has no branch', async () => {
+    const prismaMock = {
+      contractLetter: { groupBy: jest.fn() },
+    };
+    const svc = new ContractLetterService(prismaMock as any, {} as any);
+    const result = await svc.getCountsByStatus({ user: { role: 'SALES', branchId: null } });
+    expect(result).toEqual({
+      PENDING_DISPATCH: 0,
+      PDF_GENERATED: 0,
+      DISPATCHED: 0,
+      DELIVERED: 0,
+      UNDELIVERABLE: 0,
+      CANCELLED: 0,
+    });
+    expect(prismaMock.contractLetter.groupBy).not.toHaveBeenCalled();
+  });
+
+  it('groups by status and returns counts', async () => {
+    const prismaMock = {
+      contractLetter: {
+        groupBy: jest.fn().mockResolvedValue([
+          { status: 'PENDING_DISPATCH', _count: { _all: 5 } },
+          { status: 'DISPATCHED', _count: { _all: 12 } },
+        ]),
+      },
+    };
+    const svc = new ContractLetterService(prismaMock as any, {} as any);
+    const result = await svc.getCountsByStatus({ user: { role: 'OWNER', branchId: null } });
+    expect(result.PENDING_DISPATCH).toBe(5);
+    expect(result.DISPATCHED).toBe(12);
+    expect(result.PDF_GENERATED).toBe(0); // zero default
+  });
+});
+
+describe('ContractLetterService.list (v2)', () => {
+  let service: ContractLetterService;
+  let prisma: PrismaService;
+
+  beforeEach(async () => {
+    const module = await Test.createTestingModule({
+      providers: [
+        ContractLetterService,
+        {
+          provide: PrismaService,
+          useValue: {
+            contractLetter: {
+              findMany: jest.fn().mockResolvedValue([]),
+              count: jest.fn().mockResolvedValue(0),
+            },
+          },
+        },
+        {
+          provide: DunningEngineService,
+          useValue: { executeEventTrigger: jest.fn() },
+        },
+      ],
+    }).compile();
+    service = module.get(ContractLetterService);
+    prisma = module.get(PrismaService);
+  });
+
+  it('returns paginated shape { data, total, page, limit }', async () => {
+    const result = await service.list({ page: 1, limit: 50, user: { role: 'OWNER', branchId: null } });
+    expect(result).toEqual({ data: [], total: 0, page: 1, limit: 50 });
+  });
+
+  it('applies branch scope for SALES role', async () => {
+    await service.list({ page: 1, limit: 50, user: { role: 'SALES', branchId: 'branch-1' } });
+    const findManyCall = (prisma.contractLetter.findMany as jest.Mock).mock.calls[0][0];
+    expect(findManyCall.where.contract.branchId).toBe('branch-1');
+  });
+
+  it('builds OR search clause for q param', async () => {
+    await service.list({ page: 1, limit: 50, q: 'สมชาย', user: { role: 'OWNER', branchId: null } });
+    const findManyCall = (prisma.contractLetter.findMany as jest.Mock).mock.calls[0][0];
+    expect(findManyCall.where.OR).toHaveLength(3);
+    expect(findManyCall.where.OR[0]).toEqual({ letterNumber: { contains: 'สมชาย', mode: 'insensitive' } });
+  });
+
+  it('returns empty when SALES has no branchId', async () => {
+    const result = await service.list({ page: 1, limit: 50, user: { role: 'SALES', branchId: null } });
+    expect(result).toEqual({ data: [], total: 0, page: 1, limit: 50 });
+    expect(prisma.contractLetter.findMany).not.toHaveBeenCalled();
   });
 });

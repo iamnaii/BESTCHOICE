@@ -2,13 +2,13 @@ import { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, Download, Eye, FileText, Loader2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
-import Decimal from 'decimal.js';
 import api, { getErrorMessage } from '@/lib/api';
 import Modal from '@/components/ui/Modal';
 import { Checkbox } from '@/components/ui/checkbox';
-import { renderLetterPdf, type LetterTemplateData } from '../utils/letterPdfRenderer';
+import { renderLetterPdf } from '../utils/letterPdfRenderer';
+import { buildLetterTemplateData } from '../utils/buildLetterTemplateData';
 import { useLetterActions } from '../hooks/useLetterActions';
-import type { LetterRow } from '../hooks/useLetterQueue';
+import type { LetterRow } from '../types/letter';
 import { EvidenceThumbnailGrid } from './EvidenceThumbnailGrid';
 import LetterPdfPreviewDialog from './LetterPdfPreviewDialog';
 
@@ -98,7 +98,6 @@ function GenerateSection({ letter, onGenerated, onClose }: GenerateSectionProps)
   const findConfig = (key: string): string | null =>
     settings.find((s) => s.key === key)?.value ?? null;
   const signatureUrl = findConfig('letter_signature_url');
-  const letterheadUrl = findConfig('letter_letterhead_url');
 
   const hasSignature = !!signatureUrl;
   const isLoadingDeps = companiesQuery.isLoading || settingsQuery.isLoading;
@@ -110,77 +109,19 @@ function GenerateSection({ letter, onGenerated, onClose }: GenerateSectionProps)
   const handleGenerate = async () => {
     setBusy(true);
     try {
-      // 1. Gather company + contract data
-      const [contractRes] = await Promise.all([
-        api.get(`/contracts/${letter.contractId}`).then((r) => r.data),
-      ]);
-
-      // Pick FINANCE company (the HP financer signing the letter)
-      const companies = companiesQuery.data ?? [];
-      const company =
-        companies.find((c) => c.companyCode === 'FINANCE') ?? companies[0] ?? null;
-
-      if (!company) {
-        throw new Error('ไม่พบข้อมูลบริษัท (FINANCE) — โปรดตั้งค่า CompanyInfo ก่อน');
-      }
-
-      // Compute outstanding using Decimal (money arithmetic MUST NOT use
-      // parseFloat — this balance appears on a court-submitted letter).
-      const payments: Array<{
-        status: string;
-        amountDue: string;
-        amountPaid: string;
-        lateFee: string | null;
-        dueDate: string;
-      }> = (contractRes.payments ?? []).filter((p: { status: string }) =>
-        ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'].includes(p.status),
-      );
-
-      const outstandingDec = payments.reduce(
-        (sum, p) =>
-          sum
-            .plus(new Decimal(p.amountDue ?? '0'))
-            .minus(new Decimal(p.amountPaid ?? '0'))
-            .plus(new Decimal(p.lateFee ?? '0')),
-        new Decimal(0),
-      );
-      // renderLetterPdf expects a number — convert only at the very edge.
-      const outstanding = outstandingDec.toNumber();
-
-      const now = new Date();
-      const oldest = payments
-        .map((p) => new Date(p.dueDate))
-        .sort((a, b) => a.getTime() - b.getTime())[0];
-      const daysOverdue = oldest
-        ? Math.max(0, Math.floor((now.getTime() - oldest.getTime()) / 86400000))
-        : 0;
-
-      const data: LetterTemplateData = {
+      // 1. Assemble LetterTemplateData (fetches contract + company + settings)
+      const data = await buildLetterTemplateData({
         letterType: letter.letterType,
         letterNumber: letter.letterNumber,
-        letterDate: new Date(),
-        company: {
-          nameTh: company.nameTh,
-          taxId: company.taxId,
-          address: company.address,
-          phone: company.phone ?? undefined,
-          directorName: company.directorName,
-          directorPosition: company.directorPosition ?? undefined,
-          // Use letterhead as logo if available, otherwise fall back to company logo
-          logoUrl: letterheadUrl ?? company.logoUrl ?? undefined,
-          signatureUrl: signatureUrl ?? undefined,
-        },
-        customer: {
-          name: letter.contract.customer.name,
-          address: letter.contract.customer.addressCurrent ?? null,
-        },
         contract: {
+          id: letter.contractId,
           contractNumber: letter.contract.contractNumber,
-          contractDate: contractRes.createdAt ? new Date(contractRes.createdAt) : null,
-          outstanding,
-          daysOverdue,
+          customer: {
+            name: letter.contract.customer.name,
+            addressCurrent: letter.contract.customer.addressCurrent,
+          },
         },
-      };
+      });
 
       // 2. Render PDF
       const blob = await renderLetterPdf(data);

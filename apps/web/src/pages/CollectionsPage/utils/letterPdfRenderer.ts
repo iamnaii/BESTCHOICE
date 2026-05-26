@@ -410,14 +410,10 @@ function footerBlock(doc: jsPDF, data: LetterTemplateData): void {
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /**
- * Renders a legal letter PDF and returns it as a Blob.
- *
- * @example
- * const blob = await renderLetterPdf(data);
- * const url = URL.createObjectURL(blob);
- * window.open(url);
+ * Build a jsPDF document for a single letter. Caller owns the returned doc —
+ * useful for bulk merging (caller does doc.addPage() between letters).
  */
-export async function renderLetterPdf(data: LetterTemplateData): Promise<Blob> {
+export async function renderLetterPdfDoc(data: LetterTemplateData): Promise<jsPDF> {
   const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
 
   // Load Thai font — uses module-level cache so subsequent calls are instant
@@ -457,5 +453,19 @@ export async function renderLetterPdf(data: LetterTemplateData): Promise<Blob> {
   signatureBlock(doc, data, y + 8, signatureDataUrl);
   footerBlock(doc, data);
 
+  return doc;
+}
+
+/**
+ * Wrapper that renders a single letter and returns a Blob — preserves the
+ * original API used by per-row preview.
+ *
+ * @example
+ * const blob = await renderLetterPdf(data);
+ * const url = URL.createObjectURL(blob);
+ * window.open(url);
+ */
+export async function renderLetterPdf(data: LetterTemplateData): Promise<Blob> {
+  const doc = await renderLetterPdfDoc(data);
   return doc.output('blob');
 }

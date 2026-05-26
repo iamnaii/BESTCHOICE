@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import {
   BadRequestException,
   ForbiddenException,
@@ -7,6 +8,7 @@ import {
 import { LetterType, LetterStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DunningEngineService } from './dunning-engine.service';
+import { getBranchScope } from '../auth/branch-access.util';
 
 @Injectable()
 export class ContractLetterService {
@@ -77,40 +79,85 @@ export class ContractLetterService {
   }
 
   /**
-   * List letters matching a status filter, newest-triggered first.
-   * Includes contract + customer for display in OWNER queue.
+   * List letters with pagination, search, and branch scope enforcement.
+   * Returns { data, total, page, limit } instead of a plain array.
+   * Branch-scoped roles (SALES, BRANCH_MANAGER) are automatically filtered
+   * to their assigned branchId via getBranchScope(). Cross-branch roles
+   * (OWNER, FINANCE_MANAGER, ACCOUNTANT) see all branches.
    */
   async list(params: {
     status?: LetterStatus;
     letterType?: LetterType;
     branchId?: string;
+    from?: string;
+    to?: string;
+    q?: string;
+    page?: number;
     limit?: number;
-  }) {
+    user: { role?: string | null; branchId?: string | null };
+  }): Promise<{
+    data: Awaited<ReturnType<typeof this.prisma.contractLetter.findMany>>;
+    total: number;
+    page: number;
+    limit: number;
+  }> {
+    const page = Math.max(1, params.page ?? 1);
+    const limit = Math.min(200, Math.max(1, params.limit ?? 50));
+
+    const scope = getBranchScope(params.user);
+    if (!scope.all && !scope.branchId) {
+      return { data: [], total: 0, page, limit };
+    }
+
+    const effectiveBranchId = !scope.all ? scope.branchId! : params.branchId;
+
     const where: Prisma.ContractLetterWhereInput = {
       deletedAt: null,
       ...(params.status && { status: params.status }),
       ...(params.letterType && { letterType: params.letterType }),
-      ...(params.branchId && { contract: { branchId: params.branchId } }),
+      ...((params.from || params.to) && {
+        triggeredAt: {
+          ...(params.from && { gte: new Date(params.from) }),
+          ...(params.to && { lte: new Date(params.to) }),
+        },
+      }),
+      ...(effectiveBranchId && {
+        contract: { branchId: effectiveBranchId },
+      }),
+      ...(params.q && {
+        OR: [
+          { letterNumber: { contains: params.q, mode: 'insensitive' as const } },
+          { contract: { contractNumber: { contains: params.q, mode: 'insensitive' as const } } },
+          { contract: { customer: { name: { contains: params.q, mode: 'insensitive' as const } } } },
+        ],
+      }),
     };
-    return this.prisma.contractLetter.findMany({
-      where,
-      include: {
-        contract: {
-          select: {
-            id: true,
-            contractNumber: true,
-            customer: { select: { id: true, name: true, phone: true, addressCurrent: true } },
-            branch: { select: { id: true, name: true } },
+
+    const [data, total] = await Promise.all([
+      this.prisma.contractLetter.findMany({
+        where,
+        include: {
+          contract: {
+            select: {
+              id: true,
+              contractNumber: true,
+              customer: { select: { id: true, name: true, phone: true, addressCurrent: true } },
+              branch: { select: { id: true, name: true } },
+            },
           },
         },
-      },
-      orderBy: { triggeredAt: 'desc' },
-      take: params.limit ?? 100,
-    });
+        orderBy: { triggeredAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.contractLetter.count({ where }),
+    ]);
+
+    return { data, total, page, limit };
   }
 
   /** After client generates PDF and uploads to S3, backend records the URL. */
-  async markPdfGenerated(letterId: string, pdfUrl: string, userId: string) {
+  async markPdfGenerated(letterId: string, pdfUrl: string | null, userId: string) {
     const letter = await this.prisma.contractLetter.findFirst({
       where: { id: letterId, deletedAt: null },
     });
@@ -122,7 +169,7 @@ export class ContractLetterService {
       .$transaction([
         this.prisma.contractLetter.update({
           where: { id: letterId },
-          data: { status: 'PDF_GENERATED', pdfUrl, pdfGeneratedAt: new Date() },
+          data: { status: 'PDF_GENERATED', pdfUrl: pdfUrl ?? null, pdfGeneratedAt: new Date() },
         }),
         this.prisma.auditLog.create({
           data: {
@@ -371,6 +418,128 @@ export class ContractLetterService {
       }),
     ]);
     return updated;
+  }
+
+  async bulkDispatch(
+    items: Array<{ id: string; trackingNumber: string; evidencePhotoUrl?: string }>,
+    userId: string,
+  ): Promise<{ updated: Array<{ id: string }>; batchId: string }> {
+    if (items.length === 0) {
+      throw new BadRequestException('ต้องเลือกอย่างน้อย 1 ฉบับ');
+    }
+
+    const ids = items.map((i) => i.id);
+    const letters = await this.prisma.contractLetter.findMany({
+      where: { id: { in: ids }, deletedAt: null },
+      select: { id: true, status: true },
+    });
+
+    if (letters.length !== ids.length) {
+      const found = new Set(letters.map((l) => l.id));
+      const missing = ids.filter((id) => !found.has(id));
+      throw new BadRequestException(`ไม่พบจดหมาย: ${missing.join(', ')}`);
+    }
+
+    const invalidStatus = letters.filter((l) => l.status !== 'PDF_GENERATED');
+    if (invalidStatus.length > 0) {
+      throw new BadRequestException(
+        `สถานะไม่ถูกต้อง — ต้อง PDF_GENERATED: ${invalidStatus.map((l) => l.id).join(', ')}`,
+      );
+    }
+
+    const batchId = randomUUID();
+    const now = new Date();
+
+    const updateOps = items.map((item) =>
+      this.prisma.contractLetter.update({
+        where: { id: item.id },
+        data: {
+          status: 'DISPATCHED' as const,
+          dispatchedAt: now,
+          dispatchedById: userId,
+          trackingNumber: item.trackingNumber.trim(),
+          evidencePhotoUrl: item.evidencePhotoUrl ?? null,
+        },
+      }),
+    );
+
+    const auditOps = items.map((item) =>
+      this.prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'LETTER_DISPATCHED',
+          entity: 'contract_letter',
+          entityId: item.id,
+          newValue: { trackingNumber: item.trackingNumber, batchId, source: 'bulk' },
+        },
+      }),
+    );
+
+    const results = (await this.prisma.$transaction([...updateOps, ...auditOps])) as Array<unknown>;
+    const updated = results.slice(0, items.length) as Array<{ id: string }>;
+
+    return { updated, batchId };
+  }
+
+  async getCountsByStatus(params: {
+    branchId?: string;
+    letterType?: LetterType;
+    from?: string;
+    to?: string;
+    q?: string;
+    user: { role?: string | null; branchId?: string | null };
+  }): Promise<Record<LetterStatus, number>> {
+    const scope = getBranchScope(params.user);
+    if (!scope.all && !scope.branchId) {
+      return {
+        PENDING_DISPATCH: 0,
+        PDF_GENERATED: 0,
+        DISPATCHED: 0,
+        DELIVERED: 0,
+        UNDELIVERABLE: 0,
+        CANCELLED: 0,
+      };
+    }
+
+    const effectiveBranchId = !scope.all ? scope.branchId! : params.branchId;
+
+    const where: Prisma.ContractLetterWhereInput = {
+      deletedAt: null,
+      ...(params.letterType && { letterType: params.letterType }),
+      ...((params.from || params.to) && {
+        triggeredAt: {
+          ...(params.from && { gte: new Date(params.from) }),
+          ...(params.to && { lte: new Date(params.to) }),
+        },
+      }),
+      ...(effectiveBranchId && { contract: { branchId: effectiveBranchId } }),
+      ...(params.q && {
+        OR: [
+          { letterNumber: { contains: params.q, mode: 'insensitive' as const } },
+          { contract: { contractNumber: { contains: params.q, mode: 'insensitive' as const } } },
+          { contract: { customer: { name: { contains: params.q, mode: 'insensitive' as const } } } },
+        ],
+      }),
+    };
+
+    const grouped = await this.prisma.contractLetter.groupBy({
+      by: ['status'],
+      where,
+      _count: { _all: true },
+    });
+
+    const result: Record<LetterStatus, number> = {
+      PENDING_DISPATCH: 0,
+      PDF_GENERATED: 0,
+      DISPATCHED: 0,
+      DELIVERED: 0,
+      UNDELIVERABLE: 0,
+      CANCELLED: 0,
+    };
+    for (const row of grouped) {
+      result[row.status as LetterStatus] = row._count._all;
+    }
+    return result;
   }
 
   private async nextSequence(year: number): Promise<number> {

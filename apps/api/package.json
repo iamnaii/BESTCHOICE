@@ -22,6 +22,7 @@
     "prisma:finance:migrate:deploy": "prisma migrate deploy --schema=prisma-finance/schema.prisma",
     "prisma:finance:studio": "prisma studio --schema=prisma-finance/schema.prisma --port 5556",
     "prisma:seed": "npx tsx prisma/seed.ts",
+    "seed:letters-mock": "npx tsx prisma/seeds/letters-mock.seed.ts",
     "backfill:promise-slots": "tsx scripts/backfill-promise-slots.ts",
     "wipe:accounting": "node dist/src/cli/wipe-accounting.cli.js",
     "wipe:accounting:help": "echo 'Usage: CONFIRM_WIPE=YES_I_AM_SURE EXPECTED_DB_NAME=<db> [ALLOW_PROD_WIPE=YES_I_AM_SURE] npm run wipe:accounting'",

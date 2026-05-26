@@ -15,6 +15,16 @@ import LetterDispatchDialog from '@/pages/CollectionsPage/components/LetterDispa
 import LetterPdfPreviewDialog from '@/pages/CollectionsPage/components/LetterPdfPreviewDialog';
 import { useLetterActions } from '@/pages/CollectionsPage/hooks/useLetterActions';
 import type { LetterRow, LetterStatus, LettersListFilters } from './types';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 const CROSS_BRANCH_ROLES = new Set(['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']);
 const CANCEL_ROLES = new Set(['OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER']);
@@ -34,6 +44,7 @@ export default function LettersPage() {
   const [dispatchRow, setDispatchRow] = useState<LetterRow | null>(null);
   const [bulkPrintOpen, setBulkPrintOpen] = useState(false);
   const [bulkDispatchOpen, setBulkDispatchOpen] = useState(false);
+  const [bulkCancelOpen, setBulkCancelOpen] = useState(false);
 
   const fullFilters: LettersListFilters = { ...filters, status: activeStatus, page, limit: 50 };
   const listQuery = useLettersList(fullFilters);
@@ -171,13 +182,7 @@ export default function LettersPage() {
           }
           setSelectedIds(new Set());
         }}
-        onBulkCancel={async () => {
-          if (!confirm(`ยืนยันยกเลิก ${selectedRows.length} ฉบับ?`)) return;
-          for (const r of selectedRows) {
-            await actions.cancel.mutateAsync({ letterId: r.id, reason: 'ยกเลิก (bulk)' });
-          }
-          setSelectedIds(new Set());
-        }}
+        onBulkCancel={() => setBulkCancelOpen(true)}
         onClear={() => setSelectedIds(new Set())}
       />
 
@@ -217,6 +222,33 @@ export default function LettersPage() {
           }}
         />
       )}
+
+      <AlertDialog open={bulkCancelOpen} onOpenChange={setBulkCancelOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>ยกเลิกจดหมาย {selectedRows.length} ฉบับ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              การยกเลิกไม่สามารถย้อนกลับได้ — จดหมายจะถูกย้ายไปแท็บ "ยกเลิก"
+              และจะไม่ส่งให้ลูกค้า
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>ปิด</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                for (const r of selectedRows) {
+                  await actions.cancel.mutateAsync({ letterId: r.id, reason: 'ยกเลิก (bulk)' });
+                }
+                setSelectedIds(new Set());
+                setBulkCancelOpen(false);
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              ยืนยันยกเลิก
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

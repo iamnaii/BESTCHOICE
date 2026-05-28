@@ -9,6 +9,17 @@ import { MessageRouterService } from '../chat-engine/services/message-router.ser
 import { WebhookAnomalyService } from '../webhook-security/webhook-anomaly.service';
 import { QuickReplyPostbackRouterService } from '../staff-chat/services/quick-reply-postback-router.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { IntegrationConfigService } from '../integrations/integration-config.service';
+
+/**
+ * Mock IntegrationConfigService.getConfig('facebook') — the controller now
+ * reads appSecret + verifyToken from here (DB → env fallback) instead of env.
+ */
+function fbConfigMock(appSecret = 'secret', verifyToken = 'verify-token') {
+  return {
+    getConfig: jest.fn().mockResolvedValue({ appSecret, verifyToken }),
+  };
+}
 
 jest.mock('@sentry/nestjs', () => ({
   captureException: jest.fn(),
@@ -55,6 +66,7 @@ describe('FacebookWebhookController.handleWebhook — rawBody SLO alert (T6-C14)
         { provide: WebhookAnomalyService, useValue: anomaly },
         { provide: QuickReplyPostbackRouterService, useValue: postbackRouter },
         { provide: PrismaService, useValue: prisma },
+        { provide: IntegrationConfigService, useValue: fbConfigMock() },
       ],
     }).compile();
 
@@ -130,6 +142,7 @@ describe('FacebookWebhookController.handleWebhook — message_echoes', () => {
         { provide: WebhookAnomalyService, useValue: anomaly },
         { provide: QuickReplyPostbackRouterService, useValue: postbackRouter },
         { provide: PrismaService, useValue: prisma },
+        { provide: IntegrationConfigService, useValue: fbConfigMock() },
       ],
     }).compile();
 
@@ -217,6 +230,7 @@ describe('FacebookWebhookController.handleWebhook — message_echoes', () => {
         { provide: WebhookAnomalyService, useValue: anomaly },
         { provide: QuickReplyPostbackRouterService, useValue: postbackRouter },
         { provide: PrismaService, useValue: prisma },
+        { provide: IntegrationConfigService, useValue: fbConfigMock() },
       ],
     }).compile();
     const localController = mod.get(FacebookWebhookController);
@@ -313,5 +327,59 @@ describe('FacebookWebhookController.handleWebhook — message_echoes', () => {
       }),
     );
     expect(router.mirrorOutbound).not.toHaveBeenCalled();
+  });
+});
+
+describe('FacebookWebhookController.verifyWebhook — verify token from IntegrationConfig', () => {
+  let controller: FacebookWebhookController;
+  let integrationConfig: { getConfig: jest.Mock };
+
+  function makeRes() {
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      send: jest.fn().mockReturnThis(),
+    };
+    return res as unknown as import('express').Response & {
+      status: jest.Mock;
+      send: jest.Mock;
+    };
+  }
+
+  beforeEach(async () => {
+    integrationConfig = fbConfigMock('secret', 'verify-token');
+    const mod: TestingModule = await Test.createTestingModule({
+      controllers: [FacebookWebhookController],
+      providers: [
+        { provide: MessageRouterService, useValue: { routeInbound: jest.fn() } },
+        { provide: ConfigService, useValue: { get: jest.fn() } },
+        { provide: WebhookAnomalyService, useValue: { record: jest.fn() } },
+        { provide: QuickReplyPostbackRouterService, useValue: { route: jest.fn() } },
+        { provide: PrismaService, useValue: {} },
+        { provide: IntegrationConfigService, useValue: integrationConfig },
+      ],
+    }).compile();
+    controller = mod.get(FacebookWebhookController);
+  });
+
+  it('returns the challenge when verify token matches the UI-configured value', async () => {
+    const res = makeRes();
+    await controller.verifyWebhook('subscribe', 'verify-token', 'CHALLENGE_123', res);
+    expect(integrationConfig.getConfig).toHaveBeenCalledWith('facebook');
+    expect((res as any).status).toHaveBeenCalledWith(200);
+    expect((res as any).send).toHaveBeenCalledWith('CHALLENGE_123');
+  });
+
+  it('rejects with 400 when the token does not match', async () => {
+    const res = makeRes();
+    await controller.verifyWebhook('subscribe', 'wrong-token', 'CHALLENGE_123', res);
+    expect((res as any).status).toHaveBeenCalledWith(400);
+    expect((res as any).send).not.toHaveBeenCalledWith('CHALLENGE_123');
+  });
+
+  it('rejects with 400 when no verify token is configured (fail closed)', async () => {
+    integrationConfig.getConfig.mockResolvedValueOnce({ appSecret: 'secret', verifyToken: '' });
+    const res = makeRes();
+    await controller.verifyWebhook('subscribe', '', 'CHALLENGE_123', res);
+    expect((res as any).status).toHaveBeenCalledWith(400);
   });
 });

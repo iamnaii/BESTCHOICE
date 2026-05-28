@@ -24,6 +24,7 @@ import { RawBodyRequest } from '../../common/types/raw-body-request';
 import { WebhookAnomalyService } from '../webhook-security/webhook-anomaly.service';
 import { QuickReplyPostbackRouterService } from '../staff-chat/services/quick-reply-postback-router.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { IntegrationConfigService } from '../integrations/integration-config.service';
 
 /**
  * Facebook Messenger Webhook Controller
@@ -33,8 +34,10 @@ import { PrismaService } from '../../prisma/prisma.service';
  * 2. POST — Inbound message/postback events (HMAC-SHA256 signed)
  *
  * Security:
- * - GET verification uses FB_VERIFY_TOKEN (shared secret set in FB App dashboard)
- * - POST payloads verified via HMAC-SHA256 using FB_APP_SECRET
+ * - GET verification uses the verify token from IntegrationConfig (Settings →
+ *   Integrations, with FB_VERIFY_TOKEN env as fallback)
+ * - POST payloads verified via HMAC-SHA256 using the app secret from
+ *   IntegrationConfig (FB_APP_SECRET env as fallback)
  * - Returns 200 immediately; Facebook retries on non-2xx after timeout
  *
  * This controller is intentionally public (no JwtAuthGuard) — it receives
@@ -50,7 +53,17 @@ export class FacebookWebhookController {
     private anomaly: WebhookAnomalyService,
     private postbackRouter: QuickReplyPostbackRouterService,
     private prisma: PrismaService,
+    private integrationConfig: IntegrationConfigService,
   ) {}
+
+  /**
+   * Resolve the Facebook App Secret from IntegrationConfig (DB → FB_APP_SECRET
+   * env fallback). Returns undefined when unset so callers fail closed.
+   */
+  private async getAppSecret(): Promise<string | undefined> {
+    const cfg = await this.integrationConfig.getConfig('facebook');
+    return cfg.appSecret || undefined;
+  }
 
   /**
    * Webhook verification — Facebook sends GET with hub.challenge on setup.
@@ -58,14 +71,15 @@ export class FacebookWebhookController {
    */
   @Get()
   @SkipCsrf()
-  verifyWebhook(
+  async verifyWebhook(
     @Query('hub.mode') mode: string,
     @Query('hub.verify_token') token: string,
     @Query('hub.challenge') challenge: string,
     @Res() res: Response,
-  ): void {
-    const verifyToken = this.configService.get<string>('FB_VERIFY_TOKEN');
-    if (mode === 'subscribe' && token === verifyToken) {
+  ): Promise<void> {
+    const cfg = await this.integrationConfig.getConfig('facebook');
+    const verifyToken = cfg.verifyToken || undefined;
+    if (mode === 'subscribe' && verifyToken && token === verifyToken) {
       this.logger.log('[FB Webhook] Verification succeeded');
       res.status(200).send(challenge);
       return;
@@ -114,7 +128,7 @@ export class FacebookWebhookController {
     }
 
     // 1. Verify HMAC-SHA256 signature against raw request bytes
-    if (!this.verifySignature(rawBody, signature)) {
+    if (!(await this.verifySignature(rawBody, signature))) {
       this.logger.warn('[FB Webhook] Invalid signature — rejecting payload');
       void this.anomaly.record({
         provider: 'facebook',
@@ -392,7 +406,7 @@ export class FacebookWebhookController {
   async handleDataDeletion(
     @Body() body: { signed_request?: string },
   ): Promise<{ url: string; confirmation_code: string }> {
-    const appSecret = this.configService.get<string>('FB_APP_SECRET');
+    const appSecret = await this.getAppSecret();
     if (!appSecret || !body.signed_request) {
       this.logger.warn('[FB Data Deletion] Missing app secret or signed_request');
       throw new BadRequestException('Invalid request');
@@ -448,7 +462,7 @@ export class FacebookWebhookController {
     if (body.signed_request) {
       const [sigB64, payloadB64] = body.signed_request.split('.');
       if (sigB64 && payloadB64) {
-        const appSecret = this.configService.get<string>('FB_APP_SECRET');
+        const appSecret = await this.getAppSecret();
         if (appSecret) {
           const expectedSig = createHmac('sha256', appSecret)
             .update(payloadB64)
@@ -472,8 +486,8 @@ export class FacebookWebhookController {
    * main.ts json() verify callback), not JSON.stringify(parsed), because
    * re-serialization can differ in whitespace/ordering and break verification.
    */
-  private verifySignature(rawBody: Buffer | undefined, signature: string): boolean {
-    const appSecret = this.configService.get<string>('FB_APP_SECRET');
+  private async verifySignature(rawBody: Buffer | undefined, signature: string): Promise<boolean> {
+    const appSecret = await this.getAppSecret();
     if (!appSecret || !signature) {
       this.logger.warn('[FB Webhook] Missing app secret or signature');
       return false;

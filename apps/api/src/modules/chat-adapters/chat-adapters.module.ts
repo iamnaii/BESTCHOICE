@@ -12,6 +12,7 @@ import { ChatEngineModule } from '../chat-engine/chat-engine.module';
 import { FacebookDomainModule } from '../facebook-domain/facebook-domain.module';
 import { MessageRouterService } from '../chat-engine/services/message-router.service';
 import { StaffChatModule } from '../staff-chat/staff-chat.module';
+import { IntegrationsModule } from '../integrations/integrations.module';
 
 /**
  * ChatAdaptersModule — provides IChannelAdapter implementations for all channels.
@@ -28,6 +29,8 @@ import { StaffChatModule } from '../staff-chat/staff-chat.module';
     LineOaModule,
     ChatEngineModule,
     FacebookDomainModule,
+    // FacebookWebhookController reads verify token + app secret from IntegrationConfig.
+    IntegrationsModule,
     // Phase 5 — FacebookWebhookController injects QuickReplyPostbackRouterService.
     forwardRef(() => StaffChatModule),
   ],

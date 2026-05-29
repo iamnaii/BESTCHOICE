@@ -44,7 +44,7 @@ export default function AssetSchedulePage() {
             <Card>
               <CardHeader><CardTitle>ข้อมูลสินทรัพย์</CardTitle></CardHeader>
               <CardContent>
-                <dl className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                <dl className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
                   <div>
                     <dt className="text-muted-foreground">ราคาทุน</dt>
                     <dd className="tabular-nums">{formatNumberDecimal(parseFloat(query.data.purchaseCost))}</dd>
@@ -54,7 +54,11 @@ export default function AssetSchedulePage() {
                     <dd className="tabular-nums">{formatNumberDecimal(parseFloat(query.data.residualValue))}</dd>
                   </div>
                   <div>
-                    <dt className="text-muted-foreground">ค่าเสื่อม/เดือน</dt>
+                    <dt className="text-muted-foreground">ค่าเสื่อม/วัน</dt>
+                    <dd className="tabular-nums">{formatNumberDecimal(parseFloat(query.data.dailyDepr))}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">ค่าเสื่อม/เดือน (เฉลี่ย)</dt>
                     <dd className="tabular-nums">{formatNumberDecimal(parseFloat(query.data.monthlyDepr))}</dd>
                   </div>
                   <div>
@@ -72,6 +76,7 @@ export default function AssetSchedulePage() {
                   <thead>
                     <tr className="border-b">
                       <th className="text-left py-2 px-2">งวด</th>
+                      <th className="text-right py-2 px-2">วัน</th>
                       <th className="text-right py-2 px-2">ค่าเสื่อม</th>
                       <th className="text-right py-2 px-2">ค่าเสื่อมสะสม</th>
                       <th className="text-right py-2 px-2">มูลค่าตามบัญชีสุทธิ (NBV)</th>
@@ -84,6 +89,7 @@ export default function AssetSchedulePage() {
                       return (
                         <tr key={r.period} className={`border-b ${isCurrent ? 'bg-muted/40' : ''}`}>
                           <td className="py-2 px-2 font-mono">{r.period}{isCurrent ? ' ←' : ''}</td>
+                          <td className="py-2 px-2 text-right tabular-nums">{r.days}</td>
                           <td className="py-2 px-2 text-right tabular-nums">{formatNumberDecimal(parseFloat(r.monthlyDepr))}</td>
                           <td className="py-2 px-2 text-right tabular-nums">{formatNumberDecimal(parseFloat(r.accumulatedDepr))}</td>
                           <td className="py-2 px-2 text-right tabular-nums font-semibold">{formatNumberDecimal(parseFloat(r.netBookValue))}</td>

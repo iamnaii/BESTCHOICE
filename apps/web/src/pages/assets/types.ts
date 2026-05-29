@@ -49,6 +49,7 @@ export interface Asset {
   residualValue: string;
   usefulLifeMonths: number;
   monthlyDepr: string;
+  dailyDepr: string;
   accumulatedDepr: string;
   netBookValue: string;
   coaCostAccount: string | null;
@@ -241,6 +242,7 @@ export interface AssetRegisterResponse {
 
 export interface AssetScheduleRow {
   period: string;
+  days: number;
   monthlyDepr: string;
   accumulatedDepr: string;
   netBookValue: string;
@@ -255,6 +257,7 @@ export interface AssetScheduleResponse {
   purchaseCost: string;
   residualValue: string;
   monthlyDepr: string;
+  dailyDepr: string;
   rows: AssetScheduleRow[];
 }
 

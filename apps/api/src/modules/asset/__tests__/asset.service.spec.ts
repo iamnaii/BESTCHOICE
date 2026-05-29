@@ -1244,8 +1244,8 @@ describe('AssetService — CRUD + helpers', () => {
   // Phase 3 — Task 2: getAssetSchedule (per-asset NBV month-by-month projection)
   // ==========================================================================
   describe('AssetService.getAssetSchedule', () => {
-    it('produces schedule rows from purchase to fully depreciated, capped at 60 months', async () => {
-      // basePrice 36000, usefulLife 36 → monthlyDepr = 1000, residual = 0
+    it('produces day-based schedule from purchase to fully depreciated', async () => {
+      // basePrice 36000, usefulLife 36, residual 0 → daily 36000/1095 = 32.8767
       const a = await createPostedAsset({
         purchaseDate: '2026-01-15',
         basePrice: 36000,
@@ -1253,9 +1253,18 @@ describe('AssetService — CRUD + helpers', () => {
       });
       const result = await service.getAssetSchedule(a.id);
       expect(result.assetId).toBe(a.id);
-      expect(result.rows.length).toBe(36); // 36 months for 36000 / 1000
-      expect(result.rows[35].status).toBe('FULLY_DEPRECIATED');
-      expect(new Decimal(result.rows[35].netBookValue).equals(0)).toBe(true);
+      // First period is partial: 15..31 Jan = 17 days
+      expect(result.rows[0].period).toBe('2026-01');
+      expect(result.rows[0].days).toBe(17);
+      // Ends fully depreciated, NBV 0, and Σ = depreciable base (36000)
+      const last = result.rows[result.rows.length - 1];
+      expect(last.status).toBe('FULLY_DEPRECIATED');
+      expect(new Decimal(last.netBookValue).equals(0)).toBe(true);
+      const sum = result.rows.reduce(
+        (s, r) => s.plus(r.monthlyDepr),
+        new Decimal(0),
+      );
+      expect(sum.equals(36000)).toBe(true);
     });
 
     it('last period adjusts to residualValue floor (no over-depreciation)', async () => {
@@ -1301,9 +1310,9 @@ describe('AssetService — CRUD + helpers', () => {
       const feb = result.rows.find((r) => r.period === '2026-02')!;
       expect(feb).toBeTruthy();
       expect(new Decimal(feb.monthlyDepr).equals(950)).toBe(true);
-      // Sanity: Jan still uses projection (1000)
+      // Sanity: Jan still uses day-based projection (32.8767 × 31 = 1019.18)
       const jan = result.rows.find((r) => r.period === '2026-01')!;
-      expect(new Decimal(jan.monthlyDepr).equals(1000)).toBe(true);
+      expect(new Decimal(jan.monthlyDepr).equals('1019.18')).toBe(true);
     });
   });
 });

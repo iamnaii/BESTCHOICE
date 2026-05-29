@@ -193,7 +193,8 @@ describe('DepreciationService.previewRun', () => {
     expect(preview.lines[0].assetId).toBe(a.id);
     expect(preview.lines[0].drAccount).toBe('53-1601');
     expect(preview.lines[0].crAccount).toBe('12-2102');
-    expect(parseFloat(preview.lines[0].monthlyDepr)).toBeCloseTo(833.33, 2);
+    // Daily: 30000 / ((36/12)×365) = 27.3973/day × 31 (May, full month) = 849.32
+    expect(parseFloat(preview.lines[0].monthlyDepr)).toBeCloseTo(849.32, 2);
   });
 
   it('excludes assets already depreciated for that period (reversedAt IS NULL)', async () => {
@@ -239,19 +240,20 @@ describe('DepreciationService.runManual', () => {
     const b = await postedAsset();
     const result = await service.runManual('2026-05', userId);
     expect(result.assetCount).toBe(2);
-    expect(parseFloat(result.totalAmount)).toBeCloseTo(1666.66, 2);
+    // Daily: 849.32 per asset (31-day May) × 2 = 1698.64
+    expect(parseFloat(result.totalAmount)).toBeCloseTo(1698.64, 2);
 
     const entries = await prisma.depreciationEntry.findMany({ where: { period: '2026-05' } });
     expect(entries).toHaveLength(2);
     const aEntry = entries.find((e) => e.assetId === a.id)!;
-    expect(parseFloat(aEntry.amount.toString())).toBeCloseTo(833.33, 2);
+    expect(parseFloat(aEntry.amount.toString())).toBeCloseTo(849.32, 2);
     expect(aEntry.journalEntryNo).toMatch(/^JE-\d{6}-\d{5}$/);
 
     // accumulatedDepr updated
     const aUpdated = await prisma.fixedAsset.findUnique({ where: { id: a.id } });
-    expect(parseFloat(aUpdated!.accumulatedDepr.toString())).toBeCloseTo(833.33, 2);
+    expect(parseFloat(aUpdated!.accumulatedDepr.toString())).toBeCloseTo(849.32, 2);
     const bUpdated = await prisma.fixedAsset.findUnique({ where: { id: b.id } });
-    expect(parseFloat(bUpdated!.accumulatedDepr.toString())).toBeCloseTo(833.33, 2);
+    expect(parseFloat(bUpdated!.accumulatedDepr.toString())).toBeCloseTo(849.32, 2);
   });
 
   it('idempotent: second runManual for same period returns existing entries (no duplicates)', async () => {

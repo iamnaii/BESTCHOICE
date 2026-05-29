@@ -3267,7 +3267,8 @@ model FixedAsset {
   purchaseCost     Decimal @map("purchase_cost") @db.Decimal(12, 2) // basePrice + ship + install + other (no VAT/WHT)
   residualValue    Decimal @default(0) @map("residual_value") @db.Decimal(12, 2)
   usefulLifeMonths Int     @map("useful_life_months")
-  monthlyDepr      Decimal @map("monthly_depr") @db.Decimal(12, 4) // 4 decimals to avoid drift over months
+  monthlyDepr      Decimal @map("monthly_depr") @db.Decimal(12, 4) // nominal base/months (display only)
+  dailyDepr        Decimal @default(0) @map("daily_depr") @db.Decimal(12, 4) // (cost−salvage) ÷ (years×365); actual posting basis
   accumulatedDepr  Decimal @default(0) @map("accumulated_depr") @db.Decimal(12, 2)
   netBookValue     Decimal @map("net_book_value") @db.Decimal(12, 2)
 

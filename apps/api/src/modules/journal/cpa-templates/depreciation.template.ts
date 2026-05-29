@@ -3,6 +3,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { depreciationForPeriod } from '../../asset/depreciation-schedule.util';
 
 /** Maps AssetCategory → [Dr expenseCode, Cr accumulatedCode] (fallback when asset.coa* snapshots are null) */
 const CATEGORY_ACCOUNT_MAP: Record<string, [string, string]> = {
@@ -26,11 +27,14 @@ export interface DepreciationTemplateInput {
 }
 
 /**
- * Template — Monthly straight-line depreciation (Phase 1).
+ * Template — Daily straight-line depreciation (per-period posting).
+ *
+ * The amount for a given month = dailyRate × days-in-period (partial first/last
+ * months handled by buildDepreciationSchedule). See depreciation-schedule.util.
  *
  * JE per asset:
- *   Dr 53-160X ค่าเสื่อมราคา - <category>         [monthlyAmount]
- *     Cr 12-210X ค่าเสื่อมราคาสะสม - <category>   [monthlyAmount]
+ *   Dr 53-160X ค่าเสื่อมราคา - <category>         [periodAmount]
+ *     Cr 12-210X ค่าเสื่อมราคาสะสม - <category>   [periodAmount]
  *
  * Account routing (in order of precedence):
  *   1. asset.coaExpenseAccount / asset.coaDeprAccount snapshots (set at POST time)
@@ -43,10 +47,10 @@ export interface DepreciationTemplateInput {
  * update run inside ONE $transaction. When the caller passes outerTx, we run
  * inside their transaction (no nested $transaction).
  *
- * Rounding: monthly depreciation uses ROUND_DOWN (per accounting.md) — same
- * convention as gross/12 in installment accruals.
+ * Rounding: each period ROUND_HALF_UP to 2 dp; final period force-filled so
+ * Σ posts = (cost − salvage) exactly (per spec R1).
  *
- * Guards: POSTED status only, not fully depreciated.
+ * Guards: POSTED status only, not fully depreciated, period within window.
  */
 @Injectable()
 export class DepreciationTemplate {
@@ -81,7 +85,7 @@ export class DepreciationTemplate {
       return null;
     }
 
-    // Compute monthly depreciation
+    // Depreciable base + remaining (guards below)
     const purchaseCost = new Decimal(asset.purchaseCost.toString());
     const residualValue = new Decimal(asset.residualValue.toString());
     const accumulatedDepr = new Decimal(asset.accumulatedDepr.toString());
@@ -103,13 +107,28 @@ export class DepreciationTemplate {
       return null;
     }
 
-    // ROUND_DOWN per accounting.md (matches installment accrual gross/12 convention).
-    // For the LAST month of the asset's life, post the remaining un-depreciated base
-    // instead of monthlyAmount — otherwise rounding drift (e.g. 107000 / 36 = 2972.22…)
-    // leaves a small residue on the balance sheet (NBV never reaches residualValue
-    // cleanly). monthsPostedSoFar must be queried inside the tx; actualAmount is
-    // therefore computed in `run` below.
-    const monthlyAmount = depreciableBase.div(lifeMonths).toDecimalPlaces(2, Decimal.ROUND_DOWN);
+    // Daily straight-line: the amount for this period = dailyRate × days-in-period
+    // (partial first/last months handled by the schedule). The final period is
+    // force-filled so Σ posts = depreciableBase exactly (NBV reaches residual
+    // cleanly). buildDepreciationSchedule is the single source of truth, shared
+    // with previewRun + getAssetSchedule. If the period is outside the asset's
+    // depreciation window, there is nothing to post.
+    const scheduleRow = depreciationForPeriod(
+      {
+        purchaseCost,
+        residualValue,
+        usefulLifeMonths: lifeMonths,
+        startDate: asset.purchaseDate,
+        disposalDate: asset.disposalDate,
+      },
+      period,
+    );
+    if (!scheduleRow) {
+      this.logger.log(
+        `[Phase1] DepreciationTemplate: asset ${asset.assetCode} period ${period} outside depreciation window — skipping`,
+      );
+      return null;
+    }
 
     // Resolve account codes — prefer asset.coa* snapshots (pinned at POST time)
     // over CATEGORY_ACCOUNT_MAP. Defensive fallback for legacy/test assets that
@@ -145,16 +164,11 @@ export class DepreciationTemplate {
           : null;
       }
 
-      // Decide actualAmount inside tx so monthsPostedSoFar is consistent with the
-      // DepreciationEntry insert that follows. Last-month detection cleans up
-      // rounding drift so Σ posts = depreciableBase exactly.
-      const monthsPostedSoFar = await tx.depreciationEntry.count({ where: { assetId } });
-      const isFinalMonth = monthsPostedSoFar + 1 >= lifeMonths;
-      const actualAmount = isFinalMonth
-        ? remainingBase
-        : monthlyAmount.gt(remainingBase)
-          ? remainingBase
-          : monthlyAmount;
+      // Post the scheduled day-based amount, capped at the remaining base so we
+      // never depreciate past the residual floor (guards against accumulated
+      // drift if a prior period was skipped).
+      const scheduled = new Decimal(scheduleRow.amount.toString());
+      const actualAmount = scheduled.gt(remainingBase) ? remainingBase : scheduled;
 
       const result = await this.journal.createAndPost(
         {

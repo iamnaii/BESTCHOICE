@@ -24,7 +24,8 @@ export interface CalculationResult {
   whtAmount: number;
   purchaseCost: number; // basePrice + ship + install + other
   totalPayable: number; // purchaseCost + (excl ? vat : 0) - wht
-  monthlyDepr: number;
+  monthlyDepr: number; // nominal: base / months (display only)
+  dailyDepr: number; // base ÷ (years × 365) — actual posting basis
   netBookValue: number;
   journalLines: JournalLine[];
   totalDr: number;
@@ -91,7 +92,10 @@ export function useAssetCalculation(values: Partial<AssetEntryFormValues>): Calc
     // changes how basePrice is parsed. Cash out always = (ex-VAT cost) + VAT − WHT.
     // (Matches server-side asset-purchase.template.ts logic.)
     const totalPayable = round2(purchaseCost + vatAmount - whtAmount);
+    // Nominal monthly (display only) — base / months.
     const monthlyDepr = round4((purchaseCost - residual) / usefulLife);
+    // Daily rate (actual posting basis) — base ÷ (years × 365), 365-day fixed year.
+    const dailyDepr = round4((purchaseCost - residual) / ((usefulLife / 12) * 365));
 
     // JE preview lines — names resolved from chart_of_accounts (P13).
     const cat = values.category;
@@ -142,6 +146,7 @@ export function useAssetCalculation(values: Partial<AssetEntryFormValues>): Calc
       purchaseCost,
       totalPayable,
       monthlyDepr,
+      dailyDepr,
       netBookValue: purchaseCost,
       journalLines: lines,
       totalDr: round2(totalDr),

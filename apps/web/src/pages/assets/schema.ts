@@ -18,6 +18,10 @@ export const assetEntrySchema = z
     warrantyExpire: z.string().optional(),
 
     // Section 2 — pricing / VAT / WHT / depreciation
+    // Line-item inputs (expense-style). basePrice is derived = qty × unitPrice − discount.
+    quantity: z.coerce.number().min(0).optional().default(1),
+    unitPrice: z.coerce.number().min(0).optional().default(0),
+    discount: z.coerce.number().min(0).optional().default(0),
     basePrice: z.coerce.number().positive('ราคาต้องมากกว่า 0'),
     shippingCost: z.coerce.number().min(0).optional().default(0),
     installationCost: z.coerce.number().min(0).optional().default(0),

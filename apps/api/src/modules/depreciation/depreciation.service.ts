@@ -4,6 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { DepreciationTemplate } from '../journal/cpa-templates/depreciation.template';
 import { DepreciationReverseTemplate } from '../journal/cpa-templates/depreciation-reverse.template';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
+import { depreciationForPeriod } from '../asset/depreciation-schedule.util';
 
 /** Maps AssetCategory → [Dr expenseCode, Cr accumulatedCode] (fallback when asset.coa* snapshots are null) */
 const CATEGORY_ACCOUNT_MAP: Record<string, [string, string]> = {
@@ -152,8 +153,21 @@ export class DepreciationService {
 
       if (remainingBase.lte(0)) continue; // fully depreciated
 
-      const monthlyDepr = new Decimal(asset.monthlyDepr.toString());
-      const thisMonth = remainingBase.lt(monthlyDepr) ? remainingBase : monthlyDepr;
+      // Day-based amount for this period (shared schedule = template source of truth).
+      const row = depreciationForPeriod(
+        {
+          purchaseCost,
+          residualValue,
+          usefulLifeMonths: asset.usefulLifeMonths,
+          startDate: asset.purchaseDate,
+          disposalDate: asset.disposalDate,
+        },
+        period,
+      );
+      if (!row) continue; // period outside this asset's depreciation window
+
+      const scheduled = new Decimal(row.amount.toString());
+      const thisMonth = scheduled.gt(remainingBase) ? remainingBase : scheduled;
 
       const drAccount =
         asset.coaExpenseAccount ?? CATEGORY_ACCOUNT_MAP[asset.category]?.[0] ?? '53-1601';

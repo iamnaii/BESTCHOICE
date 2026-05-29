@@ -27,22 +27,22 @@ export class IntegrationsController {
   ) {}
 
   @Get()
-  @Roles('OWNER')
+  @Roles('OWNER', 'ACCOUNTANT')
   @ApiOperation({ summary: 'รายการ integration ทั้งหมดพร้อมสถานะ' })
   listAll() {
     return this.integrationsService.listAll();
   }
 
   @Get('registry')
-  @Roles('OWNER')
+  @Roles('OWNER', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Integration definitions สำหรับสร้าง form ฝั่ง frontend' })
   getRegistry() {
     return INTEGRATIONS;
   }
 
   @Get(':key/config')
-  @Roles('OWNER')
-  @ApiOperation({ summary: 'ดู config ที่ masked สำหรับ integration' })
+  @Roles('OWNER', 'ACCOUNTANT')
+  @ApiOperation({ summary: 'ดู config ที่ masked สำหรับ integration (read-only สำหรับ ACCOUNTANT — reviewer panel)' })
   async getConfig(@Param('key') key: string) {
     const def = getIntegrationDef(key);
     const masked = await this.configService.getMaskedConfig(key);

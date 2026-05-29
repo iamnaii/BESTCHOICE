@@ -314,7 +314,11 @@ export default function AssetDetailPage() {
                       <dd>{asset.usefulLifeMonths} เดือน</dd>
                     </div>
                     <div>
-                      <dt className="text-muted-foreground">ค่าเสื่อม/เดือน</dt>
+                      <dt className="text-muted-foreground">ค่าเสื่อม/วัน</dt>
+                      <dd className="tabular-nums">{fmt(asset.dailyDepr)}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-muted-foreground">ค่าเสื่อม/เดือน (เฉลี่ย)</dt>
                       <dd className="tabular-nums">{fmt(asset.monthlyDepr)}</dd>
                     </div>
                     <div>

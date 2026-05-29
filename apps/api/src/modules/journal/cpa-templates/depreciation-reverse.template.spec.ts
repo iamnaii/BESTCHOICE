@@ -111,7 +111,8 @@ describe('DepreciationReverseTemplate', () => {
     const asset = await postedAsset();
     await depr.execute({ assetId: asset.id, period: '2026-05' });
     const beforeReverse = await prisma.fixedAsset.findUnique({ where: { id: asset.id } });
-    expect(new Decimal(beforeReverse!.accumulatedDepr.toString()).toFixed(2)).toBe('833.33');
+    // Daily: 30000/((36/12)×365)=27.3973/day × 31 (May) = 849.32
+    expect(new Decimal(beforeReverse!.accumulatedDepr.toString()).toFixed(2)).toBe('849.32');
 
     const result = await reverseDepr.execute({ period: '2026-05', reversedById: userId, reason: 'test' });
     expect(result.reversedCount).toBe(1);

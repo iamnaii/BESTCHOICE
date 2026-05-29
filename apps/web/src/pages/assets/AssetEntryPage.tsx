@@ -42,6 +42,9 @@ const today = () => new Date().toISOString().slice(0, 10);
 const defaultValues: AssetEntryFormValues = {
   name: '',
   category: 'EQUIPMENT',
+  quantity: 1,
+  unitPrice: 0,
+  discount: 0,
   basePrice: 0,
   shippingCost: 0,
   installationCost: 0,
@@ -124,6 +127,10 @@ export default function AssetEntryPage() {
         location: a.location ?? undefined,
         serialNo: a.serialNo ?? undefined,
         warrantyExpire: a.warrantyExpire?.slice(0, 10),
+        // Reconstruct the single line from the stored basePrice (qty 1, no discount).
+        quantity: 1,
+        unitPrice: Number(a.basePrice),
+        discount: 0,
         basePrice: Number(a.basePrice),
         shippingCost: Number(a.shippingCost),
         installationCost: Number(a.installationCost),

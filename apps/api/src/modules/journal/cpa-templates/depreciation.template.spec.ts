@@ -89,7 +89,7 @@ describe('DepreciationTemplate', () => {
   });
 
   it('posts balanced JE for EQUIPMENT (Dr 53-1601 / Cr 12-2102)', async () => {
-    // 60,000 / 60 months = 1,000/month
+    // Daily: 60,000 / ((60/12)×365) = 32.8767/day × 30 (April) = 986.30
     const asset = await ensureTestAsset({
       category: 'EQUIPMENT',
       purchaseCost: 60000,
@@ -123,17 +123,17 @@ describe('DepreciationTemplate', () => {
 
     const drLine = lines.find((l) => l.accountCode === '53-1601');
     expect(drLine).toBeDefined();
-    expect(new Decimal(drLine!.debit.toString()).toFixed(2)).toBe('1000.00');
+    expect(new Decimal(drLine!.debit.toString()).toFixed(2)).toBe('986.30');
 
     const crLine = lines.find((l) => l.accountCode === '12-2102');
     expect(crLine).toBeDefined();
-    expect(new Decimal(crLine!.credit.toString()).toFixed(2)).toBe('1000.00');
+    expect(new Decimal(crLine!.credit.toString()).toFixed(2)).toBe('986.30');
 
     // Asset updated
     const updated = await prisma.fixedAsset.findFirst({ where: { id: asset.id } });
-    expect(new Decimal(updated!.accumulatedDepr.toString()).toFixed(2)).toBe('1000.00');
-    // netBookValue must be updated alongside accumulatedDepr: 60000 - 1000 = 59000
-    expect(new Decimal(updated!.netBookValue.toString()).toFixed(2)).toBe('59000.00');
+    expect(new Decimal(updated!.accumulatedDepr.toString()).toFixed(2)).toBe('986.30');
+    // netBookValue updated alongside accumulatedDepr: 60000 - 986.30 = 59013.70
+    expect(new Decimal(updated!.netBookValue.toString()).toFixed(2)).toBe('59013.70');
   });
 
   it('posts correct accounts per category: VEHICLE → Dr 53-1604 / Cr 12-2108', async () => {
@@ -227,8 +227,8 @@ describe('DepreciationTemplate', () => {
     expect(result).toBeNull();
   });
 
-  it('uses usefulLifeMonths to compute monthly depreciation', async () => {
-    // usefulLifeMonths=12 on 60,000 cost → 5,000/month
+  it('uses usefulLifeMonths to compute daily depreciation', async () => {
+    // usefulLifeMonths=12 on 60,000 → 60000/365 = 164.3836/day × 30 (Sep) = 4931.51
     const asset = await ensureTestAsset({
       category: 'EQUIPMENT',
       purchaseCost: 60000,
@@ -241,6 +241,6 @@ describe('DepreciationTemplate', () => {
     const entry = await prisma.depreciationEntry.findFirst({
       where: { assetId: asset.id, period: '2026-09' },
     });
-    expect(new Decimal(entry!.amount.toString()).toFixed(2)).toBe('5000.00');
+    expect(new Decimal(entry!.amount.toString()).toFixed(2)).toBe('4931.51');
   });
 });

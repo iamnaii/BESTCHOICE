@@ -16,6 +16,7 @@ import { AssetDisposalTemplate } from '../journal/cpa-templates/asset-disposal.t
 import { AssetDisposalReverseTemplate } from '../journal/cpa-templates/asset-disposal-reverse.template';
 import { AssetInvoiceReceivedTemplate } from '../journal/cpa-templates/asset-invoice-received.template';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
+import { buildDepreciationSchedule } from './depreciation-schedule.util';
 
 const CATEGORY_PREFIX: Record<AssetCategory, string> = {
   EQUIPMENT: 'EQ',
@@ -200,9 +201,16 @@ export class AssetService {
       whtAmount = round2(whtBaseRaw.times(input.whtRate.toString()));
     }
 
+    // Nominal monthly figure (display only) — base / months.
     const monthlyDepr = round4(
       purchaseCost.minus(residualValue).div(input.usefulLifeMonths),
     );
+    // Daily rate (actual posting basis) — base ÷ (years × 365), years = months/12.
+    // Equivalent to base × 12 / (months × 365). 365-day fixed year per spec R3.
+    const totalDays = new Decimal(input.usefulLifeMonths).times(365).div(12);
+    const dailyDepr = totalDays.gt(0)
+      ? round4(purchaseCost.minus(residualValue).div(totalDays))
+      : new Decimal(0);
 
     return {
       basePrice,
@@ -210,6 +218,7 @@ export class AssetService {
       purchaseCost,
       whtAmount,
       monthlyDepr,
+      dailyDepr,
       // Echo back inputs that callers also need
       shippingCost,
       installationCost,
@@ -225,6 +234,7 @@ export class AssetService {
       purchaseCost,
       whtAmount,
       monthlyDepr,
+      dailyDepr,
       shippingCost,
       installationCost,
       otherCapitalized,
@@ -261,6 +271,7 @@ export class AssetService {
           residualValue,
           usefulLifeMonths: dto.usefulLifeMonths,
           monthlyDepr,
+          dailyDepr,
           netBookValue: purchaseCost,
           purchaseDate: new Date(dto.purchaseDate),
           invoiceDate: dto.invoiceDate ? new Date(dto.invoiceDate) : null,
@@ -357,6 +368,7 @@ export class AssetService {
         purchaseCost: computed.purchaseCost,
         whtAmount: computed.whtAmount,
         monthlyDepr: computed.monthlyDepr,
+        dailyDepr: computed.dailyDepr,
         netBookValue: computed.purchaseCost,
       };
     }
@@ -708,17 +720,17 @@ export class AssetService {
   }
 
   /**
-   * Per-asset Asset Schedule — month-by-month NBV projection from purchaseDate.
+   * Per-asset Asset Schedule — day-based month-by-month NBV projection.
    *
    * Behavior:
-   *  - Cursor starts at first day of asset.purchaseDate's month
-   *  - Each iteration: if a DepreciationEntry exists for the period, use its
-   *    actual amount; otherwise use the formula `monthlyDepr` (clamped so we
-   *    never depreciate below the residualValue floor)
+   *  - Projection comes from buildDepreciationSchedule (dailyRate × days/period,
+   *    partial first/last months, forced-exact final period) — the same source
+   *    of truth as the depreciation template + preview.
+   *  - Each row: if a DepreciationEntry exists for the period, its actual posted
+   *    amount overrides the projection; otherwise the scheduled amount is used
+   *    (clamped so we never depreciate below the residualValue floor)
    *  - Stops at the first FULLY_DEPRECIATED period (NBV ≤ residualValue)
-   *  - If asset.disposalDate is set, also stops when periodEnd > disposalDate
-   *  - Hard cap at 60 months as a sanity guard (unbounded loops shouldn't occur
-   *    given the residual-floor + disposalDate truncation, but guard anyway)
+   *  - asset.disposalDate truncates the schedule (R4)
    */
   async getAssetSchedule(assetId: string) {
     const asset = await this.prisma.fixedAsset.findFirst({
@@ -729,8 +741,10 @@ export class AssetService {
     const purchaseCost = new Decimal(asset.purchaseCost.toString());
     const residualValue = new Decimal(asset.residualValue.toString());
     const monthlyDepr = new Decimal(asset.monthlyDepr.toString());
+    const depreciableBase = purchaseCost.minus(residualValue);
 
-    // Load existing entries indexed by period (skip reversed)
+    // Load existing entries indexed by period (skip reversed) — actual posted
+    // amounts override the projection for past periods.
     const entries = await this.prisma.depreciationEntry.findMany({
       where: { assetId, reversedAt: null },
       select: { period: true, amount: true },
@@ -739,8 +753,18 @@ export class AssetService {
       entries.map((e) => [e.period, new Decimal(e.amount.toString())]),
     );
 
+    // Day-based projection — single source of truth shared with template/preview.
+    const schedule = buildDepreciationSchedule({
+      purchaseCost,
+      residualValue,
+      usefulLifeMonths: asset.usefulLifeMonths,
+      startDate: asset.purchaseDate,
+      disposalDate: asset.disposalDate,
+    });
+
     const rows: Array<{
       period: string;
+      days: number;
       monthlyDepr: string;
       accumulatedDepr: string;
       netBookValue: string;
@@ -748,26 +772,13 @@ export class AssetService {
     }> = [];
 
     let accumulated = new Decimal(0);
-    const cursor = new Date(asset.purchaseDate);
-    cursor.setDate(1);
-    const cutoff = asset.disposalDate ?? null;
-    const HARD_CAP = 60;
-
-    for (let i = 0; i < HARD_CAP; i++) {
-      const periodEnd = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0);
-      if (cutoff && periodEnd > cutoff) break;
-
-      const period = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`;
-      const remaining = purchaseCost.minus(accumulated).minus(residualValue);
-      if (remaining.lte(0)) break;
-
-      let thisMonth: Decimal;
-      if (entryByPeriod.has(period)) {
-        thisMonth = entryByPeriod.get(period)!;
-      } else {
-        // Last-period adjustment: never over-depreciate past residual floor
-        thisMonth = remaining.lt(monthlyDepr) ? remaining : monthlyDepr;
-      }
+    for (const r of schedule.rows) {
+      const posted = entryByPeriod.get(r.period);
+      let thisMonth = posted ?? r.amount;
+      // Never depreciate past the residual floor.
+      const remaining = depreciableBase.minus(accumulated);
+      if (thisMonth.gt(remaining)) thisMonth = remaining;
+      if (thisMonth.lte(0)) break;
 
       accumulated = accumulated.plus(thisMonth);
       const nbv = purchaseCost.minus(accumulated);
@@ -775,7 +786,8 @@ export class AssetService {
         nbv.lte(residualValue) ? 'FULLY_DEPRECIATED' : 'ACTIVE';
 
       rows.push({
-        period,
+        period: r.period,
+        days: r.days,
         monthlyDepr: thisMonth.toFixed(2),
         accumulatedDepr: accumulated.toFixed(2),
         netBookValue: nbv.toFixed(2),
@@ -783,7 +795,6 @@ export class AssetService {
       });
 
       if (status === 'FULLY_DEPRECIATED') break;
-      cursor.setMonth(cursor.getMonth() + 1);
     }
 
     return {
@@ -794,6 +805,7 @@ export class AssetService {
       purchaseCost: purchaseCost.toFixed(2),
       residualValue: residualValue.toFixed(2),
       monthlyDepr: monthlyDepr.toFixed(2),
+      dailyDepr: schedule.dailyDepr.toFixed(4),
       rows,
     };
   }

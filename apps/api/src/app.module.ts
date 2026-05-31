@@ -59,6 +59,7 @@ import { EmailModule } from './modules/email/email.module';
 import { InviteModule } from './modules/invite/invite.module';
 import { PaySolutionsModule } from './modules/paysolutions/paysolutions.module';
 import { FinanceReceivableModule } from './modules/finance-receivable/finance-receivable.module';
+import { FinanceCompanyContactsModule } from './modules/finance-company-contacts/finance-company-contacts.module';
 import { AccountingModule } from './modules/accounting/accounting.module';
 import { OtherIncomeModule } from './modules/other-income/other-income.module';
 import { BookingsModule } from './modules/bookings/bookings.module';
@@ -233,6 +234,8 @@ import { AppCacheModule } from './cache/cache.module';
     PaySolutionsModule,
     // Finance Receivable
     FinanceReceivableModule,
+    // Finance Company Contacts
+    FinanceCompanyContactsModule,
     // Expense Management
     AccountingModule,
     // Other Income (รายได้อื่น — FINANCE only)

@@ -107,6 +107,9 @@ const LiffNotificationSettings = lazy(() => import('@/pages/liff/LiffNotificatio
 const LineOaSettingsPage = lazy(() => import('@/pages/LineOaSettingsPage'));
 const FinanceReceivablePage = lazy(() => import('@/pages/FinanceReceivablePage'));
 const FinancePortfolioPage = lazy(() => import('@/pages/FinancePortfolioPage'));
+const ExternalFinanceCompanyDetailPage = lazy(
+  () => import('@/pages/ExternalFinanceCompanyDetailPage'),
+);
 const ExpensesPage = lazy(() => import('@/pages/ExpensesPage'));
 const APAgingPage = lazy(() => import('@/pages/APAgingPage'));
 const PaymentVoucherPage = lazy(() => import('@/pages/PaymentVoucherPage'));
@@ -519,6 +522,14 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
                 <FinancePortfolioPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/external-finance-companies/:id"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <ExternalFinanceCompanyDetailPage />
               </ProtectedRoute>
             }
           />

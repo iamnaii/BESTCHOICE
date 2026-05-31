@@ -111,3 +111,77 @@ describe('FinanceReceivableContactLogsService — record', () => {
 
 // suppress unused import warning for FinanceContactChannel (used in DTO type)
 void FinanceContactChannel;
+
+describe('FinanceReceivableContactLogsService — list/update/delete', () => {
+  let service: FinanceReceivableContactLogsService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let prisma: any;
+
+  beforeEach(async () => {
+    prisma = {
+      financeReceivableContactLog: {
+        findMany: jest.fn(),
+        findFirst: jest.fn(),
+        update: jest.fn(),
+        count: jest.fn(),
+      },
+      financeReceivable: { findFirst: jest.fn(), update: jest.fn() },
+      externalFinanceCompany: { findFirst: jest.fn() },
+    };
+    const mod = await Test.createTestingModule({
+      providers: [
+        FinanceReceivableContactLogsService,
+        { provide: PrismaService, useValue: prisma },
+      ],
+    }).compile();
+    service = mod.get(FinanceReceivableContactLogsService);
+  });
+
+  it('list returns logs ordered newest first with contact + user joined', async () => {
+    prisma.financeReceivableContactLog.findMany.mockResolvedValue([]);
+    await service.list('rec-1');
+    const arg = prisma.financeReceivableContactLog.findMany.mock.calls[0][0];
+    expect(arg.where).toEqual({ financeReceivableId: 'rec-1', deletedAt: null });
+    expect(arg.orderBy).toEqual({ contactedAt: 'desc' });
+    expect(arg.include).toMatchObject({
+      contact: { select: expect.any(Object) },
+      contactedBy: { select: expect.any(Object) },
+    });
+  });
+
+  it('update rejects when user is not author + not OWNER/FINANCE_MANAGER', async () => {
+    prisma.financeReceivableContactLog.findFirst.mockResolvedValue({
+      id: 'log-1',
+      contactedById: 'other-user',
+      createdAt: new Date(),
+    });
+    await expect(
+      service.update('rec-1', 'log-1', 'user-1', 'ACCOUNTANT', { notes: 'x' }),
+    ).rejects.toThrow(/แก้ไขได้เฉพาะเจ้าของ/);
+  });
+
+  it('update rejects when own log but past 24h window', async () => {
+    const old = new Date(Date.now() - 25 * 60 * 60 * 1000);
+    prisma.financeReceivableContactLog.findFirst.mockResolvedValue({
+      id: 'log-1',
+      contactedById: 'user-1',
+      createdAt: old,
+    });
+    await expect(
+      service.update('rec-1', 'log-1', 'user-1', 'ACCOUNTANT', { notes: 'x' }),
+    ).rejects.toThrow(/24/);
+  });
+
+  it('update allows OWNER any time', async () => {
+    const old = new Date(Date.now() - 48 * 60 * 60 * 1000);
+    prisma.financeReceivableContactLog.findFirst.mockResolvedValue({
+      id: 'log-1',
+      contactedById: 'someone',
+      createdAt: old,
+    });
+    prisma.financeReceivableContactLog.update.mockResolvedValue({});
+    await expect(
+      service.update('rec-1', 'log-1', 'owner-1', 'OWNER', { notes: 'x' }),
+    ).resolves.toBeDefined();
+  });
+});

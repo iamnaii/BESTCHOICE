@@ -90,20 +90,149 @@ export class FinanceReceivableContactLogsService {
     });
   }
 
-  // stubs — implemented in Task 9
-  async list(_receivableId: string) {
-    return [];
+  async list(receivableId: string) {
+    return this.prisma.financeReceivableContactLog.findMany({
+      where: { financeReceivableId: receivableId, deletedAt: null },
+      orderBy: { contactedAt: 'desc' },
+      include: {
+        contact: { select: { id: true, name: true, position: true, phone: true } },
+        contactedBy: { select: { id: true, name: true } },
+      },
+    });
   }
+
   async update(
-    _receivableId: string,
-    _logId: string,
-    _userId: string,
-    _userRole: string,
-    _dto: UpdateFinanceContactLogDto,
+    receivableId: string,
+    logId: string,
+    userId: string,
+    userRole: string,
+    dto: UpdateFinanceContactLogDto,
   ) {
-    throw new ForbiddenException('Not implemented');
+    const log = await this.prisma.financeReceivableContactLog.findFirst({
+      where: { id: logId, financeReceivableId: receivableId, deletedAt: null },
+    });
+    if (!log) throw new NotFoundException('ไม่พบบันทึกการติดต่อ');
+
+    const isPrivileged = userRole === 'OWNER' || userRole === 'FINANCE_MANAGER';
+    if (!isPrivileged) {
+      if (log.contactedById !== userId) {
+        throw new ForbiddenException('แก้ไขได้เฉพาะเจ้าของ log');
+      }
+      const ageMs = Date.now() - new Date(log.createdAt).getTime();
+      if (ageMs > 24 * 60 * 60 * 1000) {
+        throw new ForbiddenException('เกิน 24 ชั่วโมง ไม่สามารถแก้ไขได้');
+      }
+    }
+
+    return this.prisma.financeReceivableContactLog.update({
+      where: { id: logId },
+      data: {
+        notes: dto.notes,
+        result: dto.result,
+        channel: dto.channel,
+        financeCompanyContactId: dto.financeCompanyContactId,
+        promisedDate: dto.promisedDate ? new Date(dto.promisedDate) : undefined,
+        promisedAmount: dto.promisedAmount,
+        contactedAt: dto.contactedAt ? new Date(dto.contactedAt) : undefined,
+      },
+    });
   }
-  async softDelete(_receivableId: string, _logId: string) {
-    throw new ForbiddenException('Not implemented');
+
+  async softDelete(receivableId: string, logId: string) {
+    const log = await this.prisma.financeReceivableContactLog.findFirst({
+      where: { id: logId, financeReceivableId: receivableId, deletedAt: null },
+    });
+    if (!log) throw new NotFoundException('ไม่พบบันทึกการติดต่อ');
+
+    await this.prisma.financeReceivableContactLog.update({
+      where: { id: logId },
+      data: { deletedAt: new Date() },
+    });
+
+    // Recompute KPI from remaining logs
+    const remaining = await this.prisma.financeReceivableContactLog.findMany({
+      where: { financeReceivableId: receivableId, deletedAt: null },
+      orderBy: { contactedAt: 'desc' },
+      take: 100,
+    });
+    const lastContactedAt = remaining[0]?.contactedAt ?? null;
+    const lastPromised = remaining.find(
+      (l) => l.result === 'PROMISED' && l.promisedDate,
+    );
+    await this.prisma.financeReceivable.update({
+      where: { id: receivableId },
+      data: {
+        lastContactedAt,
+        lastPromisedDate: lastPromised?.promisedDate ?? null,
+        contactAttemptCount: remaining.length,
+      },
+    });
+    return { ok: true };
+  }
+
+  async companyContactSummary(companyId: string) {
+    const [receivableCount, totalOutstandingAgg, lastLog, brokenCount, keptCount] =
+      await Promise.all([
+        this.prisma.financeReceivable.count({
+          where: { externalFinanceCompanyId: companyId, deletedAt: null },
+        }),
+        this.prisma.financeReceivable.aggregate({
+          where: {
+            externalFinanceCompanyId: companyId,
+            deletedAt: null,
+            status: { in: ['PENDING', 'OVERDUE', 'DISPUTED', 'PARTIALLY_RECEIVED'] },
+          },
+          _sum: { netExpectedAmount: true, receivedAmount: true },
+        }),
+        this.prisma.financeReceivableContactLog.findFirst({
+          where: { externalFinanceCompanyId: companyId, deletedAt: null },
+          orderBy: { contactedAt: 'desc' },
+          select: { contactedAt: true },
+        }),
+        this.prisma.financeReceivableContactLog.count({
+          where: {
+            externalFinanceCompanyId: companyId,
+            deletedAt: null,
+            promisedBrokenAt: { not: null },
+          },
+        }),
+        this.prisma.financeReceivableContactLog.count({
+          where: {
+            externalFinanceCompanyId: companyId,
+            deletedAt: null,
+            promisedKeptAt: { not: null },
+          },
+        }),
+      ]);
+
+    return {
+      receivableCount,
+      totalOutstanding: totalOutstandingAgg._sum.netExpectedAmount ?? 0,
+      lastContactedAt: lastLog?.contactedAt ?? null,
+      brokenPromiseCount: brokenCount,
+      keptPromiseCount: keptCount,
+    };
+  }
+
+  async companyContactLogs(companyId: string, page = 1, limit = 20) {
+    const safeLimit = Math.min(100, Math.max(1, limit));
+    const safePage = Math.max(1, page);
+    const [data, total] = await Promise.all([
+      this.prisma.financeReceivableContactLog.findMany({
+        where: { externalFinanceCompanyId: companyId, deletedAt: null },
+        orderBy: { contactedAt: 'desc' },
+        include: {
+          receivable: { select: { id: true, financeRefNumber: true, expectedAmount: true } },
+          contact: { select: { id: true, name: true, position: true } },
+          contactedBy: { select: { id: true, name: true } },
+        },
+        skip: (safePage - 1) * safeLimit,
+        take: safeLimit,
+      }),
+      this.prisma.financeReceivableContactLog.count({
+        where: { externalFinanceCompanyId: companyId, deletedAt: null },
+      }),
+    ]);
+    return { data, total, page: safePage, limit: safeLimit };
   }
 }

@@ -24,6 +24,18 @@ export class SalesService {
     private interCompanyService: InterCompanyService,
   ) {}
 
+  private async resolveExternalFinanceCompanyId(
+    tx: Prisma.TransactionClient,
+    name: string,
+  ): Promise<string> {
+    const company = await tx.externalFinanceCompany.upsert({
+      where: { name },
+      create: { name, isActive: true },
+      update: {},
+    });
+    return company.id;
+  }
+
   async findAll(filters: {
     saleType?: string;
     branchId?: string;
@@ -623,11 +635,13 @@ export class SalesService {
       // ── Finance Receivable for BESTCHOICE FINANCE (internal) ──
       const expectedDate = new Date();
       expectedDate.setDate(expectedDate.getDate() + 1); // Internal: expect next day
+      const bcFinanceId = await this.resolveExternalFinanceCompanyId(tx, 'BESTCHOICE FINANCE');
       await tx.financeReceivable.create({
         data: {
           saleId: sale.id,
           branchId: dto.branchId,
           financeCompany: 'BESTCHOICE FINANCE',
+          externalFinanceCompanyId: bcFinanceId,
           expectedAmount: calc.principal + calc.storeCommission,
           commissionRate: params.storeCommissionPct,
           commissionAmount: calc.storeCommission,
@@ -712,11 +726,13 @@ export class SalesService {
       // Auto-create FinanceReceivable to track money from finance company
       const expectedDate = new Date();
       expectedDate.setDate(expectedDate.getDate() + 7); // Default: expect within 7 days
+      const extFinanceId = await this.resolveExternalFinanceCompanyId(tx, dto.financeCompany!);
       await tx.financeReceivable.create({
         data: {
           saleId: sale.id,
           branchId: dto.branchId,
           financeCompany: dto.financeCompany!,
+          externalFinanceCompanyId: extFinanceId,
           financeRefNumber: dto.contractNumber || dto.financeRefNumber || null,
           expectedAmount: financeAmount,
           netExpectedAmount: financeAmount, // Commission can be updated later

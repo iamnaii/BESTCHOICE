@@ -186,6 +186,9 @@ describe('SalesService', () => {
       financeReceivable: {
         create: jest.fn().mockResolvedValue({}),
       },
+      externalFinanceCompany: {
+        upsert: jest.fn().mockResolvedValue({ id: 'mock-co' }),
+      },
       user: {
         findMany: jest.fn().mockResolvedValue([{ id: 'user-1', name: 'พนักงาน 1' }]),
       },

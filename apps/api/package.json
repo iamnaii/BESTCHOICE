@@ -24,6 +24,7 @@
     "prisma:seed": "npx tsx prisma/seed.ts",
     "seed:letters-mock": "npx tsx prisma/seeds/letters-mock.seed.ts",
     "backfill:promise-slots": "tsx scripts/backfill-promise-slots.ts",
+    "backfill:external-finance": "tsx scripts/backfill-external-finance-fk.ts",
     "wipe:accounting": "node dist/src/cli/wipe-accounting.cli.js",
     "wipe:accounting:help": "echo 'Usage: CONFIRM_WIPE=YES_I_AM_SURE EXPECTED_DB_NAME=<db> [ALLOW_PROD_WIPE=YES_I_AM_SURE] npm run wipe:accounting'",
     "wipe:expenses": "tsx src/cli/wipe-expenses.cli.ts",

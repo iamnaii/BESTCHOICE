@@ -37,6 +37,8 @@ export class FinanceReceivableController {
     @Query('endDate') endDate?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('externalFinanceCompanyId') externalFinanceCompanyId?: string,
+    @Query('brokenPromiseOnly') brokenPromiseOnly?: string,
     @Request() req?: { user: { role: string; branchId?: string } },
   ) {
     const effectiveBranchId = hasCrossBranchAccess(req?.user)
@@ -52,6 +54,8 @@ export class FinanceReceivableController {
       endDate,
       page: page ? parseInt(page) : 1,
       limit: limit ? parseInt(limit) : 20,
+      externalFinanceCompanyId,
+      brokenPromiseOnly: brokenPromiseOnly === 'true',
     });
   }
 

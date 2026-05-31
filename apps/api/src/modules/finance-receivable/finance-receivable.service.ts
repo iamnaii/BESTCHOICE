@@ -22,8 +22,10 @@ export class FinanceReceivableService {
     endDate?: string;
     page?: number;
     limit?: number;
+    externalFinanceCompanyId?: string;
+    brokenPromiseOnly?: boolean;
   }) {
-    const { status, financeCompany, branchId, search, startDate, endDate, page = 1, limit = 20 } = filters;
+    const { status, financeCompany, branchId, search, startDate, endDate, page = 1, limit = 20, externalFinanceCompanyId, brokenPromiseOnly } = filters;
     const safePage = Math.max(1, page);
     const safeLimit = Math.min(100, Math.max(1, limit));
 
@@ -31,6 +33,7 @@ export class FinanceReceivableService {
     if (status) where.status = status;
     if (financeCompany) where.financeCompany = financeCompany;
     if (branchId) where.branchId = branchId;
+    if (externalFinanceCompanyId) where.externalFinanceCompanyId = externalFinanceCompanyId;
     if (startDate || endDate) {
       where.expectedDate = {};
       if (startDate) where.expectedDate.gte = new Date(startDate);
@@ -39,6 +42,15 @@ export class FinanceReceivableService {
         end.setHours(23, 59, 59, 999);
         where.expectedDate.lte = end;
       }
+    }
+    if (brokenPromiseOnly) {
+      where.contactLogs = {
+        some: {
+          promisedBrokenAt: { not: null },
+          promisedKeptAt: null,
+          deletedAt: null,
+        },
+      };
     }
     if (search) {
       where.OR = [
@@ -104,24 +116,43 @@ export class FinanceReceivableService {
 
     const receivedAmount = new Prisma.Decimal(dto.receivedAmount);
     const netExpected = record.netExpectedAmount;
+    const receivedDate = new Date(dto.receivedDate);
 
     const status: FinanceReceivableStatus = receivedAmount.gte(netExpected) ? 'RECEIVED' : 'PARTIALLY_RECEIVED';
 
-    const updated = await this.prisma.financeReceivable.update({
-      where: { id },
-      data: {
-        receivedAmount,
-        receivedDate: new Date(dto.receivedDate),
-        bankRef: dto.bankRef,
-        note: dto.note ?? record.note,
-        status,
-        recordedById,
-      },
-      include: {
-        sale: { select: { saleNumber: true } },
-        branch: { select: { name: true } },
-      },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.financeReceivable.update({
+        where: { id },
+        data: {
+          receivedAmount,
+          receivedDate,
+          bankRef: dto.bankRef,
+          note: dto.note ?? record.note,
+          status,
+          recordedById,
+        },
+        include: {
+          sale: { select: { saleNumber: true } },
+          branch: { select: { name: true } },
+        },
+      });
+
+      // mark open PROMISED logs as kept if receivedDate <= promisedDate
+      await tx.financeReceivableContactLog.updateMany({
+        where: {
+          financeReceivableId: id,
+          deletedAt: null,
+          result: 'PROMISED',
+          promisedKeptAt: null,
+          promisedBrokenAt: null,
+          promisedDate: { gte: receivedDate },
+        },
+        data: { promisedKeptAt: receivedDate },
+      });
+
+      return result;
     });
+
     this.structuredLogger.log('financeReceivable.received', {
       financeReceivableId: id,
       financeCompany: record.financeCompany,

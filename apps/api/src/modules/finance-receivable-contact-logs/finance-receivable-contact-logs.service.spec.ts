@@ -18,6 +18,8 @@ describe('FinanceReceivableContactLogsService — record', () => {
       },
       externalFinanceCompany: {
         upsert: jest.fn(),
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn().mockResolvedValue({ id: 'co-new' }),
       },
       financeReceivableContactLog: {
         create: jest.fn(),
@@ -52,7 +54,8 @@ describe('FinanceReceivableContactLogsService — record', () => {
       contactAttemptCount: 0,
       lastPromisedDate: null,
     });
-    prisma.externalFinanceCompany.upsert.mockResolvedValue({ id: 'co-new' });
+    prisma.externalFinanceCompany.findMany.mockResolvedValue([]);
+    prisma.externalFinanceCompany.create.mockResolvedValue({ id: 'co-new' });
     prisma.financeReceivableContactLog.create.mockResolvedValue({ id: 'log-1' });
     prisma.financeReceivable.update.mockResolvedValue({});
 
@@ -60,7 +63,7 @@ describe('FinanceReceivableContactLogsService — record', () => {
       result: FinanceContactResult.ANSWERED,
     });
 
-    expect(prisma.externalFinanceCompany.upsert).toHaveBeenCalled();
+    expect(prisma.externalFinanceCompany.create).toHaveBeenCalled();
     const created = prisma.financeReceivableContactLog.create.mock.calls[0][0].data;
     expect(created.externalFinanceCompanyId).toBe('co-new');
   });

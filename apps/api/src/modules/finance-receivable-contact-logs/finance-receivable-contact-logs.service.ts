@@ -35,24 +35,24 @@ export class FinanceReceivableContactLogsService {
     return this.prisma.$transaction(async (tx) => {
       let companyId = receivable.externalFinanceCompanyId;
 
-      // D6: lazy resolve — upsert ExternalFinanceCompany if receivable has no FK yet
+      // D6: lazy resolve — match by normalized name to avoid duplicates from case/whitespace drift
       if (!companyId) {
         const normalized = normalizeFinanceCompanyName(receivable.financeCompany);
-        const company = await tx.externalFinanceCompany.upsert({
-          where: { name: receivable.financeCompany },
-          create: {
-            name: receivable.financeCompany,
-            isActive: true,
-          },
-          update: {},
+        const all = await tx.externalFinanceCompany.findMany({
+          where: { deletedAt: null },
+          select: { id: true, name: true },
         });
+        const match = all.find((c) => normalizeFinanceCompanyName(c.name) === normalized);
+        const company =
+          match ??
+          (await tx.externalFinanceCompany.create({
+            data: { name: receivable.financeCompany, isActive: true },
+          }));
         companyId = company.id;
         await tx.financeReceivable.update({
           where: { id: receivableId },
           data: { externalFinanceCompanyId: companyId },
         });
-        // suppress unused-var warning for `normalized` until backfill script reuses it
-        void normalized;
       }
 
       const contactedAt = dto.contactedAt ? new Date(dto.contactedAt) : new Date();

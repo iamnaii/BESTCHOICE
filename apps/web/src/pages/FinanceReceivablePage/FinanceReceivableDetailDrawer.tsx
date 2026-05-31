@@ -111,10 +111,10 @@ export default function FinanceReceivableDetailDrawer({ receivable, onClose }: P
         </SheetContent>
       </Sheet>
 
-      {dialogOpen && receivable.externalFinanceCompanyId && (
+      {dialogOpen && (
         <FinanceContactLogDialog
           receivableId={receivable.id}
-          companyId={receivable.externalFinanceCompanyId}
+          companyId={receivable.externalFinanceCompanyId ?? ''}
           outstanding={outstanding > 0 ? outstanding : 0}
           open={dialogOpen}
           onClose={() => setDialogOpen(false)}

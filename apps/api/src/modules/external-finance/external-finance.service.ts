@@ -35,6 +35,10 @@ export class ExternalFinanceService {
         bankAccountInfo: dto.bankAccountInfo as Prisma.InputJsonValue | undefined,
         notes: dto.notes,
         isActive: dto.isActive,
+        taxId: dto.taxId,
+        email: dto.email,
+        lineOaId: dto.lineOaId,
+        creditTermDays: dto.creditTermDays,
       },
     });
   }
@@ -51,6 +55,10 @@ export class ExternalFinanceService {
         bankAccountInfo: dto.bankAccountInfo as Prisma.InputJsonValue | undefined,
         notes: dto.notes,
         isActive: dto.isActive,
+        taxId: dto.taxId,
+        email: dto.email,
+        lineOaId: dto.lineOaId,
+        creditTermDays: dto.creditTermDays,
       },
     });
   }

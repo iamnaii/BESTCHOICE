@@ -17,6 +17,7 @@ import { formatDateShortThai, formatDateShort } from '@/utils/formatters';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { getStatusBadgeProps, financeReceivableStatusMap, interCompanyStatusMap } from '@/lib/status-badges';
+import FinanceReceivableDetailDrawer from './FinanceReceivablePage/FinanceReceivableDetailDrawer';
 
 interface FinanceReceivable {
   id: string; financeCompany: string; financeRefNumber: string | null;
@@ -24,6 +25,10 @@ interface FinanceReceivable {
   netExpectedAmount: string; receivedAmount: string | null; receivedDate: string | null;
   bankRef: string | null; expectedDate: string; status: string; note: string | null;
   createdAt: string;
+  externalFinanceCompanyId: string | null;
+  lastContactedAt: string | null;
+  lastPromisedDate: string | null;
+  contactAttemptCount: number;
   sale: {
     id: string; saleNumber: string; sellingPrice: string; netAmount: string;
     financeAmount: string | null; downPaymentAmount: string | null; createdAt: string;
@@ -212,6 +217,8 @@ export default function FinanceReceivablePage() {
   const debouncedSearch = useDebounce(search, 300);
 
   const [selectedRecord, setSelectedRecord] = useState<FinanceReceivable | null>(null);
+  const [selectedReceivable, setSelectedReceivable] = useState<FinanceReceivable | null>(null);
+  const [brokenPromiseOnly, setBrokenPromiseOnly] = useState(false);
   const [isReceiveModalOpen, setIsReceiveModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDisputeModalOpen, setIsDisputeModalOpen] = useState(false);
@@ -246,7 +253,7 @@ export default function FinanceReceivablePage() {
   });
 
   const { data: receivables, isLoading } = useQuery<{ data: FinanceReceivable[]; total: number }>({
-    queryKey: ['finance-receivable', statusFilter, companyFilter, branchFilter, startDate, endDate, debouncedSearch, page],
+    queryKey: ['finance-receivable', statusFilter, companyFilter, branchFilter, startDate, endDate, debouncedSearch, page, brokenPromiseOnly],
     queryFn: async () => {
       const p = new URLSearchParams({ limit: '20', page: String(page) });
       if (statusFilter) p.set('status', statusFilter);
@@ -255,6 +262,7 @@ export default function FinanceReceivablePage() {
       if (startDate) p.set('startDate', startDate);
       if (endDate) p.set('endDate', endDate);
       if (debouncedSearch) p.set('search', debouncedSearch);
+      if (brokenPromiseOnly) p.set('brokenPromiseOnly', 'true');
       return (await api.get(`/finance-receivable?${p}`)).data;
     },
   });
@@ -299,7 +307,7 @@ export default function FinanceReceivablePage() {
     {
       key: 'sale', label: 'รายการขาย',
       render: (r: FinanceReceivable) => (
-        <button onClick={() => openDetailModal(r)} className="text-left min-w-0 hover:text-primary transition-colors">
+        <button onClick={() => { openDetailModal(r); setSelectedReceivable(r); }} className="text-left min-w-0 hover:text-primary transition-colors">
           <div className="font-medium truncate">{r.sale.customer.name}</div>
           <div className="text-xs text-muted-foreground">{r.sale.saleNumber} &middot; {r.sale.product.name}</div>
         </button>
@@ -308,6 +316,25 @@ export default function FinanceReceivablePage() {
     {
       key: 'financeCompany', label: 'ไฟแนนซ์',
       render: (r: FinanceReceivable) => (<div><div className="font-medium">{r.financeCompany}</div>{r.financeRefNumber && <div className="text-xs text-muted-foreground">Ref: {r.financeRefNumber}</div>}</div>),
+    },
+    {
+      key: 'lastContactedAt',
+      label: 'ติดต่อล่าสุด',
+      render: (r: FinanceReceivable) =>
+        r.lastContactedAt ? formatDateShortThai(r.lastContactedAt) : '—',
+    },
+    {
+      key: 'lastPromisedDate',
+      label: 'นัดล่าสุด',
+      render: (r: FinanceReceivable) => {
+        if (!r.lastPromisedDate) return '—';
+        const overdue = new Date(r.lastPromisedDate) < new Date() && r.status !== 'RECEIVED';
+        return (
+          <span className={overdue ? 'text-red-600 font-medium' : ''}>
+            {formatDateShortThai(r.lastPromisedDate)}
+          </span>
+        );
+      },
     },
     { key: 'branch', label: 'สาขา', render: (r: FinanceReceivable) => r.branch.name },
     {
@@ -446,6 +473,17 @@ export default function FinanceReceivablePage() {
         </div>
       </div>
 
+      <div className="flex items-center gap-2 mb-4">
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={brokenPromiseOnly}
+            onChange={(e) => setBrokenPromiseOnly(e.target.checked)}
+          />
+          มีนัดเลยกำหนด
+        </label>
+      </div>
+
       <DataTable columns={columns} data={receivables?.data || []} isLoading={isLoading} emptyMessage="ไม่พบรายการเงินรับจากไฟแนนซ์" />
 
       {/* Pagination */}
@@ -553,6 +591,11 @@ export default function FinanceReceivablePage() {
           </div>
         )}
       </Modal>
+
+      <FinanceReceivableDetailDrawer
+        receivable={selectedReceivable}
+        onClose={() => setSelectedReceivable(null)}
+      />
     </div>
   );
 }

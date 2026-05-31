@@ -307,7 +307,7 @@ export default function FinanceReceivablePage() {
     {
       key: 'sale', label: 'รายการขาย',
       render: (r: FinanceReceivable) => (
-        <button onClick={() => { openDetailModal(r); setSelectedReceivable(r); }} className="text-left min-w-0 hover:text-primary transition-colors">
+        <button onClick={() => setSelectedReceivable(r)} className="text-left min-w-0 hover:text-primary transition-colors">
           <div className="font-medium truncate">{r.sale.customer.name}</div>
           <div className="text-xs text-muted-foreground">{r.sale.saleNumber} &middot; {r.sale.product.name}</div>
         </button>

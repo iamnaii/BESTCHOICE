@@ -772,6 +772,9 @@ model User {
   exchangeRequestsRequested ContractExchangeRequest[] @relation("ExchangeRequestsRequested")
   exchangeRequestsApproved  ContractExchangeRequest[] @relation("ExchangeRequestsApproved")
 
+  // Finance Receivable Contact System
+  financeContactLogs FinanceReceivableContactLog[] @relation("FinanceContactLogger")
+
   @@index([branchId])
   @@index([yeastarExtension])
   @@map("users")
@@ -3557,9 +3560,18 @@ model FinanceReceivable {
   updatedAt         DateTime                @updatedAt @map("updated_at")
   deletedAt         DateTime?               @map("deleted_at")
 
+  // ── new (Phase 1 nullable, Phase 3 → required) ──
+  externalFinanceCompanyId String?   @map("external_finance_company_id")
+  lastContactedAt          DateTime? @map("last_contacted_at")
+  lastPromisedDate         DateTime? @map("last_promised_date")
+  contactAttemptCount      Int       @default(0) @map("contact_attempt_count")
+
   sale       Sale   @relation(fields: [saleId], references: [id])
   branch     Branch @relation(fields: [branchId], references: [id])
   recordedBy User?  @relation("FinanceRecordedBy", fields: [recordedById], references: [id])
+
+  company     ExternalFinanceCompany?       @relation(fields: [externalFinanceCompanyId], references: [id])
+  contactLogs FinanceReceivableContactLog[]
 
   @@index([status])
   @@index([financeCompany])
@@ -3571,6 +3583,8 @@ model FinanceReceivable {
   // -column indexes can't be combined efficiently for high-cardinality
   // status filtering inside a branch).
   @@index([status, branchId])
+  @@index([externalFinanceCompanyId, status])
+  @@index([lastContactedAt])
   @@map("finance_receivables")
 }
 
@@ -6957,7 +6971,18 @@ model ExternalFinanceCompany {
   updatedAt             DateTime  @updatedAt @map("updated_at")
   deletedAt             DateTime? @map("deleted_at")
 
+  // ── new master fields (PEAK-style, focused) ──
+  taxId          String?  @map("tax_id")
+  email          String?
+  lineOaId       String?  @map("line_oa_id")
+  creditTermDays Int?     @map("credit_term_days")
+
   commissions ExternalFinanceCommission[]
+
+  // ── new relations ──
+  contacts    FinanceCompanyContact[]
+  receivables FinanceReceivable[]
+  contactLogs FinanceReceivableContactLog[]
 
   @@map("external_finance_companies")
 }
@@ -6986,6 +7011,79 @@ model ExternalFinanceCommission {
   @@index([status])
   @@index([receivedAt])
   @@map("external_finance_commissions")
+}
+
+// ============================================================
+// Finance Receivable Contact System
+// ============================================================
+
+enum FinanceContactChannel {
+  CALL
+  EMAIL
+  LINE
+  MEETING
+  OTHER
+}
+
+enum FinanceContactResult {
+  ANSWERED
+  NO_ANSWER
+  PROMISED
+  DISPUTED
+  REQUESTED_DOCS
+  OTHER
+}
+
+model FinanceCompanyContact {
+  id                       String   @id @default(uuid())
+  externalFinanceCompanyId String   @map("external_finance_company_id")
+  name                     String
+  position                 String?
+  department               String?
+  phone                    String?
+  email                    String?
+  lineId                   String?  @map("line_id")
+  notes                    String?
+  isPrimary                Boolean  @default(false) @map("is_primary")
+  isActive                 Boolean  @default(true)  @map("is_active")
+  createdAt                DateTime @default(now()) @map("created_at")
+  updatedAt                DateTime @updatedAt      @map("updated_at")
+  deletedAt                DateTime?                @map("deleted_at")
+
+  company     ExternalFinanceCompany        @relation(fields: [externalFinanceCompanyId], references: [id])
+  contactLogs FinanceReceivableContactLog[]
+
+  @@index([externalFinanceCompanyId, isActive])
+  @@map("finance_company_contacts")
+}
+
+model FinanceReceivableContactLog {
+  id                       String                @id @default(uuid())
+  financeReceivableId      String                @map("finance_receivable_id")
+  externalFinanceCompanyId String                @map("external_finance_company_id")
+  financeCompanyContactId  String?               @map("finance_company_contact_id")
+  contactedById            String                @map("contacted_by_id")
+  contactedAt              DateTime              @default(now()) @map("contacted_at")
+  channel                  FinanceContactChannel @default(CALL)
+  result                   FinanceContactResult
+  notes                    String?
+  promisedDate             DateTime?             @map("promised_date")
+  promisedAmount           Decimal?              @map("promised_amount") @db.Decimal(12, 2)
+  promisedBrokenAt         DateTime?             @map("promised_broken_at")
+  promisedKeptAt           DateTime?             @map("promised_kept_at")
+  createdAt                DateTime              @default(now()) @map("created_at")
+  updatedAt                DateTime              @updatedAt      @map("updated_at")
+  deletedAt                DateTime?             @map("deleted_at")
+
+  receivable  FinanceReceivable      @relation(fields: [financeReceivableId], references: [id])
+  company     ExternalFinanceCompany @relation(fields: [externalFinanceCompanyId], references: [id])
+  contact     FinanceCompanyContact? @relation(fields: [financeCompanyContactId], references: [id])
+  contactedBy User                   @relation("FinanceContactLogger", fields: [contactedById], references: [id])
+
+  @@index([financeReceivableId, contactedAt])
+  @@index([externalFinanceCompanyId, contactedAt])
+  @@index([promisedDate, promisedBrokenAt, promisedKeptAt])
+  @@map("finance_receivable_contact_logs")
 }
 
 // ============================================================

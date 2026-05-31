@@ -17,6 +17,10 @@ describe('FinanceReceivableService', () => {
         update: jest.fn(),
         count: jest.fn(),
       },
+      financeReceivableContactLog: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      $transaction: jest.fn().mockImplementation(async (fn) => fn(prisma)),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -302,6 +306,42 @@ describe('FinanceReceivableService', () => {
       const arg = prisma.financeReceivable.findMany.mock.calls[0][0];
       expect(arg.distinct).toEqual(['financeCompany']);
       expect(arg.where.deletedAt).toBeNull();
+    });
+  });
+
+  describe('recordReceive — promisedKeptAt hook', () => {
+    it('marks open PROMISED logs as kept when payment is received on/before promised date', async () => {
+      const today = new Date('2026-05-31');
+      prisma.financeReceivable.findFirst.mockResolvedValue({
+        id: 'rec-1',
+        status: 'PENDING',
+        netExpectedAmount: 10000,
+        receivedAmount: 0,
+        deletedAt: null,
+      });
+      prisma.financeReceivable.update.mockResolvedValue({ id: 'rec-1' });
+      prisma.financeReceivableContactLog = {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      };
+      prisma.$transaction = jest.fn().mockImplementation(async (fn) => fn(prisma));
+
+      await service.recordReceive(
+        'rec-1',
+        { receivedAmount: 10000, receivedDate: today.toISOString() },
+        'user-1',
+      );
+
+      expect(prisma.financeReceivableContactLog.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            financeReceivableId: 'rec-1',
+            result: 'PROMISED',
+            promisedKeptAt: null,
+            promisedBrokenAt: null,
+            promisedDate: { gte: expect.any(Date) },
+          }),
+        }),
+      );
     });
   });
 });

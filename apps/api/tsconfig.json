@@ -20,6 +20,6 @@
     "resolveJsonModule": true,
     "esModuleInterop": true
   },
-  "include": ["src/**/*", "prisma/**/*"],
+  "include": ["src/**/*", "prisma/**/*", "scripts/backfill-contacts.ts"],
   "exclude": ["node_modules", "dist"]
 }

@@ -33,3 +33,63 @@ describe('ContactResolverService.nextContactCode', () => {
     expect(code).toBe('P-00043');
   });
 });
+
+describe('ContactResolverService.findOrCreateByNaturalKey', () => {
+  let svc: ContactResolverService;
+  let prisma: any;
+
+  beforeEach(async () => {
+    prisma = {
+      $executeRawUnsafe: jest.fn().mockResolvedValue(undefined),
+      contact: { findFirst: jest.fn(), create: jest.fn(), update: jest.fn() },
+    };
+    const mod = await Test.createTestingModule({
+      providers: [ContactResolverService, { provide: PrismaService, useValue: prisma }],
+    }).compile();
+    svc = mod.get(ContactResolverService);
+  });
+
+  it('creates a new Contact when no natural-key match', async () => {
+    prisma.contact.findFirst
+      .mockResolvedValueOnce(null) // natural-key lookup
+      .mockResolvedValueOnce(null); // nextContactCode lookup
+    prisma.contact.create.mockResolvedValue({ id: 'c1', roles: ['CUSTOMER'] });
+    const res = await svc.findOrCreateByNaturalKey(prisma, {
+      name: 'สมชาย', taxId: null, nationalIdHash: 'h1', role: 'CUSTOMER',
+    });
+    expect(prisma.contact.create).toHaveBeenCalled();
+    expect(res.id).toBe('c1');
+  });
+
+  it('adds the role to an existing Contact matched by nationalIdHash', async () => {
+    prisma.contact.findFirst.mockResolvedValueOnce({ id: 'c1', roles: ['CUSTOMER'] });
+    prisma.contact.update.mockResolvedValue({ id: 'c1', roles: ['CUSTOMER', 'TRADE_IN_SELLER'] });
+    const res = await svc.findOrCreateByNaturalKey(prisma, {
+      name: 'สมชาย', taxId: null, nationalIdHash: 'h1', role: 'TRADE_IN_SELLER',
+    });
+    expect(prisma.contact.create).not.toHaveBeenCalled();
+    expect(prisma.contact.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'c1' } }),
+    );
+    expect(res.roles).toContain('TRADE_IN_SELLER');
+  });
+
+  it('does NOT duplicate a role already present', async () => {
+    prisma.contact.findFirst.mockResolvedValueOnce({ id: 'c1', roles: ['CUSTOMER'] });
+    const res = await svc.findOrCreateByNaturalKey(prisma, {
+      name: 'สมชาย', taxId: null, nationalIdHash: 'h1', role: 'CUSTOMER',
+    });
+    expect(prisma.contact.update).not.toHaveBeenCalled();
+    expect(res.id).toBe('c1');
+  });
+
+  it('creates a new Contact (no merge) when no natural key is available', async () => {
+    prisma.contact.findFirst.mockResolvedValueOnce(null); // nextContactCode only
+    prisma.contact.create.mockResolvedValue({ id: 'c2', roles: ['TRADE_IN_SELLER'] });
+    const res = await svc.findOrCreateByNaturalKey(prisma, {
+      name: 'คนเดินเข้า', taxId: null, nationalIdHash: null, role: 'TRADE_IN_SELLER',
+    });
+    expect(prisma.contact.create).toHaveBeenCalled();
+    expect(res.id).toBe('c2');
+  });
+});

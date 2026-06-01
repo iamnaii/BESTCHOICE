@@ -16,9 +16,15 @@ import type { IcabAuditEvent, IcabCurrentUser } from '../types';
  * (opens, calls onReverse) — its full coverage lives in a sibling spec.
  */
 
+// Mocked at module level so tests can override the mode per-test by mutating
+// `mockedReversePermission` before render. Re-uses one `vi.mock` call (test
+// runners flake if a single module is mocked more than once per file).
+let mockedReversePermission: 'OWNER+FINANCE_MANAGER' | 'CUSTOM' | 'OWNER_ONLY' =
+  'OWNER+FINANCE_MANAGER';
+
 vi.mock('@/hooks/useUiFlags', () => ({
   useUiFlags: () => ({
-    reversePermission: 'OWNER+FINANCE_MANAGER',
+    reversePermission: mockedReversePermission,
     reverseReasonRequired: true,
     reverseReasons: [{ code: 'r1', label: 'บันทึกผิดบัญชี' }],
   }),
@@ -57,6 +63,7 @@ const sampleAudit: IcabAuditEvent[] = [
 describe('InternalControlActionBar', () => {
   beforeEach(() => {
     queryClient.clear();
+    mockedReversePermission = 'OWNER+FINANCE_MANAGER';
   });
 
   describe('DRAFT', () => {
@@ -282,6 +289,100 @@ describe('InternalControlActionBar', () => {
       );
       expect(screen.queryByRole('button', { name: /ปฏิเสธ/i })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /อนุมัติ & POST/i })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('CUSTOM mode (per-user override)', () => {
+    beforeEach(() => {
+      mockedReversePermission = 'CUSTOM';
+    });
+
+    it('shows reverse button when canReverseOverride=true (even if canReverse=false)', () => {
+      render(
+        wrap(
+          <InternalControlActionBar
+            module="other_income"
+            status="POSTED"
+            auditLog={sampleAudit}
+            currentUser={{
+              ...baseUser,
+              role: 'ACCOUNTANT',
+              canReverseOverride: true,
+            }}
+            docNumber="RT-1"
+            canReverse={false}
+            onCancel={vi.fn()}
+            onReverse={vi.fn()}
+          />,
+        ),
+      );
+      expect(screen.getByRole('button', { name: /กลับรายการ/i })).toBeInTheDocument();
+    });
+
+    it('hides reverse button when canReverseOverride=null', () => {
+      render(
+        wrap(
+          <InternalControlActionBar
+            module="other_income"
+            status="POSTED"
+            auditLog={sampleAudit}
+            currentUser={{
+              ...baseUser,
+              role: 'ACCOUNTANT',
+              canReverseOverride: null,
+            }}
+            docNumber="RT-1"
+            canReverse={false}
+            onCancel={vi.fn()}
+            onReverse={vi.fn()}
+          />,
+        ),
+      );
+      expect(screen.queryByRole('button', { name: /กลับรายการ/i })).not.toBeInTheDocument();
+    });
+
+    it('hides reverse button when canReverseOverride=false', () => {
+      render(
+        wrap(
+          <InternalControlActionBar
+            module="other_income"
+            status="POSTED"
+            auditLog={sampleAudit}
+            currentUser={{
+              ...baseUser,
+              role: 'ACCOUNTANT',
+              canReverseOverride: false,
+            }}
+            docNumber="RT-1"
+            canReverse={true}
+            onCancel={vi.fn()}
+            onReverse={vi.fn()}
+          />,
+        ),
+      );
+      expect(screen.queryByRole('button', { name: /กลับรายการ/i })).not.toBeInTheDocument();
+    });
+
+    it('OWNER still allowed regardless of override', () => {
+      render(
+        wrap(
+          <InternalControlActionBar
+            module="other_income"
+            status="POSTED"
+            auditLog={sampleAudit}
+            currentUser={{
+              ...baseUser,
+              role: 'OWNER',
+              canReverseOverride: false,
+            }}
+            docNumber="RT-1"
+            canReverse={false}
+            onCancel={vi.fn()}
+            onReverse={vi.fn()}
+          />,
+        ),
+      );
+      expect(screen.getByRole('button', { name: /กลับรายการ/i })).toBeInTheDocument();
     });
   });
 

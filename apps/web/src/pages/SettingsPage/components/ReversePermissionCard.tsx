@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { useAuth } from '@/contexts/AuthContext';
 import api, { getErrorMessage } from '@/lib/api';
-import { roleLabels } from '@/pages/UsersPage/types';
+import { ROLE_LABELS } from '@/constants/user-roles';
 
 /**
  * InternalControlActionBar — Setting 1: who can reverse posted documents.
@@ -215,7 +215,7 @@ function CustomUsersTable({
               </td>
               <td className="px-3 py-2.5 align-middle">
                 <span className="text-xs leading-snug">
-                  {roleLabels[u.role] ?? u.role}
+                  {ROLE_LABELS[u.role] ?? u.role}
                 </span>
               </td>
               <td className="px-3 py-2.5 align-middle text-center">

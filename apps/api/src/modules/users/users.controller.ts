@@ -101,7 +101,12 @@ export class UsersController {
   setReverseOverride(
     @Param('id') id: string,
     @Body() body: { canReverseOverride: boolean | null },
+    @CurrentUser('id') actorId: string,
   ) {
-    return this.usersService.setReverseOverride(id, body?.canReverseOverride ?? null);
+    return this.usersService.setReverseOverride(
+      id,
+      body?.canReverseOverride ?? null,
+      actorId,
+    );
   }
 }

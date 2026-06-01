@@ -194,9 +194,13 @@ export function InternalControlActionBar(props: InternalControlActionBarProps) {
   const resolvedPrintLabel = printLabel ?? ICAB_MODULE_DEFAULTS[module].printLabel;
   const showApprovalBadge = makerCheckerEnabled && (status === 'DRAFT' || status === 'READY');
 
-  // Server-side mode dictates whether the reverse button is even visible.
-  // OWNER is always allowed; CUSTOM mode falls through to canReverse prop.
-  const reverseGated =
+  // Effective "is this user allowed to reverse?" — combines:
+  //   1. OWNER always allowed (policy owner short-circuit).
+  //   2. CUSTOM mode: per-user `canReverseOverride` flag.
+  //   3. Other modes: caller-supplied `canReverse` prop (pre-flight role check).
+  // The server `ReversePermissionGuard` re-validates on every reverse request,
+  // so this flag is UI-only and never a security boundary.
+  const canReverseResolved =
     currentUser.role === 'OWNER' ||
     (flags.reversePermission === 'CUSTOM'
       ? currentUser.canReverseOverride === true
@@ -389,7 +393,7 @@ export function InternalControlActionBar(props: InternalControlActionBarProps) {
                       {resolvedPrintLabel}
                     </Button>
                   )}
-                  {onReverse && reverseGated && (
+                  {onReverse && canReverseResolved && (
                     <Button
                       type="button"
                       variant="outline"

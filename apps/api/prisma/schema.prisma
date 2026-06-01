@@ -6366,6 +6366,10 @@ model OtherIncome {
   reversesId    String?                   @unique @map("reverses_id")
   reverseReason OtherIncomeReverseReason? @map("reverse_reason")
   reverseNote   String?                   @map("reverse_note")
+  /// InternalControlActionBar — human-readable label picked from the admin-
+  /// managed `reverse_reasons` table. Stored alongside `reverseReason` so
+  /// analytics can group by the real label rather than the coarse enum.
+  reverseReasonLabel String?              @map("reverse_reason_label")
 
   // Recurring
   copiedFromId String? @map("copied_from_id")

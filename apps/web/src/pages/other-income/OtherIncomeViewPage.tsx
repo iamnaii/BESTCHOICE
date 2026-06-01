@@ -175,12 +175,21 @@ function mapAuditEvents(
     const nv = (e.newValue && typeof e.newValue === 'object'
       ? (e.newValue as Record<string, unknown>)
       : null);
-    const reason =
-      nv && typeof nv.reverseNote === 'string'
+    // Prefer the structured label written by the new component, then fall
+    // back to the free-form note, then the enum value itself so older docs
+    // (pre-label backfill) still render something useful.
+    const label =
+      nv && typeof nv.reverseReasonLabel === 'string' && nv.reverseReasonLabel.length > 0
+        ? (nv.reverseReasonLabel as string)
+        : undefined;
+    const note =
+      nv && typeof nv.reverseNote === 'string' && nv.reverseNote.length > 0
         ? (nv.reverseNote as string)
-        : nv && typeof nv.reverseReason === 'string'
-          ? (nv.reverseReason as string)
-          : undefined;
+        : undefined;
+    const enumFallback =
+      nv && typeof nv.reverseReason === 'string' ? (nv.reverseReason as string) : undefined;
+    const reason =
+      label && note && label !== note ? `${label} — ${note}` : (label ?? note ?? enumFallback);
     return {
       event: e.action,
       userId: e.user?.id ?? 'unknown',
@@ -243,12 +252,11 @@ export default function OtherIncomeViewPage() {
   /**
    * Reverse mutation — wired through the unified InternalControlActionBar.
    *
-   * The new shared component returns `{ reasonId, reasonLabel, note }`, but
-   * the Other Income backend still validates against the fixed Prisma enum
-   * `OtherIncomeReverseReason` (DTO at apps/api/.../reverse-other-income.dto.ts).
-   * Until that DTO is widened (parity work for Expense + Asset in step 8),
-   * we map every dynamic reason to `OTHER` and stash the human-readable
-   * label into the note prefix so it surfaces in the audit log.
+   * The new shared component returns `{reasonId, reasonLabel, note}`. The
+   * backend DTO accepts the canonical Prisma enum `reason` (kept as `OTHER`
+   * for dynamic reasons) plus an optional structured `reasonLabel` that
+   * persists the admin-managed label alongside the note — preserves audit
+   * analytics (group-by label) without breaking the enum-typed reports.
    */
   const reverseMutation = useMutation({
     mutationFn: ({
@@ -258,8 +266,7 @@ export default function OtherIncomeViewPage() {
       reasonId: string;
       reasonLabel: string;
       note: string;
-    }) =>
-      otherIncomeApi.reverse(id!, 'OTHER', note ? `[${reasonLabel}] ${note}` : reasonLabel),
+    }) => otherIncomeApi.reverse(id!, 'OTHER', note || reasonLabel, reasonLabel),
     onSuccess: (reversingDoc) => {
       toast.success(`สร้าง Reversing Entry ${reversingDoc.docNumber} แล้ว`);
       queryClient.invalidateQueries({ queryKey: ['other-income'] });

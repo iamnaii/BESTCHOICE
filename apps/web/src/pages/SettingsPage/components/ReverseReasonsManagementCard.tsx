@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import api, { getErrorMessage } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -42,6 +43,7 @@ export function ReverseReasonsManagementCard() {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<ReverseReason | null>(null);
   const [creating, setCreating] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<ReverseReason | null>(null);
 
   const listQuery = useQuery<ReverseReason[]>({
     queryKey: ['reverse-reasons', 'all'],
@@ -49,12 +51,17 @@ export function ReverseReasonsManagementCard() {
       (await api.get<ReverseReason[]>('/settings/reverse-reasons')).data,
   });
 
+  const invalidateLists = () => {
+    queryClient.invalidateQueries({ queryKey: ['reverse-reasons'] });
+    queryClient.invalidateQueries({ queryKey: ['settings-ui-flags'] });
+  };
+
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/settings/reverse-reasons/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['reverse-reasons'] });
-      queryClient.invalidateQueries({ queryKey: ['settings-ui-flags'] });
+      invalidateLists();
       toast.success('ลบเหตุผลสำเร็จ');
+      setConfirmDelete(null);
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
@@ -62,10 +69,14 @@ export function ReverseReasonsManagementCard() {
   const reorderMutation = useMutation({
     mutationFn: (rows: { id: string; sortOrder: number }[]) =>
       api.put('/settings/reverse-reasons/reorder', { rows }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['reverse-reasons'] });
-      queryClient.invalidateQueries({ queryKey: ['settings-ui-flags'] });
-    },
+    onSuccess: invalidateLists,
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const toggleActiveMutation = useMutation({
+    mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
+      api.put(`/settings/reverse-reasons/${id}`, { isActive }),
+    onSuccess: invalidateLists,
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
@@ -124,15 +135,9 @@ export function ReverseReasonsManagementCard() {
                       <Switch
                         checked={row.isActive}
                         onCheckedChange={(v) =>
-                          api
-                            .put(`/settings/reverse-reasons/${row.id}`, { isActive: v })
-                            .then(() => {
-                              queryClient.invalidateQueries({ queryKey: ['reverse-reasons'] });
-                              queryClient.invalidateQueries({ queryKey: ['settings-ui-flags'] });
-                            })
-                            .catch((err) => toast.error(getErrorMessage(err)))
+                          toggleActiveMutation.mutate({ id: row.id, isActive: v })
                         }
-                        disabled={!isOwner}
+                        disabled={!isOwner || toggleActiveMutation.isPending}
                         aria-label={`เปิด/ปิดการใช้งาน ${row.label}`}
                       />
                     </td>
@@ -149,11 +154,7 @@ export function ReverseReasonsManagementCard() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => {
-                          if (confirm(`ยืนยันลบ "${row.label}"?`)) {
-                            deleteMutation.mutate(row.id);
-                          }
-                        }}
+                        onClick={() => setConfirmDelete(row)}
                         disabled={!isOwner || deleteMutation.isPending}
                         aria-label="ลบ"
                       >
@@ -194,13 +195,26 @@ export function ReverseReasonsManagementCard() {
             setCreating(false);
           }}
           onSaved={() => {
-            queryClient.invalidateQueries({ queryKey: ['reverse-reasons'] });
-            queryClient.invalidateQueries({ queryKey: ['settings-ui-flags'] });
+            invalidateLists();
             setEditing(null);
             setCreating(false);
           }}
         />
       )}
+
+      <ConfirmDialog
+        open={confirmDelete !== null}
+        onOpenChange={(open) => !open && setConfirmDelete(null)}
+        title="ลบเหตุผล?"
+        description={
+          confirmDelete
+            ? `ยืนยันลบ "${confirmDelete.label}" — soft-delete: audit log ที่อ้างเหตุผลนี้ยังคงอ่านได้`
+            : ''
+        }
+        variant="destructive"
+        loading={deleteMutation.isPending}
+        onConfirm={() => confirmDelete && deleteMutation.mutate(confirmDelete.id)}
+      />
     </>
   );
 }

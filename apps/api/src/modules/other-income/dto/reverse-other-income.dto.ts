@@ -1,4 +1,11 @@
-import { IsEnum, IsNotEmpty, IsString, MinLength } from 'class-validator';
+import {
+  IsEnum,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 import { OtherIncomeReverseReason } from '@prisma/client';
 
 /**
@@ -11,6 +18,13 @@ import { OtherIncomeReverseReason } from '@prisma/client';
  * mid-flight with a 500 — leaving the reversal JE written but the doc-status
  * flip never persisted (orphan record). class-validator rejects bad values at
  * the controller boundary with a 400 instead.
+ *
+ * InternalControlActionBar — `reasonLabel` is the OPTIONAL human-readable
+ * label picked by the user from the admin-managed `reverse_reasons` table.
+ * When provided, it's stored alongside the enum-typed `reason` so audit
+ * analytics (e.g. "most common reverse reason last month") can group by the
+ * real label rather than the coarse `OTHER` bucket. The enum still carries
+ * the canonical category for backwards-compat reports.
  */
 export class ReverseOtherIncomeDto {
   @IsEnum(OtherIncomeReverseReason, {
@@ -23,4 +37,9 @@ export class ReverseOtherIncomeDto {
   @IsNotEmpty({ message: 'กรุณาระบุหมายเหตุการกลับรายการ' })
   @MinLength(5, { message: 'หมายเหตุต้องยาวอย่างน้อย 5 ตัวอักษร' })
   note!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200, { message: 'reasonLabel ยาวเกินไป (สูงสุด 200 ตัวอักษร)' })
+  reasonLabel?: string;
 }

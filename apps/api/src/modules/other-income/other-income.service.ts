@@ -810,6 +810,7 @@ export class OtherIncomeService {
           reversesId: original.id,
           reverseReason: dto.reason,
           reverseNote: dto.note,
+          reverseReasonLabel: dto.reasonLabel ?? null,
           journalEntryId: reverseJe.id,
           receiptNo,
           postedAt: now,
@@ -841,6 +842,7 @@ export class OtherIncomeService {
           status: OtherIncomeStatus.REVERSED,
           reverseReason: dto.reason,
           reverseNote: dto.note,
+          reverseReasonLabel: dto.reasonLabel ?? null,
         },
       });
 
@@ -850,6 +852,7 @@ export class OtherIncomeService {
     await this.auditLifecycle('OI_REVERSED', userId, reversal, {
       originalDocNumber: original.docNumber,
       reverseReason: dto.reason,
+      reverseReasonLabel: dto.reasonLabel ?? null,
       reverseNote: dto.note,
     });
     return reversal;

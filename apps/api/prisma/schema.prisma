@@ -34,6 +34,13 @@ enum SupplierType {
   JURISTIC
 }
 
+enum ContactRole {
+  CUSTOMER
+  SUPPLIER
+  TRADE_IN_SELLER
+  FINANCE_COMPANY
+}
+
 enum ContractStatus {
   DRAFT
   ACTIVE
@@ -785,6 +792,34 @@ model User {
   @@map("users")
 }
 
+model Contact {
+  id              String        @id @default(uuid())
+  contactCode     String        @unique @map("contact_code") // P-00001 (internal)
+  peakContactCode String?       @map("peak_contact_code")    // C00790 (PEAK mapping, owner-filled)
+  name            String
+  taxId           String?       @map("tax_id")               // นิติบุคคล — natural key
+  nationalIdHash  String?       @map("national_id_hash")     // บุคคล — natural key (hashPII)
+  phone           String?
+  email           String?
+  address         String?
+  lineId          String?       @map("line_id")
+  roles           ContactRole[]
+  isActive        Boolean       @default(true) @map("is_active")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  deletedAt       DateTime?     @map("deleted_at")
+
+  customers              Customer[]
+  suppliers              Supplier[]
+  tradeInsAsSeller       TradeIn[]                 @relation("TradeInSeller")
+  externalFinanceCompany ExternalFinanceCompany[]
+
+  @@unique([taxId])
+  @@index([nationalIdHash])
+  @@index([deletedAt])
+  @@map("contacts")
+}
+
 model Customer {
   id                 String    @id @default(uuid())
   nationalId         String?   @unique @map("national_id") // encrypted AES-256 — nullable for walk-in quick-create
@@ -925,12 +960,17 @@ model Customer {
   // P2-SP4 — การจอง / มัดจำ
   bookings Booking[] @relation("CustomerBookings")
 
+  // Unified contact party master (Phase 3) — nullable upward ref
+  contactId String?  @map("contact_id")
+  contact   Contact? @relation(fields: [contactId], references: [id])
+
   @@index([phone])
   @@index([name])
   @@index([createdAt])
   @@index([deletedAt])
   @@index([referredById])
   @@index([phoneHash])
+  @@index([contactId])
   @@map("customers")
 }
 
@@ -1383,7 +1423,12 @@ model Supplier {
   fixedAssets    FixedAsset[]            @relation("FixedAssetVendor")
   repairTickets  RepairTicket[]          @relation("RepairCenterTickets")
 
+  // Unified contact party master (Phase 3) — nullable upward ref
+  contactId String?  @map("contact_id")
+  contact   Contact? @relation(fields: [contactId], references: [id])
+
   @@index([deletedAt])
+  @@index([contactId])
   @@map("suppliers")
 }
 
@@ -4494,6 +4539,10 @@ model TradeIn {
   appraisedBy      User?     @relation("TradeInAppraisedBy", fields: [appraisedById], references: [id])
   idCardVerifiedBy User?     @relation("TradeInIdCardVerifiedBy", fields: [idCardVerifiedById], references: [id])
 
+  // Unified contact party master (Phase 3) — nullable upward ref to seller
+  sellerContactId String?  @map("seller_contact_id")
+  sellerContact   Contact? @relation("TradeInSeller", fields: [sellerContactId], references: [id])
+
   @@index([customerId])
   @@index([status])
   @@index([createdAt])
@@ -4504,6 +4553,7 @@ model TradeIn {
   // FK indexes for "appraisals by staff" and "id card verifications by staff" reports
   @@index([appraisedById])
   @@index([idCardVerifiedById])
+  @@index([sellerContactId])
   @@map("trade_ins")
 }
 
@@ -6994,6 +7044,11 @@ model ExternalFinanceCompany {
   receivables FinanceReceivable[]
   contactLogs FinanceReceivableContactLog[]
 
+  // Unified contact party master (Phase 3) — nullable upward ref
+  contactId String?  @map("contact_id")
+  contact   Contact? @relation(fields: [contactId], references: [id])
+
+  @@index([contactId])
   @@map("external_finance_companies")
 }
 

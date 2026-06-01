@@ -22,6 +22,9 @@ export class ContactResolverService {
     const lockKey = this.hashLockKey('contact:code');
     await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${lockKey})`);
 
+    // contactCode is zero-padded to 5 digits, so lexicographic desc == numeric desc
+    // up to P-99999. A 6th digit (P-100000) would break this ordering; the party
+    // master is not expected to exceed 99,999 contacts. Mirror of doc-number.service.ts.
     const last = await tx.contact.findFirst({
       where: { contactCode: { startsWith: 'P-' } },
       orderBy: { contactCode: 'desc' },

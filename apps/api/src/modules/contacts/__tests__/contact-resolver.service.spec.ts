@@ -83,6 +83,21 @@ describe('ContactResolverService.findOrCreateByNaturalKey', () => {
     expect(res.id).toBe('c1');
   });
 
+  it('matches an existing Contact by taxId (first-priority key) and appends role', async () => {
+    prisma.contact.findFirst.mockResolvedValueOnce({ id: 'cx', roles: ['CUSTOMER'] });
+    prisma.contact.update.mockResolvedValue({ id: 'cx', roles: ['CUSTOMER', 'SUPPLIER'] });
+    const res = await svc.findOrCreateByNaturalKey(prisma, {
+      name: 'บ.แอปเปิล', taxId: '0105500000010', nationalIdHash: null, role: 'SUPPLIER',
+    });
+    expect(prisma.contact.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ OR: expect.arrayContaining([{ taxId: '0105500000010' }]) }),
+      }),
+    );
+    expect(prisma.contact.create).not.toHaveBeenCalled();
+    expect(res.roles).toContain('SUPPLIER');
+  });
+
   it('creates a new Contact (no merge) when no natural key is available', async () => {
     prisma.contact.findFirst.mockResolvedValueOnce(null); // nextContactCode only
     prisma.contact.create.mockResolvedValue({ id: 'c2', roles: ['TRADE_IN_SELLER'] });

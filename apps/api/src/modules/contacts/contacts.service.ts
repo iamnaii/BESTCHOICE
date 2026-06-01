@@ -41,10 +41,26 @@ export class ContactsService {
     const contact = await this.prisma.contact.findFirst({
       where: { id, deletedAt: null },
       include: {
-        customers: { where: { deletedAt: null }, select: { id: true, name: true } },
-        suppliers: { where: { deletedAt: null }, select: { id: true, name: true } },
-        tradeInsAsSeller: { where: { deletedAt: null }, select: { id: true, createdAt: true } },
-        externalFinanceCompany: { where: { deletedAt: null }, select: { id: true, name: true } },
+        customers: {
+          where: { deletedAt: null },
+          // identity + non-sensitive only — NO encrypted address PII (deep-link to /customers/:id for full detail)
+          select: { id: true, name: true, prefix: true, phone: true },
+        },
+        suppliers: {
+          where: { deletedAt: null },
+          select: {
+            id: true, name: true, type: true, taxId: true, branchCode: true,
+            contactName: true, contactPhone: true, phone: true, hasVat: true, address: true,
+          },
+        },
+        tradeInsAsSeller: {
+          where: { deletedAt: null },
+          select: { id: true, sellerName: true, sellerPhone: true, createdAt: true },
+        },
+        externalFinanceCompany: {
+          where: { deletedAt: null },
+          select: { id: true, name: true, taxId: true, contactPhone: true, email: true, creditTermDays: true },
+        },
       },
     });
     if (!contact) throw new NotFoundException('ไม่พบผู้ติดต่อ');

@@ -1,12 +1,20 @@
 import { useParams, useNavigate, Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
-import { ChevronRight } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { contactKeys, contactsApi, type ContactRole } from '@/lib/api/contacts';
+import {
+  contactKeys,
+  contactsApi,
+  type ContactRole,
+  type ContactCustomerLink,
+  type ContactSupplierLink,
+  type ContactFinanceLink,
+  type ContactTradeInLink,
+} from '@/lib/api/contacts';
 
 const ROLE_LABELS: Record<ContactRole, string> = {
   CUSTOMER: 'ลูกค้า',
@@ -22,38 +30,106 @@ const ROLE_BADGE_VARIANT: Record<ContactRole, 'primary' | 'info' | 'warning' | '
   FINANCE_COMPANY: 'secondary',
 };
 
-interface LinkedRecord {
-  id: string;
-  name?: string | null;
-}
-
-/** A single group of linked role-records with links into the real module pages. */
-function LinkedSection({
-  title,
-  records,
-  hrefFor,
-}: {
-  title: string;
-  records: LinkedRecord[];
-  hrefFor: (r: LinkedRecord) => string;
-}) {
-  if (!records || records.length === 0) return null;
+/** One labelled value inside a read-through card. */
+function Field({ label, value }: { label: string; value: string | null | undefined }) {
   return (
     <div>
-      <h3 className="text-sm font-semibold text-foreground mb-2 leading-snug">{title}</h3>
-      <div className="flex flex-col gap-1.5">
-        {records.map((r) => (
-          <Link
-            key={r.id}
-            to={hrefFor(r)}
-            className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm hover:bg-accent transition-colors"
-          >
-            <span className="text-foreground leading-snug">{r.name || r.id}</span>
-            <ChevronRight className="size-4 text-muted-foreground" />
-          </Link>
-        ))}
-      </div>
+      <div className="text-xs text-muted-foreground mb-0.5 leading-snug">{label}</div>
+      <div className="text-sm text-foreground leading-snug">{value || '—'}</div>
     </div>
+  );
+}
+
+/** Footer deep-link into the source module page. */
+function CardLink({ to, label }: { to: string; label: string }) {
+  return (
+    <Link
+      to={to}
+      className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline leading-snug"
+    >
+      {label}
+      <ArrowRight className="size-4" />
+    </Link>
+  );
+}
+
+function SupplierCard({ supplier }: { supplier: ContactSupplierLink }) {
+  return (
+    <Card>
+      <CardHeader className="flex-row items-center justify-between gap-2 space-y-0">
+        <CardTitle className="leading-snug">{supplier.name}</CardTitle>
+        <Badge variant="info" appearance="light" size="sm">
+          {supplier.type === 'JURISTIC' ? 'นิติบุคคล' : 'บุคคลธรรมดา'}
+        </Badge>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="เลขผู้เสียภาษี" value={supplier.taxId} />
+          <Field label="เลขสาขา" value={supplier.branchCode} />
+          <Field
+            label="ผู้ติดต่อ"
+            value={
+              supplier.contactName
+                ? `${supplier.contactName}${supplier.contactPhone ? ` (${supplier.contactPhone})` : ''}`
+                : supplier.contactPhone
+            }
+          />
+          <Field label="เบอร์" value={supplier.phone} />
+          <Field label="VAT" value={supplier.hasVat ? 'จด VAT' : 'ไม่จด VAT'} />
+          <Field label="ที่อยู่" value={supplier.address} />
+        </div>
+        <CardLink to={`/suppliers/${supplier.id}`} label="เปิดข้อมูลผู้ขาย / แก้ไข" />
+      </CardContent>
+    </Card>
+  );
+}
+
+function CustomerCard({ customer }: { customer: ContactCustomerLink }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="leading-snug">
+          {customer.prefix ? `${customer.prefix} ` : ''}
+          {customer.name}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <Field label="เบอร์" value={customer.phone} />
+        <CardLink to={`/customers/${customer.id}`} label="เปิดข้อมูลลูกค้า / แก้ไข" />
+      </CardContent>
+    </Card>
+  );
+}
+
+function FinanceCard({ finance }: { finance: ContactFinanceLink }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="leading-snug">{finance.name}</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="เลขผู้เสียภาษี" value={finance.taxId} />
+          <Field label="เบอร์" value={finance.contactPhone} />
+          <Field label="อีเมล" value={finance.email} />
+        </div>
+        <CardLink to={`/external-finance-companies/${finance.id}`} label="เปิดข้อมูล / แก้ไข" />
+      </CardContent>
+    </Card>
+  );
+}
+
+function TradeInCard({ tradeIn }: { tradeIn: ContactTradeInLink }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="leading-snug">{tradeIn.sellerName || 'คนขายมือสอง'}</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <Field label="เบอร์" value={tradeIn.sellerPhone} />
+        <CardLink to="/trade-in" label="ดูรายการรับซื้อ" />
+      </CardContent>
+    </Card>
   );
 }
 
@@ -68,18 +144,27 @@ export default function ContactDetailPage() {
     enabled: !!id,
   });
 
-  const roles = (data?.roles ?? []) as ContactRole[];
-  const customers = (data?.customers as LinkedRecord[] | undefined) ?? [];
-  const suppliers = (data?.suppliers as LinkedRecord[] | undefined) ?? [];
-  const tradeInsAsSeller = (data?.tradeInsAsSeller as LinkedRecord[] | undefined) ?? [];
-  const externalFinanceCompany =
-    (data?.externalFinanceCompany as LinkedRecord[] | undefined) ?? [];
+  const roles = data?.roles ?? [];
+  const customers = data?.customers ?? [];
+  const suppliers = data?.suppliers ?? [];
+  const tradeInsAsSeller = data?.tradeInsAsSeller ?? [];
+  const externalFinanceCompany = data?.externalFinanceCompany ?? [];
+
+  const hasNoLinks =
+    customers.length === 0 &&
+    suppliers.length === 0 &&
+    tradeInsAsSeller.length === 0 &&
+    externalFinanceCompany.length === 0;
+
+  const isJuristic =
+    suppliers.some((s) => s.type === 'JURISTIC') || roles.includes('FINANCE_COMPANY');
+  const entityType = isJuristic ? 'นิติบุคคล' : 'บุคคลธรรมดา';
 
   return (
     <div>
       <PageHeader
         title={data ? data.name : 'ผู้ติดต่อ'}
-        subtitle={data?.contactCode}
+        subtitle={data ? `${data.contactCode} · ${entityType}` : undefined}
         onBack={() => navigate('/contacts')}
         badge={
           data && !data.isActive ? (
@@ -98,19 +183,23 @@ export default function ContactDetailPage() {
         errorTitle="ไม่สามารถโหลดข้อมูลผู้ติดต่อได้"
       >
         {data && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-            {/* ข้อมูลทั่วไป */}
-            <Card className="lg:col-span-1">
+          <div className="flex flex-col gap-5">
+            <Card>
               <CardHeader>
                 <CardTitle>ข้อมูลทั่วไป</CardTitle>
               </CardHeader>
               <CardContent className="flex flex-col gap-3">
                 <div>
-                  <div className="text-xs text-muted-foreground mb-1">กลุ่ม</div>
+                  <div className="text-xs text-muted-foreground mb-1 leading-snug">กลุ่ม</div>
                   <div className="flex flex-wrap gap-1">
                     {roles.length > 0 ? (
                       roles.map((r) => (
-                        <Badge key={r} variant={ROLE_BADGE_VARIANT[r]} appearance="light" size="sm">
+                        <Badge
+                          key={r}
+                          variant={ROLE_BADGE_VARIANT[r]}
+                          appearance="light"
+                          size="sm"
+                        >
                           {ROLE_LABELS[r]}
                         </Badge>
                       ))
@@ -119,63 +208,48 @@ export default function ContactDetailPage() {
                     )}
                   </div>
                 </div>
-                <div>
-                  <div className="text-xs text-muted-foreground mb-0.5">เลขผู้เสียภาษี</div>
-                  <div className="text-sm text-foreground font-mono">{data.taxId || '—'}</div>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="เลขผู้เสียภาษี" value={data.taxId} />
+                  <Field label="เบอร์โทร" value={data.phone} />
+                  <Field label="อีเมล" value={data.email} />
+                  {data.peakContactCode && (
+                    <Field label="รหัส PEAK" value={data.peakContactCode} />
+                  )}
                 </div>
-                <div>
-                  <div className="text-xs text-muted-foreground mb-0.5">เบอร์โทร</div>
-                  <div className="text-sm text-foreground tabular-nums">{data.phone || '—'}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-muted-foreground mb-0.5">อีเมล</div>
-                  <div className="text-sm text-foreground">{data.email || '—'}</div>
-                </div>
-                {data.peakContactCode && (
-                  <div>
-                    <div className="text-xs text-muted-foreground mb-0.5">รหัส PEAK</div>
-                    <div className="text-sm text-foreground font-mono">{data.peakContactCode}</div>
-                  </div>
-                )}
               </CardContent>
             </Card>
 
-            {/* ระเบียนที่เชื่อมโยง */}
-            <Card className="lg:col-span-2">
-              <CardHeader>
-                <CardTitle>ระเบียนที่เชื่อมโยง</CardTitle>
-              </CardHeader>
-              <CardContent className="flex flex-col gap-5">
-                <LinkedSection
-                  title="ลูกค้า"
-                  records={customers}
-                  hrefFor={(r) => `/customers/${r.id}`}
-                />
-                <LinkedSection
-                  title="ผู้ขาย"
-                  records={suppliers}
-                  hrefFor={(r) => `/suppliers/${r.id}`}
-                />
-                <LinkedSection
-                  title="คนขายมือสอง"
-                  records={tradeInsAsSeller}
-                  hrefFor={() => '/trade-in'}
-                />
-                <LinkedSection
-                  title="ไฟแนนซ์"
-                  records={externalFinanceCompany}
-                  hrefFor={(r) => `/external-finance-companies/${r.id}`}
-                />
-                {customers.length === 0 &&
-                  suppliers.length === 0 &&
-                  tradeInsAsSeller.length === 0 &&
-                  externalFinanceCompany.length === 0 && (
+            <div>
+              <h2 className="text-base font-semibold text-foreground mb-3 leading-snug">
+                ข้อมูลกิจการ
+              </h2>
+              {hasNoLinks ? (
+                <Card>
+                  <CardContent className="flex flex-col gap-3 pt-6">
                     <p className="text-sm text-muted-foreground leading-snug">
-                      ยังไม่มีระเบียนที่เชื่อมโยงกับผู้ติดต่อนี้
+                      ยังไม่ผูกกับลูกค้า/ผู้ขาย
                     </p>
-                  )}
-              </CardContent>
-            </Card>
+                    <Field label="ชื่อ" value={data.name} />
+                    <Field label="เบอร์โทร" value={data.phone} />
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {suppliers.map((s) => (
+                    <SupplierCard key={s.id} supplier={s} />
+                  ))}
+                  {customers.map((c) => (
+                    <CustomerCard key={c.id} customer={c} />
+                  ))}
+                  {externalFinanceCompany.map((f) => (
+                    <FinanceCard key={f.id} finance={f} />
+                  ))}
+                  {tradeInsAsSeller.map((t) => (
+                    <TradeInCard key={t.id} tradeIn={t} />
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </QueryBoundary>

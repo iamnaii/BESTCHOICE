@@ -14,6 +14,45 @@ export interface Contact {
   isActive: boolean;
 }
 
+export interface ContactCustomerLink {
+  id: string;
+  name: string;
+  prefix: string | null;
+  phone: string | null;
+}
+export interface ContactSupplierLink {
+  id: string;
+  name: string;
+  type: 'JURISTIC' | 'INDIVIDUAL';
+  taxId: string | null;
+  branchCode: string | null;
+  contactName: string | null;
+  contactPhone: string | null;
+  phone: string | null;
+  hasVat: boolean;
+  address: string | null;
+}
+export interface ContactFinanceLink {
+  id: string;
+  name: string;
+  taxId: string | null;
+  contactPhone: string | null;
+  email: string | null;
+  creditTermDays: number | null;
+}
+export interface ContactTradeInLink {
+  id: string;
+  sellerName: string | null;
+  sellerPhone: string | null;
+  createdAt: string;
+}
+export interface ContactDetail extends Contact {
+  customers: ContactCustomerLink[];
+  suppliers: ContactSupplierLink[];
+  tradeInsAsSeller: ContactTradeInLink[];
+  externalFinanceCompany: ContactFinanceLink[];
+}
+
 export interface ContactListResult {
   data: Contact[];
   total: number;
@@ -41,8 +80,7 @@ export const contactsApi = {
     if (params.isActive !== undefined) query.isActive = String(params.isActive);
     return api.get<ContactListResult>('/contacts', { params: query }).then((r) => r.data);
   },
-  detail: (id: string) =>
-    api.get<Contact & Record<string, unknown>>(`/contacts/${id}`).then((r) => r.data),
+  detail: (id: string) => api.get<ContactDetail>(`/contacts/${id}`).then((r) => r.data),
   merge: (primaryId: string, duplicateId: string) =>
     api.post('/contacts/merge', { primaryId, duplicateId }).then((r) => r.data),
 };

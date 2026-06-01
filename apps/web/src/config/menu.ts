@@ -154,7 +154,6 @@ const SALES_CONFIG: RoleMenuConfig = {
         { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
         { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
         { label: 'ลูกค้า', path: '/customers', icon: Users },
-        { label: 'สมุดผู้ติดต่อ', path: '/contacts', icon: BookUser },
         { label: 'เช็คเครดิตลูกค้าใหม่', path: '/customer-intake', icon: UserSearch },
         { label: 'รับซื้อมือสอง', path: '/trade-in', icon: Smartphone },
       ],
@@ -221,7 +220,6 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
         { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
         { label: 'ลูกค้า', path: '/customers', icon: Users },
-        { label: 'สมุดผู้ติดต่อ', path: '/contacts', icon: BookUser },
         { label: 'เช็คเครดิตลูกค้าใหม่', path: '/customer-intake', icon: UserSearch },
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
@@ -298,6 +296,15 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
       ],
     },
     {
+      key: 'fm-fin-master',
+      label: 'ข้อมูลหลัก',
+      icon: BookUser,
+      zone: 'fin',
+      items: [
+        { label: 'สมุดผู้ติดต่อ', path: '/contacts', icon: BookUser },
+      ],
+    },
+    {
       key: 'fm-fin-daily',
       label: 'งานประจำวัน (การเงิน)',
       icon: HandCoins,
@@ -305,7 +312,6 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
-        { label: 'สมุดผู้ติดต่อ', path: '/contacts', icon: BookUser },
       ],
     },
     {
@@ -386,6 +392,15 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
 const ACCOUNTANT_CONFIG: RoleMenuConfig = {
   sidebar: [
     {
+      key: 'acc-fin-master',
+      label: 'ข้อมูลหลัก',
+      icon: BookUser,
+      zone: 'fin',
+      items: [
+        { label: 'สมุดผู้ติดต่อ', path: '/contacts', icon: BookUser },
+      ],
+    },
+    {
       key: 'acc-daily',
       label: 'งานประจำวัน',
       icon: HandCoins,
@@ -393,7 +408,6 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
         { label: 'บันทึกรายจ่าย', path: '/expenses', icon: Receipt },
-        { label: 'สมุดผู้ติดต่อ', path: '/contacts', icon: BookUser },
         { label: 'จัดการจดหมาย', path: '/letters', icon: Mail },
         { label: 'พิมพ์สติกเกอร์', path: '/stickers', icon: Tag },
         { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
@@ -518,7 +532,6 @@ const OWNER_CONFIG: RoleMenuConfig = {
       zone: 'shop',
       items: [
         { label: 'ลูกค้า', path: '/customers', icon: Users },
-        { label: 'สมุดผู้ติดต่อ', path: '/contacts', icon: BookUser },
         { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
         { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
@@ -543,6 +556,15 @@ const OWNER_CONFIG: RoleMenuConfig = {
      * OWNER sees them from both zones; FM/ACC already have them in FIN.
      * Asset menu items embedded as sub-group inside "รายจ่าย" → ซื้อทรัพย์สิน
      * (mirrors `assetMenuSection.items` — kept in sync manually). */
+    {
+      key: 'owner-fin-master',
+      label: 'ข้อมูลหลัก',
+      icon: BookUser,
+      zone: 'fin',
+      items: [
+        { label: 'สมุดผู้ติดต่อ', path: '/contacts', icon: BookUser },
+      ],
+    },
     {
       key: 'owner-fin-revenue',
       label: 'รายรับ',

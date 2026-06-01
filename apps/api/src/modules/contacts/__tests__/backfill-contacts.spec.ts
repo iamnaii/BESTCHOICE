@@ -1,4 +1,4 @@
-import { resolveBackfillAction } from '../../../../scripts/backfill-contacts';
+import { resolveBackfillAction } from '../../../cli/backfill-contacts.cli';
 
 describe('resolveBackfillAction (safe no-auto-merge dedup)', () => {
   const existing = [

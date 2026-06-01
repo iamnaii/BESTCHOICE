@@ -11,12 +11,21 @@
  * Idempotent: each entity is processed only where its contact FK is still
  * null, so re-runs skip already-linked rows.
  *
- * Usage:
+ * Compiled CLI — ships in the prod Docker image as `dist/src/cli/backfill-contacts.cli.js`
+ * and runs as a Cloud Run Job (matching the other prod backfills).
+ *
+ * Usage (dev):
  *   CONFIRM_BACKFILL=YES_I_AM_SURE \
  *   EXPECTED_DB_NAME=bestchoice_dev \
  *   npm --prefix apps/api run backfill:contacts
  *
- * Production: also add ALLOW_PROD_BACKFILL=YES_I_AM_SURE.
+ * Production invocation (Cloud Run Job):
+ *   gcloud run jobs execute backfill-contacts --region=asia-southeast1 \
+ *     --project=bestchoice-prod \
+ *     --update-env-vars=CONFIRM_BACKFILL=YES_I_AM_SURE,EXPECTED_DB_NAME=bestchoice_prod,ALLOW_PROD_BACKFILL=YES_I_AM_SURE \
+ *     --wait
+ *
+ *   (the container entrypoint runs: node dist/src/cli/backfill-contacts.cli.js)
  *
  * Notes:
  *   - The pure decision helper `resolveBackfillAction` is unit-tested. The

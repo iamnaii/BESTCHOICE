@@ -26,12 +26,19 @@ describe('CustomersService.create — NID normalization', () => {
         create: jest.fn((args) => Promise.resolve({ id: 'cust-new', ...args.data })),
         update: jest.fn((args) => Promise.resolve({ id: args.where.id, ...args.data })),
       },
+      // create() now always runs inside a transaction; invoke the callback
+      // with the same prisma mock so customer.create/update assertions hold.
+      $transaction: jest.fn(async (cb) => cb(prisma)),
     };
     const mod: TestingModule = await Test.createTestingModule({
       providers: [
         CustomersService,
         { provide: PrismaService, useValue: prisma },
         { provide: CustomerTierService, useValue: { getCustomerTier: jest.fn() } },
+        {
+          provide: ContactResolverService,
+          useValue: { findOrCreateByNaturalKey: jest.fn().mockResolvedValue({ id: 'contact-test-id' }) },
+        },
       ],
     }).compile();
     service = mod.get(CustomersService);
@@ -128,12 +135,17 @@ describe('CustomersService.create — T3-C9 phone + email dedup', () => {
         create: jest.fn((args) => Promise.resolve({ id: 'cust-new', ...args.data })),
         update: jest.fn((args) => Promise.resolve({ id: args.where.id, ...args.data })),
       },
+      $transaction: jest.fn(async (cb) => cb(prisma)),
     };
     const mod: TestingModule = await Test.createTestingModule({
       providers: [
         CustomersService,
         { provide: PrismaService, useValue: prisma },
         { provide: CustomerTierService, useValue: { getCustomerTier: jest.fn() } },
+        {
+          provide: ContactResolverService,
+          useValue: { findOrCreateByNaturalKey: jest.fn().mockResolvedValue({ id: 'contact-test-id' }) },
+        },
       ],
     }).compile();
     service = mod.get(CustomersService);
@@ -214,12 +226,17 @@ describe('PII dual-write (Phase 3)', () => {
         create: jest.fn().mockResolvedValue({ id: 'c1' }),
         update: jest.fn().mockResolvedValue({}),
       },
+      $transaction: jest.fn(async (cb) => cb(prisma)),
     };
     const mod: TestingModule = await Test.createTestingModule({
       providers: [
         CustomersService,
         { provide: PrismaService, useValue: prisma },
         { provide: CustomerTierService, useValue: { getCustomerTier: jest.fn() } },
+        {
+          provide: ContactResolverService,
+          useValue: { findOrCreateByNaturalKey: jest.fn().mockResolvedValue({ id: 'contact-test-id' }) },
+        },
       ],
     }).compile();
     service = mod.get(CustomersService);
@@ -294,12 +311,17 @@ describe('PII read decryption (Phase 5)', () => {
         create: jest.fn().mockResolvedValue({ id: 'c1' }),
         update: jest.fn().mockResolvedValue({}),
       },
+      $transaction: jest.fn(async (cb) => cb(prisma)),
     };
     const mod: TestingModule = await Test.createTestingModule({
       providers: [
         CustomersService,
         { provide: PrismaService, useValue: prisma },
         { provide: CustomerTierService, useValue: { getCustomerTier: jest.fn() } },
+        {
+          provide: ContactResolverService,
+          useValue: { findOrCreateByNaturalKey: jest.fn().mockResolvedValue({ id: 'contact-test-id' }) },
+        },
       ],
     }).compile();
     service = mod.get(CustomersService);
@@ -384,6 +406,10 @@ describe('CustomersService.remove — block if open contracts', () => {
         CustomersService,
         { provide: PrismaService, useValue: prisma },
         { provide: CustomerTierService, useValue: { getCustomerTier: jest.fn() } },
+        {
+          provide: ContactResolverService,
+          useValue: { findOrCreateByNaturalKey: jest.fn().mockResolvedValue({ id: 'contact-test-id' }) },
+        },
       ],
     }).compile();
     service = mod.get(CustomersService);

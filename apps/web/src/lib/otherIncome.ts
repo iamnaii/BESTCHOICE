@@ -51,9 +51,14 @@ export const otherIncomeApi = {
       })
       .then((r) => r.data),
 
-  reverse: (id: string, reason: OtherIncomeReverseReason, note: string) =>
+  reverse: (
+    id: string,
+    reason: OtherIncomeReverseReason,
+    note: string,
+    reasonLabel?: string,
+  ) =>
     api
-      .post<OtherIncome>(`/other-income/${id}/reverse`, { reason, note })
+      .post<OtherIncome>(`/other-income/${id}/reverse`, { reason, note, reasonLabel })
       .then((r) => r.data),
 
   copy: (id: string) =>

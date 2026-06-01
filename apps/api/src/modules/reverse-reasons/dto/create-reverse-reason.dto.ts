@@ -1,0 +1,16 @@
+import { IsBoolean, IsInt, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+
+export class CreateReverseReasonDto {
+  @IsString({ message: 'กรุณาระบุข้อความเหตุผล' })
+  @MinLength(2, { message: 'ข้อความสั้นเกินไป' })
+  @MaxLength(200, { message: 'ข้อความยาวเกินไป (สูงสุด 200 ตัวอักษร)' })
+  label!: string;
+
+  @IsOptional()
+  @IsInt({ message: 'ลำดับต้องเป็นจำนวนเต็ม' })
+  sortOrder?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+}

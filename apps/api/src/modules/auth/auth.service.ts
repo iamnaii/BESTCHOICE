@@ -425,6 +425,10 @@ export class AuthService {
         deletedAt: true,
         preferences: true,
         defaultCashAccountCode: true,
+        // InternalControlActionBar — per-user reverse-permission override.
+        // Null = use role-based default. Consumed by the shared bar to gate
+        // the "↺ ยกเลิก/กลับรายการ" button.
+        canReverseOverride: true,
         branch: { select: { id: true, name: true } },
       },
     });

@@ -19,16 +19,13 @@ export interface User {
   branch: { id: string; name: string } | null;
 }
 
-export const roleAvatarColors: Record<string, string> = {
-  OWNER: 'bg-destructive/15 text-destructive',
-  BRANCH_MANAGER: 'bg-primary/15 text-primary',
-  FINANCE_MANAGER: 'bg-info/15 text-info',
-  SALES: 'bg-success/15 text-success',
-  ACCOUNTANT: 'bg-warning/15 text-warning',
-  // Owner Q4 (2026-05-17) — external auditor (CPA / สรรพากร). Read-only;
-  // backend RolesGuard gates via `viewer_role_enabled` SystemConfig.
-  VIEWER: 'bg-secondary text-secondary-foreground',
-};
+// Re-exports — canonical source is `@/constants/user-roles.ts`. Kept here as
+// shims so existing call sites inside UsersPage keep working unchanged.
+export {
+  ROLE_LABELS as roleLabels,
+  ROLE_COLORS as roleColors,
+  ROLE_AVATAR_COLORS as roleAvatarColors,
+} from '@/constants/user-roles';
 
 export interface InviteToken {
   id: string;
@@ -41,24 +38,6 @@ export interface InviteToken {
   branch: { id: string; name: string } | null;
   inviter: { id: string; name: string } | null;
 }
-
-export const roleLabels: Record<string, string> = {
-  OWNER: 'เจ้าของร้าน',
-  BRANCH_MANAGER: 'ผู้จัดการสาขา',
-  FINANCE_MANAGER: 'ผู้จัดการการเงิน',
-  SALES: 'พนักงานขาย',
-  ACCOUNTANT: 'ฝ่ายบัญชี',
-  VIEWER: 'ผู้ตรวจสอบ (Read-only)',
-};
-
-export const roleColors: Record<string, string> = {
-  OWNER: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
-  BRANCH_MANAGER: 'bg-primary/10 text-primary dark:bg-primary/15',
-  FINANCE_MANAGER: 'bg-info/10 text-info dark:bg-info/15',
-  SALES: 'bg-success/10 text-success dark:bg-success/15',
-  ACCOUNTANT: 'bg-warning/10 text-warning dark:bg-warning/15',
-  VIEWER: 'bg-secondary text-secondary-foreground',
-};
 
 export const inputClass =
   'w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20';

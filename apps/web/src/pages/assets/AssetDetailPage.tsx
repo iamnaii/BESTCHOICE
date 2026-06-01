@@ -33,9 +33,8 @@ import { formatDateShortThai, formatDateTime, formatNumberDecimal } from '@/util
 import { getErrorMessage } from '@/lib/api';
 import { assetsApi } from './api';
 import { AssetStatusBadge } from './components/AssetStatusBadge';
-import { ReverseAssetDialog } from './components/ReverseAssetDialog';
-import { ReverseDisposalDialog } from './components/ReverseDisposalDialog';
 import { TransferAssetDialog } from './components/TransferAssetDialog';
+import { ReverseConfirmDialog } from '@/components/accounting';
 import { CATEGORY_LABEL } from './types';
 
 const fmt = (n: string | number | null | undefined): string =>
@@ -64,6 +63,12 @@ export default function AssetDetailPage() {
   const [showDelete, setShowDelete] = useState(false);
   const [showInvoiceReceived, setShowInvoiceReceived] = useState(false);
 
+  /**
+   * Asset-purchase reverse — wired through the shared ReverseConfirmDialog.
+   * The legacy assetsApi.reverse takes a single `reason: string`; the new
+   * dialog returns `{reasonId, reasonLabel, note}`, so we collapse the
+   * label + note into the existing reason field at the boundary.
+   */
   const reverseMutation = useMutation({
     mutationFn: (reason: string) => assetsApi.reverse(id!, reason),
     onSuccess: (r) => {
@@ -77,6 +82,10 @@ export default function AssetDetailPage() {
     onError: (e) => toast.error(getErrorMessage(e)),
   });
 
+  /**
+   * Disposal-reverse — a separate API call. Same dialog component but
+   * different module-context message + endpoint.
+   */
   const reverseDisposeMutation = useMutation({
     mutationFn: (reason: string) => assetsApi.reverseDispose(id!, reason),
     onSuccess: (r) => {
@@ -425,11 +434,17 @@ export default function AssetDetailPage() {
 
       {asset && (
         <>
-          <ReverseAssetDialog
+          {/* InternalControlActionBar — shared ReverseConfirmDialog for the
+              asset-purchase reverse path. */}
+          <ReverseConfirmDialog
             open={showReverse}
             onOpenChange={setShowReverse}
-            onConfirm={(reason) => reverseMutation.mutate(reason)}
-            isPending={reverseMutation.isPending}
+            module="asset"
+            docNumber={asset.assetCode}
+            isLoading={reverseMutation.isPending}
+            onConfirm={({ reasonLabel, note }) =>
+              reverseMutation.mutate(note ? `${reasonLabel} — ${note}` : reasonLabel)
+            }
           />
           <TransferAssetDialog
             asset={asset}
@@ -438,11 +453,21 @@ export default function AssetDetailPage() {
             onConfirm={(p) => transferMutation.mutate(p)}
             isPending={transferMutation.isPending}
           />
-          <ReverseDisposalDialog
+          {/* Disposal reversal — separate flow with a tailored impact note. */}
+          <ReverseConfirmDialog
             open={showReverseDisposal}
             onOpenChange={setShowReverseDisposal}
-            onConfirm={(reason) => reverseDisposeMutation.mutate(reason)}
-            isPending={reverseDisposeMutation.isPending}
+            module="asset"
+            docNumber={asset.assetCode}
+            isLoading={reverseDisposeMutation.isPending}
+            impactNotes={[
+              'ระบบจะคืนสถานะสินทรัพย์จาก DISPOSED → POSTED',
+              'JE การจำหน่ายจะถูกกลับรายการ (สลับ Dr↔Cr)',
+              'ค่าเสื่อมราคาที่หยุดไว้ตอนจำหน่ายจะเริ่มคำนวณใหม่',
+            ]}
+            onConfirm={({ reasonLabel, note }) =>
+              reverseDisposeMutation.mutate(note ? `${reasonLabel} — ${note}` : reasonLabel)
+            }
           />
           <ConfirmDialog
             open={showDelete}

@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { UserRole, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import * as bcrypt from 'bcrypt';
@@ -11,7 +12,10 @@ const SYSTEM_USER_EMAILS = ['legacy-import@bestchoice.com'];
 
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private audit: AuditService,
+  ) {}
 
   async findAll(page = 1, limit = 50) {
     page = Math.max(1, page);
@@ -120,6 +124,58 @@ export class UsersService {
       data: { savedSignature: null },
     });
     return { success: true };
+  }
+
+  /**
+   * InternalControlActionBar — flat list of users + their canReverseOverride
+   * flag. Used by the ReversePermissionCard when the mode is CUSTOM.
+   * Returns an array (no pagination) — assumes user count fits the screen.
+   */
+  async listReverseOverrides() {
+    return this.prisma.user.findMany({
+      where: { deletedAt: null, isActive: true, email: { notIn: SYSTEM_USER_EMAILS } },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        canReverseOverride: true,
+      },
+      orderBy: [{ role: 'asc' }, { name: 'asc' }],
+    });
+  }
+
+  /**
+   * InternalControlActionBar — set or clear the per-user reverse-permission
+   * override. `null` means "follow role-based mode" (most users).
+   *
+   * Writes a `USER_REVERSE_OVERRIDE_CHANGED` AuditLog row so OWNER-driven
+   * privilege flips show up in the audit trail (matches the existing
+   * pattern for `SYSTEM_CONFIG_UPDATE` on reverse_permission flag).
+   */
+  async setReverseOverride(id: string, value: boolean | null, actorUserId?: string) {
+    const user = await this.prisma.user.findFirst({
+      where: { id, deletedAt: null },
+      select: { id: true, role: true, canReverseOverride: true, name: true },
+    });
+    if (!user) throw new NotFoundException('ไม่พบผู้ใช้งาน');
+
+    const updated = await this.prisma.user.update({
+      where: { id },
+      data: { canReverseOverride: value },
+      select: { id: true, canReverseOverride: true },
+    });
+
+    await this.audit.log({
+      userId: actorUserId,
+      action: 'USER_REVERSE_OVERRIDE_CHANGED',
+      entity: 'user',
+      entityId: id,
+      oldValue: { canReverseOverride: user.canReverseOverride, targetUserName: user.name },
+      newValue: { canReverseOverride: value, targetUserName: user.name },
+    });
+
+    return updated;
   }
 
   async update(id: string, dto: UpdateUserDto) {

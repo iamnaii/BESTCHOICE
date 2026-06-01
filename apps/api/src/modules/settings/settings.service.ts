@@ -341,13 +341,21 @@ export class SettingsService {
   }
 
   /**
-   * D1.2.7.2 — DB-driven reverse-reason dropdown. JSON-encoded array of
-   * `{code, label}` objects stored in SystemConfig key `reverse_reasons`.
-   * Default = the 6 canonical reasons. Caller is responsible for treating
-   * an empty/invalid stored list as "use default" — never as "empty list".
+   * D1.2.7.2 + InternalControlActionBar — DB-driven reverse-reason dropdown.
+   *
+   * Source of truth (in priority order):
+   *   1. `reverse_reasons` table (admin-managed via `/settings#internal-control`).
+   *      Each row maps to `{ code: row.id, label: row.label }`. Inactive
+   *      rows are excluded; sort by `(sortOrder, createdAt)`.
+   *   2. `SystemConfig` key `reverse_reasons` (legacy JSON blob). Still
+   *      honored when the table is empty so partially-migrated environments
+   *      keep working.
+   *   3. Built-in defaults (6 canonical reasons).
+   *
+   * Caller is responsible for treating an empty/invalid stored list as
+   * "use default" — never as "empty list".
    */
   async getReverseReasons(): Promise<{ code: string; label: string }[]> {
-    const raw = await this.getKey('reverse_reasons');
     const defaults: { code: string; label: string }[] = [
       { code: 'data_entry_error', label: 'ป้อนข้อมูลผิด' },
       { code: 'wrong_vendor', label: 'ผู้ขายผิด' },
@@ -356,6 +364,23 @@ export class SettingsService {
       { code: 'cancel_transaction', label: 'ยกเลิกรายการ' },
       { code: 'other', label: 'อื่นๆ (ระบุรายละเอียด)' },
     ];
+
+    // (1) Try the admin-managed table first.
+    try {
+      const rows = await this.prisma.reverseReason.findMany({
+        where: { isActive: true, deletedAt: null },
+        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+        select: { id: true, label: true },
+      });
+      if (rows.length > 0) {
+        return rows.map((r) => ({ code: r.id, label: r.label }));
+      }
+    } catch {
+      // table missing (pre-migration) or other DB hiccup → fall through.
+    }
+
+    // (2) Legacy SystemConfig JSON blob.
+    const raw = await this.getKey('reverse_reasons');
     if (!raw) return defaults;
     try {
       const parsed = JSON.parse(raw);
@@ -958,13 +983,20 @@ export class SettingsService {
      */
     apiKeysAdminOnly: boolean;
     /**
-     * D1.3.2.4 — dynamic bundle controlling who can reverse/void expense
-     * documents. Whitelisted: `'OWNER+FINANCE_MANAGER'` (default — current
-     * behavior) / `'OWNER_ONLY'`. Enforced at request time by
-     * `ReversePermissionGuard`; exposed here so UIs can hide the "Void"
-     * button for roles that won't be allowed.
+     * D1.3.2.4 + InternalControlActionBar — dynamic bundle controlling who
+     * can reverse/void accounting documents. Whitelisted:
+     *   - `'OWNER_ONLY'`
+     *   - `'OWNER+FINANCE_MANAGER'` (default — legacy behavior)
+     *   - `'OWNER+FINANCE_MANAGER+ACCOUNTANT'`
+     *   - `'CUSTOM'` — per-user via `User.canReverseOverride`
+     * Enforced at request time by `ReversePermissionGuard`; exposed here so
+     * UIs can hide the "Void/Reverse" button for roles that won't be allowed.
      */
-    reversePermission: 'OWNER+FINANCE_MANAGER' | 'OWNER_ONLY';
+    reversePermission:
+      | 'OWNER_ONLY'
+      | 'OWNER+FINANCE_MANAGER'
+      | 'OWNER+FINANCE_MANAGER+ACCOUNTANT'
+      | 'CUSTOM';
   }> {
     const taxExemptWarningEnabled = await this.readBoolean(
       'TAX_EXEMPT_WARNING_ENABLED',
@@ -1336,11 +1368,24 @@ export class SettingsService {
     // D1.3.3.4 — api_keys_admin_only. Default true. Documentary —
     // IntegrationsController @Roles('OWNER') is the actual enforcement.
     const apiKeysAdminOnly = await this.readBoolean('api_keys_admin_only', true);
-    // D1.3.2.4 — reverse_permission. Whitelist 2 values; everything else
-    // falls back to the default OWNER+FM bundle.
+    // D1.3.2.4 + InternalControlActionBar — reverse_permission. Whitelist
+    // 4 values; everything else falls back to the default OWNER+FM bundle.
+    //   - OWNER_ONLY
+    //   - OWNER+FINANCE_MANAGER (default)
+    //   - OWNER+FINANCE_MANAGER+ACCOUNTANT
+    //   - CUSTOM (per-user via User.canReverseOverride, see ReversePermissionGuard)
     const reversePermissionRaw = await this.getKey('reverse_permission');
-    const reversePermission: 'OWNER+FINANCE_MANAGER' | 'OWNER_ONLY' =
-      reversePermissionRaw === 'OWNER_ONLY' ? 'OWNER_ONLY' : 'OWNER+FINANCE_MANAGER';
+    const REVERSE_PERMISSION_WHITELIST = [
+      'OWNER_ONLY',
+      'OWNER+FINANCE_MANAGER',
+      'OWNER+FINANCE_MANAGER+ACCOUNTANT',
+      'CUSTOM',
+    ] as const;
+    type ReversePermissionMode = (typeof REVERSE_PERMISSION_WHITELIST)[number];
+    const reversePermission: ReversePermissionMode =
+      REVERSE_PERMISSION_WHITELIST.includes(reversePermissionRaw as ReversePermissionMode)
+        ? (reversePermissionRaw as ReversePermissionMode)
+        : 'OWNER+FINANCE_MANAGER';
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,

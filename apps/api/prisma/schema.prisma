@@ -615,6 +615,11 @@ model User {
   /// SP7.1 — Company context เริ่มต้นเมื่อ user login (default ใน pill switcher)
   primaryCompany String? @map("primary_company")
 
+  /// InternalControlActionBar — per-user override สำหรับสิทธิ์ Reverse Entry.
+  /// null = ใช้ตาม SystemConfig "reverse_permission" mode (default OWNER+FM).
+  /// true/false = override ตาม mode (เฉพาะเมื่อ mode = CUSTOM).
+  canReverseOverride Boolean? @map("can_reverse_override")
+
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
@@ -6361,6 +6366,10 @@ model OtherIncome {
   reversesId    String?                   @unique @map("reverses_id")
   reverseReason OtherIncomeReverseReason? @map("reverse_reason")
   reverseNote   String?                   @map("reverse_note")
+  /// InternalControlActionBar — human-readable label picked from the admin-
+  /// managed `reverse_reasons` table. Stored alongside `reverseReason` so
+  /// analytics can group by the real label rather than the coarse enum.
+  reverseReasonLabel String?              @map("reverse_reason_label")
 
   // Recurring
   copiedFromId String? @map("copied_from_id")
@@ -7213,4 +7222,24 @@ model ContractExchangeRequest {
   @@index([oldContractId])
   @@index([oldProductId])
   @@map("contract_exchange_requests")
+}
+
+/// InternalControlActionBar — admin-managed dropdown ของเหตุผลการยกเลิก/กลับรายการ.
+/// ใช้ร่วม 3 modules: Other Income / Expense / Asset. แทน hardcoded enum + SystemConfig
+/// JSON ของเดิม. ปิดใช้งานแทนการลบ (audit-safe) — soft delete via deletedAt.
+model ReverseReason {
+  id        String   @id @default(uuid())
+  /// ข้อความที่แสดงใน dropdown — เช่น "บันทึกผิดบัญชี"
+  label     String
+  /// ลำดับการแสดงผล (น้อย → มาก). drag-sort ใน Settings UI อัปเดต field นี้.
+  sortOrder Int      @default(0) @map("sort_order")
+  /// false = ไม่แสดงใน dropdown แต่ยังเก็บไว้สำหรับ audit log ที่อ้างอิงเหตุผลเก่า
+  isActive  Boolean  @default(true) @map("is_active")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@index([isActive, sortOrder])
+  @@map("reverse_reasons")
 }

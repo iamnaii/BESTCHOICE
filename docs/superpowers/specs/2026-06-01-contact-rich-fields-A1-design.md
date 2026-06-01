@@ -1,106 +1,67 @@
-# Contact Rich Fields + Edit Form (Sub-project A1)
+# Contact Rich Detail — Read-Through (Sub-project A1, reworked)
 
 วันที่: 2026-06-01
 สถานะ: รออนุมัติ spec จาก owner
 ส่วนหนึ่งของ: PEAK-style contact detail expansion (A → B → C). อันนี้คือ **A1**.
 
-## ที่มา
+> **เวอร์ชันนี้ rework หลัง /scrutinize** — เวอร์ชันแรกเก็บ column ซ้ำบน Contact (address/entityType/branchCode/prefix) ซึ่งซ้ำกับ Customer/Supplier และทำให้ข้อมูลแตก 2 ชุด (เอกสารกฎหมายอ่านจาก Customer/Supplier ไม่ใช่ Contact). เวอร์ชันนี้ใช้ **read-through**: Contact คงเป็น party key บางๆ, หน้า detail ดึงข้อมูลจาก record ต้นทางมาแสดง + ลิงก์ไปแก้ที่ต้นทาง.
 
-หน้า contact detail ปัจจุบันมีแค่ field พื้นฐาน (code, name, taxId, phone, email, address เดี่ยว, roles, isActive). owner ต้องการให้ครบแบบ PEAK ซึ่งแยกเป็นหลาย sub-project:
+## ปัญหาที่ scrutinize เจอ (เหตุผลของการ rework)
 
-- **A** = ฟิลด์ครบ + edit form  ← spec นี้ (A1) + DBD lookup (A2, ทีหลัง)
-- **B** = ผังบัญชีต่อ contact (AR/AP/IR-GR code, ครบกำหนดชำระ, ธนาคารคู่ค้า) — spec แยก
-- **C** = แท็บภาพรวมการเงิน (ยอดขาย/AR aging/เอกสาร/กราฟ) — spec แยก
+- ฟิลด์เกือบทั้งหมดที่อยากเพิ่มมีอยู่แล้ว: `entityType`↔`Supplier.type`, `prefix`↔`Customer.prefix`, `branchCode`↔`Supplier.branchCode`, address↔`Customer.addressIdCard/addressCurrent` + `Supplier.address`
+- สัญญา/ใบเสร็จอ่าน address จาก **Customer** ([contract-workflow.service.ts:176-177](../../apps/api/src/modules/contracts/contract-workflow.service.ts), [contracts.service.ts:173](../../apps/api/src/modules/contracts/contracts.service.ts)) → ถ้าเก็บซ้ำบน Contact แล้วแก้ที่ Contact จะไม่กระทบเอกสาร = ข้อมูลขัดกัน
+- มี `CustomerDetailPage.tsx` + `SupplierDetailPage.tsx` ฟอร์มแก้ไขครบอยู่แล้ว และเป็นตัวจริงที่ระบบใช้
 
-ลำดับ build: A1 → A2 → B → C.
+## หลักการ A1 (reworked)
 
-## ขอบเขต A1 (ชัดเจน)
+- **Contact = party key บางๆ** (identity + link + roles) — **ไม่เพิ่ม column ข้อมูลกิจการ/ที่อยู่**
+- หน้า detail แท็บ "ข้อมูลกิจการ" = **read-through** ประกอบจาก record ต้นทางที่ link อยู่ (Customer / Supplier / ExternalFinanceCompany)
+- **แก้ไข = deep-link ไปหน้าต้นทางเดิม** (ที่มีฟอร์มครบ + เป็นตัวที่เอกสารใช้) — ไม่มี PATCH ฟิลด์บน Contact, ไม่มี migration, ไม่มี backfill
+- **ไม่ duplicate PII inline**: ที่อยู่ลูกค้าเป็น PII เข้ารหัส — ไม่ดึงมาโชว์เต็มในหน้า contact (เลี่ยง PDPA/decrypt ผ่าน endpoint ใหม่) แสดงแค่ field ระบุตัวตน/ไม่อ่อนไหว + ลิงก์ไปดูเต็มที่หน้าต้นทาง
+
+## ขอบเขต A1
 
 ทำ:
-- ขยาย `Contact` model ด้วย field ระดับกิจการ + ที่อยู่ structured (เก็บเป็น text)
-- ฟอร์ม **แก้ไข** Contact (modal) บนหน้า detail + แท็บ "ข้อมูลกิจการ"
-- `PATCH /contacts/:id`
-- backfill `entityType` ของ 37 rows เดิม
+- ขยาย `GET /contacts/:id` ให้ `select` ฟิลด์ระบุตัวตน/ไม่อ่อนไหวเพิ่มจาก record ที่ link (Supplier: type, taxId, branchCode, contactName, contactPhone, phone, hasVat ; Customer: prefix, phone, email, nationalId — **ไม่ดึง address PII** ; ExternalFinanceCompany: taxId, contactPhone, email, creditTermDays)
+- หน้า `ContactDetailPage` แท็บ "ข้อมูลกิจการ" แสดง **การ์ดต่อ role record** + ปุ่ม "เปิดข้อมูลเต็ม / แก้ไข →" deep-link
+- derive `entityType` แบบ read-time (มี role SUPPLIER/FINANCE_COMPANY หรือ Supplier.type=JURISTIC → นิติบุคคล ; ไม่งั้น บุคคล) — ไม่ต้องเก็บ column
 
-ไม่ทำ (อยู่ sub-project อื่น / YAGNI):
-- DBD/สรรพากร tax-id lookup → **A2** (รอ owner มี API token; ออกแบบ field+form ให้รองรับการต่อทีหลังไว้)
-- ช่องบัญชี (AR/AP code, credit term, ธนาคารคู่ค้า) → **B**
-- แท็บภาพรวมการเงิน → **C**
-- การ **สร้าง** Contact ใหม่ตรงๆ จาก /contacts — ยังผ่านฟอร์มลูกค้า/ผู้ขายเดิม (เหมือน v1). A1 ทำแค่ **แก้ไข** รายที่มีอยู่
-- ผู้ติดต่อบุคคล (sub-contacts), แนบไฟล์, กลุ่มกำหนดเอง, วงเงินขายเชื่อ, แฟกซ์ — ตัด
+ไม่ทำ:
+- เพิ่ม column บน Contact / migration / backfill / PATCH ฟิลด์กิจการบน Contact
+- DBD lookup → A2 ; ช่องบัญชี → B ; ภาพรวมการเงิน → C
+- ฟิลด์ที่ไม่มีบน record ต้นทางใดเลย (เช่น website, fax) — ถ้าจำเป็นจริง เพิ่มที่ **record ต้นทาง** (เช่น Supplier) ไม่ใช่ Contact — แยกพิจารณานอก A1 (YAGNI)
 
-## 1. โครงข้อมูล (ขยาย Contact)
+## 1. Backend
 
-เพิ่ม field nullable ทั้งหมด (2-step migration ปลอดภัยกับ 37 rows):
+ขยาย `ContactsService.findOne(id)` include/select (ของเดิม select แค่ `{id,name}`):
+- `customers`: `{ id, name, prefix, phone, email, nationalId, customerCode? }` — **ไม่ดึง addressCurrent/addressIdCard (PII)**
+- `suppliers`: `{ id, name, type, taxId, branchCode, contactName, contactPhone, phone, hasVat, address }` (Supplier.address ไม่ใช่ PII เข้ารหัส — ดึงได้)
+- `tradeInsAsSeller`: `{ id, sellerName, sellerPhone, createdAt }` (free-text, read-only)
+- `externalFinanceCompany`: `{ id, name, taxId, contactPhone, email, creditTermDays }`
 
-```
-enum ContactEntityType { JURISTIC, INDIVIDUAL }
+ไม่เพิ่ม endpoint ใหม่. guard เดิม. respect `deletedAt: null` เดิม.
 
-Contact (เพิ่ม)
-  entityType      ContactEntityType?           // นิติบุคคล / บุคคลธรรมดา
-  titlePrefix     String?                        // คำนำหน้า (คุณ/นาย/นาง/บจก.)
-  firstName       String?                        // บุคคลธรรมดา
-  lastName        String?                        // บุคคลธรรมดา
-  branchCode      String?                        // เลขที่สาขา ("00000"=สำนักงานใหญ่) — นิติบุคคล
-  website         String?
+> NB: ถ้าต้องการโชว์ address ลูกค้าในหน้า contact จริงๆ ภายหลัง ให้ทำผ่าน CustomerPiiService decrypt + PDPA guard เป็นงานแยก — A1 ไม่ทำ (ลิงก์ไปดูที่ CustomerDetailPage แทน)
 
-  // ที่อยู่จดทะเบียน (text — ไม่ FK; reuse AddressForm ฝั่ง web)
-  regAddressLine  String?
-  regSubdistrict  String?                        // ชื่อตำบล/แขวง
-  regDistrict     String?                        // ชื่ออำเภอ/เขต
-  regProvince     String?                        // ชื่อจังหวัด
-  regPostalCode   String?
+## 2. Frontend
 
-  // ที่อยู่จัดส่งเอกสาร
-  shipSameAsReg   Boolean  @default(true)
-  shipAddressLine String?
-  shipSubdistrict String?
-  shipDistrict    String?
-  shipProvince    String?
-  shipPostalCode  String?
-```
+`ContactDetailPage` แท็บ "ข้อมูลกิจการ" (reworked):
+- หัว: contactCode, name (display), badge roles, derived entityType, isActive
+- **การ์ดต่อ role record** (วนตาม customers/suppliers/finance/tradeIns ที่มี):
+  - การ์ดลูกค้า: prefix+name, เบอร์, email, เลขบัตร(mask) + ปุ่ม **"เปิดข้อมูลลูกค้า / แก้ไข →"** → `/customers/{id}`
+  - การ์ดผู้ขาย: name, type, taxId, เลขสาขา, ผู้ติดต่อ, เบอร์, hasVat, address + ปุ่ม → `/suppliers/{id}`
+  - การ์ดบริษัทไฟแนนซ์: name, taxId, เบอร์, email + ปุ่ม → `/external-finance-companies/{id}`
+  - การ์ดคนขายมือสอง: sellerName/sellerPhone (read-only, อาจลิงก์ `/trade-in`)
+- ถ้า Contact ไม่มี role record เลย (กรณีหายาก) → แสดงข้อมูลเท่าที่ Contact มี (name/phone) + หมายเหตุ "ยังไม่ผูกกับลูกค้า/ผู้ขาย"
+- ใช้ semantic tokens, Thai `leading-snug`
+- ไม่ต้องมี edit modal/form ใน A1 (แก้ที่หน้าต้นทาง)
 
-หมายเหตุ:
-- `name` เดิม = display name (list/search ใช้ตัวนี้ ไม่เปลี่ยน). ที่อยู่เก็บเป็นชื่อ (string) ตามที่ทั้งแอปทำ — **ไม่มี DB address module ให้ FK** (`thai-address-data.ts` เป็น static ฝั่ง frontend, ไม่มีตาราง). UX dropdown ได้จาก component `AddressForm` ที่มีอยู่แล้ว.
-- ไม่แตะ `taxId` / `email` / `phone` / `lineId` / `roles` / `isActive` เดิม.
+## 3. ทดสอบ
 
-## 2. Backend
+- API: `findOne` คืน field ที่ขยายต่อ role record ครบ, **ไม่หลุด address PII ของลูกค้า**, soft-delete filter, NotFound
+- Web: แท็บข้อมูลกิจการ render การ์ดตาม role ที่มี, ปุ่ม deep-link ชี้ path ถูก (`/customers/:id` ฯลฯ), กรณีหลาย role โชว์หลายการ์ด, กรณีไม่มี record โชว์ fallback
 
-- `PATCH /contacts/:id` — รับ field ข้างบน (DTO `UpdateContactDto`, class-validator, ข้อความ error ไทย). guard `@UseGuards(JwtAuthGuard, RolesGuard)` + `@Roles('OWNER','FINANCE_MANAGER','ACCOUNTANT')`. audit string `CONTACT_UPDATED` (ผ่าน AuditInterceptor เดิม).
-- **name-sync** ใน service ตอน update:
-  - `INDIVIDUAL` → `name = [titlePrefix] + firstName + lastName` (trim ช่องว่างซ้อน)
-  - `JURISTIC` → `name = <ชื่อกิจการที่ส่งมา>` (field เดียวกับ name)
-- soft-delete filter `deletedAt: null` เหมือนเดิม; โยน `NotFoundException('ไม่พบผู้ติดต่อ')` ถ้าไม่เจอ.
+## หมายเหตุต่อ B / C
 
-## 3. Frontend
-
-หน้า `ContactDetailPage` แท็บ **"ข้อมูลกิจการ"** (เลียน layout PEAK):
-- กลุ่ม **ข้อมูลจดทะเบียน**: ประเภท (badge นิติบุคคล/บุคคล), เลขภาษี, เลขสาขา, ที่อยู่จดทะเบียน (รวมเป็นบรรทัด)
-- กลุ่ม **ช่องทางติดต่อ**: เบอร์, อีเมล, เว็บไซต์, LINE, ที่อยู่จัดส่ง
-- toggle **เปิด/ปิดใช้งาน** (isActive) → PATCH
-- ปุ่ม **"แก้ไข"** → **modal** (react-hook-form + zod ตาม pattern โปรเจค):
-  - toggle **นิติบุคคล / บุคคลธรรมดา** → conditional: นิติบุคคล = ชื่อกิจการ + เลขสาขา ; บุคคล = คำนำหน้า + ชื่อ + สกุล
-  - taxId, website, phone, email, LINE
-  - `AddressForm` (component เดิม) สำหรับที่อยู่จดทะเบียน + checkbox "ที่อยู่จัดส่ง = ที่อยู่จดทะเบียน" → ติ๊กออกเพื่อโชว์ `AddressForm` ตัวที่สองสำหรับที่อยู่จัดส่ง
-  - submit → `PATCH /contacts/:id` → invalidate react-query → ปิด modal + toast success (sonner)
-- ใช้ semantic tokens เท่านั้น (frontend.md), Thai `leading-snug`
-- API client เพิ่ม `contactsApi.update(id, payload)` ใน `lib/api/contacts.ts`
-
-## 4. Migration + Backfill
-
-- Migration เพิ่ม column ข้างบน (nullable) + enum `ContactEntityType`. **ตั้งชื่อโฟลเดอร์ migration ด้วย synthetic timestamp ให้เรียงท้ายสุด** (สูงกว่า `20260966000000`) — กันบั๊กลำดับ migration ที่เคยทำ CI/prod พัง (วันที่จริงเรียงไปกลาง history ก่อนตารางที่อ้างถูกสร้าง). verify ด้วย `migrate reset` จาก dev DB ว่า apply ท้ายสุดสะอาด.
-- Backfill `entityType` ของ rows เดิม (CLI `src/cli/` แบบ compiled — ไม่ใช่ `tsx scripts/` — เพื่อรันเป็น Cloud Run Job บน prod ได้; บทเรียนจาก backfill ก่อน). guard `CONFIRM_BACKFILL` + `EXPECTED_DB_NAME` (prod = `bestchoice`, ไม่ใช่ `bestchoice_prod`):
-  - contact ที่มี role SUPPLIER/FINANCE_COMPANY หรือมี taxId 13 หลักของนิติบุคคล → `JURISTIC`
-  - ที่เหลือ (CUSTOMER/TRADE_IN_SELLER บุคคล) → `INDIVIDUAL`
-  - idempotent: ข้าม row ที่ entityType ไม่ null แล้ว
-  - ไม่ parse `name` เดิมเป็น firstName/lastName (เสี่ยง) — ปล่อย null ให้ผู้ใช้กรอกตอนแก้ไข
-
-## 5. ทดสอบ
-
-- API: `UpdateContactDto` validation; name-sync ถูกตาม entityType (INDIVIDUAL ประกอบ prefix+first+last / JURISTIC ใช้ชื่อกิจการ); conditional update; NotFound; RolesGuard (OWNER/FM/ACC).
-- Web: edit modal — toggle entityType โชว์ field ถูกชุด; AddressForm 2 ตัว + checkbox shipSameAsReg ซ่อน/โชว์; submit ยิง PATCH ด้วย payload ถูก.
-- Backfill: idempotent (รันซ้ำ entityType ไม่เปลี่ยน), จับ entityType ตาม role/taxId ถูก.
-
-## 6. รองรับ A2 (DBD lookup) ในอนาคต
-
-ออกแบบฟอร์มให้มีที่วางปุ่ม "ค้นหา" ข้างช่อง taxId ไว้ (A2 จะมาเติม handler ที่เรียก DBD API แล้ว auto-fill ชื่อ/ที่อยู่). A1 ปล่อยช่อง taxId ให้กรอกมือไปก่อน — ไม่มี handler lookup.
+- **B (ผังบัญชีต่อ contact)**: ทบทวนด้วยหลักเดียวกัน — Supplier มี payment method/bank อยู่แล้ว, chart-of-accounts มี per-account mapping ; ดูว่าควรเก็บ AR/AP code ที่ระดับ Contact (ตัวจริงที่ journal อ้างได้) หรือ derive — brainstorm แยกตอนเริ่ม B
+- **C (ภาพรวมการเงิน)**: aggregate read-only ข้าม sales/contract/payment ตาม contactId/ลิงก์ — read-through ล้วน ไม่เก็บซ้ำ

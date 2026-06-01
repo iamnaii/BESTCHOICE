@@ -16,6 +16,7 @@ import {
   UpsertValuationDto,
 } from './dto/trade-in.dto';
 import { TradeInVoucherService } from './services/voucher.service';
+import { ContactResolverService } from '../contacts/contact-resolver.service';
 import { encryptPII, decryptPII, isEncrypted } from '../../utils/crypto.util';
 import { Prisma, PrismaClient } from '@prisma/client';
 
@@ -28,6 +29,7 @@ export class TradeInService {
     private prisma: PrismaService,
     private storage: StorageService,
     private voucher: TradeInVoucherService,
+    private contactResolver: ContactResolverService,
   ) {}
 
   // ─── PII encryption helpers (Phase 3) ────────────────────
@@ -186,35 +188,54 @@ export class TradeInService {
       idCardPhotoKey = key;
     }
 
-    return this.prisma.tradeIn.create({
-      data: {
-        customerId: dto.customerId,
-        productId: dto.productId,
-        branchId: dto.branchId,
-        deviceBrand: dto.deviceBrand,
-        deviceModel: dto.deviceModel,
-        deviceStorage: dto.deviceStorage,
-        deviceColor: dto.deviceColor,
-        deviceCondition: dto.deviceCondition,
-        imei: dto.imei,
-        estimatedValue: dto.estimatedValue,
-        notes: dto.notes,
-        sellerName: dto.sellerName,
-        sellerPhone: dto.sellerPhone,
-        sellerIdCardNumber: dto.sellerIdCardNumber,
-        sellerAddress: dto.sellerAddress,
-        idCardPhotoUrl: idCardPhotoKey,
-        idCardSource: dto.idCardSource,
-        sellerConsentSigned: dto.sellerConsentSigned ?? false,
-        policeReportAcknowledged: dto.policeReportAcknowledged ?? false,
-        imeiBlacklistResult,
-        imeiBlacklistCheckedAt: dto.imei ? new Date() : null,
-        status: 'PENDING_APPRAISAL',
-      },
-      include: {
-        customer: { select: { id: true, name: true, phone: true } },
-        branch: { select: { id: true, name: true } },
-      },
+    return this.prisma.$transaction(async (tx) => {
+      // Task 11: link a Contact (party master) for the trade-in seller.
+      // Trade-in sellers are KEYLESS (free-text sellerName/sellerPhone, no
+      // taxId / national-id hash) → pass both keys as null so the resolver
+      // ALWAYS creates a fresh Contact (safe no-auto-merge policy).
+      const sellerContact = await this.contactResolver.findOrCreateByNaturalKey(tx, {
+        name: dto.sellerName ?? 'ไม่ระบุชื่อ',
+        taxId: null,
+        nationalIdHash: null,
+        phone: dto.sellerPhone ?? null,
+        role: 'TRADE_IN_SELLER',
+      });
+
+      return tx.tradeIn.create({
+        data: {
+          customerId: dto.customerId,
+          productId: dto.productId,
+          branchId: dto.branchId,
+          deviceBrand: dto.deviceBrand,
+          deviceModel: dto.deviceModel,
+          deviceStorage: dto.deviceStorage,
+          deviceColor: dto.deviceColor,
+          deviceCondition: dto.deviceCondition,
+          imei: dto.imei,
+          estimatedValue: dto.estimatedValue,
+          notes: dto.notes,
+          sellerName: dto.sellerName,
+          sellerPhone: dto.sellerPhone,
+          sellerIdCardNumber: dto.sellerIdCardNumber,
+          sellerAddress: dto.sellerAddress,
+          idCardPhotoUrl: idCardPhotoKey,
+          idCardSource: dto.idCardSource,
+          sellerConsentSigned: dto.sellerConsentSigned ?? false,
+          policeReportAcknowledged: dto.policeReportAcknowledged ?? false,
+          imeiBlacklistResult,
+          imeiBlacklistCheckedAt: dto.imei ? new Date() : null,
+          status: 'PENDING_APPRAISAL',
+          // Scalar FK form — the rest of this create uses scalar foreign keys
+          // (customerId/productId/branchId), so we stay in the Unchecked variant.
+          // Using the relation form (sellerContact.connect) here would trip the
+          // Prisma XOR between TradeInCreateInput and TradeInUncheckedCreateInput.
+          sellerContactId: sellerContact.id,
+        },
+        include: {
+          customer: { select: { id: true, name: true, phone: true } },
+          branch: { select: { id: true, name: true } },
+        },
+      });
     });
   }
 

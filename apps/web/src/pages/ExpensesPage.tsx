@@ -12,7 +12,7 @@ import { useCoaGroups } from '@/hooks/useCoa';
 import DataTable from '@/components/ui/DataTable';
 import QueryBoundary from '@/components/QueryBoundary';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { ReverseDialog } from '@/components/expense-form-v4/ReverseDialog';
+import { ReverseConfirmDialog } from '@/components/accounting';
 import { useAuth } from '@/contexts/AuthContext';
 import { Receipt, Plus, Pencil, MoreVertical, Bookmark, Wallet, BarChart3, Search, SlidersHorizontal, Eye, ArrowRight, UserCircle2, ChevronDown, FileText, CreditCard, Send, CheckCircle2 } from 'lucide-react';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
@@ -681,14 +681,34 @@ export default function ExpensesPage() {
 
       <ConfirmDialog open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog(prev => ({ ...prev, open }))} description={confirmDialog.message} onConfirm={confirmDialog.action} />
 
-      <ReverseDialog
+      {/* InternalControlActionBar — unified ReverseConfirmDialog.
+          The expense backend still expects the legacy `{reasonCode, reasonDetail, reverseDate}`
+          shape, so we adapt at the boundary: every reason becomes `'other'`
+          (matches the legacy fallback) and `reasonDetail` carries the
+          admin-picked label + the user's free-form note. `reverseDate`
+          defaults to today (BKK) since the unified dialog doesn't expose a
+          date picker yet — backdating remains available via the legacy form
+          if/when the owner reopens that affordance. */}
+      <ReverseConfirmDialog
         open={reverseDialog.open}
         onOpenChange={(open) => setReverseDialog((prev) => ({ ...prev, open }))}
+        module="expense"
         docNumber={reverseDialog.number}
-        loading={actionMutation.isPending}
-        onConfirm={(payload) => {
+        isLoading={actionMutation.isPending}
+        onConfirm={({ reasonLabel, note }) => {
+          const todayBkk = new Date().toLocaleDateString('en-CA', {
+            timeZone: 'Asia/Bangkok',
+          });
           actionMutation.mutate(
-            { id: reverseDialog.id, action: 'void', body: payload },
+            {
+              id: reverseDialog.id,
+              action: 'void',
+              body: {
+                reasonCode: 'other',
+                reasonDetail: note ? `${reasonLabel} — ${note}` : reasonLabel,
+                reverseDate: todayBkk,
+              },
+            },
             {
               onSuccess: () => setReverseDialog({ open: false, id: '', number: '' }),
             },

@@ -70,9 +70,38 @@ export class UsersController {
     return this.usersService.updateDefaultCashAccount(userId, dto.defaultCashAccountCode ?? null);
   }
 
+  /**
+   * InternalControlActionBar — flat list of users + their canReverseOverride
+   * flag. Used by ReversePermissionCard. Declared BEFORE `:id` routes so the
+   * literal "reverse-overrides" never gets parsed as a UUID.
+   */
+  @Get('reverse-overrides')
+  @Roles('OWNER')
+  listReverseOverrides() {
+    return this.usersService.listReverseOverrides();
+  }
+
   @Patch(':id')
   @Roles('OWNER')
   update(@Param('id') id: string, @Body() dto: UpdateUserDto) {
     return this.usersService.update(id, dto);
+  }
+
+  /**
+   * InternalControlActionBar — per-user override for the CUSTOM reverse
+   * permission mode. Toggles `User.canReverseOverride`. OWNER-only because
+   * it overrides a SystemConfig policy decision; OWNER is always allowed
+   * to reverse regardless of this flag.
+   *
+   * Setting `value: null` resets to "follow role-based default" — used when
+   * switching back from CUSTOM to a role-bundle mode.
+   */
+  @Put(':id/reverse-override')
+  @Roles('OWNER')
+  setReverseOverride(
+    @Param('id') id: string,
+    @Body() body: { canReverseOverride: boolean | null },
+  ) {
+    return this.usersService.setReverseOverride(id, body?.canReverseOverride ?? null);
   }
 }

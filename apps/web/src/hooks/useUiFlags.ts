@@ -345,12 +345,20 @@ export interface UiFlags {
    */
   apiKeysAdminOnly: boolean;
   /**
-   * D1.3.2.4 — dynamic bundle controlling who can reverse/void expense
-   * documents. Whitelisted: `'OWNER+FINANCE_MANAGER'` (default) /
-   * `'OWNER_ONLY'`. UI uses this to hide the "Void" button for roles that
-   * will be 403'd at the server.
+   * D1.3.2.4 + InternalControlActionBar — dynamic bundle controlling who
+   * can reverse/void accounting documents. Whitelisted:
+   *   - `'OWNER_ONLY'`
+   *   - `'OWNER+FINANCE_MANAGER'` (default — legacy behavior)
+   *   - `'OWNER+FINANCE_MANAGER+ACCOUNTANT'`
+   *   - `'CUSTOM'` — per-user via `User.canReverseOverride`
+   * UI uses this to hide the "Void/Reverse" button for roles that will be
+   * 403'd at the server.
    */
-  reversePermission: 'OWNER+FINANCE_MANAGER' | 'OWNER_ONLY';
+  reversePermission:
+    | 'OWNER_ONLY'
+    | 'OWNER+FINANCE_MANAGER'
+    | 'OWNER+FINANCE_MANAGER+ACCOUNTANT'
+    | 'CUSTOM';
 }
 
 const DEFAULT_UI_FLAGS: UiFlags = {

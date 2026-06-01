@@ -1,4 +1,15 @@
-import { Controller, Get, Patch, Post, Put, Body, Query, Param, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Patch,
+  Post,
+  Put,
+  Body,
+  Query,
+  Param,
+  UseGuards,
+  BadRequestException,
+} from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { SettingsService } from './settings.service';
 import { BulkUpdateSettingsDto } from './dto/update-settings.dto';
@@ -232,5 +243,48 @@ export class SettingsController {
       companyId: dto.companyId,
       userId: dto.userId,
     });
+  }
+
+  /**
+   * InternalControlActionBar — reverse-permission mode (Setting 1).
+   *
+   * Reads / writes the SystemConfig key `reverse_permission`. Whitelisted to
+   * 4 values; everything else is rejected as BadRequest.
+   *
+   * Distinct endpoint from the generic `PATCH /settings` because the OWNER
+   * flips this from a dedicated UI card and we want a typed payload.
+   */
+  @Get('reverse-permission')
+  async getReversePermission() {
+    const raw = await this.settingsService.getKey('reverse_permission');
+    const WHITELIST = [
+      'OWNER_ONLY',
+      'OWNER+FINANCE_MANAGER',
+      'OWNER+FINANCE_MANAGER+ACCOUNTANT',
+      'CUSTOM',
+    ] as const;
+    const value = WHITELIST.includes(raw as (typeof WHITELIST)[number])
+      ? (raw as (typeof WHITELIST)[number])
+      : 'OWNER+FINANCE_MANAGER';
+    return { value };
+  }
+
+  @Put('reverse-permission')
+  @Roles('OWNER')
+  async setReversePermission(
+    @Body() body: { value: string },
+    @CurrentUser() user: { id: string; role: string },
+  ) {
+    const WHITELIST = new Set([
+      'OWNER_ONLY',
+      'OWNER+FINANCE_MANAGER',
+      'OWNER+FINANCE_MANAGER+ACCOUNTANT',
+      'CUSTOM',
+    ]);
+    if (!body?.value || !WHITELIST.has(body.value)) {
+      throw new BadRequestException('ค่า reverse-permission ไม่ถูกต้อง');
+    }
+    await this.settingsService.update('reverse_permission', body.value, user.id, user.role);
+    return { value: body.value };
   }
 }

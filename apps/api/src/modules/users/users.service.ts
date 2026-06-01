@@ -122,6 +122,42 @@ export class UsersService {
     return { success: true };
   }
 
+  /**
+   * InternalControlActionBar — flat list of users + their canReverseOverride
+   * flag. Used by the ReversePermissionCard when the mode is CUSTOM.
+   * Returns an array (no pagination) — assumes user count fits the screen.
+   */
+  async listReverseOverrides() {
+    return this.prisma.user.findMany({
+      where: { deletedAt: null, isActive: true, email: { notIn: SYSTEM_USER_EMAILS } },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        canReverseOverride: true,
+      },
+      orderBy: [{ role: 'asc' }, { name: 'asc' }],
+    });
+  }
+
+  /**
+   * InternalControlActionBar — set or clear the per-user reverse-permission
+   * override. `null` means "follow role-based mode" (most users).
+   */
+  async setReverseOverride(id: string, value: boolean | null) {
+    const user = await this.prisma.user.findFirst({
+      where: { id, deletedAt: null },
+      select: { id: true, role: true },
+    });
+    if (!user) throw new NotFoundException('ไม่พบผู้ใช้งาน');
+    return this.prisma.user.update({
+      where: { id },
+      data: { canReverseOverride: value },
+      select: { id: true, canReverseOverride: true },
+    });
+  }
+
   async update(id: string, dto: UpdateUserDto) {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) throw new NotFoundException('ไม่พบผู้ใช้งาน');

@@ -43,6 +43,7 @@ import { ReceivableReconModule } from './modules/receivable-recon/receivable-rec
 import { MetricsModule } from './modules/metrics/metrics.module';
 import { UsersModule } from './modules/users/users.module';
 import { SettingsModule } from './modules/settings/settings.module';
+import { ReverseReasonsModule } from './modules/reverse-reasons/reverse-reasons.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { SalesModule } from './modules/sales/sales.module';
 import { InterestConfigModule } from './modules/interest-config/interest-config.module';
@@ -360,6 +361,8 @@ import { AppCacheModule } from './cache/cache.module';
     // MASTER: Management
     UsersModule,
     SettingsModule,
+    // InternalControlActionBar — admin-managed reverse-reason dropdown
+    ReverseReasonsModule,
     WebhooksModule,
     AnalyticsModule,
     SearchModule,

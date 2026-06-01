@@ -16,6 +16,12 @@ interface User {
   accessibleCompanies?: string[];
   /** SP7.3 — dual entity: the user's primary company scope */
   primaryCompany?: 'SHOP' | 'FINANCE' | null;
+  /**
+   * InternalControlActionBar — per-user override for the CUSTOM
+   * reverse-permission mode. Null = follow role-based default.
+   * Only consulted when `useUiFlags().reversePermission === 'CUSTOM'`.
+   */
+  canReverseOverride?: boolean | null;
 }
 
 /** State after password phase — waiting for OTP or 2FA setup */

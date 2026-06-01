@@ -17,18 +17,14 @@ import {
 } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
-import { ReverseModal } from './components/ReverseModal';
 import { RejectModal } from './components/RejectModal';
 import { SaveAsTemplateModal } from './components/SaveAsTemplateModal';
 import { AutoJournalPreview } from './components/AutoJournalPreview';
-import { InternalControlBar } from './components/InternalControlBar';
+import { InternalControlActionBar } from '@/components/accounting';
+import type { IcabAuditEvent } from '@/components/accounting';
 import { otherIncomeApi } from '@/lib/otherIncome';
 import api from '@/lib/api';
-import type {
-  OtherIncome,
-  OtherIncomeStatus,
-  OtherIncomeReverseReason,
-} from '@/lib/otherIncome.types';
+import type { OtherIncome, OtherIncomeStatus } from '@/lib/otherIncome.types';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatThaiDateLong, formatThaiDateShort } from '@/lib/date';
 
@@ -162,6 +158,40 @@ function buildJeFromDoc(doc: OtherIncome): JeLine[] {
 const REVERSE_ROLES = ['OWNER', 'FINANCE_MANAGER'];
 
 /**
+ * Map server-side AuditLogEntry rows to the IcabAuditEvent shape consumed
+ * by the shared InternalControlActionBar timeline.
+ *
+ * The server action strings (e.g. `CREATED`, `POSTED`, `REVERSED`) are
+ * preserved verbatim; the bar's AuditTimeline has a label registry that
+ * handles the canonical set + falls back gracefully for unknown values.
+ *
+ * `reason` is plucked from `newValue.reverseReason` when present (set by
+ * the reverse mutation), so the timeline can render the "เหตุผล: ..." note.
+ */
+function mapAuditEvents(
+  entries: { id: string; action: string; createdAt: string; user: { id: string; name: string } | null; newValue?: unknown }[],
+): IcabAuditEvent[] {
+  return entries.map((e) => {
+    const nv = (e.newValue && typeof e.newValue === 'object'
+      ? (e.newValue as Record<string, unknown>)
+      : null);
+    const reason =
+      nv && typeof nv.reverseNote === 'string'
+        ? (nv.reverseNote as string)
+        : nv && typeof nv.reverseReason === 'string'
+          ? (nv.reverseReason as string)
+          : undefined;
+    return {
+      event: e.action,
+      userId: e.user?.id ?? 'unknown',
+      userName: e.user?.name ?? 'ระบบ',
+      timestamp: e.createdAt,
+      reason,
+    };
+  });
+}
+
+/**
  * Fetch server-rendered PDF receipt and open in a new tab.
  * Uses axios (JWT in-memory) since the in-memory token isn't on cookies.
  */
@@ -195,7 +225,6 @@ export default function OtherIncomeViewPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
 
-  const [showReverseModal, setShowReverseModal] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
 
@@ -211,12 +240,28 @@ export default function OtherIncomeViewPage() {
     enabled: !!id,
   });
 
+  /**
+   * Reverse mutation — wired through the unified InternalControlActionBar.
+   *
+   * The new shared component returns `{ reasonId, reasonLabel, note }`, but
+   * the Other Income backend still validates against the fixed Prisma enum
+   * `OtherIncomeReverseReason` (DTO at apps/api/.../reverse-other-income.dto.ts).
+   * Until that DTO is widened (parity work for Expense + Asset in step 8),
+   * we map every dynamic reason to `OTHER` and stash the human-readable
+   * label into the note prefix so it surfaces in the audit log.
+   */
   const reverseMutation = useMutation({
-    mutationFn: ({ reason, note }: { reason: OtherIncomeReverseReason; note: string }) =>
-      otherIncomeApi.reverse(id!, reason, note),
+    mutationFn: ({
+      reasonLabel,
+      note,
+    }: {
+      reasonId: string;
+      reasonLabel: string;
+      note: string;
+    }) =>
+      otherIncomeApi.reverse(id!, 'OTHER', note ? `[${reasonLabel}] ${note}` : reasonLabel),
     onSuccess: (reversingDoc) => {
       toast.success(`สร้าง Reversing Entry ${reversingDoc.docNumber} แล้ว`);
-      setShowReverseModal(false);
       queryClient.invalidateQueries({ queryKey: ['other-income'] });
       navigate(`/other-income/${reversingDoc.id}`);
     },
@@ -836,37 +881,40 @@ export default function OtherIncomeViewPage() {
         )}
       </QueryBoundary>
 
-      {/* Internal Control Bar — bottom sticky (v2.3) */}
-      {doc && (
-        <InternalControlBar
+      {/* InternalControlActionBar — shared across all 3 accounting modules.
+          Reverse dialog is rendered internally; modules supply the audit
+          timeline + callbacks. */}
+      {doc && user && (
+        <InternalControlActionBar
+          module="other_income"
           status={doc.status}
-          recorder={{
-            name:
-              doc.createdBy?.name ||
-              doc.createdBy?.email ||
-              (doc.createdById === user?.id ? user?.name || user?.email || '—' : '—'),
-          }}
-          approver={{
-            name: doc.approver?.name || doc.approver?.email || '—',
+          docNumber={doc.docNumber}
+          docAmount={
+            typeof doc.amountReceived === 'string'
+              ? Number(doc.amountReceived)
+              : doc.amountReceived ?? undefined
+          }
+          docSubtitle={doc.paymentAccountCode ? `บัญชี ${doc.paymentAccountCode}` : undefined}
+          auditLog={mapAuditEvents(auditQuery.data ?? [])}
+          currentUser={{
+            id: user.id,
+            role: user.role,
+            name: user.name,
+            canReverseOverride: user.canReverseOverride,
           }}
           makerCheckerEnabled={makerCheckerEnabled}
-          isViewerApprover={user?.role === 'OWNER' && doc.createdById !== user.id}
-          isOwnDoc={doc.createdById === user?.id}
+          isViewerApprover={user.role === 'OWNER' && doc.createdById !== user.id}
+          isOwnDoc={doc.createdById === user.id}
           isLoading={isActionLoading}
+          canReverse={Boolean(canReverse)}
           onCancel={() => navigate('/other-income')}
+          onClose={() => navigate('/other-income')}
           onApprove={() => approveMutation.mutate(undefined)}
           onReject={() => setShowRejectModal(true)}
-          onReverse={canReverse ? () => setShowReverseModal(true) : undefined}
-        />
-      )}
-
-      {/* Reverse modal */}
-      {showReverseModal && doc && (
-        <ReverseModal
-          docNumber={doc.docNumber}
-          onCancel={() => setShowReverseModal(false)}
-          onConfirm={(reason, note) => reverseMutation.mutate({ reason, note })}
-          isLoading={reverseMutation.isPending}
+          onReverse={(payload) => reverseMutation.mutate(payload)}
+          onPrint={() =>
+            printReceiptMutation.mutate({ docId: doc.id, docNumber: doc.docNumber })
+          }
         />
       )}
 

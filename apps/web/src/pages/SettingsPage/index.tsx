@@ -12,8 +12,19 @@ import { UsersTab } from './tabs/UsersTab';
 import { OffsiteBackupTab } from './tabs/OffsiteBackupTab';
 import { PeakMappingTab } from './tabs/PeakMappingTab';
 import { PdpaTab } from './tabs/PdpaTab';
+import { InternalControlTab } from './tabs/InternalControlTab';
 
-const TAB_IDS = ['company', 'vat', 'periods', 'attachment', 'users', 'offsite-backup', 'peak-mapping', 'pdpa'] as const;
+const TAB_IDS = [
+  'company',
+  'vat',
+  'periods',
+  'attachment',
+  'users',
+  'internal-control',
+  'offsite-backup',
+  'peak-mapping',
+  'pdpa',
+] as const;
 type TabId = typeof TAB_IDS[number];
 
 function readHash(): TabId {
@@ -50,12 +61,13 @@ export default function SettingsPage() {
       <PageHeader title="ตั้งค่าระบบ" subtitle="กำหนดพารามิเตอร์การทำงานของระบบ" />
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabId)}>
-        <TabsList className="grid grid-cols-2 md:grid-cols-8 mb-4">
+        <TabsList className="grid grid-cols-2 md:grid-cols-9 mb-4">
           <TabsTrigger value="company">บริษัท</TabsTrigger>
           <TabsTrigger value="vat">VAT</TabsTrigger>
           <TabsTrigger value="periods">งวดบัญชี</TabsTrigger>
           <TabsTrigger value="attachment">เอกสารแนบ</TabsTrigger>
           <TabsTrigger value="users">ผู้ใช้งาน</TabsTrigger>
+          <TabsTrigger value="internal-control">ระบบควบคุม</TabsTrigger>
           <TabsTrigger value="offsite-backup">สำรองข้อมูล</TabsTrigger>
           <TabsTrigger value="peak-mapping">PEAK</TabsTrigger>
           <TabsTrigger value="pdpa">PDPA</TabsTrigger>
@@ -66,6 +78,7 @@ export default function SettingsPage() {
         <TabsContent value="periods"><PeriodsTab /></TabsContent>
         <TabsContent value="attachment"><AttachmentTab /></TabsContent>
         <TabsContent value="users"><UsersTab /></TabsContent>
+        <TabsContent value="internal-control"><InternalControlTab /></TabsContent>
         <TabsContent value="offsite-backup"><OffsiteBackupTab /></TabsContent>
         <TabsContent value="peak-mapping"><PeakMappingTab /></TabsContent>
         <TabsContent value="pdpa"><PdpaTab /></TabsContent>

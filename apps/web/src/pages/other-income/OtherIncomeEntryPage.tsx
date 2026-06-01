@@ -31,7 +31,7 @@ import { TemplatePickerCombobox } from './components/TemplatePickerCombobox';
 import { OverrideConfirmDialog } from './components/OverrideConfirmDialog';
 import { EditableJournalTable, getJournalIssues } from './components/EditableJournalTable';
 import type { EditableJournalLine } from './components/EditableJournalTable';
-import { InternalControlBar } from './components/InternalControlBar';
+import { InternalControlActionBar } from '@/components/accounting';
 
 // Fallback while config is loading; live value comes from /other-income/config/attachment-threshold
 const ATTACHMENT_THRESHOLD_FALLBACK = 50_000;
@@ -1258,11 +1258,19 @@ export default function OtherIncomeEntryPage() {
         </form>
       </div>
 
-      {/* Internal Control Bar (v2.3 — replaces Section 7 card + old sticky bar) */}
-      <InternalControlBar
+      {/* InternalControlActionBar — shared across 3 accounting modules.
+          Entry page only renders the DRAFT state, so no audit log is needed
+          (the document doesn't exist yet) — we pass an empty array. */}
+      <InternalControlActionBar
+        module="other_income"
         status="DRAFT"
-        recorder={{ name: userDisplayName }}
-        approver={{ name: makerCheckerEnabled ? 'OWNER' : userDisplayName }}
+        auditLog={[]}
+        currentUser={{
+          id: user?.id ?? 'me',
+          role: user?.role ?? 'SALES',
+          name: userDisplayName,
+          canReverseOverride: user?.canReverseOverride,
+        }}
         makerCheckerEnabled={makerCheckerEnabled}
         isLoading={isSubmitting}
         errorCount={errorCount}

@@ -43,7 +43,7 @@ export class ContactsService {
       include: {
         customers: { where: { deletedAt: null }, select: { id: true, name: true } },
         suppliers: { where: { deletedAt: null }, select: { id: true, name: true } },
-        tradeInsAsSeller: { select: { id: true, createdAt: true } },
+        tradeInsAsSeller: { where: { deletedAt: null }, select: { id: true, createdAt: true } },
         externalFinanceCompany: { where: { deletedAt: null }, select: { id: true, name: true } },
       },
     });

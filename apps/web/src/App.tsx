@@ -37,6 +37,8 @@ const ProductDetailPage = lazy(() => import('@/pages/ProductDetailPage'));
 const StickerPrintPage = lazy(() => import('@/pages/StickerPrintPage'));
 const CustomersPage = lazy(() => import('@/pages/CustomersPage'));
 const CustomerDetailPage = lazy(() => import('@/pages/CustomerDetailPage'));
+const ContactsPage = lazy(() => import('./pages/ContactsPage'));
+const ContactDetailPage = lazy(() => import('./pages/ContactDetailPage'));
 const ContractsPage = lazy(() => import('@/pages/ContractsPage'));
 const ContractCreatePage = lazy(() => import('@/pages/ContractCreatePage'));
 const ContractDetailPage = lazy(() => import('@/pages/ContractDetailPage'));
@@ -488,6 +490,8 @@ function App() {
           <Route path="/chatbot-finance/learning" element={<ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER']}><ChatbotFinanceLearningPage /></ProtectedRoute>} />
           <Route path="/customers" element={<CustomersPage />} />
           <Route path="/customers/:id" element={<CustomerDetailPage />} />
+          <Route path="/contacts" element={<ContactsPage />} />
+          <Route path="/contacts/:id" element={<ContactDetailPage />} />
           <Route path="/customer-intake" element={<CustomerIntakePage />} />
           <Route path="/contracts" element={<ContractsPage />} />
           <Route

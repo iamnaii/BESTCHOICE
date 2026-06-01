@@ -56,6 +56,8 @@ import {
   // P2-SP2 — exchange requests
   ArrowLeftRight,
   Mail,
+  // Unified contact party-master — สมุดผู้ติดต่อ
+  BookUser,
 } from 'lucide-react';
 
 /* ── Types ─────────────────────────────────────────── */
@@ -152,6 +154,7 @@ const SALES_CONFIG: RoleMenuConfig = {
         { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
         { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
         { label: 'ลูกค้า', path: '/customers', icon: Users },
+        { label: 'สมุดผู้ติดต่อ', path: '/contacts', icon: BookUser },
         { label: 'เช็คเครดิตลูกค้าใหม่', path: '/customer-intake', icon: UserSearch },
         { label: 'รับซื้อมือสอง', path: '/trade-in', icon: Smartphone },
       ],
@@ -218,6 +221,7 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
         { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
         { label: 'ลูกค้า', path: '/customers', icon: Users },
+        { label: 'สมุดผู้ติดต่อ', path: '/contacts', icon: BookUser },
         { label: 'เช็คเครดิตลูกค้าใหม่', path: '/customer-intake', icon: UserSearch },
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
@@ -301,6 +305,7 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },
+        { label: 'สมุดผู้ติดต่อ', path: '/contacts', icon: BookUser },
       ],
     },
     {
@@ -388,6 +393,7 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'รับชำระค่างวด', path: '/payments', icon: HandCoins },
         { label: 'บันทึกรายจ่าย', path: '/expenses', icon: Receipt },
+        { label: 'สมุดผู้ติดต่อ', path: '/contacts', icon: BookUser },
         { label: 'จัดการจดหมาย', path: '/letters', icon: Mail },
         { label: 'พิมพ์สติกเกอร์', path: '/stickers', icon: Tag },
         { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
@@ -512,6 +518,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
       zone: 'shop',
       items: [
         { label: 'ลูกค้า', path: '/customers', icon: Users },
+        { label: 'สมุดผู้ติดต่อ', path: '/contacts', icon: BookUser },
         { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
         { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },

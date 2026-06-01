@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ContactResolverService } from '../contacts/contact-resolver.service';
 import {
   CreateExternalFinanceCompanyDto,
   UpdateExternalFinanceCompanyDto,
@@ -8,7 +9,10 @@ import {
 
 @Injectable()
 export class ExternalFinanceService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly contactResolver: ContactResolverService,
+  ) {}
 
   async list() {
     return this.prisma.externalFinanceCompany.findMany({
@@ -26,20 +30,34 @@ export class ExternalFinanceService {
   }
 
   async create(dto: CreateExternalFinanceCompanyDto) {
-    return this.prisma.externalFinanceCompany.create({
-      data: {
+    // Link a party-master Contact (role FINANCE_COMPANY) in the same transaction
+    // as the company insert, so a failure on either side rolls both back.
+    return this.prisma.$transaction(async (tx) => {
+      const contact = await this.contactResolver.findOrCreateByNaturalKey(tx, {
         name: dto.name,
-        contactPerson: dto.contactPerson,
-        contactPhone: dto.contactPhone,
-        defaultCommissionRate: dto.defaultCommissionRate,
-        bankAccountInfo: dto.bankAccountInfo as Prisma.InputJsonValue | undefined,
-        notes: dto.notes,
-        isActive: dto.isActive,
-        taxId: dto.taxId,
-        email: dto.email,
-        lineOaId: dto.lineOaId,
-        creditTermDays: dto.creditTermDays,
-      },
+        taxId: dto.taxId ?? null,
+        nationalIdHash: null,
+        phone: dto.contactPhone ?? null,
+        email: dto.email ?? null,
+        role: 'FINANCE_COMPANY',
+      });
+
+      return tx.externalFinanceCompany.create({
+        data: {
+          name: dto.name,
+          contactPerson: dto.contactPerson,
+          contactPhone: dto.contactPhone,
+          defaultCommissionRate: dto.defaultCommissionRate,
+          bankAccountInfo: dto.bankAccountInfo as Prisma.InputJsonValue | undefined,
+          notes: dto.notes,
+          isActive: dto.isActive,
+          taxId: dto.taxId,
+          email: dto.email,
+          lineOaId: dto.lineOaId,
+          creditTermDays: dto.creditTermDays,
+          contactId: contact.id,
+        },
+      });
     });
   }
 

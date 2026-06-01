@@ -6,9 +6,10 @@ import { CustomerPreCheckService } from './customer-precheck.service';
 import { SkipTracingService } from './skip-tracing.service';
 import { CustomerPiiModule } from './customer-pii.module';
 import { OverdueModule } from '../overdue/overdue.module';
+import { ContactsModule } from '../contacts/contacts.module';
 
 @Module({
-  imports: [OverdueModule, CustomerPiiModule],
+  imports: [OverdueModule, CustomerPiiModule, ContactsModule],
   controllers: [CustomersController],
   providers: [
     CustomersService,

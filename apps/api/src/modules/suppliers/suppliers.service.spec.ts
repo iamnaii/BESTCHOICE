@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException } from '@nestjs/common';
 import { SuppliersService } from './suppliers.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ContactResolverService } from '../contacts/contact-resolver.service';
 
 /**
  * T5-C18: Supplier bank account cannot be swapped while an open (non-CANCELLED)
@@ -45,6 +46,10 @@ describe('SuppliersService — T5-C18 bank swap guard', () => {
       providers: [
         SuppliersService,
         { provide: PrismaService, useValue: prisma },
+        {
+          provide: ContactResolverService,
+          useValue: { findOrCreateByNaturalKey: jest.fn() },
+        },
       ],
     }).compile();
 
@@ -111,5 +116,89 @@ describe('SuppliersService — T5-C18 bank swap guard', () => {
         ],
       } as never),
     ).resolves.toBeDefined();
+  });
+});
+
+/**
+ * Task 9: creating a Supplier links a Contact (party master) under the
+ * SUPPLIER role. The Contact resolve + supplier create run in the SAME
+ * $transaction so the FK is atomic.
+ */
+describe('SuppliersService — Contact party-master link on create', () => {
+  let service: SuppliersService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let prisma: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let contactResolver: any;
+
+  beforeEach(async () => {
+    prisma = {
+      supplier: {
+        create: jest.fn().mockImplementation(async ({ data }) => ({
+          id: 'sup-new',
+          ...data,
+        })),
+      },
+      $transaction: jest.fn().mockImplementation(async (fn) => {
+        if (typeof fn === 'function') return fn(prisma);
+        return Promise.all(fn);
+      }),
+    };
+
+    contactResolver = {
+      findOrCreateByNaturalKey: jest.fn().mockResolvedValue({ id: 'contact-123' }),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        SuppliersService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: ContactResolverService, useValue: contactResolver },
+      ],
+    }).compile();
+
+    service = module.get<SuppliersService>(SuppliersService);
+  });
+
+  it('resolves a Contact (SUPPLIER role) and links it on create', async () => {
+    await service.create({
+      name: 'ACME Co',
+      taxId: '0105500000001',
+      phone: '081-234-5678',
+    } as never);
+
+    expect(contactResolver.findOrCreateByNaturalKey).toHaveBeenCalledWith(
+      prisma,
+      expect.objectContaining({
+        name: 'ACME Co',
+        taxId: '0105500000001',
+        phone: '081-234-5678',
+        nationalIdHash: null,
+        role: 'SUPPLIER',
+      }),
+    );
+
+    const createArg = prisma.supplier.create.mock.calls[0][0];
+    expect(createArg.data.contactId).toBe('contact-123');
+  });
+
+  it('passes null taxId/phone to the resolver when absent', async () => {
+    await service.create({ name: 'No-Tax Vendor' } as never);
+
+    expect(contactResolver.findOrCreateByNaturalKey).toHaveBeenCalledWith(
+      prisma,
+      expect.objectContaining({
+        name: 'No-Tax Vendor',
+        taxId: null,
+        phone: null,
+        nationalIdHash: null,
+        role: 'SUPPLIER',
+      }),
+    );
+  });
+
+  it('runs resolve + create inside a single $transaction', async () => {
+    await service.create({ name: 'ACME Co', taxId: '0105500000001' } as never);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
   });
 });

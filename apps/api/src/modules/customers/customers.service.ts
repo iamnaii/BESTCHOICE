@@ -7,12 +7,19 @@ import { encryptPII, decryptPII, isEncrypted } from '../../utils/crypto.util';
 import { hashPII, encryptReferencesJson, decryptReferencesJson } from '../../utils/pii.util';
 import { CustomerTierService } from './customer-tier.service';
 import { CustomerPiiService } from './customer-pii.service';
+import { ContactResolverService } from '../contacts/contact-resolver.service';
 
 @Injectable()
 export class CustomersService {
   constructor(
     private prisma: PrismaService,
     private readonly tierService: CustomerTierService,
+    // Task 10 — unified contact party-master. REQUIRED dependency (matches
+    // suppliers / trade-in / external-finance). create() always resolves the
+    // Contact and links it in the SAME transaction as the customer write.
+    // Production wires the real provider via CustomersModule importing
+    // ContactsModule; specs provide a mock.
+    private readonly contactResolver: ContactResolverService,
     // Optional so legacy spec tests that construct CustomersService with
     // only PrismaService + CustomerTierService keep working. Production
     // wires the real provider through CustomersModule.
@@ -597,17 +604,35 @@ export class CustomersService {
         ? (dto.references as Prisma.InputJsonValue)
         : undefined,
     };
-    if (reviveGhostId) {
-      // Revive path: clear deletedAt and overwrite the row with the new
-      // form submission. The admin is creating a customer whose nationalId
-      // matches a soft-deleted ghost — Prisma.CustomerCreateInput shares
-      // enough fields with UpdateInput to be compatible here.
-      return this.prisma.customer.update({
-        where: { id: reviveGhostId },
-        data: { ...(data as Prisma.CustomerUpdateInput), deletedAt: null },
+    // Task 10 — resolve the party-master Contact and link it in the SAME
+    // transaction as the customer write. nationalIdHash is REUSED from
+    // piiEncrypted (computed by buildPiiEncryptedFields above) — never hashed
+    // twice. Contact stores PLAINTEXT phone/name (it's a lightweight
+    // directory, not the PII vault).
+    const nationalIdHash = (piiEncrypted.nationalIdHash as string | null | undefined) ?? null;
+    return this.prisma.$transaction(async (tx) => {
+      const contact = await this.contactResolver.findOrCreateByNaturalKey(tx, {
+        name: dto.name,
+        taxId: null,
+        nationalIdHash,
+        phone: dataPlaintext.phone ?? null,
+        role: 'CUSTOMER',
       });
-    }
-    return this.prisma.customer.create({ data });
+      const contactConnect: Prisma.ContactCreateNestedOneWithoutCustomersInput = {
+        connect: { id: contact.id },
+      };
+      if (reviveGhostId) {
+        // Revive path: clear deletedAt and overwrite the row with the new
+        // form submission. The admin is creating a customer whose nationalId
+        // matches a soft-deleted ghost — Prisma.CustomerCreateInput shares
+        // enough fields with UpdateInput to be compatible here.
+        return tx.customer.update({
+          where: { id: reviveGhostId },
+          data: { ...(data as Prisma.CustomerUpdateInput), contact: contactConnect, deletedAt: null },
+        });
+      }
+      return tx.customer.create({ data: { ...data, contact: contactConnect } });
+    });
   }
 
   async update(id: string, dto: UpdateCustomerDto) {

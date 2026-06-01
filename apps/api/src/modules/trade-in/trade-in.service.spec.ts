@@ -4,6 +4,7 @@ import { TradeInService } from './trade-in.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { TradeInVoucherService } from './services/voucher.service';
+import { ContactResolverService } from '../contacts/contact-resolver.service';
 import { encryptPII } from '../../utils/crypto.util';
 
 // ---------------------------------------------------------------------------
@@ -60,6 +61,8 @@ describe('TradeInService', () => {
   let storage: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let voucher: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let contactResolver: any;
 
   beforeEach(async () => {
     prisma = {
@@ -104,12 +107,19 @@ describe('TradeInService', () => {
       renderPdf: jest.fn().mockResolvedValue(Buffer.from('pdf')),
     };
 
+    contactResolver = {
+      findOrCreateByNaturalKey: jest
+        .fn()
+        .mockResolvedValue({ id: 'contact-1', name: 'สมหญิง รักดี' }),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TradeInService,
         { provide: PrismaService, useValue: prisma },
         { provide: StorageService, useValue: storage },
         { provide: TradeInVoucherService, useValue: voucher },
+        { provide: ContactResolverService, useValue: contactResolver },
       ],
     }).compile();
 
@@ -197,6 +207,58 @@ describe('TradeInService', () => {
       await service.create({ ...baseDto, idCardPhotoBase64: base64 } as never);
 
       expect(storage.upload).toHaveBeenCalled();
+    });
+
+    // ── Task 11: link Contact (TRADE_IN_SELLER) party master on create ──
+    it('resolves a TRADE_IN_SELLER Contact (keyless: nationalIdHash null) and links it', async () => {
+      prisma.tradeIn.findMany.mockResolvedValue([]);
+      prisma.tradeIn.create.mockResolvedValue(makeTradeIn());
+
+      await service.create({
+        ...baseDto,
+        sellerName: 'สมหญิง รักดี',
+        sellerPhone: '0822222222',
+      } as never);
+
+      expect(contactResolver.findOrCreateByNaturalKey).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          name: 'สมหญิง รักดี',
+          phone: '0822222222',
+          taxId: null,
+          nationalIdHash: null,
+          role: 'TRADE_IN_SELLER',
+        }),
+      );
+
+      const data = prisma.tradeIn.create.mock.calls[0][0].data;
+      // sellerContactId may be plumbed via scalar or relation connect
+      const linkedId =
+        data.sellerContactId ?? data.sellerContact?.connect?.id;
+      expect(linkedId).toBe('contact-1');
+    });
+
+    it('falls back to "ไม่ระบุชื่อ" when sellerName is absent (customer-only trade-in)', async () => {
+      prisma.customer.findUnique.mockResolvedValue(
+        makeTradeIn().customer,
+      );
+      prisma.tradeIn.findMany.mockResolvedValue([]);
+      prisma.tradeIn.create.mockResolvedValue(makeTradeIn());
+
+      await service.create({
+        branchId: 'branch-1',
+        deviceBrand: 'Samsung',
+        deviceModel: 'Galaxy S22',
+        customerId: 'cust-1',
+      } as never);
+
+      expect(contactResolver.findOrCreateByNaturalKey).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          name: 'ไม่ระบุชื่อ',
+          role: 'TRADE_IN_SELLER',
+        }),
+      );
     });
   });
 

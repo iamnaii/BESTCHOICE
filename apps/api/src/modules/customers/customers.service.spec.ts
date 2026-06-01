@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import { CustomersService } from './customers.service';
 import { CustomerTierService } from './customer-tier.service';
+import { ContactResolverService } from '../contacts/contact-resolver.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { encryptPII } from '../../utils/crypto.util';
 
@@ -25,12 +26,19 @@ describe('CustomersService.create — NID normalization', () => {
         create: jest.fn((args) => Promise.resolve({ id: 'cust-new', ...args.data })),
         update: jest.fn((args) => Promise.resolve({ id: args.where.id, ...args.data })),
       },
+      // create() now always runs inside a transaction; invoke the callback
+      // with the same prisma mock so customer.create/update assertions hold.
+      $transaction: jest.fn(async (cb) => cb(prisma)),
     };
     const mod: TestingModule = await Test.createTestingModule({
       providers: [
         CustomersService,
         { provide: PrismaService, useValue: prisma },
         { provide: CustomerTierService, useValue: { getCustomerTier: jest.fn() } },
+        {
+          provide: ContactResolverService,
+          useValue: { findOrCreateByNaturalKey: jest.fn().mockResolvedValue({ id: 'contact-test-id' }) },
+        },
       ],
     }).compile();
     service = mod.get(CustomersService);
@@ -127,12 +135,17 @@ describe('CustomersService.create — T3-C9 phone + email dedup', () => {
         create: jest.fn((args) => Promise.resolve({ id: 'cust-new', ...args.data })),
         update: jest.fn((args) => Promise.resolve({ id: args.where.id, ...args.data })),
       },
+      $transaction: jest.fn(async (cb) => cb(prisma)),
     };
     const mod: TestingModule = await Test.createTestingModule({
       providers: [
         CustomersService,
         { provide: PrismaService, useValue: prisma },
         { provide: CustomerTierService, useValue: { getCustomerTier: jest.fn() } },
+        {
+          provide: ContactResolverService,
+          useValue: { findOrCreateByNaturalKey: jest.fn().mockResolvedValue({ id: 'contact-test-id' }) },
+        },
       ],
     }).compile();
     service = mod.get(CustomersService);
@@ -213,12 +226,17 @@ describe('PII dual-write (Phase 3)', () => {
         create: jest.fn().mockResolvedValue({ id: 'c1' }),
         update: jest.fn().mockResolvedValue({}),
       },
+      $transaction: jest.fn(async (cb) => cb(prisma)),
     };
     const mod: TestingModule = await Test.createTestingModule({
       providers: [
         CustomersService,
         { provide: PrismaService, useValue: prisma },
         { provide: CustomerTierService, useValue: { getCustomerTier: jest.fn() } },
+        {
+          provide: ContactResolverService,
+          useValue: { findOrCreateByNaturalKey: jest.fn().mockResolvedValue({ id: 'contact-test-id' }) },
+        },
       ],
     }).compile();
     service = mod.get(CustomersService);
@@ -293,12 +311,17 @@ describe('PII read decryption (Phase 5)', () => {
         create: jest.fn().mockResolvedValue({ id: 'c1' }),
         update: jest.fn().mockResolvedValue({}),
       },
+      $transaction: jest.fn(async (cb) => cb(prisma)),
     };
     const mod: TestingModule = await Test.createTestingModule({
       providers: [
         CustomersService,
         { provide: PrismaService, useValue: prisma },
         { provide: CustomerTierService, useValue: { getCustomerTier: jest.fn() } },
+        {
+          provide: ContactResolverService,
+          useValue: { findOrCreateByNaturalKey: jest.fn().mockResolvedValue({ id: 'contact-test-id' }) },
+        },
       ],
     }).compile();
     service = mod.get(CustomersService);
@@ -383,6 +406,10 @@ describe('CustomersService.remove — block if open contracts', () => {
         CustomersService,
         { provide: PrismaService, useValue: prisma },
         { provide: CustomerTierService, useValue: { getCustomerTier: jest.fn() } },
+        {
+          provide: ContactResolverService,
+          useValue: { findOrCreateByNaturalKey: jest.fn().mockResolvedValue({ id: 'contact-test-id' }) },
+        },
       ],
     }).compile();
     service = mod.get(CustomersService);
@@ -408,5 +435,97 @@ describe('CustomersService.remove — block if open contracts', () => {
     prisma.contract.count.mockResolvedValue(2);
     await expect(service.remove('c1')).rejects.toBeInstanceOf(BadRequestException);
     expect(prisma.customer.update).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Task 10: unified contact party-master. On customer create, a Contact row
+ * (role=CUSTOMER) is resolved/created in the SAME transaction and linked via
+ * Customer.contactId. The Contact stores PLAINTEXT phone/name (lightweight
+ * directory), keyed by nationalIdHash.
+ */
+describe('CustomersService.create — links Contact (party master)', () => {
+  let service: CustomersService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let prisma: any;
+  let contactResolver: { findOrCreateByNaturalKey: jest.Mock };
+
+  beforeEach(async () => {
+    process.env.PII_ENCRYPTION_KEY = 'a'.repeat(64);
+    process.env.PII_HASH_SALT = 'b'.repeat(32);
+
+    // tx client passed into the $transaction callback. It exposes the same
+    // customer ops the service uses; create/update echo their data back.
+    const tx = {
+      customer: {
+        create: jest.fn((args) => Promise.resolve({ id: 'cust-new', ...args.data })),
+        update: jest.fn((args) => Promise.resolve({ id: args.where.id, ...args.data })),
+      },
+    };
+    prisma = {
+      customer: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn((args) => Promise.resolve({ id: 'cust-new', ...args.data })),
+        update: jest.fn((args) => Promise.resolve({ id: args.where.id, ...args.data })),
+      },
+      // Interactive transaction: invoke callback with the tx client.
+      $transaction: jest.fn((cb: (t: typeof tx) => unknown) => Promise.resolve(cb(tx))),
+      _tx: tx,
+    };
+    contactResolver = {
+      findOrCreateByNaturalKey: jest.fn().mockResolvedValue({ id: 'contact-1' }),
+    };
+
+    const mod: TestingModule = await Test.createTestingModule({
+      providers: [
+        CustomersService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: CustomerTierService, useValue: { getCustomerTier: jest.fn() } },
+        { provide: ContactResolverService, useValue: contactResolver },
+      ],
+    }).compile();
+    service = mod.get(CustomersService);
+  });
+
+  afterEach(() => {
+    delete process.env.PII_ENCRYPTION_KEY;
+    delete process.env.PII_HASH_SALT;
+  });
+
+  const baseDto = (overrides: Record<string, unknown> = {}) => ({
+    name: 'Party Person',
+    nationalId: '1234567890123',
+    isForeigner: true, // skip checksum
+    phone: '0812345678',
+    ...overrides,
+  }) as unknown as Parameters<CustomersService['create']>[0];
+
+  it('resolves a Contact with role CUSTOMER + name and links contactId on create', async () => {
+    const result = await service.create(baseDto());
+
+    expect(contactResolver.findOrCreateByNaturalKey).toHaveBeenCalledTimes(1);
+    const [txArg, input] = contactResolver.findOrCreateByNaturalKey.mock.calls[0];
+    // Resolved inside the same transaction
+    expect(txArg).toBe(prisma._tx);
+    expect(input.role).toBe('CUSTOMER');
+    expect(input.name).toBe('Party Person');
+    // nationalIdHash reused (sha256 hex), plaintext phone passed (not encrypted)
+    expect(input.nationalIdHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(input.phone).toBe('0812345678');
+
+    // Created customer is linked to the resolved contact (via relation connect)
+    const createArgs = prisma._tx.customer.create.mock.calls[0][0];
+    expect(createArgs.data.contact).toEqual({ connect: { id: 'contact-1' } });
+    // Mock echoes data back, so the relation connect is observable on the result
+    expect((result as Record<string, unknown>).contact).toEqual({ connect: { id: 'contact-1' } });
+  });
+
+  it('still links a (keyless) Contact when nationalId is absent (walk-in)', async () => {
+    await service.create(baseDto({ nationalId: undefined }));
+    expect(contactResolver.findOrCreateByNaturalKey).toHaveBeenCalledTimes(1);
+    const [, input] = contactResolver.findOrCreateByNaturalKey.mock.calls[0];
+    expect(input.role).toBe('CUSTOMER');
+    expect(input.nationalIdHash ?? null).toBeNull();
   });
 });

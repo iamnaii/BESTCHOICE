@@ -3,10 +3,14 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { paginatedResponse } from '../../common/helpers/pagination.helper';
 import { CreateSupplierDto } from './dto/create-supplier.dto';
 import { UpdateSupplierDto, PaymentMethodUpdateDto } from './dto/update-supplier.dto';
+import { ContactResolverService } from '../contacts/contact-resolver.service';
 
 @Injectable()
 export class SuppliersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private contactResolver: ContactResolverService,
+  ) {}
 
   async findAll(search?: string, isActive?: string, page = 1, limit = 50) {
     const andConditions: Record<string, unknown>[] = [{ deletedAt: null }];
@@ -77,25 +81,39 @@ export class SuppliersService {
 
   async create(dto: CreateSupplierDto) {
     const { paymentMethods, ...supplierData } = dto;
-    return this.prisma.supplier.create({
-      data: {
-        ...supplierData,
-        paymentMethods: paymentMethods?.length
-          ? {
-              create: paymentMethods.map((pm, index) => ({
-                paymentMethod: pm.paymentMethod,
-                bankName: pm.bankName,
-                bankAccountName: pm.bankAccountName,
-                bankAccountNumber: pm.bankAccountNumber,
-                creditTermDays: pm.creditTermDays,
-                isDefault: pm.isDefault ?? index === 0,
-              })),
-            }
-          : undefined,
-      },
-      include: {
-        paymentMethods: true,
-      },
+    // Resolve/create the Contact (party master) and link it on the new
+    // supplier in the SAME transaction so the contact row and the supplier
+    // FK are atomic. Suppliers are keyed by taxId (no national id).
+    return this.prisma.$transaction(async (tx) => {
+      const contact = await this.contactResolver.findOrCreateByNaturalKey(tx, {
+        name: dto.name,
+        taxId: dto.taxId ?? null,
+        nationalIdHash: null,
+        phone: dto.phone ?? null,
+        role: 'SUPPLIER',
+      });
+
+      return tx.supplier.create({
+        data: {
+          ...supplierData,
+          contactId: contact.id,
+          paymentMethods: paymentMethods?.length
+            ? {
+                create: paymentMethods.map((pm, index) => ({
+                  paymentMethod: pm.paymentMethod,
+                  bankName: pm.bankName,
+                  bankAccountName: pm.bankAccountName,
+                  bankAccountNumber: pm.bankAccountNumber,
+                  creditTermDays: pm.creditTermDays,
+                  isDefault: pm.isDefault ?? index === 0,
+                })),
+              }
+            : undefined,
+        },
+        include: {
+          paymentMethods: true,
+        },
+      });
     });
   }
 

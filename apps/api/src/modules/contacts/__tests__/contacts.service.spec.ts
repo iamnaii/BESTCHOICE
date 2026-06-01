@@ -72,6 +72,20 @@ describe('ContactsService.findOne', () => {
     prisma.contact.findFirst.mockResolvedValue(null);
     await expect(svc.findOne('nope')).rejects.toThrow('ไม่พบผู้ติดต่อ');
   });
+  it('selects read-through fields per role record (no customer PII address)', async () => {
+    prisma.contact.findFirst.mockResolvedValue({ id: 'c1', roles: ['SUPPLIER'], customers: [], suppliers: [], tradeInsAsSeller: [], externalFinanceCompany: [] });
+    await svc.findOne('c1');
+    const include = prisma.contact.findFirst.mock.calls[0][0].include;
+    expect(include.suppliers.select).toEqual(expect.objectContaining({
+      id: true, name: true, type: true, taxId: true, branchCode: true,
+      contactName: true, contactPhone: true, phone: true, hasVat: true, address: true,
+    }));
+    expect(include.customers.select).toEqual(expect.objectContaining({ id: true, name: true, prefix: true, phone: true }));
+    expect(include.customers.select.addressCurrent).toBeUndefined();
+    expect(include.customers.select.addressIdCard).toBeUndefined();
+    expect(include.externalFinanceCompany.select).toEqual(expect.objectContaining({ id: true, name: true, taxId: true, contactPhone: true, email: true, creditTermDays: true }));
+    expect(include.tradeInsAsSeller.select).toEqual(expect.objectContaining({ id: true, sellerName: true, sellerPhone: true, createdAt: true }));
+  });
 });
 
 describe('ContactsService.merge', () => {

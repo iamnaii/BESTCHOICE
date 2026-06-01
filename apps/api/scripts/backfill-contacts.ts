@@ -26,7 +26,7 @@
  *     populated by the PII system) — we never recompute hashes here, so no
  *     PII_HASH_SALT / PII_ENCRYPTION_KEY is needed.
  */
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 
 export interface BackfillCandidate {
   taxId: string | null;
@@ -160,28 +160,57 @@ async function main(): Promise<void> {
     const startSeq = lastContact ? parseInt(lastContact.contactCode.split('-')[1], 10) || 0 : 0;
     const nextContactCode = makeCodeGenerator(startSeq);
 
-    /** Ensure an existing contact carries `role`; persist + update memory. */
-    async function ensureRole(contactId: string, role: ContactRole): Promise<void> {
+    // ── Per-row atomicity model ─────────────────────────────────────────
+    // Each source row is processed inside a single prisma.$transaction: the
+    // Contact create/role-append AND the source-row FK update both run on the
+    // SAME `tx` client, so a row either fully links or not at all (no orphaned
+    // Contact left behind if the FK update fails). In-memory dedup state
+    // (`contacts`) is mutated ONLY after the tx commits — see processRow's
+    // post-commit step — so a later row sharing the same key never attaches to
+    // a Contact that was rolled back.
+    //
+    // SOFT-DELETE / UNIQUE CAVEAT: `Contact.taxId` has a FULL @@unique
+    // constraint (not partial), so a soft-deleted Contact still carrying a
+    // taxId will BLOCK creating/attaching a new Contact with that same taxId —
+    // the contact.create below throws, the per-row try/catch counts the row as
+    // skipped, and it needs manual follow-up. This cannot happen on the initial
+    // backfill (the contacts table starts empty); it only becomes relevant on
+    // later re-runs after merges/soft-deletes have occurred.
+
+    /** Ensure an existing contact carries `role` inside `tx`. Returns whether
+     * the role was newly appended (so the caller can mirror it into the
+     * in-memory `contacts` set AFTER the tx commits). Does NOT mutate memory. */
+    async function ensureRole(
+      tx: Prisma.TransactionClient,
+      contactId: string,
+      role: ContactRole,
+    ): Promise<boolean> {
       const row = contacts.find((c) => c.id === contactId);
       if (row && !row.roles.includes(role)) {
-        row.roles.push(role);
-        await prisma.contact.update({
+        await tx.contact.update({
           where: { id: contactId },
-          data: { roles: { set: row.roles } },
+          data: { roles: { set: [...row.roles, role] } },
         });
+        return true;
       }
+      return false;
     }
 
-    /** Create a Contact, register it in the in-memory set, return its id. */
-    async function createContact(data: {
-      name: string;
-      taxId: string | null;
-      nationalIdHash: string | null;
-      phone: string | null;
-      email: string | null;
-      roles: ContactRole[];
-    }): Promise<string> {
-      const created = await prisma.contact.create({
+    /** Create a Contact inside `tx`. Returns the created row but does NOT push
+     * it into the in-memory set — the caller registers it AFTER the tx commits
+     * so dedup never sees a contact that ended up rolled back. */
+    async function createContact(
+      tx: Prisma.TransactionClient,
+      data: {
+        name: string;
+        taxId: string | null;
+        nationalIdHash: string | null;
+        phone: string | null;
+        email: string | null;
+        roles: ContactRole[];
+      },
+    ): Promise<ContactRow> {
+      const created = await tx.contact.create({
         data: {
           contactCode: nextContactCode(),
           name: data.name,
@@ -193,13 +222,12 @@ async function main(): Promise<void> {
         },
         select: { id: true, taxId: true, nationalIdHash: true, roles: true },
       });
-      contacts.push({
+      return {
         id: created.id,
         taxId: created.taxId,
         nationalIdHash: created.nationalIdHash,
         roles: created.roles as ContactRole[],
-      });
-      return created.id;
+      };
     }
 
     const summary: Record<string, EntitySummary> = {
@@ -218,13 +246,13 @@ async function main(): Promise<void> {
       try {
         const candidate: BackfillCandidate = { taxId: s.taxId, nationalIdHash: null };
         const action = resolveBackfillAction(contacts, candidate);
-        let contactId: string;
-        if (action.kind === 'attach') {
-          contactId = action.contactId;
-          await ensureRole(contactId, 'SUPPLIER');
-          summary.Supplier.attached += 1;
-        } else {
-          contactId = await createContact({
+        const committed = await prisma.$transaction(async (tx) => {
+          if (action.kind === 'attach') {
+            const roleAdded = await ensureRole(tx, action.contactId, 'SUPPLIER');
+            await tx.supplier.update({ where: { id: s.id }, data: { contactId: action.contactId } });
+            return { kind: 'attach' as const, contactId: action.contactId, roleAdded };
+          }
+          const newContact = await createContact(tx, {
             name: s.name,
             taxId: s.taxId,
             nationalIdHash: null,
@@ -232,9 +260,20 @@ async function main(): Promise<void> {
             email: null, // Supplier has no email column
             roles: ['SUPPLIER'],
           });
+          await tx.supplier.update({ where: { id: s.id }, data: { contactId: newContact.id } });
+          return { kind: 'create' as const, newContact };
+        });
+        // Post-commit: only now mutate the in-memory dedup set + counters.
+        if (committed.kind === 'attach') {
+          if (committed.roleAdded) {
+            const row = contacts.find((c) => c.id === committed.contactId);
+            if (row) row.roles.push('SUPPLIER');
+          }
+          summary.Supplier.attached += 1;
+        } else {
+          contacts.push(committed.newContact);
           summary.Supplier.created += 1;
         }
-        await prisma.supplier.update({ where: { id: s.id }, data: { contactId } });
       } catch (err) {
         summary.Supplier.skipped += 1;
         console.error(
@@ -257,13 +296,13 @@ async function main(): Promise<void> {
           nationalIdHash: cust.nationalIdHash,
         };
         const action = resolveBackfillAction(contacts, candidate);
-        let contactId: string;
-        if (action.kind === 'attach') {
-          contactId = action.contactId;
-          await ensureRole(contactId, 'CUSTOMER');
-          summary.Customer.attached += 1;
-        } else {
-          contactId = await createContact({
+        const committed = await prisma.$transaction(async (tx) => {
+          if (action.kind === 'attach') {
+            const roleAdded = await ensureRole(tx, action.contactId, 'CUSTOMER');
+            await tx.customer.update({ where: { id: cust.id }, data: { contactId: action.contactId } });
+            return { kind: 'attach' as const, contactId: action.contactId, roleAdded };
+          }
+          const newContact = await createContact(tx, {
             name: cust.name,
             taxId: null,
             nationalIdHash: cust.nationalIdHash,
@@ -271,9 +310,19 @@ async function main(): Promise<void> {
             email: null,
             roles: ['CUSTOMER'],
           });
+          await tx.customer.update({ where: { id: cust.id }, data: { contactId: newContact.id } });
+          return { kind: 'create' as const, newContact };
+        });
+        if (committed.kind === 'attach') {
+          if (committed.roleAdded) {
+            const row = contacts.find((c) => c.id === committed.contactId);
+            if (row) row.roles.push('CUSTOMER');
+          }
+          summary.Customer.attached += 1;
+        } else {
+          contacts.push(committed.newContact);
           summary.Customer.created += 1;
         }
-        await prisma.customer.update({ where: { id: cust.id }, data: { contactId } });
       } catch (err) {
         summary.Customer.skipped += 1;
         console.error(
@@ -294,13 +343,16 @@ async function main(): Promise<void> {
         const candidate: BackfillCandidate = { taxId: null, nationalIdHash: null };
         const action = resolveBackfillAction(contacts, candidate);
         // action is always 'create' for keyless candidates.
-        let contactId: string;
-        if (action.kind === 'attach') {
-          contactId = action.contactId;
-          await ensureRole(contactId, 'TRADE_IN_SELLER');
-          summary.TradeIn.attached += 1;
-        } else {
-          contactId = await createContact({
+        const committed = await prisma.$transaction(async (tx) => {
+          if (action.kind === 'attach') {
+            const roleAdded = await ensureRole(tx, action.contactId, 'TRADE_IN_SELLER');
+            await tx.tradeIn.update({
+              where: { id: t.id },
+              data: { sellerContactId: action.contactId },
+            });
+            return { kind: 'attach' as const, contactId: action.contactId, roleAdded };
+          }
+          const newContact = await createContact(tx, {
             name: t.sellerName ?? 'ไม่ระบุชื่อ',
             taxId: null,
             nationalIdHash: null,
@@ -308,9 +360,22 @@ async function main(): Promise<void> {
             email: null,
             roles: ['TRADE_IN_SELLER'],
           });
+          await tx.tradeIn.update({
+            where: { id: t.id },
+            data: { sellerContactId: newContact.id },
+          });
+          return { kind: 'create' as const, newContact };
+        });
+        if (committed.kind === 'attach') {
+          if (committed.roleAdded) {
+            const row = contacts.find((c) => c.id === committed.contactId);
+            if (row) row.roles.push('TRADE_IN_SELLER');
+          }
+          summary.TradeIn.attached += 1;
+        } else {
+          contacts.push(committed.newContact);
           summary.TradeIn.created += 1;
         }
-        await prisma.tradeIn.update({ where: { id: t.id }, data: { sellerContactId: contactId } });
       } catch (err) {
         summary.TradeIn.skipped += 1;
         console.error(
@@ -329,13 +394,16 @@ async function main(): Promise<void> {
       try {
         const candidate: BackfillCandidate = { taxId: co.taxId, nationalIdHash: null };
         const action = resolveBackfillAction(contacts, candidate);
-        let contactId: string;
-        if (action.kind === 'attach') {
-          contactId = action.contactId;
-          await ensureRole(contactId, 'FINANCE_COMPANY');
-          summary.ExternalFinanceCompany.attached += 1;
-        } else {
-          contactId = await createContact({
+        const committed = await prisma.$transaction(async (tx) => {
+          if (action.kind === 'attach') {
+            const roleAdded = await ensureRole(tx, action.contactId, 'FINANCE_COMPANY');
+            await tx.externalFinanceCompany.update({
+              where: { id: co.id },
+              data: { contactId: action.contactId },
+            });
+            return { kind: 'attach' as const, contactId: action.contactId, roleAdded };
+          }
+          const newContact = await createContact(tx, {
             name: co.name,
             taxId: co.taxId,
             nationalIdHash: null,
@@ -343,12 +411,22 @@ async function main(): Promise<void> {
             email: co.email,
             roles: ['FINANCE_COMPANY'],
           });
+          await tx.externalFinanceCompany.update({
+            where: { id: co.id },
+            data: { contactId: newContact.id },
+          });
+          return { kind: 'create' as const, newContact };
+        });
+        if (committed.kind === 'attach') {
+          if (committed.roleAdded) {
+            const row = contacts.find((c) => c.id === committed.contactId);
+            if (row) row.roles.push('FINANCE_COMPANY');
+          }
+          summary.ExternalFinanceCompany.attached += 1;
+        } else {
+          contacts.push(committed.newContact);
           summary.ExternalFinanceCompany.created += 1;
         }
-        await prisma.externalFinanceCompany.update({
-          where: { id: co.id },
-          data: { contactId },
-        });
       } catch (err) {
         summary.ExternalFinanceCompany.skipped += 1;
         console.error(

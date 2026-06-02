@@ -8,6 +8,8 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 
+type AuthRequest = Request & { user?: { id: string; role: string } };
+
 @ApiTags('Customers')
 @ApiBearerAuth('JWT')
 @Controller('contracts')
@@ -37,8 +39,14 @@ export class KycController {
   verifyOtp(
     @Param('id') id: string,
     @Body() dto: VerifyOtpDto,
+    @Req() req: AuthRequest,
   ) {
-    return this.kycService.verifyOtp(id, dto.otp);
+    // Actor threaded through for the test-mode bypass audit trail.
+    return this.kycService.verifyOtp(id, dto.otp, {
+      userId: req.user?.id,
+      ipAddress: req.ip,
+      userAgent: req.headers?.['user-agent'],
+    });
   }
 
   @Post(':id/kyc/upload-id-card')

@@ -1,5 +1,6 @@
 import { Link } from 'react-router';
 import { MakerCheckerToggle } from '../components/MakerCheckerToggle';
+import { TestModeToggle } from '../components/TestModeToggle';
 import { PettyCashCustodianCard } from '../components/PettyCashCustodianCard';
 import { ReversePermissionCard } from '../components/ReversePermissionCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,6 +11,11 @@ export function UsersTab() {
   return (
     <div className="space-y-4">
       <MakerCheckerToggle />
+
+      {/* Test-mode bypass — OWNER toggle that disables credit check / OTP / 2FA.
+          Sits with the other authority/security controls. */}
+      <TestModeToggle />
+
 
       {/* InternalControlActionBar — Setting 1: reverse-permission mode +
           per-user override. Sits next to MakerCheckerToggle because both

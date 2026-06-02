@@ -4,6 +4,8 @@ import * as Sentry from '@sentry/nestjs';
 import { createHash, randomInt } from 'crypto';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { NotificationsService } from '../../notifications/notifications.service';
+import { TestModeService } from '../../test-mode/test-mode.service';
+import { AuditService } from '../../audit/audit.service';
 import { LineChannelType } from '@prisma/client';
 import { maskPhone } from '../utils/mask-phone';
 
@@ -48,6 +50,8 @@ export class VerificationService {
   constructor(
     private prisma: PrismaService,
     private notifications: NotificationsService,
+    private testMode: TestModeService,
+    private audit: AuditService,
   ) {}
 
   /**
@@ -220,6 +224,46 @@ export class VerificationService {
 
     if (!record) {
       throw new BadRequestException('กรุณาขอ OTP ใหม่');
+    }
+
+    // Test-mode UAT bypass — OWNER-gated SystemConfig (TEST_MODE_BYPASS), default OFF,
+    // audited, app-wide banner. For pre-go-live testing only — MUST be turned OFF before
+    // go-live (TestModeService.isEnabled fails safe to OFF on any DB error).
+    //
+    // We still require that an OTP session exists (the `record` found above), so the LIFF
+    // flow can only advance if requestOtp ran — we only skip the expiry/attempt/hash code
+    // checks. The success side-effects below (resolve customer → bind → delete OTP row →
+    // same return value) are byte-for-byte identical to the real success branch so the
+    // downstream LIFF flow proceeds unchanged.
+    if (await this.testMode.isEnabled()) {
+      const customer = await this.prisma.customer.findUnique({
+        where: { id: record.customerId },
+        select: { id: true, name: true },
+      });
+      if (!customer) {
+        await this.prisma.chatbotOtpRequest.delete({ where: { id: record.id } });
+        throw new NotFoundException('ไม่พบข้อมูลลูกค้า');
+      }
+
+      await this.bind(params.lineUserId, customer.id);
+      await this.prisma.chatbotOtpRequest.delete({ where: { id: record.id } });
+
+      // Best-effort audit. This is a customer-facing LIFF path with no staff JWT, so no
+      // userId FK is available — AuditService.log no-ops without a valid userId. We still
+      // call it for consistency with the KYC bypass; it persists only if an actor is ever
+      // threaded through. Not threading an actor here is acceptable for this path.
+      await this.audit.log({
+        action: 'LIFF_OTP_BYPASSED_TEST_MODE',
+        entity: 'customer',
+        entityId: customer.id,
+        newValue: {
+          lineUserId: params.lineUserId,
+          otpRequestId: record.id,
+          reason: 'TEST_MODE_BYPASS',
+        },
+      });
+
+      return { customerId: customer.id, customerName: customer.name };
     }
 
     if (record.expiresAt < new Date()) {

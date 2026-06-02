@@ -7,9 +7,10 @@ import { SkipTracingService } from './skip-tracing.service';
 import { CustomerPiiModule } from './customer-pii.module';
 import { OverdueModule } from '../overdue/overdue.module';
 import { ContactsModule } from '../contacts/contacts.module';
+import { TestModeModule } from '../test-mode/test-mode.module';
 
 @Module({
-  imports: [OverdueModule, CustomerPiiModule, ContactsModule],
+  imports: [OverdueModule, CustomerPiiModule, ContactsModule, TestModeModule],
   controllers: [CustomersController],
   providers: [
     CustomersService,

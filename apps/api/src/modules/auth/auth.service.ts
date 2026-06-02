@@ -15,6 +15,8 @@ import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto, ResetPasswordDto } from './dto/password-reset.dto';
 import { EmailService } from '../email/email.service';
 import { LoginAuditService, LoginFailureKind } from './login-audit.service';
+import { TestModeService } from '../test-mode/test-mode.service';
+import { AuditService } from '../audit/audit.service';
 
 // Account lockout configuration. Tunable via env if needed later.
 const LOCKOUT_THRESHOLD = 5; // failures before lock
@@ -54,6 +56,8 @@ export class AuthService {
     private configService: ConfigService,
     private emailService: EmailService,
     private loginAudit: LoginAuditService,
+    private testMode: TestModeService,
+    private audit: AuditService,
   ) {}
 
   /**
@@ -210,11 +214,33 @@ export class AuthService {
     });
 
     // ── 2-step login state machine ──────────────────────────────────────
-    // State 1: 2FA is enabled → require OTP before issuing full JWT
-    if (user.twoFactorEnabled) {
+    // State 1: 2FA is enabled → require OTP before issuing full JWT.
+    //
+    // Test-mode UAT bypass (OWNER-gated SystemConfig TEST_MODE_BYPASS, default
+    // OFF, audited; MUST be turned OFF before go-live). When ON, the SECOND
+    // FACTOR is skipped — the password above was ALWAYS verified, so credentials
+    // are never weakened. We fall through to the same full-session issuance path
+    // as a non-2FA user (no change to token signing/expiry). Same pattern as the
+    // KYC OTP / LIFF OTP / credit-precheck bypasses.
+    if (user.twoFactorEnabled && !(await this.testMode.isEnabled())) {
       const tempToken = this.signTempToken(user.id, '2fa_login');
       await this.auditLogin(loginDto.email, false, meta, user.id, 'other');
       return { state: 'OTP_REQUIRED', tempToken };
+    }
+
+    if (user.twoFactorEnabled) {
+      // Reached here only when test-mode is ON: the 2FA step was bypassed.
+      // Record a dedicated audit marker (AuditService is @Global; userId is a
+      // real FK so this always persists for an authenticated staff user).
+      await this.audit.log({
+        userId: user.id,
+        action: 'LOGIN_2FA_BYPASSED_TEST_MODE',
+        entity: 'user',
+        entityId: user.id,
+        newValue: { reason: 'TEST_MODE_BYPASS' },
+        ipAddress: meta?.ipAddress,
+        userAgent: meta?.userAgent,
+      });
     }
 
     // 2FA enrollment enforcement is disabled by product decision (P1Q6 deferred).

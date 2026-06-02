@@ -13,6 +13,7 @@ import CommandPalette from '@/components/CommandPalette';
 import ShortcutsHelpOverlay from '@/components/ShortcutsHelpOverlay';
 import MobileBottomNav from './MobileBottomNav';
 import { SkipLink } from './SkipLink';
+import TestModeBanner from './TestModeBanner';
 import { InboundCallPopup } from '@/components/InboundCallPopup';
 import { getSidebarForRole, getZoneConfigForRole } from '@/config/menu';
 import type { Zone } from '@/config/menu';
@@ -154,8 +155,13 @@ function MainContent() {
       : SIDEBAR_EXPANDED_W;
 
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="flex min-h-screen flex-col bg-background">
       <SkipLink />
+
+      {/* App-wide test-mode banner — shows on every page when test-mode is ON */}
+      <TestModeBanner />
+
+      <div className="flex flex-1 min-h-0">
 
       {/* Desktop Sidebar */}
       {!isMobile && <Sidebar />}
@@ -184,6 +190,7 @@ function MainContent() {
             </div>
           )}
         </main>
+      </div>
       </div>
 
       {/* Mobile bottom tab bar */}

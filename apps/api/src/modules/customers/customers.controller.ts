@@ -260,8 +260,15 @@ export class CustomersController {
 
   @Post('pre-check')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
-  async preCheck(@Body() body: CustomerPreCheckDto): Promise<CustomerPreCheckResponse> {
-    return this.preCheckService.runPreCheck(body);
+  async preCheck(
+    @Body() body: CustomerPreCheckDto,
+    @Req() req: AuthRequest,
+  ): Promise<CustomerPreCheckResponse> {
+    return this.preCheckService.runPreCheck(body, {
+      userId: req.user?.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'] as string | undefined,
+    });
   }
 
   @Post('pre-check/:customerId/abandon')

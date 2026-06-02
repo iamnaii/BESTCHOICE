@@ -2,11 +2,20 @@ import { Injectable, NotFoundException, BadRequestException, InternalServerError
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationCategory } from '../notifications/notification-category.enum';
+import { TestModeService } from '../test-mode/test-mode.service';
+import { AuditService } from '../audit/audit.service';
 import * as crypto from 'crypto';
 
 const OTP_EXPIRY_MINUTES = 10;
 const MAX_OTP_ATTEMPTS = 5;
 const MAX_OTP_SENDS_PER_HOUR = 3;
+
+/** Actor context for audit trails (optional — controller threads it through). */
+export interface KycActor {
+  userId?: string;
+  ipAddress?: string;
+  userAgent?: string;
+}
 
 @Injectable()
 export class KycService {
@@ -15,6 +24,8 @@ export class KycService {
   constructor(
     private prisma: PrismaService,
     private notificationsService: NotificationsService,
+    private testMode: TestModeService,
+    private audit: AuditService,
   ) {}
 
   /**
@@ -133,16 +144,47 @@ export class KycService {
   /**
    * Verify OTP entered by customer
    */
-  async verifyOtp(contractId: string, otp: string) {
+  async verifyOtp(contractId: string, otp: string, actor?: KycActor) {
     const kyc = await this.prisma.kycVerification.findFirst({
       where: { contractId, status: 'PENDING' },
       orderBy: { createdAt: 'desc' },
     });
     if (!kyc) throw new BadRequestException('ไม่พบ OTP ที่รอยืนยัน กรุณาส่ง OTP ใหม่');
 
+    // Test-mode UAT bypass — OWNER-gated SystemConfig (TEST_MODE_BYPASS), default OFF,
+    // audited, app-wide banner. Intentionally overrides the prior always-validate stance
+    // per owner decision for pre-go-live testing. MUST be turned OFF before go-live.
+    //
+    // We still require that an OTP session exists (the PENDING row found above), so the
+    // contract flow can only advance if send-otp ran — we only skip the hash/expiry/
+    // attempt checks. The success side-effects below are byte-for-byte identical to the
+    // real success branch (mark the row OTP_VERIFIED + same return value) so the
+    // downstream contract flow (uploadIdCard → VERIFIED) proceeds unchanged.
+    if (await this.testMode.isEnabled()) {
+      await this.prisma.kycVerification.update({
+        where: { id: kyc.id },
+        data: { otpVerifiedAt: new Date(), status: 'OTP_VERIFIED' },
+      });
+
+      // Best-effort audit (AuditService.log is a no-op without a valid userId FK,
+      // so this only persists when an authenticated actor is threaded through).
+      await this.audit.log({
+        userId: actor?.userId,
+        action: 'KYC_OTP_BYPASSED_TEST_MODE',
+        entity: 'contract',
+        entityId: contractId,
+        newValue: { kycVerificationId: kyc.id, reason: 'TEST_MODE_BYPASS' },
+        ipAddress: actor?.ipAddress,
+        userAgent: actor?.userAgent,
+      });
+
+      return { verified: true, message: 'OTP ถูกต้อง' };
+    }
+
     // OTP must always be validated via hash + expiry + attempt count,
     // even in non-production environments, to prevent accidental auth bypass
-    // if NODE_ENV is mis-set in prod.
+    // if NODE_ENV is mis-set in prod. (Exception: the OWNER-gated test-mode
+    // bypass above — see comment there.)
 
     // Check expiry
     if (new Date() > kyc.expiresAt) {

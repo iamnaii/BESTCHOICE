@@ -1,5 +1,6 @@
 import { Test } from '@nestjs/testing';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { AuditService } from '../../audit/audit.service';
 import { ContactsService } from '../contacts.service';
 
 describe('ContactsService.list', () => {
@@ -8,7 +9,11 @@ describe('ContactsService.list', () => {
   beforeEach(async () => {
     prisma = { contact: { findMany: jest.fn(), count: jest.fn() } };
     const mod = await Test.createTestingModule({
-      providers: [ContactsService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        ContactsService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: AuditService, useValue: { log: jest.fn() } },
+      ],
     }).compile();
     svc = mod.get(ContactsService);
   });
@@ -51,7 +56,11 @@ describe('ContactsService.findOne', () => {
   beforeEach(async () => {
     prisma = { contact: { findFirst: jest.fn() } };
     const mod = await Test.createTestingModule({
-      providers: [ContactsService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        ContactsService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: AuditService, useValue: { log: jest.fn() } },
+      ],
     }).compile();
     svc = mod.get(ContactsService);
   });
@@ -91,6 +100,7 @@ describe('ContactsService.findOne', () => {
 describe('ContactsService.merge', () => {
   let svc: ContactsService;
   let prisma: any;
+  let audit: any;
   beforeEach(async () => {
     const tx = {
       contact: { findMany: jest.fn(), update: jest.fn() },
@@ -100,15 +110,20 @@ describe('ContactsService.merge', () => {
       externalFinanceCompany: { updateMany: jest.fn() },
     };
     prisma = { $transaction: jest.fn(async (cb: any) => cb(tx)), _tx: tx };
+    audit = { log: jest.fn() };
     const mod = await Test.createTestingModule({
-      providers: [ContactsService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        ContactsService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: AuditService, useValue: audit },
+      ],
     }).compile();
     svc = mod.get(ContactsService);
   });
   it('repoints role records to primary, unions roles, soft-deletes duplicate', async () => {
     prisma._tx.contact.findMany.mockResolvedValue([
-      { id: 'p1', roles: ['CUSTOMER'] },
-      { id: 'd1', roles: ['SUPPLIER'] },
+      { id: 'p1', roles: ['CUSTOMER'], taxId: null, nationalIdHash: null, peakContactCode: null, phone: null, email: null },
+      { id: 'd1', roles: ['SUPPLIER'], taxId: null, nationalIdHash: null, peakContactCode: null, phone: null, email: null },
     ]);
     await svc.merge({ primaryId: 'p1', duplicateId: 'd1' });
     expect(prisma._tx.customer.updateMany).toHaveBeenCalledWith({
@@ -124,6 +139,38 @@ describe('ContactsService.merge', () => {
         data: expect.objectContaining({ deletedAt: expect.any(Date) }),
       }),
     );
+  });
+  it('carries identity fields from duplicate to primary when primary lacks them + audits + soft-deletes duplicate FIRST', async () => {
+    prisma._tx.contact.findMany.mockResolvedValue([
+      { id: 'p1', roles: ['CUSTOMER'], taxId: null, nationalIdHash: null, peakContactCode: null, phone: null, email: null },
+      { id: 'd1', roles: ['SUPPLIER'], taxId: '0105', nationalIdHash: 'h', peakContactCode: 'C001', phone: '02', email: 'a@b.c' },
+    ]);
+    await svc.merge({ primaryId: 'p1', duplicateId: 'd1' });
+    // duplicate soft-deleted
+    expect(prisma._tx.contact.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'd1' }, data: expect.objectContaining({ deletedAt: expect.any(Date) }) }));
+    // primary updated with carried fields + union roles
+    expect(prisma._tx.contact.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'p1' },
+      data: expect.objectContaining({ taxId: '0105', nationalIdHash: 'h', peakContactCode: 'C001', phone: '02', email: 'a@b.c' }),
+    }));
+    expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'CONTACTS_MERGED' }));
+    // ordering: duplicate soft-delete recorded before primary carry update
+    const calls = prisma._tx.contact.update.mock.calls;
+    const dupIdx = calls.findIndex((c: any) => c[0].where.id === 'd1');
+    const primIdx = calls.findIndex((c: any) => c[0].where.id === 'p1');
+    expect(dupIdx).toBeGreaterThanOrEqual(0);
+    expect(primIdx).toBeGreaterThanOrEqual(0);
+    expect(dupIdx).toBeLessThan(primIdx);
+  });
+  it('does not overwrite identity fields already set on primary', async () => {
+    prisma._tx.contact.findMany.mockResolvedValue([
+      { id: 'p1', roles: [], taxId: '9999', nationalIdHash: null, peakContactCode: null, phone: '08', email: null },
+      { id: 'd1', roles: [], taxId: '0105', nationalIdHash: null, peakContactCode: null, phone: '02', email: null },
+    ]);
+    await svc.merge({ primaryId: 'p1', duplicateId: 'd1' });
+    const primaryCall = prisma._tx.contact.update.mock.calls.find((c: any) => c[0].where.id === 'p1');
+    expect(primaryCall[0].data.taxId).toBe('9999');
+    expect(primaryCall[0].data.phone).toBe('08');
   });
   it('rejects merging a contact into itself', async () => {
     await expect(svc.merge({ primaryId: 'x', duplicateId: 'x' })).rejects.toThrow(

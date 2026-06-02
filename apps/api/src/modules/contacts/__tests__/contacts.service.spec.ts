@@ -162,6 +162,19 @@ describe('ContactsService.merge', () => {
     expect(primIdx).toBeGreaterThanOrEqual(0);
     expect(dupIdx).toBeLessThan(primIdx);
   });
+  it('threads the OWNER actor userId into the CONTACTS_MERGED audit entry', async () => {
+    prisma._tx.contact.findMany.mockResolvedValue([
+      { id: 'p1', roles: ['CUSTOMER'], taxId: null, nationalIdHash: null, peakContactCode: null, phone: null, email: null },
+      { id: 'd1', roles: ['SUPPLIER'], taxId: null, nationalIdHash: null, peakContactCode: null, phone: null, email: null },
+    ]);
+    await svc.merge(
+      { primaryId: 'p1', duplicateId: 'd1' },
+      { userId: 'owner-1', ipAddress: '1.2.3.4', userAgent: 'jest' },
+    );
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'CONTACTS_MERGED', userId: 'owner-1' }),
+    );
+  });
   it('does not overwrite identity fields already set on primary', async () => {
     prisma._tx.contact.findMany.mockResolvedValue([
       { id: 'p1', roles: [], taxId: '9999', nationalIdHash: null, peakContactCode: null, phone: '08', email: null },

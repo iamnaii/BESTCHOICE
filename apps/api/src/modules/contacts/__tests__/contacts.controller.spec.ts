@@ -35,10 +35,19 @@ describe('ContactsController', () => {
     expect(svc.findOne).toHaveBeenCalledWith('c1');
   });
 
-  it('merge delegates to service', () => {
+  it('merge delegates to service with the authenticated OWNER actor', () => {
     const dto = { primaryId: 'p1', duplicateId: 'd1' };
+    const req = {
+      user: { id: 'owner-1', role: 'OWNER' },
+      ip: '1.2.3.4',
+      headers: { 'user-agent': 'jest' },
+    } as any;
     svc.merge.mockReturnValue('MERGED');
-    expect(ctrl.merge(dto)).toBe('MERGED');
-    expect(svc.merge).toHaveBeenCalledWith(dto);
+    expect(ctrl.merge(dto, req)).toBe('MERGED');
+    expect(svc.merge).toHaveBeenCalledWith(dto, {
+      userId: 'owner-1',
+      ipAddress: '1.2.3.4',
+      userAgent: 'jest',
+    });
   });
 });

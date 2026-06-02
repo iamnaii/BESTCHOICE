@@ -71,7 +71,10 @@ export class ContactsService {
     return contact;
   }
 
-  async merge(dto: MergeContactsDto) {
+  async merge(
+    dto: MergeContactsDto,
+    actor?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     const { primaryId, duplicateId } = dto;
     if (primaryId === duplicateId) {
       throw new BadRequestException('ไม่สามารถรวมผู้ติดต่อกับตัวเองได้');
@@ -131,10 +134,13 @@ export class ContactsService {
       });
 
       await this.audit.log({
+        userId: actor?.userId,
         action: 'CONTACTS_MERGED',
         entity: 'contact',
         entityId: primaryId,
         newValue: { duplicateId, mergedRoles: unionRoles, carried: carry },
+        ipAddress: actor?.ipAddress,
+        userAgent: actor?.userAgent,
       });
 
       return { primaryId, mergedRoles: unionRoles };

@@ -1,6 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { ExpenseDocumentsController } from '../expense-documents.controller';
 import { ExpenseDocumentsService } from '../expense-documents.service';
+import { ExpenseVoucherPdfService } from '../services/expense-voucher-pdf.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -8,6 +9,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 describe('ExpenseDocumentsController', () => {
   let controller: ExpenseDocumentsController;
   let service: jest.Mocked<Partial<ExpenseDocumentsService>>;
+  let voucherPdf: jest.Mocked<Partial<ExpenseVoucherPdfService>>;
 
   beforeEach(async () => {
     service = {
@@ -20,6 +22,7 @@ describe('ExpenseDocumentsController', () => {
         accrualUnpaidTotal: '0.00',
       }),
       findOne: jest.fn().mockResolvedValue({ id: 'doc-1' }),
+      getAuditTrail: jest.fn().mockResolvedValue([]),
       update: jest.fn().mockResolvedValue({ id: 'doc-1' }),
       post: jest.fn().mockResolvedValue({ entryNo: 'JE-1' }),
       voidDocument: jest.fn().mockResolvedValue({ id: 'doc-1' }),
@@ -29,10 +32,15 @@ describe('ExpenseDocumentsController', () => {
       createSettlement: jest.fn().mockResolvedValue({ id: 'se-1', number: 'SE-20260510-0001' }),
       previewJe: jest.fn().mockResolvedValue({ flow: 'expense-accrual', lines: [], totals: { balanced: true } }),
     };
+    voucherPdf = {
+      // Resolve a fake PDF Buffer — do NOT launch real puppeteer in the test.
+      generate: jest.fn().mockResolvedValue(Buffer.from('%PDF-fake')),
+    };
     const moduleRef = await Test.createTestingModule({
       controllers: [ExpenseDocumentsController],
       providers: [
         { provide: ExpenseDocumentsService, useValue: service },
+        { provide: ExpenseVoucherPdfService, useValue: voucherPdf },
         // D1.3.3.1 — ExportEnabledGuard depends on PrismaService. Provide a
         // minimal stub returning `null` for systemConfig.findFirst so the
         // export flag defaults to enabled (guard allows the request).
@@ -86,6 +94,29 @@ describe('ExpenseDocumentsController', () => {
   it('GET /:id calls findOne', async () => {
     await controller.findOne('doc-1');
     expect(service.findOne).toHaveBeenCalledWith('doc-1');
+  });
+
+  it('GET /:id/audit calls getAuditTrail (feeds InternalControlActionBar timeline)', async () => {
+    await controller.getAuditTrail('doc-1');
+    expect(service.getAuditTrail).toHaveBeenCalledWith('doc-1');
+  });
+
+  it('GET /:id/voucher.pdf delegates to ExpenseVoucherPdfService + sets PDF headers', async () => {
+    const headers: Record<string, string> = {};
+    const res = {
+      set: jest.fn((h: Record<string, string>) => {
+        Object.assign(headers, h);
+      }),
+      send: jest.fn(),
+    };
+    await controller.getVoucherPdf('doc-1', res as never);
+    expect(voucherPdf.generate).toHaveBeenCalledWith('doc-1');
+    expect(headers['Content-Type']).toBe('application/pdf');
+    expect(headers['Content-Disposition']).toBe(
+      'inline; filename="expense-voucher-doc-1.pdf"',
+    );
+    expect(headers['Content-Length']).toBe(Buffer.from('%PDF-fake').length.toString());
+    expect(res.send).toHaveBeenCalledWith(Buffer.from('%PDF-fake'));
   });
 
   it('POST /:id/post fires post', async () => {

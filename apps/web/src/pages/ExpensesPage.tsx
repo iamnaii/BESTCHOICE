@@ -344,9 +344,9 @@ export default function ExpensesPage() {
       render: (e: Expense) => (
         <div className="flex items-center gap-1">
           <button
-            onClick={(ev) => { ev.stopPropagation(); openEdit(e); }}
+            onClick={(ev) => { ev.stopPropagation(); navigate(`/expenses/${e.id}`); }}
             className="p-1.5 hover:bg-muted rounded transition-colors"
-            title="ดู / แก้ไข"
+            title="ดูรายละเอียด"
           >
             <Eye className="size-4 text-muted-foreground" />
           </button>

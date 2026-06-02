@@ -8,8 +8,10 @@ import {
   Body,
   Query,
   Req,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
@@ -18,6 +20,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { PostPermissionGuard } from './post-permission.guard';
 import { ReversePermissionGuard } from './reverse-permission.guard';
 import { ExpenseDocumentsService } from './expense-documents.service';
+import { ExpenseVoucherPdfService } from './services/expense-voucher-pdf.service';
 import { CreateExpenseDocumentDto } from './dto/create.dto';
 import { UpdateExpenseDocumentDto } from './dto/update.dto';
 import { ListExpenseDocumentsQueryDto } from './dto/list-query.dto';
@@ -31,7 +34,10 @@ import { hasCrossBranchAccess } from '../auth/branch-access.util';
 @Controller('expense-documents')
 @UseGuards(JwtAuthGuard, RolesGuard, BranchGuard)
 export class ExpenseDocumentsController {
-  constructor(private readonly service: ExpenseDocumentsService) {}
+  constructor(
+    private readonly service: ExpenseDocumentsService,
+    private readonly voucherPdf: ExpenseVoucherPdfService,
+  ) {}
 
   @Post()
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
@@ -162,6 +168,30 @@ export class ExpenseDocumentsController {
     return this.service.getCreditNoteCap(id);
   }
 
+  // Per-document audit timeline — feeds the shared InternalControlActionBar
+  // timeline on the ExpenseDetailPage (mirrors GET /other-income/:id/audit).
+  @Get(':id/audit')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  getAuditTrail(@Param('id') id: string) {
+    return this.service.getAuditTrail(id);
+  }
+
+  // ใบสำคัญจ่าย (Payment Voucher) PDF — mirrors GET /other-income/:id/receipt.pdf.
+  // Two-segment route declared BEFORE the generic :id route (module convention:
+  // :id/sub routes precede :id). No ExportEnabledGuard — this module does not
+  // wire the export-gate pattern (unlike other-income).
+  @Get(':id/voucher.pdf')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  async getVoucherPdf(@Param('id') id: string, @Res() res: Response) {
+    const pdf = await this.voucherPdf.generate(id);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="expense-voucher-${id}.pdf"`,
+      'Content-Length': pdf.length.toString(),
+    });
+    res.send(pdf);
+  }
+
   @Get(':id')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   findOne(@Param('id') id: string) {
@@ -237,14 +267,16 @@ export class ExpenseDocumentsController {
    * D1.3.2.4 — Reverse / void a posted doc.
    *
    * Class-level guards (JwtAuthGuard, RolesGuard, BranchGuard) run first.
-   * Method-level `@Roles(...)` matches the SUPERSET of any value that the
-   * dynamic SystemConfig key `reverse_permission` may select (OWNER +
-   * FINANCE_MANAGER). The `ReversePermissionGuard` then narrows
-   * per-request. Default `reverse_permission = 'OWNER+FINANCE_MANAGER'`
-   * preserves current behavior.
+   * Method-level `@Roles(...)` is the COARSE SUPERSET of any role the dynamic
+   * SystemConfig key `reverse_permission` may select — OWNER + FINANCE_MANAGER
+   * + ACCOUNTANT — so RolesGuard never pre-blocks a role the dynamic guard
+   * would allow (e.g. ACCOUNTANT under the 'OWNER+FINANCE_MANAGER+ACCOUNTANT'
+   * or CUSTOM modes). `ReversePermissionGuard` then narrows per-request; the
+   * default `reverse_permission = 'OWNER+FINANCE_MANAGER'` still rejects
+   * ACCOUNTANT, preserving current behavior.
    */
   @Post(':id/void')
-  @Roles('OWNER', 'FINANCE_MANAGER')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   @UseGuards(ReversePermissionGuard)
   void(
     @Param('id') id: string,

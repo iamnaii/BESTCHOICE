@@ -113,6 +113,7 @@ const ExternalFinanceCompanyDetailPage = lazy(
   () => import('@/pages/ExternalFinanceCompanyDetailPage'),
 );
 const ExpensesPage = lazy(() => import('@/pages/ExpensesPage'));
+const ExpenseDetailPage = lazy(() => import('@/pages/ExpenseDetailPage'));
 const APAgingPage = lazy(() => import('@/pages/APAgingPage'));
 const PaymentVoucherPage = lazy(() => import('@/pages/PaymentVoucherPage'));
 const ExpenseDocumentNewPage = lazy(() => import('@/pages/ExpenseDocumentNewPage'));
@@ -574,6 +575,14 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
                 <PaymentVoucherPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/expenses/:id"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <ExpenseDetailPage />
               </ProtectedRoute>
             }
           />

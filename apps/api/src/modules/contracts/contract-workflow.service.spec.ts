@@ -7,6 +7,8 @@ import { JournalAutoService } from '../journal/journal-auto.service';
 import { ProductsService } from '../products/products.service';
 import { ContractActivation1ATemplate } from '../journal/cpa-templates/contract-activation-1a.template';
 import { ContractExchangeService } from '../contract-exchange/contract-exchange.service';
+import { TestModeService } from '../test-mode/test-mode.service';
+import { BadRequestException } from '@nestjs/common';
 
 /**
  * ContractWorkflowService unit tests.
@@ -42,6 +44,7 @@ describe('ContractWorkflowService', () => {
   let productsMock: { transferOwnership: jest.Mock };
   let notificationsMock: { send: jest.Mock };
   let exchangeServiceMock: { finalizeAfterActivation: jest.Mock };
+  let testModeMock: { isEnabled: jest.Mock };
 
   const mockProduct = {
     id: 'product-1',
@@ -158,6 +161,8 @@ describe('ContractWorkflowService', () => {
         je1aId: 'je-a1', je2Id: 'je-a2', je3Id: 'je-a3', je4Id: 'je-a4',
       }),
     };
+    // Default: test-mode OFF.
+    testModeMock = { isEnabled: jest.fn().mockResolvedValue(false) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -168,6 +173,7 @@ describe('ContractWorkflowService', () => {
         { provide: ProductsService, useValue: productsMock },
         { provide: ContractActivation1ATemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK' }) } },
         { provide: ContractExchangeService, useValue: exchangeServiceMock },
+        { provide: TestModeService, useValue: testModeMock },
       ],
     }).compile();
 
@@ -295,6 +301,49 @@ describe('ContractWorkflowService', () => {
         // standard 1A path was not used here
         expect(contractActivationTemplateMock.execute).not.toHaveBeenCalled();
       });
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // submitForReview — Step 1 credit gate (test-mode aware)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  describe('submitForReview — credit gate (Step 1)', () => {
+    const submittable = {
+      ...mockContract,
+      workflowStatus: 'CREATING',
+      creditCheck: null, // no approved credit check → gate would normally fire
+    };
+
+    const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
+
+    afterEach(() => {
+      process.env.NODE_ENV = ORIGINAL_NODE_ENV;
+    });
+
+    it('throws the credit error in production when test-mode is OFF', async () => {
+      process.env.NODE_ENV = 'production';
+      testModeMock.isEnabled.mockResolvedValue(false);
+      prisma.contract.findUnique.mockResolvedValue(submittable);
+
+      await expect(service.submitForReview('contract-1', 'user-1')).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+    });
+
+    it('skips the credit error in production when test-mode is ON', async () => {
+      process.env.NODE_ENV = 'production';
+      testModeMock.isEnabled.mockResolvedValue(true);
+      prisma.contract.findUnique.mockResolvedValue(submittable);
+
+      // Should NOT throw the credit-gate error and should proceed to update.
+      await service.submitForReview('contract-1', 'user-1');
+      expect(prisma.contract.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'contract-1' },
+          data: expect.objectContaining({ workflowStatus: 'PENDING_REVIEW' }),
+        }),
+      );
     });
   });
 });

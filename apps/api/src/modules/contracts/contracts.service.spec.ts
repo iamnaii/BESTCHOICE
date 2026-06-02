@@ -3,6 +3,8 @@ import { BadRequestException, ConflictException, ForbiddenException, NotFoundExc
 import { Prisma } from '@prisma/client';
 import { ContractsService } from './contracts.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { TestModeService } from '../test-mode/test-mode.service';
+import { AuditService } from '../audit/audit.service';
 
 /**
  * ContractsService unit tests.
@@ -89,6 +91,8 @@ describe('ContractsService', () => {
   let service: ContractsService;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let prisma: any;
+  let testModeMock: { isEnabled: jest.Mock };
+  let auditMock: { log: jest.Mock };
 
   // ─── fixtures ──────────────────────────────────────────────────────────────
 
@@ -243,10 +247,16 @@ describe('ContractsService', () => {
       $transaction: makeTxMock(),
     };
 
+    // Default: test-mode OFF (existing/production behavior).
+    testModeMock = { isEnabled: jest.fn().mockResolvedValue(false) };
+    auditMock = { log: jest.fn().mockResolvedValue(undefined) };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ContractsService,
         { provide: PrismaService, useValue: prisma },
+        { provide: TestModeService, useValue: testModeMock },
+        { provide: AuditService, useValue: auditMock },
       ],
     }).compile();
 
@@ -448,6 +458,55 @@ describe('ContractsService', () => {
       await expect(service.create(validDto, 'user-1')).rejects.toBeInstanceOf(BadRequestException);
     });
 
+    it('bypasses the credit gate and still creates when test-mode is ON (no approved credit check)', async () => {
+      testModeMock.isEnabled.mockResolvedValue(true);
+
+      const creditCheckUpdate = jest.fn().mockResolvedValue({});
+      prisma.$transaction.mockImplementation(
+        async (fn: (tx: unknown) => Promise<unknown>) => {
+          const txPrisma = {
+            ...prisma,
+            product: {
+              ...prisma.product,
+              findUnique: jest.fn().mockResolvedValue(mockProduct),
+              update: jest.fn().mockResolvedValue({ ...mockProduct, status: 'RESERVED' }),
+            },
+            creditCheck: {
+              // No approved credit check available — would normally throw.
+              findFirst: jest.fn().mockResolvedValue(null),
+              update: creditCheckUpdate,
+            },
+            customer: { findUnique: jest.fn().mockResolvedValue(mockCustomer) },
+            contract: { create: jest.fn().mockResolvedValue(mockContract) },
+            payment: { createMany: jest.fn().mockResolvedValue({ count: 12 }) },
+          };
+          return fn(txPrisma);
+        },
+      );
+
+      const result = await service.create(validDto, 'user-1');
+
+      expect(result).toBeDefined();
+      expect(result.id).toBe('contract-1');
+      // Linking step must be skipped when there's no credit check to link.
+      expect(creditCheckUpdate).not.toHaveBeenCalled();
+      // Bypass must be audited with the salesperson as the actor.
+      expect(auditMock.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'CONTRACT_CREDIT_GATE_BYPASSED_TEST_MODE',
+          entity: 'contract',
+          userId: 'user-1',
+        }),
+      );
+    });
+
+    it('does NOT bypass the credit gate when test-mode is OFF (existing behavior)', async () => {
+      testModeMock.isEnabled.mockResolvedValue(false);
+      prisma.creditCheck.findFirst.mockResolvedValue(null);
+      await expect(service.create(validDto, 'user-1')).rejects.toBeInstanceOf(BadRequestException);
+      expect(auditMock.log).not.toHaveBeenCalled();
+    });
+
     it('throws BadRequestException when product is already taken inside the transaction', async () => {
       // Product looks fine before tx, but RESERVED when re-checked atomically
       prisma.$transaction.mockImplementation(
@@ -545,6 +604,26 @@ describe('ContractsService', () => {
 
       await service.create(validDto, 'user-1');
       expect(productUpdateCalled).toBe(true);
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // validateForSubmit — credit-gate (test-mode aware)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  describe('validateForSubmit — credit gate', () => {
+    it('pushes the credit error when no approved credit check and test-mode OFF', async () => {
+      testModeMock.isEnabled.mockResolvedValue(false);
+      prisma.contract.findUnique.mockResolvedValue({ ...mockContract, creditCheck: null });
+      const result = await service.validateForSubmit('contract-1');
+      expect(result.errors).toContain('ต้องผ่านการตรวจเครดิตก่อน');
+    });
+
+    it('skips the credit error when no approved credit check but test-mode ON', async () => {
+      testModeMock.isEnabled.mockResolvedValue(true);
+      prisma.contract.findUnique.mockResolvedValue({ ...mockContract, creditCheck: null });
+      const result = await service.validateForSubmit('contract-1');
+      expect(result.errors).not.toContain('ต้องผ่านการตรวจเครดิตก่อน');
     });
   });
 

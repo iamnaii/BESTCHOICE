@@ -3,6 +3,8 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { VerificationService } from './verification.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { NotificationsService } from '../../notifications/notifications.service';
+import { TestModeService } from '../../test-mode/test-mode.service';
+import { AuditService } from '../../audit/audit.service';
 
 describe('VerificationService', () => {
   let service: VerificationService;
@@ -10,6 +12,10 @@ describe('VerificationService', () => {
   let prisma: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let notifications: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let testMode: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let audit: any;
 
   beforeEach(async () => {
     prisma = {
@@ -44,12 +50,21 @@ describe('VerificationService', () => {
     notifications = {
       sendSmsFromQueue: jest.fn().mockResolvedValue(undefined),
     };
+    testMode = {
+      // Default OFF — existing tests assert byte-for-byte existing behavior.
+      isEnabled: jest.fn().mockResolvedValue(false),
+    };
+    audit = {
+      log: jest.fn().mockResolvedValue(undefined),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         VerificationService,
         { provide: PrismaService, useValue: prisma },
         { provide: NotificationsService, useValue: notifications },
+        { provide: TestModeService, useValue: testMode },
+        { provide: AuditService, useValue: audit },
       ],
     }).compile();
 
@@ -180,6 +195,55 @@ describe('VerificationService', () => {
       await expect(
         service.verifyOtp({ lineUserId: 'U123', otp: '123456' }),
       ).rejects.toThrow('ขอ OTP ใหม่');
+    });
+
+    // ─────────────────────────────────────────────────────────────
+    // Test-mode bypass (Task 5 — test-mode-bypass feature)
+    // ─────────────────────────────────────────────────────────────
+    describe('test-mode bypass', () => {
+      it('ON: succeeds with wrong OTP, replicates success mutations, writes audit', async () => {
+        testMode.isEnabled.mockResolvedValue(true);
+        // Pending OTP session exists (wrong hash — would normally fail).
+        prisma.chatbotOtpRequest.findUnique.mockResolvedValue(makeRecord('wrong-hash'));
+        prisma.customer.findUnique.mockResolvedValue({ id: 'c1', name: 'สมชาย' });
+
+        const result = await service.verifyOtp({ lineUserId: 'U123', otp: '999999' });
+
+        // Same success return shape as the real success branch.
+        expect(result.customerId).toBe('c1');
+        expect(result.customerName).toBe('สมชาย');
+        // Success mutations replicated: bind (transaction) + delete OTP row.
+        expect(prisma.$transaction).toHaveBeenCalled();
+        expect(prisma.chatbotOtpRequest.delete).toHaveBeenCalled();
+        // Audit written with the bypass action.
+        expect(audit.log).toHaveBeenCalledWith(
+          expect.objectContaining({ action: 'LIFF_OTP_BYPASSED_TEST_MODE' }),
+        );
+        // The wrong-OTP attempt increment must NOT run (code check skipped).
+        expect(prisma.chatbotOtpRequest.update).not.toHaveBeenCalled();
+      });
+
+      it('ON: still requires an existing pending OTP session', async () => {
+        testMode.isEnabled.mockResolvedValue(true);
+        prisma.chatbotOtpRequest.findUnique.mockResolvedValue(null);
+
+        await expect(
+          service.verifyOtp({ lineUserId: 'U123', otp: '999999' }),
+        ).rejects.toThrow('ขอ OTP ใหม่');
+        expect(prisma.$transaction).not.toHaveBeenCalled();
+        expect(audit.log).not.toHaveBeenCalled();
+      });
+
+      it('OFF: wrong OTP still fails (existing validation unchanged)', async () => {
+        testMode.isEnabled.mockResolvedValue(false);
+        prisma.chatbotOtpRequest.findUnique.mockResolvedValue(makeRecord('wrong-hash', 0));
+        prisma.chatbotOtpRequest.update.mockResolvedValue({ attempts: 1 });
+
+        await expect(
+          service.verifyOtp({ lineUserId: 'U123', otp: '999999' }),
+        ).rejects.toThrow('ไม่ถูกต้อง');
+        expect(audit.log).not.toHaveBeenCalled();
+      });
     });
   });
 

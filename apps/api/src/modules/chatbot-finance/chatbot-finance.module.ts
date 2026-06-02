@@ -30,6 +30,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { StaffChatModule } from '../staff-chat/staff-chat.module';
 import { IntegrationsModule } from '../integrations/integrations.module';
 import { ChatAiDraftModule } from '../chat-ai-draft/chat-ai-draft.module';
+import { TestModeModule } from '../test-mode/test-mode.module';
 
 /**
  * Finance Bot Module ("น้องเบส")
@@ -45,7 +46,7 @@ import { ChatAiDraftModule } from '../chat-ai-draft/chat-ai-draft.module';
  *   E  ✅ admin endpoints + analytics/sessions/KB UI
  */
 @Module({
-  imports: [forwardRef(() => NotificationsModule), forwardRef(() => StaffChatModule), IntegrationsModule, forwardRef(() => ChatAiDraftModule)], // SMS for OTP + WS events to Unified Inbox
+  imports: [forwardRef(() => NotificationsModule), forwardRef(() => StaffChatModule), IntegrationsModule, forwardRef(() => ChatAiDraftModule), TestModeModule], // SMS for OTP + WS events to Unified Inbox; TestModeModule for LIFF OTP bypass (UAT)
   controllers: [
     ChatbotFinanceController,
     ChatbotFinanceLiffController,

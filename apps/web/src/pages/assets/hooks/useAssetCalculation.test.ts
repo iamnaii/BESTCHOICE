@@ -1,7 +1,17 @@
 import { describe, it, expect } from 'vitest';
 import { renderHook } from '@testing-library/react';
+import { createElement, type ReactNode } from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useAssetCalculation } from './useAssetCalculation';
 import type { AssetEntryFormValues } from '../schema';
+
+// useAssetCalculation calls useCoaByCodes (react-query) for account-name lookup,
+// so the hook needs a QueryClient in context. The coa query is only used to map
+// codes → names (coaRows ?? []), never for the numeric calculation under test,
+// so letting it error (retry: false) is fine — the assertions below don't touch it.
+const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+const wrapper = ({ children }: { children: ReactNode }) =>
+  createElement(QueryClientProvider, { client: queryClient }, children);
 
 const base: Partial<AssetEntryFormValues> = {
   category: 'EQUIPMENT',
@@ -27,6 +37,7 @@ describe('useAssetCalculation — VAT extraction (Bug Report v2 #9)', () => {
         vatInclusive: true,
         vatAccount: '11-4101',
       }),
+      { wrapper },
     );
     expect(result.current.basePrice).toBe(56074.77);
     expect(result.current.vatAmount).toBe(3925.23);
@@ -43,6 +54,7 @@ describe('useAssetCalculation — VAT extraction (Bug Report v2 #9)', () => {
         vatInclusive: false,
         vatAccount: '11-4101',
       }),
+      { wrapper },
     );
     expect(result.current.basePrice).toBe(100000);
     expect(result.current.vatAmount).toBe(7000);
@@ -53,6 +65,7 @@ describe('useAssetCalculation — VAT extraction (Bug Report v2 #9)', () => {
   it('No VAT → basePrice = raw input, vatAmount = 0', () => {
     const { result } = renderHook(() =>
       useAssetCalculation({ ...base, basePrice: 50000, hasVat: false }),
+      { wrapper },
     );
     expect(result.current.basePrice).toBe(50000);
     expect(result.current.vatAmount).toBe(0);
@@ -71,6 +84,7 @@ describe('useAssetCalculation — WHT base routing (Bug Report v2 #8)', () => {
         whtRate: 0.03,
         whtAccount: '21-3103',
       }),
+      { wrapper },
     );
     expect(result.current.whtBase).toBe(3000);
     expect(result.current.whtAmount).toBe(90);
@@ -87,6 +101,7 @@ describe('useAssetCalculation — WHT base routing (Bug Report v2 #8)', () => {
         whtRate: 0.03,
         whtAccount: '21-3103',
       }),
+      { wrapper },
     );
     expect(result.current.whtBase).toBe(0);
     expect(result.current.whtAmount).toBe(0);
@@ -103,6 +118,7 @@ describe('useAssetCalculation — WHT base routing (Bug Report v2 #8)', () => {
         whtRate: 0.03,
         whtAccount: '21-3103',
       }),
+      { wrapper },
     );
     expect(result.current.whtBase).toBe(5000);
     expect(result.current.whtAmount).toBe(150);
@@ -123,6 +139,7 @@ describe('useAssetCalculation — JE balance', () => {
         whtRate: 0.03,
         whtAccount: '21-3103',
       }),
+      { wrapper },
     );
     expect(result.current.isBalanced).toBe(true);
     // VAT is on basePrice only (25000 × 0.07 = 1750), not on installation.

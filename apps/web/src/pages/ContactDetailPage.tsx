@@ -15,6 +15,7 @@ import {
   type ContactFinanceLink,
   type ContactTradeInLink,
 } from '@/lib/api/contacts';
+import { customersApi, customerKeys } from '@/lib/api/customers';
 
 const ROLE_LABELS: Record<ContactRole, string> = {
   CUSTOMER: 'ลูกค้า',
@@ -85,6 +86,11 @@ function SupplierCard({ supplier }: { supplier: ContactSupplierLink }) {
 }
 
 function CustomerCard({ customer }: { customer: ContactCustomerLink }) {
+  const { data: summary } = useQuery({
+    queryKey: customerKeys.summary(customer.id),
+    queryFn: () => customersApi.summary(customer.id),
+  });
+
   return (
     <Card>
       <CardHeader>
@@ -95,6 +101,23 @@ function CustomerCard({ customer }: { customer: ContactCustomerLink }) {
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <Field label="เบอร์" value={customer.phone} />
+        {summary && (
+          <div className="grid grid-cols-3 gap-3">
+            <Field
+              label="ยอดค้างชำระ"
+              value={`${summary.totalOutstandingThb.toLocaleString('th-TH')} ฿`}
+            />
+            <Field label="สัญญา active" value={String(summary.activeContracts)} />
+            <div>
+              <div className="text-xs text-muted-foreground mb-0.5 leading-snug">ค้างชำระ</div>
+              <div
+                className={`text-sm leading-snug ${summary.overdueCount > 0 ? 'text-destructive' : 'text-foreground'}`}
+              >
+                {summary.overdueCount}
+              </div>
+            </div>
+          </div>
+        )}
         <CardLink to={`/customers/${customer.id}`} label="เปิดข้อมูลลูกค้า / แก้ไข" />
       </CardContent>
     </Card>

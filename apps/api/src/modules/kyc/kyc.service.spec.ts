@@ -186,6 +186,46 @@ describe('KycService', () => {
       expect(prisma.kycVerification.create).not.toHaveBeenCalled();
       expect(prisma.kycVerification.updateMany).not.toHaveBeenCalled();
     });
+
+    // ─── test-mode skips real SMS send (OWNER-gated UAT) ───
+    describe('when test-mode is ON', () => {
+      beforeEach(() => {
+        testMode.isEnabled.mockResolvedValue(true);
+      });
+
+      it('skips the real SMS send but still creates the pending row and returns success', async () => {
+        const result = await service.sendOtp('contract-1', req);
+
+        // No real SMS — must NOT bother real numbers / cost during UAT.
+        expect(notifications.send).not.toHaveBeenCalled();
+        // Pending row MUST still be created (verify-bypass precondition + UI ref/countdown).
+        expect(prisma.kycVerification.create).toHaveBeenCalled();
+        // Success return preserved.
+        expect(result).toBeDefined();
+        expect(result.channel).toBe('SMS');
+        expect(result.refCode).toBeDefined();
+      });
+
+      it('still expires existing pending verifications when send is skipped', async () => {
+        await service.sendOtp('contract-1', req);
+
+        expect(prisma.kycVerification.updateMany).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: expect.objectContaining({ contractId: 'contract-1' }),
+            data: { status: 'EXPIRED' },
+          }),
+        );
+      });
+    });
+
+    it('sends SMS normally when test-mode is OFF (existing behavior)', async () => {
+      testMode.isEnabled.mockResolvedValue(false);
+
+      await service.sendOtp('contract-1', req);
+
+      expect(notifications.send).toHaveBeenCalled();
+      expect(prisma.kycVerification.create).toHaveBeenCalled();
+    });
   });
 
   // ─── verifyOtp ───────────────────────────────────────

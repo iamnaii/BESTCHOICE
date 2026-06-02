@@ -70,44 +70,56 @@ export class KycService {
     const refCode = crypto.randomBytes(2).toString('hex').toUpperCase().slice(0, 4);
     const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
-    // Send OTP via notification service FIRST (before creating DB record)
+    // Send OTP via notification service FIRST (before creating DB record).
+    //
+    // Test-mode UAT skip — OWNER-gated SystemConfig (TEST_MODE_BYPASS), default OFF,
+    // fails safe to OFF on any DB error. When ON we skip the real SMS so UAT doesn't
+    // cost money / bother real numbers, but we STILL fall through to the row create +
+    // success return below — the verify-bypass precondition ("a pending OTP exists")
+    // and the UI ref/countdown both depend on that row. MUST be OFF before go-live.
     const message = `[BESTCHOICE] รหัส OTP: ${otp} (Ref: ${refCode}) หมดอายุใน ${OTP_EXPIRY_MINUTES} นาที`;
-    try {
-      const result = await this.notificationsService.send({
-        channel: 'SMS',
-        recipient: customer.phone,
-        message,
-        relatedId: contractId,
-        noRetry: true, // OTP expires in 10 min — retry queue would only spam
-        customerId: customer.id,
-        category: NotificationCategory.TRANSACTIONAL,
-      });
-      if (result.status === 'FAILED') {
-        throw new InternalServerErrorException(
-          result.errorMsg || 'Notification service returned FAILED status',
-        );
-      }
-    } catch (err) {
-      const errMessage = err instanceof Error ? err.message : String(err);
-      this.logger.error(
-        `Failed to send OTP for contract ${contractId} via SMS: ${errMessage}`,
+    if (await this.testMode.isEnabled()) {
+      this.logger.warn(
+        `[TEST MODE] Skipping real OTP SMS send for contract ${contractId} (TEST_MODE_BYPASS ON)`,
       );
+    } else {
+      try {
+        const result = await this.notificationsService.send({
+          channel: 'SMS',
+          recipient: customer.phone,
+          message,
+          relatedId: contractId,
+          noRetry: true, // OTP expires in 10 min — retry queue would only spam
+          customerId: customer.id,
+          category: NotificationCategory.TRANSACTIONAL,
+        });
+        if (result.status === 'FAILED') {
+          throw new InternalServerErrorException(
+            result.errorMsg || 'Notification service returned FAILED status',
+          );
+        }
+      } catch (err) {
+        const errMessage = err instanceof Error ? err.message : String(err);
+        this.logger.error(
+          `Failed to send OTP for contract ${contractId} via SMS: ${errMessage}`,
+        );
 
-      let userMessage = 'ไม่สามารถส่ง OTP ได้ กรุณาลองใหม่';
-      if (errMessage.includes('credentials invalid') || errMessage.includes('401')) {
-        userMessage = 'ระบบ SMS ขัดข้อง กรุณาติดต่อผู้ดูแลระบบ';
-      } else if (errMessage.includes('number invalid') || errMessage.includes('Invalid phone')) {
-        userMessage = 'เบอร์โทรศัพท์ไม่ถูกต้อง กรุณาตรวจสอบเบอร์โทร';
-      } else if (errMessage.includes('credit') || errMessage.includes('insufficient')) {
-        userMessage = 'ระบบ SMS ขัดข้อง กรุณาติดต่อผู้ดูแลระบบ';
-      } else if (errMessage.includes('not configured')) {
-        userMessage = 'ระบบ SMS ยังไม่ได้ตั้งค่า กรุณาติดต่อผู้ดูแลระบบ';
+        let userMessage = 'ไม่สามารถส่ง OTP ได้ กรุณาลองใหม่';
+        if (errMessage.includes('credentials invalid') || errMessage.includes('401')) {
+          userMessage = 'ระบบ SMS ขัดข้อง กรุณาติดต่อผู้ดูแลระบบ';
+        } else if (errMessage.includes('number invalid') || errMessage.includes('Invalid phone')) {
+          userMessage = 'เบอร์โทรศัพท์ไม่ถูกต้อง กรุณาตรวจสอบเบอร์โทร';
+        } else if (errMessage.includes('credit') || errMessage.includes('insufficient')) {
+          userMessage = 'ระบบ SMS ขัดข้อง กรุณาติดต่อผู้ดูแลระบบ';
+        } else if (errMessage.includes('not configured')) {
+          userMessage = 'ระบบ SMS ยังไม่ได้ตั้งค่า กรุณาติดต่อผู้ดูแลระบบ';
+        }
+
+        throw new BadRequestException(userMessage);
       }
-
-      throw new BadRequestException(userMessage);
     }
 
-    // OTP sent successfully — now persist to database
+    // OTP sent successfully (or skipped in test-mode) — now persist to database
     // Expire any existing pending verifications for this contract
     await this.prisma.kycVerification.updateMany({
       where: { contractId, status: { in: ['PENDING', 'OTP_VERIFIED'] } },

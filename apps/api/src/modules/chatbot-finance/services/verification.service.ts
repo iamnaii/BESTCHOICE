@@ -183,21 +183,32 @@ export class VerificationService {
       },
     });
 
-    try {
-      await this.notifications.sendSmsFromQueue(
-        customer.phone,
-        `BESTCHOICE: รหัส OTP ของคุณคือ ${otp} (ใช้ได้ใน 5 นาที)`,
+    // Test-mode UAT skip — OWNER-gated SystemConfig (TEST_MODE_BYPASS), default OFF,
+    // fails safe to OFF on any DB error. When ON we skip the real SMS so UAT doesn't
+    // cost money / bother real numbers. The OTP row was already upserted above, so the
+    // verify-bypass precondition (a pending OTP session exists) + the UI countdown still
+    // hold, and we fall through to the normal success return. MUST be OFF before go-live.
+    if (await this.testMode.isEnabled()) {
+      this.logger.warn(
+        `[TEST MODE] Skipping real OTP SMS send for ${maskPhone(customer.phone)} (TEST_MODE_BYPASS ON)`,
       );
-      this.logger.log(`[Verify] OTP sent to ${maskPhone(customer.phone)}`);
-    } catch (err) {
-      this.logger.error(
-        `[Verify] SMS send failed: ${err instanceof Error ? err.message : err}`,
-      );
-      // Cleanup record so user can retry immediately
-      await this.prisma.chatbotOtpRequest.delete({
-        where: { lineUserId: params.lineUserId },
-      });
-      throw new BadRequestException('ส่ง SMS ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง หรือติดต่อ 063-134-6356');
+    } else {
+      try {
+        await this.notifications.sendSmsFromQueue(
+          customer.phone,
+          `BESTCHOICE: รหัส OTP ของคุณคือ ${otp} (ใช้ได้ใน 5 นาที)`,
+        );
+        this.logger.log(`[Verify] OTP sent to ${maskPhone(customer.phone)}`);
+      } catch (err) {
+        this.logger.error(
+          `[Verify] SMS send failed: ${err instanceof Error ? err.message : err}`,
+        );
+        // Cleanup record so user can retry immediately
+        await this.prisma.chatbotOtpRequest.delete({
+          where: { lineUserId: params.lineUserId },
+        });
+        throw new BadRequestException('ส่ง SMS ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง หรือติดต่อ 063-134-6356');
+      }
     }
 
     return {

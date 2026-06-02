@@ -116,6 +116,42 @@ describe('VerificationService', () => {
         service.requestOtp({ lineUserId: 'U123', phone: '0891234567' }),
       ).rejects.toThrow(BadRequestException);
     });
+
+    // ─── test-mode skips real SMS send (OWNER-gated UAT) ───
+    describe('test-mode skip-send', () => {
+      it('ON: skips the real SMS send but still upserts the OTP row and returns success', async () => {
+        testMode.isEnabled.mockResolvedValue(true);
+        prisma.customer.findFirst.mockResolvedValue({
+          id: 'c1',
+          name: 'สมชาย',
+          phone: '0891234567',
+        });
+
+        const result = await service.requestOtp({ lineUserId: 'U123', phone: '0891234567' });
+
+        // No real SMS during UAT.
+        expect(notifications.sendSmsFromQueue).not.toHaveBeenCalled();
+        // Pending OTP row MUST still be created (verify-bypass precondition + UI countdown).
+        expect(prisma.chatbotOtpRequest.upsert).toHaveBeenCalled();
+        // Success return preserved.
+        expect(result.maskedPhone).toBe('089-***-4567');
+        expect(result.expiresInSeconds).toBe(300);
+      });
+
+      it('OFF: sends SMS normally (existing behavior)', async () => {
+        testMode.isEnabled.mockResolvedValue(false);
+        prisma.customer.findFirst.mockResolvedValue({
+          id: 'c1',
+          name: 'สมชาย',
+          phone: '0891234567',
+        });
+
+        await service.requestOtp({ lineUserId: 'U123', phone: '0891234567' });
+
+        expect(notifications.sendSmsFromQueue).toHaveBeenCalled();
+        expect(prisma.chatbotOtpRequest.upsert).toHaveBeenCalled();
+      });
+    });
   });
 
   describe('verifyOtp', () => {

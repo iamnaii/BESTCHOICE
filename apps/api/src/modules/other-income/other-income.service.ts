@@ -1212,7 +1212,7 @@ export class OtherIncomeService {
 
     const decodedName = Buffer.from(file.originalname, 'latin1').toString('utf8');
     // eslint-disable-next-line no-control-regex
-    const safeName = decodedName.replace(/[<>:"/\\|?* -\s]/g, '_');
+    const safeName = decodedName.replace(/[<>:"/\\|?*\x00-\s]/g, '_');
     const key = `other-income/${id}/${Date.now()}-${randomUUID()}-${safeName}`;
 
     await this.storage.upload(key, file.buffer, file.mimetype);

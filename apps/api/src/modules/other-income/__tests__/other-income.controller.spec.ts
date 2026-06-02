@@ -16,8 +16,10 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { Reflector } from '@nestjs/core';
+import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
+import { ReversePermissionGuard } from '../../auth/guards/reverse-permission.guard';
 import { ROLES_KEY } from '../../auth/decorators/roles.decorator';
 import { OtherIncomeController } from '../other-income.controller';
 import { OtherIncomeService } from '../other-income.service';
@@ -79,12 +81,36 @@ describe('OtherIncomeController — @Roles metadata', () => {
     expect(roles).not.toContain('BRANCH_MANAGER');
   });
 
-  it('reverse() is restricted to OWNER + FINANCE_MANAGER — ACCOUNTANT excluded', () => {
+  // Audit Finding A (extended): @Roles is the COARSE superset that RolesGuard
+  // checks first; the dynamic ReversePermissionGuard is the authoritative narrower.
+  // ACCOUNTANT is included in the superset so the 'OWNER+FINANCE_MANAGER+ACCOUNTANT'
+  // mode and CUSTOM per-user grants can actually take effect — otherwise RolesGuard
+  // would pre-block the accountant before the dynamic guard ever runs. In the
+  // default OWNER+FM mode the guard still rejects ACCOUNTANT (covered by the
+  // ReversePermissionGuard spec). SALES / BRANCH_MANAGER stay out entirely.
+  it('reverse() coarse @Roles allows OWNER + FINANCE_MANAGER + ACCOUNTANT (guard narrows)', () => {
     const roles = methodRoles('reverse');
     expect(roles).toBeDefined();
-    expect(roles).toEqual(expect.arrayContaining(['OWNER', 'FINANCE_MANAGER']));
-    expect(roles).not.toContain('ACCOUNTANT');
+    expect(roles).toEqual(
+      expect.arrayContaining(['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']),
+    );
     expect(roles).not.toContain('SALES');
+    expect(roles).not.toContain('BRANCH_MANAGER');
+  });
+
+  // Audit Finding A — reverse permission must be uniform across all 3 accounting
+  // modules. Other Income (like Expense's void) must additionally consult the
+  // dynamic `reverse_permission` SystemConfig mode via ReversePermissionGuard,
+  // not just the static @Roles bundle. (Previously OI relied on @Roles only.)
+  it('reverse() is additionally gated by ReversePermissionGuard (dynamic mode)', () => {
+    const handler = (OtherIncomeController.prototype as unknown as Record<string, unknown>)[
+      'reverse'
+    ];
+    const guards = Reflect.getMetadata(GUARDS_METADATA, handler as object) as
+      | unknown[]
+      | undefined;
+    expect(guards).toBeDefined();
+    expect(guards).toContain(ReversePermissionGuard);
   });
 
   it('list(), create(), post(), copy() have no method-level @Roles (inherit class)', () => {

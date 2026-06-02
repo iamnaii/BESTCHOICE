@@ -1,3 +1,267 @@
+# Contact 360° Presentation Redesign — Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** รื้อหน้า `/contacts/:id` ([ContactDetailPage.tsx](../../apps/web/src/pages/ContactDetailPage.tsx)) ให้เป็น layout 360° (IdentityHero + role-aware summary strip + role tiles ที่ไม่โชว์ข้อมูลซ้ำ) โดยไม่แตะ backend.
+
+**Architecture:** Frontend-only refactor. ใช้ข้อมูลจาก `GET /contacts/:id` + `GET /customers/:id/summary` ที่มีอยู่. Identity แสดงครั้งเดียวใน hero; การ์ด role เหลือเฉพาะฟิลด์เฉพาะ role + deep-link ไป workspace ต้นทาง (ตัวจริงที่เอกสารกฎหมายใช้ — read-through ตาม A1, ไม่มี PATCH/sync).
+
+**Tech Stack:** React 18 + TypeScript + Vite + Tailwind (semantic tokens) + shadcn/ui + @tanstack/react-query + vitest + @testing-library/react.
+
+**Spec:** [docs/superpowers/specs/2026-06-02-contact-360-presentation-redesign-design.md](../specs/2026-06-02-contact-360-presentation-redesign-design.md)
+
+**Locked decisions (refines spec §4):**
+- **ไม่มีปุ่ม "แก้ไข" รวมบน hero** — แก้ไขผ่าน deep-link ในแต่ละ role tile (ที่มีอยู่แล้ว) เพื่อตัดความกำกวมตอนมีหลาย role
+- **LINE action = คัดลอก lineId** (ไม่เปิด external link) — ปลอดภัย/ทดสอบง่าย
+- **Summary strip:** customer → KPI การเงิน; ถ้าไม่มี customer แต่มี supplier → แถบสถานะ VAT; ไม่มีทั้งคู่ → ซ่อน (PO/มูลค่าสินค้า defer — ไม่มี endpoint)
+
+---
+
+## File Structure
+
+- **Modify:** `apps/web/src/lib/api/contacts.ts` — เพิ่ม `address`, `lineId` ใน `Contact` interface (backend คืนมาแล้ว แค่ยังไม่ได้ type)
+- **Modify:** `apps/web/src/pages/ContactDetailPage.tsx` — rewrite layout (IdentityHero + SummaryStrip + role tiles + empty state + doc title). คง `MergeContactsDialog`, `Field`, `CardLink`, `ROLE_LABELS`, `ROLE_BADGE_VARIANT` เดิม
+- **Modify:** `apps/web/src/pages/__tests__/ContactDetailPage.test.tsx` — อัปเดต assertions (snapshot ย้ายไป strip, identity ไม่ซ้ำในการ์ด, anchor ไม่ใช้ 'ข้อมูลทั่วไป')
+
+---
+
+## Task 1: Extend Contact API type with `address` + `lineId`
+
+**Files:**
+- Modify: `apps/web/src/lib/api/contacts.ts:5-15`
+
+- [ ] **Step 1: เพิ่ม 2 ฟิลด์ใน `Contact` interface**
+
+แก้ interface `Contact` (เดิม [contacts.ts:5-15](../../apps/web/src/lib/api/contacts.ts)) เพิ่ม `address` + `lineId` หลัง `email`:
+
+```ts
+export interface Contact {
+  id: string;
+  contactCode: string;
+  peakContactCode: string | null;
+  name: string;
+  taxId: string | null;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  lineId: string | null;
+  roles: ContactRole[];
+  isActive: boolean;
+}
+```
+
+(`ContactDetail extends Contact` จึงได้ 2 ฟิลด์นี้อัตโนมัติ. Backend `findOne` ไม่มี top-level `select` → คืน scalar ทั้งหมดของ Contact รวม `address`/`lineId` อยู่แล้ว — ไม่ต้องแก้ backend)
+
+- [ ] **Step 2: typecheck ผ่าน**
+
+Run: `cd /Users/iamnaii/Desktop/App/BESTCHOICE && ./tools/check-types.sh web`
+Expected: 0 errors
+
+- [ ] **Step 3: Commit**
+
+```bash
+cd /Users/iamnaii/Desktop/App/BESTCHOICE
+git add apps/web/src/lib/api/contacts.ts
+git commit -m "feat(contacts): type address+lineId on Contact for 360 hero"
+```
+
+---
+
+## Task 2: Rewrite ContactDetailPage — hero + role-aware strip + dedup tiles
+
+**Files:**
+- Modify: `apps/web/src/pages/__tests__/ContactDetailPage.test.tsx` (tests first — red)
+- Modify: `apps/web/src/pages/ContactDetailPage.tsx` (implement — green)
+
+- [ ] **Step 1: เขียน/อัปเดต test ให้สะท้อน layout ใหม่ (red)**
+
+แทนที่ทั้ง 4 เคสใน `ContactDetailPage.test.tsx` ด้วยชุดนี้ (mocks block บรรทัด 10-37 คงเดิม — เปลี่ยนเฉพาะ `describe` block บรรทัด 52-198):
+
+```tsx
+describe('ContactDetailPage', () => {
+  it('shows party identity ONCE in the hero (taxId not duplicated in the role tile)', async () => {
+    (contactsApi.detail as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'c1',
+      contactCode: 'P-00002',
+      name: 'บ.แอปเปิล',
+      roles: ['SUPPLIER'],
+      isActive: true,
+      taxId: '0105500000010',
+      phone: '021112222',
+      email: null,
+      address: null,
+      lineId: null,
+      peakContactCode: null,
+      customers: [],
+      tradeInsAsSeller: [],
+      externalFinanceCompany: [],
+      suppliers: [
+        {
+          id: 's1',
+          name: 'บ.แอปเปิล',
+          type: 'JURISTIC',
+          taxId: '0105500000010',
+          branchCode: '00000',
+          contactName: 'คุณเอ',
+          contactPhone: '02',
+          phone: '02',
+          hasVat: true,
+          address: 'กทม',
+        },
+      ],
+    });
+    wrap('c1');
+    await waitFor(() => expect(screen.getAllByText('บ.แอปเปิล').length).toBeGreaterThan(0));
+    // taxId ปรากฏครั้งเดียว (ใน hero) — ไม่ซ้ำในการ์ด role
+    expect(screen.getAllByText('0105500000010')).toHaveLength(1);
+    // การ์ดผู้ขายยังลิงก์ไป workspace
+    const link = screen.getByRole('link', { name: /แก้ไข|เปิดข้อมูล|ผู้ขาย/ });
+    expect(link).toHaveAttribute('href', '/suppliers/s1');
+    // ฟิลด์เฉพาะ role ยังอยู่ในการ์ด
+    expect(screen.getByText('คุณเอ (02)')).toBeInTheDocument();
+  });
+
+  it('copies the phone number from the hero quick action', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    (contactsApi.detail as any).mockResolvedValue({
+      id: 'c1',
+      contactCode: 'P-1',
+      name: 'นราธิป',
+      roles: ['SUPPLIER'],
+      isActive: true,
+      taxId: null,
+      phone: '0891112222',
+      email: null,
+      address: null,
+      lineId: null,
+      peakContactCode: null,
+      customers: [],
+      suppliers: [
+        { id: 's1', name: 'นราธิป', type: 'INDIVIDUAL', taxId: null, branchCode: null,
+          contactName: null, contactPhone: null, phone: '0891112222', hasVat: false, address: null },
+      ],
+      tradeInsAsSeller: [],
+      externalFinanceCompany: [],
+    });
+    const user = userEvent.setup();
+    wrap('c1');
+    await waitFor(() => expect(screen.getByText('นราธิป')).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: 'คัดลอกเบอร์' }));
+    expect(writeText).toHaveBeenCalledWith('0891112222');
+  });
+
+  it('shows customer financial KPIs in the top summary strip', async () => {
+    const { customersApi } = await import('@/lib/api/customers');
+    (customersApi.summary as any).mockResolvedValue({
+      id: 'cus1',
+      name: 'นราธิป',
+      phone: '08',
+      activeContracts: 2,
+      overdueCount: 1,
+      totalOutstandingThb: 15000,
+    });
+    (contactsApi.detail as any).mockResolvedValue({
+      id: 'c1',
+      contactCode: 'P-00001',
+      name: 'นราธิป',
+      roles: ['CUSTOMER'],
+      isActive: true,
+      taxId: null,
+      phone: '08',
+      email: null,
+      address: null,
+      lineId: null,
+      peakContactCode: null,
+      suppliers: [],
+      tradeInsAsSeller: [],
+      externalFinanceCompany: [],
+      customers: [{ id: 'cus1', name: 'นราธิป', prefix: 'คุณ', phone: '08' }],
+    });
+    wrap('c1');
+    await waitFor(() => expect(screen.getByText('นราธิป')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/15,000/)).toBeInTheDocument());
+    expect(screen.getByText('ยอดค้างชำระ')).toBeInTheDocument();
+    expect(screen.getByText('งวดค้าง')).toBeInTheDocument();
+  });
+
+  it('shows an empty-state hint when the contact has no role links', async () => {
+    (contactsApi.detail as any).mockResolvedValue({
+      id: 'c1',
+      contactCode: 'P-1',
+      name: 'คนเดียวดาย',
+      roles: [],
+      isActive: true,
+      taxId: null,
+      phone: '0800000000',
+      email: null,
+      address: null,
+      lineId: null,
+      peakContactCode: null,
+      customers: [],
+      suppliers: [],
+      tradeInsAsSeller: [],
+      externalFinanceCompany: [],
+    });
+    wrap('c1');
+    await waitFor(() => expect(screen.getByText('คนเดียวดาย')).toBeInTheDocument());
+    expect(screen.getByText(/ยังไม่ผูกกับลูกค้า\/ผู้ขาย/)).toBeInTheDocument();
+    // เบอร์โผล่เป็น text ครั้งเดียว (Field ใน hero grid) — empty-state ไม่โชว์เบอร์ซ้ำอีกชุด
+    expect(screen.getAllByText('0800000000')).toHaveLength(1);
+  });
+
+  it('OWNER merges a searched duplicate into the current contact', async () => {
+    asOwner();
+    (contactsApi.detail as any).mockResolvedValue({
+      id: 'c1', contactCode: 'P-1', name: 'A', roles: ['CUSTOMER'], isActive: true,
+      taxId: null, phone: null, email: null, address: null, lineId: null, peakContactCode: null,
+      customers: [], suppliers: [], tradeInsAsSeller: [], externalFinanceCompany: [],
+    });
+    (contactsApi.list as any).mockResolvedValue({
+      data: [{ id: 'c2', contactCode: 'P-2', name: 'A dup', roles: ['SUPPLIER'], isActive: true,
+        taxId: '0105', phone: null, email: null, address: null, lineId: null, peakContactCode: null }],
+      total: 1, page: 1, limit: 50,
+    });
+    const mergeSpy = ((contactsApi.merge as any) = vi.fn().mockResolvedValue({ primaryId: 'c1' }));
+    const user = userEvent.setup();
+    wrap('c1');
+    await waitFor(() => expect(screen.getByText('A')).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: 'รวมผู้ติดต่อซ้ำ' }));
+    const searchInput = await screen.findByPlaceholderText(/ค้นหา/);
+    await user.type(searchInput, 'A dup');
+    const candidate = await screen.findByText('A dup');
+    await user.click(candidate);
+    const confirmBtn = await screen.findByRole('button', { name: 'รวมผู้ติดต่อ' });
+    await user.click(confirmBtn);
+    await waitFor(() => expect(mergeSpy).toHaveBeenCalledWith('c1', 'c2'));
+  });
+
+  it('hides the merge action for non-OWNER roles', async () => {
+    (useAuth as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      user: { id: 'u2', role: 'SALES', branchId: null }, isLoading: false, isAuthenticated: true,
+    });
+    (contactsApi.detail as any).mockResolvedValue({
+      id: 'c1', contactCode: 'P-1', name: 'A', roles: ['CUSTOMER'], isActive: true,
+      taxId: null, phone: null, email: null, address: null, lineId: null, peakContactCode: null,
+      customers: [], suppliers: [], tradeInsAsSeller: [], externalFinanceCompany: [],
+    });
+    wrap('c1');
+    await waitFor(() => expect(screen.getByText('A')).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'รวมผู้ติดต่อซ้ำ' })).not.toBeInTheDocument();
+  });
+});
+```
+
+- [ ] **Step 2: รัน test ให้ fail (red)**
+
+Run: `cd /Users/iamnaii/Desktop/App/BESTCHOICE/apps/web && npx vitest run src/pages/__tests__/ContactDetailPage.test.tsx`
+Expected: FAIL — เช่น "คัดลอกเบอร์" button ยังไม่มี, taxId พบ 2 ครั้ง (ยังซ้ำในการ์ด), 'ยอดค้างชำระ'/'งวดค้าง' ยังไม่มี
+
+- [ ] **Step 3: Rewrite `ContactDetailPage.tsx` (green)**
+
+แทนที่ทั้งไฟล์ `apps/web/src/pages/ContactDetailPage.tsx` ด้วยเนื้อหานี้ (คง `MergeContactsDialog` เดิมไม่แก้ — แสดงไว้ครบเพื่อ DRY ของไฟล์):
+
+```tsx
 import { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -7,6 +271,7 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import { useAuth } from '@/contexts/AuthContext';
 import { ArrowRight, Merge, Search, Phone, Copy, MessageCircle } from 'lucide-react';
+import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -299,7 +564,7 @@ function TradeInTile({ tradeIn }: { tradeIn: ContactTradeInLink }) {
       <CardContent className="flex flex-col gap-3">
         <Field
           label="วันที่รับซื้อ"
-          value={new Date(tradeIn.createdAt).toLocaleDateString('th-TH', { timeZone: 'Asia/Bangkok' })}
+          value={new Date(tradeIn.createdAt).toLocaleDateString('th-TH')}
         />
         <CardLink to="/trade-in" label="ดูรายการรับซื้อ" />
       </CardContent>
@@ -468,20 +733,15 @@ export default function ContactDetailPage() {
 
   return (
     <div>
-      <div className="flex flex-col gap-2 py-5 mb-5 border-b border-border">
-        <span className="text-sm text-muted-foreground leading-snug">
-          ผู้ติดต่อ{data ? ` / ${data.name}` : ''}
-        </span>
-        <button
-          onClick={() => navigate('/contacts')}
-          className="flex items-center justify-center size-9 self-start rounded-md text-muted-foreground transition-colors hover:bg-accent"
-          aria-label="กลับ"
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-            <path d="m15 18-6-6 6-6" />
-          </svg>
-        </button>
-      </div>
+      <PageHeader
+        breadcrumb={
+          <span className="text-sm text-muted-foreground leading-snug">
+            ผู้ติดต่อ {data ? `/ ${data.name}` : ''}
+          </span>
+        }
+        title=""
+        onBack={() => navigate('/contacts')}
+      />
 
       {isOwner && data && (
         <MergeContactsDialog open={mergeOpen} onOpenChange={setMergeOpen} current={data} />
@@ -530,3 +790,64 @@ export default function ContactDetailPage() {
     </div>
   );
 }
+```
+
+- [ ] **Step 4: รัน test ให้ผ่าน (green)**
+
+Run: `cd /Users/iamnaii/Desktop/App/BESTCHOICE/apps/web && npx vitest run src/pages/__tests__/ContactDetailPage.test.tsx`
+Expected: PASS ทั้ง 6 เคส
+
+- [ ] **Step 5: typecheck**
+
+Run: `cd /Users/iamnaii/Desktop/App/BESTCHOICE && ./tools/check-types.sh web`
+Expected: 0 errors
+
+> หมายเหตุสำหรับ implementer: ถ้า `PageHeader` ไม่รองรับ `title=""` (เช่น render หัวว่างแปลก ๆ) ให้คง `title={data?.name ?? 'ผู้ติดต่อ'}` แทน แล้วเอา name ออกจาก breadcrumb — ห้ามให้ชื่อโผล่ทั้ง 2 ที่. ตรวจ [PageHeader.tsx](../../apps/web/src/components/ui/PageHeader.tsx) ก่อนตัดสิน.
+
+- [ ] **Step 6: Commit**
+
+```bash
+cd /Users/iamnaii/Desktop/App/BESTCHOICE
+git add apps/web/src/pages/ContactDetailPage.tsx apps/web/src/pages/__tests__/ContactDetailPage.test.tsx
+git commit -m "feat(contacts): 360 hero + role-aware strip + dedup role tiles"
+```
+
+---
+
+## Task 3: Full verification (suite + typecheck + e2e smoke)
+
+**Files:** ไม่มีการแก้โค้ด — รัน verification เท่านั้น
+
+- [ ] **Step 1: รัน web unit suite ทั้งหมด**
+
+Run: `cd /Users/iamnaii/Desktop/App/BESTCHOICE/apps/web && npx vitest run`
+Expected: PASS ทั้งหมด (ไม่มี test อื่นพังจากการ rewrite)
+
+- [ ] **Step 2: typecheck ทั้ง repo**
+
+Run: `cd /Users/iamnaii/Desktop/App/BESTCHOICE && ./tools/check-types.sh all`
+Expected: 0 errors
+
+- [ ] **Step 3: รัน E2E ที่แตะหน้านี้**
+
+Run: `cd /Users/iamnaii/Desktop/App/BESTCHOICE/apps/web && npx playwright test e2e/finance-receivable-contact.spec.ts`
+Expected: PASS (ถ้า fail เพราะ selector อ้าง 'ข้อมูลทั่วไป' หรือ layout เดิม → อัปเดต selector ใน spec ให้ตรง layout ใหม่ แล้วรันซ้ำ)
+
+- [ ] **Step 4: Commit (ถ้ามีแก้ e2e selector)**
+
+```bash
+cd /Users/iamnaii/Desktop/App/BESTCHOICE
+git add apps/web/e2e/finance-receivable-contact.spec.ts
+git commit -m "test(e2e): align contact selectors with 360 layout"
+```
+
+---
+
+## Self-Review Notes
+
+- **Spec coverage:** IdentityHero (§2 บล็อก1) ✓ · role-aware strip (§2 บล็อก2) ✓ · dedup tiles (§2 บล็อก3) ✓ · empty-state ✓ · doc title ✓ · entityType derive ✓ · ไม่แตะ backend/PII ✓ · §4 decisions locked ✓
+- **Supplier strip:** spec §2 บอก "VAT in strip" — แผนทำ VAT band เมื่อไม่มี customer (เมื่อมี customer KPI การเงิน priority); VAT ยังอยู่ใน SupplierTile ด้วย (ไม่ใช่ข้อมูล identity ซ้ำ — เป็น status เฉพาะ role) ✓
+- **Type consistency:** `CustomerSummary` (export จาก customers.ts) ใช้ field `totalOutstandingThb/activeContracts/overdueCount` ตรงกับ summary mock ✓ · `Contact.address/lineId` เพิ่มใน Task 1 ใช้ใน Task 2 hero ✓
+- **Removed:** `entityType`/`isJuristic`/`hasNoLinks` ที่ระดับ page เดิม — `isJuristic`/`entityType` ย้ายเข้า IdentityHero, `hasNoLinks` คงไว้ที่ page ✓ · `roles` ที่ระดับ page ถูกลบ (ไม่ใช้แล้ว — badges อยู่ใน hero) ✓
+- **No placeholders:** ทุก step มีโค้ด/คำสั่งจริง ✓
+```

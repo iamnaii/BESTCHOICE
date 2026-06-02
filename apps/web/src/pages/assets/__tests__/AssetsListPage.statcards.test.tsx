@@ -44,6 +44,10 @@ describe('AssetsListPage — P3 stat cards (Thai labels, no TOTAL COST)', () => 
 
   it('ทั้งหมด card shows sum of draft+posted+reversed', async () => {
     renderPage();
-    expect(await screen.findByText('19')).toBeInTheDocument(); // 5+12+2
+    // "19" is the computed sum that only appears after the async getSummary query
+    // resolves (unlike the static labels), so it needs a timeout that tolerates
+    // CPU contention when the full suite runs in parallel — the default 1000ms
+    // flaked under load. The suite passes serially; this just absorbs the jitter.
+    expect(await screen.findByText('19', undefined, { timeout: 3000 })).toBeInTheDocument(); // 5+12+2
   });
 });

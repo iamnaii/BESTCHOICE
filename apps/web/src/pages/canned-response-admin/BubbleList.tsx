@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
@@ -80,7 +80,12 @@ export default function BubbleList({ cannedResponseId, channelFilter = 'ALL', on
     queryFn: () => api.get(`/staff-chat/canned-responses/${cannedResponseId}/bubbles`).then((r: any) => r.data),
   });
 
-  const allBubbles = bubblesQ.data ?? [];
+  // Memoise so the reference is stable across renders. `bubblesQ.data ?? []`
+  // built a fresh [] on every render while the query was pending, which made the
+  // counts-reporting effect below (dep: [allBubbles]) re-run every render →
+  // onCountsChange → parent setState → re-render → loop that starved the query's
+  // own resolution microtask, hanging forever.
+  const allBubbles = useMemo(() => bubblesQ.data ?? [], [bubblesQ.data]);
 
   // Bubble is visible in a channel tab if channels[] is empty (= all-channels)
   // OR explicitly includes the active channel.

@@ -1,12 +1,16 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ContactRole, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import { ListContactsDto } from './dto/list-contacts.dto';
 import { MergeContactsDto } from './dto/merge-contacts.dto';
 
 @Injectable()
 export class ContactsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   async list(dto: ListContactsDto) {
     const page = dto.page ?? 1;
@@ -67,7 +71,10 @@ export class ContactsService {
     return contact;
   }
 
-  async merge(dto: MergeContactsDto) {
+  async merge(
+    dto: MergeContactsDto,
+    actor?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     const { primaryId, duplicateId } = dto;
     if (primaryId === duplicateId) {
       throw new BadRequestException('ไม่สามารถรวมผู้ติดต่อกับตัวเองได้');
@@ -104,13 +111,51 @@ export class ContactsService {
       const unionRoles = Array.from(
         new Set<ContactRole>([...primary.roles, ...duplicate.roles]),
       );
-      await tx.contact.update({
-        where: { id: primaryId },
-        data: { roles: { set: unionRoles } },
-      });
+      // Primary-wins coalesce — never overwrite an identity field already set on
+      // the primary; only fill the gaps from the duplicate.
+      const carry = {
+        taxId: primary.taxId ?? duplicate.taxId,
+        nationalIdHash: primary.nationalIdHash ?? duplicate.nationalIdHash,
+        peakContactCode: primary.peakContactCode ?? duplicate.peakContactCode,
+        phone: primary.phone ?? duplicate.phone,
+        email: primary.email ?? duplicate.email,
+      };
+      // ORDER MATTERS: soft-delete the duplicate FIRST so it leaves the
+      // partial-unique scope (WHERE deleted_at IS NULL) before we carry its
+      // tax_id/national_id_hash onto the primary — otherwise two ACTIVE rows
+      // would briefly hold the same key and trip the partial-unique index (P2002).
       await tx.contact.update({
         where: { id: duplicateId },
         data: { deletedAt: new Date() },
+      });
+      await tx.contact.update({
+        where: { id: primaryId },
+        data: { roles: { set: unionRoles }, ...carry },
+      });
+
+      await this.audit.log({
+        userId: actor?.userId,
+        action: 'CONTACTS_MERGED',
+        entity: 'contact',
+        entityId: primaryId,
+        // Capture the duplicate's pre-merge identity so the irreversible
+        // soft-delete + carry remains fully traceable.
+        oldValue: {
+          duplicate: {
+            id: duplicate.id,
+            contactCode: duplicate.contactCode,
+            name: duplicate.name,
+            taxId: duplicate.taxId,
+            nationalIdHash: duplicate.nationalIdHash,
+            peakContactCode: duplicate.peakContactCode,
+            phone: duplicate.phone,
+            email: duplicate.email,
+            roles: duplicate.roles,
+          },
+        },
+        newValue: { duplicateId, mergedRoles: unionRoles, carried: carry },
+        ipAddress: actor?.ipAddress,
+        userAgent: actor?.userAgent,
       });
 
       return { primaryId, mergedRoles: unionRoles };

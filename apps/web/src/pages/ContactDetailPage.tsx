@@ -1,14 +1,30 @@
+import { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
-import { ArrowRight } from 'lucide-react';
+import { useDebounce } from '@/hooks/useDebounce';
+import { useAuth } from '@/contexts/AuthContext';
+import { ArrowRight, Merge, Search } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import {
   contactKeys,
   contactsApi,
+  type Contact,
+  type ContactDetail,
   type ContactRole,
   type ContactCustomerLink,
   type ContactSupplierLink,
@@ -156,9 +172,145 @@ function TradeInCard({ tradeIn }: { tradeIn: ContactTradeInLink }) {
   );
 }
 
+/**
+ * OWNER-only dialog: search for another contact and merge it INTO the current
+ * one. The current contact is the primary (kept); the selected contact is the
+ * duplicate (absorbed + soft-deleted by the backend).
+ */
+function MergeContactsDialog({
+  open,
+  onOpenChange,
+  current,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  current: ContactDetail;
+}) {
+  const queryClient = useQueryClient();
+  const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search, 300);
+  const [selected, setSelected] = useState<Contact | null>(null);
+
+  const { data, isFetching } = useQuery({
+    queryKey: contactKeys.list({ search: debouncedSearch, merge: current.id }),
+    queryFn: () => contactsApi.list({ search: debouncedSearch }),
+    enabled: open && debouncedSearch.trim().length > 0,
+  });
+
+  const candidates = (data?.data ?? []).filter((c) => c.id !== current.id);
+
+  const mergeMutation = useMutation({
+    mutationFn: (duplicateId: string) => contactsApi.merge(current.id, duplicateId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: contactKeys.detail(current.id) });
+      queryClient.invalidateQueries({ queryKey: contactKeys.all });
+      toast.success('รวมผู้ติดต่อแล้ว');
+      setSelected(null);
+      setSearch('');
+      onOpenChange(false);
+    },
+    onError: () => {
+      toast.error('รวมผู้ติดต่อไม่สำเร็จ');
+    },
+  });
+
+  function handleOpenChange(next: boolean) {
+    if (!next) {
+      setSearch('');
+      setSelected(null);
+    }
+    onOpenChange(next);
+  }
+
+  return (
+    <>
+      <Dialog open={open} onOpenChange={handleOpenChange}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="leading-snug">รวมผู้ติดต่อซ้ำ</DialogTitle>
+            <DialogDescription className="leading-snug">
+              ค้นหาผู้ติดต่อที่ซ้ำกับ {current.name} แล้วเลือกเพื่อยุบเข้าอันนี้
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="ค้นหาด้วยชื่อ / รหัส / เบอร์"
+                className="pl-9"
+                autoFocus
+              />
+            </div>
+            <div className="flex flex-col gap-1.5 max-h-72 overflow-y-auto">
+              {debouncedSearch.trim().length === 0 ? (
+                <p className="text-sm text-muted-foreground leading-snug py-2">
+                  พิมพ์เพื่อค้นหาผู้ติดต่อที่จะยุบเข้าอันนี้
+                </p>
+              ) : isFetching ? (
+                <p className="text-sm text-muted-foreground leading-snug py-2">กำลังค้นหา...</p>
+              ) : candidates.length === 0 ? (
+                <p className="text-sm text-muted-foreground leading-snug py-2">ไม่พบผู้ติดต่อ</p>
+              ) : (
+                candidates.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => setSelected(c)}
+                    className="flex flex-col gap-1 rounded-md border border-border p-2.5 text-left hover:bg-accent transition-colors"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-foreground leading-snug">
+                        {c.name}
+                      </span>
+                      <span className="text-xs text-muted-foreground leading-snug">
+                        {c.contactCode}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {c.roles.map((r) => (
+                        <Badge key={r} variant={ROLE_BADGE_VARIANT[r]} appearance="light" size="sm">
+                          {ROLE_LABELS[r]}
+                        </Badge>
+                      ))}
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={!!selected}
+        onOpenChange={(next) => {
+          if (!next) setSelected(null);
+        }}
+        title="ยืนยันการรวมผู้ติดต่อ"
+        description={
+          selected
+            ? `ยุบ ${selected.contactCode} ${selected.name} เข้า ${current.name} — role/ข้อมูลจะรวมเข้าอันนี้ ตัวที่เลือกจะถูกปิด`
+            : ''
+        }
+        confirmLabel="รวมผู้ติดต่อ"
+        variant="destructive"
+        loading={mergeMutation.isPending}
+        onConfirm={() => {
+          if (selected) mergeMutation.mutate(selected.id);
+        }}
+      />
+    </>
+  );
+}
+
 export default function ContactDetailPage() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isOwner = user?.role === 'OWNER';
+  const [mergeOpen, setMergeOpen] = useState(false);
   useDocumentTitle('ผู้ติดต่อ');
 
   const { data, isLoading, isError, error, refetch } = useQuery({
@@ -189,6 +341,14 @@ export default function ContactDetailPage() {
         title={data ? data.name : 'ผู้ติดต่อ'}
         subtitle={data ? `${data.contactCode} · ${entityType}` : undefined}
         onBack={() => navigate('/contacts')}
+        action={
+          isOwner && data ? (
+            <Button variant="outline" size="sm" onClick={() => setMergeOpen(true)}>
+              <Merge className="size-4" />
+              รวมผู้ติดต่อซ้ำ
+            </Button>
+          ) : undefined
+        }
         badge={
           data && !data.isActive ? (
             <Badge variant="secondary" appearance="light" size="sm">
@@ -197,6 +357,10 @@ export default function ContactDetailPage() {
           ) : undefined
         }
       />
+
+      {isOwner && data && (
+        <MergeContactsDialog open={mergeOpen} onOpenChange={setMergeOpen} current={data} />
+      )}
 
       <QueryBoundary
         isLoading={isLoading}

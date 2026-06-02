@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import { ContactRole, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -63,17 +63,28 @@ export class ContactResolverService {
     }
 
     const contactCode = await this.nextContactCode(tx);
-    return tx.contact.create({
-      data: {
-        contactCode,
-        name: input.name,
-        taxId: input.taxId ?? null,
-        nationalIdHash: input.nationalIdHash ?? null,
-        phone: input.phone ?? null,
-        email: input.email ?? null,
-        roles: [input.role],
-      },
-    });
+    try {
+      return await tx.contact.create({
+        data: {
+          contactCode,
+          name: input.name,
+          taxId: input.taxId ?? null,
+          nationalIdHash: input.nationalIdHash ?? null,
+          phone: input.phone ?? null,
+          email: input.email ?? null,
+          roles: [input.role],
+        },
+      });
+    } catch (e) {
+      // A concurrent create of the same party can pass the findFirst lookup and
+      // then lose the race on the partial-unique index → P2002. The tx is now
+      // aborted (Postgres), so we cannot re-query/recover here. Translate to a
+      // retryable ConflictException; the caller's tx rolls back and the user retries.
+      if ((e as { code?: string })?.code === 'P2002') {
+        throw new ConflictException('ผู้ติดต่อนี้ถูกสร้างพร้อมกัน กรุณาลองใหม่อีกครั้ง');
+      }
+      throw e;
+    }
   }
 
   private hashLockKey(key: string): number {

@@ -107,4 +107,16 @@ describe('ContactResolverService.findOrCreateByNaturalKey', () => {
     expect(prisma.contact.create).toHaveBeenCalled();
     expect(res.id).toBe('c2');
   });
+
+  it('translates a P2002 on create into a ConflictException (no in-tx re-query)', async () => {
+    prisma.contact.findFirst
+      .mockResolvedValueOnce(null) // initial natural-key lookup → no match
+      .mockResolvedValueOnce({ contactCode: 'P-00001' }); // nextContactCode lookup
+    const err: any = new Error('unique'); err.code = 'P2002';
+    prisma.contact.create.mockRejectedValue(err);
+    await expect(
+      svc.findOrCreateByNaturalKey(prisma, { name: 'X', taxId: '0105', nationalIdHash: null, role: 'SUPPLIER' }),
+    ).rejects.toThrow('ผู้ติดต่อนี้ถูกสร้างพร้อมกัน');
+    expect(prisma.contact.findFirst).toHaveBeenCalledTimes(2); // no third (no in-tx re-query)
+  });
 });

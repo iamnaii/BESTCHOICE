@@ -7,7 +7,6 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import { useAuth } from '@/contexts/AuthContext';
 import { ArrowRight, Merge, Search, Phone, Copy, MessageCircle } from 'lucide-react';
-import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -300,7 +299,7 @@ function TradeInTile({ tradeIn }: { tradeIn: ContactTradeInLink }) {
       <CardContent className="flex flex-col gap-3">
         <Field
           label="วันที่รับซื้อ"
-          value={new Date(tradeIn.createdAt).toLocaleDateString('th-TH')}
+          value={new Date(tradeIn.createdAt).toLocaleDateString('th-TH', { timeZone: 'Asia/Bangkok' })}
         />
         <CardLink to="/trade-in" label="ดูรายการรับซื้อ" />
       </CardContent>
@@ -469,15 +468,20 @@ export default function ContactDetailPage() {
 
   return (
     <div>
-      <PageHeader
-        breadcrumb={
-          <span className="text-sm text-muted-foreground leading-snug">
-            ผู้ติดต่อ {data ? `/ ${data.name}` : ''}
-          </span>
-        }
-        title=""
-        onBack={() => navigate('/contacts')}
-      />
+      <div className="flex flex-col gap-2 py-5 mb-5 border-b border-border">
+        <span className="text-sm text-muted-foreground leading-snug">
+          ผู้ติดต่อ{data ? ` / ${data.name}` : ''}
+        </span>
+        <button
+          onClick={() => navigate('/contacts')}
+          className="flex items-center justify-center size-9 self-start rounded-md text-muted-foreground transition-colors hover:bg-accent"
+          aria-label="กลับ"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <path d="m15 18-6-6 6-6" />
+          </svg>
+        </button>
+      </div>
 
       {isOwner && data && (
         <MergeContactsDialog open={mergeOpen} onOpenChange={setMergeOpen} current={data} />

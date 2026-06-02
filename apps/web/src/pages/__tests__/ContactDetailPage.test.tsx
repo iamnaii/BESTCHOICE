@@ -220,4 +220,21 @@ describe('ContactDetailPage', () => {
     await waitFor(() => expect(screen.getByRole('heading', { name: 'A' })).toBeInTheDocument());
     expect(screen.queryByRole('button', { name: 'รวมผู้ติดต่อซ้ำ' })).not.toBeInTheDocument();
   });
+
+  it('shows the VAT status band for a supplier-only contact', async () => {
+    (contactsApi.detail as any).mockResolvedValue({
+      id: 'c1', contactCode: 'P-9', name: 'ร้านวัสดุ', roles: ['SUPPLIER'], isActive: true,
+      taxId: '0105', phone: null, email: null, address: null, lineId: null, peakContactCode: null,
+      customers: [],
+      suppliers: [
+        { id: 's1', name: 'ร้านวัสดุ', type: 'INDIVIDUAL', taxId: '0105', branchCode: null,
+          contactName: null, contactPhone: null, phone: null, hasVat: true, address: null },
+      ],
+      tradeInsAsSeller: [], externalFinanceCompany: [],
+    });
+    wrap('c1');
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'ร้านวัสดุ' })).toBeInTheDocument());
+    expect(screen.getByText('สถานะภาษี')).toBeInTheDocument();
+    expect(screen.getAllByText('จด VAT').length).toBeGreaterThan(0);
+  });
 });

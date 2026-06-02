@@ -1,0 +1,41 @@
+{
+  "BESTCHOICE Prisma Model": {
+    "prefix": "bc-model",
+    "scope": "prisma,typescript",
+    "description": "Prisma model with UUID + timestamps + soft delete",
+    "body": [
+      "model ${1:Resource} {",
+      "  id        String    @id @default(uuid())",
+      "  ${2:name}      String",
+      "  ${3:note}      String?",
+      "",
+      "  createdAt DateTime  @default(now())",
+      "  updatedAt DateTime  @updatedAt",
+      "  deletedAt DateTime?",
+      "",
+      "  @@index([deletedAt])",
+      "  @@map(\"${4:resources}\")",
+      "}",
+      ""
+    ]
+  },
+  "BESTCHOICE Money Field": {
+    "prefix": "bc-money",
+    "scope": "prisma,typescript",
+    "description": "Decimal money field (12,2)",
+    "body": ["${1:amount}    Decimal   @db.Decimal(12, 2)"]
+  },
+  "BESTCHOICE Enum": {
+    "prefix": "bc-enum",
+    "scope": "prisma,typescript",
+    "description": "Prisma enum (SCREAMING_SNAKE_CASE values)",
+    "body": [
+      "enum ${1:Status} {",
+      "  ${2:PENDING}",
+      "  ${3:COMPLETED}",
+      "  ${4:CANCELLED}",
+      "}",
+      ""
+    ]
+  }
+}

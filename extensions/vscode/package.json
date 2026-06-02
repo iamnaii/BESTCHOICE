@@ -1,0 +1,60 @@
+{
+  "name": "bestchoice-helper",
+  "displayName": "BESTCHOICE Helper",
+  "description": "WAT shortcuts for the BESTCHOICE installment system monorepo (tools, workflows, snippets).",
+  "version": "0.1.0",
+  "publisher": "bestchoice",
+  "private": true,
+  "license": "UNLICENSED",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other",
+    "Snippets"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "workspaceContains:turbo.json",
+    "workspaceContains:apps/api/package.json"
+  ],
+  "contributes": {
+    "commands": [
+      { "command": "bestchoice.checkTypes",      "title": "BESTCHOICE: Check Types (all)",        "category": "BESTCHOICE" },
+      { "command": "bestchoice.checkTypesApi",   "title": "BESTCHOICE: Check Types (API)",        "category": "BESTCHOICE" },
+      { "command": "bestchoice.checkTypesWeb",   "title": "BESTCHOICE: Check Types (Web)",        "category": "BESTCHOICE" },
+      { "command": "bestchoice.generateModule",  "title": "BESTCHOICE: Generate API Module",      "category": "BESTCHOICE" },
+      { "command": "bestchoice.runTests",        "title": "BESTCHOICE: Run Tests (lint+types+e2e)", "category": "BESTCHOICE" },
+      { "command": "bestchoice.runE2E",          "title": "BESTCHOICE: Run E2E Tests (Playwright)", "category": "BESTCHOICE" },
+      { "command": "bestchoice.dbReset",         "title": "BESTCHOICE: Reset Dev Database",       "category": "BESTCHOICE" },
+      { "command": "bestchoice.startDev",        "title": "BESTCHOICE: Start Dev Servers (API+Web)", "category": "BESTCHOICE" },
+      { "command": "bestchoice.startApi",        "title": "BESTCHOICE: Start API only",           "category": "BESTCHOICE" },
+      { "command": "bestchoice.startWeb",        "title": "BESTCHOICE: Start Web only",           "category": "BESTCHOICE" },
+      { "command": "bestchoice.preDeploy",       "title": "BESTCHOICE: Pre-Deploy Check",         "category": "BESTCHOICE" },
+      { "command": "bestchoice.openWorkflow",    "title": "BESTCHOICE: Open Workflow…",           "category": "BESTCHOICE" },
+      { "command": "bestchoice.openRule",        "title": "BESTCHOICE: Open Rule…",               "category": "BESTCHOICE" },
+      { "command": "bestchoice.fbPreflight",     "title": "BESTCHOICE: FB App Review Preflight",  "category": "BESTCHOICE" }
+    ],
+    "snippets": [
+      { "language": "typescript",      "path": "./snippets/nestjs.code-snippets" },
+      { "language": "typescript",      "path": "./snippets/prisma.code-snippets" },
+      { "language": "typescriptreact", "path": "./snippets/react.code-snippets" },
+      { "language": "prisma",          "path": "./snippets/prisma.code-snippets" }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "node esbuild.config.mjs",
+    "watch": "node esbuild.config.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "package": "vsce package --no-dependencies --out bestchoice-helper-${npm_package_version}.vsix",
+    "package:install": "npm run package && code --install-extension bestchoice-helper-${npm_package_version}.vsix"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.40",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.2.0",
+    "esbuild": "^0.24.2",
+    "typescript": "^5.6.0"
+  }
+}

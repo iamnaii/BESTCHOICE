@@ -10,6 +10,8 @@ export interface Contact {
   taxId: string | null;
   phone: string | null;
   email: string | null;
+  address: string | null;
+  lineId: string | null;
   roles: ContactRole[];
   isActive: boolean;
 }

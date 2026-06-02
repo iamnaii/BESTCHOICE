@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useDebounce } from '@/hooks/useDebounce';
+import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import { useAuth } from '@/contexts/AuthContext';
-import { ArrowRight, Merge, Search } from 'lucide-react';
+import { ArrowRight, Merge, Search, Phone, Copy, MessageCircle } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -32,7 +33,7 @@ import {
   type ContactFinanceLink,
   type ContactTradeInLink,
 } from '@/lib/api/contacts';
-import { customersApi, customerKeys } from '@/lib/api/customers';
+import { customersApi, customerKeys, type CustomerSummary } from '@/lib/api/customers';
 
 const ROLE_LABELS: Record<ContactRole, string> = {
   CUSTOMER: 'ลูกค้า',
@@ -71,18 +72,171 @@ function CardLink({ to, label }: { to: string; label: string }) {
   );
 }
 
-function SupplierCard({ supplier }: { supplier: ContactSupplierLink }) {
+/** One KPI cell in the summary strip. */
+function Kpi({ label, value, danger }: { label: string; value: string; danger?: boolean }) {
+  return (
+    <div>
+      <div className={`text-base font-semibold leading-snug ${danger ? 'text-destructive' : 'text-foreground'}`}>
+        {value}
+      </div>
+      <div className="text-xs text-muted-foreground leading-snug">{label}</div>
+    </div>
+  );
+}
+
+/**
+ * Identity hero — avatar + name + role badges + identity grid (shown ONCE) +
+ * quick actions. Editing is via each role tile's deep-link (read-through), so
+ * no generic edit button lives here.
+ */
+function IdentityHero({
+  data,
+  isOwner,
+  onMerge,
+}: {
+  data: ContactDetail;
+  isOwner: boolean;
+  onMerge: () => void;
+}) {
+  const { copy } = useCopyToClipboard();
+  const roles = data.roles ?? [];
+  const isJuristic =
+    data.suppliers.some((s) => s.type === 'JURISTIC') || roles.includes('FINANCE_COMPANY');
+  const entityType = isJuristic ? 'นิติบุคคล' : 'บุคคลธรรมดา';
+  const initials = data.name.trim().slice(0, 2);
+
+  function copyValue(value: string, label: string) {
+    copy(value);
+    toast.success(`คัดลอก${label}แล้ว`);
+  }
+
+  return (
+    <Card>
+      <CardContent className="flex flex-col gap-4 pt-6">
+        <div className="flex flex-wrap items-start gap-3">
+          <div className="flex size-11 flex-none items-center justify-center rounded-full bg-primary font-semibold text-primary-foreground leading-snug">
+            {initials}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-lg font-semibold text-foreground leading-snug">{data.name}</h1>
+              {roles.map((r) => (
+                <Badge key={r} variant={ROLE_BADGE_VARIANT[r]} appearance="light" size="sm">
+                  {ROLE_LABELS[r]}
+                </Badge>
+              ))}
+              {!data.isActive && (
+                <Badge variant="secondary" appearance="light" size="sm">
+                  ปิดใช้งาน
+                </Badge>
+              )}
+            </div>
+            <p className="text-sm text-muted-foreground leading-snug mt-0.5">
+              {data.contactCode} · {entityType}
+            </p>
+          </div>
+          <div className="flex flex-none flex-wrap items-center justify-end gap-2">
+            {data.phone && (
+              <Button asChild variant="outline" size="sm">
+                <a href={`tel:${data.phone}`}>
+                  <Phone className="size-4" />
+                  โทร
+                </a>
+              </Button>
+            )}
+            {data.phone && (
+              <Button variant="outline" size="sm" onClick={() => copyValue(data.phone!, 'เบอร์')}>
+                <Copy className="size-4" />
+                คัดลอกเบอร์
+              </Button>
+            )}
+            {data.lineId && (
+              <Button variant="outline" size="sm" onClick={() => copyValue(data.lineId!, 'LINE ID')}>
+                <MessageCircle className="size-4" />
+                LINE
+              </Button>
+            )}
+            {isOwner && (
+              <Button variant="outline" size="sm" onClick={onMerge}>
+                <Merge className="size-4" />
+                รวมผู้ติดต่อซ้ำ
+              </Button>
+            )}
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <Field label="เลขผู้เสียภาษี" value={data.taxId} />
+          <Field label="เบอร์โทร" value={data.phone} />
+          <Field label="อีเมล" value={data.email} />
+          <Field label="ที่อยู่" value={data.address} />
+          {data.lineId && <Field label="LINE ID" value={data.lineId} />}
+          {data.peakContactCode && <Field label="รหัส PEAK" value={data.peakContactCode} />}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * Role-aware summary strip. Customer → financial KPIs (reuses
+ * /customers/:id/summary, aggregated across linked customers). No customers but
+ * has suppliers → VAT status band. Otherwise renders nothing.
+ */
+function SummaryStrip({
+  customers,
+  suppliers,
+}: {
+  customers: ContactCustomerLink[];
+  suppliers: ContactSupplierLink[];
+}) {
+  const results = useQueries({
+    queries: customers.map((c) => ({
+      queryKey: customerKeys.summary(c.id),
+      queryFn: () => customersApi.summary(c.id),
+    })),
+  });
+  const summaries = results.map((r) => r.data).filter(Boolean) as CustomerSummary[];
+
+  if (customers.length > 0) {
+    if (summaries.length === 0) return null; // still loading / all failed → don't show a half-strip
+    const outstanding = summaries.reduce((s, x) => s + x.totalOutstandingThb, 0);
+    const active = summaries.reduce((s, x) => s + x.activeContracts, 0);
+    const overdue = summaries.reduce((s, x) => s + x.overdueCount, 0);
+    return (
+      <Card>
+        <CardContent className="flex flex-wrap gap-x-10 gap-y-3 pt-6">
+          <Kpi label="ยอดค้างชำระ" value={`${outstanding.toLocaleString('th-TH')} ฿`} danger={outstanding > 0} />
+          <Kpi label="สัญญา active" value={String(active)} />
+          <Kpi label="งวดค้าง" value={String(overdue)} danger={overdue > 0} />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (suppliers.length > 0) {
+    return (
+      <Card>
+        <CardContent className="flex flex-wrap gap-x-10 gap-y-3 pt-6">
+          <Kpi label="สถานะภาษี" value={suppliers.some((s) => s.hasVat) ? 'จด VAT' : 'ไม่จด VAT'} />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return null;
+}
+
+function SupplierTile({ supplier }: { supplier: ContactSupplierLink }) {
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between gap-2 space-y-0">
-        <CardTitle className="leading-snug">{supplier.name}</CardTitle>
+        <CardTitle className="leading-snug">ผู้ขาย</CardTitle>
         <Badge variant="info" appearance="light" size="sm">
-          {supplier.type === 'JURISTIC' ? 'นิติบุคคล' : 'บุคคลธรรมดา'}
+          {supplier.hasVat ? 'จด VAT' : 'ไม่จด VAT'}
         </Badge>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <div className="grid grid-cols-2 gap-3">
-          <Field label="เลขผู้เสียภาษี" value={supplier.taxId} />
           <Field label="เลขสาขา" value={supplier.branchCode} />
           <Field
             label="ผู้ติดต่อ"
@@ -92,8 +246,6 @@ function SupplierCard({ supplier }: { supplier: ContactSupplierLink }) {
                 : supplier.contactPhone
             }
           />
-          <Field label="เบอร์" value={supplier.phone} />
-          <Field label="VAT" value={supplier.hasVat ? 'จด VAT' : 'ไม่จด VAT'} />
           <Field label="ที่อยู่" value={displayAddress(supplier.address) || supplier.address} />
         </div>
         <CardLink to={`/suppliers/${supplier.id}`} label="เปิดข้อมูลผู้ขาย / แก้ไข" />
@@ -102,56 +254,36 @@ function SupplierCard({ supplier }: { supplier: ContactSupplierLink }) {
   );
 }
 
-function CustomerCard({ customer }: { customer: ContactCustomerLink }) {
-  const { data: summary } = useQuery({
-    queryKey: customerKeys.summary(customer.id),
-    queryFn: () => customersApi.summary(customer.id),
-  });
-
+function CustomerTile({ customer }: { customer: ContactCustomerLink }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="leading-snug">
-          {customer.prefix ? `${customer.prefix} ` : ''}
-          {customer.name}
-        </CardTitle>
+        <CardTitle className="leading-snug">ลูกค้า</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
-        <Field label="เบอร์" value={customer.phone} />
-        {summary && (
-          <div className="grid grid-cols-3 gap-3">
-            <Field
-              label="ยอดค้างชำระ"
-              value={`${summary.totalOutstandingThb.toLocaleString('th-TH')} ฿`}
-            />
-            <Field label="สัญญา active" value={String(summary.activeContracts)} />
-            <div>
-              <div className="text-xs text-muted-foreground mb-0.5 leading-snug">ค้างชำระ</div>
-              <div
-                className={`text-sm leading-snug ${summary.overdueCount > 0 ? 'text-destructive' : 'text-foreground'}`}
-              >
-                {summary.overdueCount}
-              </div>
-            </div>
-          </div>
-        )}
+        <Field
+          label="ชื่อในระบบลูกค้า"
+          value={`${customer.prefix ? `${customer.prefix} ` : ''}${customer.name}`}
+        />
         <CardLink to={`/customers/${customer.id}`} label="เปิดข้อมูลลูกค้า / แก้ไข" />
       </CardContent>
     </Card>
   );
 }
 
-function FinanceCard({ finance }: { finance: ContactFinanceLink }) {
+function FinanceTile({ finance }: { finance: ContactFinanceLink }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="leading-snug">{finance.name}</CardTitle>
+        <CardTitle className="leading-snug">ไฟแนนซ์</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <div className="grid grid-cols-2 gap-3">
-          <Field label="เลขผู้เสียภาษี" value={finance.taxId} />
-          <Field label="เบอร์" value={finance.contactPhone} />
           <Field label="อีเมล" value={finance.email} />
+          <Field
+            label="เครดิตเทอม"
+            value={finance.creditTermDays != null ? `${finance.creditTermDays} วัน` : null}
+          />
         </div>
         <CardLink to={`/external-finance-companies/${finance.id}`} label="เปิดข้อมูล / แก้ไข" />
       </CardContent>
@@ -159,14 +291,17 @@ function FinanceCard({ finance }: { finance: ContactFinanceLink }) {
   );
 }
 
-function TradeInCard({ tradeIn }: { tradeIn: ContactTradeInLink }) {
+function TradeInTile({ tradeIn }: { tradeIn: ContactTradeInLink }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="leading-snug">{tradeIn.sellerName || 'คนขายมือสอง'}</CardTitle>
+        <CardTitle className="leading-snug">คนขายมือสอง</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
-        <Field label="เบอร์" value={tradeIn.sellerPhone} />
+        <Field
+          label="วันที่รับซื้อ"
+          value={new Date(tradeIn.createdAt).toLocaleDateString('th-TH')}
+        />
         <CardLink to="/trade-in" label="ดูรายการรับซื้อ" />
       </CardContent>
     </Card>
@@ -312,7 +447,6 @@ export default function ContactDetailPage() {
   const { user } = useAuth();
   const isOwner = user?.role === 'OWNER';
   const [mergeOpen, setMergeOpen] = useState(false);
-  useDocumentTitle('ผู้ติดต่อ');
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: contactKeys.detail(id),
@@ -320,7 +454,8 @@ export default function ContactDetailPage() {
     enabled: !!id,
   });
 
-  const roles = data?.roles ?? [];
+  useDocumentTitle(data?.name ?? 'ผู้ติดต่อ');
+
   const customers = data?.customers ?? [];
   const suppliers = data?.suppliers ?? [];
   const tradeInsAsSeller = data?.tradeInsAsSeller ?? [];
@@ -332,31 +467,16 @@ export default function ContactDetailPage() {
     tradeInsAsSeller.length === 0 &&
     externalFinanceCompany.length === 0;
 
-  const isJuristic =
-    suppliers.some((s) => s.type === 'JURISTIC') || roles.includes('FINANCE_COMPANY');
-  const entityType = isJuristic ? 'นิติบุคคล' : 'บุคคลธรรมดา';
-
   return (
     <div>
       <PageHeader
-        title={data ? data.name : 'ผู้ติดต่อ'}
-        subtitle={data ? `${data.contactCode} · ${entityType}` : undefined}
+        breadcrumb={
+          <span className="text-sm text-muted-foreground leading-snug">
+            ผู้ติดต่อ {data ? `/ ${data.name}` : ''}
+          </span>
+        }
+        title=""
         onBack={() => navigate('/contacts')}
-        action={
-          isOwner && data ? (
-            <Button variant="outline" size="sm" onClick={() => setMergeOpen(true)}>
-              <Merge className="size-4" />
-              รวมผู้ติดต่อซ้ำ
-            </Button>
-          ) : undefined
-        }
-        badge={
-          data && !data.isActive ? (
-            <Badge variant="secondary" appearance="light" size="sm">
-              ปิดใช้งาน
-            </Badge>
-          ) : undefined
-        }
       />
 
       {isOwner && data && (
@@ -372,72 +492,34 @@ export default function ContactDetailPage() {
       >
         {data && (
           <div className="flex flex-col gap-5">
-            <Card>
-              <CardHeader>
-                <CardTitle>ข้อมูลทั่วไป</CardTitle>
-              </CardHeader>
-              <CardContent className="flex flex-col gap-3">
-                <div>
-                  <div className="text-xs text-muted-foreground mb-1 leading-snug">กลุ่ม</div>
-                  <div className="flex flex-wrap gap-1">
-                    {roles.length > 0 ? (
-                      roles.map((r) => (
-                        <Badge
-                          key={r}
-                          variant={ROLE_BADGE_VARIANT[r]}
-                          appearance="light"
-                          size="sm"
-                        >
-                          {ROLE_LABELS[r]}
-                        </Badge>
-                      ))
-                    ) : (
-                      <span className="text-sm text-muted-foreground">—</span>
-                    )}
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="เลขผู้เสียภาษี" value={data.taxId} />
-                  <Field label="เบอร์โทร" value={data.phone} />
-                  <Field label="อีเมล" value={data.email} />
-                  {data.peakContactCode && (
-                    <Field label="รหัส PEAK" value={data.peakContactCode} />
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+            <IdentityHero data={data} isOwner={isOwner} onMerge={() => setMergeOpen(true)} />
 
-            <div>
-              <h2 className="text-base font-semibold text-foreground mb-3 leading-snug">
-                ข้อมูลกิจการ
-              </h2>
-              {hasNoLinks ? (
-                <Card>
-                  <CardContent className="flex flex-col gap-3 pt-6">
-                    <p className="text-sm text-muted-foreground leading-snug">
-                      ยังไม่ผูกกับลูกค้า/ผู้ขาย
-                    </p>
-                    <Field label="ชื่อ" value={data.name} />
-                    <Field label="เบอร์โทร" value={data.phone} />
-                  </CardContent>
-                </Card>
-              ) : (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  {suppliers.map((s) => (
-                    <SupplierCard key={s.id} supplier={s} />
-                  ))}
-                  {customers.map((c) => (
-                    <CustomerCard key={c.id} customer={c} />
-                  ))}
-                  {externalFinanceCompany.map((f) => (
-                    <FinanceCard key={f.id} finance={f} />
-                  ))}
-                  {tradeInsAsSeller.map((t) => (
-                    <TradeInCard key={t.id} tradeIn={t} />
-                  ))}
-                </div>
-              )}
-            </div>
+            <SummaryStrip customers={customers} suppliers={suppliers} />
+
+            {hasNoLinks ? (
+              <Card>
+                <CardContent className="pt-6">
+                  <p className="text-sm text-muted-foreground leading-snug">
+                    ยังไม่ผูกกับลูกค้า/ผู้ขาย — เพิ่ม role ได้ที่หน้าลูกค้าหรือผู้ขาย
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {suppliers.map((s) => (
+                  <SupplierTile key={s.id} supplier={s} />
+                ))}
+                {customers.map((c) => (
+                  <CustomerTile key={c.id} customer={c} />
+                ))}
+                {externalFinanceCompany.map((f) => (
+                  <FinanceTile key={f.id} finance={f} />
+                ))}
+                {tradeInsAsSeller.map((t) => (
+                  <TradeInTile key={t.id} tradeIn={t} />
+                ))}
+              </div>
+            )}
           </div>
         )}
       </QueryBoundary>

@@ -50,7 +50,7 @@ function wrap(id: string) {
 }
 
 describe('ContactDetailPage', () => {
-  it('renders a supplier read-through card with a deep-link to the supplier page', async () => {
+  it('shows party identity ONCE in the hero (taxId not duplicated in the role tile)', async () => {
     (contactsApi.detail as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: 'c1',
       contactCode: 'P-00002',
@@ -58,8 +58,10 @@ describe('ContactDetailPage', () => {
       roles: ['SUPPLIER'],
       isActive: true,
       taxId: '0105500000010',
-      phone: null,
+      phone: '021112222',
       email: null,
+      address: null,
+      lineId: null,
       peakContactCode: null,
       customers: [],
       tradeInsAsSeller: [],
@@ -81,11 +83,46 @@ describe('ContactDetailPage', () => {
     });
     wrap('c1');
     await waitFor(() => expect(screen.getAllByText('บ.แอปเปิล').length).toBeGreaterThan(0));
+    // taxId ปรากฏครั้งเดียว (ใน hero) — ไม่ซ้ำในการ์ด role
+    expect(screen.getAllByText('0105500000010')).toHaveLength(1);
+    // การ์ดผู้ขายยังลิงก์ไป workspace
     const link = screen.getByRole('link', { name: /แก้ไข|เปิดข้อมูล|ผู้ขาย/ });
     expect(link).toHaveAttribute('href', '/suppliers/s1');
+    // ฟิลด์เฉพาะ role ยังอยู่ในการ์ด
+    expect(screen.getByText('คุณเอ (02)')).toBeInTheDocument();
   });
 
-  it('shows customer financial snapshot from /summary on the customer card', async () => {
+  it('copies the phone number from the hero quick action', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    (contactsApi.detail as any).mockResolvedValue({
+      id: 'c1',
+      contactCode: 'P-1',
+      name: 'นราธิป',
+      roles: ['SUPPLIER'],
+      isActive: true,
+      taxId: null,
+      phone: '0891112222',
+      email: null,
+      address: null,
+      lineId: null,
+      peakContactCode: null,
+      customers: [],
+      suppliers: [
+        { id: 's1', name: 'นราธิป', type: 'INDIVIDUAL', taxId: null, branchCode: null,
+          contactName: null, contactPhone: null, phone: '0891112222', hasVat: false, address: null },
+      ],
+      tradeInsAsSeller: [],
+      externalFinanceCompany: [],
+    });
+    const user = userEvent.setup();
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true, writable: true });
+    wrap('c1');
+    await waitFor(() => expect(screen.getByText('นราธิป')).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: 'คัดลอกเบอร์' }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('0891112222'));
+  });
+
+  it('shows customer financial KPIs in the top summary strip', async () => {
     const { customersApi } = await import('@/lib/api/customers');
     (customersApi.summary as any).mockResolvedValue({
       id: 'cus1',
@@ -104,6 +141,8 @@ describe('ContactDetailPage', () => {
       taxId: null,
       phone: '08',
       email: null,
+      address: null,
+      lineId: null,
       peakContactCode: null,
       suppliers: [],
       tradeInsAsSeller: [],
@@ -113,86 +152,72 @@ describe('ContactDetailPage', () => {
     wrap('c1');
     await waitFor(() => expect(screen.getByText('นราธิป')).toBeInTheDocument());
     await waitFor(() => expect(screen.getByText(/15,000/)).toBeInTheDocument());
-    expect(screen.getByText('ค้างชำระ')).toBeInTheDocument();
+    expect(screen.getByText('ยอดค้างชำระ')).toBeInTheDocument();
+    expect(screen.getByText('งวดค้าง')).toBeInTheDocument();
+  });
+
+  it('shows an empty-state hint when the contact has no role links', async () => {
+    (contactsApi.detail as any).mockResolvedValue({
+      id: 'c1',
+      contactCode: 'P-1',
+      name: 'คนเดียวดาย',
+      roles: [],
+      isActive: true,
+      taxId: null,
+      phone: '0800000000',
+      email: null,
+      address: null,
+      lineId: null,
+      peakContactCode: null,
+      customers: [],
+      suppliers: [],
+      tradeInsAsSeller: [],
+      externalFinanceCompany: [],
+    });
+    wrap('c1');
+    await waitFor(() => expect(screen.getByText('คนเดียวดาย')).toBeInTheDocument());
+    expect(screen.getByText(/ยังไม่ผูกกับลูกค้า\/ผู้ขาย/)).toBeInTheDocument();
+    // เบอร์โผล่เป็น text ครั้งเดียว (Field ใน hero grid) — empty-state ไม่โชว์เบอร์ซ้ำอีกชุด
+    expect(screen.getAllByText('0800000000')).toHaveLength(1);
   });
 
   it('OWNER merges a searched duplicate into the current contact', async () => {
     asOwner();
     (contactsApi.detail as any).mockResolvedValue({
-      id: 'c1',
-      contactCode: 'P-1',
-      name: 'A',
-      roles: ['CUSTOMER'],
-      isActive: true,
-      taxId: null,
-      phone: null,
-      email: null,
-      peakContactCode: null,
-      customers: [],
-      suppliers: [],
-      tradeInsAsSeller: [],
-      externalFinanceCompany: [],
+      id: 'c1', contactCode: 'P-1', name: 'A', roles: ['CUSTOMER'], isActive: true,
+      taxId: null, phone: null, email: null, address: null, lineId: null, peakContactCode: null,
+      customers: [], suppliers: [], tradeInsAsSeller: [], externalFinanceCompany: [],
     });
     (contactsApi.list as any).mockResolvedValue({
-      data: [
-        {
-          id: 'c2',
-          contactCode: 'P-2',
-          name: 'A dup',
-          roles: ['SUPPLIER'],
-          isActive: true,
-          taxId: '0105',
-          phone: null,
-          email: null,
-          peakContactCode: null,
-        },
-      ],
-      total: 1,
-      page: 1,
-      limit: 50,
+      data: [{ id: 'c2', contactCode: 'P-2', name: 'A dup', roles: ['SUPPLIER'], isActive: true,
+        taxId: '0105', phone: null, email: null, address: null, lineId: null, peakContactCode: null }],
+      total: 1, page: 1, limit: 50,
     });
     const mergeSpy = ((contactsApi.merge as any) = vi.fn().mockResolvedValue({ primaryId: 'c1' }));
-
     const user = userEvent.setup();
     wrap('c1');
-    await waitFor(() => expect(screen.getByText('ข้อมูลทั่วไป')).toBeInTheDocument());
-
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'A' })).toBeInTheDocument());
     await user.click(screen.getByRole('button', { name: 'รวมผู้ติดต่อซ้ำ' }));
     const searchInput = await screen.findByPlaceholderText(/ค้นหา/);
     await user.type(searchInput, 'A dup');
-
     const candidate = await screen.findByText('A dup');
     await user.click(candidate);
-
     const confirmBtn = await screen.findByRole('button', { name: 'รวมผู้ติดต่อ' });
     await user.click(confirmBtn);
-
     await waitFor(() => expect(mergeSpy).toHaveBeenCalledWith('c1', 'c2'));
   });
 
   it('hides the merge action for non-OWNER roles', async () => {
     (useAuth as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
-      user: { id: 'u2', role: 'SALES', branchId: null },
-      isLoading: false,
-      isAuthenticated: true,
+      user: { id: 'u2', role: 'SALES', branchId: null }, isLoading: false, isAuthenticated: true,
     });
     (contactsApi.detail as any).mockResolvedValue({
-      id: 'c1',
-      contactCode: 'P-1',
-      name: 'A',
-      roles: ['CUSTOMER'],
-      isActive: true,
-      taxId: null,
-      phone: null,
-      email: null,
-      peakContactCode: null,
-      customers: [],
-      suppliers: [],
-      tradeInsAsSeller: [],
-      externalFinanceCompany: [],
+      id: 'c1', contactCode: 'P-1', name: 'A', roles: ['CUSTOMER'], isActive: true,
+      taxId: null, phone: null, email: null, address: null, lineId: null, peakContactCode: null,
+      customers: [], suppliers: [], tradeInsAsSeller: [], externalFinanceCompany: [],
     });
     wrap('c1');
-    await waitFor(() => expect(screen.getByText('ข้อมูลทั่วไป')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'A' })).toBeInTheDocument());
     expect(screen.queryByRole('button', { name: 'รวมผู้ติดต่อซ้ำ' })).not.toBeInTheDocument();
   });
 });

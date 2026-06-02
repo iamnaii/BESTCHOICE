@@ -15,6 +15,7 @@ import { ProductsModule } from './modules/products/products.module';
 import { QualityControlModule } from './modules/quality-control/quality-control.module';
 import { StickersModule } from './modules/stickers/stickers.module';
 import { CustomersModule } from './modules/customers/customers.module';
+import { TestModeModule } from './modules/test-mode/test-mode.module';
 import { ContractsModule } from './modules/contracts/contracts.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 // MASTER-only modules
@@ -184,6 +185,7 @@ import { AppCacheModule } from './cache/cache.module';
     QualityControlModule,
     StickersModule,
     CustomersModule,
+    TestModeModule,
     ContractsModule,
     InterestConfigModule,
     PricingTemplatesModule,

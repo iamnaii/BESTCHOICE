@@ -10,6 +10,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { displayAddress } from '@/components/ui/AddressForm';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -93,7 +94,7 @@ function SupplierCard({ supplier }: { supplier: ContactSupplierLink }) {
           />
           <Field label="เบอร์" value={supplier.phone} />
           <Field label="VAT" value={supplier.hasVat ? 'จด VAT' : 'ไม่จด VAT'} />
-          <Field label="ที่อยู่" value={supplier.address} />
+          <Field label="ที่อยู่" value={displayAddress(supplier.address) || supplier.address} />
         </div>
         <CardLink to={`/suppliers/${supplier.id}`} label="เปิดข้อมูลผู้ขาย / แก้ไข" />
       </CardContent>

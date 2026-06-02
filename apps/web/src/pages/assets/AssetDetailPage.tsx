@@ -13,7 +13,6 @@ import {
   ArrowRightLeft,
   Undo2,
   Trash2,
-  CheckSquare,
   TrendingDown,
   History,
   ReceiptText,
@@ -31,11 +30,31 @@ import {
 import QueryBoundary from '@/components/QueryBoundary';
 import { formatDateShortThai, formatDateTime, formatNumberDecimal } from '@/utils/formatters';
 import { getErrorMessage } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
+import { useUiFlags } from '@/hooks/useUiFlags';
 import { assetsApi } from './api';
 import { AssetStatusBadge } from './components/AssetStatusBadge';
 import { TransferAssetDialog } from './components/TransferAssetDialog';
-import { ReverseConfirmDialog } from '@/components/accounting';
+import {
+  InternalControlActionBar,
+  ReverseConfirmDialog,
+  resolveCanReverse,
+  mapAuditEvents,
+  type IcabStatus,
+} from '@/components/accounting';
 import { CATEGORY_LABEL } from './types';
+
+/**
+ * Map the asset lifecycle onto the bar's 4-state ICAB model. The bar only
+ * surfaces its (purchase) reverse button in POSTED — disposal reverse stays a
+ * separate dialog (owner decision), gated to DISPOSED/WRITTEN_OFF, so those map
+ * to POSTED here but `canReverse` is held false for them.
+ */
+export function mapAssetStatusToIcab(status: string): IcabStatus {
+  if (status === 'DRAFT') return 'DRAFT';
+  if (status === 'REVERSED') return 'REVERSED';
+  return 'POSTED'; // POSTED / DISPOSED / WRITTEN_OFF
+}
 
 const fmt = (n: string | number | null | undefined): string =>
   n == null ? '-' : formatNumberDecimal(Number(n));
@@ -44,6 +63,8 @@ export default function AssetDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const flags = useUiFlags();
 
   const assetQuery = useQuery({
     queryKey: ['asset', id],
@@ -57,27 +78,33 @@ export default function AssetDetailPage() {
     enabled: !!id,
   });
 
-  const [showReverse, setShowReverse] = useState(false);
+  // Purchase reverse now runs through the bar's own dialog; only the disposal
+  // reverse keeps a standalone dialog (owner decision — tailored impact notes).
   const [showReverseDisposal, setShowReverseDisposal] = useState(false);
   const [showTransfer, setShowTransfer] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
   const [showInvoiceReceived, setShowInvoiceReceived] = useState(false);
 
+  type ReversePayload = { reasonId: string; reasonLabel: string; note: string };
+  const composeReason = (p: ReversePayload) =>
+    p.note ? `${p.reasonLabel} — ${p.note}` : p.reasonLabel;
+
   /**
-   * Asset-purchase reverse — wired through the shared ReverseConfirmDialog.
-   * The legacy assetsApi.reverse takes a single `reason: string`; the new
-   * dialog returns `{reasonId, reasonLabel, note}`, so we collapse the
-   * label + note into the existing reason field at the boundary.
+   * Asset-purchase reverse — fired by the shared InternalControlActionBar's
+   * internal reverse dialog (POSTED → REVERSED). The bar emits the structured
+   * `{reasonId, reasonLabel, note}`; we send the composed `reason` (back-compat
+   * + reversalReason storage) plus the structured label/note so the audit
+   * timeline can render them separately.
    */
   const reverseMutation = useMutation({
-    mutationFn: (reason: string) => assetsApi.reverse(id!, reason),
+    mutationFn: (p: ReversePayload) =>
+      assetsApi.reverse(id!, composeReason(p), { reasonLabel: p.reasonLabel, note: p.note }),
     onSuccess: (r) => {
       toast.success(`กลับรายการแล้ว → ${r.entryNo}`);
       queryClient.invalidateQueries({ queryKey: ['asset', id] });
       queryClient.invalidateQueries({ queryKey: ['asset-audit', id] });
       queryClient.invalidateQueries({ queryKey: ['assets'] });
       queryClient.invalidateQueries({ queryKey: ['assets-summary'] });
-      setShowReverse(false);
     },
     onError: (e) => toast.error(getErrorMessage(e)),
   });
@@ -87,7 +114,8 @@ export default function AssetDetailPage() {
    * different module-context message + endpoint.
    */
   const reverseDisposeMutation = useMutation({
-    mutationFn: (reason: string) => assetsApi.reverseDispose(id!, reason),
+    mutationFn: (p: ReversePayload) =>
+      assetsApi.reverseDispose(id!, composeReason(p), { reasonLabel: p.reasonLabel, note: p.note }),
     onSuccess: (r) => {
       toast.success(`คืนสถานะแล้ว → ${r.entryNo}`);
       queryClient.invalidateQueries({ queryKey: ['asset', id] });
@@ -160,8 +188,15 @@ export default function AssetDetailPage() {
 
   const asset = assetQuery.data;
 
+  const icabStatus = asset ? mapAssetStatusToIcab(asset.status) : 'DRAFT';
+  // Mode-aware (Audit Finding A) + only pure POSTED → the bar's (purchase)
+  // reverse button. DISPOSED/WRITTEN_OFF use the separate disposal dialog.
+  const canReverse =
+    resolveCanReverse(flags.reversePermission, user?.role, user?.canReverseOverride) &&
+    asset?.status === 'POSTED';
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-44 md:pb-40">
       <PageHeader
         title={asset?.assetCode ?? 'กำลังโหลด...'}
         subtitle={asset?.name}
@@ -181,12 +216,7 @@ export default function AssetDetailPage() {
                     <DropdownMenuItem onClick={() => navigate(`/assets/${id}/edit`)}>
                       <Edit className="mr-2 size-4" /> แก้ไข
                     </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => postMutation.mutate()}
-                      disabled={postMutation.isPending}
-                    >
-                      <CheckSquare className="mr-2 size-4" /> ลงบัญชี (POST)
-                    </DropdownMenuItem>
+                    {/* ลงบัญชี (POST) ย้ายไปอยู่บน InternalControlActionBar ด้านล่าง */}
                     <DropdownMenuItem
                       onClick={() => setShowDelete(true)}
                       className="text-destructive"
@@ -208,12 +238,7 @@ export default function AssetDetailPage() {
                     <DropdownMenuItem onClick={() => navigate(`/assets/${id}/dispose`)}>
                       <Trash2 className="mr-2 size-4" /> จำหน่ายสินทรัพย์
                     </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => setShowReverse(true)}
-                      className="text-destructive"
-                    >
-                      <Undo2 className="mr-2 size-4" /> กลับรายการ
-                    </DropdownMenuItem>
+                    {/* กลับรายการ (purchase reverse) ย้ายไปอยู่บน InternalControlActionBar ด้านล่าง */}
                   </>
                 )}
                 {(asset.status === 'DISPOSED' || asset.status === 'WRITTEN_OFF') && (
@@ -434,18 +459,6 @@ export default function AssetDetailPage() {
 
       {asset && (
         <>
-          {/* InternalControlActionBar — shared ReverseConfirmDialog for the
-              asset-purchase reverse path. */}
-          <ReverseConfirmDialog
-            open={showReverse}
-            onOpenChange={setShowReverse}
-            module="asset"
-            docNumber={asset.assetCode}
-            isLoading={reverseMutation.isPending}
-            onConfirm={({ reasonLabel, note }) =>
-              reverseMutation.mutate(note ? `${reasonLabel} — ${note}` : reasonLabel)
-            }
-          />
           <TransferAssetDialog
             asset={asset}
             open={showTransfer}
@@ -465,9 +478,7 @@ export default function AssetDetailPage() {
               'JE การจำหน่ายจะถูกกลับรายการ (สลับ Dr↔Cr)',
               'ค่าเสื่อมราคาที่หยุดไว้ตอนจำหน่ายจะเริ่มคำนวณใหม่',
             ]}
-            onConfirm={({ reasonLabel, note }) =>
-              reverseDisposeMutation.mutate(note ? `${reasonLabel} — ${note}` : reasonLabel)
-            }
+            onConfirm={(payload) => reverseDisposeMutation.mutate(payload)}
           />
           <ConfirmDialog
             open={showDelete}
@@ -488,6 +499,34 @@ export default function AssetDetailPage() {
             onConfirm={() => invoiceReceivedMutation.mutate()}
           />
         </>
+      )}
+
+      {/* InternalControlActionBar — shared "ควบคุมภายใน" control surface.
+          Handles the audit timeline + state machine + (purchase) reverse +
+          post + close. Disposal reverse stays a standalone dialog above. */}
+      {asset && user && (
+        <InternalControlActionBar
+          module="asset"
+          status={icabStatus}
+          docNumber={asset.assetCode}
+          docSubtitle={asset.name ?? undefined}
+          docAmount={asset.purchaseCost != null ? Number(asset.purchaseCost) : undefined}
+          auditLog={mapAuditEvents(auditQuery.data ?? [])}
+          currentUser={{
+            id: user.id,
+            role: user.role,
+            name: user.name,
+            canReverseOverride: user.canReverseOverride,
+          }}
+          isLoading={
+            reverseMutation.isPending || postMutation.isPending || reverseDisposeMutation.isPending
+          }
+          canReverse={Boolean(canReverse)}
+          onCancel={() => navigate('/assets')}
+          onClose={() => navigate('/assets')}
+          onPost={() => postMutation.mutate()}
+          onReverse={(payload) => reverseMutation.mutate(payload)}
+        />
       )}
     </div>
   );

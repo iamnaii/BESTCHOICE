@@ -24,6 +24,7 @@ import { PaginationDto } from '../../common/dto/pagination.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
+import { ReversePermissionGuard } from '../auth/guards/reverse-permission.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
@@ -154,13 +155,20 @@ export class AssetController {
   }
 
   @Post(':id/reverse')
-  @Roles('OWNER')
+  // Coarse superset — ReversePermissionGuard narrows per the dynamic
+  // `reverse_permission` mode (default OWNER+FM mode rejects ACCOUNTANT;
+  // the +ACCOUNTANT / CUSTOM modes may allow it).
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  @UseGuards(ReversePermissionGuard)
   reverse(
     @Param('id') id: string,
     @Body() dto: ReverseAssetDto,
     @CurrentUser('id') userId: string,
   ) {
-    return this.assetService.reverse(id, userId, dto.reason);
+    return this.assetService.reverse(id, userId, dto.reason, {
+      reasonLabel: dto.reasonLabel,
+      note: dto.note,
+    });
   }
 
   @Post(':id/transfer')
@@ -184,13 +192,20 @@ export class AssetController {
   }
 
   @Post(':id/reverse-dispose')
-  @Roles('OWNER')
+  // Coarse superset — ReversePermissionGuard narrows per the dynamic
+  // `reverse_permission` mode (default OWNER+FM mode rejects ACCOUNTANT;
+  // the +ACCOUNTANT / CUSTOM modes may allow it).
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  @UseGuards(ReversePermissionGuard)
   reverseDispose(
     @Param('id') id: string,
     @Body() dto: ReverseDisposalDto,
     @CurrentUser('id') userId: string,
   ) {
-    return this.assetService.reverseDispose(id, dto.reason, userId);
+    return this.assetService.reverseDispose(id, dto.reason, userId, {
+      reasonLabel: dto.reasonLabel,
+      note: dto.note,
+    });
   }
 
   @Post(':id/invoice-received')

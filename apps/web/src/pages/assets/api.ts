@@ -97,8 +97,16 @@ export const assetsApi = {
     return data;
   },
 
-  reverse: async (id: string, reason: string): Promise<{ entryNo: string }> => {
-    const { data } = await api.post<{ entryNo: string }>(`/assets/${id}/reverse`, { reason });
+  reverse: async (
+    id: string,
+    reason: string,
+    extra?: { reasonLabel?: string; note?: string },
+  ): Promise<{ entryNo: string }> => {
+    const { data } = await api.post<{ entryNo: string }>(`/assets/${id}/reverse`, {
+      reason,
+      reasonLabel: extra?.reasonLabel,
+      note: extra?.note,
+    });
     return data;
   },
 
@@ -134,9 +142,15 @@ export const assetsApi = {
     return data;
   },
 
-  reverseDispose: async (id: string, reason: string): Promise<{ entryNo: string }> => {
+  reverseDispose: async (
+    id: string,
+    reason: string,
+    extra?: { reasonLabel?: string; note?: string },
+  ): Promise<{ entryNo: string }> => {
     const { data } = await api.post<{ entryNo: string }>(`/assets/${id}/reverse-dispose`, {
       reason,
+      reasonLabel: extra?.reasonLabel,
+      note: extra?.note,
     });
     return data;
   },

@@ -138,6 +138,21 @@ export class ContactsService {
         action: 'CONTACTS_MERGED',
         entity: 'contact',
         entityId: primaryId,
+        // Capture the duplicate's pre-merge identity so the irreversible
+        // soft-delete + carry remains fully traceable.
+        oldValue: {
+          duplicate: {
+            id: duplicate.id,
+            contactCode: duplicate.contactCode,
+            name: duplicate.name,
+            taxId: duplicate.taxId,
+            nationalIdHash: duplicate.nationalIdHash,
+            peakContactCode: duplicate.peakContactCode,
+            phone: duplicate.phone,
+            email: duplicate.email,
+            roles: duplicate.roles,
+          },
+        },
         newValue: { duplicateId, mergedRoles: unionRoles, carried: carry },
         ipAddress: actor?.ipAddress,
         userAgent: actor?.userAgent,

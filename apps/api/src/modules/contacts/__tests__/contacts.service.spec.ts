@@ -142,8 +142,8 @@ describe('ContactsService.merge', () => {
   });
   it('carries identity fields from duplicate to primary when primary lacks them + audits + soft-deletes duplicate FIRST', async () => {
     prisma._tx.contact.findMany.mockResolvedValue([
-      { id: 'p1', roles: ['CUSTOMER'], taxId: null, nationalIdHash: null, peakContactCode: null, phone: null, email: null },
-      { id: 'd1', roles: ['SUPPLIER'], taxId: '0105', nationalIdHash: 'h', peakContactCode: 'C001', phone: '02', email: 'a@b.c' },
+      { id: 'p1', contactCode: 'P-00001', name: 'Primary', roles: ['CUSTOMER'], taxId: null, nationalIdHash: null, peakContactCode: null, phone: null, email: null },
+      { id: 'd1', contactCode: 'P-00002', name: 'Duplicate', roles: ['SUPPLIER'], taxId: '0105', nationalIdHash: 'h', peakContactCode: 'C001', phone: '02', email: 'a@b.c' },
     ]);
     await svc.merge({ primaryId: 'p1', duplicateId: 'd1' });
     // duplicate soft-deleted
@@ -154,6 +154,14 @@ describe('ContactsService.merge', () => {
       data: expect.objectContaining({ taxId: '0105', nationalIdHash: 'h', peakContactCode: 'C001', phone: '02', email: 'a@b.c' }),
     }));
     expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'CONTACTS_MERGED' }));
+    // duplicate's pre-merge identity is captured in oldValue for traceability
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        oldValue: expect.objectContaining({
+          duplicate: expect.objectContaining({ id: 'd1', contactCode: 'P-00002', taxId: '0105' }),
+        }),
+      }),
+    );
     // ordering: duplicate soft-delete recorded before primary carry update
     const calls = prisma._tx.contact.update.mock.calls;
     const dupIdx = calls.findIndex((c: any) => c[0].where.id === 'd1');

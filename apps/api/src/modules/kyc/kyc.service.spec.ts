@@ -4,6 +4,8 @@ import * as crypto from 'crypto';
 import { KycService } from './kyc.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { TestModeService } from '../test-mode/test-mode.service';
+import { AuditService } from '../audit/audit.service';
 
 describe('KycService', () => {
   let service: KycService;
@@ -11,6 +13,10 @@ describe('KycService', () => {
   let prisma: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let notifications: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let testMode: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let audit: any;
 
   const mockContract = {
     id: 'contract-1',
@@ -59,6 +65,15 @@ describe('KycService', () => {
     send: jest.fn().mockResolvedValue({ id: 'notif-1', status: 'SENT' }),
   };
 
+  const mockTestMode = {
+    // Default OFF — every existing validation test runs the real path unchanged.
+    isEnabled: jest.fn().mockResolvedValue(false),
+  };
+
+  const mockAudit = {
+    log: jest.fn().mockResolvedValue(undefined),
+  };
+
   beforeEach(async () => {
     // Reset mocks
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -66,6 +81,8 @@ describe('KycService', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     Object.values(mockPrisma.kycVerification).forEach((fn: any) => fn.mockClear());
     mockNotifications.send.mockClear();
+    mockTestMode.isEnabled.mockClear();
+    mockAudit.log.mockClear();
 
     // Reset default return values
     mockPrisma.contract.findUnique.mockResolvedValue(mockContract);
@@ -74,18 +91,24 @@ describe('KycService', () => {
     mockPrisma.kycVerification.findFirst.mockResolvedValue(mockKycRecord);
     mockPrisma.kycVerification.update.mockResolvedValue(mockKycRecord);
     mockNotifications.send.mockResolvedValue({ id: 'notif-1', status: 'SENT' });
+    mockTestMode.isEnabled.mockResolvedValue(false);
+    mockAudit.log.mockResolvedValue(undefined);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         KycService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: NotificationsService, useValue: mockNotifications },
+        { provide: TestModeService, useValue: mockTestMode },
+        { provide: AuditService, useValue: mockAudit },
       ],
     }).compile();
 
     service = module.get<KycService>(KycService);
     prisma = module.get(PrismaService);
     notifications = module.get(NotificationsService);
+    testMode = module.get(TestModeService);
+    audit = module.get(AuditService);
   });
 
   // ─── sendOtp ─────────────────────────────────────────
@@ -261,6 +284,66 @@ describe('KycService', () => {
       prisma.kycVerification.findFirst.mockResolvedValueOnce(null);
 
       await expect(service.verifyOtp('contract-1', '123456')).rejects.toThrow(BadRequestException);
+    });
+
+    // ─── test-mode bypass (OWNER-gated UAT) ───────────────
+    describe('when test-mode is ON', () => {
+      beforeEach(() => {
+        testMode.isEnabled.mockResolvedValue(true);
+      });
+
+      it('should succeed even with a wrong OTP and mark the row OTP_VERIFIED', async () => {
+        // Wrong code — would normally throw "OTP ไม่ถูกต้อง". Test-mode bypasses
+        // the hash check but MUST still reproduce the real success side-effect.
+        prisma.kycVerification.findFirst.mockResolvedValueOnce({
+          ...mockKycRecord,
+          otpHash: 'correct-hash-that-wont-match',
+        });
+
+        const result = await service.verifyOtp('contract-1', '000000');
+
+        expect(result.verified).toBe(true);
+        // Same mutation the real success branch performs.
+        expect(prisma.kycVerification.update).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: { id: mockKycRecord.id },
+            data: expect.objectContaining({ status: 'OTP_VERIFIED' }),
+          }),
+        );
+        // otpAttempts must NOT be incremented (no failed-attempt path taken).
+        expect(prisma.kycVerification.update).not.toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({ otpAttempts: expect.anything() }),
+          }),
+        );
+      });
+
+      it('should write a KYC_OTP_BYPASSED_TEST_MODE audit log', async () => {
+        await service.verifyOtp('contract-1', '000000', {
+          userId: 'user-1',
+          ipAddress: '127.0.0.1',
+          userAgent: 'test-agent',
+        });
+
+        expect(audit.log).toHaveBeenCalledWith(
+          expect.objectContaining({
+            action: 'KYC_OTP_BYPASSED_TEST_MODE',
+            entity: 'contract',
+            entityId: 'contract-1',
+            userId: 'user-1',
+          }),
+        );
+      });
+
+      it('should still require a pending KYC record (OTP must have been sent)', async () => {
+        // Bypass skips the code check, not the "an OTP session exists" precondition.
+        prisma.kycVerification.findFirst.mockResolvedValueOnce(null);
+
+        await expect(service.verifyOtp('contract-1', '000000')).rejects.toThrow(
+          BadRequestException,
+        );
+        expect(prisma.kycVerification.update).not.toHaveBeenCalled();
+      });
     });
   });
 

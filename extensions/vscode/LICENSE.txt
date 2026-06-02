@@ -1,0 +1,7 @@
+UNLICENSED — Internal use only by BESTCHOICE team.
+
+This software is proprietary to BESTCHOICE and is not licensed for public
+redistribution, modification, or commercial use outside the BESTCHOICE
+organization.
+
+Copyright (c) BESTCHOICE. All rights reserved.

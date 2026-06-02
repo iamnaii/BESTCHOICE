@@ -2,8 +2,17 @@ import { Injectable, Logger } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CustomerTierService } from './customer-tier.service';
+import { TestModeService } from '../test-mode/test-mode.service';
+import { AuditService } from '../audit/audit.service';
 import type { CustomerTier } from './dto/tier.dto';
 import type { CustomerPreCheckResponse, PreCheckDecision } from './dto/precheck.dto';
+
+/** Actor context for audit trails (optional — controller threads it through). */
+export interface PreCheckActor {
+  userId?: string;
+  ipAddress?: string;
+  userAgent?: string;
+}
 
 const PASS_THRESHOLD = 50;
 const REVIEW_THRESHOLD = 40;
@@ -22,6 +31,8 @@ export class CustomerPreCheckService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tierService: CustomerTierService,
+    private readonly testMode: TestModeService,
+    private readonly audit: AuditService,
   ) {}
 
   decideOutcome(
@@ -101,12 +112,45 @@ export class CustomerPreCheckService {
     return createHash('sha256').update(files.join('|')).digest('hex').slice(0, 16);
   }
 
-  async runPreCheck(input: {
-    nationalId: string;
-    phone: string;
-    bankName?: string;
-    statementFiles?: string[];
-  }): Promise<CustomerPreCheckResponse> {
+  async runPreCheck(
+    input: {
+      nationalId: string;
+      phone: string;
+      bankName?: string;
+      statementFiles?: string[];
+    },
+    actor?: PreCheckActor,
+  ): Promise<CustomerPreCheckResponse> {
+    if (await this.testMode.isEnabled()) {
+      // Test-mode UAT bypass (OWNER-gated SystemConfig TEST_MODE_BYPASS,
+      // default off, audited). Turn OFF before go-live. Skips real credit
+      // precheck so the system can be exercised end-to-end without external
+      // dependencies. No placeholder customer exists yet at this point, so the
+      // audit marker carries the nationalId for traceability instead of a
+      // customerId (audit.log is a no-op without a valid userId FK, so this
+      // only persists when an authenticated actor is threaded through).
+      await this.audit.log({
+        userId: actor?.userId,
+        action: 'CREDIT_PRECHECK_BYPASSED_TEST_MODE',
+        entity: 'customer',
+        newValue: { nationalId: input.nationalId, reason: 'TEST_MODE_BYPASS' },
+        ipAddress: actor?.ipAddress,
+        userAgent: actor?.userAgent,
+      });
+      return {
+        customerId: '',
+        isNewCustomer: false,
+        tier: 'NEW',
+        decision: 'PASS',
+        reasons: [
+          {
+            code: 'TEST_MODE_BYPASS',
+            message: 'โหมดทดสอบเปิดอยู่ — ข้ามการตรวจเครดิตจริง',
+          },
+        ],
+      };
+    }
+
     const stmtHash = this.hashStatement(input.statementFiles);
     const key = this.cacheKey(input.nationalId, stmtHash);
     const cached = this.cache.get(key);

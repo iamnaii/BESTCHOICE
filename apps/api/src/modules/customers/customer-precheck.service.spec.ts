@@ -2,6 +2,8 @@ import { Test } from '@nestjs/testing';
 import { CustomerPreCheckService } from './customer-precheck.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CustomerTierService } from './customer-tier.service';
+import { TestModeService } from '../test-mode/test-mode.service';
+import { AuditService } from '../audit/audit.service';
 
 describe('CustomerPreCheckService — decideOutcome (pure)', () => {
   let service: CustomerPreCheckService;
@@ -12,6 +14,8 @@ describe('CustomerPreCheckService — decideOutcome (pure)', () => {
         CustomerPreCheckService,
         { provide: PrismaService, useValue: {} },
         { provide: CustomerTierService, useValue: {} },
+        { provide: TestModeService, useValue: { isEnabled: jest.fn().mockResolvedValue(false) } },
+        { provide: AuditService, useValue: { log: jest.fn() } },
       ],
     }).compile();
     service = mod.get(CustomerPreCheckService);
@@ -93,6 +97,8 @@ describe('CustomerPreCheckService — runPreCheck soft-delete revival', () => {
         CustomerPreCheckService,
         { provide: PrismaService, useValue: prisma },
         { provide: CustomerTierService, useValue: tierService },
+        { provide: TestModeService, useValue: { isEnabled: jest.fn().mockResolvedValue(false) } },
+        { provide: AuditService, useValue: { log: jest.fn() } },
       ],
     }).compile();
     service = mod.get(CustomerPreCheckService);
@@ -174,6 +180,8 @@ describe('CustomerPreCheckService — runPreCheck soft-delete revival', () => {
             getCustomerTier: jest.fn().mockResolvedValue({ tier: 'NEW', reasons: [] }),
           },
         },
+        { provide: TestModeService, useValue: { isEnabled: jest.fn().mockResolvedValue(false) } },
+        { provide: AuditService, useValue: { log: jest.fn() } },
       ],
     }).compile();
     const svc = fresh.get(CustomerPreCheckService);
@@ -204,6 +212,8 @@ describe('CustomerPreCheckService — runPreCheck soft-delete revival', () => {
             getCustomerTier: jest.fn().mockResolvedValue({ tier: 'NEW', reasons: [] }),
           },
         },
+        { provide: TestModeService, useValue: { isEnabled: jest.fn().mockResolvedValue(false) } },
+        { provide: AuditService, useValue: { log: jest.fn() } },
       ],
     }).compile();
     const svc = fresh.get(CustomerPreCheckService);
@@ -308,6 +318,8 @@ describe('CustomerPreCheckService — runPreCheck soft-delete revival', () => {
             getCustomerTier: jest.fn().mockResolvedValue({ tier: 'NEW', reasons: [] }),
           },
         },
+        { provide: TestModeService, useValue: { isEnabled: jest.fn().mockResolvedValue(false) } },
+        { provide: AuditService, useValue: { log: jest.fn() } },
       ],
     }).compile();
     const svc = fresh.get(CustomerPreCheckService);
@@ -328,5 +340,88 @@ describe('CustomerPreCheckService — runPreCheck soft-delete revival', () => {
       (call: [{ data: { creditCheckStatus?: string } }]) => call[0].data.creditCheckStatus !== undefined,
     );
     expect(statusUpdateCall).toBeDefined();
+  });
+});
+
+// ─── Test-mode bypass (Task 3) ──────────────────────────────────────────────
+describe('CustomerPreCheckService — test-mode bypass', () => {
+  let service: CustomerPreCheckService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let prisma: any;
+  let testMode: { isEnabled: jest.Mock };
+  let audit: { log: jest.Mock };
+
+  beforeEach(async () => {
+    prisma = {
+      customer: { findFirst: jest.fn(), create: jest.fn(), update: jest.fn() },
+      creditCheck: { findFirst: jest.fn(), create: jest.fn() },
+      $transaction: jest.fn(),
+    };
+    testMode = { isEnabled: jest.fn() };
+    audit = { log: jest.fn() };
+    const mod = await Test.createTestingModule({
+      providers: [
+        CustomerPreCheckService,
+        { provide: PrismaService, useValue: prisma },
+        {
+          provide: CustomerTierService,
+          // If the bypass ever falls through to the real logic, this throws
+          // loudly so the test can't accidentally pass via real checks.
+          useValue: {
+            getCustomerTier: jest.fn(() => {
+              throw new Error('real precheck must NOT run when test-mode is ON');
+            }),
+          },
+        },
+        { provide: TestModeService, useValue: testMode },
+        { provide: AuditService, useValue: audit },
+      ],
+    }).compile();
+    service = mod.get(CustomerPreCheckService);
+  });
+
+  it('returns PASS + TEST_MODE_BYPASS reason WITHOUT running real checks when test-mode is ON', async () => {
+    testMode.isEnabled.mockResolvedValue(true);
+
+    const result = await service.runPreCheck({
+      nationalId: '1111111111111',
+      phone: '0810000000',
+    });
+
+    expect(result.decision).toBe('PASS');
+    expect(result.reasons.map((r) => r.code)).toContain('TEST_MODE_BYPASS');
+    // No real-check side effects — no DB reads/writes, no tier lookup.
+    expect(prisma.customer.findFirst).not.toHaveBeenCalled();
+    expect(prisma.customer.create).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('writes a CREDIT_PRECHECK_BYPASSED_TEST_MODE audit marker when bypassing', async () => {
+    testMode.isEnabled.mockResolvedValue(true);
+
+    await service.runPreCheck(
+      { nationalId: '2222222222222', phone: '0820000000' },
+      { userId: 'user-1', ipAddress: '127.0.0.1' },
+    );
+
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'CREDIT_PRECHECK_BYPASSED_TEST_MODE',
+        entity: 'customer',
+        userId: 'user-1',
+      }),
+    );
+  });
+
+  it('falls through to real logic when test-mode is OFF', async () => {
+    testMode.isEnabled.mockResolvedValue(false);
+    // Let the real path reach the tier lookup, where the throwing mock proves
+    // the bypass did NOT short-circuit.
+    prisma.customer.findFirst.mockResolvedValue({ id: 'cust-real', deletedAt: null });
+    await expect(
+      service.runPreCheck({ nationalId: '3333333333333', phone: '0830000000' }),
+    ).rejects.toThrow('real precheck must NOT run when test-mode is ON');
+    expect(prisma.customer.findFirst).toHaveBeenCalled();
+    expect(audit.log).not.toHaveBeenCalled();
   });
 });

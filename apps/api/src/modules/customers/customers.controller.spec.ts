@@ -153,8 +153,16 @@ describe('CustomersController PII (Phase 5)', () => {
       };
       const spy = jest.spyOn(preCheckService, 'runPreCheck').mockResolvedValue(mockResp);
       const body = { nationalId: '1234567890123', phone: '0812345678' };
-      const result = await controller.preCheck(body);
-      expect(spy).toHaveBeenCalledWith(body);
+      const req = {
+        user: { id: 'user-1', role: 'SALES' },
+        ip: '127.0.0.1',
+        headers: { 'user-agent': 'jest' },
+      } as unknown as Parameters<typeof controller.preCheck>[1];
+      const result = await controller.preCheck(body, req);
+      expect(spy).toHaveBeenCalledWith(
+        body,
+        expect.objectContaining({ userId: 'user-1' }),
+      );
       expect(result.decision).toBe('REVIEW');
     });
   });

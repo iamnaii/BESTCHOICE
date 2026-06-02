@@ -17,6 +17,7 @@ import {
 } from './dto/trade-in.dto';
 import { TradeInVoucherService } from './services/voucher.service';
 import { ContactResolverService } from '../contacts/contact-resolver.service';
+import { CustomerPiiService } from '../customers/customer-pii.service';
 import { encryptPII, decryptPII, isEncrypted } from '../../utils/crypto.util';
 import { Prisma, PrismaClient } from '@prisma/client';
 
@@ -30,7 +31,19 @@ export class TradeInService {
     private storage: StorageService,
     private voucher: TradeInVoucherService,
     private contactResolver: ContactResolverService,
+    private pii: CustomerPiiService,
   ) {}
+
+  /**
+   * Normalize a Thai national id the SAME way CustomersService does
+   * (customers.service.ts) — strip spaces + dashes, uppercase — BEFORE
+   * hashing. Without identical normalization the trade-in seller hash would
+   * never collide with the customer's nationalIdHash and the resolver would
+   * fail to unify a seller who is also an existing customer.
+   */
+  private normalizeNationalId(raw: string): string {
+    return raw.replace(/[\s-]/g, '').toUpperCase();
+  }
 
   // ─── PII encryption helpers (Phase 3) ────────────────────
   private get piiKey(): string {
@@ -189,14 +202,32 @@ export class TradeInService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      // Task 11: link a Contact (party master) for the trade-in seller.
-      // Trade-in sellers are KEYLESS (free-text sellerName/sellerPhone, no
-      // taxId / national-id hash) → pass both keys as null so the resolver
-      // ALWAYS creates a fresh Contact (safe no-auto-merge policy).
+      // Task 3 (contact-hardening): unify the trade-in seller with their
+      // existing party Contact when we can derive a national-id hash.
+      //  - customerId present → reuse the customer's own nationalIdHash so a
+      //    buyer who also sells maps onto the SAME Contact.
+      //  - else sellerIdCardNumber present → hash it the SAME way Customer
+      //    does (normalize spaces/dashes + uppercase, then sha256) so the
+      //    resolver matches an existing party keyed by that id.
+      //  - neither → keyless (null): resolver creates a fresh Contact
+      //    (safe no-auto-merge policy for anonymous walk-ins).
+      let sellerNationalIdHash: string | null = null;
+      if (dto.customerId) {
+        const cust = await tx.customer.findUnique({
+          where: { id: dto.customerId },
+          select: { nationalIdHash: true },
+        });
+        sellerNationalIdHash = cust?.nationalIdHash ?? null;
+      } else if (dto.sellerIdCardNumber) {
+        sellerNationalIdHash = this.pii.hash(
+          this.normalizeNationalId(dto.sellerIdCardNumber),
+        );
+      }
+
       const sellerContact = await this.contactResolver.findOrCreateByNaturalKey(tx, {
         name: dto.sellerName ?? 'ไม่ระบุชื่อ',
         taxId: null,
-        nationalIdHash: null,
+        nationalIdHash: sellerNationalIdHash,
         phone: dto.sellerPhone ?? null,
         role: 'TRADE_IN_SELLER',
       });

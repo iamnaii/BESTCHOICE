@@ -5,6 +5,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { TradeInVoucherService } from './services/voucher.service';
 import { ContactResolverService } from '../contacts/contact-resolver.service';
+import { CustomerPiiService } from '../customers/customer-pii.service';
 import { encryptPII } from '../../utils/crypto.util';
 
 // ---------------------------------------------------------------------------
@@ -63,6 +64,8 @@ describe('TradeInService', () => {
   let voucher: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let contactResolver: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let pii: any;
 
   beforeEach(async () => {
     prisma = {
@@ -113,6 +116,10 @@ describe('TradeInService', () => {
         .mockResolvedValue({ id: 'contact-1', name: 'สมหญิง รักดี' }),
     };
 
+    pii = {
+      hash: jest.fn().mockReturnValue(null),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TradeInService,
@@ -120,6 +127,7 @@ describe('TradeInService', () => {
         { provide: StorageService, useValue: storage },
         { provide: TradeInVoucherService, useValue: voucher },
         { provide: ContactResolverService, useValue: contactResolver },
+        { provide: CustomerPiiService, useValue: pii },
       ],
     }).compile();
 
@@ -258,6 +266,80 @@ describe('TradeInService', () => {
           name: 'ไม่ระบุชื่อ',
           role: 'TRADE_IN_SELLER',
         }),
+      );
+    });
+
+    // ── Task 3: unify trade-in seller with existing Customer/Contact ──
+    it('keys trade-in seller by the customer nationalIdHash when customerId given', async () => {
+      // outer guard: customer exists + inside-tx lookup returns the hash
+      prisma.customer.findUnique.mockResolvedValue({ nationalIdHash: 'h1' });
+      prisma.tradeIn.findMany.mockResolvedValue([]);
+      prisma.tradeIn.create.mockResolvedValue(makeTradeIn());
+      contactResolver.findOrCreateByNaturalKey.mockResolvedValue({ id: 'cShared' });
+
+      await service.create({
+        branchId: 'branch-1',
+        deviceBrand: 'Samsung',
+        deviceModel: 'Galaxy S22',
+        customerId: 'cus1',
+        sellerName: 'A',
+      } as never);
+
+      expect(contactResolver.findOrCreateByNaturalKey).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ role: 'TRADE_IN_SELLER', nationalIdHash: 'h1' }),
+      );
+    });
+
+    it('keys by hashed normalized sellerIdCardNumber when no customerId', async () => {
+      pii.hash.mockReturnValue('hcard');
+      prisma.tradeIn.findMany.mockResolvedValue([]);
+      prisma.tradeIn.create.mockResolvedValue(makeTradeIn());
+      contactResolver.findOrCreateByNaturalKey.mockResolvedValue({ id: 'c2' });
+
+      // formatted ID — normalizes to the valid-checksum VALID_THAI_ID
+      await service.create({
+        branchId: 'branch-1',
+        deviceBrand: 'Samsung',
+        deviceModel: 'Galaxy S22',
+        sellerName: 'B',
+        sellerIdCardNumber: VALID_THAI_ID,
+      } as never);
+
+      expect(pii.hash).toHaveBeenCalledWith(VALID_THAI_ID);
+      expect(contactResolver.findOrCreateByNaturalKey).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ nationalIdHash: 'hcard' }),
+      );
+    });
+
+    it('normalizes sellerIdCardNumber (strip spaces/dashes, uppercase) before hashing', async () => {
+      pii.hash.mockReturnValue('hcard');
+      prisma.tradeIn.findMany.mockResolvedValue([]);
+      prisma.tradeIn.create.mockResolvedValue(makeTradeIn());
+
+      // sellerIdCardNumber DTO is @Length(13,13) so a formatted string can't
+      // arrive here; instead assert the service-level normalization helper
+      // collapses spaces/dashes + uppercases EXACTLY like CustomersService.
+      const normalized = (service as any).normalizeNationalId('3-1006 00717899');
+      expect(normalized).toBe(VALID_THAI_ID);
+    });
+
+    it('stays keyless (nationalIdHash null) when neither customerId nor sellerIdCardNumber', async () => {
+      prisma.tradeIn.findMany.mockResolvedValue([]);
+      prisma.tradeIn.create.mockResolvedValue(makeTradeIn());
+      contactResolver.findOrCreateByNaturalKey.mockResolvedValue({ id: 'c3' });
+
+      await service.create({
+        branchId: 'branch-1',
+        deviceBrand: 'Samsung',
+        deviceModel: 'Galaxy S22',
+        sellerName: 'C',
+      } as never);
+
+      expect(contactResolver.findOrCreateByNaturalKey).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ nationalIdHash: null }),
       );
     });
   });

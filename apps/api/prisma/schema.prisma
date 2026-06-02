@@ -814,7 +814,6 @@ model Contact {
   tradeInsAsSeller       TradeIn[]                 @relation("TradeInSeller")
   externalFinanceCompany ExternalFinanceCompany[]
 
-  @@unique([taxId])
   @@index([nationalIdHash])
   @@index([deletedAt])
   @@map("contacts")

@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, Logger, Optional, NotFoundException, BadRequestException, ForbiddenException, InternalServerErrorException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
 import { formatDateShort } from '../../utils/thai-date.util';
@@ -16,6 +16,7 @@ import { JournalAutoService } from '../journal/journal-auto.service';
 import { ContractActivation1ATemplate } from '../journal/cpa-templates/contract-activation-1a.template';
 import { ProductsService } from '../products/products.service';
 import { ContractExchangeService } from '../contract-exchange/contract-exchange.service';
+import { TestModeService } from '../test-mode/test-mode.service';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -28,6 +29,7 @@ export class ContractWorkflowService {
     private contractActivation1ATemplate: ContractActivation1ATemplate,
     private productsService: ProductsService,
     private contractExchangeService: ContractExchangeService,
+    @Optional() private testMode?: TestModeService,
   ) {}
 
   /**
@@ -156,10 +158,15 @@ export class ContractWorkflowService {
 
     // Enforce mandatory steps before submit
     const isDev = process.env.NODE_ENV !== 'production';
+    // Bypass the credit gate in dev OR when the OWNER test-mode toggle is on.
+    // Fail-safe: if TestModeService isn't wired in or the read throws, the read
+    // returns false so the production gate stays active.
+    const testModeOn = this.testMode ? await this.testMode.isEnabled() : false;
+    const creditGateBypass = isDev || testModeOn;
 
     // Step 1: Credit check must be approved
     if (!contract.creditCheck || contract.creditCheck.status !== 'APPROVED') {
-      if (isDev) {
+      if (creditGateBypass) {
         this.logger.warn(`[DEV] Skipping credit check requirement for contract ${id}`);
       } else {
         throw new BadRequestException('ต้องผ่านการตรวจเครดิตก่อนส่งตรวจสอบ (ขั้นตอนที่ 1)');

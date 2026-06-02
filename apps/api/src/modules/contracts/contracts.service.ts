@@ -20,6 +20,8 @@ import { loadInstallmentConfig, resolveInstallmentParams, resolveVatPctForBranch
 import { generateContractNumber } from '../../utils/sequence.util';
 import { d } from '../../utils/decimal.util';
 import { WarrantyService } from '../warranty/warranty.service';
+import { TestModeService } from '../test-mode/test-mode.service';
+import { AuditService } from '../audit/audit.service';
 import {
   validateIMEI,
   validateThaiPhone,
@@ -38,7 +40,19 @@ export class ContractsService {
     private prisma: PrismaService,
     @Optional() private warrantyService?: WarrantyService,
     @Optional() private cancellationTemplate?: ContractCancellationTemplate,
+    @Optional() private testMode?: TestModeService,
+    @Optional() private audit?: AuditService,
   ) {}
+
+  /**
+   * Whether the OWNER test-mode bypass is currently enabled. Fail-safe to
+   * false: if TestModeService isn't wired in (e.g. a narrow unit test) or the
+   * toggle read throws, the real credit-check gates stay active.
+   */
+  private async isTestModeEnabled(): Promise<boolean> {
+    if (!this.testMode) return false;
+    return this.testMode.isEnabled();
+  }
 
   async findAll(filters: {
     status?: string;
@@ -221,8 +235,11 @@ export class ContractsService {
       errors.push('ต้องมีบุคคลค้ำประกัน/ผู้ติดต่อฉุกเฉิน อย่างน้อย 1 คน');
     }
 
-    // 7. Check credit check status
-    if (!contract.creditCheck || contract.creditCheck.status !== 'APPROVED') {
+    // 7. Check credit check status (test-mode bypass honored)
+    if (
+      (!contract.creditCheck || contract.creditCheck.status !== 'APPROVED') &&
+      !(await this.isTestModeEnabled())
+    ) {
       errors.push('ต้องผ่านการตรวจเครดิตก่อน');
     }
 
@@ -338,10 +355,16 @@ export class ContractsService {
     );
     const { interestTotal, financedAmount, monthlyPayment } = calc;
 
+    // Test-mode bypass: when the OWNER toggle is on, the contract-side credit
+    // gate is skipped. Read once here (outside the retry loop) so retries don't
+    // re-query and so audit is written at most once.
+    const testModeOn = await this.isTestModeEnabled();
+
     // Create contract + payment schedule in transaction
     // Retry up to 3 times on unique constraint / serialization errors
     const MAX_RETRIES = 3;
     let contract;
+    let creditGateBypassed = false;
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       try {
         contract = await this.prisma.$transaction(async (tx) => {
@@ -350,9 +373,13 @@ export class ContractsService {
             where: { customerId: dto.customerId, status: 'APPROVED', contractId: null },
             orderBy: { createdAt: 'desc' },
           });
-          if (!approvedCreditCheck) {
+          // Honor test-mode: only throw when there's no approved credit check
+          // AND test-mode is OFF. When bypassed, approvedCreditCheck stays null
+          // and the downstream linking step below is skipped.
+          if (!approvedCreditCheck && !testModeOn) {
             throw new BadRequestException('ลูกค้าต้องผ่านการตรวจเครดิตก่อนทำสัญญา');
           }
+          creditGateBypassed = !approvedCreditCheck && testModeOn;
 
           // Verify product is still available inside transaction
           const currentProduct = await tx.product.findUnique({ where: { id: dto.productId } });
@@ -428,11 +455,16 @@ export class ContractsService {
             data: { status: 'RESERVED' },
           });
 
-          // Link the approved credit check to this contract
-          await tx.creditCheck.update({
-            where: { id: approvedCreditCheck.id },
-            data: { contractId: newContract.id },
-          });
+          // Link the approved credit check to this contract.
+          // Guarded: when the credit gate was bypassed in test-mode there is no
+          // approvedCreditCheck to link, so this step is skipped (creditCheckId
+          // / contractId link is simply left unset — no crash on null).
+          if (approvedCreditCheck) {
+            await tx.creditCheck.update({
+              where: { id: approvedCreditCheck.id },
+              data: { contractId: newContract.id },
+            });
+          }
 
           return newContract;
         }, { timeout: 15000 });
@@ -481,6 +513,18 @@ export class ContractsService {
     }
 
     const created = await this.findOne(contract!.id);
+
+    // Audit the test-mode credit-gate bypass (best-effort; AuditService no-ops
+    // without a userId). salespersonId is the actor that created the contract.
+    if (creditGateBypassed && this.audit) {
+      await this.audit.log({
+        userId: salespersonId,
+        action: 'CONTRACT_CREDIT_GATE_BYPASSED_TEST_MODE',
+        entity: 'contract',
+        entityId: created.id,
+        newValue: { customerId: dto.customerId, reason: 'TEST_MODE_BYPASS' },
+      });
+    }
 
     // Auto-set shop warranty for used phones (fire-and-forget)
     if (this.warrantyService) {

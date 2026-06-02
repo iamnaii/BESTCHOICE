@@ -12,6 +12,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 import { JwtAudienceGuard } from './guards/jwt-audience.guard';
 import { EmailModule } from '../email/email.module';
 import { LineOaModule } from '../line-oa/line-oa.module';
+import { TestModeModule } from '../test-mode/test-mode.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { LineOaModule } from '../line-oa/line-oa.module';
     }),
     EmailModule,
     forwardRef(() => LineOaModule),
+    TestModeModule,
   ],
   controllers: [AuthController],
   providers: [

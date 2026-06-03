@@ -29,7 +29,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import QueryBoundary from '@/components/QueryBoundary';
 import { formatDateShortThai, formatDateTime, formatNumberDecimal } from '@/utils/formatters';
-import { getErrorMessage } from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUiFlags } from '@/hooks/useUiFlags';
 import { assetsApi } from './api';
@@ -58,6 +58,23 @@ export function mapAssetStatusToIcab(status: string): IcabStatus {
 
 const fmt = (n: string | number | null | undefined): string =>
   n == null ? '-' : formatNumberDecimal(Number(n));
+
+/** Fetch the server-rendered ใบรับสินทรัพย์ PDF (JWT in-memory → axios) and open it. */
+async function openAssetReceiptPdf(assetId: string, assetCode: string): Promise<void> {
+  const res = await api.get(`/assets/${assetId}/receipt.pdf`, { responseType: 'blob' });
+  const blob = new Blob([res.data], { type: 'application/pdf' });
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, '_blank');
+  if (!win) {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${assetCode}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
 
 export default function AssetDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -125,6 +142,12 @@ export default function AssetDetailPage() {
       setShowReverseDisposal(false);
     },
     onError: (e) => toast.error(getErrorMessage(e)),
+  });
+
+  const printMutation = useMutation({
+    mutationFn: ({ assetId, assetCode }: { assetId: string; assetCode: string }) =>
+      openAssetReceiptPdf(assetId, assetCode),
+    onError: () => toast.error('ไม่สามารถสร้างใบรับสินทรัพย์ PDF ได้'),
   });
 
   const transferMutation = useMutation({
@@ -526,6 +549,7 @@ export default function AssetDetailPage() {
           onClose={() => navigate('/assets')}
           onPost={() => postMutation.mutate()}
           onReverse={(payload) => reverseMutation.mutate(payload)}
+          onPrint={() => printMutation.mutate({ assetId: asset.id, assetCode: asset.assetCode })}
         />
       )}
     </div>

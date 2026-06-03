@@ -267,6 +267,18 @@ export const assetsApi = {
     return data?.data ?? [];
   },
 
+  // Vendor master = สมุดผู้ติดต่อ (Contact) rows with the SUPPLIER role — the
+  // canonical party book the owner maintains. The asset vendor combobox lists
+  // these (NOT the separate legacy Supplier table) so a contact added in
+  // สมุดผู้ติดต่อ shows up immediately.
+  vendorContacts: async (): Promise<SupplierLite[]> => {
+    const { data } = await api.get<{
+      data: Array<{ id: string; name: string; taxId: string | null }>;
+    }>('/contacts', { params: { role: 'SUPPLIER', limit: 200 } });
+    const rows = data?.data ?? [];
+    return rows.map((c) => ({ id: c.id, name: c.name, taxId: c.taxId }));
+  },
+
   // Distinct free-text vendor names previously used on assets — "เคยใช้"
   // suggestions so a one-off name can be reused without registering a Supplier.
   vendorNames: async (): Promise<string[]> => {

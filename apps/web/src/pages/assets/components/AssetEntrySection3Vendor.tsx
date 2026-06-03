@@ -60,13 +60,12 @@ export function AssetEntrySection3Vendor() {
   const paymentMethod = watch('paymentMethod');
   const paymentAccount = watch('paymentAccount');
   const supplierName = watch('supplierName') ?? '';
-  const vendorId = watch('vendorId');
 
-  // Suppliers list (P6) — cached for ~5 min; freshly created entries are
-  // injected via invalidateQueries below.
+  // Vendor master = สมุดผู้ติดต่อ (Contacts with the SUPPLIER role). Cached ~5 min;
+  // a freshly created entry is injected via invalidateQueries below.
   const suppliersQuery = useQuery({
-    queryKey: ['suppliers-list'],
-    queryFn: () => assetsApi.suppliersList(),
+    queryKey: ['vendor-contacts'],
+    queryFn: () => assetsApi.vendorContacts(),
     staleTime: 5 * 60 * 1000,
   });
   const suppliers = suppliersQuery.data ?? [];
@@ -127,10 +126,18 @@ export function AssetEntrySection3Vendor() {
     return usedNames.some((n) => n.trim().toLowerCase() === q);
   }, [searchValue, usedNames]);
 
+  // Is the current name a known contact (สมุดผู้ติดต่อ) vs a one-off free-text?
+  const isKnownVendor = useMemo(() => {
+    const n = supplierName.trim().toLowerCase();
+    return !!n && suppliers.some((s) => s.name.trim().toLowerCase() === n);
+  }, [suppliers, supplierName]);
+
+  // Pick a vendor from สมุดผู้ติดต่อ → fill name + taxId. We DON'T set vendorId:
+  // it's an FK to the legacy Supplier table, but list items are Contact ids.
   const selectSupplier = (s: SupplierLite) => {
-    setValue('vendorId', s.id, { shouldDirty: true });
     setValue('supplierName', s.name, { shouldDirty: true, shouldValidate: true });
     setValue('supplierTaxId', s.taxId ?? '', { shouldDirty: true });
+    setValue('vendorId', undefined, { shouldDirty: true });
     setPopoverOpen(false);
     setSearchValue('');
   };
@@ -158,9 +165,11 @@ export function AssetEntrySection3Vendor() {
     mutationFn: (input: { name: string; phone: string; taxId?: string }) =>
       assetsApi.suppliersCreate(input),
     onSuccess: (created) => {
-      toast.success(`เพิ่มผู้ขาย "${created.name}" แล้ว`);
-      queryClient.invalidateQueries({ queryKey: ['suppliers-list'] });
-      // Auto-select the new entry so the form picks up vendorId + taxId.
+      toast.success(`เพิ่มผู้ขาย "${created.name}" ลงสมุดผู้ติดต่อแล้ว`);
+      // suppliersCreate also creates a Contact (role SUPPLIER) — refresh the
+      // contact-backed vendor list so the new entry appears.
+      queryClient.invalidateQueries({ queryKey: ['vendor-contacts'] });
+      // Auto-fill the new name + taxId.
       selectSupplier(created);
       setCreateOpen(false);
       setNewName('');
@@ -221,7 +230,7 @@ export function AssetEntrySection3Vendor() {
                 )}
               >
                 <span className="flex min-w-0 items-center gap-1.5">
-                  {vendorId ? (
+                  {isKnownVendor ? (
                     <Check className="size-3.5 shrink-0 text-primary" />
                   ) : supplierName ? (
                     <Pencil className="size-3.5 shrink-0 text-muted-foreground" />
@@ -269,13 +278,13 @@ export function AssetEntrySection3Vendor() {
                   ) : (
                     <>
                       {filteredSuppliers.length > 0 && (
-                        <CommandGroup heading="ผู้ขายในทะเบียน">
+                        <CommandGroup heading="ผู้ขาย (สมุดผู้ติดต่อ)">
                           {filteredSuppliers.map((s) => (
                             <CommandItem key={s.id} value={s.id} onSelect={() => selectSupplier(s)}>
                               <Check
                                 className={cn(
                                   'mr-2 size-4 shrink-0',
-                                  vendorId === s.id ? 'opacity-100' : 'opacity-0',
+                                  s.name === supplierName ? 'opacity-100' : 'opacity-0',
                                 )}
                               />
                               <div className="flex min-w-0 flex-col">
@@ -342,7 +351,7 @@ export function AssetEntrySection3Vendor() {
                       <span className="min-w-0">
                         <span className="block truncate text-sm leading-snug text-foreground">
                           {searchValue.trim()
-                            ? `บันทึก "${searchValue.trim()}" ลงทะเบียน`
+                            ? `บันทึก "${searchValue.trim()}" ลงสมุดผู้ติดต่อ`
                             : 'เพิ่มผู้ขายใหม่'}
                         </span>
                         <span className="block text-xs leading-snug text-muted-foreground">
@@ -355,13 +364,13 @@ export function AssetEntrySection3Vendor() {
               </Command>
             </PopoverContent>
           </Popover>
-          {(vendorId || supplierName) && (
+          {supplierName && (
             <button
               type="button"
               onClick={clearSupplier}
               className="mt-1 text-xs text-muted-foreground hover:text-foreground underline"
             >
-              {vendorId ? 'ล้างการเชื่อมผู้ขาย' : 'ล้างชื่อผู้ขาย'}
+              ล้างชื่อผู้ขาย
             </button>
           )}
           {errors.supplierName && (

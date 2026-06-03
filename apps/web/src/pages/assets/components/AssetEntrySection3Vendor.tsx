@@ -8,7 +8,7 @@ import { useMemo, useState } from 'react';
 import { useFormContext } from 'react-hook-form';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Check, ChevronsUpDown, Plus } from 'lucide-react';
+import { Check, ChevronsUpDown, Pencil, Plus } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -28,7 +28,6 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-  CommandSeparator,
 } from '@/components/ui/command';
 import {
   Dialog,
@@ -185,104 +184,123 @@ export function AssetEntrySection3Vendor() {
                 type="button"
                 variant="outline"
                 role="combobox"
-                aria-label="ผู้ขาย"
                 aria-expanded={popoverOpen}
+                aria-invalid={!!errors.supplierName}
                 className={cn(
                   'w-full justify-between font-normal',
                   !supplierName && 'text-muted-foreground',
                 )}
               >
-                <span className="truncate">{triggerLabel}</span>
-                <ChevronsUpDown className="ms-2 size-4 shrink-0 opacity-50" />
+                <span className="flex min-w-0 items-center gap-1.5">
+                  {vendorId ? (
+                    <Check className="size-3.5 shrink-0 text-primary" />
+                  ) : supplierName ? (
+                    <Pencil className="size-3.5 shrink-0 text-muted-foreground" />
+                  ) : null}
+                  <span className="truncate leading-snug" title={supplierName || undefined}>
+                    {triggerLabel}
+                  </span>
+                </span>
+                <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
               <Command shouldFilter={false}>
                 <CommandInput
-                  placeholder="ค้นหาผู้ขาย..."
+                  placeholder="ค้นหา หรือพิมพ์ชื่อผู้ขายใหม่..."
                   value={searchValue}
                   onValueChange={setSearchValue}
+                  onKeyDown={(e) => {
+                    // Enter on a typed name with no supplier in the list → use it
+                    // as free text. The list is empty here so cmdk has nothing to
+                    // select; this never hijacks a real supplier pick.
+                    if (
+                      e.key === 'Enter' &&
+                      searchValue.trim() &&
+                      filteredSuppliers.length === 0
+                    ) {
+                      e.preventDefault();
+                      commitFreeText(searchValue);
+                    }
+                  }}
                 />
                 <CommandList>
                   {suppliersQuery.isLoading ? (
                     <CommandEmpty>กำลังโหลด...</CommandEmpty>
-                  ) : (
-                    <>
-                      {filteredSuppliers.length > 0 && (
-                        <CommandGroup heading="ผู้ขาย">
-                          {filteredSuppliers.map((s) => (
-                            <CommandItem
-                              key={s.id}
-                              value={s.id}
-                              onSelect={() => selectSupplier(s)}
-                            >
-                              <Check
-                                className={cn(
-                                  'me-2 size-4',
-                                  vendorId === s.id ? 'opacity-100' : 'opacity-0',
-                                )}
-                              />
-                              <div className="flex flex-col">
-                                <span>{s.name}</span>
-                                {s.taxId && (
-                                  <span className="text-xs text-muted-foreground">
-                                    {s.taxId}
-                                  </span>
-                                )}
-                              </div>
-                            </CommandItem>
-                          ))}
-                        </CommandGroup>
-                      )}
-                      {filteredSuppliers.length === 0 && (
-                        <div className="px-3 py-2 text-sm text-muted-foreground leading-snug">
-                          {searchValue.trim()
-                            ? 'ไม่พบผู้ขายเดิม — กด "ใช้ชื่อนี้" เพื่อใช้ชื่อที่พิมพ์ได้เลย'
-                            : suppliers.length === 0
-                              ? 'ยังไม่มีผู้ขายในระบบ — พิมพ์ชื่อผู้ขายเพื่อใช้งานได้เลย'
-                              : 'พิมพ์เพื่อค้นหา'}
-                        </div>
-                      )}
-                      {/* Never a dead end: typing a name lets you "ใช้ชื่อนี้"
-                          (free-text supplierName, no master record needed), and
-                          optionally save it to the supplier master as well. */}
-                      {!hasExactMatch && (
-                        <>
-                          {filteredSuppliers.length > 0 && <CommandSeparator />}
-                          <CommandGroup>
-                            {searchValue.trim() && (
-                              <CommandItem
-                                onSelect={() => commitFreeText(searchValue)}
-                                value="__usetext__"
-                                className="text-foreground"
-                              >
-                                <Check className="me-2 size-4 text-primary" />
-                                <span className="truncate">
-                                  ใช้ชื่อ{' '}
-                                  <span className="font-medium">
-                                    &quot;{searchValue.trim()}&quot;
-                                  </span>
-                                </span>
-                              </CommandItem>
+                  ) : filteredSuppliers.length > 0 ? (
+                    <CommandGroup heading="ผู้ขายในทะเบียน">
+                      {filteredSuppliers.map((s) => (
+                        <CommandItem key={s.id} value={s.id} onSelect={() => selectSupplier(s)}>
+                          <Check
+                            className={cn(
+                              'mr-2 size-4 shrink-0',
+                              vendorId === s.id ? 'opacity-100' : 'opacity-0',
                             )}
-                            <CommandItem
-                              onSelect={openCreateDialog}
-                              value="__create__"
-                              className="text-muted-foreground"
-                            >
-                              <Plus className="me-2 size-4" />
-                              <span className="truncate">
-                                {searchValue.trim()
-                                  ? `บันทึก "${searchValue.trim()}" ลงทะเบียนผู้ขาย`
-                                  : 'เพิ่มผู้ขายใหม่'}
-                              </span>
-                            </CommandItem>
-                          </CommandGroup>
-                        </>
-                      )}
-                    </>
+                          />
+                          <div className="flex min-w-0 flex-col">
+                            <span className="truncate leading-snug" title={s.name}>
+                              {s.name}
+                            </span>
+                            {s.taxId && (
+                              <span className="text-xs text-muted-foreground">{s.taxId}</span>
+                            )}
+                          </div>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  ) : (
+                    <CommandEmpty className="px-3 py-6 text-center leading-snug">
+                      {searchValue.trim()
+                        ? 'ไม่พบผู้ขายในทะเบียน'
+                        : suppliers.length === 0
+                          ? 'ยังไม่มีผู้ขายในทะเบียน'
+                          : 'พิมพ์เพื่อค้นหา'}
+                    </CommandEmpty>
                   )}
                 </CommandList>
+                {/* Actions live OUTSIDE the list so they're never in cmdk's
+                    highlight/Enter cycle — typing a new name can't accidentally
+                    select a partial-match supplier, and the lone CTA is no longer
+                    rendered as a big auto-highlighted block. Never a dead end. */}
+                {!hasExactMatch && (
+                  <div className="border-t border-border p-1">
+                    {searchValue.trim() && (
+                      <button
+                        type="button"
+                        onClick={() => commitFreeText(searchValue)}
+                        className="flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-accent"
+                      >
+                        <Check className="mt-0.5 size-4 shrink-0 text-primary" />
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm leading-snug text-foreground">
+                            ใช้ชื่อ{' '}
+                            <span className="font-medium">&quot;{searchValue.trim()}&quot;</span>
+                          </span>
+                          <span className="block text-xs leading-snug text-muted-foreground">
+                            ใช้ครั้งเดียว ไม่บันทึกลงทะเบียน
+                          </span>
+                        </span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={openCreateDialog}
+                      className="flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-accent"
+                    >
+                      <Plus className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm leading-snug text-foreground">
+                          {searchValue.trim()
+                            ? `บันทึก "${searchValue.trim()}" ลงทะเบียน`
+                            : 'เพิ่มผู้ขายใหม่'}
+                        </span>
+                        <span className="block text-xs leading-snug text-muted-foreground">
+                          บันทึกถาวร · ใช้ซ้ำได้ (ต้องมีเบอร์โทร)
+                        </span>
+                      </span>
+                    </button>
+                  </div>
+                )}
               </Command>
             </PopoverContent>
           </Popover>

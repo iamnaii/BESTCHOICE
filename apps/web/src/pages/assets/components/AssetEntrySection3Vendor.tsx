@@ -40,6 +40,7 @@ import {
 } from '@/components/ui/dialog';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { cn } from '@/lib/utils';
+import { accountDisplayName } from '@/utils/accountName';
 import { assetsApi } from '../api';
 import type { AssetEntryFormValues } from '../schema';
 import { CASH_ACCOUNTS, type SupplierLite } from '../types';
@@ -311,7 +312,7 @@ export function AssetEntrySection3Vendor() {
             <SelectContent>
               {CASH_ACCOUNTS.map((c) => (
                 <SelectItem key={c.code} value={c.code}>
-                  {c.code} {c.name}
+                  {accountDisplayName(c.name)}
                 </SelectItem>
               ))}
             </SelectContent>

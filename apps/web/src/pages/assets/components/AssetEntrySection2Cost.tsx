@@ -184,8 +184,8 @@ export function AssetEntrySection2Cost({ calc }: { calc: CalculationResult }) {
                   <SelectValue placeholder="เลือก" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="11-4101">11-4101 ภาษีซื้อ (เครดิตได้)</SelectItem>
-                  <SelectItem value="11-4102">11-4102 ภาษีซื้อรอเรียกเก็บ</SelectItem>
+                  <SelectItem value="11-4101">ภาษีซื้อ</SelectItem>
+                  <SelectItem value="11-4102">ภาษีซื้อรอเรียกเก็บ</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -236,8 +236,8 @@ export function AssetEntrySection2Cost({ calc }: { calc: CalculationResult }) {
                     <SelectValue placeholder="เลือก" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="21-3102">21-3102 PND3 ค้างจ่าย</SelectItem>
-                    <SelectItem value="21-3103">21-3103 PND53 ค้างจ่าย</SelectItem>
+                    <SelectItem value="21-3102">PND3 ค้างจ่าย</SelectItem>
+                    <SelectItem value="21-3103">PND53 ค้างจ่าย</SelectItem>
                   </SelectContent>
                 </Select>
                 {errors.whtAccount && (

@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { Asset, Branch, categoryOptions, inputClass, fmt, AssetForm as AssetFormType } from '../types';
 import { useCoaGroups } from '@/hooks/useCoa';
+import { accountDisplayName } from '@/utils/accountName';
 
 interface AssetFormProps {
   editingAsset: Asset | null;
@@ -310,7 +311,7 @@ export default function AssetForm({
                     <option value="">-- เลือก --</option>
                     {costAccounts.map((a) => (
                       <option key={a.code} value={a.code}>
-                        {a.code} {a.name}
+                        {accountDisplayName(a.name)}
                       </option>
                     ))}
                   </select>
@@ -327,7 +328,7 @@ export default function AssetForm({
                     <option value="">-- เลือก --</option>
                     {depAccounts.map((a) => (
                       <option key={a.code} value={a.code}>
-                        {a.code} {a.name}
+                        {accountDisplayName(a.name)}
                       </option>
                     ))}
                   </select>
@@ -344,7 +345,7 @@ export default function AssetForm({
                     <option value="">-- เลือก --</option>
                     {accumAccounts.map((a) => (
                       <option key={a.code} value={a.code}>
-                        {a.code} {a.name}
+                        {accountDisplayName(a.name)}
                       </option>
                     ))}
                   </select>

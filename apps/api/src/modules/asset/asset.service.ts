@@ -487,6 +487,22 @@ export class AssetService {
     return { data, total, page, limit };
   }
 
+  /**
+   * Distinct free-text vendor/supplier names previously used on assets — surfaced
+   * as "เคยใช้" suggestions in the asset entry vendor combobox so a one-off name
+   * typed before can be reused without re-registering a Supplier master.
+   */
+  async vendorNames(limit = 200): Promise<string[]> {
+    const rows = await this.prisma.fixedAsset.findMany({
+      where: { deletedAt: null, supplierName: { not: null } },
+      select: { supplierName: true },
+      distinct: ['supplierName'],
+      orderBy: { supplierName: 'asc' },
+      take: limit,
+    });
+    return rows.map((r) => r.supplierName?.trim() ?? '').filter((n) => n.length > 0);
+  }
+
   async findOne(id: string) {
     const asset = await this.prisma.fixedAsset.findFirst({
       where: { id, deletedAt: null },

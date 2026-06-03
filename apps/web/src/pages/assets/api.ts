@@ -267,6 +267,13 @@ export const assetsApi = {
     return data?.data ?? [];
   },
 
+  // Distinct free-text vendor names previously used on assets — "เคยใช้"
+  // suggestions so a one-off name can be reused without registering a Supplier.
+  vendorNames: async (): Promise<string[]> => {
+    const { data } = await api.get<string[]>('/assets/vendor-names');
+    return Array.isArray(data) ? data : [];
+  },
+
   // POST /suppliers requires `phone` (NOT NULL in schema). Dialog form must
   // collect phone before submitting; taxId remains optional.
   suppliersCreate: async (input: {

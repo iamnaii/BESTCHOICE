@@ -74,6 +74,15 @@ export class AssetController {
     return this.assetService.generateAssetCode(undefined, category);
   }
 
+  // Distinct free-text vendor names previously used on assets — "เคยใช้"
+  // suggestions for the entry-form vendor combobox (reuse a one-off name without
+  // registering a Supplier master). Declared before the generic :id route.
+  @Get('vendor-names')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  getVendorNames() {
+    return this.assetService.vendorNames();
+  }
+
   @Get('register')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   getRegister(

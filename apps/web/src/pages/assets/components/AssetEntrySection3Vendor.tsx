@@ -71,6 +71,15 @@ export function AssetEntrySection3Vendor() {
   });
   const suppliers = suppliersQuery.data ?? [];
 
+  // Previously-used free-text vendor names (from past assets) — "เคยใช้"
+  // suggestions so a one-off name can be reused without registering a Supplier.
+  const vendorNamesQuery = useQuery({
+    queryKey: ['asset-vendor-names'],
+    queryFn: () => assetsApi.vendorNames(),
+    staleTime: 5 * 60 * 1000,
+  });
+  const usedNames = vendorNamesQuery.data ?? [];
+
   // Combobox state
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [searchValue, setSearchValue] = useState('');
@@ -97,6 +106,26 @@ export function AssetEntrySection3Vendor() {
     if (!q) return false;
     return suppliers.some((s) => s.name.toLowerCase() === q);
   }, [searchValue, suppliers]);
+
+  // Past free-text names that match the query and aren't already registered.
+  const filteredUsedNames = useMemo(() => {
+    const regNames = new Set(suppliers.map((s) => s.name.trim().toLowerCase()));
+    const q = searchValue.trim().toLowerCase();
+    return usedNames
+      .filter((n) => {
+        const nl = n.trim().toLowerCase();
+        if (!nl || regNames.has(nl)) return false;
+        if (q && !nl.includes(q)) return false;
+        return true;
+      })
+      .slice(0, 20);
+  }, [usedNames, suppliers, searchValue]);
+
+  const hasExactUsedMatch = useMemo(() => {
+    const q = searchValue.trim().toLowerCase();
+    if (!q) return false;
+    return usedNames.some((n) => n.trim().toLowerCase() === q);
+  }, [searchValue, usedNames]);
 
   const selectSupplier = (s: SupplierLite) => {
     setValue('vendorId', s.id, { shouldDirty: true });
@@ -211,15 +240,17 @@ export function AssetEntrySection3Vendor() {
                   value={searchValue}
                   onValueChange={setSearchValue}
                   onKeyDown={(e) => {
-                    // Enter on a typed name with no supplier in the list → use it
-                    // as free text. The list is empty here so cmdk has nothing to
-                    // select; this never hijacks a real supplier pick.
+                    // Enter on a typed name that isn't an exact existing suggestion
+                    // commits it as free text — and stops cmdk from selecting a
+                    // partial-match item (which would pick the wrong vendor/name).
                     if (
                       e.key === 'Enter' &&
                       searchValue.trim() &&
-                      filteredSuppliers.length === 0
+                      !hasExactMatch &&
+                      !hasExactUsedMatch
                     ) {
                       e.preventDefault();
+                      e.stopPropagation();
                       commitFreeText(searchValue);
                     }
                   }}
@@ -227,35 +258,55 @@ export function AssetEntrySection3Vendor() {
                 <CommandList>
                   {suppliersQuery.isLoading ? (
                     <CommandEmpty>กำลังโหลด...</CommandEmpty>
-                  ) : filteredSuppliers.length > 0 ? (
-                    <CommandGroup heading="ผู้ขายในทะเบียน">
-                      {filteredSuppliers.map((s) => (
-                        <CommandItem key={s.id} value={s.id} onSelect={() => selectSupplier(s)}>
-                          <Check
-                            className={cn(
-                              'mr-2 size-4 shrink-0',
-                              vendorId === s.id ? 'opacity-100' : 'opacity-0',
-                            )}
-                          />
-                          <div className="flex min-w-0 flex-col">
-                            <span className="truncate leading-snug" title={s.name}>
-                              {s.name}
-                            </span>
-                            {s.taxId && (
-                              <span className="text-xs text-muted-foreground">{s.taxId}</span>
-                            )}
-                          </div>
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  ) : (
+                  ) : filteredSuppliers.length === 0 && filteredUsedNames.length === 0 ? (
                     <CommandEmpty className="px-3 py-6 text-center leading-snug">
                       {searchValue.trim()
-                        ? 'ไม่พบผู้ขายในทะเบียน'
-                        : suppliers.length === 0
-                          ? 'ยังไม่มีผู้ขายในทะเบียน'
+                        ? 'ไม่พบชื่อผู้ขายที่ตรงกัน'
+                        : suppliers.length === 0 && usedNames.length === 0
+                          ? 'ยังไม่มีผู้ขาย — พิมพ์ชื่อเพื่อใช้ได้เลย'
                           : 'พิมพ์เพื่อค้นหา'}
                     </CommandEmpty>
+                  ) : (
+                    <>
+                      {filteredSuppliers.length > 0 && (
+                        <CommandGroup heading="ผู้ขายในทะเบียน">
+                          {filteredSuppliers.map((s) => (
+                            <CommandItem key={s.id} value={s.id} onSelect={() => selectSupplier(s)}>
+                              <Check
+                                className={cn(
+                                  'mr-2 size-4 shrink-0',
+                                  vendorId === s.id ? 'opacity-100' : 'opacity-0',
+                                )}
+                              />
+                              <div className="flex min-w-0 flex-col">
+                                <span className="truncate leading-snug" title={s.name}>
+                                  {s.name}
+                                </span>
+                                {s.taxId && (
+                                  <span className="text-xs text-muted-foreground">{s.taxId}</span>
+                                )}
+                              </div>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      )}
+                      {filteredUsedNames.length > 0 && (
+                        <CommandGroup heading="เคยใช้">
+                          {filteredUsedNames.map((name) => (
+                            <CommandItem
+                              key={`used:${name}`}
+                              value={`used:${name}`}
+                              onSelect={() => commitFreeText(name)}
+                            >
+                              <Pencil className="mr-2 size-4 shrink-0 opacity-60" />
+                              <span className="truncate leading-snug" title={name}>
+                                {name}
+                              </span>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      )}
+                    </>
                   )}
                 </CommandList>
                 {/* Actions live OUTSIDE the list so they're never in cmdk's
@@ -264,7 +315,7 @@ export function AssetEntrySection3Vendor() {
                     rendered as a big auto-highlighted block. Never a dead end. */}
                 {!hasExactMatch && (
                   <div className="border-t border-border p-1">
-                    {searchValue.trim() && (
+                    {searchValue.trim() && !hasExactUsedMatch && (
                       <button
                         type="button"
                         onClick={() => commitFreeText(searchValue)}

@@ -58,4 +58,18 @@ describe('AssetController — reverse permission metadata (Audit Finding A)', ()
       expect(guards).toContain(ReversePermissionGuard);
     },
   );
+
+  it('getVendorNames() is read-only — allows OWNER + BRANCH_MANAGER + FINANCE_MANAGER + ACCOUNTANT, not SALES', () => {
+    const roles = methodRoles('getVendorNames');
+    expect(roles).toBeDefined();
+    expect(roles).toEqual(
+      expect.arrayContaining([
+        'OWNER',
+        'BRANCH_MANAGER',
+        'FINANCE_MANAGER',
+        'ACCOUNTANT',
+      ]),
+    );
+    expect(roles).not.toContain('SALES');
+  });
 });

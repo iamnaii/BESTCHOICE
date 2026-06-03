@@ -191,43 +191,58 @@ export function AssetEntrySection3Vendor() {
                 <CommandList>
                   {suppliersQuery.isLoading ? (
                     <CommandEmpty>กำลังโหลด...</CommandEmpty>
-                  ) : filteredSuppliers.length === 0 ? (
-                    <CommandEmpty>ไม่พบผู้ขายที่ตรงกัน</CommandEmpty>
                   ) : (
-                    <CommandGroup heading="ผู้ขาย">
-                      {filteredSuppliers.map((s) => (
-                        <CommandItem
-                          key={s.id}
-                          value={s.id}
-                          onSelect={() => selectSupplier(s)}
-                        >
-                          <Check
-                            className={cn(
-                              'me-2 size-4',
-                              vendorId === s.id ? 'opacity-100' : 'opacity-0',
-                            )}
-                          />
-                          <div className="flex flex-col">
-                            <span>{s.name}</span>
-                            {s.taxId && (
-                              <span className="text-xs text-muted-foreground">
-                                {s.taxId}
-                              </span>
-                            )}
-                          </div>
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  )}
-                  {searchValue.trim() && !hasExactMatch && (
                     <>
-                      <CommandSeparator />
-                      <CommandGroup>
-                        <CommandItem onSelect={openCreateDialog} value="__create__">
-                          <Plus className="me-2 size-4" />
-                          <span>เพิ่มผู้ขายใหม่ "{searchValue.trim()}"</span>
-                        </CommandItem>
-                      </CommandGroup>
+                      {filteredSuppliers.length > 0 && (
+                        <CommandGroup heading="ผู้ขาย">
+                          {filteredSuppliers.map((s) => (
+                            <CommandItem
+                              key={s.id}
+                              value={s.id}
+                              onSelect={() => selectSupplier(s)}
+                            >
+                              <Check
+                                className={cn(
+                                  'me-2 size-4',
+                                  vendorId === s.id ? 'opacity-100' : 'opacity-0',
+                                )}
+                              />
+                              <div className="flex flex-col">
+                                <span>{s.name}</span>
+                                {s.taxId && (
+                                  <span className="text-xs text-muted-foreground">
+                                    {s.taxId}
+                                  </span>
+                                )}
+                              </div>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      )}
+                      {filteredSuppliers.length === 0 && (
+                        <div className="px-3 py-2 text-sm text-muted-foreground leading-snug">
+                          {suppliers.length === 0
+                            ? 'ยังไม่มีผู้ขายในระบบ — กด "เพิ่มผู้ขายใหม่" ด้านล่าง'
+                            : 'ไม่พบผู้ขายที่ตรงกัน'}
+                        </div>
+                      )}
+                      {/* Always offer the create action (even on an empty list or
+                          before typing) so the picker is never a dead end. */}
+                      {!hasExactMatch && (
+                        <>
+                          {filteredSuppliers.length > 0 && <CommandSeparator />}
+                          <CommandGroup>
+                            <CommandItem onSelect={openCreateDialog} value="__create__">
+                              <Plus className="me-2 size-4" />
+                              <span>
+                                {searchValue.trim()
+                                  ? `เพิ่มผู้ขายใหม่ "${searchValue.trim()}"`
+                                  : 'เพิ่มผู้ขายใหม่'}
+                              </span>
+                            </CommandItem>
+                          </CommandGroup>
+                        </>
+                      )}
                     </>
                   )}
                 </CommandList>

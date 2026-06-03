@@ -1,6 +1,7 @@
 import { Plus, Trash2, Users } from 'lucide-react';
 import { PettyCashFormFields, newPettyCashLine } from './types';
 import { formatNumberDecimal } from '@/utils/formatters';
+import { useUserNames } from '@/hooks/useUserNames';
 
 interface Props {
   value: PettyCashFormFields;
@@ -16,6 +17,7 @@ interface Props {
  * + system_config.
  */
 export function PettyCashLinesSection({ value, onChange }: Props) {
+  const custodianNames = useUserNames();
   const updateField = (patch: Partial<PettyCashFormFields>) => onChange({ ...value, ...patch });
 
   const updateLine = (uid: string, p: Partial<(typeof value.lines)[number]>) => {
@@ -56,8 +58,15 @@ export function PettyCashLinesSection({ value, onChange }: Props) {
               value={value.custodianName}
               onChange={(e) => updateField({ custodianName: e.target.value })}
               placeholder="ชื่อพนักงานที่ดูแลเงินสดย่อย"
+              list="petty-cash-custodian-options"
+              autoComplete="off"
               className="w-full rounded-md border border-input bg-background pl-8 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
             />
+            <datalist id="petty-cash-custodian-options">
+              {custodianNames.map((name) => (
+                <option key={name} value={name} />
+              ))}
+            </datalist>
           </div>
         </div>
         <div className="flex items-end text-xs text-muted-foreground">

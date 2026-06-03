@@ -2,8 +2,7 @@
 // Pure presentation. Uses parent FormProvider for state.
 
 import { useFormContext } from 'react-hook-form';
-import { useQuery } from '@tanstack/react-query';
-import api from '@/lib/api';
+import { useUserNames } from '@/hooks/useUserNames';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
@@ -36,23 +35,8 @@ export function AssetEntrySection1Info({ assetCode, branches }: Props) {
   const category = watch('category');
   const branchId = watch('branchId');
   const warrantyExpire = watch('warrantyExpire');
-  // ผู้รับผิดชอบ (Custodian) — combobox: free-text <Input> + a <datalist> of
-  // system users, so the user can pick an existing user OR type a custom name
-  // (e.g. staff without a login). custodian stays a name string. /users returns
-  // paginated { data, total, page, limit }, so unwrap.
-  const usersQuery = useQuery({
-    queryKey: ['users', 'asset-custodian'],
-    queryFn: async () => {
-      const res = await api.get('/users', { params: { limit: 500 } });
-      const list: { id: string; name: string }[] =
-        res.data?.data ?? (Array.isArray(res.data) ? res.data : []);
-      return list;
-    },
-  });
-  // Distinct names for the suggestion list.
-  const custodianNames = Array.from(
-    new Set((usersQuery.data ?? []).map((u) => u.name).filter(Boolean)),
-  );
+  // ผู้รับผิดชอบ (Custodian) combobox suggestions — pick a user OR type a name.
+  const custodianNames = useUserNames();
 
   return (
     <Card>

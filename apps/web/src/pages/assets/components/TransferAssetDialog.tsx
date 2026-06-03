@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
+import { useUserNames } from '@/hooks/useUserNames';
 import type { Asset } from '../types';
 
 interface TransferAssetDialogProps {
@@ -38,6 +39,7 @@ export function TransferAssetDialog({
   isPending,
 }: TransferAssetDialogProps) {
   const today = new Date().toISOString().slice(0, 10);
+  const custodianNames = useUserNames();
   const [transferDate, setTransferDate] = useState(today);
   const [toCustodian, setToCustodian] = useState(asset.custodian ?? '');
   const [toLocation, setToLocation] = useState(asset.location ?? '');
@@ -68,7 +70,14 @@ export function TransferAssetDialog({
               value={toCustodian}
               onChange={(e) => setToCustodian(e.target.value)}
               placeholder={asset.custodian ?? '-'}
+              list="asset-transfer-custodian-options"
+              autoComplete="off"
             />
+            <datalist id="asset-transfer-custodian-options">
+              {custodianNames.map((name) => (
+                <option key={name} value={name} />
+              ))}
+            </datalist>
             <p className="text-xs text-muted-foreground mt-1">
               ปัจจุบัน: {asset.custodian ?? '-'}
             </p>

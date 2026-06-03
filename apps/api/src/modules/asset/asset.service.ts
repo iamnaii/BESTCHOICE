@@ -893,6 +893,7 @@ export class AssetService {
     id: string,
     reversedById: string,
     reason: string,
+    meta?: { reasonLabel?: string | null; note?: string | null },
   ): Promise<{ entryNo: string }> {
     if (!reason || reason.trim().length === 0) {
       throw new BadRequestException('กรุณาระบุเหตุผลการกลับรายการ');
@@ -958,6 +959,8 @@ export class AssetService {
             status: 'REVERSED',
             reversedById,
             reversalReason: reason,
+            reverseReasonLabel: meta?.reasonLabel ?? null,
+            reverseNote: meta?.note ?? null,
             reversalEntryNumber: inner.entryNo,
           },
         },
@@ -1338,6 +1341,7 @@ export class AssetService {
     id: string,
     reason: string,
     userId: string,
+    meta?: { reasonLabel?: string | null; note?: string | null },
   ): Promise<{ entryNo: string }> {
     if (!reason || reason.trim().length === 0) {
       throw new BadRequestException('กรุณาระบุเหตุผลการกลับรายการ');
@@ -1394,6 +1398,8 @@ export class AssetService {
           newValue: {
             status: 'POSTED',
             reversalReason: reason,
+            reverseReasonLabel: meta?.reasonLabel ?? null,
+            reverseNote: meta?.note ?? null,
             reversalEntryNumber: inner.entryNo,
           },
         },

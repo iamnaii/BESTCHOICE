@@ -1813,6 +1813,42 @@ export class ExpenseDocumentsService implements OnModuleInit {
     return this.jePreview.preview(dto, accountNames);
   }
 
+  // ─── Audit trail ─────────────────────────────────────────────────────
+  // Immutable event timeline for one expense document, consumed by the shared
+  // InternalControlActionBar audit timeline on the ExpenseDetailPage. Mirrors
+  // OtherIncomeService.getAuditTrail. Both entity casings are queried for
+  // resilience (services write 'expense_document'; defensive include of the
+  // PascalCase form in case a future writer / interceptor differs).
+  async getAuditTrail(
+    id: string,
+    user?: { branchId?: string | null; role?: string | null },
+  ) {
+    // Verify the document exists (throws on unknown / soft-deleted id).
+    const doc = await this.findOne(id);
+    // Branch scoping (mirrors create()/list() guards) — a non-cross-branch role
+    // may only read the audit trail of documents in its OWN branch, so a
+    // BRANCH_MANAGER can't pull another branch's audit history by guessing an id.
+    if (
+      user &&
+      !hasCrossBranchAccess({ role: user.role ?? '' }) &&
+      doc.branchId &&
+      doc.branchId !== user.branchId
+    ) {
+      throw new ForbiddenException('ไม่มีสิทธิ์เข้าถึงเอกสารของสาขาอื่น');
+    }
+    return this.prisma.auditLog.findMany({
+      where: {
+        entityId: id,
+        entity: { in: ['expense_document', 'ExpenseDocument'] },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      include: {
+        user: { select: { id: true, name: true, email: true } },
+      },
+    });
+  }
+
   // ─── Find one ────────────────────────────────────────────────────────
   // I5 — include type-specific detail so single-doc views (PaymentVoucher,
   // CN view, payroll view, SE view) don't need a follow-up roundtrip. The
@@ -2610,6 +2646,10 @@ export class ExpenseDocumentsService implements OnModuleInit {
             reverseDate: reverseAt.toISOString(),
             reasonCode: dto.reasonCode ?? null,
             reasonDetail: dto.reasonDetail ?? null,
+            // Structured reverse reason — read by the shared timeline's
+            // mapAuditEvents (parity with other-income / asset modules).
+            reverseReasonLabel: dto.reasonLabel ?? null,
+            reverseNote: dto.note ?? null,
             documentNumber: doc.number,
             documentType: doc.documentType,
           },

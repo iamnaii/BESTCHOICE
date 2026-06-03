@@ -20,12 +20,13 @@ import QueryBoundary from '@/components/QueryBoundary';
 import { RejectModal } from './components/RejectModal';
 import { SaveAsTemplateModal } from './components/SaveAsTemplateModal';
 import { AutoJournalPreview } from './components/AutoJournalPreview';
-import { InternalControlActionBar } from '@/components/accounting';
+import { InternalControlActionBar, resolveCanReverse } from '@/components/accounting';
 import type { IcabAuditEvent } from '@/components/accounting';
 import { otherIncomeApi } from '@/lib/otherIncome';
 import api from '@/lib/api';
 import type { OtherIncome, OtherIncomeStatus } from '@/lib/otherIncome.types';
 import { useAuth } from '@/contexts/AuthContext';
+import { useUiFlags } from '@/hooks/useUiFlags';
 import { formatThaiDateLong, formatThaiDateShort } from '@/lib/date';
 
 // ------------------------------------------------------------------
@@ -153,10 +154,6 @@ function buildJeFromDoc(doc: OtherIncome): JeLine[] {
   return lines;
 }
 
-// Roles that can reverse a POSTED document
-// B9: ACCOUNTANT removed — backend @Roles only allows OWNER/FINANCE_MANAGER on POST :id/reverse
-const REVERSE_ROLES = ['OWNER', 'FINANCE_MANAGER'];
-
 /**
  * Map server-side AuditLogEntry rows to the IcabAuditEvent shape consumed
  * by the shared InternalControlActionBar timeline.
@@ -233,6 +230,7 @@ export default function OtherIncomeViewPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const flags = useUiFlags();
 
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
@@ -337,8 +335,12 @@ export default function OtherIncomeViewPage() {
     onError: () => toast.error('ไม่สามารถสร้างใบเสร็จ PDF ได้'),
   });
 
+  // Mode-aware (Audit Finding A): mirrors the backend ReversePermissionGuard so
+  // the "↺ ยกเลิก/กลับรายการ" button only shows when the server will allow it —
+  // respects OWNER_ONLY / +FM / +FM+ACCOUNTANT / CUSTOM modes uniformly.
   const canReverse =
-    user?.role && REVERSE_ROLES.includes(user.role) && docQuery.data?.status === 'POSTED';
+    resolveCanReverse(flags.reversePermission, user?.role, user?.canReverseOverride) &&
+    docQuery.data?.status === 'POSTED';
 
   const doc = docQuery.data;
   const jeLines = doc ? buildJeFromDoc(doc) : [];

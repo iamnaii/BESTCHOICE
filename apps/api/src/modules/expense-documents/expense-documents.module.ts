@@ -15,6 +15,7 @@ import { DocNumberService } from './services/doc-number.service';
 import { StatusTransitionService } from './services/status-transition.service';
 import { LineAggregatorService } from './services/line-aggregator.service';
 import { JePreviewService } from './services/je-preview.service';
+import { ExpenseVoucherPdfService } from './services/expense-voucher-pdf.service';
 import { PettyCashService } from './services/petty-cash.service';
 import { PayrollCustomService } from './services/payroll-custom.service';
 import { ExpenseRecurringCron } from './crons/expense-recurring.cron';
@@ -48,6 +49,7 @@ import { ReversePermissionGuard } from './reverse-permission.guard';
     StatusTransitionService,
     LineAggregatorService,
     JePreviewService,
+    ExpenseVoucherPdfService,
     PettyCashService,
     PayrollCustomService,
     ExpenseRecurringCron,

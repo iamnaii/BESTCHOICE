@@ -7,6 +7,7 @@ import { AssetService } from './asset.service';
 import { AssetTransferService } from './asset-transfer.service';
 import { AssetJournalService } from './asset-journal.service';
 import { AssetReportsService } from './asset-reports.service';
+import { AssetReceiptPdfService } from './services/asset-receipt-pdf.service';
 import { JournalModule } from '../journal/journal.module';
 
 @Module({
@@ -28,6 +29,7 @@ import { JournalModule } from '../journal/journal.module';
     AssetTransferService,
     AssetJournalService,
     AssetReportsService,
+    AssetReceiptPdfService,
   ],
   exports: [
     AssetService,

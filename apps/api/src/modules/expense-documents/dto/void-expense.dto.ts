@@ -48,6 +48,23 @@ export class VoidExpenseDocumentDto {
   reasonDetail?: string;
 
   /**
+   * Structured reverse reason from the shared InternalControlActionBar
+   * (`onReverse({ reasonId, reasonLabel, note })`). Optional + backward
+   * compatible. When present they are stamped into the AuditLog as
+   * `reverseReasonLabel` / `reverseNote` so the timeline renders the
+   * admin-managed label + free-text note (parity with Other Income / Asset).
+   */
+  @IsString()
+  @MaxLength(200)
+  @IsOptional()
+  reasonLabel?: string;
+
+  @IsString()
+  @MaxLength(500)
+  @IsOptional()
+  note?: string;
+
+  /**
    * ISO date string. When set, the reversal JE postedAt uses this date
    * (V19 period-open guard still applies). Omitted = today BKK noon.
    */

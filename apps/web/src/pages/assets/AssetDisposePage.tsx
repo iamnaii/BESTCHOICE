@@ -27,6 +27,7 @@ import { Badge } from '@/components/ui/badge';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import QueryBoundary from '@/components/QueryBoundary';
 import { formatNumberDecimal } from '@/utils/formatters';
+import { accountDisplayName } from '@/utils/accountName';
 import { assetsApi } from './api';
 import { CATEGORY_LABEL, CASH_ACCOUNTS } from './types';
 import { disposalSchema, type DisposalFormValues } from './disposal-schema';
@@ -231,7 +232,7 @@ export default function AssetDisposePage() {
                         <SelectContent>
                           {CASH_ACCOUNTS.map((c) => (
                             <SelectItem key={c.code} value={c.code}>
-                              {c.code} {c.name}
+                              {accountDisplayName(c.name)}
                             </SelectItem>
                           ))}
                         </SelectContent>

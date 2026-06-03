@@ -2,6 +2,7 @@ import { useCoaGroups } from '@/hooks/useCoa';
 import { Plus, Trash2 } from 'lucide-react';
 import { ExpenseLineForm, newLine } from './types';
 import { formatNumberDecimal } from '@/utils/formatters';
+import { accountDisplayName } from '@/utils/accountName';
 import { useUiFlags } from '@/hooks/useUiFlags';
 import { whtRatesToSelectOptions } from '@/lib/wht-rates';
 import TaxDisallowedHint from './TaxDisallowedHint';
@@ -70,7 +71,7 @@ export function ItemLinesSection({ lines, onChange, priceTypeLabel }: Props) {
                 {groups.flatMap((g) =>
                   g.accounts.map((a) => (
                     <option key={a.code} value={a.code}>
-                      {a.code} — {a.name}
+                      {accountDisplayName(a.name)}
                     </option>
                   )),
                 )}

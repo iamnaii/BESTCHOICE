@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Search, CheckCircle2, ChevronUp, ChevronDown } from 'lucide-react';
 import { useCoaGroups } from '@/hooks/useCoa';
+import { accountDisplayName } from '@/utils/accountName';
 
 interface CoaItem {
   code: string;
@@ -72,8 +73,7 @@ export function AccountSearchDropdown({
       >
         {selected ? (
           <span className="flex items-baseline gap-2 truncate">
-            <span className="font-mono text-xs font-bold text-primary">{selected.code}</span>
-            <span className="truncate">{selected.name}</span>
+            <span className="truncate">{accountDisplayName(selected.name)}</span>
           </span>
         ) : (
           <span className="text-muted-foreground">{placeholder}</span>
@@ -127,14 +127,7 @@ export function AccountSearchDropdown({
                       isBlocked ? 'opacity-50 cursor-not-allowed bg-muted/40' : 'hover:bg-accent'
                     } ${isSel ? 'bg-accent' : ''}`}
                   >
-                    <span
-                      className={`font-mono w-16 font-bold flex-shrink-0 ${
-                        isBlocked ? 'text-muted-foreground' : 'text-primary'
-                      }`}
-                    >
-                      {a.code}
-                    </span>
-                    <span className="flex-1 truncate">{a.name}</span>
+                    <span className="flex-1 truncate">{accountDisplayName(a.name)}</span>
                     {isBlocked && (
                       <span className="text-[10px] text-muted-foreground shrink-0">
                         ยังไม่รองรับ

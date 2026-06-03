@@ -21,6 +21,7 @@ import QueryBoundary from '@/components/QueryBoundary';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDebounce } from '@/hooks/useDebounce';
 import { formatNumber, formatNumberDecimal } from '@/utils/formatters';
+import { accountDisplayName } from '@/utils/accountName';
 import { otherIncomeApi } from '@/lib/otherIncome';
 import { otherIncomeFormSchema, type OtherIncomeFormValues } from '@/lib/otherIncome.schema';
 import { ItemsTable } from './components/ItemsTable';
@@ -929,9 +930,8 @@ export default function OtherIncomeEntryPage() {
                         </div>
                         <div className="min-w-0">
                           <p className="text-sm font-semibold text-foreground leading-tight truncate">
-                            {a.name}
+                            {accountDisplayName(a.name)}
                           </p>
-                          <p className="text-[10px] font-mono text-muted-foreground">{a.code}</p>
                         </div>
                       </button>
                     );

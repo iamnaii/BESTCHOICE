@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
+import { accountDisplayName } from '@/utils/accountName';
 
 interface RoleMapRow {
   id: string;
@@ -304,8 +305,7 @@ function EditRoleMapDialog({
                             )}
                             aria-hidden
                           />
-                          <code className="mr-2 font-mono text-xs">{acc.code}</code>
-                          <span className="leading-snug">{acc.name}</span>
+                          <span className="leading-snug">{accountDisplayName(acc.name)}</span>
                         </CommandItem>
                       ))}
                     </CommandGroup>

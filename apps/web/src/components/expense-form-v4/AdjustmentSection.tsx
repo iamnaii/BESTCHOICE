@@ -13,6 +13,7 @@ import { Plus, Trash2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import type { ExpenseAdjustmentForm } from './types';
 import { newAdjustment } from './types';
 import { useUiFlags } from '@/hooks/useUiFlags';
+import { accountDisplayName } from '@/utils/accountName';
 
 interface Props {
   /** Reconciliation diff = amountPaid − (totalAmount − wht). Sign decides side. */
@@ -178,7 +179,7 @@ export function AdjustmentSection({
                     <option value="">— เลือกบัญชี —</option>
                     {effectiveSuggested.map((s) => (
                       <option key={s.code} value={s.code}>
-                        {s.code} — {s.name}
+                        {accountDisplayName(s.name)}
                       </option>
                     ))}
                   </select>

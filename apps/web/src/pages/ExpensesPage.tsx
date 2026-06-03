@@ -18,6 +18,7 @@ import { Receipt, Plus, Pencil, MoreVertical, Bookmark, Wallet, BarChart3, Searc
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { Button } from '@/components/ui/button';
 import { formatDateShortThai, formatNumberDecimal } from '@/utils/formatters';
+import { accountDisplayName } from '@/utils/accountName';
 import { ExpenseFormV4 } from '@/components/expense-form-v4/ExpenseFormV4';
 import { ReopenedPeriodBanner } from '@/components/accounting/ReopenedPeriodBanner';
 import { useApprovalActions, getApprovalReason, canApprove } from '@/hooks/useApprovalActions';
@@ -595,7 +596,7 @@ export default function ExpensesPage() {
             <optgroup key={g.category} label={g.category}>
               {g.accounts.map((a) => (
                 <option key={a.code} value={a.code}>
-                  {a.code} {a.name}
+                  {accountDisplayName(a.name)}
                 </option>
               ))}
             </optgroup>

@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
+import { accountDisplayName } from '@/utils/accountName';
 import {
   Select,
   SelectContent,
@@ -63,8 +64,7 @@ export function CashAccountSelect({
       <SelectContent>
         {CASH_ACCOUNT_CODES.map((code) => (
           <SelectItem key={code} value={code}>
-            <span className="font-mono text-xs text-muted-foreground mr-2">{code}</span>
-            {nameMap.get(code) ?? ''}
+            {accountDisplayName(nameMap.get(code) ?? '')}
           </SelectItem>
         ))}
       </SelectContent>

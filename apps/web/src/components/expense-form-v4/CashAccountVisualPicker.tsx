@@ -3,6 +3,7 @@ import api from '@/lib/api';
 import { CASH_ACCOUNT_CODES } from '@/components/CashAccountSelect';
 import { Banknote, Landmark } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { accountDisplayName } from '@/utils/accountName';
 
 interface CoaRow { code: string; name: string }
 
@@ -41,8 +42,7 @@ export function CashAccountVisualPicker({ value, onChange }: Props) {
           >
             <Icon className={cn('size-4 mt-0.5', selected ? 'text-primary' : 'text-muted-foreground')} />
             <div className="flex-1 min-w-0">
-              <div className="font-mono text-xs text-muted-foreground">{code}</div>
-              <div className="text-sm leading-snug truncate">{nameMap.get(code) ?? '—'}</div>
+              <div className="text-sm leading-snug truncate">{accountDisplayName(nameMap.get(code) ?? '—')}</div>
             </div>
           </button>
         );

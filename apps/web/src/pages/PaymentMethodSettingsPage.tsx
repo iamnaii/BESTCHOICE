@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
+import { accountDisplayName } from '@/utils/accountName';
 
 type Method = 'CASH' | 'TRANSFER' | 'QR';
 
@@ -355,8 +356,7 @@ function AddMappingDialog({ open, onOpenChange, coaAccounts, existing, onCreated
               <SelectContent>
                 {availableAccounts.map((a) => (
                   <SelectItem key={a.code} value={a.code}>
-                    <span className="font-mono text-xs mr-2">{a.code}</span>
-                    {a.name}
+                    {accountDisplayName(a.name)}
                   </SelectItem>
                 ))}
                 {availableAccounts.length === 0 && (

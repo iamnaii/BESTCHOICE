@@ -96,9 +96,10 @@ describe('ExpenseDocumentsController', () => {
     expect(service.findOne).toHaveBeenCalledWith('doc-1');
   });
 
-  it('GET /:id/audit calls getAuditTrail (feeds InternalControlActionBar timeline)', async () => {
-    await controller.getAuditTrail('doc-1');
-    expect(service.getAuditTrail).toHaveBeenCalledWith('doc-1');
+  it('GET /:id/audit calls getAuditTrail with user (timeline; branch-scoped)', async () => {
+    const user = { id: 'u', branchId: 'b1', role: 'OWNER' };
+    await controller.getAuditTrail('doc-1', user as never);
+    expect(service.getAuditTrail).toHaveBeenCalledWith('doc-1', user);
   });
 
   it('GET /:id/voucher.pdf delegates to ExpenseVoucherPdfService + sets PDF headers', async () => {

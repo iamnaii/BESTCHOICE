@@ -302,10 +302,14 @@ export class ExpenseVoucherPdfService {
     const whtAmount = Number(doc.withholdingTax);
     const totalAmount = Number(doc.totalAmount);
     // net_payment is the cash actually paid out to the vendor (total − WHT
-    // withheld). Falls back to the arithmetic when the column is null on
-    // legacy rows.
-    const netPaid =
-      doc.netPayment != null ? Number(doc.netPayment) : totalAmount - whtAmount;
+    // withheld). Compute the legacy-null fallback with Prisma.Decimal so the
+    // satang in numberToThaiText() never drifts from a float subtraction —
+    // convert to Number once, at the end, for display only.
+    const netPaidDecimal =
+      doc.netPayment != null
+        ? doc.netPayment
+        : new Prisma.Decimal(doc.totalAmount).minus(doc.withholdingTax);
+    const netPaid = Number(netPaidDecimal);
     const thaiAmount = numberToThaiText(netPaid);
     const isVoided = doc.status === 'VOIDED';
 

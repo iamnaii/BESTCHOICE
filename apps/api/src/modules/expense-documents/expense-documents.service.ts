@@ -1819,9 +1819,23 @@ export class ExpenseDocumentsService implements OnModuleInit {
   // OtherIncomeService.getAuditTrail. Both entity casings are queried for
   // resilience (services write 'expense_document'; defensive include of the
   // PascalCase form in case a future writer / interceptor differs).
-  async getAuditTrail(id: string) {
+  async getAuditTrail(
+    id: string,
+    user?: { branchId?: string | null; role?: string | null },
+  ) {
     // Verify the document exists (throws on unknown / soft-deleted id).
-    await this.findOne(id);
+    const doc = await this.findOne(id);
+    // Branch scoping (mirrors create()/list() guards) — a non-cross-branch role
+    // may only read the audit trail of documents in its OWN branch, so a
+    // BRANCH_MANAGER can't pull another branch's audit history by guessing an id.
+    if (
+      user &&
+      !hasCrossBranchAccess({ role: user.role ?? '' }) &&
+      doc.branchId &&
+      doc.branchId !== user.branchId
+    ) {
+      throw new ForbiddenException('ไม่มีสิทธิ์เข้าถึงเอกสารของสาขาอื่น');
+    }
     return this.prisma.auditLog.findMany({
       where: {
         entityId: id,

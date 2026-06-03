@@ -172,8 +172,11 @@ export class ExpenseDocumentsController {
   // timeline on the ExpenseDetailPage (mirrors GET /other-income/:id/audit).
   @Get(':id/audit')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
-  getAuditTrail(@Param('id') id: string) {
-    return this.service.getAuditTrail(id);
+  getAuditTrail(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string; branchId?: string | null; role: string },
+  ) {
+    return this.service.getAuditTrail(id, user);
   }
 
   // ใบสำคัญจ่าย (Payment Voucher) PDF — mirrors GET /other-income/:id/receipt.pdf.

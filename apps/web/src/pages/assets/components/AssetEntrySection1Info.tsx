@@ -7,6 +7,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import { NameAutocomplete } from '@/components/ui/NameAutocomplete';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
@@ -112,18 +113,14 @@ export function AssetEntrySection1Info({ assetCode, branches }: Props) {
           </Select>
         </div>
         <div>
-          <Label>ผู้รับผิดชอบ (Custodian) *</Label>
-          <Input
-            {...register('custodian')}
-            list="asset-custodian-options"
+          <Label htmlFor="custodian">ผู้รับผิดชอบ (Custodian) *</Label>
+          <NameAutocomplete
+            id="custodian"
+            value={watch('custodian') ?? ''}
+            onChange={(v) => setValue('custodian', v, { shouldValidate: true })}
+            options={custodianNames}
             placeholder="พิมพ์ชื่อ หรือเลือกจากรายการ"
-            autoComplete="off"
           />
-          <datalist id="asset-custodian-options">
-            {custodianNames.map((name) => (
-              <option key={name} value={name} />
-            ))}
-          </datalist>
           {errors.custodian && (
             <p className="text-sm text-destructive mt-1">{errors.custodian.message}</p>
           )}

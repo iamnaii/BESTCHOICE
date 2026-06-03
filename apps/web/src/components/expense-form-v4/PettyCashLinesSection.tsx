@@ -1,7 +1,8 @@
-import { Plus, Trash2, Users } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import { PettyCashFormFields, newPettyCashLine } from './types';
 import { formatNumberDecimal } from '@/utils/formatters';
 import { useUserNames } from '@/hooks/useUserNames';
+import { NameAutocomplete } from '@/components/ui/NameAutocomplete';
 
 interface Props {
   value: PettyCashFormFields;
@@ -51,23 +52,12 @@ export function PettyCashLinesSection({ value, onChange }: Props) {
           <label className="block text-xs font-medium mb-1 text-muted-foreground">
             ผู้ดูแลเงินสดย่อย (custodian) — ทางเลือก
           </label>
-          <div className="relative">
-            <Users className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
-            <input
-              type="text"
-              value={value.custodianName}
-              onChange={(e) => updateField({ custodianName: e.target.value })}
-              placeholder="ชื่อพนักงานที่ดูแลเงินสดย่อย"
-              list="petty-cash-custodian-options"
-              autoComplete="off"
-              className="w-full rounded-md border border-input bg-background pl-8 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-            />
-            <datalist id="petty-cash-custodian-options">
-              {custodianNames.map((name) => (
-                <option key={name} value={name} />
-              ))}
-            </datalist>
-          </div>
+          <NameAutocomplete
+            value={value.custodianName}
+            onChange={(v) => updateField({ custodianName: v })}
+            options={custodianNames}
+            placeholder="ชื่อพนักงานที่ดูแลเงินสดย่อย"
+          />
         </div>
         <div className="flex items-end text-xs text-muted-foreground">
           <span>

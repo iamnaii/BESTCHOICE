@@ -101,14 +101,29 @@ export function AssetEntrySection3Vendor() {
 
   const selectSupplier = (s: SupplierLite) => {
     setValue('vendorId', s.id, { shouldDirty: true });
-    setValue('supplierName', s.name, { shouldDirty: true });
+    setValue('supplierName', s.name, { shouldDirty: true, shouldValidate: true });
     setValue('supplierTaxId', s.taxId ?? '', { shouldDirty: true });
+    setPopoverOpen(false);
+    setSearchValue('');
+  };
+
+  // Free-text path: use whatever the user typed as the vendor name WITHOUT
+  // forcing them to create a Supplier master record (which requires a phone).
+  // Most asset purchases are one-off vendors — this is the common case, so the
+  // combobox must never be a dead-end for a plain typed name.
+  const commitFreeText = (raw: string) => {
+    const name = raw.trim();
+    if (!name) return;
+    setValue('supplierName', name, { shouldDirty: true, shouldValidate: true });
+    setValue('vendorId', undefined, { shouldDirty: true });
     setPopoverOpen(false);
     setSearchValue('');
   };
 
   const clearSupplier = () => {
     setValue('vendorId', undefined, { shouldDirty: true });
+    setValue('supplierName', '', { shouldDirty: true, shouldValidate: true });
+    setValue('supplierTaxId', '', { shouldDirty: true });
   };
 
   const createMutation = useMutation({
@@ -221,22 +236,44 @@ export function AssetEntrySection3Vendor() {
                       )}
                       {filteredSuppliers.length === 0 && (
                         <div className="px-3 py-2 text-sm text-muted-foreground leading-snug">
-                          {suppliers.length === 0
-                            ? 'ยังไม่มีผู้ขายในระบบ — กด "เพิ่มผู้ขายใหม่" ด้านล่าง'
-                            : 'ไม่พบผู้ขายที่ตรงกัน'}
+                          {searchValue.trim()
+                            ? 'ไม่พบผู้ขายเดิม — กด "ใช้ชื่อนี้" เพื่อใช้ชื่อที่พิมพ์ได้เลย'
+                            : suppliers.length === 0
+                              ? 'ยังไม่มีผู้ขายในระบบ — พิมพ์ชื่อผู้ขายเพื่อใช้งานได้เลย'
+                              : 'พิมพ์เพื่อค้นหา'}
                         </div>
                       )}
-                      {/* Always offer the create action (even on an empty list or
-                          before typing) so the picker is never a dead end. */}
+                      {/* Never a dead end: typing a name lets you "ใช้ชื่อนี้"
+                          (free-text supplierName, no master record needed), and
+                          optionally save it to the supplier master as well. */}
                       {!hasExactMatch && (
                         <>
                           {filteredSuppliers.length > 0 && <CommandSeparator />}
                           <CommandGroup>
-                            <CommandItem onSelect={openCreateDialog} value="__create__">
+                            {searchValue.trim() && (
+                              <CommandItem
+                                onSelect={() => commitFreeText(searchValue)}
+                                value="__usetext__"
+                                className="text-foreground"
+                              >
+                                <Check className="me-2 size-4 text-primary" />
+                                <span className="truncate">
+                                  ใช้ชื่อ{' '}
+                                  <span className="font-medium">
+                                    &quot;{searchValue.trim()}&quot;
+                                  </span>
+                                </span>
+                              </CommandItem>
+                            )}
+                            <CommandItem
+                              onSelect={openCreateDialog}
+                              value="__create__"
+                              className="text-muted-foreground"
+                            >
                               <Plus className="me-2 size-4" />
-                              <span>
+                              <span className="truncate">
                                 {searchValue.trim()
-                                  ? `เพิ่มผู้ขายใหม่ "${searchValue.trim()}"`
+                                  ? `บันทึก "${searchValue.trim()}" ลงทะเบียนผู้ขาย`
                                   : 'เพิ่มผู้ขายใหม่'}
                               </span>
                             </CommandItem>
@@ -249,13 +286,13 @@ export function AssetEntrySection3Vendor() {
               </Command>
             </PopoverContent>
           </Popover>
-          {vendorId && (
+          {(vendorId || supplierName) && (
             <button
               type="button"
               onClick={clearSupplier}
               className="mt-1 text-xs text-muted-foreground hover:text-foreground underline"
             >
-              ล้างการเชื่อมผู้ขาย
+              {vendorId ? 'ล้างการเชื่อมผู้ขาย' : 'ล้างชื่อผู้ขาย'}
             </button>
           )}
           {errors.supplierName && (

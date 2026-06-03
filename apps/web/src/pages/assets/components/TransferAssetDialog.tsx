@@ -16,6 +16,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { useUserNames } from '@/hooks/useUserNames';
+import { NameAutocomplete } from '@/components/ui/NameAutocomplete';
 import type { Asset } from '../types';
 
 interface TransferAssetDialogProps {
@@ -66,18 +67,12 @@ export function TransferAssetDialog({
           </div>
           <div>
             <Label>ผู้ดูแลใหม่</Label>
-            <Input
+            <NameAutocomplete
               value={toCustodian}
-              onChange={(e) => setToCustodian(e.target.value)}
+              onChange={setToCustodian}
+              options={custodianNames}
               placeholder={asset.custodian ?? '-'}
-              list="asset-transfer-custodian-options"
-              autoComplete="off"
             />
-            <datalist id="asset-transfer-custodian-options">
-              {custodianNames.map((name) => (
-                <option key={name} value={name} />
-              ))}
-            </datalist>
             <p className="text-xs text-muted-foreground mt-1">
               ปัจจุบัน: {asset.custodian ?? '-'}
             </p>

@@ -4,6 +4,7 @@ import api from '@/lib/api';
 import { SettlementFormFields } from './types';
 import { formatNumberDecimal } from '@/utils/formatters';
 import { useUiFlags } from '@/hooks/useUiFlags';
+import { VendorCombobox } from './VendorCombobox';
 
 /**
  * D1.3.6.2 — A bill is treated as "overdue" if its `documentDate` is older
@@ -156,12 +157,10 @@ export function SettlementLinesSection({ branchId, value, onChange }: Props) {
           <label className="block text-xs font-medium mb-1">
             ผู้รับเงิน (ถ้ารวมเจ้าหนี้คนเดียว)
           </label>
-          <input
-            type="text"
+          <VendorCombobox
             value={value.vendorName}
-            onChange={(e) => onChange({ ...value, vendorName: e.target.value })}
-            placeholder="เช่น การไฟฟ้า"
-            className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background"
+            onSelectSupplier={(s) => onChange({ ...value, vendorName: s.name })}
+            onTypeName={(name) => onChange({ ...value, vendorName: name })}
           />
         </div>
         <div>

@@ -13,15 +13,6 @@ export type AssetCategory = 'EQUIPMENT' | 'IMPROVEMENT' | 'FURNITURE' | 'VEHICLE
 export type PaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'QR_EWALLET';
 export type WhtFormType = 'PND3' | 'PND53';
 
-// PR 2a Task 6 (P7) — Permission metadata entry. Persisted as JSONB on FixedAsset.
-// UI-only; API enforcement (e.g. forbidding edit without canEdit) is deferred.
-export interface PermissionConfigEntry {
-  userId: string;
-  canView: boolean;
-  canEdit: boolean;
-  canPost: boolean;
-}
-
 export interface Asset {
   id: string;
   assetCode: string;
@@ -78,9 +69,6 @@ export interface Asset {
   createdBy: { id: string; name: string };
   approverId: string | null;
   approver: { id: string; name: string } | null;
-  // PR 2a Task 6 (P7) — Optional for backward compat: older POSTED rows
-  // (pre-migration data) may serialize without the field set.
-  permissionConfig?: PermissionConfigEntry[];
   postedById: string | null;
   postedBy: { id: string; name: string } | null;
   postedAt: string | null;

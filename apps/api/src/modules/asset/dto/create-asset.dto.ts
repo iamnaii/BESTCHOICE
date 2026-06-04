@@ -1,26 +1,8 @@
 import {
   IsString, IsOptional, IsNumber, IsEnum, IsDateString, IsBoolean,
   IsIn, IsNotEmpty, IsInt, IsUUID, Min, Max,
-  IsArray, ValidateNested,
 } from 'class-validator';
-import { Type } from 'class-transformer';
 import { AssetCategory, PaymentMethod } from '@prisma/client';
-
-// PR 2a Task 6 (P7) — Permission settings entry. Persisted as JSONB on FixedAsset.
-// UI-only metadata; no API enforcement yet.
-export class PermissionConfigEntryDto {
-  @IsUUID('4', { message: 'รหัสผู้ใช้ไม่ถูกต้อง' })
-  userId!: string;
-
-  @IsBoolean({ message: 'สิทธิ์ดูต้องเป็น boolean' })
-  canView!: boolean;
-
-  @IsBoolean({ message: 'สิทธิ์แก้ไขต้องเป็น boolean' })
-  canEdit!: boolean;
-
-  @IsBoolean({ message: 'สิทธิ์ลงบัญชีต้องเป็น boolean' })
-  canPost!: boolean;
-}
 
 export class CreateAssetDto {
   @IsString({ message: 'กรุณาระบุชื่อสินทรัพย์' })
@@ -140,12 +122,4 @@ export class CreateAssetDto {
 
   @IsOptional() @IsString()
   approverId?: string;
-
-  // PR 2a Task 6 (P7) — Permission settings (replaces single-approver UI flow).
-  // Lightweight metadata; backfilled from approverId on legacy create calls.
-  @IsOptional()
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => PermissionConfigEntryDto)
-  permissionConfig?: PermissionConfigEntryDto[];
 }

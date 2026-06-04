@@ -1,6 +1,7 @@
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { ExpenseFormState } from './types';
 import TaxDisallowedHint from './TaxDisallowedHint';
+import { VendorCombobox } from './VendorCombobox';
 
 interface Props {
   state: ExpenseFormState;
@@ -13,12 +14,10 @@ export function VendorSection({ state, onChange }: Props) {
       <div className="grid grid-cols-3 gap-4">
         <div>
           <label className="block text-xs font-medium mb-1">ผู้ขาย <span className="text-destructive">*</span></label>
-          <input
-            type="text"
+          <VendorCombobox
             value={state.vendorName}
-            onChange={(e) => onChange({ vendorName: e.target.value })}
-            placeholder="ชื่อผู้ขาย"
-            className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background"
+            onSelectSupplier={(s) => onChange({ vendorName: s.name, vendorTaxId: s.taxId })}
+            onTypeName={(name) => onChange({ vendorName: name })}
           />
         </div>
         <div>

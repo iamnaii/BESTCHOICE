@@ -1,4 +1,5 @@
 import { UseFormReturn } from 'react-hook-form';
+import { useQuery } from '@tanstack/react-query';
 import {
   Form,
   FormField,
@@ -9,6 +10,7 @@ import {
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { paymentMethods } from '@/lib/constants';
 import { type PosSaleFormData } from '@/lib/schemas';
+import { externalFinanceApi, externalFinanceKeys } from '@/lib/api/external-finance';
 import type { Product } from '../types';
 import type { SaleType } from '@/lib/constants';
 
@@ -39,6 +41,13 @@ export default function SaleDetailsForm({
   sellingPrice,
   discount,
 }: SaleDetailsFormProps) {
+  const { data: financeCompanies } = useQuery({
+    queryKey: externalFinanceKeys.companies,
+    queryFn: externalFinanceApi.listCompanies,
+    staleTime: 5 * 60 * 1000,
+  });
+  const activeFinanceCompanies = (financeCompanies ?? []).filter((c) => c.isActive);
+
   return (
     <Card className="border-border/60 shadow-sm">
       <CardHeader>
@@ -211,13 +220,18 @@ export default function SaleDetailsForm({
                         บริษัทไฟแนนซ์ *
                       </label>
                       <FormControl>
-                        <input
-                          type="text"
-                          {...field}
-                          value={field.value ?? ''}
-                          className={inputClass}
-                          placeholder="ชื่อบริษัทไฟแนนซ์"
-                        />
+                        <select {...field} value={field.value ?? ''} className={selectClass}>
+                          <option value="">เลือกบริษัทไฟแนนซ์</option>
+                          {field.value &&
+                            !activeFinanceCompanies.some((c) => c.name === field.value) && (
+                              <option value={field.value}>{field.value}</option>
+                            )}
+                          {activeFinanceCompanies.map((c) => (
+                            <option key={c.id} value={c.name}>
+                              {c.name}
+                            </option>
+                          ))}
+                        </select>
                       </FormControl>
                       <FormMessage />
                     </FormItem>

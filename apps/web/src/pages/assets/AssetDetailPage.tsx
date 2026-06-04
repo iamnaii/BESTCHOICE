@@ -219,7 +219,7 @@ export default function AssetDetailPage() {
     asset?.status === 'POSTED';
 
   return (
-    <div className="space-y-4 pb-44 md:pb-40">
+    <div className="space-y-4 pb-6">
       <PageHeader
         title={asset?.assetCode ?? 'กำลังโหลด...'}
         subtitle={asset?.name}

@@ -21,6 +21,8 @@ import {
 import { brands, getModels } from '@/data/productCatalog';
 import SignaturePadFull from '@/components/signing/SignaturePadFull';
 import AddressForm, { type AddressData, emptyAddress, composeAddress } from '@/components/ui/AddressForm';
+import { BANK_OPTIONS } from '@/components/credit-check/types';
+import { bankAccountsApi, type BankAccount } from '@/lib/api/bank-accounts';
 
 interface QuickBuyModalProps {
   open: boolean;
@@ -54,6 +56,12 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
   const { data: branches = [] } = useQuery<{ id: string; name: string }[]>({
     queryKey: ['branches'],
     queryFn: async () => (await api.get('/branches')).data,
+    enabled: open,
+  });
+
+  const { data: bankAccounts = [] } = useQuery<BankAccount[]>({
+    queryKey: ['bank-accounts', true],
+    queryFn: () => bankAccountsApi.list(true),
     enabled: open,
   });
 
@@ -603,7 +611,52 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
                 </div>
                 {form.paymentMethod === 'TRANSFER' && (
                   <div className="space-y-2 mt-3">
-                    <Input placeholder="ธนาคาร เช่น กสิกรไทย" value={form.transferBankName} onChange={(e) => setForm((f) => ({ ...f, transferBankName: e.target.value }))} />
+                    {bankAccounts.length > 0 && (
+                      <select
+                        className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm"
+                        value={
+                          bankAccounts.find(
+                            (acc) =>
+                              acc.accountName === form.transferAccountName &&
+                              acc.bankName === form.transferBankName,
+                          )?.id ?? ''
+                        }
+                        onChange={(e) => {
+                          const acc = bankAccounts.find((a) => a.id === e.target.value);
+                          if (!acc) return;
+                          setForm((f) => ({
+                            ...f,
+                            transferAccountName: acc.accountName,
+                            transferBankName: acc.bankName,
+                            transferAccountNumber: acc.accountNumber ?? '',
+                          }));
+                        }}
+                      >
+                        <option value="">-- เลือกบัญชีโอน (กรอกเอง) --</option>
+                        {bankAccounts.map((acc) => (
+                          <option key={acc.id} value={acc.id}>
+                            {acc.accountName} — {acc.bankName}
+                            {acc.accountNumber ? ` (${acc.accountNumber})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                    <select
+                      className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm"
+                      value={form.transferBankName}
+                      onChange={(e) => setForm((f) => ({ ...f, transferBankName: e.target.value }))}
+                    >
+                      <option value="">-- เลือกธนาคาร --</option>
+                      {BANK_OPTIONS.map((b) => (
+                        <option key={b} value={b}>
+                          {b}
+                        </option>
+                      ))}
+                      {/* Keep a value auto-filled from a bank account that isn't in the preset list */}
+                      {form.transferBankName && !BANK_OPTIONS.includes(form.transferBankName) && (
+                        <option value={form.transferBankName}>{form.transferBankName}</option>
+                      )}
+                    </select>
                     <Input placeholder="เลขบัญชี" value={form.transferAccountNumber} onChange={(e) => setForm((f) => ({ ...f, transferAccountNumber: e.target.value.replace(/[^\d-]/g, '') }))} />
                     <Input placeholder="ชื่อบัญชี" value={form.transferAccountName} onChange={(e) => setForm((f) => ({ ...f, transferAccountName: e.target.value }))} />
                   </div>

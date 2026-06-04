@@ -2,6 +2,14 @@ import { useMemo } from 'react';
 import { Trash2, Plus, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { AccountSearchDropdown } from './AccountSearchDropdown';
+
+const journalAccountFilter = (a: { code: string }) =>
+  a.code.startsWith('41-') ||
+  a.code.startsWith('42-') ||
+  a.code.startsWith('51-') ||
+  a.code.startsWith('52-') ||
+  a.code.startsWith('53-');
 
 export type EditableJournalLine = {
   accountCode: string;
@@ -83,11 +91,11 @@ export function EditableJournalTable({ lines, onChange }: Props) {
             {lines.map((line, idx) => (
               <tr key={idx} className="border-t border-border">
                 <td className="px-2 py-1">
-                  <Input
+                  <AccountSearchDropdown
                     value={line.accountCode}
-                    onChange={(e) => updateLine(idx, { accountCode: e.target.value })}
-                    placeholder="42-1102"
-                    className="font-mono"
+                    onChange={(code) => updateLine(idx, { accountCode: code })}
+                    filter={journalAccountFilter}
+                    placeholder="เลือกบัญชี"
                   />
                 </td>
                 <td className="px-2 py-1">

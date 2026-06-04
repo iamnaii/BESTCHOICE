@@ -658,8 +658,8 @@ export default function OtherIncomeEntryPage() {
   const userDisplayName = user?.name || user?.email || 'ผู้ใช้ปัจจุบัน';
 
   return (
-    <div className="pb-44 md:pb-40">
-      <div className="p-4 md:p-6 max-w-5xl mx-auto">
+    <div className="max-w-5xl mx-auto p-4 md:p-6 pb-6">
+      <div>
         {/* Custom header */}
         <div className="flex items-start justify-between gap-4 mb-6">
           <div className="min-w-0">

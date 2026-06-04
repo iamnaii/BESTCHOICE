@@ -23,18 +23,10 @@ export interface UiFlags {
   reverseReasonRequired: boolean;
   /** D1.2.7.2 — configurable reverse-reason dropdown. */
   reverseReasons: { code: string; label: string }[];
-  /** D1.2.7.3 — soft warning threshold (days) when reverse backdate exceeds this; UI-only. */
-  reverseManagerApprovalDays: number;
-  /** D1.2.6.3 — broader backdate warning threshold (days). Default 30. */
-  paymentDateWarningBackdate: number;
   /** D1.2.6.4 — allow forward-dated transactions. Default true. */
   paymentDateAllowFuture: boolean;
-  /** D1.2.6.1 — day-of-month when periods close. Default 31. Informational. */
-  periodCloseDay: number;
   /** D1.2.2.7 — render verification QR on voucher footers. Default true. */
   voucherShowQrCode: boolean;
-  /** D1.2.2.5 — primary theme color hex. Default emerald. Informational. */
-  themeColor: string;
   /** D1.2.2.6 — UI language. Applied to `document.lang`; i18n framework deferred. */
   language: 'th' | 'en';
   /**
@@ -49,19 +41,6 @@ export interface UiFlags {
     PETTY_CASH_REIMBURSEMENT: string;
     REPAIR_SERVICE: string;
   };
-  /**
-   * D1.3.3.2 — bank reconciliation mode. INFORMATIONAL ONLY — auto-match
-   * cron + UI haven't been built yet. When a future bank-reconciliation
-   * page exists, it should surface this value prominently (e.g. mode
-   * indicator badge). Default `'manual'`.
-   */
-  bankReconciliationMode: 'manual' | 'auto';
-  /**
-   * D1.1.3.3 — informational "SSO rate locked at 5%" string for Settings UI.
-   * Backed by `SSO_RATE` constant server-side. The SystemConfig key
-   * `sso_rate_locked` is read-only (server rejects writes).
-   */
-  ssoRateLocked: string;
   /**
    * D1.3.6.2 — pre-tick preference for the VENDOR_SETTLEMENT bill list.
    *   'all'          — pre-tick every loaded bill
@@ -81,37 +60,12 @@ export interface UiFlags {
    */
   auditLogArchiveEnabled: boolean;
   /**
-   * D1.4.3.3 — legal document retention years (พ.ร.บ.บัญชี ม.7).
-   * Default 5. Informational; no auto-purge cron consumes this yet.
-   */
-  documentRetentionYears: number;
-  /**
-   * D1.4.2.4 — CSV import batch size (rows). Default 500, valid 50–5000.
-   * INFORMATIONAL: current Payments CSV import processes rows one-at-a-time;
-   * flag is exposed for future bulk-import paths.
-   */
-  batchSizeImport: number;
-  /**
    * D1.4.3.4 — default format for data export dropdowns across the app.
    * Whitelist `'JSON'` / `'CSV'` / `'XLSX'`. UIs that already render
    * export buttons should pre-select this value; the user can still
    * change per export.
    */
   dataExportFormat: 'JSON' | 'CSV' | 'XLSX';
-  /**
-   * D1.4.3.5 — master PII masking toggle (PDPA / พ.ร.บ.คุ้มครองข้อมูล
-   * ส่วนบุคคล policy surface). Default `true`. Informational — does not
-   * short-circuit existing per-call mask helpers; admin UI editing this
-   * key should render a bold PDPA warning before persisting `false`.
-   */
-  piiMaskingEnabled: boolean;
-  /**
-   * D1.4.2.5 — max concurrent BullMQ worker jobs. Default 5, valid 1–50.
-   * INFORMATIONAL for the SystemConfig key — @Processor decorator reads
-   * `MAX_CONCURRENT_JOBS` env var at module load; SystemConfig is the
-   * OWNER-visible source of truth until refactored.
-   */
-  maxConcurrentJobs: number;
   /**
    * D1.4.3.6 — gate the LoginAuditLog row INSERT. Default `true`. When
    * `false`, no audit row is written for login attempts. Failed-attempt
@@ -187,12 +141,6 @@ export interface UiFlags {
    * available; this flag controls whether the UI exposes it.
    */
   templateVariablesEnabled: boolean;
-  /**
-   * D1.2.4.3 — default visibility selection on the "บันทึกเป็นรายการโปรด"
-   * dialog. PRIVATE = creator-only (default), TEAM = creator + explicit
-   * grants, PUBLIC = visible to all authenticated users.
-   */
-  templateSharingDefault: 'PRIVATE' | 'TEAM' | 'PUBLIC';
   /** D1.2.3.5 — thousands separator style for the generic number formatter. */
   thousandsSeparator: 'comma' | 'space' | 'none';
   /** D1.2.3.4 — default decimal places (0-4) for the generic number formatter. */
@@ -337,14 +285,6 @@ export interface UiFlags {
     | 'OWNER_ONLY'
     | 'OWNER+ALL_NON_SALES';
   /**
-   * D1.3.3.4 — restrict integration API-key management UI to OWNER. Default
-   * true. UI surfaces (IntegrationHubPage link, "Manage API keys" menu
-   * entries) should hide for non-OWNER roles when this is true. Server-side
-   * the IntegrationsController is already OWNER-gated by `@Roles`, so this
-   * flag is the documentary toggle for that policy.
-   */
-  apiKeysAdminOnly: boolean;
-  /**
    * D1.3.2.4 + InternalControlActionBar — dynamic bundle controlling who
    * can reverse/void accounting documents. Whitelisted:
    *   - `'OWNER_ONLY'`
@@ -372,12 +312,8 @@ const DEFAULT_UI_FLAGS: UiFlags = {
     { code: 'cancel_transaction', label: 'ยกเลิกรายการ' },
     { code: 'other', label: 'อื่นๆ (ระบุรายละเอียด)' },
   ],
-  reverseManagerApprovalDays: 7,
-  paymentDateWarningBackdate: 30,
   paymentDateAllowFuture: true,
-  periodCloseDay: 31,
   voucherShowQrCode: true,
-  themeColor: '#10b981',
   language: 'th',
   docPrefixMap: {
     EXPENSE: 'EX',
@@ -387,8 +323,6 @@ const DEFAULT_UI_FLAGS: UiFlags = {
     PETTY_CASH_REIMBURSEMENT: 'PC',
     REPAIR_SERVICE: 'RS',
   },
-  bankReconciliationMode: 'manual',
-  ssoRateLocked: '5%',
   settlementDefaultTick: 'overdue_only',
   whtRates: [
     { rate: 1, label: '1% — ดอกเบี้ย' },
@@ -399,11 +333,7 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   ],
   exportEnabled: true,
   auditLogArchiveEnabled: true,
-  documentRetentionYears: 5,
-  batchSizeImport: 500,
   dataExportFormat: 'JSON',
-  piiMaskingEnabled: true,
-  maxConcurrentJobs: 5,
   loginLogEnabled: true,
   smartSwitchThresholdDays: 0,
   summaryDefaultRange: 'this_month',
@@ -417,7 +347,6 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   templatesEnabled: true,
   maxTemplatesPerUser: 20,
   templateVariablesEnabled: true,
-  templateSharingDefault: 'PRIVATE',
   thousandsSeparator: 'comma',
   decimalPlaces: 2,
   dateFormat: 'BE',
@@ -447,7 +376,6 @@ const DEFAULT_UI_FLAGS: UiFlags = {
   webhooksEnabled: false,
   settingsAccessRole: 'OWNER',
   postPermission: 'OWNER+FINANCE_MANAGER+ACCOUNTANT',
-  apiKeysAdminOnly: true,
   reversePermission: 'OWNER+FINANCE_MANAGER',
 };
 

@@ -1,6 +1,8 @@
 import { Test } from '@nestjs/testing';
 import { TestModeController } from '../test-mode.controller';
 import { TestModeService } from '../test-mode.service';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../../auth/guards/roles.guard';
 
 describe('TestModeController', () => {
   let ctrl: TestModeController;
@@ -11,9 +13,9 @@ describe('TestModeController', () => {
       controllers: [TestModeController],
       providers: [{ provide: TestModeService, useValue: svc }],
     })
-      .overrideGuard(require('../../auth/guards/jwt-auth.guard').JwtAuthGuard)
+      .overrideGuard(JwtAuthGuard)
       .useValue({ canActivate: () => true })
-      .overrideGuard(require('../../auth/guards/roles.guard').RolesGuard)
+      .overrideGuard(RolesGuard)
       .useValue({ canActivate: () => true })
       .compile();
     ctrl = mod.get(TestModeController);

@@ -20,10 +20,11 @@ export function VendorSection({ state, onChange }: Props) {
               onChange({
                 vendorName: s.name,
                 vendorTaxId: s.taxId,
+                vendorSupplierId: s.supplierId,
                 ...(s.whtFormType ? { whtFormType: s.whtFormType } : {}),
               })
             }
-            onTypeName={(name) => onChange({ vendorName: name })}
+            onTypeName={(name) => onChange({ vendorName: name, vendorSupplierId: '' })}
           />
         </div>
         <div>

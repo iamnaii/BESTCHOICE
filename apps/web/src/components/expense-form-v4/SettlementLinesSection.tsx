@@ -163,10 +163,11 @@ export function SettlementLinesSection({ branchId, value, onChange }: Props) {
               onChange({
                 ...value,
                 vendorName: s.name,
+                vendorSupplierId: s.supplierId,
                 ...(s.whtFormType ? { whtFormType: s.whtFormType } : {}),
               })
             }
-            onTypeName={(name) => onChange({ ...value, vendorName: name })}
+            onTypeName={(name) => onChange({ ...value, vendorName: name, vendorSupplierId: '' })}
           />
         </div>
         <div>

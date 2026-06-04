@@ -6,11 +6,12 @@ import {
   CheckCircle2,
   XCircle,
   Undo2,
-  Lock,
-  ShieldAlert,
-  User as UserIcon,
   Printer,
+  ShieldCheck,
+  User as UserIcon,
   History,
+  Circle,
+  AlertCircle,
 } from 'lucide-react';
 import { useUiFlags } from '@/hooks/useUiFlags';
 import { Button } from '@/components/ui/button';
@@ -26,24 +27,20 @@ import {
 } from './types';
 
 /**
- * InternalControlActionBar — the single shared "ควบคุมภายใน" action bar
- * used by all three accounting modules (Other Income, Expense, Asset).
+ * InternalControlActionBar — the single shared "ควบคุมภายใน" surface used by
+ * all three accounting modules (Other Income, Expense, Asset).
  *
- * Responsibilities (per InternalControlActionBar v2.2 spec):
- *  1. Render the purple-border control panel with state machine + buttons.
- *  2. Render the audit timeline (CREATED → POSTED → REVERSED + reason).
- *  3. Conditionally render buttons per status:
- *     - DRAFT      → ยกเลิก / บันทึกร่าง / บันทึก+POST (or submit-for-approval)
- *     - READY      → กลับ / ปฏิเสธ / อนุมัติ+POST (approver only)
- *     - POSTED     → ปิด / พิมพ์ / กลับรายการ (gated by canReverse)
- *     - REVERSED   → ปิด / พิมพ์ใบกลับรายการ
- *  4. Open the unified ReverseConfirmDialog and forward (reasonLabel, note)
- *     to the parent module via `onReverse`. Parent module is responsible
- *     for the actual Reverse Entry — this component never touches JE.
- *  5. Enforce the state machine — REVERSED is terminal, no buttons re-fire.
+ * Rendered as an in-flow card at the end of the document form (NOT a floating
+ * fixed bar), themed to match the page (emerald/zinc), with four zones:
+ *   1. Header — identity + document number + status pill.
+ *   2. Stepper — DRAFT → (READY) → ลงบัญชี → กลับรายการ progress.
+ *   3. Meta — ผู้บันทึก / ผู้อนุมัติ + ต้องอนุมัติ badge + audit timeline preview.
+ *   4. Footer — state-aware action buttons (DRAFT/READY/POSTED/REVERSED).
  *
- * Per-module logic (JE Generator, VAT/WHT, Auto Journal) lives in the
- * parent module. This component is presentational + lightweight state only.
+ * Per-module logic (JE Generator, VAT/WHT, Auto Journal) lives in the parent.
+ * This component is presentational + lightweight state only; it opens the
+ * unified ReverseConfirmDialog and forwards (reasonId, reasonLabel, note) to
+ * the parent via `onReverse` — it never touches the JE itself.
  */
 export interface InternalControlActionBarProps {
   module: IcabModule;
@@ -94,65 +91,86 @@ export interface InternalControlActionBarProps {
   onPrint?: () => void;
 }
 
-const STATE_LABELS: Record<IcabStatus, string> = {
-  DRAFT: 'DRAFT',
-  READY: 'READY',
-  POSTED: 'POSTED',
-  REVERSED: 'REVERSED',
+const STATUS_LABEL: Record<IcabStatus, string> = {
+  DRAFT: 'ฉบับร่าง',
+  READY: 'รออนุมัติ',
+  POSTED: 'ลงบัญชีแล้ว',
+  REVERSED: 'กลับรายการแล้ว',
 };
 
-function StateMachineBar({
+const STATUS_PILL: Record<IcabStatus, string> = {
+  DRAFT: 'bg-muted text-muted-foreground',
+  READY: 'bg-info/10 text-info',
+  POSTED: 'bg-success/10 text-success',
+  REVERSED: 'bg-destructive/10 text-destructive',
+};
+
+function Stepper({
   status,
   makerCheckerEnabled,
 }: {
   status: IcabStatus;
   makerCheckerEnabled: boolean;
 }) {
-  const statesAll: IcabStatus[] = ['DRAFT', 'READY', 'POSTED', 'REVERSED'];
-  // Force 4-step bar whenever doc is in READY so the dot resolves to active
-  // even before useUiFlags settles.
-  const states =
-    makerCheckerEnabled || status === 'READY'
-      ? statesAll
-      : (['DRAFT', 'POSTED', 'REVERSED'] as IcabStatus[]);
-  const currentIndex = states.indexOf(status);
+  // Force the READY step whenever the doc is already in READY, so the active
+  // dot resolves even before useUiFlags settles (matches legacy behaviour).
+  const steps: { key: IcabStatus; label: string }[] = [
+    { key: 'DRAFT', label: 'ฉบับร่าง' },
+    ...(makerCheckerEnabled || status === 'READY'
+      ? [{ key: 'READY' as IcabStatus, label: 'รออนุมัติ' }]
+      : []),
+    { key: 'POSTED', label: 'ลงบัญชี' },
+    { key: 'REVERSED', label: 'กลับรายการ' },
+  ];
+  const currentIndex = steps.findIndex((s) => s.key === status);
 
   return (
-    <div className="flex items-center gap-2 w-full">
-      {states.map((s, i) => {
-        const isActive = i === currentIndex;
-        const isPast = i < currentIndex;
-        const state = isActive ? 'active' : isPast ? 'past' : 'future';
-        const dotClasses =
-          state === 'active'
-            ? 'w-3 h-3 rounded-full bg-primary ring-4 ring-primary/20'
-            : state === 'past'
-              ? 'w-2.5 h-2.5 rounded-full bg-muted-foreground'
-              : 'w-2.5 h-2.5 rounded-full border-2 border-border bg-background';
-        const labelClasses =
-          state === 'active'
-            ? 'text-xs font-semibold text-primary'
-            : state === 'past'
-              ? 'text-xs text-muted-foreground'
-              : 'text-xs text-muted-foreground/60';
+    <ol className="flex items-center">
+      {steps.map((step, i) => {
+        const done = i < currentIndex;
+        const active = i === currentIndex;
+        const reached = done || active;
         return (
-          <div key={s} className="flex items-center gap-2 flex-1">
-            <div className="flex flex-col items-center gap-1">
-              <div
-                data-testid="state-machine-dot"
-                data-state={state}
-                data-label={s}
-                className={dotClasses}
-              />
-              <span className={labelClasses}>{STATE_LABELS[s]}</span>
+          <li key={step.key} className="flex flex-1 items-center last:flex-none">
+            <div
+              className="flex flex-col items-center gap-1.5"
+              data-testid="state-machine-dot"
+              data-state={active ? 'active' : done ? 'past' : 'future'}
+              data-label={step.key}
+            >
+              <span
+                className={`flex h-8 w-8 items-center justify-center rounded-full border ${
+                  reached
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-border bg-muted/40 text-muted-foreground'
+                }`}
+              >
+                {reached ? (
+                  <CheckCircle2 size={18} aria-hidden />
+                ) : (
+                  <Circle size={16} aria-hidden />
+                )}
+              </span>
+              <span
+                className={`text-xs font-medium leading-snug ${
+                  reached ? 'text-foreground' : 'text-muted-foreground'
+                }`}
+              >
+                {step.label}
+              </span>
             </div>
-            {i < states.length - 1 && (
-              <div className="flex-1 border-t-2 border-dashed border-border" />
+            {i < steps.length - 1 && (
+              <span
+                className={`mx-1.5 -mt-5 h-0.5 flex-1 rounded-full sm:mx-2 ${
+                  i < currentIndex ? 'bg-primary' : 'bg-border'
+                }`}
+                aria-hidden
+              />
             )}
-          </div>
+          </li>
         );
       })}
-    </div>
+    </ol>
   );
 }
 
@@ -206,226 +224,243 @@ export function InternalControlActionBar(props: InternalControlActionBarProps) {
       ? currentUser.canReverseOverride === true
       : canReverse);
 
-  const frameClass =
-    'fixed bottom-0 left-0 right-0 z-40 px-4 md:px-6 py-3 ' +
-    'border-t-2 bg-[hsl(var(--accent-purple)/0.04)] border-[hsl(var(--accent-purple)/0.3)] ' +
-    'shadow-lg backdrop-blur-sm';
-
   return (
     <>
-      <div className={frameClass} data-testid="icab-frame" data-module={module} data-status={status}>
-        <div className="max-w-5xl mx-auto space-y-3">
-          {/* Row 1 — Internal-Control label + recorder/approver pills + history popover */}
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-[hsl(var(--accent-purple))]">
-              <Lock size={13} aria-hidden />
-              ควบคุมภายใน
-              <StatusBadge status={status} docNumber={docNumber} />
+      <section
+        data-testid="icab-frame"
+        data-module={module}
+        data-status={status}
+        className="mt-4 rounded-xl border border-border bg-card text-card-foreground"
+      >
+        {/* Zone 1 — Header */}
+        <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-5">
+          <div className="flex items-center gap-3">
+            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <ShieldCheck size={18} aria-hidden />
+            </span>
+            <div className="leading-snug">
+              <h3 className="text-sm font-semibold text-foreground">ควบคุมภายใน</h3>
+              <p className="text-xs text-muted-foreground">
+                {docNumber ?? 'เอกสารยังไม่ออกเลขที่'}
+              </p>
             </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              {recorder && (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-info/10 text-info text-xs leading-snug">
-                  <UserIcon size={13} aria-hidden />
-                  <span className="text-muted-foreground">ผู้บันทึก:</span>
-                  <span className="font-semibold text-foreground">{recorder}</span>
-                </span>
-              )}
-              {approver && (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-success/10 text-success text-xs leading-snug">
-                  <CheckCircle2 size={13} aria-hidden />
-                  <span className="text-muted-foreground">ผู้อนุมัติ:</span>
-                  <span className="font-semibold text-foreground">{approver.userName}</span>
-                </span>
-              )}
+          </div>
+          <span
+            className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium leading-snug ${STATUS_PILL[status]}`}
+          >
+            {STATUS_LABEL[status]}
+          </span>
+        </div>
+
+        {/* Zone 2 — Stepper */}
+        <div className="px-4 py-4 sm:px-5">
+          <Stepper status={status} makerCheckerEnabled={makerCheckerEnabled} />
+        </div>
+
+        {/* Zone 3 — Meta + audit */}
+        <div className="grid gap-4 border-t border-border px-4 py-4 sm:px-5 lg:grid-cols-2">
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/40 px-2.5 py-1.5 text-sm leading-snug text-foreground">
+                <UserIcon size={14} className="text-muted-foreground" aria-hidden />
+                <span className="text-muted-foreground">ผู้บันทึก:</span>
+                <span className="font-medium">{recorder}</span>
+              </span>
               {showApprovalBadge && (
                 <span
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-warning/15 text-warning text-xs font-semibold leading-snug"
+                  className="inline-flex items-center gap-1 rounded-full bg-warning/15 px-2.5 py-1 text-xs font-medium leading-snug text-warning"
                   title="เอกสารนี้ต้องผ่านการอนุมัติก่อนลงบัญชี"
                 >
-                  <ShieldAlert size={13} aria-hidden />
                   ต้องอนุมัติ
                 </span>
               )}
+            </div>
+            {approver && (
+              <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/40 px-2.5 py-1.5 text-sm leading-snug text-foreground">
+                <ShieldCheck size={14} className="text-muted-foreground" aria-hidden />
+                <span className="text-muted-foreground">ผู้อนุมัติ:</span>
+                <span className="font-medium">{approver.userName}</span>
+              </span>
+            )}
+          </div>
 
-              <Popover>
-                <PopoverTrigger asChild>
+          <div className="rounded-lg border border-border bg-muted/40 p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="inline-flex items-center gap-1.5 text-sm font-medium leading-snug text-foreground">
+                <History size={14} className="text-muted-foreground" aria-hidden />
+                ประวัติ ({auditLog.length})
+              </span>
+              {auditLog.length > 3 && (
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-2 text-xs text-primary"
+                      aria-label="ดูประวัติทั้งหมด"
+                    >
+                      ดูทั้งหมด
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="end" className="max-h-[420px] w-80 overflow-y-auto">
+                    <p className="mb-3 text-sm font-semibold leading-snug">
+                      ประวัติการทำงาน ({auditLog.length})
+                    </p>
+                    <AuditTimeline events={auditLog} />
+                  </PopoverContent>
+                </Popover>
+              )}
+            </div>
+            <AuditTimeline events={auditLog.slice(-3)} compact />
+          </div>
+        </div>
+
+        {/* Zone 4 — State-aware action buttons */}
+        <div className="flex flex-col gap-3 border-t border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+          <div className="min-h-[1.25rem] text-xs leading-snug">
+            {status === 'DRAFT' && errorCount > 0 && (
+              <span className="inline-flex items-center gap-1.5 font-semibold text-destructive">
+                <AlertCircle size={14} aria-hidden />
+                มี {errorCount} ข้อต้องแก้ไข
+              </span>
+            )}
+            {status === 'READY' && !isViewerApprover && !isOwnDoc && (
+              <span className="text-muted-foreground">รออนุมัติจาก OWNER</span>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {/* Universal "go back / close" button — label depends on context */}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={status === 'POSTED' || status === 'REVERSED' ? (onClose ?? onCancel) : onCancel}
+              disabled={isLoading}
+            >
+              <ArrowLeft size={14} className="mr-1.5" aria-hidden />
+              {(() => {
+                const isViewOnlyDraft =
+                  status === 'DRAFT' && !onSaveDraft && !onPost && !onSubmitForApproval;
+                if (status === 'POSTED' || status === 'REVERSED' || isViewOnlyDraft) return 'ปิด';
+                if (status === 'READY') return 'กลับ';
+                return 'ยกเลิก';
+              })()}
+            </Button>
+
+            {/* DRAFT actions */}
+            {status === 'DRAFT' && (
+              <>
+                {onSaveDraft && (
                   <Button
-                    variant="ghost"
+                    type="button"
+                    variant="outline"
                     size="sm"
-                    className="h-8 gap-1.5 text-xs"
-                    aria-label="ดูประวัติการทำงาน"
+                    onClick={onSaveDraft}
+                    disabled={isLoading}
                   >
-                    <History size={14} aria-hidden />
-                    ประวัติ ({auditLog.length})
+                    <Save size={14} className="mr-1.5" aria-hidden />
+                    บันทึกร่าง
                   </Button>
-                </PopoverTrigger>
-                <PopoverContent
-                  align="end"
-                  className="w-[420px] max-h-[480px] overflow-y-auto"
-                >
-                  <h4 className="text-sm font-semibold mb-3 leading-snug">
-                    ประวัติการทำงาน
-                  </h4>
-                  <AuditTimeline events={auditLog} />
-                </PopoverContent>
-              </Popover>
-            </div>
-          </div>
+                )}
+                {makerCheckerEnabled
+                  ? onSubmitForApproval && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={onSubmitForApproval}
+                        disabled={isLoading || !canPost}
+                      >
+                        <Send size={14} className="mr-1.5" aria-hidden />
+                        ส่งให้อนุมัติ
+                      </Button>
+                    )
+                  : onPost && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={onPost}
+                        disabled={isLoading || !canPost}
+                      >
+                        <CheckCircle2 size={14} className="mr-1.5" aria-hidden />
+                        บันทึก & POST
+                      </Button>
+                    )}
+              </>
+            )}
 
-          {/* Row 2 — State machine bar (collapses to a single dot on mobile) */}
-          <div className="hidden md:block">
-            <StateMachineBar status={status} makerCheckerEnabled={makerCheckerEnabled} />
-          </div>
-          <div className="md:hidden text-xs text-muted-foreground">
-            สถานะ: <span className="font-semibold text-primary">● {STATE_LABELS[status]}</span>
-          </div>
+            {/* READY actions (approver only) */}
+            {status === 'READY' && isViewerApprover && (
+              <>
+                {onReject && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={onReject}
+                    disabled={isLoading}
+                    className="border-destructive/40 text-destructive hover:bg-destructive/10"
+                  >
+                    <XCircle size={14} className="mr-1.5" aria-hidden />
+                    ปฏิเสธ
+                  </Button>
+                )}
+                {onApprove && (
+                  <Button type="button" size="sm" onClick={onApprove} disabled={isLoading}>
+                    <CheckCircle2 size={14} className="mr-1.5" aria-hidden />
+                    อนุมัติ & POST
+                  </Button>
+                )}
+              </>
+            )}
 
-          {/* Row 3 — State-aware action buttons */}
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <div className="text-xs leading-snug">
-              {status === 'DRAFT' && errorCount > 0 && (
-                <span className="text-destructive font-semibold">
-                  มี {errorCount} ข้อต้องแก้ไข
-                </span>
-              )}
-              {status === 'READY' && !isViewerApprover && !isOwnDoc && (
-                <span className="text-muted-foreground">รออนุมัติจาก OWNER</span>
-              )}
-            </div>
+            {/* POSTED actions */}
+            {status === 'POSTED' && (
+              <>
+                {onPrint && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={onPrint}
+                    disabled={isLoading}
+                  >
+                    <Printer size={14} className="mr-1.5" aria-hidden />
+                    {resolvedPrintLabel}
+                  </Button>
+                )}
+                {onReverse && canReverseResolved && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setReverseDialogOpen(true)}
+                    disabled={isLoading}
+                    className="border-destructive/40 text-destructive hover:bg-destructive/10"
+                  >
+                    <Undo2 size={14} className="mr-1.5" aria-hidden />
+                    ยกเลิก / กลับรายการ
+                  </Button>
+                )}
+              </>
+            )}
 
-            <div className="flex items-center gap-2 flex-wrap">
-              {/* Universal "go back / close" button — label depends on context */}
+            {/* REVERSED actions */}
+            {status === 'REVERSED' && onPrint && (
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={status === 'POSTED' || status === 'REVERSED' ? (onClose ?? onCancel) : onCancel}
+                onClick={onPrint}
                 disabled={isLoading}
               >
-                <ArrowLeft size={14} className="mr-1.5" aria-hidden />
-                {(() => {
-                  const isViewOnlyDraft =
-                    status === 'DRAFT' && !onSaveDraft && !onPost && !onSubmitForApproval;
-                  if (status === 'POSTED' || status === 'REVERSED' || isViewOnlyDraft) return 'ปิด';
-                  if (status === 'READY') return 'กลับ';
-                  return 'ยกเลิก';
-                })()}
+                <Printer size={14} className="mr-1.5" aria-hidden />
+                พิมพ์ใบกลับรายการ
               </Button>
-
-              {/* DRAFT actions */}
-              {status === 'DRAFT' && (
-                <>
-                  {onSaveDraft && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={onSaveDraft}
-                      disabled={isLoading}
-                    >
-                      <Save size={14} className="mr-1.5" aria-hidden />
-                      บันทึกร่าง
-                    </Button>
-                  )}
-                  {makerCheckerEnabled
-                    ? onSubmitForApproval && (
-                        <Button
-                          type="button"
-                          size="sm"
-                          onClick={onSubmitForApproval}
-                          disabled={isLoading || !canPost}
-                        >
-                          <Send size={14} className="mr-1.5" aria-hidden />
-                          ส่งให้อนุมัติ
-                        </Button>
-                      )
-                    : onPost && (
-                        <Button
-                          type="button"
-                          size="sm"
-                          onClick={onPost}
-                          disabled={isLoading || !canPost}
-                        >
-                          <CheckCircle2 size={14} className="mr-1.5" aria-hidden />
-                          บันทึก & POST
-                        </Button>
-                      )}
-                </>
-              )}
-
-              {/* READY actions (approver only) */}
-              {status === 'READY' && isViewerApprover && (
-                <>
-                  {onReject && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={onReject}
-                      disabled={isLoading}
-                      className="border-destructive/40 text-destructive hover:bg-destructive/10"
-                    >
-                      <XCircle size={14} className="mr-1.5" aria-hidden />
-                      ปฏิเสธ
-                    </Button>
-                  )}
-                  {onApprove && (
-                    <Button type="button" size="sm" onClick={onApprove} disabled={isLoading}>
-                      <CheckCircle2 size={14} className="mr-1.5" aria-hidden />
-                      อนุมัติ & POST
-                    </Button>
-                  )}
-                </>
-              )}
-
-              {/* POSTED actions */}
-              {status === 'POSTED' && (
-                <>
-                  {onPrint && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={onPrint}
-                      disabled={isLoading}
-                    >
-                      <Printer size={14} className="mr-1.5" aria-hidden />
-                      {resolvedPrintLabel}
-                    </Button>
-                  )}
-                  {onReverse && canReverseResolved && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setReverseDialogOpen(true)}
-                      disabled={isLoading}
-                      className="border-destructive/40 text-destructive hover:bg-destructive/10"
-                    >
-                      <Undo2 size={14} className="mr-1.5" aria-hidden />
-                      ยกเลิก / กลับรายการ
-                    </Button>
-                  )}
-                </>
-              )}
-
-              {/* REVERSED actions */}
-              {status === 'REVERSED' && onPrint && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={onPrint}
-                  disabled={isLoading}
-                >
-                  <Printer size={14} className="mr-1.5" aria-hidden />
-                  พิมพ์ใบกลับรายการ
-                </Button>
-              )}
-            </div>
+            )}
           </div>
         </div>
-      </div>
+      </section>
 
       {onReverse && docNumber && (
         <ReverseConfirmDialog
@@ -444,36 +479,4 @@ export function InternalControlActionBar(props: InternalControlActionBarProps) {
       )}
     </>
   );
-}
-
-function StatusBadge({ status, docNumber }: { status: IcabStatus; docNumber?: string }) {
-  if (status === 'DRAFT') {
-    return (
-      <span className="ml-2 inline-flex items-center gap-1 rounded-md border border-warning/40 bg-warning/10 px-2 py-0.5 text-[11px] font-medium text-warning leading-snug">
-        📝 ฉบับร่าง — ยังไม่ลงบัญชี
-      </span>
-    );
-  }
-  if (status === 'POSTED') {
-    return (
-      <span className="ml-2 inline-flex items-center gap-1 rounded-md border border-success/40 bg-success/10 px-2 py-0.5 text-[11px] font-medium text-success leading-snug">
-        ✓ ลงบัญชีแล้ว{docNumber ? ` — ${docNumber}` : ''}
-      </span>
-    );
-  }
-  if (status === 'REVERSED') {
-    return (
-      <span className="ml-2 inline-flex items-center gap-1 rounded-md border border-destructive/40 bg-destructive/10 px-2 py-0.5 text-[11px] font-medium text-destructive leading-snug">
-        ↺ กลับรายการแล้ว{docNumber ? ` — ${docNumber}` : ''}
-      </span>
-    );
-  }
-  if (status === 'READY') {
-    return (
-      <span className="ml-2 inline-flex items-center gap-1 rounded-md border border-info/40 bg-info/10 px-2 py-0.5 text-[11px] font-medium text-info leading-snug">
-        ⏳ รออนุมัติ
-      </span>
-    );
-  }
-  return null;
 }

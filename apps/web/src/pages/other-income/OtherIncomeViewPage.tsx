@@ -353,7 +353,7 @@ export default function OtherIncomeViewPage() {
     rejectMutation.isPending;
 
   return (
-    <div className="p-6 max-w-7xl mx-auto pb-44 md:pb-40">
+    <div className="p-6 max-w-7xl mx-auto pb-6">
       <PageHeader
         title="รายละเอียดเอกสารรายได้อื่น"
         icon={<Receipt size={20} />}

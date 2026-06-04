@@ -242,7 +242,7 @@ export default function ExpenseDetailPage() {
   const money = (v: string | null | undefined) => `${formatNumberDecimal(Number(v ?? 0), 2)} ฿`;
 
   return (
-    <div className="p-6 max-w-7xl mx-auto pb-44 md:pb-40">
+    <div className="p-6 max-w-7xl mx-auto pb-6">
       <PageHeader
         title="รายละเอียดเอกสารรายจ่าย"
         icon={<Wallet size={20} />}

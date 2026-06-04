@@ -53,7 +53,7 @@ party master (`Contact`) สร้างเสร็จแล้วตาม spe
 4. audit: `CONTACT_ROLE_ADDED` (string มีอยู่แล้วใน spec แม่ §5)
 5. คืน `{ contactId, role, supplierId?, customerId? }` ให้เอกสารผูก FK ตามเดิม
 
-**guard:** `@UseGuards(JwtAuthGuard, RolesGuard)` + `@Roles('OWNER','FINANCE_MANAGER','ACCOUNTANT','BRANCH_MANAGER','SALES')` (ตามคนที่สร้างเอกสารผู้ขาย/ลูกค้าได้) + เคารพ branch-access เดิม
+**guard:** `@UseGuards(JwtAuthGuard, RolesGuard)` + `@Roles('OWNER','BRANCH_MANAGER','FINANCE_MANAGER','ACCOUNTANT')` — **ตรงกับนโยบายสร้าง Supplier** (`POST /suppliers`) เพราะ endpoint นี้สร้างแถว Supplier; **ไม่รวม SALES** (สร้าง supplier ไม่ได้ผ่าน `/suppliers` อยู่แล้ว)
 
 **tracer bullet ทำเฉพาะ `SUPPLIER` ก่อน** — `CUSTOMER` provisioning (ต้องระวัง PII/encryption fields ของ Customer) ทำในเฟส rollout
 
@@ -80,7 +80,7 @@ party master (`Contact`) สร้างเสร็จแล้วตาม spe
 
 ### 2.3 เสียบเข้าช่องผู้ขาย (tracer bullet)
 
-เปลี่ยน supplier picker ของ PurchaseOrder ให้ใช้ `ContactCombobox roleNeeded="SUPPLIER"` → onSelect เก็บ `childId` (supplierId) ตามเดิม
+เปลี่ยนไส้ใน `VendorCombobox` (ฟอร์มรายจ่าย expense v4) ให้เป็น thin wrapper ครอบ `ContactCombobox roleNeeded="SUPPLIER"` โดยคง `Props` เดิม (`value`/`onSelectSupplier`/`onTypeName`/`invalid`) ไว้เป๊ะ — expense ยังเก็บ vendor เป็น free-text เหมือนเดิม การ provision Supplier เป็น side effect (childId ไม่ได้ถูกเก็บเป็น FK ในเฟสนี้); pick แล้ว fetch `contactsApi.detail` เพื่ออ่านชนิดผู้ขาย map เป็น whtFormType (JURISTIC→PND53 / INDIVIDUAL→PND3)
 
 ## 3. "ค่อยเติมทีหลัง" — data completeness
 

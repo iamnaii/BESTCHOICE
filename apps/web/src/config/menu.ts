@@ -398,6 +398,7 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
       zone: 'fin',
       items: [
         { label: 'สมุดผู้ติดต่อ', path: '/contacts', icon: BookUser },
+        { label: 'พนักงาน', path: '/employees', icon: Users },
       ],
     },
     {
@@ -563,6 +564,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
       zone: 'fin',
       items: [
         { label: 'สมุดผู้ติดต่อ', path: '/contacts', icon: BookUser },
+        { label: 'พนักงาน', path: '/employees', icon: Users },
       ],
     },
     {

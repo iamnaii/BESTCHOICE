@@ -53,7 +53,7 @@ function makePrismaMock(opts: {
    *  plaintext rows that "appear" after the main loop's first pass. */
   raceRemaining?: number;
 }) {
-  let rows = (opts.rows ?? []).map((r) => ({ ...r }));
+  const rows = (opts.rows ?? []).map((r) => ({ ...r }));
   const runRows: Array<Record<string, unknown>> = [];
   let countCallSinceFindMany = 0;
   // For W9 retry: after the main loop finishes (lots of findMany calls),

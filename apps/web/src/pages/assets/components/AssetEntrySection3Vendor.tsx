@@ -45,6 +45,7 @@ import type { AssetEntryFormValues } from '../schema';
 import { CASH_ACCOUNTS, type SupplierLite } from '../types';
 import { AssetSectionHeader } from './AssetSectionHeader';
 import { getErrorMessage } from '@/lib/api';
+import { contactsApi } from '@/lib/api/contacts';
 
 export function AssetEntrySection3Vendor() {
   const {
@@ -134,12 +135,28 @@ export function AssetEntrySection3Vendor() {
 
   // Pick a vendor from สมุดผู้ติดต่อ → fill name + taxId. We DON'T set vendorId:
   // it's an FK to the legacy Supplier table, but list items are Contact ids.
-  const selectSupplier = (s: SupplierLite) => {
+  const selectSupplier = async (s: SupplierLite) => {
     setValue('supplierName', s.name, { shouldDirty: true, shouldValidate: true });
     setValue('supplierTaxId', s.taxId ?? '', { shouldDirty: true });
     setValue('vendorId', undefined, { shouldDirty: true });
     setPopoverOpen(false);
     setSearchValue('');
+    // Auto-fill ประเภทผู้ขาย (แบบ ภ.ง.ด.) from the supplier's type: JURISTIC →
+    // PND53 (นิติบุคคล), INDIVIDUAL → PND3 (บุคคล). The list payload omits the
+    // type, so read it from the contact detail. Best-effort — keep list values
+    // on failure. Only the WHT form type is touched; hasWht is left to the user.
+    try {
+      const detail = await contactsApi.detail(s.id);
+      const link = detail.suppliers?.[0];
+      if (link) {
+        setValue('whtFormType', link.type === 'JURISTIC' ? 'PND53' : 'PND3', {
+          shouldDirty: true,
+        });
+        if (link.taxId) setValue('supplierTaxId', link.taxId, { shouldDirty: true });
+      }
+    } catch {
+      // keep the list values when the detail lookup fails
+    }
   };
 
   // Free-text path: use whatever the user typed as the vendor name WITHOUT
@@ -170,7 +187,7 @@ export function AssetEntrySection3Vendor() {
       // contact-backed vendor list so the new entry appears.
       queryClient.invalidateQueries({ queryKey: ['vendor-contacts'] });
       // Auto-fill the new name + taxId.
-      selectSupplier(created);
+      void selectSupplier(created);
       setCreateOpen(false);
       setNewName('');
       setNewPhone('');
@@ -280,7 +297,7 @@ export function AssetEntrySection3Vendor() {
                       {filteredSuppliers.length > 0 && (
                         <CommandGroup heading="ผู้ขาย (สมุดผู้ติดต่อ)">
                           {filteredSuppliers.map((s) => (
-                            <CommandItem key={s.id} value={s.id} onSelect={() => selectSupplier(s)}>
+                            <CommandItem key={s.id} value={s.id} onSelect={() => void selectSupplier(s)}>
                               <Check
                                 className={cn(
                                   'mr-2 size-4 shrink-0',

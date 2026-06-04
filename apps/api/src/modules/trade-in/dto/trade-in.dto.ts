@@ -4,6 +4,7 @@ import {
   IsNumber,
   IsIn,
   IsBoolean,
+  IsUUID,
   Length,
   Matches,
 } from 'class-validator';
@@ -59,7 +60,7 @@ export class CreateTradeInDto {
   // ─── Seller info (walk-in) ──────────────────────────
   /** Party-master contactId for the seller. Stored for traceability alongside
    *  sellerName/sellerPhone (which are kept for display purposes). */
-  @IsString()
+  @IsUUID('4')
   @IsOptional()
   sellerContactId?: string;
 
@@ -179,7 +180,7 @@ export class AcceptTradeInDto {
  */
 export class QuickBuyTradeInDto {
   // Seller (walk-in) — party-master contact resolved by the picker upstream
-  @IsString()
+  @IsUUID('4')
   @IsOptional()
   sellerContactId?: string;
 

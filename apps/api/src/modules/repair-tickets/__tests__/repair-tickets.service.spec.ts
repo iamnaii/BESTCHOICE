@@ -920,6 +920,7 @@ describe('RepairTicketsService.returnToCustomer', () => {
     expect(expenseDocs.createDraftForRepair).toHaveBeenCalledWith(
       expect.objectContaining({
         vendorName: 'ซัพพลายเออร์ A',
+        vendorSupplierId: 'sup-1',
         amount: new Prisma.Decimal(2500),
       }),
       expect.anything(), // tx

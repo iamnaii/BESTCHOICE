@@ -4,6 +4,7 @@ import {
   IsIn,
   IsDateString,
   IsNumber,
+  IsUUID,
   Min,
   Matches,
   ValidateNested,
@@ -34,7 +35,7 @@ class PettyCashLineInput {
    * Party-master link (Phase 3 P3). Durable FK to the Supplier the UI picker
    * provisioned for `supplierName`. Optional.
    */
-  @IsString()
+  @IsUUID('4')
   @IsOptional()
   supplierId?: string;
 

@@ -16,7 +16,13 @@ export function VendorSection({ state, onChange }: Props) {
           <label className="block text-xs font-medium mb-1">ผู้ขาย <span className="text-destructive">*</span></label>
           <VendorCombobox
             value={state.vendorName}
-            onSelectSupplier={(s) => onChange({ vendorName: s.name, vendorTaxId: s.taxId })}
+            onSelectSupplier={(s) =>
+              onChange({
+                vendorName: s.name,
+                vendorTaxId: s.taxId,
+                ...(s.whtFormType ? { whtFormType: s.whtFormType } : {}),
+              })
+            }
             onTypeName={(name) => onChange({ vendorName: name })}
           />
         </div>

@@ -18,12 +18,20 @@ import {
   CommandList,
 } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
-import { contactsApi } from '@/lib/api/contacts';
+import { contactsApi, type Contact } from '@/lib/api/contacts';
 
 interface Props {
   value: string;
-  /** A supplier was picked from the contact book — autofill name + taxId. */
-  onSelectSupplier: (s: { name: string; taxId: string }) => void;
+  /**
+   * A supplier was picked from the contact book — autofill name + taxId, and
+   * whtFormType inferred from the supplier's type (JURISTIC → PND53 นิติบุคคล,
+   * INDIVIDUAL → PND3 บุคคลธรรมดา) when available.
+   */
+  onSelectSupplier: (s: {
+    name: string;
+    taxId: string;
+    whtFormType?: 'PND3' | 'PND53';
+  }) => void;
   /** A free-typed one-off name (no matching supplier in the contact book). */
   onTypeName: (name: string) => void;
   invalid?: boolean;
@@ -65,6 +73,27 @@ export function VendorCombobox({ value, onSelectSupplier, onTypeName, invalid }:
     onTypeName(n);
     setOpen(false);
     setSearch('');
+  };
+
+  // On pick: fetch the contact detail to read the supplier link's type
+  // (the list payload omits it) and map JURISTIC→PND53 / INDIVIDUAL→PND3 so the
+  // "ประเภทผู้ขาย" field auto-fills. Falls back to list values if detail fails.
+  const handleSelect = async (c: Contact) => {
+    setOpen(false);
+    setSearch('');
+    let taxId = c.taxId ?? '';
+    let whtFormType: 'PND3' | 'PND53' | undefined;
+    try {
+      const detail = await contactsApi.detail(c.id);
+      const link = detail.suppliers?.[0];
+      if (link) {
+        whtFormType = link.type === 'JURISTIC' ? 'PND53' : 'PND3';
+        if (link.taxId) taxId = link.taxId;
+      }
+    } catch {
+      // keep list values when the detail lookup fails
+    }
+    onSelectSupplier({ name: c.name, taxId, whtFormType });
   };
 
   return (
@@ -122,11 +151,7 @@ export function VendorCombobox({ value, onSelectSupplier, onTypeName, invalid }:
                       <CommandItem
                         key={s.id}
                         value={s.id}
-                        onSelect={() => {
-                          onSelectSupplier({ name: s.name, taxId: s.taxId ?? '' });
-                          setOpen(false);
-                          setSearch('');
-                        }}
+                        onSelect={() => void handleSelect(s)}
                       >
                         <Check
                           className={cn(

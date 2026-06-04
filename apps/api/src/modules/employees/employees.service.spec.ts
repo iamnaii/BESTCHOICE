@@ -12,7 +12,7 @@ describe('EmployeesService', () => {
 
   beforeEach(async () => {
     prisma = {
-      user: { findFirst: jest.fn() },
+      user: { findFirst: jest.fn(), findMany: jest.fn() },
       employeeProfile: {
         findMany: jest.fn(),
         findFirst: jest.fn(),
@@ -135,6 +135,37 @@ describe('EmployeesService', () => {
       );
       expect(JSON.stringify(res)).not.toContain('nationalId');
       expect(res[0]).toEqual(expect.not.objectContaining({ nationalId: expect.anything() }));
+    });
+  });
+
+  describe('provisionable', () => {
+    it('returns users with no profile, excludes system/inactive/deleted, carries NO nationalId', async () => {
+      prisma.user.findMany.mockResolvedValue([
+        { id: 'u-1', employeeId: 'EMP-001', name: 'สมชาย', nickname: 'ชาย' },
+      ]);
+      const res = await service.provisionable();
+      const where = prisma.user.findMany.mock.calls[0][0].where;
+      expect(where.isSystemUser).toBe(false);
+      expect(where.isActive).toBe(true);
+      expect(where.deletedAt).toBeNull();
+      expect(where.employeeProfile).toEqual({ is: null });
+      // response shape carries NO nationalId (PII)
+      expect(JSON.stringify(res)).not.toContain('nationalId');
+      expect(res[0]).toEqual(
+        expect.objectContaining({ userId: 'u-1', employeeId: 'EMP-001', name: 'สมชาย', nickname: 'ชาย' }),
+      );
+      expect(res[0]).toEqual(expect.not.objectContaining({ nationalId: expect.anything() }));
+    });
+
+    it('adds the name/nickname/employeeId OR filter when search is provided', async () => {
+      prisma.user.findMany.mockResolvedValue([]);
+      await service.provisionable('สม');
+      const where = prisma.user.findMany.mock.calls[0][0].where;
+      expect(where.OR).toEqual([
+        { name: { contains: 'สม', mode: 'insensitive' } },
+        { nickname: { contains: 'สม', mode: 'insensitive' } },
+        { employeeId: { contains: 'สม', mode: 'insensitive' } },
+      ]);
     });
   });
 });

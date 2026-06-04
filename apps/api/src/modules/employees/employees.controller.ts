@@ -34,6 +34,12 @@ export class EmployeesController {
     return this.employees.pickable(search);
   }
 
+  @Get('provisionable')
+  @Roles('OWNER', 'ACCOUNTANT')
+  provisionable(@Query('search') search?: string) {
+    return this.employees.provisionable(search);
+  }
+
   @Get(':id')
   @Roles('OWNER', 'ACCOUNTANT')
   findOne(@Param('id') id: string) {

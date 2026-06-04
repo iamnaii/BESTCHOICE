@@ -189,4 +189,33 @@ export class EmployeesService {
       ssoEligible: r.ssoEligible,
     }));
   }
+
+  async provisionable(search?: string) {
+    const where: Prisma.UserWhereInput = {
+      isSystemUser: false,
+      isActive: true,
+      deletedAt: null,
+      employeeProfile: { is: null },
+    };
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { nickname: { contains: search, mode: 'insensitive' } },
+        { employeeId: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+    const rows = await this.prisma.user.findMany({
+      where,
+      orderBy: { name: 'asc' },
+      take: 20,
+      // Explicit projection — NEVER include nationalId here (PII).
+      select: { id: true, employeeId: true, name: true, nickname: true },
+    });
+    return rows.map((u) => ({
+      userId: u.id,
+      employeeId: u.employeeId,
+      name: u.name,
+      nickname: u.nickname,
+    }));
+  }
 }

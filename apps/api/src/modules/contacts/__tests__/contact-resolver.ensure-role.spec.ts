@@ -8,12 +8,14 @@ describe('ContactResolverService.ensureRole', () => {
   let tx: {
     contact: { findFirst: jest.Mock; update: jest.Mock };
     supplier: { findFirst: jest.Mock; create: jest.Mock };
+    customer: { findFirst: jest.Mock; create: jest.Mock };
   };
 
   beforeEach(async () => {
     tx = {
       contact: { findFirst: jest.fn(), update: jest.fn().mockResolvedValue({}) },
       supplier: { findFirst: jest.fn(), create: jest.fn() },
+      customer: { findFirst: jest.fn(), create: jest.fn() },
     };
     const mod = await Test.createTestingModule({
       providers: [
@@ -101,9 +103,47 @@ describe('ContactResolverService.ensureRole', () => {
     });
   });
 
-  it('rejects CUSTOMER provisioning in this phase', async () => {
+  it('provisions a Customer with blank-phone fallback and adds the CUSTOMER role', async () => {
+    tx.contact.findFirst.mockResolvedValue({
+      id: 'c5', name: 'Walkin Co', phone: null, roles: ['SUPPLIER'],
+    });
+    tx.customer.findFirst.mockResolvedValue(null);
+    tx.customer.create.mockResolvedValue({ id: 'cus5' });
+
+    const result = await svc.ensureRole(tx as any, 'c5', 'CUSTOMER');
+
+    expect(tx.customer.create).toHaveBeenCalledWith({
+      data: { name: 'Walkin Co', phone: '', contactId: 'c5' },
+      select: { id: true },
+    });
+    expect(tx.contact.update).toHaveBeenCalledWith({
+      where: { id: 'c5' },
+      data: { roles: { set: ['SUPPLIER', 'CUSTOMER'] } },
+    });
+    expect(result).toEqual({
+      contactId: 'c5', role: 'CUSTOMER', customerId: 'cus5', provisioned: true,
+    });
+    expect(tx.supplier.create).not.toHaveBeenCalled();
+  });
+
+  it('returns the existing customer id without creating (idempotent)', async () => {
+    tx.contact.findFirst.mockResolvedValue({
+      id: 'c6', name: 'ABC', phone: '02', roles: ['CUSTOMER'],
+    });
+    tx.customer.findFirst.mockResolvedValue({ id: 'cus6' });
+
+    const result = await svc.ensureRole(tx as any, 'c6', 'CUSTOMER');
+
+    expect(tx.customer.create).not.toHaveBeenCalled();
+    expect(tx.contact.update).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      contactId: 'c6', role: 'CUSTOMER', customerId: 'cus6', provisioned: false,
+    });
+  });
+
+  it('rejects a role that is not SUPPLIER or CUSTOMER', async () => {
     tx.contact.findFirst.mockResolvedValue(null);
-    await expect(svc.ensureRole(tx as any, 'c1', 'CUSTOMER' as any)).rejects.toBeInstanceOf(
+    await expect(svc.ensureRole(tx as any, 'c1', 'TRADE_IN_SELLER' as any)).rejects.toBeInstanceOf(
       BadRequestException,
     );
   });

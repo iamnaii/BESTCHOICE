@@ -98,16 +98,17 @@ export class ContactResolverService {
 
   /**
    * Ensure a contact can be used in a `role` context: provision the child row
-   * (Supplier) if missing and append the role. Idempotent. SUPPLIER only in this
-   * phase — CUSTOMER auto-provisioning is deferred (PII/encryption on Customer).
+   * (Supplier or Customer) if missing and append the role. Idempotent.
+   * Supports SUPPLIER and CUSTOMER. The provisioned child is a minimal stub
+   * (name + phone mirrored from the contact); the rest is enriched later.
    */
   async ensureRole(
     tx: Tx,
     contactId: string,
     role: ContactRole,
   ): Promise<EnsureRoleResult> {
-    if (role !== 'SUPPLIER') {
-      throw new BadRequestException('ยังไม่รองรับการสร้างบทบาทนี้อัตโนมัติในเฟสนี้');
+    if (role !== 'SUPPLIER' && role !== 'CUSTOMER') {
+      throw new BadRequestException('รองรับเฉพาะการสร้างบทบาท SUPPLIER หรือ CUSTOMER อัตโนมัติ');
     }
 
     const contact = await tx.contact.findFirst({
@@ -116,20 +117,40 @@ export class ContactResolverService {
     if (!contact) throw new NotFoundException('ไม่พบผู้ติดต่อ');
 
     let provisioned = false;
+    let supplierId: string | undefined;
+    let customerId: string | undefined;
 
-    const existing = await tx.supplier.findFirst({
-      where: { contactId, deletedAt: null },
-      select: { id: true },
-    });
-    const supplierId = existing
-      ? existing.id
-      : (
-          await tx.supplier.create({
-            data: { name: contact.name, phone: contact.phone ?? '', contactId },
-            select: { id: true },
-          })
-        ).id;
-    if (!existing) provisioned = true;
+    if (role === 'SUPPLIER') {
+      const existing = await tx.supplier.findFirst({
+        where: { contactId, deletedAt: null },
+        select: { id: true },
+      });
+      supplierId = existing
+        ? existing.id
+        : (
+            await tx.supplier.create({
+              data: { name: contact.name, phone: contact.phone ?? '', contactId },
+              select: { id: true },
+            })
+          ).id;
+      if (!existing) provisioned = true;
+    } else {
+      // CUSTOMER stub: name + phone only. PII encryption/hash columns are left
+      // null and filled when the customer record is properly completed.
+      const existing = await tx.customer.findFirst({
+        where: { contactId, deletedAt: null },
+        select: { id: true },
+      });
+      customerId = existing
+        ? existing.id
+        : (
+            await tx.customer.create({
+              data: { name: contact.name, phone: contact.phone ?? '', contactId },
+              select: { id: true },
+            })
+          ).id;
+      if (!existing) provisioned = true;
+    }
 
     if (!contact.roles.includes(role)) {
       await tx.contact.update({
@@ -139,7 +160,9 @@ export class ContactResolverService {
       provisioned = true;
     }
 
-    return { contactId, role, supplierId, provisioned };
+    return role === 'SUPPLIER'
+      ? { contactId, role, supplierId, provisioned }
+      : { contactId, role, customerId, provisioned };
   }
 
   private hashLockKey(key: string): number {

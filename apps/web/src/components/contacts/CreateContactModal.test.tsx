@@ -194,6 +194,18 @@ describe('CreateContactModal', () => {
     expect(submitBtn).toBeDisabled();
   });
 
+  it('CUSTOMER: disables submit button when phone format is invalid (Fix #1)', async () => {
+    const user = userEvent.setup();
+    renderModal({ role: 'CUSTOMER' });
+
+    await user.type(screen.getByLabelText(/ชื่อ/), 'ลูกค้าทดสอบ');
+    // Type an invalid phone (not 0XXXXXXXXX)
+    await user.type(screen.getByLabelText(/เบอร์โทร/), '12345');
+
+    const submitBtn = screen.getByRole('button', { name: 'สร้าง' });
+    expect(submitBtn).toBeDisabled();
+  });
+
   it('prefills ชื่อ from initialName prop', () => {
     renderModal({ role: 'CUSTOMER', initialName: 'ABC Corp' });
     expect(screen.getByLabelText(/ชื่อ/)).toHaveValue('ABC Corp');

@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api from '@/lib/api';
+import { contactKeys } from '@/lib/api/contacts';
 import {
   Dialog,
   DialogContent,
@@ -72,7 +73,7 @@ export default function CreateContactModal({
       phone: phone.trim(),
     };
     if (address.trim()) payload.address = address.trim();
-    if (contactType === 'JURISTIC' && idNumber.trim()) {
+    if (idNumber.trim()) {
       payload.taxId = idNumber.trim();
     }
     payload.hasVat = hasVat;
@@ -93,6 +94,8 @@ export default function CreateContactModal({
 
   // ── Mutation ────────────────────────────────────────────────────────────
 
+  const queryClient = useQueryClient();
+
   const mutation = useMutation({
     mutationFn: async () => {
       if (role === 'SUPPLIER') {
@@ -105,14 +108,21 @@ export default function CreateContactModal({
     },
     onSuccess: (data) => {
       const childId = data.id;
-      const contactId = data.contactId ?? '';
       const returnedName = data.name;
       const taxId =
         role === 'SUPPLIER'
-          ? ((data as { taxId?: string | null }).taxId ?? idNumber.trim())
-          : idNumber.trim();
+          ? ((data as { taxId?: string | null }).taxId ?? '')
+          : ((data as { taxId?: string | null }).taxId ?? '');
 
-      onCreated({ contactId, childId, name: returnedName, taxId });
+      // Fix #4: guard against missing contactId — an empty string would cause
+      // contactsApi.detail('') to make a malformed request. Treat it as an error.
+      if (!data.contactId) {
+        toast.error('สร้างผู้ติดต่อไม่สำเร็จ — ไม่พบ contactId จาก API');
+        return;
+      }
+
+      queryClient.invalidateQueries({ queryKey: contactKeys.all });
+      onCreated({ contactId: data.contactId, childId, name: returnedName, taxId });
       toast.success('สร้างผู้ติดต่อสำเร็จ');
       onOpenChange(false);
     },
@@ -128,7 +138,10 @@ export default function CreateContactModal({
 
   // ── Validation ──────────────────────────────────────────────────────────
 
-  const canSubmit = name.trim().length > 0 && phone.trim().length > 0 && !mutation.isPending;
+  const phoneValid =
+    role === 'CUSTOMER' ? /^0[0-9]{9}$/.test(phone) : phone.trim().length > 0;
+
+  const canSubmit = name.trim().length > 0 && phoneValid && !mutation.isPending;
 
   // ── Labels ──────────────────────────────────────────────────────────────
 

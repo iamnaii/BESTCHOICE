@@ -126,7 +126,7 @@ export function ContactCombobox({
               value={search}
               onValueChange={setSearch}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && search.trim() && !hasExactMatch) {
+                if (e.key === 'Enter' && search.trim() && !hasExactMatch && !query.isLoading) {
                   e.preventDefault();
                   e.stopPropagation();
                   setCreateOpen(true);

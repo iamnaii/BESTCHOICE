@@ -32,6 +32,7 @@ function Harness() {
       <div data-testid="loading">{isLoading ? 'loading' : 'done'}</div>
       <div data-testid="auth">{isAuthenticated ? 'yes' : 'no'}</div>
       <div data-testid="user">{user ? `${user.id}:${user.role}` : 'none'}</div>
+      <div data-testid="can-reverse">{user ? String(user.canReverseOverride) : 'none'}</div>
       <button
         type="button"
         onClick={() => {
@@ -245,6 +246,60 @@ describe('<AuthProvider />', () => {
       expect(apiPostMock).toHaveBeenCalledWith('/auth/logout', {});
       expect(setAccessTokenMock).toHaveBeenCalledWith(null);
       expect(setUserMock).toHaveBeenCalledWith(null);
+    });
+  });
+
+  describe('canReverseOverride propagation (reverse-permission CUSTOM mode)', () => {
+    it('carries canReverseOverride from /auth/me into the in-memory user', async () => {
+      getAccessTokenMock.mockReturnValue('token-abc');
+      apiGetMock.mockResolvedValueOnce({
+        data: {
+          id: 'user-9',
+          email: 'e@example.com',
+          name: 'E',
+          role: 'ACCOUNTANT',
+          branchId: null,
+          branch: null,
+          canReverseOverride: true,
+        },
+      });
+
+      renderHarness();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('auth')).toHaveTextContent('yes');
+      });
+      expect(screen.getByTestId('can-reverse')).toHaveTextContent('true');
+    });
+
+    it('carries canReverseOverride from the login response into the user', async () => {
+      getAccessTokenMock.mockReturnValue(null);
+      apiPostMock.mockResolvedValueOnce({
+        data: {
+          state: 'AUTHENTICATED',
+          accessToken: 'new-token',
+          user: {
+            id: 'user-10',
+            email: 'f@example.com',
+            name: 'F',
+            role: 'ACCOUNTANT',
+            branchId: null,
+            canReverseOverride: true,
+          },
+        },
+      });
+
+      renderHarness();
+      await waitFor(() =>
+        expect(screen.getByTestId('loading')).toHaveTextContent('done'),
+      );
+
+      await userEvent.click(screen.getByText('login'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('auth')).toHaveTextContent('yes');
+      });
+      expect(screen.getByTestId('can-reverse')).toHaveTextContent('true');
     });
   });
 

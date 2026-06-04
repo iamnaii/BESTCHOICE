@@ -141,7 +141,7 @@ function Stepper({
               <span
                 className={`flex h-8 w-8 items-center justify-center rounded-full border ${
                   reached
-                    ? 'border-primary bg-primary/10 text-primary'
+                    ? 'border-accent-purple bg-accent-purple/10 text-accent-purple'
                     : 'border-border bg-muted/40 text-muted-foreground'
                 }`}
               >
@@ -162,7 +162,7 @@ function Stepper({
             {i < steps.length - 1 && (
               <span
                 className={`mx-1.5 -mt-5 h-0.5 flex-1 rounded-full sm:mx-2 ${
-                  i < currentIndex ? 'bg-primary' : 'bg-border'
+                  i < currentIndex ? 'bg-accent-purple' : 'bg-border'
                 }`}
                 aria-hidden
               />
@@ -230,12 +230,12 @@ export function InternalControlActionBar(props: InternalControlActionBarProps) {
         data-testid="icab-frame"
         data-module={module}
         data-status={status}
-        className="mt-4 rounded-xl border border-border bg-card text-card-foreground"
+        className="mt-4 rounded-xl border border-accent-purple/30 bg-card text-card-foreground"
       >
         {/* Zone 1 — Header */}
         <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-5">
           <div className="flex items-center gap-3">
-            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent-purple/10 text-accent-purple">
               <ShieldCheck size={18} aria-hidden />
             </span>
             <div className="leading-snug">
@@ -288,7 +288,7 @@ export function InternalControlActionBar(props: InternalControlActionBarProps) {
             <div className="mb-2 flex items-center justify-between">
               <span className="inline-flex items-center gap-1.5 text-sm font-medium leading-snug text-foreground">
                 <History size={14} className="text-muted-foreground" aria-hidden />
-                ประวัติ ({auditLog.length})
+                ประวัติการทำงาน ({auditLog.length})
               </span>
               {auditLog.length > 3 && (
                 <Popover>

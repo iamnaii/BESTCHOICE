@@ -65,11 +65,13 @@ const DEFAULT_IMPACT_NOTES: Record<IcabModule, string[]> = {
     'ระบบจะสร้างเอกสาร Reverse Entry — สลับ Dr↔Cr ทุกบรรทัด',
     'เอกสารต้นฉบับจะเปลี่ยน status เป็น REVERSED (read-only)',
     'WHT / VAT ที่บันทึกไว้จะถูกกลับรายการอัตโนมัติ',
+    'ถ้างวด ภ.พ.30 ยื่นไปแล้ว — ต้องยื่นแก้ไข',
   ],
   asset: [
     'ระบบจะสร้างเอกสาร Reverse Entry — สลับ Dr↔Cr ทุกบรรทัด',
     'เอกสารต้นฉบับจะเปลี่ยน status เป็น REVERSED (read-only)',
     'หากบันทึกค่าเสื่อมราคาไปแล้ว — ต้องตรวจสอบ depreciation schedule',
+    'ถ้างวด ภ.พ.30 ยื่นไปแล้ว — ต้องยื่นแก้ไข',
   ],
 };
 

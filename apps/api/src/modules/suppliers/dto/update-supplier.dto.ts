@@ -108,6 +108,10 @@ export class UpdateSupplierDto {
   @IsOptional()
   isActive?: boolean;
 
+  @IsBoolean()
+  @IsOptional()
+  isRepairCenter?: boolean;
+
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => PaymentMethodUpdateDto)

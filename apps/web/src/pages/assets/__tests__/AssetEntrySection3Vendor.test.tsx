@@ -1,14 +1,13 @@
-// PR 2a Task 5 (P6) — AssetEntrySection3Vendor: vendor combobox + partial-payment.
+// P1a — AssetEntrySection3Vendor: bespoke vendor picker replaced with
+// shared <ContactCombobox roleNeeded="SUPPLIER">.
 //
 // Coverage:
-//  - Combobox role is exposed (a11y) and labeled "ผู้ขาย"
+//  - ContactCombobox is rendered with role=combobox (forwarded from the shared component)
 //  - "จำนวนเงินที่จ่าย" partial-payment input is rendered
-//  - Existing fields (เลขใบกำกับภาษี, อ้างอิง PR) are preserved
+//  - Existing fields (เลขใบกำกับภาษี, อ้างอิง PR, เลขประจำตัวผู้เสียภาษี) are preserved
 //
-// Deferred (combobox / dialog interaction): the Popover + cmdk combination uses
-// Radix portals which JSDOM cannot fully render in a way that exposes a stable
-// listbox to RTL queries. Auto-fill on select and dialog-create flows are
-// validated manually for this PR; future work can use Playwright for full e2e.
+// Strategy: mock ContactCombobox so we avoid Popover/cmdk portal rendering issues
+// in JSDOM and keep this test focused on the section's own wiring.
 
 import { render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -16,16 +15,31 @@ import { FormProvider, useForm } from 'react-hook-form';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { AssetEntrySection3Vendor } from '../components/AssetEntrySection3Vendor';
 
-vi.mock('../api', () => ({
-  assetsApi: {
-    suppliersList: vi.fn().mockResolvedValue([
-      { id: 'sup-1', name: 'ABC Trading', taxId: '0105561234567' },
-      { id: 'sup-2', name: 'XYZ Co.,Ltd.', taxId: '0105567654321' },
-    ]),
-    suppliersCreate: vi
-      .fn()
-      .mockResolvedValue({ id: 'sup-new', name: 'New Vendor', taxId: null }),
-  },
+// Mock the shared ContactCombobox so the section can be rendered in JSDOM
+// without Radix portal issues. The mock renders a plain combobox button that
+// exposes the same role/aria-label as the real component.
+vi.mock('@/components/contacts/ContactCombobox', () => ({
+  ContactCombobox: ({
+    value,
+    placeholder,
+    invalid,
+  }: {
+    value: string;
+    placeholder?: string;
+    invalid?: boolean;
+    onSelect: (r: unknown) => void;
+    roleNeeded: string;
+  }) => (
+    <button
+      type="button"
+      role="combobox"
+      aria-label="ผู้ขาย"
+      aria-invalid={invalid}
+      aria-expanded={false}
+    >
+      {value || placeholder || 'เลือกผู้ขาย / บริษัท'}
+    </button>
+  ),
 }));
 
 function Wrapper({ children }: { children: React.ReactNode }) {
@@ -58,7 +72,7 @@ const renderSection = () => {
   );
 };
 
-describe('AssetEntrySection3Vendor — P6 supplier integration', () => {
+describe('AssetEntrySection3Vendor — P1a ContactCombobox integration', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('exposes a vendor combobox with role=combobox and an accessible name', async () => {
@@ -74,7 +88,6 @@ describe('AssetEntrySection3Vendor — P6 supplier integration', () => {
 
   it('uses the placeholder "ว่างไว้ = ชำระเต็มจำนวน" on the partial-payment field', async () => {
     renderSection();
-    // Placeholder copy explains optional partial payment behavior to the user.
     expect(await screen.findByPlaceholderText(/ว่างไว้ = ชำระเต็มจำนวน/)).toBeInTheDocument();
   });
 

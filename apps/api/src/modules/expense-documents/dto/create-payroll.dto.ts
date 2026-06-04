@@ -58,9 +58,20 @@ export class PayrollCustomDeductionInput {
 }
 
 class PayrollLineInput {
+  // Optional: required only when userId is absent (enforced in
+  // ExpenseDocumentsService.createPayroll). When userId is present the server
+  // derives employeeName from the User record (spec §4.2 — don't trust client).
   @IsString()
+  @IsOptional()
   @MinLength(2, { message: 'ชื่อพนักงานต้องมีอย่างน้อย 2 ตัวอักษร' })
-  employeeName!: string;
+  employeeName?: string;
+
+  // FK → User. Presence flips the line to "linked" mode: server derives the
+  // employeeName/employeeTaxId snapshot and validates the user is an active
+  // payroll employee. Optional (legacy free-text lines omit it).
+  @IsString()
+  @IsOptional()
+  userId?: string;
 
   @IsString()
   @IsOptional()

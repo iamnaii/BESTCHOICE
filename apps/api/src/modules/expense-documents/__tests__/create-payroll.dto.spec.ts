@@ -64,4 +64,21 @@ describe('CreatePayrollDto — shape validation', () => {
     const errors = await validateDto(baseDto({ ssoEmployee: 900 }));
     expect(errors).toEqual([]);
   });
+
+  it('accepts a line with userId and no employeeName (server will derive)', async () => {
+    const errors = await validateDto(
+      baseDto({ employeeName: undefined, userId: '11111111-1111-1111-1111-111111111111' }),
+    );
+    expect(errors).toEqual([]);
+  });
+
+  it('accepts a legacy line with employeeName and no userId', async () => {
+    const errors = await validateDto(baseDto({})); // baseDto already has employeeName, no userId
+    expect(errors).toEqual([]);
+  });
+
+  it('rejects a non-string userId', async () => {
+    const errors = await validateDto(baseDto({ userId: 12345 }));
+    expect(JSON.stringify(errors)).toMatch(/string/i);
+  });
 });

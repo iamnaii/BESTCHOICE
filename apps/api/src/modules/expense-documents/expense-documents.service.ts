@@ -857,7 +857,9 @@ export class ExpenseDocumentsService implements OnModuleInit {
         // exposed for future automatic-WHT-compute consumers).
         await this.payrollCustom.validateLine(
           {
-            employeeName: l.employeeName,
+            // Task 3 (PR-C) will derive employeeName from userId when present;
+            // for now pass through (may be undefined for userId-mode lines).
+            employeeName: l.employeeName as string,
             baseSalary: base,
             customIncome: l.customIncome,
             customDeduction: l.customDeduction,
@@ -949,7 +951,9 @@ export class ExpenseDocumentsService implements OnModuleInit {
               payrollPeriod: dto.payrollPeriod,
               lines: {
                 create: linesPrepared.map((l) => ({
-                  employeeName: l.employeeName,
+                  // Task 3 (PR-C) will resolve userId → employeeName before this
+                  // point; the cast keeps TypeScript happy until that lands.
+                  employeeName: l.employeeName as string,
                   employeeTaxId: l.employeeTaxId,
                   baseSalary: l.baseSalary,
                   ssoEmployee: l.ssoEmployee,

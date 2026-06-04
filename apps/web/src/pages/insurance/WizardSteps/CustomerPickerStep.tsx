@@ -4,8 +4,8 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useDebounce } from '@/hooks/useDebounce';
 import api from '@/lib/api';
+import { ContactCombobox } from '@/components/contacts/ContactCombobox';
 
 export interface CustomerStepValue {
   customerId?: string;
@@ -25,8 +25,6 @@ export function CustomerPickerStep({
   presetCustomerId?: string;
 }) {
   const [mode, setMode] = useState<'existing' | 'walkin'>('existing');
-  const [search, setSearch] = useState('');
-  const debouncedSearch = useDebounce(search, 300);
 
   // If preset → auto-fetch + lock
   const { data: presetCustomer } = useQuery({
@@ -48,16 +46,6 @@ export function CustomerPickerStep({
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [presetCustomer]);
-
-  const { data: customers } = useQuery({
-    queryKey: ['customer-search', debouncedSearch],
-    queryFn: async () => {
-      if (!debouncedSearch || debouncedSearch.length < 2) return [];
-      const { data } = await api.get(`/customers?q=${debouncedSearch}&limit=10`);
-      return (data.data as CustomerSearchResult[]) || [];
-    },
-    enabled: !presetCustomerId && mode === 'existing' && debouncedSearch.length >= 2,
-  });
 
   const canProceed =
     !!value.customerId || (mode === 'walkin' && !!value.customerName && !!value.customerPhone);
@@ -88,30 +76,14 @@ export function CustomerPickerStep({
       {(presetCustomerId || mode === 'existing') && (
         <div className="space-y-2">
           {!value.customerId && !presetCustomerId && (
-            <>
-              <Label>ค้นหา</Label>
-              <Input
-                placeholder="ชื่อหรือเบอร์ลูกค้า"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-              {customers?.map((c) => (
-                <Button
-                  key={c.id}
-                  variant="outline"
-                  className="w-full justify-start"
-                  onClick={() =>
-                    onChange({
-                      customerId: c.id,
-                      customerName: c.name,
-                      customerPhone: c.phone ?? undefined,
-                    })
-                  }
-                >
-                  {c.name} {c.phone && `· ${c.phone}`}
-                </Button>
-              ))}
-            </>
+            <ContactCombobox
+              roleNeeded="CUSTOMER"
+              value={value.customerName ?? ''}
+              placeholder="ค้นหาลูกค้า (ชื่อ/เบอร์/เลขภาษี)"
+              onSelect={({ childId, name }) =>
+                onChange({ customerId: childId, customerName: name, customerPhone: value.customerPhone })
+              }
+            />
           )}
           {value.customerId && (
             <div className="p-3 bg-muted/30 rounded-md">
@@ -162,8 +134,3 @@ export function CustomerPickerStep({
   );
 }
 
-interface CustomerSearchResult {
-  id: string;
-  name: string;
-  phone?: string | null;
-}

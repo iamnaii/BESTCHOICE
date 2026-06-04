@@ -62,6 +62,14 @@ export interface ContactListResult {
   limit: number;
 }
 
+export interface EnsureRoleResult {
+  contactId: string;
+  role: ContactRole;
+  supplierId?: string;
+  customerId?: string;
+  provisioned: boolean;
+}
+
 export const contactKeys = {
   all: ['contacts'] as const,
   list: (params: Record<string, unknown>) => [...contactKeys.all, 'list', params] as const,
@@ -85,4 +93,6 @@ export const contactsApi = {
   detail: (id: string) => api.get<ContactDetail>(`/contacts/${id}`).then((r) => r.data),
   merge: (primaryId: string, duplicateId: string) =>
     api.post('/contacts/merge', { primaryId, duplicateId }).then((r) => r.data),
+  ensureRole: (id: string, role: 'SUPPLIER' | 'CUSTOMER') =>
+    api.post<EnsureRoleResult>(`/contacts/${id}/ensure-role`, { role }).then((r) => r.data),
 };

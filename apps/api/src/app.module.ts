@@ -136,6 +136,8 @@ import { BackupModule } from './modules/backup/backup.module';
 // SP7.4 — External Finance Companies + Commission (SHOP-side GFIN/Krungsri)
 import { ExternalFinanceModule } from './modules/external-finance/external-finance.module';
 import { ContactsModule } from './modules/contacts/contacts.module';
+// Employee Master (PR-A) — EmployeeProfile (1:1 User) + CRUD + PII-safe pickable
+import { EmployeesModule } from './modules/employees/employees.module';
 // P4-SP2 — Finance Tax (VAT/WHT monthly aggregation + auto-journal history)
 import { FinanceTaxModule } from './modules/finance-tax/finance-tax.module';
 // Task 18 — GFIN admin config (max prices, overprice rules, rate factors)
@@ -380,6 +382,8 @@ import { AppCacheModule } from './cache/cache.module';
     // SP7.4 — External Finance Companies + Commission (SHOP-side GFIN/Krungsri)
     ExternalFinanceModule,
     ContactsModule,
+    // Employee Master (PR-A) — EmployeeProfile (1:1 User) + CRUD + PII-safe pickable
+    EmployeesModule,
     // P4-SP2 — Finance Tax (VAT/WHT monthly aggregation + auto-journal history)
     FinanceTaxModule,
     // Task 18 — GFIN admin config (max prices, overprice rules, rate factors)

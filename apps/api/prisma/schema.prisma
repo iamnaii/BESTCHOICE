@@ -29,6 +29,12 @@ enum UserRole {
   VIEWER
 }
 
+enum EmploymentType {
+  MONTHLY
+  DAILY
+  CONTRACT
+}
+
 enum SupplierType {
   INDIVIDUAL
   JURISTIC
@@ -787,9 +793,33 @@ model User {
   // Finance Receivable Contact System
   financeContactLogs FinanceReceivableContactLog[] @relation("FinanceContactLogger")
 
+  // Employee Master (PR-A) — 1:1 payroll/employment profile
+  employeeProfile EmployeeProfile?
+
   @@index([branchId])
   @@index([yeastarExtension])
   @@map("users")
+}
+
+model EmployeeProfile {
+  id             String         @id @default(uuid())
+  userId         String         @unique @map("user_id")
+  user           User           @relation(fields: [userId], references: [id])
+  position       String?
+  employmentType EmploymentType @default(MONTHLY) @map("employment_type")
+  baseSalary     Decimal?       @map("base_salary") @db.Decimal(12, 2)
+  ssoEligible    Boolean        @default(true) @map("sso_eligible")
+  bankName       String?        @map("bank_name")
+  bankAccountNo  String?        @map("bank_account_no")
+  taxIdOverride  String?        @map("tax_id_override")
+  note           String?
+  resignedDate   DateTime?      @map("resigned_date")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+  deletedAt      DateTime?      @map("deleted_at")
+
+  @@index([deletedAt])
+  @@map("employee_profiles")
 }
 
 model Contact {

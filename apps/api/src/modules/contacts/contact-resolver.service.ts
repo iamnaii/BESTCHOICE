@@ -107,8 +107,10 @@ export class ContactResolverService {
     contactId: string,
     role: ContactRole,
   ): Promise<EnsureRoleResult> {
-    if (role !== 'SUPPLIER' && role !== 'CUSTOMER') {
-      throw new BadRequestException('รองรับเฉพาะการสร้างบทบาท SUPPLIER หรือ CUSTOMER อัตโนมัติ');
+    if (role !== 'SUPPLIER' && role !== 'CUSTOMER' && role !== 'TRADE_IN_SELLER') {
+      throw new BadRequestException(
+        'รองรับเฉพาะการสร้างบทบาท SUPPLIER, CUSTOMER หรือ TRADE_IN_SELLER อัตโนมัติ',
+      );
     }
 
     const contact = await tx.contact.findFirst({
@@ -134,7 +136,7 @@ export class ContactResolverService {
             })
           ).id;
       if (!existing) provisioned = true;
-    } else {
+    } else if (role === 'CUSTOMER') {
       // CUSTOMER stub: name + phone only. PII encryption/hash columns are left
       // null and filled when the customer record is properly completed.
       const existing = await tx.customer.findFirst({
@@ -151,6 +153,8 @@ export class ContactResolverService {
           ).id;
       if (!existing) provisioned = true;
     }
+    // TRADE_IN_SELLER: no child row — the TradeIn record links directly via
+    // sellerContactId. Just append the role to the Contact if absent.
 
     if (!contact.roles.includes(role)) {
       await tx.contact.update({
@@ -160,9 +164,9 @@ export class ContactResolverService {
       provisioned = true;
     }
 
-    return role === 'SUPPLIER'
-      ? { contactId, role, supplierId, provisioned }
-      : { contactId, role, customerId, provisioned };
+    if (role === 'SUPPLIER') return { contactId, role, supplierId, provisioned };
+    if (role === 'CUSTOMER') return { contactId, role, customerId, provisioned };
+    return { contactId, role, provisioned };
   }
 
   private hashLockKey(key: string): number {

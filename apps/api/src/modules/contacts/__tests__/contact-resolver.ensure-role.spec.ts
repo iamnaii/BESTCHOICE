@@ -141,10 +141,41 @@ describe('ContactResolverService.ensureRole', () => {
     });
   });
 
-  it('rejects a role that is not SUPPLIER or CUSTOMER', async () => {
+  it('rejects a role that is not SUPPLIER, CUSTOMER, or TRADE_IN_SELLER (e.g. FINANCE_COMPANY)', async () => {
     tx.contact.findFirst.mockResolvedValue(null);
-    await expect(svc.ensureRole(tx as any, 'c1', 'TRADE_IN_SELLER' as any)).rejects.toBeInstanceOf(
+    await expect(svc.ensureRole(tx as any, 'c1', 'FINANCE_COMPANY' as any)).rejects.toBeInstanceOf(
       BadRequestException,
     );
+  });
+
+  it('TRADE_IN_SELLER: appends role when absent, returns { contactId, role, provisioned:true } with no child created', async () => {
+    tx.contact.findFirst.mockResolvedValue({
+      id: 'c7', name: 'Walk-in Seller', phone: '0899999999', roles: [],
+    });
+
+    const result = await svc.ensureRole(tx as any, 'c7', 'TRADE_IN_SELLER');
+
+    expect(tx.supplier.create).not.toHaveBeenCalled();
+    expect(tx.customer.create).not.toHaveBeenCalled();
+    expect(tx.contact.update).toHaveBeenCalledWith({
+      where: { id: 'c7' },
+      data: { roles: { set: ['TRADE_IN_SELLER'] } },
+    });
+    expect(result).toEqual({ contactId: 'c7', role: 'TRADE_IN_SELLER', provisioned: true });
+    expect(result).not.toHaveProperty('supplierId');
+    expect(result).not.toHaveProperty('customerId');
+  });
+
+  it('TRADE_IN_SELLER idempotent: contact already has the role → no update, provisioned:false', async () => {
+    tx.contact.findFirst.mockResolvedValue({
+      id: 'c8', name: 'Repeat Seller', phone: '0811111111', roles: ['TRADE_IN_SELLER'],
+    });
+
+    const result = await svc.ensureRole(tx as any, 'c8', 'TRADE_IN_SELLER');
+
+    expect(tx.supplier.create).not.toHaveBeenCalled();
+    expect(tx.customer.create).not.toHaveBeenCalled();
+    expect(tx.contact.update).not.toHaveBeenCalled();
+    expect(result).toEqual({ contactId: 'c8', role: 'TRADE_IN_SELLER', provisioned: false });
   });
 });

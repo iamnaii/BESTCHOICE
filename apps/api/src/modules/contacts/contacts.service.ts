@@ -166,7 +166,7 @@ export class ContactsService {
 
   async ensureRole(
     id: string,
-    role: 'SUPPLIER' | 'CUSTOMER',
+    role: 'SUPPLIER' | 'CUSTOMER' | 'TRADE_IN_SELLER',
     actor: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     const result = await this.prisma.$transaction((tx) =>

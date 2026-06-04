@@ -342,6 +342,28 @@ describe('TradeInService', () => {
         expect.objectContaining({ nationalIdHash: null }),
       );
     });
+
+    it('persists sellerContactId directly when provided in DTO (skips resolver)', async () => {
+      prisma.tradeIn.findMany.mockResolvedValue([]);
+      prisma.tradeIn.create.mockResolvedValue(makeTradeIn());
+
+      await service.create({
+        branchId: 'branch-1',
+        deviceBrand: 'Samsung',
+        deviceModel: 'Galaxy S22',
+        sellerName: 'สมชาย ขายมือสอง',
+        sellerContactId: 'contact-known-99',
+      } as never);
+
+      // Resolver must NOT be called — caller already resolved the contact
+      expect(contactResolver.findOrCreateByNaturalKey).not.toHaveBeenCalled();
+      // The known contactId must be passed straight through to the DB
+      expect(prisma.tradeIn.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ sellerContactId: 'contact-known-99' }),
+        }),
+      );
+    });
   });
 
   // ──────────────────────────────────────────────────────────────────────────

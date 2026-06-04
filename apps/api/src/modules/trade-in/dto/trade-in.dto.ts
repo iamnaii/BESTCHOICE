@@ -57,6 +57,12 @@ export class CreateTradeInDto {
   notes?: string;
 
   // ─── Seller info (walk-in) ──────────────────────────
+  /** Party-master contactId for the seller. Stored for traceability alongside
+   *  sellerName/sellerPhone (which are kept for display purposes). */
+  @IsString()
+  @IsOptional()
+  sellerContactId?: string;
+
   @IsString()
   @IsOptional()
   sellerName?: string;

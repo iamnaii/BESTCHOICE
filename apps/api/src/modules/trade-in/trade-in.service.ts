@@ -224,13 +224,21 @@ export class TradeInService {
         );
       }
 
-      const sellerContact = await this.contactResolver.findOrCreateByNaturalKey(tx, {
-        name: dto.sellerName ?? 'ไม่ระบุชื่อ',
-        taxId: null,
-        nationalIdHash: sellerNationalIdHash,
-        phone: dto.sellerPhone ?? null,
-        role: 'TRADE_IN_SELLER',
-      });
+      // If the caller already resolved the Contact (e.g. via ensureRole), use it
+      // directly; otherwise auto-resolve/create via natural-key lookup.
+      let resolvedSellerContactId: string;
+      if (dto.sellerContactId) {
+        resolvedSellerContactId = dto.sellerContactId;
+      } else {
+        const sellerContact = await this.contactResolver.findOrCreateByNaturalKey(tx, {
+          name: dto.sellerName ?? 'ไม่ระบุชื่อ',
+          taxId: null,
+          nationalIdHash: sellerNationalIdHash,
+          phone: dto.sellerPhone ?? null,
+          role: 'TRADE_IN_SELLER',
+        });
+        resolvedSellerContactId = sellerContact.id;
+      }
 
       return tx.tradeIn.create({
         data: {
@@ -260,7 +268,7 @@ export class TradeInService {
           // (customerId/productId/branchId), so we stay in the Unchecked variant.
           // Using the relation form (sellerContact.connect) here would trip the
           // Prisma XOR between TradeInCreateInput and TradeInUncheckedCreateInput.
-          sellerContactId: sellerContact.id,
+          sellerContactId: resolvedSellerContactId,
         },
         include: {
           customer: { select: { id: true, name: true, phone: true } },

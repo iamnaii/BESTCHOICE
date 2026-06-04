@@ -421,6 +421,24 @@ describe('InternalControlActionBar', () => {
     });
   });
 
+  describe('audit timeline header', () => {
+    it('labels the inline history section "ประวัติการทำงาน" even for a ≤3-event doc', () => {
+      render(
+        wrap(
+          <InternalControlActionBar
+            module="other_income"
+            status="POSTED"
+            auditLog={sampleAudit}
+            currentUser={baseUser}
+            docNumber="RT-202605-00006"
+            onCancel={vi.fn()}
+          />,
+        ),
+      );
+      expect(screen.getByText(/ประวัติการทำงาน/)).toBeInTheDocument();
+    });
+  });
+
   describe('module data attributes', () => {
     it('exposes module + status as data attributes', () => {
       const { container } = render(
@@ -438,6 +456,23 @@ describe('InternalControlActionBar', () => {
       const frame = container.querySelector('[data-testid="icab-frame"]');
       expect(frame?.getAttribute('data-module')).toBe('asset');
       expect(frame?.getAttribute('data-status')).toBe('POSTED');
+    });
+
+    it('frames the control bar with the purple internal-control accent', () => {
+      const { container } = render(
+        wrap(
+          <InternalControlActionBar
+            module="other_income"
+            status="POSTED"
+            auditLog={sampleAudit}
+            currentUser={baseUser}
+            docNumber="RT-1"
+            onCancel={vi.fn()}
+          />,
+        ),
+      );
+      const frame = container.querySelector('[data-testid="icab-frame"]');
+      expect(frame?.className).toMatch(/accent-purple/);
     });
   });
 });

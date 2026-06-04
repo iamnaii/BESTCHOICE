@@ -281,6 +281,10 @@ export class AuthService {
         role: user.role,
         branchId: user.branchId,
         branchName: user.branch?.name || null,
+        // InternalControlActionBar — per-user reverse override (CUSTOM mode).
+        // Without this, a freshly-logged-in user keeps canReverseOverride
+        // undefined until the next /auth/me, hiding the reverse button.
+        canReverseOverride: user.canReverseOverride ?? null,
       },
     };
   }
@@ -349,6 +353,10 @@ export class AuthService {
         role: user.role,
         branchId: user.branchId,
         branchName: user.branch?.name || null,
+        // InternalControlActionBar — per-user reverse override (CUSTOM mode).
+        // Without this, a freshly-logged-in user keeps canReverseOverride
+        // undefined until the next /auth/me, hiding the reverse button.
+        canReverseOverride: user.canReverseOverride ?? null,
       },
     };
   }

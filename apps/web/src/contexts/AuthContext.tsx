@@ -102,6 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         preferences: data.preferences ?? null,
         accessibleCompanies: data.accessibleCompanies ?? [],
         primaryCompany: data.primaryCompany ?? null,
+        canReverseOverride: data.canReverseOverride ?? null,
       };
       setUser(nextUser);
       setSentryUser(nextUser);
@@ -180,6 +181,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         branchName: data.user.branchName ?? data.user.branch?.name ?? null,
         accessibleCompanies: data.user.accessibleCompanies ?? [],
         primaryCompany: data.user.primaryCompany ?? null,
+        canReverseOverride: data.user.canReverseOverride ?? null,
       };
       setUser(nextUser);
       setSentryUser(nextUser);

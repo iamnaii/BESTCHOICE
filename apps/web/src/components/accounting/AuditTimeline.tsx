@@ -84,7 +84,10 @@ export function AuditTimeline({ events, compact = false }: AuditTimelineProps) {
                 {formatDateTime(evt.timestamp)}
                 {!compact && evt.detail ? ` · ${evt.detail}` : null}
               </div>
-              {!compact && evt.reason ? (
+              {/* Reason (e.g. reverse reason) is decoupled from `compact`:
+                  the inline preview is compact, yet a standard 3-event
+                  reversed doc must still show WHY it was reversed. */}
+              {evt.reason ? (
                 <div className="mt-1.5 rounded-md border border-border bg-muted/50 px-2.5 py-1.5 text-xs leading-snug">
                   <span className="font-semibold text-foreground">เหตุผล: </span>
                   <span className="text-muted-foreground">{evt.reason}</span>

@@ -93,6 +93,6 @@ export const contactsApi = {
   detail: (id: string) => api.get<ContactDetail>(`/contacts/${id}`).then((r) => r.data),
   merge: (primaryId: string, duplicateId: string) =>
     api.post('/contacts/merge', { primaryId, duplicateId }).then((r) => r.data),
-  ensureRole: (id: string, role: 'SUPPLIER' | 'CUSTOMER') =>
+  ensureRole: (id: string, role: 'SUPPLIER' | 'CUSTOMER' | 'TRADE_IN_SELLER') =>
     api.post<EnsureRoleResult>(`/contacts/${id}/ensure-role`, { role }).then((r) => r.data),
 };

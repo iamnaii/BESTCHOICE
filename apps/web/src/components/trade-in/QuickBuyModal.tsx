@@ -23,6 +23,8 @@ import SignaturePadFull from '@/components/signing/SignaturePadFull';
 import AddressForm, { type AddressData, emptyAddress, composeAddress } from '@/components/ui/AddressForm';
 import { BANK_OPTIONS } from '@/components/credit-check/types';
 import { bankAccountsApi, type BankAccount } from '@/lib/api/bank-accounts';
+import { ContactCombobox } from '@/components/contacts/ContactCombobox';
+import { contactsApi } from '@/lib/api/contacts';
 
 interface QuickBuyModalProps {
   open: boolean;
@@ -67,6 +69,7 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
 
   const [form, setForm] = useState({
     // Step 1: seller (address ใช้ AddressForm แยก state)
+    sellerContactId: '',  // contact FK (party master)
     sellerName: '',
     sellerPhone: '',
     sellerIdCardNumber: '',
@@ -98,7 +101,7 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
     setSellerHistory(null);
     setAddress({ ...emptyAddress });
     setForm({
-      sellerName: '', sellerPhone: '', sellerIdCardNumber: '',
+      sellerContactId: '', sellerName: '', sellerPhone: '', sellerIdCardNumber: '',
       idCardPhotoBase64: '', idCardSource: '',
       deviceBrand: '', deviceModel: '', deviceStorage: '', deviceColor: '',
       deviceCondition: 'B', imei: '', agreedPrice: '',
@@ -116,6 +119,7 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
     mutationFn: async () => {
       const payload = {
         branchId: branchId || undefined,
+        sellerContactId: form.sellerContactId || undefined,
         sellerName: form.sellerName,
         sellerPhone: form.sellerPhone || undefined,
         sellerIdCardNumber: form.sellerIdCardNumber || undefined,
@@ -159,6 +163,8 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
       const fullName = `${d.prefix || ''}${d.firstName || ''} ${d.lastName || ''}`.trim();
       setForm((f) => ({
         ...f,
+        // Card reader pre-fills name; clear contactId so the picker isn't stale
+        sellerContactId: '',
         sellerName: fullName,
         sellerIdCardNumber: d.nationalId || '',
         idCardSource: 'card_reader',
@@ -211,13 +217,12 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
       const data = res.data as SellerHistoryResponse;
       setSellerHistory(data);
       if (data.found && data.lastSeller) {
-        // Auto-fill name + phone จากครั้งล่าสุด
+        // Auto-fill name + phone จากครั้งล่าสุด เฉพาะกรณีที่ contact picker ยังไม่ถูกเลือก
         // หมายเหตุ: address ของ legacy เก็บเป็น composed string จะไม่ auto-fill ลง AddressForm structured fields
-        // (พนักงานยังเห็นชื่อเดิม → กรอก address ใหม่ทับเองได้ หรืออ่านบัตรใหม่)
         setForm((f) => ({
           ...f,
-          sellerName: f.sellerName || data.lastSeller!.sellerName || '',
-          sellerPhone: f.sellerPhone || data.lastSeller!.sellerPhone || '',
+          sellerName: f.sellerContactId ? f.sellerName : (f.sellerName || data.lastSeller!.sellerName || ''),
+          sellerPhone: f.sellerContactId ? f.sellerPhone : (f.sellerPhone || data.lastSeller!.sellerPhone || ''),
         }));
         if (data.warning) {
           toast.warning(
@@ -230,6 +235,20 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
       }
     } catch {
       // silent
+    }
+  }
+
+  // ─── Seller contact picker ───────────────────────────
+  async function handleSellerSelect({ contactId, name }: { contactId: string; name: string }) {
+    setForm((f) => ({ ...f, sellerContactId: contactId, sellerName: name, sellerPhone: '' }));
+    // Fetch the contact detail to populate phone (best-effort; non-blocking)
+    try {
+      const detail = await contactsApi.detail(contactId);
+      if (detail.phone) {
+        setForm((f) => ({ ...f, sellerPhone: detail.phone ?? '' }));
+      }
+    } catch {
+      // silent — phone is optional
     }
   }
 
@@ -254,7 +273,7 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
   function next() {
     if (step === 1) {
       if (!branchId) return toast.error('กรุณาเลือกสาขาที่รับซื้อ');
-      if (!form.sellerName.trim()) return toast.error('กรุณาระบุชื่อผู้ขาย');
+      if (!form.sellerContactId) return toast.error('กรุณาเลือกผู้ขายจากสมุดผู้ติดต่อ');
       if (form.sellerIdCardNumber && form.sellerIdCardNumber.length !== 13) {
         return toast.error('เลขบัตรประชาชนต้อง 13 หลัก');
       }
@@ -390,16 +409,23 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
                 </div>
               )}
 
-              {/* ลำดับเหมือนฟอร์มข้อมูลลูกค้า: ชื่อ → เลขบัตร → เบอร์ → ที่อยู่ → แนบบัตร */}
+              {/* ลำดับเหมือนฟอร์มข้อมูลลูกค้า: ผู้ขาย (picker) → เลขบัตร → ที่อยู่ → แนบบัตร */}
               <div className="space-y-4">
                 <div>
-                  <Label>ชื่อ-นามสกุล *</Label>
-                  <Input
-                    className="mt-1"
-                    placeholder="ชื่อ นามสกุล"
-                    value={form.sellerName}
-                    onChange={(e) => setForm((f) => ({ ...f, sellerName: e.target.value }))}
-                  />
+                  <Label>ผู้ขาย *</Label>
+                  <div className="mt-1">
+                    <ContactCombobox
+                      roleNeeded="TRADE_IN_SELLER"
+                      value={form.sellerName}
+                      onSelect={handleSellerSelect}
+                      placeholder="ค้นหาหรือสร้างผู้ขาย"
+                    />
+                  </div>
+                  {form.sellerPhone && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      เบอร์โทร: {form.sellerPhone}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <Label>เลขบัตรประชาชน</Label>
@@ -414,16 +440,6 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
                       if (v.length === 13) fetchSellerHistory(v);
                       else setSellerHistory(null);
                     }}
-                  />
-                </div>
-                <div>
-                  <Label>เบอร์โทร</Label>
-                  <Input
-                    className="mt-1"
-                    type="tel"
-                    placeholder="0812345678"
-                    value={form.sellerPhone}
-                    onChange={(e) => setForm((f) => ({ ...f, sellerPhone: e.target.value }))}
                   />
                 </div>
                 <AddressForm value={address} onChange={setAddress} label="ที่อยู่ตามบัตร" />

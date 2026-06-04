@@ -47,13 +47,6 @@ interface Props {
   roleNeeded: 'SUPPLIER' | 'CUSTOMER' | 'TRADE_IN_SELLER';
   value: string;
   onSelect: (result: ContactPickResult) => void;
-  /**
-   * @deprecated Since v2 the free-text one-off path has been replaced by an
-   * inline "สร้างผู้ติดต่อใหม่" action that opens CreateContactModal.
-   * This prop is kept for back-compat so existing callers (e.g. VendorCombobox)
-   * continue to typecheck, but it is no longer called.
-   */
-  onTypeName?: (name: string) => void;
   invalid?: boolean;
   placeholder?: string;
 }
@@ -62,11 +55,8 @@ export function ContactCombobox({
   roleNeeded,
   value,
   onSelect,
-  // onTypeName kept for back-compat typecheck — intentionally unused (see @deprecated above)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  onTypeName: _onTypeName,
   invalid,
-  placeholder = 'เลือกผู้ติดต่อ หรือพิมพ์ชื่อ',
+  placeholder = 'เลือก/ค้นหาผู้ติดต่อ',
 }: Props) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');

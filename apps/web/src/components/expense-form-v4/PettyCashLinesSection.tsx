@@ -94,7 +94,6 @@ export function PettyCashLinesSection({ value, onChange }: Props) {
                     onSelectSupplier={(s) =>
                       updateLine(l.uid, { supplierName: s.name, supplierId: s.supplierId })
                     }
-                    onTypeName={(name) => updateLine(l.uid, { supplierName: name, supplierId: '' })}
                   />
                 </td>
                 <td className="px-2 py-1.5">

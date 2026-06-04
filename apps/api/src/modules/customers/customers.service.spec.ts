@@ -458,6 +458,8 @@ describe('CustomersService.create — links Contact (party master)', () => {
     // customer ops the service uses; create/update echo their data back.
     const tx = {
       customer: {
+        // P4: stub-upgrade guard calls findFirst inside the tx; return null (no stub)
+        findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn((args) => Promise.resolve({ id: 'cust-new', ...args.data })),
         update: jest.fn((args) => Promise.resolve({ id: args.where.id, ...args.data })),
       },
@@ -527,5 +529,122 @@ describe('CustomersService.create — links Contact (party master)', () => {
     const [, input] = contactResolver.findOrCreateByNaturalKey.mock.calls[0];
     expect(input.role).toBe('CUSTOMER');
     expect(input.nationalIdHash ?? null).toBeNull();
+  });
+});
+
+/**
+ * P4 Cleanup 2 — stub-upgrade guard.
+ * When ensureRole creates a lightweight Customer stub (phone:'', no hashes),
+ * a subsequent /customers create for the same person must UPGRADE the stub
+ * (update in place) rather than create a second Customer row on the same
+ * contactId. The upgrade must populate full PII-encrypted fields.
+ */
+describe('CustomersService.create — stub-upgrade guard (P4)', () => {
+  let service: CustomersService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let prisma: any;
+
+  beforeEach(async () => {
+    process.env.PII_ENCRYPTION_KEY = 'a'.repeat(64);
+    process.env.PII_HASH_SALT = 'b'.repeat(32);
+
+    const tx = {
+      customer: {
+        // findFirst returns null by default (no stub) — individual tests override.
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn((args) => Promise.resolve({ id: 'cust-new', ...args.data })),
+        update: jest.fn((args) => Promise.resolve({ id: args.where?.id ?? 'stub-id', ...args.data })),
+      },
+    };
+    prisma = {
+      customer: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn((args) => Promise.resolve({ id: 'cust-new', ...args.data })),
+        update: jest.fn((args) => Promise.resolve({ id: args.where?.id, ...args.data })),
+      },
+      $transaction: jest.fn((cb: (t: typeof tx) => unknown) => Promise.resolve(cb(tx))),
+      _tx: tx,
+    };
+
+    const mod: TestingModule = await Test.createTestingModule({
+      providers: [
+        CustomersService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: CustomerTierService, useValue: { getCustomerTier: jest.fn() } },
+        {
+          provide: ContactResolverService,
+          useValue: { findOrCreateByNaturalKey: jest.fn().mockResolvedValue({ id: 'contact-stub' }) },
+        },
+      ],
+    }).compile();
+    service = mod.get(CustomersService);
+  });
+
+  afterEach(() => {
+    delete process.env.PII_ENCRYPTION_KEY;
+    delete process.env.PII_HASH_SALT;
+  });
+
+  const baseDto = (overrides: Record<string, unknown> = {}) => ({
+    name: 'Stub Person',
+    nationalId: '1234567890123',
+    isForeigner: true, // skip checksum
+    phone: '0812345678',
+    ...overrides,
+  }) as unknown as Parameters<CustomersService['create']>[0];
+
+  it('creates a new Customer row when no stub exists for the resolved contactId', async () => {
+    // tx.customer.findFirst returns null → no stub
+    await service.create(baseDto());
+
+    expect(prisma._tx.customer.create).toHaveBeenCalledTimes(1);
+    expect(prisma._tx.customer.update).not.toHaveBeenCalled();
+    const createArgs = prisma._tx.customer.create.mock.calls[0][0];
+    expect(createArgs.data.contact).toEqual({ connect: { id: 'contact-stub' } });
+  });
+
+  it('upgrades the stub (update in place) when a Customer row already exists for that contactId', async () => {
+    // Simulate a pre-existing stub created by ensureRole
+    prisma._tx.customer.findFirst.mockResolvedValue({ id: 'stub-existing-id' });
+
+    await service.create(baseDto());
+
+    // Must update the stub, not create a second row
+    expect(prisma._tx.customer.create).not.toHaveBeenCalled();
+    expect(prisma._tx.customer.update).toHaveBeenCalledTimes(1);
+    const updateArgs = prisma._tx.customer.update.mock.calls[0][0];
+    expect(updateArgs.where).toEqual({ id: 'stub-existing-id' });
+    // Full contact link is applied on the upgrade
+    expect(updateArgs.data.contact).toEqual({ connect: { id: 'contact-stub' } });
+  });
+
+  it('populates PII-encrypted fields on the stub upgrade path', async () => {
+    prisma._tx.customer.findFirst.mockResolvedValue({ id: 'stub-existing-id' });
+
+    await service.create(baseDto());
+
+    const updateArgs = prisma._tx.customer.update.mock.calls[0][0];
+    // Encrypted columns must be written — format: iv:tag:cipher hex
+    expect(updateArgs.data.phoneEncrypted).toMatch(/^[0-9a-f]+:[0-9a-f]+:[0-9a-f]+$/);
+    expect(updateArgs.data.nationalIdEncrypted).toMatch(/^[0-9a-f]+:[0-9a-f]+:[0-9a-f]+$/);
+    // Hash columns must be written — sha256 = 64 hex chars
+    expect(updateArgs.data.phoneHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(updateArgs.data.nationalIdHash).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('stub lookup uses contactId + deletedAt:null filter', async () => {
+    await service.create(baseDto());
+
+    const findFirstCalls = prisma._tx.customer.findFirst.mock.calls;
+    expect(findFirstCalls.length).toBeGreaterThanOrEqual(1);
+    const stubLookup = findFirstCalls.find(
+      (c: unknown[]) =>
+        (c[0] as { where?: { contactId?: string } })?.where?.contactId === 'contact-stub',
+    );
+    expect(stubLookup).toBeDefined();
+    expect(
+      (stubLookup![0] as { where: { deletedAt: null } }).where.deletedAt,
+    ).toBeNull();
   });
 });

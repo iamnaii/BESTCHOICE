@@ -24,7 +24,6 @@ export function VendorSection({ state, onChange }: Props) {
                 ...(s.whtFormType ? { whtFormType: s.whtFormType } : {}),
               })
             }
-            onTypeName={(name) => onChange({ vendorName: name, vendorSupplierId: '' })}
           />
         </div>
         <div>

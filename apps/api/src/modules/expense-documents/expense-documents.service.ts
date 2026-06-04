@@ -847,9 +847,52 @@ export class ExpenseDocumentsService implements OnModuleInit {
     // C2 — V17 whitelist lookup once (per request), then V16/V17/V18 per line.
     const whitelist = await this.payrollCustom.loadWhitelist();
 
+    // PR-C — resolve linked employees once. Lines with a userId get their
+    // name/taxId snapshot derived from the registry (spec §4.2 — never trust
+    // the client-sent snapshot). A userId that isn't an ACTIVE payroll
+    // employee (no profile / soft-deleted / resigned) is rejected.
+    const linkedUserIds = [
+      ...new Set(dto.lines.filter((l) => l.userId).map((l) => l.userId as string)),
+    ];
+    const employeeByUserId = new Map<string, { name: string; taxId: string | null }>();
+    if (linkedUserIds.length > 0) {
+      const profiles = await this.prisma.employeeProfile.findMany({
+        where: {
+          userId: { in: linkedUserIds },
+          deletedAt: null,
+          OR: [{ resignedDate: null }, { resignedDate: { gt: new Date() } }],
+          user: { is: { isActive: true, deletedAt: null } },
+        },
+        include: { user: { select: { id: true, name: true, nationalId: true } } },
+      });
+      for (const p of profiles) {
+        employeeByUserId.set(p.userId, {
+          name: p.user.name,
+          taxId: p.taxIdOverride ?? p.user.nationalId,
+        });
+      }
+      const missing = linkedUserIds.filter((id) => !employeeByUserId.has(id));
+      if (missing.length > 0) {
+        throw new BadRequestException(
+          'พนักงานที่เลือกบางรายไม่อยู่ในทะเบียนพนักงาน หรือลาออก/ถูกลบแล้ว — ' +
+            'กรุณาเลือกใหม่หรือเพิ่มที่หน้าทะเบียนพนักงาน',
+        );
+      }
+    }
+
     // Compute netPaid per line + validate
     const preparedRows = await Promise.all(
       dto.lines.map(async (l) => {
+        // PR-C — derive snapshot from the linked employee when present.
+        const linked = l.userId ? employeeByUserId.get(l.userId) ?? null : null;
+        const employeeName = linked ? linked.name : (l.employeeName ?? '').trim();
+        const employeeTaxId = linked ? linked.taxId : (l.employeeTaxId ?? null);
+        if (!l.userId && employeeName.length < 2) {
+          throw new BadRequestException(
+            'แต่ละแถวต้องเลือกพนักงานจากทะเบียน หรือระบุชื่อพนักงาน (อย่างน้อย 2 ตัวอักษร)',
+          );
+        }
+
         const base = new Prisma.Decimal(l.baseSalary);
         const sso = new Prisma.Decimal(l.ssoEmployee ?? 0);
         const wht = new Prisma.Decimal(l.whtAmount ?? 0);
@@ -857,9 +900,7 @@ export class ExpenseDocumentsService implements OnModuleInit {
         // exposed for future automatic-WHT-compute consumers).
         await this.payrollCustom.validateLine(
           {
-            // Task 3 (PR-C) will derive employeeName from userId when present;
-            // for now pass through (may be undefined for userId-mode lines).
-            employeeName: l.employeeName as string,
+            employeeName,
             baseSalary: base,
             customIncome: l.customIncome,
             customDeduction: l.customDeduction,
@@ -880,13 +921,14 @@ export class ExpenseDocumentsService implements OnModuleInit {
         const netPaid = base.plus(sumIncome).minus(sso).minus(wht).minus(sumDeduction);
         if (netPaid.lt(0)) {
           throw new BadRequestException(
-            `พนักงาน "${l.employeeName}" — เงินสุทธิติดลบ ` +
+            `พนักงาน "${employeeName}" — เงินสุทธิติดลบ ` +
               `(ฐาน ${base} + รายได้พิเศษ ${sumIncome} - SSO ${sso} - WHT ${wht} - หัก ${sumDeduction})`,
           );
         }
         return {
-          employeeName: l.employeeName,
-          employeeTaxId: l.employeeTaxId ?? null,
+          userId: l.userId ?? null,
+          employeeName,
+          employeeTaxId,
           baseSalary: base,
           ssoEmployee: sso,
           whtAmount: wht,
@@ -925,7 +967,7 @@ export class ExpenseDocumentsService implements OnModuleInit {
     );
 
     const documentDate = new Date(dto.documentDate);
-    return this.prisma.$transaction(async (tx) => {
+    const doc = await this.prisma.$transaction(async (tx) => {
       const number = await this.docNumber.next(tx, 'PAYROLL', documentDate);
       return tx.expenseDocument.create({
         data: {
@@ -951,9 +993,8 @@ export class ExpenseDocumentsService implements OnModuleInit {
               payrollPeriod: dto.payrollPeriod,
               lines: {
                 create: linesPrepared.map((l) => ({
-                  // Task 3 (PR-C) will resolve userId → employeeName before this
-                  // point; the cast keeps TypeScript happy until that lands.
-                  employeeName: l.employeeName as string,
+                  userId: l.userId,
+                  employeeName: l.employeeName,
                   employeeTaxId: l.employeeTaxId,
                   baseSalary: l.baseSalary,
                   ssoEmployee: l.ssoEmployee,
@@ -987,6 +1028,30 @@ export class ExpenseDocumentsService implements OnModuleInit {
         },
       });
     });
+
+    // PR-C PII — the snapshot employeeTaxId === the employee's nationalId (or
+    // override). Mask it in the response for roles PR-A blocks from national
+    // IDs, so a draft payroll can't enumerate them.
+    this.maskPayrollTaxIds(doc, user.role);
+    return doc;
+  }
+
+  /**
+   * PR-C PII — mask each payroll line's employeeTaxId (= nationalId/override)
+   * unless the viewer is OWNER/ACCOUNTANT. Mutates `doc` in place; the STORED
+   * value is never changed (response-only). No-op for non-payroll docs.
+   */
+  private maskPayrollTaxIds(
+    doc: { payroll?: { lines: Array<{ employeeTaxId: string | null }> } | null },
+    role?: string | null,
+  ): void {
+    // PII-cleared roles (see same set on the PND1 tax report): OWNER/ACCOUNTANT
+    // run the books; FINANCE_MANAGER files payroll tax (needs the real national IDs).
+    if (role === 'OWNER' || role === 'ACCOUNTANT' || role === 'FINANCE_MANAGER') return;
+    if (!doc.payroll) return;
+    for (const l of doc.payroll.lines) {
+      l.employeeTaxId = l.employeeTaxId ? '•••••••••' + l.employeeTaxId.slice(-4) : l.employeeTaxId;
+    }
   }
 
   // ─── Vendor Settlement create — multi-line clears ACCRUAL EXs ────────
@@ -1873,7 +1938,7 @@ export class ExpenseDocumentsService implements OnModuleInit {
   // CN view, payroll view, SE view) don't need a follow-up roundtrip. The
   // base includes (expenseDetail / branch / approver) work for every type;
   // creditNote / payroll / settlement detail are added based on documentType.
-  async findOne(id: string) {
+  async findOne(id: string, viewerRole?: string | null) {
     // First pass to read documentType, then a typed include.
     const docType = await this.prisma.expenseDocument.findUniqueOrThrow({
       where: { id },
@@ -1912,6 +1977,13 @@ export class ExpenseDocumentsService implements OnModuleInit {
       },
     });
     if (doc.deletedAt) throw new NotFoundException('เอกสารถูกลบแล้ว');
+    // PR-C PII — mask payroll taxIds in the read response. Cast required
+    // because Prisma's conditional-include type for payroll doesn't statically
+    // carry the nested lines shape; the runtime value is correct.
+    this.maskPayrollTaxIds(
+      doc as { payroll?: { lines: Array<{ employeeTaxId: string | null }> } | null },
+      viewerRole,
+    );
     return doc;
   }
 

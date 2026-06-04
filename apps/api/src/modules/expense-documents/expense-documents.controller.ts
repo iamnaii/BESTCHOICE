@@ -197,8 +197,8 @@ export class ExpenseDocumentsController {
 
   @Get(':id')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
-  findOne(@Param('id') id: string) {
-    return this.service.findOne(id);
+  findOne(@Param('id') id: string, @CurrentUser() user: { role?: string | null }) {
+    return this.service.findOne(id, user.role);
   }
 
   @Patch(':id')

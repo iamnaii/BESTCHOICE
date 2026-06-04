@@ -91,9 +91,9 @@ describe('ExpenseDocumentsController', () => {
     });
   });
 
-  it('GET /:id calls findOne', async () => {
-    await controller.findOne('doc-1');
-    expect(service.findOne).toHaveBeenCalledWith('doc-1');
+  it('GET /:id calls findOne with viewer role', async () => {
+    await controller.findOne('doc-1', { role: 'OWNER' });
+    expect(service.findOne).toHaveBeenCalledWith('doc-1', 'OWNER');
   });
 
   it('GET /:id/audit calls getAuditTrail with user (timeline; branch-scoped)', async () => {

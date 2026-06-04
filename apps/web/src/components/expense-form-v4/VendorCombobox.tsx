@@ -10,7 +10,7 @@ import { ContactCombobox, type ContactPickResult } from '@/components/contacts/C
 interface Props {
   value: string;
   onSelectSupplier: (s: { name: string; taxId: string; whtFormType?: 'PND3' | 'PND53' }) => void;
-  onTypeName: (name: string) => void;
+  onTypeName?: (name: string) => void;
   invalid?: boolean;
 }
 

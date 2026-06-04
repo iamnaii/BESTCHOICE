@@ -2,6 +2,10 @@
 // across ALL roles (server-side, debounced). On pick it calls ensure-role so the
 // chosen contact is provisioned into the field's role (e.g. a customer-only
 // contact becomes a Supplier) and returns the child id to the parent.
+//
+// v2 change: free-text one-off path removed. Typed searches with no exact match
+// show an inline "+ สร้างผู้ติดต่อใหม่" action that opens CreateContactModal.
+// The created contact flows out through the same onSelect callback as a picked one.
 import { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -20,6 +24,7 @@ import {
 import { useDebounce } from '@/hooks/useDebounce';
 import { cn } from '@/lib/utils';
 import { contactsApi, contactKeys, type Contact, type ContactRole } from '@/lib/api/contacts';
+import CreateContactModal from './CreateContactModal';
 
 const ROLE_LABELS: Record<ContactRole, string> = {
   CUSTOMER: 'ลูกค้า',
@@ -40,7 +45,12 @@ interface Props {
   roleNeeded: 'SUPPLIER' | 'CUSTOMER';
   value: string;
   onSelect: (result: ContactPickResult) => void;
-  /** When provided, a typed name with no exact match can be committed as a one-off. */
+  /**
+   * @deprecated Since v2 the free-text one-off path has been replaced by an
+   * inline "สร้างผู้ติดต่อใหม่" action that opens CreateContactModal.
+   * This prop is kept for back-compat so existing callers (e.g. VendorCombobox)
+   * continue to typecheck, but it is no longer called.
+   */
   onTypeName?: (name: string) => void;
   invalid?: boolean;
   placeholder?: string;
@@ -50,12 +60,15 @@ export function ContactCombobox({
   roleNeeded,
   value,
   onSelect,
-  onTypeName,
+  // onTypeName kept for back-compat typecheck — intentionally unused (see @deprecated above)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  onTypeName: _onTypeName,
   invalid,
   placeholder = 'เลือกผู้ติดต่อ หรือพิมพ์ชื่อ',
 }: Props) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const [createOpen, setCreateOpen] = useState(false);
   const debounced = useDebounce(search);
 
   const query = useQuery({
@@ -68,13 +81,7 @@ export function ContactCombobox({
   const hasExactMatch =
     !!search.trim() && contacts.some((c) => c.name.toLowerCase() === search.trim().toLowerCase());
 
-  const commitTyped = (name: string) => {
-    const n = name.trim();
-    if (!n || !onTypeName) return;
-    onTypeName(n);
-    setOpen(false);
-    setSearch('');
-  };
+  const showCreateAction = !!search.trim() && !hasExactMatch && !query.isLoading;
 
   const ensureRoleMutation = useMutation({
     mutationFn: (c: Contact) => contactsApi.ensureRole(c.id, roleNeeded),
@@ -87,92 +94,119 @@ export function ContactCombobox({
     onError: () => toast.error('ไม่สามารถเพิ่มบทบาทให้ผู้ติดต่อได้ กรุณาลองใหม่อีกครั้ง'),
   });
 
+  const handleCreated = (r: { contactId: string; childId: string; name: string; taxId: string }) => {
+    onSelect({ contactId: r.contactId, childId: r.childId, name: r.name, taxId: r.taxId });
+    setCreateOpen(false);
+    setOpen(false);
+    setSearch('');
+  };
+
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          aria-invalid={invalid}
-          className={cn('w-full justify-between font-normal', !value && 'text-muted-foreground')}
-        >
-          <span className="truncate leading-snug" title={value || undefined}>
-            {value || placeholder}
-          </span>
-          <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
-        <Command shouldFilter={false}>
-          <CommandInput
-            placeholder="ค้นหาผู้ติดต่อ / เลขภาษี..."
-            value={search}
-            onValueChange={setSearch}
-            onKeyDown={(e) => {
-              if (onTypeName && e.key === 'Enter' && search.trim() && !hasExactMatch) {
-                e.preventDefault();
-                e.stopPropagation();
-                commitTyped(search);
-              }
-            }}
-          />
-          <CommandList>
-            {query.isLoading || ensureRoleMutation.isPending ? (
-              <CommandEmpty>{ensureRoleMutation.isPending ? 'กำลังเพิ่ม...' : 'กำลังโหลด...'}</CommandEmpty>
-            ) : (
-              <>
-                {query.isError && (
-                  <CommandEmpty className="px-3 py-6 text-center leading-snug text-destructive">
-                    โหลดข้อมูลไม่สำเร็จ
-                  </CommandEmpty>
-                )}
-                {!query.isError && contacts.length === 0 && !!search.trim() && !onTypeName && (
-                  <CommandEmpty className="px-3 py-6 text-center leading-snug">
-                    ไม่พบผู้ติดต่อที่ตรงกับ "{search.trim()}"
-                  </CommandEmpty>
-                )}
-                {contacts.length > 0 && (
-                  <CommandGroup heading="สมุดผู้ติดต่อ">
-                    {contacts.map((c) => (
-                      <CommandItem key={c.id} value={c.id} onSelect={() => ensureRoleMutation.mutate(c)}>
-                        <Check
-                          className={cn(
-                            'mr-2 size-4 shrink-0',
-                            value === c.name ? 'opacity-100' : 'opacity-0',
-                          )}
-                        />
-                        <span className="flex-1 truncate leading-snug">{c.name}</span>
-                        <span className="ml-2 flex shrink-0 gap-1">
-                          {c.roles.map((r) => (
-                            <Badge key={r} variant="secondary" className="text-2xs">
-                              {ROLE_LABELS[r]}
-                            </Badge>
-                          ))}
+    <>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            aria-invalid={invalid}
+            className={cn('w-full justify-between font-normal', !value && 'text-muted-foreground')}
+          >
+            <span className="truncate leading-snug" title={value || undefined}>
+              {value || placeholder}
+            </span>
+            <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+          <Command shouldFilter={false}>
+            <CommandInput
+              placeholder="ค้นหาผู้ติดต่อ / เลขภาษี..."
+              value={search}
+              onValueChange={setSearch}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && search.trim() && !hasExactMatch && !query.isLoading) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setCreateOpen(true);
+                }
+              }}
+            />
+            <CommandList>
+              {query.isLoading || ensureRoleMutation.isPending ? (
+                <CommandEmpty>{ensureRoleMutation.isPending ? 'กำลังเพิ่ม...' : 'กำลังโหลด...'}</CommandEmpty>
+              ) : (
+                <>
+                  {query.isError && (
+                    <CommandEmpty className="px-3 py-6 text-center leading-snug text-destructive">
+                      โหลดข้อมูลไม่สำเร็จ
+                    </CommandEmpty>
+                  )}
+                  {!query.isError && contacts.length === 0 && !!search.trim() && !showCreateAction && (
+                    <CommandEmpty className="px-3 py-6 text-center leading-snug">
+                      ไม่พบผู้ติดต่อที่ตรงกับ "{search.trim()}"
+                    </CommandEmpty>
+                  )}
+                  {contacts.length > 0 && (
+                    <CommandGroup heading="สมุดผู้ติดต่อ">
+                      {contacts.map((c) => (
+                        <CommandItem key={c.id} value={c.id} onSelect={() => ensureRoleMutation.mutate(c)}>
+                          <Check
+                            className={cn(
+                              'mr-2 size-4 shrink-0',
+                              value === c.name ? 'opacity-100' : 'opacity-0',
+                            )}
+                          />
+                          <span className="flex-1 truncate leading-snug">{c.name}</span>
+                          <span className="ml-2 flex shrink-0 gap-1">
+                            {c.roles.map((r) => (
+                              <Badge key={r} variant="secondary" className="text-2xs">
+                                {ROLE_LABELS[r]}
+                              </Badge>
+                            ))}
+                            {!c.phone && (
+                              <Badge variant="outline" className="text-2xs text-muted-foreground">
+                                ข้อมูลไม่ครบ
+                              </Badge>
+                            )}
+                          </span>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  )}
+                  {contacts.length === 0 && !search.trim() && (
+                    <CommandEmpty className="px-3 py-6 text-center leading-snug">
+                      พิมพ์เพื่อค้นหาผู้ติดต่อ
+                    </CommandEmpty>
+                  )}
+                  {showCreateAction && (
+                    <CommandGroup heading="สร้างใหม่">
+                      <CommandItem
+                        value={`__create__${search}`}
+                        onSelect={() => setCreateOpen(true)}
+                      >
+                        <Plus className="mr-2 size-4 shrink-0" />
+                        <span className="truncate leading-snug">
+                          + สร้างผู้ติดต่อใหม่ "{search.trim()}"
                         </span>
                       </CommandItem>
-                    ))}
-                  </CommandGroup>
-                )}
-                {contacts.length === 0 && !search.trim() && (
-                  <CommandEmpty className="px-3 py-6 text-center leading-snug">
-                    พิมพ์เพื่อค้นหาผู้ติดต่อ
-                  </CommandEmpty>
-                )}
-                {onTypeName && search.trim() && !hasExactMatch && (
-                  <CommandGroup heading="ใช้ครั้งเดียว (ไม่บันทึกในสมุด)">
-                    <CommandItem value={`__typed__${search}`} onSelect={() => commitTyped(search)}>
-                      <Plus className="mr-2 size-4 shrink-0" />
-                      <span className="truncate leading-snug">ใช้ชื่อ "{search.trim()}"</span>
-                    </CommandItem>
-                  </CommandGroup>
-                )}
-              </>
-            )}
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
+                    </CommandGroup>
+                  )}
+                </>
+              )}
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
+
+      <CreateContactModal
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        role={roleNeeded}
+        initialName={search.trim()}
+        onCreated={handleCreated}
+      />
+    </>
   );
 }

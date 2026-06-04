@@ -57,4 +57,35 @@ describe('EmployeesService', () => {
       await expect(service.provision({ userId: 'u-1' })).rejects.toThrow(ConflictException);
     });
   });
+
+  describe('list', () => {
+    it('filters out soft-deleted, masks nationalId, returns paginated shape', async () => {
+      prisma.employeeProfile.findMany.mockResolvedValue([
+        { id: 'e-1', position: 'ช่าง', employmentType: 'MONTHLY', deletedAt: null,
+          user: { id: 'u-1', name: 'สมชาย', nickname: 'ชาย', employeeId: 'EMP-001',
+            nationalId: '1100700000001', branchId: 'b1', isActive: true } },
+      ]);
+      prisma.employeeProfile.count.mockResolvedValue(1);
+      const res = await service.list({ page: 1, limit: 50 });
+      expect(prisma.employeeProfile.findMany.mock.calls[0][0].where.deletedAt).toBeNull();
+      expect(res).toEqual(expect.objectContaining({ total: 1, page: 1, limit: 50 }));
+      // masked: only last 4 visible
+      expect(res.data[0].nationalId).toBe('•••••••••0001');
+    });
+  });
+
+  describe('findOne', () => {
+    it('throws NotFound when missing', async () => {
+      prisma.employeeProfile.findFirst.mockResolvedValue(null);
+      await expect(service.findOne('e-x')).rejects.toThrow(NotFoundException);
+    });
+    it('returns full nationalId on detail', async () => {
+      prisma.employeeProfile.findFirst.mockResolvedValue({
+        id: 'e-1', deletedAt: null,
+        user: { id: 'u-1', name: 'สมชาย', nationalId: '1100700000001' },
+      });
+      const res = await service.findOne('e-1');
+      expect(res.user.nationalId).toBe('1100700000001');
+    });
+  });
 });

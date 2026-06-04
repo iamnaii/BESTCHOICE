@@ -7,6 +7,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
+import { ListEmployeesDto } from './dto/list-employees.dto';
 
 type Actor = { userId?: string; ipAddress?: string; userAgent?: string };
 
@@ -16,6 +17,16 @@ export class EmployeesService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
   ) {}
+
+  private maskNationalId(v: string | null): string | null {
+    if (!v) return v;
+    return '•••••••••' + v.slice(-4);
+  }
+
+  private userSelect = {
+    id: true, name: true, nickname: true, employeeId: true,
+    nationalId: true, startDate: true, branchId: true, isActive: true,
+  };
 
   async provision(dto: CreateEmployeeDto, actor?: Actor) {
     const user = await this.prisma.user.findFirst({
@@ -53,5 +64,46 @@ export class EmployeesService {
       }
       throw e;
     }
+  }
+
+  async list(dto: ListEmployeesDto) {
+    const page = dto.page ?? 1;
+    const limit = dto.limit ?? 50;
+    const where: Prisma.EmployeeProfileWhereInput = { deletedAt: null };
+    if (dto.isActive === 'true') where.resignedDate = null;
+    if (dto.search) {
+      where.user = {
+        OR: [
+          { name: { contains: dto.search, mode: 'insensitive' } },
+          { nickname: { contains: dto.search, mode: 'insensitive' } },
+          { employeeId: { contains: dto.search, mode: 'insensitive' } },
+        ],
+      };
+    }
+    const [rows, total] = await Promise.all([
+      this.prisma.employeeProfile.findMany({
+        where,
+        include: { user: { select: this.userSelect } },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.employeeProfile.count({ where }),
+    ]);
+    const data = rows.map((r) => ({
+      ...r,
+      nationalId: this.maskNationalId(r.user.nationalId),
+      user: { ...r.user, nationalId: this.maskNationalId(r.user.nationalId) },
+    }));
+    return { data, total, page, limit };
+  }
+
+  async findOne(id: string) {
+    const profile = await this.prisma.employeeProfile.findFirst({
+      where: { id, deletedAt: null },
+      include: { user: { select: this.userSelect } },
+    });
+    if (!profile) throw new NotFoundException('ไม่พบทะเบียนพนักงาน');
+    return profile; // full nationalId — endpoint is OWNER/ACCOUNTANT only
   }
 }

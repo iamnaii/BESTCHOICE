@@ -7,6 +7,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
+import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { ListEmployeesDto } from './dto/list-employees.dto';
 
 type Actor = { userId?: string; ipAddress?: string; userAgent?: string };
@@ -105,5 +106,50 @@ export class EmployeesService {
     });
     if (!profile) throw new NotFoundException('ไม่พบทะเบียนพนักงาน');
     return profile; // full nationalId — endpoint is OWNER/ACCOUNTANT only
+  }
+
+  async update(id: string, dto: UpdateEmployeeDto, actor?: Actor) {
+    await this.findOne(id); // 404 if missing/deleted
+    const profile = await this.prisma.employeeProfile.update({
+      where: { id },
+      data: {
+        position: dto.position,
+        employmentType: dto.employmentType,
+        baseSalary: dto.baseSalary != null ? new Prisma.Decimal(dto.baseSalary) : undefined,
+        ssoEligible: dto.ssoEligible,
+        bankName: dto.bankName,
+        bankAccountNo: dto.bankAccountNo,
+        taxIdOverride: dto.taxIdOverride,
+        note: dto.note,
+        resignedDate: dto.resignedDate ? new Date(dto.resignedDate) : undefined,
+      },
+    });
+    await this.audit.log({
+      userId: actor?.userId,
+      action: 'EMPLOYEE_PROFILE_UPDATED',
+      entity: 'employee_profile',
+      entityId: id,
+      newValue: dto as Record<string, unknown>,
+      ipAddress: actor?.ipAddress,
+      userAgent: actor?.userAgent,
+    });
+    return profile;
+  }
+
+  async remove(id: string, actor?: Actor) {
+    await this.findOne(id);
+    const profile = await this.prisma.employeeProfile.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
+    await this.audit.log({
+      userId: actor?.userId,
+      action: 'EMPLOYEE_PROFILE_DELETED',
+      entity: 'employee_profile',
+      entityId: id,
+      ipAddress: actor?.ipAddress,
+      userAgent: actor?.userAgent,
+    });
+    return profile;
   }
 }

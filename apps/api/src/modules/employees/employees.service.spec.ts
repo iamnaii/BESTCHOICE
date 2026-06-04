@@ -88,4 +88,33 @@ describe('EmployeesService', () => {
       expect(res.user.nationalId).toBe('1100700000001');
     });
   });
+
+  describe('update', () => {
+    it('updates fields + audits EMPLOYEE_PROFILE_UPDATED', async () => {
+      prisma.employeeProfile.findFirst.mockResolvedValue({ id: 'e-1', deletedAt: null,
+        user: { id: 'u-1', name: 'สมชาย', nationalId: '1100700000001' } });
+      prisma.employeeProfile.update.mockResolvedValue({ id: 'e-1', position: 'หัวหน้า' });
+      await service.update('e-1', { position: 'หัวหน้า' }, { userId: 'admin' });
+      expect(prisma.employeeProfile.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'e-1' } }),
+      );
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'EMPLOYEE_PROFILE_UPDATED', entityId: 'e-1' }),
+      );
+    });
+  });
+
+  describe('remove', () => {
+    it('soft-deletes + audits EMPLOYEE_PROFILE_DELETED', async () => {
+      prisma.employeeProfile.findFirst.mockResolvedValue({ id: 'e-1', deletedAt: null,
+        user: { id: 'u-1', name: 'สมชาย', nationalId: '1100700000001' } });
+      prisma.employeeProfile.update.mockResolvedValue({ id: 'e-1', deletedAt: new Date() });
+      await service.remove('e-1', { userId: 'admin' });
+      const call = prisma.employeeProfile.update.mock.calls.at(-1)[0];
+      expect(call.data.deletedAt).toBeInstanceOf(Date);
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'EMPLOYEE_PROFILE_DELETED', entityId: 'e-1' }),
+      );
+    });
+  });
 });

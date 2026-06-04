@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { ContactRole, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { ContactResolverService } from './contact-resolver.service';
 import { ListContactsDto } from './dto/list-contacts.dto';
 import { MergeContactsDto } from './dto/merge-contacts.dto';
 
@@ -10,6 +11,7 @@ export class ContactsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly contactResolver: ContactResolverService,
   ) {}
 
   async list(dto: ListContactsDto) {
@@ -160,5 +162,35 @@ export class ContactsService {
 
       return { primaryId, mergedRoles: unionRoles };
     });
+  }
+
+  async ensureRole(
+    id: string,
+    role: 'SUPPLIER' | 'CUSTOMER',
+    actor: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    const result = await this.prisma.$transaction((tx) =>
+      // role is the narrow caller union (⊆ ContactRole); cast bridges Prisma's
+      // enum type. Resolver guards non-SUPPLIER roles at runtime.
+      this.contactResolver.ensureRole(tx, id, role as ContactRole),
+    );
+
+    if (result.provisioned) {
+      await this.audit.log({
+        userId: actor.userId,
+        action: 'CONTACT_ROLE_ADDED',
+        entity: 'contact',
+        entityId: id,
+        newValue: {
+          role: result.role,
+          supplierId: result.supplierId,
+          ...(result.customerId !== undefined && { customerId: result.customerId }),
+        },
+        ipAddress: actor.ipAddress,
+        userAgent: actor.userAgent,
+      });
+    }
+
+    return result;
   }
 }

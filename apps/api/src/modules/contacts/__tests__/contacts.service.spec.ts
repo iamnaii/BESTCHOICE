@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import { ContactsService } from '../contacts.service';
+import { ContactResolverService } from '../contact-resolver.service';
 
 describe('ContactsService.list', () => {
   let svc: ContactsService;
@@ -13,6 +14,7 @@ describe('ContactsService.list', () => {
         ContactsService,
         { provide: PrismaService, useValue: prisma },
         { provide: AuditService, useValue: { log: jest.fn() } },
+        { provide: ContactResolverService, useValue: { ensureRole: jest.fn() } },
       ],
     }).compile();
     svc = mod.get(ContactsService);
@@ -60,6 +62,7 @@ describe('ContactsService.findOne', () => {
         ContactsService,
         { provide: PrismaService, useValue: prisma },
         { provide: AuditService, useValue: { log: jest.fn() } },
+        { provide: ContactResolverService, useValue: { ensureRole: jest.fn() } },
       ],
     }).compile();
     svc = mod.get(ContactsService);
@@ -116,6 +119,7 @@ describe('ContactsService.merge', () => {
         ContactsService,
         { provide: PrismaService, useValue: prisma },
         { provide: AuditService, useValue: audit },
+        { provide: ContactResolverService, useValue: { ensureRole: jest.fn() } },
       ],
     }).compile();
     svc = mod.get(ContactsService);

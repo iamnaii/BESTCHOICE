@@ -50,7 +50,22 @@
 | CustomerSelectStep (สัญญา) | ลูกค้าผ่อน | **full-customer** |
 | (Trade-in seller ถ้ามี UI) | คนขายมือสอง | mini |
 
-> ⚠️ **ลิสต์นี้ยังไม่ครบ** (scrutinize) — งานแรกของ P0 คือ **sweep ทั้ง repo** หา free-text touchpoint ทุกจุด (asset vendor combobox, trade-in seller, finance-company contacts, collections skip-tracing ฯลฯ) ก่อน claim "ทุกที่"
+### Inventory เต็มจาก sweep (P0a — 2026-06-04)
+
+**ใน scope (เป็น party-master contact จริง):**
+- **ผู้ขาย/vendor:** `VendorCombobox` (รายจ่าย, `onTypeName`), `PettyCashLinesSection` per-line `supplierName`, `AssetEntrySection3Vendor` (asset — มี dropdown "ชื่อที่เคยใช้"), PurchaseOrder supplier `<select>`
+- **ศูนย์ซ่อม:** `RepairCenterCombobox` (supplier + `isRepairCenter`)
+- **คู่ค้า/ลูกค้า:** `CounterpartyPicker` (รายรับอื่น)
+- **ลูกค้า:** `CustomerPickerStep` (ประกัน), `CustomerSelectStep` (สัญญา → full-customer)
+- **คนขายมือสอง:** TradeIn `sellerName`/`sellerPhone` (`AcceptModal`) — role `TRADE_IN_SELLER` มีใน party master
+
+Backend free-text fields ที่ต้องกัน (P3): `ExpenseDocument.vendorName`, `ExpenseLine.supplierName`, `OtherIncome.counterpartyName/TaxId/Address/Phone`, `TradeIn.sellerName/sellerPhone`, `FixedAsset.supplierName/supplierTaxId`
+
+**นอก scope ของ epic นี้ (ไม่ใช่ party-master contact — เคาะกับ owner):**
+- `PayrollLine.employeeName` — **พนักงาน ไม่ใช่ลูกค้า/ผู้ขาย** (`Contact` ไม่มี role EMPLOYEE) → ควรเป็น "employee master" แยก ไม่ใช่ epic นี้
+- `TradeIn.transferBankName/transferAccountName` — บัญชีธนาคารผู้รับเงิน ไม่ใช่ "ผู้ติดต่อ"
+- `Receipt.payerName/receiverName` — auto-fill จาก customer/company อยู่แล้ว → แค่กันการแก้มือ (low)
+- custodianName (`NameAutocomplete`, ผู้ถือเงินสดย่อย) — พนักงานภายใน ไม่ใช่ party
 
 ## เฟส (แต่ละเฟส = PR ที่ทำงาน/ทดสอบได้เอง)
 

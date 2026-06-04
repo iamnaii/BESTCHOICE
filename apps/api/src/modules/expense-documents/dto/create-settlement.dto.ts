@@ -34,6 +34,14 @@ export class CreateSettlementDto {
   @IsOptional()
   vendorName?: string;
 
+  /**
+   * Party-master link (Phase 3 P3). Durable FK to the Supplier behind
+   * `vendorName`. Optional.
+   */
+  @IsString()
+  @IsOptional()
+  vendorSupplierId?: string;
+
   @IsString()
   @IsOptional()
   description?: string;

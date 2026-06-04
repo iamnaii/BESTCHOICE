@@ -57,6 +57,14 @@ export class CreateCreditNoteDto {
   @MaxLength(20)
   vendorTaxId?: string;
 
+  /**
+   * Party-master link (Phase 3 P3). Durable FK to the Supplier behind
+   * `vendorName` (STANDALONE mode). Optional.
+   */
+  @IsString()
+  @IsOptional()
+  vendorSupplierId?: string;
+
   @IsString()
   @MinLength(3, { message: 'เหตุผลต้องมีอย่างน้อย 3 ตัวอักษร' })
   reason!: string;

@@ -1422,6 +1422,11 @@ model Supplier {
   fixedAssets    FixedAsset[]            @relation("FixedAssetVendor")
   repairTickets  RepairTicket[]          @relation("RepairCenterTickets")
 
+  // Party-master link (Phase 3 P3) — durable FK from expense docs/lines that
+  // previously stored the vendor as free text only. Nullable on the expense side.
+  expenseDocuments ExpenseDocument[] @relation("ExpenseVendor")
+  expenseLines     ExpenseLine[]     @relation("ExpenseLineSupplier")
+
   // Unified contact party master (Phase 3) — nullable upward ref
   contactId String?  @map("contact_id")
   contact   Contact? @relation(fields: [contactId], references: [id])
@@ -3803,6 +3808,11 @@ model ExpenseDocument {
   documentDate DateTime     @map("document_date")
   vendorName   String?      @map("vendor_name")
   vendorTaxId  String?      @map("vendor_tax_id")
+  /// Party-master link (Phase 3 P3) — durable FK to the provisioned Supplier
+  /// behind `vendorName`. Nullable: several subtypes (payroll/custodian,
+  /// template, credit-note, settlement) legitimately set vendorName as free
+  /// text with no supplier, so no required-FK guard is enforced.
+  vendorSupplierId String?   @map("vendor_supplier_id")
   taxInvoiceNo String?      @map("tax_invoice_no")
   description  String?
 
@@ -3852,10 +3862,11 @@ model ExpenseDocument {
   updatedAt    DateTime  @updatedAt @map("updated_at")
   deletedAt    DateTime? @map("deleted_at")
 
-  branch       Branch           @relation(fields: [branchId], references: [id], onDelete: Restrict)
-  createdBy    User             @relation("ExpenseDocumentCreator", fields: [createdById], references: [id])
-  approvedBy   User?            @relation("ExpenseDocumentApprover", fields: [approvedById], references: [id])
-  fromTemplate ExpenseTemplate? @relation("ExpenseDocumentFromTemplate", fields: [fromTemplateId], references: [id], onDelete: SetNull)
+  branch         Branch           @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  createdBy      User             @relation("ExpenseDocumentCreator", fields: [createdById], references: [id])
+  approvedBy     User?            @relation("ExpenseDocumentApprover", fields: [approvedById], references: [id])
+  fromTemplate   ExpenseTemplate? @relation("ExpenseDocumentFromTemplate", fields: [fromTemplateId], references: [id], onDelete: SetNull)
+  vendorSupplier Supplier?        @relation("ExpenseVendor", fields: [vendorSupplierId], references: [id])
 
   // SP5 Phase 2 — optional back-link to repair ticket that auto-created this doc
   repairTicket RepairTicket?
@@ -3867,6 +3878,7 @@ model ExpenseDocument {
   @@index([status, createdAt(sort: Desc)])
   @@index([fromTemplateId])
   @@index([taxDisallowed, deletedAt])
+  @@index([vendorSupplierId])
   @@map("expense_documents")
 }
 
@@ -3901,6 +3913,10 @@ model ExpenseLine {
   /// document carries receipts from multiple suppliers (relaxes 1-doc-1-supplier).
   /// For other DocumentTypes the doc-level `vendorName` is used and this stays null.
   supplierName    String?       @map("supplier_name")
+  /// Party-master link (Phase 3 P3) — durable FK to the provisioned Supplier
+  /// behind `supplierName`. Nullable: lines without a resolved supplier keep
+  /// just the free-text name.
+  supplierId      String?       @map("supplier_id")
   amountBeforeVat Decimal       @map("amount_before_vat") @db.Decimal(12, 2)
   vatAmount       Decimal       @default(0) @map("vat_amount") @db.Decimal(12, 2)
   whtAmount       Decimal       @default(0) @map("wht_amount") @db.Decimal(12, 2)
@@ -3915,7 +3931,10 @@ model ExpenseLine {
   createdAt       DateTime      @default(now()) @map("created_at")
   updatedAt       DateTime      @updatedAt @map("updated_at")
 
+  supplier        Supplier?     @relation("ExpenseLineSupplier", fields: [supplierId], references: [id])
+
   @@unique([expenseDetailId, lineNo])
+  @@index([supplierId])
   @@map("expense_lines")
 }
 

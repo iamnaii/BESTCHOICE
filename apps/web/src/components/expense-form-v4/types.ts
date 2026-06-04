@@ -94,6 +94,8 @@ export interface SettlementSelection {
 export interface SettlementFormFields {
   selections: Map<string, SettlementSelection>;
   vendorName: string;
+  /** Supplier FK from the picker — persisted as vendorSupplierId on the SE document. */
+  vendorSupplierId: string;
   whtAmount: string;
   whtFormType: WhtFormType | '';
 }
@@ -108,6 +110,8 @@ export interface SettlementFormFields {
 export interface PettyCashLineForm {
   uid: string;
   supplierName: string;
+  /** Supplier FK from the picker — persisted as supplierId on the petty-cash line. */
+  supplierId: string;
   category: string;
   description: string;
   amount: string;
@@ -126,6 +130,8 @@ export interface ExpenseFormState {
   documentDate: string;
   vendorName: string;
   vendorTaxId: string;
+  /** Supplier FK from the picker — persisted as vendorSupplierId on the expense document. */
+  vendorSupplierId: string;
   taxInvoiceNo: string;
   priceType: PriceType;
   whtFormType: WhtFormType | '';
@@ -251,6 +257,7 @@ export const newPettyCashLine = (
 ): PettyCashLineForm => ({
   uid: Math.random().toString(36).slice(2),
   supplierName: '',
+  supplierId: '',
   category: '',
   description: '',
   amount: '',

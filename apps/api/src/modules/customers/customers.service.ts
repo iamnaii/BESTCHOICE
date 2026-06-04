@@ -631,6 +631,25 @@ export class CustomersService {
           data: { ...(data as Prisma.CustomerUpdateInput), contact: contactConnect, deletedAt: null },
         });
       }
+      // Stub-upgrade guard: ensureRole creates a lightweight Customer stub
+      // (phone:'', no phoneHash/nationalIdHash) that is invisible to the
+      // normalId/phone dedup checks above. If a proper /customers create is
+      // called later for the same person, we must UPGRADE the stub rather than
+      // create a second Customer row on the same contact (Customer.contactId
+      // is not @unique, so Prisma would silently allow a second row).
+      const existingStub = await tx.customer.findFirst({
+        where: { contactId: contact.id, deletedAt: null },
+        select: { id: true },
+      });
+      if (existingStub) {
+        // Upgrade the stub: overwrite with full create data (including all
+        // PII-encrypted fields) — same logic as a regular create, just on
+        // an existing row.
+        return tx.customer.update({
+          where: { id: existingStub.id },
+          data: { ...(data as Prisma.CustomerUpdateInput), contact: contactConnect },
+        });
+      }
       return tx.customer.create({ data: { ...data, contact: contactConnect } });
     });
   }

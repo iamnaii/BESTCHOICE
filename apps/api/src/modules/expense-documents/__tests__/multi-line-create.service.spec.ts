@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { ExpenseDocumentsService } from '../expense-documents.service';
 import { LineAggregatorService } from '../services/line-aggregator.service';
 
@@ -28,6 +29,8 @@ describe('ExpenseDocumentsService.create — multi-line', () => {
           { code: '53-1404', type: 'ค่าใช้จ่าย' },
         ]),
       },
+      // readBoolFlag('petty_cash_enabled', true) → null row ⇒ default true
+      systemConfig: { findFirst: jest.fn().mockResolvedValue(null) },
     };
     aggregator = new LineAggregatorService();
     service = new ExpenseDocumentsService(
@@ -44,7 +47,14 @@ describe('ExpenseDocumentsService.create — multi-line', () => {
       { preview: jest.fn() } as never,
       { validateContribution: jest.fn().mockResolvedValue(undefined) } as never,
       { execute: jest.fn() } as never,
-      { getConfig: jest.fn(), validate: jest.fn() } as never,
+      {
+        getConfig: jest.fn().mockResolvedValue({
+          account: '11-1103',
+          limit: new Prisma.Decimal('5000'),
+          replenishThreshold: null,
+        }),
+        validate: jest.fn(),
+      } as never,
       { loadWhitelist: jest.fn().mockResolvedValue(new Set()), validateLine: jest.fn() } as never,
       { send: jest.fn().mockResolvedValue({ id: 'notif-1', status: 'SENT' }) } as never,
     );
@@ -83,5 +93,58 @@ describe('ExpenseDocumentsService.create — multi-line', () => {
         { category: '53-9999', quantity: 1, unitPrice: 100, vatPercent: 7, whtPercent: 0 },
       ],
     } as never, 'user-1')).rejects.toThrow(/53-9999.*ไม่พบ/);
+  });
+
+  // Party-master link (Phase 3 P3) — durable supplier FK persistence.
+  it('persists doc-level vendorSupplierId when provided (party-master link)', async () => {
+    await service.create({
+      documentType: 'EXPENSE',
+      branchId: 'b1',
+      documentDate: '2026-05-11',
+      priceType: 'EXCLUSIVE',
+      vendorName: 'ร้านค้า A',
+      vendorSupplierId: 'sup-123',
+      lines: [
+        { category: '53-1101', quantity: 1, unitPrice: 5000, vatPercent: 7, whtPercent: 0 },
+      ],
+    } as never, 'user-1');
+
+    const callArg = prisma.expenseDocument.create.mock.calls[0][0];
+    expect(callArg.data.vendorSupplierId).toBe('sup-123');
+    expect(callArg.data.vendorName).toBe('ร้านค้า A');
+  });
+
+  it('defaults vendorSupplierId to null when omitted', async () => {
+    await service.create({
+      documentType: 'EXPENSE',
+      branchId: 'b1',
+      documentDate: '2026-05-11',
+      priceType: 'EXCLUSIVE',
+      lines: [
+        { category: '53-1101', quantity: 1, unitPrice: 5000, vatPercent: 7, whtPercent: 0 },
+      ],
+    } as never, 'user-1');
+
+    const callArg = prisma.expenseDocument.create.mock.calls[0][0];
+    expect(callArg.data.vendorSupplierId).toBeNull();
+  });
+
+  it('persists per-line supplierId on petty-cash lines (party-master link)', async () => {
+    await service.createPettyCash({
+      branchId: 'b1',
+      documentDate: '2026-05-11',
+      depositAccountCode: '11-1103',
+      custodianName: 'พนักงาน X',
+      lines: [
+        { supplierName: 'ร้าน A', supplierId: 'sup-aaa', category: '53-1101', amount: 100, vatPercent: 0 },
+        { supplierName: 'ร้าน B', category: '53-1101', amount: 50, vatPercent: 0 },
+      ],
+    } as never, { id: 'user-1', branchId: 'b1', role: 'OWNER' });
+
+    const callArg = prisma.expenseDocument.create.mock.calls[0][0];
+    const createdLines = callArg.data.expenseDetail.create.lines.create;
+    expect(createdLines[0].supplierId).toBe('sup-aaa');
+    // line without a resolved supplier persists null (free-text name only)
+    expect(createdLines[1].supplierId).toBeNull();
   });
 });

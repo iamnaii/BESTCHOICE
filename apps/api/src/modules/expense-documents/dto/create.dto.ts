@@ -34,6 +34,15 @@ export class CreateExpenseDocumentDto {
   @IsOptional()
   vendorTaxId?: string;
 
+  /**
+   * Party-master link (Phase 3 P3). Durable FK to the Supplier the UI picker
+   * provisioned for `vendorName`. Optional — no required-FK guard (several
+   * subtypes set vendorName programmatically with no supplier).
+   */
+  @IsString()
+  @IsOptional()
+  vendorSupplierId?: string;
+
   @IsString()
   @IsOptional()
   taxInvoiceNo?: string;

@@ -30,6 +30,14 @@ class PettyCashLineInput {
   @MinLength(2, { message: 'ชื่อผู้ขาย/ผู้รับเงินต้องมีอย่างน้อย 2 ตัวอักษร' })
   supplierName!: string;
 
+  /**
+   * Party-master link (Phase 3 P3). Durable FK to the Supplier the UI picker
+   * provisioned for `supplierName`. Optional.
+   */
+  @IsString()
+  @IsOptional()
+  supplierId?: string;
+
   /** CoA code — must be type='ค่าใช้จ่าย' (53-xxxx range typically). */
   @IsString()
   @Matches(/^\d{2}-\d{4}$/, { message: 'หมวดบัญชีต้องเป็นรูปแบบ XX-XXXX' })

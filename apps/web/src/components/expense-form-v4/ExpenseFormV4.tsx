@@ -57,6 +57,7 @@ const initial = (branchId: string, defaultCash: string): ExpenseFormState => {
     documentDate: todayBkkIso(),
     vendorName: '',
     vendorTaxId: '',
+    vendorSupplierId: '',
     taxInvoiceNo: '',
     priceType: 'EXCLUSIVE',
     whtFormType: '',
@@ -80,6 +81,7 @@ const initial = (branchId: string, defaultCash: string): ExpenseFormState => {
     settlement: {
       selections: new Map(),
       vendorName: '',
+      vendorSupplierId: '',
       whtAmount: '0',
       whtFormType: '',
     },
@@ -161,6 +163,7 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
           priceType: state.priceType,
           vendorName: state.vendorName || undefined,
           vendorTaxId: state.vendorTaxId || undefined,
+          vendorSupplierId: state.vendorSupplierId || undefined,
           taxInvoiceNo: state.taxInvoiceNo || undefined,
           whtFormType: state.whtFormType || undefined,
           paymentMethod: state.docType === 'EXPENSE_SAMEDAY' ? state.paymentMethod : undefined,
@@ -259,6 +262,7 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
           depositAccountCode: state.depositAccountCode,
           paymentMethod: 'BANK_TRANSFER',
           vendorName: state.settlement.vendorName || undefined,
+          vendorSupplierId: state.settlement.vendorSupplierId || undefined,
           whtFormType: state.settlement.whtFormType || undefined,
           withholdingTax: parseFloat(state.settlement.whtAmount) || undefined,
           lines: [...state.settlement.selections.values()].map((s) => ({
@@ -294,6 +298,7 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
           description: state.note || undefined,
           lines: validLines.map((l) => ({
             supplierName: l.supplierName.trim(),
+            supplierId: l.supplierId || undefined,
             category: l.category,
             description: l.description || undefined,
             amount: parseFloat(l.amount),

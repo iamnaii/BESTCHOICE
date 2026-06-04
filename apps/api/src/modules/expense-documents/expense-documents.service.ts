@@ -496,6 +496,8 @@ export class ExpenseDocumentsService implements OnModuleInit {
           documentDate,
           vendorName: dto.vendorName ?? null,
           vendorTaxId: dto.vendorTaxId ?? null,
+          // Party-master link (Phase 3 P3) — durable FK when the picker resolved a supplier.
+          vendorSupplierId: dto.vendorSupplierId ?? null,
           taxInvoiceNo: dto.taxInvoiceNo ?? null,
           description: dto.description ?? null,
           subtotal: totals.subtotal,
@@ -694,6 +696,7 @@ export class ExpenseDocumentsService implements OnModuleInit {
       // STANDALONE-mode skips this — there is no source document.
       let originalVendorName: string | null = null;
       let originalVendorTaxId: string | null = null;
+      let originalVendorSupplierId: string | null = null;
       if (mode === 'LINKED') {
         // I2 fix — acquire the advisory lock BEFORE loading the original so a
         // concurrent void/edit can't slip between the read and the cap check.
@@ -748,6 +751,8 @@ export class ExpenseDocumentsService implements OnModuleInit {
         // Inherit vendor info from source for traceability on the CN doc.
         originalVendorName = original.vendorName;
         originalVendorTaxId = original.vendorTaxId;
+        // Party-master link (Phase 3 P3) — carry the source doc's supplier FK forward.
+        originalVendorSupplierId = original.vendorSupplierId;
       }
 
       const documentDate = new Date(dto.documentDate);
@@ -764,6 +769,9 @@ export class ExpenseDocumentsService implements OnModuleInit {
             mode === 'STANDALONE' ? (dto.vendorName?.trim() ?? null) : originalVendorName,
           vendorTaxId:
             mode === 'STANDALONE' ? (dto.vendorTaxId?.trim() ?? null) : originalVendorTaxId,
+          // Party-master link (Phase 3 P3) — STANDALONE from DTO, LINKED from source.
+          vendorSupplierId:
+            mode === 'STANDALONE' ? (dto.vendorSupplierId ?? null) : originalVendorSupplierId,
           description: dto.description ?? null,
           subtotal: totals.subtotal,
           vatAmount: totals.vatAmount,
@@ -1122,6 +1130,8 @@ export class ExpenseDocumentsService implements OnModuleInit {
           branchId: dto.branchId,
           documentDate,
           vendorName: dto.vendorName ?? null,
+          // Party-master link (Phase 3 P3) — durable FK to the settled supplier.
+          vendorSupplierId: dto.vendorSupplierId ?? null,
           description: dto.description ?? null,
           subtotal: sumSettled,
           vatAmount: new Prisma.Decimal(0),
@@ -1202,6 +1212,8 @@ export class ExpenseDocumentsService implements OnModuleInit {
         category: l.category,
         description: l.description ?? null,
         supplierName: l.supplierName,
+        // Party-master link (Phase 3 P3) — durable FK to the per-line supplier.
+        supplierId: l.supplierId ?? null,
         quantity: new Prisma.Decimal(1),
         unitPrice: base,
         discount: new Prisma.Decimal(0),
@@ -1283,6 +1295,7 @@ export class ExpenseDocumentsService implements OnModuleInit {
                   category: l.category,
                   description: l.description,
                   supplierName: l.supplierName,
+                  supplierId: l.supplierId,
                   quantity: l.quantity,
                   unitPrice: l.unitPrice,
                   discount: l.discount,
@@ -1910,6 +1923,12 @@ export class ExpenseDocumentsService implements OnModuleInit {
       if (dto.documentDate) data.documentDate = new Date(dto.documentDate);
       if (dto.vendorName !== undefined) data.vendorName = dto.vendorName;
       if (dto.vendorTaxId !== undefined) data.vendorTaxId = dto.vendorTaxId;
+      // Party-master link (Phase 3 P3) — set/clear the supplier FK on edit.
+      if (dto.vendorSupplierId !== undefined) {
+        data.vendorSupplier = dto.vendorSupplierId
+          ? { connect: { id: dto.vendorSupplierId } }
+          : { disconnect: true };
+      }
       if (dto.taxInvoiceNo !== undefined) data.taxInvoiceNo = dto.taxInvoiceNo;
       if (dto.description !== undefined) data.description = dto.description;
       if (dto.whtFormType !== undefined) data.whtFormType = dto.whtFormType;

@@ -25,10 +25,10 @@ beforeEach(() => {
 });
 
 describe('VendorCombobox.handleSelect WHT mapping', () => {
-  it('maps a JURISTIC supplier to PND53 and overrides taxId from the supplier link', async () => {
+  it('maps a JURISTIC supplier to PND53, overrides taxId from the supplier link, and passes supplierId', async () => {
     detailMock.mockResolvedValue({ suppliers: [{ type: 'JURISTIC', taxId: '9999' }] });
     const onSelectSupplier = vi.fn();
-    render(<VendorCombobox value="" onSelectSupplier={onSelectSupplier} onTypeName={vi.fn()} />);
+    render(<VendorCombobox value="" onSelectSupplier={onSelectSupplier} />);
 
     await userEvent.click(screen.getByText('pick'));
 
@@ -36,15 +36,16 @@ describe('VendorCombobox.handleSelect WHT mapping', () => {
       expect(onSelectSupplier).toHaveBeenCalledWith({
         name: 'ABC Co',
         taxId: '9999',
+        supplierId: 'sup1',
         whtFormType: 'PND53',
       }),
     );
   });
 
-  it('maps an INDIVIDUAL supplier to PND3 and keeps the picked taxId when the link has none', async () => {
+  it('maps an INDIVIDUAL supplier to PND3, keeps the picked taxId, and passes supplierId', async () => {
     detailMock.mockResolvedValue({ suppliers: [{ type: 'INDIVIDUAL', taxId: null }] });
     const onSelectSupplier = vi.fn();
-    render(<VendorCombobox value="" onSelectSupplier={onSelectSupplier} onTypeName={vi.fn()} />);
+    render(<VendorCombobox value="" onSelectSupplier={onSelectSupplier} />);
 
     await userEvent.click(screen.getByText('pick'));
 
@@ -52,15 +53,16 @@ describe('VendorCombobox.handleSelect WHT mapping', () => {
       expect(onSelectSupplier).toHaveBeenCalledWith({
         name: 'ABC Co',
         taxId: '0105',
+        supplierId: 'sup1',
         whtFormType: 'PND3',
       }),
     );
   });
 
-  it('falls back to the picked values (no whtFormType) when the detail lookup fails', async () => {
+  it('falls back to the picked values (no whtFormType) when the detail lookup fails, still passes supplierId', async () => {
     detailMock.mockRejectedValue(new Error('boom'));
     const onSelectSupplier = vi.fn();
-    render(<VendorCombobox value="" onSelectSupplier={onSelectSupplier} onTypeName={vi.fn()} />);
+    render(<VendorCombobox value="" onSelectSupplier={onSelectSupplier} />);
 
     await userEvent.click(screen.getByText('pick'));
 
@@ -68,6 +70,7 @@ describe('VendorCombobox.handleSelect WHT mapping', () => {
       expect(onSelectSupplier).toHaveBeenCalledWith({
         name: 'ABC Co',
         taxId: '0105',
+        supplierId: 'sup1',
         whtFormType: undefined,
       }),
     );

@@ -59,6 +59,14 @@ export class SuppliersController {
     return this.suppliersService.update(id, dto);
   }
 
+  /** Narrow endpoint — tag a supplier as a repair center (idempotent).
+   *  Guards only the roles that use the repair-ticket send flow. */
+  @Patch(':id/repair-center')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
+  markRepairCenter(@Param('id') id: string) {
+    return this.suppliersService.markRepairCenter(id);
+  }
+
   @Delete(':id')
   @Roles('OWNER')
   remove(@Param('id') id: string) {

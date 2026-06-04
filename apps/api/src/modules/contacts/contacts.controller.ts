@@ -38,7 +38,7 @@ export class ContactsController {
   }
 
   @Post(':id/ensure-role')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   ensureRole(@Param('id') id: string, @Body() dto: EnsureRoleDto, @Req() req: AuthRequest) {
     return this.contacts.ensureRole(id, dto.role, {
       userId: req.user?.id,

@@ -198,6 +198,16 @@ export class SuppliersService {
     });
   }
 
+  async markRepairCenter(id: string) {
+    const count = await this.prisma.supplier.count({ where: { id, deletedAt: null } });
+    if (count === 0) throw new NotFoundException('ไม่พบผู้จัดจำหน่าย');
+    return this.prisma.supplier.update({
+      where: { id },
+      data: { isRepairCenter: true },
+      select: { id: true, isRepairCenter: true },
+    });
+  }
+
   async remove(id: string) {
     await this.findOne(id);
     return this.prisma.supplier.update({

@@ -57,6 +57,12 @@ export class CreateTradeInDto {
   notes?: string;
 
   // ─── Seller info (walk-in) ──────────────────────────
+  /** Party-master contactId for the seller. Stored for traceability alongside
+   *  sellerName/sellerPhone (which are kept for display purposes). */
+  @IsString()
+  @IsOptional()
+  sellerContactId?: string;
+
   @IsString()
   @IsOptional()
   sellerName?: string;
@@ -172,9 +178,16 @@ export class AcceptTradeInDto {
  * สำหรับเคส POS counter ที่พนักงานตัดสินใจรับซื้อทันทีโดยไม่ต้องส่งผู้จัดการอนุมัติ
  */
 export class QuickBuyTradeInDto {
-  // Seller (walk-in)
+  // Seller (walk-in) — party-master contact resolved by the picker upstream
+  @IsString()
+  @IsOptional()
+  sellerContactId?: string;
+
+  // sellerName is optional when the operator has selected a known Contact via the
+  // party-master picker (sellerContactId present). Keep for display / free-text fallback.
+  @IsOptional()
   @IsString({ message: 'กรุณาระบุชื่อผู้ขาย' })
-  sellerName: string;
+  sellerName?: string;
 
   @IsString()
   @IsOptional()

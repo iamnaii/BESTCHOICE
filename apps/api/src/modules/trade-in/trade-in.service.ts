@@ -152,10 +152,11 @@ export class TradeInService {
 
   // ─── Create ───────────────────────────────────────────────
   async create(dto: CreateTradeInDto) {
-    // Walk-in หรือ existing customer ก็ได้ — แต่ต้องมีอย่างใดอย่างหนึ่ง
-    if (!dto.customerId && !dto.sellerName) {
+    // Walk-in หรือ existing customer ก็ได้ — ต้องมีอย่างน้อยหนึ่งอย่าง:
+    // customerId, sellerContactId (party-master), หรือ sellerName (free-text)
+    if (!dto.customerId && !dto.sellerContactId && !dto.sellerName) {
       throw new BadRequestException(
-        'ต้องระบุลูกค้าหรือข้อมูลผู้ขาย (ชื่อ) อย่างน้อยหนึ่งอย่าง',
+        'ต้องระบุลูกค้าหรือข้อมูลผู้ขาย (ชื่อหรือรายชื่อผู้ขาย) อย่างน้อยหนึ่งอย่าง',
       );
     }
 
@@ -224,13 +225,21 @@ export class TradeInService {
         );
       }
 
-      const sellerContact = await this.contactResolver.findOrCreateByNaturalKey(tx, {
-        name: dto.sellerName ?? 'ไม่ระบุชื่อ',
-        taxId: null,
-        nationalIdHash: sellerNationalIdHash,
-        phone: dto.sellerPhone ?? null,
-        role: 'TRADE_IN_SELLER',
-      });
+      // If the caller already resolved the Contact (e.g. via ensureRole), use it
+      // directly; otherwise auto-resolve/create via natural-key lookup.
+      let resolvedSellerContactId: string;
+      if (dto.sellerContactId) {
+        resolvedSellerContactId = dto.sellerContactId;
+      } else {
+        const sellerContact = await this.contactResolver.findOrCreateByNaturalKey(tx, {
+          name: dto.sellerName ?? 'ไม่ระบุชื่อ',
+          taxId: null,
+          nationalIdHash: sellerNationalIdHash,
+          phone: dto.sellerPhone ?? null,
+          role: 'TRADE_IN_SELLER',
+        });
+        resolvedSellerContactId = sellerContact.id;
+      }
 
       return tx.tradeIn.create({
         data: {
@@ -260,7 +269,7 @@ export class TradeInService {
           // (customerId/productId/branchId), so we stay in the Unchecked variant.
           // Using the relation form (sellerContact.connect) here would trip the
           // Prisma XOR between TradeInCreateInput and TradeInUncheckedCreateInput.
-          sellerContactId: sellerContact.id,
+          sellerContactId: resolvedSellerContactId,
         },
         include: {
           customer: { select: { id: true, name: true, phone: true } },
@@ -661,6 +670,7 @@ export class TradeInService {
       imei: dto.imei,
       estimatedValue: dto.agreedPrice,
       notes: dto.notes,
+      sellerContactId: dto.sellerContactId,
       sellerName: dto.sellerName,
       sellerPhone: dto.sellerPhone,
       sellerIdCardNumber: dto.sellerIdCardNumber,

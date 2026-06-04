@@ -41,8 +41,10 @@ export interface ContactPickResult {
 }
 
 interface Props {
-  // 'CUSTOMER' is forward-compat; backend provisions SUPPLIER now and 400s for CUSTOMER (surfaced via the onError toast).
-  roleNeeded: 'SUPPLIER' | 'CUSTOMER';
+  // TRADE_IN_SELLER: backend adds the role directly to the Contact (no child entity created).
+  // For create, ContactCombobox opens CreateContactModal in CUSTOMER mode (creates a person),
+  // then calls ensureRole(contactId, 'TRADE_IN_SELLER') afterwards to add the role.
+  roleNeeded: 'SUPPLIER' | 'CUSTOMER' | 'TRADE_IN_SELLER';
   value: string;
   onSelect: (result: ContactPickResult) => void;
   /**
@@ -86,7 +88,8 @@ export function ContactCombobox({
   const ensureRoleMutation = useMutation({
     mutationFn: (c: Contact) => contactsApi.ensureRole(c.id, roleNeeded),
     onSuccess: (res, c) => {
-      const childId = res.supplierId ?? res.customerId ?? '';
+      // TRADE_IN_SELLER has no child entity (no supplierId/customerId) — fall back to contactId
+      const childId = res.supplierId ?? res.customerId ?? c.id;
       onSelect({ contactId: c.id, childId, name: c.name, taxId: c.taxId ?? '' });
       setOpen(false);
       setSearch('');
@@ -94,8 +97,21 @@ export function ContactCombobox({
     onError: () => toast.error('ไม่สามารถเพิ่มบทบาทให้ผู้ติดต่อได้ กรุณาลองใหม่อีกครั้ง'),
   });
 
-  const handleCreated = (r: { contactId: string; childId: string; name: string; taxId: string }) => {
-    onSelect({ contactId: r.contactId, childId: r.childId, name: r.name, taxId: r.taxId });
+  const handleCreated = async (r: { contactId: string; childId: string; name: string; taxId: string }) => {
+    // For TRADE_IN_SELLER, CreateContactModal creates a Customer (a person). We then
+    // need to add the TRADE_IN_SELLER role via ensureRole so the trade-in record can
+    // reference this contact. childId falls back to contactId (no child entity for this role).
+    if (roleNeeded === 'TRADE_IN_SELLER') {
+      try {
+        await contactsApi.ensureRole(r.contactId, 'TRADE_IN_SELLER');
+      } catch {
+        toast.error('ไม่สามารถเพิ่มบทบาทผู้ขายมือสองได้ กรุณาลองใหม่อีกครั้ง');
+        return;
+      }
+      onSelect({ contactId: r.contactId, childId: r.contactId, name: r.name, taxId: r.taxId });
+    } else {
+      onSelect({ contactId: r.contactId, childId: r.childId, name: r.name, taxId: r.taxId });
+    }
     setCreateOpen(false);
     setOpen(false);
     setSearch('');
@@ -200,10 +216,12 @@ export function ContactCombobox({
         </PopoverContent>
       </Popover>
 
+      {/* TRADE_IN_SELLER creates via CUSTOMER modal (an individual person);
+          ensureRole adds the TRADE_IN_SELLER role afterwards in handleCreated. */}
       <CreateContactModal
         open={createOpen}
         onOpenChange={setCreateOpen}
-        role={roleNeeded}
+        role={roleNeeded === 'SUPPLIER' ? 'SUPPLIER' : 'CUSTOMER'}
         initialName={search.trim()}
         onCreated={handleCreated}
       />

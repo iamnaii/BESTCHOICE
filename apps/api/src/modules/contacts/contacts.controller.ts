@@ -3,6 +3,7 @@ import type { Request } from 'express';
 import { ContactsService } from './contacts.service';
 import { ListContactsDto } from './dto/list-contacts.dto';
 import { MergeContactsDto } from './dto/merge-contacts.dto';
+import { EnsureRoleDto } from './dto/ensure-role.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -30,6 +31,16 @@ export class ContactsController {
   @Roles('OWNER')
   merge(@Body() dto: MergeContactsDto, @Req() req: AuthRequest) {
     return this.contacts.merge(dto, {
+      userId: req.user?.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'] as string | undefined,
+    });
+  }
+
+  @Post(':id/ensure-role')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  ensureRole(@Param('id') id: string, @Body() dto: EnsureRoleDto, @Req() req: AuthRequest) {
+    return this.contacts.ensureRole(id, dto.role, {
       userId: req.user?.id,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'] as string | undefined,

@@ -3,6 +3,8 @@ import { brands, getModels, getModelInfo } from '@/data/productCatalog';
 import { ItemForm } from '../types';
 import { accessoryTypes, chargerConnectorTypes } from '../constants';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
+import { ContactCombobox } from '@/components/contacts/ContactCombobox';
+import type { ContactPickResult } from '@/components/contacts/ContactCombobox';
 
 export interface CreatePOModalProps {
   isOpen: boolean;
@@ -30,6 +32,7 @@ export interface CreatePOModalProps {
   suppliersLoading: boolean;
   suppliersError: boolean;
   selectedSupplier: CreatePOModalProps['suppliers'][number] | undefined;
+  onSupplierSelect: (result: ContactPickResult) => Promise<void>;
   supplierHasVat: boolean;
   subtotal: number;
   discountNum: number;
@@ -61,6 +64,7 @@ export function CreatePOModal({
   suppliersLoading,
   suppliersError,
   selectedSupplier,
+  onSupplierSelect,
   supplierHasVat,
   subtotal,
   discountNum,
@@ -114,26 +118,15 @@ export function CreatePOModal({
               <div className="space-y-3">
                 <div>
                   <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ผู้ขาย <span className="text-destructive">*</span></label>
-                  <select
-                    value={form.supplierId}
-                    onChange={(e) => {
-                      const sid = e.target.value;
-                      const sup = suppliers.find((s) => s.id === sid);
-                      const defaultPm = sup?.paymentMethods?.find((pm) => pm.isDefault) || sup?.paymentMethods?.[0];
-                      setForm({
-                        ...form,
-                        supplierId: sid,
-                        paymentMethod: defaultPm?.paymentMethod || form.paymentMethod,
-                      });
-                    }}
-                    className={selectClass}
-                    required
-                  >
-                    <option value="">{suppliersLoading ? 'กำลังโหลด...' : suppliersError ? 'โหลดข้อมูลไม่ได้' : '-- เลือกผู้ขาย --'}</option>
-                    {suppliers.map((s) => (
-                      <option key={s.id} value={s.id}>{s.name}{s.contactName && s.contactName !== s.name ? ` (${s.contactName})` : ''}{s.hasVat ? ' [VAT]' : ''}</option>
-                    ))}
-                  </select>
+                  <ContactCombobox
+                    roleNeeded="SUPPLIER"
+                    value={selectedSupplier?.name ?? (suppliersLoading ? 'กำลังโหลด...' : '')}
+                    onSelect={onSupplierSelect}
+                    invalid={!form.supplierId && suppliersError}
+                    placeholder="เลือก/ค้นหาผู้ขาย"
+                  />
+                  {/* Hidden required-field guard so native form validation fires when no supplier is chosen */}
+                  <input type="hidden" value={form.supplierId} required />
                   {selectedSupplier && (
                     <div className="mt-1 flex gap-2 flex-wrap">
                       <span

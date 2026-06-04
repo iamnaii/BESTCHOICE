@@ -1,4 +1,5 @@
 import { useCallback, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import PageHeader from '@/components/ui/PageHeader';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -18,6 +19,7 @@ import { GoodsReceivingModal } from './components/GoodsReceivingModal';
 
 export default function PurchaseOrdersPage() {
   const resetFormRef = useRef<() => void>(() => {});
+  const queryClient = useQueryClient();
 
   const onCreateSuccess = useCallback(() => {
     resetFormRef.current();
@@ -32,6 +34,28 @@ export default function PurchaseOrdersPage() {
 
   // Keep ref in sync
   resetFormRef.current = poForm.resetForm;
+
+  // Supplier selection handler: invalidate + refetch suppliers-for-po so a newly-created
+  // supplier appears in the array, then set supplierId. The selectedSupplier/VAT/payment-method
+  // computation in usePOForm keys off form.supplierId against the (refetched) suppliers array
+  // so it will resolve correctly on the next render after invalidation completes.
+  const onSupplierSelect = useCallback(
+    async ({ childId }: { childId: string }) => {
+      // Invalidate and await refetch so the refetched suppliers array includes the chosen/newly-created supplier
+      await queryClient.invalidateQueries({ queryKey: ['suppliers-for-po'] });
+      // After invalidation the query will refetch; grab the updated list from the cache
+      const cached = queryClient.getQueryData<{ data: typeof data.suppliers }>(['suppliers-for-po']);
+      const updatedSuppliers = cached?.data ?? data.suppliers;
+      const sup = updatedSuppliers.find((s) => s.id === childId);
+      const defaultPm = sup?.paymentMethods?.find((pm) => pm.isDefault) ?? sup?.paymentMethods?.[0];
+      poForm.setForm((f) => ({
+        ...f,
+        supplierId: childId,
+        paymentMethod: defaultPm?.paymentMethod ?? f.paymentMethod,
+      }));
+    },
+    [queryClient, data.suppliers, poForm],
+  );
 
   return (
     <div>
@@ -154,6 +178,7 @@ export default function PurchaseOrdersPage() {
         suppliersLoading={data.suppliersLoading}
         suppliersError={data.suppliersError}
         selectedSupplier={poForm.selectedSupplier}
+        onSupplierSelect={onSupplierSelect}
         supplierHasVat={poForm.supplierHasVat}
         subtotal={poForm.subtotal}
         discountNum={poForm.discountNum}

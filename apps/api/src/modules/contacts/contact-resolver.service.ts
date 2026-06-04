@@ -1,4 +1,4 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { ContactRole, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -11,6 +11,15 @@ export interface ResolveContactInput {
   phone?: string | null;
   email?: string | null;
   role: ContactRole;
+}
+
+export interface EnsureRoleResult {
+  contactId: string;
+  role: ContactRole;
+  supplierId?: string;
+  customerId?: string;
+  /** true when a child row was created and/or the role was newly added */
+  provisioned: boolean;
 }
 
 @Injectable()
@@ -85,6 +94,52 @@ export class ContactResolverService {
       }
       throw e;
     }
+  }
+
+  /**
+   * Ensure a contact can be used in a `role` context: provision the child row
+   * (Supplier) if missing and append the role. Idempotent. SUPPLIER only in this
+   * phase — CUSTOMER auto-provisioning is deferred (PII/encryption on Customer).
+   */
+  async ensureRole(
+    tx: Tx,
+    contactId: string,
+    role: ContactRole,
+  ): Promise<EnsureRoleResult> {
+    if (role !== 'SUPPLIER') {
+      throw new BadRequestException('ยังไม่รองรับการสร้างบทบาทนี้อัตโนมัติในเฟสนี้');
+    }
+
+    const contact = await tx.contact.findFirst({
+      where: { id: contactId, deletedAt: null },
+    });
+    if (!contact) throw new NotFoundException('ไม่พบผู้ติดต่อ');
+
+    let provisioned = false;
+
+    const existing = await tx.supplier.findFirst({
+      where: { contactId, deletedAt: null },
+      select: { id: true },
+    });
+    const supplierId = existing
+      ? existing.id
+      : (
+          await tx.supplier.create({
+            data: { name: contact.name, phone: contact.phone ?? '', contactId },
+            select: { id: true },
+          })
+        ).id;
+    if (!existing) provisioned = true;
+
+    if (!contact.roles.includes(role)) {
+      await tx.contact.update({
+        where: { id: contactId },
+        data: { roles: { set: [...contact.roles, role] } },
+      });
+      provisioned = true;
+    }
+
+    return { contactId, role, supplierId, provisioned };
   }
 
   private hashLockKey(key: string): number {

@@ -7,14 +7,11 @@ import { NotificationsService } from './notifications.service';
 import { NotificationJobData } from './notification-queue.service';
 
 /**
- * D1.4.2.5 — worker concurrency. Read from the `MAX_CONCURRENT_JOBS` env
- * var at module-load time (decorators run before NestJS DI bootstrap, so
- * we cannot resolve `SettingsService.getUiFlags()` here). Clamped to
- * [1, 50] with default 5 — matches the SystemConfig key
- * `max_concurrent_jobs` exposed via `getUiFlags()`. To change the cap in
- * production, set the env var on Cloud Run and redeploy. The
- * SystemConfig key remains the documented OWNER-visible source of truth
- * until a future refactor threads the value via `BullModule.forRootAsync`.
+ * Worker concurrency. Read from the `MAX_CONCURRENT_JOBS` env var at
+ * module-load time (decorators run before NestJS DI bootstrap, so we cannot
+ * resolve DB-backed config here). Clamped to [1, 50] with default 5. To
+ * change the cap in production, set the env var on Cloud Run and redeploy.
+ * A future refactor can thread the value via `BullModule.forRootAsync`.
  */
 function readMaxConcurrentJobs(): number {
   const raw = process.env.MAX_CONCURRENT_JOBS;

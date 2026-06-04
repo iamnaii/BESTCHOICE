@@ -16,8 +16,7 @@ import { PrismaService } from '../../prisma/prisma.service';
  * 2572+, 1150 in 2575+).
  *
  * DO NOT make this configurable — change the กฎกระทรวง first. The rate is
- * exposed as a `sso_rate_locked` UI flag (string "5%") so OWNER sees it as
- * informational, but the SystemConfig key is read-only (writes rejected).
+ * fixed in code; there is no SystemConfig key for it.
  *
  * If you ever find yourself wanting to bump this constant, you almost
  * certainly mean to override the per-line `ssoEmployee` amount on a

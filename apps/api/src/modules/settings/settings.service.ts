@@ -3,17 +3,14 @@ import { DocumentType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { readBoolFlag, readNumberFlag } from '../../utils/config.util';
-import { SSO_RATE } from '../sso-config/sso-config.service';
 import { resolveSettingsAccessRoles } from './settings-access.guard';
 
 /**
- * D1.1.3.3 — keys that are exposed read-only through SystemConfig.
- * Writes via update/bulkUpdate are rejected with BadRequestException.
- * `sso_rate_locked` is informational ("5%" string) because Thai SSO Act
- * §46 + the ministerial regulation issued under it fix the contribution
- * rate at 5%; UI displays it so OWNER understands the value is non-editable.
+ * Keys that are exposed read-only through SystemConfig. Writes via
+ * update/bulkUpdate are rejected with BadRequestException. Currently empty;
+ * the machinery stays in place so a future read-only key can be added here.
  */
-const READ_ONLY_KEYS = new Set<string>(['sso_rate_locked']);
+const READ_ONLY_KEYS = new Set<string>([]);
 
 /**
  * D1.1.5.5 — Whitelist of UserRoles that may hold the Petty Cash custodian
@@ -442,31 +439,10 @@ export class SettingsService {
     reverseReasonRequired: boolean;
     /** D1.2.7.2 — configurable reverse-reason dropdown. Always at least the 6 defaults. */
     reverseReasons: { code: string; label: string }[];
-    /** D1.2.7.3 — soft warning threshold (days) when reverse backdate exceeds this; default 7. UI-only, no server block. */
-    reverseManagerApprovalDays: number;
-    /** D1.2.6.3 — broader backdate warning threshold (days). Default 30. Distinct from D1.2.7.3 (the manager-approval threshold at 7d). */
-    paymentDateWarningBackdate: number;
     /** D1.2.6.4 — allow forward-dated transactions (reverse JE / payment / etc.). Default true. */
     paymentDateAllowFuture: boolean;
-    /**
-     * D1.2.6.1 — day-of-month when the accounting period closes. Default 31
-     * (= last day of each month). Currently INFORMATIONAL only: period-lock
-     * still anchors at calendar month-end. A future enhancement can shift
-     * the period boundary when this is not 31. Validated 1–31.
-     */
-    periodCloseDay: number;
     /** D1.2.2.7 — render verification QR code on voucher footers. Default true. */
     voucherShowQrCode: boolean;
-    /**
-     * D1.2.2.5 — primary theme color hex string. Default '#10b981' (emerald,
-     * Tailwind v4 emerald-500). Currently INFORMATIONAL only — Tailwind v4's
-     * `@theme` block uses --color-primary-50..900 scale, so single-color
-     * override doesn't directly drive the design tokens. Future enhancement
-     * can either compute the full scale from this hex or switch to a CSS
-     * variable system that respects the override. Stored as hex string;
-     * caller validates format.
-     */
-    themeColor: string;
     /**
      * D1.2.2.6 — UI language preference. 'th' default. The web app applies
      * the value to `document.documentElement.lang` at boot, but translation
@@ -482,24 +458,6 @@ export class SettingsService {
      * Always returns the full default mapping when no override is configured.
      */
     docPrefixMap: Record<DocumentType, string>;
-    /**
-     * D1.3.3.2 — bank reconciliation mode. Whitelisted `'manual'` / `'auto'`,
-     * default `'manual'`. Currently INFORMATIONAL only: the auto-match cron
-     * + UI to drive it haven't been built yet. When `'auto'`, a future cron
-     * will read bank statements (PaySolutions webhook + KBank/SCB CSV) and
-     * auto-link to Payment.depositAccountCode entries with matching amount
-     * + 1d-tolerance datetime. Current code path = the existing manual link
-     * via PaymentForm. OWNER setting this to `'auto'` today shows an
-     * "auto-match mode" indicator on any bank-reconciliation UI but does
-     * not change behaviour.
-     */
-    bankReconciliationMode: 'manual' | 'auto';
-    /**
-     * D1.1.3.3 — informational "SSO rate is locked at 5%" string for the
-     * Settings UI to display. Computed from `SSO_RATE` constant, NOT from
-     * SystemConfig — that key is read-only (writes rejected by service).
-     */
-    ssoRateLocked: string;
     /**
      * D1.3.6.2 — default-tick preference for the SettlementLinesSection bill
      * list. Whitelist of three modes:
@@ -536,31 +494,6 @@ export class SettingsService {
      */
     auditLogArchiveEnabled: boolean;
     /**
-     * D1.4.3.3 — legal document retention period in years. Default 5 per
-     * พ.ร.บ.การบัญชี พ.ศ. 2543 ม.7 (Thai Accounting Act §7). Validated 1–30
-     * and clamped on read so an out-of-range SystemConfig row can't surface
-     * absurd values downstream.
-     *
-     * Currently INFORMATIONAL only — there is no automated purge cron for
-     * expense / sales / receipt documents yet. The value is exposed so the
-     * compliance UI can display the configured retention policy. Future
-     * implementation gating any document purge (or archival) on this value
-     * should call `getUiFlags()` rather than re-reading the SystemConfig
-     * row directly.
-     */
-    documentRetentionYears: number;
-    /**
-     * D1.4.2.4 — batch size for CSV row processing in bulk imports.
-     * Default 500, valid 50–5000 (clamped). Currently INFORMATIONAL —
-     * the Payments CSV import in `payments.service.ts` processes rows
-     * one-at-a-time in a `for` loop (no explicit batching), so this flag
-     * is exposed for future bulk-import paths. The numeric range is
-     * deliberately wide so OWNER can dial down for resource-constrained
-     * deploys or up for high-throughput imports. Originally SKIP per
-     * Phase 2; shipped per owner directive 2026-05-17 to reach 100% A1.
-     */
-    batchSizeImport: number;
-    /**
      * D1.4.3.4 — preferred format for data export / compliance backup.
      * Whitelist `'JSON'` / `'CSV'` / `'XLSX'`, default `'JSON'`. Existing
      * export buttons across the app should select this as the DEFAULT
@@ -570,26 +503,6 @@ export class SettingsService {
      * SystemConfig row directly.
      */
     dataExportFormat: 'JSON' | 'CSV' | 'XLSX';
-    /**
-     * D1.4.3.5 — master PII masking toggle (PDPA policy surface).
-     * Default `true`. Currently INFORMATIONAL — existing PII masking
-     * helpers (`maskPhone`, `maskNationalId`, `maskEmail`, `maskBankAccount`)
-     * are consumed per-call in role-aware controllers and do NOT consult
-     * this flag. Surfacing it lets the admin UI display the PDPA stance
-     * and surface a bold warning before persisting `false`.
-     */
-    piiMaskingEnabled: boolean;
-    /**
-     * D1.4.2.5 — max concurrent BullMQ worker jobs. Default 5, valid 1–50
-     * (clamped). Currently INFORMATIONAL for the SystemConfig key — the
-     * BullMQ `@Processor` decorator is evaluated at class load time and
-     * cannot read a DB-backed value at boot. The flag is exposed so OWNER
-     * can advertise the intended concurrency cap; the actual worker
-     * concurrency is set via `MAX_CONCURRENT_JOBS` env var read in
-     * `NotificationWorker`'s @Processor options (same default 5). A future
-     * refactor can wire this to a hot-reloadable dispatcher.
-     */
-    maxConcurrentJobs: number;
     /**
      * D1.4.3.6 — gate the LoginAuditLog row INSERT in
      * `LoginAuditService.record`. Default `true`. When `false`, no audit
@@ -711,16 +624,6 @@ export class SettingsService {
      * product surfaces the feature to users.
      */
     templateVariablesEnabled: boolean;
-    /**
-     * D1.2.4.3 — default visibility for newly-created Expense Templates.
-     * Whitelisted PRIVATE/TEAM/PUBLIC, default PRIVATE. The UI uses this
-     * value to pre-select the visibility radio on the "บันทึกเป็นรายการ
-     * โปรด" dialog. Server-side, `ExpenseTemplatesService.listTemplates`
-     * filters rows by visibility: creator always sees own, TEAM viewers
-     * see grants from `sharedWith`, PUBLIC visible to all authenticated
-     * users (cross-branch access still gated by branchId).
-     */
-    templateSharingDefault: 'PRIVATE' | 'TEAM' | 'PUBLIC';
     /**
      * D1.2.3.5 — thousands separator style for the generic number formatter.
      * Whitelisted: 'comma' (1,234,567) default, 'space' (1 234 567), or
@@ -969,20 +872,6 @@ export class SettingsService {
       | 'OWNER_ONLY'
       | 'OWNER+ALL_NON_SALES';
     /**
-     * D1.3.3.4 — restrict integration API-key management UI to OWNER.
-     * Default true. **Documentary today** — `IntegrationsController` already
-     * gates every method with `@Roles('OWNER')`, so this flag is the visible
-     * config knob for that policy. Lets the frontend conditionally
-     * show/hide IntegrationHub menu links for non-OWNER roles, and gives
-     * OWNER a future kill-switch if they ever decide ACCOUNTANT or
-     * FINANCE_MANAGER should be allowed to rotate, say, the e-tax API key.
-     *
-     * Flipping this to false today only changes the UI — server stays
-     * OWNER-gated. A future PR can widen the `@Roles` set AND read this flag
-     * in a guard to enforce the new policy.
-     */
-    apiKeysAdminOnly: boolean;
-    /**
      * D1.3.2.4 + InternalControlActionBar — dynamic bundle controlling who
      * can reverse/void accounting documents. Whitelisted:
      *   - `'OWNER_ONLY'`
@@ -1007,46 +896,17 @@ export class SettingsService {
       true,
     );
     const reverseReasons = await this.getReverseReasons();
-    const reverseManagerApprovalDays = await this.readNumber(
-      'reverse_manager_approval_days',
-      7,
-    );
-    const paymentDateWarningBackdate = await this.readNumber(
-      'payment_date_warning_backdate',
-      30,
-    );
     const paymentDateAllowFuture = await this.readBoolean(
       'payment_date_allow_future',
       true,
     );
-    // D1.2.6.1 — clamp to valid day-of-month range (1–31) on read so a
-    // bad SystemConfig row can't cause undefined behaviour downstream.
-    const periodCloseDayRaw = await this.readNumber('period_close_day', 31);
-    const periodCloseDay =
-      Number.isInteger(periodCloseDayRaw) && periodCloseDayRaw >= 1 && periodCloseDayRaw <= 31
-        ? periodCloseDayRaw
-        : 31;
     const voucherShowQrCode = await this.readBoolean('voucher_show_qr_code', true);
-    // D1.2.2.5 — theme color (hex). Validate `^#[0-9a-fA-F]{6}$`.
-    const themeColorRaw = await this.getKey('theme_color');
-    const themeColor =
-      themeColorRaw && /^#[0-9a-fA-F]{6}$/.test(themeColorRaw)
-        ? themeColorRaw
-        : '#10b981';
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
     const languageRaw = await this.getKey('language');
     const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
     // D1.1.2.1 — DocumentType → prefix map (defaults applied per type when
     // stored value is missing or malformed).
     const docPrefixMap = await this.getDocPrefixMap();
-    // D1.3.3.2 — bank reconciliation mode. Whitelist 'manual' / 'auto'.
-    const bankRecRaw = await this.getKey('bank_reconciliation');
-    const bankReconciliationMode: 'manual' | 'auto' =
-      bankRecRaw === 'auto' ? 'auto' : 'manual';
-    // D1.1.3.3 — sso_rate is locked at 5% by Thai SSO Act §46 + the
-    // ministerial regulation issued under it. Computed from the
-    // source-of-truth SSO_RATE constant, never read from DB.
-    const ssoRateLocked = `${(SSO_RATE * 100).toFixed(0)}%`;
     // D1.3.6.2 — settlement_default_tick. Whitelist 'all' / 'none' /
     // 'overdue_only'; everything else → 'overdue_only' (spec default).
     const settlementDefaultTickRaw = await this.getKey('settlement_default_tick');
@@ -1066,37 +926,12 @@ export class SettingsService {
       'audit_log_archive_enabled',
       true,
     );
-    // D1.4.3.3 — document retention years. Default 5 per พ.ร.บ.บัญชี ม.7.
-    // Clamp to [1, 30] so an out-of-range row can't surface absurd values.
-    const documentRetentionYearsRaw = await this.readNumber('document_retention_years', 5);
-    const documentRetentionYears =
-      Number.isInteger(documentRetentionYearsRaw) &&
-      documentRetentionYearsRaw >= 1 &&
-      documentRetentionYearsRaw <= 30
-        ? documentRetentionYearsRaw
-        : 5;
-    // D1.4.2.4 — batch_size_import. Clamp to [50, 5000] rows.
-    const batchSizeImportRaw = await this.readNumber('batch_size_import', 500);
-    const batchSizeImport =
-      Number.isFinite(batchSizeImportRaw) && batchSizeImportRaw >= 50 && batchSizeImportRaw <= 5000
-        ? Math.floor(batchSizeImportRaw)
-        : 500;
     // D1.4.3.4 — data_export_format. Whitelist JSON/CSV/XLSX; default JSON.
     const dataExportFormatRaw = await this.getKey('data_export_format');
     const dataExportFormat: 'JSON' | 'CSV' | 'XLSX' =
       dataExportFormatRaw === 'CSV' || dataExportFormatRaw === 'XLSX'
         ? dataExportFormatRaw
         : 'JSON';
-    // D1.4.3.5 — pii_masking_enabled. Default true (PDPA policy surface).
-    const piiMaskingEnabled = await this.readBoolean('pii_masking_enabled', true);
-    // D1.4.2.5 — max_concurrent_jobs. Default 5, clamp 1–50.
-    const maxConcurrentJobsRaw = await this.readNumber('max_concurrent_jobs', 5);
-    const maxConcurrentJobs =
-      Number.isInteger(maxConcurrentJobsRaw) &&
-      maxConcurrentJobsRaw >= 1 &&
-      maxConcurrentJobsRaw <= 50
-        ? maxConcurrentJobsRaw
-        : 5;
     // D1.4.3.6 — login_log_enabled. Default true.
     const loginLogEnabled = await this.readBoolean('login_log_enabled', true);
     // D1.3.4.2 — smart-switch threshold (days). Clamp 0–30; non-integer /
@@ -1164,12 +999,6 @@ export class SettingsService {
       'template_variables_enabled',
       true,
     );
-    // D1.2.4.3 — template sharing default. Whitelist PRIVATE/TEAM/PUBLIC;
-    // any unknown value falls back to PRIVATE (safest — never accidentally
-    // expose a new template to the whole shop on a bad config write).
-    const sharingRaw = await this.getKey('template_sharing_default');
-    const templateSharingDefault: 'PRIVATE' | 'TEAM' | 'PUBLIC' =
-      sharingRaw === 'TEAM' || sharingRaw === 'PUBLIC' ? sharingRaw : 'PRIVATE';
     // D1.2.4.2 — per-user template quota. Default 20, clamp to 1–1000 on
     // read so a bad SystemConfig row can't disable the cap (which would
     // let one user balloon the favorites table) or pin it to 0 (which
@@ -1365,9 +1194,6 @@ export class SettingsService {
       postPermissionRaw === 'OWNER+ALL_NON_SALES'
         ? postPermissionRaw
         : 'OWNER+FINANCE_MANAGER+ACCOUNTANT';
-    // D1.3.3.4 — api_keys_admin_only. Default true. Documentary —
-    // IntegrationsController @Roles('OWNER') is the actual enforcement.
-    const apiKeysAdminOnly = await this.readBoolean('api_keys_admin_only', true);
     // D1.3.2.4 + InternalControlActionBar — reverse_permission. Whitelist
     // 4 values; everything else falls back to the default OWNER+FM bundle.
     //   - OWNER_ONLY
@@ -1390,25 +1216,15 @@ export class SettingsService {
       taxExemptWarningEnabled,
       reverseReasonRequired,
       reverseReasons,
-      reverseManagerApprovalDays,
-      paymentDateWarningBackdate,
       paymentDateAllowFuture,
-      periodCloseDay,
       voucherShowQrCode,
-      themeColor,
       language,
       docPrefixMap,
-      bankReconciliationMode,
-      ssoRateLocked,
       settlementDefaultTick,
       whtRates,
       exportEnabled,
       auditLogArchiveEnabled,
-      documentRetentionYears,
-      batchSizeImport,
       dataExportFormat,
-      piiMaskingEnabled,
-      maxConcurrentJobs,
       loginLogEnabled,
       smartSwitchThresholdDays,
       summaryDefaultRange,
@@ -1423,7 +1239,6 @@ export class SettingsService {
       templatesEnabled,
       maxTemplatesPerUser,
       templateVariablesEnabled,
-      templateSharingDefault,
       thousandsSeparator,
       decimalPlaces,
       dateFormat,
@@ -1453,7 +1268,6 @@ export class SettingsService {
       webhooksEnabled,
       settingsAccessRole,
       postPermission,
-      apiKeysAdminOnly,
       reversePermission,
     };
   }

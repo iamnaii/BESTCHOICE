@@ -3,6 +3,8 @@ import { PettyCashFormFields, newPettyCashLine } from './types';
 import { formatNumberDecimal } from '@/utils/formatters';
 import { useUserNames } from '@/hooks/useUserNames';
 import { NameAutocomplete } from '@/components/ui/NameAutocomplete';
+import { VendorCombobox } from './VendorCombobox';
+import { AccountSearchDropdown } from '@/pages/other-income/components/AccountSearchDropdown';
 
 interface Props {
   value: PettyCashFormFields;
@@ -87,21 +89,18 @@ export function PettyCashLinesSection({ value, onChange }: Props) {
               <tr key={l.uid} className="border-t border-border">
                 <td className="px-2 py-1.5 text-xs text-muted-foreground tabular-nums">{idx + 1}</td>
                 <td className="px-2 py-1.5">
-                  <input
-                    type="text"
+                  <VendorCombobox
                     value={l.supplierName}
-                    onChange={(e) => updateLine(l.uid, { supplierName: e.target.value })}
-                    placeholder="ชื่อผู้ขาย/ผู้รับเงิน"
-                    className="w-full rounded-md border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                    onSelectSupplier={(s) => updateLine(l.uid, { supplierName: s.name })}
+                    onTypeName={(name) => updateLine(l.uid, { supplierName: name })}
                   />
                 </td>
                 <td className="px-2 py-1.5">
-                  <input
-                    type="text"
+                  <AccountSearchDropdown
                     value={l.category}
-                    onChange={(e) => updateLine(l.uid, { category: e.target.value })}
-                    placeholder="53-1xxx"
-                    className="w-full rounded-md border border-input bg-background px-2 py-1 text-sm font-mono tabular-nums focus:outline-none focus:ring-2 focus:ring-primary"
+                    onChange={(code) => updateLine(l.uid, { category: code })}
+                    filter={(a) => a.code.startsWith('53-')}
+                    placeholder="เลือกหมวดบัญชี"
                   />
                 </td>
                 <td className="px-2 py-1.5">

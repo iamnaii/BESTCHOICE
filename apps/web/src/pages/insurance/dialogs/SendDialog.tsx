@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import {
@@ -13,7 +13,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useDebounce } from '@/hooks/useDebounce';
+import { RepairCenterCombobox } from '../components/RepairCenterCombobox';
 
 interface Props {
   ticketId: string;
@@ -27,12 +27,6 @@ interface FormVals {
   estimatedCost: string;
 }
 
-interface SupplierHit {
-  id: string;
-  name: string;
-  isRepairCenter?: boolean;
-}
-
 export function SendDialog({ ticketId, onClose, onSuccess }: Props) {
   const {
     register,
@@ -41,25 +35,8 @@ export function SendDialog({ ticketId, onClose, onSuccess }: Props) {
     formState: { errors },
   } = useForm<FormVals>();
 
-  const [supplierSearch, setSupplierSearch] = useState('');
-  const [selectedSupplier, setSelectedSupplier] = useState<SupplierHit | null>(null);
-  const debouncedSearch = useDebounce(supplierSearch, 350);
-
-  const { data: suppliers } = useQuery<SupplierHit[]>({
-    queryKey: ['suppliers-repair-send', debouncedSearch],
-    queryFn: async () => {
-      if (!debouncedSearch || debouncedSearch.length < 1) return [];
-      // NOTE: The suppliers API does not yet filter on isRepairCenter server-side —
-      // filter client-side until backend exposes the param (TODO: add isRepairCenter
-      // query param to suppliers controller GET /suppliers).
-      const res = await api.get(
-        `/suppliers?search=${encodeURIComponent(debouncedSearch)}&limit=20`,
-      );
-      const all: SupplierHit[] = res.data?.data ?? [];
-      return all.filter((s) => s.isRepairCenter === true);
-    },
-    enabled: debouncedSearch.length >= 1,
-  });
+  const [repairSupplierId, setRepairSupplierId] = useState('');
+  const [supplierName, setSupplierName] = useState('');
 
   const mut = useMutation({
     mutationFn: async (v: FormVals) =>
@@ -87,51 +64,16 @@ export function SendDialog({ ticketId, onClose, onSuccess }: Props) {
             <Label>
               ที่ซ่อม <span className="text-destructive">*</span>
             </Label>
-            {selectedSupplier ? (
-              <div className="flex items-center gap-2">
-                <div className="flex-1 rounded-md border border-border bg-muted px-3 py-2 text-sm leading-snug">
-                  {selectedSupplier.name}
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setSelectedSupplier(null);
-                    setValue('repairSupplierId', '');
-                    setSupplierSearch('');
-                  }}
-                >
-                  เปลี่ยน
-                </Button>
-              </div>
-            ) : (
-              <div className="relative">
-                <Input
-                  placeholder="ค้นหาศูนย์ซ่อม..."
-                  value={supplierSearch}
-                  onChange={(e) => setSupplierSearch(e.target.value)}
-                />
-                {suppliers && suppliers.length > 0 && supplierSearch.length >= 1 && (
-                  <div className="absolute z-10 mt-1 w-full rounded-md border border-border bg-card shadow-md">
-                    {suppliers.map((s) => (
-                      <button
-                        key={s.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedSupplier(s);
-                          setValue('repairSupplierId', s.id);
-                          setSupplierSearch('');
-                        }}
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors leading-snug"
-                      >
-                        {s.name}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+            <RepairCenterCombobox
+              value={repairSupplierId}
+              displayName={supplierName}
+              invalid={!!errors.repairSupplierId}
+              onSelect={({ id, name }) => {
+                setRepairSupplierId(id);
+                setSupplierName(name);
+                setValue('repairSupplierId', id, { shouldValidate: true });
+              }}
+            />
             {errors.repairSupplierId && (
               <p className="text-xs text-destructive leading-snug">
                 {errors.repairSupplierId.message}

@@ -8,6 +8,7 @@ import {
   IsIn,
   IsNumberString,
   IsBoolean,
+  IsUUID,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ExpenseLineInput } from './expense-line-input.dto';
@@ -39,7 +40,7 @@ export class CreateExpenseDocumentDto {
    * provisioned for `vendorName`. Optional — no required-FK guard (several
    * subtypes set vendorName programmatically with no supplier).
    */
-  @IsString()
+  @IsUUID('4')
   @IsOptional()
   vendorSupplierId?: string;
 

@@ -581,6 +581,7 @@ export class ExpenseDocumentsService implements OnModuleInit {
   async createDraftForRepair(
     dto: {
       vendorName: string;
+      vendorSupplierId?: string;
       amount: Prisma.Decimal;
       accountCode: string;
       description: string;
@@ -612,6 +613,7 @@ export class ExpenseDocumentsService implements OnModuleInit {
         branchId: dto.branchId,
         documentDate,
         vendorName: dto.vendorName,
+        ...(dto.vendorSupplierId ? { vendorSupplierId: dto.vendorSupplierId } : {}),
         description: dto.description,
         subtotal: totals.subtotal,
         vatAmount: totals.vatAmount,

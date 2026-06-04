@@ -380,6 +380,7 @@ export class RepairTicketsService {
         const doc = await this.expenseDocs.createDraftForRepair(
           {
             vendorName: supplier?.name ?? ticket.repairSupplierId,
+            vendorSupplierId: ticket.repairSupplierId,
             // actualCost is Prisma.Decimal from DB — passed through unchanged (no Number() drift).
             amount: ticket.actualCost,
             accountCode,

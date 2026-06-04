@@ -61,7 +61,7 @@ export class CreateCreditNoteDto {
    * Party-master link (Phase 3 P3). Durable FK to the Supplier behind
    * `vendorName` (STANDALONE mode). Optional.
    */
-  @IsString()
+  @IsUUID('4', { message: 'รหัสซัพพลายเออร์ไม่ถูกต้อง' })
   @IsOptional()
   vendorSupplierId?: string;
 

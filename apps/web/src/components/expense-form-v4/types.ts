@@ -67,6 +67,8 @@ export interface PayrollCustomDeductionRow {
 export interface PayrollLineForm {
   uid: string;
   employeeName: string;
+  // PR-C — FK to the chosen payroll employee. '' = legacy free-text row.
+  userId: string;
   employeeTaxId: string;
   baseSalary: string;
   ssoEmployee: string;
@@ -210,6 +212,7 @@ export const newLine = (overrides?: Partial<ExpenseLineForm>): ExpenseLineForm =
 export const newPayrollLine = (overrides?: Partial<PayrollLineForm>): PayrollLineForm => ({
   uid: Math.random().toString(36).slice(2),
   employeeName: '',
+  userId: '',
   employeeTaxId: '',
   baseSalary: '',
   ssoEmployee: '0',

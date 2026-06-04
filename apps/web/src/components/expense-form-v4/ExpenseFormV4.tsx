@@ -224,6 +224,7 @@ export function ExpenseFormV4({ branchId, onClose, onSaved }: Props) {
                 (r) => r.accountCode && parseFloat(r.amount) > 0,
               );
               return {
+                userId: l.userId || undefined,
                 employeeName: l.employeeName,
                 employeeTaxId: l.employeeTaxId || undefined,
                 baseSalary: parseFloat(l.baseSalary),

@@ -152,4 +152,42 @@ export class EmployeesService {
     });
     return profile;
   }
+
+  async pickable(search?: string) {
+    const where: Prisma.EmployeeProfileWhereInput = {
+      deletedAt: null,
+      OR: [{ resignedDate: null }, { resignedDate: { gt: new Date() } }],
+      user: { is: { isActive: true, deletedAt: null } },
+    };
+    if (search) {
+      where.user = {
+        is: {
+          isActive: true,
+          deletedAt: null,
+          OR: [
+            { name: { contains: search, mode: 'insensitive' } },
+            { nickname: { contains: search, mode: 'insensitive' } },
+            { employeeId: { contains: search, mode: 'insensitive' } },
+          ],
+        },
+      };
+    }
+    const rows = await this.prisma.employeeProfile.findMany({
+      where,
+      include: {
+        user: { select: { id: true, name: true, nickname: true, employeeId: true } },
+      },
+      orderBy: { user: { name: 'asc' } },
+      take: 20,
+    });
+    // Explicit projection — NEVER include nationalId here (PII).
+    return rows.map((r) => ({
+      userId: r.user.id,
+      employeeId: r.user.employeeId,
+      name: r.user.name,
+      nickname: r.user.nickname,
+      baseSalary: r.baseSalary, // Decimal → string in JSON; FE parseFloat
+      ssoEligible: r.ssoEligible,
+    }));
+  }
 }

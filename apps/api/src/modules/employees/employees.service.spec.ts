@@ -117,4 +117,23 @@ describe('EmployeesService', () => {
       );
     });
   });
+
+  describe('pickable', () => {
+    it('returns active employees WITHOUT nationalId, excludes resigned/deleted', async () => {
+      prisma.employeeProfile.findMany.mockResolvedValue([
+        { id: 'e-1', baseSalary: '15000', ssoEligible: true,
+          user: { id: 'u-1', name: 'สมชาย', nickname: 'ชาย', employeeId: 'EMP-001' } },
+      ]);
+      const res = await service.pickable('สม');
+      const where = prisma.employeeProfile.findMany.mock.calls[0][0].where;
+      expect(where.deletedAt).toBeNull();
+      // resigned filter present
+      expect(where.OR ?? where.resignedDate).toBeDefined();
+      // response shape carries NO nationalId
+      expect(res[0]).toEqual(
+        expect.objectContaining({ userId: 'u-1', name: 'สมชาย', baseSalary: '15000', ssoEligible: true }),
+      );
+      expect(JSON.stringify(res)).not.toContain('nationalId');
+    });
+  });
 });

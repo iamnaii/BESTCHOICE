@@ -134,6 +134,7 @@ describe('EmployeesService', () => {
         expect.objectContaining({ userId: 'u-1', name: 'สมชาย', baseSalary: '15000', ssoEligible: true }),
       );
       expect(JSON.stringify(res)).not.toContain('nationalId');
+      expect(res[0]).toEqual(expect.not.objectContaining({ nationalId: expect.anything() }));
     });
   });
 });

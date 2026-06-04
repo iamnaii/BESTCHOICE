@@ -91,11 +91,10 @@ export class EmployeesService {
       }),
       this.prisma.employeeProfile.count({ where }),
     ]);
-    const data = rows.map((r) => ({
-      ...r,
-      nationalId: this.maskNationalId(r.user.nationalId),
-      user: { ...r.user, nationalId: this.maskNationalId(r.user.nationalId) },
-    }));
+    const data = rows.map((r) => {
+      const maskedId = this.maskNationalId(r.user.nationalId);
+      return { ...r, nationalId: maskedId, user: { ...r.user, nationalId: maskedId } };
+    });
     return { data, total, page, limit };
   }
 

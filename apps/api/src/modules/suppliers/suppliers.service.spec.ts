@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { SuppliersService } from './suppliers.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ContactResolverService } from '../contacts/contact-resolver.service';
@@ -200,5 +200,66 @@ describe('SuppliersService — Contact party-master link on create', () => {
   it('runs resolve + create inside a single $transaction', async () => {
     await service.create({ name: 'ACME Co', taxId: '0105500000001' } as never);
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * markRepairCenter — narrow idempotent endpoint used by RepairCenterCombobox.
+ * Must set isRepairCenter=true on an existing (non-deleted) supplier and throw
+ * NotFoundException for missing / soft-deleted records.
+ */
+describe('SuppliersService — markRepairCenter', () => {
+  let service: SuppliersService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let prisma: any;
+
+  beforeEach(async () => {
+    prisma = {
+      supplier: {
+        count: jest.fn(),
+        update: jest.fn().mockResolvedValue({ id: 'sup-rc', isRepairCenter: true }),
+      },
+      $transaction: jest.fn().mockImplementation(async (fn) => {
+        if (typeof fn === 'function') return fn(prisma);
+        return Promise.all(fn);
+      }),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        SuppliersService,
+        { provide: PrismaService, useValue: prisma },
+        {
+          provide: ContactResolverService,
+          useValue: { findOrCreateByNaturalKey: jest.fn() },
+        },
+      ],
+    }).compile();
+
+    service = module.get<SuppliersService>(SuppliersService);
+  });
+
+  it('sets isRepairCenter=true on an existing supplier (idempotent)', async () => {
+    prisma.supplier.count.mockResolvedValue(1);
+
+    const result = await service.markRepairCenter('sup-rc');
+
+    expect(prisma.supplier.count).toHaveBeenCalledWith({
+      where: { id: 'sup-rc', deletedAt: null },
+    });
+    expect(prisma.supplier.update).toHaveBeenCalledWith({
+      where: { id: 'sup-rc' },
+      data: { isRepairCenter: true },
+      select: { id: true, isRepairCenter: true },
+    });
+    expect(result).toEqual({ id: 'sup-rc', isRepairCenter: true });
+  });
+
+  it('throws NotFoundException when supplier does not exist or is soft-deleted', async () => {
+    prisma.supplier.count.mockResolvedValue(0);
+
+    await expect(service.markRepairCenter('no-such-id')).rejects.toThrow(NotFoundException);
+
+    expect(prisma.supplier.update).not.toHaveBeenCalled();
   });
 });

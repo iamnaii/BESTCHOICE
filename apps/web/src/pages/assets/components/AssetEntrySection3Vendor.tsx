@@ -153,6 +153,11 @@ export function AssetEntrySection3Vendor() {
           shouldDirty: true,
         });
         if (link.taxId) setValue('supplierTaxId', link.taxId, { shouldDirty: true });
+        // VAT: mirror the supplier's VAT-registration status onto the purchase.
+        setValue('hasVat', link.hasVat, { shouldDirty: true, shouldValidate: true });
+        if (link.hasVat && !watch('vatAccount')) {
+          setValue('vatAccount', '11-4101', { shouldValidate: true });
+        }
       }
     } catch {
       // keep the list values when the detail lookup fails

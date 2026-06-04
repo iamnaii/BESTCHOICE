@@ -237,4 +237,41 @@ describe('ContactDetailPage', () => {
     expect(screen.getByText('สถานะภาษี')).toBeInTheDocument();
     expect(screen.getAllByText('จด VAT').length).toBeGreaterThan(0);
   });
+
+  it('shows the seller name in the trade-in tile (not just the date)', async () => {
+    (contactsApi.detail as any).mockResolvedValue({
+      id: 'c1', contactCode: 'P-7', name: 'สมชาย', roles: ['TRADE_IN_SELLER'], isActive: true,
+      taxId: null, phone: '0812223333', email: null, address: null, lineId: null, peakContactCode: null,
+      customers: [], suppliers: [], externalFinanceCompany: [],
+      tradeInsAsSeller: [
+        { id: 't1', sellerName: 'สมชาย', sellerPhone: '0899998888', createdAt: '2026-05-01T03:00:00.000Z' },
+      ],
+    });
+    wrap('c1');
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'สมชาย' })).toBeInTheDocument());
+    // 'คนขายมือสอง' appears as both the hero role badge and the tile title
+    expect(screen.getAllByText('คนขายมือสอง').length).toBeGreaterThan(0);
+    // seller name + phone shown in the tile (parenthesised string is unique to the tile, not the hero h1)
+    expect(screen.getByText(/สมชาย \(0899998888\)/)).toBeInTheDocument();
+  });
+
+  it('hides the summary strip when the summary fetch fails, but still renders the card', async () => {
+    const { customersApi } = await import('@/lib/api/customers');
+    (customersApi.summary as any).mockRejectedValue(new Error('network'));
+    (contactsApi.detail as any).mockResolvedValue({
+      id: 'c1', contactCode: 'P-00001', name: 'ลูกค้าเอ', roles: ['CUSTOMER'], isActive: true,
+      taxId: null, phone: '08', email: null, address: null, lineId: null, peakContactCode: null,
+      suppliers: [], tradeInsAsSeller: [], externalFinanceCompany: [],
+      customers: [{ id: 'cus1', name: 'ลูกค้าเอ', prefix: 'คุณ', phone: '08' }],
+    });
+    wrap('c1');
+    // hero + customer tile still render despite the failed summary query
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'ลูกค้าเอ' })).toBeInTheDocument());
+    expect(screen.getByText('เปิดข้อมูลลูกค้า / แก้ไข')).toBeInTheDocument();
+    // the summary fetch WAS attempted (and rejected) — proves the hide is due to
+    // the failure path, not merely an un-fired query
+    await waitFor(() => expect(customersApi.summary).toHaveBeenCalledWith('cus1'));
+    // ...but the financial KPI strip is hidden (no half-strip on fetch failure)
+    expect(screen.queryByText('ยอดค้างชำระ')).not.toBeInTheDocument();
+  });
 });

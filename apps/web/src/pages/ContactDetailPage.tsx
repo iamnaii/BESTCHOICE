@@ -297,10 +297,20 @@ function TradeInTile({ tradeIn }: { tradeIn: ContactTradeInLink }) {
         <CardTitle className="leading-snug">คนขายมือสอง</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
-        <Field
-          label="วันที่รับซื้อ"
-          value={new Date(tradeIn.createdAt).toLocaleDateString('th-TH', { timeZone: 'Asia/Bangkok' })}
-        />
+        <div className="grid grid-cols-2 gap-3">
+          <Field
+            label="ชื่อผู้ขาย"
+            value={
+              tradeIn.sellerName
+                ? `${tradeIn.sellerName}${tradeIn.sellerPhone ? ` (${tradeIn.sellerPhone})` : ''}`
+                : tradeIn.sellerPhone
+            }
+          />
+          <Field
+            label="วันที่รับซื้อ"
+            value={new Date(tradeIn.createdAt).toLocaleDateString('th-TH', { timeZone: 'Asia/Bangkok' })}
+          />
+        </div>
         <CardLink to="/trade-in" label="ดูรายการรับซื้อ" />
       </CardContent>
     </Card>

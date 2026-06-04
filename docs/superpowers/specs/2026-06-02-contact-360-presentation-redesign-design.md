@@ -1,7 +1,7 @@
 # Contact 360° — Presentation Redesign
 
 วันที่: 2026-06-02
-สถานะ: รออนุมัติ spec จาก owner
+สถานะ: ✅ DONE — merged เข้า main 2026-06-02 (merge `e52d2154`; feat `2c2154ac` + schema `3bc5f6a6` + cleanup `41cf8b18`). 3 UX decision ที่ปล่อยให้ implementer เลือก: LINE=copy lineId, edit=ลิงก์ใน tile (ไม่มี dropdown), ไม่มี PageHeader (h1 เดียว). TradeIn tile โชว์ sellerName เพิ่มใน cleanup ภายหลัง
 ส่วนหนึ่งของ: PEAK-style contact expansion. อันนี้คือ **ชั้น presentation** ที่รวบ A1 (read-through) + C (financial snapshot) ที่ implement ไปแล้ว ให้เป็น layout เดียวที่อ่านง่ายขึ้นและไม่โชว์ข้อมูลซ้ำ
 
 ## ที่มา / ปัญหา (จาก /scrutinize)

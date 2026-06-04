@@ -1,7 +1,7 @@
 # Contact Hardening — unify trade-in sellers, fix merge, partial-unique keys
 
 วันที่: 2026-06-02
-สถานะ: รออนุมัติ spec จาก owner
+สถานะ: ✅ DONE — merged เข้า main 2026-06-02 (PR #1124, commit `64758b2b`). deviation: P2002 → throw `ConflictException` (ไม่ re-fetch ตาม spec) เพราะ Postgres query ต่อใน tx ที่ abort แล้วไม่ได้ — caller retry ทั้ง op แทน (ถูกต้องกว่า spec เดิม). pre-deploy dedup = manual SOP (ไม่มี code guard ตาม design)
 
 ## ที่มา
 จาก audit ระบบ contact party-master พบ edge cases หลายจุด. owner เลือกแก้ชุด 1+2+3:

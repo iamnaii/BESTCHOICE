@@ -1,7 +1,7 @@
 # Contact Rich Detail — Read-Through (Sub-project A1, reworked)
 
 วันที่: 2026-06-01
-สถานะ: รออนุมัติ spec จาก owner
+สถานะ: ✅ DONE — merged เข้า main 2026-06-02 (PR #1121, commit `8a757600`). หมายเหตุ: customer card layout ถูก 360 redesign (merge `e52d2154`) รื้อทับภายหลัง — identity fields ย้ายไป hero, tile เหลือ role-specific. open item: เลขบัตร ปชช. (masked) ยังไม่โชว์บนหน้า contact (product decision ค้าง)
 ส่วนหนึ่งของ: PEAK-style contact detail expansion (A → B → C). อันนี้คือ **A1**.
 
 > **เวอร์ชันนี้ rework หลัง /scrutinize** — เวอร์ชันแรกเก็บ column ซ้ำบน Contact (address/entityType/branchCode/prefix) ซึ่งซ้ำกับ Customer/Supplier และทำให้ข้อมูลแตก 2 ชุด (เอกสารกฎหมายอ่านจาก Customer/Supplier ไม่ใช่ Contact). เวอร์ชันนี้ใช้ **read-through**: Contact คงเป็น party key บางๆ, หน้า detail ดึงข้อมูลจาก record ต้นทางมาแสดง + ลิงก์ไปแก้ที่ต้นทาง.

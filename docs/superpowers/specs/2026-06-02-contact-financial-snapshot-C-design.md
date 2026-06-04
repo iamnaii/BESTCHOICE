@@ -1,7 +1,7 @@
 # Contact Financial Snapshot (Sub-project C, thin)
 
 วันที่: 2026-06-02
-สถานะ: รออนุมัติ spec จาก owner
+สถานะ: ✅ DONE — merged เข้า main 2026-06-02 (PR #1122, commit `6255e66c`). `outstanding` shape (จุดเสี่ยงที่ spec เตือน) = `Number(_sum.amountDue)` number ตรง ๆ, FE map ถูก. error-case test เพิ่มใน cleanup ภายหลัง
 ส่วนหนึ่งของ: PEAK-style contact expansion (A → B → C). อันนี้คือ **C** (thin หลัง scrutinize).
 
 > **C reworked หลัง scrutinize:** คำขอเดิม "แท็บภาพรวมการเงิน" (ยอดขาย/AR aging/doc list/กราฟ แบบ PEAK) ถูกตัดเหลือ **snapshot สั้นๆ** เพราะภาพการเงินลูกค้าเต็มมีอยู่แล้วบน `CustomerDetailPage` (ตาราง contracts, KPI active/overdue, risk panel) และมี endpoint `GET /customers/:id/summary` (outstanding + active/overdue) อยู่แล้ว. ทำเต็มบนหน้า contact = duplicate. A1 ก็ deep-link ไปหน้าลูกค้าเต็มได้อยู่แล้ว.

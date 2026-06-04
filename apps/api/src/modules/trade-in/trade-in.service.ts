@@ -152,10 +152,11 @@ export class TradeInService {
 
   // ─── Create ───────────────────────────────────────────────
   async create(dto: CreateTradeInDto) {
-    // Walk-in หรือ existing customer ก็ได้ — แต่ต้องมีอย่างใดอย่างหนึ่ง
-    if (!dto.customerId && !dto.sellerName) {
+    // Walk-in หรือ existing customer ก็ได้ — ต้องมีอย่างน้อยหนึ่งอย่าง:
+    // customerId, sellerContactId (party-master), หรือ sellerName (free-text)
+    if (!dto.customerId && !dto.sellerContactId && !dto.sellerName) {
       throw new BadRequestException(
-        'ต้องระบุลูกค้าหรือข้อมูลผู้ขาย (ชื่อ) อย่างน้อยหนึ่งอย่าง',
+        'ต้องระบุลูกค้าหรือข้อมูลผู้ขาย (ชื่อหรือรายชื่อผู้ขาย) อย่างน้อยหนึ่งอย่าง',
       );
     }
 
@@ -669,6 +670,7 @@ export class TradeInService {
       imei: dto.imei,
       estimatedValue: dto.agreedPrice,
       notes: dto.notes,
+      sellerContactId: dto.sellerContactId,
       sellerName: dto.sellerName,
       sellerPhone: dto.sellerPhone,
       sellerIdCardNumber: dto.sellerIdCardNumber,

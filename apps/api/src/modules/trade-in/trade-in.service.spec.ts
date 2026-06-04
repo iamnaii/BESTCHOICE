@@ -796,6 +796,78 @@ describe('TradeInService', () => {
   });
 
   // ──────────────────────────────────────────────────────────────────────────
+  // quickBuy — sellerContactId threading (P2d fix)
+  // ──────────────────────────────────────────────────────────────────────────
+  describe('quickBuy', () => {
+    const baseQuickBuyDto = {
+      branchId: 'branch-1',
+      deviceBrand: 'Apple',
+      deviceModel: 'iPhone 15',
+      agreedPrice: 18000,
+      idCardVerified: true,
+      sellerConsentSigned: true,
+      paymentMethod: 'CASH' as const,
+    };
+
+    /** Wire up the 4 stages so quickBuy() can run end-to-end in tests */
+    function setupQuickBuyMocks() {
+      // Stage 1: create
+      prisma.tradeIn.findMany.mockResolvedValue([]); // IMEI check
+      prisma.tradeIn.create.mockResolvedValue(makeTradeIn({ id: 'ti-qb-1' }));
+      // Stage 2: appraise — findUnique returns PENDING_APPRAISAL, update returns APPRAISED
+      prisma.tradeIn.findUnique
+        .mockResolvedValueOnce(makeTradeIn({ id: 'ti-qb-1', status: 'PENDING_APPRAISAL', appraisalLocked: false, firstAppraisedAt: null }))
+        .mockResolvedValueOnce(makeTradeIn({ id: 'ti-qb-1', status: 'APPRAISED', offeredPrice: 18000 }))
+        // Stage 4: re-fetch for imeiBlacklistResult
+        .mockResolvedValueOnce({ imeiBlacklistResult: null });
+      prisma.tradeIn.update
+        .mockResolvedValueOnce(makeTradeIn({ id: 'ti-qb-1', status: 'APPRAISED', offeredPrice: 18000 }))
+        // Stage 3: accept
+        .mockResolvedValueOnce(makeTradeIn({ id: 'ti-qb-1', status: 'ACCEPTED', agreedPrice: 18000 }));
+    }
+
+    it('threads sellerContactId into create() and does NOT call findOrCreateByNaturalKey', async () => {
+      setupQuickBuyMocks();
+
+      await service.quickBuy(
+        { ...baseQuickBuyDto, sellerContactId: 'contact-known-42' },
+        'user-1',
+        'branch-1',
+      );
+
+      // Resolver must NOT be called — the known contactId bypasses natural-key lookup
+      expect(contactResolver.findOrCreateByNaturalKey).not.toHaveBeenCalled();
+
+      // The sellerContactId must be threaded into the DB create call
+      expect(prisma.tradeIn.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ sellerContactId: 'contact-known-42' }),
+        }),
+      );
+    });
+
+    it('falls back to findOrCreateByNaturalKey when sellerContactId is absent', async () => {
+      setupQuickBuyMocks();
+      contactResolver.findOrCreateByNaturalKey.mockResolvedValue({ id: 'contact-new-1' });
+
+      await service.quickBuy(
+        { ...baseQuickBuyDto, sellerName: 'สมชาย ขายมือสอง' },
+        'user-1',
+        'branch-1',
+      );
+
+      // Resolver IS called when no sellerContactId is provided
+      expect(contactResolver.findOrCreateByNaturalKey).toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when no branchId in dto and no userBranchId', async () => {
+      await expect(
+        service.quickBuy({ ...baseQuickBuyDto, branchId: undefined, sellerName: 'A' }, 'user-1', null),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
   // PII read decryption (Phase 5)
   // ──────────────────────────────────────────────────────────────────────────
   describe('PII read decryption (Phase 5)', () => {

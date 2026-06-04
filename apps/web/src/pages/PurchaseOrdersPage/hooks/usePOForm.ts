@@ -82,6 +82,10 @@ export function usePOForm({ createMutation, suppliers }: UsePOFormOptions) {
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!form.supplierId) {
+      toast.error('กรุณาเลือกผู้ขาย');
+      return;
+    }
     const invalidItems = items.filter((i) => !i.category || !i.quantity || !i.unitPrice);
     if (invalidItems.length > 0) {
       toast.error('กรุณากรอกหมวดหมู่ จำนวน และราคาให้ครบทุกรายการ');

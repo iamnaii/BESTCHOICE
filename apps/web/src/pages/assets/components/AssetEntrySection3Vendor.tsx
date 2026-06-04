@@ -25,6 +25,7 @@ import type { AssetEntryFormValues } from '../schema';
 import { CASH_ACCOUNTS } from '../types';
 import { AssetSectionHeader } from './AssetSectionHeader';
 import { ContactCombobox, type ContactPickResult } from '@/components/contacts/ContactCombobox';
+import { contactsApi } from '@/lib/api/contacts';
 
 export function AssetEntrySection3Vendor() {
   const {
@@ -41,10 +42,30 @@ export function AssetEntrySection3Vendor() {
   const supplierName = watch('supplierName') ?? '';
 
   // Every selection is now a real Supplier contact — set all three fields.
-  const handleVendorSelect = ({ childId, name, taxId }: ContactPickResult) => {
+  // Also auto-fill whtFormType / hasVat / vatAccount from the supplier link
+  // (mirrors the old selectSupplier behaviour).
+  const handleVendorSelect = async ({ contactId, childId, name, taxId }: ContactPickResult) => {
     setValue('supplierName', name, { shouldDirty: true, shouldValidate: true });
-    setValue('vendorId', childId, { shouldDirty: true });
+    // Fix C: guard empty childId — z.string().uuid().optional() rejects ''
+    setValue('vendorId', childId || undefined, { shouldDirty: true });
     setValue('supplierTaxId', taxId ?? '', { shouldDirty: true });
+    // Auto-fill ประเภทผู้ขาย (แบบ ภ.ง.ด.) + VAT fields from the supplier link.
+    try {
+      const detail = await contactsApi.detail(contactId);
+      const link = detail.suppliers?.[0];
+      if (link) {
+        setValue('whtFormType', link.type === 'JURISTIC' ? 'PND53' : 'PND3', {
+          shouldDirty: true,
+        });
+        if (link.taxId) setValue('supplierTaxId', link.taxId, { shouldDirty: true });
+        setValue('hasVat', link.hasVat, { shouldDirty: true, shouldValidate: true });
+        if (link.hasVat && !watch('vatAccount')) {
+          setValue('vatAccount', '11-4101', { shouldValidate: true });
+        }
+      }
+    } catch {
+      // keep the basic name/vendorId/taxId already set above — don't throw
+    }
   };
 
   const clearSupplier = () => {

@@ -125,8 +125,7 @@ export function CreatePOModal({
                     invalid={!form.supplierId && suppliersError}
                     placeholder="เลือก/ค้นหาผู้ขาย"
                   />
-                  {/* Hidden required-field guard so native form validation fires when no supplier is chosen */}
-                  <input type="hidden" value={form.supplierId} required />
+                  <input type="hidden" value={form.supplierId} />
                   {selectedSupplier && (
                     <div className="mt-1 flex gap-2 flex-wrap">
                       <span

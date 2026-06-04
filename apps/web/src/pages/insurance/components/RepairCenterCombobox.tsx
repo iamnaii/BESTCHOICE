@@ -6,6 +6,7 @@
 // centers). Any contact selected here is tagged isRepairCenter=true on pick.
 // This is deliberate per the party-master-mandatory epic.
 import { useMutation } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import api from '@/lib/api';
 import { ContactCombobox, type ContactPickResult } from '@/components/contacts/ContactCombobox';
 
@@ -31,7 +32,7 @@ export function RepairCenterCombobox({ value, displayName, onSelect, invalid }: 
     try {
       await mark.mutateAsync(childId);
     } catch {
-      /* non-fatal */
+      toast.error('บันทึกเป็นศูนย์ซ่อมไม่สำเร็จ แต่เลือกผู้ขายแล้ว');
     }
     onSelect({ id: childId, name });
   };

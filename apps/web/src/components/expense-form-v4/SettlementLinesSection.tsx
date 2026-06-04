@@ -159,7 +159,13 @@ export function SettlementLinesSection({ branchId, value, onChange }: Props) {
           </label>
           <VendorCombobox
             value={value.vendorName}
-            onSelectSupplier={(s) => onChange({ ...value, vendorName: s.name })}
+            onSelectSupplier={(s) =>
+              onChange({
+                ...value,
+                vendorName: s.name,
+                ...(s.whtFormType ? { whtFormType: s.whtFormType } : {}),
+              })
+            }
             onTypeName={(name) => onChange({ ...value, vendorName: name })}
           />
         </div>

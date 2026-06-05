@@ -67,7 +67,10 @@ export function resolvePayrollMatch(
 // ─── Runnable glue ───────────────────────────────────────────────────────────
 const TAG = '[backfill-payroll-user-fk]';
 const BATCH_SIZE = 100;
-const CSV_PATH = 'matched-by-name.csv';
+// Cloud Run containers have a read-only root FS — only /tmp is writable.
+// The stdout dump (below) is the authoritative output for Cloud Logging; this
+// file is a convenience for local runs. Overridable via CSV_OUT.
+const CSV_PATH = process.env.CSV_OUT ?? '/tmp/matched-by-name.csv';
 
 interface LineRow {
   id: string;
@@ -160,8 +163,14 @@ async function main(): Promise<void> {
       ...tier2Ambiguous.map((t) =>
         `ambiguous,${t.line.id},${t.line.payrollId},"${t.line.employeeName}",${t.line.employeeTaxId ?? ''},${t.candidateIds.join(' ')},"${t.candidateIds.map((id) => nameById.get(id) ?? '').join(' | ')}"`),
     ];
-    writeFileSync(CSV_PATH, csvRows.join('\n'), 'utf-8');
-    console.log(`${TAG} wrote ${tier2.length + tier2Ambiguous.length} name-match row(s) to ${CSV_PATH} (local file).`);
+    // Best-effort local file — never fatal. On a read-only FS the stdout dump
+    // below is the real deliverable, so a write failure just logs a warning.
+    try {
+      writeFileSync(CSV_PATH, csvRows.join('\n'), 'utf-8');
+      console.log(`${TAG} wrote ${tier2.length + tier2Ambiguous.length} name-match row(s) to ${CSV_PATH} (local file).`);
+    } catch (e) {
+      console.warn(`${TAG} could not write ${CSV_PATH} (${(e as Error).message}) — using stdout dump below instead.`);
+    }
     // F1 — Cloud Run Jobs have an ephemeral FS; the local CSV is lost when the
     // job exits. Dump the FULL CSV to stdout so the owner can retrieve every
     // name-match row from Cloud Logging for review (not just a sample).

@@ -796,6 +796,9 @@ model User {
   // Employee Master (PR-A) — 1:1 payroll/employment profile
   employeeProfile EmployeeProfile?
 
+  // PR-C — back-relation for PayrollLine.userId → User (FK lives on PayrollLine)
+  payrollLines    PayrollLine[]
+
   @@index([branchId])
   @@index([yeastarExtension])
   @@map("users")
@@ -4075,6 +4078,10 @@ model PayrollLine {
   id              String                   @id @default(uuid())
   payrollId       String                   @map("payroll_id")
   payroll         PayrollDetail            @relation(fields: [payrollId], references: [documentId], onDelete: Cascade)
+  // PR-C — nullable historical-link FK to the payroll employee. Null for
+  // legacy/free-text rows; SET NULL on user delete keeps the snapshot intact.
+  userId          String?                  @map("user_id")
+  user            User?                    @relation(fields: [userId], references: [id], onDelete: SetNull)
   employeeName    String                   @map("employee_name")
   employeeTaxId   String?                  @map("employee_tax_id")
   baseSalary      Decimal                  @map("base_salary") @db.Decimal(12, 2)
@@ -4090,6 +4097,7 @@ model PayrollLine {
   updatedAt       DateTime                 @updatedAt @map("updated_at")
 
   @@index([payrollId])
+  @@index([userId])
   @@map("payroll_lines")
 }
 

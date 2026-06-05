@@ -42,6 +42,15 @@ export interface ProvisionableUser {
   nickname: string | null;
 }
 
+export interface PickableEmployee {
+  userId: string;
+  employeeId: string | null;
+  name: string;
+  nickname: string | null;
+  baseSalary: string | null; // Prisma Decimal → JSON string
+  ssoEligible: boolean;
+}
+
 export interface ProvisionEmployeeInput {
   userId: string;
   position?: string;
@@ -63,6 +72,7 @@ export const employeeKeys = {
   list: (params: Record<string, unknown>) => [...employeeKeys.all, 'list', params] as const,
   detail: (id: string) => [...employeeKeys.all, 'detail', id] as const,
   provisionable: (search: string) => [...employeeKeys.all, 'provisionable', search] as const,
+  pickable: (search: string) => [...employeeKeys.all, 'pickable', search] as const,
 };
 
 export const employeesApi = {
@@ -76,6 +86,10 @@ export const employeesApi = {
   provisionable: (search?: string) =>
     api
       .get<ProvisionableUser[]>('/employees/provisionable', { params: search ? { search } : {} })
+      .then((r) => r.data),
+  pickable: (search?: string) =>
+    api
+      .get<PickableEmployee[]>('/employees/pickable', { params: search ? { search } : {} })
       .then((r) => r.data),
   provision: (input: ProvisionEmployeeInput) =>
     api.post<Employee>('/employees', input).then((r) => r.data),

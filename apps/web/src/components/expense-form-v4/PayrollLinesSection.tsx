@@ -12,6 +12,10 @@ import { formatNumberDecimal } from '@/utils/formatters';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { THAI_MONTHS_FULL } from '@/lib/date';
 import { useUiFlags } from '@/hooks/useUiFlags';
+import { useQuery } from '@tanstack/react-query';
+import EmployeeCombobox from '@/components/employees/EmployeeCombobox';
+import { type PickableEmployee } from '@/lib/api/employees';
+import { ssoConfigApi, ssoConfigKeys } from '@/lib/api/ssoConfig';
 
 interface Props {
   value: PayrollFormFields;
@@ -35,6 +39,37 @@ export function PayrollLinesSection({ value, onChange, documentDate, onDocumentD
   const updateLine = (uid: string, p: Partial<PayrollLineForm>) => {
     onChange({ ...value, lines: value.lines.map((l) => (l.uid === uid ? { ...l, ...p } : l)) });
   };
+
+  // PR-C — period-effective SSO ceiling/cap for SSO pre-fill (decision D1).
+  const ssoCfg = useQuery({
+    queryKey: ssoConfigKeys.effective(documentDate || ''),
+    queryFn: () => ssoConfigApi.effective(documentDate || undefined),
+    enabled: !!documentDate,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+
+  const handlePickEmployee = (uid: string, emp: PickableEmployee) => {
+    const base = emp.baseSalary != null ? parseFloat(emp.baseSalary) : NaN;
+    const patch: Partial<PayrollLineForm> = {
+      userId: emp.userId,
+      employeeName: emp.name,
+      // taxId snapshot is derived server-side on save — clear any stale value.
+      employeeTaxId: '',
+    };
+    if (!Number.isNaN(base)) patch.baseSalary = String(base);
+    // F5 — only pre-fill SSO with a CAPPED value. If the period cap hasn't
+    // loaded yet, leave SSO for manual entry rather than auto-filling an
+    // uncapped base×5% that could exceed the cap and fail server validation.
+    const ceiling = ssoCfg.data ? parseFloat(ssoCfg.data.salaryCeiling) : null;
+    const rate = ssoCfg.data?.rate ?? 0.05;
+    if (emp.ssoEligible && !Number.isNaN(base) && ceiling != null) {
+      patch.ssoEmployee = String(round2(Math.min(base, ceiling) * rate));
+    }
+    updateLine(uid, patch);
+  };
+
   const removeLine = (uid: string) => {
     if (value.lines.length === 1) return;
     onChange({ ...value, lines: value.lines.filter((l) => l.uid !== uid) });
@@ -165,6 +200,7 @@ export function PayrollLinesSection({ value, onChange, documentDate, onDocumentD
                 disableRemove={value.lines.length === 1}
                 onUpdate={(p) => updateLine(row.uid, p)}
                 onRemove={() => removeLine(row.uid)}
+                onPickEmployee={(emp) => handlePickEmployee(row.uid, emp)}
               />
             ))}
           </tbody>
@@ -218,6 +254,7 @@ function PayrollRow({
   disableRemove,
   onUpdate,
   onRemove,
+  onPickEmployee,
 }: {
   row: PayrollLineForm & {
     netPaid: number;
@@ -232,6 +269,7 @@ function PayrollRow({
   disableRemove: boolean;
   onUpdate: (p: Partial<PayrollLineForm>) => void;
   onRemove: () => void;
+  onPickEmployee: (emp: PickableEmployee) => void;
 }) {
   const expanded = row._expanded === true;
 
@@ -254,23 +292,16 @@ function PayrollRow({
           </button>
         </td>
         <td className="px-2 py-1">
-          <input
-            type="text"
+          <EmployeeCombobox
             value={row.employeeName}
-            onChange={(e) => onUpdate({ employeeName: e.target.value })}
-            placeholder="ชื่อ-สกุล"
-            className="w-full px-2 py-1.5 border border-input rounded text-sm bg-background"
+            onSelect={onPickEmployee}
+            placeholder="เลือกพนักงาน"
           />
         </td>
         <td className="px-2 py-1">
-          <input
-            type="text"
-            value={row.employeeTaxId}
-            onChange={(e) => onUpdate({ employeeTaxId: e.target.value })}
-            placeholder="13 หลัก"
-            maxLength={13}
-            className="w-full px-2 py-1.5 border border-input rounded text-sm bg-background"
-          />
+          <span className="block px-2 py-1.5 text-xs text-muted-foreground italic leading-snug">
+            {row.employeeTaxId || '(ดึงเลขบัตรอัตโนมัติตอนบันทึก)'}
+          </span>
         </td>
         <td className="px-2 py-1">
           <input

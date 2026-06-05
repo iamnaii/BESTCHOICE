@@ -195,4 +195,41 @@ describe('PayrollTemplate', () => {
 
     await expect(template.execute(docId)).rejects.toThrow(BadRequestException);
   });
+
+  it('JE is identical whether payroll lines carry a userId or not (PR-C anti-regression)', async () => {
+    const baseLine = {
+      baseSalary: new Decimal('15000.00'),
+      ssoEmployee: new Decimal('750.00'),
+      whtAmount: new Decimal('0.00'),
+      netPaid: new Decimal('14250.00'),
+      customIncome: [],
+      customDeduction: [],
+    };
+    const docOf = (userId: string | null) => ({
+      id: docId,
+      number: 'PR-20260601-0001',
+      documentType: 'PAYROLL',
+      documentDate: new Date('2026-06-01'),
+      totalAmount: new Decimal('15000.00'),
+      depositAccountCode: '11-1101',
+      journalEntryId: null,
+      payroll: {
+        payrollPeriod: '2026-06',
+        lines: [{ ...baseLine, userId, employeeName: 'สมชาย', employeeTaxId: '1234567890123' }],
+      },
+    });
+
+    // Run WITHOUT userId
+    prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue(docOf(null));
+    await template.execute(docId);
+    const legacyLines = journal.createAndPost.mock.calls[0][0].lines;
+
+    // Reset + run WITH userId
+    journal.createAndPost.mockClear();
+    prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue(docOf('user-emp-1'));
+    await template.execute(docId);
+    const linkedLines = journal.createAndPost.mock.calls[0][0].lines;
+
+    expect(JSON.stringify(linkedLines)).toEqual(JSON.stringify(legacyLines));
+  });
 });

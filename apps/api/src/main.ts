@@ -222,4 +222,11 @@ async function bootstrap() {
   await app.listen(port);
   logger.log(`API server running on http://localhost:${port}`);
 }
-bootstrap();
+bootstrap().catch((err) => {
+  // A failed bootstrap must crash loudly with a non-zero exit so the
+  // orchestrator (Cloud Run) restarts the instance instead of leaving a
+  // half-initialised process running. (Was a floating promise — the new
+  // no-floating-promises guardrail flags it.)
+  console.error('Fatal: API bootstrap failed', err);
+  process.exit(1);
+});

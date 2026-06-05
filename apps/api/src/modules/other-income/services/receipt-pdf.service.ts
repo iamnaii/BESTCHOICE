@@ -5,6 +5,7 @@ import * as path from 'path';
 import * as puppeteer from 'puppeteer';
 import * as QRCode from 'qrcode';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { thaiBahtText } from '../../../utils/thai-baht-text.util';
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Self-hosted fonts (Fix C15 — eliminate fonts.googleapis.com hot path)
@@ -151,44 +152,9 @@ function formatAddress(value: string | null | undefined): string {
 }
 
 /** Convert a number to its Thai-baht spelling. Handles negative + millions. */
+// Thai-baht-in-words now lives in the shared thai-baht-text util (Wave 4 dedup).
 function numberToThaiText(num: number): string {
-  if (!isFinite(num)) return '(จำนวนเงินไม่ถูกต้อง)';
-  if (num < 0) return `ลบ${numberToThaiText(-num)}`;
-  if (num === 0) return 'ศูนย์บาทถ้วน';
-  // Cap at < 1e12 (999,999,999,999.99 baht) — extending readGroup beyond 6 digits
-  // would mis-spell the ล้านล้าน group; very unlikely for an other-income doc.
-  if (num >= 1e12) return '(จำนวนเงินเกินขีดจำกัด)';
-  const digits = ['', 'หนึ่ง', 'สอง', 'สาม', 'สี่', 'ห้า', 'หก', 'เจ็ด', 'แปด', 'เก้า'];
-  const places = ['', 'สิบ', 'ร้อย', 'พัน', 'หมื่น', 'แสน'];
-  const readGroup = (n: number): string => {
-    if (n === 0) return '';
-    let s = '';
-    const str = String(Math.floor(n));
-    const len = str.length;
-    for (let i = 0; i < len; i++) {
-      const d = parseInt(str[i]);
-      const place = len - i - 1;
-      if (d === 0) continue;
-      if (place === 1 && d === 1) s += 'สิบ';
-      else if (place === 1 && d === 2) s += 'ยี่สิบ';
-      else if (place === 0 && d === 1 && len > 1) s += 'เอ็ด';
-      else s += digits[d] + places[place];
-    }
-    return s;
-  };
-  let text = '';
-  let remaining = Math.floor(num);
-  if (remaining >= 1000000) {
-    const millions = Math.floor(remaining / 1000000);
-    text += readGroup(millions) + 'ล้าน';
-    remaining = remaining - millions * 1000000;
-  }
-  if (remaining > 0) text += readGroup(remaining);
-  text += 'บาท';
-  const satang = Math.round((num - Math.floor(num)) * 100);
-  if (satang === 0) text += 'ถ้วน';
-  else text += readGroup(satang) + 'สตางค์';
-  return text;
+  return thaiBahtText(num);
 }
 
 // BESTCHOICE wordmark — reused from receipts.service.ts (installment receipts).

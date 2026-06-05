@@ -1,6 +1,5 @@
 import { Injectable, Logger, Optional, NotFoundException, BadRequestException, ForbiddenException, InternalServerErrorException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import * as Sentry from '@sentry/nestjs';
 import { formatDateShort } from '../../utils/thai-date.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -496,16 +495,13 @@ export class ContractWorkflowService {
 
       // Phase A.4 — generate installment_schedules rows so accrual cron + payment
       // preview API can find them. Per-installment due_date = startDate + (i × 1 month).
-      this.generateInstallmentSchedules(contract).catch((err) => {
-        this.logger.error(
-          `Failed to generate installment_schedules for contract ${contract.contractNumber}: ${err?.message || err}`,
-          err?.stack,
-        );
-        Sentry.captureException(err, {
-          tags: { module: 'contracts', event: 'schedule-generation-failure' },
-          extra: { contractId: contract.id, contractNumber: contract.contractNumber },
-        });
-      });
+      // Runs inside the activation $transaction (same `tx`) and is awaited: if it
+      // fails, the whole activation rolls back — contract stays DRAFT with no JE
+      // and no schedule — rather than committing an ACTIVE contract with no
+      // installment rows (which silently breaks the accrual cron + payment preview).
+      // (Was fire-and-forget on this.prisma: not awaited, off-transaction, and a
+      // failure left a broken ACTIVE contract behind a fire-and-forget log line.)
+      await this.generateInstallmentSchedules(contract, tx);
     });
 
     // Send LINE notification to customer (non-blocking)
@@ -525,11 +521,14 @@ export class ContractWorkflowService {
    *   amountDue = monthlyPayment (incl. VAT)
    *   dueDate   = startDate + (i months)
    */
-  private async generateInstallmentSchedules(contract: { id: string; contractNumber: string }) {
-    const c = await this.prisma.contract.findUniqueOrThrow({
+  private async generateInstallmentSchedules(
+    contract: { id: string; contractNumber: string },
+    tx: Prisma.TransactionClient,
+  ) {
+    const c = await tx.contract.findUniqueOrThrow({
       where: { id: contract.id },
     });
-    const existing = await this.prisma.installmentSchedule.count({
+    const existing = await tx.installmentSchedule.count({
       where: { contractId: c.id, deletedAt: null },
     });
     if (existing > 0) {
@@ -563,7 +562,7 @@ export class ContractWorkflowService {
         amountDue: monthly,
       });
     }
-    await this.prisma.installmentSchedule.createMany({ data: rows });
+    await tx.installmentSchedule.createMany({ data: rows });
     this.logger.log(`Generated ${rows.length} installment_schedules rows for contract ${c.contractNumber}`);
   }
 

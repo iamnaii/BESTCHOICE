@@ -1382,7 +1382,10 @@ export class OverdueService {
   async getBrokenPromiseCount(contractId: string): Promise<number> {
     return this.prisma.auditLog.count({
       where: {
-        entity: 'Contract',
+        // Accept both casings: new code writes 'contract' (per audit.service.ts
+        // convention), legacy broken-promise.cron wrote 'Contract'. Mirrors the
+        // dual-read in queue.service.ts so recent rows aren't silently missed.
+        entity: { in: ['contract', 'Contract'] },
         entityId: contractId,
         action: 'BROKEN_PROMISE',
       },

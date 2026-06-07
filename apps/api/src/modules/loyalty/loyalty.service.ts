@@ -11,8 +11,6 @@ import { Prisma } from '@prisma/client';
 // ─── Point rules ──────────────────────────────────────────────────────────────
 /** 1 point per 100 baht of payment */
 const POINTS_PER_BAHT = 0.01;
-/** Points awarded to referrer when a referred customer activates their first contract */
-const REFERRAL_POINTS = 500;
 /** Points expire after 1 year (ms) */
 const POINTS_EXPIRY_DAYS = 365;
 
@@ -401,67 +399,9 @@ export class LoyaltyService {
     };
   }
 
-  // ─── Award referral points (called by CustomerService on contract activation) ─
-
-  /**
-   * Award REFERRAL_POINTS (500) to the referrer if referredById is set on the
-   * customer. The atomic idempotency guarantee comes from the `updateMany`
-   * compare-and-swap inside `$transaction` (run at Serializable isolation to
-   * match the rest of the money-sensitive flows in this codebase). The outer
-   * `findUnique` calls are non-atomic fast-path optimizations only — two
-   * concurrent callers can both pass them; exactly one will then win the
-   * updateMany race and credit the referrer.
-   */
-  async awardReferralPoints(referredCustomerId: string): Promise<void> {
-    const referredCustomer = await this.prisma.customer.findUnique({
-      where: { id: referredCustomerId },
-      select: {
-        id: true,
-        referredById: true,
-        referralAwardedAt: true,
-        deletedAt: true,
-      },
-    });
-    if (!referredCustomer || referredCustomer.deletedAt) return;
-    if (!referredCustomer.referredById) return;
-    if (referredCustomer.referralAwardedAt) return; // fast path — already awarded
-
-    const referrerId = referredCustomer.referredById;
-
-    const referrer = await this.prisma.customer.findUnique({
-      where: { id: referrerId },
-      select: { id: true, deletedAt: true },
-    });
-    if (!referrer || referrer.deletedAt) return;
-
-    await this.prisma.$transaction(
-      async (tx) => {
-        const claimed = await tx.customer.updateMany({
-          where: { id: referredCustomerId, referralAwardedAt: null },
-          data: { referralAwardedAt: new Date() },
-        });
-        if (claimed.count === 0) return; // lost the race — someone else awarded
-
-        await tx.customer.update({
-          where: { id: referrerId },
-          data: { loyaltyBalance: { increment: REFERRAL_POINTS } },
-        });
-
-        this.logger.log(
-          `awardReferralPoints: +${REFERRAL_POINTS} pts to referrer ${referrerId} for customer ${referredCustomerId}`,
-        );
-      },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
-    );
-  }
-
   /** Compute points for a given payment amount */
   calcPointsForPayment(amountBaht: number): number {
     return Math.floor(amountBaht * POINTS_PER_BAHT);
-  }
-
-  get referralPoints(): number {
-    return REFERRAL_POINTS;
   }
 
   get pointsExpiryDays(): number {

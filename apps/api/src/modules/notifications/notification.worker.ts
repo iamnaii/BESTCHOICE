@@ -49,15 +49,23 @@ export class NotificationWorker extends WorkerHost {
 
         case 'LINE':
           if (!recipientLineId) throw new BadRequestException('recipientLineId required for LINE');
-          // LINE messages are sent via the existing LineOaService
-          // For now, log that LINE should be sent (actual LINE send is in line-oa module)
-          this.logger.log(`LINE notification queued for ${recipientLineId}: ${templateKey}`);
+          // Wave-1 #1: this used to only LOG and return {success:true}, so every overdue
+          // dunning notice (enqueueOverdueNotice → type 'LINE') was silently dropped. Now it
+          // actually pushes via the FINANCE LINE OA. A throw here propagates to the catch
+          // below → BullMQ retry + Sentry. (enqueueOverdueNotice is the only LINE enqueuer;
+          // if a non-finance LINE notice is ever queued, add a channelKey to the job data.)
+          await this.notificationsService.sendLineFromQueue(
+            recipientLineId,
+            this.renderTemplate(templateKey, variables),
+            'line-finance',
+          );
           break;
 
         case 'EMAIL':
-          // Email handled by EmailService — delegate there
-          this.logger.log(`Email notification queued: ${templateKey}`);
-          break;
+          // No enqueuer creates EMAIL jobs today. Throw instead of returning a fake success
+          // so any future EMAIL enqueue fails loudly (BullMQ retry + Sentry via the catch)
+          // rather than silently dropping the notification like LINE used to.
+          throw new BadRequestException('EMAIL notification channel is not implemented');
       }
 
       this.logger.debug(`${type} notification [${job.id}] sent successfully`);

@@ -124,8 +124,28 @@ export class PromotionsService {
       throw new BadRequestException('โปรโมชันนี้ถูกใช้งานครบจำนวนแล้ว');
     }
 
-    // Create usage and increment count in a transaction
+    // Create usage and increment count in a transaction.
+    // The check above is a fast-fail only — it reads currentUsageCount OUTSIDE
+    // the tx, so two concurrent callers could both pass it. The real cap
+    // guarantee is the conditional (CAS) increment below: updateMany only bumps
+    // the row while it is still under the cap, so exactly one of two racing
+    // callers at (cap-1) succeeds and the other gets count=0 → over-cap reject.
     return this.prisma.$transaction(async (tx) => {
+      if (promotion.maxUsageCount !== null) {
+        const bumped = await tx.promotion.updateMany({
+          where: { id: promotionId, currentUsageCount: { lt: promotion.maxUsageCount } },
+          data: { currentUsageCount: { increment: 1 } },
+        });
+        if (bumped.count !== 1) {
+          throw new BadRequestException('โปรโมชันนี้ถูกใช้งานครบจำนวนแล้ว');
+        }
+      } else {
+        await tx.promotion.update({
+          where: { id: promotionId },
+          data: { currentUsageCount: { increment: 1 } },
+        });
+      }
+
       const usage = await tx.promotionUsage.create({
         data: {
           promotionId,
@@ -133,11 +153,6 @@ export class PromotionsService {
           customerId,
           discountApplied: discountAmount,
         },
-      });
-
-      await tx.promotion.update({
-        where: { id: promotionId },
-        data: { currentUsageCount: { increment: 1 } },
       });
 
       return usage;

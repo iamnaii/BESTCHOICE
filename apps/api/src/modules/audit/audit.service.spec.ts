@@ -1,7 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { createHash } from 'crypto';
 import { AuditService } from './audit.service';
+import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
+
+jest.mock('@sentry/nestjs');
 
 describe('AuditService — Merkle hash chain (T2-C4 ext)', () => {
   let service: AuditService;
@@ -177,5 +180,42 @@ describe('AuditService — Merkle hash chain (T2-C4 ext)', () => {
       expect(result.ok).toBe(true);
       expect(result.rowsChecked).toBe(0);
     });
+  });
+});
+
+describe('AuditService.log — write-failure resilience (Wave-1 #13)', () => {
+  let service: AuditService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let prisma: any;
+
+  beforeEach(async () => {
+    prisma = { $transaction: jest.fn() };
+    const mod: TestingModule = await Test.createTestingModule({
+      providers: [AuditService, { provide: PrismaService, useValue: prisma }],
+    }).compile();
+    service = mod.get(AuditService);
+    (Sentry.captureException as jest.Mock).mockClear();
+  });
+
+  it('alerts Sentry + resolves (never throws) when the audit write fails', async () => {
+    prisma.$transaction.mockRejectedValue(new Error('db down'));
+
+    await expect(
+      service.log({ userId: 'u-1', action: 'CREATE', entity: 'Contract', entityId: 'c-1' }),
+    ).resolves.toBeUndefined();
+
+    expect(Sentry.captureException).toHaveBeenCalledTimes(1);
+    expect(Sentry.captureException).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({ tags: expect.objectContaining({ subsystem: 'audit', action: 'CREATE' }) }),
+    );
+  });
+
+  it('does NOT alert Sentry on the happy path (write succeeds)', async () => {
+    prisma.$transaction.mockResolvedValue(undefined);
+
+    await service.log({ userId: 'u-1', action: 'CREATE', entity: 'Contract', entityId: 'c-1' });
+
+    expect(Sentry.captureException).not.toHaveBeenCalled();
   });
 });

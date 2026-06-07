@@ -332,6 +332,15 @@ export class NotificationsService {
     return this.sendSms(recipient, message);
   }
 
+  /** Public wrapper for queue worker to send a LINE push (defaults to the finance OA) */
+  async sendLineFromQueue(
+    recipient: string,
+    message: string,
+    channelKey: LineChannelKey = 'line-finance',
+  ): Promise<void> {
+    return this.sendLine(recipient, message, channelKey);
+  }
+
   /**
    * Send SMS via ThaiBulkSMS API V2
    * Docs: https://assets.thaibulksms.com/documents/ThaibulksmsAPIDocument_V2.0_EN.pdf

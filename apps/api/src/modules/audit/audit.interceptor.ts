@@ -74,7 +74,7 @@ export class AuditInterceptor implements NestInterceptor {
             entityId = responseBody.id;
           }
 
-          this.auditService.log({
+          void this.auditService.log({
             userId: user.id,
             action: method,
             entity: this.extractEntity(url),
@@ -90,7 +90,7 @@ export class AuditInterceptor implements NestInterceptor {
           if (!user?.id) return;
 
           const duration = Date.now() - startTime;
-          this.auditService.log({
+          void this.auditService.log({
             userId: user.id,
             action: `${method}_ERROR`,
             entity: this.extractEntity(url),

@@ -12,6 +12,7 @@ import {
   generatePaymentSchedule,
   roundBaht,
 } from '../../utils/installment.util';
+import { computeCommissionAmount } from '../../utils/commission.util';
 import { getRateForMonths } from '../../utils/get-rate-for-months.util';
 import { loadInstallmentConfig, resolveInstallmentParams, resolveVatPctForBranch } from '../../utils/config.util';
 import { generateContractNumber, generateSaleNumber } from '../../utils/sequence.util';
@@ -476,7 +477,7 @@ export class SalesService {
           period,
           saleAmount: netAmount,
           commissionRate,
-          commissionAmount: Math.round(netAmount * commissionRate * 100) / 100,
+          commissionAmount: computeCommissionAmount(netAmount, commissionRate),
           status: 'PENDING',
         },
       });
@@ -670,7 +671,7 @@ export class SalesService {
           period,
           saleAmount: netAmount,
           commissionRate,
-          commissionAmount: Math.round(netAmount * commissionRate * 100) / 100,
+          commissionAmount: computeCommissionAmount(netAmount, commissionRate),
           status: 'PENDING',
         },
       });

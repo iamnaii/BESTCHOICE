@@ -217,7 +217,6 @@ const MdmDashboardPage = lazy(() => import('@/pages/MdmDashboardPage'));
 const BroadcastPage = lazy(() => import('@/pages/BroadcastPage'));
 const RichMenuPage = lazy(() => import('@/pages/RichMenuPage'));
 const LineGreetingPage = lazy(() => import('@/pages/LineGreetingPage'));
-const SetupTwoFactorPage = lazy(() => import('@/pages/SetupTwoFactorPage'));
 const CustomerIntakePage = lazy(() => import('@/pages/CustomerIntakePage'));
 const OnlineOrdersPage = lazy(() => import('@/pages/OnlineOrdersPage'));
 const InstallmentApplicationsPage = lazy(() => import('@/pages/InstallmentApplicationsPage'));
@@ -320,15 +319,6 @@ function App() {
         {/* Unknown /liff/* sub-paths fall back to primary LIFF page (not catch-all "*→/"). */}
         <Route path="/liff/*" element={<Navigate to="/liff/contract" replace />} />
 
-        {/* 2FA Setup — authenticated, no main layout */}
-        <Route
-          path="/setup-2fa"
-          element={
-            <ProtectedRoute>
-              <SetupTwoFactorPage />
-            </ProtectedRoute>
-          }
-        />
 
         {/* Protected Admin Routes */}
         <Route

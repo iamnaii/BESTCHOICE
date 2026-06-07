@@ -198,7 +198,6 @@ export class AccountingService implements OnModuleInit {
       externalFinanceSales,
       paidPayments,
       financeReceived,
-      expensesByCategory,
       productCosts,
     ] = await Promise.all([
       this.prisma.sale.aggregate({
@@ -234,14 +233,18 @@ export class AccountingService implements OnModuleInit {
         where: { status: 'RECEIVED', receivedDate: dateRange, ...branchFilter },
         _sum: { receivedAmount: true },
       }),
-      // Legacy `expense` model removed — expense aggregation deferred to ExpenseDocument
-      // module integration in a follow-up PR. Returns empty list so downstream maps stay zero.
-      Promise.resolve([] as { category: string; totalAmount: Prisma.Decimal }[]),
       this.prisma.sale.findMany({
         where: { createdAt: dateRange, deletedAt: null, ...branchFilter },
         select: { product: { select: { costPrice: true } }, bundleProductIds: true },
       }),
     ]);
+
+    // Company-wide FINANCE expenses from the journal (51-54). Per-branch views
+    // leave expenses empty — branch-attributable expenses come from SHOP
+    // accounting, which is not built yet (journal has no branchId).
+    const companyWide = !branchId && (!branchIds || branchIds.length === 0);
+    const { byCategory: expensesByCategory, sectionTotals } =
+      await this.aggregateFinanceExpenses(start, end, companyWide);
 
     const cashSales = new Prisma.Decimal(cashSalesAgg._sum.netAmount ?? 0);
     const installmentDownPayments = new Prisma.Decimal(installmentSales._sum.downPaymentAmount ?? 0);
@@ -336,7 +339,8 @@ export class AccountingService implements OnModuleInit {
     const sellAdvertising = getExp('SELL_ADVERTISING');
     const sellTransport = getExp('SELL_TRANSPORT');
     const sellPackaging = getExp('SELL_PACKAGING');
-    const totalSelling = sellCommission.add(sellAdvertising).add(sellTransport).add(sellPackaging);
+    // Total from the journal section sum (52) — authoritative; granular SELL_* lines above are best-effort display.
+    const totalSelling = sectionTotals.selling;
 
     const sellingExpenses = {
       commission: sellCommission.toNumber(),
@@ -357,9 +361,8 @@ export class AccountingService implements OnModuleInit {
     const adminMaintenance = getExp('ADMIN_MAINTENANCE');
     const adminTravel = getExp('ADMIN_TRAVEL');
     const adminTelephone = getExp('ADMIN_TELEPHONE');
-    const totalAdmin = adminSalary.add(adminSocialSecurity).add(adminRent).add(adminUtilities)
-      .add(adminOfficeSupplies).add(adminDepreciation).add(adminInsurance).add(adminTaxFee)
-      .add(adminMaintenance).add(adminTravel).add(adminTelephone);
+    // Total from the journal section sum (53) — authoritative; granular ADMIN_* lines above are best-effort display.
+    const totalAdmin = sectionTotals.admin;
 
     const adminExpenses = {
       salary: adminSalary.toNumber(),
@@ -383,7 +386,8 @@ export class AccountingService implements OnModuleInit {
     const otherLoss = getExp('OTHER_LOSS');
     const otherFine = getExp('OTHER_FINE');
     const otherMisc = getExp('OTHER_MISC');
-    const totalOther = otherInterest.add(otherLoss).add(otherFine).add(otherMisc);
+    // Total from the journal section sums (51 + 54) — authoritative; granular OTHER_* lines above are best-effort display.
+    const totalOther = sectionTotals.other;
 
     const otherExpenses = {
       interest: otherInterest.toNumber(),
@@ -434,6 +438,7 @@ export class AccountingService implements OnModuleInit {
       operatingProfit: operatingProfit.toNumber(),
       otherExpenses,
       netProfit: netProfitNum,
+      expenseBasis: 'accrual-journal' as const,
       summary: {
         totalRevenue: totalRevenueNum,
         totalExpenses: totalExpenses.toNumber(),

@@ -72,3 +72,43 @@ describe('AccountingService.aggregateFinanceExpenses', () => {
     expect(r.sectionTotals.other.toFixed(2)).toBe('0.00');
   });
 });
+
+function makeFullService(groupRows: GroupRow[]) {
+  const agg0 = { _sum: {} as Record<string, Prisma.Decimal | null> };
+  const prisma = {
+    sale: { aggregate: jest.fn().mockResolvedValue(agg0), findMany: jest.fn().mockResolvedValue([]) },
+    payment: { findMany: jest.fn().mockResolvedValue([]) },
+    financeReceivable: { aggregate: jest.fn().mockResolvedValue({ _sum: {} }) },
+    product: { findMany: jest.fn().mockResolvedValue([]) },
+    journalLine: { groupBy: jest.fn().mockResolvedValue(groupRows) },
+  } as unknown as PrismaService;
+  const companyResolver = {
+    getFinanceCompanyId: jest.fn().mockResolvedValue('finance-co-1'),
+  } as unknown as CompanyResolverService;
+  return new AccountingService(prisma, {} as JournalAutoService, companyResolver);
+}
+
+describe('AccountingService.getProfitLossReport (expense wiring)', () => {
+  it('company-wide: section sums drive totals; granular lines populated; basis flagged', async () => {
+    const svc = makeFullService([
+      { accountCode: '53-1101', _sum: { debit: d('30000'), credit: d('0') } },
+      { accountCode: '52-1101', _sum: { debit: d('1000'), credit: d('0') } },
+      { accountCode: '53-9999', _sum: { debit: d('700'), credit: d('0') } }, // unmapped, admin section
+    ]);
+    const r = await svc.getProfitLossReport('2026-01-01', '2026-01-31');
+
+    expect(r.adminExpenses.totalAdmin).toBe(30700); // Σ53 (incl. unmapped) — from section sum
+    expect(r.adminExpenses.salary).toBe(30000); // granular line
+    expect(r.sellingExpenses.totalSelling).toBe(1000);
+    expect(r.summary.totalExpenses).toBe(31700); // COGS 0 + 1000 + 30700 + 0
+    expect((r as unknown as { expenseBasis: string }).expenseBasis).toBe('accrual-journal');
+  });
+
+  it('per-branch: expenses stay zero, journal not queried', async () => {
+    const svc = makeFullService([{ accountCode: '53-1101', _sum: { debit: d('30000'), credit: d('0') } }]);
+    const r = await svc.getProfitLossReport('2026-01-01', '2026-01-31', 'branch-1');
+
+    expect(r.adminExpenses.totalAdmin).toBe(0);
+    expect(r.summary.totalExpenses).toBe(0);
+  });
+});

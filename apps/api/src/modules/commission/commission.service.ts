@@ -10,6 +10,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCommissionRuleDto, UpdateCommissionRuleDto } from './dto/commission.dto';
 import { GeneratePayoutDto, ApprovePayoutDto } from './dto/commission-payout.dto';
+import { computeCommissionAmount } from '../../utils/commission.util';
 
 @Injectable()
 export class CommissionService {
@@ -43,11 +44,9 @@ export class CommissionService {
   ) {
     const now = new Date();
     const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    // Use Prisma.Decimal to avoid float rounding bugs (e.g. 0.1 * 0.1 !== 0.01).
-    // Result is a Decimal so the database stores exact baht/satang values.
-    const commissionAmount = new Prisma.Decimal(saleAmount)
-      .mul(commissionRate)
-      .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+    // Shared exact-Decimal helper (ROUND_HALF_UP) — same as sales.service uses,
+    // so both commission code paths round identically. Avoids float rounding bugs.
+    const commissionAmount = computeCommissionAmount(saleAmount, commissionRate);
 
     // T5-C19: capture rule version for audit + approve-time re-validation.
     let ruleVersionId: string | null = null;

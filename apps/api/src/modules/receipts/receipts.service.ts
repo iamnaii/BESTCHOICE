@@ -504,10 +504,15 @@ export class ReceiptsService {
       // Phase A.5a: reverse the original payment JE.
       // Must propagate errors — receipt void without ledger reversal would
       // leave HP receivable cleared by 2B but no offsetting credit note JE.
+      // NOTE: payment JEs are stored with referenceType 'AUTO' (journal-auto
+      // createAndPost sets it from `reference = payment.id`), NOT 'PAYMENT'. The
+      // previous 'PAYMENT' filter matched nothing, so voids silently posted no
+      // reversal — the trial balance kept the voided receipt's 2B entry. (Bug found
+      // during the refund-reversal review; same root cause as refunds.markReversed.)
       if (receipt.paymentId) {
         const originalEntry = await tx.journalEntry.findFirst({
           where: {
-            referenceType: 'PAYMENT',
+            referenceType: 'AUTO',
             referenceId: receipt.paymentId,
             status: 'POSTED',
             deletedAt: null,

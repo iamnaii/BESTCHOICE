@@ -2,6 +2,7 @@ import {
   Injectable,
   Logger,
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
@@ -204,13 +205,44 @@ export class RefundsService {
       );
     }
 
+    // Full-refund only: the reversal mirrors the WHOLE original payment JE, so the
+    // refund must equal the payment's amountPaid. Partial refunds need a proportional
+    // reversal (not built); owner policy is full refunds only.
+    const payment = await this.prisma.payment.findUnique({
+      where: { id: refund.paymentId },
+      select: { amountPaid: true },
+    });
+    if (!payment) throw new NotFoundException('ไม่พบรายการชำระเงินของคำขอคืนเงิน');
+    if (!new Prisma.Decimal(refund.amount).equals(new Prisma.Decimal(payment.amountPaid))) {
+      throw new BadRequestException(
+        'รองรับเฉพาะการคืนเงินเต็มจำนวนของงวด (ยอดคืน = ยอดที่ชำระ) — ' +
+          'การคืนบางส่วนต้องใช้กลไก proportional ซึ่งยังไม่รองรับ',
+      );
+    }
+
     const now = new Date();
     const { updated, reversalEntryNo } = await this.prisma.$transaction(async (tx) => {
-      // The reversal JE posts to the current period — guard it's open (mirror voidReceipt).
-      await validatePeriodOpen(tx, now);
+      // Find the original POSTED payment-receipt JE. Payment JEs are created via
+      // journal-auto.createAndPost with `reference = payment.id`, which stores
+      // referenceType **'AUTO'** (not 'PAYMENT'). The old 'PAYMENT' filter matched
+      // nothing and silently skipped the reversal — the no-op the review caught.
+      const originalEntry = await tx.journalEntry.findFirst({
+        where: {
+          referenceType: 'AUTO',
+          referenceId: refund.paymentId,
+          status: 'POSTED',
+          deletedAt: null,
+        },
+      });
 
-      const updated = await tx.refund.update({
-        where: { id: refundId },
+      // The reversal posts to the current period of the payment's company — guard it
+      // open (companyId-aware: runs the Tier-1 AccountingPeriod check, not just Tier-2).
+      await validatePeriodOpen(tx, now, originalEntry?.companyId ?? undefined);
+
+      // CAS: only flip APPROVED → PROCESSED if it is *still* APPROVED — closes the
+      // TOCTOU gap between the pre-tx read and this write.
+      const cas = await tx.refund.updateMany({
+        where: { id: refundId, status: 'APPROVED' },
         data: {
           status: 'PROCESSED',
           bankReversalRef: dto.bankReversalRef,
@@ -220,18 +252,13 @@ export class RefundsService {
           bankReversalLockedAt: now,
         },
       });
+      if (cas.count !== 1) {
+        throw new ConflictException('คำขอคืนเงินถูกเปลี่ยนสถานะโดยผู้อื่นแล้ว — กรุณาลองใหม่');
+      }
+      const updated = await tx.refund.findUnique({ where: { id: refundId } });
 
-      // Refund = correcting an erroneous booking → reverse the original payment JE
-      // in full (refunds are always full). Reuses the proven A.5a mirror.
+      // Reverse the original payment JE in full (A.5a mirror).
       let reversalEntryNo: string | null = null;
-      const originalEntry = await tx.journalEntry.findFirst({
-        where: {
-          referenceType: 'PAYMENT',
-          referenceId: refund.paymentId,
-          status: 'POSTED',
-          deletedAt: null,
-        },
-      });
       if (originalEntry) {
         const rev = await this.receiptVoidReversalTemplate.voidReceipt(originalEntry.id, tx, {
           flow: 'refund-reversal',
@@ -244,12 +271,16 @@ export class RefundsService {
         );
       }
 
-      // Restore the installment to its true unpaid state (the booking was wrong).
-      // Planned-schedule fields (monthlyPrincipal/Interest/Commission, amountDue) and
-      // lateFee are left as-is — they describe the plan, not this reverted payment.
+      // Restore the installment to its true unpaid state and void its receipt (the
+      // booking was wrong). Planned-schedule fields (monthlyPrincipal/Interest/
+      // Commission, amountDue) and lateFee describe the plan, not this reverted payment.
       await tx.payment.update({
         where: { id: refund.paymentId },
         data: { status: 'PENDING', amountPaid: 0, paidDate: null },
+      });
+      await tx.receipt.updateMany({
+        where: { paymentId: refund.paymentId, isVoided: false, deletedAt: null },
+        data: { isVoided: true },
       });
 
       return { updated, reversalEntryNo };

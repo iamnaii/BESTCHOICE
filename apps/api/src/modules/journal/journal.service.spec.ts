@@ -120,6 +120,37 @@ describe('JournalService.create — period lock enforcement', () => {
     ).rejects.toThrow(BadRequestException);
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
+
+  // ─── Wave-1 #10: exact-Decimal balance validation (was float + 0.001 epsilon) ───
+
+  it('rejects a sub-satang-unbalanced entry that the old 0.001 epsilon would have passed', async () => {
+    const dto = {
+      ...balancedDto(),
+      lines: [
+        { accountCode: '1100', description: 'd', debit: 100.0005, credit: 0 },
+        { accountCode: '2100', description: 'c', debit: 0, credit: 100 },
+      ],
+    };
+    await expect(service.create(dto, 'user-1')).rejects.toThrow(/สมดุล/);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('accepts a genuinely balanced entry with float-prone decimals (0.1 + 0.2 == 0.3, no false reject)', async () => {
+    prisma.chartOfAccount.findMany.mockResolvedValue([
+      { code: '1100', allowedCompanies: [] },
+      { code: '2100', allowedCompanies: [] },
+    ]);
+    const dto = {
+      ...balancedDto(),
+      lines: [
+        { accountCode: '1100', description: 'd1', debit: 0.1, credit: 0 },
+        { accountCode: '1100', description: 'd2', debit: 0.2, credit: 0 },
+        { accountCode: '2100', description: 'c', debit: 0, credit: 0.3 },
+      ],
+    };
+    await expect(service.create(dto, 'user-1')).resolves.toBeDefined();
+    expect(prisma.$transaction).toHaveBeenCalled();
+  });
 });
 
 /**

@@ -349,10 +349,22 @@ export class ContractPaymentService {
           const epRemainingGross = epInstallmentExclVat.times(epUnpaidD);
           const epRemainingDeferredInterest = epInterestPerInst.times(epUnpaidD);
           const epRemainingDeferredVat = epVatPerInst.times(epUnpaidD);
+          // NB (Wave-1 #4/#11): `quote.discountPct` is a PERCENTAGE 0..100
+          // (getEarlyPayoffQuote returns `discountPct: discountPct * 100`), so the
+          // `.div(100)` here is CORRECT and matches the quote's JE-preview epDiscount,
+          // which multiplies by the 0..1 fraction directly. This is NOT a 100× bug —
+          // do not "simplify" by removing the .div(100).
           const epDiscount = epRemainingDeferredInterest
             .times(new Decimal(quote.discountPct))
             .div(100)
             .toDecimalPlaces(2);
+          // ACCOUNTANT NOTE (Wave-1 #11, deeper than the false 100× alarm): epSettlement
+          // (this JE's cash debit) is built from the per-installment breakdown and discounts
+          // the DEFERRED INTEREST, while the cash the customer is quoted (quote.totalPayoff)
+          // is monthlyPayment-based, nets out creditBalance/advance, and discounts GROSS
+          // PROFIT. The two can diverge, so the cash debited here may differ from cash
+          // actually collected. Reconciling the payoff cash basis is an accounting-policy
+          // decision — left unchanged pending sign-off.
           const epSettlement = epRemainingGross.minus(epDiscount).plus(epRemainingDeferredVat);
 
           await this.journalAutoService.createAndPost(

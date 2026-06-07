@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PromotionsService } from '../promotions/promotions.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
@@ -140,25 +141,56 @@ export class ShopCheckoutService {
       };
     }
 
-    const intent = await (this.paysolutions as any).createOnlineOrderIntent({
-      onlineOrderId: order.id,
-      amount: totalAmount,
-      description: `ชำระเงินคำสั่งซื้อ ${orderNumber}`,
-      channel: dto.paymentChannel,
-    });
+    // The PaySolutions intent is an external HTTP round-trip, so it must run
+    // OUTSIDE any $transaction (house rule: never hold a DB tx across a network
+    // call). If it throws, the OnlineOrder created above (PENDING_PAYMENT) and
+    // the still-ACTIVE ProductReservation would be orphaned — an order the
+    // customer can never pay + a stuck stock hold that nothing reconciles.
+    // Compensate: cancel the order, release the reservation, alarm, re-throw.
+    try {
+      const intent = await (this.paysolutions as any).createOnlineOrderIntent({
+        onlineOrderId: order.id,
+        amount: totalAmount,
+        description: `ชำระเงินคำสั่งซื้อ ${orderNumber}`,
+        channel: dto.paymentChannel,
+      });
 
-    await this.prisma.onlineOrder.update({
-      where: { id: order.id },
-      data: { paymentLinkId: intent.paymentLinkId },
-    });
-
-    return {
-      orderNumber: order.orderNumber,
-      orderId: order.id,
-      totalAmount,
-      paymentChannel: dto.paymentChannel,
-      paymentUrl: intent.paymentUrl,
-      paymentLinkId: intent.paymentLinkId,
-    };
+      // createOnlineOrderIntent already persists paymentLinkId on the order (and
+      // emits its own orphan alarm on DB failure), so no second update is needed.
+      return {
+        orderNumber: order.orderNumber,
+        orderId: order.id,
+        totalAmount,
+        paymentChannel: dto.paymentChannel,
+        paymentUrl: intent.paymentUrl,
+        paymentLinkId: intent.paymentLinkId,
+      };
+    } catch (err) {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.onlineOrder.update({
+          where: { id: order.id },
+          data: {
+            status: 'CANCELLED',
+            cancelReason: 'สร้างรายการชำระเงินไม่สำเร็จ',
+            cancelledAt: new Date(),
+          },
+        });
+        await tx.productReservation.updateMany({
+          where: { id: reservation.id, status: 'ACTIVE' },
+          data: { status: 'CANCELLED' },
+        });
+      });
+      Sentry.captureException(err, {
+        level: 'error',
+        tags: { critical: 'shop-checkout-orphan-order' },
+        extra: {
+          orderId: order.id,
+          orderNumber,
+          reservationId: reservation.id,
+          channel: dto.paymentChannel,
+        },
+      });
+      throw err;
+    }
   }
 }

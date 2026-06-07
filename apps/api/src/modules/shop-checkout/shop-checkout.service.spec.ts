@@ -6,10 +6,17 @@ import { LoyaltyService } from '../loyalty/loyalty.service';
 import { ShopShippingService } from '../shop-shipping/shop-shipping.service';
 import { PaySolutionsService } from '../paysolutions/paysolutions.service';
 import { SalesService } from '../sales/sales.service';
+import * as Sentry from '@sentry/nestjs';
+
+jest.mock('@sentry/nestjs', () => ({
+  captureException: jest.fn(),
+  captureMessage: jest.fn(),
+}));
 
 const prismaMock: any = {
-  productReservation: { findUnique: jest.fn() },
+  productReservation: { findUnique: jest.fn(), updateMany: jest.fn() },
   onlineOrder: { create: jest.fn(), update: jest.fn(), findUnique: jest.fn() },
+  $transaction: jest.fn(async (cb: any) => cb(prismaMock)),
 };
 const promotionsMock: any = { findActivePromotions: jest.fn() };
 const loyaltyMock: any = { getCustomerPoints: jest.fn() };
@@ -148,6 +155,40 @@ describe('ShopCheckoutService', () => {
       const result = await service.placeOrder({ ...dto, paymentChannel: 'BANK_TRANSFER' } as any, 'cust-1');
       expect(result.paymentUrl).toBeUndefined();
       expect(paysolutionsMock.createOnlineOrderIntent).not.toHaveBeenCalled();
+    });
+
+    it('compensates (cancels order + releases reservation + alarms) and rethrows when the gateway intent fails', async () => {
+      prismaMock.productReservation.findUnique.mockResolvedValue({
+        id: 'r1', status: 'ACTIVE', expiresAt: new Date(Date.now() + 60000),
+        productId: 'p1', customerId: 'cust-1',
+        product: { id: 'p1', costPrice: 12500, name: 'iPhone 13' },
+      });
+      shippingMock.quote.mockReturnValue({ method: 'KERRY', fee: 60, label: 'Kerry', etaDays: '1-2', available: true });
+      prismaMock.onlineOrder.create.mockResolvedValue({ id: 'order-3', orderNumber: 'BC-260421-333333' });
+      // Gateway throws (timeout / non-OK / no redirect link).
+      paysolutionsMock.createOnlineOrderIntent.mockRejectedValue(
+        new Error('ระบบชำระเงินใช้เวลานานเกินไป'),
+      );
+
+      // The customer-facing error propagates (never swallowed)...
+      await expect(service.placeOrder(dto, 'cust-1')).rejects.toThrow(/ใช้เวลานาน/);
+
+      // ...the orphan order is cancelled...
+      expect(prismaMock.onlineOrder.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'order-3' },
+          data: expect.objectContaining({ status: 'CANCELLED' }),
+        }),
+      );
+      // ...the ACTIVE reservation hold is released...
+      expect(prismaMock.productReservation.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'r1', status: 'ACTIVE' },
+          data: { status: 'CANCELLED' },
+        }),
+      );
+      // ...and the orphan is alarmed for ops follow-up.
+      expect(Sentry.captureException as jest.Mock).toHaveBeenCalled();
     });
   });
 });

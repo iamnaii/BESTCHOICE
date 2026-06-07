@@ -111,6 +111,12 @@ describe('AccountingService.getProfitLossReport (expense wiring)', () => {
     expect(r.adminExpenses.totalAdmin).toBe(0);
     expect(r.summary.totalExpenses).toBe(0);
   });
+
+  it('company-wide via branchIds list (OWNER / all-branches path): expenses added', async () => {
+    const svc = makeFullService([{ accountCode: '53-1101', _sum: { debit: d('30000'), credit: d('0') } }]);
+    const r = await svc.getProfitLossReport('2026-01-01', '2026-01-31', undefined, ['b1', 'b2']);
+    expect(r.adminExpenses.totalAdmin).toBe(30000); // branchIds list = company-wide, not a single-branch isolate
+  });
 });
 
 describe('AccountingService.getMonthlyPLSummary (expense wiring)', () => {

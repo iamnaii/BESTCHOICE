@@ -239,10 +239,12 @@ export class AccountingService implements OnModuleInit {
       }),
     ]);
 
-    // Company-wide FINANCE expenses from the journal (51-54). Per-branch views
-    // leave expenses empty — branch-attributable expenses come from SHOP
-    // accounting, which is not built yet (journal has no branchId).
-    const companyWide = !branchId && (!branchIds || branchIds.length === 0);
+    // Company-wide FINANCE expenses from the journal (51-54). Only an isolated
+    // single branch (branchId) defers — its branch-attributable expenses come
+    // from SHOP accounting, not built yet (journal has no branchId). The OWNER /
+    // all-branches list view and monthly-close (which pass `branchIds`) are
+    // company-wide and DO get expenses.
+    const companyWide = !branchId;
     const { byCategory: expensesByCategory, sectionTotals } =
       await this.aggregateFinanceExpenses(start, end, companyWide);
 
@@ -485,9 +487,10 @@ export class AccountingService implements OnModuleInit {
       }),
     ]);
 
-    // Company-wide FINANCE expenses per month from the journal (51-54). Per-branch
-    // views leave expenses empty (deferred to SHOP accounting; journal has no branchId).
-    const companyWide = !branchId && (!branchIds || branchIds.length === 0);
+    // Company-wide FINANCE expenses per month from the journal (51-54). Only an
+    // isolated single branch (branchId) defers; OWNER/all-branches list views
+    // (branchIds) are company-wide. (Deferred branch expenses await SHOP accounting.)
+    const companyWide = !branchId;
     let expenses: { totalAmount: Prisma.Decimal; expenseDate: Date }[] = [];
     if (companyWide) {
       const financeCompanyId = await this.companyResolver.getFinanceCompanyId();

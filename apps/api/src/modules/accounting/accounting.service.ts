@@ -462,7 +462,7 @@ export class AccountingService implements OnModuleInit {
 
     const getMonth = (d: Date | string | null) => (d ? new Date(d).getMonth() : -1);
 
-    const [sales, payments, financeRecs, expenses, productSales] = await Promise.all([
+    const [sales, payments, financeRecs, productSales] = await Promise.all([
       this.prisma.sale.findMany({
         where: { createdAt: dateRange, ...branchFilter },
         select: { saleType: true, netAmount: true, downPaymentAmount: true, createdAt: true },
@@ -479,14 +479,43 @@ export class AccountingService implements OnModuleInit {
         where: { status: 'RECEIVED', receivedDate: dateRange, deletedAt: null, ...branchFilter },
         select: { receivedAmount: true, receivedDate: true },
       }),
-      // Legacy `expense` model removed — expense aggregation deferred to ExpenseDocument
-      // module integration in a follow-up PR. Returns empty list so downstream sums stay zero.
-      Promise.resolve([] as { totalAmount: Prisma.Decimal; expenseDate: Date }[]),
       this.prisma.sale.findMany({
         where: { createdAt: dateRange, ...branchFilter },
         select: { createdAt: true, product: { select: { costPrice: true } } },
       }),
     ]);
+
+    // Company-wide FINANCE expenses per month from the journal (51-54). Per-branch
+    // views leave expenses empty (deferred to SHOP accounting; journal has no branchId).
+    const companyWide = !branchId && (!branchIds || branchIds.length === 0);
+    let expenses: { totalAmount: Prisma.Decimal; expenseDate: Date }[] = [];
+    if (companyWide) {
+      const financeCompanyId = await this.companyResolver.getFinanceCompanyId();
+      const start = new Date(year, 0, 1);
+      const end = new Date(year, 11, 31, 23, 59, 59, 999);
+      const expLines = await this.prisma.journalLine.findMany({
+        where: {
+          journalEntry: {
+            status: 'POSTED',
+            entryDate: { gte: start, lte: end },
+            deletedAt: null,
+            companyId: financeCompanyId,
+          },
+          deletedAt: null,
+          OR: [
+            { accountCode: { startsWith: '51-' } },
+            { accountCode: { startsWith: '52-' } },
+            { accountCode: { startsWith: '53-' } },
+            { accountCode: { startsWith: '54-' } },
+          ],
+        },
+        select: { debit: true, credit: true, journalEntry: { select: { entryDate: true } } },
+      });
+      expenses = expLines.map((l) => ({
+        totalAmount: new Prisma.Decimal(l.debit ?? 0).sub(new Prisma.Decimal(l.credit ?? 0)),
+        expenseDate: l.journalEntry.entryDate,
+      }));
+    }
 
     const months = Array.from({ length: 12 }, (_, i) => {
       let revenue = new Prisma.Decimal(0);

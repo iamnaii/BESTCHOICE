@@ -112,3 +112,41 @@ describe('AccountingService.getProfitLossReport (expense wiring)', () => {
     expect(r.summary.totalExpenses).toBe(0);
   });
 });
+
+describe('AccountingService.getMonthlyPLSummary (expense wiring)', () => {
+  function makeMonthlyService(lines: { entryDate: Date; debit: Prisma.Decimal; credit: Prisma.Decimal }[]) {
+    const prisma = {
+      sale: { findMany: jest.fn().mockResolvedValue([]) },
+      payment: { findMany: jest.fn().mockResolvedValue([]) },
+      financeReceivable: { findMany: jest.fn().mockResolvedValue([]) },
+      journalLine: {
+        findMany: jest.fn().mockResolvedValue(
+          lines.map((l) => ({ debit: l.debit, credit: l.credit, journalEntry: { entryDate: l.entryDate } })),
+        ),
+      },
+    } as unknown as PrismaService;
+    const companyResolver = {
+      getFinanceCompanyId: jest.fn().mockResolvedValue('finance-co-1'),
+    } as unknown as CompanyResolverService;
+    return new AccountingService(prisma, {} as JournalAutoService, companyResolver);
+  }
+
+  it('company-wide: per-month FINANCE expenses subtracted from revenue', async () => {
+    const svc = makeMonthlyService([
+      { entryDate: new Date('2026-02-10'), debit: d('5000'), credit: d('0') }, // Feb
+      { entryDate: new Date('2026-02-20'), debit: d('1000'), credit: d('200') }, // Feb net 800
+    ]);
+    const r = await svc.getMonthlyPLSummary(2026);
+    const feb = r.months.find((m) => m.month === 2)!;
+    expect(feb.expenses).toBe(5800); // 5000 + 800
+    expect(feb.netProfit).toBe(-5800); // revenue 0
+    const jan = r.months.find((m) => m.month === 1)!;
+    expect(jan.expenses).toBe(0);
+  });
+
+  it('per-branch: expenses zero, journal not queried', async () => {
+    const svc = makeMonthlyService([{ entryDate: new Date('2026-02-10'), debit: d('5000'), credit: d('0') }]);
+    const r = await svc.getMonthlyPLSummary(2026, 'branch-1');
+    expect(r.months.every((m) => m.expenses === 0)).toBe(true);
+  });
+});

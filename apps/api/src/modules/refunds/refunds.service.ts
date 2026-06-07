@@ -74,6 +74,14 @@ export class RefundsService {
           `(${remaining.toFixed(2)} บาท)`,
       );
     }
+    // Full refunds only (owner policy): the reversal mirrors the WHOLE payment JE,
+    // so the refund must equal the payment's full amountPaid. Reject partials at
+    // request time (markReversed enforces the same — defense in depth).
+    if (!new Prisma.Decimal(dto.amount).equals(new Prisma.Decimal(payment.amountPaid))) {
+      throw new BadRequestException(
+        'รองรับเฉพาะการคืนเงินเต็มจำนวนของงวด (ยอดคืน = ยอดที่ชำระ) — การคืนบางส่วนยังไม่รองรับ',
+      );
+    }
 
     const refund = await this.prisma.refund.create({
       data: {
@@ -280,7 +288,12 @@ export class RefundsService {
       });
       await tx.receipt.updateMany({
         where: { paymentId: refund.paymentId, isVoided: false, deletedAt: null },
-        data: { isVoided: true },
+        data: {
+          isVoided: true,
+          voidReason: `คืนเงิน (refund ${refundId})`,
+          voidApprovedById: userId,
+          voidApprovedAt: now,
+        },
       });
 
       return { updated, reversalEntryNo };

@@ -523,7 +523,9 @@ export class DataAuditService {
         ? await this.prisma.journalEntry.findMany({
             where: {
               referenceId: { in: paymentIds },
-              referenceType: 'PAYMENT',
+              // Payment JEs are stored as referenceType 'AUTO' (journal-auto from
+              // reference=payment.id), NOT 'PAYMENT' — the old value matched nothing.
+              referenceType: 'AUTO',
               deletedAt: null,
               status: 'POSTED',
             },
@@ -1116,7 +1118,8 @@ export class DataAuditService {
         const existing = await this.prisma.journalEntry.findFirst({
           where: {
             referenceId: payment.id,
-            referenceType: 'PAYMENT',
+            // Payment JEs are referenceType 'AUTO' (not 'PAYMENT') — see above.
+            referenceType: 'AUTO',
             deletedAt: null,
             status: 'POSTED',
           },

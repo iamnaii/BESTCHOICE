@@ -112,6 +112,13 @@ describe('ReceiptsService', () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const template = (service as any).receiptVoidReversalTemplate;
       expect(template.voidReceipt).toHaveBeenCalledWith('je-1', expect.anything());
+
+      // Pin the prod-path fix: payment JEs are stored referenceType 'AUTO' (not
+      // 'PAYMENT'). Before this, the lookup matched nothing and voidReceipt silently
+      // posted NO reversal — the trial balance kept the voided receipt's 2B entry.
+      expect(tx.journalEntry.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ referenceType: 'AUTO' }) }),
+      );
     });
 
     it('JE reversal failure rolls the entire void back (Wave 1 P0 — atomicity)', async () => {

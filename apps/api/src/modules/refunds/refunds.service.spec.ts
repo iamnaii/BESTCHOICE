@@ -82,9 +82,17 @@ describe('RefundsService', () => {
   });
 
   describe('requestRefund', () => {
+    it('rejects a partial refund (amount < amountPaid) — full refunds only', async () => {
+      // paidPayment amountPaid = 1000; a 500 request is partial → rejected up front.
+      await expect(
+        service.requestRefund({ paymentId: 'pay-1', amount: 500, reason: 'partial xxxxxxxx' }, 'u-staff'),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.refund.create).not.toHaveBeenCalled();
+    });
+
     it('creates REQUESTED refund + writes audit', async () => {
       const result = await service.requestRefund(
-        { paymentId: 'pay-1', amount: 500, reason: 'customer double-paid ชำระซ้ำ' },
+        { paymentId: 'pay-1', amount: 1000, reason: 'customer double-paid ชำระซ้ำ' }, // full = amountPaid
         'u-staff',
       );
       expect(result.id).toBe('rf-1');
@@ -241,7 +249,7 @@ describe('RefundsService', () => {
       });
       expect(prisma.receipt.updateMany).toHaveBeenCalledWith({
         where: { paymentId: 'pay-1', isVoided: false, deletedAt: null },
-        data: { isVoided: true },
+        data: expect.objectContaining({ isVoided: true, voidApprovedById: 'u-owner' }),
       });
       const data = prisma.refund.updateMany.mock.calls[0][0].data;
       expect(data.status).toBe('PROCESSED');

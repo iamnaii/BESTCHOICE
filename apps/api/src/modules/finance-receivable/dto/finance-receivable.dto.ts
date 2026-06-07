@@ -5,6 +5,7 @@ import {
   IsEnum,
   IsDateString,
   Min,
+  Max,
 } from 'class-validator';
 import { FinanceReceivableStatus } from '@prisma/client';
 
@@ -33,6 +34,11 @@ export class UpdateFinanceReceivableDto {
   @IsOptional()
   @IsNumber()
   @Min(0)
+  // commissionRate is a fraction (0..1) — service recomputes
+  // commissionAmount = expectedAmount * rate. Without @Max(1) a rate > 1 makes
+  // commissionAmount exceed expectedAmount and netExpectedAmount go NEGATIVE
+  // (an impossible receivable written straight to the books).
+  @Max(1)
   commissionRate?: number;
 
   @IsOptional()

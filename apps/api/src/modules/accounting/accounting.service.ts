@@ -180,7 +180,13 @@ export class AccountingService implements OnModuleInit {
 
   // ─── P&L Calculation ─────────────────────────────────────────────────────────
 
-  async getProfitLossReport(startDate: string, endDate: string, branchId?: string, branchIds?: string[]) {
+  async getProfitLossReport(
+    startDate: string,
+    endDate: string,
+    branchId?: string,
+    branchIds?: string[],
+    includeFinanceExpenses = false,
+  ) {
     const start = new Date(startDate);
     const end = new Date(endDate);
     end.setHours(23, 59, 59, 999);
@@ -239,14 +245,14 @@ export class AccountingService implements OnModuleInit {
       }),
     ]);
 
-    // Company-wide FINANCE expenses from the journal (51-54). Only an isolated
-    // single branch (branchId) defers — its branch-attributable expenses come
-    // from SHOP accounting, not built yet (journal has no branchId). The OWNER /
-    // all-branches list view and monthly-close (which pass `branchIds`) are
-    // company-wide and DO get expenses.
-    const companyWide = !branchId;
+    // FINANCE 51-54 central expenses are added only when the CALLER explicitly asks
+    // (includeFinanceExpenses). The caller — reports.service.shouldIncludeFinanceExpenses
+    // (role + branchId + companyId) or monthly-close (closing company) — has the full
+    // context; inferring it here from branchId alone was wrong (a single-branch filter
+    // arrives as branchIds=[one], and a SHOP-company view would leak FINANCE expenses).
+    // A single isolated branch and a SHOP-company view both pass false (separate work).
     const { byCategory: expensesByCategory, sectionTotals } =
-      await this.aggregateFinanceExpenses(start, end, companyWide);
+      await this.aggregateFinanceExpenses(start, end, includeFinanceExpenses);
 
     const cashSales = new Prisma.Decimal(cashSalesAgg._sum.netAmount ?? 0);
     const installmentDownPayments = new Prisma.Decimal(installmentSales._sum.downPaymentAmount ?? 0);
@@ -450,7 +456,12 @@ export class AccountingService implements OnModuleInit {
     };
   }
 
-  async getMonthlyPLSummary(year: number, branchId?: string, branchIds?: string[]) {
+  async getMonthlyPLSummary(
+    year: number,
+    branchId?: string,
+    branchIds?: string[],
+    includeFinanceExpenses = false,
+  ) {
     const thaiMonths = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
     const yearStart = new Date(year, 0, 1);
     const yearEnd = new Date(year, 11, 31, 23, 59, 59, 999);
@@ -487,12 +498,10 @@ export class AccountingService implements OnModuleInit {
       }),
     ]);
 
-    // Company-wide FINANCE expenses per month from the journal (51-54). Only an
-    // isolated single branch (branchId) defers; OWNER/all-branches list views
-    // (branchIds) are company-wide. (Deferred branch expenses await SHOP accounting.)
-    const companyWide = !branchId;
+    // FINANCE 51-54 expenses are added only when the caller explicitly asks
+    // (includeFinanceExpenses) — see reports.service.shouldIncludeFinanceExpenses.
     let expenses: { totalAmount: Prisma.Decimal; expenseDate: Date }[] = [];
-    if (companyWide) {
+    if (includeFinanceExpenses) {
       const financeCompanyId = await this.companyResolver.getFinanceCompanyId();
       const start = new Date(year, 0, 1);
       const end = new Date(year, 11, 31, 23, 59, 59, 999);

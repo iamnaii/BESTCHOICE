@@ -31,16 +31,29 @@ The first design (source from journal 51-54 for *all* views) was **reworked** af
 
 Make the **company-wide** `/reports` P&L show real FINANCE expenses (journal `51-54`) so the whole-business P&L + monthly-close snapshot stop overstating profit. **Per-branch views are explicitly left unchanged** (deferred until SHOP accounting exists).
 
+## REWORK (2026-06-07, after PR-review + /scrutinize)
+
+Independent review of the first implementation found the `companyWide = !branchId` guard wrong: the real controller path sends a single-branch filter as `branchIds=[oneBranch]` (branchId undefined), so an isolated branch got full company-wide FINANCE expenses; and `getProfitLossReport` never receives `companyId`, so a `companyId=SHOP` filter ALSO leaked FINANCE expenses, and a SHOP monthly-close snapshot embedded FINANCE 51-54 expenses. /scrutinize confirmed: inferring "company-wide" *inside* the method is fragile and blind to company. **Fix: the caller (which knows role + branchId + companyId) computes an explicit `includeFinanceExpenses` boolean and passes it in.** Owner steer: make the FINANCE side correct now; SHOP P&L expenses are separate future work (FINANCE and SHOP must stay separated).
+
 ## Design
 
-### Branch guard (the key correctness gate)
+### Include-expenses gate (explicit, caller-computed)
+
+`getProfitLossReport` / `getMonthlyPLSummary` take an explicit `includeFinanceExpenses: boolean` (replacing the internal `companyWide = !branchId`). FINANCE 51-54 central expenses are added only when the flag is true; otherwise expenses stay `[]`.
+
+Each caller computes it from full context via `reports.service.shouldIncludeFinanceExpenses(role, branchId, companyId)`:
 
 ```
-if (no branchId / branchIds passed)   → company-wide view → ADD FINANCE 51-54 expenses
-else (a specific branch is requested) → per-branch view   → leave expenses [] (deferred to SHOP accounting)
+BRANCH_MANAGER            → false   (restricted to one branch)
+branchId present          → false   (a single branch is isolated — per-branch expenses await SHOP/branch accounting)
+companyId === SHOP        → false   (SHOP view — FINANCE central expenses don't belong; SHOP P&L is separate future work)
+companyId === FINANCE     → true
+no branch + no company    → true    (whole-business view)
 ```
 
-Rationale: company-wide revenue (all branches' sales) pairs with company-wide FINANCE expenses → coherent whole-business P&L. A per-branch view must NOT get central FINANCE expenses dumped on one branch's revenue.
+`monthly-close` computes it directly from the closing company: FINANCE close → true, SHOP close → false (fixes the SHOP-snapshot contamination).
+
+Rationale: FINANCE 51-54 are central whole-business expenses; they belong only in a FINANCE or whole-business P&L, never grafted onto an isolated branch or a SHOP-company view.
 
 ### Expense source (company-wide only)
 

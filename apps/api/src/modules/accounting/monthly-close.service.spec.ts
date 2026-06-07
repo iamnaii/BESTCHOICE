@@ -28,6 +28,10 @@ const makePrisma = () => {
     payment: {
       count: jest.fn(),
     },
+    companyInfo: {
+      // generateReportSnapshots resolves the closing company's code to gate FINANCE expenses
+      findUnique: jest.fn().mockResolvedValue({ companyCode: 'FINANCE' }),
+    },
     auditLog: {
       create: jest.fn(),
     },

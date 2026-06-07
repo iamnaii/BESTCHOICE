@@ -603,12 +603,21 @@ export class MonthlyCloseService {
     // Get branch IDs for this company
     const branchIds = await this.accountingService.getBranchIdsForCompany(companyId);
 
+    // FINANCE 51-54 central expenses belong ONLY in the FINANCE company's snapshot.
+    // A SHOP close must NOT embed FINANCE expenses (SHOP P&L is separate work) — that
+    // would contaminate the SHOP snapshot and double-attribute company OpEx.
+    const closingCompany = await this.prisma.companyInfo.findUnique({
+      where: { id: companyId },
+      select: { companyCode: true },
+    });
+    const includeFinanceExpenses = closingCompany?.companyCode === 'FINANCE';
+
     const [trialBalance, profitLoss, balanceSheet, vatSummary] = await Promise.allSettled([
       // P3-SP5 W1: pass explicit 'ALL' scope so the monthly-close snapshot
       // includes BOTH FINANCE and SHOP rows. Without this the SHOP half
       // gets silently dropped because the default scope is 'FINANCE'.
       this.accountingService.getTrialBalance(new Date(asOfDate), 'ALL'),
-      this.accountingService.getProfitLossReport(startDate, asOfDate, undefined, branchIds),
+      this.accountingService.getProfitLossReport(startDate, asOfDate, undefined, branchIds, includeFinanceExpenses),
       this.accountingService.getBalanceSheet(asOfDate, undefined, branchIds),
       this.taxService.previewPP30(companyId, year, month),
     ]);

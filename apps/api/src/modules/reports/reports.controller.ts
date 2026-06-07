@@ -47,10 +47,16 @@ export class ReportsController {
       return this.reportsService.getMonthlyPLSummary(parseInt(year) || new Date().getFullYear(), effectiveBranch);
     }
     const resolvedBranchIds = await this.reportsService.resolveCompanyBranches(companyId, branchId);
+    const includeFinanceExpenses = await this.reportsService.shouldIncludeFinanceExpenses(
+      user.role,
+      branchId,
+      companyId,
+    );
     return this.reportsService.getMonthlyPLSummary(
       parseInt(year) || new Date().getFullYear(),
       undefined,
       resolvedBranchIds,
+      includeFinanceExpenses,
     );
   }
 
@@ -67,7 +73,18 @@ export class ReportsController {
       return this.reportsService.getProfitLossReport(startDate, endDate, effectiveBranch);
     }
     const resolvedBranchIds = await this.reportsService.resolveCompanyBranches(companyId, branchId);
-    return this.reportsService.getProfitLossReport(startDate, endDate, undefined, resolvedBranchIds);
+    const includeFinanceExpenses = await this.reportsService.shouldIncludeFinanceExpenses(
+      user.role,
+      branchId,
+      companyId,
+    );
+    return this.reportsService.getProfitLossReport(
+      startDate,
+      endDate,
+      undefined,
+      resolvedBranchIds,
+      includeFinanceExpenses,
+    );
   }
 
   @Get('comparative-pl')
@@ -208,17 +225,26 @@ export class ReportsController {
 
   @Get('quarterly')
   @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'BRANCH_MANAGER', 'VIEWER')
-  getQuarterly(
+  async getQuarterly(
     @Query('year') year: string,
     @Query('quarter') quarter: string,
     @CurrentUser() user: { role: string; branchId: string | null },
     @Query('branchId') branchId?: string,
   ) {
     const effectiveBranch = user.role === 'BRANCH_MANAGER' ? user.branchId || undefined : branchId;
+    // Same gate as /profit-loss so the two endpoints reconcile for the same filter
+    // (quarterly has no companyId param → whole-business or single-branch only).
+    const includeFinanceExpenses = await this.reportsService.shouldIncludeFinanceExpenses(
+      user.role,
+      effectiveBranch,
+      undefined,
+    );
     return this.reportsService.getQuarterlyReport(
       parseInt(year) || new Date().getFullYear(),
       parseInt(quarter) || 1,
       effectiveBranch,
+      undefined,
+      includeFinanceExpenses,
     );
   }
 

@@ -89,13 +89,13 @@ function makeFullService(groupRows: GroupRow[]) {
 }
 
 describe('AccountingService.getProfitLossReport (expense wiring)', () => {
-  it('company-wide: section sums drive totals; granular lines populated; basis flagged', async () => {
+  it('includeFinanceExpenses=true: section sums drive totals; granular lines populated; basis flagged', async () => {
     const svc = makeFullService([
       { accountCode: '53-1101', _sum: { debit: d('30000'), credit: d('0') } },
       { accountCode: '52-1101', _sum: { debit: d('1000'), credit: d('0') } },
       { accountCode: '53-9999', _sum: { debit: d('700'), credit: d('0') } }, // unmapped, admin section
     ]);
-    const r = await svc.getProfitLossReport('2026-01-01', '2026-01-31');
+    const r = await svc.getProfitLossReport('2026-01-01', '2026-01-31', undefined, undefined, true);
 
     expect(r.adminExpenses.totalAdmin).toBe(30700); // Σ53 (incl. unmapped) — from section sum
     expect(r.adminExpenses.salary).toBe(30000); // granular line
@@ -104,18 +104,22 @@ describe('AccountingService.getProfitLossReport (expense wiring)', () => {
     expect((r as unknown as { expenseBasis: string }).expenseBasis).toBe('accrual-journal');
   });
 
-  it('per-branch: expenses stay zero, journal not queried', async () => {
+  it('default (flag omitted = single-branch / SHOP / per-branch): expenses zero, journal not queried', async () => {
     const svc = makeFullService([{ accountCode: '53-1101', _sum: { debit: d('30000'), credit: d('0') } }]);
-    const r = await svc.getProfitLossReport('2026-01-01', '2026-01-31', 'branch-1');
+    const r = await svc.getProfitLossReport('2026-01-01', '2026-01-31');
 
     expect(r.adminExpenses.totalAdmin).toBe(0);
     expect(r.summary.totalExpenses).toBe(0);
   });
 
-  it('company-wide via branchIds list (OWNER / all-branches path): expenses added', async () => {
+  it('the flag — NOT branchIds — controls expenses (a branchIds list must not auto-add them)', async () => {
     const svc = makeFullService([{ accountCode: '53-1101', _sum: { debit: d('30000'), credit: d('0') } }]);
-    const r = await svc.getProfitLossReport('2026-01-01', '2026-01-31', undefined, ['b1', 'b2']);
-    expect(r.adminExpenses.totalAdmin).toBe(30000); // branchIds list = company-wide, not a single-branch isolate
+    // e.g. a SHOP-company filter resolves to a branchIds list — it must NOT add FINANCE expenses.
+    const off = await svc.getProfitLossReport('2026-01-01', '2026-01-31', undefined, ['b1', 'b2'], false);
+    expect(off.adminExpenses.totalAdmin).toBe(0);
+    // The same shape with the flag ON does add them (caller decided it's FINANCE/whole-business).
+    const on = await svc.getProfitLossReport('2026-01-01', '2026-01-31', undefined, ['b1', 'b2'], true);
+    expect(on.adminExpenses.totalAdmin).toBe(30000);
   });
 });
 
@@ -137,12 +141,12 @@ describe('AccountingService.getMonthlyPLSummary (expense wiring)', () => {
     return new AccountingService(prisma, {} as JournalAutoService, companyResolver);
   }
 
-  it('company-wide: per-month FINANCE expenses subtracted from revenue', async () => {
+  it('includeFinanceExpenses=true: per-month FINANCE expenses subtracted from revenue', async () => {
     const svc = makeMonthlyService([
       { entryDate: new Date('2026-02-10'), debit: d('5000'), credit: d('0') }, // Feb
       { entryDate: new Date('2026-02-20'), debit: d('1000'), credit: d('200') }, // Feb net 800
     ]);
-    const r = await svc.getMonthlyPLSummary(2026);
+    const r = await svc.getMonthlyPLSummary(2026, undefined, undefined, true);
     const feb = r.months.find((m) => m.month === 2)!;
     expect(feb.expenses).toBe(5800); // 5000 + 800
     expect(feb.netProfit).toBe(-5800); // revenue 0

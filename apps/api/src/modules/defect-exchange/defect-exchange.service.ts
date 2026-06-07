@@ -264,7 +264,10 @@ export class DefectExchangeService {
           },
         });
 
-        // Copy payment schedule from old (same dueDates, same amountDue, but reset amountPaid/status)
+        // Copy payment schedule from old (same dueDates, same amountDue, but reset amountPaid/status).
+        // The per-installment breakdown (principal/interest/commission/VAT) MUST be carried over —
+        // PaymentReceipt2BTemplate splits each collection into those ledger lines, so dropping them
+        // (Wave-1 #20) left the exchanged contract's future payment JEs with no VAT/interest split.
         const newPayments = oldContract.payments
           .sort((a, b) => a.installmentNo - b.installmentNo)
           .map((p) => ({
@@ -272,6 +275,10 @@ export class DefectExchangeService {
             installmentNo: p.installmentNo,
             dueDate: p.dueDate,
             amountDue: p.amountDue,
+            monthlyPrincipal: p.monthlyPrincipal,
+            monthlyInterest: p.monthlyInterest,
+            monthlyCommission: p.monthlyCommission,
+            vatAmount: p.vatAmount,
           }));
         if (newPayments.length > 0) {
           await tx.payment.createMany({ data: newPayments });

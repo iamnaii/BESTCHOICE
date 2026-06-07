@@ -95,7 +95,6 @@ export class AuthService {
     meta: AuthMeta | undefined,
     userId?: string | null,
     failureKind?: LoginFailureKind,
-    twoFactorUsed = false,
   ): Promise<void> {
     void this.loginAudit.record({
       emailTried,
@@ -105,7 +104,6 @@ export class AuthService {
       ipAddress: meta?.ipAddress,
       userAgent: meta?.userAgent,
       acceptLanguage: meta?.acceptLanguage,
-      twoFactorUsed,
     });
   }
 

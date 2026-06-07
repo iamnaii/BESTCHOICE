@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { UsersService } from './users.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 
 describe('UsersService.update — T7-C7 deactivation revokes refresh tokens', () => {
   let service: UsersService;
@@ -19,7 +20,13 @@ describe('UsersService.update — T7-C7 deactivation revokes refresh tokens', ()
     };
 
     const mod: TestingModule = await Test.createTestingModule({
-      providers: [UsersService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        UsersService,
+        { provide: PrismaService, useValue: prisma },
+        // UsersService now depends on AuditService for DI — stub it (update()
+        // logs deactivation via audit.log).
+        { provide: AuditService, useValue: { log: jest.fn() } },
+      ],
     }).compile();
     service = mod.get(UsersService);
   });

@@ -68,6 +68,21 @@ async function main() {
     process.exit(1);
   }
 
+  // SP7 SAFETY GUARD: Phase 2/4 (COPY) are unimplemented TBD stubs — copyTable /
+  // copySPrefixChart read + log but WRITE NOTHING to bc_shop. Phase 3, however,
+  // runs a real `DELETE FROM` against bc_finance for all 23 SHOP_ONLY tables.
+  // Running as-is would wipe SHOP data from bc_finance with nothing copied to
+  // bc_shop — total data loss. Refuse to run until the COPY is implemented.
+  // (SP7 cutover target Jan 2027; remove this guard once Phase 2/4 are real.)
+  if (process.env.ALLOW_INCOMPLETE_EXTRACT !== 'YES_I_KNOW_COPY_IS_A_NOOP') {
+    logger.error(
+      'extract-shop-from-finance is INCOMPLETE: copyTable / copySPrefixChart are ' +
+        'TBD stubs that copy nothing, while Phase 3 DELETEs from bc_finance. ' +
+        'Refusing to run to avoid data loss — implement the COPY first.',
+    );
+    process.exit(1);
+  }
+
   const fin = new Client({ connectionString: finUrl });
   const shop = new Client({ connectionString: shopUrl });
   await fin.connect();
@@ -125,7 +140,9 @@ async function truncateTable(client: Client, table: string, logger: Logger) {
 }
 
 async function copySPrefixChart(src: Client, dest: Client, logger: Logger) {
-  const result = await src.query(`SELECT * FROM chart_of_accounts WHERE code LIKE 'S-%'`);
+  // SHOP chart codes are formatted "S11-1101" (S + digits, no hyphen after S),
+  // so the old `LIKE 'S-%'` matched zero accounts. Use `LIKE 'S%'`.
+  const result = await src.query(`SELECT * FROM chart_of_accounts WHERE code LIKE 'S%'`);
   logger.log(`Found ${result.rowCount} S-prefix accounts to migrate to bc_shop`);
   // Insert logic + DELETE from finance — same caveat as copyTable
 }

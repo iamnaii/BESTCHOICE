@@ -152,16 +152,54 @@ export class ReportsService {
   }
 
   // P&L calculation delegated to AccountingService
-  getProfitLossReport(startDate: string, endDate: string, branchId?: string, branchIds?: string[]) {
-    return this.accounting.getProfitLossReport(startDate, endDate, branchId, branchIds);
+  getProfitLossReport(
+    startDate: string,
+    endDate: string,
+    branchId?: string,
+    branchIds?: string[],
+    includeFinanceExpenses = false,
+  ) {
+    return this.accounting.getProfitLossReport(startDate, endDate, branchId, branchIds, includeFinanceExpenses);
   }
 
-  getMonthlyPLSummary(year: number, branchId?: string, branchIds?: string[]) {
-    return this.accounting.getMonthlyPLSummary(year, branchId, branchIds);
+  getMonthlyPLSummary(
+    year: number,
+    branchId?: string,
+    branchIds?: string[],
+    includeFinanceExpenses = false,
+  ) {
+    return this.accounting.getMonthlyPLSummary(year, branchId, branchIds, includeFinanceExpenses);
   }
 
-  getComparativePL(year: number, month: number, branchId?: string, branchIds?: string[]) {
-    return this.accounting.getComparativePL(year, month, branchId, branchIds);
+  /**
+   * Whether a /reports P&L view should include the central FINANCE 51-54 expenses.
+   * The caller has the full context the report method lacks. FINANCE expenses are
+   * whole-business central costs — they belong only in a FINANCE or whole-business
+   * P&L, never on an isolated branch or a SHOP-company view (SHOP P&L = separate work).
+   */
+  async shouldIncludeFinanceExpenses(
+    role: string,
+    branchId?: string,
+    companyId?: string,
+  ): Promise<boolean> {
+    if (role === 'BRANCH_MANAGER') return false; // restricted to a single branch
+    if (branchId) return false; // a specific branch is isolated
+    if (!companyId) return true; // whole-business view
+    const company = await this.prisma.companyInfo.findUnique({
+      where: { id: companyId },
+      select: { companyCode: true },
+    });
+    return company?.companyCode === 'FINANCE';
+  }
+
+  getComparativePL(
+    year: number,
+    month: number,
+    branchId?: string,
+    branchIds?: string[],
+    includeFinanceExpenses = false,
+  ) {
+    return this.accounting.getComparativePL(year, month, branchId, branchIds, includeFinanceExpenses);
   }
 
   // Balance Sheet & Cash Flow delegated to AccountingService
@@ -885,7 +923,13 @@ export class ReportsService {
    * R-015: Quarterly P&L report aggregation
    * Calculates start/end dates for the given quarter and delegates to AccountingService.
    */
-  async getQuarterlyReport(year: number, quarter: number, branchId?: string, branchIds?: string[]) {
+  async getQuarterlyReport(
+    year: number,
+    quarter: number,
+    branchId?: string,
+    branchIds?: string[],
+    includeFinanceExpenses = false,
+  ) {
     if (quarter < 1 || quarter > 4) {
       throw new BadRequestException('ไตรมาสต้องอยู่ระหว่าง 1-4');
     }
@@ -893,6 +937,6 @@ export class ReportsService {
     const endMonth = startMonth + 2;
     const startDate = `${year}-${String(startMonth).padStart(2, '0')}-01`;
     const endDate = new Date(year, endMonth, 0).toISOString().split('T')[0];
-    return this.accounting.getProfitLossReport(startDate, endDate, branchId, branchIds);
+    return this.accounting.getProfitLossReport(startDate, endDate, branchId, branchIds, includeFinanceExpenses);
   }
 }

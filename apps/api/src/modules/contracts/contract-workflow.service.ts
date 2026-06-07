@@ -11,6 +11,7 @@ import {
   checkRequiredSignatures,
 } from '../../utils/validation.util';
 import { generateSaleNumber } from '../../utils/sequence.util';
+import { buildInstallmentScheduleRows } from '../../utils/installment-schedule.util';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { ContractActivation1ATemplate } from '../journal/cpa-templates/contract-activation-1a.template';
 import { ProductsService } from '../products/products.service';
@@ -541,27 +542,9 @@ export class ContractWorkflowService {
       return;
     }
 
-    const financed = new Prisma.Decimal(c.financedAmount.toString());
-    const interest = new Prisma.Decimal((c.interestTotal ?? 0).toString());
-    const monthly = new Prisma.Decimal((c.monthlyPayment ?? 0).toString());
-    const principalPerInst = financed.div(total).toDecimalPlaces(2, Prisma.Decimal.ROUND_DOWN);
-    const interestPerInst = interest.div(total).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
-
-    const baseDate = c.createdAt;
-    const dueDay = c.paymentDueDay ?? baseDate.getDate();
-
-    const rows: Prisma.InstallmentScheduleCreateManyInput[] = [];
-    for (let i = 1; i <= total; i++) {
-      const dueDate = new Date(baseDate.getFullYear(), baseDate.getMonth() + i, dueDay);
-      rows.push({
-        contractId: c.id,
-        installmentNo: i,
-        dueDate,
-        principal: principalPerInst,
-        interest: interestPerInst,
-        amountDue: monthly,
-      });
-    }
+    // Algorithm consolidated into installment-schedule.util — single source of
+    // truth shared with the backfill CLI and the payment-receipt lazy-gen path.
+    const rows = buildInstallmentScheduleRows(c);
     await tx.installmentSchedule.createMany({ data: rows });
     this.logger.log(`Generated ${rows.length} installment_schedules rows for contract ${c.contractNumber}`);
   }

@@ -60,6 +60,16 @@ describe('PaymentsService', () => {
         findUnique: jest.fn().mockResolvedValue(mockContract),
         findFirst: jest.fn().mockResolvedValue(mockContract),
         update: jest.fn().mockResolvedValue(mockContract),
+        // Used by ensureInstallmentSchedules only when the schedule is missing.
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          id: 'contract-1',
+          totalMonths: 12,
+          financedAmount: 10000,
+          interestTotal: 1190,
+          monthlyPayment: '1515.83',
+          paymentDueDay: 5,
+          createdAt: new Date(2026, 0, 10),
+        }),
       },
       payment: {
         findFirst: jest.fn().mockResolvedValue(mockPayment),
@@ -96,6 +106,10 @@ describe('PaymentsService', () => {
       },
       installmentSchedule: {
         findUnique: jest.fn().mockResolvedValue(null),
+        // `count`>0 => ensureInstallmentSchedules is a no-op (post-#753 default);
+        // `createMany` backs the lazy-gen recovery path.
+        count: jest.fn().mockResolvedValue(1),
+        createMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
       // recordPayment auto-cancels active partial-payment QRs to prevent double-pay
       partialPaymentLink: {
@@ -308,16 +322,62 @@ describe('PaymentsService', () => {
       // primitive inside the $transaction (installmentScheduleId + paymentId + delta).
       const updatedPayment = { ...mockPayment, id: 'payment-1', amountPaid: 3000, status: 'PAID', paidDate: new Date() };
       prisma.payment.update.mockResolvedValue(updatedPayment);
+      // Schedule exists (post-#753 happy path) → 2B receipt JE must post.
+      prisma.installmentSchedule.findUnique.mockResolvedValue({ id: 'inst-sched-1' });
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const templateMock = (service as any).paymentReceiptTemplate;
 
       await service.recordPayment('contract-1', 1, 3000, 'CASH', 'user-1', 'http://slip.jpg');
 
-      // InstallmentSchedule mock returns null → primitive.execute is NOT called (skipped path,
-      // logged as warn). This test verifies recordPayment succeeds without error.
       expect(updatedPayment.status).toBe('PAID');
+      // PAID-no-JE fix: a full payment ALWAYS posts the 2B receipt JE — no orphan.
+      expect(templateMock.execute).toHaveBeenCalledTimes(1);
+    });
+
+    it('PAID-no-JE: lazy-generates the schedule for a legacy contract then posts the 2B JE', async () => {
+      const updatedPayment = { ...mockPayment, id: 'payment-1', amountPaid: 3000, status: 'PAID', paidDate: new Date() };
+      prisma.payment.update.mockResolvedValue(updatedPayment);
+      // Legacy pre-#753 contract: no schedule rows yet → ensure generates in-tx.
+      prisma.installmentSchedule.count.mockResolvedValueOnce(0);
+      // After generation the lookup finds the row → receipt JE posts.
+      prisma.installmentSchedule.findUnique.mockResolvedValue({ id: 'inst-sched-1' });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const templateMock = (service as any).paymentReceiptTemplate;
+
+      await service.recordPayment('contract-1', 1, 3000, 'CASH', 'user-1', 'http://slip.jpg');
+
+      expect(prisma.installmentSchedule.createMany).toHaveBeenCalledTimes(1);
+      expect(templateMock.execute).toHaveBeenCalledTimes(1);
+    });
+
+    it('PAID-no-JE: alarms via Sentry (keeps PAID, no rollback) when the schedule is unpostable', async () => {
+      (Sentry.captureException as jest.Mock).mockClear();
+      const updatedPayment = { ...mockPayment, id: 'payment-1', amountPaid: 3000, status: 'PAID', paidDate: new Date() };
+      prisma.payment.update.mockResolvedValue(updatedPayment);
+      // Data anomaly: no rows AND ungeneratable (totalMonths=0); lookup stays null.
+      prisma.installmentSchedule.count.mockResolvedValueOnce(0);
+      prisma.contract.findUniqueOrThrow.mockResolvedValueOnce({
+        id: 'contract-1',
+        totalMonths: 0,
+        financedAmount: 0,
+        interestTotal: null,
+        monthlyPayment: null,
+        paymentDueDay: null,
+        createdAt: new Date(2026, 0, 10),
+      });
+      prisma.installmentSchedule.findUnique.mockResolvedValue(null);
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const templateMock = (service as any).paymentReceiptTemplate;
+
+      // Does not throw — the payment is real and stays PAID.
+      await service.recordPayment('contract-1', 1, 3000, 'CASH', 'user-1', 'http://slip.jpg');
+
+      expect(prisma.installmentSchedule.createMany).not.toHaveBeenCalled();
       expect(templateMock.execute).not.toHaveBeenCalled();
+      expect(Sentry.captureException as jest.Mock).toHaveBeenCalled();
     });
 
     it('C1 fix: forwards computed lateFee to PaymentReceiptTemplate primitive (Cr 42-1103)', async () => {

@@ -5786,7 +5786,7 @@ model LoginAuditLog {
   emailTried        String   @map("email_tried")
   success           Boolean
   /// failure reason when success=false: 'wrong_password' | 'user_not_found' |
-  /// 'account_locked' | 'account_disabled' | '2fa_invalid' | 'other'
+  /// 'account_locked' | 'account_disabled' | 'other'
   failureKind       String?  @map("failure_kind")
   ipAddress         String?  @map("ip_address")
   userAgent         String?  @map("user_agent") @db.Text
@@ -5953,8 +5953,6 @@ model BroadcastApproval {
   @@map("broadcast_approvals")
 }
 
-/// One-time OTP requests for 2FA operations (SETUP, BACKUP_CODE_USE, LOGIN_OTP_FALLBACK).
-
 // ============================================================
 // Online Shop — Phase 1
 // ============================================================
@@ -6100,10 +6098,10 @@ model IpRateLimit {
 // ============================================================
 
 /// Trusted-device registry for admin users. A fingerprint is added here on
-/// first successful login from a new device (after any 2FA challenge). On
-/// subsequent logins the fingerprint is matched to suppress new-device alerts
-/// and skip the 2FA friction tier. Retention: 90 days from lastSeenAt via
-/// dedicated cron. Immutable per-row except lastSeenAt + loginCount.
+/// first successful login from a new device. On subsequent logins the
+/// fingerprint is matched to suppress new-device alerts. Retention: 90 days
+/// from lastSeenAt via dedicated cron. Immutable per-row except lastSeenAt
+/// + loginCount.
 ///
 /// No PII: fingerprint is SHA-256(User-Agent + Accept-Language + platform).
 model KnownDevice {

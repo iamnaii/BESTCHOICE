@@ -13,7 +13,6 @@ export type LoginFailureKind =
   | 'user_not_found'
   | 'account_locked'
   | 'account_disabled'
-  | '2fa_invalid'
   | 'other';
 
 export interface LoginAuditInput {

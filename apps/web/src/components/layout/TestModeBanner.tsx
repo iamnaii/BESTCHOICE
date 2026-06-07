@@ -3,7 +3,7 @@ import { testModeApi, testModeKeys } from '@/lib/api/test-mode';
 
 /**
  * App-wide loud banner shown on every page when test-mode is ON.
- * Test-mode bypasses credit check + OTP + 2FA — must be visually impossible
+ * Test-mode bypasses credit check + customer OTP — must be visually impossible
  * to miss so staff never run it against real customers.
  */
 export default function TestModeBanner() {
@@ -20,7 +20,7 @@ export default function TestModeBanner() {
       role="alert"
       className="bg-destructive text-destructive-foreground px-4 py-2 text-center text-sm font-semibold leading-snug"
     >
-      ⚠️ โหมดทดสอบ — เช็คเครดิต/OTP/2FA ถูกปิด ห้ามใช้กับลูกค้าจริง
+      ⚠️ โหมดทดสอบ — เช็คเครดิต/OTP ถูกปิด ห้ามใช้กับลูกค้าจริง
     </div>
   );
 }

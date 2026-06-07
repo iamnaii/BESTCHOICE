@@ -28,8 +28,6 @@ describe('AuthService', () => {
     failedLoginAttempts: 0,
     lockedUntil: null,
     deletedAt: null,
-    twoFactorEnabled: false,
-    twoFactorRequiredAfter: null,
     branch: { id: 'branch-1', name: 'สาขาทดสอบ' },
   };
 

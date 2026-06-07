@@ -106,27 +106,6 @@ describe('JwtAudienceGuard — path-based mode (no decorator)', () => {
     expect(guard.canActivate(context)).toBe(true);
   });
 
-  // /api/2fa/* → accept admin OR temp 2FA tokens
-  it('allows /api/2fa/confirm with aud=2fa_setup', () => {
-    const { guard, context } = makeContext({ path: '/api/2fa/confirm', aud: '2fa_setup' });
-    expect(guard.canActivate(context)).toBe(true);
-  });
-
-  it('allows /api/2fa/verify with aud=2fa_login', () => {
-    const { guard, context } = makeContext({ path: '/api/2fa/verify', aud: '2fa_login' });
-    expect(guard.canActivate(context)).toBe(true);
-  });
-
-  it('allows /api/2fa/setup with aud=admin', () => {
-    const { guard, context } = makeContext({ path: '/api/2fa/setup', aud: 'admin' });
-    expect(guard.canActivate(context)).toBe(true);
-  });
-
-  it('blocks /api/2fa/confirm with aud=shop', () => {
-    const { guard, context } = makeContext({ path: '/api/2fa/confirm', aud: 'shop' });
-    expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
-  });
-
   // No JWT user on protected path → defer to JwtAuthGuard
   it('passes through when req.user is undefined on admin path (let JwtAuthGuard handle)', () => {
     const { guard, context } = makeContext({ path: '/api/customers', aud: undefined });

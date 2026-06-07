@@ -7,7 +7,6 @@ import { AuthService } from './auth.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { LoginAuditService } from './login-audit.service';
-import { TestModeService } from '../test-mode/test-mode.service';
 import { AuditService } from '../audit/audit.service';
 
 const mockEmailSender = { sendPasswordResetEmail: jest.fn().mockResolvedValue(undefined) };
@@ -16,7 +15,6 @@ describe('AuthService', () => {
   let service: AuthService;
   let prisma: PrismaService;
   let loginAudit: { record: jest.Mock };
-  let testMode: { isEnabled: jest.Mock; setEnabled: jest.Mock };
   let audit: { log: jest.Mock };
 
   const mockUser = {
@@ -30,8 +28,6 @@ describe('AuthService', () => {
     failedLoginAttempts: 0,
     lockedUntil: null,
     deletedAt: null,
-    twoFactorEnabled: false,
-    twoFactorRequiredAfter: null,
     branch: { id: 'branch-1', name: 'สาขาทดสอบ' },
   };
 
@@ -42,10 +38,6 @@ describe('AuthService', () => {
   beforeEach(async () => {
     mockEmailSender.sendPasswordResetEmail.mockClear();
     loginAudit = { record: jest.fn().mockResolvedValue(undefined) };
-    testMode = {
-      isEnabled: jest.fn().mockResolvedValue(false),
-      setEnabled: jest.fn().mockResolvedValue(false),
-    };
     audit = { log: jest.fn().mockResolvedValue(undefined) };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -104,10 +96,6 @@ describe('AuthService', () => {
         {
           provide: LoginAuditService,
           useValue: loginAudit,
-        },
-        {
-          provide: TestModeService,
-          useValue: testMode,
         },
         {
           provide: AuditService,
@@ -302,167 +290,6 @@ describe('AuthService', () => {
     });
   });
 
-  // ─── 2-step login state machine (Task 4) ─────────────────────────────────
-
-  describe('login — 2FA state machine', () => {
-    it('returns state AUTHENTICATED when user has no 2FA and no setup deadline', async () => {
-      (prisma.user.findUnique as jest.Mock).mockResolvedValue({
-        ...mockUser,
-        twoFactorEnabled: false,
-        twoFactorRequiredAfter: null,
-      });
-
-      const result = await service.login({ email: 'test@test.com', password: 'password123' });
-      expect(result.state).toBe('AUTHENTICATED');
-      if (result.state === 'AUTHENTICATED') {
-        expect(result).toHaveProperty('accessToken');
-        expect(result).toHaveProperty('refreshToken');
-      }
-    });
-
-    it('returns state OTP_REQUIRED + tempToken when user has 2FA enabled', async () => {
-      (prisma.user.findUnique as jest.Mock).mockResolvedValue({
-        ...mockUser,
-        twoFactorEnabled: true,
-        twoFactorRequiredAfter: null,
-      });
-
-      const result = await service.login({ email: 'test@test.com', password: 'password123' });
-      expect(result.state).toBe('OTP_REQUIRED');
-      if (result.state === 'OTP_REQUIRED') {
-        expect(typeof result.tempToken).toBe('string');
-        expect(result.tempToken.length).toBeGreaterThan(10);
-      }
-      // Full tokens must NOT be returned
-      expect((result as Record<string, unknown>)).not.toHaveProperty('accessToken');
-    });
-
-    // ─── Test-mode 2FA bypass (Task 6) ───────────────────────────────────
-    it('bypasses 2FA and issues FULL session when test-mode is ON (2FA user + correct password)', async () => {
-      testMode.isEnabled.mockResolvedValue(true);
-      (prisma.user.findUnique as jest.Mock).mockResolvedValue({
-        ...mockUser,
-        twoFactorEnabled: true,
-        twoFactorRequiredAfter: null,
-      });
-
-      const result = await service.login(
-        { email: 'test@test.com', password: 'password123' },
-        { ipAddress: '1.2.3.4', userAgent: 'jest' },
-      );
-
-      // Full session, NOT the OTP_REQUIRED temp-token response
-      expect(result.state).toBe('AUTHENTICATED');
-      expect(result).toHaveProperty('accessToken');
-      expect(result).toHaveProperty('refreshToken');
-      expect((result as Record<string, unknown>)).not.toHaveProperty('tempToken');
-      expect(prisma.refreshToken.create).toHaveBeenCalled();
-
-      // loginAudit recorded a SUCCESSFUL login with twoFactorUsed: false
-      const successCall = loginAudit.record.mock.calls.find(
-        (c) => c[0].success === true,
-      );
-      expect(successCall).toBeDefined();
-      expect(successCall![0]).toMatchObject({ success: true, twoFactorUsed: false });
-
-      // Bypass is audited
-      expect(audit.log).toHaveBeenCalledWith(
-        expect.objectContaining({
-          userId: 'user-1',
-          action: 'LOGIN_2FA_BYPASSED_TEST_MODE',
-          entity: 'user',
-          entityId: 'user-1',
-        }),
-      );
-    });
-
-    it('keeps the OTP_REQUIRED temp-token flow UNCHANGED when test-mode is OFF (2FA user)', async () => {
-      testMode.isEnabled.mockResolvedValue(false);
-      (prisma.user.findUnique as jest.Mock).mockResolvedValue({
-        ...mockUser,
-        twoFactorEnabled: true,
-        twoFactorRequiredAfter: null,
-      });
-
-      const result = await service.login({ email: 'test@test.com', password: 'password123' });
-
-      expect(result.state).toBe('OTP_REQUIRED');
-      if (result.state === 'OTP_REQUIRED') {
-        expect(typeof result.tempToken).toBe('string');
-      }
-      expect((result as Record<string, unknown>)).not.toHaveProperty('accessToken');
-      // No full session issued
-      expect(prisma.refreshToken.create).not.toHaveBeenCalled();
-      // No bypass audit
-      expect(audit.log).not.toHaveBeenCalled();
-    });
-
-    it('still rejects wrong password for a 2FA user even when test-mode is ON', async () => {
-      testMode.isEnabled.mockResolvedValue(true);
-      (prisma.user.findUnique as jest.Mock).mockResolvedValue({
-        ...mockUser,
-        twoFactorEnabled: true,
-        twoFactorRequiredAfter: null,
-      });
-
-      await expect(
-        service.login({ email: 'test@test.com', password: 'wrongpassword' }),
-      ).rejects.toThrow(UnauthorizedException);
-
-      expect(prisma.refreshToken.create).not.toHaveBeenCalled();
-      expect(audit.log).not.toHaveBeenCalled();
-    });
-
-    it('skips 2FA enrollment enforcement (P1Q6 deferred) — issues full JWT even with past deadline', async () => {
-      (prisma.user.findUnique as jest.Mock).mockResolvedValue({
-        ...mockUser,
-        twoFactorEnabled: false,
-        twoFactorRequiredAfter: new Date(Date.now() - 1000), // deadline was 1 second ago
-      });
-
-      const result = await service.login({ email: 'test@test.com', password: 'password123' });
-      expect(result.state).toBe('AUTHENTICATED');
-    });
-
-    it('loginWithTempToken returns full JWT after valid OTP verification', async () => {
-      // Mock the user lookup inside loginWithTempToken
-      (prisma.user.findUnique as jest.Mock).mockResolvedValue({
-        ...mockUser,
-        twoFactorEnabled: true,
-        branch: { id: 'branch-1', name: 'สาขาทดสอบ' },
-      });
-
-      // Generate a tempToken via internal sign (simulate OTP_REQUIRED state)
-      const mockTwoFactorSvc = {
-        verifyLogin: jest.fn().mockResolvedValue({ method: 'TOTP' }),
-      };
-
-      // We need a real JWT for tempToken — use JwtService mock to return signed value
-      // The mock JwtService.sign returns 'mock-access-token'
-      // and JwtService.verify is not mocked — so let's create a valid temp token via sign
-      // Since JwtService is mocked, we instead test that the service calls verifyTempToken
-      // and on valid result proceeds to issue full tokens.
-      // Use a real jwtService for this specific test would be better, so instead verify behavior:
-      const mockVerifyResult = { sub: 'user-1', scope: '2fa_login' };
-
-      // Monkey-patch verifyTempToken (private) by calling loginWithTempToken with a stub
-      // that bypasses the real verify — since jwtService.verify is not set up to return correct
-      // audience-verified payload in the mock, we test the downstream behavior instead.
-      // The approach: spy on the service's private method via (service as any).
-      jest.spyOn(service as unknown as Record<string, unknown>, 'verifyTempToken' as never)
-        .mockReturnValue(mockVerifyResult as never);
-
-      const result = await service.loginWithTempToken(
-        'mock-temp-token',
-        '123456',
-        mockTwoFactorSvc,
-      );
-
-      expect(result).toHaveProperty('accessToken');
-      expect(result).toHaveProperty('refreshToken');
-      expect(mockTwoFactorSvc.verifyLogin).toHaveBeenCalledWith('user-1', '123456');
-    });
-  });
 
   describe('forgotPassword (T7-C2 per-email rate limit)', () => {
     const existingUser = {

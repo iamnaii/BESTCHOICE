@@ -3,7 +3,6 @@ import { UnauthorizedException } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
-import { TwoFactorService } from './two-factor.service';
 
 /**
  * T7-C5: Refresh endpoint is cookie-only. Body `refreshToken` is no longer
@@ -25,7 +24,6 @@ describe('AuthController /auth/refresh (T7-C5 cookie-only)', () => {
       controllers: [AuthController],
       providers: [
         { provide: AuthService, useValue: authService },
-        { provide: TwoFactorService, useValue: { isTwoFactorEnabled: jest.fn() } },
       ],
     }).compile();
 

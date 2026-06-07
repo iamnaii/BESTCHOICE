@@ -13,7 +13,6 @@ export type LoginFailureKind =
   | 'user_not_found'
   | 'account_locked'
   | 'account_disabled'
-  | '2fa_invalid'
   | 'other';
 
 export interface LoginAuditInput {
@@ -24,7 +23,6 @@ export interface LoginAuditInput {
   ipAddress?: string;
   userAgent?: string;
   acceptLanguage?: string;
-  twoFactorUsed?: boolean;
 }
 
 /**
@@ -133,10 +131,8 @@ export class LoginAuditService {
           failureKind: entry.failureKind ?? null,
           ipAddress: entry.ipAddress ?? null,
           userAgent: entry.userAgent ? entry.userAgent.slice(0, 500) : null,
-          twoFactorUsed: entry.twoFactorUsed ?? false,
           deviceFingerprint: fingerprint,
           isNewDevice,
-          twoFactorMethod: null,
         },
       });
     } catch (err) {

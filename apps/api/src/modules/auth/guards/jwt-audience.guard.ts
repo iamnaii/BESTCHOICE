@@ -40,12 +40,6 @@ const PUBLIC_PATHS = [
   /^\/api\/auth\//,
 ];
 
-/**
- * 2FA / temp-token paths — accept aud='admin' OR aud='2fa_setup' OR aud='2fa_login'.
- * These endpoints are called with short-lived temp tokens issued during 2FA setup.
- */
-const TEMP_TOKEN_PATHS = [/^\/api\/2fa\//];
-
 // ---------- Guard ----------
 
 /**
@@ -60,7 +54,6 @@ const TEMP_TOKEN_PATHS = [/^\/api\/2fa\//];
  *   /api/chatbot-finance-liff/*    → public (no requirement)
  *   /api/sms-webhook, /api/paysolutions, /api/address/*, /api/health → public
  *   /api/auth/*                    → public (login endpoints — no JWT yet)
- *   /api/2fa/*                     → admin OR 2FA temp tokens
  *   All other /api/*               → require aud='admin'
  *
  * Register as APP_GUARD in app.module.ts — runs after JwtAuthGuard sets req.user.
@@ -105,14 +98,6 @@ export class JwtAudienceGuard implements CanActivate {
     if (SHOP_PATH.test(path)) {
       if (aud !== 'shop') {
         throw new ForbiddenException('This endpoint requires shop audience');
-      }
-      return true;
-    }
-
-    // /api/2fa/* — accept admin OR 2FA temp tokens
-    if (TEMP_TOKEN_PATHS.some((re) => re.test(path))) {
-      if (aud !== 'admin' && aud !== '2fa_login' && aud !== '2fa_setup') {
-        throw new ForbiddenException('This endpoint requires admin or 2FA audience');
       }
       return true;
     }

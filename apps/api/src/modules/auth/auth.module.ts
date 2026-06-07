@@ -4,7 +4,6 @@ import { PassportModule } from '@nestjs/passport';
 import { ConfigService } from '@nestjs/config';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
-import { TwoFactorService } from './two-factor.service';
 import { AuthTokenCleanupService } from './auth-token-cleanup.service';
 import { LoginAuditService } from './login-audit.service';
 import { LoginAuditRetentionCron } from './login-audit-retention.cron';
@@ -36,13 +35,12 @@ import { TestModeModule } from '../test-mode/test-mode.module';
   controllers: [AuthController],
   providers: [
     AuthService,
-    TwoFactorService,
     AuthTokenCleanupService,
     LoginAuditService,
     LoginAuditRetentionCron,
     JwtStrategy,
     JwtAudienceGuard,
   ],
-  exports: [AuthService, TwoFactorService, LoginAuditService, JwtStrategy, PassportModule, JwtAudienceGuard],
+  exports: [AuthService, LoginAuditService, JwtStrategy, PassportModule, JwtAudienceGuard],
 })
 export class AuthModule {}

@@ -1,4 +1,12 @@
-import { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  ReactNode,
+} from 'react';
 import * as Sentry from '@sentry/react';
 import api, { setAccessToken } from '@/lib/api';
 
@@ -24,14 +32,6 @@ interface User {
   canReverseOverride?: boolean | null;
 }
 
-/** State after password phase — waiting for OTP or 2FA setup */
-export type TwoFaPhase = 'OTP_REQUIRED' | '2FA_SETUP_REQUIRED';
-
-export interface PendingTwoFa {
-  phase: TwoFaPhase;
-  tempToken: string;
-}
-
 /**
  * Tag Sentry events with the logged-in user so we know WHO hit an error.
  * We only pass id + role + branchId — no PII (email/name) per our
@@ -53,14 +53,8 @@ interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  /** Result of password-phase login — null when fully authenticated */
-  pendingTwoFa: PendingTwoFa | null;
-  /** Submit email+password. Returns AUTHENTICATED immediately or sets pendingTwoFa. */
+  /** Submit email+password — sets token + user on AUTHENTICATED. */
   login: (email: string, password: string) => Promise<{ state: string; role?: string }>;
-  /** Complete OTP phase — call after user enters 6-digit TOTP. Returns loaded user (or null). */
-  completeOtpPhase: (token: string) => Promise<User | null>;
-  /** Clear pendingTwoFa (e.g. user cancels back to login). */
-  clearTempToken: () => void;
   logout: () => void;
   /** Re-fetch /auth/me — used by hooks that mutate user-scoped data (e.g. preferences). */
   refresh: () => Promise<User | null>;
@@ -71,7 +65,6 @@ export const AuthContext = createContext<AuthContextType | undefined>(undefined)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [pendingTwoFa, setPendingTwoFa] = useState<PendingTwoFa | null>(null);
 
   const logout = useCallback(async () => {
     try {
@@ -81,7 +74,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setAccessToken(null);
     setUser(null);
-    setPendingTwoFa(null);
     setSentryUser(null);
   }, []);
 
@@ -149,74 +141,62 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   /**
-   * Submit email+password.
-   * - 'AUTHENTICATED' → sets token + user immediately.
-   * - 'OTP_REQUIRED' / '2FA_SETUP_REQUIRED' → sets pendingTwoFa, caller handles next step.
+   * Submit email+password — sets token + user on AUTHENTICATED.
    */
-  const login = useCallback(async (email: string, password: string): Promise<{ state: string; role?: string }> => {
-    const doLogin = () => api.post('/auth/login', { email, password }, { timeout: 30000 });
-    let res;
-    try {
-      res = await doLogin();
-    } catch (err: unknown) {
-      const axErr = err as { code?: string };
-      // Auto-retry once on timeout or network error (server cold start)
-      if (axErr.code === 'ECONNABORTED' || axErr.code === 'ECONNREFUSED' || axErr.code === 'ERR_NETWORK') {
+  const login = useCallback(
+    async (email: string, password: string): Promise<{ state: string; role?: string }> => {
+      const doLogin = () => api.post('/auth/login', { email, password }, { timeout: 30000 });
+      let res;
+      try {
         res = await doLogin();
-      } else {
-        throw err;
+      } catch (err: unknown) {
+        const axErr = err as { code?: string };
+        // Auto-retry once on timeout or network error (server cold start)
+        if (
+          axErr.code === 'ECONNABORTED' ||
+          axErr.code === 'ECONNREFUSED' ||
+          axErr.code === 'ERR_NETWORK'
+        ) {
+          res = await doLogin();
+        } else {
+          throw err;
+        }
       }
-    }
-    const { data } = res;
+      const { data } = res;
 
-    if (data.state === 'AUTHENTICATED') {
-      setAccessToken(data.accessToken);
-      // refresh token is stored in httpOnly cookie by the server
-      const nextUser: User = {
-        id: data.user.id,
-        email: data.user.email,
-        name: data.user.name,
-        role: data.user.role,
-        branchId: data.user.branchId,
-        branchName: data.user.branchName ?? data.user.branch?.name ?? null,
-        accessibleCompanies: data.user.accessibleCompanies ?? [],
-        primaryCompany: data.user.primaryCompany ?? null,
-        canReverseOverride: data.user.canReverseOverride ?? null,
-      };
-      setUser(nextUser);
-      setSentryUser(nextUser);
-    } else if (data.state === 'OTP_REQUIRED' || data.state === '2FA_SETUP_REQUIRED') {
-      setPendingTwoFa({ phase: data.state as TwoFaPhase, tempToken: data.tempToken });
-    }
+      if (data.state === 'AUTHENTICATED') {
+        setAccessToken(data.accessToken);
+        // refresh token is stored in httpOnly cookie by the server
+        const nextUser: User = {
+          id: data.user.id,
+          email: data.user.email,
+          name: data.user.name,
+          role: data.user.role,
+          branchId: data.user.branchId,
+          branchName: data.user.branchName ?? data.user.branch?.name ?? null,
+          accessibleCompanies: data.user.accessibleCompanies ?? [],
+          primaryCompany: data.user.primaryCompany ?? null,
+          canReverseOverride: data.user.canReverseOverride ?? null,
+        };
+        setUser(nextUser);
+        setSentryUser(nextUser);
+      }
 
-    return { state: data.state, role: data.user?.role };
-  }, []);
-
-  /** Called after successful /auth/login/2fa — receives full access token. Returns the loaded user (for landing-path derivation). */
-  const completeOtpPhase = useCallback(async (token: string): Promise<User | null> => {
-    setAccessToken(token);
-    setPendingTwoFa(null);
-    // Fetch user profile now that we have a full token
-    return fetchMe();
-  }, [fetchMe]);
-
-  const clearTempToken = useCallback(() => {
-    setPendingTwoFa(null);
-  }, []);
+      return { state: data.state, role: data.user?.role };
+    },
+    [],
+  );
 
   const value = useMemo(
     () => ({
       user,
       isLoading,
       isAuthenticated: !!user,
-      pendingTwoFa,
       login,
-      completeOtpPhase,
-      clearTempToken,
       logout,
       refresh: fetchMe,
     }),
-    [user, isLoading, pendingTwoFa, login, completeOtpPhase, clearTempToken, logout, fetchMe],
+    [user, isLoading, login, logout, fetchMe],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

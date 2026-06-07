@@ -32,11 +32,15 @@ export class JournalService {
   }
 
   async create(dto: CreateJournalEntryDto, userId: string) {
-    // 1. Validate balance: sum debits must equal sum credits
-    const totalDebit = dto.lines.reduce((sum, line) => sum + line.debit, 0);
-    const totalCredit = dto.lines.reduce((sum, line) => sum + line.credit, 0);
+    // 1. Validate balance: sum debits must equal sum credits.
+    // Wave-1 #10: this used a float sum + a 0.001 epsilon (Math.abs(...) > 0.001),
+    // so a manual JE off by up to ~0.001 — or one that only *looks* balanced after
+    // binary-float drift — could post and silently skew the trial balance. Use exact
+    // Decimal arithmetic + equals(), matching the void-revalidation path below.
+    const totalDebit = dto.lines.reduce((sum, line) => sum.add(new Decimal(line.debit)), new Decimal(0));
+    const totalCredit = dto.lines.reduce((sum, line) => sum.add(new Decimal(line.credit)), new Decimal(0));
 
-    if (Math.abs(totalDebit - totalCredit) > 0.001) {
+    if (!totalDebit.equals(totalCredit)) {
       throw new BadRequestException('ยอดเดบิตและเครดิตไม่สมดุล');
     }
 

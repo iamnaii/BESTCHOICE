@@ -93,18 +93,23 @@ export class PurchaseOrdersService {
     if (!supplier || supplier.deletedAt) throw new NotFoundException('ไม่พบ Supplier');
 
     // Calculate total with discount & VAT (only if supplier has VAT)
-    const totalAmount = dto.items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
-    const discount = dto.discount || 0; // ส่วนลดก่อน VAT
-    const discountAfterVat = supplier.hasVat ? dto.discountAfterVat || 0 : 0; // ส่วนลดหลัง VAT (เฉพาะ supplier มี VAT)
-    const subtotalAfterDiscount = totalAmount - discount;
+    // Money math in Prisma.Decimal end-to-end. VAT = subtotal × rate can land on a
+    // half-satang that the old float `Math.round(subtotal * vatRate * 100) / 100`
+    // dropped (same class as commission.util) — books a 1-satang-off VAT on the PO.
+    const totalAmount = dSum(dto.items.map((item) => d(item.quantity).mul(item.unitPrice)));
+    const discount = d(dto.discount || 0); // ส่วนลดก่อน VAT
+    const discountAfterVat = supplier.hasVat ? d(dto.discountAfterVat || 0) : d(0); // ส่วนลดหลัง VAT (เฉพาะ supplier มี VAT)
+    const subtotalAfterDiscount = dSub(totalAmount, discount);
     // D1.1.3.1 — resolve VAT via canonical-key-first helper. Reads VAT_RATE
     // (percent) first, falls back to legacy vat_pct/vat_rate (decimal), or
     // 0.07 if all are absent. Replaces the previous direct `vat_pct` lookup
     // that silently returned the default when admins saved through the new
     // VatTab UI (which writes VAT_RATE).
     const vatRate = await loadVatRateDecimal(this.prisma);
-    const vatAmount = supplier.hasVat ? Math.round(subtotalAfterDiscount * vatRate * 100) / 100 : 0;
-    const netAmount = subtotalAfterDiscount + vatAmount - discountAfterVat;
+    const vatAmount = supplier.hasVat
+      ? subtotalAfterDiscount.mul(vatRate).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP)
+      : d(0);
+    const netAmount = dSub(dAdd(subtotalAfterDiscount, vatAmount), discountAfterVat);
 
     // Calculate due date from supplier credit terms
     const orderDateObj = new Date(dto.orderDate);

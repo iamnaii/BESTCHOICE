@@ -128,7 +128,6 @@ import { ShopSavingPlanModule } from './modules/shop-saving-plan/shop-saving-pla
 import { ShopPublicConfigModule } from './modules/shop-public-config/shop-public-config.module';
 import { DataAuditModule } from './modules/data-audit/data-audit.module';
 import { IntegrationsModule } from './modules/integrations/integrations.module';
-import { TwoFactorModule } from './modules/two-factor/two-factor.module';
 import { ReportingModule } from './modules/reporting/reporting.module';
 import { CollectionsSessionModule } from './modules/collections-session/collections-session.module';
 // P3-SP2 — Off-site backup replication (GCS cross-region sync)
@@ -373,8 +372,6 @@ import { AppCacheModule } from './cache/cache.module';
     SearchModule,
     // Data Audit — automated DB health checks (OWNER only)
     DataAuditModule,
-    // Two-Factor Authentication management (enroll, confirm, disable, backup codes)
-    TwoFactorModule,
     // Reporting — weekly PDF analytics report + compliance dashboard (P3 D1+D2)
     ReportingModule,
     // P3-SP2 — Off-site backup replication (GCS cross-region sync, daily 03:30 BKK)

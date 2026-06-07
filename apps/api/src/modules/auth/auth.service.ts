@@ -15,7 +15,6 @@ import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto, ResetPasswordDto } from './dto/password-reset.dto';
 import { EmailService } from '../email/email.service';
 import { LoginAuditService, LoginFailureKind } from './login-audit.service';
-import { TestModeService } from '../test-mode/test-mode.service';
 import { AuditService } from '../audit/audit.service';
 
 // Account lockout configuration. Tunable via env if needed later.
@@ -56,7 +55,6 @@ export class AuthService {
     private configService: ConfigService,
     private emailService: EmailService,
     private loginAudit: LoginAuditService,
-    private testMode: TestModeService,
     private audit: AuditService,
   ) {}
 
@@ -120,41 +118,12 @@ export class AuthService {
     return crypto.createHash('sha256').update(rawToken).digest('hex');
   }
 
-  /**
-   * Sign a short-lived temp JWT for the 2-step login flow.
-   * Uses `aud` claim to namespace so it cannot be used as a full access token.
-   */
-  private signTempToken(userId: string, scope: '2fa_login' | '2fa_setup'): string {
-    return this.jwtService.sign(
-      { sub: userId, scope },
-      {
-        secret: this.configService.get<string>('JWT_SECRET')!,
-        expiresIn: '5m',
-        audience: scope,
-      },
-    );
-  }
-
-  /**
-   * Verify a temp JWT and return its payload.
-   * Throws UnauthorizedException if invalid, expired, or wrong audience.
-   */
-  private verifyTempToken(tempToken: string, expectedScope: '2fa_login' | '2fa_setup') {
-    try {
-      return this.jwtService.verify<{ sub: string; scope: string }>(tempToken, {
-        secret: this.configService.get<string>('JWT_SECRET')!,
-        audience: expectedScope,
-      });
-    } catch {
-      throw new UnauthorizedException('Token ไม่ถูกต้องหรือหมดอายุ กรุณาเข้าสู่ระบบใหม่');
-    }
-  }
-
-  async login(loginDto: LoginDto, meta?: AuthMeta): Promise<
-    | { state: 'AUTHENTICATED'; accessToken: string; refreshToken: string; user: object }
-    | { state: 'OTP_REQUIRED'; tempToken: string }
-    | { state: '2FA_SETUP_REQUIRED'; tempToken: string }
-  > {
+  async login(loginDto: LoginDto, meta?: AuthMeta): Promise<{
+    state: 'AUTHENTICATED';
+    accessToken: string;
+    refreshToken: string;
+    user: object;
+  }> {
     const user = await this.prisma.user.findUnique({
       where: { email: loginDto.email },
       include: { branch: true },
@@ -213,40 +182,9 @@ export class AuthService {
       },
     });
 
-    // ── 2-step login state machine ──────────────────────────────────────
-    // State 1: 2FA is enabled → require OTP before issuing full JWT.
-    //
-    // Test-mode UAT bypass (OWNER-gated SystemConfig TEST_MODE_BYPASS, default
-    // OFF, audited; MUST be turned OFF before go-live). When ON, the SECOND
-    // FACTOR is skipped — the password above was ALWAYS verified, so credentials
-    // are never weakened. We fall through to the same full-session issuance path
-    // as a non-2FA user (no change to token signing/expiry). Same pattern as the
-    // KYC OTP / LIFF OTP / credit-precheck bypasses.
-    if (user.twoFactorEnabled && !(await this.testMode.isEnabled())) {
-      const tempToken = this.signTempToken(user.id, '2fa_login');
-      await this.auditLogin(loginDto.email, false, meta, user.id, 'other');
-      return { state: 'OTP_REQUIRED', tempToken };
-    }
-
-    if (user.twoFactorEnabled) {
-      // Reached here only when test-mode is ON: the 2FA step was bypassed.
-      // Record a dedicated audit marker (AuditService is @Global; userId is a
-      // real FK so this always persists for an authenticated staff user).
-      await this.audit.log({
-        userId: user.id,
-        action: 'LOGIN_2FA_BYPASSED_TEST_MODE',
-        entity: 'user',
-        entityId: user.id,
-        newValue: { reason: 'TEST_MODE_BYPASS' },
-        ipAddress: meta?.ipAddress,
-        userAgent: meta?.userAgent,
-      });
-    }
-
-    // 2FA enrollment enforcement is disabled by product decision (P1Q6 deferred).
-    // Voluntary 2FA via twoFactorEnabled (State 1 above) still works for users who opt in.
-
-    // State 2: Fully authenticated
+    // 2FA was removed (owner decision — feature unused). Login issues a full
+    // session immediately after the password check above.
+    // Fully authenticated
     await this.auditLogin(loginDto.email, true, meta, user.id);
 
     const payload = {
@@ -272,78 +210,6 @@ export class AuthService {
 
     return {
       state: 'AUTHENTICATED',
-      accessToken,
-      refreshToken,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        branchId: user.branchId,
-        branchName: user.branch?.name || null,
-        // InternalControlActionBar — per-user reverse override (CUSTOM mode).
-        // Without this, a freshly-logged-in user keeps canReverseOverride
-        // undefined until the next /auth/me, hiding the reverse button.
-        canReverseOverride: user.canReverseOverride ?? null,
-      },
-    };
-  }
-
-  /**
-   * Complete login after 2FA verification.
-   * Verifies the temp token (scope: 2fa_login), then validates OTP via TwoFactorService.
-   * Returns full JWT on success.
-   */
-  async loginWithTempToken(
-    tempToken: string,
-    otp: string,
-    twoFactorService: {
-      verifyLogin: (userId: string, token: string) => Promise<{ method: 'TOTP' | 'BACKUP_CODE' }>;
-    },
-    meta?: AuthMeta,
-  ): Promise<{ accessToken: string; refreshToken: string; user: object }> {
-    const payload = this.verifyTempToken(tempToken, '2fa_login');
-    const userId = payload.sub;
-
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      include: { branch: true },
-    });
-
-    if (!user || user.deletedAt || !user.isActive) {
-      throw new UnauthorizedException('ผู้ใช้งานไม่ถูกต้อง');
-    }
-
-    let twoFactorMethod: 'TOTP' | 'BACKUP_CODE';
-    try {
-      const result = await twoFactorService.verifyLogin(userId, otp);
-      twoFactorMethod = result.method;
-    } catch {
-      await this.auditLogin(user.email, false, meta, userId, '2fa_invalid', true);
-      throw new UnauthorizedException('รหัส OTP ไม่ถูกต้อง');
-    }
-
-    this.logger.log(`2FA login via ${twoFactorMethod} for user ${userId}`);
-    await this.auditLogin(user.email, true, meta, userId, undefined, true);
-
-    const jwtPayload = {
-      sub: user.id,
-      email: user.email,
-      role: user.role,
-      branchId: user.branchId,
-      // SP7.1 — dual-entity authorization
-      accessibleCompanies: user.accessibleCompanies,
-      primaryCompany: user.primaryCompany,
-    };
-
-    const accessToken = this.jwtService.sign(jwtPayload, {
-      secret: this.configService.get<string>('JWT_SECRET')!,
-      expiresIn: this.configService.get<string>('JWT_EXPIRATION', '15m') as JwtSignOptions['expiresIn'],
-    });
-
-    const refreshToken = await this.createRefreshToken(user.id);
-
-    return {
       accessToken,
       refreshToken,
       user: {

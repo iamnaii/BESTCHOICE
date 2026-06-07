@@ -3,10 +3,8 @@ import { ApiTags, ApiBearerAuth , ApiOperation} from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
 import { AuthService } from './auth.service';
-import { TwoFactorService } from './two-factor.service';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto, ResetPasswordDto } from './dto/password-reset.dto';
-import { VerifyTwoFactorDto, LoginTempTokenDto } from './dto/two-factor.dto';
 import { UpdatePreferencesDto } from './dto/update-preferences.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
@@ -52,10 +50,7 @@ function clearRefreshCookie(res: Response) {
 @ApiBearerAuth('JWT')
 @Controller('auth')
 export class AuthController {
-  constructor(
-    private authService: AuthService,
-    private twoFactorService: TwoFactorService,
-  ) {}
+  constructor(private authService: AuthService) {}
 
   @Post('login')
   @Throttle({ short: { ttl: 60000, limit: 10 } })
@@ -72,56 +67,8 @@ export class AuthController {
     };
     const result = await this.authService.login(loginDto, meta);
 
-    if (result.state === 'OTP_REQUIRED') {
-      // Credentials OK, 2FA enabled — client must call POST /auth/login/2fa
-      return {
-        state: 'OTP_REQUIRED',
-        tempToken: result.tempToken,
-        message: 'กรุณากรอกรหัส OTP จาก Authenticator App',
-      };
-    }
-
-    if (result.state === '2FA_SETUP_REQUIRED') {
-      // Credentials OK, 2FA enrollment mandatory — client must set up 2FA
-      return {
-        state: '2FA_SETUP_REQUIRED',
-        tempToken: result.tempToken,
-        message: 'กรุณาตั้งค่า 2FA ก่อนเข้าใช้งานระบบ',
-      };
-    }
-
-    // AUTHENTICATED — full JWT issued
+    // Full JWT issued — 2FA removed, login is single-step.
     setRefreshCookie(res, result.refreshToken);
-    return {
-      state: 'AUTHENTICATED',
-      accessToken: result.accessToken,
-      user: result.user,
-    };
-  }
-
-  @Post('login/2fa')
-  @Throttle({ short: { ttl: 60000, limit: 5 } })
-  @ApiOperation({ summary: 'เข้าสู่ระบบด้วย 2FA โดยใช้ tempToken + OTP' })
-  async loginWith2FA(
-    @Body() body: LoginTempTokenDto,
-    @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
-  ) {
-    // (Audit finding P0-#9) Body validated by LoginTempTokenDto via the
-    // global ValidationPipe — tempToken capped at 512 chars, otp at 6-8.
-    const meta = {
-      ipAddress: req.ip,
-      userAgent: req.headers['user-agent'] as string | undefined,
-      acceptLanguage: req.headers['accept-language'] as string | undefined,
-    };
-
-    const result = await this.authService.loginWithTempToken(
-      body.tempToken,
-      body.otp,
-      this.twoFactorService,
-      meta,
-    );
-    setRefreshCookie(res, result.refreshToken as string);
     return {
       state: 'AUTHENTICATED',
       accessToken: result.accessToken,
@@ -194,37 +141,4 @@ export class AuthController {
     return this.authService.updatePreferences(userId, { ...dto });
   }
 
-  // ─── Two-Factor Authentication ───────────────────────
-
-  @Post('2fa/generate')
-  @UseGuards(JwtAuthGuard)
-  @Throttle({ short: { ttl: 60000, limit: 3 } })
-  @ApiOperation({ summary: 'สร้าง QR code สำหรับ 2FA' })
-  async generate2FA(@CurrentUser('id') userId: string) {
-    return this.twoFactorService.generateSecret(userId);
-  }
-
-  @Post('2fa/enable')
-  @UseGuards(JwtAuthGuard)
-  @Throttle({ short: { ttl: 60000, limit: 5 } })
-  @ApiOperation({ summary: 'เปิดใช้ 2FA (ยืนยันด้วย OTP)' })
-  async enable2FA(@CurrentUser('id') userId: string, @Body() dto: VerifyTwoFactorDto) {
-    return this.twoFactorService.enableTwoFactor(userId, dto.code);
-  }
-
-  @Post('2fa/disable')
-  @UseGuards(JwtAuthGuard)
-  @Throttle({ short: { ttl: 60000, limit: 5 } })
-  @ApiOperation({ summary: 'ปิด 2FA' })
-  async disable2FA(@CurrentUser('id') userId: string, @Body() dto: VerifyTwoFactorDto) {
-    return this.twoFactorService.disableTwoFactor(userId, dto.code);
-  }
-
-  @Get('2fa/status')
-  @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'ตรวจสอบสถานะ 2FA' })
-  async get2FAStatus(@CurrentUser('id') userId: string) {
-    const enabled = await this.twoFactorService.isTwoFactorEnabled(userId);
-    return { enabled };
-  }
 }

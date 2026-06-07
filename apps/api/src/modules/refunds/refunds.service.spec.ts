@@ -1,9 +1,13 @@
+jest.mock('../../utils/period-lock.util', () => ({ validatePeriodOpen: jest.fn() }));
+
 import { Test, TestingModule } from '@nestjs/testing';
 import { Prisma } from '@prisma/client';
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { RefundsService } from './refunds.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { ReceiptVoidReversalTemplate } from '../journal/cpa-templates/receipt-void-reversal.template';
+import { validatePeriodOpen } from '../../utils/period-lock.util';
 
 describe('RefundsService', () => {
   let service: RefundsService;
@@ -11,6 +15,8 @@ describe('RefundsService', () => {
   let prisma: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let audit: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let template: any;
 
   const paidPayment = (overrides: Record<string, unknown> = {}) => ({
     id: 'pay-1',
@@ -41,7 +47,11 @@ describe('RefundsService', () => {
 
   beforeEach(async () => {
     prisma = {
-      payment: { findUnique: jest.fn().mockResolvedValue(paidPayment()) },
+      payment: {
+        findUnique: jest.fn().mockResolvedValue(paidPayment()),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      journalEntry: { findFirst: jest.fn().mockResolvedValue(null) },
       refund: {
         create: jest.fn((args) => Promise.resolve({ id: 'rf-1', ...args.data })),
         update: jest.fn((args) => Promise.resolve({ ...refundRecord(), ...args.data })),
@@ -50,13 +60,20 @@ describe('RefundsService', () => {
         count: jest.fn().mockResolvedValue(0),
       },
     };
+    // $transaction runs the callback against the same mock (tx === prisma here).
+    prisma.$transaction = jest
+      .fn()
+      .mockImplementation(async (cb: (t: typeof prisma) => unknown) => cb(prisma));
     audit = { log: jest.fn().mockResolvedValue(undefined) };
+    template = { voidReceipt: jest.fn().mockResolvedValue({ entryNo: 'JE-REV-1' }) };
+    (validatePeriodOpen as jest.Mock).mockReset().mockResolvedValue(undefined);
 
     const mod: TestingModule = await Test.createTestingModule({
       providers: [
         RefundsService,
         { provide: PrismaService, useValue: prisma },
         { provide: AuditService, useValue: audit },
+        { provide: ReceiptVoidReversalTemplate, useValue: template },
       ],
     }).compile();
     service = mod.get(RefundsService);
@@ -188,6 +205,42 @@ describe('RefundsService', () => {
       expect(audit.log).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'REFUND_PROCESSED' }),
       );
+    });
+  });
+
+  describe('markReversed — ledger reversal', () => {
+    it('reverses the original payment JE (flow refund-reversal) and reverts the payment to unpaid', async () => {
+      prisma.refund.findUnique.mockResolvedValue(refundRecord({ status: 'APPROVED' }));
+      prisma.journalEntry.findFirst.mockResolvedValue({ id: 'je-1' });
+      await service.markReversed('rf-1', { bankReversalRef: 'KBANK-1', notes: 'rev' }, 'u-owner', 'OWNER');
+
+      expect(prisma.journalEntry.findFirst).toHaveBeenCalledWith({
+        where: { referenceType: 'PAYMENT', referenceId: 'pay-1', status: 'POSTED', deletedAt: null },
+      });
+      expect(template.voidReceipt).toHaveBeenCalledWith('je-1', prisma, { flow: 'refund-reversal' });
+      expect(prisma.payment.update).toHaveBeenCalledWith({
+        where: { id: 'pay-1' },
+        data: { status: 'PENDING', amountPaid: 0, paidDate: null },
+      });
+      const data = prisma.refund.update.mock.calls[0][0].data;
+      expect(data.status).toBe('PROCESSED');
+    });
+
+    it('legacy payment with no POSTED JE: skips the reversal but still reverts the payment', async () => {
+      prisma.refund.findUnique.mockResolvedValue(refundRecord({ status: 'APPROVED' }));
+      prisma.journalEntry.findFirst.mockResolvedValue(null);
+      await service.markReversed('rf-1', { bankReversalRef: 'KBANK-2', notes: 'rev' }, 'u-owner', 'OWNER');
+      expect(template.voidReceipt).not.toHaveBeenCalled();
+      expect(prisma.payment.update).toHaveBeenCalled();
+    });
+
+    it('closed period: throws and reverts nothing', async () => {
+      prisma.refund.findUnique.mockResolvedValue(refundRecord({ status: 'APPROVED' }));
+      (validatePeriodOpen as jest.Mock).mockRejectedValue(new Error('period closed'));
+      await expect(
+        service.markReversed('rf-1', { bankReversalRef: 'KBANK-3', notes: 'rev' }, 'u-owner', 'OWNER'),
+      ).rejects.toThrow('period closed');
+      expect(prisma.payment.update).not.toHaveBeenCalled();
     });
   });
 

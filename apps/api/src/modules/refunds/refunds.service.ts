@@ -8,6 +8,8 @@ import {
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { ReceiptVoidReversalTemplate } from '../journal/cpa-templates/receipt-void-reversal.template';
+import { validatePeriodOpen } from '../../utils/period-lock.util';
 import {
   RequestRefundDto,
   MarkRefundReversedDto,
@@ -34,6 +36,7 @@ export class RefundsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly receiptVoidReversalTemplate: ReceiptVoidReversalTemplate,
   ) {}
 
   async requestRefund(dto: RequestRefundDto, userId: string) {
@@ -202,16 +205,54 @@ export class RefundsService {
     }
 
     const now = new Date();
-    const updated = await this.prisma.refund.update({
-      where: { id: refundId },
-      data: {
-        status: 'PROCESSED',
-        bankReversalRef: dto.bankReversalRef,
-        bankReversalAt: now,
-        bankReversalNotes: dto.notes,
-        // T1-C8 — freeze bankReversalRef / bankReversalAt on first write.
-        bankReversalLockedAt: now,
-      },
+    const { updated, reversalEntryNo } = await this.prisma.$transaction(async (tx) => {
+      // The reversal JE posts to the current period — guard it's open (mirror voidReceipt).
+      await validatePeriodOpen(tx, now);
+
+      const updated = await tx.refund.update({
+        where: { id: refundId },
+        data: {
+          status: 'PROCESSED',
+          bankReversalRef: dto.bankReversalRef,
+          bankReversalAt: now,
+          bankReversalNotes: dto.notes,
+          // T1-C8 — freeze bankReversalRef / bankReversalAt on first write.
+          bankReversalLockedAt: now,
+        },
+      });
+
+      // Refund = correcting an erroneous booking → reverse the original payment JE
+      // in full (refunds are always full). Reuses the proven A.5a mirror.
+      let reversalEntryNo: string | null = null;
+      const originalEntry = await tx.journalEntry.findFirst({
+        where: {
+          referenceType: 'PAYMENT',
+          referenceId: refund.paymentId,
+          status: 'POSTED',
+          deletedAt: null,
+        },
+      });
+      if (originalEntry) {
+        const rev = await this.receiptVoidReversalTemplate.voidReceipt(originalEntry.id, tx, {
+          flow: 'refund-reversal',
+        });
+        reversalEntryNo = rev.entryNo;
+      } else {
+        this.logger.warn(
+          `[refund ${refundId}] no POSTED payment JE for payment ${refund.paymentId} — ` +
+            `reverting payment without a reversal JE (legacy)`,
+        );
+      }
+
+      // Restore the installment to its true unpaid state (the booking was wrong).
+      // Planned-schedule fields (monthlyPrincipal/Interest/Commission, amountDue) and
+      // lateFee are left as-is — they describe the plan, not this reverted payment.
+      await tx.payment.update({
+        where: { id: refund.paymentId },
+        data: { status: 'PENDING', amountPaid: 0, paidDate: null },
+      });
+
+      return { updated, reversalEntryNo };
     });
 
     await this.audit.log({
@@ -223,6 +264,7 @@ export class RefundsService {
       newValue: {
         status: 'PROCESSED',
         bankReversalRef: dto.bankReversalRef,
+        reversalEntryNo,
       },
     });
 

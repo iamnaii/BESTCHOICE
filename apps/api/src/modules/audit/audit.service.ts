@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { createHash, randomUUID } from 'crypto';
+import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
 
 export interface AuditEntry {
@@ -113,7 +114,12 @@ export class AuditService {
         });
       });
     } catch (err) {
+      // Audit rows are compliance evidence — a silent write failure must ALERT,
+      // not just log to stdout. Sentry surfaces the gap so it gets investigated
+      // (e.g. the Merkle chain has a hole). We still swallow so a failed audit
+      // write never breaks the user-facing request it was observing.
       this.logger.error('Failed to write audit log', err);
+      Sentry.captureException(err, { tags: { subsystem: 'audit', action: entry.action } });
     }
   }
 

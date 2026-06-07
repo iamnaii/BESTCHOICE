@@ -129,7 +129,16 @@ describe('ContractWorkflowService', () => {
     prisma = {
       contract: {
         findUnique: jest.fn().mockResolvedValue(mockContract),
+        findUniqueOrThrow: jest.fn().mockResolvedValue(mockContract),
         update: jest.fn().mockResolvedValue({ ...mockContract, status: 'ACTIVE' }),
+      },
+      installmentSchedule: {
+        // generateInstallmentSchedules now runs inside the activation tx. These
+        // activate() tests don't exercise schedule math (covered by
+        // contract-workflow.schedule.spec.ts) — report existing rows so it takes
+        // the idempotent skip path.
+        count: jest.fn().mockResolvedValue(1),
+        createMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
       product: {
         findUnique: jest.fn().mockResolvedValue(mockProduct),

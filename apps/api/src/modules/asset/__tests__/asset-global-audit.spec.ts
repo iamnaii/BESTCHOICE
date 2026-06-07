@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AssetController } from '../asset.controller';
 import { AssetService } from '../asset.service';
 import { AssetTransferService } from '../asset-transfer.service';
+import { AssetReceiptPdfService } from '../services/asset-receipt-pdf.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -36,6 +37,9 @@ describe('AssetController — GET /assets/audit (global)', () => {
       providers: [
         { provide: AssetService, useValue: assetService },
         { provide: AssetTransferService, useValue: transferServiceStub },
+        // Not used by the audit endpoint, but AssetController now requires it
+        // for DI — provide a stub so the test module compiles.
+        { provide: AssetReceiptPdfService, useValue: {} },
         { provide: PrismaService, useValue: prisma },
       ],
     })

@@ -67,11 +67,29 @@ export class OutboxService {
     });
   }
 
-  async markProcessing(id: string) {
-    return this.prisma.outboxEvent.update({
-      where: { id },
+  /**
+   * Atomically claim a PENDING event for this worker.
+   *
+   * The status='PENDING' guard in the WHERE clause means only ONE overlapping
+   * cron tick / pod can transition a given row PENDING→PROCESSING — the loser's
+   * updateMany matches 0 rows. This replaces the prior bare update-by-id (no
+   * status guard), which let two workers both "claim" the same row and both
+   * proceed (a latent double-post once writeFinanceJournal is wired in SP7.4+).
+   *
+   * Returns the DB-persisted post-increment `attempts` so the caller drives its
+   * finality decision off the source of truth, not a stale in-memory value.
+   */
+  async claimPending(id: string): Promise<{ claimed: boolean; attempts: number }> {
+    const res = await this.prisma.outboxEvent.updateMany({
+      where: { id, status: 'PENDING', deletedAt: null },
       data: { status: 'PROCESSING', attempts: { increment: 1 } },
     });
+    if (res.count === 0) return { claimed: false, attempts: 0 };
+    const row = await this.prisma.outboxEvent.findUnique({
+      where: { id },
+      select: { attempts: true },
+    });
+    return { claimed: true, attempts: row?.attempts ?? 0 };
   }
 
   async markProcessed(id: string) {

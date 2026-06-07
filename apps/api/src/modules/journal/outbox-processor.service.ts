@@ -31,14 +31,29 @@ export class OutboxProcessorService {
     let failed = 0;
 
     for (const event of events) {
+      // Atomic claim: only one overlapping tick/pod wins the PENDING→PROCESSING
+      // transition. A lost claim (count 0) means another worker already took
+      // this row — skip it (do NOT proceed to writeFinanceJournal).
+      let claim: { claimed: boolean; attempts: number };
       try {
-        await this.outbox.markProcessing(event.id);
+        claim = await this.outbox.claimPending(event.id);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.warn(`Outbox event ${event.id} claim failed (transient): ${msg}`);
+        failed++;
+        continue;
+      }
+      if (!claim.claimed) continue;
+
+      try {
         await this.writeFinanceJournal(event);
         await this.outbox.markProcessed(event.id);
         processed++;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        const attemptsAfter = event.attempts + 1;
+        // Finality from the DB-persisted attempts (post-claim increment), NOT a
+        // stale in-memory `event.attempts + 1`.
+        const attemptsAfter = claim.attempts;
         const isFinal = attemptsAfter >= MAX_ATTEMPTS;
         await this.outbox.markFailed(event.id, msg, isFinal);
 

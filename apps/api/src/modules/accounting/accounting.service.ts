@@ -49,6 +49,13 @@ export const INVENTORY_COSTING_METHOD = 'SPECIFIC_IDENTIFICATION' as const;
  * 4. สินค้าคงเหลือ — Specific Identification (ระบุเฉพาะ)
  *    - สินค้าแต่ละชิ้นมี costPrice เฉพาะ (IMEI-level tracking)
  */
+type ReportExpenseCategory =
+  | 'SELL_COMMISSION' | 'SELL_ADVERTISING'
+  | 'ADMIN_SALARY' | 'ADMIN_SOCIAL_SECURITY' | 'ADMIN_OFFICE_SUPPLIES'
+  | 'ADMIN_UTILITIES' | 'ADMIN_TELEPHONE' | 'ADMIN_TRAVEL' | 'ADMIN_MAINTENANCE'
+  | 'ADMIN_TAX_FEE' | 'ADMIN_DEPRECIATION'
+  | 'OTHER_LOSS' | 'OTHER_FINE' | 'OTHER_MISC';
+
 @Injectable()
 export class AccountingService implements OnModuleInit {
   private readonly logger = new Logger(AccountingService.name);
@@ -59,6 +66,96 @@ export class AccountingService implements OnModuleInit {
     // P3-SP5 W7: defense-in-depth filter on companyId for SHOP/FINANCE scoping.
     private companyResolver: CompanyResolverService,
   ) {}
+
+  // Account → /reports P&L granular category (display only; totals come from
+  // section sums). Accountant-reviewable: rollups chosen from the FINANCE chart
+  // names (see docs/superpowers/specs/2026-06-07-reports-pl-expense-migration-design.md).
+  // Accounts not listed still count in their section total but show no granular line.
+  private static readonly EXPENSE_ACCOUNT_CATEGORY: Record<string, ReportExpenseCategory> = {
+    '52-1101': 'SELL_COMMISSION',
+    '52-1102': 'SELL_ADVERTISING', '52-1103': 'SELL_ADVERTISING',
+    '53-1101': 'ADMIN_SALARY', '53-1103': 'ADMIN_SALARY', '53-1104': 'ADMIN_SALARY',
+    '53-1105': 'ADMIN_SALARY', '53-1106': 'ADMIN_SALARY',
+    '53-1102': 'ADMIN_SOCIAL_SECURITY',
+    '53-1201': 'ADMIN_OFFICE_SUPPLIES', '53-1202': 'ADMIN_OFFICE_SUPPLIES', '53-1203': 'ADMIN_OFFICE_SUPPLIES',
+    '53-1301': 'ADMIN_UTILITIES', '53-1302': 'ADMIN_UTILITIES',
+    '53-1303': 'ADMIN_TELEPHONE',
+    '53-1304': 'ADMIN_TRAVEL',
+    '53-1305': 'ADMIN_MAINTENANCE', '53-1306': 'ADMIN_MAINTENANCE',
+    '53-1401': 'ADMIN_TAX_FEE', '53-1402': 'ADMIN_TAX_FEE', '53-1403': 'ADMIN_TAX_FEE',
+    '53-1404': 'ADMIN_TAX_FEE', '53-1501': 'ADMIN_TAX_FEE', '53-1502': 'ADMIN_TAX_FEE',
+    '53-1701': 'ADMIN_TAX_FEE', '53-1702': 'ADMIN_TAX_FEE',
+    '53-1601': 'ADMIN_DEPRECIATION', '53-1602': 'ADMIN_DEPRECIATION',
+    '53-1603': 'ADMIN_DEPRECIATION', '53-1604': 'ADMIN_DEPRECIATION',
+    '51-1102': 'OTHER_LOSS', '51-1103': 'OTHER_LOSS', '53-1605': 'OTHER_LOSS',
+    '51-1104': 'OTHER_FINE', '54-1103': 'OTHER_FINE', '54-1104': 'OTHER_FINE',
+    '51-1101': 'OTHER_MISC', '51-1105': 'OTHER_MISC', '53-1503': 'OTHER_MISC',
+    '54-1101': 'OTHER_MISC', '54-1102': 'OTHER_MISC',
+  };
+
+  /**
+   * Aggregate POSTED FINANCE journal expense lines (51-54) for a period into
+   * section totals (authoritative) + a curated category breakdown (display).
+   * Only runs for company-wide views — per-branch expense attribution is
+   * deferred until SHOP accounting exists (journal has no branchId).
+   */
+  private async aggregateFinanceExpenses(
+    start: Date,
+    end: Date,
+    companyWide: boolean,
+  ): Promise<{
+    byCategory: { category: string; totalAmount: Prisma.Decimal }[];
+    sectionTotals: { selling: Prisma.Decimal; admin: Prisma.Decimal; other: Prisma.Decimal };
+  }> {
+    const zero = () => new Prisma.Decimal(0);
+    if (!companyWide) {
+      return { byCategory: [], sectionTotals: { selling: zero(), admin: zero(), other: zero() } };
+    }
+
+    const financeCompanyId = await this.companyResolver.getFinanceCompanyId();
+    const lineSums = await this.prisma.journalLine.groupBy({
+      by: ['accountCode'],
+      where: {
+        journalEntry: {
+          status: 'POSTED',
+          entryDate: { gte: start, lte: end },
+          deletedAt: null,
+          companyId: financeCompanyId,
+        },
+        deletedAt: null,
+        OR: [
+          { accountCode: { startsWith: '51-' } },
+          { accountCode: { startsWith: '52-' } },
+          { accountCode: { startsWith: '53-' } },
+          { accountCode: { startsWith: '54-' } },
+        ],
+      },
+      _sum: { debit: true, credit: true },
+    });
+
+    let selling = zero();
+    let admin = zero();
+    let other = zero();
+    const byCategoryMap = new Map<string, Prisma.Decimal>();
+
+    for (const row of lineSums) {
+      const net = new Prisma.Decimal(row._sum.debit ?? 0).sub(new Prisma.Decimal(row._sum.credit ?? 0));
+      const prefix = row.accountCode.slice(0, 2);
+      if (prefix === '52') selling = selling.add(net);
+      else if (prefix === '53') admin = admin.add(net);
+      else if (prefix === '51' || prefix === '54') other = other.add(net);
+
+      const category = AccountingService.EXPENSE_ACCOUNT_CATEGORY[row.accountCode];
+      if (category) {
+        byCategoryMap.set(category, (byCategoryMap.get(category) ?? zero()).add(net));
+      }
+    }
+
+    return {
+      byCategory: [...byCategoryMap.entries()].map(([category, totalAmount]) => ({ category, totalAmount })),
+      sectionTotals: { selling, admin, other },
+    };
+  }
 
   /**
    * Boot hook retained for future CoA validation needs. Legacy CATEGORY_CODE_MAP

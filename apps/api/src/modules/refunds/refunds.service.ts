@@ -2,12 +2,15 @@ import {
   Injectable,
   Logger,
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { ReceiptVoidReversalTemplate } from '../journal/cpa-templates/receipt-void-reversal.template';
+import { validatePeriodOpen } from '../../utils/period-lock.util';
 import {
   RequestRefundDto,
   MarkRefundReversedDto,
@@ -34,6 +37,7 @@ export class RefundsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly receiptVoidReversalTemplate: ReceiptVoidReversalTemplate,
   ) {}
 
   async requestRefund(dto: RequestRefundDto, userId: string) {
@@ -68,6 +72,14 @@ export class RefundsService {
       throw new BadRequestException(
         `จำนวนเงินคืน (${dto.amount.toLocaleString()}) เกินยอดคงเหลือที่คืนได้ ` +
           `(${remaining.toFixed(2)} บาท)`,
+      );
+    }
+    // Full refunds only (owner policy): the reversal mirrors the WHOLE payment JE,
+    // so the refund must equal the payment's full amountPaid. Reject partials at
+    // request time (markReversed enforces the same — defense in depth).
+    if (!new Prisma.Decimal(dto.amount).equals(new Prisma.Decimal(payment.amountPaid))) {
+      throw new BadRequestException(
+        'รองรับเฉพาะการคืนเงินเต็มจำนวนของงวด (ยอดคืน = ยอดที่ชำระ) — การคืนบางส่วนยังไม่รองรับ',
       );
     }
 
@@ -201,17 +213,90 @@ export class RefundsService {
       );
     }
 
+    // Full-refund only: the reversal mirrors the WHOLE original payment JE, so the
+    // refund must equal the payment's amountPaid. Partial refunds need a proportional
+    // reversal (not built); owner policy is full refunds only.
+    const payment = await this.prisma.payment.findUnique({
+      where: { id: refund.paymentId },
+      select: { amountPaid: true },
+    });
+    if (!payment) throw new NotFoundException('ไม่พบรายการชำระเงินของคำขอคืนเงิน');
+    if (!new Prisma.Decimal(refund.amount).equals(new Prisma.Decimal(payment.amountPaid))) {
+      throw new BadRequestException(
+        'รองรับเฉพาะการคืนเงินเต็มจำนวนของงวด (ยอดคืน = ยอดที่ชำระ) — ' +
+          'การคืนบางส่วนต้องใช้กลไก proportional ซึ่งยังไม่รองรับ',
+      );
+    }
+
     const now = new Date();
-    const updated = await this.prisma.refund.update({
-      where: { id: refundId },
-      data: {
-        status: 'PROCESSED',
-        bankReversalRef: dto.bankReversalRef,
-        bankReversalAt: now,
-        bankReversalNotes: dto.notes,
-        // T1-C8 — freeze bankReversalRef / bankReversalAt on first write.
-        bankReversalLockedAt: now,
-      },
+    const { updated, reversalEntryNo } = await this.prisma.$transaction(async (tx) => {
+      // Find the original POSTED payment-receipt JE. Payment JEs are created via
+      // journal-auto.createAndPost with `reference = payment.id`, which stores
+      // referenceType **'AUTO'** (not 'PAYMENT'). The old 'PAYMENT' filter matched
+      // nothing and silently skipped the reversal — the no-op the review caught.
+      const originalEntry = await tx.journalEntry.findFirst({
+        where: {
+          referenceType: 'AUTO',
+          referenceId: refund.paymentId,
+          status: 'POSTED',
+          deletedAt: null,
+        },
+      });
+
+      // The reversal posts to the current period of the payment's company — guard it
+      // open (companyId-aware: runs the Tier-1 AccountingPeriod check, not just Tier-2).
+      await validatePeriodOpen(tx, now, originalEntry?.companyId ?? undefined);
+
+      // CAS: only flip APPROVED → PROCESSED if it is *still* APPROVED — closes the
+      // TOCTOU gap between the pre-tx read and this write.
+      const cas = await tx.refund.updateMany({
+        where: { id: refundId, status: 'APPROVED' },
+        data: {
+          status: 'PROCESSED',
+          bankReversalRef: dto.bankReversalRef,
+          bankReversalAt: now,
+          bankReversalNotes: dto.notes,
+          // T1-C8 — freeze bankReversalRef / bankReversalAt on first write.
+          bankReversalLockedAt: now,
+        },
+      });
+      if (cas.count !== 1) {
+        throw new ConflictException('คำขอคืนเงินถูกเปลี่ยนสถานะโดยผู้อื่นแล้ว — กรุณาลองใหม่');
+      }
+      const updated = await tx.refund.findUnique({ where: { id: refundId } });
+
+      // Reverse the original payment JE in full (A.5a mirror).
+      let reversalEntryNo: string | null = null;
+      if (originalEntry) {
+        const rev = await this.receiptVoidReversalTemplate.voidReceipt(originalEntry.id, tx, {
+          flow: 'refund-reversal',
+        });
+        reversalEntryNo = rev.entryNo;
+      } else {
+        this.logger.warn(
+          `[refund ${refundId}] no POSTED payment JE for payment ${refund.paymentId} — ` +
+            `reverting payment without a reversal JE (legacy)`,
+        );
+      }
+
+      // Restore the installment to its true unpaid state and void its receipt (the
+      // booking was wrong). Planned-schedule fields (monthlyPrincipal/Interest/
+      // Commission, amountDue) and lateFee describe the plan, not this reverted payment.
+      await tx.payment.update({
+        where: { id: refund.paymentId },
+        data: { status: 'PENDING', amountPaid: 0, paidDate: null },
+      });
+      await tx.receipt.updateMany({
+        where: { paymentId: refund.paymentId, isVoided: false, deletedAt: null },
+        data: {
+          isVoided: true,
+          voidReason: `คืนเงิน (refund ${refundId})`,
+          voidApprovedById: userId,
+          voidApprovedAt: now,
+        },
+      });
+
+      return { updated, reversalEntryNo };
     });
 
     await this.audit.log({
@@ -223,6 +308,7 @@ export class RefundsService {
       newValue: {
         status: 'PROCESSED',
         bankReversalRef: dto.bankReversalRef,
+        reversalEntryNo,
       },
     });
 

@@ -120,7 +120,9 @@ async function getOrphanPayments() {
       AND p.paid_at IS NOT NULL
       AND NOT EXISTS (
         SELECT 1 FROM journal_entries je
-        WHERE je.reference_type = 'PAYMENT'
+        -- Payment JEs are referenceType 'AUTO' (journal-auto from reference=payment.id),
+        -- NOT 'PAYMENT' — the old value matched nothing → every paid payment looked orphaned.
+        WHERE je.reference_type = 'AUTO'
           AND je.reference_id = p.id
           AND je.deleted_at IS NULL
       )

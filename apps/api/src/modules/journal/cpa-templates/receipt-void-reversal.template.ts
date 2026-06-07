@@ -30,8 +30,10 @@ export class ReceiptVoidReversalTemplate {
   async voidReceipt(
     originalJournalEntryId: string,
     tx?: Prisma.TransactionClient,
+    opts?: { flow?: string },
   ): Promise<{ entryNo: string }> {
     const client = tx ?? this.prisma;
+    const flow = opts?.flow ?? 'receipt-void';
     // Idempotency check
     const existingReversal = await client.journalEntry.findFirst({
       where: {
@@ -39,7 +41,7 @@ export class ReceiptVoidReversalTemplate {
           {
             metadata: { path: ['originalEntryId'], equals: originalJournalEntryId },
           } as Prisma.JournalEntryWhereInput,
-          { metadata: { path: ['flow'], equals: 'receipt-void' } } as Prisma.JournalEntryWhereInput,
+          { metadata: { path: ['flow'], equals: flow } } as Prisma.JournalEntryWhereInput,
         ],
         deletedAt: null,
       },
@@ -93,7 +95,7 @@ export class ReceiptVoidReversalTemplate {
         reference: `${originalJournalEntryId}:void`,
         metadata: {
           tag: 'REVERSAL',
-          flow: 'receipt-void',
+          flow,
           originalEntryId: originalJournalEntryId,
           originalEntryNumber: originalJe.entryNumber,
         },

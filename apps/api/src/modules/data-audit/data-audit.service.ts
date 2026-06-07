@@ -135,7 +135,7 @@ export class DataAuditService {
         AND NOT EXISTS (
           SELECT 1 FROM journal_entries je
           WHERE je.reference_id = p.id
-            AND je.reference_type = 'PAYMENT'
+            AND je.reference_type = 'AUTO'
             AND je.deleted_at IS NULL
             AND je.status = 'POSTED'
         )
@@ -214,7 +214,7 @@ export class DataAuditService {
       FROM journal_lines jl
       JOIN journal_entries je ON je.id = jl.journal_entry_id
       WHERE jl.account_code = '21-2101'
-        AND je.reference_type = 'PAYMENT'
+        AND je.reference_type = 'AUTO'
         AND je.status = 'POSTED'
         AND je.deleted_at IS NULL
         AND jl.deleted_at IS NULL
@@ -293,7 +293,7 @@ export class DataAuditService {
         p.late_fee, p.vat_amount as payment_vat,
         (SELECT COALESCE(SUM(jl.credit), 0) FROM journal_lines jl
          JOIN journal_entries je ON je.id = jl.journal_entry_id
-         WHERE je.reference_id = p.id::text AND je.reference_type = 'PAYMENT'
+         WHERE je.reference_id = p.id::text AND je.reference_type = 'AUTO'
          AND jl.account_code = '21-2101' AND je.deleted_at IS NULL AND jl.deleted_at IS NULL
          AND je.status = 'POSTED'
         ) as journal_vat
@@ -306,7 +306,7 @@ export class DataAuditService {
         AND ABS(
           COALESCE((SELECT SUM(jl2.credit) FROM journal_lines jl2
            JOIN journal_entries je2 ON je2.id = jl2.journal_entry_id
-           WHERE je2.reference_id = p.id::text AND je2.reference_type = 'PAYMENT'
+           WHERE je2.reference_id = p.id::text AND je2.reference_type = 'AUTO'
            AND jl2.account_code = '21-2101' AND je2.deleted_at IS NULL AND jl2.deleted_at IS NULL
            AND je2.status = 'POSTED'), 0)
           - COALESCE(p.vat_amount, 0)
@@ -414,7 +414,7 @@ export class DataAuditService {
         FROM journal_lines jl
         JOIN journal_entries je ON je.id = jl.journal_entry_id
         WHERE jl.account_code = '42-1105'
-          AND je.reference_type = 'PAYMENT'
+          AND je.reference_type = 'AUTO'
           AND je.status = 'POSTED'
           AND je.deleted_at IS NULL AND jl.deleted_at IS NULL
         GROUP BY je.reference_id

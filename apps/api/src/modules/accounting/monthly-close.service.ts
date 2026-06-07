@@ -612,6 +612,14 @@ export class MonthlyCloseService {
     });
     const includeFinanceExpenses = closingCompany?.companyCode === 'FINANCE';
 
+    // ACCOUNTANT NOTE: getProfitLossReport is sales-derived (revenue = cash sales /
+    // down-payments / installment collections). FINANCE has no branches/sales, so a
+    // FINANCE close resolves branchIds=[] → revenue 0, and now (with expenses on) the
+    // FINANCE profitLoss snapshot reads as an expense-only loss. The authoritative
+    // FINANCE P&L (interest income 41/42 + expenses 51-54) is the journal-sourced
+    // getProfitLossFromJournal / the trialBalance(scope 'ALL') already snapshotted
+    // above. A follow-up should switch the FINANCE close P&L snapshot to the journal
+    // source; until then the FINANCE profitLoss field here is expense-only by design.
     const [trialBalance, profitLoss, balanceSheet, vatSummary] = await Promise.allSettled([
       // P3-SP5 W1: pass explicit 'ALL' scope so the monthly-close snapshot
       // includes BOTH FINANCE and SHOP rows. Without this the SHOP half

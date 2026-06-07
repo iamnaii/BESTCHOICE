@@ -583,7 +583,13 @@ export class AccountingService implements OnModuleInit {
 
   // ─── W-012: Comparative P&L (MoM / YoY) ──────────────────────────────────────
 
-  async getComparativePL(year: number, month: number, branchId?: string, branchIds?: string[]) {
+  async getComparativePL(
+    year: number,
+    month: number,
+    branchId?: string,
+    branchIds?: string[],
+    includeFinanceExpenses = false,
+  ) {
     // Helper: get last day of month as YYYY-MM-DD string (local time, no UTC shift)
     const lastDayOf = (y: number, m: number) => {
       const d = new Date(y, m, 0); // day 0 of next month = last day of m
@@ -604,9 +610,9 @@ export class AccountingService implements OnModuleInit {
     const endYoY = lastDayOf(year - 1, month);
 
     const [current, prevPeriod, lastYear] = await Promise.all([
-      this.getProfitLossReport(startCurrent, endCurrent, branchId, branchIds),
-      this.getProfitLossReport(startPrev, endPrev, branchId, branchIds),
-      this.getProfitLossReport(startYoY, endYoY, branchId, branchIds),
+      this.getProfitLossReport(startCurrent, endCurrent, branchId, branchIds, includeFinanceExpenses),
+      this.getProfitLossReport(startPrev, endPrev, branchId, branchIds, includeFinanceExpenses),
+      this.getProfitLossReport(startYoY, endYoY, branchId, branchIds, includeFinanceExpenses),
     ]);
 
     const pctChange = (curr: number, prev: number) =>

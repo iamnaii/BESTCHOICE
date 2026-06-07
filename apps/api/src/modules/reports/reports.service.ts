@@ -192,8 +192,14 @@ export class ReportsService {
     return company?.companyCode === 'FINANCE';
   }
 
-  getComparativePL(year: number, month: number, branchId?: string, branchIds?: string[]) {
-    return this.accounting.getComparativePL(year, month, branchId, branchIds);
+  getComparativePL(
+    year: number,
+    month: number,
+    branchId?: string,
+    branchIds?: string[],
+    includeFinanceExpenses = false,
+  ) {
+    return this.accounting.getComparativePL(year, month, branchId, branchIds, includeFinanceExpenses);
   }
 
   // Balance Sheet & Cash Flow delegated to AccountingService

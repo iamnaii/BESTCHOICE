@@ -89,17 +89,25 @@ export class ReportsController {
 
   @Get('comparative-pl')
   @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER')
-  getComparativePL(
+  async getComparativePL(
     @Query('year') year: string,
     @Query('month') month: string,
     @CurrentUser() user: { role: string; branchId: string | null },
     @Query('branchId') branchId?: string,
   ) {
     const effectiveBranch = user.role === 'BRANCH_MANAGER' ? user.branchId || undefined : branchId;
+    // Same gate as /profit-loss so the dashboard MoM/YoY card reconciles with the P&L page.
+    const includeFinanceExpenses = await this.reportsService.shouldIncludeFinanceExpenses(
+      user.role,
+      effectiveBranch,
+      undefined,
+    );
     return this.reportsService.getComparativePL(
       parseInt(year) || new Date().getFullYear(),
       parseInt(month) || new Date().getMonth() + 1,
       effectiveBranch,
+      undefined,
+      includeFinanceExpenses,
     );
   }
 

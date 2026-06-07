@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import Decimal from 'decimal.js';
 import { PrismaService } from '../../prisma/prisma.service';
+import { thaiBahtText } from '../../utils/thai-baht-text.util';
 
 /**
  * Generates A4 letter PDFs (RETURN_DEVICE_45D / CONTRACT_TERMINATION_60D)
@@ -544,37 +545,7 @@ function escapeHtmlAttr(s: string): string {
   return esc(s).replace(/'/g, '&#39;');
 }
 
+// Thai-baht-in-words now lives in the shared thai-baht-text util (Wave 4 dedup).
 function numberToThaiBahtText(num: number): string {
-  if (!num || num === 0) return 'ศูนย์บาทถ้วน';
-  const digits = ['', 'หนึ่ง', 'สอง', 'สาม', 'สี่', 'ห้า', 'หก', 'เจ็ด', 'แปด', 'เก้า'];
-  const places = ['', 'สิบ', 'ร้อย', 'พัน', 'หมื่น', 'แสน'];
-  const readGroup = (n: number): string => {
-    if (n === 0) return '';
-    let s = '';
-    const str = String(Math.floor(n));
-    const len = str.length;
-    for (let i = 0; i < len; i++) {
-      const d = parseInt(str[i], 10);
-      const place = len - i - 1;
-      if (d === 0) continue;
-      if (place === 1 && d === 1) s += 'สิบ';
-      else if (place === 1 && d === 2) s += 'ยี่สิบ';
-      else if (place === 0 && d === 1 && len > 1) s += 'เอ็ด';
-      else s += digits[d] + places[place];
-    }
-    return s;
-  };
-  let text = '';
-  let remaining = Math.floor(num);
-  if (remaining >= 1000000) {
-    const millions = Math.floor(remaining / 1000000);
-    text += readGroup(millions) + 'ล้าน';
-    remaining = remaining - millions * 1000000;
-  }
-  if (remaining > 0) text += readGroup(remaining);
-  text += 'บาท';
-  const satang = Math.round((num - Math.floor(num)) * 100);
-  if (satang === 0) text += 'ถ้วน';
-  else text += readGroup(satang) + 'สตางค์';
-  return text;
+  return thaiBahtText(num);
 }

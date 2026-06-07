@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { StorageService } from '../../storage/storage.service';
 import { formatDateShort } from '../../../utils/thai-date.util';
+import { thaiBahtText } from '../../../utils/thai-baht-text.util';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -232,31 +233,10 @@ export class TradeInVoucherService {
   }
 
   /** เลขเป็นข้อความไทย เช่น 37,673.00 → "สามหมื่นเจ็ดพันหกร้อยเจ็ดสิบสามบาทถ้วน" */
+  // Thai-baht-in-words now lives in the shared thai-baht-text util (Wave 4 dedup).
+  // (The old local copy broke at >= 10,000,000 — see thai-baht-text.util.spec.ts.)
   private numberToThaiBahtText(num: number): string {
-    const digits = ['', 'หนึ่ง', 'สอง', 'สาม', 'สี่', 'ห้า', 'หก', 'เจ็ด', 'แปด', 'เก้า'];
-    const positions = ['', 'สิบ', 'ร้อย', 'พัน', 'หมื่น', 'แสน', 'ล้าน'];
-    const convertIntPart = (n: number): string => {
-      if (n === 0) return 'ศูนย์';
-      let result = '';
-      const str = String(n);
-      const len = str.length;
-      for (let i = 0; i < len; i++) {
-        const d = Number(str[i]);
-        const pos = len - i - 1;
-        if (d === 0) continue;
-        if (pos === 0 && d === 1 && len > 1) result += 'เอ็ด';
-        else if (pos === 1 && d === 1) result += 'สิบ';
-        else if (pos === 1 && d === 2) result += 'ยี่สิบ';
-        else result += digits[d] + positions[pos];
-      }
-      return result;
-    };
-    const intPart = Math.floor(Math.abs(num));
-    const decPart = Math.round((Math.abs(num) - intPart) * 100);
-    let text = convertIntPart(intPart) + 'บาท';
-    if (decPart > 0) text += convertIntPart(decPart) + 'สตางค์';
-    else text += 'ถ้วน';
-    return text;
+    return thaiBahtText(num);
   }
 
   private escapeHtml(s: string): string {

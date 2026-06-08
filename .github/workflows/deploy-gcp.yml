@@ -22,6 +22,12 @@ env:
   GAR_LOCATION: asia-southeast1
   API_IMAGE: asia-southeast1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/bestchoice/api
 
+# Serialise runs per ref so rapid pushes to main can't overlap a migrate/deploy.
+# cancel-in-progress:false → queue, never abort a run mid-migration/deploy.
+concurrency:
+  group: deploy-gcp-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   # ============================================
   # Job 1: Lint, Test, Build (same as deploy.yml)
@@ -34,6 +40,9 @@ jobs:
   lint-and-test:
     name: Lint & Test
     runs-on: ubuntu-latest
+    # Fail fast if a DB-backed spec hangs (the suite normally finishes in
+    # ~5 min) instead of burning the default 6h job limit then auto-cancelling.
+    timeout-minutes: 25
     if: github.event_name == 'pull_request'
 
     services:

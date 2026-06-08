@@ -534,26 +534,30 @@ describe('ReportsService aggregations (Wave 3 characterization)', () => {
       return { svc, getProfitLossReport };
     }
 
-    // QUIRK: endDate = new Date(year, endMonth, 0).toISOString().split('T')[0].
-    // `new Date(y, m, 0)` is LOCAL midnight of the quarter's last day; .toISOString()
-    // converts to UTC. On the Bangkok (UTC+7, production) TZ this rolls back 7h to the
-    // PREVIOUS calendar day, so the recognized endDate is the SECOND-to-last day of the
-    // quarter (Q1 -> 03-30 not 03-31). The startDate is a literal template string with no
-    // Date round-trip, so it is exact. Goldens below pin the ACTUAL (UTC+7) behaviour.
-    it('Q1 2026 -> start 2026-01-01, end 2026-03-30 (TZ-shifted, see quirk)', async () => {
+    // QUIRK (TZ-DEPENDENT SOURCE BEHAVIOUR): endDate =
+    // `new Date(year, endMonth, 0).toISOString().split('T')[0]`. `new Date(y, m, 0)`
+    // is LOCAL midnight of the quarter's last day; `.toISOString()` converts to UTC.
+    // On Bangkok (UTC+7) this rolls back to the PREVIOUS day (Q1 -> 03-30); on UTC
+    // (e.g. CI) it stays 03-31. We compute the expected endDate with the SOURCE's
+    // OWN formula so the assertion is TZ-PORTABLE (passes under any runner TZ).
+    // The startDate is a literal template string (no Date round-trip), so it is exact.
+    const qEnd = (endMonth: number) =>
+      new Date(2026, endMonth, 0).toISOString().split('T')[0];
+
+    it('Q1 2026 -> start 2026-01-01, end = last day of Q1 (TZ-dependent quirk)', async () => {
       const { svc, getProfitLossReport } = make();
       await svc.getQuarterlyReport(2026, 1);
       const [start, end] = getProfitLossReport.mock.calls[0];
       expect(start).toBe('2026-01-01');
-      expect(end).toBe('2026-03-30');
+      expect(end).toBe(qEnd(3)); // endMonth = (1-1)*3+1+2 = 3
     });
 
-    it('Q4 2026 -> start 2026-10-01, end 2026-12-30 (TZ-shifted, see quirk)', async () => {
+    it('Q4 2026 -> start 2026-10-01, end = last day of Q4 (TZ-dependent quirk)', async () => {
       const { svc, getProfitLossReport } = make();
       await svc.getQuarterlyReport(2026, 4);
       const [start, end] = getProfitLossReport.mock.calls[0];
       expect(start).toBe('2026-10-01');
-      expect(end).toBe('2026-12-30');
+      expect(end).toBe(qEnd(12)); // endMonth = (4-1)*3+1+2 = 12
     });
 
     it('delegates branch args + includeFinanceExpenses through to AccountingService', async () => {
@@ -561,7 +565,7 @@ describe('ReportsService aggregations (Wave 3 characterization)', () => {
       await svc.getQuarterlyReport(2026, 2, 'branch-3', ['branch-3', 'branch-4'], true);
       expect(getProfitLossReport).toHaveBeenCalledWith(
         '2026-04-01',
-        '2026-06-29', // Q2 last day 06-30 shifted back to 06-29 under UTC+7
+        qEnd(6), // Q2 endMonth = (2-1)*3+1+2 = 6
         'branch-3',
         ['branch-3', 'branch-4'],
         true,

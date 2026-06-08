@@ -48,8 +48,21 @@ export class BadDebtService {
     if (config) {
       try {
         return JSON.parse(config.value);
-      } catch {
-        /* fall through to defaults */
+      } catch (err) {
+        // Corrupt/edited provision-rate JSON must NOT silently revert to
+        // defaults — these rates drive the TFRS-9 ECL allowance JE (Cr 11-2102),
+        // so a stale basis would post with zero signal. Alarm, THEN fall back to
+        // defaults (safe) so the provisioning cron keeps running. Silent drift
+        // on a regulated provision is the failure we refuse.
+        Sentry.captureException(err, {
+          level: 'error',
+          tags: { subsystem: 'bad-debt', key: 'bad_debt_provision_rates' },
+        });
+        this.logger.error(
+          `Corrupt bad_debt_provision_rates SystemConfig JSON — using DEFAULT_PROVISION_RATES: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
       }
     }
     return DEFAULT_PROVISION_RATES;

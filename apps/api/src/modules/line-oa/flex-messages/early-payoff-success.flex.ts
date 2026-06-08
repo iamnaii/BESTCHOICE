@@ -14,6 +14,9 @@ export interface EarlyPayoffSuccessFlexData {
   originalAmount: number;
   savings: number;
   payoffDate: string;
+  /** Actual early-payoff interest-discount percent (0..50). When omitted, the
+   *  "ส่วนลดพิเศษ X%" badge is hidden — never claim a fixed 50%. */
+  discountPercent?: number;
   receiptUrl?: string;
   branchPickupHint?: string;
 }
@@ -34,7 +37,11 @@ export function buildEarlyPayoffSuccessFlex(data: EarlyPayoffSuccessFlexData): F
     body: [
       createHeroAmount('success', formatBaht(data.savings), {
         cap: 'ประหยัดไปทั้งหมด',
-        savingsBadge: 'ส่วนลดพิเศษ 50%',
+        // Only show the discount badge when the real percent is known — the
+        // early-payoff discount is configurable (0..50), so a hardcoded "50%"
+        // lied to customers who got a different rate.
+        savingsBadge:
+          data.discountPercent != null ? `ส่วนลดพิเศษ ${data.discountPercent}%` : undefined,
       }),
       createRowsBlock([
         createRow('ยอดที่ชำระ', formatBaht(data.amountPaid)),

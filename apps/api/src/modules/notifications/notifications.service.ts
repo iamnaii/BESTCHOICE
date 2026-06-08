@@ -977,6 +977,49 @@ export class NotificationsService {
    * Send payment reminders for upcoming due dates (run daily)
    * Sends reminders exactly 3 days and 1 day before due date
    */
+  /**
+   * True when a notice with this subject was already logged for this payment
+   * today — the per-payment dedup guard shared by the reminder + overdue crons.
+   */
+  private async alreadyNotifiedToday(
+    paymentId: string,
+    subject: string,
+    today: Date,
+  ): Promise<boolean> {
+    const prev = await this.prisma.notificationLog.findFirst({
+      where: { relatedId: paymentId, subject, sentAt: { gte: today } },
+    });
+    return !!prev;
+  }
+
+  /**
+   * PDPA gate shared by the reminder + overdue crons: returns true when the
+   * customer has GRANTED consent. Otherwise logs an IN_APP SKIPPED row (so the
+   * skip stays auditable) and returns false.
+   */
+  private async ensurePdpaConsentOrLogSkip(
+    customerId: string,
+    paymentId: string,
+    subject: string,
+  ): Promise<boolean> {
+    const consent = await this.prisma.pDPAConsent.findFirst({
+      where: { customerId, status: 'GRANTED', deletedAt: null },
+      select: { id: true },
+    });
+    if (consent) return true;
+    await this.prisma.notificationLog.create({
+      data: {
+        channel: 'IN_APP',
+        recipient: customerId,
+        subject,
+        message: `ข้ามการแจ้งเตือน — ลูกค้าไม่มี PDPA consent`,
+        status: 'SKIPPED',
+        relatedId: paymentId,
+      },
+    });
+    return false;
+  }
+
   async sendPaymentReminders() {
     const now = new Date();
     const today = new Date(now.toISOString().split('T')[0]);
@@ -1016,37 +1059,9 @@ export class NotificationsService {
         Math.round((new Date(payment.dueDate).getTime() - today.getTime()) / (1000 * 60 * 60 * 24)),
       );
 
-      // Dedup: skip if already sent a reminder for this payment today
-      const alreadySent = await this.prisma.notificationLog.findFirst({
-        where: {
-          relatedId: payment.id,
-          subject: 'แจ้งเตือนค่างวด',
-          sentAt: { gte: today },
-        },
-      });
-      if (alreadySent) continue;
-
-      // Check PDPA consent before sending notification
-      const consent = await this.prisma.pDPAConsent.findFirst({
-        where: {
-          customerId: customer.id,
-          status: 'GRANTED',
-          deletedAt: null,
-        },
-        select: { id: true },
-      });
-
-      if (!consent) {
-        await this.prisma.notificationLog.create({
-          data: {
-            channel: 'IN_APP',
-            recipient: customer.id,
-            subject: 'แจ้งเตือนค่างวด',
-            message: `ข้ามการแจ้งเตือน — ลูกค้าไม่มี PDPA consent`,
-            status: 'SKIPPED',
-            relatedId: payment.id,
-          },
-        });
+      // Dedup + PDPA guards (shared with sendOverdueNotices)
+      if (await this.alreadyNotifiedToday(payment.id, 'แจ้งเตือนค่างวด', today)) continue;
+      if (!(await this.ensurePdpaConsentOrLogSkip(customer.id, payment.id, 'แจ้งเตือนค่างวด'))) {
         continue;
       }
 
@@ -1178,37 +1193,9 @@ export class NotificationsService {
         (now.getTime() - new Date(payment.dueDate).getTime()) / (1000 * 60 * 60 * 24),
       );
 
-      // Dedup: skip if already sent an overdue notice for this payment today
-      const alreadySent = await this.prisma.notificationLog.findFirst({
-        where: {
-          relatedId: payment.id,
-          subject: 'แจ้งค้างชำระ',
-          sentAt: { gte: today },
-        },
-      });
-      if (alreadySent) continue;
-
-      // Check PDPA consent before sending notification
-      const consent = await this.prisma.pDPAConsent.findFirst({
-        where: {
-          customerId: customer.id,
-          status: 'GRANTED',
-          deletedAt: null,
-        },
-        select: { id: true },
-      });
-
-      if (!consent) {
-        await this.prisma.notificationLog.create({
-          data: {
-            channel: 'IN_APP',
-            recipient: customer.id,
-            subject: 'แจ้งค้างชำระ',
-            message: `ข้ามการแจ้งเตือน — ลูกค้าไม่มี PDPA consent`,
-            status: 'SKIPPED',
-            relatedId: payment.id,
-          },
-        });
+      // Dedup + PDPA guards (shared with sendPaymentReminders)
+      if (await this.alreadyNotifiedToday(payment.id, 'แจ้งค้างชำระ', today)) continue;
+      if (!(await this.ensurePdpaConsentOrLogSkip(customer.id, payment.id, 'แจ้งค้างชำระ'))) {
         continue;
       }
 

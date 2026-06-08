@@ -27,6 +27,20 @@ export class ReceiptsService {
   ) {}
 
   /**
+   * Resolve the FINANCE companyId for the period-lock guard. Receipts are a
+   * FINANCE-side artifact (their void posts a FINANCE reversal JE). Returns
+   * undefined when FINANCE is not configured so a void never crashes on
+   * misconfig — FINANCE is always configured in production.
+   */
+  private async resolveFinanceCompanyId(): Promise<string | undefined> {
+    const finance = await this.prisma.companyInfo.findFirst({
+      where: { companyCode: 'FINANCE', deletedAt: null },
+      select: { id: true },
+    });
+    return finance?.id;
+  }
+
+  /**
    * Generate receipt number: RT-YYYYMM-NNNNN (CPA Policy A spec).
    *
    * Per-month sequence guarded by pg_advisory_xact_lock so concurrent generation
@@ -456,8 +470,8 @@ export class ReceiptsService {
       );
     }
 
-    // CR-7: Validate void date is not in a closed accounting period
-    await validatePeriodOpen(this.prisma, new Date());
+    // CR-7: Validate void date is not in a closed (FINANCE) accounting period.
+    await validatePeriodOpen(this.prisma, new Date(), await this.resolveFinanceCompanyId());
     return this.prisma.$transaction(async (tx) => {
       const receipt = await tx.receipt.findUnique({ where: { id } });
       if (!receipt || receipt.deletedAt) throw new NotFoundException('ไม่พบใบเสร็จ');

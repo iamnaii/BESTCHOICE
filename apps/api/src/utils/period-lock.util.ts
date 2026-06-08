@@ -1,17 +1,25 @@
 /**
  * Accounting period lock utility
- * Shared validation to prevent transactions in closed accounting periods.
- * Used by: AccountingService, PaymentsService, ReceiptsService
+ *
+ * Single source of truth = `AccountingPeriod` (per-company, per-month status).
+ * Prevents posting/voiding accounting transactions into a CLOSED or SYNCED
+ * period — UNLESS today is still inside the `period_grace_days` window.
+ *
+ * (2026-06 unify) The legacy global SystemConfig cutoff
+ * `accounting_period_closed_until` was removed; AccountingPeriod is now the only
+ * mechanism. Every accounting write path resolves the FINANCE/SHOP companyId and
+ * passes it here. A call without companyId is intentionally a no-op.
+ *
+ * Used by: JournalService, PaymentsService, ReceiptsService, ContractPaymentService,
+ *          AssetService, DepreciationService, OtherIncomeService,
+ *          ExpenseDocumentsService, IntercompanyService, RefundsService,
+ *          installment-accrual.cron
  */
 import { BadRequestException } from '@nestjs/common';
 
 interface PrismaLike {
   systemConfig: {
     findUnique(args: { where: { key: string } }): Promise<{ value: string } | null>;
-    findFirst?(args: {
-      where: { key: string; deletedAt?: null };
-      select?: { value: true };
-    }): Promise<{ value: string } | null>;
   };
   accountingPeriod?: {
     findUnique(args: {
@@ -54,60 +62,36 @@ function addDays(base: Date, days: number): Date {
 /**
  * Validate that a transaction date is not in a closed accounting period.
  *
- * Two-tier check:
- * 1. If companyId is provided: look up AccountingPeriod for the date's year+month.
- *    Throws if status is CLOSED or SYNCED — UNLESS today is within
- *    `period_grace_days` after the period's last calendar day (D1.2.6.2).
- * 2. Fallback: check legacy SystemConfig key `accounting_period_closed_until`.
- *    Throws if `date <= closedUntil` — UNLESS today is within
- *    `period_grace_days` after `closedUntil`.
+ * Looks up the AccountingPeriod for the date's (companyId, year, month). Throws
+ * if its status is CLOSED or SYNCED — UNLESS today is within `period_grace_days`
+ * after the period's last calendar day (D1.2.6.2).
  *
- * Both checks are run when companyId is provided (belt-and-suspenders).
+ * Enforcement REQUIRES companyId: callers that do not pass one are not guarded.
  */
 export async function validatePeriodOpen(
   prisma: PrismaLike,
   date: Date,
   companyId?: string,
 ): Promise<void> {
-  const graceDays = await getGraceDays(prisma);
-  const today = new Date();
+  if (!companyId || !prisma.accountingPeriod) return;
 
-  // ── Tier 1: AccountingPeriod model check (when companyId is available) ────
-  if (companyId && prisma.accountingPeriod) {
-    const year = date.getFullYear();
-    const month = date.getMonth() + 1; // JS months are 0-indexed
-    const period = await prisma.accountingPeriod.findUnique({
-      where: { companyId_year_month: { companyId, year, month } },
-      select: { status: true },
-    });
-    if (period && (period.status === 'CLOSED' || period.status === 'SYNCED')) {
-      // D1.2.6.2 — grace window. Allow posting INTO a closed period for
-      // `graceDays` after the period's last calendar day.
-      const periodLastDay = lastDayOfMonth(year, month);
-      const graceEnd = addDays(periodLastDay, graceDays);
-      if (today > graceEnd) {
-        throw new BadRequestException(
-          `ไม่สามารถบันทึกรายการในงวดที่ปิดแล้ว (${year}/${String(month).padStart(2, '0')} สถานะ: ${period.status})`,
-        );
-      }
-      // else: within grace window → fall through (allowed)
-    }
+  const year = date.getFullYear();
+  const month = date.getMonth() + 1; // JS months are 0-indexed
+  const period = await prisma.accountingPeriod.findUnique({
+    where: { companyId_year_month: { companyId, year, month } },
+    select: { status: true },
+  });
+  if (!period || (period.status !== 'CLOSED' && period.status !== 'SYNCED')) {
+    return; // OPEN / REVIEW / no row → not locked
   }
 
-  // ── Tier 2: Legacy SystemConfig check (backward compatibility) ────────────
-  const config = await prisma.systemConfig.findUnique({
-    where: { key: 'accounting_period_closed_until' },
-  });
-  if (config) {
-    const closedUntil = new Date(config.value);
-    if (date <= closedUntil) {
-      // D1.2.6.2 — same grace window applied to the legacy cutoff.
-      const graceEnd = addDays(closedUntil, graceDays);
-      if (today > graceEnd) {
-        throw new BadRequestException(
-          `ไม่สามารถบันทึกรายการในงวดที่ปิดแล้ว (ปิดถึง ${closedUntil.toISOString().split('T')[0]})`,
-        );
-      }
-    }
+  // D1.2.6.2 — grace window. Allow posting INTO a closed period for
+  // `graceDays` after the period's last calendar day.
+  const graceDays = await getGraceDays(prisma);
+  const graceEnd = addDays(lastDayOfMonth(year, month), graceDays);
+  if (new Date() > graceEnd) {
+    throw new BadRequestException(
+      `ไม่สามารถบันทึกรายการในงวดที่ปิดแล้ว (${year}/${String(month).padStart(2, '0')} สถานะ: ${period.status})`,
+    );
   }
 }

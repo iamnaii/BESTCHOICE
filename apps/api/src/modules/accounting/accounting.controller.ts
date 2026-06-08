@@ -233,22 +233,6 @@ export class AccountingController {
   }
 
   // ============================================================
-  // W-013: Period Closing Lock
-  // ============================================================
-
-  @Get('period-status')
-  @Roles('OWNER', 'VIEWER')
-  getPeriodStatus() {
-    return this.service.getAccountingPeriodStatus();
-  }
-
-  @Post('close-period')
-  @Roles('OWNER')
-  closePeriod(@Body('closedUntil') closedUntil: string) {
-    return this.service.closeAccountingPeriod(closedUntil);
-  }
-
-  // ============================================================
   // Bad Debt Provisioning (ค่าเผื่อหนี้สงสัยจะสูญ)
   // ============================================================
 

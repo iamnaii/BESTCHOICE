@@ -5,6 +5,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { LineOaService } from '../line-oa/line-oa.service';
 import { ReceiptVoidReversalTemplate } from '../journal/cpa-templates/receipt-void-reversal.template';
+import { validatePeriodOpen } from '../../utils/period-lock.util';
 
 // Mock the period-lock util so the test isn't blocked by closed-period validation.
 jest.mock('../../utils/period-lock.util', () => ({
@@ -42,6 +43,9 @@ describe('ReceiptsService', () => {
       receipt: {
         findUnique: jest.fn(),
         update: jest.fn(),
+      },
+      companyInfo: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'co-FINANCE' }),
       },
       $transaction: jest.fn().mockImplementation(async (cb: any) => cb(txMock)),
       __tx: txMock,
@@ -106,6 +110,10 @@ describe('ReceiptsService', () => {
 
       expect(result.voidedReceipt).toBeDefined();
       expect(result.creditNote).toBeDefined();
+
+      // Period-lock guard runs with the resolved FINANCE companyId (unify 2026-06):
+      // voids must obey the FINANCE AccountingPeriod, not the removed legacy cutoff.
+      expect(validatePeriodOpen).toHaveBeenCalledWith(prisma, expect.any(Date), 'co-FINANCE');
 
       // Phase A.5a: reversal JE posted via ReceiptVoidReversalTemplate
       // (PR #780 Wave 1 P0: tx is forwarded so JE post + receipt void roll back together)

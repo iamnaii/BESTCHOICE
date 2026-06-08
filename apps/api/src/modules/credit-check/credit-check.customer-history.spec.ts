@@ -16,8 +16,9 @@ import { CreditCheckService } from './credit-check.service';
  *   - completedContracts = count of status in { COMPLETED, EARLY_PAYOFF }
  *   - activeContracts    = count of status in { ACTIVE, OVERDUE }
  *   - currentOutstanding = sum over ACTIVE|OVERDUE contracts of
- *       (totalMonths - paidCount) * Number(monthlyPayment),
+ *       max(0, totalMonths - paidCount) * Number(monthlyPayment),
  *       paidCount = payments with status PAID; final Math.round(x*100)/100
+ *       (remaining floored at 0 — never subtracts from outstanding)
  *   - onTimePayments     = count of ALL payments with status PAID (every contract)
  *   - latePayments       = count of ALL payments with status OVERDUE
  *   - onTimeRate         = total>0 ? Math.round(onTime/total*100)/100 : 0
@@ -203,8 +204,9 @@ describe('CreditCheckService.getCustomerHistory', () => {
       expect(r.currentOutstanding).toBe(33.33);
     });
 
-    it('can go negative when paidCount exceeds totalMonths (quirk encoded as golden)', async () => {
-      // ACTIVE, totalMonths 2 but 3 PAID payments -> remaining -1 -> -1 * 1000 = -1000
+    it('floors remaining at 0 when paidCount exceeds totalMonths (regression: never negative)', async () => {
+      // ACTIVE, totalMonths 2 but 3 PAID payments -> remaining max(0, 2-3) = 0 -> 0.
+      // Previously this returned -1000 (remaining went negative); now floored.
       const r = await run([
         contract({
           id: 'a',
@@ -214,7 +216,7 @@ describe('CreditCheckService.getCustomerHistory', () => {
           payments: pay(3, 'PAID'),
         }),
       ]);
-      expect(r.currentOutstanding).toBe(-1000);
+      expect(r.currentOutstanding).toBe(0);
     });
   });
 

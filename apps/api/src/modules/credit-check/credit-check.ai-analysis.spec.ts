@@ -24,7 +24,8 @@ import { CreditCheckService } from './credit-check.service';
  *         image block; http(s) and non-image data: URLs are skipped
  *       * slice(0,5): at most 5 image blocks regardless of input count
  *       * markdown ```json unwrap before JSON.parse
- *       * score clamp Math.max(0, Math.min(100, Number(score) || 50))
+ *       * score clamp: Number.isFinite(Number(score)) ? clamp[0,100] : 50
+ *         (a finite score — including 0 — is honored; only missing/NaN -> 50)
  *       * field defaults (summary/recommendation/analysis)
  *       * InternalServerErrorException when no text block in the response
  *
@@ -244,13 +245,24 @@ describe('CreditCheckService AI analysis (characterization)', () => {
       expect(out.score).toBe(0);
     });
 
-    it('falls back to 50 when score is missing (Number(undefined) || 50)', async () => {
+    it('falls back to 50 when score is missing (undefined -> NaN -> default)', async () => {
       const svc = makeService('sk-test');
       const { client } = fakeClientReturning(JSON.stringify({ summary: 'no score field' }));
       wire(svc, client);
 
       const out = await asPrivate(svc).performClaudeAnalysis({ ...baseParams });
       expect(out.score).toBe(50);
+    });
+
+    it('honors a legitimate score of 0 (regression: not collapsed to the 50 default)', async () => {
+      // Previously `Number(0) || 50` turned an absolute-reject 0 into 50; the
+      // finiteness gate now lets a real 0 through to the clamp unchanged.
+      const svc = makeService('sk-test');
+      const { client } = fakeClientReturning(JSON.stringify({ score: 0, summary: 'reject' }));
+      wire(svc, client);
+
+      const out = await asPrivate(svc).performClaudeAnalysis({ ...baseParams });
+      expect(out.score).toBe(0);
     });
 
     it('falls back to 50 when score is non-numeric / NaN', async () => {

@@ -542,7 +542,9 @@ export class CreditCheckService {
     for (const contract of contracts) {
       if (contract.status === 'ACTIVE' || contract.status === 'OVERDUE') {
         const paidCount = contract.payments.filter((p) => p.status === 'PAID').length;
-        const remaining = contract.totalMonths - paidCount;
+        // Floor at 0: a contract with more PAID rows than totalMonths (data drift,
+        // re-runs) must not subtract from outstanding — it has nothing left to owe.
+        const remaining = Math.max(0, contract.totalMonths - paidCount);
         currentOutstanding += remaining * Number(contract.monthlyPayment);
       }
     }
@@ -1071,7 +1073,10 @@ export class CreditCheckService {
 
     const result = JSON.parse(jsonText);
 
-    const score = Math.max(0, Math.min(100, Number(result.score) || 50));
+    // Honor a legitimate score of 0 (absolute reject). `Number(x) || 50` collapsed
+    // 0 into the 50 default; gate on finiteness so only missing/NaN scores default.
+    const parsedScore = Number(result.score);
+    const score = Number.isFinite(parsedScore) ? Math.max(0, Math.min(100, parsedScore)) : 50;
 
     return {
       score,

@@ -11,6 +11,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { resolvePostPermissionRoles } from './post-permission.guard';
 import { resolveReversePermissionRoles } from './reverse-permission.guard';
+import { maskPayrollTaxIds } from './payroll-pii-mask.util';
 import { DocNumberService } from './services/doc-number.service';
 import { StatusTransitionService } from './services/status-transition.service';
 import { ExpenseSameDayTemplate } from '../journal/cpa-templates/expense-same-day.template';
@@ -1032,26 +1033,8 @@ export class ExpenseDocumentsService implements OnModuleInit {
     // PR-C PII — the snapshot employeeTaxId === the employee's nationalId (or
     // override). Mask it in the response for roles PR-A blocks from national
     // IDs, so a draft payroll can't enumerate them.
-    this.maskPayrollTaxIds(doc, user.role);
+    maskPayrollTaxIds(doc, user.role);
     return doc;
-  }
-
-  /**
-   * PR-C PII — mask each payroll line's employeeTaxId (= nationalId/override)
-   * unless the viewer is OWNER/ACCOUNTANT. Mutates `doc` in place; the STORED
-   * value is never changed (response-only). No-op for non-payroll docs.
-   */
-  private maskPayrollTaxIds(
-    doc: { payroll?: { lines: Array<{ employeeTaxId: string | null }> } | null },
-    role?: string | null,
-  ): void {
-    // PII-cleared roles (see same set on the PND1 tax report): OWNER/ACCOUNTANT
-    // run the books; FINANCE_MANAGER files payroll tax (needs the real national IDs).
-    if (role === 'OWNER' || role === 'ACCOUNTANT' || role === 'FINANCE_MANAGER') return;
-    if (!doc.payroll) return;
-    for (const l of doc.payroll.lines) {
-      l.employeeTaxId = l.employeeTaxId ? '•••••••••' + l.employeeTaxId.slice(-4) : l.employeeTaxId;
-    }
   }
 
   // ─── Vendor Settlement create — multi-line clears ACCRUAL EXs ────────
@@ -1980,7 +1963,7 @@ export class ExpenseDocumentsService implements OnModuleInit {
     // PR-C PII — mask payroll taxIds in the read response. Cast required
     // because Prisma's conditional-include type for payroll doesn't statically
     // carry the nested lines shape; the runtime value is correct.
-    this.maskPayrollTaxIds(
+    maskPayrollTaxIds(
       doc as { payroll?: { lines: Array<{ employeeTaxId: string | null }> } | null },
       viewerRole,
     );

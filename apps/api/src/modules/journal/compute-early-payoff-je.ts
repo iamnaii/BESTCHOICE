@@ -1,4 +1,5 @@
 import { Decimal } from '@prisma/client/runtime/library';
+import { computeInstallmentBreakdown } from './compute-installment-breakdown';
 
 /**
  * Single source of truth for the Early-Payoff (JP4) journal-entry money math.
@@ -78,25 +79,17 @@ export interface ComputeEarlyPayoffJeResult {
 export function computeEarlyPayoffJE(
   input: ComputeEarlyPayoffJeInput,
 ): ComputeEarlyPayoffJeResult {
-  const total = new Decimal(input.totalMonths);
   const unpaidD = new Decimal(input.unpaidCount);
 
-  const financed = new Decimal(input.financedAmount);
-  const commission =
-    input.storeCommission != null
-      ? new Decimal(input.storeCommission)
-      : financed.times('0.10').toDecimalPlaces(2);
-  const interest = new Decimal(input.interestTotal);
-  const grossExclVat = financed.plus(commission).plus(interest);
-  const vat =
-    input.vatAmount != null
-      ? new Decimal(input.vatAmount)
-      : grossExclVat.times('0.07').toDecimalPlaces(2);
-
-  // Per-installment amounts (same rounding as templates 2A/2B).
-  const installmentExclVat = grossExclVat.div(total).toDecimalPlaces(2, Decimal.ROUND_DOWN);
-  const interestPerInst = interest.div(total).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-  const vatPerInst = vat.div(total).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+  // Per-installment amounts — shared single source of truth (same rounding the
+  // 2A accrual / 2B receipt templates use).
+  const { installmentExclVat, interestPerInst, vatPerInst } = computeInstallmentBreakdown({
+    financedAmount: input.financedAmount,
+    storeCommission: input.storeCommission,
+    interestTotal: input.interestTotal,
+    vatAmount: input.vatAmount,
+    totalMonths: input.totalMonths,
+  });
 
   // Remaining balances for the unpaid installments.
   const remainingGross = installmentExclVat.times(unpaidD);

@@ -5,6 +5,7 @@ import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { AccountRoleService } from '../account-role.service';
 import { Vat60dayReversalTemplate } from './vat-60day-reversal.template';
+import { computeInstallmentBreakdown } from '../compute-installment-breakdown';
 
 const TOLERANCE = new Decimal('1.00');
 
@@ -153,23 +154,15 @@ export class PaymentReceipt2BTemplate {
 
     const c = inst.contract;
 
-    // Compute installmentTotal using same rounding as 2A
-    const total = new Decimal(c.totalMonths);
-    const financed = new Decimal(c.financedAmount.toString());
-    const commission =
-      c.storeCommission != null
-        ? new Decimal(c.storeCommission.toString())
-        : financed.times('0.10').toDecimalPlaces(2);
-    const interest = new Decimal(c.interestTotal.toString());
-    const grossExclVat = financed.plus(commission).plus(interest);
-    const vat =
-      c.vatAmount != null
-        ? new Decimal(c.vatAmount.toString())
-        : grossExclVat.times('0.07').toDecimalPlaces(2);
-
-    const installmentExclVat = grossExclVat.div(total).toDecimalPlaces(2, Decimal.ROUND_DOWN);
-    const vatPerInst = vat.div(total).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-    const installmentTotal = installmentExclVat.plus(vatPerInst); // 1,515.83
+    // Per-installment amount via the shared single source of truth (same
+    // rounding as the 2A accrual): installmentTotal = 1,515.83 for 17K/12M.
+    const { installmentTotal } = computeInstallmentBreakdown({
+      financedAmount: c.financedAmount.toString(),
+      storeCommission: c.storeCommission != null ? c.storeCommission.toString() : null,
+      interestTotal: c.interestTotal.toString(),
+      vatAmount: c.vatAmount != null ? c.vatAmount.toString() : null,
+      totalMonths: c.totalMonths,
+    });
 
     const advCredit = input.advanceCredit ?? new Decimal(0);
     const advConsume = input.advanceConsume ?? new Decimal(0);

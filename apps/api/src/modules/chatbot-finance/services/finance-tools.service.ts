@@ -3,6 +3,8 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { LATE_FEE_PER_DAY } from '../constants/finance-rules';
 import { FinanceConfigService } from './finance-config.service';
 import { formatThaiDateText as formatThaiDate } from '../../../utils/thai-date.util';
+import { computeCappedLateFee } from '../../../utils/late-fee.util';
+import { BUSINESS_RULES } from '../../../utils/config.util';
 
 /**
  * Finance Tools — wrap DB queries สำหรับ Claude tool use
@@ -60,7 +62,22 @@ export class FinanceToolsService {
       0,
       Math.floor((now.getTime() - nextPayment.dueDate.getTime()) / (1000 * 60 * 60 * 24)),
     );
-    const lateFee = nextPayment.lateFeeWaived ? 0 : daysOverdue * LATE_FEE_PER_DAY;
+    // Late fee MUST match what the collection path actually charges
+    // (payments.service.recordPayment): capped at
+    // min(perDay×days, flatCap, amountDue×5%). The bot used to quote an
+    // UNCAPPED daysOverdue×rate, over-stating the fine (e.g. 3,000 vs 100).
+    const { feePerDay, flatCap } = await this.getLateFeeConfig();
+    const lateFee = nextPayment.lateFeeWaived
+      ? 0
+      : Number(
+          computeCappedLateFee({
+            daysOverdue,
+            feePerDay,
+            flatCap,
+            capPct: BUSINESS_RULES.LATE_FEE_CAP_PCT,
+            amountDue: nextPayment.amountDue,
+          }),
+        );
     const totalAmount = remainingBase + lateFee;
 
     return {
@@ -128,18 +145,41 @@ export class FinanceToolsService {
     };
   }
 
+  /**
+   * Late-fee config — reads the SAME SystemConfig keys + defaults as the
+   * collection path (payments.service.recordPayment), so the chatbot quote
+   * matches what the customer is actually charged.
+   */
+  private async getLateFeeConfig(): Promise<{ feePerDay: number; flatCap: number }> {
+    const [perDayCfg, capCfg] = await Promise.all([
+      this.prisma.systemConfig.findUnique({ where: { key: 'late_fee_per_day' } }),
+      this.prisma.systemConfig.findUnique({ where: { key: 'late_fee_cap' } }),
+    ]);
+    return {
+      feePerDay: perDayCfg ? Number(perDayCfg.value) : LATE_FEE_PER_DAY,
+      flatCap: capCfg ? Number(capCfg.value) : 1500,
+    };
+  }
+
   // ─── Tool 3: calculate_fine ──────────────────────────────
 
   /**
-   * คำนวณค่าปรับสำหรับวันที่เลยกำหนด (rule-based, ไม่ต้องดึง DB)
+   * คำนวณค่าปรับโดยประมาณสำหรับจำนวนวันที่เลยกำหนด. ไม่มีบริบทงวด → cap 5%
+   * ของยอดงวดคิดไม่ได้ จึงใช้ feePerDay×days กับ flatCap เป็นเพดานบน (เป็น
+   * "ค่าประมาณสูงสุด"). ยอดจริงดูจาก get_current_balance ที่ cap ครบ.
    */
-  calculateFine(daysOverdue: number) {
+  async calculateFine(daysOverdue: number) {
     const days = Math.max(0, Math.floor(daysOverdue));
+    const { feePerDay, flatCap } = await this.getLateFeeConfig();
+    const totalFine = Number(computeCappedLateFee({ daysOverdue: days, feePerDay, flatCap }));
     return {
       daysOverdue: days,
-      ratePerDay: LATE_FEE_PER_DAY,
-      totalFine: days * LATE_FEE_PER_DAY,
-      explanation: `ค่าปรับ ${LATE_FEE_PER_DAY} บาท/วัน × ${days} วัน = ${days * LATE_FEE_PER_DAY} บาท`,
+      ratePerDay: feePerDay,
+      totalFine,
+      explanation:
+        `ค่าปรับ ${feePerDay} บาท/วัน × ${days} วัน` +
+        ` (สูงสุดไม่เกิน ${flatCap} บาท และไม่เกิน 5% ของยอดงวด)` +
+        ` ≈ ${totalFine} บาท — ยอดจริงตรวจได้จากยอดค้างชำระ`,
     };
   }
 

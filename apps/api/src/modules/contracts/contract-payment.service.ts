@@ -4,6 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { ProductsService } from '../products/products.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { EarlyPayoffJP4Template } from '../journal/cpa-templates/early-payoff-jp4.template';
+import { computeEarlyPayoffJE } from '../journal/compute-early-payoff-je';
 import { Decimal } from '@prisma/client/runtime/library';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
 import { EarlyPayoffDto } from './dto/contract.dto';
@@ -133,8 +134,9 @@ export class ContractPaymentService {
 
     // (7) ส่วนลด (default 50%, max 50% ตามนโยบาย)
     // ถ้ากำไรติดลบ → ส่วนลด = 0 (ไม่ลดเพิ่ม ไม่บวกเพิ่ม)
-    const discountPct =
-      discountPctInput != null ? Math.max(0, Math.min(50, discountPctInput)) / 100 : 0.5;
+    const discountPercent =
+      discountPctInput != null ? Math.max(0, Math.min(50, discountPctInput)) : 50;
+    const discountPct = discountPercent / 100;
     const discountAmount = grossProfit > 0 ? round2(dMul(grossProfit, discountPct)) : 0;
 
     // (8) ยอดชำระปิดยอด
@@ -147,40 +149,25 @@ export class ContractPaymentService {
         .map(p => d(p.lateFee)),
     ).toNumber();
 
-    // ── JE preview (mirrors EarlyPayoffJP4Template.execute structure) ────────
-    // Computed from contract fields directly so the UI shows the same JE
-    // shape as what gets posted on confirm. Uses installment-level rounding
-    // (ROUND_DOWN principal, ROUND_HALF_UP interest+VAT) to match 2A/2B.
-    const epTotal = new Decimal(contract.totalMonths);
-    const epUnpaidD = new Decimal(remainingMonths);
-    const epFinanced = new Decimal(contract.financedAmount.toString());
-    const epCommission = contract.storeCommission != null
-      ? new Decimal(contract.storeCommission.toString())
-      : epFinanced.times('0.10').toDecimalPlaces(2);
-    const epInterest = new Decimal(contract.interestTotal.toString());
-    const epGrossExclVat = epFinanced.plus(epCommission).plus(epInterest);
-    const epVat = contract.vatAmount != null
-      ? new Decimal(contract.vatAmount.toString())
-      : epGrossExclVat.times('0.07').toDecimalPlaces(2);
-    const epInstallmentExclVat = epGrossExclVat.div(epTotal).toDecimalPlaces(2, Decimal.ROUND_DOWN);
-    const epInterestPerInst = epInterest.div(epTotal).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-    const epVatPerInst = epVat.div(epTotal).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-    const epRemainingGross = epInstallmentExclVat.times(epUnpaidD);
-    const epRemainingDeferredInterest = epInterestPerInst.times(epUnpaidD);
-    const epRemainingDeferredVat = epVatPerInst.times(epUnpaidD);
-    // discountPct here is fraction 0..1 (0.5 for 50%); epDiscount math takes
-    // the fraction directly, no scaling needed.
-    const epDiscount = epRemainingDeferredInterest
-      .times(new Decimal(discountPct))
-      .toDecimalPlaces(2);
-    // Policy A — VAT ไม่ลดตาม discount
-    const epSettleVat = epRemainingDeferredVat;
-    const epSettlement = epRemainingGross.minus(epDiscount).plus(epSettleVat);
-
+    // ── JE preview (single source of truth — computeEarlyPayoffJE) ───────────
+    // Computed from contract fields via the SAME pure function the ledger
+    // posting (earlyPayoff()) and the JP4 template use, so the preview shown to
+    // the UI/LIFF is byte-for-byte the JE that gets posted on confirm.
     // Cash dimension: caller-provided > fallback 11-1101 (matches accounting.md)
     const epDepositCode = depositAccountCode ?? '11-1101';
+    const je = computeEarlyPayoffJE({
+      depositAccountCode: epDepositCode,
+      financedAmount: contract.financedAmount.toString(),
+      storeCommission: contract.storeCommission != null ? contract.storeCommission.toString() : null,
+      interestTotal: contract.interestTotal.toString(),
+      vatAmount: contract.vatAmount != null ? contract.vatAmount.toString() : null,
+      totalMonths: contract.totalMonths,
+      unpaidCount: remainingMonths,
+      interestDiscountPercent: discountPercent,
+    });
+
     // Resolve all account names from CoA so preview shows real labels.
-    const epCodes = [epDepositCode, '11-2106', '21-2102', '52-1106', '11-2101', '11-2105', '41-1101', '21-2101'];
+    const epCodes = je.lines.map((l) => l.accountCode);
     const epCoaRows = await this.prisma.chartOfAccount.findMany({
       where: { code: { in: epCodes } },
       select: { code: true, name: true },
@@ -188,27 +175,28 @@ export class ContractPaymentService {
     const epNameMap = new Map(epCoaRows.map((r) => [r.code, r.name]));
     const nameOf = (code: string) => epNameMap.get(code) ?? code;
 
+    // Per-line UI descriptions (human-facing). Only the money — accountCode +
+    // debit + credit, shared via computeEarlyPayoffJE — must match the posting;
+    // the ledger words its descriptions differently and that's intentional.
+    const epDescriptions: Record<string, string> = {
+      [epDepositCode]: `รับ ${je.settlement.toFixed(2)} ฿ ปิดยอด`,
+      '11-2106': `ยกเลิกค่าอนาคต ${je.remainingDeferredInterest.toFixed(2)}`,
+      '21-2102': `ล้าง 21-2102 ${je.remainingDeferredVat.toFixed(2)}`,
+      '52-1106': `ส่วนลดดอกเบี้ย ${discountPercent}%`,
+      '11-2101': `ล้าง Gross ${je.remainingGross.toFixed(2)}`,
+      '11-2105': `ล้าง 11-2105 ${je.remainingDeferredVat.toFixed(2)}`,
+      '41-1101': 'รับรู้รายได้',
+      '21-2101': `VAT ถึงกำหนด ${je.settleVat.toFixed(2)}`,
+    };
+
     type JeLine = { accountCode: string; accountName: string; debit: string; credit: string; description: string };
-    const jeLines: JeLine[] = [
-      { accountCode: epDepositCode, accountName: nameOf(epDepositCode), debit: epSettlement.toFixed(2), credit: '0.00', description: `รับ ${epSettlement.toFixed(2)} ฿ ปิดยอด` },
-      { accountCode: '11-2106', accountName: nameOf('11-2106'), debit: epRemainingDeferredInterest.toFixed(2), credit: '0.00', description: `ยกเลิกค่าอนาคต ${epRemainingDeferredInterest.toFixed(2)}` },
-      { accountCode: '21-2102', accountName: nameOf('21-2102'), debit: epRemainingDeferredVat.toFixed(2), credit: '0.00', description: `ล้าง 21-2102 ${epRemainingDeferredVat.toFixed(2)}` },
-    ];
-    if (epDiscount.gt(0)) {
-      jeLines.push({
-        accountCode: '52-1106',
-        accountName: nameOf('52-1106'),
-        debit: epDiscount.toFixed(2),
-        credit: '0.00',
-        description: `ส่วนลดดอกเบี้ย ${discountPct * 100}%`,
-      });
-    }
-    jeLines.push(
-      { accountCode: '11-2101', accountName: nameOf('11-2101'), debit: '0.00', credit: epRemainingGross.toFixed(2), description: `ล้าง Gross ${epRemainingGross.toFixed(2)}` },
-      { accountCode: '11-2105', accountName: nameOf('11-2105'), debit: '0.00', credit: epRemainingDeferredVat.toFixed(2), description: `ล้าง 11-2105 ${epRemainingDeferredVat.toFixed(2)}` },
-      { accountCode: '41-1101', accountName: nameOf('41-1101'), debit: '0.00', credit: epRemainingDeferredInterest.toFixed(2), description: 'รับรู้รายได้' },
-      { accountCode: '21-2101', accountName: nameOf('21-2101'), debit: '0.00', credit: epSettleVat.toFixed(2), description: `VAT ถึงกำหนด ${epSettleVat.toFixed(2)}` },
-    );
+    const jeLines: JeLine[] = je.lines.map((l) => ({
+      accountCode: l.accountCode,
+      accountName: nameOf(l.accountCode),
+      debit: l.dr.toFixed(2),
+      credit: l.cr.toFixed(2),
+      description: epDescriptions[l.accountCode] ?? '',
+    }));
 
     let jeTotalDr = new Decimal(0);
     let jeTotalCr = new Decimal(0);
@@ -323,49 +311,48 @@ export class ContractPaymentService {
           });
         }
 
-        // Phase A.4b: replaced createEarlyPayoffJournal (old stub) with inline
-        // createAndPost mirroring JP4 template's JE structure.
-        // Payment rows are already updated above — JP4 template cannot be called
-        // directly here because it also creates Payment rows (duplicate conflict).
-        // JE accounts mirror EarlyPayoffJP4Template.execute() spec §6.4.
+        // Phase A.4b → Wave-4: post the early-payoff JE via the SINGLE source of
+        // truth computeEarlyPayoffJE — the SAME function getEarlyPayoffQuote()
+        // uses for the preview — so what is posted here is byte-for-byte the JE
+        // the customer was quoted (preview === posted, guaranteed).
+        // The JP4 template can't be called directly here: it also creates Payment
+        // rows, which were already updated above (duplicate conflict).
+        //
+        // ACCOUNTANT NOTE (Wave-1 #11): the JE cash debit (computeEarlyPayoffJE
+        // settlement = remainingGross − discount + deferred VAT) is the
+        // per-installment breakdown, while the cash the customer is QUOTED
+        // (quote.totalPayoff) is monthlyPayment-based, nets out creditBalance/
+        // advance, and discounts GROSS PROFIT. The two bases can diverge — the
+        // FIFO loop above distributes quote.totalPayoff; reconciling the payoff
+        // cash basis is an accounting-policy decision left unchanged pending sign-off.
         {
-          const ep0 = new Decimal(0);
-          const epUnpaid = installmentSnapshots.length;
           const epContract = await tx.contract.findUniqueOrThrow({ where: { id } });
-          const epUnpaidD = new Decimal(epUnpaid);
-          const epTotal = new Decimal(epContract.totalMonths);
-          const epFinanced = new Decimal(epContract.financedAmount.toString());
-          const epCommission = epContract.storeCommission != null
-            ? new Decimal(epContract.storeCommission.toString())
-            : epFinanced.times('0.10').toDecimalPlaces(2);
-          const epInterest = new Decimal(epContract.interestTotal.toString());
-          const epGrossExclVat = epFinanced.plus(epCommission).plus(epInterest);
-          const epVat = epContract.vatAmount != null
-            ? new Decimal(epContract.vatAmount.toString())
-            : epGrossExclVat.times('0.07').toDecimalPlaces(2);
-          const epInstallmentExclVat = epGrossExclVat.div(epTotal).toDecimalPlaces(2, Decimal.ROUND_DOWN);
-          const epInterestPerInst = epInterest.div(epTotal).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-          const epVatPerInst = epVat.div(epTotal).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-          const epRemainingGross = epInstallmentExclVat.times(epUnpaidD);
-          const epRemainingDeferredInterest = epInterestPerInst.times(epUnpaidD);
-          const epRemainingDeferredVat = epVatPerInst.times(epUnpaidD);
-          // NB (Wave-1 #4/#11): `quote.discountPct` is a PERCENTAGE 0..100
-          // (getEarlyPayoffQuote returns `discountPct: discountPct * 100`), so the
-          // `.div(100)` here is CORRECT and matches the quote's JE-preview epDiscount,
-          // which multiplies by the 0..1 fraction directly. This is NOT a 100× bug —
-          // do not "simplify" by removing the .div(100).
-          const epDiscount = epRemainingDeferredInterest
-            .times(new Decimal(quote.discountPct))
-            .div(100)
-            .toDecimalPlaces(2);
-          // ACCOUNTANT NOTE (Wave-1 #11, deeper than the false 100× alarm): epSettlement
-          // (this JE's cash debit) is built from the per-installment breakdown and discounts
-          // the DEFERRED INTEREST, while the cash the customer is quoted (quote.totalPayoff)
-          // is monthlyPayment-based, nets out creditBalance/advance, and discounts GROSS
-          // PROFIT. The two can diverge, so the cash debited here may differ from cash
-          // actually collected. Reconciling the payoff cash basis is an accounting-policy
-          // decision — left unchanged pending sign-off.
-          const epSettlement = epRemainingGross.minus(epDiscount).plus(epRemainingDeferredVat);
+          const epUnpaid = installmentSnapshots.length;
+          const epJe = computeEarlyPayoffJE({
+            depositAccountCode,
+            financedAmount: epContract.financedAmount.toString(),
+            storeCommission: epContract.storeCommission != null ? epContract.storeCommission.toString() : null,
+            interestTotal: epContract.interestTotal.toString(),
+            vatAmount: epContract.vatAmount != null ? epContract.vatAmount.toString() : null,
+            totalMonths: epContract.totalMonths,
+            unpaidCount: epUnpaid,
+            // quote.discountPct is a PERCENTAGE 0..100 (getEarlyPayoffQuote returns
+            // `discountPct * 100`); computeEarlyPayoffJE divides by 100 internally.
+            interestDiscountPercent: quote.discountPct,
+          });
+
+          // Ledger-side line descriptions (the preview words them differently —
+          // only the money, shared via computeEarlyPayoffJE, must match).
+          const epDescriptions: Record<string, string> = {
+            [depositAccountCode]: `รับ ${epJe.settlement.toFixed(2)} ฿ ปิดยอด`,
+            '11-2106': 'ยกเลิกรายได้รอตัดบัญชี-ดอกเบี้ย',
+            '21-2102': 'ล้างภาษีขายรอเรียกเก็บ',
+            '52-1106': 'ส่วนลดดอกเบี้ย-ปิดยอดก่อนกำหนด',
+            '11-2101': 'ล้างลูกหนี้ Gross (excl. VAT)',
+            '11-2105': 'ล้างลูกหนี้ภาษีขายรอฯ',
+            '41-1101': 'รับรู้รายได้ดอกเบี้ย',
+            '21-2101': 'ภาษีขาย ภ.พ.30 ถึงกำหนด',
+          };
 
           await this.journalAutoService.createAndPost(
             {
@@ -376,19 +363,15 @@ export class ContractPaymentService {
                 flow: 'early-payoff',
                 contractId: id,
                 unpaidInstallments: epUnpaid,
-                discount: epDiscount.toFixed(2),
+                discount: epJe.discount.toFixed(2),
                 interestDiscountPercent: quote.discountPct,
               },
-              lines: [
-                { accountCode: depositAccountCode, dr: epSettlement, cr: ep0, description: `รับ ${epSettlement.toFixed(2)} ฿ ปิดยอด` },
-                { accountCode: '11-2106', dr: epRemainingDeferredInterest, cr: ep0, description: 'ยกเลิกรายได้รอตัดบัญชี-ดอกเบี้ย' },
-                { accountCode: '21-2102', dr: epRemainingDeferredVat, cr: ep0, description: 'ล้างภาษีขายรอเรียกเก็บ' },
-                { accountCode: '52-1106', dr: epDiscount, cr: ep0, description: 'ส่วนลดดอกเบี้ย-ปิดยอดก่อนกำหนด' },
-                { accountCode: '11-2101', dr: ep0, cr: epRemainingGross, description: 'ล้างลูกหนี้ Gross (excl. VAT)' },
-                { accountCode: '11-2105', dr: ep0, cr: epRemainingDeferredVat, description: 'ล้างลูกหนี้ภาษีขายรอฯ' },
-                { accountCode: '41-1101', dr: ep0, cr: epRemainingDeferredInterest, description: 'รับรู้รายได้ดอกเบี้ย' },
-                { accountCode: '21-2101', dr: ep0, cr: epRemainingDeferredVat, description: 'ภาษีขาย ภ.พ.30 ถึงกำหนด' },
-              ],
+              lines: epJe.lines.map((l) => ({
+                accountCode: l.accountCode,
+                dr: l.dr,
+                cr: l.cr,
+                description: epDescriptions[l.accountCode] ?? '',
+              })),
             },
             tx,
           );

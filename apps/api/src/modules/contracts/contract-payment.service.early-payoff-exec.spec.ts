@@ -326,18 +326,16 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
     });
   });
 
-  // (e) discount = 0 path — PREVIEW omits 52-1106, but the EXEC JE does NOT ───
+  // (e) discount = 0 path — PREVIEW and EXEC both omit 52-1106 (CONVERGED) ────
   //
-  // BUG CHARACTERIZED (preview/exec divergence): getEarlyPayoffQuote guards the
-  // 52-1106 line with `if (epDiscount.gt(0))` (service line ~197) so a zero
-  // discount drops the line from the PREVIEW. The earlyPayoff() EXEC JE
-  // (service lines 382-391) pushes all 8 lines UNCONDITIONALLY — so when the
-  // discount is 0 the posted JE still carries a `52-1106` line with dr 0.00.
-  // The quote prompt said "discount=0 omits the 52-1106 line" — that is true of
-  // the READ path only. We pin BOTH so the divergence is visible and locked.
-  it('(e) discount 0 — PREVIEW omits 52-1106 but the EXEC JE keeps it at dr 0.00 (divergence pinned)', async () => {
-    // Zero-interest contract: interestTotal 0 → epRemainingDeferredInterest 0
-    // → epDiscount 0. (gross = financed + commission + 0 = 19800; vat 1512.)
+  // Post-unification (computeEarlyPayoffJE): both the preview READ path and the
+  // EXEC posting path guard the 52-1106 line, so a zero discount drops the line
+  // from BOTH. Previously the EXEC JE pushed all 8 lines unconditionally and
+  // carried a no-op `52-1106` dr 0.00 line — that benign divergence is now
+  // fixed. 'preview === posted' holds with no exceptions.
+  it('(e) discount 0 — PREVIEW and EXEC both omit 52-1106 (7 lines · converged)', async () => {
+    // Zero-interest contract: interestTotal 0 → remainingDeferredInterest 0
+    // → discount 0. (gross = financed + commission + 0 = 19800; vat 1512.)
     const zeroInterestContract = {
       ...quoteContract,
       interestTotal: dec('0'),
@@ -351,16 +349,18 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
     expect(quote.journalPreview.lines.find((l) => l.accountCode === '52-1106')).toBeUndefined();
     expect(quote.journalPreview.lines).toHaveLength(7);
 
-    // WRITE path: the posted JE STILL carries 52-1106 (8 lines), dr 0.00.
+    // WRITE path: the posted JE now ALSO drops the discount line (7 lines).
     await service.earlyPayoff(quoteContract.id, 'user-1', baseDto);
     const je = getCapturedJe();
-    const discountLine = je.lines.find((l) => l.accountCode === '52-1106');
-    expect(discountLine).toBeDefined();
-    expect(discountLine!.dr.toString()).toBe('0'); // ep0 Decimal — toFixed(2) = '0.00'
-    expect(discountLine!.dr.toFixed(2)).toBe('0.00');
-    expect(je.lines).toHaveLength(8);
+    expect(je.lines.find((l) => l.accountCode === '52-1106')).toBeUndefined();
+    expect(je.lines).toHaveLength(7);
 
-    // Still balanced (the dr-0 line is a no-op for the totals).
+    // Preview and posting now carry the SAME codes in the SAME order.
+    expect(je.lines.map((l) => l.accountCode)).toEqual(
+      quote.journalPreview.lines.map((l) => l.accountCode),
+    );
+
+    // Still balanced.
     const totalDr = je.lines.reduce((s, l) => s.plus(l.dr), new Prisma.Decimal(0));
     const totalCr = je.lines.reduce((s, l) => s.plus(l.cr), new Prisma.Decimal(0));
     expect(totalDr.toFixed(2)).toBe(totalCr.toFixed(2));
@@ -381,17 +381,15 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
     expect(je.metadata.discount).toBe('450.00');
   });
 
-  it('(f2) clamps a negative discountPct up to 0% — EXEC JE keeps 52-1106 at dr 0.00', async () => {
-    // Math.max(0, Math.min(50, -10)) / 100 = 0 → quote discountPct 0 →
-    // epDiscount = 900 × 0/100 = 0. The EXEC JE still pushes the 52-1106 line
-    // (dr 0.00) — same unconditional-line behavior characterized in (e).
+  it('(f2) clamps a negative discountPct up to 0% — EXEC JE omits 52-1106 (7 lines)', async () => {
+    // Math.max(0, Math.min(50, -10)) = 0 → quote discountPct 0 → discount
+    // = 900 × 0/100 = 0. The EXEC JE now guards the 52-1106 line (converged
+    // with the preview — see (e)).
     await service.earlyPayoff(quoteContract.id, 'user-1', { paymentMethod: 'CASH', discountPct: -10 });
     const je = getCapturedJe();
     expect(je.metadata.interestDiscountPercent).toBe(0);
-    const discountLine = je.lines.find((l) => l.accountCode === '52-1106');
-    expect(discountLine).toBeDefined();
-    expect(discountLine!.dr.toFixed(2)).toBe('0.00');
-    expect(je.lines).toHaveLength(8);
+    expect(je.lines.find((l) => l.accountCode === '52-1106')).toBeUndefined();
+    expect(je.lines).toHaveLength(7);
   });
 
   // ── CHARACTERIZATION of the documented quote-vs-JE cash divergence ─────────

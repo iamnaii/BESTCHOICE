@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import { JournalAutoService, JeLineInput } from '../journal-auto.service';
+import { computeEarlyPayoffJE } from '../compute-early-payoff-je';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { Vat60dayReversalTemplate } from './vat-60day-reversal.template';
 
@@ -106,109 +107,57 @@ export class EarlyPayoffJP4Template {
     }
 
     const unpaidD = new Decimal(unpaid);
-    const total = new Decimal(c.totalMonths);
 
-    const financed = new Decimal(c.financedAmount.toString());
-    const commission =
-      c.storeCommission != null
-        ? new Decimal(c.storeCommission.toString())
-        : financed.times('0.10').toDecimalPlaces(2);
-    const interest = new Decimal(c.interestTotal.toString());
-    const grossExclVat = financed.plus(commission).plus(interest);
-    const vat =
-      c.vatAmount != null
-        ? new Decimal(c.vatAmount.toString())
-        : grossExclVat.times('0.07').toDecimalPlaces(2);
-
-    // Per-installment amounts (consistent with 2A/2B rounding)
-    const installmentExclVat = grossExclVat.div(total).toDecimalPlaces(2, Decimal.ROUND_DOWN);
-    const interestPerInst = interest.div(total).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-    const vatPerInst = vat.div(total).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-
-    // Remaining balances for unpaid installments
-    const remainingGross = installmentExclVat.times(unpaidD);
-    const remainingDeferredInterest = interestPerInst.times(unpaidD);
-    const remainingDeferredVat = vatPerInst.times(unpaidD);
-
-    // Discount on interest only
-    const discount = remainingDeferredInterest
-      .times(input.interestDiscountPercent)
-      .div(100)
-      .toDecimalPlaces(2);
-
-    // Policy A (CPA decision) — VAT ไม่ลดตามส่วนลดดอกเบี้ย
-    // CPA เลือก Policy A vs ม.79+86/10:
-    //   - Cr 21-2101 (VAT ภ.พ.30) = remainingDeferredVat เต็ม ไม่ลดตาม discount
-    //   - ไม่ออกใบลดหนี้ VAT (Credit Note)
-    //   - บริษัทรับภาระ VAT ส่วนเกินจาก discount เอง
-    // อ้างอิง: docs/superpowers/specs/2026-05-09-cpa-policy-a-100-compliance-design.md
-    //          + Handover_BestChoiceFinance v3.0.pdf §9 Policy Decisions
-    const settleVat = remainingDeferredVat;
-
-    // Settlement amount customer pays (reduced by discount only — VAT full)
-    const settlement = remainingGross.minus(discount).plus(settleVat);
-
-    const zero = new Decimal(0);
+    // Single source of truth — the SAME pure function the JE preview and the
+    // ledger posting (ContractPaymentService) use, so this template can never
+    // drift from what the customer is quoted (preview === posted).
+    // Policy A (CPA decision · 2026-05-09): VAT ไม่ลดตามส่วนลดดอกเบี้ย — Cr 21-2101
+    // = remainingDeferredVat เต็ม; ไม่ออกใบลดหนี้ (Credit Note); บริษัทรับภาระ VAT
+    // ส่วนเกินจาก discount เอง. Ref:
+    //   docs/superpowers/specs/2026-05-09-cpa-policy-a-100-compliance-design.md
+    //   + Handover_BestChoiceFinance v3.0.pdf §9 Policy Decisions
+    const {
+      installmentExclVat,
+      vatPerInst,
+      remainingGross,
+      remainingDeferredInterest,
+      remainingDeferredVat,
+      discount,
+      settleVat,
+      settlement,
+      lines: jeLines,
+    } = computeEarlyPayoffJE({
+      depositAccountCode: input.depositAccountCode,
+      financedAmount: c.financedAmount.toString(),
+      storeCommission: c.storeCommission != null ? c.storeCommission.toString() : null,
+      interestTotal: c.interestTotal.toString(),
+      vatAmount: c.vatAmount != null ? c.vatAmount.toString() : null,
+      totalMonths: c.totalMonths,
+      unpaidCount: unpaid,
+      interestDiscountPercent: input.interestDiscountPercent,
+    });
 
     // Wrap JE post + Payment.create loop in a single atomic transaction.
     // If JE post fails (unbalanced, missing account), Payment rows are rolled back — no orphans.
     const exec = async (tx: Prisma.TransactionClient) => {
-      const lines: JeLineInput[] = [
-        {
-          accountCode: input.depositAccountCode,
-          dr: settlement,
-          cr: zero,
-          description: `รับ ${settlement.toFixed(2)} ฿ ปิดยอด`,
-        },
-        {
-          accountCode: '11-2106',
-          dr: remainingDeferredInterest,
-          cr: zero,
-          description: 'ยกเลิกรายได้รอตัดบัญชี-ดอกเบี้ย',
-        },
-        {
-          accountCode: '21-2102',
-          dr: remainingDeferredVat,
-          cr: zero,
-          description: 'ล้างภาษีขายรอเรียกเก็บ',
-        },
-      ];
-
-      if (discount.gt(0)) {
-        lines.push({
-          accountCode: '52-1106',
-          dr: discount,
-          cr: zero,
-          description: `ส่วนลดดอกเบี้ย-ปิดยอดก่อนกำหนด ${input.interestDiscountPercent}%`,
-        });
-      }
-
-      lines.push(
-        {
-          accountCode: '11-2101',
-          dr: zero,
-          cr: remainingGross,
-          description: 'ล้างลูกหนี้ Gross (excl. VAT)',
-        },
-        {
-          accountCode: '11-2105',
-          dr: zero,
-          cr: remainingDeferredVat,
-          description: 'ล้างลูกหนี้ภาษีขายรอฯ',
-        },
-        {
-          accountCode: '41-1101',
-          dr: zero,
-          cr: remainingDeferredInterest,
-          description: 'รับรู้รายได้ดอกเบี้ย (เต็มจำนวน; ส่วนลดอยู่ฝั่ง Dr 52-1106)',
-        },
-        {
-          accountCode: '21-2101',
-          dr: zero,
-          cr: settleVat,
-          description: 'ภาษีขาย ภ.พ.30 ถึงกำหนด (Policy A: VAT ไม่ลดตามส่วนลด)',
-        },
-      );
+      // Ledger-side line descriptions; the money (accountCode/dr/cr, incl. the
+      // 52-1106 zero-discount guard) comes from the shared computeEarlyPayoffJE.
+      const descriptions: Record<string, string> = {
+        [input.depositAccountCode]: `รับ ${settlement.toFixed(2)} ฿ ปิดยอด`,
+        '11-2106': 'ยกเลิกรายได้รอตัดบัญชี-ดอกเบี้ย',
+        '21-2102': 'ล้างภาษีขายรอเรียกเก็บ',
+        '52-1106': `ส่วนลดดอกเบี้ย-ปิดยอดก่อนกำหนด ${input.interestDiscountPercent}%`,
+        '11-2101': 'ล้างลูกหนี้ Gross (excl. VAT)',
+        '11-2105': 'ล้างลูกหนี้ภาษีขายรอฯ',
+        '41-1101': 'รับรู้รายได้ดอกเบี้ย (เต็มจำนวน; ส่วนลดอยู่ฝั่ง Dr 52-1106)',
+        '21-2101': 'ภาษีขาย ภ.พ.30 ถึงกำหนด (Policy A: VAT ไม่ลดตามส่วนลด)',
+      };
+      const lines: JeLineInput[] = jeLines.map((l) => ({
+        accountCode: l.accountCode,
+        dr: l.dr,
+        cr: l.cr,
+        description: descriptions[l.accountCode] ?? '',
+      }));
 
       const result = await this.journal.createAndPost(
         {

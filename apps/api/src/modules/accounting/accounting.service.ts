@@ -6,6 +6,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { agingBucket } from '../../utils/aging-bucket.util';
 import { Prisma } from '@prisma/client';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { CompanyResolverService } from '../journal/company-resolver.service';
@@ -2134,12 +2135,8 @@ export class AccountingService implements OnModuleInit {
       }
     >();
 
-    const calcBucket = (days: number): keyof typeof summary => {
-      if (days <= 30) return 'bucket_0_30';
-      if (days <= 60) return 'bucket_31_60';
-      if (days <= 90) return 'bucket_61_90';
-      return 'bucket_90_plus';
-    };
+    const calcBucket = (days: number): keyof typeof summary =>
+      agingBucket(days, ['bucket_0_30', 'bucket_31_60', 'bucket_61_90', 'bucket_90_plus'] as const);
 
     for (const p of overduePayments) {
       const daysOverdue = Math.floor(

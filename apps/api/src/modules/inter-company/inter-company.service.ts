@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateInterCompanyTransactionDto } from './dto/inter-company.dto';
+import { agingBucket } from '../../utils/aging-bucket.util';
 import { Prisma, InterCompanyTransactionStatus } from '@prisma/client';
 import { d, dAdd } from '../../utils/decimal.util';
 
@@ -416,11 +417,10 @@ export class InterCompanyService {
 
     const details = txns.map((t) => {
       const daysOutstanding = Math.floor((now - new Date(t.createdAt).getTime()) / dayMs);
-      let bucket: Bucket;
-      if (daysOutstanding <= 30) bucket = '0-30';
-      else if (daysOutstanding <= 60) bucket = '31-60';
-      else if (daysOutstanding <= 90) bucket = '61-90';
-      else bucket = '90+';
+      const bucket: Bucket = agingBucket(
+        daysOutstanding,
+        ['0-30', '31-60', '61-90', '90+'] as const,
+      );
 
       const principal = new Prisma.Decimal(t.principal);
       const commission = new Prisma.Decimal(t.commission);

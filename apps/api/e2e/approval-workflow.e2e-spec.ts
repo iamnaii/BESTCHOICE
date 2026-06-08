@@ -1,5 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /**
+ * ⚠️ CURRENTLY EXCLUDED via `e2e/jest-e2e.json` testPathIgnorePatterns — see #1192.
+ * Its dependency PRs (#912/#923/#931…) have since landed, so the early-return
+ * skips no longer fire and the incomplete harness (placeholder string-token DI,
+ * missing approval_enabled config + OWNER role) fails. Re-enable per #1192 once
+ * the providers are wired as real class mocks. Not a production bug.
+ *
  * D1.2.1 — Approval Workflow API integration test (Nest e2e style)
  * ----------------------------------------------------------------
  * Exercises the two state-transition endpoints exposed by

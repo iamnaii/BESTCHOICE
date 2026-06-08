@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { computeInstallmentBreakdown } from '../compute-installment-breakdown';
 
 /**
  * Template Feature I — VAT 60-Day Reversal
@@ -79,22 +80,16 @@ export class Vat60dayReversalTemplate {
       if (typeof meta.vatPerInst === 'string' && meta.vatPerInst) {
         vatPerInst = new Decimal(meta.vatPerInst);
       } else {
-        // Legacy fallback — recompute from current Contract fields. Mirrors
-        // Vat60dayMandatoryTemplate's formula exactly so values match for
-        // any contract whose VAT/interest fields haven't drifted.
-        const total = new Decimal(c.totalMonths);
-        const financed = new Decimal(c.financedAmount.toString());
-        const commission =
-          c.storeCommission != null
-            ? new Decimal(c.storeCommission.toString())
-            : financed.times('0.10').toDecimalPlaces(2);
-        const interest = new Decimal(c.interestTotal.toString());
-        const grossExclVat = financed.plus(commission).plus(interest);
-        const vat =
-          c.vatAmount != null
-            ? new Decimal(c.vatAmount.toString())
-            : grossExclVat.times('0.07').toDecimalPlaces(2);
-        vatPerInst = vat.div(total).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+        // Legacy fallback — recompute from current Contract fields via the
+        // shared single source of truth (mirrors Vat60dayMandatoryTemplate
+        // exactly so values match for any contract whose fields haven't drifted).
+        vatPerInst = computeInstallmentBreakdown({
+          financedAmount: c.financedAmount.toString(),
+          storeCommission: c.storeCommission != null ? c.storeCommission.toString() : null,
+          interestTotal: c.interestTotal.toString(),
+          vatAmount: c.vatAmount != null ? c.vatAmount.toString() : null,
+          totalMonths: c.totalMonths,
+        }).vatPerInst;
         Sentry.captureMessage(
           'VAT 60-day reversal missing vatPerInst — falling back to recompute',
           {

@@ -3,6 +3,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { computeInstallmentBreakdown } from '../compute-installment-breakdown';
 
 /**
  * Template Feature I — VAT 60-Day Mandatory
@@ -57,21 +58,15 @@ export class Vat60dayMandatoryTemplate {
 
       const c = await tx.contract.findUniqueOrThrow({ where: { id: inst.contractId } });
 
-      const total = new Decimal(c.totalMonths);
-      // grossExclVat (financed + commission + interest) × 0.07
-      const financed = new Decimal(c.financedAmount.toString());
-      const commission =
-        c.storeCommission != null
-          ? new Decimal(c.storeCommission.toString())
-          : financed.times('0.10').toDecimalPlaces(2);
-      const interest = new Decimal(c.interestTotal.toString());
-      const grossExclVat = financed.plus(commission).plus(interest);
-      const vat =
-        c.vatAmount != null
-          ? new Decimal(c.vatAmount.toString())
-          : grossExclVat.times('0.07').toDecimalPlaces(2);
-
-      const vatPerInst = vat.div(total).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+      // vatPerInst via the shared single source of truth (same rounding as 2A):
+      // (financed + commission[10%] + interest) × 7% / totalMonths, ROUND_HALF_UP.
+      const { vatPerInst } = computeInstallmentBreakdown({
+        financedAmount: c.financedAmount.toString(),
+        storeCommission: c.storeCommission != null ? c.storeCommission.toString() : null,
+        interestTotal: c.interestTotal.toString(),
+        vatAmount: c.vatAmount != null ? c.vatAmount.toString() : null,
+        totalMonths: c.totalMonths,
+      });
 
       const zero = new Decimal(0);
 

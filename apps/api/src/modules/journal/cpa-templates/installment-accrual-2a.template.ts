@@ -3,6 +3,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { computeInstallmentBreakdown } from '../compute-installment-breakdown';
 // EIR utility removed — CPA Policy A revert (#783) reverted to straight-line allocation.
 
 /**
@@ -73,24 +74,19 @@ export class InstallmentAccrual2ATemplate {
 
     const c = await client.contract.findUniqueOrThrow({ where: { id: inst.contractId } });
 
-    const total = new Decimal(c.totalMonths);
-    const financed = new Decimal(c.financedAmount.toString());
-    const commission =
-      c.storeCommission != null
-        ? new Decimal(c.storeCommission.toString())
-        : financed.times('0.10').toDecimalPlaces(2);
-    const interest = new Decimal(c.interestTotal.toString());
-    const grossExclVat = financed.plus(commission).plus(interest);
-    const vat =
-      c.vatAmount != null
-        ? new Decimal(c.vatAmount.toString())
-        : grossExclVat.times('0.07').toDecimalPlaces(2);
-
-    // Per-installment amounts — rounding modes match CSV spec.
-    // Straight-line interest allocation per CPA Policy A (post-#783 revert from EIR).
-    let installmentExclVat = grossExclVat.div(total).toDecimalPlaces(2, Decimal.ROUND_DOWN); // 1,416.66
-    let interestPerInst = interest.div(total).toDecimalPlaces(2, Decimal.ROUND_HALF_UP); //   500.00
-    let vatPerInst = vat.div(total).toDecimalPlaces(2, Decimal.ROUND_HALF_UP); //    99.17
+    // Per-installment amounts via the shared single source of truth — same
+    // rounding the 2B receipt / early-payoff use (ROUND_DOWN principal,
+    // ROUND_HALF_UP interest+VAT). Straight-line per CPA Policy A (post-#783).
+    const base = computeInstallmentBreakdown({
+      financedAmount: c.financedAmount.toString(),
+      storeCommission: c.storeCommission != null ? c.storeCommission.toString() : null,
+      interestTotal: c.interestTotal.toString(),
+      vatAmount: c.vatAmount != null ? c.vatAmount.toString() : null,
+      totalMonths: c.totalMonths,
+    });
+    let installmentExclVat = base.installmentExclVat; // 1,416.66
+    let interestPerInst = base.interestPerInst; //       500.00
+    let vatPerInst = base.vatPerInst; //                  99.17
 
     // Final-period residual adjustment (Wave 1 / Task 6 — Audit P0 TFRS 15 C-1).
     // ROUND_DOWN/ROUND_HALF_UP per-installment rounding can leak residuals
@@ -99,12 +95,11 @@ export class InstallmentAccrual2ATemplate {
     // hit exactly 0 after the cycle completes.
     if (inst.installmentNo === c.totalMonths) {
       const priorPeriods = new Decimal(c.totalMonths - 1);
-      const priorExclVat = installmentExclVat.times(priorPeriods);
-      const priorVat = vatPerInst.times(priorPeriods);
-      const priorInterest = interestPerInst.times(priorPeriods);
-      installmentExclVat = grossExclVat.minus(priorExclVat);
-      vatPerInst = vat.minus(priorVat);
-      interestPerInst = interest.minus(priorInterest);
+      installmentExclVat = base.grossExclVat.minus(installmentExclVat.times(priorPeriods));
+      vatPerInst = base.vat.minus(vatPerInst.times(priorPeriods));
+      interestPerInst = new Decimal(c.interestTotal.toString()).minus(
+        interestPerInst.times(priorPeriods),
+      );
     }
 
     const installmentTotal = installmentExclVat.plus(vatPerInst); // 1,515.83

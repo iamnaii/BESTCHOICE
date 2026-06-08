@@ -349,6 +349,45 @@ describeOrSkip('PaymentReceiptTemplate primitive — Σ-invariants (real DB e2e)
         debitAccountCode: '11-1101',
       });
       expect(r.split.principalCleared.toFixed(2)).toBe('50.00');
+      // NOTE: the Σ(Cr 11-2103) invariant deliberately does NOT hold in this degenerate
+      // fixture (full-clear 1515.83 + a stray 50 = 1565.83); it is excluded on purpose —
+      // the point of this case is only that the full-clear is NOT counted as prior.
+    },
+    120_000,
+  );
+
+  it(
+    'legacy 2B partial + a caller re-sending the FULL amount → REJECTS (kills the missing-discriminator regression)',
+    async () => {
+      await useInstallment(9);
+
+      // Legacy partial of 800 already cleared 11-2103 (old non-split 2B, partialClear).
+      await journal.createAndPost({
+        description: 'legacy 2B partial (fixture)',
+        reference: 'legacy-2b-partial-9',
+        metadata: { tag: '2B', contractId, installmentScheduleId: instId, paymentId: 'fixture-9' },
+        lines: [
+          { accountCode: '11-1101', dr: new Decimal('800'), cr: new Decimal(0) },
+          { accountCode: '11-2103', dr: new Decimal(0), cr: new Decimal('800') },
+        ],
+      });
+
+      // A caller mistakenly re-sends the FULL installmentTotal (not the 715.83 remaining delta).
+      // WITH the discriminator: priorPrincipalCleared=800 → principalRemaining=715.83 →
+      //   the extra 800 surfaces as overpayRounding > 1฿ → REJECT (no over-clear).
+      // WITHOUT it (regression): priorPrincipalCleared=0 → clears the full 1515.83 AGAIN →
+      //   Σ Cr 11-2103 = 800 + 1515.83 = 2315.83 silently, no throw. This case kills that mutation.
+      await expect(
+        template.execute({
+          installmentScheduleId: instId,
+          delta: installmentTotal,
+          debitAccountCode: '11-1101',
+          isFinalReceipt: true,
+        }),
+      ).rejects.toThrow(/exceeds tolerance/i);
+
+      // The rejected call posts nothing — ledger still shows only the legacy 800.
+      expect((await sumCredits('11-2103')).toFixed(2)).toBe('800.00');
     },
     120_000,
   );

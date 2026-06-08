@@ -4,7 +4,6 @@ import { AccountingClosingController } from './closing.controller';
 import { AccountingService } from './accounting.service';
 import { BadDebtService } from './bad-debt.service';
 import { BadDebtProvisionCron } from './bad-debt-provision.cron';
-import { BankReconciliationService } from './bank-reconciliation.service';
 import { MonthlyCloseService } from './monthly-close.service';
 import { AccountingClosingService } from './closing.service';
 import { ConsolidatedService } from './consolidated.service';
@@ -21,7 +20,6 @@ import { PeakModule } from '../peak/peak.module';
     AccountingService,
     BadDebtService,
     BadDebtProvisionCron,
-    BankReconciliationService,
     MonthlyCloseService,
     AccountingClosingService,
     ConsolidatedService,
@@ -30,7 +28,6 @@ import { PeakModule } from '../peak/peak.module';
   exports: [
     AccountingService,
     BadDebtService,
-    BankReconciliationService,
     MonthlyCloseService,
     AccountingClosingService,
     ConsolidatedService,

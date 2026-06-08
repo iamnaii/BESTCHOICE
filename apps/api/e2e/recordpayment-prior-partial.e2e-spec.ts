@@ -86,6 +86,8 @@ describeOrSkip('PaymentsService.recordPayment — completing a PRIOR PARTIAL (re
   let contractId: string;
   let paymentId: string;
   let adminId: string;
+  // Only deleted in afterAll if WE created it (a dev DB may already have a FINANCE co).
+  let createdFinanceCompanyId: string | null = null;
 
   // installmentTotal for the standard 17K/12M fixture = 1515.83 (per accounting.md).
   const INSTALLMENT_TOTAL = 1515.83;
@@ -109,6 +111,31 @@ describeOrSkip('PaymentsService.recordPayment — completing a PRIOR PARTIAL (re
       update: {},
     });
     adminId = admin.id;
+
+    // resolveFinanceCompanyId() (payments.service.ts:83) requires a
+    // companyCode='FINANCE' CompanyInfo or it throws "FINANCE company not
+    // configured". seedStandard17k12m only creates 'TEST_FINANCE', and CI's
+    // freshly-migrated DB has no FINANCE company — so ensure one exists
+    // (find-or-create; a no-op on a dev DB that already has it). Distinct taxId
+    // from TEST_FINANCE (0000000000000) to avoid a unique-constraint collision.
+    const existingFin = await prisma.companyInfo.findFirst({
+      where: { companyCode: 'FINANCE', deletedAt: null },
+      select: { id: true },
+    });
+    if (!existingFin) {
+      const fin = await prisma.companyInfo.create({
+        data: {
+          nameTh: 'E2E Finance Co.',
+          taxId: '9999999999999',
+          companyCode: 'FINANCE',
+          address: '1 E2E Rd.',
+          directorName: 'E2E Director',
+          vatRegistered: true,
+          vatRate: '0.0700',
+        },
+      });
+      createdFinanceCompanyId = fin.id;
+    }
 
     // --- the standard 17K/12M FINANCE contract + 12 InstallmentSchedule rows --
     const c = await seedStandard17k12m(prisma as any);
@@ -223,6 +250,11 @@ describeOrSkip('PaymentsService.recordPayment — completing a PRIOR PARTIAL (re
       await step(() => prisma.payment.deleteMany({ where: { contractId } }));
       await step(() => prisma.installmentSchedule.deleteMany({ where: { contractId } }));
       await step(() => prisma.contract.deleteMany({ where: { id: contractId } }));
+      if (createdFinanceCompanyId) {
+        await step(() =>
+          prisma.companyInfo.deleteMany({ where: { id: createdFinanceCompanyId! } }),
+        );
+      }
     } finally {
       await prisma.$disconnect();
     }

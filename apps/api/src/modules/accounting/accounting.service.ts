@@ -10,6 +10,12 @@ import { StructuredLoggerService } from '../../common/logger';
 import { Prisma } from '@prisma/client';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { CompanyResolverService } from '../journal/company-resolver.service';
+import {
+  EXPENSE_ACCOUNT_CATEGORY,
+  SECTION_MAP,
+  codePrefix,
+  EQUITY_ACCOUNTS,
+} from './accounting-section-map.util';
 
 /**
  * INVENTORY COSTING METHOD: Specific Identification
@@ -49,13 +55,6 @@ export const INVENTORY_COSTING_METHOD = 'SPECIFIC_IDENTIFICATION' as const;
  * 4. สินค้าคงเหลือ — Specific Identification (ระบุเฉพาะ)
  *    - สินค้าแต่ละชิ้นมี costPrice เฉพาะ (IMEI-level tracking)
  */
-type ReportExpenseCategory =
-  | 'SELL_COMMISSION' | 'SELL_ADVERTISING'
-  | 'ADMIN_SALARY' | 'ADMIN_SOCIAL_SECURITY' | 'ADMIN_OFFICE_SUPPLIES'
-  | 'ADMIN_UTILITIES' | 'ADMIN_TELEPHONE' | 'ADMIN_TRAVEL' | 'ADMIN_MAINTENANCE'
-  | 'ADMIN_TAX_FEE' | 'ADMIN_DEPRECIATION'
-  | 'OTHER_LOSS' | 'OTHER_FINE' | 'OTHER_MISC';
-
 @Injectable()
 export class AccountingService implements OnModuleInit {
   private readonly logger = new Logger(AccountingService.name);
@@ -66,32 +65,6 @@ export class AccountingService implements OnModuleInit {
     // P3-SP5 W7: defense-in-depth filter on companyId for SHOP/FINANCE scoping.
     private companyResolver: CompanyResolverService,
   ) {}
-
-  // Account → /reports P&L granular category (display only; totals come from
-  // section sums). Accountant-reviewable: rollups chosen from the FINANCE chart
-  // names (see docs/superpowers/specs/2026-06-07-reports-pl-expense-migration-design.md).
-  // Accounts not listed still count in their section total but show no granular line.
-  private static readonly EXPENSE_ACCOUNT_CATEGORY: Record<string, ReportExpenseCategory> = {
-    '52-1101': 'SELL_COMMISSION',
-    '52-1102': 'SELL_ADVERTISING', '52-1103': 'SELL_ADVERTISING',
-    '53-1101': 'ADMIN_SALARY', '53-1103': 'ADMIN_SALARY', '53-1104': 'ADMIN_SALARY',
-    '53-1105': 'ADMIN_SALARY', '53-1106': 'ADMIN_SALARY',
-    '53-1102': 'ADMIN_SOCIAL_SECURITY',
-    '53-1201': 'ADMIN_OFFICE_SUPPLIES', '53-1202': 'ADMIN_OFFICE_SUPPLIES', '53-1203': 'ADMIN_OFFICE_SUPPLIES',
-    '53-1301': 'ADMIN_UTILITIES', '53-1302': 'ADMIN_UTILITIES',
-    '53-1303': 'ADMIN_TELEPHONE',
-    '53-1304': 'ADMIN_TRAVEL',
-    '53-1305': 'ADMIN_MAINTENANCE', '53-1306': 'ADMIN_MAINTENANCE',
-    '53-1401': 'ADMIN_TAX_FEE', '53-1402': 'ADMIN_TAX_FEE', '53-1403': 'ADMIN_TAX_FEE',
-    '53-1404': 'ADMIN_TAX_FEE', '53-1501': 'ADMIN_TAX_FEE', '53-1502': 'ADMIN_TAX_FEE',
-    '53-1701': 'ADMIN_TAX_FEE', '53-1702': 'ADMIN_TAX_FEE',
-    '53-1601': 'ADMIN_DEPRECIATION', '53-1602': 'ADMIN_DEPRECIATION',
-    '53-1603': 'ADMIN_DEPRECIATION', '53-1604': 'ADMIN_DEPRECIATION',
-    '51-1102': 'OTHER_LOSS', '51-1103': 'OTHER_LOSS', '53-1605': 'OTHER_LOSS',
-    '51-1104': 'OTHER_FINE', '54-1103': 'OTHER_FINE', '54-1104': 'OTHER_FINE',
-    '51-1101': 'OTHER_MISC', '51-1105': 'OTHER_MISC', '53-1503': 'OTHER_MISC',
-    '54-1101': 'OTHER_MISC', '54-1102': 'OTHER_MISC',
-  };
 
   /**
    * Aggregate POSTED FINANCE journal expense lines (51-54) for a period into
@@ -145,7 +118,7 @@ export class AccountingService implements OnModuleInit {
       else if (prefix === '53') admin = admin.add(net);
       else if (prefix === '51' || prefix === '54') other = other.add(net);
 
-      const category = AccountingService.EXPENSE_ACCOUNT_CATEGORY[row.accountCode];
+      const category = EXPENSE_ACCOUNT_CATEGORY[row.accountCode];
       if (category) {
         byCategoryMap.set(category, (byCategoryMap.get(category) ?? zero()).add(net));
       }
@@ -872,49 +845,6 @@ export class AccountingService implements OnModuleInit {
   //   54 = ค่าใช้จ่ายต้องห้าม (Tax-disallowed Expenses)
   //   55 = EXCLUDE from P&L (พีคโปรแกรม — ไม่นำมาแสดงในงบกำไรขาดทุน)
 
-  private static readonly SECTION_MAP: Record<string, string> = {
-    // FINANCE chart (single-prefix)
-    '11': 'สินทรัพย์หมุนเวียน',
-    '12': 'สินทรัพย์ไม่หมุนเวียน',
-    '21': 'หนี้สินหมุนเวียน',
-    '22': 'หนี้สินไม่หมุนเวียน',
-    '31': 'ทุนจดทะเบียน',
-    '32': 'กำไรสะสม',
-    '33': 'กำไรขาดทุนปีปัจจุบัน',
-    '41': 'รายได้จากการดำเนินงาน',
-    '42': 'รายได้อื่น',
-    '51': 'ต้นทุนทางการเงิน',
-    '52': 'ค่าใช้จ่ายขาย',
-    '53': 'ค่าใช้จ่ายบริหาร',
-    '54': 'ค่าใช้จ่ายต้องห้ามทางภาษี',
-    '55': 'ค่าใช้จ่ายโปรแกรมบัญชี (ยกเว้น P&L)',
-    // P3-SP5 — SHOP chart (S-prefix). Same logical grouping as FINANCE but
-    // labelled "(SHOP)" so a combined report makes it obvious which side a
-    // section came from.
-    'S11': 'สินทรัพย์หมุนเวียน (SHOP)',
-    'S12': 'สินทรัพย์ไม่หมุนเวียน (SHOP)',
-    'S21': 'หนี้สินหมุนเวียน (SHOP)',
-    'S22': 'หนี้สินไม่หมุนเวียน (SHOP)',
-    'S31': 'ทุนจดทะเบียน (SHOP)',
-    'S32': 'กำไรสะสม (SHOP)',
-    'S33': 'กำไรขาดทุนปีปัจจุบัน (SHOP)',
-    'S41': 'รายได้ (SHOP)',
-    'S42': 'รายได้อื่น (SHOP)',
-    'S50': 'ต้นทุนขาย (SHOP)',
-    'S51': 'ค่าใช้จ่ายขาย (SHOP)',
-    'S52': 'ค่าใช้จ่ายบริหาร (SHOP)',
-    'S53': 'ค่าใช้จ่ายอื่น (SHOP)',
-  };
-
-  /**
-   * Extract the section-prefix from an account code.
-   * - FINANCE: `11-1101` → `11` (first 2 chars)
-   * - SHOP:    `S11-1101` → `S11` (first 3 chars, S + 2 digits)
-   */
-  private static codePrefix(code: string): string {
-    return code.startsWith('S') ? code.slice(0, 3) : code.slice(0, 2);
-  }
-
   /**
    * Get Trial Balance from journal lines as of a given date.
    *
@@ -1004,8 +934,8 @@ export class AccountingService implements OnModuleInit {
     }>();
 
     for (const acc of accounts) {
-      const prefix = AccountingService.codePrefix(acc.code);
-      const sectionName = AccountingService.SECTION_MAP[prefix] ?? `หมวด ${prefix}`;
+      const prefix = codePrefix(acc.code);
+      const sectionName = SECTION_MAP[prefix] ?? `หมวด ${prefix}`;
 
       if (!sectionMap.has(prefix)) {
         sectionMap.set(prefix, {
@@ -1039,10 +969,10 @@ export class AccountingService implements OnModuleInit {
 
     // Also include any journal lines for codes not in CoA (orphan codes)
     for (const [code, sums] of sumMap) {
-      const prefix = AccountingService.codePrefix(code);
+      const prefix = codePrefix(code);
       if (!sectionMap.has(prefix)) {
         sectionMap.set(prefix, {
-          sectionName: AccountingService.SECTION_MAP[prefix] ?? `หมวด ${prefix}`,
+          sectionName: SECTION_MAP[prefix] ?? `หมวด ${prefix}`,
           codePrefix: prefix,
           rows: [],
           drTotal: new Prisma.Decimal(0),
@@ -1233,7 +1163,7 @@ export class AccountingService implements OnModuleInit {
     let financeExpenseTotal = new Prisma.Decimal(0);
 
     for (const row of lineSums) {
-      const prefix = AccountingService.codePrefix(row.accountCode);
+      const prefix = codePrefix(row.accountCode);
       const dr = new Prisma.Decimal(row._sum.debit ?? 0);
       const cr = new Prisma.Decimal(row._sum.credit ?? 0);
       const name = nameMap.get(row.accountCode) ?? row.accountCode;
@@ -1777,19 +1707,12 @@ export class AccountingService implements OnModuleInit {
   // The current-year P&L line is derived from getProfitLossFromJournal — labelled
   // with a caveat because year-end closing entries have not been posted to 33-1101.
 
-  private static readonly EQUITY_ACCOUNTS: { code: string; defaultName: string }[] = [
-    { code: '31-1101', defaultName: 'หุ้นสามัญ' },
-    { code: '31-1102', defaultName: 'ส่วนเกินมูลค่าหุ้น' },
-    { code: '32-1101', defaultName: 'กำไร(ขาดทุน)สะสม' },
-    { code: '33-1101', defaultName: 'กำไร(ขาดทุน)สุทธิประจำปี' },
-  ];
-
   async getEquityStatementFromJournal(
     periodStart: Date,
     periodEnd: Date,
     companyId?: string,
   ) {
-    const codes = AccountingService.EQUITY_ACCOUNTS.map((a) => a.code);
+    const codes = EQUITY_ACCOUNTS.map((a) => a.code);
     const startMinusOne = new Date(periodStart);
     startMinusOne.setMilliseconds(startMinusOne.getMilliseconds() - 1);
 
@@ -1839,7 +1762,7 @@ export class AccountingService implements OnModuleInit {
     let totalOpening = new Prisma.Decimal(0);
     let totalClosing = new Prisma.Decimal(0);
 
-    for (const accDef of AccountingService.EQUITY_ACCOUNTS) {
+    for (const accDef of EQUITY_ACCOUNTS) {
       // Opening balance (Cr-normal): credits - debits before periodStart
       const opening = await this.sumAccountBalances([accDef.code], startMinusOne, 'Cr', companyId);
 

@@ -1644,4 +1644,138 @@ describe('AccountingService', () => {
       expect(result.data[0].lines[0].accountCode).toBe('11-2101');
     });
   });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // getMonthlyPLSummary
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  describe('getMonthlyPLSummary', () => {
+    const YEAR = 2026;
+    // local Date on the 15th so getMonth() lands squarely in `monthIdx`
+    const inMonth = (monthIdx: number) => new Date(YEAR, monthIdx, 15);
+
+    it('returns 12 month rows with Thai labels and zeroed totals on empty data', async () => {
+      const result = await service.getMonthlyPLSummary(YEAR);
+      expect(result.year).toBe(YEAR);
+      expect(result.months).toHaveLength(12);
+      expect(result.months[0]).toMatchObject({
+        month: 1,
+        label: 'ม.ค.',
+        revenue: 0,
+        expenses: 0,
+        netProfit: 0,
+      });
+      expect(result.months[11]).toMatchObject({ month: 12, label: 'ธ.ค.' });
+      expect(result.months.every((m) => m.revenue === 0 && m.expenses === 0)).toBe(true);
+    });
+
+    it('books a CASH sale netAmount as revenue in its createdAt month', async () => {
+      prisma.sale.findMany.mockResolvedValueOnce([
+        { saleType: 'CASH', netAmount: 1000, downPaymentAmount: 0, createdAt: inMonth(2) },
+      ]);
+      const result = await service.getMonthlyPLSummary(YEAR);
+      expect(result.months[2].revenue).toBeCloseTo(1000, 2); // March
+      expect(result.months[0].revenue).toBe(0);
+    });
+
+    it('books only the down payment (not netAmount) for an INSTALLMENT sale', async () => {
+      prisma.sale.findMany.mockResolvedValueOnce([
+        { saleType: 'INSTALLMENT', netAmount: 9999, downPaymentAmount: 500, createdAt: inMonth(3) },
+      ]);
+      const result = await service.getMonthlyPLSummary(YEAR);
+      expect(result.months[3].revenue).toBeCloseTo(500, 2); // April
+    });
+
+    it('uses the stored breakdown (principal+commission+interest+lateFee) when monthlyPrincipal is set', async () => {
+      prisma.payment.findMany.mockResolvedValueOnce([
+        {
+          monthlyPrincipal: 100,
+          monthlyCommission: 20,
+          monthlyInterest: 30,
+          lateFee: 10,
+          lateFeeWaived: false,
+          amountPaid: 9999,
+          paidDate: inMonth(4),
+        },
+      ]);
+      const result = await service.getMonthlyPLSummary(YEAR);
+      expect(result.months[4].revenue).toBeCloseTo(160, 2); // 100+20+30+10
+    });
+
+    it('excludes a waived late fee from the breakdown revenue', async () => {
+      prisma.payment.findMany.mockResolvedValueOnce([
+        {
+          monthlyPrincipal: 100,
+          monthlyCommission: 0,
+          monthlyInterest: 0,
+          lateFee: 50,
+          lateFeeWaived: true,
+          amountPaid: 9999,
+          paidDate: inMonth(6),
+        },
+      ]);
+      const result = await service.getMonthlyPLSummary(YEAR);
+      expect(result.months[6].revenue).toBeCloseTo(100, 2); // lateFee 50 excluded
+    });
+
+    it('falls back to amountPaid when monthlyPrincipal is null (legacy payments)', async () => {
+      prisma.payment.findMany.mockResolvedValueOnce([
+        {
+          monthlyPrincipal: null,
+          amountPaid: 250,
+          lateFee: 0,
+          lateFeeWaived: false,
+          paidDate: inMonth(5),
+        },
+      ]);
+      const result = await service.getMonthlyPLSummary(YEAR);
+      expect(result.months[5].revenue).toBeCloseTo(250, 2);
+    });
+
+    it('books a RECEIVED financeReceivable as revenue in its receivedDate month', async () => {
+      prisma.financeReceivable.findMany.mockResolvedValueOnce([
+        { receivedAmount: 700, receivedDate: inMonth(7) },
+      ]);
+      const result = await service.getMonthlyPLSummary(YEAR);
+      expect(result.months[7].revenue).toBeCloseTo(700, 2);
+    });
+
+    it('books product costPrice as COGS (expenses) reducing netProfit', async () => {
+      // 1st sale.findMany call = sales (empty), 2nd = productSales
+      prisma.sale.findMany
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ createdAt: inMonth(8), product: { costPrice: 300 } }]);
+      const result = await service.getMonthlyPLSummary(YEAR);
+      expect(result.months[8].expenses).toBeCloseTo(300, 2);
+      expect(result.months[8].netProfit).toBeCloseTo(-300, 2);
+    });
+
+    it('does not query FINANCE journal expenses when includeFinanceExpenses is false (default)', async () => {
+      await service.getMonthlyPLSummary(YEAR);
+      expect(prisma.journalLine.findMany).not.toHaveBeenCalled();
+    });
+
+    it('adds FINANCE 51-54 journal expenses (debit-credit) when includeFinanceExpenses is true', async () => {
+      prisma.journalLine.findMany.mockResolvedValueOnce([
+        { debit: 400, credit: 0, journalEntry: { entryDate: inMonth(9) } },
+      ]);
+      const result = await service.getMonthlyPLSummary(YEAR, undefined, undefined, true);
+      expect(result.months[9].expenses).toBeCloseTo(400, 2);
+      expect(result.months[9].netProfit).toBeCloseTo(-400, 2);
+      const call = prisma.journalLine.findMany.mock.calls.at(-1)[0];
+      expect(call.where.journalEntry.companyId).toBe('finance-co-id');
+      expect(call.where.OR).toEqual([
+        { accountCode: { startsWith: '51-' } },
+        { accountCode: { startsWith: '52-' } },
+        { accountCode: { startsWith: '53-' } },
+        { accountCode: { startsWith: '54-' } },
+      ]);
+    });
+
+    it('prefers branchIds over branchId in the query filter', async () => {
+      await service.getMonthlyPLSummary(YEAR, 'b1', ['b2', 'b3']);
+      const call = prisma.sale.findMany.mock.calls[0][0];
+      expect(call.where.branchId).toEqual({ in: ['b2', 'b3'] });
+    });
+  });
 });

@@ -30,7 +30,11 @@ export interface SplitReceiptResult {
   principalCleared: Decimal;
   /** Cr 42-1103 — late fee booked this receipt. */
   lateFeePortion: Decimal;
-  /** Cr 53-1503 — overpay rounding (≥0). >1฿ signals a tolerance breach for the template. */
+  /**
+   * Cr 53-1503 — overpay rounding. ≥0 *when the caller's precondition holds*
+   * (advanceCredit ≤ delta + advanceConsume — enforced by PaymentReceiptTemplate).
+   * >1฿ signals a tolerance breach for the template to reject/park.
+   */
   overpayRounding: Decimal;
   /** Dr 52-1104 — underpay close (≥0, ≤1฿, final receipt only). */
   underpayRounding: Decimal;
@@ -42,6 +46,11 @@ export interface SplitReceiptResult {
  * Pure per-receipt allocation. No Nest, no DB, no throw — tolerance/approver
  * enforcement lives in PaymentReceiptTemplate so this stays a unit-testable
  * money-math function (mirrors computeInstallmentBreakdown).
+ *
+ * PRECONDITION (enforced by PaymentReceiptTemplate, not here): the funds to
+ * allocate must be non-negative, i.e. advanceCredit ≤ delta + advanceConsume.
+ * If a caller violates it, `available` goes negative and overpayRounding can be
+ * negative — the template guards against this before calling.
  */
 export function splitReceipt(input: SplitReceiptInput): SplitReceiptResult {
   const zero = new Decimal(0);
@@ -52,12 +61,14 @@ export function splitReceipt(input: SplitReceiptInput): SplitReceiptResult {
   const lateFeeRemaining = Decimal.max(input.lateFee.minus(input.priorLateFeeBooked), zero);
 
   // Funds to allocate = cash delta + advance consumed − surplus parked as advance.
+  // Non-negative by precondition (advanceCredit ≤ delta + advanceConsume), which
+  // PaymentReceiptTemplate enforces before calling.
   const available = input.delta.plus(input.advanceConsume).minus(input.advanceCredit);
 
   let principalCleared = Decimal.max(Decimal.min(available, principalRemaining), zero);
   const afterPrincipal = available.minus(principalCleared);
   const lateFeePortion = Decimal.min(Decimal.max(afterPrincipal, zero), lateFeeRemaining);
-  const leftover = afterPrincipal.minus(lateFeePortion); // ≥ 0 by construction
+  const leftover = afterPrincipal.minus(lateFeePortion); // ≥ 0 when available ≥ 0 (precondition)
 
   let overpayRounding = leftover;
   let underpayRounding = zero;

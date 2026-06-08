@@ -73,6 +73,17 @@ describe('splitReceipt — per-receipt allocation (Σ-invariant primitive)', () 
     const r = splitReceipt({ ...base, delta: D('2000'), advanceCredit: D('484.17') });
     expect(r.principalCleared.toFixed(2)).toBe('1515.83');
     expect(r.overpayRounding.toFixed(2)).toBe('0.00');
+    expect(r.principalRemainingAfter.toFixed(2)).toBe('0.00');
+  });
+
+  it('advance credit consumes the whole receipt (available = 0) → nothing allocated, full remainder', () => {
+    // Boundary of the precondition advanceCredit ≤ delta + advanceConsume.
+    const r = splitReceipt({ ...base, delta: D('1515.83'), advanceCredit: D('1515.83') });
+    expect(r.principalCleared.toFixed(2)).toBe('0.00');
+    expect(r.lateFeePortion.toFixed(2)).toBe('0.00');
+    expect(r.overpayRounding.toFixed(2)).toBe('0.00');
+    expect(r.underpayRounding.toFixed(2)).toBe('0.00');
+    expect(r.principalRemainingAfter.toFixed(2)).toBe('1515.83');
   });
 
   it('over-collection beyond tolerance surfaces as overpayRounding > 1 (template will reject/park)', () => {

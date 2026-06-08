@@ -76,7 +76,7 @@ export class FinanceToolExecutor {
 
         case 'calculate_fine': {
           const days = input.daysOverdue as number;
-          return { ok: true, data: this.tools.calculateFine(days) };
+          return { ok: true, data: await this.tools.calculateFine(days) };
         }
 
         case 'list_recent_receipts': {

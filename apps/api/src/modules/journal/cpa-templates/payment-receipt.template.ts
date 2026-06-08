@@ -55,17 +55,40 @@ export class PaymentReceiptTemplate {
   ) {}
 
   /**
-   * Reconstruct prior cleared amounts for this installment from its own prior
-   * `tag:'receipt'` JE lines: Σ Cr 11-2103 (principal) and Σ Cr 42-1103 (late fee).
+   * Reconstruct prior cleared amounts for this installment from its own prior JE lines.
+   *
+   * Phase 2: matched only `tag:'receipt'` entries.
+   * Phase 3 (PR-843/I2 Option A — widen reconstruction): also matches `tag:'2B'` entries
+   * so that a legacy partial posted by the OLD non-split PaymentReceipt2BTemplate is not
+   * invisible to the primitive.  A legacy 2B JE carries:
+   *   metadata: { tag:'2B', contractId, installmentScheduleId, paymentId }  (NO partial/final flag)
+   *
+   * Discriminator (guards against over-inclusion):
+   *   - tag:'receipt' → always include (primitive's own JEs).
+   *   - tag:'2B'     → include ONLY when Cr 11-2103 on that entry is STRICTLY LESS THAN
+   *                    installmentTotal.  A full-clear 2B credits exactly installmentTotal;
+   *                    including it would set priorPrincipalCleared = installmentTotal and
+   *                    silently make principalRemaining = 0, rejecting any subsequent receipt.
+   *                    Using strict-less-than (no float equality) is safe: installmentTotal
+   *                    is a Decimal from computeInstallmentBreakdown, and the historical JE
+   *                    credit is also a Decimal stored in Postgres — comparison is exact.
+   *
+   * Historical JEs are never mutated (Option A = read-side only).
    */
   private async reconstructPrior(
     readClient: Prisma.TransactionClient | PrismaService,
     installmentScheduleId: string,
+    installmentTotal: Decimal,
   ): Promise<{ priorPrincipalCleared: Decimal; priorLateFeeBooked: Decimal }> {
     const entries = await readClient.journalEntry.findMany({
       where: {
         AND: [
-          { metadata: { path: ['tag'], equals: 'receipt' } } as any,
+          {
+            OR: [
+              { metadata: { path: ['tag'], equals: 'receipt' } } as any,
+              { metadata: { path: ['tag'], equals: '2B' } } as any,
+            ],
+          },
           {
             metadata: { path: ['installmentScheduleId'], equals: installmentScheduleId },
           } as any,
@@ -76,6 +99,16 @@ export class PaymentReceiptTemplate {
     let priorPrincipalCleared = new Decimal(0);
     let priorLateFeeBooked = new Decimal(0);
     for (const e of entries) {
+      const meta = e.metadata as any;
+      const tag: string = meta?.tag ?? '';
+      if (tag === '2B') {
+        // Compute this entry's Cr 11-2103 to decide inclusion.
+        const entryCr11 = e.lines
+          .filter((l) => l.accountCode === '11-2103')
+          .reduce((s, l) => s.plus(new Decimal(l.credit.toString())), new Decimal(0));
+        // Only partial-clear 2B JEs are included; full-clear JEs (cr == installmentTotal) are excluded.
+        if (!entryCr11.lt(installmentTotal)) continue;
+      }
       for (const l of e.lines) {
         const cr = new Decimal(l.credit.toString());
         if (l.accountCode === '11-2103') priorPrincipalCleared = priorPrincipalCleared.plus(cr);
@@ -108,6 +141,7 @@ export class PaymentReceiptTemplate {
     const { priorPrincipalCleared, priorLateFeeBooked } = await this.reconstructPrior(
       readClient,
       inst.id,
+      installmentTotal,
     );
 
     const delta = input.delta;

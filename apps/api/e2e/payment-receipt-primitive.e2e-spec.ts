@@ -1,8 +1,12 @@
 /**
- * REAL-DB e2e for the PaymentReceiptTemplate primitive (PR-843 / I2 Phase 2).
+ * REAL-DB e2e for the PaymentReceiptTemplate primitive (PR-843 / I2 Phase 2 + 3).
  * Proves Σ(Cr 11-2103) per installment == installmentTotal and Σ(Cr 42-1103) ==
  * lateFee across ANY receipt sequence, with NO template mocking. Harness mirrors
  * recordpayment-prior-partial.e2e-spec.ts (HAS_DB gate, scoped cleanup).
+ *
+ * Phase 3 adds two legacy-2B interop cases (installments 7 and 8) that verify
+ * reconstructPrior correctly counts a tag:'2B' partial-clear JE and excludes a
+ * tag:'2B' full-clear JE. See PR-843/I2 Phase 3 design note in payment-receipt.template.ts.
  *
  * Run:
  *   export DATABASE_URL="postgresql://iamnaii@localhost:5432/bestchoice"
@@ -23,6 +27,7 @@ const describeOrSkip = HAS_DB ? describe : describe.skip;
 
 describeOrSkip('PaymentReceiptTemplate primitive — Σ-invariants (real DB e2e)', () => {
   let prisma: PrismaService;
+  let journal: JournalAutoService;
   let template: PaymentReceiptTemplate;
   let contractId: string;
   let instId: string;
@@ -38,13 +43,18 @@ describeOrSkip('PaymentReceiptTemplate primitive — Σ-invariants (real DB e2e)
   };
 
   const entryIdsForInstallment = async (): Promise<string[]> => {
-    // Mirror PaymentReceiptTemplate.reconstructPrior exactly (tag:'receipt' AND
-    // installmentScheduleId) so the proof sums ONLY receipt JEs — guards against a
-    // future per-installment template (e.g. 2A accrual) widening the sum. (review)
+    // Mirrors PaymentReceiptTemplate.reconstructPrior (Phase 3): tag IN ('receipt','2B')
+    // AND installmentScheduleId. Both tags are included so the Σ-invariant proof
+    // counts legacy 2B partial-clear JEs alongside primitive receipt JEs. (PR-843/I2 Phase 3)
     const entries = await prisma.journalEntry.findMany({
       where: {
         AND: [
-          { metadata: { path: ['tag'], equals: 'receipt' } } as any,
+          {
+            OR: [
+              { metadata: { path: ['tag'], equals: 'receipt' } } as any,
+              { metadata: { path: ['tag'], equals: '2B' } } as any,
+            ],
+          },
           { metadata: { path: ['installmentScheduleId'], equals: instId } } as any,
         ],
       },
@@ -102,7 +112,7 @@ describeOrSkip('PaymentReceiptTemplate primitive — Σ-invariants (real DB e2e)
     // interest, vatTotal, installmentCount, installmentTotal, startDate }
     const c = await seedStandard17k12m(prisma as any);
     contractId = c.id;
-    const journal = new JournalAutoService(prisma as any);
+    journal = new JournalAutoService(prisma as any);
     await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
 
     // computeInstallmentBreakdown expects storeCommission/interestTotal/vatAmount/totalMonths
@@ -242,4 +252,104 @@ describeOrSkip('PaymentReceiptTemplate primitive — Σ-invariants (real DB e2e)
       }),
     ).rejects.toThrow(/exceeds available funds/i);
   }, 120_000);
+
+  // ─── Phase 3 — legacy 2B interop cases (PR-843/I2 Phase 3) ──────────────────
+
+  it(
+    'legacy 2B partial → primitive completion: reconstructPrior counts prior partial, no double-clear (THE footgun)',
+    async () => {
+      await useInstallment(7);
+
+      // Simulate a legacy partial-clear JE posted by the OLD non-split 2B template.
+      // The OLD path posts metadata: { tag:'2B', contractId, installmentScheduleId, paymentId }
+      // with NO partial/final flag. It credits 11-2103 by a partial amount < installmentTotal.
+      await journal.createAndPost({
+        description: 'legacy 2B partial (fixture)',
+        reference: 'legacy-2b-partial-7',
+        metadata: {
+          tag: '2B',
+          contractId,
+          installmentScheduleId: instId,
+          paymentId: 'fixture-7',
+        },
+        lines: [
+          {
+            accountCode: '11-1101',
+            dr: new Decimal('800'),
+            cr: new Decimal(0),
+            description: 'cash',
+          },
+          {
+            accountCode: '11-2103',
+            dr: new Decimal(0),
+            cr: new Decimal('800'),
+            description: 'partial clear',
+          },
+        ],
+      });
+
+      // Now COMPLETE the installment via the primitive with the delta (installmentTotal − 800).
+      // reconstructPrior must see priorPrincipalCleared = 800 so principalRemaining = installmentTotal − 800.
+      const delta = installmentTotal.minus(800);
+      const r = await template.execute({
+        installmentScheduleId: instId,
+        delta,
+        debitAccountCode: '11-1101',
+        isFinalReceipt: true,
+      });
+
+      // The primitive should clear ONLY the remaining delta, not the full installmentTotal.
+      expect(r.split.principalCleared.toFixed(2)).toBe(delta.toFixed(2));
+      expect(r.split.principalRemainingAfter.toFixed(2)).toBe('0.00');
+
+      // Σ Cr 11-2103 across BOTH the legacy 2B JE + the new receipt JE must equal
+      // installmentTotal exactly — every baht cleared once.
+      expect((await sumCredits('11-2103')).toFixed(2)).toBe(installmentTotal.toFixed(2));
+    },
+    120_000,
+  );
+
+  it(
+    'legacy 2B FULL-clear is excluded from reconstructPrior (discriminator guard)',
+    async () => {
+      await useInstallment(8);
+
+      // Simulate a legacy FULL-clear 2B JE (credits exactly installmentTotal).
+      // This must be EXCLUDED by reconstructPrior (full-clear = account is already settled,
+      // no further primitive call should be needed; if one is, treat priorPrincipalCleared=0).
+      await journal.createAndPost({
+        description: 'legacy 2B full clear (fixture)',
+        reference: 'legacy-2b-full-8',
+        metadata: {
+          tag: '2B',
+          contractId,
+          installmentScheduleId: instId,
+          paymentId: 'fixture-8',
+        },
+        lines: [
+          {
+            accountCode: '11-1101',
+            dr: installmentTotal,
+            cr: new Decimal(0),
+          },
+          {
+            accountCode: '11-2103',
+            dr: new Decimal(0),
+            cr: installmentTotal,
+          },
+        ],
+      });
+
+      // A later primitive receipt of 50 must treat priorPrincipalCleared as 0
+      // (full-clear excluded), so principalRemaining = installmentTotal and 50 clears
+      // cleanly without throwing "exceeds tolerance".
+      const r = await template.execute({
+        installmentScheduleId: instId,
+        delta: new Decimal('50'),
+        debitAccountCode: '11-1101',
+      });
+      expect(r.split.principalCleared.toFixed(2)).toBe('50.00');
+    },
+    120_000,
+  );
 });

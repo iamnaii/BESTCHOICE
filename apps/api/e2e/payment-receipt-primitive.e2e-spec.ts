@@ -38,8 +38,16 @@ describeOrSkip('PaymentReceiptTemplate primitive — Σ-invariants (real DB e2e)
   };
 
   const entryIdsForInstallment = async (): Promise<string[]> => {
+    // Mirror PaymentReceiptTemplate.reconstructPrior exactly (tag:'receipt' AND
+    // installmentScheduleId) so the proof sums ONLY receipt JEs — guards against a
+    // future per-installment template (e.g. 2A accrual) widening the sum. (review)
     const entries = await prisma.journalEntry.findMany({
-      where: { metadata: { path: ['installmentScheduleId'], equals: instId } as any },
+      where: {
+        AND: [
+          { metadata: { path: ['tag'], equals: 'receipt' } } as any,
+          { metadata: { path: ['installmentScheduleId'], equals: instId } } as any,
+        ],
+      },
       select: { id: true },
     });
     return entries.map((e) => e.id);
@@ -99,6 +107,9 @@ describeOrSkip('PaymentReceiptTemplate primitive — Σ-invariants (real DB e2e)
 
     // computeInstallmentBreakdown expects storeCommission/interestTotal/vatAmount/totalMonths
     // but StandardContract exposes commission/interest/vatTotal/installmentCount — map them.
+    // MUST re-derive here: c.installmentTotal from the seed uses default rounding (1515.84),
+    // while the template uses computeInstallmentBreakdown's ROUND_DOWN (1515.83). Asserting
+    // against c.installmentTotal directly would be off by 0.01 and prove nothing. (review)
     installmentTotal = computeInstallmentBreakdown({
       financedAmount: c.financedAmount.toString(),
       storeCommission: c.commission != null ? c.commission.toString() : null,
@@ -120,25 +131,28 @@ describeOrSkip('PaymentReceiptTemplate primitive — Σ-invariants (real DB e2e)
       }
     };
     try {
-      if (!contractId) return;
-      const jes = await prisma.journalEntry.findMany({
-        where: {
-          OR: [
-            { referenceId: contractId },
-            { metadata: { path: ['contractId'], equals: contractId } as any },
-          ],
-        },
-        select: { id: true },
-      });
-      const ids = jes.map((e) => e.id);
-      if (ids.length) {
-        await step(() => prisma.journalLine.deleteMany({ where: { journalEntryId: { in: ids } } }));
-        await step(() => prisma.journalEntry.deleteMany({ where: { id: { in: ids } } }));
+      if (contractId) {
+        const jes = await prisma.journalEntry.findMany({
+          where: {
+            OR: [
+              { referenceId: contractId },
+              { metadata: { path: ['contractId'], equals: contractId } as any },
+            ],
+          },
+          select: { id: true },
+        });
+        const ids = jes.map((e) => e.id);
+        if (ids.length) {
+          await step(() => prisma.journalLine.deleteMany({ where: { journalEntryId: { in: ids } } }));
+          await step(() => prisma.journalEntry.deleteMany({ where: { id: { in: ids } } }));
+        }
+        // audit_logs is IMMUTABLE — never deleted.
+        await step(() => prisma.payment.deleteMany({ where: { contractId } }));
+        await step(() => prisma.installmentSchedule.deleteMany({ where: { contractId } }));
+        await step(() => prisma.contract.deleteMany({ where: { id: contractId } }));
       }
-      // audit_logs is IMMUTABLE — never deleted.
-      await step(() => prisma.payment.deleteMany({ where: { contractId } }));
-      await step(() => prisma.installmentSchedule.deleteMany({ where: { contractId } }));
-      await step(() => prisma.contract.deleteMany({ where: { id: contractId } }));
+      // Outside the contractId guard: a beforeAll that created the FINANCE company
+      // then threw before seeding the contract must still clean up the company. (review)
       if (createdFinanceCompanyId) {
         await step(() => prisma.companyInfo.deleteMany({ where: { id: createdFinanceCompanyId! } }));
       }
@@ -160,7 +174,7 @@ describeOrSkip('PaymentReceiptTemplate primitive — Σ-invariants (real DB e2e)
     });
 
     const jeCount = (await entryIdsForInstallment()).length;
-    expect(jeCount).toBe(3); // no completion re-clears the whole installment
+    expect(jeCount).toBe(3); // 3 receipt calls → 3 distinct receipt JEs (not consolidated)
 
     expect((await sumCredits('11-2103')).toFixed(2)).toBe(installmentTotal.toFixed(2));
     expect(third.split.principalRemainingAfter.toFixed(2)).toBe('0.00');

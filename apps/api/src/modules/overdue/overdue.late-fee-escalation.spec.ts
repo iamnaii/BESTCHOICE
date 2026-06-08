@@ -259,7 +259,9 @@ describe('OverdueService.escalate (escalation lanes + SoD)', () => {
     expect(letterService.createIfNotExists).toHaveBeenCalledWith('c-1', 'CONTRACT_TERMINATION_60D');
     const auditArgs = (prisma.auditLog as { create: jest.Mock }).create.mock.calls[0][0];
     expect(auditArgs.data.action).toBe('CONTRACT_ESCALATED_LETTER');
-    expect(auditArgs.data.entity).toBe('Contract');
+    // Standardised to lowercase 'contract' (matches DB convention + the rest of
+    // this service; getBrokenPromiseCount still dual-reads both casings).
+    expect(auditArgs.data.entity).toBe('contract');
     expect(auditArgs.data.newValue).toMatchObject({ brokenPromiseCount: 4, letterId: 'L-9' });
     expect(out.brokenPromiseCount).toBe(4);
   });

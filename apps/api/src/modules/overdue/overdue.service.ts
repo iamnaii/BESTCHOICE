@@ -1578,7 +1578,7 @@ export class OverdueService {
           data: {
             userId: callerId,
             action: 'CONTRACT_ESCALATED_LETTER',
-            entity: 'Contract',
+            entity: 'contract',
             entityId: contractId,
             newValue: { reason, brokenPromiseCount: brokenCount, letterId: letter?.id ?? null },
           },
@@ -1592,7 +1592,7 @@ export class OverdueService {
           data: {
             userId: callerId,
             action: 'CONTRACT_ESCALATED_MDM',
-            entity: 'Contract',
+            entity: 'contract',
             entityId: contractId,
             newValue: { reason, brokenPromiseCount: brokenCount, mdmRequestId: (mdm as { id?: string })?.id ?? null },
           },
@@ -1619,7 +1619,7 @@ export class OverdueService {
             data: {
               userId: callerId,
               action: 'CONTRACT_ESCALATED_LEGAL',
-              entity: 'Contract',
+              entity: 'contract',
               entityId: contractId,
               newValue: { reason, brokenPromiseCount: brokenCount },
             },

@@ -4,6 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { readBoolFlag, readNumberFlag } from '../../utils/config.util';
 import { resolveSettingsAccessRoles } from './settings-access.guard';
+import { pickEnum, clampInt, clampFloat, parseStringArray } from './settings-flag-parsers.util';
 
 /**
  * Keys that are exposed read-only through SystemConfig. Writes via
@@ -902,20 +903,17 @@ export class SettingsService {
     );
     const voucherShowQrCode = await this.readBoolean('voucher_show_qr_code', true);
     // D1.2.2.6 — language. Whitelist 'th' / 'en'; everything else → 'th'.
-    const languageRaw = await this.getKey('language');
-    const language: 'th' | 'en' = languageRaw === 'en' ? 'en' : 'th';
+    const language = pickEnum(await this.getKey('language'), ['th', 'en'] as const, 'th');
     // D1.1.2.1 — DocumentType → prefix map (defaults applied per type when
     // stored value is missing or malformed).
     const docPrefixMap = await this.getDocPrefixMap();
     // D1.3.6.2 — settlement_default_tick. Whitelist 'all' / 'none' /
     // 'overdue_only'; everything else → 'overdue_only' (spec default).
-    const settlementDefaultTickRaw = await this.getKey('settlement_default_tick');
-    const settlementDefaultTick: 'all' | 'none' | 'overdue_only' =
-      settlementDefaultTickRaw === 'all'
-        ? 'all'
-        : settlementDefaultTickRaw === 'none'
-          ? 'none'
-          : 'overdue_only';
+    const settlementDefaultTick = pickEnum(
+      await this.getKey('settlement_default_tick'),
+      ['all', 'none', 'overdue_only'] as const,
+      'overdue_only',
+    );
     // D1.1.3.2 — WHT rates (default 5 canonical entries + optional D1.1.3.5
     // effectiveDate per entry).
     const whtRates = await this.getWhtRates();
@@ -927,25 +925,21 @@ export class SettingsService {
       true,
     );
     // D1.4.3.4 — data_export_format. Whitelist JSON/CSV/XLSX; default JSON.
-    const dataExportFormatRaw = await this.getKey('data_export_format');
-    const dataExportFormat: 'JSON' | 'CSV' | 'XLSX' =
-      dataExportFormatRaw === 'CSV' || dataExportFormatRaw === 'XLSX'
-        ? dataExportFormatRaw
-        : 'JSON';
+    const dataExportFormat = pickEnum(
+      await this.getKey('data_export_format'),
+      ['JSON', 'CSV', 'XLSX'] as const,
+      'JSON',
+    );
     // D1.4.3.6 — login_log_enabled. Default true.
     const loginLogEnabled = await this.readBoolean('login_log_enabled', true);
     // D1.3.4.2 — smart-switch threshold (days). Clamp 0–30; non-integer /
     // NaN / negative → 0. Default 0 = legacy behavior (any past date flips).
-    const smartSwitchThresholdRaw = await this.readNumber(
-      'smart_switch_threshold_days',
+    const smartSwitchThresholdDays = clampInt(
+      await this.readNumber('smart_switch_threshold_days', 0),
+      0,
+      30,
       0,
     );
-    const smartSwitchThresholdDays =
-      Number.isInteger(smartSwitchThresholdRaw) &&
-      smartSwitchThresholdRaw >= 0 &&
-      smartSwitchThresholdRaw <= 30
-        ? smartSwitchThresholdRaw
-        : 0;
     // D1.3.4.1 — smart_doctype_switch_enabled (default true).
     const smartDoctypeSwitchEnabled = await this.readBoolean(
       'smart_doctype_switch_enabled',
@@ -957,13 +951,12 @@ export class SettingsService {
     // D1.3.6.1 — settlement_max_bills_per_doc. Clamp to 1–500 inclusive;
     // anything outside (incl. NaN / negative) falls back to the default 100
     // which matches the previous hardcoded limit.
-    const settlementMaxBillsRaw = await this.readNumber('settlement_max_bills_per_doc', 100);
-    const settlementMaxBillsPerDoc =
-      Number.isInteger(settlementMaxBillsRaw) &&
-      settlementMaxBillsRaw >= 1 &&
-      settlementMaxBillsRaw <= 500
-        ? settlementMaxBillsRaw
-        : 100;
+    const settlementMaxBillsPerDoc = clampInt(
+      await this.readNumber('settlement_max_bills_per_doc', 100),
+      1,
+      500,
+      100,
+    );
     // D1.1.5.4 — Petty Cash replenish threshold. Default 5000, valid 0–50000.
     // Negative or NaN silently clamps to default 5000 so a bad SystemConfig
     // row can't accidentally suppress the alert via negative comparison.
@@ -987,9 +980,11 @@ export class SettingsService {
       true,
     );
     // D1.2.5.1 — voucher print mode. Whitelist 'single' / 'multi'; default 'multi'.
-    const voucherPrintModeRaw = await this.getKey('voucher_print_mode_default');
-    const voucherPrintMode: 'single' | 'multi' =
-      voucherPrintModeRaw === 'single' ? 'single' : 'multi';
+    const voucherPrintMode = pickEnum(
+      await this.getKey('voucher_print_mode_default'),
+      ['single', 'multi'] as const,
+      'multi',
+    );
     // D1.2.4.1 — Expense Templates feature flag.
     const templatesEnabled = await this.readBoolean('templates_enabled', true);
     // D1.2.4.2 — per-user template quota. Clamp to 1–1000 (same range as
@@ -1010,20 +1005,17 @@ export class SettingsService {
         : 20;
     // D1.2.3.5 — thousands_separator. Whitelist 'comma' / 'space' / 'none';
     // everything else → 'comma'.
-    const tsRaw = await this.getKey('thousands_separator');
-    const thousandsSeparator: 'comma' | 'space' | 'none' =
-      tsRaw === 'space' || tsRaw === 'none' ? tsRaw : 'comma';
+    const thousandsSeparator = pickEnum(
+      await this.getKey('thousands_separator'),
+      ['comma', 'space', 'none'] as const,
+      'comma',
+    );
     // D1.2.3.4 — decimal_places. Integer 0-4 inclusive; clamp to 2 default
     // for out-of-range / non-integer values.
-    const decimalPlacesRaw = await this.readNumber('decimal_places', 2);
-    const decimalPlaces =
-      Number.isInteger(decimalPlacesRaw) && decimalPlacesRaw >= 0 && decimalPlacesRaw <= 4
-        ? decimalPlacesRaw
-        : 2;
+    const decimalPlaces = clampInt(await this.readNumber('decimal_places', 2), 0, 4, 2);
     // D1.2.3.3 — date_format. Whitelist 'BE' / 'CE'; everything else → 'BE'.
     // Default 'BE' so existing flows are unchanged.
-    const dateFormatRaw = await this.getKey('date_format');
-    const dateFormat: 'BE' | 'CE' = dateFormatRaw === 'CE' ? 'CE' : 'BE';
+    const dateFormat = pickEnum(await this.getKey('date_format'), ['BE', 'CE'] as const, 'BE');
     // D1.2.1.1 — Approval Workflow opt-in. Default true per
     // Settings_Audit_Core_v2.0.md spec. Owner can flip to `false` via
     // SystemConfig if rollout needs to be gradual.
@@ -1032,62 +1024,37 @@ export class SettingsService {
     const approvalThresholdRaw = await this.readNumber('approval_threshold', 0);
     const approvalThreshold = approvalThresholdRaw >= 0 ? approvalThresholdRaw : 0;
     // D1.2.1.3 — approvers_list (JSON array of user IDs). Empty default.
-    let approversList: string[] = [];
-    try {
-      const raw = await this.getKey('approvers_list');
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
-          approversList = parsed.filter((v): v is string => typeof v === 'string');
-        }
-      }
-    } catch {
-      approversList = [];
-    }
+    const approversList = parseStringArray(await this.getKey('approvers_list'), []);
     // D1.2.1.4 — approval_required_doc_types (JSON array). Default ['PAYROLL'].
-    let approvalRequiredDocTypes: string[] = ['PAYROLL'];
-    try {
-      const raw = await this.getKey('approval_required_doc_types');
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const filtered = parsed.filter((v): v is string => typeof v === 'string');
-          if (filtered.length > 0) approvalRequiredDocTypes = filtered;
-        }
-      }
-    } catch {
-      // keep default
-    }
+    const approvalRequiredDocTypes = parseStringArray(
+      await this.getKey('approval_required_doc_types'),
+      ['PAYROLL'],
+      { requireNonEmpty: true },
+    );
     // D1.2.1.5 — notification fan-out toggle. Default true. Respects master
     // gate `in_app_notifications_enabled` downstream in NotificationsService.
     const notificationOnPending = await this.readBoolean('notification_on_pending', true);
     // D1.2.3.2 — pagination_size. Integer 10-200 inclusive; clamp to 50
     // default for out-of-range or non-numeric values so list pages remain
     // usable even when SystemConfig is mis-edited.
-    const paginationSizeRaw = await this.readNumber('pagination_size', 50);
-    const paginationSize =
-      Number.isInteger(paginationSizeRaw) && paginationSizeRaw >= 10 && paginationSizeRaw <= 200
-        ? paginationSizeRaw
-        : 50;
+    const paginationSize = clampInt(await this.readNumber('pagination_size', 50), 10, 200, 50);
     // D1.2.3.1 — default time range. Whitelist; everything else falls
     // through to 'this_month' so a malformed admin edit can't break list
     // pages that depend on this for initial state.
-    const defaultTimeRangeRaw = await this.getKey('default_time_range');
-    const defaultTimeRange: 'all' | 'this_month' | 'last_month' =
-      defaultTimeRangeRaw === 'all' || defaultTimeRangeRaw === 'last_month'
-        ? defaultTimeRangeRaw
-        : 'this_month';
+    const defaultTimeRange = pickEnum(
+      await this.getKey('default_time_range'),
+      ['all', 'this_month', 'last_month'] as const,
+      'this_month',
+    );
     // D1.3.5.1 — summary-page default range. Wider whitelist than
     // defaultTimeRange (no 'all' — summary always wants a bounded period,
     // and the page UI doesn't currently expose an "all" option; the
     // companion D1.3.5.2 banner explains gracefully if 'all' is ever wired).
-    const summaryDefaultRangeRaw = await this.getKey('summary_default_range');
-    const summaryDefaultRange: 'today' | 'this_week' | 'this_month' | 'last_month' =
-      summaryDefaultRangeRaw === 'today' ||
-      summaryDefaultRangeRaw === 'this_week' ||
-      summaryDefaultRangeRaw === 'last_month'
-        ? summaryDefaultRangeRaw
-        : 'this_month';
+    const summaryDefaultRange = pickEnum(
+      await this.getKey('summary_default_range'),
+      ['today', 'this_week', 'this_month', 'last_month'] as const,
+      'this_month',
+    );
     // D1.3.1.2 — AP-due alerts. Default OFF until ExpenseDocument has a real
     // dueDate column (documentDate proxy would otherwise spam every POSTED doc).
     const apDueAlertsEnabled = await this.readBoolean('ap_due_alerts_enabled', false);
@@ -1132,33 +1099,38 @@ export class SettingsService {
       true,
     );
     // D1.4.1.4 — dark_mode_default. Whitelist light/dark/system, default system.
-    const darkModeDefaultRaw = await this.getKey('dark_mode_default');
-    const darkModeDefault: 'light' | 'dark' | 'system' =
-      darkModeDefaultRaw === 'light' || darkModeDefaultRaw === 'dark'
-        ? darkModeDefaultRaw
-        : 'system';
+    const darkModeDefault = pickEnum(
+      await this.getKey('dark_mode_default'),
+      ['light', 'dark', 'system'] as const,
+      'system',
+    );
     // D1.4.2.1 — query_timeout_seconds. Clamp to [5, 300].
-    const queryTimeoutSecondsRaw = await this.readNumber('query_timeout_seconds', 30);
-    const queryTimeoutSeconds =
-      Number.isFinite(queryTimeoutSecondsRaw) && queryTimeoutSecondsRaw >= 5 && queryTimeoutSecondsRaw <= 300
-        ? Math.floor(queryTimeoutSecondsRaw)
-        : 30;
+    const queryTimeoutSeconds = clampFloat(
+      await this.readNumber('query_timeout_seconds', 30),
+      5,
+      300,
+      30,
+    );
     // D1.3.1.3 — email provider whitelist. Default smtp.
-    const emailProviderRaw = await this.getKey('email_provider');
-    const emailProvider: 'smtp' | 'sendgrid' =
-      emailProviderRaw === 'sendgrid' ? 'sendgrid' : 'smtp';
+    const emailProvider = pickEnum(
+      await this.getKey('email_provider'),
+      ['smtp', 'sendgrid'] as const,
+      'smtp',
+    );
     // D1.4.2.2 — cache_ttl_dashboard. Clamp to [10, 3600] seconds.
-    const cacheTtlDashboardRaw = await this.readNumber('cache_ttl_dashboard', 60);
-    const cacheTtlDashboard =
-      Number.isFinite(cacheTtlDashboardRaw) && cacheTtlDashboardRaw >= 10 && cacheTtlDashboardRaw <= 3600
-        ? Math.floor(cacheTtlDashboardRaw)
-        : 60;
+    const cacheTtlDashboard = clampFloat(
+      await this.readNumber('cache_ttl_dashboard', 60),
+      10,
+      3600,
+      60,
+    );
     // D1.4.2.3 — cache_ttl_reports. Clamp to [30, 7200] seconds.
-    const cacheTtlReportsRaw = await this.readNumber('cache_ttl_reports', 300);
-    const cacheTtlReports =
-      Number.isFinite(cacheTtlReportsRaw) && cacheTtlReportsRaw >= 30 && cacheTtlReportsRaw <= 7200
-        ? Math.floor(cacheTtlReportsRaw)
-        : 300;
+    const cacheTtlReports = clampFloat(
+      await this.readNumber('cache_ttl_reports', 300),
+      30,
+      7200,
+      300,
+    );
     // D1.3.6.3 — settlement_partial_payment_enabled. Default true (V12
     // adjustments remain active). When false, web app disables the partial
     // amount input + server rejects underpaid lines.
@@ -1173,45 +1145,35 @@ export class SettingsService {
     // D1.3.2.2 — settings_access_role. Whitelist 4 values; everything else
     // (missing key, malformed value) falls back to 'OWNER' so behavior
     // matches the pre-Phase-2 hardcoded @Roles('OWNER').
-    const settingsAccessRoleRaw = await this.getKey('settings_access_role');
-    const settingsAccessRole: 'OWNER' | 'OWNER+FINANCE_MANAGER' | 'OWNER+ACCOUNTANT' | 'OWNER+ALL' =
-      settingsAccessRoleRaw === 'OWNER+FINANCE_MANAGER' ||
-      settingsAccessRoleRaw === 'OWNER+ACCOUNTANT' ||
-      settingsAccessRoleRaw === 'OWNER+ALL'
-        ? settingsAccessRoleRaw
-        : 'OWNER';
+    const settingsAccessRole = pickEnum(
+      await this.getKey('settings_access_role'),
+      ['OWNER', 'OWNER+FINANCE_MANAGER', 'OWNER+ACCOUNTANT', 'OWNER+ALL'] as const,
+      'OWNER',
+    );
     // D1.3.2.3 — post_permission. Whitelist 4 values; everything else falls
     // back to the default OWNER+FM+ACCOUNTANT bundle (matches the
     // pre-Phase-2 static @Roles decorator).
-    const postPermissionRaw = await this.getKey('post_permission');
-    const postPermission:
-      | 'OWNER+FINANCE_MANAGER+ACCOUNTANT'
-      | 'OWNER+FINANCE_MANAGER'
-      | 'OWNER_ONLY'
-      | 'OWNER+ALL_NON_SALES' =
-      postPermissionRaw === 'OWNER+FINANCE_MANAGER' ||
-      postPermissionRaw === 'OWNER_ONLY' ||
-      postPermissionRaw === 'OWNER+ALL_NON_SALES'
-        ? postPermissionRaw
-        : 'OWNER+FINANCE_MANAGER+ACCOUNTANT';
+    const postPermission = pickEnum(
+      await this.getKey('post_permission'),
+      [
+        'OWNER+FINANCE_MANAGER+ACCOUNTANT',
+        'OWNER+FINANCE_MANAGER',
+        'OWNER_ONLY',
+        'OWNER+ALL_NON_SALES',
+      ] as const,
+      'OWNER+FINANCE_MANAGER+ACCOUNTANT',
+    );
     // D1.3.2.4 + InternalControlActionBar — reverse_permission. Whitelist
     // 4 values; everything else falls back to the default OWNER+FM bundle.
     //   - OWNER_ONLY
     //   - OWNER+FINANCE_MANAGER (default)
     //   - OWNER+FINANCE_MANAGER+ACCOUNTANT
     //   - CUSTOM (per-user via User.canReverseOverride, see ReversePermissionGuard)
-    const reversePermissionRaw = await this.getKey('reverse_permission');
-    const REVERSE_PERMISSION_WHITELIST = [
-      'OWNER_ONLY',
+    const reversePermission = pickEnum(
+      await this.getKey('reverse_permission'),
+      ['OWNER_ONLY', 'OWNER+FINANCE_MANAGER', 'OWNER+FINANCE_MANAGER+ACCOUNTANT', 'CUSTOM'] as const,
       'OWNER+FINANCE_MANAGER',
-      'OWNER+FINANCE_MANAGER+ACCOUNTANT',
-      'CUSTOM',
-    ] as const;
-    type ReversePermissionMode = (typeof REVERSE_PERMISSION_WHITELIST)[number];
-    const reversePermission: ReversePermissionMode =
-      REVERSE_PERMISSION_WHITELIST.includes(reversePermissionRaw as ReversePermissionMode)
-        ? (reversePermissionRaw as ReversePermissionMode)
-        : 'OWNER+FINANCE_MANAGER';
+    );
     return {
       taxExemptWarningEnabled,
       reverseReasonRequired,

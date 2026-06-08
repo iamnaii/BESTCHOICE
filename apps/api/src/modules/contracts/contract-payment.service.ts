@@ -251,16 +251,16 @@ export class ContractPaymentService {
       throw new BadRequestException('กรุณาระบุเลขที่อ้างอิงหรือแนบสลิปสำหรับการชำระแบบโอน/QR');
     }
 
-    // Period-lock guard (audit finding J3): cannot back-date an early payoff
-    // into a closed accounting period.
-    await validatePeriodOpen(this.prisma, paidDate);
-
     // F-3-027 part 2/3 follow-up + Phase A.1b: resolve FINANCE + SHOP
     // companyIds once BEFORE the transaction (and BEFORE the per-installment
     // loop) so the early-payoff JE callers pass both explicitly to
     // JournalAutoService.
     const financeCompanyId = await this.resolveFinanceCompanyId();
     const shopCompanyId = await this.resolveShopCompanyId();
+
+    // Period-lock guard (audit finding J3): cannot back-date an early payoff
+    // into a closed (FINANCE) accounting period.
+    await validatePeriodOpen(this.prisma, paidDate, financeCompanyId);
 
     await this.prisma.$transaction(
       async (tx) => {

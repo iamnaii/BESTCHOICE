@@ -183,8 +183,8 @@ export class PaymentsService {
       throw new BadRequestException('ต้อง upload หลักฐานการชำระเงิน (สลิปโอนเงิน) หรือระบุเลขอ้างอิงธุรกรรม');
     }
 
-    // CR-7: Validate payment date is not in a closed accounting period
-    await validatePeriodOpen(this.prisma, new Date());
+    // CR-7: Validate payment date is not in a closed (FINANCE) accounting period.
+    await validatePeriodOpen(this.prisma, new Date(), await this.resolveFinanceCompanyId());
 
     // T16: Tolerance approver role validation.
     // If toleranceApproverId is supplied, verify the named user has an approved role.

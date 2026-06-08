@@ -2,15 +2,21 @@ import { BadRequestException } from '@nestjs/common';
 import { validatePeriodOpen } from './period-lock.util';
 
 /**
- * Tests for D1.2.6.2 — `period_grace_days` SystemConfig knob. The default 5d
- * grace window lets owners post invoices into the just-closed period for a
- * few days after the period's last calendar day.
+ * Period-lock enforcement — single source of truth = AccountingPeriod.
  *
- * Note: validatePeriodOpen reads `new Date()` to compare against `today` —
- * we use Jest's fake timers so the grace-window math is deterministic.
+ * (2026-06 unify) The legacy SystemConfig key `accounting_period_closed_until`
+ * was removed as an enforcement mechanism. AccountingPeriod (per-company,
+ * per-month status) is now the ONLY source of truth; `period_grace_days` still
+ * tunes the post-close grace window (D1.2.6.2).
+ *
+ * Enforcement requires a companyId — every accounting write path resolves the
+ * FINANCE/SHOP companyId before calling the guard. A call with no companyId is
+ * intentionally a no-op (see the "no companyId" test below).
+ *
+ * validatePeriodOpen reads `new Date()` for the grace-window comparison — we use
+ * Jest fake timers so the math is deterministic.
  */
-
-describe('validatePeriodOpen — D1.2.6.2 period_grace_days', () => {
+describe('validatePeriodOpen — AccountingPeriod single source of truth', () => {
   beforeEach(() => {
     jest.useFakeTimers();
   });
@@ -22,7 +28,7 @@ describe('validatePeriodOpen — D1.2.6.2 period_grace_days', () => {
   function mockPrisma(opts: {
     period?: { status: string } | null;
     graceDays?: string | null; // raw string as stored in SystemConfig
-    closedUntil?: string | null;
+    legacyClosedUntil?: string | null; // only used to PROVE the legacy key is ignored
   }) {
     return {
       systemConfig: {
@@ -31,7 +37,7 @@ describe('validatePeriodOpen — D1.2.6.2 period_grace_days', () => {
             return Promise.resolve(opts.graceDays ? { value: opts.graceDays } : null);
           }
           if (args.where.key === 'accounting_period_closed_until') {
-            return Promise.resolve(opts.closedUntil ? { value: opts.closedUntil } : null);
+            return Promise.resolve(opts.legacyClosedUntil ? { value: opts.legacyClosedUntil } : null);
           }
           return Promise.resolve(null);
         }),
@@ -42,7 +48,7 @@ describe('validatePeriodOpen — D1.2.6.2 period_grace_days', () => {
     };
   }
 
-  // ── Tier 1: AccountingPeriod (companyId provided) ──────────────────────
+  // ── AccountingPeriod status semantics ──────────────────────────────────
 
   it('CLOSED period: rejects when today is BEYOND grace window (default 5d)', async () => {
     jest.setSystemTime(new Date('2026-06-10T00:00:00Z')); // 10d past May 31
@@ -76,14 +82,6 @@ describe('validatePeriodOpen — D1.2.6.2 period_grace_days', () => {
     ).resolves.toBeUndefined();
   });
 
-  it('OPEN period: never throws regardless of grace window', async () => {
-    jest.setSystemTime(new Date('2027-01-01T00:00:00Z'));
-    const prisma = mockPrisma({ period: { status: 'OPEN' } });
-    await expect(
-      validatePeriodOpen(prisma, new Date('2026-05-31'), 'co-1'),
-    ).resolves.toBeUndefined();
-  });
-
   it('SYNCED period: treated same as CLOSED for grace purposes', async () => {
     jest.setSystemTime(new Date('2026-06-10T00:00:00Z')); // beyond default grace
     const prisma = mockPrisma({ period: { status: 'SYNCED' } });
@@ -92,27 +90,50 @@ describe('validatePeriodOpen — D1.2.6.2 period_grace_days', () => {
     ).rejects.toThrow(BadRequestException);
   });
 
-  // ── Tier 2: legacy `accounting_period_closed_until` ────────────────────
-
-  it('legacy closedUntil: rejects when today is BEYOND grace', async () => {
-    jest.setSystemTime(new Date('2026-06-15T00:00:00Z'));
-    const prisma = mockPrisma({ closedUntil: '2026-05-31' });
+  it('OPEN period: never throws regardless of grace window', async () => {
+    jest.setSystemTime(new Date('2027-01-01T00:00:00Z'));
+    const prisma = mockPrisma({ period: { status: 'OPEN' } });
     await expect(
-      validatePeriodOpen(prisma, new Date('2026-05-30')),
-    ).rejects.toThrow(BadRequestException);
-  });
-
-  it('legacy closedUntil: ALLOWS when today is WITHIN grace', async () => {
-    jest.setSystemTime(new Date('2026-06-03T00:00:00Z'));
-    const prisma = mockPrisma({ closedUntil: '2026-05-31' });
-    await expect(
-      validatePeriodOpen(prisma, new Date('2026-05-30')),
+      validatePeriodOpen(prisma, new Date('2026-05-31'), 'co-1'),
     ).resolves.toBeUndefined();
   });
 
-  // ── Edge: malformed/missing grace config falls back to default 5 ───────
+  it('REVIEW period: not yet closed → never throws', async () => {
+    jest.setSystemTime(new Date('2027-01-01T00:00:00Z'));
+    const prisma = mockPrisma({ period: { status: 'REVIEW' } });
+    await expect(
+      validatePeriodOpen(prisma, new Date('2026-05-31'), 'co-1'),
+    ).resolves.toBeUndefined();
+  });
 
-  it('grace_days unparseable: falls back to default 5', async () => {
+  it('no AccountingPeriod row for the month → never throws', async () => {
+    jest.setSystemTime(new Date('2027-01-01T00:00:00Z'));
+    const prisma = mockPrisma({ period: null });
+    await expect(
+      validatePeriodOpen(prisma, new Date('2026-05-31'), 'co-1'),
+    ).resolves.toBeUndefined();
+  });
+
+  // ── single source of truth: no companyId + legacy key both = NOT guarded ──
+
+  it('no companyId provided → not guarded (resolves) even when the month is CLOSED', async () => {
+    jest.setSystemTime(new Date('2026-06-10T00:00:00Z'));
+    const prisma = mockPrisma({ period: { status: 'CLOSED' } });
+    await expect(validatePeriodOpen(prisma, new Date('2026-05-31'))).resolves.toBeUndefined();
+  });
+
+  it('ignores the legacy accounting_period_closed_until key (removed as a source of truth)', async () => {
+    jest.setSystemTime(new Date('2026-06-15T00:00:00Z')); // well past the legacy cutoff
+    const prisma = mockPrisma({ legacyClosedUntil: '2026-05-31' });
+    await expect(validatePeriodOpen(prisma, new Date('2026-05-30'))).resolves.toBeUndefined();
+    expect(prisma.systemConfig.findUnique).not.toHaveBeenCalledWith({
+      where: { key: 'accounting_period_closed_until' },
+    });
+  });
+
+  // ── grace config edge cases fall back to default 5 ──────────────────────
+
+  it('grace_days unparseable: falls back to default 5 (within window → allows)', async () => {
     jest.setSystemTime(new Date('2026-06-03T00:00:00Z'));
     const prisma = mockPrisma({ period: { status: 'CLOSED' }, graceDays: 'soon' });
     await expect(
@@ -120,7 +141,7 @@ describe('validatePeriodOpen — D1.2.6.2 period_grace_days', () => {
     ).resolves.toBeUndefined();
   });
 
-  it('grace_days negative: falls back to default 5', async () => {
+  it('grace_days negative: falls back to default 5 (beyond window → rejects)', async () => {
     jest.setSystemTime(new Date('2026-06-10T00:00:00Z'));
     const prisma = mockPrisma({ period: { status: 'CLOSED' }, graceDays: '-2' });
     await expect(

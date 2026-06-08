@@ -6,7 +6,6 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { StructuredLoggerService } from '../../common/logger';
 import { Prisma } from '@prisma/client';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { CompanyResolverService } from '../journal/company-resolver.service';
@@ -58,7 +57,6 @@ export const INVENTORY_COSTING_METHOD = 'SPECIFIC_IDENTIFICATION' as const;
 @Injectable()
 export class AccountingService implements OnModuleInit {
   private readonly logger = new Logger(AccountingService.name);
-  private readonly structuredLogger = new StructuredLoggerService(AccountingService.name);
   constructor(
     private prisma: PrismaService,
     private journalAutoService: JournalAutoService,
@@ -610,25 +608,6 @@ export class AccountingService implements OnModuleInit {
         netProfit: pctChange(current.netProfit, lastYear.netProfit),
       },
     };
-  }
-
-  // ─── W-013: Period Closing Lock ───────────────────────────────────────────────
-
-  async closeAccountingPeriod(closedUntil: string) {
-    await this.prisma.systemConfig.upsert({
-      where: { key: 'accounting_period_closed_until' },
-      update: { value: closedUntil },
-      create: { key: 'accounting_period_closed_until', value: closedUntil },
-    });
-    this.structuredLogger.log('accounting.period.closed', { closedUntil });
-    return { closedUntil };
-  }
-
-  async getAccountingPeriodStatus() {
-    const config = await this.prisma.systemConfig.findUnique({
-      where: { key: 'accounting_period_closed_until' },
-    });
-    return { closedUntil: config?.value || null };
   }
 
   // ─── Balance Sheet (derived from existing data, no general ledger) ────────────

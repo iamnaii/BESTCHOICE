@@ -183,9 +183,23 @@ export class PaymentReceiptTemplate {
       lines.push({ accountCode: '21-1103', dr: zero, cr: advanceCredit, description: 'เงินรับล่วงหน้า' });
     }
 
+    // Review I-1: refuse to post a meaningless zero-line JE. Reachable when a
+    // caller issues a receipt against an already fully-cleared installment
+    // (delta/advance all 0 and principalRemaining 0 → every line skipped).
+    if (lines.length === 0) {
+      throw new BadRequestException(
+        `ไม่มีรายการบัญชีที่ต้องบันทึก — งวดนี้ถูกชำระครบแล้ว (installmentScheduleId: ${input.installmentScheduleId})`,
+      );
+    }
+
+    // companyId intentionally omitted: every line here is a FINANCE account
+    // (11-2103 / 42-1103 / 53-1503 / 52-1104 / 21-1103 / deposit), so createAndPost's
+    // FINANCE default is correct — matches PaymentReceipt2B(Split)Template. (Review I-2)
     const result = await this.journal.createAndPost(
       {
         description: `รับชำระงวด #${inst.installmentNo} — สัญญา ${c.contractNumber}`,
+        // reference = caller-owned Payment id once wired (Phase 3); a placeholder
+        // UUID until then. Traceability rides on metadata.installmentScheduleId. (Review M-1)
         reference: input.paymentId ?? randomUUID(),
         metadata: {
           tag: 'receipt',

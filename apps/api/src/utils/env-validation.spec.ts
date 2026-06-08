@@ -58,19 +58,12 @@ describe('env-validation', () => {
       expect(() => validateEnv()).not.toThrow();
     });
 
-    it('throws if ENCRYPTION_KEY missing in prod (TOTP secret protection)', () => {
-      process.env.PII_ENCRYPTION_KEY = 'a'.repeat(64);
-      process.env.PII_HASH_SALT = 'b'.repeat(32);
-      delete process.env.ENCRYPTION_KEY;
-      expect(() => validateEnv()).toThrow(/ENCRYPTION_KEY/);
-    });
-
-    it('throws if ENCRYPTION_KEY too short in prod', () => {
-      process.env.PII_ENCRYPTION_KEY = 'a'.repeat(64);
-      process.env.PII_HASH_SALT = 'b'.repeat(32);
-      process.env.ENCRYPTION_KEY = 'too-short';
-      expect(() => validateEnv()).toThrow(/ENCRYPTION_KEY/);
-    });
+    // NOTE (2026-06): two tests asserting validateEnv() throws on a missing /
+    // too-short ENCRYPTION_KEY in production were removed. That guard existed
+    // only to protect the 2FA TOTP secret, which was deleted in #1169 (remove
+    // staff-login 2FA). National-ID PII is guarded separately via
+    // PII_ENCRYPTION_KEY + PII_HASH_SALT (covered above); ENCRYPTION_KEY is now
+    // an unused legacy env var (ENV_VARS marks it required: false).
   });
 
   describe('development mode', () => {

@@ -92,6 +92,7 @@ describe('Contract Signing & Workflow', () => {
     financedAmount: 21800,
     monthlyPayment: 1817,
     paymentDueDay: 5,
+    createdAt: new Date('2026-01-15T00:00:00.000Z'),
     interestConfigId: null,
     notes: null,
     deletedAt: null,
@@ -143,6 +144,7 @@ describe('Contract Signing & Workflow', () => {
     const txMock = {
       contract: {
         findUnique: jest.fn().mockResolvedValue(mockContract),
+        findUniqueOrThrow: jest.fn().mockResolvedValue(mockContract),
         update: jest.fn().mockResolvedValue(mockContract),
       },
       product: {
@@ -156,6 +158,10 @@ describe('Contract Signing & Workflow', () => {
         createMany: jest.fn().mockResolvedValue({ count: 12 }),
         findFirst: jest.fn().mockResolvedValue(null),
       },
+      installmentSchedule: {
+        count: jest.fn().mockResolvedValue(0),
+        createMany: jest.fn().mockResolvedValue({ count: 12 }),
+      },
       sale: {
         create: jest.fn().mockResolvedValue({ id: 'sale-1' }),
       },
@@ -167,6 +173,7 @@ describe('Contract Signing & Workflow', () => {
     const mockPrisma = {
       contract: {
         findUnique: jest.fn().mockResolvedValue(mockContract),
+        findUniqueOrThrow: jest.fn().mockResolvedValue(mockContract),
         findMany: jest.fn().mockResolvedValue([]),
         count: jest.fn().mockResolvedValue(0),
         update: jest.fn().mockResolvedValue(mockContract),

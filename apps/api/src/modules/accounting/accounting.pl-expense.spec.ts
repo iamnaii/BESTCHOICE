@@ -4,6 +4,7 @@ import { JournalAutoService } from '../journal/journal-auto.service';
 import { CompanyResolverService } from '../journal/company-resolver.service';
 import { AccountingService } from './accounting.service';
 import { PeakExportService } from './peak-export.service';
+import { ReceivablesReportService } from './receivables-report.service';
 
 type GroupRow = { accountCode: string; _sum: { debit: Prisma.Decimal | null; credit: Prisma.Decimal | null } };
 
@@ -22,6 +23,7 @@ function makeService(groupRows: GroupRow[]) {
     {} as JournalAutoService,
     companyResolver,
     {} as PeakExportService,
+    {} as ReceivablesReportService,
   );
   return { svc, journalLineGroupBy };
 }
@@ -96,6 +98,7 @@ function makeFullService(groupRows: GroupRow[]) {
     {} as JournalAutoService,
     companyResolver,
     {} as PeakExportService,
+    {} as ReceivablesReportService,
   );
 }
 
@@ -154,6 +157,7 @@ describe('AccountingService.getMonthlyPLSummary (expense wiring)', () => {
       {} as JournalAutoService,
       companyResolver,
       {} as PeakExportService,
+      {} as ReceivablesReportService,
     );
   }
 

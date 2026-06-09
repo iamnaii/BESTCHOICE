@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { Prisma } from '@prisma/client';
 import { AccountingService } from './accounting.service';
 import { PeakExportService } from './peak-export.service';
+import { ReceivablesReportService } from './receivables-report.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { CompanyResolverService } from '../journal/company-resolver.service';
@@ -112,6 +113,7 @@ describe('AccountingService', () => {
       providers: [
         AccountingService,
         PeakExportService,
+        ReceivablesReportService,
         { provide: PrismaService, useValue: prisma },
         { provide: JournalAutoService, useValue: journalAutoService },
         {

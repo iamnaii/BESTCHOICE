@@ -3,6 +3,7 @@ import { AccountingController } from './accounting.controller';
 import { AccountingClosingController } from './closing.controller';
 import { AccountingService } from './accounting.service';
 import { PeakExportService } from './peak-export.service';
+import { ReceivablesReportService } from './receivables-report.service';
 import { BadDebtService } from './bad-debt.service';
 import { BadDebtProvisionCron } from './bad-debt-provision.cron';
 import { MonthlyCloseService } from './monthly-close.service';
@@ -20,6 +21,7 @@ import { PeakModule } from '../peak/peak.module';
   providers: [
     AccountingService,
     PeakExportService,
+    ReceivablesReportService,
     BadDebtService,
     BadDebtProvisionCron,
     MonthlyCloseService,

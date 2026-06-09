@@ -66,7 +66,7 @@ describe('AccountingService — multi-scope reports', () => {
     };
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const svc = new AccountingService(prisma, {} as any, resolver as any, {} as any);
+    const svc = new AccountingService(prisma, {} as any, resolver as any, {} as any, {} as any);
     return { svc, prisma, resolver, groupByCalls, findManyCalls };
   }
 

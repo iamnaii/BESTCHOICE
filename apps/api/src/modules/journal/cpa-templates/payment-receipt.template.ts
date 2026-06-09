@@ -65,6 +65,31 @@ export class PaymentReceiptTemplate {
   ) {}
 
   /**
+   * D1.1.6.3 (ported from PaymentReceipt2BTemplate, PR-843/I2 Phase 3 3a) —
+   * read `adj_auto_route` flag (default TRUE).
+   * Inlined direct SystemConfig read (PrismaService) to avoid pulling
+   * SettingsModule into the journal module DI graph. Defaults to TRUE so
+   * first-boot behaviour is unchanged.
+   */
+  private async readAdjAutoRouteFlag(
+    tx: Prisma.TransactionClient | PrismaService,
+  ): Promise<boolean> {
+    try {
+      const row = await tx.systemConfig.findFirst({
+        where: { key: 'adj_auto_route', deletedAt: null },
+        select: { value: true },
+      });
+      if (!row?.value) return true;
+      const v = row.value.trim().toLowerCase();
+      if (v === 'false' || v === '0') return false;
+      if (v === 'true' || v === '1') return true;
+      return true;
+    } catch {
+      return true;
+    }
+  }
+
+  /**
    * Reconstruct prior cleared amounts for this installment from its own prior JE lines.
    *
    * Phase 2: matched only `tag:'receipt'` entries.
@@ -193,6 +218,18 @@ export class PaymentReceiptTemplate {
     }
     if (split.underpayRounding.gt(0) && !input.toleranceApproverId) {
       throw new BadRequestException('Underpay tolerance requires approver (toleranceApproverId)');
+    }
+
+    // D1.1.6.3 (ported from 2B, PR-843/I2 Phase 3 3a) — when `adj_auto_route`
+    // is off, refuse to auto-route a non-zero rounding remainder to the
+    // adj_overpay (53-1503) / adj_underpay (52-1104) accounts. The owner must
+    // clear the diff manually (e.g. via a manual JV) before the receipt posts.
+    // Mirrors the 2B guard exactly so the most-used money path keeps the same
+    // behaviour after the primitive swap.
+    if (split.overpayRounding.gt(0) || split.underpayRounding.gt(0)) {
+      if (!(await this.readAdjAutoRouteFlag(readClient))) {
+        throw new BadRequestException('Auto-routing disabled — manual adjustment required');
+      }
     }
 
     const zero = new Decimal(0);

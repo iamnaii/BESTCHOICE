@@ -391,4 +391,42 @@ describeOrSkip('PaymentReceiptTemplate primitive — Σ-invariants (real DB e2e)
     },
     120_000,
   );
+
+  // ─── PR-843/I2 Phase 3 3a — adj_auto_route guard parity (ported from 2B) ─────
+
+  it(
+    'adj_auto_route=false → an overpay-rounding receipt REJECTS (manual adjustment required)',
+    async () => {
+      await useInstallment(10);
+
+      // Turn the auto-route flag OFF for the duration of this case.
+      await prisma.systemConfig.upsert({
+        where: { key: 'adj_auto_route' },
+        create: { key: 'adj_auto_route', value: 'false', label: 'e2e adj_auto_route' },
+        update: { value: 'false', deletedAt: null },
+      });
+
+      try {
+        // delta = installmentTotal + 0.50 with NO advanceCredit → 0.50 surfaces as
+        // overpayRounding (≤1฿, within tolerance) → would normally route to 53-1503.
+        // With the flag OFF the primitive must refuse and require a manual adjustment.
+        await expect(
+          template.execute({
+            installmentScheduleId: instId,
+            delta: installmentTotal.plus(new Decimal('0.50')),
+            debitAccountCode: '11-1101',
+            isFinalReceipt: true,
+          }),
+        ).rejects.toThrow(/Auto-routing disabled/i);
+
+        // The rejected call posts nothing — no receipt JE for this installment.
+        expect((await entryIdsForInstallment()).length).toBe(0);
+        expect((await sumCredits('11-2103')).toFixed(2)).toBe('0.00');
+      } finally {
+        // Clean up the config row so it cannot leak into other suites / the dev DB.
+        await prisma.systemConfig.deleteMany({ where: { key: 'adj_auto_route' } });
+      }
+    },
+    120_000,
+  );
 });

@@ -181,6 +181,7 @@ export class LineOaPaymentController {
         const evidence = await this.prisma.paymentEvidence.findUnique({
           where: { id },
           include: {
+            payment: { select: { installmentNo: true } },
             contract: {
               include: {
                 customer: true,
@@ -212,12 +213,20 @@ export class LineOaPaymentController {
           const contract = evidence.contract;
           const totalInstallments = contract.payments.length;
           const paidCount = contract.payments.filter((p) => p.status === 'PAID').length;
+          // Derive the installment this evidence pays — the linked Payment if
+          // present, else the next unpaid installment. (Was hardcoded to 1, so a
+          // customer paying installment 5/12 was told "1/12" over LINE.)
+          const nextUnpaid = contract.payments.find((p) => p.status !== 'PAID');
+          const installmentNo =
+            evidence.payment?.installmentNo ??
+            nextUnpaid?.installmentNo ??
+            Math.min(paidCount + 1, totalInstallments);
 
           try {
             const flex = this.lineOaService.buildPaymentSuccess({
               customerName: customer.name,
               contractNumber: contract.contractNumber,
-              installmentNo: 1,
+              installmentNo,
               totalInstallments,
               amountPaid: evidence.amount ? d(evidence.amount) : 0,
               paymentMethod: body.paymentMethod,

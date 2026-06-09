@@ -7,6 +7,12 @@ import { JournalAutoService } from '../journal/journal-auto.service';
 import { BadDebtProvisionTemplate } from '../journal/cpa-templates/bad-debt-provision.template';
 import { BadDebtWriteOffTemplate } from '../journal/cpa-templates/bad-debt-writeoff.template';
 import { EclStageReverseTemplate } from '../journal/cpa-templates/ecl-stage-reverse.template';
+import * as Sentry from '@sentry/nestjs';
+
+jest.mock('@sentry/nestjs', () => ({
+  captureException: jest.fn(),
+  captureMessage: jest.fn(),
+}));
 
 /**
  * BadDebtService is the financial provisioning engine. It maps overdue
@@ -401,6 +407,7 @@ describe('BadDebtService', () => {
     });
 
     it('falls back to defaults when systemConfig has malformed JSON', async () => {
+      (Sentry.captureException as jest.Mock).mockClear();
       prisma.systemConfig.findUnique.mockResolvedValue({ value: 'not-json{{' });
       prisma.payment.findMany.mockResolvedValue([
         {
@@ -418,6 +425,8 @@ describe('BadDebtService', () => {
       ]);
       const result = await service.calculateProvisions('user-1');
       expect(result.byBucket['1-30'].amount).toBeCloseTo(20, 4); // back to defaults
+      // ...but the corrupt regulated-rate config is NOT silently swallowed.
+      expect(Sentry.captureException as jest.Mock).toHaveBeenCalled();
     });
   });
 

@@ -26,8 +26,18 @@ export interface PaymentReceiptPrimitiveInput {
   isFinalReceipt?: boolean;
   /** Required when the final receipt underpays by ≤1฿ (52-1104 route). */
   toleranceApproverId?: string;
-  /** Caller-owned Payment row id → JE reference. Omitted → generated UUID. */
+  /** Caller-owned Payment row id → stamped to metadata.paymentId (the canonical payment→JE key). */
   paymentId?: string;
+  /**
+   * Per-receipt idempotency key. When provided it is stamped to
+   * metadata.idempotencyKey for traceability/queryability.
+   *
+   * PR-843/I2 Phase 3 PR 3.1: stamp-only for now (no unique constraint enforced).
+   * Per-receipt-idempotency enforcement (a DB partial-unique index on
+   * metadata.idempotencyKey so a retried partial/completion never double-posts)
+   * is the 3a/3b follow-up where the payment paths pass real per-receipt keys.
+   */
+  idempotencyKey?: string;
 }
 
 /**
@@ -232,14 +242,25 @@ export class PaymentReceiptTemplate {
     const result = await this.journal.createAndPost(
       {
         description: `รับชำระงวด #${inst.installmentNo} — สัญญา ${c.contractNumber}`,
-        // reference = caller-owned Payment id once wired (Phase 3); a placeholder
-        // UUID until then. Traceability rides on metadata.installmentScheduleId. (Review M-1)
-        reference: input.paymentId ?? randomUUID(),
+        // PR-843/I2 Phase 3 PR 3.1 — the JE `reference` is ALWAYS a fresh UUID, never
+        // `input.paymentId`. The epic posts MULTIPLE receipt JEs per Payment (a partial
+        // then a completion on one installment) sharing the SAME paymentId; keying the
+        // JE reference off paymentId would collide on the partial-unique index
+        // `journal_entries_ref_unique (reference_type, reference_id)`. The canonical
+        // payment→JE link is `metadata.paymentId` (below) — that is what voidReceipt /
+        // markReversed query to reverse EVERY receipt JE of a payment.
+        reference: randomUUID(),
         metadata: {
           tag: 'receipt',
+          // Traceability/queryability for the per-receipt flow (PR 3.1).
+          flow: 'payment-receipt',
           contractId: c.id,
           installmentScheduleId: inst.id,
+          // Canonical payment→JE key. N receipt JEs of one payment all share this.
           paymentId: input.paymentId ?? null,
+          // Stamped-only per-receipt idempotency key (no unique constraint in PR 3.1 —
+          // enforcement is the 3a/3b follow-up; see PaymentReceiptPrimitiveInput JSDoc).
+          idempotencyKey: input.idempotencyKey ?? null,
           deltaApplied: delta.toString(),
           principalCleared: split.principalCleared.toString(),
           lateFeePortion: split.lateFeePortion.toString(),

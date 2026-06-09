@@ -49,6 +49,8 @@
     "backfill:encrypt-pii": "tsx src/cli/encrypt-customer-pii.cli.ts",
     "backfill:encrypt-pii:help": "echo 'Usage: CONFIRM_BACKFILL=YES_I_AM_SURE EXPECTED_DB_NAME=<db> PII_ENCRYPTION_KEY=<64hex> PII_HASH_SALT=<>=32chars> [ALLOW_PROD_BACKFILL=YES_I_AM_SURE] [PDPA_BACKFILL_BATCH_SIZE=100] npm run backfill:encrypt-pii'",
     "backfill:user-companies": "tsx src/cli/backfill-user-companies.cli.ts",
+    "backfill:orphan-receipts": "node dist/src/cli/backfill-orphan-partial-receipts.cli.js",
+    "backfill:orphan-receipts:help": "echo 'PR-843/I2 deploy gate ②: DRY-RUN default (lists orphan partials + total). To post: CONFIRM_BACKFILL=YES_I_AM_SURE EXPECTED_DB_NAME=<db> [ALLOW_PROD_BACKFILL=YES_I_AM_SURE NODE_ENV=production] npm --prefix apps/api run backfill:orphan-receipts. Cloud Run Job for prod.'",
     "audit:sp7-edge-cases": "tsx src/cli/audit-edge-cases-sp7.cli.ts",
     "sp7:clone-orig-to-finance": "tsx src/cli/clone-orig-to-finance.cli.ts",
     "sp7:extract-shop": "tsx src/cli/extract-shop-from-finance.cli.ts",

@@ -38,15 +38,20 @@ describe('InstallmentAccrual2ATemplate.execute (golden · mock-based)', () => {
       dueDate: new Date('2026-01-01'),
       accrualJournalEntryId: null as string | null,
     };
-    const prisma = {
+    // $transaction must pass the tx client into the callback. We use the same
+    // prisma stub as the tx so the mock calls resolve correctly.
+    const prismaStub: Record<string, unknown> = {
       installmentSchedule: {
         findUniqueOrThrow: jest.fn().mockResolvedValue(inst),
         update: jest.fn().mockResolvedValue({}),
       },
       contract: { findUniqueOrThrow: jest.fn().mockResolvedValue(contract) },
     };
+    prismaStub.$transaction = jest.fn().mockImplementation(
+      (cb: (tx: unknown) => Promise<unknown>) => cb(prismaStub),
+    );
     const journal = { createAndPost } as unknown;
-    tmpl = new InstallmentAccrual2ATemplate(journal as never, prisma as never);
+    tmpl = new InstallmentAccrual2ATemplate(journal as never, prismaStub as never);
     return inst;
   };
 

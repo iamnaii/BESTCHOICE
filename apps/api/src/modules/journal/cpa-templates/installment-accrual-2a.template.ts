@@ -63,17 +63,40 @@ export class InstallmentAccrual2ATemplate {
 
   async execute(
     installmentScheduleId: string,
-    tx?: Prisma.TransactionClient,
+    outerTx?: Prisma.TransactionClient,
   ): Promise<{ entryNo: string } | null> {
-    const client = tx ?? this.prisma;
-    const inst = await client.installmentSchedule.findUniqueOrThrow({
+    // Fast idempotency check outside the transaction (avoids opening a tx for
+    // already-accrued installments — the common case on repeated cron ticks).
+    const instCheck = await this.prisma.installmentSchedule.findUniqueOrThrow({
+      where: { id: installmentScheduleId },
+      select: { accrualJournalEntryId: true },
+    });
+    if (instCheck.accrualJournalEntryId) return null;
+
+    if (outerTx) {
+      return this.run(installmentScheduleId, outerTx);
+    }
+    // No outer tx — self-wrap so the JE post + accrualJournalEntryId stamp +
+    // advance-consume JE + contract/payment updates are one atomic unit.
+    // A crash between any of these steps can no longer produce a duplicate
+    // accrual JE on the next cron tick (the idempotency stamp is committed
+    // atomically with the JE).
+    return this.prisma.$transaction((tx) => this.run(installmentScheduleId, tx));
+  }
+
+  private async run(
+    installmentScheduleId: string,
+    tx: Prisma.TransactionClient,
+  ): Promise<{ entryNo: string } | null> {
+    const inst = await tx.installmentSchedule.findUniqueOrThrow({
       where: { id: installmentScheduleId },
     });
 
-    // Idempotency guard
+    // Idempotency guard (re-check inside tx in case two concurrent cron ticks
+    // both passed the outer fast-check before either committed).
     if (inst.accrualJournalEntryId) return null;
 
-    const c = await client.contract.findUniqueOrThrow({ where: { id: inst.contractId } });
+    const c = await tx.contract.findUniqueOrThrow({ where: { id: inst.contractId } });
 
     // Per-installment amounts via the shared single source of truth — same
     // rounding the 2B receipt / early-payoff use (ROUND_DOWN principal,
@@ -162,7 +185,7 @@ export class InstallmentAccrual2ATemplate {
     );
 
     // Mark installment as accrued (idempotency)
-    await client.installmentSchedule.update({
+    await tx.installmentSchedule.update({
       where: { id: inst.id },
       data: { accrualJournalEntryId: result.entryNumber },
     });
@@ -182,9 +205,9 @@ export class InstallmentAccrual2ATemplate {
     // JE: Dr 21-1103 (consume advance) / Cr 11-2103 (clear receivable)
     //   for amount = min(advanceBalance, installmentTotal).
     //
-    // Atomicity: posted in the same outer tx as the accrual JE +
-    // schedule update, so a JE-post failure rolls everything back —
-    // no partially-consumed advance with the receivable still showing.
+    // Atomicity: posted in the same tx as the accrual JE + schedule update,
+    // so a JE-post failure rolls everything back — no partially-consumed
+    // advance with the receivable still showing.
     const advanceBalance = new Decimal(c.advanceBalance.toString());
     if (advanceBalance.gt(0)) {
       const consume = Decimal.min(advanceBalance, installmentTotal);
@@ -221,7 +244,7 @@ export class InstallmentAccrual2ATemplate {
       );
 
       // Decrement contract's parked advance balance by the consumed amount.
-      await client.contract.update({
+      await tx.contract.update({
         where: { id: c.id },
         data: { advanceBalance: { decrement: consume } },
       });
@@ -229,7 +252,7 @@ export class InstallmentAccrual2ATemplate {
       // Reflect the consume on the existing Payment row (if one was
       // pre-created when the advance was first received). Fully covered
       // installments flip to PAID; partial covers stay PARTIALLY_PAID.
-      const payment = await client.payment.findFirst({
+      const payment = await tx.payment.findFirst({
         where: {
           contractId: c.id,
           installmentNo: inst.installmentNo,
@@ -241,7 +264,7 @@ export class InstallmentAccrual2ATemplate {
         const newAmountPaid = new Decimal(payment.amountPaid.toString()).plus(consume);
         const due = new Decimal((payment.amountDue ?? installmentTotal).toString());
         const isPaidInFull = newAmountPaid.gte(due);
-        await client.payment.update({
+        await tx.payment.update({
           where: { id: payment.id },
           data: {
             amountPaid: newAmountPaid,

@@ -28,7 +28,8 @@ import { FlexMessagePayload } from '../line-oa/flex-messages/base-template';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
 import { ProductsService } from '../products/products.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
-import { PaymentReceipt2BTemplate } from '../journal/cpa-templates/payment-receipt-2b.template';
+import { PaymentReceiptTemplate } from '../journal/cpa-templates/payment-receipt.template';
+import { Vat60dayReversalTemplate } from '../journal/cpa-templates/vat-60day-reversal.template';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PaymentsService } from '../payments/payments.service';
 import type { PartialPaymentLink } from '@prisma/client';
@@ -64,7 +65,8 @@ export class PaySolutionsService {
     private saleAdapter: OnlineOrderSaleAdapter,
     private productsService: ProductsService,
     private journalAutoService: JournalAutoService,
-    private paymentReceipt2BTemplate: PaymentReceipt2BTemplate,
+    private paymentReceiptTemplate: PaymentReceiptTemplate,
+    private vat60Reversal: Vat60dayReversalTemplate,
     @Inject(forwardRef(() => PaymentsService))
     private paymentsService: PaymentsService,
   ) {
@@ -1121,20 +1123,19 @@ export class PaySolutionsService {
           let remaining = paidAmount;
           const now = new Date();
           let fullyPaidCount = 0;
-          // Collect snapshots of fully-paid payments. After the per-installment
-          // Payment.update loop, we post each JE inside this same $transaction
-          // (C2 fix) so atomicity is enforced.
-          const fullyPaidSnapshots: Array<{
+          // PR-843/I2 Phase 3 3b: collect a snapshot for EVERY touched installment
+          // (partial AND completing), not just fully-paid ones. After the
+          // per-installment Payment.update loop we post one PaymentReceiptTemplate
+          // JE per touched snapshot inside this same $transaction (C2 atomicity).
+          // `payThis` is the DELTA applied THIS webhook (NOT cumulative amountPaid)
+          // so the primitive clears only what each receipt covers. `isFinalReceipt`
+          // = the `fullyPaid` flag so a completing receipt can close the ≤1฿ residual.
+          const touchedSnapshots: Array<{
             id: string;
             installmentNo: number;
-            amountPaid: Prisma.Decimal;
-            monthlyPrincipal: Prisma.Decimal | null;
-            monthlyInterest: Prisma.Decimal | null;
-            monthlyCommission: Prisma.Decimal | null;
-            vatAmount: Prisma.Decimal | null;
+            payThis: Prisma.Decimal;
+            isFinalReceipt: boolean;
             lateFee: Prisma.Decimal;
-            lateFeeWaived: boolean;
-            paidDate: Date | null;
           }> = [];
           for (const payment of unpaidPayments) {
             if (remaining.lte(0)) break;
@@ -1169,20 +1170,16 @@ export class PaySolutionsService {
             });
             if (fullyPaid) {
               fullyPaidCount++;
-              // Capture snapshot for in-tx JE post below.
-              fullyPaidSnapshots.push({
-                id: paymentUpdated.id,
-                installmentNo: paymentUpdated.installmentNo,
-                amountPaid: paymentUpdated.amountPaid,
-                monthlyPrincipal: paymentUpdated.monthlyPrincipal,
-                monthlyInterest: paymentUpdated.monthlyInterest,
-                monthlyCommission: paymentUpdated.monthlyCommission,
-                vatAmount: paymentUpdated.vatAmount,
-                lateFee: paymentUpdated.lateFee,
-                lateFeeWaived: paymentUpdated.lateFeeWaived,
-                paidDate: paymentUpdated.paidDate,
-              });
             }
+            // Capture a snapshot for EVERY touched installment (partial + final).
+            // `lateFee` honours lateFeeWaived → 0 (same value the loop computed).
+            touchedSnapshots.push({
+              id: paymentUpdated.id,
+              installmentNo: paymentUpdated.installmentNo,
+              payThis,
+              isFinalReceipt: fullyPaid,
+              lateFee,
+            });
           }
 
           // Close the contract when no installments remain. EARLY_PAYOFF
@@ -1225,20 +1222,20 @@ export class PaySolutionsService {
             }
           }
 
-          // C2 fix: post each fully-paid installment's 2B JE INSIDE this tx.
-          // PaymentReceipt2BTemplate now accepts an outerTx parameter (added
-          // 2026-05-14) so the JE shares this serializable transaction.
-          // A JE failure here rolls back the Payment.update — no orphan
-          // PAID rows. The previous "JE outside tx + swallow errors + Sentry"
-          // pattern was the documented F-1-003 follow-up bug.
-          //
-          // Backward-compat: amountReceived = snapshot.amountPaid (cumulative)
-          // matches the pre-fix semantics. The vast majority of PaySolutions
-          // payments are no-prior-partial (LIFF early payoff, fresh installments),
-          // for which cumulative == delta. Prior-partial edge cases are still
-          // imperfect but are not a new regression introduced by this fix.
+          // PR-843/I2 Phase 3 3b: post one PaymentReceiptTemplate primitive JE
+          // per TOUCHED installment (partial AND completing) INSIDE this tx (C2
+          // atomicity — a JE throw rolls back the Payment.update, no orphan PAID
+          // rows). `delta = snapshot.payThis` is the per-receipt DELTA (NOT the
+          // cumulative amountPaid), so the primitive's reconstructPrior accounts
+          // for any prior partial (incl. a cashier partial posted via
+          // recordPayment) and cross-path completion does NOT double-clear.
+          // This also LEDGERS partials — each posts its own receipt JE (fixes the
+          // pre-3b defect where partials were unledgered and the JE base was the
+          // cumulative double-count). lateFee → Cr 42-1103 (honours lateFeeWaived).
+          // When the installment carried a 60-day mandatory VAT flag, the matching
+          // reversal posts in the same tx so 21-2103 / 11-2104 clear 1:1.
           if (contractForJe && systemUserId) {
-            for (const snapshot of fullyPaidSnapshots) {
+            for (const snapshot of touchedSnapshots) {
               const instSchedPs = await tx.installmentSchedule.findUnique({
                 where: {
                   contractId_installmentNo: {
@@ -1246,34 +1243,47 @@ export class PaySolutionsService {
                     installmentNo: snapshot.installmentNo,
                   },
                 },
-                select: { id: true },
+                select: { id: true, vat60dayJournalEntryId: true },
               });
               if (instSchedPs) {
-                // Round 2 I2 — Known limitation:
-                // `amountReceived = snapshot.amountPaid` is cumulative, not
-                // delta. For the common LIFF flows (fresh installments,
-                // early payoff with no prior partial) cumulative == delta.
-                // For multi-installment payments where a prior partial
-                // existed, the JE base inflates by the carryover and the
-                // 2B template would post too much. Follow-up issue in
-                // PR #843 review thread — track via this TODO marker.
-                // TODO(PR-843/I2): switch to delta = amountPaid - priorPaid
-                // when prior-partial detection is added to the snapshot.
-                await this.paymentReceipt2BTemplate.execute(
+                await this.paymentReceiptTemplate.execute(
                   {
                     installmentScheduleId: instSchedPs.id,
-                    amountReceived: new Decimal(snapshot.amountPaid.toString()),
-                    depositAccountCode: '11-1202',
-                    existingPaymentId: snapshot.id,
+                    delta: new Decimal(snapshot.payThis.toString()),
+                    debitAccountCode: '11-1202',
+                    lateFee: snapshot.lateFee.gt(0)
+                      ? new Decimal(snapshot.lateFee.toString())
+                      : undefined,
+                    isFinalReceipt: snapshot.isFinalReceipt,
+                    paymentId: snapshot.id,
                   },
                   tx,
                 );
+                if (instSchedPs.vat60dayJournalEntryId) {
+                  await this.vat60Reversal.execute(instSchedPs.id, tx);
+                }
               } else {
                 this.logger.warn(
-                  `PaySolutions: PaymentReceipt2B skipped — no InstallmentSchedule for contractId=${contractForJe.id} installmentNo=${snapshot.installmentNo}`,
+                  `PaySolutions: PaymentReceipt skipped — no InstallmentSchedule for contractId=${contractForJe.id} installmentNo=${snapshot.installmentNo}`,
                 );
               }
             }
+          }
+
+          // PR-843/I2 Phase 3 3b (defect 4): cash left over after every unpaid
+          // installment is covered. Do NOT silently drop it (the pre-3b leak) and
+          // do NOT auto-park it as a 21-1103 advance (that needs accountant
+          // sign-off). Alert ops so they reconcile the surplus manually.
+          if (remaining.gt(0)) {
+            Sentry.captureMessage('paysolutions-overpay-surplus', {
+              level: 'warning',
+              tags: { critical: 'paysolutions-overpay-surplus', refno },
+              extra: {
+                contractId: paymentLink.contractId,
+                surplus: remaining.toString(),
+                paidAmount: paidAmount.toString(),
+              },
+            });
           }
 
           return {
@@ -1281,7 +1291,7 @@ export class PaySolutionsService {
             contractStatus,
             fullyPaidCount,
             totalUnpaidAtStart: unpaidPayments.length,
-            fullyPaidSnapshots,
+            touchedSnapshots,
           };
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },

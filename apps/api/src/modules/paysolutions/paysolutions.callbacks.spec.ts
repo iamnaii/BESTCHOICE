@@ -9,7 +9,8 @@ import { IntegrationConfigService } from '../integrations/integration-config.ser
 import { OnlineOrderSaleAdapter } from '../shop-orders/online-order-sale.adapter';
 import { ProductsService } from '../products/products.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
-import { PaymentReceipt2BTemplate } from '../journal/cpa-templates/payment-receipt-2b.template';
+import { PaymentReceiptTemplate } from '../journal/cpa-templates/payment-receipt.template';
+import { Vat60dayReversalTemplate } from '../journal/cpa-templates/vat-60day-reversal.template';
 import { PaymentsService } from '../payments/payments.service';
 
 // Same Sentry-transport stub the sibling spec uses — captureMessage /
@@ -68,7 +69,8 @@ describe('PaySolutionsService — secondary webhook callbacks (characterization)
         { provide: OnlineOrderSaleAdapter, useValue: saleAdapter },
         { provide: ProductsService, useValue: products },
         { provide: JournalAutoService, useValue: journalAuto },
-        { provide: PaymentReceipt2BTemplate, useValue: { execute: jest.fn() } },
+        { provide: PaymentReceiptTemplate, useValue: { execute: jest.fn() } },
+        { provide: Vat60dayReversalTemplate, useValue: { execute: jest.fn() } },
         { provide: PaymentsService, useValue: payments },
       ],
     }).compile();

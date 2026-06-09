@@ -9,7 +9,8 @@ import { IntegrationConfigService } from '../integrations/integration-config.ser
 import { OnlineOrderSaleAdapter } from '../shop-orders/online-order-sale.adapter';
 import { ProductsService } from '../products/products.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
-import { PaymentReceipt2BTemplate } from '../journal/cpa-templates/payment-receipt-2b.template';
+import { PaymentReceiptTemplate } from '../journal/cpa-templates/payment-receipt.template';
+import { Vat60dayReversalTemplate } from '../journal/cpa-templates/vat-60day-reversal.template';
 import { PaymentsService } from '../payments/payments.service';
 import { buildEarlyPayoffSuccessFlex } from '../line-oa/flex-messages/early-payoff-success.flex';
 
@@ -93,7 +94,8 @@ describe('PaySolutionsService — getPaymentStatus + early-payoff savings (chara
     const journalAuto = {
       createPaymentJournal: jest.fn().mockResolvedValue('je-1'),
     } as Partial<JournalAutoService>;
-    const template2B = { execute: jest.fn().mockResolvedValue({ entryNo: 'JE' }) };
+    const template = { execute: jest.fn().mockResolvedValue({ entryNo: 'JE' }) };
+    const vat60Reversal = { execute: jest.fn().mockResolvedValue(null) };
     const payments = { recordPayment: jest.fn().mockResolvedValue(undefined) };
 
     const mod: TestingModule = await Test.createTestingModule({
@@ -106,7 +108,8 @@ describe('PaySolutionsService — getPaymentStatus + early-payoff savings (chara
         { provide: OnlineOrderSaleAdapter, useValue: saleAdapter },
         { provide: ProductsService, useValue: products },
         { provide: JournalAutoService, useValue: journalAuto },
-        { provide: PaymentReceipt2BTemplate, useValue: template2B },
+        { provide: PaymentReceiptTemplate, useValue: template },
+        { provide: Vat60dayReversalTemplate, useValue: vat60Reversal },
         { provide: PaymentsService, useValue: payments },
       ],
     }).compile();

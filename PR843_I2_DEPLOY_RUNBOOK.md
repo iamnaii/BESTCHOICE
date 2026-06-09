@@ -8,13 +8,13 @@
 
 ### ① ก่อน merge — gate ที่ต้องผ่าน
 1. **นักบัญชีเซ็น** [PR843_I2_ACCOUNTANT_SIGNOFF.md](PR843_I2_ACCOUNTANT_SIGNOFF.md) (7 ข้อ treatment) — ตัว gate หลัก
-2. **ยืนยัน 21-5101 มีในผังบัญชี prod** (โค้ด credit/overpayment อ้างถึง — ถ้าขาดจะ post ไม่ได้). seed แบบ upsert ไม่ทำลายข้อมูล:
+2. **ยืนยันบัญชีในผัง prod ครบทุกโค้ดที่ JE ใหม่อ้าง** (ไม่ใช่แค่ 21-5101 — ขาดตัวใด template throw 'Account code not found' → post ไม่ได้). seed upsert ไม่ทำลายข้อมูล:
    ```bash
    # Cloud Run Job (image build แล้ว) ชี้ DATABASE_URL=prod:
    npm run seed:coa          # = node dist/src/cli/seed-coa.cli.js (idempotent upsert ผัง FINANCE+SHOP)
-   # ตรวจ:
-   psql "$PROD_DATABASE_URL" -tc "SELECT code,name FROM chart_of_accounts WHERE code='21-5101';"
-   # คาดหวัง: 21-5101 | เงินเกินของลูกค้า (Customer Credit Balance)
+   # ตรวจครบทุกโค้ด:
+   psql "$PROD_DATABASE_URL" -tc "SELECT code FROM chart_of_accounts WHERE deleted_at IS NULL AND code IN ('11-2103','42-1103','52-1104','53-1503','21-1103','21-5101','11-1202','11-1101','11-1102','11-1103','11-1201','11-1203') ORDER BY code;"
+   # คาดหวัง: ครบ 12 แถว
    ```
 3. **นับ Risk-5** (งวด partial ที่ค้างโดยยังไม่มี receipt JE — read-only):
    ```sql
@@ -22,7 +22,7 @@
      AND p.status='PARTIALLY_PAID' AND p.amount_paid>0
      AND NOT EXISTS (SELECT 1 FROM journal_entries je
        WHERE (je.reference_id=p.id::text OR je.metadata->>'paymentId'=p.id::text)
-         AND je.metadata->>'tag' IN ('receipt','2B') AND je.deleted_at IS NULL AND je.status='POSTED');
+         AND je.metadata->>'tag' IN ('receipt','2B','credit-allocation') AND je.deleted_at IS NULL AND je.status='POSTED');
    ```
    - **= 0** → ผ่าน ไป ②
    - **> 0** → งวดเหล่านี้ถูกจ่ายบางส่วนผ่าน autoAllocate เดิม (ไม่เคยลง JE) → ถ้าปล่อยไว้ การปิดงวดครั้งถัดไปจะ over-credit 11-2103. ต้อง **backfill JE ตามจ่าย** (Dr cash / Cr 11-2103 ตามยอด amount_paid ของแต่ละงวด) ก่อน deploy — แจ้งผมมาพร้อมจำนวน เดี๋ยวเขียน CLI backfill ให้

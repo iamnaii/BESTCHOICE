@@ -26,19 +26,27 @@
 
 ---
 
+| 8 | **เงินรับเกินฝั่ง autoAllocate/POS (คนละวงจรกับข้อ 3) → `Dr cash / Cr 21-5101` + `contract.creditBalance`** (มีอยู่เดิม ไม่ใช่ของใหม่ — แต่เปิดเผยให้ครบ: ระบบมี 2 วงจรเงินรับเกิน) | Dr cash / Cr 21-5101 (เงินเกินของลูกค้า) | autoAllocate ที่รับเกินเก็บเป็น `creditBalance` (21-5101) → ปลดด้วย applyCreditBalance (ข้อ 5). ส่วน PaySolutions QR ใช้ advanceBalance (21-1103, ข้อ 3) — คนละบัญชี คนละ field โดยตั้งใจ | ☐ |
+
 ## งานปฏิบัติการก่อน deploy (operational gates — ไม่ใช่บัญชี แต่ต้องทำ)
-- [ ] รัน `npm run seed:coa` บน prod เพื่อ upsert บัญชี **21-5101 (เงินเกินของลูกค้า)** ให้แน่ใจว่ามีในผังบัญชี (โค้ด overpayment/เครดิตอ้างถึง — ถ้าขาดจะ post ไม่ได้; เป็นช่องโหว่เดิมที่ PR นี้ปิด)
+- [ ] **ยืนยันบัญชีในผัง prod ครบทุกโค้ดที่ JE ใหม่อ้าง** (ไม่ใช่แค่ 21-5101). รัน `npm run seed:coa` (upsert ไม่ทำลายข้อมูล) แล้วตรวจ:
+  ```sql
+  SELECT code FROM chart_of_accounts WHERE deleted_at IS NULL AND code IN
+   ('11-2103','42-1103','52-1104','53-1503','21-1103','21-5101','11-1202',
+    '11-1101','11-1102','11-1103','11-1201','11-1203') ORDER BY code;
+  -- คาดหวัง: ครบทุกแถว. ขาดตัวใด → template throw 'Account code not found' → post ไม่ได้
+  ```
 - [ ] รัน query (read-only) นับงวดที่ค้าง partial โดยยังไม่มี receipt JE ก่อน deploy — ถ้า > 0 ต้อง backfill JE ตามจ่ายก่อน (กัน reconstructPrior=0 → over-credit):
   ```sql
   SELECT COUNT(*) FROM payments p WHERE p.deleted_at IS NULL
     AND p.status='PARTIALLY_PAID' AND p.amount_paid>0
     AND NOT EXISTS (SELECT 1 FROM journal_entries je
       WHERE (je.reference_id=p.id::text OR je.metadata->>'paymentId'=p.id::text)
-        AND je.metadata->>'tag' IN ('receipt','2B') AND je.deleted_at IS NULL AND je.status='POSTED');
+        AND je.metadata->>'tag' IN ('receipt','2B','credit-allocation') AND je.deleted_at IS NULL AND je.status='POSTED');
   ```
 
 ## หลัง sign-off
-- merge stack #1199 → main (auto-deploy) → จากนั้นทำ cleanup ที่ defer ไว้: ลบ template 2B เดิม (ติด JP-template specs — งานแยก), hardening instSched-null (โยง #1170)
+- merge stack #1199 → main (auto-deploy). **2B template ลบไปแล้ว (5d)** — ทั้ง 4 path ใช้ `PaymentReceiptTemplate` ตัวเดียว · งาน defer ที่เหลือ: hardening instSched-null (โยง #1170)
 
 ---
 **ผู้ขออนุมัติ:** _____________ วันที่ ______  **ฝ่ายบัญชีอนุมัติ:** _____________ วันที่ ______

@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException, InternalServerErrorException, Logger, Optional, Inject, forwardRef } from '@nestjs/common';
-import { createHash } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import * as Sentry from '@sentry/node';
 import { StructuredLoggerService } from '../../common/logger';
 import { Prisma, PaymentMethod } from '@prisma/client';
@@ -820,7 +820,12 @@ export class PaymentsService {
         await this.journalAutoService.createAndPost(
           {
             description: `เงินเกินชำระ — สัญญา ${contract.contractNumber} บันทึกเครดิต ${overpayment.toFixed(2)} บาท`,
-            reference: referencePaymentId,
+            // FINAL-REVIEW (minor) — the JE `reference` must be a fresh UUID, never
+            // `referencePaymentId`. On an autoAllocate retry the same payment id would
+            // collide with itself on the partial-unique index `journal_entries_ref_unique`.
+            // metadata.paymentId keeps the payment→JE trace (now purely informational —
+            // void/refund no longer reverse this JE after the BLOCKER 2 tag filter).
+            reference: randomUUID(),
             metadata: {
               tag: 'overpayment-credit',
               contractId: contract.id,

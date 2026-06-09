@@ -248,11 +248,25 @@ describe('RefundsService', () => {
       // The canonical payment→JE link is metadata.paymentId (each receipt JE now carries
       // a unique reference, so the old referenceId == paymentId findFirst found at most
       // one). Asserting the JSON path catches a regression back to the single-JE lookup.
+      //
+      // FINAL-REVIEW BLOCKER 2: the WHERE now AND-combines the paymentId match with a
+      // tag OR-filter (receipt / 2B / credit-allocation) + status POSTED + deletedAt
+      // null, so the overpayment-credit JE (same paymentId, tag:'overpayment-credit')
+      // is excluded from the reversal at the DB.
       expect(prisma.journalEntry.findMany).toHaveBeenCalledWith({
         where: {
-          metadata: { path: ['paymentId'], equals: 'pay-1' },
-          status: 'POSTED',
-          deletedAt: null,
+          AND: [
+            { metadata: { path: ['paymentId'], equals: 'pay-1' } },
+            {
+              OR: [
+                { metadata: { path: ['tag'], equals: 'receipt' } },
+                { metadata: { path: ['tag'], equals: '2B' } },
+                { metadata: { path: ['tag'], equals: 'credit-allocation' } },
+              ],
+            },
+            { status: 'POSTED' },
+            { deletedAt: null },
+          ],
         },
       });
       // Reverse EACH — reversing only one would leave the other receipt's Cr 11-2103
@@ -272,6 +286,31 @@ describe('RefundsService', () => {
       });
       const data = prisma.refund.updateMany.mock.calls[0][0].data;
       expect(data.status).toBe('PROCESSED');
+    });
+
+    it('does NOT reverse the overpayment-credit JE — only the receivable-clearing receipt JE (FINAL-REVIEW BLOCKER 2)', async () => {
+      prisma.refund.findUnique.mockResolvedValue(refundRecord({ status: 'APPROVED' }));
+      prisma.payment.findUnique.mockResolvedValue({ amountPaid: new Prisma.Decimal(500) });
+      // The payment has TWO JEs sharing metadata.paymentId='pay-1': the receivable-
+      // clearing receipt JE (tag:'receipt') AND the overpayment-credit JE
+      // (tag:'overpayment-credit', Dr cash / Cr 21-5101). The tag OR-filter in the
+      // WHERE means the DB returns ONLY the receipt JE — model that here.
+      prisma.journalEntry.findMany.mockResolvedValue([{ id: 'je-receipt', companyId: 'co-finance' }]);
+
+      await service.markReversed('rf-1', { bankReversalRef: 'KBANK-1', notes: 'rev' }, 'u-owner', 'OWNER');
+
+      // Only the receipt JE is reversed — the overpayment-credit JE is never touched.
+      expect(template.voidReceipt).toHaveBeenCalledTimes(1);
+      expect(template.voidReceipt).toHaveBeenCalledWith('je-receipt', prisma, { flow: 'refund-reversal' });
+      expect(template.voidReceipt).not.toHaveBeenCalledWith('je-overpay', prisma, { flow: 'refund-reversal' });
+
+      // The WHERE's tag OR-filter must NOT include 'overpayment-credit' — that is the
+      // exact exclusion that protects the customer credit balance from a phantom reversal.
+      const whereArg = prisma.journalEntry.findMany.mock.calls[0][0].where;
+      const orClause = whereArg.AND.find((c: any) => Array.isArray(c.OR))?.OR ?? [];
+      const tags = orClause.map((c: any) => c.metadata?.equals);
+      expect(tags).toEqual(expect.arrayContaining(['receipt', '2B', 'credit-allocation']));
+      expect(tags).not.toContain('overpayment-credit');
     });
 
     it('legacy payment with no POSTED JE: skips the reversal but still reverts the payment', async () => {

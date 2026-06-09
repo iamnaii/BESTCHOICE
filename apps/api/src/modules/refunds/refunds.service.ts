@@ -240,11 +240,28 @@ export class RefundsService {
       // always-full (owner-confirmed #1164), so reversing ALL receipt JEs = full
       // reversal — the correct semantics. Backward-compatible: a single-receipt payment
       // returns one JE → one reversal (same as before).
+      // FINAL-REVIEW BLOCKER 2 — restrict the reversal to TRUE receivable-clearing
+      // receipt JEs. autoAllocate's overpayment JE shares the same metadata.paymentId
+      // but carries tag:'overpayment-credit' (Dr cash / Cr 21-5101 customer credit);
+      // reversing it on a refund would phantom-Dr 21-5101/Cr cash and leave the
+      // creditBalance un-restored. The tag filter excludes it (and any
+      // paysolutions-surplus-advance, which has no paymentId). The advance-consume 2B
+      // JE also has no paymentId so it is already not matched.
       const originalEntries = await tx.journalEntry.findMany({
         where: {
-          metadata: { path: ['paymentId'], equals: refund.paymentId },
-          status: 'POSTED',
-          deletedAt: null,
+          AND: [
+            { metadata: { path: ['paymentId'], equals: refund.paymentId } } as any,
+            {
+              OR: [
+                { metadata: { path: ['tag'], equals: 'receipt' } } as any,
+                { metadata: { path: ['tag'], equals: '2B' } } as any,
+                // legacy credit-funded clears (applyCreditBalance credit-allocation JE)
+                { metadata: { path: ['tag'], equals: 'credit-allocation' } } as any,
+              ],
+            },
+            { status: 'POSTED' },
+            { deletedAt: null },
+          ],
         },
       });
 

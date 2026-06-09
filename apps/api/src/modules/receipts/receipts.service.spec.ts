@@ -134,14 +134,79 @@ describe('ReceiptsService', () => {
       // (every receipt JE now carries a unique reference, so the old referenceId ==
       // paymentId lookup found at most one). Asserting the JSON path is what catches a
       // regression back to the single-JE findFirst.
+      //
+      // FINAL-REVIEW BLOCKER 2: the WHERE now AND-combines the paymentId match with a
+      // tag OR-filter (receipt / 2B / credit-allocation) + status POSTED + deletedAt
+      // null, so the overpayment-credit JE (same paymentId, tag:'overpayment-credit')
+      // is excluded from the reversal at the DB.
       expect(tx.journalEntry.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
-            metadata: { path: ['paymentId'], equals: 'pay-1' },
-            status: 'POSTED',
+            AND: expect.arrayContaining([
+              { metadata: { path: ['paymentId'], equals: 'pay-1' } },
+              {
+                OR: [
+                  { metadata: { path: ['tag'], equals: 'receipt' } },
+                  { metadata: { path: ['tag'], equals: '2B' } },
+                  { metadata: { path: ['tag'], equals: 'credit-allocation' } },
+                ],
+              },
+              { status: 'POSTED' },
+              { deletedAt: null },
+            ]),
           }),
         }),
       );
+    });
+
+    it('does NOT reverse the overpayment-credit JE — only the receivable-clearing receipt JE (FINAL-REVIEW BLOCKER 2)', async () => {
+      const tx = prisma.__tx;
+
+      tx.receipt.findUnique.mockResolvedValue({
+        id: receiptId,
+        receiptNumber: 'RT-202604-00001',
+        contractId: 'ct-1',
+        paymentId: 'pay-1',
+        payerName: 'Customer A',
+        receiverName: 'Cashier',
+        amount: 1000,
+        installmentNo: 1,
+        paymentMethod: 'CASH',
+        isVoided: false,
+        deletedAt: null,
+        createdAt: new Date(),
+        paidDate: new Date(),
+      });
+      tx.receipt.create.mockResolvedValue({
+        id: 'cn-1',
+        receiptNumber: 'RT-202604-00002',
+        receiptType: 'CREDIT_NOTE',
+      });
+      tx.receipt.update.mockResolvedValue({ id: receiptId, isVoided: true });
+
+      // The payment has TWO JEs sharing metadata.paymentId='pay-1': the receivable-
+      // clearing receipt JE (tag:'receipt') AND the overpayment-credit JE
+      // (tag:'overpayment-credit', Dr cash / Cr 21-5101). The tag OR-filter in the
+      // WHERE means the DB returns ONLY the receipt JE — model that here.
+      tx.journalEntry.findMany.mockResolvedValue([{ id: 'je-receipt', status: 'POSTED' }]);
+
+      await service.voidReceipt(receiptId, 'wrong amount', userId, approverId);
+
+      // Only the receipt JE is reversed — the overpayment-credit JE is never touched
+      // (it never enters the result set thanks to the tag filter).
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const template = (service as any).receiptVoidReversalTemplate;
+      expect(template.voidReceipt).toHaveBeenCalledTimes(1);
+      expect(template.voidReceipt).toHaveBeenCalledWith('je-receipt', expect.anything());
+      expect(template.voidReceipt).not.toHaveBeenCalledWith('je-overpay', expect.anything());
+
+      // The WHERE's tag OR-filter must NOT include 'overpayment-credit' — that is the
+      // exact exclusion that protects the customer credit balance.
+      const whereArg = tx.journalEntry.findMany.mock.calls[0][0].where;
+      const orClause = whereArg.AND.find((c: any) => Array.isArray(c.OR))?.OR ?? [];
+      const tags = orClause.map((c: any) => c.metadata?.equals);
+      expect(tags).toEqual(expect.arrayContaining(['receipt', '2B', 'credit-allocation']));
+      expect(tags).not.toContain('overpayment-credit');
     });
 
     it('JE reversal failure rolls the entire void back (Wave 1 P0 — atomicity)', async () => {

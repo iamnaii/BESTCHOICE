@@ -202,7 +202,10 @@ describeOrSkip('PaySolutions webhook — overpay surplus → park as advance (re
   };
 
   /** Sum credits for the surplus-advance JE (tag=paysolutions-surplus-advance, scoped to contractId). */
-  const sumSurplusAdvanceCredits = async (accountCode: string): Promise<number> => {
+  const sumSurplusAdvance = async (
+    accountCode: string,
+    side: 'debit' | 'credit',
+  ): Promise<number> => {
     const entries = await prisma.journalEntry.findMany({
       where: {
         AND: [
@@ -215,11 +218,13 @@ describeOrSkip('PaySolutions webhook — overpay surplus → park as advance (re
     let sum = 0;
     for (const e of entries) {
       for (const l of e.lines) {
-        if (l.accountCode === accountCode) sum += Number(l.credit);
+        if (l.accountCode === accountCode) sum += Number(side === 'debit' ? l.debit : l.credit);
       }
     }
     return Math.round(sum * 100) / 100;
   };
+  const sumSurplusAdvanceCredits = (accountCode: string) => sumSurplusAdvance(accountCode, 'credit');
+  const sumSurplusAdvanceDebits = (accountCode: string) => sumSurplusAdvance(accountCode, 'debit');
 
   it(
     'overpay (2015.83 over a 1515.83 installment): installment NOT over-cleared + surplus parked as Cr 21-1103 advance',
@@ -261,6 +266,9 @@ describeOrSkip('PaySolutions webhook — overpay surplus → park as advance (re
       //     - A balanced JE `Dr 11-1202 / Cr 21-1103` for 500 was posted.
       const cr21_1103 = await sumSurplusAdvanceCredits('21-1103');
       expect(cr21_1103).toBeCloseTo(SURPLUS, 2);
+      //     - the Dr side hits the PaySolutions deposit account 11-1202 (not a different cash code).
+      const dr11_1202 = await sumSurplusAdvanceDebits('11-1202');
+      expect(dr11_1202).toBeCloseTo(SURPLUS, 2);
 
       //     - contract.advanceBalance increased by exactly the surplus.
       const contractAfter = await prisma.contract.findUniqueOrThrow({

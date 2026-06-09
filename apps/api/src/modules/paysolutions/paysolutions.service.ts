@@ -1281,7 +1281,10 @@ export class PaySolutionsService {
           // advance (Cr 21-1103) instead of dropping/alerting only. The surplus cash had
           // no Dr yet (the per-installment receipts only Dr'd their payThis), so this JE
           // both books the remaining cash and parks the advance.
-          if (remaining.gt(0)) {
+          // Gate on contractForJe (mirrors the per-installment JE gate above): if the
+          // contract row is missing we skip the JE + advanceBalance update rather than
+          // throw and roll back the whole webhook (consistency w/ the receipt-JE block). (review)
+          if (remaining.gt(0) && contractForJe) {
             await this.journalAutoService.createAndPost(
               {
                 description: `เงินรับล่วงหน้า (รับเกินผ่าน Pay Solutions) — refno ${refno}`,

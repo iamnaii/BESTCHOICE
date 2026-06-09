@@ -9,6 +9,8 @@ import { ReceiptsService } from '../receipts/receipts.service';
 import { AuditService } from '../audit/audit.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { PaymentReceipt2BTemplate } from '../journal/cpa-templates/payment-receipt-2b.template';
+import { PaymentReceiptTemplate } from '../journal/cpa-templates/payment-receipt.template';
+import { Vat60dayReversalTemplate } from '../journal/cpa-templates/vat-60day-reversal.template';
 import { AccountRoleService } from '../journal/account-role.service';
 import { ProductsService } from '../products/products.service';
 import { hasCrossBranchAccess } from '../auth/branch-access.util';
@@ -47,6 +49,14 @@ export class PaymentsService {
     // must break boot, not silently skip the reverse. Kept above the
     // @Optional() params per TS rule (required cannot follow optional).
     private badDebtService: BadDebtService,
+    // PR-843/I2 Phase 3 3a — recordPayment now posts the receipt via the
+    // PaymentReceiptTemplate primitive (replacing the legacy 2B in this path).
+    // Both are REQUIRED — the receipt JE + the VAT-60-day reversal are
+    // regulatory ledger postings; a missing dependency must break boot, not
+    // silently skip a posting. Positioned above @Optional() params per the TS
+    // rule (required cannot follow optional).
+    private paymentReceiptTemplate: PaymentReceiptTemplate,
+    private vat60Reversal: Vat60dayReversalTemplate,
     @Optional() private mdmAuto?: MdmAutoService,
     @Optional() @Inject(forwardRef(() => PromiseService)) private promiseService?: PromiseService,
     @Optional() private mdmLockService?: MdmLockService,
@@ -399,25 +409,40 @@ export class PaymentsService {
               installmentNo: result.installmentNo,
             },
           },
-          select: { id: true },
+          select: { id: true, vat60dayJournalEntryId: true },
         });
         if (instSched) {
-          // C1 fix: forward computed lateFee to the 2B template so it emits the
-          // Cr 42-1103 income leg AND the tolerance check correctly accounts
-          // for "amount = installmentTotal + lateFee". Without this, the
-          // template would either reject the payment (delta > 1฿ tolerance)
-          // or silently drop the 42-1103 income — both were prod bugs.
-          await this.paymentReceipt2BTemplate.execute({
-            installmentScheduleId: instSched.id,
-            amountReceived: new Prisma.Decimal(amount.toString()),
-            depositAccountCode: resolvedDepositAccountCode,
-            toleranceApproverId: toleranceApproverId,
-            existingPaymentId: result.id,
-            advanceCredit: advanceCredit.gt(0) ? advanceCredit : undefined,
-            advanceConsume: advanceConsume.gt(0) ? advanceConsume : undefined,
-            partialClear: isPartialClear ? true : undefined,
-            lateFee: lateFee.gt(0) ? lateFee : undefined,
-          });
+          // PR-843/I2 Phase 3 3a — post the receipt via the PaymentReceiptTemplate
+          // primitive (replaces the legacy PaymentReceipt2BTemplate in this path).
+          // The primitive reconstructs prior cleared (incl. legacy 2B partials),
+          // so passing the per-call DELTA is correct: a completion of a prior
+          // partial now clears ONLY the remaining delta instead of re-clearing
+          // the full installmentTotal (the old delta-vs-cumulative bug).
+          // isFinalReceipt = !isPartialClear (the completing receipt closes it).
+          // lateFee still forwarded so the Cr 42-1103 income leg is emitted.
+          // Runs inside the same tx so a JE failure rolls back the Payment.update.
+          await this.paymentReceiptTemplate.execute(
+            {
+              installmentScheduleId: instSched.id,
+              delta: new Prisma.Decimal(amount.toString()),
+              debitAccountCode: resolvedDepositAccountCode,
+              toleranceApproverId,
+              paymentId: result.id,
+              advanceCredit: advanceCredit.gt(0) ? advanceCredit : undefined,
+              advanceConsume: advanceConsume.gt(0) ? advanceConsume : undefined,
+              isFinalReceipt: !isPartialClear,
+              lateFee: lateFee.gt(0) ? lateFee : undefined,
+            },
+            tx,
+          );
+
+          // VAT-60-day reversal (MANDATORY parity with the old 2B). The legacy
+          // 2B template triggered Vat60dayReversalTemplate internally when the
+          // installment carried a 60-day mandatory VAT JE; the primitive does
+          // not, so trigger it here inside the same tx.
+          if (instSched.vat60dayJournalEntryId) {
+            await this.vat60Reversal.execute(instSched.id, tx);
+          }
 
           // CPA Policy A §3.6 — ECL stage reverse on payment.
           // After the receipt JE posts, recompute aging. If the bucket dropped

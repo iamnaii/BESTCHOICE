@@ -536,6 +536,158 @@ describe('DataAuditService', () => {
       expect(result.checks.payments[0].status).toBe('FAIL'); // PAID but no journal
       expect(result.summary.failed).toBeGreaterThan(0);
     });
+
+    // ── PR-843/I2 Phase 3 PR 3.1 — NEW primitive receipt-JE shape ──────────
+    // The primitive posts receipt JEs whose scalar `referenceId` is a fresh
+    // random UUID (NOT payment.id); the payment→JE link lives in
+    // metadata.paymentId. A payment may have MULTIPLE such JEs. tracePayment /
+    // traceContract must (a) still find the payment's JE via metadata.paymentId
+    // even when referenceId != payment.id, and (b) aggregate across N JEs.
+
+    it('NEW shape — payment JE keyed by metadata.paymentId (referenceId is a UUID) is NOT a false orphan', async () => {
+      prisma.contract.findUnique.mockResolvedValueOnce(mockContract);
+      prisma.journalEntry.findMany
+        .mockResolvedValueOnce([
+          {
+            referenceType: 'CONTRACT',
+            lines: [
+              { accountCode: '11-2102', debit: new Prisma.Decimal('19795.00'), credit: new Prisma.Decimal('0') },
+              { accountCode: '41-1101', debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('19795.00') },
+            ],
+          },
+          {
+            referenceType: 'CONTRACT_COGS',
+            lines: [
+              { accountCode: '51-1101', debit: new Prisma.Decimal('18000.00'), credit: new Prisma.Decimal('0') },
+              { accountCode: '11-3101', debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('18000.00') },
+            ],
+          },
+        ])
+        // Payment JE for p-1: referenceId is a UUID, link is metadata.paymentId.
+        .mockResolvedValueOnce([
+          {
+            referenceId: 'random-uuid-not-the-payment-id',
+            metadata: { paymentId: 'p-1', tag: 'receipt', flow: 'payment-receipt' },
+            lines: [
+              { accountCode: '11-1101', debit: new Prisma.Decimal('3299.17'), credit: new Prisma.Decimal('0') },
+              { accountCode: '11-2102', debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('2833.34') },
+              { accountCode: '42-1105', debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('250.00') },
+              { accountCode: '21-2101', debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('215.83') },
+            ],
+          },
+        ]);
+      prisma.interCompanyTransaction.findFirst.mockResolvedValueOnce({ id: 'ic-1', contractId: 'c-1' });
+
+      const result = await service.traceContract('c-1');
+
+      // p-1 is PAID — must be matched by metadata.paymentId, NOT flagged as missing.
+      expect(result.checks.payments[0].status).toBe('PASS');
+      expect((result.checks.payments[0].details as { journalCount: number }).journalCount).toBe(1);
+    });
+
+    it('LEGACY shape — payment JE keyed by referenceId == payment.id still matches (backward-compat)', async () => {
+      prisma.contract.findUnique.mockResolvedValueOnce(mockContract);
+      prisma.journalEntry.findMany
+        .mockResolvedValueOnce([
+          {
+            referenceType: 'CONTRACT',
+            lines: [
+              { accountCode: '11-2102', debit: new Prisma.Decimal('19795.00'), credit: new Prisma.Decimal('0') },
+              { accountCode: '41-1101', debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('19795.00') },
+            ],
+          },
+        ])
+        // Legacy 2B JE: referenceId == payment.id, metadata may also carry paymentId.
+        .mockResolvedValueOnce([
+          {
+            referenceId: 'p-1',
+            metadata: { tag: '2B', paymentId: 'p-1' },
+            lines: [
+              { accountCode: '11-1101', debit: new Prisma.Decimal('3299.17'), credit: new Prisma.Decimal('0') },
+              { accountCode: '11-2102', debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('3299.17') },
+            ],
+          },
+        ]);
+      prisma.interCompanyTransaction.findFirst.mockResolvedValueOnce({ id: 'ic-1', contractId: 'c-1' });
+
+      const result = await service.traceContract('c-1');
+      expect(result.checks.payments[0].status).toBe('PASS');
+    });
+
+    it('MULTI-RECEIPT — two receipt JEs share metadata.paymentId; aggregate balances & VAT sums both', async () => {
+      prisma.contract.findUnique.mockResolvedValueOnce(mockContract);
+      prisma.journalEntry.findMany
+        .mockResolvedValueOnce([]) // contract journals not needed for this assertion
+        // TWO receipt JEs for the SAME payment p-1 (a partial + a completion),
+        // each with a distinct random referenceId, both linked via metadata.paymentId.
+        .mockResolvedValueOnce([
+          {
+            referenceId: 'uuid-receipt-1',
+            metadata: { paymentId: 'p-1', tag: 'receipt' },
+            // partial: 1500 cash, of which 100 is VAT
+            lines: [
+              { accountCode: '11-1101', debit: new Prisma.Decimal('1500.00'), credit: new Prisma.Decimal('0') },
+              { accountCode: '11-2103', debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('1400.00') },
+              { accountCode: '21-2101', debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('100.00') },
+            ],
+          },
+          {
+            referenceId: 'uuid-receipt-2',
+            metadata: { paymentId: 'p-1', tag: 'receipt' },
+            // completion: 1799.17 cash, of which 115.83 is VAT
+            lines: [
+              { accountCode: '11-1101', debit: new Prisma.Decimal('1799.17'), credit: new Prisma.Decimal('0') },
+              { accountCode: '11-2103', debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('1683.34') },
+              { accountCode: '21-2101', debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('115.83') },
+            ],
+          },
+        ]);
+      prisma.interCompanyTransaction.findFirst.mockResolvedValueOnce({ id: 'ic-1', contractId: 'c-1' });
+
+      const result = await service.traceContract('c-1');
+
+      // Orphan/existence: p-1 is found and the AGGREGATE of its two JEs balances.
+      expect(result.checks.payments[0].status).toBe('PASS');
+      const details = result.checks.payments[0].details as {
+        journalCount: number;
+        totalDebit: number;
+        totalCredit: number;
+      };
+      expect(details.journalCount).toBe(2); // BOTH receipt JEs matched
+      expect(details.totalDebit).toBeCloseTo(3299.17, 2);
+      expect(details.totalCredit).toBeCloseTo(3299.17, 2);
+
+      // VAT reconciliation: vatTotal sums 21-2101 across BOTH receipt JEs
+      // (100 + 115.83 = 215.83) and matches p-1's payment.vatAmount (215.83).
+      expect(result.checks.vatTotal.status).toBe('PASS');
+      expect((result.checks.vatTotal.details as { journalVatSum: number }).journalVatSum).toBeCloseTo(
+        215.83,
+        2,
+      );
+    });
+
+    it('MULTI-RECEIPT — broadened query passes referenceType AUTO + OR(referenceId, metadata.paymentId) for every payment', async () => {
+      prisma.contract.findUnique.mockResolvedValueOnce(mockContract);
+      prisma.journalEntry.findMany.mockResolvedValue([]);
+      prisma.interCompanyTransaction.findFirst.mockResolvedValueOnce(null);
+
+      await service.traceContract('c-1');
+
+      // 2nd journalEntry.findMany call = the payment-journals query.
+      const where = prisma.journalEntry.findMany.mock.calls[1][0].where;
+      expect(where.referenceType).toBe('AUTO');
+      expect(where.status).toBe('POSTED');
+      expect(where.deletedAt).toBeNull();
+      // OR = [{ referenceId: { in: [...] } }, { metadata: paymentId p-1 }, { metadata: paymentId p-2 }]
+      expect(where.OR[0]).toEqual({ referenceId: { in: ['p-1', 'p-2'] } });
+      const metaClauses = where.OR.slice(1);
+      expect(metaClauses).toEqual(
+        expect.arrayContaining([
+          { metadata: { path: ['paymentId'], equals: 'p-1' } },
+          { metadata: { path: ['paymentId'], equals: 'p-2' } },
+        ]),
+      );
+    });
   });
 
   // ═══════════════════════════════════════════════════════════════

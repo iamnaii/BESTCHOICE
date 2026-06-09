@@ -314,6 +314,20 @@ describeOrSkip('Multi-receipt JE reversal — PR-843/I2 Phase 3 PR 3.1 (real DB 
       },
     });
 
+    // BLOCKER-2 guard: an `overpayment-credit` JE for the SAME payment (autoAllocate
+    // overpay) carries metadata.paymentId too — but it is NOT a receivable-clearing
+    // receipt JE and MUST survive the void (else phantom Dr 21-5101/Cr cash + creditBalance
+    // not restored). Seed one, then assert below that void did NOT reverse it.
+    await journal.createAndPost({
+      description: 'overpayment-credit (fixture — must survive void)',
+      reference: `${paymentId}-overpay-fixture`,
+      metadata: { tag: 'overpayment-credit', contractId, paymentId },
+      lines: [
+        { accountCode: '11-1101', dr: new Decimal('50'), cr: new Decimal(0), description: 'รับเงินเกิน' },
+        { accountCode: '21-5101', dr: new Decimal(0), cr: new Decimal('50'), description: 'เครดิตลูกค้า' },
+      ],
+    });
+
     // issuer (adminId) != approver (approverId) — satisfies segregation of duties.
     const res = await receipts.voidReceipt(receipt.id, 'multi-receipt void e2e', adminId, approverId, 'ACCOUNTANT');
     expect(res.voidedReceipt).toBeDefined();
@@ -333,6 +347,20 @@ describeOrSkip('Multi-receipt JE reversal — PR-843/I2 Phase 3 PR 3.1 (real DB 
     for (const e of reversedFlags) {
       expect((e.metadata as any).reversed).toBe(true);
     }
+
+    // BLOCKER-2 mutation-killer: the overpayment-credit JE must NOT have been reversed
+    // (it's excluded by the void/refund tag filter). Removing that filter → this fails.
+    const overpayJe = await prisma.journalEntry.findFirstOrThrow({
+      where: {
+        AND: [
+          { metadata: { path: ['paymentId'], equals: paymentId } } as any,
+          { metadata: { path: ['tag'], equals: 'overpayment-credit' } } as any,
+        ],
+      },
+      select: { status: true, metadata: true },
+    });
+    expect(overpayJe.status).toBe('POSTED');
+    expect((overpayJe.metadata as any).reversed).not.toBe(true);
 
     // THE money assertion: after voiding, every receipt JE's Cr 11-2103 is offset
     // by a reversal Dr 11-2103, so the payment's NET 11-2103 returns to zero.

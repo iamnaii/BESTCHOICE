@@ -42,6 +42,26 @@ describeOrSkip('PaymentReceiptTemplate primitive — Σ-invariants (real DB e2e)
     instId = inst.id;
   };
 
+  // Create a brand-new installment row on the same contract (installmentNo > 12 so
+  // it never collides with the 12 seeded rows or any other case) and point instId
+  // at it. Used by the advance-consume BLOCKER 1 cases so each gets a clean,
+  // never-cleared 11-2103 to assert Σ against.
+  const createFreshInstallment = async (installmentNo: number) => {
+    const dueDate = new Date();
+    dueDate.setMonth(dueDate.getMonth() + installmentNo);
+    const inst = await prisma.installmentSchedule.create({
+      data: {
+        contractId,
+        installmentNo,
+        dueDate,
+        principal: new Decimal('1416.66'),
+        interest: new Decimal('500'),
+        amountDue: installmentTotal,
+      },
+    });
+    instId = inst.id;
+  };
+
   const entryIdsForInstallment = async (): Promise<string[]> => {
     // Mirrors PaymentReceiptTemplate.reconstructPrior (Phase 3): tag IN ('receipt','2B')
     // AND installmentScheduleId. Both tags are included so the Σ-invariant proof
@@ -481,6 +501,101 @@ describeOrSkip('PaymentReceiptTemplate primitive — Σ-invariants (real DB e2e)
       // The rejected call posts nothing — no receipt JE for this installment.
       expect((await entryIdsForInstallment()).length).toBe(0);
       expect((await sumCredits('11-2103')).toFixed(2)).toBe('0.00');
+    },
+    120_000,
+  );
+
+  // ─── FINAL-REVIEW BLOCKER 1 — advance-consume-on-accrual 2B JE interop ───────
+  //
+  // The 2A accrual cron posts a `Dr 21-1103 / Cr 11-2103 = consume` JE carrying
+  //   metadata: { tag:'2B', flow:'advance-consume-on-accrual', installmentScheduleId }
+  // when a parked advance clears (some of) the freshly-accrued receivable. Its Cr
+  // 11-2103 is a REAL prior-clearing. reconstructPrior must ALWAYS count it (FIX 1a),
+  // including the full-consume == installmentTotal case — otherwise a subsequent
+  // receipt double-credits 11-2103.
+
+  it(
+    'PARTIAL advance-consume 2B JE → reconstructPrior counts it; completion clears the gap, Σ(Cr 11-2103) == installmentTotal',
+    async () => {
+      await createFreshInstallment(13);
+
+      // Simulate the 2A cron's advance-consume JE for a PARTIAL consume (500 < IT).
+      await journal.createAndPost({
+        description: 'advance-consume-on-accrual partial (fixture)',
+        reference: 'advance-consume-partial-13',
+        metadata: {
+          tag: '2B',
+          flow: 'advance-consume-on-accrual',
+          contractId,
+          installmentScheduleId: instId,
+          installmentNo: 13,
+          consumeAmount: '500.00',
+        },
+        lines: [
+          { accountCode: '21-1103', dr: new Decimal('500'), cr: new Decimal(0), description: 'consume advance' },
+          { accountCode: '11-2103', dr: new Decimal(0), cr: new Decimal('500'), description: 'clear receivable' },
+        ],
+      });
+
+      // Complete the installment via the primitive for the remaining gap.
+      const delta = installmentTotal.minus(500);
+      const r = await template.execute({
+        installmentScheduleId: instId,
+        delta,
+        debitAccountCode: '11-1101',
+        isFinalReceipt: true,
+      });
+
+      // reconstructPrior saw priorPrincipalCleared = 500 → the receipt clears ONLY the gap.
+      expect(r.split.principalCleared.toFixed(2)).toBe(delta.toFixed(2));
+      expect(r.split.principalRemainingAfter.toFixed(2)).toBe('0.00');
+      // Σ Cr 11-2103 = advance-consume 500 + receipt gap == installmentTotal (cleared once).
+      expect((await sumCredits('11-2103')).toFixed(2)).toBe(installmentTotal.toFixed(2));
+    },
+    120_000,
+  );
+
+  it(
+    'FULL advance-consume 2B JE (consume == installmentTotal) → a subsequent full receipt REJECTS (no silent double-credit)',
+    async () => {
+      await createFreshInstallment(14);
+
+      // Simulate the 2A cron's advance-consume JE for a FULL consume (== installmentTotal).
+      // This is THE bug: the OLD reconstructPrior excluded a full-clear 2B JE, so a
+      // subsequent receipt re-cleared the full installmentTotal → Σ = 2×IT silently.
+      await journal.createAndPost({
+        description: 'advance-consume-on-accrual full (fixture)',
+        reference: 'advance-consume-full-14',
+        metadata: {
+          tag: '2B',
+          flow: 'advance-consume-on-accrual',
+          contractId,
+          installmentScheduleId: instId,
+          installmentNo: 14,
+          consumeAmount: installmentTotal.toFixed(2),
+        },
+        lines: [
+          { accountCode: '21-1103', dr: installmentTotal, cr: new Decimal(0), description: 'consume advance' },
+          { accountCode: '11-2103', dr: new Decimal(0), cr: installmentTotal, description: 'clear receivable' },
+        ],
+      });
+
+      // A subsequent receipt for the FULL installmentTotal (e.g. a Payment row whose
+      // amountPaid stayed 0 because it was missing at accrual time → fired late).
+      // FIX 1a counts the full advance-consume as priorPrincipalCleared = IT → the
+      // primitive sees principalRemaining = 0 → the extra IT surfaces as overpayRounding
+      // > 1฿ → REJECT. (On the OLD unwrapped code this double-credits 11-2103 silently.)
+      await expect(
+        template.execute({
+          installmentScheduleId: instId,
+          delta: installmentTotal,
+          debitAccountCode: '11-1101',
+          isFinalReceipt: true,
+        }),
+      ).rejects.toThrow(/exceeds tolerance/i);
+
+      // The rejected call posts nothing — ledger still shows only the advance-consume IT.
+      expect((await sumCredits('11-2103')).toFixed(2)).toBe(installmentTotal.toFixed(2));
     },
     120_000,
   );

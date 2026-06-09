@@ -108,13 +108,23 @@ export class PaymentReceiptTemplate {
    *
    * Discriminator (guards against over-inclusion):
    *   - tag:'receipt' → always include (primitive's own JEs).
-   *   - tag:'2B'     → include ONLY when Cr 11-2103 on that entry is STRICTLY LESS THAN
-   *                    installmentTotal.  A full-clear 2B credits exactly installmentTotal;
-   *                    including it would set priorPrincipalCleared = installmentTotal and
-   *                    silently make principalRemaining = 0, rejecting any subsequent receipt.
-   *                    Using strict-less-than (no float equality) is safe: installmentTotal
-   *                    is a Decimal from computeInstallmentBreakdown, and the historical JE
-   *                    credit is also a Decimal stored in Postgres — comparison is exact.
+   *   - tag:'2B' with flow:'advance-consume-on-accrual' → ALWAYS include. The 2A
+   *                    accrual cron posts `Dr 21-1103 / Cr 11-2103 = consume` to clear
+   *                    the receivable from a parked advance. Its Cr 11-2103 is a REAL
+   *                    prior-clearing and MUST be counted — even when consume ==
+   *                    installmentTotal (a full consume). Excluding a full consume here
+   *                    let a subsequent receipt double-credit 11-2103 (FINAL-REVIEW
+   *                    BLOCKER 1): the receipt would clear the full installmentTotal
+   *                    AGAIN → Σ(Cr 11-2103) = 2×installmentTotal.
+   *   - tag:'2B' (legacy full-payment receipt, flow != advance-consume-on-accrual)
+   *                  → include ONLY when Cr 11-2103 on that entry is STRICTLY LESS THAN
+   *                    installmentTotal.  A full-clear legacy 2B credits exactly
+   *                    installmentTotal; including it would set priorPrincipalCleared =
+   *                    installmentTotal and silently make principalRemaining = 0,
+   *                    rejecting any subsequent receipt. Using strict-less-than (no float
+   *                    equality) is safe: installmentTotal is a Decimal from
+   *                    computeInstallmentBreakdown, and the historical JE credit is also a
+   *                    Decimal stored in Postgres — comparison is exact.
    *
    * Historical JEs are never mutated (Option A = read-side only).
    */
@@ -145,12 +155,21 @@ export class PaymentReceiptTemplate {
       const meta = e.metadata as any;
       const tag: string = meta?.tag ?? '';
       if (tag === '2B') {
-        // Compute this entry's Cr 11-2103 to decide inclusion.
-        const entryCr11 = e.lines
-          .filter((l) => l.accountCode === '11-2103')
-          .reduce((s, l) => s.plus(new Decimal(l.credit.toString())), new Decimal(0));
-        // Only partial-clear 2B JEs are included; full-clear JEs (cr == installmentTotal) are excluded.
-        if (!entryCr11.lt(installmentTotal)) continue;
+        const flowMeta: string = (meta?.flow as string) ?? '';
+        if (flowMeta !== 'advance-consume-on-accrual') {
+          // Legacy PaymentReceipt2B full-payment JE: keep the full-clear discriminator
+          // (a one-shot full clear == installmentTotal must NOT be counted as a prior
+          // partial — including it would set priorPrincipalCleared = installmentTotal and
+          // silently make principalRemaining = 0, rejecting any subsequent receipt).
+          const entryCr11 = e.lines
+            .filter((l) => l.accountCode === '11-2103')
+            .reduce((s, l) => s.plus(new Decimal(l.credit.toString())), new Decimal(0));
+          // Only partial-clear legacy 2B JEs are included; full-clear JEs (cr == installmentTotal) are excluded.
+          if (!entryCr11.lt(installmentTotal)) continue;
+        }
+        // advance-consume-on-accrual JEs: ALWAYS included — their Cr 11-2103 IS prior-cleared
+        // (Dr 21-1103 advance / Cr 11-2103). Excluding a full consume == installmentTotal here
+        // would let a subsequent receipt double-credit 11-2103 (FINAL-REVIEW BLOCKER 1).
       }
       for (const l of e.lines) {
         const cr = new Decimal(l.credit.toString());

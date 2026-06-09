@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
+import * as Sentry from '@sentry/nestjs';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { computeInstallmentBreakdown } from '../compute-installment-breakdown';
@@ -247,6 +248,28 @@ export class InstallmentAccrual2ATemplate {
             status: isPaidInFull ? 'PAID' : 'PARTIALLY_PAID',
             paidDate: isPaidInFull ? new Date() : null,
             paidAt: isPaidInFull ? new Date() : null,
+          },
+        });
+      } else {
+        // No Payment row at accrual time. The advance-consume JE still posts
+        // correctly (Dr 21-1103 / Cr 11-2103) — but the Payment row's amountPaid
+        // stays at its prior value (0 when the row is created later). That timing
+        // window makes FINAL-REVIEW BLOCKER 1 reachable: a subsequent receipt fired
+        // against that 0-amountPaid Payment would re-clear an installment the
+        // advance already cleared. Alert ops to backfill the Payment row so it
+        // reflects the consume. Do NOT throw — that would break the accrual cron.
+        Sentry.captureMessage('Advance consumed on accrual with no Payment row to update', {
+          level: 'error',
+          tags: {
+            module: 'journal',
+            action: 'advance-consume-no-payment-row',
+          },
+          extra: {
+            contractId: c.id,
+            contractNumber: c.contractNumber,
+            installmentScheduleId: inst.id,
+            installmentNo: inst.installmentNo,
+            consume: consume.toFixed(2),
           },
         });
       }

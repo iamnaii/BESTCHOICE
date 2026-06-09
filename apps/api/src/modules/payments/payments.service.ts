@@ -633,10 +633,17 @@ export class PaymentsService {
       for (const [idx, payment] of unpaid.entries()) {
         if (remaining.lte(0)) break;
 
-        const amountDue = dRound(dSub(dAdd(payment.amountDue, payment.lateFee), payment.amountPaid));
+        // Effective late fee owed on this installment, honouring lateFeeWaived→0.
+        // This is the SAME value the owed-computation below uses, and the SAME
+        // value forwarded to the PaymentReceiptTemplate primitive so the
+        // Cr 42-1103 income leg matches the principal owed. (autoAllocate does
+        // not recompute the cap like recordPayment — it trusts the persisted
+        // payment.lateFee, which the waive flow already zeroes when waived.)
+        const lateFeeOwed = payment.lateFeeWaived ? d(0) : d(payment.lateFee);
+        const amountDue = dRound(dSub(dAdd(payment.amountDue, lateFeeOwed), payment.amountPaid));
         const payAmount = dRound(Prisma.Decimal.min(remaining, amountDue));
         const totalPaid = dRound(dAdd(payment.amountPaid, payAmount));
-        const isPaidInFull = dGte(totalPaid, dRound(dAdd(payment.amountDue, payment.lateFee)));
+        const isPaidInFull = dGte(totalPaid, dRound(dAdd(payment.amountDue, lateFeeOwed)));
 
         // Attach evidenceUrl to the FIRST payment only (represents the transfer slip)
         const isFirstPayment = idx === 0;
@@ -681,32 +688,60 @@ export class PaymentsService {
         // Check contract completion after each full payment
         if (isPaidInFull) {
           await this.checkContractCompletion(contractId, tx);
+        }
 
-          // Phase A.4b: replaced createPaymentJournal (old stub) with PaymentReceipt2BTemplate.
-          // autoAllocate has no depositAccountCode param — use system default.
-          const instSchedBulk = await tx.installmentSchedule.findUnique({
+        // PR-843/I2 Phase 3 3c — post the receipt via the PaymentReceiptTemplate
+        // primitive (replaces the legacy PaymentReceipt2BTemplate in this path),
+        // on EVERY iteration (partial AND full), not only on full payment.
+        //   - delta = payAmount (the DELTA cleared THIS iteration) — NOT the
+        //     cumulative updated.amountPaid the old 2B passed, which would
+        //     re-clear any prior partial when this iteration completes it.
+        //   - lateFee = lateFeeOwed (honours lateFeeWaived→0). The primitive
+        //     reconstructs prior late-fee cleared, so passing the full owed
+        //     fee on each receipt clears only the uncovered remainder.
+        //   - isFinalReceipt = isPaidInFull (enables the ≤1฿ underpay close on
+        //     the completing receipt; partials stay open).
+        // This now LEDGERS partials (defect 2) inside the same serializable tx,
+        // so a JE failure rolls back the Payment.update — no orphan ledger rows.
+        // No toleranceApproverId is passed here — see the documented Phase-5
+        // 2A-trueup-residual seam (auto paths cannot approve a ≤1฿ underpay).
+        if (payAmount.gt(0)) {
+          const instSched = await tx.installmentSchedule.findUnique({
             where: {
               contractId_installmentNo: {
                 contractId: contract.id,
                 installmentNo: updated.installmentNo,
               },
             },
-            select: { id: true },
+            select: { id: true, vat60dayJournalEntryId: true },
           });
-          if (instSchedBulk) {
-            await this.paymentReceipt2BTemplate.execute({
-              installmentScheduleId: instSchedBulk.id,
-              amountReceived: new Prisma.Decimal(updated.amountPaid.toString()),
-              // W2 fix: use the resolvedDepositAccountCode that we just
-              // wrote on Payment.update — previously this read the field
-              // off the in-memory Prisma return value which may not yet
-              // reflect the same value (and read '11-1101' fallback).
-              depositAccountCode: updated.depositAccountCode ?? resolvedDepositAccountCode,
-              existingPaymentId: updated.id,
-            });
+          if (instSched) {
+            await this.paymentReceiptTemplate.execute(
+              {
+                installmentScheduleId: instSched.id,
+                delta: new Prisma.Decimal(payAmount.toString()),
+                // W2 fix: use the resolvedDepositAccountCode that we just
+                // wrote on Payment.update — previously the 2B read the field
+                // off the in-memory Prisma return value which may not yet
+                // reflect the same value (and read '11-1101' fallback).
+                debitAccountCode: updated.depositAccountCode ?? resolvedDepositAccountCode,
+                lateFee: lateFeeOwed.gt(0) ? lateFeeOwed : undefined,
+                isFinalReceipt: isPaidInFull,
+                paymentId: updated.id,
+              },
+              tx,
+            );
+
+            // VAT-60-day reversal (MANDATORY parity with the old 2B). The legacy
+            // 2B template triggered Vat60dayReversalTemplate internally when the
+            // installment carried a 60-day mandatory VAT JE; the primitive does
+            // not, so trigger it here inside the same tx.
+            if (instSched.vat60dayJournalEntryId) {
+              await this.vat60Reversal.execute(instSched.id, tx);
+            }
           } else {
             this.logger.warn(
-              `PaymentReceipt2B skipped (bulk) — no InstallmentSchedule for contractId=${contract.id} installmentNo=${updated.installmentNo}`,
+              `PaymentReceipt skipped (bulk) — no InstallmentSchedule for contractId=${contract.id} installmentNo=${updated.installmentNo}`,
             );
           }
         }

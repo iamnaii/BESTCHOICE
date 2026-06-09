@@ -444,6 +444,97 @@ describe('PaymentsService', () => {
       expect(firstCall.data.evidenceUrl).toBe('https://slip.example.com/transfer.jpg');
       expect(secondCall.data.evidenceUrl).toBeUndefined();
     });
+
+    it('PR-843/I2 Phase 3 3c: posts the primitive on EVERY iteration (partial AND full) with delta=payAmount + isFinalReceipt=isPaidInFull', async () => {
+      // Inst #1 fully paid (3000 of 3000) → isFinalReceipt=true, delta=3000.
+      // Inst #2 partially paid (2000 of 3000) → isFinalReceipt=false, delta=2000.
+      const payments = [
+        { ...mockPayment, id: 'p-1', installmentNo: 1, amountDue: 3000, amountPaid: 0, lateFee: 0, lateFeeWaived: false, status: 'PENDING' },
+        { ...mockPayment, id: 'p-2', installmentNo: 2, amountDue: 3000, amountPaid: 0, lateFee: 0, lateFeeWaived: false, status: 'PENDING' },
+      ];
+      prisma.contract.findUnique.mockResolvedValue({ ...mockContract, payments });
+      prisma.payment.update
+        .mockResolvedValueOnce({ ...payments[0], amountPaid: 3000, status: 'PAID', paidDate: new Date(), depositAccountCode: '11-1101' })
+        .mockResolvedValueOnce({ ...payments[1], amountPaid: 2000, status: 'PARTIALLY_PAID', paidDate: null, depositAccountCode: '11-1101' });
+      // Non-null InstallmentSchedule so the primitive fires for both iterations.
+      prisma.installmentSchedule.findUnique
+        .mockResolvedValueOnce({ id: 'inst-1', vat60dayJournalEntryId: null })
+        .mockResolvedValueOnce({ id: 'inst-2', vat60dayJournalEntryId: null });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const templateMock = (service as any).paymentReceiptTemplate;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const legacy2B = (service as any).paymentReceipt2BTemplate;
+
+      await service.autoAllocatePayment('contract-1', 5000, 'CASH', 'user-1');
+
+      // Primitive called twice — once per installment touched (partial + full).
+      expect(templateMock.execute).toHaveBeenCalledTimes(2);
+      // Legacy 2B is never used by autoAllocate after 3c.
+      expect(legacy2B.execute).not.toHaveBeenCalled();
+
+      // Iteration 1 — full clear of inst #1: delta == payAmount (3000), final receipt.
+      const call1 = templateMock.execute.mock.calls[0][0];
+      expect(call1.installmentScheduleId).toBe('inst-1');
+      expect(Number(call1.delta.toString())).toBe(3000);
+      expect(call1.isFinalReceipt).toBe(true);
+      expect(call1.paymentId).toBe('p-1');
+      expect(call1.debitAccountCode).toBe('11-1101');
+
+      // Iteration 2 — partial clear of inst #2: delta == payAmount (2000), NOT final.
+      const call2 = templateMock.execute.mock.calls[1][0];
+      expect(call2.installmentScheduleId).toBe('inst-2');
+      expect(Number(call2.delta.toString())).toBe(2000); // DELTA, not cumulative amountPaid
+      expect(call2.isFinalReceipt).toBe(false);
+      expect(call2.paymentId).toBe('p-2');
+    });
+
+    it('PR-843/I2 Phase 3 3c: forwards lateFeeOwed to the primitive (honouring lateFeeWaived→0)', async () => {
+      // Inst #1 carries a lateFee of 50 (not waived) → forwarded as Decimal 50.
+      // Inst #2 carries a lateFee of 50 but lateFeeWaived=true → forwarded undefined.
+      const payments = [
+        { ...mockPayment, id: 'p-1', installmentNo: 1, amountDue: 3000, amountPaid: 0, lateFee: 50, lateFeeWaived: false, status: 'PENDING' },
+        { ...mockPayment, id: 'p-2', installmentNo: 2, amountDue: 3000, amountPaid: 0, lateFee: 50, lateFeeWaived: true, status: 'PENDING' },
+      ];
+      prisma.contract.findUnique.mockResolvedValue({ ...mockContract, payments });
+      prisma.payment.update
+        .mockResolvedValueOnce({ ...payments[0], amountPaid: 3050, status: 'PAID', paidDate: new Date(), depositAccountCode: '11-1101' })
+        .mockResolvedValueOnce({ ...payments[1], amountPaid: 2900, status: 'PARTIALLY_PAID', paidDate: null, depositAccountCode: '11-1101' });
+      prisma.installmentSchedule.findUnique
+        .mockResolvedValueOnce({ id: 'inst-1', vat60dayJournalEntryId: null })
+        .mockResolvedValueOnce({ id: 'inst-2', vat60dayJournalEntryId: null });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const templateMock = (service as any).paymentReceiptTemplate;
+
+      // 3050 (inst#1 owed incl. fee) + 2900 partial of inst#2 = 5950
+      await service.autoAllocatePayment('contract-1', 5950, 'CASH', 'user-1');
+
+      const call1 = templateMock.execute.mock.calls[0][0];
+      expect(call1.lateFee).toBeDefined();
+      expect(Number(call1.lateFee.toString())).toBe(50);
+
+      const call2 = templateMock.execute.mock.calls[1][0];
+      expect(call2.lateFee).toBeUndefined(); // waived → not forwarded
+    });
+
+    it('PR-843/I2 Phase 3 3c: triggers Vat60dayReversal when the installment carries a 60-day VAT JE', async () => {
+      const payments = [
+        { ...mockPayment, id: 'p-1', installmentNo: 1, amountDue: 3000, amountPaid: 0, lateFee: 0, lateFeeWaived: false, status: 'PENDING' },
+      ];
+      prisma.contract.findUnique.mockResolvedValue({ ...mockContract, payments });
+      prisma.payment.update.mockResolvedValueOnce({
+        ...payments[0], amountPaid: 3000, status: 'PAID', paidDate: new Date(), depositAccountCode: '11-1101',
+      });
+      prisma.installmentSchedule.findUnique.mockResolvedValueOnce({ id: 'inst-1', vat60dayJournalEntryId: 'je-60day-1' });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const vat60 = (service as any).vat60Reversal;
+
+      await service.autoAllocatePayment('contract-1', 3000, 'CASH', 'user-1');
+
+      expect(vat60.execute).toHaveBeenCalledWith('inst-1', expect.anything());
+    });
   });
 
   describe('getContractPayments', () => {

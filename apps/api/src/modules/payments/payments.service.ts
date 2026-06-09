@@ -8,7 +8,6 @@ import { paginatedResponse } from '../../common/helpers/pagination.helper';
 import { ReceiptsService } from '../receipts/receipts.service';
 import { AuditService } from '../audit/audit.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
-import { PaymentReceipt2BTemplate } from '../journal/cpa-templates/payment-receipt-2b.template';
 import { PaymentReceiptTemplate } from '../journal/cpa-templates/payment-receipt.template';
 import { Vat60dayReversalTemplate } from '../journal/cpa-templates/vat-60day-reversal.template';
 import { AccountRoleService } from '../journal/account-role.service';
@@ -39,7 +38,6 @@ export class PaymentsService {
     private receiptsService: ReceiptsService,
     private auditService: AuditService,
     private journalAutoService: JournalAutoService,
-    private paymentReceipt2BTemplate: PaymentReceipt2BTemplate,
     private productsService: ProductsService,
     private lineOaService: LineOaService,
     private flexTemplates: FlexTemplatesService,

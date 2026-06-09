@@ -70,7 +70,6 @@ const makeService = (findContract: jest.Mock = jest.fn().mockResolvedValue({ id:
     stub, // receiptsService
     stub, // auditService
     stub, // journalAutoService
-    stub, // paymentReceipt2BTemplate
     stub, // productsService
     stub, // lineOaService
     stub, // flexTemplates

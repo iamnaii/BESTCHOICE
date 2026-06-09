@@ -63,7 +63,6 @@ import { ReceiptsService } from '../src/modules/receipts/receipts.service';
 import { AuditService } from '../src/modules/audit/audit.service';
 import { ProductsService } from '../src/modules/products/products.service';
 import { JournalAutoService } from '../src/modules/journal/journal-auto.service';
-import { PaymentReceipt2BTemplate } from '../src/modules/journal/cpa-templates/payment-receipt-2b.template';
 import { PaymentReceiptTemplate } from '../src/modules/journal/cpa-templates/payment-receipt.template';
 import { Vat60dayReversalTemplate } from '../src/modules/journal/cpa-templates/vat-60day-reversal.template';
 import { BadDebtService } from '../src/modules/accounting/bad-debt.service';
@@ -169,7 +168,6 @@ describeOrSkip('PaymentsService.recordPayment — completing a PRIOR PARTIAL (re
 
     // --- wire the REAL PaymentsService (Approach A) -------------------------
     const receiptVoidReversal = new ReceiptVoidReversalTemplate(journal, prisma as any);
-    const paymentReceipt2B = new PaymentReceipt2BTemplate(journal, prisma as any);
     // PR-843/I2 Phase 3 3a — recordPayment now posts via the primitive + the
     // VAT-60-day reversal, both REQUIRED constructor params. Real instances
     // wired to the same prisma so the JE actually posts against the real DB.
@@ -199,7 +197,6 @@ describeOrSkip('PaymentsService.recordPayment — completing a PRIOR PARTIAL (re
       receipts,
       audit,
       journal,
-      paymentReceipt2B,
       products,
       lineOaStub,
       flexStub,

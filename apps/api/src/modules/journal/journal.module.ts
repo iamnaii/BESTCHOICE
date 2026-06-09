@@ -7,8 +7,6 @@ import { PrismaModule } from '../../prisma/prisma.module';
 import { ContractActivation1ATemplate } from './cpa-templates/contract-activation-1a.template';
 import { InstallmentAccrual2ATemplate } from './cpa-templates/installment-accrual-2a.template';
 import { InstallmentAccrualCron } from './cron/installment-accrual.cron';
-import { PaymentReceipt2BTemplate } from './cpa-templates/payment-receipt-2b.template';
-import { PaymentReceipt2BSplitTemplate } from './cpa-templates/payment-receipt-2b-split.template';
 import { PaymentReceiptTemplate } from './cpa-templates/payment-receipt.template';
 import { EarlyPayoffJP4Template } from './cpa-templates/early-payoff-jp4.template';
 import { RepossessionJP5Template } from './cpa-templates/repossession-jp5.template';
@@ -68,8 +66,6 @@ import { ReconcileController } from './reconcile.controller';
     ContractActivation1ATemplate,
     InstallmentAccrual2ATemplate,
     InstallmentAccrualCron,
-    PaymentReceipt2BTemplate,
-    PaymentReceipt2BSplitTemplate,
     PaymentReceiptTemplate,
     EarlyPayoffJP4Template,
     RepossessionJP5Template,
@@ -124,8 +120,6 @@ import { ReconcileController } from './reconcile.controller';
     AccountRoleService,
     ContractActivation1ATemplate,
     InstallmentAccrual2ATemplate,
-    PaymentReceipt2BTemplate,
-    PaymentReceipt2BSplitTemplate,
     PaymentReceiptTemplate,
     EarlyPayoffJP4Template,
     RepossessionJP5Template,

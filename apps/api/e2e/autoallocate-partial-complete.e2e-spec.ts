@@ -43,7 +43,6 @@ import { ReceiptsService } from '../src/modules/receipts/receipts.service';
 import { AuditService } from '../src/modules/audit/audit.service';
 import { ProductsService } from '../src/modules/products/products.service';
 import { JournalAutoService } from '../src/modules/journal/journal-auto.service';
-import { PaymentReceipt2BTemplate } from '../src/modules/journal/cpa-templates/payment-receipt-2b.template';
 import { PaymentReceiptTemplate } from '../src/modules/journal/cpa-templates/payment-receipt.template';
 import { Vat60dayReversalTemplate } from '../src/modules/journal/cpa-templates/vat-60day-reversal.template';
 import { BadDebtService } from '../src/modules/accounting/bad-debt.service';
@@ -76,7 +75,6 @@ describeOrSkip('PaymentsService.autoAllocatePayment — PARTIAL → COMPLETE via
 
   const wirePayments = (journal: JournalAutoService): PaymentsService => {
     const receiptVoidReversal = new ReceiptVoidReversalTemplate(journal, prisma as any);
-    const paymentReceipt2B = new PaymentReceipt2BTemplate(journal, prisma as any);
     const paymentReceiptTemplate = new PaymentReceiptTemplate(journal, prisma as any);
     const vat60Reversal = new Vat60dayReversalTemplate(journal, prisma as any);
     const receipts = new ReceiptsService(prisma as any, journal, receiptVoidReversal, undefined);
@@ -101,7 +99,6 @@ describeOrSkip('PaymentsService.autoAllocatePayment — PARTIAL → COMPLETE via
       receipts,
       audit,
       journal,
-      paymentReceipt2B,
       products,
       lineOaStub,
       flexStub,

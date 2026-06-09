@@ -7,7 +7,6 @@ import { JournalAutoService } from '../journal-auto.service';
 import { RescheduleService } from '../../installments/reschedule.service';
 import { RescheduleJP6Template } from './reschedule-jp6.template';
 import { InstallmentAccrual2ATemplate } from './installment-accrual-2a.template';
-import { PaymentReceipt2BTemplate } from './payment-receipt-2b.template';
 
 const prisma = new PrismaClient();
 const DEPOSIT = '11-1101';
@@ -42,7 +41,58 @@ async function setup() {
 }
 
 /**
- * Pay installments 1-4 normally (2A + 2B) so installment 5 is overdue.
+ * PR-843/I2 Phase 5d — the legacy PaymentReceipt2BTemplate was deleted. This
+ * reproduces its full-clear posting for one installment directly: creates the
+ * PAID Payment row (so the reschedule's `status != PAID` dueDate-shift guard
+ * skips already-paid installments, as before) and posts Dr deposit / Cr 11-2103
+ * for installmentTotal (mirrors what the new primitive would post). The
+ * reschedule golden assertions only read the reschedule-fee / reschedule-final
+ * JE lines, so they are unchanged.
+ */
+async function postPriorReceipt(
+  prisma: PrismaClient,
+  journal: JournalAutoService,
+  contractId: string,
+  inst: { id: string; installmentNo: number; dueDate: Date },
+): Promise<void> {
+  const installmentTotal = new Decimal('1515.83');
+  const contract = await prisma.contract.findUniqueOrThrow({ where: { id: contractId } });
+  const payment = await prisma.payment.create({
+    data: {
+      contractId,
+      installmentNo: inst.installmentNo,
+      dueDate: inst.dueDate,
+      amountDue: installmentTotal,
+      amountPaid: installmentTotal,
+      paidDate: new Date(),
+      paidAt: new Date(),
+      status: 'PAID',
+    },
+  });
+  await journal.createAndPost({
+    description: `รับชำระงวด #${inst.installmentNo} — สัญญา ${contract.contractNumber}`,
+    reference: payment.id,
+    metadata: {
+      tag: 'receipt',
+      contractId,
+      installmentScheduleId: inst.id,
+      paymentId: payment.id,
+    },
+    lines: [
+      { accountCode: DEPOSIT, dr: installmentTotal, cr: new Decimal(0), description: 'รับเงิน' },
+      {
+        accountCode: '11-2103',
+        dr: new Decimal(0),
+        cr: installmentTotal,
+        description: 'ล้างลูกหนี้ค้างชำระ',
+      },
+    ],
+  });
+}
+
+/**
+ * Pay installments 1-4 normally (2A accrual + payment receipt) so installment 5
+ * is overdue.
  */
 async function payInstallments1to4(
   prisma: PrismaClient,
@@ -50,18 +100,13 @@ async function payInstallments1to4(
   contractId: string,
 ) {
   const accrual = new InstallmentAccrual2ATemplate(journal, prisma as any);
-  const pay = new PaymentReceipt2BTemplate(journal, prisma as any);
   const insts = await prisma.installmentSchedule.findMany({
     where: { contractId, installmentNo: { lte: 4 }, deletedAt: null },
     orderBy: { installmentNo: 'asc' },
   });
   for (const inst of insts) {
     await accrual.execute(inst.id);
-    await pay.execute({
-      installmentScheduleId: inst.id,
-      amountReceived: new Decimal('1515.83'),
-      depositAccountCode: DEPOSIT,
-    });
+    await postPriorReceipt(prisma, journal, contractId, inst);
   }
 }
 
@@ -98,13 +143,8 @@ describe('RescheduleJP6Template', () => {
         where: { contractId: c.id, installmentNo: 5 },
       });
       const accrual = new InstallmentAccrual2ATemplate(journal, prisma as any);
-      const pay = new PaymentReceipt2BTemplate(journal, prisma as any);
       await accrual.execute(inst5.id);
-      await pay.execute({
-        installmentScheduleId: inst5.id,
-        amountReceived: new Decimal('1515.83'),
-        depositAccountCode: DEPOSIT,
-      });
+      await postPriorReceipt(prisma, journal, c.id, inst5);
 
       // Pay installments 6-11 normally
       const insts611 = await prisma.installmentSchedule.findMany({
@@ -113,11 +153,7 @@ describe('RescheduleJP6Template', () => {
       });
       for (const inst of insts611) {
         await accrual.execute(inst.id);
-        await pay.execute({
-          installmentScheduleId: inst.id,
-          amountReceived: new Decimal('1515.83'),
-          depositAccountCode: DEPOSIT,
-        });
+        await postPriorReceipt(prisma, journal, c.id, inst);
       }
 
       // Final installment 12: 2A (full 1515.83), then consume advance
@@ -217,18 +253,13 @@ describe('RescheduleJP6Template', () => {
       });
 
       // Pay installments 6-11 normally
-      const pay = new PaymentReceipt2BTemplate(journal, prisma as any);
       const insts611 = await prisma.installmentSchedule.findMany({
         where: { contractId: c.id, installmentNo: { gte: 6, lte: 11 }, deletedAt: null },
         orderBy: { installmentNo: 'asc' },
       });
       for (const inst of insts611) {
         await accrual.execute(inst.id);
-        await pay.execute({
-          installmentScheduleId: inst.id,
-          amountReceived: new Decimal('1515.83'),
-          depositAccountCode: DEPOSIT,
-        });
+        await postPriorReceipt(prisma, journal, c.id, inst);
       }
 
       // Final installment 12: 2A then consume advance

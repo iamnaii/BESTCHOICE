@@ -35,7 +35,6 @@ import { FlexTemplatesService } from '../line-oa/flex-templates.service';
 import { QuickReplyService } from '../line-oa/quick-reply.service';
 import { PromiseService } from '../overdue/promise.service';
 import { MdmLockService } from '../overdue/mdm-lock.service';
-import { PaymentReceipt2BTemplate } from '../journal/cpa-templates/payment-receipt-2b.template';
 import { PaymentReceiptTemplate } from '../journal/cpa-templates/payment-receipt.template';
 import { Vat60dayReversalTemplate } from '../journal/cpa-templates/vat-60day-reversal.template';
 import { BadDebtService } from '../accounting/bad-debt.service';
@@ -54,8 +53,6 @@ describe('PaymentsService — advance balance (Task 4)', () => {
   let service: PaymentsService;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let prisma: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let receipt2BExecute: any;
   // PR-843/I2 Phase 3 3a — recordPayment now posts via the PaymentReceiptTemplate
   // primitive, so the partialClear/completion assertions target THIS mock.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -158,7 +155,6 @@ describe('PaymentsService — advance balance (Task 4)', () => {
     const mockPrismaInst: any = buildMockPrisma();
     prisma = mockPrismaInst;
 
-    receipt2BExecute = jest.fn().mockResolvedValue({ entryNo: 'JE-ADV' });
     receiptPrimitiveExecute = jest
       .fn()
       .mockResolvedValue({ entryNo: 'JE-ADV', split: { principalRemainingAfter: D(0) } });
@@ -208,10 +204,6 @@ describe('PaymentsService — advance balance (Task 4)', () => {
         {
           provide: MdmLockService,
           useValue: { autoUnlock: jest.fn().mockResolvedValue(undefined) },
-        },
-        {
-          provide: PaymentReceipt2BTemplate,
-          useValue: { execute: receipt2BExecute },
         },
         {
           provide: PaymentReceiptTemplate,

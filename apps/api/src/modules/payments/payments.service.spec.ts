@@ -22,7 +22,6 @@ import { QuickReplyService } from '../line-oa/quick-reply.service';
 import { WarrantyService } from '../warranty/warranty.service';
 import { PromiseService } from '../overdue/promise.service';
 import { MdmLockService } from '../overdue/mdm-lock.service';
-import { PaymentReceipt2BTemplate } from '../journal/cpa-templates/payment-receipt-2b.template';
 import { PaymentReceiptTemplate } from '../journal/cpa-templates/payment-receipt.template';
 import { Vat60dayReversalTemplate } from '../journal/cpa-templates/vat-60day-reversal.template';
 import { BadDebtService } from '../accounting/bad-debt.service';
@@ -160,7 +159,6 @@ describe('PaymentsService', () => {
             autoUnlock: jest.fn().mockResolvedValue(undefined),
           },
         },
-        { provide: PaymentReceipt2BTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK' }) } },
         { provide: PaymentReceiptTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK', split: { principalRemainingAfter: 0 } }) } },
         { provide: Vat60dayReversalTemplate, useValue: { execute: jest.fn().mockResolvedValue(null) } },
         { provide: BadDebtService, useValue: { reverseStageOnPayment: jest.fn().mockResolvedValue(null) } },
@@ -507,15 +505,11 @@ describe('PaymentsService', () => {
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const templateMock = (service as any).paymentReceiptTemplate;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const legacy2B = (service as any).paymentReceipt2BTemplate;
 
       await service.autoAllocatePayment('contract-1', 5000, 'CASH', 'user-1');
 
       // Primitive called twice — once per installment touched (partial + full).
       expect(templateMock.execute).toHaveBeenCalledTimes(2);
-      // Legacy 2B is never used by autoAllocate after 3c.
-      expect(legacy2B.execute).not.toHaveBeenCalled();
 
       // Iteration 1 — full clear of inst #1: delta == payAmount (3000), final receipt.
       const call1 = templateMock.execute.mock.calls[0][0];

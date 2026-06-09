@@ -5,7 +5,6 @@ import { seedFinanceCoa } from '../../../../prisma/seed-coa-finance';
 import { seedStandard17k12m } from '../__tests__/scenario-helpers';
 import { ContractActivation1ATemplate } from './contract-activation-1a.template';
 import { InstallmentAccrual2ATemplate } from './installment-accrual-2a.template';
-import { PaymentReceipt2BTemplate } from './payment-receipt-2b.template';
 import { ReceiptVoidReversalTemplate } from './receipt-void-reversal.template';
 import { JournalAutoService } from '../journal-auto.service';
 
@@ -49,7 +48,11 @@ describe('ReceiptVoidReversalTemplate', () => {
     const c = await seedStandard17k12m(prisma);
     await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
 
-    // Pay installment 1 to create a 2B JE
+    // Pay installment 1 to create a payment-receipt JE. PR-843/I2 Phase 5d:
+    // the legacy PaymentReceipt2BTemplate was deleted; reproduce its full-clear
+    // posting directly (Dr deposit / Cr 11-2103 for installmentTotal) plus the
+    // PAID Payment row, mirroring what the primitive would post. The void flow
+    // under test only reverses these JE lines, so its assertions are unchanged.
     const insts = await prisma.installmentSchedule.findMany({
       where: { contractId: c.id },
       orderBy: { installmentNo: 'asc' },
@@ -57,24 +60,41 @@ describe('ReceiptVoidReversalTemplate', () => {
     const accrual = new InstallmentAccrual2ATemplate(journal, prisma as any);
     await accrual.execute(insts[0].id);
 
-    const payment = new PaymentReceipt2BTemplate(journal, prisma as any);
-    await payment.execute({
-      installmentScheduleId: insts[0].id,
-      amountReceived: new Decimal('1515.83'),
-      depositAccountCode: '11-1101',
-    });
-
-    // Find the 2B JE (payment receipt — tagged '2B')
-    const je = await prisma.journalEntry.findFirst({
-      where: {
-        AND: [
-          { metadata: { path: ['contractId'], equals: c.id } } as any,
-          { metadata: { path: ['tag'], equals: '2B' } } as any,
-        ],
-        deletedAt: null,
+    const installmentTotal = new Decimal('1515.83');
+    const inst0 = insts[0];
+    const contract = await prisma.contract.findUniqueOrThrow({ where: { id: c.id } });
+    const payment = await prisma.payment.create({
+      data: {
+        contractId: c.id,
+        installmentNo: inst0.installmentNo,
+        dueDate: inst0.dueDate,
+        amountDue: installmentTotal,
+        amountPaid: installmentTotal,
+        paidDate: new Date(),
+        paidAt: new Date(),
+        status: 'PAID',
       },
     });
-    paymentJeId = je!.id;
+    const { id: paymentJournalEntryId } = await journal.createAndPost({
+      description: `รับชำระงวด #${inst0.installmentNo} — สัญญา ${contract.contractNumber}`,
+      reference: payment.id,
+      metadata: {
+        tag: 'receipt',
+        contractId: c.id,
+        installmentScheduleId: inst0.id,
+        paymentId: payment.id,
+      },
+      lines: [
+        { accountCode: '11-1101', dr: installmentTotal, cr: new Decimal(0), description: 'รับเงิน' },
+        {
+          accountCode: '11-2103',
+          dr: new Decimal(0),
+          cr: installmentTotal,
+          description: 'ล้างลูกหนี้ค้างชำระ',
+        },
+      ],
+    });
+    paymentJeId = paymentJournalEntryId;
   });
 
   it('posts a balanced void-reversal JE with Dr/Cr swapped', async () => {

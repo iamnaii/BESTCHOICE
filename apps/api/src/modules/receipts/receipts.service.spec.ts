@@ -31,11 +31,17 @@ describe('ReceiptsService', () => {
         update: jest.fn(),
       },
       journalEntry: {
-        findFirst: jest.fn(),
+        // PR-843/I2 Phase 3 PR 3.1: voidReceipt now finds ALL receipt JEs of the
+        // payment via metadata.paymentId (findMany) and reverses EACH — not a single
+        // findFirst by referenceId.
+        findMany: jest.fn(),
       },
       auditLog: {
         create: jest.fn().mockResolvedValue({ id: 'audit-1' }),
       },
+      // generateReceiptNumber (credit-note number) uses $executeRaw for the advisory
+      // lock and $queryRaw for the last-number lookup (PR 3.1 — lock moved off $queryRaw).
+      $executeRaw: jest.fn().mockResolvedValue(undefined),
       $queryRaw: jest.fn().mockResolvedValue([]),
     };
 
@@ -71,7 +77,7 @@ describe('ReceiptsService', () => {
   });
 
   describe('voidReceipt', () => {
-    it('voids receipt and calls ReceiptVoidReversalTemplate when original JE exists (Phase A.5a)', async () => {
+    it('reverses ALL receipt JEs of the payment via ReceiptVoidReversalTemplate (Phase A.5a + PR 3.1)', async () => {
       const tx = prisma.__tx;
 
       // Existing receipt that can be voided (issued recently, has paymentId).
@@ -98,13 +104,13 @@ describe('ReceiptsService', () => {
       });
       tx.receipt.update.mockResolvedValue({ id: receiptId, isVoided: true });
 
-      // Original posted journal entry exists.
-      tx.journalEntry.findFirst.mockResolvedValue({
-        id: 'je-1',
-        referenceType: 'PAYMENT',
-        referenceId: 'pay-1',
-        status: 'POSTED',
-      });
+      // PR-843/I2 Phase 3 PR 3.1: the epic posts MULTIPLE receipt JEs per Payment (a
+      // partial then a completion), all sharing metadata.paymentId. voidReceipt must
+      // reverse EVERY one — return TWO POSTED JEs here.
+      tx.journalEntry.findMany.mockResolvedValue([
+        { id: 'je-1', status: 'POSTED' },
+        { id: 'je-2', status: 'POSTED' },
+      ]);
 
       const result = await service.voidReceipt(receiptId, 'wrong amount', userId, approverId);
 
@@ -115,17 +121,26 @@ describe('ReceiptsService', () => {
       // voids must obey the FINANCE AccountingPeriod, not the removed legacy cutoff.
       expect(validatePeriodOpen).toHaveBeenCalledWith(prisma, expect.any(Date), 'co-FINANCE');
 
-      // Phase A.5a: reversal JE posted via ReceiptVoidReversalTemplate
-      // (PR #780 Wave 1 P0: tx is forwarded so JE post + receipt void roll back together)
+      // Phase A.5a + PR 3.1: a reversal JE posted for EACH receipt JE (tx forwarded so
+      // JE posts + receipt void roll back together). Reversing only one would leave the
+      // other receipt's Cr 11-2103 un-reversed = ledger defect.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const template = (service as any).receiptVoidReversalTemplate;
+      expect(template.voidReceipt).toHaveBeenCalledTimes(2);
       expect(template.voidReceipt).toHaveBeenCalledWith('je-1', expect.anything());
+      expect(template.voidReceipt).toHaveBeenCalledWith('je-2', expect.anything());
 
-      // Pin the prod-path fix: payment JEs are stored referenceType 'AUTO' (not
-      // 'PAYMENT'). Before this, the lookup matched nothing and voidReceipt silently
-      // posted NO reversal — the trial balance kept the voided receipt's 2B entry.
-      expect(tx.journalEntry.findFirst).toHaveBeenCalledWith(
-        expect.objectContaining({ where: expect.objectContaining({ referenceType: 'AUTO' }) }),
+      // Pin the prod-path fix: the canonical payment→JE link is metadata.paymentId
+      // (every receipt JE now carries a unique reference, so the old referenceId ==
+      // paymentId lookup found at most one). Asserting the JSON path is what catches a
+      // regression back to the single-JE findFirst.
+      expect(tx.journalEntry.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            metadata: { path: ['paymentId'], equals: 'pay-1' },
+            status: 'POSTED',
+          }),
+        }),
       );
     });
 
@@ -159,12 +174,7 @@ describe('ReceiptsService', () => {
       });
       tx.receipt.update.mockResolvedValue({ id: receiptId, isVoided: true });
 
-      tx.journalEntry.findFirst.mockResolvedValue({
-        id: 'je-1',
-        referenceType: 'PAYMENT',
-        referenceId: 'pay-1',
-        status: 'POSTED',
-      });
+      tx.journalEntry.findMany.mockResolvedValue([{ id: 'je-1', status: 'POSTED' }]);
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const template = (service as any).receiptVoidReversalTemplate;
@@ -202,7 +212,7 @@ describe('ReceiptsService', () => {
         receiptType: 'CREDIT_NOTE',
       });
       tx.receipt.update.mockResolvedValue({ id: receiptId, isVoided: true });
-      tx.journalEntry.findFirst.mockResolvedValue(null); // no JE → skip reversal
+      tx.journalEntry.findMany.mockResolvedValue([]); // no JE → graceful skip (legacy)
     };
 
     it('throws ForbiddenException when SALES role attempts to void', async () => {
@@ -318,15 +328,15 @@ describe('ReceiptsService', () => {
           create: created,
         },
         customer: { findFirst: jest.fn().mockResolvedValue(null) },
+        // PR 3.1: the advisory lock now uses $executeRaw (matches the convention
+        // everywhere else — pg_advisory_xact_lock returns a void column $queryRaw
+        // cannot deserialize). $queryRaw is left to the receipt-number lookup only.
+        $executeRaw: jest.fn().mockResolvedValue(undefined),
         $queryRaw: jest
           .fn()
-          // pg_advisory_xact_lock — no-op
-          .mockResolvedValueOnce(undefined)
           // last receipt number lookup
-          .mockResolvedValueOnce(
-            opts.lastReceiptNumber
-              ? [{ receiptNumber: opts.lastReceiptNumber }]
-              : [],
+          .mockResolvedValue(
+            opts.lastReceiptNumber ? [{ receiptNumber: opts.lastReceiptNumber }] : [],
           ),
       };
       const local = {

@@ -66,7 +66,11 @@ export class ReceiptsService {
     const prefix = `RT-${year}${month}-`;
 
     const lockKey = parseInt(`1${year}${month}`, 10);
-    await db.$queryRaw`SELECT pg_advisory_xact_lock(${lockKey}::bigint)`;
+    // Use $executeRaw (not $queryRaw) for the advisory lock — pg_advisory_xact_lock
+    // returns a `void`-typed column that $queryRaw cannot deserialize. This matches
+    // the convention everywhere else (journal-auto, other-income/doc-number, expense
+    // doc-number all use $executeRaw[Unsafe] for advisory locks).
+    await db.$executeRaw`SELECT pg_advisory_xact_lock(${lockKey}::bigint)`;
 
     const result = await db.$queryRaw<Array<{ receiptNumber: string }>>`
       SELECT receipt_number AS "receiptNumber" FROM receipts
@@ -515,26 +519,32 @@ export class ReceiptsService {
         },
       });
 
-      // Phase A.5a: reverse the original payment JE.
-      // Must propagate errors — receipt void without ledger reversal would
-      // leave HP receivable cleared by 2B but no offsetting credit note JE.
-      // NOTE: payment JEs are stored with referenceType 'AUTO' (journal-auto
-      // createAndPost sets it from `reference = payment.id`), NOT 'PAYMENT'. The
-      // previous 'PAYMENT' filter matched nothing, so voids silently posted no
-      // reversal — the trial balance kept the voided receipt's 2B entry. (Bug found
-      // during the refund-reversal review; same root cause as refunds.markReversed.)
+      // Phase A.5a: reverse the payment's receipt JE(s).
+      // Must propagate errors — a receipt void without FULL ledger reversal would
+      // leave HP receivable cleared by the receipt JE(s) but no offsetting credit
+      // note JE.
+      //
+      // PR-843/I2 Phase 3 PR 3.1 — reverse ALL receipt JEs of the payment, not just
+      // one. The epic posts MULTIPLE receipt JEs per Payment (a partial then a
+      // completion); each JE now carries a fresh unique `reference`, so the old
+      // `referenceId == paymentId` lookup found at most ONE and left the other
+      // receipt's Cr 11-2103 un-reversed = ledger defect. The canonical payment→JE
+      // link is `metadata.paymentId`, which every receipt path stamps (the primitive,
+      // the legacy 2B full/2B-split-final templates, and applyCreditBalance's
+      // credit-allocation JE). findMany + reverse EACH is backward-compatible: a
+      // single-receipt payment returns one JE → one reversal (same as before).
       if (receipt.paymentId) {
-        const originalEntry = await tx.journalEntry.findFirst({
+        const originalEntries = await tx.journalEntry.findMany({
           where: {
-            referenceType: 'AUTO',
-            referenceId: receipt.paymentId,
+            metadata: { path: ['paymentId'], equals: receipt.paymentId },
             status: 'POSTED',
             deletedAt: null,
           },
         });
-        if (originalEntry) {
+        for (const originalEntry of originalEntries) {
           await this.receiptVoidReversalTemplate.voidReceipt(originalEntry.id, tx);
         }
+        // Zero found (legacy no-JE payment) → graceful skip (unchanged behaviour).
       }
 
       // Wave 3 T2 (ปพพ.386 W-3): forensic audit log for receipt voids.

@@ -16,14 +16,18 @@
    psql "$PROD_DATABASE_URL" -tc "SELECT code FROM chart_of_accounts WHERE deleted_at IS NULL AND code IN ('11-2103','42-1103','52-1104','53-1503','21-1103','21-5101','11-1202','11-1101','11-1102','11-1103','11-1201','11-1203') ORDER BY code;"
    # คาดหวัง: ครบ 12 แถว
    ```
-3. **นับ Risk-5** (งวด partial ที่ค้างโดยยังไม่มี receipt JE — read-only):
-   ```sql
-   SELECT COUNT(*) FROM payments p WHERE p.deleted_at IS NULL
-     AND p.status='PARTIALLY_PAID' AND p.amount_paid>0
-     AND NOT EXISTS (SELECT 1 FROM journal_entries je
-       WHERE (je.reference_id=p.id::text OR je.metadata->>'paymentId'=p.id::text)
-         AND je.metadata->>'tag' IN ('receipt','2B','credit-allocation') AND je.deleted_at IS NULL AND je.status='POSTED');
+3. **นับ Risk-5 + backfill** — ใช้ CLI `backfill:orphan-receipts` (dry-run คือตัวนับเลย):
+   ```bash
+   # 3a. DRY-RUN (read-only) — list งวด partial ที่ไม่มี receipt JE + ยอดรวม:
+   EXPECTED_DB_NAME=bestchoice_prod npm --prefix apps/api run backfill:orphan-receipts
+   #   - 0 รายการ → ข้ามไป ②
+   #   - >0 รายการ → ตรวจ list แล้วรัน 3b เพื่อ post catch-up receipt JE:
+   # 3b. POST (idempotent — รันซ้ำได้):
+   CONFIRM_BACKFILL=YES_I_AM_SURE EXPECTED_DB_NAME=bestchoice_prod ALLOW_PROD_BACKFILL=YES_I_AM_SURE NODE_ENV=production \
+     npm --prefix apps/api run backfill:orphan-receipts
+   #   (prod = Cloud Run Job backfill-orphan-receipts — ดู env ในหัวไฟล์ CLI)
    ```
+   *(เทียบเท่า SQL: `... status='PARTIALLY_PAID' AND amount_paid>0 AND NOT EXISTS(receipt/2B/credit-allocation JE)` — CLI ทำ count + backfill ในตัว, posts Dr deposit / Cr 11-2103 = amount_paid ผ่าน primitive)*
    - **= 0** → ผ่าน ไป ②
    - **> 0** → งวดเหล่านี้ถูกจ่ายบางส่วนผ่าน autoAllocate เดิม (ไม่เคยลง JE) → ถ้าปล่อยไว้ การปิดงวดครั้งถัดไปจะ over-credit 11-2103. ต้อง **backfill JE ตามจ่าย** (Dr cash / Cr 11-2103 ตามยอด amount_paid ของแต่ละงวด) ก่อน deploy — แจ้งผมมาพร้อมจำนวน เดี๋ยวเขียน CLI backfill ให้
 

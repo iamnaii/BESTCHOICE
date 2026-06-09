@@ -141,79 +141,91 @@ export class MigrationService {
           continue;
         }
 
-        // Create a placeholder product for imported contracts
-        const product = await this.prisma.product.create({
-          data: {
-            name: c.productName,
-            brand: 'Imported',
-            model: c.productName,
-            category: 'PHONE_USED',
-            costPrice: 0,
-            branchId: branch.id,
-            status: 'SOLD_INSTALLMENT',
-          },
-        });
-
-        // Generate contract number
-        const contractNumber = await generateContractNumber(this.prisma);
-
-        // Calculate financials
+        // Calculate financials (pure arithmetic — outside the tx)
         const principal = c.sellingPrice - c.downPayment;
         const interestTotal = principal * c.interestRate * c.totalMonths;
         const financedAmount = principal + interestTotal;
         const monthlyPayment = financedAmount / c.totalMonths;
 
-        const contract = await this.prisma.contract.create({
-          data: {
-            contractNumber,
-            customerId: customer.id,
-            productId: product.id,
-            branchId: branch.id,
-            salespersonId: salesperson.id,
-            planType: 'STORE_DIRECT',
-            sellingPrice: c.sellingPrice,
-            downPayment: c.downPayment,
-            interestRate: c.interestRate,
-            totalMonths: c.totalMonths,
-            interestTotal,
-            financedAmount,
-            monthlyPayment,
-            status: c.status as 'ACTIVE' | 'OVERDUE' | 'COMPLETED',
-            createdAt: c.createdAt ? new Date(c.createdAt) : undefined,
-          },
-        });
+        // Per-row atomicity: Product + Contract + Payments commit together or
+        // not at all, so a failure mid-row leaves NO orphan Product (status
+        // SOLD_INSTALLMENT) or Contract with a missing/partial payment schedule,
+        // and no burnt contract-number sequence. Deliberately PER-ROW, not one
+        // tx around the whole import: a multi-thousand-row historical import in
+        // a single tx would hold one connection + locks for the entire run
+        // (timeout/lock-contention risk) and turn one bad row into an
+        // all-or-nothing rollback, destroying the per-row success/failed
+        // reporting this method promises.
+        await this.prisma.$transaction(async (tx) => {
+          // Placeholder product for the imported contract
+          const product = await tx.product.create({
+            data: {
+              name: c.productName,
+              brand: 'Imported',
+              model: c.productName,
+              category: 'PHONE_USED',
+              costPrice: 0,
+              branchId: branch.id,
+              status: 'SOLD_INSTALLMENT',
+            },
+          });
 
-        // Create payment schedule
-        if (c.payments && c.payments.length > 0) {
-          for (const p of c.payments) {
-            await this.prisma.payment.create({
-              data: {
+          // Generate on the tx client so the sequence read rolls back with the
+          // row if a later write fails.
+          const contractNumber = await generateContractNumber(tx);
+
+          const contract = await tx.contract.create({
+            data: {
+              contractNumber,
+              customerId: customer.id,
+              productId: product.id,
+              branchId: branch.id,
+              salespersonId: salesperson.id,
+              planType: 'STORE_DIRECT',
+              sellingPrice: c.sellingPrice,
+              downPayment: c.downPayment,
+              interestRate: c.interestRate,
+              totalMonths: c.totalMonths,
+              interestTotal,
+              financedAmount,
+              monthlyPayment,
+              status: c.status as 'ACTIVE' | 'OVERDUE' | 'COMPLETED',
+              createdAt: c.createdAt ? new Date(c.createdAt) : undefined,
+            },
+          });
+
+          // Create payment schedule
+          if (c.payments && c.payments.length > 0) {
+            for (const p of c.payments) {
+              await tx.payment.create({
+                data: {
+                  contractId: contract.id,
+                  installmentNo: p.installmentNo,
+                  dueDate: new Date(p.dueDate),
+                  amountDue: p.amountDue,
+                  amountPaid: p.amountPaid,
+                  status: p.status as 'PENDING' | 'PAID' | 'PARTIALLY_PAID' | 'OVERDUE',
+                  paidDate: p.paidDate ? new Date(p.paidDate) : null,
+                },
+              });
+            }
+          } else {
+            // Auto-generate payment schedule
+            const createdAt = c.createdAt ? new Date(c.createdAt) : new Date();
+            const payments: { contractId: string; installmentNo: number; dueDate: Date; amountDue: number; status: 'PENDING' }[] = [];
+            for (let m = 1; m <= c.totalMonths; m++) {
+              const dueDate = new Date(createdAt.getFullYear(), createdAt.getMonth() + m, 1);
+              payments.push({
                 contractId: contract.id,
-                installmentNo: p.installmentNo,
-                dueDate: new Date(p.dueDate),
-                amountDue: p.amountDue,
-                amountPaid: p.amountPaid,
-                status: p.status as 'PENDING' | 'PAID' | 'PARTIALLY_PAID' | 'OVERDUE',
-                paidDate: p.paidDate ? new Date(p.paidDate) : null,
-              },
-            });
+                installmentNo: m,
+                dueDate,
+                amountDue: monthlyPayment,
+                status: 'PENDING' as const,
+              });
+            }
+            await tx.payment.createMany({ data: payments });
           }
-        } else {
-          // Auto-generate payment schedule
-          const createdAt = c.createdAt ? new Date(c.createdAt) : new Date();
-          const payments: { contractId: string; installmentNo: number; dueDate: Date; amountDue: number; status: 'PENDING' }[] = [];
-          for (let m = 1; m <= c.totalMonths; m++) {
-            const dueDate = new Date(createdAt.getFullYear(), createdAt.getMonth() + m, 1);
-            payments.push({
-              contractId: contract.id,
-              installmentNo: m,
-              dueDate,
-              amountDue: monthlyPayment,
-              status: 'PENDING' as const,
-            });
-          }
-          await this.prisma.payment.createMany({ data: payments });
-        }
+        });
 
         result.success++;
       } catch (err) {

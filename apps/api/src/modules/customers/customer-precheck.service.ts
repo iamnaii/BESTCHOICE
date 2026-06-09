@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CustomerTierService } from './customer-tier.service';
+import { CustomersService } from './customers.service';
 import { TestModeService } from '../test-mode/test-mode.service';
 import { AuditService } from '../audit/audit.service';
 import type { CustomerTier } from './dto/tier.dto';
@@ -31,6 +32,7 @@ export class CustomerPreCheckService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tierService: CustomerTierService,
+    private readonly customersService: CustomersService,
     private readonly testMode: TestModeService,
     private readonly audit: AuditService,
   ) {}
@@ -159,43 +161,21 @@ export class CustomerPreCheckService {
       return cached.result;
     }
 
-    // Look up INCLUDING soft-deleted rows. `nationalId` has a @unique
-    // constraint (encrypted AES-256), so a soft-deleted ghost will block
-    // any create() with the same nationalId (P2002). Revive instead of
-    // crashing — the person behind the national ID is the same person.
-    const existing = await this.prisma.customer.findFirst({
-      where: { nationalId: input.nationalId },
-      select: { id: true, deletedAt: true },
+    // Find-or-create the placeholder customer via CustomersService — the SAME
+    // PII pipeline (nationalIdHash + encrypted columns) + party-master Contact
+    // link as the canonical create(). Previously this looked up + created on
+    // PLAINTEXT nationalId only (no hash/encrypted/Contact), so create()'s
+    // nationalIdHash + contactId dedup MISSED the pre-check row and the same
+    // person got a SECOND duplicate Customer when they completed registration
+    // (splitting contracts/payments across two identities). It also no longer
+    // depends on the plaintext national_id column (dropped in Phase 6). The
+    // helper revives a soft-deleted ghost and upgrades an ensureRole stub.
+    const placeholder = await this.customersService.findOrCreatePrecheckCustomer({
+      nationalId: input.nationalId,
+      phone: input.phone,
     });
-
-    let customer: { id: string };
-    let isNewCustomer = false;
-
-    if (existing?.deletedAt) {
-      await this.prisma.customer.update({
-        where: { id: existing.id },
-        data: {
-          deletedAt: null,
-          phone: input.phone,
-          creditCheckStatus: 'UNDER_REVIEW',
-        },
-      });
-      customer = { id: existing.id };
-      this.logger.log(`[pre-check] revived soft-deleted customer ${existing.id}`);
-    } else if (existing) {
-      customer = { id: existing.id };
-    } else {
-      customer = await this.prisma.customer.create({
-        data: {
-          nationalId: input.nationalId,
-          name: 'ลูกค้าใหม่ (Pre-check)',
-          phone: input.phone,
-          creditCheckStatus: 'UNDER_REVIEW',
-        },
-        select: { id: true },
-      });
-      isNewCustomer = true;
-    }
+    const customer = { id: placeholder.id };
+    const isNewCustomer = placeholder.isNew;
 
     const tierResp = await this.tierService.getCustomerTier(customer.id);
 

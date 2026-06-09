@@ -86,6 +86,25 @@ export async function readNumberFlag(
 }
 
 /**
+ * Read an integer SystemConfig flag with fallback + [min,max] clamp. Non-integer,
+ * out-of-range, empty, missing, or DB-error all yield the fallback. (No trim — matches
+ * the original Number(value) parse.)
+ */
+export async function readIntFlag(
+  prisma: SystemConfigReader,
+  key: string,
+  fallback: number,
+  min: number,
+  max: number,
+): Promise<number> {
+  const raw = await readRawValue(prisma, key);
+  if (!raw) return fallback; // matches original `!row?.value` (null AND '' → fallback)
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < min || n > max) return fallback;
+  return n;
+}
+
+/**
  * Read a string SystemConfig flag with fallback. Returns the raw string
  * value (no parsing). Empty string → fallback (treat "" as unset).
  *

@@ -4,6 +4,7 @@ import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { NotificationCategory } from '../../notifications/notification-category.enum';
+import { readBoolFlag } from '../../../utils/config.util';
 
 /**
  * D1.3.1.2 — Accounts-Payable due alerts.
@@ -55,7 +56,7 @@ export class ApDueAlertsCron {
   async tick(): Promise<{ enabled: boolean; alerted: number; skipped: number; failed: number }> {
     try {
       // Default OFF until ExpenseDocument has a real dueDate column (currently uses documentDate proxy)
-      const enabled = await this.readBoolFlag('ap_due_alerts_enabled', false);
+      const enabled = await readBoolFlag(this.prisma, 'ap_due_alerts_enabled', false);
       if (!enabled) {
         this.logger.debug('[D1.3.1.2] AP-due alerts disabled — skipping');
         return { enabled: false, alerted: 0, skipped: 0, failed: 0 };
@@ -176,22 +177,11 @@ export class ApDueAlertsCron {
     }
   }
 
-  private async readBoolFlag(key: string, fallback: boolean): Promise<boolean> {
-    try {
-      const row = await this.prisma.systemConfig.findFirst({
-        where: { key, deletedAt: null },
-        select: { value: true },
-      });
-      if (!row?.value) return fallback;
-      const v = row.value.trim().toLowerCase();
-      if (v === 'true' || v === '1') return true;
-      if (v === 'false' || v === '0') return false;
-      return fallback;
-    } catch {
-      return fallback;
-    }
-  }
-
+  /**
+   * Intentionally NOT consolidated onto config.util.readNumberFlag — this clamps
+   * to n >= 0 (due-alert window of 0 = alert immediately is valid). config.util's
+   * variant allows negatives. Do not dedup without preserving this clamp.
+   */
   private async readNumberFlag(key: string, fallback: number): Promise<number> {
     try {
       const row = await this.prisma.systemConfig.findFirst({

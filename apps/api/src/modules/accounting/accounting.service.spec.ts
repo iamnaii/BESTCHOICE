@@ -1386,6 +1386,58 @@ describe('AccountingService', () => {
       const r = await service.getAgingReport(agingAsOf);
       expect(r.customers.map((c) => c.customerId)).toEqual(['cy', 'cx']);
     });
+
+    // ─── Wave-4 P0 characterization: pin CURRENT query shape + Number() money coercion ──
+
+    it('queries payment.findMany with dueDate { lt: asOf } and the contract.customer include (excludes not-yet-due)', async () => {
+      const asOf = new Date('2026-05-19');
+      await service.getAgingReport(asOf);
+      const call = prisma.payment.findMany.mock.calls.at(-1)[0];
+      // strict less-than: a payment due exactly at (or after) asOf is excluded by the query
+      expect(call.where.dueDate).toEqual({ lt: asOf });
+      expect(call.where.status).toEqual({ in: ['PENDING', 'OVERDUE'] });
+      expect(call.where.deletedAt).toBeNull();
+      // exact set (toEqual not toMatchObject) — catches an accidental extra select field during extraction
+      expect(call.include.contract.include.customer.select).toEqual({
+        id: true,
+        name: true,
+        phone: true,
+      });
+    });
+
+    it('coerces Decimal amountDue/amountPaid to plain JS numbers via Number() (remaining = Number(due) - Number(paid))', async () => {
+      prisma.payment.findMany.mockResolvedValueOnce([
+        mkOverdue('p', daysAgo(45), 1234.56, 234.56, { id: 'c1', name: 'A' }),
+      ]);
+      const r = await service.getAgingReport(agingAsOf);
+      const expected = Number(new Prisma.Decimal(1234.56)) - Number(new Prisma.Decimal(234.56));
+      // plain JS number, NOT a Decimal — pins current Number() coercion behavior
+      expect(typeof r.summary.bucket_31_60).toBe('number');
+      expect(typeof r.customers[0].totalOverdue).toBe('number');
+      expect(r.summary.bucket_31_60).toBe(expected);
+      expect(r.customers[0].totalOverdue).toBe(expected);
+    });
+
+    it('includes a payment when Number(amountDue) - Number(amountPaid) is slightly positive (remaining > 0)', async () => {
+      prisma.payment.findMany.mockResolvedValueOnce([
+        // remaining = 1000.01 - 1000.00 = 0.01 > 0 → included
+        mkOverdue('pos', daysAgo(45), 1000.01, 1000, { id: 'cpos', name: 'Pos' }),
+        // remaining = 1000.00 - 1000.00 = 0 → skipped via remaining <= 0
+        mkOverdue('zero', daysAgo(45), 1000, 1000, { id: 'czero', name: 'Zero' }),
+      ]);
+      const r = await service.getAgingReport(agingAsOf);
+      expect(r.customers).toHaveLength(1);
+      expect(r.customers[0].customerId).toBe('cpos');
+      expect(r.customers[0].totalOverdue).toBeCloseTo(0.01, 2);
+    });
+
+    it('maps customer.phone null to empty string (phone ?? "")', async () => {
+      prisma.payment.findMany.mockResolvedValueOnce([
+        mkOverdue('p', daysAgo(45), 1000, 0, { id: 'cnull', name: 'NoPhone', phone: null }),
+      ]);
+      const r = await service.getAgingReport(agingAsOf);
+      expect(r.customers[0].phone).toBe('');
+    });
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1527,6 +1579,39 @@ describe('AccountingService', () => {
       expect(result.totalBadDebt).toBe(0);
       expect(result.entries[0].amount).toBe(0);
     });
+
+    // ─── Wave-4 P0 characterization: pin Number() debit coercion + null reference passthrough ──
+
+    it('coerces a Decimal debit to a plain JS number via Number() (totalBadDebt and entries[].amount === 5000)', async () => {
+      prisma.journalLine.findMany.mockResolvedValueOnce([
+        { ...makeJournalLine(0), debit: new Prisma.Decimal('5000.00') },
+      ]);
+      const result = await service.getBadDebtReport(periodStart, periodEnd);
+      // plain JS number, NOT a Decimal — pins current Number() coercion behavior
+      expect(typeof result.totalBadDebt).toBe('number');
+      expect(typeof result.entries[0].amount).toBe('number');
+      expect(result.totalBadDebt).toBe(5000);
+      expect(result.entries[0].amount).toBe(5000);
+    });
+
+    it('passes through null referenceType/referenceId as null sourceType/sourceId (no crash)', async () => {
+      prisma.journalLine.findMany.mockResolvedValueOnce([
+        {
+          ...makeJournalLine(1000),
+          journalEntry: {
+            id: 'je-noref',
+            entryNumber: 'JP5-20260119-0001',
+            description: 'no-ref',
+            postedAt: new Date('2026-01-19'),
+            referenceType: null,
+            referenceId: null,
+          },
+        },
+      ]);
+      const result = await service.getBadDebtReport(periodStart, periodEnd);
+      expect(result.entries[0].sourceType).toBeNull();
+      expect(result.entries[0].sourceId).toBeNull();
+    });
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1642,6 +1727,59 @@ describe('AccountingService', () => {
       expect(result.data).toHaveLength(1);
       expect(result.data[0].lines).toHaveLength(1);
       expect(result.data[0].lines[0].accountCode).toBe('11-2101');
+    });
+
+    // ─── Wave-4 P0 characterization: boundary inclusivity (gte/lte) + Decimal pass-through ──
+
+    it('includes entries at exactly periodStart and exactly periodEnd (postedAt { gte, lte } inclusive both ends)', async () => {
+      const start = new Date('2026-05-01T00:00:00.000Z');
+      const end = new Date('2026-05-31T23:59:59.999Z');
+      // both boundary rows are returned by the mock — the method passes them straight through
+      prisma.journalEntry.findMany.mockResolvedValueOnce([
+        { id: 'at-start', postedAt: start, lines: [] },
+        { id: 'at-end', postedAt: end, lines: [] },
+      ]);
+      prisma.journalEntry.count.mockResolvedValueOnce(2);
+      const result = await service.getGeneralJournal(start, end);
+      // where clause is inclusive on both ends
+      const call = prisma.journalEntry.findMany.mock.calls.at(-1)[0];
+      expect(call.where.postedAt).toEqual({ gte: start, lte: end });
+      // the same inclusive `where` is reused for the count query
+      const countCall = prisma.journalEntry.count.mock.calls.at(-1)[0];
+      expect(countCall.where.postedAt).toEqual({ gte: start, lte: end });
+      expect(result.data.map((e: { id: string }) => e.id)).toEqual(['at-start', 'at-end']);
+      expect(result.total).toBe(2);
+    });
+
+    it('returns the empty shape { data: [], total: 0, page, limit } echoing page=2 / limit=10', async () => {
+      const start = new Date('2026-05-01');
+      const end = new Date('2026-05-31');
+      prisma.journalEntry.findMany.mockResolvedValueOnce([]);
+      prisma.journalEntry.count.mockResolvedValueOnce(0);
+      const result = await service.getGeneralJournal(start, end, { page: 2, limit: 10 });
+      expect(result).toEqual({ data: [], total: 0, page: 2, limit: 10 });
+    });
+
+    it('passes line debit/credit through UNCHANGED as Decimal (no Number() coercion)', async () => {
+      const start = new Date('2026-05-01');
+      const end = new Date('2026-05-31');
+      const debit = new Prisma.Decimal('1234.56');
+      const credit = new Prisma.Decimal('0.00');
+      prisma.journalEntry.findMany.mockResolvedValueOnce([
+        {
+          id: 'je-dec',
+          postedAt: new Date('2026-05-10'),
+          lines: [{ accountCode: '11-2101', debit, credit, description: 'x' }],
+        },
+      ]);
+      prisma.journalEntry.count.mockResolvedValueOnce(1);
+      const result = await service.getGeneralJournal(start, end);
+      const line = result.data[0].lines[0];
+      // the returned row is the prisma row as-is — debit stays the exact Decimal instance
+      expect(line.debit).toBe(debit);
+      expect(Prisma.Decimal.isDecimal(line.debit)).toBe(true);
+      expect(line.debit.toString()).toBe('1234.56');
+      expect(line.credit).toBe(credit);
     });
   });
 

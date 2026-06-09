@@ -32,9 +32,9 @@ jest.mock('@sentry/nestjs', () => ({
  *        - exact-cover (3000 over [1000,1000,1000]) → all PAID, remaining 0
  *        - underflow (1500 over [1000,1000]) → inst1 PAID, inst2 PARTIALLY_PAID
  *          amountPaid 500, paidDate NULL
- *        - OVERPAY (2500 over [1000,1000]) → both PAID, 500 surplus NOT dropped:
- *          fires Sentry 'paysolutions-overpay-surplus' (PR-843/I2 Phase 3 3b
- *          defect-4 fix — surplus alerted, never silently lost)
+ *        - OVERPAY (2500 over [1000,1000]) → both PAID, 500 surplus parked as
+ *          customer advance: JE Dr 11-1202 / Cr 21-1103 + advanceBalance↑ +
+ *          OVERPAY_ADVANCE_RECORDED audit (PR-843/I2 #3 owner decision)
  *        - lateFeeWaived=true → owed math uses lateFee 0
  *   2. Contract-close decision (1188-1226)
  *        - exactly 1 installment closed → status='COMPLETED', NO creditBalance key
@@ -75,6 +75,7 @@ describe('PaySolutionsService.handlePaymentCallback — FIFO money + close (char
   let products: { transferOwnership: jest.Mock };
   let template: { execute: jest.Mock };
   let vat60Reversal: { execute: jest.Mock };
+  let journalAuto: { createAndPost: jest.Mock; createPaymentJournal: jest.Mock };
   let sendEarlyPayoffSpy: jest.SpyInstance;
   let sendPaymentSuccessSpy: jest.SpyInstance;
 
@@ -183,6 +184,9 @@ describe('PaySolutionsService.handlePaymentCallback — FIFO money + close (char
           return Promise.resolve(instSchedResolver(instNo));
         }),
       },
+      auditLog: {
+        create: jest.fn().mockResolvedValue({}),
+      },
     };
     return txMock;
   }
@@ -204,9 +208,10 @@ describe('PaySolutionsService.handlePaymentCallback — FIFO money + close (char
       get: jest.fn().mockImplementation((_k: string, def?: string) => def ?? ''),
     } as Partial<ConfigService>;
     const saleAdapter = {} as Partial<OnlineOrderSaleAdapter>;
-    const journalAuto = {
+    journalAuto = {
+      createAndPost: jest.fn().mockResolvedValue({ id: 'je-surplus', entryNumber: 'JE-S-001' }),
       createPaymentJournal: jest.fn().mockResolvedValue('je-1'),
-    } as Partial<JournalAutoService>;
+    };
 
     const mod: TestingModule = await Test.createTestingModule({
       providers: [
@@ -217,7 +222,7 @@ describe('PaySolutionsService.handlePaymentCallback — FIFO money + close (char
         { provide: IntegrationConfigService, useValue: integrationConfig },
         { provide: OnlineOrderSaleAdapter, useValue: saleAdapter },
         { provide: ProductsService, useValue: products },
-        { provide: JournalAutoService, useValue: journalAuto },
+        { provide: JournalAutoService, useValue: journalAuto as Partial<JournalAutoService> },
         { provide: PaymentReceiptTemplate, useValue: template },
         { provide: Vat60dayReversalTemplate, useValue: vat60Reversal },
         { provide: PaymentsService, useValue: { recordPayment: jest.fn() } },
@@ -353,7 +358,7 @@ describe('PaySolutionsService.handlePaymentCallback — FIFO money + close (char
       expect('paidAt' in c2.data).toBe(false);
     });
 
-    it('overpay: paidAmount=2500 over [1000,1000] → both PAID, 500 surplus fires Sentry alert (defect-4 fix)', async () => {
+    it('overpay: paidAmount=2500 over [1000,1000] → both PAID, 500 surplus parked as advance JE Dr 11-1202 / Cr 21-1103 + advanceBalance↑ + audit (owner decision PR-843/I2 #3)', async () => {
       const unpaid = [makeRow(1), makeRow(2)];
       const tx = buildTx({ unpaid, stillUnpaid: 0, contractProductId: null });
       buildPrisma({ link: makeLink({ amount: new Prisma.Decimal(2500) }), tx });
@@ -369,12 +374,8 @@ describe('PaySolutionsService.handlePaymentCallback — FIFO money + close (char
 
       // Only two installments exist — both fully paid at 1000.
       expect(tx.payment.update).toHaveBeenCalledTimes(2);
-      expect(tx.payment.update.mock.calls[0][0].data.amountPaid.toString()).toBe(
-        '1000',
-      );
-      expect(tx.payment.update.mock.calls[1][0].data.amountPaid.toString()).toBe(
-        '1000',
-      );
+      expect(tx.payment.update.mock.calls[0][0].data.amountPaid.toString()).toBe('1000');
+      expect(tx.payment.update.mock.calls[1][0].data.amountPaid.toString()).toBe('1000');
       // Each installment receipt clears only its own owed (delta=1000) — the
       // primitive NEVER over-clears even when cash is left over (the surplus is
       // not pushed into any installment JE).
@@ -386,18 +387,51 @@ describe('PaySolutionsService.handlePaymentCallback — FIFO money + close (char
       const closeArg = tx.contract.update.mock.calls[0][0];
       expect(closeArg.data.status).toBe('EARLY_PAYOFF');
       expect(closeArg.data.creditBalance).toBe(0);
-      // PR-843/I2 Phase 3 3b (defect-4): the 500 surplus is NOT silently dropped —
-      // it raises a Sentry warning so ops reconcile it. (No auto-park as advance —
-      // that needs accountant sign-off.)
-      const surplusCall = (Sentry.captureMessage as jest.Mock).mock.calls.find(
-        (c) => c[0] === 'paysolutions-overpay-surplus',
+
+      // OWNER POLICY (PR-843/I2 #3): the 500 surplus is parked as a customer advance.
+      // journalAutoService.createAndPost called once with the balanced surplus JE.
+      expect(journalAuto.createAndPost).toHaveBeenCalledTimes(1);
+      const [jeInput, jeTx] = journalAuto.createAndPost.mock.calls[0];
+      expect(jeTx).toBe(tx); // inside the serializable tx
+      expect(jeInput.reference).toBe(`${refno}-surplus`);
+      expect(jeInput.metadata.tag).toBe('paysolutions-surplus-advance');
+      expect(jeInput.lines).toHaveLength(2);
+      const drLine = jeInput.lines.find((l: { accountCode: string }) => l.accountCode === '11-1202');
+      const crLine = jeInput.lines.find((l: { accountCode: string }) => l.accountCode === '21-1103');
+      expect(drLine).toBeDefined();
+      expect(crLine).toBeDefined();
+      // JE is balanced: Dr 11-1202 == Cr 21-1103 == 500 surplus.
+      expect(drLine.dr.toString()).toBe('500');
+      expect(drLine.cr.toString()).toBe('0');
+      expect(crLine.cr.toString()).toBe('500');
+      expect(crLine.dr.toString()).toBe('0');
+
+      // contract.advanceBalance incremented by the surplus (second call to contract.update,
+      // after the EARLY_PAYOFF status close above).
+      const advanceUpdateCall = tx.contract.update.mock.calls.find(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (call: any[]) => call[0].data.advanceBalance !== undefined,
       );
-      expect(surplusCall).toBeDefined();
-      expect(surplusCall![1].level).toBe('warning');
-      expect(surplusCall![1].tags.critical).toBe('paysolutions-overpay-surplus');
-      expect(surplusCall![1].tags.refno).toBe(refno);
-      expect(surplusCall![1].extra.surplus).toBe('500');
-      expect(surplusCall![1].extra.paidAmount).toBe('2500');
+      expect(advanceUpdateCall).toBeDefined();
+      expect(advanceUpdateCall![0].data.advanceBalance.increment.toString()).toBe('500');
+      expect(advanceUpdateCall![0].where.id).toBe(contractId);
+
+      // OVERPAY_ADVANCE_RECORDED audit log written inside the tx.
+      expect(tx.auditLog.create).toHaveBeenCalledTimes(1);
+      const auditArg = tx.auditLog.create.mock.calls[0][0].data;
+      expect(auditArg.action).toBe('OVERPAY_ADVANCE_RECORDED');
+      expect(auditArg.entity).toBe('contract');
+      expect(auditArg.entityId).toBe(contractId);
+      expect(auditArg.newValue.source).toBe('PAYSOLUTIONS_SURPLUS');
+      expect(auditArg.newValue.refno).toBe(refno);
+      expect(auditArg.newValue.surplus).toBe('500');
+      expect(auditArg.newValue.paidAmount).toBe('2500');
+
+      // No paysolutions-overpay-surplus Sentry warning (parking replaced alerting).
+      const sentryOverpayCalls = (Sentry.captureMessage as jest.Mock).mock.calls.filter(
+        (c: unknown[]) => c[0] === 'paysolutions-overpay-surplus',
+      );
+      expect(sentryOverpayCalls).toHaveLength(0);
     });
 
     it('lateFeeWaived=true: owed uses lateFee 0 — a 1000 installment with a waived 200 lateFee is fully PAID by 1000', async () => {

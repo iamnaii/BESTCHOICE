@@ -1,5 +1,6 @@
 /**
- * REAL-DB e2e — PR-843/I2 Phase 3 3b defect-4: an OVERPAYING PaySolutions webhook.
+ * REAL-DB e2e — PR-843/I2 Phase 3 3b defect-4 → owner decision #3:
+ * an OVERPAYING PaySolutions webhook parks the surplus as a customer advance.
  *
  * THE BEHAVIOUR UNDER TEST
  * ------------------------
@@ -7,24 +8,23 @@
  * paid with 2015.83 — 500 surplus). Pre-3b the FIFO loop covered the installment and
  * SILENTLY DROPPED the 500 (no JE, no alert — defect 4).
  *
- * POST-3b:
+ * OWNER POLICY (PR-843/I2 #3):
  *   1. The installment is NOT over-cleared — the primitive clears only its own owed,
  *      so Σ(Cr 11-2103) for the installment == installmentTotal (1515.83), never 2015.83.
- *   2. The leftover 500 is NOT silently dropped — the webhook fires a Sentry warning
- *      `paysolutions-overpay-surplus` (tags.critical + tags.refno, extra.surplus) so ops
- *      reconcile it. It is NOT auto-parked as a 21-1103 advance (needs accountant sign-off).
+ *   2. The leftover 500 is parked as a customer advance:
+ *      - A balanced JE `Dr 11-1202 / Cr 21-1103` for the surplus (500) is posted.
+ *      - `contract.advanceBalance` increases by 500.
+ *      - An `OVERPAY_ADVANCE_RECORDED` audit log is written.
  *
- * Sentry is mocked at the module boundary so the surplus call is asserted directly
- * (same pattern as the unit specs). The rest of the harness mirrors
- * paysolutions-cross-path.e2e-spec.ts (real prisma, HAS_DB gate, scoped cleanup,
- * audit_logs never deleted, real money collaborators + harmless stubs).
+ * The rest of the harness mirrors paysolutions-cross-path.e2e-spec.ts
+ * (real prisma, HAS_DB gate, scoped cleanup, audit_logs never deleted,
+ * real money collaborators + harmless stubs).
  *
  * To run locally:
  *   export DATABASE_URL="postgresql://iamnaii@localhost:5432/bestchoice"
  *   cd apps/api && npm run test:e2e -- paysolutions-overpay-surplus
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { PaySolutionsService } from '../src/modules/paysolutions/paysolutions.service';
 import { ProductsService } from '../src/modules/products/products.service';
@@ -35,8 +35,7 @@ import { ContractActivation1ATemplate } from '../src/modules/journal/cpa-templat
 import { seedFinanceCoa } from '../prisma/seed-coa-finance';
 import { seedStandard17k12m } from '../src/modules/journal/__tests__/scenario-helpers';
 
-// Mock the Sentry transport so we can assert the surplus alert WITHOUT a real DSN.
-// captureException is kept as a no-op (the success path does not call it).
+// Mock the Sentry transport (orphan + other paths still call captureMessage/Exception).
 jest.mock('@sentry/nestjs', () => ({
   captureException: jest.fn(),
   captureMessage: jest.fn(),
@@ -46,7 +45,7 @@ const HAS_DB = !!process.env.DATABASE_URL;
 const describeOrSkip = HAS_DB ? describe : describe.skip;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-describeOrSkip('PaySolutions webhook — overpay surplus (real DB e2e, PR-843/I2 3b defect-4)', () => {
+describeOrSkip('PaySolutions webhook — overpay surplus → park as advance (real DB e2e, PR-843/I2 #3)', () => {
   let prisma: PrismaService;
   let paysolutions: PaySolutionsService;
 
@@ -177,7 +176,8 @@ describeOrSkip('PaySolutions webhook — overpay surplus (real DB e2e, PR-843/I2
     }
   }, 120_000);
 
-  const sumCredits = async (accountCode: string): Promise<number> => {
+  /** Sum credits for the installment receipt JEs only (tag=receipt or 2B, scoped to instId). */
+  const sumInstallmentCredits = async (accountCode: string): Promise<number> => {
     const entries = await prisma.journalEntry.findMany({
       where: {
         AND: [
@@ -201,45 +201,78 @@ describeOrSkip('PaySolutions webhook — overpay surplus (real DB e2e, PR-843/I2
     return Math.round(sum * 100) / 100;
   };
 
-  it('overpay (2015.83 over a 1515.83 installment): installment NOT over-cleared + Sentry surplus alert fires', async () => {
-    (Sentry.captureMessage as jest.Mock).mockClear();
-
-    const link = await prisma.paymentLink.create({
-      data: {
-        token: 'e2e-overpay-surplus-1',
-        contractId,
-        paymentId,
-        amount: OVERPAY,
-        status: 'ACTIVE',
-        expiresAt: new Date(Date.now() + DAY_MS),
+  /** Sum credits for the surplus-advance JE (tag=paysolutions-surplus-advance, scoped to contractId). */
+  const sumSurplusAdvanceCredits = async (accountCode: string): Promise<number> => {
+    const entries = await prisma.journalEntry.findMany({
+      where: {
+        AND: [
+          { metadata: { path: ['tag'], equals: 'paysolutions-surplus-advance' } } as any,
+          { metadata: { path: ['contractId'], equals: contractId } } as any,
+        ],
       },
+      include: { lines: true },
     });
+    let sum = 0;
+    for (const e of entries) {
+      for (const l of e.lines) {
+        if (l.accountCode === accountCode) sum += Number(l.credit);
+      }
+    }
+    return Math.round(sum * 100) / 100;
+  };
 
-    await paysolutions.handlePaymentCallback({
-      refno: link.token,
-      result_code: '00',
-      order_no: 'overpay-o-1',
-      transaction_id: 'overpay-tx-1',
-      total: String(OVERPAY),
-    });
+  it(
+    'overpay (2015.83 over a 1515.83 installment): installment NOT over-cleared + surplus parked as Cr 21-1103 advance',
+    async () => {
+      const link = await prisma.paymentLink.create({
+        data: {
+          token: 'e2e-overpay-surplus-1',
+          contractId,
+          paymentId,
+          amount: OVERPAY,
+          status: 'ACTIVE',
+          expiresAt: new Date(Date.now() + DAY_MS),
+        },
+      });
 
-    // The installment is fully PAID but NOT over-cleared: Σ(Cr 11-2103) == installmentTotal,
-    // NOT the 2015.83 the customer sent. The 500 surplus never touched the installment JE.
-    const fresh = await prisma.payment.findUniqueOrThrow({ where: { id: paymentId } });
-    expect(fresh.status).toBe('PAID');
-    const cr11 = await sumCredits('11-2103');
-    expect(cr11).toBeCloseTo(INSTALLMENT_TOTAL, 2);
+      // Record advanceBalance before the webhook fires so we can measure the delta.
+      const contractBefore = await prisma.contract.findUniqueOrThrow({
+        where: { id: contractId },
+        select: { advanceBalance: true },
+      });
 
-    // The surplus is NOT silently dropped — a Sentry warning is raised so ops reconcile.
-    const surplusCall = (Sentry.captureMessage as jest.Mock).mock.calls.find(
-      (call) => call[0] === 'paysolutions-overpay-surplus',
-    );
-    expect(surplusCall).toBeDefined();
-    expect(surplusCall![1].level).toBe('warning');
-    expect(surplusCall![1].tags.critical).toBe('paysolutions-overpay-surplus');
-    expect(surplusCall![1].tags.refno).toBe(link.token);
-    expect(Number(surplusCall![1].extra.surplus)).toBeCloseTo(SURPLUS, 2);
-    expect(Number(surplusCall![1].extra.paidAmount)).toBeCloseTo(OVERPAY, 2);
-    expect(surplusCall![1].extra.contractId).toBe(contractId);
-  }, 120_000);
+      await paysolutions.handlePaymentCallback({
+        refno: link.token,
+        result_code: '00',
+        order_no: 'overpay-o-1',
+        transaction_id: 'overpay-tx-1',
+        total: String(OVERPAY),
+      });
+
+      // (a) The installment is fully PAID but NOT over-cleared:
+      //     Σ(Cr 11-2103) for the receipt JEs == installmentTotal (1515.83),
+      //     never 2015.83. The 500 surplus never touched the installment JE.
+      const fresh = await prisma.payment.findUniqueOrThrow({ where: { id: paymentId } });
+      expect(fresh.status).toBe('PAID');
+      const cr2103 = await sumInstallmentCredits('11-2103');
+      expect(cr2103).toBeCloseTo(INSTALLMENT_TOTAL, 2);
+
+      // (b) The surplus (500) is parked as a customer advance:
+      //     - A balanced JE `Dr 11-1202 / Cr 21-1103` for 500 was posted.
+      const cr21_1103 = await sumSurplusAdvanceCredits('21-1103');
+      expect(cr21_1103).toBeCloseTo(SURPLUS, 2);
+
+      //     - contract.advanceBalance increased by exactly the surplus.
+      const contractAfter = await prisma.contract.findUniqueOrThrow({
+        where: { id: contractId },
+        select: { advanceBalance: true },
+      });
+      const advanceDelta = Number(contractAfter.advanceBalance) - Number(contractBefore.advanceBalance);
+      expect(advanceDelta).toBeCloseTo(SURPLUS, 2);
+
+      // No paysolutions-overpay-surplus Sentry warning (parking is now expected behaviour).
+      // We do NOT assert Sentry.captureMessage here — parking replaced alerting.
+    },
+    120_000,
+  );
 });

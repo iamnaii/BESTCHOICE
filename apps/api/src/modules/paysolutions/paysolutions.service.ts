@@ -1277,20 +1277,61 @@ export class PaySolutionsService {
             }
           }
 
-          // PR-843/I2 Phase 3 3b (defect 4): cash left over after every unpaid
-          // installment is covered. Do NOT silently drop it (the pre-3b leak) and
-          // do NOT auto-park it as a 21-1103 advance (that needs accountant
-          // sign-off). Alert ops so they reconcile the surplus manually.
+          // OWNER POLICY (PR-843/I2 #3): park PaySolutions over-collection as a customer
+          // advance (Cr 21-1103) instead of dropping/alerting only. The surplus cash had
+          // no Dr yet (the per-installment receipts only Dr'd their payThis), so this JE
+          // both books the remaining cash and parks the advance.
           if (remaining.gt(0)) {
-            Sentry.captureMessage('paysolutions-overpay-surplus', {
-              level: 'warning',
-              tags: { critical: 'paysolutions-overpay-surplus', refno },
-              extra: {
-                contractId: paymentLink.contractId,
-                surplus: remaining.toString(),
-                paidAmount: paidAmount.toString(),
+            await this.journalAutoService.createAndPost(
+              {
+                description: `เงินรับล่วงหน้า (รับเกินผ่าน Pay Solutions) — refno ${refno}`,
+                reference: `${refno}-surplus`,
+                metadata: {
+                  tag: 'paysolutions-surplus-advance',
+                  contractId: paymentLink.contractId,
+                  refno,
+                  surplus: remaining.toString(),
+                },
+                lines: [
+                  {
+                    accountCode: '11-1202',
+                    dr: remaining,
+                    cr: new Decimal(0),
+                    description: 'เงินรับเกิน',
+                  },
+                  {
+                    accountCode: '21-1103',
+                    dr: new Decimal(0),
+                    cr: remaining,
+                    description: 'เงินรับล่วงหน้า',
+                  },
+                ],
               },
+              tx,
+            );
+            await tx.contract.update({
+              where: { id: paymentLink.contractId! },
+              data: { advanceBalance: { increment: remaining } },
             });
+            if (systemUserId) {
+              await tx.auditLog.create({
+                data: {
+                  action: 'OVERPAY_ADVANCE_RECORDED',
+                  entity: 'contract',
+                  entityId: paymentLink.contractId!,
+                  userId: systemUserId,
+                  newValue: {
+                    source: 'PAYSOLUTIONS_SURPLUS',
+                    refno,
+                    surplus: remaining.toString(),
+                    paidAmount: paidAmount.toString(),
+                  },
+                },
+              });
+            }
+            this.logger.log(
+              `PaySolutions surplus ${remaining.toString()} parked as advance (21-1103) for contract ${paymentLink.contractId} refno=${refno}`,
+            );
           }
 
           return {

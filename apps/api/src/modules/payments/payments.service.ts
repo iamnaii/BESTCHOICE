@@ -1139,10 +1139,16 @@ export class PaymentsService {
       for (const payment of unpaid) {
         if (remaining.lte(0)) break;
 
-        const amountDue = dRound(dSub(dAdd(payment.amountDue, payment.lateFee), payment.amountPaid));
+        // Effective late fee owed on this installment, honouring lateFeeWaived→0
+        // (parity with autoAllocate). The waive flow already zeroes payment.lateFee
+        // when it sets lateFeeWaived=true, so this is defence-in-depth — the owed
+        // computation below is numerically unchanged. Forwarded to the primitive
+        // so the Cr 42-1103 income leg matches the principal owed.
+        const lateFeeOwed = payment.lateFeeWaived ? d(0) : d(payment.lateFee);
+        const amountDue = dRound(dSub(dAdd(payment.amountDue, lateFeeOwed), payment.amountPaid));
         const payAmount = dRound(Prisma.Decimal.min(remaining, amountDue));
         const totalPaid = dRound(dAdd(payment.amountPaid, payAmount));
-        const isPaidInFull = dGte(totalPaid, dRound(dAdd(payment.amountDue, payment.lateFee)));
+        const isPaidInFull = dGte(totalPaid, dRound(dAdd(payment.amountDue, lateFeeOwed)));
 
         const updated = await tx.payment.update({
           where: { id: payment.id },
@@ -1179,46 +1185,65 @@ export class PaymentsService {
 
         if (isPaidInFull) {
           await this.checkContractCompletion(contractId, tx);
+        }
 
-          // Phase A.4b: replaced createCreditAllocationJournal (old stub).
-          // Dr 21-5101 Customer Credit / Cr 11-2103 ลูกหนี้ค้างชำระ —
-          // clears the customer credit balance against the outstanding receivable.
-          // No Dr Cash because the cash was already recorded when the overpayment
-          // was originally received (audit finding F-1-004).
-          //
-          // C4 fix: use `payAmount` (the delta applied in THIS allocation) not
-          // `updated.amountPaid` (cumulative). The previous code over-Dr'd
-          // 21-5101 by the prior partial-paid portion, driving the customer-
-          // credit account to negative when an installment had been partially
-          // paid before the credit balance was applied.
-          const creditZero = new Prisma.Decimal(0);
-          const creditPayAmount = new Prisma.Decimal(payAmount.toString());
-          await this.journalAutoService.createAndPost(
-            {
-              description: `ใช้เครดิตชำระงวด #${updated.installmentNo} — สัญญา ${contract.contractNumber}`,
-              reference: updated.id,
-              metadata: {
-                tag: 'credit-allocation',
+        // PR-843/I2 Phase 3 3d — post the credit-application receipt via the
+        // PaymentReceiptTemplate primitive (replaces the custom inline
+        // Dr 21-5101 / Cr 11-2103 JE that posted ONLY on full payment).
+        //   - debitAccountCode = '21-5101' (customer credit, NOT cash) — the cash
+        //     was already booked when the overpayment was originally received
+        //     (audit finding F-1-004); this only reclasses credit → receivable.
+        //   - delta = payAmount (the DELTA applied THIS allocation). The primitive
+        //     reconstructs prior cleared (incl. legacy 2B partials + prior receipts),
+        //     so a completion of a prior partial clears ONLY the remaining delta —
+        //     same C4 delta-vs-cumulative fix the old code carried, now centralised.
+        //   - lateFee = lateFeeOwed → now splits to Cr 42-1103 (was implicitly
+        //     lumped into the Cr 11-2103 clear). BEHAVIOUR CHANGE flagged for
+        //     accountant sign-off: a credit-funded late fee now books as 42-1103
+        //     income; the Dr 21-5101 total (= payAmount) is unchanged.
+        //   - isFinalReceipt = isPaidInFull (enables the ≤1฿ underpay close on the
+        //     completing receipt; partials stay open).
+        // MOVED OUTSIDE the isPaidInFull guard so PARTIAL credit applications are
+        // now LEDGERED too (was: full-only). Runs inside the same serializable tx
+        // so a JE failure rolls back the Payment.update — no orphan ledger rows.
+        // tag flips 'credit-allocation'→'receipt' (the primitive's tag): no
+        // production consumer keys on 'credit-allocation' (void/refund/data-audit
+        // find this JE via metadata.paymentId), and reconstructPrior now counts a
+        // credit application as prior-cleared for any subsequent receipt.
+        if (payAmount.gt(0)) {
+          const instSched = await tx.installmentSchedule.findUnique({
+            where: {
+              contractId_installmentNo: {
                 contractId: contract.id,
+                installmentNo: updated.installmentNo,
+              },
+            },
+            select: { id: true, vat60dayJournalEntryId: true },
+          });
+          if (instSched) {
+            await this.paymentReceiptTemplate.execute(
+              {
+                installmentScheduleId: instSched.id,
+                delta: new Prisma.Decimal(payAmount.toString()),
+                debitAccountCode: '21-5101',
+                lateFee: lateFeeOwed.gt(0) ? lateFeeOwed : undefined,
+                isFinalReceipt: isPaidInFull,
                 paymentId: updated.id,
               },
-              lines: [
-                {
-                  accountCode: '21-5101',
-                  dr: creditPayAmount,
-                  cr: creditZero,
-                  description: 'ใช้เงินเกินของลูกค้า (Customer Credit)',
-                },
-                {
-                  accountCode: '11-2103',
-                  dr: creditZero,
-                  cr: creditPayAmount,
-                  description: 'ล้างลูกหนี้ค้างชำระ',
-                },
-              ],
-            },
-            tx,
-          );
+              tx,
+            );
+
+            // VAT-60-day reversal (MANDATORY parity with the old 2B/receipt path).
+            // When the installment carries a 60-day mandatory VAT JE, the primitive
+            // does not reverse it; trigger it here inside the same tx.
+            if (instSched.vat60dayJournalEntryId) {
+              await this.vat60Reversal.execute(instSched.id, tx);
+            }
+          } else {
+            this.logger.warn(
+              `PaymentReceipt skipped (credit) — no InstallmentSchedule for contractId=${contract.id} installmentNo=${updated.installmentNo}`,
+            );
+          }
         }
       }
 

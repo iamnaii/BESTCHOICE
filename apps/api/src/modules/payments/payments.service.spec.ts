@@ -1196,8 +1196,15 @@ describe('PaymentsService', () => {
   // C4 regression: applyCreditBalance had been passing `updated.amountPaid`
   // (cumulative) to the JE instead of the delta — over-Dr 21-5101 and
   // over-Cr 11-2103 when the installment had a prior partial payment.
+  //
+  // PR-843/I2 Phase 3 3d: the credit JE is now posted via the
+  // PaymentReceiptTemplate primitive (Dr 21-5101 delta-clear). The C4 invariant
+  // is preserved by passing `delta = payAmount` (the THIS-allocation delta), so
+  // this test now asserts the primitive's `delta` arg instead of the old custom
+  // createAndPost line. The primitive itself reconstructs the prior 500 partial
+  // and clears only the remaining 1000 — verified end-to-end in the e2e spec.
   describe('applyCreditBalance — C4 regression (use delta, not cumulative)', () => {
-    it('Dr/Cr the delta payAmount, not cumulative amountPaid, when installment had a prior partial', async () => {
+    it('passes delta payAmount (1000), not cumulative amountPaid (1500), to the PaymentReceiptTemplate primitive when installment had a prior partial', async () => {
       // Installment had 500฿ already paid (prior partial). amountDue = 1500฿.
       // Customer has 1000฿ credit balance → enough to fully clear.
       const partiallyPaidInst = {
@@ -1207,6 +1214,7 @@ describe('PaymentsService', () => {
         amountDue: 1500,
         amountPaid: 500, // prior partial
         lateFee: 0,
+        lateFeeWaived: false,
         status: 'PARTIALLY_PAID',
         deletedAt: null,
       };
@@ -1224,25 +1232,35 @@ describe('PaymentsService', () => {
         status: 'PAID',
         paidDate: new Date(),
       });
+      // 3d: applyCreditBalance resolves the InstallmentSchedule per installment.
+      prisma.installmentSchedule.findUnique.mockResolvedValue({
+        id: 'inst-sched-7',
+        vat60dayJournalEntryId: null,
+      });
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const journal = (service as any).journalAutoService;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const templateMock = (service as any).paymentReceiptTemplate;
 
       await service.applyCreditBalance('contract-1', 'user-1');
 
-      expect(journal.createAndPost).toHaveBeenCalled();
-      const jeArg = journal.createAndPost.mock.calls[0][0];
-
-      // C4 fix: JE amounts must equal the DELTA (1000 = remaining gap to clear
-      // the installment), NOT the cumulative amountPaid (1500). The prior 500฿
-      // was already booked as a partial JE when it was received.
-      const dr21_5101 = jeArg.lines.find((l: any) => l.accountCode === '21-5101');
-      const cr11_2103 = jeArg.lines.find((l: any) => l.accountCode === '11-2103');
-      expect(dr21_5101).toBeDefined();
-      expect(cr11_2103).toBeDefined();
-      // Use Number() because the line.dr/cr is a Prisma.Decimal
-      expect(Number(dr21_5101.dr.toString())).toBe(1000);
-      expect(Number(cr11_2103.cr.toString())).toBe(1000);
+      // The custom inline JE is gone — no createAndPost for the credit allocation.
+      expect(journal.createAndPost).not.toHaveBeenCalled();
+      // Primitive posts the credit receipt.
+      expect(templateMock.execute).toHaveBeenCalledTimes(1);
+      const call = templateMock.execute.mock.calls[0][0];
+      expect(call.installmentScheduleId).toBe('inst-sched-7');
+      // C4 fix: delta must equal the DELTA (1000 = remaining gap to clear the
+      // installment), NOT the cumulative amountPaid (1500). The prior 500฿ was
+      // already booked as a partial JE when it was received, and the primitive
+      // reconstructs it.
+      expect(Number(call.delta.toString())).toBe(1000);
+      // Customer-credit debit, NOT cash.
+      expect(call.debitAccountCode).toBe('21-5101');
+      // Fully clears the installment → final receipt.
+      expect(call.isFinalReceipt).toBe(true);
+      expect(call.paymentId).toBe('inst-7');
     });
   });
 });

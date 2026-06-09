@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AccountingController } from './accounting.controller';
 import { AccountingClosingController } from './closing.controller';
 import { AccountingService } from './accounting.service';
+import { PeakExportService } from './peak-export.service';
 import { BadDebtService } from './bad-debt.service';
 import { BadDebtProvisionCron } from './bad-debt-provision.cron';
 import { MonthlyCloseService } from './monthly-close.service';
@@ -18,6 +19,7 @@ import { PeakModule } from '../peak/peak.module';
   controllers: [AccountingController, AccountingClosingController, ConsolidatedController],
   providers: [
     AccountingService,
+    PeakExportService,
     BadDebtService,
     BadDebtProvisionCron,
     MonthlyCloseService,

@@ -1,15 +1,10 @@
-import {
-  BadRequestException,
-  Injectable,
-  Logger,
-  NotFoundException,
-  OnModuleInit,
-} from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { agingBucket } from '../../utils/aging-bucket.util';
 import { Prisma } from '@prisma/client';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { CompanyResolverService } from '../journal/company-resolver.service';
+import { PeakExportService } from './peak-export.service';
 import {
   EXPENSE_ACCOUNT_CATEGORY,
   SECTION_MAP,
@@ -63,6 +58,8 @@ export class AccountingService implements OnModuleInit {
     private journalAutoService: JournalAutoService,
     // P3-SP5 W7: defense-in-depth filter on companyId for SHOP/FINANCE scoping.
     private companyResolver: CompanyResolverService,
+    // Wave-4 P3: PEAK CSV export extracted into a collaborator service.
+    private peakExport: PeakExportService,
   ) {}
 
   /**
@@ -1936,120 +1933,7 @@ export class AccountingService implements OnModuleInit {
     periodStart: Date,
     periodEnd: Date,
   ): Promise<{ csv: string; rowCount: number; skippedLineCount: number }> {
-    // Guard: max 186 days (~6 months) per spec — protects DB + filesystem.
-    const ms = periodEnd.getTime() - periodStart.getTime();
-    const MAX_DAYS = 186;
-    if (ms < 0) {
-      throw new BadRequestException('วันที่สิ้นสุดต้องไม่อยู่ก่อนวันเริ่มต้น');
-    }
-    if (ms > MAX_DAYS * 24 * 60 * 60 * 1000) {
-      throw new BadRequestException('ช่วงเวลาส่งออกต้องไม่เกิน 6 เดือนต่อครั้ง');
-    }
-
-    // 1) Build a peakCode lookup for every account that has one. Single query
-    //    is cheaper than joining inline because there are ~99 accounts total.
-    const mappedAccounts = await this.prisma.chartOfAccount.findMany({
-      where: { deletedAt: null, peakCode: { not: null } },
-      select: { code: true, name: true, peakCode: true },
-    });
-    const peakByCode = new Map(
-      mappedAccounts.map((a) => [a.code, { name: a.name, peakCode: a.peakCode! }]),
-    );
-
-    // Also load account names for un-mapped lines so we can report what was skipped.
-    const allAccounts = await this.prisma.chartOfAccount.findMany({
-      where: { deletedAt: null },
-      select: { code: true, name: true },
-    });
-    const nameByCode = new Map(allAccounts.map((a) => [a.code, a.name]));
-
-    // 2) Fetch journal lines in range. Order by entryDate then entryNumber so
-    //    the CSV is deterministic for reconciliation diffs.
-    const lines = await this.prisma.journalLine.findMany({
-      where: {
-        deletedAt: null,
-        journalEntry: {
-          status: 'POSTED',
-          entryDate: { gte: periodStart, lte: periodEnd },
-          deletedAt: null,
-        },
-      },
-      select: {
-        accountCode: true,
-        debit: true,
-        credit: true,
-        description: true,
-        journalEntry: {
-          select: {
-            entryNumber: true,
-            entryDate: true,
-            description: true,
-            referenceType: true,
-            referenceId: true,
-          },
-        },
-      },
-      orderBy: [
-        { journalEntry: { entryDate: 'asc' } },
-        { journalEntry: { entryNumber: 'asc' } },
-      ],
-    });
-
-    // 3) Render rows; skip un-mapped accounts.
-    const escape = (v: string | null | undefined) => {
-      if (v == null) return '';
-      const s = String(v);
-      if (s.includes(',') || s.includes('"') || s.includes('\n')) {
-        return `"${s.replace(/"/g, '""')}"`;
-      }
-      return s;
-    };
-
-    const header = [
-      'entryDate',
-      'entryNumber',
-      'peakCode',
-      'accountCode',
-      'accountName',
-      'debit',
-      'credit',
-      'description',
-      'reference',
-    ].join(',');
-
-    const body: string[] = [];
-    let skipped = 0;
-    for (const ln of lines) {
-      const mapping = peakByCode.get(ln.accountCode);
-      if (!mapping) {
-        skipped++;
-        continue;
-      }
-      const ref = ln.journalEntry.referenceType
-        ? `${ln.journalEntry.referenceType}:${ln.journalEntry.referenceId ?? ''}`
-        : '';
-      body.push(
-        [
-          ln.journalEntry.entryDate.toISOString().slice(0, 10),
-          escape(ln.journalEntry.entryNumber),
-          escape(mapping.peakCode),
-          escape(ln.accountCode),
-          escape(nameByCode.get(ln.accountCode) ?? mapping.name),
-          // String form keeps full Decimal precision — never Number()
-          new Prisma.Decimal(ln.debit).toString(),
-          new Prisma.Decimal(ln.credit).toString(),
-          escape(ln.description ?? ln.journalEntry.description),
-          escape(ref),
-        ].join(','),
-      );
-    }
-
-    return {
-      // UTF-8 BOM so Excel renders Thai correctly.
-      csv: '﻿' + [header, ...body].join('\n'),
-      rowCount: body.length,
-      skippedLineCount: skipped,
-    };
+    return this.peakExport.exportJournalWithPeakCodes(periodStart, periodEnd);
   }
 
   // ─── General Journal ──────────────────────────────────────────────────────

@@ -42,23 +42,8 @@ import { PettyCashService } from './services/petty-cash.service';
 import { PayrollCustomService } from './services/payroll-custom.service';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
 import { readBoolFlag, readIntFlag, readJsonFlag } from '../../utils/config.util';
-
-/**
- * Returns a Date representing 12:00 noon Asia/Bangkok on the same calendar day
- * as `now`. Used as a stable `postedAt` for journal entries that should land
- * on the BKK business day regardless of the server's UTC clock — without this,
- * a void after 17:00 BKK (= next UTC day) would post in the wrong accounting period.
- */
-function bkkBusinessDate(now: Date): Date {
-  const ymd = now.toLocaleString('en-CA', {
-    timeZone: 'Asia/Bangkok',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  });
-  // ymd is "YYYY-MM-DD" in BKK; build noon BKK = 05:00 UTC of the same date
-  return new Date(`${ymd}T05:00:00.000Z`);
-}
+import { collectJePreviewCodes } from './je-preview-codes.util';
+import { bkkBusinessDate } from './bkk-business-date.util';
 
 @Injectable()
 export class ExpenseDocumentsService implements OnModuleInit {
@@ -1727,23 +1712,7 @@ export class ExpenseDocumentsService implements OnModuleInit {
 
   // ─── JE Preview (pure — no DB write) ────────────────────────────────
   async previewJe(dto: CreateExpenseDocumentDto) {
-    const codes = new Set<string>();
-    for (const l of dto.lines) codes.add(l.category);
-    if (dto.depositAccountCode) codes.add(dto.depositAccountCode);
-    // W8 — preload adjustment row codes + per-line WHT routes so the preview
-    // can resolve names for the new sections (adjustments + multi-line WHT).
-    for (const adj of dto.adjustments ?? []) {
-      if (adj.accountCode) codes.add(adj.accountCode);
-    }
-    // 11-4101 = ภาษีซื้อ (Input Tax Credit, claimable). Mirrors expense
-    // templates' VAT routing — must match what post() actually books.
-    codes.add('11-4101');
-    codes.add('21-1104');
-    // Always preload both WHT routes — the preview may emit either or both
-    // depending on per-line whtFormType (P2-4).
-    codes.add('21-3102');
-    codes.add('21-3103');
-
+    const codes = collectJePreviewCodes(dto);
     const rows = await this.prisma.chartOfAccount.findMany({
       where: { code: { in: [...codes] }, deletedAt: null },
       select: { code: true, name: true },

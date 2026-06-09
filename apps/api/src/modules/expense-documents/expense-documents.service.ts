@@ -41,9 +41,15 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { PettyCashService } from './services/petty-cash.service';
 import { PayrollCustomService } from './services/payroll-custom.service';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
-import { readBoolFlag, readIntFlag, readJsonFlag } from '../../utils/config.util';
+import { readBoolFlag, readIntFlag } from '../../utils/config.util';
 import { collectJePreviewCodes } from './je-preview-codes.util';
 import { bkkBusinessDate } from './bkk-business-date.util';
+import {
+  assertUserCanApprove,
+  getApprovalRequiredDocTypes,
+  getApproversList,
+  getReverseReasons,
+} from './approval-config.util';
 
 @Injectable()
 export class ExpenseDocumentsService implements OnModuleInit {
@@ -127,7 +133,7 @@ export class ExpenseDocumentsService implements OnModuleInit {
       if (!this.notifications) return;
 
       // Resolve recipients: approvers_list → fallback to OWNER users.
-      let recipients = await this.getApproversList(this.prisma);
+      let recipients = await getApproversList(this.prisma);
       if (recipients.length === 0) {
         const owners = await this.prisma.user.findMany({
           where: { role: 'OWNER', isActive: true, deletedAt: null },
@@ -163,7 +169,7 @@ export class ExpenseDocumentsService implements OnModuleInit {
   }
 
   // ─── D1.* — Service-side SystemConfig flag readers ─────────────────────
-  // Delegates to shared `readBoolFlag` / `readJsonFlag` in utils/config.util
+  // Delegates to shared `readBoolFlag` in utils/config.util
   // so every service uses identical parsing + defensive try/catch semantics.
   // Kept as private wrappers for ergonomic (this.readBoolFlag) call sites.
   // Spec-defined defaults flow through `fallback` and preserve first-boot
@@ -174,95 +180,6 @@ export class ExpenseDocumentsService implements OnModuleInit {
     fallback: boolean,
   ): Promise<boolean> {
     return readBoolFlag(tx, key, fallback);
-  }
-
-  /**
-   * D1.2.1.3 — Approvers whitelist. JSON-encoded array of User UUIDs stored
-   * in SystemConfig key `approvers_list`. Default = empty array (only OWNER
-   * may approve when the workflow is enabled but no list is configured).
-   *
-   * Returns the list filtered to USERS that still exist + are active +
-   * not soft-deleted — so a stale ID in the SystemConfig row can never
-   * grant approval rights to a deleted account.
-   */
-  private async getApproversList(
-    tx: Prisma.TransactionClient | PrismaService,
-  ): Promise<string[]> {
-    try {
-      const row = await tx.systemConfig.findFirst({
-        where: { key: 'approvers_list', deletedAt: null },
-        select: { value: true },
-      });
-      if (!row?.value) return [];
-      const parsed: unknown = JSON.parse(row.value);
-      if (!Array.isArray(parsed)) return [];
-      const candidateIds = parsed.filter((v): v is string => typeof v === 'string');
-      if (candidateIds.length === 0) return [];
-      const valid = await tx.user.findMany({
-        where: { id: { in: candidateIds }, isActive: true, deletedAt: null },
-        select: { id: true },
-      });
-      return valid.map((u) => u.id);
-    } catch {
-      return [];
-    }
-  }
-
-  /**
-   * D1.2.1.3 — Approver gate. OWNER is always allowed (root-of-trust).
-   * Anyone else must be in the configured `approvers_list`. Throws
-   * `ForbiddenException` when the caller cannot approve.
-   */
-  private async assertUserCanApprove(
-    tx: Prisma.TransactionClient | PrismaService,
-    userId: string,
-    userRole?: string,
-  ): Promise<void> {
-    if (userRole === 'OWNER') return;
-    const approvers = await this.getApproversList(tx);
-    if (!approvers.includes(userId)) {
-      throw new ForbiddenException(
-        'ไม่มีสิทธิ์อนุมัติเอกสาร — ผู้ใช้นี้ไม่อยู่ในรายชื่อผู้อนุมัติ',
-      );
-    }
-  }
-
-  /**
-   * D1.2.1.4 — Doc-type filter for the Approval Workflow gate. JSON-encoded
-   * array of DocumentType enum values stored in SystemConfig key
-   * `approval_required_doc_types`. Default = `['PAYROLL']` — the most
-   * common controlled-cost category. Other doc types skip approval even
-   * when `approval_enabled` is true.
-   *
-   * Returns the set as a parsed array, defaulting to ['PAYROLL'] when the
-   * row is missing / malformed / contains invalid enum values.
-   */
-  private async getApprovalRequiredDocTypes(
-    tx: Prisma.TransactionClient | PrismaService,
-  ): Promise<string[]> {
-    const defaults: string[] = ['PAYROLL'];
-    const validValues: string[] = [
-      'EXPENSE',
-      'CREDIT_NOTE',
-      'PAYROLL',
-      'VENDOR_SETTLEMENT',
-      'PETTY_CASH_REIMBURSEMENT',
-    ];
-    try {
-      const row = await tx.systemConfig.findFirst({
-        where: { key: 'approval_required_doc_types', deletedAt: null },
-        select: { value: true },
-      });
-      if (!row?.value) return defaults;
-      const parsed: unknown = JSON.parse(row.value);
-      if (!Array.isArray(parsed) || parsed.length === 0) return defaults;
-      const filtered = parsed.filter(
-        (v): v is string => typeof v === 'string' && validValues.includes(v),
-      );
-      return filtered.length > 0 ? filtered : defaults;
-    } catch {
-      return defaults;
-    }
   }
 
   /**
@@ -297,39 +214,6 @@ export class ExpenseDocumentsService implements OnModuleInit {
     }
   }
 
-  /**
-   * D1.2.7.2 — reverse-reasons whitelist. Uses shared `readJsonFlag` for
-   * uniform JSON-parse + validator semantics. Empty / malformed lists fall
-   * back to the canonical 6-reason default so the UI never shows an empty
-   * dropdown.
-   */
-  private async getReverseReasons(
-    tx: Prisma.TransactionClient | PrismaService,
-  ): Promise<{ code: string; label: string }[]> {
-    const defaults: { code: string; label: string }[] = [
-      { code: 'data_entry_error', label: 'ป้อนข้อมูลผิด' },
-      { code: 'wrong_vendor', label: 'ผู้ขายผิด' },
-      { code: 'wrong_amount', label: 'จำนวนเงินผิด' },
-      { code: 'duplicate_entry', label: 'ข้อมูลซ้ำ' },
-      { code: 'cancel_transaction', label: 'ยกเลิกรายการ' },
-      { code: 'other', label: 'อื่นๆ (ระบุรายละเอียด)' },
-    ];
-    return readJsonFlag<{ code: string; label: string }[]>(
-      tx,
-      'reverse_reasons',
-      defaults,
-      (v): v is { code: string; label: string }[] =>
-        Array.isArray(v) &&
-        v.length > 0 &&
-        v.every(
-          (r) =>
-            r != null &&
-            typeof r === 'object' &&
-            typeof (r as { code: unknown }).code === 'string' &&
-            typeof (r as { label: unknown }).label === 'string',
-        ),
-    );
-  }
 
   // ─── Create ──────────────────────────────────────────────────────────
   async create(dto: CreateExpenseDocumentDto, userId: string) {
@@ -2032,7 +1916,7 @@ export class ExpenseDocumentsService implements OnModuleInit {
         // Reads SystemConfig key `approval_required_doc_types` (JSON array),
         // filters to valid DocumentType enum values, defaults to ['PAYROLL']
         // on missing/malformed rows.
-        const requiredDocTypes = await this.getApprovalRequiredDocTypes(tx);
+        const requiredDocTypes = await getApprovalRequiredDocTypes(tx);
         const isRequiredType = requiredDocTypes.includes(doc.documentType);
 
         if (overThreshold || isRequiredType) {
@@ -2268,7 +2152,7 @@ export class ExpenseDocumentsService implements OnModuleInit {
 
       // D1.2.1.3 — approver membership check. OWNER always passes; everyone
       // else must appear in SystemConfig `approvers_list`.
-      await this.assertUserCanApprove(tx, userId, userRole);
+      await assertUserCanApprove(tx, userId, userRole);
 
       const doc = await tx.expenseDocument.findUniqueOrThrow({ where: { id } });
       if (doc.deletedAt) throw new NotFoundException('เอกสารถูกลบแล้ว');
@@ -2409,7 +2293,7 @@ export class ExpenseDocumentsService implements OnModuleInit {
       // codes). Validate dto.reasonCode against the configured whitelist
       // when present. OWNER can extend/override the list via SettingsService.
       if (dto.reasonCode?.trim()) {
-        const reasons = await this.getReverseReasons(tx);
+        const reasons = await getReverseReasons(tx);
         const allowed = new Set(reasons.map((r) => r.code));
         if (!allowed.has(dto.reasonCode)) {
           throw new BadRequestException(

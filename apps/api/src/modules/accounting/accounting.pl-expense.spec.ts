@@ -5,6 +5,7 @@ import { CompanyResolverService } from '../journal/company-resolver.service';
 import { AccountingService } from './accounting.service';
 import { PeakExportService } from './peak-export.service';
 import { ReceivablesReportService } from './receivables-report.service';
+import { TransactionalReportService } from './transactional-report.service';
 
 type GroupRow = { accountCode: string; _sum: { debit: Prisma.Decimal | null; credit: Prisma.Decimal | null } };
 
@@ -18,17 +19,12 @@ function makeService(groupRows: GroupRow[]) {
   const companyResolver = {
     getFinanceCompanyId: jest.fn().mockResolvedValue('finance-co-1'),
   } as unknown as CompanyResolverService;
-  const svc = new AccountingService(
-    prisma,
-    {} as JournalAutoService,
-    companyResolver,
-    {} as PeakExportService,
-    {} as ReceivablesReportService,
-  );
+  // Wave-4 P5: aggregateFinanceExpenses now lives (private) on TransactionalReportService.
+  const svc = new TransactionalReportService(prisma, companyResolver);
   return { svc, journalLineGroupBy };
 }
 
-const aggregate = (svc: AccountingService, companyWide: boolean) =>
+const aggregate = (svc: TransactionalReportService, companyWide: boolean) =>
   (svc as unknown as {
     aggregateFinanceExpenses: (
       s: Date,
@@ -99,6 +95,8 @@ function makeFullService(groupRows: GroupRow[]) {
     companyResolver,
     {} as PeakExportService,
     {} as ReceivablesReportService,
+    // Wave-4 P5: real collaborator so getProfitLossReport delegates correctly.
+    new TransactionalReportService(prisma, companyResolver),
   );
 }
 
@@ -158,6 +156,8 @@ describe('AccountingService.getMonthlyPLSummary (expense wiring)', () => {
       companyResolver,
       {} as PeakExportService,
       {} as ReceivablesReportService,
+      // Wave-4 P5: real collaborator so getMonthlyPLSummary delegates correctly.
+      new TransactionalReportService(prisma, companyResolver),
     );
   }
 

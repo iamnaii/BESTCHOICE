@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { AccountingService } from './accounting.service';
 import { PeakExportService } from './peak-export.service';
 import { ReceivablesReportService } from './receivables-report.service';
+import { TransactionalReportService } from './transactional-report.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { CompanyResolverService } from '../journal/company-resolver.service';
@@ -25,6 +26,10 @@ import { CompanyResolverService } from '../journal/company-resolver.service';
  */
 describe('AccountingService', () => {
   let service: AccountingService;
+  // Wave-4 P5: the transactional report collaborator that AccountingService delegates to.
+  // getComparativePL runs on THIS instance and calls ITS OWN getProfitLossReport, so the
+  // spy in the getComparativePL block must target this handle (not `service`).
+  let transactionalReport: TransactionalReportService;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let prisma: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -114,6 +119,7 @@ describe('AccountingService', () => {
         AccountingService,
         PeakExportService,
         ReceivablesReportService,
+        TransactionalReportService,
         { provide: PrismaService, useValue: prisma },
         { provide: JournalAutoService, useValue: journalAutoService },
         {
@@ -127,6 +133,7 @@ describe('AccountingService', () => {
     }).compile();
 
     service = module.get<AccountingService>(AccountingService);
+    transactionalReport = module.get<TransactionalReportService>(TransactionalReportService);
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -236,7 +243,7 @@ describe('AccountingService', () => {
 
     it('wraps to December of prior year when month=1 (January edge case)', async () => {
       const spy = jest
-        .spyOn(service, 'getProfitLossReport')
+        .spyOn(transactionalReport, 'getProfitLossReport')
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .mockResolvedValue(makeEmptyPL() as any);
 
@@ -272,7 +279,7 @@ describe('AccountingService', () => {
       };
 
       jest
-        .spyOn(service, 'getProfitLossReport')
+        .spyOn(transactionalReport, 'getProfitLossReport')
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .mockResolvedValueOnce(currentPL as any)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -295,7 +302,7 @@ describe('AccountingService', () => {
       const zeroPL = makeEmptyPL();
 
       jest
-        .spyOn(service, 'getProfitLossReport')
+        .spyOn(transactionalReport, 'getProfitLossReport')
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .mockResolvedValueOnce(currentPL as any)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -310,7 +317,7 @@ describe('AccountingService', () => {
     it('returns 0% change when both previous and current periods are zero', async () => {
       const zeroPL = makeEmptyPL();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      jest.spyOn(service, 'getProfitLossReport').mockResolvedValue(zeroPL as any);
+      jest.spyOn(transactionalReport, 'getProfitLossReport').mockResolvedValue(zeroPL as any);
 
       const result = await service.getComparativePL(2026, 3);
       expect(result.momChange.revenue).toBe(0);

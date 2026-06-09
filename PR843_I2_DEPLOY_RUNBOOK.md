@@ -13,17 +13,19 @@
    # Cloud Run Job (image build แล้ว) ชี้ DATABASE_URL=prod:
    npm run seed:coa          # = node dist/src/cli/seed-coa.cli.js (idempotent upsert ผัง FINANCE+SHOP)
    # ตรวจครบทุกโค้ด:
-   psql "$PROD_DATABASE_URL" -tc "SELECT code FROM chart_of_accounts WHERE deleted_at IS NULL AND code IN ('11-2103','42-1103','52-1104','53-1503','21-1103','21-5101','11-1202','11-1101','11-1102','11-1103','11-1201','11-1203') ORDER BY code;"
+   # หมายเหตุ: chart_of_accounts ใช้คอลัมน์ camelCase "deletedAt" (ต้องใส่ double-quote);
+   #          ส่วน payments/journal_entries ใช้ snake_case (deleted_at) — prod เป็น mixed-case
+   psql "$PROD_DATABASE_URL" -tc "SELECT code FROM chart_of_accounts WHERE \"deletedAt\" IS NULL AND code IN ('11-2103','42-1103','52-1104','53-1503','21-1103','21-5101','11-1202','11-1101','11-1102','11-1103','11-1201','11-1203') ORDER BY code;"
    # คาดหวัง: ครบ 12 แถว
    ```
 3. **นับ Risk-5 + backfill** — ใช้ CLI `backfill:orphan-receipts` (dry-run คือตัวนับเลย):
    ```bash
    # 3a. DRY-RUN (read-only) — list งวด partial ที่ไม่มี receipt JE + ยอดรวม:
-   EXPECTED_DB_NAME=bestchoice_prod npm --prefix apps/api run backfill:orphan-receipts
+   EXPECTED_DB_NAME=bestchoice npm --prefix apps/api run backfill:orphan-receipts
    #   - 0 รายการ → ข้ามไป ②
    #   - >0 รายการ → ตรวจ list แล้วรัน 3b เพื่อ post catch-up receipt JE:
    # 3b. POST (idempotent — รันซ้ำได้):
-   CONFIRM_BACKFILL=YES_I_AM_SURE EXPECTED_DB_NAME=bestchoice_prod ALLOW_PROD_BACKFILL=YES_I_AM_SURE NODE_ENV=production \
+   CONFIRM_BACKFILL=YES_I_AM_SURE EXPECTED_DB_NAME=bestchoice ALLOW_PROD_BACKFILL=YES_I_AM_SURE NODE_ENV=production \
      npm --prefix apps/api run backfill:orphan-receipts
    #   (prod = Cloud Run Job backfill-orphan-receipts — ดู env ในหัวไฟล์ CLI)
    ```

@@ -33,7 +33,8 @@
 ## งานปฏิบัติการก่อน deploy (operational gates — ไม่ใช่บัญชี แต่ต้องทำ)
 - [ ] **ยืนยันบัญชีในผัง prod ครบทุกโค้ดที่ JE ใหม่อ้าง** (ไม่ใช่แค่ 21-5101). รัน `npm run seed:coa` (upsert ไม่ทำลายข้อมูล) แล้วตรวจ:
   ```sql
-  SELECT code FROM chart_of_accounts WHERE deleted_at IS NULL AND code IN
+  -- chart_of_accounts ใช้ camelCase "deletedAt"; payments/journal_entries ใช้ snake_case (mixed-case prod)
+  SELECT code FROM chart_of_accounts WHERE "deletedAt" IS NULL AND code IN
    ('11-2103','42-1103','52-1104','53-1503','21-1103','21-5101','11-1202',
     '11-1101','11-1102','11-1103','11-1201','11-1203') ORDER BY code;
   -- คาดหวัง: ครบทุกแถว. ขาดตัวใด → template throw 'Account code not found' → post ไม่ได้

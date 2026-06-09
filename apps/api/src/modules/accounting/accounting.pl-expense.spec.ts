@@ -6,6 +6,7 @@ import { AccountingService } from './accounting.service';
 import { PeakExportService } from './peak-export.service';
 import { ReceivablesReportService } from './receivables-report.service';
 import { TransactionalReportService } from './transactional-report.service';
+import { GeneralLedgerReportService } from './general-ledger-report.service';
 
 type GroupRow = { accountCode: string; _sum: { debit: Prisma.Decimal | null; credit: Prisma.Decimal | null } };
 
@@ -97,6 +98,9 @@ function makeFullService(groupRows: GroupRow[]) {
     {} as ReceivablesReportService,
     // Wave-4 P5: real collaborator so getProfitLossReport delegates correctly.
     new TransactionalReportService(prisma, companyResolver),
+    // Wave-4 P6: not exercised here (these tests only hit getProfitLossReport),
+    // so a stub satisfies the constructor arity.
+    {} as GeneralLedgerReportService,
   );
 }
 
@@ -158,6 +162,9 @@ describe('AccountingService.getMonthlyPLSummary (expense wiring)', () => {
       {} as ReceivablesReportService,
       // Wave-4 P5: real collaborator so getMonthlyPLSummary delegates correctly.
       new TransactionalReportService(prisma, companyResolver),
+      // Wave-4 P6: not exercised here (these tests only hit getMonthlyPLSummary),
+      // so a stub satisfies the constructor arity.
+      {} as GeneralLedgerReportService,
     );
   }
 

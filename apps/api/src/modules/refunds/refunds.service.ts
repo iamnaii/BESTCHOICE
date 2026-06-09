@@ -230,22 +230,45 @@ export class RefundsService {
 
     const now = new Date();
     const { updated, reversalEntryNo } = await this.prisma.$transaction(async (tx) => {
-      // Find the original POSTED payment-receipt JE. Payment JEs are created via
-      // journal-auto.createAndPost with `reference = payment.id`, which stores
-      // referenceType **'AUTO'** (not 'PAYMENT'). The old 'PAYMENT' filter matched
-      // nothing and silently skipped the reversal — the no-op the review caught.
-      const originalEntry = await tx.journalEntry.findFirst({
+      // PR-843/I2 Phase 3 PR 3.1 — find ALL POSTED receipt JEs of this payment and
+      // reverse EACH. The epic posts MULTIPLE receipt JEs per Payment (a partial then
+      // a completion); each carries a fresh unique `reference`, so the old
+      // `referenceId == paymentId` findFirst found at most ONE and left the other
+      // receipt's Cr 11-2103 un-reversed. The canonical payment→JE link is
+      // `metadata.paymentId`, stamped by every receipt path (the primitive, the legacy
+      // 2B full/2B-split-final templates, and applyCreditBalance). Refunds are
+      // always-full (owner-confirmed #1164), so reversing ALL receipt JEs = full
+      // reversal — the correct semantics. Backward-compatible: a single-receipt payment
+      // returns one JE → one reversal (same as before).
+      // FINAL-REVIEW BLOCKER 2 — restrict the reversal to TRUE receivable-clearing
+      // receipt JEs. autoAllocate's overpayment JE shares the same metadata.paymentId
+      // but carries tag:'overpayment-credit' (Dr cash / Cr 21-5101 customer credit);
+      // reversing it on a refund would phantom-Dr 21-5101/Cr cash and leave the
+      // creditBalance un-restored. The tag filter excludes it (and any
+      // paysolutions-surplus-advance, which has no paymentId). The advance-consume 2B
+      // JE also has no paymentId so it is already not matched.
+      const originalEntries = await tx.journalEntry.findMany({
         where: {
-          referenceType: 'AUTO',
-          referenceId: refund.paymentId,
-          status: 'POSTED',
-          deletedAt: null,
+          AND: [
+            { metadata: { path: ['paymentId'], equals: refund.paymentId } } as any,
+            {
+              OR: [
+                { metadata: { path: ['tag'], equals: 'receipt' } } as any,
+                { metadata: { path: ['tag'], equals: '2B' } } as any,
+                // legacy credit-funded clears (applyCreditBalance credit-allocation JE)
+                { metadata: { path: ['tag'], equals: 'credit-allocation' } } as any,
+              ],
+            },
+            { status: 'POSTED' },
+            { deletedAt: null },
+          ],
         },
       });
 
       // The reversal posts to the current period of the payment's company — guard it
       // open (companyId-aware: runs the Tier-1 AccountingPeriod check, not just Tier-2).
-      await validatePeriodOpen(tx, now, originalEntry?.companyId ?? undefined);
+      // All receipt JEs of one payment share the same FINANCE company; use the first.
+      await validatePeriodOpen(tx, now, originalEntries[0]?.companyId ?? undefined);
 
       // CAS: only flip APPROVED → PROCESSED if it is *still* APPROVED — closes the
       // TOCTOU gap between the pre-tx read and this write.
@@ -265,13 +288,18 @@ export class RefundsService {
       }
       const updated = await tx.refund.findUnique({ where: { id: refundId } });
 
-      // Reverse the original payment JE in full (A.5a mirror).
+      // Reverse EVERY receipt JE of the payment in full (A.5a mirror). One reversal
+      // JE per original; the audit log records the comma-joined list.
       let reversalEntryNo: string | null = null;
-      if (originalEntry) {
-        const rev = await this.receiptVoidReversalTemplate.voidReceipt(originalEntry.id, tx, {
-          flow: 'refund-reversal',
-        });
-        reversalEntryNo = rev.entryNo;
+      if (originalEntries.length > 0) {
+        const revNos: string[] = [];
+        for (const originalEntry of originalEntries) {
+          const rev = await this.receiptVoidReversalTemplate.voidReceipt(originalEntry.id, tx, {
+            flow: 'refund-reversal',
+          });
+          revNos.push(rev.entryNo);
+        }
+        reversalEntryNo = revNos.join(',');
       } else {
         this.logger.warn(
           `[refund ${refundId}] no POSTED payment JE for payment ${refund.paymentId} — ` +

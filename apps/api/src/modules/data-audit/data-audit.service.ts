@@ -134,7 +134,7 @@ export class DataAuditService {
         AND p.amount_paid > 0
         AND NOT EXISTS (
           SELECT 1 FROM journal_entries je
-          WHERE je.reference_id = p.id
+          WHERE (je.reference_id = p.id::text OR je.metadata->>'paymentId' = p.id::text)
             AND je.reference_type = 'AUTO'
             AND je.deleted_at IS NULL
             AND je.status = 'POSTED'
@@ -293,7 +293,8 @@ export class DataAuditService {
         p.late_fee, p.vat_amount as payment_vat,
         (SELECT COALESCE(SUM(jl.credit), 0) FROM journal_lines jl
          JOIN journal_entries je ON je.id = jl.journal_entry_id
-         WHERE je.reference_id = p.id::text AND je.reference_type = 'AUTO'
+         WHERE (je.reference_id = p.id::text OR je.metadata->>'paymentId' = p.id::text)
+         AND je.reference_type = 'AUTO'
          AND jl.account_code = '21-2101' AND je.deleted_at IS NULL AND jl.deleted_at IS NULL
          AND je.status = 'POSTED'
         ) as journal_vat
@@ -306,7 +307,8 @@ export class DataAuditService {
         AND ABS(
           COALESCE((SELECT SUM(jl2.credit) FROM journal_lines jl2
            JOIN journal_entries je2 ON je2.id = jl2.journal_entry_id
-           WHERE je2.reference_id = p.id::text AND je2.reference_type = 'AUTO'
+           WHERE (je2.reference_id = p.id::text OR je2.metadata->>'paymentId' = p.id::text)
+           AND je2.reference_type = 'AUTO'
            AND jl2.account_code = '21-2101' AND je2.deleted_at IS NULL AND jl2.deleted_at IS NULL
            AND je2.status = 'POSTED'), 0)
           - COALESCE(p.vat_amount, 0)
@@ -410,14 +412,15 @@ export class DataAuditService {
       { id: string; contract_number: string; installment_no: number; payment_comm: Prisma.Decimal; journal_comm: Prisma.Decimal; diff: Prisma.Decimal }[]
     >`
       WITH journal_commission AS (
-        SELECT je.reference_id as payment_id, SUM(jl.credit) as journal_comm
+        SELECT COALESCE(je.metadata->>'paymentId', je.reference_id) as payment_id,
+          SUM(jl.credit) as journal_comm
         FROM journal_lines jl
         JOIN journal_entries je ON je.id = jl.journal_entry_id
         WHERE jl.account_code = '42-1105'
           AND je.reference_type = 'AUTO'
           AND je.status = 'POSTED'
           AND je.deleted_at IS NULL AND jl.deleted_at IS NULL
-        GROUP BY je.reference_id
+        GROUP BY COALESCE(je.metadata->>'paymentId', je.reference_id)
       )
       SELECT p.id, c.contract_number, p.installment_no,
         p.monthly_commission as payment_comm,
@@ -516,18 +519,31 @@ export class DataAuditService {
       include: { lines: { where: { deletedAt: null } } },
     });
 
-    // Load payment journals
+    // Load payment journals.
+    // PR-843/I2 Phase 3 PR 3.1: the epic posts MULTIPLE receipt JEs per Payment.
+    // The canonical payment→JE key is now `metadata.paymentId` (JSON); the JE's
+    // scalar `referenceId` is a fresh random UUID on new primitive receipt JEs
+    // (it equals payment.id only on LEGACY 2B / split-final / credit-allocation
+    // JEs). Match BOTH shapes: legacy via `referenceId in paymentIds`, new via
+    // `metadata.paymentId` (one OR clause per payment — Prisma's JSON `equals`
+    // can't take an array). `metadata` is selected (default scalar) so the
+    // in-memory match in tracePayment / aggregations can read it.
     const paymentIds = contract.payments.map((p) => p.id);
     const paymentJournals =
       paymentIds.length > 0
         ? await this.prisma.journalEntry.findMany({
             where: {
-              referenceId: { in: paymentIds },
               // Payment JEs are stored as referenceType 'AUTO' (journal-auto from
               // reference=payment.id), NOT 'PAYMENT' — the old value matched nothing.
               referenceType: 'AUTO',
               deletedAt: null,
               status: 'POSTED',
+              OR: [
+                { referenceId: { in: paymentIds } },
+                ...paymentIds.map((pid) => ({
+                  metadata: { path: ['paymentId'], equals: pid } as Prisma.JsonFilter,
+                })),
+              ],
             },
             include: { lines: { where: { deletedAt: null } } },
           })
@@ -703,7 +719,11 @@ export class DataAuditService {
 
   private tracePayment(
     payment: { id: string; installmentNo: number; status: string; amountPaid: Prisma.Decimal },
-    paymentJournals: { referenceId: string | null; lines: { debit: Prisma.Decimal; credit: Prisma.Decimal }[] }[],
+    paymentJournals: {
+      referenceId: string | null;
+      metadata?: Prisma.JsonValue;
+      lines: { debit: Prisma.Decimal; credit: Prisma.Decimal }[];
+    }[],
   ): ContractTraceCheck {
     if (payment.status === 'PENDING' || Number(payment.amountPaid) === 0) {
       return {
@@ -713,8 +733,15 @@ export class DataAuditService {
       };
     }
 
-    const journal = paymentJournals.find((j) => j.referenceId === payment.id);
-    if (!journal) {
+    // PR-843/I2 Phase 3 PR 3.1: a payment may have MULTIPLE receipt JEs sharing
+    // metadata.paymentId. Match ALL of them (new shape via metadata.paymentId,
+    // legacy shape via referenceId == payment.id) and aggregate across them.
+    const journals = paymentJournals.filter(
+      (j) =>
+        (j.metadata as { paymentId?: string } | null)?.paymentId === payment.id ||
+        j.referenceId === payment.id,
+    );
+    if (journals.length === 0) {
       return {
         name: `payment_${payment.installmentNo}`,
         status: 'FAIL',
@@ -722,14 +749,18 @@ export class DataAuditService {
       };
     }
 
-    const totalDebit = journal.lines.reduce((sum, l) => sum + Number(l.debit), 0);
-    const totalCredit = journal.lines.reduce((sum, l) => sum + Number(l.credit), 0);
+    // Aggregate Dr/Cr across ALL matching JEs — for a multi-receipt payment the
+    // combined entry must still balance (each receipt JE balances individually,
+    // so the sum does too).
+    const allLines = journals.flatMap((j) => j.lines);
+    const totalDebit = allLines.reduce((sum, l) => sum + Number(l.debit), 0);
+    const totalCredit = allLines.reduce((sum, l) => sum + Number(l.credit), 0);
     const balanced = Math.abs(totalDebit - totalCredit) < 0.01;
 
     return {
       name: `payment_${payment.installmentNo}`,
       status: balanced ? 'PASS' : 'FAIL',
-      details: { installmentNo: payment.installmentNo, totalDebit, totalCredit, balanced },
+      details: { installmentNo: payment.installmentNo, journalCount: journals.length, totalDebit, totalCredit, balanced },
     };
   }
 
@@ -1114,14 +1145,20 @@ export class DataAuditService {
 
       // Backfill payment journals for this contract
       for (const payment of contract.payments) {
-        // Check if payment journal already exists
+        // Check if payment journal already exists. PR-843/I2 Phase 3 PR 3.1:
+        // new primitive receipt JEs key the payment via metadata.paymentId (the
+        // scalar referenceId is a random UUID); legacy JEs key via referenceId ==
+        // payment.id. Existence check only — findFirst across either shape.
         const existing = await this.prisma.journalEntry.findFirst({
           where: {
-            referenceId: payment.id,
             // Payment JEs are referenceType 'AUTO' (not 'PAYMENT') — see above.
             referenceType: 'AUTO',
             deletedAt: null,
             status: 'POSTED',
+            OR: [
+              { referenceId: payment.id },
+              { metadata: { path: ['paymentId'], equals: payment.id } as Prisma.JsonFilter },
+            ],
           },
         });
         if (existing) {

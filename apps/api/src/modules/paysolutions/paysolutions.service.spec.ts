@@ -9,7 +9,8 @@ import { IntegrationConfigService } from '../integrations/integration-config.ser
 import { OnlineOrderSaleAdapter } from '../shop-orders/online-order-sale.adapter';
 import { ProductsService } from '../products/products.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
-import { PaymentReceipt2BTemplate } from '../journal/cpa-templates/payment-receipt-2b.template';
+import { PaymentReceiptTemplate } from '../journal/cpa-templates/payment-receipt.template';
+import { Vat60dayReversalTemplate } from '../journal/cpa-templates/vat-60day-reversal.template';
 import { PaymentsService } from '../payments/payments.service';
 
 // We don't care about the underlying Sentry transport during unit tests —
@@ -75,9 +76,12 @@ describe('PaySolutionsService.handlePaymentCallback — payment JE (F-1-003)', (
         update: jest.fn().mockResolvedValue({ productId: null }),
       },
       // C2 fix: in-tx JE post calls tx.installmentSchedule.findUnique to map
-      // installmentNo → installmentScheduleId.
+      // installmentNo → installmentScheduleId. PR-843/I2 Phase 3 3b: the select
+      // now also reads vat60dayJournalEntryId (null here = no 60-day reversal).
       installmentSchedule: {
-        findUnique: jest.fn().mockResolvedValue({ id: 'inst-sched-1' }),
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ id: 'inst-sched-1', vat60dayJournalEntryId: null }),
       },
     };
 
@@ -152,12 +156,13 @@ describe('PaySolutionsService.handlePaymentCallback — payment JE (F-1-003)', (
         { provide: OnlineOrderSaleAdapter, useValue: saleAdapter },
         { provide: ProductsService, useValue: products },
         { provide: JournalAutoService, useValue: journalAuto },
-        { provide: PaymentReceipt2BTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK' }) } },
+        { provide: PaymentReceiptTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK', split: {} }) } },
+        { provide: Vat60dayReversalTemplate, useValue: { execute: jest.fn().mockResolvedValue(null) } },
         { provide: PaymentsService, useValue: { recordPayment: jest.fn() } },
       ],
     }).compile();
 
-    paymentReceiptTemplate = mod.get(PaymentReceipt2BTemplate);
+    paymentReceiptTemplate = mod.get(PaymentReceiptTemplate);
     service = mod.get<PaySolutionsService>(PaySolutionsService);
     // Suppress notification-side-effect logs/throws — we don't test those here.
     jest
@@ -177,17 +182,23 @@ describe('PaySolutionsService.handlePaymentCallback — payment JE (F-1-003)', (
       total: '1000',
     });
 
-    // Phase A.4b + C2: JE posted via PaymentReceipt2BTemplate INSIDE the tx
-    // (2nd arg = outer tx for atomicity).
+    // PR-843/I2 Phase 3 3b: JE posted via the PaymentReceiptTemplate primitive
+    // INSIDE the tx (2nd arg = outer tx for atomicity). The primitive receives
+    // the per-receipt DELTA (here delta=1000, the full installment) — NOT the
+    // legacy cumulative `amountReceived` — plus isFinalReceipt + paymentId.
     expect(paymentReceiptTemplate.execute).toHaveBeenCalledTimes(1);
     expect(paymentReceiptTemplate.execute).toHaveBeenCalledWith(
       expect.objectContaining({
         installmentScheduleId: 'inst-sched-1',
-        depositAccountCode: '11-1202',
-        existingPaymentId: paymentId,
+        debitAccountCode: '11-1202',
+        isFinalReceipt: true,
+        paymentId,
       }),
       prisma.__tx,
     );
+    // Delta is the DELTA applied this webhook (1000), never cumulative.
+    const jeInput = paymentReceiptTemplate.execute.mock.calls[0][0];
+    expect(jeInput.delta.toString()).toBe('1000');
   });
 
   it('C2 fix: JE failure inside tx rolls back Payment.update — no orphan PAID rows', async () => {

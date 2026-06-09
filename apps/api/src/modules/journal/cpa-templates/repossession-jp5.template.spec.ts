@@ -8,7 +8,6 @@ import { loadCaseFromCsv } from '../__tests__/csv-fixture-loader';
 import { diffGoldenJE } from '../__tests__/golden-je-matcher';
 import { ContractActivation1ATemplate } from './contract-activation-1a.template';
 import { InstallmentAccrual2ATemplate } from './installment-accrual-2a.template';
-import { PaymentReceipt2BTemplate } from './payment-receipt-2b.template';
 import { RepossessionJP5Template } from './repossession-jp5.template';
 import { JournalAutoService } from '../journal-auto.service';
 
@@ -43,6 +42,55 @@ async function setup() {
   return new JournalAutoService(prisma as any);
 }
 
+/**
+ * PR-843/I2 Phase 5d — the legacy PaymentReceipt2BTemplate was deleted. This
+ * reproduces its full-clear posting for one installment directly: creates the
+ * PAID Payment row (which the JP5 flow reads to determine the unpaid/accrued
+ * count) and posts Dr deposit / Cr 11-2103 for installmentTotal (mirrors what
+ * the new primitive would post). The JP5 golden assertions only diff the
+ * repossession JE's own lines and depend on the paid/unpaid state, so they are
+ * unchanged.
+ */
+async function postPriorReceipt(
+  journal: JournalAutoService,
+  contractId: string,
+  inst: { id: string; installmentNo: number; dueDate: Date },
+): Promise<void> {
+  const installmentTotal = new Decimal('1515.83');
+  const contract = await prisma.contract.findUniqueOrThrow({ where: { id: contractId } });
+  const payment = await prisma.payment.create({
+    data: {
+      contractId,
+      installmentNo: inst.installmentNo,
+      dueDate: inst.dueDate,
+      amountDue: installmentTotal,
+      amountPaid: installmentTotal,
+      paidDate: new Date(),
+      paidAt: new Date(),
+      status: 'PAID',
+    },
+  });
+  await journal.createAndPost({
+    description: `รับชำระงวด #${inst.installmentNo} — สัญญา ${contract.contractNumber}`,
+    reference: payment.id,
+    metadata: {
+      tag: 'receipt',
+      contractId,
+      installmentScheduleId: inst.id,
+      paymentId: payment.id,
+    },
+    lines: [
+      { accountCode: '11-1101', dr: installmentTotal, cr: new Decimal(0), description: 'รับเงิน' },
+      {
+        accountCode: '11-2103',
+        dr: new Decimal(0),
+        cr: installmentTotal,
+        description: 'ล้างลูกหนี้ค้างชำระ',
+      },
+    ],
+  });
+}
+
 describe('RepossessionJP5Template', () => {
   // Phase 4 EIR migration: CSV regenerated to match EIR allocation
   // (deferred interest for periods 5..12 = 3,012.50, was straight-line 4,000). Re-enabled.
@@ -53,7 +101,6 @@ describe('RepossessionJP5Template', () => {
 
     // Pay 4 installments
     const accrual = new InstallmentAccrual2ATemplate(journal, prisma as any);
-    const pay = new PaymentReceipt2BTemplate(journal, prisma as any);
     const insts = await prisma.installmentSchedule.findMany({
       where: { contractId: c.id },
       orderBy: { installmentNo: 'asc' },
@@ -61,11 +108,7 @@ describe('RepossessionJP5Template', () => {
 
     for (let i = 0; i < 4; i++) {
       await accrual.execute(insts[i].id);
-      await pay.execute({
-        installmentScheduleId: insts[i].id,
-        amountReceived: new Decimal('1515.83'),
-        depositAccountCode: '11-1101',
-      });
+      await postPriorReceipt(journal, c.id, insts[i]);
     }
 
     // Repossession with value 7000 (loss scenario)

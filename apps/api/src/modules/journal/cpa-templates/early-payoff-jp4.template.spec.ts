@@ -5,7 +5,6 @@ import { seedFinanceCoa } from '../../../../prisma/seed-coa-finance';
 import { seedStandard17k12m } from '../__tests__/scenario-helpers';
 import { ContractActivation1ATemplate } from './contract-activation-1a.template';
 import { InstallmentAccrual2ATemplate } from './installment-accrual-2a.template';
-import { PaymentReceipt2BTemplate } from './payment-receipt-2b.template';
 import { EarlyPayoffJP4Template } from './early-payoff-jp4.template';
 import { Vat60dayMandatoryTemplate } from './vat-60day-mandatory.template';
 import { Vat60dayReversalTemplate } from './vat-60day-reversal.template';
@@ -63,7 +62,55 @@ async function getEarlyPayoffJe(contractId: string) {
 }
 
 /**
- * Helper — pay first N installments (accrual + 2B receipt at 1515.83 ฿/งวด).
+ * PR-843/I2 Phase 5d — the legacy PaymentReceipt2BTemplate was deleted. This
+ * reproduces its full-clear posting for one installment directly: creates the
+ * PAID Payment row (which the JP4 flow reads to determine unpaid count) and
+ * posts Dr deposit / Cr 11-2103 for installmentTotal (mirrors what the new
+ * primitive would post). The JP4 golden assertions are unchanged because they
+ * only depend on the resulting paid/unpaid state, not the receipt JE's own lines.
+ */
+async function postPriorReceipt(
+  journal: JournalAutoService,
+  contractId: string,
+  inst: { id: string; installmentNo: number; dueDate: Date },
+): Promise<void> {
+  const installmentTotal = new Decimal('1515.83');
+  const contract = await prisma.contract.findUniqueOrThrow({ where: { id: contractId } });
+  const payment = await prisma.payment.create({
+    data: {
+      contractId,
+      installmentNo: inst.installmentNo,
+      dueDate: inst.dueDate,
+      amountDue: installmentTotal,
+      amountPaid: installmentTotal,
+      paidDate: new Date(),
+      paidAt: new Date(),
+      status: 'PAID',
+    },
+  });
+  await journal.createAndPost({
+    description: `รับชำระงวด #${inst.installmentNo} — สัญญา ${contract.contractNumber}`,
+    reference: payment.id,
+    metadata: {
+      tag: 'receipt',
+      contractId,
+      installmentScheduleId: inst.id,
+      paymentId: payment.id,
+    },
+    lines: [
+      { accountCode: '11-1101', dr: installmentTotal, cr: new Decimal(0), description: 'รับเงิน' },
+      {
+        accountCode: '11-2103',
+        dr: new Decimal(0),
+        cr: installmentTotal,
+        description: 'ล้างลูกหนี้ค้างชำระ',
+      },
+    ],
+  });
+}
+
+/**
+ * Helper — pay first N installments (accrual + payment receipt at 1515.83 ฿/งวด).
  * NOTE: Replaces the CSV-golden test from pre-Wave-2 because case-4 CSV did not
  * implement ม.79 + ม.86/10 (Cr 21-2101 was full deferred VAT). New logic posts
  * Cr 21-2101 = remainingDeferredVat - vatOnDiscount.
@@ -74,18 +121,13 @@ async function payFirstN(
   n: number,
 ): Promise<void> {
   const accrual = new InstallmentAccrual2ATemplate(journal, prisma as any);
-  const pay = new PaymentReceipt2BTemplate(journal, prisma as any);
   const insts = await prisma.installmentSchedule.findMany({
     where: { contractId },
     orderBy: { installmentNo: 'asc' },
   });
   for (let i = 0; i < n; i++) {
     await accrual.execute(insts[i].id);
-    await pay.execute({
-      installmentScheduleId: insts[i].id,
-      amountReceived: new Decimal('1515.83'),
-      depositAccountCode: '11-1101',
-    });
+    await postPriorReceipt(journal, contractId, insts[i]);
   }
 }
 
@@ -226,7 +268,6 @@ describe('EarlyPayoffJP4Template', () => {
     await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
 
     const accrual = new InstallmentAccrual2ATemplate(journal, prisma as any);
-    const pay = new PaymentReceipt2BTemplate(journal, prisma as any);
     const insts = await prisma.installmentSchedule.findMany({
       where: { contractId: c.id },
       orderBy: { installmentNo: 'asc' },
@@ -234,11 +275,7 @@ describe('EarlyPayoffJP4Template', () => {
 
     for (let i = 0; i < 6; i++) {
       await accrual.execute(insts[i].id);
-      await pay.execute({
-        installmentScheduleId: insts[i].id,
-        amountReceived: new Decimal('1515.83'),
-        depositAccountCode: '11-1101',
-      });
+      await postPriorReceipt(journal, c.id, insts[i]);
     }
 
     const tmpl = new EarlyPayoffJP4Template(

@@ -50,7 +50,8 @@ import { FlexTemplatesService } from '../line-oa/flex-templates.service';
 import { QuickReplyService } from '../line-oa/quick-reply.service';
 import { PromiseService } from '../overdue/promise.service';
 import { MdmLockService } from '../overdue/mdm-lock.service';
-import { PaymentReceipt2BTemplate } from '../journal/cpa-templates/payment-receipt-2b.template';
+import { PaymentReceiptTemplate } from '../journal/cpa-templates/payment-receipt.template';
+import { Vat60dayReversalTemplate } from '../journal/cpa-templates/vat-60day-reversal.template';
 import { BadDebtService } from '../accounting/bad-debt.service';
 
 const D = (n: number | string) => new Prisma.Decimal(n);
@@ -61,6 +62,8 @@ describe('PaymentsService — credit / waive / daily-summary / partial-preview (
   let service: PaymentsService;
   let prisma: AnyObj;
   let createAndPost: jest.Mock;
+  let receiptExecute: jest.Mock;
+  let vat60Execute: jest.Mock;
 
   /** Build the mock Prisma. tx === root instance so $transaction(cb) reuses it. */
   const buildPrisma = () => {
@@ -77,9 +80,14 @@ describe('PaymentsService — credit / waive / daily-summary / partial-preview (
           .fn()
           // Echo the write back, merged onto a base row, so callers see the
           // post-update shape (status / paidDate / amountPaid / lateFee).
-          .mockImplementation(({ where, data }: { where: AnyObj; data: AnyObj }) =>
-            Promise.resolve({ id: where.id, installmentNo: 1, ...data }),
-          ),
+          // installmentNo is derived from the `cr-pay-N` id when present (so the
+          // applyCreditBalance path resolves the right per-installment schedule),
+          // else defaults to 1 (waiveLateFee tests use single-installment rows).
+          .mockImplementation(({ where, data }: { where: AnyObj; data: AnyObj }) => {
+            const m = /^cr-pay-(\d+)$/.exec(where.id ?? '');
+            const installmentNo = m ? Number(m[1]) : 1;
+            return Promise.resolve({ id: where.id, installmentNo, ...data });
+          }),
         count: jest.fn().mockResolvedValue(1),
         aggregate: jest.fn().mockResolvedValue({ _sum: { amountPaid: 0, lateFee: 0 } }),
         findFirst: jest.fn().mockResolvedValue(null),
@@ -129,6 +137,8 @@ describe('PaymentsService — credit / waive / daily-summary / partial-preview (
     jest.clearAllMocks();
     prisma = buildPrisma();
     createAndPost = jest.fn().mockResolvedValue({ id: 'je-1' });
+    receiptExecute = jest.fn().mockResolvedValue({ entryNo: 'JE', split: { principalRemainingAfter: 0 } });
+    vat60Execute = jest.fn().mockResolvedValue(null);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -157,7 +167,8 @@ describe('PaymentsService — credit / waive / daily-summary / partial-preview (
         { provide: QuickReplyService, useValue: { afterPayment: jest.fn().mockReturnValue([]) } },
         { provide: PromiseService, useValue: { findActivePromise: jest.fn().mockResolvedValue(null) } },
         { provide: MdmLockService, useValue: { autoUnlock: jest.fn().mockResolvedValue(undefined) } },
-        { provide: PaymentReceipt2BTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE' }) } },
+        { provide: PaymentReceiptTemplate, useValue: { execute: receiptExecute } },
+        { provide: Vat60dayReversalTemplate, useValue: { execute: vat60Execute } },
         { provide: BadDebtService, useValue: { reverseStageOnPayment: jest.fn().mockResolvedValue(null) } },
       ],
     }).compile();
@@ -187,9 +198,17 @@ describe('PaymentsService — credit / waive / daily-summary / partial-preview (
       notes: null,
     });
 
-    it('credit=4000 over two 3000 installments → p1 PAID (JE 3000 delta), p2 PARTIALLY_PAID 1000, creditUsed=4000 creditRemaining=0', async () => {
+    it('credit=4000 over two 3000 installments → p1 PAID (primitive delta=3000 isFinal), p2 PARTIALLY_PAID (primitive delta=1000 NOT final — partials now ledgered), creditUsed=4000 creditRemaining=0', async () => {
       prisma.contract.findUnique.mockResolvedValue(
         mkContract(D(4000), [mkInstallment(1), mkInstallment(2)]),
+      );
+      // PR-843/I2 Phase 3 3d — applyCreditBalance now resolves the
+      // InstallmentSchedule per installment so it can call the primitive.
+      prisma.installmentSchedule.findUnique.mockImplementation(
+        ({ where }: { where: AnyObj }) => {
+          const no = where.contractId_installmentNo.installmentNo;
+          return Promise.resolve({ id: `cr-sched-${no}`, vat60dayJournalEntryId: null });
+        },
       );
 
       const result = await service.applyCreditBalance('cr-contract-1', 'user-1');
@@ -213,18 +232,40 @@ describe('PaymentsService — credit / waive / daily-summary / partial-preview (
       expect((p2Write.data.amountPaid as Prisma.Decimal).toFixed(2)).toBe('1000.00');
       expect(p2Write.data.paidDate).toBeNull();
 
-      // Exactly ONE credit-allocation JE (only the fully-paid installment posts).
-      expect(createAndPost).toHaveBeenCalledTimes(1);
-      const jeArg = createAndPost.mock.calls[0][0];
-      expect(jeArg.metadata.tag).toBe('credit-allocation');
-      expect(jeArg.lines).toHaveLength(2);
-      // Dr 21-5101 / Cr 11-2103 — both the THIS-allocation DELTA (3000), not cumulative.
-      const dr = jeArg.lines.find((l: AnyObj) => l.accountCode === '21-5101');
-      const cr = jeArg.lines.find((l: AnyObj) => l.accountCode === '11-2103');
-      expect((dr.dr as Prisma.Decimal).toFixed(2)).toBe('3000.00');
-      expect((dr.cr as Prisma.Decimal).toFixed(2)).toBe('0.00');
-      expect((cr.cr as Prisma.Decimal).toFixed(2)).toBe('3000.00');
-      expect((cr.dr as Prisma.Decimal).toFixed(2)).toBe('0.00');
+      // PR-843/I2 Phase 3 3d — the credit-application JE is now posted via the
+      // PaymentReceiptTemplate primitive (delta-clear via Dr 21-5101), NOT the
+      // custom createAndPost inline JE, and is posted on BOTH the full (p1) and
+      // the partial (p2) allocation (partials are now ledgered, defect 2).
+      expect(createAndPost).not.toHaveBeenCalled();
+      expect(receiptExecute).toHaveBeenCalledTimes(2);
+
+      // p1 — completing receipt: delta=3000 (the THIS-allocation DELTA, not
+      // cumulative), debitAccountCode 21-5101 (customer credit, NOT cash),
+      // isFinalReceipt=true.
+      const p1Call = receiptExecute.mock.calls[0][0];
+      expect(p1Call.installmentScheduleId).toBe('cr-sched-1');
+      expect((p1Call.delta as Prisma.Decimal).toFixed(2)).toBe('3000.00');
+      expect(p1Call.debitAccountCode).toBe('21-5101');
+      expect(p1Call.isFinalReceipt).toBe(true);
+      expect(p1Call.paymentId).toBe('cr-pay-1');
+      // No lateFee on these installments → undefined (no Cr 42-1103 leg).
+      expect(p1Call.lateFee).toBeUndefined();
+      // PR-843/I2 Phase 5b — applyCreditBalance always clears the FULL owed amount
+      // per installment, so a ≤1฿ last-installment residual is a system rounding
+      // artifact → the flag is true on every primitive call (no approver on this path).
+      expect(p1Call.autoApproveSystemRounding).toBe(true);
+
+      // p2 — partial receipt: delta=1000, 21-5101, isFinalReceipt=false (stays open).
+      const p2Call = receiptExecute.mock.calls[1][0];
+      expect(p2Call.installmentScheduleId).toBe('cr-sched-2');
+      expect((p2Call.delta as Prisma.Decimal).toFixed(2)).toBe('1000.00');
+      expect(p2Call.debitAccountCode).toBe('21-5101');
+      expect(p2Call.isFinalReceipt).toBe(false);
+      expect(p2Call.paymentId).toBe('cr-pay-2');
+      expect(p2Call.autoApproveSystemRounding).toBe(true);
+
+      // No 60-day mandatory VAT JE on these installments → no reversal.
+      expect(vat60Execute).not.toHaveBeenCalled();
 
       // Credit totals
       expect(result.creditUsed).toBe(4000);
@@ -255,6 +296,7 @@ describe('PaymentsService — credit / waive / daily-summary / partial-preview (
       // No allocation work happened.
       expect(prisma.payment.update).not.toHaveBeenCalled();
       expect(createAndPost).not.toHaveBeenCalled();
+      expect(receiptExecute).not.toHaveBeenCalled();
     });
   });
 

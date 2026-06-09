@@ -22,7 +22,8 @@ import { QuickReplyService } from '../line-oa/quick-reply.service';
 import { WarrantyService } from '../warranty/warranty.service';
 import { PromiseService } from '../overdue/promise.service';
 import { MdmLockService } from '../overdue/mdm-lock.service';
-import { PaymentReceipt2BTemplate } from '../journal/cpa-templates/payment-receipt-2b.template';
+import { PaymentReceiptTemplate } from '../journal/cpa-templates/payment-receipt.template';
+import { Vat60dayReversalTemplate } from '../journal/cpa-templates/vat-60day-reversal.template';
 import { BadDebtService } from '../accounting/bad-debt.service';
 import * as Sentry from '@sentry/node';
 
@@ -158,7 +159,8 @@ describe('PaymentsService', () => {
             autoUnlock: jest.fn().mockResolvedValue(undefined),
           },
         },
-        { provide: PaymentReceipt2BTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK' }) } },
+        { provide: PaymentReceiptTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK', split: { principalRemainingAfter: 0 } }) } },
+        { provide: Vat60dayReversalTemplate, useValue: { execute: jest.fn().mockResolvedValue(null) } },
         { provide: BadDebtService, useValue: { reverseStageOnPayment: jest.fn().mockResolvedValue(null) } },
       ],
     }).compile();
@@ -301,29 +303,29 @@ describe('PaymentsService', () => {
       );
     });
 
-    it('calls PaymentReceipt2BTemplate on full payment (Phase A.4b, replaces F-3-027)', async () => {
-      // Phase A.4b: PaymentReceipt2BTemplate replaced createPaymentJournal.
-      // Template is called inside the $transaction with installmentScheduleId + existingPaymentId.
+    it('calls PaymentReceiptTemplate primitive on full payment (PR-843/I2 Phase 3 3a, replaces 2B)', async () => {
+      // PR-843/I2 Phase 3 3a: recordPayment now posts via the PaymentReceiptTemplate
+      // primitive inside the $transaction (installmentScheduleId + paymentId + delta).
       const updatedPayment = { ...mockPayment, id: 'payment-1', amountPaid: 3000, status: 'PAID', paidDate: new Date() };
       prisma.payment.update.mockResolvedValue(updatedPayment);
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const templateMock = (service as any).paymentReceipt2BTemplate;
+      const templateMock = (service as any).paymentReceiptTemplate;
 
       await service.recordPayment('contract-1', 1, 3000, 'CASH', 'user-1', 'http://slip.jpg');
 
-      // Template called with installmentScheduleId from mock (null → skipped with warn)
-      // InstallmentSchedule mock returns null, so template.execute is NOT called (skipped path)
-      // This test verifies the recordPayment call succeeds without error
+      // InstallmentSchedule mock returns null → primitive.execute is NOT called (skipped path,
+      // logged as warn). This test verifies recordPayment succeeds without error.
       expect(updatedPayment.status).toBe('PAID');
-      // Template execute is not called when installmentSchedule is null (logged as warn)
       expect(templateMock.execute).not.toHaveBeenCalled();
     });
 
-    it('C1 fix: forwards computed lateFee to PaymentReceipt2BTemplate (Cr 42-1103)', async () => {
+    it('C1 fix: forwards computed lateFee to PaymentReceiptTemplate primitive (Cr 42-1103)', async () => {
       // Bug: recordPayment computed Payment.lateFee but never forwarded it to the
-      // 2B template, so the Cr 42-1103 income line was silently dropped AND the
+      // receipt template, so the Cr 42-1103 income line was silently dropped AND the
       // tolerance check rejected the late payment (cash > installmentTotal by lateFee).
+      // PR-843/I2 Phase 3 3a: the receipt now posts via the PaymentReceiptTemplate
+      // primitive — the lateFee forward is asserted on THAT mock.
       //
       // Set up a payment overdue by 5 days. The service computes a late fee
       // capped at LATE_FEE_CAP_PCT * amountDue (~5% by default). For
@@ -353,7 +355,7 @@ describe('PaymentsService', () => {
       prisma.installmentSchedule.findUnique.mockResolvedValue({ id: 'inst-sched-1' });
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const templateMock = (service as any).paymentReceipt2BTemplate;
+      const templateMock = (service as any).paymentReceiptTemplate;
 
       // To avoid relying on the exact business-rule cap value, query the
       // service's computed lateFee by inspecting the Payment.update call.
@@ -381,6 +383,50 @@ describe('PaymentsService', () => {
       const callArgs = templateMock.execute.mock.calls[0][0];
       expect(callArgs.lateFee).toBeDefined();
       expect(Number(callArgs.lateFee.toString())).toBeGreaterThan(0);
+    });
+
+    it('PR-843/I2 Phase 5b: full-obligation payment → primitive called with autoApproveSystemRounding=true (the ≤1฿ residual is a system rounding artifact, not a customer underpay)', async () => {
+      // Customer pays the FULL amountDue (3000 of 3000), no prior partial → the
+      // recordPayment condition dGte(amount+advanceConsume, remaining) is TRUE, so
+      // any ≤1฿ amountDue↔installmentTotal residual on the close routes to 52-1104
+      // WITHOUT an approver. (isPaidInFull is true ⟺ the flag is true here.)
+      const updatedPayment = { ...mockPayment, id: 'payment-1', amountDue: 3000, amountPaid: 3000, status: 'PAID', paidDate: new Date() };
+      prisma.payment.findFirst.mockResolvedValue({ ...mockPayment, amountDue: 3000, amountPaid: 0, lateFee: 0, lateFeeWaived: false, status: 'PENDING' });
+      prisma.payment.update.mockResolvedValue(updatedPayment);
+      // Non-null InstallmentSchedule so the primitive is reached.
+      prisma.installmentSchedule.findUnique.mockResolvedValue({ id: 'inst-sched-1', vat60dayJournalEntryId: null });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const templateMock = (service as any).paymentReceiptTemplate;
+
+      await service.recordPayment('contract-1', 1, 3000, 'CASH', 'user-1', 'http://slip.jpg');
+
+      expect(templateMock.execute).toHaveBeenCalledTimes(1);
+      const callArgs = templateMock.execute.mock.calls[0][0];
+      expect(callArgs.isFinalReceipt).toBe(true);
+      expect(callArgs.autoApproveSystemRounding).toBe(true);
+    });
+
+    it('PR-843/I2 Phase 5b: a genuine ≤1฿ customer underpay does NOT close the installment (stays PARTIALLY_PAID) → primitive NOT called, approver gate intact', async () => {
+      // Customer pays amountDue − 0.50 (a ≤1฿ shortfall, no advance). The condition
+      // dGte(amount+advanceConsume, remaining) is FALSE → isPaidInFull=false AND the
+      // shortage (0.50) ≤ 1฿ so isPartialClear=false → recordPayment does NOT enter
+      // the isFinalReceipt close path at all. The installment stays PARTIALLY_PAID and
+      // the 52-1104 auto-approve never fires — the approver gate is preserved by
+      // construction (the underpay never force-closes without one).
+      const updatedPayment = { ...mockPayment, id: 'payment-1', amountDue: 3000, amountPaid: 2999.5, status: 'PARTIALLY_PAID', paidDate: null };
+      prisma.payment.findFirst.mockResolvedValue({ ...mockPayment, amountDue: 3000, amountPaid: 0, lateFee: 0, lateFeeWaived: false, status: 'PENDING' });
+      prisma.payment.update.mockResolvedValue(updatedPayment);
+      prisma.installmentSchedule.findUnique.mockResolvedValue({ id: 'inst-sched-1', vat60dayJournalEntryId: null });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const templateMock = (service as any).paymentReceiptTemplate;
+
+      const result = await service.recordPayment('contract-1', 1, 2999.5, 'CASH', 'user-1', 'http://slip.jpg');
+
+      // Not fully paid, not a PARTIAL force-clear → primitive never invoked.
+      expect(result.status).toBe('PARTIALLY_PAID');
+      expect(templateMock.execute).not.toHaveBeenCalled();
     });
   });
 
@@ -439,6 +485,98 @@ describe('PaymentsService', () => {
       const secondCall = prisma.payment.update.mock.calls[1][0];
       expect(firstCall.data.evidenceUrl).toBe('https://slip.example.com/transfer.jpg');
       expect(secondCall.data.evidenceUrl).toBeUndefined();
+    });
+
+    it('PR-843/I2 Phase 3 3c: posts the primitive on EVERY iteration (partial AND full) with delta=payAmount + isFinalReceipt=isPaidInFull', async () => {
+      // Inst #1 fully paid (3000 of 3000) → isFinalReceipt=true, delta=3000.
+      // Inst #2 partially paid (2000 of 3000) → isFinalReceipt=false, delta=2000.
+      const payments = [
+        { ...mockPayment, id: 'p-1', installmentNo: 1, amountDue: 3000, amountPaid: 0, lateFee: 0, lateFeeWaived: false, status: 'PENDING' },
+        { ...mockPayment, id: 'p-2', installmentNo: 2, amountDue: 3000, amountPaid: 0, lateFee: 0, lateFeeWaived: false, status: 'PENDING' },
+      ];
+      prisma.contract.findUnique.mockResolvedValue({ ...mockContract, payments });
+      prisma.payment.update
+        .mockResolvedValueOnce({ ...payments[0], amountPaid: 3000, status: 'PAID', paidDate: new Date(), depositAccountCode: '11-1101' })
+        .mockResolvedValueOnce({ ...payments[1], amountPaid: 2000, status: 'PARTIALLY_PAID', paidDate: null, depositAccountCode: '11-1101' });
+      // Non-null InstallmentSchedule so the primitive fires for both iterations.
+      prisma.installmentSchedule.findUnique
+        .mockResolvedValueOnce({ id: 'inst-1', vat60dayJournalEntryId: null })
+        .mockResolvedValueOnce({ id: 'inst-2', vat60dayJournalEntryId: null });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const templateMock = (service as any).paymentReceiptTemplate;
+
+      await service.autoAllocatePayment('contract-1', 5000, 'CASH', 'user-1');
+
+      // Primitive called twice — once per installment touched (partial + full).
+      expect(templateMock.execute).toHaveBeenCalledTimes(2);
+
+      // Iteration 1 — full clear of inst #1: delta == payAmount (3000), final receipt.
+      const call1 = templateMock.execute.mock.calls[0][0];
+      expect(call1.installmentScheduleId).toBe('inst-1');
+      expect(Number(call1.delta.toString())).toBe(3000);
+      expect(call1.isFinalReceipt).toBe(true);
+      expect(call1.paymentId).toBe('p-1');
+      expect(call1.debitAccountCode).toBe('11-1101');
+      // PR-843/I2 Phase 5b — autoAllocate always pays the FULL owed per installment,
+      // so a ≤1฿ last-installment residual is a system rounding artifact → the flag
+      // is true on EVERY primitive call (no approver available on this auto path).
+      expect(call1.autoApproveSystemRounding).toBe(true);
+
+      // Iteration 2 — partial clear of inst #2: delta == payAmount (2000), NOT final.
+      const call2 = templateMock.execute.mock.calls[1][0];
+      expect(call2.installmentScheduleId).toBe('inst-2');
+      expect(Number(call2.delta.toString())).toBe(2000); // DELTA, not cumulative amountPaid
+      expect(call2.isFinalReceipt).toBe(false);
+      expect(call2.paymentId).toBe('p-2');
+      expect(call2.autoApproveSystemRounding).toBe(true);
+    });
+
+    it('PR-843/I2 Phase 3 3c: forwards lateFeeOwed to the primitive (honouring lateFeeWaived→0)', async () => {
+      // Inst #1 carries a lateFee of 50 (not waived) → forwarded as Decimal 50.
+      // Inst #2 carries a lateFee of 50 but lateFeeWaived=true → forwarded undefined.
+      const payments = [
+        { ...mockPayment, id: 'p-1', installmentNo: 1, amountDue: 3000, amountPaid: 0, lateFee: 50, lateFeeWaived: false, status: 'PENDING' },
+        { ...mockPayment, id: 'p-2', installmentNo: 2, amountDue: 3000, amountPaid: 0, lateFee: 50, lateFeeWaived: true, status: 'PENDING' },
+      ];
+      prisma.contract.findUnique.mockResolvedValue({ ...mockContract, payments });
+      prisma.payment.update
+        .mockResolvedValueOnce({ ...payments[0], amountPaid: 3050, status: 'PAID', paidDate: new Date(), depositAccountCode: '11-1101' })
+        .mockResolvedValueOnce({ ...payments[1], amountPaid: 2900, status: 'PARTIALLY_PAID', paidDate: null, depositAccountCode: '11-1101' });
+      prisma.installmentSchedule.findUnique
+        .mockResolvedValueOnce({ id: 'inst-1', vat60dayJournalEntryId: null })
+        .mockResolvedValueOnce({ id: 'inst-2', vat60dayJournalEntryId: null });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const templateMock = (service as any).paymentReceiptTemplate;
+
+      // 3050 (inst#1 owed incl. fee) + 2900 partial of inst#2 = 5950
+      await service.autoAllocatePayment('contract-1', 5950, 'CASH', 'user-1');
+
+      const call1 = templateMock.execute.mock.calls[0][0];
+      expect(call1.lateFee).toBeDefined();
+      expect(Number(call1.lateFee.toString())).toBe(50);
+
+      const call2 = templateMock.execute.mock.calls[1][0];
+      expect(call2.lateFee).toBeUndefined(); // waived → not forwarded
+    });
+
+    it('PR-843/I2 Phase 3 3c: triggers Vat60dayReversal when the installment carries a 60-day VAT JE', async () => {
+      const payments = [
+        { ...mockPayment, id: 'p-1', installmentNo: 1, amountDue: 3000, amountPaid: 0, lateFee: 0, lateFeeWaived: false, status: 'PENDING' },
+      ];
+      prisma.contract.findUnique.mockResolvedValue({ ...mockContract, payments });
+      prisma.payment.update.mockResolvedValueOnce({
+        ...payments[0], amountPaid: 3000, status: 'PAID', paidDate: new Date(), depositAccountCode: '11-1101',
+      });
+      prisma.installmentSchedule.findUnique.mockResolvedValueOnce({ id: 'inst-1', vat60dayJournalEntryId: 'je-60day-1' });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const vat60 = (service as any).vat60Reversal;
+
+      await service.autoAllocatePayment('contract-1', 3000, 'CASH', 'user-1');
+
+      expect(vat60.execute).toHaveBeenCalledWith('inst-1', expect.anything());
     });
   });
 
@@ -1101,8 +1239,15 @@ describe('PaymentsService', () => {
   // C4 regression: applyCreditBalance had been passing `updated.amountPaid`
   // (cumulative) to the JE instead of the delta — over-Dr 21-5101 and
   // over-Cr 11-2103 when the installment had a prior partial payment.
+  //
+  // PR-843/I2 Phase 3 3d: the credit JE is now posted via the
+  // PaymentReceiptTemplate primitive (Dr 21-5101 delta-clear). The C4 invariant
+  // is preserved by passing `delta = payAmount` (the THIS-allocation delta), so
+  // this test now asserts the primitive's `delta` arg instead of the old custom
+  // createAndPost line. The primitive itself reconstructs the prior 500 partial
+  // and clears only the remaining 1000 — verified end-to-end in the e2e spec.
   describe('applyCreditBalance — C4 regression (use delta, not cumulative)', () => {
-    it('Dr/Cr the delta payAmount, not cumulative amountPaid, when installment had a prior partial', async () => {
+    it('passes delta payAmount (1000), not cumulative amountPaid (1500), to the PaymentReceiptTemplate primitive when installment had a prior partial', async () => {
       // Installment had 500฿ already paid (prior partial). amountDue = 1500฿.
       // Customer has 1000฿ credit balance → enough to fully clear.
       const partiallyPaidInst = {
@@ -1112,6 +1257,7 @@ describe('PaymentsService', () => {
         amountDue: 1500,
         amountPaid: 500, // prior partial
         lateFee: 0,
+        lateFeeWaived: false,
         status: 'PARTIALLY_PAID',
         deletedAt: null,
       };
@@ -1129,25 +1275,35 @@ describe('PaymentsService', () => {
         status: 'PAID',
         paidDate: new Date(),
       });
+      // 3d: applyCreditBalance resolves the InstallmentSchedule per installment.
+      prisma.installmentSchedule.findUnique.mockResolvedValue({
+        id: 'inst-sched-7',
+        vat60dayJournalEntryId: null,
+      });
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const journal = (service as any).journalAutoService;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const templateMock = (service as any).paymentReceiptTemplate;
 
       await service.applyCreditBalance('contract-1', 'user-1');
 
-      expect(journal.createAndPost).toHaveBeenCalled();
-      const jeArg = journal.createAndPost.mock.calls[0][0];
-
-      // C4 fix: JE amounts must equal the DELTA (1000 = remaining gap to clear
-      // the installment), NOT the cumulative amountPaid (1500). The prior 500฿
-      // was already booked as a partial JE when it was received.
-      const dr21_5101 = jeArg.lines.find((l: any) => l.accountCode === '21-5101');
-      const cr11_2103 = jeArg.lines.find((l: any) => l.accountCode === '11-2103');
-      expect(dr21_5101).toBeDefined();
-      expect(cr11_2103).toBeDefined();
-      // Use Number() because the line.dr/cr is a Prisma.Decimal
-      expect(Number(dr21_5101.dr.toString())).toBe(1000);
-      expect(Number(cr11_2103.cr.toString())).toBe(1000);
+      // The custom inline JE is gone — no createAndPost for the credit allocation.
+      expect(journal.createAndPost).not.toHaveBeenCalled();
+      // Primitive posts the credit receipt.
+      expect(templateMock.execute).toHaveBeenCalledTimes(1);
+      const call = templateMock.execute.mock.calls[0][0];
+      expect(call.installmentScheduleId).toBe('inst-sched-7');
+      // C4 fix: delta must equal the DELTA (1000 = remaining gap to clear the
+      // installment), NOT the cumulative amountPaid (1500). The prior 500฿ was
+      // already booked as a partial JE when it was received, and the primitive
+      // reconstructs it.
+      expect(Number(call.delta.toString())).toBe(1000);
+      // Customer-credit debit, NOT cash.
+      expect(call.debitAccountCode).toBe('21-5101');
+      // Fully clears the installment → final receipt.
+      expect(call.isFinalReceipt).toBe(true);
+      expect(call.paymentId).toBe('inst-7');
     });
   });
 });

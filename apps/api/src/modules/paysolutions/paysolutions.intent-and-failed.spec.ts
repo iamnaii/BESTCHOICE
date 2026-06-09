@@ -13,7 +13,8 @@ import { IntegrationConfigService } from '../integrations/integration-config.ser
 import { OnlineOrderSaleAdapter } from '../shop-orders/online-order-sale.adapter';
 import { ProductsService } from '../products/products.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
-import { PaymentReceipt2BTemplate } from '../journal/cpa-templates/payment-receipt-2b.template';
+import { PaymentReceiptTemplate } from '../journal/cpa-templates/payment-receipt.template';
+import { Vat60dayReversalTemplate } from '../journal/cpa-templates/vat-60day-reversal.template';
 import { PaymentsService } from '../payments/payments.service';
 
 // Same Sentry-transport stub the sibling specs use — captureException /
@@ -33,7 +34,7 @@ jest.mock('@sentry/nestjs', () => ({
  *        - paymentLink.paymentId set → payment.update gatewayStatus:'FAILED'
  *          ONLY (amountPaid/status UNTOUCHED — no credit), gatewayResponse stored
  *        - paymentLink.update status:'EXPIRED'
- *        - NO JE (paymentReceipt2BTemplate.execute), NO $transaction, NO
+ *        - NO JE (paymentReceiptTemplate.execute), NO $transaction, NO
  *          success notification
  *        - paymentId null → payment.update SKIPPED, link still EXPIRED
  *   B. routing pre-checks in handlePaymentCallback (916-1028)
@@ -58,7 +59,7 @@ describe('PaySolutionsService — intent guards + FAILED/routing callbacks (char
   // Hand-mocked Prisma surface — only the members the path under test touches.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let prisma: any;
-  let template2B: { execute: jest.Mock };
+  let template: { execute: jest.Mock };
   let payments: { recordPayment: jest.Mock };
 
   /**
@@ -66,7 +67,7 @@ describe('PaySolutionsService — intent guards + FAILED/routing callbacks (char
    * collaborator mocks each time so per-test overrides stay isolated.
    */
   async function buildService(): Promise<void> {
-    template2B = { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK' }) };
+    template = { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK' }) };
     payments = { recordPayment: jest.fn().mockResolvedValue(undefined) };
 
     const lineOa = {
@@ -99,7 +100,8 @@ describe('PaySolutionsService — intent guards + FAILED/routing callbacks (char
         { provide: OnlineOrderSaleAdapter, useValue: saleAdapter },
         { provide: ProductsService, useValue: products },
         { provide: JournalAutoService, useValue: journalAuto },
-        { provide: PaymentReceipt2BTemplate, useValue: template2B },
+        { provide: PaymentReceiptTemplate, useValue: template },
+        { provide: Vat60dayReversalTemplate, useValue: { execute: jest.fn() } },
         { provide: PaymentsService, useValue: payments },
       ],
     }).compile();
@@ -197,7 +199,7 @@ describe('PaySolutionsService — intent guards + FAILED/routing callbacks (char
 
       // (c) No success machinery ran.
       expect(prisma.$transaction).not.toHaveBeenCalled();
-      expect(template2B.execute).not.toHaveBeenCalled();
+      expect(template.execute).not.toHaveBeenCalled();
       expect(sendSuccessSpy).not.toHaveBeenCalled();
     });
 

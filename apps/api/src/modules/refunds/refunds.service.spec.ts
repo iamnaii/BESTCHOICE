@@ -51,7 +51,9 @@ describe('RefundsService', () => {
         findUnique: jest.fn().mockResolvedValue(paidPayment()),
         update: jest.fn().mockResolvedValue({}),
       },
-      journalEntry: { findFirst: jest.fn().mockResolvedValue(null) },
+      // PR-843/I2 Phase 3 PR 3.1: markReversed now finds ALL receipt JEs of the payment
+      // via metadata.paymentId (findMany) and reverses EACH — not a single findFirst.
+      journalEntry: { findMany: jest.fn().mockResolvedValue([]) },
       receipt: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       refund: {
         create: jest.fn((args) => Promise.resolve({ id: 'rf-1', ...args.data })),
@@ -231,18 +233,35 @@ describe('RefundsService', () => {
   });
 
   describe('markReversed — ledger reversal', () => {
-    it('reverses the original payment JE (referenceType AUTO, flow refund-reversal), reverts the payment + voids its receipt', async () => {
+    it('reverses ALL receipt JEs of the payment (metadata.paymentId, flow refund-reversal), reverts the payment + voids its receipt', async () => {
       prisma.refund.findUnique.mockResolvedValue(refundRecord({ status: 'APPROVED' }));
       prisma.payment.findUnique.mockResolvedValue({ amountPaid: new Prisma.Decimal(500) }); // = refund.amount
-      prisma.journalEntry.findFirst.mockResolvedValue({ id: 'je-1', companyId: 'co-finance' });
+      // PR-843/I2 Phase 3 PR 3.1: the epic posts MULTIPLE receipt JEs per Payment (a
+      // partial then a completion), all sharing metadata.paymentId. Refunds are always
+      // full (owner-confirmed #1164), so EVERY receipt JE must be reversed — return TWO.
+      prisma.journalEntry.findMany.mockResolvedValue([
+        { id: 'je-1', companyId: 'co-finance' },
+        { id: 'je-2', companyId: 'co-finance' },
+      ]);
       await service.markReversed('rf-1', { bankReversalRef: 'KBANK-1', notes: 'rev' }, 'u-owner', 'OWNER');
 
-      // Payment JEs are referenceType 'AUTO' (not 'PAYMENT'). Asserting the exact
-      // where-clause is what catches the no-op the review found — do NOT relax this.
-      expect(prisma.journalEntry.findFirst).toHaveBeenCalledWith({
-        where: { referenceType: 'AUTO', referenceId: 'pay-1', status: 'POSTED', deletedAt: null },
+      // The canonical payment→JE link is metadata.paymentId (each receipt JE now carries
+      // a unique reference, so the old referenceId == paymentId findFirst found at most
+      // one). Asserting the JSON path catches a regression back to the single-JE lookup.
+      expect(prisma.journalEntry.findMany).toHaveBeenCalledWith({
+        where: {
+          metadata: { path: ['paymentId'], equals: 'pay-1' },
+          status: 'POSTED',
+          deletedAt: null,
+        },
       });
+      // Reverse EACH — reversing only one would leave the other receipt's Cr 11-2103
+      // un-reversed (partial reversal of a full refund = ledger defect).
+      expect(template.voidReceipt).toHaveBeenCalledTimes(2);
       expect(template.voidReceipt).toHaveBeenCalledWith('je-1', prisma, { flow: 'refund-reversal' });
+      expect(template.voidReceipt).toHaveBeenCalledWith('je-2', prisma, { flow: 'refund-reversal' });
+      // Period guard uses the first found entry's companyId (all share FINANCE).
+      expect(validatePeriodOpen).toHaveBeenCalledWith(prisma, expect.any(Date), 'co-finance');
       expect(prisma.payment.update).toHaveBeenCalledWith({
         where: { id: 'pay-1' },
         data: { status: 'PENDING', amountPaid: 0, paidDate: null },
@@ -258,7 +277,7 @@ describe('RefundsService', () => {
     it('legacy payment with no POSTED JE: skips the reversal but still reverts the payment', async () => {
       prisma.refund.findUnique.mockResolvedValue(refundRecord({ status: 'APPROVED' }));
       prisma.payment.findUnique.mockResolvedValue({ amountPaid: new Prisma.Decimal(500) });
-      prisma.journalEntry.findFirst.mockResolvedValue(null);
+      prisma.journalEntry.findMany.mockResolvedValue([]);
       await service.markReversed('rf-1', { bankReversalRef: 'KBANK-2', notes: 'rev' }, 'u-owner', 'OWNER');
       expect(template.voidReceipt).not.toHaveBeenCalled();
       expect(prisma.payment.update).toHaveBeenCalled();

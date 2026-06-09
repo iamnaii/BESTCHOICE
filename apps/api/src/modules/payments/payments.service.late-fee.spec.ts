@@ -48,6 +48,8 @@ import { QuickReplyService } from '../line-oa/quick-reply.service';
 import { PromiseService } from '../overdue/promise.service';
 import { MdmLockService } from '../overdue/mdm-lock.service';
 import { PaymentReceipt2BTemplate } from '../journal/cpa-templates/payment-receipt-2b.template';
+import { PaymentReceiptTemplate } from '../journal/cpa-templates/payment-receipt.template';
+import { Vat60dayReversalTemplate } from '../journal/cpa-templates/vat-60day-reversal.template';
 import { BadDebtService } from '../accounting/bad-debt.service';
 
 const D = (n: number | string) => new Prisma.Decimal(n);
@@ -60,8 +62,10 @@ describe('PaymentsService — real-time late fee on payment', () => {
   let service: PaymentsService;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let prisma: any;
+  // PR-843/I2 Phase 3 3a — recordPayment now posts via the PaymentReceiptTemplate
+  // primitive, so the forwarded-lateFee assertions target THIS mock.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let receipt2BExecute: any;
+  let receiptPrimitiveExecute: any;
 
   // Per-test config for the two SystemConfig late-fee keys (null = use defaults).
   let lateFeePerDayCfg: string | null;
@@ -147,7 +151,7 @@ describe('PaymentsService — real-time late fee on payment', () => {
           }),
       },
       installmentSchedule: {
-        // Return a schedule so PaymentReceipt2BTemplate.execute is invoked and
+        // Return a schedule so PaymentReceiptTemplate.execute is invoked and
         // we can capture the forwarded lateFee.
         findUnique: jest.fn().mockResolvedValue({ id: 'lf-sched-1' }),
       },
@@ -168,7 +172,9 @@ describe('PaymentsService — real-time late fee on payment', () => {
     const mockPrismaInst: any = buildMockPrisma();
     prisma = mockPrismaInst;
 
-    receipt2BExecute = jest.fn().mockResolvedValue({ entryNo: 'JE-LF' });
+    receiptPrimitiveExecute = jest
+      .fn()
+      .mockResolvedValue({ entryNo: 'JE-LF', split: { principalRemainingAfter: D(0) } });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -197,7 +203,9 @@ describe('PaymentsService — real-time late fee on payment', () => {
         { provide: QuickReplyService, useValue: { afterPayment: jest.fn().mockReturnValue([]) } },
         { provide: PromiseService, useValue: { findActivePromise: jest.fn().mockResolvedValue(null) } },
         { provide: MdmLockService, useValue: { autoUnlock: jest.fn().mockResolvedValue(undefined) } },
-        { provide: PaymentReceipt2BTemplate, useValue: { execute: receipt2BExecute } },
+        { provide: PaymentReceipt2BTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-2B' }) } },
+        { provide: PaymentReceiptTemplate, useValue: { execute: receiptPrimitiveExecute } },
+        { provide: Vat60dayReversalTemplate, useValue: { execute: jest.fn().mockResolvedValue(null) } },
         { provide: BadDebtService, useValue: { reverseStageOnPayment: jest.fn().mockResolvedValue(null) } },
       ],
     }).compile();
@@ -214,9 +222,9 @@ describe('PaymentsService — real-time late fee on payment', () => {
     return call ? (call[0].data.lateFee as Prisma.Decimal) : undefined;
   };
 
-  /** Pull the lateFee forwarded to PaymentReceipt2BTemplate.execute, if any. */
+  /** Pull the lateFee forwarded to PaymentReceiptTemplate.execute, if any. */
   const lateFeeForwarded = (): Prisma.Decimal | undefined => {
-    const arg = receipt2BExecute.mock.calls[0]?.[0];
+    const arg = receiptPrimitiveExecute.mock.calls[0]?.[0];
     return arg?.lateFee;
   };
 

@@ -23,6 +23,8 @@ import { WarrantyService } from '../warranty/warranty.service';
 import { PromiseService } from '../overdue/promise.service';
 import { MdmLockService } from '../overdue/mdm-lock.service';
 import { PaymentReceipt2BTemplate } from '../journal/cpa-templates/payment-receipt-2b.template';
+import { PaymentReceiptTemplate } from '../journal/cpa-templates/payment-receipt.template';
+import { Vat60dayReversalTemplate } from '../journal/cpa-templates/vat-60day-reversal.template';
 import { BadDebtService } from '../accounting/bad-debt.service';
 import * as Sentry from '@sentry/node';
 
@@ -159,6 +161,8 @@ describe('PaymentsService', () => {
           },
         },
         { provide: PaymentReceipt2BTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK' }) } },
+        { provide: PaymentReceiptTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK', split: { principalRemainingAfter: 0 } }) } },
+        { provide: Vat60dayReversalTemplate, useValue: { execute: jest.fn().mockResolvedValue(null) } },
         { provide: BadDebtService, useValue: { reverseStageOnPayment: jest.fn().mockResolvedValue(null) } },
       ],
     }).compile();
@@ -301,29 +305,29 @@ describe('PaymentsService', () => {
       );
     });
 
-    it('calls PaymentReceipt2BTemplate on full payment (Phase A.4b, replaces F-3-027)', async () => {
-      // Phase A.4b: PaymentReceipt2BTemplate replaced createPaymentJournal.
-      // Template is called inside the $transaction with installmentScheduleId + existingPaymentId.
+    it('calls PaymentReceiptTemplate primitive on full payment (PR-843/I2 Phase 3 3a, replaces 2B)', async () => {
+      // PR-843/I2 Phase 3 3a: recordPayment now posts via the PaymentReceiptTemplate
+      // primitive inside the $transaction (installmentScheduleId + paymentId + delta).
       const updatedPayment = { ...mockPayment, id: 'payment-1', amountPaid: 3000, status: 'PAID', paidDate: new Date() };
       prisma.payment.update.mockResolvedValue(updatedPayment);
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const templateMock = (service as any).paymentReceipt2BTemplate;
+      const templateMock = (service as any).paymentReceiptTemplate;
 
       await service.recordPayment('contract-1', 1, 3000, 'CASH', 'user-1', 'http://slip.jpg');
 
-      // Template called with installmentScheduleId from mock (null → skipped with warn)
-      // InstallmentSchedule mock returns null, so template.execute is NOT called (skipped path)
-      // This test verifies the recordPayment call succeeds without error
+      // InstallmentSchedule mock returns null → primitive.execute is NOT called (skipped path,
+      // logged as warn). This test verifies recordPayment succeeds without error.
       expect(updatedPayment.status).toBe('PAID');
-      // Template execute is not called when installmentSchedule is null (logged as warn)
       expect(templateMock.execute).not.toHaveBeenCalled();
     });
 
-    it('C1 fix: forwards computed lateFee to PaymentReceipt2BTemplate (Cr 42-1103)', async () => {
+    it('C1 fix: forwards computed lateFee to PaymentReceiptTemplate primitive (Cr 42-1103)', async () => {
       // Bug: recordPayment computed Payment.lateFee but never forwarded it to the
-      // 2B template, so the Cr 42-1103 income line was silently dropped AND the
+      // receipt template, so the Cr 42-1103 income line was silently dropped AND the
       // tolerance check rejected the late payment (cash > installmentTotal by lateFee).
+      // PR-843/I2 Phase 3 3a: the receipt now posts via the PaymentReceiptTemplate
+      // primitive — the lateFee forward is asserted on THAT mock.
       //
       // Set up a payment overdue by 5 days. The service computes a late fee
       // capped at LATE_FEE_CAP_PCT * amountDue (~5% by default). For
@@ -353,7 +357,7 @@ describe('PaymentsService', () => {
       prisma.installmentSchedule.findUnique.mockResolvedValue({ id: 'inst-sched-1' });
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const templateMock = (service as any).paymentReceipt2BTemplate;
+      const templateMock = (service as any).paymentReceiptTemplate;
 
       // To avoid relying on the exact business-rule cap value, query the
       // service's computed lateFee by inspecting the Payment.update call.

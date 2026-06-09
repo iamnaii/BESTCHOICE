@@ -36,6 +36,8 @@ import { QuickReplyService } from '../line-oa/quick-reply.service';
 import { PromiseService } from '../overdue/promise.service';
 import { MdmLockService } from '../overdue/mdm-lock.service';
 import { PaymentReceipt2BTemplate } from '../journal/cpa-templates/payment-receipt-2b.template';
+import { PaymentReceiptTemplate } from '../journal/cpa-templates/payment-receipt.template';
+import { Vat60dayReversalTemplate } from '../journal/cpa-templates/vat-60day-reversal.template';
 import { BadDebtService } from '../accounting/bad-debt.service';
 
 const D = (n: number | string) => new Prisma.Decimal(n);
@@ -54,6 +56,10 @@ describe('PaymentsService — advance balance (Task 4)', () => {
   let prisma: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let receipt2BExecute: any;
+  // PR-843/I2 Phase 3 3a — recordPayment now posts via the PaymentReceiptTemplate
+  // primitive, so the partialClear/completion assertions target THIS mock.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let receiptPrimitiveExecute: any;
 
   // Mutable advance balance that persists across tests (simulates DB state)
   let advanceBalance: number;
@@ -153,6 +159,9 @@ describe('PaymentsService — advance balance (Task 4)', () => {
     prisma = mockPrismaInst;
 
     receipt2BExecute = jest.fn().mockResolvedValue({ entryNo: 'JE-ADV' });
+    receiptPrimitiveExecute = jest
+      .fn()
+      .mockResolvedValue({ entryNo: 'JE-ADV', split: { principalRemainingAfter: D(0) } });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -203,6 +212,14 @@ describe('PaymentsService — advance balance (Task 4)', () => {
         {
           provide: PaymentReceipt2BTemplate,
           useValue: { execute: receipt2BExecute },
+        },
+        {
+          provide: PaymentReceiptTemplate,
+          useValue: { execute: receiptPrimitiveExecute },
+        },
+        {
+          provide: Vat60dayReversalTemplate,
+          useValue: { execute: jest.fn().mockResolvedValue(null) },
         },
         {
           provide: BadDebtService,
@@ -387,8 +404,8 @@ describe('PaymentsService — advance balance (Task 4)', () => {
   // PARTIAL case tests (Task 2)
   // ─────────────────────────────────────────────────────────────────────────────
   describe('PARTIAL case', () => {
-    it('partial 800 of 1000 → status PARTIALLY_PAID, partialClear flag passed to template', async () => {
-      // Return an installmentSchedule so the template is actually called
+    it('partial 800 of 1000 → status PARTIALLY_PAID, isFinalReceipt:false (delta) passed to primitive', async () => {
+      // Return an installmentSchedule so the primitive is actually called
       prisma.installmentSchedule.findUnique.mockResolvedValueOnce({ id: 'sch-partial-1' });
       prisma.payment.findFirst.mockResolvedValueOnce(makePayment(7));
 
@@ -406,9 +423,20 @@ describe('PaymentsService — advance balance (Task 4)', () => {
         'PARTIAL',
       );
 
-      expect(receipt2BExecute).toHaveBeenCalledWith(
-        expect.objectContaining({ partialClear: true }),
+      // PR-843/I2 Phase 3 3a — recordPayment now posts via the primitive.
+      // partialClear:true → isFinalReceipt:false; amountReceived → delta (per-call DELTA).
+      // The primitive receives the tx as the 2nd positional arg.
+      expect(receiptPrimitiveExecute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          installmentScheduleId: 'sch-partial-1',
+          isFinalReceipt: false,
+          delta: expect.objectContaining({ toString: expect.any(Function) }),
+        }),
+        expect.anything(),
       );
+      // delta == 800 (the per-call amount).
+      const args = receiptPrimitiveExecute.mock.calls[0][0];
+      expect(args.delta.toString()).toBe('800');
 
       expect(prisma.payment.update).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -435,14 +463,20 @@ describe('PaymentsService — advance balance (Task 4)', () => {
       ).rejects.toThrow(/PARTIAL/);
     });
 
-    it('re-pay full remainder after partial → status PAID, partialClear NOT passed', async () => {
+    it('re-pay full remainder after partial → status PAID, primitive called with delta=200, isFinalReceipt:true (no throw)', async () => {
       // Simulate installment 9 with prevPaid = 800 (PARTIALLY_PAID)
       prisma.payment.findFirst.mockResolvedValueOnce(
         makePayment(9, { amountPaid: D(800), status: 'PARTIALLY_PAID' }),
       );
-      // Return an installmentSchedule for the template call
+      // Return an installmentSchedule for the primitive call
       prisma.installmentSchedule.findUnique.mockResolvedValueOnce({ id: 'sch-partial-3' });
 
+      // PR-843/I2 Phase 3 3a — THE footgun that was HIDDEN by mocking the 2B
+      // template. With the primitive, completing a prior partial forwards the
+      // per-call DELTA (200) + isFinalReceipt:true; the primitive reconstructs
+      // the prior 800 cleared and clears ONLY the 200 remaining — no
+      // "exceeds tolerance" throw (which the real 2B non-partialClear path would
+      // have raised on roundingDiff ≈ 200 − 1000 = −800).
       await service.recordPayment(
         'adv-contract-1',
         9,
@@ -455,10 +489,16 @@ describe('PaymentsService — advance balance (Task 4)', () => {
         '11-1101',
       );
 
-      // partialClear should NOT be set (shortage = 0)
-      expect(receipt2BExecute).toHaveBeenCalledWith(
-        expect.not.objectContaining({ partialClear: true }),
+      // isFinalReceipt must be TRUE (completing receipt), delta = 200 (per-call DELTA).
+      expect(receiptPrimitiveExecute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          installmentScheduleId: 'sch-partial-3',
+          isFinalReceipt: true,
+        }),
+        expect.anything(),
       );
+      const args = receiptPrimitiveExecute.mock.calls[0][0];
+      expect(args.delta.toString()).toBe('200');
 
       expect(prisma.payment.update).toHaveBeenCalledWith(
         expect.objectContaining({

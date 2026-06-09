@@ -76,6 +76,8 @@ const makeService = (findContract: jest.Mock = jest.fn().mockResolvedValue({ id:
     stub, // flexTemplates
     stub, // quickReplyService
     stub, // badDebtService
+    stub, // paymentReceiptTemplate (PR-843/I2 Phase 3 3a)
+    stub, // vat60Reversal (PR-843/I2 Phase 3 3a)
   );
   const recordPayment = jest
     .spyOn(svc, 'recordPayment')

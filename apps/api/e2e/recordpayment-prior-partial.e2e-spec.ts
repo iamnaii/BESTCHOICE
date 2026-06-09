@@ -64,6 +64,8 @@ import { AuditService } from '../src/modules/audit/audit.service';
 import { ProductsService } from '../src/modules/products/products.service';
 import { JournalAutoService } from '../src/modules/journal/journal-auto.service';
 import { PaymentReceipt2BTemplate } from '../src/modules/journal/cpa-templates/payment-receipt-2b.template';
+import { PaymentReceiptTemplate } from '../src/modules/journal/cpa-templates/payment-receipt.template';
+import { Vat60dayReversalTemplate } from '../src/modules/journal/cpa-templates/vat-60day-reversal.template';
 import { BadDebtService } from '../src/modules/accounting/bad-debt.service';
 import { BadDebtProvisionTemplate } from '../src/modules/journal/cpa-templates/bad-debt-provision.template';
 import { BadDebtWriteOffTemplate } from '../src/modules/journal/cpa-templates/bad-debt-writeoff.template';
@@ -168,6 +170,11 @@ describeOrSkip('PaymentsService.recordPayment — completing a PRIOR PARTIAL (re
     // --- wire the REAL PaymentsService (Approach A) -------------------------
     const receiptVoidReversal = new ReceiptVoidReversalTemplate(journal, prisma as any);
     const paymentReceipt2B = new PaymentReceipt2BTemplate(journal, prisma as any);
+    // PR-843/I2 Phase 3 3a — recordPayment now posts via the primitive + the
+    // VAT-60-day reversal, both REQUIRED constructor params. Real instances
+    // wired to the same prisma so the JE actually posts against the real DB.
+    const paymentReceiptTemplate = new PaymentReceiptTemplate(journal, prisma as any);
+    const vat60Reversal = new Vat60dayReversalTemplate(journal, prisma as any);
     const receipts = new ReceiptsService(prisma as any, journal, receiptVoidReversal, undefined);
     const audit = new AuditService(prisma as any);
     const products = new ProductsService(prisma as any);
@@ -198,6 +205,9 @@ describeOrSkip('PaymentsService.recordPayment — completing a PRIOR PARTIAL (re
       flexStub,
       quickReplyStub,
       badDebt,
+      // PR-843/I2 Phase 3 3a — REQUIRED primitive + VAT-60-day reversal
+      paymentReceiptTemplate,
+      vat60Reversal,
       // @Optional() deps — omitted (undefined)
       undefined,
       undefined,
@@ -278,26 +288,38 @@ describeOrSkip('PaymentsService.recordPayment — completing a PRIOR PARTIAL (re
     expect(res.status).toBe('PARTIALLY_PAID');
     expect(Number(res.amountPaid)).toBeCloseTo(PARTIAL_AMOUNT, 2);
 
-    // partialClear JE: Dr cash 800 / Cr 11-2103 800 (no tolerance check).
+    // PR-843/I2 Phase 3 3a — recordPayment now posts via the PaymentReceiptTemplate
+    // primitive (tag:'receipt', NOT the legacy tag:'2B'). The partial-clear receipt
+    // posts Dr cash 800 / Cr 11-2103 800 (clears only the delta). Assert the primitive
+    // receipt JE exists for THIS installment and credited 11-2103 by exactly 800.
     const inst = await prisma.installmentSchedule.findFirstOrThrow({
       where: { contractId, installmentNo: 1 },
     });
-    const je2B = await prisma.journalEntry.findFirst({
-      where: { metadata: { path: ['tag'], equals: '2B' } } as any,
+    const receiptJe = await prisma.journalEntry.findFirst({
+      where: {
+        AND: [
+          { metadata: { path: ['tag'], equals: 'receipt' } } as any,
+          { metadata: { path: ['installmentScheduleId'], equals: inst.id } } as any,
+        ],
+      },
       include: { lines: true },
       orderBy: { postedAt: 'desc' },
     });
-    // partialClear 2B JE should be posted
-    expect(je2B).not.toBeNull();
-    void inst;
+    expect(receiptJe).not.toBeNull();
+    const cr11 = receiptJe!.lines
+      .filter((l) => l.accountCode === '11-2103')
+      .reduce((s, l) => s + Number(l.credit), 0);
+    expect(cr11).toBeCloseTo(PARTIAL_AMOUNT, 2);
   }, 120_000);
 
-  it('STEP 2 — COMPLETING the remainder (pay 715.83) — assert the ACTUAL observed behaviour', async () => {
+  it('STEP 2 — COMPLETING the remainder (pay 715.83) SUCCEEDS (PAID) — the 3a fix', async () => {
     // remaining = installmentTotal − priorPaid = 1515.83 − 800 = 715.83.
-    // recordPayment forwards this DELTA (715.83) into the NON-partialClear 2B path
-    // (shortage now ≤ 1฿ so isPartialClear=false). If the hypothesis holds, the
-    // template computes roundingDiff ≈ 715.83 − 1515.83 = −800 → throws
-    // "Payment difference 800.00 exceeds tolerance 1.00".
+    // PR-843/I2 Phase 3 3a: recordPayment now forwards this DELTA (715.83) to the
+    // PaymentReceiptTemplate primitive, which RECONSTRUCTS the prior 800 cleared and
+    // clears ONLY the 715.83 remaining → NO "exceeds tolerance" throw. Pre-3a this hit
+    // the legacy non-split 2B path (roundingDiff ≈ 715.83 − 1515.83 = −800 → threw).
+    // The dual-branch capture is retained so a REGRESSION (the throw coming back) is
+    // pinned with its exact message rather than a bare "promise rejected".
     try {
       const res = await payments.recordPayment(
         contractId,
@@ -328,18 +350,16 @@ describeOrSkip('PaymentsService.recordPayment — completing a PRIOR PARTIAL (re
       console.log(`[VERDICT] completion THREW — ${(err as Error).message}`);
     }
 
-    // This test asserts the GROUND TRUTH either way — it does not force a throw.
+    // POST-3a EXPECTATION: completion MUST succeed (no throw). If the throw ever
+    // returns (regression), surface its exact message so the cause is unambiguous.
     if (completionThrew) {
-      // BUG REPRODUCED. Pin the exact mechanism + message.
-      expect(completionError).toBeInstanceOf(Error);
-      expect(completionError!.message).toMatch(/exceeds tolerance 1\.00/i);
-      // priorPaid = 800 → roundingDiff = 715.83 − 1515.83 = −800.00.
-      expect(completionError!.message).toContain('800.00');
-    } else {
-      // HYPOTHESIS REFUTED — completion succeeded. Assert the success end-state.
-      const fresh = await prisma.payment.findUniqueOrThrow({ where: { id: paymentId } });
-      expect(fresh.status).toBe('PAID');
-      expect(Number(fresh.amountPaid)).toBeCloseTo(INSTALLMENT_TOTAL, 2);
+      throw new Error(
+        `REGRESSION — completing a prior partial THREW after 3a: ${completionError?.message}`,
+      );
     }
+    // Success end-state: installment fully PAID, amountPaid == installmentTotal.
+    const fresh = await prisma.payment.findUniqueOrThrow({ where: { id: paymentId } });
+    expect(fresh.status).toBe('PAID');
+    expect(Number(fresh.amountPaid)).toBeCloseTo(INSTALLMENT_TOTAL, 2);
   }, 120_000);
 });

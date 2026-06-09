@@ -432,6 +432,14 @@ export class PaymentsService {
               advanceConsume: advanceConsume.gt(0) ? advanceConsume : undefined,
               isFinalReceipt: !isPartialClear,
               lateFee: lateFee.gt(0) ? lateFee : undefined,
+              // PR-843/I2 Phase 5b — auto-approve a ≤1฿ underpay-close ONLY when the
+              // payer covered the full billed obligation (cash + consumed advance ≥
+              // remaining = amountDue+lateFee−prevPaid). In that case any ≤1฿ residual
+              // is a pure amountDue↔installmentTotal rounding artifact, not a customer
+              // underpayment, so it routes to 52-1104 without an approver. A GENUINE
+              // ≤1฿ customer underpayment (amount+advance < remaining) leaves this
+              // false → the toleranceApproverId requirement stands.
+              autoApproveSystemRounding: dGte(dAdd(d(amount), advanceConsume), remaining),
             },
             tx,
           );
@@ -728,6 +736,13 @@ export class PaymentsService {
                 lateFee: lateFeeOwed.gt(0) ? lateFeeOwed : undefined,
                 isFinalReceipt: isPaidInFull,
                 paymentId: updated.id,
+                // PR-843/I2 Phase 5b — autoAllocate always clears the FULL owed
+                // amountDue per installment (payAmount = min(remaining, amountDue),
+                // never a deliberate customer underpayment), so any ≤1฿ residual on
+                // the last installment is a system amountDue↔installmentTotal rounding
+                // artifact → auto-approve the 52-1104 close (no approver available on
+                // this path).
+                autoApproveSystemRounding: true,
               },
               tx,
             );
@@ -1229,6 +1244,11 @@ export class PaymentsService {
                 lateFee: lateFeeOwed.gt(0) ? lateFeeOwed : undefined,
                 isFinalReceipt: isPaidInFull,
                 paymentId: updated.id,
+                // PR-843/I2 Phase 5b — applyCreditBalance always clears the FULL owed
+                // amountDue per installment (payAmount = min(remaining, amountDue)), so
+                // any ≤1฿ residual on the last installment is a system rounding artifact
+                // → auto-approve the 52-1104 close (no approver available on this path).
+                autoApproveSystemRounding: true,
               },
               tx,
             );

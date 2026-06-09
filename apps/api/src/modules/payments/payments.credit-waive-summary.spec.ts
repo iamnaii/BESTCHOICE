@@ -252,6 +252,10 @@ describe('PaymentsService — credit / waive / daily-summary / partial-preview (
       expect(p1Call.paymentId).toBe('cr-pay-1');
       // No lateFee on these installments → undefined (no Cr 42-1103 leg).
       expect(p1Call.lateFee).toBeUndefined();
+      // PR-843/I2 Phase 5b — applyCreditBalance always clears the FULL owed amount
+      // per installment, so a ≤1฿ last-installment residual is a system rounding
+      // artifact → the flag is true on every primitive call (no approver on this path).
+      expect(p1Call.autoApproveSystemRounding).toBe(true);
 
       // p2 — partial receipt: delta=1000, 21-5101, isFinalReceipt=false (stays open).
       const p2Call = receiptExecute.mock.calls[1][0];
@@ -260,6 +264,7 @@ describe('PaymentsService — credit / waive / daily-summary / partial-preview (
       expect(p2Call.debitAccountCode).toBe('21-5101');
       expect(p2Call.isFinalReceipt).toBe(false);
       expect(p2Call.paymentId).toBe('cr-pay-2');
+      expect(p2Call.autoApproveSystemRounding).toBe(true);
 
       // No 60-day mandatory VAT JE on these installments → no reversal.
       expect(vat60Execute).not.toHaveBeenCalled();

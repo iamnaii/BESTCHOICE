@@ -429,4 +429,59 @@ describeOrSkip('PaymentReceiptTemplate primitive — Σ-invariants (real DB e2e)
     },
     120_000,
   );
+
+  // ─── PR-843/I2 Phase 5b — autoApproveSystemRounding (the amountDue↔installmentTotal seam) ──
+  //
+  // The 2A last-installment true-up makes a Payment.amountDue differ from the
+  // primitive's installmentTotal by up to N×0.01. When amountDue < installmentTotal,
+  // a payment that fully covers the customer's BILLED obligation still leaves a ≤1฿
+  // principal residual vs installmentTotal. On the final receipt the primitive sets
+  // underpayRounding>0 and (pre-5b) REQUIRED a toleranceApproverId → the auto paths
+  // (no approver) threw on a legitimate last-installment completion. The caller-set
+  // `autoApproveSystemRounding` flag certifies this is a SYSTEM rounding residual
+  // (full obligation paid), routing the ≤1฿ to 52-1104 WITHOUT an approver.
+
+  it(
+    'autoApproveSystemRounding=true: final underpay 0.01 with NO approver → Dr 52-1104 == 0.01, full clear, does NOT throw',
+    async () => {
+      await useInstallment(11);
+      const r = await template.execute({
+        installmentScheduleId: instId,
+        delta: installmentTotal.minus(new Decimal('0.01')),
+        debitAccountCode: '11-1101',
+        isFinalReceipt: true,
+        // No toleranceApproverId — the auto paths cannot approve. The flag waives
+        // the approver REQUIREMENT for a certified system-rounding residual.
+        autoApproveSystemRounding: true,
+      });
+
+      // The ≤1฿ underpay still posts to 52-1104; the receivable clears exactly.
+      expect((await sumDebits('52-1104')).toFixed(2)).toBe('0.01');
+      expect((await sumCredits('11-2103')).toFixed(2)).toBe(installmentTotal.toFixed(2));
+      expect(r.split.principalRemainingAfter.toFixed(2)).toBe('0.00');
+    },
+    120_000,
+  );
+
+  it(
+    'SIBLING (the control is preserved): SAME final underpay 0.01 WITHOUT the flag and WITHOUT an approver → STILL throws (genuine customer underpayment gate)',
+    async () => {
+      await useInstallment(12);
+      await expect(
+        template.execute({
+          installmentScheduleId: instId,
+          delta: installmentTotal.minus(new Decimal('0.01')),
+          debitAccountCode: '11-1101',
+          isFinalReceipt: true,
+          // autoApproveSystemRounding omitted (false) AND no toleranceApproverId →
+          // the approver requirement stands for a genuine ≤1฿ customer underpayment.
+        }),
+      ).rejects.toThrow(/Underpay tolerance requires approver/i);
+
+      // The rejected call posts nothing — no receipt JE for this installment.
+      expect((await entryIdsForInstallment()).length).toBe(0);
+      expect((await sumCredits('11-2103')).toFixed(2)).toBe('0.00');
+    },
+    120_000,
+  );
 });

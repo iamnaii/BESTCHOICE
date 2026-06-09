@@ -721,6 +721,10 @@ describe('PaySolutionsService.handlePaymentCallback — FIFO money + close (char
       expect(jeInput.debitAccountCode).toBe('11-1202');
       expect(jeInput.isFinalReceipt).toBe(true);
       expect(jeInput.paymentId).toBe('pay-1');
+      // PR-843/I2 Phase 5b — the QR webhook always clears the FULL owed per
+      // installment, so a ≤1฿ last-installment residual is a system rounding
+      // artifact → the flag is true (no approver available on the webhook path).
+      expect(jeInput.autoApproveSystemRounding).toBe(true);
       // No 2B-era cumulative field leaks through.
       expect(jeInput.amountReceived).toBeUndefined();
       expect(jeInput.existingPaymentId).toBeUndefined();

@@ -386,6 +386,50 @@ describe('PaymentsService', () => {
       expect(callArgs.lateFee).toBeDefined();
       expect(Number(callArgs.lateFee.toString())).toBeGreaterThan(0);
     });
+
+    it('PR-843/I2 Phase 5b: full-obligation payment → primitive called with autoApproveSystemRounding=true (the ≤1฿ residual is a system rounding artifact, not a customer underpay)', async () => {
+      // Customer pays the FULL amountDue (3000 of 3000), no prior partial → the
+      // recordPayment condition dGte(amount+advanceConsume, remaining) is TRUE, so
+      // any ≤1฿ amountDue↔installmentTotal residual on the close routes to 52-1104
+      // WITHOUT an approver. (isPaidInFull is true ⟺ the flag is true here.)
+      const updatedPayment = { ...mockPayment, id: 'payment-1', amountDue: 3000, amountPaid: 3000, status: 'PAID', paidDate: new Date() };
+      prisma.payment.findFirst.mockResolvedValue({ ...mockPayment, amountDue: 3000, amountPaid: 0, lateFee: 0, lateFeeWaived: false, status: 'PENDING' });
+      prisma.payment.update.mockResolvedValue(updatedPayment);
+      // Non-null InstallmentSchedule so the primitive is reached.
+      prisma.installmentSchedule.findUnique.mockResolvedValue({ id: 'inst-sched-1', vat60dayJournalEntryId: null });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const templateMock = (service as any).paymentReceiptTemplate;
+
+      await service.recordPayment('contract-1', 1, 3000, 'CASH', 'user-1', 'http://slip.jpg');
+
+      expect(templateMock.execute).toHaveBeenCalledTimes(1);
+      const callArgs = templateMock.execute.mock.calls[0][0];
+      expect(callArgs.isFinalReceipt).toBe(true);
+      expect(callArgs.autoApproveSystemRounding).toBe(true);
+    });
+
+    it('PR-843/I2 Phase 5b: a genuine ≤1฿ customer underpay does NOT close the installment (stays PARTIALLY_PAID) → primitive NOT called, approver gate intact', async () => {
+      // Customer pays amountDue − 0.50 (a ≤1฿ shortfall, no advance). The condition
+      // dGte(amount+advanceConsume, remaining) is FALSE → isPaidInFull=false AND the
+      // shortage (0.50) ≤ 1฿ so isPartialClear=false → recordPayment does NOT enter
+      // the isFinalReceipt close path at all. The installment stays PARTIALLY_PAID and
+      // the 52-1104 auto-approve never fires — the approver gate is preserved by
+      // construction (the underpay never force-closes without one).
+      const updatedPayment = { ...mockPayment, id: 'payment-1', amountDue: 3000, amountPaid: 2999.5, status: 'PARTIALLY_PAID', paidDate: null };
+      prisma.payment.findFirst.mockResolvedValue({ ...mockPayment, amountDue: 3000, amountPaid: 0, lateFee: 0, lateFeeWaived: false, status: 'PENDING' });
+      prisma.payment.update.mockResolvedValue(updatedPayment);
+      prisma.installmentSchedule.findUnique.mockResolvedValue({ id: 'inst-sched-1', vat60dayJournalEntryId: null });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const templateMock = (service as any).paymentReceiptTemplate;
+
+      const result = await service.recordPayment('contract-1', 1, 2999.5, 'CASH', 'user-1', 'http://slip.jpg');
+
+      // Not fully paid, not a PARTIAL force-clear → primitive never invoked.
+      expect(result.status).toBe('PARTIALLY_PAID');
+      expect(templateMock.execute).not.toHaveBeenCalled();
+    });
   });
 
   describe('autoAllocatePayment', () => {
@@ -480,6 +524,10 @@ describe('PaymentsService', () => {
       expect(call1.isFinalReceipt).toBe(true);
       expect(call1.paymentId).toBe('p-1');
       expect(call1.debitAccountCode).toBe('11-1101');
+      // PR-843/I2 Phase 5b — autoAllocate always pays the FULL owed per installment,
+      // so a ≤1฿ last-installment residual is a system rounding artifact → the flag
+      // is true on EVERY primitive call (no approver available on this auto path).
+      expect(call1.autoApproveSystemRounding).toBe(true);
 
       // Iteration 2 — partial clear of inst #2: delta == payAmount (2000), NOT final.
       const call2 = templateMock.execute.mock.calls[1][0];
@@ -487,6 +535,7 @@ describe('PaymentsService', () => {
       expect(Number(call2.delta.toString())).toBe(2000); // DELTA, not cumulative amountPaid
       expect(call2.isFinalReceipt).toBe(false);
       expect(call2.paymentId).toBe('p-2');
+      expect(call2.autoApproveSystemRounding).toBe(true);
     });
 
     it('PR-843/I2 Phase 3 3c: forwards lateFeeOwed to the primitive (honouring lateFeeWaived→0)', async () => {

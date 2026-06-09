@@ -1256,6 +1256,13 @@ export class PaySolutionsService {
                       : undefined,
                     isFinalReceipt: snapshot.isFinalReceipt,
                     paymentId: snapshot.id,
+                    // PR-843/I2 Phase 5b — the QR webhook always clears the FULL owed
+                    // amount per installment (payThis = min(remaining, owed), never a
+                    // deliberate customer underpayment), so any ≤1฿ residual on the
+                    // last installment is a system amountDue↔installmentTotal rounding
+                    // artifact → auto-approve the 52-1104 close (no approver on the
+                    // webhook path).
+                    autoApproveSystemRounding: true,
                   },
                   tx,
                 );

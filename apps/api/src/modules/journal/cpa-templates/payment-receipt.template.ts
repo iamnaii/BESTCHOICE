@@ -26,6 +26,14 @@ export interface PaymentReceiptPrimitiveInput {
   isFinalReceipt?: boolean;
   /** Required when the final receipt underpays by ≤1฿ (52-1104 route). */
   toleranceApproverId?: string;
+  /**
+   * Set by callers when a ≤1฿ underpay-close is a SYSTEM rounding residual (the
+   * payer covered the full billed amountDue but amountDue < installmentTotal by a
+   * rounding artifact), NOT a customer underpayment. When true, the ≤1฿ underpay
+   * routes to 52-1104 WITHOUT a toleranceApproverId. Genuine customer underpayments
+   * must leave this false and supply an approver.
+   */
+  autoApproveSystemRounding?: boolean;
   /** Caller-owned Payment row id → stamped to metadata.paymentId (the canonical payment→JE key). */
   paymentId?: string;
   /**
@@ -216,7 +224,17 @@ export class PaymentReceiptTemplate {
         `Cannot close installment — residual ${split.principalRemainingAfter.toFixed(2)} exceeds tolerance 1.00`,
       );
     }
-    if (split.underpayRounding.gt(0) && !input.toleranceApproverId) {
+    // The ≤1฿ underpay-close (Dr 52-1104) still posts unconditionally; this guard
+    // only waives the APPROVER REQUIREMENT. When `autoApproveSystemRounding` is set
+    // the caller has certified that the payer covered the full billed amountDue and
+    // the residual is a pure amountDue↔installmentTotal rounding artifact (Phase 5b),
+    // so no toleranceApproverId is needed. A GENUINE customer underpayment leaves the
+    // flag false and STILL requires an approver.
+    if (
+      split.underpayRounding.gt(0) &&
+      !input.toleranceApproverId &&
+      !input.autoApproveSystemRounding
+    ) {
       throw new BadRequestException('Underpay tolerance requires approver (toleranceApproverId)');
     }
 

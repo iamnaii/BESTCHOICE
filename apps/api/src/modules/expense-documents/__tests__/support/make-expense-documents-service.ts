@@ -128,12 +128,14 @@ export function makeExpenseDocumentsService(
   // through the facade's now-delegating read methods. `jePreview` is no longer
   // a facade constructor arg (it moved into the query service).
   const query = overrides.query ?? new ExpenseDocumentQueryService(prisma, jePreview);
-  // Phase 2a/2b decompose — REAL lifecycle sub-service by default. Phase 2b
+  // Phase 2a/2b/2c decompose — REAL lifecycle sub-service by default. Phase 2b
   // moved the JE-posting core (post / executePostBody / approve) here, so the
-  // lifecycle ctor now also takes `transition` + the 6 JE templates. They are
-  // built from the SAME resolved mock instances the facade specs assert on
-  // (e.g. `sameDayTemplate.execute`), so the facade's delegating post/approve
-  // reach the same mocks. `notifications` stays the trailing-optional param.
+  // lifecycle ctor takes `transition` + the 6 JE templates. Phase 2c moved
+  // voidDocument here too, adding `journal` (before the trailing-optional
+  // notifications). All are built from the SAME resolved mock instances the
+  // facade specs assert on (e.g. `sameDayTemplate.execute`, `journal.createAndPost`),
+  // so the facade's delegating post/approve/void reach the same mocks.
+  // `notifications` stays the trailing-optional param.
   const lifecycle =
     overrides.lifecycle ??
     new ExpenseDocumentLifecycleService(
@@ -145,16 +147,17 @@ export function makeExpenseDocumentsService(
       payrollTemplate,
       settlementTemplate,
       pettyCashTemplate,
+      journal,
       notifications,
     );
 
   // THE single positional construction in the codebase. Phase 2b removed the 6
-  // JE-template args from the facade ctor (they now feed the lifecycle service).
+  // JE-template args; Phase 2c removed `journal` (it now feeds the lifecycle
+  // service) from the facade ctor.
   const service = new ExpenseDocumentsService(
     prisma,
     docNumber,
     transition,
-    journal,
     aggregator,
     ssoConfig,
     pettyCash,

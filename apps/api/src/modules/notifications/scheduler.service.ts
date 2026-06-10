@@ -1,6 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
-import { formatDateShort } from '../../utils/thai-date.util';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { NotificationsService } from './notifications.service';
 import { OverdueService } from '../overdue/overdue.service';
@@ -10,18 +9,31 @@ import { ReportGeneratorService } from '../reports/report-generator.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LineOaService } from '../line-oa/line-oa.service';
 import { PaymentLinkService } from '../line-oa/payment-links/payment-link.service';
-import { buildOverdueNoticeFlex } from '../line-oa/flex-messages/overdue-notice.flex';
-import { buildPaymentReminderFlex } from '../line-oa/flex-messages/payment-reminder.flex';
-import { buildDailyReportFlex } from '../line-oa/flex-messages/daily-report.flex';
 import { DashboardService } from '../dashboard/dashboard.service';
 import { PDPAService } from '../pdpa/pdpa.service';
 import { DunningEngineService } from '../overdue/dunning-engine.service';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
-import { isSmsPaymentReminderDisabled } from '../../utils/sms-payment-reminder.util';
+import { CollectionsNotifierService } from './services/collections-notifier.service';
+import { RetentionService } from './services/retention.service';
+import { OwnerReportNotifierService } from './services/owner-report-notifier.service';
 
+/**
+ * Cron orchestrator facade. ALL 20 @Cron-decorated handlers + their decorators +
+ * the centralized reportCronFailure reporter stay on this DI-instantiated
+ * provider class (moving decorated methods into sub-services would un-register
+ * the crons from @nestjs/schedule). The ~12 pure pass-through handlers stay
+ * inline; the 6 logic-heavy handlers keep their try/catch + reportCronFailure
+ * shell here and delegate their body to one of three internally-constructed
+ * sub-services — Collections (status/dunning/payment-link notify), Retention
+ * (best-effort cleanup writes), OwnerReport (daily LINE report + SLA log).
+ */
 @Injectable()
 export class SchedulerService {
   private readonly logger = new Logger(SchedulerService.name);
+
+  private readonly collectionsNotifier: CollectionsNotifierService;
+  private readonly retention: RetentionService;
+  private readonly ownerReportNotifier: OwnerReportNotifierService;
 
   constructor(
     private notificationsService: NotificationsService,
@@ -36,7 +48,21 @@ export class SchedulerService {
     private pdpaService: PDPAService,
     private dunningEngineService: DunningEngineService,
     private integrationConfig: IntegrationConfigService,
-  ) {}
+  ) {
+    this.collectionsNotifier = new CollectionsNotifierService(
+      this.prisma,
+      this.lineOaService,
+      this.pdpaService,
+      this.notificationsService,
+      this.paymentLinkService,
+    );
+    this.retention = new RetentionService(this.prisma);
+    this.ownerReportNotifier = new OwnerReportNotifierService(
+      this.prisma,
+      this.dashboardService,
+      this.lineOaService,
+    );
+  }
 
   /**
    * Centralized error reporter for cron jobs.
@@ -78,73 +104,11 @@ export class SchedulerService {
       // Send LINE notifications to customers whose contracts changed status
       const changedIds = [...result.overdueIds, ...result.defaultIds];
       if (changedIds.length > 0) {
-        await this.notifyStatusChangedCustomers(changedIds);
+        await this.collectionsNotifier.notifyStatusChangedCustomers(changedIds);
       }
     } catch (error) {
       this.reportCronFailure('contract-status-update', error);
     }
-  }
-
-  /**
-   * Send LINE overdue/default notice to customers whose contracts just changed status
-   */
-  private async notifyStatusChangedCustomers(contractIds: string[]) {
-    const contracts = await this.prisma.contract.findMany({
-      where: { id: { in: contractIds } },
-      include: {
-        customer: { select: { id: true, name: true, lineIdFinance: true, phone: true } },
-        payments: {
-          where: { status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] }, dueDate: { lt: new Date() } },
-          orderBy: { installmentNo: 'asc' },
-        },
-      },
-    });
-
-    let sent = 0;
-    for (const contract of contracts) {
-      const lineId = contract.customer?.lineIdFinance;
-      if (!lineId) continue;
-
-      // Check PDPA consent before sending
-      if (contract.customer?.id) {
-        const hasConsent = await this.pdpaService.hasActiveConsent(contract.customer.id);
-        if (!hasConsent) {
-          this.logger.debug(`PDPA: skipping status notification for customer ${contract.customer.id}`);
-          continue;
-        }
-      }
-
-      try {
-        const totalOverdue = contract.payments.reduce(
-          (sum, p) => sum + (Number(p.amountDue) - Number(p.amountPaid) + Number(p.lateFee)),
-          0,
-        );
-        const oldestDue = contract.payments[0]?.dueDate;
-        const daysOverdue = oldestDue
-          ? Math.floor((Date.now() - oldestDue.getTime()) / (1000 * 60 * 60 * 24))
-          : 0;
-
-        const lateFee = contract.payments.reduce((sum, p) => sum + Number(p.lateFee), 0);
-        const flex = buildOverdueNoticeFlex({
-          customerName: contract.customer?.name || '-',
-          contractNumber: contract.contractNumber,
-          installmentNo: contract.payments[0]?.installmentNo || 0,
-          totalInstallments: contract.totalMonths,
-          amountDue: totalOverdue,
-          lateFee,
-          totalOutstanding: totalOverdue,
-          dueDate: oldestDue ? formatDateShort(oldestDue) : '-',
-          daysOverdue,
-        });
-
-        await this.lineOaService.sendFlexMessage(lineId, flex, 'line-finance');
-        sent++;
-      } catch (err) {
-        this.logger.warn(`Failed to notify customer for contract ${contract.contractNumber}: ${err}`);
-      }
-    }
-
-    this.logger.log(`Status change LINE notifications: ${sent} sent out of ${contracts.length} contracts`);
   }
 
   /**
@@ -212,68 +176,7 @@ export class SchedulerService {
     try {
       const result = await this.overdueService.escalateDunningStages();
 
-      // Batch-fetch all escalated contracts to avoid N+1 queries
-      const escalatedIds = result.escalated.map((e) => e.contractId);
-      const now = new Date();
-      const contractsById = new Map(
-        (
-          await this.prisma.contract.findMany({
-            where: { id: { in: escalatedIds } },
-            include: {
-              customer: { select: { name: true, lineIdFinance: true, phone: true } },
-              payments: {
-                where: { status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] }, dueDate: { lt: now } },
-                orderBy: { installmentNo: 'asc' },
-              },
-            },
-          })
-        ).map((c) => [c.id, c]),
-      );
-
-      // Send stage-specific LINE notifications
-      let notified = 0;
-      for (const esc of result.escalated) {
-        try {
-          const contract = contractsById.get(esc.contractId);
-          if (!contract?.customer?.lineIdFinance) continue;
-
-          const totalOverdue = contract.payments.reduce(
-            (sum, p) => sum + (Number(p.amountDue) - Number(p.amountPaid) + Number(p.lateFee)),
-            0,
-          );
-
-          // Stage-specific messaging — template owns channel/category and
-          // [BESTCHOICE FINANCE] prefix required by พ.ร.บ.การทวงถามหนี้ มาตรา 8.
-          // Stage values map directly to template eventType:
-          //   REMINDER → dunning.reminder
-          //   NOTICE → dunning.notice
-          //   FINAL_WARNING → dunning.final_warning
-          //   LEGAL_ACTION → dunning.legal_action
-          const eventType = `dunning.${esc.to.toLowerCase()}`;
-          await this.notificationsService.sendFromTemplate(
-            eventType,
-            {
-              name: contract.customer.name,
-              amount: totalOverdue.toLocaleString(),
-              contractNumber: esc.contractNumber,
-              daysOverdue: String(esc.daysOverdue),
-            },
-            contract.customer.lineIdFinance,
-            {
-              relatedId: esc.contractId,
-              customerId: contract.customerId,
-              fallbackPhone: isSmsPaymentReminderDisabled()
-                ? undefined
-                : contract.customer.phone || undefined,
-            },
-          );
-          notified++;
-        } catch (err) {
-          this.logger.warn(`Failed to send dunning notification for ${esc.contractNumber}: ${err}`);
-        }
-      }
-
-      this.logger.log(`Dunning escalation complete: ${result.escalated.length} escalated, ${notified} notified`);
+      await this.collectionsNotifier.notifyEscalatedDunning(result);
     } catch (error) {
       this.reportCronFailure('dunning-escalation', error);
     }
@@ -300,51 +203,7 @@ export class SchedulerService {
   async handleSlaNotifications() {
     this.logger.log('Starting SLA notification check...');
     try {
-      const threshold20min = new Date(Date.now() - 20 * 60 * 1000);
-      const threshold60min = new Date(Date.now() - 60 * 60 * 1000);
-
-      // Find contracts stuck in review/approval for > 20min
-      const pendingContracts = await this.prisma.contract.findMany({
-        where: {
-          deletedAt: null,
-          workflowStatus: { in: ['PENDING_REVIEW', 'CREATING'] },
-          updatedAt: { lt: threshold20min },
-        },
-        include: {
-          customer: { select: { name: true } },
-          branch: { select: { id: true, name: true } },
-        },
-      });
-
-      let sent = 0;
-      for (const contract of pendingContracts) {
-        const isUrgent = contract.updatedAt < threshold60min;
-        const severity = isUrgent ? 'URGENT' : 'WARNING';
-
-        // Create notification log for branch manager
-        try {
-          const minutesWaiting = Math.round((Date.now() - contract.updatedAt.getTime()) / (1000 * 60));
-          const title = isUrgent
-            ? `[ด่วน] สัญญา ${contract.contractNumber} รออนุมัติ ${minutesWaiting} นาที`
-            : `สัญญา ${contract.contractNumber} รออนุมัติ ${minutesWaiting} นาที`;
-          await this.prisma.notificationLog.create({
-            data: {
-              channel: 'LINE',
-              recipient: contract.branchId || '',
-              subject: title,
-              message: `ลูกค้า: ${contract.customer?.name || '-'} สาขา: ${contract.branch?.name || '-'} สถานะ: ${contract.workflowStatus} (${severity})`,
-              status: 'PENDING',
-              relatedId: contract.id,
-            },
-          });
-          sent++;
-        } catch (err) {
-          this.logger.error(`[SLA] Failed to create notification log: ${err}`);
-          Sentry.captureException(err, { tags: { module: 'scheduler', action: 'sla-notification' } });
-        }
-      }
-
-      this.logger.log(`SLA check complete: ${pendingContracts.length} contracts pending, ${sent} notifications sent`);
+      await this.ownerReportNotifier.runSlaNotifications();
     } catch (error) {
       this.reportCronFailure('sla-notification-check', error);
     }
@@ -374,66 +233,7 @@ export class SchedulerService {
   async handleAutoPaymentLinks() {
     this.logger.log('Starting auto payment link generation...');
     try {
-      const threeDaysFromNow = new Date();
-      threeDaysFromNow.setDate(threeDaysFromNow.getDate() + 3);
-      const startOfDay = new Date(threeDaysFromNow.getFullYear(), threeDaysFromNow.getMonth(), threeDaysFromNow.getDate());
-      const endOfDay = new Date(startOfDay);
-      endOfDay.setDate(endOfDay.getDate() + 1);
-
-      // Find PENDING payments due in 3 days with LINE-linked customers
-      const payments = await this.prisma.payment.findMany({
-        where: {
-          status: 'PENDING',
-          dueDate: { gte: startOfDay, lt: endOfDay },
-          contract: {
-            deletedAt: null,
-            status: { in: ['ACTIVE'] },
-            customer: { lineIdFinance: { not: null }, deletedAt: null },
-          },
-        },
-        include: {
-          contract: {
-            include: {
-              customer: { select: { name: true, lineIdFinance: true } },
-            },
-          },
-        },
-      });
-
-      let sent = 0;
-      for (const payment of payments) {
-        const lineId = payment.contract.customer?.lineIdFinance;
-        if (!lineId) continue;
-
-        try {
-          // Create payment link
-          const link = await this.paymentLinkService.createPaymentLink(
-            payment.contractId,
-            payment.installmentNo,
-          );
-
-          const amountDue = Number(payment.amountDue) + Number(payment.lateFee) - Number(payment.amountPaid);
-
-          // Send LINE reminder with payment link
-          const flex = buildPaymentReminderFlex({
-            customerName: payment.contract.customer?.name || '-',
-            contractNumber: payment.contract.contractNumber,
-            installmentNo: payment.installmentNo,
-            totalInstallments: payment.contract.totalMonths,
-            amountDue,
-            dueDate: formatDateShort(payment.dueDate),
-            daysUntilDue: 3,
-            paymentUrl: link.url,
-          });
-
-          await this.lineOaService.sendFlexMessage(lineId, flex, 'line-finance');
-          sent++;
-        } catch (err) {
-          this.logger.warn(`Failed to send auto payment link for contract ${payment.contract.contractNumber}: ${err}`);
-        }
-      }
-
-      this.logger.log(`Auto payment links complete: ${sent} sent out of ${payments.length} payments`);
+      await this.collectionsNotifier.sendAutoPaymentLinks();
     } catch (error) {
       this.reportCronFailure('auto-payment-links', error);
     }
@@ -465,123 +265,7 @@ export class SchedulerService {
   async handleDataRetention() {
     this.logger.log('Starting weekly data retention cleanup...');
     try {
-      const now = new Date();
-      const fiveYearsAgo = new Date(now.getFullYear() - 5, now.getMonth(), now.getDate());
-      const twoYearsAgo = new Date(now.getFullYear() - 2, now.getMonth(), now.getDate());
-
-      // Soft-delete completed contracts older than 5 years
-      const completedAnonymized = await this.prisma.contract.updateMany({
-        where: {
-          status: { in: ['COMPLETED', 'EARLY_PAYOFF'] },
-          updatedAt: { lt: fiveYearsAgo },
-          deletedAt: null,
-        },
-        data: { deletedAt: now },
-      });
-
-      // Soft-delete closed bad debt contracts older than 2 years
-      const cancelledAnonymized = await this.prisma.contract.updateMany({
-        where: {
-          status: { in: ['CLOSED_BAD_DEBT', 'EXCHANGED'] },
-          updatedAt: { lt: twoYearsAgo },
-          deletedAt: null,
-        },
-        data: { deletedAt: now },
-      });
-
-      // Clean expired customer access tokens
-      let tokensCleared = 0;
-      try {
-        const result = await this.prisma.customerAccessToken.deleteMany({
-          where: { expiresAt: { lt: now } },
-        });
-        tokensCleared = result.count;
-      } catch {
-        // CustomerAccessToken table might not exist yet
-      }
-
-      // Clean expired PDPA consents (withdrawn > 1 year)
-      let consentsCleared = 0;
-      try {
-        const oneYearAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
-        const result = await this.prisma.pDPAConsent.updateMany({
-          where: { status: 'REVOKED', revokedAt: { lt: oneYearAgo }, deletedAt: null },
-          data: { deletedAt: now },
-        });
-        consentsCleared = result.count;
-      } catch {
-        // PDPAConsent table might not exist yet
-      }
-
-      // ─── Append-only log retention (audit + notifications) ────────────
-      // PDPA: ลูกค้ามีสิทธิ์ขอให้ลบข้อมูลส่วนตัว — append-only logs ที่
-      // โตแบบไม่มีหยุดเป็น compliance risk + ทำให้ DB ช้า. นโยบาย:
-      //   - AuditLog:        เก็บ 7 ปี (Thai Revenue Code + financial industry
-      //                      standard). Soft-archive via archivedAt instead of
-      //                      DELETE — a DB trigger also rejects DELETE so this
-      //                      logic cannot be weaponised by a malicious path.
-      //   - NotificationLog (finance: DUNNING/REMINDER/TRANSACTIONAL):
-      //                      เก็บ 5 ปี — พ.ร.บ.ทวงถามหนี้ มาตรา 16 + Revenue Code
-      //                      (ต้องเก็บ delivery proof สำหรับ debt collection audit)
-      //   - NotificationLog (STAFF/MARKETING/legacy null):
-      //                      เก็บ 1 ปี (delivery report ไม่ต้องเก็บนาน)
-      const sevenYearsAgo = new Date(
-        now.getFullYear() - 7,
-        now.getMonth(),
-        now.getDate(),
-      );
-      const oneYearAgoLogs = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
-      const fiveYearsAgoLogs = new Date(now.getFullYear() - 5, now.getMonth(), now.getDate());
-
-      let auditLogsArchived = 0;
-      try {
-        const result = await this.prisma.auditLog.updateMany({
-          where: { createdAt: { lt: sevenYearsAgo }, archivedAt: null },
-          data: { archivedAt: now },
-        });
-        auditLogsArchived = result.count;
-      } catch (err) {
-        this.logger.warn(`AuditLog archive failed: ${err instanceof Error ? err.message : err}`);
-      }
-
-      // Finance categories — 5 year retention (พ.ร.บ.ทวงถามหนี้ มาตรา 16)
-      let financeLogsCleared = 0;
-      try {
-        const result = await this.prisma.notificationLog.deleteMany({
-          where: {
-            category: { in: ['DUNNING', 'REMINDER', 'TRANSACTIONAL'] },
-            createdAt: { lt: fiveYearsAgoLogs },
-          },
-        });
-        financeLogsCleared = result.count;
-      } catch (err) {
-        this.logger.warn(
-          `NotificationLog finance cleanup failed: ${err instanceof Error ? err.message : err}`,
-        );
-      }
-
-      // Non-finance / legacy — 1 year retention
-      let otherLogsCleared = 0;
-      try {
-        const result = await this.prisma.notificationLog.deleteMany({
-          where: {
-            OR: [{ category: { in: ['STAFF', 'MARKETING'] } }, { category: null }],
-            createdAt: { lt: oneYearAgoLogs },
-          },
-        });
-        otherLogsCleared = result.count;
-      } catch (err) {
-        this.logger.warn(
-          `NotificationLog other cleanup failed: ${err instanceof Error ? err.message : err}`,
-        );
-      }
-
-      this.logger.log(
-        `Data retention complete: ${completedAnonymized.count} completed, ${cancelledAnonymized.count} cancelled soft-deleted, ` +
-        `${tokensCleared} expired tokens, ${consentsCleared} withdrawn consents, ` +
-        `${auditLogsArchived} audit logs archived, ` +
-        `${financeLogsCleared} finance notification logs (>5y) + ${otherLogsCleared} other (>1y) cleared`,
-      );
+      await this.retention.runDataRetention();
     } catch (error) {
       this.reportCronFailure('data-retention', error);
     }
@@ -639,18 +323,7 @@ export class SchedulerService {
   async handleChatMessageRetention() {
     this.logger.log('Starting monthly ChatMessage retention cleanup...');
     try {
-      const now = new Date();
-      const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate());
-
-      const result = await this.prisma.chatMessage.updateMany({
-        where: {
-          createdAt: { lt: sixMonthsAgo },
-          deletedAt: null,
-        },
-        data: { deletedAt: now },
-      });
-
-      this.logger.log(`ChatMessage retention complete: ${result.count} messages soft-deleted (older than 6 months)`);
+      await this.retention.runChatMessageRetention();
     } catch (error) {
       this.reportCronFailure('chat-message-retention', error);
     }
@@ -665,14 +338,7 @@ export class SchedulerService {
   async handleDocumentAuditLogRetention() {
     this.logger.log('Starting monthly DocumentAuditLog retention cleanup...');
     try {
-      const now = new Date();
-      const twoYearsAgo = new Date(now.getFullYear() - 2, now.getMonth(), now.getDate());
-
-      const result = await this.prisma.documentAuditLog.deleteMany({
-        where: { createdAt: { lt: twoYearsAgo } },
-      });
-
-      this.logger.log(`DocumentAuditLog retention complete: ${result.count} entries hard-deleted (older than 2 years)`);
+      await this.retention.runDocumentAuditLogRetention();
     } catch (error) {
       this.reportCronFailure('document-audit-log-retention', error);
     }
@@ -685,71 +351,7 @@ export class SchedulerService {
   async handleDailyLineReport() {
     this.logger.log('Starting daily LINE report to OWNER users...');
     try {
-      // Find OWNER users with LINE IDs configured
-      const owners = await this.prisma.user.findMany({
-        where: { role: 'OWNER', isActive: true, lineId: { not: null } },
-        select: { name: true, lineId: true },
-      });
-
-      if (owners.length === 0) {
-        this.logger.log('Daily LINE report: no OWNER users with LINE ID configured, skipping');
-        return;
-      }
-
-      // Fetch KPIs from DashboardService
-      const kpis = await this.dashboardService.getKPIs();
-
-      // Count new contracts approved today
-      const todayStart = new Date();
-      todayStart.setHours(0, 0, 0, 0);
-      const todayEnd = new Date();
-      todayEnd.setHours(23, 59, 59, 999);
-
-      const [newContractsToday, pendingApprovals] = await Promise.all([
-        this.prisma.contract.count({
-          where: {
-            createdAt: { gte: todayStart, lte: todayEnd },
-            deletedAt: null,
-          },
-        }),
-        this.prisma.contract.count({
-          where: {
-            workflowStatus: { in: ['PENDING_REVIEW', 'CREATING'] },
-            reviewedAt: null,
-            deletedAt: null,
-          },
-        }),
-      ]);
-
-      const dateLabel = new Date().toLocaleDateString('th-TH', {
-        weekday: 'short',
-        year: '2-digit',
-        month: 'short',
-        day: 'numeric',
-      });
-
-      const flex = buildDailyReportFlex({
-        date: dateLabel,
-        todayPaymentCount: kpis.financial.todayPaymentCount,
-        todayPaymentAmount: kpis.financial.todayPayments,
-        overdueCount: kpis.contracts.overdue,
-        overdueAmount: kpis.financial.totalReceivable,
-        defaultCount: kpis.contracts.default,
-        newContractsToday,
-        pendingApprovals,
-      });
-
-      let sent = 0;
-      for (const owner of owners) {
-        try {
-          await this.lineOaService.sendFlexMessage(owner.lineId!, flex, 'line-staff');
-          sent++;
-        } catch (err) {
-          this.logger.warn(`Daily LINE report: failed to send to ${owner.name}: ${err}`);
-        }
-      }
-
-      this.logger.log(`Daily LINE report sent: ${sent}/${owners.length} OWNER users`);
+      await this.ownerReportNotifier.sendDailyLineReport();
     } catch (error) {
       this.reportCronFailure('daily-line-report', error);
     }

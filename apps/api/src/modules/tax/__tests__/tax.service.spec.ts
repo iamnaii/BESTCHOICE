@@ -1,6 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { Prisma } from '@prisma/client';
 import { TaxService } from '../tax.service';
+import { TaxPreviewService } from '../services/tax-preview.service';
+import { TaxReportService } from '../services/tax-report.service';
+import { TaxExportService } from '../services/tax-export.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 
 const Dec = (n: string | number) => new Prisma.Decimal(n);
@@ -29,6 +32,9 @@ describe('TaxService.previewPP30 — B3 / K-04 input VAT from 11-4101', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TaxService,
+        TaxPreviewService,
+        TaxReportService,
+        TaxExportService,
         { provide: PrismaService, useValue: prisma },
       ],
     }).compile();
@@ -196,7 +202,13 @@ describe('TaxService.previewPP30 — Critical #2: output VAT journal-based', () 
       expenseDocument: { findMany: jest.fn() },
     };
     const module: TestingModule = await Test.createTestingModule({
-      providers: [TaxService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        TaxService,
+        TaxPreviewService,
+        TaxReportService,
+        TaxExportService,
+        { provide: PrismaService, useValue: prisma },
+      ],
     }).compile();
     service = module.get(TaxService);
     prisma.branch.findMany.mockResolvedValue([{ id: 'br-1' }]);
@@ -388,7 +400,13 @@ describe('TaxService.previewPND1 — payroll WHT from 21-3101', () => {
       expenseDocument: { findMany: jest.fn() },
     };
     const module: TestingModule = await Test.createTestingModule({
-      providers: [TaxService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        TaxService,
+        TaxPreviewService,
+        TaxReportService,
+        TaxExportService,
+        { provide: PrismaService, useValue: prisma },
+      ],
     }).compile();
     service = module.get(TaxService);
     prisma.branch.findMany.mockResolvedValue([{ id: 'br-1' }]);
@@ -492,7 +510,13 @@ describe('TaxService.previewPND3 / previewPND53 — vendor WHT', () => {
       expenseDocument: { findMany: jest.fn() },
     };
     const module: TestingModule = await Test.createTestingModule({
-      providers: [TaxService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        TaxService,
+        TaxPreviewService,
+        TaxReportService,
+        TaxExportService,
+        { provide: PrismaService, useValue: prisma },
+      ],
     }).compile();
     service = module.get(TaxService);
     prisma.branch.findMany.mockResolvedValue([{ id: 'br-1' }]);
@@ -841,7 +865,13 @@ describe('TaxService.exportTaxFormXlsx', () => {
       expenseDocument: { findMany: jest.fn() },
     };
     const module: TestingModule = await Test.createTestingModule({
-      providers: [TaxService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        TaxService,
+        TaxPreviewService,
+        TaxReportService,
+        TaxExportService,
+        { provide: PrismaService, useValue: prisma },
+      ],
     }).compile();
     service = module.get(TaxService);
     prisma.branch.findMany.mockResolvedValue([{ id: 'br-1' }]);

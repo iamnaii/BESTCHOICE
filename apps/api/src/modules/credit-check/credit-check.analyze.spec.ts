@@ -116,10 +116,14 @@ const makeService = (
   return { svc, prisma };
 };
 
-/** Typed accessor for the private performAIAnalysis — stub it to control score. */
+/**
+ * Typed accessor for the private performAIAnalysis — stub it to control score.
+ * The method lives on the internally-constructed CreditCheckAiAnalysisService
+ * sub-service (svc.ai), which analyze / analyzeForCustomer delegate to.
+ */
 const spyAnalysis = (svc: CreditCheckService, result: AiAnalysisResult) =>
   jest
-    .spyOn(svc as unknown as Record<string, unknown>, 'performAIAnalysis' as never)
+    .spyOn(svc.ai as unknown as Record<string, unknown>, 'performAIAnalysis' as never)
     .mockResolvedValue(result as never);
 
 const aiResult = (score: number): AiAnalysisResult => ({

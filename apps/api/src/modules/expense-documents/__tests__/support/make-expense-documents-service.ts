@@ -22,6 +22,7 @@ import { ExpenseDocumentsService } from '../../expense-documents.service';
 import { LineAggregatorService } from '../../services/line-aggregator.service';
 import { ExpenseDocumentQueryService } from '../../services/expense-document-query.service';
 import { ExpenseDocumentLifecycleService } from '../../services/expense-document-lifecycle.service';
+import { ExpenseDocumentCreateService } from '../../services/expense-document-create.service';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -63,6 +64,12 @@ export interface ExpenseDocumentsServiceOverrides {
   // `notifications`, so existing specs' prisma/notifications mocks flow through
   // the facade's delegating lifecycle methods unchanged.
   lifecycle?: any;
+  // Phase 3 decompose — the create-family + update sub-service. Defaults to a
+  // REAL ExpenseDocumentCreateService built from the SAME resolved `prisma` +
+  // `docNumber` + `aggregator` + `transition` + `ssoConfig` + `payrollCustom` +
+  // `pettyCash`, so existing create-family + update specs' mocks flow through
+  // the facade's now-delegating create/update methods unchanged.
+  creator?: any;
 }
 
 export interface MadeExpenseDocumentsService {
@@ -85,6 +92,7 @@ export interface MadeExpenseDocumentsService {
   notifications: any;
   query: any;
   lifecycle: any;
+  creator: any;
 }
 
 export function makeExpenseDocumentsService(
@@ -150,20 +158,32 @@ export function makeExpenseDocumentsService(
       journal,
       notifications,
     );
+  // Phase 3 decompose — REAL create sub-service by default. Built from the SAME
+  // resolved mock instances the facade specs assert on (e.g. `docNumber.next`,
+  // `aggregator`, `prisma.expenseDocument.create`, `pettyCash.validate`,
+  // `ssoConfig.validateContribution`, `payrollCustom.*`, `transition.assertCanEdit`),
+  // so the facade's delegating create/update reach the same mocks.
+  const creator =
+    overrides.creator ??
+    new ExpenseDocumentCreateService(
+      prisma,
+      docNumber,
+      aggregator,
+      transition,
+      ssoConfig,
+      payrollCustom,
+      pettyCash,
+    );
 
   // THE single positional construction in the codebase. Phase 2b removed the 6
-  // JE-template args; Phase 2c removed `journal` (it now feeds the lifecycle
-  // service) from the facade ctor.
+  // JE-template args; Phase 2c removed `journal`; Phase 3 removed docNumber /
+  // transition / aggregator / ssoConfig / pettyCash / payrollCustom (they now
+  // feed the create sub-service) from the facade ctor.
   const service = new ExpenseDocumentsService(
     prisma,
-    docNumber,
-    transition,
-    aggregator,
-    ssoConfig,
-    pettyCash,
-    payrollCustom,
     query,
     lifecycle,
+    creator,
   );
 
   return {
@@ -186,5 +206,6 @@ export function makeExpenseDocumentsService(
     notifications,
     query,
     lifecycle,
+    creator,
   };
 }

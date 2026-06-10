@@ -4,6 +4,10 @@ import { Prisma } from '@prisma/client';
 import { DataAuditService } from './data-audit.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
+import { DataAuditChecksService } from './services/data-audit-checks.service';
+import { ContractTraceService } from './services/contract-trace.service';
+import { AuditFindingsService } from './services/audit-findings.service';
+import { AuditBackfillService } from './services/audit-backfill.service';
 
 /**
  * DataAuditService tests — validates all 12 database health checks
@@ -45,6 +49,10 @@ describe('DataAuditService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         DataAuditService,
+        DataAuditChecksService,
+        ContractTraceService,
+        AuditFindingsService,
+        AuditBackfillService,
         { provide: PrismaService, useValue: prisma },
         {
           provide: JournalAutoService,

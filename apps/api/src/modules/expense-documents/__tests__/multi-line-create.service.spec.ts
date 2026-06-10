@@ -1,12 +1,11 @@
 import { Prisma } from '@prisma/client';
 import { ExpenseDocumentsService } from '../expense-documents.service';
-import { LineAggregatorService } from '../services/line-aggregator.service';
+import { makeExpenseDocumentsService } from './support/make-expense-documents-service';
 
 describe('ExpenseDocumentsService.create — multi-line', () => {
   let service: ExpenseDocumentsService;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let prisma: any;
-  let aggregator: LineAggregatorService;
 
   beforeEach(() => {
     prisma = {
@@ -32,32 +31,30 @@ describe('ExpenseDocumentsService.create — multi-line', () => {
       // readBoolFlag('petty_cash_enabled', true) → null row ⇒ default true
       systemConfig: { findFirst: jest.fn().mockResolvedValue(null) },
     };
-    aggregator = new LineAggregatorService();
-    service = new ExpenseDocumentsService(
+    service = makeExpenseDocumentsService({
       prisma,
-      { next: jest.fn().mockResolvedValue('EX-20260511-0001') } as never,
-      { assertCanPost: jest.fn(), assertCanVoid: jest.fn(), assertCanEdit: jest.fn(), resolveTargetStatus: jest.fn().mockReturnValue('POSTED') } as never,
-      { execute: jest.fn() } as never,
-      { execute: jest.fn() } as never,
-      { execute: jest.fn() } as never,
-      { execute: jest.fn() } as never,
-      { execute: jest.fn() } as never,
-      { createAndPost: jest.fn() } as never,
-      aggregator,
-      { preview: jest.fn() } as never,
-      { validateContribution: jest.fn().mockResolvedValue(undefined) } as never,
-      { execute: jest.fn() } as never,
-      {
+      docNumber: { next: jest.fn().mockResolvedValue('EX-20260511-0001') },
+      transition: { assertCanPost: jest.fn(), assertCanVoid: jest.fn(), assertCanEdit: jest.fn(), resolveTargetStatus: jest.fn().mockReturnValue('POSTED') },
+      sameDayTemplate: { execute: jest.fn() },
+      accrualTemplate: { execute: jest.fn() },
+      creditNoteTemplate: { execute: jest.fn() },
+      payrollTemplate: { execute: jest.fn() },
+      settlementTemplate: { execute: jest.fn() },
+      journal: { createAndPost: jest.fn() },
+      jePreview: { preview: jest.fn() },
+      ssoConfig: { validateContribution: jest.fn().mockResolvedValue(undefined) },
+      pettyCashTemplate: { execute: jest.fn() },
+      pettyCash: {
         getConfig: jest.fn().mockResolvedValue({
           account: '11-1103',
           limit: new Prisma.Decimal('5000'),
           replenishThreshold: null,
         }),
         validate: jest.fn(),
-      } as never,
-      { loadWhitelist: jest.fn().mockResolvedValue(new Set()), validateLine: jest.fn() } as never,
-      { send: jest.fn().mockResolvedValue({ id: 'notif-1', status: 'SENT' }) } as never,
-    );
+      },
+      payrollCustom: { loadWhitelist: jest.fn().mockResolvedValue(new Set()), validateLine: jest.fn() },
+      notifications: { send: jest.fn().mockResolvedValue({ id: 'notif-1', status: 'SENT' }) },
+    }).service;
   });
 
   it('aggregates 3 lines into document totals', async () => {

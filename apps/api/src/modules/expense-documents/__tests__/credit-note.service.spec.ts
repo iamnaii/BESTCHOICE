@@ -1,7 +1,7 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { ExpenseDocumentsService } from '../expense-documents.service';
-import { LineAggregatorService } from '../services/line-aggregator.service';
+import { makeExpenseDocumentsService } from './support/make-expense-documents-service';
 
 const VALID_LINES = [
   { category: '53-1302', quantity: 1, unitPrice: 200, vatPercent: 0, whtPercent: 0 },
@@ -50,24 +50,23 @@ describe('ExpenseDocumentsService.createCreditNote', () => {
     creditNote = { execute: jest.fn() };
     payroll = { execute: jest.fn() };
     settlement = { execute: jest.fn() };
-    service = new ExpenseDocumentsService(
+    service = makeExpenseDocumentsService({
       prisma,
       docNumber,
       transition,
-      sameDay,
-      accrual,
-      creditNote,
-      payroll,
-      settlement,
-      { createAndPost: jest.fn() } as never,
-      new LineAggregatorService(),
-      { preview: jest.fn() } as never,
-      { validateContribution: jest.fn().mockResolvedValue(undefined) } as never,
-      { execute: jest.fn() } as never,
-      { getConfig: jest.fn(), validate: jest.fn() } as never,
-      { loadWhitelist: jest.fn().mockResolvedValue(new Set()), validateLine: jest.fn() } as never,
-      { send: jest.fn().mockResolvedValue({ id: 'notif-1', status: 'SENT' }) } as never,
-    );
+      sameDayTemplate: sameDay,
+      accrualTemplate: accrual,
+      creditNoteTemplate: creditNote,
+      payrollTemplate: payroll,
+      settlementTemplate: settlement,
+      journal: { createAndPost: jest.fn() },
+      jePreview: { preview: jest.fn() },
+      ssoConfig: { validateContribution: jest.fn().mockResolvedValue(undefined) },
+      pettyCashTemplate: { execute: jest.fn() },
+      pettyCash: { getConfig: jest.fn(), validate: jest.fn() },
+      payrollCustom: { loadWhitelist: jest.fn().mockResolvedValue(new Set()), validateLine: jest.fn() },
+      notifications: { send: jest.fn().mockResolvedValue({ id: 'notif-1', status: 'SENT' }) },
+    }).service;
   });
 
   it('rejects when original not found', async () => {

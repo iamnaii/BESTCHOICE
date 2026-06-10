@@ -1,6 +1,6 @@
 import { Decimal } from '@prisma/client/runtime/library';
 import { ExpenseDocumentsService } from '../expense-documents.service';
-import { LineAggregatorService } from '../services/line-aggregator.service';
+import { makeExpenseDocumentsService } from './support/make-expense-documents-service';
 
 /**
  * Phase A.5 — Tax-disallowed expense flag.
@@ -57,23 +57,22 @@ describe('ExpenseDocumentsService — tax-disallowed (Phase A.5)', () => {
       },
     };
     docNumber = { next: jest.fn().mockResolvedValue('EX-20260510-0001') };
-    service = new ExpenseDocumentsService(
+    service = makeExpenseDocumentsService({
       prisma,
       docNumber,
-      { assertCanPost: jest.fn(), assertCanVoid: jest.fn(), assertCanEdit: jest.fn() } as never,
-      { execute: jest.fn() } as never,
-      { execute: jest.fn() } as never,
-      { execute: jest.fn() } as never,
-      { execute: jest.fn() } as never,
-      { execute: jest.fn() } as never,
-      { createAndPost: jest.fn() } as never,
-      new LineAggregatorService(),
-      { preview: jest.fn() } as never,
-      { validateContribution: jest.fn().mockResolvedValue(undefined) } as never,
-      { execute: jest.fn() } as never,
-      { getConfig: jest.fn(), validate: jest.fn() } as never,
-      { loadWhitelist: jest.fn().mockResolvedValue(new Set()), validateLine: jest.fn().mockResolvedValue({ taxableBase: new Decimal(0) }) } as never,
-    );
+      transition: { assertCanPost: jest.fn(), assertCanVoid: jest.fn(), assertCanEdit: jest.fn() },
+      sameDayTemplate: { execute: jest.fn() },
+      accrualTemplate: { execute: jest.fn() },
+      creditNoteTemplate: { execute: jest.fn() },
+      payrollTemplate: { execute: jest.fn() },
+      settlementTemplate: { execute: jest.fn() },
+      journal: { createAndPost: jest.fn() },
+      jePreview: { preview: jest.fn() },
+      ssoConfig: { validateContribution: jest.fn().mockResolvedValue(undefined) },
+      pettyCashTemplate: { execute: jest.fn() },
+      pettyCash: { getConfig: jest.fn(), validate: jest.fn() },
+      payrollCustom: { loadWhitelist: jest.fn().mockResolvedValue(new Set()), validateLine: jest.fn().mockResolvedValue({ taxableBase: new Decimal(0) }) },
+    }).service;
   });
 
   describe('create() — persists tax-disallowed flag', () => {

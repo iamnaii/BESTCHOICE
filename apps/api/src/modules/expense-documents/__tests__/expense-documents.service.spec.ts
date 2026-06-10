@@ -1,7 +1,7 @@
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { ExpenseDocumentsService } from '../expense-documents.service';
-import { LineAggregatorService } from '../services/line-aggregator.service';
+import { makeExpenseDocumentsService } from './support/make-expense-documents-service';
 
 describe('ExpenseDocumentsService', () => {
   let service: ExpenseDocumentsService;
@@ -112,23 +112,22 @@ describe('ExpenseDocumentsService', () => {
     creditNote = { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-3' }) };
     payroll = { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-4' }) };
     settlement = { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-5' }) };
-    service = new ExpenseDocumentsService(
+    service = makeExpenseDocumentsService({
       prisma,
       docNumber,
       transition,
-      sameDay,
-      accrual,
-      creditNote,
-      payroll,
-      settlement,
-      { createAndPost: jest.fn() } as never,
-      new LineAggregatorService(),
-      { preview: jest.fn() } as never,
-      { validateContribution: jest.fn().mockResolvedValue(undefined) } as never,
-      { execute: jest.fn() } as never,
-      { getConfig: jest.fn(), validate: jest.fn() } as never,
-      { loadWhitelist: jest.fn().mockResolvedValue(new Set(['53-1104', '53-1105'])), validateLine: jest.fn().mockResolvedValue({ taxableBase: new Decimal(0) }) } as never,
-    );
+      sameDayTemplate: sameDay,
+      accrualTemplate: accrual,
+      creditNoteTemplate: creditNote,
+      payrollTemplate: payroll,
+      settlementTemplate: settlement,
+      journal: { createAndPost: jest.fn() },
+      jePreview: { preview: jest.fn() },
+      ssoConfig: { validateContribution: jest.fn().mockResolvedValue(undefined) },
+      pettyCashTemplate: { execute: jest.fn() },
+      pettyCash: { getConfig: jest.fn(), validate: jest.fn() },
+      payrollCustom: { loadWhitelist: jest.fn().mockResolvedValue(new Set(['53-1104', '53-1105'])), validateLine: jest.fn().mockResolvedValue({ taxableBase: new Decimal(0) }) },
+    }).service;
   });
 
   describe('create', () => {
@@ -869,17 +868,22 @@ describe('ExpenseDocumentsService', () => {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { StatusTransitionService } = require('../services/status-transition.service');
       const realTransition = new StatusTransitionService();
-      service = new ExpenseDocumentsService(
-        prisma, docNumber, realTransition, sameDay, accrual, creditNote,
-        payroll, settlement,
-        { createAndPost: jest.fn() } as never,
-        new LineAggregatorService(),
-        { preview: jest.fn() } as never,
-        { validateContribution: jest.fn().mockResolvedValue(undefined) } as never,
-        { execute: jest.fn() } as never,
-        { getConfig: jest.fn(), validate: jest.fn() } as never,
-        { loadWhitelist: jest.fn().mockResolvedValue(new Set(['53-1104'])), validateLine: jest.fn() } as never,
-      );
+      service = makeExpenseDocumentsService({
+        prisma,
+        docNumber,
+        transition: realTransition,
+        sameDayTemplate: sameDay,
+        accrualTemplate: accrual,
+        creditNoteTemplate: creditNote,
+        payrollTemplate: payroll,
+        settlementTemplate: settlement,
+        journal: { createAndPost: jest.fn() },
+        jePreview: { preview: jest.fn() },
+        ssoConfig: { validateContribution: jest.fn().mockResolvedValue(undefined) },
+        pettyCashTemplate: { execute: jest.fn() },
+        pettyCash: { getConfig: jest.fn(), validate: jest.fn() },
+        payrollCustom: { loadWhitelist: jest.fn().mockResolvedValue(new Set(['53-1104'])), validateLine: jest.fn() },
+      }).service;
       prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
         id: 'doc-approved',
         status: 'APPROVED',
@@ -1470,16 +1474,22 @@ describe('ExpenseDocumentsService', () => {
         }),
       };
       const journalMock = { createAndPost: jest.fn().mockResolvedValue({ id: 'je-r1', entryNumber: 'JE-202605-00002' }) };
-      const svc = new ExpenseDocumentsService(
-        prisma, docNumber, transition, sameDay, accrual, creditNote, payroll, settlement,
-        journalMock as never,
-        new LineAggregatorService(),
-        { preview: jest.fn() } as never,
-        { validateContribution: jest.fn().mockResolvedValue(undefined) } as never,
-        { execute: jest.fn() } as never,
-        { getConfig: jest.fn(), validate: jest.fn() } as never,
-        { loadWhitelist: jest.fn().mockResolvedValue(new Set(['53-1104', '53-1105'])), validateLine: jest.fn().mockResolvedValue({ taxableBase: new Decimal(0) }) } as never,
-      );
+      const svc = makeExpenseDocumentsService({
+        prisma,
+        docNumber,
+        transition,
+        sameDayTemplate: sameDay,
+        accrualTemplate: accrual,
+        creditNoteTemplate: creditNote,
+        payrollTemplate: payroll,
+        settlementTemplate: settlement,
+        journal: journalMock,
+        jePreview: { preview: jest.fn() },
+        ssoConfig: { validateContribution: jest.fn().mockResolvedValue(undefined) },
+        pettyCashTemplate: { execute: jest.fn() },
+        pettyCash: { getConfig: jest.fn(), validate: jest.fn() },
+        payrollCustom: { loadWhitelist: jest.fn().mockResolvedValue(new Set(['53-1104', '53-1105'])), validateLine: jest.fn().mockResolvedValue({ taxableBase: new Decimal(0) }) },
+      }).service;
       await svc.voidDocument('doc-1', 'user-1');
       expect(journalMock.createAndPost).toHaveBeenCalledTimes(1);
       const call = journalMock.createAndPost.mock.calls[0][0];
@@ -1515,16 +1525,22 @@ describe('ExpenseDocumentsService', () => {
         }),
       };
       const journalMock = { createAndPost: jest.fn().mockResolvedValue({ id: 'je-r2', entryNumber: 'JE-202605-00003' }) };
-      const svc = new ExpenseDocumentsService(
-        prisma, docNumber, transition, sameDay, accrual, creditNote, payroll, settlement,
-        journalMock as never,
-        new LineAggregatorService(),
-        { preview: jest.fn() } as never,
-        { validateContribution: jest.fn().mockResolvedValue(undefined) } as never,
-        { execute: jest.fn() } as never,
-        { getConfig: jest.fn(), validate: jest.fn() } as never,
-        { loadWhitelist: jest.fn().mockResolvedValue(new Set(['53-1104', '53-1105'])), validateLine: jest.fn().mockResolvedValue({ taxableBase: new Decimal(0) }) } as never,
-      );
+      const svc = makeExpenseDocumentsService({
+        prisma,
+        docNumber,
+        transition,
+        sameDayTemplate: sameDay,
+        accrualTemplate: accrual,
+        creditNoteTemplate: creditNote,
+        payrollTemplate: payroll,
+        settlementTemplate: settlement,
+        journal: journalMock,
+        jePreview: { preview: jest.fn() },
+        ssoConfig: { validateContribution: jest.fn().mockResolvedValue(undefined) },
+        pettyCashTemplate: { execute: jest.fn() },
+        pettyCash: { getConfig: jest.fn(), validate: jest.fn() },
+        payrollCustom: { loadWhitelist: jest.fn().mockResolvedValue(new Set(['53-1104', '53-1105'])), validateLine: jest.fn().mockResolvedValue({ taxableBase: new Decimal(0) }) },
+      }).service;
       await svc.voidDocument('se-1', 'user-1');
       // Both cleared EXs reverted via updateMany with deletedAt:null guard
       const updateManyCalls = prisma.expenseDocument.updateMany.mock.calls;
@@ -1610,16 +1626,22 @@ describe('ExpenseDocumentsService', () => {
       const journalMock = {
         createAndPost: jest.fn().mockResolvedValue({ id: 'je-rev', entryNumber: 'JE-REV-001' }),
       };
-      const svc = new ExpenseDocumentsService(
-        prisma, docNumber, transition, sameDay, accrual, creditNote, payroll, settlement,
-        journalMock as never,
-        new LineAggregatorService(),
-        { preview: jest.fn() } as never,
-        { validateContribution: jest.fn().mockResolvedValue(undefined) } as never,
-        { execute: jest.fn() } as never,
-        { getConfig: jest.fn(), validate: jest.fn() } as never,
-        { loadWhitelist: jest.fn().mockResolvedValue(new Set()), validateLine: jest.fn() } as never,
-      );
+      const svc = makeExpenseDocumentsService({
+        prisma,
+        docNumber,
+        transition,
+        sameDayTemplate: sameDay,
+        accrualTemplate: accrual,
+        creditNoteTemplate: creditNote,
+        payrollTemplate: payroll,
+        settlementTemplate: settlement,
+        journal: journalMock,
+        jePreview: { preview: jest.fn() },
+        ssoConfig: { validateContribution: jest.fn().mockResolvedValue(undefined) },
+        pettyCashTemplate: { execute: jest.fn() },
+        pettyCash: { getConfig: jest.fn(), validate: jest.fn() },
+        payrollCustom: { loadWhitelist: jest.fn().mockResolvedValue(new Set()), validateLine: jest.fn() },
+      }).service;
       // Should NOT throw — both cascade checks are bypassed
       await expect(svc.voidDocument('doc-1', 'user-1')).resolves.toBeDefined();
     });
@@ -1691,16 +1713,22 @@ describe('ExpenseDocumentsService', () => {
       const journalMock = {
         createAndPost: jest.fn().mockResolvedValue({ id: 'je-rev', entryNumber: 'JE-REV-001' }),
       };
-      const svc = new ExpenseDocumentsService(
-        prisma, docNumber, transition, sameDay, accrual, creditNote, payroll, settlement,
-        journalMock as never,
-        new LineAggregatorService(),
-        { preview: jest.fn() } as never,
-        { validateContribution: jest.fn().mockResolvedValue(undefined) } as never,
-        { execute: jest.fn() } as never,
-        { getConfig: jest.fn(), validate: jest.fn() } as never,
-        { loadWhitelist: jest.fn().mockResolvedValue(new Set()), validateLine: jest.fn() } as never,
-      );
+      const svc = makeExpenseDocumentsService({
+        prisma,
+        docNumber,
+        transition,
+        sameDayTemplate: sameDay,
+        accrualTemplate: accrual,
+        creditNoteTemplate: creditNote,
+        payrollTemplate: payroll,
+        settlementTemplate: settlement,
+        journal: journalMock,
+        jePreview: { preview: jest.fn() },
+        ssoConfig: { validateContribution: jest.fn().mockResolvedValue(undefined) },
+        pettyCashTemplate: { execute: jest.fn() },
+        pettyCash: { getConfig: jest.fn(), validate: jest.fn() },
+        payrollCustom: { loadWhitelist: jest.fn().mockResolvedValue(new Set()), validateLine: jest.fn() },
+      }).service;
       await expect(
         svc.voidDocument('doc-1', 'user-1', { reasonCode: 'manager_decision' }),
       ).resolves.toBeDefined();
@@ -1739,16 +1767,22 @@ describe('ExpenseDocumentsService', () => {
       const journalMock = {
         createAndPost: jest.fn().mockResolvedValue({ id: 'je-rev', entryNumber: 'JE-REV-001' }),
       };
-      const svc = new ExpenseDocumentsService(
-        prisma, docNumber, transition, sameDay, accrual, creditNote, payroll, settlement,
-        journalMock as never,
-        new LineAggregatorService(),
-        { preview: jest.fn() } as never,
-        { validateContribution: jest.fn().mockResolvedValue(undefined) } as never,
-        { execute: jest.fn() } as never,
-        { getConfig: jest.fn(), validate: jest.fn() } as never,
-        { loadWhitelist: jest.fn().mockResolvedValue(new Set()), validateLine: jest.fn() } as never,
-      );
+      const svc = makeExpenseDocumentsService({
+        prisma,
+        docNumber,
+        transition,
+        sameDayTemplate: sameDay,
+        accrualTemplate: accrual,
+        creditNoteTemplate: creditNote,
+        payrollTemplate: payroll,
+        settlementTemplate: settlement,
+        journal: journalMock,
+        jePreview: { preview: jest.fn() },
+        ssoConfig: { validateContribution: jest.fn().mockResolvedValue(undefined) },
+        pettyCashTemplate: { execute: jest.fn() },
+        pettyCash: { getConfig: jest.fn(), validate: jest.fn() },
+        payrollCustom: { loadWhitelist: jest.fn().mockResolvedValue(new Set()), validateLine: jest.fn() },
+      }).service;
       const future = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
       await expect(
         svc.voidDocument('doc-1', 'user-1', { reverseDate: future }),
@@ -1774,16 +1808,22 @@ describe('ExpenseDocumentsService', () => {
       const journalMock = {
         createAndPost: jest.fn().mockResolvedValue({ id: 'je-rev', entryNumber: 'JE-REV-001' }),
       };
-      const svc = new ExpenseDocumentsService(
-        prisma, docNumber, transition, sameDay, accrual, creditNote, payroll, settlement,
-        journalMock as never,
-        new LineAggregatorService(),
-        { preview: jest.fn() } as never,
-        { validateContribution: jest.fn().mockResolvedValue(undefined) } as never,
-        { execute: jest.fn() } as never,
-        { getConfig: jest.fn(), validate: jest.fn() } as never,
-        { loadWhitelist: jest.fn().mockResolvedValue(new Set()), validateLine: jest.fn() } as never,
-      );
+      const svc = makeExpenseDocumentsService({
+        prisma,
+        docNumber,
+        transition,
+        sameDayTemplate: sameDay,
+        accrualTemplate: accrual,
+        creditNoteTemplate: creditNote,
+        payrollTemplate: payroll,
+        settlementTemplate: settlement,
+        journal: journalMock,
+        jePreview: { preview: jest.fn() },
+        ssoConfig: { validateContribution: jest.fn().mockResolvedValue(undefined) },
+        pettyCashTemplate: { execute: jest.fn() },
+        pettyCash: { getConfig: jest.fn(), validate: jest.fn() },
+        payrollCustom: { loadWhitelist: jest.fn().mockResolvedValue(new Set()), validateLine: jest.fn() },
+      }).service;
       await expect(svc.voidDocument('doc-1', 'user-1')).resolves.toBeDefined();
     });
 
@@ -1811,16 +1851,22 @@ describe('ExpenseDocumentsService', () => {
           ],
         }),
       };
-      const svc = new ExpenseDocumentsService(
-        prisma, docNumber, transition, sameDay, accrual, creditNote, payroll, settlement,
-        journalMock as never,
-        new LineAggregatorService(),
-        { preview: jest.fn() } as never,
-        { validateContribution: jest.fn().mockResolvedValue(undefined) } as never,
-        { execute: jest.fn() } as never,
-        { getConfig: jest.fn(), validate: jest.fn() } as never,
-        { loadWhitelist: jest.fn().mockResolvedValue(new Set(['53-1104', '53-1105'])), validateLine: jest.fn().mockResolvedValue({ taxableBase: new Decimal(0) }) } as never,
-      );
+      const svc = makeExpenseDocumentsService({
+        prisma,
+        docNumber,
+        transition,
+        sameDayTemplate: sameDay,
+        accrualTemplate: accrual,
+        creditNoteTemplate: creditNote,
+        payrollTemplate: payroll,
+        settlementTemplate: settlement,
+        journal: journalMock,
+        jePreview: { preview: jest.fn() },
+        ssoConfig: { validateContribution: jest.fn().mockResolvedValue(undefined) },
+        pettyCashTemplate: { execute: jest.fn() },
+        pettyCash: { getConfig: jest.fn(), validate: jest.fn() },
+        payrollCustom: { loadWhitelist: jest.fn().mockResolvedValue(new Set(['53-1104', '53-1105'])), validateLine: jest.fn().mockResolvedValue({ taxableBase: new Decimal(0) }) },
+      }).service;
 
       await svc.voidDocument('doc-1', 'user-1', {
         reasonCode: 'data_entry_error',
@@ -1865,16 +1911,22 @@ describe('ExpenseDocumentsService', () => {
           ],
         }),
       };
-      const svc = new ExpenseDocumentsService(
-        prisma, docNumber, transition, sameDay, accrual, creditNote, payroll, settlement,
-        journalMock as never,
-        new LineAggregatorService(),
-        { preview: jest.fn() } as never,
-        { validateContribution: jest.fn().mockResolvedValue(undefined) } as never,
-        { execute: jest.fn() } as never,
-        { getConfig: jest.fn(), validate: jest.fn() } as never,
-        { loadWhitelist: jest.fn().mockResolvedValue(new Set(['53-1104', '53-1105'])), validateLine: jest.fn().mockResolvedValue({ taxableBase: new Decimal(0) }) } as never,
-      );
+      const svc = makeExpenseDocumentsService({
+        prisma,
+        docNumber,
+        transition,
+        sameDayTemplate: sameDay,
+        accrualTemplate: accrual,
+        creditNoteTemplate: creditNote,
+        payrollTemplate: payroll,
+        settlementTemplate: settlement,
+        journal: journalMock,
+        jePreview: { preview: jest.fn() },
+        ssoConfig: { validateContribution: jest.fn().mockResolvedValue(undefined) },
+        pettyCashTemplate: { execute: jest.fn() },
+        pettyCash: { getConfig: jest.fn(), validate: jest.fn() },
+        payrollCustom: { loadWhitelist: jest.fn().mockResolvedValue(new Set(['53-1104', '53-1105'])), validateLine: jest.fn().mockResolvedValue({ taxableBase: new Decimal(0) }) },
+      }).service;
 
       await svc.voidDocument('doc-1', 'user-1', {
         reasonCode: 'cancel_transaction',

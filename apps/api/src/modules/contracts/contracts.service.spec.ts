@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { ContractsService } from './contracts.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -604,6 +604,63 @@ describe('ContractsService', () => {
 
       await service.create(validDto, 'user-1');
       expect(productUpdateCalled).toBe(true);
+    });
+
+    // ─── characterization: create() retry loop + Prisma-error switch ──────────
+    // Pins the create $transaction retry/error-translation behavior (P2002/P2034
+    // retryable, error switch → Thai BadRequestException, fallthrough → 500) so
+    // the decompose stays behavior-identical.
+
+    const makeTxResolver = () =>
+      async (fn: (tx: unknown) => Promise<unknown>) => {
+        const txPrisma = {
+          ...prisma,
+          product: { ...prisma.product, findUnique: jest.fn().mockResolvedValue(mockProduct), update: jest.fn().mockResolvedValue({ ...mockProduct, status: 'RESERVED' }) },
+          creditCheck: { findFirst: jest.fn().mockResolvedValue({ id: 'cc-1', status: 'APPROVED', contractId: null }), update: jest.fn().mockResolvedValue({}) },
+          customer: { findUnique: jest.fn().mockResolvedValue(mockCustomer) },
+          contract: { create: jest.fn().mockResolvedValue(mockContract) },
+          payment: { createMany: jest.fn().mockResolvedValue({ count: 12 }) },
+        };
+        return fn(txPrisma);
+      };
+
+    it('retries on a P2002 unique-constraint error and succeeds on the next attempt', async () => {
+      const p2002 = new Prisma.PrismaClientKnownRequestError('dup', { code: 'P2002', clientVersion: 'x' });
+      const ok = makeTxResolver();
+      prisma.$transaction
+        .mockImplementationOnce(async () => { throw p2002; })
+        .mockImplementationOnce(ok);
+
+      const result = await service.create(validDto, 'user-1');
+      expect(result.id).toBe('contract-1');
+      expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+    });
+
+    it('translates an exhausted P2002 into the Thai duplicate-contract-number BadRequestException', async () => {
+      const p2002 = new Prisma.PrismaClientKnownRequestError('dup', { code: 'P2002', clientVersion: 'x' });
+      prisma.$transaction.mockImplementation(async () => { throw p2002; });
+
+      await expect(service.create(validDto, 'user-1')).rejects.toThrow(/เลขสัญญาซ้ำ/);
+      expect(prisma.$transaction).toHaveBeenCalledTimes(3); // MAX_RETRIES
+    });
+
+    it('translates a P2003 branch FK violation into the Thai branch-not-found BadRequestException', async () => {
+      const p2003 = new Prisma.PrismaClientKnownRequestError('fk', {
+        code: 'P2003',
+        clientVersion: 'x',
+        meta: { field_name: 'branch_id' },
+      });
+      prisma.$transaction.mockImplementation(async () => { throw p2003; });
+
+      await expect(service.create(validDto, 'user-1')).rejects.toThrow(/ไม่พบสาขาที่เลือก/);
+      // P2003 is not retryable — fails on the first attempt
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    });
+
+    it('wraps an unknown (non-Prisma) error into an InternalServerErrorException', async () => {
+      prisma.$transaction.mockImplementation(async () => { throw new Error('db exploded'); });
+
+      await expect(service.create(validDto, 'user-1')).rejects.toBeInstanceOf(InternalServerErrorException);
     });
   });
 

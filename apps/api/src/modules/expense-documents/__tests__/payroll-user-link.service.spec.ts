@@ -1,7 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { ExpenseDocumentsService } from '../expense-documents.service';
-import { LineAggregatorService } from '../services/line-aggregator.service';
+import { makeExpenseDocumentsService } from './support/make-expense-documents-service';
 
 describe('ExpenseDocumentsService.createPayroll — userId link & snapshot derive', () => {
   let service: ExpenseDocumentsService;
@@ -31,27 +31,26 @@ describe('ExpenseDocumentsService.createPayroll — userId link & snapshot deriv
       },
     };
     const docNumber = { next: jest.fn().mockResolvedValue('PR-20260601-0001') };
-    service = new ExpenseDocumentsService(
+    service = makeExpenseDocumentsService({
       prisma,
-      docNumber as never,
-      {} as never, // transition
-      {} as never, // sameDay
-      {} as never, // accrual
-      {} as never, // cn
-      { execute: jest.fn() } as never, // payroll template
-      { execute: jest.fn() } as never, // settlement
-      { createAndPost: jest.fn() } as never, // journalAuto
-      new LineAggregatorService(),
-      { preview: jest.fn() } as never, // jePreview
-      { validateContribution: jest.fn().mockResolvedValue(undefined) } as never, // ssoConfig
-      { execute: jest.fn() } as never, // pettyCash template
-      { getConfig: jest.fn(), validate: jest.fn() } as never,
-      {
+      docNumber,
+      transition: {}, // transition
+      sameDayTemplate: {}, // sameDay
+      accrualTemplate: {}, // accrual
+      creditNoteTemplate: {}, // cn
+      payrollTemplate: { execute: jest.fn() }, // payroll template
+      settlementTemplate: { execute: jest.fn() }, // settlement
+      journal: { createAndPost: jest.fn() }, // journalAuto
+      jePreview: { preview: jest.fn() }, // jePreview
+      ssoConfig: { validateContribution: jest.fn().mockResolvedValue(undefined) }, // ssoConfig
+      pettyCashTemplate: { execute: jest.fn() }, // pettyCash template
+      pettyCash: { getConfig: jest.fn(), validate: jest.fn() },
+      payrollCustom: {
         loadWhitelist: jest.fn().mockResolvedValue(new Set(['53-1104', '53-1105'])),
         validateLine: jest.fn().mockResolvedValue({ taxableBase: undefined }),
-      } as never, // payrollCustom
-      { send: jest.fn().mockResolvedValue({ id: 'n-1', status: 'SENT' }) } as never,
-    );
+      }, // payrollCustom
+      notifications: { send: jest.fn().mockResolvedValue({ id: 'n-1', status: 'SENT' }) },
+    }).service;
   });
 
   const linesCreated = () =>

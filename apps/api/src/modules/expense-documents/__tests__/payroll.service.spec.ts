@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { ExpenseDocumentsService } from '../expense-documents.service';
-import { LineAggregatorService } from '../services/line-aggregator.service';
+import { makeExpenseDocumentsService } from './support/make-expense-documents-service';
 
 describe('ExpenseDocumentsService.createPayroll', () => {
   let service: ExpenseDocumentsService;
@@ -23,30 +23,29 @@ describe('ExpenseDocumentsService.createPayroll', () => {
     const cn: any = {};
     const payroll: any = { execute: jest.fn() };
     const settlement: any = { execute: jest.fn() };
-    service = new ExpenseDocumentsService(
+    service = makeExpenseDocumentsService({
       prisma,
       docNumber,
       transition,
-      sameDay,
-      accrual,
-      cn,
-      payroll,
-      settlement,
-      { createAndPost: jest.fn() } as never,
-      new LineAggregatorService(),
-      { preview: jest.fn() } as never,
+      sameDayTemplate: sameDay,
+      accrualTemplate: accrual,
+      creditNoteTemplate: cn,
+      payrollTemplate: payroll,
+      settlementTemplate: settlement,
+      journal: { createAndPost: jest.fn() },
+      jePreview: { preview: jest.fn() },
       // ssoConfig: pass-through. Cap-validation behavior is tested in
       // sso-config.service.spec.ts. Tests here use ssoEmployee values within
       // the 2569+ cap of 875, so a no-op validator is sound.
-      { validateContribution: jest.fn().mockResolvedValue(undefined) } as never,
+      ssoConfig: { validateContribution: jest.fn().mockResolvedValue(undefined) },
       // pettyCashTemplate + pettyCash mocks (C1) — payroll path doesn't touch them
-      { execute: jest.fn() } as never,
-      { getConfig: jest.fn(), validate: jest.fn() } as never,
+      pettyCashTemplate: { execute: jest.fn() },
+      pettyCash: { getConfig: jest.fn(), validate: jest.fn() },
       // payrollCustom mock — fixtures don't exercise custom income/deduction; loadWhitelist
       // returns the seeded default + validateLine no-ops.
-      { loadWhitelist: jest.fn().mockResolvedValue(new Set(['53-1104', '53-1105'])), validateLine: jest.fn().mockResolvedValue({ taxableBase: undefined }) } as never,
-      { send: jest.fn().mockResolvedValue({ id: 'notif-1', status: 'SENT' }) } as never,
-    );
+      payrollCustom: { loadWhitelist: jest.fn().mockResolvedValue(new Set(['53-1104', '53-1105'])), validateLine: jest.fn().mockResolvedValue({ taxableBase: undefined }) },
+      notifications: { send: jest.fn().mockResolvedValue({ id: 'notif-1', status: 'SENT' }) },
+    }).service;
   });
 
   it('rejects negative netPaid (sso + wht > baseSalary)', async () => {

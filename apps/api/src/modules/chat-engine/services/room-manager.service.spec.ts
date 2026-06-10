@@ -3,6 +3,7 @@ import { RoomManagerService } from './room-manager.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ChatChannel, ChatRoomStatus, ChatPriority, MessageRole } from '@prisma/client';
 import { ChatAiDraftService } from '../../chat-ai-draft/chat-ai-draft.service';
+import { StorageService } from '../../storage/storage.service';
 
 describe('RoomManagerService', () => {
   let service: RoomManagerService;
@@ -35,6 +36,14 @@ describe('RoomManagerService', () => {
         RoomManagerService,
         { provide: PrismaService, useValue: prisma },
         { provide: ChatAiDraftService, useValue: chatAiDraftService },
+        {
+          provide: StorageService,
+          useValue: {
+            configured: true,
+            upload: jest.fn(),
+            getSignedDownloadUrl: jest.fn(),
+          },
+        },
       ],
     }).compile();
 

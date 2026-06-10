@@ -11,7 +11,9 @@ import {
   Prisma,
 } from '@prisma/client';
 import { AssignmentService } from './assignment.service';
+import { MessageRouterService } from './message-router.service';
 import { ChatAiDraftService } from '../../chat-ai-draft/chat-ai-draft.service';
+import { StorageService } from '../../storage/storage.service';
 
 /**
  * RoomManagerService — generalized from SessionManagerService.
@@ -27,8 +29,11 @@ export class RoomManagerService {
 
   constructor(
     private prisma: PrismaService,
+    private storageService: StorageService,
     @Optional() @Inject(forwardRef(() => AssignmentService))
     private assignmentService?: AssignmentService,
+    @Optional() @Inject(forwardRef(() => MessageRouterService))
+    private messageRouter?: MessageRouterService,
     @Optional() @Inject(forwardRef(() => ChatAiDraftService))
     private chatAiDraftService?: ChatAiDraftService,
   ) {}
@@ -481,5 +486,218 @@ export class RoomManagerService {
       data: { readAt },
     });
     return { count: result.count };
+  }
+
+  /** Pin a room (records who pinned it and when) */
+  async pinRoom(roomId: string, userId: string): Promise<void> {
+    await this.prisma.chatRoom.update({
+      where: { id: roomId },
+      data: { pinnedAt: new Date(), pinnedById: userId },
+    });
+  }
+
+  /** Unpin a room */
+  async unpinRoom(roomId: string): Promise<void> {
+    await this.prisma.chatRoom.update({
+      where: { id: roomId },
+      data: { pinnedAt: null, pinnedById: null },
+    });
+  }
+
+  /**
+   * Mark all unread customer messages in a room as read, recompute the
+   * remaining unread count, and persist it on the room — all in one
+   * transaction so the room's unreadCount can never drift from the
+   * messages' readAt state.
+   */
+  async markAsRead(roomId: string): Promise<{ markedCount: number }> {
+    const now = new Date();
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.chatMessage.updateMany({
+        where: { roomId: roomId, role: 'CUSTOMER', readAt: null },
+        data: { readAt: now },
+      });
+      const remaining = await tx.chatMessage.count({
+        where: { roomId: roomId, role: 'CUSTOMER', readAt: null },
+      });
+      await tx.chatRoom.update({
+        where: { id: roomId },
+        data: { unreadCount: remaining },
+      });
+      return { markedCount: updated.count };
+    });
+  }
+
+  /**
+   * Store an uploaded file and save it as a chat message with media.
+   * Returns the persisted key + a (signed) download URL for the caller.
+   */
+  async uploadFile(
+    roomId: string,
+    file: Express.Multer.File,
+    userId: string | undefined,
+  ): Promise<{ success: boolean; url: string; key: string; filename: string }> {
+    const extMap: Record<string, string> = {
+      'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp',
+      'application/pdf': '.pdf',
+      'application/msword': '.doc',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+    };
+    const ext = extMap[file.mimetype] || '';
+    const key = `staff-chat/${roomId}/${Date.now()}${ext}`;
+
+    await this.storageService.upload(key, file.buffer, file.mimetype);
+    const downloadUrl = this.storageService.configured
+      ? await this.storageService.getSignedDownloadUrl(key, 3600)
+      : key;
+
+    // Save as a message with media
+    await this.saveMessage({
+      roomId,
+      role: MessageRole.BOT,
+      type: file.mimetype.startsWith('image/') ? MessageType.IMAGE : MessageType.FILE,
+      text: file.originalname,
+      mediaUrl: key,
+      mediaType: file.mimetype,
+      staffId: userId,
+    });
+
+    return { success: true, url: downloadUrl, key, filename: file.originalname };
+  }
+
+  /**
+   * Last N messages across the customer's LINE rooms (LINE_FINANCE preferred).
+   * Used by the Customer 360 LineChatPanel — collectors don't need to leave
+   * the collections workspace to see what was said in chat.
+   *
+   * Returns messages in reverse-chronological order (newest first) so
+   * `before=<oldest.id>` paging walks backward through history. The frontend
+   * reverses for display.
+   */
+  async getCustomerMessages(customerId: string, take: number, before?: string) {
+    // Find the customer's LINE Finance room (preferred) or fall back to any
+    // LINE room. Collections is a finance-only workflow — no point pulling
+    // shop-side LINE chat here.
+    const room = await this.prisma.chatRoom.findFirst({
+      where: {
+        customerId,
+        deletedAt: null,
+        channel: { in: [ChatChannel.LINE_FINANCE, ChatChannel.LINE_SHOP] },
+      },
+      orderBy: [
+        // Prefer LINE_FINANCE if both exist (alphabetical "LINE_FINANCE" <
+        // "LINE_SHOP" so an explicit ordering by lastMessageAt is the
+        // tiebreaker that matters).
+        { lastMessageAt: 'desc' },
+      ],
+      select: {
+        id: true,
+        channel: true,
+        lineUserId: true,
+        lastMessageAt: true,
+        unreadCount: true,
+      },
+    });
+
+    if (!room) {
+      return { roomId: null, channel: null, messages: [], hasMore: false };
+    }
+
+    let cursorWhere: { createdAt?: { lt: Date } } = {};
+    if (before) {
+      const cursor = await this.prisma.chatMessage.findUnique({
+        where: { id: before },
+        select: { createdAt: true },
+      });
+      if (cursor) cursorWhere = { createdAt: { lt: cursor.createdAt } };
+    }
+
+    const messages = await this.prisma.chatMessage.findMany({
+      where: { roomId: room.id, deletedAt: null, ...cursorWhere },
+      orderBy: { createdAt: 'desc' },
+      take: take + 1, // overfetch by 1 to detect hasMore
+      select: {
+        id: true,
+        role: true,
+        type: true,
+        text: true,
+        mediaUrl: true,
+        mediaType: true,
+        createdAt: true,
+        readAt: true,
+        deliveredAt: true,
+        staff: { select: { id: true, name: true } },
+      },
+    });
+
+    const hasMore = messages.length > take;
+    const sliced = hasMore ? messages.slice(0, take) : messages;
+
+    return {
+      roomId: room.id,
+      channel: room.channel,
+      messages: sliced,
+      hasMore,
+    };
+  }
+
+  /**
+   * Resolve the customer's LINE room (Finance preferred) and forward the
+   * staff message through MessageRouterService. Returns `{ room: null }`
+   * when the customer has no LINE room so the caller can surface a
+   * non-throwing error; otherwise returns the resolved room + send result.
+   */
+  async sendCustomerMessage(
+    customerId: string,
+    staffId: string,
+    text: string,
+  ): Promise<
+    | { room: null }
+    | { room: { id: string }; result: { success: boolean; error?: string } }
+  > {
+    const room = await this.prisma.chatRoom.findFirst({
+      where: {
+        customerId,
+        deletedAt: null,
+        channel: { in: [ChatChannel.LINE_FINANCE, ChatChannel.LINE_SHOP] },
+      },
+      orderBy: { lastMessageAt: 'desc' },
+      select: { id: true },
+    });
+
+    if (!room) {
+      return { room: null };
+    }
+
+    const result = await this.messageRouter!.sendStaffMessage({
+      roomId: room.id,
+      staffId,
+      text,
+    });
+
+    return { room, result };
+  }
+
+  /** All of a room's customer's rooms across channels, with the latest message each */
+  async getCrossChannelRooms(roomId: string) {
+    const room = await this.prisma.chatRoom.findUnique({
+      where: { id: roomId },
+      select: { customerId: true },
+    });
+    if (!room?.customerId) return [];
+    return this.prisma.chatRoom.findMany({
+      where: { customerId: room.customerId, deletedAt: null },
+      select: {
+        id: true,
+        channel: true,
+        lastMessageAt: true,
+        messages: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: { text: true, createdAt: true },
+        },
+      },
+      orderBy: { lastMessageAt: 'desc' },
+    });
   }
 }

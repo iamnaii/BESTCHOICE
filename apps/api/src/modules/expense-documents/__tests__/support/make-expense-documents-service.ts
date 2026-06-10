@@ -21,6 +21,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { ExpenseDocumentsService } from '../../expense-documents.service';
 import { LineAggregatorService } from '../../services/line-aggregator.service';
 import { ExpenseDocumentQueryService } from '../../services/expense-document-query.service';
+import { ExpenseDocumentLifecycleService } from '../../services/expense-document-lifecycle.service';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -56,6 +57,12 @@ export interface ExpenseDocumentsServiceOverrides {
   // `jePreview`, so existing specs' prisma/jePreview mocks flow through the
   // facade's delegating read methods unchanged.
   query?: any;
+  // Phase 2a decompose — the lifecycle sub-service (submitForApproval /
+  // softDelete + the private notifyApprovers fan-out). Defaults to a REAL
+  // ExpenseDocumentLifecycleService built from the SAME resolved `prisma` +
+  // `notifications`, so existing specs' prisma/notifications mocks flow through
+  // the facade's delegating lifecycle methods unchanged.
+  lifecycle?: any;
 }
 
 export interface MadeExpenseDocumentsService {
@@ -77,6 +84,7 @@ export interface MadeExpenseDocumentsService {
   payrollCustom: any;
   notifications: any;
   query: any;
+  lifecycle: any;
 }
 
 export function makeExpenseDocumentsService(
@@ -120,6 +128,12 @@ export function makeExpenseDocumentsService(
   // through the facade's now-delegating read methods. `jePreview` is no longer
   // a facade constructor arg (it moved into the query service).
   const query = overrides.query ?? new ExpenseDocumentQueryService(prisma, jePreview);
+  // Phase 2a decompose — REAL lifecycle sub-service by default, built from the
+  // SAME resolved `prisma` + `notifications` instances so existing specs' mocks
+  // flow through the facade's now-delegating lifecycle methods. `notifications`
+  // is no longer a facade constructor arg (it moved into the lifecycle service).
+  const lifecycle =
+    overrides.lifecycle ?? new ExpenseDocumentLifecycleService(prisma, notifications);
 
   // THE single positional construction in the codebase.
   const service = new ExpenseDocumentsService(
@@ -138,7 +152,7 @@ export function makeExpenseDocumentsService(
     pettyCash,
     payrollCustom,
     query,
-    notifications,
+    lifecycle,
   );
 
   return {
@@ -160,5 +174,6 @@ export function makeExpenseDocumentsService(
     payrollCustom,
     notifications,
     query,
+    lifecycle,
   };
 }

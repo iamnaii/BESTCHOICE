@@ -16,6 +16,7 @@ import { StatusTransitionService } from './services/status-transition.service';
 import { LineAggregatorService } from './services/line-aggregator.service';
 import { JePreviewService } from './services/je-preview.service';
 import { ExpenseDocumentQueryService } from './services/expense-document-query.service';
+import { ExpenseDocumentLifecycleService } from './services/expense-document-lifecycle.service';
 import { ExpenseVoucherPdfService } from './services/expense-voucher-pdf.service';
 import { PettyCashService } from './services/petty-cash.service';
 import { PayrollCustomService } from './services/payroll-custom.service';
@@ -51,6 +52,7 @@ import { ReversePermissionGuard } from './reverse-permission.guard';
     LineAggregatorService,
     JePreviewService,
     ExpenseDocumentQueryService,
+    ExpenseDocumentLifecycleService,
     ExpenseVoucherPdfService,
     PettyCashService,
     PayrollCustomService,

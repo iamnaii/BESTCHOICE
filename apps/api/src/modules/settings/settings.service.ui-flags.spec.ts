@@ -1,5 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { SettingsService } from './settings.service';
+import { SettingsFlagsService } from './services/settings-flags.service';
+import { SettingsWriteService } from './services/settings-write.service';
+import { PettyCashCustodianService } from './services/petty-cash-custodian.service';
+import { DocNumberPreviewService } from './services/doc-number-preview.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 
@@ -13,6 +17,7 @@ import { AuditService } from '../audit/audit.service';
  */
 describe('SettingsService.getUiFlags — flag normalisation', () => {
   let service: SettingsService;
+  let flags: SettingsFlagsService;
   let keyMap: Record<string, string | null>;
   let numMap: Record<string, number>;
 
@@ -22,21 +27,29 @@ describe('SettingsService.getUiFlags — flag normalisation', () => {
     const mod: TestingModule = await Test.createTestingModule({
       providers: [
         SettingsService,
+        SettingsFlagsService,
+        SettingsWriteService,
+        PettyCashCustodianService,
+        DocNumberPreviewService,
         { provide: PrismaService, useValue: {} },
         { provide: AuditService, useValue: {} },
       ],
     }).compile();
     service = mod.get(SettingsService);
+    // getUiFlags + its sub-readers now live on SettingsFlagsService; spy there
+    // (the facade getUiFlags delegates to this.flags.getUiFlags). Assertions
+    // below are unchanged.
+    flags = mod.get(SettingsFlagsService);
 
-    jest.spyOn(service, 'getKey').mockImplementation(async (k: string) => keyMap[k] ?? null);
+    jest.spyOn(flags, 'getKey').mockImplementation(async (k: string) => keyMap[k] ?? null);
     /* eslint-disable @typescript-eslint/no-explicit-any */
     jest
-      .spyOn(service as any, 'readNumber')
+      .spyOn(flags as any, 'readNumber')
       .mockImplementation(async (...args: any[]) => (args[0] in numMap ? numMap[args[0]] : args[1]));
-    jest.spyOn(service as any, 'readBoolean').mockImplementation(async (...args: any[]) => args[1]);
-    jest.spyOn(service as any, 'getReverseReasons').mockResolvedValue([]);
-    jest.spyOn(service as any, 'getDocPrefixMap').mockResolvedValue({});
-    jest.spyOn(service as any, 'getWhtRates').mockResolvedValue([]);
+    jest.spyOn(flags as any, 'readBoolean').mockImplementation(async (...args: any[]) => args[1]);
+    jest.spyOn(flags as any, 'getReverseReasons').mockResolvedValue([]);
+    jest.spyOn(flags as any, 'getDocPrefixMap').mockResolvedValue({});
+    jest.spyOn(flags as any, 'getWhtRates').mockResolvedValue([]);
     /* eslint-enable @typescript-eslint/no-explicit-any */
   });
 

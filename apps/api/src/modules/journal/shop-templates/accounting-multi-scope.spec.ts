@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { AccountingService } from '../../accounting/accounting.service';
+import { GeneralLedgerReportService } from '../../accounting/general-ledger-report.service';
 
 /**
  * P3-SP5 DEEP review C5 — multi-scope balance check unit tests.
@@ -65,8 +66,13 @@ describe('AccountingService — multi-scope reports', () => {
       getFinanceCompanyId: jest.fn().mockResolvedValue('finance-co-id'),
     };
 
+    // Wave-4 P6: getTrialBalance / getProfitLossFromJournal now delegate to
+    // GeneralLedgerReportService — provide a real instance wired to the same
+    // mock prisma + resolver so the delegation produces identical results.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const svc = new AccountingService(prisma, {} as any, resolver as any);
+    const generalLedgerReport = new GeneralLedgerReportService(prisma, resolver as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const svc = new AccountingService(prisma, {} as any, resolver as any, {} as any, {} as any, {} as any, generalLedgerReport);
     return { svc, prisma, resolver, groupByCalls, findManyCalls };
   }
 

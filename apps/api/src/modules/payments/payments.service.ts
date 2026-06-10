@@ -1272,6 +1272,10 @@ export class PaymentsService {
         // find this JE via metadata.paymentId), and reconstructPrior now counts a
         // credit application as prior-cleared for any subsequent receipt.
         if (payAmount.gt(0)) {
+          // Lazy-gen schedule for legacy (pre-#753) contracts so the credit
+          // receipt JE can post — prevents an orphan applied-credit-without-ledger
+          // row. Idempotent: a no-op when rows already exist. Same serializable tx.
+          await ensureInstallmentSchedules(tx, contract.id);
           const instSched = await tx.installmentSchedule.findUnique({
             where: {
               contractId_installmentNo: {
@@ -1306,8 +1310,24 @@ export class PaymentsService {
               await this.vat60Reversal.execute(instSched.id, tx);
             }
           } else {
-            this.logger.warn(
-              `PaymentReceipt skipped (credit) — no InstallmentSchedule for contractId=${contract.id} installmentNo=${updated.installmentNo}`,
+            // Genuine data anomaly even after lazy-gen — alarm, never silently
+            // skip an applied-credit installment's ledger entry. Payment stays PAID.
+            Sentry.captureException(
+              new Error(
+                'Applied-credit installment has no postable 2B JE (credit; no InstallmentSchedule after lazy-gen)',
+              ),
+              {
+                level: 'error',
+                tags: { module: 'payments', flow: '2b-receipt-credit' },
+                extra: {
+                  contractId: contract.id,
+                  installmentNo: updated.installmentNo,
+                  paymentId: updated.id,
+                },
+              },
+            );
+            this.logger.error(
+              `PaymentReceipt2B UNPOSTABLE (credit) — no InstallmentSchedule for contractId=${contract.id} installmentNo=${updated.installmentNo} (Sentry-alarmed; manual reconcile needed)`,
             );
           }
         }

@@ -20,6 +20,7 @@
 import { Decimal } from '@prisma/client/runtime/library';
 import { ExpenseDocumentsService } from '../../expense-documents.service';
 import { LineAggregatorService } from '../../services/line-aggregator.service';
+import { ExpenseDocumentQueryService } from '../../services/expense-document-query.service';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -50,6 +51,11 @@ export interface ExpenseDocumentsServiceOverrides {
   pettyCash?: any;
   payrollCustom?: any;
   notifications?: any;
+  // Phase 1 decompose — the read-method sub-service. Defaults to a REAL
+  // ExpenseDocumentQueryService built from the same resolved `prisma` +
+  // `jePreview`, so existing specs' prisma/jePreview mocks flow through the
+  // facade's delegating read methods unchanged.
+  query?: any;
 }
 
 export interface MadeExpenseDocumentsService {
@@ -70,6 +76,7 @@ export interface MadeExpenseDocumentsService {
   pettyCash: any;
   payrollCustom: any;
   notifications: any;
+  query: any;
 }
 
 export function makeExpenseDocumentsService(
@@ -106,8 +113,13 @@ export function makeExpenseDocumentsService(
       validateLine: jest.fn().mockResolvedValue({ taxableBase: new Decimal(0) }),
     };
   // notifications: undefined unless explicitly provided — preserves the
-  // 15-arg early-return behavior of specs that omit it.
+  // early-return behavior of specs that omit it.
   const notifications = overrides.notifications;
+  // Phase 1 decompose — REAL query sub-service by default, built from the SAME
+  // resolved `prisma` + `jePreview` instances so existing specs' mocks flow
+  // through the facade's now-delegating read methods. `jePreview` is no longer
+  // a facade constructor arg (it moved into the query service).
+  const query = overrides.query ?? new ExpenseDocumentQueryService(prisma, jePreview);
 
   // THE single positional construction in the codebase.
   const service = new ExpenseDocumentsService(
@@ -121,11 +133,11 @@ export function makeExpenseDocumentsService(
     settlementTemplate,
     journal,
     aggregator,
-    jePreview,
     ssoConfig,
     pettyCashTemplate,
     pettyCash,
     payrollCustom,
+    query,
     notifications,
   );
 
@@ -147,5 +159,6 @@ export function makeExpenseDocumentsService(
     pettyCash,
     payrollCustom,
     notifications,
+    query,
   };
 }

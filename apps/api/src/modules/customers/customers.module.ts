@@ -1,6 +1,9 @@
 import { Module } from '@nestjs/common';
 import { CustomersController } from './customers.controller';
 import { CustomersService } from './customers.service';
+import { CustomerQueryService } from './services/customer-query.service';
+import { CustomerWriteService } from './services/customer-write.service';
+import { CustomerAnalyticsService } from './services/customer-analytics.service';
 import { CustomerTierService } from './customer-tier.service';
 import { CustomerPreCheckService } from './customer-precheck.service';
 import { SkipTracingService } from './skip-tracing.service';
@@ -14,6 +17,9 @@ import { TestModeModule } from '../test-mode/test-mode.module';
   controllers: [CustomersController],
   providers: [
     CustomersService,
+    CustomerQueryService,
+    CustomerWriteService,
+    CustomerAnalyticsService,
     CustomerTierService,
     CustomerPreCheckService,
     SkipTracingService,

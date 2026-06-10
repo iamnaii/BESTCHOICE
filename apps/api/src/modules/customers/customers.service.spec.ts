@@ -1,6 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import { CustomersService } from './customers.service';
+import { CustomerQueryService } from './services/customer-query.service';
+import { CustomerWriteService } from './services/customer-write.service';
+import { CustomerAnalyticsService } from './services/customer-analytics.service';
 import { CustomerTierService } from './customer-tier.service';
 import { ContactResolverService } from '../contacts/contact-resolver.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -33,6 +36,9 @@ describe('CustomersService.create — NID normalization', () => {
     const mod: TestingModule = await Test.createTestingModule({
       providers: [
         CustomersService,
+        CustomerQueryService,
+        CustomerWriteService,
+        CustomerAnalyticsService,
         { provide: PrismaService, useValue: prisma },
         { provide: CustomerTierService, useValue: { getCustomerTier: jest.fn() } },
         {
@@ -140,6 +146,9 @@ describe('CustomersService.create — T3-C9 phone + email dedup', () => {
     const mod: TestingModule = await Test.createTestingModule({
       providers: [
         CustomersService,
+        CustomerQueryService,
+        CustomerWriteService,
+        CustomerAnalyticsService,
         { provide: PrismaService, useValue: prisma },
         { provide: CustomerTierService, useValue: { getCustomerTier: jest.fn() } },
         {
@@ -231,6 +240,9 @@ describe('PII dual-write (Phase 3)', () => {
     const mod: TestingModule = await Test.createTestingModule({
       providers: [
         CustomersService,
+        CustomerQueryService,
+        CustomerWriteService,
+        CustomerAnalyticsService,
         { provide: PrismaService, useValue: prisma },
         { provide: CustomerTierService, useValue: { getCustomerTier: jest.fn() } },
         {
@@ -316,6 +328,9 @@ describe('PII read decryption (Phase 5)', () => {
     const mod: TestingModule = await Test.createTestingModule({
       providers: [
         CustomersService,
+        CustomerQueryService,
+        CustomerWriteService,
+        CustomerAnalyticsService,
         { provide: PrismaService, useValue: prisma },
         { provide: CustomerTierService, useValue: { getCustomerTier: jest.fn() } },
         {
@@ -404,6 +419,9 @@ describe('CustomersService.remove — block if open contracts', () => {
     const mod: TestingModule = await Test.createTestingModule({
       providers: [
         CustomersService,
+        CustomerQueryService,
+        CustomerWriteService,
+        CustomerAnalyticsService,
         { provide: PrismaService, useValue: prisma },
         { provide: CustomerTierService, useValue: { getCustomerTier: jest.fn() } },
         {
@@ -482,6 +500,9 @@ describe('CustomersService.create — links Contact (party master)', () => {
     const mod: TestingModule = await Test.createTestingModule({
       providers: [
         CustomersService,
+        CustomerQueryService,
+        CustomerWriteService,
+        CustomerAnalyticsService,
         { provide: PrismaService, useValue: prisma },
         { provide: CustomerTierService, useValue: { getCustomerTier: jest.fn() } },
         { provide: ContactResolverService, useValue: contactResolver },
@@ -570,6 +591,9 @@ describe('CustomersService.create — stub-upgrade guard (P4)', () => {
     const mod: TestingModule = await Test.createTestingModule({
       providers: [
         CustomersService,
+        CustomerQueryService,
+        CustomerWriteService,
+        CustomerAnalyticsService,
         { provide: PrismaService, useValue: prisma },
         { provide: CustomerTierService, useValue: { getCustomerTier: jest.fn() } },
         {

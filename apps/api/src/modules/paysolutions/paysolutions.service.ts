@@ -1,61 +1,67 @@
 import {
   Inject,
   Injectable,
-  Logger,
-  BadRequestException,
-  NotFoundException,
-  InternalServerErrorException,
   forwardRef,
 } from '@nestjs/common';
-import * as Sentry from '@sentry/nestjs';
-import { formatDateLong } from '../../utils/thai-date.util';
-import { dAdd, dSub, dClose } from '../../utils/decimal.util';
-import { ensureInstallmentSchedules } from '../../utils/installment-schedule.util';
 import { OnlineOrderSaleAdapter } from '../shop-orders/online-order-sale.adapter';
-
-// Pay Solutions external API timeout. Their published SLA is "instant"
-// but real-world we've seen 5-10s on busy hours. 15s leaves headroom
-// without holding our request thread forever.
-const PAYSOLUTIONS_TIMEOUT_MS = 15_000;
 import { ConfigService } from '@nestjs/config';
-import { Prisma, PaymentMethod } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LineOaService } from '../line-oa/line-oa.service';
-import { buildPaymentSuccessFlex } from '../line-oa/flex-messages/payment-success.flex';
-import { buildEarlyPayoffSuccessFlex } from '../line-oa/flex-messages/early-payoff-success.flex';
-import { buildEarlyPayoffQRFlex } from '../line-oa/flex-messages/early-payoff-qr.flex';
-import { buildPartialPaymentQRFlex } from '../line-oa/flex-messages/partial-payment-qr.flex';
-import { FlexMessagePayload } from '../line-oa/flex-messages/base-template';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
 import { ProductsService } from '../products/products.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { PaymentReceiptTemplate } from '../journal/cpa-templates/payment-receipt.template';
 import { Vat60dayReversalTemplate } from '../journal/cpa-templates/vat-60day-reversal.template';
-import { Decimal } from '@prisma/client/runtime/library';
 import { PaymentsService } from '../payments/payments.service';
 import type { PartialPaymentLink } from '@prisma/client';
+import { PaySolutionsGatewayClient } from './services/paysolutions-gateway.client';
+import {
+  PaySolutionsIntentService,
+  PaymentIntentResult,
+} from './services/paysolutions-intent.service';
+import {
+  PaySolutionsConfirmationService,
+  PaymentStatusResult,
+} from './services/paysolutions-confirmation.service';
+import { PaySolutionsWebhookService } from './services/paysolutions-webhook.service';
 
-export interface PaymentIntentResult {
-  paymentId: string;
-  paymentUrl: string;
-  gatewayRef: string;
-  qrCodeUrl?: string;
-}
+export { PaymentIntentResult } from './services/paysolutions-intent.service';
+export { PaymentStatusResult } from './services/paysolutions-confirmation.service';
 
-export interface PaymentStatusResult {
-  paymentId: string;
-  status: 'PENDING' | 'PAID' | 'FAILED';
-  gatewayRef?: string;
-  gatewayStatus?: string;
-  amount: number;
-  paidAt?: Date;
-}
-
+/**
+ * Facade over the decomposed PaySolutions money-inflow gateway.
+ *
+ * Behavior-preserving decompose: the 1908-LOC god-service split into four plain
+ * sub-services constructed INTERNALLY (so the module + the 6 external consumers
+ * + all 6 specs stay untouched — no provider/forwardRef churn). The 11-method
+ * public surface + the ctor (incl. the forwardRef'd PaymentsService) are
+ * unchanged; every public method one-line delegates.
+ *
+ *   - {@link PaySolutionsGatewayClient}      — DB-free config + createUiPayment dedup
+ *   - {@link PaySolutionsIntentService}      — the 5 intent creators (NO regulated JE)
+ *   - {@link PaySolutionsConfirmationService}— partial/online/saving confirm + status
+ *   - {@link PaySolutionsWebhookService}     — REGULATED CORE: the line-1105
+ *       Serializable webhook $tx (3 JEs, FIFO, idempotency, contract-close) AS
+ *       ONE ATOM
+ *
+ * Sub-services are built LAZILY on first use (not in the ctor): under
+ * forwardRef DI, NestJS returns a wrapped instance from the container while the
+ * ctor's `this` is the raw target — so a host captured in the ctor would NOT
+ * see post-construction spies installed on the container instance. Building on
+ * first public-method call captures the wrapped `this`, so the webhook's
+ * routing branches + post-tx notifications dispatch through the SAME facade
+ * instance the existing specs spy on. The host arrows resolve their targets at
+ * call time, so a spy installed after the first delegation is still honoured.
+ */
 @Injectable()
 export class PaySolutionsService {
-  private readonly logger = new Logger(PaySolutionsService.name);
-  private readonly returnUrl: string;
-  private readonly apiBaseUrl: string;
+  private _services?: {
+    gateway: PaySolutionsGatewayClient;
+    intent: PaySolutionsIntentService;
+    confirmation: PaySolutionsConfirmationService;
+    webhook: PaySolutionsWebhookService;
+  };
 
   constructor(
     private prisma: PrismaService,
@@ -70,398 +76,81 @@ export class PaySolutionsService {
     private vat60Reversal: Vat60dayReversalTemplate,
     @Inject(forwardRef(() => PaymentsService))
     private paymentsService: PaymentsService,
-  ) {
-    this.returnUrl = this.config.get<string>('PAYSOLUTIONS_RETURN_URL', '');
-    this.apiBaseUrl = this.config.get<string>(
-      'API_BASE_URL',
-      'https://api.bestchoicephone.app',
-    );
-  }
-
-  private async getMerchantId(): Promise<string> {
-    return (await this.integrationConfig.getValue('paysolutions', 'merchantId')) || '';
-  }
-
-  private async getSecretKey(): Promise<string> {
-    return (await this.integrationConfig.getValue('paysolutions', 'secretKey')) || '';
-  }
-
-  private async getApiKey(): Promise<string> {
-    return (await this.integrationConfig.getValue('paysolutions', 'apiKey')) || '';
-  }
-
-  private async getApiUrl(): Promise<string> {
-    return (
-      (await this.integrationConfig.getValue('paysolutions', 'apiUrl')) ||
-      'https://apis.paysolutions.asia'
-    );
-  }
-
-  private async getTerminalId(): Promise<string> {
-    return (await this.integrationConfig.getValue('paysolutions', 'terminalId')) || 'TID00001';
-  }
+  ) {}
 
   /**
-   * สร้าง payment intent — เรียก Pay Solutions API สร้าง payment request
-   * ได้ payment URL สำหรับ redirect ลูกค้าไปชำระเงิน
+   * Lazily build (once) and return the four sub-services. Wiring:
+   * GatewayClient → Intent; Confirmation (forwardRef'd PaymentsService threaded
+   * through); Webhook(…, host) where `host` dispatches back through `this`
+   * (the wrapped facade instance) so its routing + notifications hit the
+   * methods the specs spy on.
    */
-  async createPaymentIntent(
+  private services() {
+    if (!this._services) {
+      const gateway = new PaySolutionsGatewayClient(this.config, this.integrationConfig);
+      const intent = new PaySolutionsIntentService(
+        gateway,
+        this.prisma,
+        this.lineOaService,
+        this.config,
+      );
+      const confirmation = new PaySolutionsConfirmationService(
+        this.prisma,
+        this.lineOaService,
+        this.saleAdapter,
+        this.paymentsService,
+      );
+      const webhook = new PaySolutionsWebhookService(
+        gateway,
+        this.prisma,
+        this.lineOaService,
+        this.productsService,
+        this.journalAutoService,
+        this.paymentReceiptTemplate,
+        this.vat60Reversal,
+        {
+          handlePartialPaymentCallback: (link, data) =>
+            this.handlePartialPaymentCallback(link, data),
+          confirmSavingPlanPayment: (id, linkId, data) =>
+            this.confirmSavingPlanPayment(id, linkId, data),
+          confirmOnlineOrderPayment: (id, data) =>
+            this.confirmOnlineOrderPayment(id, data),
+          sendPaymentSuccessNotification: (contractId, paymentId) =>
+            this.sendPaymentSuccessNotification(contractId, paymentId),
+          sendEarlyPayoffSuccessNotification: (contractId, paidAmount) =>
+            this.sendEarlyPayoffSuccessNotification(contractId, paidAmount),
+        },
+      );
+      this._services = { gateway, intent, confirmation, webhook };
+    }
+    return this._services;
+  }
+
+  // ── Intent creators (delegated to PaySolutionsIntentService) ──────────────
+
+  createPaymentIntent(
     contractId: string,
     amount: number,
     description?: string,
     lineId?: string,
     installmentNo?: number,
   ): Promise<PaymentIntentResult> {
-    // ตรวจสอบว่า contract มีอยู่จริง
-    const contract = await this.prisma.contract.findUnique({
-      where: { id: contractId },
-      include: {
-        customer: { select: { name: true, phone: true, email: true, lineIdFinance: true } },
-      },
-    });
-
-    if (!contract || contract.deletedAt) {
-      throw new NotFoundException('ไม่พบสัญญาที่ระบุ');
-    }
-
-    // ตรวจสอบว่า contract เป็นของ customer ที่ผูก LINE (บังคับ — ป้องกันสร้าง intent โดยไม่ยืนยันตัวตน)
-    if (!lineId) {
-      throw new BadRequestException('กรุณาระบุ LINE ID เพื่อยืนยันตัวตน');
-    }
-    if (contract.customer.lineIdFinance !== lineId) {
-      throw new BadRequestException('สัญญานี้ไม่ตรงกับบัญชี LINE ของคุณ');
-    }
-
-    // PaySolutions referenceNo: max 12 chars, must be unique.
-    // PDF sample uses all-digits ("123456789012") and the payment UI
-    // at payments.paysolutions.asia rejected alphanumeric refs with
-    // "Invalid data, please check the referenceNo" — so stick to digits.
-    // Date.now() is 13 digits; last 12 gives us a unique ref per ms.
-    const orderRef = String(Date.now()).slice(-12);
-
-    // หา payment record ที่ต้องชำระ (ถ้าระบุ installmentNo)
-    let paymentRecord: Awaited<ReturnType<typeof this.prisma.payment.findUnique>> = null;
-    if (installmentNo) {
-      paymentRecord = await this.prisma.payment.findUnique({
-        where: { contractId_installmentNo: { contractId, installmentNo } },
-      });
-      if (!paymentRecord) {
-        throw new NotFoundException(`ไม่พบงวดที่ ${installmentNo}`);
-      }
-      if (paymentRecord.status === 'PAID') {
-        throw new BadRequestException(`งวดที่ ${installmentNo} ชำระเรียบร้อยแล้ว`);
-      }
-
-      // Validate amount matches actual outstanding for this installment
-      const expectedAmount = dSub(dAdd(paymentRecord.amountDue, paymentRecord.lateFee), paymentRecord.amountPaid);
-      if (!dClose(amount, expectedAmount)) {
-        throw new BadRequestException(
-          `ยอดชำระไม่ตรง: ส่งมา ${amount.toLocaleString()} บาท แต่ยอดค้างจริง ${expectedAmount.toNumber().toLocaleString()} บาท`,
-        );
-      }
-    }
-
-    // เรียก Pay Solutions API v2 (ตาม Web API Guideline v1.2.2)
-    const returnUrlWithRef = `${this.returnUrl || `${this.config.get('FRONTEND_URL', 'http://localhost:5173')}/liff/contract`}?ref=${orderRef}`;
-
-    const paymentPayload = {
-      merchantId: await this.getMerchantId(),
-      customerEmail: contract.customer.email || 'noreply@bestchoice.com',
-      referenceNo: orderRef,
-      description: description || `ชำระค่างวด สัญญา ${contract.contractNumber}`,
-      amount,
-      paymentChannel: 'Qrcode',
-      paymentGateway: 'Promptpay',
-      currencyCode: '00',
-      lang: 'TH',
-      returnUrl: returnUrlWithRef,
-      postbackUrl: `${this.apiBaseUrl}/api/paysolutions/webhook`,
-      terminalId: await this.getTerminalId(),
-      keyVersion: 1,
-    };
-
-    let gatewayResponse: Record<string, unknown>;
-    let paymentUrl: string;
-    let gatewayRef: string;
-
-    // AbortController-based timeout. Without this a hung gateway would
-    // keep our request thread alive indefinitely and the customer would
-    // see an infinite spinner.
-    const abortController = new AbortController();
-    const timeoutHandle = setTimeout(() => abortController.abort(), PAYSOLUTIONS_TIMEOUT_MS);
-
-    try {
-      const response = await fetch(
-        `${await this.getApiUrl()}/payment/gateway/v2/ui-payments`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json; charset=utf-8',
-            'apiKey': await this.getApiKey(),
-            'secretKey': await this.getSecretKey(),
-          },
-          body: JSON.stringify(paymentPayload),
-          signal: abortController.signal,
-        },
-      );
-
-      gatewayResponse = (await response.json()) as Record<string, unknown>;
-
-      if (!response.ok) {
-        // PaySolutions returns error in two shapes:
-        //   - Auth fail (401):  { message: "Invalid authentication credentials" }
-        //   - Business error:   { status: { statusCode: "4A001", message: "..." } }
-        // Read both so logs + user message are useful in either case.
-        const status = gatewayResponse.status as Record<string, string> | undefined;
-        const flatMessage = gatewayResponse.message as string | undefined;
-        const statusCode = status?.statusCode ?? String(response.status);
-        const message = status?.message ?? flatMessage ?? 'กรุณาลองใหม่';
-        this.logger.error(
-          `Pay Solutions API error: HTTP ${response.status} statusCode=${statusCode} message="${message}" — ${JSON.stringify(gatewayResponse)}`,
-        );
-        throw new InternalServerErrorException(
-          `ไม่สามารถสร้างรายการชำระเงินได้: ${message}`,
-        );
-      }
-
-      // Pay Solutions v2 response: { redirectUrl, transactionId, status }
-      paymentUrl = (gatewayResponse.redirectUrl as string) || '';
-      gatewayRef = (gatewayResponse.transactionId as string) || orderRef;
-
-      if (!paymentUrl) {
-        this.logger.error(`Pay Solutions missing redirectUrl: ${JSON.stringify(gatewayResponse)}`);
-        throw new InternalServerErrorException('ไม่ได้รับลิงก์ชำระเงินจากระบบ');
-      }
-    } catch (error) {
-      if (error instanceof InternalServerErrorException) throw error;
-      // AbortError fires when the timeout trips. Surface a clear Thai
-      // message to the user and tag the Sentry event so we can spot a
-      // gateway slowdown.
-      const isTimeout = error instanceof Error && error.name === 'AbortError';
-      if (isTimeout) {
-        this.logger.error(
-          `Pay Solutions timeout after ${PAYSOLUTIONS_TIMEOUT_MS}ms for orderRef=${orderRef}`,
-        );
-        Sentry.captureMessage('paysolutions-timeout', {
-          level: 'warning',
-          tags: { critical: 'paysolutions-timeout', orderRef },
-          extra: { contractId, amount, timeoutMs: PAYSOLUTIONS_TIMEOUT_MS },
-        });
-        throw new InternalServerErrorException(
-          'ระบบชำระเงินใช้เวลานานเกินไป กรุณาลองใหม่อีกครั้ง',
-        );
-      }
-      this.logger.error(`Pay Solutions API call failed: ${error}`);
-      throw new InternalServerErrorException('ไม่สามารถเชื่อมต่อระบบชำระเงินได้ กรุณาลองใหม่');
-    } finally {
-      clearTimeout(timeoutHandle);
-    }
-
-    // CRITICAL: gateway intent ได้สร้างไปแล้ว — ถ้า DB write fail ตรงนี้
-    // เราจะมี orphaned gateway intent (ลูกค้า redirect ไปจ่ายได้แต่ webhook
-    // จะหา PaymentLink ไม่เจอ → ลูกค้าจ่ายเงินแต่ระบบไม่บันทึก)
-    // → wrap ใน $transaction ให้ payment.update + paymentLink.create เป็น atomic
-    // → ถ้า fail ส่ง Sentry ทันทีพร้อม gatewayRef เพื่อให้ ops reconcile ได้
-    try {
-      await this.prisma.$transaction(async (tx) => {
-        if (paymentRecord) {
-          await tx.payment.update({
-            where: { id: paymentRecord.id },
-            data: {
-              gatewayRef,
-              gatewayStatus: 'PENDING',
-              gatewayResponse: gatewayResponse as object,
-              paymentMethod: PaymentMethod.ONLINE_GATEWAY,
-            },
-          });
-        }
-
-        await tx.paymentLink.create({
-          data: {
-            token: orderRef,
-            contractId,
-            paymentId: paymentRecord?.id || null,
-            amount,
-            status: 'ACTIVE',
-            expiresAt: new Date(Date.now() + 30 * 60 * 1000), // 30 min expiry
-          },
-        });
-      });
-    } catch (dbError) {
-      // Gateway intent created but DB tracking failed → ORPHAN risk
-      this.logger.error(
-        `CRITICAL: PaySolutions intent created but DB tracking failed. orderRef=${orderRef} gatewayRef=${gatewayRef} contractId=${contractId}`,
-      );
-      Sentry.captureException(dbError, {
-        level: 'fatal',
-        tags: {
-          critical: 'paysolutions-orphan-intent',
-          orderRef,
-          gatewayRef,
-        },
-        extra: {
-          contractId,
-          paymentRecordId: paymentRecord?.id,
-          amount,
-        },
-      });
-      throw new InternalServerErrorException(
-        'ระบบบันทึกข้อมูลชำระเงินไม่สำเร็จ กรุณาติดต่อแอดมิน',
-      );
-    }
-
-    this.logger.log(
-      `Payment intent created: ${orderRef} for contract ${contractId}, amount ${amount}`,
-    );
-
-    return {
-      paymentId: paymentRecord?.id || orderRef,
-      paymentUrl,
-      gatewayRef,
-    };
+    return this.services().intent.createPaymentIntent(contractId, amount, description, lineId, installmentNo);
   }
 
-  /**
-   * สร้าง payment intent สำหรับ online order (ร้านค้าออนไลน์)
-   * — เรียก Pay Solutions API สร้างลิงก์ชำระเงิน
-   * — บันทึก PaymentLink ที่ contractId=null + link กลับมาหา OnlineOrder
-   * — Retry safe: ถ้ามี PaymentLink ACTIVE อยู่แล้วจะ reuse ไม่สร้างใหม่
-   */
-  async createOnlineOrderIntent(input: {
+  createOnlineOrderIntent(input: {
     onlineOrderId: string;
     amount: number;
     description: string;
     channel: 'PROMPTPAY_QR' | 'CREDIT_DEBIT_CARD';
   }): Promise<{ paymentLinkId: string; paymentUrl: string; qrCodeUrl?: string }> {
-    const order = await this.prisma.onlineOrder.findUnique({
-      where: { id: input.onlineOrderId },
-      include: { customer: { select: { email: true, name: true } } },
-    });
-    if (!order) throw new NotFoundException('ไม่พบคำสั่งซื้อ');
-    if (order.paymentLinkId) {
-      const existing = await this.prisma.paymentLink.findUnique({
-        where: { id: order.paymentLinkId },
-      });
-      if (existing && existing.status === 'ACTIVE') {
-        // Reuse — avoid creating a new gateway intent on retry
-        return { paymentLinkId: existing.id, paymentUrl: '' };
-      }
-    }
-
-    // Numeric-only ref (see createPaymentIntent for rationale).
-    const orderRef = String(Date.now()).slice(-12);
-    const returnUrlBase =
-      this.returnUrl || `${this.config.get('FRONTEND_URL', 'http://localhost:5174')}/orders`;
-    const returnUrl = `${returnUrlBase}/${order.orderNumber}`;
-
-    const paymentPayload: Record<string, unknown> = {
-      merchantId: await this.getMerchantId(),
-      customerEmail: order.customer.email || 'noreply@bestchoice.com',
-      referenceNo: orderRef,
-      description: input.description,
-      amount: input.amount,
-      paymentChannel: input.channel === 'PROMPTPAY_QR' ? 'Qrcode' : 'CreditDebit',
-      paymentGateway: input.channel === 'PROMPTPAY_QR' ? 'Promptpay' : undefined,
-      currencyCode: '00',
-      lang: 'TH',
-      returnUrl,
-      postbackUrl: `${this.apiBaseUrl}/api/paysolutions/webhook`,
-      terminalId: await this.getTerminalId(),
-      keyVersion: 1,
-    };
-
-    const abortController = new AbortController();
-    const timeoutHandle = setTimeout(() => abortController.abort(), PAYSOLUTIONS_TIMEOUT_MS);
-    let gatewayResponse: Record<string, unknown>;
-    let paymentUrl: string;
-
-    try {
-      const response = await fetch(
-        `${await this.getApiUrl()}/payment/gateway/v2/ui-payments`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json; charset=utf-8',
-            apiKey: await this.getApiKey(),
-            secretKey: await this.getSecretKey(),
-          },
-          body: JSON.stringify(paymentPayload),
-          signal: abortController.signal,
-        },
-      );
-      gatewayResponse = (await response.json()) as Record<string, unknown>;
-      if (!response.ok) {
-        const status = gatewayResponse.status as Record<string, string> | undefined;
-        const flatMessage = gatewayResponse.message as string | undefined;
-        const statusCode = status?.statusCode ?? String(response.status);
-        const message = status?.message ?? flatMessage ?? 'กรุณาลองใหม่';
-        this.logger.error(
-          `Pay Solutions online-order API error: HTTP ${response.status} statusCode=${statusCode} message="${message}" — ${JSON.stringify(gatewayResponse)}`,
-        );
-        throw new InternalServerErrorException(
-          `ไม่สามารถสร้างรายการชำระเงินได้: ${message}`,
-        );
-      }
-      paymentUrl = (gatewayResponse.redirectUrl as string) || '';
-      if (!paymentUrl) {
-        throw new InternalServerErrorException('ไม่ได้รับลิงก์ชำระเงินจากระบบ');
-      }
-    } catch (error) {
-      if (error instanceof InternalServerErrorException) throw error;
-      const isTimeout = error instanceof Error && error.name === 'AbortError';
-      if (isTimeout) {
-        Sentry.captureMessage('paysolutions-online-timeout', {
-          level: 'warning',
-          tags: { critical: 'paysolutions-online-timeout', orderRef },
-          extra: { onlineOrderId: input.onlineOrderId, amount: input.amount },
-        });
-        throw new InternalServerErrorException(
-          'ระบบชำระเงินใช้เวลานานเกินไป กรุณาลองใหม่',
-        );
-      }
-      throw new InternalServerErrorException('ไม่สามารถเชื่อมต่อระบบชำระเงินได้');
-    } finally {
-      clearTimeout(timeoutHandle);
-    }
-
-    try {
-      const paymentLink = await this.prisma.paymentLink.create({
-        data: {
-          token: orderRef,
-          amount: input.amount,
-          status: 'ACTIVE',
-          expiresAt: new Date(Date.now() + 30 * 60 * 1000),
-        },
-      });
-      await this.prisma.onlineOrder.update({
-        where: { id: input.onlineOrderId },
-        data: { paymentLinkId: paymentLink.id },
-      });
-      this.logger.log(
-        `Online order payment intent: ${orderRef} for order ${input.onlineOrderId}`,
-      );
-      return { paymentLinkId: paymentLink.id, paymentUrl };
-    } catch (dbError) {
-      Sentry.captureException(dbError, {
-        level: 'fatal',
-        tags: { critical: 'paysolutions-online-orphan', orderRef },
-        extra: { onlineOrderId: input.onlineOrderId },
-      });
-      throw new InternalServerErrorException('ระบบบันทึกข้อมูลชำระเงินไม่สำเร็จ');
-    }
+    return this.services().intent.createOnlineOrderIntent(input);
   }
 
-  /**
-   * Cashier-initiated early-payoff QR (no LIFF gating).
-   * Used by ContractEarlyPayoff overlay to generate a PromptPay QR a customer
-   * can scan in-store or receive via LINE OA. Webhook auto-closes contract
-   * via existing handlePaymentCallback path (referenceNo lookup).
-   */
-  async createEarlyPayoffQR(input: {
+  createEarlyPayoffQR(input: {
     contractId: string;
     amount: number;
     description?: string;
-    /** Pre-computed quote info — used to enrich the LINE Flex push. */
     quoteContext?: {
       originalAmount: number;
       savings: number;
@@ -469,1440 +158,79 @@ export class PaySolutionsService {
       remainingMonths: number;
     };
   }): Promise<{ paymentLinkId: string; paymentUrl: string; orderRef: string; sentToLine: boolean }> {
-    const contract = await this.prisma.contract.findUnique({
-      where: { id: input.contractId },
-      include: { customer: { select: { email: true, name: true, lineIdFinance: true } } },
-    });
-    if (!contract || contract.deletedAt) {
-      throw new NotFoundException('ไม่พบสัญญา');
-    }
-
-    const orderRef = String(Date.now()).slice(-12);
-    const returnUrlBase =
-      this.returnUrl || `${this.config.get('FRONTEND_URL', 'http://localhost:5173')}/payments`;
-    const returnUrl = `${returnUrlBase}?payoff=${contract.contractNumber}`;
-
-    const paymentPayload: Record<string, unknown> = {
-      merchantId: await this.getMerchantId(),
-      customerEmail: contract.customer.email || 'noreply@bestchoice.com',
-      referenceNo: orderRef,
-      description: input.description || `ปิดยอดสัญญา ${contract.contractNumber}`,
-      amount: input.amount,
-      paymentChannel: 'Qrcode',
-      paymentGateway: 'Promptpay',
-      currencyCode: '00',
-      lang: 'TH',
-      returnUrl,
-      postbackUrl: `${this.apiBaseUrl}/api/paysolutions/webhook`,
-      terminalId: await this.getTerminalId(),
-      keyVersion: 1,
-    };
-
-    const abortController = new AbortController();
-    const timeoutHandle = setTimeout(() => abortController.abort(), PAYSOLUTIONS_TIMEOUT_MS);
-    let gatewayResponse: Record<string, unknown>;
-    let paymentUrl: string;
-
-    try {
-      const response = await fetch(
-        `${await this.getApiUrl()}/payment/gateway/v2/ui-payments`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json; charset=utf-8',
-            apiKey: await this.getApiKey(),
-            secretKey: await this.getSecretKey(),
-          },
-          body: JSON.stringify(paymentPayload),
-          signal: abortController.signal,
-        },
-      );
-      gatewayResponse = (await response.json()) as Record<string, unknown>;
-      if (!response.ok) {
-        const status = gatewayResponse.status as Record<string, string> | undefined;
-        const flatMessage = gatewayResponse.message as string | undefined;
-        const message = status?.message ?? flatMessage ?? 'กรุณาลองใหม่';
-        this.logger.error(
-          `Pay Solutions early-payoff API error: ${response.status} ${JSON.stringify(gatewayResponse)}`,
-        );
-        throw new InternalServerErrorException(`ไม่สามารถสร้าง QR ได้: ${message}`);
-      }
-      paymentUrl = (gatewayResponse.redirectUrl as string) || '';
-      if (!paymentUrl) throw new InternalServerErrorException('ไม่ได้รับลิงก์ชำระเงิน');
-    } catch (error) {
-      if (error instanceof InternalServerErrorException) throw error;
-      const isTimeout = error instanceof Error && error.name === 'AbortError';
-      if (isTimeout) {
-        Sentry.captureMessage('paysolutions-payoff-timeout', {
-          level: 'warning',
-          tags: { critical: 'paysolutions-payoff-timeout', orderRef },
-          extra: { contractId: input.contractId, amount: input.amount },
-        });
-        throw new InternalServerErrorException('ระบบชำระเงินใช้เวลานานเกินไป');
-      }
-      throw new InternalServerErrorException('ไม่สามารถเชื่อมต่อระบบชำระเงินได้');
-    } finally {
-      clearTimeout(timeoutHandle);
-    }
-
-    try {
-      const paymentLink = await this.prisma.paymentLink.create({
-        data: {
-          token: orderRef,
-          amount: input.amount,
-          status: 'ACTIVE',
-          expiresAt: new Date(Date.now() + 30 * 60 * 1000),
-          contractId: input.contractId,
-        },
-      });
-      this.logger.log(
-        `Early-payoff QR created: ${orderRef} for contract ${input.contractId}, amount ${input.amount}`,
-      );
-
-      // Best-effort push Flex to customer's LINE OA (FINANCE channel).
-      // Failure here doesn't abort — cashier can resend or fall back to in-store QR.
-      let sentToLine = false;
-      const lineId = contract.customer.lineIdFinance;
-      if (lineId && input.quoteContext) {
-        try {
-          const flex = buildEarlyPayoffQRFlex({
-            customerName: contract.customer.name,
-            contractNumber: contract.contractNumber,
-            totalPayoff: input.amount,
-            originalAmount: input.quoteContext.originalAmount,
-            savings: input.quoteContext.savings,
-            discountPct: input.quoteContext.discountPct,
-            paymentUrl,
-            orderRef,
-            remainingMonths: input.quoteContext.remainingMonths,
-          });
-          await this.lineOaService.pushMessage(lineId, [flex], 'line-finance');
-          sentToLine = true;
-          this.logger.log(`Early-payoff Flex pushed to LINE: contract=${contract.contractNumber} lineId=${lineId.slice(0, 8)}...`);
-        } catch (pushErr) {
-          this.logger.error(`Early-payoff Flex push failed: ${pushErr}`);
-          // swallow — don't abort the QR creation
-        }
-      }
-
-      return { paymentLinkId: paymentLink.id, paymentUrl, orderRef, sentToLine };
-    } catch (dbError) {
-      Sentry.captureException(dbError, {
-        level: 'fatal',
-        tags: { critical: 'paysolutions-payoff-orphan', orderRef },
-        extra: { contractId: input.contractId },
-      });
-      throw new InternalServerErrorException('ระบบบันทึกข้อมูลชำระเงินไม่สำเร็จ');
-    }
+    return this.services().intent.createEarlyPayoffQR(input);
   }
 
-  /**
-   * Cashier-initiated PARTIAL payment QR.
-   *
-   * Wizard flow: cashier opens RecordPaymentWizard for a Payment row, types
-   * an amount (typically < installment total), picks method=QR, clicks "ส่ง QR".
-   * We:
-   *   1. Cancel any earlier active PartialPaymentLink for the same Payment
-   *      (single outstanding QR per installment — avoids customer paying twice).
-   *   2. Call PaySolutions to mint a PromptPay QR with the requested amount.
-   *   3. Save a PartialPaymentLink row (24h expiry) tracking the open QR.
-   *   4. Best-effort push a STYLE_D info-role Flex to the customer's LINE OA.
-   *
-   * When the webhook fires, handlePaymentCallback looks up the token in
-   * PartialPaymentLink first and routes through PaymentService.recordPayment
-   * with case='PARTIAL' so the existing tolerance/JE/snapshot pipeline runs
-   * exactly as if the cashier had recorded it manually.
-   */
-  async createPartialPaymentQR(input: {
+  createPartialPaymentQR(input: {
     paymentId: string;
     amount: number;
     description?: string;
   }): Promise<{ partialPaymentLinkId: string; paymentUrl: string; orderRef: string; sentToLine: boolean }> {
-    const payment = await this.prisma.payment.findUnique({
-      where: { id: input.paymentId },
-      include: {
-        contract: {
-          include: { customer: { select: { id: true, email: true, name: true, lineIdFinance: true } } },
-        },
-      },
-    });
-    if (!payment || payment.deletedAt) {
-      throw new NotFoundException('ไม่พบรายการชำระ');
-    }
-    if (payment.status === 'PAID') {
-      throw new BadRequestException('งวดนี้ชำระครบแล้ว');
-    }
-    if (input.amount <= 0) {
-      throw new BadRequestException('ยอดที่ส่ง QR ต้องมากกว่า 0');
-    }
-
-    // Single outstanding QR per installment — cancel any earlier active one.
-    await this.prisma.partialPaymentLink.updateMany({
-      where: { paymentId: input.paymentId, status: 'ACTIVE' },
-      data: { status: 'CANCELLED', cancelledAt: new Date() },
-    });
-
-    const orderRef = String(Date.now()).slice(-12);
-    const returnUrlBase =
-      this.returnUrl || `${this.config.get('FRONTEND_URL', 'http://localhost:5173')}/payments`;
-    const returnUrl = `${returnUrlBase}?partial=${payment.contract.contractNumber}`;
-
-    const paymentPayload: Record<string, unknown> = {
-      merchantId: await this.getMerchantId(),
-      customerEmail: payment.contract.customer.email || 'noreply@bestchoice.com',
-      referenceNo: orderRef,
-      description:
-        input.description ||
-        `แบ่งชำระงวด ${payment.installmentNo} สัญญา ${payment.contract.contractNumber}`,
-      amount: input.amount,
-      paymentChannel: 'Qrcode',
-      paymentGateway: 'Promptpay',
-      currencyCode: '00',
-      lang: 'TH',
-      returnUrl,
-      postbackUrl: `${this.apiBaseUrl}/api/paysolutions/webhook`,
-      terminalId: await this.getTerminalId(),
-      keyVersion: 1,
-    };
-
-    const abortController = new AbortController();
-    const timeoutHandle = setTimeout(() => abortController.abort(), PAYSOLUTIONS_TIMEOUT_MS);
-    let gatewayResponse: Record<string, unknown>;
-    let paymentUrl: string;
-
-    try {
-      const response = await fetch(
-        `${await this.getApiUrl()}/payment/gateway/v2/ui-payments`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json; charset=utf-8',
-            apiKey: await this.getApiKey(),
-            secretKey: await this.getSecretKey(),
-          },
-          body: JSON.stringify(paymentPayload),
-          signal: abortController.signal,
-        },
-      );
-      gatewayResponse = (await response.json()) as Record<string, unknown>;
-      if (!response.ok) {
-        const status = gatewayResponse.status as Record<string, string> | undefined;
-        const flatMessage = gatewayResponse.message as string | undefined;
-        const message = status?.message ?? flatMessage ?? 'กรุณาลองใหม่';
-        this.logger.error(
-          `Pay Solutions partial-payment API error: ${response.status} ${JSON.stringify(gatewayResponse)}`,
-        );
-        throw new InternalServerErrorException(`ไม่สามารถสร้าง QR ได้: ${message}`);
-      }
-      paymentUrl = (gatewayResponse.redirectUrl as string) || '';
-      if (!paymentUrl) throw new InternalServerErrorException('ไม่ได้รับลิงก์ชำระเงิน');
-    } catch (error) {
-      if (error instanceof InternalServerErrorException) throw error;
-      const isTimeout = error instanceof Error && error.name === 'AbortError';
-      if (isTimeout) {
-        Sentry.captureMessage('paysolutions-partial-timeout', {
-          level: 'warning',
-          tags: { critical: 'paysolutions-partial-timeout', orderRef },
-          extra: { paymentId: input.paymentId, amount: input.amount },
-        });
-        throw new InternalServerErrorException('ระบบชำระเงินใช้เวลานานเกินไป');
-      }
-      throw new InternalServerErrorException('ไม่สามารถเชื่อมต่อระบบชำระเงินได้');
-    } finally {
-      clearTimeout(timeoutHandle);
-    }
-
-    try {
-      const link = await this.prisma.partialPaymentLink.create({
-        data: {
-          paymentId: input.paymentId,
-          contractId: payment.contractId,
-          customerId: payment.contract.customer.id,
-          token: orderRef,
-          amount: input.amount,
-          gatewayRef: (gatewayResponse.refNo as string | undefined) ?? null,
-          paymentUrl,
-          status: 'ACTIVE',
-          // 24h — generous window so customers can scan later in the day
-          // (vs. the 30-min PaymentLink default for in-checkout flows).
-          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-        },
-      });
-      this.logger.log(
-        `Partial-payment QR created: ${orderRef} for payment ${input.paymentId}, amount ${input.amount}`,
-      );
-
-      let sentToLine = false;
-      const lineId = payment.contract.customer.lineIdFinance;
-      if (lineId) {
-        try {
-          const totalInstallments = await this.prisma.payment.count({
-            where: { contractId: payment.contractId, deletedAt: null },
-          });
-          const flex = buildPartialPaymentQRFlex({
-            customerName: payment.contract.customer.name,
-            contractNumber: payment.contract.contractNumber,
-            installmentNo: payment.installmentNo,
-            totalInstallments,
-            fullAmount: Number(payment.amountDue),
-            partialAmount: input.amount,
-            paymentUrl,
-            orderRef,
-          });
-          await this.lineOaService.pushMessage(lineId, [flex], 'line-finance');
-          sentToLine = true;
-          this.logger.log(
-            `Partial-payment Flex pushed to LINE: payment=${input.paymentId} lineId=${lineId.slice(0, 8)}...`,
-          );
-        } catch (pushErr) {
-          this.logger.error(`Partial-payment Flex push failed: ${pushErr}`);
-          // swallow — the cashier can resend or fall back to manual record
-        }
-      }
-
-      return { partialPaymentLinkId: link.id, paymentUrl, orderRef, sentToLine };
-    } catch (dbError) {
-      Sentry.captureException(dbError, {
-        level: 'fatal',
-        tags: { critical: 'paysolutions-partial-orphan', orderRef },
-        extra: { paymentId: input.paymentId },
-      });
-      throw new InternalServerErrorException('ระบบบันทึกข้อมูลชำระเงินไม่สำเร็จ');
-    }
+    return this.services().intent.createPartialPaymentQR(input);
   }
 
-  /**
-   * สร้าง payment intent สำหรับ saving plan (ออมดาวน์)
-   * — เรียก PaySolutions API สร้าง PromptPay QR
-   * — บันทึก PaymentLink พร้อม savingPlanId
-   * — Webhook จะ confirmSavingPlanPayment เมื่อชำระสำเร็จ
-   */
-  async createSavingPlanIntent(input: {
+  createSavingPlanIntent(input: {
     savingPlanId: string;
     amount: number;
     description: string;
   }): Promise<{ paymentLinkId: string; paymentUrl: string }> {
-    const plan = await this.prisma.savingPlan.findUnique({
-      where: { id: input.savingPlanId },
-      include: { customer: { select: { email: true, name: true } } },
-    });
-    if (!plan) throw new NotFoundException('ไม่พบแผนออม');
-
-    // Numeric-only ref (see createPaymentIntent for rationale).
-    const orderRef = String(Date.now()).slice(-12);
-    const returnUrlBase =
-      this.returnUrl || `${this.config.get('FRONTEND_URL', 'http://localhost:5174')}/saving-plan`;
-    const returnUrl = `${returnUrlBase}/${plan.id}`;
-
-    const paymentPayload: Record<string, unknown> = {
-      merchantId: await this.getMerchantId(),
-      customerEmail: plan.customer.email || 'noreply@bestchoice.com',
-      referenceNo: orderRef,
-      description: input.description,
-      amount: input.amount,
-      paymentChannel: 'Qrcode',
-      paymentGateway: 'Promptpay',
-      currencyCode: '00',
-      lang: 'TH',
-      returnUrl,
-      postbackUrl: `${this.apiBaseUrl}/api/paysolutions/webhook`,
-      terminalId: await this.getTerminalId(),
-      keyVersion: 1,
-    };
-
-    const abortController = new AbortController();
-    const timeoutHandle = setTimeout(() => abortController.abort(), PAYSOLUTIONS_TIMEOUT_MS);
-    let paymentUrl: string;
-
-    try {
-      const response = await fetch(
-        `${await this.getApiUrl()}/payment/gateway/v2/ui-payments`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json; charset=utf-8',
-            apiKey: await this.getApiKey(),
-            secretKey: await this.getSecretKey(),
-          },
-          body: JSON.stringify(paymentPayload),
-          signal: abortController.signal,
-        },
-      );
-      const gatewayResponse = (await response.json()) as Record<string, unknown>;
-      if (!response.ok) {
-        const status = gatewayResponse.status as Record<string, string> | undefined;
-        const flatMessage = gatewayResponse.message as string | undefined;
-        const statusCode = status?.statusCode ?? String(response.status);
-        const message = status?.message ?? flatMessage ?? 'กรุณาลองใหม่';
-        this.logger.error(
-          `Pay Solutions saving-plan API error: HTTP ${response.status} statusCode=${statusCode} message="${message}" — ${JSON.stringify(gatewayResponse)}`,
-        );
-        throw new InternalServerErrorException(
-          `ไม่สามารถสร้างรายการชำระเงินได้: ${message}`,
-        );
-      }
-      paymentUrl = (gatewayResponse.redirectUrl as string) || '';
-      if (!paymentUrl) {
-        throw new InternalServerErrorException('ไม่ได้รับลิงก์ชำระเงินจากระบบ');
-      }
-    } catch (error) {
-      if (error instanceof InternalServerErrorException) throw error;
-      const isTimeout = error instanceof Error && error.name === 'AbortError';
-      if (isTimeout) {
-        Sentry.captureMessage('paysolutions-saving-plan-timeout', {
-          level: 'warning',
-          tags: { critical: 'paysolutions-saving-plan-timeout', orderRef },
-          extra: { savingPlanId: input.savingPlanId, amount: input.amount },
-        });
-        throw new InternalServerErrorException('ระบบชำระเงินใช้เวลานานเกินไป กรุณาลองใหม่');
-      }
-      throw new InternalServerErrorException('ไม่สามารถเชื่อมต่อระบบชำระเงินได้');
-    } finally {
-      clearTimeout(timeoutHandle);
-    }
-
-    try {
-      const paymentLink = await this.prisma.paymentLink.create({
-        data: {
-          token: orderRef,
-          amount: input.amount,
-          status: 'ACTIVE',
-          expiresAt: new Date(Date.now() + 30 * 60 * 1000),
-          savingPlanId: input.savingPlanId,
-        },
-      });
-      this.logger.log(
-        `Saving-plan payment intent: ${orderRef} for plan ${input.savingPlanId}`,
-      );
-      return { paymentLinkId: paymentLink.id, paymentUrl };
-    } catch (dbError) {
-      Sentry.captureException(dbError, {
-        level: 'fatal',
-        tags: { critical: 'paysolutions-saving-plan-orphan', orderRef },
-        extra: { savingPlanId: input.savingPlanId },
-      });
-      throw new InternalServerErrorException('ระบบบันทึกข้อมูลชำระเงินไม่สำเร็จ');
-    }
+    return this.services().intent.createSavingPlanIntent(input);
   }
 
-  /**
-   * ตรวจสอบ webhook callback จาก Pay Solutions
-   * Pay Solutions ส่ง form POST กลับมาพร้อม merchantid — ตรวจว่าตรงกับ config
-   */
-  async verifyWebhookMerchant(merchantid: string): Promise<boolean> {
-    const merchantId = await this.getMerchantId();
-    if (!merchantId) {
-      this.logger.error('PAYSOLUTIONS_MERCHANT_ID not configured — rejecting all webhooks for security');
-      return false;
-    }
+  // ── Webhook (delegated to PaySolutionsWebhookService) ─────────────────────
 
-    const isValid = merchantid === merchantId;
-    if (!isValid) {
-      this.logger.warn(
-        `Webhook merchantid mismatch: received=${merchantid}, expected=${merchantId}`,
-      );
-    }
-    return isValid;
+  verifyWebhookMerchant(merchantid: string): Promise<boolean> {
+    return this.services().webhook.verifyWebhookMerchant(merchantid);
   }
 
-  /**
-   * จัดการ webhook callback จาก Pay Solutions
-   * อัปเดตสถานะ payment ใน DB
-   */
-  async handlePaymentCallback(webhookData: Record<string, string>): Promise<void> {
-    const { refno, result_code, order_no, transaction_id, total } = webhookData;
-
-    this.logger.log(
-      `Webhook received: refno=${refno}, result_code=${result_code}, order_no=${order_no}`,
-    );
-
-    // ── Partial-payment QR path (cashier-initiated, separate table) ──
-    // Check first because PartialPaymentLink and PaymentLink share the
-    // numeric orderRef format — without this we'd fall through and hit
-    // "unknown refno" Sentry alarms for every partial-payment webhook.
-    const partialLink = await this.prisma.partialPaymentLink.findUnique({
-      where: { token: refno },
-    });
-    if (partialLink) {
-      await this.handlePartialPaymentCallback(partialLink, webhookData);
-      return;
-    }
-
-    // หา payment ด้วย token — ไม่ filter status เพราะ PaySolutions retry
-    // policy คือถ้า webhook ของเราตอบช้า/ผิด เขาจะ retry (max 3 ครั้ง).
-    // ครั้งที่ 2/3 link.status จะเป็น USED แล้ว — ถ้า filter ACTIVE จะเข้าใจผิด
-    // ว่า "unknown refno" และส่ง Sentry fatal alarm
-    const paymentLink = await this.prisma.paymentLink.findFirst({
-      where: { token: refno },
-      include: { payment: true },
-    });
-
-    if (!paymentLink) {
-      this.logger.warn(`Webhook for unknown refno: ${refno}`);
-      // ถ้า webhook เป็น SUCCESS แต่หา PaymentLink ไม่เจอ — ลูกค้าจ่ายเงินจริง
-      // แต่ระบบไม่มี record → ต้องให้ ops รู้ทันทีเพื่อ reconcile manual
-      if (result_code === '00') {
-        Sentry.captureMessage(
-          `PaySolutions SUCCESS webhook for unknown refno: ${refno}`,
-          {
-            level: 'fatal',
-            tags: {
-              critical: 'paysolutions-orphan-payment',
-              refno,
-              transactionId: transaction_id || 'unknown',
-            },
-            extra: { webhookData },
-          },
-        );
-      }
-      return; // ไม่ throw — return 200 OK ให้ Pay Solutions
-    }
-
-    // IDEMPOTENCY: ถ้า link ถูกใช้ไปแล้ว (link.status === 'USED') แสดงว่า
-    // เป็น duplicate webhook — log แล้ว return 200 ทันที ไม่ทำอะไร.
-    // ถ้าไม่เช็คตรงนี้ Payment.amountPaid จะถูก double-count ทุกครั้งที่
-    // PaySolutions retry webhook
-    if (paymentLink.status === 'USED') {
-      this.logger.log(
-        `Duplicate webhook for refno=${refno} (link already USED, idempotent skip)`,
-      );
-      return;
-    }
-
-    // ถ้า link ถูก expire ไปแล้วแต่มี webhook callback มา — log warn
-    // และ skip (ไม่ใช่ orphan, ลูกค้าอาจปล่อย session ค้างก่อนชำระ)
-    if (paymentLink.status === 'EXPIRED') {
-      this.logger.warn(
-        `Webhook for EXPIRED link refno=${refno} result_code=${result_code} — ignoring`,
-      );
-      return;
-    }
-
-    // Saving-plan path (Phase 3): PaymentLink.savingPlanId set — route to saving plan flow.
-    if (paymentLink.savingPlanId) {
-      const isSuccessSaving = result_code === '00';
-      if (isSuccessSaving) {
-        await this.confirmSavingPlanPayment(paymentLink.savingPlanId, paymentLink.id, webhookData);
-        await this.prisma.paymentLink.update({
-          where: { id: paymentLink.id },
-          data: { status: 'USED', usedAt: new Date() },
-        });
-      } else {
-        await this.prisma.paymentLink.update({
-          where: { id: paymentLink.id },
-          data: { status: 'EXPIRED' },
-        });
-        this.logger.log(
-          `Saving-plan payment FAILED: refno=${refno}, result_code=${result_code}`,
-        );
-      }
-      return;
-    }
-
-    // Online-order path: PaymentLink without contractId belongs to an OnlineOrder.
-    // Route to separate flow — does not touch Contract/Payment tables.
-    if (!paymentLink.contractId) {
-      const order = await this.prisma.onlineOrder.findFirst({
-        where: { paymentLinkId: paymentLink.id },
-      });
-      if (!order) {
-        this.logger.warn(
-          `Webhook refno=${refno}: paymentLink has no contractId and no matching OnlineOrder — orphan?`,
-        );
-        return;
-      }
-      const isSuccessOnline = result_code === '00';
-      if (isSuccessOnline) {
-        await this.confirmOnlineOrderPayment(order.id, webhookData);
-        await this.prisma.paymentLink.update({
-          where: { id: paymentLink.id },
-          data: { status: 'USED', usedAt: new Date() },
-        });
-      } else {
-        await this.prisma.paymentLink.update({
-          where: { id: paymentLink.id },
-          data: { status: 'EXPIRED' },
-        });
-        this.logger.log(
-          `Online order payment FAILED: refno=${refno}, result_code=${result_code}`,
-        );
-      }
-      return;
-    }
-
-    const isSuccess = result_code === '00';
-
-    if (isSuccess) {
-      // Safely parse the webhook `total`. Falls back to the link's stored
-      // amount (authoritative for early-payoff links) when the wire value
-      // is malformed or absent.
-      let paidAmount: Prisma.Decimal;
-      try {
-        paidAmount =
-          total && !isNaN(Number(total)) && Number.isFinite(Number(total))
-            ? new Prisma.Decimal(total)
-            : paymentLink.amount;
-      } catch {
-        paidAmount = paymentLink.amount;
-      }
-
-      // F-1-003: Resolve FINANCE companyId + load contract metadata BEFORE the
-      // transaction so the payment JE can be posted with explicit company
-      // (HP receivable is FINANCE-side activity). Matches PaymentsService
-      // pattern (resolveFinanceCompanyId hoisted out of $transaction).
-      const financeCompany = await this.prisma.companyInfo.findFirst({
-        where: { companyCode: 'FINANCE', deletedAt: null },
-        select: { id: true },
-      });
-      const financeCompanyId = financeCompany?.id ?? null;
-      // Phase A.1b: SHOP companyId for the SHOP-side commission JE leg.
-      const shopCompany = await this.prisma.companyInfo.findFirst({
-        where: { companyCode: 'SHOP', deletedAt: null },
-        select: { id: true },
-        orderBy: { createdAt: 'asc' },
-      });
-      const shopCompanyId = shopCompany?.id ?? null;
-      const contractForJe = await this.prisma.contract.findUnique({
-        where: { id: paymentLink.contractId! },
-        select: { id: true, contractNumber: true, branchId: true },
-      });
-
-      // F-1-003 follow-up: resolve a real OWNER user.id for JournalEntry.createdById.
-      // The previous fix passed the literal string 'paysolutions-webhook' which
-      // would always violate the FK to User.id in production. Pattern matches
-      // data-audit.service.ts:1023 (system user lookup for backfill operations).
-      const systemUser = await this.prisma.user.findFirst({
-        where: { role: 'OWNER', deletedAt: null },
-        select: { id: true },
-        orderBy: { createdAt: 'asc' },
-      });
-      const systemUserId = systemUser?.id ?? null;
-      if (!systemUserId) {
-        // No OWNER user found — skip JE entirely and alert. Webhook still
-        // proceeds (P2: payment must commit; JE is reconciled manually).
-        Sentry.captureMessage(
-          'PaySolutions webhook: no OWNER user found for JE creation',
-          { level: 'error', tags: { module: 'paysolutions' } },
-        );
-      }
-
-      // ชำระสำเร็จ — distribute paid amount FIFO across unpaid installments.
-      // Early-payoff links carry amount = full payoff (with discount) and
-      // must close every pending installment, not just paymentLink.paymentId.
-      // Single-installment payments behave identically: one installment ends
-      // up fully paid, subsequent iterations stop at remaining <= 0.
-      //
-      // Serializable isolation matches contract-payment.earlyPayoff so two
-      // concurrent webhook retries cannot read stale amountPaid and
-      // double-credit an installment. The updateMany gate on `status: ACTIVE`
-      // is the belt-and-suspenders claim — only one transaction wins.
-      //
-      // C2 fix (2026-05-14): JE post is now INSIDE this $transaction so a JE
-      // failure rolls back the Payment.update — no orphan PAID rows without
-      // ledger entries. Idempotency is preserved by the paymentLink.updateMany
-      // gate above (only one tx wins) and by the existing UNIQUE constraint
-      // on transactionRef.
-      const result = await this.prisma.$transaction(
-        async (tx) => {
-          const claim = await tx.paymentLink.updateMany({
-            where: { id: paymentLink.id, status: 'ACTIVE' },
-            data: { status: 'USED', usedAt: new Date() },
-          });
-          if (claim.count === 0) {
-            return { alreadyClaimed: true as const };
-          }
-
-          const unpaidPayments = await tx.payment.findMany({
-            where: {
-              contractId: paymentLink.contractId!,
-              status: { not: 'PAID' },
-              deletedAt: null,
-            },
-            orderBy: { installmentNo: 'asc' },
-          });
-
-          let remaining = paidAmount;
-          const now = new Date();
-          let fullyPaidCount = 0;
-          // PR-843/I2 Phase 3 3b: collect a snapshot for EVERY touched installment
-          // (partial AND completing), not just fully-paid ones. After the
-          // per-installment Payment.update loop we post one PaymentReceiptTemplate
-          // JE per touched snapshot inside this same $transaction (C2 atomicity).
-          // `payThis` is the DELTA applied THIS webhook (NOT cumulative amountPaid)
-          // so the primitive clears only what each receipt covers. `isFinalReceipt`
-          // = the `fullyPaid` flag so a completing receipt can close the ≤1฿ residual.
-          const touchedSnapshots: Array<{
-            id: string;
-            installmentNo: number;
-            payThis: Prisma.Decimal;
-            isFinalReceipt: boolean;
-            lateFee: Prisma.Decimal;
-          }> = [];
-          for (const payment of unpaidPayments) {
-            if (remaining.lte(0)) break;
-            // lateFeeWaived=true sets lateFee=0 elsewhere, so reading lateFee
-            // directly is equivalent — we keep the guard explicit to be
-            // defensive against future model changes.
-            const lateFee = payment.lateFeeWaived
-              ? new Prisma.Decimal(0)
-              : payment.lateFee;
-            const owed = payment.amountDue.add(lateFee).sub(payment.amountPaid);
-            if (owed.lte(0)) continue;
-
-            const payThis = Prisma.Decimal.min(remaining, owed);
-            remaining = remaining.sub(payThis);
-            const newAmountPaid = payment.amountPaid.add(payThis).toDecimalPlaces(2);
-            const fullyPaid = newAmountPaid.gte(payment.amountDue.add(lateFee));
-
-            const paymentUpdated = await tx.payment.update({
-              where: { id: payment.id },
-              data: {
-                amountPaid: newAmountPaid,
-                status: fullyPaid ? 'PAID' : 'PARTIALLY_PAID',
-                ...(fullyPaid ? { paidDate: now, paidAt: now } : {}),
-                paymentMethod: PaymentMethod.ONLINE_GATEWAY,
-                gatewayRef: refno,
-                gatewayStatus: 'SUCCESS',
-                gatewayResponse: webhookData as object,
-                notes: `ชำระผ่าน Pay Solutions (${transaction_id || refno})${
-                  unpaidPayments.length > 1 && fullyPaid ? ' [ปิดก่อนกำหนด]' : ''
-                }`,
-              },
-            });
-            if (fullyPaid) {
-              fullyPaidCount++;
-            }
-            // Capture a snapshot for EVERY touched installment (partial + final).
-            // `lateFee` honours lateFeeWaived → 0 (same value the loop computed).
-            touchedSnapshots.push({
-              id: paymentUpdated.id,
-              installmentNo: paymentUpdated.installmentNo,
-              payThis,
-              isFinalReceipt: fullyPaid,
-              lateFee,
-            });
-          }
-
-          // Close the contract when no installments remain. EARLY_PAYOFF
-          // only when a single webhook closed >1 installments at once (the
-          // discount-bearing LIFF flow). A normal last-installment payment
-          // that happens to zero the ledger gets COMPLETED instead — matches
-          // payments.service.checkContractCompletion semantics so dashboard
-          // queries (COMPLETED vs EARLY_PAYOFF) stay consistent.
-          const stillUnpaid = await tx.payment.count({
-            where: {
-              contractId: paymentLink.contractId!,
-              status: { not: 'PAID' },
-              deletedAt: null,
-            },
-          });
-
-          let contractStatus: 'EARLY_PAYOFF' | 'COMPLETED' | null = null;
-          if (stillUnpaid === 0) {
-            contractStatus = fullyPaidCount > 1 ? 'EARLY_PAYOFF' : 'COMPLETED';
-            const updated = await tx.contract.update({
-              where: { id: paymentLink.contractId! },
-              data: {
-                status: contractStatus,
-                ...(contractStatus === 'EARLY_PAYOFF' ? { creditBalance: 0 } : {}),
-              },
-              select: { productId: true },
-            });
-            if (updated.productId) {
-              try {
-                await this.productsService.transferOwnership(
-                  updated.productId,
-                  null,
-                  tx,
-                );
-              } catch (err) {
-                this.logger.error(
-                  `Failed to release product ownership for contract ${paymentLink.contractId}: ${err instanceof Error ? err.message : err}`,
-                );
-              }
-            }
-          }
-
-          // PR-843/I2 Phase 3 3b: post one PaymentReceiptTemplate primitive JE
-          // per TOUCHED installment (partial AND completing) INSIDE this tx (C2
-          // atomicity — a JE throw rolls back the Payment.update, no orphan PAID
-          // rows). `delta = snapshot.payThis` is the per-receipt DELTA (NOT the
-          // cumulative amountPaid), so the primitive's reconstructPrior accounts
-          // for any prior partial (incl. a cashier partial posted via
-          // recordPayment) and cross-path completion does NOT double-clear.
-          // This also LEDGERS partials — each posts its own receipt JE (fixes the
-          // pre-3b defect where partials were unledgered and the JE base was the
-          // cumulative double-count). lateFee → Cr 42-1103 (honours lateFeeWaived).
-          // When the installment carried a 60-day mandatory VAT flag, the matching
-          // reversal posts in the same tx so 21-2103 / 11-2104 clear 1:1.
-          if (contractForJe && systemUserId) {
-            // Legacy contracts activated before PR #753 may have no
-            // installment_schedules rows; without them the receipt JE below
-            // would be silently skipped, leaving a PAID installment with no
-            // ledger entry (TB overstates receivable / understates cash + VAT
-            // under-reported). Lazily materialise the schedule inside this same
-            // serializable tx so the receipt JE can post. Idempotent — a no-op
-            // when rows already exist (the common post-#753 case). Gated on the
-            // loop collection so a no-touch webhook skips the count query.
-            if (touchedSnapshots.length > 0) {
-              await ensureInstallmentSchedules(tx, contractForJe.id);
-            }
-            for (const snapshot of touchedSnapshots) {
-              const instSchedPs = await tx.installmentSchedule.findUnique({
-                where: {
-                  contractId_installmentNo: {
-                    contractId: contractForJe.id,
-                    installmentNo: snapshot.installmentNo,
-                  },
-                },
-                select: { id: true, vat60dayJournalEntryId: true },
-              });
-              if (instSchedPs) {
-                await this.paymentReceiptTemplate.execute(
-                  {
-                    installmentScheduleId: instSchedPs.id,
-                    delta: new Decimal(snapshot.payThis.toString()),
-                    debitAccountCode: '11-1202',
-                    lateFee: snapshot.lateFee.gt(0)
-                      ? new Decimal(snapshot.lateFee.toString())
-                      : undefined,
-                    isFinalReceipt: snapshot.isFinalReceipt,
-                    paymentId: snapshot.id,
-                    // PR-843/I2 Phase 5b — the QR webhook always clears the FULL owed
-                    // amount per installment (payThis = min(remaining, owed), never a
-                    // deliberate customer underpayment), so any ≤1฿ residual on the
-                    // last installment is a system amountDue↔installmentTotal rounding
-                    // artifact → auto-approve the 52-1104 close (no approver on the
-                    // webhook path).
-                    autoApproveSystemRounding: true,
-                  },
-                  tx,
-                );
-                if (instSchedPs.vat60dayJournalEntryId) {
-                  await this.vat60Reversal.execute(instSchedPs.id, tx);
-                }
-              } else {
-                // Even after lazy-gen the row is absent — a genuine data
-                // anomaly (totalMonths<=0, or installmentNo beyond the schedule).
-                // Do NOT silently skip and do NOT roll back: the customer's
-                // payment is real and already PAID; rolling back would discard
-                // it. Alarm loudly so accounting posts the missing receipt JE.
-                Sentry.captureException(
-                  new Error(
-                    'PAID installment has no postable 2B JE (no InstallmentSchedule after lazy-gen)',
-                  ),
-                  {
-                    level: 'error',
-                    tags: { module: 'paysolutions', flow: '2b-receipt' },
-                    extra: {
-                      contractId: contractForJe.id,
-                      installmentNo: snapshot.installmentNo,
-                      paymentId: snapshot.id,
-                      refno,
-                    },
-                  },
-                );
-                this.logger.error(
-                  `PaySolutions: PaymentReceipt2B UNPOSTABLE — no InstallmentSchedule for contractId=${contractForJe.id} installmentNo=${snapshot.installmentNo} (Sentry-alarmed; manual reconcile needed)`,
-                );
-              }
-            }
-          }
-
-          // OWNER POLICY (PR-843/I2 #3): park PaySolutions over-collection as a customer
-          // advance (Cr 21-1103) instead of dropping/alerting only. The surplus cash had
-          // no Dr yet (the per-installment receipts only Dr'd their payThis), so this JE
-          // both books the remaining cash and parks the advance.
-          // Gate on contractForJe (mirrors the per-installment JE gate above): if the
-          // contract row is missing we skip the JE + advanceBalance update rather than
-          // throw and roll back the whole webhook (consistency w/ the receipt-JE block). (review)
-          if (remaining.gt(0) && contractForJe) {
-            await this.journalAutoService.createAndPost(
-              {
-                description: `เงินรับล่วงหน้า (รับเกินผ่าน Pay Solutions) — refno ${refno}`,
-                reference: `${refno}-surplus`,
-                metadata: {
-                  tag: 'paysolutions-surplus-advance',
-                  contractId: paymentLink.contractId,
-                  refno,
-                  surplus: remaining.toString(),
-                },
-                lines: [
-                  {
-                    accountCode: '11-1202',
-                    dr: remaining,
-                    cr: new Decimal(0),
-                    description: 'เงินรับเกิน',
-                  },
-                  {
-                    accountCode: '21-1103',
-                    dr: new Decimal(0),
-                    cr: remaining,
-                    description: 'เงินรับล่วงหน้า',
-                  },
-                ],
-              },
-              tx,
-            );
-            await tx.contract.update({
-              where: { id: paymentLink.contractId! },
-              data: { advanceBalance: { increment: remaining } },
-            });
-            if (systemUserId) {
-              await tx.auditLog.create({
-                data: {
-                  action: 'OVERPAY_ADVANCE_RECORDED',
-                  entity: 'contract',
-                  entityId: paymentLink.contractId!,
-                  userId: systemUserId,
-                  newValue: {
-                    source: 'PAYSOLUTIONS_SURPLUS',
-                    refno,
-                    surplus: remaining.toString(),
-                    paidAmount: paidAmount.toString(),
-                  },
-                },
-              });
-            }
-            this.logger.log(
-              `PaySolutions surplus ${remaining.toString()} parked as advance (21-1103) for contract ${paymentLink.contractId} refno=${refno}`,
-            );
-          }
-
-          return {
-            alreadyClaimed: false as const,
-            contractStatus,
-            fullyPaidCount,
-            totalUnpaidAtStart: unpaidPayments.length,
-            touchedSnapshots,
-          };
-        },
-        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
-      );
-
-      if (result.alreadyClaimed) {
-        this.logger.log(
-          `Payment webhook refno=${refno}: link already claimed by prior retry — idempotent skip`,
-        );
-        return;
-      }
-
-      this.logger.log(
-        `Payment SUCCESS: refno=${refno}, contractId=${paymentLink.contractId}, contractStatus=${result.contractStatus ?? 'ACTIVE'}, fullyPaid=${result.fullyPaidCount}/${result.totalUnpaidAtStart}`,
-      );
-
-      // C2 fix: the JE post that used to be HERE (outside the $transaction)
-      // was moved inside the tx above so a JE failure rolls back the
-      // Payment.update. Orphan PAID rows are now impossible — the previous
-      // F-1-003 follow-up + webhook-je-failure Sentry path is removed.
-
-      // Route notification: multi-installment close = early-payoff flex;
-      // everything else uses the existing single-installment flex.
-      if (result.contractStatus === 'EARLY_PAYOFF') {
-        await this.sendEarlyPayoffSuccessNotification(
-          paymentLink.contractId,
-          paidAmount,
-        );
-      } else {
-        await this.sendPaymentSuccessNotification(
-          paymentLink.contractId,
-          paymentLink.paymentId,
-        );
-      }
-    } else {
-      // ชำระไม่สำเร็จ
-      if (paymentLink.paymentId) {
-        await this.prisma.payment.update({
-          where: { id: paymentLink.paymentId },
-          data: {
-            gatewayStatus: 'FAILED',
-            gatewayResponse: webhookData as object,
-          },
-        });
-      }
-
-      // Expire the link so customer can retry
-      await this.prisma.paymentLink.update({
-        where: { id: paymentLink.id },
-        data: { status: 'EXPIRED' },
-      });
-
-      this.logger.log(`Payment FAILED: refno=${refno}, result_code=${result_code}`);
-    }
+  handlePaymentCallback(webhookData: Record<string, string>): Promise<void> {
+    return this.services().webhook.handlePaymentCallback(webhookData);
   }
 
-  /**
-   * ส่ง LINE flex message แจ้งลูกค้าว่าชำระสำเร็จ
-   */
-  private async sendPaymentSuccessNotification(
-    contractId: string,
-    paymentId: string | null,
-  ): Promise<void> {
-    try {
-      const contract = await this.prisma.contract.findUnique({
-        where: { id: contractId },
-        include: {
-          customer: { select: { name: true, lineIdFinance: true } },
-          payments: { where: { deletedAt: null }, orderBy: { installmentNo: 'asc' } },
-        },
-      });
+  // ── Confirmation + status (delegated to PaySolutionsConfirmationService) ──
 
-      if (!contract?.customer.lineIdFinance) return;
-
-      const payment = paymentId
-        ? contract.payments.find((p) => p.id === paymentId)
-        : null;
-
-      if (!payment) return;
-
-      const paidCount = contract.payments.filter((p) => p.status === 'PAID').length;
-
-      const flex = buildPaymentSuccessFlex({
-        customerName: contract.customer.name,
-        contractNumber: contract.contractNumber,
-        installmentNo: payment.installmentNo,
-        totalInstallments: contract.payments.length,
-        amountPaid: Number(payment.amountPaid),
-        paymentMethod: 'ONLINE_GATEWAY',
-        paidDate: formatDateLong(new Date()),
-        remainingInstallments: contract.payments.length - paidCount,
-      });
-
-      await this.lineOaService.sendFlexMessage(contract.customer.lineIdFinance, flex, 'line-finance');
-      this.logger.log(`LINE notification sent for contract ${contract.contractNumber}`);
-    } catch (err) {
-      // ไม่ให้ notification error ทำให้ webhook fail
-      this.logger.error(`Failed to send LINE notification: ${err}`);
-    }
+  getPaymentStatus(paymentId: string): Promise<PaymentStatusResult> {
+    return this.services().confirmation.getPaymentStatus(paymentId);
   }
 
-  /**
-   * ส่ง LINE flex message แจ้งลูกค้าว่าปิดยอดก่อนกำหนดสำเร็จ
-   * Used when a single PaySolutions payment closed multiple installments
-   * (via the 50%-discount LIFF early-payoff flow).
-   */
-  private async sendEarlyPayoffSuccessNotification(
-    contractId: string,
-    paidAmount: Prisma.Decimal,
-  ): Promise<void> {
-    try {
-      const contract = await this.prisma.contract.findUnique({
-        where: { id: contractId },
-        include: {
-          customer: { select: { name: true, lineIdFinance: true } },
-          payments: { where: { deletedAt: null } },
-        },
-      });
-      if (!contract?.customer.lineIdFinance) return;
-
-      // "Original amount" — what the customer would have paid without the
-      // early-payoff discount (sum of all installment totals incl. lateFee).
-      const originalAmount = contract.payments.reduce((acc, p) => {
-        const lateFee = p.lateFeeWaived ? new Prisma.Decimal(0) : p.lateFee;
-        return acc.add(p.amountDue).add(lateFee);
-      }, new Prisma.Decimal(0));
-      const savings = Prisma.Decimal.max(originalAmount.sub(paidAmount), new Prisma.Decimal(0));
-
-      const flex = buildEarlyPayoffSuccessFlex({
-        customerName: contract.customer.name,
-        contractNumber: contract.contractNumber,
-        amountPaid: Number(paidAmount),
-        originalAmount: Number(originalAmount),
-        savings: Number(savings),
-        payoffDate: formatDateLong(new Date()),
-      });
-
-      await this.lineOaService.sendFlexMessage(contract.customer.lineIdFinance, flex, 'line-finance');
-      this.logger.log(
-        `Early-payoff notification sent for contract ${contract.contractNumber}`,
-      );
-    } catch (err) {
-      this.logger.error(`Failed to send early-payoff notification: ${err}`);
-    }
-  }
-
-  /**
-   * ดึงสถานะ payment สำหรับ frontend polling
-   */
-  async getPaymentStatus(paymentId: string): Promise<PaymentStatusResult> {
-    // ลองหาจาก Payment ID ก่อน
-    const payment = await this.prisma.payment.findUnique({
-      where: { id: paymentId },
-    });
-
-    if (payment) {
-      return {
-        paymentId: payment.id,
-        status: payment.status === 'PAID' ? 'PAID' : payment.gatewayStatus === 'FAILED' ? 'FAILED' : 'PENDING',
-        gatewayRef: payment.gatewayRef || undefined,
-        gatewayStatus: payment.gatewayStatus || undefined,
-        amount: Number(payment.amountDue),
-        paidAt: payment.paidAt || undefined,
-      };
-    }
-
-    // ลองหาจาก PaymentLink token (กรณี order reference)
-    const link = await this.prisma.paymentLink.findFirst({
-      where: { token: paymentId },
-      include: { payment: true },
-    });
-
-    if (!link) {
-      throw new NotFoundException('ไม่พบรายการชำระเงิน');
-    }
-
-    if (link.status === 'USED' && link.payment?.status === 'PAID') {
-      return {
-        paymentId: link.payment.id,
-        status: 'PAID',
-        gatewayRef: link.payment.gatewayRef || undefined,
-        gatewayStatus: link.payment.gatewayStatus || undefined,
-        amount: Number(link.amount),
-        paidAt: link.payment.paidAt || undefined,
-      };
-    }
-
-    if (link.status === 'EXPIRED') {
-      return {
-        paymentId: link.id,
-        status: 'FAILED',
-        amount: Number(link.amount),
-      };
-    }
-
-    return {
-      paymentId: link.id,
-      status: 'PENDING',
-      amount: Number(link.amount),
-    };
-  }
-
-  /**
-   * ยืนยันชำระเงินสำเร็จของ online order
-   * — อัปเดต OnlineOrder.status → PAID
-   * — อัปเดต ProductReservation.status → CONSUMED
-   * — ส่ง LINE flex message แจ้งลูกค้า (ถ้ามี lineId)
-   * — STUB: Task 9 จะเพิ่ม OnlineOrderSaleAdapter เพื่อสร้าง Sale + move product + award loyalty
-   */
-  /**
-   * Webhook callback for cashier-initiated partial-payment QR.
-   *
-   * Idempotent — duplicate calls (PaySolutions retries) short-circuit when the
-   * link is no longer ACTIVE. On success we mark the link PAID *first* so
-   * recordPayment's auto-cancel hook (which targets ACTIVE links) sees nothing
-   * to do. Failure paths just flip the link to CANCELLED — the underlying
-   * Payment row stays untouched, cashier can re-send or fall back to manual.
-   */
-  async handlePartialPaymentCallback(
+  handlePartialPaymentCallback(
     link: PartialPaymentLink,
     webhookData: Record<string, string>,
   ): Promise<void> {
-    const { refno, result_code, transaction_id } = webhookData;
-
-    // Idempotent: PaySolutions retries up to 3x. After the first successful
-    // callback link.status flips to PAID — subsequent invocations no-op.
-    if (link.status !== 'ACTIVE') {
-      this.logger.log(
-        `Duplicate partial-payment webhook for refno=${refno} (status=${link.status}, idempotent skip)`,
-      );
-      return;
-    }
-
-    if (result_code !== '00') {
-      // Customer cancelled / payment failed at the gateway.
-      await this.prisma.partialPaymentLink.update({
-        where: { id: link.id },
-        data: { status: 'CANCELLED', cancelledAt: new Date() },
-      });
-      this.logger.log(
-        `Partial-payment FAILED: refno=${refno}, result_code=${result_code}`,
-      );
-      return;
-    }
-
-    // Mark PAID before recordPayment so its auto-cancel hook leaves us alone.
-    await this.prisma.partialPaymentLink.update({
-      where: { id: link.id },
-      data: { status: 'PAID', paidAt: new Date(), gatewayRef: transaction_id ?? link.gatewayRef },
-    });
-
-    // Resolve a system OWNER + the QR-default cash account for the auto-record.
-    const systemUser = await this.prisma.user.findFirst({
-      where: { role: 'OWNER', deletedAt: null },
-      select: { id: true },
-      orderBy: { createdAt: 'asc' },
-    });
-    if (!systemUser) {
-      Sentry.captureMessage('Partial-payment webhook: no OWNER user for auto-record', {
-        level: 'fatal',
-        tags: { critical: 'paysolutions-partial-no-owner', refno },
-        extra: { paymentId: link.paymentId },
-      });
-      return;
-    }
-
-    const qrDefault = await this.prisma.paymentMethodConfig.findFirst({
-      where: { method: 'QR', isDefault: true, enabled: true, deletedAt: null },
-      select: { accountCode: true },
-    });
-    const depositAccountCode = qrDefault?.accountCode ?? '11-1201';
-
-    // Look up installmentNo so recordPayment can find the right Payment row
-    // (it keys on contractId + installmentNo, not paymentId).
-    const payment = await this.prisma.payment.findUnique({
-      where: { id: link.paymentId },
-      select: { contractId: true, installmentNo: true },
-    });
-    if (!payment) {
-      Sentry.captureMessage('Partial-payment webhook: payment not found', {
-        level: 'fatal',
-        tags: { critical: 'paysolutions-partial-orphan', refno },
-        extra: { paymentId: link.paymentId },
-      });
-      return;
-    }
-
-    try {
-      await this.paymentsService.recordPayment(
-        payment.contractId,
-        payment.installmentNo,
-        Number(link.amount),
-        'ONLINE_GATEWAY',
-        systemUser.id,
-        undefined, // evidenceUrl — webhook log is the audit trail
-        `ชำระผ่าน Pay Solutions (${transaction_id || refno})`,
-        refno, // transactionRef
-        depositAccountCode,
-        undefined, // toleranceApproverId
-        'PARTIAL',
-      );
-      this.logger.log(
-        `Partial-payment auto-recorded: refno=${refno}, payment=${link.paymentId}, amount=${link.amount}`,
-      );
-    } catch (err) {
-      this.logger.error(
-        `Partial-payment auto-record FAILED: refno=${refno}, payment=${link.paymentId}, err=${err}`,
-      );
-      Sentry.captureException(err, {
-        level: 'fatal',
-        tags: { critical: 'paysolutions-partial-record-fail', refno },
-        extra: { paymentId: link.paymentId, amount: Number(link.amount) },
-      });
-      // Don't throw — return 200 to PaySolutions so they don't retry forever.
-      // Ops will reconcile from Sentry alert.
-    }
+    return this.services().confirmation.handlePartialPaymentCallback(link, webhookData);
   }
 
-  async confirmOnlineOrderPayment(
+  confirmOnlineOrderPayment(
     onlineOrderId: string,
     webhookData: Record<string, string>,
   ): Promise<void> {
-    const order = await this.prisma.onlineOrder.findUnique({
-      where: { id: onlineOrderId },
-      include: { customer: true, product: true, reservation: true },
-    });
-    if (!order) {
-      this.logger.warn(`confirmOnlineOrderPayment: order ${onlineOrderId} not found`);
-      return;
-    }
-    if (
-      order.status === 'PAID' ||
-      order.status === 'PACKING' ||
-      order.status === 'SHIPPED'
-    ) {
-      this.logger.log(
-        `Order ${order.orderNumber} already confirmed — idempotent skip`,
-      );
-      return;
-    }
-
-    await this.prisma.$transaction(async (tx) => {
-      await tx.onlineOrder.update({
-        where: { id: onlineOrderId },
-        data: {
-          status: 'PAID',
-          paidAt: new Date(),
-          paymentRef: webhookData.transaction_id || webhookData.refno || null,
-        },
-      });
-      await tx.productReservation.update({
-        where: { id: order.reservationId },
-        data: { status: 'CONSUMED', consumedById: order.id },
-      });
-    });
-
-    // Create a Sale record for the paid online order. Adapter moves product to
-    // SOLD_CASH, applies loyalty redemption, and transitions the OnlineOrder to
-    // PACKING. Failures are logged (not re-thrown) — webhook must still return
-    // 200 so PaySolutions doesn't retry, and admin can reconcile manually.
-    try {
-      await this.saleAdapter.createForOnlineOrder(order.id);
-    } catch (err) {
-      this.logger.error(
-        `Failed to create Sale for online order ${order.orderNumber}: ${err}`,
-      );
-      Sentry.captureException(err, {
-        level: 'error',
-        tags: { critical: 'online-order-sale-failed', orderNumber: order.orderNumber },
-      });
-      // Don't re-throw — Sale can be created manually by admin if needed
-    }
-
-    if (order.customer.lineIdShop) {
-      try {
-        await this.lineOaService.sendFlexMessage(
-          order.customer.lineIdShop,
-          this.buildOrderPaidFlex(order),
-          'line-shop',
-        );
-      } catch (err) {
-        this.logger.warn(
-          `Failed to send LINE notification for order ${order.orderNumber}: ${err}`,
-        );
-      }
-    }
+    return this.services().confirmation.confirmOnlineOrderPayment(onlineOrderId, webhookData);
   }
 
-  /**
-   * สร้าง flex message แจ้งยืนยันชำระเงิน online order สำเร็จ
-   */
-  private buildOrderPaidFlex(order: {
-    orderNumber: string;
-    totalAmount: Prisma.Decimal;
-    product: { name: string };
-  }): FlexMessagePayload {
-    return {
-      type: 'flex',
-      altText: `ชำระเงินคำสั่งซื้อ ${order.orderNumber} สำเร็จ`,
-      contents: {
-        type: 'bubble',
-        body: {
-          type: 'box',
-          layout: 'vertical',
-          contents: [
-            { type: 'text', text: 'ชำระเงินสำเร็จ', weight: 'bold', size: 'lg' },
-            {
-              type: 'text',
-              text: `คำสั่งซื้อ ${order.orderNumber}`,
-              size: 'md',
-              margin: 'md',
-            },
-            { type: 'text', text: order.product.name, size: 'sm', color: '#666666' },
-            { type: 'separator', margin: 'md' },
-            {
-              type: 'text',
-              text: `ยอดรวม ฿${Number(order.totalAmount).toLocaleString()}`,
-              size: 'md',
-              margin: 'md',
-              weight: 'bold',
-            },
-            {
-              type: 'text',
-              text: 'ทางร้านจะจัดส่งภายใน 1 วันทำการ',
-              size: 'xs',
-              color: '#888888',
-              margin: 'md',
-              wrap: true,
-            },
-          ],
-        },
-      },
-    };
-  }
-
-  /**
-   * ยืนยันชำระเงินงวดออมดาวน์ — idempotent
-   * — สร้าง SavingPlanPayment record
-   * — อัปเดต totalSaved + nextPaymentDueAt + status (COMPLETED ถ้าครบเป้า)
-   * — ส่ง LINE notification
-   */
-  async confirmSavingPlanPayment(
+  confirmSavingPlanPayment(
     savingPlanId: string,
     paymentLinkId: string,
     webhookData: Record<string, string>,
   ): Promise<void> {
-    const plan = await this.prisma.savingPlan.findUnique({
-      where: { id: savingPlanId },
-      include: { customer: true, payments: true },
-    });
-    if (!plan) {
-      this.logger.warn(`confirmSavingPlanPayment: plan ${savingPlanId} not found`);
-      return;
-    }
-    const existing = await this.prisma.savingPlanPayment.findFirst({
-      where: { paymentLinkId },
-    });
-    if (existing) {
-      this.logger.log(
-        `Saving-plan payment already recorded for paymentLinkId=${paymentLinkId} — idempotent skip`,
-      );
-      return;
-    }
+    return this.services().confirmation.confirmSavingPlanPayment(savingPlanId, paymentLinkId, webhookData);
+  }
 
-    const totalRaw = webhookData.total;
-    const amount =
-      totalRaw && !isNaN(Number(totalRaw)) ? new Prisma.Decimal(totalRaw) : new Prisma.Decimal(0);
+  // ── Post-tx notifications (impl in PaySolutionsWebhookService) ────────────
+  // Kept on the facade so the webhook's post-tx calls (routed through the host)
+  // and the existing specs that spy on these instance methods both resolve to
+  // the same target. Private (matching the original surface).
 
-    await this.prisma.$transaction(async (tx) => {
-      await tx.savingPlanPayment.create({
-        data: {
-          savingPlanId,
-          amount,
-          paidAt: new Date(),
-          paymentMethod: 'PROMPTPAY',
-          paymentRef: webhookData.transaction_id || webhookData.refno || null,
-          paymentLinkId,
-        },
-      });
-      const newTotal = new Prisma.Decimal(plan.totalSaved).plus(amount);
-      const completed = newTotal.gte(plan.targetAmount);
-      const next = plan.nextPaymentDueAt ? new Date(plan.nextPaymentDueAt) : new Date();
-      next.setMonth(next.getMonth() + 1);
-      await tx.savingPlan.update({
-        where: { id: savingPlanId },
-        data: {
-          totalSaved: newTotal,
-          nextPaymentDueAt: completed ? null : next,
-          status: completed ? 'COMPLETED' : 'ACTIVE',
-          completedAt: completed ? new Date() : null,
-        },
-      });
-    });
+  private sendPaymentSuccessNotification(
+    contractId: string,
+    paymentId: string | null,
+  ): Promise<void> {
+    return this.services().webhook.sendPaymentSuccessNotification(contractId, paymentId);
+  }
 
-    if (plan.customer.lineIdShop) {
-      try {
-        const newTotal = new Prisma.Decimal(plan.totalSaved).plus(amount);
-        await this.lineOaService.sendFlexMessage(
-          plan.customer.lineIdShop,
-          {
-            type: 'flex',
-            altText: 'ชำระออมดาวน์สำเร็จ',
-            contents: {
-              type: 'bubble',
-              body: {
-                type: 'box',
-                layout: 'vertical',
-                contents: [
-                  { type: 'text', text: 'ชำระออมดาวน์สำเร็จ', weight: 'bold', size: 'lg' },
-                  { type: 'text', text: plan.planNumber, margin: 'md' },
-                  {
-                    type: 'text',
-                    text: `ยอดสะสม ฿${Number(newTotal).toLocaleString()}`,
-                    weight: 'bold',
-                    margin: 'md',
-                    color: '#1DB446',
-                  },
-                ],
-              },
-            },
-          },
-          'line-shop',
-        );
-      } catch (err) {
-        this.logger.warn(
-          `Failed to send LINE notification for saving plan ${plan.planNumber}: ${err}`,
-        );
-      }
-    }
+  private sendEarlyPayoffSuccessNotification(
+    contractId: string,
+    paidAmount: Prisma.Decimal,
+  ): Promise<void> {
+    return this.services().webhook.sendEarlyPayoffSuccessNotification(contractId, paidAmount);
   }
 }

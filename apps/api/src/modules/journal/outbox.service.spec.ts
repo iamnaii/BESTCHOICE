@@ -11,8 +11,10 @@ describe('OutboxService', () => {
       outboxEvent: {
         create: jest.fn(),
         findUniqueOrThrow: jest.fn(),
+        findUnique: jest.fn(),
         findMany: jest.fn(),
         update: jest.fn(),
+        updateMany: jest.fn(),
       },
     };
     svc = new OutboxService(prismaMock);
@@ -64,6 +66,27 @@ describe('OutboxService', () => {
       take: 10,
     });
     expect(events).toHaveLength(1);
+  });
+
+  it('claimPending wins the row with a status=PENDING guard and returns DB attempts', async () => {
+    prismaMock.outboxEvent.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.outboxEvent.findUnique.mockResolvedValue({ attempts: 3 });
+
+    const res = await svc.claimPending('e1');
+    expect(res).toEqual({ claimed: true, attempts: 3 });
+    expect(prismaMock.outboxEvent.updateMany).toHaveBeenCalledWith({
+      where: { id: 'e1', status: 'PENDING', deletedAt: null },
+      data: { status: 'PROCESSING', attempts: { increment: 1 } },
+    });
+  });
+
+  it('claimPending loses (claimed=false) when another worker already claimed the row', async () => {
+    prismaMock.outboxEvent.updateMany.mockResolvedValue({ count: 0 });
+
+    const res = await svc.claimPending('e1');
+    expect(res).toEqual({ claimed: false, attempts: 0 });
+    // No re-read when the claim was lost.
+    expect(prismaMock.outboxEvent.findUnique).not.toHaveBeenCalled();
   });
 
   it('markFailed with isFinal=true sets status FAILED', async () => {

@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PromotionsService } from '../promotions/promotions.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
@@ -53,16 +54,26 @@ export class ShopCheckoutService {
     if (promo.maxUsageCount && promo.currentUsageCount >= promo.maxUsageCount) {
       return { valid: false, reason: 'โค้ดนี้ถูกใช้เต็มจำนวนแล้ว', discountAmount: 0 };
     }
-    const price = Number(reservation.product.costPrice);
-    let discount = 0;
+    if (reservation.product.cashPrice == null) {
+      return { valid: false, reason: 'สินค้านี้ยังไม่ได้ตั้งราคาขาย', discountAmount: 0 };
+    }
+    // Price basis = retail cashPrice (web-shop = จ่ายเต็มผ่าน QR), NOT costPrice.
+    // Money math in Prisma.Decimal (house rule — never JS number for เงิน).
+    const price = new Prisma.Decimal(reservation.product.cashPrice);
+    let discount = new Prisma.Decimal(0);
     if (promo.type === 'PERCENTAGE_DISCOUNT') {
-      discount = Math.floor((price * Number(promo.value)) / 100);
+      // whole-baht floor (preserves the prior Math.floor rounding)
+      discount = price
+        .times(new Prisma.Decimal(promo.value))
+        .div(100)
+        .toDecimalPlaces(0, Prisma.Decimal.ROUND_DOWN);
     } else if (promo.type === 'FIXED_DISCOUNT' || promo.type === 'FIXED_AMOUNT') {
-      discount = Math.min(price, Number(promo.value));
+      const fixed = new Prisma.Decimal(promo.value);
+      discount = price.lessThan(fixed) ? price : fixed;
     } else {
       return { valid: false, reason: 'โค้ดนี้ใช้ในร้านออนไลน์ไม่ได้', discountAmount: 0 };
     }
-    return { valid: true, discountAmount: discount, promotionId: promo.id };
+    return { valid: true, discountAmount: discount.toNumber(), promotionId: promo.id };
   }
 
   async validateLoyaltyRedemption(
@@ -87,7 +98,13 @@ export class ShopCheckoutService {
     }
 
     const shippingQuote = this.shipping.quote(dto.shippingMethod as any, dto.shippingAddress.province);
-    const price = Number(reservation.product.costPrice);
+    if (reservation.product.cashPrice == null) {
+      throw new BadRequestException('สินค้านี้ยังไม่ได้ตั้งราคาขาย');
+    }
+    // Retail cashPrice (web-shop = จ่ายเต็มผ่าน QR), in Prisma.Decimal — all the
+    // money math below stays Decimal (house rule), converting to number only at
+    // the OnlineOrder write + PaySolutions/response boundary.
+    const price = new Prisma.Decimal(reservation.product.cashPrice);
 
     let promoDiscount = 0;
     let promotionId: string | undefined;
@@ -108,7 +125,13 @@ export class ShopCheckoutService {
       loyaltyDiscount = l.discountAmount;
     }
 
-    const totalAmount = Math.max(0, price + shippingQuote.fee - promoDiscount - loyaltyDiscount);
+    // Decimal arithmetic end-to-end; clamp ≥0; convert to number only here for
+    // the OnlineOrder write + PaySolutions amount + API response (all 2-dp exact).
+    const rawTotal = price
+      .plus(shippingQuote.fee)
+      .minus(promoDiscount)
+      .minus(loyaltyDiscount);
+    const totalAmount = (rawTotal.lessThan(0) ? new Prisma.Decimal(0) : rawTotal).toNumber();
     const orderNumber = generateOrderNumber();
 
     const order = await this.prisma.onlineOrder.create({

@@ -1,6 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { DashboardService } from './dashboard.service';
+import { DashboardOverviewService } from './services/dashboard-overview.service';
+import { DashboardCollectionsService } from './services/dashboard-collections.service';
+import { DashboardOpsService } from './services/dashboard-ops.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
 describe('DashboardService cache graceful degrade', () => {
@@ -35,6 +38,9 @@ describe('DashboardService cache graceful degrade', () => {
     const mod: TestingModule = await Test.createTestingModule({
       providers: [
         DashboardService,
+        DashboardOverviewService,
+        DashboardCollectionsService,
+        DashboardOpsService,
         { provide: PrismaService, useValue: prisma },
         { provide: CACHE_MANAGER, useValue: cache },
       ],

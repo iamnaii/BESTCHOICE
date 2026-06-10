@@ -1,10 +1,5 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException, InternalServerErrorException, Logger, Optional, Inject, forwardRef } from '@nestjs/common';
-import { createHash, randomUUID } from 'crypto';
-import * as Sentry from '@sentry/node';
-import { StructuredLoggerService } from '../../common/logger';
-import { Prisma, PaymentMethod } from '@prisma/client';
+import { Injectable, ForbiddenException, Logger, Optional, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { paginatedResponse } from '../../common/helpers/pagination.helper';
 import { ReceiptsService } from '../receipts/receipts.service';
 import { AuditService } from '../audit/audit.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
@@ -12,27 +7,66 @@ import { PaymentReceiptTemplate } from '../journal/cpa-templates/payment-receipt
 import { Vat60dayReversalTemplate } from '../journal/cpa-templates/vat-60day-reversal.template';
 import { AccountRoleService } from '../journal/account-role.service';
 import { ProductsService } from '../products/products.service';
-import { hasCrossBranchAccess } from '../auth/branch-access.util';
-import { validatePeriodOpen } from '../../utils/period-lock.util';
-import { roundBaht } from '../../utils/installment.util';
-import { ensureInstallmentSchedules } from '../../utils/installment-schedule.util';
-import { BUSINESS_RULES } from '../../utils/config.util';
-import { d, dAdd, dSub, dMul, dRound, dGte } from '../../utils/decimal.util';
 import { LineOaService } from '../line-oa/line-oa.service';
 import { FlexTemplatesService } from '../line-oa/flex-templates.service';
 import { QuickReplyService } from '../line-oa/quick-reply.service';
-import { formatDateShort } from '../../utils/thai-date.util';
 import { MdmAutoService } from '../mdm/mdm-auto.service';
 import { PromiseService } from '../overdue/promise.service';
 import { MdmLockService } from '../overdue/mdm-lock.service';
 import { PaymentCase } from './dto/payment.dto';
-import { CASH_ACCOUNT_CODES, type CashAccountCode } from './dto/csv-import.dto';
 import { BadDebtService } from '../accounting/bad-debt.service';
+import {
+  validateBranchAccess as validateBranchAccessHelper,
+  validateBranchAccessByPayment as validateBranchAccessByPaymentHelper,
+} from './services/payment-helpers';
+import { PaymentReceiptOrchestrator } from './services/payment-receipt-orchestrator';
+import { LateFeeWaiverService } from './services/late-fee-waiver.service';
+import { PaymentQueryService } from './services/payment-query.service';
+import { PaymentJournalPreviewService } from './services/payment-journal-preview.service';
+import { PaymentCsvImportService } from './services/payment-csv-import.service';
+import { PaymentPostCommitHooks } from './services/payment-post-commit-hooks';
 
+/**
+ * Facade over the decomposed payments core (the regulated FINANCE money path).
+ *
+ * Behaviour-preserving decompose of the former 2214-LOC god-service into six
+ * plain sub-services + a stateless helper module, constructed INTERNALLY (so the
+ * module, the 6 positional construction sites — csv-import.spec + 5 e2e
+ * harnesses — and the 3 forwardRef consumers stay untouched: no provider /
+ * forwardRef / positional-ctor churn). The 15-method public surface + the EXACT
+ * positional ctor (incl. the 4 @Optional tail) are unchanged; every public
+ * method one-line delegates.
+ *
+ *   - {@link PaymentReceiptOrchestrator}  — REGULATED CORE: recordPayment /
+ *       autoAllocatePayment / applyCreditBalance, the 3 Serializable money $tx
+ *       (receipt JE + VAT-60 reversal + ECL stage-reverse + overpayment
+ *       createAndPost) each AS ONE ATOM.
+ *   - {@link LateFeeWaiverService}        — waiveLateFee (its own $tx, NO JE).
+ *   - {@link PaymentQueryService}         — reads + the partial-QR writes.
+ *   - {@link PaymentJournalPreviewService}— previewJournal (read-only JE builder).
+ *   - {@link PaymentCsvImportService}     — importPaymentsFromCsv (row-by-row via
+ *       host.recordPayment → the facade, so each row gets the full money $tx).
+ *   - {@link PaymentPostCommitHooks}      — checkPromiseAfterPayment (own $tx,
+ *       post-commit) + awardLoyaltyPoints + sendPaymentSuccessLine.
+ *
+ * Sub-services are built LAZILY on first use (not in the ctor): the orchestrator
+ * + CSV importer route their cross-seam dispatch (post-commit hooks / row-by-row
+ * recordPayment) through host arrows that resolve `this.<method>` at CALL time,
+ * so a spy installed on the facade AFTER construction (csv-import.spec,
+ * payments.service.spec) is still honoured.
+ */
 @Injectable()
 export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
-  private readonly structuredLogger = new StructuredLoggerService(PaymentsService.name);
+
+  private _services?: {
+    orchestrator: PaymentReceiptOrchestrator;
+    waiver: LateFeeWaiverService;
+    query: PaymentQueryService;
+    preview: PaymentJournalPreviewService;
+    csvImport: PaymentCsvImportService;
+    postCommit: PaymentPostCommitHooks;
+  };
 
   constructor(
     private prisma: PrismaService,
@@ -70,48 +104,73 @@ export class PaymentsService {
   ) {}
 
   /**
-   * T15: Resolve the cash/bank account code for a payment.
-   * Priority: user.defaultCashAccountCode → system default '11-1101'.
+   * Lazily build (once) and return the decomposed sub-services. The
+   * orchestrator + CSV importer receive host objects whose arrows dispatch back
+   * through `this` (the facade) so post-construction spies + the @Optional
+   * mdmAuto / promiseService fields resolve at call time.
    */
-  private async resolveUserDefaultCashAccount(userId: string): Promise<string> {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { defaultCashAccountCode: true },
-    });
-    return user?.defaultCashAccountCode ?? '11-1101';
-  }
-
-  /**
-   * F-3-027 part 2/3: Resolve FINANCE companyId for HP installment journal entries.
-   * Payments on installment contracts post to FINANCE-side accounts (HP Receivable,
-   * Interest Income, VAT Output) — must be passed explicitly to JournalAutoService
-   * instead of relying on the non-deterministic resolveCompanyId fallback.
-   * Hoisted out of the per-installment loop so autoAllocate / applyCreditBalance
-   * resolve it once per call rather than once per installment.
-   */
-  private async resolveFinanceCompanyId(): Promise<string> {
-    const financeCompany = await this.prisma.companyInfo.findFirst({
-      where: { companyCode: 'FINANCE', deletedAt: null },
-      select: { id: true },
-    });
-    if (!financeCompany) {
-      throw new InternalServerErrorException('FINANCE company not configured');
+  private services() {
+    if (!this._services) {
+      const postCommit = new PaymentPostCommitHooks(
+        this.prisma,
+        this.promiseService,
+        this.mdmLockService,
+        this.lineOaService,
+        this.flexTemplates,
+        this.quickReplyService,
+      );
+      const orchestrator = new PaymentReceiptOrchestrator(
+        this.prisma,
+        this.receiptsService,
+        this.auditService,
+        this.journalAutoService,
+        this.productsService,
+        this.badDebtService,
+        this.paymentReceiptTemplate,
+        this.vat60Reversal,
+        {
+          awardLoyaltyPoints: (customerId, contractId, paymentId, amount, paidDate, dueDate) =>
+            this.awardLoyaltyPoints(customerId, contractId, paymentId, amount, paidDate, dueDate),
+          sendPaymentSuccessLine: (contractId, installmentNo, amount, paymentMethod) =>
+            this.sendPaymentSuccessLine(contractId, installmentNo, amount, paymentMethod),
+          runMdmAutoUnlock: (contractId) => this.runMdmAutoUnlock(contractId),
+          checkPromiseAfterPayment: (contractId) => this.checkPromiseAfterPayment(contractId),
+        },
+      );
+      const waiver = new LateFeeWaiverService(this.prisma, this.auditService, this.productsService);
+      const query = new PaymentQueryService(this.prisma);
+      const preview = new PaymentJournalPreviewService(this.prisma, this.accountRoleService);
+      const csvImport = new PaymentCsvImportService(this.prisma, {
+        recordPayment: (
+          contractId,
+          installmentNo,
+          amount,
+          paymentMethod,
+          recordedById,
+          evidenceUrl,
+          notes,
+          transactionRef,
+          depositAccountCode,
+          toleranceApproverId,
+          paymentCase,
+        ) =>
+          this.recordPayment(
+            contractId,
+            installmentNo,
+            amount,
+            paymentMethod,
+            recordedById,
+            evidenceUrl,
+            notes,
+            transactionRef,
+            depositAccountCode,
+            toleranceApproverId,
+            paymentCase,
+          ),
+      });
+      this._services = { orchestrator, waiver, query, preview, csvImport, postCommit };
     }
-    return financeCompany.id;
-  }
-
-  /**
-   * Phase A.1b: Resolve SHOP companyId for the SHOP-side commission JE leg.
-   * Returns null when SHOP is not configured — JournalAutoService will skip
-   * the commission entry rather than fail the payment.
-   */
-  private async resolveShopCompanyId(): Promise<string | null> {
-    const shop = await this.prisma.companyInfo.findFirst({
-      where: { companyCode: 'SHOP', deletedAt: null },
-      select: { id: true },
-      orderBy: { createdAt: 'asc' },
-    });
-    return shop?.id ?? null;
+    return this._services;
   }
 
   /** Enforce branch-level access: SALES/BRANCH_MANAGER can only operate on their own branch */
@@ -119,54 +178,18 @@ export class PaymentsService {
     contractId: string,
     user: { role: string; branchId: string | null },
   ) {
-    if (hasCrossBranchAccess(user)) return;
-
-    const contract = await this.prisma.contract.findUnique({
-      where: { id: contractId },
-      select: { branchId: true, deletedAt: true },
-    });
-    if (contract && !contract.deletedAt && user.branchId && contract.branchId !== user.branchId) {
-      throw new ForbiddenException('ไม่สามารถบันทึกชำระเงินข้ามสาขาได้');
-    }
+    return validateBranchAccessHelper(this.prisma, contractId, user);
   }
 
   /**
    * W1 fix: enforce branch-level access when the caller only knows the
-   * paymentId (waive-late-fee + partial-QR endpoints). Looks up the
-   * payment's contractId and delegates to validateBranchAccess.
-   *
-   * Routes guarded by class-level BranchGuard pass only when the request
-   * carries `branchId` — these payment-keyed routes don't, so they were
-   * silently bypassing the cross-branch check. This helper closes the gap.
+   * paymentId (waive-late-fee + partial-QR endpoints).
    */
   async validateBranchAccessByPayment(
     paymentId: string,
     user: { role: string; branchId: string | null },
   ) {
-    if (hasCrossBranchAccess(user)) return;
-    // Round 2 W1 fix: collapse the previous 2 queries (payment.findUnique →
-    // contract.findUnique) into a single join. Saves a roundtrip on every
-    // waive-late-fee + partial-QR call. Inline the branchId check here so
-    // we don't re-fetch the contract via validateBranchAccess().
-    const payment = await this.prisma.payment.findUnique({
-      where: { id: paymentId },
-      select: {
-        deletedAt: true,
-        contract: { select: { branchId: true, deletedAt: true } },
-      },
-    });
-    if (!payment || payment.deletedAt) {
-      throw new NotFoundException('ไม่พบรายการชำระ');
-    }
-    const contract = payment.contract;
-    if (
-      contract &&
-      !contract.deletedAt &&
-      user.branchId &&
-      contract.branchId !== user.branchId
-    ) {
-      throw new ForbiddenException('ไม่สามารถบันทึกชำระเงินข้ามสาขาได้');
-    }
+    return validateBranchAccessByPaymentHelper(this.prisma, paymentId, user);
   }
 
   // ─── Record a single payment (บังคับ upload หลักฐาน) ──
@@ -183,438 +206,19 @@ export class PaymentsService {
     toleranceApproverId?: string,
     paymentCase?: PaymentCase,
   ) {
-    if (!amount || amount <= 0) {
-      throw new BadRequestException('จำนวนเงินต้องมากกว่า 0');
-    }
-
-    // บังคับ upload หลักฐานการชำระเงิน (สลิป/เลขอ้างอิง)
-    if (!evidenceUrl && !transactionRef) {
-      throw new BadRequestException('ต้อง upload หลักฐานการชำระเงิน (สลิปโอนเงิน) หรือระบุเลขอ้างอิงธุรกรรม');
-    }
-
-    // CR-7: Validate payment date is not in a closed (FINANCE) accounting period.
-    await validatePeriodOpen(this.prisma, new Date(), await this.resolveFinanceCompanyId());
-
-    // T16: Tolerance approver role validation.
-    // If toleranceApproverId is supplied, verify the named user has an approved role.
-    // This is validated early (before the serializable tx) to fail fast without
-    // holding a DB lock on a rejection.
-    if (toleranceApproverId) {
-      const approver = await this.prisma.user.findUnique({
-        where: { id: toleranceApproverId },
-        select: { id: true, role: true, deletedAt: true },
-      });
-      if (!approver || approver.deletedAt) {
-        throw new BadRequestException('ไม่พบผู้อนุมัติที่ระบุ');
-      }
-      const allowedRoles = ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'BRANCH_MANAGER'];
-      if (!allowedRoles.includes(approver.role)) {
-        throw new ForbiddenException('ผู้อนุมัติต้องมีบทบาท OWNER, FINANCE_MANAGER, ACCOUNTANT หรือ BRANCH_MANAGER');
-      }
-    }
-
-    // T15: Resolve deposit account — caller-provided > user default > system default 11-1101
-    const resolvedDepositAccountCode = depositAccountCode ?? (await this.resolveUserDefaultCashAccount(recordedById));
-
-    // F-3-027 part 2/3 + Phase A.1b: resolve FINANCE + SHOP companyIds BEFORE
-    // the transaction so both can be passed explicitly to the payment JE.
-    // FINANCE = HP receivable / interest / VAT side; SHOP = commission income side.
-    const financeCompanyId = await this.resolveFinanceCompanyId();
-    const shopCompanyId = await this.resolveShopCompanyId();
-
-    // Capture dueDate for loyalty points check (on-time = paidDate <= dueDate)
-    let capturedDueDate: Date | null = null;
-    let capturedCustomerId: string | null = null;
-
-    // Use serializable transaction to prevent concurrent duplicate payments
-    const updated = await this.prisma.$transaction(async (tx) => {
-      // Idempotency: reject duplicate transactionRef INSIDE transaction
-      // to prevent race condition where two concurrent requests both pass the check.
-      // R-012: Use exact ref: tag match to avoid false positives from substring matching.
-      // We search for the exact tag "ref:<value>" and verify it matches fully,
-      // preventing e.g. "ref:ABC" from matching "ref:ABC123".
-      if (transactionRef) {
-        const candidates = await tx.payment.findMany({
-          where: {
-            contractId,
-            deletedAt: null,
-            notes: { contains: `ref:${transactionRef}` },
-            status: { in: ['PAID', 'PARTIALLY_PAID'] },
-          },
-          select: { id: true, notes: true },
-        });
-        // Verify exact match: the ref tag must be followed by end-of-string, ' |', or whitespace
-        const exactRefPattern = new RegExp(`ref:${transactionRef.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\s*\\||\\s*$)`);
-        const existing = candidates.find(c => c.notes && exactRefPattern.test(c.notes));
-        if (existing) {
-          throw new BadRequestException(`ธุรกรรมนี้ถูกบันทึกแล้ว (อ้างอิง: ${transactionRef})`);
-        }
-      }
-
-      const contract = await tx.contract.findUnique({ where: { id: contractId } });
-      if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
-      if (!['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status)) {
-        throw new BadRequestException('ไม่สามารถชำระเงินได้ สัญญาต้องอยู่ในสถานะ ACTIVE, OVERDUE หรือ DEFAULT');
-      }
-      capturedCustomerId = contract.customerId;
-
-      const payment = await tx.payment.findFirst({
-        where: { contractId, installmentNo, deletedAt: null },
-      });
-      if (!payment) throw new NotFoundException('ไม่พบงวดที่ต้องการ');
-      if (payment.status === 'PAID') throw new BadRequestException('งวดนี้ชำระแล้ว');
-      capturedDueDate = payment.dueDate;
-
-      // Auto-cancel any active partial-payment QR for this Payment so the
-      // customer can't double-pay through a stale QR they were sent earlier.
-      // (Webhook path marks PAID first then calls recordPayment, so the
-      // updateMany here is a no-op for that case — only cashier-initiated
-      // CASH/TRANSFER recording triggers the cancel.)
-      await tx.partialPaymentLink.updateMany({
-        where: { paymentId: payment.id, status: 'ACTIVE' },
-        data: { status: 'CANCELLED', cancelledAt: new Date() },
-      });
-
-      // Real-time late fee: recalculate at payment time (cron may not have run yet)
-      let lateFee = d(payment.lateFee);
-      if (!payment.lateFeeWaived && payment.dueDate < new Date()) {
-        const daysOverdue = Math.floor((Date.now() - payment.dueDate.getTime()) / (1000 * 60 * 60 * 24));
-        if (daysOverdue > 0) {
-          const config = await tx.systemConfig.findUnique({ where: { key: 'late_fee_per_day' } });
-          const capConfig = await tx.systemConfig.findUnique({ where: { key: 'late_fee_cap' } });
-          const feePerDay = config ? d(config.value) : d(50);
-          const cap = capConfig ? d(capConfig.value) : d(1500);
-          const pctCap = dMul(payment.amountDue, BUSINESS_RULES.LATE_FEE_CAP_PCT);
-          const calculatedFee = dRound(Prisma.Decimal.min(dMul(feePerDay, daysOverdue), cap, pctCap));
-          if (calculatedFee.gt(lateFee)) {
-            lateFee = calculatedFee;
-            await tx.payment.update({ where: { id: payment.id }, data: { lateFee } });
-          }
-        }
-      }
-
-      const amountDue = dRound(dAdd(payment.amountDue, lateFee));
-      const prevPaid = dRound(d(payment.amountPaid));
-      const remaining = dRound(dSub(amountDue, prevPaid));
-
-      // Advance balance split logic (Task 4):
-      // - OVERPAY_ADVANCE: overage > 1฿ parked as advance (Cr 21-1103)
-      // - NORMAL/others: auto-consume existing advance to cover shortfall
-      const overage = d(amount).minus(remaining);
-      let advanceCredit = d(0);
-      let advanceConsume = d(0);
-      const beforeAdvance = d(contract.advanceBalance ?? 0);
-      let isPartialClear = false;
-
-      if (overage.gt(d('1.00'))) {
-        // Overpay > tolerance — must explicitly opt into advance posting
-        if (paymentCase !== 'OVERPAY_ADVANCE') {
-          throw new BadRequestException(
-            `จำนวนเงินเกินยอดค้างชำระ (ยอดค้าง ${remaining.toNumber().toLocaleString()} บาท, ชำระ ${amount.toLocaleString()} บาท) — ต้องเลือก case 'OVERPAY_ADVANCE' เพื่อบันทึกส่วนเกินเป็นเงินรับล่วงหน้า`,
-          );
-        }
-        advanceCredit = overage;
-      } else if (
-        d(amount).lt(remaining) &&
-        beforeAdvance.gt(0) &&
-        (paymentCase === undefined || paymentCase === 'NORMAL')
-      ) {
-        // Auto-consume FIFO ONLY for default/NORMAL case. PARTIAL/RESCHEDULE/EARLY_PAYOFF
-        // are explicit flows where the caller controls allocation directly.
-        const gap = remaining.minus(d(amount));
-        advanceConsume = Prisma.Decimal.min(beforeAdvance, gap);
-      }
-
-      // NEW: shortage > 1฿ requires explicit case='PARTIAL'.
-      // Compute shortage AFTER advanceConsume (advance covers part of the gap).
-      const shortage = remaining.minus(d(amount)).minus(advanceConsume);
-      if (shortage.gt(d('1.00'))) {
-        if (paymentCase !== 'PARTIAL') {
-          throw new BadRequestException(
-            `จำนวนเงินน้อยกว่ายอดที่ต้องชำระ (ยอดที่ต้องชำระ ${remaining.toNumber().toLocaleString()} บาท, ชำระ ${amount.toLocaleString()} บาท) — เลือก case 'PARTIAL' เพื่อบันทึกเป็นจ่ายบางส่วน`,
-          );
-        }
-        isPartialClear = true;
-      }
-
-      // For OVERPAY_ADVANCE: amountPaid = installmentTotal (full clear via cash + advance posting).
-      // Otherwise: amountPaid = cash + consumed advance (may or may not fully clear).
-      const recordedAmountPaid =
-        paymentCase === 'OVERPAY_ADVANCE' ? remaining : dAdd(prevPaid, amount).plus(advanceConsume);
-
-      const isPaidInFull =
-        paymentCase === 'OVERPAY_ADVANCE' ? true : dGte(recordedAmountPaid, amountDue);
-
-      // Append transactionRef to notes for idempotency tracking
-      const updatedNotes = transactionRef
-        ? [notes, `ref:${transactionRef}`].filter(Boolean).join(' | ')
-        : (notes || payment.notes);
-
-      const result = await tx.payment.update({
-        where: { id: payment.id },
-        data: {
-          amountPaid: recordedAmountPaid,
-          paidDate: isPaidInFull ? new Date() : null,
-          paymentMethod: paymentMethod as PaymentMethod,
-          status: isPaidInFull ? 'PAID' : 'PARTIALLY_PAID',
-          recordedById,
-          evidenceUrl: evidenceUrl || payment.evidenceUrl,
-          notes: updatedNotes,
-          depositAccountCode: resolvedDepositAccountCode,
-        },
-      });
-
-      // Update Contract.advanceBalance atomically with payment (Task 4.5)
-      const advanceDelta = advanceCredit.minus(advanceConsume);
-      if (!advanceDelta.eq(0)) {
-        await tx.contract.update({
-          where: { id: contractId },
-          data: { advanceBalance: { increment: advanceDelta } },
-        });
-        // Audit advance balance changes for forensics
-        await tx.auditLog.create({
-          data: {
-            action: 'OVERPAY_ADVANCE_RECORDED',
-            entity: 'contract',
-            entityId: contractId,
-            userId: recordedById,
-            newValue: {
-              paymentId: result.id,
-              installmentNo,
-              advanceCredit: advanceCredit.toString(),
-              advanceConsume: advanceConsume.toString(),
-              delta: advanceDelta.toString(),
-              beforeBalance: beforeAdvance.toString(),
-              afterBalance: beforeAdvance.plus(advanceDelta).toString(),
-            },
-          },
-        });
-      }
-
-      // Check if all payments are completed → update contract status
-      if (isPaidInFull) {
-        await this.checkContractCompletion(contractId, tx);
-      }
-
-      // Phase A.4b: replaced createPaymentJournal (old stub) with PaymentReceipt2BTemplate.
-      // Template is called on full payment OR partial payment (isPartialClear).
-      // It runs inside the same $transaction so a JE failure rolls back the
-      // Payment.update — no orphan ledger entries.
-      if (isPaidInFull || isPartialClear) {
-        // Lazy-gen schedule for legacy (pre-#753) contracts so the 2B receipt
-        // JE can post — prevents an orphan PAID-without-ledger row. Idempotent:
-        // a no-op when rows already exist. Runs inside the same serializable tx.
-        await ensureInstallmentSchedules(tx, contract.id);
-        const instSched = await tx.installmentSchedule.findUnique({
-          where: {
-            contractId_installmentNo: {
-              contractId: contract.id,
-              installmentNo: result.installmentNo,
-            },
-          },
-          select: { id: true, vat60dayJournalEntryId: true },
-        });
-        if (instSched) {
-          // PR-843/I2 Phase 3 3a — post the receipt via the PaymentReceiptTemplate
-          // primitive (replaces the legacy PaymentReceipt2BTemplate in this path).
-          // The primitive reconstructs prior cleared (incl. legacy 2B partials),
-          // so passing the per-call DELTA is correct: a completion of a prior
-          // partial now clears ONLY the remaining delta instead of re-clearing
-          // the full installmentTotal (the old delta-vs-cumulative bug).
-          // isFinalReceipt = !isPartialClear (the completing receipt closes it).
-          // lateFee still forwarded so the Cr 42-1103 income leg is emitted.
-          // Runs inside the same tx so a JE failure rolls back the Payment.update.
-          await this.paymentReceiptTemplate.execute(
-            {
-              installmentScheduleId: instSched.id,
-              delta: new Prisma.Decimal(amount.toString()),
-              debitAccountCode: resolvedDepositAccountCode,
-              toleranceApproverId,
-              paymentId: result.id,
-              advanceCredit: advanceCredit.gt(0) ? advanceCredit : undefined,
-              advanceConsume: advanceConsume.gt(0) ? advanceConsume : undefined,
-              isFinalReceipt: !isPartialClear,
-              lateFee: lateFee.gt(0) ? lateFee : undefined,
-              // PR-843/I2 Phase 5b — auto-approve a ≤1฿ underpay-close ONLY when the
-              // payer covered the full billed obligation (cash + consumed advance ≥
-              // remaining = amountDue+lateFee−prevPaid). In that case any ≤1฿ residual
-              // is a pure amountDue↔installmentTotal rounding artifact, not a customer
-              // underpayment, so it routes to 52-1104 without an approver. A GENUINE
-              // ≤1฿ customer underpayment (amount+advance < remaining) leaves this
-              // false → the toleranceApproverId requirement stands.
-              autoApproveSystemRounding: dGte(dAdd(d(amount), advanceConsume), remaining),
-            },
-            tx,
-          );
-
-          // VAT-60-day reversal (MANDATORY parity with the old 2B). The legacy
-          // 2B template triggered Vat60dayReversalTemplate internally when the
-          // installment carried a 60-day mandatory VAT JE; the primitive does
-          // not, so trigger it here inside the same tx.
-          if (instSched.vat60dayJournalEntryId) {
-            await this.vat60Reversal.execute(instSched.id, tx);
-          }
-
-          // CPA Policy A §3.6 — ECL stage reverse on payment.
-          // After the receipt JE posts, recompute aging. If the bucket dropped
-          // (e.g. B2 → B1) the persisted provision is now overstated; release
-          // the over-provision back to P&L atomically inside the same tx so a
-          // reverse-JE failure rolls back the receipt.
-          try {
-            await this.badDebtService.reverseStageOnPayment(contract.id, tx);
-          } catch (err) {
-            Sentry.captureException(err, {
-              extra: { contractId: contract.id, installmentNo: result.installmentNo, paymentId: result.id },
-            });
-            throw err;
-          }
-        } else {
-          // Even after lazy-gen the row is absent — a genuine data anomaly
-          // (totalMonths<=0, or installmentNo beyond the schedule). Do NOT
-          // silently skip and do NOT roll back the customer's real payment.
-          // Alarm so accounting posts the missing receipt JE manually.
-          Sentry.captureException(
-            new Error(
-              'PAID installment has no postable 2B JE (no InstallmentSchedule after lazy-gen)',
-            ),
-            {
-              level: 'error',
-              tags: { module: 'payments', flow: '2b-receipt' },
-              extra: {
-                contractId: contract.id,
-                installmentNo: result.installmentNo,
-                paymentId: result.id,
-              },
-            },
-          );
-          this.logger.error(
-            `PaymentReceipt2B UNPOSTABLE — no InstallmentSchedule for contractId=${contract.id} installmentNo=${result.installmentNo} (Sentry-alarmed; manual reconcile needed)`,
-          );
-        }
-      }
-
-      return result;
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
-
-    // Structured log for financial audit / observability
-    this.structuredLogger.log('payment.recorded', {
-      paymentId: updated.id,
+    return this.services().orchestrator.recordPayment(
       contractId,
       installmentNo,
       amount,
-      totalPaid: d(updated.amountPaid).toNumber(),
-      status: updated.status,
       paymentMethod,
-      transactionRef: transactionRef ?? null,
       recordedById,
-    });
-
-    // Financial audit trail
-    await this.auditService.logPaymentEvent({
-      userId: recordedById,
-      contractId,
-      paymentId: updated.id,
-      action: updated.status === 'PAID' ? 'PAYMENT_RECORDED' : 'PAYMENT_PARTIAL',
-      amount,
-      installmentNo,
-      details: { paymentMethod, transactionRef, totalPaid: d(updated.amountPaid).toNumber() },
-    });
-
-    // T16: Write TOLERANCE_APPROVED audit log when a tolerance approver was named.
-    // Uses the generic log() path so the hash-chain is preserved.
-    // The approver is the userId of the log row (who authorised the rounding),
-    // and requestedBy is embedded in newValue for full traceability.
-    if (toleranceApproverId) {
-      const amountDueForLog = d(updated.amountDue ?? 0);
-      const amountReceivedD = d(amount);
-      const diffD = amountReceivedD.sub(amountDueForLog).abs();
-      await this.auditService.log({
-        userId: toleranceApproverId,
-        action: 'TOLERANCE_APPROVED',
-        entity: 'payment',
-        entityId: updated.id,
-        newValue: {
-          diff: diffD.toString(),
-          amountReceived: amountReceivedD.toString(),
-          installmentTotal: amountDueForLog.toString(),
-          requestedBy: recordedById,
-          contractId,
-          installmentNo,
-          timestamp: new Date().toISOString(),
-        },
-      });
-    }
-
-    // I3 note: every effect below this point runs OUTSIDE the serializable
-    // payment tx. All are non-financial / idempotent / explicitly logged on
-    // failure — they MUST NOT roll back the committed payment. Effects:
-    //   - receiptsService.generateReceipt — own tx + sequence lock
-    //   - awardLoyaltyPoints — upsert on unique paymentId, errors logged
-    //   - sendPaymentSuccessLine — LINE push, errors swallowed via .warn
-    //   - mdmAuto.autoUnlockAfterPayment — fire-and-forget Promise
-    //   - checkPromiseAfterPayment — own tx, errors → Sentry only
-    //
-    // Auto-generate e-Receipt for every payment event (TFRS practice:
-    // issue a receipt each time money is received, including partial payments).
-    // `amount` here is the actual delta paid in this transaction, not cumulative.
-    {
-      try {
-        await this.receiptsService.generateReceipt(
-          contractId,
-          updated.id,
-          'INSTALLMENT',
-          amount,
-          installmentNo,
-          paymentMethod,
-          transactionRef || null,
-          recordedById,
-        );
-      } catch (error) {
-        // Receipt generation failure should not block payment, but must be logged
-        this.logger.error(
-          `Failed to generate receipt for payment ${updated.id} (contract: ${contractId}, installment: ${installmentNo})`,
-          error instanceof Error ? error.stack : String(error),
-        );
-      }
-
-      // Award loyalty points for on-time payment (non-blocking)
-      if (capturedCustomerId && capturedDueDate) {
-        await this.awardLoyaltyPoints(
-          capturedCustomerId,
-          contractId,
-          updated.id,
-          amount,
-          updated.paidDate,
-          capturedDueDate,
-        );
-      }
-
-      // LINE push notification (non-blocking)
-      await this.sendPaymentSuccessLine(contractId, installmentNo, amount, paymentMethod);
-    }
-
-    // M3 fix: only run the legacy "all overdue cleared" auto-unlock when there
-    // is no active promise-to-pay cycle. When there is an active promise, the
-    // checkPromiseAfterPayment hook (below) handles the unlock via its own
-    // CYCLE_KEPT path — running both racied two unlock requests per payment.
-    if (this.mdmAuto) {
-      const hasActivePromise =
-        !!this.promiseService && !!(await this.promiseService.findActivePromise(contractId));
-      if (!hasActivePromise) {
-        this.mdmAuto.autoUnlockAfterPayment(contractId).catch((err) =>
-          this.logger.error('MDM auto-unlock failed', err),
-        );
-      }
-    }
-
-    // Promise-to-pay kept-detection — runs AFTER the payment tx commits so
-    // MDM/audit failures cannot roll back the payment row.
-    this.checkPromiseAfterPayment(contractId).catch((err) => {
-      this.logger.error('Promise-kept hook failed (non-blocking)', err);
-      Sentry.captureException(err, { tags: { hook: 'checkPromiseAfterPayment', contractId } });
-    });
-
-    return updated;
+      evidenceUrl,
+      notes,
+      transactionRef,
+      depositAccountCode,
+      toleranceApproverId,
+      paymentCase,
+    );
   }
 
   // ─── Auto-allocate payment to next pending installment ─
@@ -626,312 +230,19 @@ export class PaymentsService {
     notes?: string,
     evidenceUrl?: string,
   ) {
-    if (!amount || amount <= 0) {
-      throw new BadRequestException('จำนวนเงินต้องมากกว่า 0');
-    }
-
-    // F-3-027 part 2/3 + Phase A.1b: resolve FINANCE + SHOP companyIds once
-    // before the tx so the per-installment JE calls below use them.
-    const financeCompanyId = await this.resolveFinanceCompanyId();
-    const shopCompanyId = await this.resolveShopCompanyId();
-
-    // W2 fix: resolve the deposit-account code for the recorder ONCE (mirrors
-    // recordPayment line ~160). Previously the per-installment Payment.update
-    // omitted depositAccountCode, so the downstream JE fell back to '11-1101'
-    // (สุทธินีย์) regardless of who actually collected the money.
-    const resolvedDepositAccountCode = await this.resolveUserDefaultCashAccount(recordedById);
-
-    // Wrap entire allocation in a serializable transaction to prevent double-payment
-    const allocationResult = await this.prisma.$transaction(async (tx) => {
-      const contract = await tx.contract.findUnique({
-        where: { id: contractId },
-        include: { payments: { where: { deletedAt: null }, orderBy: { installmentNo: 'asc' } } },
-      });
-      if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
-      if (!['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status)) {
-        throw new BadRequestException('ไม่สามารถชำระเงินได้ สัญญาต้องอยู่ในสถานะ ACTIVE, OVERDUE หรือ DEFAULT');
-      }
-
-      let remaining = d(amount);
-      const results: { updated: Awaited<ReturnType<typeof tx.payment.update>>; payAmount: Prisma.Decimal }[] = [];
-
-      // Get unpaid payments in order
-      const unpaid = contract.payments.filter((p) => p.status !== 'PAID');
-      if (unpaid.length === 0) throw new BadRequestException('ไม่มีงวดค้างชำระ');
-
-      for (const [idx, payment] of unpaid.entries()) {
-        if (remaining.lte(0)) break;
-
-        // Effective late fee owed on this installment, honouring lateFeeWaived→0.
-        // This is the SAME value the owed-computation below uses, and the SAME
-        // value forwarded to the PaymentReceiptTemplate primitive so the
-        // Cr 42-1103 income leg matches the principal owed. (autoAllocate does
-        // not recompute the cap like recordPayment — it trusts the persisted
-        // payment.lateFee, which the waive flow already zeroes when waived.)
-        const lateFeeOwed = payment.lateFeeWaived ? d(0) : d(payment.lateFee);
-        const amountDue = dRound(dSub(dAdd(payment.amountDue, lateFeeOwed), payment.amountPaid));
-        const payAmount = dRound(Prisma.Decimal.min(remaining, amountDue));
-        const totalPaid = dRound(dAdd(payment.amountPaid, payAmount));
-        const isPaidInFull = dGte(totalPaid, dRound(dAdd(payment.amountDue, lateFeeOwed)));
-
-        // Attach evidenceUrl to the FIRST payment only (represents the transfer slip)
-        const isFirstPayment = idx === 0;
-
-        const updated = await tx.payment.update({
-          where: { id: payment.id },
-          data: {
-            amountPaid: totalPaid,
-            paidDate: isPaidInFull ? new Date() : null,
-            paymentMethod: paymentMethod as PaymentMethod,
-            status: isPaidInFull ? 'PAID' : 'PARTIALLY_PAID',
-            recordedById,
-            notes: notes || payment.notes,
-            depositAccountCode: resolvedDepositAccountCode,
-            ...(isFirstPayment && evidenceUrl ? { evidenceUrl } : {}),
-          },
-        });
-
-        // W3 fix: audit-log each per-installment payment created here.
-        // Previously only recordPayment emitted PAYMENT_RECORDED — the bulk
-        // path skipped audit, so allocated payments showed no audit trail.
-        await tx.auditLog.create({
-          data: {
-            userId: recordedById,
-            action: isPaidInFull ? 'PAYMENT_RECORDED' : 'PAYMENT_PARTIAL',
-            entity: 'payment',
-            entityId: updated.id,
-            newValue: {
-              contractId,
-              installmentNo: updated.installmentNo,
-              amount: payAmount.toString(),
-              paymentMethod,
-              source: 'AUTO_ALLOCATE',
-              depositAccountCode: resolvedDepositAccountCode,
-            },
-          },
-        });
-
-        results.push({ updated, payAmount });
-        remaining = dSub(remaining, payAmount);
-
-        // Check contract completion after each full payment
-        if (isPaidInFull) {
-          await this.checkContractCompletion(contractId, tx);
-        }
-
-        // PR-843/I2 Phase 3 3c — post the receipt via the PaymentReceiptTemplate
-        // primitive (replaces the legacy PaymentReceipt2BTemplate in this path),
-        // on EVERY iteration (partial AND full), not only on full payment.
-        //   - delta = payAmount (the DELTA cleared THIS iteration) — NOT the
-        //     cumulative updated.amountPaid the old 2B passed, which would
-        //     re-clear any prior partial when this iteration completes it.
-        //   - lateFee = lateFeeOwed (honours lateFeeWaived→0). The primitive
-        //     reconstructs prior late-fee cleared, so passing the full owed
-        //     fee on each receipt clears only the uncovered remainder.
-        //   - isFinalReceipt = isPaidInFull (enables the ≤1฿ underpay close on
-        //     the completing receipt; partials stay open).
-        // This now LEDGERS partials (defect 2) inside the same serializable tx,
-        // so a JE failure rolls back the Payment.update — no orphan ledger rows.
-        // No toleranceApproverId is passed here — see the documented Phase-5
-        // 2A-trueup-residual seam (auto paths cannot approve a ≤1฿ underpay).
-        if (payAmount.gt(0)) {
-          // Lazy-gen schedule for legacy (pre-#753) contracts so the 2B receipt
-          // JE can post — prevents an orphan PAID-without-ledger row. Idempotent:
-          // a no-op when rows already exist. Runs inside the same serializable tx.
-          await ensureInstallmentSchedules(tx, contract.id);
-          const instSched = await tx.installmentSchedule.findUnique({
-            where: {
-              contractId_installmentNo: {
-                contractId: contract.id,
-                installmentNo: updated.installmentNo,
-              },
-            },
-            select: { id: true, vat60dayJournalEntryId: true },
-          });
-          if (instSched) {
-            await this.paymentReceiptTemplate.execute(
-              {
-                installmentScheduleId: instSched.id,
-                delta: new Prisma.Decimal(payAmount.toString()),
-                // W2 fix: use the resolvedDepositAccountCode that we just
-                // wrote on Payment.update — previously the 2B read the field
-                // off the in-memory Prisma return value which may not yet
-                // reflect the same value (and read '11-1101' fallback).
-                debitAccountCode: updated.depositAccountCode ?? resolvedDepositAccountCode,
-                lateFee: lateFeeOwed.gt(0) ? lateFeeOwed : undefined,
-                isFinalReceipt: isPaidInFull,
-                paymentId: updated.id,
-                // PR-843/I2 Phase 5b — autoAllocate always clears the FULL owed
-                // amountDue per installment (payAmount = min(remaining, amountDue),
-                // never a deliberate customer underpayment), so any ≤1฿ residual on
-                // the last installment is a system amountDue↔installmentTotal rounding
-                // artifact → auto-approve the 52-1104 close (no approver available on
-                // this path).
-                autoApproveSystemRounding: true,
-              },
-              tx,
-            );
-
-            // VAT-60-day reversal (MANDATORY parity with the old 2B). The legacy
-            // 2B template triggered Vat60dayReversalTemplate internally when the
-            // installment carried a 60-day mandatory VAT JE; the primitive does
-            // not, so trigger it here inside the same tx.
-            if (instSched.vat60dayJournalEntryId) {
-              await this.vat60Reversal.execute(instSched.id, tx);
-            }
-          } else {
-            // Genuine data anomaly even after lazy-gen — alarm, never silently
-            // skip a PAID installment's ledger entry. Payment stays PAID.
-            Sentry.captureException(
-              new Error(
-                'PAID installment has no postable 2B JE (bulk; no InstallmentSchedule after lazy-gen)',
-              ),
-              {
-                level: 'error',
-                tags: { module: 'payments', flow: '2b-receipt-bulk' },
-                extra: {
-                  contractId: contract.id,
-                  installmentNo: updated.installmentNo,
-                  paymentId: updated.id,
-                },
-              },
-            );
-            this.logger.error(
-              `PaymentReceipt2B UNPOSTABLE (bulk) — no InstallmentSchedule for contractId=${contract.id} installmentNo=${updated.installmentNo} (Sentry-alarmed; manual reconcile needed)`,
-            );
-          }
-        }
-      }
-
-      // Auto-generate e-Receipts for every payment event (TFRS practice:
-      // issue a receipt each time money is received, including partial payments).
-      // Receipt amount = the delta applied to this installment in this transaction,
-      // not the cumulative amountPaid.
-      for (const { updated: paid, payAmount } of results) {
-        if (payAmount.lte(0)) continue;
-        try {
-          await this.receiptsService.generateReceipt(
-            contractId,
-            paid.id,
-            'INSTALLMENT',
-            dRound(payAmount).toNumber(),
-            paid.installmentNo,
-            paymentMethod,
-            null,
-            recordedById,
-          );
-        } catch (error) {
-          this.logger.error(
-            `Failed to generate receipt for payment ${paid.id} (contract: ${contractId}, installment: ${paid.installmentNo})`,
-            error instanceof Error ? error.stack : String(error),
-          );
-        }
-      }
-
-      const overpayment = remaining.gt(0) ? dRound(remaining) : d(0);
-      if (overpayment.gt(0)) {
-        // Store overpayment as credit balance on the contract
-        await tx.contract.update({
-          where: { id: contractId },
-          data: {
-            creditBalance: { increment: overpayment },
-          },
-        });
-
-        this.logger.warn(
-          `Overpayment of ${overpayment.toNumber()} THB credited to contract ${contractId}. ` +
-          `Customer paid ${amount} THB, ${d(amount).sub(remaining).toNumber()} THB allocated, ${overpayment.toNumber()} THB stored as credit.`,
-        );
-
-        // Phase A.1b: post overpayment JE (Dr Cash / Cr Customer Credit).
-        // Reference the last allocated payment so the JE is traceable to the
-        // payment event that produced the overpayment. If no installment was
-        // allocated (full overpayment — edge case), fall back to contractId.
-        const referencePaymentId = results.length > 0
-          ? results[results.length - 1].updated.id
-          : contractId;
-        // Phase A.4b: replaced createCustomerCreditOverpaymentJournal (old stub)
-        // with inline createAndPost. JE: Dr Cash (deposit) / Cr 21-5101 Customer Credit Balance.
-        // 21-5101 = เงินเกินของลูกค้า (confirmed in finance-chart-of-accounts.csv).
-        // W2 fix: use the resolvedDepositAccountCode (caller's actual cash
-        // account) instead of the per-row fallback which masked the user's
-        // default and silently re-routed every overpayment JE to 11-1101.
-        const depositCode = results.length > 0
-          ? (results[results.length - 1].updated.depositAccountCode ?? resolvedDepositAccountCode)
-          : resolvedDepositAccountCode;
-        const zero = new Prisma.Decimal(0);
-        await this.journalAutoService.createAndPost(
-          {
-            description: `เงินเกินชำระ — สัญญา ${contract.contractNumber} บันทึกเครดิต ${overpayment.toFixed(2)} บาท`,
-            // FINAL-REVIEW (minor) — the JE `reference` must be a fresh UUID, never
-            // `referencePaymentId`. On an autoAllocate retry the same payment id would
-            // collide with itself on the partial-unique index `journal_entries_ref_unique`.
-            // metadata.paymentId keeps the payment→JE trace (now purely informational —
-            // void/refund no longer reverse this JE after the BLOCKER 2 tag filter).
-            reference: randomUUID(),
-            metadata: {
-              tag: 'overpayment-credit',
-              contractId: contract.id,
-              paymentId: referencePaymentId,
-            },
-            lines: [
-              {
-                accountCode: depositCode,
-                dr: overpayment,
-                cr: zero,
-                description: 'รับเงินเกิน',
-              },
-              {
-                accountCode: '21-5101',
-                dr: zero,
-                cr: overpayment,
-                description: 'เงินเกินของลูกค้า (Customer Credit Balance)',
-              },
-            ],
-          },
-          tx,
-        );
-      }
-
-      return {
-        allocatedPayments: results.map((r) => r.updated),
-        totalAllocated: dSub(amount, remaining).toNumber(),
-        overpayment: overpayment.toNumber(),
-        overpaymentMessage: overpayment.gt(0)
-          ? `มีเงินเกินจำนวน ${overpayment.toNumber().toLocaleString()} บาท บันทึกเป็นยอดเครดิตในสัญญา`
-          : null,
-      };
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
-
-    // Promise-to-pay kept-detection — runs AFTER the payment tx commits.
-    this.checkPromiseAfterPayment(contractId).catch((err) => {
-      this.logger.error('Promise-kept hook failed (non-blocking)', err);
-      Sentry.captureException(err, { tags: { hook: 'checkPromiseAfterPayment', contractId } });
-    });
-
-    return allocationResult;
+    return this.services().orchestrator.autoAllocatePayment(
+      contractId,
+      amount,
+      paymentMethod,
+      recordedById,
+      notes,
+      evidenceUrl,
+    );
   }
 
   // ─── Get payments for a contract ──────────────────────
   async getContractPayments(contractId: string, page = 1, limit = 50) {
-    const contract = await this.prisma.contract.findUnique({ where: { id: contractId } });
-    if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
-
-    const where = { contractId, deletedAt: null };
-    const [data, total] = await Promise.all([
-      this.prisma.payment.findMany({
-        where,
-        orderBy: { installmentNo: 'asc' },
-        skip: (page - 1) * limit,
-        take: limit,
-        include: {
-          recordedBy: { select: { id: true, name: true } },
-        },
-      }),
-      this.prisma.payment.count({ where }),
-    ]);
-
-    return paginatedResponse(data, total, page, limit);
+    return this.services().query.getContractPayments(contractId, page, limit);
   }
 
   // ─── Get all pending payments (for payment queue view) ─
@@ -944,554 +255,37 @@ export class PaymentsService {
     page?: number;
     limit?: number;
   }) {
-    const where: Record<string, unknown> = { deletedAt: null };
-
-    if (filters.status) {
-      where.status = filters.status;
-    } else {
-      where.status = { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] };
-    }
-
-    // Build contract filter object to combine multiple conditions
-    // Only show payments for APPROVED contracts (not DRAFT/CREATING/PENDING_REVIEW)
-    const contractWhere: Record<string, unknown> = {
-      workflowStatus: 'APPROVED',
-      deletedAt: null,
-    };
-
-    if (filters.branchId) {
-      contractWhere.branchId = filters.branchId;
-    }
-
-    if (filters.dunningStage) {
-      contractWhere.dunningStage = filters.dunningStage;
-    }
-
-    if (filters.search) {
-      const search = filters.search.trim();
-      contractWhere.OR = [
-        { contractNumber: { contains: search, mode: 'insensitive' } },
-        { customer: { name: { contains: search, mode: 'insensitive' } } },
-        { customer: { phone: { contains: search } } },
-      ];
-    }
-
-    // Always apply contract filter (at minimum: workflowStatus + deletedAt)
-    where.contract = contractWhere;
-
-    if (filters.date) {
-      const d = new Date(filters.date);
-      where.dueDate = {
-        gte: new Date(d.getFullYear(), d.getMonth(), d.getDate()),
-        lt: new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1),
-      };
-    }
-
-    const page = filters.page || 1;
-    const limit = Math.min(filters.limit || 50, 100);
-
-    const [data, total] = await Promise.all([
-      this.prisma.payment.findMany({
-        where,
-        orderBy: [{ dueDate: 'asc' }, { installmentNo: 'asc' }],
-        skip: (page - 1) * limit,
-        take: limit,
-        include: {
-          contract: {
-            select: {
-              id: true,
-              contractNumber: true,
-              totalMonths: true,
-              monthlyPayment: true,
-              advanceBalance: true,
-              customer: { select: { id: true, name: true, phone: true } },
-              branch: { select: { id: true, name: true } },
-            },
-          },
-        },
-      }),
-      this.prisma.payment.count({ where }),
-    ]);
-
-    return paginatedResponse(data, total, page, limit);
+    return this.services().query.getPendingPayments(filters);
   }
 
   // ─── Daily summary ────────────────────────────────────
   async getDailySummary(date: string, branchId?: string, page = 1, limit = 50) {
-    const d = new Date(date);
-    const startOfDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-    const endOfDay = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
-
-    const where: Record<string, unknown> = {
-      paidDate: { gte: startOfDay, lt: endOfDay },
-      status: 'PAID',
-      deletedAt: null,
-    };
-
-    if (branchId) {
-      where.contract = { branchId };
-    }
-
-    const [payments, total, aggregation] = await Promise.all([
-      this.prisma.payment.findMany({
-        where,
-        include: {
-          contract: {
-            select: {
-              contractNumber: true,
-              customer: { select: { name: true } },
-              branch: { select: { name: true } },
-            },
-          },
-          recordedBy: { select: { name: true } },
-        },
-        orderBy: { paidDate: 'asc' },
-        skip: (page - 1) * limit,
-        take: limit,
-      }),
-      this.prisma.payment.count({ where }),
-      this.prisma.payment.aggregate({
-        where,
-        _sum: { amountPaid: true, lateFee: true },
-      }),
-    ]);
-
-    // Compute byMethod from the current page (for display) — summary totals use aggregate
-    const byMethod: Record<string, number> = {};
-    payments.forEach((p) => {
-      const method = p.paymentMethod || 'UNKNOWN';
-      byMethod[method] = roundBaht(
-        new Prisma.Decimal(byMethod[method] ?? 0)
-          .add(new Prisma.Decimal(p.amountPaid ?? 0))
-          .toNumber(),
-      );
-    });
-
-    // W6 fix: the previous Math.round(Decimal.toNumber()) silently dropped
-    // satang on every daily total — a day collecting 152.50 + 99.17 + ...
-    // was rounded to whole baht for the summary card. Drop the Math.round
-    // and keep two-decimal precision; the UI side already calls .toLocaleString
-    // which formats both ints and floats consistently.
-    const totalAmount = new Prisma.Decimal(aggregation._sum.amountPaid ?? 0)
-      .toDecimalPlaces(2)
-      .toNumber();
-    const totalLateFees = new Prisma.Decimal(aggregation._sum.lateFee ?? 0)
-      .toDecimalPlaces(2)
-      .toNumber();
-    return {
-      date,
-      totalPayments: total,
-      totalAmount,
-      totalLateFees,
-      byMethod,
-      data: payments,
-      total,
-      page,
-      limit,
-    };
-  }
-
-  /** Parse a single CSV line handling quoted fields (e.g., "value with, comma") */
-  private parseCsvLine(line: string): string[] {
-    const result: string[] = [];
-    let current = '';
-    let inQuotes = false;
-
-    for (let i = 0; i < line.length; i++) {
-      const char = line[i];
-      if (char === '"') {
-        if (inQuotes && line[i + 1] === '"') {
-          current += '"'; // escaped quote
-          i++;
-        } else {
-          inQuotes = !inQuotes;
-        }
-      } else if (char === ',' && !inQuotes) {
-        result.push(current.trim());
-        current = '';
-      } else {
-        current += char;
-      }
-    }
-    result.push(current.trim());
-    return result;
-  }
-
-  // ─── Check if contract is fully paid ──────────────────
-  private async checkContractCompletion(
-    contractId: string,
-    tx?: Prisma.TransactionClient,
-  ) {
-    const db: Prisma.TransactionClient | PrismaService = tx ?? this.prisma;
-    const unpaid = await db.payment.count({
-      where: { contractId, status: { not: 'PAID' }, deletedAt: null },
-    });
-
-    if (unpaid !== 0) return;
-
-    // All installments paid → mark contract as COMPLETED
-    const completed = await db.contract.update({
-      where: { id: contractId },
-      data: { status: 'COMPLETED' },
-      select: { productId: true },
-    });
-
-    // Recording lifecycle: STANDARD → CLOSED so storage cron / GCS lifecycle
-    // can transition recordings to a cheaper tier. Only bump rows still on
-    // STANDARD to avoid clobbering LEGAL_HOLD set by an open legal case.
-    await db.callLog.updateMany({
-      where: {
-        contractId,
-        recordingStorageTier: 'STANDARD',
-        recordingUrl: { not: null },
-        deletedAt: null,
-      },
-      data: { recordingStorageTier: 'CLOSED' },
-    });
-
-    // Ownership release: FINANCE → null (customer now owns the device).
-    // Uses the same tx so the ownership flip cannot diverge from the
-    // COMPLETED status. `tx` is a proper Prisma.TransactionClient when
-    // called from recordPayment; when called without tx we fall through
-    // to this.prisma which the helper also accepts.
-    if (completed?.productId) {
-      try {
-        await this.productsService.transferOwnership(
-          completed.productId,
-          null,
-          tx,
-        );
-      } catch (err) {
-        this.logger.error(
-          `Failed to release product ownership for completed contract ${contractId}: ${err instanceof Error ? err.message : err}`,
-        );
-      }
-    }
+    return this.services().query.getDailySummary(date, branchId, page, limit);
   }
 
   // ─── Apply credit balance to next pending installment ─
   async applyCreditBalance(contractId: string, recordedById: string) {
-    // F-3-027 part 2/3 + Phase A.1b: resolve FINANCE + SHOP companyIds once
-    // before the tx so the per-installment JE calls below use them.
-    const financeCompanyId = await this.resolveFinanceCompanyId();
-    const shopCompanyId = await this.resolveShopCompanyId();
-
-    return this.prisma.$transaction(async (tx) => {
-      const contract = await tx.contract.findUnique({
-        where: { id: contractId },
-        include: { payments: { where: { deletedAt: null }, orderBy: { installmentNo: 'asc' } } },
-      });
-      if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
-
-      const credit = d(contract.creditBalance);
-      if (credit.lte(0)) {
-        throw new BadRequestException('ไม่มียอดเครดิตในสัญญานี้');
-      }
-
-      // Find next unpaid installment
-      const unpaid = contract.payments.filter((p) => p.status !== 'PAID');
-      if (unpaid.length === 0) {
-        throw new BadRequestException('ไม่มีงวดค้างชำระ');
-      }
-
-      let remaining = credit;
-      const results: Awaited<ReturnType<typeof tx.payment.update>>[] = [];
-
-      for (const payment of unpaid) {
-        if (remaining.lte(0)) break;
-
-        // Effective late fee owed on this installment, honouring lateFeeWaived→0
-        // (parity with autoAllocate). The waive flow already zeroes payment.lateFee
-        // when it sets lateFeeWaived=true, so this is defence-in-depth — the owed
-        // computation below is numerically unchanged. Forwarded to the primitive
-        // so the Cr 42-1103 income leg matches the principal owed.
-        const lateFeeOwed = payment.lateFeeWaived ? d(0) : d(payment.lateFee);
-        const amountDue = dRound(dSub(dAdd(payment.amountDue, lateFeeOwed), payment.amountPaid));
-        const payAmount = dRound(Prisma.Decimal.min(remaining, amountDue));
-        const totalPaid = dRound(dAdd(payment.amountPaid, payAmount));
-        const isPaidInFull = dGte(totalPaid, dRound(dAdd(payment.amountDue, lateFeeOwed)));
-
-        const updated = await tx.payment.update({
-          where: { id: payment.id },
-          data: {
-            amountPaid: totalPaid,
-            paidDate: isPaidInFull ? new Date() : null,
-            paymentMethod: 'CREDIT_BALANCE',
-            status: isPaidInFull ? 'PAID' : 'PARTIALLY_PAID',
-            recordedById,
-            notes: [payment.notes, `ใช้เครดิต ${payAmount.toNumber().toLocaleString()} บาท`].filter(Boolean).join(' | '),
-          },
-        });
-
-        // W3 fix: previously applyCreditBalance left no audit trail.
-        // Emit CREDIT_APPLIED per installment for forensic visibility.
-        await tx.auditLog.create({
-          data: {
-            userId: recordedById,
-            action: 'CREDIT_APPLIED',
-            entity: 'payment',
-            entityId: updated.id,
-            newValue: {
-              contractId,
-              installmentNo: updated.installmentNo,
-              payAmount: payAmount.toString(),
-              totalPaidAfter: totalPaid.toString(),
-              becamePaidInFull: isPaidInFull,
-            },
-          },
-        });
-
-        results.push(updated);
-        remaining = dSub(remaining, payAmount);
-
-        if (isPaidInFull) {
-          await this.checkContractCompletion(contractId, tx);
-        }
-
-        // PR-843/I2 Phase 3 3d — post the credit-application receipt via the
-        // PaymentReceiptTemplate primitive (replaces the custom inline
-        // Dr 21-5101 / Cr 11-2103 JE that posted ONLY on full payment).
-        //   - debitAccountCode = '21-5101' (customer credit, NOT cash) — the cash
-        //     was already booked when the overpayment was originally received
-        //     (audit finding F-1-004); this only reclasses credit → receivable.
-        //   - delta = payAmount (the DELTA applied THIS allocation). The primitive
-        //     reconstructs prior cleared (incl. legacy 2B partials + prior receipts),
-        //     so a completion of a prior partial clears ONLY the remaining delta —
-        //     same C4 delta-vs-cumulative fix the old code carried, now centralised.
-        //   - lateFee = lateFeeOwed → now splits to Cr 42-1103 (was implicitly
-        //     lumped into the Cr 11-2103 clear). BEHAVIOUR CHANGE flagged for
-        //     accountant sign-off: a credit-funded late fee now books as 42-1103
-        //     income; the Dr 21-5101 total (= payAmount) is unchanged.
-        //   - isFinalReceipt = isPaidInFull (enables the ≤1฿ underpay close on the
-        //     completing receipt; partials stay open).
-        // MOVED OUTSIDE the isPaidInFull guard so PARTIAL credit applications are
-        // now LEDGERED too (was: full-only). Runs inside the same serializable tx
-        // so a JE failure rolls back the Payment.update — no orphan ledger rows.
-        // tag flips 'credit-allocation'→'receipt' (the primitive's tag): no
-        // production consumer keys on 'credit-allocation' (void/refund/data-audit
-        // find this JE via metadata.paymentId), and reconstructPrior now counts a
-        // credit application as prior-cleared for any subsequent receipt.
-        if (payAmount.gt(0)) {
-          // Lazy-gen schedule for legacy (pre-#753) contracts so the credit
-          // receipt JE can post — prevents an orphan applied-credit-without-ledger
-          // row. Idempotent: a no-op when rows already exist. Same serializable tx.
-          await ensureInstallmentSchedules(tx, contract.id);
-          const instSched = await tx.installmentSchedule.findUnique({
-            where: {
-              contractId_installmentNo: {
-                contractId: contract.id,
-                installmentNo: updated.installmentNo,
-              },
-            },
-            select: { id: true, vat60dayJournalEntryId: true },
-          });
-          if (instSched) {
-            await this.paymentReceiptTemplate.execute(
-              {
-                installmentScheduleId: instSched.id,
-                delta: new Prisma.Decimal(payAmount.toString()),
-                debitAccountCode: '21-5101',
-                lateFee: lateFeeOwed.gt(0) ? lateFeeOwed : undefined,
-                isFinalReceipt: isPaidInFull,
-                paymentId: updated.id,
-                // PR-843/I2 Phase 5b — applyCreditBalance always clears the FULL owed
-                // amountDue per installment (payAmount = min(remaining, amountDue)), so
-                // any ≤1฿ residual on the last installment is a system rounding artifact
-                // → auto-approve the 52-1104 close (no approver available on this path).
-                autoApproveSystemRounding: true,
-              },
-              tx,
-            );
-
-            // VAT-60-day reversal (MANDATORY parity with the old 2B/receipt path).
-            // When the installment carries a 60-day mandatory VAT JE, the primitive
-            // does not reverse it; trigger it here inside the same tx.
-            if (instSched.vat60dayJournalEntryId) {
-              await this.vat60Reversal.execute(instSched.id, tx);
-            }
-          } else {
-            // Genuine data anomaly even after lazy-gen — alarm, never silently
-            // skip an applied-credit installment's ledger entry. Payment stays PAID.
-            Sentry.captureException(
-              new Error(
-                'Applied-credit installment has no postable 2B JE (credit; no InstallmentSchedule after lazy-gen)',
-              ),
-              {
-                level: 'error',
-                tags: { module: 'payments', flow: '2b-receipt-credit' },
-                extra: {
-                  contractId: contract.id,
-                  installmentNo: updated.installmentNo,
-                  paymentId: updated.id,
-                },
-              },
-            );
-            this.logger.error(
-              `PaymentReceipt2B UNPOSTABLE (credit) — no InstallmentSchedule for contractId=${contract.id} installmentNo=${updated.installmentNo} (Sentry-alarmed; manual reconcile needed)`,
-            );
-          }
-        }
-      }
-
-      // Update credit balance
-      const usedCredit = dRound(dSub(credit, remaining));
-      await tx.contract.update({
-        where: { id: contractId },
-        data: { creditBalance: remaining },
-      });
-
-      return {
-        allocatedPayments: results,
-        creditUsed: usedCredit.toNumber(),
-        creditRemaining: remaining.toNumber(),
-      };
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    return this.services().orchestrator.applyCreditBalance(contractId, recordedById);
   }
 
   // ─── Get credit balance for a contract ─────────────
   async getCreditBalance(contractId: string) {
-    const contract = await this.prisma.contract.findUnique({
-      where: { id: contractId },
-      select: { id: true, contractNumber: true, creditBalance: true, deletedAt: true },
-    });
-    if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
-    // I1 fix: return as 2-dp string (Decimal precision preserved) instead of
-    // Number(...) which silently degrades to IEEE-754 binary float and can
-    // drift on large balances. UI parses with parseFloat / formatNumber.
-    return {
-      creditBalance: new Prisma.Decimal(contract.creditBalance.toString()).toFixed(2),
-    };
+    return this.services().query.getCreditBalance(contractId);
   }
 
   // ─── Batch CSV Payment Import ────────────────────────
-  /**
-   * Parse CSV and record payments in batch.
-   * Expected CSV format:
-   *   contractNumber,installmentNo,amount,paymentMethod,transactionRef,notes,depositAccountCode
-   * Last column (depositAccountCode) is optional; falls back to body-level
-   * dto.depositAccountCode → user defaultCashAccountCode → 11-1101.
-   * First row is header (skipped).
-   */
   async importPaymentsFromCsv(
     csvText: string,
     defaultPaymentMethod: string,
     recordedById: string,
     bodyDepositAccountCode?: string,
   ): Promise<{ total: number; success: number; errors: { row: number; message: string }[] }> {
-    const lines = csvText.trim().split('\n');
-    if (lines.length < 2) {
-      throw new BadRequestException('CSV ต้องมีอย่างน้อย 1 แถวข้อมูล (ไม่รวม header)');
-    }
-
-    // Skip header row
-    const dataRows = lines.slice(1);
-    const errors: { row: number; message: string }[] = [];
-    let success = 0;
-
-    for (let i = 0; i < dataRows.length; i++) {
-      const row = i + 2; // 1-indexed, +1 for header
-      const line = dataRows[i].trim();
-      if (!line) continue;
-
-      // Parse CSV with proper quoted-field handling (handles commas inside quotes)
-      const cols = this.parseCsvLine(line);
-      if (cols.length < 3) {
-        errors.push({ row, message: 'ข้อมูลไม่ครบ ต้องมีอย่างน้อย contractNumber, installmentNo, amount' });
-        continue;
-      }
-
-      const [
-        contractNumber,
-        installmentNoStr,
-        amountStr,
-        paymentMethod,
-        transactionRef,
-        notes,
-        rowDepositAccountCode,
-      ] = cols;
-      const installmentNo = parseInt(installmentNoStr, 10);
-      const amount = parseFloat(amountStr);
-
-      if (!contractNumber || isNaN(installmentNo) || isNaN(amount) || amount <= 0) {
-        errors.push({ row, message: `ข้อมูลไม่ถูกต้อง: contractNumber=${contractNumber}, installmentNo=${installmentNoStr}, amount=${amountStr}` });
-        continue;
-      }
-
-      // Per-row deposit account: row column > body default > recordPayment fallback
-      const depositCode = rowDepositAccountCode?.trim() || bodyDepositAccountCode;
-      if (depositCode && !CASH_ACCOUNT_CODES.includes(depositCode as CashAccountCode)) {
-        errors.push({
-          row,
-          message: `บัญชีรับเงินไม่ถูกต้อง: ${depositCode} (รหัสที่อนุญาต: ${CASH_ACCOUNT_CODES.join(', ')})`,
-        });
-        continue;
-      }
-
-      try {
-        // Lookup contract by number
-        const contract = await this.prisma.contract.findFirst({
-          where: { contractNumber, deletedAt: null },
-          select: { id: true },
-        });
-        if (!contract) {
-          errors.push({ row, message: `ไม่พบสัญญา ${contractNumber}` });
-          continue;
-        }
-
-        // C6 fix: CSV idempotency. The previous synthetic
-        // `CSV-${Date.now()}-${row}-${Math.random()}` was unique every run, so
-        // re-importing the same CSV (e.g. operator retry after partial failure)
-        // created duplicate Payments + duplicate JEs. Replace with a
-        // content-stable SHA-256 hash of the row's business identity:
-        //   contractNumber | installmentNo | amount | paidDate (date-only).
-        // Re-importing the same row will compute the same ref, and the
-        // existing idempotency check in recordPayment (notes contains
-        // `ref:<value>`) will reject it as a duplicate.
-        //
-        // Round 2 C6 fix: date component MUST be Asia/Bangkok local date.
-        // `new Date().toISOString().slice(0, 10)` returns UTC, so a CSV
-        // imported at 01:00 BKK (= 18:00 UTC previous day) hashes as
-        // yesterday — losing idempotency for ~7 hours every night when the
-        // operator retries spanning UTC midnight. en-CA `Intl.DateTimeFormat`
-        // outputs `YYYY-MM-DD` in the chosen timeZone (matches getBkkYyyymm
-        // pattern from PR #840).
-        const bkkDate = new Intl.DateTimeFormat('en-CA', {
-          timeZone: 'Asia/Bangkok',
-        }).format(new Date());
-        const stableRef =
-          transactionRef ||
-          `csv:${createHash('sha256')
-            .update(
-              [
-                contractNumber,
-                String(installmentNo),
-                amount.toFixed(2),
-                bkkDate,
-              ].join('|'),
-            )
-            .digest('hex')
-            .slice(0, 32)}`;
-
-        await this.recordPayment(
-          contract.id,
-          installmentNo,
-          amount,
-          paymentMethod || defaultPaymentMethod,
-          recordedById,
-          undefined, // evidenceUrl
-          notes || `CSV import row ${row}`,
-          stableRef,
-          depositCode, // resolves to user default → 11-1101 if undefined
-        );
-        success++;
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Unknown error';
-        errors.push({ row, message });
-      }
-    }
-
-    this.logger.log(`CSV payment import: ${success} success, ${errors.length} errors out of ${dataRows.length} rows`);
-    return { total: dataRows.length, success, errors };
+    return this.services().csvImport.importPaymentsFromCsv(
+      csvText,
+      defaultPaymentMethod,
+      recordedById,
+      bodyDepositAccountCode,
+    );
   }
 
   // ─── Waive late fee (wrapped in transaction to prevent race condition) ─
@@ -1502,134 +296,7 @@ export class PaymentsService {
     approverId: string,
     context?: { ipAddress?: string | null; userAgent?: string | null },
   ) {
-    // T1-C2 — 4-eyes (Segregation of Duties): requester ≠ approver, and
-    // approver must be a manager-tier user. Waiver bypass previously let a
-    // single accountant self-approve fee writedowns, which our phone-shop
-    // margin (~10%) cannot absorb at volume.
-    if (!approverId) {
-      throw new BadRequestException('ต้องระบุผู้อนุมัติ (approverId)');
-    }
-    if (approverId === userId) {
-      throw new ForbiddenException(
-        'ผู้ขอยกเว้นและผู้อนุมัติต้องเป็นคนละคน (Segregation of Duties)',
-      );
-    }
-    const approver = await this.prisma.user.findUnique({
-      where: { id: approverId },
-      select: { id: true, role: true, isActive: true, deletedAt: true },
-    });
-    if (!approver || !approver.isActive || approver.deletedAt) {
-      throw new NotFoundException('ไม่พบผู้อนุมัติ หรือผู้อนุมัติถูกปิดการใช้งาน');
-    }
-    const approverAllowed = ['OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER'];
-    if (!approverAllowed.includes(approver.role)) {
-      throw new ForbiddenException(
-        `ผู้อนุมัติต้องมีสิทธิ์ OWNER / FINANCE_MANAGER / BRANCH_MANAGER (role ปัจจุบัน: ${approver.role})`,
-      );
-    }
-
-    const result = await this.prisma.$transaction(async (tx) => {
-      const payment = await tx.payment.findUnique({ where: { id: paymentId } });
-      if (!payment || payment.deletedAt) throw new NotFoundException('ไม่พบรายการชำระ');
-      if (payment.lateFeeWaived) throw new BadRequestException('รายการนี้ยกเว้นค่าปรับแล้ว');
-      // I5 fix: read lateFee / amountDue / amountPaid through Prisma.Decimal
-      // so comparisons + log values cannot drift on large balances. The
-      // comparison + log are the only consumers; we keep `originalLateFee`
-      // as a number for the legacy unusual-waiver Sentry check below.
-      const lateFeeDec = new Prisma.Decimal(payment.lateFee.toString());
-      if (lateFeeDec.lte(0)) throw new BadRequestException('รายการนี้ไม่มีค่าปรับ');
-
-      const originalLateFee = lateFeeDec.toDecimalPlaces(2).toNumber();
-      const notes = [payment.notes, `ยกเว้นค่าปรับ ${originalLateFee.toLocaleString()} บาท — ${reason}`].filter(Boolean).join(' | ');
-
-      // Check if payment becomes fully paid after waiving late fee
-      const totalOwedDec = new Prisma.Decimal(payment.amountDue.toString()); // without late fee
-      const amountPaidDec = new Prisma.Decimal(payment.amountPaid.toString());
-      const isNowFullyPaid = amountPaidDec.gte(totalOwedDec);
-
-      const updated = await tx.payment.update({
-        where: { id: paymentId },
-        data: {
-          lateFee: 0,
-          lateFeeWaived: true,
-          waivedById: userId,
-          waivedAt: new Date(),
-          waivedReason: reason,
-          waivedApprovedById: approverId,
-          waivedAmount: originalLateFee,
-          notes,
-          ...(isNowFullyPaid && payment.status !== 'PAID' ? { status: 'PAID', paidDate: new Date() } : {}),
-        },
-      });
-
-      // T3-C4: immutable approval evidence. Columns on Payment (waivedApprovedById,
-      // waivedAt) are convenient for queries, but we ALSO persist a separate
-      // FeeWaiverApproval row so that any future mutation of the Payment
-      // columns leaves the approval audit trail intact. IP + UA help detect
-      // "someone else logged in as the manager" attacks.
-      await tx.feeWaiverApproval.create({
-        data: {
-          waiverPaymentId: paymentId,
-          approverId,
-          ipAddress: context?.ipAddress ?? null,
-          userAgent: context?.userAgent ?? null,
-        },
-      });
-
-      // Check contract completion inside transaction
-      if (isNowFullyPaid && payment.status !== 'PAID') {
-        await this.checkContractCompletion(payment.contractId, tx);
-      }
-
-      return { updated, originalLateFee, isNowFullyPaid, contractId: payment.contractId, installmentNo: payment.installmentNo };
-    });
-
-    // Structured log for late fee waiver observability
-    this.structuredLogger.log('payment.lateFeeWaived', {
-      paymentId,
-      contractId: result.contractId,
-      installmentNo: result.installmentNo,
-      originalLateFee: result.originalLateFee,
-      becameFullyPaid: result.isNowFullyPaid,
-      reason,
-      userId,
-      approverId,
-    });
-
-    // T1-C9 — unusual-waiver alarm. Most waivers are a few hundred baht
-    // (goodwill, one-off late days). Anything above 5,000 THB is worth a
-    // human eyeball on Sentry so finance can spot pattern abuse early.
-    if (result.originalLateFee > 5000) {
-      Sentry.captureMessage('Large late-fee waiver', {
-        level: 'warning',
-        tags: { kind: 'finance' },
-        extra: {
-          waivedBy: userId,
-          contractId: result.contractId,
-          amount: result.originalLateFee,
-          paymentId,
-          approverId,
-        },
-      });
-    }
-
-    // Financial audit trail (outside transaction — audit failure shouldn't roll back waiver)
-    await this.auditService.logPaymentEvent({
-      userId,
-      contractId: result.contractId,
-      paymentId,
-      action: 'LATE_FEE_WAIVED',
-      amount: result.originalLateFee,
-      installmentNo: result.installmentNo,
-      details: {
-        reason,
-        approverId,
-        wasFeeAmount: result.originalLateFee,
-        becameFullyPaid: result.isNowFullyPaid,
-      },
-    });
-
-    return { ...result.updated, originalLateFee: result.originalLateFee };
+    return this.services().waiver.waiveLateFee(paymentId, reason, userId, approverId, context);
   }
 
   // ─── T3-C5: Preventive immutability guard ───────────────
@@ -1682,233 +349,21 @@ export class PaymentsService {
     throw new ForbiddenException(violationMsg);
   }
 
-  // ─── Award loyalty points for on-time payment ──────────
-  private async awardLoyaltyPoints(
-    customerId: string,
-    contractId: string,
-    paymentId: string,
-    amount: number,
-    paidDate: Date | null,
-    dueDate: Date,
-  ) {
-    // Only award for on-time payments (ชำระตรงเวลาหรือก่อนกำหนด)
-    if (!paidDate || paidDate > dueDate) return;
-
-    const points = Math.floor(amount / 100); // 1 point per 100 baht
-    if (points <= 0) return;
-
-    try {
-      // Idempotent upsert: paymentId is unique — safe to call multiple times
-      await this.prisma.loyaltyPoint.upsert({
-        where: { paymentId },
-        create: { customerId, paymentId, contractId, points, reason: 'ON_TIME_PAYMENT' },
-        update: {}, // Already awarded — do nothing
-      });
-    } catch (error) {
-      this.logger.error(
-        `Failed to award loyalty points for payment ${paymentId}`,
-        error instanceof Error ? error.stack : String(error),
-      );
-    }
-  }
-
-  /**
-   * Send LINE push notification after successful payment.
-   * Sends Flex Message with Quick Reply (afterPayment preset).
-   * Respects customer notification preferences.
-   */
-  private async sendPaymentSuccessLine(
-    contractId: string,
-    installmentNo: number,
-    amount: number,
-    paymentMethod: string,
-  ): Promise<void> {
-    try {
-      const contract = await this.prisma.contract.findUnique({
-        where: { id: contractId },
-        select: {
-          contractNumber: true,
-          totalMonths: true,
-          customer: { select: { lineIdFinance: true, name: true, notifReceipt: true } },
-        },
-      });
-      if (!contract?.customer?.lineIdFinance || !contract.customer.notifReceipt) return;
-
-      // I6 fix: include deletedAt: null so soft-deleted payments don't
-      // inflate the "X / N" counter shown in the LINE receipt.
-      const paidCount = await this.prisma.payment.count({
-        where: { contractId, status: 'PAID', deletedAt: null },
-      });
-      const remaining = contract.totalMonths - paidCount;
-
-      const flex = this.flexTemplates.paymentReceipt({
-        contractNumber: contract.contractNumber,
-        installmentNo,
-        totalInstallments: contract.totalMonths,
-        amount,
-        date: formatDateShort(new Date()),
-      });
-
-      // Attach Quick Reply so customer can quickly check balance, receipt, or contract
-      flex.quickReply = { items: this.quickReplyService.afterPayment() };
-
-      await this.lineOaService.sendFlexMessage(contract.customer.lineIdFinance, flex, 'line-finance');
-
-      this.logger.log(
-        `[LINE] Payment success flex sent for contract ${contract.contractNumber} ` +
-          `installment ${installmentNo}/${contract.totalMonths} remaining=${Math.max(0, remaining)}`,
-      );
-    } catch (err) {
-      this.logger.warn(`LINE push failed for contract ${contractId}: ${err instanceof Error ? err.message : err}`);
-    }
-  }
-
-  // ─── Promise-to-pay kept-detection ────────────────────
-  // Called non-blocking after every payment tx commits. Checks whether any
-  // active promise-to-pay cycle is fully satisfied and, if so, marks it kept
-  // and auto-unlocks the MDM device.
-  private async checkPromiseAfterPayment(contractId: string): Promise<void> {
-    if (!this.promiseService || !this.mdmLockService) return;
-    const active = await this.promiseService.findActivePromise(contractId);
-    if (!active) return;
-
-    const now = new Date();
-    const systemUserId = await this.getSystemUserId();
-
-    // H1 + M4 fix: wrap slot resolution + keptPromiseCount increment in a single
-    // Serializable transaction so partial failure can't leave slots updated but
-    // counter unchanged, and concurrent payments can't double-increment the counter.
-    // The callLog.updateMany guard ensures only one concurrent caller promotes the
-    // promise to "kept" — the loser's transaction sees keptAt already set and bails out.
-    const promoted = await this.prisma.$transaction(
-      async (tx) => {
-        let allKept = true;
-        // N2 fix: targets are cumulative through each slot, and each slot's
-        // paidAmount is its own contribution (settlementAmount), not the
-        // contract-wide sum. Previously we compared cumulative paid against the
-        // per-slot amount alone — slot N would get falsely satisfied as soon as
-        // the customer overpaid slot N-1.
-        let cumulativeTarget = 0;
-
-        for (const slot of active.slots) {
-          const slotAmount = (slot.settlementAmount as Prisma.Decimal).toNumber();
-          cumulativeTarget += slotAmount;
-
-          if (slot.keptAt) continue;
-          if (slot.brokenAt) {
-            allKept = false;
-            continue;
-          }
-
-          const windowEnd = new Date(slot.settlementDate.getTime() + 1 * 86400 * 1000);
-          const cycleStart = active.cycleStartedAt ?? active.createdAt;
-          const sum = await tx.payment.aggregate({
-            where: {
-              contractId,
-              deletedAt: null,
-              OR: [
-                { paidAt: { not: null, gte: cycleStart, lte: windowEnd } },
-                { paidDate: { not: null, gte: cycleStart, lte: windowEnd } },
-              ],
-            },
-            _sum: { amountPaid: true },
-          });
-          const paid = (sum._sum.amountPaid as Prisma.Decimal | null)?.toNumber() ?? 0;
-
-          if (paid >= cumulativeTarget) {
-            await tx.promiseSlot.update({
-              where: { id: slot.id },
-              data: {
-                keptAt: now,
-                paidAmount: slotAmount as unknown as Prisma.Decimal,
-              },
-            });
-          } else {
-            allKept = false;
-          }
-        }
-
-        if (!allKept) return false;
-
-        // Guarded promotion: only the first caller flips keptAt.
-        const guard = await tx.callLog.updateMany({
-          where: { id: active.id, keptAt: null },
-          data: { keptAt: now },
-        });
-        if (guard.count === 0) return false;
-
-        await tx.contract.update({
-          where: { id: contractId },
-          data: { keptPromiseCount: { increment: 1 } },
-        });
-        await tx.auditLog.create({
-          data: {
-            action: 'KEPT_PROMISE',
-            entity: 'contract',
-            entityId: contractId,
-            userId: systemUserId,
-            newValue: { callLogId: active.id, source: 'PAYMENT_HOOK' },
-          },
-        });
-        return true;
-      },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
-    );
-
-    if (promoted) {
-      // External MDM call runs only after tx commits — avoids orphan unlock on rollback.
-      await this.mdmLockService!.autoUnlock(contractId, 'CYCLE_KEPT', systemUserId);
-    }
-  }
-
-  private async getSystemUserId(): Promise<string> {
-    const user = await this.prisma.user.findFirst({
-      where: { isSystemUser: true },
-      select: { id: true },
-    });
-    if (!user) throw new Error('System user not found');
-    return user.id;
-  }
-
   // ─── Partial-payment QR (cashier sends QR to customer's LINE) ─────────────
-  // Customer pays via PaySolutions PromptPay → webhook auto-records as PARTIAL.
-  // The active link powers the "QR ส่งแล้ว" badge in the payments table.
 
   /** Get the currently-active (un-expired) partial-payment QR link for a payment. */
   async getActivePartialQr(paymentId: string) {
-    return this.prisma.partialPaymentLink.findFirst({
-      where: {
-        paymentId,
-        status: 'ACTIVE',
-        expiresAt: { gt: new Date() },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    return this.services().query.getActivePartialQr(paymentId);
   }
 
   /** Cancel the currently-active partial-payment QR link, if one exists. */
   async cancelActivePartialQr(paymentId: string) {
-    const link = await this.prisma.partialPaymentLink.findFirst({
-      where: { paymentId, status: 'ACTIVE' },
-      orderBy: { createdAt: 'desc' },
-    });
-    if (!link) throw new NotFoundException('ไม่มี QR ที่กำลังใช้งานอยู่');
-    return this.prisma.partialPaymentLink.update({
-      where: { id: link.id },
-      data: { status: 'CANCELLED', cancelledAt: new Date() },
-    });
+    return this.services().query.cancelActivePartialQr(paymentId);
   }
 
   /**
    * Preview JE lines for a payment without persisting anything.
    * Used by the RecordPaymentWizard frontend to show "Journal Auto" live.
-   *
-   * Logic mirrors PaymentReceipt2BTemplate but read-only.
-   * - If installment NOT yet accrued (accrualJournalEntryId is null):
-   *     builds COMBINED 2A+2B+lateFee lines (consolidated posting)
-   * - If installment already accrued (cron ran):
-   *     builds 2B+lateFee only
-   * - Late fee → Cr 42-1103 ค่าปรับชำระล่าช้า (same JE)
    */
   async previewJournal(input: {
     contractId: string;
@@ -1919,296 +374,70 @@ export class PaymentsService {
     case?: string;
     daysToShift?: number;
     splitMode?: string;
-  }): Promise<{
-    lines: Array<{ accountCode: string; accountName: string; debit: string; credit: string; description: string }>;
-    totalDebit: string;
-    totalCredit: string;
-    isBalanced: boolean;
-    rescheduleFeeDisplay?: string;
-    /**
-     * 2B_ONLY: 2A daily accrual cron has already posted for this installment.
-     *   JE clears 11-2103 only.
-     * CONSOLIDATED_PAYING_AHEAD: dueDate is in the future — customer is paying
-     *   before due. 2A has not yet fired; preview folds 2A+2B into one JE so
-     *   the books balance without recognizing revenue early in two passes.
-     * CONSOLIDATED_BACKFILL: dueDate is past or today but 2A is missing —
-     *   anomaly the daily cron will catch up on the next 00:01 BKK run.
-     */
-    accrualMode?: '2B_ONLY' | 'CONSOLIDATED_PAYING_AHEAD' | 'CONSOLIDATED_BACKFILL';
-    dueDate?: string;
-  }> {
-    const inst = await this.prisma.installmentSchedule.findUnique({
-      where: { contractId_installmentNo: { contractId: input.contractId, installmentNo: input.installmentNo } },
-      include: { contract: true },
-    });
-    if (!inst) throw new NotFoundException('ไม่พบงวดชำระ');
+  }) {
+    return this.services().preview.previewJournal(input);
+  }
 
-    const c = inst.contract;
-    const zero = new Prisma.Decimal(0);
+  // ─── Post-commit hooks (run OUTSIDE the money tx — I3 ordering) ────────────
+  // Kept as facade methods so the existing specs that spy/call them on the
+  // facade (and read service['promiseService'] / service['mdmLockService'])
+  // stay green; they delegate to PaymentPostCommitHooks.
 
-    // Per-installment calculations.
-    // Use contract.monthlyPayment as source of truth (set by sales workflow,
-    // matches what user sees). Derive breakdown so JE always balances.
-    const total = new Prisma.Decimal(c.totalMonths);
-    const interest = new Prisma.Decimal(c.interestTotal?.toString() ?? '0');
-    const monthly = new Prisma.Decimal((c.monthlyPayment ?? 0).toString());
+  private async awardLoyaltyPoints(
+    customerId: string,
+    contractId: string,
+    paymentId: string,
+    amount: number,
+    paidDate: Date | null,
+    dueDate: Date,
+  ) {
+    return this.services().postCommit.awardLoyaltyPoints(
+      customerId,
+      contractId,
+      paymentId,
+      amount,
+      paidDate,
+      dueDate,
+    );
+  }
 
-    // VAT preference: explicit contract.vatAmount → /total ; else 7% on (monthlyPayment*total) excl VAT
-    const explicitVat = c.vatAmount != null ? new Prisma.Decimal(c.vatAmount.toString()) : null;
-    const vatPerInst = explicitVat != null
-      ? explicitVat.div(total).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP)
-      : monthly.div('1.07').times('0.07').toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+  private async sendPaymentSuccessLine(
+    contractId: string,
+    installmentNo: number,
+    amount: number,
+    paymentMethod: string,
+  ): Promise<void> {
+    return this.services().postCommit.sendPaymentSuccessLine(
+      contractId,
+      installmentNo,
+      amount,
+      paymentMethod,
+    );
+  }
 
-    // installmentExclVat = monthly - vat (so installmentExclVat + vatPerInst === monthly)
-    const installmentExclVat = monthly.minus(vatPerInst);
-    const interestPerInst = interest.div(total).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
-    const installmentTotal = monthly;
-
-    // Round 2 I3 audit: input.lateFee arrives as `number` from the DTO.
-    // `.toString()` is defensive against Decimal constructor surprises on
-    // large numbers — only this one site consumes input.lateFee raw, and
-    // it's properly wrapped. Other code paths (record/preview controllers,
-    // recordPayment service flow) re-read payment.lateFee from the DB which
-    // is already Prisma.Decimal. No further coercion sites identified.
-    const lateFeeAmount = input.lateFee ? new Prisma.Decimal(input.lateFee.toString()) : zero;
-
-    // Build raw JE lines (code, dr, cr, description)
-    const rawLines: { code: string; dr: Prisma.Decimal; cr: Prisma.Decimal; description: string }[] = [];
-
-    // PARTIAL and RESCHEDULE both emit Cr 11-2103 directly — they assume 2A
-    // has already accrued the installment into 11-2103. If 2A is missing
-    // (paying ahead, cron lag), the JE would credit a zero-balance account.
-    // Block here with a clear Thai message so the wizard can prompt user to
-    // wait for the next 2A tick instead of silently producing a malformed JE.
-    if (
-      !inst.accrualJournalEntryId &&
-      (input.case === 'PARTIAL' || input.case === 'RESCHEDULE')
-    ) {
-      throw new BadRequestException(
-        `งวดนี้ยังไม่ได้ทำ accrual (2A) — ไม่สามารถใช้ ${input.case === 'PARTIAL' ? 'จ่ายบางส่วน' : 'เลื่อนงวด'} ได้ก่อน accrual กรุณารอรอบ 00:01 น. หรือใช้รับชำระแบบปกติ`,
-      );
-    }
-
-    // ── RESCHEDULE case (JP6 template preview) ──────────────────────────────
-    if (input.case === 'RESCHEDULE') {
-      const days = input.daysToShift ?? 0;
-      const monthlyPayment = new Prisma.Decimal(c.monthlyPayment.toString());
-      // Reschedule fee = installmentTotal / 30 × daysToShift (ROUND_DOWN per spec)
-      const rescheduleFee = days > 0
-        ? monthlyPayment.div(30).times(days).toDecimalPlaces(2, Prisma.Decimal.ROUND_DOWN)
-        : zero;
-
-      const isSplit = input.splitMode === 'SPLIT';
-      const amountReceived = new Prisma.Decimal(input.amountReceived.toString());
-
-      if (isSplit) {
-        // 6a — fee advance only (step 1):
-        //   Dr depositAccountCode  feeAmount
-        //     Cr 21-1103           feeAmount (เงินรับล่วงหน้างวดสุดท้าย)
-        const feeAmount = rescheduleFee.gt(zero) ? rescheduleFee : amountReceived;
-        rawLines.push({ code: input.depositAccountCode, dr: feeAmount, cr: zero, description: 'รับค่าปรับดิวล่วงหน้า (6a)' });
-        rawLines.push({ code: '21-1103', dr: zero, cr: feeAmount, description: 'เงินรับล่วงหน้างวดสุดท้าย' });
-      } else {
-        // 6b — bundled (installment + fee in one transaction):
-        //   Dr depositAccountCode  installmentAmount + feeAmount
-        //     Cr 11-2103           installmentAmount
-        //     Cr 21-1103           feeAmount
-        const bundledTotal = installmentTotal.plus(rescheduleFee);
-        rawLines.push({ code: input.depositAccountCode, dr: bundledTotal, cr: zero, description: 'รับชำระงวด + ค่าปรับดิว (6b)' });
-        rawLines.push({ code: '11-2103', dr: zero, cr: installmentTotal, description: 'ล้างลูกหนี้ค้างชำระงวด' });
-        rawLines.push({ code: '21-1103', dr: zero, cr: rescheduleFee, description: 'เงินรับล่วงหน้างวดสุดท้าย' });
-      }
-
-      // Resolve CoA names
-      const codes = [...new Set(rawLines.map((l) => l.code))];
-      const coaRows = await this.prisma.chartOfAccount.findMany({
-        where: { code: { in: codes } },
-        select: { code: true, name: true },
-      });
-      const nameMap = new Map(coaRows.map((r) => [r.code, r.name]));
-
-      let totalDebit = zero;
-      let totalCredit = zero;
-      for (const l of rawLines) {
-        totalDebit = totalDebit.plus(l.dr);
-        totalCredit = totalCredit.plus(l.cr);
-      }
-      const isBalanced = totalDebit.toFixed(2) === totalCredit.toFixed(2);
-
-      return {
-        lines: rawLines.map((l) => ({
-          accountCode: l.code,
-          accountName: nameMap.get(l.code) ?? l.code,
-          debit: l.dr.toFixed(2),
-          credit: l.cr.toFixed(2),
-          description: l.description,
-        })),
-        totalDebit: totalDebit.toFixed(2),
-        totalCredit: totalCredit.toFixed(2),
-        isBalanced,
-        rescheduleFeeDisplay: rescheduleFee.toFixed(2),
-      };
-    }
-
-    // ── PARTIAL case: minimal partial-clear preview ─────────────────────────
-    if (input.case === 'PARTIAL') {
-      const amountReceived = new Prisma.Decimal(input.amountReceived.toString());
-      rawLines.push({ code: input.depositAccountCode, dr: amountReceived, cr: zero, description: 'รับชำระบางส่วน' });
-      rawLines.push({ code: '11-2103', dr: zero, cr: amountReceived, description: 'ล้างลูกหนี้ค้างชำระ (บางส่วน)' });
-
-      const codes = [...new Set(rawLines.map((l) => l.code))];
-      const coaRows = await this.prisma.chartOfAccount.findMany({
-        where: { code: { in: codes } },
-        select: { code: true, name: true },
-      });
-      const nameMap = new Map(coaRows.map((r) => [r.code, r.name]));
-      let totalDebit = zero;
-      let totalCredit = zero;
-      for (const l of rawLines) {
-        totalDebit = totalDebit.plus(l.dr);
-        totalCredit = totalCredit.plus(l.cr);
-      }
-      return {
-        lines: rawLines.map((l) => ({
-          accountCode: l.code,
-          accountName: nameMap.get(l.code) ?? l.code,
-          debit: l.dr.toFixed(2),
-          credit: l.cr.toFixed(2),
-          description: l.description,
-        })),
-        totalDebit: totalDebit.toFixed(2),
-        totalCredit: totalCredit.toFixed(2),
-        isBalanced: totalDebit.toFixed(2) === totalCredit.toFixed(2),
-      };
-    }
-
-    // ── Normal / Overpay / Underpay / EarlyPayoff (existing logic continues) ─
-    const amountReceived = new Prisma.Decimal(input.amountReceived.toString());
-    const isConsolidated = !inst.accrualJournalEntryId; // 2A not yet run
-
-    // Accrual-mode classification for UI explanation chip:
-    //   PAYING_AHEAD   — dueDate is in the future, customer paying early
-    //   BACKFILL       — dueDate has passed but 2A still missing (cron lag)
-    //   2B_ONLY        — 2A already posted, JE only clears 11-2103
-    let accrualMode: '2B_ONLY' | 'CONSOLIDATED_PAYING_AHEAD' | 'CONSOLIDATED_BACKFILL';
-    if (!isConsolidated) {
-      accrualMode = '2B_ONLY';
-    } else {
-      const todayMidnight = new Date();
-      todayMidnight.setHours(0, 0, 0, 0);
-      accrualMode = inst.dueDate.getTime() > todayMidnight.getTime()
-        ? 'CONSOLIDATED_PAYING_AHEAD'
-        : 'CONSOLIDATED_BACKFILL';
-    }
-
-    // Dr: cash/bank received (installment total + late fee)
-    const totalReceived = amountReceived.plus(lateFeeAmount);
-
-    // ── Advance balance split (mirror recordPayment §Task 4) ────────────────
-    // The wizard preview must match what the save actually does — including 21-1103 lines.
-    const advanceBalance = new Prisma.Decimal((c.advanceBalance ?? 0).toString());
-    const remaining = installmentTotal.plus(lateFeeAmount); // gross owed (no prevPaid in preview)
-    const overage = amountReceived.plus(lateFeeAmount).minus(remaining);
-    let previewAdvCredit = zero;
-    let previewAdvConsume = zero;
-
-    if (overage.gt(new Prisma.Decimal('1.00')) && input.case === 'OVERPAY_ADVANCE') {
-      previewAdvCredit = overage;
-    } else if (
-      amountReceived.plus(lateFeeAmount).lt(remaining) &&
-      advanceBalance.gt(zero) &&
-      (input.case === undefined || input.case === 'NORMAL')
-    ) {
-      const gap = remaining.minus(amountReceived.plus(lateFeeAmount));
-      previewAdvConsume = Prisma.Decimal.min(advanceBalance, gap);
-    }
-
-    // 1. Cash in (skip when 0 — full advance cover edge)
-    if (totalReceived.gt(zero)) {
-      rawLines.push({ code: input.depositAccountCode, dr: totalReceived, cr: zero, description: 'รับชำระ' });
-    }
-
-    // 2. Consume existing advance
-    if (previewAdvConsume.gt(zero)) {
-      rawLines.push({ code: '21-1103', dr: previewAdvConsume, cr: zero, description: 'หักเงินรับล่วงหน้า' });
-    }
-
-    if (isConsolidated) {
-      // CONSOLIDATED 2A+2B: Dr 21-2102 + 11-2106 to clear accrual side
-      rawLines.push({ code: '21-2102', dr: vatPerInst, cr: zero, description: 'ล้าง VAT รอเรียกเก็บ' });
-      rawLines.push({ code: '11-2106', dr: interestPerInst, cr: zero, description: 'ล้าง Unearned รายได้รอตัดบัญชี' });
-      // Cr: clear gross receivable, VAT asset, and recognize income
-      rawLines.push({ code: '11-2101', dr: zero, cr: installmentExclVat, description: 'ลูกหนี้ Gross (ลด)' });
-      rawLines.push({ code: '11-2105', dr: zero, cr: vatPerInst, description: 'VAT รอเรียกเก็บ (ล้าง)' });
-      rawLines.push({ code: '21-2101', dr: zero, cr: vatPerInst, description: 'ภาษีขาย ภ.พ.30' });
-      rawLines.push({ code: '41-1101', dr: zero, cr: interestPerInst, description: 'รายได้ดอกเบี้ย (รับรู้)' });
-    } else {
-      // 2B ONLY: installment already accrued, just clear the accrued receivable
-      rawLines.push({ code: '11-2103', dr: zero, cr: installmentTotal, description: 'ล้างลูกหนี้ค้างชำระ' });
-    }
-
-    // Late fee: Cr 42-1103 if > 0
-    if (lateFeeAmount.gt(zero)) {
-      rawLines.push({ code: '42-1103', dr: zero, cr: lateFeeAmount, description: 'ค่าปรับชำระล่าช้า' });
-    }
-
-    // 5. Park new advance (overpay → 21-1103)
-    if (previewAdvCredit.gt(zero)) {
-      rawLines.push({ code: '21-1103', dr: zero, cr: previewAdvCredit, description: 'เงินรับล่วงหน้า' });
-    }
-
-    // 6. Rounding adjustment (≤1฿ tolerance) — must include for balanced preview
-    // This mirrors PaymentReceipt2BTemplate's rounding logic.
-    // Skipped for OVERPAY_ADVANCE / advance consume because those clear the diff via 21-1103.
-    if (previewAdvCredit.eq(zero) && previewAdvConsume.eq(zero)) {
-      const roundingDiff = amountReceived.minus(installmentTotal);
-      const tolerance = new Prisma.Decimal('1.00');
-      if (roundingDiff.gt(zero) && roundingDiff.lte(tolerance)) {
-        // D1.1.6.2 — resolve via AccountRoleService when available, otherwise
-        // fall back to spec-default 53-1503 (matches the seed row).
-        const adjOverpayCode =
-          this.accountRoleService?.tryCode('adj_overpay') ?? '53-1503';
-        rawLines.push({ code: adjOverpayCode, dr: zero, cr: roundingDiff, description: 'กำไรปัดเศษ (Policy C)' });
-      } else if (roundingDiff.lt(zero) && roundingDiff.abs().lte(tolerance)) {
-        // D1.1.6.1 — resolve via AccountRoleService when available, otherwise
-        // fall back to spec-default 52-1104 (matches the seed row).
-        const adjUnderpayCode =
-          this.accountRoleService?.tryCode('adj_underpay') ?? '52-1104';
-        rawLines.push({ code: adjUnderpayCode, dr: roundingDiff.abs(), cr: zero, description: 'ส่วนลดเศษสตางค์ (Policy C)' });
+  /**
+   * M3 fix: only run the legacy "all overdue cleared" auto-unlock when there
+   * is no active promise-to-pay cycle. When there is an active promise, the
+   * checkPromiseAfterPayment hook handles the unlock via its own CYCLE_KEPT
+   * path — running both racied two unlock requests per payment.
+   */
+  private async runMdmAutoUnlock(contractId: string): Promise<void> {
+    if (this.mdmAuto) {
+      const hasActivePromise =
+        !!this.promiseService && !!(await this.promiseService.findActivePromise(contractId));
+      if (!hasActivePromise) {
+        this.mdmAuto.autoUnlockAfterPayment(contractId).catch((err) =>
+          this.logger.error('MDM auto-unlock failed', err),
+        );
       }
     }
+  }
 
-    // Resolve account names from CoA
-    const codes = [...new Set(rawLines.map((l) => l.code))];
-    const coaRows = await this.prisma.chartOfAccount.findMany({
-      where: { code: { in: codes } },
-      select: { code: true, name: true },
-    });
-    const nameMap = new Map(coaRows.map((r) => [r.code, r.name]));
-
-    // Compute totals
-    let totalDebit = zero;
-    let totalCredit = zero;
-    for (const l of rawLines) {
-      totalDebit = totalDebit.plus(l.dr);
-      totalCredit = totalCredit.plus(l.cr);
-    }
-
-    const isBalanced = totalDebit.toFixed(2) === totalCredit.toFixed(2);
-
-    return {
-      lines: rawLines.map((l) => ({
-        accountCode: l.code,
-        accountName: nameMap.get(l.code) ?? l.code,
-        debit: l.dr.toFixed(2),
-        credit: l.cr.toFixed(2),
-        description: l.description,
-      })),
-      totalDebit: totalDebit.toFixed(2),
-      totalCredit: totalCredit.toFixed(2),
-      isBalanced,
-      accrualMode,
-      dueDate: inst.dueDate.toISOString(),
-    };
+  // ─── Promise-to-pay kept-detection ────────────────────
+  // Kept on the facade (private) because payments.service.spec calls it
+  // directly via `service.checkPromiseAfterPayment(...)` (@ts-expect-error
+  // access private). Delegates to PaymentPostCommitHooks.
+  private async checkPromiseAfterPayment(contractId: string): Promise<void> {
+    return this.services().postCommit.checkPromiseAfterPayment(contractId);
   }
 }

@@ -1,6 +1,7 @@
 import {
   readBoolFlag,
   readNumberFlag,
+  readIntFlag,
   readStringFlag,
   readJsonFlag,
 } from './config.util';
@@ -90,6 +91,49 @@ describe('config.util — SystemConfig flag readers', () => {
     it('swallows DB errors and returns fallback', async () => {
       const stub = makeStub({}, 'boom');
       expect(await readNumberFlag(stub, 'boom', 5)).toBe(5);
+    });
+  });
+
+  describe('readIntFlag', () => {
+    it('returns the value for a valid integer in range', async () => {
+      const stub = makeStub({ a: '100', b: '1', c: '500' });
+      expect(await readIntFlag(stub, 'a', 50, 1, 500)).toBe(100);
+      expect(await readIntFlag(stub, 'b', 50, 1, 500)).toBe(1);
+      expect(await readIntFlag(stub, 'c', 50, 1, 500)).toBe(500);
+    });
+
+    it('returns fallback when out of range (>max or <min)', async () => {
+      const stub = makeStub({ over: '501', under: '0' });
+      expect(await readIntFlag(stub, 'over', 100, 1, 500)).toBe(100);
+      expect(await readIntFlag(stub, 'under', 100, 1, 500)).toBe(100);
+    });
+
+    it('returns fallback on non-integer value', async () => {
+      const stub = makeStub({ a: '1.5', b: 'abc' });
+      expect(await readIntFlag(stub, 'a', 100, 1, 500)).toBe(100);
+      expect(await readIntFlag(stub, 'b', 100, 1, 500)).toBe(100);
+    });
+
+    it('returns fallback on empty string', async () => {
+      const stub = makeStub({ empty: '' });
+      expect(await readIntFlag(stub, 'empty', 100, 1, 500)).toBe(100);
+    });
+
+    it('returns fallback when key missing or row null', async () => {
+      const stub = makeStub({ nullval: null });
+      expect(await readIntFlag(stub, 'missing', 100, 1, 500)).toBe(100);
+      expect(await readIntFlag(stub, 'nullval', 100, 1, 500)).toBe(100);
+    });
+
+    it('swallows DB errors and returns fallback', async () => {
+      const stub = makeStub({}, 'boom');
+      expect(await readIntFlag(stub, 'boom', 100, 1, 500)).toBe(100);
+    });
+
+    it('returns the value at exactly min and max boundaries', async () => {
+      const stub = makeStub({ atMin: '1', atMax: '500' });
+      expect(await readIntFlag(stub, 'atMin', 100, 1, 500)).toBe(1);
+      expect(await readIntFlag(stub, 'atMax', 100, 1, 500)).toBe(500);
     });
   });
 

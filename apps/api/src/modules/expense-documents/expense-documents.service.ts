@@ -37,7 +37,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { PettyCashService } from './services/petty-cash.service';
 import { PayrollCustomService } from './services/payroll-custom.service';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
-import { readBoolFlag, readJsonFlag } from '../../utils/config.util';
+import { readBoolFlag, readIntFlag, readJsonFlag } from '../../utils/config.util';
 
 /**
  * Returns a Date representing 12:00 noon Asia/Bangkok on the same calendar day
@@ -282,6 +282,10 @@ export class ExpenseDocumentsService implements OnModuleInit {
    * unparseable values returns the fallback. Used by the approval-threshold
    * gate where negatives would yield bizarre "every doc requires approval"
    * behaviour.
+   *
+   * Intentionally NOT consolidated onto config.util.readNumberFlag — that returns
+   * a plain number with no clamp; this returns Prisma.Decimal clamped to ≥ 0.
+   * Do not dedup without preserving the Decimal return + clamp.
    */
   private async readNumberFlag(
     tx: Prisma.TransactionClient | PrismaService,
@@ -301,33 +305,6 @@ export class ExpenseDocumentsService implements OnModuleInit {
       return new Prisma.Decimal(clamped);
     } catch {
       return new Prisma.Decimal(fallback);
-    }
-  }
-
-  /**
-   * D1.3.6.1 — Read an integer SystemConfig flag with min/max clamp.
-   * Returns `fallback` when the row is missing, the value isn't a finite
-   * integer, or it falls outside [min, max]. Mirrors `readBoolFlag` so
-   * future numeric flags share one code path.
-   */
-  private async readIntFlag(
-    tx: Prisma.TransactionClient | PrismaService,
-    key: string,
-    fallback: number,
-    min: number,
-    max: number,
-  ): Promise<number> {
-    try {
-      const row = await tx.systemConfig.findFirst({
-        where: { key, deletedAt: null },
-        select: { value: true },
-      });
-      if (!row?.value) return fallback;
-      const n = Number(row.value);
-      if (!Number.isInteger(n) || n < min || n > max) return fallback;
-      return n;
-    } catch {
-      return fallback;
     }
   }
 
@@ -966,7 +943,7 @@ export class ExpenseDocumentsService implements OnModuleInit {
     // PrismaService here (outside the $transaction below) because
     // SystemConfig values rarely change mid-request and this is a soft gate
     // rather than a row-level invariant.
-    const maxBills = await this.readIntFlag(
+    const maxBills = await readIntFlag(
       this.prisma,
       'settlement_max_bills_per_doc',
       100,

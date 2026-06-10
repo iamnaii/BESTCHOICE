@@ -809,3 +809,130 @@ describe('OtherIncomeService — post — period lock (B1)', () => {
     }
   }, 30_000);
 });
+
+// ============================================================
+// Suite 4: createDraftForRepair — SHOP companyId + external-tx (SP5 Phase 2)
+// ============================================================
+//
+// Characterization for the cross-module contract used by
+// RepairTicketsService.returnToCustomer() (payer=CUSTOMER). RepairTickets
+// specs mock OtherIncomeService whole, so the real SHOP-companyId resolution,
+// no-VAT/no-WHT item, and external-tx pass-through were previously UNPINNED.
+// Added during the Lifecycle/Report/Config decompose so the $tx-less repair
+// helper's behaviour is locked before/after the move.
+
+describe('OtherIncomeService — createDraftForRepair (SHOP companyId + external-tx)', () => {
+  let service: OtherIncomeService;
+  let prisma: PrismaService;
+  let userId: string;
+  let shopCompanyId: string;
+
+  beforeAll(async () => {
+    const stubTemplate = { post: async () => ({ id: 'stub-je', entryNumber: 'JE-STUB' }) };
+
+    const module = await Test.createTestingModule({
+      providers: [
+        OtherIncomeService,
+        DocNumberService,
+        ValidationService,
+        AutoJournalService,
+        PrismaService,
+        { provide: OtherIncomeTemplate, useValue: stubTemplate },
+        { provide: StorageService, useValue: stubStorage },
+        JournalOverrideService,
+        AuditService,
+      ],
+    }).compile();
+    await module.init();
+    service = module.get(OtherIncomeService);
+    prisma = module.get(PrismaService);
+
+    // Ensure SHOP CompanyInfo exists — createDraftForRepair resolves SHOP
+    // (NOT FINANCE) because repair income belongs to the non-VAT SHOP entity.
+    const shop = await prisma.companyInfo.upsert({
+      where: { companyCode: 'SHOP' },
+      update: {},
+      create: {
+        companyCode: 'SHOP',
+        nameTh: 'BESTCHOICE SHOP',
+        taxId: '0000000000002',
+        address: 'TEST',
+        directorName: 'ผู้อำนวยการ',
+        vatRegistered: false,
+      },
+    });
+    shopCompanyId = shop.id;
+
+    const customer = await prisma.customer.create({
+      data: {
+        name: `OI Repair Customer ${Date.now()}`,
+        phone: `08${Date.now().toString().slice(-8)}`,
+      },
+    });
+
+    const user = await prisma.user.create({
+      data: {
+        email: `oi-repair-test+${Date.now()}@bestchoice.test`,
+        password: 'x',
+        name: 'OI Repair Tester',
+        role: 'ACCOUNTANT',
+      },
+    });
+    userId = user.id;
+    (service as any).__customerId = customer.id;
+  }, 30_000);
+
+  afterAll(async () => {
+    await prisma.otherIncomeItem.deleteMany({
+      where: { otherIncome: { createdById: userId } },
+    });
+    await prisma.otherIncome.deleteMany({ where: { createdById: userId } });
+    await prisma.customer
+      .deleteMany({ where: { id: (service as any).__customerId } })
+      .catch(() => {});
+    await prisma.user.delete({ where: { id: userId } }).catch(() => {});
+    await prisma.$disconnect();
+  }, 30_000);
+
+  it('resolves SHOP companyId, books no VAT/WHT, and runs inside the caller-supplied tx', async () => {
+    const customerId = (service as any).__customerId as string;
+    const amount = new Prisma.Decimal('1500');
+
+    const { id } = await prisma.$transaction((tx) =>
+      service.createDraftForRepair(
+        {
+          accountCode: 'S42-1101',
+          counterpartyName: 'ลูกค้าซ่อม',
+          customerId,
+          amount,
+          description: 'ค่าบริการซ่อม',
+          receivedAt: new Date('2026-05-20'),
+          branchId: 'branch-x',
+          createdById: userId,
+          metadata: { repairTicketId: 'rt-1' },
+        },
+        tx,
+      ),
+    );
+
+    const doc = await prisma.otherIncome.findUnique({
+      where: { id },
+      include: { items: true },
+    });
+
+    expect(doc).toBeTruthy();
+    expect(doc!.status).toBe('DRAFT');
+    // SHOP companyId — not FINANCE (C2 fix)
+    expect(doc!.companyId).toBe(shopCompanyId);
+    // No VAT, no WHT for SHOP-side repair income
+    expect(new Prisma.Decimal(doc!.vatAmount.toString()).eq(0)).toBe(true);
+    expect(new Prisma.Decimal(doc!.whtAmount.toString()).eq(0)).toBe(true);
+    expect(new Prisma.Decimal(doc!.netReceived.toString()).eq(amount)).toBe(true);
+    expect(new Prisma.Decimal(doc!.incomeGross.toString()).eq(amount)).toBe(true);
+    expect(doc!.docNumber).toMatch(/^OI-20260520-\d{4}$/);
+    expect(doc!.items.length).toBe(1);
+    expect(doc!.items[0].accountCode).toBe('S42-1101');
+    expect(new Prisma.Decimal(doc!.items[0].vatAmount.toString()).eq(0)).toBe(true);
+    expect(new Prisma.Decimal(doc!.items[0].whtAmount.toString()).eq(0)).toBe(true);
+  }, 30_000);
+});

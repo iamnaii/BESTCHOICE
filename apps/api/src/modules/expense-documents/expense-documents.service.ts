@@ -8,8 +8,6 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { JournalAutoService } from '../journal/journal-auto.service';
-import { resolveReversePermissionRoles } from './reverse-permission.guard';
 import { maskPayrollTaxIds } from './payroll-pii-mask.util';
 import {
   ADJUSTMENT_ALLOWLIST,
@@ -33,10 +31,7 @@ import { ExpenseDocumentLifecycleService } from './services/expense-document-lif
 import { SsoConfigService } from '../sso-config/sso-config.service';
 import { PettyCashService } from './services/petty-cash.service';
 import { PayrollCustomService } from './services/payroll-custom.service';
-import { validatePeriodOpen } from '../../utils/period-lock.util';
 import { readBoolFlag, readIntFlag } from '../../utils/config.util';
-import { bkkBusinessDate } from './bkk-business-date.util';
-import { getReverseReasons } from './approval-config.util';
 
 @Injectable()
 export class ExpenseDocumentsService implements OnModuleInit {
@@ -75,7 +70,6 @@ export class ExpenseDocumentsService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly docNumber: DocNumberService,
     private readonly transition: StatusTransitionService,
-    private readonly journal: JournalAutoService,
     private readonly aggregator: LineAggregatorService,
     private readonly ssoConfig: SsoConfigService,
     private readonly pettyCash: PettyCashService,
@@ -1236,254 +1230,15 @@ export class ExpenseDocumentsService implements OnModuleInit {
   }
 
   // ─── Void (any non-VOIDED → VOIDED) ──────────────────────────────────
-  // Posts a reversal JE (flipped Dr/Cr) when the doc had a journal entry,
-  // and for VENDOR_SETTLEMENT also reverts each cleared EX back to ACCRUAL.
-  // C3 — Optionally accepts reasonCode + reasonDetail + reverseDate (caller-chosen
-  // posting date for the reversal JE). All optional → existing parameterless
-  // void path still works (back-compat).
+  // Phase 2c decompose: delegated to ExpenseDocumentLifecycleService.
+  // Signature + behavior unchanged.
   async voidDocument(
     id: string,
     userId: string,
     dto: VoidExpenseDocumentDto = {},
     userRole?: string,
   ) {
-    // D1.3.2.4 (S3 defense-in-depth) — mirror the ReversePermissionGuard
-    // check at the service boundary. Skipped when userRole is undefined
-    // (system-internal / unit-test paths).
-    if (userRole !== undefined) {
-      const allowed = await resolveReversePermissionRoles(this.prisma);
-      if (!allowed.has(userRole)) {
-        throw new ForbiddenException(
-          `ไม่มีสิทธิ์กลับรายการเอกสาร (role ปัจจุบัน: ${userRole})`,
-        );
-      }
-    }
-    return this.prisma.$transaction(async (tx) => {
-      // Per-doc advisory lock — serializes concurrent voids on the same id so
-      // two callers cannot both pass assertCanVoid and double-post a reversal JE.
-      // (PG REPEATABLE READ does not prevent this write skew on its own.)
-      await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(hashtext($1))`, `void:${id}`);
-
-      const doc = await tx.expenseDocument.findUniqueOrThrow({
-        where: { id },
-        include: { settlement: { include: { settlementLines: true } } },
-      });
-      if (doc.deletedAt) throw new NotFoundException('เอกสารถูกลบแล้ว');
-
-      // D1.2.7.4 — `reverse_block_cascaded` (default true). OWNER may disable
-      // via SystemConfig to allow voiding upstream docs even when downstream CN/SE
-      // exist. Default-on preserves the strict safety from C3.4. If owner
-      // disables, downstream consumers will become orphaned — UI must surface
-      // this risk separately (out of scope here).
-      const cascadeBlockEnabled = await this.readBoolFlag(tx, 'reverse_block_cascaded', true);
-
-      const pendingCn = await tx.expenseDocument.count({
-        where: {
-          documentType: 'CREDIT_NOTE',
-          status: { not: 'VOIDED' },
-          deletedAt: null,
-          creditNote: { originalDocumentId: id },
-        },
-      });
-      if (cascadeBlockEnabled && pendingCn > 0) {
-        throw new BadRequestException('มีใบลดหนี้ที่ยังไม่ถูกยกเลิก ไม่สามารถยกเลิกเอกสารต้นฉบับได้');
-      }
-
-      // C3.4 — Cascade check: also block void when an active SETTLEMENT
-      // clears this doc. (Settlement-on-void of the SE itself separately
-      // reverts cleared docs back to ACCRUAL — that's the SE-being-voided
-      // path, not this one.) Gated by the same `reverse_block_cascaded` flag.
-      const pendingSe = await tx.expenseDocument.count({
-        where: {
-          documentType: 'VENDOR_SETTLEMENT',
-          status: { not: 'VOIDED' },
-          deletedAt: null,
-          settlement: { settlementLines: { some: { clearedDocumentId: id } } },
-        },
-      });
-      if (cascadeBlockEnabled && pendingSe > 0) {
-        throw new BadRequestException(
-          'มีใบจ่ายเจ้าหนี้ (SE) ที่ยังไม่ถูกยกเลิกอ้างถึงเอกสารนี้อยู่ — ' +
-            'กรุณายกเลิก SE ก่อน',
-        );
-      }
-
-      // D1.2.7.1 — `reverse_reason_required` (default true). When enabled,
-      // server enforces that `dto.reasonCode` is present + non-empty. UI
-      // already enforces via canSubmit, but the server gate prevents a
-      // bypass (e.g. direct curl without going through ReverseDialog).
-      const reasonRequired = await this.readBoolFlag(tx, 'reverse_reason_required', true);
-      if (reasonRequired && !dto.reasonCode?.trim()) {
-        throw new BadRequestException('กรุณาระบุเหตุผลในการยกเลิกเอกสาร');
-      }
-
-      // D1.2.7.2 — `reverse_reasons` SystemConfig (default = 6 canonical
-      // codes). Validate dto.reasonCode against the configured whitelist
-      // when present. OWNER can extend/override the list via SettingsService.
-      if (dto.reasonCode?.trim()) {
-        const reasons = await getReverseReasons(tx);
-        const allowed = new Set(reasons.map((r) => r.code));
-        if (!allowed.has(dto.reasonCode)) {
-          throw new BadRequestException(
-            `เหตุผล "${dto.reasonCode}" ไม่อยู่ในรายการที่ตั้งค่าไว้`,
-          );
-        }
-      }
-
-      // D1.2.6.4 — `payment_date_allow_future` (default true). When OWNER
-      // disables, reject future-dated reverseDate. UI also shows warning.
-      if (dto.reverseDate) {
-        const allowFuture = await this.readBoolFlag(tx, 'payment_date_allow_future', true);
-        if (!allowFuture) {
-          const dateUtc = new Date(dto.reverseDate);
-          const todayBkk = new Date();
-          // Strip time so the check is calendar-day comparison.
-          if (dateUtc.getTime() > todayBkk.getTime()) {
-            throw new BadRequestException(
-              'ไม่อนุญาตให้ระบุวันที่ในอนาคต — กรุณาเลือกวันที่ไม่เกินวันนี้',
-            );
-          }
-        }
-      }
-
-      this.transition.assertCanVoid({ from: doc.status });
-
-      // Fix #C9 (Round 2 — moved from journal-auto.service.createAndPost):
-      // Period-open guard at the module boundary. C3.1 — when caller passes
-      // `reverseDate`, the reversal JE postedAt uses it (still V19-gated); else
-      // the legacy behavior (today BKK noon).
-      const reverseAt = dto.reverseDate
-        ? bkkBusinessDate(new Date(dto.reverseDate))
-        : bkkBusinessDate(new Date());
-      const shopForVoidPeriod = await tx.companyInfo.findFirst({
-        where: { companyCode: 'SHOP', deletedAt: null },
-        select: { id: true },
-      });
-      if (!shopForVoidPeriod) {
-        throw new NotFoundException(
-          'CompanyInfo with companyCode=SHOP not found — seed accounting data first',
-        );
-      }
-      await validatePeriodOpen(tx, reverseAt, shopForVoidPeriod.id);
-
-      // Post reversal JE (flipped Dr/Cr) if doc had one. The original JE stays
-      // intact; the reversal lives as a separate POSTED entry tagged via metadata.
-      // Reversal postedAt is BKK noon "today" — keeps the entry inside the
-      // intended Thai accounting day regardless of UTC server clock.
-      let reverseJournalEntryId: string | null = null;
-      if (doc.journalEntryId) {
-        const original = await tx.journalEntry.findUniqueOrThrow({
-          where: { id: doc.journalEntryId },
-          include: { lines: true },
-        });
-        // W6 fix — fall back to SHOP company id when legacy JE rows lack
-        // companyId (pre-A.1b migration). Without this, voiding an old EX
-        // throws "companyId required" from journal-auto.service. SHOP is the
-        // canonical home for expense-side flows per accounting.md.
-        let companyId = original.companyId;
-        if (!companyId) {
-          const shop = await tx.companyInfo.findFirst({
-            where: { companyCode: 'SHOP', deletedAt: null },
-            select: { id: true },
-          });
-          if (!shop) {
-            // W6 (Round 2) — replace bare Error with NestJS exception so the
-            // response is a clean 404 instead of a 500 with stack trace. Same
-            // wording shape as the post()/voidDocument() period-guard SHOP
-            // fallback and the FINANCE fallback in resolveFinanceCompanyId.
-            throw new NotFoundException(
-              'CompanyInfo with companyCode=SHOP not found — seed accounting data first',
-            );
-          }
-          companyId = shop.id;
-        }
-        const reverseEntry = await this.journal.createAndPost(
-          {
-            description: `กลับรายการ ${doc.number}`,
-            reference: doc.id,
-            metadata: {
-              tag: 'EXPENSE_VOID_REVERSAL',
-              documentId: doc.id,
-              documentNumber: doc.number,
-              documentType: doc.documentType,
-              originalJournalEntryId: original.id,
-              flow: `expense-${doc.documentType.toLowerCase()}-void`,
-              // C3 — reason metadata embedded so JE-side audits can grep
-              // by reasonCode without joining audit_logs.
-              reverseReasonCode: dto.reasonCode ?? null,
-              reverseReasonDetail: dto.reasonDetail ?? null,
-            },
-            postedAt: reverseAt,
-            companyId,
-            lines: original.lines.map((l) => ({
-              accountCode: l.accountCode,
-              dr: new Prisma.Decimal(l.credit.toString()),
-              cr: new Prisma.Decimal(l.debit.toString()),
-              description: l.description ? `[กลับรายการ] ${l.description}` : '[กลับรายการ]',
-            })),
-          },
-          tx,
-        );
-        reverseJournalEntryId = reverseEntry.id;
-      }
-
-      // VENDOR_SETTLEMENT side-effect: revert each cleared EX back to ACCRUAL.
-      // The SE was the only thing that flipped them to POSTED + paidAt; voiding
-      // the SE must undo that, otherwise the EXs stay POSTED with no payment.
-      // updateMany with deletedAt:null guard so a soft-deleted EX is not
-      // resurrected — if it was already deleted, we simply skip + log.
-      if (doc.documentType === 'VENDOR_SETTLEMENT' && doc.settlement) {
-        for (const line of doc.settlement.settlementLines) {
-          const result = await tx.expenseDocument.updateMany({
-            where: { id: line.clearedDocumentId, deletedAt: null },
-            data: { status: 'ACCRUAL', paidAt: null },
-          });
-          if (result.count === 0) {
-            this.logger.warn(
-              `Void SE ${doc.number}: cleared EX ${line.clearedDocumentId} was soft-deleted — skipped revert`,
-            );
-          }
-        }
-      }
-
-      // Compare-and-swap on status — second concurrent caller (if it somehow
-      // bypassed the advisory lock) sees count=0 and aborts. Belt-and-braces.
-      const flip = await tx.expenseDocument.updateMany({
-        where: { id, status: { not: 'VOIDED' } },
-        data: { status: 'VOIDED' },
-      });
-      if (flip.count === 0) {
-        throw new BadRequestException('เอกสารถูกยกเลิกไปแล้ว');
-      }
-
-      // C3.3 — Audit trail with reason + reverse JE pointer. Stuffed into
-      // `newValue` JSON rather than adding columns (AuditLog has a Merkle hash
-      // chain — adding columns would break the verification path on existing rows).
-      await tx.auditLog.create({
-        data: {
-          action: 'EXPENSE_VOIDED',
-          entity: 'expense_document',
-          entityId: id,
-          userId,
-          oldValue: { status: doc.status, journalEntryId: doc.journalEntryId },
-          newValue: {
-            status: 'VOIDED',
-            reverseJournalEntryId,
-            reverseDate: reverseAt.toISOString(),
-            reasonCode: dto.reasonCode ?? null,
-            reasonDetail: dto.reasonDetail ?? null,
-            // Structured reverse reason — read by the shared timeline's
-            // mapAuditEvents (parity with other-income / asset modules).
-            reverseReasonLabel: dto.reasonLabel ?? null,
-            reverseNote: dto.note ?? null,
-            documentNumber: doc.number,
-            documentType: doc.documentType,
-          },
-        },
-      });
-
-      return tx.expenseDocument.findUniqueOrThrow({ where: { id } });
-    });
+    return this.lifecycle.voidDocument(id, userId, dto, userRole);
   }
 
   // ─── Soft delete (DRAFT only) ────────────────────────────────────────

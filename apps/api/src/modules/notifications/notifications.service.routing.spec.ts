@@ -31,21 +31,21 @@ describe('NotificationsService — channel routing', () => {
 
   it('getLineToken("line-shop") reads line-shop channelToken', async () => {
     integrationConfig.getValue.mockResolvedValueOnce('shop-token-xxx');
-    const token = await (service as any).getLineToken('line-shop');
+    const token = await (service as any).transport.getLineToken('line-shop');
     expect(integrationConfig.getValue).toHaveBeenCalledWith('line-shop', 'channelToken');
     expect(token).toBe('shop-token-xxx');
   });
 
   it('getLineToken("line-finance") reads line-finance channelToken', async () => {
     integrationConfig.getValue.mockResolvedValueOnce('finance-token-yyy');
-    const token = await (service as any).getLineToken('line-finance');
+    const token = await (service as any).transport.getLineToken('line-finance');
     expect(integrationConfig.getValue).toHaveBeenCalledWith('line-finance', 'channelToken');
     expect(token).toBe('finance-token-yyy');
   });
 
   it('getLineToken("line-staff") reads line-staff channelToken', async () => {
     integrationConfig.getValue.mockResolvedValueOnce('staff-token-zzz');
-    const token = await (service as any).getLineToken('line-staff');
+    const token = await (service as any).transport.getLineToken('line-staff');
     expect(integrationConfig.getValue).toHaveBeenCalledWith('line-staff', 'channelToken');
     expect(token).toBe('staff-token-zzz');
   });

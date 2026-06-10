@@ -1,5 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { CustomersService } from './customers.service';
+import { CustomerQueryService } from './services/customer-query.service';
+import { CustomerWriteService } from './services/customer-write.service';
+import { CustomerAnalyticsService } from './services/customer-analytics.service';
 import { CustomerTierService } from './customer-tier.service';
 import { ContactResolverService } from '../contacts/contact-resolver.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -38,6 +41,9 @@ describe('CustomersService.findOrCreatePrecheckCustomer', () => {
     const mod: TestingModule = await Test.createTestingModule({
       providers: [
         CustomersService,
+        CustomerQueryService,
+        CustomerWriteService,
+        CustomerAnalyticsService,
         { provide: PrismaService, useValue: prisma },
         { provide: CustomerTierService, useValue: { getCustomerTier: jest.fn() } },
         { provide: ContactResolverService, useValue: contactResolver },

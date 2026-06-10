@@ -12,7 +12,8 @@
  * Production invocation:
  *   gcloud run jobs execute backfill-schedules --region=asia-southeast1 --project=bestchoice-prod --wait
  */
-import { PrismaClient, Prisma } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
+import { buildInstallmentScheduleRows } from '../utils/installment-schedule.util';
 
 async function main(): Promise<void> {
   const expectedDb = process.env.EXPECTED_DB_NAME;
@@ -69,27 +70,9 @@ async function main(): Promise<void> {
         continue;
       }
 
-      const financed = new Prisma.Decimal(c.financedAmount.toString());
-      const interest = new Prisma.Decimal((c.interestTotal ?? 0).toString());
-      const monthly = new Prisma.Decimal((c.monthlyPayment ?? 0).toString());
-      const principalPerInst = financed.div(c.totalMonths).toDecimalPlaces(2, Prisma.Decimal.ROUND_DOWN);
-      const interestPerInst = interest.div(c.totalMonths).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
-
-      const baseDate = c.createdAt;
-      const dueDay = c.paymentDueDay ?? baseDate.getDate();
-
-      const rows: Prisma.InstallmentScheduleCreateManyInput[] = [];
-      for (let i = 1; i <= c.totalMonths; i++) {
-        const dueDate = new Date(baseDate.getFullYear(), baseDate.getMonth() + i, dueDay);
-        rows.push({
-          contractId: c.id,
-          installmentNo: i,
-          dueDate,
-          principal: principalPerInst,
-          interest: interestPerInst,
-          amountDue: monthly,
-        });
-      }
+      // Algorithm consolidated into installment-schedule.util — single source of
+      // truth shared with contract-workflow activation + payment-receipt lazy-gen.
+      const rows = buildInstallmentScheduleRows(c);
       await prisma.installmentSchedule.createMany({ data: rows });
       console.log(`[backfill]   ${c.contractNumber} — ${rows.length} rows generated`);
       generated++;

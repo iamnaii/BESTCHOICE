@@ -10,6 +10,7 @@ import {
 import * as Sentry from '@sentry/nestjs';
 import { formatDateLong } from '../../utils/thai-date.util';
 import { dAdd, dSub, dClose } from '../../utils/decimal.util';
+import { ensureInstallmentSchedules } from '../../utils/installment-schedule.util';
 import { OnlineOrderSaleAdapter } from '../shop-orders/online-order-sale.adapter';
 
 // Pay Solutions external API timeout. Their published SLA is "instant"
@@ -1235,6 +1236,17 @@ export class PaySolutionsService {
           // When the installment carried a 60-day mandatory VAT flag, the matching
           // reversal posts in the same tx so 21-2103 / 11-2104 clear 1:1.
           if (contractForJe && systemUserId) {
+            // Legacy contracts activated before PR #753 may have no
+            // installment_schedules rows; without them the receipt JE below
+            // would be silently skipped, leaving a PAID installment with no
+            // ledger entry (TB overstates receivable / understates cash + VAT
+            // under-reported). Lazily materialise the schedule inside this same
+            // serializable tx so the receipt JE can post. Idempotent — a no-op
+            // when rows already exist (the common post-#753 case). Gated on the
+            // loop collection so a no-touch webhook skips the count query.
+            if (touchedSnapshots.length > 0) {
+              await ensureInstallmentSchedules(tx, contractForJe.id);
+            }
             for (const snapshot of touchedSnapshots) {
               const instSchedPs = await tx.installmentSchedule.findUnique({
                 where: {
@@ -1270,8 +1282,28 @@ export class PaySolutionsService {
                   await this.vat60Reversal.execute(instSchedPs.id, tx);
                 }
               } else {
-                this.logger.warn(
-                  `PaySolutions: PaymentReceipt skipped — no InstallmentSchedule for contractId=${contractForJe.id} installmentNo=${snapshot.installmentNo}`,
+                // Even after lazy-gen the row is absent — a genuine data
+                // anomaly (totalMonths<=0, or installmentNo beyond the schedule).
+                // Do NOT silently skip and do NOT roll back: the customer's
+                // payment is real and already PAID; rolling back would discard
+                // it. Alarm loudly so accounting posts the missing receipt JE.
+                Sentry.captureException(
+                  new Error(
+                    'PAID installment has no postable 2B JE (no InstallmentSchedule after lazy-gen)',
+                  ),
+                  {
+                    level: 'error',
+                    tags: { module: 'paysolutions', flow: '2b-receipt' },
+                    extra: {
+                      contractId: contractForJe.id,
+                      installmentNo: snapshot.installmentNo,
+                      paymentId: snapshot.id,
+                      refno,
+                    },
+                  },
+                );
+                this.logger.error(
+                  `PaySolutions: PaymentReceipt2B UNPOSTABLE — no InstallmentSchedule for contractId=${contractForJe.id} installmentNo=${snapshot.installmentNo} (Sentry-alarmed; manual reconcile needed)`,
                 );
               }
             }

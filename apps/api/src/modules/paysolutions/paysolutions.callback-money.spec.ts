@@ -177,6 +177,9 @@ describe('PaySolutionsService.handlePaymentCallback — FIFO money + close (char
           .mockResolvedValue({ productId: opts.contractProductId ?? null }),
       },
       installmentSchedule: {
+        // Lazy-gen recovery (#1170): count>0 → ensureInstallmentSchedules no-op.
+        count: jest.fn().mockResolvedValue(1),
+        createMany: jest.fn().mockResolvedValue({ count: 0 }),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         findUnique: jest.fn().mockImplementation((args: any) => {
           const instNo =

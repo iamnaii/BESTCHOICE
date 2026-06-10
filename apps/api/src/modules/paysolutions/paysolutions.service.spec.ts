@@ -74,14 +74,29 @@ describe('PaySolutionsService.handlePaymentCallback — payment JE (F-1-003)', (
       },
       contract: {
         update: jest.fn().mockResolvedValue({ productId: null }),
+        // Used by ensureInstallmentSchedules only when the schedule is missing.
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          id: contractId,
+          totalMonths: 12,
+          financedAmount: new Prisma.Decimal(10000),
+          interestTotal: new Prisma.Decimal(1190),
+          monthlyPayment: new Prisma.Decimal('1515.83'),
+          paymentDueDay: 5,
+          createdAt: new Date(2026, 0, 10),
+        }),
       },
       // C2 fix: in-tx JE post calls tx.installmentSchedule.findUnique to map
       // installmentNo → installmentScheduleId. PR-843/I2 Phase 3 3b: the select
       // now also reads vat60dayJournalEntryId (null here = no 60-day reversal).
+      // `count` + `createMany` back the lazy-gen recovery (ensureInstallmentSchedules);
+      // count>0 => skip generation (the common post-#753 case), so existing
+      // assertions are unaffected.
       installmentSchedule: {
         findUnique: jest
           .fn()
           .mockResolvedValue({ id: 'inst-sched-1', vat60dayJournalEntryId: null }),
+        count: jest.fn().mockResolvedValue(1),
+        createMany: jest.fn().mockResolvedValue({ count: 12 }),
       },
     };
 
@@ -199,6 +214,56 @@ describe('PaySolutionsService.handlePaymentCallback — payment JE (F-1-003)', (
     // Delta is the DELTA applied this webhook (1000), never cumulative.
     const jeInput = paymentReceiptTemplate.execute.mock.calls[0][0];
     expect(jeInput.delta.toString()).toBe('1000');
+  });
+
+  it('lazy-generates the schedule for a legacy contract (no rows) then still posts the 2B JE', async () => {
+    // PAID-no-JE fix: a pre-#753 contract has no installment_schedules. Before
+    // the fix the 2B JE was silently skipped → PAID installment with no ledger.
+    // Now ensureInstallmentSchedules materialises the schedule in-tx first.
+    prisma.__tx.installmentSchedule.count.mockResolvedValueOnce(0);
+
+    await service.handlePaymentCallback({
+      refno: 'refno-1',
+      result_code: '00',
+      order_no: 'order-1',
+      transaction_id: 'tx-1',
+      total: '1000',
+    });
+
+    // Schedule materialised in-tx ...
+    expect(prisma.__tx.installmentSchedule.createMany).toHaveBeenCalledTimes(1);
+    // ... and the receipt JE still posts — no orphan PAID-without-ledger.
+    expect(paymentReceiptTemplate.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('alarms via Sentry (keeps PAID, never rolls back) when the schedule cannot be generated', async () => {
+    (Sentry.captureException as jest.Mock).mockClear();
+    // Data anomaly: no schedule rows AND ungeneratable (totalMonths=0), and the
+    // post-gen lookup still finds nothing → must NOT silently skip the ledger.
+    prisma.__tx.installmentSchedule.count.mockResolvedValueOnce(0);
+    prisma.__tx.contract.findUniqueOrThrow.mockResolvedValueOnce({
+      id: contractId,
+      totalMonths: 0,
+      financedAmount: new Prisma.Decimal(0),
+      interestTotal: null,
+      monthlyPayment: null,
+      paymentDueDay: null,
+      createdAt: new Date(2026, 0, 10),
+    });
+    prisma.__tx.installmentSchedule.findUnique.mockResolvedValueOnce(null);
+
+    // Does not throw — the customer's payment is real and stays PAID.
+    await service.handlePaymentCallback({
+      refno: 'refno-1',
+      result_code: '00',
+      order_no: 'order-1',
+      transaction_id: 'tx-1',
+      total: '1000',
+    });
+
+    expect(prisma.__tx.installmentSchedule.createMany).not.toHaveBeenCalled();
+    expect(paymentReceiptTemplate.execute).not.toHaveBeenCalled();
+    expect(Sentry.captureException as jest.Mock).toHaveBeenCalled();
   });
 
   it('C2 fix: JE failure inside tx rolls back Payment.update — no orphan PAID rows', async () => {

@@ -15,6 +15,7 @@ import { ProductsService } from '../products/products.service';
 import { hasCrossBranchAccess } from '../auth/branch-access.util';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
 import { roundBaht } from '../../utils/installment.util';
+import { ensureInstallmentSchedules } from '../../utils/installment-schedule.util';
 import { BUSINESS_RULES } from '../../utils/config.util';
 import { d, dAdd, dSub, dMul, dRound, dGte } from '../../utils/decimal.util';
 import { LineOaService } from '../line-oa/line-oa.service';
@@ -400,6 +401,10 @@ export class PaymentsService {
       // It runs inside the same $transaction so a JE failure rolls back the
       // Payment.update — no orphan ledger entries.
       if (isPaidInFull || isPartialClear) {
+        // Lazy-gen schedule for legacy (pre-#753) contracts so the 2B receipt
+        // JE can post — prevents an orphan PAID-without-ledger row. Idempotent:
+        // a no-op when rows already exist. Runs inside the same serializable tx.
+        await ensureInstallmentSchedules(tx, contract.id);
         const instSched = await tx.installmentSchedule.findUnique({
           where: {
             contractId_installmentNo: {
@@ -464,8 +469,26 @@ export class PaymentsService {
             throw err;
           }
         } else {
-          this.logger.warn(
-            `PaymentReceipt2B skipped — no InstallmentSchedule found for contractId=${contract.id} installmentNo=${result.installmentNo}. TODO: verify schedule was generated.`,
+          // Even after lazy-gen the row is absent — a genuine data anomaly
+          // (totalMonths<=0, or installmentNo beyond the schedule). Do NOT
+          // silently skip and do NOT roll back the customer's real payment.
+          // Alarm so accounting posts the missing receipt JE manually.
+          Sentry.captureException(
+            new Error(
+              'PAID installment has no postable 2B JE (no InstallmentSchedule after lazy-gen)',
+            ),
+            {
+              level: 'error',
+              tags: { module: 'payments', flow: '2b-receipt' },
+              extra: {
+                contractId: contract.id,
+                installmentNo: result.installmentNo,
+                paymentId: result.id,
+              },
+            },
+          );
+          this.logger.error(
+            `PaymentReceipt2B UNPOSTABLE — no InstallmentSchedule for contractId=${contract.id} installmentNo=${result.installmentNo} (Sentry-alarmed; manual reconcile needed)`,
           );
         }
       }
@@ -712,6 +735,10 @@ export class PaymentsService {
         // No toleranceApproverId is passed here — see the documented Phase-5
         // 2A-trueup-residual seam (auto paths cannot approve a ≤1฿ underpay).
         if (payAmount.gt(0)) {
+          // Lazy-gen schedule for legacy (pre-#753) contracts so the 2B receipt
+          // JE can post — prevents an orphan PAID-without-ledger row. Idempotent:
+          // a no-op when rows already exist. Runs inside the same serializable tx.
+          await ensureInstallmentSchedules(tx, contract.id);
           const instSched = await tx.installmentSchedule.findUnique({
             where: {
               contractId_installmentNo: {
@@ -753,8 +780,24 @@ export class PaymentsService {
               await this.vat60Reversal.execute(instSched.id, tx);
             }
           } else {
-            this.logger.warn(
-              `PaymentReceipt skipped (bulk) — no InstallmentSchedule for contractId=${contract.id} installmentNo=${updated.installmentNo}`,
+            // Genuine data anomaly even after lazy-gen — alarm, never silently
+            // skip a PAID installment's ledger entry. Payment stays PAID.
+            Sentry.captureException(
+              new Error(
+                'PAID installment has no postable 2B JE (bulk; no InstallmentSchedule after lazy-gen)',
+              ),
+              {
+                level: 'error',
+                tags: { module: 'payments', flow: '2b-receipt-bulk' },
+                extra: {
+                  contractId: contract.id,
+                  installmentNo: updated.installmentNo,
+                  paymentId: updated.id,
+                },
+              },
+            );
+            this.logger.error(
+              `PaymentReceipt2B UNPOSTABLE (bulk) — no InstallmentSchedule for contractId=${contract.id} installmentNo=${updated.installmentNo} (Sentry-alarmed; manual reconcile needed)`,
             );
           }
         }
@@ -1229,6 +1272,10 @@ export class PaymentsService {
         // find this JE via metadata.paymentId), and reconstructPrior now counts a
         // credit application as prior-cleared for any subsequent receipt.
         if (payAmount.gt(0)) {
+          // Lazy-gen schedule for legacy (pre-#753) contracts so the credit
+          // receipt JE can post — prevents an orphan applied-credit-without-ledger
+          // row. Idempotent: a no-op when rows already exist. Same serializable tx.
+          await ensureInstallmentSchedules(tx, contract.id);
           const instSched = await tx.installmentSchedule.findUnique({
             where: {
               contractId_installmentNo: {
@@ -1263,8 +1310,24 @@ export class PaymentsService {
               await this.vat60Reversal.execute(instSched.id, tx);
             }
           } else {
-            this.logger.warn(
-              `PaymentReceipt skipped (credit) — no InstallmentSchedule for contractId=${contract.id} installmentNo=${updated.installmentNo}`,
+            // Genuine data anomaly even after lazy-gen — alarm, never silently
+            // skip an applied-credit installment's ledger entry. Payment stays PAID.
+            Sentry.captureException(
+              new Error(
+                'Applied-credit installment has no postable 2B JE (credit; no InstallmentSchedule after lazy-gen)',
+              ),
+              {
+                level: 'error',
+                tags: { module: 'payments', flow: '2b-receipt-credit' },
+                extra: {
+                  contractId: contract.id,
+                  installmentNo: updated.installmentNo,
+                  paymentId: updated.id,
+                },
+              },
+            );
+            this.logger.error(
+              `PaymentReceipt2B UNPOSTABLE (credit) — no InstallmentSchedule for contractId=${contract.id} installmentNo=${updated.installmentNo} (Sentry-alarmed; manual reconcile needed)`,
             );
           }
         }

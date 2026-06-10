@@ -70,6 +70,16 @@ describe('PaymentsService — credit / waive / daily-summary / partial-preview (
     const inst: AnyObj = {
       contract: {
         findUnique: jest.fn(),
+        // Used by ensureInstallmentSchedules (#1170) only when the schedule is missing.
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          id: 'cr-contract-1',
+          totalMonths: 12,
+          financedAmount: D(10000),
+          interestTotal: D(1190),
+          monthlyPayment: D('1515.83'),
+          paymentDueDay: 5,
+          createdAt: new Date(2026, 0, 10),
+        }),
         update: jest.fn().mockResolvedValue({ id: 'co-1' }),
         count: jest.fn().mockResolvedValue(0),
       },
@@ -115,6 +125,9 @@ describe('PaymentsService — credit / waive / daily-summary / partial-preview (
         ]),
       },
       installmentSchedule: {
+        // Lazy-gen recovery (#1170): count>0 → ensureInstallmentSchedules no-op.
+        count: jest.fn().mockResolvedValue(1),
+        createMany: jest.fn().mockResolvedValue({ count: 0 }),
         findUnique: jest.fn(),
       },
       auditLog: {
@@ -282,6 +295,35 @@ describe('PaymentsService — credit / waive / daily-summary / partial-preview (
         (c: AnyObj) => c[0]?.data?.action === 'CREDIT_APPLIED',
       );
       expect(creditApplied).toHaveLength(2);
+    });
+
+    it('PAID-no-JE (credit): alarms via Sentry + keeps the credit application (no throw) when the schedule is unpostable', async () => {
+      // #1170 — the credit path now mirrors recordPayment/handlePaymentCallback:
+      // lazy-gen the schedule before the receipt JE, and on a genuine anomaly
+      // (ungeneratable + still no row) alarm loudly instead of silently skipping.
+      (Sentry.captureException as jest.Mock).mockClear();
+      prisma.contract.findUnique.mockResolvedValue(mkContract(D(3000), [mkInstallment(1)]));
+      // Data anomaly: no rows AND ungeneratable (totalMonths=0); lookup stays null.
+      prisma.installmentSchedule.count.mockResolvedValueOnce(0);
+      prisma.contract.findUniqueOrThrow.mockResolvedValueOnce({
+        id: 'cr-contract-1',
+        totalMonths: 0,
+        financedAmount: D(0),
+        interestTotal: null,
+        monthlyPayment: null,
+        paymentDueDay: null,
+        createdAt: new Date(2026, 0, 10),
+      });
+      prisma.installmentSchedule.findUnique.mockResolvedValue(null);
+
+      // Does not throw — the customer's credit application is real and is applied.
+      await service.applyCreditBalance('cr-contract-1', 'user-1');
+
+      expect(prisma.installmentSchedule.createMany).not.toHaveBeenCalled();
+      expect(receiptExecute).not.toHaveBeenCalled();
+      expect(Sentry.captureException as jest.Mock).toHaveBeenCalled();
+      // The credit is still applied (Payment.update written) — no rollback.
+      expect(prisma.payment.update).toHaveBeenCalled();
     });
 
     it('credit=0 → throws BadRequestException "ไม่มียอดเครดิตในสัญญานี้"', async () => {

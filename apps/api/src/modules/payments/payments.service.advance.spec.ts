@@ -135,6 +135,9 @@ describe('PaymentsService — advance balance (Task 4)', () => {
         findUnique: jest.fn().mockResolvedValue(null), // no period lock, no late-fee config
       },
       installmentSchedule: {
+        // Lazy-gen recovery (#1170): count>0 → ensureInstallmentSchedules no-op.
+        count: jest.fn().mockResolvedValue(1),
+        createMany: jest.fn().mockResolvedValue({ count: 0 }),
         findUnique: jest.fn().mockResolvedValue(null), // template call skipped (instSched=null)
       },
       callLog: {

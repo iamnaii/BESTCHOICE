@@ -1,0 +1,390 @@
+import { Logger, ServiceUnavailableException } from '@nestjs/common';
+import { Prisma, DunningStage } from '@prisma/client';
+import { PrismaService } from '../../../prisma/prisma.service';
+import { BUSINESS_RULES } from '../../../utils/config.util';
+
+/**
+ * Cron-driven lifecycle mutations for the overdue/collections module.
+ *
+ * Extracted from OverdueService as part of the behaviour-preserving decompose.
+ * Holds the two raw-SQL paths ($executeRaw bulk late-fee UPDATE + $queryRaw
+ * consecutive-missed CTE — moved VERBATIM) and the two status-update
+ * $transactions (ACTIVE→OVERDUE + OVERDUE→DEFAULT). Owns the shared private
+ * getSystemUserIdOrThrow, whose only callers are these crons.
+ *
+ * Consumed by notifications/scheduler.service.ts (calculateLateFees,
+ * updateContractStatuses, escalateDunningStages) via the OverdueService facade.
+ */
+export class OverdueLifecycleCronService {
+  private readonly logger = new Logger(OverdueLifecycleCronService.name);
+
+  constructor(private prisma: PrismaService) {}
+
+  private async getSystemUserIdOrThrow(): Promise<string> {
+    const user = await this.prisma.user.findFirst({
+      where: { isSystemUser: true },
+      select: { id: true },
+    });
+    if (!user) {
+      // H1: ServiceUnavailableException → 503 not 500, so ops alerting
+      // correctly identifies this as a config/seed issue rather than a crash.
+      throw new ServiceUnavailableException(
+        'SYSTEM user not found — seed collections-foundation must run first',
+      );
+    }
+    return user.id;
+  }
+
+  /**
+   * Calculate late fees for all overdue payments (cron job)
+   * Uses a single SQL UPDATE for efficiency instead of N+1 queries
+   */
+  async calculateLateFees() {
+    const now = new Date();
+
+    // Get late fee config
+    const [lateFeeConfig, lateFeeCapConfig] = await Promise.all([
+      this.prisma.systemConfig.findUnique({ where: { key: 'late_fee_per_day' } }),
+      this.prisma.systemConfig.findUnique({ where: { key: 'late_fee_cap' } }),
+    ]);
+
+    const lateFeePerDay = lateFeeConfig ? Number(lateFeeConfig.value) : BUSINESS_RULES.LATE_FEE_PER_DAY;
+    const lateFeeCap = lateFeeCapConfig ? Number(lateFeeCapConfig.value) : BUSINESS_RULES.LATE_FEE_CAP;
+    const lateFeeCapPct = BUSINESS_RULES.LATE_FEE_CAP_PCT;
+
+    // Single bulk UPDATE: calculate late fees and set status in one query
+    // Use EXTRACT(EPOCH) / 86400 to get total days (not just the day component of the interval)
+    // Skip payments with late_fee_waived flag to preserve manually adjusted fees
+    // Cap = min(fixed_cap, amount_due * pct_cap) per Thai law (max 5% of installment)
+    const result = await this.prisma.$executeRaw`
+      UPDATE "payments"
+      SET
+        "late_fee" = ROUND(LEAST(
+          GREATEST(FLOOR(EXTRACT(EPOCH FROM (${now}::timestamp - "due_date")) / 86400)::int, 0) * ${lateFeePerDay},
+          ${lateFeeCap},
+          "amount_due" * ${lateFeeCapPct}
+        )::numeric, 2),
+        "status" = 'OVERDUE'
+      WHERE "status" IN ('PENDING', 'PARTIALLY_PAID', 'OVERDUE')
+        AND "due_date" < ${now}
+        AND "late_fee_waived" = false
+        AND "contract_id" IN (
+          SELECT "id" FROM "contracts"
+          WHERE "status" IN ('ACTIVE', 'OVERDUE', 'DEFAULT')
+            AND "deleted_at" IS NULL
+        )
+    `;
+
+    this.logger.log(`Late fees calculated: ${result} payments updated`);
+    return { updated: result, timestamp: now };
+  }
+
+  /**
+   * Update contract statuses based on overdue rules (cron job)
+   * Uses bulk updates and batched transactions for efficiency
+   */
+  async updateContractStatuses() {
+    const now = new Date();
+
+    const systemUserId = await this.getSystemUserIdOrThrow();
+
+    // Read overdue threshold from config
+    const overdueConfig = await this.prisma.systemConfig.findUnique({
+      where: { key: 'overdue_days_threshold' },
+    });
+    const overdueDays = overdueConfig ? Number(overdueConfig.value) : 7;
+
+    // Step 1: ACTIVE → OVERDUE (payments overdue > threshold days)
+    // C3 fix: encode all filter conditions in flipWhere so that updateMany
+    // re-evaluates them atomically on the DB side. A PaySolutions webhook
+    // arriving between our findMany snapshot and the updateMany will therefore
+    // exclude the now-paid contract automatically — no stale read-then-write race.
+    const thresholdDate = new Date(now.getTime() - overdueDays * 24 * 60 * 60 * 1000);
+
+    // T3-C11: Contracts promised-to-pay in last 24h are spared from auto-flip.
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const promisedContractIds: string[] = (
+      await this.prisma.callLog.findMany({
+        where: { result: 'PROMISED', calledAt: { gte: yesterday } },
+        select: { contractId: true },
+        distinct: ['contractId'],
+      })
+    ).map((r) => r.contractId);
+
+    const flipWhere: Prisma.ContractWhereInput = {
+      status: 'ACTIVE',
+      deletedAt: null,
+      id: promisedContractIds.length > 0 ? { notIn: promisedContractIds } : undefined,
+      OR: [
+        { blockAutoEscalation: null },
+        { blockAutoEscalation: { lt: now } },
+      ],
+      payments: {
+        some: {
+          status: { in: ['PENDING', 'PARTIALLY_PAID', 'OVERDUE'] },
+          dueDate: { lt: thresholdDate },
+        },
+      },
+    };
+
+    // Snapshot IDs before the flip so we can write audit logs. It is acceptable
+    // if a few of these IDs drop out by the time updateMany runs (someone paid
+    // in the intervening milliseconds) — updateMany re-evaluates the where clause
+    // atomically and will exclude them. The extra audit-log row for a contract
+    // that was not actually flipped is harmless; reconciliation catches it.
+    const toFlip = await this.prisma.contract.findMany({
+      where: flipWhere,
+      select: { id: true },
+    });
+
+    // C3 fix: wrap updateMany + auditLog.createMany in a single $transaction so
+    // the status flip and its audit trail land atomically. If the audit insert
+    // fails (DB pressure etc), the status flip rolls back — no silent drift
+    // between contract state and audit record.
+    const txOps: Prisma.PrismaPromise<unknown>[] = [
+      this.prisma.contract.updateMany({
+        where: flipWhere,
+        data: { status: 'OVERDUE' },
+      }),
+    ];
+    if (toFlip.length > 0) {
+      txOps.push(
+        this.prisma.auditLog.createMany({
+          data: toFlip.map((c) => ({
+            userId: systemUserId,
+            action: 'STATUS_CHANGE',
+            entity: 'contract',
+            entityId: c.id,
+            newValue: { from: 'ACTIVE', to: 'OVERDUE', reason: `Payment overdue > ${overdueDays} days` },
+            ipAddress: 'system-cron',
+          })),
+        }),
+      );
+    }
+    const [flipResult] = await this.prisma.$transaction(txOps) as [
+      Prisma.BatchPayload,
+      ...unknown[],
+    ];
+
+    const overdueUpdated = flipResult.count;
+    const activeIds = toFlip.map((c) => c.id);
+
+    // Step 2: OVERDUE → DEFAULT (2+ consecutive missed payments)
+    // Use raw SQL to find contracts with consecutive missed payments
+    const defaultCandidates: { id: string; consecutive: number }[] = await this.prisma.$queryRaw`
+      WITH payment_streaks AS (
+        SELECT
+          p."contract_id",
+          p."installment_no",
+          p."status",
+          p."due_date",
+          ROW_NUMBER() OVER (PARTITION BY p."contract_id" ORDER BY p."installment_no") -
+          ROW_NUMBER() OVER (PARTITION BY p."contract_id",
+            CASE WHEN p."status" IN ('PENDING', 'OVERDUE', 'PARTIALLY_PAID') AND p."due_date" < ${now}
+                 THEN 1 ELSE 0 END
+            ORDER BY p."installment_no") AS grp
+        FROM "payments" p
+        JOIN "contracts" c ON c."id" = p."contract_id"
+        WHERE c."status" = 'OVERDUE' AND c."deleted_at" IS NULL
+      ),
+      max_consecutive AS (
+        SELECT
+          "contract_id" AS id,
+          MAX(cnt) AS consecutive
+        FROM (
+          SELECT "contract_id", grp, COUNT(*) AS cnt
+          FROM payment_streaks
+          WHERE "status" IN ('PENDING', 'OVERDUE', 'PARTIALLY_PAID')
+            AND "due_date" < ${now}
+          GROUP BY "contract_id", grp
+        ) sub
+        GROUP BY "contract_id"
+      )
+      SELECT id, consecutive::int FROM max_consecutive WHERE consecutive >= 2
+    `;
+
+    let defaultUpdated = 0;
+    const defaultIds = defaultCandidates.map((c) => c.id);
+
+    if (defaultIds.length > 0) {
+      const txOps: Prisma.PrismaPromise<unknown>[] = [
+        this.prisma.contract.updateMany({
+          where: { id: { in: defaultIds } },
+          data: { status: 'DEFAULT' },
+        }),
+        this.prisma.auditLog.createMany({
+          data: defaultCandidates.map((c) => ({
+            userId: systemUserId,
+            action: 'STATUS_CHANGE',
+            entity: 'contract',
+            entityId: c.id,
+            newValue: { from: 'OVERDUE', to: 'DEFAULT', reason: `${c.consecutive} consecutive missed payments` },
+            ipAddress: 'system-cron',
+          })),
+        }),
+      ];
+      await this.prisma.$transaction(txOps);
+      defaultUpdated = defaultIds.length;
+    }
+
+    this.logger.log(`Contract status update: ${overdueUpdated} overdue, ${defaultUpdated} default`);
+    return { overdueUpdated, defaultUpdated, overdueIds: activeIds, defaultIds, timestamp: now };
+  }
+
+  /**
+   * Dunning workflow: auto-escalate contracts through dunning stages
+   * Based on oldest overdue payment days:
+   *   NONE → REMINDER (1-7 days overdue)
+   *   REMINDER → NOTICE (8-30 days)
+   *   NOTICE → FINAL_WARNING (31-60 days)
+   *   FINAL_WARNING → LEGAL_ACTION (>60 days)
+   *
+   * Returns list of contracts that were escalated (for notification dispatch).
+   */
+  async escalateDunningStages() {
+    const now = new Date();
+
+    // Dunning thresholds (days overdue → target stage)
+    const stages: { minDays: number; stage: DunningStage }[] = [
+      { minDays: 61, stage: 'LEGAL_ACTION' },
+      { minDays: 31, stage: 'FINAL_WARNING' },
+      { minDays: 8, stage: 'NOTICE' },
+      { minDays: 1, stage: 'REMINDER' },
+    ];
+
+    // Find overdue/default contracts in batches to prevent unbounded memory usage
+    const BATCH_SIZE = 500;
+    let contracts: { id: string; contractNumber: string; dunningStage: DunningStage; payments: { dueDate: Date }[] }[] = [];
+    let skip = 0;
+    let hasMore = true;
+    while (hasMore) {
+      const batch = await this.prisma.contract.findMany({
+        where: {
+          status: { in: ['OVERDUE', 'DEFAULT'] },
+          deletedAt: null,
+        },
+        select: {
+          id: true,
+          contractNumber: true,
+          dunningStage: true,
+          payments: {
+            where: {
+              status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] },
+              dueDate: { lt: now },
+            },
+            orderBy: { dueDate: 'asc' },
+            take: 1,
+            select: { dueDate: true },
+          },
+        },
+        take: BATCH_SIZE,
+        skip,
+      });
+      contracts = contracts.concat(batch as typeof contracts);
+      if (batch.length < BATCH_SIZE) { hasMore = false; break; }
+      skip += BATCH_SIZE;
+    }
+
+    const escalated: { contractId: string; contractNumber: string; from: DunningStage; to: DunningStage; daysOverdue: number }[] = [];
+
+    const systemUserId = await this.getSystemUserIdOrThrow();
+
+    for (const contract of contracts) {
+      if (contract.payments.length === 0) continue;
+
+      const oldestDue = contract.payments[0].dueDate;
+      const daysOverdue = Math.floor((now.getTime() - oldestDue.getTime()) / (1000 * 60 * 60 * 24));
+
+      // Determine target stage
+      let targetStage: DunningStage = 'NONE';
+      for (const { minDays, stage } of stages) {
+        if (daysOverdue >= minDays) {
+          targetStage = stage;
+          break;
+        }
+      }
+
+      // Only escalate (never de-escalate)
+      const stageOrder: DunningStage[] = ['NONE', 'REMINDER', 'NOTICE', 'FINAL_WARNING', 'LEGAL_ACTION'];
+      const currentIdx = stageOrder.indexOf(contract.dunningStage);
+      const targetIdx = stageOrder.indexOf(targetStage);
+
+      if (targetIdx > currentIdx) {
+        // T4-C2: FINAL_WARNING and LEGAL_ACTION messages carry legal +
+        // PDPA risk if fired auto on a disputed debt. Park them as pending
+        // and wait for a human OWNER/FM to approve.
+        const requiresApproval =
+          targetStage === 'FINAL_WARNING' || targetStage === 'LEGAL_ACTION';
+
+        if (requiresApproval) {
+          await this.prisma.contract.update({
+            where: { id: contract.id },
+            data: {
+              pendingDunningStage: targetStage,
+              pendingDunningSince: now,
+            },
+          });
+          await this.prisma.auditLog.create({
+            data: {
+              userId: systemUserId,
+              action: 'DUNNING_ESCALATION_PENDING',
+              entity: 'contract',
+              entityId: contract.id,
+              oldValue: { dunningStage: contract.dunningStage },
+              newValue: { pendingDunningStage: targetStage, daysOverdue },
+              ipAddress: 'system-cron',
+            },
+          });
+          continue; // no stage flip, no customer notification this round
+        }
+
+        await this.prisma.contract.update({
+          where: { id: contract.id },
+          data: {
+            dunningStage: targetStage,
+            dunningEscalatedAt: now,
+            dunningLastActionAt: now,
+          },
+        });
+
+        await this.prisma.auditLog.create({
+          data: {
+            userId: systemUserId,
+            action: 'DUNNING_ESCALATION',
+            entity: 'contract',
+            entityId: contract.id,
+            oldValue: { dunningStage: contract.dunningStage },
+            newValue: { dunningStage: targetStage, daysOverdue },
+            ipAddress: 'system-cron',
+          },
+        });
+
+        escalated.push({
+          contractId: contract.id,
+          contractNumber: contract.contractNumber,
+          from: contract.dunningStage,
+          to: targetStage,
+          daysOverdue,
+        });
+      }
+    }
+
+    this.logger.log(`Dunning escalation: ${escalated.length} contracts escalated`);
+    return { escalated, timestamp: now };
+  }
+
+  /**
+   * Reset dunning stage when a contract is no longer overdue
+   * (e.g., after a payment brings it back to ACTIVE)
+   */
+  async resetDunningStage(contractId: string) {
+    return this.prisma.contract.update({
+      where: { id: contractId },
+      data: {
+        dunningStage: 'NONE',
+        dunningEscalatedAt: null,
+        dunningLastActionAt: null,
+      },
+    });
+  }
+}

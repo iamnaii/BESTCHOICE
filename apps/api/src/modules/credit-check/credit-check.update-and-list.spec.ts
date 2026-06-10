@@ -227,8 +227,11 @@ describe('CreditCheckService.getAutoScore', () => {
       recommendation: 'ควรพิจารณาเพิ่มเติม',
       factors: [{ name: 'อายุ', weight: 15, score: 100, detail: 'ok' }],
     };
+    // getAutoScore + calculateRiskScore both live on the internally-constructed
+    // CreditCheckRiskService sub-service (svc.risk); getAutoScore resolves its
+    // calculateRiskScore dependency through that same instance.
     const spy = jest
-      .spyOn(svc as unknown as { calculateRiskScore: (id: string) => Promise<typeof riskResult> }, 'calculateRiskScore')
+      .spyOn(svc.risk as unknown as { calculateRiskScore: (id: string) => Promise<typeof riskResult> }, 'calculateRiskScore')
       .mockResolvedValue(riskResult);
 
     const result = await svc.getAutoScore('cc-1');

@@ -45,7 +45,7 @@ describe('CreditCheckService.performRuleBasedAnalysis', () => {
     statementFileCount?: number;
     customerOccupation?: string | null;
   }): Analysis =>
-    (service as unknown as {
+    (service.ai as unknown as {
       performRuleBasedAnalysis: (p: typeof params) => Analysis;
     }).performRuleBasedAnalysis({ customerOccupation: null, ...params });
 

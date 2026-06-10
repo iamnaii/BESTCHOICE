@@ -35,7 +35,10 @@ const run = (
   history: typeof NON_RETURNING = NON_RETURNING,
 ) => {
   const svc = new CreditCheckService(makePrisma(cc), {} as unknown as IntegrationConfigService);
-  jest.spyOn(svc as unknown as { getCustomerHistory: (id: string) => Promise<unknown> }, 'getCustomerHistory')
+  // calculateDtiRiskScore + getCustomerHistory both live on the internally-constructed
+  // CreditCheckRiskService sub-service (svc.risk); the DTI call resolves its history
+  // dependency through that same instance, so the stub must target svc.risk.
+  jest.spyOn(svc.risk as unknown as { getCustomerHistory: (id: string) => Promise<unknown> }, 'getCustomerHistory')
     .mockResolvedValue(history);
   return svc.calculateDtiRiskScore('cc-1', data);
 };

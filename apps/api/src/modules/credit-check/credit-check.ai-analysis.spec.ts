@@ -68,7 +68,9 @@ type Privates = {
   }>;
 };
 
-const asPrivate = (svc: CreditCheckService): Privates => svc as unknown as Privates;
+// The AI-analysis methods live on the internally-constructed CreditCheckAiAnalysisService
+// sub-service (svc.ai); reach the (sub-service-private) methods through it.
+const asPrivate = (svc: CreditCheckService): Privates => svc.ai as unknown as Privates;
 
 /**
  * Spy on a private method by name. We cast to a loosely-typed jest.Mock because the
@@ -76,7 +78,7 @@ const asPrivate = (svc: CreditCheckService): Privates => svc as unknown as Priva
  * `mockResolvedValue` / `mockReturnValue` / assertion calls type-safe at the call site.
  */
 const spyPrivate = (svc: CreditCheckService, method: string): jest.Mock =>
-  jest.spyOn(svc as unknown as Record<string, () => unknown>, method) as unknown as jest.Mock;
+  jest.spyOn(svc.ai as unknown as Record<string, () => unknown>, method) as unknown as jest.Mock;
 
 /** A minimal fake Anthropic client whose messages.create returns a single text block. */
 type FakeCreate = jest.Mock;

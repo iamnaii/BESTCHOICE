@@ -6,10 +6,17 @@ import { LoyaltyService } from '../loyalty/loyalty.service';
 import { ShopShippingService } from '../shop-shipping/shop-shipping.service';
 import { PaySolutionsService } from '../paysolutions/paysolutions.service';
 import { SalesService } from '../sales/sales.service';
+import * as Sentry from '@sentry/nestjs';
+
+jest.mock('@sentry/nestjs', () => ({
+  captureException: jest.fn(),
+  captureMessage: jest.fn(),
+}));
 
 const prismaMock: any = {
-  productReservation: { findUnique: jest.fn() },
+  productReservation: { findUnique: jest.fn(), updateMany: jest.fn() },
   onlineOrder: { create: jest.fn(), update: jest.fn(), findUnique: jest.fn() },
+  $transaction: jest.fn(async (cb: any) => cb(prismaMock)),
 };
 const promotionsMock: any = { findActivePromotions: jest.fn() };
 const loyaltyMock: any = { getCustomerPoints: jest.fn() };
@@ -40,7 +47,7 @@ describe('ShopCheckoutService', () => {
     it('validates a percentage promo and returns discount', async () => {
       prismaMock.productReservation.findUnique.mockResolvedValue({
         id: 'r1', status: 'ACTIVE', expiresAt: new Date(Date.now() + 60000),
-        product: { costPrice: 10000 },
+        product: { cashPrice: 10000 },
       });
       promotionsMock.findActivePromotions.mockResolvedValue([
         { id: 'promo1', code: 'SAVE10', type: 'PERCENTAGE_DISCOUNT', value: 10, maxUsageCount: 100, currentUsageCount: 5 },
@@ -54,7 +61,7 @@ describe('ShopCheckoutService', () => {
     it('rejects expired reservation', async () => {
       prismaMock.productReservation.findUnique.mockResolvedValue({
         id: 'r1', status: 'EXPIRED', expiresAt: new Date(Date.now() - 60000),
-        product: { costPrice: 10000 },
+        product: { cashPrice: 10000 },
       });
       await expect(
         service.validatePromoCode({ code: 'SAVE10', reservationId: 'r1' })
@@ -64,7 +71,7 @@ describe('ShopCheckoutService', () => {
     it('rejects unknown promo code', async () => {
       prismaMock.productReservation.findUnique.mockResolvedValue({
         id: 'r1', status: 'ACTIVE', expiresAt: new Date(Date.now() + 60000),
-        product: { costPrice: 10000 },
+        product: { cashPrice: 10000 },
       });
       promotionsMock.findActivePromotions.mockResolvedValue([]);
       const result = await service.validatePromoCode({ code: 'INVALID', reservationId: 'r1' });
@@ -76,7 +83,7 @@ describe('ShopCheckoutService', () => {
     it('allows redemption within balance + daily cap', async () => {
       prismaMock.productReservation.findUnique.mockResolvedValue({
         id: 'r1', status: 'ACTIVE', expiresAt: new Date(Date.now() + 60000),
-        product: { costPrice: 10000 },
+        product: { cashPrice: 10000 },
       });
       loyaltyMock.getCustomerPoints.mockResolvedValue({ balance: 2000 });
       const result = await service.validateLoyaltyRedemption({ reservationId: 'r1', points: 500 }, 'cust-1');
@@ -87,7 +94,7 @@ describe('ShopCheckoutService', () => {
     it('rejects redemption exceeding balance', async () => {
       prismaMock.productReservation.findUnique.mockResolvedValue({
         id: 'r1', status: 'ACTIVE', expiresAt: new Date(Date.now() + 60000),
-        product: { costPrice: 10000 },
+        product: { cashPrice: 10000 },
       });
       loyaltyMock.getCustomerPoints.mockResolvedValue({ balance: 100 });
       const result = await service.validateLoyaltyRedemption({ reservationId: 'r1', points: 500 }, 'cust-1');
@@ -98,7 +105,7 @@ describe('ShopCheckoutService', () => {
     it('rejects redemption exceeding daily cap (5000)', async () => {
       prismaMock.productReservation.findUnique.mockResolvedValue({
         id: 'r1', status: 'ACTIVE', expiresAt: new Date(Date.now() + 60000),
-        product: { costPrice: 10000 },
+        product: { cashPrice: 10000 },
       });
       loyaltyMock.getCustomerPoints.mockResolvedValue({ balance: 10000 });
       const result = await service.validateLoyaltyRedemption({ reservationId: 'r1', points: 5001 }, 'cust-1');
@@ -123,7 +130,7 @@ describe('ShopCheckoutService', () => {
       prismaMock.productReservation.findUnique.mockResolvedValue({
         id: 'r1', status: 'ACTIVE', expiresAt: new Date(Date.now() + 60000),
         productId: 'p1', customerId: 'cust-1',
-        product: { id: 'p1', costPrice: 12500, name: 'iPhone 13' },
+        product: { id: 'p1', cashPrice: 12500, name: 'iPhone 13' },
       });
       shippingMock.quote.mockReturnValue({ method: 'KERRY', fee: 60, label: 'Kerry', etaDays: '1-2', available: true });
       prismaMock.onlineOrder.create.mockResolvedValue({ id: 'order-1', orderNumber: 'BC-260421-111111' });
@@ -140,7 +147,7 @@ describe('ShopCheckoutService', () => {
       prismaMock.productReservation.findUnique.mockResolvedValue({
         id: 'r1', status: 'ACTIVE', expiresAt: new Date(Date.now() + 60000),
         productId: 'p1', customerId: 'cust-1',
-        product: { id: 'p1', costPrice: 12500, name: 'iPhone 13' },
+        product: { id: 'p1', cashPrice: 12500, name: 'iPhone 13' },
       });
       shippingMock.quote.mockReturnValue({ method: 'KERRY', fee: 60, label: 'Kerry', etaDays: '1-2', available: true });
       prismaMock.onlineOrder.create.mockResolvedValue({ id: 'order-2', orderNumber: 'BC-260421-222222' });
@@ -148,6 +155,75 @@ describe('ShopCheckoutService', () => {
       const result = await service.placeOrder({ ...dto, paymentChannel: 'BANK_TRANSFER' } as any, 'cust-1');
       expect(result.paymentUrl).toBeUndefined();
       expect(paysolutionsMock.createOnlineOrderIntent).not.toHaveBeenCalled();
+    });
+
+    it('compensates (cancels order + releases reservation + alarms) and rethrows when the gateway intent fails', async () => {
+      prismaMock.productReservation.findUnique.mockResolvedValue({
+        id: 'r1', status: 'ACTIVE', expiresAt: new Date(Date.now() + 60000),
+        productId: 'p1', customerId: 'cust-1',
+        product: { id: 'p1', cashPrice: 12500, name: 'iPhone 13' },
+      });
+      shippingMock.quote.mockReturnValue({ method: 'KERRY', fee: 60, label: 'Kerry', etaDays: '1-2', available: true });
+      prismaMock.onlineOrder.create.mockResolvedValue({ id: 'order-3', orderNumber: 'BC-260421-333333' });
+      // Gateway throws (timeout / non-OK / no redirect link).
+      paysolutionsMock.createOnlineOrderIntent.mockRejectedValue(
+        new Error('ระบบชำระเงินใช้เวลานานเกินไป'),
+      );
+
+      // The customer-facing error propagates (never swallowed)...
+      await expect(service.placeOrder(dto, 'cust-1')).rejects.toThrow(/ใช้เวลานาน/);
+
+      // ...the orphan order is cancelled...
+      expect(prismaMock.onlineOrder.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'order-3' },
+          data: expect.objectContaining({ status: 'CANCELLED' }),
+        }),
+      );
+      // ...the ACTIVE reservation hold is released...
+      expect(prismaMock.productReservation.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'r1', status: 'ACTIVE' },
+          data: { status: 'CANCELLED' },
+        }),
+      );
+      // ...and the orphan is alarmed for ops follow-up.
+      expect(Sentry.captureException as jest.Mock).toHaveBeenCalled();
+    });
+
+    it('prices the order from cashPrice (not costPrice) with Decimal math + forwards the exact amount to the gateway', async () => {
+      prismaMock.productReservation.findUnique.mockResolvedValue({
+        id: 'r1', status: 'ACTIVE', expiresAt: new Date(Date.now() + 60000),
+        productId: 'p1', customerId: 'cust-1',
+        // cashPrice (retail) ≠ costPrice (acquisition): the order must use cashPrice.
+        product: { id: 'p1', cashPrice: 12500, costPrice: 9000, name: 'iPhone 13' },
+      });
+      shippingMock.quote.mockReturnValue({ method: 'KERRY', fee: 60, label: 'Kerry', etaDays: '1-2', available: true });
+      prismaMock.onlineOrder.create.mockResolvedValue({ id: 'order-9', orderNumber: 'BC-260421-999999' });
+      paysolutionsMock.createOnlineOrderIntent.mockResolvedValue({ paymentLinkId: 'pl9', paymentUrl: 'https://pay/x' });
+
+      await service.placeOrder(dto, 'cust-1');
+
+      // total = cashPrice 12500 + fee 60 (NOT costPrice 9000).
+      expect(prismaMock.onlineOrder.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ totalAmount: 12560 }) }),
+      );
+      // The gateway charge equals the computed total — no precision drift.
+      expect(paysolutionsMock.createOnlineOrderIntent).toHaveBeenCalledWith(
+        expect.objectContaining({ amount: 12560 }),
+      );
+    });
+
+    it('throws when the product has no cashPrice (ราคาขายยังไม่ตั้ง) instead of charging cost', async () => {
+      prismaMock.productReservation.findUnique.mockResolvedValue({
+        id: 'r1', status: 'ACTIVE', expiresAt: new Date(Date.now() + 60000),
+        productId: 'p1', customerId: 'cust-1',
+        product: { id: 'p1', cashPrice: null, costPrice: 9000, name: 'iPhone 13' },
+      });
+      shippingMock.quote.mockReturnValue({ method: 'KERRY', fee: 60, label: 'Kerry', etaDays: '1-2', available: true });
+
+      await expect(service.placeOrder(dto, 'cust-1')).rejects.toThrow(/ราคาขาย/);
+      expect(prismaMock.onlineOrder.create).not.toHaveBeenCalled();
     });
   });
 });

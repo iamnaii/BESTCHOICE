@@ -89,16 +89,21 @@ describe('NotificationsService — reminder / overdue dunning', () => {
 
     service = mod.get(NotificationsService);
     // Stub actual delivery so tests assert branch decisions, not real I/O.
+    // After the Transport/Dispatch decompose these live on the sub-services the
+    // reminder cron delegates to: sendLineFlexMessage → transport, send +
+    // sendFromTemplate → dispatch. Retarget the spies (assertions unchanged).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    jest.spyOn(service as any, 'sendLineFlexMessage').mockResolvedValue(undefined);
+    jest.spyOn(service.transport as any, 'sendLineFlexMessage').mockResolvedValue(undefined);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    jest.spyOn(service as any, 'send').mockResolvedValue(undefined);
+    jest.spyOn(service.dispatch as any, 'send').mockResolvedValue(undefined);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    jest.spyOn(service as any, 'sendFromTemplate').mockResolvedValue(undefined);
+    jest.spyOn(service.dispatch as any, 'sendFromTemplate').mockResolvedValue(undefined);
   });
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const spyOf = (name: string) => (service as any)[name] as jest.Mock;
+  const spyOf = (name: string) =>
+    (name === 'sendLineFlexMessage'
+      ? (service.transport as any)[name]
+      : (service.dispatch as any)[name]) as jest.Mock;
 
   describe('sendPaymentReminders', () => {
     const SUBJECT = 'แจ้งเตือนค่างวด';

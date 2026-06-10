@@ -130,7 +130,9 @@ describe('NotificationsService — sendFromTemplate integration', () => {
       sampleData: null,
     });
 
-    const sendSpy = jest.spyOn(service, 'send');
+    // sendFromTemplate's text path now delegates through the internal dispatch
+    // sub-service, so spy on dispatch.send (assertion below unchanged).
+    const sendSpy = jest.spyOn(service.dispatch, 'send');
 
     await service.sendFromTemplate(
       'dunning.reminder',

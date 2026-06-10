@@ -1,6 +1,10 @@
 import { Module } from '@nestjs/common';
 import { SettingsController } from './settings.controller';
 import { SettingsService } from './settings.service';
+import { SettingsFlagsService } from './services/settings-flags.service';
+import { SettingsWriteService } from './services/settings-write.service';
+import { PettyCashCustodianService } from './services/petty-cash-custodian.service';
+import { DocNumberPreviewService } from './services/doc-number-preview.service';
 import { RoleMapValidationService } from './role-map-validation.service';
 import { SettingsAccessGuard } from './settings-access.guard';
 import { JournalModule } from '../journal/journal.module';
@@ -16,7 +20,16 @@ import { JournalModule } from '../journal/journal.module';
   controllers: [SettingsController],
   // D1.3.2.2 — SettingsAccessGuard is consumed by the controller via
   // `@UseGuards(...)` so Nest needs it in the providers list.
-  providers: [SettingsService, RoleMapValidationService, SettingsAccessGuard],
+  providers: [
+    SettingsService,
+    // Wave-4 decomposition — internal sub-services the facade delegates to.
+    SettingsFlagsService,
+    SettingsWriteService,
+    PettyCashCustodianService,
+    DocNumberPreviewService,
+    RoleMapValidationService,
+    SettingsAccessGuard,
+  ],
   exports: [SettingsService, RoleMapValidationService],
 })
 export class SettingsModule {}

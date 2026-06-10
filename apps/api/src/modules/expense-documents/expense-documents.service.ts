@@ -12,7 +12,11 @@ import { JournalAutoService } from '../journal/journal-auto.service';
 import { resolvePostPermissionRoles } from './post-permission.guard';
 import { resolveReversePermissionRoles } from './reverse-permission.guard';
 import { maskPayrollTaxIds } from './payroll-pii-mask.util';
-import { ADJUSTMENT_ALLOWLIST, validateAdjustments } from './expense-validators.util';
+import {
+  ADJUSTMENT_ALLOWLIST,
+  assertCategoriesAreExpense,
+  validateAdjustments,
+} from './expense-validators.util';
 import { DocNumberService } from './services/doc-number.service';
 import { StatusTransitionService } from './services/status-transition.service';
 import { ExpenseSameDayTemplate } from '../journal/cpa-templates/expense-same-day.template';
@@ -356,17 +360,10 @@ export class ExpenseDocumentsService implements OnModuleInit {
 
     return this.prisma.$transaction(async (tx) => {
       // CoA validation — every category must exist + be type "ค่าใช้จ่าย"
-      const codes = [...new Set(linesPrepared.map((l) => l.category))];
-      const coaRows = await tx.chartOfAccount.findMany({
-        where: { code: { in: codes }, deletedAt: null },
-        select: { code: true, type: true },
-      });
-      const byCode = new Map(coaRows.map((r) => [r.code, r.type]));
-      for (const c of codes) {
-        const t = byCode.get(c);
-        if (!t) throw new BadRequestException(`หมวดบัญชี ${c} ไม่พบในผังบัญชี`);
-        if (t !== 'ค่าใช้จ่าย') throw new BadRequestException(`หมวดบัญชี ${c} ไม่ใช่ "ค่าใช้จ่าย"`);
-      }
+      await assertCategoriesAreExpense(
+        tx,
+        linesPrepared.map((l) => l.category),
+      );
 
       // Fix Report P0-4 — multi-line adjustment validation (V12/V13/V14).
       // Shared helper used here (EXPENSE) and by createSettlement (B2 / SE).
@@ -574,17 +571,10 @@ export class ExpenseDocumentsService implements OnModuleInit {
 
     return this.prisma.$transaction(async (tx) => {
       // CoA validation — every category must exist + be type "ค่าใช้จ่าย"
-      const codes = [...new Set(linesPrepared.map((l) => l.category))];
-      const coaRows = await tx.chartOfAccount.findMany({
-        where: { code: { in: codes }, deletedAt: null },
-        select: { code: true, type: true },
-      });
-      const byCode = new Map(coaRows.map((r) => [r.code, r.type]));
-      for (const c of codes) {
-        const t = byCode.get(c);
-        if (!t) throw new BadRequestException(`หมวดบัญชี ${c} ไม่พบในผังบัญชี`);
-        if (t !== 'ค่าใช้จ่าย') throw new BadRequestException(`หมวดบัญชี ${c} ไม่ใช่ "ค่าใช้จ่าย"`);
-      }
+      await assertCategoriesAreExpense(
+        tx,
+        linesPrepared.map((l) => l.category),
+      );
 
       // LINKED-mode validation: source lookup + cap + WHT guard under advisory lock.
       // STANDALONE-mode skips this — there is no source document.
@@ -1194,19 +1184,10 @@ export class ExpenseDocumentsService implements OnModuleInit {
 
     return this.prisma.$transaction(async (tx) => {
       // CoA validation — each category must exist + be type "ค่าใช้จ่าย"
-      const codes = [...new Set(linesPrepared.map((l) => l.category))];
-      const coaRows = await tx.chartOfAccount.findMany({
-        where: { code: { in: codes }, deletedAt: null },
-        select: { code: true, type: true },
-      });
-      const byCode = new Map(coaRows.map((r) => [r.code, r.type]));
-      for (const c of codes) {
-        const t = byCode.get(c);
-        if (!t) throw new BadRequestException(`หมวดบัญชี ${c} ไม่พบในผังบัญชี`);
-        if (t !== 'ค่าใช้จ่าย') {
-          throw new BadRequestException(`หมวดบัญชี ${c} ไม่ใช่ "ค่าใช้จ่าย"`);
-        }
-      }
+      await assertCategoriesAreExpense(
+        tx,
+        linesPrepared.map((l) => l.category),
+      );
 
       const number = await this.docNumber.next(tx, 'PETTY_CASH_REIMBURSEMENT', documentDate);
 
@@ -1906,17 +1887,10 @@ export class ExpenseDocumentsService implements OnModuleInit {
         });
 
         // CoA validation — every category must exist + be type "ค่าใช้จ่าย"
-        const codes = [...new Set(linesPrepared.map((l) => l.category))];
-        const coaRows = await tx.chartOfAccount.findMany({
-          where: { code: { in: codes }, deletedAt: null },
-          select: { code: true, type: true },
-        });
-        const byCode = new Map(coaRows.map((r) => [r.code, r.type]));
-        for (const c of codes) {
-          const t = byCode.get(c);
-          if (!t) throw new BadRequestException(`หมวดบัญชี ${c} ไม่พบในผังบัญชี`);
-          if (t !== 'ค่าใช้จ่าย') throw new BadRequestException(`หมวดบัญชี ${c} ไม่ใช่ "ค่าใช้จ่าย"`);
-        }
+        await assertCategoriesAreExpense(
+          tx,
+          linesPrepared.map((l) => l.category),
+        );
 
         const totals = this.aggregator.aggregateLines(linesPrepared);
 

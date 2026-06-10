@@ -89,3 +89,27 @@ export async function validateAdjustments(
     );
   }
 }
+
+/**
+ * Asserts every supplied category code exists in the chart of accounts and is of
+ * type "ค่าใช้จ่าย" (expense). Throws BadRequestException on the FIRST offending code
+ * (missing → ไม่พบในผังบัญชี; wrong type → ไม่ใช่ "ค่าใช้จ่าย"), preserving insertion
+ * order via Set dedup. Extracted verbatim from the 4 copies in ExpenseDocumentsService
+ * (create / createCreditNote / createPettyCash / update).
+ */
+export async function assertCategoriesAreExpense(
+  tx: Prisma.TransactionClient,
+  categories: string[],
+): Promise<void> {
+  const codes = [...new Set(categories)];
+  const coaRows = await tx.chartOfAccount.findMany({
+    where: { code: { in: codes }, deletedAt: null },
+    select: { code: true, type: true },
+  });
+  const byCode = new Map(coaRows.map((r) => [r.code, r.type]));
+  for (const c of codes) {
+    const t = byCode.get(c);
+    if (!t) throw new BadRequestException(`หมวดบัญชี ${c} ไม่พบในผังบัญชี`);
+    if (t !== 'ค่าใช้จ่าย') throw new BadRequestException(`หมวดบัญชี ${c} ไม่ใช่ "ค่าใช้จ่าย"`);
+  }
+}

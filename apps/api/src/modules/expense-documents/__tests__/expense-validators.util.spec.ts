@@ -1,6 +1,10 @@
 import { Prisma } from '@prisma/client';
 import { BadRequestException } from '@nestjs/common';
-import { ADJUSTMENT_ALLOWLIST, validateAdjustments } from '../expense-validators.util';
+import {
+  ADJUSTMENT_ALLOWLIST,
+  assertCategoriesAreExpense,
+  validateAdjustments,
+} from '../expense-validators.util';
 
 /**
  * Characterization spec for validateAdjustments (V12/V13/V14).
@@ -149,5 +153,88 @@ describe('validateAdjustments (expense-validators.util)', () => {
     const whereArg = findMany.mock.calls[0][0].where;
     expect(whereArg.code.in).toEqual(['52-1104']);
     expect(whereArg.deletedAt).toBeNull();
+  });
+});
+
+/**
+ * Characterization spec for assertCategoriesAreExpense.
+ *
+ * Pure unit test — mocks the only tx surface the guard touches:
+ * tx.chartOfAccount.findMany. Pins the EXACT Thai messages, the deduped/insertion-
+ * order query, and the first-offender throw order. Behavior was previously
+ * copy-pasted (byte-equivalent) across create / createCreditNote /
+ * createPettyCash / update and covered only INDIRECTLY via those integration tests.
+ */
+describe('assertCategoriesAreExpense (expense-validators.util)', () => {
+  // Builds a mock tx whose chartOfAccount.findMany returns the given {code,type} rows.
+  const makeTx = (rows: { code: string; type: string }[]) => {
+    const findMany = jest.fn().mockResolvedValue(rows);
+    return {
+      tx: { chartOfAccount: { findMany } } as unknown as Prisma.TransactionClient,
+      findMany,
+    };
+  };
+
+  it('all categories valid (type ค่าใช้จ่าย) → resolves; queries deduped code set + deletedAt null + select {code,type}', async () => {
+    const { tx, findMany } = makeTx([
+      { code: '51-1101', type: 'ค่าใช้จ่าย' },
+      { code: '52-1104', type: 'ค่าใช้จ่าย' },
+    ]);
+    await expect(
+      assertCategoriesAreExpense(tx, ['51-1101', '52-1104']),
+    ).resolves.toBeUndefined();
+    expect(findMany).toHaveBeenCalledTimes(1);
+    const arg = findMany.mock.calls[0][0];
+    expect(arg.where.code.in).toEqual(['51-1101', '52-1104']);
+    expect(arg.where.deletedAt).toBeNull();
+    expect(arg.select).toEqual({ code: true, type: true });
+  });
+
+  it('code missing from CoA → throws ไม่พบในผังบัญชี', async () => {
+    const { tx } = makeTx([]); // findMany omits it
+    await expect(assertCategoriesAreExpense(tx, ['51-1101'])).rejects.toThrow(
+      new BadRequestException('หมวดบัญชี 51-1101 ไม่พบในผังบัญชี'),
+    );
+  });
+
+  it('code present but wrong type (รายได้) → throws ไม่ใช่ "ค่าใช้จ่าย"', async () => {
+    const { tx } = makeTx([{ code: '41-1101', type: 'รายได้' }]);
+    await expect(assertCategoriesAreExpense(tx, ['41-1101'])).rejects.toThrow(
+      new BadRequestException('หมวดบัญชี 41-1101 ไม่ใช่ "ค่าใช้จ่าย"'),
+    );
+  });
+
+  it('dedup: duplicate categories → findMany queried once with the deduped set', async () => {
+    const { tx, findMany } = makeTx([{ code: '51-1101', type: 'ค่าใช้จ่าย' }]);
+    await expect(
+      assertCategoriesAreExpense(tx, ['51-1101', '51-1101', '51-1101']),
+    ).resolves.toBeUndefined();
+    expect(findMany).toHaveBeenCalledTimes(1);
+    expect(findMany.mock.calls[0][0].where.code.in).toEqual(['51-1101']);
+  });
+
+  it('first-offender: [valid, missing] → the missing code throws', async () => {
+    // findMany returns only the valid one; the second (missing) trips the loop.
+    const { tx } = makeTx([{ code: '51-1101', type: 'ค่าใช้จ่าย' }]);
+    await expect(
+      assertCategoriesAreExpense(tx, ['51-1101', '99-9999']),
+    ).rejects.toThrow(new BadRequestException('หมวดบัญชี 99-9999 ไม่พบในผังบัญชี'));
+  });
+
+  it('first-offender: wrong-type before missing (by insertion order) → the wrong-type code throws first', async () => {
+    // Iteration follows Set insertion order: 41-1101 (wrong type) is reached
+    // before 99-9999 (missing), so the ไม่ใช่ message wins.
+    const { tx } = makeTx([{ code: '41-1101', type: 'รายได้' }]);
+    await expect(
+      assertCategoriesAreExpense(tx, ['41-1101', '99-9999']),
+    ).rejects.toThrow(new BadRequestException('หมวดบัญชี 41-1101 ไม่ใช่ "ค่าใช้จ่าย"'));
+  });
+
+  it('empty array → resolves; findMany still called once with empty in: []', async () => {
+    const { tx, findMany } = makeTx([]);
+    await expect(assertCategoriesAreExpense(tx, [])).resolves.toBeUndefined();
+    // The guard always queries (no fast-path); the for-loop over [] is a no-op.
+    expect(findMany).toHaveBeenCalledTimes(1);
+    expect(findMany.mock.calls[0][0].where.code.in).toEqual([]);
   });
 });

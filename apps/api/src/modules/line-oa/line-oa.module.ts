@@ -12,6 +12,7 @@ import { LineWebhookGuard } from './line-webhook.guard';
 import { LiffTokenGuard } from './guards/liff-token.guard';
 import { PromptPayQrService } from './promptpay/promptpay-qr.service';
 import { PaymentLinkService } from './payment-links/payment-link.service';
+import { PaymentEvidenceService } from './services/payment-evidence.service';
 import { RichMenuService } from './rich-menu/rich-menu.service';
 import { RichMenuRendererService } from './rich-menu/rich-menu-renderer.service';
 import { ChatbotService } from './chatbot.service';
@@ -48,6 +49,7 @@ import { StaffChatModule } from '../staff-chat/staff-chat.module';
     LiffTokenGuard,
     PromptPayQrService,
     PaymentLinkService,
+    PaymentEvidenceService,
     RichMenuService,
     RichMenuRendererService,
     ChatbotService,

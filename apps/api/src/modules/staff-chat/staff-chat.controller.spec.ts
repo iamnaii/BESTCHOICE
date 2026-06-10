@@ -34,13 +34,26 @@ describe('StaffChatController', () => {
   let cannedResponseBubble: CannedResponseBubbleService;
   let cannedResponseQuickReply: CannedResponseQuickReplyService;
   let cannedResponseSender: CannedResponseSenderService;
+  let roomManager: RoomManagerService;
+  let gateway: StaffChatGateway;
 
   beforeEach(async () => {
     const module = await Test.createTestingModule({
       controllers: [StaffChatController],
       providers: [
         { provide: PrismaService, useValue: {} },
-        { provide: RoomManagerService, useValue: {} },
+        {
+          provide: RoomManagerService,
+          useValue: {
+            pinRoom: jest.fn(),
+            unpinRoom: jest.fn(),
+            markAsRead: jest.fn(),
+            uploadFile: jest.fn(),
+            getCustomerMessages: jest.fn(),
+            sendCustomerMessage: jest.fn(),
+            getCrossChannelRooms: jest.fn(),
+          },
+        },
         { provide: AssignmentService, useValue: {} },
         { provide: ConversationTagService, useValue: {} },
         { provide: HandoffManagerService, useValue: {} },
@@ -65,7 +78,7 @@ describe('StaffChatController', () => {
         { provide: AiMetricsService, useValue: {} },
         { provide: ConfigService, useValue: { get: jest.fn() } },
         { provide: TrainingExtractCron, useValue: {} },
-        { provide: StaffChatGateway, useValue: {} },
+        { provide: StaffChatGateway, useValue: { emitNewMessage: jest.fn() } },
         {
           provide: CannedResponseBubbleService,
           useValue: {
@@ -105,6 +118,8 @@ describe('StaffChatController', () => {
     cannedResponseBubble = module.get(CannedResponseBubbleService);
     cannedResponseQuickReply = module.get(CannedResponseQuickReplyService);
     cannedResponseSender = module.get(CannedResponseSenderService);
+    roomManager = module.get(RoomManagerService);
+    gateway = module.get(StaffChatGateway);
   });
 
   describe('GET /staff-chat/rooms/:roomId/canned-responses/:id/preview', () => {
@@ -255,6 +270,126 @@ describe('StaffChatController', () => {
         ),
       ).rejects.toThrow('templateId');
       expect(cannedResponseSender.send).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── Moved handlers (delegate to RoomManagerService) ──────────────
+
+  describe('POST /staff-chat/rooms/:id/pin', () => {
+    it('delegates to roomManager.pinRoom with room + user id and returns success', async () => {
+      jest.spyOn(roomManager, 'pinRoom').mockResolvedValue(undefined);
+      const result = await controller.pinRoom('room-1', { user: { id: 'user-1' } } as any);
+      expect(roomManager.pinRoom).toHaveBeenCalledWith('room-1', 'user-1');
+      expect(result).toEqual({ success: true });
+    });
+  });
+
+  describe('DELETE /staff-chat/rooms/:id/pin', () => {
+    it('delegates to roomManager.unpinRoom and returns success', async () => {
+      jest.spyOn(roomManager, 'unpinRoom').mockResolvedValue(undefined);
+      const result = await controller.unpinRoom('room-1');
+      expect(roomManager.unpinRoom).toHaveBeenCalledWith('room-1');
+      expect(result).toEqual({ success: true });
+    });
+  });
+
+  describe('POST /staff-chat/rooms/:id/read', () => {
+    it('delegates to roomManager.markAsRead and returns markedCount', async () => {
+      jest.spyOn(roomManager, 'markAsRead').mockResolvedValue({ markedCount: 3 });
+      const result = await controller.markAsRead('room-1');
+      expect(roomManager.markAsRead).toHaveBeenCalledWith('room-1');
+      expect(result).toEqual({ markedCount: 3 });
+    });
+  });
+
+  describe('POST /staff-chat/rooms/:id/upload', () => {
+    it('delegates to roomManager.uploadFile with room, file, user id', async () => {
+      const file = { originalname: 'x.png', mimetype: 'image/png', buffer: Buffer.from('') } as any;
+      const uploadResult = { success: true, url: 'signed-url', key: 'k', filename: 'x.png' };
+      jest.spyOn(roomManager, 'uploadFile').mockResolvedValue(uploadResult);
+
+      const result = await controller.uploadFile('room-1', file, { user: { id: 'user-1' } } as any);
+
+      expect(roomManager.uploadFile).toHaveBeenCalledWith('room-1', file, 'user-1');
+      expect(result).toEqual(uploadResult);
+    });
+  });
+
+  describe('GET /staff-chat/customer/:customerId/messages', () => {
+    it('clamps limit and delegates to roomManager.getCustomerMessages', async () => {
+      const payload = { roomId: 'r-1', channel: 'LINE_FINANCE', messages: [], hasMore: false };
+      jest.spyOn(roomManager, 'getCustomerMessages').mockResolvedValue(payload as any);
+
+      const result = await controller.getCustomerMessages('cust-1', '30', undefined);
+
+      expect(roomManager.getCustomerMessages).toHaveBeenCalledWith('cust-1', 30, undefined);
+      expect(result).toEqual(payload);
+    });
+
+    it('clamps limit above 100 down to 100', async () => {
+      jest.spyOn(roomManager, 'getCustomerMessages').mockResolvedValue({} as any);
+      await controller.getCustomerMessages('cust-1', '999', 'msg-9');
+      expect(roomManager.getCustomerMessages).toHaveBeenCalledWith('cust-1', 100, 'msg-9');
+    });
+  });
+
+  describe('POST /staff-chat/customer/:customerId/messages', () => {
+    it('returns non-throwing {success:false} for empty text without resolving a room', async () => {
+      const result = await controller.sendCustomerMessage(
+        'cust-1',
+        { text: '   ' },
+        { user: { id: 'user-1' } } as any,
+      );
+      expect(result).toEqual({ success: false, error: 'กรุณาพิมพ์ข้อความก่อนส่ง' });
+      expect(roomManager.sendCustomerMessage).not.toHaveBeenCalled();
+    });
+
+    it('returns non-throwing {success:false} when customer has no LINE room', async () => {
+      jest.spyOn(roomManager, 'sendCustomerMessage').mockResolvedValue({ room: null });
+      const result = await controller.sendCustomerMessage(
+        'cust-1',
+        { text: 'hello' },
+        { user: { id: 'user-1' } } as any,
+      );
+      expect(roomManager.sendCustomerMessage).toHaveBeenCalledWith('cust-1', 'user-1', 'hello');
+      expect(result).toEqual({
+        success: false,
+        error: 'ลูกค้ายังไม่เคยทักเข้ามาในแชท LINE — รอลูกค้าทักก่อน',
+      });
+      expect(gateway.emitNewMessage).not.toHaveBeenCalled();
+    });
+
+    it('emits the broadcast with the exact STAFF payload and returns the send result', async () => {
+      jest
+        .spyOn(roomManager, 'sendCustomerMessage')
+        .mockResolvedValue({ room: { id: 'room-9' }, result: { success: true } });
+
+      const result = await controller.sendCustomerMessage(
+        'cust-1',
+        { text: 'hi there' },
+        { user: { id: 'user-1' } } as any,
+      );
+
+      expect(gateway.emitNewMessage).toHaveBeenCalledWith('room-9', {
+        roomId: 'room-9',
+        role: 'STAFF',
+        staffId: 'user-1',
+        text: 'hi there',
+        createdAt: expect.any(String),
+      });
+      expect(result).toEqual({ success: true });
+    });
+  });
+
+  describe('GET /staff-chat/rooms/:id/cross-channel', () => {
+    it('delegates to roomManager.getCrossChannelRooms', async () => {
+      const rooms = [{ id: 'r-1', channel: 'LINE_FINANCE', lastMessageAt: null, messages: [] }];
+      jest.spyOn(roomManager, 'getCrossChannelRooms').mockResolvedValue(rooms as any);
+
+      const result = await controller.getCrossChannelRooms('room-1');
+
+      expect(roomManager.getCrossChannelRooms).toHaveBeenCalledWith('room-1');
+      expect(result).toEqual(rooms);
     });
   });
 });

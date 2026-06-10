@@ -21,7 +21,6 @@ import { ConfigService } from '@nestjs/config';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
-import { PrismaService } from '../../prisma/prisma.service';
 import { RoomManagerService } from '../chat-engine/services/room-manager.service';
 import { AssignmentService } from '../chat-engine/services/assignment.service';
 import { ConversationTagService } from '../chat-engine/services/conversation-tag.service';
@@ -50,8 +49,7 @@ import { CreateQuickReplyDto } from './dto/create-quick-reply.dto';
 import { UpdateQuickReplyDto } from './dto/update-quick-reply.dto';
 import { UpdateCannedResponseDto } from './dto/update-canned-response.dto';
 import { SessionQueryDto } from '../chat-engine/dto/session-query.dto';
-import { ChatRoomStatus, ChatChannel, ChatPriority, MessageRole, MessageType } from '@prisma/client';
-import { StorageService } from '../storage/storage.service';
+import { ChatRoomStatus, ChatChannel, ChatPriority } from '@prisma/client';
 import { MessageRouterService } from '../chat-engine/services/message-router.service';
 import { StaffChatGateway } from './staff-chat.gateway';
 import { CHAT_EVENTS, CHAT_ROOMS } from '../chat-engine/constants/chat-events';
@@ -60,7 +58,6 @@ import { CHAT_EVENTS, CHAT_ROOMS } from '../chat-engine/constants/chat-events';
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class StaffChatController {
   constructor(
-    private prisma: PrismaService,
     private roomManager: RoomManagerService,
     private assignment: AssignmentService,
     private tags: ConversationTagService,
@@ -69,7 +66,6 @@ export class StaffChatController {
     private aiAssistant: AiAssistantService,
     private mediaContent: MediaContentService,
     private chatToContract: ChatToContractService,
-    private storageService: StorageService,
     private messageRouter: MessageRouterService,
     private aiSuggest: AiSuggestService,
     private leadScoring: LeadScoringService,
@@ -497,32 +493,7 @@ export class StaffChatController {
     @Req() req: Request,
   ) {
     const userId = (req as Request & { user?: { id: string } }).user?.id;
-    const extMap: Record<string, string> = {
-      'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp',
-      'application/pdf': '.pdf',
-      'application/msword': '.doc',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
-    };
-    const ext = extMap[file.mimetype] || '';
-    const key = `staff-chat/${roomId}/${Date.now()}${ext}`;
-
-    await this.storageService.upload(key, file.buffer, file.mimetype);
-    const downloadUrl = this.storageService.configured
-      ? await this.storageService.getSignedDownloadUrl(key, 3600)
-      : key;
-
-    // Save as a message with media
-    await this.roomManager.saveMessage({
-      roomId,
-      role: MessageRole.BOT,
-      type: file.mimetype.startsWith('image/') ? MessageType.IMAGE : MessageType.FILE,
-      text: file.originalname,
-      mediaUrl: key,
-      mediaType: file.mimetype,
-      staffId: userId,
-    });
-
-    return { success: true, url: downloadUrl, key, filename: file.originalname };
+    return this.roomManager.uploadFile(roomId, file, userId);
   }
 
   // ─── Contract Prefill ─────────────────────────────────
@@ -539,20 +510,14 @@ export class StaffChatController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   async pinRoom(@Param('id') id: string, @Req() req: any) {
     const userId = req.user.id;
-    await this.prisma.chatRoom.update({
-      where: { id },
-      data: { pinnedAt: new Date(), pinnedById: userId },
-    });
+    await this.roomManager.pinRoom(id, userId);
     return { success: true };
   }
 
   @Delete('rooms/:id/pin')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   async unpinRoom(@Param('id') id: string) {
-    await this.prisma.chatRoom.update({
-      where: { id },
-      data: { pinnedAt: null, pinnedById: null },
-    });
+    await this.roomManager.unpinRoom(id);
     return { success: true };
   }
 
@@ -561,21 +526,7 @@ export class StaffChatController {
   @Post('rooms/:id/read')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   async markAsRead(@Param('id') id: string) {
-    const now = new Date();
-    return this.prisma.$transaction(async (tx) => {
-      const updated = await tx.chatMessage.updateMany({
-        where: { roomId: id, role: 'CUSTOMER', readAt: null },
-        data: { readAt: now },
-      });
-      const remaining = await tx.chatMessage.count({
-        where: { roomId: id, role: 'CUSTOMER', readAt: null },
-      });
-      await tx.chatRoom.update({
-        where: { id },
-        data: { unreadCount: remaining },
-      });
-      return { markedCount: updated.count };
-    });
+    return this.roomManager.markAsRead(id);
   }
 
   // ─── Customer-scoped messages (LineChatPanel — Customer 360) ──
@@ -597,71 +548,7 @@ export class StaffChatController {
     @Query('before') before?: string,
   ) {
     const take = Math.min(Math.max(parseInt(limit ?? '30', 10) || 30, 1), 100);
-
-    // Find the customer's LINE Finance room (preferred) or fall back to any
-    // LINE room. Collections is a finance-only workflow — no point pulling
-    // shop-side LINE chat here.
-    const room = await this.prisma.chatRoom.findFirst({
-      where: {
-        customerId,
-        deletedAt: null,
-        channel: { in: [ChatChannel.LINE_FINANCE, ChatChannel.LINE_SHOP] },
-      },
-      orderBy: [
-        // Prefer LINE_FINANCE if both exist (alphabetical "LINE_FINANCE" <
-        // "LINE_SHOP" so an explicit ordering by lastMessageAt is the
-        // tiebreaker that matters).
-        { lastMessageAt: 'desc' },
-      ],
-      select: {
-        id: true,
-        channel: true,
-        lineUserId: true,
-        lastMessageAt: true,
-        unreadCount: true,
-      },
-    });
-
-    if (!room) {
-      return { roomId: null, channel: null, messages: [], hasMore: false };
-    }
-
-    let cursorWhere: { createdAt?: { lt: Date } } = {};
-    if (before) {
-      const cursor = await this.prisma.chatMessage.findUnique({
-        where: { id: before },
-        select: { createdAt: true },
-      });
-      if (cursor) cursorWhere = { createdAt: { lt: cursor.createdAt } };
-    }
-
-    const messages = await this.prisma.chatMessage.findMany({
-      where: { roomId: room.id, deletedAt: null, ...cursorWhere },
-      orderBy: { createdAt: 'desc' },
-      take: take + 1, // overfetch by 1 to detect hasMore
-      select: {
-        id: true,
-        role: true,
-        type: true,
-        text: true,
-        mediaUrl: true,
-        mediaType: true,
-        createdAt: true,
-        readAt: true,
-        deliveredAt: true,
-        staff: { select: { id: true, name: true } },
-      },
-    });
-
-    const hasMore = messages.length > take;
-    const sliced = hasMore ? messages.slice(0, take) : messages;
-
-    return {
-      roomId: room.id,
-      channel: room.channel,
-      messages: sliced,
-      hasMore,
-    };
+    return this.roomManager.getCustomerMessages(customerId, take, before);
   }
 
   /**
@@ -686,39 +573,25 @@ export class StaffChatController {
       return { success: false, error: 'กรุณาพิมพ์ข้อความก่อนส่ง' };
     }
 
-    const room = await this.prisma.chatRoom.findFirst({
-      where: {
-        customerId,
-        deletedAt: null,
-        channel: { in: [ChatChannel.LINE_FINANCE, ChatChannel.LINE_SHOP] },
-      },
-      orderBy: { lastMessageAt: 'desc' },
-      select: { id: true },
-    });
+    const sent = await this.roomManager.sendCustomerMessage(customerId, req.user.id, text);
 
-    if (!room) {
+    if (!sent.room) {
       return {
         success: false,
         error: 'ลูกค้ายังไม่เคยทักเข้ามาในแชท LINE — รอลูกค้าทักก่อน',
       };
     }
 
-    const result = await this.messageRouter.sendStaffMessage({
-      roomId: room.id,
-      staffId: req.user.id,
-      text,
-    });
-
     // Broadcast to staff viewing this room so the message appears in real-time
-    this.staffChatGateway.emitNewMessage(room.id, {
-      roomId: room.id,
+    this.staffChatGateway.emitNewMessage(sent.room.id, {
+      roomId: sent.room.id,
       role: 'STAFF',
       staffId: req.user.id,
       text,
       createdAt: new Date().toISOString(),
     });
 
-    return result;
+    return sent.result;
   }
 
   // ─── Cross-Channel Rooms ──────────────────────────────
@@ -726,25 +599,7 @@ export class StaffChatController {
   @Get('rooms/:id/cross-channel')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   async getCrossChannelRooms(@Param('id') id: string) {
-    const room = await this.prisma.chatRoom.findUnique({
-      where: { id },
-      select: { customerId: true },
-    });
-    if (!room?.customerId) return [];
-    return this.prisma.chatRoom.findMany({
-      where: { customerId: room.customerId, deletedAt: null },
-      select: {
-        id: true,
-        channel: true,
-        lastMessageAt: true,
-        messages: {
-          orderBy: { createdAt: 'desc' },
-          take: 1,
-          select: { text: true, createdAt: true },
-        },
-      },
-      orderBy: { lastMessageAt: 'desc' },
-    });
+    return this.roomManager.getCrossChannelRooms(id);
   }
 
   // ─── AI Training & Settings ───────────────────────────

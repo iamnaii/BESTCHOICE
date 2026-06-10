@@ -150,6 +150,9 @@ describe('PaymentsService — real-time late fee on payment', () => {
           }),
       },
       installmentSchedule: {
+        // Lazy-gen recovery (#1170): count>0 → ensureInstallmentSchedules no-op.
+        count: jest.fn().mockResolvedValue(1),
+        createMany: jest.fn().mockResolvedValue({ count: 0 }),
         // Return a schedule so PaymentReceiptTemplate.execute is invoked and
         // we can capture the forwarded lateFee.
         findUnique: jest.fn().mockResolvedValue({ id: 'lf-sched-1' }),

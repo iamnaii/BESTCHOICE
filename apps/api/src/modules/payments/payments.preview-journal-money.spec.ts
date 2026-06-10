@@ -138,6 +138,9 @@ describe('PaymentsService.previewJournal (characterization)', () => {
 
     prisma = {
       installmentSchedule: {
+        // Lazy-gen recovery (#1170): count>0 → ensureInstallmentSchedules no-op.
+        count: jest.fn().mockResolvedValue(1),
+        createMany: jest.fn().mockResolvedValue({ count: 0 }),
         findUnique: jest.fn().mockImplementation(() => Promise.resolve(installment)),
       },
       chartOfAccount: {
@@ -530,6 +533,9 @@ describe('PaymentsService.recordPayment — tolerance gating (characterization)'
         findUnique: jest.fn().mockResolvedValue(null),
       },
       installmentSchedule: {
+        // Lazy-gen recovery (#1170): count>0 → ensureInstallmentSchedules no-op.
+        count: jest.fn().mockResolvedValue(1),
+        createMany: jest.fn().mockResolvedValue({ count: 0 }),
         findUnique: jest.fn().mockResolvedValue(null), // template call skipped
       },
       callLog: {

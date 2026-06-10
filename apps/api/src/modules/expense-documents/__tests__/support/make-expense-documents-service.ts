@@ -128,27 +128,35 @@ export function makeExpenseDocumentsService(
   // through the facade's now-delegating read methods. `jePreview` is no longer
   // a facade constructor arg (it moved into the query service).
   const query = overrides.query ?? new ExpenseDocumentQueryService(prisma, jePreview);
-  // Phase 2a decompose — REAL lifecycle sub-service by default, built from the
-  // SAME resolved `prisma` + `notifications` instances so existing specs' mocks
-  // flow through the facade's now-delegating lifecycle methods. `notifications`
-  // is no longer a facade constructor arg (it moved into the lifecycle service).
+  // Phase 2a/2b decompose — REAL lifecycle sub-service by default. Phase 2b
+  // moved the JE-posting core (post / executePostBody / approve) here, so the
+  // lifecycle ctor now also takes `transition` + the 6 JE templates. They are
+  // built from the SAME resolved mock instances the facade specs assert on
+  // (e.g. `sameDayTemplate.execute`), so the facade's delegating post/approve
+  // reach the same mocks. `notifications` stays the trailing-optional param.
   const lifecycle =
-    overrides.lifecycle ?? new ExpenseDocumentLifecycleService(prisma, notifications);
+    overrides.lifecycle ??
+    new ExpenseDocumentLifecycleService(
+      prisma,
+      transition,
+      sameDayTemplate,
+      accrualTemplate,
+      creditNoteTemplate,
+      payrollTemplate,
+      settlementTemplate,
+      pettyCashTemplate,
+      notifications,
+    );
 
-  // THE single positional construction in the codebase.
+  // THE single positional construction in the codebase. Phase 2b removed the 6
+  // JE-template args from the facade ctor (they now feed the lifecycle service).
   const service = new ExpenseDocumentsService(
     prisma,
     docNumber,
     transition,
-    sameDayTemplate,
-    accrualTemplate,
-    creditNoteTemplate,
-    payrollTemplate,
-    settlementTemplate,
     journal,
     aggregator,
     ssoConfig,
-    pettyCashTemplate,
     pettyCash,
     payrollCustom,
     query,

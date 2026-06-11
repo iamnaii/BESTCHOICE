@@ -60,7 +60,7 @@ export class ContractDocumentService {
 
   // ─── Document Dashboard for Manager/Admin ──────────────
   async getDocumentDashboard(branchId?: string) {
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = { deletedAt: null };
     if (branchId) where.branchId = branchId;
 
     // Get all active contracts with their documents and signatures
@@ -141,7 +141,7 @@ export class ContractDocumentService {
       const contractIds = [...new Set(audits.map((a) => a.contractId))];
       const auditContracts = contractIds.length > 0
         ? await this.prisma.contract.findMany({
-            where: { id: { in: contractIds } },
+            where: { id: { in: contractIds }, deletedAt: null },
             select: {
               id: true,
               contractNumber: true,

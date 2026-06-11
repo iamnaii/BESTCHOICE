@@ -89,10 +89,24 @@ export class ShopInstallmentApplyService {
       include: { product: { select: { id: true, name: true, gallery: true } } },
     });
     if (!app) throw new NotFoundException('ไม่พบใบสมัคร');
-    if (customerId && app.customerId && app.customerId !== customerId) {
-      throw new NotFoundException('ไม่พบใบสมัคร');
-    }
-    return app;
+
+    // Full record (incl. PII: fullName/phone/nationalId) ONLY for the authenticated owner.
+    // The endpoint is reachable without auth so anonymous shoppers can poll status by
+    // application number — but they (and any non-owning logged-in user) must never see PII.
+    const isOwner = !!customerId && !!app.customerId && app.customerId === customerId;
+    if (isOwner) return app;
+
+    return {
+      id: app.id,
+      applicationNumber: app.applicationNumber,
+      status: app.status,
+      productId: app.productId,
+      product: app.product,
+      proposedDownPayment: app.proposedDownPayment,
+      proposedTotalMonths: app.proposedTotalMonths,
+      proposedMonthlyPayment: app.proposedMonthlyPayment,
+      createdAt: app.createdAt,
+    };
   }
 
   async listMine(customerId: string) {

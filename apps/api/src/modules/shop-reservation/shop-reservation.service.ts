@@ -1,4 +1,9 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
 const RESERVATION_DURATION_MS = 15 * 60 * 1000; // 15 minutes
@@ -50,10 +55,17 @@ export class ShopReservationService {
   }
 
   async cancel(reservationId: string, sessionId: string) {
-    return this.prisma.productReservation.update({
-      where: { id: reservationId },
+    // sessionId is the capability token for the anonymous shop session — without it,
+    // anyone who learns a reservation UUID could cancel another shopper's hold (grief/DoS).
+    if (!sessionId) throw new BadRequestException('ต้องระบุ sessionId');
+    const result = await this.prisma.productReservation.updateMany({
+      where: { id: reservationId, sessionId, status: 'ACTIVE' },
       data: { status: 'CANCELLED' },
     });
+    if (result.count === 0) {
+      throw new NotFoundException('ไม่พบการจองที่ยกเลิกได้ หรือไม่มีสิทธิ์ยกเลิก');
+    }
+    return { cancelled: true };
   }
 
   async expireOldReservations(): Promise<number> {

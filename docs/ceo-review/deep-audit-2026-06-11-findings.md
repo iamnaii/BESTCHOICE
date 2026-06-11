@@ -22,13 +22,13 @@ re-raises them).
 
 ## 🔴 CRITICAL
 
-### ☐ F1 — Unauthenticated PII leak on `GET /shop/applications/:applicationNumber`
+### ☑ F1 — Unauthenticated PII leak on `GET /shop/applications/:applicationNumber` — DONE (`shop-installment-apply.service.ts` getByNumber returns non-PII projection for non-owners)
 - **file:** `apps/api/src/modules/shop-installment-apply/shop-installment-apply.controller.ts:35-38` + `shop-installment-apply.service.ts:86-96`
 - **mechanism:** No `JwtAuthGuard`; `getByNumber` returns the full record incl. `fullName/phone/nationalId`. Ownership check `if (customerId && app.customerId && app.customerId !== customerId)` short-circuits when caller is anonymous (`customerId` undefined) OR when the application was submitted anonymously (`app.customerId` null) — a different logged-in user passes too. `applicationNumber = APP-YYMMDD-NNNN`, random component only 900/day → enumerable.
 - **fix:** Return a non-PII projection (applicationNumber, status, product, proposed* numbers) for non-owners; full record only when authenticated **and** `app.customerId === customerId` (both non-null). Preserves anonymous status-check UX without leaking PII.
 - **gate:** none
 
-### ☐ F2 — Commission clawback double-pay in payout generation
+### ☑ F2 — Commission clawback double-pay in payout generation — DONE (status filter added)
 - **file:** `apps/api/src/modules/commission/commission.service.ts:569-572` (+ aggregation 584-596)
 - **mechanism:** `generatePayouts()` query `where: { period, deletedAt: null }` has **no status filter**, yet the method's own docstring says "Aggregates all PENDING/APPROVED/PAID". `CLAWED_BACK`/`PARTIALLY_CLAWED_BACK` rows are summed at full `commissionAmount` without subtracting `clawbackAmount` → clawed-back commission paid again next payout cycle. Confirmed with arithmetic by 2 agents.
 - **fix:** Add `status: { in: ['PENDING','APPROVED','PAID'] }` to the query (matches documented intent). This is unambiguous-correct; the netting question only mattered if we wanted to *partially* include — excluding clawed-back rows is the conservative right answer.
@@ -45,7 +45,7 @@ re-raises them).
 - **Decision needed (owner):** whether/how to wire the 7 SHOP templates (activation atomic SHOP+FINANCE? trade-in/cash-sale triggers?). Until then keep the page disclaimed or behind a flag.
 - **gate:** owner (wiring) — doc + disclaimer are not gated
 
-### ☐ F4 — Unauthenticated reservation cancel (IDOR) `DELETE /shop/reservations/:id`
+### ☑ F4 — Unauthenticated reservation cancel (IDOR) `DELETE /shop/reservations/:id` — DONE (updateMany scoped by sessionId)
 - **file:** `apps/api/src/modules/shop-reservation/shop-reservation.controller.ts:18-21` + `shop-reservation.service.ts:52-57`
 - **mechanism:** No auth; `cancel(id, sessionId)` ignores `sessionId` entirely → anyone who knows a reservation UUID can cancel it (releases stock hold → grief/DoS).
 - **fix:** `cancel` → `updateMany({ where: { id, sessionId, status: 'ACTIVE' }, data: { status: 'CANCELLED' } })`; throw NotFound if `count === 0`. The `sessionId` becomes the capability token.
@@ -124,13 +124,13 @@ re-raises them).
 - **fix:** emit amounts as `.toString()` if PEAK accepts string amounts (verify their API spec first).
 - **gate:** accountant/ops (PEAK API contract)
 
-### ☐ F17 — staff-chat `findById` returns customer PII without assignment/branch check
+### ☑ F17 — staff-chat `findById` returns customer PII without assignment/branch check — DONE (SALES scoped to own/unassigned rooms in controller; ChatRoom has no branchId so branch-scope N/A)
 - **file:** `apps/api/src/modules/staff-chat/...room-manager.service.ts:290` (via controller `staff-chat.controller.ts:102`)
 - **mechanism:** Any SALES can read any room's `customer.phone/nationalId` by knowing the UUID.
 - **fix:** scope `findById` by assignment/branch for SALES (cross-branch roles exempt), mirroring `listRooms`.
 - **gate:** none
 
-### ☐ F18 — CRM leads not branch-scoped when `branchId` omitted
+### ☑ F18 — CRM leads not branch-scoped when `branchId` omitted — DONE (controller forces effectiveBranchId via hasCrossBranchAccess)
 - **file:** `apps/api/src/modules/crm/services/crm-pipeline.service.ts:40-78`
 - **mechanism:** BranchGuard passes when no `branchId` in request; service then returns all branches' leads → SALES sees everyone's leads.
 - **fix:** in the service, auto-scope non-cross-branch roles to `user.branchId`.
@@ -148,7 +148,7 @@ re-raises them).
 - **fix:** explicitly set `lateFee = 0` when setting `lateFeeWaived = true`, and have the payment path re-check `lateFeeWaived` inside its tx.
 - **gate:** none
 
-### ☐ F21 — `contract-document.service` queries missing `deletedAt: null`
+### ☑ F21 — `contract-document.service` queries missing `deletedAt: null` — DONE (both queries filtered)
 - **file:** `apps/api/src/modules/contracts/contract-document.service.ts:67-68` (getDocumentDashboard) + `:143-144` (getAuditContractBatch)
 - **mechanism:** Soft-deleted contracts appear in dashboard/audit views.
 - **fix:** add `deletedAt: null` to both `where` clauses.
@@ -160,11 +160,9 @@ re-raises them).
 - **fix:** hash the input via the PII service and query `phoneHash`; decrypt/mask on read through the seam.
 - **gate:** strict-mode rollout (sequence with the encrypt-pii backfill)
 
-### ☐ F23 — PO receiving IMEI query missing `deletedAt` filter
-- **file:** `apps/api/src/modules/purchase-orders/services/po-receiving.service.ts:215`
-- **mechanism:** Queries IMEI without `deletedAt: null`; mismatches the partial-unique index (`WHERE deleted_at IS NULL`) → confusing rollback ("ยอดรับเกิน" wrong message) when a soft-deleted product shares the IMEI.
-- **fix:** add `deletedAt: null` to the IMEI lookup to match the index semantics.
-- **gate:** none
+### ✖ F23 — PO receiving IMEI query missing `deletedAt` filter — **REFUTED (do not fix)**
+- **file:** `apps/api/src/modules/purchase-orders/services/po-receiving.service.ts:213-226`
+- **why refuted:** The query *intentionally* includes soft-deleted products and throws a clear, specific `BadRequestException` naming the device + "[ตัดจำหน่ายแล้ว]" BEFORE any insert — there is no "confusing rollback". This is an **IMEI-recycling fraud control**: a written-off device's IMEI must not silently re-enter stock. Adding `deletedAt: null` would weaken the control. Leave as-is.
 
 ### ☐ F24 — Broadcast approval only blocks self-approval, not peer collusion (design)
 - **file:** `apps/api/src/modules/broadcast/broadcast.service.ts:80`

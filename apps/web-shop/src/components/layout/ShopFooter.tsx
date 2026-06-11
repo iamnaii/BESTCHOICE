@@ -20,6 +20,7 @@ export default function ShopFooter() {
         <div>
           <h3 className="font-semibold mb-2">นโยบาย</h3>
           <ul className="space-y-1">
+            <li><Link to="/installment-terms">เงื่อนไขการผ่อน</Link></li>
             <li><Link to="/shipping">การจัดส่ง</Link></li>
             <li><Link to="/returns">การคืนสินค้า</Link></li>
           </ul>

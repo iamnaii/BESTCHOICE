@@ -1,3 +1,4 @@
+import { Link } from 'react-router';
 import {
   Smartphone,
   Clock,
@@ -5,6 +6,7 @@ import {
   MapPin,
   Wallet,
   PartyPopper,
+  ShieldCheck,
   type LucideIcon,
 } from 'lucide-react';
 import {
@@ -130,6 +132,15 @@ export default function HowItWorksPage() {
                 </Card>
               ))}
             </Stack>
+            <div className="mt-4 text-center">
+              <Link
+                to="/installment-terms"
+                className="inline-flex items-center gap-1.5 text-sm text-primary underline-offset-4 hover:underline leading-snug"
+              >
+                <ShieldCheck className="size-4" aria-hidden="true" />
+                อ่านเงื่อนไขการผ่อนแบบละเอียด — ดอกเบี้ย กรรมสิทธิ์ และระบบล็อคเครื่อง
+              </Link>
+            </div>
           </section>
         </Stack>
       </Container>

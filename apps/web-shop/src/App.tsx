@@ -20,6 +20,7 @@ import InstallmentApplyPage from './pages/apply/InstallmentApplyPage';
 import ApplySuccessPage from './pages/apply/ApplySuccessPage';
 import ApplyStatusPage from './pages/apply/ApplyStatusPage';
 import PromotionsPage from './pages/PromotionsPage';
+import InstallmentTermsPage from './pages/InstallmentTermsPage';
 import TradeInLandingPage from './pages/trade-in/TradeInLandingPage';
 import TradeInSubmitPage from './pages/trade-in/TradeInSubmitPage';
 import TradeInStatusPage from './pages/trade-in/TradeInStatusPage';
@@ -61,6 +62,7 @@ export default function App() {
         <Route path="/account" element={<AccountPage />} />
         <Route path="/account/addresses" element={<AddressBookPage />} />
         <Route path="/promotions" element={<PromotionsPage />} />
+        <Route path="/installment-terms" element={<InstallmentTermsPage />} />
         <Route path="/apply/status" element={<ApplyStatusPage />} />
         <Route path="/apply/:productId" element={<InstallmentApplyPage />} />
         <Route path="/apply/success/:applicationNumber" element={<ApplySuccessPage />} />

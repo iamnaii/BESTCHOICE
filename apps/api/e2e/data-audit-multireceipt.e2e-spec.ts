@@ -49,6 +49,10 @@ import { JournalAutoService } from '../src/modules/journal/journal-auto.service'
 import { PaymentReceiptTemplate } from '../src/modules/journal/cpa-templates/payment-receipt.template';
 import { ContractActivation1ATemplate } from '../src/modules/journal/cpa-templates/contract-activation-1a.template';
 import { DataAuditService } from '../src/modules/data-audit/data-audit.service';
+import { DataAuditChecksService } from '../src/modules/data-audit/services/data-audit-checks.service';
+import { ContractTraceService } from '../src/modules/data-audit/services/contract-trace.service';
+import { AuditFindingsService } from '../src/modules/data-audit/services/audit-findings.service';
+import { AuditBackfillService } from '../src/modules/data-audit/services/audit-backfill.service';
 import { computeInstallmentBreakdown } from '../src/modules/journal/compute-installment-breakdown';
 import { seedFinanceCoa } from '../prisma/seed-coa-finance';
 import { seedStandard17k12m } from '../src/modules/journal/__tests__/scenario-helpers';
@@ -135,7 +139,13 @@ describeOrSkip('Data-audit multi-receipt — PR-843/I2 Phase 3 PR 3.1-audit (rea
     paymentId = payment.id;
 
     template = new PaymentReceiptTemplate(journal, prisma as any);
-    audit = new DataAuditService(prisma as any, journal);
+    audit = new DataAuditService(
+      prisma as any,
+      new DataAuditChecksService(prisma as any),
+      new ContractTraceService(prisma as any),
+      new AuditFindingsService(prisma as any),
+      new AuditBackfillService(prisma as any, journal),
+    );
 
     // ── Post the genuine 2-receipt payment via the REAL primitive ──────────
     // Receipt #1 — PARTIAL of 500 on installment #1.

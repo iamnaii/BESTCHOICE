@@ -1,77 +1,101 @@
 # Pre-Merge Guard Report
 
-**Branch**: `fix/ci-pre-existing-test-failures`  
-**Author**: Akenarin Kongdach  
-**Date**: 2026-06-11  
-**Recommendation**: ✅ APPROVE
+**Branch**: `fix/ci-pre-existing-test-failures`
+**Author**: Akenarin Kongdach <akenarin.ak@gmail.com>
+**Date reviewed**: 2026-06-11
+**Commits ahead of main**: 7
 
 ---
 
-## Branch Summary
+## Summary of Changes
 
-7 commits fixing CI failures + backfilling characterization tests. No new feature surface — primarily test additions and minor production fixes.
-
-### File Changes (23 files, +4247 / -393)
-
-| Category | Files |
+| Category | Count |
 |---|---|
-| New test specs (6) | `analytics.service.spec.ts`, `finance-tools.service.spec.ts`, `contract-payment.service.early-payoff-exec.spec.ts`, `credit-check.risk-score.spec.ts`, `mdm-auto.service.spec.ts`, `payment-method-config.service.spec.ts`, `paysolutions.callbacks.spec.ts`, `pdpa.service.spec.ts`, `purchase-orders.create.spec.ts`, `reports.service.portfolio.spec.ts` |
-| New utility | `apps/api/src/utils/late-fee.util.ts` |
-| Modified production code (3) | `finance-tools.service.ts`, `finance-receivable.dto.ts`, `tool-executor.ts` |
-| Deleted (dead code) | `bank-reconciliation.service.ts` + `.spec.ts` |
-| E2E exclusion | `approval-workflow.e2e-spec.ts` (added comment + testPathIgnorePatterns entry) |
-| Env validation | `env-validation.spec.ts` (extended) |
+| Files changed | 23 |
+| Insertions | +4,247 |
+| Deletions | −393 |
+| Production files changed | 6 |
+| Test/spec files changed | 17 |
+
+### Commit log
+```
+77f12aed ci(e2e): exclude the incomplete approval-workflow harness (#1192)
+528ca9d1 fix(ci): repair 3 pre-existing test failures blocking the merge gate
+d6ef53b3 fix(chatbot-finance): cap the LIFF late-fee quote to match charged amount (#1182)
+8578057b fix(finance-receivable): cap commissionRate at 1 to prevent negative receivable (#1177)
+0e16355b test(api): Wave-2/3 characterization backfill — mdm-auto/pdpa/analytics (+84) (#1181)
+acee3f4e test(api): Wave-2/3 golden/characterization backfill for regulated money paths (+105) (#1178)
+3d527ec5 chore(accounting): remove dead, unwired BankReconciliationService (#18) (#1173)
+```
+
+### Production files
+| File | Change |
+|---|---|
+| `accounting/accounting.module.ts` | Remove dead `BankReconciliationService` provider/export |
+| `accounting/bank-reconciliation.service.ts` | **DELETED** — dead code (no controller ever wired it) |
+| `chatbot-finance/services/finance-tools.service.ts` | Cap LIFF late-fee quote to match actual charge |
+| `chatbot-finance/tools/tool-executor.ts` | Add `await` on now-async `calculateFine()` |
+| `finance-receivable/dto/finance-receivable.dto.ts` | Add `@Max(1)` on `commissionRate` |
+| `utils/late-fee.util.ts` | **NEW** — canonical capped late-fee utility returning `Prisma.Decimal` |
 
 ---
 
-## Issues by Severity
+## Security Checks
 
-### Critical — None ✅
+| Check | Result |
+|---|---|
+| New controllers missing `@UseGuards(JwtAuthGuard)` | None |
+| New controllers missing `@Roles()` | None |
+| Hardcoded secrets / API keys | None |
+| `$queryRaw` without `Prisma.sql` | None (mock only in test) |
+| Soft-delete `deletedAt: null` missing on new queries | None (new queries are in `systemConfig.findUnique`, not entity tables with soft-delete) |
 
-No security regressions found:
-- No new controllers without `@UseGuards(JwtAuthGuard)`.
-- No `$queryRaw` with unparameterized input.
-- No hardcoded secrets or API keys.
-- No `Float`/`Int` used for stored money values.
-- No missing `@Roles()` decorators.
+---
 
-### Warning — None ✅
+## Issues Found
 
-- `@Max(1)` correctly added to `commissionRate` in `UpdateFinanceReceivableDto` to prevent negative `netExpectedAmount`.
-- `BankReconciliationService` removal confirmed safe: zero references in any controller or service after grep. Removed from module providers + exports cleanly.
-- E2E exclusion is correctly documented with issue reference (#1192) and a clear path to re-enable.
+### Critical
+*None.*
+
+---
+
+### Warning
+
+**W1 — `Number()` coercion of `Prisma.Decimal` in chatbot display path**
+- File: `apps/api/src/modules/chatbot-finance/services/finance-tools.service.ts` lines ~72-82, ~151, ~158
+- `Number(computeCappedLateFee(...))` converts a `Prisma.Decimal` result to a JS Number for the chatbot response payload.
+- `Number(perDayCfg.value)` and `Number(capCfg.value)` convert `SystemConfig.value` strings to Number and pass them into `computeCappedLateFee` (which accepts `number | Decimal | string` — valid).
+- **Why it's a warning, not critical**: The coerced values are used exclusively in the JSON response to the LINE chatbot (display string, never written to DB). Thai installment amounts are ≤ 100,000฿ — well within IEEE 754 double precision. However, the pattern diverges from the project-wide "no `Number()` on money" rule and could confuse future readers.
+- **Suggestion**: Return `lateFee: computeCappedLateFee(...).toFixed(2)` as a string for display, or document explicitly with a comment that this is display-only and not a DB value.
+
+---
 
 ### Info
 
-**1. `Number()` conversions in `finance-tools.service.ts` (intentional)**
+**I1 — Approval workflow E2E excluded from test runner**
+- File: `apps/api/e2e/jest-e2e.json` + `apps/api/e2e/approval-workflow.e2e-spec.ts`
+- The harness is excluded via `testPathIgnorePatterns` because provider DI is incomplete (tracking issue #1192). A warning comment was added to the spec. Not a production risk — CI will still pass without it, and the issue is documented. Should be re-enabled when the providers are properly wired.
 
-```ts
-feePerDay: perDayCfg ? Number(perDayCfg.value) : LATE_FEE_PER_DAY,
-flatCap: capCfg ? Number(capCfg.value) : 1500,
-const totalFine = Number(computeCappedLateFee({ ... }));
-```
+**I2 — Two ENCRYPTION_KEY validation tests removed**
+- File: `apps/api/src/utils/env-validation.spec.ts`
+- Tests asserting `validateEnv()` throws on missing/short `ENCRYPTION_KEY` in prod were removed. Staff-login 2FA (which used this key) was removed in PR #1169. PII encryption is separately protected by `PII_ENCRYPTION_KEY` + `PII_HASH_SALT` (tested). Intentional and well-commented.
 
-These are `Number()` calls on SystemConfig string values for chatbot tool responses. The service is intentionally designed to return plain JS numbers for JSON serialization to Claude (`"ตัวเลขเป็น number ไม่ใช่ Decimal — convert ก่อน return"`). The actual calculation uses `Prisma.Decimal` throughout `computeCappedLateFee`. No DB writes use these `Number()` values. **Pattern is consistent with the rest of the file and acceptable here.**
-
-**2. `computeCappedLateFee` correctly uses `Prisma.Decimal`**
-
-The new utility (`late-fee.util.ts`) performs all arithmetic with `Prisma.Decimal` and uses `ROUND_HALF_UP` on the final result. This is the single source of truth for the per-installment late fee ceiling — fixes a real bug where the LIFF chatbot was quoting uncapped fees (e.g. 3,000฿ quoted vs 100฿ actually charged).
-
-**3. Pre-existing payment queries without `deletedAt: null`**
-
-`finance-tools.service.ts` lines 39–45, 108–116, 197–205 query `Payment` without `deletedAt: null`. These are **pre-existing** (not introduced by this branch) and out of scope here.
+**I3 — Large number of new spec files (+4,200 lines)**
+- 9 new characterization/golden spec files added across `analytics`, `credit-check`, `mdm-auto`, `payment-method-config`, `paysolutions`, `pdpa`, `purchase-orders`, `reports`, `finance-receivable`. These pin existing behavior rather than test new logic. No concerns — increases test coverage baseline.
 
 ---
 
-## Positive Findings
+## Positive Notes
 
-- New test coverage is high-quality: golden/characterization tests for regulated money paths (early-payoff, paysolutions callbacks, credit risk scoring, MDM auto-lock).
-- `computeCappedLateFee` is well-designed: `Prisma.Decimal` throughout, edge cases handled (days ≤ 0, optional percentage cap).
-- Removing dead `BankReconciliationService` is a clean reduction of dead code.
-- The `commissionRate @Max(1)` fix prevents a silent negative-receivable data corruption bug.
+- `utils/late-fee.util.ts` is a well-designed single source of truth for the capped late-fee formula. It correctly uses `Prisma.Decimal` arithmetic throughout and is fully tested in `late-fee.util.spec.ts`.
+- `@Max(1)` on `commissionRate` closes a real data-integrity gap — a rate > 1 would produce a negative `netExpectedAmount` receivable. This is a legitimate bug fix.
+- Dead code removal of `BankReconciliationService` is clean: module registration, exports, and both the service and spec files are all removed together.
+- The `await` fix on `tool-executor.ts` is a correct async bug fix (the method became async in this branch but the caller wasn't awaiting it).
 
 ---
 
-## Recommendation: ✅ APPROVE
+## Recommendation
 
-All changes are either test additions, dead-code removal, or targeted production fixes with no security regressions. No Critical or Warning issues found. Safe to merge.
+**APPROVE**
+
+No critical issues found. One warning (`Number()` coercion for chatbot display) that is acceptable in this context but worth a follow-up comment or type-safe string return. All security guards are in place, no money fields are written to DB with coerced Number values, and soft-delete patterns are intact. The branch is ready to merge.

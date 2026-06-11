@@ -174,7 +174,7 @@ re-raises them).
 
 ## 🟢 LOW
 
-### ☐ F25 — `JournalLine.journalEntry onDelete: Cascade` (defense-in-depth)
+### ☑ F25 — `JournalLine.journalEntry onDelete: Cascade` → Restrict — DONE (schema + migration 20260972000000; also added compound index journalEntryId,deletedAt per B13)
 - **file:** `apps/api/prisma/schema.prisma:3786`
 - **mechanism:** Violates v3 "Restrict on financial tables" policy. Currently **unreachable** (JournalPostAuditLog Restrict blocks hard-delete; code is soft-delete-only) but should be Restrict for consistency.
 - **fix:** change to `onDelete: Restrict` (safe migration; no rows are cascade-deleted today).

@@ -41,20 +41,38 @@ export const PII_COLUMNS: ReadonlyArray<[plain: string, enc: string]> = [
 export const ERROR_TRUNC_CHARS = 1000;
 
 /**
+ * AND clause matching one PII column that still has plaintext to encrypt:
+ * the plaintext column is a non-empty string AND its encrypted column is NULL.
+ *
+ * Uses ONLY `{ not: '' }` — NOT `{ not: null }`. Two reasons:
+ *   1. In PostgreSQL `col <> ''` already excludes NULL rows (`NULL <> ''` is
+ *      unknown → filtered out), so an extra `{ not: null }` is redundant —
+ *      `{ not: '' }` alone yields exactly the non-empty, non-null set.
+ *   2. `{ not: null }` is INVALID on a non-nullable column. `Customer.phone`
+ *      is `String` (required), and Prisma rejects `{ phone: { not: null } }`
+ *      at runtime with `Argument \`not\` must not be null` — which broke the
+ *      backfill cursor + the /settings#pdpa status counts (the `as
+ *      Prisma.CustomerWhereInput` cast hid it from the type-checker). Verified
+ *      via the generated SQL: `{ not: '' }` → `WHERE col <> $1`.
+ *
+ * Single source of truth — shared by plaintextWhere() (backfill + aggregate
+ * count) and PdpaStatusService.getPlaintextCountsByColumn (per-column count).
+ */
+export function plaintextColumnAnd(plain: string, enc: string): Prisma.CustomerWhereInput[] {
+  return [
+    { [plain]: { not: '' } } as Prisma.CustomerWhereInput,
+    { [enc]: null } as Prisma.CustomerWhereInput,
+  ];
+}
+
+/**
  * Where-clause for any-column-plaintext-and-encrypted-null rows.
  * Shared by status counts + backfill cursor.
  */
 export function plaintextWhere(): Prisma.CustomerWhereInput {
-  const orConditions: Prisma.CustomerWhereInput[] = PII_COLUMNS.map(([plain, enc]) => ({
-    AND: [
-      { [plain]: { not: '' } } as Prisma.CustomerWhereInput,
-      { [plain]: { not: null } } as Prisma.CustomerWhereInput,
-      { [enc]: null } as Prisma.CustomerWhereInput,
-    ],
-  }));
   return {
     deletedAt: null,
-    OR: orConditions,
+    OR: PII_COLUMNS.map(([plain, enc]) => ({ AND: plaintextColumnAnd(plain, enc) })),
   };
 }
 

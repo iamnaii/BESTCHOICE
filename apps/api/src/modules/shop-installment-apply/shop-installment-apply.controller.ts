@@ -32,7 +32,10 @@ export class ShopInstallmentApplyController {
     return this.service.listMine(req.user.sub);
   }
 
+  // Tight throttle: applicationNumber has a low-entropy random suffix (3 digits/day),
+  // so an unthrottled status lookup would be enumerable in ~900 requests.
   @Get(':applicationNumber')
+  @Throttle({ short: { limit: 10, ttl: 60_000 } })
   get(@Param('applicationNumber') applicationNumber: string, @Req() req: { user?: { sub?: string } }) {
     return this.service.getByNumber(applicationNumber, req.user?.sub);
   }

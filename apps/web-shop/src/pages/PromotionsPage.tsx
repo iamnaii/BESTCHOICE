@@ -85,9 +85,9 @@ export default function PromotionsPage() {
                   )}
                   {conditionChips(p).length > 0 && (
                     <div className="flex flex-wrap gap-1.5">
-                      {conditionChips(p).map((c, i) => (
+                      {conditionChips(p).map((c) => (
                         <span
-                          key={i}
+                          key={c}
                           className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground"
                         >
                           {c}

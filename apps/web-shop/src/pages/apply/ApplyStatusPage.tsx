@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
+import type { AxiosError } from 'axios';
 import { FileSearch, MessageCircle, AlertTriangle } from 'lucide-react';
 import { api } from '@/lib/api';
 import ShopLayout from '@/components/layout/ShopLayout';
@@ -85,7 +86,7 @@ export default function ApplyStatusPage() {
     retry: false,
   });
 
-  const notFound = (error as { response?: { status?: number } } | null)?.response?.status === 404;
+  const notFound = (error as AxiosError | null)?.response?.status === 404;
   const terminal = data ? TERMINAL_STATES[data.status] : undefined;
   const flowIndex = data ? FLOW_STEPS.findIndex((s) => s.key === data.status) : -1;
 

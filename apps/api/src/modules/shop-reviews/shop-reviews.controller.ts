@@ -9,16 +9,20 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { ShopBotDefenseGuard } from '../shop-bot-defense/shop-bot-defense.guard';
 import { ShopReviewsService } from './shop-reviews.service';
 import { CreateReviewDto } from './dto/create-review.dto';
 
 @Controller('shop/reviews')
+@UseGuards(ShopBotDefenseGuard)
 export class ShopReviewsController {
   constructor(private service: ShopReviewsService) {}
 
   // Static route must be declared before ':productId' so 'recent' never hits the UUID pipe
   @Get('recent')
+  @Throttle({ short: { limit: 30, ttl: 60_000 } })
   recent(@Query('limit') limit?: string) {
     const parsed = parseInt(limit ?? '', 10);
     const take = Math.min(Math.max(Number.isNaN(parsed) ? 6 : parsed, 1), 20);

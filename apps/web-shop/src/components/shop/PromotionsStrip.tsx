@@ -12,6 +12,8 @@ export function usePromotions() {
   });
 }
 
+// default branches: the backend enum can grow before this bundle redeploys —
+// an unknown type must degrade to a generic label/icon, not crash the strip
 export function promoBenefitLabel(p: ShopPromotion): string {
   switch (p.type) {
     case 'PERCENTAGE_DISCOUNT':
@@ -22,6 +24,8 @@ export function promoBenefitLabel(p: ShopPromotion): string {
       return 'รับของแถมฟรี';
     case 'SPECIAL_RATE':
       return `ดอกเบี้ยพิเศษ ${trimZeros(Number(p.specialInterestRate ?? 0) * 100)}%`;
+    default:
+      return 'โปรโมชันพิเศษ';
   }
 }
 
@@ -35,6 +39,8 @@ export function promoIcon(p: ShopPromotion) {
       return <Gift className="size-5" aria-hidden="true" />;
     case 'SPECIAL_RATE':
       return <Sparkles className="size-5" aria-hidden="true" />;
+    default:
+      return <Gift className="size-5" aria-hidden="true" />;
   }
 }
 

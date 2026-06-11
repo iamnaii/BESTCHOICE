@@ -18,6 +18,8 @@ import AccountPage from './pages/account/AccountPage';
 import AddressBookPage from './pages/account/AddressBookPage';
 import InstallmentApplyPage from './pages/apply/InstallmentApplyPage';
 import ApplySuccessPage from './pages/apply/ApplySuccessPage';
+import ApplyStatusPage from './pages/apply/ApplyStatusPage';
+import PromotionsPage from './pages/PromotionsPage';
 import TradeInLandingPage from './pages/trade-in/TradeInLandingPage';
 import TradeInSubmitPage from './pages/trade-in/TradeInSubmitPage';
 import TradeInStatusPage from './pages/trade-in/TradeInStatusPage';
@@ -58,6 +60,8 @@ export default function App() {
         <Route path="/orders/:orderNumber" element={<OrderDetailPage />} />
         <Route path="/account" element={<AccountPage />} />
         <Route path="/account/addresses" element={<AddressBookPage />} />
+        <Route path="/promotions" element={<PromotionsPage />} />
+        <Route path="/apply/status" element={<ApplyStatusPage />} />
         <Route path="/apply/:productId" element={<InstallmentApplyPage />} />
         <Route path="/apply/success/:applicationNumber" element={<ApplySuccessPage />} />
         <Route path="/trade-in" element={<TradeInLandingPage />} />

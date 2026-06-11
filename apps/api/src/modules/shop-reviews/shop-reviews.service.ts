@@ -21,6 +21,22 @@ export class ShopReviewsService {
     });
   }
 
+  /**
+   * Cross-product recent reviews for the web-shop home page testimonials.
+   * PUBLISHED only; exposes the same customer fields as listPublic.
+   */
+  async listRecent(limit = 6) {
+    return this.prisma.review.findMany({
+      where: { status: 'PUBLISHED', deletedAt: null },
+      include: {
+        customer: { select: { name: true } },
+        product: { select: { brand: true, model: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    });
+  }
+
   async summary(productId: string) {
     const rows = await this.prisma.review.groupBy({
       by: ['rating'],

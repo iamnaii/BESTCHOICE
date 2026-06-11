@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router';
 import { Card, CardHeader, CardBody, CardTitle, Badge, Button } from '@/components';
 
 interface PreviewResponse {
@@ -26,6 +27,7 @@ function formatTHB(n: number): string {
 const MONTHS_OPTIONS = [3, 4, 5, 6, 7, 8, 10, 12];
 
 export function InstallmentCalculatorCard({ productId, installmentPrice }: Props) {
+  const nav = useNavigate();
   const [months, setMonths] = useState(12);
   const [downPct, setDownPct] = useState(15);
   const [bcResult, setBcResult] = useState<PreviewResponse | null>(null);
@@ -181,13 +183,7 @@ export function InstallmentCalculatorCard({ productId, installmentPrice }: Props
         </p>
 
         {/* CTA */}
-        <Button
-          variant="primary"
-          size="md"
-          onClick={() => {
-            window.location.href = '/shop/installment-apply';
-          }}
-        >
+        <Button variant="primary" size="md" onClick={() => nav(`/apply/${productId}`)}>
           สมัครผ่อนออนไลน์ →
         </Button>
       </CardBody>

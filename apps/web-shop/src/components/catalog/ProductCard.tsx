@@ -63,12 +63,24 @@ export function ProductCard({ product: p }: Props) {
           <h3 className="font-display text-base md:text-xl lg:text-2xl font-semibold text-foreground tracking-tight line-clamp-1">
             {p.model}
           </h3>
-          <p className="num text-lg md:text-2xl font-semibold text-foreground pt-1 md:pt-2">
-            ฿{p.minPrice.toLocaleString()}
-          </p>
-          <p className="text-[11px] md:text-[13px] text-muted-foreground">
-            หรือ <span className="num">฿{p.monthlyPaymentFrom.toLocaleString()}</span>/ด.
-          </p>
+          {/* Installment-first audience: lead with the monthly figure, full
+             price is the secondary fact. Falls back to price-first when the
+             model has no installment quote. */}
+          {p.monthlyPaymentFrom > 0 ? (
+            <>
+              <p className="num text-lg md:text-2xl font-semibold text-emerald-600 pt-1 md:pt-2">
+                ผ่อน ฿{p.monthlyPaymentFrom.toLocaleString()}
+                <span className="text-[11px] md:text-sm font-normal">/เดือน</span>
+              </p>
+              <p className="text-[11px] md:text-[13px] text-muted-foreground">
+                ราคาเต็ม <span className="num">฿{p.minPrice.toLocaleString()}</span>
+              </p>
+            </>
+          ) : (
+            <p className="num text-lg md:text-2xl font-semibold text-foreground pt-1 md:pt-2">
+              ฿{p.minPrice.toLocaleString()}
+            </p>
+          )}
         </div>
       </Link>
 

@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Search, ShieldCheck, BadgeCheck, Wallet, MessageCircle } from 'lucide-react';
 import ShopLayout from '@/components/layout/ShopLayout';
+import PromotionsStrip from '@/components/shop/PromotionsStrip';
 import {
   Container,
   Section,
@@ -46,48 +47,26 @@ const WHY_US_ITEMS = [
   },
 ];
 
-const FAKE_TESTIMONIALS: Review[] = [
-  {
-    id: 'home-review-1',
-    rating: 5,
-    title: 'ประทับใจมาก บริการดีเยี่ยม',
-    comment:
-      'เครื่องแท้ สภาพดีกว่าที่คิด พนักงานใจดี ตอบคำถามครบ ผ่อนจบใน 6 เดือน แนะนำเลยครับ',
-    verified: true,
-    createdAt: new Date().toISOString(),
-    customer: { name: 'คุณเอ' },
-  },
-  {
-    id: 'home-review-2',
-    rating: 5,
-    title: 'ผ่อนง่าย อนุมัติไว',
-    comment:
-      'แค่บัตรประชาชนใบเดียว ไม่ต้องมีสลิปเงินเดือน เซ็นสัญญาที่ร้านแป๊บเดียวก็ได้เครื่อง',
-    verified: true,
-    createdAt: new Date().toISOString(),
-    customer: { name: 'คุณบี' },
-  },
-  {
-    id: 'home-review-3',
-    rating: 5,
-    title: 'กล้าการันตีคุณภาพ',
-    comment:
-      'iPhone มือสองแต่เหมือนเครื่องใหม่เลย ตรวจเช็คละเอียดมาก แบตดี จอไม่มีรอย',
-    verified: true,
-    createdAt: new Date().toISOString(),
-    customer: { name: 'คุณซี' },
-  },
-];
-
 export default function HomePage() {
   const { data, isLoading, isError, refetch } = useQuery<CatalogResponse>({
     queryKey: ['shop', 'home', 'featured'],
     queryFn: () => api.get('/api/shop/products?limit=8&sort=popular').then((r) => r.data),
   });
 
+  // Real verified-purchase reviews — section hides entirely when none exist.
+  // (Replaced the old hardcoded fake testimonials: fake "ซื้อจริง" badges are
+  // a trust + misleading-advertising liability.)
+  const { data: reviews } = useQuery<Review[]>({
+    queryKey: ['shop', 'recent-reviews'],
+    queryFn: () => api.get('/api/shop/reviews/recent?limit=6').then((r) => r.data),
+    staleTime: 5 * 60 * 1000,
+  });
+
   return (
     <ShopLayout>
       <HomeHero />
+
+      <PromotionsStrip />
 
       <Section tone="muted" padding="sm">
         <Container>
@@ -140,19 +119,21 @@ export default function HomePage() {
         </Container>
       </Section>
 
-      <Section padding="md">
-        <Container>
-          <SectionHeader
-            title={copy.home.testimonialsTitle}
-            description="เสียงจริงจากลูกค้าที่ซื้อเครื่องและผ่อนกับเรา"
-          />
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {FAKE_TESTIMONIALS.map((r) => (
-              <ReviewCard key={r.id} review={r} />
-            ))}
-          </div>
-        </Container>
-      </Section>
+      {reviews && reviews.length > 0 && (
+        <Section padding="md">
+          <Container>
+            <SectionHeader
+              title={copy.home.testimonialsTitle}
+              description="เสียงจริงจากลูกค้าที่ซื้อเครื่องและผ่อนกับเรา"
+            />
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {reviews.slice(0, 6).map((r) => (
+                <ReviewCard key={r.id} review={r} />
+              ))}
+            </div>
+          </Container>
+        </Section>
+      )}
     </ShopLayout>
   );
 }

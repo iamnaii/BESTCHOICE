@@ -5,7 +5,7 @@ import QueryBoundary from '@/components/QueryBoundary';
 import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
-import { Store, BarChart3, Wallet } from 'lucide-react';
+import { Store, BarChart3, Wallet, AlertTriangle } from 'lucide-react';
 
 /**
  * P3-SP5 — SHOP-side accounting reports.
@@ -102,6 +102,20 @@ export default function ShopAccountingPage() {
         title="บัญชีหน้าร้าน (SHOP)"
         subtitle="งบทดลอง + กำไรขาดทุนของฝั่ง SHOP — แยกจาก FINANCE ตามผัง S-prefix"
       />
+
+      <div className="mb-4 flex items-start gap-3 rounded-lg border border-border bg-muted p-3 text-sm leading-snug text-muted-foreground">
+        <AlertTriangle className="mt-0.5 size-5 shrink-0 text-foreground" />
+        <div>
+          <p className="font-medium text-foreground">
+            รายงานนี้ยังไม่สมบูรณ์ — บัญชีฝั่ง SHOP ยังไม่เชื่อมกับการขายจริง
+          </p>
+          <p className="mt-1">
+            รายการบัญชี (JE) ฝั่งหน้าร้านยังไม่ถูกบันทึกอัตโนมัติจากการขาย/รับเข้า/เทิร์น
+            ตัวเลขในงบนี้จึงอาจเป็น 0 หรือไม่ครบ — ยอดขายจริงดูได้ที่ Dashboard
+            <span className="font-medium"> อย่าใช้รายงานนี้ยื่นภาษีหรือปิดงบจนกว่าจะเชื่อมระบบเสร็จ</span>
+          </p>
+        </div>
+      </div>
 
       <div className="mb-4 flex flex-wrap gap-1 rounded-xl bg-muted p-1">
         {tabs.map((tab) => {

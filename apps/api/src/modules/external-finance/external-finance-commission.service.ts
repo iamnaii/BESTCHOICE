@@ -26,9 +26,12 @@ export class ExternalFinanceCommissionService {
     if (dto.commissionRate < 0 || dto.commissionRate > 1) {
       throw new BadRequestException('commissionRate ต้องอยู่ระหว่าง 0 ถึง 1');
     }
-    const amount = new Prisma.Decimal(dto.financedAmount).mul(
-      new Prisma.Decimal(dto.commissionRate),
-    );
+    // Round to 2dp (ROUND_HALF_UP) at compute time — same convention as
+    // commission.util.computeCommissionAmount. Relying on the DB Decimal(12,2)
+    // cast to round leaves full precision in memory, which drifts when summed.
+    const amount = new Prisma.Decimal(dto.financedAmount)
+      .mul(new Prisma.Decimal(dto.commissionRate))
+      .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
     return this.prisma.externalFinanceCommission.create({
       data: {
         externalFinanceCompanyId: dto.externalFinanceCompanyId,

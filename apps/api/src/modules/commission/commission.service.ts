@@ -565,9 +565,11 @@ export class CommissionService {
       throw new BadRequestException('รูปแบบเดือนต้องเป็น YYYY-MM');
     }
 
-    // Get all commissions for the period
+    // Get all commissions for the period. Exclude CLAWED_BACK / PARTIALLY_CLAWED_BACK —
+    // those were reversed (clawbackAmount recovered) and must NOT be paid out again. Matches
+    // this method's documented contract ("PENDING/APPROVED/PAID").
     const commissions = await this.prisma.salesCommission.findMany({
-      where: { period, deletedAt: null },
+      where: { period, deletedAt: null, status: { in: ['PENDING', 'APPROVED', 'PAID'] } },
       include: { salesperson: { select: { id: true, name: true } } },
     });
 

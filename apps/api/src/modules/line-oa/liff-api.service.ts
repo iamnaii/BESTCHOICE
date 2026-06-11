@@ -191,7 +191,8 @@ export class LiffApiService {
       data: { lineIdFinance: lineId },
     });
 
-    this.logger.log(`[LIFF] Linked LINE ${lineId} to customer ${customer.name} via finance registration`);
+    // Log by customer id, not name — name is PII (PDPA). The id is enough to trace.
+    this.logger.log(`[LIFF] Linked LINE ${lineId} to customer ${customerId} via finance registration`);
     return { success: true };
   }
 

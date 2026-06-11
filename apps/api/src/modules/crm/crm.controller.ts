@@ -12,6 +12,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { hasCrossBranchAccess } from '../auth/branch-access.util';
 import { CrmPipelineService } from './services/crm-pipeline.service';
 import { CustomerScoringService } from './services/customer-scoring.service';
 import { LeadStage, LeadSource } from '@prisma/client';
@@ -29,6 +30,7 @@ export class CrmController {
   @Get('leads')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   async listLeads(
+    @CurrentUser() user: { role: string; branchId?: string | null },
     @Query('stage') stage?: LeadStage,
     @Query('assignedTo') assignedToId?: string,
     @Query('branch') branchId?: string,
@@ -37,10 +39,15 @@ export class CrmController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
+    // Branch-scoped roles (SALES, BRANCH_MANAGER) only ever see their own branch's leads —
+    // a missing/forged `branch` query param must not widen visibility to other branches.
+    const effectiveBranchId = hasCrossBranchAccess(user)
+      ? branchId
+      : user.branchId ?? '__no_branch__';
     return this.pipeline.listLeads({
       stage,
       assignedToId,
-      branchId,
+      branchId: effectiveBranchId,
       source,
       search,
       page: page ? parseInt(page, 10) : undefined,

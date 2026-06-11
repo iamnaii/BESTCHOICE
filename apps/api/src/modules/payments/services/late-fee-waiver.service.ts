@@ -121,7 +121,7 @@ export class LateFeeWaiverService {
       }
 
       return { updated, originalLateFee, isNowFullyPaid, contractId: payment.contractId, installmentNo: payment.installmentNo };
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
     // Structured log for late fee waiver observability
     this.structuredLogger.log('payment.lateFeeWaived', {

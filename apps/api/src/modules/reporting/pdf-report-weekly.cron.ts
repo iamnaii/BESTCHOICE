@@ -5,8 +5,9 @@ import { PdfReportService } from './pdf-report.service';
 import { EmailService } from '../email/email.service';
 
 /**
- * Weekly collections analytics PDF — emailed every Monday 08:00 Bangkok
- * (= 01:00 UTC). Recipients pulled from SystemConfig key
+ * Weekly collections analytics PDF — emailed every Monday 08:00 Bangkok.
+ * Anchored explicitly to Asia/Bangkok so it no longer relies on the host
+ * process running in UTC. Recipients pulled from SystemConfig key
  * `pdf_report_recipients` (comma-separated). Skips when no recipients.
  */
 @Injectable()
@@ -18,7 +19,7 @@ export class PdfReportWeeklyCron {
     private readonly email: EmailService,
   ) {}
 
-  @Cron('0 1 * * 1')
+  @Cron('0 8 * * 1', { timeZone: 'Asia/Bangkok' })
   async run(): Promise<{ sent: number; recipients: number }> {
     try {
       const recipients = await this.pdfReport.getRecipients();

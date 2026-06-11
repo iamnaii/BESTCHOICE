@@ -287,6 +287,11 @@ export class JournalService {
       throw new BadRequestException('สถานะไม่ถูกต้อง');
     }
 
+    // The reversal entry is dated today (not the original's date), so the OPEN-period
+    // check must run against today — otherwise a void could post a reversal into a
+    // CLOSED/SYNCED current period past its grace window.
+    await validatePeriodOpen(this.prisma, new Date(), entry.companyId);
+
     return this.prisma.$transaction(async (tx) => {
       const voided = await tx.journalEntry.update({
         where: { id },

@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../../prisma/prisma.service';
 
 /**
@@ -46,6 +47,7 @@ export class WebhookDedupService {
       }
     } catch (err) {
       this.logger.error(`[WebhookDedup] Cleanup error: ${err instanceof Error ? err.message : err}`);
+      Sentry.captureException(err, { tags: { kind: 'cron-job', cron: 'webhook-dedup-cleanup' } });
     }
   }
 }

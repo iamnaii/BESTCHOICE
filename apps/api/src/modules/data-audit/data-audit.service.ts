@@ -135,7 +135,7 @@ export class DataAuditService {
   // ═══════════════════════════════════════════════════════════════
 
   /** Runs every day at 06:00 AM (Bangkok time) */
-  @Cron('0 6 * * *')
+  @Cron('0 6 * * *', { timeZone: 'Asia/Bangkok' })
   async dailyHealthCheck() {
     this.logger.log('Starting daily data audit health check...');
     try {

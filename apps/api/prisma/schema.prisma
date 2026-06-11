@@ -3783,10 +3783,16 @@ model JournalLine {
   updatedAt      DateTime  @updatedAt @map("updated_at")
   deletedAt      DateTime? @map("deleted_at")
 
-  journalEntry JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  // Restrict (not Cascade): journal lines are legal accounting evidence. A hard
+  // delete of a JournalEntry must never silently wipe its lines — deletion must be
+  // explicit. Matches the v3 "Restrict on financial/evidence tables" policy
+  // (Payment, EDocument, Signature, etc.). Today this path is unreachable
+  // (JournalPostAuditLog Restrict + soft-delete-only code) — this is defense-in-depth.
+  journalEntry JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
 
   @@index([journalEntryId])
   @@index([accountCode])
+  @@index([journalEntryId, deletedAt])
   @@map("journal_lines")
 }
 

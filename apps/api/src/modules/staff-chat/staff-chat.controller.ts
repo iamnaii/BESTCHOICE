@@ -15,6 +15,8 @@ import {
   MaxFileSizeValidator,
   FileTypeValidator,
   BadRequestException,
+  NotFoundException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ConfigService } from '@nestjs/config';
@@ -101,8 +103,16 @@ export class StaffChatController {
 
   @Get('rooms/:id')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
-  async getRoom(@Param('id') id: string) {
-    return this.roomManager.findById(id);
+  async getRoom(@Param('id') id: string, @Req() req: { user: { id: string; role: string } }) {
+    const room = await this.roomManager.findById(id);
+    if (!room) throw new NotFoundException('ไม่พบห้องแชท');
+    // SALES may only open rooms assigned to them (or still unassigned, which they can pick up).
+    // The room payload includes customer PII (phone/nationalId), so a SALES user must not be
+    // able to read an arbitrary room by guessing its id. Cross-branch roles see all rooms.
+    if (req.user.role === 'SALES' && room.assignedToId && room.assignedToId !== req.user.id) {
+      throw new ForbiddenException('ไม่มีสิทธิ์เข้าถึงห้องแชทนี้');
+    }
+    return room;
   }
 
   @Get('rooms/:id/messages')

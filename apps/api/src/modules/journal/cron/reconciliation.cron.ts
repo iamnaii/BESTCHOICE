@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import * as Sentry from '@sentry/nestjs';
 import { OutboxService } from '../outbox.service';
 
 @Injectable()
@@ -25,6 +26,7 @@ export class ReconciliationCron {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.error(`Reconciliation tick failed: ${msg}`);
+      Sentry.captureException(err, { tags: { kind: 'cron-job', cron: 'outbox-reconciliation' } });
     }
   }
 }

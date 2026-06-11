@@ -81,7 +81,16 @@ export class InstallmentAccrual2ATemplate {
     // A crash between any of these steps can no longer produce a duplicate
     // accrual JE on the next cron tick (the idempotency stamp is committed
     // atomically with the JE).
-    return this.prisma.$transaction((tx) => this.run(installmentScheduleId, tx));
+    //
+    // Serializable isolation: the advance-consume leg reads contract.advanceBalance
+    // then decrements it. The payment paths (PaySolutions webhook, recordPayment) also
+    // decrement advanceBalance under Serializable — without matching isolation here a
+    // concurrent accrual + payment could both read the same balance and double-consume.
+    // On a serialization conflict the cron's per-installment try/catch retries next tick
+    // (idempotent — accrualJournalEntryId is not stamped on a rolled-back tx).
+    return this.prisma.$transaction((tx) => this.run(installmentScheduleId, tx), {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
   }
 
   private async run(

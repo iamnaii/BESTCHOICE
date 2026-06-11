@@ -1,8 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CustomerPiiService } from '../../customers/customer-pii.service';
-import { PII_COLUMNS } from './pdpa-backfill.util';
+import { PII_COLUMNS, plaintextColumnAnd, plaintextWhere } from './pdpa-backfill.util';
 
 export interface PiiColumnPlaintextCount {
   column: string;
@@ -58,11 +57,7 @@ export class PdpaStatusService {
       const count = await this.prisma.customer.count({
         where: {
           deletedAt: null,
-          AND: [
-            { [plain]: { not: '' } } as Prisma.CustomerWhereInput,
-            { [plain]: { not: null } } as Prisma.CustomerWhereInput,
-            { [enc]: null } as Prisma.CustomerWhereInput,
-          ],
+          AND: plaintextColumnAnd(plain, enc),
         },
       });
       out.push({ column: plain, plaintextCount: count });
@@ -79,19 +74,9 @@ export class PdpaStatusService {
    * double-count a row that has multiple unencrypted columns.
    */
   async getAnyPlaintextCount(): Promise<number> {
-    const orConditions: Prisma.CustomerWhereInput[] = PII_COLUMNS.map(([plain, enc]) => ({
-      AND: [
-        { [plain]: { not: '' } } as Prisma.CustomerWhereInput,
-        { [plain]: { not: null } } as Prisma.CustomerWhereInput,
-        { [enc]: null } as Prisma.CustomerWhereInput,
-      ],
-    }));
-    return this.prisma.customer.count({
-      where: {
-        deletedAt: null,
-        OR: orConditions,
-      },
-    });
+    // plaintextWhere() = { deletedAt: null, OR: per-column plaintextColumnAnd(...) }
+    // — the exact aggregate this method needs (single source of truth).
+    return this.prisma.customer.count({ where: plaintextWhere() });
   }
 
   /**

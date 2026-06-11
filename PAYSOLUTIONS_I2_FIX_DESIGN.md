@@ -1,8 +1,15 @@
 # PaySolutions 2B JE fix (PR-843 / I2) — implementation design
 
-Status: **DESIGNED, NOT IMPLEMENTED.** Current buggy behaviour is locked by
-`paysolutions.callback-money.spec.ts` characterization tests + the in-source
-`TODO(PR-843/I2)`. This doc is the blueprint for a correct, reviewed implementation.
+Status: **✅ IMPLEMENTED + DEPLOYED (verified 2026-06-11).** All four defects below
+are fixed: QR webhook posts a per-receipt **delta** JE via `PaymentReceiptTemplate`
+(no cumulative double-count), partials are ledgered, late fee → Cr 42-1103, and
+over-collection parks as advance (Cr 21-1103). The `TODO(PR-843/I2)` lock is gone and
+`paysolutions.callback-money.spec.ts` now asserts the CORRECT behaviour
+("defect-1 FIXED prior-partial: delta='600' NOT cumulative 1000"). Landed across
+PR-843/I2 Phase 3/5: `d72b8b16` (wire QR onto primitive), `762e274c` (over-collection
+→21-1103), `a7f47eb5` (auto-approve ≤1฿). Accountant confirmed #3/#6 on 2026-06-11
+(`PR843_I2_ACCOUNTANT_SIGNOFF.md`). The original "two attempts FAILED" + "epic not a
+patch" notes below are kept as historical design rationale — the epic ultimately landed.
 
 ## The bug surface (in `paysolutions.service.ts` `handlePaymentCallback`)
 

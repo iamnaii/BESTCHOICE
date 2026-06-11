@@ -40,6 +40,50 @@ export class WebhooksService {
     }
   }
 
+  /**
+   * SSRF guard for outbound webhook URLs. `@IsUrl()` only validates the format,
+   * so without this an OWNER-set URL could point at loopback / RFC-1918 /
+   * link-local — most dangerously the cloud metadata endpoint 169.254.169.254.
+   * Enforced both at registration AND right before dispatch (defence against a
+   * config that was edited around the registration check). Named hosts that are
+   * not IP literals are allowed (public DNS) — registration is OWNER-only.
+   */
+  private assertSafeWebhookUrl(rawUrl: string): void {
+    let parsed: URL;
+    try {
+      parsed = new URL(rawUrl);
+    } catch {
+      throw new BadRequestException('URL ไม่ถูกต้อง');
+    }
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+      throw new BadRequestException('URL ต้องเป็น http(s) เท่านั้น');
+    }
+    const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+    const blockedNames = ['localhost', 'metadata.google.internal', 'metadata'];
+    if (blockedNames.includes(host)) {
+      throw new BadRequestException('ไม่อนุญาต URL ที่ชี้ไปยังเครือข่ายภายใน');
+    }
+    // IPv4 literal → reject loopback / private / link-local ranges.
+    const m = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+    if (m) {
+      const [a, b] = [Number(m[1]), Number(m[2])];
+      const isPrivate =
+        a === 127 || // loopback
+        a === 10 || // 10/8
+        a === 0 || // 0.0.0.0/8
+        (a === 169 && b === 254) || // link-local incl. 169.254.169.254 metadata
+        (a === 172 && b >= 16 && b <= 31) || // 172.16/12
+        (a === 192 && b === 168); // 192.168/16
+      if (isPrivate) {
+        throw new BadRequestException('ไม่อนุญาต URL ที่ชี้ไปยังเครือข่ายภายใน');
+      }
+    }
+    // IPv6 loopback / unique-local / link-local literal.
+    if (host === '::1' || host.startsWith('fc') || host.startsWith('fd') || host.startsWith('fe80')) {
+      throw new BadRequestException('ไม่อนุญาต URL ที่ชี้ไปยังเครือข่ายภายใน');
+    }
+  }
+
   async registerWebhook(dto: CreateWebhookDto, userId: string) {
     const invalidEvents = dto.events.filter(
       (e) => !(SUPPORTED_EVENTS as readonly string[]).includes(e),
@@ -49,6 +93,7 @@ export class WebhooksService {
         `events ไม่รองรับ: ${invalidEvents.join(', ')}. รองรับเฉพาะ: ${SUPPORTED_EVENTS.join(', ')}`,
       );
     }
+    this.assertSafeWebhookUrl(dto.url);
 
     return this.prisma.webhookSubscription.create({
       data: {
@@ -199,6 +244,14 @@ export class WebhooksService {
     eventType: string,
     data: Record<string, unknown>,
   ): Promise<{ success: boolean; statusCode: number | null; errorMessage: string | null }> {
+    // Re-check SSRF safety at dispatch time, not just registration — covers a
+    // subscription whose URL was edited around the registration guard.
+    try {
+      this.assertSafeWebhookUrl(sub.url);
+    } catch {
+      return { success: false, statusCode: null, errorMessage: 'blocked-internal-url' };
+    }
+
     const body = JSON.stringify({
       event: eventType,
       timestamp: new Date().toISOString(),

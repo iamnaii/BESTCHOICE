@@ -25,7 +25,7 @@ re-raises them).
 **DONE (16):** F1, F2, F3 (doc+disclaimer; wiring still owner-gated), F4, F5, F6, F8, F11, F12, F13, F14, F17, F18, F20, F21, F25, F28, F29.
 **GATED — owner/ops/accountant/design decision (8):** F3-wiring, F7 (KYC two-person policy), F9 (orphan-Payment backfill — ops), F15 (`INTEGRATION_ENCRYPTION_KEY` fail-fast — ops), F16 (PEAK string amounts — accountant/PEAK API), F19 (prompt-injection framing — design), F22 (PDPA LIFF — sequence with strict-mode rollout), F24 (broadcast dispatch separation — design).
 **REFUTED on closer inspection (4):** F10 (skip-if-exists guard present), F23 (intentional IMEI-recycling fraud control), F30 (intentionally mirrors getTrialBalance `lte:now`), + earlier-list refutations at the bottom.
-**NOT YET STARTED (Low, beyond F25 scope):** F26 (webhooks SSRF — OWNER-gated/weak), F27 (customer-access per-IP throttle).
+**ALSO DONE (Low):** F26 (webhooks SSRF private-IP block), F27 (customer-access per-IP throttle).
 
 All DONE money-path fixes verified: `./tools/check-types.sh api` clean (modulo pre-existing `@prisma/client-finance` sandbox errors) + commission / accrual-2a / vat-60day / paysolutions / paired-journal golden specs pass.
 
@@ -192,13 +192,13 @@ All DONE money-path fixes verified: `./tools/check-types.sh api` clean (modulo p
 - **fix:** change to `onDelete: Restrict` (safe migration; no rows are cascade-deleted today).
 - **gate:** none
 
-### ☐ F26 — Webhooks SSRF (OWNER-gated, weak exfil) — defense-in-depth
+### ☑ F26 — Webhooks SSRF — DONE (assertSafeWebhookUrl blocks loopback/RFC-1918/link-local/metadata at register + dispatch)
 - **file:** `apps/api/src/modules/webhooks/webhooks.service.ts:219`
 - **mechanism:** `fetch(sub.url)` with only `@IsUrl()` format validation → can hit `169.254.169.254`/internal. BUT registration is `@Roles('OWNER')` and only statusCode/errorMessage are logged (weak exfil).
 - **fix:** block private/loopback/link-local IP ranges before fetch (DNS-resolve + CIDR blocklist).
 - **gate:** none (low priority)
 
-### ☐ F27 — customer-access token has no per-IP brute-force throttle
+### ☑ F27 — customer-access token has no per-IP brute-force throttle — DONE (@Throttle 20/min per IP on the public token endpoint)
 - **file:** `apps/api/src/modules/customer-access/customer-access.service.ts:26`
 - **mechanism:** 256-bit token makes guessing infeasible, but no per-IP backoff/alert.
 - **fix:** add a `@Throttle` per-IP + Sentry alert on repeated misses.

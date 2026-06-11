@@ -51,13 +51,13 @@ re-raises them).
 - **fix:** `cancel` → `updateMany({ where: { id, sessionId, status: 'ACTIVE' }, data: { status: 'CANCELLED' } })`; throw NotFound if `count === 0`. The `sessionId` becomes the capability token.
 - **gate:** none
 
-### ☐ F5 — Installment accrual cron uses server-local midnight, not Bangkok
+### ☑ F5 — Installment accrual cron uses server-local midnight, not Bangkok — DONE (getBkkTomorrowMidnight helper)
 - **file:** `apps/api/src/modules/journal/cron/installment-accrual.cron.ts:46-49`
 - **mechanism:** `new Date(); setHours(0,0,0,0)` = UTC midnight while cron fires 00:01 Asia/Bangkok → `dueDate < tomorrow` window shifted +7h → installments accrue 1 day late/early on the boundary. Idempotency stamp prevents double, not timing skew.
 - **fix:** Adopt the `getCutoffBangkok()` Intl.DateTimeFormat pattern already used in `vat-60day.cron.ts`.
 - **gate:** none
 
-### ☐ F6 — PaySolutions webhook posts receipt JE without period-lock
+### ☑ F6 — PaySolutions webhook posts receipt JE without period-lock — DONE (validatePeriodOpen(now) before tx; no-op for current open month, defense-in-depth)
 - **file:** `apps/api/src/modules/paysolutions/services/paysolutions-webhook.service.ts` (before the serializable tx)
 - **mechanism:** No `validatePeriodOpen`. entryDate=today so realistically only an issue when the current month is closed before month-end (grace 5d). Autonomous path (customer pays an old link cross-month).
 - **fix:** `await validatePeriodOpen(prisma, new Date(), financeCompanyId)` before the tx.
@@ -73,7 +73,7 @@ re-raises them).
 
 ## 🟡 MEDIUM
 
-### ☐ F8 — Advance-consume not Serializable on `advanceBalance` decrement
+### ☑ F8 — Advance-consume not Serializable on `advanceBalance` decrement — DONE (Serializable isolation on standalone accrual tx)
 - **file:** `apps/api/src/modules/journal/cpa-templates/installment-accrual-2a.template.ts:249`
 - **mechanism:** `contract.update({ data: { advanceBalance: { decrement } } })` not under Serializable; concurrent accrual cron + payment webhook could double-decrement.
 - **fix:** wrap the consume in Serializable isolation OR add a post-decrement `advanceBalance >= 0` CAS guard.
@@ -88,13 +88,13 @@ re-raises them).
 ### ✖ F10 — generatePayouts upsert overwrites APPROVED/PAID payout — **REFUTED**
 - **why refuted:** `commission.service.ts:604-613` already skips when a non-soft-deleted payout exists for `salespersonId+period`; the upsert `update` branch only runs for soft-deleted rows. Re-running does NOT overwrite an approved/paid payout. No fix needed.
 
-### ☐ F11 — `journal.service.void()` reversal not period-locked on reversal date
+### ☑ F11 — `journal.service.void()` reversal not period-locked on reversal date — DONE (validatePeriodOpen(now) before tx)
 - **file:** `apps/api/src/modules/journal/journal.service.ts:283-338`
 - **mechanism:** Reversal entry dated `now` but no `validatePeriodOpen(now)`; only the original entry's date is checked.
 - **fix:** add `await validatePeriodOpen(prisma, new Date(), entry.companyId)` after the original-entry guard.
 - **gate:** none
 
-### ☐ F12 — VAT-60day cron has no period-lock (asymmetric with accrual cron)
+### ☑ F12 — VAT-60day cron has no period-lock (asymmetric with accrual cron) — DONE (batch-level validatePeriodOpen + skip-with-Sentry-warn)
 - **file:** `apps/api/src/modules/journal/cron/vat-60day.cron.ts`
 - **mechanism:** Posts `Vat60dayMandatoryTemplate` with no `validatePeriodOpen`; accrual cron does skip+warn on closed period.
 - **fix:** mirror the accrual cron's per-item validate + skip-with-Sentry-warn.

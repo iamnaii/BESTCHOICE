@@ -41,12 +41,30 @@ export class InstallmentAccrualCron {
     private readonly template: InstallmentAccrual2ATemplate,
   ) {}
 
+  /**
+   * Upper bound for "due as of today" anchored to Asia/Bangkok midnight.
+   *
+   * The cron fires at 00:01 Asia/Bangkok but `new Date()` is host-local (Cloud Run
+   * defaults to UTC), so `setHours(0,0,0,0)` previously produced UTC midnight and shifted
+   * the `dueDate < tomorrow` window by +7h — installments due on the Bangkok calendar day
+   * were accrued a day late/early on the boundary. Thailand has no DST so +07:00 is constant.
+   */
+  private getBkkTomorrowMidnight(): Date {
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Bangkok',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    const bkkDate = formatter.format(new Date()); // today's YYYY-MM-DD in Bangkok
+    const tomorrow = new Date(`${bkkDate}T00:00:00+07:00`);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return tomorrow;
+  }
+
   @Cron('1 0 * * *', { timeZone: 'Asia/Bangkok' })
   async tick(): Promise<{ processed: number; failed: number; skippedClosedPeriod: number }> {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrow = this.getBkkTomorrowMidnight();
 
     // CPA Manual Termination Policy: skip contracts that have been terminated
     // via 60D dispatch (status='TERMINATED'). Once หนังสือบอกเลิก is dispatched,

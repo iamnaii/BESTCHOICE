@@ -13,6 +13,7 @@ import { PaymentReceiptTemplate } from '../../journal/cpa-templates/payment-rece
 import { Vat60dayReversalTemplate } from '../../journal/cpa-templates/vat-60day-reversal.template';
 import { formatDateLong } from '../../../utils/thai-date.util';
 import { ensureInstallmentSchedules } from '../../../utils/installment-schedule.util';
+import { validatePeriodOpen } from '../../../utils/period-lock.util';
 import { PaySolutionsGatewayClient } from './paysolutions-gateway.client';
 
 /**
@@ -255,6 +256,12 @@ export class PaySolutionsWebhookService {
         where: { id: paymentLink.contractId! },
         select: { id: true, contractNumber: true, branchId: true },
       });
+
+      // Period-lock: the receipt JE posts to today's FINANCE period (postedAt=now).
+      // Mirror PaymentsService.recordPayment so an autonomous webhook cannot post into a
+      // CLOSED/SYNCED period past its grace window. For the current month this never
+      // throws (grace covers "today"); it only blocks a genuinely-closed current period.
+      await validatePeriodOpen(this.prisma, new Date(), financeCompanyId ?? undefined);
 
       // F-1-003 follow-up: resolve a real OWNER user.id for JournalEntry.createdById.
       // The previous fix passed the literal string 'paysolutions-webhook' which

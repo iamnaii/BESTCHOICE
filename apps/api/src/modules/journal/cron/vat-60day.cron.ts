@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { Vat60dayMandatoryTemplate } from '../cpa-templates/vat-60day-mandatory.template';
+import { validatePeriodOpen } from '../../../utils/period-lock.util';
 
 /**
  * Runs daily at 02:00 Asia/Bangkok.
@@ -92,6 +93,24 @@ export class Vat60dayCron {
 
     let processed = 0;
     let failed = 0;
+
+    // Closed-period guard: the mandatory VAT JE posts to today's FINANCE period
+    // (createAndPost defaults postedAt=now, companyId=FINANCE). Never silently post
+    // into a CLOSED/SYNCED period past its grace window — mirror the 2A accrual cron.
+    const financeCompany = await this.prisma.companyInfo.findFirst({
+      where: { companyCode: 'FINANCE', deletedAt: null },
+      select: { id: true },
+    });
+    try {
+      await validatePeriodOpen(this.prisma, new Date(), financeCompany?.id);
+    } catch (e) {
+      Sentry.captureMessage(
+        `VAT 60-day cron skipped — current FINANCE period is closed (${candidates.length} candidate(s) deferred)`,
+        { level: 'warning', extra: { reason: (e as Error).message } },
+      );
+      this.logger.warn(`VAT 60-day cron skipped — closed period: ${(e as Error).message}`);
+      return { processed: 0, failed: 0 };
+    }
 
     for (const inst of candidates) {
       // Skip fully-settled installments (status='PAID' = customer paid full amountDue

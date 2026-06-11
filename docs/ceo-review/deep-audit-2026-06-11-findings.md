@@ -20,6 +20,17 @@ re-raises them).
 
 ---
 
+## Progress (updated 2026-06-11, branch `claude/confident-planck-3c9t3f`)
+
+**DONE (16):** F1, F2, F3 (doc+disclaimer; wiring still owner-gated), F4, F5, F6, F8, F11, F12, F13, F14, F17, F18, F20, F21, F25, F28, F29.
+**GATED — owner/ops/accountant/design decision (8):** F3-wiring, F7 (KYC two-person policy), F9 (orphan-Payment backfill — ops), F15 (`INTEGRATION_ENCRYPTION_KEY` fail-fast — ops), F16 (PEAK string amounts — accountant/PEAK API), F19 (prompt-injection framing — design), F22 (PDPA LIFF — sequence with strict-mode rollout), F24 (broadcast dispatch separation — design).
+**REFUTED on closer inspection (4):** F10 (skip-if-exists guard present), F23 (intentional IMEI-recycling fraud control), F30 (intentionally mirrors getTrialBalance `lte:now`), + earlier-list refutations at the bottom.
+**NOT YET STARTED (Low, beyond F25 scope):** F26 (webhooks SSRF — OWNER-gated/weak), F27 (customer-access per-IP throttle).
+
+All DONE money-path fixes verified: `./tools/check-types.sh api` clean (modulo pre-existing `@prisma/client-finance` sandbox errors) + commission / accrual-2a / vat-60day / paysolutions / paired-journal golden specs pass.
+
+---
+
 ## 🔴 CRITICAL
 
 ### ☑ F1 — Unauthenticated PII leak on `GET /shop/applications/:applicationNumber` — DONE (`shop-installment-apply.service.ts` getByNumber returns non-PII projection for non-owners)
@@ -63,11 +74,12 @@ re-raises them).
 - **fix:** `await validatePeriodOpen(prisma, new Date(), financeCompanyId)` before the tx.
 - **gate:** none (accountant should confirm whether closing the current month before month-end is a real workflow; if never, severity is low)
 
-### ☐ F7 — KYC has no segregation of duties (one user → VERIFIED)
-- **file:** `apps/api/src/modules/kyc/kyc.controller.ts:52-64` + service
-- **mechanism:** `uploadIdCard()` allows SALES; nothing forces OTP-verifier ≠ ID-uploader → a single SALES user runs send-otp → verify-otp → upload-id → VERIFIED with no manager review.
-- **fix:** persist `otpVerifiedByUserId`; reject upload when uploader === verifier, OR restrict `uploadIdCard` to OWNER/BRANCH_MANAGER.
-- **gate:** none (confidence 0.70 — verify the exact state machine first)
+### ⏸ F7 — KYC has no segregation of duties (one user → VERIFIED) — GATED (owner policy)
+- **file:** `apps/api/src/modules/kyc/kyc.controller.ts:52-64` + `kyc.service.ts:159,242`
+- **mechanism (verified):** `verifyOtp` (PENDING→OTP_VERIFIED) and `uploadIdCard` (OTP_VERIFIED→VERIFIED) both allow SALES; one user can run the whole chain.
+- **why NOT auto-fixed:** the OTP is sent to the **customer's** phone (`kyc.service.ts:178`), so OTP entry already proves customer presence — it is not a two-person-approval step. Forcing uploader ≠ verifier adds a second-staff requirement to **every in-store KYC**, which may break the normal single-operator counter flow. Business-policy call, not an unambiguous bug.
+- **Decision needed (owner):** want two-person KYC? If yes: persist `otpVerifiedById` (schema + migration) + reject `uploadIdCard` when uploader === verifier. If no: leave as-is.
+- **gate:** owner
 
 ---
 

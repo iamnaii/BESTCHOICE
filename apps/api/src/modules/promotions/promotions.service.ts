@@ -67,6 +67,26 @@ export class PromotionsService {
     );
   }
 
+  /**
+   * Public (web-shop) view of active promotions — display-safe fields only.
+   * Usage counters stay internal: exposing remaining quota invites quota-sniping
+   * and leaks campaign performance to competitors.
+   */
+  async findActivePublic() {
+    const promotions = await this.findActivePromotions();
+    return promotions.map((p) => ({
+      id: p.id,
+      name: p.name,
+      description: p.description,
+      type: p.type,
+      discountValue: p.discountValue,
+      specialInterestRate: p.specialInterestRate,
+      conditions: p.conditions,
+      startDate: p.startDate,
+      endDate: p.endDate,
+    }));
+  }
+
   async findOne(id: string) {
     const promotion = await this.prisma.promotion.findUnique({
       where: { id },

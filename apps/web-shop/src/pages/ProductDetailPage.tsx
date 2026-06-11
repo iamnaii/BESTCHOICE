@@ -83,6 +83,17 @@ export default function ProductDetailPage() {
     enabled: !!id,
   });
 
+  // Real "ผ่อนเริ่ม" figure from the pricing engine (12 งวด ดาวน์ 15% = default
+  // shown in the calculator below) — never estimate with a made-up multiplier.
+  const { data: preview } = useQuery({
+    queryKey: ['shop-product-preview', id],
+    queryFn: () =>
+      api
+        .get(`/api/shop/installment-preview?productId=${id}&months=12&downPct=0.15&provider=BC`)
+        .then((r) => r.data as { available: boolean; monthlyPayment?: number }),
+    enabled: !!id && !!data?.installmentPrice,
+  });
+
   useEffect(() => {
     if (data && id) {
       track('ViewContent', { content_type: 'product', content_ids: [id] });
@@ -133,7 +144,8 @@ export default function ProductDetailPage() {
     .filter(Boolean)
     .join(' ');
   const price = lowestPrice(data.tiers);
-  const monthlyEst = Math.floor(price * 0.093);
+  const monthlyFrom =
+    preview?.available && preview.monthlyPayment ? Math.ceil(preview.monthlyPayment) : null;
   const gradeKeys = Object.keys(data.tiers);
   const gallery = data.gallery && data.gallery.length > 0 ? data.gallery : [media('product.placeholder')];
   const mainImage = gallery[activeImage] ?? gallery[0];
@@ -196,9 +208,15 @@ export default function ProductDetailPage() {
               <div className="text-3xl md:text-4xl font-bold text-emerald-600 leading-snug">
                 ฿{price.toLocaleString()}
               </div>
-              <div className="text-sm text-muted-foreground leading-snug">
-                ผ่อนเริ่ม ฿{monthlyEst.toLocaleString()}/เดือน
-              </div>
+              {monthlyFrom && (
+                <div className="text-base font-semibold text-emerald-700 leading-snug">
+                  ผ่อนเริ่ม ฿{monthlyFrom.toLocaleString()}/เดือน
+                  <span className="text-xs font-normal text-muted-foreground">
+                    {' '}
+                    (12 งวด ดาวน์ 15%)
+                  </span>
+                </div>
+              )}
             </div>
 
             {gradeKeys.length > 0 && (
@@ -226,7 +244,7 @@ export default function ProductDetailPage() {
               >
                 {copy.product.reserveCta}
               </Button>
-              <Button variant="outline" size="lg" fullWidth onClick={() => nav('/apply')}>
+              <Button variant="outline" size="lg" fullWidth onClick={() => nav(`/apply/${data.id}`)}>
                 สมัครผ่อนทันที
               </Button>
             </div>
@@ -256,17 +274,28 @@ export default function ProductDetailPage() {
         </Container>
       </Section>
 
-      {/* Mobile sticky CTA */}
+      {/* Mobile sticky CTA — installment customers are the majority; give
+         "สมัครผ่อน" equal billing with reserve instead of burying it above the fold */}
       <StickyBottomBar>
-        <Button
-          size="lg"
-          fullWidth
-          onClick={() => reserveMut.mutate()}
-          disabled={reserveMut.isPending}
-          loading={reserveMut.isPending}
-        >
-          {copy.product.reserveCta}
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            size="lg"
+            className="flex-1"
+            onClick={() => reserveMut.mutate()}
+            disabled={reserveMut.isPending}
+            loading={reserveMut.isPending}
+          >
+            {copy.product.reserveCta}
+          </Button>
+          <Button
+            variant="outline"
+            size="lg"
+            className="flex-1"
+            onClick={() => nav(`/apply/${data.id}`)}
+          >
+            สมัครผ่อน
+          </Button>
+        </div>
       </StickyBottomBar>
       <StickyBottomBarSpacer />
     </ShopLayout>

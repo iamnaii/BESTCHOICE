@@ -12,12 +12,15 @@ export default function ShopFooter() {
           <h3 className="font-semibold mb-2">บริการ</h3>
           <ul className="space-y-1">
             <li><Link to="/products">สินค้าทั้งหมด</Link></li>
+            <li><Link to="/promotions">โปรโมชัน</Link></li>
             <li><Link to="/how-it-works">วิธีซื้อ</Link></li>
+            <li><Link to="/apply/status">เช็คสถานะใบสมัคร</Link></li>
           </ul>
         </div>
         <div>
           <h3 className="font-semibold mb-2">นโยบาย</h3>
           <ul className="space-y-1">
+            <li><Link to="/installment-terms">เงื่อนไขการผ่อน</Link></li>
             <li><Link to="/shipping">การจัดส่ง</Link></li>
             <li><Link to="/returns">การคืนสินค้า</Link></li>
           </ul>

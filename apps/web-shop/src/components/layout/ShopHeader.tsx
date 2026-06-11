@@ -8,6 +8,7 @@ export default function ShopHeader() {
         <Link to="/" className="text-xl font-bold text-primary">BESTCHOICE</Link>
         <nav className="hidden md:flex gap-4 text-sm">
           <Link to="/products" className="hover:text-primary">สินค้าทั้งหมด</Link>
+          <Link to="/promotions" className="hover:text-primary">โปรโมชัน</Link>
           <Link to="/how-it-works" className="hover:text-primary">วิธีซื้อ</Link>
           <Link to="/about" className="hover:text-primary">เกี่ยวกับเรา</Link>
           <Link to="/contact" className="hover:text-primary">ติดต่อ</Link>

@@ -1,5 +1,5 @@
 import { Link, useParams } from 'react-router';
-import { CheckCircle2, MessageCircle, Home } from 'lucide-react';
+import { CheckCircle2, MessageCircle, Home, FileSearch } from 'lucide-react';
 import { copy } from '@/lib/copy';
 import ShopLayout from '@/components/layout/ShopLayout';
 import {
@@ -84,12 +84,17 @@ export default function ApplySuccessPage() {
               </a>
             </Button>
             <Button asChild variant="outline" size="lg" fullWidth>
-              <Link to="/">
-                <Home className="size-4" aria-hidden="true" />
-                กลับหน้าแรก
+              <Link to={`/apply/status${applicationNumber ? `?no=${applicationNumber}` : ''}`}>
+                <FileSearch className="size-4" aria-hidden="true" />
+                เช็คสถานะใบสมัคร
               </Link>
             </Button>
           </div>
+
+          <Link to="/" className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5">
+            <Home className="size-4" aria-hidden="true" />
+            กลับหน้าแรก
+          </Link>
         </Stack>
       </Container>
     </ShopLayout>

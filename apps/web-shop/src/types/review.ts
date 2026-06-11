@@ -6,6 +6,8 @@ export interface Review {
   verified: boolean;
   createdAt: string;
   customer: { name: string };
+  /** Present on GET /shop/reviews/recent (cross-product feed); absent on per-product lists */
+  product?: { brand: string; model: string } | null;
   photoUrl?: string | null;
 }
 

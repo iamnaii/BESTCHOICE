@@ -1,7 +1,7 @@
 # Refund reversal JE — `markReversed` posts the ledger reversal (design)
 
 **Date:** 2026-06-07
-**Status:** approved (brainstorm + /scrutinize) → ready for implementation plan
+**Status:** ✅ IMPLEMENTED + DEPLOYED (verified 2026-06-11) — `markReversed` posts the reversing JE (`flow:'refund-reversal'`) + reverts the payment to unpaid, inside one `$transaction`, with period guard + CAS. Landed beyond this spec: it reverses **ALL** receipt JEs of the payment (`#1164` + PR 3.1 `5f2e2d88` + BLOCKER-2 `d77fa85c`) with a tag filter excluding overpayment-credit JEs. Covered by `refunds.service.spec.ts`. Accountant confirmed the treatment (revert JE + restore installment to unpaid) on 2026-06-11.
 **Scope:** `apps/api` `RefundsService.markReversed` + `RefundsModule` wiring + a small backward-compatible param on `ReceiptVoidReversalTemplate`. Backend only — no frontend changes.
 
 ## Problem

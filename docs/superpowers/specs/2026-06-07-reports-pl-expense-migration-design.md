@@ -1,7 +1,7 @@
 # /reports P&L — expense migration (journal-sourced, FINANCE company-wide)
 
 **Date:** 2026-06-07
-**Status:** approved (brainstorm + /scrutinize rework) → ready for implementation plan
+**Status:** ✅ IMPLEMENTED + DEPLOYED (verified 2026-06-11) — `EXPENSE_ACCOUNT_CATEGORY` map lives in `accounting/accounting-section-map.util.ts`; the company-wide `/reports` P&L + `getMonthlyPLSummary` now subtract FINANCE expenses pulled from the journal (`transactional-report.service.ts`, `expenseBasis: 'accrual-journal'`), per-branch deferred (expenses zero). Covered by `accounting.pl-expense.spec.ts` (7) + `accounting-section-map.util.spec.ts` (7). Accountant confirmed the rollup map + the company-wide profit correction (was overstated) on 2026-06-11.
 **Scope:** `apps/api` `AccountingService.getProfitLossReport` + `getMonthlyPLSummary`. Backend only — **no frontend changes**.
 
 ## Problem

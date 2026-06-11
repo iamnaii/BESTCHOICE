@@ -54,4 +54,6 @@
 ---
 **ผู้ขออนุมัติ:** _____________ วันที่ ______
 **เจ้าของยืนยัน treatment (waive CPA):** ☑ akenarin (OWNER) — 2026-06-09
-**ฝ่ายบัญชี/CPA รับรอง (ภายหลัง, แนะนำ #3/#6):** _____________ วันที่ ______
+**ฝ่ายบัญชี/CPA รับรอง (ภายหลัง, แนะนำ #3/#6):** ☑ ฝ่ายบัญชี (ร่วมกับเจ้าของ) — **2026-06-11 ยืนยันถูกต้องทั้ง #3 (เงินรับเกิน QR → 21-1103 เงินรับล่วงหน้า) และ #6 (ปัดเศษระบบ ≤1฿ งวดสุดท้าย → 52-1104 auto-approve; การจ่ายขาดจริงของลูกค้ายังต้องผู้อนุมัติ)**
+
+> **สถานะ implementation (2026-06-11):** treatment ทั้งหมดนี้ **implement + deploy ไปแล้ว** ผ่าน PR-843/I2 epic (Phase 3 3b `d72b8b16` wire QR onto PaymentReceiptTemplate · #3 over-collection→21-1103 `762e274c` · #6 auto-approve ≤1฿ `a7f47eb5`) — ไม่ใช่งานค้าง. การเซ็นนี้คือการรับรองย้อนหลังของ treatment ที่ deploy แล้ว (เดิม deploy บน owner waiver). spec `PAYSOLUTIONS_I2_FIX_DESIGN.md` stale (เขียน "NOT IMPLEMENTED") — ความจริงคือ defect 1-4 แก้ครบ, `TODO(PR-843/I2)` lock หายแล้ว, callback-money.spec assert พฤติกรรมถูก (delta ไม่ใช่ cumulative · partial ledgered · late fee→42-1103). gate เขียว: refunds 47 + paysolutions callback-money + accounting.pl-expense 7.

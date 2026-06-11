@@ -1,5 +1,7 @@
+import { BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { ExpenseDocumentsService } from '../expense-documents.service';
+import { StatusTransitionService } from '../services/status-transition.service';
 import { makeExpenseDocumentsService } from './support/make-expense-documents-service';
 
 /**
@@ -157,6 +159,50 @@ describe('ExpenseDocumentCreateService (via facade) — characterization', () =>
       expect(updArg.data.vatAmount.toFixed(2)).toBe('70.00');
       expect(updArg.data.totalAmount.toFixed(2)).toBe('1070.00');
     });
+  });
+
+  // ─── 2b. T2-C12 — update() amount-lock once a doc leaves DRAFT ──────────
+  // Regression guard for the fraud vector: requester submits a doc for approval,
+  // then quietly lowers the amount before the approver looks. `update()` is the
+  // ONLY path that mutates amount/vat/wht, and it must abort BEFORE any write for
+  // every post-DRAFT status. Uses the REAL StatusTransitionService (not the mock)
+  // so this proves update() actually wires the guard — a regression that either
+  // relaxes assertCanEdit OR drops the call from update() will fail here.
+  describe('T2-C12 — update() rejects edit + writes nothing once doc leaves DRAFT', () => {
+    it.each(['PENDING_APPROVAL', 'APPROVED', 'ACCRUAL', 'POSTED'])(
+      'status=%s → BadRequestException, no line/total mutation reaches the DB',
+      async (status) => {
+        const made = makeExpenseDocumentsService({
+          prisma,
+          transition: new StatusTransitionService(),
+        });
+        prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+          id: 'doc-1',
+          status,
+          deletedAt: null,
+          depositAccountCode: '11-1103',
+          expenseDetail: { priceType: 'EXCLUSIVE', lines: [] },
+        });
+
+        await expect(
+          made.service.update(
+            'doc-1',
+            {
+              // fraudster tries to slash the amount after submission
+              lines: [
+                { category: '53-1101', quantity: 1, unitPrice: 5, vatPercent: 7, whtPercent: 0 },
+              ],
+            } as never,
+            'fraudster-1',
+          ),
+        ).rejects.toBeInstanceOf(BadRequestException);
+
+        // Guard fired before any mutation — amount/line writes never happened
+        expect(prisma.expenseLine.deleteMany).not.toHaveBeenCalled();
+        expect(prisma.expenseDetail.update).not.toHaveBeenCalled();
+        expect(prisma.expenseDocument.update).not.toHaveBeenCalled();
+      },
+    );
   });
 
   // ─── 3. createDraftForRepair — uses passed-in tx, opens NO new $transaction ─

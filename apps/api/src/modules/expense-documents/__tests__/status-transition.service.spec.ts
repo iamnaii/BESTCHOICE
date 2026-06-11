@@ -80,5 +80,16 @@ describe('StatusTransitionService', () => {
     it('reject edit ACCRUAL', () => {
       expect(() => service.assertCanEdit({ from: 'ACCRUAL' })).toThrow(BadRequestException);
     });
+    // T2-C12 — amount-lock fraud guard. Once a doc leaves DRAFT (the requester
+    // submits it for approval), amount/vat/wht must be frozen so the requester
+    // cannot quietly lower the amount the approver already saw. Edit is the ONLY
+    // path that mutates totals, so locking it from PENDING_APPROVAL onward closes
+    // the vector. Pin these states so a future relax can't silently reopen it.
+    it('reject edit PENDING_APPROVAL (T2-C12 — amount-lock fraud guard)', () => {
+      expect(() => service.assertCanEdit({ from: 'PENDING_APPROVAL' })).toThrow(BadRequestException);
+    });
+    it('reject edit APPROVED (T2-C12)', () => {
+      expect(() => service.assertCanEdit({ from: 'APPROVED' })).toThrow(BadRequestException);
+    });
   });
 });

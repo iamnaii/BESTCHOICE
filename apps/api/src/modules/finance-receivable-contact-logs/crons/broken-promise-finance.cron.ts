@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import * as Sentry from '@sentry/nestjs';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 
@@ -12,21 +13,29 @@ export class BrokenPromiseFinanceCron {
   // Daily at 02:00 Asia/Bangkok
   @Cron('0 2 * * *', { timeZone: 'Asia/Bangkok' })
   async handleCron(): Promise<number> {
-    const affected = await this.prisma.$executeRaw(Prisma.sql`
-      UPDATE finance_receivable_contact_logs
-      SET promised_broken_at = now()
-      WHERE promised_date < CURRENT_DATE
-        AND promised_broken_at IS NULL
-        AND promised_kept_at IS NULL
-        AND result = 'PROMISED'
-        AND deleted_at IS NULL
-        AND finance_receivable_id IN (
-          SELECT id FROM finance_receivables
-          WHERE status NOT IN ('RECEIVED', 'PARTIALLY_RECEIVED')
-            AND deleted_at IS NULL
-        )
-    `);
-    this.logger.log(`broken-promise-finance: marked ${affected} logs as broken`);
-    return Number(affected);
+    try {
+      const affected = await this.prisma.$executeRaw(Prisma.sql`
+        UPDATE finance_receivable_contact_logs
+        SET promised_broken_at = now()
+        WHERE promised_date < CURRENT_DATE
+          AND promised_broken_at IS NULL
+          AND promised_kept_at IS NULL
+          AND result = 'PROMISED'
+          AND deleted_at IS NULL
+          AND finance_receivable_id IN (
+            SELECT id FROM finance_receivables
+            WHERE status NOT IN ('RECEIVED', 'PARTIALLY_RECEIVED')
+              AND deleted_at IS NULL
+          )
+      `);
+      this.logger.log(`broken-promise-finance: marked ${affected} logs as broken`);
+      return Number(affected);
+    } catch (err) {
+      this.logger.error(
+        `broken-promise-finance cron failed: ${err instanceof Error ? err.message : err}`,
+      );
+      Sentry.captureException(err, { tags: { kind: 'cron-job', cron: 'broken-promise-finance' } });
+      return 0;
+    }
   }
 }

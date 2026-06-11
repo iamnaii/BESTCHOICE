@@ -100,13 +100,13 @@ re-raises them).
 - **fix:** mirror the accrual cron's per-item validate + skip-with-Sentry-warn.
 - **gate:** none
 
-### ☐ F13 — 3 crons missing `timeZone: 'Asia/Bangkok'`
+### ☑ F13 — 3 crons missing `timeZone: 'Asia/Bangkok'` — DONE (data-audit, pdf-report-weekly→08:00 BKK, letter-auto-generate)
 - **file:** `apps/api/src/modules/data-audit/data-audit.service.ts:138` · `reporting/pdf-report-weekly.cron.ts:21` · `overdue/crons/letter-auto-generate.cron.ts:18`
 - **mechanism:** No timeZone param → fire in UTC, not BKK (SLA skew ~7h).
 - **fix:** add `{ timeZone: 'Asia/Bangkok' }` (and align cron expr to the documented BKK time).
 - **gate:** none
 
-### ☐ F14 — 5 crons missing Sentry capture
+### ☑ F14 — 5 crons missing Sentry capture — DONE for 4 (outbox-processor, reconciliation, webhook-dedup, broken-promise-finance). collections-notifier = FALSE POSITIVE (its @Cron lives on SchedulerService with Sentry shell).
 - **file:** `journal/cron/outbox-processor.cron.ts` · `journal/cron/reconciliation.cron.ts` · `chatbot-finance/services/webhook-dedup.service.ts:38` · `finance-receivable-contact-logs/crons/broken-promise-finance.cron.ts` (no try/catch) · `notifications/services/collections-notifier.service.ts`
 - **mechanism:** Silent failures; **outbox-processor** (journal saga retry) is the worrying one.
 - **fix:** wrap each tick in try/catch + `Sentry.captureException(err, { tags: { kind:'cron-job', cron:'<name>' } })`.

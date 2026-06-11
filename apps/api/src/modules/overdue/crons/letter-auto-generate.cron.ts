@@ -15,7 +15,8 @@ export class LetterAutoGenerateCron {
     private ownerAlertHelper: OwnerAlertHelper,
   ) {}
 
-  @Cron('15 9 * * *')
+  // 09:15 Asia/Bangkok — without the explicit timeZone this fired at 09:15 UTC (16:15 BKK).
+  @Cron('15 9 * * *', { timeZone: 'Asia/Bangkok' })
   async run(): Promise<{ returnDevice: number; termination: number }> {
     try {
       // Batch-fetch all 3 config keys in a single query (was 3 sequential findUnique calls).

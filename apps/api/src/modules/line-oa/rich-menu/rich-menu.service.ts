@@ -173,11 +173,6 @@ export class RichMenuService {
     return data.richMenuId;
   }
 
-  /** @deprecated Use createShopRichMenu instead */
-  async createRichMenu(urls: RichMenuUrls): Promise<string> {
-    return this.createShopRichMenu(urls);
-  }
-
   /**
    * Create default 6-button rich menu from a single LIFF base URL.
    * Convenience method for quick setup — mirrors the SHOP layout.

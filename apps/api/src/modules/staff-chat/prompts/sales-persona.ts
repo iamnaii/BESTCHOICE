@@ -174,6 +174,3 @@ export const REQUIRED_TOOL_NAMES = [
   'capture_lead',
   'handoff_to_human',
 ] as const;
-
-/** @deprecated Use SHOP_SALES_PERSONA_BASE or SHOP_SALES_PERSONA_BOT. Kept for backward-compat — points to BASE. */
-export const SHOP_SALES_PERSONA = SHOP_SALES_PERSONA_BASE;

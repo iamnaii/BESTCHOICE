@@ -1,5 +1,5 @@
 import { Test } from '@nestjs/testing';
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { ShopReservationService } from './shop-reservation.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -85,13 +85,23 @@ describe('ShopReservationService', () => {
   });
 
   describe('cancel', () => {
-    it('marks reservation as CANCELLED', async () => {
-      prisma.productReservation.update.mockResolvedValue({});
+    it('marks reservation as CANCELLED when sessionId matches the active hold', async () => {
+      prisma.productReservation.updateMany.mockResolvedValue({ count: 1 });
       await service.cancel('r1', 's1');
-      expect(prisma.productReservation.update).toHaveBeenCalledWith({
-        where: { id: 'r1' },
+      expect(prisma.productReservation.updateMany).toHaveBeenCalledWith({
+        where: { id: 'r1', sessionId: 's1', status: 'ACTIVE' },
         data: expect.objectContaining({ status: 'CANCELLED' }),
       });
+    });
+
+    it('throws NotFound when sessionId does not own the reservation (IDOR guard)', async () => {
+      prisma.productReservation.updateMany.mockResolvedValue({ count: 0 });
+      await expect(service.cancel('r1', 'wrong-session')).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws BadRequest when sessionId is missing', async () => {
+      await expect(service.cancel('r1', '')).rejects.toThrow(BadRequestException);
+      expect(prisma.productReservation.updateMany).not.toHaveBeenCalled();
     });
   });
 

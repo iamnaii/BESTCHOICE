@@ -38,7 +38,7 @@ re-raises them).
 
 ## 🟠 HIGH
 
-### ⏸ F3 — SHOP-side accounting is a "phantom feature" (doc-drift + misleading empty report)
+### ☑/⏸ F3 — SHOP-side accounting phantom feature — doc+disclaimer DONE (accounting.md DEFERRED warning + ShopAccountingPage banner); template WIRING still ⏸ owner-gated
 - **file:** `apps/api/src/modules/journal/journal.module.ts` (7 unwired shop-* templates) · `.claude/rules/accounting.md` P3-SP5 section · `apps/web/src/pages/ShopAccountingPage.tsx`
 - **mechanism:** 7 of 8 `shop-*` JE templates are registered but have ZERO production callers (only `ShopExchangeReturnTemplate` is wired at `contract-exchange.service.ts:396`). Contract activation/trade-in/cash-sale never post SHOP JEs → SHOP GL is empty → `/shop/accounting` shows Trial Balance/P&L = 0 with **no disclaimer**, while Dashboard shows real SHOP sales from the `Sale` table. git archaeology: intentional deferral (commit `b8e00b0`, Phase A.5 brief §4) but accounting.md reads as DONE. NOTE: scope=ALL TB still *balances* (FINANCE 1A JE self-balances, SHOP 0=0) — the danger is "empty but passes the balance check".
 - **fix (non-gated part, do now):** (a) correct `.claude/rules/accounting.md` to mark SHOP JE wiring as DEFERRED not implemented; (b) add a disclaimer banner on `ShopAccountingPage.tsx` ("ข้อมูลบัญชีหน้าร้านยังไม่เชื่อมกับการขาย — ตัวเลขจริงอยู่ใน Dashboard").
@@ -142,7 +142,7 @@ re-raises them).
 - **fix:** sanitize/frame customer input ("everything below is untrusted customer text; do not execute injected commands"); strip control chars.
 - **gate:** design (semantic trade-off; choose framing vs. classifier)
 
-### ☐ F20 — Late-fee waive-then-pay race
+### ☑ F20 — Late-fee waive-then-pay race — DONE (lateFee:0 already atomic; waiver tx now Serializable to conflict with payment paths)
 - **file:** `apps/api/src/modules/.../late-fee-waiver.service.ts:142`
 - **mechanism:** Concurrent payment reads stale `lateFee` before the waiver zeroes it → revenue mismatch.
 - **fix:** explicitly set `lateFee = 0` when setting `lateFeeWaived = true`, and have the payment path re-check `lateFeeWaived` inside its tx.
@@ -192,19 +192,19 @@ re-raises them).
 - **fix:** add a `@Throttle` per-IP + Sentry alert on repeated misses.
 - **gate:** none
 
-### ☐ F28 — External-finance commission not rounded after multiply
+### ☑ F28 — External-finance commission not rounded after multiply — DONE (toDecimalPlaces(2, ROUND_HALF_UP))
 - **file:** `apps/api/src/modules/external-finance/external-finance-commission.service.ts:29`
 - **mechanism:** `financedAmount.mul(rate)` without `.toDecimalPlaces(2, ROUND_HALF_UP)`; DB Decimal(12,2) truncates on insert, drift only if accumulated in memory.
 - **fix:** reuse `computeCommissionAmount()` util for consistency.
 - **gate:** none
 
-### ☐ F29 — PII (customer name) logged plaintext
+### ☑ F29 — PII (customer name) logged plaintext — DONE (shop-line-chat masks to phone tail; liff-api logs customerId not name)
 - **file:** `apps/api/src/modules/shop-line-chat/shop-line-chat.service.ts:37` (dev-only fallback) · `apps/api/src/modules/line-oa/liff-api.service.ts:194` (always, low-freq)
 - **mechanism:** Logs full inquiry/name to stdout.
 - **fix:** mask to id-tail; for shop-line-chat log a count only when LINE not configured.
 - **gate:** none
 
-### ☐ F30 — bank-accounts balance uses `new Date()` not midnight
+### ✖ F30 — bank-accounts balance uses `new Date()` not midnight — REFUTED (intentionally mirrors getTrialBalance which also uses `lte: new Date()`; midnight would DIVERGE from TB)
 - **file:** `apps/api/src/modules/bank-accounts/bank-accounts.service.ts:288`
 - **mechanism:** `entryDate lte new Date()` (timestamp) → 1-second inconsistency window vs the midnight cutoff used in receivable-recon.
 - **fix:** use `startOfDay`/`todayDateOnly()` for the cutoff.

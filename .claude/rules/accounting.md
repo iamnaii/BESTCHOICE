@@ -365,6 +365,19 @@ Currently only inventory transfer uses paired wrapping; the existing FINANCE tem
 
 ### SHOP JE templates
 
+> **⚠️ WIRING STATUS — DEFERRED (verified 2026-06-11).** The templates below are SCAFFOLDED
+> (code + golden specs + module registration) but **only `ShopExchangeReturnTemplate` is wired
+> to a production caller** (`contract-exchange.service.ts:396`). The other 7 templates
+> (`ShopCashSaleTemplate`, `ShopDownPaymentTemplate`, `ShopDownPaymentReversalTemplate`,
+> `ShopInventoryTransferTemplate`, `ShopFinanceReceiptTemplate`, `ShopTradeInTemplate`,
+> `ShopExpenseTemplate`) have **ZERO production callers** — contract activation / trade-in
+> accept / cash sale do NOT post SHOP JEs. Consequence: the SHOP Trial Balance + P&L at
+> `/shop/accounting` are **near-empty** even though SHOP is actively selling (real numbers live
+> in the `Sale` table / Dashboard). The "Trigger" column below is the **intended** trigger, not
+> a live one. Wiring is gated on an owner scope decision (Phase A.5 brief §4: should contract
+> activation post SHOP+FINANCE atomically?). Do NOT treat the SHOP reports as authoritative for
+> tax/audit until these are wired. Tracking: `docs/ceo-review/deep-audit-2026-06-11-findings.md` (F3).
+
 All live at `apps/api/src/modules/journal/cpa-templates/`. Each is idempotent via `metadata.flow + metadata.idempotencyKey` (DB-level partial unique index since P3-SP5 DEEP fix W8 — `journal_entries_idempotency_idx`).
 
 `CompanyResolverService` (`apps/api/src/modules/journal/company-resolver.service.ts`) is the single source of truth for `companyCode → companyId` lookup. Templates inject it instead of caching per-instance state — eliminates stale-id bugs across test seed cycles (P3-SP5 DEEP fix W3).

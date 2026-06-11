@@ -33,9 +33,12 @@ export class ShopLineChatService {
       `ข้อความ: ${inquiry.message}`;
 
     if (!staffLineId) {
-      // TODO: wire SHOP_STAFF_LINE_ID env var when staff LINE account is ready
-      this.logger.log(
-        `[ShopLineChat] SHOP_STAFF_LINE_ID not configured — inquiry logged only: ${text}`,
+      // TODO: wire SHOP_STAFF_LINE_ID env var when staff LINE account is ready.
+      // Do NOT log the inquiry body — it contains PII (name + phone). Log a
+      // masked marker only so the fallback is observable without leaking PDPA data.
+      const phoneTail = inquiry.phone ? inquiry.phone.slice(-4) : '????';
+      this.logger.warn(
+        `[ShopLineChat] SHOP_STAFF_LINE_ID not configured — inquiry dropped (phone ***${phoneTail})`,
       );
       return;
     }

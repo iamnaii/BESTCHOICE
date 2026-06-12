@@ -198,7 +198,7 @@ export default function APAgingPage() {
             type="text"
             value={vendor}
             onChange={(e) => setVendor(e.target.value)}
-            placeholder="ค้นหาชื่อผู้ขาย…"
+            placeholder="ค้นหาชื่อผู้จัดจำหน่าย…"
             className="w-full pl-9 pr-3 py-2 border border-input rounded-md text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary"
           />
         </div>
@@ -216,7 +216,7 @@ export default function APAgingPage() {
             {!sameVendor && (
               <span className="inline-flex items-center gap-1.5 text-xs text-destructive">
                 <AlertCircle size={14} />
-                เลือกได้เฉพาะใบจากผู้ขายเดียวกัน
+                เลือกได้เฉพาะใบจากผู้จัดจำหน่ายเดียวกัน
               </span>
             )}
             <span className="text-xs text-muted-foreground">
@@ -266,7 +266,7 @@ export default function APAgingPage() {
                   </button>
                 </th>
                 <th className="p-3 font-medium">เลขเอกสาร</th>
-                <th className="p-3 font-medium">ผู้ขาย</th>
+                <th className="p-3 font-medium">ผู้จัดจำหน่าย</th>
                 <th className="p-3 font-medium">วันที่ใบกำกับ</th>
                 <th className="p-3 font-medium text-right">อายุ (วัน)</th>
                 <th className="p-3 font-medium">ช่วง</th>

@@ -71,7 +71,7 @@ export default function PurchaseOrdersPage() {
                     await exportToExcel({
                       columns: [
                         { header: 'เลข PO', key: 'poNumber', width: 15 },
-                        { header: 'ผู้ขาย', key: 'supplier', width: 20 },
+                        { header: 'ผู้จัดจำหน่าย', key: 'supplier', width: 20 },
                         { header: 'วันที่สั่ง', key: 'orderDate', width: 15 },
                         { header: 'ยอดรวม', key: 'totalAmount', width: 15 },
                         { header: 'สถานะ', key: 'status', width: 15 },
@@ -130,7 +130,7 @@ export default function PurchaseOrdersPage() {
           onClick={() => data.setActiveTab('payable')}
           className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${data.activeTab === 'payable' ? 'border-destructive text-destructive' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
-          ยอดค้างชำระ ( ผู้ขาย )
+          ยอดค้างชำระ ( ผู้จัดจำหน่าย )
           {data.payableData && data.payableData.grandTotal > 0 && (
             <span className="ml-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-destructive/10 text-destructive dark:bg-destructive/15">{(Number(data.payableData.grandTotal) || 0).toLocaleString()}</span>
           )}

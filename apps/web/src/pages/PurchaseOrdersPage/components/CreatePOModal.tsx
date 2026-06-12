@@ -110,20 +110,20 @@ export function CreatePOModal({
                   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                 </div>
                 <div>
-                  <h3 className="text-sm font-semibold text-foreground">ข้อมูลผู้ขาย</h3>
-                  <p className="text-xs text-muted-foreground">เลือกผู้ขายและวันที่สั่งซื้อ</p>
+                  <h3 className="text-sm font-semibold text-foreground">ข้อมูลผู้จัดจำหน่าย</h3>
+                  <p className="text-xs text-muted-foreground">เลือกผู้จัดจำหน่ายและวันที่สั่งซื้อ</p>
                 </div>
               </div>
 
               <div className="space-y-3">
                 <div>
-                  <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ผู้ขาย <span className="text-destructive">*</span></label>
+                  <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ผู้จัดจำหน่าย <span className="text-destructive">*</span></label>
                   <ContactCombobox
                     roleNeeded="SUPPLIER"
                     value={selectedSupplier?.name ?? (suppliersLoading ? 'กำลังโหลด...' : '')}
                     onSelect={onSupplierSelect}
                     invalid={!form.supplierId && suppliersError}
-                    placeholder="เลือก/ค้นหาผู้ขาย"
+                    placeholder="เลือก/ค้นหาผู้จัดจำหน่าย"
                   />
                   <input type="hidden" value={form.supplierId} />
                   {selectedSupplier && (
@@ -133,7 +133,7 @@ export function CreatePOModal({
                           supplierHasVat ? 'bg-primary/10 text-primary dark:bg-primary/15' : 'bg-muted text-muted-foreground'
                         }`}
                       >
-                        {supplierHasVat ? 'ผู้ขายมี VAT - จะคำนวณ VAT 7% อัตโนมัติ' : 'ผู้ขายไม่มี VAT'}
+                        {supplierHasVat ? 'ผู้จัดจำหน่ายมี VAT - จะคำนวณ VAT 7% อัตโนมัติ' : 'ผู้จัดจำหน่ายไม่มี VAT'}
                       </span>
                       {selectedSupplier.paymentMethods?.length > 0 && (
                         <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary">

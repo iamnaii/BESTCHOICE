@@ -65,7 +65,7 @@ export function PODetailModal({
                 </div>
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
-                    <span className="text-muted-foreground">ผู้ขาย:</span>{' '}
+                    <span className="text-muted-foreground">ผู้จัดจำหน่าย:</span>{' '}
                     <span className="font-medium">{selectedPO.supplier.name}</span>
                   </div>
                   <div>

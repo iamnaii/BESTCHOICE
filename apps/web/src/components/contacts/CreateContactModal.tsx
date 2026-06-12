@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api from '@/lib/api';
@@ -14,6 +14,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
+import AddressForm, {
+  type AddressData,
+  emptyAddress,
+  serializeAddress,
+} from '@/components/ui/AddressForm';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -34,6 +39,11 @@ interface Props {
   }) => void;
 }
 
+// Suppliers are mostly companies (Prisma SupplierType @default(JURISTIC));
+// customers are persons only (Customer model has nationalId, no taxId).
+const defaultTypeFor = (role: 'SUPPLIER' | 'CUSTOMER'): ContactType =>
+  role === 'SUPPLIER' ? 'JURISTIC' : 'INDIVIDUAL';
+
 // ── Component ──────────────────────────────────────────────────────────────
 
 export default function CreateContactModal({
@@ -43,25 +53,25 @@ export default function CreateContactModal({
   initialName = '',
   onCreated,
 }: Props) {
-  const [contactType, setContactType] = useState<ContactType>('INDIVIDUAL');
+  const [contactType, setContactType] = useState<ContactType>(defaultTypeFor(role));
   const [name, setName] = useState(initialName);
   const [idNumber, setIdNumber] = useState(''); // taxId (JURISTIC) or nationalId (INDIVIDUAL)
   const [phone, setPhone] = useState('');
-  const [address, setAddress] = useState('');
+  const [address, setAddress] = useState<AddressData>({ ...emptyAddress });
   const [hasVat, setHasVat] = useState(false);
 
-  // Sync initialName when modal opens with a new value
-  const handleOpenChange = (next: boolean) => {
-    if (next) {
-      setName(initialName);
-      setContactType('INDIVIDUAL');
-      setIdNumber('');
-      setPhone('');
-      setAddress('');
-      setHasVat(false);
-    }
-    onOpenChange(next);
-  };
+  // Reset on every open — works both when the parent keeps the modal mounted
+  // (ContactCombobox) and when it conditionally renders it (ContactsPage).
+  useEffect(() => {
+    if (!open) return;
+    setContactType(defaultTypeFor(role));
+    setName(initialName);
+    setIdNumber('');
+    setPhone('');
+    setAddress({ ...emptyAddress });
+    setHasVat(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   // ── Payload builders ────────────────────────────────────────────────────
 
@@ -72,7 +82,8 @@ export default function CreateContactModal({
       name: name.trim(),
       phone: phone.trim(),
     };
-    if (address.trim()) payload.address = address.trim();
+    const serialized = serializeAddress(address);
+    if (serialized) payload.address = serialized;
     if (idNumber.trim()) {
       payload.taxId = idNumber.trim();
     }
@@ -85,10 +96,11 @@ export default function CreateContactModal({
       name: name.trim(),
       phone: phone.trim(),
     };
-    if (contactType === 'INDIVIDUAL' && idNumber.trim()) {
+    if (idNumber.trim()) {
       payload.nationalId = idNumber.trim();
     }
-    if (address.trim()) payload.addressCurrent = address.trim();
+    const serialized = serializeAddress(address);
+    if (serialized) payload.addressCurrent = serialized;
     return payload;
   };
 
@@ -143,12 +155,23 @@ export default function CreateContactModal({
   const phoneValid =
     role === 'CUSTOMER' ? /^0[0-9]{9}$/.test(phone) : phone.trim().length > 0;
 
-  const canSubmit = name.trim().length > 0 && phoneValid && !mutation.isPending;
+  // taxId/nationalId is the natural key for contact dedup — a partial number
+  // would silently break duplicate matching, so require all 13 digits if filled.
+  const idValid = idNumber === '' || idNumber.length === 13;
+
+  const canSubmit = name.trim().length > 0 && phoneValid && idValid && !mutation.isPending;
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (canSubmit) mutation.mutate();
+  };
 
   // ── Labels ──────────────────────────────────────────────────────────────
 
   const idLabel =
-    contactType === 'JURISTIC' ? 'เลขผู้เสียภาษี (13 หลัก)' : 'เลขบัตรประชาชน (13 หลัก)';
+    role === 'SUPPLIER' && contactType === 'JURISTIC'
+      ? 'เลขผู้เสียภาษี (13 หลัก)'
+      : 'เลขบัตรประชาชน (13 หลัก)';
 
   const titleLabel =
     role === 'SUPPLIER' ? 'เพิ่มผู้จัดจำหน่าย' : 'เพิ่มลูกค้าใหม่';
@@ -156,38 +179,42 @@ export default function CreateContactModal({
   // ── Render ──────────────────────────────────────────────────────────────
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-md">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="leading-snug">{titleLabel}</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4 py-2">
-          {/* ── ประเภท toggle ── */}
-          <div>
-            <Label className="mb-2 block leading-snug">ประเภท</Label>
-            <div className="flex gap-2">
-              {(['INDIVIDUAL', 'JURISTIC'] as const).map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => {
-                    setContactType(t);
-                    setIdNumber('');
-                    if (t === 'INDIVIDUAL') setHasVat(false);
-                  }}
-                  className={[
-                    'flex-1 rounded-lg border px-3 py-2 text-sm leading-snug transition-colors',
-                    contactType === t
-                      ? 'border-primary bg-primary text-primary-foreground'
-                      : 'border-border bg-background text-foreground hover:bg-accent',
-                  ].join(' ')}
-                >
-                  {t === 'INDIVIDUAL' ? 'บุคคลธรรมดา' : 'นิติบุคคล'}
-                </button>
-              ))}
+        <form onSubmit={handleSubmit} className="space-y-4 py-2">
+          {/* ── ประเภท toggle — SUPPLIER only (customers are persons; the
+                 Customer model has no taxId so a juristic customer isn't
+                 representable and the entered number would be dropped) ── */}
+          {role === 'SUPPLIER' && (
+            <div>
+              <Label className="mb-2 block leading-snug">ประเภท</Label>
+              <div className="flex gap-2">
+                {(['JURISTIC', 'INDIVIDUAL'] as const).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => {
+                      setContactType(t);
+                      setIdNumber('');
+                      if (t === 'INDIVIDUAL') setHasVat(false);
+                    }}
+                    className={[
+                      'flex-1 rounded-lg border px-3 py-2 text-sm leading-snug transition-colors',
+                      contactType === t
+                        ? 'border-primary bg-primary text-primary-foreground'
+                        : 'border-border bg-background text-foreground hover:bg-accent',
+                    ].join(' ')}
+                  >
+                    {t === 'INDIVIDUAL' ? 'บุคคลธรรมดา' : 'นิติบุคคล'}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* ── ชื่อ (required) ── */}
           <div className="space-y-1.5">
@@ -198,7 +225,12 @@ export default function CreateContactModal({
               id="ccm-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="ชื่อบริษัท หรือ ชื่อ-นามสกุล"
+              placeholder={
+                role === 'SUPPLIER' && contactType === 'JURISTIC'
+                  ? 'ชื่อบริษัท'
+                  : 'ชื่อ-นามสกุล'
+              }
+              autoComplete="off"
               autoFocus
             />
           </div>
@@ -214,7 +246,15 @@ export default function CreateContactModal({
               onChange={(e) => setIdNumber(e.target.value.replace(/\D/g, '').slice(0, 13))}
               placeholder="ตัวเลข 13 หลัก"
               inputMode="numeric"
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
             />
+            {!idValid && (
+              <p className="text-xs text-destructive leading-snug">
+                ต้องเป็นตัวเลขครบ 13 หลัก (กรอกแล้ว {idNumber.length} หลัก)
+              </p>
+            )}
           </div>
 
           {/* ── เบอร์โทร (required) ── */}
@@ -228,6 +268,9 @@ export default function CreateContactModal({
               onChange={(e) => setPhone(e.target.value)}
               placeholder="0812345678"
               inputMode="tel"
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
             />
             {role === 'CUSTOMER' && phone && !/^0[0-9]{9}$/.test(phone) && (
               <p className="text-xs text-destructive leading-snug">
@@ -236,18 +279,8 @@ export default function CreateContactModal({
             )}
           </div>
 
-          {/* ── ที่อยู่ (optional) ── */}
-          <div className="space-y-1.5">
-            <Label htmlFor="ccm-address" className="leading-snug">
-              ที่อยู่
-            </Label>
-            <Input
-              id="ccm-address"
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              placeholder="ที่อยู่ (ไม่บังคับ)"
-            />
-          </div>
+          {/* ── ที่อยู่ (optional) — โครงสร้างเดียวกับหน้าลูกค้า/ผู้จัดจำหน่าย ── */}
+          <AddressForm value={address} onChange={setAddress} label="ที่อยู่ (ไม่บังคับ)" />
 
           {/* ── จด VAT — SUPPLIER only ── */}
           {role === 'SUPPLIER' && (
@@ -262,19 +295,21 @@ export default function CreateContactModal({
               </Label>
             </div>
           )}
-        </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={mutation.isPending}>
-            ยกเลิก
-          </Button>
-          <Button
-            onClick={() => mutation.mutate()}
-            disabled={!canSubmit}
-          >
-            {mutation.isPending ? 'กำลังสร้าง...' : 'สร้าง'}
-          </Button>
-        </DialogFooter>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={mutation.isPending}
+            >
+              ยกเลิก
+            </Button>
+            <Button type="submit" disabled={!canSubmit}>
+              {mutation.isPending ? 'กำลังสร้าง...' : 'สร้าง'}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );

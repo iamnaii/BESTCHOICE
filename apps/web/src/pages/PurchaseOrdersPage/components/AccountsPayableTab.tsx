@@ -29,7 +29,7 @@ export function AccountsPayableTab({ payableData, onOpenDetail }: AccountsPayabl
           <div className="text-2xl font-bold text-destructive">{(payableData?.grandTotal || 0).toLocaleString()} บาท</div>
         </div>
         <div className="text-sm text-destructive">
-          {payableData?.suppliers.length || 0} ผู้ขาย, {payableData?.suppliers.reduce((sum, s) => sum + s.poCount, 0) || 0} ใบ PO
+          {payableData?.suppliers.length || 0} ผู้จัดจำหน่าย, {payableData?.suppliers.reduce((sum, s) => sum + s.poCount, 0) || 0} ใบ PO
         </div>
       </div>
 

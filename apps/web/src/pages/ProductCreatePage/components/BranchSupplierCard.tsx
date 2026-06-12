@@ -26,7 +26,7 @@ export default function BranchSupplierCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>สาขา &amp; ผู้ขาย</CardTitle>
+        <CardTitle>สาขา &amp; ผู้จัดจำหน่าย</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-2 gap-5 lg:gap-7.5">
@@ -47,7 +47,7 @@ export default function BranchSupplierCard({
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">ผู้ขาย</label>
+            <label className="block text-sm font-medium text-foreground mb-1">ผู้จัดจำหน่าย</label>
             <select
               value={supplierId}
               onChange={(e) => onChange('supplierId', e.target.value)}

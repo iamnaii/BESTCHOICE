@@ -110,7 +110,7 @@ export default function ProductInfo({
               </>
             )}
             <InfoField label="สาขา" value={product.branch.name} />
-            <InfoField label="ผู้ขาย" value={product.supplier?.name} />
+            <InfoField label="ผู้จัดจำหน่าย" value={product.supplier?.name} />
             <InfoField label="PO" value={product.po?.poNumber} mono />
             <InfoField label="วันที่เพิ่ม" value={formatDateShort(product.createdAt)} />
           </div>

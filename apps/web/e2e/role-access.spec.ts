@@ -50,7 +50,7 @@ test.describe('OWNER role — full access', () => {
     { url: '/expenses', name: 'รายจ่าย' },
     { url: '/receipts', name: 'ใบเสร็จ' },
     { url: '/purchase-orders', name: 'ใบสั่งซื้อ' },
-    { url: '/suppliers', name: 'ผู้ขาย' },
+    { url: '/suppliers', name: 'ผู้จัดจำหน่าย' },
     { url: '/financial-audit', name: 'Financial Audit' },
     { url: '/pdpa', name: 'PDPA' },
   ];
@@ -233,7 +233,7 @@ test.describe('BRANCH_MANAGER role — broad access', () => {
     { url: '/receipts', name: 'ใบเสร็จ' },
     { url: '/reports', name: 'รายงาน' },
     { url: '/purchase-orders', name: 'ใบสั่งซื้อ' },
-    { url: '/suppliers', name: 'ผู้ขาย' },
+    { url: '/suppliers', name: 'ผู้จัดจำหน่าย' },
     { url: '/finance-receivable', name: 'เงินรับจากไฟแนนซ์' },
     { url: '/repossessions', name: 'ยึดคืน' },
     { url: '/document-dashboard', name: 'สถานะเอกสาร' },

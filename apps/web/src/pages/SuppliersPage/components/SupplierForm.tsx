@@ -137,7 +137,7 @@ export default function SupplierForm({
       className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-start justify-center pt-8 pb-8"
       role="dialog"
       aria-modal="true"
-      aria-label={isEditing ? 'แก้ไขผู้ขาย' : 'เพิ่มผู้ขายใหม่'}
+      aria-label={isEditing ? 'แก้ไขผู้จัดจำหน่าย' : 'เพิ่มผู้จัดจำหน่ายใหม่'}
     >
       <div className="w-full max-w-2xl bg-background rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100vh-4rem)]">
         <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-xs border-b px-6 py-4 flex items-center justify-between shrink-0">
@@ -162,7 +162,7 @@ export default function SupplierForm({
             กลับ
           </button>
           <h2 className="text-lg font-semibold text-foreground">
-            {isEditing ? 'แก้ไขผู้ขาย' : 'เพิ่มผู้ขายใหม่'}
+            {isEditing ? 'แก้ไขผู้จัดจำหน่าย' : 'เพิ่มผู้จัดจำหน่ายใหม่'}
           </h2>
           <div className="w-16" />
         </div>
@@ -172,7 +172,7 @@ export default function SupplierForm({
             {/* Type Selector */}
             <div className="rounded-xl border border-border bg-card p-5">
               <div className="mb-3">
-                <h3 className="text-sm font-semibold text-foreground">ประเภทผู้ขาย</h3>
+                <h3 className="text-sm font-semibold text-foreground">ประเภทผู้จัดจำหน่าย</h3>
                 <p className="text-xs text-muted-foreground">
                   เลือกให้ตรงกับเอกสารประกอบใบกำกับภาษี
                 </p>
@@ -243,7 +243,7 @@ export default function SupplierForm({
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold text-foreground">
-                    {isJuristic ? 'ข้อมูลบริษัท' : 'ข้อมูลผู้ขาย'}
+                    {isJuristic ? 'ข้อมูลบริษัท' : 'ข้อมูลผู้จัดจำหน่าย'}
                   </h3>
                   <p className="text-xs text-muted-foreground">
                     {isJuristic
@@ -478,7 +478,7 @@ export default function SupplierForm({
                   </div>
                   <div>
                     <h3 className="text-sm font-semibold text-foreground">ข้อมูลการชำระเงิน</h3>
-                    <p className="text-xs text-muted-foreground">วิธีรับชำระเงินจากผู้ขาย</p>
+                    <p className="text-xs text-muted-foreground">วิธีรับชำระเงินจากผู้จัดจำหน่าย</p>
                   </div>
                 </div>
                 <button
@@ -629,7 +629,7 @@ export default function SupplierForm({
                   <p className="text-xs text-muted-foreground">
                     {isJuristic
                       ? 'ที่อยู่บริษัทสำหรับใบกำกับภาษี'
-                      : 'ที่อยู่ผู้ขาย'}
+                      : 'ที่อยู่ผู้จัดจำหน่าย'}
                   </p>
                 </div>
               </div>

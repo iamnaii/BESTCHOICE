@@ -28,7 +28,7 @@ import CreateContactModal from './CreateContactModal';
 
 const ROLE_LABELS: Record<ContactRole, string> = {
   CUSTOMER: 'ลูกค้า',
-  SUPPLIER: 'ผู้ขาย',
+  SUPPLIER: 'ผู้จัดจำหน่าย',
   TRADE_IN_SELLER: 'คนขายมือสอง',
   FINANCE_COMPANY: 'ไฟแนนซ์',
 };

@@ -238,7 +238,7 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'รายการสินค้า', path: '/stock/products', icon: ClipboardList },
         { label: 'พิมพ์สติกเกอร์', path: '/stickers', icon: Tag },
         { label: 'สั่งซื้อ (PO)', path: '/purchase-orders', icon: ClipboardList },
-        { label: 'ผู้ขาย', path: '/suppliers', icon: Building2 },
+        { label: 'ผู้จัดจำหน่าย', path: '/suppliers', icon: Building2 },
       ],
     },
     {
@@ -518,7 +518,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
       icon: Warehouse,
       zone: 'shop',
       items: [
-        { label: 'ผู้ขาย', path: '/suppliers', icon: Building2 },
+        { label: 'ผู้จัดจำหน่าย', path: '/suppliers', icon: Building2 },
         { label: 'สั่งซื้อ (PO)', path: '/purchase-orders', icon: ClipboardList },
         { label: 'รับซื้อมือสอง', path: '/trade-in', icon: Smartphone },
         { label: 'ภาพรวมคลัง', path: '/stock', icon: Warehouse },

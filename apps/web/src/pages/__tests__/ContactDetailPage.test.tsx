@@ -176,7 +176,7 @@ describe('ContactDetailPage', () => {
     });
     wrap('c1');
     await waitFor(() => expect(screen.getByText('คนเดียวดาย')).toBeInTheDocument());
-    expect(screen.getByText(/ยังไม่ผูกกับลูกค้า\/ผู้ขาย/)).toBeInTheDocument();
+    expect(screen.getByText(/ยังไม่ผูกกับลูกค้า\/ผู้จัดจำหน่าย/)).toBeInTheDocument();
     // เบอร์โผล่เป็น text ครั้งเดียว (Field ใน hero grid) — empty-state ไม่โชว์เบอร์ซ้ำอีกชุด
     expect(screen.getAllByText('0800000000')).toHaveLength(1);
   });

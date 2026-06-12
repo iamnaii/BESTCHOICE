@@ -15,10 +15,11 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { contactKeys, contactsApi, type Contact, type ContactRole } from '@/lib/api/contacts';
+import CreateContactModal from '@/components/contacts/CreateContactModal';
 
 const ROLE_LABELS: Record<ContactRole, string> = {
   CUSTOMER: 'ลูกค้า',
-  SUPPLIER: 'ผู้ขาย',
+  SUPPLIER: 'ผู้จัดจำหน่าย',
   TRADE_IN_SELLER: 'คนขายมือสอง',
   FINANCE_COMPANY: 'ไฟแนนซ์',
 };
@@ -35,7 +36,7 @@ type GroupFilter = 'ALL' | ContactRole;
 const GROUP_FILTERS: { value: GroupFilter; label: string }[] = [
   { value: 'ALL', label: 'ทั้งหมด' },
   { value: 'CUSTOMER', label: 'ลูกค้า' },
-  { value: 'SUPPLIER', label: 'ผู้ขาย' },
+  { value: 'SUPPLIER', label: 'ผู้จัดจำหน่าย' },
   { value: 'TRADE_IN_SELLER', label: 'คนขายมือสอง' },
   { value: 'FINANCE_COMPANY', label: 'ไฟแนนซ์' },
 ];
@@ -47,6 +48,9 @@ export default function ContactsPage() {
   const [search, setSearch] = useState('');
   const [role, setRole] = useState<GroupFilter>('ALL');
   const [page, setPage] = useState(1);
+  // null = closed; CUSTOMER/SUPPLIER picks the CreateContactModal mode.
+  // Conditional render below guarantees fresh form state on every open.
+  const [createRole, setCreateRole] = useState<'CUSTOMER' | 'SUPPLIER' | null>(null);
   const debouncedSearch = useDebounce(search);
 
   useEffect(() => {
@@ -117,11 +121,11 @@ export default function ContactsPage() {
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem onClick={() => navigate('/customers')}>
+              <DropdownMenuItem onClick={() => setCreateRole('CUSTOMER')}>
                 เพิ่มลูกค้า
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => navigate('/suppliers')}>
-                เพิ่มผู้ขาย
+              <DropdownMenuItem onClick={() => setCreateRole('SUPPLIER')}>
+                เพิ่มผู้จัดจำหน่าย
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => navigate('/trade-in')}>
                 รับซื้อมือสอง
@@ -187,6 +191,17 @@ export default function ContactsPage() {
           }
         />
       </QueryBoundary>
+
+      {createRole && (
+        <CreateContactModal
+          open
+          onOpenChange={(open) => {
+            if (!open) setCreateRole(null);
+          }}
+          role={createRole}
+          onCreated={(r) => navigate(`/contacts/${r.contactId}`)}
+        />
+      )}
     </div>
   );
 }

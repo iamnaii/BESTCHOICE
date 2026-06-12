@@ -58,8 +58,7 @@ describe('CreateContactModal', () => {
 
     const { onCreated, onOpenChange } = renderModal({ role: 'SUPPLIER' });
 
-    // Toggle to JURISTIC so taxId field applies
-    await user.click(screen.getByRole('button', { name: 'นิติบุคคล' }));
+    // JURISTIC is the default type for SUPPLIER — taxId field applies immediately
 
     // Fill ชื่อ
     await user.clear(screen.getByLabelText(/ชื่อ/));
@@ -226,5 +225,85 @@ describe('CreateContactModal', () => {
 
     // We verify the mutation was called (toast is tested by Sonner itself)
     await waitFor(() => expect(apiPostMock).toHaveBeenCalledOnce());
+  });
+
+  // ── Default type per role ─────────────────────────────────────────────────
+
+  it('SUPPLIER: defaults to นิติบุคคล (เลขผู้เสียภาษี label shown)', () => {
+    renderModal({ role: 'SUPPLIER' });
+    expect(screen.getByLabelText(/เลขผู้เสียภาษี/)).toBeInTheDocument();
+  });
+
+  it('CUSTOMER: hides the ประเภท toggle (customers are persons only)', () => {
+    renderModal({ role: 'CUSTOMER' });
+    expect(screen.queryByRole('button', { name: 'นิติบุคคล' })).toBeNull();
+    expect(screen.getByLabelText(/เลขบัตรประชาชน/)).toBeInTheDocument();
+  });
+
+  // ── 13-digit id validation ────────────────────────────────────────────────
+
+  it('disables submit and shows error when id number is filled but incomplete', async () => {
+    const user = userEvent.setup();
+    renderModal({ role: 'CUSTOMER' });
+
+    await user.type(screen.getByLabelText(/ชื่อ/), 'ลูกค้าทดสอบ');
+    await user.type(screen.getByLabelText(/เบอร์โทร/), '0812345678');
+    await user.type(screen.getByLabelText(/เลขบัตรประชาชน/), '12345');
+
+    expect(screen.getByText(/ต้องเป็นตัวเลขครบ 13 หลัก/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'สร้าง' })).toBeDisabled();
+  });
+
+  // ── Enter submits ─────────────────────────────────────────────────────────
+
+  it('submits the form on Enter key', async () => {
+    const user = userEvent.setup();
+    apiPostMock.mockResolvedValueOnce({
+      data: { id: 'cust9', contactId: 'ct9', name: 'กด Enter', nationalId: null },
+    });
+
+    renderModal({ role: 'CUSTOMER' });
+
+    await user.type(screen.getByLabelText(/ชื่อ/), 'กด Enter');
+    await user.type(screen.getByLabelText(/เบอร์โทร/), '0812345678{Enter}');
+
+    await waitFor(() => expect(apiPostMock).toHaveBeenCalledOnce());
+  });
+
+  // ── Structured address ────────────────────────────────────────────────────
+
+  it('serializes the structured address (JSON) into the payload', async () => {
+    const user = userEvent.setup();
+    apiPostMock.mockResolvedValueOnce({
+      data: { id: 'cust8', contactId: 'ct8', name: 'มีที่อยู่', nationalId: null },
+    });
+
+    renderModal({ role: 'CUSTOMER' });
+
+    await user.type(screen.getByLabelText(/ชื่อ/), 'มีที่อยู่');
+    await user.type(screen.getByLabelText(/เบอร์โทร/), '0812345678');
+    await user.type(screen.getByPlaceholderText('123/45'), '99/1');
+    await user.click(screen.getByRole('button', { name: 'สร้าง' }));
+
+    await waitFor(() => expect(apiPostMock).toHaveBeenCalledOnce());
+    const [, payload] = apiPostMock.mock.calls[0];
+    expect(JSON.parse(payload.addressCurrent as string)).toMatchObject({ houseNo: '99/1' });
+  });
+
+  it('omits the address field entirely when address form is untouched', async () => {
+    const user = userEvent.setup();
+    apiPostMock.mockResolvedValueOnce({
+      data: { id: 'cust7', contactId: 'ct7', name: 'ไม่มีที่อยู่', nationalId: null },
+    });
+
+    renderModal({ role: 'CUSTOMER' });
+
+    await user.type(screen.getByLabelText(/ชื่อ/), 'ไม่มีที่อยู่');
+    await user.type(screen.getByLabelText(/เบอร์โทร/), '0812345678');
+    await user.click(screen.getByRole('button', { name: 'สร้าง' }));
+
+    await waitFor(() => expect(apiPostMock).toHaveBeenCalledOnce());
+    const [, payload] = apiPostMock.mock.calls[0];
+    expect(payload.addressCurrent).toBeUndefined();
   });
 });

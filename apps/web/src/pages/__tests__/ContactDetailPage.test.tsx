@@ -85,8 +85,8 @@ describe('ContactDetailPage', () => {
     await waitFor(() => expect(screen.getAllByText('บ.แอปเปิล').length).toBeGreaterThan(0));
     // taxId ปรากฏครั้งเดียว (ใน hero) — ไม่ซ้ำในการ์ด role
     expect(screen.getAllByText('0105500000010')).toHaveLength(1);
-    // การ์ดผู้ขายยังลิงก์ไป workspace
-    const link = screen.getByRole('link', { name: /แก้ไข|เปิดข้อมูล|ผู้ขาย/ });
+    // การ์ดผู้จัดจำหน่ายยังลิงก์ไป /suppliers
+    const link = screen.getByRole('link', { name: /เปิดข้อมูลผู้จัดจำหน่าย/ });
     expect(link).toHaveAttribute('href', '/suppliers/s1');
     // ฟิลด์เฉพาะ role ยังอยู่ในการ์ด
     expect(screen.getByText('คุณเอ (02)')).toBeInTheDocument();

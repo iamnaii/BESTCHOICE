@@ -12,11 +12,13 @@ vi.mock('@/lib/api/contacts', async (orig) => {
   return { ...actual, contactsApi: { ...actual.contactsApi, list: vi.fn() } };
 });
 
-// Mock CreateContactModal: renders a marker with the requested role and a
-// submit button that fires onCreated (simulates form fill + submit).
+// Mock CreateContactModal: renders a marker with the requested role, a submit
+// button that fires onCreated (simulates form fill + submit), and a close
+// button that fires onOpenChange(false) (simulates กดยกเลิก/ESC).
 vi.mock('@/components/contacts/CreateContactModal', () => ({
   default: ({
     open,
+    onOpenChange,
     role,
     onCreated,
   }: {
@@ -33,6 +35,9 @@ vi.mock('@/components/contacts/CreateContactModal', () => ({
           onClick={() => onCreated({ contactId: 'ct1', childId: 'cust1', name: 'X', taxId: '' })}
         >
           mock-submit
+        </button>
+        <button data-testid="mock-create-modal-close" onClick={() => onOpenChange(false)}>
+          mock-close
         </button>
       </div>
     );
@@ -104,5 +109,23 @@ describe('ContactsPage', () => {
 
     const modal = await screen.findByTestId('mock-create-modal');
     expect(modal.getAttribute('data-role')).toBe('SUPPLIER');
+  });
+
+  it('dismissing the modal removes it without navigating', async () => {
+    wrap(<ContactsPage />);
+    await waitFor(() => expect(screen.getByText('นราธิป')).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole('button', { name: /เพิ่มผู้ติดต่อ/ }));
+    await userEvent.click(await screen.findByText('เพิ่มลูกค้า'));
+    await screen.findByTestId('mock-create-modal');
+
+    await userEvent.click(screen.getByTestId('mock-create-modal-close'));
+
+    await waitFor(() =>
+      expect(screen.queryByTestId('mock-create-modal')).not.toBeInTheDocument(),
+    );
+    // ยังอยู่หน้า list เดิม — ไม่ navigate ไป detail
+    expect(screen.queryByTestId('detail-probe')).not.toBeInTheDocument();
+    expect(screen.getByText('นราธิป')).toBeInTheDocument();
   });
 });

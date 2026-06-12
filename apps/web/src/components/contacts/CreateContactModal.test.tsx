@@ -227,6 +227,60 @@ describe('CreateContactModal', () => {
     await waitFor(() => expect(apiPostMock).toHaveBeenCalledOnce());
   });
 
+  // ── คำนำหน้า + จด VAT visibility ──────────────────────────────────────────
+
+  it('SUPPLIER: hides จด VAT checkbox when switching to บุคคลธรรมดา', async () => {
+    const user = userEvent.setup();
+    renderModal({ role: 'SUPPLIER' });
+
+    // default JURISTIC — VAT checkbox visible
+    expect(screen.getByLabelText(/จด VAT/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'บุคคลธรรมดา' }));
+    expect(screen.queryByLabelText(/จด VAT/)).toBeNull();
+  });
+
+  it('SUPPLIER: hides คำนำหน้า for JURISTIC, sends titleName for INDIVIDUAL', async () => {
+    const user = userEvent.setup();
+    apiPostMock.mockResolvedValueOnce({
+      data: { id: 'sup5', contactId: 'ct5', name: 'สมชาย ใจดี', taxId: null },
+    });
+
+    renderModal({ role: 'SUPPLIER' });
+
+    // JURISTIC default — no prefix select
+    expect(screen.queryByLabelText('คำนำหน้า')).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'บุคคลธรรมดา' }));
+    await user.selectOptions(screen.getByLabelText('คำนำหน้า'), 'นาย');
+    await user.type(screen.getByLabelText(/ชื่อ/), 'สมชาย ใจดี');
+    await user.type(screen.getByLabelText(/เบอร์โทร/), '0812345678');
+    await user.click(screen.getByRole('button', { name: 'สร้าง' }));
+
+    await waitFor(() => expect(apiPostMock).toHaveBeenCalledOnce());
+    const [, payload] = apiPostMock.mock.calls[0];
+    expect(payload).toMatchObject({ type: 'INDIVIDUAL', titleName: 'นาย' });
+    expect(payload.hasVat).toBe(false);
+  });
+
+  it('CUSTOMER: sends prefix when คำนำหน้า selected', async () => {
+    const user = userEvent.setup();
+    apiPostMock.mockResolvedValueOnce({
+      data: { id: 'cust6', contactId: 'ct6', name: 'สมหญิง รักดี', nationalId: null },
+    });
+
+    renderModal({ role: 'CUSTOMER' });
+
+    await user.selectOptions(screen.getByLabelText('คำนำหน้า'), 'นางสาว');
+    await user.type(screen.getByLabelText(/ชื่อ/), 'สมหญิง รักดี');
+    await user.type(screen.getByLabelText(/เบอร์โทร/), '0812345678');
+    await user.click(screen.getByRole('button', { name: 'สร้าง' }));
+
+    await waitFor(() => expect(apiPostMock).toHaveBeenCalledOnce());
+    const [, payload] = apiPostMock.mock.calls[0];
+    expect(payload.prefix).toBe('นางสาว');
+  });
+
   // ── Default type per role ─────────────────────────────────────────────────
 
   it('SUPPLIER: defaults to นิติบุคคล (เลขผู้เสียภาษี label shown)', () => {

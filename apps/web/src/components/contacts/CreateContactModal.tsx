@@ -19,6 +19,7 @@ import AddressForm, {
   emptyAddress,
   serializeAddress,
 } from '@/components/ui/AddressForm';
+import { THAI_NAME_PREFIXES } from '@/lib/constants';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -44,6 +45,9 @@ interface Props {
 const defaultTypeFor = (role: 'SUPPLIER' | 'CUSTOMER'): ContactType =>
   role === 'SUPPLIER' ? 'JURISTIC' : 'INDIVIDUAL';
 
+// Supplier.titleName accepts คุณ as well (mirrors SupplierForm TITLE_OPTIONS)
+const SUPPLIER_TITLE_OPTIONS = [...THAI_NAME_PREFIXES, 'คุณ'];
+
 // ── Component ──────────────────────────────────────────────────────────────
 
 export default function CreateContactModal({
@@ -54,6 +58,7 @@ export default function CreateContactModal({
   onCreated,
 }: Props) {
   const [contactType, setContactType] = useState<ContactType>(defaultTypeFor(role));
+  const [prefix, setPrefix] = useState(''); // คำนำหน้า — persons only
   const [name, setName] = useState(initialName);
   const [idNumber, setIdNumber] = useState(''); // taxId (JURISTIC) or nationalId (INDIVIDUAL)
   const [phone, setPhone] = useState('');
@@ -65,6 +70,7 @@ export default function CreateContactModal({
   useEffect(() => {
     if (!open) return;
     setContactType(defaultTypeFor(role));
+    setPrefix('');
     setName(initialName);
     setIdNumber('');
     setPhone('');
@@ -82,6 +88,7 @@ export default function CreateContactModal({
       name: name.trim(),
       phone: phone.trim(),
     };
+    if (contactType === 'INDIVIDUAL' && prefix) payload.titleName = prefix;
     const serialized = serializeAddress(address);
     if (serialized) payload.address = serialized;
     if (idNumber.trim()) {
@@ -96,6 +103,7 @@ export default function CreateContactModal({
       name: name.trim(),
       phone: phone.trim(),
     };
+    if (prefix) payload.prefix = prefix;
     if (idNumber.trim()) {
       payload.nationalId = idNumber.trim();
     }
@@ -200,6 +208,7 @@ export default function CreateContactModal({
                     onClick={() => {
                       setContactType(t);
                       setIdNumber('');
+                      setPrefix('');
                       if (t === 'INDIVIDUAL') setHasVat(false);
                     }}
                     className={[
@@ -216,23 +225,41 @@ export default function CreateContactModal({
             </div>
           )}
 
-          {/* ── ชื่อ (required) ── */}
+          {/* ── คำนำหน้า + ชื่อ (required) — คำนำหน้าเฉพาะบุคคลธรรมดา ── */}
           <div className="space-y-1.5">
             <Label htmlFor="ccm-name" className="leading-snug">
               ชื่อ <span className="text-destructive">*</span>
             </Label>
-            <Input
-              id="ccm-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={
-                role === 'SUPPLIER' && contactType === 'JURISTIC'
-                  ? 'ชื่อบริษัท'
-                  : 'ชื่อ-นามสกุล'
-              }
-              autoComplete="off"
-              autoFocus
-            />
+            <div className="flex gap-2">
+              {contactType === 'INDIVIDUAL' && (
+                <select
+                  aria-label="คำนำหน้า"
+                  value={prefix}
+                  onChange={(e) => setPrefix(e.target.value)}
+                  className="h-9 w-28 shrink-0 rounded-md border border-input bg-background px-2 text-sm outline-hidden focus:ring-2 focus:ring-ring/30"
+                >
+                  <option value="">คำนำหน้า</option>
+                  {(role === 'SUPPLIER' ? SUPPLIER_TITLE_OPTIONS : THAI_NAME_PREFIXES).map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <Input
+                id="ccm-name"
+                className="flex-1"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={
+                  role === 'SUPPLIER' && contactType === 'JURISTIC'
+                    ? 'ชื่อบริษัท'
+                    : 'ชื่อ-นามสกุล'
+                }
+                autoComplete="off"
+                autoFocus
+              />
+            </div>
           </div>
 
           {/* ── เลขประจำตัว (optional) ── */}
@@ -282,8 +309,8 @@ export default function CreateContactModal({
           {/* ── ที่อยู่ (optional) — โครงสร้างเดียวกับหน้าลูกค้า/ผู้จัดจำหน่าย ── */}
           <AddressForm value={address} onChange={setAddress} label="ที่อยู่ (ไม่บังคับ)" />
 
-          {/* ── จด VAT — SUPPLIER only ── */}
-          {role === 'SUPPLIER' && (
+          {/* ── จด VAT — เฉพาะนิติบุคคล (mirror SupplierForm: บุคคลธรรมดาไม่มีจด VAT) ── */}
+          {role === 'SUPPLIER' && contactType === 'JURISTIC' && (
             <div className="flex items-center gap-2">
               <Checkbox
                 id="ccm-hasvat"

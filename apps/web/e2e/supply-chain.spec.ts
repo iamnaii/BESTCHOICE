@@ -21,7 +21,7 @@ test.describe('Supply Chain Operations', () => {
     await gotoWithRetry(page, '/suppliers');
     await page.waitForTimeout(2000);
     const pageContent = await page.textContent('body');
-    expect(pageContent).toMatch(/ผู้ขาย|supplier/i);
+    expect(pageContent).toMatch(/ผู้ขาย|ผู้จัดจำหน่าย|supplier/i);
   });
 
   test('OWNER can access purchase orders', async ({ page }) => {

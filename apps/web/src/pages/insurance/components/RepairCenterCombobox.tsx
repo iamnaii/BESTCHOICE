@@ -32,7 +32,7 @@ export function RepairCenterCombobox({ value, displayName, onSelect, invalid }: 
     try {
       await mark.mutateAsync(childId);
     } catch {
-      toast.error('บันทึกเป็นศูนย์ซ่อมไม่สำเร็จ แต่เลือกผู้ขายแล้ว');
+      toast.error('บันทึกเป็นศูนย์ซ่อมไม่สำเร็จ แต่เลือกผู้จัดจำหน่ายแล้ว');
     }
     onSelect({ id: childId, name });
   };

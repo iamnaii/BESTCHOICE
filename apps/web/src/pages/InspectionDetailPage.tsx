@@ -112,7 +112,7 @@ export default function InspectionDetailPage() {
     { label: 'สภาพ', value: product.condition ?? '-' },
     { label: 'ราคาทุน', value: `${Number(product.costPrice).toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท` },
     { label: 'สาขา', value: product.branch.name },
-    { label: 'ผู้ขาย', value: product.supplier?.name ?? '-' },
+    { label: 'ผู้จัดจำหน่าย', value: product.supplier?.name ?? '-' },
     { label: 'วันที่รับ', value: formatDateMedium(product.createdAt) },
   ];
 

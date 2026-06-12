@@ -81,7 +81,7 @@ export default function SupplierTable({
   const columns = [
     {
       key: 'name',
-      label: 'ชื่อผู้ขาย',
+      label: 'ชื่อผู้จัดจำหน่าย',
       render: (s: Supplier) => {
         const fullName =
           s.type === 'INDIVIDUAL' && s.titleName ? `${s.titleName} ${s.name}` : s.name;
@@ -231,7 +231,7 @@ export default function SupplierTable({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>รายชื่อผู้ขาย</CardTitle>
+        <CardTitle>รายชื่อผู้จัดจำหน่าย</CardTitle>
       </CardHeader>
       <CardContent className="p-0">
         <QueryBoundary
@@ -239,13 +239,13 @@ export default function SupplierTable({
           isError={isError}
           error={error}
           onRetry={refetch}
-          errorTitle="ไม่สามารถโหลดรายชื่อผู้ขายได้"
+          errorTitle="ไม่สามารถโหลดรายชื่อผู้จัดจำหน่ายได้"
         >
           <DataTable
             columns={columns}
             data={suppliers}
             isLoading={isLoading}
-            emptyMessage="ไม่พบผู้ขาย"
+            emptyMessage="ไม่พบผู้จัดจำหน่าย"
             pagination={
               result
                 ? {

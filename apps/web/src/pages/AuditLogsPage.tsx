@@ -54,7 +54,7 @@ const entityLabels: Record<string, string> = {
   products: 'สินค้า',
   contracts: 'สัญญา',
   customers: 'ลูกค้า',
-  suppliers: 'ผู้ขาย',
+  suppliers: 'ผู้จัดจำหน่าย',
   payments: 'ชำระเงิน',
   branches: 'สาขา',
   users: 'ผู้ใช้',

@@ -70,7 +70,7 @@ const OWNER_PAGES: SmokeRoute[] = [
   { url: '/stock/count', name: 'นับสต็อก' },
   { url: '/stock/workflow', name: 'Inventory Workflow' },
   { url: '/stickers', name: 'พิมพ์สติกเกอร์' },
-  { url: '/suppliers', name: 'รายชื่อผู้ขาย' },
+  { url: '/suppliers', name: 'รายชื่อผู้จัดจำหน่าย' },
   { url: '/purchase-orders', name: 'ใบสั่งซื้อ' },
 
   // Finance
@@ -114,7 +114,7 @@ const BRANCH_MANAGER_PAGES: SmokeRoute[] = [
   { url: '/stock', name: 'คลังสินค้า' },
   { url: '/stock/transfers', name: 'โอนสินค้า' },
   { url: '/stock/workflow', name: 'Inventory Workflow' },
-  { url: '/suppliers', name: 'รายชื่อผู้ขาย' },
+  { url: '/suppliers', name: 'รายชื่อผู้จัดจำหน่าย' },
   { url: '/purchase-orders', name: 'ใบสั่งซื้อ' },
   { url: '/expenses', name: 'รายจ่าย' },
   { url: '/receipts', name: 'ใบเสร็จ' },

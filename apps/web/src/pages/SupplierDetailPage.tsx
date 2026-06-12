@@ -117,7 +117,7 @@ export default function SupplierDetailPage() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['supplier', id] });
       queryClient.invalidateQueries({ queryKey: ['suppliers'] });
-      toast.success(variables.isActive ? 'เปิดใช้งานผู้ขายสำเร็จ' : 'ซ่อนผู้ขายสำเร็จ');
+      toast.success(variables.isActive ? 'เปิดใช้งานผู้จัดจำหน่ายสำเร็จ' : 'ซ่อนผู้จัดจำหน่ายสำเร็จ');
     },
     onError: (err: unknown) => {
       toast.error(getErrorMessage(err));
@@ -145,11 +145,11 @@ export default function SupplierDetailPage() {
   }
 
   if (supplierError) {
-    return <QueryBoundary isLoading={false} isError={true} error={supplierErrorObj} onRetry={supplierRefetch} errorTitle="ไม่สามารถโหลดข้อมูลผู้ขายได้">{null}</QueryBoundary>;
+    return <QueryBoundary isLoading={false} isError={true} error={supplierErrorObj} onRetry={supplierRefetch} errorTitle="ไม่สามารถโหลดข้อมูลผู้จัดจำหน่ายได้">{null}</QueryBoundary>;
   }
 
   if (!supplier) {
-    return <div className="text-center py-12 text-muted-foreground">ไม่พบข้อมูลผู้ขาย</div>;
+    return <div className="text-center py-12 text-muted-foreground">ไม่พบข้อมูลผู้จัดจำหน่าย</div>;
   }
 
   const totalCost = products.reduce((sum, p) => sum + parseFloat(p.costPrice), 0);
@@ -226,11 +226,11 @@ export default function SupplierDetailPage() {
     <div>
       <PageHeader
         title={supplier.name}
-        subtitle="รายละเอียดผู้ขาย"
+        subtitle="รายละเอียดผู้จัดจำหน่าย"
         breadcrumb={
           <Breadcrumb>
             <BreadcrumbList>
-              <BreadcrumbItem><BreadcrumbLink asChild><Link to="/suppliers">ผู้ขาย</Link></BreadcrumbLink></BreadcrumbItem>
+              <BreadcrumbItem><BreadcrumbLink asChild><Link to="/suppliers">ผู้จัดจำหน่าย</Link></BreadcrumbLink></BreadcrumbItem>
               <BreadcrumbSeparator />
               <BreadcrumbItem><BreadcrumbPage>{supplier.name}</BreadcrumbPage></BreadcrumbItem>
             </BreadcrumbList>
@@ -242,7 +242,7 @@ export default function SupplierDetailPage() {
               <button
                 onClick={() => {
                   const action = supplier.isActive ? 'ซ่อน' : 'เปิดใช้งาน';
-                  setConfirmDialog({ open: true, message: `ต้องการ${action}ผู้ขาย "${supplier.name}" ?`, action: () => toggleActiveMutation.mutate({ supplierId: supplier.id, isActive: !supplier.isActive }) });
+                  setConfirmDialog({ open: true, message: `ต้องการ${action}ผู้จัดจำหน่าย "${supplier.name}" ?`, action: () => toggleActiveMutation.mutate({ supplierId: supplier.id, isActive: !supplier.isActive }) });
                 }}
                 disabled={toggleActiveMutation.isPending}
                 className={`px-4 py-2 text-sm font-medium rounded-lg border transition-colors ${
@@ -251,7 +251,7 @@ export default function SupplierDetailPage() {
                     : 'text-success border-success/30 hover:bg-success/5 dark:hover:bg-success/10'
                 }`}
               >
-                {supplier.isActive ? 'ซ่อนผู้ขาย' : 'เปิดใช้งาน'}
+                {supplier.isActive ? 'ซ่อนผู้จัดจำหน่าย' : 'เปิดใช้งาน'}
               </button>
             )}
             <button
@@ -264,12 +264,12 @@ export default function SupplierDetailPage() {
         }
       />
 
-      {/* ข้อมูลผู้ขาย */}
+      {/* ข้อมูลผู้จัดจำหน่าย */}
       <div className="rounded-xl border border-border/50 bg-card p-5 mb-6 shadow-sm relative overflow-hidden">
         <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full bg-primary" />
         <div className="flex items-start justify-between mb-4">
           <div className="flex items-center gap-2">
-            <h2 className="text-lg font-semibold text-foreground">ข้อมูลผู้ขาย</h2>
+            <h2 className="text-lg font-semibold text-foreground">ข้อมูลผู้จัดจำหน่าย</h2>
             <Badge
               variant={supplier.type === 'JURISTIC' ? 'primary' : 'secondary'}
               appearance="light"
@@ -395,7 +395,7 @@ export default function SupplierDetailPage() {
             columns={productColumns}
             data={products}
             isLoading={historyLoading}
-            emptyMessage="ยังไม่มีสินค้าจากผู้ขายนี้"
+            emptyMessage="ยังไม่มีสินค้าจากผู้จัดจำหน่ายนี้"
           />
         </CardContent>
       </Card>

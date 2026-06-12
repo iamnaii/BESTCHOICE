@@ -106,9 +106,9 @@ test.describe('ใบสั่งซื้อ (PO)', () => {
 });
 
 /* ================================================================
-   ผู้ขาย (/suppliers)
+   ผู้จัดจำหน่าย (/suppliers)
    ================================================================ */
-test.describe('จัดการผู้ขาย', () => {
+test.describe('จัดการผู้จัดจำหน่าย', () => {
   test.beforeEach(async ({ page }) => {
     await loginViaAPI(page);
     await gotoWithRetry(page, '/suppliers');
@@ -117,7 +117,7 @@ test.describe('จัดการผู้ขาย', () => {
   test('should load suppliers page', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
     await expect(
-      page.getByText('จัดการผู้ขาย').first(),
+      page.getByText('จัดการผู้จัดจำหน่าย').first(),
     ).toBeVisible({ timeout: 15000 });
   });
 
@@ -141,7 +141,7 @@ test.describe('จัดการผู้ขาย', () => {
 
   test('should have create supplier button', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    const createBtn = page.locator('button').filter({ hasText: /เพิ่ม|สร้าง|ผู้ขาย/ }).first();
+    const createBtn = page.locator('button').filter({ hasText: /เพิ่ม|สร้าง|ผู้จัดจำหน่าย/ }).first();
     if (await createBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
       await createBtn.click();
       await page.waitForTimeout(500);
@@ -155,7 +155,7 @@ test.describe('จัดการผู้ขาย', () => {
 
   test('should have search for suppliers', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    const search = page.getByPlaceholder(/ค้นหา|ชื่อผู้ขาย|search/i).first();
+    const search = page.getByPlaceholder(/ค้นหา|ชื่อผู้จัดจำหน่าย|search/i).first();
     if (await search.isVisible({ timeout: 5000 }).catch(() => false)) {
       await search.fill('Apple');
       await page.waitForTimeout(500);

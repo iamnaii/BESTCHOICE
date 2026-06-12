@@ -135,7 +135,7 @@ export function POListTab({
     },
     {
       key: 'supplier',
-      label: 'ผู้ขาย',
+      label: 'ผู้จัดจำหน่าย',
       sortable: true,
       render: (po) => {
         const sameName =
@@ -321,7 +321,7 @@ export function POListTab({
       <div className="flex flex-wrap gap-3 mb-4">
         <input
           type="text"
-          placeholder="ค้นหาเลข PO, ผู้ขาย..."
+          placeholder="ค้นหาเลข PO, ผู้จัดจำหน่าย..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="flex-1 min-w-[200px] px-3 py-2 border border-input rounded-lg text-sm bg-background focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
@@ -343,7 +343,7 @@ export function POListTab({
           onChange={(e) => setSupplierFilter(e.target.value)}
           className="px-3 py-2 border border-input rounded-lg text-sm bg-background focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden max-w-[220px]"
         >
-          <option value="">ทุกผู้ขาย</option>
+          <option value="">ทุกผู้จัดจำหน่าย</option>
           {suppliers.map((s) => (
             <option key={s.id} value={s.id}>
               {s.name}
@@ -383,7 +383,7 @@ export function POListTab({
             />
           )}
           {supplierFilter && (
-            <FilterChip label={`ผู้ขาย: ${selectedSupplierName}`} onRemove={() => setSupplierFilter('')} />
+            <FilterChip label={`ผู้จัดจำหน่าย: ${selectedSupplierName}`} onRemove={() => setSupplierFilter('')} />
           )}
           {periodFilter && (
             <FilterChip label={`ช่วงเวลา: ${selectedPeriodLabel}`} onRemove={() => setPeriodFilter('')} />

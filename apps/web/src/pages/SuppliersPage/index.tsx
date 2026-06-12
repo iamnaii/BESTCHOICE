@@ -17,7 +17,7 @@ import SupplierForm, { emptyForm, emptyPaymentMethod } from './components/Suppli
 import type { SupplierFormData } from './components/SupplierForm';
 
 export default function SuppliersPage() {
-  useDocumentTitle('ผู้ขาย');
+  useDocumentTitle('ผู้จัดจำหน่าย');
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -115,7 +115,7 @@ export default function SuppliersPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['suppliers'] });
-      toast.success(editingSupplier ? 'แก้ไขผู้ขายสำเร็จ' : 'สร้างผู้ขายสำเร็จ');
+      toast.success(editingSupplier ? 'แก้ไขผู้จัดจำหน่ายสำเร็จ' : 'สร้างผู้จัดจำหน่ายสำเร็จ');
       closeModal();
     },
     onError: (err: unknown) => {
@@ -129,7 +129,7 @@ export default function SuppliersPage() {
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['suppliers'] });
-      toast.success(variables.isActive ? 'เปิดใช้งานผู้ขายสำเร็จ' : 'ปิดใช้งานผู้ขายสำเร็จ');
+      toast.success(variables.isActive ? 'เปิดใช้งานผู้จัดจำหน่ายสำเร็จ' : 'ปิดใช้งานผู้จัดจำหน่ายสำเร็จ');
     },
     onError: (err: unknown) => {
       toast.error(getErrorMessage(err));
@@ -198,7 +198,7 @@ export default function SuppliersPage() {
     const action = supplier.isActive ? 'ปิด' : 'เปิด';
     setConfirmDialog({
       open: true,
-      message: `ต้องการ${action}ใช้งานผู้ขาย "${supplier.name}" ?`,
+      message: `ต้องการ${action}ใช้งานผู้จัดจำหน่าย "${supplier.name}" ?`,
       action: () =>
         toggleActiveMutation.mutate({ id: supplier.id, isActive: !supplier.isActive }),
     });
@@ -207,7 +207,7 @@ export default function SuppliersPage() {
   return (
     <div>
       <PageHeader
-        title="จัดการผู้ขาย"
+        title="จัดการผู้จัดจำหน่าย"
         subtitle={`ทั้งหมด ${result?.total ?? 0} ราย`}
         action={
           <div className="flex gap-2">
@@ -217,7 +217,7 @@ export default function SuppliersPage() {
                   try {
                     await exportToExcel({
                       columns: [
-                        { header: 'ชื่อผู้ขาย', key: 'name', width: 25 },
+                        { header: 'ชื่อผู้จัดจำหน่าย', key: 'name', width: 25 },
                         { header: 'เบอร์โทร', key: 'phone', width: 15 },
                         { header: 'อีเมล', key: 'lineId', width: 20 },
                         { header: 'ที่อยู่', key: 'address', width: 30 },
@@ -230,7 +230,7 @@ export default function SuppliersPage() {
                         address: s.address || '-',
                         status: s.isActive ? 'เปิดใช้งาน' : 'ปิดใช้งาน',
                       })),
-                      sheetName: 'ผู้ขาย',
+                      sheetName: 'ผู้จัดจำหน่าย',
                       filename: `suppliers_${new Date().toISOString().slice(0, 10)}.xlsx`,
                     });
                     toast.success('ส่งออก Excel สำเร็จ');
@@ -249,7 +249,7 @@ export default function SuppliersPage() {
                 onClick={openCreate}
                 className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
               >
-                + เพิ่มผู้ขาย
+                + เพิ่มผู้จัดจำหน่าย
               </button>
             )}
           </div>

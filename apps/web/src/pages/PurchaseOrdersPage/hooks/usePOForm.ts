@@ -83,7 +83,7 @@ export function usePOForm({ createMutation, suppliers }: UsePOFormOptions) {
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.supplierId) {
-      toast.error('กรุณาเลือกผู้ขาย');
+      toast.error('กรุณาเลือกผู้จัดจำหน่าย');
       return;
     }
     const invalidItems = items.filter((i) => !i.category || !i.quantity || !i.unitPrice);

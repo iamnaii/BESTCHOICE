@@ -1,6 +1,7 @@
 import { Building2, User2 } from 'lucide-react';
 import AddressForm, { AddressData } from '@/components/ui/AddressForm';
 import { cn } from '@/lib/utils';
+import { formatIdNumberInput, formatPhoneInput } from '@/utils/mask.util';
 import type { PaymentMethod } from './SupplierTable';
 
 export type SupplierType = 'INDIVIDUAL' | 'JURISTIC';
@@ -35,23 +36,12 @@ export const emptyPaymentMethod: PaymentMethod = {
 
 const TITLE_OPTIONS = ['นาย', 'นาง', 'นางสาว', 'คุณ'];
 
-export function formatPhone(value: string): string {
-  const digits = value.replace(/\D/g, '').slice(0, 10);
-  if (digits.length <= 3) return digits;
-  if (digits.length <= 6) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
-  return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
-}
-
-export function formatTaxId(value: string): string {
-  const digits = value.replace(/\D/g, '').slice(0, 13);
-  if (digits.length <= 1) return digits;
-  if (digits.length <= 5) return `${digits.slice(0, 1)}-${digits.slice(1)}`;
-  if (digits.length <= 10)
-    return `${digits.slice(0, 1)}-${digits.slice(1, 5)}-${digits.slice(5)}`;
-  if (digits.length <= 12)
-    return `${digits.slice(0, 1)}-${digits.slice(1, 5)}-${digits.slice(5, 10)}-${digits.slice(10)}`;
-  return `${digits.slice(0, 1)}-${digits.slice(1, 5)}-${digits.slice(5, 10)}-${digits.slice(10, 12)}-${digits.slice(12)}`;
-}
+// Shared progressive masks live in utils/mask.util.ts — aliased to keep the
+// existing call sites readable. Note: this form stores the FORMATTED value in
+// state and submits it as-is (dashes included), unlike CreateContactModal
+// which keeps raw digits.
+const formatPhone = formatPhoneInput;
+const formatTaxId = formatIdNumberInput;
 
 export function formatBranchCode(value: string): string {
   return value.replace(/\D/g, '').slice(0, 5);

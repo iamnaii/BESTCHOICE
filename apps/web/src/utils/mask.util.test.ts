@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { maskNationalId, formatNationalId, maskPhone, maskAccountNumber } from './mask.util';
+import {
+  maskNationalId,
+  formatNationalId,
+  formatIdNumberInput,
+  formatPhoneInput,
+  maskPhone,
+  maskAccountNumber,
+} from './mask.util';
 
 describe('mask.util — PDPA masking', () => {
   describe('maskNationalId', () => {
@@ -35,6 +42,53 @@ describe('mask.util — PDPA masking', () => {
 
     it('returns "-" for empty input', () => {
       expect(formatNationalId('')).toBe('-');
+    });
+  });
+
+  describe('formatIdNumberInput', () => {
+    it('formats a complete 13-digit ID as 1-4-5-2-1', () => {
+      expect(formatIdNumberInput('1234567890123')).toBe('1-2345-67890-12-3');
+    });
+
+    it('formats progressively while typing', () => {
+      expect(formatIdNumberInput('1')).toBe('1');
+      expect(formatIdNumberInput('12')).toBe('1-2');
+      expect(formatIdNumberInput('12345')).toBe('1-2345');
+      expect(formatIdNumberInput('123456')).toBe('1-2345-6');
+      expect(formatIdNumberInput('1234567890')).toBe('1-2345-67890');
+      expect(formatIdNumberInput('12345678901')).toBe('1-2345-67890-1');
+      expect(formatIdNumberInput('123456789012')).toBe('1-2345-67890-12');
+    });
+
+    it('strips existing separators and caps at 13 digits', () => {
+      expect(formatIdNumberInput('1-2345-67890-12-3')).toBe('1-2345-67890-12-3');
+      expect(formatIdNumberInput('12345678901234567')).toBe('1-2345-67890-12-3');
+    });
+
+    it('returns empty string for empty input', () => {
+      expect(formatIdNumberInput('')).toBe('');
+    });
+  });
+
+  describe('formatPhoneInput', () => {
+    it('formats a complete mobile number as 3-3-4', () => {
+      expect(formatPhoneInput('0812345678')).toBe('081-234-5678');
+    });
+
+    it('formats progressively while typing', () => {
+      expect(formatPhoneInput('081')).toBe('081');
+      expect(formatPhoneInput('0812')).toBe('081-2');
+      expect(formatPhoneInput('081234')).toBe('081-234');
+      expect(formatPhoneInput('0812345')).toBe('081-234-5');
+    });
+
+    it('strips existing separators and caps at 10 digits', () => {
+      expect(formatPhoneInput('081-234-5678')).toBe('081-234-5678');
+      expect(formatPhoneInput('081234567890')).toBe('081-234-5678');
+    });
+
+    it('returns empty string for empty input', () => {
+      expect(formatPhoneInput('')).toBe('');
     });
   });
 

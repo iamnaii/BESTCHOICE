@@ -21,6 +21,7 @@ import AddressForm, {
   serializeAddress,
 } from '@/components/ui/AddressForm';
 import { THAI_NAME_PREFIXES } from '@/lib/constants';
+import { formatIdNumberInput, formatPhoneInput } from '@/utils/mask.util';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -287,9 +288,9 @@ export default function CreateContactModal({
                 </Label>
                 <Input
                   id="ccm-idnumber"
-                  value={idNumber}
+                  value={formatIdNumberInput(idNumber)}
                   onChange={(e) => setIdNumber(e.target.value.replace(/\D/g, '').slice(0, 13))}
-                  placeholder="ตัวเลข 13 หลัก"
+                  placeholder="1-2345-67890-12-3"
                   inputMode="numeric"
                   autoComplete="off"
                   data-1p-ignore
@@ -308,9 +309,9 @@ export default function CreateContactModal({
                 </Label>
                 <Input
                   id="ccm-phone"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="0812345678"
+                  value={formatPhoneInput(phone)}
+                  onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                  placeholder="081-234-5678"
                   inputMode="tel"
                   autoComplete="off"
                   data-1p-ignore

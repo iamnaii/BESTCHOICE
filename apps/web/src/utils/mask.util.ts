@@ -23,6 +23,31 @@ export function formatNationalId(nationalId: string): string {
 }
 
 /**
+ * Progressive input mask for 13-digit Thai IDs — เลขบัตรประชาชน / เลขผู้เสียภาษี /
+ * เลขทะเบียนนิติบุคคล share the same 1-4-5-2-1 grouping (1-2345-67890-12-3).
+ * For controlled inputs: keep state as raw digits, render with this.
+ */
+export function formatIdNumberInput(value: string): string {
+  const d = value.replace(/\D/g, '').slice(0, 13);
+  if (d.length <= 1) return d;
+  if (d.length <= 5) return `${d.slice(0, 1)}-${d.slice(1)}`;
+  if (d.length <= 10) return `${d.slice(0, 1)}-${d.slice(1, 5)}-${d.slice(5)}`;
+  if (d.length <= 12) return `${d.slice(0, 1)}-${d.slice(1, 5)}-${d.slice(5, 10)}-${d.slice(10)}`;
+  return `${d.slice(0, 1)}-${d.slice(1, 5)}-${d.slice(5, 10)}-${d.slice(10, 12)}-${d.slice(12)}`;
+}
+
+/**
+ * Progressive input mask for Thai mobile numbers: 081-234-5678 (3-3-4).
+ * For controlled inputs: keep state as raw digits, render with this.
+ */
+export function formatPhoneInput(value: string): string {
+  const d = value.replace(/\D/g, '').slice(0, 10);
+  if (d.length <= 3) return d;
+  if (d.length <= 6) return `${d.slice(0, 3)}-${d.slice(3)}`;
+  return `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}`;
+}
+
+/**
  * Mask phone number: show last 4 digits only
  * e.g. 08x-xxx-1234
  */

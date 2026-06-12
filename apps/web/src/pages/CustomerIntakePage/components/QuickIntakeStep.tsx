@@ -5,23 +5,11 @@ import { CreditCard, Loader2, ArrowRight } from 'lucide-react';
 import { checkCardReaderStatus, readSmartCard } from '@/lib/cardReader';
 import { toast } from 'sonner';
 import { THAI_NAME_PREFIXES } from '@/lib/constants';
+import {
+  formatIdNumberInput as formatNationalId,
+  formatPhoneInput as formatPhone,
+} from '@/utils/mask.util';
 import type { QuickIntakeForm } from '../types';
-
-function formatNationalId(value: string): string {
-  const d = value.replace(/\D/g, '').slice(0, 13);
-  if (d.length <= 1) return d;
-  if (d.length <= 5) return `${d.slice(0, 1)}-${d.slice(1)}`;
-  if (d.length <= 10) return `${d.slice(0, 1)}-${d.slice(1, 5)}-${d.slice(5)}`;
-  if (d.length <= 12) return `${d.slice(0, 1)}-${d.slice(1, 5)}-${d.slice(5, 10)}-${d.slice(10)}`;
-  return `${d.slice(0, 1)}-${d.slice(1, 5)}-${d.slice(5, 10)}-${d.slice(10, 12)}-${d.slice(12)}`;
-}
-
-function formatPhone(value: string): string {
-  const d = value.replace(/\D/g, '').slice(0, 10);
-  if (d.length <= 3) return d;
-  if (d.length <= 6) return `${d.slice(0, 3)}-${d.slice(3)}`;
-  return `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}`;
-}
 
 interface Props {
   form: QuickIntakeForm;

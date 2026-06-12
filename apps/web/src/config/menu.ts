@@ -533,6 +533,9 @@ const OWNER_CONFIG: RoleMenuConfig = {
       zone: 'shop',
       items: [
         { label: 'ลูกค้า', path: '/customers', icon: Users },
+        // CustomersPage's "+ เพิ่มลูกค้าใหม่" navigates here — without this entry the
+        // MainLayout zone guard treats it as another role's page and bounces OWNER.
+        { label: 'เช็คเครดิตลูกค้าใหม่', path: '/customer-intake', icon: UserSearch },
         { label: 'ขายของ (POS)', path: '/pos', icon: ShoppingCart },
         { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
         { label: 'สัญญาผ่อนชำระ', path: '/contracts', icon: FileCheck },

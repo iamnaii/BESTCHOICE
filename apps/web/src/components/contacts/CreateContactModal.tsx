@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api from '@/lib/api';
 import { contactKeys } from '@/lib/api/contacts';
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogFooter,
   DialogHeader,
@@ -32,12 +33,7 @@ interface Props {
   role: 'SUPPLIER' | 'CUSTOMER';
   /** Prefill ชื่อ from the combobox search term */
   initialName?: string;
-  onCreated: (r: {
-    contactId: string;
-    childId: string;
-    name: string;
-    taxId: string;
-  }) => void;
+  onCreated: (r: { contactId: string; childId: string; name: string; taxId: string }) => void;
 }
 
 // Suppliers are mostly companies (Prisma SupplierType @default(JURISTIC));
@@ -64,6 +60,10 @@ export default function CreateContactModal({
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState<AddressData>({ ...emptyAddress });
   const [hasVat, setHasVat] = useState(false);
+
+  // Focus ชื่อ without scrolling — the default autofocus scroll-into-view pushes
+  // the body down and hides the ประเภท toggle on shorter screens.
+  const nameInputRef = useRef<HTMLInputElement>(null);
 
   // Reset on every open — works both when the parent keeps the modal mounted
   // (ContactCombobox) and when it conditionally renders it (ContactsPage).
@@ -120,10 +120,20 @@ export default function CreateContactModal({
     mutationFn: async () => {
       if (role === 'SUPPLIER') {
         const { data } = await api.post('/suppliers', buildSupplierPayload());
-        return data as { id: string; contactId: string | null; name: string; taxId?: string | null };
+        return data as {
+          id: string;
+          contactId: string | null;
+          name: string;
+          taxId?: string | null;
+        };
       } else {
         const { data } = await api.post('/customers', buildCustomerPayload());
-        return data as { id: string; contactId: string | null; name: string; nationalId?: string | null };
+        return data as {
+          id: string;
+          contactId: string | null;
+          name: string;
+          nationalId?: string | null;
+        };
       }
     },
     onSuccess: (data) => {
@@ -160,8 +170,7 @@ export default function CreateContactModal({
 
   // ── Validation ──────────────────────────────────────────────────────────
 
-  const phoneValid =
-    role === 'CUSTOMER' ? /^0[0-9]{9}$/.test(phone) : phone.trim().length > 0;
+  const phoneValid = role === 'CUSTOMER' ? /^0[0-9]{9}$/.test(phone) : phone.trim().length > 0;
 
   // taxId/nationalId is the natural key for contact dedup — a partial number
   // would silently break duplicate matching, so require all 13 digits if filled.
@@ -181,160 +190,173 @@ export default function CreateContactModal({
       ? 'เลขผู้เสียภาษี (13 หลัก)'
       : 'เลขบัตรประชาชน (13 หลัก)';
 
-  const titleLabel =
-    role === 'SUPPLIER' ? 'เพิ่มผู้จัดจำหน่าย' : 'เพิ่มลูกค้าใหม่';
+  const titleLabel = role === 'SUPPLIER' ? 'เพิ่มผู้จัดจำหน่าย' : 'เพิ่มลูกค้าใหม่';
 
   // ── Render ──────────────────────────────────────────────────────────────
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent
+        className="sm:max-w-xl max-h-[90vh] flex flex-col p-0 gap-0"
+        onOpenAutoFocus={(e) => {
+          e.preventDefault();
+          nameInputRef.current?.focus({ preventScroll: true });
+        }}
+      >
+        <DialogHeader className="px-6 pt-4 pb-3 mb-0 shrink-0 border-b border-border">
           <DialogTitle className="leading-snug">{titleLabel}</DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4 py-2">
-          {/* ── ประเภท toggle — SUPPLIER only (customers are persons; the
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          <DialogBody className="min-h-0 flex-1 overflow-y-auto px-6 pt-4 pb-3 space-y-3">
+            {/* ── ประเภท toggle — SUPPLIER only (customers are persons; the
                  Customer model has no taxId so a juristic customer isn't
                  representable and the entered number would be dropped) ── */}
-          {role === 'SUPPLIER' && (
-            <div>
-              <Label className="mb-2 block leading-snug">ประเภท</Label>
+            {role === 'SUPPLIER' && (
+              <div className="flex items-center gap-3">
+                <Label className="shrink-0 leading-snug">ประเภท</Label>
+                <div className="flex flex-1 gap-2">
+                  {(['JURISTIC', 'INDIVIDUAL'] as const).map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => {
+                        setContactType(t);
+                        setIdNumber('');
+                        setPrefix('');
+                        if (t === 'INDIVIDUAL') setHasVat(false);
+                      }}
+                      className={[
+                        'flex-1 rounded-lg border px-3 py-1.5 text-sm leading-snug transition-colors',
+                        contactType === t
+                          ? 'border-primary bg-primary text-primary-foreground'
+                          : 'border-border bg-background text-foreground hover:bg-accent',
+                      ].join(' ')}
+                    >
+                      {t === 'INDIVIDUAL' ? 'บุคคลธรรมดา' : 'นิติบุคคล'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* ── คำนำหน้า + ชื่อ (required) — คำนำหน้าเฉพาะบุคคลธรรมดา ── */}
+            <div className="space-y-1.5">
+              <Label htmlFor="ccm-name" className="leading-snug">
+                ชื่อ <span className="text-destructive">*</span>
+              </Label>
               <div className="flex gap-2">
-                {(['JURISTIC', 'INDIVIDUAL'] as const).map((t) => (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => {
-                      setContactType(t);
-                      setIdNumber('');
-                      setPrefix('');
-                      if (t === 'INDIVIDUAL') setHasVat(false);
-                    }}
-                    className={[
-                      'flex-1 rounded-lg border px-3 py-2 text-sm leading-snug transition-colors',
-                      contactType === t
-                        ? 'border-primary bg-primary text-primary-foreground'
-                        : 'border-border bg-background text-foreground hover:bg-accent',
-                    ].join(' ')}
+                {contactType === 'INDIVIDUAL' && (
+                  <select
+                    aria-label="คำนำหน้า"
+                    value={prefix}
+                    onChange={(e) => setPrefix(e.target.value)}
+                    className="h-9 w-28 shrink-0 rounded-md border border-input bg-background px-2 text-sm outline-hidden focus:ring-2 focus:ring-ring/30"
                   >
-                    {t === 'INDIVIDUAL' ? 'บุคคลธรรมดา' : 'นิติบุคคล'}
-                  </button>
-                ))}
+                    <option value="">คำนำหน้า</option>
+                    {(role === 'SUPPLIER' ? SUPPLIER_TITLE_OPTIONS : THAI_NAME_PREFIXES).map(
+                      (p) => (
+                        <option key={p} value={p}>
+                          {p}
+                        </option>
+                      ),
+                    )}
+                  </select>
+                )}
+                <Input
+                  id="ccm-name"
+                  ref={nameInputRef}
+                  className="flex-1"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder={
+                    role === 'SUPPLIER' && contactType === 'JURISTIC'
+                      ? 'ชื่อบริษัท'
+                      : 'ชื่อ-นามสกุล'
+                  }
+                  autoComplete="off"
+                />
               </div>
             </div>
-          )}
 
-          {/* ── คำนำหน้า + ชื่อ (required) — คำนำหน้าเฉพาะบุคคลธรรมดา ── */}
-          <div className="space-y-1.5">
-            <Label htmlFor="ccm-name" className="leading-snug">
-              ชื่อ <span className="text-destructive">*</span>
-            </Label>
-            <div className="flex gap-2">
-              {contactType === 'INDIVIDUAL' && (
-                <select
-                  aria-label="คำนำหน้า"
-                  value={prefix}
-                  onChange={(e) => setPrefix(e.target.value)}
-                  className="h-9 w-28 shrink-0 rounded-md border border-input bg-background px-2 text-sm outline-hidden focus:ring-2 focus:ring-ring/30"
-                >
-                  <option value="">คำนำหน้า</option>
-                  {(role === 'SUPPLIER' ? SUPPLIER_TITLE_OPTIONS : THAI_NAME_PREFIXES).map((p) => (
-                    <option key={p} value={p}>
-                      {p}
-                    </option>
-                  ))}
-                </select>
-              )}
-              <Input
-                id="ccm-name"
-                className="flex-1"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder={
-                  role === 'SUPPLIER' && contactType === 'JURISTIC'
-                    ? 'ชื่อบริษัท'
-                    : 'ชื่อ-นามสกุล'
-                }
-                autoComplete="off"
-                autoFocus
-              />
+            {/* ── เลขประจำตัว (optional) + เบอร์โทร (required) — แถวเดียวกันบนจอกว้าง ── */}
+            <div className="grid items-start gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="ccm-idnumber" className="leading-snug">
+                  {idLabel}
+                </Label>
+                <Input
+                  id="ccm-idnumber"
+                  value={idNumber}
+                  onChange={(e) => setIdNumber(e.target.value.replace(/\D/g, '').slice(0, 13))}
+                  placeholder="ตัวเลข 13 หลัก"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
+                />
+                {!idValid && (
+                  <p className="text-xs text-destructive leading-snug">
+                    ต้องเป็นตัวเลขครบ 13 หลัก (กรอกแล้ว {idNumber.length} หลัก)
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="ccm-phone" className="leading-snug">
+                  เบอร์โทร <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="ccm-phone"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="0812345678"
+                  inputMode="tel"
+                  autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
+                />
+                {role === 'CUSTOMER' && phone && !/^0[0-9]{9}$/.test(phone) && (
+                  <p className="text-xs text-destructive leading-snug">
+                    เบอร์โทรต้องเป็นเลข 10 หลัก ขึ้นต้นด้วย 0
+                  </p>
+                )}
+              </div>
             </div>
-          </div>
 
-          {/* ── เลขประจำตัว (optional) ── */}
-          <div className="space-y-1.5">
-            <Label htmlFor="ccm-idnumber" className="leading-snug">
-              {idLabel}
-            </Label>
-            <Input
-              id="ccm-idnumber"
-              value={idNumber}
-              onChange={(e) => setIdNumber(e.target.value.replace(/\D/g, '').slice(0, 13))}
-              placeholder="ตัวเลข 13 หลัก"
-              inputMode="numeric"
-              autoComplete="off"
-              data-1p-ignore
-              data-lpignore="true"
-            />
-            {!idValid && (
-              <p className="text-xs text-destructive leading-snug">
-                ต้องเป็นตัวเลขครบ 13 หลัก (กรอกแล้ว {idNumber.length} หลัก)
-              </p>
+            {/* ── ที่อยู่ (optional) — โครงสร้างเดียวกับหน้าลูกค้า/ผู้จัดจำหน่าย ── */}
+            <AddressForm value={address} onChange={setAddress} label="ที่อยู่ (ไม่บังคับ)" />
+          </DialogBody>
+
+          <DialogFooter className="px-6 py-3 border-t border-border shrink-0 items-center sm:justify-between">
+            {/* ── จด VAT — เฉพาะนิติบุคคล (mirror SupplierForm: บุคคลธรรมดาไม่มีจด VAT) ── */}
+            {role === 'SUPPLIER' && contactType === 'JURISTIC' ? (
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="ccm-hasvat"
+                  checked={hasVat}
+                  onCheckedChange={(v) => setHasVat(v === true)}
+                />
+                <Label htmlFor="ccm-hasvat" className="cursor-pointer leading-snug">
+                  จด VAT
+                </Label>
+              </div>
+            ) : (
+              <span aria-hidden />
             )}
-          </div>
-
-          {/* ── เบอร์โทร (required) ── */}
-          <div className="space-y-1.5">
-            <Label htmlFor="ccm-phone" className="leading-snug">
-              เบอร์โทร <span className="text-destructive">*</span>
-            </Label>
-            <Input
-              id="ccm-phone"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="0812345678"
-              inputMode="tel"
-              autoComplete="off"
-              data-1p-ignore
-              data-lpignore="true"
-            />
-            {role === 'CUSTOMER' && phone && !/^0[0-9]{9}$/.test(phone) && (
-              <p className="text-xs text-destructive leading-snug">
-                เบอร์โทรต้องเป็นเลข 10 หลัก ขึ้นต้นด้วย 0
-              </p>
-            )}
-          </div>
-
-          {/* ── ที่อยู่ (optional) — โครงสร้างเดียวกับหน้าลูกค้า/ผู้จัดจำหน่าย ── */}
-          <AddressForm value={address} onChange={setAddress} label="ที่อยู่ (ไม่บังคับ)" />
-
-          {/* ── จด VAT — เฉพาะนิติบุคคล (mirror SupplierForm: บุคคลธรรมดาไม่มีจด VAT) ── */}
-          {role === 'SUPPLIER' && contactType === 'JURISTIC' && (
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="ccm-hasvat"
-                checked={hasVat}
-                onCheckedChange={(v) => setHasVat(v === true)}
-              />
-              <Label htmlFor="ccm-hasvat" className="cursor-pointer leading-snug">
-                จด VAT
-              </Label>
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:gap-2.5">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                disabled={mutation.isPending}
+              >
+                ยกเลิก
+              </Button>
+              <Button type="submit" disabled={!canSubmit}>
+                {mutation.isPending ? 'กำลังสร้าง...' : 'สร้าง'}
+              </Button>
             </div>
-          )}
-
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={mutation.isPending}
-            >
-              ยกเลิก
-            </Button>
-            <Button type="submit" disabled={!canSubmit}>
-              {mutation.isPending ? 'กำลังสร้าง...' : 'สร้าง'}
-            </Button>
           </DialogFooter>
         </form>
       </DialogContent>

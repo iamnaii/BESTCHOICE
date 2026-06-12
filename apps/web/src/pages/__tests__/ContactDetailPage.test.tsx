@@ -85,8 +85,8 @@ describe('ContactDetailPage', () => {
     await waitFor(() => expect(screen.getAllByText('บ.แอปเปิล').length).toBeGreaterThan(0));
     // taxId ปรากฏครั้งเดียว (ใน hero) — ไม่ซ้ำในการ์ด role
     expect(screen.getAllByText('0105500000010')).toHaveLength(1);
-    // การ์ดผู้ขายยังลิงก์ไป workspace
-    const link = screen.getByRole('link', { name: /แก้ไข|เปิดข้อมูล|ผู้ขาย/ });
+    // การ์ดผู้จัดจำหน่ายยังลิงก์ไป /suppliers
+    const link = screen.getByRole('link', { name: /เปิดข้อมูลผู้จัดจำหน่าย/ });
     expect(link).toHaveAttribute('href', '/suppliers/s1');
     // ฟิลด์เฉพาะ role ยังอยู่ในการ์ด
     expect(screen.getByText('คุณเอ (02)')).toBeInTheDocument();
@@ -176,7 +176,7 @@ describe('ContactDetailPage', () => {
     });
     wrap('c1');
     await waitFor(() => expect(screen.getByText('คนเดียวดาย')).toBeInTheDocument());
-    expect(screen.getByText(/ยังไม่ผูกกับลูกค้า\/ผู้ขาย/)).toBeInTheDocument();
+    expect(screen.getByText(/ยังไม่ผูกกับลูกค้า\/ผู้จัดจำหน่าย/)).toBeInTheDocument();
     // เบอร์โผล่เป็น text ครั้งเดียว (Field ใน hero grid) — empty-state ไม่โชว์เบอร์ซ้ำอีกชุด
     expect(screen.getAllByText('0800000000')).toHaveLength(1);
   });

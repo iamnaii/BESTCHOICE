@@ -122,9 +122,11 @@ export default function CreateContactModal({
       }
 
       queryClient.invalidateQueries({ queryKey: contactKeys.all });
+      // Close before onCreated: parents may navigate on create (e.g. ContactsPage),
+      // which unmounts this modal — closing first keeps the open-state ordering sane.
+      onOpenChange(false);
       onCreated({ contactId: data.contactId, childId, name: returnedName, taxId });
       toast.success('สร้างผู้ติดต่อสำเร็จ');
-      onOpenChange(false);
     },
     onError: (err: unknown) => {
       const msg =

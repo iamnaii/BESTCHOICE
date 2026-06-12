@@ -36,7 +36,7 @@ import { customersApi, customerKeys, type CustomerSummary } from '@/lib/api/cust
 
 const ROLE_LABELS: Record<ContactRole, string> = {
   CUSTOMER: 'ลูกค้า',
-  SUPPLIER: 'ผู้ขาย',
+  SUPPLIER: 'ผู้จัดจำหน่าย',
   TRADE_IN_SELLER: 'คนขายมือสอง',
   FINANCE_COMPANY: 'ไฟแนนซ์',
 };
@@ -229,7 +229,7 @@ function SupplierTile({ supplier }: { supplier: ContactSupplierLink }) {
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between gap-2 space-y-0">
-        <CardTitle className="leading-snug">ผู้ขาย</CardTitle>
+        <CardTitle className="leading-snug">ผู้จัดจำหน่าย</CardTitle>
         <Badge variant="info" appearance="light" size="sm">
           {supplier.hasVat ? 'จด VAT' : 'ไม่จด VAT'}
         </Badge>
@@ -247,7 +247,7 @@ function SupplierTile({ supplier }: { supplier: ContactSupplierLink }) {
           />
           <Field label="ที่อยู่" value={displayAddress(supplier.address) || supplier.address} />
         </div>
-        <CardLink to={`/suppliers/${supplier.id}`} label="เปิดข้อมูลผู้ขาย / แก้ไข" />
+        <CardLink to={`/suppliers/${supplier.id}`} label="เปิดข้อมูลผู้จัดจำหน่าย / แก้ไข" />
       </CardContent>
     </Card>
   );
@@ -504,7 +504,7 @@ export default function ContactDetailPage() {
               <Card>
                 <CardContent className="pt-6">
                   <p className="text-sm text-muted-foreground leading-snug">
-                    ยังไม่ผูกกับลูกค้า/ผู้ขาย — เพิ่ม role ได้ที่หน้าลูกค้าหรือผู้ขาย
+                    ยังไม่ผูกกับลูกค้า/ผู้จัดจำหน่าย — เพิ่ม role ได้ที่หน้าลูกค้าหรือผู้จัดจำหน่าย
                   </p>
                 </CardContent>
               </Card>

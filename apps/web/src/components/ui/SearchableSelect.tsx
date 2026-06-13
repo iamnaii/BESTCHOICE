@@ -8,6 +8,13 @@ interface Props {
   placeholder?: string;
   disabled?: boolean;
   className?: string;
+  /**
+   * Which way the options menu opens. Defaults to 'down'.
+   * Use 'up' when the field sits near the bottom of a height-constrained,
+   * scrollable container (e.g. a modal body) where a downward menu would be
+   * clipped by the container's overflow.
+   */
+  openDirection?: 'down' | 'up';
 }
 
 /**
@@ -21,6 +28,7 @@ export default function SearchableSelect({
   placeholder = '-- เลือก --',
   disabled,
   className,
+  openDirection = 'down',
 }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -59,6 +67,9 @@ export default function SearchableSelect({
     setOpen(false);
   }
 
+  // Open above the input ('up') or below it ('down', default).
+  const menuPos = openDirection === 'up' ? 'bottom-full mb-1' : 'mt-1';
+
   return (
     <div ref={wrapperRef} className={cn('relative', className)}>
       <input
@@ -82,7 +93,12 @@ export default function SearchableSelect({
         autoComplete="off"
       />
       {open && filtered.length > 0 && (
-        <div className="absolute z-50 mt-1 w-full max-h-60 overflow-y-auto rounded-md border border-input bg-popover shadow-lg">
+        <div
+          className={cn(
+            'absolute z-50 w-full max-h-60 overflow-y-auto rounded-md border border-input bg-popover shadow-lg',
+            menuPos,
+          )}
+        >
           {filtered.map((opt) => (
             <button
               key={opt}
@@ -99,7 +115,12 @@ export default function SearchableSelect({
         </div>
       )}
       {open && filtered.length === 0 && (
-        <div className="absolute z-50 mt-1 w-full rounded-md border border-input bg-popover shadow-lg px-3 py-2 text-sm text-muted-foreground">
+        <div
+          className={cn(
+            'absolute z-50 w-full rounded-md border border-input bg-popover shadow-lg px-3 py-2 text-sm text-muted-foreground',
+            menuPos,
+          )}
+        >
           ไม่พบผลลัพธ์
         </div>
       )}

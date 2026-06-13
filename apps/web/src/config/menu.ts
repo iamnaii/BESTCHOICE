@@ -299,7 +299,7 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
       key: 'fm-fin-master',
       label: 'ข้อมูลหลัก',
       icon: BookUser,
-      zone: 'fin',
+      zone: 'settings',
       items: [
         { label: 'สมุดผู้ติดต่อ', path: '/settings#contacts', icon: BookUser },
       ],
@@ -395,7 +395,7 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
       key: 'acc-fin-master',
       label: 'ข้อมูลหลัก',
       icon: BookUser,
-      zone: 'fin',
+      zone: 'settings',
       items: [
         { label: 'สมุดผู้ติดต่อ', path: '/settings#contacts', icon: BookUser },
         { label: 'พนักงาน', path: '/settings#employees', icon: Users },
@@ -564,7 +564,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
       key: 'owner-fin-master',
       label: 'ข้อมูลหลัก',
       icon: BookUser,
-      zone: 'fin',
+      zone: 'settings',
       items: [
         { label: 'สมุดผู้ติดต่อ', path: '/settings#contacts', icon: BookUser },
         { label: 'พนักงาน', path: '/settings#employees', icon: Users },
@@ -937,7 +937,7 @@ const ZONE_CONFIG: Record<string, RoleZoneConfig> = {
   FINANCE_MANAGER: {
     zones: ['shop', 'fin'],
     defaultZone: 'fin',
-    showSettingsGear: false,
+    showSettingsGear: true,
     sections: FINANCE_MANAGER_CONFIG.sidebar,
     bottomNav: {
       shop: [
@@ -948,7 +948,10 @@ const ZONE_CONFIG: Record<string, RoleZoneConfig> = {
         { label: 'เพิ่มเติม', path: '#more', icon: MoreHorizontal, action: 'sidebar' },
       ],
       fin: FINANCE_MANAGER_CONFIG.bottomNav,
-      settings: [],
+      settings: [
+        { label: 'ผู้ติดต่อ', path: '/settings#contacts', icon: BookUser },
+        { label: 'เพิ่มเติม', path: '#more', icon: MoreHorizontal, action: 'sidebar' },
+      ],
     },
   },
   SALES: {
@@ -965,12 +968,16 @@ const ZONE_CONFIG: Record<string, RoleZoneConfig> = {
   ACCOUNTANT: {
     zones: ['fin'],
     defaultZone: 'fin',
-    showSettingsGear: false,
+    showSettingsGear: true,
     sections: ACCOUNTANT_CONFIG.sidebar,
     bottomNav: {
       shop: [],
       fin: ACCOUNTANT_CONFIG.bottomNav,
-      settings: [],
+      settings: [
+        { label: 'ผู้ติดต่อ', path: '/settings#contacts', icon: BookUser },
+        { label: 'พนักงาน', path: '/settings#employees', icon: Users },
+        { label: 'เพิ่มเติม', path: '#more', icon: MoreHorizontal, action: 'sidebar' },
+      ],
     },
   },
   VIEWER: {
@@ -1000,6 +1007,29 @@ export function getSidebarForRole(role: string, currentZone: Zone): MenuSection[
   }
   if (!config.zones.includes(currentZone)) return [];
   return config.sections.filter((s) => s.zone === currentZone);
+}
+
+/** Order zones are searched when resolving which zone owns a path. */
+const ZONE_LOOKUP_ORDER: Zone[] = ['shop', 'fin', 'settings'];
+
+/**
+ * Find which zone a path belongs to for a role. HASH-AWARE: a menu path like
+ * '/settings#contacts' matches the route pathname '/settings' (react-router's
+ * pathname never includes the hash). Returns null if the path isn't in any of
+ * the role's accessible zones (caller decides pass-through vs redirect).
+ */
+export function resolveZoneForPath(role: string, path: string): Zone | null {
+  const matches = (menuPath: string) => menuPath === path || menuPath.split('#')[0] === path;
+  for (const z of ZONE_LOOKUP_ORDER) {
+    const sections = getSidebarForRole(role, z);
+    const found = sections.some((s) =>
+      s.items.some(
+        (item) => matches(item.path) || (item.children ?? []).some((c) => matches(c.path)),
+      ),
+    );
+    if (found) return z;
+  }
+  return null;
 }
 
 /** Returns the RoleZoneConfig for a role (or undefined). Used by Sidebar to check pills/gear visibility. */

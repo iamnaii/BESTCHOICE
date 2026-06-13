@@ -147,10 +147,16 @@ function useZoneValidator() {
   return { role, zoneConfig, currentZone, setCurrentZone };
 }
 
+// path ที่มี hash (เช่น '/settings#contacts') ต้อง match ทั้ง pathname + hash
+function hashAwareActive(path: string, pathname: string, hash: string): boolean {
+  if (path.includes('#')) return path === pathname + hash;
+  return path === pathname || (path.length > 1 && pathname.startsWith(path + '/'));
+}
+
 /* ─── Collapsed Icon Rail (70px wide) ────────────── */
 function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
   const { user, logout } = useAuth();
-  const { pathname } = useLocation();
+  const { pathname, hash } = useLocation();
   const [openPopover, setOpenPopover] = useState<string | null>(null);
   const { role, zoneConfig, currentZone, setCurrentZone } = useZoneValidator();
 
@@ -160,23 +166,15 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
     (section: MenuSection): boolean =>
       section.items.some(
         (item) =>
-          item.path === pathname ||
-          (item.path.length > 1 && pathname.startsWith(item.path + '/')) ||
-          pathname === item.path ||
-          (item.children ?? []).some(
-            (child) =>
-              child.path === pathname ||
-              (child.path.length > 1 && pathname.startsWith(child.path + '/')),
-          ),
+          hashAwareActive(item.path, pathname, hash) ||
+          (item.children ?? []).some((child) => hashAwareActive(child.path, pathname, hash)),
       ),
-    [pathname],
+    [pathname, hash],
   );
 
   const isItemActive = useCallback(
-    (path: string): boolean =>
-      path === pathname ||
-      (path.length > 1 && (pathname.startsWith(path + '/') || pathname === path)),
-    [pathname],
+    (path: string): boolean => hashAwareActive(path, pathname, hash),
+    [pathname, hash],
   );
 
   const roleInfo = roleBadgeMap[role];
@@ -433,13 +431,15 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
 /* ─── Expanded Full Sidebar (264px wide) ─────────── */
 function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
   const { user, logout } = useAuth();
-  const { pathname } = useLocation();
+  const { pathname, hash } = useLocation();
   const { role, zoneConfig, currentZone, setCurrentZone } = useZoneValidator();
 
   const matchPath = useCallback(
     (path: string): boolean =>
-      path === pathname || (path.length > 1 && pathname.startsWith(path)),
-    [pathname],
+      path.includes('#')
+        ? path === pathname + hash
+        : path === pathname || (path.length > 1 && pathname.startsWith(path)),
+    [pathname, hash],
   );
 
   const sections = useRoleMenu(role, currentZone);
@@ -583,13 +583,15 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
 /* ─── Mobile Full Sidebar (inside Sheet) ─────────── */
 function MobileSidebarContent() {
   const { user, logout } = useAuth();
-  const { pathname } = useLocation();
+  const { pathname, hash } = useLocation();
   const { role, zoneConfig, currentZone, setCurrentZone } = useZoneValidator();
 
   const matchPath = useCallback(
     (path: string): boolean =>
-      path === pathname || (path.length > 1 && pathname.startsWith(path)),
-    [pathname],
+      path.includes('#')
+        ? path === pathname + hash
+        : path === pathname || (path.length > 1 && pathname.startsWith(path)),
+    [pathname, hash],
   );
 
   const sections = useRoleMenu(role, currentZone);

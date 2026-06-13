@@ -301,7 +301,7 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
       icon: BookUser,
       zone: 'fin',
       items: [
-        { label: 'สมุดผู้ติดต่อ', path: '/contacts', icon: BookUser },
+        { label: 'สมุดผู้ติดต่อ', path: '/settings#contacts', icon: BookUser },
       ],
     },
     {
@@ -397,8 +397,8 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
       icon: BookUser,
       zone: 'fin',
       items: [
-        { label: 'สมุดผู้ติดต่อ', path: '/contacts', icon: BookUser },
-        { label: 'พนักงาน', path: '/employees', icon: Users },
+        { label: 'สมุดผู้ติดต่อ', path: '/settings#contacts', icon: BookUser },
+        { label: 'พนักงาน', path: '/settings#employees', icon: Users },
       ],
     },
     {
@@ -566,8 +566,8 @@ const OWNER_CONFIG: RoleMenuConfig = {
       icon: BookUser,
       zone: 'fin',
       items: [
-        { label: 'สมุดผู้ติดต่อ', path: '/contacts', icon: BookUser },
-        { label: 'พนักงาน', path: '/employees', icon: Users },
+        { label: 'สมุดผู้ติดต่อ', path: '/settings#contacts', icon: BookUser },
+        { label: 'พนักงาน', path: '/settings#employees', icon: Users },
       ],
     },
     {

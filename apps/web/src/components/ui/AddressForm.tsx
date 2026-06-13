@@ -233,6 +233,7 @@ export default function AddressForm({ value, onChange, label }: Props) {
             onChange={handleProvinceChange}
             options={provinces}
             placeholder="-- เลือกจังหวัด --"
+            openDirection="up"
           />
         </div>
         <div>
@@ -243,6 +244,7 @@ export default function AddressForm({ value, onChange, label }: Props) {
             options={districts}
             placeholder="-- เลือกอำเภอ/เขต --"
             disabled={!selectedProvince}
+            openDirection="up"
           />
         </div>
         <div>
@@ -253,6 +255,7 @@ export default function AddressForm({ value, onChange, label }: Props) {
             options={subdistricts.map((s) => s.name)}
             placeholder="-- เลือกตำบล/แขวง --"
             disabled={!selectedDistrict}
+            openDirection="up"
           />
         </div>
         <div>

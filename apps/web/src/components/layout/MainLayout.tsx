@@ -15,15 +15,13 @@ import MobileBottomNav from './MobileBottomNav';
 import { SkipLink } from './SkipLink';
 import TestModeBanner from './TestModeBanner';
 import { InboundCallPopup } from '@/components/InboundCallPopup';
-import { getSidebarForRole, getZoneConfigForRole } from '@/config/menu';
-import type { Zone } from '@/config/menu';
+import { getZoneConfigForRole, resolveZoneForPath } from '@/config/menu';
 
 /* ── Sidebar widths — keep in sync with Sidebar.tsx ── */
 const SIDEBAR_EXPANDED_W = 264;  // px
 const SIDEBAR_COLLAPSED_W = 70;  // px
 
 /* ── Zone resolution helpers (Task 15) ────────────── */
-const ZONE_LOOKUP_ORDER: Zone[] = ['shop', 'fin', 'settings'];
 const ALL_ROLES = ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES', 'ACCOUNTANT'];
 
 /** Paths shared across every authenticated role — never treat as access-denied
@@ -31,26 +29,6 @@ const ALL_ROLES = ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES', 'ACCOU
  * the bug pattern where a role omits a universal route (e.g. `/`) and the
  * auto-zone resolver bogusly fires the "no permission" toast. */
 const COMMON_PATHS = new Set<string>(['/']);
-
-/**
- * Find which zone a path belongs to across the role's accessible zones.
- * Returns null if the path isn't in any of the role's zones (caller decides
- * whether to let it through as a "common route" or redirect).
- */
-function resolveZoneForPath(role: string, path: string): Zone | null {
-  for (const z of ZONE_LOOKUP_ORDER) {
-    const sections = getSidebarForRole(role, z);
-    const found = sections.some((s) =>
-      s.items.some(
-        (item) =>
-          item.path === path ||
-          (item.children ?? []).some((c) => c.path === path)
-      )
-    );
-    if (found) return z;
-  }
-  return null;
-}
 
 /* ── Mobile Sheet Sidebar ─────────────────────────── */
 function MobileSidebar() {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getSidebarForRole, getZoneConfigForRole } from './menu';
+import { getSidebarForRole, getZoneConfigForRole, resolveZoneForPath } from './menu';
 
 describe('getSidebarForRole — empty ZONE_CONFIG fallback', () => {
   it('returns empty array for unknown role', () => {
@@ -163,5 +163,65 @@ describe('VIEWER role (Owner Q4 2026-05-17)', () => {
       p === '/shop/accounting' ||
       p === '/financial-audit';
     expect(paths.every(allowed)).toBe(true);
+  });
+});
+
+describe('Master data moved into settings zone (Option B, 2026-06-13)', () => {
+  it('ข้อมูลหลัก section lives in the settings zone for OWNER/FM/ACC', () => {
+    expect(getSidebarForRole('OWNER', 'settings').map((s) => s.key)).toContain('owner-fin-master');
+    expect(getSidebarForRole('FINANCE_MANAGER', 'settings').map((s) => s.key)).toContain(
+      'fm-fin-master',
+    );
+    expect(getSidebarForRole('ACCOUNTANT', 'settings').map((s) => s.key)).toContain('acc-fin-master');
+  });
+
+  it('ข้อมูลหลัก is no longer in the fin zone', () => {
+    expect(getSidebarForRole('OWNER', 'fin').map((s) => s.key)).not.toContain('owner-fin-master');
+    expect(getSidebarForRole('FINANCE_MANAGER', 'fin').map((s) => s.key)).not.toContain(
+      'fm-fin-master',
+    );
+    expect(getSidebarForRole('ACCOUNTANT', 'fin').map((s) => s.key)).not.toContain('acc-fin-master');
+  });
+
+  it('FM/ACC now have settings-zone access (gear)', () => {
+    expect(getZoneConfigForRole('FINANCE_MANAGER')?.showSettingsGear).toBe(true);
+    expect(getZoneConfigForRole('ACCOUNTANT')?.showSettingsGear).toBe(true);
+  });
+
+  it('FM sees only ผู้ติดต่อ; ACC sees ผู้ติดต่อ + พนักงาน in settings zone', () => {
+    const fmPaths = getSidebarForRole('FINANCE_MANAGER', 'settings').flatMap((s) =>
+      s.items.map((i) => i.path),
+    );
+    expect(fmPaths).toContain('/settings#contacts');
+    expect(fmPaths).not.toContain('/settings#employees');
+
+    const accPaths = getSidebarForRole('ACCOUNTANT', 'settings').flatMap((s) =>
+      s.items.map((i) => i.path),
+    );
+    expect(accPaths).toContain('/settings#contacts');
+    expect(accPaths).toContain('/settings#employees');
+  });
+});
+
+describe('resolveZoneForPath — hash-aware (regression: FM/ACC must not bounce off /settings)', () => {
+  it('/settings resolves to the settings zone for OWNER/FM/ACC', () => {
+    expect(resolveZoneForPath('OWNER', '/settings')).toBe('settings');
+    expect(resolveZoneForPath('FINANCE_MANAGER', '/settings')).toBe('settings');
+    expect(resolveZoneForPath('ACCOUNTANT', '/settings')).toBe('settings');
+  });
+
+  it('non-hash fin-only paths still resolve to fin', () => {
+    // /finance-portfolio is fin-only (the fin landing); proves the hash branch
+    // didn't break plain-path resolution. (/payments lives in BOTH shop & fin
+    // for FM, and shop wins the lookup order — that's pre-existing behavior.)
+    expect(resolveZoneForPath('FINANCE_MANAGER', '/finance-portfolio')).toBe('fin');
+  });
+
+  it('SALES (no settings gear) does not resolve /settings', () => {
+    expect(resolveZoneForPath('SALES', '/settings')).toBeNull();
+  });
+
+  it('a path not in any menu (e.g. standalone /contacts) returns null (pass-through)', () => {
+    expect(resolveZoneForPath('OWNER', '/contacts')).toBeNull();
   });
 });

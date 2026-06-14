@@ -132,6 +132,24 @@ export default function UserDetailPage() {
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
+  function handleSave() {
+    if (!personal.name.trim()) {
+      setTab('personal');
+      return toast.error('กรุณาระบุชื่อ-นามสกุล');
+    }
+    if (isNew) {
+      if (!account.email.trim()) {
+        setTab('account');
+        return toast.error('กรุณาระบุอีเมล');
+      }
+      if (!account.password || account.password.length < 6) {
+        setTab('account');
+        return toast.error('กรุณาระบุรหัสผ่านอย่างน้อย 6 ตัวอักษร');
+      }
+    }
+    save.mutate();
+  }
+
   const u = detail.data;
   const titleName = isNew ? 'เพิ่มผู้ใช้ใหม่' : u?.name ?? '';
 
@@ -205,7 +223,7 @@ export default function UserDetailPage() {
                     <span className="block text-sm font-medium text-foreground">สถานะการใช้งาน</span>
                     <span className="block text-[11px] text-muted-foreground">ปิดใช้งาน = ล็อกอินไม่ได้ + เพิกถอน session ทันที</span>
                   </span>
-                  <input type="checkbox" className="size-5 accent-emerald-600" checked={account.isActive}
+                  <input type="checkbox" className="size-5 accent-primary" checked={account.isActive}
                     onChange={(e) => setAccount({ ...account, isActive: e.target.checked })} />
                 </label>
               )}
@@ -247,7 +265,7 @@ export default function UserDetailPage() {
                   <div><label className={labelClass}>เลขบัญชี</label>
                     <input className={inputClass} value={hr.bankAccountNo} onChange={(e) => setHr({ ...hr, bankAccountNo: e.target.value })} /></div>
                   <label className="md:col-span-2 flex items-center gap-2 text-sm rounded-lg border border-border p-3">
-                    <input type="checkbox" className="size-4 accent-emerald-600" checked={hr.ssoEligible} onChange={(e) => setHr({ ...hr, ssoEligible: e.target.checked })} />
+                    <input type="checkbox" className="size-4 accent-primary" checked={hr.ssoEligible} onChange={(e) => setHr({ ...hr, ssoEligible: e.target.checked })} />
                     เข้าประกันสังคม (หัก 5% / นายจ้างสมทบ 5%)
                   </label>
                   {!isNew && detail.data?.employeeProfile && (
@@ -268,7 +286,7 @@ export default function UserDetailPage() {
       <div className="fixed bottom-0 inset-x-0 md:left-[264px] bg-background/95 backdrop-blur border-t border-border px-6 py-3 flex items-center justify-end gap-3 z-40">
         <span className="text-xs text-muted-foreground mr-auto hidden sm:block">บันทึกครั้งเดียว → อัปเดต บัญชี + บุคคล + HR พร้อมกัน</span>
         <Button variant="outline" onClick={() => navigate('/users')}>ยกเลิก</Button>
-        <Button disabled={save.isPending} onClick={() => save.mutate()}>{save.isPending ? 'กำลังบันทึก...' : 'บันทึก'}</Button>
+        <Button disabled={save.isPending} onClick={handleSave}>{save.isPending ? 'กำลังบันทึก...' : 'บันทึก'}</Button>
       </div>
 
       <ConfirmDialog

@@ -5,7 +5,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import PageHeader from '@/components/ui/PageHeader';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ContactsTab } from './tabs/ContactsTab';
-import { EmployeesTab } from './tabs/EmployeesTab';
 import { CompanyTab } from './tabs/CompanyTab';
 import { VatTab } from './tabs/VatTab';
 import { PeriodsTab } from './tabs/PeriodsTab';
@@ -29,7 +28,6 @@ interface TabDef {
 // master-data ขึ้นก่อน แล้วตามด้วย config (OWNER เท่านั้น)
 const TABS: TabDef[] = [
   { id: 'contacts', label: 'ผู้ติดต่อ', roles: ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'], render: () => <ContactsTab /> },
-  { id: 'employees', label: 'พนักงาน', roles: ['OWNER', 'ACCOUNTANT'], render: () => <EmployeesTab /> },
   { id: 'company', label: 'บริษัท', roles: ['OWNER'], render: () => <CompanyTab /> },
   { id: 'vat', label: 'VAT', roles: ['OWNER'], render: () => <VatTab /> },
   { id: 'periods', label: 'งวดบัญชี', roles: ['OWNER'], render: () => <PeriodsTab /> },

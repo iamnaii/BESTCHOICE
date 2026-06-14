@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -9,22 +10,19 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Mail, Link2, Users, UserCheck, Shield } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
-import { User, InviteToken, emptyForm } from './types';
+import { User, InviteToken } from './types';
 import { UserTable, InviteTable } from './components/UserTable';
-import UserForm from './components/UserForm';
 import InviteModal from './components/InviteModal';
 
 export default function UsersPage() {
   useDocumentTitle('ผู้ใช้งาน');
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
   const { copy } = useCopyToClipboard();
   const isOwner = currentUser?.role === 'OWNER';
 
   const [activeTab, setActiveTab] = useState<'users' | 'invites'>('users');
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [form, setForm] = useState(emptyForm);
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean;
     message: string;
@@ -53,19 +51,6 @@ export default function UsersPage() {
   const { data: branches = [] } = useQuery<{ id: string; name: string }[]>({
     queryKey: ['branches'],
     queryFn: async () => (await api.get('/branches')).data,
-  });
-
-  const saveMutation = useMutation({
-    mutationFn: async (data: Record<string, unknown>) => {
-      if (editingUser) return api.patch(`/users/${editingUser.id}`, data);
-      return api.post('/users', data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-      toast.success(editingUser ? 'แก้ไขผู้ใช้สำเร็จ' : 'เพิ่มผู้ใช้สำเร็จ');
-      closeModal();
-    },
-    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   const toggleActiveMutation = useMutation({
@@ -135,75 +120,9 @@ export default function UsersPage() {
     toast.success('คัดลอกลิงก์แล้ว');
   };
 
-  const openCreate = () => {
-    setEditingUser(null);
-    setForm(emptyForm);
-    setIsModalOpen(true);
-  };
+  const openCreate = () => navigate('/users/new');
 
-  const openEdit = (u: User) => {
-    setEditingUser(u);
-    setForm({
-      email: u.email,
-      password: '',
-      name: u.name,
-      role: u.role,
-      branchId: u.branchId || '',
-      employeeId: u.employeeId || '',
-      nickname: u.nickname || '',
-      phone: u.phone || '',
-      lineId: u.lineId || '',
-      address: u.address || '',
-      avatarUrl: u.avatarUrl || '',
-      startDate: u.startDate ? u.startDate.slice(0, 10) : '',
-      nationalId: u.nationalId || '',
-      birthDate: u.birthDate ? u.birthDate.slice(0, 10) : '',
-    });
-    setIsModalOpen(true);
-  };
-
-  const closeModal = () => {
-    setIsModalOpen(false);
-    setEditingUser(null);
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const data: Record<string, unknown> = {
-      name: form.name,
-      role: form.role,
-      branchId: form.branchId || null,
-    };
-    if (!editingUser) {
-      data.email = form.email;
-      data.password = form.password;
-    }
-    if (form.password) data.password = form.password;
-    if (editingUser) {
-      // Send null for empty fields so backend clears them (empty string fails DTO validation)
-      data.employeeId = form.employeeId || null;
-      data.nickname = form.nickname || null;
-      data.phone = form.phone || null;
-      data.lineId = form.lineId || null;
-      data.address = form.address || null;
-      data.avatarUrl = form.avatarUrl || null;
-      data.startDate = form.startDate || null;
-      data.nationalId = form.nationalId || null;
-      data.birthDate = form.birthDate || null;
-    } else {
-      // Create mode: only send non-empty values
-      if (form.employeeId) data.employeeId = form.employeeId;
-      if (form.nickname) data.nickname = form.nickname;
-      if (form.phone) data.phone = form.phone;
-      if (form.lineId) data.lineId = form.lineId;
-      if (form.address) data.address = form.address;
-      if (form.avatarUrl) data.avatarUrl = form.avatarUrl;
-      if (form.startDate) data.startDate = form.startDate;
-      if (form.nationalId) data.nationalId = form.nationalId;
-      if (form.birthDate) data.birthDate = form.birthDate;
-    }
-    saveMutation.mutate(data);
-  };
+  const openEdit = (u: User) => navigate(`/users/${u.id}`);
 
   const handleToggleActive = (id: string, isActive: boolean, name: string) => {
     setConfirmDialog({
@@ -303,7 +222,7 @@ export default function UsersPage() {
 
       {/* User Stats Summary */}
       {activeTab === 'users' && users.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
           <Card className="rounded-xl border border-border/50 shadow-sm overflow-hidden hover:shadow-card-hover transition-all">
             <div className="flex h-full">
               <div className="w-1 shrink-0 bg-primary" />
@@ -366,6 +285,17 @@ export default function UsersPage() {
               </Card>
             );
           })()}
+          <Card className="rounded-xl border border-border/50 shadow-sm overflow-hidden">
+            <div className="flex h-full">
+              <div className="w-1 shrink-0 bg-sky-400" />
+              <CardContent className="p-5 flex-1">
+                <div className="text-2xl font-bold tabular-nums text-foreground">
+                  {users.filter((u) => u.employeeProfile).length}
+                </div>
+                <div className="text-xs text-muted-foreground">พนักงาน (มีโปรไฟล์ HR)</div>
+              </CardContent>
+            </div>
+          </Card>
         </div>
       )}
 
@@ -402,19 +332,6 @@ export default function UsersPage() {
           onClose={() => setIsInviteModalOpen(false)}
           onSubmit={handleInviteSubmit}
           onCopyUrl={copyToClipboard}
-        />
-      )}
-
-      {/* User Create/Edit Modal */}
-      {isModalOpen && (
-        <UserForm
-          editingUser={editingUser}
-          form={form}
-          setForm={setForm}
-          isSaving={saveMutation.isPending}
-          branches={branches}
-          onClose={closeModal}
-          onSubmit={handleSubmit}
         />
       )}
 

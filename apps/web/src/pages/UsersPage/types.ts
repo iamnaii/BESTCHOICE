@@ -17,6 +17,12 @@ export interface User {
   lastLoginAt: string | null;
   createdAt: string;
   branch: { id: string; name: string } | null;
+  employeeProfile: {
+    id: string;
+    position: string | null;
+    employmentType: 'MONTHLY' | 'DAILY' | 'CONTRACT';
+    resignedDate: string | null;
+  } | null;
 }
 
 // Re-exports — canonical source is `@/constants/user-roles.ts`. Kept here as

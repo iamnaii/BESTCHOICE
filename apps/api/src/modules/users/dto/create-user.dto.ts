@@ -1,4 +1,6 @@
-import { IsEmail, IsString, MinLength, IsOptional, IsIn, Matches, MaxLength, IsDateString } from 'class-validator';
+import { IsEmail, IsString, MinLength, IsOptional, IsIn, Matches, MaxLength, IsDateString, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
+import { EmployeeProfileInputDto } from './employee-profile-input.dto';
 
 export class CreateUserDto {
   @IsEmail()
@@ -58,4 +60,9 @@ export class CreateUserDto {
   @IsOptional()
   @IsDateString()
   birthDate?: string;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => EmployeeProfileInputDto)
+  employee?: EmployeeProfileInputDto;
 }

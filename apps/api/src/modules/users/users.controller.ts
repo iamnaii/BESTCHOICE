@@ -1,8 +1,10 @@
-import { Controller, Get, Post, Put, Delete, Patch, Param, Body, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Patch, Param, Body, Query, UseGuards, Req } from '@nestjs/common';
+import type { Request } from 'express';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 import { UpdateExtensionDto } from './dto/update-extension.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -16,6 +18,14 @@ import { SaveSignatureDto } from './dto/save-signature.dto';
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class UsersController {
   constructor(private usersService: UsersService) {}
+
+  private actorOf(req: Request & { user?: { id: string } }) {
+    return {
+      userId: req.user?.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'] as string | undefined,
+    };
+  }
 
   // ─── Saved Signature (any authenticated user) ──────
   @Get('me/signature')
@@ -48,8 +58,8 @@ export class UsersController {
 
   @Post()
   @Roles('OWNER')
-  create(@Body() dto: CreateUserDto) {
-    return this.usersService.create(dto);
+  create(@Body() dto: CreateUserDto, @Req() req: Request & { user?: { id: string } }) {
+    return this.usersService.create(dto, this.actorOf(req));
   }
 
   @Patch('me/extension')
@@ -79,6 +89,22 @@ export class UsersController {
   @Roles('OWNER')
   listReverseOverrides() {
     return this.usersService.listReverseOverrides();
+  }
+
+  @Get(':id')
+  @Roles('OWNER')
+  findOne(@Param('id') id: string) {
+    return this.usersService.findOneFull(id);
+  }
+
+  @Put(':id/profile')
+  @Roles('OWNER')
+  updateFull(
+    @Param('id') id: string,
+    @Body() dto: UpdateUserProfileDto,
+    @Req() req: Request & { user?: { id: string } },
+  ) {
+    return this.usersService.updateFull(id, dto, this.actorOf(req));
   }
 
   @Patch(':id')

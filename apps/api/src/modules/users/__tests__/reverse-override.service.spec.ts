@@ -2,6 +2,9 @@ import { NotFoundException } from '@nestjs/common';
 import { UsersService } from '../users.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
+import { EmployeesService } from '../../employees/employees.service';
+
+const stubEmployees = { upsertProfileTx: jest.fn() } as unknown as EmployeesService;
 
 /**
  * InternalControlActionBar — covers the new per-user override endpoint.
@@ -22,6 +25,7 @@ describe('UsersService.setReverseOverride', () => {
     service = new UsersService(
       prisma as unknown as PrismaService,
       audit as unknown as AuditService,
+      stubEmployees,
     );
   });
 
@@ -106,6 +110,7 @@ describe('UsersService.listReverseOverrides', () => {
     service = new UsersService(
       prisma as unknown as PrismaService,
       { log: jest.fn() } as unknown as AuditService,
+      stubEmployees,
     );
   });
 

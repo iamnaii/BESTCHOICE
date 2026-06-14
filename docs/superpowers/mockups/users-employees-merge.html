@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mockup — รวมหน้า ผู้ใช้ + พนักงาน</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: { sans: ['"IBM Plex Sans Thai"', 'system-ui', 'sans-serif'] },
+        colors: {
+          primary: { DEFAULT: '#059669', fg: '#ffffff', soft: '#ecfdf5' },
+          ink: '#18181b',
+          muted: '#71717a',
+          line: '#e4e4e7',
+          card: '#ffffff',
+          bg: '#fafafa',
+          warn: '#d97706',
+          danger: '#dc2626',
+        },
+      },
+    },
+  };
+</script>
+<style>
+  body { font-family: '"IBM Plex Sans Thai"', system-ui, sans-serif; }
+  .lh { line-height: 1.45; }
+  .tabbtn[data-active="true"] { color:#059669; border-color:#059669; }
+  .tabbtn[data-active="false"] { color:#71717a; border-color:transparent; }
+  .dtab[data-active="true"] { background:#ecfdf5; color:#047857; }
+  .dtab[data-active="false"] { background:transparent; color:#52525b; }
+  input,select,textarea { font-family: inherit; }
+</style>
+</head>
+<body class="bg-bg text-ink lh">
+
+<div class="flex min-h-screen">
+  <!-- Sidebar -->
+  <aside class="w-60 shrink-0 bg-white border-r border-line hidden md:flex flex-col">
+    <div class="px-5 py-4 border-b border-line">
+      <div class="font-bold text-lg tracking-tight">BEST<span class="text-primary">CHOICE</span></div>
+      <div class="text-[11px] text-muted">ระบบผ่อนชำระ</div>
+    </div>
+    <nav class="p-3 text-sm flex flex-col gap-0.5">
+      <span class="px-3 py-2 rounded-lg text-muted hover:bg-zinc-50">แดชบอร์ด</span>
+      <span class="px-3 py-2 rounded-lg text-muted hover:bg-zinc-50">ลูกค้า</span>
+      <span class="px-3 py-2 rounded-lg text-muted hover:bg-zinc-50">สัญญา</span>
+      <span class="px-3 py-2 rounded-lg bg-primary-soft text-primary font-semibold flex items-center gap-2">
+        <span class="size-1.5 rounded-full bg-primary"></span> จัดการผู้ใช้
+      </span>
+      <span class="px-3 py-2 rounded-lg text-muted hover:bg-zinc-50">ตั้งค่าระบบ
+        <span class="block text-[10px] text-muted/70 pl-0">— ไม่มีแท็บ "พนักงาน" แล้ว</span>
+      </span>
+    </nav>
+    <div class="mt-auto p-4 text-[11px] text-muted border-t border-line">
+      เข้าสู่ระบบในชื่อ<br><b class="text-ink">เอกนรินทร์ (OWNER)</b>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="flex-1 min-w-0">
+    <!-- top switcher (mockup control) -->
+    <div class="bg-amber-50 border-b border-amber-200 px-6 py-2 text-[12px] text-amber-800 flex items-center gap-3 flex-wrap">
+      <b>MOCKUP</b>
+      <span>สลับมุมมอง:</span>
+      <button onclick="show('list')" id="sw-list" class="px-3 py-1 rounded-md border border-amber-300 bg-white font-medium">รายการ /users</button>
+      <button onclick="show('detail')" id="sw-detail" class="px-3 py-1 rounded-md border border-amber-300 bg-white font-medium">รายละเอียด /users/:id</button>
+      <span class="ml-auto opacity-70">นี่คือภาพจำลอง ปุ่ม/ฟอร์มยังไม่ทำงานจริง</span>
+    </div>
+
+    <!-- ============ LIST VIEW ============ -->
+    <section id="view-list" class="p-6 max-w-6xl mx-auto">
+      <!-- PageHeader -->
+      <div class="flex items-start justify-between gap-4 mb-5">
+        <div>
+          <h1 class="text-2xl font-bold tracking-tight">จัดการผู้ใช้</h1>
+          <p class="text-sm text-muted">ทั้งหมด 8 คน · พนักงาน 6 คน</p>
+        </div>
+        <div class="flex gap-2">
+          <button class="px-4 py-2 rounded-lg border border-primary text-primary text-sm font-medium hover:bg-primary-soft flex items-center gap-1.5">
+            ✉ เชิญผู้ใช้ใหม่
+          </button>
+          <button onclick="show('detail')" class="px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:opacity-90">+ เพิ่มผู้ใช้</button>
+        </div>
+      </div>
+
+      <!-- Stat cards -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
+        <div class="bg-card rounded-xl border border-line shadow-sm overflow-hidden flex">
+          <div class="w-1 bg-primary"></div>
+          <div class="p-4">
+            <div class="text-2xl font-bold tabular-nums">8</div>
+            <div class="text-xs text-muted">ผู้ใช้ทั้งหมด</div>
+          </div>
+        </div>
+        <div class="bg-card rounded-xl border border-line shadow-sm overflow-hidden flex">
+          <div class="w-1 bg-emerald-400"></div>
+          <div class="p-4">
+            <div class="text-2xl font-bold tabular-nums">7</div>
+            <div class="text-xs text-muted">ใช้งานอยู่</div>
+          </div>
+        </div>
+        <div class="bg-card rounded-xl border border-line shadow-sm overflow-hidden flex">
+          <div class="w-1 bg-sky-400"></div>
+          <div class="p-4">
+            <div class="text-2xl font-bold tabular-nums">6</div>
+            <div class="text-xs text-muted">พนักงาน (มีโปรไฟล์ HR)</div>
+          </div>
+        </div>
+        <div class="bg-card rounded-xl border border-line shadow-sm overflow-hidden flex">
+          <div class="w-1 bg-warn"></div>
+          <div class="p-4">
+            <div class="text-2xl font-bold tabular-nums">2</div>
+            <div class="text-xs text-muted">เจ้าของร้าน</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tabs -->
+      <div class="flex gap-1 mb-4 border-b border-line">
+        <button class="tabbtn px-4 py-2 text-sm font-medium border-b-2" data-active="true">ผู้ใช้ (8)</button>
+        <button class="tabbtn px-4 py-2 text-sm font-medium border-b-2 flex items-center gap-1.5" data-active="false">🔗 คำเชิญ (1)</button>
+      </div>
+
+      <!-- search -->
+      <input class="w-full max-w-sm mb-3 px-3 py-2 rounded-lg border border-line text-sm" placeholder="ค้นหา ชื่อ / อีเมล / รหัสพนักงาน" />
+
+      <!-- Table -->
+      <div class="bg-card rounded-xl border border-line shadow-sm overflow-hidden">
+        <table class="w-full text-sm">
+          <thead class="bg-zinc-50 text-muted text-xs">
+            <tr class="text-left">
+              <th class="px-4 py-3 font-medium">ชื่อ</th>
+              <th class="px-4 py-3 font-medium">รหัสพนง.</th>
+              <th class="px-4 py-3 font-medium">บทบาท (สิทธิ์)</th>
+              <th class="px-4 py-3 font-medium">ตำแหน่งงาน</th>
+              <th class="px-4 py-3 font-medium">สาขา</th>
+              <th class="px-4 py-3 font-medium">พนักงาน</th>
+              <th class="px-4 py-3 font-medium">สถานะ</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-line">
+            <!-- row: full employee -->
+            <tr class="hover:bg-primary-soft/40 cursor-pointer" onclick="show('detail')">
+              <td class="px-4 py-3">
+                <div class="flex items-center gap-3">
+                  <div class="size-9 rounded-full bg-primary-soft text-primary grid place-items-center font-semibold">ส</div>
+                  <div>
+                    <div class="font-medium">สมชาย ใจดี <span class="text-xs text-muted">(นุ๊ก)</span></div>
+                    <div class="text-xs text-muted">somchai@bestchoice.com</div>
+                  </div>
+                </div>
+              </td>
+              <td class="px-4 py-3 tabular-nums">EMP-001</td>
+              <td class="px-4 py-3"><span class="px-2 py-0.5 rounded-md text-xs bg-sky-50 text-sky-700">พนักงานขาย</span></td>
+              <td class="px-4 py-3">พนักงานขาย</td>
+              <td class="px-4 py-3">ลาดพร้าว</td>
+              <td class="px-4 py-3"><span class="px-2 py-0.5 rounded-md text-xs bg-primary-soft text-primary">ทำงาน</span></td>
+              <td class="px-4 py-3"><span class="px-2 py-0.5 rounded-md text-xs bg-emerald-50 text-emerald-700">ใช้งาน</span></td>
+            </tr>
+            <!-- row: owner, not on payroll -->
+            <tr class="hover:bg-primary-soft/40 cursor-pointer" onclick="show('detail')">
+              <td class="px-4 py-3">
+                <div class="flex items-center gap-3">
+                  <div class="size-9 rounded-full bg-amber-50 text-amber-700 grid place-items-center font-semibold">อ</div>
+                  <div>
+                    <div class="font-medium">เอกนรินทร์ อาคะนาริน</div>
+                    <div class="text-xs text-muted">owner@bestchoice.com</div>
+                  </div>
+                </div>
+              </td>
+              <td class="px-4 py-3 text-muted">—</td>
+              <td class="px-4 py-3"><span class="px-2 py-0.5 rounded-md text-xs bg-amber-50 text-amber-700">เจ้าของร้าน</span></td>
+              <td class="px-4 py-3 text-muted">—</td>
+              <td class="px-4 py-3 text-muted">ทุกสาขา</td>
+              <td class="px-4 py-3"><span class="text-xs text-muted">ไม่ใช่พนักงาน</span></td>
+              <td class="px-4 py-3"><span class="px-2 py-0.5 rounded-md text-xs bg-emerald-50 text-emerald-700">ใช้งาน</span></td>
+            </tr>
+            <!-- row: resigned -->
+            <tr class="hover:bg-primary-soft/40 cursor-pointer opacity-80" onclick="show('detail')">
+              <td class="px-4 py-3">
+                <div class="flex items-center gap-3">
+                  <div class="size-9 rounded-full bg-zinc-100 text-zinc-500 grid place-items-center font-semibold">ม</div>
+                  <div>
+                    <div class="font-medium">มานี รักเรียน <span class="text-xs text-muted">(หมวย)</span></div>
+                    <div class="text-xs text-muted">manee@bestchoice.com</div>
+                  </div>
+                </div>
+              </td>
+              <td class="px-4 py-3 tabular-nums">EMP-004</td>
+              <td class="px-4 py-3"><span class="px-2 py-0.5 rounded-md text-xs bg-sky-50 text-sky-700">พนักงานขาย</span></td>
+              <td class="px-4 py-3">แคชเชียร์</td>
+              <td class="px-4 py-3">บางกะปิ</td>
+              <td class="px-4 py-3"><span class="px-2 py-0.5 rounded-md text-xs bg-zinc-100 text-zinc-600">ลาออก</span></td>
+              <td class="px-4 py-3"><span class="px-2 py-0.5 rounded-md text-xs bg-zinc-100 text-zinc-600">ปิด</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="text-xs text-muted mt-3">คลิกแถวใดก็ได้เพื่อดูหน้ารายละเอียด → <button class="text-primary underline" onclick="show('detail')">ดูตัวอย่าง</button></p>
+    </section>
+
+    <!-- ============ DETAIL VIEW ============ -->
+    <section id="view-detail" class="p-6 max-w-4xl mx-auto hidden">
+      <!-- back + header -->
+      <button onclick="show('list')" class="text-sm text-muted hover:text-ink flex items-center gap-1.5 mb-4">‹ กลับไปรายการผู้ใช้</button>
+
+      <div class="flex items-center gap-4 mb-5">
+        <div class="size-14 rounded-full bg-primary-soft text-primary grid place-items-center text-xl font-bold">ส</div>
+        <div class="flex-1">
+          <h1 class="text-xl font-bold tracking-tight">สมชาย ใจดี <span class="text-sm font-normal text-muted">(นุ๊ก)</span></h1>
+          <div class="text-sm text-muted flex items-center gap-2 flex-wrap">
+            <span>EMP-001</span><span class="text-line">·</span>
+            <span class="px-2 py-0.5 rounded-md text-xs bg-sky-50 text-sky-700">พนักงานขาย</span>
+            <span class="px-2 py-0.5 rounded-md text-xs bg-emerald-50 text-emerald-700">ใช้งาน</span>
+            <span class="px-2 py-0.5 rounded-md text-xs bg-primary-soft text-primary">เป็นพนักงาน</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- inner tabs -->
+      <div class="flex gap-1.5 p-1 bg-zinc-100 rounded-lg w-fit mb-5 text-sm font-medium">
+        <button class="dtab px-4 py-1.5 rounded-md" data-active="true"  onclick="dshow('acct')">บัญชี / สิทธิ์</button>
+        <button class="dtab px-4 py-1.5 rounded-md" data-active="false" onclick="dshow('person')">ข้อมูลบุคคล</button>
+        <button class="dtab px-4 py-1.5 rounded-md" data-active="false" onclick="dshow('hr')">HR / เงินเดือน</button>
+      </div>
+
+      <div class="bg-card rounded-xl border border-line shadow-sm p-6 mb-24">
+        <!-- ACCOUNT TAB -->
+        <div id="d-acct" class="grid md:grid-cols-2 gap-5">
+          <div>
+            <label class="block text-xs text-muted mb-1">อีเมล (เข้าสู่ระบบ)</label>
+            <input value="somchai@bestchoice.com" disabled class="w-full px-3 py-2 rounded-lg border border-line bg-zinc-50 text-sm text-muted" />
+            <p class="text-[11px] text-muted mt-1">แก้ไม่ได้หลังสร้างบัญชี</p>
+          </div>
+          <div>
+            <label class="block text-xs text-muted mb-1">รหัสผ่านใหม่ (เว้นว่างถ้าไม่เปลี่ยน)</label>
+            <input type="password" placeholder="••••••" class="w-full px-3 py-2 rounded-lg border border-line text-sm" />
+          </div>
+          <div>
+            <label class="block text-xs text-muted mb-1">บทบาท (สิทธิ์ระบบ) *</label>
+            <select class="w-full px-3 py-2 rounded-lg border border-line text-sm bg-white">
+              <option>พนักงานขาย</option><option>เจ้าของร้าน</option><option>ผจก.สาขา</option>
+              <option>ผจก.การเงิน</option><option>ฝ่ายบัญชี</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs text-muted mb-1">สาขา</label>
+            <select class="w-full px-3 py-2 rounded-lg border border-line text-sm bg-white">
+              <option>ลาดพร้าว</option><option>บางกะปิ</option><option>ไม่ระบุ (ทุกสาขา)</option>
+            </select>
+          </div>
+          <div class="md:col-span-2 flex items-center justify-between rounded-lg border border-line p-3">
+            <div>
+              <div class="text-sm font-medium">สถานะการใช้งาน</div>
+              <div class="text-[11px] text-muted">ปิดใช้งาน = ล็อกอินไม่ได้ + เพิกถอน session ทันที</div>
+            </div>
+            <button class="relative inline-flex h-6 w-11 items-center rounded-full bg-primary"><span class="inline-block size-5 translate-x-5 rounded-full bg-white shadow"></span></button>
+          </div>
+        </div>
+
+        <!-- PERSON TAB -->
+        <div id="d-person" class="hidden">
+          <div class="flex items-center justify-between mb-5">
+            <div class="flex items-center gap-4">
+              <div class="size-16 rounded-full bg-zinc-100 grid place-items-center text-muted">📷</div>
+              <button class="text-sm text-primary font-medium">อัพโหลดรูปโปรไฟล์</button>
+            </div>
+            <button class="flex items-center gap-2 px-3 py-2 text-sm font-medium border border-line rounded-lg hover:bg-zinc-50">💳 อ่านบัตรประชาชน</button>
+          </div>
+          <div class="grid md:grid-cols-2 gap-5">
+            <div><label class="block text-xs text-muted mb-1">ชื่อ-นามสกุล *</label><input value="สมชาย ใจดี" class="w-full px-3 py-2 rounded-lg border border-line text-sm" /></div>
+            <div><label class="block text-xs text-muted mb-1">ชื่อเล่น</label><input value="นุ๊ก" class="w-full px-3 py-2 rounded-lg border border-line text-sm" /></div>
+            <div><label class="block text-xs text-muted mb-1">รหัสพนักงาน</label><input value="EMP-001" class="w-full px-3 py-2 rounded-lg border border-line text-sm" /></div>
+            <div><label class="block text-xs text-muted mb-1">วันเริ่มงาน</label><input value="01/03/2566" class="w-full px-3 py-2 rounded-lg border border-line text-sm" /></div>
+            <div><label class="block text-xs text-muted mb-1">เลขบัตรประชาชน</label><input value="1-2345-67890-12-3" class="w-full px-3 py-2 rounded-lg border border-line text-sm" /></div>
+            <div><label class="block text-xs text-muted mb-1">วันเกิด</label><input value="15/07/2540" class="w-full px-3 py-2 rounded-lg border border-line text-sm" /></div>
+            <div><label class="block text-xs text-muted mb-1">เบอร์โทรศัพท์</label><input value="081-234-5678" class="w-full px-3 py-2 rounded-lg border border-line text-sm" /></div>
+            <div><label class="block text-xs text-muted mb-1">LINE ID</label><input value="somchai_n" class="w-full px-3 py-2 rounded-lg border border-line text-sm" /></div>
+            <div class="md:col-span-2"><label class="block text-xs text-muted mb-1">ที่อยู่</label><textarea rows="2" class="w-full px-3 py-2 rounded-lg border border-line text-sm">123 ถ.ลาดพร้าว กทม.</textarea></div>
+          </div>
+        </div>
+
+        <!-- HR TAB -->
+        <div id="d-hr" class="hidden">
+          <!-- demo toggle -->
+          <div class="flex items-center gap-2 mb-5 text-xs">
+            <span class="text-muted">ตัวอย่าง:</span>
+            <button onclick="hrState('has')" id="hr-has" class="px-3 py-1 rounded-md border border-line">มีโปรไฟล์</button>
+            <button onclick="hrState('none')" id="hr-none" class="px-3 py-1 rounded-md border border-line">ยังไม่เป็นพนักงาน (empty state)</button>
+          </div>
+
+          <!-- empty state -->
+          <div id="hr-empty" class="hidden text-center py-10 border border-dashed border-line rounded-xl">
+            <div class="text-4xl mb-3">🗂️</div>
+            <div class="font-medium">ยังไม่ได้ตั้งเป็นพนักงาน</div>
+            <p class="text-sm text-muted mt-1 mb-4">ผู้ใช้คนนี้ยังไม่มีข้อมูล HR / เงินเดือน</p>
+            <button onclick="hrState('has')" class="px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium">+ เพิ่มข้อมูล HR / เงินเดือน</button>
+          </div>
+
+          <!-- filled -->
+          <div id="hr-form" class="grid md:grid-cols-2 gap-5">
+            <div><label class="block text-xs text-muted mb-1">ตำแหน่งงาน</label><input value="พนักงานขาย" class="w-full px-3 py-2 rounded-lg border border-line text-sm" /></div>
+            <div><label class="block text-xs text-muted mb-1">ประเภทการจ้าง</label>
+              <select class="w-full px-3 py-2 rounded-lg border border-line text-sm bg-white"><option>รายเดือน</option><option>รายวัน</option><option>สัญญาจ้าง</option></select></div>
+            <div><label class="block text-xs text-muted mb-1">ฐานเงินเดือน (บาท)</label><input value="25,000.00" class="w-full px-3 py-2 rounded-lg border border-line text-sm" /></div>
+            <div><label class="block text-xs text-muted mb-1">วันที่ลาออก</label><input placeholder="วว/ดด/ปปปป" class="w-full px-3 py-2 rounded-lg border border-line text-sm" /></div>
+            <div><label class="block text-xs text-muted mb-1">ธนาคาร</label><input value="ไทยพาณิชย์ (SCB)" class="w-full px-3 py-2 rounded-lg border border-line text-sm" /></div>
+            <div><label class="block text-xs text-muted mb-1">เลขบัญชี</label><input value="123-4-56789-0" class="w-full px-3 py-2 rounded-lg border border-line text-sm" /></div>
+            <label class="md:col-span-2 flex items-center gap-2 text-sm rounded-lg border border-line p-3">
+              <input type="checkbox" checked class="size-4 accent-emerald-600" /> เข้าประกันสังคม (หัก 5% / นายจ้างสมทบ 5%)
+            </label>
+            <div class="md:col-span-2 pt-2 border-t border-line">
+              <button class="text-sm text-danger hover:underline">นำออกจากระบบจ่าย (เก็บประวัติ payroll เดิม)</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- sticky save bar -->
+      <div class="fixed bottom-0 inset-x-0 md:left-60 bg-white/95 backdrop-blur border-t border-line px-6 py-3 flex items-center justify-end gap-3">
+        <span class="text-xs text-muted mr-auto">บันทึกครั้งเดียว → อัปเดต บัญชี + บุคคล + HR พร้อมกัน (atomic)</span>
+        <button onclick="show('list')" class="px-5 py-2.5 text-sm rounded-lg border border-line hover:bg-zinc-50">ยกเลิก</button>
+        <button class="px-6 py-2.5 text-sm rounded-lg bg-primary text-white font-semibold hover:opacity-90 shadow-sm">บันทึก</button>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+  function show(v){
+    document.getElementById('view-list').classList.toggle('hidden', v!=='list');
+    document.getElementById('view-detail').classList.toggle('hidden', v!=='detail');
+    document.getElementById('sw-list').style.outline = v==='list' ? '2px solid #059669' : 'none';
+    document.getElementById('sw-detail').style.outline = v==='detail' ? '2px solid #059669' : 'none';
+    window.scrollTo(0,0);
+  }
+  function dshow(t){
+    ['acct','person','hr'].forEach(k=>document.getElementById('d-'+k).classList.toggle('hidden', k!==t));
+    document.querySelectorAll('.dtab').forEach(b=>{
+      const on = b.getAttribute('onclick').includes("'"+t+"'");
+      b.setAttribute('data-active', on);
+    });
+  }
+  function hrState(s){
+    const has = s==='has';
+    document.getElementById('hr-form').classList.toggle('hidden', !has);
+    document.getElementById('hr-empty').classList.toggle('hidden', has);
+    document.getElementById('hr-has').style.outline = has ? '2px solid #059669':'none';
+    document.getElementById('hr-none').style.outline = !has ? '2px solid #059669':'none';
+  }
+  show('list'); hrState('has');
+</script>
+</body>
+</html>

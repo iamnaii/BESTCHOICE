@@ -287,7 +287,7 @@ export default function UsersPage() {
           })()}
           <Card className="rounded-xl border border-border/50 shadow-sm overflow-hidden">
             <div className="flex h-full">
-              <div className="w-1 shrink-0 bg-sky-400" />
+              <div className="w-1 shrink-0 bg-info" />
               <CardContent className="p-5 flex-1">
                 <div className="text-2xl font-bold tabular-nums text-foreground">
                   {users.filter((u) => u.employeeProfile).length}

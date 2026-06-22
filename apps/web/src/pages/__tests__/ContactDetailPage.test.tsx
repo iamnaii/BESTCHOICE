@@ -237,4 +237,22 @@ describe('ContactDetailPage', () => {
     expect(screen.getByText('สถานะภาษี')).toBeInTheDocument();
     expect(screen.getAllByText('จด VAT').length).toBeGreaterThan(0);
   });
+
+  it('shows the seller name + phone in the trade-in tile (not just the date)', async () => {
+    (contactsApi.detail as any).mockResolvedValue({
+      id: 'c1', contactCode: 'P-7', name: 'สมชาย', roles: ['TRADE_IN_SELLER'], isActive: true,
+      taxId: null, phone: null, email: null, address: null, lineId: null, peakContactCode: null,
+      customers: [], suppliers: [],
+      tradeInsAsSeller: [
+        { id: 't1', sellerName: 'สมชาย', sellerPhone: '0899998888', createdAt: '2026-05-01T03:00:00.000Z' },
+      ],
+      externalFinanceCompany: [],
+    });
+    wrap('c1');
+    // "ชื่อผู้ขาย" label exists only inside the trade-in tile ("คนขายมือสอง" also
+    // appears as a role badge in the hero, so don't key off the title).
+    await waitFor(() => expect(screen.getByText('ชื่อผู้ขาย')).toBeInTheDocument());
+    // parenthesised name+phone string is unique to the tile (not the hero h1)
+    expect(screen.getByText('สมชาย (0899998888)')).toBeInTheDocument();
+  });
 });

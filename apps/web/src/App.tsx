@@ -39,7 +39,6 @@ const CustomersPage = lazy(() => import('@/pages/CustomersPage'));
 const CustomerDetailPage = lazy(() => import('@/pages/CustomerDetailPage'));
 const ContactsPage = lazy(() => import('@/pages/ContactsPage'));
 const ContactDetailPage = lazy(() => import('@/pages/ContactDetailPage'));
-const EmployeesPage = lazy(() => import('@/pages/EmployeesPage'));
 const ContractsPage = lazy(() => import('@/pages/ContractsPage'));
 const ContractCreatePage = lazy(() => import('@/pages/ContractCreatePage'));
 const ContractDetailPage = lazy(() => import('@/pages/ContractDetailPage'));
@@ -51,6 +50,7 @@ const NotificationsPage = lazy(() => import('@/pages/NotificationsPage'));
 const ReportsPage = lazy(() => import('@/pages/ReportsPage'));
 const MigrationPage = lazy(() => import('@/pages/MigrationPage'));
 const UsersPage = lazy(() => import('@/pages/UsersPage'));
+const UserDetailPage = lazy(() => import('@/pages/UsersPage/UserDetailPage'));
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
 const StickersSettingsPage = lazy(() => import('@/pages/SettingsPage/StickersPage'));
 const CollectionsSettingsPage = lazy(() => import('@/pages/SettingsPage/CollectionsPage'));
@@ -484,7 +484,6 @@ function App() {
           <Route path="/customers/:id" element={<CustomerDetailPage />} />
           <Route path="/contacts" element={<ContactsPage />} />
           <Route path="/contacts/:id" element={<ContactDetailPage />} />
-          <Route path="/employees" element={<EmployeesPage />} />
           <Route path="/customer-intake" element={<CustomerIntakePage />} />
           <Route path="/contracts" element={<ContractsPage />} />
           <Route
@@ -758,6 +757,8 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route path="/users/new" element={<ProtectedRoute roles={['OWNER']}><UserDetailPage /></ProtectedRoute>} />
+          <Route path="/users/:id" element={<ProtectedRoute roles={['OWNER']}><UserDetailPage /></ProtectedRoute>} />
           <Route
             path="/settings"
             element={

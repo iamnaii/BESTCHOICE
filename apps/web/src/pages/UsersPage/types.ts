@@ -17,6 +17,12 @@ export interface User {
   lastLoginAt: string | null;
   createdAt: string;
   branch: { id: string; name: string } | null;
+  employeeProfile: {
+    id: string;
+    position: string | null;
+    employmentType: 'MONTHLY' | 'DAILY' | 'CONTRACT';
+    resignedDate: string | null;
+  } | null;
 }
 
 // Re-exports — canonical source is `@/constants/user-roles.ts`. Kept here as
@@ -42,23 +48,6 @@ export interface InviteToken {
 export const inputClass =
   'w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20';
 export const labelClass = 'block text-xs font-medium text-foreground mb-1.5';
-
-export const emptyForm = {
-  email: '',
-  password: '',
-  name: '',
-  role: 'SALES',
-  branchId: '',
-  employeeId: '',
-  nickname: '',
-  phone: '',
-  lineId: '',
-  address: '',
-  avatarUrl: '',
-  startDate: '',
-  nationalId: '',
-  birthDate: '',
-};
 
 export function getInviteStatus(invite: InviteToken): { label: string; className: string } {
   if (invite.usedAt) return { label: 'ใช้แล้ว', className: 'bg-success/10 text-success dark:bg-success/15' };

@@ -2,9 +2,13 @@ import { Injectable, NotFoundException, ConflictException } from '@nestjs/common
 import { UserRole, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { EmployeesService } from '../employees/employees.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 import * as bcrypt from 'bcrypt';
+
+type Actor = { userId?: string; ipAddress?: string; userAgent?: string };
 
 // Emails of service accounts used by scripts/migrations — hidden from the
 // standard user list so they don't inflate headcount or clutter the UI.
@@ -15,6 +19,7 @@ export class UsersService {
   constructor(
     private prisma: PrismaService,
     private audit: AuditService,
+    private employees: EmployeesService,
   ) {}
 
   async findAll(page = 1, limit = 50) {
@@ -40,6 +45,9 @@ export class UsersService {
       lastLoginAt: true,
       createdAt: true,
       branch: { select: { id: true, name: true } },
+      employeeProfile: {
+        select: { id: true, position: true, employmentType: true, resignedDate: true },
+      },
     };
 
     const where: Prisma.UserWhereInput = {
@@ -61,45 +69,58 @@ export class UsersService {
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
-  async create(dto: CreateUserDto) {
+  async findOneFull(id: string) {
+    const user = await this.prisma.user.findFirst({
+      where: { id, deletedAt: null, email: { notIn: SYSTEM_USER_EMAILS } },
+      select: {
+        id: true, email: true, name: true, role: true, branchId: true,
+        isActive: true, employeeId: true, nickname: true, phone: true,
+        lineId: true, address: true, avatarUrl: true, startDate: true,
+        nationalId: true, birthDate: true, lastLoginAt: true, createdAt: true,
+        branch: { select: { id: true, name: true } },
+        employeeProfile: {
+          select: {
+            id: true, position: true, employmentType: true, baseSalary: true,
+            ssoEligible: true, bankName: true, bankAccountNo: true, resignedDate: true,
+          },
+        },
+      },
+    });
+    if (!user) throw new NotFoundException('ไม่พบผู้ใช้งาน');
+    return user;
+  }
+
+  async create(dto: CreateUserDto, actor?: Actor) {
     const existing = await this.prisma.user.findUnique({ where: { email: dto.email } });
     if (existing && !existing.deletedAt) throw new ConflictException('อีเมลนี้ถูกใช้แล้ว');
 
     const hashedPassword = await bcrypt.hash(dto.password, 10);
-    return this.prisma.user.create({
-      data: {
-        email: dto.email,
-        password: hashedPassword,
-        name: dto.name,
-        role: dto.role as UserRole,
-        branchId: dto.branchId || null,
-        employeeId: dto.employeeId || null,
-        nickname: dto.nickname || null,
-        phone: dto.phone || null,
-        lineId: dto.lineId || null,
-        address: dto.address || null,
-        avatarUrl: dto.avatarUrl || null,
-        startDate: dto.startDate ? new Date(dto.startDate) : null,
-        nationalId: dto.nationalId || null,
-        birthDate: dto.birthDate ? new Date(dto.birthDate) : null,
-      },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        branchId: true,
-        isActive: true,
-        employeeId: true,
-        nickname: true,
-        phone: true,
-        lineId: true,
-        address: true,
-        avatarUrl: true,
-        startDate: true,
-        branch: { select: { id: true, name: true } },
-      },
+    const created = await this.prisma.$transaction(async (tx) => {
+      const u = await tx.user.create({
+        data: {
+          email: dto.email,
+          password: hashedPassword,
+          name: dto.name,
+          role: dto.role as UserRole,
+          branchId: dto.branchId || null,
+          employeeId: dto.employeeId || null,
+          nickname: dto.nickname || null,
+          phone: dto.phone || null,
+          lineId: dto.lineId || null,
+          address: dto.address || null,
+          avatarUrl: dto.avatarUrl || null,
+          startDate: dto.startDate ? new Date(dto.startDate) : null,
+          nationalId: dto.nationalId || null,
+          birthDate: dto.birthDate ? new Date(dto.birthDate) : null,
+        },
+        select: { id: true },
+      });
+      if (dto.employee) {
+        await this.employees.upsertProfileTx(tx, u.id, dto.employee, actor);
+      }
+      return u;
     });
+    return this.findOneFull(created.id);
   }
 
   async getSavedSignature(userId: string): Promise<string | null> {
@@ -245,6 +266,58 @@ export class UsersService {
     }
 
     return updated;
+  }
+
+  async updateFull(id: string, dto: UpdateUserProfileDto, actor?: Actor) {
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) throw new NotFoundException('ไม่พบผู้ใช้งาน');
+
+    const isNowBeingDeactivated = dto.isActive === false && user.isActive === true;
+
+    const data: Prisma.UserUncheckedUpdateInput = {};
+    if (dto.name !== undefined) data.name = dto.name;
+    if (dto.role !== undefined) data.role = dto.role as UserRole;
+    if (dto.branchId !== undefined) data.branchId = dto.branchId || null;
+    if (dto.isActive !== undefined) data.isActive = dto.isActive;
+    if (dto.password) data.password = await bcrypt.hash(dto.password, 10);
+    if (dto.employeeId !== undefined) data.employeeId = dto.employeeId || null;
+    if (dto.nickname !== undefined) data.nickname = dto.nickname || null;
+    if (dto.phone !== undefined) data.phone = dto.phone || null;
+    if (dto.lineId !== undefined) data.lineId = dto.lineId || null;
+    if (dto.address !== undefined) data.address = dto.address || null;
+    if (dto.avatarUrl !== undefined) data.avatarUrl = dto.avatarUrl || null;
+    if (dto.startDate !== undefined) data.startDate = dto.startDate ? new Date(dto.startDate) : null;
+    if (dto.nationalId !== undefined) data.nationalId = dto.nationalId || null;
+    if (dto.birthDate !== undefined) data.birthDate = dto.birthDate ? new Date(dto.birthDate) : null;
+    if (dto.defaultCashAccountCode !== undefined)
+      data.defaultCashAccountCode = dto.defaultCashAccountCode || null;
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.user.update({ where: { id }, data });
+
+      if (dto.employee) {
+        await this.employees.upsertProfileTx(tx, id, dto.employee, actor);
+      }
+
+      if (isNowBeingDeactivated) {
+        await tx.refreshToken.updateMany({
+          where: { userId: id, revokedAt: null },
+          data: { revokedAt: new Date() },
+        });
+      }
+    });
+
+    await this.audit.log({
+      userId: actor?.userId,
+      action: 'USER_PROFILE_UPDATED',
+      entity: 'user',
+      entityId: id,
+      newValue: { ...dto, password: dto.password ? '***' : undefined },
+      ipAddress: actor?.ipAddress,
+      userAgent: actor?.userAgent,
+    });
+
+    return this.findOneFull(id);
   }
 
   async updateExtension(userId: string, extension: string | null | undefined): Promise<void> {

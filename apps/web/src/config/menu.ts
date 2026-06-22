@@ -398,7 +398,6 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
       zone: 'settings',
       items: [
         { label: 'สมุดผู้ติดต่อ', path: '/settings#contacts', icon: BookUser },
-        { label: 'พนักงาน', path: '/settings#employees', icon: Users },
       ],
     },
     {
@@ -567,7 +566,6 @@ const OWNER_CONFIG: RoleMenuConfig = {
       zone: 'settings',
       items: [
         { label: 'สมุดผู้ติดต่อ', path: '/settings#contacts', icon: BookUser },
-        { label: 'พนักงาน', path: '/settings#employees', icon: Users },
       ],
     },
     {
@@ -741,7 +739,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'ตั้งค่าระบบ', path: '/settings', icon: Settings },
         { label: 'บัญชีตาม Role', path: '/settings/account-roles', icon: ClipboardList },
-        { label: 'ผู้ใช้', path: '/users', icon: UserCog },
+        { label: 'ผู้ใช้ / พนักงาน', path: '/users', icon: UserCog },
         { label: 'สาขา', path: '/branches', icon: Building2 },
         { label: 'บริษัท', path: '/settings/companies', icon: Building2 },
         { label: 'แบบสัญญา', path: '/contract-templates', icon: FileCheck },
@@ -909,7 +907,7 @@ const ZONE_CONFIG: Record<string, RoleZoneConfig> = {
         { label: 'เพิ่มเติม', path: '#more', icon: MoreHorizontal, action: 'sidebar' },
       ],
       settings: [
-        { label: 'ผู้ใช้', path: '/users', icon: UserCog },
+        { label: 'ผู้ใช้ / พนักงาน', path: '/users', icon: UserCog },
         { label: 'บริษัท', path: '/settings/companies', icon: Building2 },
         { label: 'สาขา', path: '/branches', icon: Building2 },
         { label: 'ตั้งค่า', path: '/settings', icon: Settings },
@@ -975,7 +973,6 @@ const ZONE_CONFIG: Record<string, RoleZoneConfig> = {
       fin: ACCOUNTANT_CONFIG.bottomNav,
       settings: [
         { label: 'ผู้ติดต่อ', path: '/settings#contacts', icon: BookUser },
-        { label: 'พนักงาน', path: '/settings#employees', icon: Users },
         { label: 'เพิ่มเติม', path: '#more', icon: MoreHorizontal, action: 'sidebar' },
       ],
     },

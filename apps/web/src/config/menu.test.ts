@@ -188,7 +188,7 @@ describe('Master data moved into settings zone (Option B, 2026-06-13)', () => {
     expect(getZoneConfigForRole('ACCOUNTANT')?.showSettingsGear).toBe(true);
   });
 
-  it('FM sees only ผู้ติดต่อ; ACC sees ผู้ติดต่อ + พนักงาน in settings zone', () => {
+  it('FM sees only ผู้ติดต่อ; ACC sees ผู้ติดต่อ เท่านั้น (พนักงาน tab ถูกรวมใน /users แล้ว)', () => {
     const fmPaths = getSidebarForRole('FINANCE_MANAGER', 'settings').flatMap((s) =>
       s.items.map((i) => i.path),
     );
@@ -199,7 +199,7 @@ describe('Master data moved into settings zone (Option B, 2026-06-13)', () => {
       s.items.map((i) => i.path),
     );
     expect(accPaths).toContain('/settings#contacts');
-    expect(accPaths).toContain('/settings#employees');
+    expect(accPaths).not.toContain('/settings#employees');
   });
 });
 

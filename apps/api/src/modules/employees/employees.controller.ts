@@ -23,7 +23,7 @@ export class EmployeesController {
   constructor(private readonly employees: EmployeesService) {}
 
   @Get()
-  @Roles('OWNER', 'ACCOUNTANT')
+  @Roles('OWNER')
   list(@Query() dto: ListEmployeesDto) {
     return this.employees.list(dto);
   }
@@ -35,31 +35,31 @@ export class EmployeesController {
   }
 
   @Get('provisionable')
-  @Roles('OWNER', 'ACCOUNTANT')
+  @Roles('OWNER')
   provisionable(@Query('search') search?: string) {
     return this.employees.provisionable(search);
   }
 
   @Get(':id')
-  @Roles('OWNER', 'ACCOUNTANT')
+  @Roles('OWNER')
   findOne(@Param('id') id: string) {
     return this.employees.findOne(id);
   }
 
   @Post()
-  @Roles('OWNER', 'ACCOUNTANT')
+  @Roles('OWNER')
   provision(@Body() dto: CreateEmployeeDto, @Req() req: AuthRequest) {
     return this.employees.provision(dto, actorOf(req));
   }
 
   @Patch(':id')
-  @Roles('OWNER', 'ACCOUNTANT')
+  @Roles('OWNER')
   update(@Param('id') id: string, @Body() dto: UpdateEmployeeDto, @Req() req: AuthRequest) {
     return this.employees.update(id, dto, actorOf(req));
   }
 
   @Delete(':id')
-  @Roles('OWNER', 'ACCOUNTANT')
+  @Roles('OWNER')
   remove(@Param('id') id: string, @Req() req: AuthRequest) {
     return this.employees.remove(id, actorOf(req));
   }

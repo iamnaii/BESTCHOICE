@@ -9,7 +9,6 @@ vi.mock('@/contexts/AuthContext', () => ({
 }));
 // stub tab bodies (avoid data fetching); only the active tab mounts.
 vi.mock('../tabs/ContactsTab', () => ({ ContactsTab: () => <div>contacts-body</div> }));
-vi.mock('../tabs/EmployeesTab', () => ({ EmployeesTab: () => <div>employees-body</div> }));
 
 function renderAt(hash = '') {
   window.location.hash = hash;
@@ -29,7 +28,7 @@ describe('SettingsPage — role-gated tabs', () => {
     mockRole = 'OWNER';
     renderAt();
     expect(screen.getByRole('tab', { name: 'ผู้ติดต่อ' })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'พนักงาน' })).toBeTruthy();
+    expect(screen.queryByRole('tab', { name: 'พนักงาน' })).toBeNull();
     expect(screen.getByRole('tab', { name: 'บริษัท' })).toBeTruthy();
     expect(screen.getByRole('tab', { name: 'PDPA' })).toBeTruthy();
   });
@@ -42,11 +41,11 @@ describe('SettingsPage — role-gated tabs', () => {
     expect(screen.queryByRole('tab', { name: 'บริษัท' })).toBeNull();
   });
 
-  it('ACCOUNTANT เห็น ผู้ติดต่อ + พนักงาน (ไม่เห็น config)', () => {
+  it('ACCOUNTANT เห็น ผู้ติดต่อ เท่านั้น (ไม่เห็น config หรือ พนักงาน)', () => {
     mockRole = 'ACCOUNTANT';
     renderAt();
     expect(screen.getByRole('tab', { name: 'ผู้ติดต่อ' })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'พนักงาน' })).toBeTruthy();
+    expect(screen.queryByRole('tab', { name: 'พนักงาน' })).toBeNull();
     expect(screen.queryByRole('tab', { name: 'บริษัท' })).toBeNull();
   });
 

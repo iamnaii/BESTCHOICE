@@ -133,7 +133,7 @@ export function UserTable({
     },
     {
       key: 'role',
-      label: 'ตำแหน่ง',
+      label: 'บทบาท (สิทธิ์)',
       sortable: true,
       render: (u: User) => (
         <span
@@ -144,6 +144,25 @@ export function UserTable({
           {roleLabels[u.role] || u.role}
         </span>
       ),
+    },
+    {
+      key: 'position',
+      label: 'ตำแหน่งงาน',
+      hideable: true,
+      render: (u: User) => u.employeeProfile?.position || <Empty />,
+    },
+    {
+      key: 'employee',
+      label: 'พนักงาน',
+      render: (u: User) => {
+        if (!u.employeeProfile) return <span className="text-xs text-muted-foreground/60">ไม่ใช่พนักงาน</span>;
+        const resigned = !!u.employeeProfile.resignedDate;
+        return (
+          <Badge variant={resigned ? 'secondary' : 'primary'} appearance="light" size="sm">
+            {resigned ? 'ลาออก' : 'ทำงาน'}
+          </Badge>
+        );
+      },
     },
     {
       key: 'branch',

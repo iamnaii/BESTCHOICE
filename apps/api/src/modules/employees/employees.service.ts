@@ -152,6 +152,88 @@ export class EmployeesService {
     return profile;
   }
 
+  /**
+   * Create-or-update an EmployeeProfile inside an EXTERNAL transaction so the
+   * caller (UsersService.updateFull / create) can bundle it with the User
+   * write atomically. Mirrors provision()/update() field handling + audit.
+   */
+  async upsertProfileTx(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    dto: {
+      position?: string;
+      employmentType?: Prisma.EmployeeProfileCreateInput['employmentType'];
+      baseSalary?: number;
+      ssoEligible?: boolean;
+      bankName?: string;
+      bankAccountNo?: string;
+      resignedDate?: string | null;
+    },
+    actor?: Actor,
+  ) {
+    const existing = await tx.employeeProfile.findFirst({
+      where: { userId, deletedAt: null },
+      select: { id: true },
+    });
+
+    const baseSalary =
+      dto.baseSalary != null ? new Prisma.Decimal(dto.baseSalary) : undefined;
+    const resignedDate =
+      dto.resignedDate === undefined
+        ? undefined
+        : dto.resignedDate
+          ? new Date(dto.resignedDate)
+          : null;
+
+    if (existing) {
+      const profile = await tx.employeeProfile.update({
+        where: { id: existing.id },
+        data: {
+          position: dto.position,
+          employmentType: dto.employmentType,
+          baseSalary,
+          ssoEligible: dto.ssoEligible,
+          bankName: dto.bankName,
+          bankAccountNo: dto.bankAccountNo,
+          resignedDate,
+        },
+      });
+      await this.audit.log({
+        userId: actor?.userId,
+        action: 'EMPLOYEE_PROFILE_UPDATED',
+        entity: 'employee_profile',
+        entityId: existing.id,
+        newValue: dto as Record<string, unknown>,
+        ipAddress: actor?.ipAddress,
+        userAgent: actor?.userAgent,
+      });
+      return profile;
+    }
+
+    const profile = await tx.employeeProfile.create({
+      data: {
+        userId,
+        position: dto.position,
+        employmentType: dto.employmentType,
+        baseSalary: baseSalary ?? null,
+        ssoEligible: dto.ssoEligible,
+        bankName: dto.bankName,
+        bankAccountNo: dto.bankAccountNo,
+        resignedDate: resignedDate ?? null,
+      },
+    });
+    await this.audit.log({
+      userId: actor?.userId,
+      action: 'EMPLOYEE_PROFILE_CREATED',
+      entity: 'employee_profile',
+      entityId: profile.id,
+      newValue: { userId, position: dto.position },
+      ipAddress: actor?.ipAddress,
+      userAgent: actor?.userAgent,
+    });
+    return profile;
+  }
+
   async pickable(search?: string) {
     const where: Prisma.EmployeeProfileWhereInput = {
       deletedAt: null,

@@ -36,8 +36,12 @@ export class FinanceAiService {
   private readonly logger = new Logger(FinanceAiService.name);
   private anthropic: Anthropic | null = null;
 
-  // Sonnet 4.6 for customer-facing replies — quality matters (Task 8, Week 1 Hybrid C plan)
+  // Model routing (ULTRAPLAN v5 Phase 7.2): start every reply on Haiku for cost; the moment
+  // the model decides it needs a tool (i.e. it must look up real contract/payment data) we
+  // escalate to Sonnet for the rest of the loop so the customer-facing synthesis stays at
+  // Sonnet quality. Simple no-tool replies (greetings/FAQ) stay on Haiku.
   private readonly modelSonnet = 'claude-sonnet-4-6';
+  private readonly modelHaiku = 'claude-haiku-4-5-20251001';
   private readonly maxTokens = 1024;
   private readonly historyLimit = 20;
   /** DB-backed history window (Task 8): 10 most recent messages, oldest-first */
@@ -62,7 +66,7 @@ export class FinanceAiService {
     if (!apiKey) return null;
     if (!this.anthropic) {
       this.anthropic = new Anthropic({ apiKey });
-      this.logger.log('[FinanceAI] Initialized (Sonnet 4.6 + tools)');
+      this.logger.log('[FinanceAI] Initialized (Haiku→Sonnet routing + tools)');
     }
     return this.anthropic;
   }
@@ -96,7 +100,8 @@ export class FinanceAiService {
       let totalOutput = 0;
       let handoffTriggered = false;
       const toolsUsed: string[] = [];
-      const activeModel = this.modelSonnet;
+      // Phase 7.2: begin on Haiku; escalate to Sonnet on first tool_use (see below).
+      let activeModel = this.modelHaiku;
 
       // Tool use loop
       for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
@@ -158,7 +163,11 @@ export class FinanceAiService {
           };
         }
 
-        // มี tool_use → execute แล้ว append result
+        // มี tool_use → query ต้องใช้ข้อมูลจริง → escalate เป็น Sonnet สำหรับ iteration ถัดไป
+        // (รวมถึงการสังเคราะห์คำตอบสุดท้ายหลังได้ tool result) เพื่อรักษาคุณภาพคำตอบที่ลูกค้าเห็น
+        activeModel = this.modelSonnet;
+
+        // execute แล้ว append result
         const toolUseBlocks = response.content.filter(
           (b): b is ToolUseBlock => b.type === 'tool_use',
         );

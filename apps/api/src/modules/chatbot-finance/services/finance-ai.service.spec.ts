@@ -7,6 +7,25 @@ import { IntegrationConfigService } from '../../integrations/integration-config.
 import { AiUsageService } from '../../ai-usage/ai-usage.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 
+// Phase 7.2 model-routing tests drive the Anthropic tool loop, so mock the SDK to give
+// `new Anthropic()` a controllable `messages.create`. (Other tests never invoke create.)
+const mockCreate = jest.fn();
+jest.mock('@anthropic-ai/sdk', () => ({
+  __esModule: true,
+  default: jest.fn().mockImplementation(() => ({ messages: { create: mockCreate } })),
+}));
+
+const textResponse = (text: string) => ({
+  stop_reason: 'end_turn',
+  content: [{ type: 'text', text }],
+  usage: { input_tokens: 5, output_tokens: 5 },
+});
+const toolUseResponse = (name: string) => ({
+  stop_reason: 'tool_use',
+  content: [{ type: 'tool_use', id: 'tu_1', name, input: {} }],
+  usage: { input_tokens: 5, output_tokens: 5 },
+});
+
 describe('FinanceAiService', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let toolExecutor: any;
@@ -147,9 +166,10 @@ describe('FinanceAiService', () => {
       expect(prompt).not.toContain('คุณundefined');
     });
 
-    it('uses Sonnet 4.6 for customer-facing replies', () => {
-      // Task 8: customer quality > cost — reply model must be claude-sonnet-4-6
+    it('declares the Haiku→Sonnet routing model pair (Phase 7.2)', () => {
+      // Simple replies use Haiku for cost; tool-using replies escalate to Sonnet for quality.
       expect((service as any).modelSonnet).toBe('claude-sonnet-4-6');
+      expect((service as any).modelHaiku).toBe('claude-haiku-4-5-20251001');
     });
 
     it('loadHistory fetches last 10 messages oldest-first and maps roles', async () => {
@@ -230,6 +250,54 @@ describe('FinanceAiService', () => {
       const lastMsg = result[result.length - 1];
       expect(lastMsg.role).toBe('user');
       expect(String(lastMsg.content)).toContain('new question');
+    });
+  });
+
+  describe('model routing (Phase 7.2)', () => {
+    let service: FinanceAiService;
+
+    beforeEach(async () => {
+      mockCreate.mockReset();
+      toolExecutor = { execute: jest.fn().mockResolvedValue({ ok: true, data: { ok: 1 }, triggeredHandoff: false }) };
+      prisma = { chatMessage: { findMany: jest.fn().mockResolvedValue([]) } };
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          FinanceAiService,
+          { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue('sk-ant-test-key') } },
+          { provide: FinanceToolExecutor, useValue: toolExecutor },
+          { provide: FinanceConfigService, useValue: { bankInfoBlock: '' } },
+          {
+            provide: IntegrationConfigService,
+            useValue: { getValue: jest.fn().mockResolvedValue('test-api-key') },
+          },
+          { provide: AiUsageService, useValue: { record: jest.fn().mockResolvedValue(undefined) } },
+          { provide: PrismaService, useValue: prisma },
+        ],
+      }).compile();
+      service = module.get(FinanceAiService);
+    });
+
+    it('answers a simple no-tool query on Haiku (cost path)', async () => {
+      mockCreate.mockResolvedValueOnce(textResponse('สวัสดีค่ะ 😊'));
+      const result = await service.generateReply(defaultParams);
+      expect(result?.text).toBe('สวัสดีค่ะ 😊');
+      expect(result?.model).toBe('claude-haiku-4-5-20251001');
+      expect(mockCreate).toHaveBeenCalledTimes(1);
+      expect(mockCreate.mock.calls[0][0].model).toBe('claude-haiku-4-5-20251001');
+      expect(toolExecutor.execute).not.toHaveBeenCalled();
+    });
+
+    it('escalates to Sonnet once the model needs a tool (quality path)', async () => {
+      mockCreate
+        .mockResolvedValueOnce(toolUseResponse('get_contract_status'))
+        .mockResolvedValueOnce(textResponse('ยอดคงเหลือของคุณคือ 5,000 บาทค่ะ'));
+      const result = await service.generateReply(defaultParams);
+      // turn 0 (decides to use a tool) on Haiku; turn 1 (synthesis after tool result) on Sonnet
+      expect(mockCreate.mock.calls[0][0].model).toBe('claude-haiku-4-5-20251001');
+      expect(mockCreate.mock.calls[1][0].model).toBe('claude-sonnet-4-6');
+      expect(result?.model).toBe('claude-sonnet-4-6');
+      expect(result?.toolsUsed).toContain('get_contract_status');
+      expect(toolExecutor.execute).toHaveBeenCalledTimes(1);
     });
   });
 });

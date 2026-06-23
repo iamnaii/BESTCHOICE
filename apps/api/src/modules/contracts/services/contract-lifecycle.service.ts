@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException, ConflictException, InternalServerErrorException } from '@nestjs/common';
 import { StructuredLoggerService } from '../../../common/logger';
 import { PlanType, Prisma } from '@prisma/client';
+import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CreateContractDto, UpdateContractDto } from '../dto/contract.dto';
 import { calculateInstallmentWithInterest, generatePaymentSchedule, roundBaht } from '../../../utils/installment.util';
@@ -11,6 +12,8 @@ import { d } from '../../../utils/decimal.util';
 import { WarrantyService } from '../../warranty/warranty.service';
 import { AuditService } from '../../audit/audit.service';
 import { ContractQueryService } from './contract-query.service';
+import { ShopDownPaymentTemplate } from '../../journal/cpa-templates/shop-down-payment.template';
+import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
 
 /**
  * ContractLifecycleService — write-side lifecycle of a contract: create
@@ -28,6 +31,8 @@ export class ContractLifecycleService {
     private query: ContractQueryService,
     private warrantyService?: WarrantyService,
     private audit?: AuditService,
+    private shopDownPaymentTemplate?: ShopDownPaymentTemplate,
+    private shopAccountResolver?: ShopAccountResolver,
   ) {}
 
   async create(dto: CreateContractDto, salespersonId: string, salespersonRole?: string) {
@@ -209,6 +214,24 @@ export class ContractLifecycleService {
             { principal: calc.principal, interestTotal: calc.interestTotal, storeCommission: calc.storeCommission, vatAmount: calc.vatAmount },
           );
           await tx.payment.createMany({ data: payments });
+
+          // SHOP-side: record the down payment received at contract creation.
+          if (this.shopDownPaymentTemplate && this.shopAccountResolver) {
+            const downPayment = new Decimal(dto.downPayment.toString());
+            if (downPayment.gt(0)) {
+              const cashAccountCode = await this.shopAccountResolver.resolveBranchCashAccount(dto.branchId, tx);
+              await this.shopDownPaymentTemplate.execute(
+                {
+                  idempotencyKey: `shop-down-payment:${newContract.id}`,
+                  contractId: newContract.id,
+                  contractNumber: newContract.contractNumber,
+                  cashAccountCode,
+                  downAmount: downPayment,
+                },
+                tx,
+              );
+            }
+          }
 
           // Reserve product
           await tx.product.update({

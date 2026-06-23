@@ -24,6 +24,8 @@ import {
 } from '../helpers/trade-in.helpers';
 import { TradeInQueryService } from './trade-in-query.service';
 import { TradeInValuationService } from './trade-in-valuation.service';
+import { ShopTradeInTemplate } from '../../journal/cpa-templates/shop-trade-in.template';
+import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
 
 export class TradeInLifecycleService {
   constructor(
@@ -34,6 +36,8 @@ export class TradeInLifecycleService {
     private pii: CustomerPiiService,
     private query: TradeInQueryService,
     private valuation: TradeInValuationService,
+    private shopTradeInTemplate: ShopTradeInTemplate,
+    private shopAccountResolver: ShopAccountResolver,
   ) {}
 
   // ─── Create ───────────────────────────────────────────────
@@ -408,7 +412,7 @@ export class TradeInLifecycleService {
         },
       });
 
-      return tx.tradeIn.update({
+      const updated = await tx.tradeIn.update({
         where: { id },
         data: {
           status: 'ACCEPTED',
@@ -432,6 +436,28 @@ export class TradeInLifecycleService {
           sellerSignatureBase64: signatureBase64 ?? undefined,
         },
       });
+
+      // SHOP-side: a BUYBACK buys the used device for cash → Dr S11-2002 / Cr cash.
+      // EXCHANGE is intentionally skipped: its value is credited toward a purchase and is
+      // booked with the companion sale/contract, not as a standalone cash-out (deferred).
+      if (tradeIn.flow === 'BUYBACK' && costPrice.gt(0)) {
+        const cashAccountCode = await this.shopAccountResolver.resolveOutflowCashAccount(
+          tradeIn.branchId,
+          dto.paymentMethod,
+          tx,
+        );
+        await this.shopTradeInTemplate.execute(
+          {
+            idempotencyKey: `shop-trade-in:${tradeIn.id}`,
+            tradeInId: tradeIn.id,
+            cashAccountCode,
+            tradeInPrice: costPrice,
+          },
+          tx,
+        );
+      }
+
+      return updated;
     });
   }
 

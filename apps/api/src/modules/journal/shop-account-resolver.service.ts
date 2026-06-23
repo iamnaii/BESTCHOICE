@@ -66,4 +66,20 @@ export class ShopAccountResolver {
     }
     return ShopAccountResolver.SHOP_RECEIVING_BANK;
   }
+
+  /**
+   * Resolve the SHOP cash/bank account that FUNDS an outflow (trade-in payout, branch
+   * expense). CASH → the branch's physical till (fail-closed); any non-cash method
+   * (transfer) → the single SHOP paying bank S11-1202 (spec §5B).
+   */
+  async resolveOutflowCashAccount(
+    branchId: string,
+    paymentMethod: string | null | undefined,
+    tx?: Prisma.TransactionClient,
+  ): Promise<string> {
+    if (paymentMethod === 'CASH') {
+      return this.resolveBranchCashAccount(branchId, tx);
+    }
+    return ShopAccountResolver.SHOP_PAYING_BANK;
+  }
 }

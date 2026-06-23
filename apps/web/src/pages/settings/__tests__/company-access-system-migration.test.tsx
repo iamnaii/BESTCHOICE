@@ -50,6 +50,12 @@ describe('company/access/system migration', () => {
     expect(screen.getByRole('link', { name: /ระบบ/ })).toBeTruthy();
   });
 
+  it('/settings/system/mdm → render หน้า mdm ใน panel', () => {
+    render(<App entry="/settings/system/mdm" />);
+    expect(screen.getByText('mdm-page')).toBeTruthy();
+    expect(screen.getByRole('link', { name: /ระบบ/ })).toBeTruthy();
+  });
+
   it('old /settings/companies → redirect ไป /settings/company/entities', async () => {
     render(<App entry="/settings/companies" />);
     await waitFor(() => expect(screen.getByText('entities-page')).toBeTruthy());

@@ -52,10 +52,10 @@ const MigrationPage = lazy(() => import('@/pages/MigrationPage'));
 const UsersPage = lazy(() => import('@/pages/UsersPage'));
 const UserDetailPage = lazy(() => import('@/pages/UsersPage/UserDetailPage'));
 const SettingsLayout = lazy(() =>
-  import('./pages/settings/SettingsLayout').then((m) => ({ default: m.SettingsLayout })),
+  import('@/pages/settings/SettingsLayout').then((m) => ({ default: m.SettingsLayout })),
 );
 const SettingsIndexRedirect = lazy(() =>
-  import('./pages/settings/SettingsIndexRedirect').then((m) => ({ default: m.SettingsIndexRedirect })),
+  import('@/pages/settings/SettingsIndexRedirect').then((m) => ({ default: m.SettingsIndexRedirect })),
 );
 const StickersSettingsPage = lazy(() => import('@/pages/SettingsPage/StickersPage'));
 const CollectionsSettingsPage = lazy(() => import('@/pages/SettingsPage/CollectionsPage'));

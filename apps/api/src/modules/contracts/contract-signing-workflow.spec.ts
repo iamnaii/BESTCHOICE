@@ -10,6 +10,7 @@ import { DocumentsService } from './documents.service';
 import { ContractActivation1ATemplate } from '../journal/cpa-templates/contract-activation-1a.template';
 import { ContractExchangeService } from '../contract-exchange/contract-exchange.service';
 import { ShopDownPaymentTemplate } from '../journal/cpa-templates/shop-down-payment.template';
+import { ShopDownPaymentReversalTemplate } from '../journal/cpa-templates/shop-down-payment-reversal.template';
 import { ShopInventoryTransferTemplate } from '../journal/cpa-templates/shop-inventory-transfer.template';
 import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
 import { TestModeService } from '../test-mode/test-mode.service';
@@ -230,6 +231,7 @@ describe('Contract Signing & Workflow', () => {
         { provide: ContractActivation1ATemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK' }) } },
         { provide: ContractExchangeService, useValue: { finalizeAfterActivation: jest.fn() } },
         { provide: ShopDownPaymentTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-001', journalEntryId: 'je-1' }) } },
+        { provide: ShopDownPaymentReversalTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-REV-001', journalEntryId: 'je-rev-1' }) } },
         { provide: ShopInventoryTransferTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-002', journalEntryId: 'je-2' }) } },
         { provide: ShopAccountResolver, useValue: { resolveBranchCashAccount: jest.fn().mockResolvedValue('S11-1102'), resolveProductAccounts: jest.fn().mockReturnValue({ inventoryAccountCode: 'S11-2001', cogsAccountCode: 'S50-1101', revenueAccountCode: 'S41-1101' }) } },
         { provide: TestModeService, useValue: { isEnabled: jest.fn().mockResolvedValue(false) } },

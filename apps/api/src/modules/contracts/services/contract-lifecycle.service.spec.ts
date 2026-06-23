@@ -1,8 +1,11 @@
 /**
- * ContractLifecycleService — ShopDownPayment wiring tests (Task 6).
+ * ContractLifecycleService — ShopDownPayment wiring tests (Task 6 + Task 7).
  *
- * Verifies that `create()` posts `ShopDownPaymentTemplate` exactly when
+ * Task 6: `create()` posts `ShopDownPaymentTemplate` exactly when
  * `downPayment > 0`, and skips it when `downPayment = 0`.
+ *
+ * Task 7: `softDelete()` posts `ShopDownPaymentReversalTemplate` when
+ * `downPayment > 0` AND a down JE exists, and skips it when no down JE exists.
  *
  * The service is instantiated directly (not via NestJS DI) to match the
  * way `ContractsService` constructs it with `new ContractLifecycleService(...)`.
@@ -11,6 +14,7 @@
 import { Decimal } from '@prisma/client/runtime/library';
 import { ContractLifecycleService } from './contract-lifecycle.service';
 import { ShopDownPaymentTemplate } from '../../journal/cpa-templates/shop-down-payment.template';
+import { ShopDownPaymentReversalTemplate } from '../../journal/cpa-templates/shop-down-payment-reversal.template';
 import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
 
 // ─── module-level mocks (must be hoisted before imports are used) ─────────────
@@ -124,6 +128,7 @@ describe('ContractLifecycleService — ShopDownPayment wiring', () => {
   let prisma: any;
   let tx: any;
   let shopDownPaymentTemplate: jest.Mocked<Pick<ShopDownPaymentTemplate, 'execute'>>;
+  let shopDownPaymentReversalTemplate: jest.Mocked<Pick<ShopDownPaymentReversalTemplate, 'execute'>>;
   let shopAccountResolver: jest.Mocked<Pick<ShopAccountResolver, 'resolveBranchCashAccount'>>;
   let queryMock: any;
 
@@ -133,16 +138,19 @@ describe('ContractLifecycleService — ShopDownPayment wiring', () => {
       creditCheck: {
         findFirst: jest.fn().mockResolvedValue({ id: 'cc-1', status: 'APPROVED', contractId: null }),
         update: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
       product: {
         findUnique: jest.fn().mockResolvedValue(mockProduct),
         update: jest.fn().mockResolvedValue({ ...mockProduct, status: 'RESERVED' }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       customer: {
         findUnique: jest.fn().mockResolvedValue(mockCustomer),
       },
       contract: {
         create: jest.fn().mockResolvedValue(mockCreatedContract),
+        update: jest.fn().mockResolvedValue(mockCreatedContract),
       },
       payment: {
         createMany: jest.fn().mockResolvedValue({ count: 12 }),
@@ -152,6 +160,15 @@ describe('ContractLifecycleService — ShopDownPayment wiring', () => {
       },
       branch: {
         findUnique: jest.fn().mockResolvedValue({ shopCashAccountCode: 'S11-1102' }),
+      },
+      signature: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      kycVerification: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      auditLog: {
+        create: jest.fn().mockResolvedValue({}),
       },
     };
 
@@ -182,6 +199,10 @@ describe('ContractLifecycleService — ShopDownPayment wiring', () => {
       execute: jest.fn().mockResolvedValue({ entryNo: 'JE-001', journalEntryId: 'je-1' }),
     };
 
+    shopDownPaymentReversalTemplate = {
+      execute: jest.fn().mockResolvedValue({ entryNo: 'JE-REV-001', journalEntryId: 'je-rev-1' }),
+    };
+
     shopAccountResolver = {
       resolveBranchCashAccount: jest.fn().mockResolvedValue('S11-1102'),
     };
@@ -190,6 +211,7 @@ describe('ContractLifecycleService — ShopDownPayment wiring', () => {
       prisma as any,
       queryMock as any,
       shopDownPaymentTemplate as any,
+      shopDownPaymentReversalTemplate as any,
       shopAccountResolver as any,
       undefined, // warrantyService — optional
       undefined, // audit — optional
@@ -237,5 +259,49 @@ describe('ContractLifecycleService — ShopDownPayment wiring', () => {
     await service.create({ ...baseDto, downPayment: 0 } as any, 'sp-1');
 
     expect(shopDownPaymentTemplate.execute).not.toHaveBeenCalled();
+  });
+
+  // ─── Task-7 reversal assertions ──────────────────────────────────────────────
+
+  it('reverses the SHOP down payment when voiding a DRAFT contract that had a down JE', async () => {
+    // query.findOne returns DRAFT/CREATING contract with downPayment 2000, branchId 'br-1'
+    queryMock.findOne.mockResolvedValue({
+      ...mockCreatedContract,
+      downPayment: new Decimal(2000),
+      branchId: 'br-1',
+      signatures: [],
+      payments: [],
+    });
+    // a shop-down-payment JE exists for this contract:
+    tx.journalEntry.findFirst.mockResolvedValue({ id: 'down-je-1' });
+    shopAccountResolver.resolveBranchCashAccount.mockResolvedValue('S11-1102');
+
+    await service.softDelete('c-1', 'user-1');
+
+    const input = (shopDownPaymentReversalTemplate.execute as jest.Mock).mock.calls[0][0];
+    expect(input).toMatchObject({
+      idempotencyKey: 'shop-down-payment-reversal:c-1',
+      refundAccountCode: 'S11-1102',
+      originalJournalEntryId: 'down-je-1',
+    });
+    expect(input.downAmount.toString()).toBe('2000');
+    // Confirm template was called with tx as 2nd arg (atomic)
+    expect(shopDownPaymentReversalTemplate.execute).toHaveBeenCalledWith(input, tx);
+  });
+
+  it('does NOT reverse when no down JE was posted', async () => {
+    queryMock.findOne.mockResolvedValue({
+      ...mockCreatedContract,
+      downPayment: new Decimal(2000),
+      branchId: 'br-1',
+      signatures: [],
+      payments: [],
+    });
+    // No down JE found
+    tx.journalEntry.findFirst.mockResolvedValue(null);
+
+    await service.softDelete('c-1', 'user-1');
+
+    expect(shopDownPaymentReversalTemplate.execute).not.toHaveBeenCalled();
   });
 });

@@ -1,9 +1,29 @@
 import type { ComponentType } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { Building2, Users, BarChart3, Wallet, Smartphone, MessageSquare, Sparkles, ShieldCheck } from 'lucide-react';
+import CompanySettingsPage from '@/pages/CompanySettingsPage';
+import AccountRolesPage from '@/pages/AccountRolesPage';
+import IntegrationHubPage from '@/pages/IntegrationHubPage';
+import MdmTestPage from '@/pages/MdmTestPage';
+import LineOaSettingsPage from '@/pages/LineOaSettingsPage';
+import LineGreetingPage from '@/pages/LineGreetingPage';
+import SmsTemplatesPage from '@/pages/SmsTemplatesPage';
+import ChannelSettingsPage from '@/pages/ChannelSettingsPage';
+import DunningSettingsPage from '@/pages/DunningSettingsPage';
+import CollectionsSettingsPage from '@/pages/SettingsPage/CollectionsPage';
+import PricingTemplatesPage from '@/pages/PricingTemplatesPage';
+import StickersSettingsPage from '@/pages/SettingsPage/StickersPage';
+import AiAdminPage from '@/pages/AiAdminPage';
+import AiPersonaPage from '@/pages/AiPersonaPage';
+import AiSettingsPage from '@/pages/AiSettingsPage';
+import AiTrainingPage from '@/pages/AiTrainingPage';
+import AiPerformancePage from '@/pages/AiPerformancePage';
 import InterestConfigPage from '@/pages/InterestConfigPage';
 import GfinConfigPage from '@/pages/GfinConfigPage';
 import PaymentMethodSettingsPage from '@/pages/PaymentMethodSettingsPage';
+import ChartOfAccountsPage from '@/pages/ChartOfAccountsPage';
+import PeakSyncPage from '@/pages/PeakSyncPage';
+import { ETaxConfigPage } from '@/pages/ETaxConfigPage';
 // inline components (อยู่ที่เดิม — แค่ import มา render)
 import { CompanyTab } from '@/pages/SettingsPage/tabs/CompanyTab';
 import { ContactsTab } from '@/pages/SettingsPage/tabs/ContactsTab';
@@ -48,7 +68,7 @@ export const settingsRegistry: SettingsCategory[] = [
     items: [
       { id: 'company-info', label: 'ข้อมูลบริษัท', group: 'บริษัท', roles: ['OWNER'], kind: 'inline', component: CompanyTab, keywords: ['ที่อยู่', 'โลโก้', 'ผู้เซ็น', 'tax id'] },
       { id: 'contacts', label: 'สมุดผู้ติดต่อ', group: 'บริษัท', roles: ALL, kind: 'inline', component: ContactsTab, keywords: ['ลูกค้า', 'ผู้ขาย', 'supplier'] },
-      { id: 'entities', label: 'บริษัทในเครือ', group: 'บริษัท', roles: ['OWNER'], kind: 'external', path: '/settings/companies' },
+      { id: 'entities', label: 'บริษัทในเครือ', group: 'บริษัท', roles: ['OWNER'], kind: 'route', component: CompanySettingsPage, path: '/settings/company/entities' },
       { id: 'branches', label: 'สาขา', group: 'สาขา', roles: ['OWNER'], kind: 'external', path: '/branches' },
     ],
   },
@@ -56,7 +76,7 @@ export const settingsRegistry: SettingsCategory[] = [
     id: 'access', label: 'ผู้ใช้ & สิทธิ์', icon: Users, roles: ['OWNER'],
     items: [
       { id: 'users', label: 'ผู้ใช้ / พนักงาน', group: 'ผู้ใช้', roles: ['OWNER'], kind: 'external', path: '/users' },
-      { id: 'account-roles', label: 'บัญชีตาม Role', group: 'ผู้ใช้', roles: ['OWNER'], kind: 'external', path: '/settings/account-roles' },
+      { id: 'account-roles', label: 'บัญชีตาม Role', group: 'ผู้ใช้', roles: ['OWNER'], kind: 'route', component: AccountRolesPage, path: '/settings/access/account-roles' },
       { id: 'maker-checker', label: 'ระบบอนุมัติ 2 ชั้น (Maker-Checker)', group: 'การอนุมัติ & สิทธิ์', roles: ['OWNER'], kind: 'inline', component: MakerCheckerToggle, keywords: ['อนุมัติ', 'maker', 'checker'] },
       { id: 'reverse-permission', label: 'สิทธิ์กลับรายการ', group: 'การอนุมัติ & สิทธิ์', roles: ['OWNER'], kind: 'inline', component: ReversePermissionCard, keywords: ['reverse', 'กลับรายการ', 'void'] },
       { id: 'reverse-reasons', label: 'เหตุผลกลับรายการ', group: 'การอนุมัติ & สิทธิ์', roles: ['OWNER'], kind: 'inline', component: ReverseReasonsManagementCard },
@@ -70,9 +90,9 @@ export const settingsRegistry: SettingsCategory[] = [
       { id: 'vat', label: 'VAT', group: 'ภาษี', roles: ['OWNER'], kind: 'inline', component: VatTab, keywords: ['ภาษี', '7%', 'มูลค่าเพิ่ม'] },
       { id: 'periods', label: 'งวดบัญชี', group: 'บัญชี', roles: ['OWNER'], kind: 'inline', component: PeriodsTab, keywords: ['ปิดงวด', 'period'] },
       { id: 'peak-mapping', label: 'PEAK mapping', group: 'บัญชี', roles: ALL, kind: 'inline', component: PeakMappingTab, keywords: ['peak'] },
-      { id: 'chart', label: 'ผังบัญชี', group: 'บัญชี', roles: ALL, kind: 'external', path: '/settings/chart-of-accounts' },
-      { id: 'peak-sync', label: 'PEAK sync', group: 'บัญชี', roles: ['OWNER', 'ACCOUNTANT'], kind: 'external', path: '/settings/peak-sync' },
-      { id: 'e-tax', label: 'e-Tax', group: 'ภาษี', roles: ['OWNER'], kind: 'external', path: '/settings/e-tax-config' },
+      { id: 'chart', label: 'ผังบัญชี', group: 'บัญชี', roles: ALL, kind: 'route', component: ChartOfAccountsPage, path: '/settings/accounting/chart' },
+      { id: 'peak-sync', label: 'PEAK sync', group: 'บัญชี', roles: ['OWNER', 'ACCOUNTANT'], kind: 'route', component: PeakSyncPage, path: '/settings/accounting/peak-sync' },
+      { id: 'e-tax', label: 'e-Tax', group: 'ภาษี', roles: ['OWNER'], kind: 'route', component: ETaxConfigPage, path: '/settings/accounting/e-tax' },
       { id: 'documents', label: 'เลขที่/รูปแบบเอกสาร', group: 'บัญชี', roles: ['OWNER'], kind: 'external', path: '/settings/document-config' },
     ],
   },
@@ -87,8 +107,8 @@ export const settingsRegistry: SettingsCategory[] = [
   {
     id: 'products', label: 'สินค้า & การขาย', icon: Smartphone, roles: ['OWNER'],
     items: [
-      { id: 'pricing', label: 'ตั้งราคา', roles: ['OWNER'], kind: 'external', path: '/settings/pricing-templates' },
-      { id: 'stickers', label: 'สติกเกอร์ฉลาก', roles: ['OWNER'], kind: 'external', path: '/settings/stickers' },
+      { id: 'pricing', label: 'ตั้งราคา', roles: ['OWNER'], kind: 'route', component: PricingTemplatesPage, path: '/settings/products/pricing' },
+      { id: 'stickers', label: 'สติกเกอร์ฉลาก', roles: ['OWNER'], kind: 'route', component: StickersSettingsPage, path: '/settings/products/stickers' },
       { id: 'promotions', label: 'โปรโมชัน', roles: ['OWNER'], kind: 'external', path: '/promotions' },
       { id: 'contract-templates', label: 'แบบสัญญา', roles: ['OWNER'], kind: 'external', path: '/contract-templates' },
     ],
@@ -96,23 +116,23 @@ export const settingsRegistry: SettingsCategory[] = [
   {
     id: 'comms', label: 'สื่อสารลูกค้า', icon: MessageSquare, roles: ['OWNER', 'FINANCE_MANAGER'],
     items: [
-      { id: 'line-oa', label: 'LINE OA', roles: ['OWNER'], kind: 'external', path: '/settings/line-oa' },
+      { id: 'line-oa', label: 'LINE OA', roles: ['OWNER'], kind: 'route', component: LineOaSettingsPage, path: '/settings/comms/line-oa' },
       { id: 'rich-menu', label: 'Rich Menu', roles: ['OWNER'], kind: 'external', path: '/settings/rich-menu' },
-      { id: 'greeting', label: 'ข้อความทักทาย', roles: ['OWNER'], kind: 'external', path: '/settings/line-greeting' },
-      { id: 'sms', label: 'SMS templates', roles: ['OWNER', 'FINANCE_MANAGER'], kind: 'external', path: '/settings/sms-templates' },
-      { id: 'channels', label: 'ช่องทาง', roles: ['OWNER'], kind: 'external', path: '/settings/channels' },
-      { id: 'dunning', label: 'Dunning', roles: ['OWNER'], kind: 'external', path: '/settings/dunning' },
-      { id: 'collections', label: 'ตั้งค่า collections', roles: ['OWNER'], kind: 'external', path: '/settings/collections' },
+      { id: 'greeting', label: 'ข้อความทักทาย', roles: ['OWNER'], kind: 'route', component: LineGreetingPage, path: '/settings/comms/greeting' },
+      { id: 'sms', label: 'SMS templates', roles: ['OWNER', 'FINANCE_MANAGER'], kind: 'route', component: SmsTemplatesPage, path: '/settings/comms/sms' },
+      { id: 'channels', label: 'ช่องทาง', roles: ['OWNER'], kind: 'route', component: ChannelSettingsPage, path: '/settings/comms/channels' },
+      { id: 'dunning', label: 'Dunning', roles: ['OWNER'], kind: 'route', component: DunningSettingsPage, path: '/settings/comms/dunning' },
+      { id: 'collections', label: 'ตั้งค่า collections', roles: ['OWNER'], kind: 'route', component: CollectionsSettingsPage, path: '/settings/comms/collections' },
     ],
   },
   {
     id: 'ai', label: 'AI', icon: Sparkles, roles: ['OWNER'],
     items: [
-      { id: 'ai-admin', label: 'AI Admin', roles: ['OWNER'], kind: 'external', path: '/settings/ai-admin' },
-      { id: 'ai-persona', label: 'AI Persona', roles: ['OWNER'], kind: 'external', path: '/settings/ai-persona' },
-      { id: 'ai-assistant', label: 'AI Assistant', roles: ['OWNER'], kind: 'external', path: '/settings/ai-chat' },
-      { id: 'ai-training', label: 'AI Training', roles: ['OWNER'], kind: 'external', path: '/settings/ai-training' },
-      { id: 'ai-performance', label: 'AI Performance', roles: ['OWNER'], kind: 'external', path: '/settings/ai-performance' },
+      { id: 'admin', label: 'AI Admin', roles: ['OWNER'], kind: 'route', component: AiAdminPage, path: '/settings/ai/admin' },
+      { id: 'persona', label: 'AI Persona', roles: ['OWNER'], kind: 'route', component: AiPersonaPage, path: '/settings/ai/persona' },
+      { id: 'assistant', label: 'AI Assistant', roles: ['OWNER'], kind: 'route', component: AiSettingsPage, path: '/settings/ai/assistant' },
+      { id: 'training', label: 'AI Training', roles: ['OWNER'], kind: 'route', component: AiTrainingPage, path: '/settings/ai/training' },
+      { id: 'performance', label: 'AI Performance', roles: ['OWNER'], kind: 'route', component: AiPerformancePage, path: '/settings/ai/performance' },
     ],
   },
   {
@@ -121,8 +141,8 @@ export const settingsRegistry: SettingsCategory[] = [
       { id: 'test-mode', label: 'โหมดทดสอบ', group: 'ความปลอดภัย', roles: ['OWNER'], kind: 'inline', component: TestModeToggle, keywords: ['test', 'otp', '2fa', 'เครดิต'] },
       { id: 'pdpa', label: 'PDPA', group: 'ความปลอดภัย', roles: ['OWNER'], kind: 'inline', component: PdpaTab, keywords: ['pdpa', 'ข้อมูลส่วนบุคคล', 'encryption'] },
       { id: 'backup', label: 'สำรองข้อมูล', group: 'ข้อมูล', roles: ['OWNER'], kind: 'inline', component: OffsiteBackupTab, keywords: ['backup', 'สำรอง'] },
-      { id: 'integrations', label: 'การเชื่อมต่อ', group: 'เชื่อมต่อ', roles: ['OWNER', 'ACCOUNTANT'], kind: 'external', path: '/settings/integrations' },
-      { id: 'mdm', label: 'MDM', group: 'เชื่อมต่อ', roles: ['OWNER'], kind: 'external', path: '/settings/mdm-test' },
+      { id: 'integrations', label: 'การเชื่อมต่อ', group: 'เชื่อมต่อ', roles: ['OWNER', 'ACCOUNTANT'], kind: 'route', component: IntegrationHubPage, path: '/settings/system/integrations' },
+      { id: 'mdm', label: 'MDM', group: 'เชื่อมต่อ', roles: ['OWNER'], kind: 'route', component: MdmTestPage, path: '/settings/system/mdm' },
       { id: 'audit-log', label: 'Audit Log', group: 'ข้อมูล', roles: ['OWNER'], kind: 'external', path: '/audit-logs' },
       { id: 'system-status', label: 'System Status', group: 'ข้อมูล', roles: ['OWNER'], kind: 'external', path: '/system-status' },
     ],

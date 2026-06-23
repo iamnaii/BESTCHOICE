@@ -436,9 +436,9 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
         { label: 'ปิดบัญชีสิ้นปี', path: '/finance/year-end-closing', icon: CalendarDays },
         { label: 'งวดบัญชี', path: '/accounting/periods', icon: CalendarDays },
         { label: 'ชำระเงินระหว่างบริษัท', path: '/accounting/intercompany', icon: ClipboardList },
-        { label: 'ผังบัญชี', path: '/settings/chart-of-accounts', icon: ClipboardList },
+        { label: 'ผังบัญชี', path: '/settings/accounting/chart', icon: ClipboardList },
         { label: 'ตรวจสอบบัญชี', path: '/financial-audit', icon: ClipboardList },
-        { label: 'PEAK Sync', path: '/settings/peak-sync', icon: Plug },
+        { label: 'PEAK Sync', path: '/settings/accounting/peak-sync', icon: Plug },
         { label: 'ส่งออก PEAK CSV', path: '/finance/peak-export', icon: Plug },
       ],
     },
@@ -656,7 +656,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
       icon: Landmark,
       zone: 'fin',
       items: [
-        { label: 'ผังบัญชี', path: '/settings/chart-of-accounts', icon: ClipboardList },
+        { label: 'ผังบัญชี', path: '/settings/accounting/chart', icon: ClipboardList },
         // SP6 — Bank/Cash account directory (mirrors CoA 11-1101..1203)
         { label: 'บัญชีเงินสด/ธนาคาร', path: '/finance/bank-accounts', icon: Landmark },
       ],
@@ -738,12 +738,12 @@ const OWNER_CONFIG: RoleMenuConfig = {
       zone: 'settings',
       items: [
         { label: 'ตั้งค่าระบบ', path: '/settings', icon: Settings },
-        { label: 'บัญชีตาม Role', path: '/settings/account-roles', icon: ClipboardList },
+        { label: 'บัญชีตาม Role', path: '/settings/access/account-roles', icon: ClipboardList },
         { label: 'ผู้ใช้ / พนักงาน', path: '/users', icon: UserCog },
         { label: 'สาขา', path: '/branches', icon: Building2 },
-        { label: 'บริษัท', path: '/settings/companies', icon: Building2 },
+        { label: 'บริษัท', path: '/settings/company/entities', icon: Building2 },
         { label: 'แบบสัญญา', path: '/contract-templates', icon: FileCheck },
-        { label: 'ตั้งราคา', path: '/settings/pricing-templates', icon: CircleDollarSign },
+        { label: 'ตั้งราคา', path: '/settings/products/pricing', icon: CircleDollarSign },
         { label: 'ตั้งค่า GFIN', path: '/settings/finance/gfin', icon: Calculator },
         { label: 'โปรโมชัน', path: '/promotions', icon: BadgePercent },
         { label: 'PDPA', path: '/pdpa', icon: Shield },
@@ -758,11 +758,11 @@ const OWNER_CONFIG: RoleMenuConfig = {
       icon: Sparkles,
       zone: 'settings',
       items: [
-        { label: 'AI Admin', path: '/settings/ai-admin', icon: Sparkles },
-        { label: 'AI Persona', path: '/settings/ai-persona', icon: Sparkles },
-        { label: 'AI Assistant', path: '/settings/ai-chat', icon: Sparkles },
-        { label: 'AI Training', path: '/settings/ai-training', icon: Sparkles },
-        { label: 'AI Performance', path: '/settings/ai-performance', icon: Sparkles },
+        { label: 'AI Admin', path: '/settings/ai/admin', icon: Sparkles },
+        { label: 'AI Persona', path: '/settings/ai/persona', icon: Sparkles },
+        { label: 'AI Assistant', path: '/settings/ai/assistant', icon: Sparkles },
+        { label: 'AI Training', path: '/settings/ai/training', icon: Sparkles },
+        { label: 'AI Performance', path: '/settings/ai/performance', icon: Sparkles },
       ],
     },
     {
@@ -775,7 +775,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
       zone: 'fin',
       items: [
         { label: 'LINE OA', path: '/settings/rich-menu', icon: MessageSquareMore },
-        { label: 'การเชื่อมต่อ (PaySolutions / สรรพากร ฯลฯ)', path: '/settings/integrations', icon: Plug },
+        { label: 'การเชื่อมต่อ (PaySolutions / สรรพากร ฯลฯ)', path: '/settings/system/integrations', icon: Plug },
       ],
     },
     {
@@ -785,7 +785,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
       icon: Bell,
       zone: 'fin',
       items: [
-        { label: 'Dunning (เตือนค่างวด)', path: '/settings/dunning', icon: Bell },
+        { label: 'Dunning (เตือนค่างวด)', path: '/settings/comms/dunning', icon: Bell },
         // P4-SP2 — auto e-receipt config (e_receipt_auto SystemConfig key)
         { label: 'ใบเสร็จอิเล็กทรอนิกส์อัตโนมัติ', path: '/finance/e-receipt-auto', icon: FileText },
       ],
@@ -908,7 +908,7 @@ const ZONE_CONFIG: Record<string, RoleZoneConfig> = {
       ],
       settings: [
         { label: 'ผู้ใช้ / พนักงาน', path: '/users', icon: UserCog },
-        { label: 'บริษัท', path: '/settings/companies', icon: Building2 },
+        { label: 'บริษัท', path: '/settings/company/entities', icon: Building2 },
         { label: 'สาขา', path: '/branches', icon: Building2 },
         { label: 'ตั้งค่า', path: '/settings', icon: Settings },
         { label: 'เพิ่มเติม', path: '#more', icon: MoreHorizontal, action: 'sidebar' },

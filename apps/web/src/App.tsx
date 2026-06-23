@@ -63,8 +63,8 @@ const SettingsCategoryRoute = lazy(() =>
 const SettingsItemRoute = lazy(() =>
   import('@/pages/settings/SettingsItemRoute').then((m) => ({ default: m.SettingsItemRoute })),
 );
-const StickersSettingsPage = lazy(() => import('@/pages/SettingsPage/StickersPage'));
-const CollectionsSettingsPage = lazy(() => import('@/pages/SettingsPage/CollectionsPage'));
+// StickersSettingsPage moved to settings-registry (P2b products migration)
+// CollectionsSettingsPage moved to settings-registry (P2b comms migration)
 const GeneralSettingsPage = lazy(() => import('@/pages/SettingsPage/GeneralSettingsPage'));
 const DocumentConfigPage = lazy(() => import('@/pages/DocumentConfigPage'));
 // SP5 — SHOP-side additions
@@ -87,7 +87,7 @@ const FinancialAuditPage = lazy(() => import('@/pages/FinancialAuditPage'));
 const PaymentCsvImportPage = lazy(() => import('@/pages/PaymentCsvImportPage'));
 const POSPage = lazy(() => import('@/pages/POSPage'));
 const SalesHistoryPage = lazy(() => import('@/pages/SalesHistoryPage'));
-const PricingTemplatesPage = lazy(() => import('@/pages/PricingTemplatesPage'));
+// PricingTemplatesPage moved to settings-registry (P2b products migration)
 const SuppliersPage = lazy(() => import('@/pages/SuppliersPage'));
 const StockOverviewPage = lazy(() => import('@/pages/StockPage/OverviewPage'));
 const StockProductsPage = lazy(() => import('@/pages/StockPage/ProductsPage'));
@@ -116,7 +116,7 @@ const LiffFinanceVerify = lazy(() => import('@/pages/liff/LiffFinanceVerify'));
 const LiffBranches = lazy(() => import('@/pages/liff/LiffBranches'));
 const LiffReceipts = lazy(() => import('@/pages/liff/LiffReceipts'));
 const LiffNotificationSettings = lazy(() => import('@/pages/liff/LiffNotificationSettings'));
-const LineOaSettingsPage = lazy(() => import('@/pages/LineOaSettingsPage'));
+// LineOaSettingsPage moved to settings-registry (P2b comms migration)
 const FinanceReceivablePage = lazy(() => import('@/pages/FinanceReceivablePage'));
 const FinancePortfolioPage = lazy(() => import('@/pages/FinancePortfolioPage'));
 const ExternalFinanceCompanyDetailPage = lazy(
@@ -130,7 +130,7 @@ const ExpenseDocumentNewPage = lazy(() => import('@/pages/ExpenseDocumentNewPage
 const ExpenseFavoritesPage = lazy(() => import('@/pages/ExpenseFavoritesPage'));
 const ExpenseDailySummaryPage = lazy(() => import('@/pages/ExpenseDailySummaryPage'));
 const ProfitLossPage = lazy(() => import('@/pages/ProfitLossPage'));
-const CompanySettingsPage = lazy(() => import('@/pages/CompanySettingsPage'));
+// CompanySettingsPage moved to settings-registry (kind:'route') — lazy import removed
 // SP3 — split /tax-reports into 3 dedicated pages (VAT / WHT / e-Tax)
 const VatReportPage = lazy(() =>
   import('@/pages/VatReportPage').then((m) => ({ default: m.VatReportPage })),
@@ -140,9 +140,6 @@ const WhtReportPage = lazy(() =>
 );
 const ETaxInvoicePage = lazy(() =>
   import('@/pages/ETaxInvoicePage').then((m) => ({ default: m.ETaxInvoicePage })),
-);
-const ETaxConfigPage = lazy(() =>
-  import('@/pages/ETaxConfigPage').then((m) => ({ default: m.ETaxConfigPage })),
 );
 const CommissionsPage = lazy(() => import('@/pages/CommissionsPage'));
 const TradeInPage = lazy(() => import('@/pages/TradeInPage'));
@@ -158,16 +155,14 @@ const AssetJournalPage = lazy(() => import('@/pages/assets/AssetJournalPage'));
 const AssetSummaryReportPage = lazy(() => import('@/pages/assets/AssetSummaryReportPage'));
 const AssetTransfersListPage = lazy(() => import('@/pages/transfers/AssetTransfersListPage'));
 const DepreciationPage = lazy(() => import('@/pages/depreciation/DepreciationPage'));
-const ChartOfAccountsPage = lazy(() => import('@/pages/ChartOfAccountsPage'));
 const BankAccountsPage = lazy(() => import('@/pages/BankAccountsPage'));
-// D1.1.1.4 — Admin UI for account_role_map (OWNER-only).
-const AccountRolesPage = lazy(() => import('@/pages/AccountRolesPage'));
+// D1.1.1.4 — AccountRolesPage moved to settings-registry (kind:'route') — lazy import removed
 const TodosPage = lazy(() => import('@/pages/TodosPage'));
 const UnifiedInboxPage = lazy(() => import('@/pages/UnifiedInboxPage'));
 const ChatInboxPage = lazy(() => import('@/pages/chat/ChatInboxPage'));
 const CrmPipelinePage = lazy(() => import('@/pages/CrmPipelinePage'));
 const AdsTrackingPage = lazy(() => import('@/pages/AdsTrackingPage'));
-const ChannelSettingsPage = lazy(() => import('@/pages/ChannelSettingsPage'));
+// ChannelSettingsPage moved to settings-registry (P2b comms migration)
 const ChatbotFinanceAnalyticsPage = lazy(() => import('@/pages/ChatbotFinanceAnalyticsPage'));
 const ChatbotFinanceSessionsPage = lazy(() => import('@/pages/ChatbotFinanceSessionsPage'));
 const ChatbotFinanceKnowledgePage = lazy(() => import('@/pages/ChatbotFinanceKnowledgePage'));
@@ -179,8 +174,8 @@ const CannedResponseAdminPage = lazy(() => import('@/pages/CannedResponseAdminPa
 const CollectionDashboardPage = lazy(() => import('@/pages/CollectionDashboardPage'));
 const CollectionsPage = lazy(() => import('@/pages/CollectionsPage'));
 const LettersPage = lazy(() => import('./pages/LettersPage'));
-const DunningSettingsPage = lazy(() => import('@/pages/DunningSettingsPage'));
-const SmsTemplatesPage = lazy(() => import('@/pages/SmsTemplatesPage'));
+// DunningSettingsPage moved to settings-registry (P2b comms migration)
+// SmsTemplatesPage moved to settings-registry (P2b comms migration)
 const MonthlyClosePage = lazy(() => import('@/pages/MonthlyClosePage'));
 const YearEndClosingPage = lazy(() => import('@/pages/YearEndClosingPage'));
 // P3-SP5 — SHOP-side accounting (Trial Balance + P&L scoped to SHOP chart)
@@ -210,20 +205,12 @@ const WhtPage = lazy(() => import('@/pages/finance/WhtPage'));
 const ETaxPage = lazy(() => import('@/pages/finance/ETaxPage'));
 const VatAutoJournalPage = lazy(() => import('@/pages/finance/VatAutoJournalPage'));
 const EReceiptAutoPage = lazy(() => import('@/pages/finance/EReceiptAutoPage'));
-const PeakSyncPage = lazy(() => import('@/pages/PeakSyncPage'));
 const PeakExportPage = lazy(() => import('@/pages/PeakExportPage'));
-const AiSettingsPage = lazy(() => import('@/pages/AiSettingsPage'));
-const AiTrainingPage = lazy(() => import('@/pages/AiTrainingPage'));
-const AiPerformancePage = lazy(() => import('@/pages/AiPerformancePage'));
-// SP — AI Persona viewer (Phase A read-only)
-const AiPersonaPage = lazy(() => import('@/pages/AiPersonaPage'));
-const AiAdminPage = lazy(() => import('@/pages/AiAdminPage'));
-const IntegrationHubPage = lazy(() => import('@/pages/IntegrationHubPage'));
-const MdmTestPage = lazy(() => import('@/pages/MdmTestPage'));
+// IntegrationHubPage + MdmTestPage moved to settings-registry (kind:'route') — lazy imports removed
 const MdmDashboardPage = lazy(() => import('@/pages/MdmDashboardPage'));
 const BroadcastPage = lazy(() => import('@/pages/BroadcastPage'));
 const RichMenuPage = lazy(() => import('@/pages/RichMenuPage'));
-const LineGreetingPage = lazy(() => import('@/pages/LineGreetingPage'));
+// LineGreetingPage moved to settings-registry (P2b comms migration)
 const CustomerIntakePage = lazy(() => import('@/pages/CustomerIntakePage'));
 const OnlineOrdersPage = lazy(() => import('@/pages/OnlineOrdersPage'));
 const InstallmentApplicationsPage = lazy(() => import('@/pages/InstallmentApplicationsPage'));
@@ -477,10 +464,13 @@ function App() {
           <Route path="/chat" element={<ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES']}><ChatInboxPage /></ProtectedRoute>} />
           <Route path="/crm" element={<ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES']}><CrmPipelinePage /></ProtectedRoute>} />
           <Route path="/ads" element={<ProtectedRoute roles={['OWNER']}><AdsTrackingPage /></ProtectedRoute>} />
-          <Route path="/settings/channels" element={<ProtectedRoute roles={['OWNER']}><ChannelSettingsPage /></ProtectedRoute>} />
+          {/* P2b — channels moved to /settings/comms/channels */}
+          <Route path="/settings/channels" element={<Navigate to="/settings/comms/channels" replace />} />
           <Route path="/settings/payment-methods" element={<Navigate to="/settings/finance/payment-methods" replace />} />
-          <Route path="/settings/stickers" element={<ProtectedRoute roles={['OWNER']}><StickersSettingsPage /></ProtectedRoute>} />
-          <Route path="/settings/collections" element={<ProtectedRoute roles={['OWNER']}><CollectionsSettingsPage /></ProtectedRoute>} />
+          {/* P2b — stickers moved to /settings/products/stickers */}
+          <Route path="/settings/stickers" element={<Navigate to="/settings/products/stickers" replace />} />
+          {/* P2b — collections moved to /settings/comms/collections */}
+          <Route path="/settings/collections" element={<Navigate to="/settings/comms/collections" replace />} />
           <Route path="/settings/general" element={<ProtectedRoute roles={['OWNER']}><GeneralSettingsPage /></ProtectedRoute>} />
           <Route path="/settings/document-config" element={<ProtectedRoute roles={['OWNER']}><DocumentConfigPage /></ProtectedRoute>} />
           <Route path="/chatbot-finance" element={<ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER']}><ChatbotFinanceAnalyticsPage /></ProtectedRoute>} />
@@ -786,14 +776,8 @@ function App() {
             <Route path=":itemId" element={<SettingsItemRoute />} />
           </Route>
           <Route path="/settings/interest-config" element={<Navigate to="/settings/finance/interest" replace />} />
-          <Route
-            path="/settings/pricing-templates"
-            element={
-              <ProtectedRoute roles={['OWNER']}>
-                <PricingTemplatesPage />
-              </ProtectedRoute>
-            }
-          />
+          {/* P2b — pricing-templates moved to /settings/products/pricing */}
+          <Route path="/settings/pricing-templates" element={<Navigate to="/settings/products/pricing" replace />} />
           <Route path="/settings/gfin-rates" element={<Navigate to="/settings/finance/gfin" replace />} />
           <Route
             path="/audit-logs"
@@ -887,14 +871,8 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/settings/line-oa"
-            element={
-              <ProtectedRoute roles={['OWNER']}>
-                <LineOaSettingsPage />
-              </ProtectedRoute>
-            }
-          />
+          {/* P2b — line-oa moved to /settings/comms/line-oa */}
+          <Route path="/settings/line-oa" element={<Navigate to="/settings/comms/line-oa" replace />} />
           {/* P4-SP2 — Tax UI (finance-tax endpoints replace SP3 placeholders) */}
           <Route
             path="/finance/vat"
@@ -928,49 +906,18 @@ function App() {
               </ProtectedRoute>
             }
           />
-          {/* P2-SP5 — OWNER-only e-Tax cert + RD creds configuration */}
-          <Route
-            path="/settings/e-tax-config"
-            element={
-              <ProtectedRoute roles={['OWNER']}>
-                <ETaxConfigPage />
-              </ProtectedRoute>
-            }
-          />
+          {/* P2b — e-Tax moved to /settings/accounting/e-tax */}
+          <Route path="/settings/e-tax-config" element={<Navigate to="/settings/accounting/e-tax" replace />} />
           {/* Backwards-compat: legacy /tax-reports → /finance/vat */}
           <Route path="/tax-reports" element={<Navigate to="/finance/vat" replace />} />
-          <Route
-            path="/settings/companies"
-            element={
-              <ProtectedRoute roles={['OWNER']}>
-                <CompanySettingsPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/settings/dunning"
-            element={
-              <ProtectedRoute roles={['OWNER']}>
-                <DunningSettingsPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/settings/sms-templates"
-            element={
-              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER']}>
-                <SmsTemplatesPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/settings/peak-sync"
-            element={
-              <ProtectedRoute roles={['OWNER', 'ACCOUNTANT']}>
-                <PeakSyncPage />
-              </ProtectedRoute>
-            }
-          />
+          {/* P2b — companies moved to /settings/company/entities */}
+          <Route path="/settings/companies" element={<Navigate to="/settings/company/entities" replace />} />
+          {/* P2b — dunning moved to /settings/comms/dunning */}
+          <Route path="/settings/dunning" element={<Navigate to="/settings/comms/dunning" replace />} />
+          {/* P2b — sms-templates moved to /settings/comms/sms */}
+          <Route path="/settings/sms-templates" element={<Navigate to="/settings/comms/sms" replace />} />
+          {/* P2b — PEAK sync moved to /settings/accounting/peak-sync */}
+          <Route path="/settings/peak-sync" element={<Navigate to="/settings/accounting/peak-sync" replace />} />
           <Route
             path="/finance/peak-export"
             element={
@@ -1133,14 +1080,8 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/settings/chart-of-accounts"
-            element={
-              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
-                <ChartOfAccountsPage />
-              </ProtectedRoute>
-            }
-          />
+          {/* P2b — Chart of Accounts moved to /settings/accounting/chart */}
+          <Route path="/settings/chart-of-accounts" element={<Navigate to="/settings/accounting/chart" replace />} />
           {/* SP6 — Bank/Cash account directory (closes /finance/bank-accounts placeholder). */}
           <Route
             path="/finance/bank-accounts"
@@ -1151,14 +1092,8 @@ function App() {
             }
           />
           {/* D1.1.1.4 — Admin UI for account_role_map (OWNER-only). */}
-          <Route
-            path="/settings/account-roles"
-            element={
-              <ProtectedRoute roles={['OWNER']}>
-                <AccountRolesPage />
-              </ProtectedRoute>
-            }
-          />
+          {/* P2b — account-roles moved to /settings/access/account-roles */}
+          <Route path="/settings/account-roles" element={<Navigate to="/settings/access/account-roles" replace />} />
           <Route
             path="/analytics"
             element={
@@ -1191,62 +1126,15 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/settings/ai-chat"
-            element={
-              <ProtectedRoute roles={['OWNER']}>
-                <AiSettingsPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/settings/ai-training"
-            element={
-              <ProtectedRoute roles={['OWNER']}>
-                <AiTrainingPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/settings/ai-performance"
-            element={
-              <ProtectedRoute roles={['OWNER']}>
-                <AiPerformancePage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/settings/ai-admin"
-            element={
-              <ProtectedRoute roles={['OWNER']}>
-                <AiAdminPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/settings/ai-persona"
-            element={
-              <ProtectedRoute roles={['OWNER']}>
-                <AiPersonaPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/settings/integrations"
-            element={
-              <ProtectedRoute roles={['OWNER', 'ACCOUNTANT']}>
-                <IntegrationHubPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/settings/mdm-test"
-            element={
-              <ProtectedRoute roles={['OWNER']}>
-                <MdmTestPage />
-              </ProtectedRoute>
-            }
-          />
+          <Route path="/settings/ai-chat" element={<Navigate to="/settings/ai/assistant" replace />} />
+          <Route path="/settings/ai-training" element={<Navigate to="/settings/ai/training" replace />} />
+          <Route path="/settings/ai-performance" element={<Navigate to="/settings/ai/performance" replace />} />
+          <Route path="/settings/ai-admin" element={<Navigate to="/settings/ai/admin" replace />} />
+          <Route path="/settings/ai-persona" element={<Navigate to="/settings/ai/persona" replace />} />
+          {/* P2b — integrations moved to /settings/system/integrations */}
+          <Route path="/settings/integrations" element={<Navigate to="/settings/system/integrations" replace />} />
+          {/* P2b — mdm-test moved to /settings/system/mdm */}
+          <Route path="/settings/mdm-test" element={<Navigate to="/settings/system/mdm" replace />} />
           <Route
             path="/mdm"
             element={
@@ -1271,14 +1159,8 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/settings/line-greeting"
-            element={
-              <ProtectedRoute roles={['OWNER']}>
-                <LineGreetingPage />
-              </ProtectedRoute>
-            }
-          />
+          {/* P2b — line-greeting moved to /settings/comms/greeting */}
+          <Route path="/settings/line-greeting" element={<Navigate to="/settings/comms/greeting" replace />} />
           <Route
             path="/profile"
             element={

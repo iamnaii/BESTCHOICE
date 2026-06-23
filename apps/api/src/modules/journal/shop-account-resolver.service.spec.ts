@@ -52,4 +52,15 @@ describe('ShopAccountResolver', () => {
     await expect(resolver.resolveInflowCashAccount('br-1', 'ONLINE_GATEWAY')).resolves.toBe('S11-1201');
     expect(prisma.branch.findUnique).not.toHaveBeenCalled();
   });
+
+  it('resolveOutflowCashAccount: CASH → the branch till', async () => {
+    prisma.branch.findUnique.mockResolvedValue({ shopCashAccountCode: 'S11-1102' });
+    await expect(resolver.resolveOutflowCashAccount('br-1', 'CASH')).resolves.toBe('S11-1102');
+  });
+
+  it('resolveOutflowCashAccount: TRANSFER / null → the paying bank S11-1202', async () => {
+    await expect(resolver.resolveOutflowCashAccount('br-1', 'TRANSFER')).resolves.toBe('S11-1202');
+    await expect(resolver.resolveOutflowCashAccount('br-1', null)).resolves.toBe('S11-1202');
+    expect(prisma.branch.findUnique).not.toHaveBeenCalled();
+  });
 });

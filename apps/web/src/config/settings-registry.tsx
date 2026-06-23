@@ -1,3 +1,4 @@
+import type { ComponentType } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { Building2, Users, BarChart3, Wallet, Smartphone, MessageSquare, Sparkles, ShieldCheck } from 'lucide-react';
 // inline components (อยู่ที่เดิม — แค่ import มา render)
@@ -25,7 +26,7 @@ export interface SettingsItem {
   roles: SettingsRole[];
   kind: SettingsItemKind;
   group?: string;                 // หัวข้อกลุ่มในหน้าหมวด
-  component?: React.ComponentType; // kind=inline
+  component?: ComponentType; // kind=inline
   path?: string;                   // kind=external (path ปัจจุบัน) | kind=route (path ใหม่, P2)
 }
 export interface SettingsCategory {

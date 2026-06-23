@@ -436,9 +436,9 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
         { label: 'ปิดบัญชีสิ้นปี', path: '/finance/year-end-closing', icon: CalendarDays },
         { label: 'งวดบัญชี', path: '/accounting/periods', icon: CalendarDays },
         { label: 'ชำระเงินระหว่างบริษัท', path: '/accounting/intercompany', icon: ClipboardList },
-        { label: 'ผังบัญชี', path: '/settings/chart-of-accounts', icon: ClipboardList },
+        { label: 'ผังบัญชี', path: '/settings/accounting/chart', icon: ClipboardList },
         { label: 'ตรวจสอบบัญชี', path: '/financial-audit', icon: ClipboardList },
-        { label: 'PEAK Sync', path: '/settings/peak-sync', icon: Plug },
+        { label: 'PEAK Sync', path: '/settings/accounting/peak-sync', icon: Plug },
         { label: 'ส่งออก PEAK CSV', path: '/finance/peak-export', icon: Plug },
       ],
     },
@@ -656,7 +656,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
       icon: Landmark,
       zone: 'fin',
       items: [
-        { label: 'ผังบัญชี', path: '/settings/chart-of-accounts', icon: ClipboardList },
+        { label: 'ผังบัญชี', path: '/settings/accounting/chart', icon: ClipboardList },
         // SP6 — Bank/Cash account directory (mirrors CoA 11-1101..1203)
         { label: 'บัญชีเงินสด/ธนาคาร', path: '/finance/bank-accounts', icon: Landmark },
       ],

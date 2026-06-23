@@ -141,9 +141,6 @@ const WhtReportPage = lazy(() =>
 const ETaxInvoicePage = lazy(() =>
   import('@/pages/ETaxInvoicePage').then((m) => ({ default: m.ETaxInvoicePage })),
 );
-const ETaxConfigPage = lazy(() =>
-  import('@/pages/ETaxConfigPage').then((m) => ({ default: m.ETaxConfigPage })),
-);
 const CommissionsPage = lazy(() => import('@/pages/CommissionsPage'));
 const TradeInPage = lazy(() => import('@/pages/TradeInPage'));
 const PromotionsPage = lazy(() => import('@/pages/PromotionsPage'));
@@ -158,7 +155,6 @@ const AssetJournalPage = lazy(() => import('@/pages/assets/AssetJournalPage'));
 const AssetSummaryReportPage = lazy(() => import('@/pages/assets/AssetSummaryReportPage'));
 const AssetTransfersListPage = lazy(() => import('@/pages/transfers/AssetTransfersListPage'));
 const DepreciationPage = lazy(() => import('@/pages/depreciation/DepreciationPage'));
-const ChartOfAccountsPage = lazy(() => import('@/pages/ChartOfAccountsPage'));
 const BankAccountsPage = lazy(() => import('@/pages/BankAccountsPage'));
 // D1.1.1.4 — Admin UI for account_role_map (OWNER-only).
 const AccountRolesPage = lazy(() => import('@/pages/AccountRolesPage'));
@@ -210,7 +206,6 @@ const WhtPage = lazy(() => import('@/pages/finance/WhtPage'));
 const ETaxPage = lazy(() => import('@/pages/finance/ETaxPage'));
 const VatAutoJournalPage = lazy(() => import('@/pages/finance/VatAutoJournalPage'));
 const EReceiptAutoPage = lazy(() => import('@/pages/finance/EReceiptAutoPage'));
-const PeakSyncPage = lazy(() => import('@/pages/PeakSyncPage'));
 const PeakExportPage = lazy(() => import('@/pages/PeakExportPage'));
 const AiSettingsPage = lazy(() => import('@/pages/AiSettingsPage'));
 const AiTrainingPage = lazy(() => import('@/pages/AiTrainingPage'));
@@ -928,15 +923,8 @@ function App() {
               </ProtectedRoute>
             }
           />
-          {/* P2-SP5 — OWNER-only e-Tax cert + RD creds configuration */}
-          <Route
-            path="/settings/e-tax-config"
-            element={
-              <ProtectedRoute roles={['OWNER']}>
-                <ETaxConfigPage />
-              </ProtectedRoute>
-            }
-          />
+          {/* P2b — e-Tax moved to /settings/accounting/e-tax */}
+          <Route path="/settings/e-tax-config" element={<Navigate to="/settings/accounting/e-tax" replace />} />
           {/* Backwards-compat: legacy /tax-reports → /finance/vat */}
           <Route path="/tax-reports" element={<Navigate to="/finance/vat" replace />} />
           <Route
@@ -963,14 +951,8 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/settings/peak-sync"
-            element={
-              <ProtectedRoute roles={['OWNER', 'ACCOUNTANT']}>
-                <PeakSyncPage />
-              </ProtectedRoute>
-            }
-          />
+          {/* P2b — PEAK sync moved to /settings/accounting/peak-sync */}
+          <Route path="/settings/peak-sync" element={<Navigate to="/settings/accounting/peak-sync" replace />} />
           <Route
             path="/finance/peak-export"
             element={
@@ -1133,14 +1115,8 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/settings/chart-of-accounts"
-            element={
-              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
-                <ChartOfAccountsPage />
-              </ProtectedRoute>
-            }
-          />
+          {/* P2b — Chart of Accounts moved to /settings/accounting/chart */}
+          <Route path="/settings/chart-of-accounts" element={<Navigate to="/settings/accounting/chart" replace />} />
           {/* SP6 — Bank/Cash account directory (closes /finance/bank-accounts placeholder). */}
           <Route
             path="/finance/bank-accounts"

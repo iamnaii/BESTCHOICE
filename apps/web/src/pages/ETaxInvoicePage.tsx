@@ -209,7 +209,7 @@ export function ETaxInvoicePage() {
         action={
           <div className="flex gap-2">
             <Button variant="ghost" asChild>
-              <Link to="/settings/e-tax-config" aria-label="ตั้งค่า e-Tax">
+              <Link to="/settings/accounting/e-tax" aria-label="ตั้งค่า e-Tax">
                 <SettingsIcon className="size-4 mr-2" aria-hidden />
                 ตั้งค่า
               </Link>

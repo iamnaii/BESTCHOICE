@@ -4,6 +4,9 @@ import { Building2, Users, BarChart3, Wallet, Smartphone, MessageSquare, Sparkle
 import InterestConfigPage from '@/pages/InterestConfigPage';
 import GfinConfigPage from '@/pages/GfinConfigPage';
 import PaymentMethodSettingsPage from '@/pages/PaymentMethodSettingsPage';
+import ChartOfAccountsPage from '@/pages/ChartOfAccountsPage';
+import PeakSyncPage from '@/pages/PeakSyncPage';
+import { ETaxConfigPage } from '@/pages/ETaxConfigPage';
 // inline components (อยู่ที่เดิม — แค่ import มา render)
 import { CompanyTab } from '@/pages/SettingsPage/tabs/CompanyTab';
 import { ContactsTab } from '@/pages/SettingsPage/tabs/ContactsTab';
@@ -70,9 +73,9 @@ export const settingsRegistry: SettingsCategory[] = [
       { id: 'vat', label: 'VAT', group: 'ภาษี', roles: ['OWNER'], kind: 'inline', component: VatTab, keywords: ['ภาษี', '7%', 'มูลค่าเพิ่ม'] },
       { id: 'periods', label: 'งวดบัญชี', group: 'บัญชี', roles: ['OWNER'], kind: 'inline', component: PeriodsTab, keywords: ['ปิดงวด', 'period'] },
       { id: 'peak-mapping', label: 'PEAK mapping', group: 'บัญชี', roles: ALL, kind: 'inline', component: PeakMappingTab, keywords: ['peak'] },
-      { id: 'chart', label: 'ผังบัญชี', group: 'บัญชี', roles: ALL, kind: 'external', path: '/settings/chart-of-accounts' },
-      { id: 'peak-sync', label: 'PEAK sync', group: 'บัญชี', roles: ['OWNER', 'ACCOUNTANT'], kind: 'external', path: '/settings/peak-sync' },
-      { id: 'e-tax', label: 'e-Tax', group: 'ภาษี', roles: ['OWNER'], kind: 'external', path: '/settings/e-tax-config' },
+      { id: 'chart', label: 'ผังบัญชี', group: 'บัญชี', roles: ALL, kind: 'route', component: ChartOfAccountsPage, path: '/settings/accounting/chart' },
+      { id: 'peak-sync', label: 'PEAK sync', group: 'บัญชี', roles: ['OWNER', 'ACCOUNTANT'], kind: 'route', component: PeakSyncPage, path: '/settings/accounting/peak-sync' },
+      { id: 'e-tax', label: 'e-Tax', group: 'ภาษี', roles: ['OWNER'], kind: 'route', component: ETaxConfigPage, path: '/settings/accounting/e-tax' },
       { id: 'documents', label: 'เลขที่/รูปแบบเอกสาร', group: 'บัญชี', roles: ['OWNER'], kind: 'external', path: '/settings/document-config' },
     ],
   },

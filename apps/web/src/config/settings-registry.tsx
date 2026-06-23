@@ -7,6 +7,11 @@ import SmsTemplatesPage from '@/pages/SmsTemplatesPage';
 import ChannelSettingsPage from '@/pages/ChannelSettingsPage';
 import DunningSettingsPage from '@/pages/DunningSettingsPage';
 import CollectionsSettingsPage from '@/pages/SettingsPage/CollectionsPage';
+import AiAdminPage from '@/pages/AiAdminPage';
+import AiPersonaPage from '@/pages/AiPersonaPage';
+import AiSettingsPage from '@/pages/AiSettingsPage';
+import AiTrainingPage from '@/pages/AiTrainingPage';
+import AiPerformancePage from '@/pages/AiPerformancePage';
 import InterestConfigPage from '@/pages/InterestConfigPage';
 import GfinConfigPage from '@/pages/GfinConfigPage';
 import PaymentMethodSettingsPage from '@/pages/PaymentMethodSettingsPage';
@@ -117,11 +122,11 @@ export const settingsRegistry: SettingsCategory[] = [
   {
     id: 'ai', label: 'AI', icon: Sparkles, roles: ['OWNER'],
     items: [
-      { id: 'ai-admin', label: 'AI Admin', roles: ['OWNER'], kind: 'external', path: '/settings/ai-admin' },
-      { id: 'ai-persona', label: 'AI Persona', roles: ['OWNER'], kind: 'external', path: '/settings/ai-persona' },
-      { id: 'ai-assistant', label: 'AI Assistant', roles: ['OWNER'], kind: 'external', path: '/settings/ai-chat' },
-      { id: 'ai-training', label: 'AI Training', roles: ['OWNER'], kind: 'external', path: '/settings/ai-training' },
-      { id: 'ai-performance', label: 'AI Performance', roles: ['OWNER'], kind: 'external', path: '/settings/ai-performance' },
+      { id: 'admin', label: 'AI Admin', roles: ['OWNER'], kind: 'route', component: AiAdminPage, path: '/settings/ai/admin' },
+      { id: 'persona', label: 'AI Persona', roles: ['OWNER'], kind: 'route', component: AiPersonaPage, path: '/settings/ai/persona' },
+      { id: 'assistant', label: 'AI Assistant', roles: ['OWNER'], kind: 'route', component: AiSettingsPage, path: '/settings/ai/assistant' },
+      { id: 'training', label: 'AI Training', roles: ['OWNER'], kind: 'route', component: AiTrainingPage, path: '/settings/ai/training' },
+      { id: 'performance', label: 'AI Performance', roles: ['OWNER'], kind: 'route', component: AiPerformancePage, path: '/settings/ai/performance' },
     ],
   },
   {

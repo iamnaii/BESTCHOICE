@@ -200,7 +200,7 @@ export default function AiAdminPage() {
       {/* Shortcut tiles to other AI pages */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
         <Link
-          to="/settings/ai-performance"
+          to="/settings/ai/performance"
           className="bg-card rounded-xl p-4 shadow-sm hover:bg-accent/50 transition-colors flex items-center justify-between"
         >
           <div className="flex items-center gap-3">
@@ -213,7 +213,7 @@ export default function AiAdminPage() {
           <ArrowRight className="w-4 h-4 text-muted-foreground" />
         </Link>
         <Link
-          to="/settings/ai-training"
+          to="/settings/ai/training"
           className="bg-card rounded-xl p-4 shadow-sm hover:bg-accent/50 transition-colors flex items-center justify-between"
         >
           <div className="flex items-center gap-3">
@@ -226,7 +226,7 @@ export default function AiAdminPage() {
           <ArrowRight className="w-4 h-4 text-muted-foreground" />
         </Link>
         <Link
-          to="/settings/ai-chat"
+          to="/settings/ai/assistant"
           className="bg-card rounded-xl p-4 shadow-sm hover:bg-accent/50 transition-colors flex items-center justify-between"
         >
           <div className="flex items-center gap-3">

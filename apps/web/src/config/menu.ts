@@ -758,11 +758,11 @@ const OWNER_CONFIG: RoleMenuConfig = {
       icon: Sparkles,
       zone: 'settings',
       items: [
-        { label: 'AI Admin', path: '/settings/ai-admin', icon: Sparkles },
-        { label: 'AI Persona', path: '/settings/ai-persona', icon: Sparkles },
-        { label: 'AI Assistant', path: '/settings/ai-chat', icon: Sparkles },
-        { label: 'AI Training', path: '/settings/ai-training', icon: Sparkles },
-        { label: 'AI Performance', path: '/settings/ai-performance', icon: Sparkles },
+        { label: 'AI Admin', path: '/settings/ai/admin', icon: Sparkles },
+        { label: 'AI Persona', path: '/settings/ai/persona', icon: Sparkles },
+        { label: 'AI Assistant', path: '/settings/ai/assistant', icon: Sparkles },
+        { label: 'AI Training', path: '/settings/ai/training', icon: Sparkles },
+        { label: 'AI Performance', path: '/settings/ai/performance', icon: Sparkles },
       ],
     },
     {

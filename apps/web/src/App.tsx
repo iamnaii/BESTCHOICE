@@ -207,12 +207,7 @@ const ETaxPage = lazy(() => import('@/pages/finance/ETaxPage'));
 const VatAutoJournalPage = lazy(() => import('@/pages/finance/VatAutoJournalPage'));
 const EReceiptAutoPage = lazy(() => import('@/pages/finance/EReceiptAutoPage'));
 const PeakExportPage = lazy(() => import('@/pages/PeakExportPage'));
-const AiSettingsPage = lazy(() => import('@/pages/AiSettingsPage'));
-const AiTrainingPage = lazy(() => import('@/pages/AiTrainingPage'));
-const AiPerformancePage = lazy(() => import('@/pages/AiPerformancePage'));
-// SP — AI Persona viewer (Phase A read-only)
-const AiPersonaPage = lazy(() => import('@/pages/AiPersonaPage'));
-const AiAdminPage = lazy(() => import('@/pages/AiAdminPage'));
+// AI pages moved to settings-registry (kind:'route') — lazy imports removed
 const IntegrationHubPage = lazy(() => import('@/pages/IntegrationHubPage'));
 const MdmTestPage = lazy(() => import('@/pages/MdmTestPage'));
 const MdmDashboardPage = lazy(() => import('@/pages/MdmDashboardPage'));
@@ -1151,46 +1146,11 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/settings/ai-chat"
-            element={
-              <ProtectedRoute roles={['OWNER']}>
-                <AiSettingsPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/settings/ai-training"
-            element={
-              <ProtectedRoute roles={['OWNER']}>
-                <AiTrainingPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/settings/ai-performance"
-            element={
-              <ProtectedRoute roles={['OWNER']}>
-                <AiPerformancePage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/settings/ai-admin"
-            element={
-              <ProtectedRoute roles={['OWNER']}>
-                <AiAdminPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/settings/ai-persona"
-            element={
-              <ProtectedRoute roles={['OWNER']}>
-                <AiPersonaPage />
-              </ProtectedRoute>
-            }
-          />
+          <Route path="/settings/ai-chat" element={<Navigate to="/settings/ai/assistant" replace />} />
+          <Route path="/settings/ai-training" element={<Navigate to="/settings/ai/training" replace />} />
+          <Route path="/settings/ai-performance" element={<Navigate to="/settings/ai/performance" replace />} />
+          <Route path="/settings/ai-admin" element={<Navigate to="/settings/ai/admin" replace />} />
+          <Route path="/settings/ai-persona" element={<Navigate to="/settings/ai/persona" replace />} />
           <Route
             path="/settings/integrations"
             element={

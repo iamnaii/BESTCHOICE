@@ -66,6 +66,9 @@ describe('ExpenseDocuments posting core (Phase 2b characterization)', () => {
       user: {
         findMany: jest.fn().mockResolvedValue([]),
       },
+      journalEntry: {
+        findUnique: jest.fn().mockResolvedValue(null),
+      },
     };
 
     made = makeExpenseDocumentsService({
@@ -84,6 +87,9 @@ describe('ExpenseDocuments posting core (Phase 2b characterization)', () => {
       accrualTemplate: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-AC' }) },
       payrollTemplate: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-PR' }) },
       settlementTemplate: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-SE' }) },
+      shopExpenseTemplate: {
+        execute: jest.fn().mockResolvedValue({ entryNo: 'JE-1', journalEntryId: 'je-1' }),
+      },
     });
   });
 
@@ -134,6 +140,263 @@ describe('ExpenseDocuments posting core (Phase 2b characterization)', () => {
       'type PETTY_CASH_REIMBURSEMENT not supported',
     );
     expect(made.pettyCashTemplate.execute).not.toHaveBeenCalled();
+  });
+
+  // REPAIR_SERVICE → ShopExpense (ACCRUAL mode, Cr S21-1103)
+  it('routes a REPAIR_SERVICE doc to ShopExpenseTemplate (ACCRUAL → Cr S21-1103), not accrualTemplate', async () => {
+    // First call: post() loads the base doc for assertCanPost
+    prisma.expenseDocument.findUniqueOrThrow
+      .mockResolvedValueOnce({
+        id: 'doc-1',
+        status: 'DRAFT',
+        documentType: 'REPAIR_SERVICE',
+        paymentMethod: null,
+        depositAccountCode: null,
+        totalAmount: new Decimal('800.00'),
+        withholdingTax: new Decimal('0'),
+        whtFormType: null,
+        receiptImageUrl: null,
+        documentDate: new Date('2026-05-10'),
+        journalEntryId: null,
+        deletedAt: null,
+      })
+      // Second call: REPAIR_SERVICE branch loads full doc with lines + branch
+      .mockResolvedValueOnce({
+        id: 'doc-1',
+        status: 'DRAFT',
+        documentType: 'REPAIR_SERVICE',
+        paymentMethod: null,
+        depositAccountCode: null,
+        totalAmount: new Decimal('800.00'),
+        withholdingTax: new Decimal('0'),
+        whtFormType: null,
+        receiptImageUrl: null,
+        documentDate: new Date('2026-05-10'),
+        journalEntryId: null,
+        deletedAt: null,
+        expenseDetail: {
+          lines: [
+            { lineNo: 1, category: 'S51-1105', amountBeforeVat: new Decimal('800') },
+          ],
+        },
+        branch: { name: 'สาขากลาง', shopCashAccountCode: 'S11-1101' },
+      });
+
+    await made.service.post('doc-1', 'user-1');
+
+    expect(made.shopExpenseTemplate.execute).toHaveBeenCalledTimes(1);
+    const input = made.shopExpenseTemplate.execute.mock.calls[0][0];
+    expect(input).toMatchObject({
+      idempotencyKey: 'shop-expense:doc-1',
+      expenseId: 'doc-1',
+      expenseAccountCode: 'S51-1105',
+      mode: 'ACCRUAL',
+    });
+    expect(input.amount.toString()).toBe('800');
+    expect(input.cashAccountCode).toBeUndefined();
+    expect(made.accrualTemplate.execute).not.toHaveBeenCalled();
+    expect(prisma.expenseDocument.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'ACCRUAL', journalEntryId: 'je-1' }),
+      }),
+    );
+  });
+
+  // Non-REPAIR EXPENSE doc still routes to accrualTemplate (regression guard)
+  it('still routes a non-REPAIR EXPENSE doc to the accrual template (no paymentMethod → ACCRUAL)', async () => {
+    made.transition.resolveTargetStatus.mockReturnValue('ACCRUAL');
+    prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+      id: 'doc-2',
+      status: 'DRAFT',
+      documentType: 'EXPENSE',
+      paymentMethod: null,
+      depositAccountCode: null,
+      totalAmount: new Decimal('500.00'),
+      withholdingTax: new Decimal('0'),
+      whtFormType: null,
+      receiptImageUrl: null,
+      documentDate: new Date('2026-05-10'),
+      journalEntryId: null,
+      deletedAt: null,
+    });
+
+    await made.service.post('doc-2', 'user-1');
+
+    expect(made.accrualTemplate.execute).toHaveBeenCalledWith('doc-2', expect.anything());
+    expect(made.shopExpenseTemplate.execute).not.toHaveBeenCalled();
+  });
+
+  // GAP #4 — REPAIR_SERVICE + CASH mode (paymentMethod set) → mode: 'CASH' + cashAccountCode
+  it('post() REPAIR_SERVICE with CASH mode (paymentMethod + depositAccountCode) calls shopExpenseTemplate with mode=CASH and cashAccountCode', async () => {
+    prisma.expenseDocument.findUniqueOrThrow
+      .mockResolvedValueOnce({
+        id: 'doc-cash',
+        status: 'DRAFT',
+        documentType: 'REPAIR_SERVICE',
+        paymentMethod: 'CASH_ON_SITE',
+        depositAccountCode: 'S11-1101',
+        totalAmount: new Decimal('1500.00'),
+        withholdingTax: new Decimal('0'),
+        whtFormType: null,
+        receiptImageUrl: null,
+        documentDate: new Date('2026-05-10'),
+        journalEntryId: null,
+        deletedAt: null,
+      })
+      .mockResolvedValueOnce({
+        id: 'doc-cash',
+        status: 'DRAFT',
+        documentType: 'REPAIR_SERVICE',
+        paymentMethod: 'CASH_ON_SITE',
+        depositAccountCode: 'S11-1101',
+        totalAmount: new Decimal('1500.00'),
+        withholdingTax: new Decimal('0'),
+        whtFormType: null,
+        receiptImageUrl: null,
+        documentDate: new Date('2026-05-10'),
+        journalEntryId: null,
+        deletedAt: null,
+        expenseDetail: {
+          lines: [
+            { lineNo: 1, category: 'S51-1105', amountBeforeVat: new Decimal('1500') },
+          ],
+        },
+        branch: { name: 'สาขากลาง', shopCashAccountCode: 'S11-1102' },
+      });
+
+    await made.service.post('doc-cash', 'user-1');
+
+    expect(made.shopExpenseTemplate.execute).toHaveBeenCalledTimes(1);
+    const input = made.shopExpenseTemplate.execute.mock.calls[0][0];
+    expect(input).toMatchObject({
+      mode: 'CASH',
+      cashAccountCode: 'S11-1101',
+    });
+    // Verify doc status is POSTED (not ACCRUAL)
+    expect(prisma.expenseDocument.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'POSTED' }),
+      }),
+    );
+  });
+
+  // GAP #5 — REPAIR_SERVICE single-line guard (0 or 2+ lines → BadRequestException)
+  it('post() REPAIR_SERVICE with zero lines rejects with BadRequestException', async () => {
+    prisma.expenseDocument.findUniqueOrThrow
+      .mockResolvedValueOnce({
+        id: 'doc-no-lines',
+        status: 'DRAFT',
+        documentType: 'REPAIR_SERVICE',
+        paymentMethod: null,
+        depositAccountCode: null,
+        totalAmount: new Decimal('800.00'),
+        withholdingTax: new Decimal('0'),
+        whtFormType: null,
+        receiptImageUrl: null,
+        documentDate: new Date('2026-05-10'),
+        journalEntryId: null,
+        deletedAt: null,
+      })
+      .mockResolvedValueOnce({
+        id: 'doc-no-lines',
+        status: 'DRAFT',
+        documentType: 'REPAIR_SERVICE',
+        paymentMethod: null,
+        depositAccountCode: null,
+        totalAmount: new Decimal('800.00'),
+        withholdingTax: new Decimal('0'),
+        whtFormType: null,
+        receiptImageUrl: null,
+        documentDate: new Date('2026-05-10'),
+        journalEntryId: null,
+        deletedAt: null,
+        expenseDetail: { lines: [] },
+        branch: { name: 'สาขากลาง', shopCashAccountCode: 'S11-1101' },
+      });
+
+    await expect(made.service.post('doc-no-lines', 'user-1')).rejects.toThrow(
+      /must have exactly one line/,
+    );
+    expect(made.shopExpenseTemplate.execute).not.toHaveBeenCalled();
+  });
+
+  it('post() REPAIR_SERVICE with multiple lines rejects with BadRequestException', async () => {
+    prisma.expenseDocument.findUniqueOrThrow
+      .mockResolvedValueOnce({
+        id: 'doc-two-lines',
+        status: 'DRAFT',
+        documentType: 'REPAIR_SERVICE',
+        paymentMethod: null,
+        depositAccountCode: null,
+        totalAmount: new Decimal('1600.00'),
+        withholdingTax: new Decimal('0'),
+        whtFormType: null,
+        receiptImageUrl: null,
+        documentDate: new Date('2026-05-10'),
+        journalEntryId: null,
+        deletedAt: null,
+      })
+      .mockResolvedValueOnce({
+        id: 'doc-two-lines',
+        status: 'DRAFT',
+        documentType: 'REPAIR_SERVICE',
+        paymentMethod: null,
+        depositAccountCode: null,
+        totalAmount: new Decimal('1600.00'),
+        withholdingTax: new Decimal('0'),
+        whtFormType: null,
+        receiptImageUrl: null,
+        documentDate: new Date('2026-05-10'),
+        journalEntryId: null,
+        deletedAt: null,
+        expenseDetail: {
+          lines: [
+            { lineNo: 1, category: 'S51-1105', amountBeforeVat: new Decimal('800') },
+            { lineNo: 2, category: 'S51-1105', amountBeforeVat: new Decimal('800') },
+          ],
+        },
+        branch: { name: 'สาขากลาง', shopCashAccountCode: 'S11-1101' },
+      });
+
+    await expect(made.service.post('doc-two-lines', 'user-1')).rejects.toThrow(
+      /must have exactly one line/,
+    );
+    expect(made.shopExpenseTemplate.execute).not.toHaveBeenCalled();
+  });
+
+  // GAP #6 — REPAIR_SERVICE doc-level idempotency (journalEntryId already set → no re-execute)
+  it('post() REPAIR_SERVICE with journalEntryId already set returns existing entry without calling execute', async () => {
+    prisma.expenseDocument.findUniqueOrThrow.mockResolvedValueOnce({
+      id: 'doc-idempotent',
+      status: 'DRAFT',
+      documentType: 'REPAIR_SERVICE',
+      paymentMethod: null,
+      depositAccountCode: null,
+      totalAmount: new Decimal('800.00'),
+      withholdingTax: new Decimal('0'),
+      whtFormType: null,
+      receiptImageUrl: null,
+      documentDate: new Date('2026-05-10'),
+      journalEntryId: 'je-existing-123',
+      deletedAt: null,
+    });
+
+    // Mock journalEntry.findUnique to return existing entry (branch returns early)
+    prisma.journalEntry.findUnique.mockResolvedValue({
+      id: 'je-existing-123',
+      entryNumber: 'JE-OLD-001',
+    });
+
+    await made.service.post('doc-idempotent', 'user-1');
+
+    // Verify shopExpenseTemplate.execute was NOT called
+    expect(made.shopExpenseTemplate.execute).not.toHaveBeenCalled();
+    // Verify existing JE lookup happened
+    expect(prisma.journalEntry.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'je-existing-123' },
+      }),
+    );
   });
 
   // GAP #3 — approve() auto-post chain on a CREDIT_NOTE doc routes to

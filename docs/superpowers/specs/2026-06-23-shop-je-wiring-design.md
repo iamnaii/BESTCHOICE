@@ -36,6 +36,9 @@ The 7 templates: `ShopCashSale`, `ShopDownPayment`, `ShopDownPaymentReversal`, `
 | D-5 | `TABLET` category accounts | **Reuse PHONE_NEW codes** (S41-1101 / S50-1101 / S11-2001); dedicated codes deferrable |
 | D-6 | `ShopFinanceReceipt` persistence | **No new model** — the JE (queryable by `metadata.flow`) + audit log is the record |
 | D-7 | Posting style | **Synchronous, inside each trigger's `$transaction`** (not event-driven) |
+| D-8 | `salePrice` fed to `ShopInventoryTransfer` (resolves Blocker-1) | **Reconstructed = `downPayment + financedAmount`** (NOT raw `sellingPrice`) so the financing-identity assertion holds by construction and can never throw inside the activation `$tx` |
+
+> **Changelog:** D-8 + §4A + §6 bundle handling + §6A pending-settlements + §9 hard-gate added 2026-06-23 after `/scrutinize` (Blocker-1 + Majors 2/3 + Minor 4).
 
 ## 4. Architecture
 
@@ -59,6 +62,16 @@ activate() :494       ShopInventoryTransfer  JE-A Dr S50-xx / Cr S11-200x  (COGS
 FINANCE จ่าย SHOP      ShopFinanceReceipt     Dr bank (S11-1201) / Cr S11-3001 + S11-3002
   (new endpoint)
 ```
+
+### 4A. Activation atomicity safety (Blocker-1 resolution)
+
+Because D-1 makes a SHOP-JE failure roll back contract activation (a customer-facing critical op), the SHOP JE posted at activation **must not be able to throw**. Two facts make this safe:
+
+1. **Financing identity holds by construction (D-8).** `ShopInventoryTransfer` asserts `downAmount + financedAmount === salePrice` with strict `Decimal` equality (`shop-inventory-transfer.template.ts:110`). `financedAmount` is stored as `roundBaht(sellingPrice - downPayment)` (`contract-lifecycle.service.ts:107`), so passing the raw `sellingPrice` would throw whenever `sellingPrice - downPayment` is not whole-baht. We therefore pass **`salePrice := downPayment + financedAmount`** — the identity is then true by definition and the assertion can never fire inside the activation `$tx`.
+   - **Consequence:** SHOP financed-sale revenue (`Cr S41-revenue`) = `downPayment + financedAmount`. In the normal whole-baht case this equals `sellingPrice`. Any sub-baht difference from `roundBaht` (rare) is simply not booked as SHOP revenue; immaterial for a non-VAT SHOP. **Owner confirm:** acceptable (vs. adding a rounding line to book to exact `sellingPrice`).
+2. **No cash-account dependency at activation.** `ShopInventoryTransfer` posts only COGS + receivables + revenue + down-clearance — **no cash/bank line** — so the fail-closed `Branch.shopCashAccountCode` rule (§5C) does **not** apply at activation. The cash-account dependency exists only at down-payment (creation), cash-sale, and trade-in triggers — none of which are inside the activation `$tx`.
+
+Net: the only inputs to the activation SHOP JE are contract fields + product cost + resolved S-codes (category mapping, never null for a valid category). With D-8, activation cannot be blocked by SHOP-side rounding or missing cash config.
 
 ## 5. `ShopAccountResolver` spec
 
@@ -98,7 +111,7 @@ If `Branch.shopCashAccountCode` is null when a CASH route is needed, the resolve
 | ShopInventoryTransfer | `ContractWorkflowService.activate()` (`contract-workflow.service.ts:494`), in the existing activation `$tx`, immediately after `ContractActivation1ATemplate` | category→codes; cost from product; assert `down + financed === salePrice` | `shop-inventory-transfer:<contractId>` | stamp `batchRef = contractId` to pair with FINANCE |
 | ShopDownPaymentReversal | pre-activation cancel `$tx` (flow to be located) | refund account = original down cash account | `shop-down-payment-reversal:<contractId>` | only if a down JE was posted |
 | ShopFinanceReceipt | **new** `POST /shop/finance-settlements` | bank `S11-1201` | `shop-finance-receipt:<contractId>` | per-contract; batchable in one call |
-| ShopCashSale | `SaleWriterService.createCashSale()` (`sale-writer.service.ts:111`), existing `$tx` (replaces TODO at ~:147) | category→codes; cost from product; cash from (branch, method) | `shop-cash-sale:<saleId>` | — |
+| ShopCashSale | `SaleWriterService.createCashSale()` (`sale-writer.service.ts:111`), existing `$tx` (replaces TODO at ~:147) | category→codes per product; cost from each product; cash from (branch, method) | `shop-cash-sale:<saleId>:<productId>` | **one JE per product** (see §6B) |
 | ShopTradeIn | `TradeInLifecycleService.accept()` (`trade-in-lifecycle.service.ts:350`), existing `$tx` | inventory `S11-2002`; cash from (branch, method/transfer) | `shop-trade-in:<tradeInId>` | post on ACCEPTED |
 | ShopExpense | hook when an expense-document with `companyId = SHOP` is POSTED (`expense-document-lifecycle.service.ts`) | expense code from the doc; mode CASH/ACCRUAL from doc; paying bank `S11-1202` for CASH | `shop-expense:<expenseDocId>` | companyId = SHOP only |
 
@@ -109,6 +122,10 @@ If `Branch.shopCashAccountCode` is null when a CASH route is needed, the resolve
 - Roles: `OWNER`, `FINANCE_MANAGER`, `ACCOUNTANT` (same as other SHOP-accounting endpoints; BRANCH_MANAGER excluded per existing W5 policy).
 - For each contract: resolve outstanding `financedAmount + storeCommission`, post `ShopFinanceReceipt` idempotently (`shop-finance-receipt:<contractId>`), audit `SHOP_FINANCE_SETTLED`.
 - No new model (D-6); the posted JE + audit log are the record. "Which contracts are settled" is queryable via `metadata.flow = 'shop-finance-receipt'`.
+- **Pending-settlements list (Minor-4):** the operator UI needs "which activated contracts has FINANCE not yet paid SHOP." Specify a read endpoint `GET /shop/finance-settlements/pending` = contracts that are ACTIVE/activated **minus** those that already have a posted `shop-finance-receipt:<contractId>` JE (left-anti-join on `journal_entries.metadata.flow`). This keeps D-6 (no new model) while giving the UI a concrete worklist. If the anti-join proves too slow at scale, revisit a `shopFinanceSettledAt` timestamp on `Contract` (cheaper than a full model).
+
+### 6B. Cash-sale bundle handling (Major-3)
+`Sale.bundleProductIds[]` (`schema.prisma:2452`) means one cash sale can span several products across mixed categories (e.g. PHONE_NEW + ACCESSORY → S41-1101 **and** S41-1103). `ShopCashSale` takes a single revenue/COGS/inventory triple, so the wiring **iterates the sale's products and posts one `ShopCashSale` JE per product** (key `shop-cash-sale:<saleId>:<productId>`), each resolving its own category codes + cost + the shared cash account. Per-line `revenueAmount` = that product's portion of `sellingPrice` (allocation rule for bundles — equal to each product's listed/line price; define the allocation source during implementation since `Sale` stores one `sellingPrice` for the bundle). **Open:** confirm whether bundle line prices are recoverable per product, else allocate proportionally by cost (flag for implementation).
 
 ## 7. Error handling
 - Templates balance-check (Dr=Cr) **before** any DB write; on failure they throw → the host `$transaction` rolls back (atomic at every trigger, not just activation).
@@ -122,8 +139,11 @@ If `Branch.shopCashAccountCode` is null when a CASH route is needed, the resolve
 - The 7 templates' existing golden specs (`apps/api/src/modules/journal/shop-templates/*.spec.ts`) remain the JE-correctness acceptance net.
 - `finance-settlements` endpoint spec: roles, idempotency (double-call = single JE), batch.
 
-## 9. Prerequisite — X5 (PEAK isolation)
-Before wiring any SHOP JE, add a `companyCode = FINANCE` filter to the PEAK sync/export (deep-audit X5) so newly-posted SHOP (`S`-prefix) JEs do not leak into FINANCE's PEAK export. This is a small, must-land-first guard.
+## 9. Prerequisite — X5 (PEAK isolation) — HARD GATE, must merge before P1
+
+**Verified (scrutiny):** `peak.service.ts:75-88` selects journal entries with `where: { status:'POSTED', entryDate, deletedAt:null, peakSyncedAt:null }` — **no company filter at all**. The moment a SHOP (`S`-prefix) JE is POSTED it would be pulled into FINANCE's PEAK export (where `S`-codes have no PEAK mapping → silently skipped or mis-exported).
+
+Therefore X5 is a **hard gate, not a nicety**: add `company: { companyCode: 'FINANCE' }` (or `companyId = getFinanceCompanyId()`) to that `findMany` where-clause (and to the `/expenses/journal/export-peak` query, same module) **and merge it before any SHOP JE goes live**. Add a regression test asserting a posted `S`-prefix JE is excluded from the PEAK export. No SHOP JE wiring (P1+) may ship until X5 is on `main`.
 
 ## 10. Implementation phasing (writing-plans will detail)
 - **P0:** X5 PEAK filter + `ShopAccountResolver` + `Branch.shopCashAccountCode` (migration + settings UI) + go-live config guard.
@@ -140,6 +160,12 @@ Before wiring any SHOP JE, add a `companyCode = FINANCE` filter to the PEAK sync
 - `/shop/accounting` TB/P&L reflect real posted activity for the wired triggers.
 
 ## 12. Open items for spec review
+
+_Resolved by `/scrutinize` (2026-06-23): Blocker-1 (atomic × strict assertion × `roundBaht`) → D-8 + §4A; Major-2 (PEAK no-company-filter) → §9 hard gate; Major-3 (cash-sale bundles) → §6B; Minor-4 (pending-settlements) → §6A._
+
+Remaining owner/implementation confirms:
+- **Revenue = `downPayment + financedAmount` for financed sales (D-8/§4A)** — confirm the sub-baht `roundBaht` delta vs raw `sellingPrice` is acceptable to leave unbooked (vs adding a rounding line).
+- **Bundle price allocation (§6B)** — confirm per-product line prices are recoverable for a bundled `Sale`; else allocate proportionally by cost.
 - TABLET reusing PHONE_NEW codes (D-5) — confirm vs. adding dedicated tablet S-codes.
 - Fail-closed on missing `Branch.shopCashAccountCode` (§5C) — confirm acceptable that an unconfigured branch blocks cash-route posting (mitigated by go-live guard).
 - `ShopFinanceReceipt` with no tracking model (D-6) — confirm JE+audit is sufficient (no per-settlement entity).

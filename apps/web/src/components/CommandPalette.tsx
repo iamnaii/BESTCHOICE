@@ -80,20 +80,25 @@ const quickActions: NavEntry[] = [
 
 /* ─── Settings Registry Entries ─── */
 
-const settingsEntries: NavEntry[] = settingsRegistry.flatMap((cat) =>
-  cat.items.map((item) => ({
-    label: `${cat.label} › ${item.label}`,
-    path:
-      item.kind === 'inline'
-        ? `/settings/${cat.id}#${item.id}`
-        : item.kind === 'route'
-          ? `/settings/${cat.id}/${item.id}`
-          : (item.path ?? '/settings'),
-    icon: cat.icon,
-    keywords: [item.label, ...(item.keywords ?? [])].join(' '),
-    roles: item.roles as string[],
-  })),
-);
+const settingsEntries: NavEntry[] = settingsRegistry
+  .flatMap((cat) =>
+    cat.items.map((item) => ({
+      label: `${cat.label} › ${item.label}`,
+      path:
+        item.kind === 'inline'
+          ? `/settings/${cat.id}#${item.id}`
+          : item.kind === 'route'
+            ? `/settings/${cat.id}/${item.id}`
+            : (item.path ?? '/settings'),
+      icon: cat.icon,
+      keywords: [item.label, ...(item.keywords ?? [])].join(' '),
+      roles: item.roles as string[],
+    })),
+  )
+  // Drop registry entries whose path already exists in the base pages array
+  // (e.g. company.branches → /branches, access.users → /users) to avoid
+  // React duplicate-key warnings and duplicated/dropped palette entries.
+  .filter((e) => !pages.some((p) => p.path === e.path));
 
 const allPages: NavEntry[] = [...pages, ...settingsEntries];
 
@@ -343,7 +348,7 @@ export default function CommandPalette() {
             <CommandGroup heading="ไปยังหน้า">
               {filterByRole(allPages).map((item) => (
                 <CommandItem
-                  key={item.path}
+                  key={`${item.label}:${item.path}`}
                   value={`${item.label} ${item.keywords || ''}`}
                   onSelect={() => handleSelect(item.path, false)}
                 >

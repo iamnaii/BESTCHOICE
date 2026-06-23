@@ -149,4 +149,26 @@ describe('CommandPalette — settings registry integration', () => {
     // finance › gfin has roles: ['OWNER'] — FM must not see it
     expect(screen.queryByText('การเงิน & สินเชื่อ › GFIN')).not.toBeInTheDocument();
   });
+
+  it('dedupes /branches — "สาขา" appears exactly once (no registry collision)', async () => {
+    await renderPaletteOpen(makeOwner());
+
+    // Base pages entry "สาขา" must be present exactly once
+    const branchItems = screen.getAllByText('สาขา');
+    expect(branchItems).toHaveLength(1);
+
+    // The registry-derived label "บริษัท & สาขา › สาขา" must NOT appear (deduped)
+    expect(screen.queryByText('บริษัท & สาขา › สาขา')).not.toBeInTheDocument();
+  });
+
+  it('dedupes /users — "จัดการผู้ใช้" appears exactly once (no registry collision)', async () => {
+    await renderPaletteOpen(makeOwner());
+
+    // Base pages entry "จัดการผู้ใช้" must be present exactly once
+    const userItems = screen.getAllByText('จัดการผู้ใช้');
+    expect(userItems).toHaveLength(1);
+
+    // The registry-derived label "ผู้ใช้ & สิทธิ์ › ผู้ใช้ / พนักงาน" must NOT appear (deduped)
+    expect(screen.queryByText('ผู้ใช้ & สิทธิ์ › ผู้ใช้ / พนักงาน')).not.toBeInTheDocument();
+  });
 });

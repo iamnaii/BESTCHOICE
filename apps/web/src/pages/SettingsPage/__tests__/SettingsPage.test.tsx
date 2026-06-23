@@ -76,4 +76,10 @@ describe('SettingsPage — role-gated tabs', () => {
     renderAt('#users');
     expect(screen.getByText('internal-control-body')).toBeTruthy();
   });
+
+  it('FM เปิด #users (alias เป็น OWNER-only internal-control) → ตกไปแท็บแรก (ผู้ติดต่อ)', () => {
+    mockRole = 'FINANCE_MANAGER';
+    renderAt('#users');
+    expect(screen.getByText('contacts-body')).toBeTruthy();
+  });
 });

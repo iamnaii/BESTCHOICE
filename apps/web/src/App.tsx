@@ -12,10 +12,10 @@ function ExternalRedirect({ to }: { to: string }) {
   return null;
 }
 
-// Redirect /accounting/periods → /settings#periods (preserves hash via window.location.replace).
+// Redirect /accounting/periods → /settings/accounting#periods (preserves hash via window.location.replace).
 function PeriodsRedirect() {
   useEffect(() => {
-    window.location.replace('/settings#periods');
+    window.location.replace('/settings/accounting#periods');
   }, []);
   return null;
 }

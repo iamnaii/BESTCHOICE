@@ -1,0 +1,22 @@
+# Code owners — branch protection on `main` requires a review from the matching
+# owner for every PR. This is how two parallel workstreams stay in their lanes:
+# a PR that touches an area auto-requests that area's owner.
+#
+# Most-specific match wins, so add the second developer's lane(s) BELOW the
+# default once their area is agreed — then they own it and the lead is no longer
+# required to review every change there (and vice-versa for shared files).
+
+# Default: the lead owns everything not claimed below.
+*                                           @iamnaii
+
+# --- Shared / high-risk files: lead review always required ---
+/apps/api/prisma/schema.prisma              @iamnaii
+/apps/api/prisma/migrations/                @iamnaii
+/apps/api/src/app.module.ts                 @iamnaii
+/apps/api/src/modules/journal/              @iamnaii
+/.github/                                   @iamnaii
+/.claude/                                   @iamnaii
+
+# --- Second developer's lane (uncomment + set path + @username when agreed) ---
+# /apps/api/src/modules/<their-module>/      @second-dev
+# /apps/web/src/pages/<their-area>/          @second-dev

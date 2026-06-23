@@ -63,7 +63,7 @@ const SettingsCategoryRoute = lazy(() =>
 const SettingsItemRoute = lazy(() =>
   import('@/pages/settings/SettingsItemRoute').then((m) => ({ default: m.SettingsItemRoute })),
 );
-const StickersSettingsPage = lazy(() => import('@/pages/SettingsPage/StickersPage'));
+// StickersSettingsPage moved to settings-registry (P2b products migration)
 // CollectionsSettingsPage moved to settings-registry (P2b comms migration)
 const GeneralSettingsPage = lazy(() => import('@/pages/SettingsPage/GeneralSettingsPage'));
 const DocumentConfigPage = lazy(() => import('@/pages/DocumentConfigPage'));
@@ -87,7 +87,7 @@ const FinancialAuditPage = lazy(() => import('@/pages/FinancialAuditPage'));
 const PaymentCsvImportPage = lazy(() => import('@/pages/PaymentCsvImportPage'));
 const POSPage = lazy(() => import('@/pages/POSPage'));
 const SalesHistoryPage = lazy(() => import('@/pages/SalesHistoryPage'));
-const PricingTemplatesPage = lazy(() => import('@/pages/PricingTemplatesPage'));
+// PricingTemplatesPage moved to settings-registry (P2b products migration)
 const SuppliersPage = lazy(() => import('@/pages/SuppliersPage'));
 const StockOverviewPage = lazy(() => import('@/pages/StockPage/OverviewPage'));
 const StockProductsPage = lazy(() => import('@/pages/StockPage/ProductsPage'));
@@ -470,7 +470,8 @@ function App() {
           {/* P2b — channels moved to /settings/comms/channels */}
           <Route path="/settings/channels" element={<Navigate to="/settings/comms/channels" replace />} />
           <Route path="/settings/payment-methods" element={<Navigate to="/settings/finance/payment-methods" replace />} />
-          <Route path="/settings/stickers" element={<ProtectedRoute roles={['OWNER']}><StickersSettingsPage /></ProtectedRoute>} />
+          {/* P2b — stickers moved to /settings/products/stickers */}
+          <Route path="/settings/stickers" element={<Navigate to="/settings/products/stickers" replace />} />
           {/* P2b — collections moved to /settings/comms/collections */}
           <Route path="/settings/collections" element={<Navigate to="/settings/comms/collections" replace />} />
           <Route path="/settings/general" element={<ProtectedRoute roles={['OWNER']}><GeneralSettingsPage /></ProtectedRoute>} />
@@ -778,14 +779,8 @@ function App() {
             <Route path=":itemId" element={<SettingsItemRoute />} />
           </Route>
           <Route path="/settings/interest-config" element={<Navigate to="/settings/finance/interest" replace />} />
-          <Route
-            path="/settings/pricing-templates"
-            element={
-              <ProtectedRoute roles={['OWNER']}>
-                <PricingTemplatesPage />
-              </ProtectedRoute>
-            }
-          />
+          {/* P2b — pricing-templates moved to /settings/products/pricing */}
+          <Route path="/settings/pricing-templates" element={<Navigate to="/settings/products/pricing" replace />} />
           <Route path="/settings/gfin-rates" element={<Navigate to="/settings/finance/gfin" replace />} />
           <Route
             path="/audit-logs"

@@ -743,7 +743,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'สาขา', path: '/branches', icon: Building2 },
         { label: 'บริษัท', path: '/settings/companies', icon: Building2 },
         { label: 'แบบสัญญา', path: '/contract-templates', icon: FileCheck },
-        { label: 'ตั้งราคา', path: '/settings/pricing-templates', icon: CircleDollarSign },
+        { label: 'ตั้งราคา', path: '/settings/products/pricing', icon: CircleDollarSign },
         { label: 'ตั้งค่า GFIN', path: '/settings/finance/gfin', icon: Calculator },
         { label: 'โปรโมชัน', path: '/promotions', icon: BadgePercent },
         { label: 'PDPA', path: '/pdpa', icon: Shield },

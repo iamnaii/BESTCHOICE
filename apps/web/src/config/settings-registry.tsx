@@ -7,6 +7,8 @@ import SmsTemplatesPage from '@/pages/SmsTemplatesPage';
 import ChannelSettingsPage from '@/pages/ChannelSettingsPage';
 import DunningSettingsPage from '@/pages/DunningSettingsPage';
 import CollectionsSettingsPage from '@/pages/SettingsPage/CollectionsPage';
+import PricingTemplatesPage from '@/pages/PricingTemplatesPage';
+import StickersSettingsPage from '@/pages/SettingsPage/StickersPage';
 import AiAdminPage from '@/pages/AiAdminPage';
 import AiPersonaPage from '@/pages/AiPersonaPage';
 import AiSettingsPage from '@/pages/AiSettingsPage';
@@ -101,8 +103,8 @@ export const settingsRegistry: SettingsCategory[] = [
   {
     id: 'products', label: 'สินค้า & การขาย', icon: Smartphone, roles: ['OWNER'],
     items: [
-      { id: 'pricing', label: 'ตั้งราคา', roles: ['OWNER'], kind: 'external', path: '/settings/pricing-templates' },
-      { id: 'stickers', label: 'สติกเกอร์ฉลาก', roles: ['OWNER'], kind: 'external', path: '/settings/stickers' },
+      { id: 'pricing', label: 'ตั้งราคา', roles: ['OWNER'], kind: 'route', component: PricingTemplatesPage, path: '/settings/products/pricing' },
+      { id: 'stickers', label: 'สติกเกอร์ฉลาก', roles: ['OWNER'], kind: 'route', component: StickersSettingsPage, path: '/settings/products/stickers' },
       { id: 'promotions', label: 'โปรโมชัน', roles: ['OWNER'], kind: 'external', path: '/promotions' },
       { id: 'contract-templates', label: 'แบบสัญญา', roles: ['OWNER'], kind: 'external', path: '/contract-templates' },
     ],

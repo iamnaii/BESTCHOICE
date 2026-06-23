@@ -1,0 +1,21 @@
+{
+  // รายการ extension แนะนำสำหรับโปรเจค BESTCHOICE (monorepo: React+Vite+Tailwind / NestJS+Prisma)
+  // VSCode จะเด้งถามให้ลงชุดนี้เมื่อเปิดโปรเจค — ทำให้ทุกเครื่อง (Mac/Windows) ใน setup เดียวกัน
+  "recommendations": [
+    // --- จำเป็น (ตรงกับ tooling ของ repo) ---
+    "Prisma.prisma",                 // schema.prisma: highlight + autocomplete + format
+    "dbaeumer.vscode-eslint",        // อ่าน eslint.config.mjs (ESLint 9 flat config) ทั้ง web + api
+    "esbenp.prettier-vscode",        // format ตาม .prettierrc (singleQuote, printWidth 100)
+    "bradlc.vscode-tailwindcss",     // Tailwind v4 IntelliSense (CSS-based config auto-detect)
+
+    // --- testing (web ใช้ vitest, e2e ใช้ playwright) ---
+    "vitest.explorer",               // รัน/debug unit tests จาก test explorer
+    "ms-playwright.playwright",      // รัน/debug E2E จาก apps/web/e2e
+
+    // --- DX / คุณภาพชีวิต ---
+    "usernamehw.errorlens",          // โชว์ TS/ESLint error inline ในบรรทัด
+    "yoavbls.pretty-ts-errors",      // อ่าน type error ของ NestJS/Prisma generic ง่ายขึ้น
+    "mikestead.dotenv",              // highlight .env / .env.example
+    "ms-azuretools.vscode-docker"    // Dockerfile, docker-compose.yml
+  ]
+}

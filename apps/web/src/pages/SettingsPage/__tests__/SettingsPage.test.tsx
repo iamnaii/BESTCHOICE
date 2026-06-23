@@ -9,6 +9,9 @@ vi.mock('@/contexts/AuthContext', () => ({
 }));
 // stub tab bodies (avoid data fetching); only the active tab mounts.
 vi.mock('../tabs/ContactsTab', () => ({ ContactsTab: () => <div>contacts-body</div> }));
+vi.mock('../tabs/InternalControlTab', () => ({
+  InternalControlTab: () => <div>internal-control-body</div>,
+}));
 
 function renderAt(hash = '') {
   window.location.hash = hash;
@@ -58,6 +61,25 @@ describe('SettingsPage — role-gated tabs', () => {
   it('hash ที่ไม่มีสิทธิ์ (FM เปิด #vat) → ตกไปแท็บแรกที่เห็น (ผู้ติดต่อ)', () => {
     mockRole = 'FINANCE_MANAGER';
     renderAt('#vat');
+    expect(screen.getByText('contacts-body')).toBeTruthy();
+  });
+
+  it('ไม่มีแท็บ "ผู้ใช้งาน" แล้ว + มีแท็บ "ระบบควบคุม & สิทธิ์" (OWNER)', () => {
+    mockRole = 'OWNER';
+    renderAt();
+    expect(screen.queryByRole('tab', { name: 'ผู้ใช้งาน' })).toBeNull();
+    expect(screen.getByRole('tab', { name: 'ระบบควบคุม & สิทธิ์' })).toBeTruthy();
+  });
+
+  it('alias ลิงก์เก่า #users → เปิดแท็บ ระบบควบคุม & สิทธิ์ (OWNER)', () => {
+    mockRole = 'OWNER';
+    renderAt('#users');
+    expect(screen.getByText('internal-control-body')).toBeTruthy();
+  });
+
+  it('FM เปิด #users (alias เป็น OWNER-only internal-control) → ตกไปแท็บแรก (ผู้ติดต่อ)', () => {
+    mockRole = 'FINANCE_MANAGER';
+    renderAt('#users');
     expect(screen.getByText('contacts-body')).toBeTruthy();
   });
 });

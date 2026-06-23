@@ -604,7 +604,7 @@ Persists `reopenReason` (format `${reasonType}: ${reason}`) + `taxFiled` on `Acc
 - `#vat` — `VAT_RATE` + `VAT_PRICE_TYPE_DEFAULT` (exclusive/inclusive)
 - `#periods` — AccountingPeriod table (close/reopen actions, ReopenPeriodModal)
 - `#attachment` — `ATTACHMENT_REQUIRED_ABOVE_AMOUNT` + `ATTACHMENT_ALLOWED_TYPES`
-- `#users` — MakerCheckerToggle + link to `/users`
+- `#internal-control` — ระบบควบคุม & สิทธิ์: ReverseReasonsManagementCard + (ย้ายมา 2026-06-23) MakerCheckerToggle, ReversePermissionCard, PettyCashCustodianCard, TestModeToggle. แท็บ `#users` เดิมถูกยุบ — `/settings#users` alias มาที่นี่. การจัดการผู้ใช้จริงอยู่ที่ `/users`
 
 URL hash sync: `/settings#vat` (etc.) is bookmarkable; back/forward respects `hashchange`.
 

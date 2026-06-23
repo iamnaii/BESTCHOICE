@@ -4,6 +4,8 @@ import { Prisma } from '@prisma/client';
 import { SalesService } from './sales.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InterCompanyService } from '../inter-company/inter-company.service';
+import { ShopCashSaleTemplate } from '../journal/cpa-templates/shop-cash-sale.template';
+import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
 
 /**
  * SalesService unit tests.
@@ -214,6 +216,14 @@ describe('SalesService', () => {
         SalesService,
         { provide: PrismaService, useValue: prisma },
         { provide: InterCompanyService, useValue: interCompanyService },
+        {
+          provide: ShopCashSaleTemplate,
+          useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-1', journalEntryId: 'je-1' }) },
+        },
+        {
+          provide: ShopAccountResolver,
+          useValue: { resolveInflowCashAccount: jest.fn().mockResolvedValue('S11-1102'), resolveProductAccounts: jest.fn().mockReturnValue({ inventoryAccountCode: 'S11-2001', cogsAccountCode: 'S50-1101', revenueAccountCode: 'S41-1101' }) },
+        },
       ],
     }).compile();
 
@@ -371,6 +381,7 @@ describe('SalesService', () => {
             product: {
               ...prisma.product,
               findUnique: jest.fn().mockResolvedValue(mockProduct),
+              findMany: jest.fn().mockResolvedValue([{ id: 'product-1', category: 'PHONE_NEW', costPrice: mockProduct.costPrice }]),
               update: jest.fn().mockImplementation((args: { data: { status: string } }) => {
                 if (args.data.status === 'SOLD_CASH') updateCalled = true;
                 return Promise.resolve({ ...mockProduct, status: 'SOLD_CASH' });
@@ -396,6 +407,7 @@ describe('SalesService', () => {
             ...prisma,
             product: {
               findUnique: jest.fn().mockResolvedValue(mockProduct),
+              findMany: jest.fn().mockResolvedValue([{ id: 'product-1', category: 'PHONE_NEW', costPrice: mockProduct.costPrice }]),
               update: jest.fn().mockResolvedValue({ ...mockProduct, status: 'SOLD_CASH' }),
             },
             sale: { create: jest.fn().mockResolvedValue(mockSale) },
@@ -426,6 +438,7 @@ describe('SalesService', () => {
             ...prisma,
             product: {
               findUnique: jest.fn().mockResolvedValue(mockProduct),
+              findMany: jest.fn().mockResolvedValue([{ id: 'product-1', category: 'PHONE_NEW', costPrice: mockProduct.costPrice }]),
               update: jest.fn().mockResolvedValue({ ...mockProduct, status: 'SOLD_CASH' }),
             },
             sale: { create: jest.fn().mockResolvedValue(mockSale) },

@@ -35,4 +35,21 @@ describe('ShopAccountResolver', () => {
     prisma.branch.findUnique.mockResolvedValue({ shopCashAccountCode: null });
     await expect(resolver.resolveBranchCashAccount('br-1')).rejects.toThrow(BadRequestException);
   });
+
+  it('resolveInflowCashAccount: CASH → the branch till', async () => {
+    prisma.branch.findUnique.mockResolvedValue({ shopCashAccountCode: 'S11-1102' });
+    await expect(resolver.resolveInflowCashAccount('br-1', 'CASH')).resolves.toBe('S11-1102');
+  });
+
+  it('resolveInflowCashAccount: non-CASH (transfer/QR) → the receiving bank S11-1201', async () => {
+    await expect(resolver.resolveInflowCashAccount('br-1', 'BANK_TRANSFER')).resolves.toBe('S11-1201');
+    await expect(resolver.resolveInflowCashAccount('br-1', 'QR_EWALLET')).resolves.toBe('S11-1201');
+    expect(prisma.branch.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('resolveInflowCashAccount: non-CASH methods (CREDIT_BALANCE, ONLINE_GATEWAY) → S11-1201', async () => {
+    await expect(resolver.resolveInflowCashAccount('br-1', 'CREDIT_BALANCE')).resolves.toBe('S11-1201');
+    await expect(resolver.resolveInflowCashAccount('br-1', 'ONLINE_GATEWAY')).resolves.toBe('S11-1201');
+    expect(prisma.branch.findUnique).not.toHaveBeenCalled();
+  });
 });

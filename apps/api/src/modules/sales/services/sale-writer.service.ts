@@ -1,5 +1,6 @@
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { PaymentMethod, PlanType, Prisma } from '@prisma/client';
+import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CreateSaleDto } from '../dto/sale.dto';
 import {
@@ -12,6 +13,9 @@ import { getRateForMonths } from '../../../utils/get-rate-for-months.util';
 import { loadInstallmentConfig, resolveInstallmentParams, resolveVatPctForBranch } from '../../../utils/config.util';
 import { generateContractNumber, generateSaleNumber } from '../../../utils/sequence.util';
 import { InterCompanyService } from '../../inter-company/inter-company.service';
+import { ShopCashSaleTemplate } from '../../journal/cpa-templates/shop-cash-sale.template';
+import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
+import { allocateCashSaleByCost } from '../shop-cash-sale-allocation.util';
 
 /**
  * Per-sale-type transactional writers extracted from SalesService.
@@ -25,10 +29,13 @@ import { InterCompanyService } from '../../inter-company/inter-company.service';
  * Bodies are verbatim from the original SalesService — only `this.<dep>`
  * resolution and import paths changed.
  */
+@Injectable()
 export class SaleWriterService {
   constructor(
     private prisma: PrismaService,
     private interCompanyService: InterCompanyService,
+    private shopCashSaleTemplate: ShopCashSaleTemplate,
+    private shopAccountResolver: ShopAccountResolver,
   ) {}
 
   private async resolveExternalFinanceCompanyId(
@@ -141,10 +148,43 @@ export class SaleWriterService {
         data: { status: 'SOLD_CASH' },
       });
 
-      // W-007: COGS tracked via sale.product.costPrice relationship.
-      // P&L report (AccountingService.getProfitLossReport) captures product cost
-      // by joining Sale → Product.costPrice, including bundle products.
-      // TODO: Implement perpetual inventory journal for real-time COGS ledger entries.
+      // SHOP-side: post one cash-sale JE per product (bundle-aware). Sale has no
+      // per-product price, so revenue is allocated proportionally by product cost.
+      const productIds = [dto.productId, ...(dto.bundleProductIds || [])];
+      const prods = await tx.product.findMany({
+        where: { id: { in: productIds } },
+        select: { id: true, category: true, costPrice: true },
+      });
+      const ordered = productIds
+        .map((id) => prods.find((p) => p.id === id))
+        .filter((p): p is (typeof prods)[number] => !!p);
+      const cashAccountCode = await this.shopAccountResolver.resolveInflowCashAccount(
+        dto.branchId,
+        dto.paymentMethod as PaymentMethod,
+        tx,
+      );
+      const allocations = allocateCashSaleByCost(
+        new Decimal(netAmount.toString()),
+        ordered.map((p) => ({ id: p.id, costPrice: new Decimal(p.costPrice.toString()) })),
+      );
+      for (const alloc of allocations) {
+        if (!alloc.revenue.gt(0)) continue; // template requires revenueAmount > 0
+        const prod = ordered.find((p) => p.id === alloc.productId)!;
+        const acc = this.shopAccountResolver.resolveProductAccounts(prod.category);
+        await this.shopCashSaleTemplate.execute(
+          {
+            idempotencyKey: `shop-cash-sale:${sale.id}:${alloc.productId}`,
+            saleId: sale.id,
+            cashAccountCode,
+            revenueAccountCode: acc.revenueAccountCode,
+            revenueAmount: alloc.revenue,
+            cogsAccountCode: acc.cogsAccountCode,
+            inventoryAccountCode: acc.inventoryAccountCode,
+            inventoryCost: alloc.cost,
+          },
+          tx,
+        );
+      }
 
       // Auto-create sales commission (read from CommissionRule, fallback to 3%)
       const now = new Date();

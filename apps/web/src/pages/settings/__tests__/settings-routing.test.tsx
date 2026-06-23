@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router';
 import { SettingsIndexRedirect } from '../SettingsIndexRedirect';
 import { SettingsLayout } from '../SettingsLayout';
+import { SettingsCategoryRoute } from '../SettingsCategoryRoute';
 
 let role = 'OWNER';
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { role } }) }));
@@ -14,7 +15,9 @@ function App({ entry }: { entry: string }) {
     <MemoryRouter initialEntries={[entry]}>
       <Routes>
         <Route path="/settings" element={<SettingsIndexRedirect />} />
-        <Route path="/settings/:categoryId" element={<SettingsLayout />} />
+        <Route path="/settings/:categoryId" element={<SettingsLayout />}>
+          <Route index element={<SettingsCategoryRoute />} />
+        </Route>
       </Routes>
     </MemoryRouter>
   );

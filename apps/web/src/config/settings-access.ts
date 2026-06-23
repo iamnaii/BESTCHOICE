@@ -31,3 +31,12 @@ export function searchSettings(
   }
   return out;
 }
+
+export function findItem(
+  categoryId: string,
+  itemId: string,
+): { category: SettingsCategory; item: SettingsItem } | undefined {
+  const category = categoryById(categoryId);
+  const item = category?.items.find((i) => i.id === itemId);
+  return category && item ? { category, item } : undefined;
+}

@@ -1,6 +1,9 @@
 import type { ComponentType } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { Building2, Users, BarChart3, Wallet, Smartphone, MessageSquare, Sparkles, ShieldCheck } from 'lucide-react';
+import InterestConfigPage from '@/pages/InterestConfigPage';
+import GfinConfigPage from '@/pages/GfinConfigPage';
+import PaymentMethodSettingsPage from '@/pages/PaymentMethodSettingsPage';
 // inline components (อยู่ที่เดิม — แค่ import มา render)
 import { CompanyTab } from '@/pages/SettingsPage/tabs/CompanyTab';
 import { ContactsTab } from '@/pages/SettingsPage/tabs/ContactsTab';
@@ -76,9 +79,9 @@ export const settingsRegistry: SettingsCategory[] = [
   {
     id: 'finance', label: 'การเงิน & สินเชื่อ', icon: Wallet, roles: ['OWNER', 'FINANCE_MANAGER'],
     items: [
-      { id: 'interest', label: 'ดอกเบี้ย', roles: ['OWNER'], kind: 'external', path: '/settings/interest-config' },
-      { id: 'gfin', label: 'GFIN', roles: ['OWNER'], kind: 'external', path: '/settings/gfin-rates' },
-      { id: 'payment-methods', label: 'ช่องทางชำระเงิน', roles: ['OWNER', 'FINANCE_MANAGER'], kind: 'external', path: '/settings/payment-methods' },
+      { id: 'interest', label: 'ดอกเบี้ย', roles: ['OWNER'], kind: 'route', component: InterestConfigPage, path: '/settings/finance/interest' },
+      { id: 'gfin', label: 'GFIN', roles: ['OWNER'], kind: 'route', component: GfinConfigPage, path: '/settings/finance/gfin' },
+      { id: 'payment-methods', label: 'ช่องทางชำระเงิน', roles: ['OWNER', 'FINANCE_MANAGER'], kind: 'route', component: PaymentMethodSettingsPage, path: '/settings/finance/payment-methods' },
     ],
   },
   {

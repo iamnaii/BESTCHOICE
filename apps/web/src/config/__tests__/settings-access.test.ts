@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  visibleCategories, categoryById, visibleItems, firstVisibleCategoryId, searchSettings,
+  visibleCategories, categoryById, visibleItems, firstVisibleCategoryId, searchSettings, findItem,
 } from '../settings-access';
 
 describe('settings-access', () => {
@@ -41,5 +41,13 @@ describe('settings-access', () => {
 
   it('searchSettings query ว่าง → []', () => {
     expect(searchSettings('', 'OWNER')).toEqual([]);
+  });
+
+  it('findItem คืน category+item ที่ถูกต้อง', () => {
+    const r = findItem('finance', 'interest');
+    expect(r?.item.id).toBe('interest');
+    expect(r?.category.id).toBe('finance');
+    expect(findItem('finance', 'nope')).toBeUndefined();
+    expect(findItem('nope', 'interest')).toBeUndefined();
   });
 });

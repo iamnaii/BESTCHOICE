@@ -15,6 +15,15 @@ function renderCat(id: string) {
 }
 
 describe('CategoryPage', () => {
+  it('scrolls to the section matching the URL hash on mount', () => {
+    const scrollSpy = vi.fn();
+    window.HTMLElement.prototype.scrollIntoView = scrollSpy;
+    window.location.hash = '#test-mode';
+    role = 'OWNER';
+    renderCat('system');
+    expect(scrollSpy).toHaveBeenCalled();
+  });
+
   it('render inline component sections ของหมวด (system)', () => {
     role = 'OWNER';
     renderCat('system');

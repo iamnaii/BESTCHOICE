@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Link } from 'react-router';
 import { ChevronRight } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -32,6 +33,14 @@ export function CategoryPage({ categoryId }: { categoryId: string }) {
   const role = (user?.role ?? '') as SettingsRole;
   const cat = categoryById(categoryId);
   if (!cat) return <p className="text-sm text-muted-foreground">ไม่พบหมวดนี้</p>;
+
+  useEffect(() => {
+    const hash = window.location.hash.slice(1);
+    if (!hash) return;
+    // defer to next frame so the section is in the DOM
+    const el = document.getElementById(hash);
+    if (el) el.scrollIntoView({ block: 'start' });
+  }, [categoryId]);
 
   const items = visibleItems(cat, role);
   // จัดกลุ่มตาม group (รักษาลำดับการประกาศ)

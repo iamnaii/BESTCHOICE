@@ -58,6 +58,24 @@ cd apps/web && npx tsc --noEmit && npx vitest run
 - **Money-path code (journal/JE/accounting)** gets extra scrutiny — request an adversarial review, lean on the golden specs in `apps/api/src/modules/journal/**/__tests__`.
 - Don't disable global guards (Throttler/Csrf/Audit) or commit secrets.
 
+## Working in parallel (two independent workstreams)
+
+Two people work different, unrelated areas in this one repo. Keep the code from tangling:
+
+- **Stay in your lane.** Each person owns module(s)/folders agreed up front. **No cross-imports between lanes** — if you need something from the other lane, ask first and consume it through a clear public interface; never reach in and edit its internals.
+- **Ownership is enforced by `.github/CODEOWNERS`** + branch protection "require code-owner review". A PR touching an area auto-requests that area's owner. Add your lane to CODEOWNERS so you own it.
+- **Small, short-lived branches; rebase often.** Long branches drift and conflict. One PR per logical change.
+
+### Prisma migrations — the #1 two-dev hazard
+`schema.prisma` is a single shared file and migrations are timestamp-ordered, so uncoordinated changes collide. Rules:
+- **`git fetch origin main && git rebase origin/main` *before* creating a migration**, every time.
+- Migration dir timestamp must be **greater than the latest on `main`** (synthetic monotonic `2026097N000000_*`, not wall-clock).
+- **One migration per PR.** Don't edit the same model concurrently with the other person — coordinate schema edits.
+- After the other person's migration merges, rebase and `npx prisma generate` before continuing.
+
+### Shared files (expect occasional trivial conflicts)
+`apps/api/src/app.module.ts` (module registration), `package.json` (deps) — resolve by rebase. Branch protection no longer requires "up to date before merge" (`strict=false`) so unrelated lanes don't force each other to rebase on every merge — but still rebase when you touch a shared file.
+
 ## Current work
 
 - Active spec: `docs/superpowers/specs/2026-06-23-shop-je-wiring-design.md`

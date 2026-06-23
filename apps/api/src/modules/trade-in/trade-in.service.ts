@@ -19,6 +19,8 @@ import {
   normalizeNationalId,
   buildTradeInPiiEncryptedFields,
 } from './helpers/trade-in.helpers';
+import { ShopTradeInTemplate } from '../journal/cpa-templates/shop-trade-in.template';
+import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
 
 /**
  * TradeInService — facade. Keeps the public method surface + 5-arg constructor
@@ -40,6 +42,8 @@ export class TradeInService {
     private voucher: TradeInVoucherService,
     private contactResolver: ContactResolverService,
     private pii: CustomerPiiService,
+    private shopTradeInTemplate: ShopTradeInTemplate,
+    private shopAccountResolver: ShopAccountResolver,
   ) {
     // Build Valuation + Query first, then wire them into Lifecycle (cross-refs).
     this.valuation = new TradeInValuationService(prisma);
@@ -52,6 +56,8 @@ export class TradeInService {
       pii,
       this.query,
       this.valuation,
+      shopTradeInTemplate,
+      shopAccountResolver,
     );
   }
 

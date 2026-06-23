@@ -6,6 +6,8 @@ import { StorageService } from '../storage/storage.service';
 import { TradeInVoucherService } from './services/voucher.service';
 import { ContactResolverService } from '../contacts/contact-resolver.service';
 import { CustomerPiiService } from '../customers/customer-pii.service';
+import { ShopTradeInTemplate } from '../journal/cpa-templates/shop-trade-in.template';
+import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
 import { encryptPII } from '../../utils/crypto.util';
 
 // ---------------------------------------------------------------------------
@@ -128,6 +130,8 @@ describe('TradeInService', () => {
         { provide: TradeInVoucherService, useValue: voucher },
         { provide: ContactResolverService, useValue: contactResolver },
         { provide: CustomerPiiService, useValue: pii },
+        { provide: ShopTradeInTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-001', journalEntryId: 'je-1' }) } },
+        { provide: ShopAccountResolver, useValue: { resolveOutflowCashAccount: jest.fn().mockResolvedValue('S11-1101') } },
       ],
     }).compile();
 

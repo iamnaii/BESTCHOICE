@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { Prisma, ProductCategory } from '@prisma/client';
+import { Prisma, ProductCategory, PaymentMethod } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
 export interface ShopProductAccounts {
@@ -49,5 +49,21 @@ export class ShopAccountResolver {
       );
     }
     return branch.shopCashAccountCode;
+  }
+
+  /**
+   * Resolve the SHOP cash/bank account that RECEIVES an inflow (cash sale, down
+   * payment). CASH → the branch's physical till (fail-closed); any electronic method
+   * (transfer/QR/etc.) → the single SHOP receiving bank S11-1201 (spec §5B).
+   */
+  async resolveInflowCashAccount(
+    branchId: string,
+    paymentMethod: PaymentMethod | null | undefined,
+    tx?: Prisma.TransactionClient,
+  ): Promise<string> {
+    if (paymentMethod === 'CASH') {
+      return this.resolveBranchCashAccount(branchId, tx);
+    }
+    return ShopAccountResolver.SHOP_RECEIVING_BANK;
   }
 }

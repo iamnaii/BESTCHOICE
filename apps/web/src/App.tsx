@@ -130,7 +130,7 @@ const ExpenseDocumentNewPage = lazy(() => import('@/pages/ExpenseDocumentNewPage
 const ExpenseFavoritesPage = lazy(() => import('@/pages/ExpenseFavoritesPage'));
 const ExpenseDailySummaryPage = lazy(() => import('@/pages/ExpenseDailySummaryPage'));
 const ProfitLossPage = lazy(() => import('@/pages/ProfitLossPage'));
-const CompanySettingsPage = lazy(() => import('@/pages/CompanySettingsPage'));
+// CompanySettingsPage moved to settings-registry (kind:'route') — lazy import removed
 // SP3 — split /tax-reports into 3 dedicated pages (VAT / WHT / e-Tax)
 const VatReportPage = lazy(() =>
   import('@/pages/VatReportPage').then((m) => ({ default: m.VatReportPage })),
@@ -156,8 +156,7 @@ const AssetSummaryReportPage = lazy(() => import('@/pages/assets/AssetSummaryRep
 const AssetTransfersListPage = lazy(() => import('@/pages/transfers/AssetTransfersListPage'));
 const DepreciationPage = lazy(() => import('@/pages/depreciation/DepreciationPage'));
 const BankAccountsPage = lazy(() => import('@/pages/BankAccountsPage'));
-// D1.1.1.4 — Admin UI for account_role_map (OWNER-only).
-const AccountRolesPage = lazy(() => import('@/pages/AccountRolesPage'));
+// D1.1.1.4 — AccountRolesPage moved to settings-registry (kind:'route') — lazy import removed
 const TodosPage = lazy(() => import('@/pages/TodosPage'));
 const UnifiedInboxPage = lazy(() => import('@/pages/UnifiedInboxPage'));
 const ChatInboxPage = lazy(() => import('@/pages/chat/ChatInboxPage'));
@@ -207,9 +206,7 @@ const ETaxPage = lazy(() => import('@/pages/finance/ETaxPage'));
 const VatAutoJournalPage = lazy(() => import('@/pages/finance/VatAutoJournalPage'));
 const EReceiptAutoPage = lazy(() => import('@/pages/finance/EReceiptAutoPage'));
 const PeakExportPage = lazy(() => import('@/pages/PeakExportPage'));
-// AI pages moved to settings-registry (kind:'route') — lazy imports removed
-const IntegrationHubPage = lazy(() => import('@/pages/IntegrationHubPage'));
-const MdmTestPage = lazy(() => import('@/pages/MdmTestPage'));
+// IntegrationHubPage + MdmTestPage moved to settings-registry (kind:'route') — lazy imports removed
 const MdmDashboardPage = lazy(() => import('@/pages/MdmDashboardPage'));
 const BroadcastPage = lazy(() => import('@/pages/BroadcastPage'));
 const RichMenuPage = lazy(() => import('@/pages/RichMenuPage'));
@@ -913,14 +910,8 @@ function App() {
           <Route path="/settings/e-tax-config" element={<Navigate to="/settings/accounting/e-tax" replace />} />
           {/* Backwards-compat: legacy /tax-reports → /finance/vat */}
           <Route path="/tax-reports" element={<Navigate to="/finance/vat" replace />} />
-          <Route
-            path="/settings/companies"
-            element={
-              <ProtectedRoute roles={['OWNER']}>
-                <CompanySettingsPage />
-              </ProtectedRoute>
-            }
-          />
+          {/* P2b — companies moved to /settings/company/entities */}
+          <Route path="/settings/companies" element={<Navigate to="/settings/company/entities" replace />} />
           {/* P2b — dunning moved to /settings/comms/dunning */}
           <Route path="/settings/dunning" element={<Navigate to="/settings/comms/dunning" replace />} />
           {/* P2b — sms-templates moved to /settings/comms/sms */}
@@ -1101,14 +1092,8 @@ function App() {
             }
           />
           {/* D1.1.1.4 — Admin UI for account_role_map (OWNER-only). */}
-          <Route
-            path="/settings/account-roles"
-            element={
-              <ProtectedRoute roles={['OWNER']}>
-                <AccountRolesPage />
-              </ProtectedRoute>
-            }
-          />
+          {/* P2b — account-roles moved to /settings/access/account-roles */}
+          <Route path="/settings/account-roles" element={<Navigate to="/settings/access/account-roles" replace />} />
           <Route
             path="/analytics"
             element={
@@ -1146,22 +1131,10 @@ function App() {
           <Route path="/settings/ai-performance" element={<Navigate to="/settings/ai/performance" replace />} />
           <Route path="/settings/ai-admin" element={<Navigate to="/settings/ai/admin" replace />} />
           <Route path="/settings/ai-persona" element={<Navigate to="/settings/ai/persona" replace />} />
-          <Route
-            path="/settings/integrations"
-            element={
-              <ProtectedRoute roles={['OWNER', 'ACCOUNTANT']}>
-                <IntegrationHubPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/settings/mdm-test"
-            element={
-              <ProtectedRoute roles={['OWNER']}>
-                <MdmTestPage />
-              </ProtectedRoute>
-            }
-          />
+          {/* P2b — integrations moved to /settings/system/integrations */}
+          <Route path="/settings/integrations" element={<Navigate to="/settings/system/integrations" replace />} />
+          {/* P2b — mdm-test moved to /settings/system/mdm */}
+          <Route path="/settings/mdm-test" element={<Navigate to="/settings/system/mdm" replace />} />
           <Route
             path="/mdm"
             element={

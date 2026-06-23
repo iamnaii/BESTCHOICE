@@ -1,6 +1,10 @@
 import type { ComponentType } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { Building2, Users, BarChart3, Wallet, Smartphone, MessageSquare, Sparkles, ShieldCheck } from 'lucide-react';
+import CompanySettingsPage from '@/pages/CompanySettingsPage';
+import AccountRolesPage from '@/pages/AccountRolesPage';
+import IntegrationHubPage from '@/pages/IntegrationHubPage';
+import MdmTestPage from '@/pages/MdmTestPage';
 import LineOaSettingsPage from '@/pages/LineOaSettingsPage';
 import LineGreetingPage from '@/pages/LineGreetingPage';
 import SmsTemplatesPage from '@/pages/SmsTemplatesPage';
@@ -64,7 +68,7 @@ export const settingsRegistry: SettingsCategory[] = [
     items: [
       { id: 'company-info', label: 'ข้อมูลบริษัท', group: 'บริษัท', roles: ['OWNER'], kind: 'inline', component: CompanyTab, keywords: ['ที่อยู่', 'โลโก้', 'ผู้เซ็น', 'tax id'] },
       { id: 'contacts', label: 'สมุดผู้ติดต่อ', group: 'บริษัท', roles: ALL, kind: 'inline', component: ContactsTab, keywords: ['ลูกค้า', 'ผู้ขาย', 'supplier'] },
-      { id: 'entities', label: 'บริษัทในเครือ', group: 'บริษัท', roles: ['OWNER'], kind: 'external', path: '/settings/companies' },
+      { id: 'entities', label: 'บริษัทในเครือ', group: 'บริษัท', roles: ['OWNER'], kind: 'route', component: CompanySettingsPage, path: '/settings/company/entities' },
       { id: 'branches', label: 'สาขา', group: 'สาขา', roles: ['OWNER'], kind: 'external', path: '/branches' },
     ],
   },
@@ -72,7 +76,7 @@ export const settingsRegistry: SettingsCategory[] = [
     id: 'access', label: 'ผู้ใช้ & สิทธิ์', icon: Users, roles: ['OWNER'],
     items: [
       { id: 'users', label: 'ผู้ใช้ / พนักงาน', group: 'ผู้ใช้', roles: ['OWNER'], kind: 'external', path: '/users' },
-      { id: 'account-roles', label: 'บัญชีตาม Role', group: 'ผู้ใช้', roles: ['OWNER'], kind: 'external', path: '/settings/account-roles' },
+      { id: 'account-roles', label: 'บัญชีตาม Role', group: 'ผู้ใช้', roles: ['OWNER'], kind: 'route', component: AccountRolesPage, path: '/settings/access/account-roles' },
       { id: 'maker-checker', label: 'ระบบอนุมัติ 2 ชั้น (Maker-Checker)', group: 'การอนุมัติ & สิทธิ์', roles: ['OWNER'], kind: 'inline', component: MakerCheckerToggle, keywords: ['อนุมัติ', 'maker', 'checker'] },
       { id: 'reverse-permission', label: 'สิทธิ์กลับรายการ', group: 'การอนุมัติ & สิทธิ์', roles: ['OWNER'], kind: 'inline', component: ReversePermissionCard, keywords: ['reverse', 'กลับรายการ', 'void'] },
       { id: 'reverse-reasons', label: 'เหตุผลกลับรายการ', group: 'การอนุมัติ & สิทธิ์', roles: ['OWNER'], kind: 'inline', component: ReverseReasonsManagementCard },
@@ -137,8 +141,8 @@ export const settingsRegistry: SettingsCategory[] = [
       { id: 'test-mode', label: 'โหมดทดสอบ', group: 'ความปลอดภัย', roles: ['OWNER'], kind: 'inline', component: TestModeToggle, keywords: ['test', 'otp', '2fa', 'เครดิต'] },
       { id: 'pdpa', label: 'PDPA', group: 'ความปลอดภัย', roles: ['OWNER'], kind: 'inline', component: PdpaTab, keywords: ['pdpa', 'ข้อมูลส่วนบุคคล', 'encryption'] },
       { id: 'backup', label: 'สำรองข้อมูล', group: 'ข้อมูล', roles: ['OWNER'], kind: 'inline', component: OffsiteBackupTab, keywords: ['backup', 'สำรอง'] },
-      { id: 'integrations', label: 'การเชื่อมต่อ', group: 'เชื่อมต่อ', roles: ['OWNER', 'ACCOUNTANT'], kind: 'external', path: '/settings/integrations' },
-      { id: 'mdm', label: 'MDM', group: 'เชื่อมต่อ', roles: ['OWNER'], kind: 'external', path: '/settings/mdm-test' },
+      { id: 'integrations', label: 'การเชื่อมต่อ', group: 'เชื่อมต่อ', roles: ['OWNER', 'ACCOUNTANT'], kind: 'route', component: IntegrationHubPage, path: '/settings/system/integrations' },
+      { id: 'mdm', label: 'MDM', group: 'เชื่อมต่อ', roles: ['OWNER'], kind: 'route', component: MdmTestPage, path: '/settings/system/mdm' },
       { id: 'audit-log', label: 'Audit Log', group: 'ข้อมูล', roles: ['OWNER'], kind: 'external', path: '/audit-logs' },
       { id: 'system-status', label: 'System Status', group: 'ข้อมูล', roles: ['OWNER'], kind: 'external', path: '/system-status' },
     ],

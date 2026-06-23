@@ -738,10 +738,10 @@ const OWNER_CONFIG: RoleMenuConfig = {
       zone: 'settings',
       items: [
         { label: 'ตั้งค่าระบบ', path: '/settings', icon: Settings },
-        { label: 'บัญชีตาม Role', path: '/settings/account-roles', icon: ClipboardList },
+        { label: 'บัญชีตาม Role', path: '/settings/access/account-roles', icon: ClipboardList },
         { label: 'ผู้ใช้ / พนักงาน', path: '/users', icon: UserCog },
         { label: 'สาขา', path: '/branches', icon: Building2 },
-        { label: 'บริษัท', path: '/settings/companies', icon: Building2 },
+        { label: 'บริษัท', path: '/settings/company/entities', icon: Building2 },
         { label: 'แบบสัญญา', path: '/contract-templates', icon: FileCheck },
         { label: 'ตั้งราคา', path: '/settings/products/pricing', icon: CircleDollarSign },
         { label: 'ตั้งค่า GFIN', path: '/settings/finance/gfin', icon: Calculator },
@@ -775,7 +775,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
       zone: 'fin',
       items: [
         { label: 'LINE OA', path: '/settings/rich-menu', icon: MessageSquareMore },
-        { label: 'การเชื่อมต่อ (PaySolutions / สรรพากร ฯลฯ)', path: '/settings/integrations', icon: Plug },
+        { label: 'การเชื่อมต่อ (PaySolutions / สรรพากร ฯลฯ)', path: '/settings/system/integrations', icon: Plug },
       ],
     },
     {
@@ -908,7 +908,7 @@ const ZONE_CONFIG: Record<string, RoleZoneConfig> = {
       ],
       settings: [
         { label: 'ผู้ใช้ / พนักงาน', path: '/users', icon: UserCog },
-        { label: 'บริษัท', path: '/settings/companies', icon: Building2 },
+        { label: 'บริษัท', path: '/settings/company/entities', icon: Building2 },
         { label: 'สาขา', path: '/branches', icon: Building2 },
         { label: 'ตั้งค่า', path: '/settings', icon: Settings },
         { label: 'เพิ่มเติม', path: '#more', icon: MoreHorizontal, action: 'sidebar' },

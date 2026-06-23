@@ -7,14 +7,18 @@ let role = 'OWNER';
 let mobile = false;
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { role } }) }));
 vi.mock('@/hooks/useIsMobile', () => ({ useIsMobile: () => mobile }));
-// CategoryPage ตัวจริงจะ render inline components — mock ให้เบา
-vi.mock('../CategoryPage', () => ({ CategoryPage: ({ categoryId }: { categoryId: string }) => <div>cat:{categoryId}</div> }));
 
 function renderAt(path: string) {
+  // Extract categoryId from path for the index child stub
+  const match = path.match(/\/settings\/([^/]+)/);
+  const catId = match?.[1] ?? '';
   return render(
     <MemoryRouter initialEntries={[path]}>
       <Routes>
-        <Route path="/settings/:categoryId" element={<SettingsLayout />} />
+        <Route path="/settings/:categoryId" element={<SettingsLayout />}>
+          <Route index element={<div>cat:{catId}</div>} />
+          <Route path=":itemId" element={<div>item-child</div>} />
+        </Route>
       </Routes>
     </MemoryRouter>,
   );

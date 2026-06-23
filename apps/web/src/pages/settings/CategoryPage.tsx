@@ -6,7 +6,7 @@ import type { SettingsItem, SettingsRole } from '@/config/settings-registry';
 
 const groupLabelClass = 'text-xs font-semibold uppercase tracking-wide text-muted-foreground leading-snug';
 
-function ItemSection({ item }: { item: SettingsItem }) {
+function ItemSection({ item, categoryId }: { item: SettingsItem; categoryId: string }) {
   if (item.kind === 'inline' && item.component) {
     const C = item.component;
     return (
@@ -15,10 +15,10 @@ function ItemSection({ item }: { item: SettingsItem }) {
       </div>
     );
   }
-  // external / route(P1=ลิงก์)
+  const to = item.kind === 'route' ? `/settings/${categoryId}/${item.id}` : (item.path ?? '#');
   return (
     <Link
-      to={item.path ?? '#'}
+      to={to}
       className="flex items-center justify-between rounded-xl border border-border/60 bg-card p-4 hover:bg-accent transition-colors"
     >
       <span className="text-sm font-medium text-foreground leading-snug">{item.label}</span>
@@ -48,7 +48,7 @@ export function CategoryPage({ categoryId }: { categoryId: string }) {
         <section key={g.name ?? gi} className="space-y-4">
           {g.name && <h3 className={groupLabelClass}>{g.name}</h3>}
           {g.items.map((item) => (
-            <ItemSection key={item.id} item={item} />
+            <ItemSection key={item.id} item={item} categoryId={cat.id} />
           ))}
         </section>
       ))}

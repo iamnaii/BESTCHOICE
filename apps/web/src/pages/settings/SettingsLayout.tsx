@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams, useNavigate, Link } from 'react-router';
+import { useParams, useNavigate, Link, Outlet } from 'react-router';
 import { Search } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useIsMobile } from '@/hooks/useIsMobile';
@@ -7,7 +7,6 @@ import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import PageHeader from '@/components/ui/PageHeader';
 import { visibleCategories, visibleItems, searchSettings } from '@/config/settings-access';
 import type { SettingsRole } from '@/config/settings-registry';
-import { CategoryPage } from './CategoryPage';
 
 export function SettingsLayout() {
   useDocumentTitle('ตั้งค่าระบบ');
@@ -62,7 +61,7 @@ export function SettingsLayout() {
               <option key={c.id} value={c.id}>{c.label}</option>
             ))}
           </select>
-          <CategoryPage categoryId={categoryId} />
+          <Outlet />
         </div>
       ) : (
         <div className="flex gap-6">
@@ -88,7 +87,7 @@ export function SettingsLayout() {
             })}
           </nav>
           <div className="min-w-0 flex-1">
-            <CategoryPage categoryId={categoryId} />
+            <Outlet />
           </div>
         </div>
       )}

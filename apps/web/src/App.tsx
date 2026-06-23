@@ -57,11 +57,16 @@ const SettingsLayout = lazy(() =>
 const SettingsIndexRedirect = lazy(() =>
   import('@/pages/settings/SettingsIndexRedirect').then((m) => ({ default: m.SettingsIndexRedirect })),
 );
+const SettingsCategoryRoute = lazy(() =>
+  import('@/pages/settings/SettingsCategoryRoute').then((m) => ({ default: m.SettingsCategoryRoute })),
+);
+const SettingsItemRoute = lazy(() =>
+  import('@/pages/settings/SettingsItemRoute').then((m) => ({ default: m.SettingsItemRoute })),
+);
 const StickersSettingsPage = lazy(() => import('@/pages/SettingsPage/StickersPage'));
 const CollectionsSettingsPage = lazy(() => import('@/pages/SettingsPage/CollectionsPage'));
 const GeneralSettingsPage = lazy(() => import('@/pages/SettingsPage/GeneralSettingsPage'));
 const DocumentConfigPage = lazy(() => import('@/pages/DocumentConfigPage'));
-const PaymentMethodSettingsPage = lazy(() => import('@/pages/PaymentMethodSettingsPage'));
 // SP5 — SHOP-side additions
 // SP1 hotfix #2: /defect-exchange restored as a real route to DefectExchangePage.
 // SP1's new IMEI wizard handles REPAIR only — exchange flow needs its own home.
@@ -82,7 +87,6 @@ const FinancialAuditPage = lazy(() => import('@/pages/FinancialAuditPage'));
 const PaymentCsvImportPage = lazy(() => import('@/pages/PaymentCsvImportPage'));
 const POSPage = lazy(() => import('@/pages/POSPage'));
 const SalesHistoryPage = lazy(() => import('@/pages/SalesHistoryPage'));
-const InterestConfigPage = lazy(() => import('@/pages/InterestConfigPage'));
 const PricingTemplatesPage = lazy(() => import('@/pages/PricingTemplatesPage'));
 const SuppliersPage = lazy(() => import('@/pages/SuppliersPage'));
 const StockOverviewPage = lazy(() => import('@/pages/StockPage/OverviewPage'));
@@ -215,8 +219,6 @@ const AiPerformancePage = lazy(() => import('@/pages/AiPerformancePage'));
 const AiPersonaPage = lazy(() => import('@/pages/AiPersonaPage'));
 const AiAdminPage = lazy(() => import('@/pages/AiAdminPage'));
 const IntegrationHubPage = lazy(() => import('@/pages/IntegrationHubPage'));
-// F-Phase — GFIN rate table admin (OWNER-only)
-const GfinConfigPage = lazy(() => import('@/pages/GfinConfigPage'));
 const MdmTestPage = lazy(() => import('@/pages/MdmTestPage'));
 const MdmDashboardPage = lazy(() => import('@/pages/MdmDashboardPage'));
 const BroadcastPage = lazy(() => import('@/pages/BroadcastPage'));
@@ -476,7 +478,7 @@ function App() {
           <Route path="/crm" element={<ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES']}><CrmPipelinePage /></ProtectedRoute>} />
           <Route path="/ads" element={<ProtectedRoute roles={['OWNER']}><AdsTrackingPage /></ProtectedRoute>} />
           <Route path="/settings/channels" element={<ProtectedRoute roles={['OWNER']}><ChannelSettingsPage /></ProtectedRoute>} />
-          <Route path="/settings/payment-methods" element={<ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER']}><PaymentMethodSettingsPage /></ProtectedRoute>} />
+          <Route path="/settings/payment-methods" element={<Navigate to="/settings/finance/payment-methods" replace />} />
           <Route path="/settings/stickers" element={<ProtectedRoute roles={['OWNER']}><StickersSettingsPage /></ProtectedRoute>} />
           <Route path="/settings/collections" element={<ProtectedRoute roles={['OWNER']}><CollectionsSettingsPage /></ProtectedRoute>} />
           <Route path="/settings/general" element={<ProtectedRoute roles={['OWNER']}><GeneralSettingsPage /></ProtectedRoute>} />
@@ -779,15 +781,11 @@ function App() {
                 <SettingsLayout />
               </ProtectedRoute>
             }
-          />
-          <Route
-            path="/settings/interest-config"
-            element={
-              <ProtectedRoute roles={['OWNER']}>
-                <InterestConfigPage />
-              </ProtectedRoute>
-            }
-          />
+          >
+            <Route index element={<SettingsCategoryRoute />} />
+            <Route path=":itemId" element={<SettingsItemRoute />} />
+          </Route>
+          <Route path="/settings/interest-config" element={<Navigate to="/settings/finance/interest" replace />} />
           <Route
             path="/settings/pricing-templates"
             element={
@@ -796,14 +794,7 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/settings/gfin-rates"
-            element={
-              <ProtectedRoute roles={['OWNER']}>
-                <GfinConfigPage />
-              </ProtectedRoute>
-            }
-          />
+          <Route path="/settings/gfin-rates" element={<Navigate to="/settings/finance/gfin" replace />} />
           <Route
             path="/audit-logs"
             element={

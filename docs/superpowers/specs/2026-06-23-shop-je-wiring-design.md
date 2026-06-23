@@ -163,10 +163,10 @@ Therefore X5 is a **hard gate, not a nicety**: add `company: { companyCode: 'FIN
 
 _Resolved by `/scrutinize` (2026-06-23): Blocker-1 (atomic × strict assertion × `roundBaht`) → D-8 + §4A; Major-2 (PEAK no-company-filter) → §9 hard gate; Major-3 (cash-sale bundles) → §6B; Minor-4 (pending-settlements) → §6A._
 
-Remaining owner/implementation confirms:
-- **Revenue = `downPayment + financedAmount` for financed sales (D-8/§4A)** — confirm the sub-baht `roundBaht` delta vs raw `sellingPrice` is acceptable to leave unbooked (vs adding a rounding line).
-- **Bundle price allocation (§6B)** — confirm per-product line prices are recoverable for a bundled `Sale`; else allocate proportionally by cost.
-- TABLET reusing PHONE_NEW codes (D-5) — confirm vs. adding dedicated tablet S-codes.
+Owner confirms — **ALL ACCEPTED at recommended defaults (2026-06-23):**
+- ✅ **Revenue = `downPayment + financedAmount` for financed sales (D-8/§4A)** — sub-baht `roundBaht` delta vs raw `sellingPrice` left unbooked (no rounding line). Immaterial; SHOP not VAT-registered.
+- ✅ **Bundle allocation (§6B)** — use per-product line price when recoverable, else allocate proportionally by cost (which-source confirmed at implementation).
+- ✅ **TABLET → PHONE_NEW codes (D-5)** — S41-1101 / S50-1101 / S11-2001; dedicated tablet S-codes deferred.
 - Fail-closed on missing `Branch.shopCashAccountCode` (§5C) — confirm acceptable that an unconfigured branch blocks cash-route posting (mitigated by go-live guard).
 - `ShopFinanceReceipt` with no tracking model (D-6) — confirm JE+audit is sufficient (no per-settlement entity).
 - **In-flight contracts at P1 rollout (down/transfer coupling):** a contract *created before* P1 (no `ShopDownPayment` JE) but *activated after* P1 would make `ShopInventoryTransfer` Dr S21-2001 to clear a down-payable that was never credited → negative liability. The implementation plan must pick a rollout strategy: (a) the activation wiring checks whether a `shop-down-payment:<contractId>` JE exists and, if absent for a down>0 contract, posts a catch-up down JE first (or omits the S21-2001 clearance line); or (b) a cutover date after which only post-P1 contracts get SHOP JEs. Recommend (a) so books stay complete. Same consideration for `ShopDownPaymentReversal` on pre-P1 contracts.

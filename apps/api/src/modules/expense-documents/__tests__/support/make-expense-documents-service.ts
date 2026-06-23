@@ -45,6 +45,7 @@ export interface ExpenseDocumentsServiceOverrides {
   creditNoteTemplate?: any;
   payrollTemplate?: any;
   settlementTemplate?: any;
+  shopExpenseTemplate?: any;
   journal?: any;
   aggregator?: any;
   jePreview?: any;
@@ -82,6 +83,7 @@ export interface MadeExpenseDocumentsService {
   creditNoteTemplate: any;
   payrollTemplate: any;
   settlementTemplate: any;
+  shopExpenseTemplate: any;
   journal: any;
   aggregator: any;
   jePreview: any;
@@ -114,6 +116,9 @@ export function makeExpenseDocumentsService(
   const creditNoteTemplate = overrides.creditNoteTemplate ?? { execute: jest.fn() };
   const payrollTemplate = overrides.payrollTemplate ?? { execute: jest.fn() };
   const settlementTemplate = overrides.settlementTemplate ?? { execute: jest.fn() };
+  const shopExpenseTemplate =
+    overrides.shopExpenseTemplate ??
+    { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-SE-1', journalEntryId: 'je-shop-1' }) };
   const journal = overrides.journal ?? { createAndPost: jest.fn() };
   // REAL aggregator by default — every construction site uses it today.
   const aggregator = overrides.aggregator ?? new LineAggregatorService();
@@ -155,6 +160,7 @@ export function makeExpenseDocumentsService(
       payrollTemplate,
       settlementTemplate,
       pettyCashTemplate,
+      shopExpenseTemplate,
       journal,
       notifications,
     );
@@ -196,6 +202,7 @@ export function makeExpenseDocumentsService(
     creditNoteTemplate,
     payrollTemplate,
     settlementTemplate,
+    shopExpenseTemplate,
     journal,
     aggregator,
     jePreview,

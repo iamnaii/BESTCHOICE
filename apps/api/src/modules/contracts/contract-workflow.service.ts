@@ -14,9 +14,13 @@ import { generateSaleNumber } from '../../utils/sequence.util';
 import { buildInstallmentScheduleRows } from '../../utils/installment-schedule.util';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { ContractActivation1ATemplate } from '../journal/cpa-templates/contract-activation-1a.template';
+import { ShopInventoryTransferTemplate } from '../journal/cpa-templates/shop-inventory-transfer.template';
+import { ShopDownPaymentTemplate } from '../journal/cpa-templates/shop-down-payment.template';
+import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
 import { ProductsService } from '../products/products.service';
 import { ContractExchangeService } from '../contract-exchange/contract-exchange.service';
 import { TestModeService } from '../test-mode/test-mode.service';
+import { Decimal } from '@prisma/client/runtime/library';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -29,6 +33,9 @@ export class ContractWorkflowService {
     private contractActivation1ATemplate: ContractActivation1ATemplate,
     private productsService: ProductsService,
     private contractExchangeService: ContractExchangeService,
+    private shopInventoryTransferTemplate: ShopInventoryTransferTemplate,
+    private shopDownPaymentTemplate: ShopDownPaymentTemplate,
+    private shopAccountResolver: ShopAccountResolver,
     @Optional() private testMode?: TestModeService,
   ) {}
 
@@ -492,6 +499,63 @@ export class ContractWorkflowService {
         // fire-and-forget pattern violated by leaving contracts ACTIVE without
         // any ledger entry when the JE failed.
         await this.contractActivation1ATemplate.execute(contract.id, tx);
+
+        // SHOP-side: post inventory transfer (COGS + revenue + receivables + down clearance),
+        // atomic with the FINANCE 1A entry. salePrice is reconstructed as down+financed (D-8)
+        // so the template's financing-identity assertion holds by construction.
+        const downAmount = new Decimal(contract.downPayment.toString());
+        const financedAmt = new Decimal(contract.financedAmount.toString());
+
+        // In-flight rollout guard (spec §12): a contract created BEFORE this feature
+        // shipped never got a ShopDownPayment JE, but ShopInventoryTransfer below will
+        // Dr S21-2001 to "clear" the down payable. If no down JE exists yet, post a
+        // catch-up ShopDownPayment first so the clearance lands against a real credit.
+        if (downAmount.gt(0)) {
+          const downJe = await tx.journalEntry.findFirst({
+            where: {
+              AND: [
+                { metadata: { path: ['flow'], equals: 'shop-down-payment' } as any },
+                { metadata: { path: ['idempotencyKey'], equals: `shop-down-payment:${contract.id}` } as any },
+              ],
+              deletedAt: null,
+            },
+            select: { id: true },
+          });
+          if (!downJe) {
+            const cashAccountCode = await this.shopAccountResolver.resolveBranchCashAccount(contract.branchId, tx);
+            await this.shopDownPaymentTemplate.execute(
+              {
+                idempotencyKey: `shop-down-payment:${contract.id}`,
+                contractId: contract.id,
+                contractNumber: contract.contractNumber,
+                cashAccountCode,
+                downAmount,
+              },
+              tx,
+            );
+          }
+        }
+
+        const acc = this.shopAccountResolver.resolveProductAccounts(contract.product.category);
+        await this.shopInventoryTransferTemplate.execute(
+          {
+            idempotencyKey: `shop-inventory-transfer:${contract.id}`,
+            contractId: contract.id,
+            contractNumber: contract.contractNumber,
+            productId: contract.productId,
+            inventoryAccountCode: acc.inventoryAccountCode,
+            cogsAccountCode: acc.cogsAccountCode,
+            revenueAccountCode: acc.revenueAccountCode,
+            costPrice: new Decimal(contract.product.costPrice.toString()),
+            salePrice: downAmount.plus(financedAmt),
+            downAmount,
+            financedAmount: financedAmt,
+            commission: contract.storeCommission
+              ? new Decimal(contract.storeCommission.toString())
+              : new Decimal(0),
+          },
+          tx,
+        );
       }
 
       // Phase A.4 — generate installment_schedules rows so accrual cron + payment

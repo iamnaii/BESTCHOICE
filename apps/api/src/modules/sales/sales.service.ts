@@ -5,15 +5,16 @@ import { InterCompanyService } from '../inter-company/inter-company.service';
 import { SalesQueryService } from './services/sales-query.service';
 import { SaleWriterService } from './services/sale-writer.service';
 import { SaleCreationService } from './services/sale-creation.service';
+import { ShopCashSaleTemplate } from '../journal/cpa-templates/shop-cash-sale.template';
+import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
 
 /**
  * SalesService — facade over the decomposed sales sub-services.
  *
- * The 8-method public surface + constructor `(prisma, interCompanyService)` are
- * preserved byte-identically so the forwardRef token in
- * `online-order-sale.adapter.ts`, the `sales.module.ts` provider wiring, and the
- * existing spec all stay untouched. Sub-services are plain classes constructed
- * INTERNALLY in the constructor body (no DI provider entries needed):
+ * The 8-method public surface is preserved. Sub-services are constructed
+ * INTERNALLY in the constructor body. SaleWriterService now requires
+ * ShopCashSaleTemplate + ShopAccountResolver (injected via NestJS DI from
+ * JournalModule which is imported in SalesModule).
  *
  *  - SalesQueryService   — read-side queries + role-dependent response shaping
  *  - SaleWriterService   — the 3 per-type $transaction writers (cash/external =
@@ -31,9 +32,16 @@ export class SalesService {
   constructor(
     private prisma: PrismaService,
     private interCompanyService: InterCompanyService,
+    private shopCashSaleTemplate: ShopCashSaleTemplate,
+    private shopAccountResolver: ShopAccountResolver,
   ) {
     this.query = new SalesQueryService(this.prisma);
-    this.writer = new SaleWriterService(this.prisma, this.interCompanyService);
+    this.writer = new SaleWriterService(
+      this.prisma,
+      this.interCompanyService,
+      this.shopCashSaleTemplate,
+      this.shopAccountResolver,
+    );
     this.creation = new SaleCreationService(this.prisma, this.writer, this.interCompanyService);
   }
 

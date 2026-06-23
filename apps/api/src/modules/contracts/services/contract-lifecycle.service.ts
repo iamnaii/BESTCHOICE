@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException, ConflictException, InternalServerErrorException } from '@nestjs/common';
 import { StructuredLoggerService } from '../../../common/logger';
 import { PlanType, Prisma } from '@prisma/client';
+import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CreateContractDto, UpdateContractDto } from '../dto/contract.dto';
 import { calculateInstallmentWithInterest, generatePaymentSchedule, roundBaht } from '../../../utils/installment.util';
@@ -11,6 +12,9 @@ import { d } from '../../../utils/decimal.util';
 import { WarrantyService } from '../../warranty/warranty.service';
 import { AuditService } from '../../audit/audit.service';
 import { ContractQueryService } from './contract-query.service';
+import { ShopDownPaymentTemplate } from '../../journal/cpa-templates/shop-down-payment.template';
+import { ShopDownPaymentReversalTemplate } from '../../journal/cpa-templates/shop-down-payment-reversal.template';
+import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
 
 /**
  * ContractLifecycleService — write-side lifecycle of a contract: create
@@ -26,6 +30,9 @@ export class ContractLifecycleService {
   constructor(
     private prisma: PrismaService,
     private query: ContractQueryService,
+    private shopDownPaymentTemplate: ShopDownPaymentTemplate,
+    private shopDownPaymentReversalTemplate: ShopDownPaymentReversalTemplate,
+    private shopAccountResolver: ShopAccountResolver,
     private warrantyService?: WarrantyService,
     private audit?: AuditService,
   ) {}
@@ -209,6 +216,22 @@ export class ContractLifecycleService {
             { principal: calc.principal, interestTotal: calc.interestTotal, storeCommission: calc.storeCommission, vatAmount: calc.vatAmount },
           );
           await tx.payment.createMany({ data: payments });
+
+          // SHOP-side: record the down payment received at contract creation.
+          const downPayment = new Decimal(dto.downPayment.toString());
+          if (downPayment.gt(0)) {
+            const cashAccountCode = await this.shopAccountResolver.resolveBranchCashAccount(dto.branchId, tx);
+            await this.shopDownPaymentTemplate.execute(
+              {
+                idempotencyKey: `shop-down-payment:${newContract.id}`,
+                contractId: newContract.id,
+                contractNumber: newContract.contractNumber,
+                cashAccountCode,
+                downAmount: downPayment,
+              },
+              tx,
+            );
+          }
 
           // Reserve product
           await tx.product.update({
@@ -506,39 +529,66 @@ export class ContractLifecycleService {
     const now = new Date();
     const cascadedSignatures = hasSignatures ? contract.signatures.length : 0;
 
-    await this.prisma.$transaction([
-      this.prisma.contract.update({ where: { id }, data: { deletedAt: now } }),
+    await this.prisma.$transaction(async (tx) => {
+      // Reverse the SHOP down-payment JE if one was posted for this DRAFT contract.
+      const downPayment = new Decimal(contract.downPayment.toString());
+      if (downPayment.gt(0)) {
+        const downJe = await tx.journalEntry.findFirst({
+          where: {
+            AND: [
+              { metadata: { path: ['flow'], equals: 'shop-down-payment' } as any },
+              { metadata: { path: ['idempotencyKey'], equals: `shop-down-payment:${id}` } as any },
+            ],
+            deletedAt: null,
+          },
+          select: { id: true },
+        });
+        if (downJe) {
+          const refundAccountCode = await this.shopAccountResolver.resolveBranchCashAccount(contract.branchId, tx);
+          await this.shopDownPaymentReversalTemplate.execute(
+            {
+              idempotencyKey: `shop-down-payment-reversal:${id}`,
+              contractId: id,
+              contractNumber: contract.contractNumber,
+              refundAccountCode,
+              downAmount: downPayment,
+              originalJournalEntryId: downJe.id,
+            },
+            tx,
+          );
+        }
+      }
+
+      await tx.contract.update({ where: { id }, data: { deletedAt: now } });
       // Cascade soft-delete signatures only when the contract is REJECTED.
       // No-op when there are no signatures (unsigned drafts).
-      ...(cascadedSignatures > 0
-        ? [
-            this.prisma.signature.updateMany({
-              where: { contractId: id, deletedAt: null },
-              data: { deletedAt: now },
-            }),
-          ]
-        : []),
+      if (cascadedSignatures > 0) {
+        await tx.signature.updateMany({
+          where: { contractId: id, deletedAt: null },
+          data: { deletedAt: now },
+        });
+      }
       // Release the credit check back to the customer — unlinking from this
       // (now-deleted) contract lets them reuse the APPROVED decision for a
       // future contract. The gate at contracts.service.ts:332 filters on
       // `contractId: null`, so a stale link would trap the approval.
-      this.prisma.creditCheck.updateMany({
+      await tx.creditCheck.updateMany({
         where: { contractId: id },
         data: { contractId: null },
-      }),
+      });
       // KYC records captured for this contract (OTP + ID card photo) become
       // orphans otherwise. Soft-delete keeps the row for audit but marks it
       // as no-longer-tied-to-an-active-contract.
-      this.prisma.kycVerification.updateMany({
+      await tx.kycVerification.updateMany({
         where: { contractId: id, deletedAt: null },
         data: { deletedAt: now },
-      }),
+      });
       // Release reserved product back to IN_STOCK
-      this.prisma.product.updateMany({
+      await tx.product.updateMany({
         where: { id: contract.productId, status: 'RESERVED' },
         data: { status: 'IN_STOCK' },
-      }),
-      this.prisma.auditLog.create({
+      });
+      await tx.auditLog.create({
         data: {
           userId,
           action: 'CONTRACT_DELETE',
@@ -553,8 +603,8 @@ export class ContractLifecycleService {
             cascadedSignatures,
           },
         },
-      }),
-    ]);
+      });
+    });
 
     return {
       message:

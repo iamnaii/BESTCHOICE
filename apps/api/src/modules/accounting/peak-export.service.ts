@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CompanyResolverService } from '../journal/company-resolver.service';
 
 // ============================================================
 // P3-SP3: PEAK CSV export (journal lines tagged with PEAK code)
@@ -8,7 +9,10 @@ import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
 export class PeakExportService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private companyResolver: CompanyResolverService,
+  ) {}
 
   /**
    * Build a CSV of POSTED journal lines within `[periodStart, periodEnd]`
@@ -57,6 +61,9 @@ export class PeakExportService {
 
     // 2) Fetch journal lines in range. Order by entryDate then entryNumber so
     //    the CSV is deterministic for reconciliation diffs.
+    // X5: scope to FINANCE company so SHOP (S-prefix) entries never leak into
+    //     the PEAK CSV that the CPA uploads to peakaccount.com.
+    const financeCompanyId = await this.companyResolver.getFinanceCompanyId();
     const lines = await this.prisma.journalLine.findMany({
       where: {
         deletedAt: null,
@@ -64,6 +71,7 @@ export class PeakExportService {
           status: 'POSTED',
           entryDate: { gte: periodStart, lte: periodEnd },
           deletedAt: null,
+          companyId: financeCompanyId,
         },
       },
       select: {

@@ -126,6 +126,8 @@ import { ShopBuybackModule } from './modules/shop-buyback/shop-buyback.module';
 import { ShopInstallmentApplyModule } from './modules/shop-installment-apply/shop-installment-apply.module';
 import { ShopSavingPlanModule } from './modules/shop-saving-plan/shop-saving-plan.module';
 import { ShopPublicConfigModule } from './modules/shop-public-config/shop-public-config.module';
+// Task 8 — Finance-settlement endpoint (POST /shop/finance-settlements + GET pending)
+import { ShopFinanceSettlementModule } from './modules/shop-finance-settlement/shop-finance-settlement.module';
 import { DataAuditModule } from './modules/data-audit/data-audit.module';
 import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { ReportingModule } from './modules/reporting/reporting.module';
@@ -362,6 +364,8 @@ import { AppCacheModule } from './cache/cache.module';
     ShopSavingPlanModule,
     // Online Shop — public runtime config (GA4 / FB Pixel IDs) (Phase 3 follow-up)
     ShopPublicConfigModule,
+    // Task 8 — Finance-settlement endpoint (POST /shop/finance-settlements + GET pending)
+    ShopFinanceSettlementModule,
     // MASTER: Management
     UsersModule,
     SettingsModule,

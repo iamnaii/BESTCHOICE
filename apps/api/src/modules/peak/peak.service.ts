@@ -4,6 +4,7 @@ import * as Sentry from '@sentry/nestjs';
 import { createHmac } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
+import { CompanyResolverService } from '../journal/company-resolver.service';
 
 export interface PeakExportResult {
   exported: number;
@@ -43,6 +44,7 @@ export class PeakService {
     private prisma: PrismaService,
     private configService: ConfigService,
     private integrationConfig: IntegrationConfigService,
+    private companyResolver: CompanyResolverService,
   ) {}
 
   /** Check if PEAK integration is configured */
@@ -72,12 +74,14 @@ export class PeakService {
       return { exported: 0, skipped: 0, errors: ['PEAK ยังไม่ได้ตั้งค่า'] };
     }
 
+    const financeCompanyId = await this.companyResolver.getFinanceCompanyId();
     const entries = await this.prisma.journalEntry.findMany({
       where: {
         status: 'POSTED',
         entryDate: { gte: startDate, lte: endDate },
         deletedAt: null,
         peakSyncedAt: null,
+        companyId: financeCompanyId,
       },
       include: {
         lines: true,

@@ -9,7 +9,6 @@ import { CompanyTab } from './tabs/CompanyTab';
 import { VatTab } from './tabs/VatTab';
 import { PeriodsTab } from './tabs/PeriodsTab';
 import { AttachmentTab } from './tabs/AttachmentTab';
-import { UsersTab } from './tabs/UsersTab';
 import { OffsiteBackupTab } from './tabs/OffsiteBackupTab';
 import { PeakMappingTab } from './tabs/PeakMappingTab';
 import { PdpaTab } from './tabs/PdpaTab';
@@ -32,8 +31,7 @@ const TABS: TabDef[] = [
   { id: 'vat', label: 'VAT', roles: ['OWNER'], render: () => <VatTab /> },
   { id: 'periods', label: 'งวดบัญชี', roles: ['OWNER'], render: () => <PeriodsTab /> },
   { id: 'attachment', label: 'เอกสารแนบ', roles: ['OWNER'], render: () => <AttachmentTab /> },
-  { id: 'users', label: 'ผู้ใช้งาน', roles: ['OWNER'], render: () => <UsersTab /> },
-  { id: 'internal-control', label: 'ระบบควบคุม', roles: ['OWNER'], render: () => <InternalControlTab /> },
+  { id: 'internal-control', label: 'ระบบควบคุม & สิทธิ์', roles: ['OWNER'], render: () => <InternalControlTab /> },
   { id: 'offsite-backup', label: 'สำรองข้อมูล', roles: ['OWNER'], render: () => <OffsiteBackupTab /> },
   { id: 'peak-mapping', label: 'PEAK', roles: ['OWNER'], render: () => <PeakMappingTab /> },
   { id: 'pdpa', label: 'PDPA', roles: ['OWNER'], render: () => <PdpaTab /> },
@@ -41,6 +39,15 @@ const TABS: TabDef[] = [
 
 function readHash(): string {
   return typeof window !== 'undefined' ? window.location.hash.slice(1) : '';
+}
+
+// Backward-compat: แท็บ "ผู้ใช้งาน" (#users) ถูกยุบเข้า "ระบบควบคุม & สิทธิ์" (2026-06-23).
+// ลิงก์/bookmark เก่า #users จึง map มาที่ internal-control ในหน้าเดียวกัน (ไม่ reload).
+const TAB_ALIASES: Record<string, string> = { users: 'internal-control' };
+
+function resolveHash(): string {
+  const h = readHash();
+  return TAB_ALIASES[h] ?? h;
 }
 
 export default function SettingsPage() {
@@ -53,7 +60,7 @@ export default function SettingsPage() {
   const idsKey = visibleIds.join(',');
 
   const [activeTab, setActiveTab] = useState<string>(() => {
-    const h = readHash();
+    const h = resolveHash();
     const initialIds = TABS.filter((t) => t.roles.includes(role)).map((t) => t.id);
     return initialIds.includes(h) ? h : (initialIds[0] ?? '');
   });
@@ -71,7 +78,7 @@ export default function SettingsPage() {
   // react to back/forward
   useEffect(() => {
     const handler = () => {
-      const h = readHash();
+      const h = resolveHash();
       setActiveTab(visibleIds.includes(h) ? h : (visibleIds[0] ?? ''));
     };
     window.addEventListener('hashchange', handler);

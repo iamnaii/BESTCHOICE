@@ -57,4 +57,23 @@ describe('ShopFinanceSettlementService', () => {
     const pending = await service.listPending();
     expect(pending.map((c: any) => c.id)).toEqual(['c-2']);
   });
+
+  it('settles + surfaces activated terminal states — TERMINATED/EXCHANGED/DEFECT_EXCHANGED/CLOSED_BAD_DEBT (owner decision 2026-06-23)', async () => {
+    // A contract that reached a terminal state still owes the FINANCE→SHOP receivable
+    // (S11-3001/3002) booked at activation, so it stays settleable + visible in pending.
+    prisma.contract.findMany.mockResolvedValue([
+      { id: 't-1', contractNumber: 'CN-T', financedAmount: new Decimal('5000'), storeCommission: null, status: 'TERMINATED', deletedAt: null },
+    ]);
+    await service.settle({ contractIds: ['t-1'] });
+    const settleWhere = prisma.contract.findMany.mock.calls[0][0].where;
+    expect(settleWhere.status.in).toEqual(
+      expect.arrayContaining(['TERMINATED', 'EXCHANGED', 'DEFECT_EXCHANGED', 'CLOSED_BAD_DEBT']),
+    );
+    // DRAFT + CANCELED stay excluded
+    expect(settleWhere.status.in).not.toContain('DRAFT');
+    expect(settleWhere.status.in).not.toContain('CANCELED');
+    expect(template.execute).toHaveBeenCalledTimes(1);
+    expect(template.execute.mock.calls[0][0]).toMatchObject({ idempotencyKey: 'finance-receipt-t-1' });
+    expect(template.execute.mock.calls[0][0].commission.toString()).toBe('0');
+  });
 });

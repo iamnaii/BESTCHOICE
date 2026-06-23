@@ -5,8 +5,25 @@ import { ShopFinanceReceiptTemplate } from '../journal/cpa-templates/shop-financ
 import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
 import { SettleFinanceDto } from './dto/finance-settlement.dto';
 
-/** Contract statuses that count as "has been activated" for settlement purposes. */
-const ACTIVATED_STATUSES = ['ACTIVE', 'OVERDUE', 'DEFAULT', 'EARLY_PAYOFF', 'COMPLETED'] as const;
+/**
+ * Contract statuses that carry a FINANCE→SHOP receivable from activation (S11-3001/3002).
+ * Anything that has been activated — including terminal states (TERMINATED / EXCHANGED /
+ * DEFECT_EXCHANGED / CLOSED_BAD_DEBT) — still owes that inter-company receivable until FINANCE
+ * settles it, so it remains settleable and appears in the pending worklist (owner decision
+ * 2026-06-23). Excludes DRAFT (never activated) and CANCELED (full reversal via
+ * ContractCancellation).
+ */
+const ACTIVATED_STATUSES = [
+  'ACTIVE',
+  'OVERDUE',
+  'DEFAULT',
+  'EARLY_PAYOFF',
+  'COMPLETED',
+  'TERMINATED',
+  'EXCHANGED',
+  'DEFECT_EXCHANGED',
+  'CLOSED_BAD_DEBT',
+] as const;
 
 @Injectable()
 export class ShopFinanceSettlementService {

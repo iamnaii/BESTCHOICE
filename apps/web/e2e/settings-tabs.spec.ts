@@ -3,7 +3,7 @@ import { loginAsRole } from './helpers/auth';
 import { gotoWithRetry, hasErrorBoundary } from './helpers/navigation';
 
 /**
- * /settings — 5-tab hub (company / vat / periods / attachment / users).
+ * /settings — multi-tab hub. #users ถูกยุบเข้า #internal-control (2026-06-23).
  *
  * Hash-based: `/settings#vat` opens the VAT tab directly; back/forward
  * restores prior tab. Page is OWNER-only — others are redirected to '/'.
@@ -11,7 +11,7 @@ import { gotoWithRetry, hasErrorBoundary } from './helpers/navigation';
  * Source: apps/web/src/pages/SettingsPage/index.tsx.
  */
 
-const TAB_IDS = ['company', 'vat', 'periods', 'attachment', 'users'] as const;
+const TAB_IDS = ['company', 'vat', 'periods', 'attachment', 'internal-control'] as const;
 
 async function settingsMounted(page: Page): Promise<boolean> {
   if (await hasErrorBoundary(page)) return false;

@@ -39,6 +39,7 @@ import { PettyCashTemplate } from './cpa-templates/petty-cash.template';
 import { YearEndClosingTemplate } from './cpa-templates/year-end-closing.template';
 // P3-SP5 — SHOP-side accounting
 import { CompanyResolverService } from './company-resolver.service';
+import { ShopAccountResolver } from './shop-account-resolver.service';
 import { PairedJournalService } from './paired-journal.service';
 import { ShopCashSaleTemplate } from './cpa-templates/shop-cash-sale.template';
 import { ShopDownPaymentTemplate } from './cpa-templates/shop-down-payment.template';
@@ -98,6 +99,7 @@ import { ReconcileController } from './reconcile.controller';
     YearEndClosingTemplate,
     // P3-SP5 — SHOP-side accounting
     CompanyResolverService,
+    ShopAccountResolver,
     PairedJournalService,
     ShopCashSaleTemplate,
     ShopDownPaymentTemplate,
@@ -150,6 +152,7 @@ import { ReconcileController } from './reconcile.controller';
     YearEndClosingTemplate,
     // P3-SP5 — SHOP-side accounting
     CompanyResolverService,
+    ShopAccountResolver,
     PairedJournalService,
     ShopCashSaleTemplate,
     ShopDownPaymentTemplate,

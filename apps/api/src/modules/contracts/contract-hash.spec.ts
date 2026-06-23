@@ -7,6 +7,10 @@ import { JournalAutoService } from '../journal/journal-auto.service';
 import { ProductsService } from '../products/products.service';
 import { ContractActivation1ATemplate } from '../journal/cpa-templates/contract-activation-1a.template';
 import { ContractExchangeService } from '../contract-exchange/contract-exchange.service';
+import { ShopDownPaymentTemplate } from '../journal/cpa-templates/shop-down-payment.template';
+import { ShopInventoryTransferTemplate } from '../journal/cpa-templates/shop-inventory-transfer.template';
+import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
+import { TestModeService } from '../test-mode/test-mode.service';
 
 /**
  * T5-C20 — extended contract integrity hash.
@@ -29,6 +33,10 @@ describe('ContractWorkflowService — hash integrity (T5-C20)', () => {
         { provide: ProductsService, useValue: {} },
         { provide: ContractActivation1ATemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK' }) } },
         { provide: ContractExchangeService, useValue: { finalizeAfterActivation: jest.fn() } },
+        { provide: ShopDownPaymentTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-001', journalEntryId: 'je-1' }) } },
+        { provide: ShopInventoryTransferTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-002', journalEntryId: 'je-2' }) } },
+        { provide: ShopAccountResolver, useValue: { resolveBranchCashAccount: jest.fn().mockResolvedValue('S11-1102'), resolveProductAccounts: jest.fn() } },
+        { provide: TestModeService, useValue: { isEnabled: jest.fn().mockResolvedValue(false) } },
       ],
     }).compile();
     service = module.get(ContractWorkflowService);

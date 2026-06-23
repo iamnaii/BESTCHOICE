@@ -8,6 +8,9 @@ import { ProductsService } from '../products/products.service';
 import { ContractActivation1ATemplate } from '../journal/cpa-templates/contract-activation-1a.template';
 import { ContractExchangeService } from '../contract-exchange/contract-exchange.service';
 import { TestModeService } from '../test-mode/test-mode.service';
+import { ShopInventoryTransferTemplate } from '../journal/cpa-templates/shop-inventory-transfer.template';
+import { ShopDownPaymentTemplate } from '../journal/cpa-templates/shop-down-payment.template';
+import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
 import { BadRequestException } from '@nestjs/common';
 
 /**
@@ -45,6 +48,10 @@ describe('ContractWorkflowService', () => {
   let notificationsMock: { send: jest.Mock };
   let exchangeServiceMock: { finalizeAfterActivation: jest.Mock };
   let testModeMock: { isEnabled: jest.Mock };
+  // Task 5: SHOP JE wiring mocks
+  let shopInventoryTransferTemplate: { execute: jest.Mock };
+  let shopDownPaymentTemplate: { execute: jest.Mock };
+  let shopAccountResolver: { resolveProductAccounts: jest.Mock; resolveBranchCashAccount: jest.Mock };
 
   const mockProduct = {
     id: 'product-1',
@@ -150,6 +157,10 @@ describe('ContractWorkflowService', () => {
       payment: {
         findFirst: jest.fn().mockResolvedValue(null),
       },
+      journalEntry: {
+        // Default: a prior down JE exists → catch-up skipped in existing tests.
+        findFirst: jest.fn().mockResolvedValue({ id: 'down-je-1' }),
+      },
       companyInfo: {
         findFirst: jest.fn().mockResolvedValue({ id: 'finance-co-1' }),
       },
@@ -173,6 +184,23 @@ describe('ContractWorkflowService', () => {
     // Default: test-mode OFF.
     testModeMock = { isEnabled: jest.fn().mockResolvedValue(false) };
 
+    // Task 5: SHOP wiring mocks
+    shopInventoryTransferTemplate = {
+      execute: jest.fn().mockResolvedValue({
+        batchId: 'b', cogsEntryNo: 'c', cogsJournalEntryId: 'cj',
+        revenueEntryNo: 'r', revenueJournalEntryId: 'rj',
+      }),
+    };
+    shopDownPaymentTemplate = { execute: jest.fn().mockResolvedValue({ entryNo: 'dp', journalEntryId: 'dpj' }) };
+    shopAccountResolver = {
+      resolveProductAccounts: jest.fn().mockReturnValue({
+        inventoryAccountCode: 'S11-2001',
+        cogsAccountCode: 'S50-1101',
+        revenueAccountCode: 'S41-1101',
+      }),
+      resolveBranchCashAccount: jest.fn().mockResolvedValue('S11-1102'),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ContractWorkflowService,
@@ -183,6 +211,9 @@ describe('ContractWorkflowService', () => {
         { provide: ContractActivation1ATemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK' }) } },
         { provide: ContractExchangeService, useValue: exchangeServiceMock },
         { provide: TestModeService, useValue: testModeMock },
+        { provide: ShopInventoryTransferTemplate, useValue: shopInventoryTransferTemplate },
+        { provide: ShopDownPaymentTemplate, useValue: shopDownPaymentTemplate },
+        { provide: ShopAccountResolver, useValue: shopAccountResolver },
       ],
     }).compile();
 
@@ -310,6 +341,125 @@ describe('ContractWorkflowService', () => {
         // standard 1A path was not used here
         expect(contractActivationTemplateMock.execute).not.toHaveBeenCalled();
       });
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Task 5: SHOP inventory-transfer JE wiring (standard branch only)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  describe('SHOP inventory-transfer wiring (Task 5 / D-1)', () => {
+    // Contract with the exact values from the brief:
+    // sellingPrice 20000, downPayment 2000, financedAmount 18000, storeCommission 1500
+    // product category PHONE_NEW, costPrice 15000
+    const shopProduct = {
+      id: 'product-shop',
+      name: 'Samsung A55',
+      brand: 'Samsung',
+      model: 'A55',
+      category: 'PHONE_NEW',
+      status: 'RESERVED',
+      imeiSerial: '111222333444555',
+      costPrice: new Prisma.Decimal(15000),
+      deletedAt: null,
+      prices: [],
+    };
+    const shopContract = {
+      id: 'c-1',
+      contractNumber: 'BC-2026-SHOP',
+      customerId: 'customer-1',
+      productId: 'product-shop',
+      branchId: 'branch-1',
+      salespersonId: 'user-1',
+      status: 'DRAFT',
+      workflowStatus: 'APPROVED',
+      sellingPrice: new Prisma.Decimal(20000),
+      downPayment: new Prisma.Decimal(2000),
+      totalMonths: 12,
+      interestRate: new Prisma.Decimal(0.08),
+      interestTotal: new Prisma.Decimal(1440),
+      financedAmount: new Prisma.Decimal(18000),
+      storeCommission: new Prisma.Decimal(1500),
+      vatAmount: new Prisma.Decimal(0),
+      vatPct: new Prisma.Decimal(0.07),
+      monthlyPayment: new Prisma.Decimal(1620),
+      paymentDueDay: 5,
+      notes: null,
+      deletedAt: null,
+      pdpaConsentId: 'pdpa-shop-1',
+      contractHash: null,
+      customer: mockCustomer,
+      product: { ...shopProduct, prices: [] },
+      branch: { id: 'branch-1', name: 'สาขาลาดพร้าว' },
+      salesperson: { id: 'user-1', name: 'พนักงาน 1' },
+      reviewedBy: null,
+      interestConfig: null,
+      payments: [],
+      signatures: [
+        { id: 's1', signerType: 'CUSTOMER', signedAt: new Date(), staffUserId: null, deletedAt: null },
+        { id: 's2', signerType: 'COMPANY', signedAt: new Date(), staffUserId: 'user-1', deletedAt: null },
+        { id: 's3', signerType: 'WITNESS_1', signedAt: new Date(), staffUserId: 'user-1', deletedAt: null },
+        { id: 's4', signerType: 'WITNESS_2', signedAt: new Date(), staffUserId: 'user-1', deletedAt: null },
+      ],
+      eDocuments: [],
+      contractDocuments: [],
+      creditCheck: { id: 'cc-shop', status: 'APPROVED' },
+    };
+
+    beforeEach(() => {
+      prisma.contract.findUnique.mockResolvedValue(shopContract);
+      prisma.product.findUnique.mockResolvedValue(shopProduct);
+      // Default: down JE already exists → catch-up skipped.
+      prisma.journalEntry.findFirst.mockResolvedValue({ id: 'down-je-1' });
+    });
+
+    it('posts ShopInventoryTransfer with salePrice = down + financed at activation', async () => {
+      await service.activate('c-1');
+      const input = shopInventoryTransferTemplate.execute.mock.calls[0][0];
+      // D-8: salePrice must be down + financed (2000 + 18000 = 20000), NOT raw sellingPrice
+      expect(input.salePrice.toString()).toBe('20000');
+      expect(input.downAmount.toString()).toBe('2000');
+      expect(input.financedAmount.toString()).toBe('18000');
+      expect(input.commission.toString()).toBe('1500');
+      expect(input.costPrice.toString()).toBe('15000');
+      expect(input).toMatchObject({
+        inventoryAccountCode: 'S11-2001',
+        cogsAccountCode: 'S50-1101',
+        revenueAccountCode: 'S41-1101',
+        idempotencyKey: 'shop-inventory-transfer:c-1',
+      });
+      // Called with the outer tx as second argument (atomicity guarantee)
+      expect(shopInventoryTransferTemplate.execute.mock.calls[0][1]).toBeDefined();
+    });
+
+    it('posts a catch-up ShopDownPayment for in-flight contract with down but no down JE', async () => {
+      // No prior down JE → pre-Task-6 in-flight contract → catch-up fires
+      prisma.journalEntry.findFirst.mockResolvedValue(null);
+      shopAccountResolver.resolveBranchCashAccount.mockResolvedValue('S11-1102');
+      await service.activate('c-1');
+      expect(shopDownPaymentTemplate.execute).toHaveBeenCalledTimes(1);
+      expect(shopDownPaymentTemplate.execute.mock.calls[0][0]).toMatchObject({
+        idempotencyKey: 'shop-down-payment:c-1',
+        cashAccountCode: 'S11-1102',
+      });
+    });
+
+    it('skips the catch-up when a down JE already exists (post-Task-6 contract)', async () => {
+      prisma.journalEntry.findFirst.mockResolvedValue({ id: 'down-je-1' });
+      await service.activate('c-1');
+      expect(shopDownPaymentTemplate.execute).not.toHaveBeenCalled();
+    });
+
+    it('does NOT post SHOP JEs for exchange contracts (exchange branch only)', async () => {
+      const exchangeShopContract = {
+        ...shopContract,
+        id: 'c-exch',
+        exchangedFromContractId: 'c-original',
+      };
+      prisma.contract.findUnique.mockResolvedValue(exchangeShopContract);
+      await service.activate('c-exch');
+      expect(shopInventoryTransferTemplate.execute).not.toHaveBeenCalled();
+      expect(shopDownPaymentTemplate.execute).not.toHaveBeenCalled();
     });
   });
 

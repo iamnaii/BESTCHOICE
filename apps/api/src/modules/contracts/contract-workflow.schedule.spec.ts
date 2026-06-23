@@ -18,7 +18,8 @@ import { ContractWorkflowService } from './contract-workflow.service';
  */
 
 const stub = {} as never;
-const service = new ContractWorkflowService(stub, stub, stub, stub, stub, stub);
+// Task 5: constructor now has 9 params (3 SHOP deps added); pass stubs for all.
+const service = new ContractWorkflowService(stub, stub, stub, stub, stub, stub, stub, stub, stub);
 
 type Rows = Prisma.InstallmentScheduleCreateManyInput[];
 

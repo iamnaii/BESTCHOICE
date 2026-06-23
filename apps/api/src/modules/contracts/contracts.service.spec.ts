@@ -5,6 +5,9 @@ import { ContractsService } from './contracts.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TestModeService } from '../test-mode/test-mode.service';
 import { AuditService } from '../audit/audit.service';
+import { ShopDownPaymentTemplate } from '../journal/cpa-templates/shop-down-payment.template';
+import { ShopDownPaymentReversalTemplate } from '../journal/cpa-templates/shop-down-payment-reversal.template';
+import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
 
 /**
  * ContractsService unit tests.
@@ -244,6 +247,9 @@ describe('ContractsService', () => {
       auditLog: {
         create: jest.fn().mockResolvedValue({}),
       },
+      journalEntry: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
       $transaction: makeTxMock(),
     };
 
@@ -257,6 +263,9 @@ describe('ContractsService', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: TestModeService, useValue: testModeMock },
         { provide: AuditService, useValue: auditMock },
+        { provide: ShopDownPaymentTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-001', journalEntryId: 'je-1' }) } },
+        { provide: ShopDownPaymentReversalTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-REV-001', journalEntryId: 'je-rev-1' }) } },
+        { provide: ShopAccountResolver, useValue: { resolveBranchCashAccount: jest.fn().mockResolvedValue('S11-1102'), resolveProductAccounts: jest.fn() } },
       ],
     }).compile();
 
@@ -1333,6 +1342,9 @@ describe('ContractsService', () => {
           ContractsService,
           { provide: PrismaService, useValue: prisma },
           { provide: 'ContractCancellationTemplate', useValue: mockCancellationTemplate },
+          { provide: ShopDownPaymentTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-001', journalEntryId: 'je-1' }) } },
+          { provide: ShopDownPaymentReversalTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-REV-001', journalEntryId: 'je-rev-1' }) } },
+          { provide: ShopAccountResolver, useValue: { resolveBranchCashAccount: jest.fn().mockResolvedValue('S11-1102'), resolveProductAccounts: jest.fn() } },
         ],
       }).compile();
       const svcWithTemplate = moduleWithTemplate.get<ContractsService>(ContractsService);

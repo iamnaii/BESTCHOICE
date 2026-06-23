@@ -8,7 +8,6 @@
  * way `ContractsService` constructs it with `new ContractLifecycleService(...)`.
  */
 
-import { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { ContractLifecycleService } from './contract-lifecycle.service';
 import { ShopDownPaymentTemplate } from '../../journal/cpa-templates/shop-down-payment.template';
@@ -190,10 +189,10 @@ describe('ContractLifecycleService — ShopDownPayment wiring', () => {
     service = new ContractLifecycleService(
       prisma as any,
       queryMock as any,
-      undefined, // warrantyService — optional
-      undefined, // audit — optional
       shopDownPaymentTemplate as any,
       shopAccountResolver as any,
+      undefined, // warrantyService — optional
+      undefined, // audit — optional
     );
   });
 

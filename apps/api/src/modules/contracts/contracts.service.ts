@@ -39,15 +39,15 @@ export class ContractsService {
 
   constructor(
     private prisma: PrismaService,
+    private shopDownPaymentTemplate: ShopDownPaymentTemplate,
+    private shopAccountResolver: ShopAccountResolver,
     @Optional() private warrantyService?: WarrantyService,
     @Optional() private cancellationTemplate?: ContractCancellationTemplate,
     @Optional() private testMode?: TestModeService,
     @Optional() private audit?: AuditService,
-    @Optional() private shopDownPaymentTemplate?: ShopDownPaymentTemplate,
-    @Optional() private shopAccountResolver?: ShopAccountResolver,
   ) {
     this.query = new ContractQueryService(prisma, testMode);
-    this.lifecycle = new ContractLifecycleService(prisma, this.query, warrantyService, audit, shopDownPaymentTemplate, shopAccountResolver);
+    this.lifecycle = new ContractLifecycleService(prisma, this.query, shopDownPaymentTemplate, shopAccountResolver, warrantyService, audit);
     // Late-bind the cancellation template via accessor so a post-construction
     // mutation of `this.cancellationTemplate` (the unit-test hack) is honored.
     this.cancellation = new ContractCancellationService(prisma, () => this.cancellationTemplate);

@@ -29,10 +29,10 @@ export class ContractLifecycleService {
   constructor(
     private prisma: PrismaService,
     private query: ContractQueryService,
+    private shopDownPaymentTemplate: ShopDownPaymentTemplate,
+    private shopAccountResolver: ShopAccountResolver,
     private warrantyService?: WarrantyService,
     private audit?: AuditService,
-    private shopDownPaymentTemplate?: ShopDownPaymentTemplate,
-    private shopAccountResolver?: ShopAccountResolver,
   ) {}
 
   async create(dto: CreateContractDto, salespersonId: string, salespersonRole?: string) {
@@ -216,21 +216,19 @@ export class ContractLifecycleService {
           await tx.payment.createMany({ data: payments });
 
           // SHOP-side: record the down payment received at contract creation.
-          if (this.shopDownPaymentTemplate && this.shopAccountResolver) {
-            const downPayment = new Decimal(dto.downPayment.toString());
-            if (downPayment.gt(0)) {
-              const cashAccountCode = await this.shopAccountResolver.resolveBranchCashAccount(dto.branchId, tx);
-              await this.shopDownPaymentTemplate.execute(
-                {
-                  idempotencyKey: `shop-down-payment:${newContract.id}`,
-                  contractId: newContract.id,
-                  contractNumber: newContract.contractNumber,
-                  cashAccountCode,
-                  downAmount: downPayment,
-                },
-                tx,
-              );
-            }
+          const downPayment = new Decimal(dto.downPayment.toString());
+          if (downPayment.gt(0)) {
+            const cashAccountCode = await this.shopAccountResolver.resolveBranchCashAccount(dto.branchId, tx);
+            await this.shopDownPaymentTemplate.execute(
+              {
+                idempotencyKey: `shop-down-payment:${newContract.id}`,
+                contractId: newContract.id,
+                contractNumber: newContract.contractNumber,
+                cashAccountCode,
+                downAmount: downPayment,
+              },
+              tx,
+            );
           }
 
           // Reserve product

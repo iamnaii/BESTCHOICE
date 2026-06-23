@@ -254,4 +254,52 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
       tx,
     );
   });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // (d) Zero-cost product in bundle → skipped by wiring (continue on !alloc.revenue.gt(0))
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  it('(d) 2-product bundle with second product costPrice=0 → skips zero-cost product, 1 JE posted', async () => {
+    // markBundleProductsSold calls findMany({where:{id:{in:['p2']},deletedAt:null},...}) — return 1 item
+    // JE allocation block calls findMany({where:{id:{in:['p1','p2']}},...}) — return both with full data
+    tx.product.findMany
+      .mockResolvedValueOnce([
+        { id: 'p2', status: 'IN_STOCK', name: 'Case' },
+      ])
+      .mockResolvedValueOnce([
+        { id: 'p1', category: 'PHONE_NEW', costPrice: new Decimal(7000), status: 'IN_STOCK', name: 'Phone' },
+        { id: 'p2', category: 'ACCESSORY', costPrice: new Decimal(0), status: 'IN_STOCK', name: 'Case' },
+      ]);
+
+    shopAccountResolver.resolveProductAccounts.mockImplementation(
+      (category: string) => {
+        if (category === 'PHONE_NEW') {
+          return { inventoryAccountCode: 'S11-2001', cogsAccountCode: 'S50-1101', revenueAccountCode: 'S41-1101' };
+        }
+        // ACCESSORY
+        return { inventoryAccountCode: 'S11-2003', cogsAccountCode: 'S50-1103', revenueAccountCode: 'S41-1103' };
+      },
+    );
+
+    await service.createCashSale(
+      {
+        productId: 'p1',
+        branchId: 'br-1',
+        customerId: 'c1',
+        sellingPrice: 10000,
+        bundleProductIds: ['p2'],
+        paymentMethod: 'CASH',
+      } as any,
+      'sp-1',
+      10000,
+      0,
+    );
+
+    // Main product only (p2 skipped because allocation.revenue = 0)
+    expect(shopCashSaleTemplate.execute).toHaveBeenCalledTimes(1);
+
+    const [input] = shopCashSaleTemplate.execute.mock.calls[0];
+    expect(input.idempotencyKey).toBe('shop-cash-sale:sale-1:p1');
+    expect(input.revenueAmount.toString()).toBe('10000');
+  });
 });

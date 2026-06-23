@@ -1269,18 +1269,6 @@ function App() {
             }
           />
           <Route
-            path="/settings/document-config"
-            element={
-              <ProtectedRoute roles={['OWNER', 'ACCOUNTANT']}>
-                <ComingSoonPage
-                  feature="ตั้งค่าเลขที่/รูปแบบเอกสาร"
-                  trackingSP="SP4"
-                  eta="ภายในไตรมาส 3/2026"
-                />
-              </ProtectedRoute>
-            }
-          />
-          <Route
             path="/settings/brands"
             element={
               <ProtectedRoute roles={['OWNER']}>

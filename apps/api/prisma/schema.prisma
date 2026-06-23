@@ -547,6 +547,7 @@ model Branch {
 
   isMainWarehouse Boolean   @default(false) @map("is_main_warehouse")
   deletedAt       DateTime? @map("deleted_at")
+  shopCashAccountCode String?   @map("shop_cash_account_code")
 
   company                  CompanyInfo?              @relation(fields: [companyId], references: [id])
   users                    User[]

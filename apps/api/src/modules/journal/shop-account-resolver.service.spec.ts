@@ -46,4 +46,10 @@ describe('ShopAccountResolver', () => {
     await expect(resolver.resolveInflowCashAccount('br-1', 'QR_EWALLET')).resolves.toBe('S11-1201');
     expect(prisma.branch.findUnique).not.toHaveBeenCalled();
   });
+
+  it('resolveInflowCashAccount: non-CASH methods (CREDIT_BALANCE, ONLINE_GATEWAY) → S11-1201', async () => {
+    await expect(resolver.resolveInflowCashAccount('br-1', 'CREDIT_BALANCE')).resolves.toBe('S11-1201');
+    await expect(resolver.resolveInflowCashAccount('br-1', 'ONLINE_GATEWAY')).resolves.toBe('S11-1201');
+    expect(prisma.branch.findUnique).not.toHaveBeenCalled();
+  });
 });

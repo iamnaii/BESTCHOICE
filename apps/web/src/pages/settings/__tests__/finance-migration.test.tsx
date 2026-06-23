@@ -16,6 +16,8 @@ function App({ entry }: { entry: string }) {
     <MemoryRouter initialEntries={[entry]}>
       <Routes>
         <Route path="/settings/interest-config" element={<Navigate to="/settings/finance/interest" replace />} />
+        <Route path="/settings/gfin-rates" element={<Navigate to="/settings/finance/gfin" replace />} />
+        <Route path="/settings/payment-methods" element={<Navigate to="/settings/finance/payment-methods" replace />} />
         <Route path="/settings/:categoryId" element={<SettingsLayout />}>
           <Route index element={<SettingsCategoryRoute />} />
           <Route path=":itemId" element={<SettingsItemRoute />} />
@@ -36,5 +38,15 @@ describe('finance migration', () => {
   it('old /settings/interest-config → redirect ไป /settings/finance/interest', async () => {
     render(<App entry="/settings/interest-config" />);
     await waitFor(() => expect(screen.getByText('interest-page')).toBeTruthy());
+  });
+
+  it('old /settings/gfin-rates → redirect ไป /settings/finance/gfin', async () => {
+    render(<App entry="/settings/gfin-rates" />);
+    await waitFor(() => expect(screen.getByText('gfin-page')).toBeTruthy());
+  });
+
+  it('old /settings/payment-methods → redirect ไป /settings/finance/payment-methods', async () => {
+    render(<App entry="/settings/payment-methods" />);
+    await waitFor(() => expect(screen.getByText('payment-page')).toBeTruthy());
   });
 });

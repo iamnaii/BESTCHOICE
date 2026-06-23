@@ -597,21 +597,9 @@ Persists `reopenReason` (format `${reasonType}: ${reason}`) + `taxFiled` on `Acc
 
 `GET /expenses/periods/reopened` lists currently-reopened periods (status=OPEN AND reopenedAt set) for the `ReopenedPeriodBanner` shown on OtherIncomeListPage + ExpensesPage.
 
-### Settings UI consolidation
+### Settings UI consolidation (P1–P2, 2026-06)
 
-`/settings` is the 5-tab hub for system-wide configuration (OWNER only — non-OWNER redirected to `/`):
-- `#company` — CompanyInfo (name, address, tax ID, signer)
-- `#vat` — `VAT_RATE` + `VAT_PRICE_TYPE_DEFAULT` (exclusive/inclusive)
-- `#periods` — AccountingPeriod table (close/reopen actions, ReopenPeriodModal)
-- `#attachment` — `ATTACHMENT_REQUIRED_ABOVE_AMOUNT` + `ATTACHMENT_ALLOWED_TYPES`
-- `#internal-control` — ระบบควบคุม & สิทธิ์: ReverseReasonsManagementCard + (ย้ายมา 2026-06-23) MakerCheckerToggle, ReversePermissionCard, PettyCashCustodianCard, TestModeToggle. แท็บ `#users` เดิมถูกยุบ — `/settings#users` alias มาที่นี่. การจัดการผู้ใช้จริงอยู่ที่ `/users`
-
-URL hash sync: `/settings#vat` (etc.) is bookmarkable; back/forward respects `hashchange`.
-
-Operational settings live at dedicated routes (also OWNER-only):
-- `/settings/stickers` — StickerSettings
-- `/settings/collections` — CollectionsConfigCard
-- `/settings/general` — Banking, penalty, PDPA, payment_link (GeneralSettings pre+post)
+`/settings` is a registry-driven panel (`SettingsLayout` + left sub-nav + search + mobile dropdown), OWNER/FM/ACC with per-item role filtering from `apps/web/src/config/settings-registry.tsx` (8 categories: company / access / accounting / finance / products / comms / ai / system). Routes: `/settings` → first visible category; `/settings/:categoryId` (panel) → `SettingsCategoryRoute` (index) + `SettingsItemRoute` (`:itemId`). Inline items render as sections (with hash anchor + scroll-to-section); route items render full pages inside the panel; pages with their own tabs (document-config, rich-menu) + operational pages (users / branches / promotions / contract-templates / audit-logs / pdpa) stay external. Old hash tabs (`#vat`, `#users`, etc.) and old `/settings/<name>` paths redirect to the new `/settings/<cat>/<item>` URLs. Settings are also indexed into the global CommandPalette. Helpers: `visibleCategories` / `visibleItems` / `searchSettings` / `findItem` in `settings-access.ts`.
 
 ---
 

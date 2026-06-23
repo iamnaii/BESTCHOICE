@@ -22,7 +22,7 @@ async function settingsMounted(page: Page): Promise<boolean> {
     .catch(() => false);
 }
 
-test.describe('Settings page — 5-tab navigation', () => {
+test.describe('Settings page — tab navigation', () => {
   test('OWNER lands on /settings — default (company) tab visible', async ({ page }) => {
     await loginAsRole(page, 'OWNER');
     await gotoWithRetry(page, '/settings');
@@ -31,7 +31,7 @@ test.describe('Settings page — 5-tab navigation', () => {
 
     await expect(page.getByText('ตั้งค่าระบบ').first()).toBeVisible();
 
-    // All 5 tab triggers should render (TAB_IDS = company / vat / periods / attachment / users).
+    // Tab triggers should render (OWNER sees 9). TAB_IDS lists a representative subset incl. internal-control.
     const tabTriggers = page.locator('[role="tab"]');
     const count = await tabTriggers.count().catch(() => 0);
     // 5 tabs expected; allow >=5 in case future tabs are added.

@@ -37,6 +37,7 @@ import type { LucideIcon } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useUnionSearch } from '@/pages/CollectionsPage/hooks/useUnionSearch';
+import { settingsRegistry } from '@/config/settings-registry';
 
 /* ─── Navigation Items ─── */
 
@@ -76,6 +77,25 @@ const quickActions: NavEntry[] = [
   { label: 'ขายสินค้า (POS)', path: '/pos', icon: ShoppingCart, keywords: 'sell ขาย pos' },
   { label: 'บันทึกชำระเงิน', path: '/payments', icon: DollarSign, keywords: 'record payment บันทึก ชำระ' },
 ];
+
+/* ─── Settings Registry Entries ─── */
+
+const settingsEntries: NavEntry[] = settingsRegistry.flatMap((cat) =>
+  cat.items.map((item) => ({
+    label: `${cat.label} › ${item.label}`,
+    path:
+      item.kind === 'inline'
+        ? `/settings/${cat.id}#${item.id}`
+        : item.kind === 'route'
+          ? `/settings/${cat.id}/${item.id}`
+          : (item.path ?? '/settings'),
+    icon: cat.icon,
+    keywords: [item.label, ...(item.keywords ?? [])].join(' '),
+    roles: item.roles as string[],
+  })),
+);
+
+const allPages: NavEntry[] = [...pages, ...settingsEntries];
 
 /* ─── Recent Searches (localStorage) ─── */
 
@@ -319,9 +339,9 @@ export default function CommandPalette() {
 
             <CommandSeparator />
 
-            {/* Pages */}
+            {/* Pages + Settings entries */}
             <CommandGroup heading="ไปยังหน้า">
-              {filterByRole(pages).map((item) => (
+              {filterByRole(allPages).map((item) => (
                 <CommandItem
                   key={item.path}
                   value={`${item.label} ${item.keywords || ''}`}

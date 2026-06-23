@@ -4,6 +4,7 @@ import { createHmac } from 'crypto';
 import { PeakService } from './peak.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
+import { CompanyResolverService } from '../journal/company-resolver.service';
 
 jest.mock('@sentry/nestjs', () => ({
   captureException: jest.fn(),
@@ -47,6 +48,7 @@ describe('PeakService', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: ConfigService, useValue: { get: () => '' } },
         { provide: IntegrationConfigService, useValue: integrationConfig },
+        { provide: CompanyResolverService, useValue: { getFinanceCompanyId: jest.fn().mockResolvedValue('finance-co-id') } },
       ],
     }).compile();
     service = mod.get(PeakService);
@@ -325,6 +327,17 @@ describe('PeakService', () => {
       expect(prisma.journalEntry.updateMany).not.toHaveBeenCalled();
       expect(result.exported).toBe(0);
       expect(result.errors[0]).toContain('server fail');
+    });
+
+    it('only exports FINANCE-company entries (X5 — SHOP S-prefix excluded)', async () => {
+      mockPeakHeaders();
+      prisma.journalEntry.findMany.mockResolvedValue([]);
+      await service.exportJournalEntries(new Date('2026-06-01'), new Date('2026-06-30'));
+      expect(prisma.journalEntry.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ companyId: 'finance-co-id' }),
+        }),
+      );
     });
   });
 });

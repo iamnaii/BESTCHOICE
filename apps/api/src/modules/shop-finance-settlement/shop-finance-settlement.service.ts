@@ -19,7 +19,7 @@ export class ShopFinanceSettlementService {
     const bankAccountCode = dto.bankAccountCode ?? ShopAccountResolver.SHOP_RECEIVING_BANK;
     const postedAt = dto.postedAt ? new Date(dto.postedAt) : undefined;
     const contracts = await this.prisma.contract.findMany({
-      where: { id: { in: dto.contractIds }, deletedAt: null },
+      where: { id: { in: dto.contractIds }, status: { in: [...ACTIVATED_STATUSES] }, deletedAt: null },
       select: { id: true, contractNumber: true, financedAmount: true, storeCommission: true },
     });
     const results: { contractId: string; entryNo: string }[] = [];

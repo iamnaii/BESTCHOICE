@@ -37,6 +37,20 @@ describe('ShopFinanceSettlementService', () => {
     expect(input.commission.toString()).toBe('1500');
   });
 
+  it('does not post a receipt for DRAFT contracts (settle status guard)', async () => {
+    // findMany returns [] because the DRAFT contract is filtered out by the status filter
+    prisma.contract.findMany.mockResolvedValue([]);
+    await service.settle({ contractIds: ['draft-contract-1'] });
+    expect(prisma.contract.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: expect.objectContaining({ in: expect.arrayContaining(['ACTIVE']) }),
+        }),
+      }),
+    );
+    expect(template.execute).not.toHaveBeenCalled();
+  });
+
   it('listPending returns ACTIVE contracts without a shop-finance-receipt JE', async () => {
     prisma.contract.findMany.mockResolvedValue([{ id: 'c-1' }, { id: 'c-2' }]);
     prisma.journalEntry.findMany.mockResolvedValue([{ metadata: { contractId: 'c-1' } }]);

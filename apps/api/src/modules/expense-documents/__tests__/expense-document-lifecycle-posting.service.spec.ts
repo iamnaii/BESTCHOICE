@@ -66,6 +66,9 @@ describe('ExpenseDocuments posting core (Phase 2b characterization)', () => {
       user: {
         findMany: jest.fn().mockResolvedValue([]),
       },
+      journalEntry: {
+        findUnique: jest.fn().mockResolvedValue(null),
+      },
     };
 
     made = makeExpenseDocumentsService({
@@ -84,6 +87,9 @@ describe('ExpenseDocuments posting core (Phase 2b characterization)', () => {
       accrualTemplate: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-AC' }) },
       payrollTemplate: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-PR' }) },
       settlementTemplate: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-SE' }) },
+      shopExpenseTemplate: {
+        execute: jest.fn().mockResolvedValue({ entryNo: 'JE-1', journalEntryId: 'je-1' }),
+      },
     });
   });
 
@@ -134,6 +140,90 @@ describe('ExpenseDocuments posting core (Phase 2b characterization)', () => {
       'type PETTY_CASH_REIMBURSEMENT not supported',
     );
     expect(made.pettyCashTemplate.execute).not.toHaveBeenCalled();
+  });
+
+  // REPAIR_SERVICE → ShopExpense (ACCRUAL mode, Cr S21-1103)
+  it('routes a REPAIR_SERVICE doc to ShopExpenseTemplate (ACCRUAL → Cr S21-1103), not accrualTemplate', async () => {
+    // First call: post() loads the base doc for assertCanPost
+    prisma.expenseDocument.findUniqueOrThrow
+      .mockResolvedValueOnce({
+        id: 'doc-1',
+        status: 'DRAFT',
+        documentType: 'REPAIR_SERVICE',
+        paymentMethod: null,
+        depositAccountCode: null,
+        totalAmount: new Decimal('800.00'),
+        withholdingTax: new Decimal('0'),
+        whtFormType: null,
+        receiptImageUrl: null,
+        documentDate: new Date('2026-05-10'),
+        journalEntryId: null,
+        deletedAt: null,
+      })
+      // Second call: REPAIR_SERVICE branch loads full doc with lines + branch
+      .mockResolvedValueOnce({
+        id: 'doc-1',
+        status: 'DRAFT',
+        documentType: 'REPAIR_SERVICE',
+        paymentMethod: null,
+        depositAccountCode: null,
+        totalAmount: new Decimal('800.00'),
+        withholdingTax: new Decimal('0'),
+        whtFormType: null,
+        receiptImageUrl: null,
+        documentDate: new Date('2026-05-10'),
+        journalEntryId: null,
+        deletedAt: null,
+        expenseDetail: {
+          lines: [
+            { lineNo: 1, category: 'S51-1105', amountBeforeVat: new Decimal('800') },
+          ],
+        },
+        branch: { name: 'สาขากลาง', shopCashAccountCode: 'S11-1101' },
+      });
+
+    await made.service.post('doc-1', 'user-1');
+
+    expect(made.shopExpenseTemplate.execute).toHaveBeenCalledTimes(1);
+    const input = made.shopExpenseTemplate.execute.mock.calls[0][0];
+    expect(input).toMatchObject({
+      idempotencyKey: 'shop-expense:doc-1',
+      expenseId: 'doc-1',
+      expenseAccountCode: 'S51-1105',
+      mode: 'ACCRUAL',
+    });
+    expect(input.amount.toString()).toBe('800');
+    expect(input.cashAccountCode).toBeUndefined();
+    expect(made.accrualTemplate.execute).not.toHaveBeenCalled();
+    expect(prisma.expenseDocument.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'ACCRUAL', journalEntryId: 'je-1' }),
+      }),
+    );
+  });
+
+  // Non-REPAIR EXPENSE doc still routes to accrualTemplate (regression guard)
+  it('still routes a non-REPAIR EXPENSE doc to the accrual template (no paymentMethod → ACCRUAL)', async () => {
+    made.transition.resolveTargetStatus.mockReturnValue('ACCRUAL');
+    prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+      id: 'doc-2',
+      status: 'DRAFT',
+      documentType: 'EXPENSE',
+      paymentMethod: null,
+      depositAccountCode: null,
+      totalAmount: new Decimal('500.00'),
+      withholdingTax: new Decimal('0'),
+      whtFormType: null,
+      receiptImageUrl: null,
+      documentDate: new Date('2026-05-10'),
+      journalEntryId: null,
+      deletedAt: null,
+    });
+
+    await made.service.post('doc-2', 'user-1');
+
+    expect(made.accrualTemplate.execute).toHaveBeenCalledWith('doc-2', expect.anything());
+    expect(made.shopExpenseTemplate.execute).not.toHaveBeenCalled();
   });
 
   // GAP #3 — approve() auto-post chain on a CREDIT_NOTE doc routes to

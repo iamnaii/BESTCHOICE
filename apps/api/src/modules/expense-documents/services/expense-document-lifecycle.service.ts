@@ -27,6 +27,7 @@ import { CreditNoteTemplate } from '../../journal/cpa-templates/credit-note.temp
 import { PayrollTemplate } from '../../journal/cpa-templates/payroll.template';
 import { VendorSettlementTemplate } from '../../journal/cpa-templates/vendor-settlement.template';
 import { PettyCashTemplate } from '../../journal/cpa-templates/petty-cash.template';
+import { ShopExpenseTemplate } from '../../journal/cpa-templates/shop-expense.template';
 import { VoidExpenseDocumentDto } from '../dto/void-expense.dto';
 
 /**
@@ -61,6 +62,10 @@ export class ExpenseDocumentLifecycleService {
     private readonly payrollTemplate: PayrollTemplate,
     private readonly settlementTemplate: VendorSettlementTemplate,
     private readonly pettyCashTemplate: PettyCashTemplate,
+    // Phase 2d — ShopExpenseTemplate routes REPAIR_SERVICE docs to the SHOP
+    // chart (Cr S21-1103 accrual / S-cash same-day) instead of the generic
+    // accrualTemplate which hardcodes the FINANCE Cr 21-1104.
+    private readonly shopExpenseTemplate: ShopExpenseTemplate,
     // Phase 2c — the JournalAutoService used by voidDocument's reversal-JE
     // post (this.journal.createAndPost). Placed before the trailing-optional
     // notifications? so the existing param contract stays positional-stable.
@@ -458,6 +463,51 @@ export class ExpenseDocumentLifecycleService {
     }
     if (doc.documentType === 'PETTY_CASH_REIMBURSEMENT') {
       return this.pettyCashTemplate.execute(id, tx);
+    }
+    if (doc.documentType === 'REPAIR_SERVICE') {
+      // SHOP repair expense → post on the SHOP chart (Cr S21-1103 accrual / S-cash same-day),
+      // NOT the generic accrual template which hardcodes the FINANCE Cr 21-1104.
+      if (doc.journalEntryId) {
+        const existing = await tx.journalEntry.findUnique({
+          where: { id: doc.journalEntryId },
+          select: { entryNumber: true },
+        });
+        return { entryNo: existing?.entryNumber ?? doc.journalEntryId, journalEntryId: doc.journalEntryId };
+      }
+      const full = await tx.expenseDocument.findUniqueOrThrow({
+        where: { id },
+        include: {
+          expenseDetail: { include: { lines: { orderBy: { lineNo: 'asc' } } } },
+          branch: { select: { name: true, shopCashAccountCode: true } },
+        },
+      });
+      const lines = full.expenseDetail?.lines ?? [];
+      if (lines.length !== 1) {
+        throw new BadRequestException(
+          `REPAIR_SERVICE expense doc ${id} must have exactly one line (got ${lines.length})`,
+        );
+      }
+      const line = lines[0];
+      const isCash = !!doc.paymentMethod && !!doc.depositAccountCode;
+      const result = await this.shopExpenseTemplate.execute(
+        {
+          idempotencyKey: `shop-expense:${id}`,
+          expenseId: id,
+          expenseAccountCode: line.category,
+          amount: new Prisma.Decimal(line.amountBeforeVat.toString()),
+          mode: isCash ? 'CASH' : 'ACCRUAL',
+          cashAccountCode: isCash
+            ? (doc.depositAccountCode ?? full.branch?.shopCashAccountCode ?? undefined)
+            : undefined,
+          branchName: full.branch?.name,
+        },
+        tx,
+      );
+      await tx.expenseDocument.update({
+        where: { id },
+        data: { status: isCash ? 'POSTED' : 'ACCRUAL', journalEntryId: result.journalEntryId },
+      });
+      return result;
     }
     const target = this.transition.resolveTargetStatus(
       doc.documentType,

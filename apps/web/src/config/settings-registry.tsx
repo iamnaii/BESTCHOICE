@@ -1,6 +1,12 @@
 import type { ComponentType } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { Building2, Users, BarChart3, Wallet, Smartphone, MessageSquare, Sparkles, ShieldCheck } from 'lucide-react';
+import LineOaSettingsPage from '@/pages/LineOaSettingsPage';
+import LineGreetingPage from '@/pages/LineGreetingPage';
+import SmsTemplatesPage from '@/pages/SmsTemplatesPage';
+import ChannelSettingsPage from '@/pages/ChannelSettingsPage';
+import DunningSettingsPage from '@/pages/DunningSettingsPage';
+import CollectionsSettingsPage from '@/pages/SettingsPage/CollectionsPage';
 import InterestConfigPage from '@/pages/InterestConfigPage';
 import GfinConfigPage from '@/pages/GfinConfigPage';
 import PaymentMethodSettingsPage from '@/pages/PaymentMethodSettingsPage';
@@ -99,13 +105,13 @@ export const settingsRegistry: SettingsCategory[] = [
   {
     id: 'comms', label: 'สื่อสารลูกค้า', icon: MessageSquare, roles: ['OWNER', 'FINANCE_MANAGER'],
     items: [
-      { id: 'line-oa', label: 'LINE OA', roles: ['OWNER'], kind: 'external', path: '/settings/line-oa' },
+      { id: 'line-oa', label: 'LINE OA', roles: ['OWNER'], kind: 'route', component: LineOaSettingsPage, path: '/settings/comms/line-oa' },
       { id: 'rich-menu', label: 'Rich Menu', roles: ['OWNER'], kind: 'external', path: '/settings/rich-menu' },
-      { id: 'greeting', label: 'ข้อความทักทาย', roles: ['OWNER'], kind: 'external', path: '/settings/line-greeting' },
-      { id: 'sms', label: 'SMS templates', roles: ['OWNER', 'FINANCE_MANAGER'], kind: 'external', path: '/settings/sms-templates' },
-      { id: 'channels', label: 'ช่องทาง', roles: ['OWNER'], kind: 'external', path: '/settings/channels' },
-      { id: 'dunning', label: 'Dunning', roles: ['OWNER'], kind: 'external', path: '/settings/dunning' },
-      { id: 'collections', label: 'ตั้งค่า collections', roles: ['OWNER'], kind: 'external', path: '/settings/collections' },
+      { id: 'greeting', label: 'ข้อความทักทาย', roles: ['OWNER'], kind: 'route', component: LineGreetingPage, path: '/settings/comms/greeting' },
+      { id: 'sms', label: 'SMS templates', roles: ['OWNER', 'FINANCE_MANAGER'], kind: 'route', component: SmsTemplatesPage, path: '/settings/comms/sms' },
+      { id: 'channels', label: 'ช่องทาง', roles: ['OWNER'], kind: 'route', component: ChannelSettingsPage, path: '/settings/comms/channels' },
+      { id: 'dunning', label: 'Dunning', roles: ['OWNER'], kind: 'route', component: DunningSettingsPage, path: '/settings/comms/dunning' },
+      { id: 'collections', label: 'ตั้งค่า collections', roles: ['OWNER'], kind: 'route', component: CollectionsSettingsPage, path: '/settings/comms/collections' },
     ],
   },
   {

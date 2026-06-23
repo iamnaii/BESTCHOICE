@@ -785,7 +785,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
       icon: Bell,
       zone: 'fin',
       items: [
-        { label: 'Dunning (เตือนค่างวด)', path: '/settings/dunning', icon: Bell },
+        { label: 'Dunning (เตือนค่างวด)', path: '/settings/comms/dunning', icon: Bell },
         // P4-SP2 — auto e-receipt config (e_receipt_auto SystemConfig key)
         { label: 'ใบเสร็จอิเล็กทรอนิกส์อัตโนมัติ', path: '/finance/e-receipt-auto', icon: FileText },
       ],

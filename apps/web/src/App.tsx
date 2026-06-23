@@ -51,7 +51,12 @@ const ReportsPage = lazy(() => import('@/pages/ReportsPage'));
 const MigrationPage = lazy(() => import('@/pages/MigrationPage'));
 const UsersPage = lazy(() => import('@/pages/UsersPage'));
 const UserDetailPage = lazy(() => import('@/pages/UsersPage/UserDetailPage'));
-const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
+const SettingsLayout = lazy(() =>
+  import('./pages/settings/SettingsLayout').then((m) => ({ default: m.SettingsLayout })),
+);
+const SettingsIndexRedirect = lazy(() =>
+  import('./pages/settings/SettingsIndexRedirect').then((m) => ({ default: m.SettingsIndexRedirect })),
+);
 const StickersSettingsPage = lazy(() => import('@/pages/SettingsPage/StickersPage'));
 const CollectionsSettingsPage = lazy(() => import('@/pages/SettingsPage/CollectionsPage'));
 const GeneralSettingsPage = lazy(() => import('@/pages/SettingsPage/GeneralSettingsPage'));
@@ -762,8 +767,16 @@ function App() {
           <Route
             path="/settings"
             element={
-              <ProtectedRoute roles={['OWNER']}>
-                <SettingsPage />
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <SettingsIndexRedirect />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings/:categoryId"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <SettingsLayout />
               </ProtectedRoute>
             }
           />

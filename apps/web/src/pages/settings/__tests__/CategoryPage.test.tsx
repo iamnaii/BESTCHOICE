@@ -49,7 +49,7 @@ describe('CategoryPage', () => {
     expect(screen.getByText('backup-body')).toBeTruthy();
   });
 
-  it('no duplicate-key warning on system category with non-contiguous "ข้อมูล" groups', () => {
+  it('no duplicate-key warning on system category (ข้อมูล group contiguous after เชื่อมต่อ moved out)', () => {
     role = 'OWNER';
     renderCat('system');
     // Assert no console.error calls with "duplicate key" warning

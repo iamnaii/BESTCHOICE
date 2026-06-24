@@ -1,6 +1,6 @@
 import type { ComponentType } from 'react';
 import type { LucideIcon } from 'lucide-react';
-import { Building2, Users, BarChart3, Wallet, Smartphone, MessageSquare, Sparkles, ShieldCheck } from 'lucide-react';
+import { Building2, Users, BarChart3, Wallet, Smartphone, MessageSquare, Sparkles, ShieldCheck, Plug } from 'lucide-react';
 import CompanySettingsPage from '@/pages/CompanySettingsPage';
 import AccountRolesPage from '@/pages/AccountRolesPage';
 import IntegrationHubPage from '@/pages/IntegrationHubPage';
@@ -134,13 +134,18 @@ export const settingsRegistry: SettingsCategory[] = [
     ],
   },
   {
-    id: 'system', label: 'ระบบ & ความปลอดภัย', icon: ShieldCheck, roles: ['OWNER', 'ACCOUNTANT'],
+    id: 'integrations', label: 'เชื่อมต่อ', icon: Plug, roles: ['OWNER', 'ACCOUNTANT'],
+    items: [
+      { id: 'hub', label: 'การเชื่อมต่อ', roles: ['OWNER', 'ACCOUNTANT'], kind: 'route', component: IntegrationHubPage, path: '/settings/integrations/hub' },
+      { id: 'mdm', label: 'MDM', roles: ['OWNER'], kind: 'route', component: MdmTestPage, path: '/settings/integrations/mdm' },
+    ],
+  },
+  {
+    id: 'system', label: 'ระบบ & ความปลอดภัย', icon: ShieldCheck, roles: ['OWNER'],
     items: [
       { id: 'test-mode', label: 'โหมดทดสอบ', group: 'ความปลอดภัย', roles: ['OWNER'], kind: 'inline', component: TestModeToggle, keywords: ['test', 'otp', '2fa', 'เครดิต'] },
       { id: 'pdpa', label: 'PDPA', group: 'ความปลอดภัย', roles: ['OWNER'], kind: 'inline', component: PdpaTab, keywords: ['pdpa', 'ข้อมูลส่วนบุคคล', 'encryption'] },
       { id: 'backup', label: 'สำรองข้อมูล', group: 'ข้อมูล', roles: ['OWNER'], kind: 'inline', component: OffsiteBackupTab, keywords: ['backup', 'สำรอง'] },
-      { id: 'integrations', label: 'การเชื่อมต่อ', group: 'เชื่อมต่อ', roles: ['OWNER', 'ACCOUNTANT'], kind: 'route', component: IntegrationHubPage, path: '/settings/system/integrations' },
-      { id: 'mdm', label: 'MDM', group: 'เชื่อมต่อ', roles: ['OWNER'], kind: 'route', component: MdmTestPage, path: '/settings/system/mdm' },
       { id: 'audit-log', label: 'Audit Log', group: 'ข้อมูล', roles: ['OWNER'], kind: 'external', path: '/audit-logs' },
       { id: 'system-status', label: 'System Status', group: 'ข้อมูล', roles: ['OWNER'], kind: 'external', path: '/system-status' },
     ],

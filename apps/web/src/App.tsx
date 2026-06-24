@@ -1131,10 +1131,11 @@ function App() {
           <Route path="/settings/ai-performance" element={<Navigate to="/settings/ai/performance" replace />} />
           <Route path="/settings/ai-admin" element={<Navigate to="/settings/ai/admin" replace />} />
           <Route path="/settings/ai-persona" element={<Navigate to="/settings/ai/persona" replace />} />
-          {/* P2b — integrations moved to /settings/system/integrations */}
-          <Route path="/settings/integrations" element={<Navigate to="/settings/system/integrations" replace />} />
-          {/* P2b — mdm-test moved to /settings/system/mdm */}
-          <Route path="/settings/mdm-test" element={<Navigate to="/settings/system/mdm" replace />} />
+          {/* moved out of system into its own 'integrations' category (2026-06-24) */}
+          <Route path="/settings/system/integrations" element={<Navigate to="/settings/integrations/hub" replace />} />
+          <Route path="/settings/system/mdm" element={<Navigate to="/settings/integrations/mdm" replace />} />
+          {/* P2b — mdm-test moved to /settings/integrations/mdm (was /settings/system/mdm) */}
+          <Route path="/settings/mdm-test" element={<Navigate to="/settings/integrations/mdm" replace />} />
           <Route
             path="/mdm"
             element={

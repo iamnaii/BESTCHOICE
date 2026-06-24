@@ -1,8 +1,35 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, PaymentStatus } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { paginatedResponse } from '../../../common/helpers/pagination.helper';
 import { roundBaht } from '../../../utils/installment.util';
+
+/**
+ * Build a Prisma `dueDate` range filter from BKK-local YYYY-MM-DD bounds.
+ * `dueTo` is INCLUSIVE — we add one day and use `lt` so the whole end day is
+ * covered. Returns `null` when neither bound is supplied (= "ทั้งหมด", no
+ * filter). Bad/empty inputs are ignored gracefully.
+ */
+function buildDueDateRange(
+  dueFrom?: string,
+  dueTo?: string,
+): { gte?: Date; lt?: Date } | null {
+  const range: { gte?: Date; lt?: Date } = {};
+  if (dueFrom) {
+    const f = new Date(dueFrom);
+    if (!isNaN(f.getTime())) {
+      range.gte = new Date(f.getFullYear(), f.getMonth(), f.getDate());
+    }
+  }
+  if (dueTo) {
+    const t = new Date(dueTo);
+    if (!isNaN(t.getTime())) {
+      // inclusive end → start of the NEXT day
+      range.lt = new Date(t.getFullYear(), t.getMonth(), t.getDate() + 1);
+    }
+  }
+  return range.gte || range.lt ? range : null;
+}
 
 /**
  * Read-side queries + the tiny partial-QR writes (cancelActivePartialQr). No
@@ -39,6 +66,8 @@ export class PaymentQueryService {
   async getPendingPayments(filters: {
     branchId?: string;
     date?: string;
+    dueFrom?: string;
+    dueTo?: string;
     status?: string;
     search?: string;
     dunningStage?: string;
@@ -86,6 +115,12 @@ export class PaymentQueryService {
         gte: new Date(d.getFullYear(), d.getMonth(), d.getDate()),
         lt: new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1),
       };
+    } else {
+      // Period filter (รับชำระค่างวด redesign): scope the queue by installment
+      // due-date window. `dueFrom`/`dueTo` are BKK local YYYY-MM-DD; `dueTo` is
+      // inclusive (we add a day and use `lt`). Either bound may be omitted.
+      const range = buildDueDateRange(filters.dueFrom, filters.dueTo);
+      if (range) where.dueDate = range;
     }
 
     const page = filters.page || 1;
@@ -115,6 +150,94 @@ export class PaymentQueryService {
     ]);
 
     return paginatedResponse(data, total, page, limit);
+  }
+
+  // ─── Pending-queue KPI summary (รับชำระค่างวด redesign) ─────────────────
+  // Whole-system aggregate (NOT page-limited) scoped by installment due-date
+  // window + branch. Powers the 6 KPI cards above the payment queue. Each
+  // figure maps to a real ledger code so collectors see the accounting impact:
+  //   outstandingPrincipal  ค่างวดที่ยังไม่เก็บ (amountDue − amountPaid)
+  //   outstandingLateFee     → Cr 42-1103 (ค่าปรับชำระล่าช้า) once collected
+  //   waivedLateFee          → Dr 52-1105 (ส่วนลด/อนุโลมค่าปรับ)
+  //   overdue60Count         → trigger 21-2103 (VAT บังคับ-ลูกหนี้ค้าง 60 วัน)
+  //   collected*             ยอด/รายการที่เก็บได้แล้วของงวดในช่วงนี้
+  async getPendingSummary(filters: {
+    branchId?: string;
+    dueFrom?: string;
+    dueTo?: string;
+  }) {
+    // Only count APPROVED contracts — mirrors getPendingPayments so the cards
+    // and the list never disagree.
+    const contractWhere: Record<string, unknown> = {
+      workflowStatus: 'APPROVED',
+      deletedAt: null,
+    };
+    if (filters.branchId) contractWhere.branchId = filters.branchId;
+
+    const range = buildDueDateRange(filters.dueFrom, filters.dueTo);
+    const dueDate = range ?? undefined;
+
+    const PENDING_STATUSES: PaymentStatus[] = [
+      PaymentStatus.PENDING,
+      PaymentStatus.OVERDUE,
+      PaymentStatus.PARTIALLY_PAID,
+    ];
+    const UNPAID_OVERDUE_STATUSES: PaymentStatus[] = [
+      PaymentStatus.OVERDUE,
+      PaymentStatus.PARTIALLY_PAID,
+    ];
+
+    // 60-day cutoff (date-only, server local = BKK in prod). A due date on or
+    // before this is "ค้าง ≥ 60 วัน". Combined with the period window's upper
+    // bound, so picking "เดือนนี้" correctly yields 0 (nothing due this month
+    // can be 60 days overdue yet).
+    const cutoff = new Date();
+    cutoff.setHours(0, 0, 0, 0);
+    cutoff.setDate(cutoff.getDate() - 60);
+    const overdueDueDate: Record<string, unknown> = { ...(dueDate ?? {}), lte: cutoff };
+
+    const [pending, waived, overdue60Count, collected] = await Promise.all([
+      // Pending bucket: count + outstanding principal + outstanding late fee
+      this.prisma.payment.aggregate({
+        where: { deletedAt: null, status: { in: PENDING_STATUSES }, contract: contractWhere, ...(dueDate ? { dueDate } : {}) },
+        _count: true,
+        _sum: { amountDue: true, amountPaid: true, lateFee: true },
+      }),
+      // Waived bucket: late fees written down (อนุโลม) — any status
+      this.prisma.payment.aggregate({
+        where: { deletedAt: null, lateFeeWaived: true, contract: contractWhere, ...(dueDate ? { dueDate } : {}) },
+        _sum: { waivedAmount: true },
+      }),
+      // Overdue ≥ 60 days bucket: still-unpaid installments past the cutoff
+      this.prisma.payment.count({
+        where: { deletedAt: null, status: { in: UNPAID_OVERDUE_STATUSES }, contract: contractWhere, dueDate: overdueDueDate },
+      }),
+      // Collected bucket: money actually received for installments due in range
+      this.prisma.payment.aggregate({
+        where: { deletedAt: null, amountPaid: { gt: 0 }, contract: contractWhere, ...(dueDate ? { dueDate } : {}) },
+        _count: true,
+        _sum: { amountPaid: true },
+      }),
+    ]);
+
+    const dec = (v: Prisma.Decimal | number | null | undefined) =>
+      new Prisma.Decimal(v ?? 0);
+    const outstandingPrincipal = dec(pending._sum?.amountDue)
+      .sub(dec(pending._sum?.amountPaid))
+      .toDecimalPlaces(2)
+      .toNumber();
+
+    return {
+      pendingCount: pending._count,
+      // เฉพาะค่างวด — amountDue excludes lateFee by schema, so this is the
+      // installment principal+interest+vat remaining, never the penalty.
+      outstandingPrincipal: Math.max(0, outstandingPrincipal),
+      outstandingLateFee: dec(pending._sum?.lateFee).toDecimalPlaces(2).toNumber(),
+      waivedLateFee: dec(waived._sum?.waivedAmount).toDecimalPlaces(2).toNumber(),
+      overdue60Count,
+      collectedAmount: dec(collected._sum?.amountPaid).toDecimalPlaces(2).toNumber(),
+      collectedCount: collected._count,
+    };
   }
 
   // ─── Daily summary ────────────────────────────────────

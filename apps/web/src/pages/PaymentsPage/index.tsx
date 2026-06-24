@@ -18,10 +18,12 @@ import { Upload, Camera } from 'lucide-react';
 import PaymentFilters from './components/PaymentFilters';
 import PaymentTable from './components/PaymentTable';
 import PaymentSummary from './components/PaymentSummary';
+import PaymentPeriodBar from './components/PaymentPeriodBar';
+import PaymentKpiCards from './components/PaymentKpiCards';
 import { RecordPaymentModal, BatchPaymentModal } from './components/PaymentModals';
 import { RecordPaymentWizard } from './components/RecordPaymentWizard';
 import { ToleranceApprovalDialog } from '@/components/ToleranceApprovalDialog';
-import type { PendingPayment, DailySummary, OcrPaymentSlipResult } from './types';
+import type { PendingPayment, DailySummary, PendingSummary, OcrPaymentSlipResult } from './types';
 import { paymentStatusLabels, isSlipRequired } from './types';
 
 export default function PaymentsPage() {
@@ -46,6 +48,37 @@ export default function PaymentsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const debouncedSearch = useDebounce(searchTerm, 400);
   const [summaryDate, setSummaryDate] = useState(new Date().toISOString().split('T')[0]);
+
+  // Period filter for the pending queue (KPI cards + list) — scopes everything
+  // by installment dueDate. Default is "เดือนนี้" (matches DateRangeChips'
+  // thisMonth preset: [1st of month, today]) so that chip reads active on load.
+  // NOTE: a month default hides installments due in earlier months from the
+  // queue — switch to "ทั้งหมด" to chase back-dated overdue.
+  const [startDate, setStartDate] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+  });
+  const [endDate, setEndDate] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  });
+  const dueFrom = startDate || undefined;
+  const dueTo = endDate || undefined;
+
+  // Title for the "collected" KPI card follows the chosen period.
+  const collectedLabel = useMemo(() => {
+    const toIso = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const today = new Date();
+    const thisFirst = toIso(new Date(today.getFullYear(), today.getMonth(), 1));
+    const thisToday = toIso(today);
+    const lastFirst = toIso(new Date(today.getFullYear(), today.getMonth() - 1, 1));
+    const lastEnd = toIso(new Date(today.getFullYear(), today.getMonth(), 0));
+    if (!startDate && !endDate) return 'รับชำระทั้งหมด';
+    if (startDate === thisFirst && endDate === thisToday) return 'รับชำระเดือนนี้';
+    if (startDate === lastFirst && endDate === lastEnd) return 'รับชำระเดือนที่แล้ว';
+    return 'รับชำระช่วงนี้';
+  }, [startDate, endDate]);
 
   // History sheet state
   const [historyContractId, setHistoryContractId] = useState<string | null>(null);
@@ -99,14 +132,31 @@ export default function PaymentsPage() {
     error: pendingErrorDetail,
     refetch: refetchPending,
   } = useQuery<PendingPayment[]>({
-    queryKey: ['pending-payments', statusFilter, debouncedSearch, branchFilter],
+    queryKey: ['pending-payments', statusFilter, debouncedSearch, branchFilter, dueFrom, dueTo],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (statusFilter) params.set('status', statusFilter);
       if (debouncedSearch) params.set('search', debouncedSearch);
       if (branchFilter) params.set('branchId', branchFilter);
+      if (dueFrom) params.set('dueFrom', dueFrom);
+      if (dueTo) params.set('dueTo', dueTo);
       const { data } = await api.get(`/payments/pending?${params}`);
       return data.data;
+    },
+    enabled: tab === 'pending',
+  });
+
+  // Whole-system KPI summary (6 cards) — scoped by the same dueDate window +
+  // branch as the queue, but NOT page-limited.
+  const { data: pendingKpi, isLoading: loadingKpi } = useQuery<PendingSummary>({
+    queryKey: ['pending-summary', branchFilter, dueFrom, dueTo],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (branchFilter) params.set('branchId', branchFilter);
+      if (dueFrom) params.set('dueFrom', dueFrom);
+      if (dueTo) params.set('dueTo', dueTo);
+      const { data } = await api.get(`/payments/pending-summary?${params}`);
+      return data;
     },
     enabled: tab === 'pending',
   });
@@ -175,6 +225,10 @@ export default function PaymentsPage() {
       .toDecimalPlaces(2)
       .toNumber(),
   }), [pendingPayments]);
+
+  // Tab badge shows the whole-system pending count (from the aggregate KPI),
+  // falling back to the loaded page count until the summary resolves.
+  const tabBadgeCount = pendingKpi?.pendingCount ?? pendingSummary.count;
 
   // Excel export handler
   const handleExport = async () => {
@@ -450,9 +504,9 @@ export default function PaymentsPage() {
           className={`px-5 py-3 text-sm font-medium border-b-2 -mb-px transition-all ${tab === 'pending' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           รายการรอชำระ
-          {pendingSummary.count > 0 && (
+          {tabBadgeCount > 0 && (
             <span className={`ml-2 text-xs px-1.5 py-0.5 rounded-full ${tab === 'pending' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
-              {pendingSummary.count}
+              {tabBadgeCount.toLocaleString('th-TH')}
             </span>
           )}
         </button>
@@ -481,6 +535,19 @@ export default function PaymentsPage() {
       {/* Pending Tab */}
       {tab === 'pending' && (
         <div>
+          {/* Period selector (scopes KPI cards + queue by installment dueDate) */}
+          <PaymentPeriodBar
+            startDate={startDate}
+            endDate={endDate}
+            onChange={({ startDate: sd, endDate: ed }) => {
+              setStartDate(sd);
+              setEndDate(ed);
+            }}
+          />
+
+          {/* 6 accounting-aware KPI cards (whole-system aggregate) */}
+          <PaymentKpiCards summary={pendingKpi} loading={loadingKpi} collectedLabel={collectedLabel} />
+
           <PaymentFilters
             searchTerm={searchTerm}
             onSearchChange={setSearchTerm}
@@ -490,8 +557,6 @@ export default function PaymentsPage() {
             onBranchFilterChange={setBranchFilter}
             isOwner={isOwner}
             branches={branches}
-            pendingCount={pendingSummary.count}
-            pendingTotalDue={pendingSummary.totalDue}
             onExport={handleExport}
             hasPendingPayments={pendingPayments.length > 0}
           />

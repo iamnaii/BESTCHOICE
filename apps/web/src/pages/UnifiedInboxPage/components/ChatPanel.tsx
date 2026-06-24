@@ -84,7 +84,9 @@ interface ChatPanelProps {
   messages: any[];
   isLoadingMessages: boolean;
   isCustomerTyping?: boolean;
-  onSendMessage: (text: string) => void;
+  // Returns false when the send was rejected so the composer can keep the typed
+  // text; sticker/GIF callers ignore the result.
+  onSendMessage: (text: string) => void | Promise<boolean | void>;
   onSendFile?: (file: File) => void;
   onSendSticker?: (params: { packageId: number; stickerId: number }) => void;
   onBack: () => void;
@@ -113,6 +115,7 @@ export default function ChatPanel({
   onShowCustomerInfo,
 }: ChatPanelProps) {
   const [inputText, setInputText] = useState('');
+  const [isSending, setIsSending] = useState(false);
   const [selectedSuggestion, setSelectedSuggestion] = useState<{ aiDraft: string; intent: string } | null>(null);
   const [showActions, setShowActions] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
@@ -211,9 +214,17 @@ export default function ChatPanel({
     setEmojiOpen(false);
   };
 
-  // Auto-scroll to bottom on new messages
+  // Auto-scroll to bottom on new messages — but only when the user is already
+  // near the bottom, so we don't yank them away while they're reading history.
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const anchor = messagesEndRef.current;
+    const container = anchor?.parentElement;
+    if (container) {
+      const distanceFromBottom =
+        container.scrollHeight - container.scrollTop - container.clientHeight;
+      if (distanceFromBottom > 150) return;
+    }
+    anchor?.scrollIntoView({ behavior: 'smooth' });
   }, [messages.length]);
 
   const getLastCustomerMessage = () => {
@@ -221,10 +232,22 @@ export default function ChatPanel({
     return customerMsgs[customerMsgs.length - 1]?.text ?? customerMsgs[customerMsgs.length - 1]?.content ?? '';
   };
 
-  const handleSend = () => {
+  const handleSend = async () => {
     const text = inputText.trim();
-    if (!text) return;
-    onSendMessage(text);
+    if (!text || isSending) return;
+    setIsSending(true);
+    let result: boolean | void;
+    try {
+      result = await onSendMessage(text);
+    } finally {
+      setIsSending(false);
+    }
+    // Keep the typed text if the send was rejected, so a network error / 500
+    // doesn't silently lose the staff member's message.
+    if (result === false) {
+      inputRef.current?.focus();
+      return;
+    }
     if (selectedSuggestion) {
       const type = text === selectedSuggestion.aiDraft ? 'ACCEPT' : 'EDIT';
       api.post('/staff-chat/ai/training-feedback', {
@@ -242,9 +265,14 @@ export default function ChatPanel({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Never send while an IME composition is in progress — Thai/CJK candidate
+    // selection commits with Enter, which would otherwise send mid-word.
+    if (e.nativeEvent.isComposing || (e.nativeEvent as KeyboardEvent).keyCode === 229) {
+      return;
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSend();
+      void handleSend();
     }
   };
 
@@ -677,18 +705,24 @@ export default function ChatPanel({
             <textarea
               ref={inputRef}
               value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
+              onChange={(e) => {
+                const v = e.target.value;
+                setInputText(v);
+                // Drop the AI-draft association once the box is cleared, so an
+                // unrelated follow-up isn't logged as an "edit" of that draft.
+                if (selectedSuggestion && v.trim() === '') setSelectedSuggestion(null);
+              }}
               onKeyDown={handleKeyDown}
               placeholder="พิมพ์ข้อความ..."
               rows={1}
               className="flex-1 resize-none px-3 py-2 text-sm bg-muted/40 rounded-lg border-0 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:bg-background max-h-32 transition-all placeholder:text-muted-foreground/40"
             />
             <button
-              onClick={handleSend}
-              disabled={!inputText.trim()}
+              onClick={() => void handleSend()}
+              disabled={!inputText.trim() || isSending}
               className={cn(
                 'p-2 rounded-lg transition-all duration-200',
-                inputText.trim()
+                inputText.trim() && !isSending
                   ? 'bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 hover:shadow-md'
                   : 'bg-muted text-muted-foreground/40 cursor-not-allowed',
               )}
@@ -704,9 +738,20 @@ export default function ChatPanel({
         isOpen={showTemplatePicker}
         onClose={() => setShowTemplatePicker(false)}
         onInsert={(content) => {
-          setInputText((prev) => prev + (prev ? '\n' : '') + content);
-          // focus textarea after insert
-          requestAnimationFrame(() => inputRef.current?.focus());
+          // Insert at the caret (like emoji insertion) rather than always
+          // appending, so a snippet dropped mid-message lands where intended.
+          const textarea = inputRef.current;
+          if (textarea) {
+            const start = textarea.selectionStart ?? inputText.length;
+            const end = textarea.selectionEnd ?? inputText.length;
+            setInputText(inputText.slice(0, start) + content + inputText.slice(end));
+            requestAnimationFrame(() => {
+              textarea.selectionStart = textarea.selectionEnd = start + content.length;
+              textarea.focus();
+            });
+          } else {
+            setInputText((prev) => prev + (prev ? '\n' : '') + content);
+          }
         }}
         roomId={session?.id ?? null}
       />

@@ -27,6 +27,13 @@ export interface ParsedPaymentFlex {
   oldestDueDate?: string;
 }
 
+// Returns the parsed number only when finite — a malformed/truncated payload
+// segment would otherwise surface as a literal "NaN" in the card.
+const safeNum = (s: string | undefined): number | undefined => {
+  const n = Number(s);
+  return Number.isFinite(n) ? n : undefined;
+};
+
 export function parsePaymentFlex(text: string | null | undefined): ParsedPaymentFlex | null {
   if (!text) return null;
   const m = text.match(FLEX_REGEX);
@@ -44,7 +51,7 @@ export function parsePaymentFlex(text: string | null | undefined): ParsedPayment
       installmentLabel,
       amount,
       dueDate,
-      daysUntilDue: Number(daysStr),
+      daysUntilDue: safeNum(daysStr),
       url,
     };
   }
@@ -57,8 +64,8 @@ export function parsePaymentFlex(text: string | null | undefined): ParsedPayment
     kind: 'overdue-notice',
     contractNumber,
     amount,
-    overdueCount: Number(overdueCountStr),
-    lateFee: Number(lateFeeStr),
+    overdueCount: safeNum(overdueCountStr) ?? 0,
+    lateFee: safeNum(lateFeeStr) ?? 0,
     oldestDueDate,
     url,
   };

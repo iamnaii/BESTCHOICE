@@ -196,7 +196,7 @@ export class AiAutoReplyService {
         ? configMap.get('ai.autoEnabled') === 'true'
         : this.config.get<string>('AI_AUTO_ENABLED') === 'true',
       aiAutoChannels: configMap.has('ai.autoChannels')
-        ? JSON.parse(configMap.get('ai.autoChannels')!)
+        ? this.parseChannelList(configMap.get('ai.autoChannels')!)
         : (this.config.get<string>('AI_AUTO_CHANNELS') ?? '').split(',').filter(Boolean),
       aiAutoConfidenceThreshold: configMap.has('ai.autoConfidenceThreshold')
         ? Number(configMap.get('ai.autoConfidenceThreshold'))
@@ -209,6 +209,21 @@ export class AiAutoReplyService {
       shopBotTestUserId: configMap.get('shop_bot_test_user_id') ?? null,
       llmProvider,
     };
+  }
+
+  /**
+   * Parse the stored `ai.autoChannels` value. It is normally a JSON array, but
+   * older code paths / manual edits may have left a CSV string — JSON.parse on
+   * that would throw and 500 the settings endpoint. Fall back to CSV parsing.
+   */
+  private parseChannelList(raw: string): string[] {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed.map((v) => String(v));
+    } catch {
+      // not JSON — treat as a legacy comma-separated list
+    }
+    return raw.split(',').map((s) => s.trim()).filter(Boolean);
   }
 
   async updateSettings(dto: UpdateAiSettingsDto): Promise<AiAutoSettings> {

@@ -80,9 +80,17 @@ export default function UnifiedInboxPage() {
         notifyNewMessage(data);
       }
     },
-    onRoomUpdate: () => {
+    onRoomUpdate: (data) => {
       queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
       queryClient.invalidateQueries({ queryKey: ['chat-unread-count'] });
+      // Inbox-wide new-message alert. MESSAGE_NEW is room-scoped (only the open
+      // room), so it can't drive notifications for other conversations. The
+      // gateway broadcasts every inbound customer message to the whole inbox via
+      // ROOM_UPDATE carrying role+text — use that to fire the sound + browser
+      // notification for any room the user isn't currently viewing.
+      if (data.role === 'CUSTOMER' && data.roomId !== activeRoomId) {
+        notifyNewMessage(data);
+      }
     },
     onCollision: (data) => {
       const viewerNames = data.viewers?.map((v) => v.userName).join(', ');
@@ -189,8 +197,14 @@ export default function UnifiedInboxPage() {
 
   // Send via HTTP — WS is unreliable behind some proxies, so HTTP is the
   // source of truth for sending. WS is still used to receive real-time updates.
-  const sendRoomMessage = async (text: string) => {
-    if (!activeRoomId) return;
+  // Returns true only when the message was accepted, so the composer can keep
+  // the typed text on failure instead of losing it.
+  const sendRoomMessage = async (text: string): Promise<boolean> => {
+    if (!activeRoomId) {
+      toast.error('ไม่มีห้องสนทนาที่เปิดอยู่');
+      return false;
+    }
+    let ok = false;
     try {
       const { data } = await api.post<{ success: boolean; error?: string }>(
         `/staff-chat/rooms/${activeRoomId}/messages`,
@@ -198,18 +212,19 @@ export default function UnifiedInboxPage() {
       );
       if (data && data.success === false) {
         toast.error(`ส่งข้อความไม่สำเร็จ${data.error ? ` — ${data.error}` : ''}`);
+      } else {
+        ok = true;
       }
     } catch (err) {
       const e = err as { response?: { data?: { error?: string; message?: string } } };
       toast.error(e?.response?.data?.error ?? e?.response?.data?.message ?? 'ส่งข้อความไม่สำเร็จ');
     }
     queryClient.invalidateQueries({ queryKey: ['chat-messages', activeRoomId] });
+    return ok;
   };
 
   const handleSendMessage = useCallback(
-    (text: string) => {
-      void sendRoomMessage(text);
-    },
+    (text: string) => sendRoomMessage(text),
     [activeRoomId, queryClient],
   );
 

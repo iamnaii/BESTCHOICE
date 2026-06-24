@@ -100,8 +100,12 @@ function resolveSpacing(value?: string): string {
   return SPACING_MAP[value] ?? value;
 }
 
-function renderNode(node: FlexNode | undefined, key?: number): React.ReactNode {
-  if (!node) return null;
+// Cap recursion into server-supplied Flex JSON — unbounded nesting would
+// overflow the call stack and crash the entire message list render.
+const MAX_FLEX_DEPTH = 24;
+
+function renderNode(node: FlexNode | undefined, key?: number, depth = 0): React.ReactNode {
+  if (!node || typeof node !== 'object' || depth > MAX_FLEX_DEPTH) return null;
   const k = key ?? 0;
 
   if (node.type === 'box') {
@@ -135,7 +139,9 @@ function renderNode(node: FlexNode | undefined, key?: number): React.ReactNode {
           flex: node.flex,
         }}
       >
-        {(node.contents || []).map((child, idx) => renderNode(child, idx))}
+        {(Array.isArray(node.contents) ? node.contents : []).map((child, idx) =>
+          renderNode(child, idx, depth + 1),
+        )}
       </div>
     );
   }
@@ -210,6 +216,10 @@ function renderNode(node: FlexNode | undefined, key?: number): React.ReactNode {
 }
 
 function renderBubble(bubble: FlexBubble, key?: number): React.ReactNode {
+  // Carousel elements (or a malformed root) can be null / non-object — guard
+  // before touching bubble.styles, otherwise one bad bubble throws and the
+  // whole app trips the root error boundary.
+  if (!bubble || typeof bubble !== 'object') return null;
   const headerBg = bubble.styles?.header?.backgroundColor;
   const bodyBg = bubble.styles?.body?.backgroundColor;
   const footerBg = bubble.styles?.footer?.backgroundColor;

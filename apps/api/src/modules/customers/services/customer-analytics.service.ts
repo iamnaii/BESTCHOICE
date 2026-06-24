@@ -359,7 +359,13 @@ export class CustomerAnalyticsService {
         status: true,
         monthlyPayment: true,
         totalMonths: true,
-        product: { select: { name: true, brand: true, model: true, serialNumber: true } },
+        // MDM lock + warranty state drive the Customer360 panel badges; without
+        // these the UI silently shows "ไม่ได้ล็อค" / "หมดประกัน" for every contract.
+        mdmLockedAt: true,
+        shopWarrantyEndDate: true,
+        product: {
+          select: { name: true, brand: true, model: true, serialNumber: true, warrantyExpireDate: true },
+        },
         payments: {
           where: { deletedAt: null },
           select: { status: true, dueDate: true },
@@ -382,6 +388,8 @@ export class CustomerAnalyticsService {
         totalInstallments: c.totalMonths,
         nextDueDate: nextDue?.dueDate ?? null,
         serialNumber: c.product?.serialNumber ?? null,
+        mdmLockedAt: c.mdmLockedAt,
+        shopWarrantyEndDate: c.shopWarrantyEndDate,
       };
     });
 

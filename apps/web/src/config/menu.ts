@@ -419,9 +419,8 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
         { label: 'ปิดบัญชีสิ้นปี', path: '/finance/year-end-closing', icon: CalendarDays },
         { label: 'งวดบัญชี', path: '/accounting/periods', icon: CalendarDays },
         { label: 'ชำระเงินระหว่างบริษัท', path: '/accounting/intercompany', icon: ClipboardList },
-        { label: 'ผังบัญชี', path: '/settings/accounting/chart', icon: ClipboardList },
+        // ผังบัญชี + PEAK Sync ลบออก — ใช้ผ่าน settings › บัญชี & ภาษี (dedupe 2026-06-24)
         { label: 'ตรวจสอบบัญชี', path: '/financial-audit', icon: ClipboardList },
-        { label: 'PEAK Sync', path: '/settings/accounting/peak-sync', icon: Plug },
         { label: 'ส่งออก PEAK CSV', path: '/finance/peak-export', icon: Plug },
       ],
     },
@@ -451,7 +450,7 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
     },
     {
       key: 'acc-bank',
-      label: 'ผังบัญชี + ธนาคาร',
+      label: 'ธนาคาร',
       icon: Landmark,
       zone: 'fin',
       items: [
@@ -626,11 +625,11 @@ const OWNER_CONFIG: RoleMenuConfig = {
     },
     {
       key: 'owner-bank',
-      label: 'ผังบัญชี + ธนาคาร',
+      label: 'บัญชีธนาคาร/เงินสด',
       icon: Landmark,
       zone: 'fin',
       items: [
-        { label: 'ผังบัญชี', path: '/settings/accounting/chart', icon: ClipboardList },
+        // ผังบัญชี ลบออก — ใช้ผ่าน settings › บัญชี & ภาษี › ผังบัญชี (dedupe 2026-06-24)
         // SP6 — Bank/Cash account directory (mirrors CoA 11-1101..1203)
         { label: 'บัญชีเงินสด/ธนาคาร', path: '/finance/bank-accounts', icon: Landmark },
       ],
@@ -706,26 +705,16 @@ const OWNER_CONFIG: RoleMenuConfig = {
       ],
     },
     {
-      // CSV §9 — split from old "เครื่องมือไฟแนนซ์" — Dunning moved to its
-      // own section (#10) since it's customer-facing notifications, not
-      // an integration target.
-      key: 'owner-fin-integrations',
-      label: 'เครื่องมือเชื่อมต่อ',
-      icon: Plug,
-      zone: 'fin',
-      items: [
-        { label: 'LINE OA', path: '/settings/rich-menu', icon: MessageSquareMore },
-        { label: 'การเชื่อมต่อ (PaySolutions / สรรพากร ฯลฯ)', path: '/settings/integrations/hub', icon: Plug },
-      ],
-    },
-    {
-      // CSV §10 — separated from เครื่องมือ since this is customer comms
+      // CSV §10 — customer comms.
+      // (เครื่องมือเชื่อมต่อ section removed 2026-06-24 — both items were dups of the
+      // settings submenu: LINE OA → /settings/rich-menu = settings › สื่อสารลูกค้า › Rich Menu;
+      // การเชื่อมต่อ → /settings/integrations/hub = settings › เชื่อมต่อ. Single source now.)
       key: 'owner-fin-notifications',
       label: 'การแจ้งเตือนลูกค้า',
       icon: Bell,
       zone: 'fin',
       items: [
-        { label: 'Dunning (เตือนค่างวด)', path: '/settings/comms/dunning', icon: Bell },
+        // Dunning ลบออก — ใช้ผ่าน settings › สื่อสารลูกค้า › Dunning (dedupe 2026-06-24)
         // P4-SP2 — auto e-receipt config (e_receipt_auto SystemConfig key)
         { label: 'ใบเสร็จอิเล็กทรอนิกส์อัตโนมัติ', path: '/finance/e-receipt-auto', icon: FileText },
       ],

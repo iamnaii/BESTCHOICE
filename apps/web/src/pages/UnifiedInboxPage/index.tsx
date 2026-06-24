@@ -220,6 +220,10 @@ export default function UnifiedInboxPage() {
       toast.error(e?.response?.data?.error ?? e?.response?.data?.message ?? 'ส่งข้อความไม่สำเร็จ');
     }
     queryClient.invalidateQueries({ queryKey: ['chat-messages', activeRoomId] });
+    // Refresh the conversation list too so the room bubbles to the top with the
+    // just-sent message as its preview (otherwise the left list stays stale
+    // until the next inbound message / poll).
+    queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
     return ok;
   };
 
@@ -250,6 +254,7 @@ export default function UnifiedInboxPage() {
       if (activeRoomId) {
         queryClient.invalidateQueries({ queryKey: ['chat-messages', activeRoomId] });
       }
+      queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
     },
     onError: (err: unknown) => {
       const msg = (err as { response?: { data?: { message?: string } } }).response?.data?.message

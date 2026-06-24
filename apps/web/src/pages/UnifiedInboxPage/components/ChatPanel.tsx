@@ -214,18 +214,28 @@ export default function ChatPanel({
     setEmojiOpen(false);
   };
 
-  // Auto-scroll to bottom on new messages — but only when the user is already
-  // near the bottom, so we don't yank them away while they're reading history.
+  // Scroll behavior:
+  //  • Opening a room → ALWAYS jump (instant) to the latest message.
+  //  • A new message in the room already open → only follow if the user is near
+  //    the bottom, so we don't yank them away while they read older history.
+  const roomId = session?.id as string | undefined;
+  const scrolledRoomRef = useRef<string | undefined>(undefined);
   useEffect(() => {
     const anchor = messagesEndRef.current;
-    const container = anchor?.parentElement;
+    if (!anchor || messages.length === 0) return;
+    if (scrolledRoomRef.current !== roomId) {
+      scrolledRoomRef.current = roomId;
+      anchor.scrollIntoView({ behavior: 'auto' }); // jump to latest on room open
+      return;
+    }
+    const container = anchor.parentElement;
     if (container) {
       const distanceFromBottom =
         container.scrollHeight - container.scrollTop - container.clientHeight;
       if (distanceFromBottom > 150) return;
     }
-    anchor?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages.length]);
+    anchor.scrollIntoView({ behavior: 'smooth' });
+  }, [messages.length, roomId]);
 
   const getLastCustomerMessage = () => {
     const customerMsgs = messages.filter((m: any) => m.role === 'CUSTOMER');

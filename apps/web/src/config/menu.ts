@@ -959,7 +959,7 @@ const ZONE_LOOKUP_ORDER: Zone[] = ['shop', 'fin', 'settings'];
 
 /**
  * Find which zone a path belongs to for a role. HASH-AWARE: a menu path like
- * '/settings#contacts' matches the route pathname '/settings' (react-router's
+ * '/settings/accounting#vat' matches on the route pathname (react-router's
  * pathname never includes the hash). Returns null if the path isn't in any of
  * the role's accessible zones (caller decides pass-through vs redirect).
  */

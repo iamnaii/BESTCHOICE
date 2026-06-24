@@ -306,6 +306,20 @@ function ConfigDrawer({
     },
   });
 
+  // Facebook only — re-fetch name/avatar for existing rooms missing a picture.
+  const backfillMutation = useMutation({
+    mutationFn: () =>
+      api
+        .post('/admin/facebook/backfill-profiles?onlyMissing=true&limit=150')
+        .then((r: any) => r.data),
+    onSuccess: (data: any) => {
+      toast.success(
+        `อัปเดตรูป ${data?.updatedPicture ?? 0} ห้อง · เหลือที่ยังไม่มีรูป ${data?.remaining ?? 0}`,
+      );
+    },
+    onError: () => toast.error('Backfill รูปไม่สำเร็จ'),
+  });
+
   function handleSave(e: React.FormEvent) {
     e.preventDefault();
     saveMutation.mutate(formValues);
@@ -440,7 +454,35 @@ function ConfigDrawer({
               )}
 
               {/* Facebook App Review panel — only shown when Facebook is selected */}
-              {integrationKey === 'facebook' && <FacebookAppReviewPanel />}
+              {integrationKey === 'facebook' && (
+                <>
+                  <FacebookAppReviewPanel />
+                  <div className="mt-3 rounded-lg border border-border p-3">
+                    <div className="text-sm font-medium">รูปโปรไฟล์ลูกค้า (Facebook)</div>
+                    <p className="mt-0.5 text-xs text-muted-foreground leading-snug">
+                      ดึงชื่อ + รูปโปรไฟล์ของห้องแชทเก่าที่ยังไม่มีรูป — กดซ้ำได้จนกว่า “เหลือ” จะเป็น 0
+                      (บันทึก Page Access Token ที่ใช้ได้ก่อน)
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="mt-2"
+                      disabled={backfillMutation.isPending}
+                      onClick={() => backfillMutation.mutate()}
+                    >
+                      {backfillMutation.isPending ? (
+                        <>
+                          <Loader2 className="size-4 animate-spin" />
+                          กำลังอัปเดต...
+                        </>
+                      ) : (
+                        'Backfill รูปโปรไฟล์'
+                      )}
+                    </Button>
+                  </div>
+                </>
+              )}
             </form>
           )}
         </DialogBody>

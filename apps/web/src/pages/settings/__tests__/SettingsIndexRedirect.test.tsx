@@ -4,7 +4,6 @@ import { HASH_TO_CATEGORY } from '../SettingsIndexRedirect';
 describe('HASH_TO_CATEGORY', () => {
   it('map hash tab เก่าครบทุกตัว → หมวดใหม่', () => {
     expect(HASH_TO_CATEGORY).toMatchObject({
-      contacts: 'company',
       company: 'company',
       vat: 'accounting',
       periods: 'accounting',
@@ -15,5 +14,9 @@ describe('HASH_TO_CATEGORY', () => {
       'offsite-backup': 'system',
       pdpa: 'system',
     });
+  });
+
+  it('#contacts is NOT in HASH_TO_CATEGORY (handled by dedicated redirect)', () => {
+    expect(HASH_TO_CATEGORY).not.toHaveProperty('contacts');
   });
 });

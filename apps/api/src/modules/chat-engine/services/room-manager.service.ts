@@ -1,4 +1,12 @@
-import { Injectable, Logger, Optional, Inject, forwardRef } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  Optional,
+  Inject,
+  forwardRef,
+  NotFoundException,
+  ConflictException,
+} from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import {
   AdsPlatform,
@@ -309,17 +317,17 @@ export class RoomManagerService {
       select: { id: true, customerId: true, deletedAt: true },
     });
     if (!room || room.deletedAt) {
-      throw new Error('ห้องแชทไม่พบหรือถูกลบ');
+      throw new NotFoundException('ห้องแชทไม่พบหรือถูกลบ');
     }
     if (room.customerId && room.customerId !== customerId) {
-      throw new Error('ห้องแชทนี้ผูกกับลูกค้ารายอื่นอยู่แล้ว');
+      throw new ConflictException('ห้องแชทนี้ผูกกับลูกค้ารายอื่นอยู่แล้ว');
     }
     const customer = await this.prisma.customer.findUnique({
       where: { id: customerId },
       select: { id: true, deletedAt: true },
     });
     if (!customer || customer.deletedAt) {
-      throw new Error('ไม่พบลูกค้า');
+      throw new NotFoundException('ไม่พบลูกค้า');
     }
     return this.prisma.chatRoom.update({
       where: { id: roomId },
@@ -488,8 +496,22 @@ export class RoomManagerService {
     return { count: result.count };
   }
 
+  /**
+   * Throw a clean 404 for an unknown/soft-deleted room instead of letting the
+   * subsequent `update` raise Prisma P2025 — which the global filter would
+   * surface as a 500 + Sentry alert for what is an ordinary not-found.
+   */
+  private async assertRoomExists(roomId: string): Promise<void> {
+    const room = await this.prisma.chatRoom.findUnique({
+      where: { id: roomId },
+      select: { id: true, deletedAt: true },
+    });
+    if (!room || room.deletedAt) throw new NotFoundException('ไม่พบห้องแชท');
+  }
+
   /** Pin a room (records who pinned it and when) */
   async pinRoom(roomId: string, userId: string): Promise<void> {
+    await this.assertRoomExists(roomId);
     await this.prisma.chatRoom.update({
       where: { id: roomId },
       data: { pinnedAt: new Date(), pinnedById: userId },
@@ -498,6 +520,7 @@ export class RoomManagerService {
 
   /** Unpin a room */
   async unpinRoom(roomId: string): Promise<void> {
+    await this.assertRoomExists(roomId);
     await this.prisma.chatRoom.update({
       where: { id: roomId },
       data: { pinnedAt: null, pinnedById: null },
@@ -511,6 +534,7 @@ export class RoomManagerService {
    * messages' readAt state.
    */
   async markAsRead(roomId: string): Promise<{ markedCount: number }> {
+    await this.assertRoomExists(roomId);
     const now = new Date();
     return this.prisma.$transaction(async (tx) => {
       const updated = await tx.chatMessage.updateMany({

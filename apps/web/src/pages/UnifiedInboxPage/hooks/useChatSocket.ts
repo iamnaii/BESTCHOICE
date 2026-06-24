@@ -4,15 +4,25 @@ import { useAuth } from '@/contexts/AuthContext';
 import { getAccessToken } from '@/lib/api';
 import { API_URL } from '@/lib/env';
 
+// Mirrors the backend MessageRole enum (schema.prisma) so role-based UI logic
+// type-checks against what the gateway actually sends.
+export type ChatRole = 'CUSTOMER' | 'STAFF' | 'BOT' | 'AUTO_TRIGGER' | 'SYSTEM';
+
 export interface ChatMessageEvent {
   roomId: string;
-  role?: 'CUSTOMER' | 'STAFF' | 'AI';
+  role?: ChatRole;
   text?: string;
   messageId?: string;
 }
 
+// The gateway's inbox-wide ROOM_UPDATE for a new message carries the message
+// payload (role + text) alongside the roomId — see StaffChatGateway.emitNewMessage.
+// State-change updates (assign/resolve) omit role, so consumers can tell them apart.
 export interface ChatRoomUpdateEvent {
   roomId: string;
+  role?: ChatRole;
+  text?: string;
+  messageId?: string;
 }
 
 export interface ChatTypingEvent {
@@ -101,6 +111,18 @@ export function useChatSocket(events: ChatSocketEvents, activeRoomId?: string | 
     });
 
     socketRef.current = socket;
+
+    // Re-join the open room on every (re)connect. socket.io transparently
+    // reconnects after a transient drop, but the server-side socket is brand new
+    // and only auto-joins INBOX — without this the active room would stop
+    // receiving message/typing/collision events until the user reselects it.
+    socket.on('connect', () => {
+      const roomId = activeRoomIdRef.current;
+      if (roomId) {
+        socket.emit('chat:join', { roomId });
+        socket.emit('chat:view', { roomId });
+      }
+    });
 
     socket.on('chat:message:new', (data) => eventsRef.current.onNewMessage?.(data));
     socket.on('chat:room:update', (data) => eventsRef.current.onRoomUpdate?.(data));

@@ -112,6 +112,12 @@ export class StaffChatController {
     if (req.user.role === 'SALES' && room.assignedToId && room.assignedToId !== req.user.id) {
       throw new ForbiddenException('ไม่มีสิทธิ์เข้าถึงห้องแชทนี้');
     }
+    // PDPA: a SALES user can open an unassigned room to pick it up, but must not be
+    // able to harvest national-ID PII by enumerating room ids. Redact nationalId unless
+    // the room is theirs — the inbox UI does not display it anyway.
+    if (req.user.role === 'SALES' && room.assignedToId !== req.user.id && room.customer) {
+      return { ...room, customer: { ...room.customer, nationalId: null } };
+    }
     return room;
   }
 
@@ -121,7 +127,11 @@ export class StaffChatController {
     @Param('id') id: string,
     @Query('limit') limit?: string,
   ) {
-    return this.roomManager.getRecentMessages(id, limit ? parseInt(limit, 10) : 50);
+    // Clamp the page size: an unbounded `?limit=` lets a client pull the whole
+    // message history, and `?limit=abc` → NaN → `take: NaN` → a Prisma 500.
+    const parsed = limit ? parseInt(limit, 10) : 50;
+    const safeLimit = Math.min(Math.max(Number.isFinite(parsed) ? parsed : 50, 1), 100);
+    return this.roomManager.getRecentMessages(id, safeLimit);
   }
 
   @Post('rooms/:id/messages')

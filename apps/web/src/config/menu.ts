@@ -715,7 +715,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
       zone: 'fin',
       items: [
         { label: 'LINE OA', path: '/settings/rich-menu', icon: MessageSquareMore },
-        { label: 'การเชื่อมต่อ (PaySolutions / สรรพากร ฯลฯ)', path: '/settings/system/integrations', icon: Plug },
+        { label: 'การเชื่อมต่อ (PaySolutions / สรรพากร ฯลฯ)', path: '/settings/integrations/hub', icon: Plug },
       ],
     },
     {

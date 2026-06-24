@@ -122,7 +122,7 @@ describe('getSidebarForRole — populated ZONE_CONFIG', () => {
     expect(paths).not.toContain('/users');
     expect(paths).not.toContain('/branches');
     expect(paths).not.toContain('/settings');  // bare root not listed
-    // all 8 registry categories visible to OWNER
+    // all 9 registry categories visible to OWNER
     expect(paths).toContain('/settings/company');
     expect(paths).toContain('/settings/access');
     expect(paths).toContain('/settings/accounting');
@@ -130,6 +130,7 @@ describe('getSidebarForRole — populated ZONE_CONFIG', () => {
     expect(paths).toContain('/settings/products');
     expect(paths).toContain('/settings/comms');
     expect(paths).toContain('/settings/ai');
+    expect(paths).toContain('/settings/integrations');
     expect(paths).toContain('/settings/system');
   });
 
@@ -234,7 +235,7 @@ describe('Master data moved into settings zone (Option B, 2026-06-13) — now re
 });
 
 describe('P5 Task 1 — registry-driven settings-zone sidebar (updated for P6)', () => {
-  it('OWNER settings zone = one "ตั้งค่าระบบ" section: /contacts (first) + registry categories (8) as /settings/<cat>', () => {
+  it('OWNER settings zone = one "ตั้งค่าระบบ" section: /contacts (first) + registry categories (9) as /settings/<cat>', () => {
     const secs = getSidebarForRole('OWNER', 'settings');
     // contacts now lives INSIDE the ตั้งค่าระบบ submenu (single section), not a separate group
     expect(secs).toHaveLength(1);

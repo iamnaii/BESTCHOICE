@@ -4,8 +4,8 @@ import {
 } from '../settings-access';
 
 describe('settings-access', () => {
-  it('OWNER เห็นครบ 8 หมวด', () => {
-    expect(visibleCategories('OWNER').map((c) => c.id)).toHaveLength(8);
+  it('OWNER เห็นครบ 9 หมวด', () => {
+    expect(visibleCategories('OWNER').map((c) => c.id)).toHaveLength(9);
   });
 
   it('FINANCE_MANAGER เห็น subset ที่มี item เห็นได้ (accounting, finance, comms) ไม่เห็น company/access/ai', () => {
@@ -16,6 +16,13 @@ describe('settings-access', () => {
     expect(ids).toContain('comms');        // sms
     expect(ids).not.toContain('access');   // OWNER-only items
     expect(ids).not.toContain('ai');
+    expect(ids).not.toContain('integrations'); // FM not in integrations roles
+  });
+
+  it('ACCOUNTANT เห็น integrations (hub) แต่ไม่เห็น system (OWNER-only แล้ว)', () => {
+    const ids = visibleCategories('ACCOUNTANT').map((c) => c.id);
+    expect(ids).toContain('integrations'); // hub มี ACCOUNTANT role
+    expect(ids).not.toContain('system');   // system items เหลือ OWNER-only หมด
   });
 
   it('visibleItems กรองตาม role', () => {

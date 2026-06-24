@@ -457,19 +457,8 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
         { label: 'บัญชีธนาคาร', path: '/finance/bank-accounts', icon: Landmark, placeholder: { trackingSP: 'SP6', eta: 'ภายในไตรมาส 4/2026' } },
       ],
     },
-    {
-      key: 'acc-doc-config',
-      label: 'ตั้งค่าเอกสาร',
-      icon: FileText,
-      zone: 'fin', // ACC sees doc config in FIN zone (no gear access)
-      items: [
-        // P2-SP2 — ACC currently sees the link but the page itself enforces
-        // OWNER-only via ProtectedRoute, so non-OWNER clicks land on a
-        // "ไม่มีสิทธิ์เข้าถึง" view. Kept here for menu parity per the
-        // existing menu shape; security is enforced page-side.
-        { label: 'เลขที่/รูปแบบเอกสาร', path: '/settings/document-config', icon: FileText },
-      ],
-    },
+    // acc-doc-config section ลบออก (2026-06-24) — document-config เป็น OWNER-only page
+    // (ACC คลิกแล้วเจอ "ไม่มีสิทธิ์"); config อยู่ที่เดียวใน settings (OWNER เท่านั้น)
   ],
   bottomNav: [
     { label: 'ชำระ', path: '/payments', icon: HandCoins },
@@ -635,42 +624,9 @@ const OWNER_CONFIG: RoleMenuConfig = {
       ],
     },
     {
-      // MOVED from `zone: 'settings'` → `zone: 'fin'` per CSV §8.
-      // SystemConfig backend (D1.1.2.x) is shared but UX-wise this is a
-      // finance-team config, so it belongs in the FIN zone for OWNER.
-      // CSV §8 sub-grouping: รายรับ (3 doc types) + รายจ่าย (5 doc types).
-      // Sub-items are placeholders — backend config UI per doc type pending.
-      key: 'owner-doc-config',
-      label: 'ตั้งค่าเอกสาร',
-      icon: FileText,
-      zone: 'fin',
-      items: [
-        { label: 'เลขที่/รูปแบบเอกสาร', path: '/settings/document-config?tab=numbering', icon: FileText },
-        {
-          label: 'เอกสารรายรับ',
-          path: '/settings/document-config',
-          icon: TrendingUp,
-          children: [
-            { label: 'ใบรับเงินมัดจำ', path: '/settings/document-config?tab=deposit_receipt', icon: Receipt },
-            { label: 'ใบเสร็จรับเงิน', path: '/settings/document-config?tab=receipt', icon: ReceiptText },
-            { label: 'ใบลดหนี้', path: '/settings/document-config?tab=credit_note', icon: FileText },
-          ],
-        },
-        {
-          label: 'เอกสารรายจ่าย',
-          path: '/settings/document-config',
-          icon: TrendingDown,
-          children: [
-            { label: 'ใบสั่งซื้อ (PO)', path: '/settings/document-config?tab=purchase_order', icon: ClipboardList },
-            { label: 'ค่าใช้จ่าย', path: '/settings/document-config?tab=expense_doc', icon: Receipt },
-            { label: 'รับใบลดหนี้', path: '/settings/document-config?tab=credit_note_received', icon: FileText },
-            { label: 'ใบรวมจ่าย', path: '/settings/document-config?tab=payment_summary', icon: FileText },
-            { label: 'ซื้อสินทรัพย์', path: '/settings/document-config?tab=asset_purchase', icon: Landmark },
-          ],
-        },
-      ],
-    },
-    {
+      // ตั้งค่าเอกสาร section ลบออก (2026-06-24) — เป็น config ย้ายไปอยู่ที่เดียวใน
+      // settings › บัญชี & ภาษี › เลขที่/รูปแบบเอกสาร (/settings/document-config,
+      // หน้ามีแท็บราย doc type ในตัว). ไม่ซ้ำใน fin zone อีก.
       key: 'owner-online-shop',
       label: 'ร้านค้าออนไลน์',
       icon: ShoppingBag,

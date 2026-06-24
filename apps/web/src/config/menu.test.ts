@@ -95,8 +95,8 @@ describe('getSidebarForRole — populated ZONE_CONFIG', () => {
     expect(keys).toContain('owner-accounting');
     expect(keys).toContain('owner-reports');
     expect(keys).toContain('owner-bank');
-    expect(keys).toContain('owner-doc-config');
-    // owner-fin-integrations removed (dedupe 2026-06-24) — LINE OA + การเชื่อมต่อ both lived in the settings submenu
+    // owner-doc-config + owner-fin-integrations removed (dedupe 2026-06-24) — both duplicated the settings submenu
+    expect(keys).not.toContain('owner-doc-config'); // → settings › บัญชี & ภาษี › เลขที่/รูปแบบเอกสาร
     expect(keys).not.toContain('owner-fin-integrations');
     expect(keys).toContain('owner-fin-notifications');
   });
@@ -142,9 +142,9 @@ describe('getSidebarForRole — populated ZONE_CONFIG', () => {
     expect(allPaths).toContain('/contracts');
   });
 
-  it('ACCOUNTANT fin sections include doc-config and bank', () => {
+  it('ACCOUNTANT fin sections include bank but no longer doc-config (removed — OWNER-only page)', () => {
     const keys = getSidebarForRole('ACCOUNTANT', 'fin').map((s) => s.key);
-    expect(keys).toContain('acc-doc-config');
+    expect(keys).not.toContain('acc-doc-config'); // removed 2026-06-24 (document-config is OWNER-only; lived in settings)
     expect(keys).toContain('acc-bank');
   });
 });

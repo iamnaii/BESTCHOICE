@@ -273,7 +273,7 @@ export default function QuickBuyModal({ open, onClose, onSuccess }: QuickBuyModa
   function next() {
     if (step === 1) {
       if (!branchId) return toast.error('กรุณาเลือกสาขาที่รับซื้อ');
-      if (!form.sellerContactId) return toast.error('กรุณาเลือกผู้ขายจากสมุดผู้ติดต่อ');
+      if (!form.sellerContactId) return toast.error('กรุณาเลือกผู้ขายจากรายชื่อผู้ติดต่อ');
       if (form.sellerIdCardNumber && form.sellerIdCardNumber.length !== 13) {
         return toast.error('เลขบัตรประชาชนต้อง 13 หลัก');
       }

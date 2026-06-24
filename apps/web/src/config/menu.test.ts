@@ -285,6 +285,16 @@ describe('FM/ACC bottomNav contacts shortcut — stale hash fix (2026-06-24)', (
     const paths = bn.map((i) => i.path);
     expect(paths).toContain('/contacts');
   });
+
+  it('OWNER bottomNav settings zone dropped config dups (aligned with FM/ACC: contacts + เพิ่มเติม)', () => {
+    const paths = (getZoneConfigForRole('OWNER')?.bottomNav.settings ?? []).map((i) => i.path);
+    // dedupe 2026-06-24 — these all live in the settings submenu now
+    expect(paths).not.toContain('/users');
+    expect(paths).not.toContain('/branches');
+    expect(paths).not.toContain('/settings/company/entities');
+    expect(paths).not.toContain('/settings');
+    expect(paths).toContain('/contacts'); // non-dup standalone page kept as the quick shortcut
+  });
 });
 
 describe('contacts inside settings submenu — รายชื่อผู้ติดต่อ → /contacts (2026-06-24)', () => {

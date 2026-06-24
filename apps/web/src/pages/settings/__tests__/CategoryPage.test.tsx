@@ -44,4 +44,13 @@ describe('CategoryPage', () => {
     renderCat('nope');
     expect(screen.getByText('ไม่พบหมวดนี้')).toBeTruthy();
   });
+
+  it('valid → invalid category on same instance does not crash (hooks stable)', () => {
+    role = 'OWNER';
+    const { rerender } = render(<MemoryRouter><CategoryPage categoryId="system" /></MemoryRouter>);
+    expect(() =>
+      rerender(<MemoryRouter><CategoryPage categoryId="nope" /></MemoryRouter>),
+    ).not.toThrow();
+    expect(screen.getByText('ไม่พบหมวดนี้')).toBeTruthy();
+  });
 });

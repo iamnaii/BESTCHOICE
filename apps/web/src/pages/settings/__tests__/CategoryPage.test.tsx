@@ -24,6 +24,12 @@ describe('CategoryPage', () => {
     expect(scrollSpy).toHaveBeenCalled();
   });
 
+  it('แสดง heading ชื่อหมวดที่ด้านบน (ช่วยบอก orientation ตอน sidebar ขับ category)', () => {
+    role = 'OWNER';
+    renderCat('system');
+    expect(screen.getByRole('heading', { name: 'ระบบ & ความปลอดภัย' })).toBeTruthy();
+  });
+
   it('render inline component sections ของหมวด (system)', () => {
     role = 'OWNER';
     renderCat('system');

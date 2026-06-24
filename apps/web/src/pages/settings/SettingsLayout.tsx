@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { useParams, useNavigate, Link, Outlet } from 'react-router';
+import { useParams, useNavigate, Outlet } from 'react-router';
 import { Search } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import PageHeader from '@/components/ui/PageHeader';
-import { visibleCategories, visibleItems, searchSettings } from '@/config/settings-access';
+import { visibleCategories, searchSettings } from '@/config/settings-access';
 import type { SettingsRole } from '@/config/settings-registry';
 
 export function SettingsLayout() {
@@ -64,31 +64,8 @@ export function SettingsLayout() {
           <Outlet />
         </div>
       ) : (
-        <div className="flex gap-6">
-          <nav className="w-60 shrink-0 space-y-1">
-            {cats.map((c) => {
-              const active = c.id === categoryId;
-              const Icon = c.icon;
-              return (
-                <Link
-                  key={c.id}
-                  to={`/settings/${c.id}`}
-                  className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${
-                    active ? 'bg-accent font-semibold text-foreground' : 'text-muted-foreground hover:bg-accent/60'
-                  }`}
-                >
-                  <span className="flex items-center gap-2 leading-snug">
-                    <Icon className="size-4" />
-                    {c.label}
-                  </span>
-                  <span className="text-xs text-muted-foreground">{visibleItems(c, role).length}</span>
-                </Link>
-              );
-            })}
-          </nav>
-          <div className="min-w-0 flex-1">
-            <Outlet />
-          </div>
+        <div className="min-w-0">
+          <Outlet />
         </div>
       )}
     </div>

@@ -34,11 +34,11 @@ function App({ entry }: { entry: string }) {
 }
 
 describe('comms migration', () => {
-  it('/settings/comms/line-oa → render หน้า line-oa ใน panel (มี nav ข้างซ้าย)', () => {
+  it('/settings/comms/line-oa → render หน้า line-oa ใน panel (sidebar ขับ category แล้ว — ไม่มี nav ข้างซ้าย)', () => {
     render(<App entry="/settings/comms/line-oa" />);
     expect(screen.getByText('line-oa-page')).toBeTruthy();
-    // panel nav ยังอยู่ (link หมวด comms)
-    expect(screen.getByRole('link', { name: /สื่อสาร/ })).toBeTruthy();
+    // desktop left category nav is removed — sidebar drives category selection now
+    expect(screen.queryByRole('link', { name: /สื่อสาร/ })).toBeNull();
   });
 
   it('old /settings/line-oa → redirect ไป /settings/comms/line-oa', async () => {

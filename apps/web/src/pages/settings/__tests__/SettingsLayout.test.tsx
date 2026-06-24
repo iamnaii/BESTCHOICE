@@ -27,16 +27,18 @@ function renderAt(path: string) {
 describe('SettingsLayout', () => {
   beforeEach(() => { role = 'OWNER'; mobile = false; });
 
-  it('desktop: เมนูซ้ายแสดงหมวดที่ role เห็น + render หมวดที่ active', () => {
+  it('desktop: ไม่มีเมนูซ้าย (sidebar หลักขับ category แล้ว) + Outlet content ยังแสดง', () => {
     renderAt('/settings/system');
-    expect(screen.getByRole('link', { name: /ระบบ & ความปลอดภัย/ })).toBeTruthy();
+    // The left category nav links must NOT be rendered on desktop
+    expect(screen.queryByRole('link', { name: /ระบบ & ความปลอดภัย/ })).toBeNull();
+    // Outlet content still renders
     expect(screen.getByText('cat:system')).toBeTruthy();
   });
 
-  it('FM เห็นเฉพาะหมวดของตัวเอง (ไม่มี AI)', () => {
-    role = 'FINANCE_MANAGER';
+  it('desktop: ช่องค้นหายังมีอยู่ + Outlet แสดงเนื้อหา', () => {
     renderAt('/settings/company');
-    expect(screen.queryByRole('link', { name: /^AI$/ })).toBeNull();
+    expect(screen.getByPlaceholderText(/ค้นหา/)).toBeTruthy();
+    expect(screen.getByText('cat:company')).toBeTruthy();
   });
 
   it('mobile: render <select> หมวดแทน sidebar', () => {

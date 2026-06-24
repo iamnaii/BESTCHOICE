@@ -32,11 +32,11 @@ function App({ entry }: { entry: string }) {
 }
 
 describe('ai migration', () => {
-  it('/settings/ai/admin → render หน้า admin ใน panel (มี nav ข้างซ้าย)', () => {
+  it('/settings/ai/admin → render หน้า admin ใน panel (sidebar ขับ category แล้ว — ไม่มี nav ข้างซ้าย)', () => {
     render(<App entry="/settings/ai/admin" />);
     expect(screen.getByText('admin-page')).toBeTruthy();
-    // panel nav ยังอยู่ (link หมวด ai)
-    expect(screen.getByRole('link', { name: /AI/ })).toBeTruthy();
+    // desktop left category nav is removed — sidebar drives category selection now
+    expect(screen.queryByRole('link', { name: /AI/ })).toBeNull();
   });
 
   it('old /settings/ai-admin → redirect ไป /settings/ai/admin', async () => {

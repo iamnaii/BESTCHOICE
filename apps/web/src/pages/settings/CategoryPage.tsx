@@ -57,6 +57,7 @@ export function CategoryPage({ categoryId }: { categoryId: string }) {
 
   return (
     <div className="space-y-6">
+      <h2 className="text-lg font-semibold text-foreground leading-snug mb-4">{cat.label}</h2>
       {groups.map((g, gi) => (
         <section key={g.name ?? gi} className="space-y-4">
           {g.name && <h3 className={groupLabelClass}>{g.name}</h3>}

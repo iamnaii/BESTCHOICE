@@ -107,7 +107,7 @@ export function ContactsTab() {
       {/* header inline (แทน PageHeader) — แสดงทั้งใน standalone และในแท็บ settings */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
         <div>
-          <h1 className="text-xl font-semibold text-foreground leading-snug">สมุดผู้ติดต่อ</h1>
+          <h1 className="text-xl font-semibold text-foreground leading-snug">รายชื่อผู้ติดต่อ</h1>
           <p className="text-sm text-muted-foreground leading-snug">ทั้งหมด {result?.total ?? 0} ราย</p>
         </div>
         <DropdownMenu>
@@ -162,7 +162,7 @@ export function ContactsTab() {
         isError={isError}
         error={error}
         onRetry={refetch}
-        errorTitle="ไม่สามารถโหลดสมุดผู้ติดต่อได้"
+        errorTitle="ไม่สามารถโหลดรายชื่อผู้ติดต่อได้"
       >
         <DataTable
           columns={columns}

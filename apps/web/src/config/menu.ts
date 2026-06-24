@@ -921,25 +921,23 @@ const ZONE_CONFIG: Record<string, RoleZoneConfig> = {
   },
 };
 
-/** Build the settings-zone sidebar from the registry (role-filtered categories). */
+/** Build the settings-zone sidebar from the registry (role-filtered categories).
+ *  "รายชื่อผู้ติดต่อ" (the /contacts party-master page) sits as the first item inside
+ *  the "ตั้งค่าระบบ" submenu, above the registry categories. */
 function buildSettingsZoneSections(role: string): MenuSection[] {
   const cats = visibleCategories(role as SettingsRole);
   if (cats.length === 0) return [];
-  const masterData: MenuSection = {
-    key: 'master-data',
-    label: 'ข้อมูลหลัก',
-    icon: BookUser,
-    zone: 'settings' as const,
-    items: [{ label: 'สมุดผู้ติดต่อ', path: '/contacts', icon: BookUser }],
-  };
   const settings: MenuSection = {
     key: 'settings',
     label: 'ตั้งค่าระบบ',
     icon: Settings,
     zone: 'settings' as const,
-    items: cats.map((c) => ({ label: c.label, path: `/settings/${c.id}`, icon: c.icon })),
+    items: [
+      { label: 'รายชื่อผู้ติดต่อ', path: '/contacts', icon: BookUser },
+      ...cats.map((c) => ({ label: c.label, path: `/settings/${c.id}`, icon: c.icon })),
+    ],
   };
-  return [masterData, settings];
+  return [settings];
 }
 
 /**

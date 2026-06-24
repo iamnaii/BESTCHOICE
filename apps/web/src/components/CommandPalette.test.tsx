@@ -176,25 +176,25 @@ describe('CommandPalette — settings registry integration', () => {
     expect(screen.queryByText('ผู้ใช้ & สิทธิ์ › ผู้ใช้ / พนักงาน')).not.toBeInTheDocument();
   });
 
-  it('shows "สมุดผู้ติดต่อ" → /contacts entry exactly once for OWNER (no registry dup)', async () => {
+  it('shows "รายชื่อผู้ติดต่อ" → /contacts entry exactly once for OWNER (no registry dup)', async () => {
     await renderPaletteOpen(makeOwner());
 
     // contacts was removed from the registry (P6) — only the base pages entry remains
-    const entries = screen.getAllByText('สมุดผู้ติดต่อ');
+    const entries = screen.getAllByText('รายชื่อผู้ติดต่อ');
     expect(entries).toHaveLength(1);
   });
 
-  it('shows "สมุดผู้ติดต่อ" → /contacts entry for FINANCE_MANAGER', async () => {
+  it('shows "รายชื่อผู้ติดต่อ" → /contacts entry for FINANCE_MANAGER', async () => {
     await renderPaletteOpen(makeFinanceManager());
 
-    const entry = screen.getByText('สมุดผู้ติดต่อ');
+    const entry = screen.getByText('รายชื่อผู้ติดต่อ');
     expect(entry).toBeInTheDocument();
   });
 
-  it('shows "สมุดผู้ติดต่อ" → /contacts entry for ACCOUNTANT', async () => {
+  it('shows "รายชื่อผู้ติดต่อ" → /contacts entry for ACCOUNTANT', async () => {
     await renderPaletteOpen(makeAccountant());
 
-    const entry = screen.getByText('สมุดผู้ติดต่อ');
+    const entry = screen.getByText('รายชื่อผู้ติดต่อ');
     expect(entry).toBeInTheDocument();
   });
 });

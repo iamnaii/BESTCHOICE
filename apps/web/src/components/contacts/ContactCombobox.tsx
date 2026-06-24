@@ -155,7 +155,7 @@ export function ContactCombobox({
                     </CommandEmpty>
                   )}
                   {contacts.length > 0 && (
-                    <CommandGroup heading="สมุดผู้ติดต่อ">
+                    <CommandGroup heading="รายชื่อผู้ติดต่อ">
                       {contacts.map((c) => (
                         <CommandItem key={c.id} value={c.id} onSelect={() => ensureRoleMutation.mutate(c)}>
                           <Check

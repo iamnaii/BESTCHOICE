@@ -26,7 +26,6 @@ import PeakSyncPage from '@/pages/PeakSyncPage';
 import { ETaxConfigPage } from '@/pages/ETaxConfigPage';
 // inline components (อยู่ที่เดิม — แค่ import มา render)
 import { CompanyTab } from '@/pages/SettingsPage/tabs/CompanyTab';
-import { ContactsTab } from '@/pages/SettingsPage/tabs/ContactsTab';
 import { VatTab } from '@/pages/SettingsPage/tabs/VatTab';
 import { PeriodsTab } from '@/pages/SettingsPage/tabs/PeriodsTab';
 import { AttachmentTab } from '@/pages/SettingsPage/tabs/AttachmentTab';
@@ -67,7 +66,6 @@ export const settingsRegistry: SettingsCategory[] = [
     id: 'company', label: 'บริษัท & สาขา', icon: Building2, roles: ALL,
     items: [
       { id: 'company-info', label: 'ข้อมูลบริษัท', group: 'บริษัท', roles: ['OWNER'], kind: 'inline', component: CompanyTab, keywords: ['ที่อยู่', 'โลโก้', 'ผู้เซ็น', 'tax id'] },
-      { id: 'contacts', label: 'สมุดผู้ติดต่อ', group: 'บริษัท', roles: ALL, kind: 'inline', component: ContactsTab, keywords: ['ลูกค้า', 'ผู้ขาย', 'supplier'] },
       { id: 'entities', label: 'บริษัทในเครือ', group: 'บริษัท', roles: ['OWNER'], kind: 'route', component: CompanySettingsPage, path: '/settings/company/entities' },
       { id: 'branches', label: 'สาขา', group: 'สาขา', roles: ['OWNER'], kind: 'external', path: '/branches' },
     ],

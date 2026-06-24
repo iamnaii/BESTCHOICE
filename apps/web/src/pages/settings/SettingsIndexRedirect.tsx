@@ -6,7 +6,6 @@ import type { SettingsRole } from '@/config/settings-registry';
 
 // hash tab เดิม (#vat ฯลฯ) → หมวดใหม่. item id ที่ตรงกับ hash จะถูกใช้ anchor ต่อ
 export const HASH_TO_CATEGORY: Record<string, string> = {
-  contacts: 'company',
   company: 'company',
   vat: 'accounting',
   periods: 'accounting',
@@ -25,6 +24,11 @@ export function SettingsIndexRedirect() {
 
   useEffect(() => {
     const hash = typeof window !== 'undefined' ? window.location.hash.slice(1) : '';
+    // #contacts is now a standalone page — redirect directly
+    if (hash === 'contacts') {
+      navigate('/contacts', { replace: true });
+      return;
+    }
     const mapped = HASH_TO_CATEGORY[hash];
     if (mapped) {
       // คง hash เป็น anchor ไปยัง section (item id ที่ตรงกับ hash ถ้ามี)

@@ -479,8 +479,8 @@ function App() {
           <Route path="/chatbot-finance/learning" element={<ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER']}><ChatbotFinanceLearningPage /></ProtectedRoute>} />
           <Route path="/customers" element={<CustomersPage />} />
           <Route path="/customers/:id" element={<CustomerDetailPage />} />
-          <Route path="/contacts" element={<ContactsPage />} />
-          <Route path="/contacts/:id" element={<ContactDetailPage />} />
+          <Route path="/contacts" element={<ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}><ContactsPage /></ProtectedRoute>} />
+          <Route path="/contacts/:id" element={<ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}><ContactDetailPage /></ProtectedRoute>} />
           <Route path="/customer-intake" element={<CustomerIntakePage />} />
           <Route path="/contracts" element={<ContractsPage />} />
           <Route

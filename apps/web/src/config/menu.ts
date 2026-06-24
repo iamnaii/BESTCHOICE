@@ -878,7 +878,7 @@ const ZONE_CONFIG: Record<string, RoleZoneConfig> = {
       ],
       fin: FINANCE_MANAGER_CONFIG.bottomNav,
       settings: [
-        { label: 'ผู้ติดต่อ', path: '/settings/company', icon: BookUser },
+        { label: 'ผู้ติดต่อ', path: '/contacts', icon: BookUser },
         { label: 'เพิ่มเติม', path: '#more', icon: MoreHorizontal, action: 'sidebar' },
       ],
     },
@@ -903,7 +903,7 @@ const ZONE_CONFIG: Record<string, RoleZoneConfig> = {
       shop: [],
       fin: ACCOUNTANT_CONFIG.bottomNav,
       settings: [
-        { label: 'ผู้ติดต่อ', path: '/settings/company', icon: BookUser },
+        { label: 'ผู้ติดต่อ', path: '/contacts', icon: BookUser },
         { label: 'เพิ่มเติม', path: '#more', icon: MoreHorizontal, action: 'sidebar' },
       ],
     },
@@ -925,15 +925,21 @@ const ZONE_CONFIG: Record<string, RoleZoneConfig> = {
 function buildSettingsZoneSections(role: string): MenuSection[] {
   const cats = visibleCategories(role as SettingsRole);
   if (cats.length === 0) return [];
-  return [
-    {
-      key: 'settings',
-      label: 'ตั้งค่าระบบ',
-      icon: Settings,
-      zone: 'settings' as const,
-      items: cats.map((c) => ({ label: c.label, path: `/settings/${c.id}`, icon: c.icon })),
-    },
-  ];
+  const masterData: MenuSection = {
+    key: 'master-data',
+    label: 'ข้อมูลหลัก',
+    icon: BookUser,
+    zone: 'settings' as const,
+    items: [{ label: 'สมุดผู้ติดต่อ', path: '/contacts', icon: BookUser }],
+  };
+  const settings: MenuSection = {
+    key: 'settings',
+    label: 'ตั้งค่าระบบ',
+    icon: Settings,
+    zone: 'settings' as const,
+    items: cats.map((c) => ({ label: c.label, path: `/settings/${c.id}`, icon: c.icon })),
+  };
+  return [masterData, settings];
 }
 
 /**

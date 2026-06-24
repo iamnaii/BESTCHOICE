@@ -32,6 +32,7 @@ import {
   Mail,
   Smartphone,
   Clock,
+  BookUser,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -54,6 +55,7 @@ const pages: NavEntry[] = [
   { label: 'POS ขายสินค้า', path: '/pos', icon: ShoppingCart, keywords: 'pos sale ขาย' },
   { label: 'ประวัติการขาย', path: '/sales', icon: Receipt, keywords: 'sales history' },
   { label: 'ลูกค้า', path: '/customers', icon: Users, keywords: 'customer ลูกค้า' },
+  { label: 'สมุดผู้ติดต่อ', path: '/contacts', icon: BookUser, keywords: 'contacts ผู้ติดต่อ ผู้ขาย supplier ไฟแนนซ์', roles: ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
   { label: 'สัญญาผ่อน', path: '/contracts', icon: FileCheck, keywords: 'contract สัญญา ผ่อน' },
   { label: 'ชำระเงิน', path: '/payments', icon: DollarSign, keywords: 'payment ชำระ จ่าย' },
   { label: 'ใบเสร็จรับเงิน', path: '/payments?tab=receipts', icon: Receipt, keywords: 'receipt ใบเสร็จ', roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },

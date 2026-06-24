@@ -96,10 +96,16 @@ export class RoomManagerService {
       if (existing.status === ChatRoomStatus.IDLE) {
         updateData.status = ChatRoomStatus.ACTIVE;
       }
-      // Backfill profile for legacy rooms (pre-feature rooms had null displayName)
+      // Backfill profile for legacy rooms — displayName and pictureUrl handled
+      // INDEPENDENTLY so a room that already has a name (e.g. from the FB
+      // conversations-API fallback, which has no avatar) still gets its picture
+      // filled in the next time getUserProfile can resolve one. routeInbound
+      // already fetches the profile on every inbound, so this adds no API calls.
       if (!existing.displayName && params.displayName) {
         updateData.displayName = params.displayName;
-        updateData.pictureUrl = params.pictureUrl ?? null;
+      }
+      if (!existing.pictureUrl && params.pictureUrl) {
+        updateData.pictureUrl = params.pictureUrl;
       }
       if (Object.keys(updateData).length > 0) {
         return this.prisma.chatRoom.update({

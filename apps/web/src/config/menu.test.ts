@@ -96,7 +96,8 @@ describe('getSidebarForRole — populated ZONE_CONFIG', () => {
     expect(keys).toContain('owner-reports');
     expect(keys).toContain('owner-bank');
     expect(keys).toContain('owner-doc-config');
-    expect(keys).toContain('owner-fin-integrations');
+    // owner-fin-integrations removed (dedupe 2026-06-24) — LINE OA + การเชื่อมต่อ both lived in the settings submenu
+    expect(keys).not.toContain('owner-fin-integrations');
     expect(keys).toContain('owner-fin-notifications');
   });
 

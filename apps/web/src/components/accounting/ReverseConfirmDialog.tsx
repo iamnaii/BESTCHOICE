@@ -26,7 +26,7 @@ import type { IcabModule, IcabReverseReason } from './types';
  *   - ReverseDisposalDialog (assets)
  *
  * Reasons are sourced from `GET /settings/reverse-reasons/active` (admin-
- * managed via `/settings#internal-control`) and fall back to `useUiFlags`
+ * managed via `/settings/access`) and fall back to `useUiFlags`
  * defaults until the API responds — so the dropdown is never empty.
  *
  * The dialog handles UI + state only. Modules build their own JE on

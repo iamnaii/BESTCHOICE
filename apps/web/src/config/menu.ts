@@ -34,7 +34,6 @@ import {
   Bell,
   MessageSquareMore,
   MoreHorizontal,
-  Sparkles,
   Send,
   LayoutGrid,
   CheckSquare,
@@ -738,31 +737,11 @@ const OWNER_CONFIG: RoleMenuConfig = {
       zone: 'settings',
       items: [
         { label: 'ตั้งค่าระบบ', path: '/settings', icon: Settings },
-        { label: 'บัญชีตาม Role', path: '/settings/access/account-roles', icon: ClipboardList },
         { label: 'ผู้ใช้ / พนักงาน', path: '/users', icon: UserCog },
         { label: 'สาขา', path: '/branches', icon: Building2 },
-        { label: 'บริษัท', path: '/settings/company/entities', icon: Building2 },
         { label: 'แบบสัญญา', path: '/contract-templates', icon: FileCheck },
-        { label: 'ตั้งราคา', path: '/settings/products/pricing', icon: CircleDollarSign },
-        { label: 'ตั้งค่า GFIN', path: '/settings/finance/gfin', icon: Calculator },
         { label: 'โปรโมชัน', path: '/promotions', icon: BadgePercent },
-        { label: 'PDPA', path: '/pdpa', icon: Shield },
-      ],
-    },
-    {
-      // AI gets its own top-level section in the gear (settings) zone — separated
-      // from "ตั้งค่า" because AI configuration is a distinct concern (cost,
-      // persona, training, performance) and the settings group was getting crowded.
-      key: 'owner-ai',
-      label: 'AI',
-      icon: Sparkles,
-      zone: 'settings',
-      items: [
-        { label: 'AI Admin', path: '/settings/ai/admin', icon: Sparkles },
-        { label: 'AI Persona', path: '/settings/ai/persona', icon: Sparkles },
-        { label: 'AI Assistant', path: '/settings/ai/assistant', icon: Sparkles },
-        { label: 'AI Training', path: '/settings/ai/training', icon: Sparkles },
-        { label: 'AI Performance', path: '/settings/ai/performance', icon: Sparkles },
+        { label: 'PDPA (คำยินยอม/DSAR)', path: '/pdpa', icon: Shield },
       ],
     },
     {

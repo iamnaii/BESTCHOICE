@@ -49,7 +49,7 @@ interface ChartOfAccount {
 
 /**
  * D1.1.1.4 — Admin UI for `account_role_map` (Q7=WIRE IT). OWNER-only
- * route at `/settings/account-roles`. Table view with per-row Edit modal;
+ * route at `/settings/access/account-roles`. Table view with per-row Edit modal;
  * REQUIRED_ROLES rows show a lock icon and cannot be deactivated.
  *
  * Backend endpoints:

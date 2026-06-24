@@ -12,10 +12,10 @@ function ExternalRedirect({ to }: { to: string }) {
   return null;
 }
 
-// Redirect /accounting/periods → /settings#periods (preserves hash via window.location.replace).
+// Redirect /accounting/periods → /settings/accounting#periods (preserves hash via window.location.replace).
 function PeriodsRedirect() {
   useEffect(() => {
-    window.location.replace('/settings#periods');
+    window.location.replace('/settings/accounting#periods');
   }, []);
   return null;
 }
@@ -1264,18 +1264,6 @@ function App() {
                   feature="บัญชีธนาคาร"
                   trackingSP="SP6"
                   eta="ภายในไตรมาส 4/2026"
-                />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/settings/document-config"
-            element={
-              <ProtectedRoute roles={['OWNER', 'ACCOUNTANT']}>
-                <ComingSoonPage
-                  feature="ตั้งค่าเลขที่/รูปแบบเอกสาร"
-                  trackingSP="SP4"
-                  eta="ภายในไตรมาส 3/2026"
                 />
               </ProtectedRoute>
             }

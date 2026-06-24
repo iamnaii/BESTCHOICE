@@ -28,7 +28,7 @@ interface CustodianInfo {
 }
 
 /**
- * D1.1.5.5 — Petty Cash custodian picker. Lives on the /settings#internal-control
+ * D1.1.5.5 — Petty Cash custodian picker. Lives on the /settings/access
  * tab (OWNER-only). Reads the configured custodian role + currently
  * assigned user, and the eligible-user pool filtered by that role.
  *

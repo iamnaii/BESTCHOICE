@@ -15,6 +15,15 @@ function renderCat(id: string) {
 }
 
 describe('CategoryPage', () => {
+  it('scrolls to the section matching the URL hash on mount', () => {
+    const scrollSpy = vi.fn();
+    window.HTMLElement.prototype.scrollIntoView = scrollSpy;
+    window.location.hash = '#test-mode';
+    role = 'OWNER';
+    renderCat('system');
+    expect(scrollSpy).toHaveBeenCalled();
+  });
+
   it('render inline component sections ของหมวด (system)', () => {
     role = 'OWNER';
     renderCat('system');
@@ -33,6 +42,15 @@ describe('CategoryPage', () => {
   it('หมวดไม่รู้จัก → ข้อความว่าง ไม่ crash', () => {
     role = 'OWNER';
     renderCat('nope');
+    expect(screen.getByText('ไม่พบหมวดนี้')).toBeTruthy();
+  });
+
+  it('valid → invalid category on same instance does not crash (hooks stable)', () => {
+    role = 'OWNER';
+    const { rerender } = render(<MemoryRouter><CategoryPage categoryId="system" /></MemoryRouter>);
+    expect(() =>
+      rerender(<MemoryRouter><CategoryPage categoryId="nope" /></MemoryRouter>),
+    ).not.toThrow();
     expect(screen.getByText('ไม่พบหมวดนี้')).toBeTruthy();
   });
 });

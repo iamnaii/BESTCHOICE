@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Link } from 'react-router';
 import { ChevronRight } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -30,6 +31,18 @@ function ItemSection({ item, categoryId }: { item: SettingsItem; categoryId: str
 export function CategoryPage({ categoryId }: { categoryId: string }) {
   const { user } = useAuth();
   const role = (user?.role ?? '') as SettingsRole;
+
+  // Keep this effect ABOVE all early returns — hooks must run unconditionally
+  // (the body already guards empty hash + missing element, so it's a no-op on
+  // not-found renders and safe to call regardless of whether `cat` exists).
+  useEffect(() => {
+    const hash = window.location.hash.slice(1);
+    if (!hash) return;
+    // defer to next frame so the section is in the DOM
+    const el = document.getElementById(hash);
+    if (el) el.scrollIntoView({ block: 'start' });
+  }, [categoryId]);
+
   const cat = categoryById(categoryId);
   if (!cat) return <p className="text-sm text-muted-foreground">ไม่พบหมวดนี้</p>;
 

@@ -55,6 +55,25 @@ export interface DailySummary {
   data: DailySummaryPayment[];
 }
 
+/** KPI summary for the payment-queue header — whole-system aggregate from
+ *  GET /payments/pending-summary, scoped by the selected due-date window. */
+export interface PendingSummary {
+  /** จำนวนงวดที่ยังค้าง (PENDING/OVERDUE/PARTIALLY_PAID) */
+  pendingCount: number;
+  /** ยอดรอเก็บ "เฉพาะค่างวด" — Σ(amountDue − amountPaid), ไม่รวมค่าปรับ */
+  outstandingPrincipal: number;
+  /** ค่าปรับล่าช้าที่ยังรอเก็บ — Σ lateFee (→ Cr 42-1103 เมื่อเก็บได้) */
+  outstandingLateFee: number;
+  /** ค่าปรับที่อนุโลม (ยกเว้น) — Σ waivedAmount (→ Dr 52-1105 ส่วนลด) */
+  waivedLateFee: number;
+  /** จำนวนงวดค้าง ≥ 60 วัน (→ trigger 21-2103 VAT บังคับ) */
+  overdue60Count: number;
+  /** ยอดที่เก็บได้แล้วของงวดในช่วงนี้ — Σ amountPaid */
+  collectedAmount: number;
+  /** จำนวนรายการที่เก็บได้แล้ว */
+  collectedCount: number;
+}
+
 /**
  * @deprecated Use `getStatusBadgeProps(status, paymentStatusMap)` from `@/lib/status-badges` instead.
  * Kept for backwards-compat until all callers are migrated.

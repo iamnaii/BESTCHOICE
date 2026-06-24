@@ -249,6 +249,8 @@ export class PaymentsService {
   async getPendingPayments(filters: {
     branchId?: string;
     date?: string;
+    dueFrom?: string;
+    dueTo?: string;
     status?: string;
     search?: string;
     dunningStage?: string;
@@ -256,6 +258,11 @@ export class PaymentsService {
     limit?: number;
   }) {
     return this.services().query.getPendingPayments(filters);
+  }
+
+  // ─── Pending-queue KPI summary (whole-system aggregate) ─
+  async getPendingSummary(filters: { branchId?: string; dueFrom?: string; dueTo?: string }) {
+    return this.services().query.getPendingSummary(filters);
   }
 
   // ─── Daily summary ────────────────────────────────────

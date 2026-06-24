@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { ChatChannel } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
+import { IntegrationConfigService } from '../integrations/integration-config.service';
 import {
   IChannelAdapter,
   OutboundMessage,
@@ -16,10 +16,15 @@ import {
  * API reference: https://developers.facebook.com/docs/messenger-platform/reference/send-api/
  * Endpoint: POST https://graph.facebook.com/v25.0/{PAGE_ID}/messages
  *
- * Required env:
- * - FB_PAGE_ACCESS_TOKEN — Page access token with pages_messaging permission
- * - FB_PAGE_ID — Facebook Page ID
- * - FB_APP_SECRET — for webhook HMAC-SHA256 verification (inbound)
+ * Credentials are resolved from IntegrationConfig at call time — the in-app
+ * Integrations settings form (DB) with FB_* env vars as fallback — so changing
+ * the Page token / Page ID in the UI takes effect WITHOUT an env change or
+ * restart (previously these were cached from env in the constructor, which made
+ * the form unable to drive sending):
+ * - pageAccessToken (FB_PAGE_ACCESS_TOKEN) — Page access token with pages_messaging
+ * - pageId          (FB_PAGE_ID)           — Facebook Page ID
+ * The App Secret (FB_APP_SECRET) used for inbound webhook HMAC verification is
+ * read from the same IntegrationConfig by FacebookWebhookController.
  *
  * Key constraints:
  * - messaging_type is required (RESPONSE within 24h window, UPDATE, or MESSAGE_TAG)
@@ -32,24 +37,29 @@ import {
 export class FacebookAdapter implements IChannelAdapter {
   readonly channel = ChatChannel.FACEBOOK;
   private readonly logger = new Logger(FacebookAdapter.name);
-  private readonly pageAccessToken?: string;
-  private readonly pageId?: string;
 
-  constructor(private configService: ConfigService) {
-    this.pageAccessToken = this.configService.get<string>('FB_PAGE_ACCESS_TOKEN');
-    this.pageId = this.configService.get<string>('FB_PAGE_ID');
+  constructor(private readonly integrationConfig: IntegrationConfigService) {}
+
+  /**
+   * Resolve Page credentials from IntegrationConfig (DB form → FB_* env fallback).
+   * Read per call so the in-app settings drive sending without a restart;
+   * IntegrationConfigService caches the lookup, so this stays cheap.
+   */
+  private async getCreds(): Promise<{ pageAccessToken?: string; pageId?: string }> {
+    const cfg = await this.integrationConfig.getConfig('facebook');
+    return {
+      pageAccessToken: cfg.pageAccessToken || undefined,
+      pageId: cfg.pageId || undefined,
+    };
   }
 
-  get isConfigured(): boolean {
-    return !!this.pageAccessToken && !!this.pageId;
-  }
-
-  private get graphApiUrl(): string {
-    return `https://graph.facebook.com/v25.0/${this.pageId}/messages`;
+  private messagesUrl(pageId: string): string {
+    return `https://graph.facebook.com/v25.0/${pageId}/messages`;
   }
 
   async sendMessage(message: OutboundMessage): Promise<SendResult> {
-    if (!this.isConfigured) {
+    const { pageAccessToken, pageId } = await this.getCreds();
+    if (!pageAccessToken || !pageId) {
       return { success: false, error: 'Facebook page access token or page ID not configured' };
     }
 
@@ -113,11 +123,11 @@ export class FacebookAdapter implements IChannelAdapter {
         message: fbMessage,
       };
 
-      const res = await fetch(this.graphApiUrl, {
+      const res = await fetch(this.messagesUrl(pageId), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.pageAccessToken}`,
+          Authorization: `Bearer ${pageAccessToken}`,
         },
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(10000),
@@ -191,13 +201,14 @@ export class FacebookAdapter implements IChannelAdapter {
   }
 
   async sendTypingIndicator(externalUserId: string): Promise<void> {
-    if (!this.isConfigured) return;
+    const { pageAccessToken, pageId } = await this.getCreds();
+    if (!pageAccessToken || !pageId) return;
     try {
-      await fetch(this.graphApiUrl, {
+      await fetch(this.messagesUrl(pageId), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.pageAccessToken}`,
+          Authorization: `Bearer ${pageAccessToken}`,
         },
         body: JSON.stringify({
           recipient: { id: externalUserId },
@@ -211,24 +222,28 @@ export class FacebookAdapter implements IChannelAdapter {
   }
 
   async getUserProfile(externalUserId: string): Promise<UserProfile | null> {
-    if (!this.pageAccessToken || !this.pageId) return null;
+    const { pageAccessToken } = await this.getCreds();
+    if (!pageAccessToken) return null;
 
     // Try 1 — Messenger User Profile API (returns name + profile_pic).
     // Works only when pages_messaging is at Advanced Access tier (post App Review).
     // Currently returns 400/100/33 in dev mode; falls through silently.
-    const direct = await this.fetchDirectProfile(externalUserId);
+    const direct = await this.fetchDirectProfile(externalUserId, pageAccessToken);
     if (direct) return direct;
 
     // Try 2 — Workaround via /me/conversations participants (returns name only,
     // no profile_pic). Always works while pages_messaging is granted.
-    return this.fetchProfileViaConversations(externalUserId);
+    return this.fetchProfileViaConversations(externalUserId, pageAccessToken);
   }
 
-  private async fetchDirectProfile(externalUserId: string): Promise<UserProfile | null> {
+  private async fetchDirectProfile(
+    externalUserId: string,
+    pageAccessToken: string,
+  ): Promise<UserProfile | null> {
     try {
       const url =
         `https://graph.facebook.com/v25.0/${encodeURIComponent(externalUserId)}` +
-        `?fields=name,profile_pic&access_token=${encodeURIComponent(this.pageAccessToken!)}`;
+        `?fields=name,profile_pic&access_token=${encodeURIComponent(pageAccessToken)}`;
       const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
       if (!res.ok) return null;
       const json = (await res.json()) as { name?: string; profile_pic?: string };
@@ -252,11 +267,12 @@ export class FacebookAdapter implements IChannelAdapter {
 
   private async fetchProfileViaConversations(
     externalUserId: string,
+    pageAccessToken: string,
   ): Promise<UserProfile | null> {
     try {
       const url =
         `https://graph.facebook.com/v25.0/me/conversations?user_id=${encodeURIComponent(externalUserId)}` +
-        `&fields=participants&access_token=${encodeURIComponent(this.pageAccessToken!)}`;
+        `&fields=participants&access_token=${encodeURIComponent(pageAccessToken)}`;
       const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
       if (!res.ok) return null;
       const json = (await res.json()) as {

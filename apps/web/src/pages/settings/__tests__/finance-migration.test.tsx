@@ -28,11 +28,11 @@ function App({ entry }: { entry: string }) {
 }
 
 describe('finance migration', () => {
-  it('/settings/finance/interest → render หน้า interest ใน panel (มี nav ข้างซ้าย)', () => {
+  it('/settings/finance/interest → render หน้า interest ใน panel (sidebar ขับ category แล้ว — ไม่มี nav ข้างซ้าย)', () => {
     render(<App entry="/settings/finance/interest" />);
     expect(screen.getByText('interest-page')).toBeTruthy();
-    // panel nav ยังอยู่ (link หมวด finance)
-    expect(screen.getByRole('link', { name: /การเงิน/ })).toBeTruthy();
+    // desktop left category nav is removed — sidebar drives category selection now
+    expect(screen.queryByRole('link', { name: /การเงิน/ })).toBeNull();
   });
 
   it('old /settings/interest-config → redirect ไป /settings/finance/interest', async () => {

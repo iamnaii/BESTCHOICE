@@ -31,29 +31,29 @@ function App({ entry }: { entry: string }) {
 }
 
 describe('company/access/system migration', () => {
-  it('/settings/company/entities → render หน้า entities ใน panel (มี nav ข้างซ้าย)', () => {
+  it('/settings/company/entities → render หน้า entities ใน panel (sidebar ขับ category แล้ว — ไม่มี nav ข้างซ้าย)', () => {
     render(<App entry="/settings/company/entities" />);
     expect(screen.getByText('entities-page')).toBeTruthy();
-    // panel nav ยังอยู่ (link หมวด company)
-    expect(screen.getByRole('link', { name: /บริษัท/ })).toBeTruthy();
+    // desktop left category nav is removed — sidebar drives category selection now
+    expect(screen.queryByRole('link', { name: /บริษัท/ })).toBeNull();
   });
 
   it('/settings/access/account-roles → render หน้า account-roles ใน panel', () => {
     render(<App entry="/settings/access/account-roles" />);
     expect(screen.getByText('account-roles-page')).toBeTruthy();
-    expect(screen.getByRole('link', { name: /ผู้ใช้/ })).toBeTruthy();
+    expect(screen.queryByRole('link', { name: /ผู้ใช้/ })).toBeNull();
   });
 
   it('/settings/system/integrations → render หน้า integrations ใน panel', () => {
     render(<App entry="/settings/system/integrations" />);
     expect(screen.getByText('integrations-page')).toBeTruthy();
-    expect(screen.getByRole('link', { name: /ระบบ/ })).toBeTruthy();
+    expect(screen.queryByRole('link', { name: /ระบบ/ })).toBeNull();
   });
 
   it('/settings/system/mdm → render หน้า mdm ใน panel', () => {
     render(<App entry="/settings/system/mdm" />);
     expect(screen.getByText('mdm-page')).toBeTruthy();
-    expect(screen.getByRole('link', { name: /ระบบ/ })).toBeTruthy();
+    expect(screen.queryByRole('link', { name: /ระบบ/ })).toBeNull();
   });
 
   it('old /settings/companies → redirect ไป /settings/company/entities', async () => {

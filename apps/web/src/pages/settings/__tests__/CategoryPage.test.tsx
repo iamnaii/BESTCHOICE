@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { CategoryPage } from '../CategoryPage';
@@ -15,6 +15,17 @@ function renderCat(id: string) {
 }
 
 describe('CategoryPage', () => {
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    // Capture console.error to detect React duplicate-key warnings
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    consoleErrorSpy.mockRestore();
+  });
+
   it('scrolls to the section matching the URL hash on mount', () => {
     const scrollSpy = vi.fn();
     window.HTMLElement.prototype.scrollIntoView = scrollSpy;
@@ -24,12 +35,28 @@ describe('CategoryPage', () => {
     expect(scrollSpy).toHaveBeenCalled();
   });
 
+  it('แสดง heading ชื่อหมวดที่ด้านบน (ช่วยบอก orientation ตอน sidebar ขับ category)', () => {
+    role = 'OWNER';
+    renderCat('system');
+    expect(screen.getByRole('heading', { name: 'ระบบ & ความปลอดภัย' })).toBeTruthy();
+  });
+
   it('render inline component sections ของหมวด (system)', () => {
     role = 'OWNER';
     renderCat('system');
     expect(screen.getByText('test-mode-body')).toBeTruthy();
     expect(screen.getByText('pdpa-body')).toBeTruthy();
     expect(screen.getByText('backup-body')).toBeTruthy();
+  });
+
+  it('no duplicate-key warning on system category with non-contiguous "ข้อมูล" groups', () => {
+    role = 'OWNER';
+    renderCat('system');
+    // Assert no console.error calls with "duplicate key" warning
+    const duplicateKeyWarnings = consoleErrorSpy.mock.calls.filter(
+      (call: unknown[]) => String(call[0]).includes('Encountered two children with the same key'),
+    );
+    expect(duplicateKeyWarnings).toHaveLength(0);
   });
 
   it('render external item เป็นลิงก์', () => {

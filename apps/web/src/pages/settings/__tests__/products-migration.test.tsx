@@ -26,11 +26,11 @@ function App({ entry }: { entry: string }) {
 }
 
 describe('products migration', () => {
-  it('/settings/products/pricing → render หน้า pricing ใน panel (มี nav ข้างซ้าย)', () => {
+  it('/settings/products/pricing → render หน้า pricing ใน panel (sidebar ขับ category แล้ว — ไม่มี nav ข้างซ้าย)', () => {
     render(<App entry="/settings/products/pricing" />);
     expect(screen.getByText('pricing-page')).toBeTruthy();
-    // panel nav ยังอยู่ (link หมวด products)
-    expect(screen.getByRole('link', { name: /สินค้า/ })).toBeTruthy();
+    // desktop left category nav is removed — sidebar drives category selection now
+    expect(screen.queryByRole('link', { name: /สินค้า/ })).toBeNull();
   });
 
   it('old /settings/pricing-templates → redirect ไป /settings/products/pricing', async () => {

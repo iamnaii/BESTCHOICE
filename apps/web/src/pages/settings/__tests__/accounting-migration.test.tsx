@@ -28,11 +28,11 @@ function App({ entry }: { entry: string }) {
 }
 
 describe('accounting migration', () => {
-  it('/settings/accounting/chart → render หน้า chart ใน panel (มี nav ข้างซ้าย)', () => {
+  it('/settings/accounting/chart → render หน้า chart ใน panel (sidebar ขับ category แล้ว — ไม่มี nav ข้างซ้าย)', () => {
     render(<App entry="/settings/accounting/chart" />);
     expect(screen.getByText('chart-page')).toBeTruthy();
-    // panel nav ยังอยู่ (link หมวด accounting)
-    expect(screen.getByRole('link', { name: /บัญชี/ })).toBeTruthy();
+    // desktop left category nav is removed — sidebar drives category selection now
+    expect(screen.queryByRole('link', { name: /บัญชี/ })).toBeNull();
   });
 
   it('old /settings/chart-of-accounts → redirect ไป /settings/accounting/chart', async () => {

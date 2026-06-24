@@ -29,7 +29,6 @@ import {
   Plug,
   Target,
   Settings,
-  UserCog,
   BadgePercent,
   Shield,
   ScrollText,
@@ -782,11 +781,11 @@ const ZONE_CONFIG: Record<string, RoleZoneConfig> = {
         { label: 'แชท', path: '/inbox', icon: MessageSquareMore, badgeKey: 'chat-unread' },
         { label: 'เพิ่มเติม', path: '#more', icon: MoreHorizontal, action: 'sidebar' },
       ],
+      // settings-zone mobile bar — aligned with FM/ACC (dedupe 2026-06-24): dropped the
+      // config shortcuts (users/entities/branches/ตั้งค่า) that duplicate the settings
+      // submenu. Full settings nav via เพิ่มเติม → drawer (รายชื่อผู้ติดต่อ + 9 หมวด).
       settings: [
-        { label: 'ผู้ใช้ / พนักงาน', path: '/users', icon: UserCog },
-        { label: 'บริษัท', path: '/settings/company/entities', icon: Building2 },
-        { label: 'สาขา', path: '/branches', icon: Building2 },
-        { label: 'ตั้งค่า', path: '/settings', icon: Settings },
+        { label: 'ผู้ติดต่อ', path: '/contacts', icon: BookUser },
         { label: 'เพิ่มเติม', path: '#more', icon: MoreHorizontal, action: 'sidebar' },
       ],
     },

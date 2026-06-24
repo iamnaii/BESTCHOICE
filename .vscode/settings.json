@@ -54,5 +54,6 @@
 
   // ===== Misc =====
   "files.eol": "\n",
-  "editor.bracketPairColorization.enabled": true
+  "editor.bracketPairColorization.enabled": true,
+  "prisma.pinToPrisma6": true
 }

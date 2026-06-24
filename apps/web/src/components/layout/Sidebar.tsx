@@ -147,7 +147,7 @@ function useZoneValidator() {
   return { role, zoneConfig, currentZone, setCurrentZone };
 }
 
-// path ที่มี hash (เช่น '/settings#contacts') ต้อง match ทั้ง pathname + hash
+// path ที่มี hash (เช่น '/settings/accounting#vat') ต้อง match ทั้ง pathname + hash
 function hashAwareActive(path: string, pathname: string, hash: string): boolean {
   if (path.includes('#')) return path === pathname + hash;
   return path === pathname || (path.length > 1 && pathname.startsWith(path + '/'));

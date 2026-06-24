@@ -259,7 +259,7 @@ scripts/                     # Deploy & backup scripts
 `/commissions`, `/tax-reports`, `/trade-in`, `/promotions`
 
 ### Admin & Settings
-`/settings(/interest-config/line-oa/sms/pricing-templates/companies)`, `/users`, `/branches`, `/audit-logs`, `/financial-audit`, `/system-status`, `/notifications`, `/migration`, `/pdpa`, `/document-dashboard`
+`/settings` (registry-driven panel: `/settings/:categoryId`; old paths redirect), `/users`, `/branches`, `/audit-logs`, `/financial-audit`, `/system-status`, `/notifications`, `/migration`, `/pdpa`, `/document-dashboard`
 
 ### LINE LIFF (Customer Mobile)
 `/liff/contract`, `/liff/early-payoff`, `/liff/history`, `/liff/profile`, `/liff/register`

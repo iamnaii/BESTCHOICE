@@ -105,6 +105,45 @@ describe('getSidebarForRole — populated ZONE_CONFIG', () => {
     // owner-doc-config moved to FIN zone per CSV §8
     expect(keys).toContain('owner-settings');
     expect(keys).toContain('owner-settings-extra');
+    // owner-ai removed (P3 collapse — reachable via settings panel)
+    expect(keys).not.toContain('owner-ai');
+  });
+
+  it('OWNER settings zone contains panel entry + operational quick-links (P3 collapse)', () => {
+    const sections = getSidebarForRole('OWNER', 'settings');
+    const allPaths = sections.flatMap((s) => s.items.map((i) => i.path));
+    // Must contain the panel entry and operational paths
+    expect(allPaths).toContain('/settings');
+    expect(allPaths).toContain('/users');
+    expect(allPaths).toContain('/branches');
+    // Must NOT contain config deep-links (now reachable only via the panel)
+    expect(allPaths).not.toContain('/settings/ai/admin');
+    expect(allPaths).not.toContain('/settings/finance/gfin');
+    expect(allPaths).not.toContain('/settings/access/account-roles');
+    expect(allPaths).not.toContain('/settings/products/pricing');
+    expect(allPaths).not.toContain('/settings/company/entities');
+  });
+
+  it('OWNER settings owner-settings items match collapsed list exactly (P3)', () => {
+    const sections = getSidebarForRole('OWNER', 'settings');
+    const settingsSection = sections.find((s) => s.key === 'owner-settings');
+    expect(settingsSection).toBeDefined();
+    const paths = settingsSection!.items.map((i) => i.path);
+    expect(paths).toEqual([
+      '/settings',
+      '/users',
+      '/branches',
+      '/contract-templates',
+      '/promotions',
+      '/pdpa',
+    ]);
+  });
+
+  it('PDPA label is disambiguated in owner-settings (P3)', () => {
+    const sections = getSidebarForRole('OWNER', 'settings');
+    const settingsSection = sections.find((s) => s.key === 'owner-settings');
+    const pdpaItem = settingsSection?.items.find((i) => i.path === '/pdpa');
+    expect(pdpaItem?.label).toBe('PDPA (คำยินยอม/DSAR)');
   });
 
   it('FINANCE_MANAGER fin sections include payments (regression for fm-payments zone fix)', () => {

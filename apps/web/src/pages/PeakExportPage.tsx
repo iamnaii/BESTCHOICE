@@ -132,7 +132,7 @@ export default function PeakExportPage() {
                 {lastResult.skipped > 0 && (
                   <>
                     {' '}— ข้าม <Badge variant="warning">{lastResult.skipped}</Badge> บรรทัดที่บัญชียังไม่จับคู่ PEAK{' '}
-                    <Link to="/settings#peak-mapping" className="underline text-primary">
+                    <Link to="/settings/accounting#peak-mapping" className="underline text-primary">
                       ไปจับคู่ที่หน้าตั้งค่า
                     </Link>
                   </>

@@ -72,7 +72,7 @@ function validateForm(form: typeof defaultForm): FormErrors {
  * (percentage form, e.g. "7") instead of legacy `vat_pct` (decimal form,
  * e.g. "0.07"). The display + save logic for VAT below handles legacy reads
  * (decimal form → multiply by 100 for display) so the same OWNER can swap
- * between this page and `/settings#vat` without seeing 700% or 0.07%.
+ * between this page and `/settings/accounting` without seeing 700% or 0.07%.
  *
  * Other keys (`interest_rate`, `min_down_payment_pct`, `store_commission_pct`)
  * remain in decimal form — those don't have a canonical-key counterpart yet.

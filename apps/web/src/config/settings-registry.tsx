@@ -63,7 +63,7 @@ const ALL: SettingsRole[] = ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'];
 
 export const settingsRegistry: SettingsCategory[] = [
   {
-    id: 'company', label: 'บริษัท & สาขา', icon: Building2, roles: ALL,
+    id: 'company', label: 'บริษัท & สาขา', icon: Building2, roles: ['OWNER'],
     items: [
       { id: 'company-info', label: 'ข้อมูลบริษัท', group: 'บริษัท', roles: ['OWNER'], kind: 'inline', component: CompanyTab, keywords: ['ที่อยู่', 'โลโก้', 'ผู้เซ็น', 'tax id'] },
       { id: 'entities', label: 'บริษัทในเครือ', group: 'บริษัท', roles: ['OWNER'], kind: 'route', component: CompanySettingsPage, path: '/settings/company/entities' },

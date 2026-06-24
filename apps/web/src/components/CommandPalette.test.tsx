@@ -58,6 +58,10 @@ function makeFinanceManager() {
   return { id: 'u-fm', role: 'FINANCE_MANAGER', name: 'FM' };
 }
 
+function makeAccountant() {
+  return { id: 'u-acc', role: 'ACCOUNTANT', name: 'ACC' };
+}
+
 function Wrapper({ children }: { children: React.ReactNode }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return (
@@ -172,15 +176,23 @@ describe('CommandPalette — settings registry integration', () => {
     expect(screen.queryByText('ผู้ใช้ & สิทธิ์ › ผู้ใช้ / พนักงาน')).not.toBeInTheDocument();
   });
 
-  it('shows "สมุดผู้ติดต่อ" → /contacts entry for OWNER', async () => {
+  it('shows "สมุดผู้ติดต่อ" → /contacts entry exactly once for OWNER (no registry dup)', async () => {
     await renderPaletteOpen(makeOwner());
+
+    // contacts was removed from the registry (P6) — only the base pages entry remains
+    const entries = screen.getAllByText('สมุดผู้ติดต่อ');
+    expect(entries).toHaveLength(1);
+  });
+
+  it('shows "สมุดผู้ติดต่อ" → /contacts entry for FINANCE_MANAGER', async () => {
+    await renderPaletteOpen(makeFinanceManager());
 
     const entry = screen.getByText('สมุดผู้ติดต่อ');
     expect(entry).toBeInTheDocument();
   });
 
-  it('shows "สมุดผู้ติดต่อ" → /contacts entry for FINANCE_MANAGER', async () => {
-    await renderPaletteOpen(makeFinanceManager());
+  it('shows "สมุดผู้ติดต่อ" → /contacts entry for ACCOUNTANT', async () => {
+    await renderPaletteOpen(makeAccountant());
 
     const entry = screen.getByText('สมุดผู้ติดต่อ');
     expect(entry).toBeInTheDocument();

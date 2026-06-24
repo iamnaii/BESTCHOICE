@@ -5,6 +5,8 @@ import { FacebookAdapter } from './facebook.adapter';
 import { TiktokAdapter } from './tiktok.adapter';
 import { WebWidgetAdapter } from './web-widget.adapter';
 import { FacebookWebhookController } from './facebook-webhook.controller';
+import { FacebookAdminController } from './facebook-admin.controller';
+import { FacebookBackfillService } from './facebook-backfill.service';
 import { CHANNEL_ADAPTER_TOKEN } from '../chat-engine/interfaces/channel-adapter.interface';
 import { ChatbotFinanceModule } from '../chatbot-finance/chatbot-finance.module';
 import { LineOaModule } from '../line-oa/line-oa.module';
@@ -34,13 +36,14 @@ import { IntegrationsModule } from '../integrations/integrations.module';
     // Phase 5 — FacebookWebhookController injects QuickReplyPostbackRouterService.
     forwardRef(() => StaffChatModule),
   ],
-  controllers: [FacebookWebhookController],
+  controllers: [FacebookWebhookController, FacebookAdminController],
   providers: [
     LineFinanceAdapter,
     LineShopAdapter,
     FacebookAdapter,
     TiktokAdapter,
     WebWidgetAdapter,
+    FacebookBackfillService,
     {
       provide: CHANNEL_ADAPTER_TOKEN,
       useFactory: (

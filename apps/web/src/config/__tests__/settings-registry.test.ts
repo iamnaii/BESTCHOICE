@@ -2,10 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { settingsRegistry } from '../settings-registry';
 
 describe('settingsRegistry', () => {
-  it('มี 8 หมวด id ไม่ซ้ำ', () => {
+  it('มี 9 หมวด id ไม่ซ้ำ', () => {
     const ids = settingsRegistry.map((c) => c.id);
-    expect(ids).toHaveLength(8);
-    expect(new Set(ids).size).toBe(8);
+    expect(ids).toHaveLength(9);
+    expect(new Set(ids).size).toBe(9);
   });
 
   it('ทุกหมวดมีอย่างน้อย 1 รายการ + item id ไม่ซ้ำในหมวด', () => {

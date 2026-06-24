@@ -19,8 +19,11 @@ function App({ entry }: { entry: string }) {
         {/* redirects from old paths */}
         <Route path="/settings/companies" element={<Navigate to="/settings/company/entities" replace />} />
         <Route path="/settings/account-roles" element={<Navigate to="/settings/access/account-roles" replace />} />
-        <Route path="/settings/integrations" element={<Navigate to="/settings/system/integrations" replace />} />
-        <Route path="/settings/mdm-test" element={<Navigate to="/settings/system/mdm" replace />} />
+        {/* moved out of system into its own 'integrations' category (2026-06-24) */}
+        <Route path="/settings/system/integrations" element={<Navigate to="/settings/integrations/hub" replace />} />
+        <Route path="/settings/system/mdm" element={<Navigate to="/settings/integrations/mdm" replace />} />
+        {/* P2b — mdm-test moved to /settings/integrations/mdm (was /settings/system/mdm) */}
+        <Route path="/settings/mdm-test" element={<Navigate to="/settings/integrations/mdm" replace />} />
         <Route path="/settings/:categoryId" element={<SettingsLayout />}>
           <Route index element={<SettingsCategoryRoute />} />
           <Route path=":itemId" element={<SettingsItemRoute />} />
@@ -44,16 +47,14 @@ describe('company/access/system migration', () => {
     expect(screen.queryByRole('link', { name: /ผู้ใช้/ })).toBeNull();
   });
 
-  it('/settings/system/integrations → render หน้า integrations ใน panel', () => {
-    render(<App entry="/settings/system/integrations" />);
+  it('/settings/integrations/hub → render หน้า integrations ใน panel (direct)', () => {
+    render(<App entry="/settings/integrations/hub" />);
     expect(screen.getByText('integrations-page')).toBeTruthy();
-    expect(screen.queryByRole('link', { name: /ระบบ/ })).toBeNull();
   });
 
-  it('/settings/system/mdm → render หน้า mdm ใน panel', () => {
-    render(<App entry="/settings/system/mdm" />);
+  it('/settings/integrations/mdm → render หน้า mdm ใน panel (direct)', () => {
+    render(<App entry="/settings/integrations/mdm" />);
     expect(screen.getByText('mdm-page')).toBeTruthy();
-    expect(screen.queryByRole('link', { name: /ระบบ/ })).toBeNull();
   });
 
   it('old /settings/companies → redirect ไป /settings/company/entities', async () => {
@@ -66,12 +67,24 @@ describe('company/access/system migration', () => {
     await waitFor(() => expect(screen.getByText('account-roles-page')).toBeTruthy());
   });
 
-  it('old /settings/integrations → redirect ไป /settings/system/integrations', async () => {
-    render(<App entry="/settings/integrations" />);
+  it('old /settings/system/integrations → redirect ไป /settings/integrations/hub', async () => {
+    render(<App entry="/settings/system/integrations" />);
     await waitFor(() => expect(screen.getByText('integrations-page')).toBeTruthy());
   });
 
-  it('old /settings/mdm-test → redirect ไป /settings/system/mdm', async () => {
+  it('old /settings/system/mdm → redirect ไป /settings/integrations/mdm', async () => {
+    render(<App entry="/settings/system/mdm" />);
+    await waitFor(() => expect(screen.getByText('mdm-page')).toBeTruthy());
+  });
+
+  it('old /settings/integrations → renders CategoryPage(integrations) — shows category link "การเชื่อมต่อ"', async () => {
+    render(<App entry="/settings/integrations" />);
+    // /settings/integrations matches dynamic :categoryId route → CategoryPage('integrations')
+    // CategoryPage renders route-kind items as links by item.label
+    await waitFor(() => expect(screen.getByText('การเชื่อมต่อ')).toBeTruthy());
+  });
+
+  it('old /settings/mdm-test → redirect ไป /settings/integrations/mdm', async () => {
     render(<App entry="/settings/mdm-test" />);
     await waitFor(() => expect(screen.getByText('mdm-page')).toBeTruthy());
   });

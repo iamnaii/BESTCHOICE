@@ -54,6 +54,8 @@ export class PaymentsController {
   getPendingPayments(
     @Query('branchId') branchId?: string,
     @Query('date') date?: string,
+    @Query('dueFrom') dueFrom?: string,
+    @Query('dueTo') dueTo?: string,
     @Query('status') status?: string,
     @Query('search') search?: string,
     @Query('dunningStage') dunningStage?: string,
@@ -68,11 +70,31 @@ export class PaymentsController {
     return this.paymentsService.getPendingPayments({
       branchId: effectiveBranchId,
       date,
+      dueFrom,
+      dueTo,
       status,
       search,
       dunningStage,
       page: parsedPage && !isNaN(parsedPage) ? parsedPage : undefined,
       limit: parsedLimit && !isNaN(parsedLimit) ? parsedLimit : undefined,
+    });
+  }
+
+  // KPI summary for the payment-queue header — whole-system aggregate scoped
+  // by installment due-date window. Branch-forced for non-cross-branch roles.
+  @Get('pending-summary')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  getPendingSummary(
+    @Query('branchId') branchId?: string,
+    @Query('dueFrom') dueFrom?: string,
+    @Query('dueTo') dueTo?: string,
+    @CurrentUser() user?: { role: string; branchId: string | null },
+  ) {
+    const effectiveBranchId = this.getEffectiveBranchId(branchId, user);
+    return this.paymentsService.getPendingSummary({
+      branchId: effectiveBranchId,
+      dueFrom,
+      dueTo,
     });
   }
 

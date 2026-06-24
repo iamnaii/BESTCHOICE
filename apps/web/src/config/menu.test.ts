@@ -100,33 +100,39 @@ describe('getSidebarForRole — populated ZONE_CONFIG', () => {
     expect(keys).toContain('owner-fin-notifications');
   });
 
-  it('OWNER settings zone is now registry-driven (P5): one section keyed "settings"', () => {
+  it('OWNER settings zone is now registry-driven (P5) + master-data group (P6)', () => {
     const keys = getSidebarForRole('OWNER', 'settings').map((s) => s.key);
-    // P5: old static keys removed; replaced by single registry section
-    expect(keys).toEqual(['settings']);
+    // P6: master-data group prepended; registry "settings" section still present
+    expect(keys).toEqual(['master-data', 'settings']);
     expect(keys).not.toContain('owner-settings');
     expect(keys).not.toContain('owner-settings-extra');
     expect(keys).not.toContain('owner-fin-master');
   });
 
-  it('OWNER settings zone paths are all /settings/<catId> (P5 registry-driven)', () => {
+  it('OWNER settings zone paths: master-data /contacts + /settings/<catId> registry (P5+P6)', () => {
     const sections = getSidebarForRole('OWNER', 'settings');
-    const allPaths = sections.flatMap((s) => s.items.map((i) => i.path));
-    // All paths are /settings/<categoryId> — registry-driven
-    expect(allPaths.every((p) => p.startsWith('/settings/'))).toBe(true);
+    // master-data section has /contacts; settings section has /settings/<cat> paths
+    const masterSection = sections.find((s) => s.key === 'master-data');
+    const settingsSection = sections.find((s) => s.key === 'settings');
+    expect(masterSection).toBeDefined();
+    expect(settingsSection).toBeDefined();
+    expect(masterSection!.items.map((i) => i.path)).toEqual(['/contacts']);
+    const settingsPaths = settingsSection!.items.map((i) => i.path);
+    // All settings-section paths are /settings/<categoryId>
+    expect(settingsPaths.every((p) => p.startsWith('/settings/'))).toBe(true);
     // operational quick-links removed (now inside the panel)
-    expect(allPaths).not.toContain('/users');
-    expect(allPaths).not.toContain('/branches');
-    expect(allPaths).not.toContain('/settings');  // bare root not listed
+    expect(settingsPaths).not.toContain('/users');
+    expect(settingsPaths).not.toContain('/branches');
+    expect(settingsPaths).not.toContain('/settings');  // bare root not listed
     // all 8 registry categories visible to OWNER
-    expect(allPaths).toContain('/settings/company');
-    expect(allPaths).toContain('/settings/access');
-    expect(allPaths).toContain('/settings/accounting');
-    expect(allPaths).toContain('/settings/finance');
-    expect(allPaths).toContain('/settings/products');
-    expect(allPaths).toContain('/settings/comms');
-    expect(allPaths).toContain('/settings/ai');
-    expect(allPaths).toContain('/settings/system');
+    expect(settingsPaths).toContain('/settings/company');
+    expect(settingsPaths).toContain('/settings/access');
+    expect(settingsPaths).toContain('/settings/accounting');
+    expect(settingsPaths).toContain('/settings/finance');
+    expect(settingsPaths).toContain('/settings/products');
+    expect(settingsPaths).toContain('/settings/comms');
+    expect(settingsPaths).toContain('/settings/ai');
+    expect(settingsPaths).toContain('/settings/system');
   });
 
   it('FINANCE_MANAGER fin sections include payments (regression for fm-payments zone fix)', () => {
@@ -188,12 +194,12 @@ describe('VIEWER role (Owner Q4 2026-05-17)', () => {
   });
 });
 
-describe('Master data moved into settings zone (Option B, 2026-06-13) — now registry-driven (P5)', () => {
-  it('settings zone for OWNER/FM/ACC is registry-driven (single section keyed "settings")', () => {
-    // P5: old static "ข้อมูลหลัก" sections replaced by registry-driven section
-    expect(getSidebarForRole('OWNER', 'settings').map((s) => s.key)).toEqual(['settings']);
-    expect(getSidebarForRole('FINANCE_MANAGER', 'settings').map((s) => s.key)).toEqual(['settings']);
-    expect(getSidebarForRole('ACCOUNTANT', 'settings').map((s) => s.key)).toEqual(['settings']);
+describe('Master data moved into settings zone (Option B, 2026-06-13) — now registry-driven (P5) + own group (P6)', () => {
+  it('settings zone for OWNER/FM/ACC has master-data first, then settings section (P6)', () => {
+    // P6: master-data group prepended before the registry "settings" section
+    expect(getSidebarForRole('OWNER', 'settings').map((s) => s.key)).toEqual(['master-data', 'settings']);
+    expect(getSidebarForRole('FINANCE_MANAGER', 'settings').map((s) => s.key)).toEqual(['master-data', 'settings']);
+    expect(getSidebarForRole('ACCOUNTANT', 'settings').map((s) => s.key)).toEqual(['master-data', 'settings']);
   });
 
   it('ข้อมูลหลัก static sections no longer exist in any zone', () => {
@@ -211,36 +217,44 @@ describe('Master data moved into settings zone (Option B, 2026-06-13) — now re
     expect(getZoneConfigForRole('ACCOUNTANT')?.showSettingsGear).toBe(true);
   });
 
-  it('FM/ACC settings zone includes /settings/company (contacts reachable via registry)', () => {
+  it('FM/ACC settings zone includes /contacts (master-data) — company registry no longer visible', () => {
     const fmPaths = getSidebarForRole('FINANCE_MANAGER', 'settings').flatMap((s) =>
       s.items.map((i) => i.path),
     );
-    // contacts is now under /settings/company (registry-driven)
-    expect(fmPaths).toContain('/settings/company');
+    // P6: /contacts in master-data section; /settings/company NOT in registry (contacts removed → company is OWNER-only)
+    expect(fmPaths).toContain('/contacts');
+    expect(fmPaths).not.toContain('/settings/company');
     expect(fmPaths).not.toContain('/settings#contacts');  // old hash-link gone
 
     const accPaths = getSidebarForRole('ACCOUNTANT', 'settings').flatMap((s) =>
       s.items.map((i) => i.path),
     );
-    expect(accPaths).toContain('/settings/company');
+    expect(accPaths).toContain('/contacts');
+    expect(accPaths).not.toContain('/settings/company');
     expect(accPaths).not.toContain('/settings#contacts');  // old hash-link gone
   });
 });
 
-describe('P5 Task 1 — registry-driven settings-zone sidebar', () => {
-  it('OWNER settings zone = registry categories (8), as links to /settings/<cat>', () => {
+describe('P5 Task 1 — registry-driven settings-zone sidebar (updated for P6)', () => {
+  it('OWNER settings zone = master-data group + registry categories (8) as /settings/<cat>', () => {
     const secs = getSidebarForRole('OWNER', 'settings');
-    const paths = secs.flatMap((s) => s.items.map((i) => i.path));
+    // P6: master-data is first, settings (registry) is second
+    const settingsSec = secs.find((s) => s.key === 'settings')!;
+    const paths = settingsSec.items.map((i) => i.path);
     expect(paths).toContain('/settings/company');
     expect(paths).toContain('/settings/system');
     expect(paths.every((p) => p.startsWith('/settings/'))).toBe(true);
     expect(paths).not.toContain('/users');      // operational no longer a sidebar quick-link
     expect(paths).not.toContain('/settings');   // bare panel root not listed; categories are
+    // master-data group has /contacts
+    const masterSec = secs.find((s) => s.key === 'master-data')!;
+    expect(masterSec.items.map((i) => i.path)).toContain('/contacts');
   });
 
-  it('FINANCE_MANAGER settings zone = its visible categories (subset, no AI)', () => {
+  it('FINANCE_MANAGER settings zone = master-data(/contacts) + visible categories (subset, no AI, no company)', () => {
     const paths = getSidebarForRole('FINANCE_MANAGER', 'settings').flatMap((s) => s.items.map((i) => i.path));
-    expect(paths).toContain('/settings/company');     // contacts
+    expect(paths).toContain('/contacts');             // master-data group
+    expect(paths).not.toContain('/settings/company'); // contacts removed → company is OWNER-only
     expect(paths).not.toContain('/settings/ai');      // OWNER-only
   });
 
@@ -259,16 +273,31 @@ describe('FM/ACC bottomNav contacts shortcut — stale hash fix (2026-06-24)', (
     }
   });
 
-  it('FM bottomNav contacts shortcut now points to /settings/company', () => {
+  it('FM bottomNav contacts shortcut now points to /contacts', () => {
     const bn = getZoneConfigForRole('FINANCE_MANAGER')?.bottomNav.settings ?? [];
     const paths = bn.map((i) => i.path);
-    expect(paths).toContain('/settings/company');
+    expect(paths).toContain('/contacts');
   });
 
-  it('ACC bottomNav contacts shortcut now points to /settings/company', () => {
+  it('ACC bottomNav contacts shortcut now points to /contacts', () => {
     const bn = getZoneConfigForRole('ACCOUNTANT')?.bottomNav.settings ?? [];
     const paths = bn.map((i) => i.path);
-    expect(paths).toContain('/settings/company');
+    expect(paths).toContain('/contacts');
+  });
+});
+
+describe('P6 Task 1 — สมุดผู้ติดต่อ as own gear-zone group', () => {
+  it('OWNER settings zone has ข้อมูลหลัก > สมุดผู้ติดต่อ → /contacts above the categories', () => {
+    const secs = getSidebarForRole('OWNER', 'settings');
+    expect(secs[0].key).toBe('master-data');
+    expect(secs[0].items.map((i) => i.path)).toEqual(['/contacts']);
+    expect(secs.some((s) => s.key === 'settings')).toBe(true); // categories still present
+  });
+  it('FM/ACC also get the contacts master-data group in settings zone', () => {
+    for (const r of ['FINANCE_MANAGER', 'ACCOUNTANT']) {
+      const paths = getSidebarForRole(r, 'settings').flatMap((s) => s.items.map((i) => i.path));
+      expect(paths).toContain('/contacts');
+    }
   });
 });
 
@@ -290,7 +319,8 @@ describe('resolveZoneForPath — hash-aware (regression: FM/ACC must not bounce 
     expect(resolveZoneForPath('SALES', '/settings')).toBeNull();
   });
 
-  it('a path not in any menu (e.g. standalone /contacts) returns null (pass-through)', () => {
-    expect(resolveZoneForPath('OWNER', '/contacts')).toBeNull();
+  it('/contacts resolves to settings zone for OWNER (now in master-data group, P6)', () => {
+    // P6: /contacts is in the master-data group inside the settings zone
+    expect(resolveZoneForPath('OWNER', '/contacts')).toBe('settings');
   });
 });

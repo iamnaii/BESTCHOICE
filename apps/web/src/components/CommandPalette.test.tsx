@@ -171,4 +171,18 @@ describe('CommandPalette — settings registry integration', () => {
     // The registry-derived label "ผู้ใช้ & สิทธิ์ › ผู้ใช้ / พนักงาน" must NOT appear (deduped)
     expect(screen.queryByText('ผู้ใช้ & สิทธิ์ › ผู้ใช้ / พนักงาน')).not.toBeInTheDocument();
   });
+
+  it('shows "สมุดผู้ติดต่อ" → /contacts entry for OWNER', async () => {
+    await renderPaletteOpen(makeOwner());
+
+    const entry = screen.getByText('สมุดผู้ติดต่อ');
+    expect(entry).toBeInTheDocument();
+  });
+
+  it('shows "สมุดผู้ติดต่อ" → /contacts entry for FINANCE_MANAGER', async () => {
+    await renderPaletteOpen(makeFinanceManager());
+
+    const entry = screen.getByText('สมุดผู้ติดต่อ');
+    expect(entry).toBeInTheDocument();
+  });
 });

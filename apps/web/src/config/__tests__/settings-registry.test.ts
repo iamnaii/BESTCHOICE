@@ -32,4 +32,10 @@ describe('settingsRegistry', () => {
       }
     }
   });
+
+  it('contacts ไม่อยู่ใน company category (ย้ายเป็น standalone แล้ว)', () => {
+    const company = settingsRegistry.find((c) => c.id === 'company')!;
+    const ids = company.items.map((i) => i.id);
+    expect(ids).not.toContain('contacts');
+  });
 });

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import api from '@/lib/api';
@@ -78,7 +78,8 @@ interface PaymentSummaryItem {
 interface ChatSessionItem {
   id: string;
   channel: string;
-  sessionStatus: string;
+  // Matches the API's chatRooms[].status field (was wrongly read as sessionStatus).
+  status: string;
   totalMessages: number;
   lastMessageAt: string;
 }
@@ -172,6 +173,20 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
   const [pdfPreview, setPdfPreview] = useState<{ url: string; contractNumber: string } | null>(null);
   const [customerInfoOpen, setCustomerInfoOpen] = useState(false);
   const [callStatus, setCallStatus] = useState<'idle' | 'calling'>('idle');
+  const callResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Reset the call state (and any pending auto-reset timer) when the customer
+  // changes or the panel unmounts — otherwise a stale "กำลังโทร..." can bleed
+  // across customers (the panel is reused, not remounted, per customer).
+  useEffect(() => {
+    return () => {
+      if (callResetTimer.current) clearTimeout(callResetTimer.current);
+    };
+  }, []);
+  useEffect(() => {
+    setCallStatus('idle');
+    if (callResetTimer.current) clearTimeout(callResetTimer.current);
+  }, [customerId]);
 
   const originateCall = useMutation({
     mutationFn: ({ contractId }: { contractId: string }) =>
@@ -179,7 +194,8 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
     onMutate: () => setCallStatus('calling'),
     onSuccess: () => {
       toast.success('กำลังโทรออก — รับสายจากโทรศัพท์ของคุณ');
-      setTimeout(() => setCallStatus('idle'), 10_000);
+      if (callResetTimer.current) clearTimeout(callResetTimer.current);
+      callResetTimer.current = setTimeout(() => setCallStatus('idle'), 10_000);
     },
     onError: (err: { response?: { data?: { message?: string } } }) => {
       setCallStatus('idle');
@@ -196,6 +212,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
   });
 
   const handleCall = () => {
+    if (originateCall.isPending || callStatus === 'calling') return;
     const contracts = (summary?.activeContracts ?? []) as ContractSummaryItem[];
     if (!customerId) return;
     if (contracts.length === 0) {
@@ -662,7 +679,13 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
                   <div className="w-full bg-border rounded-full h-1.5">
                     <div
                       className="bg-primary h-1.5 rounded-full transition-all"
-                      style={{ width: `${(c.paidInstallments / c.totalInstallments) * 100}%` }}
+                      style={{
+                        width: `${
+                          c.totalInstallments > 0
+                            ? Math.min((c.paidInstallments / c.totalInstallments) * 100, 100)
+                            : 0
+                        }%`,
+                      }}
                     />
                   </div>
                   {c.nextDueDate && (
@@ -698,9 +721,9 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
       <div className="p-4 border-b border-border">
         <SectionHeader icon={MessageSquare} label="ประวัติแชท" />
 
-        {summary?.chatSessions?.length > 0 ? (
+        {summary?.chatRooms?.length > 0 ? (
           <div className="space-y-1.5">
-            {(summary.chatSessions as ChatSessionItem[]).map((s) => (
+            {(summary.chatRooms as ChatSessionItem[]).map((s) => (
               <div
                 key={s.id}
                 className={`flex items-center gap-2 p-1.5 rounded text-xs ${
@@ -711,7 +734,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
                   {channelLabel[s.channel] ?? s.channel}
                 </span>
                 <div className="flex-1 min-w-0">
-                  <span className="text-muted-foreground">{sessionStatusLabel[s.sessionStatus] ?? s.sessionStatus}</span>
+                  <span className="text-muted-foreground">{sessionStatusLabel[s.status] ?? s.status}</span>
                   <span className="text-muted-foreground/50 mx-1">·</span>
                   <span className="text-muted-foreground">{s.totalMessages} ข้อความ</span>
                 </div>
@@ -749,6 +772,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
       {/* ─── 6. Internal Notes ──────────────────────────── */}
       {activeRoomId && (
         <InternalNotesSection
+          key={activeRoomId}
           roomId={activeRoomId}
           notes={notesData ?? []}
         />
@@ -776,6 +800,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
                       : 'โทรออก (Yeastar)'
                   }
                   onClick={handleCall}
+                  disabled={originateCall.isPending || callStatus === 'calling'}
                 />
                 <div className="h-px bg-border my-1" />
                 <QuickActionBtn
@@ -977,10 +1002,10 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
                 );
               })()}
 
-              {summary?.overduePayments > 0 && (
+              {summary?.overdueCount > 0 && (
                 <div className="flex items-center gap-2 p-2.5 bg-destructive/10 rounded-lg text-destructive text-xs">
                   <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
-                  <span>ค้างชำระ {summary.overduePayments} งวด · ยอดรวม {Number(summary.totalOutstanding ?? 0).toLocaleString()} บ.</span>
+                  <span>ค้างชำระ {summary.overdueCount} งวด · ยอดรวม {Number(summary.totalOutstanding ?? 0).toLocaleString()} บ.</span>
                 </div>
               )}
 
@@ -1318,17 +1343,20 @@ function QuickActionBtn({
   label,
   onClick,
   className,
+  disabled,
 }: {
   icon: ReactNode;
   label: string;
   onClick: () => void;
   className?: string;
+  disabled?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
+      disabled={disabled}
       className={cn(
-        'flex items-center gap-1.5 px-2 py-2 text-[11px] bg-muted hover:bg-accent rounded-lg text-foreground/70 transition-colors',
+        'flex items-center gap-1.5 px-2 py-2 text-[11px] bg-muted hover:bg-accent rounded-lg text-foreground/70 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-muted',
         className,
       )}
     >

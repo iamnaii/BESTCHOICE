@@ -1,4 +1,4 @@
-import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
+import { Injectable, Logger, Inject, Optional, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ChatRoomStatus, ChatPriority } from '@prisma/client';
 import { IChatGateway, CHAT_GATEWAY_TOKEN } from '../interfaces/chat-gateway.interface';
@@ -64,6 +64,12 @@ export class HandoffManagerService {
     roomId: string,
     resolveToAI = false,
   ): Promise<void> {
+    const room = await this.prisma.chatRoom.findUnique({
+      where: { id: roomId },
+      select: { id: true },
+    });
+    if (!room) throw new NotFoundException('ไม่พบห้องแชท');
+
     await this.prisma.chatRoom.update({
       where: { id: roomId },
       data: {

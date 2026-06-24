@@ -25,6 +25,19 @@ export class AssignmentService {
     @Optional() @Inject(CHAT_GATEWAY_TOKEN) private gateway?: IChatGateway,
   ) {}
 
+  /**
+   * Throw a clean 404 for an unknown / inactive / deleted staff id, instead of
+   * letting `chatRoom.update({ assignedToId })` raise a Prisma P2003 foreign-key
+   * error that the global filter surfaces as a 500 + Sentry alert.
+   */
+  private async assertStaffExists(staffId: string): Promise<void> {
+    const user = await this.prisma.user.findFirst({
+      where: { id: staffId, deletedAt: null, isActive: true },
+      select: { id: true },
+    });
+    if (!user) throw new NotFoundException('ไม่พบพนักงานที่ระบุ หรือถูกปิดใช้งาน');
+  }
+
   /** Assign a room to a staff member */
   async assign(roomId: string, staffId: string): Promise<void> {
     const room = await this.prisma.chatRoom.findUnique({
@@ -32,6 +45,7 @@ export class AssignmentService {
       select: { id: true, assignedToId: true },
     });
     if (!room) throw new NotFoundException('ไม่พบ room');
+    await this.assertStaffExists(staffId);
 
     await this.prisma.chatRoom.update({
       where: { id: roomId },
@@ -80,6 +94,7 @@ export class AssignmentService {
       select: { id: true, assignedToId: true, customerId: true },
     });
     if (!room) throw new NotFoundException('ไม่พบ room');
+    await this.assertStaffExists(toStaffId);
 
     // T4-C11: block handoff if customer has a signed / active contract
     if (room.customerId) {
@@ -158,6 +173,12 @@ export class AssignmentService {
 
   /** Resolve/close a room — marks as IDLE */
   async resolve(roomId: string, staffId: string): Promise<void> {
+    const room = await this.prisma.chatRoom.findUnique({
+      where: { id: roomId },
+      select: { id: true },
+    });
+    if (!room) throw new NotFoundException('ไม่พบ room');
+
     await this.prisma.chatRoom.update({
       where: { id: roomId },
       data: {

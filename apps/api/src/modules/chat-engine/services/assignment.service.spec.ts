@@ -15,6 +15,10 @@ describe('AssignmentService', () => {
         update: jest.fn(),
         groupBy: jest.fn(),
       },
+      user: {
+        // assertStaffExists — default to a valid active staff member
+        findFirst: jest.fn().mockResolvedValue({ id: 'staff-default' }),
+      },
       contract: {
         findFirst: jest.fn().mockResolvedValue(null),
       },
@@ -58,6 +62,14 @@ describe('AssignmentService', () => {
       prisma.chatRoom.findUnique.mockResolvedValue(null);
 
       await expect(service.assign('not-exist', 'staff-1')).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw NotFoundException for an unknown/inactive staffId (no FK 500)', async () => {
+      prisma.chatRoom.findUnique.mockResolvedValue({ id: 'room-1' });
+      prisma.user.findFirst.mockResolvedValue(null); // staff doesn't exist / inactive
+
+      await expect(service.assign('room-1', 'ghost-staff')).rejects.toThrow(NotFoundException);
+      expect(prisma.chatRoom.update).not.toHaveBeenCalled();
     });
   });
 
@@ -141,6 +153,7 @@ describe('AssignmentService', () => {
 
   describe('resolve', () => {
     it('should resolve room and set resolvedAt', async () => {
+      prisma.chatRoom.findUnique.mockResolvedValue({ id: 'room-1' });
       prisma.chatRoom.update.mockResolvedValue({});
       prisma.staffChatActivity.create.mockResolvedValue({});
 
@@ -154,6 +167,13 @@ describe('AssignmentService', () => {
           resolvedAt: expect.any(Date),
         }),
       });
+    });
+
+    it('should throw NotFoundException for an unknown room (no Prisma P2025 500)', async () => {
+      prisma.chatRoom.findUnique.mockResolvedValue(null);
+
+      await expect(service.resolve('ghost-room', 'staff-1')).rejects.toThrow(NotFoundException);
+      expect(prisma.chatRoom.update).not.toHaveBeenCalled();
     });
   });
 

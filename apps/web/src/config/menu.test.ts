@@ -37,7 +37,7 @@ describe('getSidebarForRole — populated ZONE_CONFIG', () => {
     expect(sections.every((s) => s.zone === 'fin')).toBe(true);
   });
 
-  it('OWNER + settings returns settings sections', () => {
+  it('OWNER + settings returns registry-driven settings sections', () => {
     const sections = getSidebarForRole('OWNER', 'settings');
     expect(sections.length).toBeGreaterThan(0);
     expect(sections.every((s) => s.zone === 'settings')).toBe(true);
@@ -100,50 +100,33 @@ describe('getSidebarForRole — populated ZONE_CONFIG', () => {
     expect(keys).toContain('owner-fin-notifications');
   });
 
-  it('OWNER settings sections have expected keys', () => {
+  it('OWNER settings zone is now registry-driven (P5): one section keyed "settings"', () => {
     const keys = getSidebarForRole('OWNER', 'settings').map((s) => s.key);
-    // owner-doc-config moved to FIN zone per CSV §8
-    expect(keys).toContain('owner-settings');
-    expect(keys).toContain('owner-settings-extra');
-    // owner-ai removed (P3 collapse — reachable via settings panel)
-    expect(keys).not.toContain('owner-ai');
+    // P5: old static keys removed; replaced by single registry section
+    expect(keys).toEqual(['settings']);
+    expect(keys).not.toContain('owner-settings');
+    expect(keys).not.toContain('owner-settings-extra');
+    expect(keys).not.toContain('owner-fin-master');
   });
 
-  it('OWNER settings zone contains panel entry + operational quick-links (P3 collapse)', () => {
+  it('OWNER settings zone paths are all /settings/<catId> (P5 registry-driven)', () => {
     const sections = getSidebarForRole('OWNER', 'settings');
     const allPaths = sections.flatMap((s) => s.items.map((i) => i.path));
-    // Must contain the panel entry and operational paths
-    expect(allPaths).toContain('/settings');
-    expect(allPaths).toContain('/users');
-    expect(allPaths).toContain('/branches');
-    // Must NOT contain config deep-links (now reachable only via the panel)
-    expect(allPaths).not.toContain('/settings/ai/admin');
-    expect(allPaths).not.toContain('/settings/finance/gfin');
-    expect(allPaths).not.toContain('/settings/access/account-roles');
-    expect(allPaths).not.toContain('/settings/products/pricing');
-    expect(allPaths).not.toContain('/settings/company/entities');
-  });
-
-  it('OWNER settings owner-settings items match collapsed list exactly (P3)', () => {
-    const sections = getSidebarForRole('OWNER', 'settings');
-    const settingsSection = sections.find((s) => s.key === 'owner-settings');
-    expect(settingsSection).toBeDefined();
-    const paths = settingsSection!.items.map((i) => i.path);
-    expect(paths).toEqual([
-      '/settings',
-      '/users',
-      '/branches',
-      '/contract-templates',
-      '/promotions',
-      '/pdpa',
-    ]);
-  });
-
-  it('PDPA label is disambiguated in owner-settings (P3)', () => {
-    const sections = getSidebarForRole('OWNER', 'settings');
-    const settingsSection = sections.find((s) => s.key === 'owner-settings');
-    const pdpaItem = settingsSection?.items.find((i) => i.path === '/pdpa');
-    expect(pdpaItem?.label).toBe('PDPA (คำยินยอม/DSAR)');
+    // All paths are /settings/<categoryId> — registry-driven
+    expect(allPaths.every((p) => p.startsWith('/settings/'))).toBe(true);
+    // operational quick-links removed (now inside the panel)
+    expect(allPaths).not.toContain('/users');
+    expect(allPaths).not.toContain('/branches');
+    expect(allPaths).not.toContain('/settings');  // bare root not listed
+    // all 8 registry categories visible to OWNER
+    expect(allPaths).toContain('/settings/company');
+    expect(allPaths).toContain('/settings/access');
+    expect(allPaths).toContain('/settings/accounting');
+    expect(allPaths).toContain('/settings/finance');
+    expect(allPaths).toContain('/settings/products');
+    expect(allPaths).toContain('/settings/comms');
+    expect(allPaths).toContain('/settings/ai');
+    expect(allPaths).toContain('/settings/system');
   });
 
   it('FINANCE_MANAGER fin sections include payments (regression for fm-payments zone fix)', () => {
@@ -205,40 +188,65 @@ describe('VIEWER role (Owner Q4 2026-05-17)', () => {
   });
 });
 
-describe('Master data moved into settings zone (Option B, 2026-06-13)', () => {
-  it('ข้อมูลหลัก section lives in the settings zone for OWNER/FM/ACC', () => {
-    expect(getSidebarForRole('OWNER', 'settings').map((s) => s.key)).toContain('owner-fin-master');
-    expect(getSidebarForRole('FINANCE_MANAGER', 'settings').map((s) => s.key)).toContain(
-      'fm-fin-master',
-    );
-    expect(getSidebarForRole('ACCOUNTANT', 'settings').map((s) => s.key)).toContain('acc-fin-master');
+describe('Master data moved into settings zone (Option B, 2026-06-13) — now registry-driven (P5)', () => {
+  it('settings zone for OWNER/FM/ACC is registry-driven (single section keyed "settings")', () => {
+    // P5: old static "ข้อมูลหลัก" sections replaced by registry-driven section
+    expect(getSidebarForRole('OWNER', 'settings').map((s) => s.key)).toEqual(['settings']);
+    expect(getSidebarForRole('FINANCE_MANAGER', 'settings').map((s) => s.key)).toEqual(['settings']);
+    expect(getSidebarForRole('ACCOUNTANT', 'settings').map((s) => s.key)).toEqual(['settings']);
   });
 
-  it('ข้อมูลหลัก is no longer in the fin zone', () => {
+  it('ข้อมูลหลัก static sections no longer exist in any zone', () => {
+    // Removed in P5 — contacts now reachable via /settings/company
     expect(getSidebarForRole('OWNER', 'fin').map((s) => s.key)).not.toContain('owner-fin-master');
-    expect(getSidebarForRole('FINANCE_MANAGER', 'fin').map((s) => s.key)).not.toContain(
-      'fm-fin-master',
-    );
+    expect(getSidebarForRole('FINANCE_MANAGER', 'fin').map((s) => s.key)).not.toContain('fm-fin-master');
     expect(getSidebarForRole('ACCOUNTANT', 'fin').map((s) => s.key)).not.toContain('acc-fin-master');
+    expect(getSidebarForRole('OWNER', 'settings').map((s) => s.key)).not.toContain('owner-fin-master');
+    expect(getSidebarForRole('FINANCE_MANAGER', 'settings').map((s) => s.key)).not.toContain('fm-fin-master');
+    expect(getSidebarForRole('ACCOUNTANT', 'settings').map((s) => s.key)).not.toContain('acc-fin-master');
   });
 
-  it('FM/ACC now have settings-zone access (gear)', () => {
+  it('FM/ACC still have settings-zone access (gear)', () => {
     expect(getZoneConfigForRole('FINANCE_MANAGER')?.showSettingsGear).toBe(true);
     expect(getZoneConfigForRole('ACCOUNTANT')?.showSettingsGear).toBe(true);
   });
 
-  it('FM sees only ผู้ติดต่อ; ACC sees ผู้ติดต่อ เท่านั้น (พนักงาน tab ถูกรวมใน /users แล้ว)', () => {
+  it('FM/ACC settings zone includes /settings/company (contacts reachable via registry)', () => {
     const fmPaths = getSidebarForRole('FINANCE_MANAGER', 'settings').flatMap((s) =>
       s.items.map((i) => i.path),
     );
-    expect(fmPaths).toContain('/settings#contacts');
-    expect(fmPaths).not.toContain('/settings#employees');
+    // contacts is now under /settings/company (registry-driven)
+    expect(fmPaths).toContain('/settings/company');
+    expect(fmPaths).not.toContain('/settings#contacts');  // old hash-link gone
 
     const accPaths = getSidebarForRole('ACCOUNTANT', 'settings').flatMap((s) =>
       s.items.map((i) => i.path),
     );
-    expect(accPaths).toContain('/settings#contacts');
-    expect(accPaths).not.toContain('/settings#employees');
+    expect(accPaths).toContain('/settings/company');
+    expect(accPaths).not.toContain('/settings#contacts');  // old hash-link gone
+  });
+});
+
+describe('P5 Task 1 — registry-driven settings-zone sidebar', () => {
+  it('OWNER settings zone = registry categories (8), as links to /settings/<cat>', () => {
+    const secs = getSidebarForRole('OWNER', 'settings');
+    const paths = secs.flatMap((s) => s.items.map((i) => i.path));
+    expect(paths).toContain('/settings/company');
+    expect(paths).toContain('/settings/system');
+    expect(paths.every((p) => p.startsWith('/settings/'))).toBe(true);
+    expect(paths).not.toContain('/users');      // operational no longer a sidebar quick-link
+    expect(paths).not.toContain('/settings');   // bare panel root not listed; categories are
+  });
+
+  it('FINANCE_MANAGER settings zone = its visible categories (subset, no AI)', () => {
+    const paths = getSidebarForRole('FINANCE_MANAGER', 'settings').flatMap((s) => s.items.map((i) => i.path));
+    expect(paths).toContain('/settings/company');     // contacts
+    expect(paths).not.toContain('/settings/ai');      // OWNER-only
+  });
+
+  it('resolveZoneForPath maps any /settings/* to settings zone (OWNER)', () => {
+    expect(resolveZoneForPath('OWNER', '/settings/accounting')).toBe('settings');
+    expect(resolveZoneForPath('OWNER', '/settings/accounting/chart')).toBe('settings');
   });
 });
 

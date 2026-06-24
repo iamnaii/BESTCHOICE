@@ -1,4 +1,6 @@
 import type { LucideIcon } from 'lucide-react';
+import { visibleCategories } from './settings-access';
+import type { SettingsRole } from './settings-registry';
 import {
   ShoppingCart,
   Users,
@@ -295,15 +297,6 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
       ],
     },
     {
-      key: 'fm-fin-master',
-      label: 'ข้อมูลหลัก',
-      icon: BookUser,
-      zone: 'settings',
-      items: [
-        { label: 'สมุดผู้ติดต่อ', path: '/settings#contacts', icon: BookUser },
-      ],
-    },
-    {
       key: 'fm-fin-daily',
       label: 'งานประจำวัน (การเงิน)',
       icon: HandCoins,
@@ -390,15 +383,6 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
 
 const ACCOUNTANT_CONFIG: RoleMenuConfig = {
   sidebar: [
-    {
-      key: 'acc-fin-master',
-      label: 'ข้อมูลหลัก',
-      icon: BookUser,
-      zone: 'settings',
-      items: [
-        { label: 'สมุดผู้ติดต่อ', path: '/settings#contacts', icon: BookUser },
-      ],
-    },
     {
       key: 'acc-daily',
       label: 'งานประจำวัน',
@@ -558,15 +542,6 @@ const OWNER_CONFIG: RoleMenuConfig = {
      * OWNER sees them from both zones; FM/ACC already have them in FIN.
      * Asset menu items embedded as sub-group inside "รายจ่าย" → ซื้อทรัพย์สิน
      * (mirrors `assetMenuSection.items` — kept in sync manually). */
-    {
-      key: 'owner-fin-master',
-      label: 'ข้อมูลหลัก',
-      icon: BookUser,
-      zone: 'settings',
-      items: [
-        { label: 'สมุดผู้ติดต่อ', path: '/settings#contacts', icon: BookUser },
-      ],
-    },
     {
       key: 'owner-fin-revenue',
       label: 'รายรับ',
@@ -731,20 +706,6 @@ const OWNER_CONFIG: RoleMenuConfig = {
       ],
     },
     {
-      key: 'owner-settings',
-      label: 'ตั้งค่า',
-      icon: Settings,
-      zone: 'settings',
-      items: [
-        { label: 'ตั้งค่าระบบ', path: '/settings', icon: Settings },
-        { label: 'ผู้ใช้ / พนักงาน', path: '/users', icon: UserCog },
-        { label: 'สาขา', path: '/branches', icon: Building2 },
-        { label: 'แบบสัญญา', path: '/contract-templates', icon: FileCheck },
-        { label: 'โปรโมชัน', path: '/promotions', icon: BadgePercent },
-        { label: 'PDPA (คำยินยอม/DSAR)', path: '/pdpa', icon: Shield },
-      ],
-    },
-    {
       // CSV §9 — split from old "เครื่องมือไฟแนนซ์" — Dunning moved to its
       // own section (#10) since it's customer-facing notifications, not
       // an integration target.
@@ -767,15 +728,6 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'Dunning (เตือนค่างวด)', path: '/settings/comms/dunning', icon: Bell },
         // P4-SP2 — auto e-receipt config (e_receipt_auto SystemConfig key)
         { label: 'ใบเสร็จอิเล็กทรอนิกส์อัตโนมัติ', path: '/finance/e-receipt-auto', icon: FileText },
-      ],
-    },
-    {
-      key: 'owner-settings-extra',
-      label: 'บันทึกระบบ',
-      icon: ScrollText,
-      zone: 'settings',
-      items: [
-        { label: 'Audit Log', path: '/audit-logs', icon: ScrollText },
       ],
     },
   ],
@@ -969,6 +921,21 @@ const ZONE_CONFIG: Record<string, RoleZoneConfig> = {
   },
 };
 
+/** Build the settings-zone sidebar from the registry (role-filtered categories). */
+function buildSettingsZoneSections(role: string): MenuSection[] {
+  const cats = visibleCategories(role as SettingsRole);
+  if (cats.length === 0) return [];
+  return [
+    {
+      key: 'settings',
+      label: 'ตั้งค่าระบบ',
+      icon: Settings,
+      zone: 'settings' as const,
+      items: cats.map((c) => ({ label: c.label, path: `/settings/${c.id}`, icon: c.icon })),
+    },
+  ];
+}
+
 /**
  * Filter sections for the role's current zone.
  * Returns empty array if role/zone combo invalid (caller handles fallback).
@@ -977,9 +944,7 @@ export function getSidebarForRole(role: string, currentZone: Zone): MenuSection[
   const config = ZONE_CONFIG[role];
   if (!config) return [];
   if (currentZone === 'settings') {
-    return config.showSettingsGear
-      ? config.sections.filter((s) => s.zone === 'settings')
-      : [];
+    return config.showSettingsGear ? buildSettingsZoneSections(role) : [];
   }
   if (!config.zones.includes(currentZone)) return [];
   return config.sections.filter((s) => s.zone === currentZone);
@@ -995,6 +960,10 @@ const ZONE_LOOKUP_ORDER: Zone[] = ['shop', 'fin', 'settings'];
  * the role's accessible zones (caller decides pass-through vs redirect).
  */
 export function resolveZoneForPath(role: string, path: string): Zone | null {
+  if (path === '/settings' || path.startsWith('/settings/') || path.startsWith('/settings#')) {
+    const cfg = ZONE_CONFIG[role];
+    if (cfg?.showSettingsGear) return 'settings';
+  }
   const matches = (menuPath: string) => menuPath === path || menuPath.split('#')[0] === path;
   for (const z of ZONE_LOOKUP_ORDER) {
     const sections = getSidebarForRole(role, z);

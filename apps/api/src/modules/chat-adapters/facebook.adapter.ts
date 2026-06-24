@@ -241,14 +241,23 @@ export class FacebookAdapter implements IChannelAdapter {
     pageAccessToken: string,
   ): Promise<UserProfile | null> {
     try {
+      // The Messenger User Profile API returns first_name/last_name (+ profile_pic),
+      // NOT a `name` field — request those and join, mirroring the working OBI setup.
+      // Must be called with the webhook sender.id PSID (which this is), not a
+      // Conversations-API participant id (that id 404s on the user-profile node).
       const url =
         `https://graph.facebook.com/v25.0/${encodeURIComponent(externalUserId)}` +
-        `?fields=name,profile_pic&access_token=${encodeURIComponent(pageAccessToken)}`;
+        `?fields=first_name,last_name,profile_pic&access_token=${encodeURIComponent(pageAccessToken)}`;
       const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
       if (!res.ok) return null;
-      const json = (await res.json()) as { name?: string; profile_pic?: string };
-      if (!json.name) return null;
-      return { displayName: json.name, avatarUrl: json.profile_pic };
+      const json = (await res.json()) as {
+        first_name?: string;
+        last_name?: string;
+        profile_pic?: string;
+      };
+      const displayName = `${json.first_name ?? ''} ${json.last_name ?? ''}`.trim();
+      if (!displayName) return null;
+      return { displayName, avatarUrl: json.profile_pic };
     } catch (err) {
       const isTimeout = err instanceof Error && err.name === 'TimeoutError';
       if (isTimeout) {

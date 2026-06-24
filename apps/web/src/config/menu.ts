@@ -878,7 +878,7 @@ const ZONE_CONFIG: Record<string, RoleZoneConfig> = {
       ],
       fin: FINANCE_MANAGER_CONFIG.bottomNav,
       settings: [
-        { label: 'ผู้ติดต่อ', path: '/settings#contacts', icon: BookUser },
+        { label: 'ผู้ติดต่อ', path: '/settings/company', icon: BookUser },
         { label: 'เพิ่มเติม', path: '#more', icon: MoreHorizontal, action: 'sidebar' },
       ],
     },
@@ -903,7 +903,7 @@ const ZONE_CONFIG: Record<string, RoleZoneConfig> = {
       shop: [],
       fin: ACCOUNTANT_CONFIG.bottomNav,
       settings: [
-        { label: 'ผู้ติดต่อ', path: '/settings#contacts', icon: BookUser },
+        { label: 'ผู้ติดต่อ', path: '/settings/company', icon: BookUser },
         { label: 'เพิ่มเติม', path: '#more', icon: MoreHorizontal, action: 'sidebar' },
       ],
     },

@@ -250,6 +250,28 @@ describe('P5 Task 1 — registry-driven settings-zone sidebar', () => {
   });
 });
 
+describe('FM/ACC bottomNav contacts shortcut — stale hash fix (2026-06-24)', () => {
+  it('FM/ACC bottomNav settings zone does not contain stale /settings#contacts', () => {
+    for (const role of ['FINANCE_MANAGER', 'ACCOUNTANT']) {
+      const bn = getZoneConfigForRole(role)?.bottomNav.settings ?? [];
+      const paths = bn.map((i) => i.path);
+      expect(paths).not.toContain('/settings#contacts');
+    }
+  });
+
+  it('FM bottomNav contacts shortcut now points to /settings/company', () => {
+    const bn = getZoneConfigForRole('FINANCE_MANAGER')?.bottomNav.settings ?? [];
+    const paths = bn.map((i) => i.path);
+    expect(paths).toContain('/settings/company');
+  });
+
+  it('ACC bottomNav contacts shortcut now points to /settings/company', () => {
+    const bn = getZoneConfigForRole('ACCOUNTANT')?.bottomNav.settings ?? [];
+    const paths = bn.map((i) => i.path);
+    expect(paths).toContain('/settings/company');
+  });
+});
+
 describe('resolveZoneForPath — hash-aware (regression: FM/ACC must not bounce off /settings)', () => {
   it('/settings resolves to the settings zone for OWNER/FM/ACC', () => {
     expect(resolveZoneForPath('OWNER', '/settings')).toBe('settings');

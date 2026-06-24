@@ -8,12 +8,13 @@ describe('settings-access', () => {
     expect(visibleCategories('OWNER').map((c) => c.id)).toHaveLength(8);
   });
 
-  it('FINANCE_MANAGER เห็น subset ที่มี item เห็นได้ (เช่น company, accounting, finance, comms) ไม่เห็น access/ai', () => {
+  it('FINANCE_MANAGER เห็น subset ที่มี item เห็นได้ (accounting, finance, comms) ไม่เห็น company/access/ai', () => {
     const ids = visibleCategories('FINANCE_MANAGER').map((c) => c.id);
-    expect(ids).toContain('company');     // contacts
-    expect(ids).toContain('accounting');  // chart, peak-mapping
-    expect(ids).toContain('finance');     // payment-methods
-    expect(ids).not.toContain('access');  // OWNER-only items
+    expect(ids).not.toContain('company');  // contacts ย้ายออกแล้ว → company เป็น OWNER-only
+    expect(ids).toContain('accounting');   // chart, peak-mapping
+    expect(ids).toContain('finance');      // payment-methods
+    expect(ids).toContain('comms');        // sms
+    expect(ids).not.toContain('access');   // OWNER-only items
     expect(ids).not.toContain('ai');
   });
 
@@ -26,7 +27,7 @@ describe('settings-access', () => {
 
   it('firstVisibleCategoryId คืนหมวดแรกที่ role เห็น', () => {
     expect(firstVisibleCategoryId('OWNER')).toBe('company');
-    expect(firstVisibleCategoryId('FINANCE_MANAGER')).toBe('company');
+    expect(firstVisibleCategoryId('FINANCE_MANAGER')).toBe('accounting'); // company ไม่มี item ที่ FM เห็นแล้ว
   });
 
   it('searchSettings match label + keywords และกรอง role', () => {

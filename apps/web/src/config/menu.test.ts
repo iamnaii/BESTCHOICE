@@ -217,20 +217,20 @@ describe('Master data moved into settings zone (Option B, 2026-06-13) — now re
     expect(getZoneConfigForRole('ACCOUNTANT')?.showSettingsGear).toBe(true);
   });
 
-  it('FM/ACC settings zone includes /contacts (master-data) + /settings/company (registry)', () => {
+  it('FM/ACC settings zone includes /contacts (master-data) — company registry no longer visible', () => {
     const fmPaths = getSidebarForRole('FINANCE_MANAGER', 'settings').flatMap((s) =>
       s.items.map((i) => i.path),
     );
-    // P6: /contacts in master-data section; /settings/company still in registry section
+    // P6: /contacts in master-data section; /settings/company NOT in registry (contacts removed → company is OWNER-only)
     expect(fmPaths).toContain('/contacts');
-    expect(fmPaths).toContain('/settings/company');
+    expect(fmPaths).not.toContain('/settings/company');
     expect(fmPaths).not.toContain('/settings#contacts');  // old hash-link gone
 
     const accPaths = getSidebarForRole('ACCOUNTANT', 'settings').flatMap((s) =>
       s.items.map((i) => i.path),
     );
     expect(accPaths).toContain('/contacts');
-    expect(accPaths).toContain('/settings/company');
+    expect(accPaths).not.toContain('/settings/company');
     expect(accPaths).not.toContain('/settings#contacts');  // old hash-link gone
   });
 });
@@ -251,10 +251,10 @@ describe('P5 Task 1 — registry-driven settings-zone sidebar (updated for P6)',
     expect(masterSec.items.map((i) => i.path)).toContain('/contacts');
   });
 
-  it('FINANCE_MANAGER settings zone = master-data(/contacts) + visible categories (subset, no AI)', () => {
+  it('FINANCE_MANAGER settings zone = master-data(/contacts) + visible categories (subset, no AI, no company)', () => {
     const paths = getSidebarForRole('FINANCE_MANAGER', 'settings').flatMap((s) => s.items.map((i) => i.path));
     expect(paths).toContain('/contacts');             // master-data group
-    expect(paths).toContain('/settings/company');     // contacts (registry)
+    expect(paths).not.toContain('/settings/company'); // contacts removed → company is OWNER-only
     expect(paths).not.toContain('/settings/ai');      // OWNER-only
   });
 

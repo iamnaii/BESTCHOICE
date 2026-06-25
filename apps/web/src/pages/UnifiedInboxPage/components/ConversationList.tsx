@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import api from '@/lib/api';
 import ConversationItem from './ConversationItem';
 import ChannelFilter, { type InboxTab } from './ChannelFilter';
+import { deriveTabCounts } from './tab-counts';
 
 type AiFilter = 'all' | 'ai' | 'human' | 'pending';
 
@@ -123,6 +124,8 @@ export default function ConversationList({
     return list;
   }, [sessions, filters, currentUserId, aiFilter]);
 
+  const tabCounts = useMemo(() => deriveTabCounts(sessions, currentUserId), [sessions, currentUserId]);
+
   return (
     <div className="flex flex-col h-full border-r border-border/60">
       {/* Search + Filters */}
@@ -161,6 +164,7 @@ export default function ConversationList({
         selectedChannels={filters.channels ?? []}
         onTabChange={(tab) => onFiltersChange({ ...filters, tab })}
         onChannelToggle={handleChannelToggle}
+        counts={tabCounts}
       />
 
       {/* AI status filter chips — owner asked "หาแต่แชทที่รอตอบ" → 'pending' */}

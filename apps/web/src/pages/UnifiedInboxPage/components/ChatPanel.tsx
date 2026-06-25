@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, useMemo } from 'react';
+import { useRef, useEffect, useLayoutEffect, useState, useMemo } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Send, MoreVertical, ArrowLeft, Paperclip, Smile, Pin, PinOff, MessageSquare, UserCircle2, MessageSquareQuote } from 'lucide-react';
 import { format, isSameDay } from 'date-fns';
@@ -78,6 +78,8 @@ const stickerAnimUrl = (stickerId: number) =>
   `https://stickershop.line-scdn.net/stickershop/v1/sticker/${stickerId}/iPhone/sticker_animation.png`;
 const stickerStaticUrl = (stickerId: number) =>
   `https://stickershop.line-scdn.net/stickershop/v1/sticker/${stickerId}/iPhone/sticker@2x.png`;
+
+const MAX_COMPOSER_HEIGHT = 128; // px — matches Tailwind max-h-32 (8rem)
 
 interface ChatPanelProps {
   session: any;
@@ -236,6 +238,16 @@ export default function ChatPanel({
     }
     anchor.scrollIntoView({ behavior: 'smooth' });
   }, [messages.length, roomId]);
+
+  // Auto-grow the textarea to fit its content (capped). Runs on every inputText
+  // change — typing, send-clear, draft load (Task 2), emoji/template insert —
+  // so all sizing flows through one place. useLayoutEffect avoids a height flash.
+  useLayoutEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, MAX_COMPOSER_HEIGHT)}px`;
+  }, [inputText]);
 
   const getLastCustomerMessage = () => {
     const customerMsgs = messages.filter((m: any) => m.role === 'CUSTOMER');
@@ -725,7 +737,7 @@ export default function ChatPanel({
               onKeyDown={handleKeyDown}
               placeholder="พิมพ์ข้อความ..."
               rows={1}
-              className="flex-1 resize-none px-3 py-2 text-sm bg-muted/40 rounded-lg border-0 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:bg-background max-h-32 transition-all placeholder:text-muted-foreground/40"
+              className="flex-1 resize-none overflow-y-auto px-3 py-2 text-sm bg-muted/40 rounded-lg border-0 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:bg-background max-h-32 transition-all placeholder:text-muted-foreground/40"
             />
             <button
               onClick={() => void handleSend()}

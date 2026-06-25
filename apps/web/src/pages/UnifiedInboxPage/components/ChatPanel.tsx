@@ -7,6 +7,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import MessageBubble from './MessageBubble';
+import { swapRoomDraft } from './composer-draft';
 import SessionActions from './SessionActions';
 import MessageTemplatePicker from './MessageTemplatePicker';
 import AiSuggestPanel from './AiSuggestPanel';
@@ -139,6 +140,10 @@ export default function ChatPanel({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const draftsRef = useRef<Map<string, string>>(new Map());
+  const prevRoomRef = useRef<string | undefined>(undefined);
+  const inputTextRef = useRef(inputText);
+  inputTextRef.current = inputText; // keep the live value for the [roomId]-only effect
 
   const queryClient = useQueryClient();
   const pinMutation = useMutation({
@@ -249,6 +254,24 @@ export default function ChatPanel({
     el.style.height = `${Math.min(el.scrollHeight, MAX_COMPOSER_HEIGHT)}px`;
   }, [inputText]);
 
+  // On room change: persist the room you left, restore the room you entered,
+  // drop the AI-suggestion association (it's room-scoped — see below), and focus
+  // the box on desktop. Keyed on roomId ONLY so streaming messages never reload
+  // the draft or steal focus mid-typing.
+  useEffect(() => {
+    const incoming = swapRoomDraft(draftsRef.current, prevRoomRef.current, roomId, inputTextRef.current);
+    prevRoomRef.current = roomId;
+    setInputText(incoming);
+    // selectedSuggestion is metadata for THIS room's AI draft; carrying it into
+    // another room would mislabel that room's send as an edit of this draft.
+    setSelectedSuggestion(null);
+    // Desktop only — on mobile, focus() pops the keyboard over the history.
+    if (roomId && typeof window !== 'undefined' && window.matchMedia?.('(min-width: 1024px)').matches) {
+      inputRef.current?.focus({ preventScroll: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- room-change only; inputText read via inputTextRef
+  }, [roomId]);
+
   const getLastCustomerMessage = () => {
     const customerMsgs = messages.filter((m: any) => m.role === 'CUSTOMER');
     return customerMsgs[customerMsgs.length - 1]?.text ?? customerMsgs[customerMsgs.length - 1]?.content ?? '';
@@ -283,6 +306,7 @@ export default function ChatPanel({
       setSelectedSuggestion(null);
     }
     setInputText('');
+    if (roomId) draftsRef.current.delete(roomId); // sent successfully → drop this room's saved draft
     inputRef.current?.focus();
   };
 

@@ -190,7 +190,7 @@ export default function UnifiedInboxPage() {
       queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
       queryClient.invalidateQueries({ queryKey: ['chat-room', roomId] });
     },
-    onError: () => toast.error('เลิกทำไม่สำเร็จ'),
+    onError: () => toast.error('สลับสถานะ AI ไม่สำเร็จ'),
   });
 
   const resolveMutation = useMutation({
@@ -219,9 +219,9 @@ export default function UnifiedInboxPage() {
 
   const releaseToAiMutation = useMutation({
     mutationFn: (roomId: string) => api.post(`/chat-ai/release-to-ai/${roomId}`),
-    onSuccess: () => {
+    onSuccess: (_data, roomId) => {
       queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
-      queryClient.invalidateQueries({ queryKey: ['chat-room', activeRoomId] });
+      queryClient.invalidateQueries({ queryKey: ['chat-room', roomId] });
     },
     onError: () => toast.error('สลับสถานะ AI ไม่สำเร็จ'),
   });

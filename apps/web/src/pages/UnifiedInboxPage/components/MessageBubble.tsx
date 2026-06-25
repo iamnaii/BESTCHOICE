@@ -268,13 +268,16 @@ export default function MessageBubble({ message, customerAvatar, customerInitial
                 : 'bg-primary text-primary-foreground rounded-br-md',
           )}
         >
-          {/* Media */}
+          {/* Media — capped to a thumbnail so tall screenshots don't dominate
+              the chat; click opens the full image in a new tab. */}
           {message.mediaUrl && (
             <img
               src={message.mediaUrl}
               alt="media"
-              className="max-w-full rounded-lg mb-1"
+              className="max-w-60 max-h-75 rounded-lg mb-1 cursor-zoom-in"
               loading="lazy"
+              onClick={() => window.open(message.mediaUrl!, '_blank', 'noopener,noreferrer')}
+              title="คลิกเพื่อดูรูปเต็ม"
             />
           )}
 

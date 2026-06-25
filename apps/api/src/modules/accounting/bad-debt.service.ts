@@ -648,8 +648,12 @@ export class BadDebtService {
       };
     }
 
-    const newBucket = this.getAgingBucket(maxOverdueDays);
     const rates = await this.getProvisionRates();
+    const streakMap = await this.getStreakBucketMap();
+    const streaks = await this.consecutiveMissed.getStreaks({ contractIds: [contractId] }, now, db);
+    const agingBucket = this.getAgingBucket(maxOverdueDays);
+    const streakBucket = this.streakToBucket(streaks.get(contractId) ?? 0, streakMap);
+    const newBucket = this.effectiveBucket(agingBucket, streakBucket, rates);
     // Decimal compare to avoid float-precision drift when rates come from
     // SystemConfig JSON (e.g. 0.15 stored as 0.149999... after JSON roundtrip).
     const oldRate = new Decimal(existing.provisionRate.toString());

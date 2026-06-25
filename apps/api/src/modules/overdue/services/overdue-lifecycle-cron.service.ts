@@ -1,7 +1,7 @@
 import { Logger, ServiceUnavailableException } from '@nestjs/common';
 import { Prisma, DunningStage } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { BUSINESS_RULES } from '../../../utils/config.util';
+import { loadLateFeeConfig } from '../../../utils/late-fee.util';
 import { ConsecutiveMissedService } from '../consecutive-missed.service';
 
 /**
@@ -41,31 +41,44 @@ export class OverdueLifecycleCronService {
 
   /**
    * Calculate late fees for all overdue payments (cron job)
-   * Uses a single SQL UPDATE for efficiency instead of N+1 queries
+   * Uses a single SQL UPDATE for efficiency instead of N+1 queries.
+   *
+   * Mode-aware (Section #3):
+   *   PER_DAY → LEAST(days × perDayRate, maxAmount, ROUND(capPct/100 × amount_due, 2))
+   *   BRACKET → CASE WHEN days >= tier2MinDays THEN tier2Amount WHEN days >= 1 THEN tier1Amount ELSE 0 END
+   *
+   * The BRACKET branch is byte-identical to the previous flat-bracket implementation
+   * (rollback parity). The PER_DAY branch mirrors computePerDayLateFee — Postgres
+   * ROUND(numeric, 2) is half-away-from-zero, matching ROUND_HALF_UP for all
+   * non-negative values. Verified by the anti-drift integration test.
    */
   async calculateLateFees() {
     const now = new Date();
 
-    // Get late fee bracket config (D2 flat-bracket model)
-    const [tier1Cfg, tier2Cfg, minDaysCfg] = await Promise.all([
-      this.prisma.systemConfig.findUnique({ where: { key: 'late_fee_tier1_amount' } }),
-      this.prisma.systemConfig.findUnique({ where: { key: 'late_fee_tier2_amount' } }),
-      this.prisma.systemConfig.findUnique({ where: { key: 'late_fee_tier2_min_days' } }),
-    ]);
-    const tier1 = tier1Cfg ? Number(tier1Cfg.value) : BUSINESS_RULES.LATE_FEE_TIER1_AMOUNT;
-    const tier2 = tier2Cfg ? Number(tier2Cfg.value) : BUSINESS_RULES.LATE_FEE_TIER2_AMOUNT;
-    const minDays = minDaysCfg ? Number(minDaysCfg.value) : BUSINESS_RULES.LATE_FEE_TIER2_MIN_DAYS;
+    // Load all late-fee config keys (mode + bracket + per-day) in one pass
+    const cfg = await loadLateFeeConfig(this.prisma);
 
-    // Flat-bracket late fee (D2): unconditional SET = retroactive (downgrades
-    // stale higher fees to the new bracket). Skip waived. No per-day, no 5% cap.
-    const result = await this.prisma.$executeRaw`
+    // days expression shared by both branches
+    const daysExpr = Prisma.sql`FLOOR(EXTRACT(EPOCH FROM (${now}::timestamp - "due_date")) / 86400)::int`;
+
+    const feeExpr =
+      cfg.mode === 'PER_DAY'
+        ? // PER_DAY: min(days × rate, maxAmount, ROUND(cap% × amountDue, 2))
+          Prisma.sql`CASE WHEN ${daysExpr} >= 1 THEN LEAST(
+              ${daysExpr} * ${cfg.perDayRate}::numeric,
+              ${cfg.maxAmount}::numeric,
+              ROUND(${cfg.capPct}::numeric / 100 * "amount_due", 2)
+            ) ELSE 0 END`
+        : // BRACKET: flat tiers — byte-identical to the previous implementation
+          Prisma.sql`CASE
+              WHEN ${daysExpr} >= ${cfg.tier2MinDays} THEN ${cfg.tier2Amount}
+              WHEN ${daysExpr} >= 1 THEN ${cfg.tier1Amount}
+              ELSE 0 END`;
+
+    const result = await this.prisma.$executeRaw(Prisma.sql`
       UPDATE "payments"
       SET
-        "late_fee" = CASE
-          WHEN FLOOR(EXTRACT(EPOCH FROM (${now}::timestamp - "due_date")) / 86400)::int >= ${minDays} THEN ${tier2}
-          WHEN FLOOR(EXTRACT(EPOCH FROM (${now}::timestamp - "due_date")) / 86400)::int >= 1 THEN ${tier1}
-          ELSE 0
-        END,
+        "late_fee" = ${feeExpr},
         "status" = 'OVERDUE'
       WHERE "status" IN ('PENDING', 'PARTIALLY_PAID', 'OVERDUE')
         AND "due_date" < ${now}
@@ -75,7 +88,7 @@ export class OverdueLifecycleCronService {
           WHERE "status" IN ('ACTIVE', 'OVERDUE', 'DEFAULT')
             AND "deleted_at" IS NULL
         )
-    `;
+    `);
 
     this.logger.log(`Late fees calculated: ${result} payments updated`);
     return { updated: result, timestamp: now };

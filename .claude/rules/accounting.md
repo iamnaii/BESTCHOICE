@@ -182,6 +182,9 @@ CLI source: `apps/api/src/cli/wipe-accounting.cli.ts`
 - **SHOP** not VAT-registered — no VAT on SHOP transactions
 - **FINANCE** VAT-registered at 7%
 - **Late fees** (ค่าปรับล่าช้า) — NOT subject to VAT (owner policy, legally correct: penalties excluded from VAT base)
+
+  **Per-day late-fee model (D2, 2026-06-25):** late fee = `min(daysOverdue × ratePerDay, maxAmount, capPct% × installmentGross)`, driven by SystemConfig keys `late_fee_per_day_rate` (฿/day), `late_fee_max_amount` (฿ ceiling), `late_fee_cap_pct` (% of installment gross). Switched by `late_fee_mode`: `PER_DAY` (default in code) or `BRACKET` (flat-tier, legacy). Production seeds `BRACKET` as a CPA gate — flip to `PER_DAY` after CPA sign-off on the 5% cap. Worked example: 5% × 1,515.83฿ = 75.79฿ cap. Single source of truth: `resolveLateFee` in `late-fee.util.ts`; the overdue cron reproduces the formula in SQL using `LEAST(...)`, guarded by an anti-drift test.
+
 - No WHT on customer transactions (deferred to A.5 for vendor/payroll flows)
 
 ### VAT input account routing (P0-1 — Fix Report v1.0)

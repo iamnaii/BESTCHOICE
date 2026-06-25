@@ -221,6 +221,13 @@ export class BadDebtService {
     // with no replacement, dropping coverage on the balance sheet.
     const contractIdsInScope = [...contractOutstanding.keys()];
 
+    // Fetch streak data once before the loop (streak floor = max severity wins).
+    const streakMap = await this.getStreakBucketMap();
+    const streaks = await this.consecutiveMissed.getStreaks(
+      { contractIds: contractIdsInScope },
+      now,
+    );
+
     // Pre-compute provision rows (Decimal — no Number cast in persisted values)
     type ProvisionRow = {
       contractId: string;
@@ -238,7 +245,9 @@ export class BadDebtService {
       const daysOverdue = Math.floor(
         (now.getTime() - data.oldestDueDate.getTime()) / (1000 * 60 * 60 * 24),
       );
-      const bucket = this.getAgingBucket(daysOverdue);
+      const agingBucket = this.getAgingBucket(daysOverdue);
+      const streakBucket = this.streakToBucket(streaks.get(contractId) ?? 0, streakMap);
+      const bucket = this.effectiveBucket(agingBucket, streakBucket, rates);
       const rate = rates[bucket] || 0;
       const rateDec = new Decimal(rate);
       const outstandingDec = data.amount.toDecimalPlaces(2, Decimal.ROUND_HALF_UP);

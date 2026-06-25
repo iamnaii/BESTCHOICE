@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, IsInt, IsBoolean, Min, Max, Matches, IsIn } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsInt, IsBoolean, IsPositive, Min, Max, Matches, IsIn } from 'class-validator';
 import { CASH_ACCOUNT_CODES } from '../../../constants/cash-account.constants';
 
 export class CreateContractDto {
@@ -163,4 +163,23 @@ export class RequestCancellationDto {
 export class RejectCancellationDto {
   @IsString()
   reason: string;
+}
+
+/**
+ * Task 3: Shop→FINANCE settlement — clears the Dr 11-2107 receivable.
+ * Posted when the shop remits the collected cash to FINANCE.
+ */
+export class ShopCollectSettlementDto {
+  /**
+   * บัญชีรับเงิน (cash/bank) ที่ FINANCE รับโอนจากหน้าร้าน.
+   * ต้องเป็นหนึ่งใน CASH_ACCOUNT_CODES (11-1101..11-1203).
+   */
+  @IsString()
+  @IsIn([...CASH_ACCOUNT_CODES], { message: 'บัญชีรับเงินไม่ถูกต้อง — ต้องเป็นบัญชีเงินสดหรือธนาคารที่กำหนด' })
+  depositAccountCode: string;
+
+  /** ยอดชำระ (฿) — ต้องมากกว่า 0 และไม่เกินยอด 11-2107 คงค้างของสัญญา */
+  @IsNumber({}, { message: 'ยอดชำระต้องเป็นตัวเลข' })
+  @IsPositive({ message: 'ยอดชำระต้องมากกว่า 0' })
+  amount: number;
 }

@@ -199,6 +199,7 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
       { transferOwnership } as any,
       { createAndPost } as any,
       {} as any, // EarlyPayoffJP4Template never invoked by earlyPayoff()
+      {} as any, // ShopCollectSettlementTemplate never invoked
     );
     return service;
   };

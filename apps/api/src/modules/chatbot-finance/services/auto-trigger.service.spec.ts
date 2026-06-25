@@ -39,6 +39,8 @@ describe('AutoTriggerService', () => {
         create: jest.fn().mockResolvedValue({ id: 'trig-1' }),
         update: jest.fn().mockResolvedValue({}),
       },
+      // No late-fee config rows → bracket defaults (tier1=50, tier2=100, minDays=3)
+      systemConfig: { findFirst: jest.fn().mockResolvedValue(null) },
     };
     lineClient = {
       pushText: jest.fn().mockResolvedValue(undefined),
@@ -126,6 +128,54 @@ describe('AutoTriggerService', () => {
     await service.runDailyEscalations();
 
     expect(lineClient.pushText).toHaveBeenCalled();
+  });
+
+  it('T+3 escalation quotes flat-bracket fine 100 (NOT per-day 3×50=150)', async () => {
+    // runDailyEscalations runs processOffset(-1) then processOffset(-3). Return the
+    // overdue payment ONLY for the T+3 window (dueDate strictly more than 1 day ago)
+    // by matching the window start against a 3-day-old midnight boundary.
+    const dueDate = new Date();
+    dueDate.setHours(0, 0, 0, 0);
+    dueDate.setDate(dueDate.getDate() - 3);
+    prisma.payment.findMany.mockImplementation(({ where }: { where: { dueDate: { gte: Date } } }) =>
+      Promise.resolve(
+        where.dueDate.gte.getTime() === dueDate.getTime() ? [makePayment(3, dueDate)] : [],
+      ),
+    );
+
+    await service.runDailyEscalations();
+
+    // 3 days overdue >= tier2MinDays(3) → tier2 = 100 (flat bracket), not 150.
+    expect(lineClient.pushText).toHaveBeenCalledWith(
+      'U123',
+      expect.stringContaining('ค่าปรับ 100.00'),
+    );
+    // Total = amount 3500 + 100 = 3600.00 — must NOT show the old 3650.00 (3500+150).
+    const sentText = (lineClient.pushText as jest.Mock).mock.calls[0][1] as string;
+    expect(sentText).toContain('3,600.00');
+    expect(sentText).not.toContain('3,650.00');
+    expect(sentText).not.toContain('150.00');
+  });
+
+  it('T+3 escalation honors configured tier2 amount from SystemConfig', async () => {
+    const dueDate = new Date();
+    dueDate.setHours(0, 0, 0, 0);
+    dueDate.setDate(dueDate.getDate() - 3);
+    prisma.payment.findMany.mockImplementation(({ where }: { where: { dueDate: { gte: Date } } }) =>
+      Promise.resolve(
+        where.dueDate.gte.getTime() === dueDate.getTime() ? [makePayment(3, dueDate)] : [],
+      ),
+    );
+    prisma.systemConfig.findFirst.mockImplementation(({ where }: { where: { key: string } }) =>
+      Promise.resolve(where.key === 'late_fee_tier2_amount' ? { value: '120' } : null),
+    );
+
+    await service.runDailyEscalations();
+
+    expect(lineClient.pushText).toHaveBeenCalledWith(
+      'U123',
+      expect.stringContaining('ค่าปรับ 120.00'),
+    );
   });
 
   it('does nothing when no payments match', async () => {

@@ -22,6 +22,7 @@ import { AssignmentService } from './assignment.service';
 import { MessageRouterService } from './message-router.service';
 import { ChatAiDraftService } from '../../chat-ai-draft/chat-ai-draft.service';
 import { StorageService } from '../../storage/storage.service';
+import { signMessageMedia } from './media-url.util';
 
 /**
  * RoomManagerService — generalized from SessionManagerService.
@@ -297,7 +298,15 @@ export class RoomManagerService {
       take: limit,
       include: { staff: { select: { id: true, name: true, avatarUrl: true } } },
     });
-    return msgs.reverse();
+    const ordered = msgs.reverse();
+    // Sign storage-key mediaUrls so the inbox can render staff-uploaded media
+    // directly (uploadFile persists a raw key). Inbound LINE images already
+    // carry an http(s) URL; line:// refs are fetched via the media endpoint.
+    // NOTE: getSignedDownloadUrl makes a storage-API call per media message;
+    // signMessageMedia runs them in parallel (Promise.all), so latency is the
+    // slowest single presign, not the sum. Bounded by `limit` (default 20).
+    if (!this.storageService.configured) return ordered;
+    return signMessageMedia(ordered, (key) => this.storageService.getSignedDownloadUrl(key, 3600));
   }
 
   /** Find room by ID with customer and assignment info */

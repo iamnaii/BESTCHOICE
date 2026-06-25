@@ -17,7 +17,7 @@ function ChatImage({ src }: { src: string }) {
         href={src}
         target="_blank"
         rel="noopener noreferrer"
-        className="mb-1 flex items-center gap-2 rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground"
+        className="mb-1 flex items-center gap-2 rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground leading-snug"
       >
         <ImageOff className="size-4 shrink-0" /> โหลดรูปไม่ได้ — เปิดในแท็บใหม่
       </a>
@@ -25,7 +25,7 @@ function ChatImage({ src }: { src: string }) {
   }
 
   return (
-    <div className="relative mb-1">
+    <div className={cn('relative mb-1', !loaded && 'min-h-30')}>
       {!loaded && (
         <div className="absolute inset-0 animate-pulse rounded-lg bg-muted" aria-hidden />
       )}
@@ -309,8 +309,8 @@ export default function MessageBubble({ message, customerAvatar, customerInitial
         >
           {/* Media — render by type: FILE/non-image → file tile; image → ChatImage skeleton */}
           {message.mediaUrl &&
-            (message.type === 'FILE' ||
-            (message.mediaType && !message.mediaType.startsWith('image/')) ? (
+            ((message.type === 'FILE' ||
+            (message.mediaType && !message.mediaType.startsWith('image/'))) ? (
               <a
                 href={message.mediaUrl}
                 target="_blank"

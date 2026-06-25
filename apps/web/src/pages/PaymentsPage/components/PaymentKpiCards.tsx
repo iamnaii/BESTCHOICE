@@ -73,7 +73,7 @@ export default function PaymentKpiCards({ summary, loading, collectedLabel }: Pa
 
   return (
     <div
-      className={`grid grid-cols-2 lg:grid-cols-3 gap-4 mb-5 ${loading && !summary ? 'animate-pulse' : ''}`}
+      className={`grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-5 ${loading && !summary ? 'animate-pulse' : ''}`}
     >
       {cards.map((c) => (
         <Card

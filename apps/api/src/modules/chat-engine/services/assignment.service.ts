@@ -201,11 +201,28 @@ export class AssignmentService {
   }
 
   /** Inverse of resolve — reactivate a resolved room (for undo). */
-  async reopen(roomId: string): Promise<void> {
+  async reopen(roomId: string, staffId: string): Promise<void> {
+    const room = await this.prisma.chatRoom.findUnique({
+      where: { id: roomId },
+      select: { id: true },
+    });
+    if (!room) throw new NotFoundException('ไม่พบ room');
+
     await this.prisma.chatRoom.update({
       where: { id: roomId },
       data: { status: ChatRoomStatus.ACTIVE, resolvedAt: null },
     });
+
+    await this.prisma.staffChatActivity.create({
+      data: {
+        staffId,
+        action: 'reopen',
+        metadata: { roomId },
+      },
+    });
+
+    this.logger.log(`Room ${roomId} reopened by staff ${staffId}`);
+    this.gateway?.emitRoomUpdate(roomId, { event: 'reopened', roomId, reopenedBy: staffId });
   }
 
   /**

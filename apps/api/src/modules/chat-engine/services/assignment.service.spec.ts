@@ -178,12 +178,27 @@ describe('AssignmentService', () => {
   });
 
   describe('reopen', () => {
-    it('reactivates a resolved room (status ACTIVE, clears resolvedAt)', async () => {
-      await service.reopen('room1');
+    it('reactivates a resolved room (status ACTIVE, clears resolvedAt) and logs activity', async () => {
+      prisma.chatRoom.findUnique.mockResolvedValue({ id: 'room1' });
+      prisma.chatRoom.update.mockResolvedValue({});
+      prisma.staffChatActivity.create.mockResolvedValue({});
+
+      await service.reopen('room1', 'staff1');
+
       expect(prisma.chatRoom.update).toHaveBeenCalledWith({
         where: { id: 'room1' },
         data: { status: ChatRoomStatus.ACTIVE, resolvedAt: null },
       });
+      expect(prisma.staffChatActivity.create).toHaveBeenCalledWith({
+        data: { staffId: 'staff1', action: 'reopen', metadata: { roomId: 'room1' } },
+      });
+    });
+
+    it('should throw NotFoundException for an unknown room (no Prisma P2025 500)', async () => {
+      prisma.chatRoom.findUnique.mockResolvedValue(null);
+
+      await expect(service.reopen('ghost', 's1')).rejects.toThrow(NotFoundException);
+      expect(prisma.chatRoom.update).not.toHaveBeenCalled();
     });
   });
 

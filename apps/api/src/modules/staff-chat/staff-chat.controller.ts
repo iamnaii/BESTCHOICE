@@ -233,8 +233,8 @@ export class StaffChatController {
 
   @Patch('rooms/:id/reopen')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
-  async reopenRoom(@Param('id') id: string) {
-    await this.assignment.reopen(id);
+  async reopenRoom(@Param('id') id: string, @Req() req: any) {
+    await this.assignment.reopen(id, req.user.id);
     return { success: true };
   }
 

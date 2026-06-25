@@ -13,6 +13,7 @@ import { JournalAutoService } from '../journal/journal-auto.service';
 import { BadDebtProvisionTemplate } from '../journal/cpa-templates/bad-debt-provision.template';
 import { BadDebtWriteOffTemplate } from '../journal/cpa-templates/bad-debt-writeoff.template';
 import { EclStageReverseTemplate } from '../journal/cpa-templates/ecl-stage-reverse.template';
+import { ConsecutiveMissedService } from '../overdue/consecutive-missed.service';
 
 // CPA ECL v3.0 — NPAEs Ch.13 Aging-based (6 buckets B0-B5)
 // Refs: docs/superpowers/specs/2026-05-09-cpa-policy-a-100-compliance-design.md
@@ -28,6 +29,15 @@ const DEFAULT_PROVISION_RATES: Record<string, number> = {
   '180+': 1.00,    // B5 TERMINATED (NPL)
 };
 
+// streak count -> minimum aging bucket it floors the provision to (CPA spec §1).
+// Threshold = the largest key <= streak. Streak 0-1 → no floor (aging only).
+const DEFAULT_STREAK_BUCKET_MAP: Record<string, string> = {
+  '2': '31-60',  // B2
+  '3': '61-90',  // B3
+  '4': '91-180', // B4
+  '5': '180+',   // B5
+};
+
 @Injectable()
 export class BadDebtService {
   private readonly logger = new Logger(BadDebtService.name);
@@ -38,6 +48,7 @@ export class BadDebtService {
     private badDebtProvisionTemplate: BadDebtProvisionTemplate,
     private badDebtWriteOffTemplate: BadDebtWriteOffTemplate,
     private eclStageReverseTemplate: EclStageReverseTemplate,
+    private consecutiveMissed: ConsecutiveMissedService,
   ) {}
 
   /** Load provision rates from system config or use defaults */
@@ -75,6 +86,49 @@ export class BadDebtService {
     if (daysOverdue <= 90) return '61-90';    // B3 (TERMINATED)
     if (daysOverdue <= 180) return '91-180';  // B4 (TERMINATED)
     return '180+';                             // B5 (NPL)
+  }
+
+  /** Load streak→bucket map from SystemConfig or use defaults. */
+  private async getStreakBucketMap(): Promise<Record<string, string>> {
+    const config = await this.prisma.systemConfig.findUnique({
+      where: { key: 'consecutive_missed_bucket_map' },
+    });
+    if (config) {
+      try {
+        return JSON.parse(config.value);
+      } catch (err) {
+        Sentry.captureException(err, {
+          level: 'error',
+          tags: { subsystem: 'bad-debt', key: 'consecutive_missed_bucket_map' },
+        });
+        this.logger.error('Corrupt consecutive_missed_bucket_map — using defaults');
+      }
+    }
+    return DEFAULT_STREAK_BUCKET_MAP;
+  }
+
+  /** Floor bucket for a streak: the entry whose threshold is the largest <= streak. */
+  private streakToBucket(streak: number, map = DEFAULT_STREAK_BUCKET_MAP): string | null {
+    let best: string | null = null;
+    let bestThreshold = -1;
+    for (const [k, bucket] of Object.entries(map)) {
+      const threshold = Number(k);
+      if (streak >= threshold && threshold > bestThreshold) {
+        bestThreshold = threshold;
+        best = bucket;
+      }
+    }
+    return best;
+  }
+
+  /** Of (aging, streak-floor) buckets, return the one with the higher provision rate. */
+  private effectiveBucket(
+    agingBucket: string,
+    streakBucket: string | null,
+    rates: Record<string, number>,
+  ): string {
+    if (!streakBucket) return agingBucket;
+    return (rates[streakBucket] || 0) > (rates[agingBucket] || 0) ? streakBucket : agingBucket;
   }
 
   /**
@@ -167,6 +221,13 @@ export class BadDebtService {
     // with no replacement, dropping coverage on the balance sheet.
     const contractIdsInScope = [...contractOutstanding.keys()];
 
+    // Fetch streak data once before the loop (streak floor = max severity wins).
+    const streakMap = await this.getStreakBucketMap();
+    const streaks = await this.consecutiveMissed.getStreaks(
+      { contractIds: contractIdsInScope },
+      now,
+    );
+
     // Pre-compute provision rows (Decimal — no Number cast in persisted values)
     type ProvisionRow = {
       contractId: string;
@@ -184,7 +245,9 @@ export class BadDebtService {
       const daysOverdue = Math.floor(
         (now.getTime() - data.oldestDueDate.getTime()) / (1000 * 60 * 60 * 24),
       );
-      const bucket = this.getAgingBucket(daysOverdue);
+      const agingBucket = this.getAgingBucket(daysOverdue);
+      const streakBucket = this.streakToBucket(streaks.get(contractId) ?? 0, streakMap);
+      const bucket = this.effectiveBucket(agingBucket, streakBucket, rates);
       const rate = rates[bucket] || 0;
       const rateDec = new Decimal(rate);
       const outstandingDec = data.amount.toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
@@ -585,8 +648,12 @@ export class BadDebtService {
       };
     }
 
-    const newBucket = this.getAgingBucket(maxOverdueDays);
     const rates = await this.getProvisionRates();
+    const streakMap = await this.getStreakBucketMap();
+    const streaks = await this.consecutiveMissed.getStreaks({ contractIds: [contractId] }, now, db);
+    const agingBucket = this.getAgingBucket(maxOverdueDays);
+    const streakBucket = this.streakToBucket(streaks.get(contractId) ?? 0, streakMap);
+    const newBucket = this.effectiveBucket(agingBucket, streakBucket, rates);
     // Decimal compare to avoid float-precision drift when rates come from
     // SystemConfig JSON (e.g. 0.15 stored as 0.149999... after JSON roundtrip).
     const oldRate = new Decimal(existing.provisionRate.toString());

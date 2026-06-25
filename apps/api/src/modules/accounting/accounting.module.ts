@@ -16,9 +16,10 @@ import { IntercompanyReportService } from './intercompany-report.service';
 import { JournalModule } from '../journal/journal.module';
 import { TaxModule } from '../tax/tax.module';
 import { PeakModule } from '../peak/peak.module';
+import { ConsecutiveMissedModule } from '../overdue/consecutive-missed.module';
 
 @Module({
-  imports: [JournalModule, TaxModule, PeakModule],
+  imports: [JournalModule, TaxModule, PeakModule, ConsecutiveMissedModule],
   controllers: [AccountingController, AccountingClosingController, ConsolidatedController],
   providers: [
     AccountingService,

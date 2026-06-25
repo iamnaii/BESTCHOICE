@@ -16,6 +16,7 @@ import { OwnerAlertHelper } from './owner-alert.helper';
 import { OverdueAnalyticsService } from './services/overdue-analytics.service';
 import { OverdueQueriesService } from './services/overdue-queries.service';
 import { OverdueLifecycleCronService } from './services/overdue-lifecycle-cron.service';
+import { ConsecutiveMissedService } from './consecutive-missed.service';
 import { DunningGovernanceService } from './services/dunning-governance.service';
 import { ContactLogService } from './services/contact-log.service';
 
@@ -57,11 +58,15 @@ export class OverdueService {
     private letterService: ContractLetterService,
     private mdmLockService: MdmLockService,
     private ownerAlertHelper: OwnerAlertHelper,
+    private consecutiveMissed: ConsecutiveMissedService,
   ) {
     // Build Analytics first — ContactLog + Governance depend on it.
     this.analytics = new OverdueAnalyticsService(this.prisma);
     this.queries = new OverdueQueriesService(this.prisma, this.promiseService);
-    this.lifecycleCron = new OverdueLifecycleCronService(this.prisma);
+    this.lifecycleCron = new OverdueLifecycleCronService(
+      this.prisma,
+      this.consecutiveMissed,
+    );
     this.governance = new DunningGovernanceService(
       this.prisma,
       this.letterService,

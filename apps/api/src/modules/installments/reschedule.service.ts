@@ -30,8 +30,8 @@ export class RescheduleService {
    *   1. UPDATE installment_schedules.due_date for installmentNo >= fromInstallmentNo
    *      (shifted by daysToShift), so cron 2A posts the accrual on the NEW dueDate.
    *   2. Reduce last installment amountDue by reschedule fee (CSV case-6a/6b step 1).
-   *   3. Reset contract.consecutiveMissed to 0 (overdue cleared).
-   *   4. Write AuditLog action=RESCHEDULE if userId provided.
+   *   3. Write AuditLog action=RESCHEDULE if userId provided.
+   *      (consecutiveMissed is now derived — no persisted field to reset)
    *
    * The JP6 JE post (recordFeeAdvance / recordBundledPayment) is intentionally
    * outside this transaction — per CSV golden case-6a/6b: "Step 1 — UPDATE DB
@@ -114,16 +114,6 @@ export class RescheduleService {
         where: { id: last.id },
         data: { amountDue: firstInstTotal.minus(fee) } as any,
       });
-
-      // Reset consecutiveMissed if field exists (safe to skip if not present)
-      try {
-        await (tx.contract as any).update({
-          where: { id: input.contractId },
-          data: { consecutiveMissed: 0 },
-        });
-      } catch {
-        // field does not exist on schema — safe to skip
-      }
 
       // AuditLog (only when caller provides a real userId — keeps the
       // existing test signature backward-compatible until callers are wired)

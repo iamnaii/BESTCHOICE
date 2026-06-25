@@ -58,13 +58,14 @@ export class OverdueService {
     private letterService: ContractLetterService,
     private mdmLockService: MdmLockService,
     private ownerAlertHelper: OwnerAlertHelper,
+    private consecutiveMissed: ConsecutiveMissedService,
   ) {
     // Build Analytics first — ContactLog + Governance depend on it.
     this.analytics = new OverdueAnalyticsService(this.prisma);
     this.queries = new OverdueQueriesService(this.prisma, this.promiseService);
     this.lifecycleCron = new OverdueLifecycleCronService(
       this.prisma,
-      new ConsecutiveMissedService(this.prisma),
+      this.consecutiveMissed,
     );
     this.governance = new DunningGovernanceService(
       this.prisma,

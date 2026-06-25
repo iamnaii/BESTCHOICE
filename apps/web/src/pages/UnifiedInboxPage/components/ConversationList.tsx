@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Search, MessageCircle } from 'lucide-react';
+import { Search, MessageCircle, X } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useDebounce } from '@/hooks/useDebounce';
 import { cn } from '@/lib/utils';
@@ -137,8 +137,21 @@ export default function ConversationList({
             onChange={(e) => setSearchInput(e.target.value)}
             onFocus={() => setSearchFocused(true)}
             onBlur={() => setSearchFocused(false)}
-            className="w-full pl-8 pr-3 py-1.5 text-xs rounded-md bg-muted/40 border-0 focus:outline-none focus:ring-1 focus:ring-primary/20 focus:bg-background transition-all placeholder:text-muted-foreground/40"
+            className="w-full pl-8 pr-7 py-1.5 text-xs rounded-md bg-muted/40 border-0 focus:outline-none focus:ring-1 focus:ring-primary/20 focus:bg-background transition-all placeholder:text-muted-foreground/40"
           />
+          {searchInput.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchInput('');
+                onFiltersChange({ ...filters, search: undefined }); // clear immediately, don't wait for debounce
+              }}
+              aria-label="ล้างการค้นหา"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground/50 hover:text-foreground"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -186,12 +199,48 @@ export default function ConversationList({
             ))}
           </div>
         ) : filteredAndSorted.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 px-6">
+          <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
             <div className="w-12 h-12 rounded-xl bg-muted/50 flex items-center justify-center mb-3">
               <MessageCircle className="w-5 h-5 text-muted-foreground/40" />
             </div>
-            <p className="text-xs font-medium text-muted-foreground">ไม่พบการสนทนา</p>
-            <p className="text-[10px] text-muted-foreground/60 mt-0.5">ลองเปลี่ยนตัวกรองหรือค้นหาใหม่</p>
+            {sessions.length === 0 ? (
+              <>
+                <p className="text-xs font-medium text-muted-foreground leading-snug">ยังไม่มีการสนทนา</p>
+                <p className="text-[10px] text-muted-foreground/60 mt-0.5 leading-snug">
+                  เมื่อมีลูกค้าทักเข้ามา แชทจะแสดงที่นี่
+                </p>
+              </>
+            ) : filters.search ? (
+              <>
+                <p className="text-xs font-medium text-muted-foreground leading-snug">
+                  ไม่พบผลการค้นหา &ldquo;{filters.search}&rdquo;
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchInput('');
+                    onFiltersChange({ ...filters, search: undefined });
+                  }}
+                  className="text-[10px] text-primary hover:underline mt-1"
+                >
+                  ล้างการค้นหา
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="text-xs font-medium text-muted-foreground leading-snug">ไม่มีแชทในตัวกรองนี้</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onFiltersChange({ ...filters, channels: [], tab: 'all' });
+                    setAiFilter('all');
+                  }}
+                  className="text-[10px] text-primary hover:underline mt-1"
+                >
+                  ดูทั้งหมด
+                </button>
+              </>
+            )}
           </div>
         ) : (
           filteredAndSorted.map((session) => (

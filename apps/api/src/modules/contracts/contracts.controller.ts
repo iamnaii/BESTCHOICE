@@ -110,12 +110,14 @@ export class ContractsController {
     @Param('id') id: string,
     @Query('discountPct') discountPct?: string,
     @Query('depositAccountCode') depositAccountCode?: string,
+    @Query('collectedByShop') collectedByShop?: string,
   ) {
     const pct = discountPct != null ? Number(discountPct) : undefined;
+    const effectiveDepositCode = collectedByShop === 'true' ? '11-2107' : depositAccountCode;
     return this.paymentService.getEarlyPayoffQuote(
       id,
       Number.isFinite(pct as number) ? pct : undefined,
-      depositAccountCode,
+      effectiveDepositCode,
     );
   }
 

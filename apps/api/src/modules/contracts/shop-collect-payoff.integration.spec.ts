@@ -197,6 +197,36 @@ describe('shop-collect-payoff integration', () => {
     expect(meta.shopReceivable, 'metadata.shopReceivable should be 11-2107').toBe('11-2107');
   });
 
+  it('QUOTE: getEarlyPayoffQuote with depositAccountCode=11-2107 returns journalPreview with Dr 11-2107 line', async () => {
+    const c3 = await seedStandard17k12m(prisma);
+    const journal = new JournalAutoService(prisma as any);
+    await new ContractActivation1ATemplate(journal, prisma as any).execute(c3.id);
+    await seedPendingPayments(c3.id, c3.installmentCount);
+
+    const svc = buildService();
+    const quote = await svc.getEarlyPayoffQuote(c3.id, 50, '11-2107');
+
+    // journalPreview.lines should contain a Dr 11-2107 line (debit > 0)
+    const dr11_2107 = quote.journalPreview.lines.find(
+      (l: { accountCode: string; debit: string }) =>
+        l.accountCode === '11-2107' && new Decimal(l.debit).gt(0),
+    );
+    expect(dr11_2107, 'getEarlyPayoffQuote preview should include Dr 11-2107 when depositCode=11-2107').toBeDefined();
+
+    // JE preview should be balanced
+    expect(
+      quote.journalPreview.isBalanced,
+      'Quote journalPreview should be balanced',
+    ).toBe(true);
+
+    // No cash-account Dr line in preview
+    const cashDrLine = quote.journalPreview.lines.find(
+      (l: { accountCode: string; debit: string }) =>
+        CASH_ACCOUNT_CODES.includes(l.accountCode) && new Decimal(l.debit).gt(0),
+    );
+    expect(cashDrLine, 'No cash Dr line should appear when 11-2107 is the deposit code').toBeUndefined();
+  });
+
   it('FINANCE-DIRECT: WITHOUT collectedByShop, Dr lands on cash account (unchanged behaviour)', async () => {
     const c2 = await seedStandard17k12m(prisma);
     const journal = new JournalAutoService(prisma as any);

@@ -1,8 +1,8 @@
 import { useRef, useEffect, useLayoutEffect, useState, useMemo } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Send, MoreVertical, ArrowLeft, Paperclip, Smile, Pin, PinOff, MessageSquare, UserCircle2, MessageSquareQuote, Loader2, Upload } from 'lucide-react';
-import { format, isSameDay } from 'date-fns';
-import { th } from 'date-fns/locale/th';
+import { isSameDay } from 'date-fns';
+import { formatDateSeparator } from '@/lib/chat-time';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -11,7 +11,7 @@ import { swapRoomDraft } from './composer-draft';
 import SessionActions from './SessionActions';
 import MessageTemplatePicker from './MessageTemplatePicker';
 import AiSuggestPanel from './AiSuggestPanel';
-import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
+import { useKeyboardShortcuts, isEditableTarget } from '../hooks/useKeyboardShortcuts';
 import api from '@/lib/api';
 import { getGeneratedAvatarUrl } from '@/lib/avatar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -328,6 +328,20 @@ export default function ChatPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- room-change only; inputText read via inputTextRef
   }, [roomId]);
 
+  // "g" → jump the open thread to the latest message (vim-style). Guarded so it
+  // never fires while typing in the composer.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (isEditableTarget(e.target)) return;
+      if (e.key !== 'g' || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (!roomId) return;
+      e.preventDefault();
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [roomId]);
+
   const getLastCustomerMessage = () => {
     const customerMsgs = messages.filter((m: any) => m.role === 'CUSTOMER');
     return customerMsgs[customerMsgs.length - 1]?.text ?? customerMsgs[customerMsgs.length - 1]?.content ?? '';
@@ -557,7 +571,7 @@ export default function ChatPanel({
                     <div className="flex items-center gap-3 py-3 px-4">
                       <div className="flex-1 h-px bg-border" />
                       <span className="text-[11px] text-muted-foreground font-medium">
-                        {format(new Date(msg.createdAt), 'd MMMM yyyy', { locale: th })}
+                        {formatDateSeparator(msg.createdAt)}
                       </span>
                       <div className="flex-1 h-px bg-border" />
                     </div>

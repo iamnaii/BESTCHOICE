@@ -294,4 +294,84 @@ describe('shop-collect-settlement integration', () => {
       }),
     ).rejects.toThrow(BadRequestException);
   });
+
+  it('PARTIAL REMITTANCE: two partial settlements each post a balanced Dr cash / Cr 11-2107 JE and net 11-2107 ends at 0', async () => {
+    // 1. Activate + shop-collect payoff → creates a Dr 11-2107 balance (= outstanding S)
+    const cPartial = await seedStandard17k12m(prisma);
+    const journalPartial = new JournalAutoService(prisma as any);
+    await new ContractActivation1ATemplate(journalPartial, prisma as any).execute(cPartial.id);
+    await seedPendingPayments(cPartial.id, cPartial.installmentCount);
+
+    await svc.earlyPayoff(cPartial.id, userId, {
+      paymentMethod: 'CASH',
+      discountPct: 50,
+      collectedByShop: true,
+    } as any);
+
+    const outstanding = await getNet11_2107(cPartial.id);
+    expect(outstanding.gt(0), `Expected 11-2107 balance > 0 after shop-collect payoff, got ${outstanding.toFixed(2)}`).toBe(true);
+
+    // Split into two DIFFERENT partial amounts A and (S − A).
+    // Use 1/3 rounded down so amountA ≠ amountB (avoids the idempotency guard
+    // which keys on contractId + amount — same amount on same contract is treated
+    // as a double-submit and is correctly skipped).
+    const amountA = outstanding.div(3).toDecimalPlaces(2, Decimal.ROUND_DOWN);
+    const amountB = outstanding.minus(amountA);
+
+    // 2. First partial settlement (amount = A < S)
+    const result1 = await svc.shopCollectSettlement(cPartial.id, userId, {
+      depositAccountCode: '11-1201',
+      amount: amountA.toNumber(),
+    });
+    expect(result1, 'First partial settlement should return an entryNo').toBeDefined();
+
+    // Mid-point: outstanding should now be S − A
+    const midBalance = await getNet11_2107(cPartial.id);
+    expect(
+      midBalance.minus(amountB).abs().lte('0.01'),
+      `Expected mid-point 11-2107 balance ≈ ${amountB.toFixed(2)}, got ${midBalance.toFixed(2)}`,
+    ).toBe(true);
+
+    // 3. Second partial settlement (amount = S − A)
+    const result2 = await svc.shopCollectSettlement(cPartial.id, userId, {
+      depositAccountCode: '11-1201',
+      amount: amountB.toNumber(),
+    });
+    expect(result2, 'Second partial settlement should return an entryNo').toBeDefined();
+
+    // 4. Net 11-2107 must be 0 after both partials
+    const finalBalance = await getNet11_2107(cPartial.id);
+    expect(
+      finalBalance.abs().lte('0.01'),
+      `Expected net 11-2107 ≈ 0 after both partial settlements, got ${finalBalance.toFixed(2)}`,
+    ).toBe(true);
+
+    // 5. Both JEs should exist, each balanced
+    const settlementJes = await prisma.journalEntry.findMany({
+      where: {
+        AND: [
+          { metadata: { path: ['flow'], equals: 'shop-collect-settlement' } } as any,
+          { metadata: { path: ['contractId'], equals: cPartial.id } } as any,
+        ],
+        deletedAt: null,
+      },
+      include: { lines: true },
+    });
+    expect(settlementJes.length).toBe(2);
+
+    for (const je of settlementJes) {
+      const drSum = je.lines.reduce((s, l) => s.plus(new Decimal(l.debit.toString())), new Decimal(0));
+      const crSum = je.lines.reduce((s, l) => s.plus(new Decimal(l.credit.toString())), new Decimal(0));
+      expect(
+        drSum.minus(crSum).abs().lte('0.01'),
+        `Settlement JE ${je.entryNumber} must be balanced: Dr=${drSum.toFixed(2)} Cr=${crSum.toFixed(2)}`,
+      ).toBe(true);
+
+      const drLine = je.lines.find((l) => l.accountCode === '11-1201' && new Decimal(l.debit.toString()).gt(0));
+      expect(drLine, `Expected Dr 11-1201 line in settlement JE ${je.entryNumber}`).toBeDefined();
+
+      const crLine = je.lines.find((l) => l.accountCode === '11-2107' && new Decimal(l.credit.toString()).gt(0));
+      expect(crLine, `Expected Cr 11-2107 line in settlement JE ${je.entryNumber}`).toBeDefined();
+    }
+  });
 });

@@ -116,7 +116,7 @@ export class ShopCollectSettlementTemplate {
     const result = await this.journal.createAndPost(
       {
         description: `รับโอนจากหน้าร้าน — สัญญา ${contractId.slice(0, 8)} (ล้าง 11-2107)`,
-        reference: `${contractId}:shop-collect-settlement`,
+        reference: `${contractId}:shop-collect-settlement:${amount.toFixed(2)}`,
         metadata: {
           tag: 'SCS',
           flow: 'shop-collect-settlement',

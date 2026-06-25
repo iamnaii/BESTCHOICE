@@ -197,9 +197,12 @@ export const INVENTORY_COSTING_METHOD = 'SPECIFIC_IDENTIFICATION' as const;
 
 /** Business rule constants for overdue and early payoff */
 export const BUSINESS_RULES = {
-  LATE_FEE_PER_DAY: 100,    // baht per day overdue
-  LATE_FEE_CAP: 200,         // max late fee per installment (baht) — actual cap = min(this, amountDue * LATE_FEE_CAP_PCT)
-  LATE_FEE_CAP_PCT: 0.05,   // max 5% of installment amount per Thai law
+  LATE_FEE_TIER1_AMOUNT: 50,   // flat fee, 1..(min-1) days overdue (baht)
+  LATE_FEE_TIER2_AMOUNT: 100,  // flat fee, >= LATE_FEE_TIER2_MIN_DAYS days overdue (baht)
+  LATE_FEE_TIER2_MIN_DAYS: 3,  // day at which tier2 begins
+  LATE_FEE_PER_DAY: 100,    // deprecated — removed in D2 task 4 after all callers migrate
+  LATE_FEE_CAP: 200,         // deprecated — removed in D2 task 4 after all callers migrate
+  LATE_FEE_CAP_PCT: 0.05,   // deprecated — removed in D2 task 4 after all callers migrate
   EARLY_PAYOFF_DISCOUNT: 0.5, // 50% discount on remaining interest
   /**
    * Escalation Guardrail: เมื่อลูกค้าผิดนัด ≥ N ครั้ง บนสัญญาเดียวกัน

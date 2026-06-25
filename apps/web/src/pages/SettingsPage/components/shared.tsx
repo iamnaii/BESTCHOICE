@@ -34,8 +34,9 @@ export const configGroups: ConfigGroup[] = [
     title: 'ค่าปรับ จำนวนงวด และการติดตามหนี้',
     subtitle: 'กำหนดค่าปรับ จำนวนงวด และเกณฑ์ติดตามหนี้สำหรับสัญญาผ่อนชำระ',
     items: [
-      { key: 'late_fee_per_day', label: 'ค่าปรับจ่ายช้าต่อวัน (บาท)', shortLabel: 'ค่าปรับ/วัน', suffix: ' บาท', type: 'number', step: '1', desc: 'เรียกเก็บต่อวันเมื่อลูกค้าจ่ายช้า' },
-      { key: 'late_fee_cap', label: 'ค่าปรับสูงสุดต่องวด (บาท)', shortLabel: 'ค่าปรับสูงสุด', suffix: ' บาท', type: 'number', step: '1', desc: 'เพดานค่าปรับสูงสุดต่อ 1 งวด' },
+      { key: 'late_fee_tier1_amount', label: 'ค่าปรับล่าช้า tier1 (บาท) — 1 ถึง tier2MinDays-1 วัน', shortLabel: 'ค่าปรับ tier1', suffix: ' บาท', type: 'number', step: '1', desc: 'ค่าปรับเมื่อจ่ายช้า 1–2 วัน (ก่อนถึงขั้นที่ 2)' },
+      { key: 'late_fee_tier2_amount', label: 'ค่าปรับล่าช้า tier2 (บาท) — ตั้งแต่ tier2MinDays วันขึ้นไป', shortLabel: 'ค่าปรับ tier2', suffix: ' บาท', type: 'number', step: '1', desc: 'ค่าปรับเมื่อจ่ายช้าตั้งแต่วันที่กำหนดขึ้นไป' },
+      { key: 'late_fee_tier2_min_days', label: 'วันเริ่มต้น tier2 ค่าปรับล่าช้า', shortLabel: 'tier2 เริ่มวันที่', suffix: ' วัน', type: 'number', step: '1', desc: 'จำนวนวันที่เริ่มคิดค่าปรับขั้นที่ 2 (tier2)' },
       { key: 'early_payoff_discount', label: 'ส่วนลดปิดบัญชีก่อนกำหนด (%)', shortLabel: 'ส่วนลดปิดก่อน', suffix: '', type: 'number', step: '0.1', desc: 'ลดให้ลูกค้าที่ปิดบัญชีก่อนกำหนด' },
       { key: 'min_installment_months', label: 'จำนวนงวดขั้นต่ำ (เดือน)', shortLabel: 'งวดขั้นต่ำ', suffix: ' เดือน', type: 'number', step: '1', desc: 'จำนวนงวดต่ำสุดที่เลือกได้' },
       { key: 'max_installment_months', label: 'จำนวนงวดสูงสุด (เดือน)', shortLabel: 'งวดสูงสุด', suffix: ' เดือน', type: 'number', step: '1', desc: 'จำนวนงวดสูงสุดที่เลือกได้' },

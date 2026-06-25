@@ -21,6 +21,7 @@ import { validatePeriodOpen } from '../../../utils/period-lock.util';
 import { ensureInstallmentSchedules } from '../../../utils/installment-schedule.util';
 import { BUSINESS_RULES } from '../../../utils/config.util';
 import { d, dAdd, dSub, dMul, dRound, dGte } from '../../../utils/decimal.util';
+import { computeBracketLateFee } from '../../../utils/late-fee.util';
 import { PaymentCase } from '../dto/payment.dto';
 import {
   resolveUserDefaultCashAccount,
@@ -191,21 +192,26 @@ export class PaymentReceiptOrchestrator {
         data: { status: 'CANCELLED', cancelledAt: new Date() },
       });
 
-      // Real-time late fee: recalculate at payment time (cron may not have run yet)
+      // Real-time late fee: flat-bracket model (D2, owner 2026-06-25 — no per-day,
+      // no 5% cap). Set = bracket (NOT max(stored, bracket)) so this path agrees
+      // with the overdue cron's retroactive downgrade. Skip waived.
       let lateFee = d(payment.lateFee);
       if (!payment.lateFeeWaived && payment.dueDate < new Date()) {
         const daysOverdue = Math.floor((Date.now() - payment.dueDate.getTime()) / (1000 * 60 * 60 * 24));
-        if (daysOverdue > 0) {
-          const config = await tx.systemConfig.findUnique({ where: { key: 'late_fee_per_day' } });
-          const capConfig = await tx.systemConfig.findUnique({ where: { key: 'late_fee_cap' } });
-          const feePerDay = config ? d(config.value) : d(50);
-          const cap = capConfig ? d(capConfig.value) : d(1500);
-          const pctCap = dMul(payment.amountDue, BUSINESS_RULES.LATE_FEE_CAP_PCT);
-          const calculatedFee = dRound(Prisma.Decimal.min(dMul(feePerDay, daysOverdue), cap, pctCap));
-          if (calculatedFee.gt(lateFee)) {
-            lateFee = calculatedFee;
-            await tx.payment.update({ where: { id: payment.id }, data: { lateFee } });
-          }
+        const [t1, t2, minDays] = await Promise.all([
+          tx.systemConfig.findUnique({ where: { key: 'late_fee_tier1_amount' } }),
+          tx.systemConfig.findUnique({ where: { key: 'late_fee_tier2_amount' } }),
+          tx.systemConfig.findUnique({ where: { key: 'late_fee_tier2_min_days' } }),
+        ]);
+        const bracketFee = computeBracketLateFee({
+          daysOverdue,
+          tier1Amount: t1 ? d(t1.value) : BUSINESS_RULES.LATE_FEE_TIER1_AMOUNT,
+          tier2Amount: t2 ? d(t2.value) : BUSINESS_RULES.LATE_FEE_TIER2_AMOUNT,
+          tier2MinDays: minDays ? Number(minDays.value) : BUSINESS_RULES.LATE_FEE_TIER2_MIN_DAYS,
+        });
+        if (!bracketFee.eq(lateFee)) {
+          lateFee = bracketFee;
+          await tx.payment.update({ where: { id: payment.id }, data: { lateFee } });
         }
       }
 
@@ -223,13 +229,21 @@ export class PaymentReceiptOrchestrator {
       let isPartialClear = false;
 
       if (overage.gt(d('1.00'))) {
-        // Overpay > tolerance — must explicitly opt into advance posting
-        if (paymentCase !== 'OVERPAY_ADVANCE') {
+        // D1 (owner 2026-06-25): auto-route overpay >1฿ to advance (Cr 21-1103)
+        // WITHIN a ceiling = multiplier × installment amountDue. Above the ceiling
+        // it's likely a data-entry typo → still require explicit OVERPAY_ADVANCE.
+        const multCfg = await tx.systemConfig.findUnique({ where: { key: 'overpay_advance_auto_max_multiplier' } });
+        const multiplier = multCfg ? d(multCfg.value) : d(2);
+        const autoCeiling = dMul(d(payment.amountDue), multiplier);
+        if (overage.gt(autoCeiling) && paymentCase !== 'OVERPAY_ADVANCE') {
           throw new BadRequestException(
-            `จำนวนเงินเกินยอดค้างชำระ (ยอดค้าง ${remaining.toNumber().toLocaleString()} บาท, ชำระ ${amount.toLocaleString()} บาท) — ต้องเลือก case 'OVERPAY_ADVANCE' เพื่อบันทึกส่วนเกินเป็นเงินรับล่วงหน้า`,
+            `จำนวนเงินเกินยอดค้างชำระมาก (ยอดค้าง ${remaining.toNumber().toLocaleString()} บาท, ชำระ ${amount.toLocaleString()} บาท) — เกินเพดานอัตโนมัติ กรุณายืนยันด้วย case 'OVERPAY_ADVANCE' หากตั้งใจเก็บเป็นเงินรับล่วงหน้า`,
           );
         }
         advanceCredit = overage;
+        this.logger?.log?.(
+          `Overpay ${overage.toFixed(2)}฿ auto-routed to advance (contract ${contractId}, inst ${installmentNo})`,
+        );
       } else if (
         d(amount).lt(remaining) &&
         beforeAdvance.gt(0) &&
@@ -256,10 +270,10 @@ export class PaymentReceiptOrchestrator {
       // For OVERPAY_ADVANCE: amountPaid = installmentTotal (full clear via cash + advance posting).
       // Otherwise: amountPaid = cash + consumed advance (may or may not fully clear).
       const recordedAmountPaid =
-        paymentCase === 'OVERPAY_ADVANCE' ? remaining : dAdd(prevPaid, amount).plus(advanceConsume);
+        (paymentCase === 'OVERPAY_ADVANCE' || advanceCredit.gt(0)) ? remaining : dAdd(prevPaid, amount).plus(advanceConsume);
 
       const isPaidInFull =
-        paymentCase === 'OVERPAY_ADVANCE' ? true : dGte(recordedAmountPaid, amountDue);
+        (paymentCase === 'OVERPAY_ADVANCE' || advanceCredit.gt(0)) ? true : dGte(recordedAmountPaid, amountDue);
 
       // Append transactionRef to notes for idempotency tracking
       const updatedNotes = transactionRef

@@ -152,15 +152,16 @@ async function main() {
   console.log('CompanyInfo created: 2 (SHOP + FINANCE)');
 
   // ============================================================
-  // STEP 2: SystemConfig (21 configs)
+  // STEP 2: SystemConfig (count = configs.length, logged below)
   // ============================================================
   console.log('STEP 2: Creating SystemConfig...');
 
   const configs = [
     { key: 'company_name', value: 'BEST CHOICE Mobile', label: 'ชื่อบริษัท' },
     { key: 'company_phone', value: '02-100-0000', label: 'เบอร์โทรบริษัท' },
-    { key: 'late_fee_per_day', value: '50', label: 'ค่าปรับล่าช้า/วัน (บาท)' },
-    { key: 'max_late_fee', value: '500', label: 'ค่าปรับล่าช้าสูงสุด (บาท)' },
+    { key: 'late_fee_tier1_amount', value: '50', label: 'ค่าปรับล่าช้า tier1 (บาท) — 1 ถึง tier2MinDays-1 วัน' },
+    { key: 'late_fee_tier2_amount', value: '100', label: 'ค่าปรับล่าช้า tier2 (บาท) — ตั้งแต่ tier2MinDays วันขึ้นไป' },
+    { key: 'late_fee_tier2_min_days', value: '3', label: 'วันเริ่มต้น tier2 ค่าปรับล่าช้า' },
     { key: 'default_interest_rate', value: '0.08', label: 'อัตราดอกเบี้ยเริ่มต้น' },
     { key: 'min_down_payment_pct', value: '0.20', label: 'เปอร์เซ็นต์เงินดาวน์ขั้นต่ำ' },
     { key: 'max_installment_months', value: '12', label: 'จำนวนงวดสูงสุด' },
@@ -182,6 +183,8 @@ async function main() {
     // SP5 Phase 2 — Repair ticket CoA defaults (SHOP-side, no VAT)
     { key: 'REPAIR_EXPENSE_ACCOUNT_CODE', value: 'S51-1105', label: 'SHOP CoA — ค่าซ่อมอุปกรณ์ลูกค้า (Dr leg, payer=SHOP)' },
     { key: 'REPAIR_INCOME_ACCOUNT_CODE', value: 'S42-1101', label: 'SHOP CoA — รายได้บริการซ่อม (Cr leg, payer=CUSTOMER)' },
+    // D1 (2026-06-25) — overpay auto-route ceiling: multiplier × installment amountDue
+    { key: 'overpay_advance_auto_max_multiplier', value: '2', label: 'เพดานรับล่วงหน้าอัตโนมัติ (× ยอดงวด) — เกินกว่านี้ต้องยืนยัน OVERPAY_ADVANCE' },
   ];
 
   for (const c of configs) {
@@ -1546,7 +1549,7 @@ async function main() {
   console.log('=== SEED COMPLETED SUCCESSFULLY ===');
   console.log('========================================');
   console.log('CompanyInfo: 1');
-  console.log('SystemConfig: 21');
+  console.log('SystemConfig: 22');
   console.log('Branches: 4 (1 warehouse + 3 stores)');
   console.log('Users: 8 (1 OWNER, 3 BRANCH_MANAGER, 3 SALES, 1 ACCOUNTANT)');
   console.log('Suppliers: 10 (Apple + accessories only)');

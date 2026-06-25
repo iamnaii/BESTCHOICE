@@ -42,28 +42,26 @@ export class OverdueLifecycleCronService {
   async calculateLateFees() {
     const now = new Date();
 
-    // Get late fee config
-    const [lateFeeConfig, lateFeeCapConfig] = await Promise.all([
-      this.prisma.systemConfig.findUnique({ where: { key: 'late_fee_per_day' } }),
-      this.prisma.systemConfig.findUnique({ where: { key: 'late_fee_cap' } }),
+    // Get late fee bracket config (D2 flat-bracket model)
+    const [tier1Cfg, tier2Cfg, minDaysCfg] = await Promise.all([
+      this.prisma.systemConfig.findUnique({ where: { key: 'late_fee_tier1_amount' } }),
+      this.prisma.systemConfig.findUnique({ where: { key: 'late_fee_tier2_amount' } }),
+      this.prisma.systemConfig.findUnique({ where: { key: 'late_fee_tier2_min_days' } }),
     ]);
+    const tier1 = tier1Cfg ? Number(tier1Cfg.value) : BUSINESS_RULES.LATE_FEE_TIER1_AMOUNT;
+    const tier2 = tier2Cfg ? Number(tier2Cfg.value) : BUSINESS_RULES.LATE_FEE_TIER2_AMOUNT;
+    const minDays = minDaysCfg ? Number(minDaysCfg.value) : BUSINESS_RULES.LATE_FEE_TIER2_MIN_DAYS;
 
-    const lateFeePerDay = lateFeeConfig ? Number(lateFeeConfig.value) : BUSINESS_RULES.LATE_FEE_PER_DAY;
-    const lateFeeCap = lateFeeCapConfig ? Number(lateFeeCapConfig.value) : BUSINESS_RULES.LATE_FEE_CAP;
-    const lateFeeCapPct = BUSINESS_RULES.LATE_FEE_CAP_PCT;
-
-    // Single bulk UPDATE: calculate late fees and set status in one query
-    // Use EXTRACT(EPOCH) / 86400 to get total days (not just the day component of the interval)
-    // Skip payments with late_fee_waived flag to preserve manually adjusted fees
-    // Cap = min(fixed_cap, amount_due * pct_cap) per Thai law (max 5% of installment)
+    // Flat-bracket late fee (D2): unconditional SET = retroactive (downgrades
+    // stale higher fees to the new bracket). Skip waived. No per-day, no 5% cap.
     const result = await this.prisma.$executeRaw`
       UPDATE "payments"
       SET
-        "late_fee" = ROUND(LEAST(
-          GREATEST(FLOOR(EXTRACT(EPOCH FROM (${now}::timestamp - "due_date")) / 86400)::int, 0) * ${lateFeePerDay},
-          ${lateFeeCap},
-          "amount_due" * ${lateFeeCapPct}
-        )::numeric, 2),
+        "late_fee" = CASE
+          WHEN FLOOR(EXTRACT(EPOCH FROM (${now}::timestamp - "due_date")) / 86400)::int >= ${minDays} THEN ${tier2}
+          WHEN FLOOR(EXTRACT(EPOCH FROM (${now}::timestamp - "due_date")) / 86400)::int >= 1 THEN ${tier1}
+          ELSE 0
+        END,
         "status" = 'OVERDUE'
       WHERE "status" IN ('PENDING', 'PARTIALLY_PAID', 'OVERDUE')
         AND "due_date" < ${now}

@@ -2,10 +2,11 @@ import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { AlertTriangle, Check } from 'lucide-react';
+import { AlertTriangle, Check, Store } from 'lucide-react';
 import api, { getErrorMessage } from '@/lib/api';
 import { formatNumber, formatNumberDecimal } from '@/utils/formatters';
 import { CashAccountSelect } from '@/components/CashAccountSelect';
+import { useAuth } from '@/contexts/AuthContext';
 
 /* ─── Types ───────────────────────────────────────── */
 export interface JeLinePreview {
@@ -88,18 +89,32 @@ export function EarlyPayoffOverlay({
   onSuccess,
 }: Props) {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const [discountPct, setDiscountPct] = useState(50);
   const [paymentMethod, setPaymentMethod] = useState('CASH');
   const [depositAccountCode, setDepositAccountCode] = useState('11-1101');
   const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [referenceNo, setReferenceNo] = useState('');
   const [notes, setNotes] = useState('');
+  // Shop-collect toggle — when true, FINANCE books Dr 11-2107 instead of a cash account
+  const [collectedByShop, setCollectedByShop] = useState(false);
+  // Settlement dialog state
+  const [settlementOpen, setSettlementOpen] = useState(false);
+  const [settlementAccountCode, setSettlementAccountCode] = useState('11-1201');
+  const [settlementAmount, setSettlementAmount] = useState('');
+
+  const canSettlement = ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'].includes(user?.role ?? '');
 
   const { data: quote, isLoading } = useQuery<EarlyPayoffQuote>({
-    queryKey: ['contract-payoff', contractId, discountPct, depositAccountCode],
+    queryKey: ['contract-payoff', contractId, discountPct, depositAccountCode, collectedByShop],
     queryFn: async () => {
+      const params = new URLSearchParams({
+        discountPct: String(discountPct),
+        depositAccountCode,
+      });
+      if (collectedByShop) params.set('collectedByShop', 'true');
       const { data } = await api.get(
-        `/contracts/${contractId}/early-payoff-quote?discountPct=${discountPct}&depositAccountCode=${depositAccountCode}`,
+        `/contracts/${contractId}/early-payoff-quote?${params.toString()}`,
       );
       return data;
     },
@@ -111,6 +126,7 @@ export function EarlyPayoffOverlay({
         paymentMethod,
         discountPct,
         depositAccountCode,
+        collectedByShop,
         paymentDate,
         referenceNo: referenceNo || undefined,
         notes: notes || undefined,
@@ -124,6 +140,25 @@ export function EarlyPayoffOverlay({
       queryClient.invalidateQueries({ queryKey: ['contracts'] });
       onSuccess();
       onClose();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const settlementMutation = useMutation({
+    mutationFn: async () => {
+      const { data } = await api.post(`/contracts/${contractId}/shop-collect-settlement`, {
+        depositAccountCode: settlementAccountCode,
+        amount: Number(settlementAmount),
+      });
+      return data;
+    },
+    onSuccess: () => {
+      toast.success('บันทึกรับโอนจากหน้าร้านสำเร็จ');
+      queryClient.invalidateQueries({ queryKey: ['contract', contractId] });
+      queryClient.invalidateQueries({ queryKey: ['contract-payoff', contractId] });
+      queryClient.invalidateQueries({ queryKey: ['contracts'] });
+      setSettlementOpen(false);
+      setSettlementAmount('');
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
@@ -276,11 +311,40 @@ export function EarlyPayoffOverlay({
                   <input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} className={inputClass} />
                 </div>
               </div>
+              {/* Shop-collect toggle */}
+              <div className="flex items-start gap-3 rounded-lg border border-border bg-muted/40 px-3 py-3">
+                <input
+                  id="collected-by-shop"
+                  type="checkbox"
+                  checked={collectedByShop}
+                  onChange={(e) => setCollectedByShop(e.target.checked)}
+                  className="mt-0.5 size-4 accent-primary cursor-pointer"
+                />
+                <label htmlFor="collected-by-shop" className="cursor-pointer select-none">
+                  <span className="flex items-center gap-1.5 text-sm font-medium text-foreground leading-snug">
+                    <Store className="size-3.5 shrink-0 text-primary" />
+                    เก็บที่หน้าร้าน
+                  </span>
+                  <span className="text-xs text-muted-foreground leading-snug">
+                    หน้าร้านรับเงินแล้วโอนเข้า FINANCE ภายหลัง (บันทึก Dr 11-2107 ลูกหนี้-หน้าร้าน)
+                  </span>
+                </label>
+              </div>
+
               <div>
                 <label className="block text-xs font-medium text-foreground mb-1.5">
                   บัญชีรับเงิน <span className="text-destructive">*</span>
                 </label>
-                <CashAccountSelect value={depositAccountCode} onChange={setDepositAccountCode} />
+                <CashAccountSelect
+                  value={depositAccountCode}
+                  onChange={setDepositAccountCode}
+                  disabled={collectedByShop}
+                />
+                {collectedByShop && (
+                  <p className="mt-1 text-xs text-muted-foreground leading-snug">
+                    บัญชีถูกกำหนดเป็น 11-2107 อัตโนมัติโดยระบบ — กรอกบัญชีรับโอนจากหน้าร้านตอน settlement
+                  </p>
+                )}
               </div>
               {needsReference && (
                 <div>
@@ -386,19 +450,99 @@ export function EarlyPayoffOverlay({
         </div>
 
         {/* Footer */}
-        <div className="sticky bottom-0 bg-background/95 backdrop-blur-xs border-t px-6 py-4 flex justify-end gap-3">
-          <button onClick={onClose} className="px-6 py-2.5 text-sm border border-input rounded-lg hover:bg-muted transition-colors">
-            ยกเลิก
-          </button>
-          <button
-            onClick={() => mutation.mutate()}
-            disabled={!canSubmit}
-            className="px-6 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 font-semibold transition-colors shadow-sm"
-          >
-            {mutation.isPending ? 'กำลังปิด...' : 'ยืนยันปิดสัญญา'}
-          </button>
+        <div className="sticky bottom-0 bg-background/95 backdrop-blur-xs border-t px-6 py-4 flex items-center justify-between gap-3">
+          {/* Settlement button — visible to OWNER / FINANCE_MANAGER / ACCOUNTANT */}
+          {canSettlement ? (
+            <button
+              type="button"
+              onClick={() => setSettlementOpen(true)}
+              className="flex items-center gap-1.5 px-4 py-2.5 text-sm border border-input rounded-lg hover:bg-muted transition-colors text-muted-foreground"
+            >
+              <Store className="size-4" />
+              บันทึกรับโอนจากหน้าร้าน
+            </button>
+          ) : (
+            <div />
+          )}
+          <div className="flex gap-3">
+            <button onClick={onClose} className="px-6 py-2.5 text-sm border border-input rounded-lg hover:bg-muted transition-colors">
+              ยกเลิก
+            </button>
+            <button
+              onClick={() => mutation.mutate()}
+              disabled={!canSubmit}
+              className="px-6 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 font-semibold transition-colors shadow-sm"
+            >
+              {mutation.isPending ? 'กำลังปิด...' : 'ยืนยันปิดสัญญา'}
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Settlement dialog — Dr cash / Cr 11-2107 when shop remits to FINANCE */}
+      {settlementOpen && (
+        <div className="fixed inset-0 z-60 bg-black/50 backdrop-blur-xs flex items-center justify-center">
+          <div className="w-full max-w-sm bg-background rounded-xl shadow-2xl p-6 space-y-4">
+            <div className="flex items-center gap-2.5">
+              <div className="flex items-center justify-center size-8 rounded-lg bg-primary/10 text-primary">
+                <Store className="size-4" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-foreground leading-snug">บันทึกรับโอนจากหน้าร้าน</h3>
+                <p className="text-xs text-muted-foreground leading-snug">Dr บัญชีรับเงิน / Cr 11-2107 ลูกหนี้-หน้าร้าน</p>
+              </div>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-foreground mb-1.5">
+                  บัญชีรับเงิน (FINANCE) <span className="text-destructive">*</span>
+                </label>
+                <CashAccountSelect
+                  value={settlementAccountCode}
+                  onChange={setSettlementAccountCode}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-foreground mb-1.5">
+                  จำนวนเงินที่รับโอน <span className="text-destructive">*</span>
+                </label>
+                <input
+                  type="number"
+                  min={0.01}
+                  step={0.01}
+                  value={settlementAmount}
+                  onChange={(e) => setSettlementAmount(e.target.value)}
+                  className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 outline-hidden"
+                  placeholder="0.00"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setSettlementOpen(false)}
+                disabled={settlementMutation.isPending}
+                className="px-4 py-2 text-sm border border-input rounded-lg hover:bg-muted transition-colors"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                onClick={() => settlementMutation.mutate()}
+                disabled={
+                  settlementMutation.isPending ||
+                  !settlementAccountCode ||
+                  !settlementAmount ||
+                  Number(settlementAmount) <= 0
+                }
+                className="px-5 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 font-semibold transition-colors"
+              >
+                {settlementMutation.isPending ? 'กำลังบันทึก...' : 'ยืนยัน'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>,
     document.body,
   );

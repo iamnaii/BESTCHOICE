@@ -26,6 +26,7 @@ export default function UnifiedInboxPage() {
   const { user } = useAuth();
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [customerPanelOpen, setCustomerPanelOpen] = useState(false);
+  const [roomViewers, setRoomViewers] = useState<{ userId: string; userName: string }[]>([]);
   const [filters, setFilters] = useState<{
     tab: InboxTab;
     channels: string[];
@@ -62,6 +63,11 @@ export default function UnifiedInboxPage() {
     }
   }, [activeRoomId]);
 
+  // Clear viewer banner when switching rooms so a stale banner doesn't flash.
+  useEffect(() => {
+    setRoomViewers([]);
+  }, [activeRoomId]);
+
   // Mark messages as read when opening a room
   useEffect(() => {
     if (activeRoomId) {
@@ -92,10 +98,13 @@ export default function UnifiedInboxPage() {
         notifyNewMessage(data);
       }
     },
-    onCollision: (data) => {
-      const viewerNames = data.viewers?.map((v) => v.userName).join(', ');
-      toast.warning(`${viewerNames} กำลังดูแชทนี้อยู่`);
+    onViewers: (data) => {
+      if (data.roomId === activeRoomId) {
+        setRoomViewers(data.viewers ?? []);
+      }
     },
+    // onCollision intentionally dropped — the persistent banner (from onViewers)
+    // replaces the one-shot toast.
     onSendFailed: (data) => {
       toast.error(`ส่งข้อความไปยังลูกค้าไม่สำเร็จ${data.error ? ` — ${data.error}` : ''}`);
       queryClient.invalidateQueries({ queryKey: ['chat-messages', data.roomId] });
@@ -270,6 +279,9 @@ export default function UnifiedInboxPage() {
 
   const customerId = sessionQuery.data?.customerId ?? null;
 
+  // Exclude yourself so your own second tab never warns about you.
+  const otherViewers = roomViewers.filter((v) => v.userId !== user?.id);
+
   return (
     <div className="h-dvh flex bg-card overflow-hidden pb-[calc(56px+env(safe-area-inset-bottom))] lg:pb-0">
       {/* Left panel: Conversation list */}
@@ -316,6 +328,7 @@ export default function UnifiedInboxPage() {
           currentUserId={user?.id ?? ''}
           onShowCustomerInfo={() => setCustomerPanelOpen(true)}
           isUploadingFile={uploadFileMutation.isPending}
+          otherViewers={otherViewers}
         />
       </div>
 

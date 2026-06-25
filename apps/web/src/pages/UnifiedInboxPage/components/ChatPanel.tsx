@@ -1,6 +1,6 @@
 import { useRef, useEffect, useLayoutEffect, useState, useMemo } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
-import { Send, MoreVertical, ArrowLeft, Paperclip, Smile, Pin, PinOff, MessageSquare, UserCircle2, MessageSquareQuote, Loader2, Upload } from 'lucide-react';
+import { Send, MoreVertical, ArrowLeft, Paperclip, Smile, Pin, PinOff, MessageSquare, UserCircle2, MessageSquareQuote, Loader2, Upload, Eye } from 'lucide-react';
 import { isSameDay } from 'date-fns';
 import { formatDateSeparator } from '@/lib/chat-time';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -101,6 +101,7 @@ interface ChatPanelProps {
   currentUserId: string;
   onShowCustomerInfo?: () => void;
   isUploadingFile?: boolean;
+  otherViewers?: { userId: string; userName: string }[];
 }
 
 export default function ChatPanel({
@@ -119,6 +120,7 @@ export default function ChatPanel({
   currentUserId,
   onShowCustomerInfo,
   isUploadingFile = false,
+  otherViewers,
 }: ChatPanelProps) {
   const [inputText, setInputText] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -551,6 +553,16 @@ export default function ChatPanel({
           onClose={() => setShowActions(false)}
           currentUserId={currentUserId}
         />
+      )}
+
+      {/* Persistent "another staff is viewing" banner */}
+      {otherViewers && otherViewers.length > 0 && (
+        <div className="flex items-center gap-2 bg-warning/10 px-4 py-1.5 text-[11px] text-warning leading-snug border-b border-warning/20">
+          <Eye className="size-3.5 shrink-0" />
+          <span className="truncate">
+            {otherViewers.map((v) => v.userName).join(', ')} กำลังดูห้องนี้อยู่ — ระวังตอบซ้ำ
+          </span>
+        </div>
       )}
 
       {/* Messages */}

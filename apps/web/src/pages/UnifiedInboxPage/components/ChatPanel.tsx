@@ -1,6 +1,6 @@
 import { useRef, useEffect, useLayoutEffect, useState, useMemo } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
-import { Send, MoreVertical, ArrowLeft, Paperclip, Smile, Pin, PinOff, MessageSquare, UserCircle2, MessageSquareQuote, Loader2 } from 'lucide-react';
+import { Send, MoreVertical, ArrowLeft, Paperclip, Smile, Pin, PinOff, MessageSquare, UserCircle2, MessageSquareQuote, Loader2, Upload } from 'lucide-react';
 import { format, isSameDay } from 'date-fns';
 import { th } from 'date-fns/locale/th';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -15,6 +15,7 @@ import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import api from '@/lib/api';
 import { getGeneratedAvatarUrl } from '@/lib/avatar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { isAcceptedFile } from './upload-accept';
 
 // ─── Emoji data ───────────────────────────────────────────────────────────────
 const EMOJI_CATEGORIES = [
@@ -196,6 +197,56 @@ export default function ChatPanel({
     e.target.value = ''; // reset
   };
 
+  // ─── Paste handler (images only — text paste falls through unchanged) ─────────
+  const handlePaste = (e: React.ClipboardEvent) => {
+    if (!onSendFile) return;
+    const imageFiles = Array.from(e.clipboardData.items)
+      .filter((it) => it.kind === 'file' && it.type.startsWith('image/'))
+      .map((it) => it.getAsFile())
+      .filter((f): f is File => !!f);
+    if (imageFiles.length === 0) return; // let normal text paste through — do NOT preventDefault
+    e.preventDefault();
+    imageFiles.forEach((f) => onSendFile(f));
+  };
+
+  // ─── Drag-and-drop ────────────────────────────────────────────────────────────
+  const [isDragging, setIsDragging] = useState(false);
+  const dragDepth = useRef(0);
+
+  const onDragEnter = (e: React.DragEvent) => {
+    if (!onSendFile || !Array.from(e.dataTransfer.types).includes('Files')) return;
+    e.preventDefault();
+    dragDepth.current += 1;
+    setIsDragging(true);
+  };
+  const onDragOver = (e: React.DragEvent) => {
+    if (!Array.from(e.dataTransfer.types).includes('Files')) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  };
+  const onDragLeave = (e: React.DragEvent) => {
+    if (!Array.from(e.dataTransfer.types).includes('Files')) return;
+    e.preventDefault();
+    dragDepth.current -= 1;
+    if (dragDepth.current <= 0) {
+      dragDepth.current = 0;
+      setIsDragging(false);
+    }
+  };
+  const onDrop = (e: React.DragEvent) => {
+    if (!onSendFile) return;
+    e.preventDefault();
+    dragDepth.current = 0;
+    setIsDragging(false);
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length === 0) return;
+    const accepted = files.filter(isAcceptedFile);
+    if (accepted.length < files.length) {
+      toast.error('บางไฟล์ส่งไม่ได้ (รองรับรูปภาพ, PDF, DOC)');
+    }
+    accepted.forEach((f) => onSendFile(f));
+  };
+
   const insertEmoji = (emoji: string) => {
     const textarea = inputRef.current;
     if (textarea) {
@@ -370,7 +421,22 @@ export default function ChatPanel({
   const isResolved = session.sessionStatus === 'RESOLVED';
 
   return (
-    <div className="flex-1 flex flex-col h-full">
+    <div
+      className="relative flex-1 flex flex-col h-full"
+      onDragEnter={onDragEnter}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
+      {/* Drop overlay — pointer-events-none so it never blocks the composer */}
+      {isDragging && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-primary/5 pointer-events-none">
+          <div className="flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-primary bg-card/90 px-6 py-4 text-primary">
+            <Upload className="size-6" />
+            <span className="text-sm font-medium leading-snug">วางไฟล์เพื่อส่ง</span>
+          </div>
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/60 bg-card">
         <div className="flex items-center gap-3">
@@ -769,6 +835,7 @@ export default function ChatPanel({
                 if (selectedSuggestion && v.trim() === '') setSelectedSuggestion(null);
               }}
               onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
               placeholder="พิมพ์ข้อความ..."
               rows={1}
               className="flex-1 resize-none overflow-y-auto px-3 py-2 text-sm bg-muted/40 rounded-lg border-0 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:bg-background max-h-32 transition-colors placeholder:text-muted-foreground/40"

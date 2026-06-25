@@ -231,7 +231,11 @@ export class ContractPaymentService {
   async earlyPayoff(id: string, userId: string, dto: EarlyPayoffDto) {
     // Resolve cash dimension once: dto > user default (TODO via userId lookup) > 11-1101
     const depositAccountCode = dto.depositAccountCode ?? '11-1101';
-    const quote = await this.getEarlyPayoffQuote(id, dto.discountPct, depositAccountCode);
+    // Shop-collect substitution: server overrides depositAccountCode with 11-2107
+    // when collectedByShop=true. The DTO's @IsIn(CASH_ACCOUNT_CODES) validator
+    // stays intact — the client never names 11-2107 directly.
+    const effectiveDepositCode = dto.collectedByShop ? '11-2107' : depositAccountCode;
+    const quote = await this.getEarlyPayoffQuote(id, dto.discountPct, effectiveDepositCode);
     const paidDate = dto.paymentDate ? new Date(dto.paymentDate) : new Date();
 
     // Require reference for non-cash methods
@@ -329,7 +333,7 @@ export class ContractPaymentService {
           const epContract = await tx.contract.findUniqueOrThrow({ where: { id } });
           const epUnpaid = installmentSnapshots.length;
           const epJe = computeEarlyPayoffJE({
-            depositAccountCode,
+            depositAccountCode: effectiveDepositCode,
             financedAmount: epContract.financedAmount.toString(),
             storeCommission: epContract.storeCommission != null ? epContract.storeCommission.toString() : null,
             interestTotal: epContract.interestTotal.toString(),
@@ -344,7 +348,9 @@ export class ContractPaymentService {
           // Ledger-side line descriptions (the preview words them differently —
           // only the money, shared via computeEarlyPayoffJE, must match).
           const epDescriptions: Record<string, string> = {
-            [depositAccountCode]: `รับ ${epJe.settlement.toFixed(2)} ฿ ปิดยอด`,
+            [effectiveDepositCode]: dto.collectedByShop
+              ? `หน้าร้านรับ ${epJe.settlement.toFixed(2)} ฿ ปิดยอด (ลูกหนี้-หน้าร้าน)`
+              : `รับ ${epJe.settlement.toFixed(2)} ฿ ปิดยอด`,
             '11-2106': 'ยกเลิกรายได้รอตัดบัญชี-ดอกเบี้ย',
             '21-2102': 'ล้างภาษีขายรอเรียกเก็บ',
             '52-1106': 'ส่วนลดดอกเบี้ย-ปิดยอดก่อนกำหนด',
@@ -354,18 +360,22 @@ export class ContractPaymentService {
             '21-2101': 'ภาษีขาย ภ.พ.30 ถึงกำหนด',
           };
 
+          // Build metadata — stamp shop-collect flags when applicable
+          const jeMetadata: Prisma.JsonObject = {
+            tag: 'JP4',
+            flow: 'early-payoff',
+            contractId: id,
+            unpaidInstallments: epUnpaid,
+            discount: epJe.discount.toFixed(2),
+            interestDiscountPercent: quote.discountPct,
+            ...(dto.collectedByShop ? { collectedByShop: true, shopReceivable: '11-2107' } : {}),
+          };
+
           await this.journalAutoService.createAndPost(
             {
               description: `ปิดยอดก่อนกำหนด — สัญญา ${freshContract.contractNumber} (${epUnpaid} งวดคงเหลือ)`,
               reference: `${id}:early-payoff`,
-              metadata: {
-                tag: 'JP4',
-                flow: 'early-payoff',
-                contractId: id,
-                unpaidInstallments: epUnpaid,
-                discount: epJe.discount.toFixed(2),
-                interestDiscountPercent: quote.discountPct,
-              },
+              metadata: jeMetadata,
               lines: epJe.lines.map((l) => ({
                 accountCode: l.accountCode,
                 dr: l.dr,
@@ -375,6 +385,23 @@ export class ContractPaymentService {
             },
             tx,
           );
+
+          // AuditLog for shop-collect payoff path
+          if (dto.collectedByShop) {
+            await tx.auditLog.create({
+              data: {
+                userId,
+                action: 'SHOP_COLLECT_PAYOFF',
+                entity: 'contract',
+                entityId: id,
+                newValue: {
+                  shopReceivable: '11-2107',
+                  settlement: epJe.settlement.toFixed(2),
+                  unpaidInstallments: epUnpaid,
+                },
+              },
+            });
+          }
         }
 
         // Reset credit balance (used up by the early payoff)

@@ -127,6 +127,15 @@ export class EarlyPayoffDto {
   @IsString()
   @IsOptional()
   notes?: string;
+
+  /**
+   * เก็บที่หน้าร้าน — เมื่อ true เซิร์ฟเวอร์จะแทนที่ depositAccountCode ด้วย 11-2107
+   * (ลูกหนี้-หน้าร้าน) โดยอัตโนมัติ. Client ไม่ส่ง 11-2107 โดยตรง —
+   * ผ่าน flag นี้เท่านั้น เพื่อรักษา @IsIn validator ของ depositAccountCode ไว้สมบูรณ์.
+   */
+  @IsOptional()
+  @IsBoolean()
+  collectedByShop?: boolean;
 }
 
 export class ReviewContractDto {

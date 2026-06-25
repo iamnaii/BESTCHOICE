@@ -568,7 +568,7 @@ export default function ChatPanel({
                 : 'text-muted-foreground hover:bg-accent hover:text-foreground/70',
             )}
             title={session.pinnedAt ? 'ถอดหมุด' : 'ปักหมุด'}
-            aria-label="ปักหมุดห้องแชท"
+            aria-label={session.pinnedAt ? 'ถอดหมุดห้องแชท' : 'ปักหมุดห้องแชท'}
           >
             {session.pinnedAt ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
           </button>

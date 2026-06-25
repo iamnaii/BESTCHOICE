@@ -41,8 +41,8 @@ function AiStatusBadge({
 }) {
   if (handoffMode) {
     return (
-      <span className="inline-flex items-center gap-1 text-[9px] text-destructive">
-        <span className="size-1.5 rounded-full bg-destructive" />
+      <span className="inline-flex items-center gap-1 rounded-full bg-destructive px-1.5 py-0.5 text-[9px] font-semibold leading-none text-destructive-foreground">
+        <span className="size-1.5 rounded-full bg-destructive-foreground" />
         ต้องตอบ
       </span>
     );
@@ -165,7 +165,7 @@ export default function ConversationItem({ session, isActive, onClick, onPin, ai
       className={cn(
         'relative group flex items-start gap-3 px-4 py-3 cursor-pointer transition-colors duration-100 border-b border-border/40',
         isActive
-          ? 'bg-primary/5 border-l-2 border-l-primary'
+          ? 'bg-primary/10 border-l-2 border-l-primary'
           : 'hover:bg-muted/40',
         isPinned && !isActive && 'bg-warning/5',
       )}

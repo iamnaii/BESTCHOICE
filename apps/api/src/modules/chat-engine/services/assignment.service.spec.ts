@@ -177,6 +177,16 @@ describe('AssignmentService', () => {
     });
   });
 
+  describe('reopen', () => {
+    it('reactivates a resolved room (status ACTIVE, clears resolvedAt)', async () => {
+      await service.reopen('room1');
+      expect(prisma.chatRoom.update).toHaveBeenCalledWith({
+        where: { id: 'room1' },
+        data: { status: ChatRoomStatus.ACTIVE, resolvedAt: null },
+      });
+    });
+  });
+
   describe('getStaffRoomCounts', () => {
     it('should return counts grouped by staff', async () => {
       prisma.chatRoom.groupBy.mockResolvedValue([

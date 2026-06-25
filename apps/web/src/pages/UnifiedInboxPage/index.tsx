@@ -175,23 +175,46 @@ export default function UnifiedInboxPage() {
     },
   });
 
-  const resolveMutation = useMutation({
-    mutationFn: (roomId: string) =>
-      api.patch(`/staff-chat/rooms/${roomId}/resolve`),
+  const reopenMutation = useMutation({
+    mutationFn: (roomId: string) => api.patch(`/staff-chat/rooms/${roomId}/reopen`),
     onSuccess: () => {
-      toast.success('ปิดการสนทนาแล้ว');
       queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
       queryClient.invalidateQueries({ queryKey: ['chat-room', activeRoomId] });
     },
+    onError: () => toast.error('เลิกทำไม่สำเร็จ'),
+  });
+
+  const takeOverMutation = useMutation({
+    mutationFn: (roomId: string) => api.post(`/chat-ai/take-over/${roomId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
+      queryClient.invalidateQueries({ queryKey: ['chat-room', activeRoomId] });
+    },
+    onError: () => toast.error('เลิกทำไม่สำเร็จ'),
+  });
+
+  const resolveMutation = useMutation({
+    mutationFn: (roomId: string) => api.patch(`/staff-chat/rooms/${roomId}/resolve`),
+    onSuccess: (_data, roomId) => {
+      queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
+      queryClient.invalidateQueries({ queryKey: ['chat-room', activeRoomId] });
+      toast.success('ปิดแชทแล้ว', {
+        action: { label: 'เลิกทำ', onClick: () => reopenMutation.mutate(roomId) },
+      });
+    },
+    onError: () => toast.error('ปิดแชทไม่สำเร็จ'),
   });
 
   const returnToAIMutation = useMutation({
-    mutationFn: (roomId: string) =>
-      api.patch(`/staff-chat/rooms/${roomId}/return-to-ai`),
-    onSuccess: () => {
-      toast.success('ส่งกลับ Bot แล้ว');
+    mutationFn: (roomId: string) => api.patch(`/staff-chat/rooms/${roomId}/return-to-ai`),
+    onSuccess: (_data, roomId) => {
       queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
+      queryClient.invalidateQueries({ queryKey: ['chat-room', activeRoomId] });
+      toast.success('ส่งกลับ Bot แล้ว', {
+        action: { label: 'เลิกทำ', onClick: () => takeOverMutation.mutate(roomId) },
+      });
     },
+    onError: () => toast.error('ส่งกลับ Bot ไม่สำเร็จ'),
   });
 
   const transferMutation = useMutation({

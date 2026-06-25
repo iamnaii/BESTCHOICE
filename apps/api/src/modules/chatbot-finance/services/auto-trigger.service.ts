@@ -5,8 +5,9 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { LineFinanceClientService } from './line-finance-client.service';
 import { ChatRoomService } from './chat-room.service';
 import { TEMPLATES, ReminderPayload } from '../constants/reminder-templates';
-import { LATE_FEE_PER_DAY } from '../constants/finance-rules';
 import { formatThaiDateText as formatThaiDate } from '../../../utils/thai-date.util';
+import { computeBracketLateFee } from '../../../utils/late-fee.util';
+import { BUSINESS_RULES, readNumberFlag } from '../../../utils/config.util';
 import { FinanceConfigService } from './finance-config.service';
 import {
   AutoTriggerType,
@@ -128,6 +129,11 @@ export class AutoTriggerService {
       return;
     }
 
+    // Resolve the flat-bracket late-fee config ONCE per batch (not per message)
+    // so the reminder estimate matches what recordPayment / the overdue cron / the
+    // LIFF chatbot actually charge. Independent per-key BUSINESS_RULES fallback.
+    const lateFeeBracket = await this.getLateFeeBracketConfig();
+
     let sent = 0;
     let skipped = 0;
     let failed = 0;
@@ -147,6 +153,7 @@ export class AutoTriggerService {
         customerName: payment.contract.customer.name,
         lineUserId: lineLink.lineUserId,
         dayOffset,
+        lateFeeBracket,
       });
 
       if (result === 'sent') sent++;
@@ -157,6 +164,20 @@ export class AutoTriggerService {
     this.logger.log(`[AutoTrigger] ${type}: sent=${sent} skipped=${skipped} failed=${failed}`);
   }
 
+  /**
+   * Resolve the flat-bracket late-fee config from SystemConfig — same keys +
+   * independent BUSINESS_RULES fallback as recordPayment / overdue cron / the
+   * LIFF chatbot quote, so the reminder estimate matches the actual charge.
+   */
+  private async getLateFeeBracketConfig(): Promise<{ tier1: number; tier2: number; tier2MinDays: number }> {
+    const [tier1, tier2, tier2MinDays] = await Promise.all([
+      readNumberFlag(this.prisma, 'late_fee_tier1_amount', BUSINESS_RULES.LATE_FEE_TIER1_AMOUNT),
+      readNumberFlag(this.prisma, 'late_fee_tier2_amount', BUSINESS_RULES.LATE_FEE_TIER2_AMOUNT),
+      readNumberFlag(this.prisma, 'late_fee_tier2_min_days', BUSINESS_RULES.LATE_FEE_TIER2_MIN_DAYS),
+    ]);
+    return { tier1, tier2, tier2MinDays };
+  }
+
   private async sendReminder(args: {
     payment: Payment;
     type: AutoTriggerType;
@@ -165,10 +186,16 @@ export class AutoTriggerService {
     customerName: string;
     lineUserId: string;
     dayOffset: number;
+    lateFeeBracket: { tier1: number; tier2: number; tier2MinDays: number };
   }): Promise<'sent' | 'skipped' | 'failed'> {
     const amount = Number(args.payment.amountDue) - Number(args.payment.amountPaid);
     const daysOverdue = args.dayOffset < 0 ? Math.abs(args.dayOffset) : 0;
-    const fineAmount = daysOverdue * LATE_FEE_PER_DAY;
+    // Flat-bracket late fee (matches recordPayment / overdue cron / LIFF quote).
+    // e.g. T+3 → 100฿ (tier2), NOT 3×50=150฿ (old per-day model).
+    const { tier1, tier2, tier2MinDays } = args.lateFeeBracket;
+    const fineAmount = Number(
+      computeBracketLateFee({ daysOverdue, tier1Amount: tier1, tier2Amount: tier2, tier2MinDays }),
+    );
 
     const payload: ReminderPayload = {
       customerName: args.customerName,

@@ -189,10 +189,14 @@ describe('OverdueService.calculateLateFees (D2 flat-bracket config resolution â€
     expect(exprs).toContain(75);   // tier1 from config
     expect(exprs).toContain(150);  // tier2 from config
     expect(exprs).toContain(5);    // minDays from config
-    // Old per-day / cap / capPct values are NOT interpolated anymore (removed in D2 task 4).
-    // 100 was the old LATE_FEE_PER_DAY default; 0.05 was LATE_FEE_CAP_PCT.
-    expect(exprs).not.toContain(100);  // old LATE_FEE_PER_DAY default
-    expect(exprs).not.toContain(0.05); // old LATE_FEE_CAP_PCT
+    // The old per-day model interpolated a 0.05 percentage cap (LATE_FEE_CAP_PCT),
+    // removed in D2 task 4. With tier1/2/minDays configured to distinct non-default
+    // values (75/150/5), the ONLY numeric exprs should be those three â€” no stray
+    // capPct or per-day fraction. (Asserting 0.05 absence here is robust because no
+    // configured tier value equals 0.05.)
+    expect(exprs).not.toContain(0.05); // old LATE_FEE_CAP_PCT must never appear
+    const numericExprs = exprs.filter((e) => typeof e === 'number');
+    expect(numericExprs.every((n) => [75, 150, 5].includes(n))).toBe(true);
   });
 
   it('each tier config falls back to its own BUSINESS_RULES default independently', async () => {

@@ -152,7 +152,7 @@ async function main() {
   console.log('CompanyInfo created: 2 (SHOP + FINANCE)');
 
   // ============================================================
-  // STEP 2: SystemConfig (21 configs)
+  // STEP 2: SystemConfig (count = configs.length, logged below)
   // ============================================================
   console.log('STEP 2: Creating SystemConfig...');
 

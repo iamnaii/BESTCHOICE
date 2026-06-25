@@ -5,9 +5,6 @@
  * (tools, slip-processing, auto-trigger, system-prompt)
  */
 
-/** ค่าปรับชำระล่าช้า (บาท/วัน) */
-export const LATE_FEE_PER_DAY = 50;
-
 /** บัญชีรับชำระของบริษัท */
 export const FINANCE_BANK = {
   bankName: 'ธนาคารกสิกรไทย',

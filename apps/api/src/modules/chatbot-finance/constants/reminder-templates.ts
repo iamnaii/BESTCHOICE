@@ -55,22 +55,22 @@ export const TEMPLATES = {
     `💰 ยอดที่ต้องชำระ: ${fmt(p.amount)} บาท\n\n` +
     `✅ รบกวนโอนชำระภายในวันนี้\n` +
     `พร้อมแจ้งสลิปในไลน์นี้ทันทีหลังโอน\n\n` +
-    `⚠️ หากชำระเกินกำหนด จะมีค่าปรับวันละ 50 บาท\n\n` +
+    `⚠️ หากชำระล่าช้า มีค่าปรับ 50 บาท (1–2 วัน) หรือ 100 บาท (ตั้งแต่ 3 วันขึ้นไป)\n\n` +
     `${p.bankBlock || FALLBACK_BANK_BLOCK}`,
 
   T_PLUS_1: (p: ReminderPayload): string =>
     `⚠️ แจ้งเตือน: ค่างวดเลยกำหนดชำระแล้ว 1 วัน\nระบบยังไม่ได้รับยอดค่ะ\n\n` +
     `📅 กำหนดชำระ: ${p.dueDate}\n` +
     `💰 ยอดงวด + ค่าปรับ (${fmt(p.fineAmount ?? 50)})\n` +
-    `   = ยอดรวม: ${fmt(p.totalAmount ?? p.amount + 50)} บาท\n\n` +
+    `   = ยอดรวม: ${fmt(p.totalAmount ?? p.amount + (p.fineAmount ?? 50))} บาท\n\n` +
     `${p.bankBlock || FALLBACK_BANK_BLOCK}\n\n` +
     `✅ โอนแล้วฝากสลิปไว้ได้เลยค่ะ`,
 
   T_PLUS_3: (p: ReminderPayload): string =>
     `⚠️ ค่างวดเลยกำหนดชำระแล้ว 3 วันค่ะ\n\n` +
     `📅 กำหนดชำระ: ${p.dueDate}\n` +
-    `💰 ยอดงวด + ค่าปรับ ${fmt(p.fineAmount ?? 150)} บาท\n` +
-    `   = ยอดรวม: ${fmt(p.totalAmount ?? p.amount + 150)} บาท\n\n` +
+    `💰 ยอดงวด + ค่าปรับ ${fmt(p.fineAmount ?? 100)} บาท\n` +
+    `   = ยอดรวม: ${fmt(p.totalAmount ?? p.amount + (p.fineAmount ?? 100))} บาท\n\n` +
     `📌 หากยังต้องการใช้งานต่อ กรุณาชำระและแจ้งสลิปก่อน 16:00 น.\n\n` +
     `${p.bankBlock || FALLBACK_BANK_BLOCK}\n\n` +
     `${SUFFIX}`,

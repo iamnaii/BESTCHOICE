@@ -3,8 +3,10 @@ import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { PaymentFlexPreview, parsePaymentFlex } from './PaymentFlexPreview';
 import FlexBubblePreview from './FlexBubblePreview';
-import { Check, CheckCheck, Lock, FileText, ImageOff, Download } from 'lucide-react';
+import { Check, CheckCheck, Lock, FileText, ImageOff, Download, Copy } from 'lucide-react';
 import { linkifyText } from '@/lib/linkify';
+import { toast } from 'sonner';
+import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 
 /** In-chat image with a loading skeleton and a graceful error tile. */
 function ChatImage({ src }: { src: string }) {
@@ -85,6 +87,14 @@ export default function MessageBubble({ message, customerAvatar, customerInitial
   const isBot = message.role === 'BOT';
   const isStaff = message.role === 'STAFF';
   const isSystem = message.role === 'SYSTEM' || message.role === 'AUTO_TRIGGER';
+
+  const { copy } = useCopyToClipboard();
+  const copyText = async () => {
+    if (!message.text) return;
+    const ok = await copy(message.text);
+    ok ? toast.success('คัดลอกแล้ว') : toast.error('คัดลอกไม่สำเร็จ');
+  };
+  const canCopy = !!message.text && !/^\[(sticker|gif|flex):/.test(message.text);
 
   if (isSystem) {
     return (
@@ -288,7 +298,7 @@ export default function MessageBubble({ message, customerAvatar, customerInitial
         />
       )}
 
-      <div className={cn('max-w-[75%] flex flex-col', isCustomer ? 'items-start' : 'items-end')}>
+      <div className={cn('group relative max-w-[75%] flex flex-col', isCustomer ? 'items-start' : 'items-end')}>
         {/* Sender label */}
         {(isBot || isStaff) && (
           <span className="text-[10px] text-muted-foreground mb-0.5 px-1">
@@ -307,6 +317,23 @@ export default function MessageBubble({ message, customerAvatar, customerInitial
                 : 'bg-primary text-primary-foreground rounded-br-md',
           )}
         >
+          {/* Copy button — floats at the outer corner of the bubble, visible on hover */}
+          {canCopy && (
+            <button
+              type="button"
+              onClick={copyText}
+              title="คัดลอกข้อความ"
+              aria-label="คัดลอกข้อความ"
+              className={cn(
+                'absolute top-1 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity',
+                'rounded-md border border-border bg-card p-1 text-muted-foreground shadow-sm hover:text-foreground',
+                isCustomer ? '-right-7' : '-left-7',
+              )}
+            >
+              <Copy className="size-3.5" />
+            </button>
+          )}
+
           {/* Media — render by type: FILE/non-image → file tile; image → ChatImage skeleton */}
           {message.mediaUrl &&
             ((message.type === 'FILE' ||

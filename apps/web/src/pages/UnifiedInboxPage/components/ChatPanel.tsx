@@ -260,6 +260,9 @@ export default function ChatPanel({
   // drop the AI-suggestion association (it's room-scoped — see below), and focus
   // the box on desktop. Keyed on roomId ONLY so streaming messages never reload
   // the draft or steal focus mid-typing.
+  // NOTE: a room switch transiently passes roomId=undefined (session refetch has no
+  // keepPreviousData), so this runs A→undefined→B. Draft correctness relies on
+  // swapRoomDraft saving ONLY when prevRoom is truthy (undefined bounce = no save).
   useEffect(() => {
     const incoming = swapRoomDraft(draftsRef.current, prevRoomRef.current, roomId, inputTextRef.current);
     prevRoomRef.current = roomId;
@@ -768,7 +771,7 @@ export default function ChatPanel({
               onKeyDown={handleKeyDown}
               placeholder="พิมพ์ข้อความ..."
               rows={1}
-              className="flex-1 resize-none overflow-y-auto px-3 py-2 text-sm bg-muted/40 rounded-lg border-0 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:bg-background max-h-32 transition-all placeholder:text-muted-foreground/40"
+              className="flex-1 resize-none overflow-y-auto px-3 py-2 text-sm bg-muted/40 rounded-lg border-0 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:bg-background max-h-32 transition-colors placeholder:text-muted-foreground/40"
             />
             <button
               onClick={() => void handleSend()}

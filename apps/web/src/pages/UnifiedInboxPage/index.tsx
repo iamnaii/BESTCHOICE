@@ -177,18 +177,18 @@ export default function UnifiedInboxPage() {
 
   const reopenMutation = useMutation({
     mutationFn: (roomId: string) => api.patch(`/staff-chat/rooms/${roomId}/reopen`),
-    onSuccess: () => {
+    onSuccess: (_data, roomId) => {
       queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
-      queryClient.invalidateQueries({ queryKey: ['chat-room', activeRoomId] });
+      queryClient.invalidateQueries({ queryKey: ['chat-room', roomId] });
     },
     onError: () => toast.error('เลิกทำไม่สำเร็จ'),
   });
 
   const takeOverMutation = useMutation({
     mutationFn: (roomId: string) => api.post(`/chat-ai/take-over/${roomId}`),
-    onSuccess: () => {
+    onSuccess: (_data, roomId) => {
       queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
-      queryClient.invalidateQueries({ queryKey: ['chat-room', activeRoomId] });
+      queryClient.invalidateQueries({ queryKey: ['chat-room', roomId] });
     },
     onError: () => toast.error('เลิกทำไม่สำเร็จ'),
   });
@@ -197,7 +197,7 @@ export default function UnifiedInboxPage() {
     mutationFn: (roomId: string) => api.patch(`/staff-chat/rooms/${roomId}/resolve`),
     onSuccess: (_data, roomId) => {
       queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
-      queryClient.invalidateQueries({ queryKey: ['chat-room', activeRoomId] });
+      queryClient.invalidateQueries({ queryKey: ['chat-room', roomId] });
       toast.success('ปิดแชทแล้ว', {
         action: { label: 'เลิกทำ', onClick: () => reopenMutation.mutate(roomId) },
       });
@@ -209,7 +209,7 @@ export default function UnifiedInboxPage() {
     mutationFn: (roomId: string) => api.patch(`/staff-chat/rooms/${roomId}/return-to-ai`),
     onSuccess: (_data, roomId) => {
       queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
-      queryClient.invalidateQueries({ queryKey: ['chat-room', activeRoomId] });
+      queryClient.invalidateQueries({ queryKey: ['chat-room', roomId] });
       toast.success('ส่งกลับ Bot แล้ว', {
         action: { label: 'เลิกทำ', onClick: () => takeOverMutation.mutate(roomId) },
       });

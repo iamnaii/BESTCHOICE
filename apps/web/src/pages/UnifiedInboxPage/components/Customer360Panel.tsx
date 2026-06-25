@@ -1038,7 +1038,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
         );
         return isMobile ? (
           <Sheet open={pendingAction !== null} onOpenChange={(o) => !o && closeDialog()}>
-            <SheetContent side="bottom" className="rounded-t-2xl">
+            <SheetContent side="bottom" className="rounded-t-2xl max-h-[80vh] overflow-y-auto">
               <SheetHeader>
                 <SheetTitle>{pickerTitle}</SheetTitle>
               </SheetHeader>

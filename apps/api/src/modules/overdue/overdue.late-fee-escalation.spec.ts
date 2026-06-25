@@ -11,6 +11,7 @@ import { ContractLetterService } from './contract-letter.service';
 import { MdmLockService } from './mdm-lock.service';
 import { OwnerAlertHelper } from './owner-alert.helper';
 import { BUSINESS_RULES } from '../../utils/config.util';
+import { ConsecutiveMissedService } from './consecutive-missed.service';
 
 /**
  * Characterization (golden) tests for OverdueService — late-fee config resolution
@@ -112,6 +113,7 @@ const buildService = async (
       { provide: ContractLetterService, useValue: letterService },
       { provide: MdmLockService, useValue: mdmLockService },
       { provide: OwnerAlertHelper, useValue: ownerAlertHelper },
+      { provide: ConsecutiveMissedService, useValue: { getStreaks: jest.fn().mockResolvedValue(new Map()) } },
     ],
   }).compile();
   return mod.get(OverdueService);

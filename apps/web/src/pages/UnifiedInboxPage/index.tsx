@@ -74,6 +74,19 @@ export default function UnifiedInboxPage() {
     }
   }, [muteAll, toggleMuteAll]);
 
+  // Send-status state: in-flight ghost + unified failed list (both roomId-scoped)
+  const [pendingSend, setPendingSend] = useState<{ roomId: string; text: string } | null>(null);
+  const [failedSends, setFailedSends] = useState<{ id: string; roomId: string; text: string }[]>([]);
+
+  const pushFailedSend = useCallback((roomId: string, text: string) => {
+    setFailedSends((prev) =>
+      // avoid a double entry if HTTP-catch and WS send-failed both fire for the same text
+      prev.some((f) => f.roomId === roomId && f.text === text)
+        ? prev
+        : [...prev, { id: crypto.randomUUID(), roomId, text }],
+    );
+  }, []);
+
   // Clear viewer banner when switching rooms so a stale banner doesn't flash.
   useEffect(() => {
     setRoomViewers([]);
@@ -117,7 +130,7 @@ export default function UnifiedInboxPage() {
     // onCollision intentionally dropped — the persistent banner (from onViewers)
     // replaces the one-shot toast.
     onSendFailed: (data) => {
-      toast.error(`ส่งข้อความไปยังลูกค้าไม่สำเร็จ${data.error ? ` — ${data.error}` : ''}`);
+      pushFailedSend(data.roomId, data.text);
       queryClient.invalidateQueries({ queryKey: ['chat-messages', data.roomId] });
     },
   }, activeRoomId);
@@ -256,35 +269,38 @@ export default function UnifiedInboxPage() {
 
   // Send via HTTP — WS is unreliable behind some proxies, so HTTP is the
   // source of truth for sending. WS is still used to receive real-time updates.
-  // Returns true only when the message was accepted, so the composer can keep
-  // the typed text on failure instead of losing it.
+  // Returns true only when the message was accepted. Failure drives a FAILED ghost
+  // (via pushFailedSend) — no toast; the FAILED ghost is the affordance.
   const sendRoomMessage = async (text: string): Promise<boolean> => {
     if (!activeRoomId) {
       toast.error('ไม่มีห้องสนทนาที่เปิดอยู่');
       return false;
     }
+    const roomId = activeRoomId; // capture — the room may change before this settles
+    setPendingSend({ roomId, text }); // transient "กำลังส่ง…" ghost (NOT in the cache)
     let ok = false;
     try {
       const { data } = await api.post<{ success: boolean; error?: string }>(
-        `/staff-chat/rooms/${activeRoomId}/messages`,
+        `/staff-chat/rooms/${roomId}/messages`,
         { text },
       );
-      if (data && data.success === false) {
-        toast.error(`ส่งข้อความไม่สำเร็จ${data.error ? ` — ${data.error}` : ''}`);
-      } else {
-        ok = true;
-      }
-    } catch (err) {
-      const e = err as { response?: { data?: { error?: string; message?: string } } };
-      toast.error(e?.response?.data?.error ?? e?.response?.data?.message ?? 'ส่งข้อความไม่สำเร็จ');
+      if (data && data.success === false) pushFailedSend(roomId, text);
+      else ok = true;
+    } catch {
+      pushFailedSend(roomId, text);
     }
-    queryClient.invalidateQueries({ queryKey: ['chat-messages', activeRoomId] });
+    // drop the ghost only if it's still the one we set (room may have switched + re-sent)
+    setPendingSend((p) => (p?.roomId === roomId && p.text === text ? null : p));
+    queryClient.invalidateQueries({ queryKey: ['chat-messages', roomId] });
     // Refresh the conversation list too so the room bubbles to the top with the
     // just-sent message as its preview (otherwise the left list stays stale
     // until the next inbound message / poll).
     queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
     return ok;
   };
+
+  const sendRoomMessageRef = useRef(sendRoomMessage);
+  sendRoomMessageRef.current = sendRoomMessage;
 
   const handleSendMessage = useCallback(
     (text: string) => sendRoomMessage(text),
@@ -325,6 +341,17 @@ export default function UnifiedInboxPage() {
   const handleSendFile = useCallback(
     (file: File) => uploadFileMutation.mutate(file),
     [uploadFileMutation],
+  );
+
+  const retrySend = useCallback(
+    (failedId: string, text: string) => {
+      setFailedSends((prev) => prev.filter((f) => f.id !== failedId));
+      // sendRoomMessage is a stable closure over activeRoomId; the retry button
+      // only renders for the active room so activeRoomId is correct at click time.
+      void sendRoomMessageRef.current(text); // re-runs the same flow (new ghost; re-fails → new FAILED entry)
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
   );
 
   const customerId = sessionQuery.data?.customerId ?? null;
@@ -386,6 +413,9 @@ export default function UnifiedInboxPage() {
           aiPaused={sessionQuery.data?.aiPaused ?? false}
           onToggleAi={handleToggleAi}
           aiTogglePending={aiTogglePending}
+          pendingSendText={pendingSend?.roomId === activeRoomId ? pendingSend.text : null}
+          failedSends={failedSends.filter((f) => f.roomId === activeRoomId)}
+          onRetrySend={retrySend}
         />
       </div>
 

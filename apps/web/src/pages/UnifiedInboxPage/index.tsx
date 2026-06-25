@@ -271,7 +271,7 @@ export default function UnifiedInboxPage() {
   const customerId = sessionQuery.data?.customerId ?? null;
 
   return (
-    <div className="h-screen flex bg-card overflow-hidden pb-[calc(56px+env(safe-area-inset-bottom))] lg:pb-0">
+    <div className="h-dvh flex bg-card overflow-hidden pb-[calc(56px+env(safe-area-inset-bottom))] lg:pb-0">
       {/* Left panel: Conversation list */}
       <div className={`w-80 flex-shrink-0 min-h-0 ${activeRoomId ? 'hidden lg:flex lg:flex-col' : 'flex flex-col w-full lg:w-80'}`}>
         <QueryBoundary

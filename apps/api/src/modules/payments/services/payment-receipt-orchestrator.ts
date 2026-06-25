@@ -191,9 +191,10 @@ export class PaymentReceiptOrchestrator {
         data: { status: 'CANCELLED', cancelledAt: new Date() },
       });
 
-      // Real-time late fee: flat-bracket model (D2, owner 2026-06-25 — no per-day,
-      // no 5% cap). Set = bracket (NOT max(stored, bracket)) so this path agrees
-      // with the overdue cron's retroactive downgrade. Skip waived.
+      // Real-time late fee: mode-aware via resolveLateFee (PER_DAY default —
+      // min(days×rate, maxAmount, 5%×amountDue); config-switchable to BRACKET).
+      // Set = resolved fee (NOT max(stored, resolved)) so this path agrees with
+      // the overdue cron's retroactive downgrade. Skip waived.
       let lateFee = d(payment.lateFee);
       if (!payment.lateFeeWaived && payment.dueDate < new Date()) {
         const daysOverdue = Math.floor((Date.now() - payment.dueDate.getTime()) / (1000 * 60 * 60 * 24));

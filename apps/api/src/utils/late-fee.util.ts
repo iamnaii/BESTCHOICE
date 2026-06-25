@@ -13,17 +13,17 @@ export interface BracketLateFeeInput {
 }
 
 /**
- * Flat-bracket late fee (CPA CSV / owner decision 2026-06-25):
+ * Flat-bracket late fee — the BRACKET branch of `resolveLateFee`:
  *   0 days        → 0
  *   1..(min-1)    → tier1Amount   (e.g. 50฿)
  *   >= min        → tier2Amount   (e.g. 100฿, flat — does NOT accumulate per day)
  *
- * NOTE: The previous per-day model AND the 5% Thai-law per-installment cap
- * (LATE_FEE_CAP_PCT) were intentionally REMOVED by owner decision 2026-06-25.
- * Late fee is now a flat bracket only, config-driven (reversible). CPA to review
- * compliance before production rollout. Single source of truth — the collection
- * path (recordPayment), the overdue cron (raw SQL), and the LIFF chatbot quote
- * MUST all resolve the same brackets so quotes match charges.
+ * NOTE: The per-day model + 5% per-installment cap (Section #3) live in
+ * `computePerDayLateFee` and are the PER_DAY-mode default; BRACKET is retained
+ * for instant config rollback via `late_fee_mode` (prod stays BRACKET until CPA
+ * sign-off). Single source of truth — recordPayment, the overdue cron (raw SQL),
+ * and the LIFF chatbot quotes all resolve through `resolveLateFee` so quotes
+ * match charges.
  */
 export function computeBracketLateFee(input: BracketLateFeeInput): Prisma.Decimal {
   const days = Math.max(0, Math.floor(input.daysOverdue));

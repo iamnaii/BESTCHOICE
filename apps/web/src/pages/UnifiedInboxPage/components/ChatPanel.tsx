@@ -1,6 +1,6 @@
 import { useRef, useEffect, useLayoutEffect, useState, useMemo } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
-import { Send, MoreVertical, ArrowLeft, Paperclip, Smile, Pin, PinOff, MessageSquare, UserCircle2, MessageSquareQuote, Loader2, Upload, Eye, Bell, BellOff, Bot, BotOff } from 'lucide-react';
+import { Send, MoreVertical, ArrowLeft, Paperclip, Smile, Pin, PinOff, MessageSquare, UserCircle2, MessageSquareQuote, Loader2, Upload, Eye, Bell, BellOff, Bot, BotOff, AlertCircle, RotateCw } from 'lucide-react';
 import { isSameDay } from 'date-fns';
 import { formatDateSeparator } from '@/lib/chat-time';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -135,12 +135,9 @@ export default function ChatPanel({
   aiPaused,
   onToggleAi,
   aiTogglePending,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  pendingSendText: _pendingSendText,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  failedSends: _failedSends,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  onRetrySend: _onRetrySend,
+  pendingSendText,
+  failedSends,
+  onRetrySend,
 }: ChatPanelProps) {
   const [inputText, setInputText] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -372,6 +369,13 @@ export default function ChatPanel({
   const handleSend = async () => {
     const text = inputText.trim();
     if (!text || isSending) return;
+    // Clear the composer immediately — the in-flight ghost shows the text while
+    // sending, and a FAILED ghost (with retry) owns it if the send fails. The
+    // Batch-1 keep-text-in-composer path is replaced by that ghost.
+    setInputText('');
+    if (roomId) draftsRef.current.delete(roomId);
+    const suggestion = selectedSuggestion;
+    setSelectedSuggestion(null);
     setIsSending(true);
     let result: boolean | void;
     try {
@@ -379,26 +383,19 @@ export default function ChatPanel({
     } finally {
       setIsSending(false);
     }
-    // Keep the typed text if the send was rejected, so a network error / 500
-    // doesn't silently lose the staff member's message.
-    if (result === false) {
-      inputRef.current?.focus();
-      return;
+    if (result !== false && suggestion) {
+      const type = text === suggestion.aiDraft ? 'ACCEPT' : 'EDIT';
+      api
+        .post('/staff-chat/ai/training-feedback', {
+          roomId: session.id,
+          type,
+          customerMessage: getLastCustomerMessage(),
+          aiDraft: suggestion.aiDraft,
+          humanEdit: type === 'EDIT' ? text : undefined,
+          intent: suggestion.intent,
+        })
+        .catch(() => {});
     }
-    if (selectedSuggestion) {
-      const type = text === selectedSuggestion.aiDraft ? 'ACCEPT' : 'EDIT';
-      api.post('/staff-chat/ai/training-feedback', {
-        roomId: session.id,
-        type,
-        customerMessage: getLastCustomerMessage(),
-        aiDraft: selectedSuggestion.aiDraft,
-        humanEdit: type === 'EDIT' ? text : undefined,
-        intent: selectedSuggestion.intent,
-      }).catch(() => {});
-      setSelectedSuggestion(null);
-    }
-    setInputText('');
-    if (roomId) draftsRef.current.delete(roomId); // sent successfully → drop this room's saved draft
     inputRef.current?.focus();
   };
 
@@ -657,6 +654,35 @@ export default function ChatPanel({
               </div>
             )}
             <div ref={messagesEndRef} />
+            {/* In-flight "sending" ghost — NOT a cached message; drops when the send settles. */}
+            {pendingSendText && (
+              <div className="flex justify-end mb-3">
+                <div className="max-w-[75%] rounded-2xl rounded-br-md bg-primary/60 px-3.5 py-2 text-sm text-primary-foreground leading-relaxed wrap-anywhere">
+                  <span className="whitespace-pre-wrap">{pendingSendText}</span>
+                  <span className="mt-0.5 flex items-center justify-end gap-1 text-[10px] opacity-80">
+                    <Loader2 className="size-3 animate-spin" /> กำลังส่ง
+                  </span>
+                </div>
+              </div>
+            )}
+            {/* Failed sends — unified HTTP + WS failure path; retry re-sends. */}
+            {(failedSends ?? []).map((f) => (
+              <div key={f.id} className="flex justify-end mb-3">
+                <div className="max-w-[75%] rounded-2xl rounded-br-md border border-destructive/40 bg-destructive/10 px-3.5 py-2 text-sm text-foreground leading-relaxed wrap-anywhere">
+                  <span className="whitespace-pre-wrap">{f.text}</span>
+                  <div className="mt-1 flex items-center justify-end gap-2 text-[10px] text-destructive leading-snug">
+                    <AlertCircle className="size-3 shrink-0" /> ส่งไม่สำเร็จ
+                    <button
+                      type="button"
+                      onClick={() => onRetrySend?.(f.id, f.text)}
+                      className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-medium hover:bg-destructive/15"
+                    >
+                      <RotateCw className="size-3" /> ลองใหม่
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
           </>
         )}
       </div>

@@ -228,6 +228,50 @@ describe('shop-collect-settlement integration', () => {
     ).rejects.toThrow(BadRequestException);
   });
 
+  it('VOID REGRESSION: voided shop-collect payoff JE → outstanding = 0 → settlement throws BadRequestException', async () => {
+    // 1. Activate a contract + shop-collect payoff → creates Dr 11-2107 balance
+    const cVoid = await seedStandard17k12m(prisma);
+    const journalVoid = new JournalAutoService(prisma as any);
+    await new ContractActivation1ATemplate(journalVoid, prisma as any).execute(cVoid.id);
+    await seedPendingPayments(cVoid.id, cVoid.installmentCount);
+
+    await svc.earlyPayoff(cVoid.id, userId, {
+      paymentMethod: 'CASH',
+      discountPct: 50,
+      collectedByShop: true,
+    } as any);
+
+    // Confirm positive 11-2107 balance exists before voiding
+    const balanceBeforeVoid = await getNet11_2107(cVoid.id);
+    expect(balanceBeforeVoid.gt(0), `Expected 11-2107 balance > 0 after shop-collect payoff, got ${balanceBeforeVoid.toFixed(2)}`).toBe(true);
+
+    // 2. VOID the early-payoff journal entry (simulates VOIDED status via DB update)
+    const payoffJe = await prisma.journalEntry.findFirst({
+      where: {
+        AND: [
+          { metadata: { path: ['contractId'], equals: cVoid.id } } as any,
+          { metadata: { path: ['flow'], equals: 'early-payoff' } } as any,
+          { deletedAt: null },
+        ],
+      },
+    });
+    expect(payoffJe, 'Expected a jp4 early-payoff JE to exist').not.toBeNull();
+
+    await prisma.journalEntry.update({
+      where: { id: payoffJe!.id },
+      data: { status: 'VOIDED' },
+    });
+
+    // 3. The outstanding-balance query now filters POSTED only → balance = 0
+    //    → settlement must throw BadRequestException (no-balance guard)
+    await expect(
+      svc.shopCollectSettlement(cVoid.id, userId, {
+        depositAccountCode: '11-1201',
+        amount: balanceBeforeVoid.toNumber(),
+      }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
   it('NO-BALANCE GUARD: settling a contract with no 11-2107 balance → BadRequestException', async () => {
     // A regular (non-shop-collect) payoff contract — no 11-2107 line
     const c3 = await seedStandard17k12m(prisma);

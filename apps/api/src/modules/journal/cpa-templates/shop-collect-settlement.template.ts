@@ -59,13 +59,14 @@ export class ShopCollectSettlementTemplate {
     const client = outerTx ?? this.prisma;
 
     // ── Compute outstanding 11-2107 for this contract ─────────────────────────
-    // Sum all posted JL lines (Dr − Cr) where parentJE.metadata.contractId = contractId
+    // Sum all POSTED JL lines (Dr − Cr) where parentJE.metadata.contractId = contractId
     const lines = await client.journalLine.findMany({
       where: {
         accountCode: '11-2107',
         journalEntry: {
           AND: [
             { metadata: { path: ['contractId'], equals: contractId } } as Prisma.JournalEntryWhereInput,
+            { status: 'POSTED' },
             { deletedAt: null },
           ],
         },
@@ -122,6 +123,7 @@ export class ShopCollectSettlementTemplate {
           contractId,
           amount: amount.toFixed(2),
           depositAccountCode,
+          idempotencyKey: `${contractId}:${amount.toFixed(2)}`,
         },
         lines: [
           {

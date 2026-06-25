@@ -1,6 +1,6 @@
 import { useRef, useEffect, useLayoutEffect, useState, useMemo } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
-import { Send, MoreVertical, ArrowLeft, Paperclip, Smile, Pin, PinOff, MessageSquare, UserCircle2, MessageSquareQuote, Loader2, Upload, Eye, Bell, BellOff } from 'lucide-react';
+import { Send, MoreVertical, ArrowLeft, Paperclip, Smile, Pin, PinOff, MessageSquare, UserCircle2, MessageSquareQuote, Loader2, Upload, Eye, Bell, BellOff, Bot, BotOff } from 'lucide-react';
 import { isSameDay } from 'date-fns';
 import { formatDateSeparator } from '@/lib/chat-time';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -104,6 +104,9 @@ interface ChatPanelProps {
   otherViewers?: { userId: string; userName: string }[];
   roomMuted?: boolean;
   onToggleRoomMute?: () => void;
+  aiPaused?: boolean;
+  onToggleAi?: () => void;
+  aiTogglePending?: boolean;
 }
 
 export default function ChatPanel({
@@ -125,6 +128,9 @@ export default function ChatPanel({
   otherViewers,
   roomMuted,
   onToggleRoomMute,
+  aiPaused,
+  onToggleAi,
+  aiTogglePending,
 }: ChatPanelProps) {
   const [inputText, setInputText] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -533,6 +539,23 @@ export default function ChatPanel({
               className="p-1.5 text-muted-foreground hover:text-foreground/70 hover:bg-accent rounded-lg"
             >
               {roomMuted ? <BellOff className="w-5 h-5" /> : <Bell className="w-5 h-5" />}
+            </button>
+          )}
+          {onToggleAi && (
+            <button
+              type="button"
+              onClick={onToggleAi}
+              disabled={aiTogglePending}
+              title={aiPaused ? 'เปิด AI ตอบอัตโนมัติ' : 'หยุด AI (พนักงานตอบเอง)'}
+              aria-label="สลับสถานะ AI"
+              className={cn(
+                'p-1.5 rounded-lg transition-colors disabled:opacity-50',
+                aiPaused
+                  ? 'text-muted-foreground hover:text-foreground hover:bg-accent'
+                  : 'text-primary bg-primary/10 hover:bg-primary/20',
+              )}
+            >
+              {aiPaused ? <BotOff className="w-5 h-5" /> : <Bot className="w-5 h-5" />}
             </button>
           )}
           <button

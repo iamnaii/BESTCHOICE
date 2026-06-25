@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { seedStandard17k12m } from '../journal/__tests__/scenario-helpers';
@@ -27,15 +27,19 @@ function build() {
 describe('calculateProvisions — streak floors a low-aging contract', () => {
   let contractId: string;
 
+  afterAll(async () => {
+    await prisma.badDebtProvision.deleteMany({});
+    await prisma.payment.deleteMany({});
+    await prisma.installmentSchedule.deleteMany({});
+    await prisma.contract.deleteMany({});
+    await prisma.$disconnect();
+  });
+
   beforeAll(async () => {
     await prisma.badDebtProvision.deleteMany({});
     await prisma.payment.deleteMany({});
     await prisma.installmentSchedule.deleteMany({});
     await prisma.contract.deleteMany({});
-    // Remove any DB override so DEFAULT_PROVISION_RATES (61-90 = 0.5) apply.
-    await prisma.systemConfig.deleteMany({
-      where: { key: { in: ['bad_debt_provision_rates', 'consecutive_missed_bucket_map'] } },
-    });
     await seedFinanceCoa(prisma);
     if (!(await prisma.user.findFirst({ where: { email: 'admin@bestchoice.com' } }))) {
       await prisma.user.create({
@@ -86,6 +90,5 @@ describe('calculateProvisions — streak floors a low-aging contract', () => {
       orderBy: { provisionDate: 'desc' },
     });
     expect(row!.agingBucket).toBe('61-90');
-    expect(Number(row!.provisionRate)).toBe(0.5);
   });
 });

@@ -70,7 +70,7 @@ export default function UnifiedInboxPage() {
   }, [activeRoomId]);
 
   // WebSocket for real-time updates
-  const { joinRoom, leaveRoom, viewRoom, isCustomerTyping } = useChatSocket({
+  const { joinRoom, leaveRoom, viewRoom, isCustomerTyping, status: connectionStatus } = useChatSocket({
     onNewMessage: (data) => {
       queryClient.invalidateQueries({ queryKey: ['chat-messages', data.roomId] });
       queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
@@ -289,6 +289,7 @@ export default function UnifiedInboxPage() {
             onFiltersChange={setFilters}
             currentUserId={user?.id}
             aiSettings={aiSettingsQuery.data}
+            connectionStatus={connectionStatus}
           />
         </QueryBoundary>
       </div>

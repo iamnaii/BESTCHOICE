@@ -32,6 +32,7 @@ interface ConversationListProps {
   onFiltersChange: (filters: any) => void;
   currentUserId?: string;
   aiSettings?: { autoModeEnabled: boolean; enabledChannels: string[] };
+  connectionStatus?: 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
 }
 
 export default function ConversationList({
@@ -43,6 +44,7 @@ export default function ConversationList({
   onFiltersChange,
   currentUserId,
   aiSettings,
+  connectionStatus,
 }: ConversationListProps) {
   const [searchInput, setSearchInput] = useState(filters.search ?? '');
   const [searchFocused, setSearchFocused] = useState(false);
@@ -153,6 +155,29 @@ export default function ConversationList({
     <div className="flex flex-col h-full border-r border-border/60">
       {/* Search + Filters */}
       <div className="px-4 pt-3 pb-0">
+        {/* Connection status pill — shown only when not connected */}
+        {connectionStatus && connectionStatus !== 'connected' && (
+          <div
+            className={cn(
+              'mb-2 flex items-center gap-1.5 rounded-md px-2 py-1 text-[10px] font-medium leading-snug',
+              connectionStatus === 'disconnected'
+                ? 'bg-destructive/10 text-destructive'
+                : 'bg-warning/10 text-warning',
+            )}
+          >
+            <span
+              className={cn(
+                'size-1.5 rounded-full',
+                connectionStatus === 'disconnected' ? 'bg-destructive' : 'bg-warning animate-pulse',
+              )}
+            />
+            {connectionStatus === 'disconnected'
+              ? 'ออฟไลน์ — ไม่ได้เชื่อมต่อเรียลไทม์'
+              : connectionStatus === 'reconnecting'
+                ? 'กำลังเชื่อมต่อใหม่...'
+                : 'กำลังเชื่อมต่อ...'}
+          </div>
+        )}
         {/* Search */}
         <div className="relative mb-2">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/40" />

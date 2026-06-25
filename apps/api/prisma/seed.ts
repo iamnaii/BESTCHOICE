@@ -162,6 +162,11 @@ async function main() {
     { key: 'late_fee_tier1_amount', value: '50', label: 'ค่าปรับล่าช้า tier1 (บาท) — 1 ถึง tier2MinDays-1 วัน' },
     { key: 'late_fee_tier2_amount', value: '100', label: 'ค่าปรับล่าช้า tier2 (บาท) — ตั้งแต่ tier2MinDays วันขึ้นไป' },
     { key: 'late_fee_tier2_min_days', value: '3', label: 'วันเริ่มต้น tier2 ค่าปรับล่าช้า' },
+    // D2 (2026-06-25) — per-day late-fee config; dev seeds PER_DAY to exercise the new code path
+    { key: 'late_fee_mode', value: 'PER_DAY', label: 'โหมดคำนวณค่าปรับล่าช้า: BRACKET (flat tier) หรือ PER_DAY (รายวัน)' },
+    { key: 'late_fee_per_day_rate', value: '20', label: 'ค่าปรับล่าช้ารายวัน (บาท/วัน) — ใช้เมื่อ late_fee_mode=PER_DAY' },
+    { key: 'late_fee_max_amount', value: '500', label: 'เพดานค่าปรับล่าช้าสูงสุด (บาท) — ใช้เมื่อ late_fee_mode=PER_DAY' },
+    { key: 'late_fee_cap_pct', value: '5', label: 'เพดานค่าปรับ (% ของยอดงวด gross) — ใช้เมื่อ late_fee_mode=PER_DAY' },
     { key: 'default_interest_rate', value: '0.08', label: 'อัตราดอกเบี้ยเริ่มต้น' },
     { key: 'min_down_payment_pct', value: '0.20', label: 'เปอร์เซ็นต์เงินดาวน์ขั้นต่ำ' },
     { key: 'max_installment_months', value: '12', label: 'จำนวนงวดสูงสุด' },

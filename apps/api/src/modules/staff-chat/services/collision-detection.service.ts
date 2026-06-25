@@ -35,14 +35,16 @@ export class CollisionDetectionService {
     this.logger.debug(`[Collision] ${userId} left session ${sessionId}`);
   }
 
-  /** Remove a user from ALL sessions (e.g. on disconnect) */
-  removeViewerFromAll(userId: string): void {
+  /** Remove a user from every room they were viewing; returns the affected roomIds. */
+  removeViewerFromAll(userId: string): string[] {
+    const affected: string[] = [];
     for (const [sessionId, viewers] of this.viewerMap.entries()) {
-      viewers.delete(userId);
-      if (viewers.size === 0) {
-        this.viewerMap.delete(sessionId);
+      if (viewers.delete(userId)) {
+        affected.push(sessionId);
+        if (viewers.size === 0) this.viewerMap.delete(sessionId);
       }
     }
+    return affected;
   }
 
   getViewers(sessionId: string): Array<{ userId: string; userName: string; since: Date }> {

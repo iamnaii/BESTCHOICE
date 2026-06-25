@@ -93,3 +93,24 @@ describe('CollisionDetectionService', () => {
     });
   });
 });
+
+describe('CollisionDetectionService.removeViewerFromAll', () => {
+  it('removes the user from every room and returns the affected roomIds', () => {
+    const svc = new CollisionDetectionService();
+    svc.addViewer('roomA', 'u1', 'Alice');
+    svc.addViewer('roomB', 'u1', 'Alice');
+    svc.addViewer('roomB', 'u2', 'Bob');
+
+    const affected = svc.removeViewerFromAll('u1');
+
+    expect(affected.sort()).toEqual(['roomA', 'roomB']);
+    expect(svc.getViewers('roomA')).toHaveLength(0);
+    expect(svc.getViewers('roomB').map((v) => v.userId)).toEqual(['u2']); // Bob remains
+  });
+
+  it('returns [] when the user was viewing nothing', () => {
+    const svc = new CollisionDetectionService();
+    svc.addViewer('roomA', 'u2', 'Bob');
+    expect(svc.removeViewerFromAll('u1')).toEqual([]);
+  });
+});

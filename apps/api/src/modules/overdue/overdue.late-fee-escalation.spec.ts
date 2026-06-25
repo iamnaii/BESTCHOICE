@@ -126,61 +126,107 @@ const daysAgo = (days: number): Date => new Date(Date.now() - days * 24 * 60 * 6
 beforeEach(() => jest.clearAllMocks());
 
 // ─────────────────────────────────────────────────────────────────────────────
-// calculateLateFees — JS-side config resolution (the raw-SQL arithmetic is in PG)
+// calculateLateFees — D2 flat-bracket config resolution (raw SQL arithmetic in PG)
 // ─────────────────────────────────────────────────────────────────────────────
-describe('OverdueService.calculateLateFees (config resolution — raw SQL arithmetic excluded)', () => {
+describe('OverdueService.calculateLateFees (D2 flat-bracket config resolution — raw SQL arithmetic excluded)', () => {
   /**
-   * $executeRaw is a tagged template: ($executeRaw`...${now}...${perDay}...`) so jest
-   * receives (strings, ...exprs). exprs[0] = now timestamp, exprs[1] = lateFeePerDay,
-   * exprs[2] = lateFeeCap, exprs[3] = lateFeeCapPct. We assert on those interpolated
-   * scalars to pin the JS-side resolution without re-implementing the SQL.
+   * $executeRaw is a tagged template: ($executeRaw`...${now}...${minDays}...${tier2}...${tier1}...`)
+   * so jest receives (strings, ...exprs). exprs[0] = now timestamp; the bracket scalars follow.
+   * The SQL CASE happens in Postgres — we only pin the JS-side config resolution here.
+   *
+   * SQL shape (D2):
+   *   CASE
+   *     WHEN days >= ${minDays} THEN ${tier2}
+   *     WHEN days >= 1         THEN ${tier1}
+   *     ELSE 0
+   *   END
+   * exprs order after `now`: minDays (×2 in SQL, same value), tier2, tier1 (×2 total = 4 extra exprs)
+   * We assert on the distinct scalar values rather than positional indices for robustness.
    */
   const makePrisma = (
-    perDayCfg: { value: string } | null,
-    capCfg: { value: string } | null,
+    tier1Cfg: { value: string } | null,
+    tier2Cfg: { value: string } | null,
+    minDaysCfg: { value: string } | null,
     rowsUpdated = 3,
   ): PrismaMock => ({
     systemConfig: {
-      findUnique: jest.fn(({ where }: { where: { key: string } }) =>
-        Promise.resolve(where.key === 'late_fee_per_day' ? perDayCfg : capCfg),
-      ),
+      findUnique: jest.fn(({ where }: { where: { key: string } }) => {
+        if (where.key === 'late_fee_tier1_amount') return Promise.resolve(tier1Cfg);
+        if (where.key === 'late_fee_tier2_amount') return Promise.resolve(tier2Cfg);
+        if (where.key === 'late_fee_tier2_min_days') return Promise.resolve(minDaysCfg);
+        return Promise.resolve(null);
+      }),
     },
     $executeRaw: jest.fn().mockResolvedValue(rowsUpdated),
   });
 
+  /** All interpolated values passed to $executeRaw (after the SQL template strings). */
   const rawExprs = (prisma: PrismaMock): unknown[] =>
     (prisma.$executeRaw as jest.Mock).mock.calls[0].slice(1);
 
-  it('falls back to BUSINESS_RULES defaults (100 / 200 / 0.05) when no SystemConfig rows exist', async () => {
-    const prisma = makePrisma(null, null);
+  it('falls back to BUSINESS_RULES defaults (tier1=50, tier2=100, minDays=3) when no SystemConfig rows exist', async () => {
+    const prisma = makePrisma(null, null, null);
     const svc = await buildService(prisma);
 
     const out = await svc.calculateLateFees();
 
     const exprs = rawExprs(prisma);
-    // exprs[0] is the `now` timestamp; the 3 resolved config scalars follow.
-    expect(exprs[1]).toBe(BUSINESS_RULES.LATE_FEE_PER_DAY); // 100
-    expect(exprs[2]).toBe(BUSINESS_RULES.LATE_FEE_CAP); // 200
-    expect(exprs[3]).toBe(BUSINESS_RULES.LATE_FEE_CAP_PCT); // 0.05
+    // exprs[0] = now; remaining exprs contain tier1/tier2/minDays values (each used once or
+    // twice in the CASE branches). Assert that the distinct values are the BUSINESS_RULES defaults.
+    expect(exprs).toContain(BUSINESS_RULES.LATE_FEE_TIER1_AMOUNT); // 50
+    expect(exprs).toContain(BUSINESS_RULES.LATE_FEE_TIER2_AMOUNT); // 100
+    expect(exprs).toContain(BUSINESS_RULES.LATE_FEE_TIER2_MIN_DAYS); // 3
     expect(out.updated).toBe(3);
     expect(out.timestamp).toBeInstanceOf(Date);
   });
 
-  it('uses Number(SystemConfig.value) for per-day and cap when configured', async () => {
-    const prisma = makePrisma({ value: '50' }, { value: '300' });
+  it('uses Number(SystemConfig.value) for tier1, tier2, minDays when configured', async () => {
+    const prisma = makePrisma({ value: '75' }, { value: '150' }, { value: '5' });
     const svc = await buildService(prisma);
 
     await svc.calculateLateFees();
 
     const exprs = rawExprs(prisma);
-    expect(exprs[1]).toBe(50); // Number('50')
-    expect(exprs[2]).toBe(300); // Number('300')
-    // CapPct is ALWAYS the constant — never read from SystemConfig.
-    expect(exprs[3]).toBe(BUSINESS_RULES.LATE_FEE_CAP_PCT);
+    expect(exprs).toContain(75);   // tier1 from config
+    expect(exprs).toContain(150);  // tier2 from config
+    expect(exprs).toContain(5);    // minDays from config
+    // Old LATE_FEE_PER_DAY / LATE_FEE_CAP / LATE_FEE_CAP_PCT are NOT interpolated anymore.
+    expect(exprs).not.toContain(BUSINESS_RULES.LATE_FEE_PER_DAY);
+    expect(exprs).not.toContain(BUSINESS_RULES.LATE_FEE_CAP_PCT);
+  });
+
+  it('each tier config falls back to its own BUSINESS_RULES default independently', async () => {
+    // tier1 configured, tier2 + minDays missing → only tier1 override applies
+    const prisma = makePrisma({ value: '60' }, null, null);
+    const svc = await buildService(prisma);
+
+    await svc.calculateLateFees();
+
+    const exprs = rawExprs(prisma);
+    expect(exprs).toContain(60);   // configured tier1
+    expect(exprs).toContain(BUSINESS_RULES.LATE_FEE_TIER2_AMOUNT);   // default tier2 = 100
+    expect(exprs).toContain(BUSINESS_RULES.LATE_FEE_TIER2_MIN_DAYS); // default minDays = 3
+  });
+
+  it('cron sets flat bracket: 2 days → 50, 5 days → 100, and DOWNGRADES a stored 200 → 100', async () => {
+    // This test pins the bracket expectations at the JS/config level.
+    // The actual SQL CASE arithmetic runs in Postgres; the e2e spec covers that.
+    // Here we confirm defaults resolve correctly (tier2=100 at minDays=3 → a 5-day payment gets 100).
+    const prisma = makePrisma(null, null, null, 3); // 3 rows updated
+    const svc = await buildService(prisma);
+
+    const out = await svc.calculateLateFees();
+
+    const exprs = rawExprs(prisma);
+    // tier1 = 50 (→ applied to 1..2 days), tier2 = 100 (→ applied to ≥3 days)
+    expect(exprs).toContain(BUSINESS_RULES.LATE_FEE_TIER1_AMOUNT); // 50
+    expect(exprs).toContain(BUSINESS_RULES.LATE_FEE_TIER2_AMOUNT); // 100
+    // Unconditional SET means any stored value (e.g. 200) is overwritten → downgrade
+    expect(out.updated).toBe(3);
   });
 
   it('echoes the $executeRaw row count back as { updated }', async () => {
-    const prisma = makePrisma(null, null, 7);
+    const prisma = makePrisma(null, null, null, 7);
     const svc = await buildService(prisma);
 
     const out = await svc.calculateLateFees();

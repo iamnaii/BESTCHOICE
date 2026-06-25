@@ -1,22 +1,28 @@
 /**
- * Wave 3 MED gap-fill — CHARACTERIZATION integration test for the Thai-law
- * 3-way late-fee cap in `OverdueService.calculateLateFees()`
- * (apps/api/src/modules/overdue/overdue.service.ts:268-306).
+ * D2 Task 3 — CHARACTERIZATION integration test for the flat-bracket late-fee model
+ * in `OverdueLifecycleCronService.calculateLateFees()`.
  *
  * WHY a REAL-DB e2e test (not a mock spec):
  * ----------------------------------------
  * `calculateLateFees()` performs its entire arithmetic inside a single
  * `prisma.$executeRaw` bulk UPDATE:
  *
- *   late_fee = ROUND(LEAST(
- *     GREATEST(FLOOR(EXTRACT(EPOCH FROM (now - due_date)) / 86400)::int, 0) * perDay,
- *     cap,
- *     amount_due * 0.05            -- LATE_FEE_CAP_PCT (Thai-law 5% ceiling)
- *   )::numeric, 2)
+ *   late_fee = CASE
+ *     WHEN FLOOR(EXTRACT(EPOCH FROM (now - due_date)) / 86400)::int >= minDays THEN tier2
+ *     WHEN FLOOR(EXTRACT(EPOCH FROM (now - due_date)) / 86400)::int >= 1       THEN tier1
+ *     ELSE 0
+ *   END
  *
- * The LEAST/GREATEST/EXTRACT/FLOOR/ROUND happen in Postgres, not in JS, so a
- * hand-mocked PrismaService can't characterize the math — `$executeRaw` would
- * just be a `jest.fn`. We therefore pin the behaviour against a REAL database.
+ * The CASE/EXTRACT/FLOOR happen in Postgres, not in JS, so a hand-mocked
+ * PrismaService can't characterize the math — `$executeRaw` would just be a
+ * `jest.fn`. We therefore pin the behaviour against a REAL database.
+ *
+ * D2 bracket model (defaults: tier1=50, tier2=100, minDays=3):
+ *   - 1 day overdue  → tier1 (50)
+ *   - 2 days overdue → tier1 (50)
+ *   - 3 days overdue → tier2 (100)   ← exactly minDays
+ *   - 5 days overdue → tier2 (100)
+ *   - stored 200 with 5 days → DOWNGRADED to 100 (unconditional SET)
  *
  * HARNESS: the main jest config IGNORES *.integration.spec.ts and only the e2e
  * jest config (`e2e/jest-e2e.json`, run by CI via `npm run test:e2e`) matches
@@ -33,7 +39,7 @@
  */
 
 import { PrismaService } from '../src/prisma/prisma.service';
-import { OverdueService } from '../src/modules/overdue/overdue.service';
+import { OverdueLifecycleCronService } from '../src/modules/overdue/services/overdue-lifecycle-cron.service';
 import { Prisma } from '@prisma/client';
 
 const HAS_DB = !!process.env.DATABASE_URL;
@@ -51,9 +57,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const daysAgo = (n: number): Date => new Date(Date.now() - n * DAY_MS);
 const daysFromNow = (n: number): Date => new Date(Date.now() + n * DAY_MS);
 
-describeOrSkip('OverdueService.calculateLateFees — Thai-law 3-way cap (real DB e2e)', () => {
+describeOrSkip('OverdueLifecycleCronService.calculateLateFees — D2 flat-bracket model (real DB e2e)', () => {
   let prisma: PrismaService;
-  let service: OverdueService;
+  let service: OverdueLifecycleCronService;
 
   // FK anchors created in beforeAll, torn down in afterAll.
   let branchId: string;
@@ -70,21 +76,8 @@ describeOrSkip('OverdueService.calculateLateFees — Thai-law 3-way cap (real DB
     prisma = new PrismaService();
     await prisma.$connect();
 
-    // calculateLateFees() only touches `this.prisma`. The other seven injected
-    // deps (DunningEngineService, OverdueKpiService, PromiseService,
-    // PaymentsService, ContractLetterService, MdmLockService, OwnerAlertHelper)
-    // are never reached on this code path, so empty stubs are faithful here —
-    // see overdue.service.ts:268-306. Casts keep the constructor signature.
-    service = new OverdueService(
-      prisma,
-      {} as never,
-      {} as never,
-      {} as never,
-      {} as never,
-      {} as never,
-      {} as never,
-      {} as never,
-    );
+    // OverdueLifecycleCronService only needs PrismaService — constructor(private prisma: PrismaService).
+    service = new OverdueLifecycleCronService(prisma);
 
     // --- FK anchors ------------------------------------------------------
     const branch = await prisma.branch.create({
@@ -149,50 +142,77 @@ describeOrSkip('OverdueService.calculateLateFees — Thai-law 3-way cap (real DB
     activeContractId = activeContract.id;
     waivedContractConfirm = activeContract.id;
 
-    // --- Payment scenarios ----------------------------------------------
-    // 1) pct-cap wins: 30 days * 100 = 3000, cap 200, amount*5% = 50 -> 50.00
-    const pPct = await prisma.payment.create({
+    // --- Payment scenarios (D2 flat-bracket model) ----------------------
+    // Defaults: tier1=50 (1..minDays-1 days), tier2=100 (>=minDays=3 days)
+
+    // 1) 2 days overdue → tier1 = 50
+    const p2Days = await prisma.payment.create({
       data: {
         contractId: activeContractId,
         installmentNo: 1,
-        dueDate: daysAgo(30),
+        dueDate: daysAgo(2),
         amountDue: new Prisma.Decimal(1000),
         status: 'PENDING',
       },
     });
-    paymentIds.pctCap = pPct.id;
+    paymentIds.twoDays = p2Days.id;
 
-    // 2) per-day wins: 1 day * 100 = 100, cap 200, amount*5% = 500 -> 100.00
-    const pPerDay = await prisma.payment.create({
+    // 2) 1 day overdue → tier1 = 50
+    const p1Day = await prisma.payment.create({
       data: {
         contractId: activeContractId,
         installmentNo: 2,
         dueDate: daysAgo(1),
-        amountDue: new Prisma.Decimal(10000),
+        amountDue: new Prisma.Decimal(1000),
         status: 'PENDING',
       },
     });
-    paymentIds.perDay = pPerDay.id;
+    paymentIds.oneDay = p1Day.id;
 
-    // 3) flat-cap wins: 10 days * 100 = 1000, cap 200, amount*5% = 250 -> 200.00
-    const pFlat = await prisma.payment.create({
+    // 3) exactly 3 days overdue → tier2 = 100 (boundary: days >= minDays=3)
+    const p3Days = await prisma.payment.create({
       data: {
         contractId: activeContractId,
         installmentNo: 3,
-        dueDate: daysAgo(10),
-        amountDue: new Prisma.Decimal(5000),
+        dueDate: daysAgo(3),
+        amountDue: new Prisma.Decimal(1000),
         status: 'PENDING',
       },
     });
-    paymentIds.flatCap = pFlat.id;
+    paymentIds.threeDays = p3Days.id;
 
-    // 4) waived row: due 30 days ago BUT late_fee_waived = true -> untouched.
+    // 4) 5 days overdue → tier2 = 100
+    const p5Days = await prisma.payment.create({
+      data: {
+        contractId: activeContractId,
+        installmentNo: 4,
+        dueDate: daysAgo(5),
+        amountDue: new Prisma.Decimal(1000),
+        status: 'PENDING',
+      },
+    });
+    paymentIds.fiveDays = p5Days.id;
+
+    // 5) stale: 5 days overdue, pre-seeded lateFee=200 → DOWNGRADED to 100 (unconditional SET)
+    const pStale = await prisma.payment.create({
+      data: {
+        contractId: activeContractId,
+        installmentNo: 5,
+        dueDate: daysAgo(5),
+        amountDue: new Prisma.Decimal(1000),
+        status: 'OVERDUE',
+        lateFee: new Prisma.Decimal('200.00'),
+      },
+    });
+    paymentIds.stale = pStale.id;
+
+    // 6) waived row: due 5 days ago BUT late_fee_waived = true -> untouched.
     //    Pre-seed a sentinel late_fee (7.77) so we can assert it is preserved.
     const pWaived = await prisma.payment.create({
       data: {
         contractId: activeContractId,
-        installmentNo: 4,
-        dueDate: daysAgo(30),
+        installmentNo: 6,
+        dueDate: daysAgo(5),
         amountDue: new Prisma.Decimal(1000),
         status: 'PENDING',
         lateFee: new Prisma.Decimal('7.77'),
@@ -201,11 +221,11 @@ describeOrSkip('OverdueService.calculateLateFees — Thai-law 3-way cap (real DB
     });
     paymentIds.waived = pWaived.id;
 
-    // 5) not-yet-due row: dueDate in the FUTURE -> excluded by WHERE due_date < now.
+    // 7) not-yet-due row: dueDate in the FUTURE -> excluded by WHERE due_date < now.
     const pFuture = await prisma.payment.create({
       data: {
         contractId: activeContractId,
-        installmentNo: 5,
+        installmentNo: 7,
         dueDate: daysFromNow(5),
         amountDue: new Prisma.Decimal(1000),
         status: 'PENDING',
@@ -213,18 +233,21 @@ describeOrSkip('OverdueService.calculateLateFees — Thai-law 3-way cap (real DB
     });
     paymentIds.future = pFuture.id;
 
-    // --- SystemConfig: pin defaults explicitly so the assertions are stable
-    // regardless of whatever the seeded DB happens to carry. perDay=100,
-    // cap=200 match BUSINESS_RULES; pct 0.05 is hardcoded (NOT configurable).
+    // --- SystemConfig: pin D2 bracket defaults explicitly ---------------
     await prisma.systemConfig.upsert({
-      where: { key: 'late_fee_per_day' },
-      create: { key: 'late_fee_per_day', value: '100' },
+      where: { key: 'late_fee_tier1_amount' },
+      create: { key: 'late_fee_tier1_amount', value: '50' },
+      update: { value: '50' },
+    });
+    await prisma.systemConfig.upsert({
+      where: { key: 'late_fee_tier2_amount' },
+      create: { key: 'late_fee_tier2_amount', value: '100' },
       update: { value: '100' },
     });
     await prisma.systemConfig.upsert({
-      where: { key: 'late_fee_cap' },
-      create: { key: 'late_fee_cap', value: '200' },
-      update: { value: '200' },
+      where: { key: 'late_fee_tier2_min_days' },
+      create: { key: 'late_fee_tier2_min_days', value: '3' },
+      update: { value: '3' },
     });
   }, 60_000);
 
@@ -248,28 +271,40 @@ describeOrSkip('OverdueService.calculateLateFees — Thai-law 3-way cap (real DB
 
   it('runs and reports the number of updated rows', async () => {
     const res = await service.calculateLateFees();
-    // 3 eligible rows: pctCap, perDay, flatCap. (waived + future excluded.)
-    // >= 3 (not === 3) because a shared DB may carry other overdue rows; we
+    // 5 eligible rows: oneDay, twoDays, threeDays, fiveDays, stale. (waived + future excluded.)
+    // >= 5 (not === 5) because a shared DB may carry other overdue rows; we
     // only assert OUR rows below with exact values.
-    expect(res.updated).toBeGreaterThanOrEqual(3);
+    expect(res.updated).toBeGreaterThanOrEqual(5);
     expect(res.timestamp).toBeInstanceOf(Date);
   });
 
-  it('pct-cap wins (5% of 1000 = 50.00, beats 30-day 3000 and flat 200)', async () => {
-    const p = await prisma.payment.findUniqueOrThrow({ where: { id: paymentIds.pctCap } });
-    expect(p.lateFee.toFixed(2)).toBe('50.00');
+  it('2 days overdue → tier1 = 50 (CASE: days >= 1 but < minDays=3)', async () => {
+    const p = await prisma.payment.findUniqueOrThrow({ where: { id: paymentIds.twoDays } });
+    expect(Number(p.lateFee)).toBe(50);
     expect(p.status).toBe('OVERDUE');
   });
 
-  it('per-day wins (1 day * 100 = 100.00, beats flat 200 and 5%*10000=500)', async () => {
-    const p = await prisma.payment.findUniqueOrThrow({ where: { id: paymentIds.perDay } });
-    expect(p.lateFee.toFixed(2)).toBe('100.00');
+  it('1 day overdue → tier1 = 50 (CASE: days >= 1)', async () => {
+    const p = await prisma.payment.findUniqueOrThrow({ where: { id: paymentIds.oneDay } });
+    expect(Number(p.lateFee)).toBe(50);
     expect(p.status).toBe('OVERDUE');
   });
 
-  it('flat cap wins (200.00, beats 10-day 1000 and 5%*5000=250)', async () => {
-    const p = await prisma.payment.findUniqueOrThrow({ where: { id: paymentIds.flatCap } });
-    expect(p.lateFee.toFixed(2)).toBe('200.00');
+  it('exactly 3 days overdue → tier2 = 100 (boundary: days >= minDays=3)', async () => {
+    const p = await prisma.payment.findUniqueOrThrow({ where: { id: paymentIds.threeDays } });
+    expect(Number(p.lateFee)).toBe(100);
+    expect(p.status).toBe('OVERDUE');
+  });
+
+  it('5 days overdue → tier2 = 100', async () => {
+    const p = await prisma.payment.findUniqueOrThrow({ where: { id: paymentIds.fiveDays } });
+    expect(Number(p.lateFee)).toBe(100);
+    expect(p.status).toBe('OVERDUE');
+  });
+
+  it('stale stored 200 with 5 days overdue → DOWNGRADED to 100 (unconditional SET)', async () => {
+    const p = await prisma.payment.findUniqueOrThrow({ where: { id: paymentIds.stale } });
+    expect(Number(p.lateFee)).toBe(100);
     expect(p.status).toBe('OVERDUE');
   });
 
@@ -282,7 +317,7 @@ describeOrSkip('OverdueService.calculateLateFees — Thai-law 3-way cap (real DB
 
   it('not-yet-due (future dueDate) row is NOT updated (WHERE due_date < now)', async () => {
     const p = await prisma.payment.findUniqueOrThrow({ where: { id: paymentIds.future } });
-    expect(p.lateFee.toFixed(2)).toBe('0.00');
+    expect(Number(p.lateFee)).toBe(0);
     expect(p.status).toBe('PENDING');
   });
 });

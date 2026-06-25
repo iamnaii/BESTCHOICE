@@ -1576,6 +1576,7 @@ function SectionHeader({
       <button
         type="button"
         onClick={onToggle}
+        aria-expanded={!collapsed}
         className="w-full flex items-center gap-1.5 mb-2 hover:opacity-80 transition-opacity"
       >
         <Icon className="w-3.5 h-3.5 text-muted-foreground" />

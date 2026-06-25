@@ -194,7 +194,7 @@ export default function ConversationList({
                 onClick={onToggleMuteAll}
                 title={muteAll ? 'เปิดการแจ้งเตือน' : 'ปิดการแจ้งเตือนทั้งหมด'}
                 aria-label={muteAll ? 'เปิดการแจ้งเตือน' : 'ปิดการแจ้งเตือน'}
-                className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted"
+                className="p-1.5 min-h-11 min-w-11 inline-flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted"
               >
                 {muteAll ? <BellOff className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
               </button>
@@ -221,7 +221,7 @@ export default function ConversationList({
                 onFiltersChange({ ...filters, search: undefined }); // clear immediately, don't wait for debounce
               }}
               aria-label="ล้างการค้นหา"
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground/50 hover:text-foreground"
+              className="absolute right-2 top-1/2 -translate-y-1/2 min-h-11 min-w-11 inline-flex items-center justify-center text-muted-foreground/50 hover:text-foreground"
             >
               <X className="w-3.5 h-3.5" />
             </button>

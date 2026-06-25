@@ -6,7 +6,7 @@ import { ContractWorkflowService } from './contract-workflow.service';
 import { ContractPaymentService } from './contract-payment.service';
 import { ContractDocumentService } from './contract-document.service';
 import { ContractSnapshotService } from './contract-snapshot.service';
-import { CreateContractDto, UpdateContractDto, EarlyPayoffDto, ReviewContractDto, RejectContractDto, RequestCancellationDto, RejectCancellationDto } from './dto/contract.dto';
+import { CreateContractDto, UpdateContractDto, EarlyPayoffDto, ReviewContractDto, RejectContractDto, RequestCancellationDto, RejectCancellationDto, ShopCollectSettlementDto } from './dto/contract.dto';
 import { PdpaConsentDto } from './dto/pdpa-consent.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -197,6 +197,20 @@ export class ContractsController {
     // Enforce branch-level access before early payoff
     await this.contractsService.findOne(id, user);
     return this.paymentService.earlyPayoff(id, user.id, dto);
+  }
+
+  /**
+   * Task 3: Post Dr cash / Cr 11-2107 when the shop remits collected cash to FINANCE.
+   * Clears the Dr 11-2107 receivable created by a `collectedByShop` early payoff.
+   */
+  @Post(':id/shop-collect-settlement')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  shopCollectSettlement(
+    @Param('id') id: string,
+    @Body() dto: ShopCollectSettlementDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.paymentService.shopCollectSettlement(id, user.id, dto);
   }
 
   // === VALIDATION: ตรวจสอบความครบถ้วนของสัญญา ===

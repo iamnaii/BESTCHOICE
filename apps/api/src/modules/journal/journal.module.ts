@@ -56,6 +56,8 @@ import { ReconciliationCron } from './cron/reconciliation.cron';
 // P4-SP4 — Contract cancellation JE reversal
 import { ContractCancellationTemplate } from './cpa-templates/contract-cancellation.template';
 import { ReconcileController } from './reconcile.controller';
+// Section 2 Task 3 — shop-collect settlement
+import { ShopCollectSettlementTemplate } from './cpa-templates/shop-collect-settlement.template';
 
 @Module({
   imports: [PrismaModule],
@@ -115,6 +117,8 @@ import { ReconcileController } from './reconcile.controller';
     ReconciliationCron,
     // P4-SP4 — Contract cancellation
     ContractCancellationTemplate,
+    // Section 2 Task 3 — shop-collect settlement
+    ShopCollectSettlementTemplate,
   ],
   exports: [
     JournalService,
@@ -166,6 +170,8 @@ import { ReconcileController } from './reconcile.controller';
     OutboxProcessorService,
     // P4-SP4 — Contract cancellation
     ContractCancellationTemplate,
+    // Section 2 Task 3 — shop-collect settlement
+    ShopCollectSettlementTemplate,
   ],
 })
 export class JournalModule {}

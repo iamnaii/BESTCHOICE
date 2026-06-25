@@ -4,10 +4,11 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { ProductsService } from '../products/products.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { EarlyPayoffJP4Template } from '../journal/cpa-templates/early-payoff-jp4.template';
+import { ShopCollectSettlementTemplate } from '../journal/cpa-templates/shop-collect-settlement.template';
 import { computeEarlyPayoffJE } from '../journal/compute-early-payoff-je';
 import { Decimal } from '@prisma/client/runtime/library';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
-import { EarlyPayoffDto } from './dto/contract.dto';
+import { EarlyPayoffDto, ShopCollectSettlementDto } from './dto/contract.dto';
 import { d, dAdd, dSub, dMul, dDiv, dRound, dSum, dGte } from '../../utils/decimal.util';
 
 @Injectable()
@@ -18,6 +19,7 @@ export class ContractPaymentService {
     private productsService: ProductsService,
     private journalAutoService: JournalAutoService,
     private earlyPayoffJP4Template: EarlyPayoffJP4Template,
+    private shopCollectSettlementTemplate: ShopCollectSettlementTemplate,
   ) {}
 
   /**
@@ -430,6 +432,43 @@ export class ContractPaymentService {
     );
 
     return { ...quote, status: 'EARLY_PAYOFF', paidDate };
+  }
+
+  /**
+   * Task 3: Shop→FINANCE settlement — posts `Dr depositAccountCode / Cr 11-2107`.
+   * Call this after a `collectedByShop` early payoff when the shop remits the
+   * collected cash to FINANCE, clearing the Dr 11-2107 receivable.
+   */
+  async shopCollectSettlement(id: string, userId: string, dto: ShopCollectSettlementDto) {
+    await this.prisma.$transaction(
+      async (tx) => {
+        await this.shopCollectSettlementTemplate.execute(
+          {
+            contractId: id,
+            depositAccountCode: dto.depositAccountCode,
+            amount: dto.amount,
+            postedById: userId,
+          },
+          tx,
+        );
+
+        await tx.auditLog.create({
+          data: {
+            userId,
+            action: 'SHOP_COLLECT_SETTLED',
+            entity: 'contract',
+            entityId: id,
+            newValue: {
+              depositAccountCode: dto.depositAccountCode,
+              amount: String(dto.amount),
+            },
+          },
+        });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+
+    return { success: true, contractId: id };
   }
 
   /** Shared findOne - reuses Prisma query for contract with full includes */

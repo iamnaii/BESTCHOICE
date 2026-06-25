@@ -3,6 +3,7 @@ import { useRef, useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import api from '@/lib/api';
+import { useDebounce } from '@/hooks/useDebounce';
 import { displayAddress } from '@/components/ui/AddressForm';
 import ProductContextCard from './ProductContextCard';
 import { Badge } from '@/components/ui/badge';
@@ -178,6 +179,34 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
     'mdm-lock': 'เลือกสัญญาที่จะส่งคำสั่งล็อกเครื่อง',
     'view-pdf': 'เลือกสัญญาที่จะดู PDF',
   };
+
+  // ─── Link existing customer ───────────────────────────
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [linkSearch, setLinkSearch] = useState('');
+  const debouncedLinkSearch = useDebounce(linkSearch, 400);
+
+  const linkSearchQuery = useQuery({
+    queryKey: ['customer-search', debouncedLinkSearch],
+    queryFn: () =>
+      api
+        .get(`/customers/search?q=${encodeURIComponent(debouncedLinkSearch)}`)
+        .then((r) => r.data?.data ?? r.data),
+    enabled: linkOpen && debouncedLinkSearch.trim().length >= 2,
+  });
+
+  const linkCustomer = useMutation({
+    mutationFn: (customerId: string) =>
+      api.patch(`/staff-chat/rooms/${activeRoomId}/customer`, { customerId }),
+    onSuccess: () => {
+      toast.success('ผูกลูกค้ากับแชทนี้แล้ว');
+      setLinkOpen(false);
+      setLinkSearch('');
+      queryClient.invalidateQueries({ queryKey: ['chat-room', activeRoomId] });
+      queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) =>
+      toast.error(err?.response?.data?.message ?? 'ผูกลูกค้าไม่สำเร็จ'),
+  });
 
   // Both ContactLog + MDM lock dialogs reuse Collections components and need
   // a full ContractRow shape — fetched on demand via /overdue/queue-row
@@ -426,6 +455,11 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
             <UserPlus className="w-3.5 h-3.5 mr-1.5" />
             สร้างลูกค้าจากแชทนี้
           </Button>
+          {activeRoomId && (
+            <Button variant="outline" size="sm" className="w-full" onClick={() => setLinkOpen(true)}>
+              <Link2 className="w-3.5 h-3.5 mr-1.5" /> ผูกลูกค้าที่มีอยู่
+            </Button>
+          )}
         </div>
       );
     }
@@ -876,6 +910,56 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
               );
               });
             })()}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Link existing customer — search + link */}
+      <Dialog
+        open={linkOpen}
+        onOpenChange={(o) => {
+          setLinkOpen(o);
+          if (!o) setLinkSearch('');
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Link2 className="w-4 h-4" /> ผูกลูกค้าที่มีอยู่
+            </DialogTitle>
+          </DialogHeader>
+          <input
+            autoFocus
+            value={linkSearch}
+            onChange={(e) => setLinkSearch(e.target.value)}
+            placeholder="ค้นหาชื่อ / เบอร์ / เลขบัตร (อย่างน้อย 2 ตัวอักษร)"
+            className="w-full px-3 py-2 text-sm rounded-md bg-muted/40 border-0 focus:outline-none focus:ring-1 focus:ring-primary/20 focus:bg-background placeholder:text-muted-foreground/40"
+          />
+          <div className="max-h-72 overflow-y-auto space-y-1">
+            {linkSearchQuery.isFetching && (
+              <p className="text-xs text-muted-foreground text-center py-3 leading-snug">กำลังค้นหา...</p>
+            )}
+            {!linkSearchQuery.isFetching &&
+              debouncedLinkSearch.trim().length >= 2 &&
+              (linkSearchQuery.data?.length ?? 0) === 0 && (
+                <p className="text-xs text-muted-foreground text-center py-3 leading-snug">ไม่พบลูกค้า</p>
+              )}
+            {(linkSearchQuery.data ?? []).map(
+              (c: { id: string; name: string; phone?: string }) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  disabled={linkCustomer.isPending}
+                  onClick={() => linkCustomer.mutate(c.id)}
+                  className="w-full text-left p-2.5 rounded-lg border border-border hover:bg-accent text-sm transition-colors disabled:opacity-50"
+                >
+                  <span className="font-medium text-foreground">{c.name}</span>
+                  {c.phone && (
+                    <span className="text-xs text-muted-foreground ml-2">{c.phone}</span>
+                  )}
+                </button>
+              ),
+            )}
           </div>
         </DialogContent>
       </Dialog>

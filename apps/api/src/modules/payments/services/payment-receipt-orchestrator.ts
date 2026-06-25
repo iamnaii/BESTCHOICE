@@ -19,9 +19,8 @@ import { ProductsService } from '../../products/products.service';
 import { BadDebtService } from '../../accounting/bad-debt.service';
 import { validatePeriodOpen } from '../../../utils/period-lock.util';
 import { ensureInstallmentSchedules } from '../../../utils/installment-schedule.util';
-import { BUSINESS_RULES } from '../../../utils/config.util';
 import { d, dAdd, dSub, dMul, dRound, dGte } from '../../../utils/decimal.util';
-import { computeBracketLateFee } from '../../../utils/late-fee.util';
+import { loadLateFeeConfig, resolveLateFee } from '../../../utils/late-fee.util';
 import { PaymentCase } from '../dto/payment.dto';
 import {
   resolveUserDefaultCashAccount,
@@ -198,17 +197,8 @@ export class PaymentReceiptOrchestrator {
       let lateFee = d(payment.lateFee);
       if (!payment.lateFeeWaived && payment.dueDate < new Date()) {
         const daysOverdue = Math.floor((Date.now() - payment.dueDate.getTime()) / (1000 * 60 * 60 * 24));
-        const [t1, t2, minDays] = await Promise.all([
-          tx.systemConfig.findUnique({ where: { key: 'late_fee_tier1_amount' } }),
-          tx.systemConfig.findUnique({ where: { key: 'late_fee_tier2_amount' } }),
-          tx.systemConfig.findUnique({ where: { key: 'late_fee_tier2_min_days' } }),
-        ]);
-        const bracketFee = computeBracketLateFee({
-          daysOverdue,
-          tier1Amount: t1 ? d(t1.value) : BUSINESS_RULES.LATE_FEE_TIER1_AMOUNT,
-          tier2Amount: t2 ? d(t2.value) : BUSINESS_RULES.LATE_FEE_TIER2_AMOUNT,
-          tier2MinDays: minDays ? Number(minDays.value) : BUSINESS_RULES.LATE_FEE_TIER2_MIN_DAYS,
-        });
+        const lateFeeCfg = await loadLateFeeConfig(tx);
+        const bracketFee = resolveLateFee(lateFeeCfg, daysOverdue, payment.amountDue);
         if (!bracketFee.eq(lateFee)) {
           lateFee = bracketFee;
           await tx.payment.update({ where: { id: payment.id }, data: { lateFee } });

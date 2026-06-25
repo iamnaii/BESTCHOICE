@@ -2,8 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { FinanceConfigService } from './finance-config.service';
 import { formatThaiDateText as formatThaiDate } from '../../../utils/thai-date.util';
-import { computeBracketLateFee } from '../../../utils/late-fee.util';
-import { BUSINESS_RULES } from '../../../utils/config.util';
+import { loadLateFeeConfig, resolveLateFee } from '../../../utils/late-fee.util';
 
 /**
  * Finance Tools — wrap DB queries สำหรับ Claude tool use
@@ -61,14 +60,12 @@ export class FinanceToolsService {
       0,
       Math.floor((now.getTime() - nextPayment.dueDate.getTime()) / (1000 * 60 * 60 * 24)),
     );
-    // Late fee MUST match what the collection path actually charges
-    // (payments.service.recordPayment): flat bracket — tier1 for 1..(min-1) days,
-    // tier2 for >= min days. The bot used to quote an UNCAPPED per-day rate,
-    // over-stating the fine (e.g. 3,000 quoted vs 100 charged).
-    const { tier1, tier2, tier2MinDays } = await this.getLateFeeBracketConfig();
+    // Late fee MUST match what the collection path actually charges (recordPayment):
+    // mode-aware (PER_DAY or BRACKET), config-driven via SystemConfig.
+    const lateFeeCfg = await loadLateFeeConfig(this.prisma);
     const lateFee = nextPayment.lateFeeWaived
       ? 0
-      : Number(computeBracketLateFee({ daysOverdue, tier1Amount: tier1, tier2Amount: tier2, tier2MinDays }));
+      : Number(resolveLateFee(lateFeeCfg, daysOverdue, nextPayment.amountDue));
     const totalAmount = remainingBase + lateFee;
 
     return {
@@ -136,41 +133,29 @@ export class FinanceToolsService {
     };
   }
 
-  /**
-   * Late-fee bracket config — reads the SAME SystemConfig keys + defaults as the
-   * collection path (payments.service.recordPayment), so the chatbot quote
-   * matches what the customer is actually charged.
-   */
-  private async getLateFeeBracketConfig(): Promise<{ tier1: number; tier2: number; tier2MinDays: number }> {
-    const [t1, t2, minDays] = await Promise.all([
-      this.prisma.systemConfig.findUnique({ where: { key: 'late_fee_tier1_amount' } }),
-      this.prisma.systemConfig.findUnique({ where: { key: 'late_fee_tier2_amount' } }),
-      this.prisma.systemConfig.findUnique({ where: { key: 'late_fee_tier2_min_days' } }),
-    ]);
-    return {
-      tier1: t1 ? Number(t1.value) : BUSINESS_RULES.LATE_FEE_TIER1_AMOUNT,
-      tier2: t2 ? Number(t2.value) : BUSINESS_RULES.LATE_FEE_TIER2_AMOUNT,
-      tier2MinDays: minDays ? Number(minDays.value) : BUSINESS_RULES.LATE_FEE_TIER2_MIN_DAYS,
-    };
-  }
-
   // ─── Tool 3: calculate_fine ──────────────────────────────
 
   /**
-   * คำนวณค่าปรับโดยประมาณสำหรับจำนวนวันที่เลยกำหนด — flat bracket:
-   *   1..(tier2MinDays-1) วัน = tier1 บาท, >= tier2MinDays วัน = tier2 บาท
+   * คำนวณค่าปรับโดยประมาณสำหรับจำนวนวันที่เลยกำหนด — mode-aware:
+   *   PER_DAY: min(days × ratePerDay, maxAmount)  (no installment context → cap not applied)
+   *   BRACKET: tier1 for 1..(tier2MinDays-1) วัน, tier2 for >= tier2MinDays วัน
    */
   async calculateFine(daysOverdue: number) {
     const days = Math.max(0, Math.floor(daysOverdue));
-    const { tier1, tier2, tier2MinDays } = await this.getLateFeeBracketConfig();
-    const totalFine = Number(computeBracketLateFee({ daysOverdue: days, tier1Amount: tier1, tier2Amount: tier2, tier2MinDays }));
+    const cfg = await loadLateFeeConfig(this.prisma);
+    // Pass a very large installmentGross so the % cap doesn't bind when there's no payment context.
+    const totalFine = Number(resolveLateFee(cfg, days, 1e9));
+    const explanation =
+      cfg.mode === 'PER_DAY'
+        ? `ค่าปรับล่าช้าต่อวัน: ${cfg.perDayRate} บาท/วัน (สูงสุด ${cfg.maxAmount} บาท)` +
+          ` — งวดนี้เลย ${days} วัน ≈ ${totalFine} บาท`
+        : `ค่าปรับล่าช้าแบบเหมาจ่าย: 1–${cfg.tier2MinDays - 1} วัน = ${cfg.tier1Amount} บาท, ` +
+          `ตั้งแต่ ${cfg.tier2MinDays} วันขึ้นไป = ${cfg.tier2Amount} บาท` +
+          ` — งวดนี้เลย ${days} วัน ≈ ${totalFine} บาท`;
     return {
       daysOverdue: days,
       totalFine,
-      explanation:
-        `ค่าปรับล่าช้าแบบเหมาจ่าย: 1–${tier2MinDays - 1} วัน = ${tier1} บาท, ` +
-        `ตั้งแต่ ${tier2MinDays} วันขึ้นไป = ${tier2} บาท` +
-        ` — งวดนี้เลย ${days} วัน ≈ ${totalFine} บาท`,
+      explanation,
     };
   }
 

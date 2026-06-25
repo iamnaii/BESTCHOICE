@@ -260,7 +260,7 @@ export default function ConversationItem({ session, isActive, onClick, onPin, ai
               : 'text-muted-foreground opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 hover:text-warning hover:bg-muted',
           )}
           title={isPinned ? 'ถอดหมุด' : 'ปักหมุด'}
-          aria-label="ปักหมุด"
+          aria-label={isPinned ? 'ถอดหมุด' : 'ปักหมุด'}
         >
           <Pin className="w-3 h-3" />
         </button>

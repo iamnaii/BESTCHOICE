@@ -95,15 +95,15 @@ function ContractInfoPanel({
   const isOverdue = payment.status === 'OVERDUE';
 
   const row = (label: string, value: React.ReactNode, red?: boolean) => (
-    <div className="flex justify-between text-sm py-1 border-b border-border/50 last:border-0">
+    <div className="flex justify-between text-sm py-0.5 border-b border-border/50 last:border-0">
       <span className="text-muted-foreground leading-snug">{label}</span>
       <span className={cn('font-medium leading-snug', red && 'text-destructive')}>{value}</span>
     </div>
   );
 
   return (
-    <div className="rounded-xl border border-border bg-card p-4 space-y-1 min-w-0 h-fit">
-      <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+    <div className="rounded-xl border border-border bg-card p-3.5 space-y-0.5 min-w-0 h-fit">
+      <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
         ข้อมูลสัญญา
       </h3>
       {row('เลขสัญญา', <span className="font-mono text-xs">{payment.contract.contractNumber}</span>)}
@@ -167,7 +167,7 @@ function ContractInfoPanel({
       <button
         type="button"
         onClick={onOpenPayoff}
-        className="mt-3 w-full inline-flex items-center justify-center gap-2 px-3 py-2.5 text-sm font-semibold rounded-lg bg-warning/10 text-warning border border-warning/30 hover:bg-warning/20 transition-colors"
+        className="mt-2 w-full inline-flex items-center justify-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg bg-warning/10 text-warning border border-warning/30 hover:bg-warning/20 transition-colors"
       >
         <Lock className="size-4" />
         ปิดยอดสัญญาทั้งหมด
@@ -306,8 +306,8 @@ function JePreviewPanel({
   errorMessage?: string;
 }) {
   return (
-    <div className="rounded-xl border border-border bg-card p-4">
-      <div className="flex items-center justify-between mb-3">
+    <div className="rounded-xl border border-border bg-card p-3">
+      <div className="flex items-center justify-between mb-2">
         <h3 className="text-sm font-semibold text-foreground leading-snug">
           JOURNAL AUTO — บันทึกทางบัญชี
         </h3>
@@ -347,14 +347,14 @@ function JePreviewPanel({
       {!isLoading && preview && (
         <>
           <div className="space-y-1">
-            <div className="grid grid-cols-[80px_1fr_80px_80px] gap-1 text-xs text-muted-foreground font-medium pb-1 border-b border-border">
+            <div className="grid grid-cols-[52px_1fr_64px_64px] gap-1 text-xs text-muted-foreground font-medium pb-1 border-b border-border">
               <span className="leading-snug">รหัส</span>
               <span className="leading-snug">บัญชี</span>
               <span className="text-right leading-snug">Dr</span>
               <span className="text-right leading-snug">Cr</span>
             </div>
             {preview.lines.map((line, idx) => (
-              <div key={idx} className="grid grid-cols-[80px_1fr_80px_80px] gap-1 text-xs">
+              <div key={idx} className="grid grid-cols-[52px_1fr_64px_64px] gap-1 text-xs">
                 <span className="font-mono text-muted-foreground leading-snug">{line.accountCode}</span>
                 <div className="min-w-0">
                   <span className="leading-snug text-foreground truncate block">{line.accountName}</span>
@@ -756,7 +756,7 @@ export function RecordPaymentWizard({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="w-full max-w-5xl max-h-[92vh] flex flex-col p-0 gap-0">
         {/* Header */}
-        <DialogHeader className="px-6 pt-5 pb-3 shrink-0 border-b border-border">
+        <DialogHeader className="px-6 pt-4 pb-2.5 shrink-0 border-b border-border">
           <DialogTitle className="text-base font-semibold leading-snug">
             บันทึกชำระ — {payment.contract.contractNumber} / {payment.contract.customer.name} — งวดที่{' '}
             {payment.installmentNo}
@@ -764,19 +764,28 @@ export function RecordPaymentWizard({
         </DialogHeader>
 
         {/* Body */}
-        <DialogBody className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-          {/* 2-column: info LEFT, form RIGHT */}
-          <div className="grid grid-cols-[260px_1fr] gap-4 items-start">
-            {/* LEFT: Contract info */}
-            <ContractInfoPanel
-              payment={payment}
-              lateFee={currentLateFee}
-              netExposure={netExposure}
-              onOpenPayoff={() => setShowPayoffOverlay(true)}
-            />
+        <DialogBody className="flex-1 overflow-y-auto px-6 py-3">
+          {/* 2-column: info + JE preview LEFT, form RIGHT */}
+          <div className="grid grid-cols-[300px_1fr] gap-4 items-start">
+            {/* LEFT: Contract info + auto-journal preview (stacked here so the
+                preview fills the left whitespace and the dialog fits one screen
+                without vertical scrolling). */}
+            <div className="space-y-3 min-w-0">
+              <ContractInfoPanel
+                payment={payment}
+                lateFee={currentLateFee}
+                netExposure={netExposure}
+                onOpenPayoff={() => setShowPayoffOverlay(true)}
+              />
+              <JePreviewPanel
+                preview={preview}
+                isLoading={previewLoading}
+                errorMessage={previewErrorMessage}
+              />
+            </div>
 
             {/* RIGHT: Form */}
-            <div className="space-y-5 min-w-0">
+            <div className="space-y-3 min-w-0">
               {/* Advance balance banner — shown when contract has advance to consume */}
               {advanceBalance.gt(0) && (
                 <AdvanceBalanceBanner
@@ -838,7 +847,7 @@ export function RecordPaymentWizard({
                       type="button"
                       onClick={() => setMethod(m.id)}
                       className={cn(
-                        'flex items-center gap-2.5 rounded-xl border-2 px-3 py-3 text-left text-sm transition-colors',
+                        'flex items-center gap-2 rounded-xl border-2 px-2.5 py-2 text-left text-sm transition-colors',
                         method === m.id
                           ? 'bg-primary border-primary text-primary-foreground'
                           : 'bg-card border-border text-foreground hover:border-primary/40 hover:bg-accent',
@@ -893,7 +902,7 @@ export function RecordPaymentWizard({
                         onClick={() => allowed && setDepositAccountCode(code)}
                         disabled={!allowed}
                         className={cn(
-                          'flex flex-col items-start rounded-xl border-2 px-3 py-2.5 text-left text-sm transition-colors',
+                          'flex flex-col items-start rounded-xl border-2 px-2.5 py-2 text-left text-sm transition-colors',
                           depositAccountCode === code
                             ? 'bg-primary border-primary text-primary-foreground'
                             : 'bg-card border-border text-foreground hover:border-primary/40 hover:bg-accent',
@@ -1019,13 +1028,10 @@ export function RecordPaymentWizard({
               </details>
             </div>
           </div>
-
-          {/* JE Preview — always visible */}
-          <JePreviewPanel preview={preview} isLoading={previewLoading} errorMessage={previewErrorMessage} />
         </DialogBody>
 
         {/* Footer — single submit · QR mode swaps "บันทึกชำระ" for "ส่ง QR" */}
-        <DialogFooter className="px-6 py-4 border-t border-border shrink-0 flex items-center justify-between">
+        <DialogFooter className="px-6 py-3 border-t border-border shrink-0 flex items-center justify-between">
           <Button variant="outline" onClick={onClose} disabled={isSubmitting || sendQrMutation.isPending}>
             {isQrMode ? 'ปิด' : 'ยกเลิก'}
           </Button>

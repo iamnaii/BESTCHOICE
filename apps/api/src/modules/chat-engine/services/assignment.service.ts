@@ -200,6 +200,14 @@ export class AssignmentService {
     this.gateway?.emitRoomUpdate(roomId, { event: 'resolved', roomId, resolvedBy: staffId });
   }
 
+  /** Inverse of resolve — reactivate a resolved room (for undo). */
+  async reopen(roomId: string): Promise<void> {
+    await this.prisma.chatRoom.update({
+      where: { id: roomId },
+      data: { status: ChatRoomStatus.ACTIVE, resolvedAt: null },
+    });
+  }
+
   /**
    * Auto-assign: round-robin to least-busy online staff.
    * Falls back to any staff with OWNER/BRANCH_MANAGER/FINANCE_MANAGER/SALES role

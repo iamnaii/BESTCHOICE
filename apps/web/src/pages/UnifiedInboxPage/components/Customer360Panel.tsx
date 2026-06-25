@@ -35,6 +35,8 @@ import {
 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { format, isPast, differenceInDays } from 'date-fns';
 import { th } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -369,6 +371,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
 
 
   const closeDialog = () => setPendingAction(null);
+  const isMobile = useIsMobile();
 
   // ─── Collapsible section state (localStorage-persisted) ────
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
@@ -995,14 +998,13 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
       {/* ─── Quick Action Dialogs ──────────────────────── */}
 
       {/* Contract picker — shown for ANY multi-contract action so staff never hit the wrong device */}
-      <Dialog open={pendingAction !== null} onOpenChange={(o) => !o && closeDialog()}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              {pendingAction ? ACTION_ICON[pendingAction] : null}
-              {pendingAction ? ACTION_TITLE[pendingAction] : ''}
-            </DialogTitle>
-          </DialogHeader>
+      {(() => {
+        const pickerTitle = pendingAction ? (
+          <span className="flex items-center gap-2">
+            {ACTION_ICON[pendingAction]} {ACTION_TITLE[pendingAction]}
+          </span>
+        ) : null;
+        const pickerBody = pendingAction && (
           <div className="space-y-2">
             {(() => {
               const busy =
@@ -1014,27 +1016,46 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
                 const productName =
                   c.product?.name ?? `${c.product?.brand ?? ''} ${c.product?.model ?? ''}`.trim() ?? 'สินค้า';
                 return (
-                <button
-                  key={c.id}
-                  type="button"
-                  disabled={busy}
-                  onClick={() => pendingAction && runContractAction(pendingAction, c)}
-                  className="w-full text-left p-3 rounded-lg border border-border hover:bg-accent text-sm transition-colors disabled:opacity-50"
-                >
-                  <div className="flex items-center justify-between mb-0.5">
-                    <span className="font-medium text-foreground">{c.contractNumber}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {Number(c.monthlyPayment).toLocaleString()} บ./งวด
-                    </span>
-                  </div>
-                  <p className="text-xs text-muted-foreground">{productName}</p>
-                </button>
-              );
+                  <button
+                    key={c.id}
+                    type="button"
+                    disabled={busy}
+                    onClick={() => pendingAction && runContractAction(pendingAction, c)}
+                    className="w-full text-left p-3 rounded-lg border border-border hover:bg-accent text-sm transition-colors disabled:opacity-50"
+                  >
+                    <div className="flex items-center justify-between mb-0.5">
+                      <span className="font-medium text-foreground">{c.contractNumber}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {Number(c.monthlyPayment).toLocaleString()} บ./งวด
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">{productName}</p>
+                  </button>
+                );
               });
             })()}
           </div>
-        </DialogContent>
-      </Dialog>
+        );
+        return isMobile ? (
+          <Sheet open={pendingAction !== null} onOpenChange={(o) => !o && closeDialog()}>
+            <SheetContent side="bottom" className="rounded-t-2xl">
+              <SheetHeader>
+                <SheetTitle>{pickerTitle}</SheetTitle>
+              </SheetHeader>
+              <div className="mt-2">{pickerBody}</div>
+            </SheetContent>
+          </Sheet>
+        ) : (
+          <Dialog open={pendingAction !== null} onOpenChange={(o) => !o && closeDialog()}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>{pickerTitle}</DialogTitle>
+              </DialogHeader>
+              {pickerBody}
+            </DialogContent>
+          </Dialog>
+        );
+      })()}
 
       {/* Link existing customer — search + link */}
       <Dialog

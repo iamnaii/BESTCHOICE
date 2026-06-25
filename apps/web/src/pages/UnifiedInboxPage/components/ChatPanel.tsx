@@ -1,12 +1,13 @@
-import { useRef, useEffect, useState, useMemo } from 'react';
+import { useRef, useEffect, useLayoutEffect, useState, useMemo } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
-import { Send, MoreVertical, ArrowLeft, Paperclip, Smile, Pin, PinOff, MessageSquare, UserCircle2, MessageSquareQuote } from 'lucide-react';
+import { Send, MoreVertical, ArrowLeft, Paperclip, Smile, Pin, PinOff, MessageSquare, UserCircle2, MessageSquareQuote, Loader2 } from 'lucide-react';
 import { format, isSameDay } from 'date-fns';
 import { th } from 'date-fns/locale/th';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import MessageBubble from './MessageBubble';
+import { swapRoomDraft } from './composer-draft';
 import SessionActions from './SessionActions';
 import MessageTemplatePicker from './MessageTemplatePicker';
 import AiSuggestPanel from './AiSuggestPanel';
@@ -79,6 +80,8 @@ const stickerAnimUrl = (stickerId: number) =>
 const stickerStaticUrl = (stickerId: number) =>
   `https://stickershop.line-scdn.net/stickershop/v1/sticker/${stickerId}/iPhone/sticker@2x.png`;
 
+const MAX_COMPOSER_HEIGHT = 128; // px — matches Tailwind max-h-32 (8rem)
+
 interface ChatPanelProps {
   session: any;
   messages: any[];
@@ -96,6 +99,7 @@ interface ChatPanelProps {
   onReturnToAI: () => void;
   currentUserId: string;
   onShowCustomerInfo?: () => void;
+  isUploadingFile?: boolean;
 }
 
 export default function ChatPanel({
@@ -113,6 +117,7 @@ export default function ChatPanel({
   onReturnToAI,
   currentUserId,
   onShowCustomerInfo,
+  isUploadingFile = false,
 }: ChatPanelProps) {
   const [inputText, setInputText] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -137,6 +142,10 @@ export default function ChatPanel({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const draftsRef = useRef<Map<string, string>>(new Map());
+  const prevRoomRef = useRef<string | undefined>(undefined);
+  const inputTextRef = useRef(inputText);
+  inputTextRef.current = inputText; // keep the live value for the [roomId]-only effect
 
   const queryClient = useQueryClient();
   const pinMutation = useMutation({
@@ -237,6 +246,37 @@ export default function ChatPanel({
     anchor.scrollIntoView({ behavior: 'smooth' });
   }, [messages.length, roomId]);
 
+  // Auto-grow the textarea to fit its content (capped). Runs on every inputText
+  // change — typing, send-clear, draft load (Task 2), emoji/template insert —
+  // so all sizing flows through one place. useLayoutEffect avoids a height flash.
+  useLayoutEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, MAX_COMPOSER_HEIGHT)}px`;
+  }, [inputText]);
+
+  // On room change: persist the room you left, restore the room you entered,
+  // drop the AI-suggestion association (it's room-scoped — see below), and focus
+  // the box on desktop. Keyed on roomId ONLY so streaming messages never reload
+  // the draft or steal focus mid-typing.
+  // NOTE: a room switch transiently passes roomId=undefined (session refetch has no
+  // keepPreviousData), so this runs A→undefined→B. Draft correctness relies on
+  // swapRoomDraft saving ONLY when prevRoom is truthy (undefined bounce = no save).
+  useEffect(() => {
+    const incoming = swapRoomDraft(draftsRef.current, prevRoomRef.current, roomId, inputTextRef.current);
+    prevRoomRef.current = roomId;
+    setInputText(incoming);
+    // selectedSuggestion is metadata for THIS room's AI draft; carrying it into
+    // another room would mislabel that room's send as an edit of this draft.
+    setSelectedSuggestion(null);
+    // Desktop only — on mobile, focus() pops the keyboard over the history.
+    if (roomId && typeof window !== 'undefined' && window.matchMedia?.('(min-width: 1024px)').matches) {
+      inputRef.current?.focus({ preventScroll: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- room-change only; inputText read via inputTextRef
+  }, [roomId]);
+
   const getLastCustomerMessage = () => {
     const customerMsgs = messages.filter((m: any) => m.role === 'CUSTOMER');
     return customerMsgs[customerMsgs.length - 1]?.text ?? customerMsgs[customerMsgs.length - 1]?.content ?? '';
@@ -271,6 +311,7 @@ export default function ChatPanel({
       setSelectedSuggestion(null);
     }
     setInputText('');
+    if (roomId) draftsRef.current.delete(roomId); // sent successfully → drop this room's saved draft
     inputRef.current?.focus();
   };
 
@@ -501,10 +542,15 @@ export default function ChatPanel({
             />
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="p-2 text-muted-foreground/60 hover:text-foreground hover:bg-muted rounded-lg transition-colors"
+              disabled={isUploadingFile}
+              className="p-2 text-muted-foreground/60 hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               title="แนบไฟล์/รูปภาพ"
             >
-              <Paperclip className="w-4 h-4" />
+              {isUploadingFile ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Paperclip className="w-4 h-4" />
+              )}
             </button>
             {/* Emoji / Sticker picker */}
             <Popover open={emojiOpen} onOpenChange={setEmojiOpen}>
@@ -725,7 +771,7 @@ export default function ChatPanel({
               onKeyDown={handleKeyDown}
               placeholder="พิมพ์ข้อความ..."
               rows={1}
-              className="flex-1 resize-none px-3 py-2 text-sm bg-muted/40 rounded-lg border-0 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:bg-background max-h-32 transition-all placeholder:text-muted-foreground/40"
+              className="flex-1 resize-none overflow-y-auto px-3 py-2 text-sm bg-muted/40 rounded-lg border-0 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:bg-background max-h-32 transition-colors placeholder:text-muted-foreground/40"
             />
             <button
               onClick={() => void handleSend()}
@@ -737,9 +783,16 @@ export default function ChatPanel({
                   : 'bg-muted text-muted-foreground/40 cursor-not-allowed',
               )}
             >
-              <Send className="w-4 h-4" />
+              {isSending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Send className="w-4 h-4" />
+              )}
             </button>
           </div>
+          <p className="hidden lg:block mt-1 px-1 text-[10px] leading-snug text-muted-foreground/40">
+            Enter ส่ง · Shift+Enter ขึ้นบรรทัด
+          </p>
         </div>
       )}
 

@@ -7,6 +7,7 @@ import ConversationList from './components/ConversationList';
 import ChatPanel from './components/ChatPanel';
 import Customer360Panel from './components/Customer360Panel';
 import { useChatSocket, type ChatMessageEvent } from './hooks/useChatSocket';
+import { useNotificationPrefs } from './hooks/useNotificationPrefs';
 import { useAuth } from '@/contexts/AuthContext';
 import type { InboxTab } from './components/ChannelFilter';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
@@ -33,35 +34,45 @@ export default function UnifiedInboxPage() {
     search?: string;
   }>({ tab: 'all', channels: [] });
 
-  // Request browser notification permission on mount
-  useEffect(() => {
-    if ('Notification' in window && Notification.permission === 'default') {
+  // Notification mute prefs (localStorage-persisted, no on-mount permission prompt)
+  const { muteAll, toggleMuteAll, toggleRoomMute, isMuted } = useNotificationPrefs();
+
+  // Play sound + show browser notification — muted rooms skip both sound and notification
+  const notifyNewMessage = useCallback(
+    (data: ChatMessageEvent) => {
+      if (isMuted(data.roomId)) return; // global or per-room mute → silence sound + notification
+      // Sound
+      try {
+        const audio = new Audio(NOTIFICATION_SOUND_URL);
+        audio.volume = 0.3;
+        audio.play().catch(() => {});
+      } catch {}
+      // Browser notification (only if granted + not the room you're viewing)
+      if (
+        'Notification' in window &&
+        Notification.permission === 'granted' &&
+        data.roomId !== activeRoomId
+      ) {
+        new Notification('ข้อความใหม่ — BESTCHOICE', {
+          body: data.text?.substring(0, 100) || 'มีข้อความใหม่',
+          icon: '/favicon.ico',
+          tag: `chat-${data.roomId}`,
+        });
+      }
+    },
+    [activeRoomId, isMuted],
+  );
+
+  // Deferred permission: request only when the user turns notifications ON (un-mutes globally)
+  const handleToggleMuteAll = useCallback(() => {
+    const wasMuted = muteAll;
+    toggleMuteAll();
+    // Turning notifications ON → request permission on this user gesture (deferred from mount).
+    // If blocked, the desktop notification stays off but in-app sound still works.
+    if (wasMuted && 'Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission();
     }
-  }, []);
-
-  // Play sound + show browser notification
-  const notifyNewMessage = useCallback((data: ChatMessageEvent) => {
-    // Sound
-    try {
-      const audio = new Audio(NOTIFICATION_SOUND_URL);
-      audio.volume = 0.3;
-      audio.play().catch(() => {});
-    } catch {}
-
-    // Browser notification (if not focused on this session)
-    if (
-      'Notification' in window &&
-      Notification.permission === 'granted' &&
-      data.roomId !== activeRoomId
-    ) {
-      new Notification('ข้อความใหม่ — BESTCHOICE', {
-        body: data.text?.substring(0, 100) || 'มีข้อความใหม่',
-        icon: '/favicon.ico',
-        tag: `chat-${data.roomId}`, // prevents duplicate notifications per room
-      });
-    }
-  }, [activeRoomId]);
+  }, [muteAll, toggleMuteAll]);
 
   // Clear viewer banner when switching rooms so a stale banner doesn't flash.
   useEffect(() => {
@@ -302,6 +313,8 @@ export default function UnifiedInboxPage() {
             currentUserId={user?.id}
             aiSettings={aiSettingsQuery.data}
             connectionStatus={connectionStatus}
+            muteAll={muteAll}
+            onToggleMuteAll={handleToggleMuteAll}
           />
         </QueryBoundary>
       </div>
@@ -329,6 +342,8 @@ export default function UnifiedInboxPage() {
           onShowCustomerInfo={() => setCustomerPanelOpen(true)}
           isUploadingFile={uploadFileMutation.isPending}
           otherViewers={otherViewers}
+          roomMuted={isMuted(activeRoomId ?? undefined)}
+          onToggleRoomMute={activeRoomId ? () => toggleRoomMute(activeRoomId) : undefined}
         />
       </div>
 

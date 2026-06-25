@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { nextRoomIndex } from './list-nav';
 import { isEditableTarget } from '../hooks/useKeyboardShortcuts';
-import { Search, MessageCircle, X } from 'lucide-react';
+import { Search, MessageCircle, X, Bell, BellOff } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useDebounce } from '@/hooks/useDebounce';
 import { cn } from '@/lib/utils';
@@ -33,6 +33,8 @@ interface ConversationListProps {
   currentUserId?: string;
   aiSettings?: { autoModeEnabled: boolean; enabledChannels: string[] };
   connectionStatus?: 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
+  muteAll?: boolean;
+  onToggleMuteAll?: () => void;
 }
 
 export default function ConversationList({
@@ -45,6 +47,8 @@ export default function ConversationList({
   currentUserId,
   aiSettings,
   connectionStatus,
+  muteAll,
+  onToggleMuteAll,
 }: ConversationListProps) {
   const [searchInput, setSearchInput] = useState(filters.search ?? '');
   const [searchFocused, setSearchFocused] = useState(false);
@@ -155,29 +159,48 @@ export default function ConversationList({
     <div className="flex flex-col h-full border-r border-border/60">
       {/* Search + Filters */}
       <div className="px-4 pt-3 pb-0">
-        {/* Connection status pill — shown only when not connected */}
-        {connectionStatus && connectionStatus !== 'connected' && (
-          <div
-            className={cn(
-              'mb-2 flex items-center gap-1.5 rounded-md px-2 py-1 text-[10px] font-medium leading-snug',
-              connectionStatus === 'disconnected'
-                ? 'bg-destructive/10 text-destructive'
-                : 'bg-warning/10 text-warning',
+        {/* Header row: connection pill (when not connected) + global bell toggle */}
+        {(connectionStatus && connectionStatus !== 'connected') || onToggleMuteAll ? (
+          <div className="mb-2 flex items-center justify-between gap-2">
+            {/* Connection status pill — shown only when not connected */}
+            {connectionStatus && connectionStatus !== 'connected' ? (
+              <div
+                className={cn(
+                  'flex items-center gap-1.5 rounded-md px-2 py-1 text-[10px] font-medium leading-snug',
+                  connectionStatus === 'disconnected'
+                    ? 'bg-destructive/10 text-destructive'
+                    : 'bg-warning/10 text-warning',
+                )}
+              >
+                <span
+                  className={cn(
+                    'size-1.5 rounded-full',
+                    connectionStatus === 'disconnected' ? 'bg-destructive' : 'bg-warning animate-pulse',
+                  )}
+                />
+                {connectionStatus === 'disconnected'
+                  ? 'ออฟไลน์ — ไม่ได้เชื่อมต่อเรียลไทม์'
+                  : connectionStatus === 'reconnecting'
+                    ? 'กำลังเชื่อมต่อใหม่...'
+                    : 'กำลังเชื่อมต่อ...'}
+              </div>
+            ) : (
+              <div />
             )}
-          >
-            <span
-              className={cn(
-                'size-1.5 rounded-full',
-                connectionStatus === 'disconnected' ? 'bg-destructive' : 'bg-warning animate-pulse',
-              )}
-            />
-            {connectionStatus === 'disconnected'
-              ? 'ออฟไลน์ — ไม่ได้เชื่อมต่อเรียลไทม์'
-              : connectionStatus === 'reconnecting'
-                ? 'กำลังเชื่อมต่อใหม่...'
-                : 'กำลังเชื่อมต่อ...'}
+            {/* Global mute bell toggle */}
+            {onToggleMuteAll && (
+              <button
+                type="button"
+                onClick={onToggleMuteAll}
+                title={muteAll ? 'เปิดการแจ้งเตือน' : 'ปิดการแจ้งเตือนทั้งหมด'}
+                aria-label={muteAll ? 'เปิดการแจ้งเตือน' : 'ปิดการแจ้งเตือน'}
+                className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted"
+              >
+                {muteAll ? <BellOff className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
+              </button>
+            )}
           </div>
-        )}
+        ) : null}
         {/* Search */}
         <div className="relative mb-2">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/40" />

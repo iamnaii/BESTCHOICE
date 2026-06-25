@@ -200,6 +200,10 @@ export const BUSINESS_RULES = {
   LATE_FEE_TIER1_AMOUNT: 50,   // flat fee, 1..(min-1) days overdue (baht)
   LATE_FEE_TIER2_AMOUNT: 100,  // flat fee, >= LATE_FEE_TIER2_MIN_DAYS days overdue (baht)
   LATE_FEE_TIER2_MIN_DAYS: 3,  // day at which tier2 begins
+  LATE_FEE_MODE: 'PER_DAY' as 'PER_DAY' | 'BRACKET', // per-day model (Section #3); 'BRACKET' = rollback
+  LATE_FEE_PER_DAY_RATE: 20,   // baht per overdue day (owner to tune via config)
+  LATE_FEE_MAX_AMOUNT: 500,    // absolute baht ceiling (owner to tune)
+  LATE_FEE_CAP_PCT: 5,         // % of installment gross (Thai-law style cap)
   EARLY_PAYOFF_DISCOUNT: 0.5, // 50% discount on remaining interest
   /**
    * Escalation Guardrail: เมื่อลูกค้าผิดนัด ≥ N ครั้ง บนสัญญาเดียวกัน

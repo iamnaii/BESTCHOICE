@@ -1,6 +1,6 @@
 import { useRef, useEffect, useLayoutEffect, useState, useMemo } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
-import { Send, MoreVertical, ArrowLeft, Paperclip, Smile, Pin, PinOff, MessageSquare, UserCircle2, MessageSquareQuote } from 'lucide-react';
+import { Send, MoreVertical, ArrowLeft, Paperclip, Smile, Pin, PinOff, MessageSquare, UserCircle2, MessageSquareQuote, Loader2 } from 'lucide-react';
 import { format, isSameDay } from 'date-fns';
 import { th } from 'date-fns/locale/th';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -99,6 +99,7 @@ interface ChatPanelProps {
   onReturnToAI: () => void;
   currentUserId: string;
   onShowCustomerInfo?: () => void;
+  isUploadingFile?: boolean;
 }
 
 export default function ChatPanel({
@@ -116,6 +117,7 @@ export default function ChatPanel({
   onReturnToAI,
   currentUserId,
   onShowCustomerInfo,
+  isUploadingFile = false,
 }: ChatPanelProps) {
   const [inputText, setInputText] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -537,10 +539,15 @@ export default function ChatPanel({
             />
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="p-2 text-muted-foreground/60 hover:text-foreground hover:bg-muted rounded-lg transition-colors"
+              disabled={isUploadingFile}
+              className="p-2 text-muted-foreground/60 hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               title="แนบไฟล์/รูปภาพ"
             >
-              <Paperclip className="w-4 h-4" />
+              {isUploadingFile ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Paperclip className="w-4 h-4" />
+              )}
             </button>
             {/* Emoji / Sticker picker */}
             <Popover open={emojiOpen} onOpenChange={setEmojiOpen}>
@@ -773,7 +780,11 @@ export default function ChatPanel({
                   : 'bg-muted text-muted-foreground/40 cursor-not-allowed',
               )}
             >
-              <Send className="w-4 h-4" />
+              {isSending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Send className="w-4 h-4" />
+              )}
             </button>
           </div>
         </div>

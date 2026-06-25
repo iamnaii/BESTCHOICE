@@ -314,6 +314,7 @@ export default function UnifiedInboxPage() {
           onReturnToAI={() => activeRoomId && returnToAIMutation.mutate(activeRoomId)}
           currentUserId={user?.id ?? ''}
           onShowCustomerInfo={() => setCustomerPanelOpen(true)}
+          isUploadingFile={uploadFileMutation.isPending}
         />
       </div>
 

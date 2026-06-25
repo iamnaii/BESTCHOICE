@@ -466,7 +466,7 @@ export default function ChatPanel({
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/60 bg-card">
         <div className="flex items-center gap-3">
-          <button onClick={onBack} className="lg:hidden p-1 text-muted-foreground hover:text-foreground rounded-md hover:bg-muted transition-colors">
+          <button onClick={onBack} aria-label="กลับ" className="lg:hidden p-1 min-h-11 min-w-11 inline-flex items-center justify-center text-muted-foreground hover:text-foreground rounded-md hover:bg-muted transition-colors">
             <ArrowLeft className="w-5 h-5" />
           </button>
           {/* Customer avatar */}
@@ -523,9 +523,9 @@ export default function ChatPanel({
           {onShowCustomerInfo && (
             <button
               onClick={onShowCustomerInfo}
-              className="xl:hidden p-1.5 text-muted-foreground hover:text-foreground/70 hover:bg-accent rounded-lg"
+              className="xl:hidden p-1.5 min-h-11 min-w-11 inline-flex items-center justify-center text-muted-foreground hover:text-foreground/70 hover:bg-accent rounded-lg"
               title="ข้อมูลลูกค้า"
-              aria-label="เปิดข้อมูลลูกค้า"
+              aria-label="ข้อมูลลูกค้า"
             >
               <UserCircle2 className="w-5 h-5" />
             </button>
@@ -536,7 +536,7 @@ export default function ChatPanel({
               onClick={onToggleRoomMute}
               title={roomMuted ? 'เปิดแจ้งเตือนห้องนี้' : 'ปิดแจ้งเตือนห้องนี้'}
               aria-label="สลับการแจ้งเตือนห้องนี้"
-              className="p-1.5 text-muted-foreground hover:text-foreground/70 hover:bg-accent rounded-lg"
+              className="p-1.5 min-h-11 min-w-11 inline-flex items-center justify-center text-muted-foreground hover:text-foreground/70 hover:bg-accent rounded-lg"
             >
               {roomMuted ? <BellOff className="w-5 h-5" /> : <Bell className="w-5 h-5" />}
             </button>
@@ -549,7 +549,7 @@ export default function ChatPanel({
               title={aiPaused ? 'เปิด AI ตอบอัตโนมัติ' : 'หยุด AI (พนักงานตอบเอง)'}
               aria-label="สลับสถานะ AI"
               className={cn(
-                'p-1.5 rounded-lg transition-colors disabled:opacity-50',
+                'p-1.5 min-h-11 min-w-11 inline-flex items-center justify-center rounded-lg transition-colors disabled:opacity-50',
                 aiPaused
                   ? 'text-muted-foreground hover:text-foreground hover:bg-accent'
                   : 'text-primary bg-primary/10 hover:bg-primary/20',
@@ -562,18 +562,20 @@ export default function ChatPanel({
             onClick={() => pinMutation.mutate(!!session.pinnedAt)}
             disabled={pinMutation.isPending}
             className={cn(
-              'p-1.5 rounded-lg transition-colors',
+              'p-1.5 min-h-11 min-w-11 inline-flex items-center justify-center rounded-lg transition-colors',
               session.pinnedAt
                 ? 'text-warning hover:bg-warning/10'
                 : 'text-muted-foreground hover:bg-accent hover:text-foreground/70',
             )}
             title={session.pinnedAt ? 'ถอดหมุด' : 'ปักหมุด'}
+            aria-label={session.pinnedAt ? 'ถอดหมุดห้องแชท' : 'ปักหมุดห้องแชท'}
           >
             {session.pinnedAt ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
           </button>
           <button
             onClick={() => setShowActions(!showActions)}
-            className="p-1.5 text-muted-foreground hover:text-foreground/70 hover:bg-accent rounded-lg"
+            aria-label="ตัวเลือกเพิ่มเติม"
+            className="p-1.5 min-h-11 min-w-11 inline-flex items-center justify-center text-muted-foreground hover:text-foreground/70 hover:bg-accent rounded-lg"
           >
             <MoreVertical className="w-5 h-5" />
           </button>
@@ -673,7 +675,8 @@ export default function ChatPanel({
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={isUploadingFile}
-              className="p-2 text-muted-foreground/60 hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              aria-label="แนบไฟล์"
+              className="p-2 min-h-11 min-w-11 inline-flex items-center justify-center text-muted-foreground/60 hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               title="แนบไฟล์/รูปภาพ"
             >
               {isUploadingFile ? (
@@ -686,8 +689,9 @@ export default function ChatPanel({
             <Popover open={emojiOpen} onOpenChange={setEmojiOpen}>
               <PopoverTrigger asChild>
                 <button
+                  aria-label="อิโมจิ / สติกเกอร์"
                   className={cn(
-                    'p-2 rounded-lg transition-colors',
+                    'p-2 min-h-11 min-w-11 inline-flex items-center justify-center rounded-lg transition-colors',
                     emojiOpen
                       ? 'text-primary bg-primary/10'
                       : 'text-muted-foreground/60 hover:text-foreground hover:bg-muted',
@@ -883,7 +887,8 @@ export default function ChatPanel({
             <button
               onClick={() => setShowTemplatePicker(true)}
               disabled={!session?.id}
-              className="p-2 text-muted-foreground/60 hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              aria-label="ข้อความสำเร็จรูป"
+              className="p-2 min-h-11 min-w-11 inline-flex items-center justify-center text-muted-foreground/60 hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               title="ข้อความสำเร็จรูป (Ctrl+K)"
             >
               <MessageSquareQuote className="w-4 h-4" />
@@ -907,8 +912,9 @@ export default function ChatPanel({
             <button
               onClick={() => void handleSend()}
               disabled={!inputText.trim() || isSending}
+              aria-label="ส่งข้อความ"
               className={cn(
-                'p-2 rounded-lg transition-all duration-200',
+                'p-2 min-h-11 min-w-11 inline-flex items-center justify-center rounded-lg transition-all duration-200',
                 inputText.trim() && !isSending
                   ? 'bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 hover:shadow-md'
                   : 'bg-muted text-muted-foreground/40 cursor-not-allowed',

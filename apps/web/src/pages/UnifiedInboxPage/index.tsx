@@ -299,6 +299,9 @@ export default function UnifiedInboxPage() {
     return ok;
   };
 
+  const sendRoomMessageRef = useRef(sendRoomMessage);
+  sendRoomMessageRef.current = sendRoomMessage;
+
   const handleSendMessage = useCallback(
     (text: string) => sendRoomMessage(text),
     [activeRoomId, queryClient],
@@ -345,7 +348,7 @@ export default function UnifiedInboxPage() {
       setFailedSends((prev) => prev.filter((f) => f.id !== failedId));
       // sendRoomMessage is a stable closure over activeRoomId; the retry button
       // only renders for the active room so activeRoomId is correct at click time.
-      void sendRoomMessage(text); // re-runs the same flow (new ghost; re-fails → new FAILED entry)
+      void sendRoomMessageRef.current(text); // re-runs the same flow (new ghost; re-fails → new FAILED entry)
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],

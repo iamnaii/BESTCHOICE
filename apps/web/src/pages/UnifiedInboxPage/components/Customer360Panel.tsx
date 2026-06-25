@@ -127,6 +127,13 @@ interface Customer360PanelProps {
   } | null;
 }
 
+const ACTION_ICON: Record<ContractAction, React.ReactNode> = {
+  'send-link': <Link2 className="w-4 h-4" />,
+  'contact-log': <Phone className="w-4 h-4" />,
+  'mdm-lock': <Lock className="w-4 h-4" />,
+  'view-pdf': <FileText className="w-4 h-4" />,
+};
+
 const channelLabel: Record<string, string> = {
   LINE_FINANCE: 'LINE Finance',
   LINE_SHOP: 'LINE Shop',
@@ -836,19 +843,21 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Link2 className="w-4 h-4" /> {pendingAction ? ACTION_TITLE[pendingAction] : ''}
+              {pendingAction ? ACTION_ICON[pendingAction] : null}
+              {pendingAction ? ACTION_TITLE[pendingAction] : ''}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-2">
-            {((summary?.activeContracts ?? []) as ContractSummaryItem[]).map((c) => {
-              const productName =
-                c.product?.name ?? `${c.product?.brand ?? ''} ${c.product?.model ?? ''}`.trim() ?? 'สินค้า';
+            {(() => {
               const busy =
                 sendPaymentFlex.isPending ||
                 fetchAndOpenContactLog.isPending ||
                 fetchAndOpenMdmLock.isPending ||
                 openContractPdf.isPending;
-              return (
+              return ((summary?.activeContracts ?? []) as ContractSummaryItem[]).map((c) => {
+                const productName =
+                  c.product?.name ?? `${c.product?.brand ?? ''} ${c.product?.model ?? ''}`.trim() ?? 'สินค้า';
+                return (
                 <button
                   key={c.id}
                   type="button"
@@ -865,7 +874,8 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
                   <p className="text-xs text-muted-foreground">{productName}</p>
                 </button>
               );
-            })}
+              });
+            })()}
           </div>
         </DialogContent>
       </Dialog>

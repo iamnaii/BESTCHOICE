@@ -20,14 +20,13 @@ import { BUSINESS_RULES } from '../../utils/config.util';
  * What this file locks:
  *
  * calculateLateFees (overdue.service.ts ~268-306) — JS-SIDE ONLY:
- *   - lateFeePerDay = config present ? Number(value) : BUSINESS_RULES.LATE_FEE_PER_DAY (100)
- *   - lateFeeCap    = config present ? Number(value) : BUSINESS_RULES.LATE_FEE_CAP (200)
- *   - lateFeeCapPct = BUSINESS_RULES.LATE_FEE_CAP_PCT (0.05) — always the constant
+ *   - tier1Amount  = config present ? Number(value) : BUSINESS_RULES.LATE_FEE_TIER1_AMOUNT (50)
+ *   - tier2Amount  = config present ? Number(value) : BUSINESS_RULES.LATE_FEE_TIER2_AMOUNT (100)
+ *   - tier2MinDays = config present ? Number(value) : BUSINESS_RULES.LATE_FEE_TIER2_MIN_DAYS (3)
  *   - those three resolved scalars are interpolated into the $executeRaw tagged
  *     template (positions 1/2/3 after the leading `now` timestamp) and the row
  *     count returned by $executeRaw is echoed back as { updated, timestamp }.
- *   NOTE: the 3-way Thai-law cap (LEAST(FLOOR(days)*perDay, cap=200, amountDue*5%))
- *   and the days-floored-at-0 GREATEST run INSIDE Postgres via $executeRaw raw SQL —
+ *   NOTE: the flat-bracket CASE WHEN runs INSIDE Postgres via $executeRaw raw SQL —
  *   the arithmetic cannot be exercised by a mock. See "uncovered" in the return.
  *
  * escalate (~1544-1660):
@@ -190,9 +189,10 @@ describe('OverdueService.calculateLateFees (D2 flat-bracket config resolution �
     expect(exprs).toContain(75);   // tier1 from config
     expect(exprs).toContain(150);  // tier2 from config
     expect(exprs).toContain(5);    // minDays from config
-    // Old LATE_FEE_PER_DAY / LATE_FEE_CAP / LATE_FEE_CAP_PCT are NOT interpolated anymore.
-    expect(exprs).not.toContain(BUSINESS_RULES.LATE_FEE_PER_DAY);
-    expect(exprs).not.toContain(BUSINESS_RULES.LATE_FEE_CAP_PCT);
+    // Old per-day / cap / capPct values are NOT interpolated anymore (removed in D2 task 4).
+    // 100 was the old LATE_FEE_PER_DAY default; 0.05 was LATE_FEE_CAP_PCT.
+    expect(exprs).not.toContain(100);  // old LATE_FEE_PER_DAY default
+    expect(exprs).not.toContain(0.05); // old LATE_FEE_CAP_PCT
   });
 
   it('each tier config falls back to its own BUSINESS_RULES default independently', async () => {

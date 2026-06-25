@@ -87,6 +87,9 @@ export function useChatSocket(events: ChatSocketEvents, activeRoomId?: string | 
   const { user } = useAuth();
   const socketRef = useRef<Socket | null>(null);
   const [isCustomerTyping, setIsCustomerTyping] = useState(false);
+  const [status, setStatus] = useState<'connecting' | 'connected' | 'reconnecting' | 'disconnected'>(
+    'connecting',
+  );
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Keep latest activeRoomId + event handlers in refs so the socket effect
   // doesn't tear down on room switches or handler identity changes
@@ -117,6 +120,7 @@ export function useChatSocket(events: ChatSocketEvents, activeRoomId?: string | 
     // and only auto-joins INBOX — without this the active room would stop
     // receiving message/typing/collision events until the user reselects it.
     socket.on('connect', () => {
+      setStatus('connected');
       const roomId = activeRoomIdRef.current;
       if (roomId) {
         socket.emit('chat:join', { roomId });
@@ -144,6 +148,9 @@ export function useChatSocket(events: ChatSocketEvents, activeRoomId?: string | 
     socket.on('connect_error', () => {
       // Silent — reconnection handles retry
     });
+    socket.on('disconnect', () => setStatus('disconnected'));
+    socket.io.on('reconnect_attempt', () => setStatus('reconnecting'));
+    socket.io.on('reconnect_failed', () => setStatus('disconnected'));
 
     return () => {
       if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
@@ -176,5 +183,5 @@ export function useChatSocket(events: ChatSocketEvents, activeRoomId?: string | 
     socketRef.current?.emit('chat:view', { roomId });
   }, []);
 
-  return { joinRoom, leaveRoom, sendMessage, startTyping, stopTyping, viewRoom, isCustomerTyping };
+  return { joinRoom, leaveRoom, sendMessage, startTyping, stopTyping, viewRoom, isCustomerTyping, status };
 }

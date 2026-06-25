@@ -309,7 +309,7 @@ export default function MessageBubble({ message, customerAvatar, customerInitial
         {/* Bubble */}
         <div
           className={cn(
-            'max-w-full min-w-0 px-3.5 py-2 rounded-2xl text-sm leading-relaxed [overflow-wrap:anywhere]',
+            'relative max-w-full min-w-0 px-3.5 py-2 rounded-2xl text-sm leading-relaxed [overflow-wrap:anywhere]',
             isCustomer
               ? 'bg-muted text-foreground rounded-bl-md'
               : isBot

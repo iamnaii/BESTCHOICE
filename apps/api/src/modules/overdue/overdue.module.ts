@@ -35,9 +35,10 @@ import { ChatEngineModule } from '../chat-engine/chat-engine.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { LineOaModule } from '../line-oa/line-oa.module';
 import { PaymentsModule } from '../payments/payments.module';
+import { ConsecutiveMissedModule } from './consecutive-missed.module';
 
 @Module({
-  imports: [ChatEngineModule, NotificationsModule, LineOaModule, forwardRef(() => PaymentsModule)],
+  imports: [ChatEngineModule, NotificationsModule, LineOaModule, forwardRef(() => PaymentsModule), ConsecutiveMissedModule],
   controllers: [OverdueController],
   providers: [
     OverdueService,

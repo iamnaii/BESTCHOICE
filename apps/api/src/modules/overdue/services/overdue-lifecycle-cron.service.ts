@@ -2,6 +2,7 @@ import { Logger, ServiceUnavailableException } from '@nestjs/common';
 import { Prisma, DunningStage } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { BUSINESS_RULES } from '../../../utils/config.util';
+import { ConsecutiveMissedService } from '../consecutive-missed.service';
 
 /**
  * Cron-driven lifecycle mutations for the overdue/collections module.
@@ -18,7 +19,10 @@ import { BUSINESS_RULES } from '../../../utils/config.util';
 export class OverdueLifecycleCronService {
   private readonly logger = new Logger(OverdueLifecycleCronService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private consecutiveMissed: ConsecutiveMissedService,
+  ) {}
 
   private async getSystemUserIdOrThrow(): Promise<string> {
     const user = await this.prisma.user.findFirst({
@@ -167,39 +171,12 @@ export class OverdueLifecycleCronService {
     const overdueUpdated = flipResult.count;
     const activeIds = toFlip.map((c) => c.id);
 
-    // Step 2: OVERDUE → DEFAULT (2+ consecutive missed payments)
-    // Use raw SQL to find contracts with consecutive missed payments
-    const defaultCandidates: { id: string; consecutive: number }[] = await this.prisma.$queryRaw`
-      WITH payment_streaks AS (
-        SELECT
-          p."contract_id",
-          p."installment_no",
-          p."status",
-          p."due_date",
-          ROW_NUMBER() OVER (PARTITION BY p."contract_id" ORDER BY p."installment_no") -
-          ROW_NUMBER() OVER (PARTITION BY p."contract_id",
-            CASE WHEN p."status" IN ('PENDING', 'OVERDUE', 'PARTIALLY_PAID') AND p."due_date" < ${now}
-                 THEN 1 ELSE 0 END
-            ORDER BY p."installment_no") AS grp
-        FROM "payments" p
-        JOIN "contracts" c ON c."id" = p."contract_id"
-        WHERE c."status" = 'OVERDUE' AND c."deleted_at" IS NULL
-      ),
-      max_consecutive AS (
-        SELECT
-          "contract_id" AS id,
-          MAX(cnt) AS consecutive
-        FROM (
-          SELECT "contract_id", grp, COUNT(*) AS cnt
-          FROM payment_streaks
-          WHERE "status" IN ('PENDING', 'OVERDUE', 'PARTIALLY_PAID')
-            AND "due_date" < ${now}
-          GROUP BY "contract_id", grp
-        ) sub
-        GROUP BY "contract_id"
-      )
-      SELECT id, consecutive::int FROM max_consecutive WHERE consecutive >= 2
-    `;
+    // Step 2: OVERDUE → DEFAULT (2+ consecutive missed payments).
+    // Streak derivation lives in ConsecutiveMissedService (single source of truth).
+    const streaks = await this.consecutiveMissed.getStreaks({ statuses: ['OVERDUE'] }, now);
+    const defaultCandidates: { id: string; consecutive: number }[] = [...streaks.entries()]
+      .filter(([, consecutive]) => consecutive >= 2)
+      .map(([id, consecutive]) => ({ id, consecutive }));
 
     let defaultUpdated = 0;
     const defaultIds = defaultCandidates.map((c) => c.id);

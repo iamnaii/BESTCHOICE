@@ -217,6 +217,22 @@ export default function UnifiedInboxPage() {
     onError: () => toast.error('ส่งกลับ Bot ไม่สำเร็จ'),
   });
 
+  const releaseToAiMutation = useMutation({
+    mutationFn: (roomId: string) => api.post(`/chat-ai/release-to-ai/${roomId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
+      queryClient.invalidateQueries({ queryKey: ['chat-room', activeRoomId] });
+    },
+    onError: () => toast.error('สลับสถานะ AI ไม่สำเร็จ'),
+  });
+
+  const aiTogglePending = takeOverMutation.isPending || releaseToAiMutation.isPending;
+  const handleToggleAi = () => {
+    if (!activeRoomId) return;
+    if (sessionQuery.data?.aiPaused) releaseToAiMutation.mutate(activeRoomId);
+    else takeOverMutation.mutate(activeRoomId);
+  };
+
   const transferMutation = useMutation({
     mutationFn: ({ roomId, staffId }: { roomId: string; staffId: string }) =>
       api.patch(`/staff-chat/rooms/${roomId}/transfer`, { staffId }),
@@ -367,6 +383,9 @@ export default function UnifiedInboxPage() {
           otherViewers={otherViewers}
           roomMuted={isMuted(activeRoomId ?? undefined)}
           onToggleRoomMute={activeRoomId ? () => toggleRoomMute(activeRoomId) : undefined}
+          aiPaused={sessionQuery.data?.aiPaused ?? false}
+          onToggleAi={handleToggleAi}
+          aiTogglePending={aiTogglePending}
         />
       </div>
 

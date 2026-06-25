@@ -787,6 +787,9 @@ export default function ChatPanel({
               )}
             </button>
           </div>
+          <p className="hidden lg:block mt-1 px-1 text-[10px] leading-snug text-muted-foreground/40">
+            Enter ส่ง · Shift+Enter ขึ้นบรรทัด
+          </p>
         </div>
       )}
 

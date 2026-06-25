@@ -1,4 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
+import { nextRoomIndex } from './list-nav';
+import { isEditableTarget } from '../hooks/useKeyboardShortcuts';
 import { Search, MessageCircle, X } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -126,6 +128,27 @@ export default function ConversationList({
 
   const tabCounts = useMemo(() => deriveTabCounts(sessions, currentUserId), [sessions, currentUserId]);
 
+  // j/k navigate the visible (filtered+sorted) room list; guarded so it never
+  // fires while typing in the composer or search.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (isEditableTarget(e.target)) return;
+      if (e.key !== 'j' && e.key !== 'k') return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      e.preventDefault();
+      const idx = filteredAndSorted.findIndex((r) => r.id === activeRoomId);
+      const next = nextRoomIndex(idx, e.key === 'j' ? 1 : -1, filteredAndSorted.length);
+      if (next < 0) return;
+      const room = filteredAndSorted[next];
+      onSelectRoom(room.id);
+      document
+        .querySelector(`[data-room-id="${room.id}"]`)
+        ?.scrollIntoView({ block: 'nearest' });
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [filteredAndSorted, activeRoomId, onSelectRoom]);
+
   return (
     <div className="flex flex-col h-full border-r border-border/60">
       {/* Search + Filters */}
@@ -248,14 +271,15 @@ export default function ConversationList({
           </div>
         ) : (
           filteredAndSorted.map((session) => (
-            <ConversationItem
-              key={session.id}
-              session={session}
-              isActive={session.id === activeRoomId}
-              onClick={() => onSelectRoom(session.id)}
-              onPin={(roomId, isPinned) => pinMutation.mutate({ roomId, isPinned })}
-              aiSettings={aiSettings}
-            />
+            <div key={session.id} data-room-id={session.id}>
+              <ConversationItem
+                session={session}
+                isActive={session.id === activeRoomId}
+                onClick={() => onSelectRoom(session.id)}
+                onPin={(roomId, isPinned) => pinMutation.mutate({ roomId, isPinned })}
+                aiSettings={aiSettings}
+              />
+            </div>
           ))
         )}
       </div>

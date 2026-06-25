@@ -11,7 +11,7 @@ import { swapRoomDraft } from './composer-draft';
 import SessionActions from './SessionActions';
 import MessageTemplatePicker from './MessageTemplatePicker';
 import AiSuggestPanel from './AiSuggestPanel';
-import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
+import { useKeyboardShortcuts, isEditableTarget } from '../hooks/useKeyboardShortcuts';
 import api from '@/lib/api';
 import { getGeneratedAvatarUrl } from '@/lib/avatar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -326,6 +326,20 @@ export default function ChatPanel({
       inputRef.current?.focus({ preventScroll: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- room-change only; inputText read via inputTextRef
+  }, [roomId]);
+
+  // "g" → jump the open thread to the latest message (vim-style). Guarded so it
+  // never fires while typing in the composer.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (isEditableTarget(e.target)) return;
+      if (e.key !== 'g' || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (!roomId) return;
+      e.preventDefault();
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   }, [roomId]);
 
   const getLastCustomerMessage = () => {

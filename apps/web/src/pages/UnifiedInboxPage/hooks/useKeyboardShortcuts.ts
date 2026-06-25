@@ -6,7 +6,7 @@ interface ShortcutActions {
   onEscape?: () => void;
 }
 
-const isEditableTarget = (el: EventTarget | null): boolean => {
+export const isEditableTarget = (el: EventTarget | null): boolean => {
   const node = el as HTMLElement | null;
   if (!node) return false;
   const tag = node.tagName;

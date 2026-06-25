@@ -150,6 +150,12 @@ async function main() {
       value: 'S42-1101',
       label: 'SHOP CoA — รายได้บริการซ่อม (Cr leg, payer=CUSTOMER)',
     },
+    // D1 (2026-06-25) — overpay auto-route ceiling: multiplier × installment amountDue
+    {
+      key: 'overpay_advance_auto_max_multiplier',
+      value: '2',
+      label: 'เพดานรับล่วงหน้าอัตโนมัติ (× ยอดงวด) — เกินกว่านี้ต้องยืนยัน OVERPAY_ADVANCE',
+    },
   ];
 
   for (const c of configs) {

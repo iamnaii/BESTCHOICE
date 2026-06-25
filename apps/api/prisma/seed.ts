@@ -183,6 +183,8 @@ async function main() {
     // SP5 Phase 2 — Repair ticket CoA defaults (SHOP-side, no VAT)
     { key: 'REPAIR_EXPENSE_ACCOUNT_CODE', value: 'S51-1105', label: 'SHOP CoA — ค่าซ่อมอุปกรณ์ลูกค้า (Dr leg, payer=SHOP)' },
     { key: 'REPAIR_INCOME_ACCOUNT_CODE', value: 'S42-1101', label: 'SHOP CoA — รายได้บริการซ่อม (Cr leg, payer=CUSTOMER)' },
+    // D1 (2026-06-25) — overpay auto-route ceiling: multiplier × installment amountDue
+    { key: 'overpay_advance_auto_max_multiplier', value: '2', label: 'เพดานรับล่วงหน้าอัตโนมัติ (× ยอดงวด) — เกินกว่านี้ต้องยืนยัน OVERPAY_ADVANCE' },
   ];
 
   for (const c of configs) {
@@ -1547,7 +1549,7 @@ async function main() {
   console.log('=== SEED COMPLETED SUCCESSFULLY ===');
   console.log('========================================');
   console.log('CompanyInfo: 1');
-  console.log('SystemConfig: 21');
+  console.log('SystemConfig: 22');
   console.log('Branches: 4 (1 warehouse + 3 stores)');
   console.log('Users: 8 (1 OWNER, 3 BRANCH_MANAGER, 3 SALES, 1 ACCOUNTANT)');
   console.log('Suppliers: 10 (Apple + accessories only)');

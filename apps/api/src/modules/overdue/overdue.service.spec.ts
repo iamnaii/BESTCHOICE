@@ -9,6 +9,7 @@ import { PaymentsService } from '../payments/payments.service';
 import { ContractLetterService } from './contract-letter.service';
 import { MdmLockService } from './mdm-lock.service';
 import { OwnerAlertHelper } from './owner-alert.helper';
+import { ConsecutiveMissedService } from './consecutive-missed.service';
 
 // Shared no-op mock for DunningEngineService — tests that care can spy on it
 const mockDunningEngine = {
@@ -62,6 +63,7 @@ describe('OverdueService.recordSettlement', () => {
         { provide: ContractLetterService, useValue: mockLetterService },
         { provide: MdmLockService, useValue: mockMdmLockService },
         { provide: OwnerAlertHelper, useValue: mockOwnerAlertHelper },
+        { provide: ConsecutiveMissedService, useValue: { getStreaks: jest.fn().mockResolvedValue(new Map()) } },
       ],
     }).compile();
     service = mod.get(OverdueService);
@@ -155,6 +157,7 @@ describe('OverdueService.approveDunningEscalation (T4-C2)', () => {
         { provide: ContractLetterService, useValue: mockLetterService },
         { provide: MdmLockService, useValue: mockMdmLockService },
         { provide: OwnerAlertHelper, useValue: mockOwnerAlertHelper },
+        { provide: ConsecutiveMissedService, useValue: { getStreaks: jest.fn().mockResolvedValue(new Map()) } },
       ],
     }).compile();
     service = mod.get(OverdueService);
@@ -229,6 +232,7 @@ describe('OverdueService.updateContractStatuses (T3-C11 hold guard)', () => {
         { provide: ContractLetterService, useValue: mockLetterService },
         { provide: MdmLockService, useValue: mockMdmLockService },
         { provide: OwnerAlertHelper, useValue: mockOwnerAlertHelper },
+        { provide: ConsecutiveMissedService, useValue: { getStreaks: jest.fn().mockResolvedValue(new Map()) } },
       ],
     }).compile();
     service = mod.get(OverdueService);
@@ -333,6 +337,7 @@ describe('OverdueService.holdAutoEscalation (T3-C11)', () => {
         { provide: ContractLetterService, useValue: mockLetterService },
         { provide: MdmLockService, useValue: mockMdmLockService },
         { provide: OwnerAlertHelper, useValue: mockOwnerAlertHelper },
+        { provide: ConsecutiveMissedService, useValue: { getStreaks: jest.fn().mockResolvedValue(new Map()) } },
       ],
     }).compile();
     service = mod.get(OverdueService);
@@ -393,6 +398,7 @@ describe('OverdueService.updateContractStatuses (C3: atomic flip)', () => {
         { provide: ContractLetterService, useValue: mockLetterService },
         { provide: MdmLockService, useValue: mockMdmLockService },
         { provide: OwnerAlertHelper, useValue: mockOwnerAlertHelper },
+        { provide: ConsecutiveMissedService, useValue: { getStreaks: jest.fn().mockResolvedValue(new Map()) } },
       ],
     }).compile();
     service = mod.get(OverdueService);
@@ -463,6 +469,7 @@ describe('OverdueService (C2: throw if no SYSTEM user)', () => {
         { provide: ContractLetterService, useValue: mockLetterService },
         { provide: MdmLockService, useValue: mockMdmLockService },
         { provide: OwnerAlertHelper, useValue: mockOwnerAlertHelper },
+        { provide: ConsecutiveMissedService, useValue: { getStreaks: jest.fn().mockResolvedValue(new Map()) } },
       ],
     }).compile();
     service = mod.get(OverdueService);
@@ -504,6 +511,7 @@ describe('OverdueService.getCollectionsFlag', () => {
         { provide: ContractLetterService, useValue: mockLetterService },
         { provide: MdmLockService, useValue: mockMdmLockService },
         { provide: OwnerAlertHelper, useValue: mockOwnerAlertHelper },
+        { provide: ConsecutiveMissedService, useValue: { getStreaks: jest.fn().mockResolvedValue(new Map()) } },
       ],
     }).compile();
     service = mod.get(OverdueService);
@@ -585,6 +593,7 @@ describe('OverdueService.logContact with event trigger wiring', () => {
         { provide: ContractLetterService, useValue: mockLetterService },
         { provide: MdmLockService, useValue: mockMdmLockService },
         { provide: OwnerAlertHelper, useValue: mockOwnerAlertHelper },
+        { provide: ConsecutiveMissedService, useValue: { getStreaks: jest.fn().mockResolvedValue(new Map()) } },
       ],
     }).compile();
     service = mod.get(OverdueService);

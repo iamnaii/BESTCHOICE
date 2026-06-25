@@ -9,6 +9,7 @@ import { PaymentsService } from '../payments/payments.service';
 import { ContractLetterService } from './contract-letter.service';
 import { MdmLockService } from './mdm-lock.service';
 import { OwnerAlertHelper } from './owner-alert.helper';
+import { ConsecutiveMissedService } from './consecutive-missed.service';
 
 /**
  * Characterization (golden) tests for OverdueService — dashboard/aggregate readers.
@@ -85,6 +86,7 @@ const buildService = async (prisma: PrismaMock): Promise<OverdueService> => {
       { provide: ContractLetterService, useValue: mockLetterService },
       { provide: MdmLockService, useValue: mockMdmLockService },
       { provide: OwnerAlertHelper, useValue: mockOwnerAlertHelper },
+      { provide: ConsecutiveMissedService, useValue: { getStreaks: jest.fn().mockResolvedValue(new Map()) } },
     ],
   }).compile();
   return mod.get(OverdueService);
@@ -517,6 +519,7 @@ describe('OverdueService.computeFifoTargets (via logContact PROMISED FIFO alloca
         { provide: ContractLetterService, useValue: mockLetterService },
         { provide: MdmLockService, useValue: mockMdmLockService },
         { provide: OwnerAlertHelper, useValue: mockOwnerAlertHelper },
+        { provide: ConsecutiveMissedService, useValue: { getStreaks: jest.fn().mockResolvedValue(new Map()) } },
       ],
     }).compile();
     const svc = mod.get(OverdueService);

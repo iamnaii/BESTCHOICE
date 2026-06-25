@@ -43,7 +43,7 @@ export class ConsecutiveMissedService {
             ORDER BY p."installment_no") AS grp
         FROM "payments" p
         JOIN "contracts" c ON c."id" = p."contract_id"
-        WHERE c."deleted_at" IS NULL ${statusFilter} ${idFilter}
+        WHERE c."deleted_at" IS NULL AND p."deleted_at" IS NULL ${statusFilter} ${idFilter}
       ),
       max_consecutive AS (
         SELECT "contract_id" AS id, MAX(cnt) AS consecutive

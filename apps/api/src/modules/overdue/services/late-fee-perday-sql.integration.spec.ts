@@ -16,15 +16,16 @@ import { computePerDayLateFee, loadLateFeeConfig } from '../../../utils/late-fee
 
 const prisma = new PrismaClient();
 
-// Three bands against installment 1515.83 with rate=20/max=500/cap=5%:
-//   2 days  → 2×20 = 40   < max 500  < 5%×1515.83 = 75.79 → per-day-binding: 40
-//   10 days → 10×20 = 200 > 5%×1515.83 = 75.79           → 5%-binding:      75.79
-//   40 days → 40×20 = 800 > max 500   > 5%×1515.83 = 75.79 → 5%-binding:    75.79
-//   (for max-binding we need large installment: tested in unit; SQL path same)
+// Four bands — rate=20/max=500/cap=5%:
+//   n=1  days=2   amountDue=1515.83 → byDay=40   < byPct=75.79  < max=500  → per-day-binding:   40
+//   n=2  days=10  amountDue=1515.83 → byDay=200  > byPct=75.79  < max=500  → 5%-cap-binding:    75.79
+//   n=3  days=40  amountDue=1515.83 → byDay=800  > byPct=75.79  > max=500  → 5%-cap-binding:    75.79
+//   n=4  days=30  amountDue=20000   → byDay=600  > max=500; byPct=1000 > max=500 → max-binding: 500
 const cases = [
-  { n: 1, days: 2 },  // per-day-binding: 40
-  { n: 2, days: 10 }, // 5%-cap-binding:  75.79
-  { n: 3, days: 40 }, // 5%-cap-binding (max also > 75.79): 75.79
+  { n: 1, days: 2,  amountDue: '1515.83' }, // per-day-binding: 40
+  { n: 2, days: 10, amountDue: '1515.83' }, // 5%-cap-binding:  75.79
+  { n: 3, days: 40, amountDue: '1515.83' }, // 5%-cap-binding (max also > 75.79): 75.79
+  { n: 4, days: 30, amountDue: '20000.00' }, // max-binding: byDay=600 >500; byPct=1000 >500 → 500
 ];
 
 const PER_DAY_CONFIG = [
@@ -59,12 +60,12 @@ describe('calculateLateFees PER_DAY SQL == computePerDayLateFee (anti-drift)', (
 
     const now = Date.now();
     // Create PENDING payments with due dates in the past (days overdue = `days`)
-    for (const { n, days } of cases) {
+    for (const { n, days, amountDue } of cases) {
       await prisma.payment.create({
         data: {
           contractId,
           installmentNo: n,
-          amountDue: new Prisma.Decimal('1515.83'),
+          amountDue: new Prisma.Decimal(amountDue),
           dueDate: new Date(now - days * 86_400_000),
           status: 'PENDING',
         } as any,
@@ -80,7 +81,7 @@ describe('calculateLateFees PER_DAY SQL == computePerDayLateFee (anti-drift)', (
     await prisma.$disconnect();
   });
 
-  it('every row SQL late_fee equals computePerDayLateFee (per-day-binding, 5%-cap-binding)', async () => {
+  it('every row SQL late_fee equals computePerDayLateFee (per-day-binding, 5%-cap-binding, max-binding)', async () => {
     const svc = new OverdueLifecycleCronService(
       prisma as any,
       new ConsecutiveMissedService(prisma as any),
@@ -90,7 +91,7 @@ describe('calculateLateFees PER_DAY SQL == computePerDayLateFee (anti-drift)', (
     const cfg = await loadLateFeeConfig(prisma);
     expect(cfg.mode).toBe('PER_DAY');
 
-    for (const { n, days } of cases) {
+    for (const { n, days, amountDue } of cases) {
       const p = await prisma.payment.findFirst({ where: { contractId, installmentNo: n } });
       expect(p, `payment installmentNo=${n} should exist`).not.toBeNull();
 
@@ -99,15 +100,19 @@ describe('calculateLateFees PER_DAY SQL == computePerDayLateFee (anti-drift)', (
         perDayRate: cfg.perDayRate,
         maxAmount: cfg.maxAmount,
         capPct: cfg.capPct,
-        installmentGross: '1515.83',
+        installmentGross: amountDue,
       });
 
       // SQL and util must agree to the satang
       expect(
         new Prisma.Decimal(p!.lateFee.toString()).toString(),
-        `Band days=${days}: SQL late_fee vs util`,
+        `Band days=${days} amountDue=${amountDue}: SQL late_fee vs util`,
       ).toBe(expected.toString());
     }
+
+    // Explicit max-binding assertion: n=4 days=30 amountDue=20000 must yield exactly 500
+    const pMax = await prisma.payment.findFirst({ where: { contractId, installmentNo: 4 } });
+    expect(new Prisma.Decimal(pMax!.lateFee.toString()).toString()).toBe('500');
   });
 });
 

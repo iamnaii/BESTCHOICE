@@ -3,6 +3,7 @@ import { format } from 'date-fns';
 import { PaymentFlexPreview, parsePaymentFlex } from './PaymentFlexPreview';
 import FlexBubblePreview from './FlexBubblePreview';
 import { Check, CheckCheck, Lock } from 'lucide-react';
+import { linkifyText } from '@/lib/linkify';
 
 interface MessageBubbleProps {
   message: {
@@ -282,7 +283,9 @@ export default function MessageBubble({ message, customerAvatar, customerInitial
           )}
 
           {/* Text */}
-          {message.text && <p className="whitespace-pre-wrap">{message.text}</p>}
+          {/* linkify is safe here: only the final fallback branch reaches this — gif/
+              sticker/flex tokens early-return above, so [token:…] never gets linkified */}
+          {message.text && <p className="whitespace-pre-wrap">{linkifyText(message.text)}</p>}
         </div>
 
         {/* Timestamp + Read receipt */}

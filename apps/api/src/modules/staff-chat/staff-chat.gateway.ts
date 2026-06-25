@@ -116,8 +116,16 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
 
     this.presenceService.setOffline(userId, client.id);
 
-    // Clean up collision detection viewers for this user
-    this.collisionDetectionService.removeViewerFromAll(userId);
+    // Clean up collision detection viewers for this user, and tell each affected
+    // room its viewer list changed (so other staff's "viewing" banner clears
+    // when this staff's tab closes/crashes instead of clicking away).
+    const affectedRooms = this.collisionDetectionService.removeViewerFromAll(userId);
+    for (const roomId of affectedRooms) {
+      this.server.to(CHAT_ROOMS.room(roomId)).emit(CHAT_EVENTS.VIEWERS, {
+        roomId,
+        viewers: this.collisionDetectionService.getViewers(roomId),
+      });
+    }
 
     // Only broadcast offline if no more connections from this user
     if (!this.presenceService.isOnline(userId)) {

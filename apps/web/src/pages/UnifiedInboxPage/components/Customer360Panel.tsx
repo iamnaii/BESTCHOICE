@@ -10,6 +10,7 @@ import { getStatusBadgeProps, contractStatusMap, riskLevelMap } from '@/lib/stat
 import ContactLogDialog from '@/pages/CollectionsPage/components/ContactLogDialog';
 import LockDeviceDialog from '@/pages/CollectionsPage/components/LockDeviceDialog';
 import type { ContractRow } from '@/pages/CollectionsPage/types';
+import { decideContractTarget, type ContractAction } from './contract-action';
 import {
   User,
   FileText,
@@ -41,7 +42,6 @@ import { Button } from '@/components/ui/button';
 import { UserPlus } from 'lucide-react';
 import { getGeneratedAvatarUrl } from '@/lib/avatar';
 
-type DialogView = null | 'send-link';
 
 interface ContractSummaryItem {
   id: string;
@@ -127,6 +127,13 @@ interface Customer360PanelProps {
   } | null;
 }
 
+const ACTION_ICON: Record<ContractAction, React.ReactNode> = {
+  'send-link': <Link2 className="w-4 h-4" />,
+  'contact-log': <Phone className="w-4 h-4" />,
+  'mdm-lock': <Lock className="w-4 h-4" />,
+  'view-pdf': <FileText className="w-4 h-4" />,
+};
+
 const channelLabel: Record<string, string> = {
   LINE_FINANCE: 'LINE Finance',
   LINE_SHOP: 'LINE Shop',
@@ -163,8 +170,15 @@ const sessionStatusLabel: Record<string, string> = {
 export default function Customer360Panel({ customerId, activeRoomId, onSelectRoom, session }: Customer360PanelProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [dialogView, setDialogView] = useState<DialogView>(null);
-  const [selectedContractId, setSelectedContractId] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<ContractAction | null>(null);
+
+  const ACTION_TITLE: Record<ContractAction, string> = {
+    'send-link': 'เลือกสัญญาที่จะส่งลิงก์ชำระ',
+    'contact-log': 'เลือกสัญญาที่จะบันทึกติดต่อ + นัดชำระ',
+    'mdm-lock': 'เลือกสัญญาที่จะส่งคำสั่งล็อกเครื่อง',
+    'view-pdf': 'เลือกสัญญาที่จะดู PDF',
+  };
+
   // Both ContactLog + MDM lock dialogs reuse Collections components and need
   // a full ContractRow shape — fetched on demand via /overdue/queue-row
   const [contactLogContract, setContactLogContract] = useState<ContractRow | null>(null);
@@ -277,24 +291,6 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
     },
   });
 
-  const closeDialog = () => {
-    setDialogView(null);
-    setSelectedContractId(null);
-  };
-
-  const sendPaymentLink = () => {
-    const contracts = (summary?.activeContracts ?? []) as ContractSummaryItem[];
-    if (contracts.length === 0) {
-      toast.error('ไม่มีสัญญาที่ใช้งาน');
-      return;
-    }
-    if (contracts.length === 1) {
-      sendPaymentFlex.mutate(contracts[0].id);
-      return;
-    }
-    // Multi-contract: open lightweight picker
-    setDialogView('send-link');
-  };
 
   const fetchAndOpenContactLog = useMutation({
     mutationFn: (contractId: string) =>
@@ -309,19 +305,6 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
     onError: () => toast.error('ไม่สามารถโหลดข้อมูลสัญญาได้'),
   });
 
-  const openContactLog = () => {
-    const contracts = (summary?.activeContracts ?? []) as ContractSummaryItem[];
-    if (contracts.length === 0) {
-      toast.error('ไม่มีสัญญาที่ใช้งาน');
-      return;
-    }
-    if (contracts.length === 1) {
-      fetchAndOpenContactLog.mutate(contracts[0].id);
-      return;
-    }
-    // Multi: prompt user — for now, use first; could add picker later
-    fetchAndOpenContactLog.mutate(contracts[0].id);
-  };
 
   const fetchAndOpenMdmLock = useMutation({
     mutationFn: (contractId: string) =>
@@ -336,14 +319,6 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
     onError: () => toast.error('ไม่สามารถโหลดข้อมูลสัญญาได้'),
   });
 
-  const openMdmLock = () => {
-    const contracts = (summary?.activeContracts ?? []) as ContractSummaryItem[];
-    if (contracts.length === 0) {
-      toast.error('ไม่มีสัญญาที่ใช้งาน');
-      return;
-    }
-    fetchAndOpenMdmLock.mutate(contracts[0].id);
-  };
 
   const openContractPdf = useMutation({
     mutationFn: async (contract: ContractSummaryItem) => {
@@ -363,13 +338,39 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
     onError: (err: Error) => toast.error(err.message ?? 'ไม่สามารถเปิดสัญญาได้'),
   });
 
-  const openContractPage = () => {
+
+  const closeDialog = () => setPendingAction(null);
+
+  const runContractAction = (action: ContractAction, contract: ContractSummaryItem) => {
+    setPendingAction(null);
+    switch (action) {
+      case 'send-link':
+        sendPaymentFlex.mutate(contract.id);
+        break;
+      case 'contact-log':
+        fetchAndOpenContactLog.mutate(contract.id);
+        break;
+      case 'mdm-lock':
+        fetchAndOpenMdmLock.mutate(contract.id);
+        break;
+      case 'view-pdf':
+        openContractPdf.mutate(contract);
+        break;
+    }
+  };
+
+  const triggerContractAction = (action: ContractAction) => {
     const contracts = (summary?.activeContracts ?? []) as ContractSummaryItem[];
-    if (contracts.length === 0) {
+    const target = decideContractTarget(contracts);
+    if (target.kind === 'none') {
       toast.error('ไม่มีสัญญาที่ใช้งาน');
       return;
     }
-    openContractPdf.mutate(contracts[0]);
+    if (target.kind === 'single') {
+      runContractAction(action, target.contract);
+      return;
+    }
+    setPendingAction(action); // 2+ contracts → make the staffer choose
   };
 
   if (!customerId) {
@@ -806,23 +807,23 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
                 <QuickActionBtn
                   icon={<Link2 className="w-3.5 h-3.5 flex-shrink-0" />}
                   label={sendPaymentFlex.isPending ? 'กำลังส่ง...' : 'ส่งลิงก์ชำระ'}
-                  onClick={sendPaymentLink}
+                  onClick={() => triggerContractAction('send-link')}
                 />
                 <QuickActionBtn
                   icon={<Phone className="w-3.5 h-3.5 flex-shrink-0" />}
                   label="บันทึกติดต่อ + นัดชำระ"
-                  onClick={openContactLog}
+                  onClick={() => triggerContractAction('contact-log')}
                 />
                 <QuickActionBtn
                   icon={<Lock className="w-3.5 h-3.5 flex-shrink-0" />}
                   label="ส่งคำสั่งล็อกเครื่อง (MDM)"
-                  onClick={openMdmLock}
+                  onClick={() => triggerContractAction('mdm-lock')}
                 />
                 <div className="h-px bg-border my-1" />
                 <QuickActionBtn
                   icon={<FileText className="w-3.5 h-3.5 flex-shrink-0" />}
                   label={openContractPdf.isPending ? 'กำลังโหลดสัญญา...' : 'ดูสัญญา PDF'}
-                  onClick={openContractPage}
+                  onClick={() => triggerContractAction('view-pdf')}
                 />
                 <QuickActionBtn
                   icon={<User className="w-3.5 h-3.5 flex-shrink-0" />}
@@ -837,36 +838,44 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
 
       {/* ─── Quick Action Dialogs ──────────────────────── */}
 
-      {/* Send Payment Link — multi-contract picker (auto-sends Flex on click) */}
-      <Dialog open={dialogView === 'send-link'} onOpenChange={(o) => !o && closeDialog()}>
+      {/* Contract picker — shown for ANY multi-contract action so staff never hit the wrong device */}
+      <Dialog open={pendingAction !== null} onOpenChange={(o) => !o && closeDialog()}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Link2 className="w-4 h-4" /> เลือกสัญญาที่จะส่งลิงก์ชำระ
+              {pendingAction ? ACTION_ICON[pendingAction] : null}
+              {pendingAction ? ACTION_TITLE[pendingAction] : ''}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-2">
-            {((summary?.activeContracts ?? []) as ContractSummaryItem[]).map((c) => {
-              const productName = c.product?.name ?? `${c.product?.brand ?? ''} ${c.product?.model ?? ''}`.trim() ?? 'สินค้า';
-              return (
+            {(() => {
+              const busy =
+                sendPaymentFlex.isPending ||
+                fetchAndOpenContactLog.isPending ||
+                fetchAndOpenMdmLock.isPending ||
+                openContractPdf.isPending;
+              return ((summary?.activeContracts ?? []) as ContractSummaryItem[]).map((c) => {
+                const productName =
+                  c.product?.name ?? `${c.product?.brand ?? ''} ${c.product?.model ?? ''}`.trim() ?? 'สินค้า';
+                return (
                 <button
                   key={c.id}
                   type="button"
-                  disabled={sendPaymentFlex.isPending}
-                  onClick={() => sendPaymentFlex.mutate(c.id)}
+                  disabled={busy}
+                  onClick={() => pendingAction && runContractAction(pendingAction, c)}
                   className="w-full text-left p-3 rounded-lg border border-border hover:bg-accent text-sm transition-colors disabled:opacity-50"
                 >
                   <div className="flex items-center justify-between mb-0.5">
                     <span className="font-medium text-foreground">{c.contractNumber}</span>
-                    <span className="text-xs text-muted-foreground">{Number(c.monthlyPayment).toLocaleString()} บ./งวด</span>
+                    <span className="text-xs text-muted-foreground">
+                      {Number(c.monthlyPayment).toLocaleString()} บ./งวด
+                    </span>
                   </div>
                   <p className="text-xs text-muted-foreground">{productName}</p>
                 </button>
               );
-            })}
-            <p className="text-[11px] text-muted-foreground text-center pt-1">
-              เลือก template อัตโนมัติตามสถานะค้างชำระ
-            </p>
+              });
+            })()}
           </div>
         </DialogContent>
       </Dialog>

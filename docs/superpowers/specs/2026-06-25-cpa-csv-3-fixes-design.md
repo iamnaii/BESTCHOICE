@@ -1,7 +1,9 @@
 # CPA CSV ↔ Code: 3 Late-Fee / Overpay / Shop-Payoff Fixes
 
 - **Date:** 2026-06-25
-- **Status:** Approved (owner sign-off 2026-06-25), scrutinized
+- **Status:** D1 + D2 implemented & merged-ready. **D3 DESCOPED 2026-06-25** (owner decision — see note below). Scrutinized.
+
+> **⚠️ D3 DESCOPED (owner, 2026-06-25):** The "11-2107 ลูกหนี้-หน้าร้าน / shop-collected early payoff + remittance settlement" was removed. Early payoff is **FINANCE-direct only** — the customer always pays FINANCE (transfer / QR / cash into a FINANCE account), there is no SHOP branch holding cash on FINANCE's behalf. So no inter-company receivable is needed; early payoff simply debits a FINANCE cash/bank account (the existing `depositAccountCode`, default 11-1101). The implemented D3 work (Tasks 6-8) was reverted via `git reset` and archived in tag `d3-shop-payoff-archived`. The D3 section below is retained for historical context only — **do not implement**. D1 and D2 are unaffected.
 - **Author:** Claude + owner (พี่นาย)
 - **Branch:** `fix/cpa-csv-3-fixes`
 

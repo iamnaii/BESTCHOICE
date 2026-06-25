@@ -482,6 +482,8 @@ git commit -m "feat(payments): bounded auto-route of overpay >1฿ to advance �
 
 ## Phase D3 — Account 11-2107 + shop-collect early payoff + settlement
 
+> **⚠️ DESCOPED 2026-06-25 (owner decision).** Tasks 6-9 below were implemented, then reverted (`git reset` to the last D1/D2 commit; archived in tag `d3-shop-payoff-archived`). Early payoff is FINANCE-direct only — no shop-collect / 11-2107 / remittance. Retained for historical context; **do not implement**. Only Phase D2 (Tasks 1-4) and Phase D1 (Task 5) are part of this branch.
+
 ### Task 6: add 11-2107 to FINANCE chart
 
 **Files:**

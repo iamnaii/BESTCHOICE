@@ -2,23 +2,21 @@
  * payments.service.late-fee.spec.ts
  *
  * Characterization (golden) test for the REAL-TIME late-fee computation in
- * PaymentsService.recordPayment (payments.service.ts lines ~269-285).
+ * PaymentsService.recordPayment via the payment-receipt-orchestrator.
  *
- * The late fee is recomputed at payment time using the FLAT-BRACKET model
- * (D2, owner decision 2026-06-25):
+ * The late fee is recomputed at payment time using the mode-aware resolveLateFee
+ * dispatcher (PER_DAY by default, D2 Section #3, feat/late-fee-perday):
  *
- *   daysOverdue   = floor((now - dueDate) / 1 day)
- *   bracketFee    = 0 if daysOverdue <= 0
- *                 = tier1Amount (default 50฿)  if 1 <= daysOverdue < tier2MinDays (default 3)
- *                 = tier2Amount (default 100฿) if daysOverdue >= tier2MinDays
+ *   PER_DAY (default):
+ *     daysOverdue   = floor((now - dueDate) / 1 day)
+ *     lateFee       = min(daysOverdue × ratePerDay, maxAmount, capPct% × amountDue)
+ *     Defaults:     rate=20฿/day, max=500฿, cap=5%
  *
- * The bracket fee is SET unconditionally (retroactive downgrade included),
- * unless lateFeeWaived=true. The old per-day/5%-cap model is gone.
+ *   BRACKET (rollback path via late_fee_mode=BRACKET SystemConfig):
+ *     Same tier1/tier2 logic as before.
  *
- * These tests drive recordPayment end-to-end against a mocked Prisma (same unit
- * pattern as payments.service.advance.spec.ts) and lock the exact Decimal late
- * fee captured from BOTH the Payment.update write AND the lateFee forwarded to
- * PaymentReceiptTemplate.execute.
+ * Updated from bracket values in feat/late-fee-perday Task 2 — all golden
+ * assertions now reflect PER_DAY defaults (rate=20, max=500, cap=5%).
  *
  * Money is Prisma.Decimal — asserted via .toFixed(2).
  */
@@ -56,7 +54,7 @@ const DAY_MS = 1000 * 60 * 60 * 24;
 /** A dueDate exactly `days` days in the past (+1s buffer so floor() lands on `days`). */
 const overdueDays = (days: number) => new Date(Date.now() - (days * DAY_MS + 1000));
 
-describe('PaymentsService — real-time late fee on payment', () => {
+describe('PaymentsService — real-time late fee on payment (PER_DAY mode)', () => {
   let service: PaymentsService;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let prisma: any;
@@ -65,10 +63,14 @@ describe('PaymentsService — real-time late fee on payment', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let receiptPrimitiveExecute: any;
 
-  // Per-test config for the bracket SystemConfig keys (null = use defaults).
+  // Per-test config overrides for SystemConfig keys (null = use BUSINESS_RULES default).
+  let lateFeeModeCfg: string | null;
   let lateFeeT1Cfg: string | null;
   let lateFeeT2Cfg: string | null;
   let lateFeeT2MinDaysCfg: string | null;
+  let lateFeePerDayRateCfg: string | null;
+  let lateFeeMaxAmountCfg: string | null;
+  let lateFeeCapPctCfg: string | null;
 
   const makeContract = () => ({
     id: 'lf-contract-1',
@@ -97,9 +99,13 @@ describe('PaymentsService — real-time late fee on payment', () => {
   });
 
   beforeEach(async () => {
+    lateFeeModeCfg = null;
     lateFeeT1Cfg = null;
     lateFeeT2Cfg = null;
     lateFeeT2MinDaysCfg = null;
+    lateFeePerDayRateCfg = null;
+    lateFeeMaxAmountCfg = null;
+    lateFeeCapPctCfg = null;
 
     const buildMockPrisma = () => ({
       contract: {
@@ -136,21 +142,22 @@ describe('PaymentsService — real-time late fee on payment', () => {
         findFirst: jest.fn().mockResolvedValue({ id: 'co-FINANCE' }),
       },
       systemConfig: {
-        // Key-aware dispatch: period-lock keys return null (open period);
-        // bracket late-fee keys return the per-test config.
+        // Key-aware dispatch: all late-fee keys respond to per-test config vars;
+        // other keys (period-lock, etc.) return null (open period / no config).
         findUnique: jest
           .fn()
           .mockImplementation(({ where }: { where: { key: string } }) => {
-            if (where.key === 'late_fee_tier1_amount') {
-              return Promise.resolve(lateFeeT1Cfg ? { value: lateFeeT1Cfg } : null);
-            }
-            if (where.key === 'late_fee_tier2_amount') {
-              return Promise.resolve(lateFeeT2Cfg ? { value: lateFeeT2Cfg } : null);
-            }
-            if (where.key === 'late_fee_tier2_min_days') {
-              return Promise.resolve(lateFeeT2MinDaysCfg ? { value: lateFeeT2MinDaysCfg } : null);
-            }
-            return Promise.resolve(null);
+            const map: Record<string, string | null> = {
+              late_fee_mode: lateFeeModeCfg,
+              late_fee_tier1_amount: lateFeeT1Cfg,
+              late_fee_tier2_amount: lateFeeT2Cfg,
+              late_fee_tier2_min_days: lateFeeT2MinDaysCfg,
+              late_fee_per_day_rate: lateFeePerDayRateCfg,
+              late_fee_max_amount: lateFeeMaxAmountCfg,
+              late_fee_cap_pct: lateFeeCapPctCfg,
+            };
+            const val = map[where.key] ?? null;
+            return Promise.resolve(val ? { value: val } : null);
           }),
       },
       installmentSchedule: {
@@ -260,16 +267,16 @@ describe('PaymentsService — real-time late fee on payment', () => {
   });
 
   // ───────────────────────────────────────────────────────────────────────────
-  // Tier 1: 1-2 days overdue → flat 50฿ (default tier1Amount)
+  // PER_DAY 1 day: 1 × 20฿ = 20฿ (rate wins, cap not binding for amountDue=10000)
   // ───────────────────────────────────────────────────────────────────────────
-  it('1 day overdue → tier1 flat fee = 50.00', async () => {
-    // 1 day overdue: 1 < tier2MinDays(3) → tier1Amount(50).
+  it('1 day overdue → per-day fee = 20.00 (1 day × 20฿/day, min(20,500,5%×10000=500)=20)', async () => {
+    // Updated from bracket tier1=50 to per-day 20 in feat/late-fee-perday Task 2.
     prisma.payment.findFirst.mockResolvedValue(makePayment({ dueDate: overdueDays(1) }));
 
     await service.recordPayment(
       'lf-contract-1',
       1,
-      10050, // amountDue(10000) + lateFee(50)
+      10020, // amountDue(10000) + lateFee(20)
       'CASH',
       'user-1',
       'https://slip.test/1d',
@@ -278,21 +285,21 @@ describe('PaymentsService — real-time late fee on payment', () => {
       '11-1101',
     );
 
-    expect(lateFeeWritten()?.toFixed(2)).toBe('50.00');
-    expect(lateFeeForwarded()?.toFixed(2)).toBe('50.00');
+    expect(lateFeeWritten()?.toFixed(2)).toBe('20.00');
+    expect(lateFeeForwarded()?.toFixed(2)).toBe('20.00');
   });
 
   // ───────────────────────────────────────────────────────────────────────────
-  // Tier 2: >= 3 days overdue → flat 100฿ (default tier2Amount)
+  // PER_DAY 3 days: 3 × 20฿ = 60฿ (rate wins for amountDue=10000)
   // ───────────────────────────────────────────────────────────────────────────
-  it('3 days overdue → tier2 flat fee = 100.00 (bracket threshold)', async () => {
-    // 3 days overdue: 3 >= tier2MinDays(3) → tier2Amount(100).
+  it('3 days overdue → per-day fee = 60.00 (3 × 20฿, min(60,500,5%×10000=500)=60)', async () => {
+    // Updated from bracket tier2=100 to per-day 60 in feat/late-fee-perday Task 2.
     prisma.payment.findFirst.mockResolvedValue(makePayment({ dueDate: overdueDays(3) }));
 
     await service.recordPayment(
       'lf-contract-1',
       1,
-      10100, // amountDue(10000) + lateFee(100)
+      10060, // amountDue(10000) + lateFee(60)
       'CASH',
       'user-1',
       'https://slip.test/3d',
@@ -301,16 +308,16 @@ describe('PaymentsService — real-time late fee on payment', () => {
       '11-1101',
     );
 
-    expect(lateFeeWritten()?.toFixed(2)).toBe('100.00');
-    expect(lateFeeForwarded()?.toFixed(2)).toBe('100.00');
+    expect(lateFeeWritten()?.toFixed(2)).toBe('60.00');
+    expect(lateFeeForwarded()?.toFixed(2)).toBe('60.00');
   });
 
   // ───────────────────────────────────────────────────────────────────────────
-  // Tier 2: many days overdue — still flat 100 (NOT per-day, no cap logic)
+  // PER_DAY 10 days, small installment: 5% cap binds
+  // 10 × 20 = 200, min(200, 500, 5%×1000=50) = 50
   // ───────────────────────────────────────────────────────────────────────────
-  it('10 days overdue → still tier2 flat fee = 100.00 (flat bracket, not per-day)', async () => {
-    // 10 days overdue: 10 >= tier2MinDays(3) → tier2Amount(100).
-    // No per-day scaling, no 5% pctCap, no absolute cap.
+  it('10 days overdue, amountDue=1000 → 5% cap binds = 50.00 (min(200,500,50))', async () => {
+    // Updated from bracket tier2=100 to per-day 5%-capped 50 in feat/late-fee-perday Task 2.
     prisma.payment.findFirst.mockResolvedValue(
       makePayment({ amountDue: D(1000), dueDate: overdueDays(10) }),
     );
@@ -318,7 +325,7 @@ describe('PaymentsService — real-time late fee on payment', () => {
     await service.recordPayment(
       'lf-contract-1',
       1,
-      1100, // amountDue(1000) + lateFee(100)
+      1050, // amountDue(1000) + lateFee(50)
       'CASH',
       'user-1',
       'https://slip.test/10d',
@@ -327,24 +334,25 @@ describe('PaymentsService — real-time late fee on payment', () => {
       '11-1101',
     );
 
-    expect(lateFeeWritten()?.toFixed(2)).toBe('100.00');
-    expect(lateFeeForwarded()?.toFixed(2)).toBe('100.00');
+    expect(lateFeeWritten()?.toFixed(2)).toBe('50.00');
+    expect(lateFeeForwarded()?.toFixed(2)).toBe('50.00');
   });
 
   // ───────────────────────────────────────────────────────────────────────────
-  // Config-driven tier amounts (SystemConfig overrides)
+  // Config-driven: per-day rate override from SystemConfig
+  // rate=50/day, 3 days, amountDue=100000 → 3×50=150, min(150,500,5000)=150
   // ───────────────────────────────────────────────────────────────────────────
-  it('SystemConfig overrides: tier2=200 for >=3 days', async () => {
-    lateFeeT2Cfg = '200';
-    lateFeeT2MinDaysCfg = '3';
+  it('SystemConfig overrides: per-day rate=50 → 3 days = 150.00', async () => {
+    // Updated from bracket tier2=200 test to per-day rate override test.
+    lateFeePerDayRateCfg = '50';
     prisma.payment.findFirst.mockResolvedValue(
-      makePayment({ amountDue: D(100000), dueDate: overdueDays(40) }),
+      makePayment({ amountDue: D(100000), dueDate: overdueDays(3) }),
     );
 
     await service.recordPayment(
       'lf-contract-1',
       1,
-      100200, // amountDue(100000) + lateFee(200)
+      100150, // amountDue(100000) + lateFee(150)
       'CASH',
       'user-1',
       'https://slip.test/cfg',
@@ -353,8 +361,8 @@ describe('PaymentsService — real-time late fee on payment', () => {
       '11-1101',
     );
 
-    expect(lateFeeWritten()?.toFixed(2)).toBe('200.00');
-    expect(lateFeeForwarded()?.toFixed(2)).toBe('200.00');
+    expect(lateFeeWritten()?.toFixed(2)).toBe('150.00');
+    expect(lateFeeForwarded()?.toFixed(2)).toBe('150.00');
   });
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -384,18 +392,19 @@ describe('PaymentsService — real-time late fee on payment', () => {
   });
 
   // ───────────────────────────────────────────────────────────────────────────
-  // No change when stored fee already equals the bracket
+  // No change when stored fee already equals the resolved fee
+  // PER_DAY: 3 days × 20 = 60, 5%×10000=500. Stored=60 → no write.
   // ───────────────────────────────────────────────────────────────────────────
-  it('no Payment.update write when stored lateFee already equals the bracket', async () => {
-    // Stored lateFee = 100 (tier2 for 3 days). bracketFee = 100. Equal → no write.
+  it('no Payment.update write when stored lateFee already equals the resolved per-day fee', async () => {
+    // Updated: stored=60 matches PER_DAY resolved=60 → no write.
     prisma.payment.findFirst.mockResolvedValue(
-      makePayment({ dueDate: overdueDays(3), lateFee: D(100) }),
+      makePayment({ dueDate: overdueDays(3), lateFee: D(60) }),
     );
 
     await service.recordPayment(
       'lf-contract-1',
       1,
-      10100, // amountDue(10000) + stored lateFee(100)
+      10060, // amountDue(10000) + stored lateFee(60)
       'CASH',
       'user-1',
       'https://slip.test/equal',
@@ -404,27 +413,27 @@ describe('PaymentsService — real-time late fee on payment', () => {
       '11-1101',
     );
 
-    // No lateFee-only write (computed 100 equals stored 100 — bracketFee.eq(lateFee)).
+    // No lateFee-only write (computed 60 equals stored 60).
     expect(lateFeeWritten()).toBeUndefined();
-    // The stored 100 IS still forwarded to the template (lateFee.gt(0)).
-    expect(lateFeeForwarded()?.toFixed(2)).toBe('100.00');
+    // The stored 60 IS still forwarded to the template (lateFee.gt(0)).
+    expect(lateFeeForwarded()?.toFixed(2)).toBe('60.00');
   });
 
   // ───────────────────────────────────────────────────────────────────────────
-  // Retroactive downgrade: bracket SETS the fee (even downward)
+  // Retroactive adjustment: stored 200฿ → resolved per-day 75.79฿ (5% cap)
+  // 10 days × 20 = 200, 5% × 1515.83 = 75.79 → min(200,500,75.79) = 75.79
   // ───────────────────────────────────────────────────────────────────────────
-  it('retroactive downgrade: a stored 200฿ fee recomputes DOWN to the 100฿ bracket', async () => {
-    // Arrange: an installment 10 days overdue with an inflated stored lateFee=200
-    // (legacy linear model). Bracket for >=3 days = 100.
+  it('retroactive adjustment: a stored 200฿ fee recomputes DOWN to 75.79฿ (5% cap on 1515.83)', async () => {
+    // Updated from bracket 100 to per-day 75.79 (the CPA golden example).
     prisma.payment.findFirst.mockResolvedValue(
       makePayment({ dueDate: overdueDays(10), lateFee: D(200), amountDue: D(1515.83) }),
     );
 
-    // Act: record a payment. Amount = amountDue(1515.83) + bracket(100) = 1615.83.
+    // Act: record a payment. Amount = amountDue(1515.83) + resolved(75.79) = 1591.62.
     await service.recordPayment(
       'lf-contract-1',
       1,
-      1615.83,
+      1591.62,
       'CASH',
       'user-1',
       'https://slip.test/retro',
@@ -433,7 +442,34 @@ describe('PaymentsService — real-time late fee on payment', () => {
       '11-1101',
     );
 
-    // Assert: stored lateFee was SET to the bracket (100), NOT left at 200.
+    // Assert: stored lateFee was SET to the resolved per-day fee.
+    expect(lateFeeWritten()?.toFixed(2)).toBe('75.79');
+    expect(lateFeeForwarded()?.toFixed(2)).toBe('75.79');
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // BRACKET rollback: when late_fee_mode=BRACKET, reverts to old tier behavior
+  // ───────────────────────────────────────────────────────────────────────────
+  it('BRACKET mode rollback: 3 days overdue → tier2 = 100.00 (configured via SystemConfig)', async () => {
+    lateFeeModeCfg = 'BRACKET';
+    lateFeeT2Cfg = '100';
+    lateFeeT2MinDaysCfg = '3';
+    prisma.payment.findFirst.mockResolvedValue(
+      makePayment({ amountDue: D(10000), dueDate: overdueDays(3) }),
+    );
+
+    await service.recordPayment(
+      'lf-contract-1',
+      1,
+      10100, // amountDue(10000) + bracket lateFee(100)
+      'CASH',
+      'user-1',
+      'https://slip.test/bracket',
+      undefined,
+      'LF-BRACKET',
+      '11-1101',
+    );
+
     expect(lateFeeWritten()?.toFixed(2)).toBe('100.00');
     expect(lateFeeForwarded()?.toFixed(2)).toBe('100.00');
   });

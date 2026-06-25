@@ -302,6 +302,9 @@ export class RoomManagerService {
     // Sign storage-key mediaUrls so the inbox can render staff-uploaded media
     // directly (uploadFile persists a raw key). Inbound LINE images already
     // carry an http(s) URL; line:// refs are fetched via the media endpoint.
+    // NOTE: getSignedDownloadUrl makes a storage-API call per media message;
+    // signMessageMedia runs them in parallel (Promise.all), so latency is the
+    // slowest single presign, not the sum. Bounded by `limit` (default 20).
     if (!this.storageService.configured) return ordered;
     return signMessageMedia(ordered, (key) => this.storageService.getSignedDownloadUrl(key, 3600));
   }

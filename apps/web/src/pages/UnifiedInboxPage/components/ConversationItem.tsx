@@ -1,7 +1,6 @@
 import { Pin } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { formatDistanceToNow } from 'date-fns';
-import { th } from 'date-fns/locale';
+import { formatChatTimestamp } from '@/lib/chat-time';
 import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, sessionPriorityMap } from '@/lib/status-badges';
 import { getGeneratedAvatarUrl } from '@/lib/avatar';
@@ -187,7 +186,7 @@ export default function ConversationItem({ session, isActive, onClick, onPin, ai
             </span>
           </div>
           <span className="text-[10px] text-muted-foreground/70 flex-shrink-0 tabular-nums">
-            {formatDistanceToNow(new Date(session.lastMessageAt), { addSuffix: false, locale: th })}
+            {formatChatTimestamp(session.lastMessageAt)}
           </span>
         </div>
 

@@ -1,9 +1,47 @@
+import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { PaymentFlexPreview, parsePaymentFlex } from './PaymentFlexPreview';
 import FlexBubblePreview from './FlexBubblePreview';
-import { Check, CheckCheck, Lock } from 'lucide-react';
+import { Check, CheckCheck, Lock, FileText, ImageOff, Download } from 'lucide-react';
 import { linkifyText } from '@/lib/linkify';
+
+/** In-chat image with a loading skeleton and a graceful error tile. */
+function ChatImage({ src }: { src: string }) {
+  const [loaded, setLoaded] = useState(false);
+  const [errored, setErrored] = useState(false);
+
+  if (errored) {
+    return (
+      <a
+        href={src}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mb-1 flex items-center gap-2 rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground"
+      >
+        <ImageOff className="size-4 shrink-0" /> โหลดรูปไม่ได้ — เปิดในแท็บใหม่
+      </a>
+    );
+  }
+
+  return (
+    <div className="relative mb-1">
+      {!loaded && (
+        <div className="absolute inset-0 animate-pulse rounded-lg bg-muted" aria-hidden />
+      )}
+      <img
+        src={src}
+        alt="media"
+        className="max-w-60 max-h-75 rounded-lg cursor-zoom-in"
+        loading="lazy"
+        onLoad={() => setLoaded(true)}
+        onError={() => setErrored(true)}
+        onClick={() => window.open(src, '_blank', 'noopener,noreferrer')}
+        title="คลิกเพื่อดูรูปเต็ม"
+      />
+    </div>
+  );
+}
 
 interface MessageBubbleProps {
   message: {
@@ -104,7 +142,7 @@ export default function MessageBubble({ message, customerAvatar, customerInitial
           <img
             src={gifUrl}
             alt="GIF"
-            className="max-w-[200px] rounded-lg"
+            className="max-w-[200px] max-h-60 rounded-lg"
             loading="lazy"
           />
           <span className="flex items-center mt-1 px-1 self-end">
@@ -269,23 +307,33 @@ export default function MessageBubble({ message, customerAvatar, customerInitial
                 : 'bg-primary text-primary-foreground rounded-br-md',
           )}
         >
-          {/* Media — capped to a thumbnail so tall screenshots don't dominate
-              the chat; click opens the full image in a new tab. */}
-          {message.mediaUrl && (
-            <img
-              src={message.mediaUrl}
-              alt="media"
-              className="max-w-60 max-h-75 rounded-lg mb-1 cursor-zoom-in"
-              loading="lazy"
-              onClick={() => window.open(message.mediaUrl!, '_blank', 'noopener,noreferrer')}
-              title="คลิกเพื่อดูรูปเต็ม"
-            />
-          )}
+          {/* Media — render by type: FILE/non-image → file tile; image → ChatImage skeleton */}
+          {message.mediaUrl &&
+            (message.type === 'FILE' ||
+            (message.mediaType && !message.mediaType.startsWith('image/')) ? (
+              <a
+                href={message.mediaUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mb-1 flex items-center gap-2 rounded-lg bg-background/60 border border-border px-3 py-2 text-xs"
+              >
+                <FileText className="size-4 shrink-0 text-muted-foreground" />
+                <span className="truncate max-w-44">{message.text || 'ไฟล์แนบ'}</span>
+                <Download className="size-3.5 shrink-0 text-muted-foreground" />
+              </a>
+            ) : (
+              <ChatImage src={message.mediaUrl} />
+            ))}
 
-          {/* Text */}
+          {/* Text — skip when the message is a FILE/non-image so the filename
+              from message.text isn't duplicated below the file tile above. */}
           {/* linkify is safe here: only the final fallback branch reaches this — gif/
               sticker/flex tokens early-return above, so [token:…] never gets linkified */}
-          {message.text && <p className="whitespace-pre-wrap">{linkifyText(message.text)}</p>}
+          {message.text &&
+            !(
+              message.type === 'FILE' ||
+              (message.mediaType && !message.mediaType.startsWith('image/'))
+            ) && <p className="whitespace-pre-wrap">{linkifyText(message.text)}</p>}
         </div>
 
         {/* Timestamp + Read receipt */}

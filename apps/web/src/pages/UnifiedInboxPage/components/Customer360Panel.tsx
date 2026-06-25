@@ -577,6 +577,30 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
             </div>
           </div>
         )}
+
+        {/* Quick-action row — promoted call + pay buttons */}
+        {summary?.activeContracts?.length > 0 && (
+          <div className="flex gap-2 mt-3">
+            <button
+              type="button"
+              onClick={handleCall}
+              disabled={originateCall.isPending || callStatus === 'calling'}
+              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-muted hover:bg-accent text-xs font-medium transition-colors disabled:opacity-50"
+            >
+              <Phone className="w-3.5 h-3.5" />
+              {originateCall.isPending || callStatus === 'calling' ? 'กำลังโทร...' : 'โทร'}
+            </button>
+            <button
+              type="button"
+              onClick={() => triggerContractAction('send-link')}
+              disabled={sendPaymentFlex.isPending}
+              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 text-xs font-medium transition-colors disabled:opacity-50"
+            >
+              <Link2 className="w-3.5 h-3.5" />
+              {sendPaymentFlex.isPending ? 'กำลังส่ง...' : 'ส่งลิงก์ชำระ'}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ─── Scrollable content ──────────────────────── */}

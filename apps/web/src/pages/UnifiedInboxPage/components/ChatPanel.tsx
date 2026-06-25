@@ -1,6 +1,6 @@
 import { useRef, useEffect, useLayoutEffect, useState, useMemo } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
-import { Send, MoreVertical, ArrowLeft, Paperclip, Smile, Pin, PinOff, MessageSquare, UserCircle2, MessageSquareQuote, Loader2, Upload, Eye } from 'lucide-react';
+import { Send, MoreVertical, ArrowLeft, Paperclip, Smile, Pin, PinOff, MessageSquare, UserCircle2, MessageSquareQuote, Loader2, Upload, Eye, Bell, BellOff } from 'lucide-react';
 import { isSameDay } from 'date-fns';
 import { formatDateSeparator } from '@/lib/chat-time';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -102,6 +102,8 @@ interface ChatPanelProps {
   onShowCustomerInfo?: () => void;
   isUploadingFile?: boolean;
   otherViewers?: { userId: string; userName: string }[];
+  roomMuted?: boolean;
+  onToggleRoomMute?: () => void;
 }
 
 export default function ChatPanel({
@@ -121,6 +123,8 @@ export default function ChatPanel({
   onShowCustomerInfo,
   isUploadingFile = false,
   otherViewers,
+  roomMuted,
+  onToggleRoomMute,
 }: ChatPanelProps) {
   const [inputText, setInputText] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -518,6 +522,17 @@ export default function ChatPanel({
               aria-label="เปิดข้อมูลลูกค้า"
             >
               <UserCircle2 className="w-5 h-5" />
+            </button>
+          )}
+          {onToggleRoomMute && (
+            <button
+              type="button"
+              onClick={onToggleRoomMute}
+              title={roomMuted ? 'เปิดแจ้งเตือนห้องนี้' : 'ปิดแจ้งเตือนห้องนี้'}
+              aria-label="สลับการแจ้งเตือนห้องนี้"
+              className="p-1.5 text-muted-foreground hover:text-foreground/70 hover:bg-accent rounded-lg"
+            >
+              {roomMuted ? <BellOff className="w-5 h-5" /> : <Bell className="w-5 h-5" />}
             </button>
           )}
           <button

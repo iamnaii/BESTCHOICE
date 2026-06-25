@@ -1,8 +1,8 @@
 import { useRef, useEffect, useLayoutEffect, useState, useMemo } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Send, MoreVertical, ArrowLeft, Paperclip, Smile, Pin, PinOff, MessageSquare, UserCircle2, MessageSquareQuote, Loader2, Upload } from 'lucide-react';
-import { format, isSameDay } from 'date-fns';
-import { th } from 'date-fns/locale/th';
+import { isSameDay } from 'date-fns';
+import { formatDateSeparator } from '@/lib/chat-time';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -557,7 +557,7 @@ export default function ChatPanel({
                     <div className="flex items-center gap-3 py-3 px-4">
                       <div className="flex-1 h-px bg-border" />
                       <span className="text-[11px] text-muted-foreground font-medium">
-                        {format(new Date(msg.createdAt), 'd MMMM yyyy', { locale: th })}
+                        {formatDateSeparator(msg.createdAt)}
                       </span>
                       <div className="flex-1 h-px bg-border" />
                     </div>

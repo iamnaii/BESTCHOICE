@@ -280,7 +280,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
   });
 
   // ─── Chat summary (payments, contracts, call logs, sessions) ──
-  const { data: summary } = useQuery({
+  const { data: summary, isLoading: summaryLoading } = useQuery({
     queryKey: ['customer-chat-summary', customerId],
     queryFn: () => api.get(`/customers/${customerId}/chat-summary`).then((r) => r.data?.data ?? r.data),
     enabled: !!customerId,
@@ -369,6 +369,23 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
 
 
   const closeDialog = () => setPendingAction(null);
+
+  // ─── Collapsible section state (localStorage-persisted) ────
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('inbox360.collapsed.v1') || '{}');
+    } catch {
+      return {};
+    }
+  });
+  const toggleSection = (key: string) =>
+    setCollapsed((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      try {
+        localStorage.setItem('inbox360.collapsed.v1', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
 
   const runContractAction = (action: ContractAction, contract: ContractSummaryItem) => {
     setPendingAction(null);
@@ -504,11 +521,11 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
   const firstProduct = firstContract?.product;
 
   return (
-    <div className="w-80 flex-shrink-0 border-l border-border flex flex-col h-full">
+    <div className="w-80 shrink-0 border-l border-border flex flex-col h-full">
       {/* ─── 1. Customer Profile (sticky) ──────────────── */}
       <div className="p-4 border-b border-border shrink-0 bg-card">
         <div className="flex items-center gap-3 mb-2">
-          <div className="w-11 h-11 rounded-full bg-muted flex items-center justify-center overflow-hidden flex-shrink-0">
+          <div className="w-11 h-11 rounded-full bg-muted flex items-center justify-center overflow-hidden shrink-0">
             {customer?.avatarUrl || customer?.lineAvatarUrl ? (
               <img
                 src={customer.avatarUrl || customer.lineAvatarUrl}
@@ -551,7 +568,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
         {/* Overdue alert */}
         {summary && summary.overdueCount > 0 && (
           <div className="mt-2 p-2 bg-destructive/10 border border-destructive/20 rounded-lg flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-destructive flex-shrink-0" />
+            <AlertTriangle className="w-4 h-4 text-destructive shrink-0" />
             <div className="text-xs">
               <span className="font-semibold text-destructive">ค้าง {summary.overdueCount} งวด</span>
               <span className="text-destructive ml-1">
@@ -571,9 +588,14 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
       {crossRooms && crossRooms.length > 0 && (
         <div className="border-b border-border">
           <div className="px-4 pt-4 pb-2">
-            <SectionHeader icon={MessageSquare} label="ห้องแชททั้งหมด" />
+            <SectionHeader
+              icon={MessageSquare}
+              label="ห้องแชททั้งหมด"
+              collapsed={collapsed['cross-channel']}
+              onToggle={() => toggleSection('cross-channel')}
+            />
           </div>
-          {(crossRooms as CrossRoomItem[]).map((r) => (
+          {!collapsed['cross-channel'] && (crossRooms as CrossRoomItem[]).map((r) => (
             <button
               key={r.id}
               onClick={() => onSelectRoom?.(r.id)}
@@ -601,206 +623,280 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
 
       {/* ─── 1d. MDM Status ──────────────────────────────── */}
       <div className="p-4 border-b border-border">
-        <SectionHeader icon={Smartphone} label="สถานะ MDM" />
-        {firstContract?.mdmLockedAt ? (
-          <div className="px-0 py-0 text-[12px]">
-            <span className="text-destructive font-medium"><Lock className="size-3.5 inline mr-1" />ล็อคอยู่</span>
-            <span className="text-muted-foreground ml-2">
-              ตั้งแต่ {format(new Date(firstContract.mdmLockedAt), 'dd MMM yyyy', { locale: th })}
-            </span>
-          </div>
-        ) : (
-          <div className="text-[12px] text-success font-medium"><LockOpen className="size-3.5 inline mr-1" />ไม่ได้ล็อค</div>
+        <SectionHeader
+          icon={Smartphone}
+          label="สถานะ MDM"
+          collapsed={collapsed['mdm']}
+          onToggle={() => toggleSection('mdm')}
+        />
+        {!collapsed['mdm'] && (
+          firstContract?.mdmLockedAt ? (
+            <div className="px-0 py-0 text-[12px]">
+              <span className="text-destructive font-medium"><Lock className="size-3.5 inline mr-1" />ล็อคอยู่</span>
+              <span className="text-muted-foreground ml-2">
+                ตั้งแต่ {format(new Date(firstContract.mdmLockedAt), 'dd MMM yyyy', { locale: th })}
+              </span>
+            </div>
+          ) : (
+            <div className="text-[12px] text-success font-medium"><LockOpen className="size-3.5 inline mr-1" />ไม่ได้ล็อค</div>
+          )
         )}
       </div>
 
       {/* ─── 1e. Warranty (2-tier: manufacturer + shop) ─── */}
       <div className="p-4 border-b border-border">
-        <SectionHeader icon={Shield} label="การรับประกัน" />
-        {summary?.activeContracts?.length > 0 ? (
-          <div className="space-y-3">
-            {(summary.activeContracts as ContractSummaryItem[]).map((c) => {
-              const product = c.product;
-              const productName = product?.name ?? `${product?.brand ?? ''} ${product?.model ?? ''}`.trim() ?? 'สินค้า';
-              const isUsed = !!c.shopWarrantyEndDate;
-              const conditionLabel = isUsed ? 'มือสอง' : 'ใหม่';
+        <SectionHeader
+          icon={Shield}
+          label="การรับประกัน"
+          collapsed={collapsed['warranty']}
+          onToggle={() => toggleSection('warranty')}
+        />
+        {!collapsed['warranty'] && (
+          summary?.activeContracts?.length > 0 ? (
+            <div className="space-y-3">
+              {(summary.activeContracts as ContractSummaryItem[]).map((c) => {
+                const product = c.product;
+                const productName = product?.name ?? `${product?.brand ?? ''} ${product?.model ?? ''}`.trim() ?? 'สินค้า';
+                const isUsed = !!c.shopWarrantyEndDate;
+                const conditionLabel = isUsed ? 'มือสอง' : 'ใหม่';
 
-              // Manufacturer warranty
-              const mfrDate = product?.warrantyExpireDate ? new Date(product.warrantyExpireDate) : null;
-              const mfrExpired = mfrDate ? isPast(mfrDate) : true;
-              const mfrDays = mfrDate && !mfrExpired ? differenceInDays(mfrDate, new Date()) : 0;
+                // Manufacturer warranty
+                const mfrDate = product?.warrantyExpireDate ? new Date(product.warrantyExpireDate) : null;
+                const mfrExpired = mfrDate ? isPast(mfrDate) : true;
+                const mfrDays = mfrDate && !mfrExpired ? differenceInDays(mfrDate, new Date()) : 0;
 
-              // Shop warranty
-              const shopDate = c.shopWarrantyEndDate ? new Date(c.shopWarrantyEndDate) : null;
-              const shopExpired = shopDate ? isPast(shopDate) : false;
-              const shopDays = shopDate && !shopExpired ? differenceInDays(shopDate, new Date()) : 0;
+                // Shop warranty
+                const shopDate = c.shopWarrantyEndDate ? new Date(c.shopWarrantyEndDate) : null;
+                const shopExpired = shopDate ? isPast(shopDate) : false;
+                const shopDays = shopDate && !shopExpired ? differenceInDays(shopDate, new Date()) : 0;
 
-              return (
-                <div key={c.id} className="text-[12px]">
-                  <p className="font-medium text-foreground/80 mb-1">
-                    <Smartphone className="size-3.5 inline mr-1" />{productName}{' '}
-                    <span className="text-[10px] text-muted-foreground font-normal">({conditionLabel})</span>
-                  </p>
+                return (
+                  <div key={c.id} className="text-[12px]">
+                    <p className="font-medium text-foreground/80 mb-1">
+                      <Smartphone className="size-3.5 inline mr-1" />{productName}{' '}
+                      <span className="text-[10px] text-muted-foreground font-normal">({conditionLabel})</span>
+                    </p>
 
-                  {/* Manufacturer warranty */}
-                  {mfrDate ? (
-                    mfrExpired ? (
+                    {/* Manufacturer warranty */}
+                    {mfrDate ? (
+                      mfrExpired ? (
+                        <p className="text-destructive ml-3"><XCircle className="size-3.5 inline mr-1" />ศูนย์: หมดแล้ว</p>
+                      ) : (
+                        <p className="text-success ml-3">
+                          <CheckCircle2 className="size-3.5 inline mr-1 text-success" />ศูนย์: ถึง {format(mfrDate, 'dd MMM yyyy', { locale: th })}{' '}
+                          <span className="text-muted-foreground">(เหลือ {mfrDays} วัน)</span>
+                        </p>
+                      )
+                    ) : (
                       <p className="text-destructive ml-3"><XCircle className="size-3.5 inline mr-1" />ศูนย์: หมดแล้ว</p>
-                    ) : (
-                      <p className="text-success ml-3">
-                        <CheckCircle2 className="size-3.5 inline mr-1 text-success" />ศูนย์: ถึง {format(mfrDate, 'dd MMM yyyy', { locale: th })}{' '}
-                        <span className="text-muted-foreground">(เหลือ {mfrDays} วัน)</span>
-                      </p>
-                    )
-                  ) : (
-                    <p className="text-destructive ml-3"><XCircle className="size-3.5 inline mr-1" />ศูนย์: หมดแล้ว</p>
-                  )}
+                    )}
 
-                  {/* Shop warranty — only show when exists */}
-                  {shopDate && (
-                    shopExpired ? (
-                      <p className="text-destructive ml-3"><XCircle className="size-3.5 inline mr-1" />ร้าน: หมดแล้ว</p>
-                    ) : (
-                      <p className="text-success ml-3">
-                        <CheckCircle2 className="size-3.5 inline mr-1 text-success" />ร้าน: ถึง {format(shopDate, 'dd MMM yyyy', { locale: th })}{' '}
-                        <span className="text-muted-foreground">(เหลือ {shopDays} วัน)</span>
-                      </p>
-                    )
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <p className="text-[12px] text-muted-foreground">ไม่มีข้อมูลประกัน</p>
+                    {/* Shop warranty — only show when exists */}
+                    {shopDate && (
+                      shopExpired ? (
+                        <p className="text-destructive ml-3"><XCircle className="size-3.5 inline mr-1" />ร้าน: หมดแล้ว</p>
+                      ) : (
+                        <p className="text-success ml-3">
+                          <CheckCircle2 className="size-3.5 inline mr-1 text-success" />ร้าน: ถึง {format(shopDate, 'dd MMM yyyy', { locale: th })}{' '}
+                          <span className="text-muted-foreground">(เหลือ {shopDays} วัน)</span>
+                        </p>
+                      )
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-[12px] text-muted-foreground">ไม่มีข้อมูลประกัน</p>
+          )
         )}
       </div>
 
       {/* ─── 2. Active Contracts + Product/IMEI ─────────── */}
       <div className="p-4 border-b border-border">
-        <SectionHeader icon={FileText} label="สัญญา" />
+        <SectionHeader
+          icon={FileText}
+          label="สัญญา"
+          collapsed={collapsed['contracts']}
+          onToggle={() => toggleSection('contracts')}
+        />
 
-        {summary?.activeContracts?.length > 0 ? (
-          <div className="space-y-2">
-            {(summary.activeContracts as ContractSummaryItem[]).map((c) => (
-              <div key={c.id} className="p-2.5 bg-muted rounded-lg text-xs">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="font-medium text-foreground/90">{c.contractNumber}</span>
-                  {(() => {
-                    const sCfg = getStatusBadgeProps(c.status, contractStatusMap);
-                    return (
-                      <Badge variant={sCfg.variant} appearance={sCfg.appearance} className="text-[10px] px-1.5 py-0.5">
-                        {localContractStatusMap[c.status] ?? sCfg.label}
-                      </Badge>
-                    );
-                  })()}
+        {!collapsed['contracts'] && (
+          summaryLoading ? (
+            <div className="space-y-2">
+              {[1, 2].map((i) => (
+                <div key={i} className="p-2.5 bg-muted rounded-lg">
+                  <div className="h-3 w-24 bg-muted-foreground/20 rounded animate-pulse mb-2" />
+                  <div className="h-2.5 w-36 bg-muted-foreground/20 rounded animate-pulse" />
                 </div>
-
-                {/* Product info */}
-                <div className="flex items-center gap-1 text-muted-foreground mb-1">
-                  <Smartphone className="w-3 h-3" />
-                  <span>{c.product?.name ?? `${c.product?.brand} ${c.product?.model}`}</span>
-                </div>
-                {c.serialNumber && (
-                  <p className="text-[10px] text-muted-foreground ml-4">IMEI: {c.serialNumber}</p>
-                )}
-
-                {/* Payment progress */}
-                <div className="mt-1.5">
-                  <div className="flex justify-between text-[10px] text-muted-foreground mb-0.5">
-                    <span>ชำระแล้ว {c.paidInstallments}/{c.totalInstallments} งวด</span>
-                    <span>{Number(c.monthlyPayment).toLocaleString()} บ./งวด</span>
+              ))}
+            </div>
+          ) : summary?.activeContracts?.length > 0 ? (
+            <div className="space-y-2">
+              {(summary.activeContracts as ContractSummaryItem[]).map((c) => (
+                <div
+                  key={c.id}
+                  onClick={() => navigate(`/contracts/${c.id}`)}
+                  className="p-2.5 bg-muted rounded-lg text-xs cursor-pointer hover:bg-accent transition-colors"
+                  title="ดูรายละเอียดสัญญา"
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-medium text-foreground/90">{c.contractNumber}</span>
+                    {(() => {
+                      const sCfg = getStatusBadgeProps(c.status, contractStatusMap);
+                      return (
+                        <Badge variant={sCfg.variant} appearance={sCfg.appearance} className="text-[10px] px-1.5 py-0.5">
+                          {localContractStatusMap[c.status] ?? sCfg.label}
+                        </Badge>
+                      );
+                    })()}
                   </div>
-                  <div className="w-full bg-border rounded-full h-1.5">
-                    <div
-                      className="bg-primary h-1.5 rounded-full transition-all"
-                      style={{
-                        width: `${
-                          c.totalInstallments > 0
-                            ? Math.min((c.paidInstallments / c.totalInstallments) * 100, 100)
-                            : 0
-                        }%`,
-                      }}
-                    />
+
+                  {/* Product info */}
+                  <div className="flex items-center gap-1 text-muted-foreground mb-1">
+                    <Smartphone className="w-3 h-3" />
+                    <span>{c.product?.name ?? `${c.product?.brand} ${c.product?.model}`}</span>
                   </div>
-                  {c.nextDueDate && (
-                    <p className="text-[10px] text-muted-foreground mt-0.5">
-                      ถัดไป: {format(new Date(c.nextDueDate), 'dd/MM/yyyy')}
-                    </p>
+                  {c.serialNumber && (
+                    <p className="text-[10px] text-muted-foreground ml-4">IMEI: {c.serialNumber}</p>
                   )}
+
+                  {/* Payment progress */}
+                  <div className="mt-1.5">
+                    <div className="flex justify-between text-[10px] text-muted-foreground mb-0.5">
+                      <span>ชำระแล้ว {c.paidInstallments}/{c.totalInstallments} งวด</span>
+                      <span>{Number(c.monthlyPayment).toLocaleString()} บ./งวด</span>
+                    </div>
+                    <div className="w-full bg-border rounded-full h-1.5">
+                      <div
+                        className="bg-primary h-1.5 rounded-full transition-all"
+                        style={{
+                          width: `${
+                            c.totalInstallments > 0
+                              ? Math.min((c.paidInstallments / c.totalInstallments) * 100, 100)
+                              : 0
+                          }%`,
+                        }}
+                      />
+                    </div>
+                    {c.nextDueDate && (
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        ถัดไป: {format(new Date(c.nextDueDate), 'dd/MM/yyyy')}
+                      </p>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-xs text-muted-foreground">ไม่มีสัญญาที่ใช้งาน</p>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">ไม่มีสัญญาที่ใช้งาน</p>
+          )
         )}
       </div>
 
       {/* ─── 3. Recent Payments ──────────────────────────── */}
       <div className="p-4 border-b border-border">
-        <SectionHeader icon={CreditCard} label="การชำระล่าสุด" />
+        <SectionHeader
+          icon={CreditCard}
+          label="การชำระล่าสุด"
+          collapsed={collapsed['payments']}
+          onToggle={() => toggleSection('payments')}
+        />
 
-        {summary?.recentPayments?.length > 0 ? (
-          <div className="space-y-1.5">
-            {(summary.recentPayments as PaymentSummaryItem[]).map((p) => (
-              <RecentPaymentGroup key={p.id} payment={p} />
-            ))}
-          </div>
-        ) : (
-          <p className="text-xs text-muted-foreground">ยังไม่มีการชำระ</p>
+        {!collapsed['payments'] && (
+          summaryLoading ? (
+            <div className="space-y-2">
+              {[1, 2].map((i) => (
+                <div key={i} className="p-2.5 bg-muted rounded-lg">
+                  <div className="h-3 w-20 bg-muted-foreground/20 rounded animate-pulse mb-2" />
+                  <div className="h-2.5 w-28 bg-muted-foreground/20 rounded animate-pulse" />
+                </div>
+              ))}
+            </div>
+          ) : summary?.recentPayments?.length > 0 ? (
+            <div className="space-y-1.5">
+              {(summary.recentPayments as PaymentSummaryItem[]).map((p) => (
+                <RecentPaymentGroup key={p.id} payment={p} />
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">ยังไม่มีการชำระ</p>
+          )
         )}
       </div>
 
       {/* ─── 4. Chat History (all channels) ──────────────── */}
       <div className="p-4 border-b border-border">
-        <SectionHeader icon={MessageSquare} label="ประวัติแชท" />
+        <SectionHeader
+          icon={MessageSquare}
+          label="ประวัติแชท"
+          collapsed={collapsed['chat-history']}
+          onToggle={() => toggleSection('chat-history')}
+        />
 
-        {summary?.chatRooms?.length > 0 ? (
-          <div className="space-y-1.5">
-            {(summary.chatRooms as ChatSessionItem[]).map((s) => (
-              <div
-                key={s.id}
-                className={`flex items-center gap-2 p-1.5 rounded text-xs ${
-                  s.id === activeRoomId ? 'bg-primary/5 border border-primary/20' : 'hover:bg-muted/50'
-                }`}
-              >
-                <span className={`px-1 py-0.5 rounded text-[9px] font-medium ${channelColor[s.channel] ?? 'bg-muted'}`}>
-                  {channelLabel[s.channel] ?? s.channel}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <span className="text-muted-foreground">{sessionStatusLabel[s.status] ?? s.status}</span>
-                  <span className="text-muted-foreground/50 mx-1">·</span>
-                  <span className="text-muted-foreground">{s.totalMessages} ข้อความ</span>
+        {!collapsed['chat-history'] && (
+          summaryLoading ? (
+            <div className="space-y-2">
+              {[1, 2].map((i) => (
+                <div key={i} className="p-2.5 bg-muted rounded-lg">
+                  <div className="h-3 w-28 bg-muted-foreground/20 rounded animate-pulse mb-2" />
+                  <div className="h-2.5 w-16 bg-muted-foreground/20 rounded animate-pulse" />
                 </div>
-                <span className="text-[10px] text-muted-foreground flex-shrink-0">
-                  {format(new Date(s.lastMessageAt), 'dd/MM')}
-                </span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-xs text-muted-foreground">ไม่มีประวัติแชท</p>
+              ))}
+            </div>
+          ) : summary?.chatRooms?.length > 0 ? (
+            <div className="space-y-1.5">
+              {(summary.chatRooms as ChatSessionItem[]).map((s) => (
+                <div
+                  key={s.id}
+                  className={`flex items-center gap-2 p-1.5 rounded text-xs ${
+                    s.id === activeRoomId ? 'bg-primary/5 border border-primary/20' : 'hover:bg-muted/50'
+                  }`}
+                >
+                  <span className={`px-1 py-0.5 rounded text-[9px] font-medium ${channelColor[s.channel] ?? 'bg-muted'}`}>
+                    {channelLabel[s.channel] ?? s.channel}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <span className="text-muted-foreground">{sessionStatusLabel[s.status] ?? s.status}</span>
+                    <span className="text-muted-foreground/50 mx-1">·</span>
+                    <span className="text-muted-foreground">{s.totalMessages} ข้อความ</span>
+                  </div>
+                  <span className="text-[10px] text-muted-foreground shrink-0">
+                    {format(new Date(s.lastMessageAt), 'dd/MM')}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">ไม่มีประวัติแชท</p>
+          )
         )}
       </div>
 
       {/* ─── 5. Call Logs ────────────────────────────────── */}
       {summary?.callLogs?.length > 0 && (
         <div className="p-4 border-b border-border">
-          <SectionHeader icon={Phone} label="ประวัติโทร" />
-          <div className="space-y-1.5">
-            {(summary.callLogs as CallLogItem[]).map((log) => (
-              <div key={log.id} className="text-xs">
-                <div className="flex justify-between">
-                  <span className="text-foreground/80">{log.caller?.name ?? 'ระบบ'}</span>
-                  <span className="text-[10px] text-muted-foreground">
-                    {format(new Date(log.calledAt), 'dd/MM HH:mm')}
-                  </span>
+          <SectionHeader
+            icon={Phone}
+            label="ประวัติโทร"
+            collapsed={collapsed['call-logs']}
+            onToggle={() => toggleSection('call-logs')}
+          />
+          {!collapsed['call-logs'] && (
+            <div className="space-y-1.5">
+              {(summary.callLogs as CallLogItem[]).map((log) => (
+                <div key={log.id} className="text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-foreground/80">{log.caller?.name ?? 'ระบบ'}</span>
+                    <span className="text-[10px] text-muted-foreground">
+                      {format(new Date(log.calledAt), 'dd/MM HH:mm')}
+                    </span>
+                  </div>
+                  {log.notes && <p className="text-muted-foreground truncate">{log.notes}</p>}
                 </div>
-                {log.notes && <p className="text-muted-foreground truncate">{log.notes}</p>}
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -810,6 +906,8 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
           key={activeRoomId}
           roomId={activeRoomId}
           notes={notesData ?? []}
+          collapsed={collapsed['notes']}
+          onToggle={() => toggleSection('notes')}
         />
       )}
 
@@ -828,7 +926,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
           <PopoverContent align="end" side="top" className="w-60 p-2">
               <div className="flex flex-col gap-1">
                 <QuickActionBtn
-                  icon={<Phone className="w-3.5 h-3.5 flex-shrink-0" />}
+                  icon={<Phone className="w-3.5 h-3.5 shrink-0" />}
                   label={
                     originateCall.isPending || callStatus === 'calling'
                       ? 'กำลังโทร...'
@@ -839,28 +937,28 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
                 />
                 <div className="h-px bg-border my-1" />
                 <QuickActionBtn
-                  icon={<Link2 className="w-3.5 h-3.5 flex-shrink-0" />}
+                  icon={<Link2 className="w-3.5 h-3.5 shrink-0" />}
                   label={sendPaymentFlex.isPending ? 'กำลังส่ง...' : 'ส่งลิงก์ชำระ'}
                   onClick={() => triggerContractAction('send-link')}
                 />
                 <QuickActionBtn
-                  icon={<Phone className="w-3.5 h-3.5 flex-shrink-0" />}
+                  icon={<Phone className="w-3.5 h-3.5 shrink-0" />}
                   label="บันทึกติดต่อ + นัดชำระ"
                   onClick={() => triggerContractAction('contact-log')}
                 />
                 <QuickActionBtn
-                  icon={<Lock className="w-3.5 h-3.5 flex-shrink-0" />}
+                  icon={<Lock className="w-3.5 h-3.5 shrink-0" />}
                   label="ส่งคำสั่งล็อกเครื่อง (MDM)"
                   onClick={() => triggerContractAction('mdm-lock')}
                 />
                 <div className="h-px bg-border my-1" />
                 <QuickActionBtn
-                  icon={<FileText className="w-3.5 h-3.5 flex-shrink-0" />}
+                  icon={<FileText className="w-3.5 h-3.5 shrink-0" />}
                   label={openContractPdf.isPending ? 'กำลังโหลดสัญญา...' : 'ดูสัญญา PDF'}
                   onClick={() => triggerContractAction('view-pdf')}
                 />
                 <QuickActionBtn
-                  icon={<User className="w-3.5 h-3.5 flex-shrink-0" />}
+                  icon={<User className="w-3.5 h-3.5 shrink-0" />}
                   label="ดูข้อมูลลูกค้า"
                   onClick={() => setCustomerInfoOpen(true)}
                 />
@@ -997,7 +1095,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
           {customer && (
             <div className="space-y-3 text-sm max-h-[70vh] overflow-y-auto pr-1">
               <div className="flex items-center gap-3 pb-3 border-b border-border">
-                <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center overflow-hidden flex-shrink-0">
+                <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center overflow-hidden shrink-0">
                   {customer?.avatarUrl || customer?.lineAvatarUrl ? (
                     <img
                       src={customer.avatarUrl || customer.lineAvatarUrl}
@@ -1097,7 +1195,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
 
               {summary?.overdueCount > 0 && (
                 <div className="flex items-center gap-2 p-2.5 bg-destructive/10 rounded-lg text-destructive text-xs">
-                  <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                   <span>ค้างชำระ {summary.overdueCount} งวด · ยอดรวม {Number(summary.totalOutstanding ?? 0).toLocaleString()} บ.</span>
                 </div>
               )}
@@ -1157,7 +1255,17 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
 
 // ─── InternalNotesSection ─────────────────────────────────
 
-function InternalNotesSection({ roomId, notes }: { roomId: string; notes: InternalNoteItem[] }) {
+function InternalNotesSection({
+  roomId,
+  notes,
+  collapsed,
+  onToggle,
+}: {
+  roomId: string;
+  notes: InternalNoteItem[];
+  collapsed?: boolean;
+  onToggle?: () => void;
+}) {
   const queryClient = useQueryClient();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [noteText, setNoteText] = useState('');
@@ -1244,65 +1352,71 @@ function InternalNotesSection({ roomId, notes }: { roomId: string; notes: Intern
 
   return (
     <div className="p-4 border-b border-border">
-      <SectionHeader icon={FileText} label="บันทึกภายใน" />
+      <SectionHeader icon={FileText} label="บันทึกภายใน" collapsed={collapsed} onToggle={onToggle} />
 
-      {/* Existing notes */}
-      {notes.length > 0 && (
-        <div className="space-y-1.5 mb-3">
-          {notes.slice(0, 5).map((note) => (
-            <div key={note.id} className="p-2 bg-warning/10 rounded text-xs border border-warning/20">
-              <p className="text-foreground/80 whitespace-pre-wrap">{note.content}</p>
-              <p className="text-[10px] text-muted-foreground mt-0.5">
-                {note.staff?.name} · {format(new Date(note.createdAt), 'dd/MM HH:mm')}
-              </p>
+      {!collapsed && (
+        <>
+          {/* Existing notes */}
+          {notes.length > 0 && (
+            <div className="space-y-1.5 mb-3">
+              {notes.slice(0, 5).map((note) => (
+                <div key={note.id} className="p-2 bg-warning/10 rounded text-xs border border-warning/20">
+                  <p className="text-foreground/80 whitespace-pre-wrap">{note.content}</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    {note.staff?.name} · {format(new Date(note.createdAt), 'dd/MM HH:mm')}
+                  </p>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      )}
+          )}
 
-      {/* Note input with @mention */}
-      <div className="relative">
-        <textarea
-          ref={textareaRef}
-          value={noteText}
-          onChange={handleInput}
-          onKeyDown={handleKeyDown}
-          placeholder="เพิ่มโน้ต... (@ แท็กสมาชิก · Shift+Enter ขึ้นบรรทัด)"
-          rows={2}
-          className="w-full text-xs rounded-lg border border-border px-2.5 py-2 resize-none focus:outline-none focus:ring-1 focus:ring-primary/30 placeholder:text-muted-foreground/50"
-        />
+          {/* Note input with @mention */}
+          <div className="relative">
+            <textarea
+              ref={textareaRef}
+              value={noteText}
+              onChange={handleInput}
+              onKeyDown={handleKeyDown}
+              placeholder="เพิ่มโน้ต... (@ แท็กสมาชิก · Shift+Enter ขึ้นบรรทัด)"
+              rows={2}
+              className="w-full text-xs rounded-lg border border-border px-2.5 py-2 resize-none focus:outline-none focus:ring-1 focus:ring-primary/30 placeholder:text-muted-foreground/50"
+            />
 
-        {/* @mention dropdown */}
-        {showMentionDropdown && filteredStaff.length > 0 && (
-          <div className="absolute bottom-full left-0 mb-1 w-full bg-card border border-border rounded-lg shadow-lg z-50 max-h-36 overflow-y-auto">
-            {filteredStaff.map((s: any) => (
-              <button
-                key={s.id}
-                type="button"
-                onMouseDown={(e) => {
-                  e.preventDefault(); // prevent textarea blur
-                  handleSelectMention(s.name);
-                }}
-                className="w-full text-left px-3 py-1.5 text-xs hover:bg-accent flex items-center gap-2"
-              >
-                <span className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[9px] font-bold flex-shrink-0">
-                  {s.name?.[0]?.toUpperCase() ?? '?'}
-                </span>
-                <span className="truncate">{s.name}</span>
-              </button>
-            ))}
+            {/* @mention dropdown */}
+            {showMentionDropdown && filteredStaff.length > 0 && (
+              <div className="absolute bottom-full left-0 mb-1 w-full bg-card border border-border rounded-lg shadow-lg z-50 max-h-36 overflow-y-auto">
+                {filteredStaff.map((s: any) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onMouseDown={(e) => {
+                      e.preventDefault(); // prevent textarea blur
+                      handleSelectMention(s.name);
+                    }}
+                    className="w-full text-left px-3 py-1.5 text-xs hover:bg-accent flex items-center gap-2"
+                  >
+                    <span className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[9px] font-bold shrink-0">
+                      {s.name?.[0]?.toUpperCase() ?? '?'}
+                    </span>
+                    <span className="truncate">{s.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => {
+                if (noteText.trim()) addNote.mutate(noteText.trim());
+              }}
+              disabled={!noteText.trim() || addNote.isPending}
+              className="mt-1.5 w-full text-xs bg-foreground/90 hover:bg-foreground/80 disabled:opacity-40 text-white rounded-lg py-1.5 transition-colors"
+            >
+              {addNote.isPending ? 'กำลังบันทึก...' : 'บันทึกโน้ต'}
+            </button>
           </div>
-        )}
-
-        <button
-          type="button"
-          onClick={() => { if (noteText.trim()) addNote.mutate(noteText.trim()); }}
-          disabled={!noteText.trim() || addNote.isPending}
-          className="mt-1.5 w-full text-xs bg-foreground/90 hover:bg-foreground/80 disabled:opacity-40 text-white rounded-lg py-1.5 transition-colors"
-        >
-          {addNote.isPending ? 'กำลังบันทึก...' : 'บันทึกโน้ต'}
-        </button>
-      </div>
+        </>
+      )}
     </div>
   );
 }
@@ -1422,7 +1536,34 @@ function RecentPaymentGroup({ payment }: { payment: PaymentSummaryItem }) {
   );
 }
 
-function SectionHeader({ icon: Icon, label }: { icon: any; label: string }) {
+function SectionHeader({
+  icon: Icon,
+  label,
+  collapsed,
+  onToggle,
+}: {
+  icon: any;
+  label: string;
+  collapsed?: boolean;
+  onToggle?: () => void;
+}) {
+  if (onToggle) {
+    return (
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full flex items-center gap-1.5 mb-2 hover:opacity-80 transition-opacity"
+      >
+        <Icon className="w-3.5 h-3.5 text-muted-foreground" />
+        <h4 className="text-[11px] font-semibold text-foreground/70 uppercase tracking-wide flex-1 text-left">
+          {label}
+        </h4>
+        <ChevronRight
+          className={cn('w-3.5 h-3.5 text-muted-foreground transition-transform', !collapsed && 'rotate-90')}
+        />
+      </button>
+    );
+  }
   return (
     <div className="flex items-center gap-1.5 mb-2">
       <Icon className="w-3.5 h-3.5 text-muted-foreground" />
@@ -1463,8 +1604,8 @@ function CustomerInfoRow({ label, value }: { label: string; value?: string | nul
   if (!value) return null;
   return (
     <div className="flex gap-3 text-xs">
-      <span className="text-muted-foreground w-24 flex-shrink-0">{label}</span>
-      <span className="text-foreground flex-1 break-words">{value}</span>
+      <span className="text-muted-foreground w-24 shrink-0">{label}</span>
+      <span className="text-foreground flex-1 wrap-break-word">{value}</span>
     </div>
   );
 }

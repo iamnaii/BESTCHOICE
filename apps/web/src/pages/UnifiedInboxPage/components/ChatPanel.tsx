@@ -107,6 +107,10 @@ interface ChatPanelProps {
   aiPaused?: boolean;
   onToggleAi?: () => void;
   aiTogglePending?: boolean;
+  // Task 1 (send-status state) — ghost rows rendered in Task 2.
+  pendingSendText?: string | null;
+  failedSends?: { id: string; text: string }[];
+  onRetrySend?: (id: string, text: string) => void;
 }
 
 export default function ChatPanel({
@@ -131,6 +135,12 @@ export default function ChatPanel({
   aiPaused,
   onToggleAi,
   aiTogglePending,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  pendingSendText: _pendingSendText,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  failedSends: _failedSends,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  onRetrySend: _onRetrySend,
 }: ChatPanelProps) {
   const [inputText, setInputText] = useState('');
   const [isSending, setIsSending] = useState(false);

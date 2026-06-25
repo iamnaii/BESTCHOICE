@@ -383,7 +383,7 @@ export default function ChatPanel({
     } finally {
       setIsSending(false);
     }
-    if (result !== false && suggestion) {
+    if (result === true && suggestion) {
       const type = text === suggestion.aiDraft ? 'ACCEPT' : 'EDIT';
       api
         .post('/staff-chat/ai/training-feedback', {

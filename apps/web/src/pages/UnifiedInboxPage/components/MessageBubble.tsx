@@ -325,7 +325,7 @@ export default function MessageBubble({ message, customerAvatar, customerInitial
               title="คัดลอกข้อความ"
               aria-label="คัดลอกข้อความ"
               className={cn(
-                'absolute top-1 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity',
+                'absolute top-1 opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 focus-visible:opacity-100 transition-opacity',
                 'rounded-md border border-border bg-card p-1 text-muted-foreground shadow-sm hover:text-foreground',
                 isCustomer ? '-right-7' : '-left-7',
               )}

@@ -254,12 +254,13 @@ export default function ConversationItem({ session, isActive, onClick, onPin, ai
             onPin(session.id, isPinned);
           }}
           className={cn(
-            'absolute right-2 top-2 p-1 rounded-md transition-all',
+            'absolute right-2 top-2 p-1 min-h-11 min-w-11 inline-flex items-center justify-center rounded-md transition-all',
             isPinned
               ? 'text-warning opacity-100'
-              : 'text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-warning hover:bg-muted',
+              : 'text-muted-foreground opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 hover:text-warning hover:bg-muted',
           )}
           title={isPinned ? 'ถอดหมุด' : 'ปักหมุด'}
+          aria-label="ปักหมุด"
         >
           <Pin className="w-3 h-3" />
         </button>

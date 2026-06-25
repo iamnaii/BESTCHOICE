@@ -378,21 +378,81 @@ describe('PaymentsService — advance balance (Task 4)', () => {
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // Regression: overpay without OVERPAY_ADVANCE case still throws
+  // Regression: overpay ABOVE ceiling without OVERPAY_ADVANCE still throws
+  // (50฿ overage on 1000฿ inst is now within default 2× ceiling → auto-routes)
+  // Use 5×INST_TOTAL (overage = 4000, ceiling = 2000) to trigger the guard.
   // ─────────────────────────────────────────────────────────────────────────────
-  it('overpay > 1฿ without OVERPAY_ADVANCE case throws BadRequestException (regression)', async () => {
+  it('overpay ABOVE ceiling without OVERPAY_ADVANCE case throws BadRequestException (regression)', async () => {
     prisma.payment.findFirst.mockResolvedValue(makePayment(6));
 
     await expect(
       service.recordPayment(
         'adv-contract-1',
         6,
-        INST_TOTAL + 50,
+        INST_TOTAL * 5, // overage = 4000 > ceiling 2000 → still throw
         'CASH',
         'user-1',
         'https://slip.test/6',
       ),
     ).rejects.toThrow(BadRequestException);
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Task 5 / D1: bounded auto-route ceiling tests
+  // ─────────────────────────────────────────────────────────────────────────────
+  it('overpay within ceiling auto-parks as advance WITHOUT requiring OVERPAY_ADVANCE case', async () => {
+    // INST_TOTAL = 1000, default ceiling = 2 × 1000 = 2000, overage = 50 < 2000
+    prisma.payment.findFirst.mockResolvedValue(makePayment(10));
+
+    await service.recordPayment(
+      'adv-contract-1',
+      10,
+      INST_TOTAL + 50, // overage 50 < ceiling 2000 → auto-park
+      'CASH',
+      'user-1',
+      'https://slip.test/10',
+    );
+
+    // advanceBalance should have incremented by 50
+    expect(advanceBalance).toBeCloseTo(50, 2);
+  });
+
+  it('overpay ABOVE ceiling still throws without explicit OVERPAY_ADVANCE case (typo guard)', async () => {
+    // INST_TOTAL = 1000, default ceiling = 2000, overage = 4000 → throw
+    prisma.payment.findFirst.mockResolvedValue(makePayment(11));
+
+    await expect(
+      service.recordPayment(
+        'adv-contract-1',
+        11,
+        INST_TOTAL * 5, // overage 4000 > ceiling 2000 → throw
+        'CASH',
+        'user-1',
+        'https://slip.test/11',
+      ),
+    ).rejects.toThrow(/เกินยอดค้างชำระ/);
+  });
+
+  it('overpay above ceiling WITH explicit OVERPAY_ADVANCE case is allowed', async () => {
+    // INST_TOTAL = 1000, overage = 4000 > ceiling 2000, but explicit case bypasses guard
+    prisma.payment.findFirst.mockResolvedValue(makePayment(12));
+
+    await service.recordPayment(
+      'adv-contract-1',
+      12,
+      INST_TOTAL * 5, // overage 4000 > ceiling, but OVERPAY_ADVANCE bypasses
+      'CASH',
+      'user-1',
+      'https://slip.test/12',
+      undefined,
+      'TEST-5C',
+      '11-1101',
+      undefined,
+      'OVERPAY_ADVANCE',
+    );
+
+    // advanceBalance should have incremented by 4000
+    expect(advanceBalance).toBeCloseTo(4000, 2);
   });
 
   // ─────────────────────────────────────────────────────────────────────────────

@@ -2,6 +2,11 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { AccountRoleService } from '../../journal/account-role.service';
+import {
+  buildPreviewBlocks,
+  PreviewTaggedLine,
+  BlockSubtotal,
+} from './payment-preview-blocks.util';
 
 /**
  * Read-only JE preview builder (RecordPaymentWizard "Journal Auto" live preview).
@@ -40,7 +45,9 @@ export class PaymentJournalPreviewService {
     daysToShift?: number;
     splitMode?: string;
   }): Promise<{
-    lines: Array<{ accountCode: string; accountName: string; debit: string; credit: string; description: string }>;
+    lines: PreviewTaggedLine[];
+    accrual2A?: { lines: PreviewTaggedLine[]; subtotal: BlockSubtotal };
+    subtotals: { '2A'?: BlockSubtotal; '2B': BlockSubtotal };
     totalDebit: string;
     totalCredit: string;
     isBalanced: boolean;
@@ -155,14 +162,18 @@ export class PaymentJournalPreviewService {
       }
       const isBalanced = totalDebit.toFixed(2) === totalCredit.toFixed(2);
 
-      return {
-        lines: rawLines.map((l) => ({
+      const rescheduleBlocks = buildPreviewBlocks({
+        liveLines: rawLines.map((l) => ({
           accountCode: l.code,
           accountName: nameMap.get(l.code) ?? l.code,
           debit: l.dr.toFixed(2),
           credit: l.cr.toFixed(2),
           description: l.description,
         })),
+      });
+      return {
+        lines: rescheduleBlocks.lines,
+        subtotals: rescheduleBlocks.subtotals,
         totalDebit: totalDebit.toFixed(2),
         totalCredit: totalCredit.toFixed(2),
         isBalanced,
@@ -188,14 +199,18 @@ export class PaymentJournalPreviewService {
         totalDebit = totalDebit.plus(l.dr);
         totalCredit = totalCredit.plus(l.cr);
       }
-      return {
-        lines: rawLines.map((l) => ({
+      const partialBlocks = buildPreviewBlocks({
+        liveLines: rawLines.map((l) => ({
           accountCode: l.code,
           accountName: nameMap.get(l.code) ?? l.code,
           debit: l.dr.toFixed(2),
           credit: l.cr.toFixed(2),
           description: l.description,
         })),
+      });
+      return {
+        lines: partialBlocks.lines,
+        subtotals: partialBlocks.subtotals,
         totalDebit: totalDebit.toFixed(2),
         totalCredit: totalCredit.toFixed(2),
         isBalanced: totalDebit.toFixed(2) === totalCredit.toFixed(2),
@@ -298,15 +313,32 @@ export class PaymentJournalPreviewService {
       }
     }
 
-    // Resolve account names from CoA
-    const codes = [...new Set(rawLines.map((l) => l.code))];
+    // 2B_ONLY: fetch the already-posted 2A accrual JE (read-only context block).
+    // Fetched by entryNumber (== stamped accrualJournalEntryId, unique). The
+    // advance-consume-on-accrual JE is intentionally EXCLUDED so the 2A block
+    // stays the clean accrual (mockup §2A = 2,115.00); full reconciliation of a
+    // partly-pre-cleared 11-2103 (reconstructPrior in the 2B leg) is Phase 2.
+    let accrualLineRows: { accountCode: string; debit: Prisma.Decimal; credit: Prisma.Decimal; description: string | null }[] = [];
+    if (!isConsolidated && inst.accrualJournalEntryId) {
+      const accrualEntry = await this.prisma.journalEntry.findFirst({
+        where: { entryNumber: inst.accrualJournalEntryId, deletedAt: null },
+        include: { lines: { where: { deletedAt: null } } },
+      });
+      accrualLineRows = accrualEntry?.lines ?? [];
+    }
+
+    // Resolve account names from CoA (cover both live + accrual codes in one query)
+    const codes = [
+      ...new Set([...rawLines.map((l) => l.code), ...accrualLineRows.map((l) => l.accountCode)]),
+    ];
     const coaRows = await this.prisma.chartOfAccount.findMany({
       where: { code: { in: codes } },
       select: { code: true, name: true },
     });
     const nameMap = new Map(coaRows.map((r) => [r.code, r.name]));
 
-    // Compute totals
+    // Compute totals over the LIVE (2B) lines — these are what the save posts now,
+    // so they drive the submit gate's isBalanced (unchanged semantics).
     let totalDebit = zero;
     let totalCredit = zero;
     for (const l of rawLines) {
@@ -316,14 +348,27 @@ export class PaymentJournalPreviewService {
 
     const isBalanced = totalDebit.toFixed(2) === totalCredit.toFixed(2);
 
-    return {
-      lines: rawLines.map((l) => ({
+    const blocks = buildPreviewBlocks({
+      liveLines: rawLines.map((l) => ({
         accountCode: l.code,
         accountName: nameMap.get(l.code) ?? l.code,
         debit: l.dr.toFixed(2),
         credit: l.cr.toFixed(2),
         description: l.description,
       })),
+      accrualLines: accrualLineRows.map((l) => ({
+        accountCode: l.accountCode,
+        accountName: nameMap.get(l.accountCode) ?? l.accountCode,
+        debit: new Prisma.Decimal(l.debit.toString()).toFixed(2),
+        credit: new Prisma.Decimal(l.credit.toString()).toFixed(2),
+        description: l.description ?? '',
+      })),
+    });
+
+    return {
+      lines: blocks.lines,
+      accrual2A: blocks.accrual2A,
+      subtotals: blocks.subtotals,
       totalDebit: totalDebit.toFixed(2),
       totalCredit: totalCredit.toFixed(2),
       isBalanced,

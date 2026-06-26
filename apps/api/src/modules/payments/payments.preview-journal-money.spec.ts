@@ -41,9 +41,11 @@
  * inputs are passed as real Prisma.Decimal values; assertions compare the
  * .toFixed(2) strings the service emits.
  *
- * previewJournal touches only prisma.installmentSchedule.findUnique (with
- * `include: { contract: true }`) and prisma.chartOfAccount.findMany — a hand-
- * mocked PrismaService covers it with no DB. recordPayment reuses the proven
+ * previewJournal touches prisma.installmentSchedule.findUnique (with
+ * `include: { contract: true }`), prisma.chartOfAccount.findMany, and (T1, in the
+ * 2B_ONLY path) prisma.journalEntry.findFirst to fetch the posted 2A accrual
+ * context — a hand-mocked PrismaService covers all three with no DB. recordPayment
+ * reuses the proven
  * advance/late-fee harness ($transaction(cb => cb(tx))). accountRoleService is
  * left undefined to lock the FALLBACK codes (52-1104 / 53-1503).
  */
@@ -147,6 +149,12 @@ describe('PaymentsService.previewJournal (characterization)', () => {
         // Names are irrelevant to the money assertions — return [] so the
         // service falls back to `nameMap.get(code) ?? code` (accountName = code).
         findMany: jest.fn().mockResolvedValue([]),
+      },
+      journalEntry: {
+        // T1: 2B_ONLY preview fetches the posted 2A accrual JE for context.
+        // null → no 2A block (accrual2A undefined); the live 2B money lines +
+        // totals are unchanged, so these characterization assertions still hold.
+        findFirst: jest.fn().mockResolvedValue(null),
       },
     };
 

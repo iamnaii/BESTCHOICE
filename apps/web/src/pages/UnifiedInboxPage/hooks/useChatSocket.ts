@@ -28,6 +28,8 @@ export interface ChatRoomUpdateEvent {
 export interface ChatTypingEvent {
   roomId: string;
   role?: 'CUSTOMER' | 'STAFF';
+  userName?: string;
+  isTyping?: boolean;
 }
 
 export interface ChatPresenceEvent {
@@ -87,15 +89,20 @@ export function useChatSocket(events: ChatSocketEvents, activeRoomId?: string | 
   const { user } = useAuth();
   const socketRef = useRef<Socket | null>(null);
   const [isCustomerTyping, setIsCustomerTyping] = useState(false);
+  const [staffTyping, setStaffTyping] = useState<{ userName: string } | null>(null);
   const [status, setStatus] = useState<'connecting' | 'connected' | 'reconnecting' | 'disconnected'>(
     'connecting',
   );
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const staffTypingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Keep latest activeRoomId + event handlers in refs so the socket effect
   // doesn't tear down on room switches or handler identity changes
   const activeRoomIdRef = useRef(activeRoomId);
   const eventsRef = useRef(events);
-  useEffect(() => { activeRoomIdRef.current = activeRoomId; }, [activeRoomId]);
+  useEffect(() => {
+    activeRoomIdRef.current = activeRoomId;
+    setStaffTyping(null);
+  }, [activeRoomId]);
   useEffect(() => { eventsRef.current = events; }, [events]);
 
   useEffect(() => {
@@ -137,6 +144,16 @@ export function useChatSocket(events: ChatSocketEvents, activeRoomId?: string | 
         setIsCustomerTyping(true);
         if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
         typingTimerRef.current = setTimeout(() => setIsCustomerTyping(false), 5000);
+      }
+      if (data.roomId === activeRoomIdRef.current && data.role === 'STAFF') {
+        if (data.isTyping) {
+          setStaffTyping({ userName: data.userName ?? 'พนักงาน' });
+          if (staffTypingTimerRef.current) clearTimeout(staffTypingTimerRef.current);
+          staffTypingTimerRef.current = setTimeout(() => setStaffTyping(null), 5000);
+        } else {
+          if (staffTypingTimerRef.current) clearTimeout(staffTypingTimerRef.current);
+          setStaffTyping(null);
+        }
       }
     });
     socket.on('chat:presence', (data) => eventsRef.current.onPresence?.(data));
@@ -183,5 +200,5 @@ export function useChatSocket(events: ChatSocketEvents, activeRoomId?: string | 
     socketRef.current?.emit('chat:view', { roomId });
   }, []);
 
-  return { joinRoom, leaveRoom, sendMessage, startTyping, stopTyping, viewRoom, isCustomerTyping, status };
+  return { joinRoom, leaveRoom, sendMessage, startTyping, stopTyping, viewRoom, isCustomerTyping, staffTyping, status };
 }

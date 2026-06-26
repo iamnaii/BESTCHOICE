@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { nextRoomIndex } from './list-nav';
 import { isEditableTarget } from '../hooks/useKeyboardShortcuts';
 import { Search, MessageCircle, X, Bell, BellOff, CheckCheck, Loader2 } from 'lucide-react';
@@ -66,6 +66,11 @@ export default function ConversationList({
       queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
     },
   });
+
+  const handlePin = useCallback(
+    (roomId: string, isPinned: boolean) => pinMutation.mutate({ roomId, isPinned }),
+    [pinMutation],
+  );
 
   // Update parent filter when debounced search changes
   useEffect(() => {
@@ -359,8 +364,8 @@ export default function ConversationList({
               <ConversationItem
                 session={session}
                 isActive={session.id === activeRoomId}
-                onClick={() => onSelectRoom(session.id)}
-                onPin={(roomId, isPinned) => pinMutation.mutate({ roomId, isPinned })}
+                onSelect={onSelectRoom}
+                onPin={handlePin}
                 aiSettings={aiSettings}
               />
             </div>

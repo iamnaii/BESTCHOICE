@@ -1,10 +1,10 @@
+import { memo, useState } from 'react';
 import { Pin } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatChatTimestamp } from '@/lib/chat-time';
 import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, sessionPriorityMap } from '@/lib/status-badges';
 import { getGeneratedAvatarUrl } from '@/lib/avatar';
-import { useState } from 'react';
 
 /** Map sentinel-prefixed message bodies to a human-friendly preview. */
 function formatMessagePreview(text: string | null | undefined): string {
@@ -90,7 +90,7 @@ interface ConversationItemProps {
     pictureUrl?: string | null;
   };
   isActive: boolean;
-  onClick: () => void;
+  onSelect: (roomId: string) => void;
   onPin?: (roomId: string, isPinned: boolean) => void;
   aiSettings?: { autoModeEnabled: boolean; enabledChannels: string[] };
 }
@@ -145,7 +145,7 @@ function Avatar({ session, displayName }: { session: ConversationItemProps['sess
   );
 }
 
-export default function ConversationItem({ session, isActive, onClick, onPin, aiSettings }: ConversationItemProps) {
+function ConversationItem({ session, isActive, onSelect, onPin, aiSettings }: ConversationItemProps) {
   const lastMessage = session.messages?.[0];
   const displayName =
     session.customer?.name ??
@@ -169,7 +169,7 @@ export default function ConversationItem({ session, isActive, onClick, onPin, ai
           : 'hover:bg-muted/40',
         isPinned && !isActive && 'bg-warning/5',
       )}
-      onClick={onClick}
+      onClick={() => onSelect(session.id)}
     >
       <Avatar session={session} displayName={displayName} />
 
@@ -268,3 +268,5 @@ export default function ConversationItem({ session, isActive, onClick, onPin, ai
     </div>
   );
 }
+
+export default memo(ConversationItem);

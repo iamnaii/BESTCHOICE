@@ -447,6 +447,40 @@ export class MessageRouterService {
    * Idempotent on clientMessageId: if the same token is retried, the backend
    * deduplicates at the DB level so a message that was already delivered to the
    * customer is never re-sent.
+   *
+   * ## Idempotency state machine
+   *
+   * Each `clientMessageId` token drives the following states:
+   *
+   * 1. **No row** (fresh send):
+   *    `saveMessage` → `adapter.sendMessage` → `markOutboundSent` → return success.
+   *
+   * 2. **Row exists, `outboundSentAt` set** (retry of a delivered message):
+   *    Re-fetch by token → return success immediately. Adapter is NOT called — the
+   *    customer already received the message on the winning attempt.
+   *
+   * 3. **Row exists, `outboundSentAt` null** (retry of an undelivered message, e.g.
+   *    first attempt saved the row but the adapter call crashed or timed out):
+   *    `adapter.sendMessage` is called once → on success, `markOutboundSent` stamps
+   *    the row → return success. On adapter failure, `outboundSentAt` stays null so
+   *    the next retry can try again.
+   *
+   * 4. **P2002 race** (two concurrent sends with the same token hit `saveMessage`
+   *    simultaneously and only one INSERT wins):
+   *    The loser's INSERT throws P2002. The loser re-fetches the row (now owned by
+   *    the winner) and returns success **without** calling the adapter. The winner
+   *    continues to states 2/3 above and owns delivery.
+   *    This is the critical case that prevents double-delivery: before this fix,
+   *    the loser would fall through to `adapter.sendMessage` in the window before
+   *    the winner stamped `outboundSentAt`, sending the message twice.
+   *
+   * ## Accepted residual (exactly-once is impossible over an unreliable adapter)
+   *
+   * A crash in the narrow window between `adapter.sendMessage` returning success and
+   * `markOutboundSent` completing leaves `outboundSentAt = null` on an already-delivered
+   * row. A subsequent retry will re-deliver (state 3). This at-least-once residual is
+   * unavoidable without a distributed 2PC protocol; it is far less common than the
+   * previously-always-double-deliver-on-retry behaviour that this feature replaces.
    */
   async sendStaffMessage(params: {
     roomId: string;
@@ -494,15 +528,17 @@ export class MessageRouterService {
           clientMessageId: params.clientMessageId,
         });
       } catch (e: any) {
-        // Unique-race: a concurrent identical send won. Re-fetch + fall through.
         if (e?.code === 'P2002' && params.clientMessageId) {
+          // A concurrent identical send won the unique race. Let it own delivery —
+          // do NOT call the adapter again (that would double-deliver to the customer).
           saved = await this.roomManager.findByClientMessageId(params.roomId, params.clientMessageId);
-          if (saved?.outboundSentAt) {
+          if (saved) {
             return {
               success: true,
               message: { id: saved.id, clientMessageId: saved.clientMessageId, createdAt: saved.createdAt },
             };
           }
+          throw e; // unreachable in practice — P2002 implies the row exists
         } else {
           throw e;
         }

@@ -351,7 +351,7 @@ export default function UnifiedInboxPage() {
   const sendRoomMessage = async (text: string, reuseClientMessageId?: string): Promise<boolean> => {
     const roomId = activeRoomId;
     if (!roomId) return false;
-    const clientMessageId = reuseClientMessageId ?? crypto.randomUUID();
+    const clientMessageId = reuseClientMessageId || crypto.randomUUID();
     // Optimistic "กำลังส่ง" ghost — removed when the saved row (same token) lands
     // in the list, or on failure (replaced by a FAILED ghost).
     setPendingSends((prev) => [...prev, { clientMessageId, roomId, text }]);

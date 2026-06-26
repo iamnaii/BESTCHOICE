@@ -1134,11 +1134,15 @@ describe('PaymentsService', () => {
     it('includes late fee line (42-1103) when lateFee > 0', async () => {
       prisma.installmentSchedule.findUnique.mockResolvedValue(mockInstallmentAccrued);
 
+      // P2-4: amountReceived is the FULL cash collected (installment + late fee),
+      // mirroring the save (orchestrator delta = amount). The preview no longer adds
+      // late fee on top — the cashier sends installment(2202.41) + lateFee(54).
       const lateFee = 54;
+      const installmentTotal = 2202.41;
       const result = await service.previewJournal({
         contractId: 'contract-preview',
         installmentNo: 2,
-        amountReceived: 2202.41,
+        amountReceived: installmentTotal + lateFee,
         depositAccountCode: '11-1101',
         lateFee,
       });
@@ -1149,9 +1153,9 @@ describe('PaymentsService', () => {
       expect(lateFeeLineCr).toBeDefined();
       expect(parseFloat(lateFeeLineCr!.credit)).toBeCloseTo(lateFee, 2);
 
-      // Cash received must include late fee
+      // Cash Dr = the full amount received (already includes the late fee)
       const cashLine = result.lines.find((l) => l.accountCode === '11-1101');
-      expect(parseFloat(cashLine!.debit)).toBeCloseTo(2202.41 + lateFee, 2);
+      expect(parseFloat(cashLine!.debit)).toBeCloseTo(installmentTotal + lateFee, 2);
     });
 
     it('resolves account names from CoA', async () => {

@@ -99,6 +99,7 @@ export class PaymentReceiptOrchestrator {
     toleranceApproverId?: string,
     paymentCase?: PaymentCase,
     consumeAdvance: boolean = true,
+    paidDate?: Date,
   ) {
     if (!amount || amount <= 0) {
       throw new BadRequestException('จำนวนเงินต้องมากกว่า 0');
@@ -109,8 +110,20 @@ export class PaymentReceiptOrchestrator {
       throw new BadRequestException('ต้อง upload หลักฐานการชำระเงิน (สลิปโอนเงิน) หรือระบุเลขอ้างอิงธุรกรรม');
     }
 
+    // D4: honor a caller-supplied paidDate (backdating). Default = now; never future.
+    // Drives period-lock, late-fee days, the Payment.paidDate stamp, and the JE postedAt
+    // so a backdated receipt doesn't get today's (larger) late fee or today's ledger date.
+    const effectivePaidDate = paidDate ?? new Date();
+    // Compare BKK calendar days (en-CA → YYYY-MM-DD, lexically sortable). A date-only
+    // paidDate parses to UTC midnight, which is AHEAD of now during BKK evening — a
+    // raw getTime() check would wrongly reject today's BKK date after 17:00 local.
+    const bkkDay = (dt: Date) => dt.toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
+    if (bkkDay(effectivePaidDate) > bkkDay(new Date())) {
+      throw new BadRequestException('วันที่รับเงินต้องไม่เป็นอนาคต');
+    }
+
     // CR-7: Validate payment date is not in a closed (FINANCE) accounting period.
-    await validatePeriodOpen(this.prisma, new Date(), await resolveFinanceCompanyId(this.prisma));
+    await validatePeriodOpen(this.prisma, effectivePaidDate, await resolveFinanceCompanyId(this.prisma));
 
     // T16: Tolerance approver role validation.
     // If toleranceApproverId is supplied, verify the named user has an approved role.
@@ -197,8 +210,11 @@ export class PaymentReceiptOrchestrator {
       // Set = resolved fee (NOT max(stored, resolved)) so this path agrees with
       // the overdue cron's retroactive downgrade. Skip waived.
       let lateFee = d(payment.lateFee);
-      if (!payment.lateFeeWaived && payment.dueDate < new Date()) {
-        const daysOverdue = Math.floor((Date.now() - payment.dueDate.getTime()) / (1000 * 60 * 60 * 24));
+      if (!payment.lateFeeWaived && payment.dueDate < effectivePaidDate) {
+        const daysOverdue = Math.max(
+          0,
+          Math.floor((effectivePaidDate.getTime() - payment.dueDate.getTime()) / (1000 * 60 * 60 * 24)),
+        );
         const lateFeeCfg = await loadLateFeeConfig(tx);
         const bracketFee = resolveLateFee(lateFeeCfg, daysOverdue, payment.amountDue);
         if (!bracketFee.eq(lateFee)) {
@@ -278,7 +294,7 @@ export class PaymentReceiptOrchestrator {
         where: { id: payment.id },
         data: {
           amountPaid: recordedAmountPaid,
-          paidDate: isPaidInFull ? new Date() : null,
+          paidDate: isPaidInFull ? effectivePaidDate : null,
           paymentMethod: paymentMethod as PaymentMethod,
           status: isPaidInFull ? 'PAID' : 'PARTIALLY_PAID',
           recordedById,
@@ -359,6 +375,7 @@ export class PaymentReceiptOrchestrator {
               advanceConsume: advanceConsume.gt(0) ? advanceConsume : undefined,
               isFinalReceipt: !isPartialClear,
               lateFee: lateFee.gt(0) ? lateFee : undefined,
+              postedAt: effectivePaidDate,
               // PR-843/I2 Phase 5b — auto-approve a ≤1฿ underpay-close ONLY when the
               // payer covered the full billed obligation (cash + consumed advance ≥
               // remaining = amountDue+lateFee−prevPaid). In that case any ≤1฿ residual

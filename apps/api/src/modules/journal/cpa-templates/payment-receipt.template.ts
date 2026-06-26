@@ -46,6 +46,12 @@ export interface PaymentReceiptPrimitiveInput {
    * is the 3a/3b follow-up where the payment paths pass real per-receipt keys.
    */
   idempotencyKey?: string;
+  /**
+   * Optional JE post date (D4 backdating). Defaults to now inside createAndPost.
+   * Forwarded by recordPayment as the caller-supplied paidDate so a backdated
+   * receipt's ledger entry is dated to the payment date, not "now".
+   */
+  postedAt?: Date;
 }
 
 /**
@@ -324,6 +330,7 @@ export class PaymentReceiptTemplate {
         // payment→JE link is `metadata.paymentId` (below) — that is what voidReceipt /
         // markReversed query to reverse EVERY receipt JE of a payment.
         reference: randomUUID(),
+        postedAt: input.postedAt,
         metadata: {
           tag: 'receipt',
           // Traceability/queryability for the per-receipt flow (PR 3.1).

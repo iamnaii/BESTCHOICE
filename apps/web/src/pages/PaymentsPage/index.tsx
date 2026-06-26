@@ -634,6 +634,7 @@ export default function PaymentsPage() {
               memo: payload.memo,
               case: payload.case,
               consumeAdvance: payload.consumeAdvance,
+              paidDate: payload.paidDate,
               // Round 2 W7 fix: forward the wizard's lateFee so the DTO field
               // added in C1 actually carries the user's input across the wire.
               // Server still recomputes its own value as the source of truth,

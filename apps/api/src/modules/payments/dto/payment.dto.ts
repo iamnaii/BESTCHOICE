@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, Matches, Min, IsNotEmpty, MaxLength, IsIn, IsBoolean } from 'class-validator';
+import { IsString, IsNumber, IsOptional, Matches, Min, IsNotEmpty, MaxLength, IsIn, IsBoolean, IsDateString } from 'class-validator';
 
 /** Regex for valid cash/bank account codes: 11-1101..03, 11-1201..03 */
 const CASH_CODE_REGEX = /^11-(110[1-3]|120[1-3])$/;
@@ -195,6 +195,15 @@ export class RecordPaymentDto {
   @IsOptional()
   @IsBoolean()
   consumeAdvance?: boolean;
+
+  /**
+   * วันที่รับเงิน (ISO date) — ย้อนหลังได้ถ้างวดบัญชี FINANCE ยังเปิด (ผ่าน period-lock).
+   * มีผลกับ: คำนวณค่าปรับ ณ วันจ่าย, paidDate ของ Payment, และวันที่ลง JE.
+   * default = วันนี้ (ห้ามเป็นอนาคต).
+   */
+  @IsOptional()
+  @IsDateString()
+  paidDate?: string;
 }
 
 export class BulkRecordPaymentDto {

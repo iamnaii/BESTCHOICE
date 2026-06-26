@@ -206,6 +206,7 @@ export class PaymentsService {
     toleranceApproverId?: string,
     paymentCase?: PaymentCase,
     consumeAdvance: boolean = true,
+    paidDate?: Date,
   ) {
     return this.services().orchestrator.recordPayment(
       contractId,
@@ -220,6 +221,7 @@ export class PaymentsService {
       toleranceApproverId,
       paymentCase,
       consumeAdvance,
+      paidDate,
     );
   }
 

@@ -607,4 +607,45 @@ describe('PaymentsService — advance balance (Task 4)', () => {
       expect(advanceBalance).toBeCloseTo(0, 2); // consumed
     });
   });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // T7: backdated paidDate (param 13) — stamped on the Payment; future date rejected
+  // ─────────────────────────────────────────────────────────────────────────────
+  describe('backdated paidDate (T7)', () => {
+    it('backdated paidDate is stamped on the Payment (full pay, future dueDate = no late fee)', async () => {
+      const backdated = new Date('2026-03-15T00:00:00.000Z');
+      prisma.payment.findFirst.mockResolvedValue(makePayment(40)); // dueDate 2027 (future)
+      await service.recordPayment(
+        'adv-contract-1', 40, INST_TOTAL, 'CASH', 'user-1',
+        'https://slip.test/40', undefined, 'TEST-BACKDATE', '11-1101',
+        undefined, undefined, true, backdated,
+      );
+      expect(prisma.payment.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ paidDate: backdated }),
+        }),
+      );
+    });
+
+    it('future paidDate → BadRequestException', async () => {
+      const future = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      prisma.payment.findFirst.mockResolvedValue(makePayment(41));
+      await expect(
+        service.recordPayment(
+          'adv-contract-1', 41, INST_TOTAL, 'CASH', 'user-1',
+          'https://slip.test/41', undefined, 'TEST-FUTURE', '11-1101',
+          undefined, undefined, true, future,
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('omitted paidDate → defaults to now, Payment marked PAID', async () => {
+      prisma.payment.findFirst.mockResolvedValue(makePayment(42));
+      const result = await service.recordPayment(
+        'adv-contract-1', 42, INST_TOTAL, 'CASH', 'user-1',
+        'https://slip.test/42', undefined, 'TEST-NODATE', '11-1101',
+      );
+      expect(result.status).toBe('PAID');
+    });
+  });
 });

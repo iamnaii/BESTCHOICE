@@ -541,6 +541,7 @@ interface RecordPaymentWizardProps {
     memo?: string;
     notes?: string;
     consumeAdvance: boolean;
+    paidDate: string;
   }) => void;
   isSubmitting: boolean;
   defaultDepositAccountCode?: string;
@@ -610,6 +611,9 @@ export function RecordPaymentWizard({
   const [slipUrl, setSlipUrl] = useState('');
   const [slipFileName, setSlipFileName] = useState('');
   const [memo, setMemo] = useState('');
+  // วันที่รับเงิน (D4 backdating) — default = BKK today (YYYY-MM-DD). max = today.
+  const bkkToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
+  const [paidDate, setPaidDate] = useState(bkkToday);
 
   // Slip upload
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -813,6 +817,7 @@ export function RecordPaymentWizard({
       slipUrl: slipUrl || undefined,
       memo: memo || undefined,
       consumeAdvance,
+      paidDate,
     });
   };
 
@@ -860,6 +865,7 @@ export function RecordPaymentWizard({
       setAmountManuallyEdited(false);
       setConsumeAdvance(true);
       setCaseOverride(null);
+      setPaidDate(bkkToday());
       setLateFeeStr(lateFeeDecimal.toFixed(2));
       setMethod('CASH');
       setReferenceNumber('');
@@ -1027,6 +1033,21 @@ export function RecordPaymentWizard({
                   min={0}
                   step="0.01"
                   className="text-right font-mono"
+                />
+              </div>
+
+              {/* วันที่รับเงิน (D4 backdating — period-lock guards closed periods) */}
+              <div>
+                <Label className="block text-sm font-medium text-foreground mb-1.5 leading-snug">
+                  วันที่รับเงิน
+                  <span className="ml-1 text-xs text-muted-foreground font-normal">(ย้อนหลังได้ถ้างวดบัญชียังเปิด)</span>
+                </Label>
+                <Input
+                  type="date"
+                  value={paidDate}
+                  max={bkkToday()}
+                  onChange={(e) => setPaidDate(e.target.value)}
+                  className="font-mono"
                 />
               </div>
 

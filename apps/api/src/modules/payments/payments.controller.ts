@@ -236,6 +236,7 @@ export class PaymentsController {
       dto.toleranceApproverId,
       dto.case,
       dto.consumeAdvance ?? true,
+      dto.paidDate ? new Date(dto.paidDate) : undefined,
     );
   }
 

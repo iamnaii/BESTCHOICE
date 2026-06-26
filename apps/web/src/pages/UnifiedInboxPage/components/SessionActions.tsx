@@ -187,7 +187,7 @@ export default function SessionActions({
               }
             }}
             disabled={isTakingOver}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-amber-500/10 text-amber-700 rounded-lg hover:bg-amber-500/20 transition-colors disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-warning/10 text-warning rounded-lg hover:bg-warning/20 transition-colors disabled:opacity-50"
             title="หยุด AI แล้วตอบเอง"
           >
             <Hand className="w-3.5 h-3.5" />

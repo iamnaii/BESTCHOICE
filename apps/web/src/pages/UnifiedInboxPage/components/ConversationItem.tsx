@@ -49,8 +49,8 @@ function AiStatusBadge({
   }
   if (aiPaused) {
     return (
-      <span className="inline-flex items-center gap-1 text-[9px] text-amber-600">
-        <span className="size-1.5 rounded-full bg-amber-500" />
+      <span className="inline-flex items-center gap-1 text-[9px] text-warning">
+        <span className="size-1.5 rounded-full bg-warning" />
         พนักงาน
       </span>
     );
@@ -59,8 +59,8 @@ function AiStatusBadge({
     aiAutoEnabled && enabledChannels.length > 0 && enabledChannels.includes(channel);
   if (channelAllowed) {
     return (
-      <span className="inline-flex items-center gap-1 text-[9px] text-emerald-600">
-        <span className="size-1.5 rounded-full bg-emerald-500" />
+      <span className="inline-flex items-center gap-1 text-[9px] text-success">
+        <span className="size-1.5 rounded-full bg-success" />
         AI
       </span>
     );

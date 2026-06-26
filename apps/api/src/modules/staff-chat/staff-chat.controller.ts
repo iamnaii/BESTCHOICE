@@ -450,7 +450,7 @@ export class StaffChatController {
   @Get('staff/online')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   async getOnlineStaff() {
-    return this.assignment.getStaffRoomCounts();
+    return this.assignment.getAssignableStaff();
   }
 
   // ─── AI Assistant ──────────────────────────────────────

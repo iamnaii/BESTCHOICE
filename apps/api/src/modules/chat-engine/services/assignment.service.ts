@@ -284,4 +284,32 @@ export class AssignmentService {
         activeCount: c._count.id,
       }));
   }
+
+  /** Staff eligible to receive a transfer (active, eligible roles) joined with
+   *  their active-room load. Used by GET /staff/online for the transfer picker.
+   *  Distinct from getStaffRoomCounts (which only returns staff that already hold
+   *  rooms and is shaped for the auto-assign load balancer). */
+  async getAssignableStaff(): Promise<
+    { id: string; name: string; email: string; activeCount: number }[]
+  > {
+    const [staff, counts] = await Promise.all([
+      this.prisma.user.findMany({
+        where: {
+          deletedAt: null,
+          isActive: true,
+          role: { in: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES'] },
+        },
+        select: { id: true, name: true, email: true },
+        orderBy: { name: 'asc' },
+      }),
+      this.getStaffRoomCounts(),
+    ]);
+    const countMap = new Map(counts.map((c) => [c.staffId, c.activeCount]));
+    return staff.map((s) => ({
+      id: s.id,
+      name: s.name,
+      email: s.email,
+      activeCount: countMap.get(s.id) ?? 0,
+    }));
+  }
 }

@@ -535,6 +535,7 @@ interface RecordPaymentWizardProps {
     slipUrl?: string;
     memo?: string;
     notes?: string;
+    consumeAdvance: boolean;
   }) => void;
   isSubmitting: boolean;
   defaultDepositAccountCode?: string;
@@ -569,16 +570,30 @@ export function RecordPaymentWizard({
   // late-fee figure from the contract info panel — error-prone and slow.
   const [lateFeeStr, setLateFeeStr] = useState(lateFeeDecimal.toFixed(2));
 
-  // Auto-sync amountReceived = amountDue + lateFee while user hasn't touched
-  // the amount field. Once user edits amount manually, stop auto-syncing so
-  // their edit isn't clobbered.
+  // Advance balance parked in 21-1103 (Decimal, serialized as string from Prisma).
+  const advanceBalance = useMemo(
+    () => new Decimal(payment.contract.advanceBalance ?? 0),
+    [payment.contract.advanceBalance],
+  );
+  // Credit-deduction toggle (mockup banner checkbox). Default ON = current backend
+  // behaviour. OFF → cashier collects the full owed, advance stays for next time.
+  const [consumeAdvance, setConsumeAdvance] = useState(true);
+
+  // Auto-sync amountReceived = (amountDue + lateFee − paid) minus the auto-deducted
+  // advance, while the user hasn't touched the amount field. Toggling the credit
+  // checkbox clears manual-edit so this recomputes.
   useEffect(() => {
     if (amountManuallyEdited) return;
     const lf = parseFloat(lateFeeStr);
     if (isNaN(lf)) return;
-    const next = amountDueDecimal.plus(lf).sub(amountPaidDecimal).toDecimalPlaces(2);
+    const owed = amountDueDecimal.plus(lf).sub(amountPaidDecimal);
+    const consumed =
+      consumeAdvance && advanceBalance.gt(0)
+        ? Decimal.min(advanceBalance, Decimal.max(new Decimal(0), owed))
+        : new Decimal(0);
+    const next = Decimal.max(new Decimal(0), owed.minus(consumed)).toDecimalPlaces(2);
     setAmountReceived(next.toFixed(2));
-  }, [lateFeeStr, amountDueDecimal, amountPaidDecimal, amountManuallyEdited]);
+  }, [lateFeeStr, amountDueDecimal, amountPaidDecimal, amountManuallyEdited, consumeAdvance, advanceBalance]);
 
   // Method + evidence fields
   const [method, setMethod] = useState<WizardMethod>('CASH');
@@ -677,12 +692,6 @@ export function RecordPaymentWizard({
     return isNaN(v) ? new Decimal(0) : new Decimal(v);
   }, [lateFeeStr]);
 
-  // Advance balance from contract (Decimal, serialized as string from Prisma)
-  const advanceBalance = useMemo(
-    () => new Decimal(payment.contract.advanceBalance ?? 0),
-    [payment.contract.advanceBalance],
-  );
-
   // Auto-detect case
   const receivedNum = parseFloat(amountReceived) || 0;
   const expectedTotal = useMemo(
@@ -779,6 +788,7 @@ export function RecordPaymentWizard({
       referenceNumber: referenceNumber || undefined,
       slipUrl: slipUrl || undefined,
       memo: memo || undefined,
+      consumeAdvance,
     });
   };
 
@@ -823,6 +833,8 @@ export function RecordPaymentWizard({
       onClose();
       setDepositAccountCode(defaultDepositAccountCode);
       setAmountReceived(defaultAmount.toFixed(2));
+      setAmountManuallyEdited(false);
+      setConsumeAdvance(true);
       setLateFeeStr(lateFeeDecimal.toFixed(2));
       setMethod('CASH');
       setReferenceNumber('');
@@ -874,9 +886,11 @@ export function RecordPaymentWizard({
                 <AdvanceBalanceBanner
                   amountDue={amountDueDecimal.add(currentLateFee).sub(amountPaidDecimal)}
                   advanceBalance={advanceBalance}
-                  onApply={(netDue) => {
-                    setAmountReceived(netDue);
-                    setAmountManuallyEdited(true);
+                  consumeAdvance={consumeAdvance}
+                  onToggle={(next) => {
+                    setConsumeAdvance(next);
+                    // recompute amountReceived via the auto-sync effect
+                    setAmountManuallyEdited(false);
                   }}
                 />
               )}

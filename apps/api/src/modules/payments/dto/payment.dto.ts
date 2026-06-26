@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, Matches, Min, IsNotEmpty, MaxLength, IsIn } from 'class-validator';
+import { IsString, IsNumber, IsOptional, Matches, Min, IsNotEmpty, MaxLength, IsIn, IsBoolean } from 'class-validator';
 
 /** Regex for valid cash/bank account codes: 11-1101..03, 11-1201..03 */
 const CASH_CODE_REGEX = /^11-(110[1-3]|120[1-3])$/;
@@ -182,6 +182,14 @@ export class RecordPaymentDto {
   @IsNumber()
   @Min(0)
   lateFee?: number;
+
+  /**
+   * หักเครดิตล่วงหน้า (21-1103) อัตโนมัติเมื่อจ่ายไม่ครบ — default true (พฤติกรรมเดิม).
+   * false = เก็บเต็มยอด ไม่หักเครดิต (ลูกค้าเก็บเครดิตไว้งวดถัดไป).
+   */
+  @IsOptional()
+  @IsBoolean()
+  consumeAdvance?: boolean;
 }
 
 export class BulkRecordPaymentDto {

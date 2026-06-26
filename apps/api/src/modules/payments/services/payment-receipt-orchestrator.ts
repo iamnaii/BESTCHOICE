@@ -98,6 +98,7 @@ export class PaymentReceiptOrchestrator {
     depositAccountCode?: string,
     toleranceApproverId?: string,
     paymentCase?: PaymentCase,
+    consumeAdvance: boolean = true,
   ) {
     if (!amount || amount <= 0) {
       throw new BadRequestException('จำนวนเงินต้องมากกว่า 0');
@@ -236,12 +237,14 @@ export class PaymentReceiptOrchestrator {
           `Overpay ${overage.toFixed(2)}฿ auto-routed to advance (contract ${contractId}, inst ${installmentNo})`,
         );
       } else if (
+        consumeAdvance &&
         d(amount).lt(remaining) &&
         beforeAdvance.gt(0) &&
         (paymentCase === undefined || paymentCase === 'NORMAL')
       ) {
-        // Auto-consume FIFO ONLY for default/NORMAL case. PARTIAL/RESCHEDULE/EARLY_PAYOFF
-        // are explicit flows where the caller controls allocation directly.
+        // Auto-consume FIFO ONLY for default/NORMAL case AND when the cashier
+        // left "หักเครดิต" on (consumeAdvance, default true). PARTIAL/RESCHEDULE/
+        // EARLY_PAYOFF are explicit flows where the caller controls allocation.
         const gap = remaining.minus(d(amount));
         advanceConsume = Prisma.Decimal.min(beforeAdvance, gap);
       }

@@ -601,9 +601,17 @@ export default function PaymentsPage() {
           payment={selectedPayment}
           onClose={() => { setShowPayWizard(false); setSelectedPayment(null); }}
           onSubmit={(payload) => {
-            const remaining = new Decimal(selectedPayment.amountDue)
+            const grossRemaining = new Decimal(selectedPayment.amountDue)
               .add(selectedPayment.lateFee)
-              .sub(selectedPayment.amountPaid)
+              .sub(selectedPayment.amountPaid);
+            // When the cashier keeps the credit checkbox on, the wizard prefills the
+            // NET amount (gross − advance); the tolerance check must compare against
+            // that net figure, else it flags the whole advance as an over/under-pay.
+            const advance = new Decimal(selectedPayment.contract.advanceBalance ?? 0);
+            const consumed = payload.consumeAdvance
+              ? Decimal.min(advance, Decimal.max(new Decimal(0), grossRemaining))
+              : new Decimal(0);
+            const remaining = Decimal.max(new Decimal(0), grossRemaining.sub(consumed))
               .toDecimalPlaces(2)
               .toNumber();
             const diff = new Decimal(payload.amount).sub(remaining).toDecimalPlaces(2).toNumber();
@@ -625,6 +633,7 @@ export default function PaymentsPage() {
               slipUrl: payload.slipUrl,
               memo: payload.memo,
               case: payload.case,
+              consumeAdvance: payload.consumeAdvance,
               // Round 2 W7 fix: forward the wizard's lateFee so the DTO field
               // added in C1 actually carries the user's input across the wire.
               // Server still recomputes its own value as the source of truth,

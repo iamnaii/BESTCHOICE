@@ -562,4 +562,46 @@ describe('PaymentsService — advance balance (Task 4)', () => {
       );
     });
   });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // T4: consumeAdvance flag — the credit-deduction checkbox gates the auto-consume
+  // ─────────────────────────────────────────────────────────────────────────────
+  describe('consumeAdvance flag (T4)', () => {
+    it('consumeAdvance=false → no auto-consume; a net underpay hits the PARTIAL guard', async () => {
+      advanceBalance = 50;
+      prisma.payment.findFirst.mockResolvedValue(makePayment(20));
+      await expect(
+        service.recordPayment(
+          'adv-contract-1', 20, INST_TOTAL - 50, 'CASH', 'user-1',
+          'https://slip.test/20', undefined, 'TEST-NOCONSUME', '11-1101',
+          undefined, undefined, false,
+        ),
+      ).rejects.toThrow(/PARTIAL/);
+      expect(advanceBalance).toBeCloseTo(50, 2); // advance untouched
+    });
+
+    it('consumeAdvance=false + pays full → PAID, advance left intact', async () => {
+      advanceBalance = 50;
+      prisma.payment.findFirst.mockResolvedValue(makePayment(21));
+      const result = await service.recordPayment(
+        'adv-contract-1', 21, INST_TOTAL, 'CASH', 'user-1',
+        'https://slip.test/21', undefined, 'TEST-FULL-NOCONSUME', '11-1101',
+        undefined, undefined, false,
+      );
+      expect(result.status).toBe('PAID');
+      expect(advanceBalance).toBeCloseTo(50, 2); // NOT consumed
+    });
+
+    it('consumeAdvance=true (default) → net underpay auto-consumes, balance to 0, PAID', async () => {
+      advanceBalance = 50;
+      prisma.payment.findFirst.mockResolvedValue(makePayment(22));
+      const result = await service.recordPayment(
+        'adv-contract-1', 22, INST_TOTAL - 50, 'CASH', 'user-1',
+        'https://slip.test/22', undefined, 'TEST-CONSUME', '11-1101',
+        undefined, undefined, true,
+      );
+      expect(result.status).toBe('PAID');
+      expect(advanceBalance).toBeCloseTo(0, 2); // consumed
+    });
+  });
 });

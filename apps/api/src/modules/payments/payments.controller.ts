@@ -234,6 +234,7 @@ export class PaymentsController {
       dto.depositAccountCode,
       dto.toleranceApproverId,
       dto.case,
+      dto.consumeAdvance ?? true,
     );
   }
 

@@ -68,10 +68,11 @@ export function RescheduleOverlay({
     mutationFn: async () => {
       // Reschedule posts NO JE now (DB-only). `amount`/`paymentMethod` are RecordPaymentDto
       // validation placeholders — the controller's RESCHEDULE branch returns before using them.
+      // amount=0.01 is the @Min(0.01) threshold (unambiguously "required but unused").
       const { data } = await api.post('/payments/record', {
         contractId,
         installmentNo,
-        amount: 1,
+        amount: 0.01,
         paymentMethod: 'CASH',
         case: 'RESCHEDULE',
         daysToShift: days,
@@ -81,9 +82,12 @@ export function RescheduleOverlay({
     },
     onSuccess: () => {
       toast.success('ปรับงวด (เลื่อนวันครบกำหนด) สำเร็จ');
+      // Match the parent PaymentsPage query keys so the list refreshes immediately.
       queryClient.invalidateQueries({ queryKey: ['contract', contractId] });
-      queryClient.invalidateQueries({ queryKey: ['payments'] });
       queryClient.invalidateQueries({ queryKey: ['contracts'] });
+      queryClient.invalidateQueries({ queryKey: ['pending-payments'] });
+      queryClient.invalidateQueries({ queryKey: ['pending-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['daily-summary'] });
       onSuccess();
       onClose();
     },
@@ -91,8 +95,6 @@ export function RescheduleOverlay({
   });
 
   const canSubmit = days >= 1 && !mutation.isPending;
-  const inputClass =
-    'w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 outline-hidden';
 
   return createPortal(
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-start justify-center pt-8 pb-8">
@@ -101,7 +103,7 @@ export function RescheduleOverlay({
         <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-xs border-b px-6 py-4 flex items-center justify-between">
           <button
             onClick={onClose}
-            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            className="flex items-center gap-1.5 text-sm leading-snug text-muted-foreground hover:text-foreground transition-colors"
           >
             ← กลับ
           </button>
@@ -123,6 +125,7 @@ export function RescheduleOverlay({
 
           {/* Section 2: เลื่อนกี่วัน */}
           <Section icon={<CalendarDays className="size-4" />} title="เลื่อนกี่วัน" subtitle="กำหนดจำนวนวันที่ต้องการเลื่อน">
+            <label className="block text-xs font-medium text-foreground mb-1.5 leading-snug">จำนวนวันที่เลื่อน</label>
             <div className="flex flex-wrap gap-2 mb-3">
               {QUICK_DAYS.map((d) => (
                 <button
@@ -193,13 +196,13 @@ export function RescheduleOverlay({
 
         {/* Footer */}
         <div className="sticky bottom-0 bg-background/95 backdrop-blur-xs border-t px-6 py-4 flex items-center justify-end gap-3">
-          <button onClick={onClose} className="px-6 py-2.5 text-sm border border-input rounded-lg hover:bg-muted transition-colors">
+          <button onClick={onClose} className="px-6 py-2.5 text-sm leading-snug border border-input rounded-lg hover:bg-muted transition-colors">
             ยกเลิก
           </button>
           <button
             onClick={() => mutation.mutate()}
             disabled={!canSubmit}
-            className="px-6 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 font-semibold transition-colors shadow-sm"
+            className="px-6 py-2.5 text-sm leading-snug bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 font-semibold transition-colors shadow-sm"
           >
             {mutation.isPending ? 'กำลังปรับงวด...' : 'ยืนยันปรับงวด'}
           </button>
@@ -242,8 +245,8 @@ function Section({
 function Row({ label, value, bold }: { label: string; value: string; bold?: boolean }) {
   return (
     <div className="flex justify-between items-baseline">
-      <span className="text-muted-foreground">{label}</span>
-      <span className={bold ? 'font-semibold text-foreground' : 'text-foreground'}>{value}</span>
+      <span className="text-muted-foreground leading-snug">{label}</span>
+      <span className={`leading-snug ${bold ? 'font-semibold text-foreground' : 'text-foreground'}`}>{value}</span>
     </div>
   );
 }

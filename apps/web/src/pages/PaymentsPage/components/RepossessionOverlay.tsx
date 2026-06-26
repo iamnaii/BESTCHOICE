@@ -47,6 +47,9 @@ interface RepoPreview {
 const GRADES = ['A', 'B', 'C', 'D'];
 const PREVIEW_ROLES = ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER'];
 
+/** Today's date in Asia/Bangkok (YYYY-MM-DD) — avoids UTC off-by-one during BKK evening. */
+const bkkToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
+
 /**
  * In-modal "คืนเครื่อง" (repossession) overlay — full create, mirrors EarlyPayoffOverlay's
  * portal pattern. Live P&L preview via GET /repossessions/preview/:id; submit POST /repossessions
@@ -66,7 +69,7 @@ export function RepossessionOverlay({
   const canPreview = PREVIEW_ROLES.includes(user?.role ?? '');
   const canCreate = user?.role === 'OWNER';
 
-  const [repossessedDate, setRepossessedDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [repossessedDate, setRepossessedDate] = useState(bkkToday);
   const [conditionGrade, setConditionGrade] = useState('A');
   const [appraisalPrice, setAppraisalPrice] = useState('');
   const [repairCost, setRepairCost] = useState('0');
@@ -107,10 +110,13 @@ export function RepossessionOverlay({
     },
     onSuccess: () => {
       toast.success('บันทึกการยึดคืนสำเร็จ');
+      // Match the parent PaymentsPage query keys so the queue refreshes immediately.
       queryClient.invalidateQueries({ queryKey: ['contract', contractId] });
       queryClient.invalidateQueries({ queryKey: ['contracts'] });
       queryClient.invalidateQueries({ queryKey: ['repossessions'] });
-      queryClient.invalidateQueries({ queryKey: ['payments'] });
+      queryClient.invalidateQueries({ queryKey: ['pending-payments'] });
+      queryClient.invalidateQueries({ queryKey: ['pending-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['daily-summary'] });
       onSuccess();
       onClose();
     },
@@ -133,7 +139,7 @@ export function RepossessionOverlay({
         <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-xs border-b px-6 py-4 flex items-center justify-between">
           <button
             onClick={onClose}
-            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            className="flex items-center gap-1.5 text-sm leading-snug text-muted-foreground hover:text-foreground transition-colors"
           >
             ← กลับ
           </button>
@@ -172,11 +178,11 @@ export function RepossessionOverlay({
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1.5">วันที่ยึดคืน <span className="text-destructive">*</span></label>
-                  <input type="date" value={repossessedDate} max={new Date().toISOString().slice(0, 10)} onChange={(e) => setRepossessedDate(e.target.value)} className={inputClass} />
+                  <label className="block text-xs font-medium text-foreground mb-1.5 leading-snug">วันที่ยึดคืน <span className="text-destructive">*</span></label>
+                  <input type="date" value={repossessedDate} max={bkkToday()} onChange={(e) => setRepossessedDate(e.target.value)} className={inputClass} />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1.5">เกรดสภาพ <span className="text-destructive">*</span></label>
+                  <label className="block text-xs font-medium text-foreground mb-1.5 leading-snug">เกรดสภาพ <span className="text-destructive">*</span></label>
                   <div className="flex gap-2">
                     {GRADES.map((g) => (
                       <button
@@ -198,11 +204,11 @@ export function RepossessionOverlay({
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1.5">ราคาประเมิน (฿) <span className="text-destructive">*</span></label>
+                  <label className="block text-xs font-medium text-foreground mb-1.5 leading-snug">ราคาประเมิน (฿) <span className="text-destructive">*</span></label>
                   <input type="number" min={0} step="0.01" value={appraisalPrice} onChange={(e) => setAppraisalPrice(e.target.value)} className={`${inputClass} text-right font-mono`} placeholder="0.00" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1.5">ค่าซ่อม (฿)</label>
+                  <label className="block text-xs font-medium text-foreground mb-1.5 leading-snug">ค่าซ่อม (฿)</label>
                   <input type="number" min={0} step="0.01" value={repairCost} onChange={(e) => setRepairCost(e.target.value)} className={`${inputClass} text-right font-mono`} placeholder="0.00" />
                 </div>
               </div>
@@ -214,11 +220,11 @@ export function RepossessionOverlay({
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1.5">ราคากลางเครื่อง (฿)</label>
+                  <label className="block text-xs font-medium text-foreground mb-1.5 leading-snug">ราคากลางเครื่อง (฿)</label>
                   <input type="number" min={0} step="0.01" value={marketValue} onChange={(e) => setMarketValue(e.target.value)} className={`${inputClass} text-right font-mono`} placeholder="ใช้ราคาประเมินถ้าเว้นว่าง" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1.5">ส่วนลดยอดปิด (%)</label>
+                  <label className="block text-xs font-medium text-foreground mb-1.5 leading-snug">ส่วนลดยอดปิด (%)</label>
                   <input type="number" min={0} max={100} value={discountPct} onChange={(e) => setDiscountPct(e.target.value)} className={`${inputClass} text-right font-mono`} placeholder="50" />
                 </div>
               </div>
@@ -230,24 +236,24 @@ export function RepossessionOverlay({
 
               {/* Live breakdown */}
               {!canPreview ? (
-                <div className="py-6 text-center text-sm text-muted-foreground">ดูตัวอย่าง P&L ได้เฉพาะ OWNER / ผจก.สาขา / ผจก.การเงิน</div>
+                <div className="py-6 text-center text-sm leading-snug text-muted-foreground">ดูตัวอย่าง P&L ได้เฉพาะ OWNER / ผจก.สาขา / ผจก.การเงิน</div>
               ) : previewLoading || !preview ? (
-                <div className="py-6 text-center text-sm text-muted-foreground">กำลังคำนวณ...</div>
+                <div className="py-6 text-center text-sm leading-snug text-muted-foreground">กำลังคำนวณ...</div>
               ) : (
                 <div className="rounded-xl bg-muted/60 p-4 space-y-2">
-                  <Row label="ยอดค้าง (รวม VAT)" value={`${preview.calculation.outstandingBalance.toLocaleString()} ฿`} />
-                  <Row label="ค่างวดไม่รวม VAT (÷ 1.07)" value={`${preview.calculation.principalExVat.toLocaleString()} ฿`} />
-                  <Row label="ต้นทุนคงเหลือ (financedAmount + คอม)" value={`${preview.calculation.remainingCost.toLocaleString()} ฿`} />
+                  <Row label="ยอดค้าง (รวม VAT)" value={`${preview.calculation.outstandingBalance.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿`} />
+                  <Row label="ค่างวดไม่รวม VAT (÷ 1.07)" value={`${preview.calculation.principalExVat.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿`} />
+                  <Row label="ต้นทุนคงเหลือ (financedAmount + คอม)" value={`${preview.calculation.remainingCost.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿`} />
                   <div className="border-t border-border pt-2">
-                    <Row label={`ส่วนลดลูกค้า (${preview.calculation.discountPct}%)`} value={`- ${preview.calculation.discountAmount.toLocaleString()} ฿`} destructive />
+                    <Row label={`ส่วนลดลูกค้า (${preview.calculation.discountPct}%)`} value={`- ${preview.calculation.discountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿`} destructive />
                   </div>
                   <div className="border-t border-border pt-2">
-                    <Row label="ยอดปิดสัญญา" value={`${preview.calculation.closingAmount.toLocaleString()} ฿`} bold />
+                    <Row label="ยอดปิดสัญญา" value={`${preview.calculation.closingAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿`} bold />
                   </div>
                   <div className="border-t border-border pt-2 space-y-2">
-                    <Row label="ราคากลางเครื่อง" value={`${preview.calculation.marketValue.toLocaleString()} ฿`} />
+                    <Row label="ราคากลางเครื่อง" value={`${preview.calculation.marketValue.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿`} />
                     {preview.calculation.customerRefundEnabled && (
-                      <Row label="เงินคืนลูกค้า" value={`- ${preview.calculation.customerRefund.toLocaleString()} ฿`} destructive />
+                      <Row label="เงินคืนลูกค้า" value={`- ${preview.calculation.customerRefund.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿`} destructive />
                     )}
                   </div>
                   <div
@@ -264,7 +270,7 @@ export function RepossessionOverlay({
                       <div className="text-xs text-muted-foreground leading-snug">ราคากลาง − ต้นทุนคงเหลือ − เงินคืน</div>
                     </div>
                     <div className={`text-xl font-bold ${preview.calculation.profitLoss >= 0 ? 'text-success' : 'text-destructive'}`}>
-                      {preview.calculation.profitLoss >= 0 ? '+' : ''}{preview.calculation.profitLoss.toLocaleString()} ฿
+                      {preview.calculation.profitLoss >= 0 ? '+' : ''}{preview.calculation.profitLoss.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿
                     </div>
                   </div>
                 </div>
@@ -296,14 +302,14 @@ export function RepossessionOverlay({
 
         {/* Footer */}
         <div className="sticky bottom-0 bg-background/95 backdrop-blur-xs border-t px-6 py-4 flex items-center justify-end gap-3">
-          <button onClick={onClose} className="px-6 py-2.5 text-sm border border-input rounded-lg hover:bg-muted transition-colors">
+          <button onClick={onClose} className="px-6 py-2.5 text-sm leading-snug border border-input rounded-lg hover:bg-muted transition-colors">
             ยกเลิก
           </button>
           <button
             onClick={() => mutation.mutate()}
             disabled={!canSubmit}
             title={!canCreate ? 'เฉพาะเจ้าของ (OWNER) ยึดคืนได้' : appraisalNum <= 0 ? 'กรุณาระบุราคาประเมิน' : undefined}
-            className="px-6 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 font-semibold transition-colors shadow-sm"
+            className="px-6 py-2.5 text-sm leading-snug bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 font-semibold transition-colors shadow-sm"
           >
             {mutation.isPending ? 'กำลังบันทึก...' : 'ยืนยันยึดคืน'}
           </button>
@@ -366,8 +372,8 @@ function Row({
     : 'text-foreground';
   return (
     <div className="flex justify-between items-baseline text-sm">
-      <span className="text-muted-foreground">{label}</span>
-      <span className={valueClass}>{value}</span>
+      <span className="text-muted-foreground leading-snug">{label}</span>
+      <span className={`leading-snug ${valueClass}`}>{value}</span>
     </div>
   );
 }

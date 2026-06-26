@@ -324,6 +324,8 @@ interface ApproverRow {
   id: string;
   name: string;
   role: string;
+  isActive?: boolean;
+  deletedAt?: string | null;
 }
 
 // ─── JE Preview panel (always visible) ────────────────────────────────────────
@@ -761,7 +763,14 @@ export function RecordPaymentWizard({
     staleTime: 60_000,
   });
   const approvers = useMemo(
-    () => approverData.filter((u) => WAIVER_APPROVER_ROLES.includes(u.role) && u.id !== user?.id),
+    () =>
+      approverData.filter(
+        (u) =>
+          WAIVER_APPROVER_ROLES.includes(u.role) &&
+          u.id !== user?.id && // 4-eyes: approver ≠ recorder
+          u.isActive !== false &&
+          !u.deletedAt, // exclude inactive/soft-deleted (server rejects them anyway)
+      ),
     [approverData, user?.id],
   );
 
@@ -780,9 +789,11 @@ export function RecordPaymentWizard({
 
   // Auto-detect case
   const receivedNum = parseFloat(amountReceived) || 0;
+  // Use NET late fee (gross − waiver) so detectCase classifies a correctly-entered
+  // net payment as NORMAL (not UNDERPAY) when a waiver is active.
   const expectedTotal = useMemo(
-    () => amountDueDecimal.plus(currentLateFee),
-    [amountDueDecimal, currentLateFee],
+    () => amountDueDecimal.plus(netLateFee),
+    [amountDueDecimal, netLateFee],
   );
   const detectedCase = useMemo(
     () => detectCase(receivedNum, expectedTotal, advanceBalance, consumeAdvance),

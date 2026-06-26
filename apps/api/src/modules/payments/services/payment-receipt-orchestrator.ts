@@ -318,6 +318,14 @@ export class PaymentReceiptOrchestrator {
         isPartialClear = true;
       }
 
+      // D1: a late-fee waiver only makes sense on the receipt that CLOSES the installment.
+      // Rejecting partial+waiver keeps lateFeeWaived=true safe (the installment becomes PAID,
+      // so autoAllocate/applyCreditBalance skip it) and avoids preview/template + reconstructPrior
+      // drift on a follow-up receipt (C1/C2/W2). Waive-on-partial → use the standalone waiver flow.
+      if (waiverAmount.gt(0) && isPartialClear) {
+        throw new BadRequestException('อนุโลมค่าปรับทำได้เฉพาะตอนชำระปิดงวด (ไม่รองรับจ่ายบางส่วน)');
+      }
+
       // For OVERPAY_ADVANCE: amountPaid = installmentTotal (full clear via cash + advance posting).
       // Otherwise: amountPaid = cash + consumed advance (may or may not fully clear).
       const recordedAmountPaid =

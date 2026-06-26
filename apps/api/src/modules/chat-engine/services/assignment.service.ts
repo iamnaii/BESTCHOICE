@@ -2,6 +2,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  BadRequestException,
   ForbiddenException,
   Inject,
   Optional,
@@ -9,6 +10,9 @@ import {
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ChatRoomStatus } from '@prisma/client';
 import { IChatGateway, CHAT_GATEWAY_TOKEN } from '../interfaces/chat-gateway.interface';
+
+/** Roles eligible to be assigned/transferred chat rooms. Single source of truth — do NOT duplicate inline. */
+const CHAT_ELIGIBLE_ROLES = ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES'] as const;
 
 /**
  * AssignmentService — manages staff ↔ room assignment.
@@ -94,6 +98,7 @@ export class AssignmentService {
       select: { id: true, assignedToId: true, customerId: true },
     });
     if (!room) throw new NotFoundException('ไม่พบ room');
+    if (toStaffId === fromStaffId) throw new BadRequestException('ไม่สามารถโอนให้ตัวเองได้');
     await this.assertStaffExists(toStaffId);
 
     // T4-C11: block handoff if customer has a signed / active contract
@@ -240,7 +245,7 @@ export class AssignmentService {
       where: {
         deletedAt: null,
         isActive: true,
-        role: { in: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES'] },
+        role: { in: [...CHAT_ELIGIBLE_ROLES] },
       },
       select: { id: true },
     });
@@ -297,7 +302,7 @@ export class AssignmentService {
         where: {
           deletedAt: null,
           isActive: true,
-          role: { in: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES'] },
+          role: { in: [...CHAT_ELIGIBLE_ROLES] },
         },
         select: { id: true, name: true, email: true },
         orderBy: { name: 'asc' },

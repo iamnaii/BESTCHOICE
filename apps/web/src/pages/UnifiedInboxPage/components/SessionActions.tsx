@@ -97,7 +97,7 @@ export default function SessionActions({
             onClick={() => setShowStaffList((v) => !v)}
             aria-haspopup="menu"
             aria-expanded={showStaffList}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-warning/10 text-warning rounded-lg hover:bg-warning/20 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs leading-snug bg-warning/10 text-warning rounded-lg hover:bg-warning/20 transition-colors"
           >
             <ArrowRightLeft className="w-3.5 h-3.5" />
             โอนให้พนักงาน
@@ -105,7 +105,7 @@ export default function SessionActions({
           </button>
 
           {showStaffList && (
-            <div className="absolute left-0 top-full mt-1 w-48 bg-card border border-border rounded-lg shadow-lg z-20 py-1">
+            <div role="menu" className="absolute left-0 top-full mt-1 w-48 bg-card border border-border rounded-lg shadow-lg z-20 py-1">
               {staffQuery.isLoading && (
                 <div className="flex items-center justify-center gap-2 px-3 py-3 text-xs text-muted-foreground">
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -115,14 +115,17 @@ export default function SessionActions({
               {staffQuery.isError && (
                 <div className="px-3 py-2 text-xs text-destructive">โหลดรายชื่อไม่ได้</div>
               )}
-              {staffQuery.data && (staffQuery.data as any[]).length === 0 && (
-                <div className="px-3 py-2 text-xs text-muted-foreground">ไม่มีพนักงานให้โอน</div>
-              )}
+              {staffQuery.data &&
+                (staffQuery.data as any[] | undefined)?.filter((s: any) => s.id !== currentUserId)
+                  .length === 0 && (
+                  <div className="px-3 py-2 text-xs text-muted-foreground">ไม่มีพนักงานให้โอน</div>
+                )}
               {(staffQuery.data as any[] | undefined)
                 ?.filter((s: any) => s.id !== currentUserId)
                 .map((staff: any) => (
                   <button
                     key={staff.id}
+                    role="menuitem"
                     onClick={() => {
                       onTransfer(staff.id);
                       setShowStaffList(false);

@@ -271,6 +271,7 @@ export default function UnifiedInboxPage() {
       toast.success('โอนห้องสำเร็จ');
       queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
       queryClient.invalidateQueries({ queryKey: ['chat-room', activeRoomId] });
+      queryClient.invalidateQueries({ queryKey: ['staff-online'] });
     },
   });
 

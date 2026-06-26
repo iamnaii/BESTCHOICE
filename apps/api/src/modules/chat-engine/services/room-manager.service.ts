@@ -436,6 +436,7 @@ export class RoomManagerService {
           assignedTo: { select: { id: true, name: true, avatarUrl: true } },
           tags: true,
           messages: {
+            where: { deletedAt: null },
             orderBy: { createdAt: 'desc' },
             take: 1,
             select: { text: true, role: true, createdAt: true },
@@ -808,6 +809,7 @@ export class RoomManagerService {
         channel: true,
         lastMessageAt: true,
         messages: {
+          where: { deletedAt: null },
           orderBy: { createdAt: 'desc' },
           take: 1,
           select: { text: true, createdAt: true },

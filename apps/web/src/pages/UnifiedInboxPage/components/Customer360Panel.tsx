@@ -765,7 +765,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
                   type="button"
                   key={c.id}
                   onClick={() => navigate(`/contracts/${c.id}`)}
-                  className="w-full text-left p-2.5 bg-muted rounded-lg text-xs cursor-pointer hover:bg-accent transition-colors"
+                  className="block w-full text-left p-2.5 bg-muted rounded-lg text-xs cursor-pointer hover:bg-accent transition-colors"
                   title="ดูรายละเอียดสัญญา"
                 >
                   <div className="flex items-center justify-between mb-1">

@@ -381,16 +381,27 @@ export default function ChatPanel({
 
   // Screen-reader announcements: new inbound message + send failure.
   const [liveMsg, setLiveMsg] = useState('');
-  const lastAnnouncedRef = useRef<string | null>(null);
+  const announcedRef = useRef<{ roomId: string | null; lastId: string | null }>({
+    roomId: null,
+    lastId: null,
+  });
   useEffect(() => {
     if (!messages.length) return;
     const last = messages[messages.length - 1];
-    if (last?.role === 'CUSTOMER' && last?.id && last.id !== lastAnnouncedRef.current) {
-      lastAnnouncedRef.current = last.id;
+    // Ignore a stale array still holding the previous room's messages.
+    if (last?.roomId && roomId && last.roomId !== roomId) return;
+    const a = announcedRef.current;
+    if (a.roomId !== roomId) {
+      // First sight of this room's messages — adopt the last as seen, no announce.
+      announcedRef.current = { roomId: roomId ?? null, lastId: last?.id ?? null };
+      return;
+    }
+    if (last?.role === 'CUSTOMER' && last?.id && last.id !== a.lastId) {
+      announcedRef.current = { roomId: roomId ?? null, lastId: last.id };
       const text = (last.text ?? '').trim();
       setLiveMsg(text ? `ข้อความใหม่: ${text.slice(0, 60)}` : 'ข้อความใหม่จากลูกค้า');
     }
-  }, [messages]);
+  }, [messages, roomId]);
 
   // "g" → jump the open thread to the latest message (vim-style). Guarded so it
   // never fires while typing in the composer.
@@ -628,7 +639,6 @@ export default function ChatPanel({
           <button
             onClick={() => setShowActions(!showActions)}
             aria-label="ตัวเลือกเพิ่มเติม"
-            aria-haspopup="menu"
             aria-expanded={showActions}
             className="p-1.5 min-h-11 min-w-11 inline-flex items-center justify-center text-muted-foreground hover:text-foreground/70 hover:bg-accent rounded-lg"
           >
@@ -660,12 +670,14 @@ export default function ChatPanel({
         </div>
       )}
 
+      {/* Screen-reader live regions — siblings of the log, not nested inside it */}
+      <div className="sr-only" aria-live="polite" aria-atomic="true">{liveMsg}</div>
+      <div className="sr-only" aria-live="assertive" aria-atomic="true">
+        {(failedSends ?? []).length > 0 ? 'ส่งข้อความไม่สำเร็จ' : ''}
+      </div>
+
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-3" role="log" aria-label="ประวัติข้อความ">
-        <div className="sr-only" aria-live="polite" aria-atomic="true">{liveMsg}</div>
-        <div className="sr-only" aria-live="assertive" aria-atomic="true">
-          {(failedSends ?? []).length > 0 ? 'ส่งข้อความไม่สำเร็จ' : ''}
-        </div>
         {isLoadingMessages ? (
           <div className="flex items-center justify-center py-12 text-muted-foreground text-sm">
             กำลังโหลดข้อความ...

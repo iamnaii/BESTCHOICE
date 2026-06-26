@@ -111,10 +111,10 @@ describe('PaymentsService', () => {
         count: jest.fn().mockResolvedValue(1),
         createMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
-      // T1: 2B_ONLY previewJournal fetches the posted 2A accrual JE for context.
-      // null → no 2A block; the live 2B lines/totals are unchanged.
+      // T1: 2B_ONLY previewJournal fetches posted 2A accrual + advance-consume JEs.
+      // [] → no 2A block; the live 2B lines/totals are unchanged.
       journalEntry: {
-        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([]),
       },
       // recordPayment auto-cancels active partial-payment QRs to prevent double-pay
       partialPaymentLink: {

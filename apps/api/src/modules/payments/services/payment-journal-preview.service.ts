@@ -313,18 +313,30 @@ export class PaymentJournalPreviewService {
       }
     }
 
-    // 2B_ONLY: fetch the already-posted 2A accrual JE (read-only context block).
-    // Fetched by entryNumber (== stamped accrualJournalEntryId, unique). The
-    // advance-consume-on-accrual JE is intentionally EXCLUDED so the 2A block
-    // stays the clean accrual (mockup §2A = 2,115.00); full reconciliation of a
-    // partly-pre-cleared 11-2103 (reconstructPrior in the 2B leg) is Phase 2.
+    // 2B_ONLY: fetch the already-POSTED 2A accrual context (read-only). Includes
+    // BOTH the accrual JE (by entryNumber == stamped accrualJournalEntryId) AND any
+    // advance-consume-on-accrual JE (Dr 21-1103 / Cr 11-2103, referenceId-tagged by
+    // InstallmentAccrual2ATemplate) so the 2A block truthfully reflects the real
+    // 11-2103 state. `status:'POSTED'` excludes a VOIDED accrual (void keeps
+    // deletedAt null in this codebase — see shop-collect void regression test).
+    // The mockup case has no consume JE → 2A = the clean 2,115.00 accrual.
+    // NOTE (Phase 2): the live 2B leg still credits the full installmentTotal to
+    // 11-2103; reconciling that against prior clears (reconstructPrior) is §4.1.
     let accrualLineRows: { accountCode: string; debit: Prisma.Decimal; credit: Prisma.Decimal; description: string | null }[] = [];
     if (!isConsolidated && inst.accrualJournalEntryId) {
-      const accrualEntry = await this.prisma.journalEntry.findFirst({
-        where: { entryNumber: inst.accrualJournalEntryId, deletedAt: null },
+      const accrualEntries = await this.prisma.journalEntry.findMany({
+        where: {
+          status: 'POSTED',
+          deletedAt: null,
+          OR: [
+            { entryNumber: inst.accrualJournalEntryId },
+            { referenceId: `${inst.id}:advance-consume-on-accrual` },
+          ],
+        },
         include: { lines: { where: { deletedAt: null } } },
+        orderBy: { createdAt: 'asc' },
       });
-      accrualLineRows = accrualEntry?.lines ?? [];
+      accrualLineRows = accrualEntries.flatMap((e) => e.lines);
     }
 
     // Resolve account names from CoA (cover both live + accrual codes in one query)

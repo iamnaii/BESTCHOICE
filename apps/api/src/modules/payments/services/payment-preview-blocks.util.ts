@@ -43,6 +43,12 @@ export interface PreviewBlocksResult {
   subtotals: { '2A'?: BlockSubtotal; '2B': BlockSubtotal };
 }
 
+/**
+ * Sum the per-line `.toFixed(2)` strings the service already emits. Intentional:
+ * the subtotal must equal the sum of the values DISPLAYED in the rows (so the UI
+ * reconciles exactly), and the upstream line values are already 2dp Decimals, so
+ * Σ(round(line)) === round(Σ(raw)). Decimal arithmetic throughout — no float.
+ */
 function summarise(rows: { debit: string; credit: string }[]): BlockSubtotal {
   let dr = new Prisma.Decimal(0);
   let cr = new Prisma.Decimal(0);

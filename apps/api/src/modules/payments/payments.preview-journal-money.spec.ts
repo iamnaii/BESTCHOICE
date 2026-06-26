@@ -151,10 +151,10 @@ describe('PaymentsService.previewJournal (characterization)', () => {
         findMany: jest.fn().mockResolvedValue([]),
       },
       journalEntry: {
-        // T1: 2B_ONLY preview fetches the posted 2A accrual JE for context.
-        // null → no 2A block (accrual2A undefined); the live 2B money lines +
+        // T1: 2B_ONLY preview fetches posted 2A accrual + advance-consume JEs.
+        // [] → no 2A block (accrual2A undefined); the live 2B money lines +
         // totals are unchanged, so these characterization assertions still hold.
-        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([]),
       },
     };
 

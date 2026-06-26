@@ -42,6 +42,7 @@ async function ensureFinanceCompany(): Promise<void> {
 describe('payment-journal-preview — 2A/2B blocks (integration)', () => {
   let svc: PaymentJournalPreviewService;
   let contractId: string;
+  let schedule5Id: string;
 
   beforeAll(async () => {
     await prisma.journalLine.deleteMany({});
@@ -63,6 +64,7 @@ describe('payment-journal-preview — 2A/2B blocks (integration)', () => {
       where: { contractId_installmentNo: { contractId: c.id, installmentNo: 5 } },
     });
     await new InstallmentAccrual2ATemplate(journal, prisma as any).execute(sched5.id);
+    schedule5Id = sched5.id;
 
     svc = new PaymentJournalPreviewService(prisma as any, undefined);
   });
@@ -107,5 +109,27 @@ describe('payment-journal-preview — 2A/2B blocks (integration)', () => {
     expect(res.lines.every((l) => l.block === '2B' && l.posted === false)).toBe(true);
     expect(res.subtotals['2B'].balanced).toBe(true);
     expect(res.lines.some((l) => l.accountCode === '11-2103' && Number(l.credit) > 0)).toBe(true);
+  });
+
+  // Critical #1 (code-review): a VOIDED accrual (status=VOIDED, deletedAt still null)
+  // must NOT be shown as posted 2A context. Run last — it mutates shared state.
+  it('excludes a VOIDED accrual from the 2A context (status:POSTED filter)', async () => {
+    const sched = await prisma.installmentSchedule.findUniqueOrThrow({ where: { id: schedule5Id } });
+    await prisma.journalEntry.updateMany({
+      where: { entryNumber: sched.accrualJournalEntryId! },
+      data: { status: 'VOIDED' },
+    });
+
+    const res = await svc.previewJournal({
+      contractId,
+      installmentNo: 5,
+      amountReceived: 1515.83,
+      depositAccountCode: '11-1201',
+      lateFee: 0,
+      case: 'NORMAL',
+    });
+
+    expect(res.accrual2A, 'voided accrual must not appear as 2A context').toBeUndefined();
+    expect(res.subtotals['2A']).toBeUndefined();
   });
 });

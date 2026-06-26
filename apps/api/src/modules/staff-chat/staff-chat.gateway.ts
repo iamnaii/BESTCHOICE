@@ -223,9 +223,12 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
     @MessageBody() data: { roomId: string },
   ): void {
     const userId = (client as any).userId as string;
+    const userName = (client as any).userName as string | undefined;
     client.to(CHAT_ROOMS.room(data.roomId)).emit(CHAT_EVENTS.TYPING, {
       roomId: data.roomId,
       userId,
+      userName,
+      role: 'STAFF',
       isTyping: true,
     });
   }
@@ -236,9 +239,12 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
     @MessageBody() data: { roomId: string },
   ): void {
     const userId = (client as any).userId as string;
+    const userName = (client as any).userName as string | undefined;
     client.to(CHAT_ROOMS.room(data.roomId)).emit(CHAT_EVENTS.TYPING, {
       roomId: data.roomId,
       userId,
+      userName,
+      role: 'STAFF',
       isTyping: false,
     });
   }

@@ -1,4 +1,14 @@
-import { Injectable, ForbiddenException, Logger, Optional, Inject, forwardRef } from '@nestjs/common';
+import {
+  Injectable,
+  ForbiddenException,
+  NotFoundException,
+  BadRequestException,
+  Logger,
+  Optional,
+  Inject,
+  forwardRef,
+} from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ReceiptsService } from '../receipts/receipts.service';
 import { AuditService } from '../audit/audit.service';
@@ -229,6 +239,110 @@ export class PaymentsService {
       lateFeeWaiverReasonCode,
       waiverApproverId,
     );
+  }
+
+  // ─── Phase 4: draft/post split (บันทึก Draft → ลงบัญชี) ─────────────────────
+  // A payment is DRAFT iff it has a live PaymentDraft row. No money moves while a
+  // draft exists — posting reads the params and runs the normal recordPayment flow.
+
+  /** Save/replace the unposted draft receipt for an installment (no JE, no money movement). */
+  async saveDraft(
+    contractId: string,
+    installmentNo: number,
+    params: {
+      amount: number;
+      paymentMethod: string;
+      depositAccountCode?: string;
+      lateFee?: number;
+      lateFeeWaiverAmount?: number;
+      lateFeeWaiverReasonCode?: string;
+      waiverApproverId?: string;
+      consumeAdvance?: boolean;
+      paidDate?: string;
+      paymentCase?: PaymentCase;
+      transactionRef?: string;
+      evidenceUrl?: string;
+      notes?: string;
+    },
+    createdById: string,
+  ) {
+    const payment = await this.prisma.payment.findFirst({
+      where: { contractId, installmentNo, deletedAt: null },
+    });
+    if (!payment) throw new NotFoundException('ไม่พบงวดที่ต้องการ');
+    if (payment.status === 'PAID') throw new BadRequestException('งวดนี้ชำระแล้ว');
+
+    const data = {
+      amount: new Prisma.Decimal(params.amount.toString()),
+      paymentMethod: params.paymentMethod,
+      depositAccountCode: params.depositAccountCode ?? null,
+      lateFee: params.lateFee != null ? new Prisma.Decimal(params.lateFee.toString()) : null,
+      lateFeeWaiverAmount:
+        params.lateFeeWaiverAmount != null ? new Prisma.Decimal(params.lateFeeWaiverAmount.toString()) : null,
+      lateFeeWaiverReasonCode: params.lateFeeWaiverReasonCode ?? null,
+      waiverApproverId: params.waiverApproverId ?? null,
+      consumeAdvance: params.consumeAdvance ?? true,
+      paidDate: params.paidDate ? new Date(params.paidDate) : null,
+      paymentCase: params.paymentCase ?? null,
+      transactionRef: params.transactionRef ?? null,
+      evidenceUrl: params.evidenceUrl ?? null,
+      notes: params.notes ?? null,
+      createdById,
+    };
+    return this.prisma.paymentDraft.upsert({
+      where: { paymentId: payment.id },
+      create: { paymentId: payment.id, ...data },
+      update: { ...data, deletedAt: null }, // re-drafting after a cancel un-deletes
+    });
+  }
+
+  /** The live draft for a payment (null if none). */
+  async getDraft(paymentId: string) {
+    return this.prisma.paymentDraft.findFirst({ where: { paymentId, deletedAt: null } });
+  }
+
+  /** Discard a draft (back to plain PENDING). */
+  async cancelDraft(paymentId: string) {
+    const draft = await this.prisma.paymentDraft.findFirst({ where: { paymentId, deletedAt: null } });
+    if (!draft) throw new NotFoundException('ไม่พบฉบับร่าง');
+    await this.prisma.paymentDraft.update({ where: { id: draft.id }, data: { deletedAt: new Date() } });
+    return { success: true };
+  }
+
+  /** Post a draft: run the normal recordPayment money flow, then retire the draft.
+   *  `postedById` is the user who clicked ลงบัญชี (the checker); the payment's
+   *  `recordedById` is the draft CREATOR (the maker) so the 4-eyes SoD guard
+   *  (waiverApproverId ≠ recordedById) still holds when the approver posts. */
+  async postDraft(paymentId: string, postedById: string) {
+    const draft = await this.prisma.paymentDraft.findFirst({ where: { paymentId, deletedAt: null } });
+    if (!draft) throw new NotFoundException('ไม่พบฉบับร่าง');
+    const payment = await this.prisma.payment.findUnique({ where: { id: paymentId } });
+    if (!payment || payment.deletedAt) throw new NotFoundException('ไม่พบงวดที่ต้องการ');
+    void postedById; // checker identity captured at the HTTP/audit layer; maker records the payment
+
+    const result = await this.recordPayment(
+      payment.contractId,
+      payment.installmentNo,
+      Number(draft.amount),
+      draft.paymentMethod,
+      draft.createdById, // recordedById = the maker (draft creator), preserves SoD vs waiver approver
+      draft.evidenceUrl ?? undefined,
+      draft.notes ?? undefined,
+      draft.transactionRef ?? undefined,
+      draft.depositAccountCode ?? undefined,
+      undefined, // toleranceApproverId — drafts don't carry tolerance approval
+      (draft.paymentCase as PaymentCase | null) ?? undefined,
+      draft.consumeAdvance,
+      draft.paidDate ?? undefined,
+      draft.lateFeeWaiverAmount != null ? Number(draft.lateFeeWaiverAmount) : undefined,
+      draft.lateFeeWaiverReasonCode ?? undefined,
+      draft.waiverApproverId ?? undefined,
+    );
+
+    // Retire the draft once posted (best-effort; a re-post is blocked by the
+    // "งวดนี้ชำระแล้ว" guard in recordPayment, so a lingering draft can't double-post).
+    await this.prisma.paymentDraft.update({ where: { id: draft.id }, data: { deletedAt: new Date() } });
+    return result;
   }
 
   // ─── Auto-allocate payment to next pending installment ─

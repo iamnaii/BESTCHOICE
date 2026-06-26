@@ -187,6 +187,42 @@ export default function PaymentsPage() {
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
+  // Phase 4 — draft/post split mutations
+  const draftMutation = useMutation({
+    mutationFn: async (body: Record<string, unknown>) => (await api.post('/payments/draft', body)).data,
+    onSuccess: () => {
+      toast.success('บันทึกฉบับร่างแล้ว (ยังไม่ลงบัญชี)');
+      queryClient.invalidateQueries({ queryKey: ['pending-payments'] });
+      queryClient.invalidateQueries({ queryKey: ['payment-draft'] });
+      setShowPayWizard(false);
+      setSelectedPayment(null);
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+  const postDraftMutation = useMutation({
+    mutationFn: async (paymentId: string) => (await api.post(`/payments/${paymentId}/post-draft`, {})).data,
+    onSuccess: () => {
+      toast.success('ลงบัญชีฉบับร่างสำเร็จ');
+      queryClient.invalidateQueries({ queryKey: ['pending-payments'] });
+      queryClient.invalidateQueries({ queryKey: ['daily-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['payment-draft'] });
+      setShowPayWizard(false);
+      setSelectedPayment(null);
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+  const cancelDraftMutation = useMutation({
+    mutationFn: async (paymentId: string) => (await api.delete(`/payments/draft/${paymentId}`)).data,
+    onSuccess: () => {
+      toast.success('ยกเลิกฉบับร่างแล้ว');
+      queryClient.invalidateQueries({ queryKey: ['pending-payments'] });
+      queryClient.invalidateQueries({ queryKey: ['payment-draft'] });
+      setShowPayWizard(false);
+      setSelectedPayment(null);
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
   // Batch payment mutation
   const batchMutation = useMutation({
     mutationFn: async (payments: { contractId: string; installmentNo: number; amount: number; paymentMethod: string }[]) => {
@@ -657,7 +693,35 @@ export default function PaymentsPage() {
             setShowPayWizard(false);
             setSelectedPayment(null);
           }}
-          isSubmitting={recordMutation.isPending}
+          onSaveDraft={(payload) => {
+            draftMutation.mutate({
+              contractId: payload.contractId,
+              installmentNo: payload.installmentNo,
+              amount: payload.amount,
+              paymentMethod: payload.paymentMethod,
+              depositAccountCode: payload.depositAccountCode,
+              transactionRef: payload.referenceNumber || `${payload.paymentMethod}-${Date.now()}`,
+              wizardMethod: payload.wizardMethod,
+              referenceNumber: payload.referenceNumber,
+              slipUrl: payload.slipUrl,
+              memo: payload.memo,
+              case: payload.case,
+              consumeAdvance: payload.consumeAdvance,
+              paidDate: payload.paidDate,
+              lateFee: payload.lateFee,
+              lateFeeWaiverAmount: payload.lateFeeWaiverAmount,
+              lateFeeWaiverReasonCode: payload.lateFeeWaiverReasonCode,
+              waiverApproverId: payload.waiverApproverId,
+            });
+          }}
+          onPostDraft={(paymentId) => postDraftMutation.mutate(paymentId)}
+          onCancelDraft={(paymentId) => cancelDraftMutation.mutate(paymentId)}
+          isSubmitting={
+            recordMutation.isPending ||
+            draftMutation.isPending ||
+            postDraftMutation.isPending ||
+            cancelDraftMutation.isPending
+          }
           defaultDepositAccountCode={user?.defaultCashAccountCode ?? '11-1101'}
         />
       )}

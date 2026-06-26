@@ -124,6 +124,17 @@ describe('PaymentsService — advance balance (Task 4)', () => {
         }),
         count: jest.fn().mockResolvedValue(1), // checkContractCompletion
         aggregate: jest.fn().mockResolvedValue({ _sum: { amountPaid: INST_TOTAL, lateFee: 0 } }),
+        findUnique: jest.fn().mockImplementation(() =>
+          Promise.resolve(makePayment(1)),
+        ),
+      },
+      // Phase 4 draft/post split
+      paymentDraft: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        upsert: jest.fn().mockImplementation(({ create, update }: { create: object; update: object }) =>
+          Promise.resolve({ id: 'draft-1', ...create, ...update }),
+        ),
+        update: jest.fn().mockResolvedValue({ id: 'draft-1' }),
       },
       user: {
         findUnique: jest.fn().mockResolvedValue({ id: 'user-1', defaultCashAccountCode: null, deletedAt: null }),
@@ -770,6 +781,58 @@ describe('PaymentsService — advance balance (Task 4)', () => {
           999, 'goodwill', 'approver-1', // 999 > gross 50
         ),
       ).rejects.toThrow(/เกินค่าปรับ/);
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Phase 4: draft/post split (บันทึก Draft → ลงบัญชี)
+  // ─────────────────────────────────────────────────────────────────────────────
+  describe('draft/post split (Phase 4)', () => {
+    it('saveDraft stores params WITHOUT posting a JE (no money movement)', async () => {
+      prisma.payment.findFirst.mockResolvedValue(makePayment(70));
+      await service.saveDraft(
+        'adv-contract-1', 70,
+        { amount: INST_TOTAL, paymentMethod: 'CASH', consumeAdvance: true },
+        'user-1',
+      );
+      expect(prisma.paymentDraft.upsert).toHaveBeenCalled();
+      expect(receiptPrimitiveExecute).not.toHaveBeenCalled(); // no JE while draft
+      expect(prisma.payment.update).not.toHaveBeenCalled(); // nothing booked
+    });
+
+    it('saveDraft rejects a PAID installment', async () => {
+      prisma.payment.findFirst.mockResolvedValue(makePayment(71, { status: 'PAID' }));
+      await expect(
+        service.saveDraft('adv-contract-1', 71, { amount: INST_TOTAL, paymentMethod: 'CASH' }, 'user-1'),
+      ).rejects.toThrow(/ชำระแล้ว/);
+    });
+
+    it('postDraft runs recordPayment (posts JE) then retires the draft', async () => {
+      prisma.paymentDraft.findFirst.mockResolvedValue({
+        id: 'draft-9', paymentId: 'adv-payment-9', amount: D(INST_TOTAL), paymentMethod: 'CASH',
+        depositAccountCode: '11-1101', consumeAdvance: true, transactionRef: 'TEST-DRAFT-9',
+        evidenceUrl: null, notes: null, paidDate: null, paymentCase: null,
+        lateFeeWaiverAmount: null, lateFeeWaiverReasonCode: null, waiverApproverId: null,
+        createdById: 'maker-1', // recordedById = maker (preserves SoD vs approver)
+      });
+      prisma.payment.findUnique.mockResolvedValue(makePayment(9));
+      prisma.payment.findFirst.mockResolvedValue(makePayment(9));
+      prisma.installmentSchedule.findUnique.mockResolvedValue({ id: 'sch-9', vat60dayJournalEntryId: null });
+
+      await service.postDraft('adv-payment-9', 'manager-1');
+
+      expect(receiptPrimitiveExecute).toHaveBeenCalled(); // JE posted on post
+      expect(prisma.paymentDraft.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ deletedAt: expect.any(Date) }) }),
+      );
+    });
+
+    it('cancelDraft soft-deletes the draft', async () => {
+      prisma.paymentDraft.findFirst.mockResolvedValue({ id: 'draft-c', paymentId: 'adv-payment-c' });
+      await service.cancelDraft('adv-payment-c');
+      expect(prisma.paymentDraft.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ deletedAt: expect.any(Date) }) }),
+      );
     });
   });
 });

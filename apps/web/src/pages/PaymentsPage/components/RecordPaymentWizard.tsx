@@ -544,29 +544,37 @@ function toApiCase(detected: DetectedCase): PaymentCase {
 
 // ─── Main dialog (single screen) ─────────────────────────────────────────────
 
+export interface WizardSubmitPayload {
+  contractId: string;
+  installmentNo: number;
+  amount: number;
+  paymentMethod: string;
+  depositAccountCode: string;
+  lateFee: number;
+  case: PaymentCase;
+  wizardMethod: WizardMethod;
+  referenceNumber?: string;
+  slipUrl?: string;
+  memo?: string;
+  notes?: string;
+  consumeAdvance: boolean;
+  paidDate: string;
+  lateFeeWaiverAmount?: number;
+  lateFeeWaiverReasonCode?: string;
+  waiverApproverId?: string;
+}
+
 interface RecordPaymentWizardProps {
   open: boolean;
   payment: PendingPayment;
   onClose: () => void;
-  onSubmit: (payload: {
-    contractId: string;
-    installmentNo: number;
-    amount: number;
-    paymentMethod: string;
-    depositAccountCode: string;
-    lateFee: number;
-    case: PaymentCase;
-    wizardMethod: WizardMethod;
-    referenceNumber?: string;
-    slipUrl?: string;
-    memo?: string;
-    notes?: string;
-    consumeAdvance: boolean;
-    paidDate: string;
-    lateFeeWaiverAmount?: number;
-    lateFeeWaiverReasonCode?: string;
-    waiverApproverId?: string;
-  }) => void;
+  onSubmit: (payload: WizardSubmitPayload) => void;
+  /** Phase 4 — save the current form as an unposted draft (no JE). */
+  onSaveDraft?: (payload: WizardSubmitPayload) => void;
+  /** Phase 4 — post an existing draft (ลงบัญชี). */
+  onPostDraft?: (paymentId: string) => void;
+  /** Phase 4 — discard an existing draft. */
+  onCancelDraft?: (paymentId: string) => void;
   isSubmitting: boolean;
   defaultDepositAccountCode?: string;
 }
@@ -576,6 +584,9 @@ export function RecordPaymentWizard({
   payment,
   onClose,
   onSubmit,
+  onSaveDraft,
+  onPostDraft,
+  onCancelDraft,
   isSubmitting,
   defaultDepositAccountCode = '11-1101',
 }: RecordPaymentWizardProps) {
@@ -774,6 +785,18 @@ export function RecordPaymentWizard({
     [approverData, user?.id],
   );
 
+  // Phase 4 — existing unposted draft for this installment (if any).
+  const { data: existingDraft } = useQuery<{ id: string; amount: string } | null>({
+    queryKey: ['payment-draft', payment.id],
+    queryFn: async () => {
+      const { data } = await api.get(`/payments/draft/${payment.id}`);
+      return data ?? null;
+    },
+    enabled: open,
+    staleTime: 0,
+  });
+  const hasDraft = !!existingDraft;
+
   // Net to collect after the waiver + the (optional) advance deduction — drives tiles.
   const netDue = useMemo(() => {
     const owed = amountDueDecimal.plus(netLateFee).sub(amountPaidDecimal); // NET late fee
@@ -870,33 +893,39 @@ export function RecordPaymentWizard({
     return true;
   };
 
+  const buildPayload = (): WizardSubmitPayload => ({
+    contractId: payment.contract.id,
+    installmentNo: payment.installmentNo,
+    amount: receivedNum,
+    paymentMethod:
+      method === 'TRANSFER'
+        ? 'BANK_TRANSFER'
+        : method === 'QR'
+        ? 'QR_EWALLET'
+        : method === 'CARD'
+        ? 'CARD'
+        : 'CASH',
+    depositAccountCode,
+    lateFee: currentLateFee.toNumber(),
+    case: apiCase,
+    wizardMethod: method,
+    referenceNumber: referenceNumber || undefined,
+    slipUrl: slipUrl || undefined,
+    memo: memo || undefined,
+    consumeAdvance,
+    paidDate,
+    lateFeeWaiverAmount: waiverDec.gt(0) ? waiverDec.toNumber() : undefined,
+    lateFeeWaiverReasonCode: waiverDec.gt(0) ? waiverReasonCode : undefined,
+    waiverApproverId: waiverDec.gt(0) ? waiverApproverId : undefined,
+  });
+
   const actuallySubmit = () => {
     setShowPartialConfirm(false);
-    onSubmit({
-      contractId: payment.contract.id,
-      installmentNo: payment.installmentNo,
-      amount: receivedNum,
-      paymentMethod:
-        method === 'TRANSFER'
-          ? 'BANK_TRANSFER'
-          : method === 'QR'
-          ? 'QR_EWALLET'
-          : method === 'CARD'
-          ? 'CARD'
-          : 'CASH',
-      depositAccountCode,
-      lateFee: currentLateFee.toNumber(),
-      case: apiCase,
-      wizardMethod: method,
-      referenceNumber: referenceNumber || undefined,
-      slipUrl: slipUrl || undefined,
-      memo: memo || undefined,
-      consumeAdvance,
-      paidDate,
-      lateFeeWaiverAmount: waiverDec.gt(0) ? waiverDec.toNumber() : undefined,
-      lateFeeWaiverReasonCode: waiverDec.gt(0) ? waiverReasonCode : undefined,
-      waiverApproverId: waiverDec.gt(0) ? waiverApproverId : undefined,
-    });
+    onSubmit(buildPayload());
+  };
+
+  const handleSaveDraft = () => {
+    onSaveDraft?.(buildPayload());
   };
 
   const handleSubmit = () => {
@@ -979,6 +1008,36 @@ export function RecordPaymentWizard({
           <div className="grid grid-cols-[1fr_340px] gap-4 items-start">
             {/* LEFT column — Form. */}
             <div className="space-y-3 min-w-0">
+              {/* Phase 4 — existing draft banner (DRAFT state): post or discard */}
+              {hasDraft && (
+                <div className="rounded-lg border border-info/40 bg-info/5 p-3 space-y-2">
+                  <div className="flex items-center gap-2 text-sm font-medium text-foreground leading-snug">
+                    <Info className="size-4 text-info shrink-0" />
+                    <span>
+                      มีฉบับร่างอยู่ — ยอด{' '}
+                      {formatNumberDecimal(String(existingDraft?.amount ?? '0'))} ฿ (ยังไม่ลงบัญชี)
+                    </span>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onPostDraft?.(payment.id)}
+                      disabled={isSubmitting}
+                      className="flex-1 rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                    >
+                      ลงบัญชี (โพสต์ JE)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onCancelDraft?.(payment.id)}
+                      disabled={isSubmitting}
+                      className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground hover:bg-accent disabled:opacity-50 transition-colors"
+                    >
+                      ยกเลิกร่าง
+                    </button>
+                  </div>
+                </div>
+              )}
               {/* Advance balance banner — shown when contract has advance to consume */}
               {advanceBalance.gt(0) && (
                 <AdvanceBalanceBanner
@@ -1475,26 +1534,43 @@ export function RecordPaymentWizard({
               )}
             </Button>
           ) : (
-            <Button
-              onClick={handleSubmit}
-              disabled={isSubmitting || previewLoading || !canSubmit()}
-              title={
-                detectedCase === 'OUT_OF_RANGE'
-                  ? 'ห่างเกิน 1 ฿ — ใช้เมนูแบ่งชำระหรือปิดยอดแทน'
-                  : !preview?.isBalanced && isPreviewReady
-                  ? 'รายการบัญชีไม่สมดุล'
-                  : undefined
-              }
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="size-4 animate-spin mr-2" />
-                  กำลังบันทึก...
-                </>
-              ) : (
-                'บันทึกชำระ'
+            <div className="flex gap-2">
+              {onSaveDraft && !hasDraft && (
+                <Button
+                  variant="outline"
+                  onClick={handleSaveDraft}
+                  disabled={
+                    isSubmitting ||
+                    receivedNum <= 0 ||
+                    !depositAccountCode ||
+                    detectedCase === 'OUT_OF_RANGE'
+                  }
+                  title="เก็บเป็นฉบับร่าง — ยังไม่ลงบัญชี"
+                >
+                  บันทึก (Draft)
+                </Button>
               )}
-            </Button>
+              <Button
+                onClick={handleSubmit}
+                disabled={isSubmitting || previewLoading || !canSubmit()}
+                title={
+                  detectedCase === 'OUT_OF_RANGE'
+                    ? 'ห่างเกิน 1 ฿ — ใช้เมนูแบ่งชำระหรือปิดยอดแทน'
+                    : !preview?.isBalanced && isPreviewReady
+                    ? 'รายการบัญชีไม่สมดุล'
+                    : undefined
+                }
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin mr-2" />
+                    กำลังบันทึก...
+                  </>
+                ) : (
+                  'บันทึก + ลงบัญชี'
+                )}
+              </Button>
+            </div>
           )}
         </DialogFooter>
       </DialogContent>

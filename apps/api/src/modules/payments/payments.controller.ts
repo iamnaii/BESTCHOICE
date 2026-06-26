@@ -245,6 +245,83 @@ export class PaymentsController {
     );
   }
 
+  // ─── Phase 4: draft/post split (บันทึก Draft → ลงบัญชี) ────────────────────
+  // A draft stores the prepared receipt params WITHOUT posting a JE or moving money.
+  // "ลงบัญชี" (post-draft) runs the normal recordPayment flow then retires the draft.
+
+  @Post('draft')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  @ApiOperation({ summary: 'บันทึกฉบับร่างการรับชำระ (ยังไม่ลงบัญชี)' })
+  async saveDraft(
+    @Body() dto: RecordPaymentDto,
+    @CurrentUser() user: { id: string; role: string; branchId: string | null },
+  ) {
+    await this.paymentsService.validateBranchAccess(dto.contractId, user);
+    const methodMap: Record<string, string> = {
+      CASH: 'CASH',
+      TRANSFER: 'BANK_TRANSFER',
+      QR: 'QR_EWALLET',
+      PAYSOLUTIONS: 'BANK_TRANSFER',
+      CARD: 'CARD',
+    };
+    const paymentMethod = dto.wizardMethod
+      ? methodMap[dto.wizardMethod] ?? dto.paymentMethod
+      : dto.paymentMethod;
+    return this.paymentsService.saveDraft(
+      dto.contractId,
+      dto.installmentNo,
+      {
+        amount: dto.amount,
+        paymentMethod,
+        depositAccountCode: dto.depositAccountCode,
+        lateFee: dto.lateFee,
+        lateFeeWaiverAmount: dto.lateFeeWaiverAmount,
+        lateFeeWaiverReasonCode: dto.lateFeeWaiverReasonCode,
+        waiverApproverId: dto.waiverApproverId,
+        consumeAdvance: dto.consumeAdvance ?? true,
+        paidDate: dto.paidDate,
+        paymentCase: dto.case,
+        transactionRef: dto.referenceNumber || dto.transactionRef,
+        evidenceUrl: dto.slipUrl || dto.evidenceUrl,
+        notes: dto.memo ? (dto.notes ? `${dto.notes}\n${dto.memo}` : dto.memo) : dto.notes,
+      },
+      user.id,
+    );
+  }
+
+  @Get('draft/:paymentId')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  async getDraft(
+    @Param('paymentId', ParseUUIDPipe) paymentId: string,
+    @CurrentUser() user: { id: string; role: string; branchId: string | null },
+  ) {
+    await this.paymentsService.validateBranchAccessByPayment(paymentId, user);
+    return this.paymentsService.getDraft(paymentId);
+  }
+
+  @Delete('draft/:paymentId')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  async cancelDraft(
+    @Param('paymentId', ParseUUIDPipe) paymentId: string,
+    @CurrentUser() user: { id: string; role: string; branchId: string | null },
+  ) {
+    await this.paymentsService.validateBranchAccessByPayment(paymentId, user);
+    return this.paymentsService.cancelDraft(paymentId);
+  }
+
+  @Post(':paymentId/post-draft')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  @UseGuards(UserThrottlerGuard)
+  @Throttle({ short: { ttl: 10000, limit: 5 } }) // Max 5 posts per 10s per user
+  @ApiOperation({ summary: 'ลงบัญชีฉบับร่าง (โพสต์ JE atomic)' })
+  async postDraft(
+    @Param('paymentId', ParseUUIDPipe) paymentId: string,
+    @CurrentUser() user: { id: string; role: string; branchId: string | null },
+  ) {
+    await this.paymentsService.validateBranchAccessByPayment(paymentId, user);
+    return this.paymentsService.postDraft(paymentId, user.id);
+  }
+
   @Post('auto-allocate')
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES', 'FINANCE_MANAGER', 'ACCOUNTANT')
   @UseGuards(UserThrottlerGuard)

@@ -103,20 +103,29 @@ export default function UnifiedInboxPage() {
     }
   }, [activeRoomId]);
 
+  // Debounced invalidator for the rooms list — coalesces rapid WS events (new message +
+  // room update can fire within milliseconds of each other) into a single refetch.
+  const roomsInvalidateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const invalidateRoomsListSoon = useCallback(() => {
+    if (roomsInvalidateTimer.current) clearTimeout(roomsInvalidateTimer.current);
+    roomsInvalidateTimer.current = setTimeout(() => {
+      queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
+      queryClient.invalidateQueries({ queryKey: ['chat-unread-count'] });
+    }, 600);
+  }, [queryClient]);
+
   // WebSocket for real-time updates
   const { joinRoom, leaveRoom, viewRoom, startTyping, stopTyping, isCustomerTyping, staffTyping, status: connectionStatus } = useChatSocket({
     onNewMessage: (data) => {
       queryClient.invalidateQueries({ queryKey: ['chat-messages', data.roomId] });
-      queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
-      queryClient.invalidateQueries({ queryKey: ['chat-unread-count'] });
+      invalidateRoomsListSoon();
       // Sound + browser notification
       if (data.role === 'CUSTOMER') {
         notifyNewMessage(data);
       }
     },
     onRoomUpdate: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
-      queryClient.invalidateQueries({ queryKey: ['chat-unread-count'] });
+      invalidateRoomsListSoon();
       // Inbox-wide new-message alert. MESSAGE_NEW is room-scoped (only the open
       // room), so it can't drive notifications for other conversations. The
       // gateway broadcasts every inbound customer message to the whole inbox via
@@ -136,6 +145,12 @@ export default function UnifiedInboxPage() {
     onSendFailed: (data) => {
       pushFailedSend(data.roomId, data.text, 'ws');
       queryClient.invalidateQueries({ queryKey: ['chat-messages', data.roomId] });
+    },
+    onReconnect: () => {
+      // After a transient drop we missed live events — pull fresh state.
+      if (activeRoomId) queryClient.invalidateQueries({ queryKey: ['chat-messages', activeRoomId] });
+      queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
+      queryClient.invalidateQueries({ queryKey: ['chat-unread-count'] });
     },
   }, activeRoomId);
 
@@ -178,7 +193,7 @@ export default function UnifiedInboxPage() {
         })
         .then((r) => r.data),
     enabled: !!activeRoomId,
-    refetchInterval: 5000, // Poll every 5s as fallback for WS
+    refetchInterval: connectionStatus === 'connected' ? 30000 : 5000, // Poll every 5s as fallback for WS
   });
 
   // Drop optimistic ghosts whose saved row (matched by clientMessageId) has

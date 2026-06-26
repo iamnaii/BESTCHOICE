@@ -67,6 +67,7 @@ interface ChatSocketEvents {
   onViewers?: (data: ChatViewersEvent) => void;
   onCollision?: (data: ChatCollisionEvent) => void;
   onSendFailed?: (data: ChatSendFailedEvent) => void;
+  onReconnect?: () => void;
 }
 
 // Resolve WebSocket base URL: in dev, API runs on port 3000
@@ -99,6 +100,7 @@ export function useChatSocket(events: ChatSocketEvents, activeRoomId?: string | 
   // doesn't tear down on room switches or handler identity changes
   const activeRoomIdRef = useRef(activeRoomId);
   const eventsRef = useRef(events);
+  const hasConnectedRef = useRef(false);
   useEffect(() => {
     activeRoomIdRef.current = activeRoomId;
     setStaffTyping(null);
@@ -133,6 +135,10 @@ export function useChatSocket(events: ChatSocketEvents, activeRoomId?: string | 
         socket.emit('chat:join', { roomId });
         socket.emit('chat:view', { roomId });
       }
+      if (hasConnectedRef.current) {
+        eventsRef.current.onReconnect?.();
+      }
+      hasConnectedRef.current = true;
     });
 
     socket.on('chat:message:new', (data) => eventsRef.current.onNewMessage?.(data));

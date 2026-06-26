@@ -608,6 +608,7 @@ export function RecordPaymentWizard({
 
   // Slip upload
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const amountInputRef = useRef<HTMLInputElement>(null);
   const uploadMutation = useSlipUpload();
 
   const handleFileChange = useCallback(
@@ -695,6 +696,19 @@ export function RecordPaymentWizard({
     const v = parseFloat(lateFeeStr);
     return isNaN(v) ? new Decimal(0) : new Decimal(v);
   }, [lateFeeStr]);
+
+  // Net to collect after the (optional) advance deduction — drives the quick tiles.
+  const netDue = useMemo(() => {
+    const owed = amountDueDecimal.plus(currentLateFee).sub(amountPaidDecimal);
+    const consumed =
+      consumeAdvance && advanceBalance.gt(0)
+        ? Decimal.min(advanceBalance, Decimal.max(new Decimal(0), owed))
+        : new Decimal(0);
+    return Decimal.max(new Decimal(0), owed.minus(consumed)).toDecimalPlaces(2);
+  }, [amountDueDecimal, currentLateFee, amountPaidDecimal, consumeAdvance, advanceBalance]);
+  // ปิดขึ้น = round the net up to a whole baht; the ≤1฿ residual rides the
+  // existing 52-1104/53-1503 tolerance on the server.
+  const netDueRoundedUp = useMemo(() => netDue.toDecimalPlaces(0, Decimal.ROUND_UP), [netDue]);
 
   // Auto-detect case
   const receivedNum = parseFloat(amountReceived) || 0;
@@ -905,7 +919,50 @@ export function RecordPaymentWizard({
                 <Label className="block text-sm font-medium text-foreground mb-1.5 leading-snug">
                   ยอดรับจริง (฿) <span className="text-destructive">*</span>
                 </Label>
+                {/* Quick-amount tiles */}
+                <div className="grid grid-cols-3 gap-2 mb-2">
+                  {[
+                    { key: 'full', label: 'เต็มงวด', value: netDue.toFixed(2), apply: () => netDue.toFixed(2) },
+                    { key: 'roundup', label: 'ปิดขึ้น', value: netDueRoundedUp.toFixed(0), apply: () => netDueRoundedUp.toFixed(2) },
+                    { key: 'custom', label: 'กำหนดเอง', value: 'ระบุจำนวน', apply: null },
+                  ].map((tile) => {
+                    const active =
+                      tile.apply != null && new Decimal(amountReceived || 0).eq(new Decimal(tile.apply()));
+                    return (
+                      <button
+                        key={tile.key}
+                        type="button"
+                        onClick={() => {
+                          if (tile.apply) {
+                            setAmountReceived(tile.apply());
+                            setAmountManuallyEdited(true);
+                          } else {
+                            setAmountManuallyEdited(true);
+                            amountInputRef.current?.focus();
+                          }
+                        }}
+                        className={cn(
+                          'rounded-xl border-2 px-2 py-1.5 text-center transition-colors',
+                          active
+                            ? 'bg-primary border-primary text-primary-foreground'
+                            : 'bg-card border-border text-foreground hover:border-primary/40 hover:bg-accent',
+                        )}
+                      >
+                        <div className="text-xs font-semibold leading-snug">{tile.label}</div>
+                        <div
+                          className={cn(
+                            'text-xs font-mono leading-snug',
+                            active ? 'text-primary-foreground/80' : 'text-muted-foreground',
+                          )}
+                        >
+                          {tile.value}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
                 <Input
+                  ref={amountInputRef}
                   type="number"
                   value={amountReceived}
                   onChange={(e) => { setAmountReceived(e.target.value); setAmountManuallyEdited(true); }}

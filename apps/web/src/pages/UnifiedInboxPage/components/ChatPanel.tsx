@@ -379,6 +379,30 @@ export default function ChatPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- room-change only; inputText read via inputTextRef
   }, [roomId]);
 
+  // Screen-reader announcements: new inbound message + send failure.
+  const [liveMsg, setLiveMsg] = useState('');
+  const announcedRef = useRef<{ roomId: string | null; lastId: string | null }>({
+    roomId: null,
+    lastId: null,
+  });
+  useEffect(() => {
+    if (!messages.length) return;
+    const last = messages[messages.length - 1];
+    // Ignore a stale array still holding the previous room's messages.
+    if (last?.roomId && roomId && last.roomId !== roomId) return;
+    const a = announcedRef.current;
+    if (a.roomId !== roomId) {
+      // First sight of this room's messages — adopt the last as seen, no announce.
+      announcedRef.current = { roomId: roomId ?? null, lastId: last?.id ?? null };
+      return;
+    }
+    if (last?.role === 'CUSTOMER' && last?.id && last.id !== a.lastId) {
+      announcedRef.current = { roomId: roomId ?? null, lastId: last.id };
+      const text = (last.text ?? '').trim();
+      setLiveMsg(text ? `ข้อความใหม่: ${text.slice(0, 60)}` : 'ข้อความใหม่จากลูกค้า');
+    }
+  }, [messages, roomId]);
+
   // "g" → jump the open thread to the latest message (vim-style). Guarded so it
   // never fires while typing in the composer.
   useEffect(() => {
@@ -615,6 +639,7 @@ export default function ChatPanel({
           <button
             onClick={() => setShowActions(!showActions)}
             aria-label="ตัวเลือกเพิ่มเติม"
+            aria-expanded={showActions}
             className="p-1.5 min-h-11 min-w-11 inline-flex items-center justify-center text-muted-foreground hover:text-foreground/70 hover:bg-accent rounded-lg"
           >
             <MoreVertical className="w-5 h-5" />
@@ -645,8 +670,14 @@ export default function ChatPanel({
         </div>
       )}
 
+      {/* Screen-reader live regions — siblings of the log, not nested inside it */}
+      <div className="sr-only" aria-live="polite" aria-atomic="true">{liveMsg}</div>
+      <div className="sr-only" aria-live="assertive" aria-atomic="true">
+        {(failedSends ?? []).length > 0 ? 'ส่งข้อความไม่สำเร็จ' : ''}
+      </div>
+
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-3">
+      <div className="flex-1 overflow-y-auto px-4 py-3" role="log" aria-label="ประวัติข้อความ">
         {isLoadingMessages ? (
           <div className="flex items-center justify-center py-12 text-muted-foreground text-sm">
             กำลังโหลดข้อความ...
@@ -786,7 +817,7 @@ export default function ChatPanel({
               <PopoverContent
                 side="top"
                 align="start"
-                className="w-80 p-0 shadow-lg border border-border rounded-xl overflow-hidden"
+                className="w-[min(20rem,calc(100vw-1rem))] p-0 shadow-lg border border-border rounded-xl overflow-hidden"
                 sideOffset={6}
               >
                 {/* ── Top-level tabs ── */}
@@ -940,12 +971,9 @@ export default function ChatPanel({
                         </div>
                       ) : (
                         gifs.map((gif: any) => (
-                          <img
+                          <button
                             key={gif.id}
-                            src={gif.images?.fixed_width_small?.url ?? gif.images?.fixed_width?.url}
-                            alt={gif.title ?? 'gif'}
-                            className="w-full h-auto rounded cursor-pointer hover:opacity-80 transition-opacity"
-                            loading="lazy"
+                            type="button"
                             onClick={() => {
                               const url = gif.images?.fixed_width?.url;
                               if (url) {
@@ -954,7 +982,16 @@ export default function ChatPanel({
                                 setEmojiOpen(false);
                               }
                             }}
-                          />
+                            aria-label={gif.title || 'ส่ง GIF'}
+                            className="block rounded-lg overflow-hidden hover:ring-2 hover:ring-primary transition-all"
+                          >
+                            <img
+                              src={gif.images?.fixed_width_small?.url ?? gif.images?.fixed_width?.url}
+                              alt={gif.title || ''}
+                              loading="lazy"
+                              className="w-full h-auto"
+                            />
+                          </button>
                         ))
                       )}
                     </div>
@@ -992,6 +1029,7 @@ export default function ChatPanel({
               onPaste={handlePaste}
               onBlur={endTyping}
               placeholder="พิมพ์ข้อความ..."
+              aria-label="พิมพ์ข้อความ"
               rows={1}
               className="flex-1 resize-none overflow-y-auto px-3 py-2 text-sm bg-muted/40 rounded-lg border-0 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:bg-background max-h-32 transition-colors placeholder:text-muted-foreground/40"
             />

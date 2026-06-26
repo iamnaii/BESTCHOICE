@@ -34,8 +34,8 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { format, isPast, differenceInDays } from 'date-fns';
 import { th } from 'date-fns/locale';
@@ -761,10 +761,11 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
           ) : summary?.activeContracts?.length > 0 ? (
             <div className="space-y-2">
               {(summary.activeContracts as ContractSummaryItem[]).map((c) => (
-                <div
+                <button
+                  type="button"
                   key={c.id}
                   onClick={() => navigate(`/contracts/${c.id}`)}
-                  className="p-2.5 bg-muted rounded-lg text-xs cursor-pointer hover:bg-accent transition-colors"
+                  className="block w-full text-left p-2.5 bg-muted rounded-lg text-xs cursor-pointer hover:bg-accent transition-colors"
                   title="ดูรายละเอียดสัญญา"
                 >
                   <div className="flex items-center justify-between mb-1">
@@ -812,7 +813,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
                       </p>
                     )}
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           ) : (
@@ -1041,6 +1042,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
             <SheetContent side="bottom" className="rounded-t-2xl max-h-[80vh] overflow-y-auto">
               <SheetHeader>
                 <SheetTitle>{pickerTitle}</SheetTitle>
+                <SheetDescription className="sr-only">เลือกสัญญาเพื่อดำเนินการ</SheetDescription>
               </SheetHeader>
               <div className="mt-2">{pickerBody}</div>
             </SheetContent>
@@ -1050,6 +1052,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
             <DialogContent className="max-w-md">
               <DialogHeader>
                 <DialogTitle>{pickerTitle}</DialogTitle>
+                <DialogDescription className="sr-only">เลือกสัญญาเพื่อดำเนินการ</DialogDescription>
               </DialogHeader>
               {pickerBody}
             </DialogContent>
@@ -1070,6 +1073,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
             <DialogTitle className="flex items-center gap-2">
               <Link2 className="w-4 h-4" /> ผูกลูกค้าที่มีอยู่
             </DialogTitle>
+            <DialogDescription className="sr-only">ค้นหาและผูกลูกค้าที่มีอยู่กับห้องแชทนี้</DialogDescription>
           </DialogHeader>
           <input
             autoFocus
@@ -1136,6 +1140,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
             <DialogTitle className="flex items-center gap-2">
               <User className="w-4 h-4" /> ข้อมูลลูกค้า
             </DialogTitle>
+            <DialogDescription className="sr-only">รายละเอียดข้อมูลลูกค้า</DialogDescription>
           </DialogHeader>
           {customer && (
             <div className="space-y-3 text-sm max-h-[70vh] overflow-y-auto pr-1">
@@ -1283,6 +1288,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
                 </a>
               )}
             </DialogTitle>
+            <DialogDescription className="sr-only">ตัวอย่างเอกสาร PDF</DialogDescription>
           </DialogHeader>
           {pdfPreview?.url && (
             <iframe

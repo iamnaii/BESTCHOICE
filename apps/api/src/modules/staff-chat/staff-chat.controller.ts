@@ -50,6 +50,7 @@ import { UpdateBubbleDto } from './dto/update-bubble.dto';
 import { CreateQuickReplyDto } from './dto/create-quick-reply.dto';
 import { UpdateQuickReplyDto } from './dto/update-quick-reply.dto';
 import { UpdateCannedResponseDto } from './dto/update-canned-response.dto';
+import { ReadAllDto } from './dto/read-all.dto';
 import { SessionQueryDto } from '../chat-engine/dto/session-query.dto';
 import { ChatRoomStatus, ChatChannel, ChatPriority } from '@prisma/client';
 import { MessageRouterService } from '../chat-engine/services/message-router.service';
@@ -554,6 +555,12 @@ export class StaffChatController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   async markAsRead(@Param('id') id: string) {
     return this.roomManager.markAsRead(id);
+  }
+
+  @Post('rooms/read-all')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  async markAllAsRead(@Body() dto: ReadAllDto) {
+    return this.roomManager.markAllAsRead(dto.roomIds);
   }
 
   // ─── Customer-scoped messages (LineChatPanel — Customer 360) ──

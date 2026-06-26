@@ -868,6 +868,7 @@ export function RecordPaymentWizard({
       setAmountManuallyEdited(false);
       setConsumeAdvance(true);
       setCaseOverride(null);
+      setShowPayoffOverlay(false);
       setPaidDate(bkkToday());
       setLateFeeStr(lateFeeDecimal.toFixed(2));
       setMethod('CASH');
@@ -895,26 +896,11 @@ export function RecordPaymentWizard({
         {/* Body */}
         <DialogBody className="flex-1 overflow-y-auto px-6 py-3">
           {/* 2-column (mockup): form LEFT, contract info + JE preview RIGHT.
-              DOM keeps info first; `order` flips the visual columns so the big
-              form block doesn't have to move in source. */}
+              Form is FIRST in DOM so keyboard/tab order follows the visual flow
+              (data-entry first); the info+preview column comes after. */}
           <div className="grid grid-cols-[1fr_340px] gap-4 items-start">
-            {/* RIGHT column — contract info + auto-journal preview (order-2). */}
-            <div className="order-2 space-y-3 min-w-0">
-              <ContractInfoPanel
-                payment={payment}
-                lateFee={currentLateFee}
-                netExposure={netExposure}
-                onOpenPayoff={() => setShowPayoffOverlay(true)}
-              />
-              <JePreviewPanel
-                preview={preview}
-                isLoading={previewLoading}
-                errorMessage={previewErrorMessage}
-              />
-            </div>
-
-            {/* LEFT column — Form (order-1). */}
-            <div className="order-1 space-y-3 min-w-0">
+            {/* LEFT column — Form. */}
+            <div className="space-y-3 min-w-0">
               {/* Advance balance banner — shown when contract has advance to consume */}
               {advanceBalance.gt(0) && (
                 <AdvanceBalanceBanner
@@ -936,16 +922,19 @@ export function RecordPaymentWizard({
                 </h3>
                 <div className="grid grid-cols-3 gap-2">
                   {[
-                    { key: 'NORMAL', label: 'ปกติ', onClick: () => setCaseOverride(null), active: caseOverride === null },
-                    { key: 'PARTIAL', label: 'แบ่งชำระ', onClick: () => setCaseOverride('PARTIAL'), active: caseOverride === 'PARTIAL' },
-                    { key: 'OVERPAY_ADVANCE', label: 'ล่วงหน้า', onClick: () => setCaseOverride('OVERPAY_ADVANCE'), active: caseOverride === 'OVERPAY_ADVANCE' },
-                    { key: 'PAYOFF', label: 'ปิดยอด', onClick: () => setShowPayoffOverlay(true), active: false },
-                    { key: 'RESCHEDULE', label: 'ปรับงวด', onClick: () => toast.info('ปรับงวด: ทำผ่านเมนูสัญญา/งวด'), active: false },
-                    { key: 'REPO', label: 'คืนเครื่อง', onClick: () => { onClose(); navigate('/repossessions'); }, active: false },
+                    // The 3 case buttons reflect the EFFECTIVE case (override OR auto-detected),
+                    // so "ปกติ" doesn't stay highlighted when the typed amount is partial/advance.
+                    { key: 'NORMAL', label: 'ปกติ', toggle: true, onClick: () => setCaseOverride(null), active: apiCase !== 'PARTIAL' && apiCase !== 'OVERPAY_ADVANCE' },
+                    { key: 'PARTIAL', label: 'แบ่งชำระ', toggle: true, onClick: () => setCaseOverride('PARTIAL'), active: apiCase === 'PARTIAL' },
+                    { key: 'OVERPAY_ADVANCE', label: 'ล่วงหน้า', toggle: true, onClick: () => setCaseOverride('OVERPAY_ADVANCE'), active: apiCase === 'OVERPAY_ADVANCE' },
+                    { key: 'PAYOFF', label: 'ปิดยอด', toggle: false, onClick: () => setShowPayoffOverlay(true), active: false },
+                    { key: 'RESCHEDULE', label: 'ปรับงวด', toggle: false, onClick: () => toast.info('ปรับงวด: ทำผ่านเมนูสัญญา/งวด'), active: false },
+                    { key: 'REPO', label: 'คืนเครื่อง', toggle: false, onClick: () => { onClose(); navigate('/repossessions'); }, active: false },
                   ].map((t) => (
                     <button
                       key={t.key}
                       type="button"
+                      aria-pressed={t.toggle ? t.active : undefined}
                       onClick={t.onClick}
                       className={cn(
                         'rounded-xl border-2 px-2 py-1.5 text-sm font-medium leading-snug transition-colors',
@@ -1142,8 +1131,8 @@ export function RecordPaymentWizard({
               {/* QR mode info pane — replaces ref + slip inputs (webhook log
                   is the audit trail, no manual evidence needed). */}
               {isQrMode && (
-                <div className="rounded-lg border border-blue-500/30 bg-blue-500/5 px-3 py-3 flex items-start gap-2.5">
-                  <Info className="size-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                <div className="rounded-lg border border-info/30 bg-info/5 px-3 py-3 flex items-start gap-2.5">
+                  <Info className="size-4 text-info shrink-0 mt-0.5" />
                   <div className="text-xs text-foreground leading-relaxed">
                     <strong className="block mb-1">ระบบจะส่ง QR ให้ลูกค้าทาง LINE OA</strong>
                     <span className="text-muted-foreground">
@@ -1246,6 +1235,21 @@ export function RecordPaymentWizard({
                   />
                 </div>
               </details>
+            </div>
+
+            {/* RIGHT column — contract info + auto-journal preview. */}
+            <div className="space-y-3 min-w-0">
+              <ContractInfoPanel
+                payment={payment}
+                lateFee={currentLateFee}
+                netExposure={netExposure}
+                onOpenPayoff={() => setShowPayoffOverlay(true)}
+              />
+              <JePreviewPanel
+                preview={preview}
+                isLoading={previewLoading}
+                errorMessage={previewErrorMessage}
+              />
             </div>
           </div>
         </DialogBody>

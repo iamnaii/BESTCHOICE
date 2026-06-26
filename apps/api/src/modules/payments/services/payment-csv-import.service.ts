@@ -26,6 +26,8 @@ export interface PaymentCsvImportHost {
     // CSV import never toggles this (always auto-consumes, default true) — declared
     // for signature parity with PaymentsService.recordPayment.
     consumeAdvance?: boolean,
+    // CSV import never backdates (uses now) — declared for signature parity.
+    paidDate?: Date,
   ): Promise<unknown>;
 }
 

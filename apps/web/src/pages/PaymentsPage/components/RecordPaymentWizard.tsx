@@ -31,6 +31,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import api, { getErrorMessage } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 import { formatNumberDecimal } from '@/utils/formatters';
 import { AccrualModeChip } from './AccrualModeChip';
 import { CASH_ACCOUNT_CODES } from '@/components/CashAccountSelect';
@@ -308,6 +309,23 @@ const METHOD_OPTIONS: { id: WizardMethod; label: string; icon: React.ReactNode; 
   { id: 'CARD', label: 'บัตร', icon: <CreditCard className="size-4" />, desc: 'เครื่อง EDC · เงินเข้าบัญชีธนาคาร' },
 ];
 
+// Late-fee waiver reasons (fallback; mirrors SystemConfig `late_fee_waiver_reasons` seed).
+const WAIVER_REASONS: { code: string; label: string }[] = [
+  { code: 'loyal_customer', label: 'ลูกค้าประจำ — ผ่อนตรงเวลามาตลอด' },
+  { code: 'first_time', label: 'ผิดนัดครั้งแรก' },
+  { code: 'system_error', label: 'ความผิดพลาดของระบบ' },
+  { code: 'goodwill', label: 'รักษาความสัมพันธ์ (goodwill)' },
+  { code: 'other', label: 'อื่นๆ (ระบุในหมายเหตุ)' },
+];
+
+const WAIVER_APPROVER_ROLES = ['OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER'];
+
+interface ApproverRow {
+  id: string;
+  name: string;
+  role: string;
+}
+
 // ─── JE Preview panel (always visible) ────────────────────────────────────────
 
 /** One JE block (2A or 2B) — line rows + a per-block "Dr = Cr =" footer. */
@@ -543,6 +561,9 @@ interface RecordPaymentWizardProps {
     notes?: string;
     consumeAdvance: boolean;
     paidDate: string;
+    lateFeeWaiverAmount?: number;
+    lateFeeWaiverReasonCode?: string;
+    waiverApproverId?: string;
   }) => void;
   isSubmitting: boolean;
   defaultDepositAccountCode?: string;
@@ -560,6 +581,7 @@ export function RecordPaymentWizard({
   const [showPartialConfirm, setShowPartialConfirm] = useState(false);
   const [showPayoffOverlay, setShowPayoffOverlay] = useState(false);
   const navigate = useNavigate();
+  const { user } = useAuth();
   // Explicit payment-type override (null = auto-detect). แบ่งชำระ/ล่วงหน้า force the
   // API case; ปกติ falls back to the amount-detected case.
   const [caseOverride, setCaseOverride] = useState<'PARTIAL' | 'OVERPAY_ADVANCE' | null>(null);
@@ -590,21 +612,28 @@ export function RecordPaymentWizard({
   // behaviour. OFF → cashier collects the full owed, advance stays for next time.
   const [consumeAdvance, setConsumeAdvance] = useState(true);
 
-  // Auto-sync amountReceived = (amountDue + lateFee − paid) minus the auto-deducted
-  // advance, while the user hasn't touched the amount field. Toggling the credit
-  // checkbox clears manual-edit so this recomputes.
+  // P2 (D1) — late-fee waiver (gross model). waiverStr is the waived ฿ (Dr 52-1105);
+  // Cr 42-1103 stays gross. Reason + approver gate the submit when waiver > 0.
+  const [waiverStr, setWaiverStr] = useState('0');
+  const [waiverReasonCode, setWaiverReasonCode] = useState('');
+  const [waiverApproverId, setWaiverApproverId] = useState('');
+
+  // Auto-sync amountReceived = (amountDue + NET late fee − paid) minus the auto-deducted
+  // advance, while the user hasn't touched the amount field. Toggling the credit checkbox
+  // or changing the waiver clears manual-edit so this recomputes.
   useEffect(() => {
     if (amountManuallyEdited) return;
     const lf = parseFloat(lateFeeStr);
     if (isNaN(lf)) return;
-    const owed = amountDueDecimal.plus(lf).sub(amountPaidDecimal);
+    const w = Math.min(Math.max(parseFloat(waiverStr) || 0, 0), lf); // waiver clamped ≤ gross
+    const owed = amountDueDecimal.plus(lf - w).sub(amountPaidDecimal); // NET late fee
     const consumed =
       consumeAdvance && advanceBalance.gt(0)
         ? Decimal.min(advanceBalance, Decimal.max(new Decimal(0), owed))
         : new Decimal(0);
     const next = Decimal.max(new Decimal(0), owed.minus(consumed)).toDecimalPlaces(2);
     setAmountReceived(next.toFixed(2));
-  }, [lateFeeStr, amountDueDecimal, amountPaidDecimal, amountManuallyEdited, consumeAdvance, advanceBalance]);
+  }, [lateFeeStr, waiverStr, amountDueDecimal, amountPaidDecimal, amountManuallyEdited, consumeAdvance, advanceBalance]);
 
   // Method + evidence fields
   const [method, setMethod] = useState<WizardMethod>('CASH');
@@ -707,15 +736,38 @@ export function RecordPaymentWizard({
     return isNaN(v) ? new Decimal(0) : new Decimal(v);
   }, [lateFeeStr]);
 
-  // Net to collect after the (optional) advance deduction — drives the quick tiles.
+  // P2 (D1) — waiver computed values (clamped ≤ gross late fee) + net late fee.
+  const waiverDec = useMemo(() => {
+    const w = parseFloat(waiverStr);
+    if (isNaN(w) || w <= 0) return new Decimal(0);
+    return Decimal.min(new Decimal(w), currentLateFee);
+  }, [waiverStr, currentLateFee]);
+  const netLateFee = useMemo(() => currentLateFee.minus(waiverDec), [currentLateFee, waiverDec]);
+
+  // 4-eyes approver list — managers other than the current user (SoD).
+  const { data: approverData = [] } = useQuery<ApproverRow[]>({
+    queryKey: ['waiver-approvers'],
+    queryFn: async () => {
+      const { data } = await api.get('/users?limit=200');
+      const list: ApproverRow[] = data?.data ?? data ?? [];
+      return list;
+    },
+    staleTime: 60_000,
+  });
+  const approvers = useMemo(
+    () => approverData.filter((u) => WAIVER_APPROVER_ROLES.includes(u.role) && u.id !== user?.id),
+    [approverData, user?.id],
+  );
+
+  // Net to collect after the waiver + the (optional) advance deduction — drives tiles.
   const netDue = useMemo(() => {
-    const owed = amountDueDecimal.plus(currentLateFee).sub(amountPaidDecimal);
+    const owed = amountDueDecimal.plus(netLateFee).sub(amountPaidDecimal); // NET late fee
     const consumed =
       consumeAdvance && advanceBalance.gt(0)
         ? Decimal.min(advanceBalance, Decimal.max(new Decimal(0), owed))
         : new Decimal(0);
     return Decimal.max(new Decimal(0), owed.minus(consumed)).toDecimalPlaces(2);
-  }, [amountDueDecimal, currentLateFee, amountPaidDecimal, consumeAdvance, advanceBalance]);
+  }, [amountDueDecimal, netLateFee, amountPaidDecimal, consumeAdvance, advanceBalance]);
   // ปิดขึ้น = round the net up to a whole baht; the ≤1฿ residual rides the
   // existing 52-1104/53-1503 tolerance on the server.
   const netDueRoundedUp = useMemo(() => netDue.toDecimalPlaces(0, Decimal.ROUND_UP), [netDue]);
@@ -744,10 +796,11 @@ export function RecordPaymentWizard({
       amountReceived: receivedNum,
       depositAccountCode,
       lateFee: currentLateFee.toNumber(),
+      lateFeeWaived: waiverDec.toNumber(),
       case: apiCase,
       consumeAdvance,
     }),
-    [receivedNum, depositAccountCode, currentLateFee, apiCase, payment, consumeAdvance],
+    [receivedNum, depositAccountCode, currentLateFee, waiverDec, apiCase, payment, consumeAdvance],
   );
   const debouncedParams = useDebounce(previewParams, 300);
 
@@ -785,6 +838,8 @@ export function RecordPaymentWizard({
     if (detectedCase === 'OUT_OF_RANGE') return false;
     if (requiresRef && !referenceNumber.trim()) return false;
     if (requiresSlip && !slipUrl) return false;
+    // P2 (D1): a waiver requires a reason + a 4-eyes approver (≠ recorder).
+    if (waiverDec.gt(0) && (!waiverReasonCode || !waiverApproverId)) return false;
     // QR mode skips the JE preview gate — the JE only posts when webhook
     // fires and recordPayment runs server-side, where the preview will be
     // recomputed against the actual paid amount.
@@ -821,6 +876,9 @@ export function RecordPaymentWizard({
       memo: memo || undefined,
       consumeAdvance,
       paidDate,
+      lateFeeWaiverAmount: waiverDec.gt(0) ? waiverDec.toNumber() : undefined,
+      lateFeeWaiverReasonCode: waiverDec.gt(0) ? waiverReasonCode : undefined,
+      waiverApproverId: waiverDec.gt(0) ? waiverApproverId : undefined,
     });
   };
 
@@ -869,6 +927,9 @@ export function RecordPaymentWizard({
       setConsumeAdvance(true);
       setCaseOverride(null);
       setShowPayoffOverlay(false);
+      setWaiverStr('0');
+      setWaiverReasonCode('');
+      setWaiverApproverId('');
       setPaidDate(bkkToday());
       setLateFeeStr(lateFeeDecimal.toFixed(2));
       setMethod('CASH');
@@ -1027,6 +1088,80 @@ export function RecordPaymentWizard({
                   className="text-right font-mono"
                 />
               </div>
+
+              {/* P2 (D1) — อนุโลมค่าปรับ (gross model: Dr 52-1105 / Cr 42-1103 gross) */}
+              {currentLateFee.gt(0) && (
+                <div className="rounded-lg border border-warning/30 bg-warning/5 p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-foreground leading-snug">อนุโลมค่าปรับ</h3>
+                    <span className="text-xs text-muted-foreground leading-snug">
+                      ค่าปรับเต็ม {currentLateFee.toFixed(2)} ฿
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { key: '50', label: '50%', apply: () => currentLateFee.div(2).toDecimalPlaces(2).toFixed(2) },
+                      { key: 'full', label: 'เต็ม', apply: () => currentLateFee.toFixed(2) },
+                      { key: 'custom', label: 'กำหนดเอง', apply: null as null | (() => string) },
+                    ].map((b) => {
+                      const active = b.apply != null && waiverDec.eq(new Decimal(b.apply()));
+                      return (
+                        <button
+                          key={b.key}
+                          type="button"
+                          aria-pressed={b.apply != null ? active : undefined}
+                          onClick={() => {
+                            setWaiverStr(b.apply ? b.apply() : '0');
+                            setAmountManuallyEdited(false);
+                          }}
+                          className={cn(
+                            'rounded-xl border-2 px-2 py-1.5 text-sm font-medium leading-snug transition-colors',
+                            active
+                              ? 'bg-primary border-primary text-primary-foreground'
+                              : 'bg-card border-border text-foreground hover:border-primary/40 hover:bg-accent',
+                          )}
+                        >
+                          {b.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <Input
+                    type="number"
+                    value={waiverStr}
+                    min={0}
+                    max={currentLateFee.toNumber()}
+                    step="0.01"
+                    onChange={(e) => { setWaiverStr(e.target.value); setAmountManuallyEdited(false); }}
+                    className="text-right font-mono"
+                    aria-label="ยอดอนุโลมค่าปรับ"
+                  />
+                  {waiverDec.gt(0) && (
+                    <div>
+                      <Label className="block text-xs font-medium text-foreground mb-1 leading-snug">
+                        เหตุผลการอนุโลม <span className="text-destructive">*</span>
+                      </Label>
+                      <select
+                        value={waiverReasonCode}
+                        onChange={(e) => setWaiverReasonCode(e.target.value)}
+                        className="w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm text-foreground leading-snug"
+                        aria-label="เหตุผลการอนุโลม"
+                      >
+                        <option value="">— เลือกเหตุผล —</option>
+                        {WAIVER_REASONS.map((r) => (
+                          <option key={r.code} value={r.code}>{r.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between text-xs font-medium pt-1 border-t border-border/50">
+                    <span className="text-muted-foreground leading-snug">
+                      ค่าปรับ {currentLateFee.toFixed(2)} − อนุโลม {waiverDec.toFixed(2)} =
+                    </span>
+                    <span className="text-foreground font-mono leading-snug">{netLateFee.toFixed(2)} ฿</span>
+                  </div>
+                </div>
+              )}
 
               {/* วันที่รับเงิน (D4 backdating — period-lock guards closed periods) */}
               <div>

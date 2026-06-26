@@ -601,8 +601,11 @@ export default function PaymentsPage() {
           payment={selectedPayment}
           onClose={() => { setShowPayWizard(false); setSelectedPayment(null); }}
           onSubmit={(payload) => {
+            // Net owed = principal + late fee − waiver (the waived portion books to
+            // Dr 52-1105, not collected in cash) − amountPaid.
             const grossRemaining = new Decimal(selectedPayment.amountDue)
               .add(selectedPayment.lateFee)
+              .sub(payload.lateFeeWaiverAmount ?? 0)
               .sub(selectedPayment.amountPaid);
             // When the cashier keeps the credit checkbox on, the wizard prefills the
             // NET amount (gross − advance); the tolerance check must compare against
@@ -635,6 +638,9 @@ export default function PaymentsPage() {
               case: payload.case,
               consumeAdvance: payload.consumeAdvance,
               paidDate: payload.paidDate,
+              lateFeeWaiverAmount: payload.lateFeeWaiverAmount,
+              lateFeeWaiverReasonCode: payload.lateFeeWaiverReasonCode,
+              waiverApproverId: payload.waiverApproverId,
               // Round 2 W7 fix: forward the wizard's lateFee so the DTO field
               // added in C1 actually carries the user's input across the wire.
               // Server still recomputes its own value as the source of truth,

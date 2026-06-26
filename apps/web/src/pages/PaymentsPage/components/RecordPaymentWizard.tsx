@@ -785,8 +785,20 @@ export function RecordPaymentWizard({
     [approverData, user?.id],
   );
 
+  // Late-fee waiver reasons — server config (SystemConfig late_fee_waiver_reasons),
+  // falling back to the built-in list so the dropdown always has options even when
+  // the key is unset or the request fails.
+  const { data: waiverReasons = WAIVER_REASONS } = useQuery<{ code: string; label: string }[]>({
+    queryKey: ['waiver-reasons'],
+    queryFn: async () => {
+      const { data } = await api.get<{ code: string; label: string }[]>('/settings/waiver-reasons');
+      return Array.isArray(data) && data.length > 0 ? data : WAIVER_REASONS;
+    },
+    staleTime: 5 * 60_000,
+  });
+
   // Phase 4 — existing unposted draft for this installment (if any).
-  const { data: existingDraft } = useQuery<{ id: string; amount: string } | null>({
+  const { data: existingDraft, isLoading: draftLoading } = useQuery<{ id: string; amount: string } | null>({
     queryKey: ['payment-draft', payment.id],
     queryFn: async () => {
       const { data } = await api.get(`/payments/draft/${payment.id}`);
@@ -1224,7 +1236,7 @@ export function RecordPaymentWizard({
                         aria-label="เหตุผลการอนุโลม"
                       >
                         <option value="">— เลือกเหตุผล —</option>
-                        {WAIVER_REASONS.map((r) => (
+                        {waiverReasons.map((r) => (
                           <option key={r.code} value={r.code}>{r.label}</option>
                         ))}
                       </select>
@@ -1535,7 +1547,10 @@ export function RecordPaymentWizard({
             </Button>
           ) : (
             <div className="flex gap-2">
-              {onSaveDraft && !hasDraft && (
+              {/* Hide the draft button until the draft query resolves — avoids a
+                  flash of "บันทึก (Draft)" before an existing draft loads (which
+                  would otherwise swap to the draft banner). */}
+              {onSaveDraft && !hasDraft && !draftLoading && (
                 <Button
                   variant="outline"
                   onClick={handleSaveDraft}

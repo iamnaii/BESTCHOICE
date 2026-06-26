@@ -85,6 +85,10 @@ export class SettingsService {
     return this.flags.getReverseReasons();
   }
 
+  async getWaiverReasons(): Promise<{ code: string; label: string }[]> {
+    return this.flags.getWaiverReasons();
+  }
+
   async getDocPrefixMap(): Promise<Record<DocumentType, string>> {
     return this.flags.getDocPrefixMap();
   }

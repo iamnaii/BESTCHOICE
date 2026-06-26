@@ -109,7 +109,7 @@ interface ChatPanelProps {
   aiTogglePending?: boolean;
   // Task 1 (send-status state) — ghost rows rendered in Task 2.
   pendingSendText?: string | null;
-  failedSends?: { id: string; text: string }[];
+  failedSends?: { id: string; text: string; source?: 'http' | 'ws' }[];
   onRetrySend?: (id: string, text: string) => void;
 }
 
@@ -671,7 +671,8 @@ export default function ChatPanel({
                 <div className="max-w-[75%] rounded-2xl rounded-br-md border border-destructive/40 bg-destructive/10 px-3.5 py-2 text-sm text-foreground leading-relaxed wrap-anywhere">
                   <span className="whitespace-pre-wrap">{f.text}</span>
                   <div className="mt-1 flex items-center justify-end gap-2 text-[10px] text-destructive leading-snug">
-                    <AlertCircle className="size-3 shrink-0" /> ส่งไม่สำเร็จ
+                    <AlertCircle className="size-3 shrink-0" />{' '}
+                    {f.source === 'ws' ? 'ส่งถึงลูกค้าไม่สำเร็จ' : 'ส่งไม่สำเร็จ'}
                     <button
                       type="button"
                       onClick={() => onRetrySend?.(f.id, f.text)}

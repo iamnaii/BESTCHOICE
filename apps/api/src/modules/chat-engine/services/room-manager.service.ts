@@ -291,7 +291,7 @@ export class RoomManagerService {
   }
 
   /** Get recent messages for AI context or display */
-  async getRecentMessages(roomId: string, limit = 20) {
+  async getRecentMessages(roomId: string, limit = 20, opts?: { signMedia?: boolean }) {
     const msgs = await this.prisma.chatMessage.findMany({
       where: { roomId, deletedAt: null },
       orderBy: { createdAt: 'desc' },
@@ -305,7 +305,7 @@ export class RoomManagerService {
     // NOTE: getSignedDownloadUrl makes a storage-API call per media message;
     // signMessageMedia runs them in parallel (Promise.all), so latency is the
     // slowest single presign, not the sum. Bounded by `limit` (default 20).
-    if (!this.storageService.configured) return ordered;
+    if (opts?.signMedia === false || !this.storageService.configured) return ordered;
     return signMessageMedia(ordered, (key) => this.storageService.getSignedDownloadUrl(key, 3600));
   }
 

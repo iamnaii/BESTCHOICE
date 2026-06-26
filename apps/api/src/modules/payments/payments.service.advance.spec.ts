@@ -647,5 +647,37 @@ describe('PaymentsService — advance balance (Task 4)', () => {
       );
       expect(result.status).toBe('PAID');
     });
+
+    it('late fee is computed as of paidDate, not now (W5: backdated → fewer days overdue)', async () => {
+      const dueDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // 30 days ago
+      const paidDate = new Date(dueDate.getTime() + 2 * 24 * 60 * 60 * 1000); // 2 days overdue AS OF paid date
+      prisma.payment.findFirst.mockResolvedValue(makePayment(43, { dueDate, lateFee: D(0) }));
+      // PER_DAY: rate=10, max=100000, cap=100% → fee = daysOverdue × 10 (no cap binding)
+      prisma.systemConfig.findUnique.mockImplementation(
+        ({ where: { key } }: { where: { key: string } }) => {
+          const map: Record<string, string> = {
+            late_fee_mode: 'PER_DAY',
+            late_fee_per_day_rate: '10',
+            late_fee_max_amount: '100000',
+            late_fee_cap_pct: '100',
+          };
+          return Promise.resolve(map[key] ? { value: map[key] } : null);
+        },
+      );
+
+      await service.recordPayment(
+        'adv-contract-1', 43, INST_TOTAL + 20, 'CASH', 'user-1',
+        'https://slip.test/43', undefined, 'TEST-LF-BACKDATE', '11-1101',
+        undefined, undefined, true, paidDate,
+      );
+
+      // The late-fee update must reflect 2 days overdue (= 20), NOT ~30 days (= 300 / capped).
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const lfUpdate = prisma.payment.update.mock.calls
+        .map((c: any) => c[0])
+        .find((a: any) => a?.data?.lateFee !== undefined);
+      expect(lfUpdate).toBeDefined();
+      expect(new Prisma.Decimal(lfUpdate.data.lateFee.toString()).toNumber()).toBe(20);
+    });
   });
 });

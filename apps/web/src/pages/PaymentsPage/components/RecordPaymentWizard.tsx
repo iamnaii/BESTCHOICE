@@ -613,7 +613,7 @@ export function RecordPaymentWizard({
   const [memo, setMemo] = useState('');
   // วันที่รับเงิน (D4 backdating) — default = BKK today (YYYY-MM-DD). max = today.
   const bkkToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
-  const [paidDate, setPaidDate] = useState(bkkToday);
+  const [paidDate, setPaidDate] = useState(() => bkkToday());
 
   // Slip upload
   const fileInputRef = useRef<HTMLInputElement>(null);

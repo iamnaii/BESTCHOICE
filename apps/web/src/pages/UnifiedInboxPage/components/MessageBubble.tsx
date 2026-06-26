@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { PaymentFlexPreview, parsePaymentFlex } from './PaymentFlexPreview';
@@ -82,7 +82,7 @@ function AiAutoIndicator({ intent, role }: { intent?: string | null; role: strin
   );
 }
 
-export default function MessageBubble({ message, customerAvatar, customerInitial }: MessageBubbleProps) {
+function MessageBubble({ message, customerAvatar, customerInitial }: MessageBubbleProps) {
   const isCustomer = message.role === 'CUSTOMER';
   const isBot = message.role === 'BOT';
   const isStaff = message.role === 'STAFF';
@@ -379,3 +379,5 @@ export default function MessageBubble({ message, customerAvatar, customerInitial
     </div>
   );
 }
+
+export default memo(MessageBubble);

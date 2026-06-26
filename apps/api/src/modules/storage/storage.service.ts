@@ -32,6 +32,8 @@ export class StorageService {
   private readonly bucket: string;
   private gcs: GcsStorage | null = null;
   private s3: S3Client | null = null;
+  private signedUrlCache = new Map<string, { url: string; expiresAt: number }>();
+  private static readonly SIGNED_URL_CACHE_MAX = 1000;
 
   constructor(private configService: ConfigService) {
     const s3Endpoint = this.configService.get<string>('S3_ENDPOINT');
@@ -113,8 +115,28 @@ export class StorageService {
    * tightens the recovery window if the URL leaks. Callers that need a
    * longer window (e.g. an admin "share link" feature) must pass `expiresIn`
    * explicitly so the trade-off is local and visible.
+   *
+   * Results are cached per `key:expiresIn` and reused for 80% of the
+   * signature lifetime so repeated polls don't re-sign the same objects.
    */
   async getSignedDownloadUrl(key: string, expiresIn = 900): Promise<string> {
+    const cacheKey = `${key}:${expiresIn}`;
+    const now = Date.now();
+    const hit = this.signedUrlCache.get(cacheKey);
+    if (hit && hit.expiresAt > now) return hit.url;
+
+    const url = await this.signDownloadUrl(key, expiresIn);
+
+    // Reuse for 80% of the signature lifetime (leaves a safety margin before expiry).
+    if (this.signedUrlCache.size >= StorageService.SIGNED_URL_CACHE_MAX) {
+      const oldest = this.signedUrlCache.keys().next().value;
+      if (oldest !== undefined) this.signedUrlCache.delete(oldest);
+    }
+    this.signedUrlCache.set(cacheKey, { url, expiresAt: now + expiresIn * 1000 * 0.8 });
+    return url;
+  }
+
+  private async signDownloadUrl(key: string, expiresIn: number): Promise<string> {
     if (this.backend === 'gcs' && this.gcs) {
       const file = this.gcs.bucket(this.bucket).file(key);
       const [url] = await file.getSignedUrl({

@@ -36,6 +36,10 @@ interface ConversationListProps {
   connectionStatus?: 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
   muteAll?: boolean;
   onToggleMuteAll?: () => void;
+  serverCounts?: { mine: number; all: number; unread: number; byChannel: Record<string, number> };
+  hasMore?: boolean;
+  isLoadingMore?: boolean;
+  onLoadMore?: () => void;
 }
 
 export default function ConversationList({
@@ -50,6 +54,10 @@ export default function ConversationList({
   connectionStatus,
   muteAll,
   onToggleMuteAll,
+  serverCounts,
+  hasMore,
+  isLoadingMore,
+  onLoadMore,
 }: ConversationListProps) {
   const [searchInput, setSearchInput] = useState(filters.search ?? '');
   const [searchFocused, setSearchFocused] = useState(false);
@@ -279,8 +287,8 @@ export default function ConversationList({
         selectedChannels={filters.channels ?? []}
         onTabChange={(tab) => onFiltersChange({ ...filters, tab })}
         onChannelToggle={handleChannelToggle}
-        counts={tabCounts}
-        channelCounts={channelCounts}
+        counts={serverCounts ?? tabCounts}
+        channelCounts={serverCounts?.byChannel ?? channelCounts}
       />
 
       {/* AI status filter chips — owner asked "หาแต่แชทที่รอตอบ" → 'pending' */}
@@ -363,17 +371,34 @@ export default function ConversationList({
             )}
           </div>
         ) : (
-          filteredAndSorted.map((session) => (
-            <div key={session.id} data-room-id={session.id}>
-              <ConversationItem
-                session={session}
-                isActive={session.id === activeRoomId}
-                onSelect={onSelectRoom}
-                onPin={handlePin}
-                aiSettings={aiSettings}
-              />
-            </div>
-          ))
+          <>
+            {filteredAndSorted.map((session) => (
+              <div key={session.id} data-room-id={session.id}>
+                <ConversationItem
+                  session={session}
+                  isActive={session.id === activeRoomId}
+                  onSelect={onSelectRoom}
+                  onPin={handlePin}
+                  aiSettings={aiSettings}
+                />
+              </div>
+            ))}
+            {hasMore && (
+              <button
+                onClick={() => onLoadMore?.()}
+                disabled={isLoadingMore}
+                className="w-full px-3 py-2.5 text-xs font-medium leading-snug text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+              >
+                {isLoadingMore ? (
+                  <>
+                    <Loader2 className="size-3.5 animate-spin" /> กำลังโหลด…
+                  </>
+                ) : (
+                  'โหลดห้องเพิ่ม'
+                )}
+              </button>
+            )}
+          </>
         )}
       </div>
     </div>

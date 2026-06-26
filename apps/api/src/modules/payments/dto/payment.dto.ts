@@ -40,6 +40,12 @@ export class PreviewJournalDto {
   @Min(0)
   lateFee?: number;
 
+  /** D1 gross-waiver preview: ยอดอนุโลมค่าปรับ → Dr 52-1105 (Cr 42-1103 ยังเป็น gross) */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  lateFeeWaived?: number;
+
   @IsOptional()
   @IsString()
   @IsIn(['NORMAL', 'OVERPAY', 'UNDERPAY', 'PARTIAL', 'EARLY_PAYOFF', 'RESCHEDULE', 'OVERPAY_ADVANCE'])
@@ -204,6 +210,23 @@ export class RecordPaymentDto {
   @IsOptional()
   @IsDateString()
   paidDate?: string;
+
+  /** D1 gross-waiver: ยอดอนุโลมค่าปรับ (฿) → Dr 52-1105. ต้อง ≤ ค่าปรับจริง (server validate) */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  lateFeeWaiverAmount?: number;
+
+  /** รหัสเหตุผลการอนุโลม (จาก SystemConfig late_fee_waiver_reasons) — required เมื่ออนุโลม */
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  lateFeeWaiverReasonCode?: string;
+
+  /** ผู้อนุมัติการอนุโลม (4-eyes SoD) — required เมื่ออนุโลม, ต้อง ≠ ผู้บันทึก */
+  @IsOptional()
+  @IsString()
+  waiverApproverId?: string;
 }
 
 export class BulkRecordPaymentDto {

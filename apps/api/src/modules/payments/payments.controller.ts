@@ -152,6 +152,7 @@ export class PaymentsController {
       amountReceived: dto.amountReceived,
       depositAccountCode: dto.depositAccountCode,
       lateFee: dto.lateFee,
+      lateFeeWaived: dto.lateFeeWaived,
       case: dto.case,
       daysToShift: dto.daysToShift,
       splitMode: dto.splitMode,
@@ -238,6 +239,9 @@ export class PaymentsController {
       dto.case,
       dto.consumeAdvance ?? true,
       dto.paidDate ? new Date(dto.paidDate) : undefined,
+      dto.lateFeeWaiverAmount,
+      dto.lateFeeWaiverReasonCode,
+      dto.waiverApproverId,
     );
   }
 

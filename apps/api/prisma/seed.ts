@@ -167,6 +167,14 @@ async function main() {
     { key: 'late_fee_per_day_rate', value: '20', label: 'ค่าปรับล่าช้ารายวัน (บาท/วัน) — ใช้เมื่อ late_fee_mode=PER_DAY' },
     { key: 'late_fee_max_amount', value: '500', label: 'เพดานค่าปรับล่าช้าสูงสุด (บาท) — ใช้เมื่อ late_fee_mode=PER_DAY' },
     { key: 'late_fee_cap_pct', value: '5', label: 'เพดานค่าปรับ (% ของยอดงวด gross) — ใช้เมื่อ late_fee_mode=PER_DAY' },
+    // P2 (D1) — late-fee waiver reasons for the gross-waiver flow (Dr 52-1105). JSON {code,label}[].
+    { key: 'late_fee_waiver_reasons', value: JSON.stringify([
+      { code: 'loyal_customer', label: 'ลูกค้าประจำ — ผ่อนตรงเวลามาตลอด' },
+      { code: 'first_time', label: 'ผิดนัดครั้งแรก' },
+      { code: 'system_error', label: 'ความผิดพลาดของระบบ' },
+      { code: 'goodwill', label: 'รักษาความสัมพันธ์ (goodwill)' },
+      { code: 'other', label: 'อื่นๆ (ระบุในหมายเหตุ)' },
+    ]), label: 'เหตุผลการอนุโลมค่าปรับล่าช้า (JSON {code,label}[])' },
     { key: 'default_interest_rate', value: '0.08', label: 'อัตราดอกเบี้ยเริ่มต้น' },
     { key: 'min_down_payment_pct', value: '0.20', label: 'เปอร์เซ็นต์เงินดาวน์ขั้นต่ำ' },
     { key: 'max_installment_months', value: '12', label: 'จำนวนงวดสูงสุด' },

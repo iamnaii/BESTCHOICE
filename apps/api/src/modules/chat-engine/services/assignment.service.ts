@@ -2,6 +2,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  BadRequestException,
   ForbiddenException,
   Inject,
   Optional,
@@ -9,6 +10,9 @@ import {
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ChatRoomStatus } from '@prisma/client';
 import { IChatGateway, CHAT_GATEWAY_TOKEN } from '../interfaces/chat-gateway.interface';
+
+/** Roles eligible to be assigned/transferred chat rooms. Single source of truth — do NOT duplicate inline. */
+const CHAT_ELIGIBLE_ROLES = ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES'] as const;
 
 /**
  * AssignmentService — manages staff ↔ room assignment.
@@ -94,6 +98,7 @@ export class AssignmentService {
       select: { id: true, assignedToId: true, customerId: true },
     });
     if (!room) throw new NotFoundException('ไม่พบ room');
+    if (toStaffId === fromStaffId) throw new BadRequestException('ไม่สามารถโอนให้ตัวเองได้');
     await this.assertStaffExists(toStaffId);
 
     // T4-C11: block handoff if customer has a signed / active contract
@@ -240,7 +245,7 @@ export class AssignmentService {
       where: {
         deletedAt: null,
         isActive: true,
-        role: { in: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES'] },
+        role: { in: [...CHAT_ELIGIBLE_ROLES] },
       },
       select: { id: true },
     });
@@ -283,5 +288,33 @@ export class AssignmentService {
         staffId: c.assignedToId!,
         activeCount: c._count.id,
       }));
+  }
+
+  /** Staff eligible to receive a transfer (active, eligible roles) joined with
+   *  their active-room load. Used by GET /staff/online for the transfer picker.
+   *  Distinct from getStaffRoomCounts (which only returns staff that already hold
+   *  rooms and is shaped for the auto-assign load balancer). */
+  async getAssignableStaff(): Promise<
+    { id: string; name: string; email: string; activeCount: number }[]
+  > {
+    const [staff, counts] = await Promise.all([
+      this.prisma.user.findMany({
+        where: {
+          deletedAt: null,
+          isActive: true,
+          role: { in: [...CHAT_ELIGIBLE_ROLES] },
+        },
+        select: { id: true, name: true, email: true },
+        orderBy: { name: 'asc' },
+      }),
+      this.getStaffRoomCounts(),
+    ]);
+    const countMap = new Map(counts.map((c) => [c.staffId, c.activeCount]));
+    return staff.map((s) => ({
+      id: s.id,
+      name: s.name,
+      email: s.email,
+      activeCount: countMap.get(s.id) ?? 0,
+    }));
   }
 }

@@ -388,6 +388,7 @@ export class PaymentsService {
     amountReceived: number;
     depositAccountCode: string;
     lateFee?: number;
+    lateFeeWaived?: number;
     case?: string;
     daysToShift?: number;
     splitMode?: string;

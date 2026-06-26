@@ -41,6 +41,8 @@ export class PaymentJournalPreviewService {
     amountReceived: number;
     depositAccountCode: string;
     lateFee?: number;
+    /** Waived (gross-model) portion of the late fee → Dr 52-1105 (default 0). */
+    lateFeeWaived?: number;
     case?: string;
     daysToShift?: number;
     splitMode?: string;
@@ -100,6 +102,12 @@ export class PaymentJournalPreviewService {
     // recordPayment service flow) re-read payment.lateFee from the DB which
     // is already Prisma.Decimal. No further coercion sites identified.
     const lateFeeAmount = input.lateFee ? new Prisma.Decimal(input.lateFee.toString()) : zero;
+    // D1 gross-waiver: waived portion → Dr 52-1105; Cr 42-1103 stays GROSS (lateFeeAmount).
+    // Cash only needs to cover the NET late fee (gross − waived). Clamp ≤ gross.
+    const lateFeeWaivedAmount = input.lateFeeWaived
+      ? Prisma.Decimal.min(new Prisma.Decimal(input.lateFeeWaived.toString()), lateFeeAmount)
+      : zero;
+    const netLateFee = lateFeeAmount.minus(lateFeeWaivedAmount);
 
     // Build raw JE lines (code, dr, cr, description)
     const rawLines: { code: string; dr: Prisma.Decimal; cr: Prisma.Decimal; description: string }[] = [];
@@ -238,14 +246,17 @@ export class PaymentJournalPreviewService {
         : 'CONSOLIDATED_BACKFILL';
     }
 
-    // Dr: cash/bank received (installment total + late fee)
-    const totalReceived = amountReceived.plus(lateFeeAmount);
+    // Dr: cash/bank received. The wizard's amountReceived IS the full net cash — it
+    // already nets out the late-fee waiver + the advance deduction — mirroring what
+    // the save posts (orchestrator delta = amount). Do NOT add late fee on top.
+    const totalReceived = amountReceived;
 
     // ── Advance balance split (mirror recordPayment §Task 4) ────────────────
-    // The wizard preview must match what the save actually does — including 21-1103 lines.
+    // Owed = installment + NET late fee (gross − waived); the waived portion books to
+    // Dr 52-1105, not collected in cash.
     const advanceBalance = new Prisma.Decimal((c.advanceBalance ?? 0).toString());
-    const remaining = installmentTotal.plus(lateFeeAmount); // gross owed (no prevPaid in preview)
-    const overage = amountReceived.plus(lateFeeAmount).minus(remaining);
+    const remaining = installmentTotal.plus(netLateFee); // net owed (no prevPaid in preview)
+    const overage = amountReceived.minus(remaining);
     let previewAdvCredit = zero;
     let previewAdvConsume = zero;
 
@@ -253,12 +264,12 @@ export class PaymentJournalPreviewService {
       previewAdvCredit = overage;
     } else if (
       (input.consumeAdvance ?? true) &&
-      amountReceived.plus(lateFeeAmount).lt(remaining) &&
+      amountReceived.lt(remaining) &&
       advanceBalance.gt(zero) &&
       (input.case === undefined || input.case === 'NORMAL')
     ) {
       // Mirror orchestrator: only auto-consume when the credit checkbox is on.
-      const gap = remaining.minus(amountReceived.plus(lateFeeAmount));
+      const gap = remaining.minus(amountReceived);
       previewAdvConsume = Prisma.Decimal.min(advanceBalance, gap);
     }
 
@@ -270,6 +281,11 @@ export class PaymentJournalPreviewService {
     // 2. Consume existing advance
     if (previewAdvConsume.gt(zero)) {
       rawLines.push({ code: '21-1103', dr: previewAdvConsume, cr: zero, description: 'หักเงินรับล่วงหน้า' });
+    }
+
+    // 2b. Late-fee waiver discount (Dr 52-1105) — Cr 42-1103 below stays GROSS.
+    if (lateFeeWaivedAmount.gt(zero)) {
+      rawLines.push({ code: '52-1105', dr: lateFeeWaivedAmount, cr: zero, description: 'ส่วนลดให้ลูกค้า — อนุโลมค่าปรับ' });
     }
 
     if (isConsolidated) {
@@ -300,7 +316,7 @@ export class PaymentJournalPreviewService {
     // This mirrors PaymentReceipt2BTemplate's rounding logic.
     // Skipped for OVERPAY_ADVANCE / advance consume because those clear the diff via 21-1103.
     if (previewAdvCredit.eq(zero) && previewAdvConsume.eq(zero)) {
-      const roundingDiff = amountReceived.minus(installmentTotal);
+      const roundingDiff = amountReceived.minus(installmentTotal.plus(netLateFee));
       const tolerance = new Prisma.Decimal('1.00');
       if (roundingDiff.gt(zero) && roundingDiff.lte(tolerance)) {
         // D1.1.6.2 — resolve via AccountRoleService when available, otherwise

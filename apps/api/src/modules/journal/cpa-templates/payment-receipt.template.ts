@@ -7,6 +7,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { AccountRoleService } from '../account-role.service';
 import { computeInstallmentBreakdown } from '../compute-installment-breakdown';
 import { splitReceipt, SplitReceiptResult } from '../split-receipt';
+import { buildReceiptLines } from '../build-receipt-lines';
 
 const TOLERANCE = new Decimal('1.00');
 
@@ -16,8 +17,14 @@ export interface PaymentReceiptPrimitiveInput {
   delta: Decimal;
   /** Cash code (11-11xx / 11-12xx) OR '21-5101' for the credit-balance path. */
   debitAccountCode: string;
-  /** Total late fee owed on this installment (default 0). */
+  /** Total (GROSS) late fee owed on this installment (default 0). */
   lateFee?: Decimal;
+  /**
+   * Waived portion of the late fee (D1 gross-waiver, default 0). Books to Dr 52-1105
+   * and grosses up Cr 42-1103; splitReceipt is fed the NET (gross − waived) so cash
+   * only needs to cover the un-waived portion. Must be ≤ lateFee.
+   */
+  lateFeeWaived?: Decimal;
   /** Existing 21-1103 advance consumed to supplement delta (default 0). */
   advanceConsume?: Decimal;
   /** Surplus parked as new 21-1103 advance (default 0). */
@@ -213,7 +220,17 @@ export class PaymentReceiptTemplate {
     );
 
     const delta = input.delta;
-    const lateFee = input.lateFee ?? new Decimal(0);
+    const lateFeeGross = input.lateFee ?? new Decimal(0);
+    const lateFeeWaived = input.lateFeeWaived ?? new Decimal(0);
+    // Gross-waiver (D1): splitReceipt is fed the NET late fee (cash must cover only
+    // the un-waived portion); the waived portion books to Dr 52-1105 + grosses up
+    // Cr 42-1103 inside buildReceiptLines.
+    const netLateFee = lateFeeGross.minus(lateFeeWaived);
+    if (netLateFee.lt(0)) {
+      throw new BadRequestException(
+        `lateFeeWaived ${lateFeeWaived.toFixed(2)} exceeds late fee ${lateFeeGross.toFixed(2)}`,
+      );
+    }
     const advanceConsume = input.advanceConsume ?? new Decimal(0);
     const advanceCredit = input.advanceCredit ?? new Decimal(0);
 
@@ -230,7 +247,7 @@ export class PaymentReceiptTemplate {
     const split = splitReceipt({
       delta,
       installmentTotal,
-      lateFee,
+      lateFee: netLateFee,
       priorPrincipalCleared,
       priorLateFeeBooked,
       advanceConsume,
@@ -275,37 +292,20 @@ export class PaymentReceiptTemplate {
       }
     }
 
-    const zero = new Decimal(0);
     const overpayCode = this.roles?.tryCode('adj_overpay') ?? '53-1503';
     const underpayCode = this.roles?.tryCode('adj_underpay') ?? '52-1104';
 
-    const lines: { accountCode: string; dr: Decimal; cr: Decimal; description?: string }[] = [];
-    if (delta.gt(0)) {
-      lines.push({ accountCode: input.debitAccountCode, dr: delta, cr: zero, description: 'รับเงิน' });
-    }
-    if (advanceConsume.gt(0)) {
-      lines.push({ accountCode: '21-1103', dr: advanceConsume, cr: zero, description: 'หักเงินรับล่วงหน้า' });
-    }
-    if (split.underpayRounding.gt(0)) {
-      lines.push({
-        accountCode: underpayCode,
-        dr: split.underpayRounding,
-        cr: zero,
-        description: 'ส่วนลดเศษสตางค์ (ปิดยอด)',
-      });
-    }
-    if (split.principalCleared.gt(0)) {
-      lines.push({ accountCode: '11-2103', dr: zero, cr: split.principalCleared, description: 'ล้างลูกหนี้ค้างชำระ' });
-    }
-    if (split.lateFeePortion.gt(0)) {
-      lines.push({ accountCode: '42-1103', dr: zero, cr: split.lateFeePortion, description: 'ค่าปรับชำระล่าช้า' });
-    }
-    if (split.overpayRounding.gt(0)) {
-      lines.push({ accountCode: overpayCode, dr: zero, cr: split.overpayRounding, description: 'กำไรปัดเศษ' });
-    }
-    if (advanceCredit.gt(0)) {
-      lines.push({ accountCode: '21-1103', dr: zero, cr: advanceCredit, description: 'เงินรับล่วงหน้า' });
-    }
+    // Shared pure builder (also used by the wizard preview so the two can't drift).
+    const lines = buildReceiptLines({
+      split,
+      debitAccountCode: input.debitAccountCode,
+      delta,
+      advanceConsume,
+      advanceCredit,
+      lateFeeWaived,
+      overpayCode,
+      underpayCode,
+    });
 
     // Review I-1: refuse to post a meaningless zero-line JE. Reachable when a
     // caller issues a receipt against an already fully-cleared installment
@@ -345,6 +345,7 @@ export class PaymentReceiptTemplate {
           deltaApplied: delta.toString(),
           principalCleared: split.principalCleared.toString(),
           lateFeePortion: split.lateFeePortion.toString(),
+          lateFeeWaived: lateFeeWaived.toString(),
         },
         lines,
       },

@@ -207,6 +207,9 @@ export class PaymentsService {
     paymentCase?: PaymentCase,
     consumeAdvance: boolean = true,
     paidDate?: Date,
+    lateFeeWaiverAmount?: number,
+    lateFeeWaiverReasonCode?: string,
+    waiverApproverId?: string,
   ) {
     return this.services().orchestrator.recordPayment(
       contractId,
@@ -222,6 +225,9 @@ export class PaymentsService {
       paymentCase,
       consumeAdvance,
       paidDate,
+      lateFeeWaiverAmount,
+      lateFeeWaiverReasonCode,
+      waiverApproverId,
     );
   }
 

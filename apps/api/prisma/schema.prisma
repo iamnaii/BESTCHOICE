@@ -4997,9 +4997,7 @@ model ChatMessage {
   externalMessageId String?  @unique @map("external_message_id") // LINE/FB/TikTok message ID
   /// Frontend-generated correlation token for optimistic send — lets the client
   /// match its optimistic "sending" bubble to the saved row. NULL for inbound
-  /// messages and for rows created before this column existed. Intentionally NOT
-  /// unique: sendStaffMessage saves before delivering (saved != delivered), so a
-  /// unique/dedup would mis-mark a saved-but-undelivered message as sent.
+  /// messages and for rows created before this column existed.
   clientMessageId String? @map("client_message_id")
   roomId            String   @map("room_id")
   room              ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
@@ -5022,6 +5020,11 @@ model ChatMessage {
   // Delivery tracking
   deliveredAt    DateTime?                  @map("delivered_at")
   readAt         DateTime?                  @map("read_at")
+  /// Set when our outbound adapter call (LINE/FB/etc.) confirmed the message was
+  /// sent to the customer. NULL = not yet delivered (a saved-but-undelivered row,
+  /// e.g. adapter failure) — a retry with the same clientMessageId re-attempts
+  /// delivery; a non-NULL value means a retry must NOT re-send (idempotent).
+  outboundSentAt DateTime?                  @map("outbound_sent_at")
   // Z10: outbound delivery state populated from LINE webhook
   // `events[].deliveryContext`. NULL for inbound (customer→us) messages and
   // for outbound messages we sent before this column existed.
@@ -5046,6 +5049,7 @@ model ChatMessage {
   createdAt DateTime  @default(now()) @map("created_at")
   deletedAt DateTime? @map("deleted_at")
 
+  @@unique([roomId, clientMessageId])
   @@index([roomId, createdAt])
   @@index([intent])
   @@index([role])

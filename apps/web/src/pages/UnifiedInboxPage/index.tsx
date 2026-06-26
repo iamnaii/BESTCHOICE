@@ -102,7 +102,7 @@ export default function UnifiedInboxPage() {
   }, [activeRoomId]);
 
   // WebSocket for real-time updates
-  const { joinRoom, leaveRoom, viewRoom, isCustomerTyping, status: connectionStatus } = useChatSocket({
+  const { joinRoom, leaveRoom, viewRoom, startTyping, stopTyping, isCustomerTyping, staffTyping, status: connectionStatus } = useChatSocket({
     onNewMessage: (data) => {
       queryClient.invalidateQueries({ queryKey: ['chat-messages', data.roomId] });
       queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
@@ -394,6 +394,9 @@ export default function UnifiedInboxPage() {
           messages={messagesQuery.data ?? []}
           isLoadingMessages={messagesQuery.isLoading}
           isCustomerTyping={isCustomerTyping}
+          onStartTyping={() => activeRoomId && startTyping(activeRoomId)}
+          onStopTyping={() => activeRoomId && stopTyping(activeRoomId)}
+          staffTypingName={staffTyping?.userName ?? null}
           onSendMessage={handleSendMessage}
           onSendFile={handleSendFile}
           onSendSticker={handleSendSticker}

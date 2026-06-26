@@ -111,6 +111,9 @@ interface ChatPanelProps {
   pendingSendText?: string | null;
   failedSends?: { id: string; text: string; source?: 'http' | 'ws' }[];
   onRetrySend?: (id: string, text: string) => void;
+  onStartTyping?: () => void;
+  onStopTyping?: () => void;
+  staffTypingName?: string | null;
 }
 
 export default function ChatPanel({
@@ -138,6 +141,9 @@ export default function ChatPanel({
   pendingSendText,
   failedSends,
   onRetrySend,
+  onStartTyping,
+  onStopTyping,
+  staffTypingName,
 }: ChatPanelProps) {
   const [inputText, setInputText] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -166,6 +172,31 @@ export default function ChatPanel({
   const prevRoomRef = useRef<string | undefined>(undefined);
   const inputTextRef = useRef(inputText);
   inputTextRef.current = inputText; // keep the live value for the [roomId]-only effect
+
+  // ─── Staff-typing emit helpers ────────────────────────────────────────────────
+  const typingActiveRef = useRef(false);
+  const stopTypingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const emitTyping = () => {
+    if (!typingActiveRef.current) {
+      typingActiveRef.current = true;
+      onStartTyping?.();
+    }
+    if (stopTypingTimerRef.current) clearTimeout(stopTypingTimerRef.current);
+    stopTypingTimerRef.current = setTimeout(() => {
+      typingActiveRef.current = false;
+      onStopTyping?.();
+    }, 3000);
+  };
+  const endTyping = () => {
+    if (stopTypingTimerRef.current) clearTimeout(stopTypingTimerRef.current);
+    if (typingActiveRef.current) {
+      typingActiveRef.current = false;
+      onStopTyping?.();
+    }
+  };
+  useEffect(() => () => {
+    if (stopTypingTimerRef.current) clearTimeout(stopTypingTimerRef.current);
+  }, []);
 
   const queryClient = useQueryClient();
   const pinMutation = useMutation({
@@ -373,6 +404,7 @@ export default function ChatPanel({
     // sending, and a FAILED ghost (with retry) owns it if the send fails. The
     // Batch-1 keep-text-in-composer path is replaced by that ghost.
     setInputText('');
+    endTyping();
     if (roomId) draftsRef.current.delete(roomId);
     const suggestion = selectedSuggestion;
     setSelectedSuggestion(null);
@@ -651,6 +683,16 @@ export default function ChatPanel({
                   <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: '300ms' }} />
                 </div>
                 <span className="text-[11px] text-muted-foreground">กำลังพิมพ์...</span>
+              </div>
+            )}
+            {staffTypingName && (
+              <div className="px-4 py-1.5 flex items-center gap-2">
+                <div className="flex gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: '300ms' }} />
+                </div>
+                <span className="text-[11px] text-muted-foreground leading-snug">{staffTypingName} กำลังพิมพ์…</span>
               </div>
             )}
             <div ref={messagesEndRef} />
@@ -939,9 +981,12 @@ export default function ChatPanel({
                 // Drop the AI-draft association once the box is cleared, so an
                 // unrelated follow-up isn't logged as an "edit" of that draft.
                 if (selectedSuggestion && v.trim() === '') setSelectedSuggestion(null);
+                if (v.trim()) emitTyping();
+                else endTyping();
               }}
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
+              onBlur={endTyping}
               placeholder="พิมพ์ข้อความ..."
               rows={1}
               className="flex-1 resize-none overflow-y-auto px-3 py-2 text-sm bg-muted/40 rounded-lg border-0 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:bg-background max-h-32 transition-colors placeholder:text-muted-foreground/40"

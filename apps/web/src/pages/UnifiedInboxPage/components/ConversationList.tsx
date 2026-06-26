@@ -9,7 +9,7 @@ import api from '@/lib/api';
 import { toast } from 'sonner';
 import ConversationItem from './ConversationItem';
 import ChannelFilter, { type InboxTab } from './ChannelFilter';
-import { deriveTabCounts } from './tab-counts';
+import { deriveTabCounts, deriveChannelUnreadCounts } from './tab-counts';
 
 type AiFilter = 'all' | 'ai' | 'human' | 'pending';
 
@@ -134,6 +134,7 @@ export default function ConversationList({
   }, [sessions, filters, currentUserId, aiFilter]);
 
   const tabCounts = useMemo(() => deriveTabCounts(sessions, currentUserId), [sessions, currentUserId]);
+  const channelCounts = useMemo(() => deriveChannelUnreadCounts(sessions), [sessions]);
 
   const unreadInView = useMemo(
     () => filteredAndSorted.filter((r) => (r.unreadCount ?? 0) > 0).map((r) => r.id),
@@ -270,6 +271,7 @@ export default function ConversationList({
         onTabChange={(tab) => onFiltersChange({ ...filters, tab })}
         onChannelToggle={handleChannelToggle}
         counts={tabCounts}
+        channelCounts={channelCounts}
       />
 
       {/* AI status filter chips — owner asked "หาแต่แชทที่รอตอบ" → 'pending' */}

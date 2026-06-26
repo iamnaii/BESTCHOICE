@@ -107,8 +107,8 @@ interface ChatPanelProps {
   aiPaused?: boolean;
   onToggleAi?: () => void;
   aiTogglePending?: boolean;
-  // Task 1 (send-status state) — ghost rows rendered in Task 2.
-  pendingSendText?: string | null;
+  // Optimistic-send ghosts keyed by clientMessageId — each resolves when its saved row lands.
+  pendingSends?: { clientMessageId: string; text: string }[];
   failedSends?: { id: string; text: string; source?: 'http' | 'ws' }[];
   onRetrySend?: (id: string, text: string) => void;
   onStartTyping?: () => void;
@@ -138,7 +138,7 @@ export default function ChatPanel({
   aiPaused,
   onToggleAi,
   aiTogglePending,
-  pendingSendText,
+  pendingSends,
   failedSends,
   onRetrySend,
   onStartTyping,
@@ -697,17 +697,19 @@ export default function ChatPanel({
               </div>
             )}
             <div ref={messagesEndRef} />
-            {/* In-flight "sending" ghost — NOT a cached message; drops when the send settles. */}
-            {pendingSendText && (
-              <div className="flex justify-end mb-3">
-                <div className="max-w-[75%] rounded-2xl rounded-br-md bg-primary/60 px-3.5 py-2 text-sm text-primary-foreground leading-relaxed wrap-anywhere">
-                  <span className="whitespace-pre-wrap">{pendingSendText}</span>
-                  <span className="mt-0.5 flex items-center justify-end gap-1 text-[10px] opacity-80">
-                    <Loader2 className="size-3 animate-spin" /> กำลังส่ง
-                  </span>
+            {/* In-flight "sending" ghosts — keyed by clientMessageId; each drops when its saved row lands. */}
+            {(pendingSends ?? [])
+              .filter((p) => !messages.some((m: any) => m.clientMessageId === p.clientMessageId))
+              .map((p) => (
+                <div key={p.clientMessageId} className="flex justify-end mb-3">
+                  <div className="max-w-[75%] rounded-2xl rounded-br-md bg-primary/60 px-3.5 py-2 text-sm text-primary-foreground leading-relaxed wrap-anywhere">
+                    <span className="whitespace-pre-wrap">{p.text}</span>
+                    <span className="mt-0.5 flex items-center justify-end gap-1 text-[10px] opacity-80">
+                      <Loader2 className="size-3 animate-spin" /> กำลังส่ง
+                    </span>
+                  </div>
                 </div>
-              </div>
-            )}
+              ))}
             {/* Failed sends — unified HTTP + WS failure path; retry re-sends. */}
             {(failedSends ?? []).map((f) => (
               <div key={f.id} className="flex justify-end mb-3">

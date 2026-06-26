@@ -74,8 +74,10 @@ export default function UnifiedInboxPage() {
     }
   }, [muteAll, toggleMuteAll]);
 
-  // Send-status state: in-flight ghost + unified failed list (both roomId-scoped)
-  const [pendingSend, setPendingSend] = useState<{ roomId: string; text: string } | null>(null);
+  // Send-status state: in-flight ghosts (keyed by token) + unified failed list (both roomId-scoped)
+  const [pendingSends, setPendingSends] = useState<
+    { clientMessageId: string; roomId: string; text: string }[]
+  >([]);
   const [failedSends, setFailedSends] = useState<
     { id: string; roomId: string; text: string; source: 'http' | 'ws' }[]
   >([]);
@@ -179,6 +181,20 @@ export default function UnifiedInboxPage() {
     refetchInterval: 5000, // Poll every 5s as fallback for WS
   });
 
+  // Drop optimistic ghosts whose saved row (matched by clientMessageId) has
+  // arrived in the message list. Belt to ChatPanel's display-time filter.
+  useEffect(() => {
+    const msgs = messagesQuery.data;
+    if (!Array.isArray(msgs) || !activeRoomId) return;
+    const landed = new Set(
+      msgs.map((m: any) => m.clientMessageId).filter((id: unknown): id is string => !!id),
+    );
+    if (landed.size === 0) return;
+    setPendingSends((prev) =>
+      prev.filter((p) => !(p.roomId === activeRoomId && landed.has(p.clientMessageId))),
+    );
+  }, [messagesQuery.data, activeRoomId]);
+
   // Mutations
   const assignMutation = useMutation({
     mutationFn: ({ roomId, staffId }: { roomId: string; staffId: string }) =>
@@ -274,31 +290,35 @@ export default function UnifiedInboxPage() {
   // Returns true only when the message was accepted. Failure drives a FAILED ghost
   // (via pushFailedSend) — no toast; the FAILED ghost is the affordance.
   const sendRoomMessage = async (text: string): Promise<boolean> => {
-    if (!activeRoomId) {
-      toast.error('ไม่มีห้องสนทนาที่เปิดอยู่');
+    const roomId = activeRoomId;
+    if (!roomId) return false;
+    const clientMessageId = crypto.randomUUID();
+    // Optimistic "กำลังส่ง" ghost — removed when the saved row (same token) lands
+    // in the list, or on failure (replaced by a FAILED ghost).
+    setPendingSends((prev) => [...prev, { clientMessageId, roomId, text }]);
+    const removePending = () =>
+      setPendingSends((prev) => prev.filter((p) => p.clientMessageId !== clientMessageId));
+    try {
+      const res = await api.post(`/staff-chat/rooms/${roomId}/messages`, { text, clientMessageId });
+      const data = res.data;
+      if (data && data.success === false) {
+        removePending();
+        pushFailedSend(roomId, text, 'http');
+        return false;
+      }
+      // Success — keep the ghost until the refetched row carries the token, then
+      // the reconciliation effect prunes it. Trigger the refetch now.
+      queryClient.invalidateQueries({ queryKey: ['chat-messages', roomId] });
+      // Refresh the conversation list too so the room bubbles to the top with the
+      // just-sent message as its preview (otherwise the left list stays stale
+      // until the next inbound message / poll).
+      queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
+      return true;
+    } catch {
+      removePending();
+      pushFailedSend(roomId, text, 'http');
       return false;
     }
-    const roomId = activeRoomId; // capture — the room may change before this settles
-    setPendingSend({ roomId, text }); // transient "กำลังส่ง…" ghost (NOT in the cache)
-    let ok = false;
-    try {
-      const { data } = await api.post<{ success: boolean; error?: string }>(
-        `/staff-chat/rooms/${roomId}/messages`,
-        { text },
-      );
-      if (data && data.success === false) pushFailedSend(roomId, text, 'http');
-      else ok = true;
-    } catch {
-      pushFailedSend(roomId, text, 'http');
-    }
-    // drop the ghost only if it's still the one we set (room may have switched + re-sent)
-    setPendingSend((p) => (p?.roomId === roomId && p.text === text ? null : p));
-    queryClient.invalidateQueries({ queryKey: ['chat-messages', roomId] });
-    // Refresh the conversation list too so the room bubbles to the top with the
-    // just-sent message as its preview (otherwise the left list stays stale
-    // until the next inbound message / poll).
-    queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
-    return ok;
   };
 
   const sendRoomMessageRef = useRef(sendRoomMessage);
@@ -418,7 +438,7 @@ export default function UnifiedInboxPage() {
           aiPaused={sessionQuery.data?.aiPaused ?? false}
           onToggleAi={handleToggleAi}
           aiTogglePending={aiTogglePending}
-          pendingSendText={pendingSend?.roomId === activeRoomId ? pendingSend.text : null}
+          pendingSends={pendingSends.filter((p) => p.roomId === activeRoomId)}
           failedSends={failedSends.filter((f) => f.roomId === activeRoomId)}
           onRetrySend={retrySend}
         />

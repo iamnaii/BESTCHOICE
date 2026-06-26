@@ -175,10 +175,13 @@ export default function UnifiedInboxPage() {
       lastPage.page * lastPage.limit < lastPage.total ? lastPage.page + 1 : undefined,
   });
 
-  const sessions = useMemo(
-    () => sessionsQuery.data?.pages.flatMap((p: any) => p.data ?? []) ?? [],
-    [sessionsQuery.data?.pages],
-  );
+  const sessions = useMemo(() => {
+    const flat = sessionsQuery.data?.pages.flatMap((p: any) => p.data ?? []) ?? [];
+    // Offset pagination over a mutable lastMessageAt order can repeat a room at a
+    // page boundary if rooms shift between fetches — dedup by id to avoid React
+    // key collisions / double rows. Map preserves first-seen (server) order.
+    return [...new Map(flat.map((r: any) => [r.id, r])).values()];
+  }, [sessionsQuery.data?.pages]);
 
   // Server-side accurate unread counts — not derived from the loaded subset.
   const roomCountsQuery = useQuery({

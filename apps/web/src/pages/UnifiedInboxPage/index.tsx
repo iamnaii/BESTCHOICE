@@ -1,5 +1,5 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import QueryBoundary from '@/components/QueryBoundary';
@@ -111,6 +111,7 @@ export default function UnifiedInboxPage() {
     roomsInvalidateTimer.current = setTimeout(() => {
       queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
       queryClient.invalidateQueries({ queryKey: ['chat-unread-count'] });
+      queryClient.invalidateQueries({ queryKey: ['chat-room-counts'] });
     }, 600);
   }, [queryClient]);
   // Clear any in-flight debounce timer on unmount to prevent a state update
@@ -156,16 +157,36 @@ export default function UnifiedInboxPage() {
       if (activeRoomId) queryClient.invalidateQueries({ queryKey: ['chat-messages', activeRoomId] });
       queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
       queryClient.invalidateQueries({ queryKey: ['chat-unread-count'] });
+      queryClient.invalidateQueries({ queryKey: ['chat-room-counts'] });
     },
   }, activeRoomId);
 
-  // Fetch sessions — send search to backend; tab/channel filtering is client-side
-  const sessionsQuery = useQuery({
+  // Fetch sessions — send search to backend; tab/channel filtering is client-side.
+  // useInfiniteQuery accumulates pages so all loaded rooms stay in the list;
+  // the user triggers more loads via "โหลดห้องเพิ่ม" button.
+  const sessionsQuery = useInfiniteQuery({
     queryKey: ['chat-rooms', filters.search],
-    queryFn: () =>
+    queryFn: ({ pageParam }) =>
       api
-        .get('/staff-chat/rooms', { params: { search: filters.search } })
+        .get('/staff-chat/rooms', { params: { search: filters.search, page: pageParam, limit: 50 } })
         .then((r) => r.data),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage: any) =>
+      lastPage.page * lastPage.limit < lastPage.total ? lastPage.page + 1 : undefined,
+  });
+
+  const sessions = useMemo(() => {
+    const flat = sessionsQuery.data?.pages.flatMap((p: any) => p.data ?? []) ?? [];
+    // Offset pagination over a mutable lastMessageAt order can repeat a room at a
+    // page boundary if rooms shift between fetches — dedup by id to avoid React
+    // key collisions / double rows. Map preserves first-seen (server) order.
+    return [...new Map(flat.map((r: any) => [r.id, r])).values()];
+  }, [sessionsQuery.data?.pages]);
+
+  // Server-side accurate unread counts — not derived from the loaded subset.
+  const roomCountsQuery = useQuery({
+    queryKey: ['chat-room-counts'],
+    queryFn: () => api.get('/staff-chat/rooms/counts').then((r) => r.data),
   });
 
   // AI settings — drives the AI status badge in ConversationItem.
@@ -413,7 +434,7 @@ export default function UnifiedInboxPage() {
           onRetry={() => sessionsQuery.refetch()}
         >
           <ConversationList
-            sessions={sessionsQuery.data?.data ?? []}
+            sessions={sessions}
             activeRoomId={activeRoomId}
             onSelectRoom={handleSelectRoom}
             isLoading={sessionsQuery.isLoading}
@@ -424,6 +445,10 @@ export default function UnifiedInboxPage() {
             connectionStatus={connectionStatus}
             muteAll={muteAll}
             onToggleMuteAll={handleToggleMuteAll}
+            serverCounts={roomCountsQuery.data}
+            hasMore={sessionsQuery.hasNextPage}
+            isLoadingMore={sessionsQuery.isFetchingNextPage}
+            onLoadMore={() => sessionsQuery.fetchNextPage()}
           />
         </QueryBoundary>
       </div>

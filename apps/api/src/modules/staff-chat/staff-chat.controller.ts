@@ -102,6 +102,12 @@ export class StaffChatController {
     });
   }
 
+  @Get('rooms/counts')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  async getRoomCounts(@Req() req: { user: { id: string } }) {
+    return this.roomManager.getRoomBadgeCounts(req.user.id);
+  }
+
   @Get('rooms/:id')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   async getRoom(@Param('id') id: string, @Req() req: { user: { id: string; role: string } }) {

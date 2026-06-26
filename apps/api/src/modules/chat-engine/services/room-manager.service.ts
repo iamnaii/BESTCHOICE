@@ -443,6 +443,32 @@ export class RoomManagerService {
     return { unread: count };
   }
 
+  /** Unread-room counts for the inbox tab + channel badges, over the whole
+   *  (non-deleted) room universe — so badges aren't truncated by pagination.
+   *  "unread" = room.unreadCount > 0 (mirrors deriveTabCounts/deriveChannelUnreadCounts). */
+  async getRoomBadgeCounts(staffId?: string): Promise<{
+    mine: number;
+    all: number;
+    unread: number;
+    byChannel: Record<string, number>;
+  }> {
+    const unreadWhere: Prisma.ChatRoomWhereInput = { deletedAt: null, unreadCount: { gt: 0 } };
+    const [all, mine, byChannelRaw] = await Promise.all([
+      this.prisma.chatRoom.count({ where: unreadWhere }),
+      staffId
+        ? this.prisma.chatRoom.count({ where: { ...unreadWhere, assignedToId: staffId } })
+        : Promise.resolve(0),
+      this.prisma.chatRoom.groupBy({
+        by: ['channel'],
+        where: unreadWhere,
+        _count: { id: true },
+      }),
+    ]);
+    const byChannel: Record<string, number> = {};
+    for (const g of byChannelRaw) byChannel[g.channel] = g._count.id;
+    return { mine, all, unread: all, byChannel };
+  }
+
   /** Search messages across all rooms */
   async searchMessages(params: {
     query: string;

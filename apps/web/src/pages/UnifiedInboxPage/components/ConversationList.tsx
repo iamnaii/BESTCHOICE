@@ -29,6 +29,7 @@ interface ConversationListProps {
     tab: InboxTab;
     channels: string[];
     search?: string;
+    aiFilter?: 'all' | 'ai' | 'human' | 'pending';
   };
   onFiltersChange: (filters: any) => void;
   currentUserId?: string;
@@ -61,7 +62,7 @@ export default function ConversationList({
 }: ConversationListProps) {
   const [searchInput, setSearchInput] = useState(filters.search ?? '');
   const [searchFocused, setSearchFocused] = useState(false);
-  const [aiFilter, setAiFilter] = useState<AiFilter>('all');
+  const aiFilter: AiFilter = filters.aiFilter ?? 'all';
   const debouncedSearch = useDebounce(searchInput, 300);
 
   const queryClient = useQueryClient();
@@ -100,62 +101,16 @@ export default function ConversationList({
     onFiltersChange({ ...filters, channels: updated });
   };
 
-  const filteredAndSorted = useMemo(() => {
-    let list = [...sessions];
-
-    // Tab filter
-    if (filters.tab === 'mine') {
-      list = list.filter((r) => r.assignedTo?.id === currentUserId);
-    } else if (filters.tab === 'unread') {
-      list = list.filter((r) => (r.unreadCount ?? 0) > 0);
-    }
-    // 'all' — no filter
-
-    // Channel filter (multi-select, empty = show all)
-    if (filters.channels?.length > 0) {
-      list = list.filter((r) => filters.channels.includes(r.channel));
-    }
-
-    // AI filter (ChatInboxPage parity)
-    // - 'ai'      — AI is replying (not paused, not in handoff)
-    // - 'human'   — staff has taken over (aiPaused)
-    // - 'pending' — bot escalated to a human (handoffMode)
-    if (aiFilter === 'ai') {
-      list = list.filter((r) => !r.aiPaused && !r.handoffMode);
-    } else if (aiFilter === 'human') {
-      list = list.filter((r) => r.aiPaused);
-    } else if (aiFilter === 'pending') {
-      list = list.filter((r) => r.handoffMode);
-    }
-
-    // Search filter
-    if (filters.search) {
-      const q = filters.search.toLowerCase();
-      list = list.filter(
-        (r) =>
-          r.customer?.name?.toLowerCase().includes(q) ||
-          r.customer?.phone?.includes(q) ||
-          r.lineUserId?.toLowerCase().includes(q),
-      );
-    }
-
-    // Sort: pinned first → then by lastMessageAt desc
-    list.sort((a, b) => {
-      const aPinned = a.pinnedAt != null ? 1 : 0;
-      const bPinned = b.pinnedAt != null ? 1 : 0;
-      if (bPinned !== aPinned) return bPinned - aPinned;
-      return new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime();
-    });
-
-    return list;
-  }, [sessions, filters, currentUserId, aiFilter]);
+  // Server already filters and sorts — just pass through.
+  // (tabCounts/channelCounts memos below are kept as serverCounts fallback.)
+  const visibleRooms = sessions;
 
   const tabCounts = useMemo(() => deriveTabCounts(sessions, currentUserId), [sessions, currentUserId]);
   const channelCounts = useMemo(() => deriveChannelUnreadCounts(sessions), [sessions]);
 
   const unreadInView = useMemo(
-    () => filteredAndSorted.filter((r) => (r.unreadCount ?? 0) > 0).map((r) => r.id),
-    [filteredAndSorted],
+    () => visibleRooms.filter((r) => (r.unreadCount ?? 0) > 0).map((r) => r.id),
+    [visibleRooms],
   );
 
   const markAllReadMutation = useMutation({
@@ -169,7 +124,7 @@ export default function ConversationList({
     onError: () => toast.error('ทำเครื่องหมายอ่านไม่สำเร็จ'),
   });
 
-  // j/k navigate the visible (filtered+sorted) room list; guarded so it never
+  // j/k navigate the visible (server-filtered) room list; guarded so it never
   // fires while typing in the composer or search.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -177,10 +132,10 @@ export default function ConversationList({
       if (e.key !== 'j' && e.key !== 'k') return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       e.preventDefault();
-      const idx = filteredAndSorted.findIndex((r) => r.id === activeRoomId);
-      const next = nextRoomIndex(idx, e.key === 'j' ? 1 : -1, filteredAndSorted.length);
+      const idx = visibleRooms.findIndex((r: any) => r.id === activeRoomId);
+      const next = nextRoomIndex(idx, e.key === 'j' ? 1 : -1, visibleRooms.length);
       if (next < 0) return;
-      const room = filteredAndSorted[next];
+      const room = visibleRooms[next];
       onSelectRoom(room.id);
       document
         .querySelector(`[data-room-id="${room.id}"]`)
@@ -188,7 +143,7 @@ export default function ConversationList({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [filteredAndSorted, activeRoomId, onSelectRoom]);
+  }, [visibleRooms, activeRoomId, onSelectRoom]);
 
   return (
     <div className="flex flex-col h-full border-r border-border/60">
@@ -296,7 +251,7 @@ export default function ConversationList({
         {(['all', 'ai', 'human', 'pending'] as const).map((key) => (
           <button
             key={key}
-            onClick={() => setAiFilter(key)}
+            onClick={() => onFiltersChange({ ...filters, aiFilter: key })}
             className={cn(
               'px-2 py-0.5 text-[10px] rounded-full border transition-colors',
               aiFilter === key
@@ -326,7 +281,7 @@ export default function ConversationList({
               </div>
             ))}
           </div>
-        ) : filteredAndSorted.length === 0 ? (
+        ) : visibleRooms.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
             <div className="w-12 h-12 rounded-xl bg-muted/50 flex items-center justify-center mb-3">
               <MessageCircle className="w-5 h-5 text-muted-foreground/40" />
@@ -360,8 +315,7 @@ export default function ConversationList({
                 <button
                   type="button"
                   onClick={() => {
-                    onFiltersChange({ ...filters, channels: [], tab: 'all' });
-                    setAiFilter('all');
+                    onFiltersChange({ ...filters, channels: [], tab: 'all', aiFilter: 'all' });
                   }}
                   className="text-[10px] text-primary hover:underline mt-1"
                 >
@@ -372,7 +326,7 @@ export default function ConversationList({
           </div>
         ) : (
           <>
-            {filteredAndSorted.map((session) => (
+            {visibleRooms.map((session: any) => (
               <div key={session.id} data-room-id={session.id}>
                 <ConversationItem
                   session={session}

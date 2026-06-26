@@ -32,7 +32,8 @@ export default function UnifiedInboxPage() {
     tab: InboxTab;
     channels: string[];
     search?: string;
-  }>({ tab: 'all', channels: [] });
+    aiFilter?: 'all' | 'ai' | 'human' | 'pending';
+  }>({ tab: 'all', channels: [], aiFilter: 'all' });
 
   // Notification mute prefs (localStorage-persisted, no on-mount permission prompt)
   const { muteAll, toggleMuteAll, toggleRoomMute, isMuted } = useNotificationPrefs();
@@ -161,14 +162,27 @@ export default function UnifiedInboxPage() {
     },
   }, activeRoomId);
 
-  // Fetch sessions — send search to backend; tab/channel filtering is client-side.
-  // useInfiniteQuery accumulates pages so all loaded rooms stay in the list;
-  // the user triggers more loads via "โหลดห้องเพิ่ม" button.
+  const currentUserId = user?.id;
+
+  // Fetch sessions — send ALL active filters server-side so each filter combination
+  // fetches the correctly filtered+sorted page set (queryKey=filters resets to page 1
+  // on any filter change). useInfiniteQuery accumulates pages; "โหลดห้องเพิ่ม" appends.
   const sessionsQuery = useInfiniteQuery({
-    queryKey: ['chat-rooms', filters.search],
+    queryKey: ['chat-rooms', filters],
     queryFn: ({ pageParam }) =>
       api
-        .get('/staff-chat/rooms', { params: { search: filters.search, page: pageParam, limit: 50 } })
+        .get('/staff-chat/rooms', {
+          params: {
+            page: pageParam,
+            limit: 50,
+            search: filters.search || undefined,
+            assignedToId: filters.tab === 'mine' ? currentUserId : undefined,
+            unreadOnly: filters.tab === 'unread' ? true : undefined,
+            channels: filters.channels?.length ? filters.channels.join(',') : undefined,
+            aiStatus:
+              filters.aiFilter && filters.aiFilter !== 'all' ? filters.aiFilter : undefined,
+          },
+        })
         .then((r) => r.data),
     initialPageParam: 1,
     getNextPageParam: (lastPage: any) =>

@@ -1,6 +1,5 @@
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate } from 'react-router';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import Decimal from 'decimal.js';
@@ -41,6 +40,8 @@ import { toast } from 'sonner';
 import type { PendingPayment } from '../types';
 import { AdvanceBalanceBanner } from './AdvanceBalanceBanner';
 import { EarlyPayoffOverlay } from '@/components/contract/ContractEarlyPayoff';
+import { RescheduleOverlay } from './RescheduleOverlay';
+import { RepossessionOverlay } from './RepossessionOverlay';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -593,7 +594,8 @@ export function RecordPaymentWizard({
   const [depositAccountCode, setDepositAccountCode] = useState(defaultDepositAccountCode);
   const [showPartialConfirm, setShowPartialConfirm] = useState(false);
   const [showPayoffOverlay, setShowPayoffOverlay] = useState(false);
-  const navigate = useNavigate();
+  const [showRescheduleOverlay, setShowRescheduleOverlay] = useState(false);
+  const [showRepoOverlay, setShowRepoOverlay] = useState(false);
   const { user } = useAuth();
   // Explicit payment-type override (null = auto-detect). แบ่งชำระ/ล่วงหน้า force the
   // API case; ปกติ falls back to the amount-detected case.
@@ -985,6 +987,8 @@ export function RecordPaymentWizard({
       setConsumeAdvance(true);
       setCaseOverride(null);
       setShowPayoffOverlay(false);
+      setShowRescheduleOverlay(false);
+      setShowRepoOverlay(false);
       setWaiverStr('0');
       setWaiverReasonCode('');
       setWaiverApproverId('');
@@ -1077,8 +1081,8 @@ export function RecordPaymentWizard({
                     { key: 'PARTIAL', label: 'แบ่งชำระ', toggle: true, onClick: () => setCaseOverride('PARTIAL'), active: apiCase === 'PARTIAL' },
                     { key: 'OVERPAY_ADVANCE', label: 'ล่วงหน้า', toggle: true, onClick: () => setCaseOverride('OVERPAY_ADVANCE'), active: apiCase === 'OVERPAY_ADVANCE' },
                     { key: 'PAYOFF', label: 'ปิดยอด', toggle: false, onClick: () => setShowPayoffOverlay(true), active: false },
-                    { key: 'RESCHEDULE', label: 'ปรับงวด', toggle: false, onClick: () => toast.info('ปรับงวด: ทำผ่านเมนูสัญญา/งวด'), active: false },
-                    { key: 'REPO', label: 'คืนเครื่อง', toggle: false, onClick: () => { onClose(); navigate('/repossessions'); }, active: false },
+                    { key: 'RESCHEDULE', label: 'ปรับงวด', toggle: false, onClick: () => setShowRescheduleOverlay(true), active: false },
+                    { key: 'REPO', label: 'คืนเครื่อง', toggle: false, onClick: () => setShowRepoOverlay(true), active: false },
                   ].map((t) => (
                     <button
                       key={t.key}
@@ -1617,6 +1621,40 @@ export function RecordPaymentWizard({
           }}
         />,
         document.body,
+      )}
+
+      {/* Reschedule overlay (ปรับงวด) — self-portals to document.body. Reschedule
+          posts no JE now; the JP6 JE posts at the next payment. */}
+      {showRescheduleOverlay && (
+        <RescheduleOverlay
+          contractId={payment.contract.id}
+          contractNumber={payment.contract.contractNumber}
+          customerName={payment.contract.customer.name}
+          branchName={payment.contract.branch.name}
+          installmentNo={payment.installmentNo}
+          currentDueDate={payment.dueDate}
+          monthlyPayment={payment.contract.monthlyPayment}
+          onClose={() => setShowRescheduleOverlay(false)}
+          onSuccess={() => {
+            setShowRescheduleOverlay(false);
+            onClose(); // close wizard after successful reschedule
+          }}
+        />
+      )}
+
+      {/* Repossession overlay (คืนเครื่อง) — self-portals; full create (OWNER-only submit). */}
+      {showRepoOverlay && (
+        <RepossessionOverlay
+          contractId={payment.contract.id}
+          contractNumber={payment.contract.contractNumber}
+          customerName={payment.contract.customer.name}
+          branchName={payment.contract.branch.name}
+          onClose={() => setShowRepoOverlay(false)}
+          onSuccess={() => {
+            setShowRepoOverlay(false);
+            onClose(); // close wizard after successful repossession
+          }}
+        />
       )}
     </>
   );

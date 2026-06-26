@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { useNavigate } from 'react-router';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import Decimal from 'decimal.js';
@@ -556,6 +557,10 @@ export function RecordPaymentWizard({
   const [depositAccountCode, setDepositAccountCode] = useState(defaultDepositAccountCode);
   const [showPartialConfirm, setShowPartialConfirm] = useState(false);
   const [showPayoffOverlay, setShowPayoffOverlay] = useState(false);
+  const navigate = useNavigate();
+  // Explicit payment-type override (null = auto-detect). แบ่งชำระ/ล่วงหน้า force the
+  // API case; ปกติ falls back to the amount-detected case.
+  const [caseOverride, setCaseOverride] = useState<'PARTIAL' | 'OVERPAY_ADVANCE' | null>(null);
 
   // Amount fields
   const lateFeeDecimal = useMemo(() => new Decimal(payment.lateFee), [payment.lateFee]);
@@ -724,7 +729,7 @@ export function RecordPaymentWizard({
     () => receivedNum - expectedTotal.toNumber(),
     [receivedNum, expectedTotal],
   );
-  const apiCase = toApiCase(detectedCase);
+  const apiCase = caseOverride ?? toApiCase(detectedCase);
 
   // JE Preview — debounced
   const previewParams = useMemo(
@@ -854,6 +859,7 @@ export function RecordPaymentWizard({
       setAmountReceived(defaultAmount.toFixed(2));
       setAmountManuallyEdited(false);
       setConsumeAdvance(true);
+      setCaseOverride(null);
       setLateFeeStr(lateFeeDecimal.toFixed(2));
       setMethod('CASH');
       setReferenceNumber('');
@@ -913,6 +919,37 @@ export function RecordPaymentWizard({
                   }}
                 />
               )}
+
+              {/* Payment-type selector */}
+              <div>
+                <h3 className="text-sm font-semibold text-foreground mb-2 leading-snug">
+                  ประเภทการรับชำระ
+                </h3>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { key: 'NORMAL', label: 'ปกติ', onClick: () => setCaseOverride(null), active: caseOverride === null },
+                    { key: 'PARTIAL', label: 'แบ่งชำระ', onClick: () => setCaseOverride('PARTIAL'), active: caseOverride === 'PARTIAL' },
+                    { key: 'OVERPAY_ADVANCE', label: 'ล่วงหน้า', onClick: () => setCaseOverride('OVERPAY_ADVANCE'), active: caseOverride === 'OVERPAY_ADVANCE' },
+                    { key: 'PAYOFF', label: 'ปิดยอด', onClick: () => setShowPayoffOverlay(true), active: false },
+                    { key: 'RESCHEDULE', label: 'ปรับงวด', onClick: () => toast.info('ปรับงวด: ทำผ่านเมนูสัญญา/งวด'), active: false },
+                    { key: 'REPO', label: 'คืนเครื่อง', onClick: () => { onClose(); navigate('/repossessions'); }, active: false },
+                  ].map((t) => (
+                    <button
+                      key={t.key}
+                      type="button"
+                      onClick={t.onClick}
+                      className={cn(
+                        'rounded-xl border-2 px-2 py-1.5 text-sm font-medium leading-snug transition-colors',
+                        t.active
+                          ? 'bg-primary border-primary text-primary-foreground'
+                          : 'bg-card border-border text-foreground hover:border-primary/40 hover:bg-accent',
+                      )}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
               {/* Amount received */}
               <div>

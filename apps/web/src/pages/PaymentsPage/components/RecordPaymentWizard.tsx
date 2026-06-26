@@ -848,12 +848,12 @@ export function RecordPaymentWizard({
 
         {/* Body */}
         <DialogBody className="flex-1 overflow-y-auto px-6 py-3">
-          {/* 2-column: info + JE preview LEFT, form RIGHT */}
-          <div className="grid grid-cols-[300px_1fr] gap-4 items-start">
-            {/* LEFT: Contract info + auto-journal preview (stacked here so the
-                preview fills the left whitespace and the dialog fits one screen
-                without vertical scrolling). */}
-            <div className="space-y-3 min-w-0">
+          {/* 2-column (mockup): form LEFT, contract info + JE preview RIGHT.
+              DOM keeps info first; `order` flips the visual columns so the big
+              form block doesn't have to move in source. */}
+          <div className="grid grid-cols-[1fr_340px] gap-4 items-start">
+            {/* RIGHT column — contract info + auto-journal preview (order-2). */}
+            <div className="order-2 space-y-3 min-w-0">
               <ContractInfoPanel
                 payment={payment}
                 lateFee={currentLateFee}
@@ -867,8 +867,8 @@ export function RecordPaymentWizard({
               />
             </div>
 
-            {/* RIGHT: Form */}
-            <div className="space-y-3 min-w-0">
+            {/* LEFT column — Form (order-1). */}
+            <div className="order-1 space-y-3 min-w-0">
               {/* Advance balance banner — shown when contract has advance to consume */}
               {advanceBalance.gt(0) && (
                 <AdvanceBalanceBanner

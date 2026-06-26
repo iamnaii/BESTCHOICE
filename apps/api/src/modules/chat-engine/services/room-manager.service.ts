@@ -360,6 +360,9 @@ export class RoomManagerService {
     assignedToId?: string;
     customerId?: string;
     unassignedOnly?: boolean;
+    unreadOnly?: boolean;
+    channels?: ChatChannel[];
+    aiStatus?: 'ai' | 'human' | 'pending';
     search?: string;
     page?: number;
     limit?: number;
@@ -390,11 +393,22 @@ export class RoomManagerService {
         { externalUserId: { contains: params.search } },
       ];
     }
+    if (params.unreadOnly) where.unreadCount = { gt: 0 };
+    if (params.channels && params.channels.length > 0) where.channel = { in: params.channels };
+    if (params.aiStatus === 'ai') {
+      where.aiPaused = false;
+      where.handoffMode = false;
+    } else if (params.aiStatus === 'human') {
+      where.aiPaused = true;
+    } else if (params.aiStatus === 'pending') {
+      where.handoffMode = true;
+    }
 
     const [data, total] = await this.prisma.$transaction([
       this.prisma.chatRoom.findMany({
         where,
         orderBy: [
+          { pinnedAt: { sort: 'desc', nulls: 'last' } },
           { priority: 'desc' },
           { lastMessageAt: 'desc' },
         ],

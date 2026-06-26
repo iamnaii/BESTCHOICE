@@ -96,6 +96,11 @@ export class StaffChatController {
       priority: query.priority as ChatPriority | undefined,
       assignedToId: query.assignedToId,
       unassignedOnly: query.unassignedOnly,
+      unreadOnly: query.unreadOnly,
+      channels: query.channels
+        ? (query.channels.split(',').filter(Boolean) as ChatChannel[])
+        : undefined,
+      aiStatus: query.aiStatus as 'ai' | 'human' | 'pending' | undefined,
       search: query.search,
       page: query.page,
       limit: query.limit,

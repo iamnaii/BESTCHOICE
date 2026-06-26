@@ -383,6 +383,7 @@ export class PaymentsService {
     case?: string;
     daysToShift?: number;
     splitMode?: string;
+    consumeAdvance?: boolean;
   }) {
     return this.services().preview.previewJournal(input);
   }

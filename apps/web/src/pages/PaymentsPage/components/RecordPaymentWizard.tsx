@@ -489,14 +489,18 @@ function detectCase(
   received: number,
   expectedTotal: Decimal,
   advanceBalance: Decimal = new Decimal(0),
+  consumeAdvance: boolean = true,
 ): DetectedCase {
-  // Effective amount due = installment minus existing advance (FIFO consume).
-  // Cashier collects this — system splits internally on save.
-  const effectiveDue = Decimal.max(new Decimal(0), expectedTotal.minus(advanceBalance));
+  // Effective amount due = installment minus the advance that will actually be
+  // deducted. When the credit checkbox is OFF (consumeAdvance=false) no advance
+  // is deducted, so the cashier collects the full installment → NORMAL on full pay
+  // (NOT OVERPAY_ADVANCE, which would wrongly re-park the cash as more advance).
+  const effAdvance = consumeAdvance ? advanceBalance : new Decimal(0);
+  const effectiveDue = Decimal.max(new Decimal(0), expectedTotal.minus(effAdvance));
 
   if (received <= 0) {
-    // Zero cash is OK iff advance fully covers the installment
-    return advanceBalance.gte(expectedTotal) ? 'NORMAL' : 'OUT_OF_RANGE';
+    // Zero cash is OK iff the deducted advance fully covers the installment
+    return effAdvance.gte(expectedTotal) ? 'NORMAL' : 'OUT_OF_RANGE';
   }
   const diff = received - effectiveDue.toNumber();
   if (Math.abs(diff) < 0.01) return 'NORMAL';
@@ -699,8 +703,8 @@ export function RecordPaymentWizard({
     [amountDueDecimal, currentLateFee],
   );
   const detectedCase = useMemo(
-    () => detectCase(receivedNum, expectedTotal, advanceBalance),
-    [receivedNum, expectedTotal, advanceBalance],
+    () => detectCase(receivedNum, expectedTotal, advanceBalance, consumeAdvance),
+    [receivedNum, expectedTotal, advanceBalance, consumeAdvance],
   );
   const amountDiff = useMemo(
     () => receivedNum - expectedTotal.toNumber(),
@@ -717,8 +721,9 @@ export function RecordPaymentWizard({
       depositAccountCode,
       lateFee: currentLateFee.toNumber(),
       case: apiCase,
+      consumeAdvance,
     }),
-    [receivedNum, depositAccountCode, currentLateFee, apiCase, payment],
+    [receivedNum, depositAccountCode, currentLateFee, apiCase, payment, consumeAdvance],
   );
   const debouncedParams = useDebounce(previewParams, 300);
 

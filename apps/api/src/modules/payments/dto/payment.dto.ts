@@ -84,6 +84,11 @@ export class PreviewJournalDto {
   @IsString()
   @IsIn(['SINGLE', 'SPLIT'])
   splitMode?: RescheduleSplitMode;
+
+  /** หักเครดิตล่วงหน้า (21-1103) — default true. ใช้ให้พรีวิวตรงกับตอนบันทึก */
+  @IsOptional()
+  @IsBoolean()
+  consumeAdvance?: boolean;
 }
 
 export class RecordPaymentDto {

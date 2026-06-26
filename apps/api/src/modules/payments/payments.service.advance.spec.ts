@@ -566,6 +566,9 @@ describe('PaymentsService — advance balance (Task 4)', () => {
   // ─────────────────────────────────────────────────────────────────────────────
   // T4: consumeAdvance flag — the credit-deduction checkbox gates the auto-consume
   // ─────────────────────────────────────────────────────────────────────────────
+  // recordPayment positional args (12): contractId, installmentNo, amount,
+  // paymentMethod, recordedById, evidenceUrl, notes, transactionRef,
+  // depositAccountCode, toleranceApproverId, paymentCase, consumeAdvance.
   describe('consumeAdvance flag (T4)', () => {
     it('consumeAdvance=false → no auto-consume; a net underpay hits the PARTIAL guard', async () => {
       advanceBalance = 50;

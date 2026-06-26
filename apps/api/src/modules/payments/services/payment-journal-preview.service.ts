@@ -44,6 +44,8 @@ export class PaymentJournalPreviewService {
     case?: string;
     daysToShift?: number;
     splitMode?: string;
+    /** Mirror the save's credit-deduction toggle so preview == posted JE. Default true. */
+    consumeAdvance?: boolean;
   }): Promise<{
     lines: PreviewTaggedLine[];
     accrual2A?: { lines: PreviewTaggedLine[]; subtotal: BlockSubtotal };
@@ -250,10 +252,12 @@ export class PaymentJournalPreviewService {
     if (overage.gt(new Prisma.Decimal('1.00')) && input.case === 'OVERPAY_ADVANCE') {
       previewAdvCredit = overage;
     } else if (
+      (input.consumeAdvance ?? true) &&
       amountReceived.plus(lateFeeAmount).lt(remaining) &&
       advanceBalance.gt(zero) &&
       (input.case === undefined || input.case === 'NORMAL')
     ) {
+      // Mirror orchestrator: only auto-consume when the credit checkbox is on.
       const gap = remaining.minus(amountReceived.plus(lateFeeAmount));
       previewAdvConsume = Prisma.Decimal.min(advanceBalance, gap);
     }

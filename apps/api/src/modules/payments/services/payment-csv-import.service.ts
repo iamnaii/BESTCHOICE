@@ -23,6 +23,9 @@ export interface PaymentCsvImportHost {
     depositAccountCode?: string,
     toleranceApproverId?: string,
     paymentCase?: PaymentCase,
+    // CSV import never toggles this (always auto-consumes, default true) — declared
+    // for signature parity with PaymentsService.recordPayment.
+    consumeAdvance?: boolean,
   ): Promise<unknown>;
 }
 

@@ -4995,6 +4995,12 @@ model ChatRoom {
 model ChatMessage {
   id                String   @id @default(uuid())
   externalMessageId String?  @unique @map("external_message_id") // LINE/FB/TikTok message ID
+  /// Frontend-generated correlation token for optimistic send — lets the client
+  /// match its optimistic "sending" bubble to the saved row. NULL for inbound
+  /// messages and for rows created before this column existed. Intentionally NOT
+  /// unique: sendStaffMessage saves before delivering (saved != delivered), so a
+  /// unique/dedup would mis-mark a saved-but-undelivered message as sent.
+  clientMessageId String? @map("client_message_id")
   roomId            String   @map("room_id")
   room              ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
 

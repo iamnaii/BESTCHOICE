@@ -230,6 +230,7 @@ export class RoomManagerService {
     toolsUsed?: string[];
     costUsd?: number;
     visionExtracted?: Prisma.InputJsonValue;
+    clientMessageId?: string;
   }) {
     const msg = await this.prisma.chatMessage.create({
       data: {
@@ -248,6 +249,7 @@ export class RoomManagerService {
         toolsUsed: params.toolsUsed ?? [],
         costUsd: params.costUsd,
         visionExtracted: params.visionExtracted,
+        clientMessageId: params.clientMessageId,
       },
     });
 

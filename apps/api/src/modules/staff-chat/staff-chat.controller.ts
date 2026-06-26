@@ -139,7 +139,7 @@ export class StaffChatController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   async sendRoomMessage(
     @Param('id') id: string,
-    @Body() body: { text: string },
+    @Body() body: { text: string; clientMessageId?: string },
     @Req() req: { user: { id: string } },
   ) {
     const text = (body?.text ?? '').trim();
@@ -150,15 +150,18 @@ export class StaffChatController {
       roomId: id,
       staffId: req.user.id,
       text,
+      clientMessageId: body?.clientMessageId,
     });
 
     // Broadcast to staff viewing this room so the message appears in real-time
     this.staffChatGateway.emitNewMessage(id, {
+      id: result.message?.id,
       roomId: id,
       role: 'STAFF',
       staffId: req.user.id,
       text,
-      createdAt: new Date().toISOString(),
+      clientMessageId: body?.clientMessageId,
+      createdAt: result.message?.createdAt?.toISOString?.() ?? new Date().toISOString(),
     });
 
     return result;

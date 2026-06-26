@@ -451,7 +451,12 @@ export class MessageRouterService {
     roomId: string;
     staffId: string;
     text: string;
-  }): Promise<{ success: boolean; error?: string }> {
+    clientMessageId?: string;
+  }): Promise<{
+    success: boolean;
+    error?: string;
+    message?: { id: string; clientMessageId: string | null; createdAt: Date };
+  }> {
     const room = await this.roomManager.findById(params.roomId);
     if (!room) {
       this.logger.error(`Room not found: ${params.roomId}`);
@@ -463,11 +468,12 @@ export class MessageRouterService {
       room.externalUserId ?? room.lineUserId ?? '';
 
     // Save the staff message
-    await this.roomManager.saveMessage({
+    const saved = await this.roomManager.saveMessage({
       roomId: params.roomId,
       role: MessageRole.STAFF,
       text: params.text,
       staffId: params.staffId,
+      clientMessageId: params.clientMessageId,
     });
 
     // Send through adapter
@@ -492,7 +498,10 @@ export class MessageRouterService {
       return { success: false, error: result.error ?? 'send failed' };
     }
 
-    return { success: true };
+    return {
+      success: true,
+      message: { id: saved.id, clientMessageId: saved.clientMessageId, createdAt: saved.createdAt },
+    };
   }
 
   /**

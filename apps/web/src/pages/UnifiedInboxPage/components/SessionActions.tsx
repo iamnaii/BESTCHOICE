@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { UserPlus, CheckCircle, Bot, X, FileSignature, ArrowRightLeft, ChevronRight, Loader2, Hand } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -29,6 +29,24 @@ export default function SessionActions({
   const queryClient = useQueryClient();
   const [showStaffList, setShowStaffList] = useState(false);
   const [isTakingOver, setIsTakingOver] = useState(false);
+  const transferRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showStaffList) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowStaffList(false);
+    };
+    const onClick = (e: MouseEvent) => {
+      if (transferRef.current && !transferRef.current.contains(e.target as Node))
+        setShowStaffList(false);
+    };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('mousedown', onClick);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('mousedown', onClick);
+    };
+  }, [showStaffList]);
 
   // Fetch online staff only when transfer dropdown is opened
   const staffQuery = useQuery({
@@ -74,9 +92,11 @@ export default function SessionActions({
         )}
 
         {/* Transfer to other staff */}
-        <div className="relative">
+        <div className="relative" ref={transferRef}>
           <button
             onClick={() => setShowStaffList((v) => !v)}
+            aria-haspopup="menu"
+            aria-expanded={showStaffList}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-warning/10 text-warning rounded-lg hover:bg-warning/20 transition-colors"
           >
             <ArrowRightLeft className="w-3.5 h-3.5" />
@@ -96,7 +116,7 @@ export default function SessionActions({
                 <div className="px-3 py-2 text-xs text-destructive">โหลดรายชื่อไม่ได้</div>
               )}
               {staffQuery.data && (staffQuery.data as any[]).length === 0 && (
-                <div className="px-3 py-2 text-xs text-muted-foreground">ไม่มีพนักงานออนไลน์</div>
+                <div className="px-3 py-2 text-xs text-muted-foreground">ไม่มีพนักงานให้โอน</div>
               )}
               {(staffQuery.data as any[] | undefined)
                 ?.filter((s: any) => s.id !== currentUserId)
@@ -110,8 +130,12 @@ export default function SessionActions({
                     }}
                     className="flex items-center gap-2 w-full px-3 py-2 text-sm text-left hover:bg-muted transition-colors"
                   >
-                    <span className="w-2 h-2 rounded-full bg-success flex-shrink-0" title="ออนไลน์" />
-                    <span className="truncate">{staff.name ?? staff.email}</span>
+                    <span className="truncate flex-1">{staff.name ?? staff.email}</span>
+                    {typeof staff.activeCount === 'number' && staff.activeCount > 0 && (
+                      <span className="shrink-0 text-[10px] text-muted-foreground leading-snug">
+                        {staff.activeCount} ห้อง
+                      </span>
+                    )}
                   </button>
                 ))}
             </div>

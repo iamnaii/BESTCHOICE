@@ -309,19 +309,23 @@ export class PaymentsService {
     return { success: true };
   }
 
-  /** Post a draft: run the normal recordPayment money flow, then retire the draft. */
+  /** Post a draft: run the normal recordPayment money flow, then retire the draft.
+   *  `postedById` is the user who clicked ลงบัญชี (the checker); the payment's
+   *  `recordedById` is the draft CREATOR (the maker) so the 4-eyes SoD guard
+   *  (waiverApproverId ≠ recordedById) still holds when the approver posts. */
   async postDraft(paymentId: string, postedById: string) {
     const draft = await this.prisma.paymentDraft.findFirst({ where: { paymentId, deletedAt: null } });
     if (!draft) throw new NotFoundException('ไม่พบฉบับร่าง');
     const payment = await this.prisma.payment.findUnique({ where: { id: paymentId } });
     if (!payment || payment.deletedAt) throw new NotFoundException('ไม่พบงวดที่ต้องการ');
+    void postedById; // checker identity captured at the HTTP/audit layer; maker records the payment
 
     const result = await this.recordPayment(
       payment.contractId,
       payment.installmentNo,
       Number(draft.amount),
       draft.paymentMethod,
-      postedById,
+      draft.createdById, // recordedById = the maker (draft creator), preserves SoD vs waiver approver
       draft.evidenceUrl ?? undefined,
       draft.notes ?? undefined,
       draft.transactionRef ?? undefined,

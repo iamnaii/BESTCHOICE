@@ -813,6 +813,7 @@ describe('PaymentsService — advance balance (Task 4)', () => {
         depositAccountCode: '11-1101', consumeAdvance: true, transactionRef: 'TEST-DRAFT-9',
         evidenceUrl: null, notes: null, paidDate: null, paymentCase: null,
         lateFeeWaiverAmount: null, lateFeeWaiverReasonCode: null, waiverApproverId: null,
+        createdById: 'maker-1', // recordedById = maker (preserves SoD vs approver)
       });
       prisma.payment.findUnique.mockResolvedValue(makePayment(9));
       prisma.payment.findFirst.mockResolvedValue(makePayment(9));

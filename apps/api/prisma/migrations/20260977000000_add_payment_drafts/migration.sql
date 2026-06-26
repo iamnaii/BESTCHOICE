@@ -25,7 +25,6 @@ CREATE TABLE "payment_drafts" (
 );
 
 CREATE UNIQUE INDEX "payment_drafts_payment_id_key" ON "payment_drafts"("payment_id");
-CREATE INDEX "payment_drafts_payment_id_idx" ON "payment_drafts"("payment_id");
 
 ALTER TABLE "payment_drafts" ADD CONSTRAINT "payment_drafts_payment_id_fkey" FOREIGN KEY ("payment_id") REFERENCES "payments"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "payment_drafts" ADD CONSTRAINT "payment_drafts_created_by_id_fkey" FOREIGN KEY ("created_by_id") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

@@ -1015,7 +1015,7 @@ export function RecordPaymentWizard({
                     <Info className="size-4 text-info shrink-0" />
                     <span>
                       มีฉบับร่างอยู่ — ยอด{' '}
-                      {Number(existingDraft?.amount ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2 })} ฿ (ยังไม่ลงบัญชี)
+                      {formatNumberDecimal(String(existingDraft?.amount ?? '0'))} ฿ (ยังไม่ลงบัญชี)
                     </span>
                   </div>
                   <div className="flex gap-2">
@@ -1539,7 +1539,12 @@ export function RecordPaymentWizard({
                 <Button
                   variant="outline"
                   onClick={handleSaveDraft}
-                  disabled={isSubmitting || receivedNum <= 0 || !depositAccountCode}
+                  disabled={
+                    isSubmitting ||
+                    receivedNum <= 0 ||
+                    !depositAccountCode ||
+                    detectedCase === 'OUT_OF_RANGE'
+                  }
                   title="เก็บเป็นฉบับร่าง — ยังไม่ลงบัญชี"
                 >
                   บันทึก (Draft)

@@ -1351,7 +1351,7 @@ model PaymentDraft {
   payment   Payment @relation("PaymentDraft", fields: [paymentId], references: [id], onDelete: Restrict)
   createdBy User    @relation("PaymentDraftCreatedBy", fields: [createdById], references: [id])
 
-  @@index([paymentId])
+  // No separate @@index([paymentId]) — the @unique above already creates the index.
   @@map("payment_drafts")
 }
 

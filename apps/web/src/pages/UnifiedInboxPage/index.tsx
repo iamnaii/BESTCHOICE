@@ -80,17 +80,20 @@ export default function UnifiedInboxPage() {
     { clientMessageId: string; roomId: string; text: string }[]
   >([]);
   const [failedSends, setFailedSends] = useState<
-    { id: string; roomId: string; text: string; source: 'http' | 'ws' }[]
+    { id: string; roomId: string; text: string; source: 'http' | 'ws'; clientMessageId: string }[]
   >([]);
 
-  const pushFailedSend = useCallback((roomId: string, text: string, source: 'http' | 'ws') => {
-    setFailedSends((prev) =>
-      // avoid a double entry if HTTP-catch and WS send-failed both fire for the same text
-      prev.some((f) => f.roomId === roomId && f.text === text)
-        ? prev
-        : [...prev, { id: crypto.randomUUID(), roomId, text, source }],
-    );
-  }, []);
+  const pushFailedSend = useCallback(
+    (roomId: string, text: string, source: 'http' | 'ws', clientMessageId: string) => {
+      setFailedSends((prev) =>
+        // avoid a double entry if HTTP-catch and WS send-failed both fire for the same text
+        prev.some((f) => f.roomId === roomId && f.text === text)
+          ? prev
+          : [...prev, { id: crypto.randomUUID(), roomId, text, source, clientMessageId }],
+      );
+    },
+    [],
+  );
 
   // Clear viewer banner when switching rooms so a stale banner doesn't flash.
   useEffect(() => {
@@ -150,7 +153,7 @@ export default function UnifiedInboxPage() {
     // onCollision intentionally dropped — the persistent banner (from onViewers)
     // replaces the one-shot toast.
     onSendFailed: (data) => {
-      pushFailedSend(data.roomId, data.text, 'ws');
+      pushFailedSend(data.roomId, data.text, 'ws', '');
       queryClient.invalidateQueries({ queryKey: ['chat-messages', data.roomId] });
     },
     onReconnect: () => {
@@ -345,10 +348,10 @@ export default function UnifiedInboxPage() {
   // source of truth for sending. WS is still used to receive real-time updates.
   // Returns true only when the message was accepted. Failure drives a FAILED ghost
   // (via pushFailedSend) — no toast; the FAILED ghost is the affordance.
-  const sendRoomMessage = async (text: string): Promise<boolean> => {
+  const sendRoomMessage = async (text: string, reuseClientMessageId?: string): Promise<boolean> => {
     const roomId = activeRoomId;
     if (!roomId) return false;
-    const clientMessageId = crypto.randomUUID();
+    const clientMessageId = reuseClientMessageId || crypto.randomUUID();
     // Optimistic "กำลังส่ง" ghost — removed when the saved row (same token) lands
     // in the list, or on failure (replaced by a FAILED ghost).
     setPendingSends((prev) => [...prev, { clientMessageId, roomId, text }]);
@@ -359,7 +362,7 @@ export default function UnifiedInboxPage() {
       const data = res.data;
       if (data && data.success === false) {
         removePending();
-        pushFailedSend(roomId, text, 'http');
+        pushFailedSend(roomId, text, 'http', clientMessageId);
         return false;
       }
       // Success — keep the ghost until the refetched row carries the token, then
@@ -372,7 +375,7 @@ export default function UnifiedInboxPage() {
       return true;
     } catch {
       removePending();
-      pushFailedSend(roomId, text, 'http');
+      pushFailedSend(roomId, text, 'http', clientMessageId);
       return false;
     }
   };
@@ -423,12 +426,13 @@ export default function UnifiedInboxPage() {
 
   const retrySend = useCallback(
     (failedId: string, text: string) => {
-      setFailedSends((prev) => prev.filter((f) => f.id !== failedId));
-      // sendRoomMessage is a stable closure over activeRoomId; the retry button
-      // only renders for the active room so activeRoomId is correct at click time.
-      void sendRoomMessageRef.current(text); // re-runs the same flow (new ghost; re-fails → new FAILED entry)
+      setFailedSends((prev) => {
+        const entry = prev.find((f) => f.id === failedId);
+        const reuse = entry?.clientMessageId || undefined;
+        void sendRoomMessageRef.current(text, reuse);
+        return prev.filter((f) => f.id !== failedId);
+      });
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
 

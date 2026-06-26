@@ -1,14 +1,15 @@
 import { useState, useEffect, useMemo } from 'react';
 import { nextRoomIndex } from './list-nav';
 import { isEditableTarget } from '../hooks/useKeyboardShortcuts';
-import { Search, MessageCircle, X, Bell, BellOff } from 'lucide-react';
+import { Search, MessageCircle, X, Bell, BellOff, CheckCheck, Loader2 } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useDebounce } from '@/hooks/useDebounce';
 import { cn } from '@/lib/utils';
 import api from '@/lib/api';
+import { toast } from 'sonner';
 import ConversationItem from './ConversationItem';
 import ChannelFilter, { type InboxTab } from './ChannelFilter';
-import { deriveTabCounts } from './tab-counts';
+import { deriveTabCounts, deriveChannelUnreadCounts } from './tab-counts';
 
 type AiFilter = 'all' | 'ai' | 'human' | 'pending';
 
@@ -133,6 +134,23 @@ export default function ConversationList({
   }, [sessions, filters, currentUserId, aiFilter]);
 
   const tabCounts = useMemo(() => deriveTabCounts(sessions, currentUserId), [sessions, currentUserId]);
+  const channelCounts = useMemo(() => deriveChannelUnreadCounts(sessions), [sessions]);
+
+  const unreadInView = useMemo(
+    () => filteredAndSorted.filter((r) => (r.unreadCount ?? 0) > 0).map((r) => r.id),
+    [filteredAndSorted],
+  );
+
+  const markAllReadMutation = useMutation({
+    mutationFn: (roomIds: string[]) =>
+      api.post('/staff-chat/rooms/read-all', { roomIds }).then((r) => r.data),
+    onSuccess: (data: { count?: number }) => {
+      queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
+      queryClient.invalidateQueries({ queryKey: ['chat-unread-count'] });
+      toast.success(`ทำเครื่องหมายอ่านแล้ว ${data?.count ?? 0} ห้อง`);
+    },
+    onError: () => toast.error('ทำเครื่องหมายอ่านไม่สำเร็จ'),
+  });
 
   // j/k navigate the visible (filtered+sorted) room list; guarded so it never
   // fires while typing in the composer or search.
@@ -187,18 +205,35 @@ export default function ConversationList({
             ) : (
               <div />
             )}
-            {/* Global mute bell toggle */}
-            {onToggleMuteAll && (
-              <button
-                type="button"
-                onClick={onToggleMuteAll}
-                title={muteAll ? 'เปิดการแจ้งเตือน' : 'ปิดการแจ้งเตือนทั้งหมด'}
-                aria-label={muteAll ? 'เปิดการแจ้งเตือน' : 'ปิดการแจ้งเตือน'}
-                className="p-1.5 min-h-11 min-w-11 inline-flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted"
-              >
-                {muteAll ? <BellOff className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
-              </button>
-            )}
+            {/* Right-side controls: mark-all-read + global mute bell toggle */}
+            <div className="flex items-center gap-1">
+              {unreadInView.length > 0 && (
+                <button
+                  onClick={() => markAllReadMutation.mutate(unreadInView)}
+                  disabled={markAllReadMutation.isPending}
+                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium leading-snug text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+                  title="ทำเครื่องหมายอ่านทั้งหมดในมุมมองนี้"
+                >
+                  {markAllReadMutation.isPending ? (
+                    <Loader2 className="size-3 animate-spin" />
+                  ) : (
+                    <CheckCheck className="size-3" />
+                  )}
+                  อ่านทั้งหมด
+                </button>
+              )}
+              {onToggleMuteAll && (
+                <button
+                  type="button"
+                  onClick={onToggleMuteAll}
+                  title={muteAll ? 'เปิดการแจ้งเตือน' : 'ปิดการแจ้งเตือนทั้งหมด'}
+                  aria-label={muteAll ? 'เปิดการแจ้งเตือน' : 'ปิดการแจ้งเตือน'}
+                  className="p-1.5 min-h-11 min-w-11 inline-flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted"
+                >
+                  {muteAll ? <BellOff className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
+                </button>
+              )}
+            </div>
           </div>
         ) : null}
         {/* Search */}
@@ -236,6 +271,7 @@ export default function ConversationList({
         onTabChange={(tab) => onFiltersChange({ ...filters, tab })}
         onChannelToggle={handleChannelToggle}
         counts={tabCounts}
+        channelCounts={channelCounts}
       />
 
       {/* AI status filter chips — owner asked "หาแต่แชทที่รอตอบ" → 'pending' */}

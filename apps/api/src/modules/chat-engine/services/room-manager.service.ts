@@ -567,6 +567,24 @@ export class RoomManagerService {
     });
   }
 
+  /** Bulk variant of markAsRead — marks every CUSTOMER message in the given
+   *  rooms read and zeroes their unreadCount. Mirrors markAsRead's end-state. */
+  async markAllAsRead(roomIds: string[]): Promise<{ count: number }> {
+    if (!roomIds.length) return { count: 0 };
+    const now = new Date();
+    return this.prisma.$transaction(async (tx) => {
+      await tx.chatMessage.updateMany({
+        where: { roomId: { in: roomIds }, role: 'CUSTOMER', readAt: null },
+        data: { readAt: now },
+      });
+      const res = await tx.chatRoom.updateMany({
+        where: { id: { in: roomIds }, deletedAt: null },
+        data: { unreadCount: 0 },
+      });
+      return { count: res.count };
+    });
+  }
+
   /**
    * Store an uploaded file and save it as a chat message with media.
    * Returns the persisted key + a (signed) download URL for the caller.

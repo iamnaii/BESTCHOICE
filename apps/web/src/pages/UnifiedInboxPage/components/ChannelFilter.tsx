@@ -23,6 +23,7 @@ interface ChannelFilterProps {
   onTabChange: (tab: InboxTab) => void;
   onChannelToggle: (channel: string) => void;
   counts?: { mine: number; all: number; unread: number };
+  channelCounts?: Record<string, number>;
 }
 
 export default function ChannelFilter({
@@ -31,6 +32,7 @@ export default function ChannelFilter({
   onTabChange,
   onChannelToggle,
   counts,
+  channelCounts,
 }: ChannelFilterProps) {
   return (
     <div>
@@ -82,6 +84,11 @@ export default function ChannelFilter({
                 isActive ? 'bg-background/60' : ch.dot,
               )} />
               {ch.label}
+              {channelCounts && channelCounts[ch.key] > 0 && (
+                <span className="ml-0.5 inline-flex items-center justify-center min-w-[14px] h-[14px] px-1 rounded-full bg-primary text-primary-foreground text-[9px] font-bold leading-none">
+                  {channelCounts[ch.key] > 99 ? '99+' : channelCounts[ch.key]}
+                </span>
+              )}
             </button>
           );
         })}

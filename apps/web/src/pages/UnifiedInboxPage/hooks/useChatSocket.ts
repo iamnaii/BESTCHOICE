@@ -171,6 +171,7 @@ export function useChatSocket(events: ChatSocketEvents, activeRoomId?: string | 
 
     return () => {
       if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+      if (staffTypingTimerRef.current) clearTimeout(staffTypingTimerRef.current);
       socket.disconnect();
       socketRef.current = null;
     };

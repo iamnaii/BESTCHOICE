@@ -316,6 +316,7 @@ export default function ChatPanel({
   };
 
   const handleStickerClick = (packageId: number, stickerId: number) => {
+    endTyping();
     if (onSendSticker) {
       onSendSticker({ packageId, stickerId });
     } else {
@@ -946,6 +947,7 @@ export default function ChatPanel({
                             onClick={() => {
                               const url = gif.images?.fixed_width?.url;
                               if (url) {
+                                endTyping();
                                 onSendMessage(`[gif:${url}]`);
                                 setEmojiOpen(false);
                               }

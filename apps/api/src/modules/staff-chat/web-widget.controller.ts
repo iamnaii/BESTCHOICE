@@ -73,7 +73,7 @@ export class WebWidgetController {
     }
 
     const messageLimit = limit ? Math.min(parseInt(limit, 10) || 50, 100) : 50;
-    const messages = await this.roomManager.getRecentMessages(roomId, messageLimit);
+    const messages = await this.roomManager.getRecentMessages(roomId, messageLimit, { signMedia: false });
 
     return {
       roomId,

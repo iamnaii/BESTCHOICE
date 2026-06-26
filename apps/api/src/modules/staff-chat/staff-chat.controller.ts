@@ -480,7 +480,7 @@ export class StaffChatController {
   @Get('rooms/:id/products')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   async getDetectedProducts(@Param('id') id: string): Promise<any[]> {
-    const messages = await this.roomManager.getRecentMessages(id, 20);
+    const messages = await this.roomManager.getRecentMessages(id, 20, { signMedia: false });
     const texts = messages.map((m: any) => m.text ?? '').filter(Boolean);
     return this.productDetect.detectProducts(texts);
   }

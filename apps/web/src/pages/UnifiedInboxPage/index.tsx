@@ -76,14 +76,16 @@ export default function UnifiedInboxPage() {
 
   // Send-status state: in-flight ghost + unified failed list (both roomId-scoped)
   const [pendingSend, setPendingSend] = useState<{ roomId: string; text: string } | null>(null);
-  const [failedSends, setFailedSends] = useState<{ id: string; roomId: string; text: string }[]>([]);
+  const [failedSends, setFailedSends] = useState<
+    { id: string; roomId: string; text: string; source: 'http' | 'ws' }[]
+  >([]);
 
-  const pushFailedSend = useCallback((roomId: string, text: string) => {
+  const pushFailedSend = useCallback((roomId: string, text: string, source: 'http' | 'ws') => {
     setFailedSends((prev) =>
       // avoid a double entry if HTTP-catch and WS send-failed both fire for the same text
       prev.some((f) => f.roomId === roomId && f.text === text)
         ? prev
-        : [...prev, { id: crypto.randomUUID(), roomId, text }],
+        : [...prev, { id: crypto.randomUUID(), roomId, text, source }],
     );
   }, []);
 
@@ -130,7 +132,7 @@ export default function UnifiedInboxPage() {
     // onCollision intentionally dropped — the persistent banner (from onViewers)
     // replaces the one-shot toast.
     onSendFailed: (data) => {
-      pushFailedSend(data.roomId, data.text);
+      pushFailedSend(data.roomId, data.text, 'ws');
       queryClient.invalidateQueries({ queryKey: ['chat-messages', data.roomId] });
     },
   }, activeRoomId);
@@ -284,10 +286,10 @@ export default function UnifiedInboxPage() {
         `/staff-chat/rooms/${roomId}/messages`,
         { text },
       );
-      if (data && data.success === false) pushFailedSend(roomId, text);
+      if (data && data.success === false) pushFailedSend(roomId, text, 'http');
       else ok = true;
     } catch {
-      pushFailedSend(roomId, text);
+      pushFailedSend(roomId, text, 'http');
     }
     // drop the ghost only if it's still the one we set (room may have switched + re-sent)
     setPendingSend((p) => (p?.roomId === roomId && p.text === text ? null : p));

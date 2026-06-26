@@ -310,7 +310,7 @@ function ConfigDrawer({
   const backfillMutation = useMutation({
     mutationFn: () =>
       api
-        .post('/admin/facebook/backfill-profiles?onlyMissing=true&limit=150')
+        .post('/admin/facebook/backfill-profiles?onlyMissing=true&limit=150', undefined, { timeout: 120000 })
         .then((r: any) => r.data),
     onSuccess: (data: any) => {
       toast.success(

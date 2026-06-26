@@ -250,6 +250,52 @@ describe('SettingsService audit trail', () => {
       expect(flags.reverseReasons).toHaveLength(6);
     });
 
+    // Phase 2 (D1) — DB-driven late-fee waiver reasons
+    it('getWaiverReasons defaults to 5 canonical codes when SystemConfig missing', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);
+      const reasons = await service.getWaiverReasons();
+      expect(reasons).toHaveLength(5);
+      expect(reasons.map((r) => r.code)).toEqual([
+        'loyal_customer',
+        'first_time',
+        'system_error',
+        'goodwill',
+        'other',
+      ]);
+    });
+
+    it('getWaiverReasons returns custom list when SystemConfig set', async () => {
+      const custom = JSON.stringify([
+        { code: 'vip', label: 'ลูกค้า VIP' },
+        { code: 'promo', label: 'โปรโมชั่น' },
+      ]);
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'late_fee_waiver_reasons') return Promise.resolve({ value: custom });
+        return Promise.resolve(null);
+      });
+      const reasons = await service.getWaiverReasons();
+      expect(reasons).toHaveLength(2);
+      expect(reasons[0].code).toBe('vip');
+    });
+
+    it('getWaiverReasons falls back to defaults when stored JSON is malformed', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'late_fee_waiver_reasons') return Promise.resolve({ value: 'not-json' });
+        return Promise.resolve(null);
+      });
+      const reasons = await service.getWaiverReasons();
+      expect(reasons).toHaveLength(5);
+    });
+
+    it('getWaiverReasons falls back to defaults when stored array is empty', async () => {
+      prisma.systemConfig.findFirst = jest.fn().mockImplementation((args: { where: { key: string } }) => {
+        if (args.where.key === 'late_fee_waiver_reasons') return Promise.resolve({ value: '[]' });
+        return Promise.resolve(null);
+      });
+      const reasons = await service.getWaiverReasons();
+      expect(reasons).toHaveLength(5);
+    });
+
     // D1.2.6.4 — payment_date_allow_future
     it('paymentDateAllowFuture defaults to true when SystemConfig missing', async () => {
       prisma.systemConfig.findFirst = jest.fn().mockResolvedValue(null);

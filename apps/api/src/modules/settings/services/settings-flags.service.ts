@@ -173,6 +173,41 @@ export class SettingsFlagsService {
   }
 
   /**
+   * Phase 2 (D1) — DB-driven late-fee waiver-reason dropdown for the payment
+   * wizard. Reads SystemConfig key `late_fee_waiver_reasons` (JSON
+   * `{code,label}[]`); falls back to the 5 built-in defaults when the key is
+   * missing, malformed, or an empty array. Mirrors getReverseReasons (minus the
+   * admin table — waiver reasons are config-only for now).
+   */
+  async getWaiverReasons(): Promise<{ code: string; label: string }[]> {
+    const defaults: { code: string; label: string }[] = [
+      { code: 'loyal_customer', label: 'ลูกค้าประจำ — ผ่อนตรงเวลามาตลอด' },
+      { code: 'first_time', label: 'ผิดนัดครั้งแรก' },
+      { code: 'system_error', label: 'ความผิดพลาดของระบบ' },
+      { code: 'goodwill', label: 'รักษาความสัมพันธ์ (goodwill)' },
+      { code: 'other', label: 'อื่นๆ (ระบุในหมายเหตุ)' },
+    ];
+    const raw = await this.getKey('late_fee_waiver_reasons');
+    if (!raw) return defaults;
+    try {
+      const parsed = JSON.parse(raw);
+      if (
+        Array.isArray(parsed) &&
+        parsed.length > 0 &&
+        parsed.every(
+          (r) =>
+            r && typeof r === 'object' && typeof r.code === 'string' && typeof r.label === 'string',
+        )
+      ) {
+        return parsed;
+      }
+      return defaults;
+    } catch {
+      return defaults;
+    }
+  }
+
+  /**
    * D1.1.2.1 — DocumentType → prefix mapping. Reads SystemConfig key
    * `doc_prefix_per_type` (JSON object). Falls back to `DEFAULT_DOC_PREFIX_MAP`
    * when the key is missing, malformed, or any value fails the

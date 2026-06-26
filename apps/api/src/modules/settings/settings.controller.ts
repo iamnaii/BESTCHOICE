@@ -78,6 +78,18 @@ export class SettingsController {
   }
 
   /**
+   * Phase 2 (D1) — late-fee waiver reasons for the RecordPaymentWizard dropdown.
+   * Authenticated any-role (the wizard is used by SALES too); not @Roles-gated for
+   * config edit. Falls back to built-in defaults when the SystemConfig key is unset.
+   */
+  @Get('waiver-reasons')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  @AllowAnyAuthenticated()
+  getWaiverReasons() {
+    return this.settingsService.getWaiverReasons();
+  }
+
+  /**
    * D1.1.1.2 / D1.1.1.7 — Read account_role_map joined with CoA.
    *
    * Permission: OWNER + FINANCE_MANAGER + ACCOUNTANT (read-only).

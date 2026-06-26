@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { useNavigate } from 'react-router';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import Decimal from 'decimal.js';
@@ -30,6 +31,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import api, { getErrorMessage } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 import { formatNumberDecimal } from '@/utils/formatters';
 import { AccrualModeChip } from './AccrualModeChip';
 import { CASH_ACCOUNT_CODES } from '@/components/CashAccountSelect';
@@ -51,7 +53,7 @@ type DetectedCase = 'NORMAL' | 'OVERPAY' | 'UNDERPAY' | 'OVERPAY_ADVANCE' | 'PAR
 /** Legacy type kept for API compatibility — backend accepts all 7 values */
 type PaymentCase = 'NORMAL' | 'OVERPAY' | 'UNDERPAY' | 'PARTIAL' | 'EARLY_PAYOFF' | 'RESCHEDULE' | 'OVERPAY_ADVANCE';
 
-type WizardMethod = 'CASH' | 'TRANSFER' | 'QR';
+type WizardMethod = 'CASH' | 'TRANSFER' | 'QR' | 'CARD';
 
 interface JePreviewLine {
   accountCode: string;
@@ -59,10 +61,22 @@ interface JePreviewLine {
   debit: string;
   credit: string;
   description: string;
+  block?: '2A' | '2B';
+  posted?: boolean;
+}
+
+interface BlockSubtotal {
+  debit: string;
+  credit: string;
+  balanced: boolean;
 }
 
 interface JePreview {
   lines: JePreviewLine[];
+  /** Already-posted 2A accrual context (present only in 2B_ONLY mode). */
+  accrual2A?: { lines: JePreviewLine[]; subtotal: BlockSubtotal };
+  /** Per-block Dr/Cr subtotals + balance flag. */
+  subtotals?: { '2A'?: BlockSubtotal; '2B': BlockSubtotal };
   totalDebit: string;
   totalCredit: string;
   isBalanced: boolean;
@@ -292,9 +306,109 @@ const METHOD_OPTIONS: { id: WizardMethod; label: string; icon: React.ReactNode; 
   { id: 'CASH', label: 'เงินสด', icon: <Banknote className="size-4" />, desc: 'รับเงินสดโดยตรง' },
   { id: 'TRANSFER', label: 'โอนธนาคาร', icon: <Building2 className="size-4" />, desc: 'ลูกค้าโอนเอง · กรอก ref + slip' },
   { id: 'QR', label: 'ชำระผ่าน QR', icon: <QrCode className="size-4" />, desc: 'ส่ง QR ให้ลูกค้าใน LINE' },
+  { id: 'CARD', label: 'บัตร', icon: <CreditCard className="size-4" />, desc: 'เครื่อง EDC · เงินเข้าบัญชีธนาคาร' },
 ];
 
+// Late-fee waiver reasons (fallback; mirrors SystemConfig `late_fee_waiver_reasons` seed).
+const WAIVER_REASONS: { code: string; label: string }[] = [
+  { code: 'loyal_customer', label: 'ลูกค้าประจำ — ผ่อนตรงเวลามาตลอด' },
+  { code: 'first_time', label: 'ผิดนัดครั้งแรก' },
+  { code: 'system_error', label: 'ความผิดพลาดของระบบ' },
+  { code: 'goodwill', label: 'รักษาความสัมพันธ์ (goodwill)' },
+  { code: 'other', label: 'อื่นๆ (ระบุในหมายเหตุ)' },
+];
+
+const WAIVER_APPROVER_ROLES = ['OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER'];
+
+interface ApproverRow {
+  id: string;
+  name: string;
+  role: string;
+  isActive?: boolean;
+  deletedAt?: string | null;
+}
+
 // ─── JE Preview panel (always visible) ────────────────────────────────────────
+
+/** One JE block (2A or 2B) — line rows + a per-block "Dr = Cr =" footer. */
+function JeBlock({
+  title,
+  posted,
+  lines,
+  subtotal,
+}: {
+  title: string;
+  posted?: boolean;
+  lines: JePreviewLine[];
+  subtotal?: BlockSubtotal;
+}) {
+  return (
+    <div
+      className={cn(
+        'rounded-lg border p-2',
+        posted ? 'border-border/60 bg-muted/40' : 'border-border bg-background',
+      )}
+    >
+      <div className="flex items-center justify-between mb-1.5">
+        <h4 className="text-xs font-semibold text-foreground leading-snug">{title}</h4>
+        {posted && (
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground text-[10px] font-medium leading-snug">
+            โพสต์แล้ว
+          </span>
+        )}
+      </div>
+      <div className="space-y-1">
+        <div className="grid grid-cols-[52px_1fr_64px_64px] gap-1 text-[11px] text-muted-foreground font-medium pb-1 border-b border-border/60">
+          <span className="leading-snug">รหัส</span>
+          <span className="leading-snug">บัญชี</span>
+          <span className="text-right leading-snug">Dr</span>
+          <span className="text-right leading-snug">Cr</span>
+        </div>
+        {lines.map((line, idx) => (
+          <div key={idx} className="grid grid-cols-[52px_1fr_64px_64px] gap-1 text-xs">
+            <span className="font-mono text-muted-foreground leading-snug">{line.accountCode}</span>
+            <div className="min-w-0">
+              <span className="leading-snug text-foreground truncate block">{line.accountName}</span>
+              {line.description && (
+                <span className="leading-snug text-muted-foreground/70 text-[10px]">
+                  {line.description}
+                </span>
+              )}
+            </div>
+            <span className="text-right font-mono leading-snug text-foreground">
+              {parseFloat(line.debit) > 0 ? formatNumberDecimal(line.debit) : ''}
+            </span>
+            <span className="text-right font-mono leading-snug text-foreground">
+              {parseFloat(line.credit) > 0 ? formatNumberDecimal(line.credit) : ''}
+            </span>
+          </div>
+        ))}
+      </div>
+      {subtotal && (
+        <div
+          className={cn(
+            'flex items-center justify-between mt-2 pt-1.5 border-t text-[11px] font-medium',
+            subtotal.balanced
+              ? 'border-success/30 text-success'
+              : 'border-destructive/30 text-destructive',
+          )}
+        >
+          <div className="flex items-center gap-1 leading-snug">
+            {subtotal.balanced ? (
+              <CheckCircle2 className="size-3" />
+            ) : (
+              <AlertCircle className="size-3" />
+            )}
+            <span>Dr = Cr</span>
+          </div>
+          <span className="font-mono leading-snug">
+            {formatNumberDecimal(subtotal.debit)} = {formatNumberDecimal(subtotal.credit)}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function JePreviewPanel({
   preview,
@@ -305,15 +419,40 @@ function JePreviewPanel({
   isLoading: boolean;
   errorMessage?: string;
 }) {
+  const has2A = !!preview?.accrual2A && preview.accrual2A.lines.length > 0;
+  const consolidated =
+    !!preview &&
+    !has2A &&
+    (preview.accrualMode === 'CONSOLIDATED_PAYING_AHEAD' ||
+      preview.accrualMode === 'CONSOLIDATED_BACKFILL');
+  // 2B subtotal: prefer the server's per-block value; fall back to overall totals.
+  const sub2B: BlockSubtotal | undefined = preview
+    ? preview.subtotals?.['2B'] ?? {
+        debit: preview.totalDebit,
+        credit: preview.totalCredit,
+        balanced: preview.isBalanced,
+      }
+    : undefined;
+  const label2B = has2A
+    ? '2B — รับเงิน + อนุโลม'
+    : consolidated
+    ? '2A + 2B — โพสต์รวมตอนนี้'
+    : '2B — รับเงิน';
+
   return (
     <div className="rounded-xl border border-border bg-card p-3">
       <div className="flex items-center justify-between mb-2">
-        <h3 className="text-sm font-semibold text-foreground leading-snug">
-          JOURNAL AUTO — บันทึกทางบัญชี
-        </h3>
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-medium leading-snug">
+        <h3 className="text-sm font-semibold text-foreground leading-snug">รายการบัญชี</h3>
+        <span
+          className={cn(
+            'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium leading-snug',
+            preview && !preview.isBalanced
+              ? 'bg-destructive/10 text-destructive'
+              : 'bg-primary/10 text-primary',
+          )}
+        >
           <CheckCircle2 className="size-3" />
-          AUTO
+          {preview && !preview.isBalanced ? 'UNBALANCED' : 'BALANCED'}
         </span>
       </div>
 
@@ -345,56 +484,22 @@ function JePreviewPanel({
       )}
 
       {!isLoading && preview && (
-        <>
-          <div className="space-y-1">
-            <div className="grid grid-cols-[52px_1fr_64px_64px] gap-1 text-xs text-muted-foreground font-medium pb-1 border-b border-border">
-              <span className="leading-snug">รหัส</span>
-              <span className="leading-snug">บัญชี</span>
-              <span className="text-right leading-snug">Dr</span>
-              <span className="text-right leading-snug">Cr</span>
-            </div>
-            {preview.lines.map((line, idx) => (
-              <div key={idx} className="grid grid-cols-[52px_1fr_64px_64px] gap-1 text-xs">
-                <span className="font-mono text-muted-foreground leading-snug">{line.accountCode}</span>
-                <div className="min-w-0">
-                  <span className="leading-snug text-foreground truncate block">{line.accountName}</span>
-                  <span className="leading-snug text-muted-foreground/70 text-[10px]">
-                    {line.description}
-                  </span>
-                </div>
-                <span className="text-right font-mono leading-snug text-foreground">
-                  {parseFloat(line.debit) > 0 ? formatNumberDecimal(line.debit) : ''}
-                </span>
-                <span className="text-right font-mono leading-snug text-foreground">
-                  {parseFloat(line.credit) > 0 ? formatNumberDecimal(line.credit) : ''}
-                </span>
-              </div>
-            ))}
-          </div>
-
-          <div
-            className={cn(
-              'flex items-center justify-between mt-3 pt-2 border-t text-xs font-medium',
-              preview.isBalanced
-                ? 'border-success/30 text-success'
-                : 'border-destructive/30 text-destructive',
-            )}
-          >
-            <div className="flex items-center gap-1 leading-snug">
-              {preview.isBalanced ? (
-                <CheckCircle2 className="size-3.5" />
-              ) : (
-                <AlertCircle className="size-3.5" />
-              )}
-              <span>Dr รวม = Cr รวม</span>
-            </div>
-            <span className="font-mono leading-snug">
-              {formatNumberDecimal(preview.totalDebit)} ={' '}
-              {formatNumberDecimal(preview.totalCredit)}{' '}
-              {preview.isBalanced ? 'BALANCED' : 'UNBALANCED'}
-            </span>
-          </div>
-        </>
+        <div className="space-y-2">
+          {has2A && (
+            <JeBlock
+              title="2A — ถึงกำหนดงวด (ACCRUAL)"
+              posted
+              lines={preview.accrual2A!.lines}
+              subtotal={preview.subtotals?.['2A'] ?? preview.accrual2A!.subtotal}
+            />
+          )}
+          <JeBlock title={label2B} lines={preview.lines} subtotal={sub2B} />
+          {consolidated && (
+            <p className="text-[11px] text-muted-foreground leading-snug">
+              * งวดนี้ยังไม่ได้ตั้งค้าง (accrual) — ระบบจะโพสต์ 2A + 2B รวมกันตอนบันทึก
+            </p>
+          )}
+        </div>
       )}
     </div>
   );
@@ -406,14 +511,18 @@ function detectCase(
   received: number,
   expectedTotal: Decimal,
   advanceBalance: Decimal = new Decimal(0),
+  consumeAdvance: boolean = true,
 ): DetectedCase {
-  // Effective amount due = installment minus existing advance (FIFO consume).
-  // Cashier collects this — system splits internally on save.
-  const effectiveDue = Decimal.max(new Decimal(0), expectedTotal.minus(advanceBalance));
+  // Effective amount due = installment minus the advance that will actually be
+  // deducted. When the credit checkbox is OFF (consumeAdvance=false) no advance
+  // is deducted, so the cashier collects the full installment → NORMAL on full pay
+  // (NOT OVERPAY_ADVANCE, which would wrongly re-park the cash as more advance).
+  const effAdvance = consumeAdvance ? advanceBalance : new Decimal(0);
+  const effectiveDue = Decimal.max(new Decimal(0), expectedTotal.minus(effAdvance));
 
   if (received <= 0) {
-    // Zero cash is OK iff advance fully covers the installment
-    return advanceBalance.gte(expectedTotal) ? 'NORMAL' : 'OUT_OF_RANGE';
+    // Zero cash is OK iff the deducted advance fully covers the installment
+    return effAdvance.gte(expectedTotal) ? 'NORMAL' : 'OUT_OF_RANGE';
   }
   const diff = received - effectiveDue.toNumber();
   if (Math.abs(diff) < 0.01) return 'NORMAL';
@@ -452,6 +561,11 @@ interface RecordPaymentWizardProps {
     slipUrl?: string;
     memo?: string;
     notes?: string;
+    consumeAdvance: boolean;
+    paidDate: string;
+    lateFeeWaiverAmount?: number;
+    lateFeeWaiverReasonCode?: string;
+    waiverApproverId?: string;
   }) => void;
   isSubmitting: boolean;
   defaultDepositAccountCode?: string;
@@ -468,6 +582,11 @@ export function RecordPaymentWizard({
   const [depositAccountCode, setDepositAccountCode] = useState(defaultDepositAccountCode);
   const [showPartialConfirm, setShowPartialConfirm] = useState(false);
   const [showPayoffOverlay, setShowPayoffOverlay] = useState(false);
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  // Explicit payment-type override (null = auto-detect). แบ่งชำระ/ล่วงหน้า force the
+  // API case; ปกติ falls back to the amount-detected case.
+  const [caseOverride, setCaseOverride] = useState<'PARTIAL' | 'OVERPAY_ADVANCE' | null>(null);
 
   // Amount fields
   const lateFeeDecimal = useMemo(() => new Decimal(payment.lateFee), [payment.lateFee]);
@@ -486,16 +605,37 @@ export function RecordPaymentWizard({
   // late-fee figure from the contract info panel — error-prone and slow.
   const [lateFeeStr, setLateFeeStr] = useState(lateFeeDecimal.toFixed(2));
 
-  // Auto-sync amountReceived = amountDue + lateFee while user hasn't touched
-  // the amount field. Once user edits amount manually, stop auto-syncing so
-  // their edit isn't clobbered.
+  // Advance balance parked in 21-1103 (Decimal, serialized as string from Prisma).
+  const advanceBalance = useMemo(
+    () => new Decimal(payment.contract.advanceBalance ?? 0),
+    [payment.contract.advanceBalance],
+  );
+  // Credit-deduction toggle (mockup banner checkbox). Default ON = current backend
+  // behaviour. OFF → cashier collects the full owed, advance stays for next time.
+  const [consumeAdvance, setConsumeAdvance] = useState(true);
+
+  // P2 (D1) — late-fee waiver (gross model). waiverStr is the waived ฿ (Dr 52-1105);
+  // Cr 42-1103 stays gross. Reason + approver gate the submit when waiver > 0.
+  const [waiverStr, setWaiverStr] = useState('0');
+  const [waiverReasonCode, setWaiverReasonCode] = useState('');
+  const [waiverApproverId, setWaiverApproverId] = useState('');
+
+  // Auto-sync amountReceived = (amountDue + NET late fee − paid) minus the auto-deducted
+  // advance, while the user hasn't touched the amount field. Toggling the credit checkbox
+  // or changing the waiver clears manual-edit so this recomputes.
   useEffect(() => {
     if (amountManuallyEdited) return;
     const lf = parseFloat(lateFeeStr);
     if (isNaN(lf)) return;
-    const next = amountDueDecimal.plus(lf).sub(amountPaidDecimal).toDecimalPlaces(2);
+    const w = Math.min(Math.max(parseFloat(waiverStr) || 0, 0), lf); // waiver clamped ≤ gross
+    const owed = amountDueDecimal.plus(lf - w).sub(amountPaidDecimal); // NET late fee
+    const consumed =
+      consumeAdvance && advanceBalance.gt(0)
+        ? Decimal.min(advanceBalance, Decimal.max(new Decimal(0), owed))
+        : new Decimal(0);
+    const next = Decimal.max(new Decimal(0), owed.minus(consumed)).toDecimalPlaces(2);
     setAmountReceived(next.toFixed(2));
-  }, [lateFeeStr, amountDueDecimal, amountPaidDecimal, amountManuallyEdited]);
+  }, [lateFeeStr, waiverStr, amountDueDecimal, amountPaidDecimal, amountManuallyEdited, consumeAdvance, advanceBalance]);
 
   // Method + evidence fields
   const [method, setMethod] = useState<WizardMethod>('CASH');
@@ -503,9 +643,13 @@ export function RecordPaymentWizard({
   const [slipUrl, setSlipUrl] = useState('');
   const [slipFileName, setSlipFileName] = useState('');
   const [memo, setMemo] = useState('');
+  // วันที่รับเงิน (D4 backdating) — default = BKK today (YYYY-MM-DD). max = today.
+  const bkkToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
+  const [paidDate, setPaidDate] = useState(() => bkkToday());
 
   // Slip upload
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const amountInputRef = useRef<HTMLInputElement>(null);
   const uploadMutation = useSlipUpload();
 
   const handleFileChange = useCallback(
@@ -594,27 +738,72 @@ export function RecordPaymentWizard({
     return isNaN(v) ? new Decimal(0) : new Decimal(v);
   }, [lateFeeStr]);
 
-  // Advance balance from contract (Decimal, serialized as string from Prisma)
-  const advanceBalance = useMemo(
-    () => new Decimal(payment.contract.advanceBalance ?? 0),
-    [payment.contract.advanceBalance],
+  // P2 (D1) — waiver computed values (clamped ≤ gross late fee) + net late fee.
+  const waiverDec = useMemo(() => {
+    const w = parseFloat(waiverStr);
+    if (isNaN(w) || w <= 0) return new Decimal(0);
+    return Decimal.min(new Decimal(w), currentLateFee);
+  }, [waiverStr, currentLateFee]);
+  const netLateFee = useMemo(() => currentLateFee.minus(waiverDec), [currentLateFee, waiverDec]);
+
+  // Phase 3 — approval matrix: which actions in THIS receipt need 4-eyes approval.
+  // Today only the late-fee waiver is gated in-wizard (ปิดยอด/คืนเครื่อง route out;
+  // กลับรายการ = Phase 4; ยอดเกินวงเงิน is gated server-side on the OVERPAY_ADVANCE ceiling).
+  const approvalActions = useMemo(() => (waiverDec.gt(0) ? ['อนุโลม'] : []), [waiverDec]);
+  const needsApproval = approvalActions.length > 0;
+
+  // 4-eyes approver list — managers other than the current user (SoD).
+  const { data: approverData = [] } = useQuery<ApproverRow[]>({
+    queryKey: ['waiver-approvers'],
+    queryFn: async () => {
+      const { data } = await api.get('/users?limit=200');
+      const list: ApproverRow[] = data?.data ?? data ?? [];
+      return list;
+    },
+    staleTime: 60_000,
+  });
+  const approvers = useMemo(
+    () =>
+      approverData.filter(
+        (u) =>
+          WAIVER_APPROVER_ROLES.includes(u.role) &&
+          u.id !== user?.id && // 4-eyes: approver ≠ recorder
+          u.isActive !== false &&
+          !u.deletedAt, // exclude inactive/soft-deleted (server rejects them anyway)
+      ),
+    [approverData, user?.id],
   );
+
+  // Net to collect after the waiver + the (optional) advance deduction — drives tiles.
+  const netDue = useMemo(() => {
+    const owed = amountDueDecimal.plus(netLateFee).sub(amountPaidDecimal); // NET late fee
+    const consumed =
+      consumeAdvance && advanceBalance.gt(0)
+        ? Decimal.min(advanceBalance, Decimal.max(new Decimal(0), owed))
+        : new Decimal(0);
+    return Decimal.max(new Decimal(0), owed.minus(consumed)).toDecimalPlaces(2);
+  }, [amountDueDecimal, netLateFee, amountPaidDecimal, consumeAdvance, advanceBalance]);
+  // ปิดขึ้น = round the net up to a whole baht; the ≤1฿ residual rides the
+  // existing 52-1104/53-1503 tolerance on the server.
+  const netDueRoundedUp = useMemo(() => netDue.toDecimalPlaces(0, Decimal.ROUND_UP), [netDue]);
 
   // Auto-detect case
   const receivedNum = parseFloat(amountReceived) || 0;
+  // Use NET late fee (gross − waiver) so detectCase classifies a correctly-entered
+  // net payment as NORMAL (not UNDERPAY) when a waiver is active.
   const expectedTotal = useMemo(
-    () => amountDueDecimal.plus(currentLateFee),
-    [amountDueDecimal, currentLateFee],
+    () => amountDueDecimal.plus(netLateFee),
+    [amountDueDecimal, netLateFee],
   );
   const detectedCase = useMemo(
-    () => detectCase(receivedNum, expectedTotal, advanceBalance),
-    [receivedNum, expectedTotal, advanceBalance],
+    () => detectCase(receivedNum, expectedTotal, advanceBalance, consumeAdvance),
+    [receivedNum, expectedTotal, advanceBalance, consumeAdvance],
   );
   const amountDiff = useMemo(
     () => receivedNum - expectedTotal.toNumber(),
     [receivedNum, expectedTotal],
   );
-  const apiCase = toApiCase(detectedCase);
+  const apiCase = caseOverride ?? toApiCase(detectedCase);
 
   // JE Preview — debounced
   const previewParams = useMemo(
@@ -624,9 +813,11 @@ export function RecordPaymentWizard({
       amountReceived: receivedNum,
       depositAccountCode,
       lateFee: currentLateFee.toNumber(),
+      lateFeeWaived: waiverDec.toNumber(),
       case: apiCase,
+      consumeAdvance,
     }),
-    [receivedNum, depositAccountCode, currentLateFee, apiCase, payment],
+    [receivedNum, depositAccountCode, currentLateFee, waiverDec, apiCase, payment, consumeAdvance],
   );
   const debouncedParams = useDebounce(previewParams, 300);
 
@@ -664,6 +855,8 @@ export function RecordPaymentWizard({
     if (detectedCase === 'OUT_OF_RANGE') return false;
     if (requiresRef && !referenceNumber.trim()) return false;
     if (requiresSlip && !slipUrl) return false;
+    // P2 (D1): a waiver requires a reason + a 4-eyes approver (≠ recorder).
+    if (waiverDec.gt(0) && (!waiverReasonCode || !waiverApproverId)) return false;
     // QR mode skips the JE preview gate — the JE only posts when webhook
     // fires and recordPayment runs server-side, where the preview will be
     // recomputed against the actual paid amount.
@@ -688,6 +881,8 @@ export function RecordPaymentWizard({
           ? 'BANK_TRANSFER'
           : method === 'QR'
           ? 'QR_EWALLET'
+          : method === 'CARD'
+          ? 'CARD'
           : 'CASH',
       depositAccountCode,
       lateFee: currentLateFee.toNumber(),
@@ -696,6 +891,11 @@ export function RecordPaymentWizard({
       referenceNumber: referenceNumber || undefined,
       slipUrl: slipUrl || undefined,
       memo: memo || undefined,
+      consumeAdvance,
+      paidDate,
+      lateFeeWaiverAmount: waiverDec.gt(0) ? waiverDec.toNumber() : undefined,
+      lateFeeWaiverReasonCode: waiverDec.gt(0) ? waiverReasonCode : undefined,
+      waiverApproverId: waiverDec.gt(0) ? waiverApproverId : undefined,
     });
   };
 
@@ -740,6 +940,14 @@ export function RecordPaymentWizard({
       onClose();
       setDepositAccountCode(defaultDepositAccountCode);
       setAmountReceived(defaultAmount.toFixed(2));
+      setAmountManuallyEdited(false);
+      setConsumeAdvance(true);
+      setCaseOverride(null);
+      setShowPayoffOverlay(false);
+      setWaiverStr('0');
+      setWaiverReasonCode('');
+      setWaiverApproverId('');
+      setPaidDate(bkkToday());
       setLateFeeStr(lateFeeDecimal.toFixed(2));
       setMethod('CASH');
       setReferenceNumber('');
@@ -765,45 +973,109 @@ export function RecordPaymentWizard({
 
         {/* Body */}
         <DialogBody className="flex-1 overflow-y-auto px-6 py-3">
-          {/* 2-column: info + JE preview LEFT, form RIGHT */}
-          <div className="grid grid-cols-[300px_1fr] gap-4 items-start">
-            {/* LEFT: Contract info + auto-journal preview (stacked here so the
-                preview fills the left whitespace and the dialog fits one screen
-                without vertical scrolling). */}
-            <div className="space-y-3 min-w-0">
-              <ContractInfoPanel
-                payment={payment}
-                lateFee={currentLateFee}
-                netExposure={netExposure}
-                onOpenPayoff={() => setShowPayoffOverlay(true)}
-              />
-              <JePreviewPanel
-                preview={preview}
-                isLoading={previewLoading}
-                errorMessage={previewErrorMessage}
-              />
-            </div>
-
-            {/* RIGHT: Form */}
+          {/* 2-column (mockup): form LEFT, contract info + JE preview RIGHT.
+              Form is FIRST in DOM so keyboard/tab order follows the visual flow
+              (data-entry first); the info+preview column comes after. */}
+          <div className="grid grid-cols-[1fr_340px] gap-4 items-start">
+            {/* LEFT column — Form. */}
             <div className="space-y-3 min-w-0">
               {/* Advance balance banner — shown when contract has advance to consume */}
               {advanceBalance.gt(0) && (
                 <AdvanceBalanceBanner
                   amountDue={amountDueDecimal.add(currentLateFee).sub(amountPaidDecimal)}
                   advanceBalance={advanceBalance}
-                  onApply={(netDue) => {
-                    setAmountReceived(netDue);
-                    setAmountManuallyEdited(true);
+                  consumeAdvance={consumeAdvance}
+                  onToggle={(next) => {
+                    setConsumeAdvance(next);
+                    // recompute amountReceived via the auto-sync effect
+                    setAmountManuallyEdited(false);
                   }}
                 />
               )}
+
+              {/* Payment-type selector */}
+              <div>
+                <h3 className="text-sm font-semibold text-foreground mb-2 leading-snug">
+                  ประเภทการรับชำระ
+                </h3>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    // The 3 case buttons reflect the EFFECTIVE case (override OR auto-detected),
+                    // so "ปกติ" doesn't stay highlighted when the typed amount is partial/advance.
+                    { key: 'NORMAL', label: 'ปกติ', toggle: true, onClick: () => setCaseOverride(null), active: apiCase !== 'PARTIAL' && apiCase !== 'OVERPAY_ADVANCE' },
+                    { key: 'PARTIAL', label: 'แบ่งชำระ', toggle: true, onClick: () => setCaseOverride('PARTIAL'), active: apiCase === 'PARTIAL' },
+                    { key: 'OVERPAY_ADVANCE', label: 'ล่วงหน้า', toggle: true, onClick: () => setCaseOverride('OVERPAY_ADVANCE'), active: apiCase === 'OVERPAY_ADVANCE' },
+                    { key: 'PAYOFF', label: 'ปิดยอด', toggle: false, onClick: () => setShowPayoffOverlay(true), active: false },
+                    { key: 'RESCHEDULE', label: 'ปรับงวด', toggle: false, onClick: () => toast.info('ปรับงวด: ทำผ่านเมนูสัญญา/งวด'), active: false },
+                    { key: 'REPO', label: 'คืนเครื่อง', toggle: false, onClick: () => { onClose(); navigate('/repossessions'); }, active: false },
+                  ].map((t) => (
+                    <button
+                      key={t.key}
+                      type="button"
+                      aria-pressed={t.toggle ? t.active : undefined}
+                      onClick={t.onClick}
+                      className={cn(
+                        'rounded-xl border-2 px-2 py-1.5 text-sm font-medium leading-snug transition-colors',
+                        t.active
+                          ? 'bg-primary border-primary text-primary-foreground'
+                          : 'bg-card border-border text-foreground hover:border-primary/40 hover:bg-accent',
+                      )}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
               {/* Amount received */}
               <div>
                 <Label className="block text-sm font-medium text-foreground mb-1.5 leading-snug">
                   ยอดรับจริง (฿) <span className="text-destructive">*</span>
                 </Label>
+                {/* Quick-amount tiles */}
+                <div className="grid grid-cols-3 gap-2 mb-2">
+                  {[
+                    { key: 'full', label: 'เต็มงวด', value: netDue.toFixed(2), apply: () => netDue.toFixed(2) },
+                    { key: 'roundup', label: 'ปิดขึ้น', value: netDueRoundedUp.toFixed(0), apply: () => netDueRoundedUp.toFixed(2) },
+                    { key: 'custom', label: 'กำหนดเอง', value: 'ระบุจำนวน', apply: null },
+                  ].map((tile) => {
+                    const active =
+                      tile.apply != null && new Decimal(amountReceived || 0).eq(new Decimal(tile.apply()));
+                    return (
+                      <button
+                        key={tile.key}
+                        type="button"
+                        onClick={() => {
+                          if (tile.apply) {
+                            setAmountReceived(tile.apply());
+                            setAmountManuallyEdited(true);
+                          } else {
+                            setAmountManuallyEdited(true);
+                            amountInputRef.current?.focus();
+                          }
+                        }}
+                        className={cn(
+                          'rounded-xl border-2 px-2 py-1.5 text-center transition-colors',
+                          active
+                            ? 'bg-primary border-primary text-primary-foreground'
+                            : 'bg-card border-border text-foreground hover:border-primary/40 hover:bg-accent',
+                        )}
+                      >
+                        <div className="text-xs font-semibold leading-snug">{tile.label}</div>
+                        <div
+                          className={cn(
+                            'text-xs font-mono leading-snug',
+                            active ? 'text-primary-foreground/80' : 'text-muted-foreground',
+                          )}
+                        >
+                          {tile.value}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
                 <Input
+                  ref={amountInputRef}
                   type="number"
                   value={amountReceived}
                   onChange={(e) => { setAmountReceived(e.target.value); setAmountManuallyEdited(true); }}
@@ -831,6 +1103,95 @@ export function RecordPaymentWizard({
                   min={0}
                   step="0.01"
                   className="text-right font-mono"
+                />
+              </div>
+
+              {/* P2 (D1) — อนุโลมค่าปรับ (gross model: Dr 52-1105 / Cr 42-1103 gross) */}
+              {currentLateFee.gt(0) && (
+                <div className="rounded-lg border border-warning/30 bg-warning/5 p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-foreground leading-snug">อนุโลมค่าปรับ</h3>
+                    <span className="text-xs text-muted-foreground leading-snug">
+                      ค่าปรับเต็ม {currentLateFee.toFixed(2)} ฿
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { key: '50', label: '50%', apply: () => currentLateFee.div(2).toDecimalPlaces(2).toFixed(2) },
+                      { key: 'full', label: 'เต็ม', apply: () => currentLateFee.toFixed(2) },
+                      { key: 'custom', label: 'กำหนดเอง', apply: null as null | (() => string) },
+                    ].map((b) => {
+                      const active = b.apply != null && waiverDec.eq(new Decimal(b.apply()));
+                      return (
+                        <button
+                          key={b.key}
+                          type="button"
+                          aria-pressed={b.apply != null ? active : undefined}
+                          onClick={() => {
+                            setWaiverStr(b.apply ? b.apply() : '0');
+                            setAmountManuallyEdited(false);
+                          }}
+                          className={cn(
+                            'rounded-xl border-2 px-2 py-1.5 text-sm font-medium leading-snug transition-colors',
+                            active
+                              ? 'bg-primary border-primary text-primary-foreground'
+                              : 'bg-card border-border text-foreground hover:border-primary/40 hover:bg-accent',
+                          )}
+                        >
+                          {b.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <Input
+                    type="number"
+                    value={waiverStr}
+                    min={0}
+                    max={currentLateFee.toNumber()}
+                    step="0.01"
+                    onChange={(e) => { setWaiverStr(e.target.value); setAmountManuallyEdited(false); }}
+                    className="text-right font-mono"
+                    aria-label="ยอดอนุโลมค่าปรับ"
+                  />
+                  {waiverDec.gt(0) && (
+                    <div>
+                      <Label className="block text-xs font-medium text-foreground mb-1 leading-snug">
+                        เหตุผลการอนุโลม <span className="text-destructive">*</span>
+                      </Label>
+                      <select
+                        value={waiverReasonCode}
+                        onChange={(e) => setWaiverReasonCode(e.target.value)}
+                        className="w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm text-foreground leading-snug"
+                        aria-label="เหตุผลการอนุโลม"
+                      >
+                        <option value="">— เลือกเหตุผล —</option>
+                        {WAIVER_REASONS.map((r) => (
+                          <option key={r.code} value={r.code}>{r.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between text-xs font-medium pt-1 border-t border-border/50">
+                    <span className="text-muted-foreground leading-snug">
+                      ค่าปรับ {currentLateFee.toFixed(2)} − อนุโลม {waiverDec.toFixed(2)} =
+                    </span>
+                    <span className="text-foreground font-mono leading-snug">{netLateFee.toFixed(2)} ฿</span>
+                  </div>
+                </div>
+              )}
+
+              {/* วันที่รับเงิน (D4 backdating — period-lock guards closed periods) */}
+              <div>
+                <Label className="block text-sm font-medium text-foreground mb-1.5 leading-snug">
+                  วันที่รับเงิน
+                  <span className="ml-1 text-xs text-muted-foreground font-normal">(ย้อนหลังได้ถ้างวดบัญชียังเปิด)</span>
+                </Label>
+                <Input
+                  type="date"
+                  value={paidDate}
+                  max={bkkToday()}
+                  onChange={(e) => setPaidDate(e.target.value)}
+                  className="font-mono"
                 />
               </div>
 
@@ -922,8 +1283,8 @@ export function RecordPaymentWizard({
               {/* QR mode info pane — replaces ref + slip inputs (webhook log
                   is the audit trail, no manual evidence needed). */}
               {isQrMode && (
-                <div className="rounded-lg border border-blue-500/30 bg-blue-500/5 px-3 py-3 flex items-start gap-2.5">
-                  <Info className="size-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                <div className="rounded-lg border border-info/30 bg-info/5 px-3 py-3 flex items-start gap-2.5">
+                  <Info className="size-4 text-info shrink-0 mt-0.5" />
                   <div className="text-xs text-foreground leading-relaxed">
                     <strong className="block mb-1">ระบบจะส่ง QR ให้ลูกค้าทาง LINE OA</strong>
                     <span className="text-muted-foreground">
@@ -1026,6 +1387,66 @@ export function RecordPaymentWizard({
                   />
                 </div>
               </details>
+
+              {/* Phase 3 — ควบคุมภายใน / approval matrix */}
+              <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <Lock className="size-3.5 text-muted-foreground" />
+                  <h3 className="text-sm font-semibold text-foreground leading-snug">ควบคุมภายใน</h3>
+                </div>
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <span className="text-muted-foreground leading-snug">ผู้บันทึก</span>
+                    <div className="font-medium text-foreground leading-snug">{user?.name ?? '—'}</div>
+                  </div>
+                  <div>
+                    <label htmlFor="waiver-approver" className="text-muted-foreground leading-snug">
+                      ผู้อนุมัติ {needsApproval && <span className="text-destructive">*</span>}
+                    </label>
+                    <select
+                      id="waiver-approver"
+                      value={waiverApproverId}
+                      onChange={(e) => setWaiverApproverId(e.target.value)}
+                      disabled={!needsApproval}
+                      className="w-full rounded-lg border border-border bg-background px-2 py-1 text-sm text-foreground leading-snug disabled:opacity-50"
+                    >
+                      <option value="">— เลือกผู้อนุมัติ —</option>
+                      {approvers.map((a) => (
+                        <option key={a.id} value={a.id}>{a.name} ({a.role})</option>
+                      ))}
+                    </select>
+                    {needsApproval && approvers.length === 0 && (
+                      <p className="text-[11px] text-destructive leading-snug mt-1">
+                        ไม่มีผู้อนุมัติที่ใช้ได้ (ต้องมี OWNER/FM/BM คนอื่น)
+                      </p>
+                    )}
+                  </div>
+                </div>
+                {needsApproval && (
+                  <div className="flex items-center gap-1.5 rounded-md border border-warning/40 bg-warning/10 px-2 py-1 text-xs text-warning leading-snug">
+                    <AlertCircle className="size-3.5 shrink-0" />
+                    <span>ต้องอนุมัติ ({approvalActions.join(' · ')})</span>
+                  </div>
+                )}
+                <div className="text-[10px] text-muted-foreground leading-snug">
+                  Approval Matrix: อนุโลม · ปิดยอด · คืนเครื่อง · กลับรายการ · ยอดเกินวงเงิน
+                </div>
+              </div>
+            </div>
+
+            {/* RIGHT column — contract info + auto-journal preview. */}
+            <div className="space-y-3 min-w-0">
+              <ContractInfoPanel
+                payment={payment}
+                lateFee={currentLateFee}
+                netExposure={netExposure}
+                onOpenPayoff={() => setShowPayoffOverlay(true)}
+              />
+              <JePreviewPanel
+                preview={preview}
+                isLoading={previewLoading}
+                errorMessage={previewErrorMessage}
+              />
             </div>
           </div>
         </DialogBody>

@@ -205,6 +205,11 @@ export class PaymentsService {
     depositAccountCode?: string,
     toleranceApproverId?: string,
     paymentCase?: PaymentCase,
+    consumeAdvance: boolean = true,
+    paidDate?: Date,
+    lateFeeWaiverAmount?: number,
+    lateFeeWaiverReasonCode?: string,
+    waiverApproverId?: string,
   ) {
     return this.services().orchestrator.recordPayment(
       contractId,
@@ -218,6 +223,11 @@ export class PaymentsService {
       depositAccountCode,
       toleranceApproverId,
       paymentCase,
+      consumeAdvance,
+      paidDate,
+      lateFeeWaiverAmount,
+      lateFeeWaiverReasonCode,
+      waiverApproverId,
     );
   }
 
@@ -378,9 +388,11 @@ export class PaymentsService {
     amountReceived: number;
     depositAccountCode: string;
     lateFee?: number;
+    lateFeeWaived?: number;
     case?: string;
     daysToShift?: number;
     splitMode?: string;
+    consumeAdvance?: boolean;
   }) {
     return this.services().preview.previewJournal(input);
   }

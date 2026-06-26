@@ -41,9 +41,11 @@
  * inputs are passed as real Prisma.Decimal values; assertions compare the
  * .toFixed(2) strings the service emits.
  *
- * previewJournal touches only prisma.installmentSchedule.findUnique (with
- * `include: { contract: true }`) and prisma.chartOfAccount.findMany — a hand-
- * mocked PrismaService covers it with no DB. recordPayment reuses the proven
+ * previewJournal touches prisma.installmentSchedule.findUnique (with
+ * `include: { contract: true }`), prisma.chartOfAccount.findMany, and (T1, in the
+ * 2B_ONLY path) prisma.journalEntry.findFirst to fetch the posted 2A accrual
+ * context — a hand-mocked PrismaService covers all three with no DB. recordPayment
+ * reuses the proven
  * advance/late-fee harness ($transaction(cb => cb(tx))). accountRoleService is
  * left undefined to lock the FALLBACK codes (52-1104 / 53-1503).
  */
@@ -148,6 +150,12 @@ describe('PaymentsService.previewJournal (characterization)', () => {
         // service falls back to `nameMap.get(code) ?? code` (accountName = code).
         findMany: jest.fn().mockResolvedValue([]),
       },
+      journalEntry: {
+        // T1: 2B_ONLY preview fetches posted 2A accrual + advance-consume JEs.
+        // [] → no 2A block (accrual2A undefined); the live 2B money lines +
+        // totals are unchanged, so these characterization assertions still hold.
+        findMany: jest.fn().mockResolvedValue([]),
+      },
     };
 
     const noopAudit = {
@@ -249,6 +257,45 @@ describe('PaymentsService.previewJournal (characterization)', () => {
       expect(out.totalDebit).toBe('2001.01');
       expect(out.totalCredit).toBe('2000.00');
       expect(out.isBalanced).toBe(false);
+    });
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // P2 (D1): gross late-fee waiver — preview mirrors the save (Dr 52-1105 + Cr 42-1103 gross)
+  // ───────────────────────────────────────────────────────────────────────────
+  describe('gross late-fee waiver (P2)', () => {
+    it('lateFee 100, waive 40 → Cr 42-1103 = 100 (gross), Dr 52-1105 = 40, balanced', async () => {
+      // monthly 2000, 2B-only. net late fee = 60 → cash = 2000 + 60 = 2060.
+      const out = await service.previewJournal({
+        contractId: 'c-1',
+        installmentNo: 1,
+        amountReceived: 2060,
+        depositAccountCode: '11-1101',
+        lateFee: 100,
+        lateFeeWaived: 40,
+      });
+
+      expect(lineFor(out.lines, '42-1103')?.credit).toBe('100.00'); // GROSS recognised
+      expect(lineFor(out.lines, '52-1105')?.debit).toBe('40.00'); // waived discount
+      expect(lineFor(out.lines, '11-2103')?.credit).toBe('2000.00');
+      expect(lineFor(out.lines, '11-1101')?.debit).toBe('2060.00');
+      // Dr 2060 + 40 = 2100 ; Cr 2000 + 100 = 2100.
+      expect(out.totalDebit).toBe('2100.00');
+      expect(out.totalCredit).toBe('2100.00');
+      expect(out.isBalanced).toBe(true);
+    });
+
+    it('no waiver (lateFeeWaived omitted) → no 52-1105 line; Cr 42-1103 = full late fee', async () => {
+      const out = await service.previewJournal({
+        contractId: 'c-1',
+        installmentNo: 1,
+        amountReceived: 2100, // 2000 + full late fee 100
+        depositAccountCode: '11-1101',
+        lateFee: 100,
+      });
+      expect(lineFor(out.lines, '52-1105')).toBeUndefined();
+      expect(lineFor(out.lines, '42-1103')?.credit).toBe('100.00');
+      expect(out.isBalanced).toBe(true);
     });
   });
 

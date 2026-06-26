@@ -178,6 +178,7 @@ enum PaymentMethod {
   QR_EWALLET
   CREDIT_BALANCE
   ONLINE_GATEWAY
+  CARD // เครื่อง EDC — เงินเข้าบัญชีธนาคารที่เลือก (ไม่มีบัญชีพักบัตรแยก)
 }
 
 enum PaymentStatus {

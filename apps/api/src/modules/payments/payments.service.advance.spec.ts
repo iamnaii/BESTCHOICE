@@ -149,6 +149,9 @@ describe('PaymentsService — advance balance (Task 4)', () => {
       auditLog: {
         create: jest.fn().mockResolvedValue({ id: 'al-1' }),
       },
+      feeWaiverApproval: {
+        create: jest.fn().mockResolvedValue({ id: 'fwa-1' }),
+      },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       $transaction: jest.fn((cb: (tx: any) => Promise<any>) => cb(mockPrismaInst)),
     });
@@ -560,6 +563,213 @@ describe('PaymentsService — advance balance (Task 4)', () => {
           data: expect.objectContaining({ status: 'PAID' }),
         }),
       );
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // T4: consumeAdvance flag — the credit-deduction checkbox gates the auto-consume
+  // ─────────────────────────────────────────────────────────────────────────────
+  // recordPayment positional args (12): contractId, installmentNo, amount,
+  // paymentMethod, recordedById, evidenceUrl, notes, transactionRef,
+  // depositAccountCode, toleranceApproverId, paymentCase, consumeAdvance.
+  describe('consumeAdvance flag (T4)', () => {
+    it('consumeAdvance=false → no auto-consume; a net underpay hits the PARTIAL guard', async () => {
+      advanceBalance = 50;
+      prisma.payment.findFirst.mockResolvedValue(makePayment(20));
+      await expect(
+        service.recordPayment(
+          'adv-contract-1', 20, INST_TOTAL - 50, 'CASH', 'user-1',
+          'https://slip.test/20', undefined, 'TEST-NOCONSUME', '11-1101',
+          undefined, undefined, false,
+        ),
+      ).rejects.toThrow(/PARTIAL/);
+      expect(advanceBalance).toBeCloseTo(50, 2); // advance untouched
+    });
+
+    it('consumeAdvance=false + pays full → PAID, advance left intact', async () => {
+      advanceBalance = 50;
+      prisma.payment.findFirst.mockResolvedValue(makePayment(21));
+      const result = await service.recordPayment(
+        'adv-contract-1', 21, INST_TOTAL, 'CASH', 'user-1',
+        'https://slip.test/21', undefined, 'TEST-FULL-NOCONSUME', '11-1101',
+        undefined, undefined, false,
+      );
+      expect(result.status).toBe('PAID');
+      expect(advanceBalance).toBeCloseTo(50, 2); // NOT consumed
+    });
+
+    it('consumeAdvance=true (default) → net underpay auto-consumes, balance to 0, PAID', async () => {
+      advanceBalance = 50;
+      prisma.payment.findFirst.mockResolvedValue(makePayment(22));
+      const result = await service.recordPayment(
+        'adv-contract-1', 22, INST_TOTAL - 50, 'CASH', 'user-1',
+        'https://slip.test/22', undefined, 'TEST-CONSUME', '11-1101',
+        undefined, undefined, true,
+      );
+      expect(result.status).toBe('PAID');
+      expect(advanceBalance).toBeCloseTo(0, 2); // consumed
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // T7: backdated paidDate (param 13) — stamped on the Payment; future date rejected
+  // ─────────────────────────────────────────────────────────────────────────────
+  describe('backdated paidDate (T7)', () => {
+    it('backdated paidDate is stamped on the Payment (full pay, future dueDate = no late fee)', async () => {
+      const backdated = new Date('2026-03-15T00:00:00.000Z');
+      prisma.payment.findFirst.mockResolvedValue(makePayment(40)); // dueDate 2027 (future)
+      await service.recordPayment(
+        'adv-contract-1', 40, INST_TOTAL, 'CASH', 'user-1',
+        'https://slip.test/40', undefined, 'TEST-BACKDATE', '11-1101',
+        undefined, undefined, true, backdated,
+      );
+      expect(prisma.payment.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ paidDate: backdated }),
+        }),
+      );
+    });
+
+    it('future paidDate → BadRequestException', async () => {
+      const future = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      prisma.payment.findFirst.mockResolvedValue(makePayment(41));
+      await expect(
+        service.recordPayment(
+          'adv-contract-1', 41, INST_TOTAL, 'CASH', 'user-1',
+          'https://slip.test/41', undefined, 'TEST-FUTURE', '11-1101',
+          undefined, undefined, true, future,
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('omitted paidDate → defaults to now, Payment marked PAID', async () => {
+      prisma.payment.findFirst.mockResolvedValue(makePayment(42));
+      const result = await service.recordPayment(
+        'adv-contract-1', 42, INST_TOTAL, 'CASH', 'user-1',
+        'https://slip.test/42', undefined, 'TEST-NODATE', '11-1101',
+      );
+      expect(result.status).toBe('PAID');
+    });
+
+    it('late fee is computed as of paidDate, not now (W5: backdated → fewer days overdue)', async () => {
+      const dueDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // 30 days ago
+      const paidDate = new Date(dueDate.getTime() + 2 * 24 * 60 * 60 * 1000); // 2 days overdue AS OF paid date
+      prisma.payment.findFirst.mockResolvedValue(makePayment(43, { dueDate, lateFee: D(0) }));
+      // PER_DAY: rate=10, max=100000, cap=100% → fee = daysOverdue × 10 (no cap binding)
+      prisma.systemConfig.findUnique.mockImplementation(
+        ({ where: { key } }: { where: { key: string } }) => {
+          const map: Record<string, string> = {
+            late_fee_mode: 'PER_DAY',
+            late_fee_per_day_rate: '10',
+            late_fee_max_amount: '100000',
+            late_fee_cap_pct: '100',
+          };
+          return Promise.resolve(map[key] ? { value: map[key] } : null);
+        },
+      );
+
+      await service.recordPayment(
+        'adv-contract-1', 43, INST_TOTAL + 20, 'CASH', 'user-1',
+        'https://slip.test/43', undefined, 'TEST-LF-BACKDATE', '11-1101',
+        undefined, undefined, true, paidDate,
+      );
+
+      // The late-fee update must reflect 2 days overdue (= 20), NOT ~30 days (= 300 / capped).
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const lfUpdate = prisma.payment.update.mock.calls
+        .map((c: any) => c[0])
+        .find((a: any) => a?.data?.lateFee !== undefined);
+      expect(lfUpdate).toBeDefined();
+      expect(new Prisma.Decimal(lfUpdate.data.lateFee.toString()).toNumber()).toBe(20);
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // P2 (D1): gross late-fee waiver — params 14/15/16 (amount, reasonCode, approverId)
+  // ─────────────────────────────────────────────────────────────────────────────
+  describe('gross late-fee waiver (P2)', () => {
+    const PER_DAY = ({ where: { key } }: { where: { key: string } }) => {
+      const map: Record<string, string> = {
+        late_fee_mode: 'PER_DAY', late_fee_per_day_rate: '10',
+        late_fee_max_amount: '100000', late_fee_cap_pct: '100',
+      };
+      return Promise.resolve(map[key] ? { value: map[key] } : null);
+    };
+    // 5 days overdue × rate 10 → gross late fee = 50
+    const dueDate5 = () => new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
+
+    it('golden: gross 50, waive 25 → cash 1025 closes; waivedAmount + FeeWaiverApproval + template lateFeeWaived', async () => {
+      prisma.systemConfig.findUnique.mockImplementation(PER_DAY);
+      prisma.payment.findFirst.mockResolvedValue(makePayment(60, { dueDate: dueDate5(), lateFee: D(0) }));
+      prisma.user.findUnique.mockResolvedValue({ id: 'approver-1', role: 'FINANCE_MANAGER', isActive: true, deletedAt: null });
+      prisma.installmentSchedule.findUnique.mockResolvedValue({ id: 'sch-waive-1', vat60dayJournalEntryId: null });
+
+      const result = await service.recordPayment(
+        'adv-contract-1', 60, INST_TOTAL + 25, 'CASH', 'user-1',
+        'https://slip.test/60', undefined, 'TEST-WAIVE', '11-1101',
+        undefined, undefined, true, undefined,
+        25, 'goodwill', 'approver-1',
+      );
+
+      expect(result.status).toBe('PAID');
+
+      // Payment.update carries the waiver fields
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const wUpdate = prisma.payment.update.mock.calls
+        .map((c: any) => c[0])
+        .find((a: any) => a?.data?.waivedAmount !== undefined);
+      expect(wUpdate).toBeDefined();
+      expect(new Prisma.Decimal(wUpdate.data.waivedAmount.toString()).toNumber()).toBe(25);
+      expect(wUpdate.data.lateFeeWaived).toBe(true);
+      expect(wUpdate.data.waivedApprovedById).toBe('approver-1');
+
+      // Immutable 4-eyes evidence
+      expect(prisma.feeWaiverApproval.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ approverId: 'approver-1' }) }),
+      );
+
+      // Template receives gross lateFee (50) + waived (25) → it books Cr 42-1103 gross + Dr 52-1105
+      const tArgs = receiptPrimitiveExecute.mock.calls[0][0];
+      expect(new Prisma.Decimal(tArgs.lateFee.toString()).toNumber()).toBe(50);
+      expect(new Prisma.Decimal(tArgs.lateFeeWaived.toString()).toNumber()).toBe(25);
+    });
+
+    it('SoD: approver === recorder → ForbiddenException', async () => {
+      prisma.payment.findFirst.mockResolvedValue(makePayment(61, { dueDate: dueDate5() }));
+      await expect(
+        service.recordPayment(
+          'adv-contract-1', 61, INST_TOTAL + 25, 'CASH', 'user-1',
+          'https://slip.test/61', undefined, 'TEST-WAIVE-SOD', '11-1101',
+          undefined, undefined, true, undefined,
+          25, 'goodwill', 'user-1', // approver === recorder
+        ),
+      ).rejects.toThrow(/Segregation of Duties/);
+    });
+
+    it('waiver without approverId → BadRequestException', async () => {
+      prisma.payment.findFirst.mockResolvedValue(makePayment(62, { dueDate: dueDate5() }));
+      await expect(
+        service.recordPayment(
+          'adv-contract-1', 62, INST_TOTAL + 25, 'CASH', 'user-1',
+          'https://slip.test/62', undefined, 'TEST-WAIVE-NOAPP', '11-1101',
+          undefined, undefined, true, undefined,
+          25, 'goodwill', undefined,
+        ),
+      ).rejects.toThrow(/ผู้อนุมัติ/);
+    });
+
+    it('waiver > gross late fee → BadRequestException', async () => {
+      prisma.systemConfig.findUnique.mockImplementation(PER_DAY);
+      prisma.payment.findFirst.mockResolvedValue(makePayment(63, { dueDate: dueDate5(), lateFee: D(0) }));
+      prisma.user.findUnique.mockResolvedValue({ id: 'approver-1', role: 'OWNER', isActive: true, deletedAt: null });
+      await expect(
+        service.recordPayment(
+          'adv-contract-1', 63, INST_TOTAL, 'CASH', 'user-1',
+          'https://slip.test/63', undefined, 'TEST-WAIVE-OVER', '11-1101',
+          undefined, undefined, true, undefined,
+          999, 'goodwill', 'approver-1', // 999 > gross 50
+        ),
+      ).rejects.toThrow(/เกินค่าปรับ/);
     });
   });
 });

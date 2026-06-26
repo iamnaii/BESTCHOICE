@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, Matches, Min, IsNotEmpty, MaxLength, IsIn } from 'class-validator';
+import { IsString, IsNumber, IsOptional, Matches, Min, IsNotEmpty, MaxLength, IsIn, IsBoolean, IsDateString } from 'class-validator';
 
 /** Regex for valid cash/bank account codes: 11-1101..03, 11-1201..03 */
 const CASH_CODE_REGEX = /^11-(110[1-3]|120[1-3])$/;
@@ -13,8 +13,8 @@ export type PaymentCase =
   | 'RESCHEDULE'
   | 'OVERPAY_ADVANCE';
 
-/** Payment channel/method enum */
-export type PaymentMethod = 'CASH' | 'TRANSFER' | 'QR' | 'PAYSOLUTIONS';
+/** Payment channel/method enum (wizard-side; mapped to Prisma PaymentMethod in the controller) */
+export type PaymentMethod = 'CASH' | 'TRANSFER' | 'QR' | 'PAYSOLUTIONS' | 'CARD';
 
 /** Reschedule split mode — 6a (split: fee paid first) or 6b (bundled: fee + installment together) */
 export type RescheduleSplitMode = 'SINGLE' | 'SPLIT';
@@ -40,6 +40,12 @@ export class PreviewJournalDto {
   @Min(0)
   lateFee?: number;
 
+  /** D1 gross-waiver preview: ยอดอนุโลมค่าปรับ → Dr 52-1105 (Cr 42-1103 ยังเป็น gross) */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  lateFeeWaived?: number;
+
   @IsOptional()
   @IsString()
   @IsIn(['NORMAL', 'OVERPAY', 'UNDERPAY', 'PARTIAL', 'EARLY_PAYOFF', 'RESCHEDULE', 'OVERPAY_ADVANCE'])
@@ -52,7 +58,7 @@ export class PreviewJournalDto {
   /** ช่องทางรับชำระ (step 3) */
   @IsOptional()
   @IsString()
-  @IsIn(['CASH', 'TRANSFER', 'QR', 'PAYSOLUTIONS'])
+  @IsIn(['CASH', 'TRANSFER', 'QR', 'PAYSOLUTIONS', 'CARD'])
   method?: PaymentMethod;
 
   /** เลขอ้างอิง / เลขโอน (required เมื่อ method !== CASH) */
@@ -84,6 +90,11 @@ export class PreviewJournalDto {
   @IsString()
   @IsIn(['SINGLE', 'SPLIT'])
   splitMode?: RescheduleSplitMode;
+
+  /** หักเครดิตล่วงหน้า (21-1103) — default true. ใช้ให้พรีวิวตรงกับตอนบันทึก */
+  @IsOptional()
+  @IsBoolean()
+  consumeAdvance?: boolean;
 }
 
 export class RecordPaymentDto {
@@ -133,7 +144,7 @@ export class RecordPaymentDto {
   /** ช่องทางรับชำระจากฝั่งลูกค้า (wizard step 3) */
   @IsOptional()
   @IsString()
-  @IsIn(['CASH', 'TRANSFER', 'QR', 'PAYSOLUTIONS'])
+  @IsIn(['CASH', 'TRANSFER', 'QR', 'PAYSOLUTIONS', 'CARD'])
   wizardMethod?: PaymentMethod;
 
   /** เลขอ้างอิงธุรกรรมจาก wizard step 3 */
@@ -182,6 +193,40 @@ export class RecordPaymentDto {
   @IsNumber()
   @Min(0)
   lateFee?: number;
+
+  /**
+   * หักเครดิตล่วงหน้า (21-1103) อัตโนมัติเมื่อจ่ายไม่ครบ — default true (พฤติกรรมเดิม).
+   * false = เก็บเต็มยอด ไม่หักเครดิต (ลูกค้าเก็บเครดิตไว้งวดถัดไป).
+   */
+  @IsOptional()
+  @IsBoolean()
+  consumeAdvance?: boolean;
+
+  /**
+   * วันที่รับเงิน (ISO date) — ย้อนหลังได้ถ้างวดบัญชี FINANCE ยังเปิด (ผ่าน period-lock).
+   * มีผลกับ: คำนวณค่าปรับ ณ วันจ่าย, paidDate ของ Payment, และวันที่ลง JE.
+   * default = วันนี้ (ห้ามเป็นอนาคต).
+   */
+  @IsOptional()
+  @IsDateString()
+  paidDate?: string;
+
+  /** D1 gross-waiver: ยอดอนุโลมค่าปรับ (฿) → Dr 52-1105. ต้อง ≤ ค่าปรับจริง (server validate) */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  lateFeeWaiverAmount?: number;
+
+  /** รหัสเหตุผลการอนุโลม (จาก SystemConfig late_fee_waiver_reasons) — required เมื่ออนุโลม */
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  lateFeeWaiverReasonCode?: string;
+
+  /** ผู้อนุมัติการอนุโลม (4-eyes SoD) — required เมื่ออนุโลม, ต้อง ≠ ผู้บันทึก */
+  @IsOptional()
+  @IsString()
+  waiverApproverId?: string;
 }
 
 export class BulkRecordPaymentDto {

@@ -98,6 +98,11 @@ export class PaymentReceiptOrchestrator {
     depositAccountCode?: string,
     toleranceApproverId?: string,
     paymentCase?: PaymentCase,
+    consumeAdvance: boolean = true,
+    paidDate?: Date,
+    lateFeeWaiverAmount?: number,
+    lateFeeWaiverReasonCode?: string,
+    waiverApproverId?: string,
   ) {
     if (!amount || amount <= 0) {
       throw new BadRequestException('จำนวนเงินต้องมากกว่า 0');
@@ -108,8 +113,20 @@ export class PaymentReceiptOrchestrator {
       throw new BadRequestException('ต้อง upload หลักฐานการชำระเงิน (สลิปโอนเงิน) หรือระบุเลขอ้างอิงธุรกรรม');
     }
 
+    // D4: honor a caller-supplied paidDate (backdating). Default = now; never future.
+    // Drives period-lock, late-fee days, the Payment.paidDate stamp, and the JE postedAt
+    // so a backdated receipt doesn't get today's (larger) late fee or today's ledger date.
+    const effectivePaidDate = paidDate ?? new Date();
+    // Compare BKK calendar days (en-CA → YYYY-MM-DD, lexically sortable). A date-only
+    // paidDate parses to UTC midnight, which is AHEAD of now during BKK evening — a
+    // raw getTime() check would wrongly reject today's BKK date after 17:00 local.
+    const bkkDay = (dt: Date) => dt.toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
+    if (bkkDay(effectivePaidDate) > bkkDay(new Date())) {
+      throw new BadRequestException('วันที่รับเงินต้องไม่เป็นอนาคต');
+    }
+
     // CR-7: Validate payment date is not in a closed (FINANCE) accounting period.
-    await validatePeriodOpen(this.prisma, new Date(), await resolveFinanceCompanyId(this.prisma));
+    await validatePeriodOpen(this.prisma, effectivePaidDate, await resolveFinanceCompanyId(this.prisma));
 
     // T16: Tolerance approver role validation.
     // If toleranceApproverId is supplied, verify the named user has an approved role.
@@ -126,6 +143,31 @@ export class PaymentReceiptOrchestrator {
       const allowedRoles = ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'BRANCH_MANAGER'];
       if (!allowedRoles.includes(approver.role)) {
         throw new ForbiddenException('ผู้อนุมัติต้องมีบทบาท OWNER, FINANCE_MANAGER, ACCOUNTANT หรือ BRANCH_MANAGER');
+      }
+    }
+
+    // D1: late-fee waiver (gross model) — validate 4-eyes SoD + required fields BEFORE
+    // the tx (fail fast). Amount ≤ actual gross late fee is re-checked inside the tx.
+    const waiverRequested = !!lateFeeWaiverAmount && lateFeeWaiverAmount > 0;
+    if (waiverRequested) {
+      if (!lateFeeWaiverReasonCode) {
+        throw new BadRequestException('กรุณาระบุเหตุผลการอนุโลมค่าปรับ');
+      }
+      if (!waiverApproverId) {
+        throw new BadRequestException('ต้องระบุผู้อนุมัติการอนุโลม (waiverApproverId)');
+      }
+      if (waiverApproverId === recordedById) {
+        throw new ForbiddenException('ผู้ขออนุโลมและผู้อนุมัติต้องเป็นคนละคน (Segregation of Duties)');
+      }
+      const wApprover = await this.prisma.user.findUnique({
+        where: { id: waiverApproverId },
+        select: { id: true, role: true, isActive: true, deletedAt: true },
+      });
+      if (!wApprover || !wApprover.isActive || wApprover.deletedAt) {
+        throw new NotFoundException('ไม่พบผู้อนุมัติการอนุโลม หรือถูกปิดการใช้งาน');
+      }
+      if (!['OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER'].includes(wApprover.role)) {
+        throw new ForbiddenException('ผู้อนุมัติการอนุโลมต้องมีสิทธิ์ OWNER / FINANCE_MANAGER / BRANCH_MANAGER');
       }
     }
 
@@ -196,8 +238,11 @@ export class PaymentReceiptOrchestrator {
       // Set = resolved fee (NOT max(stored, resolved)) so this path agrees with
       // the overdue cron's retroactive downgrade. Skip waived.
       let lateFee = d(payment.lateFee);
-      if (!payment.lateFeeWaived && payment.dueDate < new Date()) {
-        const daysOverdue = Math.floor((Date.now() - payment.dueDate.getTime()) / (1000 * 60 * 60 * 24));
+      if (!payment.lateFeeWaived && payment.dueDate < effectivePaidDate) {
+        const daysOverdue = Math.max(
+          0,
+          Math.floor((effectivePaidDate.getTime() - payment.dueDate.getTime()) / (1000 * 60 * 60 * 24)),
+        );
         const lateFeeCfg = await loadLateFeeConfig(tx);
         const bracketFee = resolveLateFee(lateFeeCfg, daysOverdue, payment.amountDue);
         if (!bracketFee.eq(lateFee)) {
@@ -206,7 +251,20 @@ export class PaymentReceiptOrchestrator {
         }
       }
 
-      const amountDue = dRound(dAdd(payment.amountDue, lateFee));
+      // D1: validate the waiver against the actual (recomputed) gross late fee.
+      const waiverAmount = waiverRequested ? d(lateFeeWaiverAmount as number) : d(0);
+      if (waiverAmount.gt(0)) {
+        if (lateFee.lte(0)) {
+          throw new BadRequestException('งวดนี้ไม่มีค่าปรับให้อนุโลม');
+        }
+        if (waiverAmount.gt(lateFee)) {
+          throw new BadRequestException(`ยอดอนุโลม ${waiverAmount.toFixed(2)} เกินค่าปรับ ${lateFee.toFixed(2)}`);
+        }
+      }
+
+      // Cash obligation = principal + NET late fee (gross − waived). The waived portion
+      // is recognised via Dr 52-1105 in the receipt JE, not collected in cash.
+      const amountDue = dRound(dAdd(payment.amountDue, dSub(lateFee, waiverAmount)));
       const prevPaid = dRound(d(payment.amountPaid));
       const remaining = dRound(dSub(amountDue, prevPaid));
 
@@ -236,12 +294,14 @@ export class PaymentReceiptOrchestrator {
           `Overpay ${overage.toFixed(2)}฿ auto-routed to advance (contract ${contractId}, inst ${installmentNo})`,
         );
       } else if (
+        consumeAdvance &&
         d(amount).lt(remaining) &&
         beforeAdvance.gt(0) &&
         (paymentCase === undefined || paymentCase === 'NORMAL')
       ) {
-        // Auto-consume FIFO ONLY for default/NORMAL case. PARTIAL/RESCHEDULE/EARLY_PAYOFF
-        // are explicit flows where the caller controls allocation directly.
+        // Auto-consume FIFO ONLY for default/NORMAL case AND when the cashier
+        // left "หักเครดิต" on (consumeAdvance, default true). PARTIAL/RESCHEDULE/
+        // EARLY_PAYOFF are explicit flows where the caller controls allocation.
         const gap = remaining.minus(d(amount));
         advanceConsume = Prisma.Decimal.min(beforeAdvance, gap);
       }
@@ -256,6 +316,14 @@ export class PaymentReceiptOrchestrator {
           );
         }
         isPartialClear = true;
+      }
+
+      // D1: a late-fee waiver only makes sense on the receipt that CLOSES the installment.
+      // Rejecting partial+waiver keeps lateFeeWaived=true safe (the installment becomes PAID,
+      // so autoAllocate/applyCreditBalance skip it) and avoids preview/template + reconstructPrior
+      // drift on a follow-up receipt (C1/C2/W2). Waive-on-partial → use the standalone waiver flow.
+      if (waiverAmount.gt(0) && isPartialClear) {
+        throw new BadRequestException('อนุโลมค่าปรับทำได้เฉพาะตอนชำระปิดงวด (ไม่รองรับจ่ายบางส่วน)');
       }
 
       // For OVERPAY_ADVANCE: amountPaid = installmentTotal (full clear via cash + advance posting).
@@ -275,15 +343,39 @@ export class PaymentReceiptOrchestrator {
         where: { id: payment.id },
         data: {
           amountPaid: recordedAmountPaid,
-          paidDate: isPaidInFull ? new Date() : null,
+          paidDate: isPaidInFull ? effectivePaidDate : null,
           paymentMethod: paymentMethod as PaymentMethod,
           status: isPaidInFull ? 'PAID' : 'PARTIALLY_PAID',
           recordedById,
           evidenceUrl: evidenceUrl || payment.evidenceUrl,
           notes: updatedNotes,
           depositAccountCode: resolvedDepositAccountCode,
+          ...(waiverAmount.gt(0)
+            ? {
+                // Gross-waiver: late fee stays recognised (Cr 42-1103 gross); waivedAmount
+                // records the discount (Dr 52-1105). lateFeeWaived=true marks it settled.
+                lateFeeWaived: true,
+                waivedById: recordedById,
+                waivedApprovedById: waiverApproverId,
+                waivedAt: effectivePaidDate,
+                waivedReason: lateFeeWaiverReasonCode,
+                waivedAmount: waiverAmount,
+              }
+            : {}),
         },
       });
+
+      // D1: immutable 4-eyes approval evidence — same tx as the receipt JE.
+      if (waiverAmount.gt(0)) {
+        await tx.feeWaiverApproval.create({
+          data: {
+            waiverPaymentId: result.id,
+            approverId: waiverApproverId as string,
+            ipAddress: null,
+            userAgent: null,
+          },
+        });
+      }
 
       // Update Contract.advanceBalance atomically with payment (Task 4.5)
       const advanceDelta = advanceCredit.minus(advanceConsume);
@@ -356,6 +448,8 @@ export class PaymentReceiptOrchestrator {
               advanceConsume: advanceConsume.gt(0) ? advanceConsume : undefined,
               isFinalReceipt: !isPartialClear,
               lateFee: lateFee.gt(0) ? lateFee : undefined,
+              lateFeeWaived: waiverAmount.gt(0) ? waiverAmount : undefined,
+              postedAt: effectivePaidDate,
               // PR-843/I2 Phase 5b — auto-approve a ≤1฿ underpay-close ONLY when the
               // payer covered the full billed obligation (cash + consumed advance ≥
               // remaining = amountDue+lateFee−prevPaid). In that case any ≤1฿ residual
@@ -462,6 +556,26 @@ export class PaymentReceiptOrchestrator {
           contractId,
           installmentNo,
           timestamp: new Date().toISOString(),
+        },
+      });
+    }
+
+    // D1: LATE_FEE_WAIVED audit (gross model) — written after the tx commits, like
+    // TOLERANCE_APPROVED. The immutable FeeWaiverApproval row was already persisted
+    // inside the tx; this is the queryable financial-audit trail.
+    if (waiverRequested) {
+      await this.auditService.logPaymentEvent({
+        userId: recordedById,
+        contractId,
+        paymentId: updated.id,
+        action: 'LATE_FEE_WAIVED',
+        amount: lateFeeWaiverAmount as number,
+        installmentNo,
+        details: {
+          model: 'gross',
+          waivedAmount: lateFeeWaiverAmount,
+          reasonCode: lateFeeWaiverReasonCode,
+          approverId: waiverApproverId,
         },
       });
     }

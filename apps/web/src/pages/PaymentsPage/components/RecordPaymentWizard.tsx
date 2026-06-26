@@ -744,6 +744,12 @@ export function RecordPaymentWizard({
   }, [waiverStr, currentLateFee]);
   const netLateFee = useMemo(() => currentLateFee.minus(waiverDec), [currentLateFee, waiverDec]);
 
+  // Phase 3 — approval matrix: which actions in THIS receipt need 4-eyes approval.
+  // Today only the late-fee waiver is gated in-wizard (ปิดยอด/คืนเครื่อง route out;
+  // กลับรายการ = Phase 4; ยอดเกินวงเงิน is gated server-side on the OVERPAY_ADVANCE ceiling).
+  const approvalActions = useMemo(() => (waiverDec.gt(0) ? ['อนุโลม'] : []), [waiverDec]);
+  const needsApproval = approvalActions.length > 0;
+
   // 4-eyes approver list — managers other than the current user (SoD).
   const { data: approverData = [] } = useQuery<ApproverRow[]>({
     queryKey: ['waiver-approvers'],
@@ -1370,6 +1376,51 @@ export function RecordPaymentWizard({
                   />
                 </div>
               </details>
+
+              {/* Phase 3 — ควบคุมภายใน / approval matrix */}
+              <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <Lock className="size-3.5 text-muted-foreground" />
+                  <h3 className="text-sm font-semibold text-foreground leading-snug">ควบคุมภายใน</h3>
+                </div>
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <span className="text-muted-foreground leading-snug">ผู้บันทึก</span>
+                    <div className="font-medium text-foreground leading-snug">{user?.name ?? '—'}</div>
+                  </div>
+                  <div>
+                    <label htmlFor="waiver-approver" className="text-muted-foreground leading-snug">
+                      ผู้อนุมัติ {needsApproval && <span className="text-destructive">*</span>}
+                    </label>
+                    <select
+                      id="waiver-approver"
+                      value={waiverApproverId}
+                      onChange={(e) => setWaiverApproverId(e.target.value)}
+                      disabled={!needsApproval}
+                      className="w-full rounded-lg border border-border bg-background px-2 py-1 text-sm text-foreground leading-snug disabled:opacity-50"
+                    >
+                      <option value="">— เลือกผู้อนุมัติ —</option>
+                      {approvers.map((a) => (
+                        <option key={a.id} value={a.id}>{a.name} ({a.role})</option>
+                      ))}
+                    </select>
+                    {needsApproval && approvers.length === 0 && (
+                      <p className="text-[11px] text-destructive leading-snug mt-1">
+                        ไม่มีผู้อนุมัติที่ใช้ได้ (ต้องมี OWNER/FM/BM คนอื่น)
+                      </p>
+                    )}
+                  </div>
+                </div>
+                {needsApproval && (
+                  <div className="flex items-center gap-1.5 rounded-md border border-warning/40 bg-warning/10 px-2 py-1 text-xs text-warning leading-snug">
+                    <AlertCircle className="size-3.5 shrink-0" />
+                    <span>ต้องอนุมัติ ({approvalActions.join(' · ')})</span>
+                  </div>
+                )}
+                <div className="text-[10px] text-muted-foreground leading-snug">
+                  Approval Matrix: อนุโลม · ปิดยอด · คืนเครื่อง · กลับรายการ · ยอดเกินวงเงิน
+                </div>
+              </div>
             </div>
 
             {/* RIGHT column — contract info + auto-journal preview. */}

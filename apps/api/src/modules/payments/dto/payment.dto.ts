@@ -13,8 +13,8 @@ export type PaymentCase =
   | 'RESCHEDULE'
   | 'OVERPAY_ADVANCE';
 
-/** Payment channel/method enum */
-export type PaymentMethod = 'CASH' | 'TRANSFER' | 'QR' | 'PAYSOLUTIONS';
+/** Payment channel/method enum (wizard-side; mapped to Prisma PaymentMethod in the controller) */
+export type PaymentMethod = 'CASH' | 'TRANSFER' | 'QR' | 'PAYSOLUTIONS' | 'CARD';
 
 /** Reschedule split mode — 6a (split: fee paid first) or 6b (bundled: fee + installment together) */
 export type RescheduleSplitMode = 'SINGLE' | 'SPLIT';
@@ -52,7 +52,7 @@ export class PreviewJournalDto {
   /** ช่องทางรับชำระ (step 3) */
   @IsOptional()
   @IsString()
-  @IsIn(['CASH', 'TRANSFER', 'QR', 'PAYSOLUTIONS'])
+  @IsIn(['CASH', 'TRANSFER', 'QR', 'PAYSOLUTIONS', 'CARD'])
   method?: PaymentMethod;
 
   /** เลขอ้างอิง / เลขโอน (required เมื่อ method !== CASH) */
@@ -138,7 +138,7 @@ export class RecordPaymentDto {
   /** ช่องทางรับชำระจากฝั่งลูกค้า (wizard step 3) */
   @IsOptional()
   @IsString()
-  @IsIn(['CASH', 'TRANSFER', 'QR', 'PAYSOLUTIONS'])
+  @IsIn(['CASH', 'TRANSFER', 'QR', 'PAYSOLUTIONS', 'CARD'])
   wizardMethod?: PaymentMethod;
 
   /** เลขอ้างอิงธุรกรรมจาก wizard step 3 */

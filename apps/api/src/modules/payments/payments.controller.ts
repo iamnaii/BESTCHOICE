@@ -219,6 +219,7 @@ export class PaymentsController {
         TRANSFER: 'BANK_TRANSFER',
         QR: 'QR_EWALLET',
         PAYSOLUTIONS: 'BANK_TRANSFER', // PaySolutions uses bank transfer settlement
+        CARD: 'CARD', // EDC — money settles into the selected bank account
       };
       effectivePaymentMethod = methodMap[dto.wizardMethod] ?? dto.paymentMethod;
     }

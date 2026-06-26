@@ -52,7 +52,7 @@ type DetectedCase = 'NORMAL' | 'OVERPAY' | 'UNDERPAY' | 'OVERPAY_ADVANCE' | 'PAR
 /** Legacy type kept for API compatibility — backend accepts all 7 values */
 type PaymentCase = 'NORMAL' | 'OVERPAY' | 'UNDERPAY' | 'PARTIAL' | 'EARLY_PAYOFF' | 'RESCHEDULE' | 'OVERPAY_ADVANCE';
 
-type WizardMethod = 'CASH' | 'TRANSFER' | 'QR';
+type WizardMethod = 'CASH' | 'TRANSFER' | 'QR' | 'CARD';
 
 interface JePreviewLine {
   accountCode: string;
@@ -305,6 +305,7 @@ const METHOD_OPTIONS: { id: WizardMethod; label: string; icon: React.ReactNode; 
   { id: 'CASH', label: 'เงินสด', icon: <Banknote className="size-4" />, desc: 'รับเงินสดโดยตรง' },
   { id: 'TRANSFER', label: 'โอนธนาคาร', icon: <Building2 className="size-4" />, desc: 'ลูกค้าโอนเอง · กรอก ref + slip' },
   { id: 'QR', label: 'ชำระผ่าน QR', icon: <QrCode className="size-4" />, desc: 'ส่ง QR ให้ลูกค้าใน LINE' },
+  { id: 'CARD', label: 'บัตร', icon: <CreditCard className="size-4" />, desc: 'เครื่อง EDC · เงินเข้าบัญชีธนาคาร' },
 ];
 
 // ─── JE Preview panel (always visible) ────────────────────────────────────────
@@ -808,6 +809,8 @@ export function RecordPaymentWizard({
           ? 'BANK_TRANSFER'
           : method === 'QR'
           ? 'QR_EWALLET'
+          : method === 'CARD'
+          ? 'CARD'
           : 'CASH',
       depositAccountCode,
       lateFee: currentLateFee.toNumber(),

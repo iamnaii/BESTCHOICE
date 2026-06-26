@@ -10,6 +10,7 @@ import {
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import { PrismaService } from '../../prisma/prisma.service';
 import { Server, Socket } from 'socket.io';
 import { CHAT_EVENTS, CHAT_CLIENT_EVENTS, CHAT_ROOMS } from '../chat-engine/constants/chat-events';
 import { MessageRouterService } from '../chat-engine/services/message-router.service';
@@ -65,6 +66,7 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
     private jwtService: JwtService,
     private configService: ConfigService,
     private leadScoring: LeadScoringService,
+    private prisma: PrismaService,
   ) {}
 
   async handleConnection(client: Socket): Promise<void> {
@@ -92,6 +94,20 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
       client.disconnect();
       return;
     }
+
+    // Mirror the REST JwtStrategy: a valid signature is not enough — reject
+    // deactivated/deleted users (whose token may still be unexpired).
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { isActive: true, name: true, role: true },
+    });
+    if (!user || !user.isActive) {
+      this.logger.warn(`[WS] Connection rejected — user ${userId} missing or inactive`);
+      client.disconnect();
+      return;
+    }
+    userName = user.name ?? userName;
+    (client as any).role = user.role;
 
     // Track presence
     this.presenceService.setOnline(userId, client.id);

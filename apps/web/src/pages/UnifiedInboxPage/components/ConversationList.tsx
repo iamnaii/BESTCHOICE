@@ -66,10 +66,14 @@ export default function ConversationList({
       queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
     },
   });
+  // pinMutation.mutate is stable across renders; pinMutation object is not.
+  // Capturing the stable mutate fn keeps handlePin's identity stable so
+  // ConversationItem's React.memo actually hits on every render.
+  const pinMutate = pinMutation.mutate;
 
   const handlePin = useCallback(
-    (roomId: string, isPinned: boolean) => pinMutation.mutate({ roomId, isPinned }),
-    [pinMutation],
+    (roomId: string, isPinned: boolean) => pinMutate({ roomId, isPinned }),
+    [pinMutate],
   );
 
   // Update parent filter when debounced search changes

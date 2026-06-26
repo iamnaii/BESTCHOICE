@@ -113,6 +113,11 @@ export default function UnifiedInboxPage() {
       queryClient.invalidateQueries({ queryKey: ['chat-unread-count'] });
     }, 600);
   }, [queryClient]);
+  // Clear any in-flight debounce timer on unmount to prevent a state update
+  // (queryClient.invalidateQueries) from firing after the component is gone.
+  useEffect(() => () => {
+    if (roomsInvalidateTimer.current) clearTimeout(roomsInvalidateTimer.current);
+  }, []);
 
   // WebSocket for real-time updates
   const { joinRoom, leaveRoom, viewRoom, startTyping, stopTyping, isCustomerTyping, staffTyping, status: connectionStatus } = useChatSocket({

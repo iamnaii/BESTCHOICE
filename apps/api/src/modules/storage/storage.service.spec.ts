@@ -90,6 +90,31 @@ describe('StorageService', () => {
       expect(result).toBe('https://signed-url.example.com/file.pdf');
     });
 
+    it('should return cached URL on second call with same key (presigner called once)', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { getSignedUrl: mockPresigner } = require('@aws-sdk/s3-request-presigner');
+      (mockPresigner as jest.Mock).mockClear();
+
+      const first = await service.getSignedDownloadUrl('cached/file.pdf');
+      const second = await service.getSignedDownloadUrl('cached/file.pdf');
+
+      expect(first).toBe(second);
+      expect(mockPresigner).toHaveBeenCalledTimes(1);
+    });
+
+    it('should sign again for a different expiresIn (different cache key)', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { getSignedUrl: mockPresigner } = require('@aws-sdk/s3-request-presigner');
+      (mockPresigner as jest.Mock).mockClear();
+
+      await service.getSignedDownloadUrl('multi-ttl/file.pdf', 900);
+      await service.getSignedDownloadUrl('multi-ttl/file.pdf', 900); // cache hit — no extra sign
+      await service.getSignedDownloadUrl('multi-ttl/file.pdf', 3600); // different expiresIn → new entry
+
+      // First call (900) + third call (3600) each sign; second call hits cache.
+      expect(mockPresigner).toHaveBeenCalledTimes(2);
+    });
+
     it('should delete file without error', async () => {
       mockSend.mockResolvedValueOnce({});
       await expect(service.delete('test/file.pdf')).resolves.not.toThrow();

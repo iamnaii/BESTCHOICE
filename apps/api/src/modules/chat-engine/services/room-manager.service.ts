@@ -360,6 +360,9 @@ export class RoomManagerService {
     assignedToId?: string;
     customerId?: string;
     unassignedOnly?: boolean;
+    unreadOnly?: boolean;
+    channels?: ChatChannel[];
+    aiStatus?: 'ai' | 'human' | 'pending';
     search?: string;
     page?: number;
     limit?: number;
@@ -390,12 +393,25 @@ export class RoomManagerService {
         { externalUserId: { contains: params.search } },
       ];
     }
+    if (params.unreadOnly) where.unreadCount = { gt: 0 };
+    if (params.channels && params.channels.length > 0) where.channel = { in: params.channels };
+    if (params.aiStatus === 'ai') {
+      where.aiPaused = false;
+      where.handoffMode = false;
+    } else if (params.aiStatus === 'human') {
+      where.aiPaused = true;
+    } else if (params.aiStatus === 'pending') {
+      where.handoffMode = true;
+    }
 
     const [data, total] = await this.prisma.$transaction([
       this.prisma.chatRoom.findMany({
         where,
+        // Pinned first, then most-recent — exact parity with the prior client
+        // sort. (priority is intentionally NOT a sort key: the old inbox ignored
+        // it, so adding it would silently reorder the list for users.)
         orderBy: [
-          { priority: 'desc' },
+          { pinnedAt: { sort: 'desc', nulls: 'last' } },
           { lastMessageAt: 'desc' },
         ],
         skip,

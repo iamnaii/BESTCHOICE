@@ -6,7 +6,7 @@ import {
   IsEnum,
   IsBoolean,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 
 export class SessionQueryDto {
   @IsOptional()
@@ -37,6 +37,21 @@ export class SessionQueryDto {
   @IsBoolean()
   @Type(() => Boolean)
   unassignedOnly?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  // NOT @Type(() => Boolean): Boolean('false') === true. Coerce explicitly so
+  // ?unreadOnly=false means false.
+  @Transform(({ value }) => value === true || value === 'true')
+  unreadOnly?: boolean;
+
+  @IsOptional()
+  @IsString()
+  channels?: string; // comma-separated list, e.g. "LINE_FINANCE,FACEBOOK"
+
+  @IsOptional()
+  @IsString()
+  aiStatus?: string; // 'ai' | 'human' | 'pending'
 
   @IsOptional()
   @IsInt()

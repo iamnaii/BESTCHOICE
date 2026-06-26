@@ -407,9 +407,11 @@ export class RoomManagerService {
     const [data, total] = await this.prisma.$transaction([
       this.prisma.chatRoom.findMany({
         where,
+        // Pinned first, then most-recent — exact parity with the prior client
+        // sort. (priority is intentionally NOT a sort key: the old inbox ignored
+        // it, so adding it would silently reorder the list for users.)
         orderBy: [
           { pinnedAt: { sort: 'desc', nulls: 'last' } },
-          { priority: 'desc' },
           { lastMessageAt: 'desc' },
         ],
         skip,

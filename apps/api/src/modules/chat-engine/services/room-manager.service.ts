@@ -292,6 +292,21 @@ export class RoomManagerService {
     return msg;
   }
 
+  /** Look up an existing message by its client-generated idempotency token. */
+  async findByClientMessageId(roomId: string, clientMessageId: string) {
+    return this.prisma.chatMessage.findFirst({
+      where: { roomId, clientMessageId },
+    });
+  }
+
+  /** Mark a message as successfully delivered to the customer (idempotency flag). */
+  async markOutboundSent(messageId: string): Promise<void> {
+    await this.prisma.chatMessage.update({
+      where: { id: messageId },
+      data: { outboundSentAt: new Date() },
+    });
+  }
+
   /** Get recent messages for AI context or display */
   async getRecentMessages(roomId: string, limit = 20, opts?: { signMedia?: boolean }) {
     const msgs = await this.prisma.chatMessage.findMany({

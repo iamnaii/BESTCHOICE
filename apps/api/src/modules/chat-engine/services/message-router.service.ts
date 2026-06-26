@@ -444,8 +444,9 @@ export class MessageRouterService {
 
   /**
    * Send a staff message through the appropriate adapter.
-   * Returns { success, error? } so the caller (WS gateway) can notify the UI
-   * when delivery to the external channel fails (LINE push quota, blocked OA, etc.)
+   * Idempotent on clientMessageId: if the same token is retried, the backend
+   * deduplicates at the DB level so a message that was already delivered to the
+   * customer is never re-sent.
    */
   async sendStaffMessage(params: {
     roomId: string;
@@ -462,26 +463,54 @@ export class MessageRouterService {
       this.logger.error(`Room not found: ${params.roomId}`);
       return { success: false, error: 'Room not found' };
     }
-
-    // Resolve the external user ID (externalUserId for FB/TikTok, lineUserId for LINE)
-    const externalUserId =
-      room.externalUserId ?? room.lineUserId ?? '';
-
-    // Save the staff message
-    const saved = await this.roomManager.saveMessage({
-      roomId: params.roomId,
-      role: MessageRole.STAFF,
-      text: params.text,
-      staffId: params.staffId,
-      clientMessageId: params.clientMessageId,
-    });
-
-    // Send through adapter
+    const externalUserId = room.externalUserId ?? room.lineUserId ?? '';
     const adapter = this.adapterMap.get(room.channel);
     if (!adapter) {
       const error = `No adapter registered for channel ${room.channel}`;
       this.logger.error(error);
       return { success: false, error };
+    }
+
+    // Idempotency: reuse the row for this clientMessageId if it already exists.
+    let saved = params.clientMessageId
+      ? await this.roomManager.findByClientMessageId(params.roomId, params.clientMessageId)
+      : null;
+
+    if (saved?.outboundSentAt) {
+      // Already delivered on a prior attempt — do NOT re-send to the customer.
+      return {
+        success: true,
+        message: { id: saved.id, clientMessageId: saved.clientMessageId, createdAt: saved.createdAt },
+      };
+    }
+
+    if (!saved) {
+      try {
+        saved = await this.roomManager.saveMessage({
+          roomId: params.roomId,
+          role: MessageRole.STAFF,
+          text: params.text,
+          staffId: params.staffId,
+          clientMessageId: params.clientMessageId,
+        });
+      } catch (e: any) {
+        // Unique-race: a concurrent identical send won. Re-fetch + fall through.
+        if (e?.code === 'P2002' && params.clientMessageId) {
+          saved = await this.roomManager.findByClientMessageId(params.roomId, params.clientMessageId);
+          if (saved?.outboundSentAt) {
+            return {
+              success: true,
+              message: { id: saved.id, clientMessageId: saved.clientMessageId, createdAt: saved.createdAt },
+            };
+          }
+        } else {
+          throw e;
+        }
+      }
+    }
+
+    if (!saved) {
+      return { success: false, error: 'save failed' };
     }
 
     const result = await adapter.sendMessage({
@@ -492,12 +521,12 @@ export class MessageRouterService {
     });
 
     if (!result.success) {
-      this.logger.error(
-        `Failed to send staff message on ${room.channel}: ${result.error}`,
-      );
+      this.logger.error(`Failed to send staff message on ${room.channel}: ${result.error}`);
       return { success: false, error: result.error ?? 'send failed' };
     }
 
+    // Delivered — stamp the idempotency flag so a retry won't re-send.
+    await this.roomManager.markOutboundSent(saved.id);
     return {
       success: true,
       message: { id: saved.id, clientMessageId: saved.clientMessageId, createdAt: saved.createdAt },

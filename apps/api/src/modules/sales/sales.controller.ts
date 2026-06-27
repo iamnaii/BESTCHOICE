@@ -58,7 +58,8 @@ export class SalesController {
   }
 
   @Get('top-products')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  // SALES included — the POS page shows top-selling products to sales staff.
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   getTopProducts() {
     return this.salesService.getTopSellingProducts();
   }

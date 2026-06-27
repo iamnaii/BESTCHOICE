@@ -12,5 +12,6 @@ export type ReopenedPeriod = {
 
 export const accountingApi = {
   listReopenedPeriods: () =>
-    api.get<ReopenedPeriod[]>('/accounting/periods/reopened').then((r: { data: ReopenedPeriod[] }) => r.data),
+    // Route lives on the expenses-ledger controller (@Controller('expenses')), not /accounting.
+    api.get<ReopenedPeriod[]>('/expenses/periods/reopened').then((r: { data: ReopenedPeriod[] }) => r.data),
 };

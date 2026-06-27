@@ -133,7 +133,7 @@ export function RepossessionOverlay({
     'w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 outline-hidden';
 
   return createPortal(
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-start justify-center pt-8 pb-8">
+    <div className="fixed inset-0 z-50 pointer-events-auto bg-black/50 backdrop-blur-xs flex items-start justify-center pt-8 pb-8">
       <div className="w-full max-w-2xl bg-background rounded-xl shadow-2xl overflow-y-auto max-h-[calc(100vh-4rem)]">
         {/* Header */}
         <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-xs border-b px-6 py-4 flex items-center justify-between">

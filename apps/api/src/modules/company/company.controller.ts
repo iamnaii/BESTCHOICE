@@ -28,7 +28,9 @@ export class CompanyController {
   constructor(private companyService: CompanyService) {}
 
   @Get()
-  @Roles('OWNER')
+  // Company list is reference data for filters (e.g. the repossessions page).
+  // Read access for the finance/accounting/branch roles that view those pages.
+  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'ACCOUNTANT')
   findAll() {
     return this.companyService.findAll();
   }

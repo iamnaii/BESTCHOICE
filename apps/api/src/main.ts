@@ -1,6 +1,14 @@
 // Set timezone to Asia/Bangkok (UTC+7) for all Date operations
 process.env.TZ = 'Asia/Bangkok';
 
+// Serialize BigInt as a JSON string everywhere. Prisma maps Postgres `bigint`
+// columns (e.g. AuditLog.sequenceNumber — the Merkle-chain sequence) to JS BigInt,
+// which JSON.stringify cannot serialize → "Do not know how to serialize a BigInt"
+// → 500 on any endpoint returning such a row (e.g. GET /audit/logs, /audit/stats).
+(BigInt.prototype as unknown as { toJSON(): string }).toJSON = function () {
+  return this.toString();
+};
+
 // Sentry: only import if DSN is configured (avoids startup overhead without DSN)
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 if (process.env.SENTRY_DSN) require('./sentry');

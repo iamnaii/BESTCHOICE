@@ -406,10 +406,19 @@ export default function StockTransfersPage() {
                 const batchCfg = getStatusBadgeProps(batch.status, transferStatusMap);
                 return (
                   <div key={batch.batchKey} className="rounded-xl border border-border/50 bg-card overflow-hidden shadow-sm hover:shadow-card-hover transition-shadow">
-                    {/* Batch Header */}
-                    <button
+                    {/* Batch Header — role=button (not <button>) so the inner action
+                        buttons are valid HTML (no button-in-button nesting). */}
+                    <div
+                      role="button"
+                      tabIndex={0}
                       onClick={() => toggleBatch(batch.batchKey)}
-                      className="w-full px-4 py-3 flex items-center gap-4 hover:bg-muted/50 transition-colors text-left"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          toggleBatch(batch.batchKey);
+                        }
+                      }}
+                      className="w-full px-4 py-3 flex items-center gap-4 hover:bg-muted/50 transition-colors text-left cursor-pointer"
                     >
                       <svg
                         className={`w-4 h-4 text-muted-foreground transition-transform shrink-0 ${isExpanded ? 'rotate-90' : ''}`}
@@ -453,7 +462,7 @@ export default function StockTransfersPage() {
                           </button>
                         )}
                       </div>
-                    </button>
+                    </div>
 
                     {/* Expanded Product List */}
                     {isExpanded && (
@@ -548,10 +557,19 @@ export default function StockTransfersPage() {
                 const isExpanded = expandedIncoming.has(batch.batchKey);
                 return (
                   <div key={batch.batchKey} className="rounded-lg border border-warning/20 overflow-hidden">
-                    {/* Batch Header */}
-                    <button
+                    {/* Batch Header — role=button (not <button>) so the inner ตรวจรับ
+                        action button is valid HTML (no button-in-button nesting). */}
+                    <div
+                      role="button"
+                      tabIndex={0}
                       onClick={() => toggleIncoming(batch.batchKey)}
-                      className="w-full px-4 py-3 flex items-center gap-4 hover:bg-warning/5 dark:bg-warning/10 transition-colors text-left"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          toggleIncoming(batch.batchKey);
+                        }
+                      }}
+                      className="w-full px-4 py-3 flex items-center gap-4 hover:bg-warning/5 dark:bg-warning/10 transition-colors text-left cursor-pointer"
                     >
                       <svg
                         className={`w-4 h-4 text-muted-foreground transition-transform shrink-0 ${isExpanded ? 'rotate-90' : ''}`}
@@ -580,7 +598,7 @@ export default function StockTransfersPage() {
                           ตรวจรับทั้งใบ
                         </button>
                       </div>
-                    </button>
+                    </div>
 
                     {/* Expanded Product List */}
                     {isExpanded && (

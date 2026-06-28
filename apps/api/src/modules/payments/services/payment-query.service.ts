@@ -60,26 +60,17 @@ export class PaymentQueryService {
         take: limit,
         include: {
           recordedBy: { select: { id: true, name: true } },
+          waivedApprovedBy: { select: { id: true, name: true } },
         },
       }),
       this.prisma.payment.count({ where }),
     ]);
 
-    // Batch-resolve waiver approver names (Payment.waivedApprovedById has no
-    // relation in schema) — the receipt-history modal's ผู้อนุมัติ column.
-    const approverIds = [
-      ...new Set(data.map((p) => p.waivedApprovedById).filter((x): x is string => !!x)),
-    ];
-    const approvers = approverIds.length
-      ? await this.prisma.user.findMany({
-          where: { id: { in: approverIds } },
-          select: { id: true, name: true },
-        })
-      : [];
-    const approverName = new Map(approvers.map((u) => [u.id, u.name]));
-    const enriched = data.map((p) => ({
+    // Flatten the waiver approver (relation "PaymentWaivedApprovedBy") to
+    // `waivedApprovedByName` — the receipt-history modal's ผู้อนุมัติ column.
+    const enriched = data.map(({ waivedApprovedBy, ...p }) => ({
       ...p,
-      waivedApprovedByName: p.waivedApprovedById ? approverName.get(p.waivedApprovedById) ?? null : null,
+      waivedApprovedByName: waivedApprovedBy?.name ?? null,
     }));
 
     // `contract` block is additive (existing callers read `.data`) — drives the

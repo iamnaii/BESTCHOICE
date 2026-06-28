@@ -1,0 +1,84 @@
+name: Backfill Payment Receipts (prod)
+
+# Manually-triggered, one-off backfill that issues catch-up INSTALLMENT receipts
+# for PAID payments that have no Receipt row (so they appear in /payments?tab=receipts
+# and the per-contract history modal). Runs the existing CLI
+# (apps/api/src/cli/backfill-payment-receipts.cli.ts → dist) as a Cloud Run Job,
+# mirroring the `bestchoice-migrate` job pattern in deploy-gcp.yml.
+#
+# SAFETY: default is a DRY-RUN (lists candidates + total ฿, creates nothing).
+# Tick `live` to actually write. The CLI itself triple-guards: EXPECTED_DB_NAME
+# must match current_database(), CONFIRM_BACKFILL=YES_I_AM_SURE, and (NODE_ENV=
+# production) ALLOW_PROD_BACKFILL=YES_I_AM_SURE. It is idempotent — payments that
+# already have a receipt are skipped, so re-running is safe.
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_db_name:
+        description: 'Prod DB name — must equal current_database() or the job aborts. (= the part after the last "/" in the DATABASE_URL secret.)'
+        required: true
+        type: string
+      live:
+        description: 'CREATE receipts for real? Leave UNCHECKED for a safe dry-run (counts only, no writes).'
+        required: false
+        type: boolean
+        default: false
+
+# Never let two backfill runs overlap.
+concurrency:
+  group: backfill-receipts
+  cancel-in-progress: false
+
+env:
+  API_IMAGE: asia-southeast1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/bestchoice/api
+
+jobs:
+  backfill-receipts:
+    name: Backfill payment receipts (Cloud Run Job)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Setup gcloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Compose job env (dry-run vs live)
+        id: cfg
+        run: |
+          if [ "${{ inputs.live }}" = "true" ]; then
+            echo "vars=EXPECTED_DB_NAME=${{ inputs.expected_db_name }},CONFIRM_BACKFILL=YES_I_AM_SURE,ALLOW_PROD_BACKFILL=YES_I_AM_SURE,NODE_ENV=production" >> "$GITHUB_OUTPUT"
+            echo "mode=LIVE — creating receipts" >> "$GITHUB_OUTPUT"
+          else
+            echo "vars=EXPECTED_DB_NAME=${{ inputs.expected_db_name }}" >> "$GITHUB_OUTPUT"
+            echo "mode=DRY-RUN — no writes" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create or update backfill job
+        run: |
+          ARGS=(
+            --project="${{ secrets.GCP_PROJECT_ID }}"
+            --region="${{ secrets.GCP_REGION || 'asia-southeast1' }}"
+            --image="${{ env.API_IMAGE }}:latest"
+            --set-secrets=DATABASE_URL=DATABASE_URL:latest
+            --set-cloudsql-instances="${{ secrets.CLOUD_SQL_CONNECTION_NAME }}"
+            --set-env-vars="${{ steps.cfg.outputs.vars }}"
+            --command=node
+            --args="apps/api/dist/src/cli/backfill-payment-receipts.cli.js"
+            --max-retries=0
+            --task-timeout=900s
+          )
+          gcloud run jobs update bestchoice-backfill-receipts "${ARGS[@]}" 2>/dev/null \
+            || gcloud run jobs create bestchoice-backfill-receipts "${ARGS[@]}"
+
+      - name: Execute backfill (${{ steps.cfg.outputs.mode }})
+        run: |
+          echo "::notice::Backfill mode → ${{ steps.cfg.outputs.mode }} (DB=${{ inputs.expected_db_name }})"
+          gcloud run jobs execute bestchoice-backfill-receipts \
+            --project="${{ secrets.GCP_PROJECT_ID }}" \
+            --region="${{ secrets.GCP_REGION || 'asia-southeast1' }}" \
+            --wait
+          echo "::notice::Done. View detailed CLI output (candidates/created/failed) in the Cloud Run Job execution logs."

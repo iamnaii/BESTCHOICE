@@ -1,0 +1,95 @@
+# Merge Guard Report
+
+**Report Date**: 2026-06-28  
+**Run**: guard/review-2026-06-28  
+**Branches Reviewed**: 3 (stacked chain — tip branch includes all)
+
+---
+
+## Branch: `feat/integrations-own-category`
+
+**Author**: akenarin.ak@gmail.com  
+**Tip commit**: `915dc465` — 2026-06-24 13:48 BKK  
+**Chain**: (oldest→newest, each builds on prior)
+1. `feat/settings-contacts-standalone` — `6142434b` (2026-06-24 12:12)
+2. `feat/contacts-into-settings-submenu` — `a327b8ee` (2026-06-24 13:29)
+3. `feat/integrations-own-category` — `915dc465` (2026-06-24 13:48)  ← tip
+
+> These branches are **stacked**. The tip branch (`feat/integrations-own-category`) contains all commits from branches 1 and 2. Only the tip needs to be merged.
+
+---
+
+## File Changes Summary
+
+### Branch 1 — `feat/settings-contacts-standalone` (5 files, +27 -4)
+| File | Change |
+|---|---|
+| `apps/web/src/App.tsx` | Add `ProtectedRoute` guard to `/contacts` and `/contacts/:id` |
+| `apps/web/src/components/CommandPalette.tsx` | Add `สมุดผู้ติดต่อ` → `/contacts` entry with role filter |
+| `apps/web/src/components/CommandPalette.test.tsx` | Test for palette contact entry |
+| `apps/web/src/pages/settings/SettingsIndexRedirect.tsx` | `#contacts` hash → redirect to `/contacts` directly |
+| `apps/web/src/pages/settings/__tests__/SettingsIndexRedirect.test.tsx` | Test for contacts hash redirect |
+
+### Branch 2 — `feat/contacts-into-settings-submenu` (9 files, +68 -71)
+| File | Change |
+|---|---|
+| `apps/web/src/config/menu.ts` | Collapse 2 sidebar sections into 1 (contacts inside settings submenu) |
+| `apps/web/src/components/CommandPalette.tsx` | Rename label สมุดผู้ติดต่อ → รายชื่อผู้ติดต่อ |
+| `apps/web/src/components/contacts/ContactCombobox.tsx` | Same rename in group heading |
+| `apps/web/src/components/trade-in/QuickBuyModal.tsx` | Same rename in toast error message |
+| 4 test files | Updated to match new nav/label reality |
+
+### Branch 3 — `feat/integrations-own-category` (9 files, +59 -30)
+| File | Change |
+|---|---|
+| `apps/web/src/config/settings-registry.tsx` | Extract `integrations` category (hub + MDM) from `system` |
+| `apps/web/src/App.tsx` | Update redirects: old `/settings/system/integrations` → new `/settings/integrations/hub` |
+| `apps/web/src/config/menu.ts` | Update fin-zone link to new path |
+| 5 test files | Updated category counts (8→9) and path assertions |
+
+---
+
+## Issues by Severity
+
+### Critical — NONE
+
+- No new backend controllers created
+- No `@UseGuards` or `@Roles` violations (frontend-only changes)
+- No `Number()` on money fields (no financial data touched)
+- No missing `deletedAt: null` (no Prisma queries)
+- No hardcoded secrets or API keys
+- No unparameterized `$queryRaw`
+
+### Warning — NONE
+
+- No new DTOs (no validation decorators to check)
+- No raw `fetch()` calls (pure routing/nav/config changes)
+- No `useMutation` introduced (no `queryClient.invalidateQueries()` needed)
+- No new Thai validation messages needed (not a form change)
+
+### Info — 2 items
+
+**[INFO-1] Security improvement detected (positive)**  
+`feat/settings-contacts-standalone` adds `ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}` to the previously unguarded `/contacts` and `/contacts/:id` routes. Before this change, any authenticated user (including SALES role) could navigate directly to contact management pages at the frontend level. The backend API already enforced roles, but this closes the UX gap. This is a net positive.
+
+**[INFO-2] Old path `/settings/integrations` silently dropped**  
+`feat/integrations-own-category` removes the redirect `"/settings/integrations" → "/settings/system/integrations"` (the P2b redirect chain). The bare `/settings/integrations` path now resolves to the new `integrations` category page (via the `settings/:categoryId` catch-all route) rather than 404ing — which is the correct destination — but this is implicit behavior rather than an explicit redirect. If any user, email, or external link points to `/settings/integrations` (without sub-path), it will silently land on the category landing page (listing hub + MDM items). This is acceptable UX but worth awareness.
+
+---
+
+## Recommendation: ✅ APPROVE
+
+All changes are frontend-only (no API, no Prisma schema, no backend controllers). The scope is settings navigation reorganization:
+
+1. `/contacts` and `/contacts/:id` now have proper frontend role guards (security improvement)
+2. Settings sidebar collapsed from 2 sections to 1 (nav UX cleanup)
+3. `เชื่อมต่อ` split into its own `integrations` category separate from `ระบบ` (IA improvement)
+4. Label rename: สมุดผู้ติดต่อ → รายชื่อผู้ติดต่อ (consistent terminology)
+
+Test coverage is solid: menu.test, CommandPalette.test, settings-access.test, settings-registry.test, CategoryPage.test, company-access-system-migration.test, SettingsIndexRedirect.test all updated.
+
+**Merge order**: Only `feat/integrations-own-category` (tip) needs to be merged — it contains all commits from the other two branches.
+
+---
+
+*Generated by Pre-Merge Guard agent — BESTCHOICE monorepo*

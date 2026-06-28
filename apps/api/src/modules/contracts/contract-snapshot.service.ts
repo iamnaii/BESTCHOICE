@@ -95,9 +95,17 @@ export class ContractSnapshotService {
       }
     }
 
-    const [paymentAgg, paidCountAgg, lastPromise, lastLine] = await Promise.all([
+    const [paymentAgg, unpaidAgg, paidCountAgg, lastPromise, lastLine] = await Promise.all([
       this.prisma.payment.aggregate({
         where: { contractId: id, deletedAt: null },
+        _sum: { amountDue: true, amountPaid: true },
+      }),
+      // Outstanding aggregates only NOT-yet-settled installments. A PAID row can
+      // have amountPaid < amountDue (early-payoff ส่วนลดปิดยอด / ≤1฿ tolerance) — that
+      // gap is a discount/write-down, NOT money owed. The old Σ amountDue − Σ
+      // amountPaid over ALL rows wrongly reported the discount as คงค้าง.
+      this.prisma.payment.aggregate({
+        where: { contractId: id, deletedAt: null, status: { not: 'PAID' } },
         _sum: { amountDue: true, amountPaid: true },
       }),
       this.prisma.payment.count({
@@ -141,7 +149,7 @@ export class ContractSnapshotService {
     const totalAmount = Number(paymentAgg._sum.amountDue ?? 0);
     const outstanding = Math.max(
       0,
-      totalAmount - Number(paymentAgg._sum.amountPaid ?? 0),
+      Number(unpaidAgg._sum.amountDue ?? 0) - Number(unpaidAgg._sum.amountPaid ?? 0),
     );
     const installmentsRemaining = Math.max(0, contract.totalMonths - paidCountAgg);
 

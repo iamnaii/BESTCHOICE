@@ -1007,7 +1007,22 @@ export function RecordPaymentWizard({
   return (
     <>
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="w-full max-w-5xl max-h-[92vh] flex flex-col p-0 gap-0">
+      <DialogContent
+        className="w-full max-w-5xl max-h-[92vh] flex flex-col p-0 gap-0"
+        // The payoff/reschedule/repossession overlays portal to document.body (outside
+        // this Dialog), so clicking them (incl. their ยกเลิก) reads as an "interact
+        // outside" and would close the wizard underneath. While an overlay is open,
+        // keep the wizard mounted so cancelling the overlay returns to รับชำระ.
+        onPointerDownOutside={(e) => {
+          if (showPayoffOverlay || showRescheduleOverlay || showRepoOverlay) e.preventDefault();
+        }}
+        onInteractOutside={(e) => {
+          if (showPayoffOverlay || showRescheduleOverlay || showRepoOverlay) e.preventDefault();
+        }}
+        onEscapeKeyDown={(e) => {
+          if (showPayoffOverlay || showRescheduleOverlay || showRepoOverlay) e.preventDefault();
+        }}
+      >
         {/* Header */}
         <DialogHeader className="px-6 pt-4 pb-2.5 shrink-0 border-b border-border">
           <DialogTitle className="text-base font-semibold leading-snug">

@@ -19,9 +19,9 @@
  *        - roundingDiff == 1.01 → does NOT route (no adj line)
  *        - JE balanced in every routed case
  *     2. RESCHEDULE 6a/6b (lines 1821-1880):
- *        - monthly 2202.41, days 11 → fee = 2202.41/30*11 = 807.55 (ROUND_DOWN)
- *        - 6b bundled: Dr deposit 3009.96 / Cr 11-2103 2202.41 / Cr 21-1103 807.55
- *        - 6a split:   Cr 21-1103 807.55 only (fee advance)
+ *        - monthly 2202.41, days 11 → fee = 2202.41/30*11 = 807.5503 → 808 (ROUND_UP whole baht)
+ *        - 6b bundled: Dr deposit 3010.41 / Cr 11-2103 2202.41 / Cr 21-1103 808.00
+ *        - 6a split:   Cr 21-1103 808.00 only (fee advance)
  *        - days 0 → fee 0.00 (6b still emits a zero 21-1103 line)
  *     3. CONSOLIDATED 2A+2B breakdown (lines 1781-1794, 1965-1977):
  *        - vatAmount 1729, interest 6000, months 12, monthly 2202.41 →
@@ -311,41 +311,41 @@ describe('PaymentsService.previewJournal (characterization)', () => {
       });
     });
 
-    it('6b bundled: fee 807.55 (ROUND_DOWN) → Dr deposit 3009.96 / Cr 11-2103 2202.41 / Cr 21-1103 807.55', async () => {
+    it('6b bundled: fee 808 (ROUND_UP whole baht) → Dr deposit 3010.41 / Cr 11-2103 2202.41 / Cr 21-1103 808.00', async () => {
       const out = await service.previewJournal({
         contractId: 'c-1',
         installmentNo: 1,
-        amountReceived: 3009.96,
+        amountReceived: 3010.41,
         depositAccountCode: '11-1101',
         case: 'RESCHEDULE',
         daysToShift: 11,
         splitMode: 'BUNDLED',
       });
 
-      // 2202.41 / 30 * 11 = 807.5503... → ROUND_DOWN → 807.55
-      expect(out.rescheduleFeeDisplay).toBe('807.55');
-      expect(lineFor(out.lines, '11-1101')?.debit).toBe('3009.96');
+      // 2202.41 / 30 * 11 = 807.5503... → ROUND_UP to whole baht → 808
+      expect(out.rescheduleFeeDisplay).toBe('808.00');
+      expect(lineFor(out.lines, '11-1101')?.debit).toBe('3010.41');
       expect(lineFor(out.lines, '11-2103')?.credit).toBe('2202.41');
-      expect(lineFor(out.lines, '21-1103')?.credit).toBe('807.55');
-      expect(out.totalDebit).toBe('3009.96');
-      expect(out.totalCredit).toBe('3009.96');
+      expect(lineFor(out.lines, '21-1103')?.credit).toBe('808.00');
+      expect(out.totalDebit).toBe('3010.41');
+      expect(out.totalCredit).toBe('3010.41');
       expect(out.isBalanced).toBe(true);
     });
 
-    it('6a split: only the fee advance posts (Cr 21-1103 = 807.55), no 11-2103 line', async () => {
+    it('6a split: only the fee advance posts (Cr 21-1103 = 808.00), no 11-2103 line', async () => {
       const out = await service.previewJournal({
         contractId: 'c-1',
         installmentNo: 1,
-        amountReceived: 807.55,
+        amountReceived: 808.0,
         depositAccountCode: '11-1101',
         case: 'RESCHEDULE',
         daysToShift: 11,
         splitMode: 'SPLIT',
       });
 
-      expect(out.rescheduleFeeDisplay).toBe('807.55');
-      expect(lineFor(out.lines, '11-1101')?.debit).toBe('807.55');
-      expect(lineFor(out.lines, '21-1103')?.credit).toBe('807.55');
+      expect(out.rescheduleFeeDisplay).toBe('808.00');
+      expect(lineFor(out.lines, '11-1101')?.debit).toBe('808.00');
+      expect(lineFor(out.lines, '21-1103')?.credit).toBe('808.00');
       expect(lineFor(out.lines, '11-2103')).toBeUndefined();
       expect(out.isBalanced).toBe(true);
     });

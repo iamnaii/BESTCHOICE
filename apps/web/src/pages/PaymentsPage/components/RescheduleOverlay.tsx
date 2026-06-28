@@ -46,11 +46,12 @@ export function RescheduleOverlay({
 
   const days = Math.max(0, Math.floor(daysToShift) || 0);
 
-  // Fee = ROUND_DOWN(monthlyPayment / 30 × days, 2) — identical to RescheduleService.execute
-  // and the preview service. Display-only estimate; the server recomputes authoritatively.
+  // Fee = monthlyPayment / 30 × days, rounded UP to a whole baht (owner policy 2026-06 —
+  // ปัดเศษขึ้นเต็มบาท). Identical to RescheduleService.execute + the preview service.
+  // Display-only estimate; the server recomputes authoritatively.
   const fee = useMemo(() => {
     if (days <= 0) return new Decimal(0);
-    return new Decimal(monthlyPayment || 0).div(30).times(days).toDecimalPlaces(2, Decimal.ROUND_DOWN);
+    return new Decimal(monthlyPayment || 0).div(30).times(days).toDecimalPlaces(0, Decimal.ROUND_UP);
   }, [monthlyPayment, days]);
 
   const lastInstallmentNewAmount = useMemo(() => {
@@ -160,7 +161,7 @@ export function RescheduleOverlay({
               )}
               <Row label="ค่าธรรมเนียมเลื่อนงวด" value={`${fee.toFixed(2)} บาท`} />
               <p className="text-xs text-muted-foreground leading-snug">
-                คำนวณจาก ค่างวด ({new Decimal(monthlyPayment || 0).toFixed(2)}) ÷ 30 × {days} วัน (ปัดลง) — ระบบคำนวณจริงตอนยืนยัน
+                คำนวณจาก ค่างวด ({new Decimal(monthlyPayment || 0).toFixed(2)}) ÷ 30 × {days} วัน (ปัดขึ้นเต็มบาท) — ระบบคำนวณจริงตอนยืนยัน
               </p>
             </div>
           </Section>

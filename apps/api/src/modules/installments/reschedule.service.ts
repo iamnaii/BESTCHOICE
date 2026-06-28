@@ -60,10 +60,12 @@ export class RescheduleService {
     });
     const firstInstTotal = new Decimal(contract.monthlyPayment.toString());
 
+    // Reschedule fee = monthlyPayment / 30 × daysToShift, rounded UP to a whole baht
+    // (owner policy 2026-06 — ปัดเศษขึ้นเต็มบาท). e.g. 1515.83/30×22 = 1111.6086 → 1112.
     const fee = firstInstTotal
       .div(30)
       .times(input.daysToShift)
-      .toDecimalPlaces(2, Decimal.ROUND_DOWN);
+      .toDecimalPlaces(0, Decimal.ROUND_UP);
 
     return this.prisma.$transaction(async (tx) => {
       const oldDueDates: Record<string, Date> = {};

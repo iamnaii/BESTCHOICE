@@ -42,7 +42,13 @@ export class PaymentQueryService {
 
   // ─── Get payments for a contract ──────────────────────
   async getContractPayments(contractId: string, page = 1, limit = 50) {
-    const contract = await this.prisma.contract.findUnique({ where: { id: contractId } });
+    const contract = await this.prisma.contract.findUnique({
+      where: { id: contractId },
+      include: {
+        customer: { select: { name: true } },
+        product: { select: { brand: true, model: true } },
+      },
+    });
     if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
 
     const where = { contractId, deletedAt: null };
@@ -59,7 +65,35 @@ export class PaymentQueryService {
       this.prisma.payment.count({ where }),
     ]);
 
-    return paginatedResponse(data, total, page, limit);
+    // Batch-resolve waiver approver names (Payment.waivedApprovedById has no
+    // relation in schema) — the receipt-history modal's ผู้อนุมัติ column.
+    const approverIds = [
+      ...new Set(data.map((p) => p.waivedApprovedById).filter((x): x is string => !!x)),
+    ];
+    const approvers = approverIds.length
+      ? await this.prisma.user.findMany({
+          where: { id: { in: approverIds } },
+          select: { id: true, name: true },
+        })
+      : [];
+    const approverName = new Map(approvers.map((u) => [u.id, u.name]));
+    const enriched = data.map((p) => ({
+      ...p,
+      waivedApprovedByName: p.waivedApprovedById ? approverName.get(p.waivedApprovedById) ?? null : null,
+    }));
+
+    // `contract` block is additive (existing callers read `.data`) — drives the
+    // modal header + the "งวดที่ชำระแล้ว" / "เครดิต" summary cards.
+    return {
+      ...paginatedResponse(enriched, total, page, limit),
+      contract: {
+        contractNumber: contract.contractNumber,
+        customerName: contract.customer?.name ?? null,
+        productName: contract.product ? `${contract.product.brand} ${contract.product.model}` : null,
+        totalMonths: contract.totalMonths,
+        advanceBalance: contract.advanceBalance,
+      },
+    };
   }
 
   // ─── Get all pending payments (for payment queue view) ─

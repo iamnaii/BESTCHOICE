@@ -126,11 +126,11 @@ describe('RescheduleJP6Template', () => {
         fromInstallmentNo: 5,
         daysToShift: 16,
       });
-      expect(rescheduleFee.toFixed(2)).toBe('808.44');
+      expect(rescheduleFee.toFixed(2)).toBe('809.00');
 
       const tmpl = new RescheduleJP6Template(journal, prisma as any);
 
-      // 6a Step 1: 02/05 — customer pays fee advance 808.44
+      // 6a Step 1: 02/05 — customer pays fee advance 809.00
       const { entryNo: feeEntryNo } = await tmpl.recordFeeAdvance({
         contractId: c.id,
         feeAmount: rescheduleFee,
@@ -165,13 +165,13 @@ describe('RescheduleJP6Template', () => {
       const { entryNo: finalEntryNo } = await tmpl.consumeAdvanceOnFinalInstallment({
         contractId: c.id,
         installmentScheduleId: inst12.id,
-        advanceAmount: rescheduleFee, // 808.44
-        cashRemainder: new Decimal('707.40'), // 1515.84 - 808.44
+        advanceAmount: rescheduleFee, // 809.00
+        cashRemainder: new Decimal('706.84'), // 1515.84 - 809.00
         depositAccountCode: DEPOSIT,
       });
       expect(finalEntryNo).toBeTruthy();
 
-      // Verify fee-advance JE: Dr 11-1101 808.44 / Cr 21-1103 808.44
+      // Verify fee-advance JE: Dr 11-1101 809.00 / Cr 21-1103 809.00
       const feeJes = await prisma.journalEntry.findMany({
         where: { metadata: { path: ['flow'], equals: 'reschedule-fee' } } as any,
         include: { lines: true },
@@ -181,11 +181,11 @@ describe('RescheduleJP6Template', () => {
       const feeDrLine = feeLines.find((l) => new Decimal(l.debit.toString()).gt(0));
       const feeCrLine = feeLines.find((l) => new Decimal(l.credit.toString()).gt(0));
       expect(feeDrLine?.accountCode).toBe(DEPOSIT);
-      expect(new Decimal(feeDrLine!.debit.toString()).toFixed(2)).toBe('808.44');
+      expect(new Decimal(feeDrLine!.debit.toString()).toFixed(2)).toBe('809.00');
       expect(feeCrLine?.accountCode).toBe('21-1103');
-      expect(new Decimal(feeCrLine!.credit.toString()).toFixed(2)).toBe('808.44');
+      expect(new Decimal(feeCrLine!.credit.toString()).toFixed(2)).toBe('809.00');
 
-      // Verify final-consumption JE: Dr 21-1103 808.44 + Dr 11-1101 707.39 / Cr 11-2103 1515.83
+      // Verify final-consumption JE: Dr 21-1103 809.00 + Dr 11-1101 706.84 / Cr 11-2103 1515.83
       const finalJes = await prisma.journalEntry.findMany({
         where: { metadata: { path: ['flow'], equals: 'reschedule-final' } } as any,
         include: { lines: true },
@@ -197,8 +197,8 @@ describe('RescheduleJP6Template', () => {
         (l) => l.accountCode === DEPOSIT && new Decimal(l.debit.toString()).gt(0),
       );
       const receivableCrLine = finalLines.find((l) => l.accountCode === '11-2103');
-      expect(new Decimal(advanceDrLine!.debit.toString()).toFixed(2)).toBe('808.44');
-      expect(new Decimal(cashDrLine!.debit.toString()).toFixed(2)).toBe('707.40');
+      expect(new Decimal(advanceDrLine!.debit.toString()).toFixed(2)).toBe('809.00');
+      expect(new Decimal(cashDrLine!.debit.toString()).toFixed(2)).toBe('706.84');
       expect(new Decimal(receivableCrLine!.credit.toString()).toFixed(2)).toBe('1515.84');
     });
   });
@@ -218,14 +218,14 @@ describe('RescheduleJP6Template', () => {
         fromInstallmentNo: 5,
         daysToShift: 16,
       });
-      expect(rescheduleFee.toFixed(2)).toBe('808.44');
+      expect(rescheduleFee.toFixed(2)).toBe('809.00');
 
       const tmpl = new RescheduleJP6Template(journal, prisma as any);
       const inst5 = await prisma.installmentSchedule.findFirstOrThrow({
         where: { contractId: c.id, installmentNo: 5 },
       });
 
-      // 6b: 2A accrual for installment 5, then bundled payment (1515.83 + 808.44 = 2324.27)
+      // 6b: 2A accrual for installment 5, then bundled payment (1515.83 + 809.00 = 2324.83)
       // Note: we use 1515.83 as installmentAmount to match the CSV spec (close to actual 1515.84)
       const accrual = new InstallmentAccrual2ATemplate(journal, prisma as any);
       await accrual.execute(inst5.id);
@@ -271,14 +271,14 @@ describe('RescheduleJP6Template', () => {
       const { entryNo: finalEntryNo } = await tmpl.consumeAdvanceOnFinalInstallment({
         contractId: c.id,
         installmentScheduleId: inst12.id,
-        advanceAmount: rescheduleFee, // 808.44
-        cashRemainder: new Decimal('707.40'), // 1515.84 - 808.44
+        advanceAmount: rescheduleFee, // 809.00
+        cashRemainder: new Decimal('706.84'), // 1515.84 - 809.00
         depositAccountCode: DEPOSIT,
       });
       expect(finalEntryNo).toBeTruthy();
 
-      // Verify bundled JE: Dr 11-1101 2324.28 / Cr 11-2103 1515.84 + Cr 21-1103 808.44
-      // (installmentAmount=1515.84 + feeAmount=808.44 = 2324.28)
+      // Verify bundled JE: Dr 11-1101 2324.83 / Cr 11-2103 1515.84 + Cr 21-1103 809.00
+      // (installmentAmount=1515.84 + feeAmount=809.00 = 2324.83)
       const bundledJes = await prisma.journalEntry.findMany({
         where: { metadata: { path: ['flow'], equals: 'reschedule-bundled' } } as any,
         include: { lines: true },
@@ -290,10 +290,10 @@ describe('RescheduleJP6Template', () => {
       );
       const receivableCrLine = bundledLines.find((l) => l.accountCode === '11-2103');
       const advanceCrLine = bundledLines.find((l) => l.accountCode === '21-1103');
-      // total = 1515.83 (hardcoded installmentAmount) + 808.44 = 2324.27
-      expect(new Decimal(cashDrLine!.debit.toString()).toFixed(2)).toBe('2324.27');
+      // total = 1515.83 (hardcoded installmentAmount) + 809.00 = 2324.83
+      expect(new Decimal(cashDrLine!.debit.toString()).toFixed(2)).toBe('2324.83');
       expect(new Decimal(receivableCrLine!.credit.toString()).toFixed(2)).toBe('1515.83');
-      expect(new Decimal(advanceCrLine!.credit.toString()).toFixed(2)).toBe('808.44');
+      expect(new Decimal(advanceCrLine!.credit.toString()).toFixed(2)).toBe('809.00');
 
       // Verify final-consumption JE (same as 6a)
       const finalJes = await prisma.journalEntry.findMany({
@@ -307,9 +307,9 @@ describe('RescheduleJP6Template', () => {
         (l) => l.accountCode === DEPOSIT && new Decimal(l.debit.toString()).gt(0),
       );
       const receivableCrLine2 = finalLines.find((l) => l.accountCode === '11-2103');
-      expect(new Decimal(advanceDrLine!.debit.toString()).toFixed(2)).toBe('808.44');
-      expect(new Decimal(cashDrLine2!.debit.toString()).toFixed(2)).toBe('707.40');
-      // 808.44 + 707.40 = 1515.84
+      expect(new Decimal(advanceDrLine!.debit.toString()).toFixed(2)).toBe('809.00');
+      expect(new Decimal(cashDrLine2!.debit.toString()).toFixed(2)).toBe('706.84');
+      // 809.00 + 706.84 = 1515.84
       expect(new Decimal(receivableCrLine2!.credit.toString()).toFixed(2)).toBe('1515.84');
     });
   });

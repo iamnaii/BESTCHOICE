@@ -47,7 +47,8 @@ describe('RescheduleService', () => {
       daysToShift: 16,
     });
 
-    expect(result.rescheduleFee.toFixed(2)).toBe('808.44');
+    // 1515.84 / 30 × 16 = 808.448 → round UP to whole baht = 809
+    expect(result.rescheduleFee.toFixed(2)).toBe('809.00');
     expect(result.shiftedInstallmentIds.length).toBe(8); // installments 5..12
 
     const inst5 = await prisma.installmentSchedule.findFirstOrThrow({
@@ -66,10 +67,10 @@ describe('RescheduleService', () => {
     const inst12 = await prisma.installmentSchedule.findFirstOrThrow({
       where: { contractId: c.id, installmentNo: 12 },
     });
-    // monthlyPayment is 1515.84 (1416.67 + 99.17) - 808.44 = 707.40
+    // monthlyPayment is 1515.84 (1416.67 + 99.17) - 809 (fee rounded up) = 706.84
     // Note: CSV uses 1515.83 but seeder rounds differently; actual DB value is 1515.84
     const inst12AmountDue = new Decimal((inst12.amountDue as any).toString());
-    expect(inst12AmountDue.toFixed(2)).toBe('707.40');
+    expect(inst12AmountDue.toFixed(2)).toBe('706.84');
 
     // Installments 5-12 should all be shifted
     const allShifted = await prisma.installmentSchedule.findMany({
@@ -121,7 +122,7 @@ describe('RescheduleService', () => {
     expect(meta.fromInstallmentNo).toBe(5);
     expect(meta.daysToShift).toBe(16);
     expect(meta.variant).toBe('6a');
-    expect(meta.rescheduleFee).toBe('808.44');
+    expect(meta.rescheduleFee).toBe('809.00');
     expect(meta.shiftedInstallmentCount).toBe(8);
     expect(meta.firstShiftedInstallmentNo).toBe(5);
     expect(audits[0].userId).toBe(userId);

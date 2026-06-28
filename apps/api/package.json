@@ -38,6 +38,8 @@
     "shop-ai:bench": "tsx src/cli/shop-ai-bench.cli.ts",
     "shop-ai:bench:help": "echo 'Usage: ANTHROPIC_API_KEY=... GOOGLE_CLOUD_PROJECT=... npm run shop-ai:bench  (writes bench-output/shop-ai-bench-*.html)'",
     "backfill:schedules": "node dist/src/cli/backfill-installment-schedules.cli.js",
+    "backfill:receipts": "node dist/src/cli/backfill-payment-receipts.cli.js",
+    "backfill:receipts:help": "echo 'Dry-run default: EXPECTED_DB_NAME=<db> npm --prefix apps/api run backfill:receipts. To write: CONFIRM_BACKFILL=YES_I_AM_SURE EXPECTED_DB_NAME=<db> [ALLOW_PROD_BACKFILL=YES_I_AM_SURE NODE_ENV=production] npm --prefix apps/api run backfill:receipts'",
     "backfill:asset-vat": "node dist/src/cli/backfill-asset-vat-corrections.cli.js",
     "backfill:asset-vat:help": "echo 'Usage: EXPECTED_DB_NAME=<db> [DRY_RUN=true|false] [ALLOW_PROD_BACKFILL=YES_I_AM_SURE] npm run backfill:asset-vat'",
     "backfill:expense-vendor-fk": "node dist/src/cli/backfill-expense-vendor-fk.cli.js",

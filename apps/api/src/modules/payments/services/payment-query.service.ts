@@ -42,7 +42,13 @@ export class PaymentQueryService {
 
   // ─── Get payments for a contract ──────────────────────
   async getContractPayments(contractId: string, page = 1, limit = 50) {
-    const contract = await this.prisma.contract.findUnique({ where: { id: contractId } });
+    const contract = await this.prisma.contract.findUnique({
+      where: { id: contractId },
+      include: {
+        customer: { select: { name: true } },
+        product: { select: { brand: true, model: true } },
+      },
+    });
     if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
 
     const where = { contractId, deletedAt: null };
@@ -54,12 +60,31 @@ export class PaymentQueryService {
         take: limit,
         include: {
           recordedBy: { select: { id: true, name: true } },
+          waivedApprovedBy: { select: { id: true, name: true } },
         },
       }),
       this.prisma.payment.count({ where }),
     ]);
 
-    return paginatedResponse(data, total, page, limit);
+    // Flatten the waiver approver (relation "PaymentWaivedApprovedBy") to
+    // `waivedApprovedByName` — the receipt-history modal's ผู้อนุมัติ column.
+    const enriched = data.map(({ waivedApprovedBy, ...p }) => ({
+      ...p,
+      waivedApprovedByName: waivedApprovedBy?.name ?? null,
+    }));
+
+    // `contract` block is additive (existing callers read `.data`) — drives the
+    // modal header + the "งวดที่ชำระแล้ว" / "เครดิต" summary cards.
+    return {
+      ...paginatedResponse(enriched, total, page, limit),
+      contract: {
+        contractNumber: contract.contractNumber,
+        customerName: contract.customer?.name ?? null,
+        productName: contract.product ? `${contract.product.brand} ${contract.product.model}` : null,
+        totalMonths: contract.totalMonths,
+        advanceBalance: contract.advanceBalance,
+      },
+    };
   }
 
   // ─── Get all pending payments (for payment queue view) ─

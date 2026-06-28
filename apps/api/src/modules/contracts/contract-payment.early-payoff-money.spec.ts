@@ -63,6 +63,8 @@ describe('ContractPaymentService early-payoff money branches (Wave 3 gap-fill)',
         {} as any,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         {} as any, // ShopCollectSettlementTemplate never invoked
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        { generateReceipt: async () => undefined } as any, // ReceiptsService (EARLY_PAYOFF receipt)
       );
       return service;
     };
@@ -467,6 +469,8 @@ describe('ContractPaymentService early-payoff money branches (Wave 3 gap-fill)',
         {} as any,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         {} as any, // ShopCollectSettlementTemplate never invoked
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        { generateReceipt: async () => undefined } as any, // ReceiptsService (EARLY_PAYOFF receipt)
       );
     });
 

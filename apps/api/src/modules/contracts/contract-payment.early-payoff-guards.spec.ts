@@ -180,6 +180,7 @@ describe('ContractPaymentService early-payoff guards (Wave 3 MED gap-fill)', () 
       { createAndPost } as never,
       {} as never, // EarlyPayoffJP4Template never invoked
       {} as never, // ShopCollectSettlementTemplate never invoked
+      { generateReceipt: async () => undefined } as never, // ReceiptsService (EARLY_PAYOFF receipt)
     );
     return service;
   };

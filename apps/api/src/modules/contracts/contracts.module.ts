@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { ContractsController } from './contracts.controller';
 import { ContractsService } from './contracts.service';
 import { ContractWorkflowService } from './contract-workflow.service';
@@ -18,6 +18,7 @@ import { ProductsModule } from '../products/products.module';
 import { WarrantyModule } from '../warranty/warranty.module';
 import { ContractExchangeModule } from '../contract-exchange/contract-exchange.module';
 import { TestModeModule } from '../test-mode/test-mode.module';
+import { ReceiptsModule } from '../receipts/receipts.module';
 
 @Module({
   imports: [
@@ -36,6 +37,9 @@ import { TestModeModule } from '../test-mode/test-mode.module';
     // OWNER toggle is on. TestModeModule depends only on global Prisma → no
     // circular dependency with ContractsModule.
     TestModeModule,
+    // EARLY_PAYOFF receipt generation. forwardRef breaks the
+    // Contracts → Receipts → LineOa → Contracts module cycle.
+    forwardRef(() => ReceiptsModule),
   ],
   controllers: [ContractsController, ContractDocumentsController, DocumentsController],
   providers: [ContractsService, ContractWorkflowService, ContractPaymentService, ContractDocumentService, ContractSnapshotService, ContractDocumentsService, DocumentsService, GhostSaleCron],

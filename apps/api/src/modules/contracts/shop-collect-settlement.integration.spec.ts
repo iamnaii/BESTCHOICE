@@ -26,7 +26,7 @@ function buildService(): ContractPaymentService {
   const jp4 = new EarlyPayoffJP4Template(journal, prisma as any, vat60Reversal);
   const products = new ProductsService(prisma as any);
   const settlementTemplate = new ShopCollectSettlementTemplate(journal, prisma as any);
-  return new ContractPaymentService(prisma as any, products, journal, jp4, settlementTemplate);
+  return new ContractPaymentService(prisma as any, products, journal, jp4, settlementTemplate, { generateReceipt: async () => undefined } as any);
 }
 
 async function ensureFinanceCompany(): Promise<void> {

@@ -130,8 +130,17 @@ export default function PaymentHistorySheet({ contractId, onClose }: PaymentHist
   }, [receipts]);
 
   const totalPaid = payments.reduce((s, p) => s + Number(p.amountPaid), 0);
-  const totalDue = payments.reduce((s, p) => s + Number(p.amountDue) + Number(p.lateFee), 0);
-  const totalRemaining = totalDue - totalPaid;
+  // Outstanding counts only NOT-yet-settled installments. A PAID installment is
+  // settled even when amountPaid < amountDue — the gap is a discount (early-payoff
+  // ส่วนลดปิดยอด) or a ≤1฿ tolerance write-down, NOT money still owed. The old
+  // `Σ amountDue − Σ amountPaid` wrongly showed the early-payoff discount as คงค้าง.
+  const totalRemaining = payments.reduce(
+    (s, p) =>
+      p.status === 'PAID'
+        ? s
+        : s + Math.max(0, Number(p.amountDue) + Number(p.lateFee) - Number(p.amountPaid)),
+    0,
+  );
 
   const toggleExpand = (paymentId: string) => {
     setExpandedIds((prev) => {

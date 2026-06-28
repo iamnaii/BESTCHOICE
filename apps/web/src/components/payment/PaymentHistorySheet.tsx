@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { FileText, X } from 'lucide-react';
 import api, { getErrorMessage } from '@/lib/api';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogBody } from '@/components/ui/dialog';
-import { formatDateShort } from '@/utils/formatters';
+import { formatDateShort, formatNumberDecimal } from '@/utils/formatters';
 import { useAuth } from '@/contexts/AuthContext';
 import ReceiptVoidDialog from '@/components/payment/ReceiptVoidDialog';
 import { toast } from 'sonner';
@@ -50,8 +50,8 @@ interface ReceiptItem {
 }
 
 const VOID_ROLES = ['OWNER', 'ACCOUNTANT', 'BRANCH_MANAGER', 'FINANCE_MANAGER'];
-const money = (n: number | string) =>
-  Number(n).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// Use the shared money formatter (honours user separator preference + ROUND_HALF_UP).
+const money = (n: number | string) => formatNumberDecimal(n, 2);
 
 /** Derived CASE label + token color (no persisted `case` field). */
 function caseFor(r: ReceiptItem, p: PaymentItem | undefined): { label: string; cls: string } {
@@ -89,28 +89,37 @@ export default function PaymentHistorySheet({ contractId, onClose }: Props) {
   const canVoid = VOID_ROLES.includes(user?.role ?? '');
   const [voidTarget, setVoidTarget] = useState<{ id: string; receiptNumber: string } | null>(null);
 
-  const { data: pResp, isLoading } = useQuery<PaymentsResponse>({
+  const {
+    data: pResp,
+    isLoading: loadingPayments,
+    isError,
+  } = useQuery<PaymentsResponse>({
     queryKey: ['contract-payments', contractId],
     queryFn: async () =>
       (await api.get(`/payments/contract/${contractId}`, { params: { limit: 200 } })).data,
     enabled: !!contractId,
   });
-  const { data: receipts = [] } = useQuery<ReceiptItem[]>({
+  const { data: receipts = [], isLoading: loadingReceipts } = useQuery<ReceiptItem[]>({
     queryKey: ['contract-receipts', contractId],
     queryFn: async () =>
       (await api.get(`/receipts/contract/${contractId}`, { params: { includeVoided: true } })).data,
     enabled: !!contractId,
   });
+  const isLoading = loadingPayments || loadingReceipts;
 
   const payments = pResp?.data ?? [];
   const contract = pResp?.contract;
   const paymentById = useMemo(() => new Map(payments.map((p) => [p.id, p])), [payments]);
 
   // ─── Summary cards ───
+  // paid installments are payment-based; the money totals are collected-only
+  // (exclude voided): cumulative = Σ non-voided receipt amounts; late-fee/waiver
+  // counted on PAID installments only (not unpaid-overdue accruals).
   const paidCount = payments.filter((p) => p.status === 'PAID').length;
-  const cumulativePaid = payments.reduce((s, p) => s + Number(p.amountPaid), 0);
-  const totalLateFee = payments.reduce((s, p) => s + Number(p.lateFee), 0);
-  const totalWaived = payments.reduce(
+  const cumulativePaid = receipts.filter((r) => !r.isVoided).reduce((s, r) => s + Number(r.amount), 0);
+  const paidPayments = payments.filter((p) => p.status === 'PAID');
+  const totalLateFee = paidPayments.reduce((s, p) => s + Number(p.lateFee), 0);
+  const totalWaived = paidPayments.reduce(
     (s, p) => s + (p.waivedAmount != null ? Number(p.waivedAmount) : p.lateFeeWaived ? Number(p.lateFee) : 0),
     0,
   );
@@ -146,6 +155,10 @@ export default function PaymentHistorySheet({ contractId, onClose }: Props) {
             {isLoading ? (
               <div className="flex items-center justify-center py-12">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+              </div>
+            ) : isError ? (
+              <div className="text-center py-10 text-sm text-destructive leading-snug">
+                โหลดประวัติการชำระไม่สำเร็จ — กรุณาลองใหม่อีกครั้ง
               </div>
             ) : (
               <>
@@ -208,7 +221,7 @@ export default function PaymentHistorySheet({ contractId, onClose }: Props) {
                               <Td className="text-right">{money(r.amount)}</Td>
                               <Td>
                                 {lateFee > 0 ? (
-                                  <div className="text-xs leading-snug no-underline">
+                                  <div className="text-xs leading-snug">
                                     <div className="text-warning">{money(lateFee)}฿</div>
                                     {waived > 0 && <div className="text-success">−อนุโลม {money(waived)}฿</div>}
                                     <div className="text-foreground font-medium">สุทธิ {money(lateFee - waived)}฿</div>
@@ -235,10 +248,11 @@ export default function PaymentHistorySheet({ contractId, onClose }: Props) {
                               </Td>
                               <Td>
                                 {!r.isVoided && (
-                                  <div className="flex items-center gap-1 no-underline">
+                                  <div className="flex items-center gap-1">
                                     <button
                                       onClick={() => downloadReceiptPdf(r.id, r.receiptNumber)}
                                       title="ใบเสร็จ (PDF)"
+                                      aria-label={`ดาวน์โหลดใบเสร็จ ${r.receiptNumber}`}
                                       className="p-1.5 rounded border border-border text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
                                     >
                                       <FileText className="size-3.5" />
@@ -247,6 +261,7 @@ export default function PaymentHistorySheet({ contractId, onClose }: Props) {
                                       <button
                                         onClick={() => setVoidTarget({ id: r.id, receiptNumber: r.receiptNumber })}
                                         title="ยกเลิกใบเสร็จ (ออกใบลดหนี้)"
+                                        aria-label={`ยกเลิกใบเสร็จ ${r.receiptNumber}`}
                                         className="p-1.5 rounded border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors"
                                       >
                                         <X className="size-3.5" />

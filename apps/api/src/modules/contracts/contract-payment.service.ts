@@ -1,7 +1,8 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, InternalServerErrorException, Inject, forwardRef } from '@nestjs/common';
 import { PaymentMethod, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ProductsService } from '../products/products.service';
+import { ReceiptsService } from '../receipts/receipts.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { EarlyPayoffJP4Template } from '../journal/cpa-templates/early-payoff-jp4.template';
 import { ShopCollectSettlementTemplate } from '../journal/cpa-templates/shop-collect-settlement.template';
@@ -20,6 +21,9 @@ export class ContractPaymentService {
     private journalAutoService: JournalAutoService,
     private earlyPayoffJP4Template: EarlyPayoffJP4Template,
     private shopCollectSettlementTemplate: ShopCollectSettlementTemplate,
+    // forwardRef: ContractsModule → ReceiptsModule → LineOaModule → ContractsModule cycle.
+    @Inject(forwardRef(() => ReceiptsService))
+    private receiptsService: ReceiptsService,
   ) {}
 
   /**
@@ -430,6 +434,26 @@ export class ContractPaymentService {
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
+
+    // Issue the EARLY_PAYOFF receipt (post-commit; generateReceipt has its own tx +
+    // sequence lock). Mirrors the normal recordPayment path — a receipt failure must
+    // NOT roll back the committed payoff, so it's logged and swallowed.
+    try {
+      await this.receiptsService.generateReceipt(
+        id,
+        null,
+        'EARLY_PAYOFF',
+        quote.totalPayoff,
+        null,
+        dto.paymentMethod,
+        dto.referenceNo ?? null,
+        userId,
+      );
+    } catch (err) {
+      this.logger.error(
+        `Failed to generate EARLY_PAYOFF receipt for contract ${id}: ${err instanceof Error ? err.message : err}`,
+      );
+    }
 
     return { ...quote, status: 'EARLY_PAYOFF', paidDate };
   }

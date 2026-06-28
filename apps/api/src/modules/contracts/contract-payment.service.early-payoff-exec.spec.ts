@@ -200,6 +200,7 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
       { createAndPost } as any,
       {} as any, // EarlyPayoffJP4Template never invoked by earlyPayoff()
       {} as any, // ShopCollectSettlementTemplate never invoked
+      { generateReceipt: async () => undefined } as any, // ReceiptsService (EARLY_PAYOFF receipt)
     );
     return service;
   };

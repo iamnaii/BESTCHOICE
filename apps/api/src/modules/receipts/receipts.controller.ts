@@ -41,8 +41,11 @@ export class ReceiptsController {
 
   @Get('contract/:contractId')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
-  getContractReceipts(@Param('contractId') contractId: string) {
-    return this.receiptsService.getContractReceipts(contractId);
+  getContractReceipts(
+    @Param('contractId') contractId: string,
+    @Query('includeVoided') includeVoided?: string,
+  ) {
+    return this.receiptsService.getContractReceipts(contractId, includeVoided === 'true');
   }
 
   @Get(':id')

@@ -82,8 +82,8 @@ export class ReceiptsService {
   }
 
   /** Get receipts for a contract */
-  getContractReceipts(contractId: string) {
-    return this.query.getContractReceipts(contractId);
+  getContractReceipts(contractId: string, includeVoided = false) {
+    return this.query.getContractReceipts(contractId, includeVoided);
   }
 
   /** Get a single receipt */

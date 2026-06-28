@@ -88,12 +88,21 @@ export class ReceiptQueryService {
     };
   }
 
-  /** Get receipts for a contract */
-  async getContractReceipts(contractId: string) {
-    return this.prisma.receipt.findMany({
-      where: { contractId, deletedAt: null, isVoided: false },
+  /** Get receipts for a contract. includeVoided=true → the receipt-level history
+   *  modal shows VOIDED rows (struck-through); default false keeps existing callers
+   *  unchanged. Attaches issuedByName via one batch lookup (no Receipt→User relation
+   *  in schema) — needed for receipts whose payment is null (e.g. EARLY_PAYOFF). */
+  async getContractReceipts(contractId: string, includeVoided = false) {
+    const receipts = await this.prisma.receipt.findMany({
+      where: { contractId, deletedAt: null, ...(includeVoided ? {} : { isVoided: false }) },
       orderBy: { createdAt: 'desc' },
     });
+    const ids = [...new Set(receipts.map((r) => r.issuedById).filter(Boolean))];
+    const users = ids.length
+      ? await this.prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } })
+      : [];
+    const nameById = new Map(users.map((u) => [u.id, u.name]));
+    return receipts.map((r) => ({ ...r, issuedByName: nameById.get(r.issuedById) ?? null }));
   }
 
   /** Get a single receipt */

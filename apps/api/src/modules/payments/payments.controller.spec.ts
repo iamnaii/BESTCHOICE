@@ -42,7 +42,7 @@ describe('PaymentsController', () => {
 
     const mockRescheduleService = {
       execute: jest.fn().mockResolvedValue({
-        rescheduleFee: new Decimal('808.44'),
+        rescheduleFee: new Decimal('809'),
         shiftedInstallmentIds: ['inst-5', 'inst-6', 'inst-7'],
         oldDueDates: {},
         newDueDates: {},
@@ -162,7 +162,7 @@ describe('PaymentsController', () => {
         success: true,
         case: 'RESCHEDULE',
         variant: '6b',
-        rescheduleFee: '808.44',
+        rescheduleFee: '809.00',
         shiftedInstallmentCount: 3,
       });
     });

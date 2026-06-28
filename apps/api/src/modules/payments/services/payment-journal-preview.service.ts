@@ -130,9 +130,10 @@ export class PaymentJournalPreviewService {
     if (input.case === 'RESCHEDULE') {
       const days = input.daysToShift ?? 0;
       const monthlyPayment = new Prisma.Decimal(c.monthlyPayment.toString());
-      // Reschedule fee = installmentTotal / 30 × daysToShift (ROUND_DOWN per spec)
+      // Reschedule fee = installmentTotal / 30 × daysToShift, rounded UP to a whole
+      // baht (owner policy 2026-06 — ปัดเศษขึ้นเต็มบาท). Matches RescheduleService.execute.
       const rescheduleFee = days > 0
-        ? monthlyPayment.div(30).times(days).toDecimalPlaces(2, Prisma.Decimal.ROUND_DOWN)
+        ? monthlyPayment.div(30).times(days).toDecimalPlaces(0, Prisma.Decimal.ROUND_UP)
         : zero;
 
       const isSplit = input.splitMode === 'SPLIT';

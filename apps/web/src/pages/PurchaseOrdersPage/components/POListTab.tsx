@@ -2,11 +2,13 @@ import { useMemo, useState } from 'react';
 import { UseMutationResult } from '@tanstack/react-query';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import { formatDateShort } from '@/utils/formatters';
+import { useDebounce } from '@/hooks/useDebounce';
 import { PurchaseOrder } from '../types';
+import { receiveProgress, isOverdue } from '../po-list.util';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { getStatusBadgeProps, poStatusMap, poPaymentStatusMap } from '@/lib/status-badges';
-import { PackageCheck, Check, X, Ban, FileText, Search } from 'lucide-react';
+import { PackageCheck, Check, X, Ban, FileText, Search, ShoppingCart, AlertTriangle } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -28,6 +30,7 @@ export interface POListTabProps {
   openReceiveModal: (po: PurchaseOrder) => void;
   openPaymentModal: (po: PurchaseOrder) => void;
   approveMutation: UseMutationResult<unknown, unknown, string, unknown>;
+  orderMutation: UseMutationResult<unknown, unknown, string, unknown>;
   rejectPOMutation: UseMutationResult<unknown, unknown, { id: string; reason: string }, unknown>;
   cancelMutation: UseMutationResult<unknown, unknown, string, unknown>;
   setConfirmDialog: (value: { open: boolean; message: string; action: () => void }) => void;
@@ -72,12 +75,14 @@ export function POListTab({
   openReceiveModal,
   openPaymentModal,
   approveMutation,
+  orderMutation,
   rejectPOMutation,
   cancelMutation,
   setConfirmDialog,
   suppliers,
 }: POListTabProps) {
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search, 250);
   const [supplierFilter, setSupplierFilter] = useState('');
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('');
   const [rejectDialog, setRejectDialog] = useState<{ open: boolean; po: PurchaseOrder | null; reason: string }>({
@@ -87,7 +92,7 @@ export function POListTab({
   });
 
   const filteredPos = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = debouncedSearch.trim().toLowerCase();
     const range = periodRange(periodFilter);
     return pos.filter((po) => {
       if (supplierFilter && po.supplier.id !== supplierFilter) return false;
@@ -104,7 +109,7 @@ export function POListTab({
       }
       return true;
     });
-  }, [pos, search, supplierFilter, periodFilter]);
+  }, [pos, debouncedSearch, supplierFilter, periodFilter]);
 
   const clearAll = () => {
     setSearch('');
@@ -191,9 +196,17 @@ export function POListTab({
       render: (po) => {
         const cfg = getStatusBadgeProps(po.status, poStatusMap);
         return (
-          <Badge variant={cfg.variant} appearance={cfg.appearance}>
-            {cfg.label}
-          </Badge>
+          <div className="flex flex-col items-start gap-1">
+            <Badge variant={cfg.variant} appearance={cfg.appearance}>
+              {cfg.label}
+            </Badge>
+            {isOverdue(po) && (
+              <Badge variant="destructive" appearance="light" className="gap-1">
+                <AlertTriangle className="size-3" />
+                เลยกำหนด
+              </Badge>
+            )}
+          </div>
         );
       },
     },
@@ -223,18 +236,20 @@ export function POListTab({
       key: 'received',
       label: 'รับสินค้า',
       render: (po) => {
-        const totalOrdered = po.items.reduce((s, i) => s + i.quantity, 0);
-        const totalReceived = po.items.reduce((s, i) => s + i.receivedQty, 0);
+        const { received, ordered, pct } = receiveProgress(po);
+        const done = ordered > 0 && received >= ordered;
         return (
-          <div className="flex items-center gap-2">
-            <span className="text-sm whitespace-nowrap">
-              {totalReceived}/{totalOrdered}
+          <div className="flex items-center gap-2 min-w-[120px]">
+            <span className="text-sm whitespace-nowrap tabular-nums">
+              <span className="text-muted-foreground">รับแล้ว </span>
+              <span className={done ? 'text-success font-semibold' : 'font-medium'}>{received}</span>
+              <span className="text-muted-foreground">/{ordered}</span>
             </span>
-            {totalOrdered > 0 && (
-              <div className="w-16 bg-secondary rounded-full h-1.5">
+            {ordered > 0 && (
+              <div className="flex-1 bg-secondary rounded-full h-1.5 min-w-[40px]">
                 <div
-                  className="bg-success h-1.5 rounded-full"
-                  style={{ width: `${Math.min((totalReceived / totalOrdered) * 100, 100)}%` }}
+                  className={`h-1.5 rounded-full ${done ? 'bg-success' : 'bg-primary'}`}
+                  style={{ width: `${pct}%` }}
                 />
               </div>
             )}
@@ -256,7 +271,24 @@ export function POListTab({
           >
             <FileText className="size-4" />
           </button>
-          {['APPROVED', 'PARTIALLY_RECEIVED'].includes(po.status) && (
+          {po.status === 'APPROVED' && (
+            <button
+              onClick={() => {
+                setConfirmDialog({
+                  open: true,
+                  message: `ยืนยันสั่งซื้อ PO ${po.poNumber}? (สถานะจะเปลี่ยนเป็น "สั่งซื้อแล้ว")`,
+                  action: () => orderMutation.mutate(po.id),
+                });
+              }}
+              disabled={orderMutation.isPending}
+              className="p-1.5 rounded-md text-info hover:bg-info/10 transition-colors disabled:opacity-50"
+              title="สั่งซื้อ"
+              aria-label={`สั่งซื้อ ${po.poNumber}`}
+            >
+              <ShoppingCart className="size-4" />
+            </button>
+          )}
+          {['APPROVED', 'ORDERED', 'PARTIALLY_RECEIVED'].includes(po.status) && (
             <button
               onClick={() => openReceiveModal(po)}
               className="p-1.5 rounded-md text-primary hover:bg-primary/10 transition-colors"
@@ -334,6 +366,7 @@ export function POListTab({
           <option value="">ทุกสถานะ</option>
           <option value="DRAFT">รออนุมัติ</option>
           <option value="APPROVED">อนุมัติแล้ว</option>
+          <option value="ORDERED">สั่งซื้อแล้ว</option>
           <option value="PARTIALLY_RECEIVED">รับบางส่วน</option>
           <option value="FULLY_RECEIVED">รับครบแล้ว</option>
           <option value="CANCELLED">ยกเลิก</option>
@@ -374,6 +407,7 @@ export function POListTab({
                 {
                   DRAFT: 'รออนุมัติ',
                   APPROVED: 'อนุมัติแล้ว',
+                  ORDERED: 'สั่งซื้อแล้ว',
                   PARTIALLY_RECEIVED: 'รับบางส่วน',
                   FULLY_RECEIVED: 'รับครบแล้ว',
                   CANCELLED: 'ยกเลิก',
@@ -404,8 +438,12 @@ export function POListTab({
             data={filteredPos}
             isLoading={isLoading}
             emptyMessage={hasFilter ? 'ไม่พบใบสั่งซื้อที่ตรงกับตัวกรอง' : 'ยังไม่มีใบสั่งซื้อ'}
-            emptyIcon={hasFilter ? Search : undefined}
-            emptyDescription={hasFilter ? 'ลองล้างตัวกรองหรือเปลี่ยนคำค้นหา' : undefined}
+            emptyIcon={hasFilter ? Search : ShoppingCart}
+            emptyDescription={
+              hasFilter
+                ? 'ลองล้างตัวกรองหรือเปลี่ยนคำค้นหา'
+                : 'กด "+ สร้าง PO" ที่มุมขวาบนเพื่อเริ่มสั่งซื้อสินค้าจากผู้จัดจำหน่าย'
+            }
             columnToggle
             onRowClick={openDetailModal}
           />

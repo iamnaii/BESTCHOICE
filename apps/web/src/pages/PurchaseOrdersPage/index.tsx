@@ -5,7 +5,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { exportToExcel } from '@/utils/excel.util';
 import { Download, ClipboardCheck } from 'lucide-react';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { formatDateShort } from '@/utils/formatters';
 import { usePurchaseOrdersData } from './hooks/usePurchaseOrdersData';
 import { usePOForm } from './hooks/usePOForm';
@@ -19,10 +19,13 @@ import { PODetailModal } from './components/PODetailModal';
 import { PaymentModal } from './components/PaymentModal';
 import { GoodsReceivingModal } from './components/GoodsReceivingModal';
 import { DirectReceiveModal } from './components/DirectReceiveModal';
+import { PurchasingSummaryStrip } from './components/PurchasingSummaryStrip';
+import type { SummaryFilterAction } from './summaryStrip';
 
 export default function PurchaseOrdersPage() {
   const resetFormRef = useRef<() => void>(() => {});
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const wizardClearRef = useRef<() => void>(() => {});
   const onCreateSuccess = useCallback(() => {
@@ -80,6 +83,23 @@ export default function PurchaseOrdersPage() {
       }));
     },
     [queryClient, data.suppliers, poForm],
+  );
+
+  const onSummaryCardClick = useCallback(
+    (action: SummaryFilterAction) => {
+      if ('panel' in action) {
+        navigate('/purchase-orders/qc'); // รอ QC → the dedicated QC center page (B4)
+        return;
+      }
+      if (action.tab === 'payable') {
+        data.setActiveTab('payable');
+        return;
+      }
+      data.setActiveTab('list');
+      data.setStatusFilter(action.status);
+      data.setOverdueOnly(action.overdueOnly);
+    },
+    [data, navigate],
   );
 
   return (
@@ -147,6 +167,8 @@ export default function PurchaseOrdersPage() {
         }
       />
 
+      <PurchasingSummaryStrip summary={data.summary} onCardClick={onSummaryCardClick} />
+
       {/* Tabs */}
       <div className="flex gap-1 mb-5 border-b border-border/60">
         <button
@@ -171,7 +193,7 @@ export default function PurchaseOrdersPage() {
       {data.activeTab === 'list' ? (
         <POListTab
           statusFilter={data.statusFilter}
-          setStatusFilter={data.setStatusFilter}
+          setStatusFilter={data.setStatusFilterAndResetOverdue}
           pos={data.pos}
           isLoading={data.isLoading}
           openDetailModal={data.openDetailModal}
@@ -183,6 +205,8 @@ export default function PurchaseOrdersPage() {
           cancelMutation={data.cancelMutation}
           setConfirmDialog={data.setConfirmDialog}
           suppliers={data.suppliers}
+          overdueOnly={data.overdueOnly}
+          setOverdueOnly={data.setOverdueOnly}
         />
       ) : (
         <AccountsPayableTab

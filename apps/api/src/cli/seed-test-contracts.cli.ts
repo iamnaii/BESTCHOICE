@@ -32,6 +32,7 @@
  */
 
 import { PrismaService } from '../prisma/prisma.service';
+import { ensureInstallmentSchedules } from '../utils/installment-schedule.util';
 
 const REQUIRED_CONSENT = 'YES_I_AM_SURE';
 
@@ -208,6 +209,11 @@ export async function seedTestContracts(
           },
         });
       }
+
+      // Persist installment_schedules so the wizard's preview-journal works —
+      // it reads installmentSchedule; without these rows the wizard 404s
+      // "ไม่พบงวดชำระ" before a payment can be recorded.
+      await ensureInstallmentSchedules(tx, contract.id);
     });
 
     result.created += 1;

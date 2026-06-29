@@ -309,11 +309,25 @@ export class PoQueryService {
   }
 
   /**
-   * Get products pending QC (QC_PENDING status)
+   * Get products pending QC. Defaults to QC_PENDING only (back-compat).
+   * Additive flags: includePhotoPending widens to QC_PENDING + PHOTO_PENDING
+   * (the QC center queue), poId narrows to one PO.
    */
-  async getQCPending(filters: { branchId?: string; page?: number; limit?: number }) {
-    const where: Record<string, unknown> = { status: 'QC_PENDING', deletedAt: null };
+  async getQCPending(filters: {
+    branchId?: string;
+    poId?: string;
+    includePhotoPending?: boolean;
+    page?: number;
+    limit?: number;
+  }) {
+    const where: Record<string, unknown> = {
+      deletedAt: null,
+      status: filters.includePhotoPending
+        ? { in: ['QC_PENDING', 'PHOTO_PENDING'] }
+        : 'QC_PENDING',
+    };
     if (filters.branchId) where.branchId = filters.branchId;
+    if (filters.poId) where.poId = filters.poId;
 
     const page = Math.max(1, filters.page || 1);
     const limit = Math.min(100, Math.max(1, filters.limit || 50));

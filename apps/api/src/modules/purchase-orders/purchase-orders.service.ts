@@ -102,4 +102,8 @@ export class PurchaseOrdersService {
   getQCPending(filters: { branchId?: string; page?: number; limit?: number }) {
     return this.query.getQCPending(filters);
   }
+
+  getSummary() {
+    return this.query.getSummary();
+  }
 }

@@ -45,6 +45,12 @@ export class PurchaseOrdersController {
     );
   }
 
+  @Get('summary')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  getSummary() {
+    return this.purchaseOrdersService.getSummary();
+  }
+
   // === QC Confirmation (Step 4: สินค้าเข้าคลัง) ===
   // Static routes MUST be before :id parametric routes
 

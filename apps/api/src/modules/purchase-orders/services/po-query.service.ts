@@ -293,6 +293,21 @@ export class PoQueryService {
     };
   }
 
+  async getSummary() {
+    const now = new Date();
+    const base = { deletedAt: null };
+    const [pendingApproval, toOrder, incoming, overdue, receiving, waitingQc, unpaid] = await Promise.all([
+      this.prisma.purchaseOrder.count({ where: { ...base, status: 'DRAFT' } }),
+      this.prisma.purchaseOrder.count({ where: { ...base, status: 'APPROVED' } }),
+      this.prisma.purchaseOrder.count({ where: { ...base, status: 'ORDERED' } }),
+      this.prisma.purchaseOrder.count({ where: { ...base, status: 'ORDERED', expectedDate: { lt: now } } }),
+      this.prisma.purchaseOrder.count({ where: { ...base, status: 'PARTIALLY_RECEIVED' } }),
+      this.prisma.product.count({ where: { deletedAt: null, status: { in: ['QC_PENDING', 'PHOTO_PENDING'] } } }),
+      this.prisma.purchaseOrder.count({ where: { ...base, status: { notIn: ['CANCELLED', 'DRAFT'] }, paymentStatus: { not: 'FULLY_PAID' } } }),
+    ]);
+    return { pendingApproval, toOrder, incoming, overdue, receiving, waitingQc, unpaid };
+  }
+
   /**
    * Get products pending QC (QC_PENDING status)
    */

@@ -100,6 +100,12 @@ export class RejectPODto {
   reason: string;
 }
 
+export class OrderPODto {
+  @IsDateString()
+  @IsOptional()
+  expectedDate?: string;
+}
+
 export class UpdatePODto {
   @IsDateString()
   @IsOptional()

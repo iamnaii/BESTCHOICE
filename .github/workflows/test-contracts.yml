@@ -98,10 +98,22 @@ jobs:
             || gcloud run jobs create bestchoice-test-contracts "${ARGS[@]}"
 
       - name: Execute (${{ steps.cfg.outputs.mode }})
+        id: exec
         run: |
           echo "::notice::Test-contracts mode → ${{ steps.cfg.outputs.mode }} (DB=${{ inputs.expected_db_name }})"
           gcloud run jobs execute bestchoice-test-contracts \
             --project="${{ secrets.GCP_PROJECT_ID }}" \
             --region="${{ secrets.GCP_REGION || 'asia-southeast1' }}" \
             --wait
-          echo "::notice::Done. See the Cloud Run Job execution logs for details (created/removed counts)."
+
+      - name: Dump job logs (CLI stdout — incl. DB name on mismatch)
+        if: always()
+        run: |
+          sleep 12  # let the container logs flush to Cloud Logging
+          echo "=== bestchoice-test-contracts container logs (last run) ==="
+          gcloud logging read \
+            'resource.type="cloud_run_job" AND resource.labels.job_name="bestchoice-test-contracts"' \
+            --project="${{ secrets.GCP_PROJECT_ID }}" \
+            --limit=120 --freshness=20m --order=asc \
+            --format='value(textPayload)' 2>&1 | grep -vE '^\s*$' | tail -80 \
+            || echo "(could not read logs — SA may lack logging.viewer)"

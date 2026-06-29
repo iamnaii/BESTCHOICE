@@ -35,6 +35,8 @@ export interface POListTabProps {
   cancelMutation: UseMutationResult<unknown, unknown, string, unknown>;
   setConfirmDialog: (value: { open: boolean; message: string; action: () => void }) => void;
   suppliers: { id: string; name: string }[];
+  overdueOnly: boolean;
+  setOverdueOnly: (value: boolean) => void;
 }
 
 const periodOptions: { value: PeriodFilter; label: string }[] = [
@@ -80,6 +82,8 @@ export function POListTab({
   cancelMutation,
   setConfirmDialog,
   suppliers,
+  overdueOnly,
+  setOverdueOnly,
 }: POListTabProps) {
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 250);
@@ -95,6 +99,7 @@ export function POListTab({
     const q = debouncedSearch.trim().toLowerCase();
     const range = periodRange(periodFilter);
     return pos.filter((po) => {
+      if (overdueOnly && !isOverdue(po)) return false;
       if (supplierFilter && po.supplier.id !== supplierFilter) return false;
       if (range) {
         const d = new Date(po.orderDate);
@@ -109,13 +114,14 @@ export function POListTab({
       }
       return true;
     });
-  }, [pos, debouncedSearch, supplierFilter, periodFilter]);
+  }, [pos, debouncedSearch, supplierFilter, periodFilter, overdueOnly]);
 
   const clearAll = () => {
     setSearch('');
     setStatusFilter('');
     setSupplierFilter('');
     setPeriodFilter('');
+    setOverdueOnly(false);
   };
 
   const selectedSupplierName = suppliers.find((s) => s.id === supplierFilter)?.name || supplierFilter;
@@ -345,7 +351,7 @@ export function POListTab({
     },
   ];
 
-  const hasFilter = Boolean(search || statusFilter || supplierFilter || periodFilter);
+  const hasFilter = Boolean(search || statusFilter || supplierFilter || periodFilter || overdueOnly);
 
   return (
     <>
@@ -421,6 +427,9 @@ export function POListTab({
           )}
           {periodFilter && (
             <FilterChip label={`ช่วงเวลา: ${selectedPeriodLabel}`} onRemove={() => setPeriodFilter('')} />
+          )}
+          {overdueOnly && (
+            <FilterChip label="เฉพาะที่เลยกำหนดส่ง" onRemove={() => setOverdueOnly(false)} />
           )}
           <button
             onClick={clearAll}

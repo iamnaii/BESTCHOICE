@@ -3,10 +3,9 @@ import { ProductCategory } from '@prisma/client';
 /**
  * Builds the display name for a product created from a PO item.
  *
- * Extracted VERBATIM from the (previously duplicated) name-building block in
- * PoReceivingService.receive() and PoReceivingService.goodsReceiving(). Pure
- * helper — no prisma, no side effects. The two original blocks were identical
- * apart from inline comments, so sharing this preserves behavior byte-for-byte.
+ * Extracted VERBATIM from the name-building block in
+ * PoReceivingService.goodsReceiving(). Pure helper — no prisma, no side effects.
+ * (Originally shared with the legacy receive() path, retired in Purchasing v2 B0.)
  */
 export function buildProductName(
   poItem: {

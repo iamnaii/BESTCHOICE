@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { ItemForm } from '../types';
 import { emptyItem } from '../constants';
+import { computePoTotals } from '../poTotals';
 import { UseMutationResult } from '@tanstack/react-query';
 
 interface UsePOFormOptions {
@@ -119,17 +120,22 @@ export function usePOForm({ createMutation, suppliers }: UsePOFormOptions) {
     });
   };
 
-  const subtotal = items.reduce((sum, i) => sum + Number(i.quantity || 0) * Number(i.unitPrice || 0), 0);
   const selectedSupplier = suppliers.find((s) => s.id === form.supplierId);
   const supplierHasVat = selectedSupplier?.hasVat ?? false;
-  const discountNum = Math.min(Number(form.discount) || 0, subtotal);
-  const subtotalAfterDiscount = subtotal - discountNum;
-  const vatAmount = supplierHasVat ? Math.round(subtotalAfterDiscount * 0.07 * 100) / 100 : 0;
-  const totalWithVat = subtotalAfterDiscount + vatAmount;
-  const discountAfterVatNum = supplierHasVat
-    ? Math.min(Number(form.discountAfterVat) || 0, totalWithVat)
-    : 0;
-  const netAmount = totalWithVat - discountAfterVatNum;
+  const {
+    subtotal,
+    discountNum,
+    subtotalAfterDiscount,
+    vatAmount,
+    totalWithVat,
+    discountAfterVatNum,
+    netAmount,
+  } = computePoTotals({
+    items,
+    discount: form.discount,
+    discountAfterVat: form.discountAfterVat,
+    supplierHasVat,
+  });
 
   return {
     form,

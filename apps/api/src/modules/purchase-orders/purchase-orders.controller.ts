@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { PurchaseOrdersService } from './purchase-orders.service';
-import { CreatePODto, UpdatePODto, GoodsReceivingDto, UpdatePaymentDto, RejectPODto, OrderPODto, DirectReceiveDto } from './dto/create-po.dto';
+import { CreatePODto, UpdatePODto, GoodsReceivingDto, UpdatePaymentDto, RejectPODto, OrderPODto, DirectReceiveDto, RejectQCDto } from './dto/create-po.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
@@ -76,6 +76,12 @@ export class PurchaseOrdersController {
   @Roles('OWNER', 'BRANCH_MANAGER')
   confirmQC(@Body('productIds') productIds: string[]) {
     return this.purchaseOrdersService.confirmQC(productIds);
+  }
+
+  @Post('qc-reject')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  rejectQC(@Body() dto: RejectQCDto) {
+    return this.purchaseOrdersService.rejectQC(dto.productIds, dto.reason);
   }
 
   @Post('direct-receive')

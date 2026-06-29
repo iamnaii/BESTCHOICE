@@ -397,6 +397,46 @@ export class PoReceivingService {
   }
 
   /**
+   * Reject products at the post-receive QC stage (QC_PENDING / PHOTO_PENDING):
+   * soft-delete the failed units and record the reason. JE-free, products-table
+   * only — no accounting/finance touch.
+   */
+  async rejectQC(productIds: string[], reason: string) {
+    if (!productIds || productIds.length === 0) {
+      throw new BadRequestException('กรุณาเลือกสินค้าที่ไม่ผ่าน QC อย่างน้อย 1 ชิ้น');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const products = await tx.product.findMany({
+        where: { id: { in: productIds }, deletedAt: null },
+      });
+
+      const notFound = productIds.filter((id) => !products.find((p) => p.id === id));
+      if (notFound.length > 0) {
+        throw new BadRequestException(`ไม่พบสินค้า ID: ${notFound.join(', ')}`);
+      }
+
+      const invalid = products.filter((p) => !['QC_PENDING', 'PHOTO_PENDING'].includes(p.status));
+      if (invalid.length > 0) {
+        throw new BadRequestException(
+          `สินค้าต่อไปนี้ไม่ได้อยู่ในขั้นตอน QC: ${invalid.map((p) => p.name).join(', ')}`,
+        );
+      }
+
+      await tx.product.updateMany({
+        where: { id: { in: productIds } },
+        data: { deletedAt: new Date() },
+      });
+
+      return {
+        rejected: productIds.length,
+        reason,
+        message: `บันทึกไม่ผ่าน QC ${productIds.length} ชิ้น (ตัดออกจากคลังแล้ว): ${reason}`,
+      };
+    });
+  }
+
+  /**
    * Confirm QC for products - moves QC_PENDING → IN_STOCK (เข้าคลังหลัก)
    * Workflow Step 4: สินค้าเข้าคลัง
    */

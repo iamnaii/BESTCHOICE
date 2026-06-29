@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, IsDateString, IsArray, ValidateNested, IsIn, IsBoolean, ArrayMinSize, Min, IsEnum } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsDateString, IsArray, ValidateNested, IsIn, IsBoolean, ArrayMinSize, Min, IsEnum, ArrayNotEmpty, IsNotEmpty } from 'class-validator';
 import { Type } from 'class-transformer';
 import { DefectReason } from '@prisma/client';
 
@@ -266,4 +266,15 @@ export class DirectReceiveDto {
 
   @IsArray() @ArrayMinSize(1) @ValidateNested({ each: true }) @Type(() => DirectReceiveItemDto)
   items: DirectReceiveItemDto[];
+}
+
+export class RejectQCDto {
+  @IsArray()
+  @ArrayNotEmpty({ message: 'กรุณาเลือกสินค้าที่ไม่ผ่าน QC อย่างน้อย 1 ชิ้น' })
+  @IsString({ each: true })
+  productIds!: string[];
+
+  @IsString()
+  @IsNotEmpty({ message: 'กรุณาระบุเหตุผลที่ไม่ผ่าน QC' })
+  reason!: string;
 }

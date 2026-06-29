@@ -1,7 +1,7 @@
 # Pre-Merge Guard Report — 2026-06-29
 
 **Run time**: 2026-06-29 UTC  
-**Branches scanned**: 4 (2 newly-fetched worktree branches + 2 chore branches already APPROVED 2026-06-28)  
+**Branches scanned**: 5 (2 newly-fetched worktree branches + 3 chore branches: 2 APPROVED 2026-06-28, 1 new this run)  
 **Author**: Akenarin Kongdach (all branches)
 
 ---
@@ -111,10 +111,42 @@ Same as above — no common ancestor with `main`. Requires `--allow-unrelated-hi
 
 ---
 
-### 3. `chore/local-config-sync` — Previously reviewed 2026-06-28
+### 3. `chore/doc-config-single-source`
+**Latest commit**: `chore(doc-config): remove ตั้งค่าเอกสาร from fin zone — settings is single source`  
+**Author**: Akenarin Kongdach  
+**Last active**: 2026-06-24  
+**Size**: 2 files changed, 9 insertions(+), 53 deletions(-)  
+**Scope**: Frontend menu cleanup — remove duplicate navigation entries pointing to `/settings/document-config`
+
+#### Changes Summary
+- `apps/web/src/config/menu.ts`: Removed `owner-doc-config` section (~33 lines) from OWNER fin zone and `acc-doc-config` section (~13 lines) from ACCOUNTANT config. Both were linking to `/settings/document-config` — a page already accessible exclusively through the settings panel (`/settings/document-config`).
+- `apps/web/src/config/menu.test.ts`: Updated 2 tests to assert the sections are absent (not present), matching the new reality.
+
+#### Security & Guards
+- No backend changes — frontend-only. No new controllers, endpoints, or guards involved. ✅
+- The removed ACCOUNTANT menu entry (`acc-doc-config`) previously linked to a page that already enforced OWNER-only at the `ProtectedRoute` level, causing a "ไม่มีสิทธิ์เข้าถึง" dead-end for ACC. Removing the link improves UX without any security impact. ✅
+
+#### Money / Decimal Handling
+- No financial calculations involved. ✅
+
+#### Frontend Patterns
+- No `fetch()`, no `api.*` calls, no mutations — pure static menu config.
+- Tests correctly updated to assert the deduplication (positive `not.toContain` assertions). ✅
+
+#### Issues Found
+
+| # | Severity | File | Issue |
+|---|----------|------|-------|
+| — | None | — | No issues found |
+
+**Verdict**: ✅ **APPROVE**
+
+---
+
+### 4. `chore/local-config-sync` — Previously reviewed 2026-06-28
 **Verdict**: ✅ APPROVE (unchanged since last run)
 
-### 4. `chore/owner-mobile-settings-bar` — Previously reviewed 2026-06-28
+### 5. `chore/owner-mobile-settings-bar` — Previously reviewed 2026-06-28
 **Verdict**: ✅ APPROVE (unchanged since last run)
 
 ---
@@ -125,6 +157,7 @@ Same as above — no common ancestor with `main`. Requires `--allow-unrelated-hi
 |--------|----------|---------|------|---------|
 | `worktree-feat-shop-sales-ai-phase-a` | 0 | 0 | 0 | ✅ APPROVE |
 | `worktree-feat+sp7.1-dual-prisma-foundation` | 0 | 1 | 1 | ⚠️ REVIEW |
+| `chore/doc-config-single-source` | 0 | 0 | 0 | ✅ APPROVE |
 | `chore/local-config-sync` | 0 | 0 | 0 | ✅ APPROVE |
 | `chore/owner-mobile-settings-bar` | 0 | 0 | 0 | ✅ APPROVE |
 

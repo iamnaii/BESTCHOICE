@@ -1,0 +1,107 @@
+name: Test Contracts (prod) — seed / cleanup
+
+# Manually-triggered helper to create (or remove) clearly-marked TEST- contracts
+# for exercising the payment-recording + receipt flow on a deployed environment.
+# Runs the CLIs (seed-test-contracts / cleanup-test-contracts) as a Cloud Run Job,
+# mirroring the bestchoice-migrate / backfill-receipts pattern.
+#
+# IMPORTANT: the image must already contain the CLIs — merge to main + let the
+# normal deploy build :latest BEFORE running this (it uses :latest).
+#
+# SAFETY: default is a DRY-RUN. Tick `live` to actually write/remove. Both CLIs
+# triple-guard (EXPECTED_DB_NAME must match current_database(); CONFIRM_*; and in
+# NODE_ENV=production also ALLOW_PROD_*). Seed marks everything `TEST-` /
+# "ทดสอบระบบ"; cleanup only ever touches `TEST-` contracts.
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'seed = create TEST- contracts; cleanup = remove all TEST- contracts'
+        required: true
+        type: choice
+        options: [seed, cleanup]
+        default: seed
+      expected_db_name:
+        description: 'Prod DB name — must equal current_database() or the job aborts (= the part after the last "/" in the DATABASE_URL secret).'
+        required: true
+        type: string
+      count:
+        description: 'How many contracts to seed (seed only; ignored for cleanup).'
+        required: false
+        type: string
+        default: '10'
+      live:
+        description: 'Actually write/remove? Leave UNCHECKED for a safe dry-run (counts only).'
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: test-contracts
+  cancel-in-progress: false
+
+env:
+  API_IMAGE: asia-southeast1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/bestchoice/api
+
+jobs:
+  test-contracts:
+    name: ${{ inputs.action }} TEST- contracts (Cloud Run Job)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Setup gcloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Compose job command + env
+        id: cfg
+        run: |
+          DB="${{ inputs.expected_db_name }}"
+          if [ "${{ inputs.action }}" = "cleanup" ]; then
+            CLI="apps/api/dist/src/cli/cleanup-test-contracts.cli.js"
+            if [ "${{ inputs.live }}" = "true" ]; then
+              VARS="EXPECTED_DB_NAME=$DB,CONFIRM_CLEANUP=YES_I_AM_SURE,ALLOW_PROD_CLEANUP=YES_I_AM_SURE,NODE_ENV=production"
+            else
+              VARS="EXPECTED_DB_NAME=$DB"
+            fi
+          else
+            CLI="apps/api/dist/src/cli/seed-test-contracts.cli.js"
+            if [ "${{ inputs.live }}" = "true" ]; then
+              VARS="EXPECTED_DB_NAME=$DB,TEST_CONTRACT_COUNT=${{ inputs.count }},CONFIRM_SEED=YES_I_AM_SURE,ALLOW_PROD_SEED=YES_I_AM_SURE,NODE_ENV=production"
+            else
+              VARS="EXPECTED_DB_NAME=$DB,TEST_CONTRACT_COUNT=${{ inputs.count }}"
+            fi
+          fi
+          echo "cli=$CLI" >> "$GITHUB_OUTPUT"
+          echo "vars=$VARS" >> "$GITHUB_OUTPUT"
+          echo "mode=${{ inputs.action }} / $([ "${{ inputs.live }}" = "true" ] && echo LIVE || echo DRY-RUN)" >> "$GITHUB_OUTPUT"
+
+      - name: Create or update job
+        run: |
+          ARGS=(
+            --project="${{ secrets.GCP_PROJECT_ID }}"
+            --region="${{ secrets.GCP_REGION || 'asia-southeast1' }}"
+            --image="${{ env.API_IMAGE }}:latest"
+            --set-secrets=DATABASE_URL=DATABASE_URL:latest
+            --set-cloudsql-instances="${{ secrets.CLOUD_SQL_CONNECTION_NAME }}"
+            --set-env-vars="${{ steps.cfg.outputs.vars }}"
+            --command=node
+            --args="${{ steps.cfg.outputs.cli }}"
+            --max-retries=0
+            --task-timeout=900s
+          )
+          gcloud run jobs update bestchoice-test-contracts "${ARGS[@]}" 2>/dev/null \
+            || gcloud run jobs create bestchoice-test-contracts "${ARGS[@]}"
+
+      - name: Execute (${{ steps.cfg.outputs.mode }})
+        run: |
+          echo "::notice::Test-contracts mode → ${{ steps.cfg.outputs.mode }} (DB=${{ inputs.expected_db_name }})"
+          gcloud run jobs execute bestchoice-test-contracts \
+            --project="${{ secrets.GCP_PROJECT_ID }}" \
+            --region="${{ secrets.GCP_REGION || 'asia-southeast1' }}" \
+            --wait
+          echo "::notice::Done. See the Cloud Run Job execution logs for details (created/removed counts)."

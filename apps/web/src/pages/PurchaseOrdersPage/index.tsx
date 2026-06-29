@@ -147,6 +147,7 @@ export default function PurchaseOrdersPage() {
           openReceiveModal={data.openReceiveModal}
           openPaymentModal={data.openPaymentModal}
           approveMutation={data.approveMutation}
+          orderMutation={data.orderMutation}
           rejectPOMutation={data.rejectPOMutation}
           cancelMutation={data.cancelMutation}
           setConfirmDialog={data.setConfirmDialog}

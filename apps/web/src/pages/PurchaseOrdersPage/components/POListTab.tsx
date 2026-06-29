@@ -201,7 +201,7 @@ export function POListTab({
               {cfg.label}
             </Badge>
             {isOverdue(po) && (
-              <Badge variant="destructive" appearance="light" className="gap-1">
+              <Badge variant="destructive" appearance="light" className="gap-1 leading-snug">
                 <AlertTriangle className="size-3" />
                 เลยกำหนด
               </Badge>
@@ -240,7 +240,7 @@ export function POListTab({
         const done = ordered > 0 && received >= ordered;
         return (
           <div className="flex items-center gap-2 min-w-[120px]">
-            <span className="text-sm whitespace-nowrap tabular-nums">
+            <span className="text-sm whitespace-nowrap tabular-nums leading-snug">
               <span className="text-muted-foreground">รับแล้ว </span>
               <span className={done ? 'text-success font-semibold' : 'font-medium'}>{received}</span>
               <span className="text-muted-foreground">/{ordered}</span>

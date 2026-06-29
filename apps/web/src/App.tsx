@@ -92,6 +92,7 @@ const SuppliersPage = lazy(() => import('@/pages/SuppliersPage'));
 const StockOverviewPage = lazy(() => import('@/pages/StockPage/OverviewPage'));
 const StockProductsPage = lazy(() => import('@/pages/StockPage/ProductsPage'));
 const PurchaseOrdersPage = lazy(() => import('@/pages/PurchaseOrdersPage'));
+const QcCenterPage = lazy(() => import('@/pages/QcCenterPage'));
 const GoodsReceiptPrintPage = lazy(() => import('@/pages/PurchaseOrdersPage/GoodsReceiptPrintPage'));
 
 const StockTransfersPage = lazy(() => import('@/pages/StockTransfersPage'));
@@ -341,6 +342,14 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER']}>
                 <PurchaseOrdersPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/purchase-orders/qc"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER']}>
+                <QcCenterPage />
               </ProtectedRoute>
             }
           />

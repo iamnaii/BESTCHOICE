@@ -37,6 +37,7 @@ import { getSidebarForRole, getZoneConfigForRole } from '@/config/menu';
 import type { MenuSection, MenuBadgeKey, Zone } from '@/config/menu';
 import { useCollectionsFlag } from '@/pages/CollectionsPage/hooks/useCollectionsFlag';
 import { useDraftAssetCount } from '@/hooks/useDraftAssetCount';
+import { useQcPendingCount } from '@/hooks/useQcPendingCount';
 import { VersionBadge } from './VersionBadge';
 import { PillSwitcher } from './PillSwitcher';
 import { GearButton } from './GearButton';
@@ -61,11 +62,17 @@ function NavBullet({ size = 15 }: { size?: number }) {
 /* ── NavBadge — dynamic count badge for sidebar items ── */
 function NavBadge({ badgeKey }: { badgeKey: MenuBadgeKey }) {
   const draftCount = useDraftAssetCount(badgeKey === 'asset-draft-count');
-  if (badgeKey !== 'asset-draft-count') return null;
-  if (!draftCount || draftCount === 0) return null;
+  const qcCount = useQcPendingCount(badgeKey === 'qc-pending-count');
+  const count = badgeKey === 'asset-draft-count' ? draftCount
+    : badgeKey === 'qc-pending-count' ? qcCount
+    : undefined;
+  if (!count || count === 0) return null;
+  const cls = badgeKey === 'qc-pending-count'
+    ? 'bg-warning/10 text-warning dark:bg-warning/15'
+    : 'bg-primary/15 text-primary';
   return (
-    <span className="ml-auto inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[11px] font-medium bg-primary/15 text-primary">
-      {draftCount}
+    <span className={`ml-auto inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[11px] font-medium ${cls}`}>
+      {count}
     </span>
   );
 }

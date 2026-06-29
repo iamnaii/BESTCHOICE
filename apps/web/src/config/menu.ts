@@ -62,7 +62,7 @@ import {
 
 /* ── Types ─────────────────────────────────────────── */
 
-export type MenuBadgeKey = 'chat-unread' | 'asset-draft-count';
+export type MenuBadgeKey = 'chat-unread' | 'asset-draft-count' | 'qc-pending-count';
 
 /** Logical zone — sidebar splits navigation into these contexts */
 export type Zone = 'shop' | 'fin' | 'settings';
@@ -238,6 +238,7 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'รายการสินค้า', path: '/stock/products', icon: ClipboardList },
         { label: 'พิมพ์สติกเกอร์', path: '/stickers', icon: Tag },
         { label: 'สั่งซื้อ (PO)', path: '/purchase-orders', icon: ClipboardList },
+        { label: 'ศูนย์ตรวจ QC', path: '/purchase-orders/qc', icon: ClipboardCheck, badgeKey: 'qc-pending-count' },
         { label: 'ผู้จัดจำหน่าย', path: '/suppliers', icon: Building2 },
       ],
     },
@@ -489,6 +490,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'ผู้จัดจำหน่าย', path: '/suppliers', icon: Building2 },
         { label: 'สั่งซื้อ (PO)', path: '/purchase-orders', icon: ClipboardList },
+        { label: 'ศูนย์ตรวจ QC', path: '/purchase-orders/qc', icon: ClipboardCheck, badgeKey: 'qc-pending-count' },
         { label: 'รับซื้อมือสอง', path: '/trade-in', icon: Smartphone },
         { label: 'ภาพรวมคลัง', path: '/stock', icon: Warehouse },
         { label: 'รายการสินค้า', path: '/stock/products', icon: ClipboardList },

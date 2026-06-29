@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import { PurchaseOrder, PODetail, ReceivingUnitForm, DirectReceiveLineForm } from '../types';
 import { defaultChecklist } from '../constants';
+import { PurchasingSummary } from '../summaryStrip';
 
 export function buildDirectReceiveItem(i: ReceivingUnitForm) {
   const isUsed = i.category === 'PHONE_USED';
@@ -45,6 +46,7 @@ export function buildDirectReceiveItem(i: ReceivingUnitForm) {
 export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }) {
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState('');
+  const [overdueOnly, setOverdueOnly] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'list' | 'payable'>('list');
@@ -97,6 +99,18 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     retry: 2,
   });
   const suppliers = suppliersRes?.data || [];
+
+  const { data: summaryRes } = useQuery<{ data?: PurchasingSummary } | PurchasingSummary>({
+    queryKey: ['purchase-orders-summary'],
+    queryFn: async () => (await api.get('/purchase-orders/summary')).data,
+    // Stale-while-refresh so the strip stays snappy; counts are compute-on-read and cheap.
+    staleTime: 30_000,
+    retry: 1,
+  });
+  // Backend returns the bare object; tolerate a { data } envelope defensively.
+  const summary: PurchasingSummary | undefined = summaryRes
+    ? ('pendingApproval' in summaryRes ? summaryRes : (summaryRes as { data?: PurchasingSummary }).data)
+    : undefined;
 
   type PayableData = {
     grandTotal: number;
@@ -154,6 +168,7 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     mutationFn: async (data: Record<string, unknown>) => api.post('/purchase-orders', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders-summary'] });
       toast.success('สร้างใบสั่งซื้อสำเร็จ (สถานะ: รออนุมัติ)');
       setIsCreateModalOpen(false);
       options?.onCreateSuccess?.();
@@ -165,6 +180,7 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     mutationFn: async (id: string) => api.post(`/purchase-orders/${id}/approve`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders-summary'] });
       toast.success('อนุมัติ PO สำเร็จ');
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
@@ -174,6 +190,7 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     mutationFn: async (id: string) => api.post(`/purchase-orders/${id}/order`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders-summary'] });
       toast.success('สั่งซื้อ PO สำเร็จ (สถานะ: สั่งซื้อแล้ว)');
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
@@ -184,6 +201,7 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
       api.post(`/purchase-orders/${id}/reject`, { reason }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders-summary'] });
       toast.success('ปฏิเสธ PO สำเร็จ');
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
@@ -193,6 +211,7 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     mutationFn: async (id: string) => api.post(`/purchase-orders/${id}/cancel`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders-summary'] });
       toast.success('ยกเลิก PO สำเร็จ');
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
@@ -243,6 +262,7 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
       }),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders-summary'] });
       const data = res.data;
       toast.success(
         `รับ+ตรวจสำเร็จ: ผ่าน ${data.passed} ชิ้น, ไม่ผ่าน ${data.rejected} ชิ้น → รอ QC ที่คลัง ${data.mainWarehouse}`,
@@ -273,6 +293,7 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
       }),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders-summary'] });
       const d = res.data;
       toast.success(
         `รับเข้าตรงสำเร็จ (${d.poNumber}): ผ่าน ${d.passed} ชิ้น, ไม่ผ่าน ${d.rejected} ชิ้น → รอ QC ที่คลัง ${d.mainWarehouse}`,
@@ -287,6 +308,7 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
       api.patch(`/purchase-orders/${poId}/payment`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders-summary'] });
       queryClient.invalidateQueries({ queryKey: ['accounts-payable'] });
       toast.success('อัปเดตสถานะการจ่ายเงินสำเร็จ');
       setIsPaymentModalOpen(false);
@@ -305,6 +327,11 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
+
+  const setStatusFilterAndResetOverdue = (value: string) => {
+    setStatusFilter(value);
+    setOverdueOnly(false);
+  };
 
   const openDetailModal = async (po: PurchaseOrder) => {
     setSelectedPO(po);
@@ -528,6 +555,7 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     payableData,
     pos,
     isLoading,
+    summary,
     // Mutations
     createMutation,
     approveMutation,
@@ -540,6 +568,9 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     // State
     statusFilter,
     setStatusFilter,
+    overdueOnly,
+    setOverdueOnly,
+    setStatusFilterAndResetOverdue,
     activeTab,
     setActiveTab,
     isCreateModalOpen,

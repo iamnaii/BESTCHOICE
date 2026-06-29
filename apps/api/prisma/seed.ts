@@ -534,12 +534,12 @@ async function main() {
   console.log('STEP 12: Creating GoodsReceivings...');
 
   const grData = [
-    { id: 'gr-001', poId: 'po-001', receivedById: 'user-001', notes: 'รับครบ 5 เครื่อง' },
-    { id: 'gr-002', poId: 'po-002', receivedById: 'user-002', notes: 'รับครบ 5 เครื่อง' },
-    { id: 'gr-003', poId: 'po-003', receivedById: 'user-001', notes: 'รับครบ 7 เครื่อง (มือสอง)' },
-    { id: 'gr-004', poId: 'po-004', receivedById: 'user-002' },
-    { id: 'gr-005', poId: 'po-005', receivedById: 'user-001', notes: 'iPad 4 เครื่อง' },
-    { id: 'gr-006', poId: 'po-006', receivedById: 'user-002', notes: 'อุปกรณ์เสริม Spigen' },
+    { id: 'gr-001', grNumber: 'GR-2026-01-001', poId: 'po-001', receivedById: 'user-001', notes: 'รับครบ 5 เครื่อง' },
+    { id: 'gr-002', grNumber: 'GR-2026-01-002', poId: 'po-002', receivedById: 'user-002', notes: 'รับครบ 5 เครื่อง' },
+    { id: 'gr-003', grNumber: 'GR-2026-01-003', poId: 'po-003', receivedById: 'user-001', notes: 'รับครบ 7 เครื่อง (มือสอง)' },
+    { id: 'gr-004', grNumber: 'GR-2026-01-004', poId: 'po-004', receivedById: 'user-002' },
+    { id: 'gr-005', grNumber: 'GR-2026-01-005', poId: 'po-005', receivedById: 'user-001', notes: 'iPad 4 เครื่อง' },
+    { id: 'gr-006', grNumber: 'GR-2026-01-006', poId: 'po-006', receivedById: 'user-002', notes: 'อุปกรณ์เสริม Spigen' },
   ];
 
   for (const gr of grData) {

@@ -7,6 +7,7 @@ type PrismaTx = {
   contract: { findFirst: (...args: unknown[]) => Promise<{ contractNumber: string } | null> };
   sale: { findFirst: (...args: unknown[]) => Promise<{ saleNumber: string } | null> };
   purchaseOrder: { count: (...args: unknown[]) => Promise<number> };
+  goodsReceiving: { count: (...args: unknown[]) => Promise<number> };
   quote?: { findFirst: (...args: unknown[]) => Promise<{ quoteNumber: string } | null> };
   booking?: { findFirst: (...args: unknown[]) => Promise<{ bookingNumber: string } | null> };
 };
@@ -136,4 +137,22 @@ export async function generatePONumber(tx: PrismaTx): Promise<string> {
     where: { createdAt: { gte: monthStart, lt: monthEnd } },
   });
   return `PO-${year}-${month}-${String(monthCount + 1).padStart(3, '0')}`;
+}
+
+/**
+ * Generate next GR (Goods Receipt) number (GR-2026-03-001, GR-2026-03-002, ...).
+ * Operational running number — mirrors generatePONumber (count-based monthly sequence).
+ * MUST be called inside the receive Serializable $transaction; @unique is the backstop
+ * and a P2002 retry (in po-receiving.service) covers count-based collisions.
+ */
+export async function generateGRNumber(tx: PrismaTx): Promise<string> {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const monthStart = new Date(year, today.getMonth(), 1);
+  const monthEnd = new Date(year, today.getMonth() + 1, 1);
+  const monthCount = await tx.goodsReceiving.count({
+    where: { createdAt: { gte: monthStart, lt: monthEnd } },
+  });
+  return `GR-${year}-${month}-${String(monthCount + 1).padStart(3, '0')}`;
 }

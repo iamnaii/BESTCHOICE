@@ -3,6 +3,7 @@ import { Prisma, ProductCategory } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ReceivePODto, GoodsReceivingDto } from '../dto/create-po.dto';
 import { buildProductName } from './po-product-naming.util';
+import { generateGRNumber } from '../../../utils/sequence.util';
 
 /**
  * Inventory-mutating goods-receiving flows. Owns the 3 write transactions:
@@ -156,9 +157,11 @@ export class PoReceivingService {
           throw new BadRequestException('ไม่พบคลังกลาง กรุณาตั้งค่าสาขาคลังกลางก่อน');
         }
 
-        // Create goods receiving record
+        // Generate GR number inside the serializable tx; @unique is the backstop.
+        const grNumber = await generateGRNumber(tx);
         const receiving = await tx.goodsReceiving.create({
           data: {
+            grNumber,
             poId: id,
             receivedById: userId,
             notes: dto.notes,
@@ -340,6 +343,7 @@ export class PoReceivingService {
 
         return {
           receivingId: receiving.id,
+          grNumber,
           poId: id,
           status: newStatus,
           passed: passedProducts.length,

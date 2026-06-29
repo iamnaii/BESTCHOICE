@@ -191,10 +191,22 @@ enum PaymentStatus {
 enum POStatus {
   DRAFT
   APPROVED
+  ORDERED
   PENDING
   PARTIALLY_RECEIVED
   FULLY_RECEIVED
   CANCELLED
+}
+
+enum DefectReason {
+  SCREEN
+  BATTERY
+  IMEI_BLOCKED
+  BOX_MISSING
+  WRONG_MODEL
+  DOA
+  COSMETIC
+  OTHER
 }
 
 enum POPaymentStatus {
@@ -1528,6 +1540,8 @@ model PurchaseOrder {
   expectedDate        DateTime?       @map("expected_date")
   dueDate             DateTime?       @map("due_date")
   status              POStatus        @default(DRAFT)
+  orderedAt       DateTime? @map("ordered_at")
+  isDirectReceive Boolean   @default(false) @map("is_direct_receive")
   totalAmount         Decimal         @map("total_amount") @db.Decimal(12, 2)
   discount            Decimal         @default(0) @db.Decimal(12, 2) // ส่วนลดก่อน VAT
   discountAfterVat    Decimal         @default(0) @map("discount_after_vat") @db.Decimal(12, 2)
@@ -1813,6 +1827,7 @@ model StockTransfer {
 
 model GoodsReceiving {
   id           String    @id @default(uuid())
+  grNumber     String    @unique @map("gr_number")
   poId         String    @map("po_id")
   receivedById String    @map("received_by_id")
   notes        String?
@@ -1837,6 +1852,7 @@ model GoodsReceivingItem {
   photos             String[]            @default([])
   status             ReceivingItemStatus
   rejectReason       String?             @map("reject_reason")
+  defectReason DefectReason? @map("defect_reason")
   batteryHealth      Int?                @map("battery_health")
   warrantyExpired    Boolean?            @map("warranty_expired")
   warrantyExpireDate DateTime?           @map("warranty_expire_date")

@@ -60,7 +60,7 @@ interface Refs {
   branchId: string;
   salespersonId: string;
   reviewerId: string;
-  interestConfigId: string;
+  interestConfigId: string | null;
 }
 
 async function resolveRefs(prisma: PrismaService): Promise<Refs> {
@@ -76,14 +76,15 @@ async function resolveRefs(prisma: PrismaService): Promise<Refs> {
   if (!branch) missing.push('branch');
   if (!sales) missing.push('SALES user');
   if (!reviewer) missing.push('OWNER/BRANCH_MANAGER user');
-  if (!ic) missing.push('interestConfig');
+  // interestConfigId is nullable on Contract — prod may have no InterestConfig
+  // rows (rate stored directly on the contract), so it's optional here.
   if (missing.length) throw new Error(`Cannot seed — missing reference data: ${missing.join(', ')}`);
   return {
     productId: product!.id,
     branchId: branch!.id,
     salespersonId: sales!.id,
     reviewerId: reviewer!.id,
-    interestConfigId: ic!.id,
+    interestConfigId: ic?.id ?? null,
   };
 }
 

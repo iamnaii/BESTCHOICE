@@ -10,6 +10,11 @@ export interface POItem {
   receivedQty: number;
   accessoryType: string | null;
   accessoryBrand: string | null;
+  receivingItems?: {
+    id: string;
+    status: 'PASS' | 'REJECT';
+    product: { id: string; status: string } | null;
+  }[];
 }
 
 export interface GoodsReceivingItem {
@@ -24,6 +29,7 @@ export interface GoodsReceivingItem {
 
 export interface GoodsReceivingRecord {
   id: string;
+  grNumber: string;
   createdAt: string;
   notes: string | null;
   receivedBy: { id: string; name: string };
@@ -35,6 +41,7 @@ export interface PurchaseOrder {
   poNumber: string;
   orderDate: string;
   expectedDate: string | null;
+  orderedAt: string | null;
   dueDate: string | null;
   status: string;
   subtotal: string;

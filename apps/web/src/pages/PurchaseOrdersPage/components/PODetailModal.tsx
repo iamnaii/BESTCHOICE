@@ -1,7 +1,10 @@
+import { useNavigate } from 'react-router';
 import { formatDateShort, formatDateMedium, formatDateTime } from '@/utils/formatters';
 import { PurchaseOrder, PODetail, POItem } from '../types';
+import { timelineSteps } from '../po-detail.util';
 import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, poStatusMap, poPaymentStatusMap } from '@/lib/status-badges';
+import { Check, Circle, Printer } from 'lucide-react';
 
 export interface PODetailModalProps {
   isOpen: boolean;
@@ -32,6 +35,20 @@ export function PODetailModal({
     const parts = [item.color, item.storage].filter(Boolean);
     return parts.length > 0 ? parts.join(' / ') : '-';
   };
+  const navigate = useNavigate();
+
+  // Per-PO-item QC tally from each item's receiving products (findOne includes
+  // items.receivingItems.product.status — see po-query.service.ts:55-62).
+  const qcByItem = new Map<string, { qcPending: number; inStock: number }>();
+  for (const item of selectedPO?.items ?? []) {
+    const acc = { qcPending: 0, inStock: 0 };
+    for (const ri of item.receivingItems ?? []) {
+      if (ri.status !== 'PASS' || !ri.product) continue;
+      if (ri.product.status === 'QC_PENDING' || ri.product.status === 'PHOTO_PENDING') acc.qcPending += 1;
+      else if (ri.product.status === 'IN_STOCK') acc.inStock += 1;
+    }
+    if (acc.qcPending > 0 || acc.inStock > 0) qcByItem.set(item.id, acc);
+  }
 
   if (!isOpen) return null;
 
@@ -94,6 +111,47 @@ export function PODetailModal({
                   </div>
                 </div>
               </div>
+
+              {/* สถานะการดำเนินการ (timeline) */}
+              {selectedPO.status !== 'CANCELLED' && (
+                <div className="rounded-xl border border-border/50 bg-card p-5 shadow-sm">
+                  <h3 className="text-sm font-semibold text-foreground mb-4 leading-snug">สถานะการดำเนินการ</h3>
+                  <ol className="flex items-center justify-between gap-1">
+                    {timelineSteps(selectedPO).map((step, idx, arr) => {
+                      const done = step.state === 'done';
+                      const current = step.state === 'current';
+                      return (
+                        <li key={step.key} className="flex-1 flex flex-col items-center text-center relative">
+                          {idx < arr.length - 1 && (
+                            <span
+                              className={`absolute top-3 left-1/2 w-full h-0.5 ${done ? 'bg-success' : 'bg-border'}`}
+                              aria-hidden
+                            />
+                          )}
+                          <span
+                            className={`relative z-10 flex items-center justify-center size-6 rounded-full border-2 ${
+                              done
+                                ? 'bg-success border-success text-success-foreground'
+                                : current
+                                  ? 'bg-primary border-primary text-primary-foreground'
+                                  : 'bg-background border-border text-muted-foreground'
+                            }`}
+                          >
+                            {done ? <Check className="size-3.5" /> : <Circle className="size-2 fill-current" />}
+                          </span>
+                          <span
+                            className={`mt-1.5 text-[11px] leading-snug ${
+                              current ? 'text-primary font-semibold' : done ? 'text-foreground' : 'text-muted-foreground'
+                            }`}
+                          >
+                            {step.label}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                </div>
+              )}
 
               {/* การจ่ายเงิน */}
               <div className="rounded-xl border border-border/50 bg-card p-5 shadow-sm">
@@ -236,6 +294,7 @@ export function PODetailModal({
                       <th className="px-3 py-2.5 text-right font-semibold">ราคา/ชิ้น</th>
                       <th className="px-3 py-2.5 text-right font-semibold">รับแล้ว</th>
                       <th className="px-3 py-2.5 text-right font-semibold">คงเหลือ</th>
+                      <th className="px-3 py-2.5 text-right font-semibold">QC</th>
                       <th className="px-3 py-2.5 text-right font-semibold">รวม</th>
                     </tr>
                   </thead>
@@ -261,6 +320,22 @@ export function PODetailModal({
                           <span className={item.quantity - item.receivedQty > 0 ? 'text-destructive font-semibold' : 'text-success font-semibold'}>
                             {item.quantity - item.receivedQty}
                           </span>
+                        </td>
+                        <td className="px-3 py-2.5 text-right">
+                          {(() => {
+                            const qc = qcByItem.get(item.id);
+                            if (!qc || (qc.qcPending === 0 && qc.inStock === 0)) return <span className="text-muted-foreground">-</span>;
+                            return (
+                              <div className="flex flex-col items-end gap-0.5">
+                                {qc.qcPending > 0 && (
+                                  <Badge variant="warning" appearance="light" className="text-[10px]">รอ QC {qc.qcPending}</Badge>
+                                )}
+                                {qc.inStock > 0 && (
+                                  <Badge variant="success" appearance="light" className="text-[10px]">เข้าสต็อก {qc.inStock}</Badge>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </td>
                         <td className="px-3 py-2.5 text-right tabular-nums font-mono">
                           {(item.quantity * Number(item.unitPrice)).toLocaleString()}
@@ -305,14 +380,14 @@ export function PODetailModal({
                       const rejectCount = gr.items.filter((i) => i.status === 'REJECT').length;
                       return (
                         <div key={gr.id} className="border rounded-lg p-3">
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="text-sm">
-                              <span className="font-medium">{gr.receivedBy.name}</span>
-                              <span className="text-muted-foreground ml-2">
-                                {formatDateTime(gr.createdAt)}
-                              </span>
+                          <div className="flex items-center justify-between mb-2 gap-2">
+                            <div className="text-sm min-w-0">
+                              <span className="font-mono font-semibold text-primary">{gr.grNumber}</span>
+                              <div className="text-xs text-muted-foreground leading-snug">
+                                โดย {gr.receivedBy.name} · {formatDateTime(gr.createdAt)}
+                              </div>
                             </div>
-                            <div className="flex gap-2">
+                            <div className="flex items-center gap-2 shrink-0">
                               <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-success/10 text-success dark:bg-success/15">
                                 ผ่าน {passCount}
                               </span>
@@ -321,6 +396,16 @@ export function PODetailModal({
                                   ไม่ผ่าน {rejectCount}
                                 </span>
                               )}
+                              <button
+                                type="button"
+                                onClick={() => navigate(`/purchase-orders/${selectedPO.id}/goods-receivings/${gr.id}/print`)}
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs text-primary hover:bg-primary/10 transition-colors"
+                                title="พิมพ์ใบรับของ"
+                                aria-label={`พิมพ์ใบรับของ ${gr.grNumber}`}
+                              >
+                                <Printer className="size-3.5" />
+                                พิมพ์
+                              </button>
                             </div>
                           </div>
                           <div className="space-y-1">
@@ -351,7 +436,7 @@ export function PODetailModal({
             </div>
 
             {/* Sticky Footer */}
-            {['APPROVED', 'PARTIALLY_RECEIVED'].includes(selectedPO.status) && (
+            {['APPROVED', 'ORDERED', 'PARTIALLY_RECEIVED'].includes(selectedPO.status) && (
               <div className="sticky bottom-0 bg-background/95 backdrop-blur-xs border-t px-6 py-4 flex justify-end gap-3 shrink-0">
                 <button
                   onClick={() => openReceiveModal(selectedPO)}

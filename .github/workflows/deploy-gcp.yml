@@ -338,6 +338,29 @@ jobs:
             --set-cloudsql-instances=${{ secrets.CLOUD_SQL_CONNECTION_NAME }} \
             --allow-unauthenticated
 
+      - name: Grant runtime SA Token Creator (GCS V4 signed-URL uploads)
+        run: |
+          # GCS V4 presigned upload URLs (/shop/upload/signed-url → bank slip,
+          # trade-in, voice memo) require the Cloud Run runtime SA to sign via the
+          # IAM signBlob API, i.e. roles/iam.serviceAccountTokenCreator on ITSELF.
+          # Without it getSignedUrl() throws → 500 on upload. Idempotent + non-fatal
+          # so a missing-IAM-perm on the deploy SA can never block a deploy.
+          SA=$(gcloud run services describe bestchoice-api \
+            --project="${{ secrets.GCP_PROJECT_ID }}" \
+            --region="${{ secrets.GCP_REGION || 'asia-southeast1' }}" \
+            --format='value(spec.template.spec.serviceAccountName)' 2>/dev/null || true)
+          if [ -z "$SA" ]; then
+            PN=$(gcloud projects describe "${{ secrets.GCP_PROJECT_ID }}" --format='value(projectNumber)')
+            SA="${PN}-compute@developer.gserviceaccount.com"
+          fi
+          echo "Runtime SA: $SA"
+          gcloud iam service-accounts add-iam-policy-binding "$SA" \
+            --project="${{ secrets.GCP_PROJECT_ID }}" \
+            --member="serviceAccount:$SA" \
+            --role="roles/iam.serviceAccountTokenCreator" \
+            && echo "::notice::Token Creator granted to $SA (or already present) — GCS signed-URL uploads enabled" \
+            || echo "::warning::Could not grant Token Creator to $SA — deploy SA likely lacks IAM perms; grant it manually (Cloud Shell): gcloud iam service-accounts add-iam-policy-binding $SA --member=serviceAccount:$SA --role=roles/iam.serviceAccountTokenCreator"
+
       - name: Verify deployment
         run: |
           API_URL=$(gcloud run services describe bestchoice-api \

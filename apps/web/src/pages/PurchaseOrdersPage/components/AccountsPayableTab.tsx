@@ -33,6 +33,10 @@ export function AccountsPayableTab({ payableData, onOpenDetail }: AccountsPayabl
         </div>
       </div>
 
+      {!payableData && (
+        <div className="text-center py-12 text-muted-foreground">กำลังโหลดยอดค้างจ่าย…</div>
+      )}
+
       {/* Per-supplier Breakdown */}
       {payableData?.suppliers.map((entry) => (
         <div key={entry.supplier.id} className="border border-border/50 rounded-xl overflow-hidden bg-card shadow-sm">
@@ -44,9 +48,19 @@ export function AccountsPayableTab({ payableData, onOpenDetail }: AccountsPayabl
                 {[entry.supplier.contactName, entry.supplier.phone].filter(Boolean).join(' | ')}
               </div>
             </div>
-            <div className="text-right">
+            <div className="text-right min-w-[180px]">
               <div className="text-lg font-bold text-destructive tabular-nums font-mono">{(Number(entry.totalRemaining) || 0).toLocaleString()} บาท</div>
-              <div className="text-xs text-muted-foreground tabular-nums">จาก {(Number(entry.totalNet) || 0).toLocaleString()} (จ่ายแล้ว {(Number(entry.totalPaid) || 0).toLocaleString()})</div>
+              <div className="text-xs text-muted-foreground tabular-nums">
+                จ่ายแล้ว {(Number(entry.totalPaid) || 0).toLocaleString()} / {(Number(entry.totalNet) || 0).toLocaleString()}
+              </div>
+              {Number(entry.totalNet) > 0 && (
+                <div className="mt-1.5 w-full bg-secondary rounded-full h-1.5">
+                  <div
+                    className="bg-success h-1.5 rounded-full"
+                    style={{ width: `${Math.min((Number(entry.totalPaid) / Number(entry.totalNet)) * 100, 100)}%` }}
+                  />
+                </div>
+              )}
             </div>
           </div>
           {/* PO List */}
@@ -59,26 +73,41 @@ export function AccountsPayableTab({ payableData, onOpenDetail }: AccountsPayabl
                 <th className="px-4 py-2.5 text-left font-semibold">รายการ</th>
                 <th className="px-4 py-2.5 text-right font-semibold">ยอดสุทธิ</th>
                 <th className="px-4 py-2.5 text-right font-semibold">จ่ายแล้ว</th>
-                <th className="px-4 py-2.5 text-right font-semibold">คงค้าง</th>
+                <th className="px-4 py-2.5 text-right font-semibold text-destructive">คงค้าง</th>
                 <th className="px-4 py-2.5 text-center font-semibold">สถานะจ่าย</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/50">
               {entry.pos.map((po) => (
-                <tr key={po.id} className="hover:bg-muted/30">
+                <tr
+                  key={po.id}
+                  className="hover:bg-muted/30 cursor-pointer"
+                  onClick={async () => { try { const { data } = await api.get(`/purchase-orders/${po.id}`); onOpenDetail(data, data); } catch {} }}
+                >
                   <td className="px-4 py-2">
-                    <button onClick={async () => { try { const { data } = await api.get(`/purchase-orders/${po.id}`); onOpenDetail(data, data); } catch {} }} className="text-primary hover:underline font-medium">
+                    <button
+                      onClick={async (e) => { e.stopPropagation(); try { const { data } = await api.get(`/purchase-orders/${po.id}`); onOpenDetail(data, data); } catch {} }}
+                      className="text-primary hover:underline font-medium"
+                    >
                       {po.poNumber}
                     </button>
                   </td>
                   <td className="px-4 py-2 text-muted-foreground">{formatDateShort(po.orderDate)}</td>
                   <td className="px-4 py-2">
-                    {po.dueDate ? (
-                      <span className={`text-sm ${new Date(po.dueDate) < new Date() ? 'text-destructive font-semibold' : 'text-muted-foreground'}`}>
-                        {formatDateShort(po.dueDate)}
-                        {new Date(po.dueDate) < new Date() && <span className="ml-1 text-xs bg-destructive/10 text-destructive dark:bg-destructive/15 px-1.5 py-0.5 rounded-full">เลยกำหนด</span>}
-                      </span>
-                    ) : (
+                    {po.dueDate ? (() => {
+                      const due = new Date(po.dueDate);
+                      const now = new Date();
+                      const isLate = due < now;
+                      const inSevenDays = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+                      const dueSoon = !isLate && due <= inSevenDays;
+                      return (
+                        <span className={`text-sm ${isLate ? 'text-destructive font-semibold' : dueSoon ? 'text-warning font-medium' : 'text-muted-foreground'}`}>
+                          {formatDateShort(po.dueDate)}
+                          {isLate && <span className="ml-1 text-2xs bg-destructive/10 text-destructive dark:bg-destructive/15 px-1.5 py-0.5 rounded-full leading-snug">เลยกำหนด</span>}
+                          {dueSoon && <span className="ml-1 text-2xs bg-warning/10 text-warning dark:bg-warning/15 px-1.5 py-0.5 rounded-full leading-snug">ใกล้ครบกำหนด</span>}
+                        </span>
+                      );
+                    })() : (
                       <span className="text-muted-foreground text-xs">-</span>
                     )}
                   </td>

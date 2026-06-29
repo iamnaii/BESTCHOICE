@@ -1,5 +1,6 @@
-import { IsString, IsNumber, IsOptional, IsDateString, IsArray, ValidateNested, IsIn, IsBoolean, ArrayMinSize, Min } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsDateString, IsArray, ValidateNested, IsIn, IsBoolean, ArrayMinSize, Min, IsEnum } from 'class-validator';
 import { Type } from 'class-transformer';
+import { DefectReason } from '@prisma/client';
 
 export class POItemDto {
   @IsString()
@@ -193,6 +194,10 @@ export class GoodsReceivingItemDto {
   @IsString()
   @IsOptional()
   rejectReason?: string;
+
+  @IsEnum(DefectReason)
+  @IsOptional()
+  defectReason?: DefectReason;
 
   @IsNumber()
   @IsOptional()

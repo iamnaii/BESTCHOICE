@@ -313,6 +313,7 @@ export class PoReceivingService {
                     photos: item.photos || [],
                     status: 'REJECT',
                     rejectReason: item.rejectReason,
+                    defectReason: item.defectReason ?? null,
                   },
                 });
 

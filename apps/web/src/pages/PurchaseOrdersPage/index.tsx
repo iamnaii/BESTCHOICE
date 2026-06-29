@@ -18,6 +18,7 @@ import { CreatePOModal } from './components/CreatePOModal';
 import { PODetailModal } from './components/PODetailModal';
 import { PaymentModal } from './components/PaymentModal';
 import { GoodsReceivingModal } from './components/GoodsReceivingModal';
+import { DirectReceiveModal } from './components/DirectReceiveModal';
 
 export default function PurchaseOrdersPage() {
   const resetFormRef = useRef<() => void>(() => {});
@@ -123,6 +124,12 @@ export default function PurchaseOrdersPage() {
                 ส่งออก Excel
               </button>
             )}
+            <button
+              onClick={data.openDirectReceive}
+              className="px-4 py-2 border border-input rounded-lg text-sm font-medium hover:bg-muted transition-colors"
+            >
+              รับเข้าตรง (supplier)
+            </button>
             <button
               onClick={() => data.setIsCreateModalOpen(true)}
               className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
@@ -267,6 +274,19 @@ export default function PurchaseOrdersPage() {
         updateReceivingUnit={data.updateReceivingUnit}
         updateChecklist={data.updateChecklist}
         handleGoodsReceiving={data.handleGoodsReceiving}
+      />
+
+      <DirectReceiveModal
+        isOpen={data.isDirectReceiveOpen}
+        onClose={() => data.setIsDirectReceiveOpen(false)}
+        suppliers={data.suppliers}
+        supplierId={data.directSupplierId}
+        setSupplierId={data.setDirectSupplierId}
+        lines={data.directLines}
+        setLines={data.setDirectLines}
+        notes={data.directNotes}
+        setNotes={data.setDirectNotes}
+        directReceiveMutation={data.directReceiveMutation}
       />
 
       <ConfirmDialog

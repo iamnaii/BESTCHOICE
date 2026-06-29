@@ -23,13 +23,21 @@ export function buildDirectReceiveItem(i: ReceivingUnitForm) {
     rejectReason: i.status === 'REJECT' ? i.rejectReason || undefined : undefined,
     defectReason: i.status === 'REJECT' ? i.defectReason || undefined : undefined,
     photos: i.photos.length ? i.photos : undefined,
-    ...(isUsed && i.status === 'PASS' ? {
-      batteryHealth: i.batteryHealth ? Number(i.batteryHealth) : undefined,
-      warrantyExpired: i.warrantyExpired,
-      warrantyExpireDate: !i.warrantyExpired && i.warrantyExpireDate ? i.warrantyExpireDate : undefined,
-      hasBox: i.hasBox,
-      checklistResults: i.checklist.map(({ item, category, passed, note }) => ({ item, category, passed, ...(note ? { note } : {}) })),
-    } : {}),
+    ...(isUsed && i.status === 'PASS'
+      ? {
+          batteryHealth: i.batteryHealth ? Number(i.batteryHealth) : undefined,
+          warrantyExpired: i.warrantyExpired,
+          warrantyExpireDate:
+            !i.warrantyExpired && i.warrantyExpireDate ? i.warrantyExpireDate : undefined,
+          hasBox: i.hasBox,
+          checklistResults: i.checklist.map(({ item, category, passed, note }) => ({
+            item,
+            category,
+            passed,
+            ...(note ? { note } : {}),
+          })),
+        }
+      : {}),
     ...(i.status === 'PASS' && i.sellingPrice ? { sellingPrice: Number(i.sellingPrice) } : {}),
   };
 }
@@ -47,17 +55,45 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
   const [directLines, setDirectLines] = useState<DirectReceiveLineForm[]>([]);
   const [directSupplierId, setDirectSupplierId] = useState('');
   const [directNotes, setDirectNotes] = useState('');
-  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    message: string;
+    action: () => void;
+  }>({ open: false, message: '', action: () => {} });
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
   const [poDetail, setPODetail] = useState<PODetail | null>(null);
   const [receivingUnits, setReceivingUnits] = useState<ReceivingUnitForm[]>([]);
   const [receivingNotes, setReceivingNotes] = useState('');
-  const [paymentForm, setPaymentForm] = useState({ paymentStatus: '', paymentMethod: '', paidAmount: '', paymentNotes: '' });
+  const [paymentForm, setPaymentForm] = useState({
+    paymentStatus: '',
+    paymentMethod: '',
+    paidAmount: '',
+    paymentNotes: '',
+  });
   const [paymentAttachments, setPaymentAttachments] = useState<string[]>([]);
   const [paymentAttachmentUrl, setPaymentAttachmentUrl] = useState('');
 
-  const { data: suppliersRes, isLoading: suppliersLoading, isError: suppliersError } = useQuery<{ data: { id: string; name: string; contactName: string | null; hasVat: boolean; paymentMethods: { paymentMethod: string; bankName?: string; bankAccountName?: string; bankAccountNumber?: string; creditTermDays?: number; isDefault: boolean }[] }[] }>({
+  const {
+    data: suppliersRes,
+    isLoading: suppliersLoading,
+    isError: suppliersError,
+  } = useQuery<{
+    data: {
+      id: string;
+      name: string;
+      contactName: string | null;
+      hasVat: boolean;
+      paymentMethods: {
+        paymentMethod: string;
+        bankName?: string;
+        bankAccountName?: string;
+        bankAccountNumber?: string;
+        creditTermDays?: number;
+        isDefault: boolean;
+      }[];
+    }[];
+  }>({
     queryKey: ['suppliers-for-po'],
     queryFn: async () => (await api.get('/suppliers?limit=200&isActive=true')).data,
     retry: 2,
@@ -72,7 +108,18 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
       totalPaid: number;
       totalRemaining: number;
       poCount: number;
-      pos: { id: string; poNumber: string; orderDate: string; dueDate: string | null; netAmount: number; paidAmount: number; remaining: number; paymentStatus: string; status: string; itemsSummary: string }[];
+      pos: {
+        id: string;
+        poNumber: string;
+        orderDate: string;
+        dueDate: string | null;
+        netAmount: number;
+        paidAmount: number;
+        remaining: number;
+        paymentStatus: string;
+        status: string;
+        itemsSummary: string;
+      }[];
     }[];
   };
   const { data: payableData } = useQuery<PayableData>({
@@ -81,8 +128,16 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
       const res = await api.get('/purchase-orders/accounts-payable');
       // Backend returns { grandTotal, data: suppliers[], total, page, limit }
       // Normalize to legacy shape { grandTotal, suppliers: [...] }
-      const raw = res.data as { grandTotal?: number; data?: PayableData['suppliers']; suppliers?: PayableData['suppliers'] };
-      const suppliers = Array.isArray(raw?.suppliers) ? raw.suppliers : Array.isArray(raw?.data) ? raw.data : [];
+      const raw = res.data as {
+        grandTotal?: number;
+        data?: PayableData['suppliers'];
+        suppliers?: PayableData['suppliers'];
+      };
+      const suppliers = Array.isArray(raw?.suppliers)
+        ? raw.suppliers
+        : Array.isArray(raw?.data)
+          ? raw.data
+          : [];
       return { grandTotal: Number(raw?.grandTotal) || 0, suppliers };
     },
     enabled: activeTab === 'payable',
@@ -97,7 +152,9 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     },
   });
 
-  const { data: qcPendingItems = [] } = useQuery<{ productId: string; productName: string; imeiSerial?: string }[]>({
+  const { data: qcPendingItems = [] } = useQuery<
+    { productId: string; productName: string; imeiSerial?: string }[]
+  >({
     queryKey: ['qc-pending'],
     queryFn: async () => {
       const res = await api.get('/purchase-orders/qc-pending');
@@ -167,7 +224,15 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
   });
 
   const goodsReceivingMutation = useMutation({
-    mutationFn: async ({ poId, items, notes }: { poId: string; items: ReceivingUnitForm[]; notes: string }) =>
+    mutationFn: async ({
+      poId,
+      items,
+      notes,
+    }: {
+      poId: string;
+      items: ReceivingUnitForm[];
+      notes: string;
+    }) =>
       api.post(`/purchase-orders/${poId}/goods-receiving`, {
         items: items.map((i) => {
           const isUsed = i.category === 'PHONE_USED';
@@ -179,16 +244,24 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
             rejectReason: i.status === 'REJECT' ? i.rejectReason || undefined : undefined,
             defectReason: i.status === 'REJECT' ? i.defectReason || undefined : undefined,
             photos: i.photos.length ? i.photos : undefined,
-            ...(isUsed && i.status === 'PASS' ? {
-              batteryHealth: i.batteryHealth ? Number(i.batteryHealth) : undefined,
-              warrantyExpired: i.warrantyExpired,
-              warrantyExpireDate: !i.warrantyExpired && i.warrantyExpireDate ? i.warrantyExpireDate : undefined,
-              hasBox: i.hasBox,
-              checklistResults: i.checklist.map(({ item, category, passed, note }) => ({
-                item, category, passed, ...(note ? { note } : {}),
-              })),
-            } : {}),
-            ...(i.status === 'PASS' && i.sellingPrice ? { sellingPrice: Number(i.sellingPrice) } : {}),
+            ...(isUsed && i.status === 'PASS'
+              ? {
+                  batteryHealth: i.batteryHealth ? Number(i.batteryHealth) : undefined,
+                  warrantyExpired: i.warrantyExpired,
+                  warrantyExpireDate:
+                    !i.warrantyExpired && i.warrantyExpireDate ? i.warrantyExpireDate : undefined,
+                  hasBox: i.hasBox,
+                  checklistResults: i.checklist.map(({ item, category, passed, note }) => ({
+                    item,
+                    category,
+                    passed,
+                    ...(note ? { note } : {}),
+                  })),
+                }
+              : {}),
+            ...(i.status === 'PASS' && i.sellingPrice
+              ? { sellingPrice: Number(i.sellingPrice) }
+              : {}),
           };
         }),
         notes: notes || undefined,
@@ -196,7 +269,9 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
       const data = res.data;
-      toast.success(`รับ+ตรวจสำเร็จ: ผ่าน ${data.passed} ชิ้น, ไม่ผ่าน ${data.rejected} ชิ้น → รอ QC ที่คลัง ${data.mainWarehouse}`);
+      toast.success(
+        `รับ+ตรวจสำเร็จ: ผ่าน ${data.passed} ชิ้น, ไม่ผ่าน ${data.rejected} ชิ้น → รอ QC ที่คลัง ${data.mainWarehouse}`,
+      );
       setIsReceiveModalOpen(false);
       setIsDetailModalOpen(false);
     },
@@ -204,7 +279,17 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
   });
 
   const directReceiveMutation = useMutation({
-    mutationFn: async ({ supplierId, orderDate, notes, items }: { supplierId: string; orderDate: string; notes?: string; items: ReceivingUnitForm[] }) =>
+    mutationFn: async ({
+      supplierId,
+      orderDate,
+      notes,
+      items,
+    }: {
+      supplierId: string;
+      orderDate: string;
+      notes?: string;
+      items: ReceivingUnitForm[];
+    }) =>
       api.post('/purchase-orders/direct-receive', {
         supplierId,
         orderDate,
@@ -214,7 +299,9 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
       const d = res.data;
-      toast.success(`รับเข้าตรงสำเร็จ (${d.poNumber}): ผ่าน ${d.passed} ชิ้น, ไม่ผ่าน ${d.rejected} ชิ้น → รอ QC ที่คลัง ${d.mainWarehouse}`);
+      toast.success(
+        `รับเข้าตรงสำเร็จ (${d.poNumber}): ผ่าน ${d.passed} ชิ้น, ไม่ผ่าน ${d.rejected} ชิ้น → รอ QC ที่คลัง ${d.mainWarehouse}`,
+      );
       setIsDirectReceiveOpen(false);
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
@@ -230,10 +317,15 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
       setIsPaymentModalOpen(false);
       // Refresh detail if open
       if (selectedPO) {
-        api.get(`/purchase-orders/${selectedPO.id}`).then(({ data }) => {
-          setPODetail(data);
-          setSelectedPO(data);
-        }).catch(() => { /* detail will refresh on next open */ });
+        api
+          .get(`/purchase-orders/${selectedPO.id}`)
+          .then(({ data }) => {
+            setPODetail(data);
+            setSelectedPO(data);
+          })
+          .catch(() => {
+            /* detail will refresh on next open */
+          });
       }
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
@@ -266,7 +358,9 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
           if (t.cashPrice) pricingCache.set(key, String(Number(t.cashPrice)));
         }
       }
-    } catch { /* failed to fetch pricing templates */ }
+    } catch {
+      /* failed to fetch pricing templates */
+    }
 
     const units: ReceivingUnitForm[] = [];
     for (const item of po.items) {
@@ -274,9 +368,13 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
       const isAccessory = item.category === 'ACCESSORY';
       const isCharger = isAccessory && item.accessoryType === 'ชุดชาร์จ';
       const nameParts = isAccessory
-        ? (isCharger
-            ? [item.accessoryType, item.accessoryBrand, item.model].filter(Boolean)
-            : [item.accessoryType, item.accessoryBrand, item.model ? `สำหรับ ${item.model}` : ''].filter(Boolean))
+        ? isCharger
+          ? [item.accessoryType, item.accessoryBrand, item.model].filter(Boolean)
+          : [
+              item.accessoryType,
+              item.accessoryBrand,
+              item.model ? `สำหรับ ${item.model}` : '',
+            ].filter(Boolean)
         : [item.brand, item.model, item.color, item.storage].filter(Boolean);
 
       // Try to find matching pricing template (with storage, then without)
@@ -333,7 +431,19 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
   const openDirectReceive = () => {
     setDirectSupplierId('');
     setDirectNotes('');
-    setDirectLines([{ category: 'PHONE_NEW', brand: '', model: '', color: '', storage: '', accessoryType: '', accessoryBrand: '', quantity: '1', costPrice: '' }]);
+    setDirectLines([
+      {
+        category: 'PHONE_NEW',
+        brand: '',
+        model: '',
+        color: '',
+        storage: '',
+        accessoryType: '',
+        accessoryBrand: '',
+        quantity: '1',
+        costPrice: '',
+      },
+    ]);
     setIsDirectReceiveOpen(true);
   };
 
@@ -345,7 +455,12 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     setReceivingUnits(newUnits);
   };
 
-  const updateChecklist = (unitIdx: number, checkIdx: number, field: 'passed' | 'note', value: boolean | string) => {
+  const updateChecklist = (
+    unitIdx: number,
+    checkIdx: number,
+    field: 'passed' | 'note',
+    value: boolean | string,
+  ) => {
     const newUnits = [...receivingUnits];
     const newChecklist = [...newUnits[unitIdx].checklist];
     newChecklist[checkIdx] = { ...newChecklist[checkIdx], [field]: value };
@@ -362,9 +477,9 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
       return;
     }
 
-    const missingReasons = receivingUnits.filter((u) => u.status === 'REJECT' && !u.rejectReason.trim());
-    if (missingReasons.length > 0) {
-      toast.error('กรุณาระบุเหตุผลสำหรับรายการที่ไม่ผ่าน');
+    const missingDefect = receivingUnits.filter((u) => u.status === 'REJECT' && !u.defectReason);
+    if (missingDefect.length > 0) {
+      toast.error('กรุณาเลือกสาเหตุที่ไม่ผ่าน (defect) สำหรับรายการที่ไม่ผ่าน');
       return;
     }
 
@@ -376,13 +491,17 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
       return;
     }
 
-    const missingSerial = passUnits.filter((u) => u.category !== 'ACCESSORY' && !u.serialNumber.trim());
+    const missingSerial = passUnits.filter(
+      (u) => u.category !== 'ACCESSORY' && !u.serialNumber.trim(),
+    );
     if (missingSerial.length > 0) {
       toast.error('กรุณาระบุหมายเลขซีเรียลให้ครบทุกรายการที่ผ่าน');
       return;
     }
 
-    const missingSellingPrice = passUnits.filter((u) => !u.sellingPrice.trim() || Number(u.sellingPrice) <= 0);
+    const missingSellingPrice = passUnits.filter(
+      (u) => !u.sellingPrice.trim() || Number(u.sellingPrice) <= 0,
+    );
     if (missingSellingPrice.length > 0) {
       toast.error('กรุณาระบุราคาขายให้ครบทุกรายการที่ผ่าน');
       return;
@@ -396,7 +515,9 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
       return;
     }
 
-    const missingWarranty = usedPhonePass.filter((u) => !u.warrantyExpired && !u.warrantyExpireDate.trim());
+    const missingWarranty = usedPhonePass.filter(
+      (u) => !u.warrantyExpired && !u.warrantyExpireDate.trim(),
+    );
     if (missingWarranty.length > 0) {
       toast.error('กรุณาระบุวันหมดประกันหรือติ๊กหมดประกันแล้ว');
       return;

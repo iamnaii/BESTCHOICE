@@ -2,8 +2,37 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
-import { PurchaseOrder, PODetail, ReceivingUnitForm } from '../types';
+import { PurchaseOrder, PODetail, ReceivingUnitForm, DirectReceiveLineForm } from '../types';
 import { defaultChecklist } from '../constants';
+
+export function buildDirectReceiveItem(i: ReceivingUnitForm) {
+  const isUsed = i.category === 'PHONE_USED';
+  return {
+    category: i.category || undefined,
+    brand: i.brand || undefined,
+    model: i.model || undefined,
+    color: i.color || undefined,
+    storage: i.storage || undefined,
+    accessoryType: i.accessoryType || undefined,
+    accessoryBrand: i.accessoryBrand || undefined,
+    quantity: 1,
+    unitPrice: Number(i.costPrice),
+    imeiSerial: i.imeiSerial || undefined,
+    serialNumber: i.serialNumber || undefined,
+    status: i.status,
+    rejectReason: i.status === 'REJECT' ? i.rejectReason || undefined : undefined,
+    defectReason: i.status === 'REJECT' ? i.defectReason || undefined : undefined,
+    photos: i.photos.length ? i.photos : undefined,
+    ...(isUsed && i.status === 'PASS' ? {
+      batteryHealth: i.batteryHealth ? Number(i.batteryHealth) : undefined,
+      warrantyExpired: i.warrantyExpired,
+      warrantyExpireDate: !i.warrantyExpired && i.warrantyExpireDate ? i.warrantyExpireDate : undefined,
+      hasBox: i.hasBox,
+      checklistResults: i.checklist.map(({ item, category, passed, note }) => ({ item, category, passed, ...(note ? { note } : {}) })),
+    } : {}),
+    ...(i.status === 'PASS' && i.sellingPrice ? { sellingPrice: Number(i.sellingPrice) } : {}),
+  };
+}
 
 export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }) {
   const queryClient = useQueryClient();
@@ -14,6 +43,10 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
   const [showQcPanel, setShowQcPanel] = useState(false);
   const [qcNotes, setQcNotes] = useState<Record<string, string>>({});
   const [isReceiveModalOpen, setIsReceiveModalOpen] = useState(false);
+  const [isDirectReceiveOpen, setIsDirectReceiveOpen] = useState(false);
+  const [directLines, setDirectLines] = useState<DirectReceiveLineForm[]>([]);
+  const [directSupplierId, setDirectSupplierId] = useState('');
+  const [directNotes, setDirectNotes] = useState('');
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
@@ -144,6 +177,8 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
             serialNumber: i.serialNumber || undefined,
             status: i.status,
             rejectReason: i.status === 'REJECT' ? i.rejectReason || undefined : undefined,
+            defectReason: i.status === 'REJECT' ? i.defectReason || undefined : undefined,
+            photos: i.photos.length ? i.photos : undefined,
             ...(isUsed && i.status === 'PASS' ? {
               batteryHealth: i.batteryHealth ? Number(i.batteryHealth) : undefined,
               warrantyExpired: i.warrantyExpired,
@@ -164,6 +199,23 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
       toast.success(`รับ+ตรวจสำเร็จ: ผ่าน ${data.passed} ชิ้น, ไม่ผ่าน ${data.rejected} ชิ้น → รอ QC ที่คลัง ${data.mainWarehouse}`);
       setIsReceiveModalOpen(false);
       setIsDetailModalOpen(false);
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
+  const directReceiveMutation = useMutation({
+    mutationFn: async ({ supplierId, orderDate, notes, items }: { supplierId: string; orderDate: string; notes?: string; items: ReceivingUnitForm[] }) =>
+      api.post('/purchase-orders/direct-receive', {
+        supplierId,
+        orderDate,
+        notes: notes || undefined,
+        items: items.map(buildDirectReceiveItem),
+      }),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      const d = res.data;
+      toast.success(`รับเข้าตรงสำเร็จ (${d.poNumber}): ผ่าน ${d.passed} ชิ้น, ไม่ผ่าน ${d.rejected} ชิ้น → รอ QC ที่คลัง ${d.mainWarehouse}`);
+      setIsDirectReceiveOpen(false);
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
@@ -249,12 +301,15 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
           serialNumber: '',
           status: 'PASS',
           rejectReason: '',
+          defectReason: '',
           batteryHealth: '',
           warrantyExpired: false,
           warrantyExpireDate: '',
           hasBox: true,
           checklist: defaultChecklist.map((c) => ({ ...c, passed: true, note: '' })),
           sellingPrice: defaultPrice,
+          photos: [],
+          costPrice: '',
         });
       }
     }
@@ -273,6 +328,13 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     setPaymentAttachments(po.attachments || []);
     setPaymentAttachmentUrl('');
     setIsPaymentModalOpen(true);
+  };
+
+  const openDirectReceive = () => {
+    setDirectSupplierId('');
+    setDirectNotes('');
+    setDirectLines([{ category: 'PHONE_NEW', brand: '', model: '', color: '', storage: '', accessoryType: '', accessoryBrand: '', quantity: '1', costPrice: '' }]);
+    setIsDirectReceiveOpen(true);
   };
 
   const updateReceivingUnit = (idx: number, field: string, value: string) => {
@@ -379,6 +441,7 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     rejectPOMutation,
     cancelMutation,
     goodsReceivingMutation,
+    directReceiveMutation,
     paymentMutation,
     // State
     statusFilter,
@@ -391,6 +454,14 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     setIsDetailModalOpen,
     isReceiveModalOpen,
     setIsReceiveModalOpen,
+    isDirectReceiveOpen,
+    setIsDirectReceiveOpen,
+    directLines,
+    setDirectLines,
+    directSupplierId,
+    setDirectSupplierId,
+    directNotes,
+    setDirectNotes,
     isPaymentModalOpen,
     setIsPaymentModalOpen,
     showQcPanel,
@@ -416,6 +487,7 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     // Actions
     openDetailModal,
     openReceiveModal,
+    openDirectReceive,
     openPaymentModal,
     updateReceivingUnit,
     updateChecklist,

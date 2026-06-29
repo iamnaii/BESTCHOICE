@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { formatDateShort } from '@/utils/formatters';
 import type { ItemForm } from '../types';
 
 export const WIZARD_STEPS = ['เลือกผู้ขาย', 'เพิ่มรายการ', 'ส่วนลด/VAT', 'ทบทวน+บันทึก'];
@@ -127,9 +126,6 @@ export function useCreatePoWizard(opts: UseCreatePoWizardOptions): CreatePoWizar
   const next = useCallback(() => setStep((s) => Math.min(s + 1, LAST_STEP)), []);
   const back = useCallback(() => setStep((s) => Math.max(s - 1, 0)), []);
 
-  // formatDateShort referenced so callers may render the preview consistently;
-  // exported preview is a Date so the panel can choose its own formatting.
-  void formatDateShort;
-
+  // dueDatePreview is exported as a Date so each panel formats it (formatDateShort) itself.
   return { step, goToStep, next, back, canNext, dueDatePreview, creditTermDays, draftRecovered, clearDraft };
 }

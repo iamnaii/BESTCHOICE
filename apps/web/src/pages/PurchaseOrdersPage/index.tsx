@@ -4,14 +4,14 @@ import { toast } from 'sonner';
 import PageHeader from '@/components/ui/PageHeader';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { exportToExcel } from '@/utils/excel.util';
-import { Download } from 'lucide-react';
+import { Download, ClipboardCheck } from 'lucide-react';
+import { Link } from 'react-router';
 import { formatDateShort } from '@/utils/formatters';
 import { usePurchaseOrdersData } from './hooks/usePurchaseOrdersData';
 import { usePOForm } from './hooks/usePOForm';
 import { useCreatePoWizard } from './hooks/useCreatePoWizard';
 import { computePoTotals } from './poTotals';
 import { statusLabels, paymentStatusLabels } from './constants';
-import { QcPendingPanel } from './components/QcPendingPanel';
 import { POListTab } from './components/POListTab';
 import { AccountsPayableTab } from './components/AccountsPayableTab';
 import { CreatePOModal } from './components/CreatePOModal';
@@ -89,6 +89,13 @@ export default function PurchaseOrdersPage() {
         subtitle="จัดการการสั่งซื้อสินค้า"
         action={
           <div className="flex gap-2">
+            <Link
+              to="/purchase-orders/qc"
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-sm border border-input rounded-lg hover:bg-muted transition-colors"
+            >
+              <ClipboardCheck className="size-4" />
+              ศูนย์ตรวจ QC
+            </Link>
             {data.pos.length > 0 && (
               <button
                 onClick={async () => {
@@ -138,15 +145,6 @@ export default function PurchaseOrdersPage() {
             </button>
           </div>
         }
-      />
-
-      <QcPendingPanel
-        qcPendingItems={data.qcPendingItems}
-        showQcPanel={data.showQcPanel}
-        setShowQcPanel={data.setShowQcPanel}
-        qcNotes={data.qcNotes}
-        setQcNotes={data.setQcNotes}
-        qcConfirmMutation={data.qcConfirmMutation}
       />
 
       {/* Tabs */}

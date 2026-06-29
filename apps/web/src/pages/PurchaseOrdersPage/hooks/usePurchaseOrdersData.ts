@@ -48,8 +48,6 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'list' | 'payable'>('list');
-  const [showQcPanel, setShowQcPanel] = useState(false);
-  const [qcNotes, setQcNotes] = useState<Record<string, string>>({});
   const [isReceiveModalOpen, setIsReceiveModalOpen] = useState(false);
   const [isDirectReceiveOpen, setIsDirectReceiveOpen] = useState(false);
   const [directLines, setDirectLines] = useState<DirectReceiveLineForm[]>([]);
@@ -150,29 +148,6 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
       const res = await api.get(`/purchase-orders${params}`);
       return Array.isArray(res.data) ? res.data : (res.data?.data ?? []);
     },
-  });
-
-  const { data: qcPendingItems = [] } = useQuery<
-    { productId: string; productName: string; imeiSerial?: string }[]
-  >({
-    queryKey: ['qc-pending'],
-    queryFn: async () => {
-      const res = await api.get('/purchase-orders/qc-pending');
-      // Backend now returns { data: [...], total, page, limit, totalPages }
-      // Fallback to legacy array shape for older builds
-      return Array.isArray(res.data) ? res.data : (res.data?.data ?? []);
-    },
-  });
-
-  const qcConfirmMutation = useMutation({
-    mutationFn: async (data: { items: { productId: string; passed: boolean; notes?: string }[] }) =>
-      api.post('/purchase-orders/qc-confirm', data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['qc-pending'] });
-      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
-      toast.success('ยืนยัน QC สำเร็จ');
-    },
-    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   const createMutation = useMutation({
@@ -553,9 +528,7 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     payableData,
     pos,
     isLoading,
-    qcPendingItems,
     // Mutations
-    qcConfirmMutation,
     createMutation,
     approveMutation,
     orderMutation,
@@ -585,10 +558,6 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     setDirectNotes,
     isPaymentModalOpen,
     setIsPaymentModalOpen,
-    showQcPanel,
-    setShowQcPanel,
-    qcNotes,
-    setQcNotes,
     confirmDialog,
     setConfirmDialog,
     selectedPO,

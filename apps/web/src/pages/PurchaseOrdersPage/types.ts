@@ -79,6 +79,10 @@ export interface ItemForm {
   accessoryBrand: string;
 }
 
+export type DefectReasonValue =
+  | 'SCREEN' | 'BATTERY' | 'IMEI_BLOCKED' | 'BOX_MISSING'
+  | 'WRONG_MODEL' | 'DOA' | 'COSMETIC' | 'OTHER';
+
 export interface ReceivingUnitForm {
   poItemId: string;
   label: string;
@@ -87,10 +91,35 @@ export interface ReceivingUnitForm {
   serialNumber: string;
   status: 'PASS' | 'REJECT';
   rejectReason: string;
+  defectReason: DefectReasonValue | '';
   batteryHealth: string;
   warrantyExpired: boolean;
   warrantyExpireDate: string;
   hasBox: boolean;
   checklist: { item: string; category: string; passed: boolean; note: string }[];
   sellingPrice: string;
+  photos: string[];
+  costPrice: string; // direct-receive only (empty for PO-based receive)
+  // Direct-receive-only product attrs (PO-based seeds leave these undefined —
+  // the PO unit derives its name from the PO line; direct-receive seeds set them).
+  // Required by buildDirectReceiveItem (Task 2 Step 6) + lineToUnits (Task 4 Step 2).
+  brand?: string;
+  model?: string;
+  color?: string;
+  storage?: string;
+  accessoryType?: string;
+  accessoryBrand?: string;
+}
+
+// One ad-hoc supplier-direct line (expands into `quantity` ReceivingUnitForm units)
+export interface DirectReceiveLineForm {
+  category: string;
+  brand: string;
+  model: string;
+  color: string;
+  storage: string;
+  accessoryType: string;
+  accessoryBrand: string;
+  quantity: string;
+  costPrice: string;
 }

@@ -1,4 +1,4 @@
-import { ItemForm } from './types';
+import { ItemForm, DefectReasonValue } from './types';
 
 export const statusLabels: Record<string, string> = {
   PENDING: 'รอดำเนินการ',
@@ -66,3 +66,14 @@ export const defaultChecklist = [
 export const checklistCategories = [...new Set(defaultChecklist.map((c) => c.category))];
 
 export const emptyItem: ItemForm = { brand: '', category: '', model: '', color: '', storage: '', quantity: '1', unitPrice: '', accessoryType: '', accessoryBrand: '' };
+
+export const defectReasonOptions: { value: DefectReasonValue; label: string }[] = [
+  { value: 'SCREEN', label: 'จอเสีย/จอแตก' },
+  { value: 'BATTERY', label: 'แบตเตอรี่เสีย' },
+  { value: 'IMEI_BLOCKED', label: 'IMEI ถูกบล็อก' },
+  { value: 'BOX_MISSING', label: 'ไม่มีกล่อง/อุปกรณ์' },
+  { value: 'WRONG_MODEL', label: 'ผิดรุ่น/ผิดสเปก' },
+  { value: 'DOA', label: 'เปิดไม่ติด (DOA)' },
+  { value: 'COSMETIC', label: 'ตำหนิภายนอก' },
+  { value: 'OTHER', label: 'อื่นๆ' },
+];

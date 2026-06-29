@@ -1,7 +1,7 @@
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { Prisma, POPaymentStatus } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { CreatePODto, UpdatePODto, UpdatePaymentDto } from '../dto/create-po.dto';
+import { CreatePODto, UpdatePODto, UpdatePaymentDto, OrderPODto } from '../dto/create-po.dto';
 import { generatePONumber } from '../../../utils/sequence.util';
 import { d, dAdd, dSub, dSum } from '../../../utils/decimal.util';
 import { loadVatRateDecimal } from '../../../utils/vat-rate.util';
@@ -160,6 +160,25 @@ export class PoLifecycleService {
     return this.prisma.purchaseOrder.update({
       where: { id },
       data: { status: 'APPROVED', approvedById: userId },
+      include: {
+        supplier: { select: { id: true, name: true } },
+        items: true,
+      },
+    });
+  }
+
+  async order(id: string, userId: string, dto: OrderPODto) {
+    const po = await this.query.findOne(id);
+    if (po.status !== 'APPROVED') {
+      throw new BadRequestException('สั่งซื้อได้เฉพาะ PO ที่อนุมัติแล้ว (APPROVED) เท่านั้น');
+    }
+    return this.prisma.purchaseOrder.update({
+      where: { id },
+      data: {
+        status: 'ORDERED',
+        orderedAt: new Date(),
+        ...(dto.expectedDate ? { expectedDate: new Date(dto.expectedDate) } : {}),
+      },
       include: {
         supplier: { select: { id: true, name: true } },
         items: true,

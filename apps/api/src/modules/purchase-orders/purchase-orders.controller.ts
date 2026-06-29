@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { PurchaseOrdersService } from './purchase-orders.service';
-import { CreatePODto, UpdatePODto, ReceivePODto, GoodsReceivingDto, UpdatePaymentDto, RejectPODto } from './dto/create-po.dto';
+import { CreatePODto, UpdatePODto, ReceivePODto, GoodsReceivingDto, UpdatePaymentDto, RejectPODto, OrderPODto } from './dto/create-po.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
@@ -136,6 +136,16 @@ export class PurchaseOrdersController {
     @CurrentUser() user: { id: string },
   ) {
     return this.purchaseOrdersService.approve(id, user.id);
+  }
+
+  @Post(':id/order')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  order(
+    @Param('id') id: string,
+    @Body() dto: OrderPODto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.purchaseOrdersService.order(id, user.id, dto);
   }
 
   @Post(':id/reject')

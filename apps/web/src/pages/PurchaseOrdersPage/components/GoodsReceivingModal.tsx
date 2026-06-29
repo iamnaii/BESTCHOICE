@@ -168,7 +168,7 @@ export function GoodsReceivingModal(props: GoodsReceivingModalProps) {
               รับสินค้า — {selectedPO?.poNumber || ''}
             </DrawerTitle>
           </DrawerHeader>
-          {body}
+          {selectedPO && body}
         </DrawerContent>
       </Drawer>
     );

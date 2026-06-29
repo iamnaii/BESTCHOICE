@@ -1,13 +1,12 @@
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { Prisma, ProductCategory } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { ReceivePODto, GoodsReceivingDto } from '../dto/create-po.dto';
+import { GoodsReceivingDto } from '../dto/create-po.dto';
 import { buildProductName } from './po-product-naming.util';
 import { generateGRNumber } from '../../../utils/sequence.util';
 
 /**
- * Inventory-mutating goods-receiving flows. Owns the 3 write transactions:
- *  - receive()        — Serializable $transaction (legacy receive)
+ * Inventory-mutating goods-receiving flows. Owns the 2 write transactions:
  *  - goodsReceiving() — Serializable $transaction (per-unit IMEI/photo flow)
  *  - confirmQC()      — $transaction (QC_PENDING → IN_STOCK / PHOTO_PENDING)
  *
@@ -21,105 +20,6 @@ import { generateGRNumber } from '../../../utils/sequence.util';
  */
 export class PoReceivingService {
   constructor(private prisma: PrismaService) {}
-
-  /**
-   * Legacy receive - kept for backward compatibility
-   *
-   * T5-C16: wrapped in Serializable transaction + per-item re-read so two
-   * concurrent GR requests cannot both pass the `totalReceived > quantity`
-   * check against stale in-memory receivedQty. The inner re-read (inside
-   * the same serializable tx) guarantees one of the two concurrent writers
-   * will see the other's update and either retry or fail the invariant.
-   */
-  async receive(id: string, dto: ReceivePODto, userId: string, branchId: string) {
-    return this.prisma.$transaction(
-      async (tx) => {
-        const po = await tx.purchaseOrder.findUnique({
-          where: { id },
-          include: { items: true, supplier: true },
-        });
-
-        if (!po || po.deletedAt) throw new NotFoundException('ไม่พบใบสั่งซื้อ');
-        if (!['APPROVED', 'PARTIALLY_RECEIVED'].includes(po.status)) {
-          throw new BadRequestException('PO นี้ไม่อยู่ในสถานะที่สามารถรับสินค้าได้');
-        }
-
-        const receivedProducts: Awaited<ReturnType<typeof tx.product.create>>[] = [];
-
-        for (const receiveItem of dto.items) {
-          const poItem = po.items.find((i) => i.id === receiveItem.poItemId);
-          if (!poItem) {
-            throw new NotFoundException(`ไม่พบรายการ PO: ${receiveItem.poItemId}`);
-          }
-
-          // T5-C16: Re-read inside the serializable tx instead of trusting
-          // the cached poItem.receivedQty. This closes the race where two
-          // GR requests both read 0 and both pass the ceiling check.
-          const fresh = await tx.pOItem.findUnique({
-            where: { id: receiveItem.poItemId },
-            select: { receivedQty: true, quantity: true },
-          });
-          const currentReceived = fresh?.receivedQty ?? poItem.receivedQty;
-          const orderedQty = fresh?.quantity ?? poItem.quantity;
-          const totalReceived = currentReceived + receiveItem.receivedQty;
-          if (totalReceived > orderedQty) {
-            throw new BadRequestException(
-              `จำนวนรับเกิน: ${poItem.brand} ${poItem.model} (สั่ง ${orderedQty}, รับแล้ว ${currentReceived}, กำลังรับ ${receiveItem.receivedQty})`,
-            );
-          }
-
-          await tx.pOItem.update({
-            where: { id: receiveItem.poItemId },
-            data: { receivedQty: totalReceived },
-          });
-
-          for (let i = 0; i < receiveItem.receivedQty; i++) {
-            const productCategory = (poItem.category as ProductCategory) || 'PHONE_NEW';
-            const productName = buildProductName(poItem, productCategory);
-            const product = await tx.product.create({
-              data: {
-                name: productName,
-                brand: poItem.brand || '',
-                model: poItem.model || '',
-                color: poItem.color || null,
-                storage: poItem.storage || null,
-                category: productCategory,
-                costPrice: Number(poItem.unitPrice),
-                supplierId: po.supplierId,
-                poId: po.id,
-                branchId,
-                status: 'PO_RECEIVED',
-                accessoryType: poItem.accessoryType || null,
-                accessoryBrand: poItem.accessoryBrand || null,
-              },
-            });
-            receivedProducts.push(product);
-          }
-        }
-
-        const updatedPO = await tx.purchaseOrder.findUnique({
-          where: { id },
-          include: { items: true },
-        });
-
-        const allReceived = updatedPO!.items.every((item) => item.receivedQty >= item.quantity);
-        const newStatus = allReceived ? 'FULLY_RECEIVED' : 'PARTIALLY_RECEIVED';
-
-        await tx.purchaseOrder.update({
-          where: { id },
-          data: { status: newStatus },
-        });
-
-        return {
-          poId: id,
-          status: newStatus,
-          receivedProducts: receivedProducts.length,
-          products: receivedProducts,
-        };
-      },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
-    );
-  }
 
   /**
    * New goods receiving flow with IMEI/Serial/photos/pass-reject per unit

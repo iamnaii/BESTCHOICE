@@ -8,6 +8,8 @@ import { Download } from 'lucide-react';
 import { formatDateShort } from '@/utils/formatters';
 import { usePurchaseOrdersData } from './hooks/usePurchaseOrdersData';
 import { usePOForm } from './hooks/usePOForm';
+import { useCreatePoWizard } from './hooks/useCreatePoWizard';
+import { computePoTotals } from './poTotals';
 import { statusLabels, paymentStatusLabels } from './constants';
 import { QcPendingPanel } from './components/QcPendingPanel';
 import { POListTab } from './components/POListTab';
@@ -21,8 +23,10 @@ export default function PurchaseOrdersPage() {
   const resetFormRef = useRef<() => void>(() => {});
   const queryClient = useQueryClient();
 
+  const wizardClearRef = useRef<() => void>(() => {});
   const onCreateSuccess = useCallback(() => {
     resetFormRef.current();
+    wizardClearRef.current();
   }, []);
 
   const data = usePurchaseOrdersData({ onCreateSuccess });
@@ -35,6 +39,24 @@ export default function PurchaseOrdersPage() {
   // Keep ref in sync
   resetFormRef.current = poForm.resetForm;
 
+  const wizard = useCreatePoWizard({
+    isOpen: data.isCreateModalOpen,
+    form: poForm.form,
+    setForm: poForm.setForm,
+    items: poForm.items,
+    setItems: poForm.setItems,
+    selectedSupplier: poForm.selectedSupplier,
+  });
+
+  const totals = computePoTotals({
+    items: poForm.items,
+    discount: poForm.form.discount,
+    discountAfterVat: poForm.form.discountAfterVat,
+    supplierHasVat: poForm.supplierHasVat,
+  });
+
+  wizardClearRef.current = wizard.clearDraft;
+
   // Supplier selection handler: invalidate + refetch suppliers-for-po so a newly-created
   // supplier appears in the array, then set supplierId. The selectedSupplier/VAT/payment-method
   // computation in usePOForm keys off form.supplierId against the (refetched) suppliers array
@@ -44,7 +66,9 @@ export default function PurchaseOrdersPage() {
       // Invalidate and await refetch so the refetched suppliers array includes the chosen/newly-created supplier
       await queryClient.invalidateQueries({ queryKey: ['suppliers-for-po'] });
       // After invalidation the query will refetch; grab the updated list from the cache
-      const cached = queryClient.getQueryData<{ data: typeof data.suppliers }>(['suppliers-for-po']);
+      const cached = queryClient.getQueryData<{ data: typeof data.suppliers }>([
+        'suppliers-for-po',
+      ]);
       const updatedSuppliers = cached?.data ?? data.suppliers;
       const sup = updatedSuppliers.find((s) => s.id === childId);
       const defaultPm = sup?.paymentMethods?.find((pm) => pm.isDefault) ?? sup?.paymentMethods?.[0];
@@ -132,7 +156,9 @@ export default function PurchaseOrdersPage() {
         >
           ยอดค้างชำระ ( ผู้จัดจำหน่าย )
           {data.payableData && data.payableData.grandTotal > 0 && (
-            <span className="ml-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-destructive/10 text-destructive dark:bg-destructive/15">{(Number(data.payableData.grandTotal) || 0).toLocaleString()}</span>
+            <span className="ml-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-destructive/10 text-destructive dark:bg-destructive/15">
+              {(Number(data.payableData.grandTotal) || 0).toLocaleString()}
+            </span>
           )}
         </button>
       </div>
@@ -194,11 +220,16 @@ export default function PurchaseOrdersPage() {
         setAttachmentUrl={poForm.setAttachmentUrl}
         formAttachments={poForm.formAttachments}
         setFormAttachments={poForm.setFormAttachments}
+        wizard={wizard}
+        totals={totals}
       />
 
       <PODetailModal
         isOpen={data.isDetailModalOpen}
-        onClose={() => { data.setIsDetailModalOpen(false); data.setPODetail(null); }}
+        onClose={() => {
+          data.setIsDetailModalOpen(false);
+          data.setPODetail(null);
+        }}
         selectedPO={data.selectedPO}
         poDetail={data.poDetail}
         openReceiveModal={data.openReceiveModal}
@@ -222,7 +253,11 @@ export default function PurchaseOrdersPage() {
 
       <GoodsReceivingModal
         isOpen={data.isReceiveModalOpen}
-        onClose={() => { data.setIsReceiveModalOpen(false); data.setReceivingUnits([]); data.setReceivingNotes(''); }}
+        onClose={() => {
+          data.setIsReceiveModalOpen(false);
+          data.setReceivingUnits([]);
+          data.setReceivingNotes('');
+        }}
         selectedPO={data.selectedPO}
         receivingUnits={data.receivingUnits}
         setReceivingUnits={data.setReceivingUnits}

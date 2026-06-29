@@ -105,6 +105,15 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
+  const orderMutation = useMutation({
+    mutationFn: async (id: string) => api.post(`/purchase-orders/${id}/order`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      toast.success('สั่งซื้อ PO สำเร็จ (สถานะ: สั่งซื้อแล้ว)');
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
   const rejectPOMutation = useMutation({
     mutationFn: async ({ id, reason }: { id: string; reason: string }) =>
       api.post(`/purchase-orders/${id}/reject`, { reason }),
@@ -366,6 +375,7 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     qcConfirmMutation,
     createMutation,
     approveMutation,
+    orderMutation,
     rejectPOMutation,
     cancelMutation,
     goodsReceivingMutation,

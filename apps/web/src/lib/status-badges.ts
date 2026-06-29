@@ -150,6 +150,7 @@ export const poStatusMap: Record<string, StatusConfig> = {
   PENDING: { variant: 'secondary', label: 'รอดำเนินการ' },
   DRAFT: { variant: 'warning', appearance: 'light', label: 'รออนุมัติ' },
   APPROVED: { variant: 'primary', appearance: 'light', label: 'อนุมัติแล้ว' },
+  ORDERED: { variant: 'info', appearance: 'light', label: 'สั่งซื้อแล้ว' },
   PARTIALLY_RECEIVED: { variant: 'warning', appearance: 'light', label: 'รับบางส่วน' },
   FULLY_RECEIVED: { variant: 'success', appearance: 'light', label: 'รับครบแล้ว' },
   CANCELLED: { variant: 'destructive', appearance: 'light', label: 'ยกเลิก' },

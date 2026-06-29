@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreatePODto, UpdatePODto, GoodsReceivingDto, UpdatePaymentDto, OrderPODto } from './dto/create-po.dto';
+import { CreatePODto, UpdatePODto, GoodsReceivingDto, UpdatePaymentDto, OrderPODto, DirectReceiveDto } from './dto/create-po.dto';
 import { PoQueryService } from './services/po-query.service';
 import { PoLifecycleService } from './services/po-lifecycle.service';
 import { PoReceivingService } from './services/po-receiving.service';
@@ -89,6 +89,10 @@ export class PurchaseOrdersService {
 
   goodsReceiving(id: string, dto: GoodsReceivingDto, userId: string) {
     return this.receiving.goodsReceiving(id, dto, userId);
+  }
+
+  directReceive(dto: DirectReceiveDto, userId: string) {
+    return this.receiving.directReceive(dto, userId);
   }
 
   confirmQC(productIds: string[]) {

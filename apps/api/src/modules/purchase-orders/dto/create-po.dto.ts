@@ -224,3 +224,46 @@ export class GoodsReceivingDto {
   @IsOptional()
   notes?: string;
 }
+
+export class DirectReceiveItemDto {
+  // Product spec (mirrors POItemDto)
+  @IsString() @IsOptional() brand?: string;
+  @IsString() @IsOptional() model?: string;
+  @IsString() @IsOptional() color?: string;
+  @IsString() @IsOptional() storage?: string;
+  @IsString() @IsOptional() category?: string;
+  @IsString() @IsOptional() accessoryType?: string;
+  @IsString() @IsOptional() accessoryBrand?: string;
+
+  // One DTO item = one physical unit.
+  @IsNumber() @Min(1) quantity: number;
+
+  // costPrice (booked as POItem.unitPrice; copied into Product.costPrice by goodsReceiving). MANDATORY for COGS.
+  @IsNumber() @Min(0.01, { message: 'กรุณาระบุราคาทุน (costPrice) มากกว่า 0' }) unitPrice: number;
+
+  // Per-unit receiving fields (mirror GoodsReceivingItemDto)
+  @IsString() @IsOptional() imeiSerial?: string;
+  @IsString() @IsOptional() serialNumber?: string;
+  @IsArray() @IsOptional() photos?: string[];
+  @IsIn(['PASS', 'REJECT']) status: 'PASS' | 'REJECT';
+  @IsString() @IsOptional() rejectReason?: string;
+  @IsEnum(DefectReason) @IsOptional() defectReason?: DefectReason;
+  @IsNumber() @IsOptional() batteryHealth?: number;
+  @IsBoolean() @IsOptional() warrantyExpired?: boolean;
+  @IsString() @IsOptional() warrantyExpireDate?: string;
+  @IsBoolean() @IsOptional() hasBox?: boolean;
+  @IsArray() @IsOptional() @ValidateNested({ each: true }) @Type(() => ChecklistResultDto)
+  checklistResults?: ChecklistResultDto[];
+  @IsNumber() @IsOptional() @Min(0) sellingPrice?: number;
+}
+
+export class DirectReceiveDto {
+  @IsString() supplierId: string;
+
+  @IsDateString() orderDate: string;
+
+  @IsString() @IsOptional() notes?: string;
+
+  @IsArray() @ArrayMinSize(1) @ValidateNested({ each: true }) @Type(() => DirectReceiveItemDto)
+  items: DirectReceiveItemDto[];
+}

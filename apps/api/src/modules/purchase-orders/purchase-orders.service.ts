@@ -99,6 +99,10 @@ export class PurchaseOrdersService {
     return this.receiving.confirmQC(productIds);
   }
 
+  rejectQC(productIds: string[], reason: string) {
+    return this.receiving.rejectQC(productIds, reason);
+  }
+
   getQCPending(filters: { branchId?: string; poId?: string; includePhotoPending?: boolean; page?: number; limit?: number }) {
     return this.query.getQCPending(filters);
   }

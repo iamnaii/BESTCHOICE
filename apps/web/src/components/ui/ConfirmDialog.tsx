@@ -1,3 +1,4 @@
+import { ReactNode } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -17,7 +18,9 @@ interface ConfirmDialogProps {
   cancelLabel?: string;
   variant?: 'default' | 'destructive';
   loading?: boolean;
+  closeOnConfirm?: boolean;
   onConfirm: () => void;
+  children?: ReactNode;
 }
 
 export function ConfirmDialog({
@@ -29,7 +32,9 @@ export function ConfirmDialog({
   cancelLabel = 'ยกเลิก',
   variant = 'default',
   loading = false,
+  closeOnConfirm = true,
   onConfirm,
+  children,
 }: ConfirmDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -38,6 +43,7 @@ export function ConfirmDialog({
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
+        {children}
         <DialogFooter className="gap-2 sm:gap-0">
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
             {cancelLabel}
@@ -46,7 +52,7 @@ export function ConfirmDialog({
             variant={variant === 'destructive' ? 'destructive' : 'primary'}
             onClick={() => {
               onConfirm();
-              onOpenChange(false);
+              if (closeOnConfirm) onOpenChange(false);
             }}
             disabled={loading}
           >

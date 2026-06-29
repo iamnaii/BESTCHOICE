@@ -121,21 +121,6 @@ export class UpdatePODto {
   status?: string;
 }
 
-export class ReceiveItemDto {
-  @IsString()
-  poItemId: string;
-
-  @IsNumber()
-  receivedQty: number;
-}
-
-export class ReceivePODto {
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => ReceiveItemDto)
-  items: ReceiveItemDto[];
-}
-
 export class UpdatePaymentDto {
   @IsIn(['UNPAID', 'DEPOSIT_PAID', 'PARTIALLY_PAID', 'FULLY_PAID'])
   paymentStatus: string;

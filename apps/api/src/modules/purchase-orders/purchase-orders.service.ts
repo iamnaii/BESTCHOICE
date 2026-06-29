@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreatePODto, UpdatePODto, ReceivePODto, GoodsReceivingDto, UpdatePaymentDto, OrderPODto } from './dto/create-po.dto';
+import { CreatePODto, UpdatePODto, GoodsReceivingDto, UpdatePaymentDto, OrderPODto } from './dto/create-po.dto';
 import { PoQueryService } from './services/po-query.service';
 import { PoLifecycleService } from './services/po-lifecycle.service';
 import { PoReceivingService } from './services/po-receiving.service';
@@ -12,7 +12,7 @@ import { PoReceivingService } from './services/po-receiving.service';
  * three plain sub-services and delegates:
  *  - PoQueryService     — reads, AP grouping, QC-pending, GR history/summary
  *  - PoLifecycleService — create (PO-number $tx), update/approve/reject/cancel/updatePayment
- *  - PoReceivingService — receive / goodsReceiving (Serializable $tx), confirmQC
+ *  - PoReceivingService — goodsReceiving (Serializable $tx), confirmQC
  */
 @Injectable()
 export class PurchaseOrdersService {
@@ -85,10 +85,6 @@ export class PurchaseOrdersService {
     endDate?: string;
   } = {}) {
     return this.query.getReceivingSummary(poId, filters);
-  }
-
-  receive(id: string, dto: ReceivePODto, userId: string, branchId: string) {
-    return this.receiving.receive(id, dto, userId, branchId);
   }
 
   goodsReceiving(id: string, dto: GoodsReceivingDto, userId: string) {

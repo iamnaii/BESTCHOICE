@@ -58,11 +58,15 @@ export class PurchaseOrdersController {
   @Roles('OWNER', 'BRANCH_MANAGER')
   getQCPending(
     @Query('branchId') branchId?: string,
+    @Query('poId') poId?: string,
+    @Query('includePhotoPending') includePhotoPending?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
     return this.purchaseOrdersService.getQCPending({
       branchId,
+      poId,
+      includePhotoPending: includePhotoPending === 'true',
       page: page ? parseInt(page) : undefined,
       limit: limit ? parseInt(limit) : undefined,
     });

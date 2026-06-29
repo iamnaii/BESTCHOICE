@@ -99,7 +99,7 @@ export class PurchaseOrdersService {
     return this.receiving.confirmQC(productIds);
   }
 
-  getQCPending(filters: { branchId?: string; page?: number; limit?: number }) {
+  getQCPending(filters: { branchId?: string; poId?: string; includePhotoPending?: boolean; page?: number; limit?: number }) {
     return this.query.getQCPending(filters);
   }
 

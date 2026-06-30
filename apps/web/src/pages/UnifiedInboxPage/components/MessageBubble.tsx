@@ -92,7 +92,8 @@ function MessageBubble({ message, customerAvatar, customerInitial }: MessageBubb
   const copyText = async () => {
     if (!message.text) return;
     const ok = await copy(message.text);
-    ok ? toast.success('คัดลอกแล้ว') : toast.error('คัดลอกไม่สำเร็จ');
+    if (ok) toast.success('คัดลอกแล้ว');
+    else toast.error('คัดลอกไม่สำเร็จ');
   };
   const canCopy = !!message.text && !/^\[(sticker|gif|flex):/.test(message.text);
 

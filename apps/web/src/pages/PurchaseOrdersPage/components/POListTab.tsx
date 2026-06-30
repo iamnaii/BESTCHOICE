@@ -3,10 +3,12 @@ import { UseMutationResult } from '@tanstack/react-query';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import { formatDateShort } from '@/utils/formatters';
 import { useDebounce } from '@/hooks/useDebounce';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { PurchaseOrder } from '../types';
-import { receiveProgress, isOverdue } from '../po-list.util';
+import { receiveProgress, isOverdue, supplierContactIsRedundant } from '../po-list.util';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
+import { POCard } from './POCard';
 import { getStatusBadgeProps, poStatusMap, poPaymentStatusMap } from '@/lib/status-badges';
 import { PackageCheck, Check, X, Ban, FileText, Search, ShoppingCart, AlertTriangle } from 'lucide-react';
 import {
@@ -127,6 +129,30 @@ export function POListTab({
   const selectedSupplierName = suppliers.find((s) => s.id === supplierFilter)?.name || supplierFilter;
   const selectedPeriodLabel = periodOptions.find((p) => p.value === periodFilter)?.label || periodFilter;
 
+  const isMobile = useIsMobile();
+
+  // Shared action handlers — used by both the desktop table action column and
+  // the mobile POCard so the two views can never drift in behavior.
+  const onApprove = (po: PurchaseOrder) =>
+    setConfirmDialog({
+      open: true,
+      message: `อนุมัติ PO ${po.poNumber}?`,
+      action: () => approveMutation.mutate(po.id),
+    });
+  const onOrder = (po: PurchaseOrder) =>
+    setConfirmDialog({
+      open: true,
+      message: `ยืนยันสั่งซื้อ PO ${po.poNumber}? (สถานะจะเปลี่ยนเป็น "สั่งซื้อแล้ว")`,
+      action: () => orderMutation.mutate(po.id),
+    });
+  const onReject = (po: PurchaseOrder) => setRejectDialog({ open: true, po, reason: '' });
+  const onCancel = (po: PurchaseOrder) =>
+    setConfirmDialog({
+      open: true,
+      message: `ต้องการยกเลิก PO ${po.poNumber}?`,
+      action: () => cancelMutation.mutate(po.id),
+    });
+
   const columns: Column<PurchaseOrder>[] = [
     {
       key: 'poNumber',
@@ -149,9 +175,7 @@ export function POListTab({
       label: 'ผู้จัดจำหน่าย',
       sortable: true,
       render: (po) => {
-        const sameName =
-          po.supplier.contactName &&
-          po.supplier.contactName.trim().toLowerCase() === po.supplier.name.trim().toLowerCase();
+        const sameName = supplierContactIsRedundant(po.supplier);
         return (
           <div>
             <div className="font-medium">{po.supplier.name}</div>
@@ -279,13 +303,7 @@ export function POListTab({
           </button>
           {po.status === 'APPROVED' && (
             <button
-              onClick={() => {
-                setConfirmDialog({
-                  open: true,
-                  message: `ยืนยันสั่งซื้อ PO ${po.poNumber}? (สถานะจะเปลี่ยนเป็น "สั่งซื้อแล้ว")`,
-                  action: () => orderMutation.mutate(po.id),
-                });
-              }}
+              onClick={() => onOrder(po)}
               disabled={orderMutation.isPending}
               className="p-1.5 rounded-md text-info hover:bg-info/10 transition-colors disabled:opacity-50"
               title="สั่งซื้อ"
@@ -307,13 +325,7 @@ export function POListTab({
           {po.status === 'DRAFT' && (
             <>
               <button
-                onClick={() => {
-                  setConfirmDialog({
-                    open: true,
-                    message: `อนุมัติ PO ${po.poNumber}?`,
-                    action: () => approveMutation.mutate(po.id),
-                  });
-                }}
+                onClick={() => onApprove(po)}
                 disabled={approveMutation.isPending}
                 className="p-1.5 rounded-md text-success hover:bg-success/10 transition-colors disabled:opacity-50"
                 title="อนุมัติ"
@@ -322,7 +334,7 @@ export function POListTab({
                 <Check className="size-4" />
               </button>
               <button
-                onClick={() => setRejectDialog({ open: true, po, reason: '' })}
+                onClick={() => onReject(po)}
                 disabled={rejectPOMutation.isPending}
                 className="p-1.5 rounded-md text-warning hover:bg-warning/10 transition-colors disabled:opacity-50"
                 title="ปฏิเสธ"
@@ -331,13 +343,7 @@ export function POListTab({
                 <X className="size-4" />
               </button>
               <button
-                onClick={() => {
-                  setConfirmDialog({
-                    open: true,
-                    message: `ต้องการยกเลิก PO ${po.poNumber}?`,
-                    action: () => cancelMutation.mutate(po.id),
-                  });
-                }}
+                onClick={() => onCancel(po)}
                 className="p-1.5 rounded-md text-destructive hover:bg-destructive/10 transition-colors"
                 title="ยกเลิก"
                 aria-label={`ยกเลิก ${po.poNumber}`}
@@ -352,6 +358,11 @@ export function POListTab({
   ];
 
   const hasFilter = Boolean(search || statusFilter || supplierFilter || periodFilter || overdueOnly);
+  const EmptyIcon = hasFilter ? Search : ShoppingCart;
+  const emptyTitle = hasFilter ? 'ไม่พบใบสั่งซื้อที่ตรงกับตัวกรอง' : 'ยังไม่มีใบสั่งซื้อ';
+  const emptyDesc = hasFilter
+    ? 'ลองล้างตัวกรองหรือเปลี่ยนคำค้นหา'
+    : 'กด "+ สร้าง PO" ที่มุมขวาบนเพื่อเริ่มสั่งซื้อสินค้าจากผู้จัดจำหน่าย';
 
   return (
     <>
@@ -440,24 +451,58 @@ export function POListTab({
         </div>
       )}
 
-      <Card>
-        <CardContent className="p-0">
-          <DataTable
-            columns={columns}
-            data={filteredPos}
-            isLoading={isLoading}
-            emptyMessage={hasFilter ? 'ไม่พบใบสั่งซื้อที่ตรงกับตัวกรอง' : 'ยังไม่มีใบสั่งซื้อ'}
-            emptyIcon={hasFilter ? Search : ShoppingCart}
-            emptyDescription={
-              hasFilter
-                ? 'ลองล้างตัวกรองหรือเปลี่ยนคำค้นหา'
-                : 'กด "+ สร้าง PO" ที่มุมขวาบนเพื่อเริ่มสั่งซื้อสินค้าจากผู้จัดจำหน่าย'
-            }
-            columnToggle
-            onRowClick={openDetailModal}
-          />
-        </CardContent>
-      </Card>
+      {isMobile ? (
+        /* Mobile: reflow into tappable cards so row actions are reachable (44px) */
+        isLoading ? (
+          <div className="space-y-3">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="h-32 rounded-xl border border-border/50 bg-card animate-pulse" />
+            ))}
+          </div>
+        ) : filteredPos.length === 0 ? (
+          <Card>
+            <CardContent className="py-12 flex flex-col items-center text-center gap-2">
+              <EmptyIcon className="size-10 text-muted-foreground/50" />
+              <p className="font-medium text-foreground leading-snug">{emptyTitle}</p>
+              <p className="text-sm text-muted-foreground leading-snug">{emptyDesc}</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-3">
+            {filteredPos.map((po) => (
+              <POCard
+                key={po.id}
+                po={po}
+                openDetailModal={openDetailModal}
+                openReceiveModal={openReceiveModal}
+                openPaymentModal={openPaymentModal}
+                onApprove={onApprove}
+                onOrder={onOrder}
+                onReject={onReject}
+                onCancel={onCancel}
+                approvePending={approveMutation.isPending}
+                orderPending={orderMutation.isPending}
+                rejectPending={rejectPOMutation.isPending}
+              />
+            ))}
+          </div>
+        )
+      ) : (
+        <Card>
+          <CardContent className="p-0">
+            <DataTable
+              columns={columns}
+              data={filteredPos}
+              isLoading={isLoading}
+              emptyMessage={emptyTitle}
+              emptyIcon={EmptyIcon}
+              emptyDescription={emptyDesc}
+              columnToggle
+              onRowClick={openDetailModal}
+            />
+          </CardContent>
+        </Card>
+      )}
 
       {/* Reject reason dialog */}
       <Dialog

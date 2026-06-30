@@ -31,5 +31,46 @@ describe('PurchaseOrdersService.getSummary', () => {
     expect(poCount).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ status: 'ORDERED', expectedDate: { lt: expect.any(Date) } }) }),
     );
+    // unpaid/AP count = owed money: received OR already-paid-something, not fully paid.
+    // Pure DRAFT/APPROVED/ORDERED commitments (nothing received, nothing paid) are excluded.
+    expect(poCount).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: { notIn: ['CANCELLED', 'DRAFT'] },
+          paymentStatus: { not: 'FULLY_PAID' },
+          OR: [
+            { status: { in: ['PARTIALLY_RECEIVED', 'FULLY_RECEIVED'] } },
+            { paidAmount: { gt: 0 } },
+          ],
+        }),
+      }),
+    );
+  });
+});
+
+describe('PurchaseOrdersService.getAccountsPayable', () => {
+  it('includes owed POs (received OR already-paid) but excludes pure DRAFT/APPROVED/ORDERED commitments', async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const prisma: any = { purchaseOrder: { findMany } };
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [PurchaseOrdersService, { provide: PrismaService, useValue: prisma }],
+    }).compile();
+    const service = module.get<PurchaseOrdersService>(PurchaseOrdersService);
+
+    await service.getAccountsPayable();
+
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          deletedAt: null,
+          status: { notIn: ['CANCELLED', 'DRAFT'] },
+          paymentStatus: { not: 'FULLY_PAID' },
+          OR: [
+            { status: { in: ['PARTIALLY_RECEIVED', 'FULLY_RECEIVED'] } },
+            { paidAmount: { gt: 0 } },
+          ],
+        }),
+      }),
+    );
   });
 });

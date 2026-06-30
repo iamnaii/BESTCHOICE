@@ -20,3 +20,18 @@ export function isOverdue(
   if (po.status !== 'ORDERED' || !po.expectedDate) return false;
   return new Date(po.expectedDate) < now;
 }
+
+/**
+ * True when the supplier's contactName just repeats its name, so the UI should
+ * hide the redundant second line. Shared by the desktop table column and the
+ * mobile POCard so the two views can't drift.
+ */
+export function supplierContactIsRedundant(supplier: {
+  name: string;
+  contactName: string | null;
+}): boolean {
+  return (
+    !!supplier.contactName &&
+    supplier.contactName.trim().toLowerCase() === supplier.name.trim().toLowerCase()
+  );
+}

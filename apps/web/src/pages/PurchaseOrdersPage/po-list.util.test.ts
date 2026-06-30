@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { receiveProgress, isOverdue } from './po-list.util';
+import { receiveProgress, isOverdue, supplierContactIsRedundant } from './po-list.util';
 
 describe('receiveProgress', () => {
   it('sums received/ordered across items and computes pct', () => {
@@ -35,5 +35,18 @@ describe('isOverdue', () => {
 
   it('is false when expectedDate is null', () => {
     expect(isOverdue({ status: 'ORDERED', expectedDate: null }, now)).toBe(false);
+  });
+});
+
+describe('supplierContactIsRedundant', () => {
+  it('is true when contactName equals name (case/space-insensitive)', () => {
+    expect(supplierContactIsRedundant({ name: 'ACME', contactName: ' acme ' })).toBe(true);
+  });
+  it('is false when contactName differs', () => {
+    expect(supplierContactIsRedundant({ name: 'ACME Co.', contactName: 'คุณสมชาย' })).toBe(false);
+  });
+  it('is false when contactName is null/empty', () => {
+    expect(supplierContactIsRedundant({ name: 'ACME', contactName: null })).toBe(false);
+    expect(supplierContactIsRedundant({ name: 'ACME', contactName: '' })).toBe(false);
   });
 });

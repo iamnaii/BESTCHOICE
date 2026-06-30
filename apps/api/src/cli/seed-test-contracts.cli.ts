@@ -33,6 +33,7 @@
 
 import { PrismaService } from '../prisma/prisma.service';
 import { ensureInstallmentSchedules } from '../utils/installment-schedule.util';
+import { loadLateFeeConfig, resolveLateFee } from '../utils/late-fee.util';
 
 const REQUIRED_CONSENT = 'YES_I_AM_SURE';
 
@@ -47,13 +48,19 @@ function calc(sellingPrice: number, downPayment: number, rate: number, months: n
   return { principal, interestTotal, storeCommission, vatAmount, financedAmount, monthlyPayment };
 }
 
-/** A few price/term profiles so the test set has variety. */
-const PROFILES = [
-  { sellingPrice: 54900, downPayment: 11000, rate: 0.08, months: 10 },
-  { sellingPrice: 34900, downPayment: 5000, rate: 0.08, months: 10 },
-  { sellingPrice: 24900, downPayment: 5000, rate: 0.1, months: 10 },
-  { sellingPrice: 21900, downPayment: 4000, rate: 0.1, months: 12 },
-  { sellingPrice: 16900, downPayment: 4000, rate: 0.1, months: 6 },
+/**
+ * Scenarios spread across due-date timelines so the owner can test real
+ * "receiving payment" events. `startMonthsAgo` = how many months ago installment
+ * #1 fell due (0 = due TODAY, 1 = 1 installment already overdue, … -1 = all future).
+ * Past-due installments are stamped OVERDUE; the late fee is computed live at
+ * payment time from the due date, so no pre-stamping is needed.
+ */
+const SCENARIOS = [
+  { sellingPrice: 54900, downPayment: 11000, rate: 0.08, months: 10, startMonthsAgo: 0, label: 'ครบกำหนดวันนี้' },
+  { sellingPrice: 34900, downPayment: 5000, rate: 0.08, months: 10, startMonthsAgo: 1, label: 'ค้าง 1 งวด' },
+  { sellingPrice: 24900, downPayment: 5000, rate: 0.1, months: 10, startMonthsAgo: 2, label: 'ค้าง 2 งวด' },
+  { sellingPrice: 21900, downPayment: 4000, rate: 0.1, months: 12, startMonthsAgo: 3, label: 'ค้าง 3 งวด (60+ วัน)' },
+  { sellingPrice: 16900, downPayment: 4000, rate: 0.1, months: 6, startMonthsAgo: -1, label: 'งวดอนาคต' },
 ];
 
 interface Refs {
@@ -111,30 +118,44 @@ export async function seedTestContracts(
   const existingToday = await prisma.contract.count({
     where: { contractNumber: { startsWith: `TEST-${dateStr}-` } },
   });
-  const baseMonth = new Date();
-  baseMonth.setDate(1); // first installment due next month onward
+  // Late-fee config (SystemConfig) — used to pre-stamp overdue installments so the
+  // wizard/preview show the fee immediately (the daily cron would otherwise do it).
+  const lateFeeCfg = await loadLateFeeConfig(prisma);
 
   for (let n = 1; n <= opts.count; n++) {
     const seq = existingToday + n;
     const contractNumber = `TEST-${dateStr}-${String(seq).padStart(3, '0')}`;
-    const profile = PROFILES[(n - 1) % PROFILES.length];
-    const c = calc(profile.sellingPrice, profile.downPayment, profile.rate, profile.months);
-    const paymentDueDay = 5;
+    const sc = SCENARIOS[(n - 1) % SCENARIOS.length];
+    const c = calc(sc.sellingPrice, sc.downPayment, sc.rate, sc.months);
+    // BKK-local "today" (UTC+7) via an explicit offset — TZ-independent, so due
+    // dates are correct whether the runtime is UTC (Cloud Run Job) or BKK.
+    const bkk = new Date(Date.now() + 7 * 60 * 60 * 1000);
+    const bkkY = bkk.getUTCFullYear();
+    const bkkMo = bkk.getUTCMonth();
+    const dueDay = bkk.getUTCDate();
+    const todayMidnight = new Date(bkkY, bkkMo, dueDay);
+    // Backdate createdAt so installment #1 (= createdAt + 1 month) falls due
+    // `startMonthsAgo` months ago. ensureInstallmentSchedules keys off createdAt,
+    // keeping the schedule + Payment due dates in lockstep.
+    const createdAt = new Date(bkkY, bkkMo - (sc.startMonthsAgo + 1), dueDay);
+    const paymentDueDay = dueDay;
+    const custName = `ทดสอบ ${sc.label} ${seq}`;
     const phone = `09${String(10000000 + seq).slice(-8)}`;
+    const overdueCount = Math.max(0, Math.min(sc.startMonthsAgo, sc.months));
 
     if (opts.dryRun) {
       console.log(
-        `  ${contractNumber}  ลูกค้า="ทดสอบระบบ ${seq}"  ราคา=฿${profile.sellingPrice}  ดาวน์=฿${profile.downPayment}` +
-          `  ${profile.months} งวด  ค่างวด=฿${c.monthlyPayment}  (PENDING x${profile.months})`,
+        `  ${contractNumber}  "${custName}"  ${sc.months} งวด  ค่างวด=฿${c.monthlyPayment}  → ค้าง ${overdueCount} งวด` +
+          ` (งวด#1 ครบ ${new Date(createdAt.getFullYear(), createdAt.getMonth() + 1, dueDay).toISOString().slice(0, 10)})`,
       );
       result.contractNumbers.push(contractNumber);
       continue;
     }
 
     // Per-installment breakdown (ceil for 1..N-1, remainder on last) — mirrors seed.
-    const mpPrincipal = Math.ceil(c.principal / profile.months);
-    const mpInterest = Math.ceil(c.interestTotal / profile.months);
-    const mpCommission = Math.ceil(c.storeCommission / profile.months);
+    const mpPrincipal = Math.ceil(c.principal / sc.months);
+    const mpInterest = Math.ceil(c.interestTotal / sc.months);
+    const mpCommission = Math.ceil(c.storeCommission / sc.months);
     let usedP = 0,
       usedI = 0,
       usedC = 0;
@@ -142,7 +163,7 @@ export async function seedTestContracts(
     await prisma.$transaction(async (tx) => {
       const customer = await tx.customer.create({
         data: {
-          name: `ทดสอบระบบ ${seq}`,
+          name: custName,
           phone,
           prefix: 'นาย',
           occupation: 'ทดสอบ',
@@ -159,11 +180,12 @@ export async function seedTestContracts(
           salespersonId: refs.salespersonId,
           reviewedById: refs.reviewerId,
           interestConfigId: refs.interestConfigId,
+          createdAt,
           planType: 'STORE_DIRECT',
-          sellingPrice: profile.sellingPrice,
-          downPayment: profile.downPayment,
-          interestRate: profile.rate,
-          totalMonths: profile.months,
+          sellingPrice: sc.sellingPrice,
+          downPayment: sc.downPayment,
+          interestRate: sc.rate,
+          totalMonths: sc.months,
           interestTotal: c.interestTotal,
           // ยอดจัด = principal base (sellingPrice − down). computeInstallmentBreakdown
           // ADDS commission+interest+VAT on top, so this must NOT be the grand total
@@ -185,8 +207,8 @@ export async function seedTestContracts(
         },
       });
 
-      for (let i = 1; i <= profile.months; i++) {
-        const isLast = i === profile.months;
+      for (let i = 1; i <= sc.months; i++) {
+        const isLast = i === sc.months;
         const principal = isLast ? Math.round((c.principal - usedP) * 100) / 100 : mpPrincipal;
         const interest = isLast ? Math.round((c.interestTotal - usedI) * 100) / 100 : mpInterest;
         const commission = isLast ? Math.round((c.storeCommission - usedC) * 100) / 100 : mpCommission;
@@ -194,14 +216,24 @@ export async function seedTestContracts(
         usedP += principal;
         usedI += interest;
         usedC += commission;
+        const dueDateI = new Date(createdAt.getFullYear(), createdAt.getMonth() + i, dueDay);
+        const overdueDays =
+          dueDateI < todayMidnight
+            ? Math.floor((todayMidnight.getTime() - dueDateI.getTime()) / 86400000)
+            : 0;
         await tx.payment.create({
           data: {
             contractId: contract.id,
             installmentNo: i,
-            dueDate: new Date(baseMonth.getFullYear(), baseMonth.getMonth() + i, paymentDueDay),
+            dueDate: dueDateI,
             amountDue: c.monthlyPayment,
             amountPaid: 0,
-            status: 'PENDING',
+            status: overdueDays > 0 ? 'OVERDUE' : 'PENDING',
+            // Pre-stamp late fee on overdue installments (mirrors the daily overdue
+            // cron) so the wizard + preview show it; record recomputes to match.
+            ...(overdueDays > 0
+              ? { lateFee: resolveLateFee(lateFeeCfg, overdueDays, c.monthlyPayment) }
+              : {}),
             monthlyPrincipal: principal,
             monthlyInterest: interest,
             monthlyCommission: commission,
@@ -218,7 +250,7 @@ export async function seedTestContracts(
 
     result.created += 1;
     result.contractNumbers.push(contractNumber);
-    console.log(`[seed-test-contracts] CREATED ${contractNumber} (ลูกค้า "ทดสอบระบบ ${seq}", ${profile.months} งวด)`);
+    console.log(`[seed-test-contracts] CREATED ${contractNumber} ("${custName}", ${sc.months} งวด, ค้าง ${overdueCount})`);
   }
 
   return result;

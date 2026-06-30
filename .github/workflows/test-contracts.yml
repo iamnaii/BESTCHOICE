@@ -77,7 +77,9 @@ jobs:
             fi
           fi
           echo "cli=$CLI" >> "$GITHUB_OUTPUT"
-          echo "vars=$VARS" >> "$GITHUB_OUTPUT"
+          # TZ=Asia/Bangkok so the seeder computes "today"/overdue due dates in BKK
+          # (the Cloud Run Job otherwise runs in UTC → due dates off by the offset).
+          echo "vars=TZ=Asia/Bangkok,$VARS" >> "$GITHUB_OUTPUT"
           echo "mode=${{ inputs.action }} / $([ "${{ inputs.live }}" = "true" ] && echo LIVE || echo DRY-RUN)" >> "$GITHUB_OUTPUT"
 
       - name: Create or update job

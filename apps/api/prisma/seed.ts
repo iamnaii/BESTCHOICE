@@ -111,10 +111,13 @@ async function main() {
   const companyShop = await prisma.companyInfo.create({
     data: {
       id: 'company-shop',
-      nameTh: 'เบสท์ชอยส์ ช็อป',
-      nameEn: 'BESTCHOICE Shop',
+      // Real registered นิติบุคคล (1 entity, 2 business halves today). Address /
+      // director / bank below are placeholders — owner sets the real values via
+      // Company settings (PATCH /companies/:id).
+      nameTh: 'บริษัท เบสท์ช้อยส์โฟน จำกัด',
+      nameEn: 'BESTCHOICE PHONE Co., Ltd.',
       companyCode: 'SHOP',
-      taxId: '0105566012345',
+      taxId: '0165568000050',
       address: '99 ถ.วิภาวดีรังสิต แขวงจตุจักร เขตจตุจักร กรุงเทพฯ 10900',
       phone: '02-100-0000',
       directorName: 'สุรชัย เจ้าของร้าน',
@@ -131,10 +134,11 @@ async function main() {
   const companyFinance = await prisma.companyInfo.create({
     data: {
       id: 'company-finance',
-      nameTh: 'เบสท์ชอยส์ ไฟแนนซ์',
-      nameEn: 'BESTCHOICE Finance',
+      // Same registered นิติบุคคล as SHOP (single legal entity today).
+      nameTh: 'บริษัท เบสท์ช้อยส์โฟน จำกัด',
+      nameEn: 'BESTCHOICE PHONE Co., Ltd.',
       companyCode: 'FINANCE',
-      taxId: '0105566012346',
+      taxId: '0165568000050',
       address: '99 ถ.วิภาวดีรังสิต แขวงจตุจักร เขตจตุจักร กรุงเทพฯ 10900',
       phone: '02-100-0001',
       directorName: 'สุรชัย เจ้าของร้าน',

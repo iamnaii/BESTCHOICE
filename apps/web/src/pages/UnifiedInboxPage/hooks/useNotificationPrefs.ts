@@ -46,7 +46,8 @@ export function useNotificationPrefs() {
   const toggleRoomMute = useCallback((roomId: string) => {
     setMutedRooms((prev) => {
       const next = new Set(prev);
-      next.has(roomId) ? next.delete(roomId) : next.add(roomId);
+      if (next.has(roomId)) next.delete(roomId);
+      else next.add(roomId);
       return next;
     });
   }, []);

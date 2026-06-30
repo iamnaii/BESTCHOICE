@@ -1,6 +1,23 @@
 import { NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { d, dAdd, dSub, dSum } from '../../../utils/decimal.util';
+
+// Accounts-payable ("ค้างจ่าย") = money actually owed to a supplier: either the
+// goods have been RECEIVED (a payable), OR a deposit/partial payment has already
+// been made (cash is in-flight and the remainder is still owed). A pure,
+// untouched commitment — DRAFT/APPROVED/ORDERED with nothing received and nothing
+// paid — is NOT a payable and must be excluded. The AP-tab query and the
+// dashboard "ค้างจ่าย" badge MUST share this exact predicate so the count always
+// matches the tab.
+const AP_OWED_WHERE: Prisma.PurchaseOrderWhereInput = {
+  status: { notIn: ['CANCELLED', 'DRAFT'] },
+  paymentStatus: { not: 'FULLY_PAID' },
+  OR: [
+    { status: { in: ['PARTIALLY_RECEIVED', 'FULLY_RECEIVED'] } },
+    { paidAmount: { gt: 0 } },
+  ],
+};
 
 /**
  * Read-side of purchase orders: list/detail reads, accounts-payable
@@ -79,12 +96,11 @@ export class PoQueryService {
   async getAccountsPayable(page = 1, limit = 50) {
     const safeLimit = Math.min(limit, 100);
 
-    // Get all non-cancelled POs that are not fully paid
+    // True accounts payable: received OR already-paid-something, not fully paid (see AP_OWED_WHERE)
     const pos = await this.prisma.purchaseOrder.findMany({
       where: {
         deletedAt: null,
-        status: { notIn: ['CANCELLED', 'DRAFT'] },
-        paymentStatus: { not: 'FULLY_PAID' },
+        ...AP_OWED_WHERE,
       },
       include: {
         supplier: { select: { id: true, name: true, contactName: true, phone: true } },
@@ -303,7 +319,7 @@ export class PoQueryService {
       this.prisma.purchaseOrder.count({ where: { ...base, status: 'ORDERED', expectedDate: { lt: now } } }),
       this.prisma.purchaseOrder.count({ where: { ...base, status: 'PARTIALLY_RECEIVED' } }),
       this.prisma.product.count({ where: { deletedAt: null, status: { in: ['QC_PENDING', 'PHOTO_PENDING'] } } }),
-      this.prisma.purchaseOrder.count({ where: { ...base, status: { notIn: ['CANCELLED', 'DRAFT'] }, paymentStatus: { not: 'FULLY_PAID' } } }),
+      this.prisma.purchaseOrder.count({ where: { ...base, ...AP_OWED_WHERE } }),
     ]);
     return { pendingApproval, toOrder, incoming, overdue, receiving, waitingQc, unpaid };
   }

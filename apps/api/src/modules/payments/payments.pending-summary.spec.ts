@@ -19,9 +19,10 @@ describe('PaymentQueryService — getPendingSummary', () => {
     waived?: { _sum: { waivedAmount: unknown } };
     collected?: { _count: number; _sum: { amountPaid: unknown } };
     overdue60?: number;
+    pendingRows?: Array<{ dueDate: Date; amountDue: Prisma.Decimal; lateFeeWaived: boolean }>;
   }) {
     const D = (v: string) => new Prisma.Decimal(v);
-    const calls: { pending?: any; waived?: any; collected?: any; overdue60?: any } = {};
+    const calls: { pending?: any; waived?: any; collected?: any; overdue60?: any; pendingRows?: any } = {};
 
     const aggregate = jest.fn((args: any) => {
       const sum = args._sum ?? {};
@@ -44,7 +45,24 @@ describe('PaymentQueryService — getPendingSummary', () => {
       return Promise.resolve(buckets.overdue60 ?? 0);
     });
 
-    const prisma = { payment: { aggregate, count } };
+    const findMany = jest.fn((args: any) => {
+      calls.pendingRows = args.where;
+      return Promise.resolve(buckets.pendingRows ?? []);
+    });
+
+    const systemConfig = {
+      findUnique: jest.fn(({ where: { key } }: { where: { key: string } }) => {
+        const map: Record<string, string> = {
+          late_fee_mode: 'PER_DAY',
+          late_fee_per_day_rate: '20',
+          late_fee_max_amount: '500',
+          late_fee_cap_pct: '5',
+        };
+        return Promise.resolve(map[key] ? { value: map[key] } : null);
+      }),
+    };
+
+    const prisma = { payment: { aggregate, count, findMany }, systemConfig };
     const service = new PaymentQueryService(prisma as any);
     return { service, calls, aggregate, count };
   }
@@ -56,6 +74,8 @@ describe('PaymentQueryService — getPendingSummary', () => {
       waived: { _sum: { waivedAmount: D('675.00') } },
       overdue60: 3,
       collected: { _count: 8, _sum: { amountPaid: D('12580.00') } },
+      // one 30-day-overdue installment; PER_DAY min(30×20=600, 500, 5%×6000=300) = 300
+      pendingRows: [{ dueDate: new Date(Date.now() - 30 * 86_400_000), amountDue: D('6000'), lateFeeWaived: false }],
     });
 
     const result = await service.getPendingSummary({});
@@ -63,7 +83,7 @@ describe('PaymentQueryService — getPendingSummary', () => {
     expect(result).toEqual({
       pendingCount: 50,
       outstandingPrincipal: 56376, // 60000.00 − 3624.00, "เฉพาะค่างวด" (no late fee)
-      outstandingLateFee: 2150, // → Cr 42-1103
+      outstandingLateFee: 300, // live: 5% × 6000 (cap binds)
       waivedLateFee: 675, // → Dr 52-1105 (อนุโลม)
       overdue60Count: 3, // → trigger 21-2103 VAT
       collectedAmount: 12580,
@@ -75,6 +95,8 @@ describe('PaymentQueryService — getPendingSummary', () => {
     const D = (v: string) => new Prisma.Decimal(v);
     const { service } = makeService({
       pending: { _count: 3, _sum: { amountDue: D('4547.49'), amountPaid: D('1515.83'), lateFee: D('99.17') } },
+      // 30 days overdue, PER_DAY cap binds: 5% × 1983.40 = 99.17
+      pendingRows: [{ dueDate: new Date(Date.now() - 30 * 86_400_000), amountDue: D('1983.40'), lateFeeWaived: false }],
     });
 
     const result = await service.getPendingSummary({});

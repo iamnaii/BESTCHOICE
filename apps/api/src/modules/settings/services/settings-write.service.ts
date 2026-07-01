@@ -11,6 +11,18 @@ import {
 } from '../settings.constants';
 
 /**
+ * Late-fee amount keys that must be a finite number >= 0 (rejecting '' so
+ * loadLateFeeConfig never reads a blank as 0). cap_pct and tier2_min_days have
+ * tighter bounds handled inline in validateKeyValue.
+ */
+const LATE_FEE_NONNEG_KEYS = new Set<string>([
+  'late_fee_per_day_rate',
+  'late_fee_max_amount',
+  'late_fee_tier1_amount',
+  'late_fee_tier2_amount',
+]);
+
+/**
  * Write/mutation slice of the decomposed SettingsService (Wave-4). Owns the
  * SOLE `$transaction` in the module (the bulkUpdate upsert-array). All method
  * bodies are byte-identical to the original; only `this.prisma`/`this.audit`
@@ -77,6 +89,36 @@ export class SettingsWriteService {
         throw new BadRequestException(
           `doc_number_reset_cycle ต้องเป็นหนึ่งใน: ${VALID_DOC_NUMBER_RESET_CYCLES.join(', ')}`,
         );
+      }
+    }
+    // Late-fee dispatch mode — mirror of resolveLateFee (apps/api/src/utils/
+    // late-fee.util.ts). Only these two values select a real branch; anything
+    // else would silently fall back to the code default and confuse the owner.
+    if (key === 'late_fee_mode') {
+      if (value !== 'BRACKET' && value !== 'PER_DAY') {
+        throw new BadRequestException('late_fee_mode ต้องเป็น BRACKET หรือ PER_DAY');
+      }
+    }
+    // Late-fee amounts flow through loadLateFeeConfig, which does
+    // `row ? Number(row.value) : default`. A stored '' is a present row, so
+    // Number('')=0 silently DISABLES the fee (default never applies). Reject
+    // blank/non-numeric here so no client (UI, LIFF, script) can zero it out.
+    if (LATE_FEE_NONNEG_KEYS.has(key)) {
+      const n = Number(value);
+      if (value.trim() === '' || !Number.isFinite(n) || n < 0) {
+        throw new BadRequestException(`${key} ต้องเป็นตัวเลข ≥ 0`);
+      }
+    }
+    if (key === 'late_fee_cap_pct') {
+      const n = Number(value);
+      if (value.trim() === '' || !Number.isFinite(n) || n < 0 || n > 100) {
+        throw new BadRequestException('late_fee_cap_pct ต้องเป็นตัวเลข 0–100');
+      }
+    }
+    if (key === 'late_fee_tier2_min_days') {
+      const n = Number(value);
+      if (value.trim() === '' || !Number.isInteger(n) || n < 1) {
+        throw new BadRequestException('late_fee_tier2_min_days ต้องเป็นจำนวนเต็ม ≥ 1');
       }
     }
   }

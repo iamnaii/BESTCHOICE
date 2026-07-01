@@ -1,7 +1,10 @@
 import { configGroups, SettingsCard } from './shared';
 
-// Groups rendered before the company card
-const PRE_COMPANY_KEYS = ['penalty', 'pdpa'];
+// Groups rendered before the company card.
+// NOTE: 'penalty' moved to the dedicated LateFeeSettingsCard (registry: finance ›
+// late-fee) which adds late_fee_mode + PER_DAY fields. Keep it OUT of here so
+// there's a single editor for those keys.
+const PRE_COMPANY_KEYS = ['pdpa'];
 // Groups rendered after the company card
 const POST_COMPANY_KEYS = ['banking', 'payment_link'];
 
@@ -12,11 +15,12 @@ interface GeneralSettingsProps {
   onSave: (items: { key: string; value: string }[]) => void;
   onCancel: () => void;
   isSaving: boolean;
-  /** 'pre' renders penalty+pdpa; 'post' renders banking+payment_link */
+  /** 'pre' renders pdpa; 'post' renders banking+payment_link */
   slot: 'pre' | 'post';
 }
 
-// ── GeneralSettings: penalty, PDPA, banking, payment gateway configs ──
+// ── GeneralSettings: PDPA, banking, payment gateway configs ──
+// (late-fee / installment-terms moved to LateFeeSettingsCard — finance › late-fee)
 
 export default function GeneralSettings({
   values,

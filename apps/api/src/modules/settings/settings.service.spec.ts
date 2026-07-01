@@ -146,6 +146,68 @@ describe('SettingsService audit trail', () => {
     });
   });
 
+  // late_fee_mode whitelist — mirrors resolveLateFee (apps/api/src/utils/late-fee.util.ts).
+  describe('late_fee_mode whitelist', () => {
+    it('accepts PER_DAY', async () => {
+      prisma.systemConfig.findUnique.mockResolvedValue(null);
+      await expect(service.update('late_fee_mode', 'PER_DAY', 'u-1')).resolves.toBeDefined();
+    });
+
+    it('accepts BRACKET', async () => {
+      prisma.systemConfig.findUnique.mockResolvedValue(null);
+      await expect(service.update('late_fee_mode', 'BRACKET', 'u-1')).resolves.toBeDefined();
+    });
+
+    it('rejects an unknown mode with a Thai message', async () => {
+      await expect(service.update('late_fee_mode', 'WEEKLY', 'u-1')).rejects.toThrow(
+        /BRACKET หรือ PER_DAY/,
+      );
+    });
+
+    it('rejects the whole bulk batch when one late_fee_mode value is invalid', async () => {
+      await expect(
+        service.bulkUpdate(
+          [
+            { key: 'late_fee_mode', value: 'bogus' },
+            { key: 'late_fee_per_day_rate', value: '20' },
+          ],
+          'u-1',
+        ),
+      ).rejects.toThrow(/BRACKET หรือ PER_DAY/);
+      // Nothing persisted — validation runs before the transaction.
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('bulkUpdate accepts a valid late_fee_mode + numeric key and upserts both', async () => {
+      prisma.systemConfig.findMany.mockResolvedValue([]);
+      await service.bulkUpdate(
+        [
+          { key: 'late_fee_mode', value: 'BRACKET' },
+          { key: 'late_fee_per_day_rate', value: '20' },
+        ],
+        'u-1',
+      );
+      expect(prisma.$transaction).toHaveBeenCalled();
+      const keys = prisma.systemConfig.upsert.mock.calls.map(
+        (c: [{ where: { key: string } }]) => c[0].where.key,
+      );
+      expect(keys).toContain('late_fee_mode');
+      expect(keys).toContain('late_fee_per_day_rate');
+    });
+
+    it('rejects a blank late-fee amount (would resolve to 0 downstream)', async () => {
+      await expect(service.update('late_fee_per_day_rate', '', 'u-1')).rejects.toThrow(
+        /ตัวเลข/,
+      );
+    });
+
+    it('rejects late_fee_cap_pct above 100', async () => {
+      await expect(service.update('late_fee_cap_pct', '150', 'u-1')).rejects.toThrow(
+        /0–100/,
+      );
+    });
+  });
+
   it('audit failure does NOT block config update (audit.log is fire-and-forget-style)', async () => {
     prisma.systemConfig.findUnique.mockResolvedValue({ value: 'old' });
     audit.log.mockRejectedValue(new Error('audit DB down'));

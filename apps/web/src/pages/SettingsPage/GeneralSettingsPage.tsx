@@ -43,9 +43,9 @@ export default function GeneralSettingsPage() {
     <div className="flex flex-col gap-4">
       <PageHeader
         title="ตั้งค่าทั่วไป"
-        subtitle="บัญชีธนาคาร, ค่าปรับ, PDPA และ payment gateway"
+        subtitle="บัญชีธนาคาร, PDPA และ payment gateway"
       />
-      {/* penalty + pdpa */}
+      {/* pdpa */}
       <GeneralSettings
         values={values}
         editingSection={editingSection}

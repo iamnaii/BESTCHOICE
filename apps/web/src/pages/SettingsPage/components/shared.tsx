@@ -28,21 +28,11 @@ export interface ConfigGroup {
 
 // ── Shared config data ──
 
+// NOTE: the 'penalty' group (late fee + installment months + overdue threshold)
+// moved to the dedicated LateFeeSettingsCard (registry: finance › late-fee),
+// which adds late_fee_mode + the PER_DAY fields. It is intentionally no longer
+// declared here — that card owns those SystemConfig keys now.
 export const configGroups: ConfigGroup[] = [
-  {
-    key: 'penalty',
-    title: 'ค่าปรับ จำนวนงวด และการติดตามหนี้',
-    subtitle: 'กำหนดค่าปรับ จำนวนงวด และเกณฑ์ติดตามหนี้สำหรับสัญญาผ่อนชำระ',
-    items: [
-      { key: 'late_fee_tier1_amount', label: 'ค่าปรับล่าช้า tier1 (บาท) — 1 ถึง tier2MinDays-1 วัน', shortLabel: 'ค่าปรับ tier1', suffix: ' บาท', type: 'number', step: '1', desc: 'ค่าปรับเมื่อจ่ายช้า 1–2 วัน (ก่อนถึงขั้นที่ 2)' },
-      { key: 'late_fee_tier2_amount', label: 'ค่าปรับล่าช้า tier2 (บาท) — ตั้งแต่ tier2MinDays วันขึ้นไป', shortLabel: 'ค่าปรับ tier2', suffix: ' บาท', type: 'number', step: '1', desc: 'ค่าปรับเมื่อจ่ายช้าตั้งแต่วันที่กำหนดขึ้นไป' },
-      { key: 'late_fee_tier2_min_days', label: 'วันเริ่มต้น tier2 ค่าปรับล่าช้า', shortLabel: 'tier2 เริ่มวันที่', suffix: ' วัน', type: 'number', step: '1', desc: 'จำนวนวันที่เริ่มคิดค่าปรับขั้นที่ 2 (tier2)' },
-      { key: 'early_payoff_discount', label: 'ส่วนลดปิดบัญชีก่อนกำหนด (%)', shortLabel: 'ส่วนลดปิดก่อน', suffix: '', type: 'number', step: '0.1', desc: 'ลดให้ลูกค้าที่ปิดบัญชีก่อนกำหนด' },
-      { key: 'min_installment_months', label: 'จำนวนงวดขั้นต่ำ (เดือน)', shortLabel: 'งวดขั้นต่ำ', suffix: ' เดือน', type: 'number', step: '1', desc: 'จำนวนงวดต่ำสุดที่เลือกได้' },
-      { key: 'max_installment_months', label: 'จำนวนงวดสูงสุด (เดือน)', shortLabel: 'งวดสูงสุด', suffix: ' เดือน', type: 'number', step: '1', desc: 'จำนวนงวดสูงสุดที่เลือกได้' },
-      { key: 'overdue_days_threshold', label: 'จำนวนวันก่อนเปลี่ยนสถานะ OVERDUE', shortLabel: 'เกณฑ์ OVERDUE', suffix: ' วัน', type: 'number', step: '1', desc: 'ค้างกี่วันถึงเปลี่ยนสถานะเป็น OVERDUE' },
-    ],
-  },
   {
     key: 'pdpa',
     title: 'PDPA และความปลอดภัย',

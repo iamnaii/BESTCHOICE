@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import Decimal from 'decimal.js';
 import { paymentToleranceGate } from './paymentToleranceGate';
+import { invalidatePaymentQueries } from './invalidatePaymentQueries';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useSearchParams } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -179,8 +180,7 @@ export default function PaymentsPage() {
     },
     onSuccess: () => {
       toast.success('บันทึกการชำระสำเร็จ');
-      queryClient.invalidateQueries({ queryKey: ['pending-payments'] });
-      queryClient.invalidateQueries({ queryKey: ['daily-summary'] });
+      invalidatePaymentQueries(queryClient);
       setShowPayModal(false);
       setSelectedPayment(null);
       setSlipResult(null);
@@ -204,8 +204,7 @@ export default function PaymentsPage() {
     mutationFn: async (paymentId: string) => (await api.post(`/payments/${paymentId}/post-draft`, {})).data,
     onSuccess: () => {
       toast.success('ลงบัญชีฉบับร่างสำเร็จ');
-      queryClient.invalidateQueries({ queryKey: ['pending-payments'] });
-      queryClient.invalidateQueries({ queryKey: ['daily-summary'] });
+      invalidatePaymentQueries(queryClient);
       queryClient.invalidateQueries({ queryKey: ['payment-draft'] });
       setShowPayWizard(false);
       setSelectedPayment(null);

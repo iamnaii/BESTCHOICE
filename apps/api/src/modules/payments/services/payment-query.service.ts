@@ -3,6 +3,7 @@ import { Prisma, PaymentStatus } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { paginatedResponse } from '../../../common/helpers/pagination.helper';
 import { roundBaht } from '../../../utils/installment.util';
+import { loadLateFeeConfig, resolveLivePaymentLateFee } from '../../../utils/late-fee.util';
 
 /**
  * Build a Prisma `dueDate` range filter from BKK-local YYYY-MM-DD bounds.
@@ -174,7 +175,19 @@ export class PaymentQueryService {
       this.prisma.payment.count({ where }),
     ]);
 
-    return paginatedResponse(data, total, page, limit);
+    // Live late fee: Payment.lateFee is a stamp refreshed only at record time /
+    // by the overdue cron, so recompute it from current config on read. This keeps
+    // the queue + RecordPaymentWizard in step with settings edits and matches what
+    // the orchestrator will actually charge. (getDailySummary keeps the stored
+    // value — that is the real charged fee on PAID installments.)
+    const cfg = await loadLateFeeConfig(this.prisma);
+    const now = new Date();
+    const withLiveFee = data.map((p) => ({
+      ...p,
+      lateFee: resolveLivePaymentLateFee(p, cfg, now),
+    }));
+
+    return paginatedResponse(withLiveFee, total, page, limit);
   }
 
   // ─── Pending-queue KPI summary (รับชำระค่างวด redesign) ─────────────────

@@ -652,15 +652,20 @@ describe('PaymentsService.recordPayment — tolerance gating (characterization)'
     expect(result.status).toBe('PAID');
   });
 
-  it('overage == 1.01 throws BadRequest mentioning OVERPAY_ADVANCE', async () => {
+  it('overage above the auto-advance ceiling throws BadRequest mentioning OVERPAY_ADVANCE', async () => {
+    // D1 (owner 2026-06-25): overpay within multiplier×amountDue (default 2 →
+    // ceiling 2000) auto-routes to advance (Cr 21-1103) WITHOUT throwing. Only
+    // overage ABOVE the ceiling still requires an explicit OVERPAY_ADVANCE case.
+    // amountDue=1000 → ceiling=2000, so overage 2000.01 must throw. (Was overage
+    // 1.01, which now legitimately auto-advances → no throw.)
     await expect(
       service.recordPayment(
         'tol-contract-1',
         1,
-        REMAINING + 1.01, // 1001.01 → overage 1.01
+        REMAINING + 2000.01, // 3000.01 → overage 2000.01 > ceiling 2000
         'CASH',
         'user-1',
-        'https://slip.test/over-101',
+        'https://slip.test/over-ceiling',
       ),
     ).rejects.toThrow(BadRequestException);
 
@@ -668,10 +673,10 @@ describe('PaymentsService.recordPayment — tolerance gating (characterization)'
       service.recordPayment(
         'tol-contract-1',
         1,
-        REMAINING + 1.01,
+        REMAINING + 2000.01,
         'CASH',
         'user-1',
-        'https://slip.test/over-101b',
+        'https://slip.test/over-ceiling-b',
       ),
     ).rejects.toThrow(/OVERPAY_ADVANCE/);
   });

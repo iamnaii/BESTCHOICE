@@ -127,9 +127,12 @@ describe('PaymentsService — Financial Integration', () => {
       expect(Number(payments[0].amountPaid)).toBe(500);
     });
 
-    it('should reject overpayment', async () => {
+    it('should reject overpayment beyond the auto-advance ceiling', async () => {
+      // D1 (owner 2026-06-25): overpay within 2×amountDue (=2000) auto-routes to
+      // advance; only overage above the ceiling is rejected. amountDue=1000 →
+      // ceiling=2000, so 3500 (overage 2500) must throw. (Was 1500 → now auto-advances.)
       await expect(
-        service.recordPayment('c1', 1, 1500, 'CASH', 'u1', 'https://s3.example.com/slip.jpg', undefined, 'TXN-3'),
+        service.recordPayment('c1', 1, 3500, 'CASH', 'u1', 'https://s3.example.com/slip.jpg', undefined, 'TXN-3'),
       ).rejects.toThrow(BadRequestException);
     });
 

@@ -243,9 +243,15 @@ describe('PaymentsService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('should throw if amount exceeds remaining', async () => {
+    it('should throw if amount exceeds remaining beyond the auto-advance ceiling', async () => {
+      // D1 (owner 2026-06-25): overpay within multiplier×amountDue auto-routes to
+      // advance (Cr 21-1103) WITHOUT throwing. Only overpay ABOVE that ceiling
+      // still requires an explicit OVERPAY_ADVANCE case — that's the guard here.
+      // amountDue=3000, default multiplier=2 → ceiling=6000, so 10000 (overage
+      // 7000 > 6000) must be rejected. (The old assertion used 5000, whose 2000
+      // overage now legitimately auto-advances → no throw.)
       await expect(
-        service.recordPayment('contract-1', 1, 5000, 'CASH', 'user-1', 'http://slip.jpg'),
+        service.recordPayment('contract-1', 1, 10000, 'CASH', 'user-1', 'http://slip.jpg'),
       ).rejects.toThrow(BadRequestException);
     });
 

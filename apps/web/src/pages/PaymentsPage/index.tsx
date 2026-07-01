@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import Decimal from 'decimal.js';
+import { paymentToleranceGate } from './paymentToleranceGate';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useSearchParams } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -653,10 +654,11 @@ export default function PaymentsPage() {
             const remaining = Decimal.max(new Decimal(0), grossRemaining.sub(consumed))
               .toDecimalPlaces(2)
               .toNumber();
-            const diff = new Decimal(payload.amount).sub(remaining).toDecimalPlaces(2).toNumber();
-            const absDiff = Math.abs(diff);
-            if (absDiff > 1.0) {
-              toast.error(`ส่วนต่างเกิน 1 ฿ (${absDiff.toFixed(2)} ฿) ไม่สามารถอนุมัติได้ กรุณาแก้ไขจำนวนเงิน`);
+            // แบ่งชำระ (PARTIAL) และ ล่วงหน้า (OVERPAY_ADVANCE) ตั้งใจให้ส่วนต่าง > 1฿ —
+            // จึง bypass tolerance gate (backend บันทึกเป็น PARTIALLY_PAID / เงินรับล่วงหน้า).
+            const gate = paymentToleranceGate(payload.case, payload.amount, remaining);
+            if (gate.action === 'block') {
+              toast.error(`ส่วนต่างเกิน 1 ฿ (${gate.absDiff.toFixed(2)} ฿) ไม่สามารถอนุมัติได้ กรุณาแก้ไขจำนวนเงิน`);
               return;
             }
             const mutationPayload: Record<string, unknown> = {
@@ -684,7 +686,7 @@ export default function PaymentsPage() {
               // form state + makes the user intent traceable in request logs.
               lateFee: payload.lateFee,
             };
-            if (absDiff >= 0.01) {
+            if (gate.action === 'confirm') {
               setPendingPayload(mutationPayload);
               setShowToleranceDialog(true);
               return;

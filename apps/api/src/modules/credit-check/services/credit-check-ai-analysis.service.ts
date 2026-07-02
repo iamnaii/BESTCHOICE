@@ -2,6 +2,7 @@ import { NotFoundException, BadRequestException, InternalServerErrorException, L
 import Anthropic from '@anthropic-ai/sdk';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { IntegrationConfigService } from '../../integrations/integration-config.service';
+import { AiUsageService } from '../../ai-usage/ai-usage.service';
 
 /**
  * AI-analysis sub-service for credit-check. Plain class (NOT @Injectable) —
@@ -19,6 +20,7 @@ export class CreditCheckAiAnalysisService {
   constructor(
     private prisma: PrismaService,
     private integrationConfig: IntegrationConfigService,
+    private aiUsage: AiUsageService,
   ) {}
 
   private async getAnthropicClient(): Promise<Anthropic | null> {
@@ -212,13 +214,24 @@ export class CreditCheckAiAnalysisService {
 ตอบเป็น JSON เท่านั้น ไม่ต้องมี markdown code block`,
     });
 
+    // Keep in sync with the Sonnet ID used in finance-ai.service.ts and ocr.service.ts.
+    // Mismatch (`claude-sonnet-4-20250514`) previously caused the API call to fail
+    // and silently fall back to rule-based scoring with no alert.
+    const model = 'claude-sonnet-4-5-20250514';
+
     const response = await client.messages.create({
-      // Keep in sync with the Sonnet ID used in finance-ai.service.ts and ocr.service.ts.
-      // Mismatch (`claude-sonnet-4-20250514`) previously caused the API call to fail
-      // and silently fall back to rule-based scoring with no alert.
-      model: 'claude-sonnet-4-5-20250514',
+      model,
       max_tokens: 1024,
       messages: [{ role: 'user', content: contentBlocks }],
+    });
+
+    void this.aiUsage.record({
+      service: 'credit-check',
+      method: 'performClaudeAnalysis',
+      model,
+      inputTokens: response.usage?.input_tokens ?? 0,
+      outputTokens: response.usage?.output_tokens ?? 0,
+      status: 'success',
     });
 
     const textContent = response.content.find((c) => c.type === 'text');

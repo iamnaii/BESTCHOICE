@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import Anthropic from '@anthropic-ai/sdk';
+import { AiUsageService } from '../ai-usage/ai-usage.service';
 
 interface ExtractedFaq {
   intent: string;
@@ -25,8 +26,12 @@ Thai text is expected. Merge duplicate FAQs. Pick the BEST staff response as res
 export class KnowledgeExtractorService {
   private readonly logger = new Logger(KnowledgeExtractorService.name);
   private readonly client = new Anthropic();
+  private static readonly MODEL = 'claude-haiku-4-5-20251001';
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly aiUsage: AiUsageService,
+  ) {}
 
   async extractAndSeed(): Promise<{ faqsSeeded: number; objectionsSeeded: number }> {
     const pairs = await this.prisma.aiTrainingPair.findMany({
@@ -44,11 +49,21 @@ export class KnowledgeExtractorService {
         .join('\n\n');
 
     const resp = await this.client.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+      model: KnowledgeExtractorService.MODEL,
       max_tokens: 8000,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userContent }],
     });
+
+    void this.aiUsage.record({
+      service: 'knowledge-extractor',
+      method: 'extractAndSeed',
+      model: KnowledgeExtractorService.MODEL,
+      inputTokens: resp.usage?.input_tokens ?? 0,
+      outputTokens: resp.usage?.output_tokens ?? 0,
+      status: 'success',
+    });
+
     const textBlock = resp.content.find((c) => c.type === 'text');
     if (!textBlock || textBlock.type !== 'text') throw new Error('Claude returned no text');
 

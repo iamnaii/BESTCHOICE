@@ -23,6 +23,7 @@
 - ข้อความอิสระบน LINE Shop ได้คำตอบจาก SalesBot pipeline เดียวกับ Facebook (gates, handoff, logging ครบ) แบบ staged rollout ที่ปิดได้ทันที
 - LINE Finance: 1 ข้อความลูกค้า = 1 LLM call เท่านั้น
 - ทุก LLM call ในกลุ่มแชทตอบลูกค้า (sales-bot, ai-suggest, line-oa-legacy, after-hours — finance-ai ทำไปแล้วก่อนหน้า) โผล่ใน AiUsageLog ด้วยราคาที่ถูกต้อง (รวม Gemini)
+- ทุก LLM call site นอกกลุ่มแชท (vision/slip, ai-assistant, knowledge-extractor, credit-check, ocr) โผล่ใน AiUsageLog เช่นกัน (#1317)
 - ปุ่มรับช่วงต่อหยุดบอทได้จริงทุกช่องทาง
 - AiTrainingPair ทุกแถวมี embedding ภายใน 24 ชม. หลังถูกสร้าง
 
@@ -33,7 +34,6 @@
 - DB migration ลบ column `salesBotMode`/`serviceBotMode` — ปล่อยไว้ mark deprecated
 - บันทึกค่าใช้จ่าย Vertex embedding ลง AiUsageLog (rate card เป็น LLM-centric; ค่า embedding ต่ำมาก)
 - SHOP Sales AI Phase B/C และ AI Agent Registry
-- Instrument LLM call sites นอกกลุ่มแชท (vision/slip, ai-assistant, knowledge-extractor, credit-check, ocr) — follow-up ticket
 
 ## 4. Workstream 1 — Cost hygiene + ถอด draft pipeline (ทำก่อน)
 

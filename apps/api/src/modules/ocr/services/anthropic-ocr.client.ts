@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import Anthropic from '@anthropic-ai/sdk';
 import { IntegrationConfigService } from '../../integrations/integration-config.service';
+import { AiUsageService } from '../../ai-usage/ai-usage.service';
 import { parseJsonResponse } from './ocr-parsing.util';
 
 @Injectable()
@@ -23,7 +24,10 @@ export class AnthropicOcrClient {
   static readonly LOW_CONFIDENCE_THRESHOLD = 0.7;
   static readonly MAX_RETRIES = 2;
 
-  constructor(private integrationConfig: IntegrationConfigService) {}
+  constructor(
+    private integrationConfig: IntegrationConfigService,
+    private aiUsage: AiUsageService,
+  ) {}
 
   private async getAnthropicClient(): Promise<Anthropic | null> {
     const apiKey = ((await this.integrationConfig.getValue('claude-ai', 'apiKey')) || '').trim();
@@ -59,10 +63,18 @@ export class AnthropicOcrClient {
     } catch (err) {
       // If count_tokens not available, try a simple messages call
       try {
-        await client.messages.create({
+        const response = await client.messages.create({
           model,
           max_tokens: 1,
           messages: [{ role: 'user', content: 'hi' }],
+        });
+        void this.aiUsage.record({
+          service: 'ocr',
+          method: 'checkAiStatus',
+          model,
+          inputTokens: response.usage?.input_tokens ?? 0,
+          outputTokens: response.usage?.output_tokens ?? 0,
+          status: 'success',
         });
         return { configured: true, connected: true, model };
       } catch (err2) {
@@ -95,6 +107,15 @@ export class AnthropicOcrClient {
           ],
         },
       ],
+    });
+
+    void this.aiUsage.record({
+      service: 'ocr',
+      method: 'callClaudeOcr',
+      model: AnthropicOcrClient.OCR_MODEL,
+      inputTokens: response.usage?.input_tokens ?? 0,
+      outputTokens: response.usage?.output_tokens ?? 0,
+      status: 'success',
     });
 
     const textContent = response.content.find((c) => c.type === 'text');
@@ -170,6 +191,15 @@ export class AnthropicOcrClient {
           content: [...fileBlocks, { type: 'text', text: prompt }],
         },
       ],
+    });
+
+    void this.aiUsage.record({
+      service: 'ocr',
+      method: 'callClaudeOcrMultiFile',
+      model: AnthropicOcrClient.OCR_MODEL,
+      inputTokens: response.usage?.input_tokens ?? 0,
+      outputTokens: response.usage?.output_tokens ?? 0,
+      status: 'success',
     });
 
     const textContent = response.content.find((c) => c.type === 'text');

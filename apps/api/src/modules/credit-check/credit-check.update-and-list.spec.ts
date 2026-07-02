@@ -1,6 +1,7 @@
 import { NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
+import { AiUsageService } from '../ai-usage/ai-usage.service';
 import { CreditCheckService } from './credit-check.service';
 
 /**
@@ -72,6 +73,7 @@ const makeService = (prisma: MockPrisma): CreditCheckService =>
   new CreditCheckService(
     prisma as unknown as PrismaService,
     {} as unknown as IntegrationConfigService,
+    { record: jest.fn() } as unknown as AiUsageService,
   );
 
 describe('CreditCheckService.updateWithAiFields', () => {

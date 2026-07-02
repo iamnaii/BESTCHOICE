@@ -2,18 +2,22 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCreditCheckDto, OverrideCreditCheckDto } from './dto/credit-check.dto';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
+import { AiUsageService } from '../ai-usage/ai-usage.service';
 import { CreditCheckRiskService } from './services/credit-check-risk.service';
 import { CreditCheckAiAnalysisService } from './services/credit-check-ai-analysis.service';
 import { CreditCheckCrudService } from './services/credit-check-crud.service';
 import { CreditCheckOverrideService } from './services/credit-check-override.service';
 
 /**
- * Facade for credit-check. Keeps the 13-method public surface + the 2-arg
- * constructor (PrismaService + IntegrationConfigService) and delegates each
- * method to one of four internally-constructed sub-services. The sub-services
- * are plain classes (NOT @Injectable / DI-registered) wired up in the
- * constructor body, so every 2-arg construction call site and the module
- * providers stay unchanged.
+ * Facade for credit-check. Keeps the 13-method public surface and delegates
+ * each method to one of four internally-constructed sub-services. The
+ * sub-services are plain classes (NOT @Injectable / DI-registered) wired up
+ * in the constructor body, so the module providers stay unchanged.
+ *
+ * Constructor grew a 3rd arg (AiUsageService, #1317) so the AI-analysis
+ * sub-service can record Claude usage; AiUsageService is @Global() so no
+ * module import is needed. Every `new CreditCheckService(...)` call site
+ * (specs) was updated to pass a 3rd arg alongside this change.
  *
  * Sub-services are exposed as public readonly fields so tests that need to spy
  * on a (previously-facade-private) helper can target the owning sub-service
@@ -29,9 +33,10 @@ export class CreditCheckService {
   constructor(
     private prisma: PrismaService,
     private integrationConfig: IntegrationConfigService,
+    private aiUsage: AiUsageService,
   ) {
     this.risk = new CreditCheckRiskService(this.prisma);
-    this.ai = new CreditCheckAiAnalysisService(this.prisma, this.integrationConfig);
+    this.ai = new CreditCheckAiAnalysisService(this.prisma, this.integrationConfig, this.aiUsage);
     this.crud = new CreditCheckCrudService(this.prisma, this.risk); // crud needs risk for background auto-score
     this.override_ = new CreditCheckOverrideService(this.prisma);
   }

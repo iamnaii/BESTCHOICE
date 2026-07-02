@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
+import { AiUsageService } from '../ai-usage/ai-usage.service';
 import { AnthropicOcrClient } from './services/anthropic-ocr.client';
 import { OcrExtractorsService } from './services/ocr-extractors.service';
 import {
@@ -16,9 +17,12 @@ export class OcrService {
   private readonly anthropicClient: AnthropicOcrClient;
   private readonly extractors: OcrExtractorsService;
 
-  constructor(private integrationConfig: IntegrationConfigService) {
-    this.anthropicClient = new AnthropicOcrClient(this.integrationConfig);
-    this.extractors = new OcrExtractorsService(this.anthropicClient);
+  constructor(
+    private integrationConfig: IntegrationConfigService,
+    private aiUsage: AiUsageService,
+  ) {
+    this.anthropicClient = new AnthropicOcrClient(this.integrationConfig, this.aiUsage);
+    this.extractors = new OcrExtractorsService(this.anthropicClient, this.aiUsage);
   }
 
   checkAiStatus(): Promise<{ configured: boolean; connected: boolean; model: string; error?: string }> {

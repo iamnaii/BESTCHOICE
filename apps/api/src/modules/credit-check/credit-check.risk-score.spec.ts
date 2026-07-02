@@ -1,6 +1,7 @@
 import { NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
+import { AiUsageService } from '../ai-usage/ai-usage.service';
 import { CreditCheckService } from './credit-check.service';
 
 /**
@@ -88,7 +89,11 @@ const makeService = (
       findMany: jest.fn().mockResolvedValue(contracts),
     },
   } as unknown as PrismaService;
-  return new CreditCheckService(prisma, {} as unknown as IntegrationConfigService);
+  return new CreditCheckService(
+    prisma,
+    {} as unknown as IntegrationConfigService,
+    { record: jest.fn() } as unknown as AiUsageService,
+  );
 };
 
 const run = (over: CcOverride = {}, contracts: ContractStatusRow[] = []) =>

@@ -5,6 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { AnthropicOcrClient } from './anthropic-ocr.client';
+import { AiUsageService } from '../../ai-usage/ai-usage.service';
 import {
   validateNationalId,
   isValidDate,
@@ -25,7 +26,10 @@ import {
 export class OcrExtractorsService {
   private readonly logger = new Logger(OcrExtractorsService.name);
 
-  constructor(private client: AnthropicOcrClient) {}
+  constructor(
+    private client: AnthropicOcrClient,
+    private aiUsage: AiUsageService,
+  ) {}
 
   // ─── 0. Generate Template HTML from File ───────────────
 
@@ -78,6 +82,15 @@ export class OcrExtractorsService {
             ],
           },
         ],
+      });
+
+      void this.aiUsage.record({
+        service: 'ocr',
+        method: 'generateTemplateHtml',
+        model: AnthropicOcrClient.OCR_MODEL,
+        inputTokens: response.usage?.input_tokens ?? 0,
+        outputTokens: response.usage?.output_tokens ?? 0,
+        status: 'success',
       });
 
       const textContent = response.content.find((c) => c.type === 'text');

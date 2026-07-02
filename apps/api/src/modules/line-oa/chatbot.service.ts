@@ -5,6 +5,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CHATBOT_SYSTEM_PROMPT, CHATBOT_CONTEXT_INSTRUCTIONS } from './chatbot-system-prompt.constants';
 import { CHATBOT_TOOLS, ChatbotToolName } from './chatbot/chatbot-tools';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
+import { AiUsageService } from '../ai-usage/ai-usage.service';
 
 /**
  * ChatbotService — AI-powered response generation สำหรับน้องเบส
@@ -22,6 +23,7 @@ export class ChatbotService {
     private configService: ConfigService,
     private prisma: PrismaService,
     private integrationConfig: IntegrationConfigService,
+    private aiUsage: AiUsageService,
   ) {}
 
   private async getAnthropicClient(): Promise<Anthropic | null> {
@@ -35,6 +37,17 @@ export class ChatbotService {
 
   get isEnabled(): boolean {
     return this.anthropic !== null;
+  }
+
+  private recordUsage(msg: Anthropic.Message): void {
+    void this.aiUsage.record({
+      service: 'line-oa-legacy',
+      method: 'generateResponse',
+      model: ChatbotService.MODEL,
+      inputTokens: msg.usage?.input_tokens ?? 0,
+      outputTokens: msg.usage?.output_tokens ?? 0,
+      status: 'success',
+    });
   }
 
   /**
@@ -85,6 +98,7 @@ export class ChatbotService {
       };
 
       const response = (await anthropic.messages.create(createParams)) as Anthropic.Message;
+      this.recordUsage(response);
 
       // Handle tool_use stop reason
       if (response.stop_reason === 'tool_use' && customerContext) {
@@ -117,6 +131,7 @@ export class ChatbotService {
               },
             ],
           })) as Anthropic.Message;
+          this.recordUsage(followUp);
 
           const textBlock = followUp.content.find((b) => b.type === 'text');
           return textBlock ? (textBlock as Anthropic.TextBlock).text : null;

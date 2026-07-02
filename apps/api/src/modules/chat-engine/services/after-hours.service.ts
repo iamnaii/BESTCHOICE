@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Anthropic from '@anthropic-ai/sdk';
+import { AiUsageService } from '../../ai-usage/ai-usage.service';
 
 /**
  * AfterHoursService — AI auto-reply for messages received outside business hours.
@@ -17,8 +18,12 @@ import Anthropic from '@anthropic-ai/sdk';
 export class AfterHoursService {
   private readonly logger = new Logger(AfterHoursService.name);
   private anthropic: Anthropic | null = null;
+  private static readonly MODEL = 'claude-haiku-4-5-20251001';
 
-  constructor(private configService: ConfigService) {
+  constructor(
+    private configService: ConfigService,
+    private aiUsage: AiUsageService,
+  ) {
     const apiKey = this.configService.get<string>('ANTHROPIC_API_KEY');
     if (apiKey) {
       this.anthropic = new Anthropic({ apiKey });
@@ -80,7 +85,7 @@ export class AfterHoursService {
       // which would silently fail every reply on a slow request.
       const response = await this.anthropic.messages.create(
         {
-          model: 'claude-haiku-4-5-20251001',
+          model: AfterHoursService.MODEL,
           max_tokens: 300,
           system: `คุณเป็นผู้ช่วยร้าน BESTCHOICE (ร้านมือถือ) ตอนนี้อยู่นอกเวลาทำการ (10:00-20:00)
 ตอบลูกค้าสั้นๆ สุภาพ แจ้งว่าจะมีเจ้าหน้าที่ติดต่อกลับในเวลาทำการ
@@ -96,6 +101,15 @@ export class AfterHoursService {
         },
         { timeout: 25_000 },
       );
+
+      void this.aiUsage.record({
+        service: 'after-hours',
+        method: 'getAutoReply',
+        model: AfterHoursService.MODEL,
+        inputTokens: response.usage?.input_tokens ?? 0,
+        outputTokens: response.usage?.output_tokens ?? 0,
+        status: 'success',
+      });
 
       const textBlock = response.content.find((b) => b.type === 'text');
       if (textBlock && textBlock.type === 'text') {

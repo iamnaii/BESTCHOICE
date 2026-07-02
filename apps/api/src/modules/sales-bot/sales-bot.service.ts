@@ -127,81 +127,94 @@ export class SalesBotService {
     let totalOut = 0;
     let modelUsed = '';
 
-    for (let hop = 0; hop < MAX_TOOL_HOPS; hop++) {
-      const resp = await provider.chat({
-        systemPrompt,
-        messages,
-        tools,
-      });
-      totalIn += resp.inputTokens;
-      totalOut += resp.outputTokens;
-      modelUsed = resp.modelName;
+    try {
+      for (let hop = 0; hop < MAX_TOOL_HOPS; hop++) {
+        const resp = await provider.chat({
+          systemPrompt,
+          messages,
+          tools,
+        });
+        totalIn += resp.inputTokens;
+        totalOut += resp.outputTokens;
+        modelUsed = resp.modelName;
 
-      if (resp.toolCalls.length === 0) {
-        this.logger.log(
-          `[FinalReply] room=${input.roomId} hop=${hop} toolsUsed=${JSON.stringify(toolsUsed)} reply=${JSON.stringify(resp.text).slice(0, 400)}`,
-        );
-        const grounding = this.guardGrounding(resp.text, groundedPrices);
-        if (!grounding.ok) {
-          this.logger.warn(
-            `[GroundingGuard] room=${input.roomId} HALLUCINATION_BLOCKED reason=${grounding.reason} reply=${JSON.stringify(resp.text).slice(0, 200)} grounded=${JSON.stringify([...groundedPrices])}`,
+        if (resp.toolCalls.length === 0) {
+          this.logger.log(
+            `[FinalReply] room=${input.roomId} hop=${hop} toolsUsed=${JSON.stringify(toolsUsed)} reply=${JSON.stringify(resp.text).slice(0, 400)}`,
           );
+          const grounding = this.guardGrounding(resp.text, groundedPrices);
+          if (!grounding.ok) {
+            this.logger.warn(
+              `[GroundingGuard] room=${input.roomId} HALLUCINATION_BLOCKED reason=${grounding.reason} reply=${JSON.stringify(resp.text).slice(0, 200)} grounded=${JSON.stringify([...groundedPrices])}`,
+            );
+            this.recordUsage(modelUsed, totalIn, totalOut);
+            return {
+              reply: 'ขออนุญาตให้พี่ staff เช็คข้อมูลเพิ่มเติมสักครู่นะคะ',
+              confidence: 0.3,
+              toolsUsed,
+              inputTokens: totalIn,
+              outputTokens: totalOut,
+              modelUsed,
+            };
+          }
           this.recordUsage(modelUsed, totalIn, totalOut);
           return {
-            reply: 'ขออนุญาตให้พี่ staff เช็คข้อมูลเพิ่มเติมสักครู่นะคะ',
-            confidence: 0.3,
+            reply: resp.text,
+            confidence: this.estimateConfidence(resp.text, toolsUsed),
             toolsUsed,
             inputTokens: totalIn,
             outputTokens: totalOut,
             modelUsed,
           };
         }
-        this.recordUsage(modelUsed, totalIn, totalOut);
-        return {
-          reply: resp.text,
-          confidence: this.estimateConfidence(resp.text, toolsUsed),
-          toolsUsed,
-          inputTokens: totalIn,
-          outputTokens: totalOut,
-          modelUsed,
-        };
-      }
 
-      // Record + execute every tool call from this turn (typically 1, but
-      // models can request several at once).
-      const toolResults: LlmChatMessage[] = [];
-      for (const tc of resp.toolCalls) {
-        toolsUsed.push(tc.name);
-        const result = await this.runTool(tc.name, tc.input, input.roomId);
-        this.collectGroundedPrices(result, groundedPrices);
-        this.logger.log(
-          `[ToolCall] room=${input.roomId} tool=${tc.name} args=${JSON.stringify(tc.input).slice(0, 300)} result=${JSON.stringify(result).slice(0, 600)}`,
-        );
-        toolResults.push({
-          role: 'tool',
-          toolCallId: tc.id,
-          content: JSON.stringify(result),
+        // Record + execute every tool call from this turn (typically 1, but
+        // models can request several at once).
+        const toolResults: LlmChatMessage[] = [];
+        for (const tc of resp.toolCalls) {
+          toolsUsed.push(tc.name);
+          const result = await this.runTool(tc.name, tc.input, input.roomId);
+          this.collectGroundedPrices(result, groundedPrices);
+          this.logger.log(
+            `[ToolCall] room=${input.roomId} tool=${tc.name} args=${JSON.stringify(tc.input).slice(0, 300)} result=${JSON.stringify(result).slice(0, 600)}`,
+          );
+          toolResults.push({
+            role: 'tool',
+            toolCallId: tc.id,
+            content: JSON.stringify(result),
+          });
+        }
+
+        // Conversation grows: assistant turn (text + tool_calls) then tool results.
+        messages.push({
+          role: 'assistant',
+          content: resp.text,
+          toolCalls: resp.toolCalls,
         });
+        messages.push(...toolResults);
       }
 
-      // Conversation grows: assistant turn (text + tool_calls) then tool results.
-      messages.push({
-        role: 'assistant',
-        content: resp.text,
-        toolCalls: resp.toolCalls,
+      this.recordUsage(modelUsed, totalIn, totalOut);
+      return {
+        reply: 'ขออนุญาตให้พี่ staff เช็คข้อมูลเพิ่มเติมสักครู่นะคะ',
+        confidence: 0.3,
+        toolsUsed,
+        inputTokens: totalIn,
+        outputTokens: totalOut,
+        modelUsed,
+      };
+    } catch (error) {
+      void this.aiUsage.record({
+        service: 'sales-bot',
+        method: 'generateReply',
+        model: modelUsed || 'unknown',
+        inputTokens: totalIn,
+        outputTokens: totalOut,
+        status: 'error',
+        errorKind: 'provider_error',
       });
-      messages.push(...toolResults);
+      throw error;
     }
-
-    this.recordUsage(modelUsed, totalIn, totalOut);
-    return {
-      reply: 'ขออนุญาตให้พี่ staff เช็คข้อมูลเพิ่มเติมสักครู่นะคะ',
-      confidence: 0.3,
-      toolsUsed,
-      inputTokens: totalIn,
-      outputTokens: totalOut,
-      modelUsed,
-    };
   }
 
   private async runTool(

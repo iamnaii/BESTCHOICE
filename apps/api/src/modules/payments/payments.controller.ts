@@ -139,6 +139,24 @@ export class PaymentsController {
   }
 
   /**
+   * Posted JEs behind the payment-history modal's receipt rows (per contract).
+   * Soft-linked via JournalEntry.metadata (paymentId / flow) — see
+   * PaymentQueryService.getContractJournalEntries. Same roles + branch guard
+   * as GET contract/:contractId (SALES already sees JE lines via preview-journal).
+   */
+  @Get('contract/:contractId/journal-entries')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  @ApiOperation({ summary: 'ดูบันทึกบัญชี (JE) ของการชำระในสัญญา' })
+  async getContractJournalEntries(
+    @Param('contractId') contractId: string,
+    @CurrentUser() user?: { id: string; role: string; branchId: string | null },
+  ) {
+    // Enforce branch-level access (mirrors GET contract/:contractId)
+    if (user) await this.paymentsService.validateBranchAccess(contractId, user);
+    return this.paymentsService.getContractJournalEntries(contractId);
+  }
+
+  /**
    * Preview JE lines for a payment without persisting anything.
    * Used by the RecordPaymentWizard to show "Journal Auto" live preview.
    */

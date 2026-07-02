@@ -7,6 +7,11 @@ import { formatDateShort, formatNumberDecimal } from '@/utils/formatters';
 import { useAuth } from '@/contexts/AuthContext';
 import ReceiptVoidDialog from '@/components/payment/ReceiptVoidDialog';
 import { computeReceiptFeeDisplay } from './computeReceiptFeeDisplay';
+import {
+  computeCumulativePaid,
+  computeFeeTotals,
+  jesForReceipt as selectJesForReceipt,
+} from './paymentHistoryDerivations';
 import { toast } from 'sonner';
 
 /* ─── Types ───────────────────────────────────────── */
@@ -158,23 +163,9 @@ export default function PaymentHistorySheet({ contractId, onClose }: Props) {
       return next;
     });
 
-  const jesForReceipt = (r: ReceiptItem): ContractJe[] => {
-    if (r.receiptType === 'EARLY_PAYOFF') return journalEntries.filter((j) => j.flow === 'early-payoff');
-    if (!r.paymentId) return [];
-    // N partial receipts share one paymentId → show every JE of that payment,
-    // each labeled with its own รับจริง (deltaApplied) so rows are tellable apart.
-    const paymentJes = journalEntries.filter((j) => j.paymentId === r.paymentId);
-    if (r.receiptType === 'CREDIT_NOTE') {
-      // The CN row IS the void event — show the REVERSAL JEs (mirror entries
-      // pointing back at this payment's originals), not the money-in originals.
-      const originalIds = new Set(paymentJes.map((j) => j.id));
-      const reversalJes = journalEntries.filter(
-        (j) => j.originalEntryId !== null && originalIds.has(j.originalEntryId),
-      );
-      return reversalJes.length ? reversalJes : paymentJes;
-    }
-    return paymentJes;
-  };
+  // Receipt → posted-JE selection (early-payoff by flow, CN → reversal mirrors,
+  // else by shared paymentId). Extracted to paymentHistoryDerivations for unit test.
+  const jesForReceipt = (r: ReceiptItem): ContractJe[] => selectJesForReceipt(r, journalEntries);
 
   const payments = pResp?.data ?? [];
   const contract = pResp?.contract;
@@ -209,15 +200,8 @@ export default function PaymentHistorySheet({ contractId, onClose }: Props) {
   // PARTIALLY_PAID overdue row back to OVERDUE; pure accruals on untouched
   // overdue rows stay excluded. Matches the per-row fee shown in the table.
   const paidCount = payments.filter((p) => p.status === 'PAID').length;
-  const cumulativePaid = receipts
-    .filter((r) => !r.isVoided && r.receiptType !== 'CREDIT_NOTE')
-    .reduce((s, r) => s + Number(r.amount), 0);
-  const feePayments = payments.filter((p) => p.status === 'PAID' || Number(p.amountPaid) > 0);
-  const totalLateFee = feePayments.reduce((s, p) => s + Number(p.lateFee), 0);
-  const totalWaived = feePayments.reduce(
-    (s, p) => s + (p.waivedAmount != null ? Number(p.waivedAmount) : p.lateFeeWaived ? Number(p.lateFee) : 0),
-    0,
-  );
+  const cumulativePaid = computeCumulativePaid(receipts);
+  const { totalLateFee, totalWaived } = computeFeeTotals(payments);
 
   // One row per receipt (incl. voided), oldest installment first.
   const rows = useMemo(

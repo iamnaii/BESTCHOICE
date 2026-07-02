@@ -39,6 +39,7 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { toast } from 'sonner';
 import type { PendingPayment } from '../types';
 import { computeNetReceiptDue } from '../computeNetReceiptDue';
+import { computeWizardPrefill } from '../computeWizardPrefill';
 import { AdvanceBalanceBanner } from './AdvanceBalanceBanner';
 import { EarlyPayoffOverlay } from '@/components/contract/ContractEarlyPayoff';
 import { RescheduleOverlay } from './RescheduleOverlay';
@@ -612,7 +613,7 @@ export function RecordPaymentWizard({
   // PARTIALLY_PAID with a phantom "ค้าง". Since lateFeeStr also pre-fills from the
   // server-computed payment.lateFee (I4 fix), the first-render amount agrees with the
   // lateFee input → no spurious "ห่างเกิน 1฿" warning.
-  const defaultAmount = computeNetReceiptDue({
+  const defaultAmount = computeWizardPrefill({
     amountDue: amountDueDecimal,
     lateFee: lateFeeDecimal,
     amountPaid: amountPaidDecimal,

@@ -1,6 +1,7 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
+import { RescheduleCollectService } from './services/reschedule-collect.service';
 import { ReceiptsModule } from '../receipts/receipts.module';
 import { JournalModule } from '../journal/journal.module';
 import { ProductsModule } from '../products/products.module';
@@ -24,7 +25,7 @@ import { AccountingModule } from '../accounting/accounting.module';
     forwardRef(() => PaySolutionsModule),
   ],
   controllers: [PaymentsController],
-  providers: [PaymentsService],
-  exports: [PaymentsService],
+  providers: [PaymentsService, RescheduleCollectService],
+  exports: [PaymentsService, RescheduleCollectService],
 })
 export class PaymentsModule {}

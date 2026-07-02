@@ -11,6 +11,7 @@ const typeLabels: Record<string, string> = {
   DOWN_PAYMENT: 'ใบเสร็จเงินดาวน์',
   EARLY_PAYOFF: 'ใบเสร็จปิดยอด',
   CREDIT_NOTE: 'ใบลดหนี้',
+  RESCHEDULE_FEE: 'ใบเสร็จปรับดิว',
 };
 
 const methodLabels: Record<string, string> = {

@@ -130,6 +130,11 @@ describe('PaymentsService — credit / waive / daily-summary / partial-preview (
         createMany: jest.fn().mockResolvedValue({ count: 0 }),
         findUnique: jest.fn(),
       },
+      // PARTIAL preview mirrors the posting template: reconstructPriorCleared
+      // queries prior receipt JEs. [] → first receipt (no priors).
+      journalEntry: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
       auditLog: {
         create: jest.fn().mockResolvedValue({ id: 'al-1' }),
       },
@@ -479,9 +484,14 @@ describe('PaymentsService — credit / waive / daily-summary / partial-preview (
     const mkContractRow = () => ({
       id: 'pv-contract-1',
       totalMonths: 12,
+      // PARTIAL preview now derives installmentTotal via computeInstallmentBreakdown
+      // (same as the posting template): 17000/12 ROUND_DOWN + 1190/12 HALF_UP = 1515.83.
+      // storeCommission must be an explicit 0 — null defaults to 10% of financed.
+      financedAmount: D(17000),
+      storeCommission: D(0),
       interestTotal: D(0),
       monthlyPayment: D(1515.83),
-      vatAmount: null,
+      vatAmount: D(1190),
     });
 
     it('accrued installment, case=PARTIAL, amountReceived=1000 → Dr deposit 1000 / Cr 11-2103 1000, balanced', async () => {

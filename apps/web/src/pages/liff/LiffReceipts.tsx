@@ -26,6 +26,7 @@ const typeLabels: Record<string, { label: string; variant: 'success' | 'info' | 
   DOWN_PAYMENT: { label: 'เงินดาวน์', variant: 'info' },
   EARLY_PAYOFF: { label: 'ปิดยอด', variant: 'info' },
   CREDIT_NOTE: { label: 'ใบลดหนี้', variant: 'secondary' },
+  RESCHEDULE_FEE: { label: 'ปรับดิว', variant: 'info' },
 };
 
 export default function LiffReceipts() {

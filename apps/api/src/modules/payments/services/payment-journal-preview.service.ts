@@ -2,6 +2,10 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { AccountRoleService } from '../../journal/account-role.service';
+import { computeInstallmentBreakdown } from '../../journal/compute-installment-breakdown';
+import { splitReceipt } from '../../journal/split-receipt';
+import { buildReceiptLines } from '../../journal/build-receipt-lines';
+import { reconstructPriorCleared } from '../../journal/reconstruct-prior';
 import {
   buildPreviewBlocks,
   PreviewTaggedLine,
@@ -112,21 +116,26 @@ export class PaymentJournalPreviewService {
     // Build raw JE lines (code, dr, cr, description)
     const rawLines: { code: string; dr: Prisma.Decimal; cr: Prisma.Decimal; description: string }[] = [];
 
-    // PARTIAL and RESCHEDULE both emit Cr 11-2103 directly — they assume 2A
-    // has already accrued the installment into 11-2103. If 2A is missing
-    // (paying ahead, cron lag), the JE would credit a zero-balance account.
-    // Block here with a clear Thai message so the wizard can prompt user to
-    // wait for the next 2A tick instead of silently producing a malformed JE.
-    if (
-      !inst.accrualJournalEntryId &&
-      (input.case === 'PARTIAL' || input.case === 'RESCHEDULE')
-    ) {
+    // PARTIAL emits Cr 11-2103 directly — it assumes 2A has already accrued the
+    // installment into 11-2103. If 2A is missing (paying ahead, cron lag), the JE
+    // would credit a zero-balance account. Block here with a clear Thai message so
+    // the wizard can prompt the user to wait for the next 2A tick instead of
+    // silently producing a malformed JE.
+    // (RESCHEDULE no longer needs this guard — its collect-first JE touches only
+    //  21-1103 / 42-1103, never 11-2103; the old bundled-6b preview that credited
+    //  11-2103 was replaced by the collect semantics on 2026-07-02.)
+    if (!inst.accrualJournalEntryId && input.case === 'PARTIAL') {
       throw new BadRequestException(
-        `งวดนี้ยังไม่ได้ทำ accrual (2A) — ไม่สามารถใช้ ${input.case === 'PARTIAL' ? 'จ่ายบางส่วน' : 'เลื่อนงวด'} ได้ก่อน accrual กรุณารอรอบ 00:01 น. หรือใช้รับชำระแบบปกติ`,
+        'งวดนี้ยังไม่ได้ทำ accrual (2A) — ไม่สามารถใช้จ่ายบางส่วนได้ก่อน accrual กรุณารอรอบ 00:01 น. หรือใช้รับชำระแบบปกติ',
       );
     }
 
-    // ── RESCHEDULE case (JP6 template preview) ──────────────────────────────
+    // ── RESCHEDULE / ปรับดิว — collect-first preview (owner 2026-07-02) ────────
+    // Mirrors RescheduleCollectService.executeWithCollect: the JE that posts AT
+    // CONFIRM (เงินไม่เข้า ดิวไม่เลื่อน) —
+    //   6a (SPLIT):  Dr deposit (fee+ค่าปรับ) / Cr 21-1103 fee / Cr 42-1103 ค่าปรับ
+    //   6b (SINGLE): Dr deposit ค่าปรับ / Cr 42-1103 ค่าปรับ (fee รวมงวดถัดไป)
+    // ค่าปรับ (netLateFee) comes from the wizard/overlay quote; nothing owed → no lines.
     if (input.case === 'RESCHEDULE') {
       const days = input.daysToShift ?? 0;
       const monthlyPayment = new Prisma.Decimal(c.monthlyPayment.toString());
@@ -137,24 +146,17 @@ export class PaymentJournalPreviewService {
         : zero;
 
       const isSplit = input.splitMode === 'SPLIT';
-      const amountReceived = new Prisma.Decimal(input.amountReceived.toString());
+      const feePortion = isSplit ? rescheduleFee : zero;
+      const collectTotal = feePortion.plus(netLateFee);
 
-      if (isSplit) {
-        // 6a — fee advance only (step 1):
-        //   Dr depositAccountCode  feeAmount
-        //     Cr 21-1103           feeAmount (เงินรับล่วงหน้างวดสุดท้าย)
-        const feeAmount = rescheduleFee.gt(zero) ? rescheduleFee : amountReceived;
-        rawLines.push({ code: input.depositAccountCode, dr: feeAmount, cr: zero, description: 'รับค่าปรับดิวล่วงหน้า (6a)' });
-        rawLines.push({ code: '21-1103', dr: zero, cr: feeAmount, description: 'เงินรับล่วงหน้างวดสุดท้าย' });
-      } else {
-        // 6b — bundled (installment + fee in one transaction):
-        //   Dr depositAccountCode  installmentAmount + feeAmount
-        //     Cr 11-2103           installmentAmount
-        //     Cr 21-1103           feeAmount
-        const bundledTotal = installmentTotal.plus(rescheduleFee);
-        rawLines.push({ code: input.depositAccountCode, dr: bundledTotal, cr: zero, description: 'รับชำระงวด + ค่าปรับดิว (6b)' });
-        rawLines.push({ code: '11-2103', dr: zero, cr: installmentTotal, description: 'ล้างลูกหนี้ค้างชำระงวด' });
-        rawLines.push({ code: '21-1103', dr: zero, cr: rescheduleFee, description: 'เงินรับล่วงหน้างวดสุดท้าย' });
+      if (collectTotal.gt(zero)) {
+        rawLines.push({ code: input.depositAccountCode, dr: collectTotal, cr: zero, description: 'รับเงินปรับดิว' });
+        if (feePortion.gt(zero)) {
+          rawLines.push({ code: '21-1103', dr: zero, cr: feePortion, description: 'เงินรับล่วงหน้า — ค่าธรรมเนียมปรับดิว (6a)' });
+        }
+        if (netLateFee.gt(zero)) {
+          rawLines.push({ code: '42-1103', dr: zero, cr: netLateFee, description: 'ค่าปรับชำระล่าช้า (เก็บตอนปรับดิว)' });
+        }
       }
 
       // Resolve CoA names
@@ -192,11 +194,59 @@ export class PaymentJournalPreviewService {
       };
     }
 
-    // ── PARTIAL case: minimal partial-clear preview ─────────────────────────
+    // ── PARTIAL case: mirror PaymentReceiptTemplate exactly ─────────────────
+    // Fee-first split (owner 2026-07-02): Cr 42-1103 = late fee owed, Cr 11-2103 =
+    // remainder. Uses the SAME pure pipeline the posting runs (installmentTotal from
+    // computeInstallmentBreakdown → reconstructPriorCleared → splitReceipt →
+    // buildReceiptLines) so a follow-up receipt whose fee is already booked
+    // previews principal-only — no double 42-1103.
     if (input.case === 'PARTIAL') {
+      // Mirror recordPayment's guard (orchestrator ~line 325): waiver-on-partial is
+      // rejected at save, so the preview must not render a plausible net-fee JE
+      // (it would drop the Dr 52-1105 gross-waiver leg and mislead the cashier).
+      if (lateFeeWaivedAmount.gt(zero)) {
+        throw new BadRequestException(
+          'อนุโลมค่าปรับทำได้เฉพาะตอนชำระปิดงวด (ไม่รองรับจ่ายบางส่วน)',
+        );
+      }
       const amountReceived = new Prisma.Decimal(input.amountReceived.toString());
-      rawLines.push({ code: input.depositAccountCode, dr: amountReceived, cr: zero, description: 'รับชำระบางส่วน' });
-      rawLines.push({ code: '11-2103', dr: zero, cr: amountReceived, description: 'ล้างลูกหนี้ค้างชำระ (บางส่วน)' });
+      const { installmentTotal: instTotalForSplit } = computeInstallmentBreakdown({
+        financedAmount: c.financedAmount.toString(),
+        storeCommission: c.storeCommission != null ? c.storeCommission.toString() : null,
+        interestTotal: c.interestTotal.toString(),
+        vatAmount: c.vatAmount != null ? c.vatAmount.toString() : null,
+        totalMonths: c.totalMonths,
+      });
+      const { priorPrincipalCleared, priorLateFeeBooked } = await reconstructPriorCleared(
+        this.prisma,
+        inst.id,
+        instTotalForSplit,
+      );
+      const split = splitReceipt({
+        delta: amountReceived,
+        installmentTotal: instTotalForSplit,
+        // recordPayment rejects waiver-on-partial, so netLateFee == gross here;
+        // clamped anyway for a mid-edit preview where both fields are filled.
+        lateFee: netLateFee,
+        priorPrincipalCleared,
+        priorLateFeeBooked,
+        advanceConsume: zero, // PARTIAL never auto-consumes advance (orchestrator NORMAL-only)
+        advanceCredit: zero,
+        isFinalReceipt: false,
+      });
+      const receiptLines = buildReceiptLines({
+        split,
+        debitAccountCode: input.depositAccountCode,
+        delta: amountReceived,
+        advanceConsume: zero,
+        advanceCredit: zero,
+        lateFeeWaived: zero,
+        overpayCode: this.accountRoleService?.tryCode('adj_overpay') ?? '53-1503',
+        underpayCode: this.accountRoleService?.tryCode('adj_underpay') ?? '52-1104',
+      });
+      for (const l of receiptLines) {
+        rawLines.push({ code: l.accountCode, dr: l.dr, cr: l.cr, description: l.description ?? '' });
+      }
 
       const codes = [...new Set(rawLines.map((l) => l.code))];
       const coaRows = await this.prisma.chartOfAccount.findMany({

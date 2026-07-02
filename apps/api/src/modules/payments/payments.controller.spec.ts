@@ -6,6 +6,7 @@ import { PaymentsService } from './payments.service';
 import { PaySolutionsService } from '../paysolutions/paysolutions.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RescheduleService } from '../installments/reschedule.service';
+import { RescheduleCollectService } from './services/reschedule-collect.service';
 import { UserThrottlerGuard } from '../../guards/user-throttler.guard';
 import { RecordPaymentDto, BulkRecordPaymentDto } from './dto/payment.dto';
 
@@ -14,6 +15,7 @@ describe('PaymentsController', () => {
   let _prisma: unknown;
   let paymentsService: PaymentsService;
   let rescheduleService: RescheduleService;
+  let rescheduleCollectService: RescheduleCollectService;
 
   const mockContract = {
     id: 'contract-1',
@@ -50,13 +52,39 @@ describe('PaymentsController', () => {
       }),
     };
 
+    // ปรับดิว collect-first (2026-07-02): the RESCHEDULE branch now routes to
+    // RescheduleCollectService.executeWithCollect (collect JE + lateFee reset +
+    // shift in one atom) instead of the bare RescheduleService.execute.
+    const mockRescheduleCollectService = {
+      quote: jest.fn().mockResolvedValue({
+        rescheduleFee: '809.00',
+        lateFee: '0.00',
+        collectAmount: '809.00',
+        variant: '6a',
+        newDueDate: new Date('2026-08-01').toISOString(),
+        currentDueDate: new Date('2026-07-01').toISOString(),
+      }),
+      executeWithCollect: jest.fn().mockImplementation(async (input: { splitMode: string; daysToShift: number }) => ({
+        success: true,
+        case: 'RESCHEDULE',
+        variant: input.splitMode === 'SPLIT' ? '6a' : '6b',
+        rescheduleFee: '809.00',
+        lateFeeCollected: '0.00',
+        collectAmount: input.splitMode === 'SPLIT' ? '809.00' : '0.00',
+        journalEntryNo: 'JE-RESCH-1',
+        shiftedInstallmentCount: 3,
+        shiftedInstallmentIds: ['inst-5', 'inst-6', 'inst-7'],
+      })),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       controllers: [PaymentsController],
       providers: [
         { provide: PaymentsService, useValue: mockPaymentsService },
         { provide: PrismaService, useValue: mockPrisma },
-        { provide: PaySolutionsService, useValue: { createPartialPaymentQR: jest.fn() } },
+        { provide: PaySolutionsService, useValue: { createPartialPaymentQR: jest.fn(), createRescheduleQR: jest.fn() } },
         { provide: RescheduleService, useValue: mockRescheduleService },
+        { provide: RescheduleCollectService, useValue: mockRescheduleCollectService },
       ],
     })
       .overrideGuard(UserThrottlerGuard)
@@ -67,6 +95,7 @@ describe('PaymentsController', () => {
     _prisma = module.get<PrismaService>(PrismaService);
     paymentsService = module.get<PaymentsService>(PaymentsService);
     rescheduleService = module.get<RescheduleService>(RescheduleService);
+    rescheduleCollectService = module.get<RescheduleCollectService>(RescheduleCollectService);
   });
 
   describe('branch access control', () => {
@@ -134,13 +163,13 @@ describe('PaymentsController', () => {
     });
   });
 
-  describe('case=RESCHEDULE wiring (Wave 3 / T3)', () => {
-    it('routes to RescheduleService.execute() with variant=6b for splitMode=SINGLE', async () => {
+  describe('case=RESCHEDULE wiring (ปรับดิว collect-first, 2026-07-02)', () => {
+    it('routes to RescheduleCollectService.executeWithCollect with splitMode=SINGLE (6b)', async () => {
       const user = { id: 'user-1', role: 'OWNER', branchId: 'branch-1' };
       const dto = {
         contractId: 'contract-1',
         installmentNo: 5,
-        amount: 1, // wizard sends amount placeholder; service uses daysToShift
+        amount: 1, // 6b zero-collect placeholder (@Min(0.01)); server ignores when quote = 0
         paymentMethod: 'CASH',
         evidenceUrl: 'https://slip.jpg',
         case: 'RESCHEDULE',
@@ -150,15 +179,21 @@ describe('PaymentsController', () => {
 
       const result = await controller.recordPayment(dto, user);
 
-      expect(rescheduleService.execute).toHaveBeenCalledWith({
-        contractId: 'contract-1',
-        fromInstallmentNo: 5,
-        daysToShift: 16,
-        userId: 'user-1',
-        variant: '6b',
-      });
+      expect(rescheduleCollectService.executeWithCollect).toHaveBeenCalledWith(
+        expect.objectContaining({
+          contractId: 'contract-1',
+          installmentNo: 5,
+          daysToShift: 16,
+          splitMode: 'SINGLE',
+          amount: 1,
+          paymentMethod: 'CASH',
+          recordedById: 'user-1',
+        }),
+      );
       // Should NOT have called recordPayment (the normal-payment service path)
+      // nor the bare RescheduleService (the collect service owns that now).
       expect(paymentsService.recordPayment).not.toHaveBeenCalled();
+      expect(rescheduleService.execute).not.toHaveBeenCalled();
       expect(result).toMatchObject({
         success: true,
         case: 'RESCHEDULE',
@@ -168,23 +203,45 @@ describe('PaymentsController', () => {
       });
     });
 
-    it('routes to RescheduleService.execute() with variant=6a for splitMode=SPLIT', async () => {
+    it('routes splitMode=SPLIT (6a) with the collected amount + deposit account', async () => {
       const user = { id: 'user-1', role: 'OWNER', branchId: 'branch-1' };
       const dto = {
         contractId: 'contract-1',
         installmentNo: 5,
-        amount: 1,
+        amount: 809,
         paymentMethod: 'CASH',
         evidenceUrl: 'https://slip.jpg',
         case: 'RESCHEDULE',
         daysToShift: 10,
         splitMode: 'SPLIT',
+        depositAccountCode: '11-1201',
       } as unknown as RecordPaymentDto;
 
       await controller.recordPayment(dto, user);
-      expect(rescheduleService.execute).toHaveBeenCalledWith(
-        expect.objectContaining({ variant: '6a', daysToShift: 10 }),
+      expect(rescheduleCollectService.executeWithCollect).toHaveBeenCalledWith(
+        expect.objectContaining({
+          splitMode: 'SPLIT',
+          daysToShift: 10,
+          amount: 809,
+          depositAccountCode: '11-1201',
+        }),
       );
+    });
+
+    it('rejects QR method on the synchronous path (must use /payments/:id/reschedule-qr)', async () => {
+      const user = { id: 'user-1', role: 'OWNER', branchId: 'branch-1' };
+      const dto = {
+        contractId: 'contract-1',
+        installmentNo: 5,
+        amount: 809,
+        paymentMethod: 'QR_EWALLET',
+        case: 'RESCHEDULE',
+        daysToShift: 10,
+        splitMode: 'SPLIT',
+      } as unknown as RecordPaymentDto;
+
+      await expect(controller.recordPayment(dto, user)).rejects.toThrow(BadRequestException);
+      expect(rescheduleCollectService.executeWithCollect).not.toHaveBeenCalled();
     });
 
     it('rejects RESCHEDULE without daysToShift', async () => {
@@ -200,7 +257,7 @@ describe('PaymentsController', () => {
       } as unknown as RecordPaymentDto;
 
       await expect(controller.recordPayment(dto, user)).rejects.toThrow(BadRequestException);
-      expect(rescheduleService.execute).not.toHaveBeenCalled();
+      expect(rescheduleCollectService.executeWithCollect).not.toHaveBeenCalled();
     });
 
     it('enforces branch access before reschedule (SALES cross-branch rejected)', async () => {
@@ -217,7 +274,7 @@ describe('PaymentsController', () => {
       } as unknown as RecordPaymentDto;
 
       await expect(controller.recordPayment(dto, user)).rejects.toThrow(ForbiddenException);
-      expect(rescheduleService.execute).not.toHaveBeenCalled();
+      expect(rescheduleCollectService.executeWithCollect).not.toHaveBeenCalled();
     });
   });
 

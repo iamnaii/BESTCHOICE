@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
 export type RescheduleVariant = '6a' | '6b';
@@ -37,9 +38,18 @@ export class RescheduleService {
    * outside this transaction — per CSV golden case-6a/6b: "Step 1 — UPDATE DB
    * (ไม่มี Journal)" comes before any JE. The JE is posted later when the
    * customer actually pays (Step 2/3 of the CSV).
+   *
+   * `outerTx` (ปรับดิว collect-first, 2026-07-02): when provided, ALL writes run on
+   * the caller's transaction so the collect JE + lateFee reset + date shift commit
+   * as ONE atom (RescheduleCollectService). Without it, behaviour is unchanged —
+   * the service opens its own $transaction.
    */
-  async execute(input: RescheduleInput): Promise<RescheduleResult> {
-    const installments = await this.prisma.installmentSchedule.findMany({
+  async execute(
+    input: RescheduleInput,
+    outerTx?: Prisma.TransactionClient,
+  ): Promise<RescheduleResult> {
+    const readClient: Prisma.TransactionClient | PrismaService = outerTx ?? this.prisma;
+    const installments = await readClient.installmentSchedule.findMany({
       where: {
         contractId: input.contractId,
         installmentNo: { gte: input.fromInstallmentNo },
@@ -54,7 +64,7 @@ export class RescheduleService {
     // Use contract.monthlyPayment as the installment total (includes commission + VAT).
     // installment.amountDue only carries principal+interest+vat and does not include commission,
     // so it would undercount the reschedule fee.
-    const contract = await this.prisma.contract.findUniqueOrThrow({
+    const contract = await readClient.contract.findUniqueOrThrow({
       where: { id: input.contractId },
       select: { monthlyPayment: true },
     });
@@ -62,12 +72,14 @@ export class RescheduleService {
 
     // Reschedule fee = monthlyPayment / 30 × daysToShift, rounded UP to a whole baht
     // (owner policy 2026-06 — ปัดเศษขึ้นเต็มบาท). e.g. 1515.83/30×22 = 1111.6086 → 1112.
+    // Must stay identical to computeRescheduleQuote (reschedule-quote.util.ts) — the
+    // collect service asserts the two agree before posting money.
     const fee = firstInstTotal
       .div(30)
       .times(input.daysToShift)
       .toDecimalPlaces(0, Decimal.ROUND_UP);
 
-    return this.prisma.$transaction(async (tx) => {
+    const body = async (tx: Prisma.TransactionClient) => {
       const oldDueDates: Record<string, Date> = {};
       const newDueDates: Record<string, Date> = {};
       const shiftedIds: string[] = [];
@@ -110,12 +122,13 @@ export class RescheduleService {
         shiftedIds.push(inst.id);
       }
 
-      // Reduce last installment amountDue by fee
-      const last = installments[installments.length - 1];
-      await tx.installmentSchedule.update({
-        where: { id: last.id },
-        data: { amountDue: firstInstTotal.minus(fee) } as any,
-      });
+      // (Removed 2026-07-02, review C1) The old "reduce last installment
+      // amountDue by fee" wrote InstallmentSchedule.amountDue — a field NO
+      // billing path reads (Payment.amountDue + computeInstallmentBreakdown
+      // drive billing/accrual), so the reduction was write-only and the fee's
+      // 21-1103 credit was never relieved. The CPA case-6a prepayment is now
+      // realised through Contract.advanceBalance (RescheduleCollectService),
+      // which the existing advance machinery consumes against real installments.
 
       // AuditLog (only when caller provides a real userId — keeps the
       // existing test signature backward-compatible until callers are wired)
@@ -135,7 +148,6 @@ export class RescheduleService {
               firstShiftedInstallmentNo: installments[0].installmentNo,
               firstShiftedOldDue: installments[0].dueDate.toISOString(),
               firstShiftedNewDue: newDueDates[installments[0].id].toISOString(),
-              lastInstallmentNewAmountDue: firstInstTotal.minus(fee).toFixed(2),
             },
           },
         });
@@ -147,6 +159,8 @@ export class RescheduleService {
         oldDueDates,
         newDueDates,
       };
-    });
+    };
+
+    return outerTx ? body(outerTx) : this.prisma.$transaction(body);
   }
 }

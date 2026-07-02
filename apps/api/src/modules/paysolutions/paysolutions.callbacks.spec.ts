@@ -37,14 +37,18 @@ describe('PaySolutionsService — secondary webhook callbacks (characterization)
   let prisma: any;
   let lineOa: { sendFlexMessage: jest.Mock };
   let saleAdapter: { createForOnlineOrder: jest.Mock };
-  let payments: { recordPayment: jest.Mock };
+  let payments: { recordPayment: jest.Mock; rescheduleWithCollect: jest.Mock };
 
   // Helper: build a fresh service with a given prisma mock surface, re-wiring
   // the shared collaborator mocks each time so per-test overrides are isolated.
   async function buildService(): Promise<void> {
     lineOa = { sendFlexMessage: jest.fn().mockResolvedValue(undefined) };
     saleAdapter = { createForOnlineOrder: jest.fn().mockResolvedValue(undefined) };
-    payments = { recordPayment: jest.fn().mockResolvedValue(undefined) };
+    payments = {
+      recordPayment: jest.fn().mockResolvedValue(undefined),
+      // ปรับดิว QR (2026-07-02): purpose=RESCHEDULE links route here on paid webhook.
+      rescheduleWithCollect: jest.fn().mockResolvedValue({ success: true }),
+    };
 
     const integrationConfig = {
       getValue: jest.fn().mockResolvedValue(''),
@@ -155,6 +159,65 @@ describe('PaySolutionsService — secondary webhook callbacks (characterization)
       expect(arg.data.cancelledAt).toBeInstanceOf(Date);
       // No money moves on a gateway failure.
       expect(payments.recordPayment).not.toHaveBeenCalled();
+    });
+
+    it('ปรับดิว: purpose=RESCHEDULE link routes to rescheduleWithCollect with the frozen quote — recordPayment NOT called', async () => {
+      const link = makeLink({
+        purpose: 'RESCHEDULE',
+        amount: new Prisma.Decimal(1144),
+        metadata: {
+          daysToShift: 7,
+          splitMode: 'SPLIT',
+          rescheduleFee: '1044',
+          lateFee: '100',
+          collectAmount: '1144',
+          requestedById: 'cashier-1',
+        },
+      });
+
+      await service.handlePartialPaymentCallback(link, {
+        refno,
+        result_code: '00',
+        transaction_id: 'tx-resched',
+      });
+
+      // Link flipped PAID first (same as the partial path).
+      expect(prisma.partialPaymentLink.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: linkId }, data: expect.objectContaining({ status: 'PAID' }) }),
+      );
+      expect(payments.rescheduleWithCollect).toHaveBeenCalledWith(
+        expect.objectContaining({
+          contractId: 'ct-partial-1',
+          installmentNo: 3,
+          daysToShift: 7,
+          splitMode: 'SPLIT',
+          amount: 1144,
+          paymentMethod: 'ONLINE_GATEWAY',
+          recordedById: 'owner-1',
+          transactionRef: refno,
+          fixedQuote: { rescheduleFee: '1044', lateFee: '100', collectAmount: '1144' },
+        }),
+      );
+      expect(payments.recordPayment).not.toHaveBeenCalled();
+    });
+
+    it('ปรับดิว: rescheduleWithCollect failure → Sentry fatal, no throw (PaySolutions gets 200)', async () => {
+      payments.rescheduleWithCollect.mockRejectedValueOnce(new Error('period closed'));
+      const link = makeLink({
+        purpose: 'RESCHEDULE',
+        metadata: { daysToShift: 7, splitMode: 'SINGLE', rescheduleFee: '1044', lateFee: '100', collectAmount: '100' },
+      });
+
+      await expect(
+        service.handlePartialPaymentCallback(link, { refno, result_code: '00', transaction_id: 'tx-r2' }),
+      ).resolves.toBeUndefined();
+
+      expect(Sentry.captureException).toHaveBeenCalledWith(
+        expect.any(Error),
+        expect.objectContaining({
+          tags: expect.objectContaining({ critical: 'paysolutions-reschedule-exec-fail' }),
+        }),
+      );
     });
 
     it('success: marks link PAID first, then recordPayment credits Number(amount) with the right keys', async () => {

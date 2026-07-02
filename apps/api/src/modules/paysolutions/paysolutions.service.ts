@@ -169,6 +169,24 @@ export class PaySolutionsService {
     return this.services().intent.createPartialPaymentQR(input);
   }
 
+  /** ปรับดิว QR — collect-first; reschedule executes on webhook confirm (เงินไม่เข้า ดิวไม่เลื่อน). */
+  createRescheduleQR(input: {
+    paymentId: string;
+    daysToShift: number;
+    splitMode: 'SINGLE' | 'SPLIT';
+    requestedById: string;
+  }): Promise<{
+    partialPaymentLinkId: string;
+    paymentUrl: string;
+    orderRef: string;
+    sentToLine: boolean;
+    collectAmount: string;
+    rescheduleFee: string;
+    lateFee: string;
+  }> {
+    return this.services().intent.createRescheduleQR(input);
+  }
+
   createSavingPlanIntent(input: {
     savingPlanId: string;
     amount: number;

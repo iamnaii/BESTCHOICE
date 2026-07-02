@@ -65,10 +65,15 @@ export function splitReceipt(input: SplitReceiptInput): SplitReceiptResult {
   // PaymentReceiptTemplate enforces before calling.
   const available = input.delta.plus(input.advanceConsume).minus(input.advanceCredit);
 
-  let principalCleared = Decimal.max(Decimal.min(available, principalRemaining), zero);
-  const afterPrincipal = available.minus(principalCleared);
-  const lateFeePortion = Decimal.min(Decimal.max(afterPrincipal, zero), lateFeeRemaining);
-  const leftover = afterPrincipal.minus(lateFeePortion); // ≥ 0 when available ≥ 0 (precondition)
+  // Fee-first allocation (owner 2026-07-02): the receipt that collects cash books
+  // Cr 42-1103 BEFORE clearing 11-2103, so the ledger matches the receipt document
+  // (the fee displays on the first receipt — computeReceiptFeeDisplay). Also keeps
+  // fee income gross on a final ≤1฿-short receipt: the shortfall lands on principal
+  // where the 52-1104 underpay-close can absorb it.
+  const lateFeePortion = Decimal.min(Decimal.max(available, zero), lateFeeRemaining);
+  const afterLateFee = available.minus(lateFeePortion);
+  let principalCleared = Decimal.max(Decimal.min(afterLateFee, principalRemaining), zero);
+  const leftover = afterLateFee.minus(principalCleared); // ≥ 0 when available ≥ 0 (precondition)
 
   let overpayRounding = leftover;
   let underpayRounding = zero;

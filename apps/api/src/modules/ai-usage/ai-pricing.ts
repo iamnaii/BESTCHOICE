@@ -1,5 +1,5 @@
 /**
- * Per-model Claude pricing in USD per 1M tokens (Jan 2026 rate card).
+ * Per-model LLM pricing (Claude + Gemini) in USD per 1M tokens (Jan 2026 rate card).
  *
  * Kept as a static table because:
  *  - The Anthropic API does not return cost in-band, only token counts
@@ -24,6 +24,9 @@ const RATE_CARD: Record<string, ModelRate> = {
   'claude-sonnet-4-5-20250514': { inputPer1M: 3, outputPer1M: 15 },
   'claude-sonnet-4-6': { inputPer1M: 3, outputPer1M: 15 },
   'claude-haiku-4-5-20251001': { inputPer1M: 0.8, outputPer1M: 4 },
+  // Gemini (SHOP sales-bot alternate provider) — https://ai.google.dev/pricing
+  // (snapshot 2026-07)
+  'gemini-2.5-flash': { inputPer1M: 0.3, outputPer1M: 2.5 },
   // Fallback
   default: { inputPer1M: 3, outputPer1M: 15 },
 };

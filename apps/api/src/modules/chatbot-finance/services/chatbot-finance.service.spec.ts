@@ -64,7 +64,7 @@ describe('ChatbotFinanceService', () => {
       }),
     };
     handoff = {
-      isInHandoffMode: jest.fn().mockResolvedValue(false),
+      isBotSilenced: jest.fn().mockResolvedValue(false),
     };
     slipProcessing = {
       processSlip: jest.fn().mockResolvedValue({ ok: true, reply: 'รับสลิปแล้วค่ะ', matched: true }),
@@ -137,7 +137,7 @@ describe('ChatbotFinanceService', () => {
   });
 
   it('skips response in handoff mode but saves message', async () => {
-    handoff.isInHandoffMode.mockResolvedValue(true);
+    handoff.isBotSilenced.mockResolvedValue(true);
 
     await service.handleEvent(makeTextEvent('ช่วยด้วย'));
 

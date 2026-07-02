@@ -153,7 +153,7 @@ function AiSettingsForm({ initial }: { initial: AiSettings }) {
       {/* Max replies per session */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">จำนวนตอบสูงสุดต่อ Session</CardTitle>
+          <CardTitle className="text-base">จำนวนตอบสูงสุดต่อห้องแชท (ทุก 24 ชม.)</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex items-center gap-3">
@@ -165,7 +165,9 @@ function AiSettingsForm({ initial }: { initial: AiSettings }) {
               onChange={(e) => setForm((prev) => ({ ...prev, maxRepliesPerSession: Number(e.target.value) }))}
               className="w-28"
             />
-            <span className="text-sm text-muted-foreground">ครั้ง — หลังจากนี้จะโอนให้พนักงาน</span>
+            <span className="text-sm text-muted-foreground">
+              ครั้ง ต่อ 24 ชม. — เกินแล้วจะโอนให้พนักงาน (นับใหม่ทุก 24 ชม.)
+            </span>
           </div>
         </CardContent>
       </Card>

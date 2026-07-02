@@ -53,4 +53,13 @@ describe('ai-pricing', () => {
   it('still falls back to default for unknown models', () => {
     expect(ratesFor('totally-unknown-model')).toEqual({ inputPer1M: 3, outputPer1M: 15 });
   });
+
+  it('uses longest-prefix match for overlapping model keys', () => {
+    // Ensure gemini-2.5-flash-lite (longer, more specific) is matched
+    // before gemini-2.5-flash (shorter, general)
+    expect(ratesFor('gemini-2.5-flash-lite (vertex)')).toEqual({
+      inputPer1M: 0.1,
+      outputPer1M: 0.4,
+    });
+  });
 });

@@ -218,9 +218,9 @@ export class ChatbotFinanceService {
       await this.sessions.linkRoomToCustomer(session.id, linkStatus.customerId);
     }
 
-    // Handoff gate — ถ้า session อยู่ใน handoff mode bot หยุดตอบ
-    if (await this.handoff.isInHandoffMode(session.id)) {
-      this.logger.log(`[Finance] Skip — session ${session.id} in handoff mode`);
+    // Handoff/take-over gate — handoff หรือพนักงานรับช่วงต่อ (aiPaused) → bot หยุดตอบ
+    if (await this.handoff.isBotSilenced(session.id)) {
+      this.logger.log(`[Finance] Skip — session ${session.id} silenced (handoff/aiPaused)`);
       // ยังบันทึกข้อความเพื่อ history แต่ไม่ตอบ
       await this.sessions.saveMessage({
         roomId: session.id,

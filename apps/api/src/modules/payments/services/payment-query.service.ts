@@ -3,6 +3,7 @@ import { Prisma, PaymentStatus } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { paginatedResponse } from '../../../common/helpers/pagination.helper';
 import { roundBaht } from '../../../utils/installment.util';
+import { loadLateFeeConfig, resolveLivePaymentLateFee } from '../../../utils/late-fee.util';
 
 /**
  * Build a Prisma `dueDate` range filter from BKK-local YYYY-MM-DD bounds.
@@ -174,7 +175,19 @@ export class PaymentQueryService {
       this.prisma.payment.count({ where }),
     ]);
 
-    return paginatedResponse(data, total, page, limit);
+    // Live late fee: Payment.lateFee is a stamp refreshed only at record time /
+    // by the overdue cron, so recompute it from current config on read. This keeps
+    // the queue + RecordPaymentWizard in step with settings edits and matches what
+    // the orchestrator will actually charge. (getDailySummary keeps the stored
+    // value — that is the real charged fee on PAID installments.)
+    const cfg = await loadLateFeeConfig(this.prisma);
+    const now = new Date();
+    const withLiveFee = data.map((p) => ({
+      ...p,
+      lateFee: resolveLivePaymentLateFee(p, cfg, now),
+    }));
+
+    return paginatedResponse(withLiveFee, total, page, limit);
   }
 
   // ─── Pending-queue KPI summary (รับชำระค่างวด redesign) ─────────────────
@@ -221,12 +234,14 @@ export class PaymentQueryService {
     cutoff.setDate(cutoff.getDate() - 60);
     const overdueDueDate: Record<string, unknown> = { ...(dueDate ?? {}), lte: cutoff };
 
-    const [pending, waived, overdue60Count, collected] = await Promise.all([
-      // Pending bucket: count + outstanding principal + outstanding late fee
+    const pendingWhere = { deletedAt: null, status: { in: PENDING_STATUSES }, contract: contractWhere, ...(dueDate ? { dueDate } : {}) };
+
+    const [pending, waived, overdue60Count, collected, pendingRows, cfg] = await Promise.all([
+      // Pending bucket: count + outstanding principal (late fee computed live below)
       this.prisma.payment.aggregate({
-        where: { deletedAt: null, status: { in: PENDING_STATUSES }, contract: contractWhere, ...(dueDate ? { dueDate } : {}) },
+        where: pendingWhere,
         _count: true,
-        _sum: { amountDue: true, amountPaid: true, lateFee: true },
+        _sum: { amountDue: true, amountPaid: true },
       }),
       // Waived bucket: late fees written down (อนุโลม) — any status
       this.prisma.payment.aggregate({
@@ -243,6 +258,13 @@ export class PaymentQueryService {
         _count: true,
         _sum: { amountPaid: true },
       }),
+      // Pending-bucket rows for the LIVE late-fee total (Payment.lateFee is a stale
+      // stamp — recompute from current config so the KPI matches the queue rows).
+      this.prisma.payment.findMany({
+        where: pendingWhere,
+        select: { dueDate: true, amountDue: true, lateFeeWaived: true },
+      }),
+      loadLateFeeConfig(this.prisma),
     ]);
 
     const dec = (v: Prisma.Decimal | number | null | undefined) =>
@@ -252,12 +274,21 @@ export class PaymentQueryService {
       .toDecimalPlaces(2)
       .toNumber();
 
+    const now = new Date();
+    const outstandingLateFee = pendingRows
+      .reduce(
+        (sum, p) => sum.add(resolveLivePaymentLateFee(p, cfg, now)),
+        new Prisma.Decimal(0),
+      )
+      .toDecimalPlaces(2)
+      .toNumber();
+
     return {
       pendingCount: pending._count,
       // เฉพาะค่างวด — amountDue excludes lateFee by schema, so this is the
       // installment principal+interest+vat remaining, never the penalty.
       outstandingPrincipal: Math.max(0, outstandingPrincipal),
-      outstandingLateFee: dec(pending._sum?.lateFee).toDecimalPlaces(2).toNumber(),
+      outstandingLateFee,
       waivedLateFee: dec(waived._sum?.waivedAmount).toDecimalPlaces(2).toNumber(),
       overdue60Count,
       collectedAmount: dec(collected._sum?.amountPaid).toDecimalPlaces(2).toNumber(),

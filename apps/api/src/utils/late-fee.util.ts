@@ -115,3 +115,30 @@ export function resolveLateFee(
   });
 }
 
+/**
+ * Display-side live late fee for an UNPAID installment as of `asOf`. The twin of
+ * the record-time recompute in PaymentReceiptOrchestrator — call this wherever a
+ * pending/overdue installment's late fee is SHOWN, so the figure tracks the
+ * current config instead of the stored `Payment.lateFee` stamp (refreshed only at
+ * record time / by the overdue cron).
+ *
+ *   waived                    → 0
+ *   dueDate >= asOf (≥ today) → 0  (resolveLateFee returns 0 for < 1 whole day)
+ *   otherwise                 → resolveLateFee(cfg, whole days overdue, amountDue)
+ *
+ * Base = amountDue (installment gross, excl. late fee) — matches the orchestrator.
+ * Do NOT use this for PAID installments: their stored lateFee is the actual charge.
+ */
+export function resolveLivePaymentLateFee(
+  payment: { dueDate: Date; amountDue: Prisma.Decimal | number | string; lateFeeWaived: boolean },
+  cfg: LateFeeConfig,
+  asOf: Date,
+): Prisma.Decimal {
+  if (payment.lateFeeWaived) return new Prisma.Decimal(0);
+  const daysOverdue = Math.max(
+    0,
+    Math.floor((asOf.getTime() - new Date(payment.dueDate).getTime()) / 86_400_000),
+  );
+  return resolveLateFee(cfg, daysOverdue, payment.amountDue);
+}
+

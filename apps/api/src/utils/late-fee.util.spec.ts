@@ -1,4 +1,4 @@
-import { computeBracketLateFee, computePerDayLateFee, resolveLateFee, type LateFeeConfig } from './late-fee.util';
+import { computeBracketLateFee, computePerDayLateFee, resolveLateFee, resolveLivePaymentLateFee, type LateFeeConfig } from './late-fee.util';
 
 const s = (d: { toString(): string }) => d.toString();
 
@@ -54,5 +54,80 @@ describe('resolveLateFee — mode dispatch', () => {
   });
   it('BRACKET mode → flat bracket (tier2 at >=3 days)', () => {
     expect(sd(resolveLateFee(bracketCfg, 10, 1515.83))).toBe('100');
+  });
+});
+
+describe('resolveLivePaymentLateFee — display-side live late fee', () => {
+  const perDay: LateFeeConfig = {
+    mode: 'PER_DAY',
+    tier1Amount: 50,
+    tier2Amount: 100,
+    tier2MinDays: 3,
+    perDayRate: 20,
+    maxAmount: 500,
+    capPct: 5,
+  };
+  const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000);
+  const now = () => new Date();
+
+  it('waived installment → 0 regardless of days overdue', () => {
+    expect(
+      resolveLivePaymentLateFee(
+        { dueDate: daysAgo(30), amountDue: 3671, lateFeeWaived: true },
+        perDay,
+        now(),
+      ).toNumber(),
+    ).toBe(0);
+  });
+
+  it('future due date (not yet overdue) → 0', () => {
+    expect(
+      resolveLivePaymentLateFee(
+        { dueDate: daysAgo(-2), amountDue: 3671, lateFeeWaived: false },
+        perDay,
+        now(),
+      ).toNumber(),
+    ).toBe(0);
+  });
+
+  it('due today (0 whole days overdue) → 0', () => {
+    expect(
+      resolveLivePaymentLateFee(
+        { dueDate: now(), amountDue: 3671, lateFeeWaived: false },
+        perDay,
+        now(),
+      ).toNumber(),
+    ).toBe(0);
+  });
+
+  it('PER_DAY ramp: 5 days × 20 = 100 (below the 5% cap of 183.55)', () => {
+    expect(
+      resolveLivePaymentLateFee(
+        { dueDate: daysAgo(5), amountDue: 3671, lateFeeWaived: false },
+        perDay,
+        now(),
+      ).toNumber(),
+    ).toBe(100);
+  });
+
+  it('PER_DAY cap binds: 30 days → 5% × 3671 = 183.55', () => {
+    expect(
+      resolveLivePaymentLateFee(
+        { dueDate: daysAgo(30), amountDue: 3671, lateFeeWaived: false },
+        perDay,
+        now(),
+      ).toNumber(),
+    ).toBe(183.55);
+  });
+
+  it('BRACKET mode: 30 days → flat tier2 (100)', () => {
+    const bracket: LateFeeConfig = { ...perDay, mode: 'BRACKET' };
+    expect(
+      resolveLivePaymentLateFee(
+        { dueDate: daysAgo(30), amountDue: 3671, lateFeeWaived: false },
+        bracket,
+        now(),
+      ).toNumber(),
+    ).toBe(100);
   });
 });

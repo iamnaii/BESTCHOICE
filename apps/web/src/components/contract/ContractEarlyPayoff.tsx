@@ -7,6 +7,7 @@ import api, { getErrorMessage } from '@/lib/api';
 import { formatNumber, formatNumberDecimal } from '@/utils/formatters';
 import { CashAccountSelect } from '@/components/CashAccountSelect';
 import { useAuth } from '@/contexts/AuthContext';
+import { invalidatePaymentQueries } from '@/pages/PaymentsPage/invalidatePaymentQueries';
 
 /* ─── Types ───────────────────────────────────────── */
 export interface JeLinePreview {
@@ -138,6 +139,10 @@ export function EarlyPayoffOverlay({
       queryClient.invalidateQueries({ queryKey: ['contract', contractId] });
       queryClient.invalidateQueries({ queryKey: ['contract-payoff', contractId] });
       queryClient.invalidateQueries({ queryKey: ['contracts'] });
+      // Payoff flips payments to PAID + posts the JP4 JE — refresh the
+      // payment-history caches (contract-payments/receipts/journal-entries)
+      // so the ประวัติการชำระ modal on ContractDetailPage isn't served stale.
+      invalidatePaymentQueries(queryClient);
       onSuccess();
       onClose();
     },
@@ -157,6 +162,7 @@ export function EarlyPayoffOverlay({
       queryClient.invalidateQueries({ queryKey: ['contract', contractId] });
       queryClient.invalidateQueries({ queryKey: ['contract-payoff', contractId] });
       queryClient.invalidateQueries({ queryKey: ['contracts'] });
+      invalidatePaymentQueries(queryClient);
       setSettlementOpen(false);
       setSettlementAmount('');
     },

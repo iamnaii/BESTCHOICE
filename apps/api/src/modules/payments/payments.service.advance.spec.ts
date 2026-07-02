@@ -835,4 +835,33 @@ describe('PaymentsService — advance balance (Task 4)', () => {
       );
     });
   });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // PR #1314 — a PARTIAL payment must leave amount_paid < amount_due so the overdue
+  // cron's base-settled skip guard (`amount_paid < amount_due`) still processes the
+  // row (recomputes fee / keeps it OVERDUE). Existing PARTIAL tests assert the status
+  // only; this pins the recorded amountPaid, linking the record side to the cron guard.
+  // ───────────────────────────────────────────────────────────────────────────
+  describe('PR #1314 — partial keeps amount_paid < amount_due (cron-guard link)', () => {
+    it('records amountPaid strictly below amountDue on a fresh PARTIAL payment', async () => {
+      prisma.installmentSchedule.findUnique.mockResolvedValueOnce({ id: 'sch-guard-1' });
+      prisma.payment.findFirst.mockResolvedValueOnce(makePayment(30)); // amountDue 1000, fresh (amountPaid 0)
+
+      await service.recordPayment(
+        'adv-contract-1', 30, 800, 'CASH', 'user-1',
+        undefined, undefined, 'TEST-GUARD', '11-1101', undefined, 'PARTIAL',
+      );
+
+      const partialUpdate = (prisma.payment.update as jest.Mock).mock.calls
+        .map(([arg]) => arg)
+        .find((arg) => arg?.data?.status === 'PARTIALLY_PAID');
+      expect(partialUpdate).toBeDefined();
+
+      const recordedPaid = Number(
+        partialUpdate.data.amountPaid?.toString?.() ?? partialUpdate.data.amountPaid,
+      );
+      expect(recordedPaid).toBe(800);
+      expect(recordedPaid).toBeLessThan(INST_TOTAL); // 800 < 1000 → cron `amount_paid < amount_due` holds
+    });
+  });
 });

@@ -1,11 +1,17 @@
-import { useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { FileText, X } from 'lucide-react';
+import { BookOpen, FileText, X } from 'lucide-react';
 import api, { getErrorMessage } from '@/lib/api';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogBody } from '@/components/ui/dialog';
 import { formatDateShort, formatNumberDecimal } from '@/utils/formatters';
 import { useAuth } from '@/contexts/AuthContext';
 import ReceiptVoidDialog from '@/components/payment/ReceiptVoidDialog';
+import { computeReceiptFeeDisplay } from './computeReceiptFeeDisplay';
+import {
+  computeCumulativePaid,
+  computeFeeTotals,
+  jesForReceipt as selectJesForReceipt,
+} from './paymentHistoryDerivations';
 import { toast } from 'sonner';
 
 /* ─── Types ───────────────────────────────────────── */
@@ -47,6 +53,34 @@ interface ReceiptItem {
   isVoided: boolean;
   paidDate: string;
   issuedByName: string | null;
+}
+interface ContractJeLine {
+  accountCode: string;
+  accountName: string;
+  debit: string;
+  credit: string;
+  description: string;
+}
+interface ContractJe {
+  id: string;
+  entryNumber: string;
+  entryDate: string;
+  postedAt: string | null;
+  description: string;
+  paymentId: string | null;
+  tag: string | null;
+  flow: string | null;
+  deltaApplied: string | null;
+  lateFeePortion: string | null;
+  /** Original JE that has since been mirrored out by a receipt void. */
+  reversed: boolean;
+  reversedByEntryNumber: string | null;
+  /** Set on receipt-void REVERSAL JEs — points at the original entry id. */
+  originalEntryId: string | null;
+  lines: ContractJeLine[];
+  totalDebit: string;
+  totalCredit: string;
+  isBalanced: boolean;
 }
 
 const VOID_ROLES = ['OWNER', 'ACCOUNTANT', 'BRANCH_MANAGER', 'FINANCE_MANAGER'];
@@ -105,24 +139,69 @@ export default function PaymentHistorySheet({ contractId, onClose }: Props) {
       (await api.get(`/receipts/contract/${contractId}`, { params: { includeVoided: true } })).data,
     enabled: !!contractId,
   });
+  // Posted JEs behind each receipt row — soft-linked by metadata.paymentId
+  // (EARLY_PAYOFF receipt has paymentId null → matched by flow instead).
+  const { data: journalEntries = [], isLoading: loadingJes } = useQuery<ContractJe[]>({
+    queryKey: ['contract-journal-entries', contractId],
+    queryFn: async () =>
+      (await api.get(`/payments/contract/${contractId}/journal-entries`)).data,
+    enabled: !!contractId,
+  });
   const isLoading = loadingPayments || loadingReceipts;
+
+  // Which receipt rows have their JE panel expanded (keyed by receipt id).
+  const [jeOpen, setJeOpen] = useState<Set<string>>(new Set());
+  // Component stays mounted between opens — clear expansion when switching contracts.
+  useEffect(() => {
+    setJeOpen(new Set());
+  }, [contractId]);
+  const toggleJe = (receiptId: string) =>
+    setJeOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(receiptId)) next.delete(receiptId);
+      else next.add(receiptId);
+      return next;
+    });
+
+  // Receipt → posted-JE selection (early-payoff by flow, CN → reversal mirrors,
+  // else by shared paymentId). Extracted to paymentHistoryDerivations for unit test.
+  const jesForReceipt = (r: ReceiptItem): ContractJe[] => selectJesForReceipt(r, journalEntries);
 
   const payments = pResp?.data ?? [];
   const contract = pResp?.contract;
   const paymentById = useMemo(() => new Map(payments.map((p) => [p.id, p])), [payments]);
 
-  // ─── Summary cards ───
-  // paid installments are payment-based; the money totals are collected-only
-  // (exclude voided): cumulative = Σ non-voided receipt amounts; late-fee/waiver
-  // counted on PAID installments only (not unpaid-overdue accruals).
-  const paidCount = payments.filter((p) => p.status === 'PAID').length;
-  const cumulativePaid = receipts.filter((r) => !r.isVoided).reduce((s, r) => s + Number(r.amount), 0);
-  const paidPayments = payments.filter((p) => p.status === 'PAID');
-  const totalLateFee = paidPayments.reduce((s, p) => s + Number(p.lateFee), 0);
-  const totalWaived = paidPayments.reduce(
-    (s, p) => s + (p.waivedAmount != null ? Number(p.waivedAmount) : p.lateFeeWaived ? Number(p.lateFee) : 0),
-    0,
+  // Per-receipt late fee/waiver for display: attribute an installment's fee to its
+  // FIRST receipt only (owner UI convention) so split-payment receipts don't each
+  // repeat the same 100฿. The ledger still books the fee once (principal-first);
+  // this is purely how the history table reads. See computeReceiptFeeDisplay.
+  const feeByPaymentId = useMemo(() => {
+    const m = new Map<string, { lateFee: number; waived: number }>();
+    for (const p of payments) {
+      const lateFee = Number(p.lateFee) || 0;
+      const waived =
+        p.waivedAmount != null ? Number(p.waivedAmount) : p.lateFeeWaived ? lateFee : 0;
+      m.set(p.id, { lateFee, waived });
+    }
+    return m;
+  }, [payments]);
+  const receiptFees = useMemo(
+    () => computeReceiptFeeDisplay(receipts, feeByPaymentId),
+    [receipts, feeByPaymentId],
   );
+
+  // ─── Summary cards ───
+  // paid installments are payment-based; the money totals are collected-only:
+  // cumulative = Σ non-voided receipt amounts EXCLUDING credit notes (a CN row
+  // carries the original's POSITIVE amount — counting it would keep a voided
+  // payment in the total). Late-fee/waiver counted on installments where
+  // collection has STARTED (PAID or amountPaid > 0) — amountPaid-based rather
+  // than status so the fee doesn't vanish when the midnight cron flips a
+  // PARTIALLY_PAID overdue row back to OVERDUE; pure accruals on untouched
+  // overdue rows stay excluded. Matches the per-row fee shown in the table.
+  const paidCount = payments.filter((p) => p.status === 'PAID').length;
+  const cumulativePaid = computeCumulativePaid(receipts);
+  const { totalLateFee, totalWaived } = computeFeeTotals(payments);
 
   // One row per receipt (incl. voided), oldest installment first.
   const rows = useMemo(
@@ -168,7 +247,7 @@ export default function PaymentHistorySheet({ contractId, onClose }: Props) {
                   <SummaryCard label="ยอดชำระสะสม" value={`${money(cumulativePaid)} ฿`} />
                   <SummaryCard
                     label="ค่าปรับ / อนุโลม"
-                    value={`${money(totalLateFee)} / −${money(totalWaived)} ฿`}
+                    value={`${money(totalLateFee)} / ${totalWaived > 0 ? `−${money(totalWaived)}` : '0.00'} ฿`}
                     tone="warning"
                   />
                   <SummaryCard label="เครดิต (21-1103)" value={`${money(contract?.advanceBalance ?? 0)} ฿`} tone="info" />
@@ -200,18 +279,13 @@ export default function PaymentHistorySheet({ contractId, onClose }: Props) {
                         {rows.map((r) => {
                           const p = r.paymentId ? paymentById.get(r.paymentId) : undefined;
                           const c = caseFor(r, p);
-                          const lateFee = p ? Number(p.lateFee) : 0;
-                          const waived = p
-                            ? p.waivedAmount != null
-                              ? Number(p.waivedAmount)
-                              : p.lateFeeWaived
-                              ? Number(p.lateFee)
-                              : 0
-                            : 0;
+                          const { lateFee, waived } = receiptFees.get(r.id) ?? { lateFee: 0, waived: 0 };
                           const recorder = p?.recordedBy?.name ?? r.issuedByName ?? '–';
+                          const rowJes = jesForReceipt(r);
+                          const isJeOpen = jeOpen.has(r.id);
                           return (
+                            <Fragment key={r.id}>
                             <tr
-                              key={r.id}
                               className={`border-t border-border ${r.isVoided ? 'opacity-50 line-through' : ''}`}
                             >
                               <Td className="font-mono text-xs">{r.receiptNumber}</Td>
@@ -247,30 +321,65 @@ export default function PaymentHistorySheet({ contractId, onClose }: Props) {
                                 {p?.waivedApprovedByName ?? '–'}
                               </Td>
                               <Td>
-                                {!r.isVoided && (
-                                  <div className="flex items-center gap-1">
-                                    <button
-                                      onClick={() => downloadReceiptPdf(r.id, r.receiptNumber)}
-                                      title="ใบเสร็จ (PDF)"
-                                      aria-label={`ดาวน์โหลดใบเสร็จ ${r.receiptNumber}`}
-                                      className="p-1.5 rounded border border-border text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-                                    >
-                                      <FileText className="size-3.5" />
-                                    </button>
-                                    {canVoid && (
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    onClick={() => toggleJe(r.id)}
+                                    title="ดูบันทึกบัญชี (JE)"
+                                    aria-label={`ดูบันทึกบัญชีของใบเสร็จ ${r.receiptNumber}`}
+                                    aria-expanded={isJeOpen}
+                                    className={`p-1.5 rounded border transition-colors ${
+                                      isJeOpen
+                                        ? 'border-primary/40 bg-primary/10 text-primary'
+                                        : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground'
+                                    }`}
+                                  >
+                                    <BookOpen className="size-3.5" />
+                                  </button>
+                                  {!r.isVoided && (
+                                    <>
                                       <button
-                                        onClick={() => setVoidTarget({ id: r.id, receiptNumber: r.receiptNumber })}
-                                        title="ยกเลิกใบเสร็จ (ออกใบลดหนี้)"
-                                        aria-label={`ยกเลิกใบเสร็จ ${r.receiptNumber}`}
-                                        className="p-1.5 rounded border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors"
+                                        onClick={() => downloadReceiptPdf(r.id, r.receiptNumber)}
+                                        title="ใบเสร็จ (PDF)"
+                                        aria-label={`ดาวน์โหลดใบเสร็จ ${r.receiptNumber}`}
+                                        className="p-1.5 rounded border border-border text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
                                       >
-                                        <X className="size-3.5" />
+                                        <FileText className="size-3.5" />
                                       </button>
-                                    )}
-                                  </div>
-                                )}
+                                      {canVoid && (
+                                        <button
+                                          onClick={() => setVoidTarget({ id: r.id, receiptNumber: r.receiptNumber })}
+                                          title="ยกเลิกใบเสร็จ (ออกใบลดหนี้)"
+                                          aria-label={`ยกเลิกใบเสร็จ ${r.receiptNumber}`}
+                                          className="p-1.5 rounded border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors"
+                                        >
+                                          <X className="size-3.5" />
+                                        </button>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
                               </Td>
                             </tr>
+                            {isJeOpen && (
+                              <tr className="border-t border-border bg-muted/10">
+                                <td colSpan={12} className="px-4 py-3">
+                                  {loadingJes ? (
+                                    <div className="text-xs text-muted-foreground leading-snug">กำลังโหลดบันทึกบัญชี...</div>
+                                  ) : rowJes.length === 0 ? (
+                                    <div className="text-xs text-muted-foreground leading-snug">
+                                      ไม่พบบันทึกบัญชี (JE) สำหรับรายการนี้
+                                    </div>
+                                  ) : (
+                                    <div className="space-y-3">
+                                      {rowJes.map((je) => (
+                                        <JeBlock key={je.id} je={je} />
+                                      ))}
+                                    </div>
+                                  )}
+                                </td>
+                              </tr>
+                            )}
+                            </Fragment>
                           );
                         })}
                       </tbody>
@@ -293,6 +402,75 @@ export default function PaymentHistorySheet({ contractId, onClose }: Props) {
 }
 
 /* ─── Helpers ───────────────────────────────────────── */
+/** One posted JE rendered as a Dr/Cr grid — same layout as the JOURNAL AUTO
+ * section in ContractEarlyPayoff (grid-cols-[80px_1fr_90px_90px]). */
+function JeBlock({ je }: { je: ContractJe }) {
+  const isVoidReversal = je.flow === 'receipt-void' || je.tag === 'REVERSAL';
+  const flowLabel = isVoidReversal
+    ? 'กลับรายการ (VOID)'
+    : je.flow === 'early-payoff'
+    ? 'JP4 — ปิดยอดก่อนกำหนด'
+    : 'รับชำระ (2B)';
+  return (
+    <div className="rounded-lg border border-border bg-card p-3">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2 text-xs leading-snug flex-wrap">
+          <span className="font-mono font-semibold text-foreground">{je.entryNumber}</span>
+          <span className="text-muted-foreground">{formatDateShort(je.postedAt ?? je.entryDate)}</span>
+          <span
+            className={`px-1.5 py-0.5 rounded-full font-medium ${
+              isVoidReversal ? 'bg-destructive/10 text-destructive' : 'bg-primary/10 text-primary'
+            }`}
+          >
+            {flowLabel}
+          </span>
+          {je.reversed && (
+            <span className="px-1.5 py-0.5 rounded-full bg-warning/10 text-warning font-medium">
+              ถูกกลับรายการ{je.reversedByEntryNumber ? ` โดย ${je.reversedByEntryNumber}` : ''}
+            </span>
+          )}
+          {je.deltaApplied && (
+            <span className="text-muted-foreground">รับจริง {money(je.deltaApplied)} ฿</span>
+          )}
+          {je.lateFeePortion && Number(je.lateFeePortion) > 0 && (
+            <span className="text-warning">ค่าปรับ {money(je.lateFeePortion)} ฿</span>
+          )}
+        </div>
+        <span
+          className={`text-xs font-medium leading-snug ${je.isBalanced ? 'text-success' : 'text-destructive'}`}
+        >
+          {money(je.totalDebit)} = {money(je.totalCredit)} {je.isBalanced ? 'BALANCED' : 'UNBALANCED'}
+        </span>
+      </div>
+      <div className="space-y-1">
+        <div className="grid grid-cols-[80px_1fr_90px_90px] gap-1 text-xs text-muted-foreground font-medium pb-1 border-b border-border">
+          <span>รหัส</span>
+          <span>บัญชี</span>
+          <span className="text-right">Dr</span>
+          <span className="text-right">Cr</span>
+        </div>
+        {je.lines.map((line, idx) => (
+          <div key={idx} className="grid grid-cols-[80px_1fr_90px_90px] gap-1 text-xs leading-snug">
+            <span className="font-mono text-muted-foreground">{line.accountCode}</span>
+            <div className="min-w-0">
+              <span className="text-foreground truncate block">{line.accountName}</span>
+              {line.description && (
+                <span className="text-muted-foreground/70 text-[10px]">{line.description}</span>
+              )}
+            </div>
+            <span className="text-right font-mono text-foreground">
+              {parseFloat(line.debit) > 0 ? formatNumberDecimal(line.debit) : ''}
+            </span>
+            <span className="text-right font-mono text-foreground">
+              {parseFloat(line.credit) > 0 ? formatNumberDecimal(line.credit) : ''}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function SummaryCard({ label, value, tone = 'default' }: { label: string; value: string; tone?: 'default' | 'success' | 'warning' | 'info' }) {
   const valueCls =
     tone === 'success' ? 'text-success' : tone === 'warning' ? 'text-warning' : tone === 'info' ? 'text-info' : 'text-foreground';

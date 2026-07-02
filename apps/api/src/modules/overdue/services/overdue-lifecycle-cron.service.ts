@@ -83,6 +83,11 @@ export class OverdueLifecycleCronService {
       WHERE "status" IN ('PENDING', 'PARTIALLY_PAID', 'OVERDUE')
         AND "due_date" < ${now}
         AND "late_fee_waived" = false
+        -- Skip installments whose base is already settled (amount_paid >= amount_due).
+        -- Those only have a (frozen) late fee outstanding; recomputing it from the
+        -- days-overdue formula would resurrect/overwrite the fee AND wrongly flip a
+        -- PARTIALLY_PAID row back to OVERDUE after the customer paid the principal.
+        AND "amount_paid" < "amount_due"
         AND "contract_id" IN (
           SELECT "id" FROM "contracts"
           WHERE "status" IN ('ACTIVE', 'OVERDUE', 'DEFAULT')

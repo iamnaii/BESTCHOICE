@@ -15,9 +15,10 @@ import CustomerEditModal from '@/components/contract/CustomerEditModal';
 import ContractPaymentSchedule from '@/components/contract/ContractPaymentSchedule';
 import ContractDocuments from '@/components/contract/ContractDocuments';
 import { ContractEarlyPayoffQuote, EarlyPayoffOverlay } from '@/components/contract/ContractEarlyPayoff';
+import PaymentHistorySheet from '@/components/payment/PaymentHistorySheet';
 import { toast } from 'sonner';
 import { useState, useRef, useEffect } from 'react';
-import { Copy, CheckCircle2, XCircle, AlertTriangle, Check, ChevronRight } from 'lucide-react';
+import { Copy, CheckCircle2, XCircle, AlertTriangle, Check, ChevronRight, History } from 'lucide-react';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import { useAuth } from '@/contexts/AuthContext';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -92,6 +93,9 @@ export default function ContractDetailPage() {
   const { user } = useAuth();
   const { copy: copyToClipboard } = useCopyToClipboard();
   const [showPayoffModal, setShowPayoffModal] = useState(false);
+  // Payment-history modal — reachable for ANY status (incl. EARLY_PAYOFF / COMPLETED
+  // contracts that have dropped out of the /payments pending queue).
+  const [historyContractId, setHistoryContractId] = useState<string | null>(null);
   const [customerLink, setCustomerLink] = useState<string | null>(null);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
@@ -322,6 +326,16 @@ const deleteMutation = useMutation({
             {contract.workflowStatus === 'APPROVED' && contract.status === 'DRAFT' && (
               <button onClick={() => activateMutation.mutate()} disabled={activateMutation.isPending || !allSigned} title={!allSigned ? 'ต้องลงนามครบทั้งลูกค้าและพนักงานก่อน' : ''} className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50">
                 {activateMutation.isPending ? 'กำลังเปิด...' : 'เปิดใช้งานสัญญา'}
+              </button>
+            )}
+
+            {['ACTIVE', 'OVERDUE', 'DEFAULT', 'COMPLETED', 'EARLY_PAYOFF'].includes(contract.status) && (
+              <button
+                onClick={() => setHistoryContractId(contract.id)}
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-sm border border-input bg-background text-foreground rounded-lg hover:bg-accent hover:text-accent-foreground shadow-sm"
+              >
+                <History className="size-4" />
+                ประวัติการชำระ
               </button>
             )}
 
@@ -951,6 +965,12 @@ const deleteMutation = useMutation({
           onSuccess={invalidateContract}
         />
       )}
+
+      {/* Payment History Modal (4 summary cards + receipt-level table) */}
+      <PaymentHistorySheet
+        contractId={historyContractId}
+        onClose={() => setHistoryContractId(null)}
+      />
 
       {/* Submit Review Confirm Modal */}
       {showSubmitConfirm && (

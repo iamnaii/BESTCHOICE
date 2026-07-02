@@ -12,6 +12,8 @@ describe('invalidatePaymentQueries', () => {
     // staleTime serve a stale 0/N history behind a fresh daily summary.
     expect(keys).toContain('contract-payments');
     expect(keys).toContain('contract-receipts');
+    // JE expansion cache (per-receipt bookkeeping view) must refresh too.
+    expect(keys).toContain('contract-journal-entries');
     // Existing invalidations preserved.
     expect(keys).toContain('pending-payments');
     expect(keys).toContain('daily-summary');

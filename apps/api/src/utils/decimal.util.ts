@@ -75,6 +75,16 @@ export function dRound(a: DecimalInput): Prisma.Decimal {
   return d(a).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
 }
 
+/**
+ * Round DOWN (truncate) to 2 decimal places.
+ * Use when the rounding direction must favor the company rather than the
+ * customer — e.g. a discount granted to the customer is rounded down so we
+ * never give away more than the exact calculated satang.
+ */
+export function dRoundDown(a: DecimalInput): Prisma.Decimal {
+  return d(a).toDecimalPlaces(2, Prisma.Decimal.ROUND_DOWN);
+}
+
 export function dCompare(a: DecimalInput, b: DecimalInput): -1 | 0 | 1 {
   return d(a).cmp(d(b)) as -1 | 0 | 1;
 }

@@ -82,10 +82,14 @@ function NormalBalanceBadge({ value }: { value: 'Dr' | 'Cr' | 'Dr/Cr' }) {
 }
 
 export function GeneralLedgerPage() {
+  // Local-date formatting (NOT toISOString — that shifts a BKK local-midnight
+  // date back one UTC day). Default = full current month, matching the
+  // DateRangeChips "เดือนนี้" preset (owner 2026-07-02).
+  const toLocalIso = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const now = new Date();
-  const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const [startDate, setStartDate] = useState(firstOfMonth.toISOString().split('T')[0]);
-  const [endDate, setEndDate] = useState(now.toISOString().split('T')[0]);
+  const [startDate, setStartDate] = useState(toLocalIso(new Date(now.getFullYear(), now.getMonth(), 1)));
+  const [endDate, setEndDate] = useState(toLocalIso(new Date(now.getFullYear(), now.getMonth() + 1, 0)));
   const [companyId, setCompanyId] = useState('');
   const [accountCode, setAccountCode] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);

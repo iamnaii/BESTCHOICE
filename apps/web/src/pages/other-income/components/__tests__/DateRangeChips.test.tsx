@@ -24,10 +24,10 @@ describe('DateRangeChips', () => {
     expect(screen.getByRole('radio', { name: /ช่วงวันที่/ })).toBeInTheDocument();
   });
 
-  it('clicking "เดือนนี้" emits 1st of current month → today', () => {
+  it('clicking "เดือนนี้" emits the FULL current month (owner 2026-07-02)', () => {
     render(<DateRangeChips startDate="" endDate="" onChange={onChange} />);
     fireEvent.click(screen.getByRole('radio', { name: 'เดือนนี้' }));
-    expect(onChange).toHaveBeenCalledWith({ startDate: '2026-05-01', endDate: '2026-05-14' });
+    expect(onChange).toHaveBeenCalledWith({ startDate: '2026-05-01', endDate: '2026-05-31' });
   });
 
   it('clicking "เดือนที่แล้ว" emits 1st → last day of last month', () => {
@@ -71,8 +71,8 @@ describe('DateRangeChips', () => {
     );
   });
 
-  it('"เดือนนี้" chip has aria-checked=true when current month is selected', () => {
-    render(<DateRangeChips startDate="2026-05-01" endDate="2026-05-14" onChange={onChange} />);
+  it('"เดือนนี้" chip has aria-checked=true when the full current month is selected', () => {
+    render(<DateRangeChips startDate="2026-05-01" endDate="2026-05-31" onChange={onChange} />);
     expect(screen.getByRole('radio', { name: 'เดือนนี้' })).toHaveAttribute(
       'aria-checked',
       'true',

@@ -458,9 +458,14 @@ function StockReport() {
 }
 
 function EntityProfitReport() {
+  // Local-date formatting (NOT toISOString — that shifts a BKK local-midnight
+  // date back one UTC day). Default = full current month, matching the
+  // DateRangeChips "เดือนนี้" preset (owner 2026-07-02).
+  const toLocalIso = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const today = new Date();
-  const firstDay = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
-  const lastDay = today.toISOString().slice(0, 10);
+  const firstDay = toLocalIso(new Date(today.getFullYear(), today.getMonth(), 1));
+  const lastDay = toLocalIso(new Date(today.getFullYear(), today.getMonth() + 1, 0));
   const [startDate, setStartDate] = useState(firstDay);
   const [endDate, setEndDate] = useState(lastDay);
   const [entity, setEntity] = useState<string>('ALL');

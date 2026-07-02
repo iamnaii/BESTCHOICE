@@ -53,7 +53,8 @@ export default function PaymentsPage() {
 
   // Period filter for the pending queue (KPI cards + list) — scopes everything
   // by installment dueDate. Default is "เดือนนี้" (matches DateRangeChips'
-  // thisMonth preset: [1st of month, today]) so that chip reads active on load.
+  // thisMonth preset: the FULL calendar month, owner 2026-07-02) so that chip
+  // reads active on load AND installments due later this month stay visible.
   // NOTE: a month default hides installments due in earlier months from the
   // queue — switch to "ทั้งหมด" to chase back-dated overdue.
   const [startDate, setStartDate] = useState(() => {
@@ -62,7 +63,8 @@ export default function PaymentsPage() {
   });
   const [endDate, setEndDate] = useState(() => {
     const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    return `${last.getFullYear()}-${String(last.getMonth() + 1).padStart(2, '0')}-${String(last.getDate()).padStart(2, '0')}`;
   });
   const dueFrom = startDate || undefined;
   const dueTo = endDate || undefined;
@@ -73,11 +75,12 @@ export default function PaymentsPage() {
       `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     const today = new Date();
     const thisFirst = toIso(new Date(today.getFullYear(), today.getMonth(), 1));
-    const thisToday = toIso(today);
+    // Full-month end — matches the DateRangeChips thisMonth preset (owner 2026-07-02).
+    const thisEnd = toIso(new Date(today.getFullYear(), today.getMonth() + 1, 0));
     const lastFirst = toIso(new Date(today.getFullYear(), today.getMonth() - 1, 1));
     const lastEnd = toIso(new Date(today.getFullYear(), today.getMonth(), 0));
     if (!startDate && !endDate) return 'รับชำระทั้งหมด';
-    if (startDate === thisFirst && endDate === thisToday) return 'รับชำระเดือนนี้';
+    if (startDate === thisFirst && endDate === thisEnd) return 'รับชำระเดือนนี้';
     if (startDate === lastFirst && endDate === lastEnd) return 'รับชำระเดือนที่แล้ว';
     return 'รับชำระช่วงนี้';
   }, [startDate, endDate]);

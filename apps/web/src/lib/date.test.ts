@@ -10,9 +10,9 @@ describe('lib/date — computeDefaultTimeRange', () => {
     expect(r).toEqual({ startDate: '', endDate: '' });
   });
 
-  it("'this_month' returns first-of-current-month → today (BKK)", () => {
+  it("'this_month' returns the FULL current month (owner 2026-07-02: เดือนนี้ = ทั้งเดือน)", () => {
     const r = computeDefaultTimeRange('this_month', fixedMidApril);
-    expect(r).toEqual({ startDate: '2026-04-01', endDate: '2026-04-15' });
+    expect(r).toEqual({ startDate: '2026-04-01', endDate: '2026-04-30' });
   });
 
   it("'last_month' returns first → last day of previous month", () => {

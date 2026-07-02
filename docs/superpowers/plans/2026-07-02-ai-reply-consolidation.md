@@ -1332,6 +1332,6 @@ Then report per `superpowers:verification-before-completion` — include actual 
 1. Deploy — env unset ⇒ behavior identical to today.
 2. In `/settings/ai/assistant`: enable checkbox LINE Shop in AI Auto Mode channels (ai.autoChannels).
 3. Set Cloud Run env `LINE_SHOP_AI_ENABLED=true` + `LINE_SHOP_AI_WHITELIST_USER_IDS=<team LINE userIds>`.
-4. Team tests via real LINE; watch `/settings/ai/admin` (cost) + AiAutoReplyLog (confidence/handoffs). (หมายเหตุ: cap ต่อห้องนับตลอดอายุห้องและไม่ reset ตอน release/take-over — ถ้าทดสอบแล้วบอทเงียบ ให้เช็ค AiAutoReplyLog ว่าชน cap ก่อนสรุปว่า bug; ปรับ ai.autoMaxRepliesPerSession ได้จากหน้า Settings)
+4. Team tests via real LINE; watch `/settings/ai/admin` (cost) + AiAutoReplyLog (confidence/handoffs). (หมายเหตุ: cap ต่อห้องนับแบบ rolling window 24 ชม. (#1316) — โควต้าคืนทีละข้อความเมื่อ log แต่ละแถวอายุเกิน 24 ชม. (rolling window), ไม่เกี่ยวกับ release/take-over — ถ้าทดสอบแล้วบอทเงียบ ให้เช็ค AiAutoReplyLog ว่าชน cap ภายใน 24 ชม.ที่ผ่านมาก่อนสรุปว่า bug; ปรับ ai.autoMaxRepliesPerSession ได้จากหน้า Settings)
 5. Widen whitelist → clear it (= everyone). Instant kill anytime = uncheck the LINE Shop checkbox (~60s, no deploy).
 6. Final separate PR (not in this plan): delete `line-oa/chatbot.service.ts`, `handleFreeformMessage`, the gate envs; run `POST /staff-chat/ai/embedding-backfill` once if the nightly cap is still draining the backlog.

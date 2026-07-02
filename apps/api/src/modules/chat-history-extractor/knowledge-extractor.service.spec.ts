@@ -1,6 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { KnowledgeExtractorService } from './knowledge-extractor.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AiUsageService } from '../ai-usage/ai-usage.service';
 import Anthropic from '@anthropic-ai/sdk';
 
 jest.mock('@anthropic-ai/sdk');
@@ -40,13 +41,27 @@ describe('KnowledgeExtractorService', () => {
       },
     };
 
+    const aiUsage = { record: jest.fn() };
+
     const mod = await Test.createTestingModule({
-      providers: [KnowledgeExtractorService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        KnowledgeExtractorService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: AiUsageService, useValue: aiUsage },
+      ],
     }).compile();
     const svc = mod.get(KnowledgeExtractorService);
 
     const result = await svc.extractAndSeed();
     expect(result.faqsSeeded).toBe(1);
     expect(prisma.chatKnowledgeBase.upsert).toHaveBeenCalledTimes(1);
+    expect(aiUsage.record).toHaveBeenCalledTimes(1);
+    expect(aiUsage.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        service: 'knowledge-extractor',
+        method: 'extractAndSeed',
+        status: 'success',
+      }),
+    );
   });
 });

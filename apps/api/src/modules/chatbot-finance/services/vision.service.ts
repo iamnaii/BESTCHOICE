@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
 import Anthropic from '@anthropic-ai/sdk';
 import { IntegrationConfigService } from '../../integrations/integration-config.service';
+import { AiUsageService } from '../../ai-usage/ai-usage.service';
 
 export interface SlipExtraction {
   isSlip: boolean;
@@ -47,7 +48,10 @@ export class VisionService {
   // Haiku for slip extraction — ~80% cheaper than Sonnet, sufficient for structured JSON extraction
   private readonly model = 'claude-haiku-4-5-20251001';
 
-  constructor(private integrationConfig: IntegrationConfigService) {}
+  constructor(
+    private integrationConfig: IntegrationConfigService,
+    private aiUsage: AiUsageService,
+  ) {}
 
   private async getAnthropicClient(): Promise<Anthropic | null> {
     const apiKey = ((await this.integrationConfig.getValue('claude-ai', 'apiKey')) || '').trim();
@@ -91,6 +95,15 @@ export class VisionService {
             ],
           },
         ],
+      });
+
+      void this.aiUsage.record({
+        service: 'vision',
+        method: 'extractSlip',
+        model: this.model,
+        inputTokens: response.usage?.input_tokens ?? 0,
+        outputTokens: response.usage?.output_tokens ?? 0,
+        status: 'success',
       });
 
       const textBlock = response.content.find((b) => b.type === 'text');

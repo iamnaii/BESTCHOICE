@@ -1,6 +1,7 @@
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
+import { AiUsageService } from '../ai-usage/ai-usage.service';
 import { CreditCheckService } from './credit-check.service';
 
 /**
@@ -109,9 +110,11 @@ const makeService = (
   const config = {
     getValue: jest.fn().mockResolvedValue(null),
   };
+  const aiUsage = { record: jest.fn() };
   const svc = new CreditCheckService(
     prisma as unknown as PrismaService,
     config as unknown as IntegrationConfigService,
+    aiUsage as unknown as AiUsageService,
   );
   return { svc, prisma };
 };

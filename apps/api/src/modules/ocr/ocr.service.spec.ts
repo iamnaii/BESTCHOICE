@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { OcrService } from './ocr.service';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
+import { AiUsageService } from '../ai-usage/ai-usage.service';
 
 // Mock Anthropic SDK
 const mockCreate = jest.fn();
@@ -14,6 +15,7 @@ jest.mock('@anthropic-ai/sdk', () => {
 
 describe('OcrService', () => {
   let service: OcrService;
+  let aiUsage: { record: jest.Mock };
 
   const validBase64 = 'data:image/jpeg;base64,/9j/4AAQSkZJRg==';
 
@@ -25,6 +27,7 @@ describe('OcrService', () => {
 
   beforeEach(async () => {
     mockCreate.mockReset();
+    aiUsage = { record: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -48,6 +51,7 @@ describe('OcrService', () => {
             isConfigured: jest.fn().mockResolvedValue(true),
           },
         },
+        { provide: AiUsageService, useValue: aiUsage },
       ],
     }).compile();
 
@@ -97,6 +101,27 @@ describe('OcrService', () => {
       expect(result.expiryDate).toBe('2033-10-29');
       expect(result.confidence).toBe(0.92);
       expect(result.nationalIdValid).toBe(true);
+    });
+
+    // #1317 — OCR module never recorded to AiUsageLog.
+    it('records AI usage (service=ocr, method=callClaudeOcr) after a successful extraction', async () => {
+      mockCreate.mockResolvedValue({
+        content: [{ type: 'text', text: JSON.stringify(sampleOcrResponse) }],
+        usage: { input_tokens: 321, output_tokens: 45 },
+      });
+
+      await service.extractIdCard(validBase64);
+
+      expect(aiUsage.record).toHaveBeenCalledTimes(1);
+      expect(aiUsage.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          service: 'ocr',
+          method: 'callClaudeOcr',
+          inputTokens: 321,
+          outputTokens: 45,
+          status: 'success',
+        }),
+      );
     });
 
     it('should return nationalIdValid false for invalid checksum', async () => {
@@ -397,7 +422,8 @@ describe('OcrService', () => {
   });
 
   describe('extractIdCard without API key', () => {
-    it('should throw when ANTHROPIC_API_KEY is not configured', async () => {
+    it('should throw when ANTHROPIC_API_KEY is not configured and must not record a fake AI usage row', async () => {
+      const noKeyAiUsage = { record: jest.fn() };
       const module: TestingModule = await Test.createTestingModule({
         providers: [
           OcrService,
@@ -417,6 +443,7 @@ describe('OcrService', () => {
               isConfigured: jest.fn().mockResolvedValue(false),
             },
           },
+          { provide: AiUsageService, useValue: noKeyAiUsage },
         ],
       }).compile();
 
@@ -425,6 +452,7 @@ describe('OcrService', () => {
       await expect(
         serviceWithoutKey.extractIdCard('data:image/jpeg;base64,/9j/4A=='),
       ).rejects.toThrow('ANTHROPIC_API_KEY');
+      expect(noKeyAiUsage.record).not.toHaveBeenCalled();
     });
   });
 
@@ -891,6 +919,7 @@ describe('OcrService', () => {
               isConfigured: jest.fn().mockResolvedValue(false),
             },
           },
+          { provide: AiUsageService, useValue: { record: jest.fn() } },
         ],
       }).compile();
 

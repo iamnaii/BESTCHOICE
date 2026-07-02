@@ -1,5 +1,6 @@
 import { PrismaService } from '../../prisma/prisma.service';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
+import { AiUsageService } from '../ai-usage/ai-usage.service';
 import { CreditCheckService } from './credit-check.service';
 
 /**
@@ -38,6 +39,7 @@ describe('CreditCheckService.performRuleBasedAnalysis', () => {
   const service = new CreditCheckService(
     {} as unknown as PrismaService,
     {} as unknown as IntegrationConfigService,
+    { record: jest.fn() } as unknown as AiUsageService,
   );
   const analyze = (params: {
     monthlyPayment: number;

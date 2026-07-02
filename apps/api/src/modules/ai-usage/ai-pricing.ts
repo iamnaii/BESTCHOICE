@@ -26,6 +26,7 @@ const RATE_CARD: Record<string, ModelRate> = {
   'claude-haiku-4-5-20251001': { inputPer1M: 0.8, outputPer1M: 4 },
   // Gemini (SHOP sales-bot alternate provider) — https://ai.google.dev/pricing
   // (snapshot 2026-07)
+  'gemini-2.5-flash-lite': { inputPer1M: 0.1, outputPer1M: 0.4 },
   'gemini-2.5-flash': { inputPer1M: 0.3, outputPer1M: 2.5 },
   // Fallback
   default: { inputPer1M: 3, outputPer1M: 15 },
@@ -37,7 +38,11 @@ export function ratesFor(model: string): ModelRate {
   // Providers may suffix the model id (e.g. GeminiProvider returns
   // 'gemini-2.5-flash (vertex)') and env overrides may add variants —
   // prefix-match known keys before falling back to the default rate.
-  const prefixKey = Object.keys(RATE_CARD).find((k) => k !== 'default' && model.startsWith(k));
+  // Use longest-prefix match to ensure more specific keys (e.g.
+  // 'gemini-2.5-flash-lite') take precedence over shorter prefixes.
+  const prefixKey = Object.keys(RATE_CARD)
+    .filter((k) => k !== 'default' && model.startsWith(k))
+    .sort((a, b) => b.length - a.length)[0];
   return prefixKey ? RATE_CARD[prefixKey] : RATE_CARD.default;
 }
 

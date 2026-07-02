@@ -64,13 +64,20 @@ export class AiAutoReplyService {
       return false;
     }
 
-    // Check per-room reply cap
+    // Check per-room reply cap — rolling 24h window, not room lifetime (#1316).
+    // Rooms are permanent per (user, channel); counting every autoSent row ever
+    // logged means a regular customer eventually trips the cap once and the
+    // bot goes silent forever. Scoping to the last 24h lets a customer who hit
+    // the cap yesterday get AI replies again today, while still silencing the
+    // bot (and surfacing unread to staff) if the cap is hit again within the
+    // same 24h window.
+    const capWindowStart = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const sentCount = await this.prisma.aiAutoReplyLog.count({
-      where: { roomId: session.id, autoSent: true },
+      where: { roomId: session.id, autoSent: true, createdAt: { gte: capWindowStart } },
     });
     if (sentCount >= settings.aiAutoMaxRepliesPerSession) {
       this.logger.log(
-        `[ShouldAutoReply] room=${session.id} skip=capHit sentCount=${sentCount} cap=${settings.aiAutoMaxRepliesPerSession}`,
+        `[ShouldAutoReply] room=${session.id} skip=capHit24h sentCount=${sentCount} cap=${settings.aiAutoMaxRepliesPerSession}`,
       );
       return false;
     }

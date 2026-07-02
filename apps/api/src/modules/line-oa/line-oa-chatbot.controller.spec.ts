@@ -29,6 +29,7 @@ describe('LineOaChatbotController — WS2 staged AI gate', () => {
   let chatbotService: any;
   let messageRouter: any;
   let aiAutoReply: any;
+  let prisma: any;
   let envValues: Record<string, string | undefined>;
 
   beforeEach(async () => {
@@ -51,6 +52,7 @@ describe('LineOaChatbotController — WS2 staged AI gate', () => {
         .fn()
         .mockResolvedValue({ aiAutoEnabled: true, aiAutoChannels: ['LINE_SHOP'] }),
     };
+    prisma = { systemConfig: { upsert: jest.fn().mockResolvedValue({}) } };
 
     const mod: TestingModule = await Test.createTestingModule({
       controllers: [LineOaChatbotController],
@@ -59,7 +61,7 @@ describe('LineOaChatbotController — WS2 staged AI gate', () => {
         { provide: ChatbotService, useValue: chatbotService },
         { provide: QuickReplyService, useValue: {} },
         { provide: RichMenuService, useValue: {} },
-        { provide: PrismaService, useValue: {} },
+        { provide: PrismaService, useValue: prisma },
         { provide: PromptPayQrService, useValue: {} },
         { provide: PaymentLinkService, useValue: {} },
         { provide: StorageService, useValue: {} },
@@ -130,5 +132,46 @@ describe('LineOaChatbotController — WS2 staged AI gate', () => {
     await handleText('สนใจ iPhone');
     expect(messageRouter.routeInbound).not.toHaveBeenCalled();
     expect(chatbotService.generateResponse).toHaveBeenCalled();
+  });
+
+  // ─── Regression lock — moved legacy blocks (Task 10 review follow-up) ───
+
+  it('#owner registers the sender as owner and replies confirmation', async () => {
+    await handleText('#owner');
+    expect(prisma.systemConfig.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { key: 'owner_line_id' } }),
+    );
+    expect(lineOaService.replyMessage).toHaveBeenCalledWith(
+      'rt-1',
+      [
+        expect.objectContaining({
+          text: expect.stringContaining('บันทึก Owner LINE ID เรียบร้อยแล้วค่ะ'),
+        }),
+      ],
+      'line-shop',
+    );
+    expect(messageRouter.routeInbound).not.toHaveBeenCalled();
+  });
+
+  it('phone self-link success replies confirmation and stops', async () => {
+    lineOaService.selfLinkByPhone.mockResolvedValue({ success: true, customerName: 'สมชาย' });
+    await handleText('0812345678');
+    expect(lineOaService.replyMessage).toHaveBeenCalledWith(
+      'rt-1',
+      [expect.objectContaining({ text: expect.stringContaining('ผูกบัญชีสำเร็จค่ะ คุณสมชาย') })],
+      'line-shop',
+    );
+    expect(chatbotService.generateResponse).not.toHaveBeenCalled();
+    expect(messageRouter.routeInbound).not.toHaveBeenCalled();
+    expect(messageRouter.mirrorInbound).toHaveBeenCalledTimes(1);
+  });
+
+  it('phone from already-linked user falls through to legacy freeform without double mirror', async () => {
+    lineOaService.selfLinkByPhone.mockResolvedValue({ success: false });
+    lineOaService.findCustomerByLineId.mockResolvedValue({ name: 'สมชาย', contracts: [] });
+    await handleText('0812345678');
+    expect(chatbotService.generateResponse).toHaveBeenCalled();
+    expect(messageRouter.routeInbound).not.toHaveBeenCalled();
+    expect(messageRouter.mirrorInbound).toHaveBeenCalledTimes(1);
   });
 });

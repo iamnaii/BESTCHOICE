@@ -24,6 +24,16 @@
  *   - 5 days overdue → tier2 (100)
  *   - stored 200 with 5 days → DOWNGRADED to 100 (unconditional SET)
  *
+ * MODE: `late_fee_mode` PIN REQUIRED — since `feat(late-fee): per-day model +
+ * 5% cap + resolveLateFee dispatcher (config-switchable)` (commit 79131032b),
+ * `BUSINESS_RULES.LATE_FEE_MODE` (config.util.ts) defaults to `'PER_DAY'`, not
+ * `'BRACKET'`. `calculateLateFees()` reads the mode via `loadLateFeeConfig()`
+ * and falls back to that code default whenever no `late_fee_mode` SystemConfig
+ * row exists. This suite exercises the legacy BRACKET math specifically, so it
+ * must explicitly seed `late_fee_mode=BRACKET` — otherwise every row above
+ * gets priced as `min(days × 20, 500, 5% × amountDue)` (PER_DAY defaults)
+ * instead of the tier1/tier2 brackets asserted below.
+ *
  * HARNESS: the main jest config IGNORES *.integration.spec.ts and only the e2e
  * jest config (`e2e/jest-e2e.json`, run by CI via `npm run test:e2e`) matches
  * `e2e/.*\.e2e-spec\.ts$`. Hence this file lives in `e2e/` with the
@@ -57,6 +67,16 @@ const TAG = `e2e-latefee-${Date.now()}`;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const daysAgo = (n: number): Date => new Date(Date.now() - n * DAY_MS);
 const daysFromNow = (n: number): Date => new Date(Date.now() + n * DAY_MS);
+
+// late_fee_mode defaults to PER_DAY in code (BUSINESS_RULES.LATE_FEE_MODE,
+// config.util.ts) since the D2 per-day model shipped — this suite pins
+// BRACKET explicitly so the flat-tier assertions below stay meaningful.
+const LATE_FEE_BRACKET_CONFIG = [
+  ['late_fee_mode', 'BRACKET'],
+  ['late_fee_tier1_amount', '50'],
+  ['late_fee_tier2_amount', '100'],
+  ['late_fee_tier2_min_days', '3'],
+] as const;
 
 describeOrSkip('OverdueLifecycleCronService.calculateLateFees — D2 flat-bracket model (real DB e2e)', () => {
   let prisma: PrismaService;
@@ -234,22 +254,15 @@ describeOrSkip('OverdueLifecycleCronService.calculateLateFees — D2 flat-bracke
     });
     paymentIds.future = pFuture.id;
 
-    // --- SystemConfig: pin D2 bracket defaults explicitly ---------------
-    await prisma.systemConfig.upsert({
-      where: { key: 'late_fee_tier1_amount' },
-      create: { key: 'late_fee_tier1_amount', value: '50' },
-      update: { value: '50' },
-    });
-    await prisma.systemConfig.upsert({
-      where: { key: 'late_fee_tier2_amount' },
-      create: { key: 'late_fee_tier2_amount', value: '100' },
-      update: { value: '100' },
-    });
-    await prisma.systemConfig.upsert({
-      where: { key: 'late_fee_tier2_min_days' },
-      create: { key: 'late_fee_tier2_min_days', value: '3' },
-      update: { value: '3' },
-    });
+    // --- SystemConfig: pin D2 bracket mode + tier defaults explicitly ----
+    // late_fee_mode MUST be forced to BRACKET — the code default is PER_DAY
+    // (see MODE note above). tier1/tier2/minDays mirror BUSINESS_RULES
+    // defaults but are seeded explicitly for the same reason: never rely on
+    // ambient config in a real-DB e2e suite. Mirrors the seeding idiom in
+    // late-fee-perday-sql.integration.spec.ts / late-fee-skip-base-paid.integration.spec.ts.
+    for (const [key, value] of LATE_FEE_BRACKET_CONFIG) {
+      await prisma.systemConfig.upsert({ where: { key }, create: { key, value }, update: { value } });
+    }
   }, 60_000);
 
   afterAll(async () => {
@@ -261,8 +274,12 @@ describeOrSkip('OverdueLifecycleCronService.calculateLateFees — D2 flat-bracke
     await prisma.customer.deleteMany({ where: { id: customerId } });
     await prisma.user.deleteMany({ where: { id: userId } });
     await prisma.branch.deleteMany({ where: { id: branchId } });
-    // Leave the two shared SystemConfig keys in place — they are global config
-    // rows, not test fixtures, and our values match the defaults anyway.
+    // Remove the late-fee config keys we seeded — most importantly
+    // late_fee_mode, which MUST NOT leak BRACKET into other e2e specs / the
+    // shared DB once this suite finishes (the code default is PER_DAY).
+    await prisma.systemConfig.deleteMany({
+      where: { key: { in: LATE_FEE_BRACKET_CONFIG.map(([key]) => key) } },
+    });
     await prisma.$disconnect();
   });
 

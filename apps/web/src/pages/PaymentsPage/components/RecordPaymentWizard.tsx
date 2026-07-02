@@ -38,6 +38,7 @@ import { formatThaiDate } from '@/lib/date';
 import { useDebounce } from '@/hooks/useDebounce';
 import { toast } from 'sonner';
 import type { PendingPayment } from '../types';
+import { computeNetReceiptDue } from '../computeNetReceiptDue';
 import { AdvanceBalanceBanner } from './AdvanceBalanceBanner';
 import { EarlyPayoffOverlay } from '@/components/contract/ContractEarlyPayoff';
 import { RescheduleOverlay } from './RescheduleOverlay';
@@ -605,11 +606,17 @@ export function RecordPaymentWizard({
   const lateFeeDecimal = useMemo(() => new Decimal(payment.lateFee), [payment.lateFee]);
   const amountDueDecimal = useMemo(() => new Decimal(payment.amountDue), [payment.amountDue]);
   const amountPaidDecimal = useMemo(() => new Decimal(payment.amountPaid), [payment.amountPaid]);
-  // Pre-fill amount = amountDue only (no auto-add lateFee). User explicitly enters
-  // lateFee in the dedicated field if applicable, then can manually update amount.
-  // This avoids the "ห่างเกิน 1฿" warning on first render when payment.lateFee was
-  // server-computed but lateFee input shows 0.00.
-  const defaultAmount = amountDueDecimal.sub(amountPaidDecimal).toDecimalPlaces(2);
+  // Pre-fill amount = FULL owed INCLUDING the net late fee (single source of truth:
+  // computeNetReceiptDue). Pre-filling only the base (amountDue) let a cashier confirm
+  // "จ่ายเต็ม" that silently dropped the late fee → the installment stuck at
+  // PARTIALLY_PAID with a phantom "ค้าง". Since lateFeeStr also pre-fills from the
+  // server-computed payment.lateFee (I4 fix), the first-render amount agrees with the
+  // lateFee input → no spurious "ห่างเกิน 1฿" warning.
+  const defaultAmount = computeNetReceiptDue({
+    amountDue: amountDueDecimal,
+    lateFee: lateFeeDecimal,
+    amountPaid: amountPaidDecimal,
+  });
 
   const [amountReceived, setAmountReceived] = useState(defaultAmount.toFixed(2));
   const [amountManuallyEdited, setAmountManuallyEdited] = useState(false);
@@ -640,13 +647,14 @@ export function RecordPaymentWizard({
     if (amountManuallyEdited) return;
     const lf = parseFloat(lateFeeStr);
     if (isNaN(lf)) return;
-    const w = Math.min(Math.max(parseFloat(waiverStr) || 0, 0), lf); // waiver clamped ≤ gross
-    const owed = amountDueDecimal.plus(lf - w).sub(amountPaidDecimal); // NET late fee
-    const consumed =
-      consumeAdvance && advanceBalance.gt(0)
-        ? Decimal.min(advanceBalance, Decimal.max(new Decimal(0), owed))
-        : new Decimal(0);
-    const next = Decimal.max(new Decimal(0), owed.minus(consumed)).toDecimalPlaces(2);
+    const next = computeNetReceiptDue({
+      amountDue: amountDueDecimal,
+      lateFee: lf,
+      amountPaid: amountPaidDecimal,
+      waiver: Math.max(parseFloat(waiverStr) || 0, 0),
+      advanceBalance,
+      consumeAdvance,
+    });
     setAmountReceived(next.toFixed(2));
   }, [lateFeeStr, waiverStr, amountDueDecimal, amountPaidDecimal, amountManuallyEdited, consumeAdvance, advanceBalance]);
 
@@ -812,14 +820,18 @@ export function RecordPaymentWizard({
   const hasDraft = !!existingDraft;
 
   // Net to collect after the waiver + the (optional) advance deduction — drives tiles.
-  const netDue = useMemo(() => {
-    const owed = amountDueDecimal.plus(netLateFee).sub(amountPaidDecimal); // NET late fee
-    const consumed =
-      consumeAdvance && advanceBalance.gt(0)
-        ? Decimal.min(advanceBalance, Decimal.max(new Decimal(0), owed))
-        : new Decimal(0);
-    return Decimal.max(new Decimal(0), owed.minus(consumed)).toDecimalPlaces(2);
-  }, [amountDueDecimal, netLateFee, amountPaidDecimal, consumeAdvance, advanceBalance]);
+  const netDue = useMemo(
+    () =>
+      computeNetReceiptDue({
+        amountDue: amountDueDecimal,
+        lateFee: currentLateFee,
+        amountPaid: amountPaidDecimal,
+        waiver: waiverDec,
+        advanceBalance,
+        consumeAdvance,
+      }),
+    [amountDueDecimal, currentLateFee, waiverDec, amountPaidDecimal, consumeAdvance, advanceBalance],
+  );
   // ปิดขึ้น = round the net up to a whole baht; the ≤1฿ residual rides the
   // existing 52-1104/53-1503 tolerance on the server.
   const netDueRoundedUp = useMemo(() => netDue.toDecimalPlaces(0, Decimal.ROUND_UP), [netDue]);

@@ -29,7 +29,6 @@ import { LiffTokenGuard } from '../line-oa/guards/liff-token.guard';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { StaffChatModule } from '../staff-chat/staff-chat.module';
 import { IntegrationsModule } from '../integrations/integrations.module';
-import { ChatAiDraftModule } from '../chat-ai-draft/chat-ai-draft.module';
 import { TestModeModule } from '../test-mode/test-mode.module';
 
 /**
@@ -46,7 +45,7 @@ import { TestModeModule } from '../test-mode/test-mode.module';
  *   E  ✅ admin endpoints + analytics/sessions/KB UI
  */
 @Module({
-  imports: [forwardRef(() => NotificationsModule), forwardRef(() => StaffChatModule), IntegrationsModule, forwardRef(() => ChatAiDraftModule), TestModeModule], // SMS for OTP + WS events to Unified Inbox; TestModeModule for LIFF OTP bypass (UAT)
+  imports: [forwardRef(() => NotificationsModule), forwardRef(() => StaffChatModule), IntegrationsModule, TestModeModule], // SMS for OTP + WS events to Unified Inbox; TestModeModule for LIFF OTP bypass (UAT)
   controllers: [
     ChatbotFinanceController,
     ChatbotFinanceLiffController,

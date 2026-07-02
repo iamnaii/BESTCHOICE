@@ -63,12 +63,16 @@ export class HandoffService {
     };
   }
 
-  /** เช็คว่า room อยู่ใน handoff mode หรือไม่ — bot จะหยุดตอบ */
-  async isInHandoffMode(roomId: string): Promise<boolean> {
+  /**
+   * true เมื่อบอทต้องเงียบ: ห้องอยู่ใน handoff (ส่งต่อพนักงาน) หรือ aiPaused
+   * (พนักงานกด "รับช่วงต่อ" จาก inbox) — เดิมเช็คแค่ handoffMode ทำให้ปุ่ม
+   * รับช่วงต่อไม่หยุดบอทไฟแนนซ์
+   */
+  async isBotSilenced(roomId: string): Promise<boolean> {
     const room = await this.prisma.chatRoom.findUnique({
       where: { id: roomId },
-      select: { handoffMode: true },
+      select: { handoffMode: true, aiPaused: true },
     });
-    return room?.handoffMode ?? false;
+    return Boolean(room?.handoffMode || room?.aiPaused);
   }
 }

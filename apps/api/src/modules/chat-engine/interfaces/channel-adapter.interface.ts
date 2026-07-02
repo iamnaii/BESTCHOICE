@@ -30,6 +30,8 @@ export interface InboundMessage {
     utmContent?: string;
     referrerUrl?: string;
   };
+  /** LINE reply token — ใช้ครั้งเดียว อายุ ~60 วิ; LINE adapters ใช้ reply API (ฟรี) ก่อน fallback เป็น push */
+  replyToken?: string;
 }
 
 /**
@@ -80,6 +82,8 @@ export interface OutboundMessage {
   jsonPayload?: any;
   /** Quick reply buttons — attach to ANY message type */
   quickReplies?: OutboundQuickReply[];
+  /** LINE reply token — ใช้ครั้งเดียว อายุ ~60 วิ; LINE adapters ใช้ reply API (ฟรี) ก่อน fallback เป็น push */
+  replyToken?: string;
 }
 
 /** Result of sending a message through an adapter */

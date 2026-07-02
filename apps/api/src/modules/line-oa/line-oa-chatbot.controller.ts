@@ -35,6 +35,7 @@ import { StorageService } from '../storage/storage.service';
 import { WebhookDedupService } from '../chatbot-finance/services/webhook-dedup.service';
 import { MessageRouterService } from '../chat-engine/services/message-router.service';
 import { QuickReplyPostbackRouterService } from '../staff-chat/services/quick-reply-postback-router.service';
+import { AiAutoReplyService } from '../staff-chat/services/ai-auto-reply.service';
 import { formatStickerToken } from '../chat-engine/utils/sticker-token.util';
 import { ChatChannel, MessageType } from '@prisma/client';
 import { toNum as d, calcOutstanding as sumOutstanding } from '../../utils/decimal.util';
@@ -62,6 +63,7 @@ export class LineOaChatbotController {
     private messageRouter: MessageRouterService,
     private configService: ConfigService,
     private postbackRouter: QuickReplyPostbackRouterService,
+    private aiAutoReply: AiAutoReplyService,
   ) {}
 
   // ─── LINE Webhook ─────────────────────────────────────
@@ -230,11 +232,56 @@ export class LineOaChatbotController {
     const textLower = text.toLowerCase();
     const userId = event.source.userId;
 
-    // Mirror to Unified Inbox (best-effort — never block Shop bot reply flow)
+    // Owner self-register (pre-filter)
+    if (textLower === '#owner') {
+      await this.mirrorText(event, text);
+      await this.handleOwnerRegister(userId, event.replyToken);
+      return;
+    }
+
+    // Self-link by phone — legacy fall-through: เบอร์ที่ link ไม่สำเร็จแต่ user
+    // เคย link แล้ว จะไหลต่อเป็นข้อความปกติ (mirror ไปแล้ว)
+    let alreadyMirrored = false;
+    if (/^0\d{9}$/.test(text)) {
+      await this.mirrorText(event, text);
+      alreadyMirrored = true;
+      const handled = await this.handleSelfLinkByPhone(userId, text, event.replyToken);
+      if (handled) return;
+    }
+
+    // Deterministic keyword commands (ฟรี ไม่ใช้ AI — เส้นทางเดิมทุกประการ)
+    const command = this.matchCommand(textLower, userId, event.replyToken);
+    if (command) {
+      if (!alreadyMirrored) await this.mirrorText(event, text);
+      await command();
+      return;
+    }
+
+    // Freeform → WS2 staged gate. ผ่าน gate → routeInbound บันทึกข้อความเอง
+    // (ห้าม mirror ก่อน ไม่งั้น save ซ้ำ). Edge: phone fall-through ที่ mirror
+    // ไปแล้ว → ใช้ legacy เพื่อเลี่ยง double-save
+    if (!alreadyMirrored && (await this.shouldRouteToSalesAi(userId))) {
+      await this.messageRouter.routeInbound({
+        externalMessageId: event.message.id,
+        externalUserId: userId,
+        channel: ChatChannel.LINE_SHOP,
+        type: MessageType.TEXT,
+        text,
+        replyToken: event.replyToken,
+      });
+      return;
+    }
+
+    if (!alreadyMirrored) await this.mirrorText(event, text);
+    await this.handleFreeformMessage(text, event.replyToken, userId);
+  }
+
+  private async mirrorText(event: LineMessageEvent, text: string): Promise<void> {
+    if (event.message.type !== 'text') return;
     try {
       await this.messageRouter.mirrorInbound({
         externalMessageId: event.message.id,
-        externalUserId: userId,
+        externalUserId: event.source.userId,
         channel: ChatChannel.LINE_SHOP,
         type: MessageType.TEXT,
         text,
@@ -242,68 +289,99 @@ export class LineOaChatbotController {
     } catch (err) {
       this.logger.warn(`[SHOP mirror] text: ${err instanceof Error ? err.message : err}`);
     }
+  }
 
-    // Owner self-register
-    if (textLower === '#owner') {
-      try {
-        await this.prisma.systemConfig.upsert({
-          where: { key: 'owner_line_id' },
-          create: { key: 'owner_line_id', value: userId, label: 'LINE User ID เจ้าของ' },
-          update: { value: userId },
-        });
-        await this.lineOaService.replyMessage(event.replyToken, [
-          { type: 'text', text: `บันทึก Owner LINE ID เรียบร้อยแล้วค่ะ\n\nUser ID: ${userId}\n\nตอนนี้สามารถใช้ "ส่งทดสอบ" จากหน้าตั้งค่า LINE OA ได้เลยค่ะ` },
-        ], 'line-shop');
-      } catch {
-        await this.lineOaService.replyMessage(event.replyToken, [
-          { type: 'text', text: 'ไม่สามารถบันทึกได้ กรุณาลองใหม่อีกครั้ง' },
-        ], 'line-shop');
-      }
-      return;
+  private async handleOwnerRegister(userId: string, replyToken: string): Promise<void> {
+    try {
+      await this.prisma.systemConfig.upsert({
+        where: { key: 'owner_line_id' },
+        create: { key: 'owner_line_id', value: userId, label: 'LINE User ID เจ้าของ' },
+        update: { value: userId },
+      });
+      await this.lineOaService.replyMessage(replyToken, [
+        { type: 'text', text: `บันทึก Owner LINE ID เรียบร้อยแล้วค่ะ\n\nUser ID: ${userId}\n\nตอนนี้สามารถใช้ "ส่งทดสอบ" จากหน้าตั้งค่า LINE OA ได้เลยค่ะ` },
+      ], 'line-shop');
+    } catch {
+      await this.lineOaService.replyMessage(replyToken, [
+        { type: 'text', text: 'ไม่สามารถบันทึกได้ กรุณาลองใหม่อีกครั้ง' },
+      ], 'line-shop');
     }
+  }
 
-    // Self-link by phone
-    if (/^0\d{9}$/.test(text)) {
-      const result = await this.lineOaService.selfLinkByPhone(userId, text);
-      if (result.success && result.customerName) {
-        await this.lineOaService.replyMessage(event.replyToken, [
-          { type: 'text', text: `ผูกบัญชีสำเร็จค่ะ คุณ${result.customerName} 🎉\n\nตอนนี้สามารถใช้คำสั่งต่างๆ ได้แล้วค่ะ:\n• "เช็คยอด" - ดูยอดค้างชำระ\n• "งวด" - ดูตารางค่างวด\n• "ชำระ" - ชำระเงิน` },
-        ], 'line-shop');
-        return;
-      }
-      const existing = await this.lineOaService.findCustomerByLineId(userId);
-      if (!existing) {
-        await this.lineOaService.replyMessage(event.replyToken, [
-          { type: 'text', text: 'ไม่พบข้อมูลเบอร์โทรนี้ในระบบค่ะ กรุณาตรวจสอบเบอร์โทร หรือติดต่อสาขาเพื่อลงทะเบียน' },
-        ], 'line-shop');
-        return;
-      }
+  /** @returns true = จบ flow แล้ว (ตอบลูกค้าไปแล้ว), false = fall through เป็นข้อความปกติ */
+  private async handleSelfLinkByPhone(
+    userId: string,
+    phone: string,
+    replyToken: string,
+  ): Promise<boolean> {
+    const result = await this.lineOaService.selfLinkByPhone(userId, phone);
+    if (result.success && result.customerName) {
+      await this.lineOaService.replyMessage(replyToken, [
+        { type: 'text', text: `ผูกบัญชีสำเร็จค่ะ คุณ${result.customerName} 🎉\n\nตอนนี้สามารถใช้คำสั่งต่างๆ ได้แล้วค่ะ:\n• "เช็คยอด" - ดูยอดค้างชำระ\n• "งวด" - ดูตารางค่างวด\n• "ชำระ" - ชำระเงิน` },
+      ], 'line-shop');
+      return true;
     }
+    const existing = await this.lineOaService.findCustomerByLineId(userId);
+    if (!existing) {
+      await this.lineOaService.replyMessage(replyToken, [
+        { type: 'text', text: 'ไม่พบข้อมูลเบอร์โทรนี้ในระบบค่ะ กรุณาตรวจสอบเบอร์โทร หรือติดต่อสาขาเพื่อลงทะเบียน' },
+      ], 'line-shop');
+      return true;
+    }
+    return false;
+  }
 
-    if (['ยอด', 'เช็คยอด', 'ยอดค้าง', 'balance'].includes(textLower)) {
-      await this.handleCheckBalance(userId, event.replyToken);
-    } else if (['งวด', 'ตารางงวด', 'installment'].includes(textLower)) {
-      await this.handleCheckInstallments(userId, event.replyToken);
-    } else if (['ชำระ', 'จ่าย', 'pay', 'payment'].includes(textLower)) {
-      await this.handlePaymentRequest(userId, event.replyToken);
-    } else if (['ใบเสร็จ', 'receipt'].includes(textLower)) {
-      await this.handleReceipt(userId, event.replyToken);
-    } else if (['ติดต่อ', 'contact'].includes(textLower)) {
-      await this.handleContact(userId, event.replyToken);
-    } else if (['สัญญา', 'contract'].includes(textLower)) {
-      await this.handleContractLink(userId, event.replyToken);
-    } else if (['ลงทะเบียน', 'register', 'สมัคร'].includes(textLower)) {
-      await this.handleRegisterLink(userId, event.replyToken);
-    } else if (['ช่วยเหลือ', 'help', 'เมนู', 'menu'].includes(textLower)) {
-      await this.handleHelp(event.replyToken);
-    } else if (GREETING_KEYWORDS.some((kw) => textLower.includes(kw))) {
-      await this.handleGreeting(event.replyToken);
-    } else if (ANDROID_KEYWORDS.some((kw) => textLower.includes(kw))) {
-      await this.handleAndroidRedirect(event.replyToken);
-    } else if (IPAD_USED_KEYWORDS.some((kw) => textLower.includes(kw))) {
-      await this.handleIpadUsedRedirect(event.replyToken);
-    } else {
-      await this.handleFreeformMessage(text, event.replyToken, userId);
+  /** จับคู่ keyword commands — ลำดับการเช็คต้องตรงกับ if-chain เดิมเป๊ะ */
+  private matchCommand(
+    textLower: string,
+    userId: string,
+    replyToken: string,
+  ): (() => Promise<void>) | null {
+    if (['ยอด', 'เช็คยอด', 'ยอดค้าง', 'balance'].includes(textLower))
+      return () => this.handleCheckBalance(userId, replyToken);
+    if (['งวด', 'ตารางงวด', 'installment'].includes(textLower))
+      return () => this.handleCheckInstallments(userId, replyToken);
+    if (['ชำระ', 'จ่าย', 'pay', 'payment'].includes(textLower))
+      return () => this.handlePaymentRequest(userId, replyToken);
+    if (['ใบเสร็จ', 'receipt'].includes(textLower))
+      return () => this.handleReceipt(userId, replyToken);
+    if (['ติดต่อ', 'contact'].includes(textLower))
+      return () => this.handleContact(userId, replyToken);
+    if (['สัญญา', 'contract'].includes(textLower))
+      return () => this.handleContractLink(userId, replyToken);
+    if (['ลงทะเบียน', 'register', 'สมัคร'].includes(textLower))
+      return () => this.handleRegisterLink(userId, replyToken);
+    if (['ช่วยเหลือ', 'help', 'เมนู', 'menu'].includes(textLower))
+      return () => this.handleHelp(replyToken);
+    if (GREETING_KEYWORDS.some((kw) => textLower.includes(kw)))
+      return () => this.handleGreeting(replyToken);
+    if (ANDROID_KEYWORDS.some((kw) => textLower.includes(kw)))
+      return () => this.handleAndroidRedirect(replyToken);
+    if (IPAD_USED_KEYWORDS.some((kw) => textLower.includes(kw)))
+      return () => this.handleIpadUsedRedirect(replyToken);
+    return null;
+  }
+
+  /**
+   * WS2 staged gate — ต้องผ่านครบ 3 ชั้น: env master switch, env whitelist,
+   * และ Settings ของเจ้าของ (ai.autoEnabled + LINE_SHOP ใน ai.autoChannels =
+   * instant kill, มีผลใน ~60 วิ ไม่ต้อง deploy). พลาดชั้นไหน → บอทเก่า ไม่มีทางเงียบ
+   */
+  private async shouldRouteToSalesAi(userId: string): Promise<boolean> {
+    if (this.configService.get<string>('LINE_SHOP_AI_ENABLED') !== 'true') return false;
+    const whitelist = (this.configService.get<string>('LINE_SHOP_AI_WHITELIST_USER_IDS') ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (whitelist.length > 0 && !whitelist.includes(userId)) return false;
+    try {
+      const settings = await this.aiAutoReply.getSettings();
+      return settings.aiAutoEnabled && settings.aiAutoChannels.includes('LINE_SHOP');
+    } catch (err) {
+      this.logger.warn(
+        `[ShopAI gate] getSettings failed — falling back to legacy bot: ${err instanceof Error ? err.message : err}`,
+      );
+      return false;
     }
   }
 

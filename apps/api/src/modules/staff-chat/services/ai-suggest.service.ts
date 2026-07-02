@@ -5,6 +5,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { ProductDetectService } from './product-detect.service';
 import { AiTrainingService } from './ai-training.service';
 import { PersonaService } from './persona.service';
+import { AiUsageService } from '../../ai-usage/ai-usage.service';
 import type { AiSuggestion, AiSuggestResponse } from '../dto/ai-suggest.dto';
 
 @Injectable()
@@ -19,6 +20,7 @@ export class AiSuggestService {
     private productDetect: ProductDetectService,
     private aiTraining: AiTrainingService,
     private persona: PersonaService,
+    private aiUsage: AiUsageService,
   ) {
     const apiKey = this.config.get<string>('ANTHROPIC_API_KEY');
     if (apiKey) {
@@ -153,6 +155,15 @@ confidence แนวทาง:
         max_tokens: 1024,
         system: systemPrompt,
         messages: [{ role: 'user', content: userMessage }],
+      });
+
+      void this.aiUsage.record({
+        service: 'ai-suggest',
+        method: 'suggest',
+        model: this.MODEL,
+        inputTokens: response.usage?.input_tokens ?? 0,
+        outputTokens: response.usage?.output_tokens ?? 0,
+        status: 'success',
       });
 
       const content = response.content[0];

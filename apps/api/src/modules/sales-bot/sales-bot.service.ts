@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PersonaService } from '../staff-chat/services/persona.service';
+import { AiUsageService } from '../ai-usage/ai-usage.service';
 import { SearchProductsTool, SEARCH_PRODUCTS_TOOL } from './tools/search-products.tool';
 import {
   CalculateInstallmentTool,
@@ -66,7 +67,23 @@ export class SalesBotService {
     private readonly handoff: HandoffToHumanTool,
     private readonly captureLead: CaptureLeadTool,
     private readonly persona: PersonaService,
+    private readonly aiUsage: AiUsageService,
   ) {}
+
+  private recordUsage(
+    modelUsed: string,
+    inputTokens: number,
+    outputTokens: number,
+  ): void {
+    void this.aiUsage.record({
+      service: 'sales-bot',
+      method: 'generateReply',
+      model: modelUsed || 'unknown',
+      inputTokens,
+      outputTokens,
+      status: 'success',
+    });
+  }
 
   /**
    * Generate a SHOP sales reply.
@@ -129,6 +146,7 @@ export class SalesBotService {
           this.logger.warn(
             `[GroundingGuard] room=${input.roomId} HALLUCINATION_BLOCKED reason=${grounding.reason} reply=${JSON.stringify(resp.text).slice(0, 200)} grounded=${JSON.stringify([...groundedPrices])}`,
           );
+          this.recordUsage(modelUsed, totalIn, totalOut);
           return {
             reply: 'ขออนุญาตให้พี่ staff เช็คข้อมูลเพิ่มเติมสักครู่นะคะ',
             confidence: 0.3,
@@ -138,6 +156,7 @@ export class SalesBotService {
             modelUsed,
           };
         }
+        this.recordUsage(modelUsed, totalIn, totalOut);
         return {
           reply: resp.text,
           confidence: this.estimateConfidence(resp.text, toolsUsed),
@@ -174,6 +193,7 @@ export class SalesBotService {
       messages.push(...toolResults);
     }
 
+    this.recordUsage(modelUsed, totalIn, totalOut);
     return {
       reply: 'ขออนุญาตให้พี่ staff เช็คข้อมูลเพิ่มเติมสักครู่นะคะ',
       confidence: 0.3,

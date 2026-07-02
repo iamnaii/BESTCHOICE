@@ -42,6 +42,7 @@ import { AiAutoReplyService } from './services/ai-auto-reply.service';
 import { AiImportService } from './services/ai-import.service';
 import { AiMetricsService } from './services/ai-metrics.service';
 import { TrainingExtractCron } from './cron/training-extract.cron';
+import { EmbeddingBackfillCron } from './cron/embedding-backfill.cron';
 import { AiSuggestRequestDto } from './dto/ai-suggest.dto';
 import { SaveFeedbackDto } from './dto/ai-training.dto';
 import { UpdateAiSettingsDto } from './dto/ai-settings.dto';
@@ -79,6 +80,7 @@ export class StaffChatController {
     private aiMetrics: AiMetricsService,
     private config: ConfigService,
     private trainingExtractCron: TrainingExtractCron,
+    private embeddingBackfillCron: EmbeddingBackfillCron,
     private staffChatGateway: StaffChatGateway,
     private cannedResponseBubble: CannedResponseBubbleService,
     private cannedResponseQuickReply: CannedResponseQuickReplyService,
@@ -707,5 +709,11 @@ export class StaffChatController {
   @Roles('OWNER')
   async triggerTrainingExtract() {
     return this.trainingExtractCron.extractTrainingPairs();
+  }
+
+  @Post('ai/embedding-backfill')
+  @Roles('OWNER')
+  async triggerEmbeddingBackfill() {
+    return this.embeddingBackfillCron.backfillEmbeddings();
   }
 }

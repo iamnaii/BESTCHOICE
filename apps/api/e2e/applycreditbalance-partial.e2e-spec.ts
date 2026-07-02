@@ -53,6 +53,7 @@ import { BadDebtService } from '../src/modules/accounting/bad-debt.service';
 import { BadDebtProvisionTemplate } from '../src/modules/journal/cpa-templates/bad-debt-provision.template';
 import { BadDebtWriteOffTemplate } from '../src/modules/journal/cpa-templates/bad-debt-writeoff.template';
 import { EclStageReverseTemplate } from '../src/modules/journal/cpa-templates/ecl-stage-reverse.template';
+import { ConsecutiveMissedService } from '../src/modules/overdue/consecutive-missed.service';
 import { ReceiptVoidReversalTemplate } from '../src/modules/journal/cpa-templates/receipt-void-reversal.template';
 import { ContractActivation1ATemplate } from '../src/modules/journal/cpa-templates/contract-activation-1a.template';
 import { computeInstallmentBreakdown } from '../src/modules/journal/compute-installment-breakdown';
@@ -90,6 +91,7 @@ describeOrSkip('PaymentsService.applyCreditBalance — credit delta-clear via pr
       new BadDebtProvisionTemplate(journal, prisma as any),
       new BadDebtWriteOffTemplate(journal, prisma as any),
       new EclStageReverseTemplate(journal, prisma as any),
+      new ConsecutiveMissedService(prisma as any),
     );
 
     // Post-commit side-effect stubs — sendPaymentSuccessLine short-circuits

@@ -92,7 +92,6 @@ import { FacebookAppReviewModule } from './modules/facebook-app-review/facebook-
 import { StaffChatModule } from './modules/staff-chat/staff-chat.module';
 import { ChatAnalyticsModule } from './modules/chat-analytics/chat-analytics.module';
 import { ChatHistoryExtractorModule } from './modules/chat-history-extractor/chat-history-extractor.module';
-import { ChatIntentRouterModule } from './modules/chat-intent-router/chat-intent-router.module';
 import { SalesBotModule } from './modules/sales-bot/sales-bot.module';
 import { ChatAiDraftModule } from './modules/chat-ai-draft/chat-ai-draft.module';
 import { AiSettingsModule } from './modules/ai-settings/ai-settings.module';
@@ -301,11 +300,9 @@ import { AppCacheModule } from './cache/cache.module';
     ChatAnalyticsModule,
     // Chat History Extractor — pull past LINE/FB conversations → AiTrainingPair (OWNER only)
     ChatHistoryExtractorModule,
-    // Chat Intent Router — classify inbound message to sales/service/handoff via Claude Haiku
-    ChatIntentRouterModule,
     // Sales Bot — Claude Sonnet tool-use loop (search products, calculate installment, promotions, handoff)
     SalesBotModule,
-    // Chat AI Draft orchestrator — router → bot → draft ChatMessage (Week 1 Hybrid C: staff approval required)
+    // Chat AI Draft — take-over/release-to-AI controls for staff inboxes (legacy draft pipeline retired WS1 2026-07)
     ChatAiDraftModule,
     // AI Settings — per-bot mode (OFF/HYBRID/FULL) + confidence thresholds (singleton row)
     AiSettingsModule,

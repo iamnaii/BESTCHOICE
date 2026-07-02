@@ -3,6 +3,7 @@ import { BadRequestException, ForbiddenException, NotFoundException } from '@nes
 import { CreditCheckService } from './credit-check.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
+import { AiUsageService } from '../ai-usage/ai-usage.service';
 
 describe('CreditCheckService override audit', () => {
   let service: CreditCheckService;
@@ -44,6 +45,7 @@ describe('CreditCheckService override audit', () => {
         CreditCheckService,
         { provide: PrismaService, useValue: prisma },
         { provide: IntegrationConfigService, useValue: integrationConfig },
+        { provide: AiUsageService, useValue: { record: jest.fn() } },
       ],
     }).compile();
     service = mod.get(CreditCheckService);

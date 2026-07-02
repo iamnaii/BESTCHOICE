@@ -81,6 +81,44 @@ describe('AiAutoReplyService.shouldAutoReply', () => {
     const session = { id: 'r-tt', channel: 'TIKTOK', aiPaused: false, handoffMode: false };
     expect(await svc.shouldAutoReply(session)).toBe(false);
   });
+
+  // #1316 — per-room cap must be a rolling 24h window, not a lifetime count.
+  // Rooms are permanent per (user, channel), so a lifetime count against
+  // aiAutoMaxRepliesPerSession (default 50) means a regular customer
+  // eventually hits the cap once and the bot goes silent forever.
+  it('cap query counts only rows within a rolling 24h window', async () => {
+    const now = new Date('2026-07-02T12:00:00.000Z');
+    jest.useFakeTimers().setSystemTime(now);
+    try {
+      const session = { id: 'r1', channel: 'LINE_SHOP', aiPaused: false, handoffMode: false };
+      await svc.shouldAutoReply(session);
+      expect(prisma.aiAutoReplyLog.count).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            roomId: 'r1',
+            autoSent: true,
+            createdAt: { gte: new Date(now.getTime() - 24 * 60 * 60 * 1000) },
+          }),
+        }),
+      );
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('returns false when sentCount >= cap within the 24h window', async () => {
+    prisma.aiAutoReplyLog.count.mockResolvedValueOnce(50);
+    const session = { id: 'r1', channel: 'LINE_SHOP', aiPaused: false, handoffMode: false };
+    expect(await svc.shouldAutoReply(session)).toBe(false);
+  });
+
+  it('returns true when sentCount is below cap (customer who hit the cap yesterday gets replies today)', async () => {
+    // Simulates: count query correctly scopes to the 24h window, so yesterday's
+    // capped-out rows don't count against today.
+    prisma.aiAutoReplyLog.count.mockResolvedValueOnce(0);
+    const session = { id: 'r1', channel: 'LINE_SHOP', aiPaused: false, handoffMode: false };
+    expect(await svc.shouldAutoReply(session)).toBe(true);
+  });
 });
 
 describe('AiAutoReplyService.autoReply', () => {

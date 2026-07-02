@@ -325,4 +325,69 @@ describe('SalesBotService', () => {
     expect(result.reply).toContain('สวัสดี');
     expect(result.confidence).toBeGreaterThanOrEqual(0.8);
   });
+
+  it('records error usage row with accumulated tokens when provider throws mid-loop', async () => {
+    const chat = jest
+      .fn()
+      .mockResolvedValueOnce({
+        text: '',
+        toolCalls: [
+          { id: 'tu_1', name: 'search_products', input: { query: 'iPhone' } },
+        ],
+        inputTokens: 100,
+        outputTokens: 20,
+        modelName: 'claude-sonnet-4-6',
+      } satisfies LlmChatResponse)
+      .mockRejectedValueOnce(new Error('provider_error: rate limit exceeded'));
+    const { svc, searchProducts, aiUsage } = await build(chat);
+    searchProducts.run.mockResolvedValue({
+      products: [{ id: 'p1', name: 'iPhone 13', priceThb: 14691 }],
+    });
+    await expect(
+      svc.generateReply({
+        text: 'iPhone กี่บาท',
+        roomId: 'r1',
+        customerId: null,
+      })
+    ).rejects.toThrow('provider_error');
+    expect(aiUsage.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        service: 'sales-bot',
+        status: 'error',
+        errorKind: 'provider_error',
+        inputTokens: 100,
+        outputTokens: 20,
+      })
+    );
+  });
+
+  it('records error usage row with errorKind tool_error when a tool run rejects (not provider_error)', async () => {
+    const chat = jest.fn().mockResolvedValueOnce({
+      text: '',
+      toolCalls: [
+        { id: 'tu_1', name: 'search_products', input: { query: 'iPhone' } },
+      ],
+      inputTokens: 100,
+      outputTokens: 20,
+      modelName: 'claude-sonnet-4-6',
+    } satisfies LlmChatResponse);
+    const { svc, searchProducts, aiUsage } = await build(chat);
+    searchProducts.run.mockRejectedValue(new Error('prisma: connection terminated'));
+    await expect(
+      svc.generateReply({
+        text: 'iPhone กี่บาท',
+        roomId: 'r1',
+        customerId: null,
+      })
+    ).rejects.toThrow('prisma: connection terminated');
+    expect(aiUsage.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        service: 'sales-bot',
+        status: 'error',
+        errorKind: 'tool_error',
+        inputTokens: 100,
+        outputTokens: 20,
+      })
+    );
+  });
 });

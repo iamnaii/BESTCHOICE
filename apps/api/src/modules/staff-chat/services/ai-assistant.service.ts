@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Anthropic from '@anthropic-ai/sdk';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { AiUsageService } from '../../ai-usage/ai-usage.service';
 
 @Injectable()
 export class AiAssistantService {
@@ -15,6 +16,7 @@ export class AiAssistantService {
   constructor(
     private configService: ConfigService,
     private prisma: PrismaService,
+    private aiUsage: AiUsageService,
   ) {
     const apiKey = this.configService.get<string>('ANTHROPIC_API_KEY');
     if (apiKey) {
@@ -84,6 +86,15 @@ export class AiAssistantService {
         ],
       });
 
+      void this.aiUsage.record({
+        service: 'ai-assistant',
+        method: 'summarizeConversation',
+        model: AiAssistantService.MODEL,
+        inputTokens: response.usage?.input_tokens ?? 0,
+        outputTokens: response.usage?.output_tokens ?? 0,
+        status: 'success',
+      });
+
       const summary =
         response.content[0].type === 'text'
           ? response.content[0].text
@@ -130,6 +141,15 @@ export class AiAssistantService {
             content: `${tonePrompts[tone]}\n\n${text}`,
           },
         ],
+      });
+
+      void this.aiUsage.record({
+        service: 'ai-assistant',
+        method: 'adjustTone',
+        model: AiAssistantService.MODEL,
+        inputTokens: response.usage?.input_tokens ?? 0,
+        outputTokens: response.usage?.output_tokens ?? 0,
+        status: 'success',
       });
 
       return response.content[0].type === 'text'

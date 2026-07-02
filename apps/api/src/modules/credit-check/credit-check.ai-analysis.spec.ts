@@ -1,6 +1,7 @@
 import { InternalServerErrorException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
+import { AiUsageService } from '../ai-usage/ai-usage.service';
 import { CreditCheckService } from './credit-check.service';
 
 /**
@@ -44,7 +45,8 @@ const makeService = (apiKey: ConfigValue): CreditCheckService => {
   const config = {
     getValue: jest.fn().mockResolvedValue(apiKey),
   } as unknown as IntegrationConfigService;
-  return new CreditCheckService(prisma, config);
+  const aiUsage = { record: jest.fn() } as unknown as AiUsageService;
+  return new CreditCheckService(prisma, config, aiUsage);
 };
 
 /** Typed view of the private methods we drive directly. */
@@ -326,6 +328,34 @@ describe('CreditCheckService AI analysis (characterization)', () => {
 
       await expect(asPrivate(svc).performClaudeAnalysis({ ...baseParams })).rejects.toBeInstanceOf(
         InternalServerErrorException,
+      );
+    });
+
+    // #1317 — credit-check-ai-analysis.service.ts never recorded to AiUsageLog.
+    it('records AI usage (service=credit-check, method=performClaudeAnalysis) with real token counts', async () => {
+      const prisma = {} as unknown as PrismaService;
+      const config = { getValue: jest.fn().mockResolvedValue('sk-test') } as unknown as IntegrationConfigService;
+      const aiUsage = { record: jest.fn() };
+      const svc = new CreditCheckService(prisma, config, aiUsage as unknown as AiUsageService);
+
+      const create: FakeCreate = jest.fn().mockResolvedValue({
+        content: [{ type: 'text', text: JSON.stringify({ score: 80 }) }],
+        usage: { input_tokens: 111, output_tokens: 22 },
+      });
+      spyPrivate(svc, 'getAnthropicClient').mockResolvedValue({ messages: { create } });
+
+      await asPrivate(svc).performClaudeAnalysis({ ...baseParams });
+
+      expect(aiUsage.record).toHaveBeenCalledTimes(1);
+      expect(aiUsage.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          service: 'credit-check',
+          method: 'performClaudeAnalysis',
+          model: 'claude-sonnet-4-5-20250514',
+          inputTokens: 111,
+          outputTokens: 22,
+          status: 'success',
+        }),
       );
     });
   });

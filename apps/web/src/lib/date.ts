@@ -126,7 +126,8 @@ export function adToBe(yearAD: number): number {
  *
  * - `'today'`      → today → today (D1.3.5.1)
  * - `'this_week'`  → Monday-of-this-week → today (D1.3.5.1, ISO week start)
- * - `'this_month'` → first-of-month → today (Asia/Bangkok)
+ * - `'this_month'` → first-of-month → last-of-month (Asia/Bangkok; full month
+ *                    per owner 2026-07-02 — matches the "เดือนนี้" chip preset)
  * - `'last_month'` → first-of-last-month → last-of-last-month
  * - `'all'`        → empty strings (the page query treats empty as "no filter")
  *
@@ -146,7 +147,14 @@ export function computeDefaultTimeRange(
     return { startDate: bkkToday, endDate: bkkToday };
   }
   if (preset === 'this_month') {
-    return { startDate: `${bkkToday.slice(0, 7)}-01`, endDate: bkkToday };
+    // Full month — last-day via the UTC "day = 0" idiom (month lengths are
+    // timezone-invariant, so UTC math on the BKK-local year/month is safe).
+    const [yStr, mStr] = bkkToday.split('-');
+    const lastDayOfMonth = new Date(Date.UTC(Number(yStr), Number(mStr), 0)).getUTCDate();
+    return {
+      startDate: `${bkkToday.slice(0, 7)}-01`,
+      endDate: `${bkkToday.slice(0, 7)}-${String(lastDayOfMonth).padStart(2, '0')}`,
+    };
   }
   if (preset === 'this_week') {
     // ISO week start (Monday). Compute day-of-week relative to UTC-indexed

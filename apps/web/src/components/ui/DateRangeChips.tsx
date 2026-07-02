@@ -17,8 +17,12 @@ function toIsoDate(d: Date): string {
 }
 
 function thisMonthRange(today: Date): { startDate: string; endDate: string } {
+  // Full calendar month (1st → last day), NOT [1st → today] — owner 2026-07-02:
+  // "เดือนนี้" must cover the whole month (e.g. installments due later this month
+  // belong in the queue), and it mirrors lastMonthRange which was already full-month.
   const first = new Date(today.getFullYear(), today.getMonth(), 1);
-  return { startDate: toIsoDate(first), endDate: toIsoDate(today) };
+  const last = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+  return { startDate: toIsoDate(first), endDate: toIsoDate(last) };
 }
 
 function lastMonthRange(today: Date): { startDate: string; endDate: string } {

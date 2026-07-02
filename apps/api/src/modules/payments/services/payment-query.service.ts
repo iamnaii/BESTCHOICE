@@ -88,6 +88,131 @@ export class PaymentQueryService {
     };
   }
 
+  // ─── Get posted journal entries for a contract's payment events ──────────
+  /**
+   * Returns POSTED JEs behind the payment-history modal's receipt rows.
+   * There is NO FK from Payment/Receipt → JournalEntry; the canonical link is
+   * `metadata.paymentId` (same soft-link ReceiptVoidService queries by). We
+   * fetch per-CONTRACT (one query for the whole modal) via `metadata.contractId`,
+   * which every relevant flow stamps:
+   *   - tag 'receipt'  — PaymentReceiptTemplate (current primitive, full+partial)
+   *   - tag '2B'       — legacy pre-primitive receipt JEs
+   *   - tag 'credit-allocation' — legacy credit-balance application
+   *   - tag 'overpayment-credit' — auto-allocate overpay leg (Dr cash / Cr 21-5101);
+   *     shares paymentId with the receipt JE so the row's JEs tie to cash received
+   *   - flow 'early-payoff'     — JP4 (its receipt has paymentId = null)
+   * Receipt-void REVERSAL JEs carry NO contractId/paymentId — they are fetched
+   * in a second pass via metadata.originalEntryId pointing at the entries above,
+   * so a voided receipt's ledger effect (original + mirror) is fully visible.
+   * Frontend matches rows → JEs by `paymentId` (flow for EARLY_PAYOFF,
+   * originalEntryId for CREDIT_NOTE rows).
+   * Money is emitted as .toFixed(2) STRINGS (never Number()).
+   */
+  async getContractJournalEntries(contractId: string) {
+    const contract = await this.prisma.contract.findUnique({
+      where: { id: contractId },
+      select: { id: true, deletedAt: true },
+    });
+    if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
+
+    const lineSelect = {
+      where: { deletedAt: null },
+      orderBy: { id: 'asc' as const },
+      select: { accountCode: true, debit: true, credit: true, description: true },
+    };
+
+    const byContract = { path: ['contractId'], equals: contractId };
+    const entries = await this.prisma.journalEntry.findMany({
+      where: {
+        status: 'POSTED',
+        deletedAt: null,
+        OR: [
+          { AND: [{ metadata: byContract }, { metadata: { path: ['tag'], equals: 'receipt' } }] },
+          { AND: [{ metadata: byContract }, { metadata: { path: ['tag'], equals: '2B' } }] },
+          { AND: [{ metadata: byContract }, { metadata: { path: ['tag'], equals: 'credit-allocation' } }] },
+          { AND: [{ metadata: byContract }, { metadata: { path: ['tag'], equals: 'overpayment-credit' } }] },
+          { AND: [{ metadata: byContract }, { metadata: { path: ['flow'], equals: 'early-payoff' } }] },
+        ],
+      },
+      include: { lines: lineSelect },
+      orderBy: { postedAt: 'asc' },
+    });
+
+    // Second pass: receipt-void reversal JEs (tag 'REVERSAL', flow 'receipt-void')
+    // stamp ONLY { originalEntryId, originalEntryNumber } — no contractId — so
+    // they are only reachable through the ids of the entries found above.
+    const reversals = entries.length
+      ? await this.prisma.journalEntry.findMany({
+          where: {
+            status: 'POSTED',
+            deletedAt: null,
+            OR: entries.map((e) => ({
+              metadata: { path: ['originalEntryId'], equals: e.id },
+            })),
+          },
+          include: { lines: lineSelect },
+          orderBy: { postedAt: 'asc' },
+        })
+      : [];
+    const allEntries = [...entries, ...reversals];
+
+    // JournalLine.accountCode is a plain string (no CoA relation) — resolve
+    // display names in one lookup, fallback to the code itself.
+    const codes = [...new Set(allEntries.flatMap((e) => e.lines.map((l) => l.accountCode)))];
+    const coaRows = codes.length
+      ? await this.prisma.chartOfAccount.findMany({
+          where: { code: { in: codes } },
+          select: { code: true, name: true },
+        })
+      : [];
+    const nameByCode = new Map(coaRows.map((r) => [r.code, r.name]));
+
+    return allEntries.map((e) => {
+      const meta = (e.metadata ?? {}) as Record<string, unknown>;
+      let totalDebit = new Prisma.Decimal(0);
+      let totalCredit = new Prisma.Decimal(0);
+      // JournalLine has no lineNo and its id is a random UUID, so DB order is
+      // arbitrary — present Dr lines before Cr (stable sort keeps each group's
+      // relative order), matching the Dr-then-Cr convention of every JE view.
+      const orderedLines = [...e.lines].sort(
+        (a, b) => (b.debit.gt(0) ? 1 : 0) - (a.debit.gt(0) ? 1 : 0),
+      );
+      const lines = orderedLines.map((l) => {
+        totalDebit = totalDebit.plus(l.debit);
+        totalCredit = totalCredit.plus(l.credit);
+        return {
+          accountCode: l.accountCode,
+          accountName: nameByCode.get(l.accountCode) ?? l.accountCode,
+          debit: l.debit.toFixed(2),
+          credit: l.credit.toFixed(2),
+          description: l.description ?? '',
+        };
+      });
+      return {
+        id: e.id,
+        entryNumber: e.entryNumber,
+        entryDate: e.entryDate,
+        postedAt: e.postedAt,
+        description: e.description,
+        paymentId: typeof meta.paymentId === 'string' ? meta.paymentId : null,
+        tag: typeof meta.tag === 'string' ? meta.tag : null,
+        flow: typeof meta.flow === 'string' ? meta.flow : null,
+        deltaApplied: typeof meta.deltaApplied === 'string' ? meta.deltaApplied : null,
+        lateFeePortion: typeof meta.lateFeePortion === 'string' ? meta.lateFeePortion : null,
+        // Receipt-void trail: originals get reversed=true + the mirror's number;
+        // reversal JEs point back via originalEntryId (CREDIT_NOTE row matching).
+        reversed: meta.reversed === true,
+        reversedByEntryNumber:
+          typeof meta.reversedByEntryNumber === 'string' ? meta.reversedByEntryNumber : null,
+        originalEntryId: typeof meta.originalEntryId === 'string' ? meta.originalEntryId : null,
+        lines,
+        totalDebit: totalDebit.toFixed(2),
+        totalCredit: totalCredit.toFixed(2),
+        isBalanced: totalDebit.toFixed(2) === totalCredit.toFixed(2),
+      };
+    });
+  }
+
   // ─── Get all pending payments (for payment queue view) ─
   async getPendingPayments(filters: {
     branchId?: string;

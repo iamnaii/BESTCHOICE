@@ -369,6 +369,11 @@ export class PaymentsService {
     return this.services().query.getContractPayments(contractId, page, limit);
   }
 
+  // ─── Get posted JEs for a contract's payment events ───
+  async getContractJournalEntries(contractId: string) {
+    return this.services().query.getContractJournalEntries(contractId);
+  }
+
   // ─── Get all pending payments (for payment queue view) ─
   async getPendingPayments(filters: {
     branchId?: string;

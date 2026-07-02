@@ -11,7 +11,13 @@ import type { QueryClient } from '@tanstack/react-query';
  * summary (which WAS invalidated) already showed the PAID payment.
  */
 export function invalidatePaymentQueries(qc: QueryClient): void {
-  const keys = ['pending-payments', 'daily-summary', 'contract-payments', 'contract-receipts'];
+  const keys = [
+    'pending-payments',
+    'daily-summary',
+    'contract-payments',
+    'contract-receipts',
+    'contract-journal-entries',
+  ];
   for (const key of keys) {
     qc.invalidateQueries({ queryKey: [key] });
   }

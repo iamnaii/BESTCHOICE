@@ -10,7 +10,7 @@ import { computeEarlyPayoffJE } from '../journal/compute-early-payoff-je';
 import { Decimal } from '@prisma/client/runtime/library';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
 import { EarlyPayoffDto, ShopCollectSettlementDto } from './dto/contract.dto';
-import { d, dAdd, dSub, dMul, dDiv, dRound, dSum, dGte } from '../../utils/decimal.util';
+import { d, dAdd, dSub, dMul, dDiv, dRound, dRoundDown, dSum, dGte } from '../../utils/decimal.util';
 
 @Injectable()
 export class ContractPaymentService {
@@ -140,10 +140,12 @@ export class ContractPaymentService {
 
     // (7) ส่วนลด (default 50%, max 50% ตามนโยบาย)
     // ถ้ากำไรติดลบ → ส่วนลด = 0 (ไม่ลดเพิ่ม ไม่บวกเพิ่ม)
+    // ปัดเศษส่วนลด "ลง" (ROUND_DOWN) — เศษครึ่งสตางค์ไม่ปัดขึ้นเป็นส่วนลด
+    // ยอดปิดสัญญาจึงปัดเข้าข้าง FINANCE (owner policy 2026-07-02).
     const discountPercent =
       discountPctInput != null ? Math.max(0, Math.min(50, discountPctInput)) : 50;
     const discountPct = discountPercent / 100;
-    const discountAmount = grossProfit > 0 ? round2(dMul(grossProfit, discountPct)) : 0;
+    const discountAmount = grossProfit > 0 ? dRoundDown(dMul(grossProfit, discountPct)).toNumber() : 0;
 
     // (8) ยอดชำระปิดยอด
     const totalPayoff = Math.max(0, round2(dSub(remainingBalance, discountAmount)));

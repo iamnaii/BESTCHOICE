@@ -20,7 +20,6 @@ import {
 } from '@prisma/client';
 import { AssignmentService } from './assignment.service';
 import { MessageRouterService } from './message-router.service';
-import { ChatAiDraftService } from '../../chat-ai-draft/chat-ai-draft.service';
 import { StorageService } from '../../storage/storage.service';
 import { signMessageMedia } from './media-url.util';
 
@@ -43,8 +42,6 @@ export class RoomManagerService {
     private assignmentService?: AssignmentService,
     @Optional() @Inject(forwardRef(() => MessageRouterService))
     private messageRouter?: MessageRouterService,
-    @Optional() @Inject(forwardRef(() => ChatAiDraftService))
-    private chatAiDraftService?: ChatAiDraftService,
   ) {}
 
   /**
@@ -277,17 +274,6 @@ export class RoomManagerService {
       where: { id: params.roomId },
       data: updateData,
     });
-
-    // Fire-and-forget AI draft generation for inbound customer messages.
-    // ChatAiDraftService internally respects room.aiPaused and AiSettings mode.
-    // Never block webhook ACK on draft generation.
-    if (params.role === MessageRole.CUSTOMER && this.chatAiDraftService) {
-      this.chatAiDraftService.generateDraft(msg.id).catch((err) => {
-        this.logger.error(
-          `[ChatAiDraft] draft generation failed for ${msg.id}: ${err instanceof Error ? err.message : err}`,
-        );
-      });
-    }
 
     return msg;
   }

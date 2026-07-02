@@ -72,6 +72,7 @@ const receiptTypeLabels: Record<string, string> = {
   DOWN_PAYMENT: 'เงินดาวน์',
   EARLY_PAYOFF: 'ปิดก่อนกำหนด',
   CREDIT_NOTE: 'ใบลดหนี้',
+  RESCHEDULE_FEE: 'ปรับดิว',
 };
 
 const methodLabels: Record<string, string> = {

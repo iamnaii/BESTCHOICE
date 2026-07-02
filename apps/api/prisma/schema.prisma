@@ -6704,6 +6704,14 @@ model PartialPaymentLink {
   /// 'ACTIVE' | 'PAID' | 'EXPIRED' | 'CANCELLED'
   status String @default("ACTIVE")
 
+  /// 'INSTALLMENT' (default — partial installment QR) | 'RESCHEDULE' (ปรับดิว collect QR:
+  /// reschedule executes ONLY after this link is PAID — เงินไม่เข้า ดิวไม่เลื่อน)
+  purpose String @default("INSTALLMENT")
+
+  /// RESCHEDULE purpose: { daysToShift, splitMode, rescheduleFee, lateFee, requestedById }
+  /// — the server-computed quote frozen at QR creation; the webhook books these amounts.
+  metadata Json?
+
   expiresAt   DateTime  @map("expires_at")
   paidAt      DateTime? @map("paid_at")
   cancelledAt DateTime? @map("cancelled_at")

@@ -12,7 +12,10 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { LineOaService } from '../../line-oa/line-oa.service';
 import { buildEarlyPayoffQRFlex } from '../../line-oa/flex-messages/early-payoff-qr.flex';
 import { buildPartialPaymentQRFlex } from '../../line-oa/flex-messages/partial-payment-qr.flex';
+import { buildRescheduleQRFlex } from '../../line-oa/flex-messages/reschedule-qr.flex';
 import { dAdd, dSub, dClose } from '../../../utils/decimal.util';
+import { loadLateFeeConfig } from '../../../utils/late-fee.util';
+import { computeRescheduleQuote } from '../../../utils/reschedule-quote.util';
 import { PaySolutionsGatewayClient, PAYSOLUTIONS_TIMEOUT_MS } from './paysolutions-gateway.client';
 
 export interface PaymentIntentResult {
@@ -541,6 +544,187 @@ export class PaySolutionsIntentService {
       Sentry.captureException(dbError, {
         level: 'fatal',
         tags: { critical: 'paysolutions-partial-orphan', orderRef },
+        extra: { paymentId: input.paymentId },
+      });
+      throw new InternalServerErrorException('ระบบบันทึกข้อมูลชำระเงินไม่สำเร็จ');
+    }
+  }
+
+  /**
+   * ปรับดิว (reschedule) QR — เงินไม่เข้า ดิวไม่เลื่อน (owner directive 2026-07-02).
+   *
+   * Mints a PromptPay QR for the collect amount (6a: ค่าธรรมเนียม + ค่าปรับ;
+   * 6b: ค่าปรับเท่านั้น) and stores a PartialPaymentLink with purpose='RESCHEDULE'
+   * carrying the frozen quote in metadata. The reschedule itself is NOT executed
+   * here — the PaySolutions webhook routes a paid RESCHEDULE link through
+   * PaymentsService.rescheduleWithCollect, which posts the collect JE + resets the
+   * late fee + shifts due dates in one atom. Link expires in 24h via the existing
+   * partial-payment-expire cron (expired → no money → no reschedule).
+   *
+   * Zero-collect (6b, no late fee) is rejected — the cashier should confirm
+   * directly in the overlay; a 0-baht QR is meaningless.
+   */
+  async createRescheduleQR(input: {
+    paymentId: string;
+    daysToShift: number;
+    splitMode: 'SINGLE' | 'SPLIT';
+    requestedById: string;
+  }): Promise<{
+    partialPaymentLinkId: string;
+    paymentUrl: string;
+    orderRef: string;
+    sentToLine: boolean;
+    collectAmount: string;
+    rescheduleFee: string;
+    lateFee: string;
+  }> {
+    const payment = await this.prisma.payment.findUnique({
+      where: { id: input.paymentId },
+      include: {
+        contract: {
+          include: { customer: { select: { id: true, email: true, name: true, lineIdFinance: true } } },
+        },
+      },
+    });
+    if (!payment || payment.deletedAt) {
+      throw new NotFoundException('ไม่พบรายการชำระ');
+    }
+    if (payment.status === 'PAID') {
+      throw new BadRequestException('งวดนี้ชำระครบแล้ว — ไม่ต้องปรับดิว');
+    }
+    if (!input.daysToShift || input.daysToShift < 1) {
+      throw new BadRequestException('กรุณาระบุจำนวนวันที่เลื่อนมากกว่า 0');
+    }
+
+    // Server-authoritative quote — the SAME pure util the collect service uses.
+    const lateFeeCfg = await loadLateFeeConfig(this.prisma);
+    const quote = computeRescheduleQuote({
+      monthlyPayment: payment.contract.monthlyPayment,
+      daysToShift: input.daysToShift,
+      splitMode: input.splitMode,
+      payment,
+      lateFeeCfg,
+      now: new Date(),
+    });
+    if (quote.collectAmount.lte(0)) {
+      throw new BadRequestException(
+        'ไม่มียอดต้องเก็บ (6b + ไม่มีค่าปรับ) — ยืนยันปรับดิวได้โดยตรง ไม่ต้องส่ง QR',
+      );
+    }
+    const collectNumber = quote.collectAmount.toDecimalPlaces(2).toNumber();
+
+    // Single outstanding QR per installment — cancel any earlier active link
+    // (both purposes: a stale partial-QR racing a reschedule-QR would double-charge).
+    await this.prisma.partialPaymentLink.updateMany({
+      where: { paymentId: input.paymentId, status: 'ACTIVE' },
+      data: { status: 'CANCELLED', cancelledAt: new Date() },
+    });
+
+    const orderRef = String(Date.now()).slice(-12);
+    const returnUrlBase =
+      this.returnUrl || `${this.config.get('FRONTEND_URL', 'http://localhost:5173')}/payments`;
+    const returnUrl = `${returnUrlBase}?reschedule=${payment.contract.contractNumber}`;
+
+    const paymentPayload: Record<string, unknown> = {
+      merchantId: await this.gateway.getMerchantId(),
+      customerEmail: payment.contract.customer.email || 'noreply@bestchoice.com',
+      referenceNo: orderRef,
+      description: `ปรับดิวงวด ${payment.installmentNo} สัญญา ${payment.contract.contractNumber} (+${input.daysToShift} วัน)`,
+      amount: collectNumber,
+      paymentChannel: 'Qrcode',
+      paymentGateway: 'Promptpay',
+      currencyCode: '00',
+      lang: 'TH',
+      returnUrl,
+      postbackUrl: `${this.apiBaseUrl}/api/paysolutions/webhook`,
+      terminalId: await this.gateway.getTerminalId(),
+      keyVersion: 1,
+    };
+
+    const { gatewayResponse, paymentUrl } = await this.gateway.createUiPayment(paymentPayload, {
+      orderRef,
+      buildErrorLog: (response, gr) =>
+        `Pay Solutions reschedule-QR API error: ${response.status} ${JSON.stringify(gr)}`,
+      errorMessagePrefix: 'ไม่สามารถสร้าง QR ได้',
+      missingUrlMessage: 'ไม่ได้รับลิงก์ชำระเงิน',
+      timeoutSentryKey: 'paysolutions-reschedule-timeout',
+      timeoutSentryExtra: { paymentId: input.paymentId, amount: collectNumber },
+      timeoutMessage: 'ระบบชำระเงินใช้เวลานานเกินไป',
+      genericErrorMessage: 'ไม่สามารถเชื่อมต่อระบบชำระเงินได้',
+    });
+
+    try {
+      const link = await this.prisma.partialPaymentLink.create({
+        data: {
+          paymentId: input.paymentId,
+          contractId: payment.contractId,
+          customerId: payment.contract.customer.id,
+          token: orderRef,
+          amount: collectNumber,
+          gatewayRef: (gatewayResponse.refNo as string | undefined) ?? null,
+          paymentUrl,
+          status: 'ACTIVE',
+          purpose: 'RESCHEDULE',
+          metadata: {
+            daysToShift: input.daysToShift,
+            splitMode: input.splitMode,
+            rescheduleFee: quote.rescheduleFee.toString(),
+            lateFee: quote.lateFee.toString(),
+            collectAmount: quote.collectAmount.toString(),
+            requestedById: input.requestedById,
+          },
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        },
+      });
+      this.logger.log(
+        `Reschedule QR created: ${orderRef} for payment ${input.paymentId}, collect ${collectNumber} (+${input.daysToShift}d, ${quote.variant})`,
+      );
+
+      let sentToLine = false;
+      const lineId = payment.contract.customer.lineIdFinance;
+      if (lineId) {
+        try {
+          const newDue = new Date(payment.dueDate);
+          newDue.setDate(newDue.getDate() + input.daysToShift);
+          const newDueDateText = newDue.toLocaleDateString('th-TH', {
+            day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Bangkok',
+          });
+          const flex = buildRescheduleQRFlex({
+            customerName: payment.contract.customer.name,
+            contractNumber: payment.contract.contractNumber,
+            installmentNo: payment.installmentNo,
+            daysToShift: input.daysToShift,
+            newDueDateText,
+            rescheduleFee: quote.variant === '6a' ? quote.rescheduleFee.toNumber() : 0,
+            lateFee: quote.lateFee.toNumber(),
+            collectAmount: collectNumber,
+            paymentUrl,
+            orderRef,
+          });
+          await this.lineOaService.pushMessage(lineId, [flex], 'line-finance');
+          sentToLine = true;
+          this.logger.log(
+            `Reschedule Flex pushed to LINE: payment=${input.paymentId} lineId=${lineId.slice(0, 8)}...`,
+          );
+        } catch (pushErr) {
+          this.logger.error(`Reschedule Flex push failed: ${pushErr}`);
+          // swallow — cashier can resend or collect cash/transfer instead
+        }
+      }
+
+      return {
+        partialPaymentLinkId: link.id,
+        paymentUrl,
+        orderRef,
+        sentToLine,
+        collectAmount: quote.collectAmount.toFixed(2),
+        rescheduleFee: quote.rescheduleFee.toFixed(2),
+        lateFee: quote.lateFee.toFixed(2),
+      };
+    } catch (dbError) {
+      Sentry.captureException(dbError, {
+        level: 'fatal',
+        tags: { critical: 'paysolutions-reschedule-orphan', orderRef },
         extra: { paymentId: input.paymentId },
       });
       throw new InternalServerErrorException('ระบบบันทึกข้อมูลชำระเงินไม่สำเร็จ');

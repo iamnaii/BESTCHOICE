@@ -1164,6 +1164,80 @@ describe('PaymentsService', () => {
       expect(parseFloat(cashLine!.debit)).toBeCloseTo(installmentTotal + lateFee, 2);
     });
 
+    // Owner directive 2026-07-02 (mockup TEST-20260630-003): a PARTIAL receipt
+    // books the late fee FIRST — Cr 42-1103 = fee, Cr 11-2103 = remainder — so
+    // preview matches what PaymentReceiptTemplate posts (fee-first splitReceipt).
+    describe('PARTIAL case splits late fee to 42-1103 (fee-first)', () => {
+      it('first partial receipt: 1,500 with fee 54 → Cr 42-1103 = 54 + Cr 11-2103 = 1,446', async () => {
+        prisma.installmentSchedule.findUnique.mockResolvedValue(mockInstallmentAccrued);
+        prisma.journalEntry.findMany.mockResolvedValue([]); // no prior receipts
+
+        const result = await service.previewJournal({
+          contractId: 'contract-preview',
+          installmentNo: 2,
+          amountReceived: 1500,
+          depositAccountCode: '11-1101',
+          lateFee: 54,
+          case: 'PARTIAL',
+        });
+
+        expect(result.isBalanced).toBe(true);
+        const feeLine = result.lines.find((l) => l.accountCode === '42-1103');
+        expect(feeLine).toBeDefined();
+        expect(parseFloat(feeLine!.credit)).toBeCloseTo(54, 2);
+        const receivableLine = result.lines.find((l) => l.accountCode === '11-2103');
+        expect(parseFloat(receivableLine!.credit)).toBeCloseTo(1446, 2);
+        const cashLine = result.lines.find((l) => l.accountCode === '11-1101');
+        expect(parseFloat(cashLine!.debit)).toBeCloseTo(1500, 2);
+      });
+
+      it('follow-up partial after fee already booked: no double 42-1103, all to 11-2103', async () => {
+        prisma.installmentSchedule.findUnique.mockResolvedValue(mockInstallmentAccrued);
+        // Prior receipt JE booked Cr 11-2103 = 1,446 + Cr 42-1103 = 54.
+        prisma.journalEntry.findMany.mockResolvedValue([
+          {
+            metadata: { tag: 'receipt', installmentScheduleId: 'inst-1' },
+            lines: [
+              { accountCode: '11-1101', debit: '1500.00', credit: '0' },
+              { accountCode: '11-2103', debit: '0', credit: '1446.00' },
+              { accountCode: '42-1103', debit: '0', credit: '54.00' },
+            ],
+          },
+        ]);
+
+        const result = await service.previewJournal({
+          contractId: 'contract-preview',
+          installmentNo: 2,
+          amountReceived: 500,
+          depositAccountCode: '11-1101',
+          lateFee: 54, // wizard re-sends the stored Payment.lateFee
+          case: 'PARTIAL',
+        });
+
+        expect(result.isBalanced).toBe(true);
+        const feeLine = result.lines.find((l) => l.accountCode === '42-1103');
+        expect(feeLine).toBeUndefined();
+        const receivableLine = result.lines.find((l) => l.accountCode === '11-2103');
+        expect(parseFloat(receivableLine!.credit)).toBeCloseTo(500, 2);
+      });
+
+      it('waiver + PARTIAL → BadRequest (mirrors the recordPayment guard, no misleading preview)', async () => {
+        prisma.installmentSchedule.findUnique.mockResolvedValue(mockInstallmentAccrued);
+
+        await expect(
+          service.previewJournal({
+            contractId: 'contract-preview',
+            installmentNo: 2,
+            amountReceived: 1500,
+            depositAccountCode: '11-1101',
+            lateFee: 54,
+            lateFeeWaived: 27,
+            case: 'PARTIAL',
+          }),
+        ).rejects.toThrow('อนุโลมค่าปรับทำได้เฉพาะตอนชำระปิดงวด');
+      });
+    });
+
     it('resolves account names from CoA', async () => {
       prisma.installmentSchedule.findUnique.mockResolvedValue(mockInstallmentNotAccrued);
 
@@ -1242,19 +1316,28 @@ describe('PaymentsService', () => {
       ).rejects.toThrow(/ยังไม่ได้ทำ accrual/);
     });
 
-    it('blocks RESCHEDULE when installment is not yet accrued', async () => {
+    // ปรับดิว collect-first (2026-07-02): the RESCHEDULE preview no longer needs
+    // the 2A accrual — its collect JE touches only 21-1103 / 42-1103, never
+    // 11-2103 (the old bundled-6b preview that credited 11-2103 is gone).
+    it('RESCHEDULE previews fine WITHOUT accrual (collect JE never touches 11-2103)', async () => {
       prisma.installmentSchedule.findUnique.mockResolvedValue(mockInstallmentNotAccrued);
 
-      await expect(
-        service.previewJournal({
-          contractId: 'contract-preview',
-          installmentNo: 2,
-          amountReceived: 100,
-          depositAccountCode: '11-1101',
-          case: 'RESCHEDULE',
-          daysToShift: 5,
-        }),
-      ).rejects.toThrow(/ยังไม่ได้ทำ accrual/);
+      const result = await service.previewJournal({
+        contractId: 'contract-preview',
+        installmentNo: 2,
+        amountReceived: 100,
+        depositAccountCode: '11-1101',
+        case: 'RESCHEDULE',
+        daysToShift: 5,
+        splitMode: 'SINGLE',
+        lateFee: 100,
+      });
+
+      expect(result.isBalanced).toBe(true);
+      const receivable = result.lines.find((l) => l.accountCode === '11-2103');
+      expect(receivable).toBeUndefined();
+      const feeLine = result.lines.find((l) => l.accountCode === '42-1103');
+      expect(parseFloat(feeLine!.credit)).toBeCloseTo(100, 2);
     });
   });
 

@@ -1108,7 +1108,7 @@ export function RecordPaymentWizard({
                     { key: 'PARTIAL', label: 'แบ่งชำระ', toggle: true, onClick: () => setCaseOverride('PARTIAL'), active: apiCase === 'PARTIAL' },
                     { key: 'OVERPAY_ADVANCE', label: 'ล่วงหน้า', toggle: true, onClick: () => setCaseOverride('OVERPAY_ADVANCE'), active: apiCase === 'OVERPAY_ADVANCE' },
                     { key: 'PAYOFF', label: 'ปิดยอด', toggle: false, onClick: () => setShowPayoffOverlay(true), active: false },
-                    { key: 'RESCHEDULE', label: 'ปรับงวด', toggle: false, onClick: () => setShowRescheduleOverlay(true), active: false },
+                    { key: 'RESCHEDULE', label: 'ปรับดิว', toggle: false, onClick: () => setShowRescheduleOverlay(true), active: false },
                     { key: 'REPO', label: 'คืนเครื่อง', toggle: false, onClick: () => setShowRepoOverlay(true), active: false },
                   ].map((t) => (
                     <button
@@ -1650,17 +1650,20 @@ export function RecordPaymentWizard({
         document.body,
       )}
 
-      {/* Reschedule overlay (ปรับงวด) — self-portals to document.body. Reschedule
-          posts no JE now; the JP6 JE posts at the next payment. */}
+      {/* Reschedule overlay (ปรับดิว) — self-portals to document.body. Collect-first
+          (2026-07-02): the overlay collects ค่าธรรมเนียม (6a) + ค่าปรับ BEFORE the
+          due-date shift; the collect JE posts atomically at confirm (QR → on webhook). */}
       {showRescheduleOverlay && (
         <RescheduleOverlay
           contractId={payment.contract.id}
           contractNumber={payment.contract.contractNumber}
           customerName={payment.contract.customer.name}
           branchName={payment.contract.branch.name}
+          paymentId={payment.id}
           installmentNo={payment.installmentNo}
           currentDueDate={payment.dueDate}
           monthlyPayment={payment.contract.monthlyPayment}
+          defaultDepositAccountCode={depositAccountCode}
           onClose={() => setShowRescheduleOverlay(false)}
           onSuccess={() => {
             setShowRescheduleOverlay(false);

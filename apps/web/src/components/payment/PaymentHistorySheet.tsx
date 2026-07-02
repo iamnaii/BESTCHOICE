@@ -87,6 +87,7 @@ function caseFor(r: ReceiptItem, p: PaymentItem | undefined): { label: string; c
   if (r.receiptType === 'EARLY_PAYOFF') return { label: 'ปิดยอด', cls: 'text-warning' };
   if (r.receiptType === 'DOWN_PAYMENT') return { label: 'ดาวน์', cls: 'text-warning' };
   if (r.receiptType === 'CREDIT_NOTE') return { label: 'ใบลดหนี้', cls: 'text-warning' };
+  if (r.receiptType === 'RESCHEDULE_FEE') return { label: 'ปรับดิว', cls: 'text-warning' };
   if (r.paymentStatus === 'PARTIAL') return { label: 'PARTIAL', cls: 'text-info' };
   if (p && Number(r.amount) > Number(p.amountDue)) return { label: 'OVER', cls: 'text-primary' };
   return { label: 'NORMAL', cls: 'text-success' };

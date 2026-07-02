@@ -1,101 +1,206 @@
 import { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import Decimal from 'decimal.js';
-import { CalendarClock, CalendarDays, Layers, Check, AlertTriangle } from 'lucide-react';
+import {
+  CalendarClock,
+  CalendarDays,
+  Layers,
+  Check,
+  AlertTriangle,
+  Wallet,
+  Banknote,
+  Landmark,
+  QrCode,
+} from 'lucide-react';
 import api, { getErrorMessage } from '@/lib/api';
 import { formatThaiDate } from '@/lib/date';
+import { CashAccountSelect } from '@/components/CashAccountSelect';
+import { useDebounce } from '@/hooks/useDebounce';
 
 interface Props {
   contractId: string;
   contractNumber: string;
   customerName: string;
   branchName?: string;
+  /** Payment row id — needed for the reschedule-QR endpoint. */
+  paymentId: string;
   installmentNo: number;
   currentDueDate: string;
   /** serialized Decimal — the per-installment total (incl. commission + VAT). */
   monthlyPayment: string;
+  defaultDepositAccountCode?: string;
   onClose: () => void;
   onSuccess: () => void;
 }
 
 const QUICK_DAYS = [7, 14, 30];
 
+interface RescheduleQuote {
+  rescheduleFee: string;
+  lateFee: string;
+  collectAmount: string;
+  variant: '6a' | '6b';
+  newDueDate: string;
+  currentDueDate: string;
+}
+
+interface JePreviewLine {
+  accountCode: string;
+  accountName: string;
+  debit: string;
+  credit: string;
+  description: string;
+}
+
+type CollectMethod = 'CASH' | 'TRANSFER' | 'QR';
+
 /**
- * In-modal "ปรับงวด" (reschedule) overlay — mirrors EarlyPayoffOverlay's portal pattern.
- * Reschedule is a DB-only operation (shift due dates from `installmentNo` onward by
- * `daysToShift`, then set the last installment's amountDue = monthlyPayment − fee). NO
- * journal posts at reschedule time — the JP6 JE posts later when the customer pays
- * (6b bundled / 6a fee-advance). So this overlay has no live JE preview by design.
+ * In-modal "ปรับดิว" (reschedule) overlay — collect-first (owner directive
+ * 2026-07-02): เงินไม่เข้า ดิวไม่เลื่อน.
+ *
+ * Flow: เลือกจำนวนวัน → วิธีเก็บค่าธรรมเนียม (6a/6b) → ชำระเงิน (ค่าธรรมเนียม 6a +
+ * ค่าปรับค้าง ถ้ามี) → ยืนยัน. The server quotes fee + late fee authoritatively
+ * (GET /payments/reschedule-quote); confirm posts the collect JE + resets the
+ * late fee + shifts due dates in ONE transaction. QR is async: the due date
+ * shifts only when the PaySolutions webhook confirms payment.
  */
 export function RescheduleOverlay({
   contractId,
   contractNumber,
   customerName,
   branchName,
+  paymentId,
   installmentNo,
   currentDueDate,
   monthlyPayment,
+  defaultDepositAccountCode = '11-1101',
   onClose,
   onSuccess,
 }: Props) {
   const queryClient = useQueryClient();
   const [daysToShift, setDaysToShift] = useState(7);
   const [splitMode, setSplitMode] = useState<'SINGLE' | 'SPLIT'>('SINGLE');
+  const [method, setMethod] = useState<CollectMethod>('CASH');
+  const [depositAccountCode, setDepositAccountCode] = useState(defaultDepositAccountCode);
+  const [referenceNumber, setReferenceNumber] = useState('');
 
   const days = Math.max(0, Math.floor(daysToShift) || 0);
+  const debouncedDays = useDebounce(days, 300);
 
-  // Fee = monthlyPayment / 30 × days, rounded UP to a whole baht (owner policy 2026-06 —
-  // ปัดเศษขึ้นเต็มบาท). Identical to RescheduleService.execute + the preview service.
-  // Display-only estimate; the server recomputes authoritatively.
-  const fee = useMemo(() => {
-    if (days <= 0) return new Decimal(0);
-    return new Decimal(monthlyPayment || 0).div(30).times(days).toDecimalPlaces(0, Decimal.ROUND_UP);
-  }, [monthlyPayment, days]);
+  // Server-authoritative quote — fee (monthly/30×days ปัดขึ้นเต็มบาท) + ค่าปรับค้าง.
+  const { data: quote, isFetching: quoteLoading, error: quoteError } = useQuery<RescheduleQuote>({
+    queryKey: ['reschedule-quote', contractId, installmentNo, debouncedDays, splitMode],
+    queryFn: async () => {
+      const { data } = await api.get<RescheduleQuote>('/payments/reschedule-quote', {
+        params: { contractId, installmentNo, daysToShift: debouncedDays, splitMode },
+      });
+      return data;
+    },
+    enabled: debouncedDays >= 1,
+    staleTime: 0,
+    retry: false,
+  });
 
-  const lastInstallmentNewAmount = useMemo(() => {
-    return new Decimal(monthlyPayment || 0).minus(fee).toDecimalPlaces(2);
-  }, [monthlyPayment, fee]);
+  const fee = useMemo(() => new Decimal(quote?.rescheduleFee ?? 0), [quote]);
+  const lateFee = useMemo(() => new Decimal(quote?.lateFee ?? 0), [quote]);
+  const collect = useMemo(() => new Decimal(quote?.collectAmount ?? 0), [quote]);
+  const hasCollect = collect.gt(0);
 
-  const newDueDate = useMemo(() => {
-    const dt = new Date(currentDueDate);
-    if (Number.isNaN(dt.getTime())) return null;
-    dt.setDate(dt.getDate() + days);
-    return dt.toISOString().slice(0, 10);
-  }, [currentDueDate, days]);
-
-  const mutation = useMutation({
-    mutationFn: async () => {
-      // Reschedule posts NO JE now (DB-only). `amount`/`paymentMethod` are RecordPaymentDto
-      // validation placeholders — the controller's RESCHEDULE branch returns before using them.
-      // amount=0.01 is the @Min(0.01) threshold (unambiguously "required but unused").
-      const { data } = await api.post('/payments/record', {
+  // JE preview — the exact lines the confirm will post (collect-first semantics).
+  const { data: jePreview } = useQuery<{ lines: JePreviewLine[]; isBalanced: boolean }>({
+    queryKey: ['reschedule-je-preview', contractId, installmentNo, debouncedDays, splitMode, depositAccountCode, quote?.lateFee],
+    queryFn: async () => {
+      const { data } = await api.post('/payments/preview-journal', {
         contractId,
         installmentNo,
-        amount: 0.01,
-        paymentMethod: 'CASH',
+        amountReceived: collect.toNumber(),
+        depositAccountCode,
+        lateFee: lateFee.toNumber(),
         case: 'RESCHEDULE',
-        daysToShift: days,
+        daysToShift: debouncedDays,
         splitMode,
       });
       return data;
     },
+    enabled: !!quote && hasCollect && debouncedDays >= 1,
+    staleTime: 0,
+    retry: false,
+  });
+
+  const newDueDate = quote?.newDueDate ?? null;
+
+  // ── Confirm (เงินสด/โอน — synchronous atomic collect + reschedule) ──────────
+  const confirmMutation = useMutation({
+    mutationFn: async () => {
+      const { data } = await api.post('/payments/record', {
+        contractId,
+        installmentNo,
+        // Server re-validates against its own quote (±0.01). Zero-collect (6b,
+        // no late fee) still needs the DTO's @Min(0.01) — server ignores it then.
+        amount: hasCollect ? collect.toNumber() : 0.01,
+        paymentMethod: method === 'TRANSFER' ? 'BANK_TRANSFER' : 'CASH',
+        case: 'RESCHEDULE',
+        daysToShift: days,
+        splitMode,
+        depositAccountCode,
+        ...(referenceNumber ? { transactionRef: referenceNumber } : {}),
+      });
+      return data;
+    },
     onSuccess: () => {
-      toast.success('ปรับงวด (เลื่อนวันครบกำหนด) สำเร็จ');
-      // Match the parent PaymentsPage query keys so the list refreshes immediately.
-      queryClient.invalidateQueries({ queryKey: ['contract', contractId] });
-      queryClient.invalidateQueries({ queryKey: ['contracts'] });
-      queryClient.invalidateQueries({ queryKey: ['pending-payments'] });
-      queryClient.invalidateQueries({ queryKey: ['pending-summary'] });
-      queryClient.invalidateQueries({ queryKey: ['daily-summary'] });
+      toast.success(
+        hasCollect
+          ? `ปรับดิวสำเร็จ — เก็บเงิน ${collect.toNumber().toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท ลงบัญชีแล้ว`
+          : 'ปรับดิวสำเร็จ',
+      );
+      invalidateAll();
       onSuccess();
       onClose();
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
-  const canSubmit = days >= 1 && !mutation.isPending;
+  // ── ส่ง QR (async — ดิวเลื่อนเมื่อ webhook ยืนยันเงินเข้า) ─────────────────────
+  const qrMutation = useMutation({
+    mutationFn: async () => {
+      const { data } = await api.post(`/payments/${paymentId}/reschedule-qr`, {
+        daysToShift: days,
+        splitMode,
+      });
+      return data as { sentToLine: boolean; collectAmount: string };
+    },
+    onSuccess: (data) => {
+      toast.success(
+        data.sentToLine
+          ? 'ส่ง QR ปรับดิวให้ลูกค้าใน LINE แล้ว — ดิวจะเลื่อนอัตโนมัติเมื่อเงินเข้า'
+          : 'สร้าง QR แล้ว (ลูกค้าไม่มี LINE — เปิดลิงก์ชำระจากรายการ QR) — ดิวจะเลื่อนเมื่อเงินเข้า',
+      );
+      invalidateAll();
+      onSuccess();
+      onClose();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const invalidateAll = () => {
+    queryClient.invalidateQueries({ queryKey: ['contract', contractId] });
+    queryClient.invalidateQueries({ queryKey: ['contracts'] });
+    queryClient.invalidateQueries({ queryKey: ['pending-payments'] });
+    queryClient.invalidateQueries({ queryKey: ['pending-summary'] });
+    queryClient.invalidateQueries({ queryKey: ['daily-summary'] });
+  };
+
+  const isPending = confirmMutation.isPending || qrMutation.isPending;
+  const needRef = hasCollect && method === 'TRANSFER' && !referenceNumber.trim();
+  const canSubmit =
+    days >= 1 && !isPending && !quoteLoading && !!quote && !needRef;
+
+  const submit = () => {
+    if (method === 'QR' && hasCollect) qrMutation.mutate();
+    else confirmMutation.mutate();
+  };
 
   return createPortal(
     <div className="fixed inset-0 z-50 pointer-events-auto bg-black/50 backdrop-blur-xs flex items-start justify-center pt-8 pb-8">
@@ -108,7 +213,7 @@ export function RescheduleOverlay({
           >
             ← กลับ
           </button>
-          <h2 className="text-lg font-semibold text-foreground leading-snug">ปรับงวด — เลื่อนวันครบกำหนด</h2>
+          <h2 className="text-lg font-semibold text-foreground leading-snug">ปรับดิว — เลื่อนวันครบกำหนด</h2>
           <div className="w-16" />
         </div>
 
@@ -159,38 +264,153 @@ export function RescheduleOverlay({
               {newDueDate && (
                 <Row label="ครบกำหนดใหม่ (งวดนี้)" value={formatThaiDate(newDueDate)} bold />
               )}
-              <Row label="ค่าธรรมเนียมเลื่อนงวด" value={`${fee.toFixed(2)} บาท`} />
+              <Row
+                label="ค่าธรรมเนียมเลื่อนดิว"
+                value={quoteLoading ? 'กำลังคำนวณ…' : `${fee.toFixed(2)} บาท`}
+              />
               <p className="text-xs text-muted-foreground leading-snug">
-                คำนวณจาก ค่างวด ({new Decimal(monthlyPayment || 0).toFixed(2)}) ÷ 30 × {days} วัน (ปัดขึ้นเต็มบาท) — ระบบคำนวณจริงตอนยืนยัน
+                คำนวณจาก ค่างวด ({new Decimal(monthlyPayment || 0).toFixed(2)}) ÷ 30 × {days} วัน (ปัดขึ้นเต็มบาท)
               </p>
             </div>
           </Section>
 
           {/* Section 3: รูปแบบค่าธรรมเนียม (6a/6b) */}
-          <Section icon={<Layers className="size-4" />} title="วิธีเก็บค่าธรรมเนียม" subtitle="เลือกรูปแบบการเก็บค่าธรรมเนียมเลื่อนงวด">
+          <Section icon={<Layers className="size-4" />} title="วิธีเก็บค่าธรรมเนียม" subtitle="เลือกรูปแบบการเก็บค่าธรรมเนียมเลื่อนดิว">
             <div className="space-y-2">
               <ModeOption
                 active={splitMode === 'SINGLE'}
                 onClick={() => setSplitMode('SINGLE')}
                 title="รวมกับงวดถัดไป (6b)"
-                desc="ลูกค้าจ่ายค่าธรรมเนียมพร้อมค่างวดถัดไปทีเดียว"
+                desc="ค่าธรรมเนียมรวมไปกับค่างวดถัดไป — วันนี้เก็บเฉพาะค่าปรับ (ถ้ามี)"
               />
               <ModeOption
                 active={splitMode === 'SPLIT'}
                 onClick={() => setSplitMode('SPLIT')}
-                title="เก็บค่าธรรมเนียมแยกก่อน (6a)"
-                desc="เก็บค่าธรรมเนียมเลื่อนงวดเป็นเงินรับล่วงหน้าตอนนี้ แล้วจ่ายค่างวดตามปกติ"
+                title="เก็บค่าธรรมเนียมตอนนี้ (6a)"
+                desc="เก็บค่าธรรมเนียมเลื่อนดิว + ค่าปรับ (ถ้ามี) เป็นเงินสด/โอน/QR ก่อนเลื่อนดิว"
               />
             </div>
           </Section>
 
-          {/* Section 4: สิ่งที่จะเกิดขึ้น */}
-          <Section icon={<Check className="size-4" />} title="สิ่งที่จะเกิดขึ้นเมื่อยืนยัน" subtitle="ตรวจสอบก่อนปรับงวด" tone="success">
+          {/* Section 4: ชำระเงิน (collect-first — เงินไม่เข้า ดิวไม่เลื่อน) */}
+          <Section icon={<Wallet className="size-4" />} title="ชำระเงิน" subtitle="ยอดที่ต้องเก็บก่อนเลื่อนดิว">
+            {quoteError ? (
+              <p className="text-sm text-destructive leading-snug">{getErrorMessage(quoteError)}</p>
+            ) : (
+              <>
+                <div className="space-y-1.5 text-sm mb-3">
+                  {splitMode === 'SPLIT' && (
+                    <Row label="ค่าธรรมเนียมเลื่อนดิว (6a)" value={`${fee.toFixed(2)} บาท`} />
+                  )}
+                  <Row
+                    label="ค่าปรับค้างชำระ"
+                    value={lateFee.gt(0) ? `${lateFee.toFixed(2)} บาท` : 'ไม่มี'}
+                  />
+                  <div className="border-t border-border pt-1.5">
+                    <Row label="รวมต้องเก็บวันนี้" value={`${collect.toFixed(2)} บาท`} bold />
+                  </div>
+                </div>
+
+                {hasCollect ? (
+                  <>
+                    {/* ช่องทางรับชำระ */}
+                    <div className="grid grid-cols-3 gap-2 mb-3">
+                      <MethodButton
+                        active={method === 'CASH'}
+                        onClick={() => setMethod('CASH')}
+                        icon={<Banknote className="size-4" />}
+                        label="เงินสด"
+                      />
+                      <MethodButton
+                        active={method === 'TRANSFER'}
+                        onClick={() => setMethod('TRANSFER')}
+                        icon={<Landmark className="size-4" />}
+                        label="โอนธนาคาร"
+                      />
+                      <MethodButton
+                        active={method === 'QR'}
+                        onClick={() => setMethod('QR')}
+                        icon={<QrCode className="size-4" />}
+                        label="QR ใน LINE"
+                      />
+                    </div>
+
+                    {method !== 'QR' && (
+                      <div className="space-y-2.5">
+                        <div>
+                          <label className="block text-xs font-medium text-foreground mb-1 leading-snug">บัญชีรับเงิน</label>
+                          <CashAccountSelect value={depositAccountCode} onChange={setDepositAccountCode} />
+                        </div>
+                        {method === 'TRANSFER' && (
+                          <div>
+                            <label className="block text-xs font-medium text-foreground mb-1 leading-snug">
+                              เลขอ้างอิงการโอน <span className="text-destructive">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              value={referenceNumber}
+                              onChange={(e) => setReferenceNumber(e.target.value)}
+                              placeholder="เลขอ้างอิงจากสลิปโอนเงิน"
+                              className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {method === 'QR' && (
+                      <div className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2.5 text-xs text-warning leading-snug">
+                        ระบบจะส่ง QR ยอด {collect.toFixed(2)} บาท ให้ลูกค้าใน LINE —
+                        <strong> ดิวจะเลื่อนอัตโนมัติเมื่อเงินเข้าเท่านั้น</strong> (QR หมดอายุใน 24 ชม.
+                        ถ้าลูกค้าไม่จ่าย ดิวไม่เลื่อน)
+                      </div>
+                    )}
+
+                    {/* JE preview — บรรทัดบัญชีที่จะลงจริงตอนยืนยัน */}
+                    {method !== 'QR' && jePreview && jePreview.lines.length > 0 && (
+                      <div className="mt-3 rounded-lg border border-border bg-muted/40 px-3 py-2.5">
+                        <div className="text-xs font-semibold text-muted-foreground mb-1.5 leading-snug">รายการบัญชี (ลงทันทีตอนยืนยัน)</div>
+                        <div className="space-y-1">
+                          {jePreview.lines.map((l, i) => (
+                            <div key={i} className="flex justify-between text-xs font-mono leading-snug">
+                              <span className="text-muted-foreground">{l.accountCode} {l.accountName}</span>
+                              <span>{Number(l.debit) > 0 ? `Dr ${l.debit}` : `Cr ${l.credit}`}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="rounded-lg border border-success/40 bg-success/10 px-3 py-2.5 text-xs text-success leading-snug">
+                    ไม่มียอดต้องเก็บวันนี้ (6b + ไม่มีค่าปรับ) — ยืนยันปรับดิวได้เลย
+                  </div>
+                )}
+              </>
+            )}
+          </Section>
+
+          {/* Section 5: สิ่งที่จะเกิดขึ้น */}
+          <Section icon={<Check className="size-4" />} title="สิ่งที่จะเกิดขึ้นเมื่อยืนยัน" subtitle="ตรวจสอบก่อนปรับดิว" tone="success">
             <ul className="space-y-1.5 text-sm">
+              {hasCollect && method === 'QR' ? (
+                <Effect text={`ส่ง QR ยอด ${collect.toFixed(2)} บาท ให้ลูกค้า — ดิวเลื่อนเมื่อเงินเข้า`} warning />
+              ) : (
+                <>
+                  {hasCollect && (
+                    <Effect text={`เก็บเงิน ${collect.toFixed(2)} บาท${lateFee.gt(0) ? ` (รวมค่าปรับ ${lateFee.toFixed(2)} บาท → ลงบัญชี 42-1103)` : ''} + ลงบัญชีทันที`} />
+                  )}
+                  {lateFee.gt(0) && <Effect text="ค่าปรับช่วงที่เกินมาแล้วถูกเก็บและปิดยอด — เริ่มนับใหม่จากดิวใหม่" />}
+                </>
+              )}
               <Effect text={`เลื่อนวันครบกำหนดงวดที่ ${installmentNo} เป็นต้นไป +${days} วัน`} />
-              <Effect text={`ปรับยอดงวดสุดท้าย = ค่างวด − ค่าธรรมเนียม (${lastInstallmentNewAmount.toFixed(2)} บาท)`} />
-              <Effect text={`บันทึก AuditLog (RESCHEDULE ${splitMode === 'SPLIT' ? '6a' : '6b'})`} />
-              <Effect text="ยังไม่ลงบัญชีตอนนี้ — JE (JP6) จะลงตอนลูกค้าจ่ายงวดถัดไป" warning />
+              {splitMode === 'SPLIT' && fee.gt(0) && (
+                <Effect text={`ค่าธรรมเนียม ${fee.toFixed(2)} บาท บันทึกเป็นเงินรับล่วงหน้า (นำไปหักค่างวดถัดไปอัตโนมัติ)`} />
+              )}
+              {splitMode === 'SINGLE' && fee.gt(0) && (
+                <Effect text={`ค่าธรรมเนียม ${fee.toFixed(2)} บาท จดไว้ในโน้ตงวดนี้ — เก็บเพิ่มพร้อมค่างวดตอนรับชำระ`} warning />
+              )}
+              <Effect text={`บันทึก AuditLog (RESCHEDULE ${splitMode === 'SPLIT' ? '6a' : '6b'} + RESCHEDULE_COLLECT)`} />
             </ul>
           </Section>
         </div>
@@ -201,11 +421,17 @@ export function RescheduleOverlay({
             ยกเลิก
           </button>
           <button
-            onClick={() => mutation.mutate()}
+            onClick={submit}
             disabled={!canSubmit}
             className="px-6 py-2.5 text-sm leading-snug bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 font-semibold transition-colors shadow-sm"
           >
-            {mutation.isPending ? 'กำลังปรับงวด...' : 'ยืนยันปรับงวด'}
+            {isPending
+              ? 'กำลังดำเนินการ...'
+              : method === 'QR' && hasCollect
+                ? 'ส่ง QR ให้ลูกค้า'
+                : hasCollect
+                  ? `เก็บเงิน ${collect.toFixed(2)} + ยืนยันปรับดิว`
+                  : 'ยืนยันปรับดิว'}
           </button>
         </div>
       </div>
@@ -276,6 +502,34 @@ function ModeOption({
     >
       <div className="text-sm font-semibold text-foreground leading-snug">{title}</div>
       <div className="text-xs text-muted-foreground leading-snug">{desc}</div>
+    </button>
+  );
+}
+
+function MethodButton({
+  active,
+  onClick,
+  icon,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={`flex items-center justify-center gap-1.5 rounded-xl border-2 px-2 py-2 text-sm font-medium leading-snug transition-colors ${
+        active
+          ? 'bg-primary border-primary text-primary-foreground'
+          : 'bg-card border-border text-foreground hover:border-primary/40 hover:bg-accent'
+      }`}
+    >
+      {icon}
+      {label}
     </button>
   );
 }

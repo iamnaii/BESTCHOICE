@@ -311,28 +311,68 @@ describe('PaymentsService.previewJournal (characterization)', () => {
       });
     });
 
-    it('6b bundled: fee 808 (ROUND_UP whole baht) → Dr deposit 3010.41 / Cr 11-2103 2202.41 / Cr 21-1103 808.00', async () => {
+    // ปรับดิว collect-first (2026-07-02): the RESCHEDULE preview now shows the
+    // JE that posts AT CONFIRM — 6a: Dr deposit (fee+ค่าปรับ) / Cr 21-1103 fee /
+    // Cr 42-1103 ค่าปรับ; 6b: ค่าปรับ only. The old bundled-6b preview
+    // (Dr cash monthly+fee / Cr 11-2103) represented a FUTURE payment and is gone.
+    it('6b (SINGLE) with no late fee → nothing to collect, NO lines', async () => {
       const out = await service.previewJournal({
         contractId: 'c-1',
         installmentNo: 1,
-        amountReceived: 3010.41,
+        amountReceived: 0,
         depositAccountCode: '11-1101',
         case: 'RESCHEDULE',
         daysToShift: 11,
-        splitMode: 'BUNDLED',
+        splitMode: 'SINGLE',
       });
 
       // 2202.41 / 30 * 11 = 807.5503... → ROUND_UP to whole baht → 808
       expect(out.rescheduleFeeDisplay).toBe('808.00');
-      expect(lineFor(out.lines, '11-1101')?.debit).toBe('3010.41');
-      expect(lineFor(out.lines, '11-2103')?.credit).toBe('2202.41');
-      expect(lineFor(out.lines, '21-1103')?.credit).toBe('808.00');
-      expect(out.totalDebit).toBe('3010.41');
-      expect(out.totalCredit).toBe('3010.41');
+      expect(out.lines).toHaveLength(0);
       expect(out.isBalanced).toBe(true);
     });
 
-    it('6a split: only the fee advance posts (Cr 21-1103 = 808.00), no 11-2103 line', async () => {
+    it('6b (SINGLE) with late fee 100 → Dr deposit 100 / Cr 42-1103 100 only', async () => {
+      const out = await service.previewJournal({
+        contractId: 'c-1',
+        installmentNo: 1,
+        amountReceived: 100,
+        depositAccountCode: '11-1101',
+        case: 'RESCHEDULE',
+        daysToShift: 11,
+        splitMode: 'SINGLE',
+        lateFee: 100,
+      });
+
+      expect(out.rescheduleFeeDisplay).toBe('808.00');
+      expect(lineFor(out.lines, '11-1101')?.debit).toBe('100.00');
+      expect(lineFor(out.lines, '42-1103')?.credit).toBe('100.00');
+      expect(lineFor(out.lines, '21-1103')).toBeUndefined();
+      expect(lineFor(out.lines, '11-2103')).toBeUndefined();
+      expect(out.isBalanced).toBe(true);
+    });
+
+    it('6a (SPLIT) with late fee 100 → Dr deposit 908 / Cr 21-1103 808 / Cr 42-1103 100', async () => {
+      const out = await service.previewJournal({
+        contractId: 'c-1',
+        installmentNo: 1,
+        amountReceived: 908,
+        depositAccountCode: '11-1101',
+        case: 'RESCHEDULE',
+        daysToShift: 11,
+        splitMode: 'SPLIT',
+        lateFee: 100,
+      });
+
+      expect(out.rescheduleFeeDisplay).toBe('808.00');
+      expect(lineFor(out.lines, '11-1101')?.debit).toBe('908.00');
+      expect(lineFor(out.lines, '21-1103')?.credit).toBe('808.00');
+      expect(lineFor(out.lines, '42-1103')?.credit).toBe('100.00');
+      expect(lineFor(out.lines, '11-2103')).toBeUndefined();
+      expect(out.isBalanced).toBe(true);
+    });
+
+    it('6a (SPLIT) no late fee: only the fee advance posts (Cr 21-1103 = 808.00), no 11-2103 line', async () => {
       const out = await service.previewJournal({
         contractId: 'c-1',
         installmentNo: 1,
@@ -350,21 +390,19 @@ describe('PaymentsService.previewJournal (characterization)', () => {
       expect(out.isBalanced).toBe(true);
     });
 
-    it('daysToShift 0 → fee 0.00 (6b still emits a zero 21-1103 line)', async () => {
+    it('daysToShift 0 → fee 0.00, nothing to collect, NO lines', async () => {
       const out = await service.previewJournal({
         contractId: 'c-1',
         installmentNo: 1,
-        amountReceived: 2202.41,
+        amountReceived: 0,
         depositAccountCode: '11-1101',
         case: 'RESCHEDULE',
         daysToShift: 0,
-        splitMode: 'BUNDLED',
+        splitMode: 'SINGLE',
       });
 
       expect(out.rescheduleFeeDisplay).toBe('0.00');
-      expect(lineFor(out.lines, '11-1101')?.debit).toBe('2202.41');
-      expect(lineFor(out.lines, '11-2103')?.credit).toBe('2202.41');
-      expect(lineFor(out.lines, '21-1103')?.credit).toBe('0.00');
+      expect(out.lines).toHaveLength(0);
       expect(out.isBalanced).toBe(true);
     });
   });

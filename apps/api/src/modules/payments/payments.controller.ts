@@ -17,7 +17,7 @@ import {
 import type { Request } from 'express';
 import { ApiTags, ApiBearerAuth , ApiOperation} from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
-import { IsNumber, Min } from 'class-validator';
+import { IsIn, IsNumber, IsString, Min } from 'class-validator';
 import { PaymentsService } from './payments.service';
 import { RecordPaymentDto, BulkRecordPaymentDto, WaiveLateFeeDto, PreviewJournalDto } from './dto/payment.dto';
 import { ImportPaymentsCsvDto } from './dto/csv-import.dto';
@@ -30,11 +30,23 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { PaySolutionsService } from '../paysolutions/paysolutions.service';
 import { RescheduleService } from '../installments/reschedule.service';
+import { RescheduleCollectService } from './services/reschedule-collect.service';
 
 class CreatePartialQrDto {
   @IsNumber()
   @Min(1, { message: 'ยอดต้องมากกว่า 0 บาท' })
   amount!: number;
+}
+
+class CreateRescheduleQrDto {
+  @IsNumber()
+  @Min(1, { message: 'จำนวนวันต้องมากกว่า 0' })
+  daysToShift!: number;
+
+  /** SINGLE = 6b (fee รวมงวดถัดไป — QR เก็บเฉพาะค่าปรับ) | SPLIT = 6a (fee + ค่าปรับ) */
+  @IsString()
+  @IsIn(['SINGLE', 'SPLIT'], { message: 'splitMode ต้องเป็น SINGLE หรือ SPLIT' })
+  splitMode!: 'SINGLE' | 'SPLIT';
 }
 
 @ApiTags('Payments')
@@ -47,6 +59,7 @@ export class PaymentsController {
     @Inject(forwardRef(() => PaySolutionsService))
     private paySolutionsService: PaySolutionsService,
     private rescheduleService: RescheduleService,
+    private rescheduleCollectService: RescheduleCollectService,
   ) {}
 
   @Get('pending')
@@ -190,36 +203,6 @@ export class PaymentsController {
     // Validate branch access: SALES and BRANCH_MANAGER can only record for their branch
     await this.paymentsService.validateBranchAccess(dto.contractId, user);
 
-    // ── RESCHEDULE case (Wave 3 / T3) ─────────────────────────────────────────
-    // Per CSV golden case-6a/6b: "Step 1 — UPDATE DB (ไม่มี Journal)".
-    // RescheduleService.execute() shifts due_dates + reduces last installment
-    // amountDue by fee + writes RESCHEDULE AuditLog atomically.
-    // The JP6 JE post happens later when the customer actually pays — split-pay
-    // (6a) sends a fee-advance receipt, bundled (6b) bundles fee + installment
-    // in the next normal recordPayment call. Both flows are dispatched by
-    // payments.service.previewJournal / recordPayment using `splitMode`.
-    if (dto.case === 'RESCHEDULE') {
-      if (!dto.daysToShift || dto.daysToShift < 1) {
-        throw new BadRequestException('กรุณาระบุจำนวนวันที่เลื่อน (daysToShift) มากกว่า 0');
-      }
-      const variant = dto.splitMode === 'SPLIT' ? '6a' : '6b';
-      const result = await this.rescheduleService.execute({
-        contractId: dto.contractId,
-        fromInstallmentNo: dto.installmentNo,
-        daysToShift: dto.daysToShift,
-        userId: user.id,
-        variant,
-      });
-      return {
-        success: true,
-        case: 'RESCHEDULE',
-        variant,
-        rescheduleFee: result.rescheduleFee.toFixed(2),
-        shiftedInstallmentCount: result.shiftedInstallmentIds.length,
-        shiftedInstallmentIds: result.shiftedInstallmentIds,
-      };
-    }
-
     // Wizard step 3 fields: wizardMethod/referenceNumber/slipUrl/memo map to existing recordPayment params.
     // slipUrl → evidenceUrl, referenceNumber → transactionRef, memo → notes (merged)
     const effectiveEvidenceUrl = dto.slipUrl || dto.evidenceUrl;
@@ -241,6 +224,34 @@ export class PaymentsController {
         CARD: 'CARD', // EDC — money settles into the selected bank account
       };
       effectivePaymentMethod = methodMap[dto.wizardMethod] ?? dto.paymentMethod;
+    }
+
+    // ── RESCHEDULE / ปรับดิว — collect-first (owner directive 2026-07-02) ──────
+    // เงินไม่เข้า ดิวไม่เลื่อน: RescheduleCollectService runs ONE Serializable tx —
+    // collect JE (Dr cash / Cr 21-1103 fee (6a) + Cr 42-1103 ค่าปรับ) + Payment.lateFee
+    // reset + due-date shift + audit. QR is async and must go through
+    // POST /payments/:id/reschedule-qr (reschedule executes on webhook confirm).
+    if (dto.case === 'RESCHEDULE') {
+      if (!dto.daysToShift || dto.daysToShift < 1) {
+        throw new BadRequestException('กรุณาระบุจำนวนวันที่เลื่อน (daysToShift) มากกว่า 0');
+      }
+      if (effectivePaymentMethod === 'QR_EWALLET') {
+        throw new BadRequestException(
+          'ปรับดิวผ่าน QR ต้องใช้ปุ่ม "ส่ง QR ให้ลูกค้า" — ดิวจะเลื่อนอัตโนมัติเมื่อเงินเข้า',
+        );
+      }
+      return this.rescheduleCollectService.executeWithCollect({
+        contractId: dto.contractId,
+        installmentNo: dto.installmentNo,
+        daysToShift: dto.daysToShift,
+        splitMode: dto.splitMode === 'SPLIT' ? 'SPLIT' : 'SINGLE',
+        amount: dto.amount,
+        paymentMethod: effectivePaymentMethod,
+        recordedById: user.id,
+        transactionRef: effectiveTransactionRef,
+        evidenceUrl: effectiveEvidenceUrl,
+        depositAccountCode: dto.depositAccountCode,
+      });
     }
 
     return this.paymentsService.recordPayment(
@@ -456,6 +467,57 @@ export class PaymentsController {
     return this.paySolutionsService.createPartialPaymentQR({
       paymentId: id,
       amount: dto.amount,
+    });
+  }
+
+  // ── ปรับดิว (reschedule) — server-authoritative quote + QR ─────────────────
+
+  /**
+   * Quote for the ปรับดิว overlay: fee (monthly/30×days ROUND_UP) + late fee owed
+   * for the CURRENT overdue period + collect total per 6a/6b. The overlay displays
+   * these numbers verbatim; executeWithCollect re-validates them at confirm.
+   */
+  @Get('reschedule-quote')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  @ApiOperation({ summary: 'คำนวณค่าธรรมเนียม + ค่าปรับสำหรับปรับดิว (ไม่บันทึก)' })
+  async getRescheduleQuote(
+    @Query('contractId', ParseUUIDPipe) contractId: string,
+    @Query('installmentNo') installmentNo: string,
+    @Query('daysToShift') daysToShift: string,
+    @Query('splitMode') splitMode: string,
+    @CurrentUser() user: { id: string; role: string; branchId: string | null },
+  ) {
+    await this.paymentsService.validateBranchAccess(contractId, user);
+    const instNo = parseInt(installmentNo, 10);
+    const days = parseInt(daysToShift, 10);
+    if (isNaN(instNo) || instNo < 1) throw new BadRequestException('installmentNo ไม่ถูกต้อง');
+    if (isNaN(days) || days < 1) throw new BadRequestException('กรุณาระบุจำนวนวันที่เลื่อนมากกว่า 0');
+    return this.rescheduleCollectService.quote({
+      contractId,
+      installmentNo: instNo,
+      daysToShift: days,
+      splitMode: splitMode === 'SPLIT' ? 'SPLIT' : 'SINGLE',
+    });
+  }
+
+  /**
+   * ปรับดิวผ่าน QR — สร้าง QR สำหรับยอดเก็บ (ค่าธรรมเนียม 6a + ค่าปรับ) ส่งให้ลูกค้าใน LINE.
+   * ดิวยังไม่เลื่อนตอนนี้ — webhook PaySolutions ยืนยันเงินเข้าแล้วจึง execute reschedule
+   * (เงินไม่เข้า ดิวไม่เลื่อน). Link หมดอายุใน 24 ชม. ผ่าน cron เดิม.
+   */
+  @Post(':id/reschedule-qr')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  async createRescheduleQr(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CreateRescheduleQrDto,
+    @CurrentUser() user: { id: string; role: string; branchId: string | null },
+  ) {
+    await this.paymentsService.validateBranchAccessByPayment(id, user);
+    return this.paySolutionsService.createRescheduleQR({
+      paymentId: id,
+      daysToShift: dto.daysToShift,
+      splitMode: dto.splitMode === 'SPLIT' ? 'SPLIT' : 'SINGLE',
+      requestedById: user.id,
     });
   }
 

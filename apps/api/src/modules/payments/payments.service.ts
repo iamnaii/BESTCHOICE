@@ -31,6 +31,7 @@ import {
 } from './services/payment-helpers';
 import { PaymentReceiptOrchestrator } from './services/payment-receipt-orchestrator';
 import { LateFeeWaiverService } from './services/late-fee-waiver.service';
+import { RescheduleCollectService, RescheduleCollectInput } from './services/reschedule-collect.service';
 import { PaymentQueryService } from './services/payment-query.service';
 import { PaymentJournalPreviewService } from './services/payment-journal-preview.service';
 import { PaymentCsvImportService } from './services/payment-csv-import.service';
@@ -111,7 +112,25 @@ export class PaymentsService {
      * which match the seed rows.
      */
     @Optional() private accountRoleService?: AccountRoleService,
+    /**
+     * ปรับดิว collect-first (2026-07-02) — DI-provided (PaymentsModule providers).
+     * Optional tail param so the 6 positional construction sites (specs/e2e
+     * harnesses) stay untouched; the PaySolutions webhook reaches it through
+     * {@link rescheduleWithCollect}.
+     */
+    @Optional() private rescheduleCollectService?: RescheduleCollectService,
   ) {}
+
+  /**
+   * ปรับดิว webhook seam: a paid RESCHEDULE QR routes here (PaySolutions
+   * confirmation service) — collect JE + lateFee reset + due-date shift in one atom.
+   */
+  async rescheduleWithCollect(input: RescheduleCollectInput) {
+    if (!this.rescheduleCollectService) {
+      throw new BadRequestException('RescheduleCollectService ไม่พร้อมใช้งาน');
+    }
+    return this.rescheduleCollectService.executeWithCollect(input);
+  }
 
   /**
    * Lazily build (once) and return the decomposed sub-services. The

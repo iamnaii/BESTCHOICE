@@ -38,7 +38,7 @@ describe('RescheduleService', () => {
     await seedFinanceCoa(prisma);
   });
 
-  it('shifts due_date for installments >= fromInstallmentNo + reduces last installment by fee', async () => {
+  it('shifts due_date for installments >= fromInstallmentNo (amountDue untouched — fee is an advance)', async () => {
     const c = await seedStandard17k12m(prisma);
     const svc = new RescheduleService(prisma as any);
     const result = await svc.execute({
@@ -67,10 +67,13 @@ describe('RescheduleService', () => {
     const inst12 = await prisma.installmentSchedule.findFirstOrThrow({
       where: { contractId: c.id, installmentNo: 12 },
     });
-    // monthlyPayment is 1515.84 (1416.67 + 99.17) - 809 (fee rounded up) = 706.84
-    // Note: CSV uses 1515.83 but seeder rounds differently; actual DB value is 1515.84
+    // (2026-07-02, review C1) The last installment's amountDue is NO LONGER reduced —
+    // the old write was to a field no billing path reads, so the fee's 21-1103 credit
+    // was never relieved. The CPA case-6a prepayment now flows through
+    // Contract.advanceBalance (RescheduleCollectService) instead; the schedule row
+    // stays at the full per-installment amount.
     const inst12AmountDue = new Decimal((inst12.amountDue as any).toString());
-    expect(inst12AmountDue.toFixed(2)).toBe('706.84');
+    expect(inst12AmountDue.toFixed(2)).toBe('1515.84');
 
     // Installments 5-12 should all be shifted
     const allShifted = await prisma.installmentSchedule.findMany({

@@ -110,6 +110,18 @@ export class PaySolutionsConfirmationService {
     // Idempotent: PaySolutions retries up to 3x. After the first successful
     // callback link.status flips to PAID — subsequent invocations no-op.
     if (link.status !== 'ACTIVE') {
+      // Review W2 (2026-07-02): a SUCCESS callback landing on an EXPIRED link means
+      // the customer's money reached the gateway but nothing was recorded (the
+      // hourly cron expired the link first). Alarm — ops must reconcile manually.
+      if (link.status === 'EXPIRED' && result_code === '00') {
+        // fatal — same class as the sibling partial-orphan/reschedule-exec-fail
+        // alarms: customer's money reached the gateway but nothing was recorded.
+        Sentry.captureMessage('PaySolutions success webhook on EXPIRED link — money captured but unrecorded', {
+          level: 'fatal',
+          tags: { critical: 'paysolutions-expired-paid', refno },
+          extra: { linkId: link.id, paymentId: link.paymentId, purpose: link.purpose, amount: link.amount.toString() },
+        });
+      }
       this.logger.log(
         `Duplicate partial-payment webhook for refno=${refno} (status=${link.status}, idempotent skip)`,
       );
@@ -167,6 +179,56 @@ export class PaySolutionsConfirmationService {
         tags: { critical: 'paysolutions-partial-orphan', refno },
         extra: { paymentId: link.paymentId },
       });
+      return;
+    }
+
+    // ── ปรับดิว QR (purpose=RESCHEDULE) — เงินเข้าแล้ว ค่อยเลื่อนดิว ─────────────
+    // Books the quote frozen at QR creation (link.metadata) and shifts the due
+    // dates in ONE atom via rescheduleWithCollect. A fee that grew between QR
+    // creation and payment is forgiven (the 24h link expiry bounds the drift).
+    if (link.purpose === 'RESCHEDULE') {
+      const meta = (link.metadata ?? {}) as {
+        daysToShift?: number;
+        splitMode?: 'SINGLE' | 'SPLIT';
+        rescheduleFee?: string;
+        lateFee?: string;
+        collectAmount?: string;
+      };
+      try {
+        if (!meta.daysToShift || !meta.splitMode) {
+          throw new Error(`RESCHEDULE link ${refno} missing metadata (daysToShift/splitMode)`);
+        }
+        await this.paymentsService.rescheduleWithCollect({
+          contractId: payment.contractId,
+          installmentNo: payment.installmentNo,
+          daysToShift: meta.daysToShift,
+          splitMode: meta.splitMode,
+          amount: Number(link.amount),
+          paymentMethod: 'ONLINE_GATEWAY',
+          recordedById: systemUser.id,
+          transactionRef: refno,
+          depositAccountCode,
+          fixedQuote: {
+            rescheduleFee: meta.rescheduleFee ?? '0',
+            lateFee: meta.lateFee ?? '0',
+            collectAmount: meta.collectAmount ?? link.amount.toString(),
+          },
+        });
+        this.logger.log(
+          `Reschedule auto-executed after QR paid: refno=${refno}, payment=${link.paymentId}, +${meta.daysToShift}d (${meta.splitMode})`,
+        );
+      } catch (err) {
+        this.logger.error(
+          `Reschedule-after-QR FAILED: refno=${refno}, payment=${link.paymentId}, err=${err}`,
+        );
+        Sentry.captureException(err, {
+          level: 'fatal',
+          tags: { critical: 'paysolutions-reschedule-exec-fail', refno },
+          extra: { paymentId: link.paymentId, metadata: meta, amount: Number(link.amount) },
+        });
+        // Return 200 to PaySolutions (no infinite retry) — ops reconciles from
+        // Sentry: the money IS at the gateway, the reschedule needs a manual replay.
+      }
       return;
     }
 

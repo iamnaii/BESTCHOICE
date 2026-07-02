@@ -40,6 +40,7 @@
 
 import { PrismaService } from '../src/prisma/prisma.service';
 import { OverdueLifecycleCronService } from '../src/modules/overdue/services/overdue-lifecycle-cron.service';
+import { ConsecutiveMissedService } from '../src/modules/overdue/consecutive-missed.service';
 import { Prisma } from '@prisma/client';
 
 const HAS_DB = !!process.env.DATABASE_URL;
@@ -76,8 +77,8 @@ describeOrSkip('OverdueLifecycleCronService.calculateLateFees — D2 flat-bracke
     prisma = new PrismaService();
     await prisma.$connect();
 
-    // OverdueLifecycleCronService only needs PrismaService — constructor(private prisma: PrismaService).
-    service = new OverdueLifecycleCronService(prisma);
+    // OverdueLifecycleCronService — constructor(private prisma: PrismaService, private consecutiveMissed: ConsecutiveMissedService).
+    service = new OverdueLifecycleCronService(prisma, new ConsecutiveMissedService(prisma));
 
     // --- FK anchors ------------------------------------------------------
     const branch = await prisma.branch.create({

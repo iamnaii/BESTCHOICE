@@ -38,6 +38,7 @@ describe('PaymentsController', () => {
       autoAllocatePayment: jest.fn().mockResolvedValue({ allocatedPayments: [], totalAllocated: 0, overpayment: 0 }),
       getPendingPayments: jest.fn().mockResolvedValue([]),
       getDailySummary: jest.fn().mockResolvedValue({ totalPayments: 0 }),
+      getContractJournalEntries: jest.fn().mockResolvedValue([]),
     };
 
     const mockRescheduleService = {
@@ -244,6 +245,40 @@ describe('PaymentsController', () => {
       expect(paymentsService.getPendingPayments).toHaveBeenCalledWith(
         expect.objectContaining({ branchId: 'branch-2' }),
       );
+    });
+  });
+
+  // PR #1314 — GET contract/:contractId/journal-entries (payment-history JE panel).
+  // The endpoint's only guard beyond @Roles is the per-contract validateBranchAccess,
+  // which must run BEFORE the query service is hit.
+  describe('getContractJournalEntries branch access + passthrough', () => {
+    const jeRows = [{ id: 'je-1', entryNumber: 'JV-0001', isBalanced: true }];
+
+    beforeEach(() => {
+      (paymentsService.getContractJournalEntries as jest.Mock).mockResolvedValue(jeRows);
+    });
+
+    it('validates branch access then returns the query-service rows (OWNER, cross-branch)', async () => {
+      const user = { id: 'user-1', role: 'OWNER', branchId: 'branch-2' };
+      const res = await controller.getContractJournalEntries('contract-1', user);
+
+      expect(paymentsService.validateBranchAccess).toHaveBeenCalledWith('contract-1', user);
+      expect(paymentsService.getContractJournalEntries).toHaveBeenCalledWith('contract-1');
+      expect(res).toBe(jeRows);
+    });
+
+    it('allows SALES for own branch', async () => {
+      const user = { id: 'user-1', role: 'SALES', branchId: 'branch-1' };
+      await controller.getContractJournalEntries('contract-1', user);
+      expect(paymentsService.getContractJournalEntries).toHaveBeenCalledWith('contract-1');
+    });
+
+    it('rejects SALES cross-branch BEFORE reaching the query service', async () => {
+      const user = { id: 'user-1', role: 'SALES', branchId: 'branch-2' };
+      await expect(controller.getContractJournalEntries('contract-1', user)).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(paymentsService.getContractJournalEntries).not.toHaveBeenCalled();
     });
   });
 });

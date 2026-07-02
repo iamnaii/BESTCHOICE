@@ -32,7 +32,13 @@ const RATE_CARD: Record<string, ModelRate> = {
 };
 
 export function ratesFor(model: string): ModelRate {
-  return RATE_CARD[model] ?? RATE_CARD.default;
+  const exact = RATE_CARD[model];
+  if (exact) return exact;
+  // Providers may suffix the model id (e.g. GeminiProvider returns
+  // 'gemini-2.5-flash (vertex)') and env overrides may add variants —
+  // prefix-match known keys before falling back to the default rate.
+  const prefixKey = Object.keys(RATE_CARD).find((k) => k !== 'default' && model.startsWith(k));
+  return prefixKey ? RATE_CARD[prefixKey] : RATE_CARD.default;
 }
 
 /** Returns USD cost rounded to 6 decimal places. */

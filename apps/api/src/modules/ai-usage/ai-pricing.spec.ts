@@ -42,8 +42,15 @@ describe('ai-pricing', () => {
       inputPer1M: 0.3,
       outputPer1M: 2.5,
     });
-    expect(
-      computeCostUsd('gemini-2.5-flash', 1_000_000, 1_000_000),
-    ).toBeCloseTo(2.8, 6);
+    expect(computeCostUsd('gemini-2.5-flash', 1_000_000, 1_000_000)).toBeCloseTo(2.8, 6);
+  });
+
+  it('prefix-matches provider-suffixed model names (e.g. Gemini "(vertex)" mode suffix)', () => {
+    expect(ratesFor('gemini-2.5-flash (vertex)')).toEqual({ inputPer1M: 0.3, outputPer1M: 2.5 });
+    expect(computeCostUsd('gemini-2.5-flash (vertex)', 1_000_000, 1_000_000)).toBeCloseTo(2.8, 6);
+  });
+
+  it('still falls back to default for unknown models', () => {
+    expect(ratesFor('totally-unknown-model')).toEqual({ inputPer1M: 3, outputPer1M: 15 });
   });
 });

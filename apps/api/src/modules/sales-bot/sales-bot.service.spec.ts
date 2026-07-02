@@ -7,6 +7,7 @@ import { HandoffToHumanTool } from './tools/handoff-to-human.tool';
 import { CaptureLeadTool } from './tools/capture-lead.tool';
 import { LlmProviderRegistry } from './providers/llm-provider.registry';
 import { PersonaService } from '../staff-chat/services/persona.service';
+import { AiUsageService } from '../ai-usage/ai-usage.service';
 import {
   ILlmProvider,
   LlmChatResponse,
@@ -31,6 +32,7 @@ describe('SalesBotService', () => {
       invalidateCache: jest.fn(),
       isCustomized: jest.fn().mockResolvedValue({ base: false, extras: false }),
     };
+    const aiUsage = { record: jest.fn() };
     const mod = await Test.createTestingModule({
       providers: [
         SalesBotService,
@@ -41,6 +43,7 @@ describe('SalesBotService', () => {
         { provide: HandoffToHumanTool, useValue: handoff },
         { provide: CaptureLeadTool, useValue: captureLead },
         { provide: PersonaService, useValue: persona },
+        { provide: AiUsageService, useValue: aiUsage },
       ],
     }).compile();
     const svc = mod.get(SalesBotService);
@@ -52,6 +55,7 @@ describe('SalesBotService', () => {
       listPromotions,
       handoff,
       captureLead,
+      aiUsage,
     };
   }
 
@@ -175,6 +179,26 @@ describe('SalesBotService', () => {
     expect(searchProducts.run).toHaveBeenCalledTimes(3);
   });
 
+  it('records usage via AiUsageService with the provider-reported model', async () => {
+    const chat = jest.fn().mockResolvedValue({
+      text: 'สวัสดีค่ะ สนใจรุ่นไหนคะ',
+      toolCalls: [],
+      inputTokens: 120,
+      outputTokens: 25,
+      modelName: 'claude-sonnet-4-6',
+    } satisfies LlmChatResponse);
+    const { svc, aiUsage } = await build(chat);
+    await svc.generateReply({ text: 'สวัสดี', roomId: 'r1', customerId: null });
+    expect(aiUsage.record).toHaveBeenCalledWith({
+      service: 'sales-bot',
+      method: 'generateReply',
+      model: 'claude-sonnet-4-6',
+      inputTokens: 120,
+      outputTokens: 25,
+      status: 'success',
+    });
+  });
+
   describe('estimateConfidence (reworked)', () => {
     // Use bracket-access for the private method (already pattern in some specs)
     const svc = new SalesBotService(
@@ -185,6 +209,7 @@ describe('SalesBotService', () => {
       {} as any,
       {} as any,
       {} as any, // PersonaService — unused by the private estimateConfidence path
+      {} as any, // AiUsageService
     );
 
     it('greeting/qualifier (no tool, complete sentence) → 0.9', () => {

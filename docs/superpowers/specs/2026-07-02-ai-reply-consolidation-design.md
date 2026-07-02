@@ -50,6 +50,7 @@
 | `apps/web` ChatInboxPage | ถอด `AiDraftCard`, `useLatestDraft`, ส่วน draft ใน `AssistantSidebar` |
 | `apps/web` AiSettingsPage | ถอด `PerBotModeCard` (โหมด OFF/HYBRID ไม่มีผลแล้ว) |
 | `prisma/schema.prisma` | comment `/// @deprecated` บน `salesBotMode`, `serviceBotMode` — ไม่ migrate |
+| `ai-settings` module | **คงไว้ทั้งหมด** — `GET /ai-settings/persona` ยังถูกใช้โดย AiPersonaPage; `GET`/`PATCH /ai-settings` เหลือไร้ consumer หลังถอด PerBotModeCard แต่คง endpoint ไว้ (deprecated) ไม่ลบ เพื่อเลี่ยง churn |
 
 **Implementation note:** หลังถอด AiDraftCard ให้ตรวจว่า ChatMessage เก่าที่ `intent LIKE 'DRAFT:%'` และไม่เคย delivered ไม่ถูก render เป็น bubble ปกติในทั้ง 2 inbox — ถ้าโผล่ ให้ filter ออกจาก query รายการข้อความ
 
@@ -61,7 +62,7 @@
 ### 4.3 AiUsage ครบทุก call site
 
 - `sales-bot/sales-bot.service.ts` — เรียก `aiUsage.record()` หลังจบ `generateReply` (จุดเดียวคลุม Claude/Gemini/auto-reply/testSend; ข้อมูล model+tokens มีอยู่แล้วใน result) `service='sales-bot'`
-- `staff-chat/services/ai-suggest.service.ts` — record หลัง suggest call, `service='ai-suggest'`
+- `staff-chat/services/ai-suggest.service.ts` — record หลัง suggest call, `service='ai-suggest'` (**ยกเว้น mock mode** ตอนไม่มี ANTHROPIC_API_KEY — ห้ามสร้างแถว cost ปลอม)
 - `line-oa/chatbot.service.ts` — record (บอทเก่ายังรันช่วง staged rollout ของ WS2), `service='line-oa-legacy'`
 - `chat-engine/services/after-hours.service.ts` — record หลัง `messages.create` (ยืนยันแล้วว่าใช้ Claude, มี static fallback เมื่อไม่มี key — เคส fallback ไม่ต้อง record), `service='after-hours'`
 - `ai-usage/ai-pricing.ts` — เพิ่ม `gemini-2.5-flash` (ราคา ณ ก.ค. 2026: ตรวจจาก https://ai.google.dev/pricing ตอน implement) + แก้ doc comment จาก "Claude pricing" เป็น "LLM pricing"
@@ -90,11 +91,14 @@ Restructure `line-oa/line-oa-chatbot.controller.ts#handleTextMessage`:
 
 1. แยกการจับคู่ pre-filter เป็น helper `matchCommand(text)` — `#owner`, เบอร์โทร self-link, เช็คยอด/งวด/ชำระ/ใบเสร็จ/ติดต่อ/สัญญา/ลงทะเบียน/ช่วยเหลือ, GREETING/ANDROID/IPAD keywords
 2. **ถ้า match** → mirror + ทำงานเดิมทุกประการ (deterministic, ฟรี, ไม่แตะ)
-3. **ถ้า freeform** → เช็ค rollout gate:
-   - env `LINE_SHOP_AI_ENABLED` (default `false`) — master switch
+3. **ถ้า freeform** → เช็ค rollout gate (ต้องผ่าน**ทั้ง 3 เงื่อนไข**):
+   - env `LINE_SHOP_AI_ENABLED` (default `false`) — rollout scope switch (เปลี่ยนค่าต้อง restart revision)
    - env `LINE_SHOP_AI_WHITELIST_USER_IDS` (comma-separated) — ถ้าไม่ว่าง เฉพาะ userId ในลิสต์เข้า pipeline ใหม่; ถ้าว่าง = ทุกคน
-   - **ผ่าน gate** → `messageRouter.routeInbound({..., replyToken})` — **ไม่เรียก `mirrorInbound` ก่อน** (router บันทึกเอง ไม่งั้นข้อความซ้ำ) — ได้ครบ: kill switch รายห้อง (`aiPaused`/`handoffMode`), `ai.autoChannels`, confidence threshold, per-session cap, handoff เมื่อไม่มั่นใจ, `AiAutoReplyLog`
-   - **ไม่ผ่าน** → mirror + `handleFreeformMessage` บอทเก่า — ลูกค้านอก whitelist พฤติกรรมเหมือนวันนี้เป๊ะ ไม่มีวันเงียบ
+   - `LINE_SHOP` อยู่ใน `ai.autoChannels` (อ่านผ่าน `AiAutoReplyService.getSettings` — SystemConfig, cache 60s) — **นี่คือ instant kill switch ตัวจริงของเจ้าของ** ปิด checkbox ในหน้า Settings แล้วมีผลภายใน ~60 วิ ไม่ต้อง deploy และกันเคส misconfig: ถ้าไม่เช็คตรงนี้ env-on+checkbox-off จะทำให้ user ใน whitelist ตกไปที่ `routeInbound` → `shouldAutoReply` ปฏิเสธ (channel ไม่อยู่ใน allowlist) → ไม่มี domain handler ของ LINE_SHOP → **เงียบสนิท** (`message-router.service.ts:277-283`)
+   - **ผ่านครบ** → `messageRouter.routeInbound({..., replyToken})` — **ไม่เรียก `mirrorInbound` ก่อน** (router บันทึกเอง ไม่งั้นข้อความซ้ำ) — ได้ครบ: kill switch รายห้อง (`aiPaused`/`handoffMode`), confidence threshold, per-session cap, handoff เมื่อไม่มั่นใจ, `AiAutoReplyLog`
+   - **ไม่ผ่านข้อใดข้อหนึ่ง** → mirror + `handleFreeformMessage` บอทเก่า — ลูกค้านอก whitelist พฤติกรรมเหมือนวันนี้เป๊ะ ไม่มีวันเงียบ
+
+ข้อจำกัดที่ยอมรับ (semantics เดียวกับ Facebook): ถ้า AI โยน exception ระหว่างประมวลผล routeInbound จะ fall through → ไม่มีคำตอบและไม่ตั้ง handoff flag — พนักงานเห็นจาก unread count ใน inbox เท่านั้น เคสนี้เกิดเฉพาะ error path และถูก log + Sentry อยู่แล้ว
 4. เพิ่ม env ใหม่ 2 ตัวลง `.env.example`
 
 Non-text (image/สลิป/sticker) — ไม่แตะ ทำงานเดิม
@@ -127,9 +131,9 @@ Preconditions (มีครบแล้วใน prod จาก Facebook rollout
 
 ## 6. Workstream 3 — Embedding backfill cron
 
-- ไฟล์ใหม่ `staff-chat/services/embedding-backfill.cron.ts` (วางคู่ `training-extract.cron.ts`)
+- ไฟล์ใหม่ `staff-chat/cron/embedding-backfill.cron.ts` (วางคู่ `training-extract.cron.ts` ซึ่งอยู่ใน `staff-chat/cron/` และรัน `0 3 * * *` BKK)
 - ตารางเวลา: รายวัน 03:30 Asia/Bangkok (หลัง training-extract 03:00 จบ)
-- Logic: query `AiTrainingPair` ที่ `embedding IS NULL` (raw SQL — Prisma ไม่รองรับ pgvector native, ใช้ pattern เดียวกับ `seed-fb-training.ts`) → `EmbeddingService.embedBatch` ทีละ 100 แถว → update ทีละ batch, cap 5,000 แถว/คืน (กัน runaway ครั้งแรกที่ backfill ของเก่าทั้งหมด)
+- Logic: query `AiTrainingPair` ที่ `embedding IS NULL` (raw SQL — column เป็น `Unsupported("vector(768)")` ใช้ pattern เดียวกับ `seed-fb-training.ts`) → `EmbeddingService.embedBatch` ทีละ 100 แถว → update embedding + stamp `embeddedAt` + `embeddingModel` (columns มีอยู่แล้วใน schema) ทีละ batch, cap 5,000 แถว/คืน (กัน runaway ครั้งแรกที่ backfill ของเก่าทั้งหมด)
 - Idempotent (query เฉพาะแถวที่ยัง null), Sentry capture on failure ตาม pattern cron อื่น
 - เลือก cron-only แทน fire-and-forget ตอนสร้าง pair: code path เดียวคลุมทุกแหล่ง (feedback/cron/import/แหล่งอนาคต), retrieval feed แค่ staff suggestions — ความสดช้าสุด 24 ชม. ยอมรับได้
 - Test: cron spec — เลือกเฉพาะแถว null, batch ถูกขนาด, เคารพ cap, ไม่แตะแถวที่มี embedding แล้ว
@@ -137,7 +141,7 @@ Preconditions (มีครบแล้วใน prod จาก Facebook rollout
 ## 7. Success criteria
 
 1. **WS1:** ส่งข้อความหา LINE Finance 1 ครั้ง → `AiUsageLog` เพิ่ม 1 แถว (ไม่ใช่ 3) และไม่มี ChatMessage `DRAFT:%` ใหม่; กด "รับช่วงต่อ" บนห้องไฟแนนซ์ → ลูกค้าพิมพ์ต่อแล้วบอทไม่ตอบ; สลับ provider เป็น Gemini → cost ใน dashboard สมเหตุสมผล (ไม่ใช่ราคา Sonnet)
-2. **WS2:** userId ใน whitelist พิมพ์ถามของ → ได้คำตอบ SalesBot ผ่าน reply API (เช็ค log ว่าไม่ push); userId นอก whitelist → คำตอบบอทเก่าเหมือนเดิม; ปิด `LINE_SHOP_AI_ENABLED` → กลับพฤติกรรมเดิมทันทีไม่ต้อง deploy
+2. **WS2:** userId ใน whitelist พิมพ์ถามของ → ได้คำตอบ SalesBot ผ่าน reply API (เช็ค log ว่าไม่ push); userId นอก whitelist → คำตอบบอทเก่าเหมือนเดิม; เอา LINE_SHOP ออกจาก `ai.autoChannels` ในหน้า Settings → กลับพฤติกรรมเดิมภายใน ~60 วิ ไม่ต้อง deploy (ส่วน env `LINE_SHOP_AI_ENABLED` เปลี่ยนค่าต้อง restart revision — ใช้เป็น rollout scope ไม่ใช่ instant kill)
 3. **WS3:** สร้าง training pair ใหม่ผ่าน feedback → มี embedding ภายใน 24 ชม.; `getFewShotExamples` คืน semantic match จาก pair ใหม่
 4. ทุก workstream: `./tools/check-types.sh all` ผ่าน + test suite เขียว
 

@@ -186,6 +186,7 @@ export class MessageRouterService {
               channel: message.channel,
               type: 'TEXT' as any,
               text: result.reply,
+              replyToken: message.replyToken,
             });
             await this.roomManager.saveMessage({
               roomId: room.id,
@@ -242,7 +243,7 @@ export class MessageRouterService {
     }
 
     // 4. After-hours auto-reply (only reached when AI auto mode is off or errored)
-    if (this.afterHoursService?.isAfterHours() && !room.handoffMode) {
+    if (this.afterHoursService?.isAfterHours() && !room.handoffMode && !room.aiPaused) {
       try {
         const reply = await this.afterHoursService.getAutoReply(
           message.text ?? '',
@@ -254,6 +255,7 @@ export class MessageRouterService {
             channel: message.channel,
             type: 'TEXT' as any,
             text: reply,
+            replyToken: message.replyToken,
           });
           await this.roomManager.saveMessage({
             roomId: room.id,
@@ -306,8 +308,11 @@ export class MessageRouterService {
       // 7. Send replies through adapter and save them
       const adapter = this.adapterMap.get(message.channel);
       if (adapter && result.replies.length > 0) {
-        for (const reply of result.replies) {
-          const sendResult = await adapter.sendMessage(reply);
+        for (const [i, reply] of result.replies.entries()) {
+          const sendResult = await adapter.sendMessage({
+            ...reply,
+            replyToken: i === 0 ? message.replyToken : undefined,
+          });
 
           await this.roomManager.saveMessage({
             roomId: room.id,

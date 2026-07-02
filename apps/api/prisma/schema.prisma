@@ -6203,7 +6203,9 @@ model KnownDevice {
 /// (FULL deprecated 2026-05-20 — auto-send now controlled via ai.autoEnabled SystemConfig.)
 model AiSettings {
   id                            String   @id @default("singleton")
+  /// @deprecated WS1 2026-07: draft pipeline retired — ไม่มีผลต่อระบบแล้ว (คงคอลัมน์ไว้ ไม่ migrate)
   salesBotMode                  String   @default("HYBRID") @map("sales_bot_mode") // OFF | HYBRID (FULL deprecated 2026-05-20 — use ai.autoEnabled SystemConfig instead)
+  /// @deprecated WS1 2026-07: draft pipeline retired — ไม่มีผลต่อระบบแล้ว (คงคอลัมน์ไว้ ไม่ migrate)
   serviceBotMode                String   @default("HYBRID") @map("service_bot_mode") // OFF | HYBRID
   salesBotConfidenceThreshold   Float    @default(0.70) @map("sales_bot_confidence_threshold")
   serviceBotConfidenceThreshold Float    @default(0.75) @map("service_bot_confidence_threshold")

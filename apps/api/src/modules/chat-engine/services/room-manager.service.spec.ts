@@ -202,6 +202,22 @@ describe('RoomManagerService', () => {
 
   });
 
+  describe('getRecentMessages', () => {
+    it('excludes undelivered legacy drafts from recent messages', async () => {
+      prisma.chatMessage.findMany.mockResolvedValue([]);
+
+      await service.getRecentMessages('r1', 20);
+
+      expect(prisma.chatMessage.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            NOT: { intent: { startsWith: 'DRAFT:' }, deliveredAt: null },
+          }),
+        }),
+      );
+    });
+  });
+
   describe('updateRoomStatus', () => {
     it('should set resolvedAt when status is IDLE', async () => {
       prisma.chatRoom.update.mockResolvedValue({});

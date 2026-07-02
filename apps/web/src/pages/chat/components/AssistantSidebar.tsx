@@ -3,24 +3,21 @@ import { Hand, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { AiDraftCard } from './AiDraftCard';
 import { CustomerCard } from './CustomerCard';
-import { useLatestDraft, useReleaseToAi, useTakeOver } from '../hooks/useAiDraft';
+import { useReleaseToAi, useTakeOver } from '../hooks/useAiDraft';
 import { fetchRoom } from '../lib/chat-api';
 
 /**
  * AssistantSidebar — right column of the /chat inbox page.
  *
- * Composes three blocks:
+ * Composes two blocks:
  *   1. CustomerCard — if the room is linked to a customer.
- *   2. AiDraftCard  — if there's a pending AI draft (polled every 5s).
- *   3. Take-Over / Release toggle — pauses AI (`aiPaused=true`) or releases
+ *   2. Take-Over / Release toggle — pauses AI (`aiPaused=true`) or releases
  *      control back to AI (`aiPaused=false`) for the room.
  *
  * Week 1 intentionally omits the "Suggested actions" block (Week 2 scope).
  */
 export function AssistantSidebar({ roomId }: { roomId: string | null }) {
-  const { data: draft } = useLatestDraft(roomId);
   const takeOver = useTakeOver();
   const releaseToAi = useReleaseToAi();
 
@@ -72,18 +69,6 @@ export function AssistantSidebar({ roomId }: { roomId: string | null }) {
             {room?.displayName && (
               <div className="mt-1 text-sm leading-snug text-foreground">{room.displayName}</div>
             )}
-          </CardContent>
-        </Card>
-      )}
-
-      {draft ? (
-        <AiDraftCard draft={draft} roomId={roomId} />
-      ) : (
-        <Card>
-          <CardContent className="p-3">
-            <div className="text-xs leading-snug text-muted-foreground">
-              ไม่มีข้อความร่างจาก AI ในขณะนี้
-            </div>
           </CardContent>
         </Card>
       )}

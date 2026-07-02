@@ -17,7 +17,7 @@ import {
   SelectContent,
   SelectItem,
 } from '@/components/ui/select';
-import { Sparkles, Bot, Route, Store } from 'lucide-react';
+import { Sparkles, Route, Store } from 'lucide-react';
 
 const CHANNELS = [
   { value: 'LINE_FINANCE', label: 'LINE Finance' },
@@ -350,96 +350,6 @@ function ShopBotSetupForm() {
   );
 }
 
-interface PerBotSettings {
-  salesBotMode: string;
-  serviceBotMode: string;
-  salesBotConfidenceThreshold: number;
-  serviceBotConfidenceThreshold: number;
-}
-
-function PerBotModeCard() {
-  const queryClient = useQueryClient();
-
-  const query = useQuery<PerBotSettings>({
-    queryKey: ['ai-settings-per-bot'],
-    queryFn: () =>
-      api.get('/ai-settings').then((r: any) => {
-        const d = r.data?.data ?? r.data;
-        return {
-          salesBotMode: d.salesBotMode ?? 'HYBRID',
-          serviceBotMode: d.serviceBotMode ?? 'HYBRID',
-          salesBotConfidenceThreshold: d.salesBotConfidenceThreshold ?? 0.7,
-          serviceBotConfidenceThreshold: d.serviceBotConfidenceThreshold ?? 0.75,
-        };
-      }),
-  });
-
-  const update = useMutation({
-    mutationFn: (body: Partial<PerBotSettings>) => api.patch('/ai-settings', body),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['ai-settings-per-bot'] });
-      toast.success('บันทึกการตั้งค่าแล้ว');
-    },
-    onError: () => toast.error('บันทึกไม่สำเร็จ'),
-  });
-
-  const settings = query.data;
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base flex items-center gap-2 leading-snug">
-          <Bot className="w-4 h-4 text-muted-foreground" />
-          โหมด AI ต่อบอท (Week 1 Hybrid C)
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {settings ? (
-          <>
-            <div className="flex items-center justify-between gap-2">
-              <Label className="leading-snug">บอทขาย (Sales Bot)</Label>
-              <Select
-                value={settings.salesBotMode}
-                onValueChange={(v) => update.mutate({ salesBotMode: v })}
-                disabled={update.isPending}
-              >
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="OFF">OFF (ปิด)</SelectItem>
-                  <SelectItem value="HYBRID">HYBRID (แนะนำ)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-center justify-between gap-2">
-              <Label className="leading-snug">น้องเบส (Service Bot)</Label>
-              <Select
-                value={settings.serviceBotMode}
-                onValueChange={(v) => update.mutate({ serviceBotMode: v })}
-                disabled={update.isPending}
-              >
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="OFF">OFF (ปิด)</SelectItem>
-                  <SelectItem value="HYBRID">HYBRID (แนะนำ)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <p className="text-xs text-muted-foreground leading-snug">
-              HYBRID: AI สร้าง draft ให้พนักงานตรวจก่อนส่ง · OFF: ไม่สร้าง draft. การส่งอัตโนมัติควบคุมที่ SystemConfig `ai.autoEnabled`
-            </p>
-          </>
-        ) : (
-          <p className="text-sm text-muted-foreground leading-snug">กำลังโหลดการตั้งค่า...</p>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
 const CHANNEL_BOT_ROUTING = [
   { channel: 'LINE FINANCE', bot: 'น้องเบส (Service Bot)', desc: 'ลูกค้าผ่อน — ตอบยอดค้าง/วันครบกำหนด/ติดต่อ' },
   { channel: 'LINE SHOP', bot: 'บอทขาย (Sales Bot)', desc: 'ลูกค้าใหม่ — ตอบสินค้า/ราคา/โปร/สาขา' },
@@ -514,7 +424,6 @@ export default function AiSettingsPage() {
       <PageHeader title="AI Settings" subtitle="ตั้งค่า AI Auto Mode สำหรับตอบแชทอัตโนมัติ" />
       <div className="max-w-2xl space-y-6">
         <ChannelRoutingCard />
-        <PerBotModeCard />
         <QueryBoundary
           isLoading={settingsQuery.isLoading}
           isError={settingsQuery.isError}

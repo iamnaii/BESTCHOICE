@@ -1,5 +1,4 @@
 import { cn } from '@/lib/utils';
-import { Badge } from '@/components/ui/badge';
 
 export interface Message {
   id: string;
@@ -17,14 +16,10 @@ export interface Message {
  *
  * - CUSTOMER messages render on the left with a muted background.
  * - STAFF/BOT/SYSTEM messages render on the right.
- * - BOT messages flagged as AI drafts (intent starts with `DRAFT:` and not yet
- *   delivered) are visually distinguished with an emerald left border so
- *   reviewers can quickly spot pending-approval replies.
  */
 export function MessageBubble({ message }: { message: Message }) {
   const isCustomer = message.role === 'CUSTOMER';
   const isSystem = message.role === 'SYSTEM' || message.role === 'AUTO_TRIGGER';
-  const isDraft = !!message.intent?.startsWith('DRAFT:') && !message.deliveredAt;
   const isAutoSent =
     message.role === 'BOT' && !!message.intent?.startsWith('AUTO:');
 
@@ -46,7 +41,6 @@ export function MessageBubble({ message }: { message: Message }) {
           isCustomer
             ? 'bg-muted text-foreground'
             : 'bg-primary text-primary-foreground',
-          isDraft && 'border-l-4 border-emerald-500 bg-card text-foreground',
         )}
       >
         <div>{message.text ?? ''}</div>
@@ -57,11 +51,6 @@ export function MessageBubble({ message }: { message: Message }) {
               <span title="AI ตอบอัตโนมัติ" aria-label="AI ตอบอัตโนมัติ">
                 🤖
               </span>
-            )}
-            {isDraft && (
-              <Badge variant="outline" className="h-4 px-1 text-[9px]">
-                Draft
-              </Badge>
             )}
             {typeof message.confidence === 'number' && (
               <span>· {(message.confidence * 100).toFixed(0)}%</span>

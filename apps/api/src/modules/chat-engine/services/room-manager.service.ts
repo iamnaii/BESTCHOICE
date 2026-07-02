@@ -296,7 +296,12 @@ export class RoomManagerService {
   /** Get recent messages for AI context or display */
   async getRecentMessages(roomId: string, limit = 20, opts?: { signMedia?: boolean }) {
     const msgs = await this.prisma.chatMessage.findMany({
-      where: { roomId, deletedAt: null },
+      where: {
+        roomId,
+        deletedAt: null,
+        // WS1: ซ่อน draft เก่าที่ไม่เคยส่งถึงลูกค้า — pipeline ถูกถอดแล้ว
+        NOT: { intent: { startsWith: 'DRAFT:' }, deliveredAt: null },
+      },
       orderBy: { createdAt: 'desc' },
       take: limit,
       include: { staff: { select: { id: true, name: true, avatarUrl: true } } },

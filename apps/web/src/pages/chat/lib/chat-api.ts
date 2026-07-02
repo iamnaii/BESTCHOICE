@@ -62,14 +62,6 @@ export async function fetchMessages(roomId: string) {
   return res.data;
 }
 
-export async function approveDraft(draftMessageId: string, editedText?: string) {
-  return api.post('/chat-ai/approve', { draftMessageId, editedText });
-}
-
-export async function skipDraft(draftMessageId: string) {
-  return api.post(`/chat-ai/skip/${draftMessageId}`);
-}
-
 export async function takeOver(roomId: string) {
   return api.post(`/chat-ai/take-over/${roomId}`);
 }

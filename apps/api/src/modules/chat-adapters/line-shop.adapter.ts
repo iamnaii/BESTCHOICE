@@ -34,11 +34,22 @@ export class LineShopAdapter implements IChannelAdapter {
       // The local LineMessagePayload union covers text/flex/sticker only,
       // but the LINE Messaging API itself accepts image/video/location too.
       // Cast through unknown so the broader payload reaches the API unchanged.
-      await this.lineOaService.pushMessage(
-        message.externalUserId,
-        [payload as unknown as LineMessagePayload],
-        'line-shop',
-      );
+      const messages = [payload as unknown as LineMessagePayload];
+
+      // Reply-token-first: reply API ฟรี, push กินโควต้า plan รายเดือน.
+      // Token ใช้ครั้งเดียว/หมดอายุ ~60 วิ — fail แล้ว fallback เป็น push เสมอ
+      if (message.replyToken) {
+        try {
+          await this.lineOaService.replyMessage(message.replyToken, messages, 'line-shop');
+          return { success: true };
+        } catch (err) {
+          this.logger.warn(
+            `[LineShopAdapter] reply failed — falling back to push: ${err instanceof Error ? err.message : err}`,
+          );
+        }
+      }
+
+      await this.lineOaService.pushMessage(message.externalUserId, messages, 'line-shop');
       return { success: true };
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);

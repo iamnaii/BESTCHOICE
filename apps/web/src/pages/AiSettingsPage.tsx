@@ -166,7 +166,7 @@ function AiSettingsForm({ initial }: { initial: AiSettings }) {
               className="w-28"
             />
             <span className="text-sm text-muted-foreground">
-              ครั้ง ต่อ 24 ชม. — เกินแล้วจะโอนให้พนักงาน (นับใหม่ทุก 24 ชม.)
+              ครั้ง ต่อ 24 ชม. — เกินแล้วจะโอนให้พนักงาน (นับเฉพาะ 24 ชม. ล่าสุด (rolling window))
             </span>
           </div>
         </CardContent>

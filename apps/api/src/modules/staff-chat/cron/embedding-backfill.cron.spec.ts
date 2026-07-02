@@ -124,4 +124,53 @@ describe('EmbeddingBackfillCron', () => {
     expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
     expect(res.embedded).toBe(1);
   });
+
+  it('systemic outage: batch fails AND every per-row retry in that batch also fails → treated as systemic, not poison rows', async () => {
+    const prisma = {
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValueOnce([{ id: 'a', customer_message: 'fine before outage' }])
+        .mockResolvedValueOnce([
+          { id: 'b', customer_message: 'x' },
+          { id: 'c', customer_message: 'y' },
+        ]),
+      $executeRaw: jest.fn().mockResolvedValue(1),
+    };
+    const embedding = makeEmbedding();
+    embedding.embedBatch
+      .mockResolvedValueOnce([[0.1]]) // batch 1 whole-batch call succeeds
+      .mockRejectedValueOnce(new Error('vertex outage')) // batch 2 whole-batch call fails
+      .mockRejectedValueOnce(new Error('vertex outage row b')) // batch 2 per-row retry b fails
+      .mockRejectedValueOnce(new Error('vertex outage row c')); // batch 2 per-row retry c fails
+
+    const cron = new EmbeddingBackfillCron(prisma as any, embedding as any);
+    const res = await cron.backfillEmbeddings();
+
+    // batch 1's row a was saved normally
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(prisma.$executeRaw.mock.calls[0]).toEqual(
+      expect.arrayContaining(['[0.1]', 'text-multilingual-embedding-002', 'a']),
+    );
+
+    // NEITHER row from the systemically-failed batch got permanently stamped —
+    // a total-outage batch must not poison rows that may embed fine once Vertex recovers
+    const stampedFailed = prisma.$executeRaw.mock.calls.some((call) =>
+      (call as unknown[]).includes('EMBED_FAILED'),
+    );
+    expect(stampedFailed).toBe(false);
+
+    // the run stops after the systemic batch — does not keep looping/retrying it
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
+
+    // exactly ONE Sentry capture for the whole run (not one per poisoned row)
+    expect(Sentry.captureException).toHaveBeenCalledTimes(1);
+    const [errArg, ctxArg] = (Sentry.captureException as jest.Mock).mock.calls[0];
+    expect((errArg as Error).message.toLowerCase()).toContain('systemic');
+    expect(ctxArg).toEqual(
+      expect.objectContaining({ tags: expect.objectContaining({ cron: 'embedding-backfill' }) }),
+    );
+
+    // returns the partial count accumulated from the batch that succeeded before the outage
+    expect(res.embedded).toBe(1);
+  });
 });

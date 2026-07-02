@@ -360,4 +360,34 @@ describe('SalesBotService', () => {
       })
     );
   });
+
+  it('records error usage row with errorKind tool_error when a tool run rejects (not provider_error)', async () => {
+    const chat = jest.fn().mockResolvedValueOnce({
+      text: '',
+      toolCalls: [
+        { id: 'tu_1', name: 'search_products', input: { query: 'iPhone' } },
+      ],
+      inputTokens: 100,
+      outputTokens: 20,
+      modelName: 'claude-sonnet-4-6',
+    } satisfies LlmChatResponse);
+    const { svc, searchProducts, aiUsage } = await build(chat);
+    searchProducts.run.mockRejectedValue(new Error('prisma: connection terminated'));
+    await expect(
+      svc.generateReply({
+        text: 'iPhone กี่บาท',
+        roomId: 'r1',
+        customerId: null,
+      })
+    ).rejects.toThrow('prisma: connection terminated');
+    expect(aiUsage.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        service: 'sales-bot',
+        status: 'error',
+        errorKind: 'tool_error',
+        inputTokens: 100,
+        outputTokens: 20,
+      })
+    );
+  });
 });

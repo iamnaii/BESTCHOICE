@@ -69,6 +69,14 @@ export class EmbeddingBackfillCron {
    * ว่าง/ยาวเกิน → Vertex 400 ทำให้ batch ทั้งก้อนพัง) ให้ fallback ไป embed ทีละแถวแทน
    * เพื่อไม่ให้แถวดีๆ ที่เหลือใน batch เดียวกันพลอยไม่ได้ embed ไปด้วย แถวที่ยัง fail
    * ซ้ำแม้ embed ทีละแถวจะถูก mark ถาวร (EMBED_FAILED) ไม่ให้ query หยิบมา retry อีก
+   *
+   * ถ้าทุกแถวใน batch fail แม้ retry ทีละแถวแล้ว (failures === rows.length) นี่ไม่ใช่
+   * poison row อีกต่อไป — เป็น systemic outage (เช่น Vertex auth พัง/ทั้งระบบล่ม) ห้าม
+   * stamp EMBED_FAILED ให้แถวพวกนี้ (ยังไม่พิสูจน์ว่าพังถาวร แค่ระบบล่มชั่วคราว) แทนที่จะ
+   * capture Sentry ทีละแถว (spam) ให้ rethrow ไปให้ run-level catch จับแทน (Sentry capture
+   * ครั้งเดียวต่อ run) แล้ว cron หยุดพยายาม batch ถัดไป — คืนจำนวนที่ embed สำเร็จจาก batch
+   * ก่อนหน้าเท่านั้น
+   *
    * Returns จำนวนแถวที่ embed สำเร็จ
    */
   private async embedBatchWithFallback(
@@ -86,6 +94,7 @@ export class EmbeddingBackfillCron {
       return rows.length;
     } catch {
       let succeeded = 0;
+      const failures: { id: string; error: unknown }[] = [];
       for (const row of rows) {
         try {
           const [vector] = await this.embedding.embedBatch(
@@ -95,13 +104,23 @@ export class EmbeddingBackfillCron {
           await this.saveEmbedding(row.id, vector, model);
           succeeded++;
         } catch (rowError) {
-          this.logger.error(`Embedding failed permanently for training pair ${row.id}`, rowError);
-          Sentry.captureException(rowError, {
-            tags: { kind: 'cron-job', cron: 'embedding-backfill' },
-            extra: { trainingPairId: row.id },
-          });
-          await this.markFailed(row.id);
+          failures.push({ id: row.id, error: rowError });
         }
+      }
+
+      if (failures.length === rows.length) {
+        throw new Error(
+          `Embedding backfill batch failed systemically — all ${rows.length} row(s) failed per-row retry too`,
+        );
+      }
+
+      for (const { id, error } of failures) {
+        this.logger.error(`Embedding failed permanently for training pair ${id}`, error);
+        Sentry.captureException(error, {
+          tags: { kind: 'cron-job', cron: 'embedding-backfill' },
+          extra: { trainingPairId: id },
+        });
+        await this.markFailed(id);
       }
       return succeeded;
     }

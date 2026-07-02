@@ -126,6 +126,10 @@ export class SalesBotService {
     let totalIn = 0;
     let totalOut = 0;
     let modelUsed = '';
+    // Distinguishes "the LLM provider blew up" from "a tool (often Prisma-backed)
+    // blew up mid-loop" so the AiUsage error row tells an honest story instead of
+    // always blaming the provider — see the outer catch below.
+    let toolFailed = false;
 
     try {
       for (let hop = 0; hop < MAX_TOOL_HOPS; hop++) {
@@ -173,7 +177,17 @@ export class SalesBotService {
         const toolResults: LlmChatMessage[] = [];
         for (const tc of resp.toolCalls) {
           toolsUsed.push(tc.name);
-          const result = await this.runTool(tc.name, tc.input, input.roomId);
+          let result: unknown;
+          try {
+            result = await this.runTool(tc.name, tc.input, input.roomId);
+          } catch (toolError) {
+            // Tag before rethrow — tools are Prisma-backed and can throw for
+            // reasons that have nothing to do with the LLM provider (DB down,
+            // constraint violation, etc). The outer catch reads this flag to
+            // record an honest errorKind instead of always blaming the provider.
+            toolFailed = true;
+            throw toolError;
+          }
           this.collectGroundedPrices(result, groundedPrices);
           this.logger.log(
             `[ToolCall] room=${input.roomId} tool=${tc.name} args=${JSON.stringify(tc.input).slice(0, 300)} result=${JSON.stringify(result).slice(0, 600)}`,
@@ -211,7 +225,7 @@ export class SalesBotService {
         inputTokens: totalIn,
         outputTokens: totalOut,
         status: 'error',
-        errorKind: 'provider_error',
+        errorKind: toolFailed ? 'tool_error' : 'provider_error',
       });
       throw error;
     }

@@ -25,6 +25,7 @@ import { AiAutoReplyService } from './services/ai-auto-reply.service';
 import { AiImportService } from './services/ai-import.service';
 import { AiMetricsService } from './services/ai-metrics.service';
 import { TrainingExtractCron } from './cron/training-extract.cron';
+import { EmbeddingBackfillCron } from './cron/embedding-backfill.cron';
 import { StorageService } from '../storage/storage.service';
 import { StaffChatGateway } from './staff-chat.gateway';
 
@@ -78,6 +79,7 @@ describe('StaffChatController', () => {
         { provide: AiMetricsService, useValue: {} },
         { provide: ConfigService, useValue: { get: jest.fn() } },
         { provide: TrainingExtractCron, useValue: {} },
+        { provide: EmbeddingBackfillCron, useValue: {} },
         { provide: StaffChatGateway, useValue: { emitNewMessage: jest.fn() } },
         {
           provide: CannedResponseBubbleService,

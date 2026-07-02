@@ -205,6 +205,61 @@ describe('ContractPaymentService early-payoff money branches (Wave 3 gap-fill)',
       expect(quote.totalPayoff).toBe(6200);
     });
 
+    // GAP 2b — discount rounds DOWN on a fractional (half-satang) result.
+    it('GAP2b: discountAmount is ROUND_DOWN — grossProfit 100.01 × 50% = 50.005 → 50.00 (not 50.01)', async () => {
+      // Owner policy 2026-07-02: the 50% ส่วนลดลูกค้า is truncated, never rounded
+      // up, so a .xx5 satang never becomes an extra satang of discount and the
+      // payoff always rounds in FINANCE's favor.
+      //   6 remaining × monthlyPayment 1000, vatPct 0 → remainingExVat 6000.
+      //   financeCost = sellingPrice 11799.98 (down 0, comm 0).
+      //   remainingCost = round2(11799.98 / 12 × 6) = 5899.99.
+      //   grossProfit   = 6000 − 5899.99 = 100.01.
+      //   raw discount  = 100.01 × 0.5 = 50.005 → ROUND_DOWN → 50.00.
+      //   (ROUND_HALF_UP would give 50.01 — this test would fail on the old code.)
+      const roundDownContract = {
+        id: 'contract-rounddown-1',
+        status: 'ACTIVE',
+        deletedAt: null,
+        totalMonths: 12,
+        monthlyPayment: dec('1000'),
+        creditBalance: dec('0'),
+        vatPct: dec('0'),
+        sellingPrice: dec('11799.98'),
+        downPayment: dec('0'),
+        storeCommission: dec('0'),
+        financedAmount: dec('11799.98'),
+        interestTotal: dec('0'),
+        vatAmount: dec('0'),
+        payments: [
+          ...Array.from({ length: 6 }, (_, i) => ({
+            installmentNo: i + 1,
+            status: 'PAID',
+            amountPaid: dec('1000'),
+            amountDue: dec('1000'),
+            lateFee: dec('0'),
+            lateFeeWaived: false,
+          })),
+          ...Array.from({ length: 6 }, (_, i) => ({
+            installmentNo: i + 7,
+            status: 'PENDING',
+            amountPaid: dec('0'),
+            amountDue: dec('1000'),
+            lateFee: dec('0'),
+            lateFeeWaived: false,
+          })),
+        ],
+      };
+
+      const service = buildQuoteService(roundDownContract);
+      const quote = await service.getEarlyPayoffQuote(roundDownContract.id);
+
+      expect(quote.grossProfit).toBe(100.01);
+      // The load-bearing assertion — truncated, NOT rounded half-up.
+      expect(quote.discountAmount).toBe(50);
+      // totalPayoff = remainingBalance 6000 − discount 50 = 5950.
+      expect(quote.totalPayoff).toBe(5950);
+    });
+
     // GAP 3 — advancePayment = creditBalance + PARTIALLY_PAID amountPaid.
     it('GAP3: creditBalance 500 + PARTIALLY_PAID 300 → advancePayment 800, remainingBalance/totalPayoff drop by 800', async () => {
       // 5 PAID (inst 1..5) + 1 PARTIALLY_PAID (inst 6) + 6 PENDING (inst 7..12).

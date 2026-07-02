@@ -140,6 +140,7 @@ Subagents คือ agent เฉพาะทางที่ทำงานแย
 |-------|---------|
 | `code-reviewer` | ต้องการ review code changes ก่อน commit/merge — รายงานปัญหาตาม severity (Critical/Warning/Info) |
 | `type-checker` | ต้องการตรวจ TypeScript errors และรับคำแนะนำการแก้ไข |
+| `qa-engineer` | ต้องการรันชุดทดสอบ (Jest/Vitest/Playwright), triage failures, และประเมิน coverage gaps ก่อน merge/deploy |
 
 Agents อยู่ใน `.claude/agents/` — **เป็น read-only reporters** ไม่แก้โค้ดเอง รายงานกลับมาให้ parent agent แก้ไข
 
@@ -353,6 +354,7 @@ tools/                        # Shell scripts — deterministic execution
 .claude/agents/               # Subagents — specialized tasks
   code-reviewer.md            # Review code changes by severity
   type-checker.md             # TypeScript error analysis
+  qa-engineer.md              # Run tests + triage failures + coverage gaps
 
 scripts/                      # Existing project scripts
   backup.sh                   # Database backup

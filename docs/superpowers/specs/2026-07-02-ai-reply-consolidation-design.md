@@ -63,7 +63,7 @@
 - `sales-bot/sales-bot.service.ts` — เรียก `aiUsage.record()` หลังจบ `generateReply` (จุดเดียวคลุม Claude/Gemini/auto-reply/testSend; ข้อมูล model+tokens มีอยู่แล้วใน result) `service='sales-bot'`
 - `staff-chat/services/ai-suggest.service.ts` — record หลัง suggest call, `service='ai-suggest'`
 - `line-oa/chatbot.service.ts` — record (บอทเก่ายังรันช่วง staged rollout ของ WS2), `service='line-oa-legacy'`
-- `chat-engine/services/after-hours.service.ts` — record เฉพาะกรณีใช้ LLM (ตรวจตอน implement — ถ้าเป็น template ล้วนไม่ต้อง)
+- `chat-engine/services/after-hours.service.ts` — record หลัง `messages.create` (ยืนยันแล้วว่าใช้ Claude, มี static fallback เมื่อไม่มี key — เคส fallback ไม่ต้อง record), `service='after-hours'`
 - `ai-usage/ai-pricing.ts` — เพิ่ม `gemini-2.5-flash` (ราคา ณ ก.ค. 2026: ตรวจจาก https://ai.google.dev/pricing ตอน implement) + แก้ doc comment จาก "Claude pricing" เป็น "LLM pricing"
 - หมายเหตุ: bench CLI (`shop-ai-bench.cli.ts`) จะถูก record ด้วยเพราะเรียกผ่าน SalesBotService — ยอมรับได้ (เป็นการใช้จริง)
 

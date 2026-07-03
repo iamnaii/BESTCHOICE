@@ -209,6 +209,30 @@ export class MessageRouterService {
             inputTokens: result.inputTokens,
             outputTokens: result.outputTokens,
           });
+          // #1332: the bot answered a not-found model with the standard rates
+          // (get_installment_rates) — staff must follow up with the real
+          // price. Flag the room POST-send so it can never suppress the reply
+          // (a same-turn handoff_to_human would drop confidence to 0.3 and
+          // silence the bot — the behavior this flow eliminates). Best-effort:
+          // a flag failure must not fall through to the domain-handler path,
+          // which would double-reply.
+          if (result.toolsUsed?.includes('get_installment_rates')) {
+            try {
+              await this.handoffManager.initiateHandoff({
+                roomId: room.id,
+                reason: 'บอทส่งเรทแล้ว — ตามราคารุ่นที่ลูกค้าต้องการ',
+                priority: 'normal',
+                summary: customerMessage,
+              });
+              this.logger.log(
+                `[AiAutoReply] Rate reply sent for room ${room.id} — flagged for staff price follow-up`,
+              );
+            } catch (flagErr) {
+              this.logger.error(
+                `[AiAutoReply] Failed to flag room ${room.id} after rate reply: ${flagErr instanceof Error ? flagErr.message : flagErr}`,
+              );
+            }
+          }
           this.logger.log(
             `[AiAutoReply] Replied to room ${room.id} with confidence=${result.confidence}`,
           );

@@ -331,44 +331,45 @@ describe('SalesBotService', () => {
     expect(result.confidence).toBeGreaterThanOrEqual(0.8);
   });
 
-  // Issue #1332 — when search_products finds nothing, the bot should still
-  // answer with real installment rates (get_installment_rates) instead of
-  // going silent/handoff-only. The tool returns PERCENT-AND-TERMS ONLY (no
-  // baht — review Critical 2a: a fabricated baht example would be
-  // whitelisted by the ±5% grounding tolerance and quotable as a real
-  // price). These two specs pin the contract: (a) a percent-only rate reply
-  // passes the guard and auto-sends at high confidence, (b) ANY baht amount
-  // the model invents after calling only get_installment_rates is still
-  // HALLUCINATION_BLOCKED because the grounded set stays empty.
-  describe('get_installment_rates grounding (#1332)', () => {
+  // Issue #1337 — v2 rework of #1332. Owner live-test verdict: percent-only
+  // replies read as robotic and must never say ดอกเบี้ย/%; quotes must be
+  // BAHT (down + monthly + term) sourced from PricingTemplate, exactly like
+  // the shop's price stickers. get_installment_rates now returns real baht
+  // under the `downPayment` / `monthlyPrice` keys, which collectGroundedPrices
+  // was extended to collect (#1337) — so those exact template figures are
+  // groundable, while any OTHER baht figure the model invents is still
+  // HALLUCINATION_BLOCKED. These two specs pin that contract both ways.
+  describe('get_installment_rates grounding (#1337 — baht from PricingTemplate)', () => {
     const toolResult = {
-      configs: [
+      templates: [
         {
-          name: 'มือ1',
-          minDownPaymentPct: 20,
-          terms: [
-            { tenureMonths: 6, totalRatePct: 15, perMonthRatePct: 2.5 },
-            { tenureMonths: 12, totalRatePct: 30, perMonthRatePct: 2.5 },
-          ],
+          brand: 'Apple',
+          model: 'iPhone 17 Pro Max',
+          storage: '256GB',
+          hasWarranty: false,
+          monthlyPrice: 2490,
+          rate1: { downPayment: 4900, termMonths: 24 },
+          rate2: { downPayment: 1900, termMonths: 12 },
         },
       ],
     };
 
-    it('percent-only rate reply passes the guard, auto-sends, confidence 0.95', async () => {
+    it('reply quoting the EXACT template baht figures (down/monthly) passes the guard, auto-sends, confidence 0.95', async () => {
       const chat = jest
         .fn()
         .mockResolvedValueOnce({
           text: '',
-          toolCalls: [{ id: 'tu_1', name: 'get_installment_rates', input: {} }],
+          toolCalls: [
+            { id: 'tu_1', name: 'get_installment_rates', input: { query: 'iPhone 17 Pro Max' } },
+          ],
           inputTokens: 100,
           outputTokens: 10,
           modelName: 'claude-sonnet-4-6',
         } satisfies LlmChatResponse)
         .mockResolvedValueOnce({
           text:
-            'ตอนนี้รุ่นนี้ยังไม่มีในระบบค่ะ 🙏 เรทผ่อนมาตรฐานร้านคือดอกเบี้ยรวมประมาณ 30% ' +
-            '(ตกเดือนละ 2.5%) ผ่อนได้สูงสุด 12 เดือน ดาวน์ขั้นต่ำ 20% ค่ะ ' +
-            'เดี๋ยวทีมงานเช็คราคารุ่นนี้แล้วทักกลับนะคะ',
+            'iPhone 17 Pro Max ดาวน์เริ่ม 4,900 บาท ผ่อนเดือนละ 2,490 บาท 24 งวดค่ะ ' +
+            'หรือดาวน์ 1,900 บาท ผ่อน 12 งวดก็ได้นะคะ 😊',
           toolCalls: [],
           inputTokens: 140,
           outputTokens: 60,
@@ -378,32 +379,35 @@ describe('SalesBotService', () => {
       getInstallmentRates.run.mockResolvedValue(toolResult);
 
       const result = await svc.generateReply({
-        text: 'iPhone 17 Pro Max มีไหมคะ',
+        text: 'iPhone 17 Pro Max ผ่อนเดือนละเท่าไหร่คะ',
         roomId: 'r1',
         customerId: null,
       });
 
       expect(getInstallmentRates.run).toHaveBeenCalled();
       expect(result.toolsUsed).toEqual(['get_installment_rates']);
-      expect(result.reply).toContain('30%');
+      expect(result.reply).toContain('4,900');
+      expect(result.reply).toContain('2,490');
       expect(result.reply).not.toContain('staff');
       expect(result.confidence).toBe(0.95);
     });
 
-    it('reply inventing ANY baht amount after only get_installment_rates gets HALLUCINATION_BLOCKED (grounded set stays empty)', async () => {
+    it('reply inventing a baht figure NOT in the template result gets HALLUCINATION_BLOCKED even though the grounded set is non-empty', async () => {
       const chat = jest
         .fn()
         .mockResolvedValueOnce({
           text: '',
-          toolCalls: [{ id: 'tu_1', name: 'get_installment_rates', input: {} }],
+          toolCalls: [
+            { id: 'tu_1', name: 'get_installment_rates', input: { query: 'iPhone 17 Pro Max' } },
+          ],
           inputTokens: 100,
           outputTokens: 10,
           modelName: 'claude-sonnet-4-6',
         } satisfies LlmChatResponse)
         .mockResolvedValueOnce({
-          // Invented figures — the tool returns percentages only, so NO baht
-          // amount can ever be grounded by it (grounded.size === 0 branch).
-          text: 'รุ่นนี้ราคาประมาณ 10,000 บาท ผ่อนเดือนละ 867 บาทค่ะ',
+          // 10,000 / 867 do not match downPayment=4900/1900 or monthlyPrice=2490
+          // within ±5% — must still be blocked despite grounded.size > 0.
+          text: 'ดาวน์ 10,000 บาท ผ่อนเดือนละ 867 บาทค่ะ',
           toolCalls: [],
           inputTokens: 120,
           outputTokens: 20,
@@ -413,13 +417,44 @@ describe('SalesBotService', () => {
       getInstallmentRates.run.mockResolvedValue(toolResult);
 
       const result = await svc.generateReply({
-        text: 'iPhone 17 Pro Max มีไหมคะ',
+        text: 'iPhone 17 Pro Max ผ่อนเดือนละเท่าไหร่คะ',
         roomId: 'r1',
         customerId: null,
       });
 
       expect(result.reply).not.toContain('10,000');
       expect(result.reply).not.toContain('867');
+      expect(result.reply).toContain('staff');
+      expect(result.confidence).toBeLessThanOrEqual(0.3);
+    });
+
+    it('no PricingTemplate match (templates: []) carries no grounded baht — any invented figure is blocked', async () => {
+      const chat = jest
+        .fn()
+        .mockResolvedValueOnce({
+          text: '',
+          toolCalls: [{ id: 'tu_1', name: 'get_installment_rates', input: { query: 'Nokia 3310' } }],
+          inputTokens: 100,
+          outputTokens: 10,
+          modelName: 'claude-sonnet-4-6',
+        } satisfies LlmChatResponse)
+        .mockResolvedValueOnce({
+          text: 'Nokia 3310 ดาวน์ 500 บาท ผ่อนเดือนละ 1,200 บาทค่ะ',
+          toolCalls: [],
+          inputTokens: 120,
+          outputTokens: 20,
+          modelName: 'claude-sonnet-4-6',
+        } satisfies LlmChatResponse);
+      const { svc, getInstallmentRates } = await build(chat);
+      getInstallmentRates.run.mockResolvedValue({ templates: [] });
+
+      const result = await svc.generateReply({
+        text: 'Nokia 3310 มีไหมคะ',
+        roomId: 'r1',
+        customerId: null,
+      });
+
+      expect(result.reply).not.toContain('1,200');
       expect(result.reply).toContain('staff');
       expect(result.confidence).toBeLessThanOrEqual(0.3);
     });

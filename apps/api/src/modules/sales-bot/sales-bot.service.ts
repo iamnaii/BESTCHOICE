@@ -289,10 +289,15 @@ export class SalesBotService {
     return 0.9;
   }
 
-  // Walk a tool result and collect every `priceThb` / `monthly` / `minPrice`
-  // numeric field. The model can name any of these as a "price" in its reply,
-  // so all three are valid grounding sources. We accept Decimal/string/number
-  // and coerce to Number — Decimal serialised across the LlmProvider boundary.
+  // Walk a tool result and collect every `priceThb` / `monthly` / `minPrice` /
+  // `maxPrice` / `downPayment` / `monthlyPrice` numeric field. The model can
+  // name any of these as a "price" in its reply, so all are valid grounding
+  // sources. `downPayment` + `monthlyPrice` were added for #1337 —
+  // get_installment_rates v2 now returns real baht (PricingTemplate) under
+  // those key names instead of percent-only figures, and grounding must
+  // cover them so a template-quoted baht figure passes while an invented one
+  // stays blocked. We accept Decimal/string/number and coerce to Number —
+  // Decimal serialised across the LlmProvider boundary.
   private collectGroundedPrices(value: unknown, into: Set<number>): void {
     if (value == null) return;
     if (Array.isArray(value)) {
@@ -302,7 +307,12 @@ export class SalesBotService {
     if (typeof value === 'object') {
       for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
         if (
-          (k === 'priceThb' || k === 'monthly' || k === 'minPrice' || k === 'maxPrice') &&
+          (k === 'priceThb' ||
+            k === 'monthly' ||
+            k === 'minPrice' ||
+            k === 'maxPrice' ||
+            k === 'downPayment' ||
+            k === 'monthlyPrice') &&
           v != null
         ) {
           const n = Number(v);

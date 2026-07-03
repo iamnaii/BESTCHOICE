@@ -102,6 +102,16 @@ function mockHappyApi({
     if (url.endsWith('/reschedule-qr')) {
       return Promise.resolve({ data: qrResponse });
     }
+    if (url === '/shop/upload/signed-url') {
+      return Promise.resolve({
+        data: {
+          uploadUrl: 'https://s3.test/put',
+          method: 'PUT',
+          key: 'slips/slip-1.jpg',
+          publicUrl: 'https://cdn.test/slips/slip-1.jpg',
+        },
+      });
+    }
     return Promise.resolve({ data: { id: 'payment-1' } });
   });
 }
@@ -246,8 +256,10 @@ describe('RescheduleOverlay', () => {
     );
   });
 
-  it('TRANSFER with empty ref: submit disabled until เลขอ้างอิง is filled, then posts BANK_TRANSFER + transactionRef', async () => {
+  it('TRANSFER: submit disabled until BOTH เลขอ้างอิง and slip are provided, then posts BANK_TRANSFER + transactionRef + slipUrl', async () => {
     mockHappyApi({ singleQuote: QUOTE_LATE_FEE_ONLY });
+    // Presigned S3 PUT goes through raw fetch (not the api client).
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true } as Response);
     const user = userEvent.setup();
     renderOverlay();
 
@@ -258,6 +270,13 @@ describe('RescheduleOverlay', () => {
     expect(submitBtn).toBeDisabled();
 
     await user.type(screen.getByPlaceholderText('เลขอ้างอิงจากสลิปโอนเงิน'), 'TX-12345');
+    // ref alone is not enough — แนบสลิป is also required (needSlip)
+    expect(submitBtn).toBeDisabled();
+
+    await user.upload(
+      screen.getByLabelText('อัปโหลดสลิป'),
+      new File(['slip'], 'slip.jpg', { type: 'image/jpeg' }),
+    );
     await waitFor(() => expect(submitBtn).toBeEnabled());
     await user.click(submitBtn);
 
@@ -266,8 +285,10 @@ describe('RescheduleOverlay', () => {
     expect(payload).toMatchObject({
       paymentMethod: 'BANK_TRANSFER',
       transactionRef: 'TX-12345',
+      slipUrl: 'https://cdn.test/slips/slip-1.jpg',
       amount: 75.79,
     });
+    fetchSpy.mockRestore();
   });
 
   it('QR method + collect: POSTs /payments/{paymentId}/reschedule-qr and shows ส่ง QR success toast', async () => {

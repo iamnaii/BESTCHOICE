@@ -36,6 +36,7 @@ import { AccrualModeChip } from './AccrualModeChip';
 import { CASH_ACCOUNT_CODES } from '@/components/CashAccountSelect';
 import { formatThaiDate } from '@/lib/date';
 import { useDebounce } from '@/hooks/useDebounce';
+import { useSlipUpload, SLIP_MIME_TYPES } from '@/hooks/useSlipUpload';
 import { toast } from 'sonner';
 import type { PendingPayment } from '../types';
 import { computeNetReceiptDue } from '../computeNetReceiptDue';
@@ -266,41 +267,6 @@ function CaseBadge({
       </span>
     </div>
   );
-}
-
-// ─── Slip upload helper ────────────────────────────────────────────────────────
-
-const MAX_SLIP_BYTES = 10 * 1024 * 1024; // 10 MB
-const SLIP_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
-
-function useSlipUpload() {
-  const mutation = useMutation({
-    mutationFn: async (file: File) => {
-      if (file.size > MAX_SLIP_BYTES) throw new Error('ไฟล์ใหญ่เกิน 10MB');
-      if (!SLIP_MIME_TYPES.includes(file.type)) {
-        throw new Error('รองรับ JPG, PNG, WebP, PDF เท่านั้น');
-      }
-      const { data: presign } = await api.post<{
-        uploadUrl: string;
-        method: string;
-        key: string;
-        publicUrl: string;
-      }>('/shop/upload/signed-url', {
-        kind: 'BANK_SLIP',
-        contentType: file.type,
-      });
-
-      const putRes = await fetch(presign.uploadUrl, {
-        method: presign.method,
-        body: file,
-        headers: { 'Content-Type': file.type },
-      });
-      if (!putRes.ok) throw new Error('อัปโหลดสลิปไม่สำเร็จ');
-
-      return presign.publicUrl;
-    },
-  });
-  return mutation;
 }
 
 // ─── Method options ───────────────────────────────────────────────────────────

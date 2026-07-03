@@ -134,12 +134,11 @@ jobs:
       # DB-backed money-invariant specs (vitest) — jest ignores these via
       # testPathIgnorePatterns (/cpa-templates/, installments/reschedule.service.spec.ts)
       # and test:e2e only matches e2e/*.e2e-spec.ts, so before this step they NEVER
-      # ran in any pipeline (#1328). Non-blocking (continue-on-error) for the first
-      # runs — flip to blocking once green.
+      # ran in any pipeline (#1328). BLOCKING since 2026-07-03: the two stale goldens
+      # the first runs caught were fixed (#1331, #1333) and the suite is green.
       # contract-cancellation.template.spec.ts is excluded: it is a jest-format
       # mocked unit spec (uses jest.* globals) that crashes vitest's collector.
-      - name: Run DB-backed money-invariant specs (vitest, non-blocking — #1328)
-        continue-on-error: true
+      - name: Run DB-backed money-invariant specs (vitest — #1328)
         timeout-minutes: 10
         working-directory: apps/api
         run: |

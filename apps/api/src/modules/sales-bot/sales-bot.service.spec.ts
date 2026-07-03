@@ -465,6 +465,61 @@ describe('SalesBotService', () => {
     });
   });
 
+  // Reviewer fix (#1337): calculate_installment's baht outputs (downAmountThb /
+  // monthlyThb / totalPaidThb) must be grounded too. Previously only priceThb
+  // was collected from the calc result, so a reply quoting the calculated
+  // monthly/down figures got HALLUCINATION_BLOCKED — steering the persona's
+  // "ดอกเบี้ยกี่%" objection answer into guard-blocked silence.
+  describe('calculate_installment grounding (#1337 reviewer fix)', () => {
+    it('reply quoting downAmountThb + monthlyThb + totalPaidThb from a calculate result passes the guard', async () => {
+      const chat = jest
+        .fn()
+        .mockResolvedValueOnce({
+          text: '',
+          toolCalls: [
+            {
+              id: 'tu_1',
+              name: 'calculate_installment',
+              input: { productId: 'p1', downPct: 20, tenureMonths: 12 },
+            },
+          ],
+          inputTokens: 100,
+          outputTokens: 10,
+          modelName: 'claude-sonnet-4-6',
+        } satisfies LlmChatResponse)
+        .mockResolvedValueOnce({
+          text: 'iPhone 15 128GB ดาวน์ 4,980 บาท ผ่อนเดือนละ 1,909 บาท 12 งวด รวมทั้งสัญญา 27,888 บาทค่ะ',
+          toolCalls: [],
+          inputTokens: 140,
+          outputTokens: 60,
+          modelName: 'claude-sonnet-4-6',
+        } satisfies LlmChatResponse);
+      const { svc, calcInstallment } = await build(chat);
+      calcInstallment.run.mockResolvedValue({
+        productName: 'iPhone 15 128GB',
+        priceThb: 24900,
+        downAmountThb: 4980,
+        financedThb: 19920,
+        tenureMonths: 12,
+        ratePct: 15,
+        monthlyThb: 1909,
+        totalPaidThb: 27888,
+      });
+
+      const result = await svc.generateReply({
+        text: 'iPhone 15 ผ่อนเดือนละเท่าไหร่คะ',
+        roomId: 'r1',
+        customerId: null,
+      });
+
+      expect(result.reply).toContain('4,980');
+      expect(result.reply).toContain('1,909');
+      expect(result.reply).toContain('27,888');
+      expect(result.reply).not.toContain('staff');
+      expect(result.confidence).toBe(0.95);
+    });
+  });
+
   it('records error usage row with accumulated tokens when provider throws mid-loop', async () => {
     const chat = jest
       .fn()

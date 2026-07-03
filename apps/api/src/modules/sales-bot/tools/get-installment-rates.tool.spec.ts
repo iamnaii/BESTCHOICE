@@ -82,9 +82,16 @@ describe('GetInstallmentRatesTool.run', () => {
     expect(r.templates[0].rate2.monthlyPrice).toBe(2222);
   });
 
-  it('matches when the customer query is a substring of the stored model (shorter query)', async () => {
+  it('matches a shorter model fragment ("15 pro max" ⊆ "iPhone 15 Pro Max")', async () => {
+    // Prisma `contains` semantics: the STORED model must contain the WHOLE
+    // query string. So the query must be a clean model fragment — chat noise
+    // like "มีไหมคะ" appended to the query breaks the match against a real
+    // DB. The real defense is the tool description: it instructs the LLM to
+    // pass ONLY the model name. This fixture stays realistic
+    // (model-fragment-only) so the test never encodes a chat-noise tolerance
+    // the DB layer doesn't have (our findMany mock ignores `where`).
     const tool = new GetInstallmentRatesTool(makePrisma([tpl({ model: 'iPhone 15 Pro Max' })]));
-    const r: any = await tool.run({ query: '15 pro max มีไหมคะ' });
+    const r: any = await tool.run({ query: '15 pro max' });
 
     expect(r.templates).toHaveLength(1);
     expect(r.templates[0].model).toBe('iPhone 15 Pro Max');

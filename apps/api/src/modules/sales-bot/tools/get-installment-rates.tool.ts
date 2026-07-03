@@ -6,11 +6,14 @@ export const GET_INSTALLMENT_RATES_TOOL = {
   description:
     "Look up the shop's REAL baht installment rates for a phone model from PricingTemplate — " +
     'the same table stickers.service.ts uses to print price stickers, so numbers here always ' +
-    "match what's printed in-store. Pass the customer's model mention (brand/model, optionally " +
-    'storage) as `query`; matching is fuzzy (insensitive contains). Returns up to 3 matches, each ' +
-    'with BOTH rate plans (rate1/rate2), and each plan carries its OWN down-payment, monthly baht ' +
-    'payment, and term — ALL BAHT, ready to quote directly (the two plans usually have different ' +
-    'monthly amounts, exactly like the two lines on the physical sticker). Use this whenever ' +
+    "match what's printed in-store. `query` MUST be ONLY the model name (brand/model, optionally " +
+    'storage) — e.g. "iPhone 15 128GB" — with NO other words: matching requires the stored model ' +
+    'to contain the query text, so greetings or extra words ("มีไหมคะ") make it match nothing. ' +
+    'Returns up to 3 matches, each with BOTH rate plans (rate1/rate2), and each plan carries its ' +
+    'OWN down-payment, monthly baht payment, and term — ALL BAHT, ready to quote directly (the ' +
+    'two plans usually have different monthly amounts, exactly like the two lines on the physical ' +
+    'sticker). Matches can be sibling models (asked "iPhone 15", got "iPhone 15 Pro Max") — ALWAYS ' +
+    'attribute quoted numbers to the returned brand+model+storage verbatim. Use this whenever ' +
     'search_products found nothing (or every hit has priceMissing) so the bot can still answer with ' +
     'real down/monthly/term numbers instead of going silent. No match → templates: [] (ask the ' +
     'customer for their budget instead of guessing).',
@@ -19,7 +22,9 @@ export const GET_INSTALLMENT_RATES_TOOL = {
     properties: {
       query: {
         type: 'string',
-        description: 'The model the customer mentioned, e.g. "iPhone 15 Pro Max 256GB"',
+        description:
+          'Model name ONLY, e.g. "iPhone 15 Pro Max 256GB" — no greetings/extra words ' +
+          '(stored model must contain this text)',
       },
     },
     required: ['query'],

@@ -289,15 +289,33 @@ export class SalesBotService {
     return 0.9;
   }
 
-  // Walk a tool result and collect every `priceThb` / `monthly` / `minPrice` /
-  // `maxPrice` / `downPayment` / `monthlyPrice` numeric field. The model can
-  // name any of these as a "price" in its reply, so all are valid grounding
-  // sources. `downPayment` + `monthlyPrice` were added for #1337 —
-  // get_installment_rates v2 now returns real baht (PricingTemplate) under
-  // those key names instead of percent-only figures, and grounding must
-  // cover them so a template-quoted baht figure passes while an invented one
-  // stays blocked. We accept Decimal/string/number and coerce to Number —
-  // Decimal serialised across the LlmProvider boundary.
+  // Grounded-price key names collected from tool results. The model can name
+  // any of these as a "price" in its reply, so all are valid grounding
+  // sources:
+  // - priceThb / monthly / minPrice / maxPrice — original set (search_products
+  //   et al.)
+  // - downPayment / monthlyPrice — #1337: get_installment_rates v2 returns
+  //   real baht (PricingTemplate) under these keys so a template-quoted baht
+  //   figure passes while an invented one stays blocked
+  // - downAmountThb / monthlyThb / totalPaidThb — #1337 reviewer fix:
+  //   calculate_installment's computed baht outputs; without these, quoting
+  //   the calculated monthly/down/total got HALLUCINATION_BLOCKED (only
+  //   priceThb was collected from the calc result)
+  private static readonly GROUNDED_PRICE_KEYS = new Set([
+    'priceThb',
+    'monthly',
+    'minPrice',
+    'maxPrice',
+    'downPayment',
+    'monthlyPrice',
+    'downAmountThb',
+    'monthlyThb',
+    'totalPaidThb',
+  ]);
+
+  // Walk a tool result and collect every GROUNDED_PRICE_KEYS numeric field.
+  // We accept Decimal/string/number and coerce to Number — Decimal serialised
+  // across the LlmProvider boundary.
   private collectGroundedPrices(value: unknown, into: Set<number>): void {
     if (value == null) return;
     if (Array.isArray(value)) {
@@ -306,15 +324,7 @@ export class SalesBotService {
     }
     if (typeof value === 'object') {
       for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-        if (
-          (k === 'priceThb' ||
-            k === 'monthly' ||
-            k === 'minPrice' ||
-            k === 'maxPrice' ||
-            k === 'downPayment' ||
-            k === 'monthlyPrice') &&
-          v != null
-        ) {
+        if (SalesBotService.GROUNDED_PRICE_KEYS.has(k) && v != null) {
           const n = Number(v);
           if (Number.isFinite(n) && n > 0) into.add(n);
         }

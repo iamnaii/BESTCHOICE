@@ -340,6 +340,10 @@ describe('SalesBotService', () => {
   // groundable, while any OTHER baht figure the model invents is still
   // HALLUCINATION_BLOCKED. These two specs pin that contract both ways.
   describe('get_installment_rates grounding (#1337 — baht from PricingTemplate)', () => {
+    // Sticker-exact shape (#1337 follow-up): each rate carries its OWN
+    // monthlyPrice — rate1 = installmentBestchoicePrice, rate2 =
+    // installmentFinancePrice (stickers.service.ts:175/:185). BOTH monthlies
+    // must be groundable so the bot can quote the sticker's two lines.
     const toolResult = {
       templates: [
         {
@@ -347,14 +351,13 @@ describe('SalesBotService', () => {
           model: 'iPhone 17 Pro Max',
           storage: '256GB',
           hasWarranty: false,
-          monthlyPrice: 2490,
-          rate1: { downPayment: 4900, termMonths: 24 },
-          rate2: { downPayment: 1900, termMonths: 12 },
+          rate1: { downPayment: 4900, monthlyPrice: 2490, termMonths: 24 },
+          rate2: { downPayment: 1900, monthlyPrice: 2690, termMonths: 12 },
         },
       ],
     };
 
-    it('reply quoting the EXACT template baht figures (down/monthly) passes the guard, auto-sends, confidence 0.95', async () => {
+    it('reply quoting the EXACT template baht figures (both downs AND both monthlies) passes the guard, auto-sends, confidence 0.95', async () => {
       const chat = jest
         .fn()
         .mockResolvedValueOnce({
@@ -368,8 +371,8 @@ describe('SalesBotService', () => {
         } satisfies LlmChatResponse)
         .mockResolvedValueOnce({
           text:
-            'iPhone 17 Pro Max ดาวน์เริ่ม 4,900 บาท ผ่อนเดือนละ 2,490 บาท 24 งวดค่ะ ' +
-            'หรือดาวน์ 1,900 บาท ผ่อน 12 งวดก็ได้นะคะ 😊',
+            'iPhone 17 Pro Max ดาวน์ 4,900 บาท ผ่อนเดือนละ 2,490 บาท 24 งวดค่ะ ' +
+            'หรือดาวน์เบา ๆ 1,900 บาท ผ่อนเดือนละ 2,690 บาท 12 งวดก็ได้นะคะ 😊',
           toolCalls: [],
           inputTokens: 140,
           outputTokens: 60,
@@ -388,6 +391,8 @@ describe('SalesBotService', () => {
       expect(result.toolsUsed).toEqual(['get_installment_rates']);
       expect(result.reply).toContain('4,900');
       expect(result.reply).toContain('2,490');
+      expect(result.reply).toContain('1,900');
+      expect(result.reply).toContain('2,690');
       expect(result.reply).not.toContain('staff');
       expect(result.confidence).toBe(0.95);
     });

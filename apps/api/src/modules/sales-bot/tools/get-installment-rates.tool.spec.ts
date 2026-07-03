@@ -36,7 +36,7 @@ const tpl = (over: Record<string, unknown> = {}) => ({
   hasWarranty: false,
   cashPrice: new Prisma.Decimal('42900'),
   installmentBestchoicePrice: new Prisma.Decimal('2490'),
-  installmentFinancePrice: new Prisma.Decimal('2390'),
+  installmentFinancePrice: new Prisma.Decimal('2690'),
   rate1DownPayment: new Prisma.Decimal('4900'),
   rate1TermMonths: 24,
   rate2DownPayment: new Prisma.Decimal('1900'),
@@ -45,21 +45,41 @@ const tpl = (over: Record<string, unknown> = {}) => ({
 });
 
 describe('GetInstallmentRatesTool.run', () => {
-  it('fuzzy-matches by model text (insensitive contains) and returns baht rates', async () => {
+  it('fuzzy-matches by model text (insensitive contains) and returns per-rate baht quotes (sticker-exact shape)', async () => {
     const tool = new GetInstallmentRatesTool(makePrisma([tpl()]));
     const r: any = await tool.run({ query: 'iphone 15 pro max' });
 
+    // Sticker-exact parity with StickersService.composeOne(): rate1 monthly
+    // = installmentBestchoicePrice (stickers.service.ts:175), rate2 monthly
+    // = installmentFinancePrice (stickers.service.ts:185). Each rate carries
+    // its OWN monthlyPrice — the shop's physical stickers price them
+    // differently.
     expect(r.templates).toEqual([
       {
         brand: 'Apple',
         model: 'iPhone 15 Pro Max',
         storage: '256GB',
         hasWarranty: false,
-        monthlyPrice: 2490,
-        rate1: { downPayment: 4900, termMonths: 24 },
-        rate2: { downPayment: 1900, termMonths: 12 },
+        rate1: { downPayment: 4900, monthlyPrice: 2490, termMonths: 24 },
+        rate2: { downPayment: 1900, monthlyPrice: 2690, termMonths: 12 },
       },
     ]);
+  });
+
+  it('rate2 monthly reads installmentFinancePrice, NOT installmentBestchoicePrice (sticker parity — stickers.service.ts:185)', async () => {
+    const tool = new GetInstallmentRatesTool(
+      makePrisma([
+        tpl({
+          installmentBestchoicePrice: new Prisma.Decimal('1111'),
+          installmentFinancePrice: new Prisma.Decimal('2222'),
+        }),
+      ]),
+    );
+    const r: any = await tool.run({ query: 'iPhone 15 Pro Max' });
+
+    // FAILS if rate2 reads the bestchoice column (would be 1111).
+    expect(r.templates[0].rate1.monthlyPrice).toBe(1111);
+    expect(r.templates[0].rate2.monthlyPrice).toBe(2222);
   });
 
   it('matches when the customer query is a substring of the stored model (shorter query)', async () => {
@@ -91,8 +111,10 @@ describe('GetInstallmentRatesTool.run', () => {
     );
     const r: any = await tool.run({ query: 'iPhone 15 Pro Max' });
 
-    expect(r.templates[0].rate1).toEqual({ downPayment: 3900, termMonths: 24 });
-    expect(r.templates[0].rate2).toEqual({ downPayment: 1500, termMonths: 12 });
+    // Defaults fill down/term only — monthlyPrice always comes from the
+    // template row itself (bestchoice for rate1, finance for rate2).
+    expect(r.templates[0].rate1).toEqual({ downPayment: 3900, monthlyPrice: 2490, termMonths: 24 });
+    expect(r.templates[0].rate2).toEqual({ downPayment: 1500, monthlyPrice: 2690, termMonths: 12 });
   });
 
   it('uses hard-coded fallback defaults when SystemConfig has no sticker.* rows at all', async () => {
@@ -109,8 +131,8 @@ describe('GetInstallmentRatesTool.run', () => {
     const r: any = await tool.run({ query: 'iPhone 15 Pro Max' });
 
     // Mirrors StickersService.loadDefaults() hard fallback (rate1Term=24, rate2Term=12, downs=0).
-    expect(r.templates[0].rate1).toEqual({ downPayment: 0, termMonths: 24 });
-    expect(r.templates[0].rate2).toEqual({ downPayment: 0, termMonths: 12 });
+    expect(r.templates[0].rate1).toEqual({ downPayment: 0, monthlyPrice: 2490, termMonths: 24 });
+    expect(r.templates[0].rate2).toEqual({ downPayment: 0, monthlyPrice: 2690, termMonths: 12 });
   });
 
   it('storage refine: narrows to the matching storage when the query mentions one and multiple sizes matched', async () => {
@@ -125,7 +147,7 @@ describe('GetInstallmentRatesTool.run', () => {
 
     expect(r.templates).toHaveLength(1);
     expect(r.templates[0].storage).toBe('256GB');
-    expect(r.templates[0].monthlyPrice).toBe(2490);
+    expect(r.templates[0].rate1.monthlyPrice).toBe(2490);
   });
 
   it('storage refine is a narrowing hint, not a filter — falls back to all candidates when no row matches the mentioned storage', async () => {

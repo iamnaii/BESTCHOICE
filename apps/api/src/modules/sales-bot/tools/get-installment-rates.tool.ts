@@ -8,10 +8,12 @@ export const GET_INSTALLMENT_RATES_TOOL = {
     'the same table stickers.service.ts uses to print price stickers, so numbers here always ' +
     "match what's printed in-store. Pass the customer's model mention (brand/model, optionally " +
     'storage) as `query`; matching is fuzzy (insensitive contains). Returns up to 3 matches, each ' +
-    'with the monthly baht payment and the down-payment + term for both rate plans (rate1/rate2) — ' +
-    'ALL BAHT, ready to quote directly. Use this whenever search_products found nothing (or every ' +
-    'hit has priceMissing) so the bot can still answer with real down/monthly/term numbers instead ' +
-    'of going silent. No match → templates: [] (ask the customer for their budget instead of guessing).',
+    'with BOTH rate plans (rate1/rate2), and each plan carries its OWN down-payment, monthly baht ' +
+    'payment, and term — ALL BAHT, ready to quote directly (the two plans usually have different ' +
+    'monthly amounts, exactly like the two lines on the physical sticker). Use this whenever ' +
+    'search_products found nothing (or every hit has priceMissing) so the bot can still answer with ' +
+    'real down/monthly/term numbers instead of going silent. No match → templates: [] (ask the ' +
+    'customer for their budget instead of guessing).',
   input_schema: {
     type: 'object',
     properties: {
@@ -24,8 +26,10 @@ export const GET_INSTALLMENT_RATES_TOOL = {
   },
 };
 
+/** Same shape as StickerRate (stickers.service.ts) — sticker-exact parity. */
 export interface InstallmentRateOption {
   downPayment: number;
+  monthlyPrice: number;
   termMonths: number;
 }
 
@@ -34,9 +38,6 @@ export interface PricingTemplateRateMatch {
   model: string;
   storage: string;
   hasWarranty: boolean;
-  /** Monthly baht payment — PricingTemplate.installmentBestchoicePrice, the SAME field
-   *  stickers.service.ts prints on the in-store price sticker. */
-  monthlyPrice: number;
   rate1: InstallmentRateOption;
   rate2: InstallmentRateOption;
 }
@@ -58,6 +59,7 @@ interface PricingTemplateRow {
   storage: string;
   hasWarranty: boolean;
   installmentBestchoicePrice: unknown;
+  installmentFinancePrice: unknown;
   rate1DownPayment: unknown;
   rate1TermMonths: number | null;
   rate2DownPayment: unknown;
@@ -126,18 +128,22 @@ export class GetInstallmentRatesTool {
     };
   }
 
+  // Sticker-exact parity with StickersService.composeOne(): rate1 monthly =
+  // installmentBestchoicePrice (stickers.service.ts:175), rate2 monthly =
+  // installmentFinancePrice (stickers.service.ts:185). The bot must quote the
+  // same two lines customers see on the physical in-store sticker (#1337).
   private toMatch(t: PricingTemplateRow, defaults: RateDefaults): PricingTemplateRateMatch {
     return {
       brand: t.brand,
       model: t.model,
       storage: t.storage,
       hasWarranty: t.hasWarranty,
-      monthlyPrice: Number(t.installmentBestchoicePrice),
       rate1: {
         downPayment:
           t.rate1DownPayment !== null && t.rate1DownPayment !== undefined
             ? Number(t.rate1DownPayment)
             : defaults.rate1Down,
+        monthlyPrice: Number(t.installmentBestchoicePrice),
         termMonths: t.rate1TermMonths ?? defaults.rate1Term,
       },
       rate2: {
@@ -145,6 +151,7 @@ export class GetInstallmentRatesTool {
           t.rate2DownPayment !== null && t.rate2DownPayment !== undefined
             ? Number(t.rate2DownPayment)
             : defaults.rate2Down,
+        monthlyPrice: Number(t.installmentFinancePrice),
         termMonths: t.rate2TermMonths ?? defaults.rate2Term,
       },
     };

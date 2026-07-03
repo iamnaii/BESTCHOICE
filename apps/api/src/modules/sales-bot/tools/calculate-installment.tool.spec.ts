@@ -110,6 +110,28 @@ describe('CalculateInstallmentTool.run', () => {
     });
   });
 
+  // Reviewer fix (#1335 re-review): when USE_NEW_RATE_LOOKUP=true and the
+  // tenure falls INSIDE the config's min/max range but no exact-month
+  // InterestConfigRate row exists (e.g. 9 months in a 3-12 range seeded only
+  // at 3/6/10/12), getRateForMonths throws NotFoundException. If that
+  // propagates, runTool rethrows and the WHOLE bot turn dies silently — the
+  // persona's calc-error → handoff flow only handles returned {error}
+  // objects, not exceptions. The tool must degrade to an error result.
+  it('returns rate_not_configured (no throw) when per-term row is missing under USE_NEW_RATE_LOOKUP (#1335)', async () => {
+    process.env.USE_NEW_RATE_LOOKUP = 'true';
+    const prisma = makePrisma(productAt('10000'), cfgAt('0.30')) as unknown as {
+      interestConfigRate: { findUnique: jest.Mock };
+    };
+    // Config matches the 9-month tenure range, but no InterestConfigRate row
+    // for months=9 → getRateForMonths throws NotFoundException.
+    prisma.interestConfigRate.findUnique.mockResolvedValue(null);
+    const tool = new CalculateInstallmentTool(prisma as unknown as PrismaService);
+
+    await expect(
+      tool.run({ productId: 'p1', downPct: 20, tenureMonths: 9 }),
+    ).resolves.toEqual({ error: 'rate_not_configured' });
+  });
+
   it('uses rate 0 when no active InterestConfig matches the tenure', async () => {
     const tool = new CalculateInstallmentTool(makePrisma(productAt('10000'), null));
     const r = await tool.run({ productId: 'p1', downPct: 20, tenureMonths: 10 });
@@ -145,8 +167,8 @@ describe('CalculateInstallmentTool.run', () => {
  * isolate the rate-resolution semantics under test (calculate_installment
  * has no commission/VAT fields — see result key contract in #1338); with
  * both zeroed, `calcBcInstallment`'s subtotal/totalWithVat collapse to
- * exactly financed+interest, so the two services' monthly figures must match
- * bit-for-bit once the rate math agrees.
+ * financed+interest, so the two services' monthly figures ตรงกัน
+ * (±1 บาทจาก rounding) once the rate math agrees.
  */
 describe('CalculateInstallmentTool.run vs InstallmentPreviewService (#1335 parity)', () => {
   it('monthlyThb matches installment-preview.service.preview() monthlyPayment for identical inputs', async () => {

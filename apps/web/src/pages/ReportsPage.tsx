@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { Download } from 'lucide-react';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { DateRangeChips } from '@/components/ui/DateRangeChips';
+import { toLocalDateString } from '@/lib/date';
 import {
   BarChart,
   Bar,
@@ -42,7 +43,7 @@ const reportTabs: { key: ReportType; label: string }[] = [
 export default function ReportsPage() {
   useDocumentTitle('รายงาน');
   const [activeTab, setActiveTab] = useState<ReportType>('aging');
-  const [dateFilter, setDateFilter] = useState(new Date().toISOString().slice(0, 10));
+  const [dateFilter, setDateFilter] = useState(toLocalDateString());
 
   const exportMutation = useMutation({
     mutationFn: async () => {
@@ -50,7 +51,7 @@ export default function ReportsPage() {
       const url = window.URL.createObjectURL(new Blob([data]));
       const a = document.createElement('a');
       a.href = url;
-      a.download = `contracts-export-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.download = `contracts-export-${toLocalDateString()}.csv`;
       a.click();
       window.URL.revokeObjectURL(url);
     },
@@ -458,14 +459,11 @@ function StockReport() {
 }
 
 function EntityProfitReport() {
-  // Local-date formatting (NOT toISOString — that shifts a BKK local-midnight
-  // date back one UTC day). Default = full current month, matching the
-  // DateRangeChips "เดือนนี้" preset (owner 2026-07-02).
-  const toLocalIso = (d: Date) =>
-    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  // Default = full current month, matching the DateRangeChips "เดือนนี้"
+  // preset (owner 2026-07-02). Uses the shared local-date helper (@/lib/date).
   const today = new Date();
-  const firstDay = toLocalIso(new Date(today.getFullYear(), today.getMonth(), 1));
-  const lastDay = toLocalIso(new Date(today.getFullYear(), today.getMonth() + 1, 0));
+  const firstDay = toLocalDateString(new Date(today.getFullYear(), today.getMonth(), 1));
+  const lastDay = toLocalDateString(new Date(today.getFullYear(), today.getMonth() + 1, 0));
   const [startDate, setStartDate] = useState(firstDay);
   const [endDate, setEndDate] = useState(lastDay);
   const [entity, setEntity] = useState<string>('ALL');

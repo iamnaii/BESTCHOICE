@@ -49,6 +49,17 @@ function toDate(input: DateInput): Date | null {
 const pad = (n: number) => n.toString().padStart(2, '0');
 
 /**
+ * YYYY-MM-DD of the given moment in LOCAL time — e.g. "2026-07-03".
+ *
+ * Use this (never `new Date().toISOString().split('T')[0]`) for date-input
+ * defaults: toISOString() returns the UTC calendar day, which before
+ * 07:00 Asia/Bangkok is still YESTERDAY (the PR #1327 bug class).
+ */
+export function toLocalDateString(d: Date = new Date()): string {
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/**
  * DD/MM/YYYY (พ.ศ.) — e.g. "08/04/2569"
  */
 export function formatThaiDate(input: DateInput): string {

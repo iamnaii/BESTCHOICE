@@ -131,6 +131,27 @@ jobs:
           JWT_REFRESH_EXPIRATION: 7d
           NODE_ENV: test
 
+      # DB-backed money-invariant specs (vitest) — jest ignores these via
+      # testPathIgnorePatterns (/cpa-templates/, installments/reschedule.service.spec.ts)
+      # and test:e2e only matches e2e/*.e2e-spec.ts, so before this step they NEVER
+      # ran in any pipeline (#1328). Non-blocking (continue-on-error) for the first
+      # runs — flip to blocking once green.
+      # contract-cancellation.template.spec.ts is excluded: it is a jest-format
+      # mocked unit spec (uses jest.* globals) that crashes vitest's collector.
+      - name: Run DB-backed money-invariant specs (vitest, non-blocking — #1328)
+        continue-on-error: true
+        timeout-minutes: 10
+        working-directory: apps/api
+        run: |
+          FILES=$(ls src/modules/journal/cpa-templates/*.spec.ts | grep -v contract-cancellation.template.spec.ts)
+          npx vitest run --no-file-parallelism $FILES \
+            src/modules/installments/reschedule.service.spec.ts
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/test_db?schema=public
+          DATABASE_URL_FINANCE: postgresql://test:test@localhost:5433/test_finance_db?schema=public
+          JWT_SECRET: test-secret
+          NODE_ENV: test
+
       - name: Build API
         run: npm run build --workspace=apps/api
 

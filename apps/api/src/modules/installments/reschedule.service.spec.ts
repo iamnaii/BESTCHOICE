@@ -40,6 +40,14 @@ describe('RescheduleService', () => {
 
   it('shifts due_date for installments >= fromInstallmentNo (amountDue untouched — fee is an advance)', async () => {
     const c = await seedStandard17k12m(prisma);
+    // Capture the seeded amountDue BEFORE the reschedule — the invariant under
+    // test is "unchanged", not a specific constant. (The seed writes
+    // principal + interest + VAT = 833.33 + 500.00 + 99.17 = 1,432.50, which is
+    // NOT monthlyPayment 1,515.84 — commission is not part of amountDue.)
+    const inst12Before = await prisma.installmentSchedule.findFirstOrThrow({
+      where: { contractId: c.id, installmentNo: 12 },
+    });
+    const amountDueBefore = new Decimal((inst12Before.amountDue as any).toString());
     const svc = new RescheduleService(prisma as any);
     const result = await svc.execute({
       contractId: c.id,
@@ -71,9 +79,11 @@ describe('RescheduleService', () => {
     // the old write was to a field no billing path reads, so the fee's 21-1103 credit
     // was never relieved. The CPA case-6a prepayment now flows through
     // Contract.advanceBalance (RescheduleCollectService) instead; the schedule row
-    // stays at the full per-installment amount.
+    // stays at whatever it was seeded with. (2026-07-03: was a hardcoded '1515.84'
+    // golden written without a DB run — first-ever CI execution, PR #1330, showed the
+    // seed actually writes 1,432.50. Assert the true invariant: before == after.)
     const inst12AmountDue = new Decimal((inst12.amountDue as any).toString());
-    expect(inst12AmountDue.toFixed(2)).toBe('1515.84');
+    expect(inst12AmountDue.toFixed(2)).toBe(amountDueBefore.toFixed(2));
 
     // Installments 5-12 should all be shifted
     const allShifted = await prisma.installmentSchedule.findMany({

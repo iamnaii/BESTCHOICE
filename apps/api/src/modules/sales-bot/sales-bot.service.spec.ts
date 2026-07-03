@@ -5,6 +5,7 @@ import { CalculateInstallmentTool } from './tools/calculate-installment.tool';
 import { ListPromotionsTool } from './tools/list-promotions.tool';
 import { HandoffToHumanTool } from './tools/handoff-to-human.tool';
 import { CaptureLeadTool } from './tools/capture-lead.tool';
+import { GetInstallmentRatesTool } from './tools/get-installment-rates.tool';
 import { LlmProviderRegistry } from './providers/llm-provider.registry';
 import { PersonaService } from '../staff-chat/services/persona.service';
 import { AiUsageService } from '../ai-usage/ai-usage.service';
@@ -25,6 +26,7 @@ describe('SalesBotService', () => {
     const listPromotions = { run: jest.fn() };
     const handoff = { run: jest.fn() };
     const captureLead = { run: jest.fn() };
+    const getInstallmentRates = { run: jest.fn() };
     const persona = {
       getBase: jest.fn().mockResolvedValue('test-base'),
       getBotExtras: jest.fn().mockResolvedValue('-extras'),
@@ -42,6 +44,7 @@ describe('SalesBotService', () => {
         { provide: ListPromotionsTool, useValue: listPromotions },
         { provide: HandoffToHumanTool, useValue: handoff },
         { provide: CaptureLeadTool, useValue: captureLead },
+        { provide: GetInstallmentRatesTool, useValue: getInstallmentRates },
         { provide: PersonaService, useValue: persona },
         { provide: AiUsageService, useValue: aiUsage },
       ],
@@ -55,6 +58,7 @@ describe('SalesBotService', () => {
       listPromotions,
       handoff,
       captureLead,
+      getInstallmentRates,
       aiUsage,
     };
   }
@@ -208,6 +212,7 @@ describe('SalesBotService', () => {
       {} as any,
       {} as any,
       {} as any,
+      {} as any, // GetInstallmentRatesTool — unused by the private estimateConfidence path
       {} as any, // PersonaService — unused by the private estimateConfidence path
       {} as any, // AiUsageService
     );
@@ -324,6 +329,92 @@ describe('SalesBotService', () => {
     });
     expect(result.reply).toContain('สวัสดี');
     expect(result.confidence).toBeGreaterThanOrEqual(0.8);
+  });
+
+  // Issue #1332 — when search_products finds nothing, the bot should still
+  // answer with real installment rates (get_installment_rates) instead of
+  // going silent/handoff-only. These two specs pin the grounding-guard
+  // contract for that new tool: (a) quoting its example number passes the
+  // guard and auto-sends at high confidence, (b) inventing a DIFFERENT baht
+  // number the tool never returned still gets HALLUCINATION_BLOCKED — the
+  // guard regression the owner explicitly wants covered.
+  describe('get_installment_rates grounding (#1332)', () => {
+    const toolResult = {
+      activeTerms: [
+        { tenureMonths: 6, ratePct: 15 },
+        { tenureMonths: 12, ratePct: 30 },
+      ],
+      minDownPaymentPct: 20,
+      example: { priceThb: 10000, downPct: 20, tenureMonths: 12, monthly: 867 },
+    };
+
+    it('reply quoting the tool example (867 บาท) passes the guard, auto-sends, confidence 0.95', async () => {
+      const chat = jest
+        .fn()
+        .mockResolvedValueOnce({
+          text: '',
+          toolCalls: [{ id: 'tu_1', name: 'get_installment_rates', input: {} }],
+          inputTokens: 100,
+          outputTokens: 10,
+          modelName: 'claude-sonnet-4-6',
+        } satisfies LlmChatResponse)
+        .mockResolvedValueOnce({
+          text:
+            'ตอนนี้รุ่นนี้ยังไม่มีในระบบค่ะ 🙏 เรทผ่อนมาตรฐานคือดอกเบี้ย 30% ดาวน์ขั้นต่ำ 20% ' +
+            'ตัวอย่างเครื่องราคา 10,000 บาท ผ่อน 12 เดือน ตกเดือนละประมาณ 867 บาทค่ะ ' +
+            'ทีมงานจะเช็คราคารุ่นที่สนใจให้นะคะ บอกงบมาได้เลยค่ะ',
+          toolCalls: [],
+          inputTokens: 140,
+          outputTokens: 60,
+          modelName: 'claude-sonnet-4-6',
+        } satisfies LlmChatResponse);
+      const { svc, getInstallmentRates } = await build(chat);
+      getInstallmentRates.run.mockResolvedValue(toolResult);
+
+      const result = await svc.generateReply({
+        text: 'iPhone 17 Pro Max มีไหมคะ',
+        roomId: 'r1',
+        customerId: null,
+      });
+
+      expect(getInstallmentRates.run).toHaveBeenCalled();
+      expect(result.toolsUsed).toEqual(['get_installment_rates']);
+      expect(result.reply).toContain('867');
+      expect(result.reply).not.toContain('staff');
+      expect(result.confidence).toBe(0.95);
+    });
+
+    it('reply inventing a baht amount NOT in the tool result still gets HALLUCINATION_BLOCKED', async () => {
+      const chat = jest
+        .fn()
+        .mockResolvedValueOnce({
+          text: '',
+          toolCalls: [{ id: 'tu_1', name: 'get_installment_rates', input: {} }],
+          inputTokens: 100,
+          outputTokens: 10,
+          modelName: 'claude-sonnet-4-6',
+        } satisfies LlmChatResponse)
+        .mockResolvedValueOnce({
+          // Invented figure — the tool only ever returned 10,000 / 867.
+          text: 'ตัวอย่างผ่อนเดือนละ 12,345 บาทค่ะ',
+          toolCalls: [],
+          inputTokens: 120,
+          outputTokens: 20,
+          modelName: 'claude-sonnet-4-6',
+        } satisfies LlmChatResponse);
+      const { svc, getInstallmentRates } = await build(chat);
+      getInstallmentRates.run.mockResolvedValue(toolResult);
+
+      const result = await svc.generateReply({
+        text: 'iPhone 17 Pro Max มีไหมคะ',
+        roomId: 'r1',
+        customerId: null,
+      });
+
+      expect(result.reply).not.toContain('12,345');
+      expect(result.reply).toContain('staff');
+      expect(result.confidence).toBeLessThanOrEqual(0.3);
+    });
   });
 
   it('records error usage row with accumulated tokens when provider throws mid-loop', async () => {

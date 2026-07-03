@@ -9,6 +9,10 @@ import {
 import { ListPromotionsTool, LIST_PROMOTIONS_TOOL } from './tools/list-promotions.tool';
 import { HandoffToHumanTool, HANDOFF_TO_HUMAN_TOOL } from './tools/handoff-to-human.tool';
 import { CaptureLeadTool, CAPTURE_LEAD_TOOL } from './tools/capture-lead.tool';
+import {
+  GetInstallmentRatesTool,
+  GET_INSTALLMENT_RATES_TOOL,
+} from './tools/get-installment-rates.tool';
 import { LlmProviderRegistry } from './providers/llm-provider.registry';
 import {
   LlmChatMessage,
@@ -66,6 +70,7 @@ export class SalesBotService {
     private readonly listPromotions: ListPromotionsTool,
     private readonly handoff: HandoffToHumanTool,
     private readonly captureLead: CaptureLeadTool,
+    private readonly getInstallmentRates: GetInstallmentRatesTool,
     private readonly persona: PersonaService,
     private readonly aiUsage: AiUsageService,
   ) {}
@@ -102,6 +107,7 @@ export class SalesBotService {
       LIST_PROMOTIONS_TOOL,
       HANDOFF_TO_HUMAN_TOOL,
       CAPTURE_LEAD_TOOL,
+      GET_INSTALLMENT_RATES_TOOL,
     ].map(adaptTool);
 
     const messages: LlmChatMessage[] = [
@@ -260,6 +266,8 @@ export class SalesBotService {
           downAmount: Number(input.downAmount ?? 0),
           roomId,
         });
+      case 'get_installment_rates':
+        return this.getInstallmentRates.run(input);
       default:
         return { error: 'unknown_tool' };
     }

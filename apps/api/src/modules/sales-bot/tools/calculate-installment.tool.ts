@@ -1,10 +1,13 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { getRateForMonths } from '../../../utils/get-rate-for-months.util';
 
 export const CALCULATE_INSTALLMENT_TOOL = {
   name: 'calculate_installment',
   description:
-    'Calculate monthly installment for a product. Down payment percent defaults to 20%. Tenure in months.',
+    'Calculate monthly installment for a product. Down payment percent defaults to 20%. Tenure in months. ' +
+    'Output เป็นยอดประมาณการเบื้องต้น — ยอดผ่อนจริงตามสัญญาอาจสูงกว่านี้ (ยังไม่รวมภาษี/ค่าธรรมเนียม) ' +
+    'so frame quotes to the customer as an initial estimate, not the final contract amount.',
   input_schema: {
     type: 'object',
     properties: {
@@ -41,10 +44,24 @@ export class CalculateInstallmentTool {
     const price = Number(sellingPrice);
     const downAmount = Math.round(price * (downPct / 100));
     const financed = price - downAmount;
-    const ratePct = await this.loadRatePct(input.tenureMonths);
-    // Flat-rate interest over the full tenure (consistent with InterestConfig
-    // semantics: annual flat rate × fraction of a year spanned by tenure).
-    const totalInterest = Math.round(financed * (ratePct / 100) * (input.tenureMonths / 12));
+    const rateFraction = await this.loadRateFraction(input.tenureMonths);
+    // Reviewer fix (#1335 re-review): null = a config matched the tenure
+    // range but getRateForMonths found no per-term row (NotFoundException
+    // under USE_NEW_RATE_LOOKUP=true, e.g. 9 months in a 3-12 range seeded
+    // only at 3/6/10/12). Return an {error} result — the persona's
+    // calc-error → handoff flow handles those — instead of letting the
+    // exception propagate and kill the whole bot turn with no handoff.
+    if (rateFraction === null) return { error: 'rate_not_configured' };
+    // TOTAL-contract rate for this term (a fraction, e.g. 1.0 = 100% of
+    // financed over the WHOLE tenure) — NOT annual. Per get-rate-for-months.util.ts /
+    // interest-config.service.ts:100-105 / installment-preview.service.ts:75-80:
+    // InterestConfigRate.ratePct (per-term row) is already the TOTAL rate for
+    // that term; the legacy InterestConfig.interestRate is PER-MONTH, so
+    // total = rate × months (no ÷12). #1335: this tool used to divide by
+    // tenure/12, treating the per-month rate as if it were annual — quoting
+    // installments far below what installment-preview.service (the contract
+    // engine's own preview) computes for the identical input.
+    const totalInterest = Math.round(financed * rateFraction);
     const totalFinanced = financed + totalInterest;
     const monthly = Math.round(totalFinanced / input.tenureMonths);
 
@@ -54,13 +71,25 @@ export class CalculateInstallmentTool {
       downAmountThb: downAmount,
       financedThb: financed,
       tenureMonths: input.tenureMonths,
-      ratePct,
+      ratePct: Math.round(rateFraction * 10000) / 100, // TOTAL rate for the term, as %
       monthlyThb: monthly,
       totalPaidThb: downAmount + totalFinanced,
     };
   }
 
-  private async loadRatePct(tenure: number): Promise<number> {
+  /**
+   * Resolves the TOTAL-contract rate (fraction) for `tenure` months using the
+   * same resolution the contract engine uses (sale-writer.service.ts,
+   * contract-lifecycle.service.ts): find the matching InterestConfig row,
+   * then delegate to getRateForMonths — which reads the per-term
+   * InterestConfigRate row when `USE_NEW_RATE_LOOKUP=true`, else falls back
+   * to legacy `interestRate × months`. Returns 0 when no config matches the
+   * tenure (kept from the original behaviour). Returns null when a config
+   * matched but the per-term rate row is missing (getRateForMonths throws
+   * NotFoundException) — the caller turns that into a graceful
+   * `rate_not_configured` error result rather than crashing the bot turn.
+   */
+  private async loadRateFraction(tenure: number): Promise<number | null> {
     // InterestConfig schema uses min/maxInstallmentMonths + interestRate
     // (a decimal fraction, e.g. 0.15 = 15%) and `isActive` (not `active`).
     const cfg = await this.prisma.interestConfig.findFirst({
@@ -73,7 +102,17 @@ export class CalculateInstallmentTool {
       orderBy: { createdAt: 'desc' },
     });
     if (!cfg) return 0;
-    // interestRate is stored as a fraction (0.15) — convert to pct for the UI.
-    return Number(cfg.interestRate) * 100;
+    try {
+      const rate = await getRateForMonths(this.prisma, cfg.id, tenure);
+      return Number(rate);
+    } catch (e) {
+      if (e instanceof NotFoundException) {
+        this.logger.warn(
+          `No per-term rate for ${tenure} months (configId=${cfg.id}) — returning rate_not_configured`,
+        );
+        return null;
+      }
+      throw e;
+    }
   }
 }

@@ -1,5 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { validate } from 'class-validator';
+import { plainToInstance } from 'class-transformer';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
@@ -14,6 +16,7 @@ describe('PaymentsController', () => {
   let controller: PaymentsController;
   let _prisma: unknown;
   let paymentsService: PaymentsService;
+  let paySolutionsService: PaySolutionsService;
   let rescheduleService: RescheduleService;
   let rescheduleCollectService: RescheduleCollectService;
 
@@ -31,6 +34,14 @@ describe('PaymentsController', () => {
 
     const mockPaymentsService = {
       validateBranchAccess: jest.fn().mockImplementation(async (contractId: string, user: { role: string; branchId: string | null }) => {
+        if (user.role === 'OWNER' || user.role === 'FINANCE_MANAGER' || user.role === 'ACCOUNTANT') return;
+        if (mockContract.branchId !== user.branchId) {
+          throw new ForbiddenException('ไม่สามารถบันทึกชำระเงินข้ามสาขาได้');
+        }
+      }),
+      // Payment-keyed routes (partial-qr / reschedule-qr) resolve the contract from
+      // the payment — same branch rule as validateBranchAccess.
+      validateBranchAccessByPayment: jest.fn().mockImplementation(async (paymentId: string, user: { role: string; branchId: string | null }) => {
         if (user.role === 'OWNER' || user.role === 'FINANCE_MANAGER' || user.role === 'ACCOUNTANT') return;
         if (mockContract.branchId !== user.branchId) {
           throw new ForbiddenException('ไม่สามารถบันทึกชำระเงินข้ามสาขาได้');
@@ -82,7 +93,21 @@ describe('PaymentsController', () => {
       providers: [
         { provide: PaymentsService, useValue: mockPaymentsService },
         { provide: PrismaService, useValue: mockPrisma },
-        { provide: PaySolutionsService, useValue: { createPartialPaymentQR: jest.fn(), createRescheduleQR: jest.fn() } },
+        {
+          provide: PaySolutionsService,
+          useValue: {
+            createPartialPaymentQR: jest.fn(),
+            createRescheduleQR: jest.fn().mockResolvedValue({
+              partialPaymentLinkId: 'pplink-1',
+              paymentUrl: 'https://payment.example/qr',
+              orderRef: 'RSQ-1',
+              sentToLine: true,
+              collectAmount: '1144.00',
+              rescheduleFee: '1044.00',
+              lateFee: '100.00',
+            }),
+          },
+        },
         { provide: RescheduleService, useValue: mockRescheduleService },
         { provide: RescheduleCollectService, useValue: mockRescheduleCollectService },
       ],
@@ -94,6 +119,7 @@ describe('PaymentsController', () => {
     controller = module.get<PaymentsController>(PaymentsController);
     _prisma = module.get<PrismaService>(PrismaService);
     paymentsService = module.get<PaymentsService>(PaymentsService);
+    paySolutionsService = module.get<PaySolutionsService>(PaySolutionsService);
     rescheduleService = module.get<RescheduleService>(RescheduleService);
     rescheduleCollectService = module.get<RescheduleCollectService>(RescheduleCollectService);
   });
@@ -336,6 +362,148 @@ describe('PaymentsController', () => {
         ForbiddenException,
       );
       expect(paymentsService.getContractJournalEntries).not.toHaveBeenCalled();
+    });
+  });
+
+  // PR #1326 — GET /payments/reschedule-quote (server-authoritative ปรับดิว quote).
+  // Query params arrive as strings; the controller must reject NaN / <1 values
+  // BEFORE delegating to RescheduleCollectService.quote with parsed ints.
+  describe('getRescheduleQuote param parsing + delegation', () => {
+    const owner = { id: 'user-1', role: 'OWNER', branchId: 'branch-1' };
+
+    it.each([
+      ['NaN installmentNo', 'abc', '16'],
+      ['installmentNo < 1', '0', '16'],
+      ['negative installmentNo', '-3', '16'],
+      ['NaN daysToShift', '5', 'xyz'],
+      ['daysToShift < 1', '5', '0'],
+    ])('rejects %s with BadRequestException before quoting', async (_label, installmentNo, daysToShift) => {
+      await expect(
+        controller.getRescheduleQuote('contract-1', installmentNo, daysToShift, 'SPLIT', owner),
+      ).rejects.toThrow(BadRequestException);
+      expect(rescheduleCollectService.quote).not.toHaveBeenCalled();
+    });
+
+    it('delegates to rescheduleCollectService.quote with parsed integer args (SPLIT/6a)', async () => {
+      const res = await controller.getRescheduleQuote('contract-1', '5', '16', 'SPLIT', owner);
+
+      expect(paymentsService.validateBranchAccess).toHaveBeenCalledWith('contract-1', owner);
+      expect(rescheduleCollectService.quote).toHaveBeenCalledWith({
+        contractId: 'contract-1',
+        installmentNo: 5,
+        daysToShift: 16,
+        splitMode: 'SPLIT',
+      });
+      expect(res).toMatchObject({
+        rescheduleFee: '809.00',
+        collectAmount: '809.00',
+        variant: '6a',
+      });
+    });
+
+    it('maps any non-SPLIT splitMode to SINGLE (6b default)', async () => {
+      await controller.getRescheduleQuote('contract-1', '5', '16', 'weird', owner);
+      expect(rescheduleCollectService.quote).toHaveBeenCalledWith(
+        expect.objectContaining({ splitMode: 'SINGLE' }),
+      );
+    });
+
+    it('enforces branch access BEFORE quoting (SALES cross-branch rejected)', async () => {
+      const sales = { id: 'user-1', role: 'SALES', branchId: 'branch-2' }; // contract is on branch-1
+      await expect(
+        controller.getRescheduleQuote('contract-1', '5', '16', 'SPLIT', sales),
+      ).rejects.toThrow(ForbiddenException);
+      expect(rescheduleCollectService.quote).not.toHaveBeenCalled();
+    });
+  });
+
+  // PR #1326 — POST /payments/:id/reschedule-qr (async ปรับดิว: QR collects first,
+  // the reschedule executes on webhook confirm — เงินไม่เข้า ดิวไม่เลื่อน).
+  describe('createRescheduleQr branch access + delegation', () => {
+    it('validates branch access by payment FIRST, then delegates with mapped splitMode (SPLIT)', async () => {
+      const user = { id: 'user-1', role: 'OWNER', branchId: 'branch-1' };
+      const res = await controller.createRescheduleQr(
+        'payment-1',
+        { daysToShift: 10, splitMode: 'SPLIT' as const },
+        user,
+      );
+
+      expect(paymentsService.validateBranchAccessByPayment).toHaveBeenCalledWith('payment-1', user);
+      expect(paySolutionsService.createRescheduleQR).toHaveBeenCalledWith({
+        paymentId: 'payment-1',
+        daysToShift: 10,
+        splitMode: 'SPLIT',
+        requestedById: 'user-1',
+      });
+      // The branch check must run BEFORE the gateway call.
+      const accessOrder = (paymentsService.validateBranchAccessByPayment as jest.Mock).mock
+        .invocationCallOrder[0];
+      const qrOrder = (paySolutionsService.createRescheduleQR as jest.Mock).mock
+        .invocationCallOrder[0];
+      expect(accessOrder).toBeLessThan(qrOrder);
+      expect(res).toMatchObject({ orderRef: 'RSQ-1', collectAmount: '1144.00' });
+    });
+
+    it('maps splitMode=SINGLE through unchanged (6b — QR เก็บเฉพาะค่าปรับ)', async () => {
+      const user = { id: 'user-1', role: 'OWNER', branchId: 'branch-1' };
+      await controller.createRescheduleQr(
+        'payment-1',
+        { daysToShift: 7, splitMode: 'SINGLE' as const },
+        user,
+      );
+      expect(paySolutionsService.createRescheduleQR).toHaveBeenCalledWith(
+        expect.objectContaining({ daysToShift: 7, splitMode: 'SINGLE' }),
+      );
+    });
+
+    it('rejects SALES cross-branch BEFORE creating the QR', async () => {
+      const user = { id: 'user-1', role: 'SALES', branchId: 'branch-2' }; // contract is on branch-1
+      await expect(
+        controller.createRescheduleQr('payment-1', { daysToShift: 10, splitMode: 'SPLIT' as const }, user),
+      ).rejects.toThrow(ForbiddenException);
+      expect(paySolutionsService.createRescheduleQR).not.toHaveBeenCalled();
+    });
+  });
+
+  // DTO validation for the reschedule-qr body. CreateRescheduleQrDto is declared
+  // (unexported) inside the controller file — recover the class from the
+  // design:paramtypes metadata Nest emits for the @Body() parameter, then run
+  // class-validator directly (same validate + plainToInstance convention as
+  // update-letter-evidence.dto.spec.ts).
+  describe('CreateRescheduleQrDto validation (class-validator)', () => {
+    const CreateRescheduleQrDto = (
+      Reflect.getMetadata(
+        'design:paramtypes',
+        PaymentsController.prototype,
+        'createRescheduleQr',
+      ) as Array<new () => object>
+    )[1];
+
+    async function validateDto(payload: Record<string, unknown>) {
+      return validate(plainToInstance(CreateRescheduleQrDto, payload));
+    }
+
+    it.each(['SINGLE', 'SPLIT'])('accepts splitMode=%s with daysToShift >= 1', async (splitMode) => {
+      const errors = await validateDto({ daysToShift: 10, splitMode });
+      expect(errors).toHaveLength(0);
+    });
+
+    it.each(['BOTH', 'split', '', 42])(
+      'rejects splitMode outside [SINGLE, SPLIT] (%p)',
+      async (splitMode) => {
+        const errors = await validateDto({ daysToShift: 10, splitMode });
+        expect(errors.some((e) => e.property === 'splitMode')).toBe(true);
+      },
+    );
+
+    it('rejects daysToShift < 1', async () => {
+      const errors = await validateDto({ daysToShift: 0, splitMode: 'SPLIT' });
+      expect(errors.some((e) => e.property === 'daysToShift')).toBe(true);
+    });
+
+    it('rejects non-numeric daysToShift', async () => {
+      const errors = await validateDto({ daysToShift: 'ten', splitMode: 'SPLIT' });
+      expect(errors.some((e) => e.property === 'daysToShift')).toBe(true);
     });
   });
 });

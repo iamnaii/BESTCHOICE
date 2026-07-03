@@ -143,6 +143,72 @@ describe('PaySolutionsService — secondary webhook callbacks (characterization)
       expect(prisma.payment.findUnique).not.toHaveBeenCalled();
     });
 
+    // Review W2 (2026-07-02): SUCCESS webhook landing on an EXPIRED link = the
+    // customer's money reached the gateway but the hourly cron expired the link
+    // first — nothing was recorded. Must alarm fatal; ops reconciles manually.
+    it('EXPIRED link + SUCCESS webhook: fatal Sentry alarm, no link mutation, no recordPayment', async () => {
+      const link = makeLink({ status: 'EXPIRED' });
+
+      await service.handlePartialPaymentCallback(link, {
+        refno,
+        result_code: '00',
+        transaction_id: 'tx-expired-paid',
+      });
+
+      expect(Sentry.captureMessage as jest.Mock).toHaveBeenCalledWith(
+        expect.stringContaining('EXPIRED'),
+        expect.objectContaining({
+          level: 'fatal',
+          tags: expect.objectContaining({ critical: 'paysolutions-expired-paid', refno }),
+        }),
+      );
+      // Still the idempotent skip path — nothing is written or credited.
+      expect(prisma.partialPaymentLink.update).not.toHaveBeenCalled();
+      expect(payments.recordPayment).not.toHaveBeenCalled();
+      expect(payments.rescheduleWithCollect).not.toHaveBeenCalled();
+    });
+
+    it('EXPIRED + SUCCESS on a purpose=RESCHEDULE link: alarms and does NOT execute the reschedule', async () => {
+      const link = makeLink({
+        status: 'EXPIRED',
+        purpose: 'RESCHEDULE',
+        metadata: { daysToShift: 7, splitMode: 'SPLIT', rescheduleFee: '1044', lateFee: '100', collectAmount: '1144' },
+      });
+
+      await service.handlePartialPaymentCallback(link, {
+        refno,
+        result_code: '00',
+        transaction_id: 'tx-expired-resched',
+      });
+
+      expect(Sentry.captureMessage as jest.Mock).toHaveBeenCalledWith(
+        expect.stringContaining('EXPIRED'),
+        expect.objectContaining({
+          level: 'fatal',
+          tags: expect.objectContaining({ critical: 'paysolutions-expired-paid' }),
+        }),
+      );
+      // ดิวไม่เลื่อน — the due-date shift must never run off an expired link.
+      expect(payments.rescheduleWithCollect).not.toHaveBeenCalled();
+      expect(payments.recordPayment).not.toHaveBeenCalled();
+      expect(prisma.partialPaymentLink.update).not.toHaveBeenCalled();
+    });
+
+    it('EXPIRED link + FAILURE webhook (result_code != 00): silent idempotent skip — no alarm', async () => {
+      const link = makeLink({ status: 'EXPIRED' });
+
+      await service.handlePartialPaymentCallback(link, {
+        refno,
+        result_code: '99',
+        transaction_id: 'tx-expired-fail',
+      });
+
+      // No money was captured → no alarm, and nothing else happens either.
+      expect(Sentry.captureMessage).not.toHaveBeenCalled();
+      expect(prisma.partialPaymentLink.update).not.toHaveBeenCalled();
+      expect(payments.recordPayment).not.toHaveBeenCalled();
+    });
+
     it('failure (result_code != 00): flips link to CANCELLED and does NOT record a payment', async () => {
       const link = makeLink();
 

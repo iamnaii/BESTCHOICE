@@ -30,6 +30,34 @@ describe('DateRangeChips', () => {
     expect(onChange).toHaveBeenCalledWith({ startDate: '2026-05-01', endDate: '2026-05-31' });
   });
 
+  it('clicking "เดือนนี้" in December emits Dec 1 → Dec 31 (year-end month wrap)', () => {
+    vi.setSystemTime(new Date('2026-12-10T05:00:00.000Z')); // 12:00 BKK
+    render(<DateRangeChips startDate="" endDate="" onChange={onChange} />);
+    fireEvent.click(screen.getByRole('radio', { name: 'เดือนนี้' }));
+    expect(onChange).toHaveBeenCalledWith({ startDate: '2026-12-01', endDate: '2026-12-31' });
+  });
+
+  it('clicking "เดือนนี้" in leap-year February emits end 2028-02-29', () => {
+    vi.setSystemTime(new Date('2028-02-10T05:00:00.000Z')); // 12:00 BKK
+    render(<DateRangeChips startDate="" endDate="" onChange={onChange} />);
+    fireEvent.click(screen.getByRole('radio', { name: 'เดือนนี้' }));
+    expect(onChange).toHaveBeenCalledWith({ startDate: '2028-02-01', endDate: '2028-02-29' });
+  });
+
+  it('clicking "เดือนนี้" in non-leap February emits end 2026-02-28', () => {
+    vi.setSystemTime(new Date('2026-02-10T05:00:00.000Z')); // 12:00 BKK
+    render(<DateRangeChips startDate="" endDate="" onChange={onChange} />);
+    fireEvent.click(screen.getByRole('radio', { name: 'เดือนนี้' }));
+    expect(onChange).toHaveBeenCalledWith({ startDate: '2026-02-01', endDate: '2026-02-28' });
+  });
+
+  it('clicking "เดือนนี้" in a 30-day month emits end 2026-04-30', () => {
+    vi.setSystemTime(new Date('2026-04-10T05:00:00.000Z')); // 12:00 BKK
+    render(<DateRangeChips startDate="" endDate="" onChange={onChange} />);
+    fireEvent.click(screen.getByRole('radio', { name: 'เดือนนี้' }));
+    expect(onChange).toHaveBeenCalledWith({ startDate: '2026-04-01', endDate: '2026-04-30' });
+  });
+
   it('clicking "เดือนที่แล้ว" emits 1st → last day of last month', () => {
     render(<DateRangeChips startDate="" endDate="" onChange={onChange} />);
     fireEvent.click(screen.getByRole('radio', { name: 'เดือนที่แล้ว' }));
@@ -73,6 +101,15 @@ describe('DateRangeChips', () => {
 
   it('"เดือนนี้" chip has aria-checked=true when the full current month is selected', () => {
     render(<DateRangeChips startDate="2026-05-01" endDate="2026-05-31" onChange={onChange} />);
+    expect(screen.getByRole('radio', { name: 'เดือนนี้' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+  });
+
+  it('"เดือนนี้" chip has aria-checked=true when the full non-31-day month is selected', () => {
+    vi.setSystemTime(new Date('2026-04-10T05:00:00.000Z')); // 12:00 BKK — April has 30 days
+    render(<DateRangeChips startDate="2026-04-01" endDate="2026-04-30" onChange={onChange} />);
     expect(screen.getByRole('radio', { name: 'เดือนนี้' })).toHaveAttribute(
       'aria-checked',
       'true',

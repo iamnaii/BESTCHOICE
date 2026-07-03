@@ -333,22 +333,28 @@ describe('SalesBotService', () => {
 
   // Issue #1332 — when search_products finds nothing, the bot should still
   // answer with real installment rates (get_installment_rates) instead of
-  // going silent/handoff-only. These two specs pin the grounding-guard
-  // contract for that new tool: (a) quoting its example number passes the
-  // guard and auto-sends at high confidence, (b) inventing a DIFFERENT baht
-  // number the tool never returned still gets HALLUCINATION_BLOCKED — the
-  // guard regression the owner explicitly wants covered.
+  // going silent/handoff-only. The tool returns PERCENT-AND-TERMS ONLY (no
+  // baht — review Critical 2a: a fabricated baht example would be
+  // whitelisted by the ±5% grounding tolerance and quotable as a real
+  // price). These two specs pin the contract: (a) a percent-only rate reply
+  // passes the guard and auto-sends at high confidence, (b) ANY baht amount
+  // the model invents after calling only get_installment_rates is still
+  // HALLUCINATION_BLOCKED because the grounded set stays empty.
   describe('get_installment_rates grounding (#1332)', () => {
     const toolResult = {
-      activeTerms: [
-        { tenureMonths: 6, ratePct: 15 },
-        { tenureMonths: 12, ratePct: 30 },
+      configs: [
+        {
+          name: 'มือ1',
+          minDownPaymentPct: 20,
+          terms: [
+            { tenureMonths: 6, totalRatePct: 15, perMonthRatePct: 2.5 },
+            { tenureMonths: 12, totalRatePct: 30, perMonthRatePct: 2.5 },
+          ],
+        },
       ],
-      minDownPaymentPct: 20,
-      example: { priceThb: 10000, downPct: 20, tenureMonths: 12, monthly: 867 },
     };
 
-    it('reply quoting the tool example (867 บาท) passes the guard, auto-sends, confidence 0.95', async () => {
+    it('percent-only rate reply passes the guard, auto-sends, confidence 0.95', async () => {
       const chat = jest
         .fn()
         .mockResolvedValueOnce({
@@ -360,9 +366,9 @@ describe('SalesBotService', () => {
         } satisfies LlmChatResponse)
         .mockResolvedValueOnce({
           text:
-            'ตอนนี้รุ่นนี้ยังไม่มีในระบบค่ะ 🙏 เรทผ่อนมาตรฐานคือดอกเบี้ย 30% ดาวน์ขั้นต่ำ 20% ' +
-            'ตัวอย่างเครื่องราคา 10,000 บาท ผ่อน 12 เดือน ตกเดือนละประมาณ 867 บาทค่ะ ' +
-            'ทีมงานจะเช็คราคารุ่นที่สนใจให้นะคะ บอกงบมาได้เลยค่ะ',
+            'ตอนนี้รุ่นนี้ยังไม่มีในระบบค่ะ 🙏 เรทผ่อนมาตรฐานร้านคือดอกเบี้ยรวมประมาณ 30% ' +
+            '(ตกเดือนละ 2.5%) ผ่อนได้สูงสุด 12 เดือน ดาวน์ขั้นต่ำ 20% ค่ะ ' +
+            'เดี๋ยวทีมงานเช็คราคารุ่นนี้แล้วทักกลับนะคะ',
           toolCalls: [],
           inputTokens: 140,
           outputTokens: 60,
@@ -379,12 +385,12 @@ describe('SalesBotService', () => {
 
       expect(getInstallmentRates.run).toHaveBeenCalled();
       expect(result.toolsUsed).toEqual(['get_installment_rates']);
-      expect(result.reply).toContain('867');
+      expect(result.reply).toContain('30%');
       expect(result.reply).not.toContain('staff');
       expect(result.confidence).toBe(0.95);
     });
 
-    it('reply inventing a baht amount NOT in the tool result still gets HALLUCINATION_BLOCKED', async () => {
+    it('reply inventing ANY baht amount after only get_installment_rates gets HALLUCINATION_BLOCKED (grounded set stays empty)', async () => {
       const chat = jest
         .fn()
         .mockResolvedValueOnce({
@@ -395,8 +401,9 @@ describe('SalesBotService', () => {
           modelName: 'claude-sonnet-4-6',
         } satisfies LlmChatResponse)
         .mockResolvedValueOnce({
-          // Invented figure — the tool only ever returned 10,000 / 867.
-          text: 'ตัวอย่างผ่อนเดือนละ 12,345 บาทค่ะ',
+          // Invented figures — the tool returns percentages only, so NO baht
+          // amount can ever be grounded by it (grounded.size === 0 branch).
+          text: 'รุ่นนี้ราคาประมาณ 10,000 บาท ผ่อนเดือนละ 867 บาทค่ะ',
           toolCalls: [],
           inputTokens: 120,
           outputTokens: 20,
@@ -411,7 +418,8 @@ describe('SalesBotService', () => {
         customerId: null,
       });
 
-      expect(result.reply).not.toContain('12,345');
+      expect(result.reply).not.toContain('10,000');
+      expect(result.reply).not.toContain('867');
       expect(result.reply).toContain('staff');
       expect(result.confidence).toBeLessThanOrEqual(0.3);
     });

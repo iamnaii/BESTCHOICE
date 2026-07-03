@@ -4,41 +4,39 @@ import { PrismaService } from '../../../prisma/prisma.service';
 export const GET_INSTALLMENT_RATES_TOOL = {
   name: 'get_installment_rates',
   description:
-    "Get the shop's standard installment rates from the live InterestConfig: active tenure terms with their flat interest rate, and the minimum down payment percent. Use this when search_products found nothing (or a hit has priceMissing) so you can still answer with real rate numbers instead of going silent — then invite the customer to share their model/budget so calculate_installment can run a real quote. Includes one illustrative example calculation (NOT tied to any specific product).",
+    "Get the shop's standard installment rates from the live finance config: every active rate plan (e.g. มือ1/มือ2) with its allowed tenure terms, the TOTAL flat interest percent per term, the per-month percent breakdown, and the minimum down payment percent. Returns PERCENTAGES ONLY — no baht amounts. Use this when search_products found nothing (or a hit has priceMissing) so you can still answer with real rate numbers instead of going silent. Do NOT quote any baht figure from this result; real baht quotes require calculate_installment on a real product.",
   input_schema: {
     type: 'object',
     properties: {},
   },
 };
 
-// Illustrative reference price used ONLY to produce one concrete, grounded
-// Baht example (see collectGroundedPrices in sales-bot.service.ts, which
-// scans tool results for `priceThb` / `monthly` among other keys). This is
-// NOT a real product's price — the persona instructs the bot to label it as
-// an example and invite the customer's real budget/model for
-// calculate_installment to quote for real.
-const EXAMPLE_REFERENCE_PRICE_THB = 10000;
-
-// Matches CALCULATE_INSTALLMENT_TOOL's own documented default ("Down payment
-// percent defaults to 20%") — used only if a (theoretically impossible,
-// schema-required) InterestConfig row is missing minDownPaymentPct.
-const DOCUMENTED_DEFAULT_DOWN_PCT = 20;
-
 interface InstallmentRateTerm {
   tenureMonths: number;
-  ratePct: number;
+  /**
+   * TOTAL flat rate over the whole term, in percent.
+   * `financed × totalRatePct/100 = interest for the entire contract` —
+   * matches the contract system's semantics (get-rate-for-months.util.ts:
+   * InterestConfigRate.ratePct is per-term-total; legacy
+   * InterestConfig.interestRate is per-month, total = rate × months).
+   */
+  totalRatePct: number;
+  /** totalRatePct / tenureMonths — how the shop quotes "ดอกเบี้ย X%/เดือน". */
+  perMonthRatePct: number;
+}
+
+interface InstallmentRateConfig {
+  /** Owner-facing plan label, e.g. "มือ1" / "มือ2". */
+  name: string;
+  minDownPaymentPct: number;
+  terms: InstallmentRateTerm[];
 }
 
 export interface GetInstallmentRatesResult {
-  activeTerms: InstallmentRateTerm[];
-  minDownPaymentPct: number;
-  example: {
-    priceThb: number;
-    downPct: number;
-    tenureMonths: number;
-    monthly: number;
-  };
+  configs: InstallmentRateConfig[];
 }
+
+const round2 = (n: number): number => Math.round(n * 100) / 100;
 
 @Injectable()
 export class GetInstallmentRatesTool {
@@ -47,59 +45,57 @@ export class GetInstallmentRatesTool {
   async run(
     _input: Record<string, unknown> = {},
   ): Promise<GetInstallmentRatesResult | { error: string }> {
-    // Same finance source as CalculateInstallmentTool.loadRatePct: the most
-    // recently created active, non-deleted InterestConfig row.
-    const cfg = await this.prisma.interestConfig.findFirst({
+    // ALL active plans (มือ1, มือ2, ...) — the bot presents each so a
+    // customer asking about a used phone isn't quoted the new-phone rate.
+    const rows = await this.prisma.interestConfig.findMany({
       where: { isActive: true, deletedAt: null },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: 'asc' },
       include: {
         rates: { where: { deletedAt: null }, orderBy: { months: 'asc' } },
       },
     });
-    if (!cfg) return { error: 'no_active_rate_config' };
+    if (rows.length === 0) return { error: 'no_active_rate_config' };
 
-    // Prefer the per-term InterestConfigRate breakdown (จำนวนงวดที่เปิด —
-    // a different rate per tenure) when the owner has configured one;
-    // otherwise fall back to the flat top-level interestRate applied to the
-    // config's max tenure — mirrors CalculateInstallmentTool's single-rate
-    // fallback behaviour so the two tools never contradict each other.
-    const activeTerms: InstallmentRateTerm[] =
-      cfg.rates.length > 0
-        ? cfg.rates.map((r) => ({
+    const configs: InstallmentRateConfig[] = rows.map((cfg) => {
+      let terms: InstallmentRateTerm[];
+      if (cfg.rates.length > 0) {
+        // InterestConfigRate.ratePct = TOTAL rate for that term (NOT annual,
+        // NOT per-month) — same reading as getRateForMonths' new-lookup path.
+        terms = cfg.rates.map((r) => {
+          const totalRatePct = round2(Number(r.ratePct) * 100);
+          return {
             tenureMonths: r.months,
-            ratePct: Number(r.ratePct) * 100,
-          }))
-        : [
-            {
-              tenureMonths: cfg.maxInstallmentMonths,
-              ratePct: Number(cfg.interestRate) * 100,
-            },
-          ];
+            totalRatePct,
+            perMonthRatePct: round2(totalRatePct / r.months),
+          };
+        });
+      } else {
+        // Legacy fallback: InterestConfig.interestRate is PER-MONTH; total
+        // for m months = rate × m. Synthesize one term per allowed month —
+        // mirrors installment-preview.service.ts' synthesis so this tool
+        // never contradicts the storefront preview.
+        const perMonthRatePct = round2(Number(cfg.interestRate) * 100);
+        terms = [];
+        for (let m = cfg.minInstallmentMonths; m <= cfg.maxInstallmentMonths; m++) {
+          terms.push({
+            tenureMonths: m,
+            totalRatePct: round2(perMonthRatePct * m),
+            perMonthRatePct,
+          });
+        }
+      }
 
-    const minDownPaymentPct =
-      cfg.minDownPaymentPct != null
-        ? Number(cfg.minDownPaymentPct) * 100
-        : DOCUMENTED_DEFAULT_DOWN_PCT;
+      return {
+        name: cfg.name,
+        minDownPaymentPct: round2(Number(cfg.minDownPaymentPct) * 100),
+        terms,
+      };
+    });
 
-    // Illustrative example — same math as CalculateInstallmentTool.run, run
-    // against the longest active term (the shop's typical/anchor term).
-    const exampleTerm = activeTerms[activeTerms.length - 1];
-    const downAmount = Math.round(EXAMPLE_REFERENCE_PRICE_THB * (minDownPaymentPct / 100));
-    const financed = EXAMPLE_REFERENCE_PRICE_THB - downAmount;
-    const totalInterest = Math.round(
-      financed * (exampleTerm.ratePct / 100) * (exampleTerm.tenureMonths / 12),
-    );
-    const monthly = Math.round((financed + totalInterest) / exampleTerm.tenureMonths);
-
-    return {
-      activeTerms,
-      minDownPaymentPct,
-      example: {
-        priceThb: EXAMPLE_REFERENCE_PRICE_THB,
-        downPct: minDownPaymentPct,
-        tenureMonths: exampleTerm.tenureMonths,
-        monthly,
-      },
-    };
+    // Percent-and-terms ONLY. Deliberately NO baht fields and NO grounded
+    // key names (priceThb/monthly/minPrice/maxPrice): the grounding ledger
+    // stays empty after this tool, so any baht amount the model invents is
+    // still HALLUCINATION_BLOCKED (review #1332 Critical 2a).
+    return { configs };
   }
 }

@@ -92,9 +92,14 @@ async function postPriorReceipt(
 }
 
 describe('RepossessionJP5Template', () => {
-  // Phase 4 EIR migration: CSV regenerated to match EIR allocation
-  // (deferred interest for periods 5..12 = 3,012.50, was straight-line 4,000). Re-enabled.
-  it('CSV golden case — EIR allocation matches Phase 4 fixture', async () => {
+  // (2026-07-03, #1333) Straight-line ตามงวด is the ruled treatment — the Phase 4
+  // "EIR migration" regenerated this CSV to EIR (3,012.50) but production never
+  // switched: the 2A cron accrues 500/งวด straight-line, so remaining deferred
+  // interest for periods 5..12 = 500×8 = 4,000. First-ever CI run of this suite
+  // (PR #1330) surfaced the divergence; owner ruled straight-line and the CSV
+  // was restored. If CPA later mandates EIR, that is a production change
+  // (2A cron + JP4 + JP5), not a fixture edit.
+  it('CSV golden case — straight-line allocation matches fixture (#1333)', async () => {
     const journal = await setup();
     const c = await seedStandard17k12m(prisma);
     await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);

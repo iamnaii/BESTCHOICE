@@ -333,6 +333,7 @@ export class RescheduleCollectService {
               collectAmount: q.collectAmount.toString(),
               paymentMethod: input.paymentMethod,
               transactionRef: input.transactionRef ?? null,
+              evidenceUrl: input.evidenceUrl ?? null,
               depositAccountCode: q.collectAmount.gt(0) ? resolvedDepositAccountCode : null,
               journalEntryNo,
               source: input.fixedQuote ? 'QR_WEBHOOK' : 'CASHIER',

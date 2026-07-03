@@ -6,6 +6,7 @@ import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useSearchParams } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
+import { toLocalDateString } from '@/lib/date';
 import { useAuth } from '@/contexts/AuthContext';
 import SlipReviewTab from '@/components/payment/SlipReviewTab';
 import ReceiptsTab from './components/ReceiptsTab';
@@ -49,7 +50,8 @@ export default function PaymentsPage() {
   const [branchFilter, setBranchFilter] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const debouncedSearch = useDebounce(searchTerm, 400);
-  const [summaryDate, setSummaryDate] = useState(new Date().toISOString().split('T')[0]);
+  // LOCAL date, not toISOString() — the UTC day is still yesterday before 07:00 BKK (PR #1327 bug class).
+  const [summaryDate, setSummaryDate] = useState(toLocalDateString());
 
   // Period filter for the pending queue (KPI cards + list) — scopes everything
   // by installment dueDate. Default is "เดือนนี้" (matches DateRangeChips'
@@ -90,7 +92,8 @@ export default function PaymentsPage() {
   const [showPayModal, setShowPayModal] = useState(false);
   const [showPayWizard, setShowPayWizard] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<PendingPayment | null>(null);
-  const [payForm, setPayForm] = useState({ amount: 0, paymentMethod: 'CASH', notes: '', paidDate: new Date().toISOString().split('T')[0] });
+  // paidDate = LOCAL date (money-impacting: toISOString() records YESTERDAY before 07:00 BKK).
+  const [payForm, setPayForm] = useState({ amount: 0, paymentMethod: 'CASH', notes: '', paidDate: toLocalDateString() });
   // T15: deposit account code for the payment journal Dr leg; defaults to user preference or system default
   const [depositAccountCode, setDepositAccountCode] = useState<string>(
     user?.defaultCashAccountCode ?? '11-1101',
@@ -298,7 +301,7 @@ export default function PaymentsPage() {
         };
       }),
       sheetName: 'รายการรอชำระ',
-      filename: `pending-payments-${new Date().toISOString().split('T')[0]}.xlsx`,
+      filename: `pending-payments-${toLocalDateString()}.xlsx`,
     });
     toast.success('ส่งออก Excel สำเร็จ');
   };
@@ -357,7 +360,7 @@ export default function PaymentsPage() {
   const openPayModal = useCallback((payment: PendingPayment) => {
     setSelectedPayment(payment);
     const remaining = parseFloat(payment.amountDue) + parseFloat(payment.lateFee) - parseFloat(payment.amountPaid);
-    setPayForm({ amount: Math.round(remaining * 100) / 100, paymentMethod: 'CASH', notes: '', paidDate: new Date().toISOString().split('T')[0] });
+    setPayForm({ amount: Math.round(remaining * 100) / 100, paymentMethod: 'CASH', notes: '', paidDate: toLocalDateString() });
     setDepositAccountCode(user?.defaultCashAccountCode ?? '11-1101');
     setSlipResult(null);
     // Open the new wizard UI
@@ -736,7 +739,7 @@ export default function PaymentsPage() {
         payment={selectedPayment}
         payForm={payForm}
         onPayFormChange={setPayForm}
-        onClose={() => { setShowPayModal(false); setSelectedPayment(null); setSlipResult(null); setPayForm({ amount: 0, paymentMethod: 'CASH', notes: '', paidDate: new Date().toISOString().split('T')[0] }); }}
+        onClose={() => { setShowPayModal(false); setSelectedPayment(null); setSlipResult(null); setPayForm({ amount: 0, paymentMethod: 'CASH', notes: '', paidDate: toLocalDateString() }); }}
         onSubmit={handlePay}
         isPending={recordMutation.isPending}
         slipFileRef={slipFileRef}

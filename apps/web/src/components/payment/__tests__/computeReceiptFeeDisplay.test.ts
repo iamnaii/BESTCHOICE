@@ -66,6 +66,17 @@ describe('computeReceiptFeeDisplay', () => {
     expect(out.get('good')?.lateFee).toBe(100);
   });
 
+  it('never attributes the fee to a RESCHEDULE_FEE (ปรับดิว) receipt', () => {
+    const receipts = [
+      receipt({ id: 'rf', receiptNumber: 'RT-202607-00003', receiptType: 'RESCHEDULE_FEE' }),
+      receipt({ id: 'good', receiptNumber: 'RT-202607-00004', paidDate: '2026-07-01T05:00:00.000Z' }),
+    ];
+    const fees = new Map<string, FeeInfo>([['pay-1', { lateFee: 100, waived: 0 }]]);
+    const out = computeReceiptFeeDisplay(receipts, fees);
+    expect(out.get('rf')?.lateFee).toBe(0);
+    expect(out.get('good')?.lateFee).toBe(100);
+  });
+
   it('attributes each installment its own first-receipt fee', () => {
     const receipts = [
       receipt({ id: 'a1', paymentId: 'pay-1', receiptNumber: 'RT-202607-00001' }),

@@ -301,4 +301,73 @@ describe('RescheduleCollectService (ปรับดิว collect-first)', () =>
       }),
     ).rejects.toThrow(/ชำระแล้ว/);
   });
+
+  it('closed accounting period (past grace) → BadRequest BEFORE any write (no tx, no JE, no reschedule)', async () => {
+    // Period-lock (CR-7): the collect JE posts TODAY, so validatePeriodOpen checks
+    // the CURRENT month. A CLOSED period only rejects past the grace window
+    // (last calendar day + period_grace_days) — park "today" at noon LOCAL on the
+    // last day of July with grace 0 so graceEnd (Jul 31 00:00) is already behind us.
+    jest.setSystemTime(new Date(2026, 6, 31, 12, 0, 0));
+    prisma.accountingPeriod.findUnique.mockResolvedValue({ status: 'CLOSED' });
+    prisma.systemConfig.findUnique.mockImplementation(({ where }: AnyObj) =>
+      Promise.resolve(where.key === 'period_grace_days' ? { value: '0' } : null),
+    );
+
+    const attempt = service.executeWithCollect({
+      contractId: 'ct-1',
+      installmentNo: 1,
+      daysToShift: 7,
+      splitMode: 'SPLIT',
+      amount: 1144,
+      paymentMethod: 'CASH',
+      recordedById: 'user-1',
+    });
+    await expect(attempt).rejects.toThrow(BadRequestException);
+    await expect(attempt).rejects.toThrow(/งวดที่ปิดแล้ว/);
+
+    // Guard looked up TODAY's FINANCE period (parity with recordPayment).
+    expect(prisma.accountingPeriod.findUnique).toHaveBeenCalledWith({
+      where: { companyId_year_month: { companyId: 'co-FINANCE', year: 2026, month: 7 } },
+      select: { status: true },
+    });
+    // Rejected BEFORE the money tx opened — nothing written anywhere.
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(journalAuto.createAndPost).not.toHaveBeenCalled();
+    expect(prisma.payment.update).not.toHaveBeenCalled();
+    expect(prisma.contract.update).not.toHaveBeenCalled();
+    expect(prisma.auditLog.create).not.toHaveBeenCalled();
+    expect(rescheduleService.execute).not.toHaveBeenCalled();
+    expect(receiptsService.generateReceipt).not.toHaveBeenCalled();
+  });
+
+  it('post-commit receipt failure: generateReceipt rejects → still success:true (เงิน commit แล้ว), error logged not thrown', async () => {
+    receiptsService.generateReceipt.mockRejectedValue(new Error('receipt service down'));
+    const errorSpy = jest.spyOn(service['logger'], 'error').mockImplementation(() => {});
+
+    const result = await service.executeWithCollect({
+      contractId: 'ct-1',
+      installmentNo: 1,
+      daysToShift: 7,
+      splitMode: 'SPLIT',
+      amount: 1144,
+      paymentMethod: 'CASH',
+      recordedById: 'user-1',
+    });
+
+    // I3 ordering: money committed before the receipt attempt — result unaffected.
+    expect(result).toMatchObject({
+      success: true,
+      variant: '6a',
+      collectAmount: '1144.00',
+      journalEntryNo: 'JE-RD-1',
+    });
+    expect(journalAuto.createAndPost).toHaveBeenCalledTimes(1);
+    expect(rescheduleService.execute).toHaveBeenCalledTimes(1);
+    expect(receiptsService.generateReceipt).toHaveBeenCalledTimes(1);
+    // Failure surfaced to the log (message + stack), never rethrown.
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Failed to generate reschedule-collect receipt'),
+      expect.any(String),
+    );
+  });
 });

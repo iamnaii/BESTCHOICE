@@ -22,6 +22,25 @@ export class UsersService {
     private employees: EmployeesService,
   ) {}
 
+  /**
+   * PII-free list of users who can act as a 4-eyes approver. Server-side
+   * filters mirror what every picker re-checks client-side (active + not
+   * deleted); role scoping here keeps SALES out of approver dropdowns even
+   * if a client forgets to filter.
+   */
+  async findApprovers() {
+    return this.prisma.user.findMany({
+      where: {
+        deletedAt: null,
+        isActive: true,
+        role: { in: [UserRole.OWNER, UserRole.FINANCE_MANAGER, UserRole.BRANCH_MANAGER, UserRole.ACCOUNTANT] },
+        email: { notIn: SYSTEM_USER_EMAILS },
+      },
+      select: { id: true, name: true, role: true },
+      orderBy: { name: 'asc' },
+    });
+  }
+
   async findAll(page = 1, limit = 50) {
     page = Math.max(1, page);
     limit = Math.min(200, Math.max(1, limit));

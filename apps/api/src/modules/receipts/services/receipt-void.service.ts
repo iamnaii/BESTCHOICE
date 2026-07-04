@@ -69,6 +69,23 @@ export class ReceiptVoidService {
       );
     }
 
+    // The approver must be a real, active user with a void-capable role —
+    // otherwise the SoD control is client-side only and the forensic audit
+    // trail could reference a non-user. Mirrors late-fee-waiver /
+    // stock-adjustments approver validation.
+    const approver = await this.prisma.user.findUnique({
+      where: { id: approvedById },
+      select: { id: true, role: true, isActive: true, deletedAt: true },
+    });
+    if (!approver || approver.deletedAt || !approver.isActive) {
+      throw new NotFoundException('ไม่พบผู้อนุมัติ หรือถูกปิดการใช้งาน');
+    }
+    if (!ALLOWED_VOID_ROLES.includes(approver.role)) {
+      throw new ForbiddenException(
+        'ผู้อนุมัติต้องเป็นเจ้าของ / ฝ่ายบัญชี / ผจก.สาขา / ผจก.การเงิน',
+      );
+    }
+
     // CR-7: Validate void date is not in a closed (FINANCE) accounting period.
     await validatePeriodOpen(this.prisma, new Date(), await this.resolveFinanceCompanyId());
     return this.prisma.$transaction(async (tx) => {

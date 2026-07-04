@@ -307,9 +307,24 @@ export class PaymentQueryService {
     // value — that is the real charged fee on PAID installments.)
     const cfg = await loadLateFeeConfig(this.prisma);
     const now = new Date();
+    // PAID rows keep the STORED fee — that is the fee actually charged at
+    // record time. Recomputing from (now − dueDate) would show a fictitious
+    // fee on installments that were paid on time but are viewed after the
+    // due date (ชำระครบ tab, status=PAID queries).
+    //
+    // Waived rows must surface the NET fee the customer actually owed: the
+    // wizard's gross-waiver convention (PR #1313) keeps Payment.lateFee at
+    // GROSS (Cr 42-1103) and records the discount in waivedAmount (Dr
+    // 52-1105) — returning the gross fee would make the row read as an
+    // underpayment. Clamped at 0 because the standalone waiver flow zeroes
+    // lateFee AND sets waivedAmount, so an unclamped subtraction goes negative.
+    const netStoredFee = (p: { lateFee: Prisma.Decimal; lateFeeWaived: boolean; waivedAmount: Prisma.Decimal | null }) =>
+      p.lateFeeWaived
+        ? Prisma.Decimal.max(0, new Prisma.Decimal(p.lateFee).sub(p.waivedAmount ?? 0))
+        : p.lateFee;
     const withLiveFee = data.map((p) => ({
       ...p,
-      lateFee: resolveLivePaymentLateFee(p, cfg, now),
+      lateFee: p.status === 'PAID' ? netStoredFee(p) : resolveLivePaymentLateFee(p, cfg, now),
     }));
 
     return paginatedResponse(withLiveFee, total, page, limit);

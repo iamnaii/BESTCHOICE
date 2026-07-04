@@ -21,6 +21,8 @@ interface PaymentTableProps {
   batchTotal: number;
   onShowBatchModal: () => void;
   onClearSelection: () => void;
+  /** 'paid' = ชำระครบ tab — read-only rows: no checkbox/batch/รับชำระ, shows paidDate. */
+  mode?: 'pending' | 'paid';
 }
 
 export default function PaymentTable({
@@ -33,10 +35,13 @@ export default function PaymentTable({
   batchTotal,
   onShowBatchModal,
   onClearSelection,
+  mode = 'pending',
 }: PaymentTableProps) {
   const { copy } = useCopyToClipboard();
+  const isPaidMode = mode === 'paid';
   const pendingColumns = useMemo(() => [
-    {
+    // ชำระครบ tab is read-only — no batch selection.
+    ...(isPaidMode ? [] : [{
       key: 'select',
       label: '',
       render: (p: PendingPayment) => (
@@ -48,7 +53,7 @@ export default function PaymentTable({
           aria-label={`เลือกงวดที่ ${p.installmentNo} ของสัญญา ${p.contract.contractNumber}`}
         />
       ),
-    },
+    }]),
     {
       key: 'contract',
       label: 'สัญญา',
@@ -70,9 +75,18 @@ export default function PaymentTable({
     },
     { key: 'installmentNo', label: 'งวดที่', render: (p: PendingPayment) => <span className="font-medium">{p.installmentNo}</span> },
     { key: 'dueDate', label: 'วันครบกำหนด', render: (p: PendingPayment) => {
-      const isOverdue = new Date(p.dueDate) < new Date();
+      // A settled installment is never "overdue" — the red flag is pending-only.
+      const isOverdue = !isPaidMode && new Date(p.dueDate) < new Date();
       return <span className={`text-sm ${isOverdue ? 'text-destructive font-medium' : ''}`}>{formatDateShort(p.dueDate)}</span>;
     }},
+    ...(isPaidMode ? [{
+      key: 'paidDate',
+      label: 'วันที่ชำระ',
+      render: (p: PendingPayment) =>
+        p.paidDate
+          ? <span className="text-sm text-success font-medium">{formatDateShort(p.paidDate)}</span>
+          : <span className="text-xs text-muted-foreground">-</span>,
+    }] : []),
     { key: 'amountDue', label: 'ยอดที่ต้องชำระ', render: (p: PendingPayment) => {
       const total = parseFloat(p.amountDue) + parseFloat(p.lateFee);
       return <span className="text-sm font-medium">{total.toLocaleString()} ฿</span>;
@@ -101,9 +115,17 @@ export default function PaymentTable({
           const cfg = getStatusBadgeProps(p.status, paymentStatusMap);
           mainBadge = <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>;
         }
+        // Settlement-method stamps (paid mode): explain why ชำระแล้ว can be
+        // partial or '-' on a PAID row — the record flows stamp notes with
+        // '[ปิดก่อนกำหนด]' (early payoff, discount closes the rest) and
+        // 'ใช้เครดิต X บาท' (advance credit consumed, no new cash on this row).
+        const closedEarly = isPaidMode && p.notes?.includes('ปิดก่อนกำหนด');
+        const usedCredit = isPaidMode && p.notes?.includes('ใช้เครดิต');
         return (
-          <div>
+          <div className="flex flex-col gap-1 items-start">
             {mainBadge}
+            {closedEarly && <Badge variant="secondary" appearance="outline" size="sm">ปิดยอดก่อนกำหนด</Badge>}
+            {usedCredit && <Badge variant="secondary" appearance="outline" size="sm">หักจากเครดิตล่วงหน้า</Badge>}
             {/* Active partial-payment QR (cashier sent QR earlier, awaiting customer scan) */}
             {p.status !== 'PAID' && <QrSentBadge paymentId={p.id} />}
           </div>
@@ -116,34 +138,36 @@ export default function PaymentTable({
       label: '',
       render: (p: PendingPayment) => (
         <div className="flex gap-1">
-          <button onClick={() => onOpenPayModal(p)} className="px-2 py-1 text-xs bg-success text-success-foreground rounded hover:bg-success/90">
-            รับชำระ
-          </button>
+          {!isPaidMode && (
+            <button onClick={() => onOpenPayModal(p)} className="px-2 py-1 text-xs bg-success text-success-foreground rounded hover:bg-success/90">
+              รับชำระ
+            </button>
+          )}
           <button onClick={() => onViewHistory(p.contract.id)} className="px-2 py-1 text-xs border border-muted-foreground/30 text-muted-foreground rounded hover:bg-muted">
             ประวัติ
           </button>
         </div>
       ),
     },
-  ], [onOpenPayModal, onViewHistory, selectedIds, onToggleSelect, copy]);
+  ], [onOpenPayModal, onViewHistory, selectedIds, onToggleSelect, copy, isPaidMode]);
 
   return (
     <>
       <Card>
         <CardHeader>
-          <CardTitle>รายการรอชำระ</CardTitle>
+          <CardTitle>{isPaidMode ? 'รายการชำระครบ' : 'รายการรอชำระ'}</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           {loadingPending ? (
             <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>
           ) : (
-            <DataTable columns={pendingColumns} data={pendingPayments} emptyMessage="ไม่มีรายการรอชำระ" />
+            <DataTable columns={pendingColumns} data={pendingPayments} emptyMessage={isPaidMode ? 'ไม่มีรายการชำระครบในช่วงที่เลือก' : 'ไม่มีรายการรอชำระ'} />
           )}
         </CardContent>
       </Card>
 
       {/* Batch action bar */}
-      {selectedIds.size > 0 && (
+      {!isPaidMode && selectedIds.size > 0 && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground px-6 py-3 rounded-xl shadow-lg flex items-center gap-4 z-50">
           <span className="text-sm font-medium">เลือก {selectedIds.size} รายการ ({Math.round(batchTotal).toLocaleString()} ฿)</span>
           <button onClick={onShowBatchModal} className="px-4 py-1.5 bg-card text-primary rounded-lg text-sm font-medium hover:bg-card/90">

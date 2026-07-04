@@ -21,6 +21,11 @@ export interface PendingPayment {
   amountPaid: string;
   lateFee: string;
   status: string;
+  /** Set once the installment is PAID — used by the ชำระครบ tab. */
+  paidDate?: string | null;
+  /** Free-text stamps from record flows — '[ปิดก่อนกำหนด]', 'ใช้เครดิต X บาท' explain
+   *  why a PAID row's ชำระแล้ว can be partial or '-'. */
+  notes?: string | null;
   monthlyPrincipal: string | null;
   monthlyInterest: string | null;
   monthlyCommission: string | null;

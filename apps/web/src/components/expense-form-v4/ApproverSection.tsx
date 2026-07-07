@@ -17,13 +17,15 @@ const APPROVER_ROLES = ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'];
 
 export function ApproverSection({ approvedById, onChange }: Props) {
   const { user } = useAuth();
-  // /users returns paginated { data, total, page, limit } — not a bare array.
-  // Backend findAll doesn't filter by role, so we filter client-side.
+  // /users/approvers is the lean PII-free approver lookup (GET /users is
+  // OWNER-only, so non-OWNER recorders used to get an empty list here). It
+  // returns a bare array of active manager-role users; keep the expense role
+  // subset filter client-side.
   const { data: approvers } = useQuery<UserRow[]>({
     queryKey: ['users', 'approvers'],
     queryFn: async () => {
-      const res = await api.get('/users?limit=200');
-      const list: UserRow[] = res.data?.data ?? (Array.isArray(res.data) ? res.data : []);
+      const res = await api.get('/users/approvers');
+      const list: UserRow[] = res.data ?? [];
       return list.filter((u) => APPROVER_ROLES.includes(u.role));
     },
     staleTime: 60_000,

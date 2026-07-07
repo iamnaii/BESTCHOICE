@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ForbiddenException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { ReceiptsService } from './receipts.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
@@ -49,6 +49,16 @@ describe('ReceiptsService', () => {
       receipt: {
         findUnique: jest.fn(),
         update: jest.fn(),
+      },
+      // Approver validation (SoD hardening): voidReceipt resolves the approver
+      // before the $transaction. Default = valid active FINANCE_MANAGER.
+      user: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: approverId,
+          role: 'FINANCE_MANAGER',
+          isActive: true,
+          deletedAt: null,
+        }),
       },
       companyInfo: {
         findFirst: jest.fn().mockResolvedValue({ id: 'co-FINANCE' }),
@@ -357,6 +367,121 @@ describe('ReceiptsService', () => {
       await expect(
         service.voidReceipt(receiptId, 'wrong amount', userId, approverId),
       ).resolves.toBeDefined();
+    });
+
+    it('throws ForbiddenException when requester and approver are the same user (SoD)', async () => {
+      const tx = prisma.__tx;
+      setupHappyPath(tx);
+
+      await expect(
+        service.voidReceipt(receiptId, 'wrong amount', userId, userId, 'OWNER'),
+      ).rejects.toThrow(ForbiddenException);
+      expect(tx.auditLog.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('voidReceipt — approver validation (SoD hardening)', () => {
+    const setupHappyPath = (tx: any) => {
+      tx.receipt.findUnique.mockResolvedValue({
+        id: receiptId,
+        receiptNumber: 'RT-202604-00001',
+        contractId: 'ct-1',
+        paymentId: 'pay-1',
+        payerName: 'Customer A',
+        receiverName: 'Cashier',
+        amount: 1000,
+        installmentNo: 1,
+        paymentMethod: 'CASH',
+        isVoided: false,
+        deletedAt: null,
+        createdAt: new Date(),
+        paidDate: new Date(),
+      });
+      tx.receipt.create.mockResolvedValue({
+        id: 'cn-1',
+        receiptNumber: 'RT-202604-00002',
+        receiptType: 'CREDIT_NOTE',
+      });
+      tx.receipt.update.mockResolvedValue({ id: receiptId, isVoided: true });
+      tx.journalEntry.findMany.mockResolvedValue([]);
+    };
+
+    it('throws NotFoundException when the approver id does not exist', async () => {
+      const tx = prisma.__tx;
+      setupHappyPath(tx);
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.voidReceipt(receiptId, 'wrong amount', userId, 'ghost-user', 'OWNER'),
+      ).rejects.toThrow(NotFoundException);
+      expect(tx.auditLog.create).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException when the approver is deactivated', async () => {
+      const tx = prisma.__tx;
+      setupHappyPath(tx);
+      prisma.user.findUnique.mockResolvedValue({
+        id: approverId,
+        role: 'OWNER',
+        isActive: false,
+        deletedAt: null,
+      });
+
+      await expect(
+        service.voidReceipt(receiptId, 'wrong amount', userId, approverId, 'OWNER'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws NotFoundException when the approver is soft-deleted', async () => {
+      const tx = prisma.__tx;
+      setupHappyPath(tx);
+      prisma.user.findUnique.mockResolvedValue({
+        id: approverId,
+        role: 'OWNER',
+        isActive: true,
+        deletedAt: new Date(),
+      });
+
+      await expect(
+        service.voidReceipt(receiptId, 'wrong amount', userId, approverId, 'OWNER'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws ForbiddenException when the approver role is SALES (not void-capable)', async () => {
+      const tx = prisma.__tx;
+      setupHappyPath(tx);
+      prisma.user.findUnique.mockResolvedValue({
+        id: approverId,
+        role: 'SALES',
+        isActive: true,
+        deletedAt: null,
+      });
+
+      await expect(
+        service.voidReceipt(receiptId, 'wrong amount', userId, approverId, 'OWNER'),
+      ).rejects.toThrow(ForbiddenException);
+      expect(tx.auditLog.create).not.toHaveBeenCalled();
+    });
+
+    it('accepts an active ACCOUNTANT approver and records them in the void trail', async () => {
+      const tx = prisma.__tx;
+      setupHappyPath(tx);
+      prisma.user.findUnique.mockResolvedValue({
+        id: approverId,
+        role: 'ACCOUNTANT',
+        isActive: true,
+        deletedAt: null,
+      });
+
+      await expect(
+        service.voidReceipt(receiptId, 'wrong amount', userId, approverId, 'OWNER'),
+      ).resolves.toBeDefined();
+
+      // Approver recorded on both the receipt row and the forensic audit log.
+      const updateCall = tx.receipt.update.mock.calls[0][0];
+      expect(updateCall.data.voidApprovedById).toBe(approverId);
+      const auditCall = tx.auditLog.create.mock.calls[0][0];
+      expect(auditCall.data.newValue.approvedById).toBe(approverId);
     });
   });
 

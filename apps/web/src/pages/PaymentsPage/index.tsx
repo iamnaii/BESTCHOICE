@@ -36,8 +36,8 @@ export default function PaymentsPage() {
   const isOwner = user?.role === 'OWNER';
   const canSeeReceipts = user && ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'].includes(user.role);
   const [searchParams, setSearchParams] = useSearchParams();
-  const tab = (searchParams.get('tab') || 'pending') as 'pending' | 'summary' | 'slip-review' | 'receipts';
-  const setTab = (value: 'pending' | 'summary' | 'slip-review' | 'receipts') => setSearchParams({ tab: value });
+  const tab = (searchParams.get('tab') || 'pending') as 'pending' | 'paid' | 'summary' | 'slip-review' | 'receipts';
+  const setTab = (value: 'pending' | 'paid' | 'summary' | 'slip-review' | 'receipts') => setSearchParams({ tab: value });
 
   // Redirect SALES users away from receipts tab (no permission)
   useEffect(() => {
@@ -154,6 +154,38 @@ export default function PaymentsPage() {
     enabled: tab === 'pending',
   });
 
+  // ชำระครบ tab — same endpoint/filters as the pending queue but pinned to
+  // status=PAID (the endpoint's status param overrides the default
+  // PENDING/OVERDUE/PARTIALLY_PAID set). Server keeps the STORED (net-of-
+  // waiver) late fee for PAID rows — the fee actually charged, not a live
+  // recompute. Unlike the shrinking pending queue, the paid set grows all
+  // month, so ask for the service max (100) and keep `total` to surface
+  // truncation instead of silently dropping rows.
+  const {
+    data: paidResult,
+    isLoading: loadingPaid,
+    isError: paidError,
+    error: paidErrorDetail,
+    refetch: refetchPaid,
+  } = useQuery<{ rows: PendingPayment[]; total: number }>({
+    queryKey: ['paid-payments', debouncedSearch, branchFilter, dueFrom, dueTo],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      params.set('status', 'PAID');
+      params.set('limit', '100');
+      if (debouncedSearch) params.set('search', debouncedSearch);
+      if (branchFilter) params.set('branchId', branchFilter);
+      if (dueFrom) params.set('dueFrom', dueFrom);
+      if (dueTo) params.set('dueTo', dueTo);
+      const { data } = await api.get(`/payments/pending?${params}`);
+      return { rows: data.data ?? [], total: data.total ?? (data.data?.length || 0) };
+    },
+    enabled: tab === 'paid',
+  });
+  const paidPayments = paidResult?.rows ?? [];
+  const paidTotal = paidResult?.total ?? 0;
+  const paidTruncated = paidTotal > paidPayments.length;
+
   // Whole-system KPI summary (6 cards) — scoped by the same dueDate window +
   // branch as the queue, but NOT page-limited.
   const { data: pendingKpi, isLoading: loadingKpi } = useQuery<PendingSummary>({
@@ -241,8 +273,10 @@ export default function PaymentsPage() {
     },
     onSuccess: (data) => {
       toast.success(`รับชำระสำเร็จ ${data.length} รายการ`);
-      queryClient.invalidateQueries({ queryKey: ['pending-payments'] });
-      queryClient.invalidateQueries({ queryKey: ['daily-summary'] });
+      // Same helper as recordMutation/postDraftMutation — batch flips rows
+      // PENDING→PAID too, so 'paid-payments' + per-contract history caches
+      // must refresh (3-min staleTime otherwise serves the old list).
+      invalidatePaymentQueries(queryClient);
       setSelectedIds(new Set());
       setShowBatchModal(false);
       setBatchSlipResult(null);
@@ -304,6 +338,49 @@ export default function PaymentsPage() {
       filename: `pending-payments-${toLocalDateString()}.xlsx`,
     });
     toast.success('ส่งออก Excel สำเร็จ');
+  };
+
+  // ชำระครบ tab export — same shape as pending plus วันที่ชำระ; ยอดชำระจริง
+  // replaces ยอดค้าง (a settled row has nothing outstanding).
+  const handleExportPaid = async () => {
+    await exportToExcel({
+      columns: [
+        { header: 'สัญญา', key: 'contractNumber', width: 15 },
+        { header: 'ลูกค้า', key: 'customer', width: 15 },
+        { header: 'เบอร์โทร', key: 'phone', width: 15 },
+        { header: 'งวดที่', key: 'installmentNo', width: 15 },
+        { header: 'ยอดงวด', key: 'amountDue', width: 15 },
+        { header: 'ค่าปรับ', key: 'lateFee', width: 15 },
+        { header: 'ชำระแล้ว', key: 'amountPaid', width: 15 },
+        { header: 'วันครบกำหนด', key: 'dueDate', width: 15 },
+        { header: 'วันที่ชำระ', key: 'paidDate', width: 15 },
+        { header: 'สาขา', key: 'branch', width: 15 },
+        { header: 'หมายเหตุ', key: 'notes', width: 25 },
+      ],
+      data: paidPayments.map((p) => ({
+        contractNumber: p.contract.contractNumber,
+        customer: p.contract.customer.name,
+        phone: p.contract.customer.phone,
+        installmentNo: p.installmentNo,
+        amountDue: parseFloat(p.amountDue).toLocaleString(),
+        lateFee: parseFloat(p.lateFee).toLocaleString(),
+        amountPaid: parseFloat(p.amountPaid).toLocaleString(),
+        dueDate: p.dueDate ? new Date(p.dueDate).toLocaleDateString('th-TH') : '-',
+        paidDate: p.paidDate ? new Date(p.paidDate).toLocaleDateString('th-TH') : '-',
+        branch: p.contract.branch.name,
+        // '[ปิดก่อนกำหนด]' / 'ใช้เครดิต X บาท' — explains rows where ชำระแล้ว ≠ ยอดงวด+ค่าปรับ.
+        notes: p.notes || '',
+      })),
+      sheetName: 'รายการชำระครบ',
+      filename: `paid-payments-${toLocalDateString()}.xlsx`,
+    });
+    if (paidTruncated) {
+      toast.warning(
+        `ส่งออกได้ ${paidPayments.length.toLocaleString('th-TH')} จาก ${paidTotal.toLocaleString('th-TH')} รายการ — ปรับช่วงวันที่ให้แคบลงเพื่อส่งออกครบ`,
+      );
+    } else {
+      toast.success('ส่งออก Excel สำเร็จ');
+    }
   };
 
   // Batch helpers
@@ -553,6 +630,12 @@ export default function PaymentsPage() {
           )}
         </button>
         <button
+          onClick={() => setTab('paid')}
+          className={`px-5 py-3 text-sm font-medium border-b-2 -mb-px transition-all ${tab === 'paid' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+        >
+          ชำระครบ
+        </button>
+        <button
           onClick={() => setTab('summary')}
           className={`px-5 py-3 text-sm font-medium border-b-2 -mb-px transition-all ${tab === 'summary' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
@@ -621,6 +704,68 @@ export default function PaymentsPage() {
               batchTotal={batchTotal}
               onShowBatchModal={() => setShowBatchModal(true)}
               onClearSelection={() => setSelectedIds(new Set())}
+            />
+          </QueryBoundary>
+        </div>
+      )}
+
+      {/* Paid Tab — ชำระครบ: same layout/filters as the pending queue, rows
+          pinned to status=PAID and read-only (history per row, no batch). */}
+      {tab === 'paid' && (
+        <div>
+          <PaymentPeriodBar
+            startDate={startDate}
+            endDate={endDate}
+            onChange={({ startDate: sd, endDate: ed }) => {
+              setStartDate(sd);
+              setEndDate(ed);
+            }}
+          />
+          <p className="mb-4 -mt-2 text-xs text-muted-foreground leading-snug">
+            ช่วงวันที่กรองตาม<span className="font-medium text-foreground">วันครบกำหนดของงวด</span> (เหมือนแท็บรอชำระ)
+            — งวดเก่าที่เพิ่งมาชำระเดือนนี้ ให้ขยายช่วงย้อนหลังจึงจะเห็น
+          </p>
+
+          <PaymentFilters
+            searchTerm={searchTerm}
+            onSearchChange={setSearchTerm}
+            statusFilter=""
+            onStatusFilterChange={() => {}}
+            showStatusFilter={false}
+            branchFilter={branchFilter}
+            onBranchFilterChange={setBranchFilter}
+            isOwner={isOwner}
+            branches={branches}
+            onExport={handleExportPaid}
+            hasPendingPayments={paidPayments.length > 0}
+          />
+
+          {paidTruncated && (
+            <div className="mb-4 rounded-lg border border-warning/40 bg-warning/10 px-4 py-2.5 text-sm text-warning leading-snug">
+              แสดง {paidPayments.length.toLocaleString('th-TH')} จาก {paidTotal.toLocaleString('th-TH')} รายการ
+              (เรียงตามวันครบกำหนด) — ปรับช่วงวันที่ให้แคบลงเพื่อดูรายการทั้งหมด
+            </div>
+          )}
+
+          <QueryBoundary
+            isLoading={loadingPaid && paidPayments.length === 0}
+            isError={paidError}
+            error={paidErrorDetail}
+            onRetry={refetchPaid}
+            errorTitle="ไม่สามารถโหลดรายการชำระครบได้"
+          >
+            <PaymentTable
+              mode="paid"
+              pendingPayments={paidPayments}
+              loadingPending={loadingPaid}
+              selectedIds={selectedIds}
+              onToggleSelect={toggleSelect}
+              onToggleAll={toggleAll}
+              onOpenPayModal={openPayModal}
+              onViewHistory={(contractId) => setHistoryContractId(contractId)}
+              batchTotal={0}
+              onShowBatchModal={() => {}}
+              onClearSelection={() => {}}
             />
           </QueryBoundary>
         </div>

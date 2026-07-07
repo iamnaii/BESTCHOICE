@@ -293,8 +293,6 @@ interface ApproverRow {
   id: string;
   name: string;
   role: string;
-  isActive?: boolean;
-  deletedAt?: string | null;
 }
 
 // ─── JE Preview panel (always visible) ────────────────────────────────────────
@@ -741,12 +739,14 @@ export function RecordPaymentWizard({
   const needsApproval = approvalActions.length > 0;
 
   // 4-eyes approver list — managers other than the current user (SoD).
+  // /users/approvers is the lean PII-free lookup (GET /users is OWNER-only,
+  // so non-OWNER recorders used to get an empty list here). Server already
+  // filters to active manager roles; keep the waiver role subset + SoD here.
   const { data: approverData = [] } = useQuery<ApproverRow[]>({
     queryKey: ['waiver-approvers'],
     queryFn: async () => {
-      const { data } = await api.get('/users?limit=200');
-      const list: ApproverRow[] = data?.data ?? data ?? [];
-      return list;
+      const { data } = await api.get('/users/approvers');
+      return data ?? [];
     },
     staleTime: 60_000,
   });
@@ -755,9 +755,7 @@ export function RecordPaymentWizard({
       approverData.filter(
         (u) =>
           WAIVER_APPROVER_ROLES.includes(u.role) &&
-          u.id !== user?.id && // 4-eyes: approver ≠ recorder
-          u.isActive !== false &&
-          !u.deletedAt, // exclude inactive/soft-deleted (server rejects them anyway)
+          u.id !== user?.id, // 4-eyes: approver ≠ recorder
       ),
     [approverData, user?.id],
   );

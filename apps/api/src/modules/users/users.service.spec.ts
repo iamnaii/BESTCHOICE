@@ -72,3 +72,53 @@ describe('UsersService.update — T7-C7 deactivation revokes refresh tokens', ()
     expect(prisma.refreshToken.updateMany).not.toHaveBeenCalled();
   });
 });
+
+describe('UsersService.findApprovers — lean 4-eyes approver lookup', () => {
+  let service: UsersService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let prisma: any;
+
+  beforeEach(async () => {
+    prisma = {
+      user: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+    };
+
+    const mod: TestingModule = await Test.createTestingModule({
+      providers: [
+        UsersService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: AuditService, useValue: { log: jest.fn() } },
+        { provide: EmployeesService, useValue: { upsertProfileTx: jest.fn() } },
+      ],
+    }).compile();
+    service = mod.get(UsersService);
+  });
+
+  it('returns only active, non-deleted manager-role users with a PII-free select', async () => {
+    await service.findApprovers();
+
+    expect(prisma.user.findMany).toHaveBeenCalledTimes(1);
+    const arg = prisma.user.findMany.mock.calls[0][0];
+
+    // Role scoping: SALES (and VIEWER) must never appear in approver dropdowns.
+    expect(arg.where.role.in).toEqual(
+      expect.arrayContaining(['OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'ACCOUNTANT']),
+    );
+    expect(arg.where.role.in).not.toContain('SALES');
+    expect(arg.where.isActive).toBe(true);
+    expect(arg.where.deletedAt).toBeNull();
+
+    // The endpoint is exposed to every role — the select is the PII guard.
+    // GET /users stays OWNER-only precisely because findAll returns PII.
+    expect(arg.select).toEqual({ id: true, name: true, role: true });
+  });
+
+  it('hides system/service accounts from the approver list', async () => {
+    await service.findApprovers();
+
+    const arg = prisma.user.findMany.mock.calls[0][0];
+    expect(arg.where.email.notIn).toEqual(expect.arrayContaining(['legacy-import@bestchoice.com']));
+  });
+});

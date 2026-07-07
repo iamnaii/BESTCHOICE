@@ -43,6 +43,20 @@ export class UsersController {
     return this.usersService.deleteSavedSignature(userId);
   }
 
+  /**
+   * Lean approver lookup for 4-eyes pickers (receipt void, late-fee waiver,
+   * expense approval, tolerance). GET /users is OWNER-only because findAll
+   * returns PII (nationalId, birthDate, phone) — this endpoint returns only
+   * { id, name, role } of active manager-role users so every role that can
+   * initiate an approval-gated action can load the list. Declared before
+   * `:id` routes so "approvers" never parses as a UUID.
+   */
+  @Get('approvers')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  findApprovers() {
+    return this.usersService.findApprovers();
+  }
+
   // ─── Admin user management (OWNER only) ────────────
   @Get()
   @Roles('OWNER')

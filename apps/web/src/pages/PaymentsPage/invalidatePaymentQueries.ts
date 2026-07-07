@@ -13,6 +13,7 @@ import type { QueryClient } from '@tanstack/react-query';
 export function invalidatePaymentQueries(qc: QueryClient): void {
   const keys = [
     'pending-payments',
+    'paid-payments',
     'daily-summary',
     'contract-payments',
     'contract-receipts',

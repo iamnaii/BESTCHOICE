@@ -60,6 +60,12 @@ export async function reconstructPriorCleared(
   let priorLateFeeBooked = new Decimal(0);
   for (const e of entries) {
     const meta = e.metadata as any;
+    // Un-pay fix (2026-07-08): ReceiptVoidReversalTemplate stamps
+    // `metadata.reversed=true` on every original it mirrors (receipt void +
+    // refund reversal). A reversed original is no longer a real prior-clear —
+    // counting it kept a voided/refunded installment "cleared" so the next
+    // receipt under-cleared 11-2103 or threw "งวดนี้ถูกชำระครบแล้ว".
+    if (meta?.reversed === true) continue;
     const tag: string = meta?.tag ?? '';
     if (tag === '2B') {
       const flowMeta: string = (meta?.flow as string) ?? '';

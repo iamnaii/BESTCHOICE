@@ -84,6 +84,11 @@ interface ContractJe {
 }
 
 const VOID_ROLES = ['OWNER', 'ACCOUNTANT', 'BRANCH_MANAGER', 'FINANCE_MANAGER'];
+// Receipt types the backend refuses to void (ReceiptVoidService guards,
+// 2026-07-08): CN is itself the reversal document; reschedule fees and
+// early payoff have no automatic un-do path. Hide the void button so the
+// UI doesn't offer an action that can only error.
+const UNVOIDABLE_RECEIPT_TYPES = ['CREDIT_NOTE', 'RESCHEDULE_FEE', 'EARLY_PAYOFF'];
 // Use the shared money formatter (honours user separator preference + ROUND_HALF_UP).
 const money = (n: number | string) => formatNumberDecimal(n, 2);
 
@@ -338,7 +343,7 @@ export default function PaymentHistorySheet({ contractId, onClose }: Props) {
                                       >
                                         <FileText className="size-3.5" />
                                       </button>
-                                      {canVoid && (
+                                      {canVoid && !UNVOIDABLE_RECEIPT_TYPES.includes(r.receiptType) && (
                                         <button
                                           onClick={() => setVoidTarget({ id: r.id, receiptNumber: r.receiptNumber })}
                                           title="ยกเลิกใบเสร็จ (ออกใบลดหนี้)"

@@ -136,6 +136,31 @@ describe('PaymentHistorySheet — fullscreen + JE one-page dialog', () => {
     expect(screen.getByText('BALANCED', { exact: false })).toBeInTheDocument();
   });
 
+  it('credit-note row keeps the JE button but hides the void button (backend refuses CN void)', async () => {
+    const CN = {
+      ...RECEIPT,
+      id: 'rcpt-cn',
+      receiptNumber: 'RT-202607-00016',
+      receiptType: 'CREDIT_NOTE',
+    };
+    apiGet.mockImplementation((url: string) => {
+      if (url.includes('/journal-entries')) return Promise.resolve({ data: [JE] });
+      if (url.startsWith('/receipts/contract')) return Promise.resolve({ data: [RECEIPT, CN] });
+      if (url.startsWith('/payments/contract'))
+        return Promise.resolve({ data: { data: [PAYMENT], contract: CONTRACT } });
+      return Promise.resolve({ data: [] });
+    });
+    render(wrap(<PaymentHistorySheet contractId="ct-1" onClose={vi.fn()} />));
+    await screen.findByText('RT-202607-00016');
+
+    expect(
+      screen.getByLabelText('ดูบันทึกบัญชีของใบเสร็จ RT-202607-00016'),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText('ยกเลิกใบเสร็จ RT-202607-00016')).not.toBeInTheDocument();
+    // The normal receipt row still offers void.
+    expect(screen.getByLabelText('ยกเลิกใบเสร็จ RT-202607-00015')).toBeInTheDocument();
+  });
+
   it('closes the JE dialog without closing the history sheet', async () => {
     const onClose = vi.fn();
     render(wrap(<PaymentHistorySheet contractId="ct-1" onClose={onClose} />));

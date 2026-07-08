@@ -12,9 +12,10 @@ import {
   X,
   AlertTriangle,
   Lock,
+  Store,
 } from 'lucide-react';
 import api, { getErrorMessage } from '@/lib/api';
-import { CashAccountSelect } from '@/components/CashAccountSelect';
+import { CashAccountSelect, KBANK_ONLY_CODES } from '@/components/CashAccountSelect';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface Props {
@@ -86,9 +87,10 @@ export function RepossessionOverlay({
   const [marketValue, setMarketValue] = useState('');
   const [discountPct, setDiscountPct] = useState('50');
   const [customerRefundEnabled, setCustomerRefundEnabled] = useState(false);
-  const [depositAccountCode, setDepositAccountCode] = useState(
-    user?.defaultCashAccountCode || '11-1101',
-  );
+  // Owner rule 2026-07-08: direct FINANCE receipt = ธนาคารกสิกร (11-1201) only;
+  // เครื่อง/เงินที่อยู่หน้าร้านใช้ collectedByShop → Dr 11-2107 (เหมือนปิดยอด).
+  const [depositAccountCode, setDepositAccountCode] = useState('11-1201');
+  const [collectedByShop, setCollectedByShop] = useState(false);
   const [notes, setNotes] = useState('');
 
   const { data: preview, isLoading: previewLoading } = useQuery<RepoPreview>({
@@ -116,7 +118,8 @@ export function RepossessionOverlay({
         marketValue: marketValue ? Number(marketValue) : undefined,
         discountPct: discountPct ? Number(discountPct) : 50,
         customerRefundEnabled,
-        depositAccountCode,
+        depositAccountCode: collectedByShop ? undefined : depositAccountCode,
+        collectedByShop,
       });
       return data;
     },
@@ -437,7 +440,37 @@ export function RepossessionOverlay({
           subtitle="บัญชีสำหรับขา deposit ของ JP5"
           tone="warning"
         >
-          <CashAccountSelect value={depositAccountCode} onChange={setDepositAccountCode} />
+          {/* Shop-collect toggle — mirrors early payoff (JP4) */}
+          <div className="flex items-start gap-3 rounded-lg border border-border bg-muted/40 px-3 py-3 mb-3">
+            <input
+              id="repo-collected-by-shop"
+              type="checkbox"
+              checked={collectedByShop}
+              onChange={(e) => setCollectedByShop(e.target.checked)}
+              className="mt-0.5 size-4 accent-primary cursor-pointer"
+            />
+            <label htmlFor="repo-collected-by-shop" className="cursor-pointer select-none">
+              <span className="flex items-center gap-1.5 text-sm font-medium text-foreground leading-snug">
+                <Store className="size-3.5 shrink-0 text-primary" />
+                ตั้งลูกหนี้-หน้าร้าน
+              </span>
+              <span className="text-xs text-muted-foreground leading-snug">
+                เครื่อง/เงินอยู่ที่หน้าร้าน แล้วหน้าร้านโอนเข้า FINANCE ภายหลัง (บันทึก Dr 11-2107
+                ลูกหนี้-หน้าร้าน — เหมือนปิดยอด)
+              </span>
+            </label>
+          </div>
+          <CashAccountSelect
+            value={depositAccountCode}
+            onChange={setDepositAccountCode}
+            disabled={collectedByShop}
+            codes={KBANK_ONLY_CODES}
+          />
+          {collectedByShop && (
+            <p className="mt-1 text-xs text-muted-foreground leading-snug">
+              บัญชีถูกกำหนดเป็น 11-2107 อัตโนมัติโดยระบบ — กรอกบัญชีรับโอนจากหน้าร้านตอน settlement
+            </p>
+          )}
         </Section>
 
         {/* Section 5: หมายเหตุ */}
@@ -464,6 +497,12 @@ export function RepossessionOverlay({
         >
           <ul className="space-y-1.5 text-sm">
             <Effect text="ปิดลูกหนี้คงค้าง + ออกใบลดหนี้ VAT (ม.82/5) — บันทึก JE (JP5)" />
+            {collectedByShop && (
+              <Effect
+                text="ตั้งลูกหนี้-หน้าร้าน 11-2107 — ต้องบันทึกรับโอนจากหน้าร้าน (settlement) ภายหลัง"
+                warning
+              />
+            )}
             <Effect text="บันทึกกำไร/ขาดทุนจากการยึด (41-1102 / 51-1102)" />
             <Effect text="เปลี่ยนสถานะสัญญาเป็น ปิด-หนี้สูญ + สินค้าเป็น ยึดคืน" />
             <Effect text="จัดการซ่อม/ตั้งราคาขายต่อ ทำต่อที่หน้า ยึดคืน & ขายต่อ" warning />

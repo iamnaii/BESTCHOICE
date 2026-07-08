@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { ReceiptsService } from './receipts.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
@@ -29,12 +29,39 @@ describe('ReceiptsService', () => {
         findUnique: jest.fn(),
         create: jest.fn(),
         update: jest.fn(),
+        // Un-pay (2026-07-08): sibling receipts of the same payment are voided
+        // together (the JE reversal is per-payment, not per-receipt).
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
       journalEntry: {
         // PR-843/I2 Phase 3 PR 3.1: voidReceipt now finds ALL receipt JEs of the
         // payment via metadata.paymentId (findMany) and reverses EACH — not a single
         // findFirst by referenceId.
         findMany: jest.fn(),
+      },
+      // Un-pay (2026-07-08): void reverts the Payment row + restores denormalized
+      // contract balances + retires loyalty points inside the same $transaction.
+      payment: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'pay-1',
+          status: 'PAID',
+          amountPaid: 1000,
+          dueDate: new Date('2026-06-20T00:00:00.000Z'),
+          deletedAt: null,
+        }),
+        update: jest.fn().mockResolvedValue({ id: 'pay-1' }),
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'ct-1', status: 'ACTIVE' }),
+        update: jest.fn().mockResolvedValue({ id: 'ct-1', advanceBalance: 0 }),
+      },
+      // Surviving-cleared recompute: default = no schedule row → reconstruct
+      // skipped → full revert (amountPaid 0).
+      installmentSchedule: {
+        findUnique: jest.fn().mockResolvedValue(null),
+      },
+      loyaltyPoint: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
       auditLog: {
         create: jest.fn().mockResolvedValue({ id: 'audit-1' }),
@@ -483,6 +510,343 @@ describe('ReceiptsService', () => {
       const auditCall = tx.auditLog.create.mock.calls[0][0];
       expect(auditCall.data.newValue.approvedById).toBe(approverId);
     });
+  });
+
+  describe('voidReceipt — un-pay the installment (2026-07-08)', () => {
+    // ยกเลิกใบเสร็จ = ยกเลิกการชำระของงวดนั้นทั้งงวด: the ledger reversal already
+    // un-pays every receipt JE of the Payment (PR 3.1), so the Payment row and the
+    // sibling receipts must follow — otherwise the installment never returns to the
+    // pending queue (status filter PENDING/OVERDUE/PARTIALLY_PAID) and
+    // "งวดที่ชำระแล้ว X/N" stays inflated. Mirrors RefundsService.markReversed.
+    const PAST_DUE = new Date('2026-06-20T00:00:00.000Z');
+    const FUTURE_DUE = new Date('2099-01-01T00:00:00.000Z');
+
+    const setup = (
+      tx: any,
+      over: { receipt?: any; payment?: any; contract?: any; jes?: any[] } = {},
+    ) => {
+      tx.receipt.findUnique.mockResolvedValue({
+        id: receiptId,
+        receiptNumber: 'RT-202607-00014',
+        contractId: 'ct-1',
+        paymentId: 'pay-1',
+        receiptType: 'PAYMENT',
+        payerName: 'Customer A',
+        receiverName: 'Cashier',
+        amount: 4472,
+        installmentNo: 2,
+        paymentMethod: 'CASH',
+        isVoided: false,
+        deletedAt: null,
+        createdAt: new Date(),
+        paidDate: new Date(),
+        ...(over.receipt ?? {}),
+      });
+      tx.receipt.create.mockResolvedValue({
+        id: 'cn-1',
+        receiptNumber: 'RT-202607-00015',
+        receiptType: 'CREDIT_NOTE',
+      });
+      tx.receipt.update.mockResolvedValue({ id: receiptId, isVoided: true });
+      tx.journalEntry.findMany.mockResolvedValue(
+        over.jes ?? [{ id: 'je-1', status: 'POSTED', lines: [] }],
+      );
+      tx.payment.findUnique.mockResolvedValue(
+        over.payment === null
+          ? null
+          : {
+              id: 'pay-1',
+              status: 'PAID',
+              amountPaid: 4472,
+              dueDate: PAST_DUE,
+              deletedAt: null,
+              ...(over.payment ?? {}),
+            },
+      );
+      tx.contract.findUnique.mockResolvedValue({
+        id: 'ct-1',
+        status: 'ACTIVE',
+        ...(over.contract ?? {}),
+      });
+    };
+
+    it('reverts the Payment to OVERDUE (past due) with amountPaid=0 / paidDate=null', async () => {
+      const tx = prisma.__tx;
+      setup(tx);
+
+      await service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER');
+
+      expect(tx.payment.update).toHaveBeenCalledWith({
+        where: { id: 'pay-1' },
+        data: { status: 'OVERDUE', amountPaid: 0, paidDate: null },
+      });
+    });
+
+    it('reverts the Payment to PENDING when the due date is in the future', async () => {
+      const tx = prisma.__tx;
+      setup(tx, { payment: { dueDate: FUTURE_DUE } });
+
+      await service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER');
+
+      expect(tx.payment.update).toHaveBeenCalledWith({
+        where: { id: 'pay-1' },
+        data: { status: 'PENDING', amountPaid: 0, paidDate: null },
+      });
+    });
+
+    it('voids sibling receipts of the same payment but never CREDIT_NOTE / RESCHEDULE_FEE rows', async () => {
+      const tx = prisma.__tx;
+      setup(tx);
+      tx.receipt.updateMany.mockResolvedValue({ count: 1 });
+
+      await service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER');
+
+      expect(tx.receipt.updateMany).toHaveBeenCalledWith({
+        where: {
+          paymentId: 'pay-1',
+          id: { not: receiptId },
+          isVoided: false,
+          deletedAt: null,
+          receiptType: { notIn: ['CREDIT_NOTE', 'RESCHEDULE_FEE'] },
+        },
+        data: expect.objectContaining({
+          isVoided: true,
+          voidApprovedById: approverId,
+        }),
+      });
+    });
+
+    it('soft-deletes the loyalty points awarded for the voided payment', async () => {
+      const tx = prisma.__tx;
+      setup(tx);
+
+      await service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER');
+
+      expect(tx.loyaltyPoint.updateMany).toHaveBeenCalledWith({
+        where: { paymentId: 'pay-1', deletedAt: null },
+        data: { deletedAt: expect.any(Date) },
+      });
+    });
+
+    it('restores Contract.advanceBalance / creditBalance from the reversed 21-1103 / 21-5101 legs', async () => {
+      const tx = prisma.__tx;
+      setup(tx, {
+        jes: [
+          {
+            id: 'je-1',
+            status: 'POSTED',
+            lines: [
+              { accountCode: '11-1101', debit: 3972, credit: 0 },
+              // advance consumed to fund this receipt — must go back onto the contract
+              { accountCode: '21-1103', debit: 500, credit: 0 },
+              { accountCode: '11-2103', debit: 0, credit: 4472 },
+            ],
+          },
+          {
+            id: 'je-2',
+            status: 'POSTED',
+            lines: [
+              // credit-allocation JE (applyCreditBalance) — consumed 21-5101 credit
+              { accountCode: '21-5101', debit: 300, credit: 0 },
+              { accountCode: '11-2103', debit: 0, credit: 300 },
+            ],
+          },
+        ],
+      });
+
+      await service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER');
+
+      expect(tx.contract.update).toHaveBeenCalledTimes(1);
+      const call = tx.contract.update.mock.calls[0][0];
+      expect(call.where).toEqual({ id: 'ct-1' });
+      expect(String(call.data.advanceBalance.increment)).toBe('500');
+      expect(String(call.data.creditBalance.increment)).toBe('300');
+    });
+
+    it('removes a parked overpay-advance (Cr 21-1103) when its receipt JE is reversed', async () => {
+      const tx = prisma.__tx;
+      setup(tx, {
+        jes: [
+          {
+            id: 'je-1',
+            status: 'POSTED',
+            lines: [
+              { accountCode: '11-1101', debit: 4672, credit: 0 },
+              { accountCode: '11-2103', debit: 0, credit: 4472 },
+              // overpay parked as customer advance — reversal removes it
+              { accountCode: '21-1103', debit: 0, credit: 200 },
+            ],
+          },
+        ],
+      });
+
+      await service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER');
+
+      const call = tx.contract.update.mock.calls[0][0];
+      expect(String(call.data.advanceBalance.increment)).toBe('-200');
+      expect(call.data.creditBalance).toBeUndefined();
+    });
+
+    it('does not touch the contract when the reversed JEs have no advance/credit legs', async () => {
+      const tx = prisma.__tx;
+      setup(tx, {
+        jes: [
+          {
+            id: 'je-1',
+            status: 'POSTED',
+            lines: [
+              { accountCode: '11-1101', debit: 4472, credit: 0 },
+              { accountCode: '11-2103', debit: 0, credit: 4472 },
+            ],
+          },
+        ],
+      });
+
+      await service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER');
+
+      expect(tx.contract.update).not.toHaveBeenCalled();
+    });
+
+    it('skips the payment revert gracefully for receipts without paymentId (e.g. DOWN_PAYMENT)', async () => {
+      const tx = prisma.__tx;
+      setup(tx, { receipt: { paymentId: null, receiptType: 'DOWN_PAYMENT' } });
+
+      await expect(
+        service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER'),
+      ).resolves.toBeDefined();
+
+      expect(tx.payment.update).not.toHaveBeenCalled();
+      expect(tx.receipt.updateMany).not.toHaveBeenCalled();
+      expect(tx.loyaltyPoint.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('refuses to void a CREDIT_NOTE receipt', async () => {
+      const tx = prisma.__tx;
+      setup(tx, { receipt: { receiptType: 'CREDIT_NOTE' } });
+
+      await expect(
+        service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER'),
+      ).rejects.toThrow(BadRequestException);
+      expect(tx.receipt.create).not.toHaveBeenCalled();
+      expect(tx.auditLog.create).not.toHaveBeenCalled();
+    });
+
+    it('refuses to void a RESCHEDULE_FEE receipt (its money JE is not payment-tagged)', async () => {
+      const tx = prisma.__tx;
+      setup(tx, { receipt: { receiptType: 'RESCHEDULE_FEE' } });
+
+      await expect(
+        service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER'),
+      ).rejects.toThrow(BadRequestException);
+      expect(tx.receipt.create).not.toHaveBeenCalled();
+    });
+
+    it('refuses to void when the contract is COMPLETED (ownership already released)', async () => {
+      const tx = prisma.__tx;
+      setup(tx, { contract: { status: 'COMPLETED' } });
+
+      await expect(
+        service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER'),
+      ).rejects.toThrow(BadRequestException);
+      expect(tx.receipt.create).not.toHaveBeenCalled();
+      expect(tx.payment.update).not.toHaveBeenCalled();
+    });
+
+    it('records the payment revert in the RECEIPT_VOID audit trail', async () => {
+      const tx = prisma.__tx;
+      setup(tx);
+      tx.receipt.updateMany.mockResolvedValue({ count: 1 });
+
+      await service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER');
+
+      const auditCall = tx.auditLog.create.mock.calls[0][0];
+      expect(auditCall.data.newValue.paymentReverted).toEqual(
+        expect.objectContaining({
+          paymentId: 'pay-1',
+          fromStatus: 'PAID',
+          toStatus: 'OVERDUE',
+          previousAmountPaid: '4472',
+        }),
+      );
+      expect(auditCall.data.newValue.voidedSiblingReceipts).toBe(1);
+    });
+
+    it('skips originals already reversed by a prior void→re-pay cycle (repeat void must not brick)', async () => {
+      const tx = prisma.__tx;
+      setup(tx, {
+        jes: [
+          // first-cycle JE — already mirrored; status stays POSTED forever
+          { id: 'je-old', status: 'POSTED', metadata: { reversed: true }, lines: [] },
+          { id: 'je-live', status: 'POSTED', lines: [] },
+        ],
+      });
+
+      await service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER');
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const template = (service as any).receiptVoidReversalTemplate;
+      expect(template.voidReceipt).toHaveBeenCalledTimes(1);
+      expect(template.voidReceipt).toHaveBeenCalledWith('je-live', expect.anything());
+      expect(template.voidReceipt).not.toHaveBeenCalledWith('je-old', expect.anything());
+    });
+
+    it('keeps the advance-auto-consume portion: PARTIALLY_PAID with surviving amountPaid, not a blind zero', async () => {
+      const tx = prisma.__tx;
+      setup(tx, { payment: { amountDue: 1515.83 } });
+      tx.installmentSchedule.findUnique.mockResolvedValue({ id: 'sched-1' });
+      // 1st findMany = void's reversal targets (the cash receipt JE only —
+      // the 2A advance-consume JE has no metadata.paymentId so it never
+      // matches); 2nd findMany = reconstructPriorCleared by scheduleId, which
+      // DOES see the surviving consume JE.
+      tx.journalEntry.findMany
+        .mockResolvedValueOnce([
+          {
+            id: 'je-cash',
+            status: 'POSTED',
+            lines: [
+              { accountCode: '11-1101', debit: 1161.83, credit: 0 },
+              { accountCode: '11-2103', debit: 0, credit: 1161.83 },
+            ],
+          },
+        ])
+        .mockResolvedValueOnce([
+          {
+            metadata: { tag: '2B', flow: 'advance-consume-on-accrual' },
+            lines: [{ accountCode: '11-2103', debit: 0, credit: 354 }],
+          },
+        ]);
+
+      await service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER');
+
+      const call = tx.payment.update.mock.calls[0][0];
+      expect(call.data.status).toBe('PARTIALLY_PAID');
+      expect(String(call.data.amountPaid)).toBe('354');
+      expect(call.data.paidDate).toBeNull();
+    });
+
+    it('refuses to void an EARLY_PAYOFF receipt (paymentId=null — CN would reverse nothing)', async () => {
+      const tx = prisma.__tx;
+      setup(tx, { receipt: { receiptType: 'EARLY_PAYOFF', paymentId: null } });
+
+      await expect(
+        service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER'),
+      ).rejects.toThrow(BadRequestException);
+      expect(tx.receipt.create).not.toHaveBeenCalled();
+    });
+
+    it.each(['EARLY_PAYOFF', 'TERMINATED', 'EXCHANGED', 'DEFECT_EXCHANGED', 'CLOSED_BAD_DEBT', 'CANCELED'])(
+      'refuses to void when the contract is terminally closed (%s)',
+      async (status) => {
+        const tx = prisma.__tx;
+        setup(tx, { contract: { status } });
+
+        await expect(
+          service.voidReceipt(receiptId, 'บันทึกผิด', userId, approverId, 'OWNER'),
+        ).rejects.toThrow(BadRequestException);
+        expect(tx.receipt.create).not.toHaveBeenCalled();
+        expect(tx.payment.update).not.toHaveBeenCalled();
+      },
+    );
   });
 
   describe('generateReceipt — RT-YYYYMM format + partial fields', () => {

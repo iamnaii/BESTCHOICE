@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import { AlertTriangle, Check, Store } from 'lucide-react';
 import api, { getErrorMessage } from '@/lib/api';
 import { formatNumber, formatNumberDecimal } from '@/utils/formatters';
-import { CashAccountSelect } from '@/components/CashAccountSelect';
+import { CashAccountSelect, KBANK_ONLY_CODES } from '@/components/CashAccountSelect';
 import { useAuth } from '@/contexts/AuthContext';
 import { invalidatePaymentQueries } from '@/pages/PaymentsPage/invalidatePaymentQueries';
 
@@ -96,7 +96,8 @@ export function EarlyPayoffOverlay({
   const { user } = useAuth();
   const [discountPct, setDiscountPct] = useState(50);
   const [paymentMethod, setPaymentMethod] = useState('CASH');
-  const [depositAccountCode, setDepositAccountCode] = useState('11-1101');
+  // Owner rule 2026-07-08: direct FINANCE receipt = ธนาคารกสิกร (11-1201) only.
+  const [depositAccountCode, setDepositAccountCode] = useState('11-1201');
   const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [referenceNo, setReferenceNo] = useState('');
   const [notes, setNotes] = useState('');
@@ -434,6 +435,7 @@ export function EarlyPayoffOverlay({
                 value={depositAccountCode}
                 onChange={setDepositAccountCode}
                 disabled={collectedByShop}
+                codes={KBANK_ONLY_CODES}
               />
               {collectedByShop && (
                 <p className="mt-1 text-xs text-muted-foreground leading-snug">
@@ -641,6 +643,7 @@ export function EarlyPayoffOverlay({
                   <CashAccountSelect
                     value={settlementAccountCode}
                     onChange={setSettlementAccountCode}
+                    codes={KBANK_ONLY_CODES}
                   />
                 </div>
                 <div>

@@ -21,3 +21,12 @@ export const CASH_ACCOUNT_CODES = [
 ] as const;
 
 export type CashAccountCode = (typeof CASH_ACCOUNT_CODES)[number];
+
+/**
+ * ธนาคารกสิกร (KBank) — the ONLY account allowed for direct FINANCE receipt
+ * on early payoff (JP4) and repossession (JP5). Owner rule 2026-07-08:
+ * customers pay FINANCE via KBank transfer only; cash physically collected at
+ * a branch must go through the shop-collect path (Dr 11-2107 ลูกหนี้-หน้าร้าน)
+ * and be settled to FINANCE later.
+ */
+export const KBANK_ACCOUNT_CODE = '11-1201';

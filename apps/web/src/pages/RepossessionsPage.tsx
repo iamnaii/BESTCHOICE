@@ -13,6 +13,8 @@ import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, repossessionStatusMap, conditionGradeMap } from '@/lib/status-badges';
 import { Check, X } from 'lucide-react';
+import { CashAccountSelect, KBANK_ONLY_CODES } from '@/components/CashAccountSelect';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface Repossession {
   id: string;
@@ -38,10 +40,17 @@ interface Repossession {
 
 export default function RepossessionsPage() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  // POST /contracts/:id/shop-collect-settlement roles (OWNER/FM/ACC)
+  const canSettle = ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'].includes(user?.role ?? '');
   const [statusFilter, setStatusFilter] = useState('');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
   const [selectedRepo, setSelectedRepo] = useState<Repossession | null>(null);
+  // Shop-collect settlement dialog (ยึดคืนแบบตั้งลูกหนี้-หน้าร้าน 11-2107)
+  const [settlementRepo, setSettlementRepo] = useState<Repossession | null>(null);
+  const [settlementAmount, setSettlementAmount] = useState('');
+  const [settlementAccountCode, setSettlementAccountCode] = useState('11-1201');
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
   const [createForm, setCreateForm] = useState({
     contractId: '',
@@ -142,6 +151,30 @@ export default function RepossessionsPage() {
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
+
+  // Clears the Dr 11-2107 parked by a shop-collect repossession (same generic
+  // endpoint the early-payoff settlement uses — Dr KBank / Cr 11-2107).
+  const settlementMutation = useMutation({
+    mutationFn: async () =>
+      api.post(`/contracts/${settlementRepo!.contract.id}/shop-collect-settlement`, {
+        depositAccountCode: settlementAccountCode,
+        amount: Number(settlementAmount),
+      }),
+    onSuccess: () => {
+      toast.success('บันทึกรับโอนจากหน้าร้านแล้ว — ล้างลูกหนี้-หน้าร้าน (11-2107)');
+      queryClient.invalidateQueries({ queryKey: ['repossessions'] });
+      setSettlementRepo(null);
+      setSettlementAmount('');
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
+  const openSettlement = (repo: Repossession) => {
+    setSettlementRepo(repo);
+    // Prefill with the parked repossession value (the JP5 Dr 11-2107 amount).
+    setSettlementAmount(String(Number(repo.appraisalPrice)));
+    setSettlementAccountCode('11-1201');
+  };
 
   const openUpdate = (repo: Repossession) => {
     setSelectedRepo(repo);
@@ -266,6 +299,15 @@ export default function RepossessionsPage() {
           >
             จัดการ
           </button>
+          {canSettle && (
+            <button
+              onClick={() => openSettlement(r)}
+              title="บันทึกรับโอนจากหน้าร้าน — ล้างลูกหนี้-หน้าร้าน (11-2107) กรณียึดคืนแบบตั้งลูกหนี้-หน้าร้าน"
+              className="text-warning hover:text-warning/80 text-sm font-medium"
+            >
+              รับโอนหน้าร้าน
+            </button>
+          )}
         </div>
       ),
     },
@@ -663,6 +705,72 @@ export default function RepossessionsPage() {
           </div>
         </div>
       )}
+
+      {/* Shop-collect settlement Modal — Dr KBank / Cr 11-2107 */}
+      <Modal
+        isOpen={!!settlementRepo}
+        onClose={() => setSettlementRepo(null)}
+        title="บันทึกรับโอนจากหน้าร้าน"
+      >
+        {settlementRepo && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              settlementMutation.mutate();
+            }}
+            className="space-y-4"
+          >
+            <div className="bg-muted rounded-lg p-3 text-sm space-y-0.5">
+              <div><strong>สัญญา:</strong> {settlementRepo.contract.contractNumber}</div>
+              <div><strong>ลูกค้า:</strong> {settlementRepo.contract.customer.name}</div>
+              <div className="text-xs text-muted-foreground leading-snug pt-1">
+                ล้างลูกหนี้-หน้าร้าน (Dr บัญชีรับเงิน / Cr 11-2107) — ใช้กับการยึดคืนที่ติ๊ก
+                "ตั้งลูกหนี้-หน้าร้าน" ไว้ · ระบบจะปฏิเสธถ้ายอดเกินลูกหนี้คงค้างของสัญญา
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">
+                บัญชีรับเงิน (FINANCE) <span className="text-destructive">*</span>
+              </label>
+              <CashAccountSelect
+                value={settlementAccountCode}
+                onChange={setSettlementAccountCode}
+                codes={KBANK_ONLY_CODES}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">
+                จำนวนเงินที่รับโอน <span className="text-destructive">*</span>
+              </label>
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={settlementAmount}
+                onChange={(e) => setSettlementAmount(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-card text-sm focus:outline-hidden focus:ring-2 focus:ring-ring/20"
+                placeholder="0.00"
+              />
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setSettlementRepo(null)}
+                className="px-5 py-2.5 text-sm border border-border rounded-lg hover:bg-accent transition-colors"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="submit"
+                disabled={settlementMutation.isPending || !(Number(settlementAmount) > 0)}
+                className="px-6 py-2.5 text-sm bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg disabled:opacity-50 font-semibold transition-colors"
+              >
+                {settlementMutation.isPending ? 'กำลังบันทึก...' : 'ยืนยันรับโอน'}
+              </button>
+            </div>
+          </form>
+        )}
+      </Modal>
 
       {/* Update Modal */}
       <Modal isOpen={isUpdateModalOpen} onClose={() => setIsUpdateModalOpen(false)} title="จัดการเครื่องยึดคืน">

@@ -308,6 +308,36 @@ describe('CreateContactModal', () => {
     expect(screen.getByRole('button', { name: 'สร้าง' })).toBeDisabled();
   });
 
+  // ── Full-length typing regression (owner report 2026-07-08) ──────────────
+  // Live dash-insertion while typing dropped keystrokes on some environments
+  // (IME/mobile keyboards) — เลขบัตร/เบอร์โทร could not be entered completely.
+  // While focused the field must hold RAW digits (no mid-typing rewrite);
+  // the dashed format applies on blur only.
+
+  it('accepts all 13 id digits + 10 phone digits; raw while focused, dashed after blur', async () => {
+    const user = userEvent.setup();
+    renderModal({ role: 'CUSTOMER' });
+
+    const id = screen.getByLabelText(/เลขบัตรประชาชน/) as HTMLInputElement;
+    await user.click(id);
+    await user.type(id, '1234567890123');
+    expect(id.value).toBe('1234567890123'); // raw while focused — nothing rewrites input
+
+    const phone = screen.getByLabelText(/เบอร์โทร/) as HTMLInputElement;
+    await user.click(phone); // blurs the id field
+    expect(id.value).toBe('1-2345-67890-12-3'); // dashed once editing is done
+
+    await user.type(phone, '0812345678');
+    expect(phone.value).toBe('0812345678');
+
+    await user.tab(); // blur phone
+    expect(phone.value).toBe('081-234-5678');
+
+    // Complete values → no length errors anywhere.
+    expect(screen.queryByText(/ต้องเป็นตัวเลขครบ 13 หลัก/)).toBeNull();
+    expect(screen.queryByText(/เบอร์โทรต้องเป็นเลข 10 หลัก/)).toBeNull();
+  });
+
   // ── Enter submits ─────────────────────────────────────────────────────────
 
   it('submits the form on Enter key', async () => {

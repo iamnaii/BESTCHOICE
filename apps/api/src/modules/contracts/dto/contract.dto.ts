@@ -1,5 +1,5 @@
 import { IsString, IsNumber, IsOptional, IsInt, IsBoolean, IsPositive, Min, Max, Matches, IsIn } from 'class-validator';
-import { CASH_ACCOUNT_CODES } from '../../../constants/cash-account.constants';
+import { KBANK_ACCOUNT_CODE } from '../../../constants/cash-account.constants';
 
 export class CreateContractDto {
   @IsString()
@@ -101,12 +101,15 @@ export class EarlyPayoffDto {
   discountPct?: number;
 
   /**
-   * Cash dimension: บัญชีรับเงินจริง (one of 6 codes per accounting.md).
-   * Optional — falls back to user.defaultCashAccountCode then 11-1101.
+   * Cash dimension: บัญชีรับเงินจริง — ธนาคารกสิกร (11-1201) เท่านั้น
+   * (owner rule 2026-07-08: เงินเข้า FINANCE ตรงได้ทางเดียวคือโอนเข้ากสิกร;
+   * เงินสดหน้าร้านใช้ collectedByShop → 11-2107). Omitted → 11-1201.
    */
   @IsOptional()
   @IsString()
-  @IsIn([...CASH_ACCOUNT_CODES], { message: 'บัญชีรับเงินไม่ถูกต้อง' })
+  @IsIn([KBANK_ACCOUNT_CODE], {
+    message: 'บัญชีรับเงินต้องเป็นธนาคารกสิกร (11-1201) เท่านั้น',
+  })
   depositAccountCode?: string;
 
   /** วันที่ชำระ (ISO date) — default = วันนี้ */
@@ -171,11 +174,13 @@ export class RejectCancellationDto {
  */
 export class ShopCollectSettlementDto {
   /**
-   * บัญชีรับเงิน (cash/bank) ที่ FINANCE รับโอนจากหน้าร้าน.
-   * ต้องเป็นหนึ่งใน CASH_ACCOUNT_CODES (11-1101..11-1203).
+   * บัญชีรับเงิน (bank) ที่ FINANCE รับโอนจากหน้าร้าน — ธนาคารกสิกร (11-1201)
+   * เท่านั้น (owner rule 2026-07-08: หน้าร้านโอนเข้าบัญชีกสิกรของ FINANCE).
    */
   @IsString()
-  @IsIn([...CASH_ACCOUNT_CODES], { message: 'บัญชีรับเงินไม่ถูกต้อง — ต้องเป็นบัญชีเงินสดหรือธนาคารที่กำหนด' })
+  @IsIn([KBANK_ACCOUNT_CODE], {
+    message: 'บัญชีรับเงินต้องเป็นธนาคารกสิกร (11-1201) เท่านั้น',
+  })
   depositAccountCode: string;
 
   /** ยอดชำระ (฿) — ต้องมากกว่า 0 และไม่เกินยอด 11-2107 คงค้างของสัญญา */

@@ -247,7 +247,7 @@ export class RefundsService {
       // creditBalance un-restored. The tag filter excludes it (and any
       // paysolutions-surplus-advance, which has no paymentId). The advance-consume 2B
       // JE also has no paymentId so it is already not matched.
-      const originalEntries = await tx.journalEntry.findMany({
+      const matchedEntries = await tx.journalEntry.findMany({
         where: {
           AND: [
             { metadata: { path: ['paymentId'], equals: refund.paymentId } } as any,
@@ -264,6 +264,12 @@ export class RefundsService {
           ],
         },
       });
+      // Skip originals already reversed by a PRIOR void/refund cycle (their
+      // status stays POSTED; only metadata.reversed flips) — otherwise the
+      // reversal template throws "already reversed" and the whole refund
+      // aborts. JS filter, not SQL: JSON-path equality on a missing key is
+      // NULL in Postgres, so a SQL NOT(...) would drop never-reversed JEs too.
+      const originalEntries = matchedEntries.filter((e) => (e.metadata as any)?.reversed !== true);
 
       // The reversal posts to the current period of the payment's company — guard it
       // open (companyId-aware: runs the Tier-1 AccountingPeriod check, not just Tier-2).

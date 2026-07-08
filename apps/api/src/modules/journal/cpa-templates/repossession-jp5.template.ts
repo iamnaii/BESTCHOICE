@@ -9,6 +9,12 @@ export interface RepossessionInput {
   depositAccountCode: string;
   /** Fair market value of repossessed device (amount received from customer) */
   repossessionValue: Decimal;
+  /**
+   * Shop-collect (2026-07-08): the caller substituted depositAccountCode with
+   * 11-2107 ลูกหนี้-หน้าร้าน — stamp metadata so audit reports can pair the JE
+   * with its later shop-collect settlement (same convention as JP4).
+   */
+  collectedByShop?: boolean;
 }
 
 /**
@@ -288,6 +294,9 @@ export class RepossessionJP5Template {
           // Wave 2 T2: Credit Note tracking (per ม.82/5)
           creditNoteIssued: accruedCount.gt(0),
           creditNoteVatAmount: accruedCreditNoteVat.toFixed(2),
+          ...(input.collectedByShop
+            ? { collectedByShop: true, shopReceivable: input.depositAccountCode }
+            : {}),
         },
         lines,
       },

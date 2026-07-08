@@ -138,9 +138,6 @@ describe('RepossessionsService', () => {
       auditLog: {
         create: jest.fn(),
       },
-      user: {
-        findUnique: jest.fn().mockResolvedValue({ defaultCashAccountCode: '11-1101' }),
-      },
       systemConfig: {
         findUnique: jest.fn().mockResolvedValue(null), // strict mode off by default
       },
@@ -386,9 +383,63 @@ describe('RepossessionsService', () => {
       expect(template.execute).toHaveBeenCalledWith(
         expect.objectContaining({
           contractId: 'contract-1',
-          depositAccountCode: '11-1101',
+          // Owner rule 2026-07-08: direct FINANCE receipt = KBank only —
+          // the fallback is 11-1201, never a cash account / user default.
+          depositAccountCode: '11-1201',
+          collectedByShop: false,
         }),
         prisma, // tx (mock $transaction passes prisma itself as tx)
+      );
+    });
+
+    it('collectedByShop books the JP5 deposit leg to 11-2107 + writes SHOP_COLLECT_REPOSSESSION audit', async () => {
+      prisma.contract.findUnique.mockResolvedValue(makeContract());
+      prisma.repossession.create.mockResolvedValue({ ...makeRepossession(), id: 'repo-new' });
+      prisma.contract.update.mockResolvedValue({});
+      prisma.product.update.mockResolvedValue({});
+      prisma.auditLog.create.mockResolvedValue({});
+
+      await service.create({ ...baseDto, collectedByShop: true } as never, 'user-1');
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const template = (service as any).repossessionJP5Template;
+      expect(template.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          contractId: 'contract-1',
+          depositAccountCode: '11-2107',
+          collectedByShop: true,
+        }),
+        prisma,
+      );
+      // Forensic trail mirrors SHOP_COLLECT_PAYOFF (JP4).
+      const auditActions = prisma.auditLog.create.mock.calls.map(
+        (c: any[]) => c[0].data.action,
+      );
+      expect(auditActions).toContain('SHOP_COLLECT_REPOSSESSION');
+      const scAudit = prisma.auditLog.create.mock.calls.find(
+        (c: any[]) => c[0].data.action === 'SHOP_COLLECT_REPOSSESSION',
+      )![0].data;
+      expect(scAudit.newValue.shopReceivable).toBe('11-2107');
+      expect(scAudit.newValue.repossessionValue).toBe('6000.00');
+    });
+
+    it('ignores a caller-sent depositAccountCode when collectedByShop=true (server substitution wins)', async () => {
+      prisma.contract.findUnique.mockResolvedValue(makeContract());
+      prisma.repossession.create.mockResolvedValue({ ...makeRepossession(), id: 'repo-new' });
+      prisma.contract.update.mockResolvedValue({});
+      prisma.product.update.mockResolvedValue({});
+      prisma.auditLog.create.mockResolvedValue({});
+
+      await service.create(
+        { ...baseDto, collectedByShop: true, depositAccountCode: '11-1201' } as never,
+        'user-1',
+      );
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const template = (service as any).repossessionJP5Template;
+      expect(template.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ depositAccountCode: '11-2107' }),
+        prisma,
       );
     });
 

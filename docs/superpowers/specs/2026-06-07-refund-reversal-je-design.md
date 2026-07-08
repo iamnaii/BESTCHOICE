@@ -16,6 +16,19 @@ Unlike `receipts.voidReceipt`, which reverses the original payment JE (Phase A.5
 
 - **"Mirror voidReceipt" was imprecise** — traced `voidReceipt`: it issues a credit note + reverses the JE but **never reverts `payment.status`** (leaves it `PAID`). So reverting the payment is a *new* behavior, not inherited.
   **Resolution:** the two are different scenarios and SHOULD differ. `voidReceipt` = the *receipt document* was wrong but the payment genuinely happened → payment stays `PAID`. A refund = the *payment booking* was wrong → revert the payment to its true unpaid state. The divergence is deliberate and documented.
+  > **⚠️ SUPERSEDED 2026-07-08 (owner decision):** the "payment stays PAID" half of this
+  > resolution is no longer true. In practice staff use ยกเลิกใบเสร็จ to cancel a wrongly
+  > recorded payment, and the void's ledger reversal already un-paid the whole Payment
+  > (PR 3.1 reverses every receipt JE sharing `metadata.paymentId`) — leaving the Payment
+  > row `PAID` made the pending queue, "งวดที่ชำระแล้ว X/N" and the ชำระครบ tab disagree
+  > with the ledger. `ReceiptVoidService.voidReceipt` now mirrors `markReversed`: reverts
+  > the Payment to `OVERDUE`/`PENDING` (`amountPaid=0`, `paidDate=null`), voids sibling
+  > receipts (excluding `CREDIT_NOTE`/`RESCHEDULE_FEE`), restores
+  > `Contract.advanceBalance`/`creditBalance` from the reversed 21-1103/21-5101 legs,
+  > soft-deletes the payment's loyalty points, and refuses to void on `COMPLETED`
+  > contracts / CN / RESCHEDULE_FEE receipts. `reconstructPriorCleared` now skips
+  > originals stamped `metadata.reversed=true` so the re-opened installment can be
+  > re-received (this also fixed re-payment after a refund reversal).
 - **Reverting `payment.status → PENDING` re-arms dunning/overdue/MDM-lock** ([dunning-engine.service.ts:306](../../../apps/api/src/modules/overdue/dunning-engine.service.ts) queries `status IN (PENDING,OVERDUE,PARTIALLY_PAID)` on `OVERDUE/DEFAULT` contracts).
   **Resolution:** for an error-correction, restoring the true unpaid state is *correct* — the installment genuinely wasn't paid, so normal overdue/dunning applies. Intended, not a harm. (Documented so the accountant is aware.)
 

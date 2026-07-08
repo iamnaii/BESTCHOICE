@@ -13,6 +13,9 @@ const prisma = new PrismaClient();
 describe('Template 1A — Contract Activation', () => {
   beforeAll(async () => {
     // Clean slate for JE-related tables
+    // JournalPostAuditLog rows (asset flows) FK-reference journal_entries — clear
+    // them first or this deleteMany trips P2003 when an asset spec ran earlier.
+    await prisma.journalPostAuditLog.deleteMany({});
     await prisma.journalLine.deleteMany({});
     await prisma.journalEntry.deleteMany({});
     await prisma.receipt.deleteMany({});

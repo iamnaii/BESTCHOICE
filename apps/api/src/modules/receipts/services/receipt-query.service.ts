@@ -113,6 +113,14 @@ export class ReceiptQueryService {
         contract: {
           select: {
             contractNumber: true,
+            // Money fields for the per-installment VAT breakdown on the PDF
+            // (computeInstallmentBreakdown — same rounding as the 2A ledger,
+            // per CPA manual: Gross/งวด 1,416.66 + VAT/งวด 99.17 = 1,515.83).
+            totalMonths: true,
+            financedAmount: true,
+            storeCommission: true,
+            interestTotal: true,
+            vatAmount: true,
             customer: {
               select: {
                 name: true,
@@ -156,14 +164,49 @@ export class ReceiptQueryService {
     });
 
     // Look up the underlying installment to derive partial-payment context
+    // + late-fee/waiver display (fee is VAT-exempt — shown as its own line).
     const payment = receipt.paymentId
       ? await this.prisma.payment.findUnique({
           where: { id: receipt.paymentId },
-          select: { amountDue: true, lateFee: true, amountPaid: true, status: true },
+          select: {
+            amountDue: true,
+            lateFee: true,
+            amountPaid: true,
+            status: true,
+            lateFeeWaived: true,
+            waivedAmount: true,
+            waivedReason: true,
+          },
         })
       : null;
 
-    return { ...receipt, company, issuer, payment };
+    // Late fee is displayed on the FIRST receipt of an installment only
+    // (owner convention 2026-07-02 — mirrors computeReceiptFeeDisplay on the
+    // web). Count earlier non-voided receipts of the same installment.
+    const priorReceiptCount =
+      receipt.contractId && receipt.installmentNo != null
+        ? await this.prisma.receipt.count({
+            where: {
+              contractId: receipt.contractId,
+              installmentNo: receipt.installmentNo,
+              id: { not: receipt.id },
+              isVoided: false,
+              deletedAt: null,
+              receiptType: { notIn: ['CREDIT_NOTE'] },
+              createdAt: { lt: receipt.createdAt },
+            },
+          })
+        : 0;
+
+    // Credit note → reference the voided original on the document.
+    const voidedRef = receipt.voidedReceiptId
+      ? await this.prisma.receipt.findUnique({
+          where: { id: receipt.voidedReceiptId },
+          select: { receiptNumber: true, paidDate: true },
+        })
+      : null;
+
+    return { ...receipt, company, issuer, payment, priorReceiptCount, voidedRef };
   }
 
   /** Get receipt by number */

@@ -122,6 +122,47 @@ describe('ReceiptVoidDialog — SoD approver field', () => {
     await screen.findByRole('option', { name: /เจ้าของร้าน/ });
   });
 
+  it('invalidates payment queues + summaries so the un-paid installment reappears (2026-07-08)', async () => {
+    // Void now un-pays the installment server-side. The stale-cache regression:
+    // with only ['receipts'/'contract-receipts'/'contract-payments'] invalidated,
+    // the pending queue (['pending-payments']), the ชำระครบ tab (['paid-payments']),
+    // the KPI tiles (['pending-summary'/'daily-summary']) and the JE panel
+    // (['contract-journal-entries']) all kept showing the installment as paid.
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ReceiptVoidDialog receiptId="r-1" onClose={vi.fn()} />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText(/ลูกค้าโอนผิดบัญชี/), {
+      target: { value: 'บันทึกผิด' },
+    });
+    await screen.findByRole('option', { name: /เจ้าของร้าน/ });
+    fireEvent.change(screen.getByLabelText(/ผู้อนุมัติการยกเลิก/), {
+      target: { value: 'u-boss' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'ยืนยันยกเลิก' }));
+    await waitFor(() => expect(apiPost).toHaveBeenCalled());
+
+    const invalidatedKeys = invalidateSpy.mock.calls.map(
+      (c) => (c[0] as { queryKey?: unknown[] } | undefined)?.queryKey?.[0],
+    );
+    for (const key of [
+      'receipts',
+      'contract-receipts',
+      'contract-payments',
+      'contract-journal-entries',
+      'pending-payments',
+      'paid-payments',
+      'pending-summary',
+      'daily-summary',
+    ]) {
+      expect(invalidatedKeys).toContain(key);
+    }
+  });
+
   it('resets stale reason/approver when the dialog is reopened for a different receipt', async () => {
     // Parents close via setVoidTarget(null) — an external controlled-prop
     // flip Radix does NOT report through onOpenChange — so the reset must

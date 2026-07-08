@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
+import { invalidatePaymentQueries } from '@/pages/PaymentsPage/invalidatePaymentQueries';
 
 interface Props {
   receiptId: string | null;
@@ -71,10 +72,13 @@ export default function ReceiptVoidDialog({ receiptId, receiptNumber, onClose }:
       return data;
     },
     onSuccess: () => {
-      toast.success('ยกเลิกใบเสร็จสำเร็จ — สร้างใบลดหนี้แล้ว');
+      toast.success('ยกเลิกใบเสร็จสำเร็จ — สร้างใบลดหนี้แล้ว และงวดกลับเป็นสถานะค้างชำระ/รอชำระ');
+      // Void un-pays the installment server-side — the pending queue, the
+      // ชำระครบ tab, the KPI tiles and the JE panel all change, not just the
+      // receipt lists. Reuse the shared post-payment invalidation set.
+      invalidatePaymentQueries(queryClient);
       queryClient.invalidateQueries({ queryKey: ['receipts'] });
-      queryClient.invalidateQueries({ queryKey: ['contract-receipts'] });
-      queryClient.invalidateQueries({ queryKey: ['contract-payments'] });
+      queryClient.invalidateQueries({ queryKey: ['pending-summary'] });
       resetForm();
       onClose();
     },
@@ -96,7 +100,9 @@ export default function ReceiptVoidDialog({ receiptId, receiptNumber, onClose }:
           <DialogTitle>ยกเลิกใบเสร็จ</DialogTitle>
           <DialogDescription>
             ระบบจะสร้างใบลดหนี้ (Credit Note) อ้างอิงใบเสร็จ
-            {receiptNumber ? <span className="font-mono"> {receiptNumber}</span> : ''}
+            {receiptNumber ? <span className="font-mono"> {receiptNumber}</span> : ''}{' '}
+            และงวดนั้นจะกลับเป็นสถานะค้างชำระ/รอชำระ
+            (ใบเสร็จอื่นของงวดเดียวกันจะถูกยกเลิกพร้อมกัน)
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">

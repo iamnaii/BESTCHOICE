@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import * as puppeteer from 'puppeteer';
 import * as QRCode from 'qrcode';
 import { EMBEDDED_FONT_FACES } from '../../../assets/fonts/embedded-fonts';
+import { computeInstallmentBreakdown } from '../../journal/compute-installment-breakdown';
 import { ReceiptQueryService } from './receipt-query.service';
 
 // Embedded BESTCHOICE logo. Single source of truth for the receipt header.
@@ -159,19 +160,103 @@ export class ReceiptPdfService {
     // additions.
     const toDec = (v: unknown): Prisma.Decimal =>
       new Prisma.Decimal((v ?? 0).toString());
-    const total = toDec(receipt.amount).toNumber();
-    const amountBeforeVat = receipt.amountBeforeVat ? toDec(receipt.amountBeforeVat).toNumber() : null;
-    const vatAmount = receipt.vatAmount ? toDec(receipt.vatAmount).toNumber() : null;
+    const ZERO = new Prisma.Decimal(0);
+    const total = toDec(receipt.amount);
     const totalDue = receipt.payment
-      ? toDec(receipt.payment.amountDue).plus(toDec(receipt.payment.lateFee)).toNumber()
+      ? toDec(receipt.payment.amountDue).plus(
+          receipt.payment.lateFeeWaived ? ZERO : toDec(receipt.payment.lateFee),
+        )
       : null;
-    const totalPaidOnInstallment = receipt.payment ? toDec(receipt.payment.amountPaid).toNumber() : null;
+    const totalPaidOnInstallment = receipt.payment ? toDec(receipt.payment.amountPaid) : null;
     const isPartial = receipt.payment?.status === 'PARTIALLY_PAID';
-    const remainingBalance = toDec(receipt.remainingBalance ?? 0).toNumber();
-    const fmt = (n: number) =>
-      n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const thaiAmount = this.numberToThaiText(total);
+    const remainingBalance = toDec(receipt.remainingBalance ?? 0);
+    const fmt = (v: Prisma.Decimal | number) =>
+      (typeof v === 'number' ? v : v.toNumber()).toLocaleString('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+    const thaiAmount = this.numberToThaiText(total.toNumber());
     const paidDateStr = formatDateShort(receipt.paidDate);
+
+    // ── CPA money breakdown (คู่มือบันทึกรับชำระ Policy A) ─────────────────
+    // ค่างวดมี VAT 7% ฝังใน (Gross/งวด + VAT/งวด เช่น 1,416.66 + 99.17 =
+    // 1,515.83) ส่วนค่าปรับล่าช้าไม่มี VAT (นโยบาย owner + ฐานภาษีตามกฎหมาย)
+    // — ใบเสร็จจึงต้องแยกสองส่วนนี้คนละบรรทัด ห้ามรวมฐาน.
+    const receiptType = receipt.receiptType ?? 'PAYMENT';
+    const isCreditNote = receiptType === 'CREDIT_NOTE';
+    // VAT-bearing documents: installment receipts + early payoff (JP4 settles
+    // VAT) + credit notes (mirror of an installment receipt). Down payments
+    // (SHOP — ไม่จด VAT) and reschedule fees (เงินรับล่วงหน้า + ค่าปรับ) carry no VAT.
+    const vatBearing = !['DOWN_PAYMENT', 'RESCHEDULE_FEE'].includes(receiptType);
+
+    // Late fee — first receipt of the installment only (owner convention
+    // 2026-07-02, mirrors the payment-history display). Fee is VAT-exempt.
+    const firstReceiptOfInstallment = (receipt.priorReceiptCount ?? 0) === 0;
+    const rawFee =
+      receipt.payment && !isCreditNote && firstReceiptOfInstallment
+        ? toDec(receipt.payment.lateFee)
+        : ZERO;
+    const feeWaived =
+      receipt.payment && !isCreditNote && firstReceiptOfInstallment
+        ? receipt.payment.waivedAmount != null
+          ? toDec(receipt.payment.waivedAmount)
+          : receipt.payment.lateFeeWaived
+            ? rawFee
+            : ZERO
+        : ZERO;
+    const feeCharged = rawFee.gt(0) ? rawFee : ZERO;
+    const feeNet = Prisma.Decimal.max(feeCharged.minus(feeWaived), ZERO);
+    // Cash attributed to the fee cannot exceed what was actually received.
+    const feePortion = Prisma.Decimal.min(feeNet, total);
+
+    // Installment (VAT-bearing) portion of this receipt's cash.
+    const installmentPortion = total.minus(feePortion);
+    const breakdown =
+      receipt.contract?.financedAmount != null && receipt.contract?.totalMonths
+        ? computeInstallmentBreakdown({
+            financedAmount: receipt.contract.financedAmount.toString(),
+            storeCommission:
+              receipt.contract.storeCommission != null
+                ? receipt.contract.storeCommission.toString()
+                : null,
+            interestTotal: (receipt.contract.interestTotal ?? 0).toString(),
+            vatAmount:
+              receipt.contract.vatAmount != null ? receipt.contract.vatAmount.toString() : null,
+            totalMonths: receipt.contract.totalMonths,
+          })
+        : null;
+    let exclVat = ZERO;
+    let vatPart = ZERO;
+    if (vatBearing && installmentPortion.gt(0)) {
+      if (breakdown && installmentPortion.equals(breakdown.installmentTotal)) {
+        // Full standard installment → exact ledger figures (per CPA manual).
+        exclVat = breakdown.installmentExclVat;
+        vatPart = breakdown.vatPerInst;
+      } else {
+        // Partial / payoff / residual final installment → pro-rata 7% split.
+        exclVat = installmentPortion.times(100).div(107).toDecimalPlaces(2);
+        vatPart = installmentPortion.minus(exclVat);
+      }
+    } else if (installmentPortion.gt(0)) {
+      exclVat = installmentPortion; // non-VAT document — full value, no VAT column
+    }
+
+    const docTitle = isCreditNote
+      ? 'ใบลดหนี้'
+      : vatBearing && vatPart.gt(0)
+        ? 'ใบเสร็จรับเงิน / ใบกำกับภาษี'
+        : 'ใบเสร็จรับเงิน';
+
+    const itemLabels: Record<string, string> = {
+      DOWN_PAYMENT: 'เงินดาวน์',
+      EARLY_PAYOFF: 'ปิดยอดสัญญาก่อนกำหนด',
+      RESCHEDULE_FEE: 'ค่าธรรมเนียมเลื่อนนัดชำระ (ปรับดิว)',
+      CREDIT_NOTE: 'ลดหนี้ — ยกเลิกใบเสร็จ',
+    };
+    const installmentLabel = receipt.installmentNo
+      ? `ค่างวดเช่าซื้อ งวดที่ ${receipt.installmentNo}${receipt.contract?.totalMonths ? `/${receipt.contract.totalMonths}` : ''}`
+      : 'การรับชำระเงิน';
+    const itemLabel = itemLabels[receiptType] ?? installmentLabel;
 
     const verifyUrl = `https://bestchoicephone.app/r/${receipt.receiptNumber}`;
     const qrDataUrl = await QRCode.toDataURL(verifyUrl, {
@@ -202,93 +287,92 @@ export class ReceiptPdfService {
     @page { size: A4; margin: 0; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --emerald-50:#ecfdf5; --emerald-100:#d1fae5; --emerald-700:#047857; --emerald-800:#065f46;
-      --zinc-200:#e4e4e7; --zinc-300:#d4d4d8; --zinc-400:#a1a1aa; --zinc-500:#71717a; --zinc-600:#52525b; --zinc-700:#3f3f46; --zinc-900:#18181b;
-      --red-500:#ef4444;
+      --emerald-50:#ecfdf5; --emerald-100:#d1fae5; --emerald-600:#059669; --emerald-700:#047857; --emerald-800:#065f46; --emerald-900:#064e3b;
+      --zinc-50:#fafafa; --zinc-100:#f4f4f5; --zinc-200:#e4e4e7; --zinc-300:#d4d4d8; --zinc-400:#a1a1aa; --zinc-500:#71717a; --zinc-600:#52525b; --zinc-700:#3f3f46; --zinc-900:#18181b;
+      --amber-50:#fffbeb; --amber-200:#fde68a; --amber-800:#92400e;
     }
     body {
-      font-family: 'Noto Sans Thai', 'IBM Plex Sans Thai', system-ui, -apple-system, sans-serif;
+      font-family: 'Noto Sans Thai', system-ui, -apple-system, sans-serif;
       color: var(--zinc-900);
-      font-size: 9.5pt;
-      line-height: 1.45;
-      padding: 11mm 12mm 10mm;
+      font-size: 10.5pt;
+      line-height: 1.55;
+      padding: 12mm 13mm 10mm;
     }
-    .header { display:flex; justify-content:space-between; align-items:flex-start; padding-bottom:10px; border-bottom:1.5px solid var(--zinc-300); }
-    .logo-block svg { height: 32px; width: auto; }
-    .doc-title { font-size:20pt; font-weight:700; color:var(--emerald-700); line-height:1; text-align:right; letter-spacing:-0.01em; }
+    .num, .tnum { font-variant-numeric: tabular-nums; }
 
-    .parties { display:grid; grid-template-columns: minmax(0, 1fr) 220px; gap:14px; padding:12px 0; border-bottom:1px solid var(--zinc-200); margin-bottom:12px; }
-    .party-row { display:grid; grid-template-columns: 78px 1fr; gap:6px; margin-bottom:4px; align-items:start; font-size:9.5pt; }
-    .party-label { color:var(--zinc-900); font-weight:700; white-space:nowrap; }
-    .party-name { font-weight:600; }
-    .party-divider { margin:10px 0; border:0; border-top:1px solid var(--zinc-200); }
-    .meta-card { background:var(--emerald-50); border:1px solid var(--emerald-100); border-radius:6px; padding:10px 14px; font-size:9pt; align-self:start; }
-    .meta-row { display:flex; justify-content:space-between; padding:3px 0; }
-    .meta-label { color:var(--emerald-800); font-weight:600; }
-    .meta-value { color:var(--zinc-900); font-family:'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size:8.5pt; font-weight:500; }
-    .contact-info { margin-top:14px; font-size:9pt; }
-    .contact-info .heading { color:var(--zinc-700); margin-bottom:4px; }
-    .icon-line { display:grid; grid-template-columns:16px 1fr; gap:6px; align-items:start; color:var(--zinc-700); font-size:9pt; margin-top:2px; }
-    .icon-line svg { width:11px; height:11px; color:var(--zinc-500); margin-top:3px; }
+    /* ── Header: identity left, document identity right ── */
+    .header { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; padding-bottom:12px; border-bottom:2.5px solid var(--emerald-700); }
+    .logo-block svg { height:36px; width:auto; display:block; margin-bottom:8px; }
+    .company-name { font-size:12.5pt; font-weight:700; }
+    .company-line { font-size:9.5pt; color:var(--zinc-600); max-width:96mm; }
+    .company-line strong { color:var(--zinc-700); font-weight:600; }
+    .doc-block { text-align:right; }
+    .doc-title { font-size:17pt; font-weight:800; color:var(--emerald-800); line-height:1.25; letter-spacing:-0.01em; }
+    .doc-original { display:inline-block; margin-top:3px; font-size:8.5pt; font-weight:600; color:var(--emerald-700); border:1px solid var(--emerald-100); background:var(--emerald-50); border-radius:99px; padding:1px 10px; }
+    .doc-meta { margin-top:8px; display:grid; grid-template-columns:auto auto; column-gap:12px; row-gap:2px; font-size:10pt; justify-content:end; }
+    .doc-meta .k { color:var(--zinc-500); text-align:right; }
+    .doc-meta .v { font-weight:700; text-align:right; font-variant-numeric:tabular-nums; }
 
-    table.items { width:100%; border-collapse:collapse; font-size:9pt; }
-    table.items thead th { text-align:left; padding:6px 8px; background:var(--emerald-50); color:var(--emerald-800); font-size:8.5pt; font-weight:600; border-bottom:1.5px solid var(--emerald-700); }
+    /* ── Parties ── */
+    .parties { display:grid; grid-template-columns:1fr 1fr; gap:16px; padding:12px 0 14px; border-bottom:1px solid var(--zinc-200); }
+    .party-heading { font-size:8.5pt; font-weight:700; letter-spacing:0.08em; color:var(--emerald-700); text-transform:uppercase; margin-bottom:4px; }
+    .party-name { font-size:11.5pt; font-weight:700; }
+    .party-line { font-size:9.5pt; color:var(--zinc-600); margin-top:1px; }
+    .party-line strong { color:var(--zinc-700); font-weight:600; }
+
+    /* ── Credit-note reference notice ── */
+    .cn-notice { margin:10px 0 0; background:var(--amber-50); border:1px solid var(--amber-200); border-radius:8px; padding:8px 14px; font-size:10pt; color:var(--amber-800); }
+    .cn-notice strong { font-weight:700; }
+
+    /* ── Items table ── */
+    table.items { width:100%; border-collapse:collapse; margin-top:14px; font-size:10.5pt; }
+    table.items thead th { text-align:left; padding:8px 10px; background:var(--emerald-800); color:#fff; font-size:9.5pt; font-weight:600; }
+    table.items thead th:first-child { border-radius:6px 0 0 0; }
+    table.items thead th:last-child { border-radius:0 6px 0 0; }
     table.items thead th.right { text-align:right; }
-    table.items tbody td { padding:8px; border-bottom:1px solid var(--zinc-200); vertical-align:top; font-variant-numeric:tabular-nums; }
-    table.items tbody td.right { text-align:right; }
-    table.items td.no { color:var(--zinc-500); width:22px; }
-    .item-name { font-weight:600; }
-    .item-code { color:var(--zinc-500); font-weight:500; }
-    .item-meta { color:var(--zinc-500); font-size:8.5pt; margin-top:2px; }
+    table.items tbody td { padding:9px 10px; border-bottom:1px solid var(--zinc-200); vertical-align:top; }
+    table.items tbody td.right { text-align:right; font-variant-numeric:tabular-nums; }
+    table.items tbody tr.alt td { background:var(--zinc-50); }
+    .item-name { font-weight:700; }
+    .item-meta { color:var(--zinc-500); font-size:9pt; margin-top:1px; }
+    .vat-exempt { color:var(--zinc-500); font-size:9pt; }
+    td.discount { color:var(--emerald-700); }
 
-    .partial-tag { display:block; margin:6px 0 0; color:var(--emerald-700); font-size:9pt; padding:3px 0 10px; border-bottom:1px solid var(--zinc-200); margin-bottom:12px; }
+    /* ── Totals ── */
+    .totals-wrap { display:grid; grid-template-columns:1fr 88mm; gap:18px; margin-top:12px; }
+    .baht-text { font-size:10pt; color:var(--zinc-600); }
+    .baht-text .label { font-size:8.5pt; font-weight:700; letter-spacing:0.08em; color:var(--zinc-500); text-transform:uppercase; display:block; margin-bottom:2px; }
+    .baht-text .value { font-weight:600; color:var(--zinc-700); }
+    .partial-tag { margin-top:10px; display:inline-block; font-size:9.5pt; color:var(--emerald-800); background:var(--emerald-50); border:1px solid var(--emerald-100); border-radius:6px; padding:4px 10px; }
+    .totals { font-size:10.5pt; }
+    .totals .row { display:flex; justify-content:space-between; gap:16px; padding:4px 2px; }
+    .totals .row .k { color:var(--zinc-600); }
+    .totals .row .v { font-weight:600; font-variant-numeric:tabular-nums; }
+    .totals .row.sub { border-bottom:1px solid var(--zinc-200); }
+    .grand { margin-top:6px; display:flex; justify-content:space-between; align-items:center; background:var(--emerald-800); color:#fff; border-radius:8px; padding:10px 14px; }
+    .grand .k { font-size:10.5pt; font-weight:600; }
+    .grand .v { font-size:16.5pt; font-weight:800; font-variant-numeric:tabular-nums; letter-spacing:-0.01em; }
+    .grand .v .suffix { font-size:10pt; font-weight:500; margin-left:4px; }
 
-    .summary { display:grid; grid-template-columns:1fr 1fr; gap:14px; padding-bottom:12px; margin-bottom:12px; border-bottom:1px solid var(--zinc-200); }
-    .summary-section { display:grid; grid-template-columns:18px 1fr; gap:8px; align-items:start; }
-    .summary-section .icon { width:16px; height:16px; color:var(--zinc-700); margin-top:2px; }
-    .breakdown { display:grid; grid-template-columns:max-content 1fr auto; column-gap:18px; row-gap:4px; font-size:9.5pt; }
-    .breakdown .label { color:var(--zinc-700); }
-    .breakdown .label.bold { font-weight:600; color:var(--zinc-900); }
-    .breakdown .text { color:var(--zinc-600); font-style:italic; font-size:9pt; }
-    .breakdown .num { text-align:right; font-variant-numeric:tabular-nums; color:var(--zinc-900); }
-    .grand-card { background:var(--emerald-50); border-radius:8px; padding:10px 14px; text-align:center; }
-    .grand-card .label { color:var(--emerald-800); font-size:9pt; font-weight:600; margin-bottom:3px; }
-    .grand-card .amount { color:var(--emerald-700); font-size:18pt; font-weight:700; line-height:1; font-variant-numeric:tabular-nums; }
-    .grand-card .amount-suffix { color:var(--emerald-700); font-size:11pt; font-weight:500; margin-left:4px; }
-    .summary-aux { margin-top:10px; display:grid; grid-template-columns:1fr auto; row-gap:4px; column-gap:18px; font-size:9.5pt; }
-    .summary-aux .label { color:var(--zinc-700); }
-    .summary-aux .num { text-align:right; font-variant-numeric:tabular-nums; }
+    /* ── Payment / status block ── */
+    .pay-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:14px; padding:12px 0; border-top:1px solid var(--zinc-200); border-bottom:1px solid var(--zinc-200); }
+    .pay-col .heading { font-size:8.5pt; font-weight:700; letter-spacing:0.08em; color:var(--emerald-700); text-transform:uppercase; margin-bottom:4px; }
+    .kv { display:grid; grid-template-columns:34mm 1fr; row-gap:2px; font-size:10pt; }
+    .kv .k { color:var(--zinc-500); }
+    .kv .v { font-weight:600; font-variant-numeric:tabular-nums; }
 
-    .pay-section { padding-bottom:12px; margin-bottom:12px; border-bottom:1px solid var(--zinc-200); }
-    .sec-title { display:flex; align-items:center; gap:8px; font-size:10pt; font-weight:700; color:var(--zinc-900); margin-bottom:6px; }
-    .sec-title .icon-pill { width:22px; height:22px; background:var(--zinc-900); color:#fff; border-radius:6px; display:flex; align-items:center; justify-content:center; }
-    .sec-title .icon-pill svg { width:13px; height:13px; }
-    .pay-row { display:grid; grid-template-columns:200px 18px 1fr auto; gap:8px; align-items:start; padding:4px 0; font-size:9.5pt; }
-    .pay-row .head { display:grid; grid-template-columns:70px 1fr; gap:6px; }
-    .pay-row .head .label { color:var(--zinc-700); }
-    .pay-row .head .value { color:var(--zinc-900); font-weight:500; font-variant-numeric:tabular-nums; }
-    .check-icon { width:14px; height:14px; border-radius:50%; background:var(--emerald-50); color:var(--emerald-700); display:flex; align-items:center; justify-content:center; margin-top:2px; }
-    .check-icon svg { width:10px; height:10px; }
-    .bank-info .name { font-weight:600; }
-    .bank-info .acct { font-weight:500; color:var(--zinc-700); }
-    .bank-info .holder { color:var(--zinc-500); font-size:9pt; }
-    .pay-row .num { text-align:right; font-variant-numeric:tabular-nums; }
-
-    .notes-section { padding-bottom:10px; margin-bottom:12px; font-size:9pt; border-bottom:1px solid var(--zinc-200); }
-    .notes-section .body { color:var(--zinc-600); min-height:10px; }
-
-    .approval { display:grid; grid-template-columns:90px 1fr 1fr; gap:20px; align-items:start; margin-top:2px; page-break-inside:avoid; break-inside:avoid; }
-    .approval-label { display:flex; align-items:center; gap:6px; font-size:10pt; font-weight:700; color:var(--zinc-900); padding-top:2px; }
-    .approval-label svg { width:14px; height:14px; color:var(--zinc-700); }
-    .qr-pane { text-align:center; }
-    .qr-caption-top { font-size:9pt; color:var(--zinc-700); margin-bottom:5px; }
-    .qr-pane img { width:104px; height:104px; }
-    .sig-block { text-align:left; }
-    .sig-role { font-size:9.5pt; color:var(--zinc-900); font-weight:600; margin-bottom:2px; }
-    .sig-handwriting { font-family:'Sriracha', 'Apple Chancery', 'Brush Script MT', cursive; font-size:22pt; color:var(--zinc-600); line-height:1; transform:rotate(-3deg); transform-origin:left center; display:inline-block; opacity:0.85; margin-top:4px; }
-    .sig-rule { width:200px; border-top:1px dotted var(--zinc-300); margin:14px 0 5px; }
-    .sig-name { font-size:10pt; font-weight:700; color:var(--zinc-900); }
-    .sig-date { font-size:9pt; color:var(--zinc-500); margin-top:1px; font-variant-numeric:tabular-nums; }
+    /* ── Footer: QR + signature ── */
+    .footer { display:grid; grid-template-columns:1fr 1fr 64mm; gap:18px; align-items:end; margin-top:16px; page-break-inside:avoid; break-inside:avoid; }
+    .qr-pane { text-align:left; }
+    .qr-pane img { width:88px; height:88px; display:block; }
+    .qr-caption { font-size:8.5pt; color:var(--zinc-500); margin-top:4px; }
+    .sig-block { text-align:center; }
+    .sig-handwriting { font-family:'Sriracha', 'Apple Chancery', 'Brush Script MT', cursive; font-size:20pt; color:var(--zinc-600); line-height:1; transform:rotate(-3deg); display:inline-block; opacity:0.85; }
+    .sig-rule { border-top:1px dotted var(--zinc-400); margin:6px 8px 5px; }
+    .sig-name { font-size:10.5pt; font-weight:700; }
+    .sig-role { font-size:9pt; color:var(--zinc-500); }
+    .sig-date { font-size:9pt; color:var(--zinc-500); font-variant-numeric:tabular-nums; }
+    .doc-note { grid-column:1 / -1; margin-top:10px; padding-top:8px; border-top:1px solid var(--zinc-200); font-size:8.5pt; color:var(--zinc-400); text-align:center; }
 
     .void-overlay { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%) rotate(-15deg); font-size:80pt; font-weight:900; color:rgba(220,38,38,0.18); letter-spacing:0.1em; pointer-events:none; }
   </style>
@@ -296,172 +380,158 @@ export class ReceiptPdfService {
 <body>
   ${receipt.isVoided ? `<div class="void-overlay">VOID / ยกเลิก</div>` : ''}
 
-  <!-- Header: Logo + Title -->
+  <!-- Header: company identity + document identity -->
   <div class="header">
-    <div class="logo-block">${BESTCHOICE_LOGO_SVG}</div>
-    <div class="doc-title">ใบเสร็จรับเงิน/ใบกำกับภาษี</div>
+    <div>
+      <div class="logo-block">${BESTCHOICE_LOGO_SVG}</div>
+      <div class="company-name">${safe.companyName}</div>
+      ${safe.companyAddress ? `<div class="company-line">${safe.companyAddress}</div>` : ''}
+      <div class="company-line">
+        ${safe.taxId ? `<strong>เลขประจำตัวผู้เสียภาษี</strong> ${safe.taxId}` : ''}
+        ${safe.companyPhone ? ` &nbsp;·&nbsp; <strong>โทร</strong> ${safe.companyPhone}` : ''}
+      </div>
+    </div>
+    <div class="doc-block">
+      <div class="doc-title">${docTitle}</div>
+      <div class="doc-original">${isCreditNote ? 'อ้างอิงใบเสร็จเดิม' : 'ต้นฉบับ'}</div>
+      <div class="doc-meta">
+        <span class="k">เลขที่เอกสาร</span><span class="v">${safe.receiptNumber}</span>
+        <span class="k">วันที่ออกเอกสาร</span><span class="v">${paidDateStr}</span>
+        ${safe.contractNumber ? `<span class="k">เลขที่สัญญา</span><span class="v">${safe.contractNumber}</span>` : ''}
+        ${safe.branchName ? `<span class="k">สาขา</span><span class="v">${safe.branchName}</span>` : ''}
+      </div>
+    </div>
   </div>
 
-  <!-- Parties + meta -->
+  <!-- Parties -->
   <div class="parties">
     <div>
-      <div class="party-row"><span class="party-label">ผู้ขาย :</span><span class="party-name">${safe.companyName}</span></div>
-      ${safe.companyAddress ? `<div class="party-row"><span class="party-label">ที่อยู่ :</span><span>${safe.companyAddress}</span></div>` : ''}
-      ${safe.taxId ? `<div class="party-row"><span class="party-label">เลขที่ภาษี :</span><span>${safe.taxId}</span></div>` : ''}
-
-      <hr class="party-divider"/>
-
-      <div class="party-row"><span class="party-label">ลูกค้า :</span><span class="party-name">${safe.payerName}</span></div>
-      ${safe.payerAddress ? `<div class="party-row"><span class="party-label">ที่อยู่ :</span><span>${safe.payerAddress}</span></div>` : ''}
-      ${safe.payerTaxId ? `<div class="party-row"><span class="party-label">เลขที่ภาษี :</span><span>${safe.payerTaxId}</span></div>` : ''}
+      <div class="party-heading">ลูกค้า / ผู้ชำระเงิน</div>
+      <div class="party-name">${safe.payerName}</div>
+      ${safe.payerAddress ? `<div class="party-line">${safe.payerAddress}</div>` : ''}
+      ${safe.payerTaxId ? `<div class="party-line"><strong>เลขประจำตัวผู้เสียภาษี/บัตรประชาชน</strong> ${safe.payerTaxId}</div>` : ''}
+      ${safe.customerPhone ? `<div class="party-line"><strong>โทร</strong> ${safe.customerPhone}</div>` : ''}
     </div>
     <div>
-      <div class="meta-card">
-        <div class="meta-row"><span class="meta-label">เลขที่เอกสาร :</span><span class="meta-value">${safe.receiptNumber}</span></div>
-        <div class="meta-row"><span class="meta-label">วันที่ออก :</span><span class="meta-value">${paidDateStr}</span></div>
-        ${safe.contractNumber ? `<div class="meta-row"><span class="meta-label">อ้างอิง :</span><span class="meta-value">${safe.contractNumber}</span></div>` : ''}
-      </div>
-      ${(safe.customerPhone || safe.customerEmail) ? `
-        <div class="contact-info">
-          <div class="heading">ติดต่อลูกค้า :</div>
-          ${safe.customerPhone ? `
-            <div class="icon-line">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-              <span>${safe.customerPhone}</span>
-            </div>` : ''}
-          ${safe.customerEmail ? `
-            <div class="icon-line">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-              <span>${safe.customerEmail}</span>
-            </div>` : ''}
-        </div>` : ''}
+      <div class="party-heading">รายละเอียดสัญญา</div>
+      ${safe.productName ? `<div class="party-name">${safe.productName}</div>` : `<div class="party-name">–</div>`}
+      ${safe.imeiSerial ? `<div class="party-line"><strong>IMEI</strong> ${safe.imeiSerial}</div>` : (safe.serialNumber ? `<div class="party-line"><strong>S/N</strong> ${safe.serialNumber}</div>` : '')}
+      ${receipt.installmentNo && receipt.contract?.totalMonths ? `<div class="party-line"><strong>งวดที่ชำระ</strong> ${receipt.installmentNo} จาก ${receipt.contract.totalMonths} งวด</div>` : ''}
     </div>
   </div>
 
-  <!-- Items table -->
+  ${isCreditNote && receipt.voidedRef ? `
+    <div class="cn-notice">
+      เอกสารนี้ออกเพื่อยกเลิกใบเสร็จรับเงินเลขที่ <strong>${this.escapeHtml(receipt.voidedRef.receiptNumber)}</strong>
+      ลงวันที่ ${formatDateShort(receipt.voidedRef.paidDate)} — ยอดตามใบเสร็จเดิมถูกกลับรายการทั้งจำนวน
+    </div>` : ''}
+
+  <!-- Items -->
   <table class="items">
     <thead>
       <tr>
-        <th></th>
-        <th>คำอธิบาย</th>
-        <th class="right">จำนวน</th>
-        <th class="right">ราคา</th>
-        <th class="right">ส่วนลด</th>
-        <th class="right">VAT</th>
+        <th style="width:50%">รายการ</th>
         <th class="right">มูลค่าก่อนภาษี</th>
+        <th class="right">ภาษีมูลค่าเพิ่ม 7%</th>
+        <th class="right">จำนวนเงิน (บาท)</th>
       </tr>
     </thead>
     <tbody>
+      ${installmentPortion.gt(0) || feePortion.lte(0) ? `
       <tr>
-        <td class="no">1.</td>
         <td>
-          <div><span class="item-name">${receipt.installmentNo ? `ค่างวดผ่อนชำระ งวดที่ ${receipt.installmentNo}` : 'การชำระเงิน'}</span></div>
-          ${safe.productName ? `<div class="item-meta">${safe.productName}${safe.imeiSerial ? ` &nbsp; IMEI ${safe.imeiSerial}` : (safe.serialNumber ? ` &nbsp; S/N ${safe.serialNumber}` : '')}</div>` : ''}
+          <div class="item-name">${itemLabel}</div>
+          ${safe.productName && !isCreditNote ? `<div class="item-meta">${safe.productName}${safe.imeiSerial ? ` · IMEI ${safe.imeiSerial}` : ''}</div>` : ''}
         </td>
-        <td class="right">1.00</td>
-        <td class="right">${fmt(total)}</td>
-        <td class="right">0.00</td>
-        <td class="right">${vatAmount !== null ? '7%' : '-'}</td>
-        <td class="right">${amountBeforeVat !== null ? fmt(amountBeforeVat) : fmt(total)}</td>
-      </tr>
+        <td class="right">${fmt(exclVat)}</td>
+        <td class="right">${vatBearing && vatPart.gt(0) ? fmt(vatPart) : '<span class="vat-exempt">ยกเว้น</span>'}</td>
+        <td class="right"><strong>${fmt(installmentPortion)}</strong></td>
+      </tr>` : ''}
+      ${feeCharged.gt(0) ? `
+      <tr class="alt">
+        <td>
+          <div class="item-name">ค่าปรับชำระล่าช้า</div>
+          <div class="item-meta">ไม่อยู่ในฐานภาษีมูลค่าเพิ่ม</div>
+        </td>
+        <td class="right">${fmt(feeCharged)}</td>
+        <td class="right"><span class="vat-exempt">ยกเว้น</span></td>
+        <td class="right"><strong>${fmt(feeCharged)}</strong></td>
+      </tr>` : ''}
+      ${feeWaived.gt(0) ? `
+      <tr class="alt">
+        <td>
+          <div class="item-name discount">ส่วนลด/อนุโลมค่าปรับ</div>
+          ${receipt.payment?.waivedReason ? `<div class="item-meta">${this.escapeHtml(receipt.payment.waivedReason)}</div>` : ''}
+        </td>
+        <td class="right discount">−${fmt(feeWaived)}</td>
+        <td class="right"><span class="vat-exempt">–</span></td>
+        <td class="right discount"><strong>−${fmt(feeWaived)}</strong></td>
+      </tr>` : ''}
     </tbody>
   </table>
 
-  ${isPartial && totalDue !== null && totalPaidOnInstallment !== null
-    ? `<div class="partial-tag">ชำระเงินบางส่วน ยอด ${fmt(totalPaidOnInstallment)} / ${fmt(totalDue)} บาท</div>`
-    : '<div style="margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid var(--zinc-200);"></div>'}
-
-  <!-- Summary -->
-  <div class="summary">
+  <!-- Totals -->
+  <div class="totals-wrap">
     <div>
-      <div class="summary-section">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
-        <div>
-          <div style="font-weight:700; margin-bottom:4px;">สรุป</div>
-          <div class="breakdown">
-            ${amountBeforeVat !== null && vatAmount !== null ? `
-              <span class="label">มูลค่าที่คำนวณภาษี 7%</span><span></span><span class="num">${fmt(amountBeforeVat)} บาท</span>
-              <span class="label">ภาษีมูลค่าเพิ่ม 7%</span><span></span><span class="num">${fmt(vatAmount)} บาท</span>
-            ` : ''}
-            <span class="label bold">จำนวนเงินทั้งสิ้น</span>
-            <span class="text">${thaiAmount}</span>
-            <span></span>
-          </div>
-        </div>
+      <div class="baht-text">
+        <span class="label">จำนวนเงินตัวอักษร</span>
+        <span class="value">( ${thaiAmount} )</span>
       </div>
+      ${isPartial && totalDue !== null && totalPaidOnInstallment !== null ? `
+        <div class="partial-tag">ชำระบางส่วน — สะสมงวดนี้ ${fmt(totalPaidOnInstallment)} จากยอดงวด ${fmt(totalDue)} บาท</div>` : ''}
     </div>
-    <div>
-      <div class="grand-card">
-        <div class="label">จำนวนเงินทั้งสิ้น</div>
-        <div class="amount">${fmt(total)}<span class="amount-suffix">บาท</span></div>
-      </div>
-      <div class="summary-aux">
-        <span class="label">จำนวนเงินที่ถูกหัก ณ ที่จ่าย</span><span class="num">0.00 บาท</span>
-        <span class="label">จำนวนเงินที่ชำระ</span><span class="num"><strong>${fmt(total)} บาท</strong></span>
+    <div class="totals">
+      ${vatBearing && vatPart.gt(0) ? `
+        <div class="row"><span class="k">มูลค่าสินค้า/บริการก่อนภาษี</span><span class="v">${fmt(exclVat)}</span></div>
+        <div class="row"><span class="k">ภาษีมูลค่าเพิ่ม 7%</span><span class="v">${fmt(vatPart)}</span></div>
+        ${feePortion.gt(0) ? `<div class="row sub"><span class="k">ค่าปรับ (ยกเว้นภาษี)</span><span class="v">${fmt(feePortion)}</span></div>` : `<div class="row sub" style="padding:0"></div>`}
+      ` : ''}
+      <div class="grand">
+        <span class="k">${isCreditNote ? 'ยอดลดหนี้ทั้งสิ้น' : 'จำนวนเงินรับชำระทั้งสิ้น'}</span>
+        <span class="v">${fmt(total)}<span class="suffix">บาท</span></span>
       </div>
     </div>
   </div>
 
-  <!-- Payment section -->
-  <div class="pay-section">
-    <div class="sec-title">
-      <span class="icon-pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/></svg></span>
-      <span>ชำระเงิน</span>
+  <!-- Payment details + balance -->
+  <div class="pay-grid">
+    <div class="pay-col">
+      <div class="heading">การชำระเงิน</div>
+      <div class="kv">
+        <span class="k">วันที่ชำระ</span><span class="v">${paidDateStr}</span>
+        <span class="k">ช่องทาง</span><span class="v">${safe.paymentMethodLabel || '–'}</span>
+        ${safe.transactionRef ? `<span class="k">เลขอ้างอิง</span><span class="v">${safe.transactionRef}</span>` : ''}
+        ${safe.bankName ? `<span class="k">บัญชีรับเงิน</span><span class="v">${safe.bankName}${safe.bankAccountNumber ? ` ${safe.bankAccountNumber}` : ''}</span>` : ''}
+      </div>
     </div>
-    <div class="pay-row">
-      <div class="head">
-        <span class="label">วันที่ชำระ :</span><span class="value">${paidDateStr}</span>
-        <span class="label">ช่องทาง :</span><span class="value">${safe.paymentMethodLabel || '-'}</span>
+    <div class="pay-col">
+      <div class="heading">สถานะสัญญาหลังชำระ</div>
+      <div class="kv">
+        ${isCreditNote
+          ? `<span class="k">สถานะ</span><span class="v">กลับรายการ — งวดนี้กลับเป็นยอดค้างชำระ</span>`
+          : `
+        ${remainingBalance.gt(0) ? `<span class="k">ยอดคงเหลือ</span><span class="v">${fmt(remainingBalance)} บาท</span>` : ''}
+        ${receipt.remainingMonths ? `<span class="k">งวดคงเหลือ</span><span class="v">${receipt.remainingMonths} งวด</span>` : ''}
+        ${!remainingBalance.gt(0) && !receipt.remainingMonths ? `<span class="k">สถานะ</span><span class="v">ชำระครบตามเอกสารนี้</span>` : ''}`}
       </div>
-      <span class="check-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20,6 9,17 4,12"/></svg></span>
-      <div class="bank-info">
-        ${safe.bankName ? `
-          <div class="name">${safe.bankName}</div>
-          ${safe.bankAccountNumber ? `<div class="acct">เลขบัญชี ${safe.bankAccountNumber}</div>` : ''}
-          ${safe.bankAccountName ? `<div class="holder">${safe.bankAccountName}</div>` : ''}
-        ` : `<div class="name">${safe.paymentMethodLabel || '-'}</div>`}
-        ${safe.transactionRef ? `<div class="holder">อ้างอิง ${safe.transactionRef}</div>` : ''}
-      </div>
-      <span class="num">${fmt(total)} บาท</span>
     </div>
-
-    ${remainingBalance > 0 ? `
-      <div class="pay-row" style="margin-top:8px;">
-        <div class="head">
-          <span class="label">ยอดคงเหลือ :</span><span class="value">${fmt(remainingBalance)} บาท</span>
-          ${receipt.remainingMonths ? `<span class="label">งวดที่เหลือ :</span><span class="value">${receipt.remainingMonths} งวด</span>` : '<span></span><span></span>'}
-        </div>
-        <span></span><span></span><span></span>
-      </div>
-    ` : ''}
   </div>
 
-  <!-- Notes -->
-  <div class="notes-section">
-    <div class="sec-title">
-      <span class="icon-pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
-      <span>หมายเหตุ</span>
-    </div>
-    <div class="body">&nbsp;</div>
-  </div>
-
-  <!-- Approval (3-col) -->
-  <div class="approval">
-    <div class="approval-label">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21c2-3 4-3.5 7-1.5s5 1.5 7-1.5"/><path d="M5 17c2-1 4-1 5 1"/><path d="M14 14c-1.5-2-1-4 1-5s3 0 4 2"/></svg>
-      <span>รับรอง</span>
-    </div>
+  <!-- Footer: verification + signature -->
+  <div class="footer">
     <div class="qr-pane">
-      <div class="qr-caption-top">สแกนเพื่อเปิดด้วยเว็บไซต์</div>
       <img src="${qrDataUrl}" alt="QR"/>
+      <div class="qr-caption">สแกนเพื่อตรวจสอบความถูกต้องของเอกสาร</div>
     </div>
+    <div></div>
     <div class="sig-block">
-      <div class="sig-role">ผู้ออกใบเสร็จรับเงิน</div>
       <div class="sig-handwriting">${safe.issuerSignName}</div>
       <div class="sig-rule"></div>
       <div class="sig-name">${safe.issuerName}</div>
+      <div class="sig-role">ผู้รับเงิน / ผู้ออกเอกสาร</div>
       <div class="sig-date">${paidDateStr}</div>
     </div>
+    <div class="doc-note">เอกสารนี้จัดทำโดยระบบคอมพิวเตอร์ของ ${safe.companyName} · เลขที่ ${safe.receiptNumber} · ตรวจสอบได้ที่ QR ด้านซ้าย</div>
   </div>
 </body>
 </html>`;

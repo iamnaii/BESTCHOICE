@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import { JournalAutoService } from '../journal-auto.service';
@@ -98,7 +98,11 @@ export class RepossessionJP5Template {
     const unpaid = unpaidInsts.length;
 
     if (unpaid === 0) {
-      throw new Error('No unpaid installments — nothing to repossess');
+      // 400 (not a raw 500) — hit by contracts whose payment rows are absent
+      // or already all PAID; the caller surfaces this message to the UI.
+      throw new BadRequestException(
+        'สัญญานี้ไม่มีงวดค้างชำระให้ล้าง — ไม่สามารถยึดคืนได้ (nothing to repossess)',
+      );
     }
 
     const total = new Decimal(c.totalMonths);

@@ -607,7 +607,10 @@ describe('ReceiptsService', () => {
           id: { not: receiptId },
           isVoided: false,
           deletedAt: null,
-          receiptType: { notIn: ['CREDIT_NOTE', 'RESCHEDULE_FEE'] },
+          // Positive filter (shared INSTALLMENT_MONEY_RECEIPT_TYPES): only
+          // installment-money siblings are voided — CN / RESCHEDULE_FEE /
+          // EARLY_PAYOFF / DOWN_PAYMENT rows always stay valid.
+          receiptType: { in: ['INSTALLMENT', 'PAYMENT'] },
         },
         data: expect.objectContaining({
           isVoided: true,
@@ -958,6 +961,18 @@ describe('ReceiptsService', () => {
       expect(data.installmentPartialSeq).toBe(3);
       // 1515.83 - (500 + 300 + 200) = 515.83
       expect(data.remainingAmount.toString()).toBe('515.83');
+      // Pin the cumulative query to installment-money receipts only — without
+      // this where-filter, credit-note/fee amounts sharing the installmentNo
+      // silently corrupt seq/remainingAmount (the mock ignores `where`, so
+      // this assertion is what actually guards the filter against deletion).
+      expect(local.__tx.receipt.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            receiptType: { in: ['INSTALLMENT', 'PAYMENT'] },
+            isVoided: false,
+          }),
+        }),
+      );
     });
 
     it('final partial payment that clears installment: paymentStatus=PAID, seq=null, remainingAmount=0', async () => {
@@ -974,6 +989,28 @@ describe('ReceiptsService', () => {
       expect(data.paymentStatus).toBe('PAID');
       expect(data.installmentPartialSeq).toBeNull();
       expect(data.remainingAmount.toString()).toBe('0');
+    });
+
+    it('non-installment receipt (RESCHEDULE_FEE) never gets a partial snapshot even when the installment is unpaid', async () => {
+      // A fee receipt shares paymentId/installmentNo with an unpaid
+      // installment — it must NOT be stamped PARTIAL/seq/remaining (a 303.95฿
+      // fee is not installment money; counting it corrupted the cumulative
+      // for every later receipt of that installment).
+      const local = buildPrismaForGenerate({
+        paymentStatus: 'PARTIALLY_PAID',
+        amountDue: '1515.83',
+        priorReceipts: [{ amount: '500' }],
+      });
+      const svc = buildService(local);
+
+      await svc.generateReceipt('ct-1', 'pay-1', 'RESCHEDULE_FEE', 303.95, 1, 'CASH', null, 'u-1');
+
+      const data = local.__created.mock.calls[0][0].data;
+      expect(data.paymentStatus).toBe('PAID');
+      expect(data.installmentPartialSeq).toBeNull();
+      expect(data.remainingAmount).toBeNull();
+      // The partial-snapshot branch must not even look up the payment row.
+      expect(local.__tx.payment.findUnique).not.toHaveBeenCalled();
     });
 
     it('clamps remainingAmount to 0 when overpay is recorded as receipt', async () => {

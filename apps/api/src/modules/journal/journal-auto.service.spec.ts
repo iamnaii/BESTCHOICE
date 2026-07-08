@@ -46,6 +46,8 @@ describe('JournalAutoService.createAndPost — structural invariants (Fix #C9 Ro
   beforeEach(async () => {
     prisma = {
       $executeRaw: jest.fn().mockResolvedValue(undefined),
+      // nextEntryNumber util numeric-max scan — null = empty month → 00001
+      $queryRaw: jest.fn().mockResolvedValue([{ max: null }]),
       chartOfAccount: {
         findMany: jest.fn().mockResolvedValue([
           { code: '11-1101', id: 'acct-cash' },
@@ -94,6 +96,21 @@ describe('JournalAutoService.createAndPost — structural invariants (Fix #C9 Ro
     // queried by createAndPost (only the module-level caller queries it).
     expect(prisma.accountingPeriod.findUnique).not.toHaveBeenCalled();
     expect(prisma.systemConfig.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('numbers max+1 (gap-resilient) — hard-deleted rows must not cause duplicates', async () => {
+    // Month where a row was hard-deleted (e.g. cleanup-test-contracts):
+    // 18 rows remain but the highest surviving number is 00019. count+1
+    // would produce 00019 → unique-constraint crash on every post for the
+    // rest of the month (seen live 2026-07). max+1 must yield 00020.
+    prisma.$queryRaw.mockResolvedValue([{ max: 19 }]);
+    prisma.journalEntry.count.mockResolvedValue(18);
+    await service.createAndPost(balancedInput(new Date('2026-04-10')), prisma);
+    expect(prisma.journalEntry.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ entryNumber: 'JE-202604-00020' }),
+      }),
+    );
   });
 
   it('still rejects unbalanced JEs (regression for v4 guard)', async () => {

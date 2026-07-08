@@ -1,6 +1,7 @@
 import { NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
+import { INSTALLMENT_MONEY_RECEIPT_TYPES } from '../receipt-types.constants';
 
 /** Read-only receipt queries (list, by-contract, by-id, by-number). */
 export class ReceiptQueryService {
@@ -182,7 +183,12 @@ export class ReceiptQueryService {
 
     // Late fee is displayed on the FIRST receipt of an installment only
     // (owner convention 2026-07-02 — mirrors computeReceiptFeeDisplay on the
-    // web). Count earlier non-voided receipts of the same installment.
+    // web). Count earlier non-voided INSTALLMENT-MONEY receipts of the same
+    // installment: the web mirror excludes CREDIT_NOTE / RESCHEDULE_FEE /
+    // EARLY_PAYOFF / DOWN_PAYMENT, so a reschedule-fee receipt issued before
+    // the first real installment receipt must not steal "first receipt"
+    // status (it would silently drop the late-fee/waiver lines off the PDF
+    // and fold VAT-exempt penalty cash into the VAT base).
     const priorReceiptCount =
       receipt.contractId && receipt.installmentNo != null
         ? await this.prisma.receipt.count({
@@ -192,7 +198,7 @@ export class ReceiptQueryService {
               id: { not: receipt.id },
               isVoided: false,
               deletedAt: null,
-              receiptType: { notIn: ['CREDIT_NOTE'] },
+              receiptType: { in: [...INSTALLMENT_MONEY_RECEIPT_TYPES] },
               createdAt: { lt: receipt.createdAt },
             },
           })

@@ -8,6 +8,7 @@ import { loadCaseFromCsv } from '../__tests__/csv-fixture-loader';
 import { diffGoldenJE } from '../__tests__/golden-je-matcher';
 import { ContractActivation1ATemplate } from './contract-activation-1a.template';
 import { InstallmentAccrual2ATemplate } from './installment-accrual-2a.template';
+import { BadRequestException } from '@nestjs/common';
 import { RepossessionJP5Template } from './repossession-jp5.template';
 import { ShopCollectSettlementTemplate } from './shop-collect-settlement.template';
 import { JournalAutoService } from '../journal-auto.service';
@@ -288,6 +289,14 @@ describe('RepossessionJP5Template', () => {
     }
 
     const tmpl = new RepossessionJP5Template(journal, prisma as any);
+    const exec = tmpl.execute({
+      contractId: c.id,
+      depositAccountCode: '11-1101',
+      repossessionValue: new Decimal('7000.00'),
+    });
+    // Must be a 400 BadRequestException (Thai message), never a raw Error →
+    // the controller would otherwise surface it as 500 INTERNAL_ERROR.
+    await expect(exec).rejects.toThrow(BadRequestException);
     await expect(
       tmpl.execute({
         contractId: c.id,

@@ -6,6 +6,7 @@ import { validatePeriodOpen } from '../../../utils/period-lock.util';
 import { ReceiptVoidReversalTemplate } from '../../journal/cpa-templates/receipt-void-reversal.template';
 import { reconstructPriorCleared } from '../../journal/reconstruct-prior';
 import { ReceiptNumberService } from './receipt-number.service';
+import { INSTALLMENT_MONEY_RECEIPT_TYPES } from '../receipt-types.constants';
 
 /**
  * Contract statuses whose closing transition already moved state that an
@@ -384,9 +385,11 @@ export class ReceiptVoidService {
               id: { not: receipt.id },
               isVoided: false,
               deletedAt: null,
-              // CN rows are reversal documents; RESCHEDULE_FEE money lives in the
-              // (untouched) reschedule-collect JE — both stay valid.
-              receiptType: { notIn: ['CREDIT_NOTE', 'RESCHEDULE_FEE'] },
+              // Only installment-money siblings get voided together: CN rows
+              // are reversal documents, RESCHEDULE_FEE money lives in the
+              // (untouched) reschedule-collect JE — both stay valid. Shared
+              // constant keeps this aligned with issuance/PDF/fee-display.
+              receiptType: { in: [...INSTALLMENT_MONEY_RECEIPT_TYPES] },
             },
             data: {
               isVoided: true,

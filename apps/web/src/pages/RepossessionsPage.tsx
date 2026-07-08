@@ -96,8 +96,13 @@ export default function RepossessionsPage() {
   } = useQuery<Repossession[]>({
     queryKey: ['repossessions', statusFilter],
     queryFn: async () => {
-      const params = statusFilter ? `?status=${statusFilter}` : '';
-      return (await api.get(`/repossessions${params}`)).data;
+      // limit=200 = the server cap (default is a silent 20) — same convention
+      // as the contracts fetches above. Endpoint is paginated
+      // ({ data, total, page, limit }) — unwrap the inner array, otherwise
+      // DataTable receives an object and renders the list as permanently empty.
+      const params = statusFilter ? `?status=${statusFilter}&limit=200` : '?limit=200';
+      const res = (await api.get(`/repossessions${params}`)).data;
+      return res?.data ?? [];
     },
   });
 
@@ -371,8 +376,8 @@ export default function RepossessionsPage() {
         </div>
       )}
 
-      {/* Itemized P&L Table */}
-      {(profitLoss?.items?.length ?? 0) > 0 && (
+      {/* Itemized P&L Table — API returns the rows under `data` (paginated shape) */}
+      {(profitLoss?.data?.length ?? 0) > 0 && (
         <Card className="shadow-card mb-6 overflow-hidden">
           <CardHeader className="px-4 py-3 border-b bg-secondary">
             <h3 className="text-sm font-medium text-foreground">รายละเอียดกำไร/ขาดทุน</h3>
@@ -393,7 +398,7 @@ export default function RepossessionsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {profitLoss?.items?.map((item: { id: string; contract: string; customer: string; product: string; conditionGrade: string; appraisalPrice: number; repairCost: number; resellPrice: number; profit: number; marginPct: string }) => (
+                {profitLoss?.data?.map((item: { id: string; contract: string; customer: string; product: string; conditionGrade: string; appraisalPrice: number; repairCost: number; resellPrice: number; profit: number; marginPct: string }) => (
                   <tr key={item.id} className="hover:bg-muted/50">
                     <td className="px-4 py-2 font-medium text-primary">{item.contract}</td>
                     <td className="px-4 py-2">{item.customer}</td>

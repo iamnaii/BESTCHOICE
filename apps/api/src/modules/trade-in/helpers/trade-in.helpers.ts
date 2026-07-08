@@ -27,6 +27,16 @@ export function decryptTradeInPII<T extends Record<string, unknown>>(t: T | null
   if (!t) return t;
   const key = piiKey();
   if (!key) return t;
+  // Nothing encrypted → return the SAME object. Building a copy here used to
+  // add `transferAccountNumber/Name: undefined` keys to every read on
+  // machines that set PII_ENCRYPTION_KEY, breaking the identity semantics the
+  // idempotent no-op paths (and their specs) rely on.
+  const numEnc = t['transferAccountNumberEncrypted'];
+  const nameEnc = t['transferAccountNameEncrypted'];
+  const hasEncrypted =
+    (typeof numEnc === 'string' && isEncrypted(numEnc)) ||
+    (typeof nameEnc === 'string' && isEncrypted(nameEnc));
+  if (!hasEncrypted) return t;
   const dec = (encField: string, legacyField: string): string | null | undefined => {
     const enc = t[encField] as string | null | undefined;
     if (enc && typeof enc === 'string' && isEncrypted(enc)) {

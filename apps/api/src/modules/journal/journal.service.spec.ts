@@ -54,6 +54,9 @@ describe('JournalService.create — period lock enforcement', () => {
               count: jest.fn().mockResolvedValue(0),
               create: jest.fn().mockResolvedValue({ id: 'je-1', entryNumber: 'JE-202604-0001' }),
             },
+            // nextEntryNumber util: advisory lock + numeric-max scan
+            $executeRaw: jest.fn().mockResolvedValue(undefined),
+            $queryRaw: jest.fn().mockResolvedValue([{ max: null }]),
           }),
       ),
     };
@@ -278,9 +281,12 @@ describe('JournalService.void — auto-reversal (T2-C9)', () => {
     tx = {
       journalEntry: {
         update: jest.fn().mockResolvedValue({ ...postedEntry(), status: 'VOIDED' }),
-        count: jest.fn().mockResolvedValue(5), // 5 existing entries this month → reversal = 0006
-        create: jest.fn().mockResolvedValue({ id: 'je-reversal', entryNumber: 'JE-202604-0006' }),
+        count: jest.fn().mockResolvedValue(5),
+        create: jest.fn().mockResolvedValue({ id: 'je-reversal', entryNumber: 'JE-202604-00006' }),
       },
+      // nextEntryNumber util: numeric max of this month = 5 → reversal 00006
+      $executeRaw: jest.fn().mockResolvedValue(undefined),
+      $queryRaw: jest.fn().mockResolvedValue([{ max: 5 }]),
     };
     prisma = {
       journalEntry: {
@@ -364,10 +370,10 @@ describe('JournalService.void — auto-reversal (T2-C9)', () => {
     expect(tx.journalEntry.create).toHaveBeenCalled();
   });
 
-  it('reversal entryNumber increments monthly sequence (count+1)', async () => {
+  it('reversal entryNumber increments monthly sequence (numeric max+1)', async () => {
     await service.void('je-original', 'u-owner');
     const data = tx.journalEntry.create.mock.calls[0][0].data;
-    // count=5 → sequence 0006, prefix uses current YYYYMM
-    expect(data.entryNumber).toMatch(/^JE-\d{6}-0006$/);
+    // numeric max=5 → sequence 00006 (5-digit unified width), prefix uses current YYYYMM
+    expect(data.entryNumber).toMatch(/^JE-\d{6}-00006$/);
   });
 });

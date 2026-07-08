@@ -3,6 +3,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
 import { LineOaService } from '../../line-oa/line-oa.service';
+import { INSTALLMENT_MONEY_RECEIPT_TYPES } from '../receipt-types.constants';
 import { ReceiptNumberService } from './receipt-number.service';
 
 /**
@@ -73,7 +74,13 @@ export class ReceiptIssuanceService {
       let paymentStatus = 'PAID';
       let installmentPartialSeq: number | null = null;
       let remainingAmount: Prisma.Decimal | null = null;
-      if (paymentId && installmentNo != null) {
+      // Only true installment-money receipts participate in the partial
+      // sequence. Fee/credit-note/payoff documents sharing the same
+      // installmentNo must neither get a seq of their own nor count toward
+      // the cumulative (a 303.95฿ reschedule fee is not installment money —
+      // including it made remainingAmount/seq wrong for every receipt after).
+      const INSTALLMENT_TYPES: string[] = [...INSTALLMENT_MONEY_RECEIPT_TYPES];
+      if (paymentId && installmentNo != null && INSTALLMENT_TYPES.includes(receiptType)) {
         const payment = await tx.payment.findUnique({
           where: { id: paymentId },
           select: { status: true, amountDue: true },
@@ -85,6 +92,7 @@ export class ReceiptIssuanceService {
               installmentNo,
               isVoided: false,
               deletedAt: null,
+              receiptType: { in: INSTALLMENT_TYPES },
             },
             select: { amount: true },
           });

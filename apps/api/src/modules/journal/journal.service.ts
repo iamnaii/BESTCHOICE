@@ -3,32 +3,17 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateJournalEntryDto } from './dto/journal.dto';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
+import { nextEntryNumber } from './entry-number.util';
 
 @Injectable()
 export class JournalService {
   constructor(private prisma: PrismaService) {}
 
   async generateEntryNumber(): Promise<string> {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const prefix = `JE-${year}${month}`;
-
-    const startOfMonth = new Date(year, now.getMonth(), 1);
-    const startOfNextMonth = new Date(year, now.getMonth() + 1, 1);
-
-    const count = await this.prisma.journalEntry.count({
-      where: {
-        entryNumber: { startsWith: prefix },
-        createdAt: {
-          gte: startOfMonth,
-          lt: startOfNextMonth,
-        },
-      },
-    });
-
-    const sequence = String(count + 1).padStart(4, '0');
-    return `${prefix}-${sequence}`;
+    // Shared numeric-max allocator — same sequence space as the auto
+    // (journal-auto.service) numbers. See entry-number.util.ts for why
+    // count+1 and lexicographic max both broke on this table.
+    return nextEntryNumber(this.prisma, new Date());
   }
 
   async create(dto: CreateJournalEntryDto, userId: string) {
@@ -87,15 +72,7 @@ export class JournalService {
 
     // 5. Generate entry number + create in transaction to avoid race condition
     return this.prisma.$transaction(async (tx) => {
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = String(now.getMonth() + 1).padStart(2, '0');
-      const prefix = `JE-${year}${month}`;
-
-      const count = await tx.journalEntry.count({
-        where: { entryNumber: { startsWith: prefix } },
-      });
-      const entryNumber = `${prefix}-${String(count + 1).padStart(4, '0')}`;
+      const entryNumber = await nextEntryNumber(tx, new Date());
 
       return tx.journalEntry.create({
         data: {
@@ -299,17 +276,10 @@ export class JournalService {
         include: { lines: true },
       });
 
-      // Build reversal entry number — reuse the monthly sequence logic but
-      // keyed on today (not the original's month) so reversals land in the
-      // open period.
+      // Build reversal entry number — same shared monthly sequence, keyed on
+      // today (not the original's month) so reversals land in the open period.
       const now = new Date();
-      const year = now.getFullYear();
-      const month = String(now.getMonth() + 1).padStart(2, '0');
-      const prefix = `JE-${year}${month}`;
-      const count = await tx.journalEntry.count({
-        where: { entryNumber: { startsWith: prefix } },
-      });
-      const reversalNumber = `${prefix}-${String(count + 1).padStart(4, '0')}`;
+      const reversalNumber = await nextEntryNumber(tx, now);
 
       // Both createdById and postedById = voider. SoD's drafter≠poster rule
       // lives in post(); this reversal is created directly in POSTED state

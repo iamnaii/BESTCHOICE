@@ -33,8 +33,15 @@ interface PartialPaymentLink {
  * also flips ACTIVE → EXPIRED hourly server-side). Lets the cashier resend,
  * cancel, or peek at the QR via "ดู QR" without leaving the payments page.
  */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function QrSentBadge({ paymentId }: { paymentId: string }) {
   const queryClient = useQueryClient();
+
+  // The API route validates :id with ParseUUIDPipe, so polling for dev-seed
+  // payments with readable ids (pay-cont-*) just 400s every 30s per row.
+  // Those rows can never have a QR link anyway — skip the query entirely.
+  const isUuid = UUID_RE.test(paymentId);
 
   const { data } = useQuery<PartialPaymentLink | null>({
     queryKey: ['partial-qr', paymentId],
@@ -42,6 +49,7 @@ export function QrSentBadge({ paymentId }: { paymentId: string }) {
       (await api.get<PartialPaymentLink | null>(`/payments/${paymentId}/partial-qr/active`)).data,
     refetchInterval: 30_000,
     staleTime: 10_000,
+    enabled: isUuid,
   });
 
   const [showQr, setShowQr] = useState(false);

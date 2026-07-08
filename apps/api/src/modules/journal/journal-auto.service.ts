@@ -3,6 +3,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
+import { nextEntryNumber } from './entry-number.util';
 
 export interface JeLineInput {
   accountCode: string;
@@ -128,16 +129,10 @@ export class JournalAutoService {
     postedAt: Date,
     tx: Prisma.TransactionClient,
   ): Promise<string> {
-    const ym = `${postedAt.getFullYear()}${(postedAt.getMonth() + 1).toString().padStart(2, '0')}`;
-    const lockKey = parseInt(ym, 10);
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${lockKey})`;
-
-    const start = new Date(postedAt.getFullYear(), postedAt.getMonth(), 1);
-    const end = new Date(postedAt.getFullYear(), postedAt.getMonth() + 1, 1);
-    const count = await tx.journalEntry.count({
-      where: { entryDate: { gte: start, lt: end } },
-    });
-    return `JE-${ym}-${(count + 1).toString().padStart(5, '0')}`;
+    // Shared numeric-max allocator (entry-number.util.ts) — gap-resilient
+    // (hard deletes), mixed-suffix-width-safe (manual JV rows are 4-digit),
+    // serialised per month via the advisory lock inside the util.
+    return nextEntryNumber(tx, postedAt);
   }
 
   /** Resolve FINANCE company id — cached after first call. T6+ callers will pass companyId explicitly. */

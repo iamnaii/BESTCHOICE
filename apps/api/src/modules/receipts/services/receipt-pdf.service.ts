@@ -4,6 +4,7 @@ import * as puppeteer from 'puppeteer';
 import * as QRCode from 'qrcode';
 import { EMBEDDED_FONT_FACES } from '../../../assets/fonts/embedded-fonts';
 import { computeInstallmentBreakdown } from '../../journal/compute-installment-breakdown';
+import { INSTALLMENT_MONEY_RECEIPT_TYPES } from '../receipt-types.constants';
 import { ReceiptQueryService } from './receipt-query.service';
 
 // Embedded BESTCHOICE logo. Single source of truth for the receipt header.
@@ -115,9 +116,17 @@ export class ReceiptPdfService {
       CASH: 'เงินสด',
       BANK_TRANSFER: 'โอนเงินผ่านธนาคาร',
       QR_EWALLET: 'QR / e-Wallet',
+      CARD: 'บัตร (EDC)',
       CREDIT_BALANCE: 'ใช้ยอดเครดิตในสัญญา',
       ONLINE_GATEWAY: 'ชำระออนไลน์',
     };
+    // "บัญชีรับเงิน <ธนาคารบริษัท>" only makes sense when the money actually
+    // lands in the company bank account. Cash / credit-balance receipts must
+    // not display it — a tax document claiming a bank deposit for a cash
+    // payment is misleading. CARD is bank-bound: EDC settles into the selected
+    // bank account (schema PaymentMethod comment — no card suspense account).
+    const bankBoundMethods = new Set(['BANK_TRANSFER', 'QR_EWALLET', 'CARD', 'ONLINE_GATEWAY']);
+    const showBankAccount = bankBoundMethods.has(receipt.paymentMethod ?? '');
 
     const customer = receipt.contract?.customer;
     // Pick the best raw address source, then format JSON-blob addresses to a flat Thai line.
@@ -167,8 +176,45 @@ export class ReceiptPdfService {
           receipt.payment.lateFeeWaived ? ZERO : toDec(receipt.payment.lateFee),
         )
       : null;
-    const totalPaidOnInstallment = receipt.payment ? toDec(receipt.payment.amountPaid) : null;
-    const isPartial = receipt.payment?.status === 'PARTIALLY_PAID';
+    // Partial-payment context: prefer the receipt's own issuance-time
+    // snapshot (paymentStatus / remainingAmount) over live Payment state —
+    // voiding a later sibling resets Payment.amountPaid to 0, which used to
+    // erase the "ชำระบางส่วน" tag from re-generated historical PDFs. The
+    // snapshot is only trusted on installment-money receipts (fee/payoff
+    // documents also carry a PARTIAL snapshot but must never show the tag).
+    const isInstallmentReceipt = (INSTALLMENT_MONEY_RECEIPT_TYPES as readonly string[]).includes(
+      receipt.receiptType ?? 'PAYMENT',
+    );
+    const snapshotPartial = isInstallmentReceipt && receipt.paymentStatus === 'PARTIAL';
+    const livePartial = isInstallmentReceipt && receipt.payment?.status === 'PARTIALLY_PAID';
+    const isPartial = snapshotPartial || livePartial;
+    // Cumulative paid on this installment: while the installment is still
+    // live-partial, Payment.amountPaid is exact — keep it. Once live state
+    // no longer reflects this receipt (sibling voided → amountPaid reset,
+    // or installment completed later), reconstruct the issuance-time value
+    // from the immutable snapshot: amountDue − remainingAmount. Legacy rows
+    // without the snapshot fall back to live amountPaid (old behavior).
+    // Sanity guard on the reconstruction: rows written before the
+    // INSTALLMENT-type filter existed can carry a remainingAmount corrupted
+    // by credit-note/fee amounts (e.g. remaining=0 on a genuinely-partial
+    // receipt → reconstruction = full amountDue, contradicting PARTIAL).
+    // When the snapshot contradicts itself, fall back to live amountPaid.
+    const snapshotCumulative =
+      snapshotPartial && receipt.payment && receipt.remainingAmount != null
+        ? toDec(receipt.payment.amountDue).minus(toDec(receipt.remainingAmount))
+        : null;
+    const snapshotSane =
+      snapshotCumulative != null &&
+      receipt.payment != null &&
+      snapshotCumulative.gt(0) &&
+      snapshotCumulative.lt(toDec(receipt.payment.amountDue));
+    const totalPaidOnInstallment = receipt.payment
+      ? livePartial
+        ? toDec(receipt.payment.amountPaid)
+        : snapshotSane && snapshotCumulative != null
+          ? snapshotCumulative
+          : toDec(receipt.payment.amountPaid)
+      : null;
     const remainingBalance = toDec(receipt.remainingBalance ?? 0);
     const fmt = (v: Prisma.Decimal | number) =>
       (typeof v === 'number' ? v : v.toNumber()).toLocaleString('en-US', {
@@ -501,7 +547,7 @@ export class ReceiptPdfService {
         <span class="k">วันที่ชำระ</span><span class="v">${paidDateStr}</span>
         <span class="k">ช่องทาง</span><span class="v">${safe.paymentMethodLabel || '–'}</span>
         ${safe.transactionRef ? `<span class="k">เลขอ้างอิง</span><span class="v">${safe.transactionRef}</span>` : ''}
-        ${safe.bankName ? `<span class="k">บัญชีรับเงิน</span><span class="v">${safe.bankName}${safe.bankAccountNumber ? ` ${safe.bankAccountNumber}` : ''}</span>` : ''}
+        ${showBankAccount && safe.bankName ? `<span class="k">บัญชีรับเงิน</span><span class="v">${safe.bankName}${safe.bankAccountNumber ? ` ${safe.bankAccountNumber}` : ''}</span>` : ''}
       </div>
     </div>
     <div class="pay-col">

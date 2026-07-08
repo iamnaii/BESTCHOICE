@@ -249,7 +249,7 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
 
     // The 8 documented FINANCE codes (JP4 spec §6.4), in order.
     expect(je.lines.map((l) => l.accountCode)).toEqual([
-      '11-1101', // deposit / cash (default)
+      '11-1201', // deposit — KBank default (owner rule 2026-07-08: direct receipt = KBank only)
       '11-2106', // reverse unearned interest
       '21-2102', // clear deferred output VAT
       '52-1106', // early-payoff interest discount
@@ -265,7 +265,7 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
     expect(totalDr.toFixed(2)).toBe(totalCr.toFixed(2));
 
     // Pin the exact computed per-line amounts (golden).
-    expect(lineFor(je, '11-1101')!.dr.toFixed(2)).toBe('11106.00'); // epSettlement
+    expect(lineFor(je, '11-1201')!.dr.toFixed(2)).toBe('11106.00'); // epSettlement
     expect(lineFor(je, '11-2106')!.dr.toFixed(2)).toBe('900.00'); // remaining deferred interest
     expect(lineFor(je, '21-2102')!.dr.toFixed(2)).toBe('756.00'); // remaining deferred VAT
     expect(lineFor(je, '52-1106')!.dr.toFixed(2)).toBe('450.00'); // discount
@@ -406,7 +406,7 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
     const result = await service.earlyPayoff(quoteContract.id, 'user-1', baseDto);
     const je = getCapturedJe();
 
-    const jeCash = lineFor(je, '11-1101')!.dr.toFixed(2);
+    const jeCash = lineFor(je, '11-1201')!.dr.toFixed(2);
     // quote.totalPayoff = remainingBalance(11556) − discount(450) + lateFees(0).
     expect(quote.totalPayoff).toBe(11106);
     // FIFO total handed to the Payment rows = quote.totalPayoff.

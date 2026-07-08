@@ -161,8 +161,9 @@ export class ContractPaymentService {
     // Computed from contract fields via the SAME pure function the ledger
     // posting (earlyPayoff()) and the JP4 template use, so the preview shown to
     // the UI/LIFF is byte-for-byte the JE that gets posted on confirm.
-    // Cash dimension: caller-provided > fallback 11-1101 (matches accounting.md)
-    const epDepositCode = depositAccountCode ?? '11-1101';
+    // Cash dimension: caller-provided > fallback 11-1201 (KBank — owner rule
+    // 2026-07-08: direct FINANCE receipt is KBank-only)
+    const epDepositCode = depositAccountCode ?? '11-1201';
     const je = computeEarlyPayoffJE({
       depositAccountCode: epDepositCode,
       financedAmount: contract.financedAmount.toString(),
@@ -237,10 +238,12 @@ export class ContractPaymentService {
   }
 
   async earlyPayoff(id: string, userId: string, dto: EarlyPayoffDto) {
-    // Resolve cash dimension once: dto > user default (TODO via userId lookup) > 11-1101
-    const depositAccountCode = dto.depositAccountCode ?? '11-1101';
+    // Resolve cash dimension once: dto > 11-1201 (KBank). Owner rule 2026-07-08:
+    // direct FINANCE receipt is KBank-only — cash collected at a branch goes
+    // through collectedByShop → 11-2107 instead.
+    const depositAccountCode = dto.depositAccountCode ?? '11-1201';
     // Shop-collect substitution: server overrides depositAccountCode with 11-2107
-    // when collectedByShop=true. The DTO's @IsIn(CASH_ACCOUNT_CODES) validator
+    // when collectedByShop=true. The DTO's @IsIn([KBANK_ACCOUNT_CODE]) validator
     // stays intact — the client never names 11-2107 directly.
     const effectiveDepositCode = dto.collectedByShop ? '11-2107' : depositAccountCode;
     const quote = await this.getEarlyPayoffQuote(id, dto.discountPct, effectiveDepositCode);

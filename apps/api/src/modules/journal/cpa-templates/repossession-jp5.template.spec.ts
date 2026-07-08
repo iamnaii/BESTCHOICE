@@ -9,6 +9,7 @@ import { diffGoldenJE } from '../__tests__/golden-je-matcher';
 import { ContractActivation1ATemplate } from './contract-activation-1a.template';
 import { InstallmentAccrual2ATemplate } from './installment-accrual-2a.template';
 import { RepossessionJP5Template } from './repossession-jp5.template';
+import { ShopCollectSettlementTemplate } from './shop-collect-settlement.template';
 import { JournalAutoService } from '../journal-auto.service';
 
 const prisma = new PrismaClient();
@@ -189,6 +190,76 @@ describe('RepossessionJP5Template', () => {
 
     const loss = entries[0].lines.find((l) => l.accountCode === '51-1102');
     expect(loss, '51-1102 loss line should not exist in gain path').toBeUndefined();
+  });
+
+  it('shop-collect (2026-07-08): deposit leg lands on 11-2107, metadata stamped, and the generic settlement clears it', async () => {
+    const journal = await setup();
+    const c = await seedStandard17k12m(prisma);
+    await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
+
+    const tmpl = new RepossessionJP5Template(journal, prisma as any);
+    // Caller (repossessions.service) substitutes depositAccountCode='11-2107'
+    // when collectedByShop — mirror that contract here.
+    await tmpl.execute({
+      contractId: c.id,
+      depositAccountCode: '11-2107',
+      repossessionValue: new Decimal('7000.00'),
+      collectedByShop: true,
+    });
+
+    const entries = await prisma.journalEntry.findMany({
+      where: { metadata: { path: ['flow'], equals: 'repossession' } } as any,
+      include: { lines: true },
+    });
+    expect(entries.length, 'expected exactly 1 repossession JE').toBe(1);
+
+    // Deposit leg parked as shop receivable — NOT a cash account.
+    const shopLeg = entries[0].lines.find((l) => l.accountCode === '11-2107');
+    expect(shopLeg, 'Dr 11-2107 leg should exist').toBeDefined();
+    expect(new Decimal(shopLeg!.debit.toString()).toFixed(2)).toBe('7000.00');
+
+    // Metadata pairs the JE with its later settlement (same convention as JP4).
+    const meta = entries[0].metadata as Record<string, unknown>;
+    expect(meta.collectedByShop).toBe(true);
+    expect(meta.shopReceivable).toBe('11-2107');
+    expect(meta.contractId).toBe(c.id);
+
+    // The generic settlement (sums 11-2107 by metadata.contractId) must find
+    // and clear the JP5-originated receivable — Dr KBank / Cr 11-2107.
+    const settlement = new ShopCollectSettlementTemplate(journal, prisma as any);
+    await settlement.execute({
+      contractId: c.id,
+      depositAccountCode: '11-1201',
+      amount: new Decimal('7000.00'),
+    });
+
+    const lines = await prisma.journalLine.findMany({
+      where: {
+        accountCode: '11-2107',
+        journalEntry: {
+          AND: [
+            { metadata: { path: ['contractId'], equals: c.id } } as any,
+            { status: 'POSTED' },
+            { deletedAt: null },
+          ],
+        },
+      },
+      select: { debit: true, credit: true },
+    });
+    const outstanding = lines.reduce(
+      (s, l) => s.plus(new Decimal(l.debit.toString())).minus(new Decimal(l.credit.toString())),
+      new Decimal(0),
+    );
+    expect(outstanding.toFixed(2), '11-2107 fully cleared after settlement').toBe('0.00');
+
+    // Second settlement on the same contract must be rejected (nothing left).
+    await expect(
+      settlement.execute({
+        contractId: c.id,
+        depositAccountCode: '11-1201',
+        amount: new Decimal('1.00'),
+      }),
+    ).rejects.toThrow(/ไม่มียอด 11-2107/);
   });
 
   it('throws when no unpaid installments remain', async () => {

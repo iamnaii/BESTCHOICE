@@ -299,22 +299,41 @@ export class RepossessionsService {
         const repoValue = dto.appraisalPrice != null
           ? new Decimal(String(dto.appraisalPrice))
           : new Decimal('0');
-        // Wave 4 / Task 2 (Info I-1): prefer caller-supplied account, fall
-        // back to user's default cash account, then '11-1101' as last resort.
-        const user = await tx.user.findUnique({
-          where: { id: userId },
-          select: { defaultCashAccountCode: true },
-        });
-        const depositAccountCode =
-          dto.depositAccountCode ?? user?.defaultCashAccountCode ?? '11-1101';
+        // Owner rule 2026-07-08: direct FINANCE receipt = KBank (11-1201) only.
+        // collectedByShop mirrors JP4 early payoff — the shop takes the device
+        // (and any money) so FINANCE books Dr 11-2107 ลูกหนี้-หน้าร้าน instead;
+        // cleared later via POST /contracts/:id/shop-collect-settlement (the
+        // settlement sums 11-2107 lines by metadata.contractId, so JP5 debits
+        // are covered by the same endpoint as JP4).
+        const depositAccountCode = dto.collectedByShop
+          ? '11-2107'
+          : (dto.depositAccountCode ?? '11-1201');
         await this.repossessionJP5Template.execute(
           {
             contractId: dto.contractId,
             depositAccountCode,
             repossessionValue: repoValue,
+            collectedByShop: dto.collectedByShop === true,
           },
           tx,
         );
+        // Mirrors SHOP_COLLECT_PAYOFF — forensic trail that the repossession
+        // value is parked as a shop receivable awaiting settlement.
+        if (dto.collectedByShop) {
+          await tx.auditLog.create({
+            data: {
+              userId,
+              action: 'SHOP_COLLECT_REPOSSESSION',
+              entity: 'contract',
+              entityId: dto.contractId,
+              newValue: {
+                shopReceivable: '11-2107',
+                repossessionValue: repoValue.toFixed(2),
+                repossessionId: repossession.id,
+              },
+            },
+          });
+        }
       }
 
       // Update product status

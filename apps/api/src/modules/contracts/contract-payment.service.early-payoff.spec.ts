@@ -139,7 +139,9 @@ describe('ContractPaymentService.getEarlyPayoffQuote (early-payoff golden)', () 
     // remainingGross (excl VAT) = 1800.00 × 6 = 10800.00
     // remainingDeferredVat       = (1512/12 = 126.00) × 6 = 756.00
     // settlement = 10800.00 − 450.00 + 756.00 = 11106.00
-    const cashLine = quote.journalPreview.lines.find((l) => l.accountCode === '11-1101');
+    // Default deposit = 11-1201 KBank (owner rule 2026-07-08: direct FINANCE
+    // receipt is KBank-only)
+    const cashLine = quote.journalPreview.lines.find((l) => l.accountCode === '11-1201');
     expect(cashLine?.debit).toBe('11106.00');
 
     // Top-level payoff (remainingBalance 11556 − discount 450, no late fees)
@@ -162,7 +164,7 @@ describe('ContractPaymentService.getEarlyPayoffQuote (early-payoff golden)', () 
     expect(discountLine?.debit).toBe('270.00');
 
     // settlement = 10800.00 − 270.00 + 756.00 = 11286.00
-    const cashLine = quote.journalPreview.lines.find((l) => l.accountCode === '11-1101');
+    const cashLine = quote.journalPreview.lines.find((l) => l.accountCode === '11-1201');
     expect(cashLine?.debit).toBe('11286.00');
     expect(quote.discountPct).toBe(30);
   });

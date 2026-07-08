@@ -19,6 +19,14 @@ export const CASH_ACCOUNT_CODES = [
   '11-1203',
 ] as const;
 
+/**
+ * ธนาคารกสิกร (KBank) only — for flows where money must arrive at FINANCE's
+ * KBank account directly (early payoff JP4 + repossession JP5, owner rule
+ * 2026-07-08). Cash collected at a branch uses the shop-collect toggle
+ * (Dr 11-2107) instead of a cash account.
+ */
+export const KBANK_ONLY_CODES = ['11-1201'] as const;
+
 interface CoaRow {
   code: string;
   name: string;
@@ -29,10 +37,13 @@ export interface CashAccountSelectProps {
   onChange: (code: string) => void;
   disabled?: boolean;
   placeholder?: string;
+  /** Restrict the selectable codes — default: all 6 cash/bank codes. */
+  codes?: readonly string[];
 }
 
 /**
- * T15 — dropdown to select a cash/bank account code from the 6 valid codes.
+ * T15 — dropdown to select a cash/bank account code from the 6 valid codes
+ * (or a caller-restricted subset via `codes`, e.g. KBANK_ONLY_CODES).
  * Fetches human-readable names from GET /chart-of-accounts/by-codes.
  * Falls back to showing the code alone if the endpoint returns no name.
  */
@@ -41,13 +52,12 @@ export function CashAccountSelect({
   onChange,
   disabled,
   placeholder = 'เลือกบัญชีรับเงิน',
+  codes = CASH_ACCOUNT_CODES,
 }: CashAccountSelectProps) {
   const { data, isLoading } = useQuery<CoaRow[]>({
-    queryKey: ['chart-of-accounts', 'cash-codes'],
+    queryKey: ['chart-of-accounts', 'cash-codes', codes.join(',')],
     queryFn: async () => {
-      const res = await api.get<CoaRow[]>(
-        `/chart-of-accounts/by-codes?codes=${CASH_ACCOUNT_CODES.join(',')}`,
-      );
+      const res = await api.get<CoaRow[]>(`/chart-of-accounts/by-codes?codes=${codes.join(',')}`);
       return res.data;
     },
     staleTime: Infinity, // CoA names rarely change — no need to refetch
@@ -62,7 +72,7 @@ export function CashAccountSelect({
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent>
-        {CASH_ACCOUNT_CODES.map((code) => (
+        {codes.map((code) => (
           <SelectItem key={code} value={code}>
             {accountDisplayName(nameMap.get(code) ?? '')}
           </SelectItem>

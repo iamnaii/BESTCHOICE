@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { BookOpen, FileText, X } from 'lucide-react';
 import api, { getErrorMessage } from '@/lib/api';
@@ -150,23 +150,19 @@ export default function PaymentHistorySheet({ contractId, onClose }: Props) {
   });
   const isLoading = loadingPayments || loadingReceipts;
 
-  // Which receipt rows have their JE panel expanded (keyed by receipt id).
-  const [jeOpen, setJeOpen] = useState<Set<string>>(new Set());
-  // Component stays mounted between opens — clear expansion when switching contracts.
+  // Receipt whose JEs are shown in the บันทึกบัญชี dialog (one page, no
+  // scrolling — replaces the old inline row expansion that pushed content
+  // below the fold). Component stays mounted between opens — clear when
+  // switching contracts.
+  const [jeTarget, setJeTarget] = useState<ReceiptItem | null>(null);
   useEffect(() => {
-    setJeOpen(new Set());
+    setJeTarget(null);
   }, [contractId]);
-  const toggleJe = (receiptId: string) =>
-    setJeOpen((prev) => {
-      const next = new Set(prev);
-      if (next.has(receiptId)) next.delete(receiptId);
-      else next.add(receiptId);
-      return next;
-    });
 
   // Receipt → posted-JE selection (early-payoff by flow, CN → reversal mirrors,
   // else by shared paymentId). Extracted to paymentHistoryDerivations for unit test.
   const jesForReceipt = (r: ReceiptItem): ContractJe[] => selectJesForReceipt(r, journalEntries);
+  const jeTargetJes = jeTarget ? jesForReceipt(jeTarget) : [];
 
   const payments = pResp?.data ?? [];
   const contract = pResp?.contract;
@@ -218,7 +214,9 @@ export default function PaymentHistorySheet({ contractId, onClose }: Props) {
   return (
     <>
       <Dialog open={!!contractId} onOpenChange={(open) => !open && onClose()}>
-        <DialogContent className="sm:max-w-6xl max-h-[92vh] flex flex-col p-0 gap-0">
+        {/* Fullscreen (inset-5) so all 12 table columns fit without a horizontal
+            scrollbar — owner request 2026-07-08. */}
+        <DialogContent variant="fullscreen" className="p-0 gap-0">
           <DialogHeader className="px-5 py-4 border-b border-border mb-0 text-start">
             <DialogTitle className="leading-snug">
               ประวัติการชำระ {contract ? <span className="text-primary font-mono">— {contract.contractNumber}</span> : ''}
@@ -282,11 +280,9 @@ export default function PaymentHistorySheet({ contractId, onClose }: Props) {
                           const c = caseFor(r, p);
                           const { lateFee, waived } = receiptFees.get(r.id) ?? { lateFee: 0, waived: 0 };
                           const recorder = p?.recordedBy?.name ?? r.issuedByName ?? '–';
-                          const rowJes = jesForReceipt(r);
-                          const isJeOpen = jeOpen.has(r.id);
                           return (
-                            <Fragment key={r.id}>
                             <tr
+                              key={r.id}
                               className={`border-t border-border ${r.isVoided ? 'opacity-50 line-through' : ''}`}
                             >
                               <Td className="font-mono text-xs">{r.receiptNumber}</Td>
@@ -324,15 +320,11 @@ export default function PaymentHistorySheet({ contractId, onClose }: Props) {
                               <Td>
                                 <div className="flex items-center gap-1">
                                   <button
-                                    onClick={() => toggleJe(r.id)}
+                                    onClick={() => setJeTarget(r)}
                                     title="ดูบันทึกบัญชี (JE)"
                                     aria-label={`ดูบันทึกบัญชีของใบเสร็จ ${r.receiptNumber}`}
-                                    aria-expanded={isJeOpen}
-                                    className={`p-1.5 rounded border transition-colors ${
-                                      isJeOpen
-                                        ? 'border-primary/40 bg-primary/10 text-primary'
-                                        : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground'
-                                    }`}
+                                    aria-haspopup="dialog"
+                                    className="p-1.5 rounded border border-border text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
                                   >
                                     <BookOpen className="size-3.5" />
                                   </button>
@@ -361,26 +353,6 @@ export default function PaymentHistorySheet({ contractId, onClose }: Props) {
                                 </div>
                               </Td>
                             </tr>
-                            {isJeOpen && (
-                              <tr className="border-t border-border bg-muted/10">
-                                <td colSpan={12} className="px-4 py-3">
-                                  {loadingJes ? (
-                                    <div className="text-xs text-muted-foreground leading-snug">กำลังโหลดบันทึกบัญชี...</div>
-                                  ) : rowJes.length === 0 ? (
-                                    <div className="text-xs text-muted-foreground leading-snug">
-                                      ไม่พบบันทึกบัญชี (JE) สำหรับรายการนี้
-                                    </div>
-                                  ) : (
-                                    <div className="space-y-3">
-                                      {rowJes.map((je) => (
-                                        <JeBlock key={je.id} je={je} />
-                                      ))}
-                                    </div>
-                                  )}
-                                </td>
-                              </tr>
-                            )}
-                            </Fragment>
                           );
                         })}
                       </tbody>
@@ -388,6 +360,45 @@ export default function PaymentHistorySheet({ contractId, onClose }: Props) {
                   </div>
                 )}
               </>
+            )}
+          </DialogBody>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── บันทึกบัญชี (JE) — one-page dialog, no scrolling ───
+          Stacks over the history dialog (same pattern as ReceiptVoidDialog).
+          Width adapts: one JE stays compact, several JEs go side-by-side so
+          everything is visible at once. */}
+      <Dialog open={!!jeTarget} onOpenChange={(open) => !open && setJeTarget(null)}>
+        <DialogContent
+          className={`${jeTargetJes.length > 1 ? 'sm:max-w-[min(96vw,90rem)]' : 'sm:max-w-2xl'} max-h-[94vh] flex flex-col p-0 gap-0`}
+        >
+          <DialogHeader className="px-5 py-4 border-b border-border mb-0 text-start">
+            <DialogTitle className="leading-snug">
+              บันทึกบัญชี (JE){' '}
+              {jeTarget && <span className="text-primary font-mono">— {jeTarget.receiptNumber}</span>}
+            </DialogTitle>
+            {jeTarget && (
+              <div className="text-xs text-muted-foreground leading-snug mt-0.5">
+                งวด {jeTarget.installmentNo ?? '–'}
+                {contract ? `/${contract.totalMonths}` : ''} · {formatDateShort(jeTarget.paidDate)} ·{' '}
+                {money(jeTarget.amount)} ฿
+              </div>
+            )}
+          </DialogHeader>
+          <DialogBody className="flex-1 overflow-auto px-5 py-4">
+            {loadingJes ? (
+              <div className="text-sm text-muted-foreground leading-snug">กำลังโหลดบันทึกบัญชี...</div>
+            ) : jeTargetJes.length === 0 ? (
+              <div className="text-sm text-muted-foreground leading-snug text-center py-8">
+                ไม่พบบันทึกบัญชี (JE) สำหรับรายการนี้
+              </div>
+            ) : (
+              <div className={`grid gap-3 ${jeTargetJes.length > 1 ? 'lg:grid-cols-2' : ''}`}>
+                {jeTargetJes.map((je) => (
+                  <JeBlock key={je.id} je={je} />
+                ))}
+              </div>
             )}
           </DialogBody>
         </DialogContent>

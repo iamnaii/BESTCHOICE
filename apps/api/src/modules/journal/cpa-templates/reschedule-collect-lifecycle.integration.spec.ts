@@ -98,6 +98,9 @@ describe('reschedule-collect 6a → 2A accrual → advance consume lifecycle (in
   });
 
   beforeAll(async () => {
+    // JournalPostAuditLog rows (asset flows) FK-reference journal_entries — clear
+    // them first or this deleteMany trips P2003 when an asset spec ran earlier.
+    await prisma.journalPostAuditLog.deleteMany({});
     await prisma.journalLine.deleteMany({});
     await prisma.journalEntry.deleteMany({});
     await prisma.receipt.deleteMany({});

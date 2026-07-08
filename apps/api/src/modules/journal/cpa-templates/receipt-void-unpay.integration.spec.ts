@@ -105,6 +105,9 @@ describe('receipt void un-pays the installment → re-receipt succeeds (integrat
   let tpl: PaymentReceiptTemplate;
 
   beforeAll(async () => {
+    // JournalPostAuditLog rows (asset flows) FK-reference journal_entries — clear
+    // them first or this deleteMany trips P2003 when an asset spec ran earlier.
+    await prisma.journalPostAuditLog.deleteMany({});
     await prisma.journalLine.deleteMany({});
     await prisma.journalEntry.deleteMany({});
     await prisma.receipt.deleteMany({});

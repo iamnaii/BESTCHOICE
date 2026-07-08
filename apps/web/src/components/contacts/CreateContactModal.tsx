@@ -59,6 +59,14 @@ export default function CreateContactModal({
   const [name, setName] = useState(initialName);
   const [idNumber, setIdNumber] = useState(''); // taxId (JURISTIC) or nationalId (INDIVIDUAL)
   const [phone, setPhone] = useState('');
+  // Owner report 2026-07-08: live dash-insertion WHILE typing made some
+  // environments (mobile/tablet IME keyboards, autofill, slow devices) drop
+  // keystrokes — the controlled re-format rewrote the DOM value mid-input and
+  // เลขบัตร/เบอร์โทร could not be entered completely. Show RAW digits while the
+  // field is focused (nothing ever rewrites what the user is typing) and apply
+  // the dashed format only on blur.
+  const [idFocused, setIdFocused] = useState(false);
+  const [phoneFocused, setPhoneFocused] = useState(false);
   const [address, setAddress] = useState<AddressData>({ ...emptyAddress });
   const [hasVat, setHasVat] = useState(false);
 
@@ -288,8 +296,11 @@ export default function CreateContactModal({
                 </Label>
                 <Input
                   id="ccm-idnumber"
-                  value={formatIdNumberInput(idNumber)}
+                  value={idFocused ? idNumber : formatIdNumberInput(idNumber)}
                   onChange={(e) => setIdNumber(e.target.value.replace(/\D/g, '').slice(0, 13))}
+                  onFocus={() => setIdFocused(true)}
+                  onBlur={() => setIdFocused(false)}
+                  maxLength={17}
                   placeholder="1-2345-67890-12-3"
                   inputMode="numeric"
                   autoComplete="off"
@@ -309,8 +320,11 @@ export default function CreateContactModal({
                 </Label>
                 <Input
                   id="ccm-phone"
-                  value={formatPhoneInput(phone)}
+                  value={phoneFocused ? phone : formatPhoneInput(phone)}
                   onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                  onFocus={() => setPhoneFocused(true)}
+                  onBlur={() => setPhoneFocused(false)}
+                  maxLength={12}
                   placeholder="081-234-5678"
                   inputMode="tel"
                   autoComplete="off"

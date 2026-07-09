@@ -15,6 +15,12 @@ export interface RepossessionInput {
    * with its later shop-collect settlement (same convention as JP4).
    */
   collectedByShop?: boolean;
+  /**
+   * วันที่รับเงิน/ลงบัญชี — JE entryDate + entry-number month series. Omitted →
+   * now. Caller must run validatePeriodOpen on this date BEFORE the tx (C9:
+   * createAndPost does not re-validate).
+   */
+  postedAt?: Date;
 }
 
 /**
@@ -283,6 +289,7 @@ export class RepossessionJP5Template {
       {
         description: `ยึดเครื่อง — สัญญา ${c.contractNumber} (${unpaid} งวดคงเหลือ)`,
         reference: `${c.id}:repossession`,
+        postedAt: input.postedAt,
         metadata: {
           tag: 'JP5',
           flow: 'repossession',

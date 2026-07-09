@@ -1,9 +1,13 @@
 /**
  * RescheduleCollectService — ปรับดิว collect-first (owner directive 2026-07-02).
  *
- * Locks the money semantics of "เงินไม่เข้า ดิวไม่เลื่อน":
- *   - 6a: collect JE = Dr deposit (fee+ค่าปรับ) / Cr 21-1103 fee / Cr 42-1103 ค่าปรับ
- *   - 6b: ค่าปรับ only; zero-collect (no fee, no late fee) → NO JE, reschedule still runs
+ * Locks the money semantics of "เงินไม่เข้า ดิวไม่เลื่อน" (owner correction
+ * 2026-07-09 — CPA ตารางก่อน/หลังปรับดิว):
+ *   - 6a (แบ่ง 2 ครั้ง): collect JE = Dr deposit (fee+ค่าปรับ) / Cr 21-1103 fee /
+ *     Cr 42-1103 ค่าปรับ — this installment shifts and is paid at the new due
+ *   - 6b (จ่ายทั้งก้อนวันนี้): controller books installment + fee + late fee via
+ *     the orchestrator FIRST, then calls here with bundledPaid → phase 2 shifts
+ *     from installmentNo+1 only, no money moves; direct 6b calls are rejected
  *   - Payment.lateFee resets to 0 AFTER collecting (new overdue period starts clean)
  *   - amount mismatch vs the server quote → BadRequest, nothing posted
  *   - โอน requires ref/slip; QR-webhook path (fixedQuote) books the frozen quote
@@ -48,6 +52,7 @@ describe('RescheduleCollectService (ปรับดิว collect-first)', () =>
     deletedAt: null,
     dueDate: DUE_5D_AGO,
     amountDue: D('4472.00'),
+    amountPaid: D('0.00'),
     lateFee: D('100.00'),
     lateFeeWaived: false,
     notes: null,
@@ -108,6 +113,36 @@ describe('RescheduleCollectService (ปรับดิว collect-first)', () =>
     expect(q.lateFee).toBe('100.00');
     expect(q.collectAmount).toBe('1144.00');
     expect(q.variant).toBe('6a');
+  });
+
+  it('quote(): 6b = ค่างวดคงเหลือ 4472 + fee 1044 + lateFee 100 → collect 5616 (จ่ายทั้งก้อนวันนี้)', async () => {
+    const q = await service.quote({
+      contractId: 'ct-1',
+      installmentNo: 1,
+      daysToShift: 7,
+      splitMode: 'SINGLE',
+    });
+    expect(q.installmentOutstanding).toBe('4472.00');
+    expect(q.rescheduleFee).toBe('1044.00');
+    expect(q.lateFee).toBe('100.00');
+    expect(q.collectAmount).toBe('5616.00');
+    expect(q.variant).toBe('6b');
+  });
+
+  it('quote(): 6b nets amountPaid — partially-paid installment only owes the remainder', async () => {
+    prisma.payment.findFirst.mockResolvedValue({
+      ...paymentRow,
+      status: 'PARTIALLY_PAID',
+      amountPaid: D('1472.00'),
+    });
+    const q = await service.quote({
+      contractId: 'ct-1',
+      installmentNo: 1,
+      daysToShift: 7,
+      splitMode: 'SINGLE',
+    });
+    expect(q.installmentOutstanding).toBe('3000.00');
+    expect(q.collectAmount).toBe('4144.00'); // 3000 + 1044 + 100
   });
 
   it('6a happy path: JE (Dr 11-1101 1144 / Cr 21-1103 1044 / Cr 42-1103 100) + lateFee reset + reschedule on SAME tx + receipt', async () => {
@@ -177,52 +212,82 @@ describe('RescheduleCollectService (ปรับดิว collect-first)', () =>
     });
   });
 
-  it('6b: collects ONLY the late fee (Dr 100 / Cr 42-1103 100, no 21-1103 line)', async () => {
-    await service.executeWithCollect({
-      contractId: 'ct-1',
-      installmentNo: 1,
-      daysToShift: 7,
-      splitMode: 'SINGLE',
-      amount: 100,
-      paymentMethod: 'CASH',
-      recordedById: 'user-1',
-    });
+  it('6b direct call (ไม่ผ่าน orchestrator, ไม่มี fixedQuote) → BadRequest, nothing runs', async () => {
+    // Owner correction 2026-07-09: 6b = จ่ายทั้งก้อนวันนี้ — the controller must
+    // book the bundle through the payment orchestrator first (bundledPaid) or
+    // it arrives as a legacy frozen-quote QR webhook. A direct call would try
+    // to Dr the full bundle against late-fee-only credits.
+    await expect(
+      service.executeWithCollect({
+        contractId: 'ct-1',
+        installmentNo: 1,
+        daysToShift: 7,
+        splitMode: 'SINGLE',
+        amount: 100,
+        paymentMethod: 'CASH',
+        recordedById: 'user-1',
+      }),
+    ).rejects.toThrow(/ต้องบันทึกรับชำระผ่าน/);
 
-    const je = journalAuto.createAndPost.mock.calls[0][0];
-    const codes = je.lines.map((l: AnyObj) => l.accountCode);
-    expect(codes).toEqual(['11-1101', '42-1103']);
-    expect(je.lines[0].dr.toFixed(2)).toBe('100.00');
-    expect(je.lines[1].cr.toFixed(2)).toBe('100.00');
+    expect(journalAuto.createAndPost).not.toHaveBeenCalled();
+    expect(rescheduleService.execute).not.toHaveBeenCalled();
   });
 
-  it('6b + no late fee (not overdue): NO JE, NO lateFee reset, NO receipt, NO advance — reschedule still runs + fee note stamped', async () => {
-    prisma.payment.findFirst.mockResolvedValue({
-      ...paymentRow,
-      dueDate: new Date('2026-07-20T05:00:00Z'),
-      lateFee: D(0),
-    });
+  it('6b bundledPaid (phase 2): NO JE, NO receipt, NO advance, NO lateFee reset — shifts from installmentNo+1, PAID row allowed', async () => {
+    // Phase 1 (controller) already booked installment + fee + late fee through
+    // the orchestrator — the row is PAID by the time phase 2 runs.
+    prisma.payment.findFirst.mockResolvedValue({ ...paymentRow, status: 'PAID' });
 
     const result = await service.executeWithCollect({
       contractId: 'ct-1',
       installmentNo: 1,
       daysToShift: 7,
       splitMode: 'SINGLE',
-      amount: 0.01, // DTO placeholder — ignored when quote collect = 0
+      amount: 5616, // the actual phase-1 bundle (4472 + 1044 + 100)
       paymentMethod: 'CASH',
       recordedById: 'user-1',
+      bundledPaid: true,
     });
 
     expect(journalAuto.createAndPost).not.toHaveBeenCalled();
     expect(receiptsService.generateReceipt).not.toHaveBeenCalled();
-    expect(prisma.contract.update).not.toHaveBeenCalled(); // 6b — no advance now
-    // 6b: the deferred fee is stamped on the installment note (collected with the
-    // installment; the orchestrator's D1 auto-route parks the overage as advance).
+    expect(prisma.contract.update).not.toHaveBeenCalled(); // advance parked by D1 already
+
+    // Note stamped, but the orchestrator's lateFee stamp is preserved.
     const upd = prisma.payment.update.mock.calls[0][0];
-    expect(upd.data.lateFee).toBeUndefined(); // no fee to reset
-    expect(upd.data.notes).toContain('ค่าธรรมเนียมปรับดิว');
-    expect(upd.data.notes).toContain('(6b)');
-    expect(rescheduleService.execute).toHaveBeenCalled();
-    expect(result.collectAmount).toBe('0.00');
+    expect(upd.data.lateFee).toBeUndefined();
+    expect(upd.data.notes).toContain('ปรับดิว 6b');
+
+    // งวดนี้จ่ายจบวันนี้ — เลื่อนเฉพาะงวดถัดไป (CPA case 6b)
+    expect(rescheduleService.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ fromInstallmentNo: 2, variant: '6b' }),
+      prisma,
+    );
+
+    const audit = prisma.auditLog.create.mock.calls
+      .map((c: AnyObj) => c[0].data)
+      .find((d2: AnyObj) => d2.action === 'RESCHEDULE_COLLECT');
+    expect(audit.newValue.source).toBe('CASHIER_BUNDLED_6B');
+    expect(audit.newValue.bundledPaid).toBe(true);
+    // Audit + response record the ACTUAL phase-1 bundle, not the zeroed phase-2 quote.
+    expect(audit.newValue.collectAmount).toBe('5616.00');
+    expect(result.collectAmount).toBe('5616.00');
+    expect(result.success).toBe(true);
+  });
+
+  it('bundledPaid with SPLIT → BadRequest (ใช้ได้เฉพาะ 6b)', async () => {
+    await expect(
+      service.executeWithCollect({
+        contractId: 'ct-1',
+        installmentNo: 1,
+        daysToShift: 7,
+        splitMode: 'SPLIT',
+        amount: 0,
+        paymentMethod: 'CASH',
+        recordedById: 'user-1',
+        bundledPaid: true,
+      }),
+    ).rejects.toThrow(/เฉพาะโหมดชำระทั้งก้อน/);
   });
 
   it('amount mismatch vs server quote → BadRequest, nothing posted, no reschedule', async () => {
@@ -294,8 +359,8 @@ describe('RescheduleCollectService (ปรับดิว collect-first)', () =>
         contractId: 'ct-1',
         installmentNo: 1,
         daysToShift: 7,
-        splitMode: 'SINGLE',
-        amount: 100,
+        splitMode: 'SPLIT',
+        amount: 1144,
         paymentMethod: 'CASH',
         recordedById: 'user-1',
       }),

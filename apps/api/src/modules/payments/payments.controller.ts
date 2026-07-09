@@ -227,10 +227,19 @@ export class PaymentsController {
     }
 
     // ── RESCHEDULE / ปรับดิว — collect-first (owner directive 2026-07-02) ──────
-    // เงินไม่เข้า ดิวไม่เลื่อน: RescheduleCollectService runs ONE Serializable tx —
-    // collect JE (Dr cash / Cr 21-1103 fee (6a) + Cr 42-1103 ค่าปรับ) + Payment.lateFee
-    // reset + due-date shift + audit. QR is async and must go through
-    // POST /payments/:id/reschedule-qr (reschedule executes on webhook confirm).
+    // เงินไม่เข้า ดิวไม่เลื่อน. Two variants (owner correction 2026-07-09, CPA
+    // ตารางผ่อนชำระ ก่อน/หลังปรับดิว):
+    //   6a (SPLIT)  — collect fee + late fee now (Dr cash / Cr 21-1103 + 42-1103);
+    //                 THIS installment shifts to the new due and is paid then.
+    //   6b (SINGLE) — จ่ายทั้งก้อนวันนี้: (phase 1) book installment + fee + late
+    //                 fee through the NORMAL payment orchestrator (2B receipt,
+    //                 late-fee handling, D1 routes the fee overage → 21-1103
+    //                 advance) then (phase 2) shift the REMAINING installments.
+    //                 Phase-split is retry-safe: if the shift fails the money is
+    //                 already booked correctly — pressing ยืนยัน again skips
+    //                 phase 1 (installment PAID) and just shifts.
+    // QR is async and must go through POST /payments/:id/reschedule-qr
+    // (reschedule executes on webhook confirm; 6a only for now).
     if (dto.case === 'RESCHEDULE') {
       if (!dto.daysToShift || dto.daysToShift < 1) {
         throw new BadRequestException('กรุณาระบุจำนวนวันที่เลื่อน (daysToShift) มากกว่า 0');
@@ -240,11 +249,76 @@ export class PaymentsController {
           'ปรับดิวผ่าน QR ต้องใช้ปุ่ม "ส่ง QR ให้ลูกค้า" — ดิวจะเลื่อนอัตโนมัติเมื่อเงินเข้า',
         );
       }
+      const splitMode = dto.splitMode === 'SPLIT' ? 'SPLIT' : 'SINGLE';
+
+      if (splitMode === 'SINGLE') {
+        // ── 6b bundled two-phase ──
+        // งวดสุดท้ายไม่มีงวดถัดไปให้เลื่อน — จ่ายจบก็จบสัญญา ไม่ใช่ปรับดิว.
+        const hasNext = await this.paymentsService.hasInstallmentAfter(
+          dto.contractId,
+          dto.installmentNo,
+        );
+        if (!hasNext) {
+          throw new BadRequestException(
+            'งวดนี้เป็นงวดสุดท้าย — ชำระปกติได้เลย ไม่ต้องปรับดิว (ไม่มีงวดถัดไปให้เลื่อน)',
+          );
+        }
+        // PAID check FIRST — quote() rejects PAID rows, so a retry after a
+        // phase-2 failure (money booked, shift pending) must never touch it or
+        // the retry deterministically 400s and the reschedule is stuck.
+        const payment = await this.paymentsService.getPaymentByInstallment(
+          dto.contractId,
+          dto.installmentNo,
+        );
+        // Phase 1 — book the bundle through the orchestrator (skip when already
+        // PAID: a retry after a phase-2 failure).
+        if (payment.status !== 'PAID') {
+          const quote = await this.rescheduleCollectService.quote({
+            contractId: dto.contractId,
+            installmentNo: dto.installmentNo,
+            daysToShift: dto.daysToShift,
+            splitMode,
+          });
+          const diff = Math.abs(dto.amount - Number(quote.collectAmount));
+          if (diff > 0.01) {
+            throw new BadRequestException(
+              `ยอดเรียกเก็บเปลี่ยนเป็น ${quote.collectAmount} บาท (ค่างวด ${quote.installmentOutstanding} + ค่าธรรมเนียม ${quote.rescheduleFee} + ค่าปรับ ${quote.lateFee}) — กรุณาเปิดหน้าต่างปรับดิวใหม่`,
+            );
+          }
+          await this.paymentsService.recordPayment(
+            dto.contractId,
+            dto.installmentNo,
+            dto.amount,
+            effectivePaymentMethod,
+            user.id,
+            effectiveEvidenceUrl,
+            `[ปรับดิว 6b] ชำระค่างวด + ยอดปรับดิว ${quote.rescheduleFee} บาท ครั้งเดียว`,
+            effectiveTransactionRef,
+            dto.depositAccountCode,
+          );
+        }
+        // Phase 2 — shift the remaining installments (no money moves here;
+        // amount rides along so the audit records the actual phase-1 bundle).
+        return this.rescheduleCollectService.executeWithCollect({
+          contractId: dto.contractId,
+          installmentNo: dto.installmentNo,
+          daysToShift: dto.daysToShift,
+          splitMode,
+          amount: dto.amount,
+          paymentMethod: effectivePaymentMethod,
+          recordedById: user.id,
+          transactionRef: effectiveTransactionRef,
+          evidenceUrl: effectiveEvidenceUrl,
+          depositAccountCode: dto.depositAccountCode,
+          bundledPaid: true,
+        });
+      }
+
       return this.rescheduleCollectService.executeWithCollect({
         contractId: dto.contractId,
         installmentNo: dto.installmentNo,
         daysToShift: dto.daysToShift,
-        splitMode: dto.splitMode === 'SPLIT' ? 'SPLIT' : 'SINGLE',
+        splitMode,
         amount: dto.amount,
         paymentMethod: effectivePaymentMethod,
         recordedById: user.id,
@@ -513,10 +587,18 @@ export class PaymentsController {
     @CurrentUser() user: { id: string; role: string; branchId: string | null },
   ) {
     await this.paymentsService.validateBranchAccessByPayment(id, user);
+    // 6b (SINGLE = จ่ายทั้งก้อนวันนี้) books the installment through the payment
+    // orchestrator — the async QR webhook path does not compose with it yet.
+    // QR reschedule = 6a only for now (fee + late fee ride the QR link).
+    if (dto.splitMode !== 'SPLIT') {
+      throw new BadRequestException(
+        'ปรับดิวผ่าน QR รองรับเฉพาะโหมดแบ่งชำระ (6a) — โหมดชำระทั้งก้อน (6b) ใช้เงินสด/โอน',
+      );
+    }
     return this.paySolutionsService.createRescheduleQR({
       paymentId: id,
       daysToShift: dto.daysToShift,
-      splitMode: dto.splitMode === 'SPLIT' ? 'SPLIT' : 'SINGLE',
+      splitMode: 'SPLIT',
       requestedById: user.id,
     });
   }

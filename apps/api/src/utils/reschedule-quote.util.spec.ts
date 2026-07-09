@@ -22,6 +22,7 @@ const overdue5d = new Date('2026-06-27T05:00:00Z');
 const basePayment = {
   dueDate: overdue5d,
   amountDue: D('4472.00'),
+  amountPaid: D('0.00'),
   lateFeeWaived: false,
 };
 
@@ -52,7 +53,7 @@ describe('computeRescheduleQuote — ปรับดิว collect-first quote (
     expect(q.collectAmount.toFixed(2)).toBe('1144.00');
   });
 
-  it('6b (SINGLE): collect = late fee only (fee rides the next installment)', () => {
+  it('6b (SINGLE): จ่ายทั้งก้อนวันนี้ = ค่างวดคงเหลือ + fee + late fee (owner 2026-07-09)', () => {
     const q = computeRescheduleQuote({
       monthlyPayment: D('4472.00'),
       daysToShift: 7,
@@ -62,10 +63,24 @@ describe('computeRescheduleQuote — ปรับดิว collect-first quote (
       now,
     });
     expect(q.variant).toBe('6b');
-    expect(q.collectAmount.toFixed(2)).toBe('100.00');
+    expect(q.installmentOutstanding.toFixed(2)).toBe('4472.00');
+    expect(q.collectAmount.toFixed(2)).toBe('5616.00'); // 4472 + 1044 + 100
   });
 
-  it('6b + not overdue → collect 0 (ยืนยันได้เลย ไม่ต้องเก็บเงิน)', () => {
+  it('6b nets amountPaid — partially-paid installment only owes the remainder', () => {
+    const q = computeRescheduleQuote({
+      monthlyPayment: D('4472.00'),
+      daysToShift: 7,
+      splitMode: 'SINGLE',
+      payment: { ...basePayment, amountPaid: D('1472.00') },
+      lateFeeCfg: cfg,
+      now,
+    });
+    expect(q.installmentOutstanding.toFixed(2)).toBe('3000.00');
+    expect(q.collectAmount.toFixed(2)).toBe('4144.00'); // 3000 + 1044 + 100
+  });
+
+  it('6b + not overdue → collect = installment + fee (no late fee)', () => {
     const q = computeRescheduleQuote({
       monthlyPayment: D('4472.00'),
       daysToShift: 7,
@@ -75,7 +90,19 @@ describe('computeRescheduleQuote — ปรับดิว collect-first quote (
       now,
     });
     expect(q.lateFee.toFixed(2)).toBe('0.00');
-    expect(q.collectAmount.toFixed(2)).toBe('0.00');
+    expect(q.collectAmount.toFixed(2)).toBe('5516.00'); // 4472 + 1044
+  });
+
+  it('legacy caller without amountPaid → treated as 0 (defensive)', () => {
+    const q = computeRescheduleQuote({
+      monthlyPayment: D('4472.00'),
+      daysToShift: 7,
+      splitMode: 'SINGLE',
+      payment: { dueDate: overdue5d, amountDue: D('4472.00'), lateFeeWaived: false },
+      lateFeeCfg: cfg,
+      now,
+    });
+    expect(q.installmentOutstanding.toFixed(2)).toBe('4472.00');
   });
 
   it('waived late fee → 0 even when overdue', () => {

@@ -51,11 +51,13 @@ export class RepossessionsController {
   previewCalculation(
     @Param('contractId') contractId: string,
     @Query('marketValue') marketValue?: string,
+    @Query('appraisalPrice') appraisalPrice?: string,
     @Query('discountPct') discountPct?: string,
     @Query('customerRefundEnabled') customerRefundEnabled?: string,
   ) {
     return this.repossessionsService.previewCalculation(contractId, {
       marketValue: marketValue ? parseFloat(marketValue) : undefined,
+      appraisalPrice: appraisalPrice ? parseFloat(appraisalPrice) : undefined,
       discountPct: discountPct ? parseFloat(discountPct) : undefined,
       customerRefundEnabled: customerRefundEnabled === 'true',
     });

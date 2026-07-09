@@ -37,3 +37,14 @@ export function bangkokStartOfDay(now: Date = new Date()): Date {
   const bangkokMidnightMs = Math.floor(bangkokNowMs / 86_400_000) * 86_400_000;
   return new Date(bangkokMidnightMs - BANGKOK_OFFSET_MS);
 }
+
+/**
+ * True when `date` falls on a FUTURE Asia/Bangkok calendar day relative to
+ * `now`. Use for "no future receipt dates" guards: a date-only string parses
+ * to UTC midnight, which is numerically AHEAD of "now" during a BKK evening,
+ * so a raw getTime() comparison would wrongly reject "today" after 17:00 UTC+0.
+ */
+export function isFutureBkkDay(date: Date, now: Date = new Date()): boolean {
+  const bkkDay = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
+  return bkkDay(date) > bkkDay(now);
+}

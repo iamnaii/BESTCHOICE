@@ -158,8 +158,10 @@ describe('PaySolutionsService — createRescheduleQR (ปรับดิว coll
     fetchSpy?.mockRestore();
   });
 
-  it('zero-collect (6b + waived late fee) → BadRequest "ยืนยันปรับดิวได้โดยตรง", no gateway call, no link cancel', async () => {
-    buildPrisma({ lateFeeWaived: true }); // 6b collects lateFee only → 0
+  it('6b (SINGLE = จ่ายทั้งก้อนวันนี้) → BadRequest "รองรับเฉพาะโหมดแบ่งชำระ", no gateway call, no link cancel', async () => {
+    // Owner correction 2026-07-09: 6b books the installment through the payment
+    // orchestrator — the webhook collect JE cannot carry the installment portion.
+    buildPrisma();
     await buildService();
     fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(gatewayOk());
 
@@ -169,7 +171,7 @@ describe('PaySolutionsService — createRescheduleQR (ปรับดิว coll
       .catch((e: Error) => e);
 
     expect(err).toBeInstanceOf(BadRequestException);
-    expect((err as Error).message).toContain('ยืนยันปรับดิวได้โดยตรง');
+    expect((err as Error).message).toContain('รองรับเฉพาะโหมดแบ่งชำระ');
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(prisma.partialPaymentLink.updateMany).not.toHaveBeenCalled();
     expect(prisma.partialPaymentLink.create).not.toHaveBeenCalled();
@@ -259,32 +261,21 @@ describe('PaySolutionsService — createRescheduleQR (ปรับดิว coll
     expect(res.lateFee).toBe('100.00');
   });
 
-  it('6b (SINGLE): collects the late fee ONLY (fee rides the next installment) but still freezes the fee in metadata', async () => {
-    buildPrisma();
+  it('6a + waived late fee: QR carries the fee alone (fee is never 0 → no zero-collect path)', async () => {
+    buildPrisma({ lateFeeWaived: true });
     await buildService();
     fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(gatewayOk());
 
     const res = await service.createRescheduleQR({
       paymentId,
       daysToShift: 10,
-      splitMode: 'SINGLE',
+      splitMode: 'SPLIT',
       requestedById,
     });
 
-    expect(lastGatewayPayload().amount).toBe(100);
-    const linkData = prisma.partialPaymentLink.create.mock.calls[0][0].data;
-    expect(linkData.amount).toBe(100);
-    expect(linkData.metadata).toEqual({
-      daysToShift: 10,
-      splitMode: 'SINGLE',
-      rescheduleFee: '500',
-      lateFee: '100',
-      collectAmount: '100',
-      requestedById,
-    });
-    expect(res.collectAmount).toBe('100.00');
-    expect(res.rescheduleFee).toBe('500.00');
-    expect(res.lateFee).toBe('100.00');
+    expect(lastGatewayPayload().amount).toBe(500); // fee only — late fee waived
+    expect(res.collectAmount).toBe('500.00');
+    expect(res.lateFee).toBe('0.00');
   });
 
   it('orphan path: gateway OK then PartialPaymentLink.create throws → Sentry critical=paysolutions-reschedule-orphan + InternalServerError', async () => {

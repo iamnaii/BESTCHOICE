@@ -595,6 +595,15 @@ export class PaySolutionsIntentService {
     if (!input.daysToShift || input.daysToShift < 1) {
       throw new BadRequestException('กรุณาระบุจำนวนวันที่เลื่อนมากกว่า 0');
     }
+    // 6b (SINGLE = จ่ายทั้งก้อนวันนี้, owner correction 2026-07-09) books the
+    // installment through the payment orchestrator — the async QR webhook books
+    // the frozen quote as a fee/late-fee collect JE only, which cannot carry the
+    // installment portion (the JE would not balance). QR reschedule = 6a only.
+    if (input.splitMode !== 'SPLIT') {
+      throw new BadRequestException(
+        'ปรับดิวผ่าน QR รองรับเฉพาะโหมดแบ่งชำระ (6a) — โหมดชำระทั้งก้อน (6b) ใช้เงินสด/โอน',
+      );
+    }
 
     // Server-authoritative quote — the SAME pure util the collect service uses.
     const lateFeeCfg = await loadLateFeeConfig(this.prisma);

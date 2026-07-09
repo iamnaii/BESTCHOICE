@@ -109,6 +109,8 @@ describe('RepossessionsService', () => {
   let service: RepossessionsService;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let prisma: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let jp5: any;
 
   beforeEach(async () => {
     prisma = {
@@ -141,6 +143,11 @@ describe('RepossessionsService', () => {
       systemConfig: {
         findUnique: jest.fn().mockResolvedValue(null), // strict mode off by default
       },
+      companyInfo: {
+        // FINANCE companyId for the period-lock guard (validatePeriodOpen
+        // no-ops in unit tests because the mock has no accountingPeriod)
+        findFirst: jest.fn().mockResolvedValue({ id: 'company-finance' }),
+      },
       $transaction: jest.fn().mockImplementation(async (fn: unknown) => {
         if (typeof fn === 'function') return fn(prisma);
         return Promise.all(fn as Promise<unknown>[]);
@@ -158,7 +165,7 @@ describe('RepossessionsService', () => {
             createRepossessionResaleJournal: jest.fn().mockResolvedValue('je-repo-1'),
           },
         },
-        { provide: RepossessionJP5Template, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK' }) } },
+        { provide: RepossessionJP5Template, useValue: (jp5 = { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK' }) }) },
       ],
     }).compile();
 
@@ -273,6 +280,41 @@ describe('RepossessionsService', () => {
       // costPrice = 8000
       expect(result.calculation.marketValue).toBeCloseTo(8000, 2);
     });
+
+    it('prefers appraisalPrice over costPrice as the marketValue fallback', async () => {
+      // Placeholder promises "ใช้ราคาประเมินถ้าเว้นว่าง" — and create() falls
+      // back to dto.appraisalPrice, so preview must match or the confirmed
+      // figures diverge from the previewed ones.
+      prisma.contract.findUnique.mockResolvedValue(makeContract());
+
+      const result = await service.previewCalculation('contract-1', { appraisalPrice: 6500 });
+
+      expect(result.calculation.marketValue).toBeCloseTo(6500, 2);
+    });
+
+    it('computes profitLoss = ราคากลาง − ยอดปิดสัญญา (owner rule 2026-07-09)', async () => {
+      prisma.contract.findUnique.mockResolvedValue(makeContract());
+
+      const result = await service.previewCalculation('contract-1', { marketValue: 5000 });
+
+      // outstanding 2100 → exVat 1962.62; remainingCost 1750;
+      // discount 50% × (1962.62 − 1750) = 106.31 → closing 1856.31
+      expect(result.calculation.closingAmount).toBeCloseTo(1856.31, 2);
+      expect(result.calculation.profitLoss).toBeCloseTo(5000 - 1856.31, 2);
+    });
+
+    it('refunding the full excess drives profitLoss to 0 (ราคากลาง > ยอดปิด + คืนเงิน)', async () => {
+      prisma.contract.findUnique.mockResolvedValue(makeContract());
+
+      const result = await service.previewCalculation('contract-1', {
+        marketValue: 5000,
+        customerRefundEnabled: true,
+      });
+
+      // refund = marketValue − closingAmount → profit = market − closing − refund = 0
+      expect(result.calculation.customerRefund).toBeCloseTo(5000 - 1856.31, 2);
+      expect(result.calculation.profitLoss).toBeCloseTo(0, 2);
+    });
   });
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -343,6 +385,64 @@ describe('RepossessionsService', () => {
       await expect(
         service.create(baseDto as never, 'user-1'),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects a future paymentDate (BKK calendar day)', async () => {
+      const tomorrow = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+      await expect(
+        service.create({ ...baseDto, paymentDate: tomorrow } as never, 'user-1'),
+      ).rejects.toThrow(/อนาคต/);
+    });
+
+    it('rejects a paymentDate inside a CLOSED FINANCE period past the grace window', async () => {
+      prisma.contract.findUnique.mockResolvedValue(makeContract());
+      // validatePeriodOpen only runs when the client exposes accountingPeriod
+      prisma.accountingPeriod = {
+        findUnique: jest.fn().mockResolvedValue({ status: 'CLOSED' }),
+      };
+
+      await expect(
+        service.create({ ...baseDto, paymentDate: '2020-01-15' } as never, 'user-1'),
+      ).rejects.toThrow(/งวดที่ปิดแล้ว/);
+      expect(jp5.execute).not.toHaveBeenCalled();
+    });
+
+    it('fails loud when FINANCE company is not configured (period guard must not silently no-op)', async () => {
+      prisma.companyInfo.findFirst.mockResolvedValue(null);
+
+      await expect(service.create(baseDto as never, 'user-1')).rejects.toThrow(
+        'FINANCE company not configured',
+      );
+    });
+
+    it('threads paymentDate through to JP5 postedAt (JE entryDate)', async () => {
+      prisma.contract.findUnique.mockResolvedValue(makeContract());
+      prisma.repossession.create.mockResolvedValue(makeRepossession());
+      prisma.contract.update.mockResolvedValue({});
+      prisma.product.update.mockResolvedValue({});
+
+      await service.create({ ...baseDto, paymentDate: '2026-01-10' } as never, 'user-1');
+
+      expect(jp5.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ postedAt: new Date('2026-01-10') }),
+        prisma,
+      );
+    });
+
+    it('stores profitLoss = ราคากลาง − ยอดปิดสัญญา on the repossession row', async () => {
+      prisma.contract.findUnique.mockResolvedValue(makeContract());
+      prisma.repossession.create.mockResolvedValue(makeRepossession());
+      prisma.contract.update.mockResolvedValue({});
+      prisma.product.update.mockResolvedValue({});
+
+      await service.create(baseDto as never, 'user-1');
+
+      const data = prisma.repossession.create.mock.calls[0][0].data;
+      // outstanding 2100 → closing 1856.31 (same math as preview);
+      // marketValue 6000 → profit 4143.69
+      expect(Number(data.closingAmount)).toBeCloseTo(1856.31, 2);
+      expect(Number(data.profitLoss)).toBeCloseTo(6000 - 1856.31, 2);
     });
 
     it('creates repossession, updates contract to CLOSED_BAD_DEBT, and sets product to REPOSSESSED', async () => {

@@ -1,4 +1,10 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  InternalServerErrorException,
+  Logger,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateRepossessionDto, UpdateRepossessionDto } from './dto/create-repossession.dto';
@@ -7,6 +13,8 @@ import { d, dAdd, dSub } from '../../utils/decimal.util';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { RepossessionJP5Template } from '../journal/cpa-templates/repossession-jp5.template';
 import { Decimal } from '@prisma/client/runtime/library';
+import { validatePeriodOpen } from '../../utils/period-lock.util';
+import { isFutureBkkDay } from '../../utils/date.util';
 
 // VAT rate used to back out principal from VAT-inclusive amounts
 const VAT_RATE = new Prisma.Decimal('1.07');
@@ -76,7 +84,7 @@ export class RepossessionsService {
    * Preview repossession P&L calculation for a contract.
    * Used by frontend to show live breakdown before creating.
    */
-  async previewCalculation(contractId: string, options: { marketValue?: number; discountPct?: number; customerRefundEnabled?: boolean }) {
+  async previewCalculation(contractId: string, options: { marketValue?: number; appraisalPrice?: number; discountPct?: number; customerRefundEnabled?: boolean }) {
     const contract = await this.prisma.contract.findUnique({
       where: { id: contractId },
       include: {
@@ -114,12 +122,17 @@ export class RepossessionsService {
     const discountableBase = Prisma.Decimal.max(0, principalExVat.sub(remainingCost));
     const discountAmount = TWO_DP(discountableBase.mul(discountPct).div(100));
     const closingAmount = TWO_DP(principalExVat.sub(discountAmount));
-    // marketValue: ถ้าไม่ระบุให้ใช้ costPrice เป็น fallback
-    const marketValue = new Prisma.Decimal(options.marketValue ?? contract.product.costPrice ?? 0);
+    // marketValue: ถ้าไม่ระบุใช้ราคาประเมิน (ตาม placeholder "ใช้ราคาประเมินถ้าเว้นว่าง"
+    // และตรงกับ fallback ของ create()) — ถ้าไม่มีทั้งคู่ค่อยถอยไป costPrice
+    const marketValue = new Prisma.Decimal(
+      options.marketValue ?? options.appraisalPrice ?? contract.product.costPrice ?? 0,
+    );
     const customerRefund = options.customerRefundEnabled
       ? TWO_DP(Prisma.Decimal.max(0, marketValue.sub(closingAmount)))
       : new Prisma.Decimal(0);
-    const profitLoss = TWO_DP(marketValue.sub(remainingCost).sub(customerRefund));
+    // กำไร/ขาดทุน = ราคากลาง − ยอดปิดสัญญา − เงินคืนลูกค้า (owner rule 2026-07-09:
+    // บริษัทได้เครื่องมูลค่าราคากลาง แลกกับการปิดสัญญาที่ยอดหลังส่วนลด)
+    const profitLoss = TWO_DP(marketValue.sub(closingAmount).sub(customerRefund));
 
     // Internally calculated with Decimal for precision; return as numbers
     // since frontend uses .toLocaleString() and numeric comparisons.
@@ -184,6 +197,28 @@ export class RepossessionsService {
       throw new BadRequestException(`เกรดสภาพต้องเป็น ${validGrades.join(', ')}`);
     }
 
+    // วันที่รับเงิน/ลงบัญชี (mirror JP4 early payoff): drives the JP5 JE
+    // entryDate + period-lock guard. Backdate allowed while the period is
+    // open; future dates rejected on BKK calendar days.
+    const paymentDate = dto.paymentDate ? new Date(dto.paymentDate) : new Date();
+    if (isFutureBkkDay(paymentDate)) {
+      throw new BadRequestException('วันที่รับเงินต้องไม่เป็นวันในอนาคต');
+    }
+    // Period-lock guard (mirror JP4 J3): cannot book a repossession JE into a
+    // closed (FINANCE) accounting period. Repossessions previously had no
+    // guard at all — JEs always landed on "now", which masked the gap.
+    // Missing FINANCE row must fail LOUD (mirror resolveFinanceCompanyId in
+    // contract-payment.service) — validatePeriodOpen silently no-ops without
+    // a companyId, which would quietly disable the guard this exists to add.
+    const financeCompany = await this.prisma.companyInfo.findFirst({
+      where: { companyCode: 'FINANCE', deletedAt: null },
+      select: { id: true },
+    });
+    if (!financeCompany) {
+      throw new InternalServerErrorException('FINANCE company not configured');
+    }
+    await validatePeriodOpen(this.prisma, paymentDate, financeCompany.id);
+
     return this.prisma.$transaction(async (tx) => {
       const contract = await tx.contract.findUnique({
         where: { id: dto.contractId },
@@ -244,11 +279,12 @@ export class RepossessionsService {
       const closingAmount = TWO_DP(principalExVat.sub(discountAmount));
       // ราคากลางจาก trade-in pricing (auto) หรือจาก dto
       const marketValue = d(dto.marketValue ?? dto.appraisalPrice);
-      // กำไร/ขาดทุน = ราคากลาง - ต้นทุนคงเหลือ - เงินคืนลูกค้า (ถ้าคืน)
+      // กำไร/ขาดทุน = ราคากลาง - ยอดปิดสัญญา - เงินคืนลูกค้า (ถ้าคืน) — owner rule
+      // 2026-07-09, ต้องตรงกับ previewCalculation ด้านบนเสมอ
       const customerRefund = dto.customerRefundEnabled
         ? TWO_DP(Prisma.Decimal.max(0, marketValue.sub(closingAmount)))
         : new Prisma.Decimal(0);
-      const profitLoss = TWO_DP(marketValue.sub(remainingCost).sub(customerRefund));
+      const profitLoss = TWO_DP(marketValue.sub(closingAmount).sub(customerRefund));
 
       // Create repossession
       const repossession = await tx.repossession.create({
@@ -314,6 +350,7 @@ export class RepossessionsService {
             depositAccountCode,
             repossessionValue: repoValue,
             collectedByShop: dto.collectedByShop === true,
+            postedAt: paymentDate,
           },
           tx,
         );

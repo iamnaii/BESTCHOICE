@@ -390,24 +390,25 @@ describe('ContractPaymentService early-payoff guards (Wave 3 MED gap-fill)', () 
       // this month's last day + 5 while still inside the month). The CLOSED
       // status is therefore tolerated and the payoff proceeds.
       buildService({ periodStatus: 'CLOSED' });
-      // Build a YYYY-MM-15 string from the CURRENT local month with no
-      // toISOString() round-trip (which would TZ-shift a day-1 date into the
-      // previous month). Mid-month is safe from any TZ boundary effect.
-      const now = new Date();
-      const y = now.getFullYear();
-      const m = String(now.getMonth() + 1).padStart(2, '0');
-      const thisMonthDate = `${y}-${m}-15`;
+      // Use BKK "today" — a fixed YYYY-MM-15 was in the FUTURE whenever the
+      // suite ran on the 1st-14th, tripping the 2026-07-09 future-date guard
+      // (which compares BKK calendar days) before the grace-window logic under
+      // test ever ran. Today still resolves to the CURRENT (year, month) for
+      // the period lookup on UTC/BKK machines (CI = UTC; a date-only string
+      // parses to UTC midnight, so only TZ-negative machines could shift it).
+      const bkkTodayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
+      const [y, m] = bkkTodayStr.split('-').map(Number);
 
       await service.earlyPayoff(baseContract.id, 'user-1', {
         paymentMethod: 'CASH',
-        paymentDate: thisMonthDate,
+        paymentDate: bkkTodayStr,
       });
 
       // Inside grace → guard passes → the transaction ran.
       // validatePeriodOpen looked up the CURRENT (year, month).
       expect(prisma.accountingPeriod.findUnique).toHaveBeenCalledWith({
         where: {
-          companyId_year_month: { companyId: 'co-FINANCE', year: y, month: now.getMonth() + 1 },
+          companyId_year_month: { companyId: 'co-FINANCE', year: y, month: m },
         },
         select: { status: true },
       });

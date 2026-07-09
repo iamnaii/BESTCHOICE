@@ -285,6 +285,28 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
     expect(je.reference).toBe(`${quoteContract.id}:early-payoff`);
   });
 
+  // (b2) backdate fix 2026-07-09: JE entryDate follows dto.paymentDate ────────
+  it('(b2) threads dto.paymentDate into the JE postedAt (backdate lands in the ledger too)', async () => {
+    await service.earlyPayoff(quoteContract.id, 'user-1', {
+      ...baseDto,
+      paymentDate: '2026-01-05',
+    });
+
+    // Payment.paidDate was already backdated pre-fix; the JE must carry the
+    // same date or a backdated payoff splits Payment vs ledger across months.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((createAndPost.mock.calls[0][0] as any).postedAt).toEqual(new Date('2026-01-05'));
+  });
+
+  it('(b3) rejects a future paymentDate before posting anything', async () => {
+    const tomorrow = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+    await expect(
+      service.earlyPayoff(quoteContract.id, 'user-1', { ...baseDto, paymentDate: tomorrow }),
+    ).rejects.toThrow(/อนาคต/);
+    expect(createAndPost).not.toHaveBeenCalled();
+  });
+
   // (c) discount uses .div(100) and matches the quote preview's 52-1106 line ──
   it('(c) discount = .div(100) path and equals the quote preview 52-1106 for the same discountPct', async () => {
     // Quote preview (read path) — feed the SAME chartOfAccount mock so names resolve.

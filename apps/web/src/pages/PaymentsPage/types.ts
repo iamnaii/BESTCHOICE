@@ -13,6 +13,14 @@ export interface OcrPaymentSlipResult {
   confidence: number;
 }
 
+/** Context handed back after a receipt void succeeds — enough to reopen the
+ *  RecordPaymentWizard on the now-unpaid installment (mockup §11.1: กลับรายการ →
+ *  เปิด modal บันทึกใหม่ pre-fill contract + installment เท่านั้น). */
+export interface VoidedReceiptInfo {
+  paymentId: string | null;
+  contractNumber?: string;
+}
+
 export interface PendingPayment {
   id: string;
   installmentNo: number;

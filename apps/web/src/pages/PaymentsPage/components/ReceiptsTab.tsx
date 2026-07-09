@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import DataTable from '@/components/ui/DataTable';
 import { Card, CardContent } from '@/components/ui/card';
@@ -19,6 +19,7 @@ import { formatDateShort } from '@/utils/formatters';
 import QueryBoundary from '@/components/QueryBoundary';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { Download, MoreHorizontal, Send, XCircle } from 'lucide-react';
+import type { VoidedReceiptInfo } from '../types';
 
 async function downloadReceiptPdf(receiptId: string, receiptNumber: string) {
   try {
@@ -81,15 +82,22 @@ const methodLabels: Record<string, string> = {
   QR_EWALLET: 'QR/E-Wallet',
 };
 
-export default function ReceiptsTab() {
-  const queryClient = useQueryClient();
+interface ReceiptsTabProps {
+  /** Mockup §11.1 — called after a successful void so the parent can re-open
+   *  the record wizard on the now-unpaid installment. */
+  onVoided?: (info: VoidedReceiptInfo) => void;
+}
+
+export default function ReceiptsTab({ onVoided }: ReceiptsTabProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const debouncedSearch = useDebounce(searchTerm, 400);
   const [receiptType, setReceiptType] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [page, setPage] = useState(1);
-  const [voidTarget, setVoidTarget] = useState<{ id: string; receiptNumber: string } | null>(null);
+  const [voidTarget, setVoidTarget] = useState<
+    { id: string; receiptNumber: string; info: VoidedReceiptInfo } | null
+  >(null);
 
   const sendLineMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -224,7 +232,16 @@ export default function ReceiptsTab() {
               {!r.isVoided && r.receiptType !== 'CREDIT_NOTE' && (
                 <DropdownMenuItem
                   variant="destructive"
-                  onClick={() => setVoidTarget({ id: r.id, receiptNumber: r.receiptNumber })}
+                  onClick={() =>
+                    setVoidTarget({
+                      id: r.id,
+                      receiptNumber: r.receiptNumber,
+                      info: {
+                        paymentId: r.paymentId,
+                        contractNumber: r.contract?.contractNumber,
+                      },
+                    })
+                  }
                 >
                   <XCircle className="h-4 w-4 mr-2" />
                   ยกเลิกใบเสร็จ
@@ -386,6 +403,9 @@ export default function ReceiptsTab() {
         receiptId={voidTarget?.id ?? null}
         receiptNumber={voidTarget?.receiptNumber}
         onClose={() => setVoidTarget(null)}
+        onVoided={() => {
+          if (voidTarget) onVoided?.(voidTarget.info);
+        }}
       />
     </div>
   );

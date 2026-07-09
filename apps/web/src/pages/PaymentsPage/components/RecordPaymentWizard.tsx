@@ -41,6 +41,13 @@ import { toast } from 'sonner';
 import type { PendingPayment } from '../types';
 import { computeNetReceiptDue } from '../computeNetReceiptDue';
 import { computeWizardPrefill } from '../computeWizardPrefill';
+import {
+  draftFingerprint,
+  draftToFormValues,
+  type DraftFormValues,
+  type PaymentDraftRow,
+  type WizardMethod,
+} from '../draftHydration';
 import { AdvanceBalanceBanner } from './AdvanceBalanceBanner';
 import { EarlyPayoffOverlay } from '@/components/contract/ContractEarlyPayoff';
 import { RescheduleOverlay } from './RescheduleOverlay';
@@ -56,8 +63,6 @@ type DetectedCase = 'NORMAL' | 'OVERPAY' | 'UNDERPAY' | 'OVERPAY_ADVANCE' | 'PAR
 
 /** Legacy type kept for API compatibility — backend accepts all 7 values */
 type PaymentCase = 'NORMAL' | 'OVERPAY' | 'UNDERPAY' | 'PARTIAL' | 'EARLY_PAYOFF' | 'RESCHEDULE' | 'OVERPAY_ADVANCE';
-
-type WizardMethod = 'CASH' | 'TRANSFER' | 'QR' | 'CARD';
 
 interface JePreviewLine {
   accountCode: string;
@@ -538,8 +543,11 @@ interface RecordPaymentWizardProps {
   onSubmit: (payload: WizardSubmitPayload) => void;
   /** Phase 4 — save the current form as an unposted draft (no JE). */
   onSaveDraft?: (payload: WizardSubmitPayload) => void;
-  /** Phase 4 — post an existing draft (ลงบัญชี). */
-  onPostDraft?: (paymentId: string) => void;
+  /** Phase 4 — post an existing draft (ลงบัญชี). `dirtyPayload` is set when the
+   *  cashier edited the form after it hydrated from the draft — the parent must
+   *  save it over the draft first, then post (WYSIWYG). When undefined the stored
+   *  draft posts as-is, preserving the original maker for the SoD guard. */
+  onPostDraft?: (paymentId: string, dirtyPayload?: WizardSubmitPayload) => void;
   /** Phase 4 — discard an existing draft. */
   onCancelDraft?: (paymentId: string) => void;
   isSubmitting: boolean;
@@ -773,7 +781,7 @@ export function RecordPaymentWizard({
   });
 
   // Phase 4 — existing unposted draft for this installment (if any).
-  const { data: existingDraft, isLoading: draftLoading } = useQuery<{ id: string; amount: string } | null>({
+  const { data: existingDraft, isLoading: draftLoading } = useQuery<PaymentDraftRow | null>({
     queryKey: ['payment-draft', payment.id],
     queryFn: async () => {
       const { data } = await api.get(`/payments/draft/${payment.id}`);
@@ -783,6 +791,64 @@ export function RecordPaymentWizard({
     staleTime: 0,
   });
   const hasDraft = !!existingDraft;
+
+  // DRAFT state (mockup §11.2) — hydrate the form from the stored draft so the
+  // cashier can edit + re-save it. Runs once per draft row; the fingerprint of
+  // the hydrated values feeds the ลงบัญชี dirty-check (see draftHydration.ts).
+  const hydratedFingerprintRef = useRef<string | null>(null);
+  const hydratedDraftIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!existingDraft) {
+      hydratedFingerprintRef.current = null;
+      hydratedDraftIdRef.current = null;
+      return;
+    }
+    const draftKey = `${existingDraft.id}:${existingDraft.updatedAt ?? ''}`;
+    if (hydratedDraftIdRef.current === draftKey) return;
+    hydratedDraftIdRef.current = draftKey;
+    const v = draftToFormValues(existingDraft, {
+      lateFee: lateFeeStr,
+      depositAccountCode,
+      paidDate,
+    });
+    setAmountReceived(v.amount);
+    setAmountManuallyEdited(true); // keep the auto-sync effect from overwriting the draft amount
+    setMethod(v.method);
+    setDepositAccountCode(v.depositAccountCode);
+    setLateFeeStr(v.lateFee);
+    setWaiverStr(v.waiver);
+    setWaiverReasonCode(v.waiverReasonCode);
+    setWaiverApproverId(v.waiverApproverId);
+    setConsumeAdvance(v.consumeAdvance);
+    setPaidDate(v.paidDate);
+    setCaseOverride(v.caseOverride);
+    setReferenceNumber(v.referenceNumber);
+    setSlipUrl(v.slipUrl);
+    if (v.slipUrl) setSlipFileName(v.slipUrl.split('/').pop() ?? 'สลิปจากฉบับร่าง');
+    setMemo(v.memo);
+    hydratedFingerprintRef.current = draftFingerprint(v);
+  }, [existingDraft]);
+
+  // Current form snapshot in the same shape as the hydrated values — used for
+  // the DRAFT dirty-check and the "บันทึก" (update draft) button.
+  const currentFormValues = (): DraftFormValues => ({
+    amount: amountReceived,
+    method,
+    depositAccountCode,
+    lateFee: lateFeeStr,
+    waiver: waiverStr,
+    waiverReasonCode,
+    waiverApproverId,
+    consumeAdvance,
+    paidDate,
+    caseOverride,
+    referenceNumber,
+    slipUrl,
+    memo,
+  });
+  const isDraftDirty = (): boolean =>
+    hydratedFingerprintRef.current !== null &&
+    draftFingerprint(currentFormValues()) !== hydratedFingerprintRef.current;
 
   // Net to collect after the waiver + the (optional) advance deduction — drives tiles.
   const netDue = useMemo(
@@ -919,6 +985,16 @@ export function RecordPaymentWizard({
     onSaveDraft?.(buildPayload());
   };
 
+  // ลงบัญชี on an existing draft: clean form → post the stored draft as-is
+  // (preserves the original maker for SoD); edited form → hand the parent the
+  // current payload so it saves over the draft first, then posts (WYSIWYG).
+  // Either way the FULL submit gate applies (review W1): a TRANSFER draft parked
+  // without ref/slip must be completed before posting — attaching them makes the
+  // form dirty, so the completed values save over the draft on post.
+  const handlePostDraft = () => {
+    onPostDraft?.(payment.id, isDraftDirty() ? buildPayload() : undefined);
+  };
+
   const handleSubmit = () => {
     if (detectedCase === 'PARTIAL') {
       setShowPartialConfirm(true);
@@ -1016,34 +1092,26 @@ export function RecordPaymentWizard({
           <div className="grid grid-cols-[1fr_340px] gap-4 items-start">
             {/* LEFT column — Form. */}
             <div className="space-y-3 min-w-0">
-              {/* Phase 4 — existing draft banner (DRAFT state): post or discard */}
+              {/* DRAFT state (mockup §11.2) — the form below is hydrated from the
+                  draft and editable; [บันทึก] / [ลงบัญชี] live in the footer. The
+                  banner keeps the discard action + status context. */}
               {hasDraft && (
-                <div className="rounded-lg border border-info/40 bg-info/5 p-3 space-y-2">
+                <div className="rounded-lg border border-info/40 bg-info/5 p-3 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 text-sm font-medium text-foreground leading-snug">
                     <Info className="size-4 text-info shrink-0" />
                     <span>
-                      มีฉบับร่างอยู่ — ยอด{' '}
-                      {formatNumberDecimal(String(existingDraft?.amount ?? '0'))} ฿ (ยังไม่ลงบัญชี)
+                      ฉบับร่าง — ยอด {formatNumberDecimal(String(existingDraft?.amount ?? '0'))} ฿
+                      (ยังไม่ลงบัญชี) · แก้ไขแล้วกด "บันทึก" เพื่ออัปเดตร่าง
                     </span>
                   </div>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => onPostDraft?.(payment.id)}
-                      disabled={isSubmitting}
-                      className="flex-1 rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
-                    >
-                      ลงบัญชี (โพสต์ JE)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onCancelDraft?.(payment.id)}
-                      disabled={isSubmitting}
-                      className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground hover:bg-accent disabled:opacity-50 transition-colors"
-                    >
-                      ยกเลิกร่าง
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onCancelDraft?.(payment.id)}
+                    disabled={isSubmitting}
+                    className="shrink-0 rounded-lg border border-destructive/40 px-3 py-1.5 text-sm font-medium text-destructive hover:bg-destructive/10 disabled:opacity-50 transition-colors"
+                  >
+                    ยกเลิกร่าง
+                  </button>
                 </div>
               )}
               {/* Advance balance banner — shown when contract has advance to consume */}
@@ -1518,12 +1586,15 @@ export function RecordPaymentWizard({
           </div>
         </DialogBody>
 
-        {/* Footer — single submit · QR mode swaps "บันทึกชำระ" for "ส่ง QR" */}
+        {/* Footer — state-aware (mockup §11.2):
+            NEW   = [ยกเลิก] [บันทึก (Draft)] [บันทึก + ลงบัญชี {amount}]
+            DRAFT = [ยกเลิก] [บันทึก] [ลงบัญชี]
+            QR mode (no draft) swaps the submit for "ส่ง QR" */}
         <DialogFooter className="px-6 py-3 border-t border-border shrink-0 flex items-center justify-between">
           <Button variant="outline" onClick={onClose} disabled={isSubmitting || sendQrMutation.isPending}>
-            {isQrMode ? 'ปิด' : 'ยกเลิก'}
+            {isQrMode && !hasDraft ? 'ปิด' : 'ยกเลิก'}
           </Button>
-          {isQrMode ? (
+          {isQrMode && !hasDraft ? (
             <Button
               onClick={() => sendQrMutation.mutate()}
               disabled={sendQrMutation.isPending || !canSendQr()}
@@ -1541,12 +1612,54 @@ export function RecordPaymentWizard({
                 </>
               )}
             </Button>
+          ) : hasDraft ? (
+            <div className="flex gap-2">
+              {/* DRAFT actions — บันทึก re-saves the edited form over the draft
+                  (server upserts by paymentId); ลงบัญชี posts it (see handlePostDraft). */}
+              {onSaveDraft && (
+                <Button
+                  variant="outline"
+                  onClick={handleSaveDraft}
+                  disabled={
+                    isSubmitting ||
+                    receivedNum <= 0 ||
+                    !depositAccountCode ||
+                    detectedCase === 'OUT_OF_RANGE'
+                  }
+                  title="อัปเดตฉบับร่าง — ยังไม่ลงบัญชี"
+                >
+                  บันทึก
+                </Button>
+              )}
+              {onPostDraft && (
+                <Button
+                  onClick={handlePostDraft}
+                  disabled={isSubmitting || previewLoading || !canSubmit()}
+                  title={
+                    detectedCase === 'OUT_OF_RANGE'
+                      ? 'ห่างเกิน 1 ฿ — ใช้เมนูแบ่งชำระหรือปิดยอดแทน'
+                      : !preview?.isBalanced && isPreviewReady
+                      ? 'รายการบัญชีไม่สมดุล'
+                      : undefined
+                  }
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="size-4 animate-spin mr-2" />
+                      กำลังลงบัญชี...
+                    </>
+                  ) : (
+                    'ลงบัญชี'
+                  )}
+                </Button>
+              )}
+            </div>
           ) : (
             <div className="flex gap-2">
               {/* Hide the draft button until the draft query resolves — avoids a
                   flash of "บันทึก (Draft)" before an existing draft loads (which
-                  would otherwise swap to the draft banner). */}
-              {onSaveDraft && !hasDraft && !draftLoading && (
+                  would otherwise swap to the DRAFT footer). */}
+              {onSaveDraft && !draftLoading && (
                 <Button
                   variant="outline"
                   onClick={handleSaveDraft}
@@ -1578,7 +1691,7 @@ export function RecordPaymentWizard({
                     กำลังบันทึก...
                   </>
                 ) : (
-                  'บันทึก + ลงบัญชี'
+                  <>บันทึก + ลงบัญชี ฿{formatNumberDecimal(receivedNum)}</>
                 )}
               </Button>
             </div>

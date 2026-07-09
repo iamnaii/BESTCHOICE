@@ -82,6 +82,9 @@ export function ContractEarlyPayoffQuote({
   );
 }
 
+/** Today's date in Asia/Bangkok (YYYY-MM-DD) — avoids UTC off-by-one during BKK evening. */
+const bkkToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
+
 /* ─── Full-screen overlay ─────────────────────────── */
 export function EarlyPayoffOverlay({
   contractId,
@@ -98,7 +101,8 @@ export function EarlyPayoffOverlay({
   const [paymentMethod, setPaymentMethod] = useState('CASH');
   // Owner rule 2026-07-08: direct FINANCE receipt = ธนาคารกสิกร (11-1201) only.
   const [depositAccountCode, setDepositAccountCode] = useState('11-1201');
-  const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().slice(0, 10));
+  // BKK-aware today — toISOString() is UTC and yields "yesterday" before 07:00 น. (PR #1327 bug class)
+  const [paymentDate, setPaymentDate] = useState(bkkToday);
   const [referenceNo, setReferenceNo] = useState('');
   const [notes, setNotes] = useState('');
   // Shop-collect toggle — when true, FINANCE books Dr 11-2107 instead of a cash account
@@ -132,7 +136,9 @@ export function EarlyPayoffOverlay({
         discountPct,
         depositAccountCode,
         collectedByShop,
-        paymentDate,
+        // Cleared input = '' → omit so the server defaults to today (an empty
+        // string fails @IsDateString with a 400)
+        paymentDate: paymentDate || undefined,
         referenceNo: referenceNo || undefined,
         notes: notes || undefined,
       });
@@ -397,13 +403,17 @@ export function EarlyPayoffOverlay({
               </div>
               <div>
                 <label className="block text-xs font-medium text-foreground mb-1.5">
-                  วันที่ชำระ
+                  วันที่รับเงิน{' '}
+                  <span className="text-muted-foreground font-normal">
+                    (ย้อนหลังได้ถ้างวดบัญชียังเปิด)
+                  </span>
                 </label>
                 <input
                   type="date"
                   value={paymentDate}
+                  max={bkkToday()}
                   onChange={(e) => setPaymentDate(e.target.value)}
-                  className={inputClass}
+                  className={`${inputClass} font-mono`}
                 />
               </div>
             </div>

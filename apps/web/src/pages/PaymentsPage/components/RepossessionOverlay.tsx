@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { FocusScope } from '@radix-ui/react-focus-scope';
 import { WizardStackedOverlay } from '@/components/WizardStackedOverlay';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -91,13 +92,30 @@ export function RepossessionOverlay({
   // เครื่อง/เงินที่อยู่หน้าร้านใช้ collectedByShop → Dr 11-2107 (เหมือนปิดยอด).
   const [depositAccountCode, setDepositAccountCode] = useState('11-1201');
   const [collectedByShop, setCollectedByShop] = useState(false);
+  // วันที่รับเงิน/ลงบัญชี (mirror ปิดยอด) — ย้อนหลังได้ถ้างวดบัญชียังเปิด
+  const [paymentDate, setPaymentDate] = useState(bkkToday);
   const [notes, setNotes] = useState('');
+  // Settlement dialog (mirror ปิดยอด) — หน้าร้านโอนเงินยึดคืนเข้า FINANCE ทีหลัง
+  // แล้วเคลียร์ Dr 11-2107 ผ่าน endpoint เดียวกับ JP4 (sums 11-2107 by contractId)
+  const [settlementOpen, setSettlementOpen] = useState(false);
+  const [settlementAccountCode, setSettlementAccountCode] = useState('11-1201');
+  const [settlementAmount, setSettlementAmount] = useState('');
+  const canSettlement = ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'].includes(user?.role ?? '');
 
   const { data: preview, isLoading: previewLoading } = useQuery<RepoPreview>({
-    queryKey: ['repossession-preview', contractId, marketValue, discountPct, customerRefundEnabled],
+    queryKey: [
+      'repossession-preview',
+      contractId,
+      marketValue,
+      appraisalPrice,
+      discountPct,
+      customerRefundEnabled,
+    ],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (marketValue) params.set('marketValue', marketValue);
+      // ราคากลางเว้นว่าง → ให้ backend ใช้ราคาประเมินตาม placeholder
+      if (appraisalPrice) params.set('appraisalPrice', appraisalPrice);
       if (discountPct) params.set('discountPct', discountPct);
       params.set('customerRefundEnabled', String(customerRefundEnabled));
       const { data } = await api.get(`/repossessions/preview/${contractId}?${params.toString()}`);
@@ -120,6 +138,9 @@ export function RepossessionOverlay({
         customerRefundEnabled,
         depositAccountCode: collectedByShop ? undefined : depositAccountCode,
         collectedByShop,
+        // Cleared input = '' → omit so the server defaults to today (an empty
+        // string fails @IsDateString with a 400)
+        paymentDate: paymentDate || undefined,
       });
       return data;
     },
@@ -134,6 +155,25 @@ export function RepossessionOverlay({
       queryClient.invalidateQueries({ queryKey: ['daily-summary'] });
       onSuccess();
       onClose();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const settlementMutation = useMutation({
+    mutationFn: async () => {
+      const { data } = await api.post(`/contracts/${contractId}/shop-collect-settlement`, {
+        depositAccountCode: settlementAccountCode,
+        amount: Number(settlementAmount),
+      });
+      return data;
+    },
+    onSuccess: () => {
+      toast.success('บันทึกรับโอนจากหน้าร้านสำเร็จ');
+      queryClient.invalidateQueries({ queryKey: ['contract', contractId] });
+      queryClient.invalidateQueries({ queryKey: ['contracts'] });
+      queryClient.invalidateQueries({ queryKey: ['repossessions'] });
+      setSettlementOpen(false);
+      setSettlementAmount('');
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
@@ -414,7 +454,7 @@ export function RepossessionOverlay({
                       )}
                     </div>
                     <div className="text-xs text-muted-foreground leading-snug">
-                      ราคากลาง − ต้นทุนคงเหลือ − เงินคืน
+                      ราคากลาง − ยอดปิดสัญญา − เงินคืน
                     </div>
                   </div>
                   <div
@@ -433,13 +473,28 @@ export function RepossessionOverlay({
           </div>
         </Section>
 
-        {/* Section 4: บัญชีรับเงิน (JP5 deposit leg) */}
+        {/* Section 4: รับชำระ (JP5 deposit leg) — wording + date mirror ปิดยอด (owner 2026-07-09) */}
         <Section
           icon={<Banknote className="size-4" />}
-          title="บัญชีรับเงิน"
-          subtitle="บัญชีสำหรับขา deposit ของ JP5"
+          title="รับชำระ"
+          subtitle="วันที่, บัญชีรับเงิน"
           tone="warning"
         >
+          <div className="mb-3">
+            <label className="block text-xs font-medium text-foreground mb-1.5">
+              วันที่รับเงิน{' '}
+              <span className="text-muted-foreground font-normal">
+                (ย้อนหลังได้ถ้างวดบัญชียังเปิด)
+              </span>
+            </label>
+            <input
+              type="date"
+              value={paymentDate}
+              max={bkkToday()}
+              onChange={(e) => setPaymentDate(e.target.value)}
+              className={`${inputClass} font-mono`}
+            />
+          </div>
           {/* Shop-collect toggle — mirrors early payoff (JP4) */}
           <div className="flex items-start gap-3 rounded-lg border border-border bg-muted/40 px-3 py-3 mb-3">
             <input
@@ -460,6 +515,7 @@ export function RepossessionOverlay({
               </span>
             </label>
           </div>
+          <label className="block text-xs font-medium text-foreground mb-1.5">บัญชีรับเงิน</label>
           <CashAccountSelect
             value={depositAccountCode}
             onChange={setDepositAccountCode}
@@ -512,28 +568,118 @@ export function RepossessionOverlay({
       </div>
 
       {/* Footer */}
-      <div className="sticky bottom-0 bg-background/95 backdrop-blur-xs border-t px-6 py-4 flex items-center justify-end gap-3">
-        <button
-          onClick={onClose}
-          className="px-6 py-2.5 text-sm leading-snug border border-input rounded-lg hover:bg-muted transition-colors"
-        >
-          ยกเลิก
-        </button>
-        <button
-          onClick={() => mutation.mutate()}
-          disabled={!canSubmit}
-          title={
-            !canCreate
-              ? 'เฉพาะเจ้าของ (OWNER) ยึดคืนได้'
-              : appraisalNum <= 0
-                ? 'กรุณาระบุราคาประเมิน'
-                : undefined
-          }
-          className="px-6 py-2.5 text-sm leading-snug bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 font-semibold transition-colors shadow-sm"
-        >
-          {mutation.isPending ? 'กำลังบันทึก...' : 'ยืนยันยึดคืน'}
-        </button>
+      <div className="sticky bottom-0 bg-background/95 backdrop-blur-xs border-t px-6 py-4 flex items-center justify-between gap-3">
+        {/* Settlement button — visible to OWNER / FINANCE_MANAGER / ACCOUNTANT (mirror ปิดยอด) */}
+        {canSettlement ? (
+          <button
+            type="button"
+            onClick={() => setSettlementOpen(true)}
+            className="flex items-center gap-1.5 px-4 py-2.5 text-sm border border-input rounded-lg hover:bg-muted transition-colors text-muted-foreground"
+          >
+            <Store className="size-4" />
+            บันทึกรับโอนจากหน้าร้าน
+          </button>
+        ) : (
+          <div />
+        )}
+        <div className="flex gap-3">
+          <button
+            onClick={onClose}
+            className="px-6 py-2.5 text-sm leading-snug border border-input rounded-lg hover:bg-muted transition-colors"
+          >
+            ยกเลิก
+          </button>
+          <button
+            onClick={() => mutation.mutate()}
+            disabled={!canSubmit}
+            title={
+              !canCreate
+                ? 'เฉพาะเจ้าของ (OWNER) ยึดคืนได้'
+                : appraisalNum <= 0
+                  ? 'กรุณาระบุราคาประเมิน'
+                  : undefined
+            }
+            className="px-6 py-2.5 text-sm leading-snug bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 font-semibold transition-colors shadow-sm"
+          >
+            {mutation.isPending ? 'กำลังบันทึก...' : 'ยืนยันยึดคืน'}
+          </button>
+        </div>
       </div>
+
+      {/* Settlement dialog — Dr cash / Cr 11-2107 when shop remits to FINANCE.
+          Own trapped FocusScope: keeps Tab inside the popup (the repossession
+          panel underneath stays mounted and tabbable otherwise); nested scopes
+          pause the outer overlay's via Radix's scope stack. */}
+      {settlementOpen && (
+        <div className="fixed inset-0 z-60 bg-black/50 backdrop-blur-xs flex items-center justify-center">
+          <FocusScope asChild loop trapped>
+            <div className="w-full max-w-sm bg-background rounded-xl shadow-2xl p-6 space-y-4">
+              <div className="flex items-center gap-2.5">
+                <div className="flex items-center justify-center size-8 rounded-lg bg-primary/10 text-primary">
+                  <Store className="size-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-foreground leading-snug">
+                    บันทึกรับโอนจากหน้าร้าน
+                  </h3>
+                  <p className="text-xs text-muted-foreground leading-snug">
+                    Dr บัญชีรับเงิน / Cr 11-2107 ลูกหนี้-หน้าร้าน
+                  </p>
+                </div>
+              </div>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1.5">
+                    บัญชีรับเงิน (FINANCE) <span className="text-destructive">*</span>
+                  </label>
+                  <CashAccountSelect
+                    value={settlementAccountCode}
+                    onChange={setSettlementAccountCode}
+                    codes={KBANK_ONLY_CODES}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1.5">
+                    จำนวนเงินที่รับโอน <span className="text-destructive">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    min={0.01}
+                    step={0.01}
+                    value={settlementAmount}
+                    onChange={(e) => setSettlementAmount(e.target.value)}
+                    className={inputClass}
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setSettlementOpen(false)}
+                  disabled={settlementMutation.isPending}
+                  className="px-4 py-2 text-sm border border-input rounded-lg hover:bg-muted transition-colors"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="button"
+                  onClick={() => settlementMutation.mutate()}
+                  disabled={
+                    settlementMutation.isPending ||
+                    !settlementAccountCode ||
+                    !settlementAmount ||
+                    Number(settlementAmount) <= 0
+                  }
+                  className="px-5 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 font-semibold transition-colors"
+                >
+                  {settlementMutation.isPending ? 'กำลังบันทึก...' : 'ยืนยัน'}
+                </button>
+              </div>
+            </div>
+          </FocusScope>
+        </div>
+      )}
     </WizardStackedOverlay>
   );
 }

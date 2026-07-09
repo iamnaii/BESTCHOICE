@@ -54,7 +54,8 @@ export default function RepossessionsPage() {
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
   const [createForm, setCreateForm] = useState({
     contractId: '',
-    repossessedDate: new Date().toISOString().split('T')[0],
+    // BKK-aware today — toISOString() is UTC and yields "yesterday" before 07:00 น. (PR #1327 bug class)
+    repossessedDate: new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' }),
     conditionGrade: 'C',
     appraisalPrice: '',
     repairCost: '0',
@@ -110,10 +111,12 @@ export default function RepossessionsPage() {
     contract: { contractNumber: string; customer: { name: string }; product: { brand: string; model: string }; totalMonths: number; monthlyPayment: number; sellingPrice: number; financedAmount: number; storeCommission: number };
     calculation: { remainingMonths: number; totalPaid: number; outstandingBalance: number; principalExVat: number; financeCost: number; remainingCost: number; discountPct: number; discountAmount: number; closingAmount: number; marketValue: number; customerRefundEnabled: boolean; customerRefund: number; profitLoss: number };
   }>({
-    queryKey: ['repossession-preview', createForm.contractId, createForm.marketValue, createForm.discountPct, createForm.customerRefundEnabled],
+    queryKey: ['repossession-preview', createForm.contractId, createForm.marketValue, createForm.appraisalPrice, createForm.discountPct, createForm.customerRefundEnabled],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (createForm.marketValue) params.set('marketValue', createForm.marketValue);
+      // ราคากลางเว้นว่าง → ให้ backend ใช้ราคาประเมิน (ตรงกับ fallback ตอน create จริง)
+      if (createForm.appraisalPrice) params.set('appraisalPrice', createForm.appraisalPrice);
       if (createForm.discountPct) params.set('discountPct', createForm.discountPct);
       params.set('customerRefundEnabled', String(createForm.customerRefundEnabled));
       return (await api.get(`/repossessions/preview/${createForm.contractId}?${params}`)).data;
@@ -199,6 +202,8 @@ export default function RepossessionsPage() {
       marketValue: createForm.marketValue ? Number(createForm.marketValue) : undefined,
       discountPct: createForm.discountPct ? Number(createForm.discountPct) : 50,
       customerRefundEnabled: createForm.customerRefundEnabled,
+      // No paymentDate field on this legacy modal — server defaults the JE
+      // date to today. Backdating lives in RepossessionOverlay (รับชำระ).
     });
   };
 
@@ -661,7 +666,7 @@ export default function RepossessionsPage() {
                           <div className={`text-xs font-medium ${previewData.calculation.profitLoss >= 0 ? 'text-success' : 'text-destructive'}`}>
                             {previewData.calculation.profitLoss >= 0 ? <><Check className="size-4 inline mr-1" />บริษัทได้กำไร</> : <><X className="size-4 inline mr-1" />บริษัทขาดทุน</>}
                           </div>
-                          <div className="text-xs text-muted-foreground">ราคากลาง - ต้นทุนคงเหลือ - เงินคืน</div>
+                          <div className="text-xs text-muted-foreground">ราคากลาง - ยอดปิดสัญญา - เงินคืน</div>
                         </div>
                         <div className={`text-xl font-bold ${previewData.calculation.profitLoss >= 0 ? 'text-success' : 'text-destructive'}`}>
                           {previewData.calculation.profitLoss >= 0 ? '+' : ''}{previewData.calculation.profitLoss.toLocaleString()} ฿

@@ -9,6 +9,7 @@ import { ShopCollectSettlementTemplate } from '../journal/cpa-templates/shop-col
 import { computeEarlyPayoffJE } from '../journal/compute-early-payoff-je';
 import { Decimal } from '@prisma/client/runtime/library';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
+import { isFutureBkkDay } from '../../utils/date.util';
 import { EarlyPayoffDto, ShopCollectSettlementDto } from './dto/contract.dto';
 import { d, dAdd, dSub, dMul, dDiv, dRound, dRoundDown, dSum, dGte } from '../../utils/decimal.util';
 
@@ -248,6 +249,10 @@ export class ContractPaymentService {
     const effectiveDepositCode = dto.collectedByShop ? '11-2107' : depositAccountCode;
     const quote = await this.getEarlyPayoffQuote(id, dto.discountPct, effectiveDepositCode);
     const paidDate = dto.paymentDate ? new Date(dto.paymentDate) : new Date();
+    // Future check on BKK calendar days (mirror the payment wizard).
+    if (isFutureBkkDay(paidDate)) {
+      throw new BadRequestException('วันที่ชำระต้องไม่เป็นวันในอนาคต');
+    }
 
     // Require reference for non-cash methods
     if (dto.paymentMethod !== 'CASH' && !dto.referenceNo && !dto.slipUrl) {
@@ -386,6 +391,11 @@ export class ContractPaymentService {
             {
               description: `ปิดยอดก่อนกำหนด — สัญญา ${freshContract.contractNumber} (${epUnpaid} งวดคงเหลือ)`,
               reference: `${id}:early-payoff`,
+              // Backdate fix (2026-07-09): dto.paymentDate already drove
+              // Payment.paidDate + the period-lock guard, but the JE landed on
+              // "now" — a backdated payoff split the Payment date and the
+              // ledger date across months. Thread the same date through.
+              postedAt: paidDate,
               metadata: jeMetadata,
               lines: epJe.lines.map((l) => ({
                 accountCode: l.accountCode,

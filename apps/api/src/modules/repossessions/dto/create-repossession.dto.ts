@@ -8,6 +8,15 @@ export class CreateRepossessionDto {
   @IsDateString({}, { message: 'กรุณาระบุวันที่ยึดคืน' })
   repossessedDate: string;
 
+  /**
+   * วันที่รับเงิน/ลงบัญชี (mirror EarlyPayoffDto.paymentDate) — drives the JP5
+   * JE entryDate + period-lock guard. Omitted → now. Backdate allowed while
+   * the FINANCE period is open; future dates rejected (BKK calendar day).
+   */
+  @IsDateString({}, { message: 'วันที่รับเงินไม่ถูกต้อง' })
+  @IsOptional()
+  paymentDate?: string;
+
   @IsString({ message: 'กรุณาระบุเกรดสภาพ' })
   conditionGrade: string; // A, B, C, D
 

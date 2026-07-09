@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, IsInt, IsBoolean, IsPositive, Min, Max, Matches, IsIn } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsInt, IsBoolean, IsPositive, Min, Max, Matches, IsIn, IsDateString } from 'class-validator';
 import { KBANK_ACCOUNT_CODE } from '../../../constants/cash-account.constants';
 
 export class CreateContractDto {
@@ -112,8 +112,8 @@ export class EarlyPayoffDto {
   })
   depositAccountCode?: string;
 
-  /** วันที่ชำระ (ISO date) — default = วันนี้ */
-  @IsString()
+  /** วันที่ชำระ (ISO date) — default = วันนี้. Drives Payment.paidDate + JE entryDate + period guard */
+  @IsDateString({}, { message: 'วันที่ชำระไม่ถูกต้อง' })
   @IsOptional()
   paymentDate?: string;
 

@@ -132,6 +132,27 @@ export class PaymentsService {
     return this.rescheduleCollectService.executeWithCollect(input);
   }
 
+  /** 6b bundled guard: งวดสุดท้ายไม่มีงวดถัดไปให้เลื่อน. */
+  async hasInstallmentAfter(contractId: string, installmentNo: number): Promise<boolean> {
+    const next = await this.prisma.payment.findFirst({
+      where: { contractId, installmentNo: { gt: installmentNo }, deletedAt: null },
+      select: { id: true },
+    });
+    return next !== null;
+  }
+
+  /** 6b bundled retry check: phase 1 already booked → the row is PAID. */
+  async getPaymentByInstallment(contractId: string, installmentNo: number) {
+    const payment = await this.prisma.payment.findFirst({
+      where: { contractId, installmentNo, deletedAt: null },
+      select: { id: true, status: true },
+    });
+    if (!payment) {
+      throw new NotFoundException('ไม่พบงวดที่ต้องการ');
+    }
+    return payment;
+  }
+
   /**
    * Lazily build (once) and return the decomposed sub-services. The
    * orchestrator + CSV importer receive host objects whose arrows dispatch back

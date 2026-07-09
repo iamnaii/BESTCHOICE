@@ -7,6 +7,7 @@ import { RescheduleService } from '../../installments/reschedule.service';
 import { ReceiptsService } from '../../receipts/receipts.service';
 import { loadLateFeeConfig } from '../../../utils/late-fee.util';
 import {
+  computeRescheduleFee,
   computeRescheduleQuote,
   RescheduleQuote,
   RescheduleSplitMode,
@@ -43,6 +44,15 @@ export interface RescheduleCollectInput {
    * the 24h link expiry bounds the drift to one day of per-day late fee).
    */
   fixedQuote?: { rescheduleFee: string; lateFee: string; collectAmount: string };
+  /**
+   * 6b bundled two-phase (owner correction 2026-07-09 — CPA case 6b: จ่ายทั้งก้อน
+   * วันนี้): the controller ALREADY booked the installment + fee + late fee
+   * through the payment orchestrator (2B receipt, late-fee handling, D1 overage
+   * → 21-1103 advance). This call is phase 2 — shift the REMAINING installments
+   * (from installmentNo + 1) with NO money movement here: no collect JE, no
+   * late-fee reset, no fee-advance increment, no RESCHEDULE_FEE receipt.
+   */
+  bundledPaid?: boolean;
 }
 
 export interface RescheduleCollectResult {
@@ -59,6 +69,15 @@ export interface RescheduleCollectResult {
 
 /**
  * ปรับดิว collect-first (owner directive 2026-07-02) — "เงินไม่เข้า ดิวไม่เลื่อน".
+ *
+ * Variant semantics (owner correction 2026-07-09 — CPA ตารางก่อน/หลังปรับดิว):
+ *   6a (SPLIT)  — this service collects fee + late fee; THIS installment shifts
+ *                 to the new due date and is paid then (แบ่งชำระ 2 ครั้ง).
+ *   6b (SINGLE) — จ่ายทั้งก้อนวันนี้: the CONTROLLER books installment + fee +
+ *                 late fee through the payment orchestrator FIRST (2B receipt,
+ *                 D1 overage → 21-1103 advance), then calls this service with
+ *                 `bundledPaid: true` — phase 2 only shifts the REMAINING
+ *                 installments (fromInstallmentNo + 1), no money moves here.
  *
  * Replaces the old fire-and-forget RESCHEDULE branch (which shifted due dates
  * with ZERO cash collected, letting the late fee evaporate when the cron
@@ -103,6 +122,7 @@ export class RescheduleCollectService {
   }): Promise<{
     rescheduleFee: string;
     lateFee: string;
+    installmentOutstanding: string;
     collectAmount: string;
     variant: '6a' | '6b';
     newDueDate: string;
@@ -115,6 +135,7 @@ export class RescheduleCollectService {
     return {
       rescheduleFee: q.rescheduleFee.toFixed(2),
       lateFee: q.lateFee.toFixed(2),
+      installmentOutstanding: q.installmentOutstanding.toFixed(2),
       collectAmount: q.collectAmount.toFixed(2),
       variant: q.variant,
       newDueDate: newDue.toISOString(),
@@ -126,6 +147,18 @@ export class RescheduleCollectService {
     if (!input.daysToShift || input.daysToShift < 1) {
       throw new BadRequestException('กรุณาระบุจำนวนวันที่เลื่อน (daysToShift) มากกว่า 0');
     }
+    if (input.bundledPaid && input.splitMode !== 'SINGLE') {
+      throw new BadRequestException('bundledPaid ใช้ได้เฉพาะโหมดชำระทั้งก้อน (6b)');
+    }
+    // 6b (SINGLE) must arrive as bundled two-phase (controller books the money
+    // through the orchestrator first) or as a legacy frozen-quote QR webhook.
+    // A direct 6b call would try to Dr the full bundle against late-fee-only
+    // credits — refuse before any money moves.
+    if (input.splitMode === 'SINGLE' && !input.bundledPaid && !input.fixedQuote) {
+      throw new BadRequestException(
+        'โหมดชำระทั้งก้อน (6b) ต้องบันทึกรับชำระผ่าน POST /payments/record (case RESCHEDULE) เท่านั้น',
+      );
+    }
 
     // CR-7 parity with recordPayment: the collect JE posts today — period must be open.
     await validatePeriodOpen(this.prisma, new Date(), await resolveFinanceCompanyId(this.prisma));
@@ -136,21 +169,48 @@ export class RescheduleCollectService {
 
     const txResult = await this.prisma.$transaction(
       async (tx) => {
-        const { contract, payment } = await this.loadRow(tx, input.contractId, input.installmentNo);
+        const { contract, payment } = await this.loadRow(
+          tx,
+          input.contractId,
+          input.installmentNo,
+          // 6b bundled phase 2: the orchestrator just marked THIS installment
+          // PAID — that is expected, not a "no reschedule needed" condition.
+          { allowPaid: input.bundledPaid === true },
+        );
 
         // Quote: recompute (cashier) or honour the frozen QR quote (webhook).
-        const q: RescheduleQuote = input.fixedQuote
+        // 6b bundled phase 2 builds its quote INLINE: the row is PAID by now, so
+        // resolveLivePaymentLateFee must not run on it (its contract forbids PAID
+        // rows) and nothing is collected here anyway — only the fee number is
+        // needed (note + anti-drift), via the same computeRescheduleFee formula.
+        const q: RescheduleQuote = input.bundledPaid
           ? {
-              rescheduleFee: d(input.fixedQuote.rescheduleFee),
-              lateFee: d(input.fixedQuote.lateFee),
-              collectAmount: d(input.fixedQuote.collectAmount),
-              variant: input.splitMode === 'SPLIT' ? '6a' : '6b',
+              rescheduleFee: computeRescheduleFee(contract.monthlyPayment, input.daysToShift),
+              lateFee: d(0),
+              installmentOutstanding: d(0),
+              collectAmount: d(0),
+              variant: '6b',
             }
-          : await this.buildQuote(tx, contract, payment, input.daysToShift, input.splitMode);
+          : input.fixedQuote
+            ? {
+                rescheduleFee: d(input.fixedQuote.rescheduleFee),
+                lateFee: d(input.fixedQuote.lateFee),
+                // Legacy QR links (pre-2026-07-09) froze fee/lateFee only — the
+                // bundled installment portion never rode a QR link.
+                installmentOutstanding: d(0),
+                collectAmount: d(input.fixedQuote.collectAmount),
+                variant: input.splitMode === 'SPLIT' ? '6a' : '6b',
+              }
+            : await this.buildQuote(tx, contract, payment, input.daysToShift, input.splitMode);
+
+        // 6b bundled phase 2 books NO money here — the orchestrator already
+        // received the whole bundle (installment + fee + late fee) and parked
+        // the fee overage as 21-1103 advance (D1). Force the money legs off.
+        const collectHere = input.bundledPaid ? d(0) : q.collectAmount;
 
         // Cashier cross-check: the UI quoted a number; if the server disagrees
         // (fee config changed / crossed midnight) refuse — never book silently.
-        if (!input.fixedQuote && q.collectAmount.gt(0)) {
+        if (!input.fixedQuote && !input.bundledPaid && q.collectAmount.gt(0)) {
           const diff = d(input.amount).minus(q.collectAmount).abs();
           if (diff.gt(d('0.01'))) {
             throw new BadRequestException(
@@ -161,7 +221,7 @@ export class RescheduleCollectService {
 
         // Evidence rule mirrors recordPayment: โอน requires slip or ref.
         if (
-          q.collectAmount.gt(0) &&
+          collectHere.gt(0) &&
           input.paymentMethod === 'BANK_TRANSFER' &&
           !input.evidenceUrl &&
           !input.transactionRef
@@ -181,14 +241,15 @@ export class RescheduleCollectService {
           select: { id: true },
         });
 
-        // 3. Collect JE — only when there is money to collect.
+        // 3. Collect JE — only when there is money to collect HERE (6b bundled
+        // phase 2 collected everything through the orchestrator already).
         let journalEntryNo: string | null = null;
-        if (q.collectAmount.gt(0)) {
+        if (collectHere.gt(0)) {
           const zero = new Prisma.Decimal(0);
           const lines: { accountCode: string; dr: Prisma.Decimal; cr: Prisma.Decimal; description: string }[] = [
             {
               accountCode: resolvedDepositAccountCode,
-              dr: q.collectAmount,
+              dr: collectHere,
               cr: zero,
               description: 'รับเงินปรับดิว',
             },
@@ -240,14 +301,22 @@ export class RescheduleCollectService {
         //      cashier collects (ค่างวด + fee) at the next receipt — the orchestrator's
         //      D1 auto-route then parks the overage as 21-1103 advance (CPA case 6b).
         const noteTags: string[] = [];
-        if (q.lateFee.gt(0)) {
+        // 6b bundled: the orchestrator already collected + stamped the late fee
+        // per its own convention and the fee overage is parked as advance — no
+        // reset, no deferred-fee note needed here.
+        if (!input.bundledPaid && q.lateFee.gt(0)) {
           noteTags.push(
             `ค่าปรับ ${q.lateFee.toFixed(2)} บาท เก็บแล้วตอนปรับดิว (${new Date().toISOString().slice(0, 10)})`,
           );
         }
-        if (q.variant === '6b' && q.rescheduleFee.gt(0)) {
+        if (!input.bundledPaid && q.variant === '6b' && q.rescheduleFee.gt(0)) {
           noteTags.push(
             `ค่าธรรมเนียมปรับดิว ${q.rescheduleFee.toFixed(2)} บาท เก็บเพิ่มพร้อมงวดนี้ (6b)`,
+          );
+        }
+        if (input.bundledPaid) {
+          noteTags.push(
+            `ปรับดิว 6b — ชำระค่างวด + ยอดปรับดิว ${q.rescheduleFee.toFixed(2)} บาท ครั้งเดียว (${new Date().toISOString().slice(0, 10)})`,
           );
         }
         if (noteTags.length > 0) {
@@ -255,7 +324,8 @@ export class RescheduleCollectService {
           await tx.payment.update({
             where: { id: payment.id },
             data: {
-              ...(q.lateFee.gt(0) ? { lateFee: 0 } : {}),
+              // bundled: keep the orchestrator's lateFee stamp (history shows it)
+              ...(!input.bundledPaid && q.lateFee.gt(0) ? { lateFee: 0 } : {}),
               notes: payment.notes ? `${payment.notes} | ${noteTag}` : noteTag,
             },
           });
@@ -297,11 +367,14 @@ export class RescheduleCollectService {
           });
         }
 
-        // 5. Shift due dates + reduce last installment + RESCHEDULE audit — same tx.
+        // 5. Shift due dates + RESCHEDULE audit — same tx.
+        //    6b bundled: THIS installment was just PAID in full — only the
+        //    REMAINING installments shift (CPA case 6b: งวดนี้จ่ายจบวันนี้,
+        //    งวดถัดไปเลื่อนตามดิวใหม่). 6a: this installment shifts too.
         const reschedule = await this.rescheduleService.execute(
           {
             contractId: input.contractId,
-            fromInstallmentNo: input.installmentNo,
+            fromInstallmentNo: input.bundledPaid ? input.installmentNo + 1 : input.installmentNo,
             daysToShift: input.daysToShift,
             userId: input.recordedById,
             variant: q.variant,
@@ -330,13 +403,22 @@ export class RescheduleCollectService {
               daysToShift: input.daysToShift,
               rescheduleFee: q.rescheduleFee.toString(),
               lateFeeCollected: q.lateFee.toString(),
-              collectAmount: q.collectAmount.toString(),
+              // bundled: the money moved in phase 1 (2B receipt) — record the
+              // ACTUAL bundle the cashier collected, not the zeroed phase-2 quote.
+              collectAmount: input.bundledPaid
+                ? d(input.amount).toFixed(2)
+                : q.collectAmount.toString(),
               paymentMethod: input.paymentMethod,
               transactionRef: input.transactionRef ?? null,
               evidenceUrl: input.evidenceUrl ?? null,
               depositAccountCode: q.collectAmount.gt(0) ? resolvedDepositAccountCode : null,
               journalEntryNo,
-              source: input.fixedQuote ? 'QR_WEBHOOK' : 'CASHIER',
+              bundledPaid: input.bundledPaid === true,
+              source: input.fixedQuote
+                ? 'QR_WEBHOOK'
+                : input.bundledPaid
+                  ? 'CASHIER_BUNDLED_6B'
+                  : 'CASHIER',
             },
           },
         });
@@ -352,7 +434,9 @@ export class RescheduleCollectService {
     );
 
     // Post-commit (I3): e-Receipt for the collected money — never rolls back the tx.
-    if (d(txResult.quote.collectAmount).gt(0)) {
+    // 6b bundled: the orchestrator already issued the INSTALLMENT receipt for the
+    // whole bundle — a RESCHEDULE_FEE receipt here would double-document it.
+    if (!input.bundledPaid && d(txResult.quote.collectAmount).gt(0)) {
       try {
         await this.receiptsService.generateReceipt(
           input.contractId,
@@ -378,7 +462,10 @@ export class RescheduleCollectService {
       variant: txResult.quote.variant,
       rescheduleFee: txResult.quote.rescheduleFee.toFixed(2),
       lateFeeCollected: txResult.quote.lateFee.toFixed(2),
-      collectAmount: txResult.quote.collectAmount.toFixed(2),
+      // bundled: report the actual phase-1 bundle, not the zeroed phase-2 quote
+      collectAmount: input.bundledPaid
+        ? d(input.amount).toFixed(2)
+        : txResult.quote.collectAmount.toFixed(2),
       journalEntryNo: txResult.journalEntryNo,
       shiftedInstallmentCount: txResult.shiftedInstallmentIds.length,
       shiftedInstallmentIds: txResult.shiftedInstallmentIds,
@@ -391,6 +478,7 @@ export class RescheduleCollectService {
     client: Prisma.TransactionClient | PrismaService,
     contractId: string,
     installmentNo: number,
+    opts?: { allowPaid?: boolean },
   ) {
     const contract = await client.contract.findUnique({ where: { id: contractId } });
     if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
@@ -401,14 +489,16 @@ export class RescheduleCollectService {
       where: { contractId, installmentNo, deletedAt: null },
     });
     if (!payment) throw new NotFoundException('ไม่พบงวดที่ต้องการ');
-    if (payment.status === 'PAID') throw new BadRequestException('งวดนี้ชำระแล้ว — ไม่ต้องปรับดิว');
+    if (payment.status === 'PAID' && !opts?.allowPaid) {
+      throw new BadRequestException('งวดนี้ชำระแล้ว — ไม่ต้องปรับดิว');
+    }
     return { contract, payment };
   }
 
   private async buildQuote(
     client: Prisma.TransactionClient | PrismaService,
     contract: { monthlyPayment: Prisma.Decimal },
-    payment: { dueDate: Date; amountDue: Prisma.Decimal; lateFeeWaived: boolean },
+    payment: { dueDate: Date; amountDue: Prisma.Decimal; amountPaid: Prisma.Decimal; lateFeeWaived: boolean },
     daysToShift: number,
     splitMode: RescheduleSplitMode,
   ): Promise<RescheduleQuote> {

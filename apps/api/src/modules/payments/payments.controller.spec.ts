@@ -52,6 +52,9 @@ describe('PaymentsController', () => {
       getPendingPayments: jest.fn().mockResolvedValue([]),
       getDailySummary: jest.fn().mockResolvedValue({ totalPayments: 0 }),
       getContractJournalEntries: jest.fn().mockResolvedValue([]),
+      // 6b bundled two-phase helpers (owner correction 2026-07-09)
+      hasInstallmentAfter: jest.fn().mockResolvedValue(true),
+      getPaymentByInstallment: jest.fn().mockResolvedValue({ id: 'pay-5', status: 'OVERDUE' }),
     };
 
     const mockRescheduleService = {
@@ -67,14 +70,16 @@ describe('PaymentsController', () => {
     // RescheduleCollectService.executeWithCollect (collect JE + lateFee reset +
     // shift in one atom) instead of the bare RescheduleService.execute.
     const mockRescheduleCollectService = {
-      quote: jest.fn().mockResolvedValue({
+      quote: jest.fn().mockImplementation(async (input: { splitMode?: string }) => ({
         rescheduleFee: '809.00',
         lateFee: '0.00',
-        collectAmount: '809.00',
-        variant: '6a',
+        installmentOutstanding: '4472.00',
+        // 6a = fee only | 6b = ค่างวด 4472 + fee 809 (จ่ายทั้งก้อนวันนี้)
+        collectAmount: input?.splitMode === 'SPLIT' ? '809.00' : '5281.00',
+        variant: input?.splitMode === 'SPLIT' ? '6a' : '6b',
         newDueDate: new Date('2026-08-01').toISOString(),
         currentDueDate: new Date('2026-07-01').toISOString(),
-      }),
+      })),
       executeWithCollect: jest.fn().mockImplementation(async (input: { splitMode: string; daysToShift: number }) => ({
         success: true,
         case: 'RESCHEDULE',
@@ -190,12 +195,12 @@ describe('PaymentsController', () => {
   });
 
   describe('case=RESCHEDULE wiring (ปรับดิว collect-first, 2026-07-02)', () => {
-    it('routes to RescheduleCollectService.executeWithCollect with splitMode=SINGLE (6b)', async () => {
+    it('splitMode=SINGLE (6b จ่ายทั้งก้อนวันนี้): phase 1 recordPayment (bundle) → phase 2 executeWithCollect(bundledPaid)', async () => {
       const user = { id: 'user-1', role: 'OWNER', branchId: 'branch-1' };
       const dto = {
         contractId: 'contract-1',
         installmentNo: 5,
-        amount: 1, // 6b zero-collect placeholder (@Min(0.01)); server ignores when quote = 0
+        amount: 5281, // = quote.collectAmount (ค่างวด 4472 + ยอดปรับดิว 809)
         paymentMethod: 'CASH',
         evidenceUrl: 'https://slip.jpg',
         case: 'RESCHEDULE',
@@ -205,20 +210,32 @@ describe('PaymentsController', () => {
 
       const result = await controller.recordPayment(dto, user);
 
+      // Phase 1 — the bundle books through the NORMAL payment path (2B receipt,
+      // D1 overage → 21-1103 advance).
+      expect(paymentsService.recordPayment).toHaveBeenCalledWith(
+        'contract-1',
+        5,
+        5281,
+        'CASH',
+        'user-1',
+        'https://slip.jpg',
+        expect.stringContaining('[ปรับดิว 6b]'),
+        undefined,
+        undefined,
+      );
+      // Phase 2 — shift only (no money moves in the collect service; amount
+      // rides along so the audit records the actual phase-1 bundle).
       expect(rescheduleCollectService.executeWithCollect).toHaveBeenCalledWith(
         expect.objectContaining({
           contractId: 'contract-1',
           installmentNo: 5,
           daysToShift: 16,
           splitMode: 'SINGLE',
-          amount: 1,
-          paymentMethod: 'CASH',
+          amount: 5281,
+          bundledPaid: true,
           recordedById: 'user-1',
         }),
       );
-      // Should NOT have called recordPayment (the normal-payment service path)
-      // nor the bare RescheduleService (the collect service owns that now).
-      expect(paymentsService.recordPayment).not.toHaveBeenCalled();
       expect(rescheduleService.execute).not.toHaveBeenCalled();
       expect(result).toMatchObject({
         success: true,
@@ -227,6 +244,70 @@ describe('PaymentsController', () => {
         rescheduleFee: '809.00',
         shiftedInstallmentCount: 3,
       });
+    });
+
+    it('SINGLE (6b) retry after phase-2 failure: PAID row skips phase 1 and just shifts', async () => {
+      const user = { id: 'user-1', role: 'OWNER', branchId: 'branch-1' };
+      (paymentsService.getPaymentByInstallment as jest.Mock).mockResolvedValue({
+        id: 'pay-5',
+        status: 'PAID',
+      });
+      const dto = {
+        contractId: 'contract-1',
+        installmentNo: 5,
+        amount: 5281,
+        paymentMethod: 'CASH',
+        evidenceUrl: 'https://slip.jpg',
+        case: 'RESCHEDULE',
+        daysToShift: 16,
+        splitMode: 'SINGLE',
+      } as unknown as RecordPaymentDto;
+
+      await controller.recordPayment(dto, user);
+
+      expect(paymentsService.recordPayment).not.toHaveBeenCalled();
+      // Retry must never re-quote (quote() rejects PAID rows — the stuck-retry bug)
+      expect(rescheduleCollectService.quote).not.toHaveBeenCalled();
+      expect(rescheduleCollectService.executeWithCollect).toHaveBeenCalledWith(
+        expect.objectContaining({ bundledPaid: true, amount: 5281 }),
+      );
+    });
+
+    it('SINGLE (6b) on the last installment → BadRequest (no next installment to shift)', async () => {
+      const user = { id: 'user-1', role: 'OWNER', branchId: 'branch-1' };
+      (paymentsService.hasInstallmentAfter as jest.Mock).mockResolvedValue(false);
+      const dto = {
+        contractId: 'contract-1',
+        installmentNo: 12,
+        amount: 5281,
+        paymentMethod: 'CASH',
+        evidenceUrl: 'https://slip.jpg',
+        case: 'RESCHEDULE',
+        daysToShift: 16,
+        splitMode: 'SINGLE',
+      } as unknown as RecordPaymentDto;
+
+      await expect(controller.recordPayment(dto, user)).rejects.toThrow(/งวดสุดท้าย/);
+      expect(paymentsService.recordPayment).not.toHaveBeenCalled();
+      expect(rescheduleCollectService.executeWithCollect).not.toHaveBeenCalled();
+    });
+
+    it('SINGLE (6b) amount drift vs quote → BadRequest before any money moves', async () => {
+      const user = { id: 'user-1', role: 'OWNER', branchId: 'branch-1' };
+      const dto = {
+        contractId: 'contract-1',
+        installmentNo: 5,
+        amount: 809, // stale UI — forgot the installment portion
+        paymentMethod: 'CASH',
+        evidenceUrl: 'https://slip.jpg',
+        case: 'RESCHEDULE',
+        daysToShift: 16,
+        splitMode: 'SINGLE',
+      } as unknown as RecordPaymentDto;
+
+      await expect(controller.recordPayment(dto, user)).rejects.toThrow(/ยอดเรียกเก็บเปลี่ยน/);
+      expect(paymentsService.recordPayment).not.toHaveBeenCalled();
+      expect(rescheduleCollectService.executeWithCollect).not.toHaveBeenCalled();
     });
 
     it('routes splitMode=SPLIT (6a) with the collected amount + deposit account', async () => {
@@ -444,16 +525,16 @@ describe('PaymentsController', () => {
       expect(res).toMatchObject({ orderRef: 'RSQ-1', collectAmount: '1144.00' });
     });
 
-    it('maps splitMode=SINGLE through unchanged (6b — QR เก็บเฉพาะค่าปรับ)', async () => {
+    it('rejects splitMode=SINGLE (6b จ่ายทั้งก้อนวันนี้ — QR รองรับเฉพาะ 6a)', async () => {
       const user = { id: 'user-1', role: 'OWNER', branchId: 'branch-1' };
-      await controller.createRescheduleQr(
-        'payment-1',
-        { daysToShift: 7, splitMode: 'SINGLE' as const },
-        user,
-      );
-      expect(paySolutionsService.createRescheduleQR).toHaveBeenCalledWith(
-        expect.objectContaining({ daysToShift: 7, splitMode: 'SINGLE' }),
-      );
+      await expect(
+        controller.createRescheduleQr(
+          'payment-1',
+          { daysToShift: 7, splitMode: 'SINGLE' as const },
+          user,
+        ),
+      ).rejects.toThrow(/รองรับเฉพาะโหมดแบ่งชำระ/);
+      expect(paySolutionsService.createRescheduleQR).not.toHaveBeenCalled();
     });
 
     it('rejects SALES cross-branch BEFORE creating the QR', async () => {

@@ -44,31 +44,38 @@ vi.mock('@/components/CashAccountSelect', () => ({
 }));
 
 // ── Fixtures ───────────────────────────────────────────────────────────────
+// Owner correction 2026-07-09 (CPA ตารางก่อน/หลังปรับดิว):
+//   6b (SINGLE) = จ่ายทั้งก้อนวันนี้ (ค่างวดคงเหลือ + ยอดปรับดิว + ค่าปรับ)
+//   6a (SPLIT)  = แบ่ง 2 ครั้ง (วันนี้เก็บยอดปรับดิว + ค่าปรับ, ค่างวดตามดิวใหม่)
 
-// monthlyPayment 1515.83 ÷ 30 × 7 วัน = 353.69 → ปัดขึ้นเต็มบาท = 354.00
+// Contrived zero-collect (component edge path — real quotes are never 0)
 const QUOTE_NO_COLLECT = {
   rescheduleFee: '354.00',
   lateFee: '0.00',
+  installmentOutstanding: '0.00',
   collectAmount: '0.00',
   variant: '6b' as const,
   newDueDate: '2026-07-17',
   currentDueDate: '2026-07-10',
 };
 
-// 6b (SINGLE) + ค่าปรับค้าง → เก็บเฉพาะค่าปรับวันนี้
-const QUOTE_LATE_FEE_ONLY = {
+// 6b (SINGLE) + ค่าปรับค้าง → เก็บทั้งก้อน: 1515.83 + 354 + 75.79 = 1945.62
+// (monthlyPayment 1515.83 ÷ 30 × 7 วัน = 353.69 → ปัดขึ้นเต็มบาท = 354.00)
+const QUOTE_SINGLE_BUNDLED = {
   rescheduleFee: '354.00',
   lateFee: '75.79',
-  collectAmount: '75.79',
+  installmentOutstanding: '1515.83',
+  collectAmount: '1945.62',
   variant: '6b' as const,
   newDueDate: '2026-07-17',
   currentDueDate: '2026-07-10',
 };
 
-// 6a (SPLIT) + ค่าปรับค้าง → เก็บค่าธรรมเนียม + ค่าปรับ
+// 6a (SPLIT) + ค่าปรับค้าง → เก็บยอดปรับดิว + ค่าปรับ
 const QUOTE_SPLIT = {
   rescheduleFee: '354.00',
   lateFee: '75.79',
+  installmentOutstanding: '1515.83',
   collectAmount: '429.79',
   variant: '6a' as const,
   newDueDate: '2026-07-17',
@@ -76,9 +83,9 @@ const QUOTE_SPLIT = {
 };
 
 function mockHappyApi({
-  singleQuote = QUOTE_LATE_FEE_ONLY,
+  singleQuote = QUOTE_SINGLE_BUNDLED,
   splitQuote = QUOTE_SPLIT,
-  qrResponse = { sentToLine: true, collectAmount: '75.79' },
+  qrResponse = { sentToLine: true, collectAmount: '429.79' },
 } = {}) {
   apiGetMock.mockImplementation((url: string, config?: { params?: { splitMode?: string } }) => {
     if (url === '/payments/reschedule-quote') {
@@ -175,8 +182,8 @@ describe('RescheduleOverlay', () => {
     const user = userEvent.setup();
     renderOverlay();
 
-    // Switch to 6a (เก็บค่าธรรมเนียมตอนนี้) — quote refetches with splitMode=SPLIT
-    await user.click(screen.getByRole('button', { name: /เก็บค่าธรรมเนียมตอนนี้ \(6a\)/ }));
+    // Switch to 6a (แบ่งชำระ 2 ครั้ง) — quote refetches with splitMode=SPLIT
+    await user.click(screen.getByRole('button', { name: /แบ่งชำระ 2 ครั้ง \(6a\)/ }));
 
     // รวมต้องเก็บวันนี้ = collectAmount from the quote
     expect(await screen.findByText('429.79 บาท')).toBeInTheDocument();
@@ -186,12 +193,27 @@ describe('RescheduleOverlay', () => {
     expect(screen.getByText('ค่าปรับค้างชำระ')).toBeInTheDocument();
     expect(screen.getByText('75.79 บาท')).toBeInTheDocument();
 
-    // ค่าธรรมเนียม appears in Section 2 AND as the 6a row in the payment section
-    expect(screen.getByText('ค่าธรรมเนียมเลื่อนดิว (6a)')).toBeInTheDocument();
+    // ยอดปรับดิว appears in Section 2 AND as the 6a row in the payment section
+    expect(screen.getByText('ยอดปรับดิว (6a)')).toBeInTheDocument();
     expect(screen.getAllByText('354.00 บาท')).toHaveLength(2);
   });
 
-  it('hasCollect=false (6b + no late fee): label "ยืนยันปรับดิว" and POST /payments/record with amount 0.01', async () => {
+  it('6b shows ค่างวดงวดนี้ row and collects the full bundle', async () => {
+    mockHappyApi();
+    renderOverlay();
+
+    // Bundled breakdown: installment + fee + late fee → total. The rows render
+    // with 0.00 while the quote loads — await the QUOTED amounts, not the labels.
+    expect(await screen.findByText('ค่างวดงวดนี้ (คงเหลือ)')).toBeInTheDocument();
+    expect((await screen.findAllByText('1515.83 บาท')).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('ยอดปรับดิว (6b)')).toBeInTheDocument();
+    expect(await screen.findByText('1945.62 บาท')).toBeInTheDocument();
+
+    // QR is 6a-only — the method button must be hidden in 6b
+    expect(screen.queryByRole('button', { name: 'QR ใน LINE' })).not.toBeInTheDocument();
+  });
+
+  it('hasCollect=false (contrived zero quote): label "ยืนยันปรับดิว" and POST /payments/record with amount 0.01', async () => {
     mockHappyApi({ singleQuote: QUOTE_NO_COLLECT });
     const user = userEvent.setup();
     const { onClose, onSuccess } = renderOverlay();
@@ -222,13 +244,13 @@ describe('RescheduleOverlay', () => {
   });
 
   it('hasCollect=true + CASH: button label includes เก็บเงิน + amount, POST amount=collectAmount with depositAccountCode', async () => {
-    mockHappyApi({ singleQuote: QUOTE_LATE_FEE_ONLY });
+    mockHappyApi();
     const user = userEvent.setup();
     const { onSuccess } = renderOverlay();
 
-    // Button label carries the collect amount
+    // Button label carries the full bundled collect amount (6b)
     const submitBtn = await screen.findByRole('button', {
-      name: 'เก็บเงิน 75.79 + ยืนยันปรับดิว',
+      name: 'เก็บเงิน 1945.62 + ยืนยันปรับดิว',
     });
 
     // JE preview box renders the lines the confirm will post
@@ -242,7 +264,7 @@ describe('RescheduleOverlay', () => {
     expect(payload).toMatchObject({
       contractId: 'contract-1',
       installmentNo: 3,
-      amount: 75.79,
+      amount: 1945.62,
       paymentMethod: 'CASH',
       case: 'RESCHEDULE',
       daysToShift: 7,
@@ -252,12 +274,12 @@ describe('RescheduleOverlay', () => {
 
     await waitFor(() => expect(onSuccess).toHaveBeenCalled());
     expect(vi.mocked(toast.success)).toHaveBeenCalledWith(
-      expect.stringContaining('เก็บเงิน 75.79'),
+      expect.stringContaining('เก็บเงิน 1,945.62'),
     );
   });
 
   it('TRANSFER: submit disabled until BOTH เลขอ้างอิง and slip are provided, then posts BANK_TRANSFER + transactionRef + slipUrl', async () => {
-    mockHappyApi({ singleQuote: QUOTE_LATE_FEE_ONLY });
+    mockHappyApi();
     // Presigned S3 PUT goes through raw fetch (not the api client).
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true } as Response);
     const user = userEvent.setup();
@@ -265,7 +287,7 @@ describe('RescheduleOverlay', () => {
 
     await user.click(await screen.findByRole('button', { name: 'โอนธนาคาร' }));
 
-    const submitBtn = screen.getByRole('button', { name: 'เก็บเงิน 75.79 + ยืนยันปรับดิว' });
+    const submitBtn = screen.getByRole('button', { name: 'เก็บเงิน 1945.62 + ยืนยันปรับดิว' });
     // needRef gating — เลขอ้างอิงการโอน is required for TRANSFER
     expect(submitBtn).toBeDisabled();
 
@@ -286,16 +308,18 @@ describe('RescheduleOverlay', () => {
       paymentMethod: 'BANK_TRANSFER',
       transactionRef: 'TX-12345',
       slipUrl: 'https://cdn.test/slips/slip-1.jpg',
-      amount: 75.79,
+      amount: 1945.62,
     });
     fetchSpy.mockRestore();
   });
 
-  it('QR method + collect: POSTs /payments/{paymentId}/reschedule-qr and shows ส่ง QR success toast', async () => {
-    mockHappyApi({ singleQuote: QUOTE_LATE_FEE_ONLY });
+  it('QR method (6a only) + collect: POSTs /payments/{paymentId}/reschedule-qr and shows ส่ง QR success toast', async () => {
+    mockHappyApi();
     const user = userEvent.setup();
     const { onClose, onSuccess } = renderOverlay();
 
+    // QR is 6a-only — switch to แบ่งชำระ 2 ครั้ง first
+    await user.click(await screen.findByRole('button', { name: /แบ่งชำระ 2 ครั้ง \(6a\)/ }));
     await user.click(await screen.findByRole('button', { name: 'QR ใน LINE' }));
 
     const submitBtn = screen.getByRole('button', { name: 'ส่ง QR ให้ลูกค้า' });
@@ -304,7 +328,7 @@ describe('RescheduleOverlay', () => {
 
     await waitFor(() => expect(postCallsTo('/payments/pay-1/reschedule-qr')).toHaveLength(1));
     const [, payload] = postCallsTo('/payments/pay-1/reschedule-qr')[0];
-    expect(payload).toEqual({ daysToShift: 7, splitMode: 'SINGLE' });
+    expect(payload).toEqual({ daysToShift: 7, splitMode: 'SPLIT' });
 
     // QR is async — must NOT hit the synchronous record endpoint
     expect(postCallsTo('/payments/record')).toHaveLength(0);

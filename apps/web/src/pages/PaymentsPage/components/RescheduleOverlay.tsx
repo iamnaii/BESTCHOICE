@@ -45,6 +45,8 @@ const QUICK_DAYS = [7, 14, 30];
 interface RescheduleQuote {
   rescheduleFee: string;
   lateFee: string;
+  /** ยอดค่างวดคงเหลือของงวดนี้ — the 6b bundled portion */
+  installmentOutstanding: string;
   collectAmount: string;
   variant: '6a' | '6b';
   newDueDate: string;
@@ -136,6 +138,11 @@ export function RescheduleOverlay({
     if (fileInputRef.current) fileInputRef.current.value = '';
   }, [debouncedDays, splitMode]);
 
+  // QR is 6a-only — switching to 6b while QR is selected falls back to cash.
+  useEffect(() => {
+    if (splitMode === 'SINGLE' && method === 'QR') setMethod('CASH');
+  }, [splitMode, method]);
+
   // Server-authoritative quote — fee (monthly/30×days ปัดขึ้นเต็มบาท) + ค่าปรับค้าง.
   const {
     data: quote,
@@ -171,16 +178,33 @@ export function RescheduleOverlay({
       quote?.lateFee,
     ],
     queryFn: async () => {
-      const { data } = await api.post('/payments/preview-journal', {
-        contractId,
-        installmentNo,
-        amountReceived: collect.toNumber(),
-        depositAccountCode,
-        lateFee: lateFee.toNumber(),
-        case: 'RESCHEDULE',
-        daysToShift: debouncedDays,
-        splitMode,
-      });
+      // 6b (SINGLE) is booked through the NORMAL payment orchestrator (2B
+      // receipt + D1 fee-overage → 21-1103 advance) — preview it as an
+      // overpay receipt (same case the wizard uses) so the 21-1103 advance
+      // line for the fee shows and the preview balances. 6a keeps the
+      // RESCHEDULE collect-JE preview (Dr cash / Cr 21-1103 + 42-1103).
+      const { data } = await api.post(
+        '/payments/preview-journal',
+        splitMode === 'SINGLE'
+          ? {
+              contractId,
+              installmentNo,
+              amountReceived: collect.toNumber(),
+              depositAccountCode,
+              lateFee: lateFee.toNumber(),
+              case: 'OVERPAY_ADVANCE',
+            }
+          : {
+              contractId,
+              installmentNo,
+              amountReceived: collect.toNumber(),
+              depositAccountCode,
+              lateFee: lateFee.toNumber(),
+              case: 'RESCHEDULE',
+              daysToShift: debouncedDays,
+              splitMode,
+            },
+      );
       return data;
     },
     enabled: !!quote && hasCollect && debouncedDays >= 1,
@@ -365,24 +389,24 @@ export function RescheduleOverlay({
           </div>
         </Section>
 
-        {/* Section 3: รูปแบบค่าธรรมเนียม (6a/6b) */}
+        {/* Section 3: รูปแบบการชำระ (6a/6b — owner correction 2026-07-09, CPA ตารางก่อน/หลังปรับดิว) */}
         <Section
           icon={<Layers className="size-4" />}
-          title="วิธีเก็บค่าธรรมเนียม"
-          subtitle="เลือกรูปแบบการเก็บค่าธรรมเนียมเลื่อนดิว"
+          title="รูปแบบการชำระ"
+          subtitle="เลือกรูปแบบการชำระยอดปรับดิว"
         >
           <div className="space-y-2">
             <ModeOption
               active={splitMode === 'SINGLE'}
               onClick={() => setSplitMode('SINGLE')}
-              title="รวมกับงวดถัดไป (6b)"
-              desc="ค่าธรรมเนียมรวมไปกับค่างวดถัดไป — วันนี้เก็บเฉพาะค่าปรับ (ถ้ามี)"
+              title="ชำระทั้งยอดปรับดิวและค่างวด (6b)"
+              desc="เก็บค่างวดงวดนี้ + ยอดปรับดิว + ค่าปรับ (ถ้ามี) ครั้งเดียววันนี้ — งวดถัดไปเลื่อนตามดิวใหม่"
             />
             <ModeOption
               active={splitMode === 'SPLIT'}
               onClick={() => setSplitMode('SPLIT')}
-              title="เก็บค่าธรรมเนียมตอนนี้ (6a)"
-              desc="เก็บค่าธรรมเนียมเลื่อนดิว + ค่าปรับ (ถ้ามี) เป็นเงินสด/โอน/QR ก่อนเลื่อนดิว"
+              title="แบ่งชำระ 2 ครั้ง (6a)"
+              desc="วันนี้เก็บยอดปรับดิว + ค่าปรับ (ถ้ามี) — ค่างวดงวดนี้ชำระตามดิวใหม่"
             />
           </div>
         </Section>
@@ -398,9 +422,16 @@ export function RescheduleOverlay({
           ) : (
             <>
               <div className="space-y-1.5 text-sm mb-3">
-                {splitMode === 'SPLIT' && (
-                  <Row label="ค่าธรรมเนียมเลื่อนดิว (6a)" value={`${fee.toFixed(2)} บาท`} />
+                {splitMode === 'SINGLE' && (
+                  <Row
+                    label="ค่างวดงวดนี้ (คงเหลือ)"
+                    value={`${new Decimal(quote?.installmentOutstanding ?? 0).toFixed(2)} บาท`}
+                  />
                 )}
+                <Row
+                  label={`ยอดปรับดิว (${splitMode === 'SPLIT' ? '6a' : '6b'})`}
+                  value={`${fee.toFixed(2)} บาท`}
+                />
                 <Row
                   label="ค่าปรับค้างชำระ"
                   value={lateFee.gt(0) ? `${lateFee.toFixed(2)} บาท` : 'ไม่มี'}
@@ -426,12 +457,16 @@ export function RescheduleOverlay({
                       icon={<Landmark className="size-4" />}
                       label="โอนธนาคาร"
                     />
-                    <MethodButton
-                      active={method === 'QR'}
-                      onClick={() => setMethod('QR')}
-                      icon={<QrCode className="size-4" />}
-                      label="QR ใน LINE"
-                    />
+                    {/* QR reschedule = 6a only (6b books the installment through the
+                        payment orchestrator — async webhook path not composed yet) */}
+                    {splitMode === 'SPLIT' && (
+                      <MethodButton
+                        active={method === 'QR'}
+                        onClick={() => setMethod('QR')}
+                        icon={<QrCode className="size-4" />}
+                        label="QR ใน LINE"
+                      />
+                    )}
                   </div>
 
                   {method !== 'QR' && (
@@ -546,7 +581,7 @@ export function RescheduleOverlay({
                 </>
               ) : (
                 <div className="rounded-lg border border-success/40 bg-success/10 px-3 py-2.5 text-xs text-success leading-snug">
-                  ไม่มียอดต้องเก็บวันนี้ (6b + ไม่มีค่าปรับ) — ยืนยันปรับดิวได้เลย
+                  ไม่มียอดต้องเก็บวันนี้ — ยืนยันปรับดิวได้เลย
                 </div>
               )}
             </>
@@ -578,16 +613,17 @@ export function RescheduleOverlay({
                 )}
               </>
             )}
-            <Effect text={`เลื่อนวันครบกำหนดงวดที่ ${installmentNo} เป็นต้นไป +${days} วัน`} />
-            {splitMode === 'SPLIT' && fee.gt(0) && (
-              <Effect
-                text={`ค่าธรรมเนียม ${fee.toFixed(2)} บาท บันทึกเป็นเงินรับล่วงหน้า (นำไปหักค่างวดถัดไปอัตโนมัติ)`}
-              />
+            {splitMode === 'SINGLE' ? (
+              <>
+                <Effect text={`งวดที่ ${installmentNo} ชำระครบวันนี้ (ค่างวด + ยอดปรับดิว) — ออกใบเสร็จปกติ`} />
+                <Effect text={`เลื่อนวันครบกำหนดงวดที่ ${installmentNo + 1} เป็นต้นไป +${days} วัน`} />
+              </>
+            ) : (
+              <Effect text={`เลื่อนวันครบกำหนดงวดที่ ${installmentNo} เป็นต้นไป +${days} วัน`} />
             )}
-            {splitMode === 'SINGLE' && fee.gt(0) && (
+            {fee.gt(0) && (
               <Effect
-                text={`ค่าธรรมเนียม ${fee.toFixed(2)} บาท จดไว้ในโน้ตงวดนี้ — เก็บเพิ่มพร้อมค่างวดตอนรับชำระ`}
-                warning
+                text={`ยอดปรับดิว ${fee.toFixed(2)} บาท บันทึกเป็นเงินรับล่วงหน้า (21-1103 — นำไปหักค่างวดถัดไปอัตโนมัติ)`}
               />
             )}
             <Effect

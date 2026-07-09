@@ -136,6 +136,11 @@ export class PaymentJournalPreviewService {
     //   6a (SPLIT):  Dr deposit (fee+ค่าปรับ) / Cr 21-1103 fee / Cr 42-1103 ค่าปรับ
     //   6b (SINGLE): Dr deposit ค่าปรับ / Cr 42-1103 ค่าปรับ (fee รวมงวดถัดไป)
     // ค่าปรับ (netLateFee) comes from the wizard/overlay quote; nothing owed → no lines.
+    //
+    // NOTE (owner correction 2026-07-09): 6b now means จ่ายทั้งก้อนวันนี้ — the UI
+    // previews SINGLE as a normal OVERPAY_ADVANCE receipt instead of this branch.
+    // The SINGLE case below is kept ONLY for legacy in-flight QR links (frozen
+    // fixedQuote, late-fee-only) whose webhook still books the old-style JE.
     if (input.case === 'RESCHEDULE') {
       const days = input.daysToShift ?? 0;
       const monthlyPayment = new Prisma.Decimal(c.monthlyPayment.toString());

@@ -671,7 +671,7 @@ export default function RepossessionsPage() {
                           <div className={`text-xs font-medium ${previewData.calculation.profitLoss >= 0 ? 'text-success' : 'text-destructive'}`}>
                             {previewData.calculation.profitLoss >= 0 ? <><Check className="size-4 inline mr-1" />บริษัทได้กำไร</> : <><X className="size-4 inline mr-1" />บริษัทขาดทุน</>}
                           </div>
-                          <div className="text-xs text-muted-foreground">ราคากลาง - ยอดปิดสัญญา - เงินคืน</div>
+                          <div className="text-xs text-muted-foreground">ราคากลาง − ยอดปิดสัญญา − เงินคืน</div>
                         </div>
                         <div className={`text-xl font-bold ${previewData.calculation.profitLoss >= 0 ? 'text-success' : 'text-destructive'}`}>
                           {previewData.calculation.profitLoss >= 0 ? '+' : ''}{previewData.calculation.profitLoss.toLocaleString()} ฿

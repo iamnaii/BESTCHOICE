@@ -140,6 +140,7 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
   let tx: any;
   let createAndPost: jest.Mock;
   let transferOwnership: jest.Mock;
+  let generateReceipt: jest.Mock;
   let paymentUpdates: Array<{ where: { id: string }; data: any }>;
   let contractUpdateData: any;
   let service: ContractPaymentService;
@@ -156,6 +157,7 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
 
     createAndPost = jest.fn().mockResolvedValue({ id: 'je-ep-1', entryNumber: 'JE-EP-0001' });
     transferOwnership = jest.fn().mockResolvedValue(undefined);
+    generateReceipt = jest.fn().mockResolvedValue(undefined);
 
     // tx mock used inside $transaction
     tx = {
@@ -200,7 +202,7 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
       { createAndPost } as any,
       {} as any, // EarlyPayoffJP4Template never invoked by earlyPayoff()
       {} as any, // ShopCollectSettlementTemplate never invoked
-      { generateReceipt: async () => undefined } as any, // ReceiptsService (EARLY_PAYOFF receipt)
+      { generateReceipt } as any, // ReceiptsService (EARLY_PAYOFF receipt)
     );
     return service;
   };
@@ -296,6 +298,18 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
     // same date or a backdated payoff splits Payment vs ledger across months.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect((createAndPost.mock.calls[0][0] as any).postedAt).toEqual(new Date('2026-01-05'));
+  });
+
+  // (b4) QA #1347 follow-up: the EARLY_PAYOFF receipt carries the same backdate ─
+  it('(b4) passes dto.paymentDate to generateReceipt so the receipt is dated on the money date', async () => {
+    await service.earlyPayoff(quoteContract.id, 'user-1', {
+      ...baseDto,
+      paymentDate: '2026-01-05',
+    });
+
+    expect(generateReceipt).toHaveBeenCalledTimes(1);
+    // 9th arg = paidDate (Payment.paidDate === JE postedAt === receipt paidDate)
+    expect(generateReceipt.mock.calls[0][8]).toEqual(new Date('2026-01-05'));
   });
 
   it('(b3) rejects a future paymentDate before posting anything', async () => {

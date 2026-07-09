@@ -463,6 +463,7 @@ export class ContractPaymentService {
         dto.paymentMethod,
         dto.referenceNo ?? null,
         userId,
+        paidDate, // D4 backdating — ใบเสร็จลงวันที่รับเงินจริง (ตรงกับ Payment/JE)
       );
     } catch (err) {
       this.logger.error(

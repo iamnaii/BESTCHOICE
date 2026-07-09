@@ -32,7 +32,10 @@ export class ReceiptIssuanceService {
     paymentMethod: string | null,
     transactionRef: string | null,
     issuedById: string,
+    /** วันที่รับเงินจริง (D4 backdating) — default = ตอนออกใบ. ใบเสร็จต้องลงวันที่เงินเข้า ไม่ใช่วันที่พิมพ์ */
+    paidDate?: Date,
   ) {
+    const receiptPaidDate = paidDate ?? new Date();
     return this.prisma.$transaction(async (tx) => {
       const contract = await tx.contract.findUnique({
         where: { id: contractId },
@@ -118,7 +121,7 @@ export class ReceiptIssuanceService {
         contractId,
         amount,
         installmentNo,
-        paidDate: new Date().toISOString(),
+        paidDate: receiptPaidDate.toISOString(),
       });
       const fileHash = crypto.createHash('sha256').update(receiptContent).digest('hex');
 
@@ -139,7 +142,7 @@ export class ReceiptIssuanceService {
           remainingAmount,
           paymentMethod,
           transactionRef,
-          paidDate: new Date(),
+          paidDate: receiptPaidDate,
           fileHash,
           issuedById,
         },

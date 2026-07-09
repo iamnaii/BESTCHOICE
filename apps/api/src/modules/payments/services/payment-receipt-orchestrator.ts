@@ -603,6 +603,7 @@ export class PaymentReceiptOrchestrator {
           paymentMethod,
           transactionRef || null,
           recordedById,
+          effectivePaidDate, // D4 backdating — ใบเสร็จลงวันที่รับเงินจริง
         );
       } catch (error) {
         // Receipt generation failure should not block payment, but must be logged

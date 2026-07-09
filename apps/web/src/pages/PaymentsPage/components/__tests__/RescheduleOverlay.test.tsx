@@ -278,6 +278,23 @@ describe('RescheduleOverlay', () => {
     );
   });
 
+  it('CASH synthesizes transactionRef (CASH-<ts>) — orchestrator requires evidence on every payment (QA #1347 3.3)', async () => {
+    mockHappyApi();
+    const user = userEvent.setup();
+    renderOverlay();
+
+    const submitBtn = await screen.findByRole('button', {
+      name: 'เก็บเงิน 1945.62 + ยืนยันปรับดิว',
+    });
+    await waitFor(() => expect(submitBtn).toBeEnabled());
+    await user.click(submitBtn);
+
+    await waitFor(() => expect(postCallsTo('/payments/record')).toHaveLength(1));
+    const [, payload] = postCallsTo('/payments/record')[0];
+    // Mirrors RecordPaymentWizard: `${paymentMethod}-${Date.now()}` when no manual ref
+    expect(payload.transactionRef).toMatch(/^CASH-\d+$/);
+  });
+
   it('TRANSFER: submit disabled until BOTH เลขอ้างอิง and slip are provided, then posts BANK_TRANSFER + transactionRef + slipUrl', async () => {
     mockHappyApi();
     // Presigned S3 PUT goes through raw fetch (not the api client).

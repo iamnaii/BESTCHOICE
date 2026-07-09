@@ -315,6 +315,7 @@ describe('PaymentsService', () => {
       await service.recordPayment('contract-1', 1, 3000, 'CASH', 'user-1', 'http://slip.jpg');
       expect(receiptsService.generateReceipt).toHaveBeenCalledWith(
         'contract-1', 'payment-1', 'INSTALLMENT', 3000, 1, 'CASH', null, 'user-1',
+        expect.any(Date), // effectivePaidDate — ใบเสร็จลงวันที่รับเงิน (QA #1347 follow-up)
       );
     });
 
@@ -325,6 +326,7 @@ describe('PaymentsService', () => {
       await service.recordPayment('contract-1', 1, 1000, 'CASH', 'user-1', 'http://slip.jpg', undefined, undefined, undefined, undefined, 'PARTIAL');
       expect(receiptsService.generateReceipt).toHaveBeenCalledWith(
         'contract-1', 'payment-1', 'INSTALLMENT', 1000, 1, 'CASH', null, 'user-1',
+        expect.any(Date), // effectivePaidDate — ใบเสร็จลงวันที่รับเงิน (QA #1347 follow-up)
       );
     });
 
@@ -1092,7 +1094,7 @@ describe('PaymentsService', () => {
       ).rejects.toThrow(NotFoundException);
     });
 
-    it('returns balanced JE for consolidated 2A+2B path (not accrued, no late fee)', async () => {
+    it('returns balanced JE that mirrors the save for a not-yet-accrued installment (QA #1347 follow-up)', async () => {
       prisma.installmentSchedule.findUnique.mockResolvedValue(mockInstallmentNotAccrued);
 
       const result = await service.previewJournal({
@@ -1105,10 +1107,15 @@ describe('PaymentsService', () => {
       expect(result.isBalanced).toBe(true);
       expect(parseFloat(result.totalDebit)).toBeCloseTo(parseFloat(result.totalCredit), 2);
 
-      // Must include 11-2106 (Unearned) in Dr side for consolidated path
-      const unearnedLine = result.lines.find((l) => l.accountCode === '11-2106');
-      expect(unearnedLine).toBeDefined();
-      expect(parseFloat(unearnedLine!.debit)).toBeGreaterThan(0);
+      // Preview mirrors PaymentReceiptTemplate: ALWAYS Cr 11-2103 (the nightly 2A
+      // cron backfills the accrual) — the old consolidated 2A+2B legs never post.
+      const accruedClear = result.lines.find((l) => l.accountCode === '11-2103');
+      expect(accruedClear).toBeDefined();
+      expect(parseFloat(accruedClear!.credit)).toBeGreaterThan(0);
+      expect(result.lines.find((l) => l.accountCode === '11-2106')).toBeUndefined();
+      expect(result.lines.find((l) => l.accountCode === '41-1101')).toBeUndefined();
+      // ป้ายสถานะยังบอกว่า 2A ยังไม่รัน (cron จะ backfill)
+      expect(result.accrualMode).not.toBe('2B_ONLY');
 
       // Must include cash Dr line
       const cashLine = result.lines.find((l) => l.accountCode === '11-1101');

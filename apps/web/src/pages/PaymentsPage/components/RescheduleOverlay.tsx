@@ -217,18 +217,24 @@ export function RescheduleOverlay({
   // ── Confirm (เงินสด/โอน — synchronous atomic collect + reschedule) ──────────
   const confirmMutation = useMutation({
     mutationFn: async () => {
+      const paymentMethod = method === 'TRANSFER' ? 'BANK_TRANSFER' : 'CASH';
       const { data } = await api.post('/payments/record', {
         contractId,
         installmentNo,
         // Server re-validates against its own quote (±0.01). Zero-collect (6b,
         // no late fee) still needs the DTO's @Min(0.01) — server ignores it then.
         amount: hasCollect ? collect.toNumber() : 0.01,
-        paymentMethod: method === 'TRANSFER' ? 'BANK_TRANSFER' : 'CASH',
+        paymentMethod,
         case: 'RESCHEDULE',
         daysToShift: days,
         splitMode,
         depositAccountCode,
-        ...(referenceNumber ? { transactionRef: referenceNumber } : {}),
+        // ทุก payment ที่มีเงินเข้าต้องมีหลักฐาน (orchestrator บังคับ) — เงินสดไม่มี
+        // ref มือ จึง synthesize แบบเดียวกับ RecordPaymentWizard (`CASH-<timestamp>`);
+        // zero-collect ไม่มีเงินเคลื่อน จึงไม่ต้องส่ง
+        ...(referenceNumber || hasCollect
+          ? { transactionRef: referenceNumber || `${paymentMethod}-${Date.now()}` }
+          : {}),
         ...(slipUrl ? { slipUrl } : {}),
       });
       return data;

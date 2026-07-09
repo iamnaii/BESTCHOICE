@@ -47,6 +47,7 @@ interface PaidPaymentRow {
   gateway_ref: string | null;
   recorded_by_id: string | null;
   contract_number: string;
+  paid_date: Date | null;
 }
 
 /** PAID payments with money received and NO receipt row at all (voided or not). */
@@ -55,6 +56,7 @@ async function findPaidPaymentsWithoutReceipt(prisma: PrismaService): Promise<Pa
     SELECT p.id, p.contract_id, p.installment_no,
            p.amount_paid::text AS amount_paid,
            p.payment_method, p.gateway_ref, p.recorded_by_id,
+           p.paid_date,
            c.contract_number
     FROM payments p
     JOIN contracts c ON c.id = p.contract_id
@@ -120,6 +122,7 @@ export async function backfillPaymentReceipts(
         p.payment_method,
         p.gateway_ref ?? null,
         issuedById,
+        p.paid_date ?? undefined, // ใบเสร็จ backfill ลงวันที่เงินเข้าเดิม ไม่ใช่วันรัน CLI
       );
       await prisma.auditLog.create({
         data: {

@@ -32,11 +32,11 @@ export class PaymentJournalPreviewService {
    * Preview JE lines for a payment without persisting anything.
    * Used by the RecordPaymentWizard frontend to show "Journal Auto" live.
    *
-   * Logic mirrors PaymentReceipt2BTemplate but read-only.
-   * - If installment NOT yet accrued (accrualJournalEntryId is null):
-   *     builds COMBINED 2A+2B+lateFee lines (consolidated posting)
-   * - If installment already accrued (cron ran):
-   *     builds 2B+lateFee only
+   * Logic mirrors PaymentReceiptTemplate (PR-843/I2 primitive) but read-only:
+   * the live lines ALWAYS clear 11-2103 (the save never posts consolidated
+   * 2A+2B legs — the nightly accrual cron backfills 2A regardless of PAID).
+   * `accrualMode` tells the UI whether 2A already ran (2B_ONLY) or the cron
+   * will backfill (CONSOLIDATED_PAYING_AHEAD / CONSOLIDATED_BACKFILL).
    * - Late fee → Cr 42-1103 ค่าปรับชำระล่าช้า (same JE)
    */
   async previewJournal(input: {
@@ -83,20 +83,11 @@ export class PaymentJournalPreviewService {
 
     // Per-installment calculations.
     // Use contract.monthlyPayment as source of truth (set by sales workflow,
-    // matches what user sees). Derive breakdown so JE always balances.
-    const total = new Prisma.Decimal(c.totalMonths);
-    const interest = new Prisma.Decimal(c.interestTotal?.toString() ?? '0');
+    // matches what user sees). The per-installment VAT/interest breakdown that
+    // used to live here fed the pre-PR-843 consolidated preview branch — the
+    // save now always credits 11-2103 (see the mirror comment below), so the
+    // live preview needs only the installment total.
     const monthly = new Prisma.Decimal((c.monthlyPayment ?? 0).toString());
-
-    // VAT preference: explicit contract.vatAmount → /total ; else 7% on (monthlyPayment*total) excl VAT
-    const explicitVat = c.vatAmount != null ? new Prisma.Decimal(c.vatAmount.toString()) : null;
-    const vatPerInst = explicitVat != null
-      ? explicitVat.div(total).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP)
-      : monthly.div('1.07').times('0.07').toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
-
-    // installmentExclVat = monthly - vat (so installmentExclVat + vatPerInst === monthly)
-    const installmentExclVat = monthly.minus(vatPerInst);
-    const interestPerInst = interest.div(total).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
     const installmentTotal = monthly;
 
     // Round 2 I3 audit: input.lateFee arrives as `number` from the DTO.
@@ -344,19 +335,13 @@ export class PaymentJournalPreviewService {
       rawLines.push({ code: '52-1105', dr: lateFeeWaivedAmount, cr: zero, description: 'ส่วนลดให้ลูกค้า — อนุโลมค่าปรับ' });
     }
 
-    if (isConsolidated) {
-      // CONSOLIDATED 2A+2B: Dr 21-2102 + 11-2106 to clear accrual side
-      rawLines.push({ code: '21-2102', dr: vatPerInst, cr: zero, description: 'ล้าง VAT รอเรียกเก็บ' });
-      rawLines.push({ code: '11-2106', dr: interestPerInst, cr: zero, description: 'ล้าง Unearned รายได้รอตัดบัญชี' });
-      // Cr: clear gross receivable, VAT asset, and recognize income
-      rawLines.push({ code: '11-2101', dr: zero, cr: installmentExclVat, description: 'ลูกหนี้ Gross (ลด)' });
-      rawLines.push({ code: '11-2105', dr: zero, cr: vatPerInst, description: 'VAT รอเรียกเก็บ (ล้าง)' });
-      rawLines.push({ code: '21-2101', dr: zero, cr: vatPerInst, description: 'ภาษีขาย ภ.พ.30' });
-      rawLines.push({ code: '41-1101', dr: zero, cr: interestPerInst, description: 'รายได้ดอกเบี้ย (รับรู้)' });
-    } else {
-      // 2B ONLY: installment already accrued, just clear the accrued receivable
-      rawLines.push({ code: '11-2103', dr: zero, cr: installmentTotal, description: 'ล้างลูกหนี้ค้างชำระ' });
-    }
+    // Preview mirrors the SAVE (QA #1347 follow-up): since PR-843/I2 the posting
+    // primitive (PaymentReceiptTemplate) ALWAYS credits 11-2103 — never the
+    // consolidated 2A+2B legs — and the nightly accrual cron backfills the 2A
+    // (it accrues every dueDate<=today row regardless of PAID status). The old
+    // consolidated branch here previewed lines that never post. `accrualMode`
+    // below still tells the UI whether 2A already ran or the cron will backfill.
+    rawLines.push({ code: '11-2103', dr: zero, cr: installmentTotal, description: 'ล้างลูกหนี้ค้างชำระ' });
 
     // Late fee: Cr 42-1103 if > 0
     if (lateFeeAmount.gt(zero)) {

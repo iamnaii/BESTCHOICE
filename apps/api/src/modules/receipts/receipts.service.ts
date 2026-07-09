@@ -55,6 +55,7 @@ export class ReceiptsService {
     paymentMethod: string | null,
     transactionRef: string | null,
     issuedById: string,
+    paidDate?: Date,
   ) {
     return this.issuance.generateReceipt(
       contractId,
@@ -65,6 +66,7 @@ export class ReceiptsService {
       paymentMethod,
       transactionRef,
       issuedById,
+      paidDate,
     );
   }
 

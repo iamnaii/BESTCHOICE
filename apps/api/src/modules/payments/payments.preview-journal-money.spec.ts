@@ -408,11 +408,14 @@ describe('PaymentsService.previewJournal (characterization)', () => {
   });
 
   // ───────────────────────────────────────────────────────────────────────────
-  // Gap 3 — CONSOLIDATED 2A+2B breakdown
+  // Gap 3 — non-accrued installment: preview mirrors the save (QA #1347 follow-up)
+  // The old CONSOLIDATED 2A+2B line-breakdown predates PR-843/I2; the save now
+  // ALWAYS credits 11-2103 and the nightly 2A cron backfills the accrual, so
+  // the preview emits the same single receivable-clearing line. Only the
+  // accrualMode chip still distinguishes PAYING_AHEAD / BACKFILL / 2B_ONLY.
   // ───────────────────────────────────────────────────────────────────────────
-  describe('CONSOLIDATED 2A+2B breakdown', () => {
-    it('explicit vatAmount 1729 → vatPerInst 144.08 / interestPerInst 500.00 / installmentExclVat 2058.33', async () => {
-      // Consolidated path requires accrualJournalEntryId == null.
+  describe('non-accrued installment (preview mirrors the save)', () => {
+    it('explicit vatAmount: live lines = Dr cash / Cr 11-2103 (no consolidated legs), mode PAYING_AHEAD', async () => {
       installment = baseInstallment({
         accrualJournalEntryId: null,
         dueDate: new Date('2099-01-01'), // future → CONSOLIDATED_PAYING_AHEAD
@@ -431,27 +434,24 @@ describe('PaymentsService.previewJournal (characterization)', () => {
         depositAccountCode: '11-1101',
       });
 
-      // vatPerInst = 1729/12 = 144.0833.. → HALF_UP → 144.08
-      expect(lineFor(out.lines, '21-2102')?.debit).toBe('144.08'); // ล้าง VAT รอเรียกเก็บ
-      expect(lineFor(out.lines, '11-2105')?.credit).toBe('144.08');
-      expect(lineFor(out.lines, '21-2101')?.credit).toBe('144.08');
-      // interestPerInst = 6000/12 = 500.00
-      expect(lineFor(out.lines, '11-2106')?.debit).toBe('500.00');
-      expect(lineFor(out.lines, '41-1101')?.credit).toBe('500.00');
-      // installmentExclVat = 2202.41 - 144.08 = 2058.33
-      expect(lineFor(out.lines, '11-2101')?.credit).toBe('2058.33');
+      expect(lineFor(out.lines, '11-1101')?.debit).toBe('2202.41');
+      expect(lineFor(out.lines, '11-2103')?.credit).toBe('2202.41');
+      // Consolidated legs never post since PR-843/I2 — must not be previewed
+      for (const code of ['21-2102', '11-2105', '21-2101', '11-2106', '41-1101', '11-2101']) {
+        expect(lineFor(out.lines, code)).toBeUndefined();
+      }
       expect(out.accrualMode).toBe('CONSOLIDATED_PAYING_AHEAD');
       expect(out.isBalanced).toBe(true);
     });
 
-    it('fallback vatAmount=null → vatPerInst = round(monthly/1.07*0.07) [monthly 1070 → 70.00]', async () => {
+    it('vatAmount=null fallback contract: same mirror — Cr 11-2103 = monthlyPayment', async () => {
       installment = baseInstallment({
         accrualJournalEntryId: null,
         dueDate: new Date('2099-01-01'),
         contract: baseContract({
           monthlyPayment: D(1070),
           interestTotal: D(6000),
-          vatAmount: null, // → fallback 7% formula
+          vatAmount: null,
           totalMonths: 12,
         }),
       });
@@ -463,13 +463,9 @@ describe('PaymentsService.previewJournal (characterization)', () => {
         depositAccountCode: '11-1101',
       });
 
-      // 1070 / 1.07 = 1000 ; * 0.07 = 70.00
-      expect(lineFor(out.lines, '21-2102')?.debit).toBe('70.00');
-      expect(lineFor(out.lines, '21-2101')?.credit).toBe('70.00');
-      // installmentExclVat = 1070 - 70 = 1000.00
-      expect(lineFor(out.lines, '11-2101')?.credit).toBe('1000.00');
-      // interestPerInst = 6000/12 = 500.00 still
-      expect(lineFor(out.lines, '41-1101')?.credit).toBe('500.00');
+      expect(lineFor(out.lines, '11-2103')?.credit).toBe('1070.00');
+      expect(lineFor(out.lines, '11-2101')).toBeUndefined();
+      expect(lineFor(out.lines, '41-1101')).toBeUndefined();
       expect(out.isBalanced).toBe(true);
     });
 

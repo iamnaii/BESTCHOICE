@@ -24,9 +24,9 @@ import PaymentSummary from './components/PaymentSummary';
 import PaymentPeriodBar from './components/PaymentPeriodBar';
 import PaymentKpiCards from './components/PaymentKpiCards';
 import { RecordPaymentModal, BatchPaymentModal } from './components/PaymentModals';
-import { RecordPaymentWizard } from './components/RecordPaymentWizard';
+import { RecordPaymentWizard, type WizardSubmitPayload } from './components/RecordPaymentWizard';
 import { ToleranceApprovalDialog } from '@/components/ToleranceApprovalDialog';
-import type { PendingPayment, DailySummary, PendingSummary, OcrPaymentSlipResult } from './types';
+import type { PendingPayment, DailySummary, PendingSummary, OcrPaymentSlipResult, VoidedReceiptInfo } from './types';
 import { paymentStatusLabels, isSlipRequired } from './types';
 
 export default function PaymentsPage() {
@@ -226,7 +226,29 @@ export default function PaymentsPage() {
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
-  // Phase 4 — draft/post split mutations
+  // Phase 4 — draft/post split mutations. Shared body builder so "บันทึกร่าง" and
+  // the dirty save-then-post path serialize the wizard payload identically. No
+  // Date.now() ref fallback here (unlike record) — a draft's reference stays what
+  // the cashier typed so re-hydrating the form doesn't surface machine noise.
+  const draftBodyFromPayload = (payload: WizardSubmitPayload): Record<string, unknown> => ({
+    contractId: payload.contractId,
+    installmentNo: payload.installmentNo,
+    amount: payload.amount,
+    paymentMethod: payload.paymentMethod,
+    depositAccountCode: payload.depositAccountCode,
+    transactionRef: payload.referenceNumber || undefined,
+    wizardMethod: payload.wizardMethod,
+    referenceNumber: payload.referenceNumber,
+    slipUrl: payload.slipUrl,
+    memo: payload.memo,
+    case: payload.case,
+    consumeAdvance: payload.consumeAdvance,
+    paidDate: payload.paidDate,
+    lateFee: payload.lateFee,
+    lateFeeWaiverAmount: payload.lateFeeWaiverAmount,
+    lateFeeWaiverReasonCode: payload.lateFeeWaiverReasonCode,
+    waiverApproverId: payload.waiverApproverId,
+  });
   const draftMutation = useMutation({
     mutationFn: async (body: Record<string, unknown>) => (await api.post('/payments/draft', body)).data,
     onSuccess: () => {
@@ -239,7 +261,16 @@ export default function PaymentsPage() {
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
   const postDraftMutation = useMutation({
-    mutationFn: async (paymentId: string) => (await api.post(`/payments/${paymentId}/post-draft`, {})).data,
+    // Dirty form (mockup DRAFT state, edited after hydration) → save over the
+    // draft first so what posts is what's on screen; clean form → post the
+    // stored draft as-is, preserving the original maker for the SoD guard.
+    // Note: on the dirty path the saver becomes the draft's createdById, so the
+    // posted Payment.recordedById (collector KPI attribution) moves to whoever
+    // edited — intended: the person who changed the numbers owns the record.
+    mutationFn: async ({ paymentId, dirtyPayload }: { paymentId: string; dirtyPayload?: WizardSubmitPayload }) => {
+      if (dirtyPayload) await api.post('/payments/draft', draftBodyFromPayload(dirtyPayload));
+      return (await api.post(`/payments/${paymentId}/post-draft`, {})).data;
+    },
     onSuccess: () => {
       toast.success('ลงบัญชีฉบับร่างสำเร็จ');
       invalidatePaymentQueries(queryClient);
@@ -247,7 +278,12 @@ export default function PaymentsPage() {
       setShowPayWizard(false);
       setSelectedPayment(null);
     },
-    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+    onError: (err: unknown) => {
+      toast.error(getErrorMessage(err));
+      // The save leg may have succeeded before the post leg failed — refetch the
+      // draft so the wizard re-hydrates the values that are actually stored.
+      queryClient.invalidateQueries({ queryKey: ['payment-draft'] });
+    },
   });
   const cancelDraftMutation = useMutation({
     mutationFn: async (paymentId: string) => (await api.delete(`/payments/draft/${paymentId}`)).data,
@@ -260,6 +296,28 @@ export default function PaymentsPage() {
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
+
+  // Mockup §11.1 — after กลับรายการ (receipt void) the installment is un-paid
+  // server-side; re-open the record wizard on that installment with only the
+  // contract + งวด context (amounts start from the wizard's fresh defaults).
+  const reopenAfterVoid = useCallback(
+    async (info: VoidedReceiptInfo) => {
+      if (!info.paymentId || !info.contractNumber) return; // e.g. down-payment receipts have no installment
+      try {
+        const params = new URLSearchParams();
+        params.set('search', info.contractNumber);
+        params.set('limit', '100');
+        const { data } = await api.get(`/payments/pending?${params}`);
+        const row = (data.data as PendingPayment[] | undefined)?.find((p) => p.id === info.paymentId);
+        if (!row) return; // installment not in the pending set (race / already re-paid) — user can reopen manually
+        setSelectedPayment(row);
+        setShowPayWizard(true);
+      } catch {
+        // Void already succeeded — reopening is a convenience, never surface an error for it.
+      }
+    },
+    [],
+  );
 
   // Batch payment mutation
   const batchMutation = useMutation({
@@ -845,28 +903,8 @@ export default function PaymentsPage() {
             setShowPayWizard(false);
             setSelectedPayment(null);
           }}
-          onSaveDraft={(payload) => {
-            draftMutation.mutate({
-              contractId: payload.contractId,
-              installmentNo: payload.installmentNo,
-              amount: payload.amount,
-              paymentMethod: payload.paymentMethod,
-              depositAccountCode: payload.depositAccountCode,
-              transactionRef: payload.referenceNumber || `${payload.paymentMethod}-${Date.now()}`,
-              wizardMethod: payload.wizardMethod,
-              referenceNumber: payload.referenceNumber,
-              slipUrl: payload.slipUrl,
-              memo: payload.memo,
-              case: payload.case,
-              consumeAdvance: payload.consumeAdvance,
-              paidDate: payload.paidDate,
-              lateFee: payload.lateFee,
-              lateFeeWaiverAmount: payload.lateFeeWaiverAmount,
-              lateFeeWaiverReasonCode: payload.lateFeeWaiverReasonCode,
-              waiverApproverId: payload.waiverApproverId,
-            });
-          }}
-          onPostDraft={(paymentId) => postDraftMutation.mutate(paymentId)}
+          onSaveDraft={(payload) => draftMutation.mutate(draftBodyFromPayload(payload))}
+          onPostDraft={(paymentId, dirtyPayload) => postDraftMutation.mutate({ paymentId, dirtyPayload })}
           onCancelDraft={(paymentId) => cancelDraftMutation.mutate(paymentId)}
           isSubmitting={
             recordMutation.isPending ||
@@ -915,12 +953,13 @@ export default function PaymentsPage() {
       {tab === 'slip-review' && <SlipReviewTab />}
 
       {/* Receipts Tab */}
-      {tab === 'receipts' && canSeeReceipts && <ReceiptsTab />}
+      {tab === 'receipts' && canSeeReceipts && <ReceiptsTab onVoided={reopenAfterVoid} />}
 
       {/* Payment History Sheet */}
       <PaymentHistorySheet
         contractId={historyContractId}
         onClose={() => setHistoryContractId(null)}
+        onVoided={reopenAfterVoid}
       />
 
       {/* T16: Tolerance Approval Dialog */}

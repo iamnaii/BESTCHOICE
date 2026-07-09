@@ -18,6 +18,9 @@ interface Props {
   receiptId: string | null;
   receiptNumber?: string;
   onClose: () => void;
+  /** Fires after a successful void, BEFORE onClose — parents use it to re-open
+   *  the record wizard on the now-unpaid installment (mockup §11.1). */
+  onVoided?: () => void;
 }
 
 interface ApproverRow {
@@ -26,7 +29,7 @@ interface ApproverRow {
   role: string;
 }
 
-export default function ReceiptVoidDialog({ receiptId, receiptNumber, onClose }: Props) {
+export default function ReceiptVoidDialog({ receiptId, receiptNumber, onClose, onVoided }: Props) {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const [reason, setReason] = useState('');
@@ -80,6 +83,7 @@ export default function ReceiptVoidDialog({ receiptId, receiptNumber, onClose }:
       queryClient.invalidateQueries({ queryKey: ['receipts'] });
       queryClient.invalidateQueries({ queryKey: ['pending-summary'] });
       resetForm();
+      onVoided?.(); // before onClose — parents read their void-target state here
       onClose();
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),

@@ -13,6 +13,7 @@ import {
   jesForReceipt as selectJesForReceipt,
 } from './paymentHistoryDerivations';
 import { toast } from 'sonner';
+import type { VoidedReceiptInfo } from '@/pages/PaymentsPage/types';
 
 /* ─── Types ───────────────────────────────────────── */
 interface PaymentItem {
@@ -122,12 +123,18 @@ async function downloadReceiptPdf(receiptId: string, receiptNumber: string) {
 interface Props {
   contractId: string | null;
   onClose: () => void;
+  /** Mockup §11.1 — called after a successful void so the parent (PaymentsPage)
+   *  can re-open the record wizard on the now-unpaid installment. Optional:
+   *  ContractDetailPage renders this sheet without it. */
+  onVoided?: (info: VoidedReceiptInfo) => void;
 }
 
-export default function PaymentHistorySheet({ contractId, onClose }: Props) {
+export default function PaymentHistorySheet({ contractId, onClose, onVoided }: Props) {
   const { user } = useAuth();
   const canVoid = VOID_ROLES.includes(user?.role ?? '');
-  const [voidTarget, setVoidTarget] = useState<{ id: string; receiptNumber: string } | null>(null);
+  const [voidTarget, setVoidTarget] = useState<
+    { id: string; receiptNumber: string; info: VoidedReceiptInfo } | null
+  >(null);
 
   const {
     data: pResp,
@@ -345,7 +352,16 @@ export default function PaymentHistorySheet({ contractId, onClose }: Props) {
                                       </button>
                                       {canVoid && !UNVOIDABLE_RECEIPT_TYPES.includes(r.receiptType) && (
                                         <button
-                                          onClick={() => setVoidTarget({ id: r.id, receiptNumber: r.receiptNumber })}
+                                          onClick={() =>
+                                            setVoidTarget({
+                                              id: r.id,
+                                              receiptNumber: r.receiptNumber,
+                                              info: {
+                                                paymentId: r.paymentId,
+                                                contractNumber: contract?.contractNumber,
+                                              },
+                                            })
+                                          }
                                           title="ยกเลิกใบเสร็จ (ออกใบลดหนี้)"
                                           aria-label={`ยกเลิกใบเสร็จ ${r.receiptNumber}`}
                                           className="p-1.5 rounded border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors"
@@ -413,6 +429,9 @@ export default function PaymentHistorySheet({ contractId, onClose }: Props) {
         receiptId={voidTarget?.id ?? null}
         receiptNumber={voidTarget?.receiptNumber}
         onClose={() => setVoidTarget(null)}
+        onVoided={() => {
+          if (voidTarget) onVoided?.(voidTarget.info);
+        }}
       />
     </>
   );

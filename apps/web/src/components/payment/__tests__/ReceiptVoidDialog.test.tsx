@@ -103,6 +103,36 @@ describe('ReceiptVoidDialog — SoD approver field', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalled());
   });
 
+  it('fires onVoided BEFORE onClose after a successful void (mockup §11.1 reopen hook)', async () => {
+    // PaymentsPage reads its voidTarget state inside onVoided to reopen the
+    // record wizard — onClose clears that state, so the order matters.
+    const calls: string[] = [];
+    const onClose = vi.fn(() => calls.push('close'));
+    const onVoided = vi.fn(() => calls.push('voided'));
+    render(wrap(<ReceiptVoidDialog receiptId="r-1" onClose={onClose} onVoided={onVoided} />));
+
+    fireEvent.change(screen.getByPlaceholderText(/ลูกค้าโอนผิดบัญชี/), {
+      target: { value: 'บันทึกผิด' },
+    });
+    await screen.findByRole('option', { name: /เจ้าของร้าน/ });
+    fireEvent.change(screen.getByLabelText(/ผู้อนุมัติการยกเลิก/), {
+      target: { value: 'u-boss' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'ยืนยันยกเลิก' }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(onVoided).toHaveBeenCalledTimes(1);
+    expect(calls).toEqual(['voided', 'close']);
+  });
+
+  it('does NOT fire onVoided when the user just closes the dialog', async () => {
+    const onVoided = vi.fn();
+    render(wrap(<ReceiptVoidDialog receiptId="r-1" onClose={vi.fn()} onVoided={onVoided} />));
+
+    fireEvent.click(screen.getByRole('button', { name: 'ปิด' }));
+    expect(onVoided).not.toHaveBeenCalled();
+  });
+
   it('warns when there is no eligible approver (only the current user has a manager role)', async () => {
     apiGet.mockResolvedValue({ data: [{ id: 'u-me', name: 'ฉันเอง', role: 'ACCOUNTANT' }] });
     render(wrap(<ReceiptVoidDialog receiptId="r-1" onClose={vi.fn()} />));

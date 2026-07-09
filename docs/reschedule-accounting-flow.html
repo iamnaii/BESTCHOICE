@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>เส้นทางบัญชี — ปรับงวด (เลื่อนวันครบกำหนด) · BESTCHOICE FINANCE</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Trirong:wght@500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --paper: #f6f4ec;
+    --card: #fffdf7;
+    --ink: #1c1917;
+    --muted: #6f6a60;
+    --faint: #a8a294;
+    --line: #e4ddcd;
+    --line-strong: #d3c9b2;
+    --emerald: #047857;
+    --emerald-deep: #065f46;
+    --emerald-soft: #eafaf1;
+    --dr: #a3562a;      /* debit — terracotta */
+    --dr-soft: #fbf0e7;
+    --cr: #047857;      /* credit — emerald */
+    --cr-soft: #eafaf1;
+    --amber: #a16207;
+    --amber-soft: #fbf3e0;
+    --shadow: 0 1px 2px rgba(28,25,23,.04), 0 12px 32px -18px rgba(28,25,23,.22);
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: 'IBM Plex Sans Thai', sans-serif;
+    color: var(--ink);
+    line-height: 1.72;
+    background-color: var(--paper);
+    background-image:
+      radial-gradient(120% 80% at 100% 0%, rgba(4,120,87,.06), transparent 55%),
+      radial-gradient(90% 70% at 0% 100%, rgba(163,86,42,.05), transparent 50%),
+      repeating-linear-gradient(180deg, transparent, transparent 33px, rgba(212,201,178,.28) 33px, rgba(212,201,178,.28) 34px);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 900px; margin: 0 auto; padding: 56px 24px 96px; }
+
+  /* ── Masthead ─────────────────────────────── */
+  .masthead { margin-bottom: 40px; }
+  .kicker {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px; letter-spacing: .32em; text-transform: uppercase;
+    color: var(--emerald); font-weight: 600;
+    display: flex; align-items: center; gap: 10px; margin-bottom: 14px;
+  }
+  .kicker::after { content: ''; flex: 1; height: 1px; background: var(--line-strong); }
+  h1 {
+    font-family: 'Trirong', serif; font-weight: 700;
+    font-size: clamp(30px, 5vw, 46px); line-height: 1.18;
+    margin: 0 0 8px; letter-spacing: -.01em;
+  }
+  h1 .accent { color: var(--emerald); }
+  .lede { color: var(--muted); font-size: 16px; max-width: 60ch; margin: 0; }
+
+  /* ── Contract chip strip ──────────────────── */
+  .facts {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1px; background: var(--line); border: 1px solid var(--line);
+    border-radius: 14px; overflow: hidden; margin-top: 28px; box-shadow: var(--shadow);
+  }
+  .fact { background: var(--card); padding: 14px 18px; }
+  .fact .l { font-size: 11px; color: var(--faint); letter-spacing: .04em; margin-bottom: 3px; }
+  .fact .v { font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 15px; }
+  .fact .v.em { color: var(--emerald); }
+  .fact .v.warn { color: var(--dr); }
+
+  /* ── Section / stage rail ─────────────────── */
+  .stage { position: relative; padding-left: 62px; margin-top: 44px; }
+  .stage::before {
+    content: ''; position: absolute; left: 20px; top: 44px; bottom: -44px;
+    width: 2px; background: linear-gradient(var(--line-strong), transparent);
+  }
+  .stage:last-of-type::before { display: none; }
+  .stage-no {
+    position: absolute; left: 0; top: 0;
+    width: 42px; height: 42px; border-radius: 50%;
+    background: var(--emerald); color: #fff;
+    font-family: 'Trirong', serif; font-weight: 600; font-size: 20px;
+    display: grid; place-items: center;
+    box-shadow: 0 6px 18px -6px rgba(4,120,87,.5);
+  }
+  .stage-no.ghost { background: var(--card); color: var(--faint); border: 2px dashed var(--line-strong); box-shadow: none; }
+  .stage h2 {
+    font-family: 'Trirong', serif; font-weight: 600;
+    font-size: 23px; margin: 4px 0 4px; line-height: 1.3;
+  }
+  .stage .sub { color: var(--muted); font-size: 14.5px; margin: 0 0 18px; }
+  .tag {
+    display: inline-block; font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+    font-weight: 600; padding: 2px 9px; border-radius: 999px; vertical-align: middle;
+    margin-left: 8px;
+  }
+  .tag.no-je { background: var(--amber-soft); color: var(--amber); }
+  .tag.je { background: var(--emerald-soft); color: var(--emerald-deep); }
+
+  /* ── Cards ────────────────────────────────── */
+  .card {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 14px; padding: 20px 22px; box-shadow: var(--shadow); margin-bottom: 16px;
+  }
+  .card h3 { margin: 0 0 12px; font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .steplist { list-style: none; margin: 0; padding: 0; }
+  .steplist li { position: relative; padding: 6px 0 6px 26px; font-size: 15px; }
+  .steplist li::before {
+    content: ''; position: absolute; left: 4px; top: 15px;
+    width: 6px; height: 6px; border-radius: 50%; background: var(--emerald);
+  }
+  .steplist li b { font-weight: 600; }
+  code.k { font-family: 'IBM Plex Mono', monospace; font-size: 13px; background: #f0ece0; padding: 1px 6px; border-radius: 5px; color: var(--emerald-deep); font-weight: 500; }
+
+  /* ── Formula plate ────────────────────────── */
+  .formula {
+    background: linear-gradient(135deg, var(--emerald-deep), var(--emerald));
+    color: #fff; border-radius: 14px; padding: 20px 24px; margin-bottom: 16px;
+    box-shadow: 0 14px 30px -14px rgba(4,120,87,.55);
+  }
+  .formula .eq { font-family: 'IBM Plex Mono', monospace; font-size: clamp(15px,2.4vw,19px); font-weight: 500; letter-spacing: .01em; }
+  .formula .calc { font-family: 'IBM Plex Mono', monospace; font-size: 14px; opacity: .9; margin-top: 8px; }
+  .formula .calc b { color: #b9f6ce; font-weight: 600; font-size: 17px; }
+
+  /* ── Journal (ledger) table ───────────────── */
+  .je { border: 1px solid var(--line-strong); border-radius: 12px; overflow: hidden; margin: 14px 0 4px; }
+  .je-head {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 16px; background: #f3efe4; border-bottom: 1px solid var(--line-strong);
+  }
+  .je-head .t { font-weight: 600; font-size: 14px; }
+  .balanced { font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 600; color: var(--emerald); display: flex; align-items: center; gap: 5px; }
+  .balanced::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--emerald); box-shadow: 0 0 0 3px var(--emerald-soft); }
+  table.ledger { width: 100%; border-collapse: collapse; font-size: 14px; }
+  table.ledger th {
+    font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--faint); font-weight: 600;
+    text-align: right; padding: 8px 16px; border-bottom: 1px solid var(--line);
+  }
+  table.ledger th:first-child { text-align: left; }
+  table.ledger td { padding: 9px 16px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.ledger tr:last-child td { border-bottom: none; }
+  .acct { display: flex; flex-direction: column; }
+  .acct .code { font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 13px; }
+  .acct .name { font-size: 12.5px; color: var(--muted); }
+  .acct.cr { padding-left: 18px; }
+  .num { font-family: 'IBM Plex Mono', monospace; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .num.dr { color: var(--dr); font-weight: 600; }
+  .num.cr { color: var(--cr); font-weight: 600; }
+  .je tr.total td { background: #faf7ef; font-weight: 600; border-top: 1px solid var(--line-strong); }
+  .je tr.total .num { font-size: 13px; }
+
+  /* ── Callouts ─────────────────────────────── */
+  .callout { border-radius: 14px; padding: 18px 20px 18px 22px; margin: 16px 0; border-left: 4px solid; font-size: 14.5px; }
+  .callout h4 { margin: 0 0 6px; font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+  .callout.insight { background: var(--emerald-soft); border-color: var(--emerald); }
+  .callout.insight h4 { color: var(--emerald-deep); }
+  .callout.warn { background: var(--amber-soft); border-color: var(--amber); }
+  .callout.warn h4 { color: var(--amber); }
+  .callout p { margin: 6px 0 0; }
+  .callout .ico { font-size: 16px; }
+
+  /* ── Net-flow strip ───────────────────────── */
+  .netflow { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; gap: 10px; align-items: center; margin: 6px 0; }
+  .netflow .box { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; text-align: center; }
+  .netflow .box .amt { font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 15px; }
+  .netflow .box .cap { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .netflow .arw { font-family: 'IBM Plex Mono', monospace; color: var(--faint); font-size: 18px; }
+  @media (max-width: 620px) { .netflow { grid-template-columns: 1fr; } .netflow .arw { transform: rotate(90deg); } }
+
+  footer { margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--line-strong); color: var(--faint); font-size: 12px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+  footer .mono { font-family: 'IBM Plex Mono', monospace; }
+
+  /* ── Load animation ───────────────────────── */
+  @media (prefers-reduced-motion: no-preference) {
+    .anim { opacity: 0; transform: translateY(14px); animation: rise .6s cubic-bezier(.22,.61,.36,1) forwards; }
+    @keyframes rise { to { opacity: 1; transform: none; } }
+    .masthead { animation-delay: .02s; }
+  }
+
+  @media print {
+    body { background: #fff; }
+    .anim { opacity: 1 !important; transform: none !important; animation: none !important; }
+    .wrap { padding: 0; }
+    .card, .je, .facts { box-shadow: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead anim">
+    <div class="kicker">BESTCHOICE FINANCE · เอกสารอธิบายเชิงบัญชี</div>
+    <h1>เส้นทางบัญชี — <span class="accent">ปรับงวด</span><br />เลื่อนวันครบกำหนด (กรณีลูกค้าเกินดิว)</h1>
+    <p class="lede">เมื่อลูกค้าที่ค้างชำระขอเลื่อนวันครบกำหนด ระบบจะเก็บ “ค่าธรรมเนียมเลื่อนงวด” และเดินรายการบัญชีตามเทมเพลต JP6 (แบบ 6a / 6b) — ต่อไปนี้คือลำดับที่เกิดขึ้นจริงในระบบ</p>
+
+    <div class="facts">
+      <div class="fact"><div class="l">เลขที่สัญญา</div><div class="v">TEST-20260630-008</div></div>
+      <div class="fact"><div class="l">ลูกค้า</div><div class="v">ค้าง 2 งวด</div></div>
+      <div class="fact"><div class="l">ครบกำหนดเดิม → ใหม่</div><div class="v em">30/04 → 06/05</div></div>
+      <div class="fact"><div class="l">เลื่อน</div><div class="v">7 วัน</div></div>
+      <div class="fact"><div class="l">ค่าธรรมเนียม</div><div class="v warn">1,044.00 ฿</div></div>
+    </div>
+  </header>
+
+  <!-- STAGE 1 -->
+  <section class="stage anim">
+    <div class="stage-no ghost">1</div>
+    <h2>ตอนกด “ยืนยันปรับงวด” <span class="tag no-je">ยังไม่มี JE</span></h2>
+    <p class="sub">แตะเฉพาะฐานข้อมูล (DB) ใน 1 transaction — ตาม CSV golden case-6a/6b: “Step 1 = UPDATE DB, ไม่มี Journal”</p>
+    <div class="card">
+      <ul class="steplist">
+        <li>เลื่อน <b>dueDate</b> ทุกงวดตั้งแต่งวดนี้เป็นต้นไป +7 วัน (และเลื่อน <code class="k">Payment.dueDate</code> ของงวดที่ยังไม่จ่ายด้วย)</li>
+        <li><b>ลด <code class="k">amountDue</code> ของงวดสุดท้าย</b> ลงเท่าค่าธรรมเนียม (4,472 − 1,044 = 3,428)</li>
+        <li>เขียน AuditLog <code class="k">RESCHEDULE</code> + เพิ่ม <code class="k">rescheduleCount</code></li>
+      </ul>
+    </div>
+    <div class="formula">
+      <div class="eq">ค่าธรรมเนียม = ค่างวด ÷ 30 × วันที่เลื่อน &nbsp;(ปัดขึ้นเต็มบาท)</div>
+      <div class="calc">4,472.00 ÷ 30 × 7 = 1,043.7 → <b>1,044 ฿</b></div>
+    </div>
+  </section>
+
+  <!-- STAGE 2 -->
+  <section class="stage anim">
+    <div class="stage-no ghost">2</div>
+    <h2>ผลต่อ “ค่าปรับเกินดิว” <span class="tag no-je">ล้างโดยปริยาย</span></h2>
+    <p class="sub">หัวใจของกรณีเกินดิว — การเลื่อนวันครบกำหนดทำให้ค่าปรับที่ค้างหายไปเอง</p>
+    <div class="card">
+      <p style="margin:0 0 8px">เพราะเลื่อน <code class="k">Payment.dueDate</code> ไปข้างหน้า ตอนลูกค้าจ่ายจริง:</p>
+      <div class="formula" style="background:linear-gradient(135deg,#7c3f1d,#a3562a);box-shadow:0 14px 30px -14px rgba(163,86,42,.5);margin:0">
+        <div class="eq">daysOverdue = วันจ่าย − dueDate<sub>ใหม่</sub> ≤ 0 &nbsp;⟹&nbsp; resolveLateFee = <b style="color:#ffd9c2">0 ฿</b></div>
+      </div>
+      <p style="margin:12px 0 0;color:var(--muted);font-size:13.5px">👉 พูดง่ายๆ: <b style="color:var(--ink)">ปรับงวด = ยกค่าปรับที่ค้างให้ แล้วเก็บค่าธรรมเนียมเลื่อนแทน</b> — และไม่มี late fee ปลอมเข้า <code class="k">42-1103</code></p>
+    </div>
+  </section>
+
+  <!-- STAGE 3 -->
+  <section class="stage anim">
+    <div class="stage-no">3</div>
+    <h2>JE จริง — เกิดตอนลูกค้า “จ่าย” <span class="tag je">โพสต์บัญชี</span></h2>
+    <p class="sub">เลือกได้ 2 แบบตามหน้าจอ “วิธีเก็บค่าธรรมเนียม”</p>
+
+    <div class="card">
+      <h3>แบบ 6b — รวมกับงวดถัดไป <span style="color:var(--muted);font-weight:400;font-size:13px">(ตามภาพ) · จ่ายงวด + ค่าธรรมเนียมทีเดียว</span></h3>
+      <div class="je">
+        <div class="je-head"><span class="t">รับชำระงวดรวมค่าธรรมเนียมเลื่อนนัด</span><span class="balanced">BALANCED</span></div>
+        <table class="ledger">
+          <thead><tr><th>บัญชี</th><th>เดบิต (Dr)</th><th>เครดิต (Cr)</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><div class="acct"><span class="code">11-1101</span><span class="name">เงินสด / ธนาคาร</span></div></td>
+              <td class="num dr">5,516.00</td><td class="num"></td>
+            </tr>
+            <tr>
+              <td><div class="acct cr"><span class="code">11-2103</span><span class="name">ล้างลูกหนี้ค้างชำระงวด</span></div></td>
+              <td class="num"></td><td class="num cr">4,472.00</td>
+            </tr>
+            <tr>
+              <td><div class="acct cr"><span class="code">21-1103</span><span class="name">เงินรับล่วงหน้างวดสุดท้าย</span></div></td>
+              <td class="num"></td><td class="num cr">1,044.00</td>
+            </tr>
+            <tr class="total"><td>รวม</td><td class="num">5,516.00</td><td class="num">5,516.00</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>แบบ 6a — เก็บค่าธรรมเนียมแยกก่อน <span style="color:var(--muted);font-weight:400;font-size:13px">จ่ายค่าธรรมเนียมก่อน แล้วค่อยจ่ายงวดปกติ</span></h3>
+      <div class="je">
+        <div class="je-head"><span class="t">Step 1 · รับค่าธรรมเนียมเลื่อนนัดล่วงหน้า</span><span class="balanced">BALANCED</span></div>
+        <table class="ledger">
+          <thead><tr><th>บัญชี</th><th>เดบิต (Dr)</th><th>เครดิต (Cr)</th></tr></thead>
+          <tbody>
+            <tr><td><div class="acct"><span class="code">11-1101</span><span class="name">เงินสด / ธนาคาร</span></div></td><td class="num dr">1,044.00</td><td class="num"></td></tr>
+            <tr><td><div class="acct cr"><span class="code">21-1103</span><span class="name">เงินรับล่วงหน้างวดสุดท้าย</span></div></td><td class="num"></td><td class="num cr">1,044.00</td></tr>
+            <tr class="total"><td>รวม</td><td class="num">1,044.00</td><td class="num">1,044.00</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <ul class="steplist" style="margin-top:12px">
+        <li><b>Step 2</b> — จ่ายงวดปกติผ่านเทมเพลต 2B: <code class="k">Dr เงินสด / Cr 11-2101 + 11-2103 + 21-2101 (VAT)</code></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- STAGE 4 -->
+  <section class="stage anim">
+    <div class="stage-no">4</div>
+    <h2>งวดสุดท้าย — ทั้ง 6a / 6b มาบรรจบ <span class="tag je">โพสต์บัญชี</span></h2>
+    <p class="sub">ดึงเงินรับล่วงหน้า (21-1103) ที่พักไว้ มาหักงวดสุดท้ายที่ถูกลดยอดไว้แล้ว</p>
+    <div class="card">
+      <div class="je">
+        <div class="je-head"><span class="t">หักเงินรับล่วงหน้าเข้างวดสุดท้าย</span><span class="balanced">BALANCED</span></div>
+        <table class="ledger">
+          <thead><tr><th>บัญชี</th><th>เดบิต (Dr)</th><th>เครดิต (Cr)</th></tr></thead>
+          <tbody>
+            <tr><td><div class="acct"><span class="code">21-1103</span><span class="name">ล้างเงินรับล่วงหน้างวดสุดท้าย</span></div></td><td class="num dr">1,044.00</td><td class="num"></td></tr>
+            <tr><td><div class="acct"><span class="code">11-1101</span><span class="name">เงินสด — ส่วนที่เหลือของงวดสุดท้าย</span></div></td><td class="num dr">3,428.00</td><td class="num"></td></tr>
+            <tr><td><div class="acct cr"><span class="code">11-2103</span><span class="name">ล้างลูกหนี้ค้างชำระงวดสุดท้าย</span></div></td><td class="num"></td><td class="num cr">4,472.00</td></tr>
+            <tr class="total"><td>รวม</td><td class="num">4,472.00</td><td class="num">4,472.00</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- INSIGHT -->
+  <div class="callout insight anim">
+    <h4><span class="ico">◆</span> จุดที่ควรรู้เชิงบัญชี</h4>
+    <p>ค่าธรรมเนียมเลื่อนงวด <b>ไม่ได้ลงเป็นรายได้</b> — มันเข้า <code class="k">21-1103</code> (เงินรับล่วงหน้า) แล้วงวดสุดท้ายก็ถูกลดยอดเท่ากันเป๊ะ สุทธิจึงเป็น “การจ่ายบางส่วนของงวดสุดท้ายล่วงหน้า” ไม่ใช่ค่าปรับ/รายได้เพิ่ม และ <b>ไม่คิด VAT</b></p>
+    <div class="netflow" style="margin-top:14px">
+      <div class="box"><div class="amt" style="color:var(--dr)">+1,044 ฿</div><div class="cap">ลูกค้าจ่ายค่าธรรมเนียมตอนนี้</div></div>
+      <div class="arw">→</div>
+      <div class="box"><div class="amt" style="color:var(--emerald)">−1,044 ฿</div><div class="cap">งวดสุดท้ายลดลงเท่ากัน</div></div>
+      <div class="arw">=</div>
+      <div class="box"><div class="amt">0 ฿</div><div class="cap">ยอดรวมที่ลูกค้าจ่ายเท่าเดิม</div></div>
+    </div>
+  </div>
+
+  <!-- WARNING -->
+  <div class="callout warn anim">
+    <h4><span class="ico">▲</span> ข้อควรยืนยันกับนักบัญชี</h4>
+    <p>ถ้าเจตนาจริงคืออยากให้ “ค่าธรรมเนียมเลื่อนงวด” เป็น <b>รายได้</b> (เหมือนค่าบริการ) — ปัจจุบันโค้ด <b>ไม่ได้</b> ลงเป็นรายได้ มันเป็นแค่การเก็บเงินงวดสุดท้ายมาล่วงหน้า (net-zero) หากต้องการให้เป็นรายได้จริง ต้องปรับเทมเพลต JP6 ให้ Cr บัญชีรายได้แทน <code class="k">21-1103</code> และไม่ลด <code class="k">amountDue</code> งวดสุดท้าย — เป็นการตัดสินใจเชิงนโยบาย</p>
+  </div>
+
+  <footer>
+    <span>BESTCHOICE FINANCE · TFRS for NPAEs · เทมเพลต JP6 (Reschedule 6a/6b)</span>
+    <span class="mono">reschedule-jp6.template.ts · reschedule.service.ts</span>
+  </footer>
+
+</div>
+
+<script>
+  // Stagger the load animation across the flow.
+  document.querySelectorAll('.anim').forEach((el, i) => {
+    el.style.animationDelay = (0.05 + i * 0.09) + 's';
+  });
+</script>
+</body>
+</html>

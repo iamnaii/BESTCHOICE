@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>สรุประบบ Audit Log ของหน้าตั้งค่า (Settings) — สำหรับฝ่ายบัญชีตรวจสอบ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #fafafa;
+    --card: #ffffff;
+    --fg: #18181b;
+    --muted: #52525b;
+    --faint: #a1a1aa;
+    --border: #e4e4e7;
+    --primary: #059669;      /* emerald */
+    --primary-soft: #ecfdf5;
+    --primary-line: #a7f3d0;
+    --amber: #b45309;
+    --amber-soft: #fffbeb;
+    --amber-line: #fde68a;
+    --red: #b91c1c;
+    --red-soft: #fef2f2;
+    --blue: #1d4ed8;
+    --blue-soft: #eff6ff;
+    --mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Code', Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font-family: 'IBM Plex Sans Thai', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+    line-height: 1.65;
+    margin: 0;
+    padding: 0 16px 80px;
+    font-size: 15px;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; }
+
+  /* Header */
+  header.doc {
+    padding: 40px 0 28px;
+    border-bottom: 3px solid var(--primary);
+    margin-bottom: 32px;
+  }
+  .eyebrow {
+    display: inline-block;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--primary);
+    background: var(--primary-soft);
+    border: 1px solid var(--primary-line);
+    padding: 4px 10px;
+    border-radius: 999px;
+    margin-bottom: 14px;
+  }
+  header.doc h1 {
+    font-size: 27px;
+    font-weight: 700;
+    margin: 0 0 8px;
+    line-height: 1.3;
+  }
+  header.doc .sub { color: var(--muted); font-size: 15px; margin: 0; }
+  .meta-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+    margin-top: 22px;
+  }
+  .meta-grid .cell {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 14px;
+  }
+  .meta-grid .k { font-size: 11px; color: var(--faint); text-transform: uppercase; letter-spacing: .05em; }
+  .meta-grid .v { font-size: 14px; font-weight: 600; margin-top: 2px; }
+
+  h2 {
+    font-size: 20px;
+    font-weight: 700;
+    margin: 40px 0 14px;
+    padding-left: 12px;
+    border-left: 4px solid var(--primary);
+  }
+  h2 .num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px; height: 26px;
+    background: var(--primary);
+    color: #fff;
+    border-radius: 7px;
+    font-size: 14px;
+    margin-right: 8px;
+    vertical-align: 2px;
+  }
+  h3 { font-size: 16px; font-weight: 600; margin: 24px 0 8px; }
+  p { margin: 0 0 12px; }
+  .lead { color: var(--muted); }
+
+  code, .kbd {
+    font-family: var(--mono);
+    font-size: 13px;
+    background: #f4f4f5;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 1px 6px;
+    color: #0f766e;
+    white-space: nowrap;
+  }
+
+  /* Callout */
+  .note {
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin: 16px 0;
+    border: 1px solid var(--border);
+    background: var(--card);
+  }
+  .note.tip { background: var(--primary-soft); border-color: var(--primary-line); }
+  .note.warn { background: var(--amber-soft); border-color: var(--amber-line); }
+  .note.info { background: var(--blue-soft); border-color: #bfdbfe; }
+  .note .title { font-weight: 700; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
+  .note.tip .title { color: #047857; }
+  .note.warn .title { color: var(--amber); }
+  .note.info .title { color: var(--blue); }
+
+  /* Table */
+  .table-scroll { overflow-x: auto; border-radius: 12px; border: 1px solid var(--border); margin: 16px 0; }
+  table { width: 100%; border-collapse: collapse; background: var(--card); font-size: 13.5px; min-width: 640px; }
+  thead th {
+    background: #f4f4f5;
+    text-align: left;
+    font-weight: 600;
+    padding: 11px 14px;
+    border-bottom: 2px solid var(--border);
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  tbody td { padding: 11px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: #fafafa; }
+  .action-cell code { display: inline-block; background: var(--primary-soft); border-color: var(--primary-line); color: #047857; font-weight: 500; }
+
+  /* Mechanism cards */
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; margin: 18px 0; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 18px;
+    position: relative;
+  }
+  .card .badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--primary);
+    background: var(--primary-soft);
+    border-radius: 6px;
+    padding: 2px 8px;
+    margin-bottom: 8px;
+  }
+  .card h4 { font-size: 15px; margin: 0 0 6px; }
+  .card p { font-size: 13.5px; color: var(--muted); margin: 0; }
+  .card .ref { font-family: var(--mono); font-size: 11.5px; color: var(--faint); margin-top: 8px; display: block; }
+
+  /* Checklist */
+  .checklist { list-style: none; padding: 0; margin: 16px 0; }
+  .checklist li {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px 14px 48px;
+    margin-bottom: 10px;
+    position: relative;
+  }
+  .checklist li::before {
+    content: "";
+    position: absolute;
+    left: 15px; top: 15px;
+    width: 20px; height: 20px;
+    border: 2px solid var(--primary);
+    border-radius: 5px;
+  }
+  .checklist li .q { font-weight: 600; display: block; margin-bottom: 2px; }
+  .checklist li .a { font-size: 13.5px; color: var(--muted); }
+
+  .flow {
+    background: #0f172a;
+    color: #e2e8f0;
+    border-radius: 12px;
+    padding: 18px 20px;
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.9;
+    overflow-x: auto;
+    margin: 16px 0;
+  }
+  .flow .c { color: #7dd3fc; }
+  .flow .g { color: #86efac; }
+  .flow .y { color: #fcd34d; }
+
+  footer.doc {
+    margin-top: 48px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    color: var(--faint);
+    font-size: 12.5px;
+  }
+  .sig-row { display: flex; gap: 40px; flex-wrap: wrap; margin-top: 28px; }
+  .sig { flex: 1; min-width: 200px; }
+  .sig .line { border-bottom: 1px solid var(--fg); height: 40px; margin-bottom: 6px; }
+  .sig .lbl { font-size: 12px; color: var(--muted); }
+
+  @media print {
+    body { background: #fff; padding: 0; font-size: 11.5px; }
+    .wrap { max-width: 100%; }
+    header.doc { padding-top: 8px; }
+    h2 { page-break-after: avoid; }
+    .card, .checklist li, .note, .table-scroll { page-break-inside: avoid; }
+    tbody tr:hover, .card, .note { background: #fff !important; }
+    a { color: inherit; text-decoration: none; }
+    .no-print { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="doc">
+    <span class="eyebrow">เอกสารสำหรับฝ่ายบัญชีตรวจสอบ · Compliance / Audit Trail</span>
+    <h1>ระบบ Audit Log ของหน้าตั้งค่า (Settings)</h1>
+    <p class="sub">สรุปว่าเมื่อมีการ<strong>เปลี่ยนค่าตั้งค่าระบบ</strong> (SystemConfig, ผู้ดูแลเงินสดย่อย, การจับคู่บัญชี ฯลฯ) ระบบบันทึกหลักฐานอะไรบ้าง ใครแก้ แก้จากอะไรเป็นอะไร และตรวจย้อนหลังได้อย่างไร</p>
+    <div class="meta-grid">
+      <div class="cell"><div class="k">ระบบ</div><div class="v">BESTCHOICE FINANCE</div></div>
+      <div class="cell"><div class="k">ขอบเขต</div><div class="v">โมดูล Settings</div></div>
+      <div class="cell"><div class="k">มาตรฐานอ้างอิง</div><div class="v">TFRS for NPAEs</div></div>
+      <div class="cell"><div class="k">จัดทำ</div><div class="v">1 ก.ค. 2569</div></div>
+    </div>
+  </header>
+
+  <div class="note info">
+    <div class="title">📌 อ่านก่อนตรวจ — audit log คืออะไรในบริบทนี้</div>
+    <p style="margin:0">ทุกครั้งที่มีคน <strong>แก้ไขค่าตั้งค่าของระบบ</strong> (เช่น อัตราค่าปรับ, อัตรา VAT, prefix เลขที่เอกสาร, ผู้ดูแลเงินสดย่อย, การจับคู่บัญชีกับ role) ระบบจะเขียน "บันทึกร่องรอย" 1 แถวลงตาราง <code>audit_logs</code> โดยอัตโนมัติ — ระบุ <strong>ใคร / ทำอะไร / เมื่อไหร่ / ค่าเดิม→ค่าใหม่</strong> บันทึกนี้<strong>แก้ย้อนหลังไม่ได้</strong> (immutable) และมีการเซ็นด้วยลายเซ็นดิจิทัลแบบลูกโซ่ (hash chain) เพื่อกันการแก้ไขหลักฐาน</p>
+  </div>
+
+  <!-- ===================== 1 ===================== -->
+  <h2><span class="num">1</span>เหตุการณ์ที่ถูกบันทึก (Audit Actions)</h2>
+  <p class="lead">โมดูล Settings เขียน audit log ใน 5 กลุ่มเหตุการณ์ ทั้งหมดเก็บ <em>ค่าเดิม</em> และ <em>ค่าใหม่</em> เพื่อให้ฝ่ายบัญชีเทียบได้ว่าเปลี่ยนอะไรไป:</p>
+
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>รหัสเหตุการณ์ (action)</th>
+          <th>เกิดเมื่อ</th>
+          <th>บันทึกอะไร</th>
+          <th>ความสำคัญต่อบัญชี</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="action-cell"><code>SYSTEM_CONFIG_UPDATE</code><br /><code>SYSTEM_CONFIG_CREATE</code></td>
+          <td>แก้ไข/สร้างค่าตั้งค่าใดๆ เช่น อัตราค่าปรับ, VAT_RATE, prefix เอกสาร, โหมด maker-checker</td>
+          <td>ชื่อ key + ค่าเดิม → ค่าใหม่</td>
+          <td><strong>สูง</strong> — ค่าเหล่านี้กระทบการคำนวณเงิน/ภาษีโดยตรง</td>
+        </tr>
+        <tr>
+          <td class="action-cell"><code>ROLE_MAP_CREATED</code><br /><code>ROLE_MAP_UPDATED</code><br /><code>ROLE_MAP_DEACTIVATED</code></td>
+          <td>เพิ่ม/แก้/ปิด การจับคู่ระหว่าง role กับผังบัญชี (account role map)</td>
+          <td>role, รหัสบัญชี + สรุปความเปลี่ยนแปลงภาษาไทย (<code>diffSummary</code>)</td>
+          <td><strong>สูง</strong> — กำหนดว่าธุรกรรมลงบัญชีตัวไหน</td>
+        </tr>
+        <tr>
+          <td class="action-cell"><code>PETTY_CASH_CUSTODIAN_ASSIGNED</code></td>
+          <td>เปลี่ยนตัวผู้ดูแลเงินสดย่อยของบริษัท</td>
+          <td>รหัสบริษัท + ผู้ดูแลคนเดิม → คนใหม่</td>
+          <td><strong>กลาง</strong> — segregation of duties เงินสดย่อย</td>
+        </tr>
+        <tr>
+          <td class="action-cell"><code>DOC_SEQUENCE_RESET</code></td>
+          <td>รีเซ็ต/ตรวจลำดับเลขที่เอกสาร</td>
+          <td>ประเภทเอกสาร, งวด, เลขล่าสุดต่อประเภท (ไว้ diagnostic)</td>
+          <td><strong>กลาง</strong> — ความต่อเนื่องเลขที่เอกสารภาษี</td>
+        </tr>
+        <tr>
+          <td class="action-cell"><code>EXPORT_BLOCKED</code></td>
+          <td>มีคนพยายามส่งออกข้อมูลตอนที่ระบบปิดการส่งออก</td>
+          <td>ผู้ใช้, เส้นทาง (route), IP, เหตุผลที่ถูกบล็อก</td>
+          <td><strong>กลาง</strong> — PDPA / ควบคุมการนำข้อมูลออก</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note tip">
+    <div class="title">✅ จุดที่ตรวจได้ง่าย</div>
+    <p style="margin:0">แต่ละแถวมี <strong>ค่าเดิมและค่าใหม่คู่กัน</strong> — ฝ่ายบัญชีไม่ต้องเดาว่า "ก่อนหน้านี้ตั้งไว้เท่าไร" ตัวอย่าง: ถ้าอัตราค่าปรับต่อวันถูกแก้จาก 20 เป็น 50 บาท log จะเก็บ <code>oldValue: {value:"20"}</code> และ <code>newValue: {value:"50"}</code> พร้อม userId ของคนแก้</p>
+  </div>
+
+  <!-- ===================== 2 ===================== -->
+  <h2><span class="num">2</span>กลไกคุ้มกันหลักฐาน 4 ชั้น</h2>
+  <p class="lead">สิ่งที่ทำให้ audit log นี้ "เชื่อถือได้" ในเชิงตรวจสอบ ไม่ใช่แค่ log ธรรมดา:</p>
+
+  <div class="cards">
+    <div class="card">
+      <span class="badge">ชั้นที่ 1</span>
+      <h4>ปิดบังค่าลับ (Redact)</h4>
+      <p>ค่าที่เป็นความลับ (token, password, api key, credential) จะถูกแทนด้วย <code>[REDACTED]</code> ก่อนบันทึก — log รู้ว่า "key นี้ถูกแก้" แต่ไม่เก็บค่าจริง ป้องกันความลับรั่วผ่านหน้าตรวจสอบ</p>
+      <span class="ref">settings.constants.ts → redact()</span>
+    </div>
+    <div class="card">
+      <span class="badge">ชั้นที่ 2</span>
+      <h4>ต้องมีตัวตนผู้ทำ</h4>
+      <p>ถ้าไม่มี userId (เช่น งานอัตโนมัติของระบบ) จะ<strong>ข้าม</strong>การเขียน log โดยตั้งใจ — ทุกแถวใน audit log จึงผูกกับ "คนจริง" ที่รับผิดชอบเสมอ</p>
+      <span class="ref">audit.service.ts → if (!userId) return</span>
+    </div>
+    <div class="card">
+      <span class="badge">ชั้นที่ 3</span>
+      <h4>Audit ล้ม ไม่ล้มธุรกรรม</h4>
+      <p>ถ้าเขียน log ไม่สำเร็จ ระบบจะไม่ย้อนการแก้ค่าตั้งค่า แต่จะแจ้งเตือนทีมเทคนิคทันที (Sentry) — กันไม่ให้มี "รูโหว่" ในลูกโซ่หลักฐานแบบเงียบๆ</p>
+      <span class="ref">Sentry alert on audit write fail</span>
+    </div>
+    <div class="card">
+      <span class="badge">ชั้นที่ 4</span>
+      <h4>ลูกโซ่กันแก้ไข (Hash Chain)</h4>
+      <p>ทุกแถวถูกเซ็นด้วย SHA-256 ที่อ้างอิงแถวก่อนหน้า ถ้าใครแก้ข้อมูลเก่าในฐานข้อมูลตรงๆ ระบบตรวจสอบจะจับได้ทันทีว่าลูกโซ่ขาดตรงไหน</p>
+      <span class="ref">verifyChain() → tamper-evident</span>
+    </div>
+  </div>
+
+  <div class="note warn">
+    <div class="title">⚠️ ข้อควรรู้สำหรับผู้ตรวจ</div>
+    <p style="margin:0">มีเหตุการณ์เดียว (<code>EXPORT_BLOCKED</code>) ที่เขียน log แบบตรง ไม่ผ่านลูกโซ่ hash chain เพราะเกิดขึ้นในชั้นป้องกันก่อนถึงระบบหลัก — ยังบันทึกครบ (ใคร/IP/เหตุผล) แต่<strong>ไม่ได้อยู่ในลูกโซ่กันแก้ไข</strong> ส่วนอีก 4 กลุ่มเหตุการณ์อยู่ในลูกโซ่ทั้งหมด</p>
+  </div>
+
+  <!-- ===================== 3 ===================== -->
+  <h2><span class="num">3</span>เส้นทางการบันทึก (สำหรับเข้าใจภาพรวม)</h2>
+  <div class="flow">
+<span class="c">ผู้ใช้กดบันทึกค่าตั้งค่า</span> (เช่น แก้อัตราค่าปรับ)
+        │
+        ▼
+  <span class="g">ตรวจสิทธิ์ (role)</span> ──► ไม่มีสิทธิ์ ──► ปฏิเสธ (403)
+        │
+        ▼
+  <span class="g">ตรวจความถูกต้องของค่า</span> ──► ค่าไม่ผ่าน ──► ปฏิเสธ + ข้อความไทย
+        │
+        ▼
+  <span class="y">บันทึกค่าใหม่ลงฐานข้อมูล</span> (มีการดึง "ค่าเดิม" มาเก็บก่อน)
+        │
+        ▼
+  <span class="y">เขียน AUDIT LOG</span>  →  ใคร · action · ค่าเดิม→ค่าใหม่ · เวลา · hash
+        │
+        ▼
+  ปรากฏในหน้า <span class="c">/audit-logs</span> ให้ตรวจย้อนหลัง (กรองตามคน/ประเภท/ช่วงเวลา)
+  </div>
+
+  <!-- ===================== 4 ===================== -->
+  <h2><span class="num">4</span>รายการที่ฝ่ายบัญชีควรตรวจ (Checklist)</h2>
+  <p class="lead">แนะนำให้ใช้เป็นแนวทางตรวจสอบเป็นงวด (รายเดือน/รายไตรมาส) ผ่านหน้า <code>/audit-logs</code>:</p>
+
+  <ul class="checklist">
+    <li>
+      <span class="q">การเปลี่ยนค่าที่กระทบเงิน/ภาษี มีเหตุผลรองรับ</span>
+      <span class="a">กรอง action = <code>SYSTEM_CONFIG_UPDATE</code> ดูรายการที่แตะ อัตราค่าปรับ (late_fee_*), VAT_RATE, การจับคู่บัญชี — ทุกการเปลี่ยนต้องมีผู้อนุมัติ/เอกสารประกอบ</span>
+    </li>
+    <li>
+      <span class="q">คนที่แก้มีสิทธิ์ถูกต้อง</span>
+      <span class="a">ตรวจว่าผู้ทำรายการ (userId) เป็น OWNER / FINANCE_MANAGER / ACCOUNTANT ตามนโยบาย ไม่ใช่ role ที่ไม่ควรแตะการตั้งค่าการเงิน</span>
+    </li>
+    <li>
+      <span class="q">การเปลี่ยนผู้ดูแลเงินสดย่อย สมเหตุสมผล</span>
+      <span class="a">กรอง <code>PETTY_CASH_CUSTODIAN_ASSIGNED</code> — ยืนยันว่าการโยกผู้ดูแลตรงกับการเปลี่ยนตัวจริงในองค์กร (segregation of duties)</span>
+    </li>
+    <li>
+      <span class="q">ลำดับเลขที่เอกสารไม่ถูกรีเซ็ตโดยพลการ</span>
+      <span class="a">กรอง <code>DOC_SEQUENCE_RESET</code> — การรีเซ็ตเลขเอกสารภาษีควรมีน้อยและมีเหตุผล เพราะกระทบความต่อเนื่องเลขที่</span>
+    </li>
+    <li>
+      <span class="q">ความพยายามส่งออกข้อมูลที่ถูกบล็อก</span>
+      <span class="a">กรอง <code>EXPORT_BLOCKED</code> — ดูว่ามีการพยายามดึงข้อมูลออกผิดปกติหรือไม่ (PDPA)</span>
+    </li>
+    <li>
+      <span class="q">ความสมบูรณ์ของลูกโซ่หลักฐาน</span>
+      <span class="a">ขอทีมเทคนิครัน "ตรวจลูกโซ่" (verifyChain) เป็นงวด — ผลต้องเป็น "ลูกโซ่สมบูรณ์" ถ้าพบจุดขาด แปลว่ามีการแก้ไขฐานข้อมูลนอกระบบ ต้องสอบสวน</span>
+    </li>
+  </ul>
+
+  <div class="note tip">
+    <div class="title">💡 ข้อสรุปสำหรับผู้บริหาร/ผู้ตรวจ</div>
+    <p style="margin:0">การตั้งค่าที่กระทบตัวเลขทางบัญชี <strong>ทุกครั้ง</strong>ถูกบันทึกว่าใครแก้ แก้จากอะไรเป็นอะไร และเมื่อไหร่ — พร้อมกลไกกันแก้ไขหลักฐานย้อนหลัง ฝ่ายบัญชีสามารถตรวจย้อนหลังได้เต็มรูปแบบผ่านหน้า <code>/audit-logs</code> โดยกรองตามคน ประเภทเหตุการณ์ และช่วงเวลา</p>
+  </div>
+
+  <div class="sig-row no-print">
+    <div class="sig"><div class="line"></div><div class="lbl">ผู้ตรวจสอบ (ฝ่ายบัญชี)</div></div>
+    <div class="sig"><div class="line"></div><div class="lbl">วันที่</div></div>
+    <div class="sig"><div class="line"></div><div class="lbl">ผู้อนุมัติ</div></div>
+  </div>
+
+  <footer class="doc">
+    <p>เอกสารสรุปเชิงอธิบาย — จัดทำจากการตรวจซอร์สโค้ดจริงในโมดูล <code>apps/api/src/modules/settings</code> และ <code>apps/api/src/modules/audit</code> · ใช้เพื่อการตรวจสอบภายใน · ไม่ใช่ค่าตั้งค่าที่ live</p>
+    <p style="margin-top:6px">อ้างอิงไฟล์: settings-write.service.ts · doc-number-preview.service.ts · petty-cash-custodian.service.ts · export-enabled.guard.ts · audit.service.ts · settings.constants.ts</p>
+  </footer>
+
+</div>
+</body>
+</html>

@@ -1,11 +1,36 @@
 /*
  * Shop v2 design tokens — Tailwind v4 @theme declarations.
- * Registers new utility classes (bg-emerald-500, text-zinc-700, etc.)
- * on top of the existing primary/background/foreground/muted tokens
- * already defined in tailwind.config.ts.
+ * This file is the SINGLE source of truth for colors: Tailwind v4 ignores
+ * tailwind.config.ts (no @config directive), so semantic tokens declared
+ * only there never reach the built CSS — bg-background/text-primary/etc.
+ * silently became no-op classes (transparent sticky header bug).
  */
 
 @theme {
+  /* Semantic core (Minimal Zinc + Emerald) — every bg-/text-/border- token
+     utility the app uses must have its --color-* declared here. */
+  --color-background: hsl(0 0% 100%);
+  --color-foreground: hsl(240 10% 3.9%);
+  --color-muted: hsl(240 4.8% 95.9%);
+  --color-muted-foreground: hsl(240 3.8% 46.1%);
+  --color-border: hsl(240 5.9% 90%);
+  /* Unified to the LINE-green brand emerald (was hsl(160 84% 39%) — a second
+     green shade drifting from --color-emerald-500 used everywhere else). */
+  --color-primary: #1DB446;
+  --color-primary-foreground: hsl(0 0% 100%);
+  --color-card: hsl(0 0% 100%);
+  --color-card-foreground: hsl(240 10% 3.9%);
+  --color-secondary: hsl(240 4.8% 95.9%);
+  --color-secondary-foreground: hsl(240 5.9% 10%);
+  --color-accent: hsl(240 4.8% 95.9%);
+  --color-accent-foreground: hsl(240 5.9% 10%);
+
+  /* CTA — the ONE warm attention color (Von Restorff isolation effect).
+     Reserved for conversion moments only: reserve button, card "เลือกเครื่อง",
+     promo highlights. Everything else stays calm zinc/emerald so this pops. */
+  --color-cta: #EA580C;
+  --color-cta-foreground: #FFFFFF;
+
   /* Emerald scale (brand primary) */
   --color-emerald-50:  #ECFDF5;
   --color-emerald-100: #D1FAE5;
@@ -44,6 +69,8 @@
   /* Orange (condition-c) */
   --color-orange-100: #FFEDD5;
   --color-orange-500: #F97316;
+  --color-orange-600: #EA580C;
+  --color-orange-700: #C2410C;
 
   /* Red (destructive) */
   --color-red-100: #FEE2E2;

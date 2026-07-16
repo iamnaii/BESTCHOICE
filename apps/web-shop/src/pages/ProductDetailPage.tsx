@@ -236,6 +236,7 @@ export default function ProductDetailPage() {
             {/* Desktop primary CTA (mobile uses StickyBottomBar) */}
             <div className="hidden md:flex flex-col gap-3 pt-2">
               <Button
+                variant="cta"
                 size="lg"
                 fullWidth
                 onClick={() => reserveMut.mutate()}
@@ -279,6 +280,7 @@ export default function ProductDetailPage() {
       <StickyBottomBar>
         <div className="flex gap-2">
           <Button
+            variant="cta"
             size="lg"
             className="flex-1"
             onClick={() => reserveMut.mutate()}

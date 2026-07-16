@@ -10,6 +10,9 @@ const buttonVariants = cva(
     variants: {
       variant: {
         primary: 'bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 shadow-sm',
+        // The one warm attention variant — reserve/choose-device CTAs only
+        // (isolation effect: it converts because it is rare on the page).
+        cta: 'bg-cta text-cta-foreground hover:bg-orange-700 active:bg-orange-700 shadow-sm',
         mono: 'bg-muted text-foreground border border-border hover:bg-accent',
         destructive:
           'bg-destructive text-destructive-foreground hover:bg-destructive/90 data-[state=open]:bg-destructive/90',

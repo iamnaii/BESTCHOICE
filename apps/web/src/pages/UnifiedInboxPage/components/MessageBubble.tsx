@@ -7,11 +7,13 @@ import { Check, CheckCheck, Lock, FileText, ImageOff, Download, Copy } from 'luc
 import { linkifyText } from '@/lib/linkify';
 import { toast } from 'sonner';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
+import { ImageLightbox } from '@/components/ImageLightbox';
 
 /** In-chat image with a loading skeleton and a graceful error tile. */
 function ChatImage({ src }: { src: string }) {
   const [loaded, setLoaded] = useState(false);
   const [errored, setErrored] = useState(false);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
   if (errored) {
     return (
@@ -38,9 +40,10 @@ function ChatImage({ src }: { src: string }) {
         loading="lazy"
         onLoad={() => setLoaded(true)}
         onError={() => setErrored(true)}
-        onClick={() => window.open(src, '_blank', 'noopener,noreferrer')}
+        onClick={() => setLightboxSrc(src)}
         title="คลิกเพื่อดูรูปเต็ม"
       />
+      <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
     </div>
   );
 }

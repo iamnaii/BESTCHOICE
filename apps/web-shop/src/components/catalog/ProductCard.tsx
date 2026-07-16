@@ -118,7 +118,7 @@ export function ProductCard({ product: p }: Props) {
           to={to}
           aria-hidden="true"
           tabIndex={-1}
-          className="hidden md:inline-flex h-10 px-6 rounded-full bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 active:bg-primary/80 transition-colors items-center justify-center"
+          className="hidden md:inline-flex h-10 px-6 rounded-full bg-cta text-cta-foreground text-sm font-medium hover:bg-orange-700 active:bg-orange-700 transition-colors items-center justify-center"
         >
           เลือกเครื่อง
         </Link>

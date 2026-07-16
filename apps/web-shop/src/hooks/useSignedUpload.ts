@@ -13,8 +13,10 @@ interface PresignResponse {
 export function useSignedUpload(kind: UploadKind) {
   return useMutation({
     mutationFn: async (file: File): Promise<{ key: string; publicUrl: string }> => {
+      // public-signed-url = anonymous storefront route (bot-defense guarded);
+      // plain signed-url requires a staff JWT and 401s for shoppers.
       const presign = await api
-        .post<PresignResponse>('/api/shop/upload/signed-url', { kind, contentType: file.type })
+        .post<PresignResponse>('/api/shop/upload/public-signed-url', { kind, contentType: file.type })
         .then((r) => r.data);
 
       const put = await fetch(presign.uploadUrl, {

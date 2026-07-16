@@ -9,6 +9,9 @@ import {
   PiggyBank,
   Target,
   ShoppingBag,
+  Smartphone,
+  Repeat,
+  Banknote,
 } from 'lucide-react';
 import ShopLayout from '@/components/layout/ShopLayout';
 import PromotionsStrip from '@/components/shop/PromotionsStrip';
@@ -55,6 +58,30 @@ const WHY_US_ITEMS = [
     icon: <MessageCircle className="size-7" />,
     title: 'ซัพพอร์ตผ่าน LINE',
     description: 'ทีมงานตอบไวในเวลาทำการ ติดตามสถานะสัญญาได้ทุกขั้น',
+  },
+];
+
+const SERVICE_ITEMS = [
+  {
+    icon: <Smartphone className="size-7" />,
+    title: copy.home.serviceBuyTitle,
+    description: copy.home.serviceBuyDescription,
+    cta: copy.home.serviceBuyCta,
+    to: '/products',
+  },
+  {
+    icon: <Repeat className="size-7" />,
+    title: copy.home.serviceTradeInTitle,
+    description: copy.home.serviceTradeInDescription,
+    cta: copy.home.serviceTradeInCta,
+    to: '/trade-in',
+  },
+  {
+    icon: <Banknote className="size-7" />,
+    title: copy.home.serviceBuybackTitle,
+    description: copy.home.serviceBuybackDescription,
+    cta: copy.home.serviceBuybackCta,
+    to: '/buyback',
   },
 ];
 
@@ -123,6 +150,31 @@ export default function HomePage() {
                   </span>
                   <div className="font-semibold text-base">{item.title}</div>
                   <p className="text-sm text-muted-foreground">{item.description}</p>
+                </CardBody>
+              </Card>
+            ))}
+          </div>
+        </Container>
+      </Section>
+
+      <Section padding="md">
+        <Container>
+          <SectionHeader
+            title={copy.home.servicesTitle}
+            description={copy.home.servicesDescription}
+          />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {SERVICE_ITEMS.map((s) => (
+              <Card key={s.to} variant="outlined" className="h-full">
+                <CardBody className="flex h-full flex-col space-y-3 leading-snug">
+                  <span className="inline-flex items-center justify-center size-12 rounded-xl bg-emerald-100 text-emerald-600">
+                    {s.icon}
+                  </span>
+                  <div className="font-semibold text-base">{s.title}</div>
+                  <p className="text-sm text-muted-foreground flex-1">{s.description}</p>
+                  <Button asChild variant="outline" size="md" className="self-start">
+                    <Link to={s.to}>{s.cta}</Link>
+                  </Button>
                 </CardBody>
               </Card>
             ))}

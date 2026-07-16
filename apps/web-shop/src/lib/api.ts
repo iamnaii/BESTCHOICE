@@ -11,9 +11,15 @@ export function setAccessToken(token: string | null) {
 // Dev: Vite proxy rewrites /api → http://localhost:3000 (see vite.config).
 // Prod: Firebase Hosting on shop.bestchoicephone.app rewrites /api/** to the
 // bestchoice-api Cloud Run service (see root firebase.json `shop` target).
+//
+// X-Requested-With is REQUIRED: the API's global CsrfGuard rejects every
+// mutating request (POST/PUT/DELETE) without it — omitting it made every
+// form submit on the storefront 403 (จอง/สมัครผ่อน/trade-in/checkout).
+// Mirrors apps/web/src/lib/api.ts.
 export const api = axios.create({
   baseURL: '',
   withCredentials: true,
+  headers: { 'X-Requested-With': 'XMLHttpRequest' },
 });
 
 api.interceptors.request.use((config) => {

@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ShopUploadController, UploadKind } from './shop-upload.controller';
 import { StorageService } from './storage.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { ShopBotDefenseGuard } from '../shop-bot-defense/shop-bot-defense.guard';
 
 const mockStorageService = {
   getSignedUploadUrl: jest.fn().mockResolvedValue({
@@ -21,6 +22,8 @@ describe('ShopUploadController', () => {
       providers: [{ provide: StorageService, useValue: mockStorageService }],
     })
       .overrideGuard(JwtAuthGuard)
+      .useValue({ canActivate: () => true })
+      .overrideGuard(ShopBotDefenseGuard)
       .useValue({ canActivate: () => true })
       .compile();
 
@@ -130,6 +133,51 @@ describe('ShopUploadController', () => {
           contentType: 'application/pdf',
         }),
       ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('presignPublic (anonymous storefront route)', () => {
+    it.each([
+      [UploadKind.TRADE_IN_PHOTO, 'image/jpeg'],
+      [UploadKind.BUYBACK_PHOTO, 'image/webp'],
+      [UploadKind.BANK_SLIP, 'application/pdf'],
+      [UploadKind.REVIEW_PHOTO, 'image/png'],
+    ])('allows customer-facing kind %s', async (kind, contentType) => {
+      const result = await controller.presignPublic({ kind, contentType });
+      expect(result.uploadUrl).toBe('https://storage.example.com/signed-url');
+      expect(result.key).toContain(kind.toLowerCase());
+    });
+
+    it.each([
+      UploadKind.LETTER_PDF,
+      UploadKind.LETTER_SIGNATURE,
+      UploadKind.MDM_WALLPAPER,
+      UploadKind.VOICE_MEMO,
+    ])('rejects staff-only kind %s with Thai message', async (kind) => {
+      await expect(
+        controller.presignPublic({ kind, contentType: 'application/pdf' }),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockStorageService.getSignedUploadUrl).not.toHaveBeenCalled();
+    });
+
+    it('still enforces the per-kind MIME whitelist on the public route', async () => {
+      await expect(
+        controller.presignPublic({
+          kind: UploadKind.TRADE_IN_PHOTO,
+          contentType: 'application/x-msdownload',
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('guards: staff route uses JwtAuthGuard, public route uses ShopBotDefenseGuard', () => {
+      const staffGuards = Reflect.getMetadata('__guards__', ShopUploadController.prototype.presign);
+      const publicGuards = Reflect.getMetadata(
+        '__guards__',
+        ShopUploadController.prototype.presignPublic,
+      );
+      expect(staffGuards).toContain(JwtAuthGuard);
+      expect(publicGuards).toContain(ShopBotDefenseGuard);
+      expect(publicGuards).not.toContain(JwtAuthGuard);
     });
   });
 });

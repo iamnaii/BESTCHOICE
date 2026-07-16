@@ -1,8 +1,10 @@
 import { BadRequestException, Body, Controller, Post, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { IsEnum, IsNotEmpty, IsString } from 'class-validator';
 import { randomUUID } from 'crypto';
 import { StorageService } from './storage.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { ShopBotDefenseGuard } from '../shop-bot-defense/shop-bot-defense.guard';
 
 export enum UploadKind {
   TRADE_IN_PHOTO = 'TRADE_IN_PHOTO',
@@ -93,13 +95,47 @@ const ALLOWED_MIME_BY_KIND: Record<UploadKind, readonly string[]> = {
   [UploadKind.VOICE_MEMO]: ['audio/webm', 'audio/mp4', 'audio/ogg', 'audio/mpeg'],
 };
 
+/**
+ * Kinds that anonymous shoppers on the web-shop are allowed to presign.
+ * Trade-in / buyback / review submissions and checkout slips all happen
+ * BEFORE the customer has any account — requiring a staff JWT here broke
+ * every photo upload on the storefront. Staff-only kinds (letters, MDM,
+ * voice memos) stay behind the JWT route below.
+ */
+const PUBLIC_UPLOAD_KINDS: readonly UploadKind[] = [
+  UploadKind.TRADE_IN_PHOTO,
+  UploadKind.BUYBACK_PHOTO,
+  UploadKind.BANK_SLIP,
+  UploadKind.REVIEW_PHOTO,
+];
+
 @Controller('shop/upload')
-@UseGuards(JwtAuthGuard)
 export class ShopUploadController {
   constructor(private storage: StorageService) {}
 
+  /** Staff route (apps/web: slips, letters, MDM, voice memos) — unchanged. */
   @Post('signed-url')
+  @UseGuards(JwtAuthGuard)
   async presign(@Body() dto: PresignedUploadDto) {
+    return this.buildPresign(dto);
+  }
+
+  /**
+   * Anonymous storefront route (apps/web-shop) — bot-defense + throttle in
+   * place of JWT, mirroring the rest of the public shop-* family. Only the
+   * customer-facing kinds are allowed through.
+   */
+  @Post('public-signed-url')
+  @UseGuards(ShopBotDefenseGuard)
+  @Throttle({ short: { limit: 10, ttl: 60_000 } })
+  async presignPublic(@Body() dto: PresignedUploadDto) {
+    if (!PUBLIC_UPLOAD_KINDS.includes(dto.kind)) {
+      throw new BadRequestException(`ประเภทไฟล์ ${dto.kind} ไม่รองรับสำหรับการอัปโหลดนี้`);
+    }
+    return this.buildPresign(dto);
+  }
+
+  private async buildPresign(dto: PresignedUploadDto) {
     const allowed = ALLOWED_MIME_BY_KIND[dto.kind];
     if (allowed) {
       // contentType may include codecs (e.g. `audio/webm;codecs=opus`) — match

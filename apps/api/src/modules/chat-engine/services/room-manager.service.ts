@@ -300,7 +300,16 @@ export class RoomManagerService {
         roomId,
         deletedAt: null,
         // WS1: ซ่อน draft เก่าที่ไม่เคยส่งถึงลูกค้า — pipeline ถูกถอดแล้ว
-        NOT: { intent: { startsWith: 'DRAFT:' }, deliveredAt: null },
+        // NULL-safe form: `NOT (intent LIKE 'DRAFT:%' AND deliveredAt IS NULL)`
+        // evaluates to NULL (row dropped) when intent IS NULL under SQL
+        // three-valued logic — and intent IS NULL on every customer/staff
+        // message, so that form blanked the whole inbox. Enumerate the
+        // visible cases instead of negating the hidden one.
+        OR: [
+          { intent: null },
+          { NOT: { intent: { startsWith: 'DRAFT:' } } },
+          { deliveredAt: { not: null } },
+        ],
       },
       orderBy: { createdAt: 'desc' },
       take: limit,

@@ -1,8 +1,8 @@
-import { Link, useNavigate } from 'react-router';
+import { Link, Navigate } from 'react-router';
 import { BadgeCheck, FileText, LogOut, MapPin, Package, PiggyBank } from 'lucide-react';
 import ShopLayout from '@/components/layout/ShopLayout';
 import { useAuth } from '@/hooks/useAuth';
-import { CategoryHero, Card, CardBody, Container, Stack } from '@/components';
+import { CategoryHero, Card, CardBody, Container, LoadingState, Stack } from '@/components';
 
 interface HubItem {
   to?: string;
@@ -12,11 +12,22 @@ interface HubItem {
 }
 
 export default function AccountPage() {
-  const { customer, logout } = useAuth();
-  const nav = useNavigate();
+  const { customer, logout, hydrating } = useAuth();
+  // Wait for sessionStorage hydration — otherwise a hard refresh on /account
+  // bounces a logged-in customer to /login before the token is restored.
+  if (hydrating) {
+    return (
+      <ShopLayout>
+        <Container>
+          <div className="py-10">
+            <LoadingState variant="list" rows={3} />
+          </div>
+        </Container>
+      </ShopLayout>
+    );
+  }
   if (!customer) {
-    nav('/login');
-    return null;
+    return <Navigate to="/login?returnTo=/account" replace />;
   }
 
   const hubs: HubItem[] = [

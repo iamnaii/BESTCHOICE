@@ -1,7 +1,10 @@
-import { IsOptional, IsString, IsInt, Min, Max, IsEnum } from 'class-validator';
+import { IsOptional, IsString, IsInt, Min, Max, MaxLength, IsEnum } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class ListProductsDto {
+  @IsOptional() @IsString() @MaxLength(60)
+  search?: string;
+
   @IsOptional() @Type(() => Number) @IsInt() @Min(1)
   page?: number = 1;
 

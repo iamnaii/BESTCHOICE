@@ -3,6 +3,18 @@
  * eases future i18n. Keys follow <page>.<element> naming.
  */
 
+/**
+ * Single source of truth for the shop's public contact channels.
+ * TODO(owner): replace the phone placeholder with the real branch number —
+ * every page (footer, contact, returns) reads from here.
+ */
+export const shopInfo = {
+  lineHandle: '@bestchoice',
+  lineUrl: 'https://line.me/R/ti/p/@bestchoice',
+  phoneDisplay: '036-XXX-XXX',
+  phoneHref: 'tel:036XXXXXX',
+} as const;
+
 export const copy = {
   common: {
     loading: 'กำลังโหลด...',
@@ -253,8 +265,8 @@ export const copy = {
       'คืนสินค้าภายใน 7 วัน หากเครื่องอยู่ในสภาพเดิม อุปกรณ์ครบ ไม่มีรอยเพิ่ม จะคืนเงินภายใน 3-5 วันทำการ ลูกค้าเป็นผู้ออกค่าจัดส่งคืน',
     contactTitle: 'วิธีติดต่อ',
     contactBody: 'แจ้งคืน/รับประกันผ่าน LINE หรือโทรเข้าสาขา ทีมงานพร้อมช่วยเหลือทุกวัน',
-    lineCta: 'ทักไลน์ @bestchoice',
-    phoneCta: 'โทร 036-XXX-XXX',
+    lineCta: `ทักไลน์ ${shopInfo.lineHandle}`,
+    phoneCta: `โทร ${shopInfo.phoneDisplay}`,
   },
 
   about: {
@@ -290,11 +302,11 @@ export const copy = {
     pageTitle: 'ติดต่อเรา',
     intro: 'ทีมงาน BESTCHOICE ยินดีให้คำปรึกษา ตอบข้อสงสัยเรื่องเครื่อง การผ่อน และบริการต่างๆ',
     lineTitle: 'LINE Official',
-    lineHandle: '@bestchoice',
+    lineHandle: shopInfo.lineHandle,
     lineCta: 'เปิดแชท',
     lineDescription: 'ตอบไวในเวลาทำการ ส่งรูป/คลิปให้ดูเครื่องได้',
     phoneTitle: 'โทรศัพท์',
-    phoneNumber: '036-XXX-XXX',
+    phoneNumber: shopInfo.phoneDisplay,
     phoneCta: 'โทร',
     phoneDescription: 'รับสายทุกวัน 09:00 - 19:00 น.',
     formTitle: 'ฝากข้อความ',
@@ -309,5 +321,28 @@ export const copy = {
     addressTitle: 'ที่อยู่และเวลาทำการ',
     address: 'เลขที่ 99/9 ถนนนารายณ์มหาราช ตำบลทะเลชุบศร อำเภอเมืองลพบุรี จังหวัดลพบุรี 15000',
     hours: 'เปิดทุกวัน 09:00 - 19:00 น.',
+  },
+
+  login: {
+    pageTitle: 'เข้าสู่ระบบ',
+    intro: 'ใช้บัญชี LINE ที่ผูกกับร้านเพื่อดูออเดอร์ แผนออมดาวน์ และทำรายการต่อ',
+    lineCta: 'เข้าสู่ระบบด้วย LINE',
+    disabledTitle: 'การเข้าสู่ระบบยังไม่เปิดใช้งาน',
+    disabledDescription:
+      'ระบบล็อกอินออนไลน์กำลังเตรียมเปิดให้บริการ ระหว่างนี้ทักไลน์ร้านได้เลย ทีมงานช่วยเช็คออเดอร์และสัญญาให้ได้ทุกเรื่อง',
+    notLinkedTitle: 'ยังไม่พบบัญชีลูกค้าที่ผูกกับ LINE นี้',
+    notLinkedDescription:
+      'บัญชี LINE นี้ยังไม่ถูกผูกกับข้อมูลลูกค้าของร้าน ทักไลน์แจ้งทีมงานเพื่อผูกบัญชี แล้วลองเข้าสู่ระบบใหม่อีกครั้ง',
+    errorTitle: 'เข้าสู่ระบบไม่สำเร็จ',
+    errorDescription: 'เกิดข้อผิดพลาดระหว่างเข้าสู่ระบบ ลองใหม่อีกครั้ง หรือทักไลน์แจ้งทีมงาน',
+    loggingIn: 'กำลังเข้าสู่ระบบ...',
+    backToLogin: 'กลับไปหน้าเข้าสู่ระบบ',
+  },
+
+  notFound: {
+    pageTitle: 'ไม่พบหน้านี้',
+    description: 'ลิงก์อาจพิมพ์ผิดหรือหน้าถูกย้ายไปแล้ว ลองกลับไปหน้าแรกหรือดูสินค้าทั้งหมด',
+    homeCta: 'กลับหน้าแรก',
+    productsCta: 'ดูสินค้าทั้งหมด',
   },
 } as const;

@@ -15,7 +15,7 @@ import {
   StickyBottomBarSpacer,
 } from '@/components';
 import ShopLayout from '@/components/layout/ShopLayout';
-import { copy } from '@/lib/copy';
+import { copy, shopInfo } from '@/lib/copy';
 
 export default function ContactPage() {
   const [name, setName] = useState('');
@@ -89,7 +89,7 @@ export default function ContactPage() {
                     </p>
                   </div>
                   <Button asChild variant="outline" size="lg" fullWidth>
-                    <a href="tel:036-XXX-XXX">
+                    <a href={shopInfo.phoneHref}>
                       <Phone className="size-4" aria-hidden="true" />
                       {copy.contact.phoneCta}
                     </a>

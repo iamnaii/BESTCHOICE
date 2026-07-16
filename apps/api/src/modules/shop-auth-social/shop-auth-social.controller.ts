@@ -1,8 +1,9 @@
 import { Body, Controller, HttpException, HttpStatus, Post, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { ShopAuthSocialService } from './shop-auth-social.service';
-import { LineLoginCallbackDto, FacebookLoginCallbackDto, BindPhoneDto } from './dto/social-login.dto';
+import { LineLoginCallbackDto, FacebookLoginCallbackDto } from './dto/social-login.dto';
 import { ShopBotDefenseGuard } from '../shop-bot-defense/shop-bot-defense.guard';
+import { shopLineRedirectUri } from '../../utils/shop-base-url.util';
 
 @Controller('shop/auth')
 @UseGuards(ShopBotDefenseGuard)
@@ -24,11 +25,11 @@ export class ShopAuthSocialController {
     return this.authService.handleFacebookLogin(profile);
   }
 
-  @Post('bind-phone')
-  @Throttle({ short: { limit: 5, ttl: 60_000 } })
-  async bindPhone(@Body() dto: BindPhoneDto) {
-    return this.authService.bindPhoneToSocial(dto);
-  }
+  // SECURITY: the bind-phone route is intentionally NOT exposed.
+  // ShopAuthSocialService.bindPhoneToSocial assumes the phone was already
+  // verified by OTP, but no OTP flow exists yet — a public route here would
+  // let anyone mint a customer token from a phone number alone. Re-add the
+  // route only together with a server-verified OTP step.
 
   private async exchangeLineCode(code: string) {
     const tokenRes = await fetch('https://api.line.me/oauth2/v2.1/token', {
@@ -37,7 +38,9 @@ export class ShopAuthSocialController {
       body: new URLSearchParams({
         grant_type: 'authorization_code',
         code,
-        redirect_uri: process.env.SHOP_BASE_URL + '/auth/line-callback',
+        // Must byte-match the authorize-time redirect_uri the frontend got
+        // from /shop/public-config/auth — both come from the same util.
+        redirect_uri: shopLineRedirectUri() ?? '',
         client_id: process.env.LINE_LOGIN_CHANNEL_ID || '',
         client_secret: process.env.LINE_LOGIN_CHANNEL_SECRET || '',
       }),

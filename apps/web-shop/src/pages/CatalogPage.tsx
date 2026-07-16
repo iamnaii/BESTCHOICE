@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router';
-import { Search, SlidersHorizontal, ChevronRight, ChevronDown } from 'lucide-react';
+import { useInfiniteQuery } from '@tanstack/react-query';
+import { Link, useSearchParams } from 'react-router';
+import { Search, SlidersHorizontal, ChevronRight, ChevronDown, X } from 'lucide-react';
 import ShopLayout from '@/components/layout/ShopLayout';
 import { FilterSidebar, type CatalogFilters } from '@/components/catalog/FilterSidebar';
 import {
@@ -68,7 +68,11 @@ function Pill({ active, onClick, children }: PillProps) {
 }
 
 export default function CatalogPage() {
-  const [filters, setFilters] = useState<CatalogFilters>({});
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [filters, setFilters] = useState<CatalogFilters>(() => ({
+    brand: searchParams.get('brand') ?? undefined,
+    search: searchParams.get('search') ?? undefined,
+  }));
   const [sort, setSort] = useState<string>('popular');
   const [sortOpen, setSortOpen] = useState(false);
   const sortBtnRef = useRef<HTMLButtonElement>(null);
@@ -77,6 +81,30 @@ export default function CatalogPage() {
   useEffect(() => {
     track('ViewContent', { content_type: 'catalog' });
   }, [track]);
+
+  // The header search submits to /products?search=… — also while already on
+  // this page, so keep listening to URL changes after the initial state.
+  useEffect(() => {
+    const brand = searchParams.get('brand') ?? undefined;
+    const search = searchParams.get('search') ?? undefined;
+    setFilters((f) => (f.brand === brand && f.search === search ? f : { ...f, brand, search }));
+  }, [searchParams]);
+
+  // Single write path: keep brand+search mirrored into the URL so header
+  // search, pill clicks, and deep links never fight over the state.
+  function updateFilters(next: CatalogFilters) {
+    setFilters(next);
+    const sp = new URLSearchParams(searchParams);
+    if (next.brand) sp.set('brand', next.brand);
+    else sp.delete('brand');
+    if (next.search) sp.set('search', next.search);
+    else sp.delete('search');
+    setSearchParams(sp, { replace: true });
+  }
+
+  function clearSearch() {
+    updateFilters({ ...filters, search: undefined });
+  }
 
   // Close sort menu on Escape; return focus to the trigger.
   useEffect(() => {
@@ -91,20 +119,27 @@ export default function CatalogPage() {
     return () => document.removeEventListener('keydown', onKey);
   }, [sortOpen]);
 
-  const { data, isLoading, isError, refetch } = useQuery<CatalogResponse>({
-    queryKey: ['shop', 'catalog', filters, sort],
-    queryFn: () => {
-      const params = new URLSearchParams();
-      if (filters.brand) params.set('brand', filters.brand);
-      if (filters.conditionGrade) params.set('conditionGrade', filters.conditionGrade);
-      if (filters.minPrice !== undefined) params.set('minPrice', String(filters.minPrice));
-      if (filters.maxPrice !== undefined) params.set('maxPrice', String(filters.maxPrice));
-      params.set('sort', sort);
-      return api.get(`/api/shop/products?${params}`).then((r) => r.data);
-    },
-  });
+  const { data, isLoading, isError, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } =
+    useInfiniteQuery<CatalogResponse>({
+      queryKey: ['shop', 'catalog', filters, sort],
+      queryFn: ({ pageParam }) => {
+        const params = new URLSearchParams();
+        if (filters.brand) params.set('brand', filters.brand);
+        if (filters.conditionGrade) params.set('conditionGrade', filters.conditionGrade);
+        if (filters.minPrice !== undefined) params.set('minPrice', String(filters.minPrice));
+        if (filters.maxPrice !== undefined) params.set('maxPrice', String(filters.maxPrice));
+        if (filters.search) params.set('search', filters.search);
+        params.set('sort', sort);
+        params.set('page', String(pageParam));
+        return api.get(`/api/shop/products?${params}`).then((r) => r.data);
+      },
+      initialPageParam: 1,
+      getNextPageParam: (last) =>
+        last.page * last.limit < last.total ? last.page + 1 : undefined,
+    });
 
-  const total = data?.total ?? 0;
+  const groups = data?.pages.flatMap((p) => p.data);
+  const total = data?.pages[0]?.total ?? 0;
   const activeBrand = filters.brand ?? 'ทั้งหมด';
   const activeGrade = filters.conditionGrade ?? '';
   const activeSortLabel = SORTS.find((s) => s.v === sort)?.label ?? '';
@@ -169,7 +204,7 @@ export default function CatalogPage() {
                   key={b}
                   active={activeBrand === b}
                   onClick={() =>
-                    setFilters({
+                    updateFilters({
                       ...filters,
                       brand: b === 'ทั้งหมด' ? undefined : b,
                     })
@@ -188,13 +223,24 @@ export default function CatalogPage() {
                   key={g.v || 'all'}
                   active={activeGrade === g.v}
                   onClick={() =>
-                    setFilters({ ...filters, conditionGrade: g.v || undefined })
+                    updateFilters({ ...filters, conditionGrade: g.v || undefined })
                   }
                 >
                   {g.label}
                 </Pill>
               ))}
             </div>
+
+            {filters.search && (
+              <button
+                type="button"
+                onClick={clearSearch}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] rounded-full bg-primary/10 text-primary hover:bg-primary/15 transition-colors leading-snug"
+              >
+                ค้นหา: “{filters.search}”
+                <X className="size-3.5" aria-label="ล้างคำค้นหา" />
+              </button>
+            )}
 
             <div className="flex-1" />
 
@@ -213,7 +259,7 @@ export default function CatalogPage() {
                 <DialogHeader>
                   <DialogTitle>ตัวกรองเพิ่มเติม</DialogTitle>
                 </DialogHeader>
-                <FilterSidebar filters={filters} onChange={setFilters} />
+                <FilterSidebar filters={filters} onChange={updateFilters} />
               </DialogContent>
             </Dialog>
 
@@ -286,7 +332,7 @@ export default function CatalogPage() {
           <StatefulList<ProductGroup>
             isLoading={isLoading}
             isError={isError}
-            data={data?.data}
+            data={groups}
             loadingVariant="card-grid"
             onRetry={() => refetch()}
             emptyState={{
@@ -295,10 +341,20 @@ export default function CatalogPage() {
               description: copy.catalog.emptyDescription,
             }}
             wrapperClassName="grid grid-cols-2 lg:grid-cols-3 gap-x-3 gap-y-6 md:gap-x-6 md:gap-y-10 lg:gap-x-8 lg:gap-y-12"
-            renderItem={(p) => (
-              <ProductCard key={`${p.brand}-${p.model}`} product={p} />
-            )}
+            renderItem={(p) => <ProductCard key={p.id} product={p} />}
           />
+          {hasNextPage && (
+            <div className="flex justify-center mt-10 md:mt-14">
+              <button
+                type="button"
+                disabled={isFetchingNextPage}
+                onClick={() => fetchNextPage()}
+                className="h-11 px-8 rounded-full border border-border text-sm font-medium hover:border-foreground/60 transition-colors disabled:opacity-50 leading-snug"
+              >
+                {isFetchingNextPage ? copy.common.loading : 'โหลดเพิ่ม'}
+              </button>
+            </div>
+          )}
         </div>
       </Container>
     </ShopLayout>

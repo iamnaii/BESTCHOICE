@@ -103,7 +103,7 @@ export default function HomePage() {
               description: 'ลองแวะกลับมาใหม่อีกครั้ง หรือทักไลน์สอบถามรุ่นที่ต้องการ',
             }}
             wrapperClassName="grid grid-cols-2 md:grid-cols-4 gap-4"
-            renderItem={(p) => <ProductCard key={`${p.brand}-${p.model}`} product={p} />}
+            renderItem={(p) => <ProductCard key={p.id} product={p} />}
           />
         </Container>
       </Section>

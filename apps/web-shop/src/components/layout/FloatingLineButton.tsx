@@ -1,6 +1,7 @@
 import { MessageCircle } from 'lucide-react';
+import { shopInfo } from '@/lib/copy';
 
-const LINE_URL = 'https://line.me/R/ti/p/@bestchoice';
+const LINE_URL = shopInfo.lineUrl;
 
 export default function FloatingLineButton() {
   return (

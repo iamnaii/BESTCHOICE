@@ -10,7 +10,7 @@ import {
   TrustStrip,
 } from '@/components';
 import ShopLayout from '@/components/layout/ShopLayout';
-import { copy } from '@/lib/copy';
+import { copy, shopInfo } from '@/lib/copy';
 
 export default function ReturnsPage() {
   return (
@@ -82,7 +82,7 @@ export default function ReturnsPage() {
                       </a>
                     </Button>
                     <Button asChild variant="outline" size="md" fullWidth>
-                      <a href="tel:036-XXX-XXX">
+                      <a href={shopInfo.phoneHref}>
                         <Phone className="size-4" aria-hidden="true" />
                         {copy.returns.phoneCta}
                       </a>

@@ -1,4 +1,5 @@
 import { Link } from 'react-router';
+import { shopInfo } from '@/lib/copy';
 
 export default function ShopFooter() {
   return (
@@ -27,7 +28,11 @@ export default function ShopFooter() {
         </div>
         <div>
           <h3 className="font-semibold mb-2">ติดต่อ</h3>
-          <p className="text-muted-foreground">LINE: @bestchoice<br/>โทร: 0XX-XXX-XXXX</p>
+          <p className="text-muted-foreground">
+            LINE: {shopInfo.lineHandle}
+            <br />
+            โทร: {shopInfo.phoneDisplay}
+          </p>
         </div>
       </div>
       <div className="container mx-auto px-4 mt-6 text-center text-xs text-muted-foreground">

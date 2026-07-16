@@ -2,8 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
 export interface ProductGroup {
+  /** Representative product id — the catalog card links to /products/:id with this. */
+  id: string;
   brand: string;
   model: string;
+  storage?: string;
   minPrice: number;
   stockCount: number;
   thumbnailUrl?: string;
@@ -56,6 +59,7 @@ export class ShopCatalogService {
     minPrice?: number;
     maxPrice?: number;
     sort?: string;
+    search?: string;
   }): Promise<{ data: ProductGroup[]; total: number; page: number; limit: number }> {
     const page = filters.page ?? 1;
     const limit = filters.limit ?? 24;
@@ -69,6 +73,13 @@ export class ShopCatalogService {
     if (filters.conditionGrade) where.conditionGrade = filters.conditionGrade;
     if (filters.minPrice !== undefined) where.costPrice = { ...where.costPrice, gte: filters.minPrice };
     if (filters.maxPrice !== undefined) where.costPrice = { ...where.costPrice, lte: filters.maxPrice };
+    if (filters.search?.trim()) {
+      const q = filters.search.trim();
+      where.OR = [
+        { brand: { contains: q, mode: 'insensitive' } },
+        { model: { contains: q, mode: 'insensitive' } },
+      ];
+    }
 
     const orderBy =
       filters.sort === 'price_asc' ? [{ _min: { costPrice: 'asc' as const } }] :
@@ -76,8 +87,10 @@ export class ShopCatalogService {
       filters.sort === 'newest' ? [{ _max: { createdAt: 'desc' as const } }] :
       [{ _count: { id: 'desc' as const } }]; // order by count of id desc = most stock first
 
+    // Group by brand+model+storage so each card maps 1:1 onto the unit list
+    // that /products/:id renders (getProductDetail filters by the same trio).
     const groups = await this.prisma.product.groupBy({
-      by: ['brand', 'model'],
+      by: ['brand', 'model', 'storage'],
       where,
       _min: { costPrice: true },
       _count: { id: true },
@@ -86,18 +99,21 @@ export class ShopCatalogService {
       take: limit,
     });
 
-    // Fetch first product of each group for thumbnail
+    // Fetch the cheapest product of each group for the card link target + thumbnail
     const data: ProductGroup[] = await Promise.all(groups.map(async (g) => {
       const sample = await this.prisma.product.findFirst({
-        where: { ...where, brand: g.brand, model: g.model },
-        select: { gallery: true, conditionGrade: true },
+        where: { ...where, brand: g.brand, model: g.model, storage: g.storage },
+        orderBy: { costPrice: 'asc' },
+        select: { id: true, gallery: true, conditionGrade: true },
       });
       const minPrice = Number(g._min?.costPrice ?? 0);
       const stockCount = g._count?.id ?? 0;
       const monthly = this.calculateMonthlyPayment(minPrice, DEFAULT_MONTHS, DEFAULT_DOWN_PCT);
       return {
+        id: sample?.id ?? '',
         brand: g.brand,
         model: g.model,
+        storage: g.storage ?? undefined,
         minPrice,
         stockCount,
         thumbnailUrl: sample?.gallery[0],
@@ -106,8 +122,12 @@ export class ShopCatalogService {
       };
     }));
 
-    const total = await this.prisma.product.count({ where });
-    return { data, total, page, limit };
+    // total = number of groups (the UI reads it as "พร้อมจัด X รุ่น"), not unit count
+    const allGroups = await this.prisma.product.groupBy({
+      by: ['brand', 'model', 'storage'],
+      where,
+    });
+    return { data, total: allGroups.length, page, limit };
   }
 
   async getProductDetail(productId: string): Promise<ProductDetail | null> {

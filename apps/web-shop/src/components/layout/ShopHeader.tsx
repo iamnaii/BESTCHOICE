@@ -59,7 +59,7 @@ export default function ShopHeader() {
           type="button"
           aria-label={menuOpen ? 'ปิดเมนู' : 'เปิดเมนู'}
           aria-expanded={menuOpen}
-          className="p-2 hover:bg-muted rounded md:hidden"
+          className="p-2 hover:bg-muted rounded lg:hidden"
           onClick={() => {
             setMenuOpen((o) => !o);
             setSearchOpen(false);
@@ -68,7 +68,7 @@ export default function ShopHeader() {
           {menuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
         </button>
         <Link to="/" className="text-xl font-bold text-primary">BESTCHOICE</Link>
-        <nav className="hidden md:flex gap-4 text-sm">
+        <nav className="hidden lg:flex gap-4 text-sm">
           {NAV_LINKS.map((l) => (
             <Link key={l.to} to={l.to} className="hover:text-primary">
               {l.label}
@@ -125,7 +125,7 @@ export default function ShopHeader() {
       {menuOpen && (
         <nav
           aria-label="เมนูหลัก"
-          className="md:hidden border-t border-border bg-background"
+          className="lg:hidden border-t border-border bg-background"
         >
           <ul className="container mx-auto px-4 py-2">
             {NAV_LINKS.map((l) => (

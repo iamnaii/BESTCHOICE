@@ -37,6 +37,17 @@ export const copy = {
     featuredTitle: 'รุ่นยอดนิยม',
     whyUsTitle: 'ทำไมเลือก BESTCHOICE',
     testimonialsTitle: 'ลูกค้าพูดถึงเรา',
+    servicesTitle: 'บริการของเรา',
+    servicesDescription: 'ครบทุกเรื่องมือถือ ซื้อ ผ่อน แลก หรือขายคืน จบที่ร้านเดียว',
+    serviceBuyTitle: 'ซื้อ/ผ่อนมือถือ',
+    serviceBuyDescription: 'เครื่องผ่านตรวจ 30 จุด ผ่อนได้บัตรประชาชนใบเดียว 3-12 งวด',
+    serviceBuyCta: 'ดูสินค้า',
+    serviceTradeInTitle: 'เก่าแลกใหม่',
+    serviceTradeInDescription: 'ตีราคาเครื่องเก่าสูงสุด ฿15,000 เอาส่วนต่างออกเครื่องใหม่ในร้าน',
+    serviceTradeInCta: 'ประเมินราคา',
+    serviceBuybackTitle: 'รับซื้อมือถือ',
+    serviceBuybackDescription: 'ขายเครื่องรับเงินสดหรือโอนทันที ตีราคาเบื้องต้นออนไลน์ได้เลย',
+    serviceBuybackCta: 'ขายเครื่อง',
   },
 
   catalog: {

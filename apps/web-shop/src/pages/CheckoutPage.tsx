@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { Navigate, useNavigate } from 'react-router';
 import { useCart } from '../hooks/useCart';
 import { useAuth } from '../hooks/useAuth';
 import { useTrackEvent } from '../hooks/useTrackEvent';
@@ -26,7 +26,9 @@ import { copy } from '@/lib/copy';
 export default function CheckoutPage() {
   const nav = useNavigate();
   const { customer, hydrating } = useAuth();
-  const { data: cart } = useCart();
+  // isLoading (= pending && fetching) stays false when the query is disabled
+  // (no reservationId), so the empty-cart redirect below still fires then.
+  const { data: cart, isLoading: cartLoading } = useCart();
   const track = useTrackEvent();
 
   useEffect(() => {
@@ -37,7 +39,11 @@ export default function CheckoutPage() {
   const [address, setAddress] = useState<ShippingAddress | null>(null);
   const [ship, setShip] = useState<{ method: ShippingMethod; fee: number } | null>(null);
 
-  if (hydrating) {
+  // Wait for BOTH auth hydration and the cart fetch — after the LINE-login
+  // round trip (full page reload) the react-query cache is cold, and
+  // redirecting on `!cart` while the fetch is in flight would bounce the
+  // customer to /cart instead of finishing checkout.
+  if (hydrating || cartLoading) {
     return (
       <ShopLayout>
         <Container>
@@ -47,12 +53,10 @@ export default function CheckoutPage() {
     );
   }
   if (!customer) {
-    nav('/login?returnTo=/checkout');
-    return null;
+    return <Navigate to="/login?returnTo=/checkout" replace />;
   }
   if (!cart || cart.items.length === 0) {
-    nav('/cart');
-    return null;
+    return <Navigate to="/cart" replace />;
   }
 
   const item = cart.items[0];

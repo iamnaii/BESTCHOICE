@@ -3,7 +3,14 @@ import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../../prisma/prisma.service';
 
 export interface SocialLoginResult {
-  customer: { id: string; name: string } | null;
+  /** Display-safe profile for the customer's OWN session (frontend AuthCustomer). */
+  customer: {
+    id: string;
+    name: string;
+    phone: string | null;
+    lineId: string | null;
+    loyaltyBalance: number;
+  } | null;
   token: string | null;
   requiresPhoneBinding: boolean;
 }
@@ -41,7 +48,11 @@ export class ShopAuthSocialService {
       return { customer: null, token: null, requiresPhoneBinding: true };
     }
     const token = await this.signToken(customer.id);
-    return { customer: { id: customer.id, name: customer.name }, token, requiresPhoneBinding: false };
+    return {
+      customer: this.toAuthProfile(customer, input.lineUserId),
+      token,
+      requiresPhoneBinding: false,
+    };
   }
 
   async handleFacebookLogin(input: FacebookLoginInput): Promise<SocialLoginResult> {
@@ -52,7 +63,7 @@ export class ShopAuthSocialService {
       return { customer: null, token: null, requiresPhoneBinding: true };
     }
     const token = await this.signToken(customer.id);
-    return { customer: { id: customer.id, name: customer.name }, token, requiresPhoneBinding: false };
+    return { customer: this.toAuthProfile(customer, null), token, requiresPhoneBinding: false };
   }
 
   async bindPhoneToSocial(input: {
@@ -77,7 +88,25 @@ export class ShopAuthSocialService {
       this.logger.log(`LINE binding for customer ${customer.id} — call CustomerLineLink.create separately`);
     }
     const token = await this.signToken(customer.id);
-    return { customer: { id: customer.id, name: customer.name }, token, requiresPhoneBinding: false };
+    return {
+      customer: this.toAuthProfile(customer, input.provider === 'LINE' ? input.providerUserId : null),
+      token,
+      requiresPhoneBinding: false,
+    };
+  }
+
+  /** The customer's own display-safe profile — mirrors the frontend AuthCustomer shape. */
+  private toAuthProfile(
+    customer: { id: string; name: string; phone?: string | null; loyaltyBalance?: number | null },
+    lineId: string | null,
+  ): NonNullable<SocialLoginResult['customer']> {
+    return {
+      id: customer.id,
+      name: customer.name,
+      phone: customer.phone ?? null,
+      lineId,
+      loyaltyBalance: customer.loyaltyBalance ?? 0,
+    };
   }
 
   private async signToken(customerId: string): Promise<string> {

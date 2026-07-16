@@ -22,19 +22,14 @@ describe('ShopCatalogService', () => {
   });
 
   describe('listGroupedByModel', () => {
-    it('returns products grouped by brand+model with min price + stock count', async () => {
+    it('returns products grouped by brand+model+storage with min price + stock count', async () => {
       prisma.product.groupBy.mockResolvedValue([
-        { brand: 'Apple', model: 'iPhone 13', _min: { costPrice: 12500 }, _count: { id: 5 } },
-        { brand: 'Apple', model: 'iPhone 14', _min: { costPrice: 18000 }, _count: { id: 2 } },
-      ]);
-      prisma.product.findMany.mockResolvedValue([
-        { brand: 'Apple', model: 'iPhone 13', gallery: ['url1'], conditionGrade: 'A' },
-        { brand: 'Apple', model: 'iPhone 14', gallery: ['url2'], conditionGrade: 'A' },
+        { brand: 'Apple', model: 'iPhone 13', storage: '128GB', _min: { costPrice: 12500 }, _count: { id: 5 } },
+        { brand: 'Apple', model: 'iPhone 14', storage: '128GB', _min: { costPrice: 18000 }, _count: { id: 2 } },
       ]);
       prisma.product.findFirst.mockResolvedValue(
-        { brand: 'Apple', model: 'iPhone 13', gallery: ['url1'], conditionGrade: 'A' },
+        { id: 'rep-1', gallery: ['url1'], conditionGrade: 'A' },
       );
-      prisma.product.count.mockResolvedValue(7);
 
       const result = await service.listGroupedByModel({ page: 1, limit: 50 });
 
@@ -42,6 +37,56 @@ describe('ShopCatalogService', () => {
       expect(result.data[0].brand).toBe('Apple');
       expect(result.data[0].minPrice).toBe(12500);
       expect(result.data[0].stockCount).toBe(5);
+      expect(result.data[0].storage).toBe('128GB');
+      // representative id — the catalog card links to /products/:id with it
+      expect(result.data[0].id).toBe('rep-1');
+      expect(prisma.product.groupBy).toHaveBeenCalledWith(
+        expect.objectContaining({ by: ['brand', 'model', 'storage'] }),
+      );
+      // total = number of groups, not unit rows (UI shows "พร้อมจัด X รุ่น")
+      expect(result.total).toBe(2);
+    });
+
+    it('picks the cheapest unit as the representative card target', async () => {
+      prisma.product.groupBy.mockResolvedValue([
+        { brand: 'Apple', model: 'iPhone 13', storage: null, _min: { costPrice: 12500 }, _count: { id: 3 } },
+      ]);
+      prisma.product.findFirst.mockResolvedValue({ id: 'cheapest', gallery: [], conditionGrade: 'B' });
+
+      await service.listGroupedByModel({});
+
+      expect(prisma.product.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderBy: { costPrice: 'asc' },
+          select: { id: true, gallery: true, conditionGrade: true },
+        }),
+      );
+    });
+
+    it('filters by search text on brand OR model (case-insensitive)', async () => {
+      prisma.product.groupBy.mockResolvedValue([]);
+
+      await service.listGroupedByModel({ search: ' iphone 15 ' });
+
+      expect(prisma.product.groupBy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            OR: [
+              { brand: { contains: 'iphone 15', mode: 'insensitive' } },
+              { model: { contains: 'iphone 15', mode: 'insensitive' } },
+            ],
+          }),
+        }),
+      );
+    });
+
+    it('ignores a blank search string', async () => {
+      prisma.product.groupBy.mockResolvedValue([]);
+
+      await service.listGroupedByModel({ search: '   ' });
+
+      const where = prisma.product.groupBy.mock.calls[0][0].where;
+      expect(where.OR).toBeUndefined();
     });
   });
 

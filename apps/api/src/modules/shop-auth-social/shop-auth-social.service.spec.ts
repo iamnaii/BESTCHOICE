@@ -38,6 +38,29 @@ describe('ShopAuthSocialService', () => {
       expect(result.token).toBe('mock-jwt');
     });
 
+    it('returns the display-safe profile (phone/lineId/loyaltyBalance) for the session', async () => {
+      prisma.customerLineLink.findFirst.mockResolvedValue({ customerId: 'c1' });
+      prisma.customer.findFirst.mockResolvedValue({
+        id: 'c1',
+        name: 'Existing',
+        phone: '0812345678',
+        loyaltyBalance: 500,
+      });
+
+      const result = await service.handleLineLogin({
+        lineUserId: 'U-line-1',
+        displayName: 'Beam',
+      });
+
+      expect(result.customer).toEqual({
+        id: 'c1',
+        name: 'Existing',
+        phone: '0812345678',
+        lineId: 'U-line-1',
+        loyaltyBalance: 500,
+      });
+    });
+
     it('returns null customer if no link found (need OTP to bind phone)', async () => {
       prisma.customerLineLink.findFirst.mockResolvedValue(null);
 

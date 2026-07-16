@@ -3,6 +3,7 @@ export interface CatalogFilters {
   conditionGrade?: string;
   minPrice?: number;
   maxPrice?: number;
+  search?: string;
 }
 
 export function FilterSidebar({

@@ -32,6 +32,9 @@ import SavingPlanLandingPage from './pages/saving-plan/SavingPlanLandingPage';
 import SavingPlanCreatePage from './pages/saving-plan/SavingPlanCreatePage';
 import SavingPlanDetailPage from './pages/saving-plan/SavingPlanDetailPage';
 import SavingPlansPage from './pages/account/SavingPlansPage';
+import LoginPage from './pages/auth/LoginPage';
+import LineCallbackPage from './pages/auth/LineCallbackPage';
+import NotFoundPage from './pages/NotFoundPage';
 
 function RouteTracker() {
   const location = useLocation();
@@ -77,6 +80,9 @@ export default function App() {
         <Route path="/saving-plan/create" element={<SavingPlanCreatePage />} />
         <Route path="/saving-plan/:id" element={<SavingPlanDetailPage />} />
         <Route path="/account/saving-plans" element={<SavingPlansPage />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/auth/line-callback" element={<LineCallbackPage />} />
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </>
   );

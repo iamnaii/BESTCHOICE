@@ -2,8 +2,11 @@ import { Link } from 'react-router';
 import { cn } from '@/lib/utils';
 
 export interface ProductGroup {
+  /** Representative product id — the card links to /products/:id (unit picker). */
+  id: string;
   brand: string;
   model: string;
+  storage?: string;
   minPrice: number;
   stockCount: number;
   thumbnailUrl?: string;
@@ -29,7 +32,9 @@ function gradeChip(g: string) {
 }
 
 export function ProductCard({ product: p }: Props) {
-  const to = `/products?brand=${encodeURIComponent(p.brand)}&model=${encodeURIComponent(p.model)}`;
+  // Unit-picker detail page. Fallback to the catalog root only if the API
+  // ever returns a group without a representative id (deploy skew).
+  const to = p.id ? `/products/${p.id}` : '/products';
   const grades = p.conditionGrades ?? [];
 
   return (
@@ -62,6 +67,7 @@ export function ProductCard({ product: p }: Props) {
           </p>
           <h3 className="font-display text-base md:text-xl lg:text-2xl font-semibold text-foreground tracking-tight line-clamp-1">
             {p.model}
+            {p.storage ? ` ${p.storage}` : ''}
           </h3>
           {/* Installment-first audience: lead with the monthly figure, full
              price is the secondary fact. Falls back to price-first when the

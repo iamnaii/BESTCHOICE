@@ -203,15 +203,23 @@ describe('RoomManagerService', () => {
   });
 
   describe('getRecentMessages', () => {
-    it('excludes undelivered legacy drafts from recent messages', async () => {
+    it('excludes undelivered legacy drafts without dropping NULL-intent messages', async () => {
       prisma.chatMessage.findMany.mockResolvedValue([]);
 
       await service.getRecentMessages('r1', 20);
 
+      // NULL-safe form — a bare NOT{intent startsWith, deliveredAt null} is
+      // NULL under SQL 3VL for intent IS NULL rows (every customer/staff
+      // message) and blanked the inbox. Real-DB semantics are covered by
+      // room-manager.recent-messages.db.spec.ts.
       expect(prisma.chatMessage.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
-            NOT: { intent: { startsWith: 'DRAFT:' }, deliveredAt: null },
+            OR: [
+              { intent: null },
+              { NOT: { intent: { startsWith: 'DRAFT:' } } },
+              { deliveredAt: { not: null } },
+            ],
           }),
         }),
       );

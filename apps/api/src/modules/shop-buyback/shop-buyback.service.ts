@@ -1,9 +1,4 @@
-import {
-  BadRequestException,
-  Injectable,
-  Logger,
-  NotFoundException,
-} from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LineOaService } from '../line-oa/line-oa.service';
@@ -16,7 +11,13 @@ export function iphoneModelRank(model: string): number | null {
   const m = /iphone\s+(\d+)/i.exec(model);
   if (!m) return null;
   const lower = model.toLowerCase();
-  const variant = lower.includes('pro max') ? 3 : lower.includes('pro') ? 2 : lower.includes('plus') ? 1 : 0;
+  const variant = lower.includes('pro max')
+    ? 3
+    : lower.includes('pro')
+      ? 2
+      : lower.includes('plus')
+        ? 1
+        : 0;
   return Number(m[1]) * 10 + variant;
 }
 
@@ -131,17 +132,22 @@ export class ShopBuybackService {
       this.logger.warn('Buyback questionnaire ว่าง — เสนอ maxPrice ตรงๆ');
     }
 
+    const questionKeys = answers.map((a) => a.questionKey);
+    if (new Set(questionKeys).size !== questionKeys.length) {
+      throw new BadRequestException('คำตอบซ้ำกัน กรุณาลองใหม่');
+    }
+
     const byKey = new Map(answers.map((a) => [a.questionKey, a.choiceIds]));
     const selections: DeductSelection[] = [];
     const conditionAnswers: unknown[] = [];
 
     for (const q of questions) {
       const chosenIds = byKey.get(q.key) ?? [];
-      if (q.selectType === 'SINGLE' && chosenIds.length !== 1) {
+      const uniqueIds = [...new Set(chosenIds)];
+      if (q.selectType === 'SINGLE' && uniqueIds.length !== 1) {
         throw new BadRequestException('กรุณาตอบแบบประเมินให้ครบทุกข้อ');
       }
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const chosen = chosenIds.map((id: string) => {
+      const chosen = uniqueIds.map((id: string) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const c = q.choices.find((x: any) => x.id === id);
         if (!c) throw new BadRequestException('กรุณาตอบแบบประเมินให้ครบทุกข้อ');

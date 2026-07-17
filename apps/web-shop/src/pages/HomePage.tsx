@@ -33,6 +33,7 @@ import {
 } from '@/components';
 import { api } from '@/lib/api';
 import { copy, shopInfo, lineOaMessageUrl } from '@/lib/copy';
+import { usePageMeta } from '@/hooks/usePageMeta';
 import type { Review } from '@/types/review';
 
 interface CatalogResponse {
@@ -88,6 +89,11 @@ const SERVICE_ITEMS = [
 ];
 
 export default function HomePage() {
+  usePageMeta(
+    undefined,
+    'iPhone มือสองคุณภาพ ผ่อนได้บัตรประชาชนใบเดียว ตรวจ 30 จุด รับประกันร้าน 30 วัน ร้านมือถือลพบุรี',
+  );
+
   const { data, isLoading, isError, refetch } = useQuery<CatalogResponse>({
     queryKey: ['shop', 'home', 'featured'],
     queryFn: () => api.get('/api/shop/products?limit=8&sort=popular').then((r) => r.data),

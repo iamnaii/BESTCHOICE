@@ -2,8 +2,14 @@ import { Banknote, ScanSearch, Wallet } from 'lucide-react';
 import { copy } from '@/lib/copy';
 import ShopLayout from '@/components/layout/ShopLayout';
 import { LandingHero } from '@/components';
+import { usePageMeta } from '@/hooks/usePageMeta';
 
 export default function BuybackLandingPage() {
+  usePageMeta(
+    copy.buyback.pageTitle,
+    'รับซื้อมือถือ iPhone มือสอง ร้านมือถือลพบุรี จ่ายเงินสดหรือโอนทันที ตีราคาเบื้องต้นออนไลน์ได้เลย',
+  );
+
   return (
     <ShopLayout>
       <LandingHero

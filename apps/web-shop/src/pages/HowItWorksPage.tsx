@@ -21,6 +21,7 @@ import {
 } from '@/components';
 import ShopLayout from '@/components/layout/ShopLayout';
 import { copy } from '@/lib/copy';
+import { usePageMeta } from '@/hooks/usePageMeta';
 
 interface Step {
   number: number;
@@ -82,6 +83,11 @@ const FAQS: FaqItem[] = [
 ];
 
 export default function HowItWorksPage() {
+  usePageMeta(
+    copy.howItWorks.pageTitle,
+    'วิธีผ่อน iPhone มือสองบัตรประชาชนใบเดียว 6 ขั้นตอนง่ายๆ ไม่ต้องใช้บัตรเครดิต ร้านมือถือลพบุรี',
+  );
+
   return (
     <ShopLayout>
       <CategoryHero

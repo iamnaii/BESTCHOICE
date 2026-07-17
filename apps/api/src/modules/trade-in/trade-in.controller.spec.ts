@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import { TradeInController } from './trade-in.controller';
 import { TradeInService } from './trade-in.service';
 import { PiiAuditService } from '../pii/pii-audit.service';
+import { BuybackQuestionAdminService } from './services/buyback-question-admin.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
@@ -25,6 +26,7 @@ describe('TradeInController PII (Phase 5)', () => {
       providers: [
         { provide: TradeInService, useValue: service },
         { provide: PiiAuditService, useValue: piiAudit },
+        { provide: BuybackQuestionAdminService, useValue: { list: jest.fn() } },
         // D1.3.3.1 — ExportEnabledGuard (applied on export endpoints) depends
         // on PrismaService. Stub returns no flag row so the guard defaults to
         // allow; tests don't exercise export endpoints, but Nest still needs

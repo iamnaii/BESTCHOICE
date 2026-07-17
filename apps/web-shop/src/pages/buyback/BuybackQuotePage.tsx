@@ -308,6 +308,18 @@ export default function BuybackQuotePage() {
                   ราคาประเมินเบื้องต้น ~฿{preview.price.toLocaleString()} — กด "ดูราคารับซื้อ" เพื่อยืนยัน
                 </div>
               )}
+              <div className="hidden md:block">
+                <Button
+                  onClick={() => quoteMutation.mutate()}
+                  disabled={!deviceReady || !preview?.complete || quoteMutation.isPending || !!quote}
+                  loading={quoteMutation.isPending}
+                  variant="primary"
+                  size="lg"
+                  fullWidth
+                >
+                  {quote ? 'เลื่อนลงเพื่อยืนยันขาย' : preview?.complete ? 'ดูราคารับซื้อ' : 'ตอบแบบประเมินให้ครบก่อน'}
+                </Button>
+              </div>
             </CardBody>
           </Card>
         )}

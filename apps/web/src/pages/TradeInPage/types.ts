@@ -26,6 +26,25 @@ export interface TradeIn {
   branch?: { id: string; name: string } | null;
   appraisedBy?: { id: string; name: string } | null;
   idCardVerifiedBy?: { id: string; name: string } | null;
+
+  // Instant-quote (buyback ออนไลน์)
+  batteryHealth?: number | null;
+  photoUrls?: string[];
+  customerNotes?: string | null;
+  preferredVisitDate?: string | null;
+  conditionAnswers?: Array<{
+    questionKey: string;
+    title: string;
+    selectType: 'SINGLE' | 'MULTI';
+    choices: Array<{ choiceId: string; label: string; deductType: 'PERCENT' | 'FIXED'; deductValue: string }>;
+  }> | null;
+  quoteBreakdown?: {
+    maxPrice: string;
+    fixedTotal: string;
+    pctTotal: string;
+    price: string;
+    lines: Array<{ label: string; deductType: 'PERCENT' | 'FIXED'; deductValue: string; amount: string }>;
+  } | null;
 }
 
 export interface TradeInsResponse {

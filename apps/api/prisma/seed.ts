@@ -5,6 +5,7 @@ import * as path from 'path';
 import { seedFinanceCoa } from './seed-coa-finance';
 import { seedShopCoa } from './seed-coa-shop';
 import { seedTradeInValuations } from './seeds/trade-in-valuations';
+import { seedBuybackQuestions } from './seeds/buyback-questions';
 import { seedKnowledgeBase } from './seeds/knowledge-base';
 import { seedCollectionsFoundation } from './seeds/collections-foundation.seed';
 
@@ -1552,6 +1553,11 @@ async function main() {
   // TRADE-IN VALUATION TABLE (ตารางราคารับซื้ออ้างอิง)
   // ============================================================
   await seedTradeInValuations(prisma);
+
+  // ============================================================
+  // BUYBACK QUESTIONNAIRE (แบบประเมินเครื่องซ้ำ)
+  // ============================================================
+  await seedBuybackQuestions(prisma);
 
   // ============================================================
   // KNOWLEDGE BASE (FAQ สำหรับ Finance Bot)

@@ -66,7 +66,7 @@ const TERMINAL_STATES: Record<string, { title: string; description: string }> = 
 };
 
 const STATUS_HINTS: Record<string, string> = {
-  SUBMITTED: 'ทีมงานจะติดต่อกลับภายใน 2 ชั่วโมง (เวลาทำการ 09:00–20:00)',
+  SUBMITTED: 'ทีมงานจะติดต่อกลับภายใน 2 ชั่วโมง (เวลาทำการ 10:00–19:00)',
   SCHEDULED: 'เจอกันตามวันเวลาที่นัดไว้ — เตรียมบัตรประชาชนตัวจริงมาด้วย',
   IN_REVIEW: 'กำลังตรวจสอบข้อมูล แจ้งผลภายใน 24 ชั่วโมง',
   APPROVED: 'อนุมัติแล้ว! ทีมงานจะนัดทำสัญญาและรับเครื่องที่สาขา',

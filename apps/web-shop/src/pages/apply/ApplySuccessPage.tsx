@@ -14,7 +14,7 @@ import {
 const NEXT_STEPS: Array<{ title: string; description: string }> = [
   {
     title: 'ทีมงานติดต่อกลับ',
-    description: 'ภายใน 2 ชั่วโมง (เวลาทำการ 09:00–20:00) ทาง LINE/โทรศัพท์',
+    description: 'ภายใน 2 ชั่วโมง (เวลาทำการ 10:00–19:00) ทาง LINE/โทรศัพท์',
   },
   {
     title: 'เตรียมเอกสาร',

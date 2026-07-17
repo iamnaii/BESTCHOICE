@@ -1,3 +1,4 @@
+import { NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { paginatedResponse } from '../../../common/helpers/pagination.helper';
 import { UpsertValuationDto } from '../dto/trade-in.dto';
@@ -107,6 +108,21 @@ export class TradeInValuationService {
         basePrice: new Prisma.Decimal(dto.basePrice),
         note: dto.note,
       },
+    });
+  }
+
+  /** Soft-delete a valuation record (admin use) — spec §8.1 เพิ่ม/ลบรุ่น */
+  async deleteValuation(id: string) {
+    const db = this.prisma as unknown as PrismaAny;
+    const existing = await db.tradeInValuation.findFirst({
+      where: { id, deletedAt: null },
+    });
+    if (!existing) {
+      throw new NotFoundException('ไม่พบรายการราคา');
+    }
+    return db.tradeInValuation.update({
+      where: { id },
+      data: { deletedAt: new Date() },
     });
   }
 

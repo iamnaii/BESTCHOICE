@@ -28,6 +28,7 @@ describe('TradeInController routing', () => {
     lookupValuation: jest.fn().mockResolvedValue({ found: false }),
     getValuationBrands: jest.fn().mockResolvedValue([]),
     getValuationModels: jest.fn().mockResolvedValue([]),
+    deleteValuation: jest.fn().mockResolvedValue({ id: 'some-id' }),
   };
   const adminService = { list: jest.fn().mockResolvedValue({ questions: [] }) };
 
@@ -60,6 +61,12 @@ describe('TradeInController routing', () => {
     await request(app.getHttpServer()).get(path).expect(200);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect((tradeInService as any)[method]).toHaveBeenCalled();
+    expect(tradeInService.findOne).not.toHaveBeenCalled();
+  });
+
+  it('DELETE /trade-ins/valuations/:id → deleteValuation ไม่โดน findOne กลืน', async () => {
+    await request(app.getHttpServer()).delete('/trade-ins/valuations/some-id').expect(200);
+    expect(tradeInService.deleteValuation).toHaveBeenCalledWith('some-id');
     expect(tradeInService.findOne).not.toHaveBeenCalled();
   });
 

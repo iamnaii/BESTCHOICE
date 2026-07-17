@@ -6,6 +6,7 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 
 interface ValuationRow {
   id: string;
@@ -37,6 +38,7 @@ export default function ValuationsTab() {
   const [page, setPage] = useState(1);
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [form, setForm] = useState(EMPTY_FORM);
+  const [rowToDelete, setRowToDelete] = useState<ValuationRow | null>(null);
 
   // รีเซ็ตหน้ากลับ 1 เมื่อคำค้นหา (หลัง debounce) เปลี่ยน
   useEffect(() => {
@@ -77,6 +79,15 @@ export default function ValuationsTab() {
       }
     },
     // เก็บ draft ที่พิมพ์ไว้ (edits/form) ไว้เหมือนเดิมถ้าบันทึกไม่สำเร็จ — ไม่ล้างทิ้ง
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const deleteValuation = useMutation({
+    mutationFn: (id: string) => api.delete(`/trade-ins/valuations/${id}`),
+    onSuccess: () => {
+      toast.success('ลบราคาแล้ว');
+      queryClient.invalidateQueries({ queryKey: ['trade-in-valuations'] });
+    },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
@@ -122,7 +133,7 @@ export default function ValuationsTab() {
                 <th className="p-2">ความจุ</th>
                 <th className="p-2">เกรด</th>
                 <th className="p-2">ราคา (บาท)</th>
-                <th className="p-2 w-24"></th>
+                <th className="p-2 w-36"></th>
               </tr>
             </thead>
             <tbody>
@@ -140,12 +151,20 @@ export default function ValuationsTab() {
                       onChange={(e) => setEdits((prev) => ({ ...prev, [row.id]: e.target.value }))}
                     />
                   </td>
-                  <td className="p-2">
+                  <td className="p-2 text-right">
                     {edits[row.id] !== undefined && (
                       <Button size="sm" onClick={() => saveRow(row)} disabled={upsert.isPending}>
                         บันทึก
                       </Button>
                     )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="ml-1 text-destructive"
+                      onClick={() => setRowToDelete(row)}
+                    >
+                      ลบ
+                    </Button>
                   </td>
                 </tr>
               ))}
@@ -199,6 +218,23 @@ export default function ValuationsTab() {
           เพิ่ม
         </Button>
       </div>
+
+      <ConfirmDialog
+        open={rowToDelete !== null}
+        onOpenChange={(o) => !o && setRowToDelete(null)}
+        title="ลบราคารุ่นนี้"
+        description={
+          rowToDelete
+            ? `ลบราคารุ่นนี้? รุ่นที่ไม่มีราคา condition A จะหายจากหน้ารับซื้อออนไลน์ทันที (${rowToDelete.brand} ${rowToDelete.model} ${rowToDelete.storage} เกรด ${rowToDelete.condition})`
+            : ''
+        }
+        variant="destructive"
+        confirmLabel="ลบ"
+        loading={deleteValuation.isPending}
+        onConfirm={() => {
+          if (rowToDelete) deleteValuation.mutate(rowToDelete.id);
+        }}
+      />
     </div>
   );
 }

@@ -5,16 +5,58 @@ export type BuybackStatus =
   | 'COMPLETED'
   | 'REJECTED';
 
-export interface BuybackEstimate {
-  min: number;
-  max: number;
+export interface BuybackCatalog {
+  models: Array<{
+    model: string;
+    storages: Array<{ storage: string; maxPrice: string }>;
+  }>;
+}
+
+export interface BuybackChoice {
+  id: string;
+  label: string;
+  deductType: 'PERCENT' | 'FIXED';
+  deductValue: string;
+}
+
+export interface BuybackQuestion {
+  id: string;
+  key: string;
+  title: string;
+  helpText: string | null;
+  selectType: 'SINGLE' | 'MULTI';
+  choices: BuybackChoice[];
+}
+
+export interface BuybackBreakdownLine {
+  label: string;
+  deductType: 'PERCENT' | 'FIXED';
+  deductValue: string;
+  amount: string;
+}
+
+export interface BuybackBreakdown {
+  maxPrice: string;
+  fixedTotal: string;
+  pctTotal: string;
+  price: string;
+  lines: BuybackBreakdownLine[];
+}
+
+export interface BuybackQuoteResult {
   available: boolean;
+  model?: string;
+  storage?: string;
+  price?: string;
+  maxPrice?: string;
+  grade?: 'A' | 'B' | 'C' | 'D';
+  breakdown?: BuybackBreakdown;
 }
 
 export interface BuybackSubmitResponse {
   id: string;
   status: BuybackStatus;
-  etaHours: number;
+  price: string;
 }
 
 export interface Buyback {
@@ -22,17 +64,15 @@ export interface Buyback {
   status: BuybackStatus;
   deviceBrand: string;
   deviceModel: string;
-  deviceStorage: string;
-  deviceCondition: 'A' | 'B' | 'C';
-  batteryHealth: number;
-  imei?: string | null;
+  deviceStorage: string | null;
+  deviceCondition: 'A' | 'B' | 'C' | 'D' | null;
+  batteryHealth: number | null;
   notes?: string | null;
   photoUrls: string[];
+  estimatedValue?: number | string | null;
+  quoteBreakdown?: BuybackBreakdown | null;
+  preferredVisitDate?: string | null;
   offeredPrice?: number | string | null;
   agreedPrice?: number | string | null;
-  sellerName: string;
-  sellerPhone: string;
-  lineUserId?: string | null;
   createdAt: string;
-  updatedAt: string;
 }

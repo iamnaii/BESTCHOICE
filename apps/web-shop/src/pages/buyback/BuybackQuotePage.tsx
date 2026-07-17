@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { CheckCircle2, ChevronDown, MessageCircle } from 'lucide-react';
 import { api } from '@/lib/api';
 import { copy } from '@/lib/copy';
+import { useTrackEvent } from '@/hooks/useTrackEvent';
 import ShopLayout from '@/components/layout/ShopLayout';
 import {
   Button,
@@ -56,6 +57,7 @@ function previewPrice(
 export default function BuybackQuotePage() {
   usePageMeta(copy.buyback.pageTitle, copy.buyback.description);
   const nav = useNavigate();
+  const track = useTrackEvent();
 
   const [model, setModel] = useState('');
   const [storage, setStorage] = useState('');
@@ -122,6 +124,12 @@ export default function BuybackQuotePage() {
         })
         .then((r) => r.data),
     onSuccess: (data) => {
+      track('Lead', {
+        type: 'buyback',
+        model,
+        storage,
+        grade: quote?.grade,
+      });
       toast.success(copy.buyback.submitSuccess);
       nav(`/buyback/${data.id}`);
     },

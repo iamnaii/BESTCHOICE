@@ -139,7 +139,6 @@ describe('ShopUploadController', () => {
   describe('presignPublic (anonymous storefront route)', () => {
     it.each([
       [UploadKind.TRADE_IN_PHOTO, 'image/jpeg'],
-      [UploadKind.BUYBACK_PHOTO, 'image/webp'],
       [UploadKind.BANK_SLIP, 'application/pdf'],
       [UploadKind.REVIEW_PHOTO, 'image/png'],
     ])('allows customer-facing kind %s', async (kind, contentType) => {
@@ -149,6 +148,7 @@ describe('ShopUploadController', () => {
     });
 
     it.each([
+      UploadKind.BUYBACK_PHOTO,
       UploadKind.LETTER_PDF,
       UploadKind.LETTER_SIGNATURE,
       UploadKind.MDM_WALLPAPER,

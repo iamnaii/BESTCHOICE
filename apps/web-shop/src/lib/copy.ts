@@ -277,8 +277,8 @@ export const copy = {
     thailandPostEta: '2-3 วันทำการ',
     thailandPostDescription: 'ส่งถึงทุกพื้นที่ แม้พื้นที่ห่างไกล',
     branchTitle: 'ที่ตั้งสาขาลพบุรี',
-    branchAddress: 'เลขที่ 99/9 ถนนนารายณ์มหาราช ตำบลทะเลชุบศร อำเภอเมืองลพบุรี จังหวัดลพบุรี 15000',
-    branchHours: 'เปิดทุกวัน 09:00 - 19:00 น.',
+    branchAddress: shopInfo.address,
+    branchHours: shopInfo.hours,
   },
 
   returns: {

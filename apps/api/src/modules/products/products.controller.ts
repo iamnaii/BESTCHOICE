@@ -3,8 +3,10 @@ import { ApiTags, ApiBearerAuth , ApiOperation} from '@nestjs/swagger';
 import { ProductsService } from './products.service';
 import { ProductsPricingService } from './products-pricing.service';
 import { ProductsStockService } from './products-stock.service';
+import { ProductsOnlineListingService } from './products-online-listing.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
+import { UpdateOnlineListingDto, PromoteListingPhotoDto } from './dto/online-listing.dto';
 import { CreateProductPriceDto, UpdateProductPriceDto } from './dto/product-price.dto';
 import { TransferProductDto, DispatchTransferDto, BulkTransferDto } from './dto/transfer-product.dto';
 import { ReserveProductDto } from './dto/reserve-product.dto';
@@ -25,6 +27,7 @@ export class ProductsController {
     private productsService: ProductsService,
     private productsPricingService: ProductsPricingService,
     private productsStockService: ProductsStockService,
+    private onlineListing: ProductsOnlineListingService,
   ) {}
 
   @Get()
@@ -153,6 +156,18 @@ export class ProductsController {
   @Roles('OWNER', 'BRANCH_MANAGER')
   update(@Param('id') id: string, @Body() dto: UpdateProductDto) {
     return this.productsService.update(id, dto);
+  }
+
+  @Patch(':id/online-listing')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  updateOnlineListing(@Param('id') id: string, @Body() dto: UpdateOnlineListingDto) {
+    return this.onlineListing.updateOnlineListing(id, dto);
+  }
+
+  @Post(':id/online-listing/photos')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  promoteListingPhoto(@Param('id') id: string, @Body() dto: PromoteListingPhotoDto) {
+    return this.onlineListing.promotePhoto(id, dto);
   }
 
   @Delete(':id')

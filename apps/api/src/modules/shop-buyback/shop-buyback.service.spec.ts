@@ -1,124 +1,180 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { ShopBuybackService } from './shop-buyback.service';
-import { TradeInIntakeService } from '../shop-trade-in/trade-in-intake.service';
-import { PrismaService } from '../../prisma/prisma.service';
-import { LineOaService } from '../line-oa/line-oa.service';
+import { BuybackPricingService } from './buyback-pricing.service';
 
-/**
- * Characterization tests — ShopBuybackService had ZERO coverage. Locks the
- * buyback margin (0.80/0.95), the BUYBACK intake flow, dedup/valuation guards,
- * non-fatal LINE flex, and getStatus — before the shared TradeInIntakeService
- * extraction (Wave-4 fold of shop-buyback ≈ shop-trade-in).
- */
-describe('ShopBuybackService', () => {
-  let service: ShopBuybackService;
+const D = (n: number) => new Prisma.Decimal(n);
+
+/** DB fixture: 1 คำถาม SINGLE + 1 คำถาม MULTI + valuation iPhone 15 128GB = 14,500 */
+const QUESTIONS = [
+  {
+    id: 'q1', key: 'warranty', title: 'ประกัน Apple', helpText: null,
+    selectType: 'SINGLE', sortOrder: 0, isActive: true, deletedAt: null,
+    choices: [
+      { id: 'c10', label: 'เหลือ >4 เดือน', deductType: 'FIXED', deductValue: D(0), sortOrder: 0, isActive: true, deletedAt: null },
+      { id: 'c11', label: 'หมดประกัน', deductType: 'FIXED', deductValue: D(500), sortOrder: 1, isActive: true, deletedAt: null },
+    ],
+  },
+  {
+    id: 'q2', key: 'functional-issues', title: 'ปัญหาการใช้งาน', helpText: null,
+    selectType: 'MULTI', sortOrder: 1, isActive: true, deletedAt: null,
+    choices: [
+      { id: 'c20', label: 'ลำโพง', deductType: 'PERCENT', deductValue: D(35), sortOrder: 0, isActive: true, deletedAt: null },
+    ],
+  },
+];
+
+describe('ShopBuybackService (instant quote)', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let prisma: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let line: any;
+  let service: ShopBuybackService;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const valuation = (over: any = {}) => ({ basePrice: 10000, deletedAt: null, ...over });
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const dto = (over: any = {}): any => ({
-    brand: 'Apple',
-    model: 'iPhone 13',
-    storage: '128',
-    condition: 'A',
-    batteryHealth: 90,
-    imei: '111',
-    photoUrls: ['u'],
-    notes: 'n',
-    lineUserId: 'L1',
-    sellerName: 'S',
-    sellerPhone: '0800000000',
-    ...over,
-  });
-
-  beforeEach(async () => {
+  beforeEach(() => {
     prisma = {
-      tradeInValuation: { findUnique: jest.fn().mockResolvedValue(valuation()) },
+      tradeInValuation: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'v1', brand: 'Apple', model: 'iPhone 15', storage: '128GB',
+          condition: 'A', basePrice: D(14500), deletedAt: null,
+        }),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      buybackQuestion: { findMany: jest.fn().mockResolvedValue(QUESTIONS) },
       tradeIn: {
         findFirst: jest.fn().mockResolvedValue(null),
-        create: jest.fn().mockResolvedValue({ id: 'ti-1', status: 'PENDING_APPRAISAL' }),
-        findUnique: jest.fn(),
+        create: jest.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) =>
+          Promise.resolve({ id: 'ti-1', status: 'PENDING_APPRAISAL', ...data })),
+        findUnique: jest.fn().mockResolvedValue(null),
       },
     };
     line = { sendFlexMessage: jest.fn().mockResolvedValue(undefined) };
-
-    const mod: TestingModule = await Test.createTestingModule({
-      providers: [
-        ShopBuybackService,
-        TradeInIntakeService,
-        { provide: PrismaService, useValue: prisma },
-        { provide: LineOaService, useValue: line },
-      ],
-    }).compile();
-    service = mod.get(ShopBuybackService);
+    service = new ShopBuybackService(prisma, line, new BuybackPricingService());
   });
 
-  describe('quickQuote', () => {
-    it('applies the buyback margin floor(base*0.80) / ceil(base*0.95)', async () => {
-      const r = await service.quickQuote(dto());
-      expect(r).toEqual({ min: 8000, max: 9500, available: true, basePrice: 10000 });
+  const answers = [
+    { questionKey: 'warranty', choiceIds: ['c11'] },
+    { questionKey: 'functional-issues', choiceIds: [] },
+  ];
+
+  describe('quoteForAnswers', () => {
+    it('คำนวณราคาเดียว + breakdown: (14500-500)*1 → 14000', async () => {
+      const r = await service.quoteForAnswers('iPhone 15', '128GB', answers);
+      expect(r.available).toBe(true);
+      expect(r.price).toBe('14000.00');
+      expect(r.maxPrice).toBe('14500.00');
+      expect(r.grade).toBe('A');
+      expect(r.breakdown!.lines).toHaveLength(1);
     });
 
-    it('returns unavailable when no valuation row exists', async () => {
-      prisma.tradeInValuation.findUnique.mockResolvedValue(null);
-      const r = await service.quickQuote(dto());
-      expect(r).toEqual({ min: 0, max: 0, available: false });
+    it('MULTI เลือกได้ → หัก % และเกรดขยับ', async () => {
+      const r = await service.quoteForAnswers('iPhone 15', '128GB', [
+        { questionKey: 'warranty', choiceIds: ['c11'] },
+        { questionKey: 'functional-issues', choiceIds: ['c20'] },
+      ]);
+      // (14500-500)*(1-0.35) = 9100 → floor10 = 9100
+      expect(r.price).toBe('9100.00');
+      expect(r.grade).toBe('C');
+    });
+
+    it('รุ่นไม่มีในตาราง → available:false ไม่ throw', async () => {
+      prisma.tradeInValuation.findFirst.mockResolvedValue(null);
+      const r = await service.quoteForAnswers('iPhone 99', '1TB', answers);
+      expect(r.available).toBe(false);
+    });
+
+    it('SINGLE ไม่ตอบ → BadRequestException', async () => {
+      await expect(
+        service.quoteForAnswers('iPhone 15', '128GB', [
+          { questionKey: 'functional-issues', choiceIds: [] },
+        ]),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('choiceId ไม่อยู่ใต้คำถาม → BadRequestException', async () => {
+      await expect(
+        service.quoteForAnswers('iPhone 15', '128GB', [
+          { questionKey: 'warranty', choiceIds: ['c20'] },
+          { questionKey: 'functional-issues', choiceIds: [] },
+        ]),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('questionnaire ว่าง → ราคา = maxPrice', async () => {
+      prisma.buybackQuestion.findMany.mockResolvedValue([]);
+      const r = await service.quoteForAnswers('iPhone 15', '128GB', []);
+      expect(r.price).toBe('14500.00');
     });
   });
 
   describe('submit', () => {
-    it('creates a TradeIn with flow=BUYBACK and returns id/status/etaHours', async () => {
-      const r = await service.submit(dto(), 'cust-1');
-      expect(prisma.tradeIn.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            flow: 'BUYBACK',
-            status: 'PENDING_APPRAISAL',
-            basePriceAtAppraisal: 10000,
-            customerId: 'cust-1',
-          }),
-        }),
-      );
-      expect(r).toEqual({ id: 'ti-1', status: 'PENDING_APPRAISAL', etaHours: 24 });
+    const dto = {
+      model: 'iPhone 15', storage: '128GB', answers,
+      sellerName: 'สมชาย', sellerPhone: '0812345678',
+      imei: '111', lineUserId: 'L1',
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
+
+    it('สร้าง TradeIn snapshot ครบ + คืนราคา', async () => {
+      const r = await service.submit(dto, undefined);
+      expect(r).toEqual({ id: 'ti-1', status: 'PENDING_APPRAISAL', price: '14000.00' });
+      const data = prisma.tradeIn.create.mock.calls[0][0].data;
+      expect(data.flow).toBe('BUYBACK');
+      expect(data.submissionSource).toBe('ONLINE');
+      expect(data.deviceBrand).toBe('Apple');
+      expect(data.deviceCondition).toBe('A');
+      expect(data.estimatedValue.toString()).toBe('14000');
+      expect(data.basePriceAtAppraisal).toBeUndefined(); // spec §5.2 — ห้าม snapshot maxPrice ที่นี่
+      expect(data.quoteBreakdown.maxPrice).toBe('14500.00');
+      expect(Array.isArray(data.conditionAnswers)).toBe(true);
     });
 
-    it('rejects a duplicate (same imei+phone within 24h)', async () => {
+    it('IMEI ซ้ำใน 24 ชม. → BadRequestException', async () => {
       prisma.tradeIn.findFirst.mockResolvedValue({ id: 'dup' });
-      await expect(service.submit(dto(), 'c')).rejects.toThrow(BadRequestException);
-      expect(prisma.tradeIn.create).not.toHaveBeenCalled();
+      await expect(service.submit(dto, undefined)).rejects.toThrow(BadRequestException);
     });
 
-    it('throws when no valuation exists for the model', async () => {
-      prisma.tradeInValuation.findUnique.mockResolvedValue(null);
-      await expect(service.submit(dto(), 'c')).rejects.toThrow(NotFoundException);
-    });
-
-    it('still succeeds when the LINE flex notification fails (non-fatal)', async () => {
-      line.sendFlexMessage.mockRejectedValue(new Error('LINE down'));
-      const r = await service.submit(dto(), 'c');
+    it('LINE flex พังต้องไม่ล้ม submit + flex มีราคา', async () => {
+      line.sendFlexMessage.mockRejectedValue(new Error('down'));
+      const r = await service.submit(dto, undefined);
       expect(r.id).toBe('ti-1');
+      expect(JSON.stringify(line.sendFlexMessage.mock.calls[0][1])).toContain('14,000');
+    });
+
+    it('รุ่นไม่มีราคา → NotFoundException', async () => {
+      prisma.tradeInValuation.findFirst.mockResolvedValue(null);
+      await expect(service.submit(dto, undefined)).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('getCatalog', () => {
+    it('group รุ่น + เรียงใหม่→เก่า, unparseable ไปท้าย, ความจุน้อย→มาก', async () => {
+      prisma.tradeInValuation.findMany.mockResolvedValue([
+        { model: 'iPhone 15', storage: '128GB', basePrice: D(14500) },
+        { model: 'iPhone 15', storage: '256GB', basePrice: D(15000) },
+        { model: 'iPhone 16 Pro Max', storage: '256GB', basePrice: D(30000) },
+        { model: 'iPhone SE 2022', storage: '64GB', basePrice: D(5000) },
+        { model: 'iPhone 16 Pro', storage: '256GB', basePrice: D(27000) },
+      ]);
+      const r = await service.getCatalog();
+      expect(r.models.map((m) => m.model)).toEqual([
+        'iPhone 16 Pro Max', 'iPhone 16 Pro', 'iPhone 15', 'iPhone SE 2022',
+      ]);
+      expect(r.models[2].storages.map((s) => s.storage)).toEqual(['128GB', '256GB']);
+      expect(r.models[2].storages[0].maxPrice).toBe('14500.00');
     });
   });
 
   describe('getStatus', () => {
-    it('returns the record when found', async () => {
-      prisma.tradeIn.findUnique.mockResolvedValue({
-        id: 'ti-1',
-        status: 'PENDING_APPRAISAL',
-        flow: 'BUYBACK',
-      });
+    it('ไม่พบ → NotFoundException; พบ → รวม field ใหม่', async () => {
+      await expect(service.getStatus('x')).rejects.toThrow(NotFoundException);
+      prisma.tradeIn.findUnique.mockResolvedValue({ id: 'ti-1', estimatedValue: D(14000) });
       const r = await service.getStatus('ti-1');
       expect(r.id).toBe('ti-1');
-    });
-
-    it('throws NotFoundException when missing', async () => {
-      prisma.tradeIn.findUnique.mockResolvedValue(null);
-      await expect(service.getStatus('x')).rejects.toThrow(NotFoundException);
+      const select = prisma.tradeIn.findUnique.mock.calls[1][0].select;
+      expect(select.estimatedValue).toBe(true);
+      expect(select.quoteBreakdown).toBe(true);
+      expect(select.preferredVisitDate).toBe(true);
     });
   });
 });

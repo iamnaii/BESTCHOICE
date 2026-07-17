@@ -1,0 +1,63 @@
+import { Type } from 'class-transformer';
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsISO8601,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Matches,
+  ValidateNested,
+} from 'class-validator';
+
+export class QuoteAnswerDto {
+  @IsString()
+  @IsNotEmpty({ message: 'กรุณาระบุคำถาม' })
+  questionKey!: string;
+
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsString({ each: true })
+  choiceIds!: string[];
+}
+
+export class BuybackQuoteDto {
+  @IsString()
+  @IsNotEmpty({ message: 'กรุณาระบุรุ่น' })
+  model!: string;
+
+  @IsString()
+  @IsNotEmpty({ message: 'กรุณาระบุความจุ' })
+  storage!: string;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => QuoteAnswerDto)
+  answers!: QuoteAnswerDto[];
+}
+
+export class SubmitBuybackDto extends BuybackQuoteDto {
+  @IsString()
+  @IsNotEmpty({ message: 'กรุณาระบุชื่อผู้ขาย' })
+  sellerName!: string;
+
+  @IsString()
+  @Matches(/^0\d{9}$/, { message: 'เบอร์โทรต้องเป็นตัวเลข 10 หลักขึ้นต้นด้วย 0' })
+  sellerPhone!: string;
+
+  @IsOptional()
+  @IsString()
+  imei?: string;
+
+  @IsOptional()
+  @IsString()
+  notes?: string;
+
+  @IsOptional()
+  @IsISO8601({}, { message: 'รูปแบบวันที่ไม่ถูกต้อง' })
+  preferredVisitDate?: string;
+
+  @IsOptional()
+  @IsString()
+  lineUserId?: string;
+}

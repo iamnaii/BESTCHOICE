@@ -1,30 +1,50 @@
-import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, GoneException, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import { ShopBuybackService } from './shop-buyback.service';
-import { QuickQuoteDto } from './dto/quick-quote.dto';
-import { SubmitBuybackDto } from './dto/submit.dto';
+import { BuybackQuoteDto, SubmitBuybackDto } from './dto/quote.dto';
 import { ShopBotDefenseGuard } from '../shop-bot-defense/shop-bot-defense.guard';
 
 /**
- * Online buyback (pure cash-out) submission for the public shop.
- * flow=BUYBACK means no target product — customer just wants to sell their
- * old phone for cash. See ShopTradeInController for EXCHANGE flow.
+ * Buyback instant-quote (yellobe-style) — public storefront, iPhone-only.
+ * ⚠️ route order สำคัญ: static GET ทุกตัวต้องมาก่อน @Get(':id')
  */
 @Controller('shop/buyback')
 @UseGuards(ShopBotDefenseGuard)
 export class ShopBuybackController {
   constructor(private service: ShopBuybackService) {}
 
-  @Post('quick-quote')
-  quickQuote(@Body() dto: QuickQuoteDto) {
-    return this.service.quickQuote(dto);
+  @Get('catalog')
+  @Throttle({ short: { limit: 60, ttl: 60_000 } })
+  getCatalog() {
+    return this.service.getCatalog();
+  }
+
+  @Get('questions')
+  @Throttle({ short: { limit: 60, ttl: 60_000 } })
+  getQuestions() {
+    return this.service.getQuestions();
+  }
+
+  @Post('quote')
+  @Throttle({ short: { limit: 60, ttl: 60_000 } })
+  quote(@Body() dto: BuybackQuoteDto) {
+    return this.service.quoteForAnswers(dto.model, dto.storage, dto.answers);
   }
 
   @Post('submit')
+  @Throttle({ short: { limit: 5, ttl: 60_000 } })
   submit(@Body() dto: SubmitBuybackDto, @Req() req: Request & { user?: { sub?: string } }) {
     return this.service.submit(dto, req.user?.sub);
   }
 
+  /** Endpoint เก่า — คงไว้ 1 release เป็น 410 กัน SPA bundle เก่าใน cache แล้วค่อยลบ */
+  @Post('quick-quote')
+  quickQuoteGone() {
+    throw new GoneException('เวอร์ชันหน้าเว็บเก่าเกินไป กรุณารีเฟรชหน้า (Ctrl+R) แล้วลองใหม่');
+  }
+
+  // ⚠️ ต้องอยู่ท้ายสุดเสมอ — ไม่งั้นกลืน catalog/questions
   @Get(':id')
   getStatus(@Param('id') id: string) {
     return this.service.getStatus(id);

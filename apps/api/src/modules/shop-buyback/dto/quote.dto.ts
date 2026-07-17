@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
+  ArrayUnique,
   IsArray,
   IsISO8601,
   IsNotEmpty,
@@ -17,6 +18,7 @@ export class QuoteAnswerDto {
 
   @IsArray()
   @ArrayMaxSize(20)
+  @ArrayUnique({ message: 'ตัวเลือกซ้ำกัน' })
   @IsString({ each: true })
   choiceIds!: string[];
 }
@@ -33,6 +35,7 @@ export class BuybackQuoteDto {
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => QuoteAnswerDto)
+  @ArrayUnique((a: QuoteAnswerDto) => a.questionKey, { message: 'คำตอบซ้ำกัน กรุณาลองใหม่' })
   answers!: QuoteAnswerDto[];
 }
 

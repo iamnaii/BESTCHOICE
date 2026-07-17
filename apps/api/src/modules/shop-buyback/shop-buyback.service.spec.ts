@@ -8,18 +8,54 @@ const D = (n: number) => new Prisma.Decimal(n);
 /** DB fixture: 1 คำถาม SINGLE + 1 คำถาม MULTI + valuation iPhone 15 128GB = 14,500 */
 const QUESTIONS = [
   {
-    id: 'q1', key: 'warranty', title: 'ประกัน Apple', helpText: null,
-    selectType: 'SINGLE', sortOrder: 0, isActive: true, deletedAt: null,
+    id: 'q1',
+    key: 'warranty',
+    title: 'ประกัน Apple',
+    helpText: null,
+    selectType: 'SINGLE',
+    sortOrder: 0,
+    isActive: true,
+    deletedAt: null,
     choices: [
-      { id: 'c10', label: 'เหลือ >4 เดือน', deductType: 'FIXED', deductValue: D(0), sortOrder: 0, isActive: true, deletedAt: null },
-      { id: 'c11', label: 'หมดประกัน', deductType: 'FIXED', deductValue: D(500), sortOrder: 1, isActive: true, deletedAt: null },
+      {
+        id: 'c10',
+        label: 'เหลือ >4 เดือน',
+        deductType: 'FIXED',
+        deductValue: D(0),
+        sortOrder: 0,
+        isActive: true,
+        deletedAt: null,
+      },
+      {
+        id: 'c11',
+        label: 'หมดประกัน',
+        deductType: 'FIXED',
+        deductValue: D(500),
+        sortOrder: 1,
+        isActive: true,
+        deletedAt: null,
+      },
     ],
   },
   {
-    id: 'q2', key: 'functional-issues', title: 'ปัญหาการใช้งาน', helpText: null,
-    selectType: 'MULTI', sortOrder: 1, isActive: true, deletedAt: null,
+    id: 'q2',
+    key: 'functional-issues',
+    title: 'ปัญหาการใช้งาน',
+    helpText: null,
+    selectType: 'MULTI',
+    sortOrder: 1,
+    isActive: true,
+    deletedAt: null,
     choices: [
-      { id: 'c20', label: 'ลำโพง', deductType: 'PERCENT', deductValue: D(35), sortOrder: 0, isActive: true, deletedAt: null },
+      {
+        id: 'c20',
+        label: 'ลำโพง',
+        deductType: 'PERCENT',
+        deductValue: D(35),
+        sortOrder: 0,
+        isActive: true,
+        deletedAt: null,
+      },
     ],
   },
 ];
@@ -35,16 +71,24 @@ describe('ShopBuybackService (instant quote)', () => {
     prisma = {
       tradeInValuation: {
         findFirst: jest.fn().mockResolvedValue({
-          id: 'v1', brand: 'Apple', model: 'iPhone 15', storage: '128GB',
-          condition: 'A', basePrice: D(14500), deletedAt: null,
+          id: 'v1',
+          brand: 'Apple',
+          model: 'iPhone 15',
+          storage: '128GB',
+          condition: 'A',
+          basePrice: D(14500),
+          deletedAt: null,
         }),
         findMany: jest.fn().mockResolvedValue([]),
       },
       buybackQuestion: { findMany: jest.fn().mockResolvedValue(QUESTIONS) },
       tradeIn: {
         findFirst: jest.fn().mockResolvedValue(null),
-        create: jest.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) =>
-          Promise.resolve({ id: 'ti-1', status: 'PENDING_APPRAISAL', ...data })),
+        create: jest
+          .fn()
+          .mockImplementation(({ data }: { data: Record<string, unknown> }) =>
+            Promise.resolve({ id: 'ti-1', status: 'PENDING_APPRAISAL', ...data }),
+          ),
         findUnique: jest.fn().mockResolvedValue(null),
       },
     };
@@ -105,14 +149,37 @@ describe('ShopBuybackService (instant quote)', () => {
       const r = await service.quoteForAnswers('iPhone 15', '128GB', []);
       expect(r.price).toBe('14500.00');
     });
+
+    it('choiceIds ซ้ำกันใน MULTI → หักครั้งเดียว (ไม่ใช่ 2 เท่า)', async () => {
+      const r = await service.quoteForAnswers('iPhone 15', '128GB', [
+        { questionKey: 'warranty', choiceIds: ['c11'] },
+        { questionKey: 'functional-issues', choiceIds: ['c20', 'c20'] },
+      ]);
+      // (14500-500)*(1-0.35) = 9100 — ต้องเท่ากับหัก c20 ครั้งเดียว ไม่ใช่ 70%
+      expect(r.price).toBe('9100.00');
+    });
+
+    it('questionKey ซ้ำกันใน answers → BadRequestException', async () => {
+      await expect(
+        service.quoteForAnswers('iPhone 15', '128GB', [
+          { questionKey: 'warranty', choiceIds: ['c10'] },
+          { questionKey: 'warranty', choiceIds: ['c11'] },
+          { questionKey: 'functional-issues', choiceIds: [] },
+        ]),
+      ).rejects.toThrow(BadRequestException);
+    });
   });
 
   describe('submit', () => {
     const dto = {
-      model: 'iPhone 15', storage: '128GB', answers,
-      sellerName: 'สมชาย', sellerPhone: '0812345678',
-      imei: '111', lineUserId: 'L1',
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      model: 'iPhone 15',
+      storage: '128GB',
+      answers,
+      sellerName: 'สมชาย',
+      sellerPhone: '0812345678',
+      imei: '111',
+      lineUserId: 'L1',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any;
 
     it('สร้าง TradeIn snapshot ครบ + คืนราคา', async () => {
@@ -158,7 +225,10 @@ describe('ShopBuybackService (instant quote)', () => {
       ]);
       const r = await service.getCatalog();
       expect(r.models.map((m) => m.model)).toEqual([
-        'iPhone 16 Pro Max', 'iPhone 16 Pro', 'iPhone 15', 'iPhone SE 2022',
+        'iPhone 16 Pro Max',
+        'iPhone 16 Pro',
+        'iPhone 15',
+        'iPhone SE 2022',
       ]);
       expect(r.models[2].storages.map((s) => s.storage)).toEqual(['128GB', '256GB']);
       expect(r.models[2].storages[0].maxPrice).toBe('14500.00');

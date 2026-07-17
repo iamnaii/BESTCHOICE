@@ -14,6 +14,8 @@ import AppraisalModal from './components/AppraisalModal';
 import AcceptModal from './components/AcceptModal';
 import ValuationsTab from './components/ValuationsTab';
 import QuestionnaireTab from './components/QuestionnaireTab';
+import TradeInDetailDialog from './components/TradeInDetailDialog';
+import OnlineAppraiseModal from './components/OnlineAppraiseModal';
 import type {
   TradeIn,
   TradeInsResponse,
@@ -47,6 +49,10 @@ export default function TradeInPage() {
   // Accept modal state
   const [acceptModal, setAcceptModal] = useState<TradeIn | null>(null);
   const [acceptForm, setAcceptForm] = useState<AcceptFormState>(EMPTY_ACCEPT_FORM);
+
+  // Detail dialog + online-appraise modal state
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const [onlineAppraise, setOnlineAppraise] = useState<TradeIn | null>(null);
 
   /* ─── Query ─── */
 
@@ -266,10 +272,11 @@ export default function TradeInPage() {
             canManage={canManage}
             onRefetch={refetch}
             onPageChange={setPage}
-            onAppraise={setAppraiseModal}
+            onAppraise={(item) => (item.quoteBreakdown ? setOnlineAppraise(item) : setAppraiseModal(item))}
             onAccept={setAcceptModal}
             onReject={(id) => rejectMutation.mutate(id)}
             onVoucher={handleVoucher}
+            onDetail={(item) => setDetailId(item.id)}
             isRejectPending={rejectMutation.isPending}
             voucherLoadingId={voucherLoadingId ?? (generateVoucherMutation.isPending ? (generateVoucherMutation.variables ?? null) : null)}
           />
@@ -293,6 +300,9 @@ export default function TradeInPage() {
             onConfirm={(id, body) => acceptMutation.mutate({ id, body })}
             onClose={handleCloseAccept}
           />
+
+          <TradeInDetailDialog id={detailId} onClose={() => setDetailId(null)} />
+          <OnlineAppraiseModal item={onlineAppraise} onClose={() => setOnlineAppraise(null)} />
         </>
       )}
     </div>

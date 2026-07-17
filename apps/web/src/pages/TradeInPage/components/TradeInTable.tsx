@@ -37,6 +37,7 @@ interface TradeInTableProps {
   onAccept: (item: TradeIn) => void;
   onReject: (id: string) => void;
   onVoucher: (item: TradeIn) => void;
+  onDetail: (item: TradeIn) => void;
   isRejectPending: boolean;
   voucherLoadingId: string | null;
 }
@@ -55,6 +56,7 @@ export default function TradeInTable({
   onAccept,
   onReject,
   onVoucher,
+  onDetail,
   isRejectPending,
   voucherLoadingId,
 }: TradeInTableProps) {
@@ -195,6 +197,17 @@ export default function TradeInTable({
 
         return (
           <div className="flex items-center justify-end gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDetail(item);
+              }}
+            >
+              ดู
+            </Button>
+
             {/* Primary CTA — inline ตาม status */}
             {showAppraise && (
               <Button

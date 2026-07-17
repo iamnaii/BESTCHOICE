@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { ArrowUp, ArrowDown, Trash2 } from 'lucide-react';
@@ -49,13 +49,33 @@ export default function OnlineListingPanel({
   const queryClient = useQueryClient();
   const [localGallery, setLocalGallery] = useState<string[]>(product.gallery);
   const [description, setDescription] = useState(product.onlineDescription ?? '');
+  // Last server gallery this component has reconciled against — lets the
+  // resync effect below tell "brand-new URL from the server" apart from
+  // "URL the user just removed locally", instead of only comparing to the
+  // live localGallery snapshot.
+  const knownServerGalleryRef = useRef<string[]>(product.gallery);
 
-  // Resync local edit buffers whenever the server product actually changes
-  // (react-query only hands us a new array reference after a real refetch,
-  // not on incidental re-renders) — keeps unsaved edits visible until the
-  // matching mutation lands.
+  // Resync the local reorder buffer whenever the server gallery actually
+  // changes (react-query only hands us a new array reference after a real
+  // refetch, not on incidental re-renders). If there were no unsaved edits,
+  // just take the fresh server state. If there WERE unsaved edits
+  // (reorder/remove not yet saved via "บันทึกการจัดเรียง"), preserve them and
+  // only append URLs that are brand-new since the last known server state
+  // (e.g. a photo just promoted from the picker below) — this is what keeps
+  // an in-progress reorder from being clobbered by an unrelated promote's
+  // refetch, instead of silently resetting to the server order.
   useEffect(() => {
-    setLocalGallery(product.gallery);
+    const known = knownServerGalleryRef.current;
+    const next = product.gallery;
+    if (next === known) return;
+
+    setLocalGallery((prevLocal) => {
+      const wasDirty = JSON.stringify(prevLocal) !== JSON.stringify(known);
+      if (!wasDirty) return next;
+      const newlyAdded = next.filter((url) => !known.includes(url));
+      return newlyAdded.length > 0 ? [...prevLocal, ...newlyAdded] : prevLocal;
+    });
+    knownServerGalleryRef.current = next;
   }, [product.gallery]);
 
   useEffect(() => {
@@ -193,6 +213,7 @@ export default function OnlineListingPanel({
                     onClick={() => moveUp(idx)}
                     disabled={!canEdit || idx === 0}
                     title="เลื่อนขึ้น"
+                    aria-label="เลื่อนขึ้น"
                     className="p-1 rounded hover:bg-accent disabled:opacity-30 disabled:pointer-events-none"
                   >
                     <ArrowUp className="size-3.5 text-muted-foreground" />
@@ -201,6 +222,7 @@ export default function OnlineListingPanel({
                     onClick={() => moveDown(idx)}
                     disabled={!canEdit || idx === localGallery.length - 1}
                     title="เลื่อนลง"
+                    aria-label="เลื่อนลง"
                     className="p-1 rounded hover:bg-accent disabled:opacity-30 disabled:pointer-events-none"
                   >
                     <ArrowDown className="size-3.5 text-muted-foreground" />
@@ -209,6 +231,7 @@ export default function OnlineListingPanel({
                     onClick={() => removeAt(idx)}
                     disabled={!canEdit}
                     title="ลบออกจากแกลเลอรี"
+                    aria-label="ลบรูป"
                     className="p-1 rounded hover:bg-destructive/10 disabled:opacity-30 disabled:pointer-events-none"
                   >
                     <Trash2 className="size-3.5 text-destructive" />
@@ -322,7 +345,7 @@ export default function OnlineListingPanel({
             className="w-full px-3 py-2 border border-input rounded-lg text-sm leading-snug resize-none disabled:opacity-50 disabled:bg-muted"
           />
           <div className="flex items-center justify-between mt-1 gap-2 flex-wrap">
-            <span className="text-[11px] text-muted-foreground">{description.length}/2000</span>
+            <span className="text-[11px] text-muted-foreground leading-snug">{description.length}/2000</span>
             <button
               onClick={() => descriptionMutation.mutate()}
               disabled={!canEdit || !isDirtyDescription || descriptionMutation.isPending}

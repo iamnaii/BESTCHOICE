@@ -276,6 +276,16 @@ export class TradeInLifecycleService {
       throw new BadRequestException('รายการนี้ไม่อยู่ในสถานะรอประเมิน');
     }
 
+    // Instant-quote records (มี quoteBreakdown) ต้องยืนยันผ่าน appraise-online
+    // (§7.4) — valuation-band ของ path นี้ใช้เกรด staff ซึ่งไม่สัมพันธ์กับราคา
+    // ที่ engine หักไว้ และจะ block/หลุด guard แบบสุ่มตามว่ามีแถวเกรดนั้นไหม
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if ((tradeIn as any).quoteBreakdown) {
+      throw new BadRequestException(
+        'รายการนี้มาจากใบเสนอราคาออนไลน์ — กรุณายืนยันราคาผ่านหน้าจอยืนยันราคาออนไลน์',
+      );
+    }
+
     // Snapshot the valuation base price if we can find one for this spec.
     // If the table has no row (new brand/storage/condition combo) we allow
     // the price through — staff has no reference to compare against.

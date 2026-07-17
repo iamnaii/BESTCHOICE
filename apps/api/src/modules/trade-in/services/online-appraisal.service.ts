@@ -1,0 +1,111 @@
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import { PrismaService } from '../../../prisma/prisma.service';
+import { ShopBuybackService } from '../../shop-buyback/shop-buyback.service';
+import { AppraiseOnlineDto } from '../dto/appraise-online.dto';
+
+/**
+ * Handshake ยืนยันราคาหน้าร้านของ record ที่มาจาก instant quote (spec §7.4):
+ * ข้าม valuation-band ±15% เดิมทั้งหมด — ราคาตรวจสอบได้จาก engine + snapshot
+ *  - AS_ANSWERED: สภาพตรงตามตอบ → ใช้ estimatedValue เป๊ะ
+ *  - REVISED:     staff แก้คำตอบ → engine คิดใหม่จาก config ปัจจุบัน
+ *  - MANUAL:      OWNER + reason (audited) — free-hand
+ * Record walk-in / online แบบเก่า (ไม่มี quoteBreakdown) → ใช้ appraise() เดิม
+ */
+@Injectable()
+export class OnlineAppraisalService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly shopBuyback: ShopBuybackService,
+  ) {}
+
+  async appraiseOnline(id: string, dto: AppraiseOnlineDto, userId: string, userRole: string) {
+    const tradeIn = await this.prisma.tradeIn.findFirst({ where: { id, deletedAt: null } });
+    if (!tradeIn) throw new NotFoundException('ไม่พบรายการเทรดอิน');
+    if (!tradeIn.quoteBreakdown) {
+      throw new BadRequestException(
+        'รายการนี้ไม่ได้มาจากใบเสนอราคาออนไลน์ — ใช้การประเมินราคาแบบปกติ',
+      );
+    }
+    if (tradeIn.appraisalLocked && dto.mode !== 'MANUAL') {
+      throw new ForbiddenException(
+        'รายการนี้ถูกตีราคาไปแล้ว — แก้ราคาได้เฉพาะเจ้าของร้านแบบระบุเหตุผล (MANUAL)',
+      );
+    }
+    if (!tradeIn.appraisalLocked && tradeIn.status !== 'PENDING_APPRAISAL') {
+      throw new BadRequestException('รายการนี้ไม่อยู่ในสถานะรอประเมิน');
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const breakdown = tradeIn.quoteBreakdown as any;
+    const maxPrice = new Prisma.Decimal(breakdown.maxPrice ?? 0);
+
+    let offeredPrice: Prisma.Decimal;
+    let extraData: Record<string, unknown> = {};
+
+    if (dto.mode === 'AS_ANSWERED') {
+      if (tradeIn.estimatedValue === null) {
+        throw new BadRequestException('รายการนี้ไม่มีราคาที่เสนอออนไลน์');
+      }
+      offeredPrice = new Prisma.Decimal(tradeIn.estimatedValue);
+    } else if (dto.mode === 'REVISED') {
+      if (!dto.answers || dto.answers.length === 0) {
+        throw new BadRequestException('กรุณาส่งคำตอบแบบประเมินชุดใหม่');
+      }
+      const quote = await this.shopBuyback.quoteForAnswers(
+        tradeIn.deviceModel,
+        tradeIn.deviceStorage ?? '',
+        dto.answers,
+      );
+      if (!quote.available) {
+        throw new BadRequestException('รุ่นนี้ไม่มีราคาในตารางแล้ว — แก้ตารางราคากลางก่อน');
+      }
+      offeredPrice = new Prisma.Decimal(quote.price!);
+      extraData = {
+        deviceCondition: quote.grade,
+        estimatedValue: new Prisma.Decimal(quote.price!),
+        conditionAnswers: quote.conditionAnswers as Prisma.InputJsonValue,
+        quoteBreakdown: quote.breakdown as unknown as Prisma.InputJsonValue,
+      };
+    } else {
+      // MANUAL
+      if (userRole !== 'OWNER') {
+        throw new ForbiddenException('ราคานอกระบบประเมิน — เฉพาะเจ้าของร้าน (OWNER) เท่านั้น');
+      }
+      if (dto.offeredPrice === undefined || dto.offeredPrice <= 0) {
+        throw new BadRequestException('กรุณาระบุราคาที่เสนอ');
+      }
+      if (!dto.reason || dto.reason.trim().length < 3) {
+        throw new BadRequestException('ต้องระบุเหตุผล (อย่างน้อย 3 ตัวอักษร)');
+      }
+      offeredPrice = new Prisma.Decimal(dto.offeredPrice);
+      await this.prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'TRADE_IN_ONLINE_MANUAL_PRICE',
+          entity: 'trade_in',
+          entityId: id,
+          oldValue: {
+            estimatedValue: tradeIn.estimatedValue?.toString() ?? null,
+            offeredPrice: tradeIn.offeredPrice?.toString() ?? null,
+          },
+          newValue: { offeredPrice: dto.offeredPrice, reason: dto.reason },
+        },
+      });
+    }
+
+    return this.prisma.tradeIn.update({
+      where: { id },
+      data: {
+        offeredPrice,
+        notes: dto.notes ?? tradeIn.notes,
+        appraisedById: userId,
+        status: 'APPRAISED',
+        basePriceAtAppraisal: maxPrice, // deviation analytics เทียบกับ "ราคาสูงสุด" ของใบเสนอ
+        appraisalLocked: true,
+        firstAppraisedAt: tradeIn.firstAppraisedAt ?? new Date(),
+        ...extraData,
+      },
+    });
+  }
+}

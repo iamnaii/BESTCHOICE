@@ -29,6 +29,7 @@ import {
   UpdateBuybackChoiceDto,
   UpdateBuybackQuestionDto,
 } from './dto/buyback-question.dto';
+import { AppraiseOnlineDto } from './dto/appraise-online.dto';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -38,6 +39,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { ExportEnabledGuard } from '../settings/guards/export-enabled.guard';
 import { PiiAuditService } from '../pii/pii-audit.service';
 import { BuybackQuestionAdminService } from './services/buyback-question-admin.service';
+import { OnlineAppraisalService } from './services/online-appraisal.service';
 import { maskBankAccount } from '../../utils/pii.util';
 
 type AuthRequest = Request & { user?: { id: string; role: string } };
@@ -51,6 +53,7 @@ export class TradeInController {
     private tradeInService: TradeInService,
     private piiAudit: PiiAuditService,
     private buybackAdmin: BuybackQuestionAdminService,
+    private onlineAppraisal: OnlineAppraisalService,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -297,6 +300,18 @@ export class TradeInController {
     @CurrentUser('role') userRole: string,
   ) {
     return this.tradeInService.appraise(id, dto, userId, userRole);
+  }
+
+  /** §7.4 handshake — ยืนยันราคา record ที่มาจาก instant quote (มี quoteBreakdown) */
+  @Patch(':id/appraise-online')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  appraiseOnline(
+    @Param('id') id: string,
+    @Body() dto: AppraiseOnlineDto,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('role') userRole: string,
+  ) {
+    return this.onlineAppraisal.appraiseOnline(id, dto, userId, userRole);
   }
 
   @Post(':id/accept')

@@ -90,6 +90,8 @@ export default function BuybackStatusPage() {
   const offered = priceValue(data.offeredPrice);
   const agreed = priceValue(data.agreedPrice);
   const showOfferActions = data.status === 'APPRAISED' && offered !== null;
+  const isInstantQuote = !!data.quoteBreakdown;
+  const estimated = priceValue(data.estimatedValue);
 
   return (
     <ShopLayout>
@@ -104,22 +106,59 @@ export default function BuybackStatusPage() {
       <Container narrow className="py-6 md:py-10">
         <Stack gap={4} className="leading-snug">
           <Stepper
-            steps={[
-              { label: 'รอประเมิน' },
-              { label: 'เสนอราคา' },
-              { label: 'สรุป' },
-            ]}
+            steps={
+              isInstantQuote
+                ? [{ label: 'ยืนยันราคาแล้ว' }, { label: 'เข้าร้านตรวจเครื่อง' }, { label: 'เสร็จสิ้น' }]
+                : [{ label: 'รอประเมิน' }, { label: 'เสนอราคา' }, { label: 'สรุป' }]
+            }
             current={statusToStep(data.status)}
           />
 
           <div className="flex items-center gap-2 leading-snug">
             <span className="text-sm text-muted-foreground">สถานะ</span>
             <Badge variant={STATUS_BADGE[data.status] ?? 'default'} size="lg">
-              {STATUS_LABEL[data.status] ?? data.status}
+              {data.status === 'PENDING_APPRAISAL' && isInstantQuote
+                ? 'ยืนยันราคาแล้ว — รอนัดเข้าร้าน'
+                : STATUS_LABEL[data.status] ?? data.status}
             </Badge>
           </div>
 
-          {offered !== null && (
+          {isInstantQuote && estimated !== null && (
+            <Card variant="elevated" className="bg-emerald-50 border-emerald-200">
+              <CardBody className="space-y-2 leading-snug">
+                <div className="text-sm font-medium text-emerald-800 leading-snug">
+                  {copy.buyback.quotedTitle}
+                </div>
+                <div className="text-4xl font-bold text-emerald-600 leading-snug">
+                  ฿{estimated.toLocaleString()}
+                </div>
+                {data.quoteBreakdown && (
+                  <div className="space-y-0.5 text-xs text-emerald-800 leading-snug">
+                    <div className="flex justify-between">
+                      <span>ราคาสูงสุด</span>
+                      <span>฿{Number(data.quoteBreakdown.maxPrice).toLocaleString()}</span>
+                    </div>
+                    {data.quoteBreakdown.lines
+                      .filter((l) => Number(l.amount) > 0)
+                      .map((l, i) => (
+                        <div key={i} className="flex justify-between">
+                          <span>{l.label}</span>
+                          <span>−฿{Number(l.amount).toLocaleString()}</span>
+                        </div>
+                      ))}
+                  </div>
+                )}
+                <p className="text-xs text-emerald-800 leading-snug">{copy.buyback.priceCondition}</p>
+                {offered !== null && offered !== estimated && (
+                  <p className="text-xs font-semibold text-emerald-900 leading-snug">
+                    ราคายืนยันหน้าร้าน: ฿{offered.toLocaleString()}
+                  </p>
+                )}
+              </CardBody>
+            </Card>
+          )}
+
+          {!isInstantQuote && offered !== null && (
             <Card variant="elevated" className="bg-emerald-50 border-emerald-200">
               <CardBody className="space-y-1 leading-snug">
                 <div className="text-sm font-medium text-emerald-800 leading-snug">
@@ -143,7 +182,10 @@ export default function BuybackStatusPage() {
                 {data.deviceBrand} {data.deviceModel} {data.deviceStorage}
               </div>
               <div className="text-sm text-muted-foreground leading-snug">
-                เกรด {data.deviceCondition} · แบตเตอรี่ {data.batteryHealth}%
+                {data.deviceCondition && <>เกรด {data.deviceCondition}</>}
+                {data.batteryHealth !== null && data.batteryHealth !== undefined && (
+                  <> · แบตเตอรี่ {data.batteryHealth}%</>
+                )}
               </div>
               {data.notes && (
                 <div className="text-sm text-muted-foreground leading-snug">

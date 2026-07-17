@@ -50,14 +50,32 @@ export default function QuestionnaireTab() {
   const patchChoice = useMutation({
     mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) =>
       api.patch(`/trade-ins/buyback-choices/${id}`, body),
-    onSuccess: () => { toast.success('บันทึกแล้ว'); invalidate(); },
+    onSuccess: (_data, variables) => {
+      toast.success('บันทึกแล้ว');
+      invalidate();
+      // ล้าง draft เฉพาะเมื่อบันทึกสำเร็จ — ถ้า error ให้ค่าที่พิมพ์ไว้คงอยู่ (ไม่ล้างทิ้ง)
+      setEdits((prev) => {
+        const next = { ...prev };
+        delete next[variables.id];
+        return next;
+      });
+    },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
   const addChoice = useMutation({
     mutationFn: ({ questionId, body }: { questionId: string; body: Record<string, unknown> }) =>
       api.post(`/trade-ins/buyback-questions/${questionId}/choices`, body),
-    onSuccess: () => { toast.success('เพิ่มตัวเลือกแล้ว'); invalidate(); },
+    onSuccess: (_data, variables) => {
+      toast.success('เพิ่มตัวเลือกแล้ว');
+      invalidate();
+      // ล้าง draft เฉพาะเมื่อเพิ่มสำเร็จ — ถ้า error ให้ค่าที่พิมพ์ไว้คงอยู่ (ไม่ล้างทิ้ง)
+      setNewChoice((prev) => {
+        const next = { ...prev };
+        delete next[variables.questionId];
+        return next;
+      });
+    },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
@@ -78,7 +96,6 @@ export default function QuestionnaireTab() {
       body.deductValue = v;
     }
     patchChoice.mutate({ id: c.id, body });
-    setEdits((prev) => { const { [c.id]: _, ...rest } = prev; return rest; });
   }
 
   if (isLoading) return <p className="text-sm text-muted-foreground leading-snug">กำลังโหลด...</p>;
@@ -177,7 +194,6 @@ export default function QuestionnaireTab() {
                       const v = Number(nc?.deductValue);
                       if (!nc?.label || !Number.isFinite(v) || v < 0) { toast.error('กรอกตัวเลือก/ค่าหักให้ครบ'); return; }
                       addChoice.mutate({ questionId: q.id, body: { label: nc.label, deductType: nc.deductType, deductValue: v } });
-                      setNewChoice((prev) => { const { [q.id]: _, ...rest } = prev; return rest; });
                     }}
                     disabled={addChoice.isPending}
                   >

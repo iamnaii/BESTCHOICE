@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
+import { useDebounce } from '@/hooks/useDebounce';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -31,10 +32,16 @@ const EMPTY_FORM = { brand: 'Apple', model: '', storage: '', condition: 'A', bas
  */
 export default function ValuationsTab() {
   const queryClient = useQueryClient();
-  const [brand, setBrand] = useState('Apple');
+  const [brandInput, setBrandInput] = useState('Apple');
+  const brand = useDebounce(brandInput, 400);
   const [page, setPage] = useState(1);
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [form, setForm] = useState(EMPTY_FORM);
+
+  // รีเซ็ตหน้ากลับ 1 เมื่อคำค้นหา (หลัง debounce) เปลี่ยน
+  useEffect(() => {
+    setPage(1);
+  }, [brand]);
 
   const { data, isLoading } = useQuery<ValuationsResponse>({
     queryKey: ['trade-in-valuations', brand, page],
@@ -45,13 +52,31 @@ export default function ValuationsTab() {
   });
 
   const upsert = useMutation({
-    mutationFn: (body: { brand: string; model: string; storage: string; condition: string; basePrice: number }) =>
-      api.post('/trade-ins/valuations', body),
-    onSuccess: () => {
+    mutationFn: (body: {
+      brand: string;
+      model: string;
+      storage: string;
+      condition: string;
+      basePrice: number;
+      rowId?: string;
+    }) => {
+      const { rowId, ...payload } = body;
+      return api.post('/trade-ins/valuations', payload).then(() => ({ rowId }));
+    },
+    onSuccess: ({ rowId }) => {
       toast.success('บันทึกราคาแล้ว');
       queryClient.invalidateQueries({ queryKey: ['trade-in-valuations'] });
-      setForm(EMPTY_FORM);
+      if (rowId) {
+        setEdits((prev) => {
+          const next = { ...prev };
+          delete next[rowId];
+          return next;
+        });
+      } else {
+        setForm(EMPTY_FORM);
+      }
     },
+    // เก็บ draft ที่พิมพ์ไว้ (edits/form) ไว้เหมือนเดิมถ้าบันทึกไม่สำเร็จ — ไม่ล้างทิ้ง
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
@@ -67,10 +92,7 @@ export default function ValuationsTab() {
       storage: row.storage,
       condition: row.condition,
       basePrice: price,
-    });
-    setEdits((e) => {
-      const { [row.id]: _, ...rest } = e;
-      return rest;
+      rowId: row.id,
     });
   }
 
@@ -84,7 +106,7 @@ export default function ValuationsTab() {
       <div className="flex items-end gap-3 flex-wrap">
         <div>
           <Label>ยี่ห้อ</Label>
-          <Input className="mt-1 w-40" value={brand} onChange={(e) => { setBrand(e.target.value); setPage(1); }} placeholder="เช่น Apple" />
+          <Input className="mt-1 w-40" value={brandInput} onChange={(e) => setBrandInput(e.target.value)} placeholder="เช่น Apple" />
         </div>
       </div>
 

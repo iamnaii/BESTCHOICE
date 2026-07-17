@@ -178,6 +178,15 @@ export default function TradeInPage() {
         }
       />
 
+      <QuickBuyModal
+        open={showQuickBuy}
+        onClose={() => setShowQuickBuy(false)}
+        onSuccess={(id) => {
+          queryClient.invalidateQueries({ queryKey: ['trade-ins'] });
+          openVoucherPdf(id);
+        }}
+      />
+
       {canManage && (
         <div className="flex items-center gap-1.5 mb-4">
           {(
@@ -206,15 +215,6 @@ export default function TradeInPage() {
 
       {tab === 'list' && (
         <>
-          <QuickBuyModal
-            open={showQuickBuy}
-            onClose={() => setShowQuickBuy(false)}
-            onSuccess={(id) => {
-              queryClient.invalidateQueries({ queryKey: ['trade-ins'] });
-              openVoucherPdf(id);
-            }}
-          />
-
           <div className="flex flex-wrap items-center gap-4 mb-4">
             <div className="flex items-center gap-1.5">
               <span className="text-xs text-muted-foreground leading-snug">ที่มา:</span>

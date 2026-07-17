@@ -1,6 +1,9 @@
 import { Test } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { validate } from 'class-validator';
+import { plainToInstance } from 'class-transformer';
 import { ProductsOnlineListingService } from './products-online-listing.service';
+import { UpdateOnlineListingDto } from './dto/online-listing.dto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 
@@ -81,21 +84,83 @@ describe('ProductsOnlineListingService', () => {
       prisma.product.findFirst.mockResolvedValue(null);
       await expect(service.updateOnlineListing('nope', {})).rejects.toThrow(NotFoundException);
     });
+
+    // Regression (review finding CRITICAL): the visible⇒has-photo invariant
+    // must hold even when THIS request doesn't touch isOnlineVisible at all —
+    // clearing gallery on an already-visible product must not silently leave
+    // it visible with an empty gallery.
+    it('rejects PATCH { gallery: [] } on a product that is already visible', async () => {
+      prisma.product.findFirst.mockResolvedValue({ ...baseProduct, isOnlineVisible: true });
+      await expect(service.updateOnlineListing('p1', { gallery: [] })).rejects.toThrow(/รูป/);
+      expect(prisma.product.update).not.toHaveBeenCalled();
+    });
+
+    // Regression (review finding IMPORTANT): duplicate URLs in the incoming
+    // gallery must be rejected — defense-in-depth service-level check,
+    // independent of the DTO's @ArrayUnique.
+    it('rejects a gallery with duplicate URLs', async () => {
+      await expect(
+        service.updateOnlineListing('p1', {
+          gallery: ['https://cdn.example.com/a.jpg', 'https://cdn.example.com/a.jpg'],
+        }),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.product.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('UpdateOnlineListingDto — gallery validation', () => {
+    async function validateDto(gallery: unknown) {
+      const dto = plainToInstance(UpdateOnlineListingDto, { gallery });
+      return validate(dto);
+    }
+
+    it('rejects duplicate URLs (@ArrayUnique)', async () => {
+      const errors = await validateDto(['https://cdn.example.com/a.jpg', 'https://cdn.example.com/a.jpg']);
+      expect(errors.length).toBeGreaterThan(0);
+    });
+
+    it('rejects more than 8 URLs (@ArrayMaxSize)', async () => {
+      const errors = await validateDto(
+        Array.from({ length: 9 }, (_, i) => `https://cdn.example.com/${i}.jpg`),
+      );
+      expect(errors.length).toBeGreaterThan(0);
+    });
+
+    it('accepts a valid, unique, in-cap gallery', async () => {
+      const errors = await validateDto(['https://cdn.example.com/a.jpg', 'https://cdn.example.com/b.jpg']);
+      expect(errors).toHaveLength(0);
+    });
   });
 
   describe('promotePhoto', () => {
-    it('LEGACY: decodes base64, uploads, appends public URL to gallery', async () => {
+    it('LEGACY: decodes base64, uploads, atomically pushes public URL onto gallery via Prisma', async () => {
+      // Simulate the DB's post-push state — proves the returned gallery
+      // comes from Prisma's atomic result, not an in-memory concat.
+      const dbGalleryAfterPush = [...baseProduct.gallery, 'https://cdn.example.com/shop/product-gallery/p1/from-db.png'];
+      prisma.product.update.mockResolvedValueOnce({ gallery: dbGalleryAfterPush });
+
       const res = await service.promotePhoto('p1', { source: 'LEGACY', index: 0 });
+
       expect(storage.upload).toHaveBeenCalledWith(
         expect.stringMatching(/^shop\/product-gallery\/p1\/.+\.png$/), expect.any(Buffer), 'image/png',
       );
-      expect(res.gallery).toHaveLength(3);
-      expect(res.gallery[2]).toMatch(/^https:\/\/cdn\.example\.com\/shop\/product-gallery\/p1\//);
+      expect(prisma.product.update).toHaveBeenCalledWith({
+        where: { id: 'p1' },
+        data: { gallery: { push: expect.stringMatching(/^https:\/\/cdn\.example\.com\/shop\/product-gallery\/p1\//) } },
+        select: { gallery: true },
+      });
+      // Return value is exactly what the mocked atomic update returned —
+      // not `[...product.gallery, publicUrl]` computed locally.
+      expect(res.gallery).toBe(dbGalleryAfterPush);
     });
 
     it('ANGLE: reads ProductPhoto side', async () => {
+      prisma.product.update.mockResolvedValueOnce({ gallery: [...baseProduct.gallery, 'https://cdn.example.com/x.png'] });
       await service.promotePhoto('p1', { source: 'ANGLE', angle: 'front' });
       expect(storage.upload).toHaveBeenCalled();
+      expect(prisma.product.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { gallery: { push: expect.any(String) } }, select: { gallery: true } }),
+      );
     });
 
     it('rejects missing candidate (bad index / empty angle) with Thai message', async () => {

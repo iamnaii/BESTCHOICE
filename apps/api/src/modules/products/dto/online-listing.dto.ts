@@ -1,8 +1,10 @@
-import { IsArray, IsBoolean, IsEnum, IsInt, IsOptional, IsString, IsUrl, MaxLength, Min } from 'class-validator';
+import { ArrayMaxSize, ArrayUnique, IsArray, IsBoolean, IsEnum, IsInt, IsOptional, IsString, IsUrl, MaxLength, Min } from 'class-validator';
 
 export class UpdateOnlineListingDto {
   /** จัดเรียง/ลบรูปที่อยู่ใน gallery เดิมเท่านั้น — เพิ่มรูปใหม่ต้องผ่าน endpoint promote */
   @IsOptional() @IsArray() @IsUrl({ require_tld: false }, { each: true })
+  @ArrayUnique({ message: 'มีรูปซ้ำในรายการ' })
+  @ArrayMaxSize(8, { message: 'แกลเลอรีขึ้นเว็บได้สูงสุด 8 รูป' })
   gallery?: string[];
 
   @IsOptional() @IsBoolean()

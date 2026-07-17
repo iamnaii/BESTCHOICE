@@ -14,7 +14,7 @@ export const shopInfo = {
   phoneDisplay: '036-XXX-XXX',
   phoneHref: 'tel:036XXXXXX',
   address: 'เลขที่ 99/9 ถนนนารายณ์มหาราช ตำบลทะเลชุบศร อำเภอเมืองลพบุรี จังหวัดลพบุรี 15000',
-  hours: 'เปิดทุกวัน 09:00 - 19:00 น.',
+  hours: 'เปิดทุกวัน 10:00 - 19:00 น.',
   /** TODO(owner): ใส่ลิงก์ Google Maps จริงแล้วปุ่มนำทางจะโผล่เอง */
   mapsUrl: null as string | null,
   /** TODO(owner): ใส่ URL รูปหน้าร้านจริงแล้วรูปจะโผล่เอง */
@@ -158,7 +158,7 @@ export const copy = {
       'ข้อมูลของคุณถูกเก็บภายใต้นโยบาย PDPA — ใช้เพื่อประเมินสินเชื่อเท่านั้น',
     successTitle: 'ส่งใบสมัครแล้ว',
     successDescription:
-      'ทีมงานจะติดต่อกลับภายใน 2 ชั่วโมง (เวลาทำการ 09:00–20:00)',
+      'ทีมงานจะติดต่อกลับภายใน 2 ชั่วโมง (เวลาทำการ 10:00–19:00)',
   },
 
   tradeIn: {
@@ -336,7 +336,7 @@ export const copy = {
     phoneTitle: 'โทรศัพท์',
     phoneNumber: shopInfo.phoneDisplay,
     phoneCta: 'โทร',
-    phoneDescription: 'รับสายทุกวัน 09:00 - 19:00 น.',
+    phoneDescription: 'รับสายทุกวัน 10:00 - 19:00 น.',
     formTitle: 'ฝากข้อความ',
     formDescription: 'กรอกข้อมูลและข้อความ ทีมงานจะติดต่อกลับโดยเร็วที่สุด',
     formNameLabel: 'ชื่อ-นามสกุล',

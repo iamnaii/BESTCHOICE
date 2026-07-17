@@ -13,6 +13,12 @@ export const shopInfo = {
   lineUrl: 'https://line.me/R/ti/p/@bestchoice',
   phoneDisplay: '036-XXX-XXX',
   phoneHref: 'tel:036XXXXXX',
+  address: 'เลขที่ 99/9 ถนนนารายณ์มหาราช ตำบลทะเลชุบศร อำเภอเมืองลพบุรี จังหวัดลพบุรี 15000',
+  hours: 'เปิดทุกวัน 09:00 - 19:00 น.',
+  /** TODO(owner): ใส่ลิงก์ Google Maps จริงแล้วปุ่มนำทางจะโผล่เอง */
+  mapsUrl: null as string | null,
+  /** TODO(owner): ใส่ URL รูปหน้าร้านจริงแล้วรูปจะโผล่เอง */
+  storePhotoUrl: null as string | null,
 } as const;
 
 /** LINE OA deep-link พร้อมข้อความ prefill — ใช้ handle จาก shopInfo เสมอ */
@@ -54,6 +60,10 @@ export const copy = {
     serviceBuybackTitle: 'รับซื้อมือถือ',
     serviceBuybackDescription: 'ขายเครื่องรับเงินสดหรือโอนทันที ตีราคาเบื้องต้นออนไลน์ได้เลย',
     serviceBuybackCta: 'ขายเครื่อง',
+    visitTitle: 'มาหาเราที่ร้าน',
+    visitDescription: 'ร้านอยู่ลพบุรี ลองเครื่องจริงก่อนตัดสินใจ ทีมงานช่วยดูให้ทุกขั้น',
+    visitNavigateCta: 'นำทางด้วย Google Maps',
+    visitLineCta: 'นัดหมายทางไลน์',
   },
 
   catalog: {
@@ -337,8 +347,8 @@ export const copy = {
     formMessagePlaceholder: 'สอบถามรุ่นเครื่อง ราคา หรือขอคำปรึกษา',
     formSubmitCta: 'ส่งข้อความ',
     addressTitle: 'ที่อยู่และเวลาทำการ',
-    address: 'เลขที่ 99/9 ถนนนารายณ์มหาราช ตำบลทะเลชุบศร อำเภอเมืองลพบุรี จังหวัดลพบุรี 15000',
-    hours: 'เปิดทุกวัน 09:00 - 19:00 น.',
+    address: shopInfo.address,
+    hours: shopInfo.hours,
   },
 
   login: {

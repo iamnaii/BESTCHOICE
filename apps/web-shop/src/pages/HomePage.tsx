@@ -12,6 +12,8 @@ import {
   Smartphone,
   Repeat,
   Banknote,
+  MapPin,
+  Clock,
 } from 'lucide-react';
 import ShopLayout from '@/components/layout/ShopLayout';
 import PromotionsStrip from '@/components/shop/PromotionsStrip';
@@ -30,7 +32,7 @@ import {
   type ProductGroup,
 } from '@/components';
 import { api } from '@/lib/api';
-import { copy } from '@/lib/copy';
+import { copy, shopInfo, lineOaMessageUrl } from '@/lib/copy';
 import type { Review } from '@/types/review';
 
 interface CatalogResponse {
@@ -219,6 +221,63 @@ export default function HomePage() {
                 </Button>
               </div>
             </CardBody>
+          </Card>
+        </Container>
+      </Section>
+
+      {/* มาหาเราที่ร้าน — config-driven: รูป/ปุ่มนำทางโผล่เองเมื่อร้านใส่ mapsUrl/storePhotoUrl */}
+      <Section tone="muted" padding="md">
+        <Container>
+          <Card variant="outlined" className="overflow-hidden">
+            <div className={shopInfo.storePhotoUrl ? 'md:flex md:items-stretch' : ''}>
+              {shopInfo.storePhotoUrl && (
+                <div className="md:w-2/5 shrink-0">
+                  <img
+                    src={shopInfo.storePhotoUrl}
+                    alt={copy.home.visitTitle}
+                    className="aspect-video size-full rounded-2xl object-cover"
+                  />
+                </div>
+              )}
+              <CardBody className="flex-1 space-y-4 leading-snug">
+                <h2 className="text-xl md:text-2xl font-bold leading-snug">
+                  {copy.home.visitTitle}
+                </h2>
+                <p className="text-sm text-muted-foreground leading-snug">
+                  {copy.home.visitDescription}
+                </p>
+                <div className="space-y-2">
+                  <div className="flex items-start gap-3">
+                    <MapPin className="size-5 text-emerald-600 shrink-0 mt-0.5" aria-hidden="true" />
+                    <p className="text-sm text-muted-foreground leading-snug">{shopInfo.address}</p>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <Clock className="size-5 text-emerald-600 shrink-0 mt-0.5" aria-hidden="true" />
+                    <p className="text-sm text-muted-foreground leading-snug">{shopInfo.hours}</p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-3 pt-1">
+                  {shopInfo.mapsUrl && (
+                    <Button asChild variant="primary" size="lg">
+                      <a href={shopInfo.mapsUrl} target="_blank" rel="noopener noreferrer">
+                        <MapPin className="size-4" aria-hidden="true" />
+                        {copy.home.visitNavigateCta}
+                      </a>
+                    </Button>
+                  )}
+                  <Button asChild variant="outline" size="lg">
+                    <a
+                      href={lineOaMessageUrl('สนใจนัดหมายเข้ามาดูเครื่องที่ร้านครับ/ค่ะ')}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <MessageCircle className="size-4" aria-hidden="true" />
+                      {copy.home.visitLineCta}
+                    </a>
+                  </Button>
+                </div>
+              </CardBody>
+            </div>
           </Card>
         </Container>
       </Section>

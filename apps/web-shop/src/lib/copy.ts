@@ -15,6 +15,12 @@ export const shopInfo = {
   phoneHref: 'tel:036XXXXXX',
 } as const;
 
+/** LINE OA deep-link พร้อมข้อความ prefill — ใช้ handle จาก shopInfo เสมอ */
+export function lineOaMessageUrl(text: string): string {
+  const handle = shopInfo.lineHandle.replace(/^@/, '');
+  return `https://line.me/R/oaMessage/%40${handle}/?${encodeURIComponent(text)}`;
+}
+
 export const copy = {
   common: {
     loading: 'กำลังโหลด...',
@@ -68,6 +74,7 @@ export const copy = {
     conditionAFull: 'เกรด A — สภาพดีมาก เหมือนใหม่',
     conditionBFull: 'เกรด B — สภาพใช้งาน มีรอยเล็กน้อย',
     conditionCFull: 'เกรด C — สภาพมีรอย หรือตำหนิ',
+    askLineCta: 'สอบถามเครื่องนี้ทางไลน์',
   },
 
   cart: {

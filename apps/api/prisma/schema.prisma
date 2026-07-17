@@ -544,6 +544,16 @@ enum SkipReason {
   OTHER
 }
 
+enum BuybackDeductType {
+  PERCENT
+  FIXED
+}
+
+enum BuybackSelectType {
+  SINGLE
+  MULTI
+}
+
 // ============================================================
 // CORE ENTITIES
 // ============================================================
@@ -4577,6 +4587,11 @@ model TradeIn {
   customerLineId       String?                 @map("customer_line_id")
   photoUrls            String[]                @default([]) @map("photo_urls")
   batteryHealth        Int?                    @map("battery_health")
+  /// Instant-quote (yellobe-style): snapshot คำตอบแบบประเมิน ณ ตอน submit
+  conditionAnswers     Json?                   @map("condition_answers")
+  /// {maxPrice, fixedTotal, pctTotal, price, lines[]} — จำนวนเงินเป็น string (Decimal)
+  quoteBreakdown       Json?                   @map("quote_breakdown")
+  preferredVisitDate   DateTime?               @map("preferred_visit_date")
   customerId           String?                 @map("customer_id") // optional — walk-in seller may not be a customer
   productId            String?                 @map("product_id") // new product being purchased (optional)
   branchId             String?                 @map("branch_id") // สาขาที่รับซื้อ
@@ -4690,6 +4705,44 @@ model TradeInValuation {
   @@index([condition])
   @@index([deletedAt])
   @@map("trade_in_valuations")
+}
+
+/// คำถามประเมินสภาพ iPhone สำหรับ buyback instant-quote (yellobe-style)
+model BuybackQuestion {
+  id         String            @id @default(uuid())
+  key        String            @unique // slug เช่น "body-condition"
+  title      String
+  helpText   String?           @map("help_text")
+  selectType BuybackSelectType @default(SINGLE) @map("select_type")
+  sortOrder  Int               @default(0) @map("sort_order")
+  isActive   Boolean           @default(true) @map("is_active")
+  choices    BuybackChoice[]
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@index([deletedAt])
+  @@map("buyback_questions")
+}
+
+model BuybackChoice {
+  id          String            @id @default(uuid())
+  questionId  String            @map("question_id")
+  question    BuybackQuestion   @relation(fields: [questionId], references: [id])
+  label       String
+  deductType  BuybackDeductType @default(PERCENT) @map("deduct_type")
+  deductValue Decimal           @map("deduct_value") @db.Decimal(12, 2)
+  sortOrder   Int               @default(0) @map("sort_order")
+  isActive    Boolean           @default(true) @map("is_active")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@index([questionId])
+  @@index([deletedAt])
+  @@map("buyback_choices")
 }
 
 // ============================================================

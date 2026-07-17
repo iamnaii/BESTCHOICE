@@ -179,13 +179,14 @@ export async function seedTradeInValuations(prisma: PrismaClient) {
   const db = prisma as unknown as PrismaAny;
 
   for (const entry of valuationData) {
+    // ข้ามถ้า "เคยมี" แถวนี้ (รวม soft-deleted) — seed rerun ต้องไม่คืนชีพ
+    // แถวที่ owner ลบไปแล้วด้วยราคา demo (ราคานี้เป็นข้อเสนอเงินสดต่อลูกค้าแล้ว)
     const existing = await db.tradeInValuation.findFirst({
       where: {
         brand: entry.brand,
         model: entry.model,
         storage: entry.storage,
         condition: entry.condition,
-        deletedAt: null,
       },
     });
 

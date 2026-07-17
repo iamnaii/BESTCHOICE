@@ -1,7 +1,7 @@
 import { useMutation } from '@tanstack/react-query';
 import { api } from '../lib/api';
 
-export type UploadKind = 'TRADE_IN_PHOTO' | 'BUYBACK_PHOTO' | 'BANK_SLIP' | 'REVIEW_PHOTO';
+export type UploadKind = 'TRADE_IN_PHOTO' | 'BANK_SLIP' | 'REVIEW_PHOTO';
 
 interface PresignResponse {
   uploadUrl: string;

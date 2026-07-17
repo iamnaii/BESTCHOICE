@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Routes, Route, useLocation } from 'react-router';
+import { Routes, Route, useLocation, Navigate } from 'react-router';
 import { trackPageView } from './lib/tracking';
 import HomePage from './pages/HomePage';
 import CatalogPage from './pages/CatalogPage';
@@ -25,8 +25,7 @@ import TradeInLandingPage from './pages/trade-in/TradeInLandingPage';
 import TradeInSubmitPage from './pages/trade-in/TradeInSubmitPage';
 import TradeInStatusPage from './pages/trade-in/TradeInStatusPage';
 import BuybackLandingPage from './pages/buyback/BuybackLandingPage';
-import BuybackQuickQuotePage from './pages/buyback/BuybackQuickQuotePage';
-import BuybackSubmitPage from './pages/buyback/BuybackSubmitPage';
+import BuybackQuotePage from './pages/buyback/BuybackQuotePage';
 import BuybackStatusPage from './pages/buyback/BuybackStatusPage';
 import SavingPlanLandingPage from './pages/saving-plan/SavingPlanLandingPage';
 import SavingPlanCreatePage from './pages/saving-plan/SavingPlanCreatePage';
@@ -73,8 +72,9 @@ export default function App() {
         <Route path="/trade-in/submit" element={<TradeInSubmitPage />} />
         <Route path="/trade-in/:id" element={<TradeInStatusPage />} />
         <Route path="/buyback" element={<BuybackLandingPage />} />
-        <Route path="/buyback/quote" element={<BuybackQuickQuotePage />} />
-        <Route path="/buyback/submit" element={<BuybackSubmitPage />} />
+        <Route path="/buyback/quote" element={<BuybackQuotePage />} />
+        {/* หน้า submit เดิมถูกยุบเข้า wizard — กันลิงก์เก่า */}
+        <Route path="/buyback/submit" element={<Navigate to="/buyback/quote" replace />} />
         <Route path="/buyback/:id" element={<BuybackStatusPage />} />
         <Route path="/saving-plan" element={<SavingPlanLandingPage />} />
         <Route path="/saving-plan/create" element={<SavingPlanCreatePage />} />

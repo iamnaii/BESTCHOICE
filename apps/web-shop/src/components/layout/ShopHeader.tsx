@@ -5,7 +5,7 @@ import { Menu, Search, ShoppingCart, User, X } from 'lucide-react';
 const NAV_LINKS = [
   { to: '/products', label: 'สินค้าทั้งหมด' },
   { to: '/trade-in', label: 'เก่าแลกใหม่' },
-  { to: '/buyback', label: 'รับซื้อมือถือ' },
+  { to: '/buyback', label: 'รับซื้อ iPhone' },
   { to: '/promotions', label: 'โปรโมชัน' },
   { to: '/how-it-works', label: 'วิธีซื้อ' },
   { to: '/about', label: 'เกี่ยวกับเรา' },

@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsArray, IsIn, IsNumber, IsOptional, IsString, ValidateNested } from 'class-validator';
+import { IsArray, IsIn, IsNumber, IsOptional, IsString, Min, ValidateNested } from 'class-validator';
 import { QuoteAnswerDto } from '../../shop-buyback/dto/quote.dto';
 
 export class AppraiseOnlineDto {
@@ -16,6 +16,7 @@ export class AppraiseOnlineDto {
   /** MANUAL (OWNER เท่านั้น): ราคา free-hand */
   @IsOptional()
   @IsNumber({}, { message: 'กรุณาระบุราคา' })
+  @Min(1, { message: 'กรุณาระบุราคาที่ถูกต้อง' })
   offeredPrice?: number;
 
   /** MANUAL: เหตุผล ≥ 3 ตัวอักษร (audited) */

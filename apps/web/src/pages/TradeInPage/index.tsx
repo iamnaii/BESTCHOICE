@@ -12,6 +12,8 @@ import QuickBuyModal from '@/components/trade-in/QuickBuyModal';
 import TradeInTable from './components/TradeInTable';
 import AppraisalModal from './components/AppraisalModal';
 import AcceptModal from './components/AcceptModal';
+import ValuationsTab from './components/ValuationsTab';
+import QuestionnaireTab from './components/QuestionnaireTab';
 import type {
   TradeIn,
   TradeInsResponse,
@@ -29,6 +31,8 @@ export default function TradeInPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const canManage = ['OWNER', 'BRANCH_MANAGER'].includes(user?.role ?? '');
+
+  const [tab, setTab] = useState<'list' | 'valuations' | 'questions'>('list');
 
   const [page, setPage] = useState(1);
   const [showQuickBuy, setShowQuickBuy] = useState(false);
@@ -174,93 +178,123 @@ export default function TradeInPage() {
         }
       />
 
-      <QuickBuyModal
-        open={showQuickBuy}
-        onClose={() => setShowQuickBuy(false)}
-        onSuccess={(id) => {
-          queryClient.invalidateQueries({ queryKey: ['trade-ins'] });
-          openVoucherPdf(id);
-        }}
-      />
-
-      <div className="flex flex-wrap items-center gap-4 mb-4">
-        <div className="flex items-center gap-1.5">
-          <span className="text-xs text-muted-foreground leading-snug">ที่มา:</span>
-          {(['ALL', 'ONLINE', 'OFFLINE'] as const).map((opt) => (
+      {canManage && (
+        <div className="flex items-center gap-1.5 mb-4">
+          {(
+            [
+              ['list', 'รายการรับซื้อ'],
+              ['valuations', 'ตารางราคากลาง'],
+              ['questions', 'แบบประเมินออนไลน์'],
+            ] as const
+          ).map(([key, label]) => (
             <button
-              key={opt}
-              onClick={() => {
-                setSourceFilter(opt);
-                setPage(1);
-              }}
-              className={`px-2.5 py-1 rounded-md text-xs leading-snug transition-colors ${
-                sourceFilter === opt
+              key={key}
+              onClick={() => setTab(key)}
+              className={`px-3 py-1.5 rounded-md text-sm leading-snug transition-colors ${
+                tab === key
                   ? 'bg-primary text-primary-foreground'
                   : 'bg-muted text-muted-foreground hover:bg-accent'
               }`}
             >
-              {opt === 'ALL' ? 'ทั้งหมด' : opt === 'ONLINE' ? 'ออนไลน์' : 'หน้าร้าน'}
+              {label}
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-1.5">
-          <span className="text-xs text-muted-foreground leading-snug">ประเภท:</span>
-          {(['ALL', 'EXCHANGE', 'BUYBACK'] as const).map((opt) => (
-            <button
-              key={opt}
-              onClick={() => {
-                setFlowFilter(opt);
-                setPage(1);
-              }}
-              className={`px-2.5 py-1 rounded-md text-xs leading-snug transition-colors ${
-                flowFilter === opt
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted text-muted-foreground hover:bg-accent'
-              }`}
-            >
-              {opt === 'ALL' ? 'ทั้งหมด' : opt === 'EXCHANGE' ? 'เทิร์นเครื่อง' : 'รับซื้อ'}
-            </button>
-          ))}
-        </div>
-      </div>
+      )}
+      {tab === 'valuations' && <ValuationsTab />}
+      {tab === 'questions' && <QuestionnaireTab />}
 
-      <TradeInTable
-        data={data?.data}
-        total={data?.total}
-        page={page}
-        isLoading={isLoading}
-        isError={isError}
-        error={error}
-        canManage={canManage}
-        onRefetch={refetch}
-        onPageChange={setPage}
-        onAppraise={setAppraiseModal}
-        onAccept={setAcceptModal}
-        onReject={(id) => rejectMutation.mutate(id)}
-        onVoucher={handleVoucher}
-        isRejectPending={rejectMutation.isPending}
-        voucherLoadingId={voucherLoadingId ?? (generateVoucherMutation.isPending ? (generateVoucherMutation.variables ?? null) : null)}
-      />
+      {tab === 'list' && (
+        <>
+          <QuickBuyModal
+            open={showQuickBuy}
+            onClose={() => setShowQuickBuy(false)}
+            onSuccess={(id) => {
+              queryClient.invalidateQueries({ queryKey: ['trade-ins'] });
+              openVoucherPdf(id);
+            }}
+          />
 
-      <AppraisalModal
-        item={appraiseModal}
-        value={appraiseValue}
-        condition={appraiseCondition}
-        isPending={appraiseMutation.isPending}
-        onValueChange={setAppraiseValue}
-        onConditionChange={setAppraiseCondition}
-        onConfirm={(id, value, condition) => appraiseMutation.mutate({ id, value, condition })}
-        onClose={handleCloseAppraise}
-      />
+          <div className="flex flex-wrap items-center gap-4 mb-4">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-muted-foreground leading-snug">ที่มา:</span>
+              {(['ALL', 'ONLINE', 'OFFLINE'] as const).map((opt) => (
+                <button
+                  key={opt}
+                  onClick={() => {
+                    setSourceFilter(opt);
+                    setPage(1);
+                  }}
+                  className={`px-2.5 py-1 rounded-md text-xs leading-snug transition-colors ${
+                    sourceFilter === opt
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-muted text-muted-foreground hover:bg-accent'
+                  }`}
+                >
+                  {opt === 'ALL' ? 'ทั้งหมด' : opt === 'ONLINE' ? 'ออนไลน์' : 'หน้าร้าน'}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-muted-foreground leading-snug">ประเภท:</span>
+              {(['ALL', 'EXCHANGE', 'BUYBACK'] as const).map((opt) => (
+                <button
+                  key={opt}
+                  onClick={() => {
+                    setFlowFilter(opt);
+                    setPage(1);
+                  }}
+                  className={`px-2.5 py-1 rounded-md text-xs leading-snug transition-colors ${
+                    flowFilter === opt
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-muted text-muted-foreground hover:bg-accent'
+                  }`}
+                >
+                  {opt === 'ALL' ? 'ทั้งหมด' : opt === 'EXCHANGE' ? 'เทิร์นเครื่อง' : 'รับซื้อ'}
+                </button>
+              ))}
+            </div>
+          </div>
 
-      <AcceptModal
-        item={acceptModal}
-        form={acceptForm}
-        isPending={acceptMutation.isPending}
-        onChange={(patch) => setAcceptForm((f) => ({ ...f, ...patch }))}
-        onConfirm={(id, body) => acceptMutation.mutate({ id, body })}
-        onClose={handleCloseAccept}
-      />
+          <TradeInTable
+            data={data?.data}
+            total={data?.total}
+            page={page}
+            isLoading={isLoading}
+            isError={isError}
+            error={error}
+            canManage={canManage}
+            onRefetch={refetch}
+            onPageChange={setPage}
+            onAppraise={setAppraiseModal}
+            onAccept={setAcceptModal}
+            onReject={(id) => rejectMutation.mutate(id)}
+            onVoucher={handleVoucher}
+            isRejectPending={rejectMutation.isPending}
+            voucherLoadingId={voucherLoadingId ?? (generateVoucherMutation.isPending ? (generateVoucherMutation.variables ?? null) : null)}
+          />
+
+          <AppraisalModal
+            item={appraiseModal}
+            value={appraiseValue}
+            condition={appraiseCondition}
+            isPending={appraiseMutation.isPending}
+            onValueChange={setAppraiseValue}
+            onConditionChange={setAppraiseCondition}
+            onConfirm={(id, value, condition) => appraiseMutation.mutate({ id, value, condition })}
+            onClose={handleCloseAppraise}
+          />
+
+          <AcceptModal
+            item={acceptModal}
+            form={acceptForm}
+            isPending={acceptMutation.isPending}
+            onChange={(patch) => setAcceptForm((f) => ({ ...f, ...patch }))}
+            onConfirm={(id, body) => acceptMutation.mutate({ id, body })}
+            onClose={handleCloseAccept}
+          />
+        </>
+      )}
     </div>
   );
 }

@@ -117,9 +117,19 @@ export class OnlineAppraisalService {
     // appraise record เดียวกันไปแล้ว ใช้ updateMany + WHERE conditional (เห็น state ที่อ่านมา)
     // กัน race แทน update({where:{id}}) ธรรมดาที่ตัวชนะ/แพ้ overwrite กันเงียบๆ ได้เสมอ
     // (ตาม pattern paysolutions-webhook.service.ts / contract-lifecycle.service.ts)
+    // MANUAL ไม่มี appraisalLocked/status เพียงพอจะกัน race กันเอง — สอง OWNER เรียก MANUAL
+    // พร้อมกันบน record เดิม (ทั้งคู่ status ใน [PENDING_APPRAISAL, APPRAISED]) ก็จะยังผ่าน WHERE
+    // เดิมทั้งคู่ (last write wins เงียบๆ) จึง CAS เพิ่มบน offeredPrice ที่อ่านมา ณ ตอน fetch —
+    // ใครก็ตามที่ record เปลี่ยน offeredPrice ไปแล้ว (ไม่ว่าจาก MANUAL หรือโหมดอื่น) จะ match ไม่ได้
+    // (รองรับ null ด้วย — Prisma แปลง `offeredPrice: null` เป็น IS NULL)
     const whereGuard: Prisma.TradeInWhereInput =
       dto.mode === 'MANUAL'
-        ? { id, deletedAt: null, status: { in: ['PENDING_APPRAISAL', 'APPRAISED'] } }
+        ? {
+            id,
+            deletedAt: null,
+            status: { in: ['PENDING_APPRAISAL', 'APPRAISED'] },
+            offeredPrice: tradeIn.offeredPrice,
+          }
         : { id, deletedAt: null, appraisalLocked: false, status: 'PENDING_APPRAISAL' };
 
     const result = await this.prisma.tradeIn.updateMany({

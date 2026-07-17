@@ -149,4 +149,25 @@ describe('OnlineAppraisalService', () => {
     const data = prisma.tradeIn.updateMany.mock.calls[0][0].data;
     expect(data.basePriceAtAppraisal.toString()).toBe('15000');
   });
+
+  it('MANUAL race-loser: สอง OWNER เรียก MANUAL พร้อมกันบน record APPRAISED เดิม → updateMany count=0 → BadRequestException, WHERE ล็อคด้วย offeredPrice ที่อ่านมา', async () => {
+    prisma.tradeIn.findFirst.mockResolvedValue({
+      ...ONLINE_TRADEIN,
+      status: 'APPRAISED',
+      appraisalLocked: true,
+      firstAppraisedAt: new Date('2026-07-01'),
+      offeredPrice: D(5000),
+    });
+    prisma.tradeIn.updateMany.mockResolvedValue({ count: 0 });
+    await expect(
+      service.appraiseOnline(
+        'ti-1',
+        { mode: 'MANUAL', offeredPrice: 6000, reason: 'แก้ราคาซ้ำ (ผู้ใช้อื่นแก้ไปแล้ว)' },
+        'u1',
+        'OWNER',
+      ),
+    ).rejects.toThrow(BadRequestException);
+    const where = prisma.tradeIn.updateMany.mock.calls[0][0].where;
+    expect(where.offeredPrice.toString()).toBe('5000');
+  });
 });

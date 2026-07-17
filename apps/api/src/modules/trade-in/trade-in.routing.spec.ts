@@ -4,6 +4,7 @@ import request from 'supertest';
 import { TradeInController } from './trade-in.controller';
 import { TradeInService } from './trade-in.service';
 import { BuybackQuestionAdminService } from './services/buyback-question-admin.service';
+import { OnlineAppraisalService } from './services/online-appraisal.service';
 import { PiiAuditService } from '../pii/pii-audit.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -36,6 +37,7 @@ describe('TradeInController routing', () => {
       providers: [
         { provide: TradeInService, useValue: tradeInService },
         { provide: BuybackQuestionAdminService, useValue: adminService },
+        { provide: OnlineAppraisalService, useValue: { appraiseOnline: jest.fn() } },
         { provide: PiiAuditService, useValue: { logDecryption: jest.fn() } },
         { provide: PrismaService, useValue: {} },
       ],

@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { MessageCircle } from 'lucide-react';
 import { api } from '@/lib/api';
 import { getSessionId } from '@/lib/session';
-import { copy } from '@/lib/copy';
+import { copy, lineOaMessageUrl } from '@/lib/copy';
 import { media } from '@/lib/media-placeholders';
 import { useCartStore } from '@/stores/cartStore';
 import { useTrackEvent } from '@/hooks/useTrackEvent';
@@ -248,6 +249,15 @@ export default function ProductDetailPage() {
               <Button variant="outline" size="lg" fullWidth onClick={() => nav(`/apply/${data.id}`)}>
                 สมัครผ่อนทันที
               </Button>
+              <a
+                href={lineOaMessageUrl(`สนใจ ${displayName} ครับ/ค่ะ`)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center gap-1.5 text-sm text-emerald-700 hover:underline underline-offset-4 leading-snug"
+              >
+                <MessageCircle className="size-4" aria-hidden="true" />
+                {copy.product.askLineCta}
+              </a>
             </div>
           </Stack>
         </div>
@@ -300,6 +310,17 @@ export default function ProductDetailPage() {
         </div>
       </StickyBottomBar>
       <StickyBottomBarSpacer />
+      <div className="md:hidden text-center py-3">
+        <a
+          href={lineOaMessageUrl(`สนใจ ${displayName} ครับ/ค่ะ`)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center justify-center gap-1.5 text-sm text-emerald-700 hover:underline underline-offset-4 leading-snug"
+        >
+          <MessageCircle className="size-4" aria-hidden="true" />
+          {copy.product.askLineCta}
+        </a>
+      </div>
     </ShopLayout>
   );
 }

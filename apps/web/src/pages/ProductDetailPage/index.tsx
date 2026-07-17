@@ -16,6 +16,7 @@ import { getDisplayPrices } from '@/utils/getDisplayPrices';
 import ProductPhotos from './components/ProductPhotos';
 import EditProductModal from './components/EditProductModal';
 import { InstallmentCalculatorCard } from './components/InstallmentCalculatorCard';
+import OnlineListingPanel from './components/OnlineListingPanel';
 
 interface Price {
   id: string;
@@ -49,9 +50,13 @@ interface Product {
   po: { id: string; poNumber: string } | null;
   inspection: { id: string; overallGrade: string | null; isCompleted: boolean } | null;
   prices: Price[];
+  gallery: string[];
+  isOnlineVisible: boolean;
+  onlineDescription: string | null;
+  conditionGrade: string | null;
 }
 
-type Tab = 'info' | 'photos';
+type Tab = 'info' | 'photos' | 'online';
 
 interface EditForm {
   name: string;
@@ -344,27 +349,26 @@ export default function ProductDetailPage() {
         }
       />
 
-      {/* Tabs — only for PHONE_USED */}
-      {product.category === 'PHONE_USED' && (
-        <div className="flex gap-0.5 mb-5 border-b border-border/60">
-          {([
-            { key: 'info' as Tab, label: 'ข้อมูลสินค้า' },
-            { key: 'photos' as Tab, label: 'รูปถ่าย' },
-          ]).map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === tab.key
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      )}
+      {/* Tabs — always shown; 'photos' only for PHONE_USED, 'online' for every category */}
+      <div className="flex gap-0.5 mb-5 border-b border-border/60">
+        {([
+          { key: 'info' as Tab, label: 'ข้อมูลสินค้า' },
+          ...(product.category === 'PHONE_USED' ? [{ key: 'photos' as Tab, label: 'รูปถ่าย' }] : []),
+          { key: 'online' as Tab, label: 'ขึ้นเว็บ' },
+        ]).map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === tab.key
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
       {/* Tab: Photos */}
       {activeTab === 'photos' && product.category === 'PHONE_USED' && (
@@ -375,8 +379,13 @@ export default function ProductDetailPage() {
         />
       )}
 
-      {/* Tab: Info (or always show for non-PHONE_USED) */}
-      {(activeTab === 'info' || product.category !== 'PHONE_USED') && (
+      {/* Tab: Online listing */}
+      {activeTab === 'online' && (
+        <OnlineListingPanel product={product} canEdit={isManager} />
+      )}
+
+      {/* Tab: Info */}
+      {activeTab === 'info' && (
         <>
           <ProductInfo
             product={product}

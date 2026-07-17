@@ -35,12 +35,28 @@ export class OnlineAppraisalService {
     if (!tradeIn.appraisalLocked && tradeIn.status !== 'PENDING_APPRAISAL') {
       throw new BadRequestException('รายการนี้ไม่อยู่ในสถานะรอประเมิน');
     }
+    // MANUAL ข้าม lock-check ข้างบน (OWNER แก้ record ที่ล็อคแล้วได้) แต่ต้องไม่ให้ย้อน
+    // record ที่จบ lifecycle ไปแล้ว (ACCEPTED/COMPLETED/REJECTED ฯลฯ) กลับมาเป็น APPRAISED —
+    // ไม่งั้น accept() ครั้งที่ 2 จะสร้าง Product ซ้อนได้
+    if (
+      dto.mode === 'MANUAL' &&
+      tradeIn.status !== 'PENDING_APPRAISAL' &&
+      tradeIn.status !== 'APPRAISED'
+    ) {
+      throw new BadRequestException(
+        `รายการนี้จบขั้นตอนไปแล้ว (สถานะ ${tradeIn.status}) — ไม่สามารถแก้ราคาได้`,
+      );
+    }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const breakdown = tradeIn.quoteBreakdown as any;
     const maxPrice = new Prisma.Decimal(breakdown.maxPrice ?? 0);
 
     let offeredPrice: Prisma.Decimal;
+    // AS_ANSWERED/MANUAL เทียบกับ breakdown เดิมของ record; REVISED เขียนทับด้านล่าง
+    // ด้วย breakdown "ใหม่" ที่เพิ่งคิดจาก engine (แก้บั๊ก desync — เดิม snapshot ราคาฐาน
+    // เก่าคู่กับ quoteBreakdown ใหม่ ทำให้เทียบ deviation ผิด)
+    let basePriceAtAppraisal = maxPrice;
     let extraData: Record<string, unknown> = {};
 
     if (dto.mode === 'AS_ANSWERED') {
@@ -61,6 +77,9 @@ export class OnlineAppraisalService {
         throw new BadRequestException('รุ่นนี้ไม่มีราคาในตารางแล้ว — แก้ตารางราคากลางก่อน');
       }
       offeredPrice = new Prisma.Decimal(quote.price!);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const newBreakdown = quote.breakdown as any;
+      basePriceAtAppraisal = new Prisma.Decimal(newBreakdown?.maxPrice ?? quote.maxPrice ?? 0);
       extraData = {
         deviceCondition: quote.grade,
         estimatedValue: new Prisma.Decimal(quote.price!),
@@ -94,18 +113,33 @@ export class OnlineAppraisalService {
       });
     }
 
-    return this.prisma.tradeIn.update({
-      where: { id },
+    // Compare-and-set: findFirst ข้างบนอ่านแบบ dirty read — ระหว่างนี้ staff คนอื่นอาจ
+    // appraise record เดียวกันไปแล้ว ใช้ updateMany + WHERE conditional (เห็น state ที่อ่านมา)
+    // กัน race แทน update({where:{id}}) ธรรมดาที่ตัวชนะ/แพ้ overwrite กันเงียบๆ ได้เสมอ
+    // (ตาม pattern paysolutions-webhook.service.ts / contract-lifecycle.service.ts)
+    const whereGuard: Prisma.TradeInWhereInput =
+      dto.mode === 'MANUAL'
+        ? { id, deletedAt: null, status: { in: ['PENDING_APPRAISAL', 'APPRAISED'] } }
+        : { id, deletedAt: null, appraisalLocked: false, status: 'PENDING_APPRAISAL' };
+
+    const result = await this.prisma.tradeIn.updateMany({
+      where: whereGuard,
       data: {
         offeredPrice,
         notes: dto.notes ?? tradeIn.notes,
         appraisedById: userId,
         status: 'APPRAISED',
-        basePriceAtAppraisal: maxPrice, // deviation analytics เทียบกับ "ราคาสูงสุด" ของใบเสนอ
+        basePriceAtAppraisal, // deviation analytics เทียบกับ "ราคาสูงสุด" ของใบเสนอ
         appraisalLocked: true,
         firstAppraisedAt: tradeIn.firstAppraisedAt ?? new Date(),
         ...extraData,
       },
     });
+
+    if (result.count === 0) {
+      throw new BadRequestException('รายการนี้เพิ่งถูกประเมินโดยผู้ใช้อื่น กรุณารีเฟรชหน้าจอ');
+    }
+
+    return this.prisma.tradeIn.findUnique({ where: { id } });
   }
 }

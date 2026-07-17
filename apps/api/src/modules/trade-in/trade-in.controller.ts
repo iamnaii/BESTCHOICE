@@ -218,6 +218,13 @@ export class TradeInController {
     return this.tradeInService.upsertValuation(dto);
   }
 
+  /** DELETE /trade-ins/valuations/:id — ลบราคารุ่น (soft delete, admin) — spec §8.1 */
+  @Delete('valuations/:id')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  deleteValuation(@Param('id') id: string) {
+    return this.tradeInService.deleteValuation(id);
+  }
+
   // ─── Buyback questionnaire (แอดมินแบบประเมินรับซื้อออนไลน์) ───────────
   // ⚠️ ต้องอยู่เหนือ @Get(':id') เสมอ (route-shadowing)
 

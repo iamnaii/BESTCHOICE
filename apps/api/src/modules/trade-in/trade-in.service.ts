@@ -165,4 +165,8 @@ export class TradeInService {
   listValuations(filters: { brand?: string; model?: string; page?: number; limit?: number }) {
     return this.valuation.listValuations(filters);
   }
+
+  deleteValuation(id: string) {
+    return this.valuation.deleteValuation(id);
+  }
 }

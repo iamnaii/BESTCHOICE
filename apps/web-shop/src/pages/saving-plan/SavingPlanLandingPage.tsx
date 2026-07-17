@@ -3,8 +3,14 @@ import { PiggyBank, ShoppingBag, Target } from 'lucide-react';
 import ShopLayout from '@/components/layout/ShopLayout';
 import { Container, LandingHero } from '@/components';
 import { copy } from '@/lib/copy';
+import { usePageMeta } from '@/hooks/usePageMeta';
 
 export default function SavingPlanLandingPage() {
+  usePageMeta(
+    copy.savingPlan.pageTitle,
+    'ออมดาวน์ iPhone เริ่มต้น ฿500/เดือน ร้านมือถือลพบุรี ออมครบใช้เป็นเงินดาวน์รับเครื่องได้เลย',
+  );
+
   return (
     <ShopLayout>
       <LandingHero

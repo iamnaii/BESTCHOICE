@@ -17,6 +17,7 @@ import {
   promoIcon,
   promoEndsLabel,
 } from '@/components/shop/PromotionsStrip';
+import { usePageMeta } from '@/hooks/usePageMeta';
 import type { ShopPromotion } from '@/types/promotion';
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -41,6 +42,11 @@ function conditionChips(p: ShopPromotion): string[] {
 }
 
 export default function PromotionsPage() {
+  usePageMeta(
+    'โปรโมชัน',
+    'โปรโมชันและส่วนลด iPhone มือสองผ่อนได้บัตรประชาชนใบเดียว ร้านมือถือลพบุรี',
+  );
+
   const { data, isLoading, isError, refetch } = usePromotions();
 
   return (

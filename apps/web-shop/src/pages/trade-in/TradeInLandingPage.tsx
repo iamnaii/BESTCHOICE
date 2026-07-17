@@ -2,8 +2,14 @@ import { Smartphone, Camera, Handshake } from 'lucide-react';
 import { copy } from '@/lib/copy';
 import ShopLayout from '@/components/layout/ShopLayout';
 import { LandingHero } from '@/components';
+import { usePageMeta } from '@/hooks/usePageMeta';
 
 export default function TradeInLandingPage() {
+  usePageMeta(
+    copy.tradeIn.pageTitle,
+    'เก่าแลกใหม่ iPhone ตีราคาสูงสุด ฿15,000 ร้านมือถือลพบุรี ประเมินไว ได้เงินหรือเป็นดาวน์เครื่องใหม่',
+  );
+
   return (
     <ShopLayout>
       <LandingHero

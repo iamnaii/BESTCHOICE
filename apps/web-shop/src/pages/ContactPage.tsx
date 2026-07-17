@@ -16,8 +16,14 @@ import {
 } from '@/components';
 import ShopLayout from '@/components/layout/ShopLayout';
 import { copy, shopInfo } from '@/lib/copy';
+import { usePageMeta } from '@/hooks/usePageMeta';
 
 export default function ContactPage() {
+  usePageMeta(
+    copy.contact.pageTitle,
+    'ติดต่อ BESTCHOICE ร้านมือถือลพบุรี ทักไลน์หรือโทรสอบถามซื้อ-ผ่อน iPhone มือสอง',
+  );
+
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [message, setMessage] = useState('');

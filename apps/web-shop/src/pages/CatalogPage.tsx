@@ -18,6 +18,7 @@ import {
 import { api } from '@/lib/api';
 import { copy } from '@/lib/copy';
 import { useTrackEvent } from '@/hooks/useTrackEvent';
+import { usePageMeta } from '@/hooks/usePageMeta';
 import { cn } from '@/lib/utils';
 
 interface CatalogResponse {
@@ -68,6 +69,11 @@ function Pill({ active, onClick, children }: PillProps) {
 }
 
 export default function CatalogPage() {
+  usePageMeta(
+    'สินค้าทั้งหมด',
+    'iPhone มือสองตรวจ 30 จุด ผ่อนบัตรประชาชนใบเดียว ร้านมือถือลพบุรี',
+  );
+
   const [searchParams, setSearchParams] = useSearchParams();
   const [filters, setFilters] = useState<CatalogFilters>(() => ({
     brand: searchParams.get('brand') ?? undefined,

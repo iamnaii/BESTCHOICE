@@ -11,6 +11,7 @@ import {
 import ShopLayout from '@/components/layout/ShopLayout';
 import { copy } from '@/lib/copy';
 import { media } from '@/lib/media-placeholders';
+import { usePageMeta } from '@/hooks/usePageMeta';
 
 interface Milestone {
   year: string;
@@ -66,6 +67,11 @@ const VALUES: Value[] = [
 ];
 
 export default function AboutPage() {
+  usePageMeta(
+    copy.about.pageTitle,
+    'รู้จัก BESTCHOICE ร้านมือถือลพบุรี ขาย iPhone มือสองของแท้ ผ่อนได้บัตรประชาชนใบเดียว ดูแลลูกค้ากว่า 1,000 ราย',
+  );
+
   return (
     <ShopLayout>
       <CategoryHero

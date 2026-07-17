@@ -9,6 +9,7 @@ import { copy, lineOaMessageUrl } from '@/lib/copy';
 import { media } from '@/lib/media-placeholders';
 import { useCartStore } from '@/stores/cartStore';
 import { useTrackEvent } from '@/hooks/useTrackEvent';
+import { usePageMeta } from '@/hooks/usePageMeta';
 import ShopLayout from '@/components/layout/ShopLayout';
 import ReviewsSection from '@/components/reviews/ReviewsSection';
 import { InstallmentCalculatorCard } from '@/components/InstallmentCalculatorCard';
@@ -100,6 +101,17 @@ export default function ProductDetailPage() {
       track('ViewContent', { content_type: 'product', content_ids: [id] });
     }
   }, [data, id, track]);
+
+  // Hook must run every render (rules-of-hooks) — call before the loading
+  // early-return below, with an undefined title while data hasn't arrived
+  // yet (hook design tolerates that and swaps in the real name on re-render).
+  const metaTitle = data
+    ? [data.brand, data.model, data.storage, data.color].filter(Boolean).join(' ')
+    : undefined;
+  usePageMeta(
+    metaTitle,
+    metaTitle ? `${metaTitle} ผ่อนได้บัตรประชาชนใบเดียว รับประกันร้าน 30 วัน` : undefined,
+  );
 
   const reserveMut = useMutation({
     mutationFn: () =>

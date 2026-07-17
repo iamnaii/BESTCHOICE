@@ -50,6 +50,7 @@ export default function OnlineAppraiseModal({ item, onClose }: Props) {
     onSuccess: () => {
       toast.success('ยืนยันราคาเรียบร้อย');
       queryClient.invalidateQueries({ queryKey: ['trade-ins'] });
+      if (item) queryClient.invalidateQueries({ queryKey: ['trade-in-detail', item.id] });
       handleClose();
     },
     onError: (err) => toast.error(getErrorMessage(err)),

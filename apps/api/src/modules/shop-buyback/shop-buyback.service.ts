@@ -28,9 +28,8 @@ function storageGb(storage: string): number {
 }
 
 /**
- * Buyback instant-quote (yellobe-style) — จงใจ "fork" ออกจาก TradeInIntakeService:
- * intake ตัวเดิมยังเสิร์ฟ /shop/trade-in (EXCHANGE) แบบ byte-identical ห้ามแตะ
- * (spec §7.5). Module นี้มี pricing/submit/flex ของตัวเอง
+ * Engine เดียวของหน้า /sell (ขาย/เทิร์น iPhone) — TradeInIntakeService เดิม
+ * ถูกปลดระวางแล้ว (spec /sell 2026-07-18); shop-trade-in เหลือแค่ 410 stub
  */
 @Injectable()
 export class ShopBuybackService {

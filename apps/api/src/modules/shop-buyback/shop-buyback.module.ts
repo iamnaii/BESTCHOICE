@@ -6,7 +6,7 @@ import { PrismaModule } from '../../prisma/prisma.module';
 import { LineOaModule } from '../line-oa/line-oa.module';
 
 // ShopBotDefenseModule is @Global — guard is available without importing.
-// จงใจไม่ import TradeInIntakeModule แล้ว (fork ตาม spec §7.5)
+// TradeInIntakeModule ถูกลบแล้ว (spec /sell 2026-07-18)
 
 @Module({
   imports: [PrismaModule, LineOaModule],

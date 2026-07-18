@@ -24,8 +24,7 @@ export interface QuoteComputation {
 /**
  * Pricing engine ของ buyback instant-quote (yellobe-style):
  *   price = max(floor(((max − Σfixed) × (1 − min(Σpct,100)/100)) / 10) × 10, 0)
- * Decimal ล้วนตาม money rule — ห้ามแตะ TradeInIntakeService.quote() เดิม
- * (ตัวนั้นเป็น Number()+Math.floor ของ EXCHANGE flow ที่ spec เดิม lock ไว้)
+ * Decimal ล้วนตาม money rule
  */
 @Injectable()
 export class BuybackPricingService {

@@ -65,4 +65,23 @@ describe('BuybackPricingService', () => {
   ])('gradeFromPct(%d) = %s', (pct, grade) => {
     expect(svc.gradeFromPct(D(pct))).toBe(grade);
   });
+
+  describe('applyExchangeBonus', () => {
+    it('golden: 12,420 @10% → 13,660 (13,662 ปัดลงหลักสิบ)', () => {
+      expect(svc.applyExchangeBonus(D(12420), D(10)).toNumber()).toBe(13660);
+    });
+
+    it('@0% → เท่าราคาเงินสด', () => {
+      expect(svc.applyExchangeBonus(D(12420), D(0)).toNumber()).toBe(12420);
+    });
+
+    it('ปัดลงหลักสิบเสมอ', () => {
+      // 9995 × 1.1 = 10994.5 → 10990
+      expect(svc.applyExchangeBonus(D(9995), D(10)).toNumber()).toBe(10990);
+    });
+
+    it('cash 0 → 0', () => {
+      expect(svc.applyExchangeBonus(D(0), D(10)).toNumber()).toBe(0);
+    });
+  });
 });

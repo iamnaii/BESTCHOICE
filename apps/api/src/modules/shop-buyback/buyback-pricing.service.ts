@@ -64,4 +64,14 @@ export class BuybackPricingService {
     if (pctTotal.lte(35)) return 'C';
     return 'D';
   }
+
+  /**
+   * ราคาเทิร์น = เงินสด × (1 + โบนัส%) ปัดลงหลักสิบ (spec /sell §3)
+   * ห้ามสร้าง Decimal จาก float (1 + pct/100) — คูณ/หารด้วย 100 ตรงๆ
+   */
+  applyExchangeBonus(cash: Prisma.Decimal, bonusPct: Prisma.Decimal): Prisma.Decimal {
+    const HUNDRED = new Prisma.Decimal(100);
+    const raw = cash.mul(HUNDRED.plus(bonusPct)).div(HUNDRED);
+    return Prisma.Decimal.max(raw.div(10).floor().mul(10), new Prisma.Decimal(0));
+  }
 }

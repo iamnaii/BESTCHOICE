@@ -63,15 +63,38 @@ export class OnlineAppraisalService {
       if (tradeIn.estimatedValue === null) {
         throw new BadRequestException('รายการนี้ไม่มีราคาที่เสนอออนไลน์');
       }
-      offeredPrice = new Prisma.Decimal(tradeIn.estimatedValue);
+      if (dto.useCashPrice) {
+        // ลูกค้าเทิร์นแต่ไม่ซื้อเครื่อง → ถอยเป็นราคาเงินสด + flip flow (spec /sell §7.2)
+        if (tradeIn.flow !== 'EXCHANGE') {
+          throw new BadRequestException('ใช้ราคาเงินสดได้เฉพาะรายการเทิร์น');
+        }
+        const cash = breakdown.cashPrice;
+        if (!cash) {
+          throw new BadRequestException('รายการนี้ไม่มีราคาเงินสดในใบเสนอ');
+        }
+        offeredPrice = new Prisma.Decimal(cash);
+        extraData = {
+          flow: 'BUYBACK',
+          estimatedValue: new Prisma.Decimal(cash),
+          quoteBreakdown: {
+            ...breakdown,
+            price: cash,
+            chosenFlow: 'BUYBACK',
+          } as Prisma.InputJsonValue,
+        };
+      } else {
+        offeredPrice = new Prisma.Decimal(tradeIn.estimatedValue);
+      }
     } else if (dto.mode === 'REVISED') {
       if (!dto.answers || dto.answers.length === 0) {
         throw new BadRequestException('กรุณาส่งคำตอบแบบประเมินชุดใหม่');
       }
+      const recordFlow = tradeIn.flow === 'EXCHANGE' ? ('EXCHANGE' as const) : ('BUYBACK' as const);
       const quote = await this.shopBuyback.quoteForAnswers(
         tradeIn.deviceModel,
         tradeIn.deviceStorage ?? '',
         dto.answers,
+        recordFlow,
       );
       if (!quote.available) {
         throw new BadRequestException('รุ่นนี้ไม่มีราคาในตารางแล้ว — แก้ตารางราคากลางก่อน');

@@ -1,5 +1,14 @@
 import { Type } from 'class-transformer';
-import { IsArray, IsIn, IsNumber, IsOptional, IsString, Min, ValidateNested } from 'class-validator';
+import {
+  IsArray,
+  IsBoolean,
+  IsIn,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Min,
+  ValidateNested,
+} from 'class-validator';
 import { QuoteAnswerDto } from '../../shop-buyback/dto/quote.dto';
 
 export class AppraiseOnlineDto {
@@ -27,4 +36,9 @@ export class AppraiseOnlineDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  /** AS_ANSWERED บน record เทิร์น: ลูกค้าไม่ซื้อเครื่อง → ถอยเป็นราคาเงินสด + flip flow เป็น BUYBACK */
+  @IsOptional()
+  @IsBoolean()
+  useCashPrice?: boolean;
 }

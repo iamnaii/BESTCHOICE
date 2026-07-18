@@ -162,6 +162,11 @@ jobs:
           # to the CalVer (e.g. "v26.5.1·a1b2c3d"). vite.config.ts trims to 7 chars.
           GIT_COMMIT: ${{ github.sha }}
 
+      # /sell rework ลบไฟล์จำนวนมากใน web-shop — ก่อนหน้านี้ CI ไม่เคย build
+      # web-shop เลย (พังจะไปโผล่ตอน deploy บน main) จึงเพิ่ม gate ที่ PR
+      - name: Build Web-Shop (customer storefront)
+        run: npm run build --workspace=apps/web-shop
+
       # E2E tests run in separate workflow (e2e-tests.yml) — skip here for faster deploy
       # - name: Install Playwright Browsers
       #   run: npx playwright install --with-deps chromium

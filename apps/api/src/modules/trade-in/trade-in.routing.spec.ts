@@ -30,7 +30,10 @@ describe('TradeInController routing', () => {
     getValuationModels: jest.fn().mockResolvedValue([]),
     deleteValuation: jest.fn().mockResolvedValue({ id: 'some-id' }),
   };
-  const adminService = { list: jest.fn().mockResolvedValue({ questions: [] }) };
+  const adminService = {
+    list: jest.fn().mockResolvedValue({ questions: [] }),
+    getSellConfig: jest.fn().mockResolvedValue({ exchangeBonusPct: 10 }),
+  };
 
   beforeAll(async () => {
     const mod = await Test.createTestingModule({
@@ -73,6 +76,12 @@ describe('TradeInController routing', () => {
   it('GET /trade-ins/buyback-questions → admin list', async () => {
     await request(app.getHttpServer()).get('/trade-ins/buyback-questions').expect(200);
     expect(adminService.list).toHaveBeenCalled();
+    expect(tradeInService.findOne).not.toHaveBeenCalled();
+  });
+
+  it('GET /trade-ins/sell-config ไม่โดน :id กลืน', async () => {
+    await request(app.getHttpServer()).get('/trade-ins/sell-config').expect(200);
+    expect(adminService.getSellConfig).toHaveBeenCalled();
     expect(tradeInService.findOne).not.toHaveBeenCalled();
   });
 

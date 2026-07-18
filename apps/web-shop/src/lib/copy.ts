@@ -159,27 +159,6 @@ export const copy = {
       'ทีมงานจะติดต่อกลับภายใน 2 ชั่วโมง (เวลาทำการ 10:00–19:00)',
   },
 
-  tradeIn: {
-    pageTitle: 'เก่าแลกใหม่',
-    description: 'ตีราคามือถือเก่าสูงสุด ฿15,000 พร้อมซื้อเครื่องใหม่ในร้าน',
-    submitCta: 'เริ่มทำเรื่อง',
-    stepDevice: 'อุปกรณ์',
-    stepCondition: 'สภาพ',
-    stepPhotos: 'รูป',
-    stepSeller: 'ผู้ขาย',
-    sellerName: 'ชื่อ-นามสกุล',
-    sellerPhone: 'เบอร์โทร (10 หลัก)',
-    sellerLineId: 'LINE ID (ถ้ามี)',
-    submitSuccess: 'ส่งเรื่องเก่าแลกใหม่แล้ว ทีมงานจะติดต่อกลับภายใน 24 ชั่วโมง',
-    submitError: 'ส่งเรื่องไม่สำเร็จ กรุณาลองใหม่',
-    photosRequired: 'รูปเครื่อง (อย่างน้อย 1 รูป)',
-    statusTitle: 'สถานะการประเมิน',
-    statusNotFound: 'ไม่พบข้อมูลเรื่องเก่าแลกใหม่',
-    acceptPrice: 'ยอมรับราคา',
-    rejectPrice: 'ปฏิเสธ',
-    followUp: 'ทีมงานจะติดต่อกลับทาง LINE/โทรศัพท์ภายใน 24 ชั่วโมง',
-  },
-
   sell: {
     pageTitle: 'ขาย/เทิร์น iPhone',
     description:

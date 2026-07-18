@@ -1,34 +1,29 @@
-import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
-import type { Request } from 'express';
-import { ShopTradeInService } from './shop-trade-in.service';
-import { EstimateDto } from './dto/estimate.dto';
-import { SubmitTradeInDto } from './dto/submit.dto';
+import { Controller, Get, GoneException, Post, UseGuards } from '@nestjs/common';
 import { ShopBotDefenseGuard } from '../shop-bot-defense/shop-bot-defense.guard';
 
+const GONE_MSG = 'เวอร์ชันหน้าเว็บเก่าเกินไป กรุณารีเฟรชหน้า (Ctrl+R) แล้วลองใหม่';
+
 /**
- * Online trade-in submission for the public shop (bestchoicephone.app).
- * Protected by ShopBotDefenseGuard — rate-limit + user-agent classification.
- * Endpoints are intentionally public (no JwtAuthGuard) — a walk-in customer
- * may not yet be an authenticated shop user; staff link the submission to a
- * customer record during appraisal.
+ * RETIRED (spec /sell 2026-07-18): flow เก่าแลกใหม่แบบเก่าถูกยุบเข้า /sell —
+ * ตอบ 410 คงไว้ 1 release กัน SPA bundle เก่าค้าง cache แล้วลบ module ทิ้งใน
+ * release ถัดไป (นัดรวมกับ quick-quote 410 + อัปเดต .claude/rules/security.md)
+ * สถานะ record เก่า: ลูกค้าเข้าผ่าน /sell/:id → GET /shop/buyback/:id แทน
  */
 @Controller('shop/trade-in')
 @UseGuards(ShopBotDefenseGuard)
 export class ShopTradeInController {
-  constructor(private service: ShopTradeInService) {}
-
   @Post('estimate')
-  estimate(@Body() dto: EstimateDto) {
-    return this.service.estimate(dto);
+  estimate() {
+    throw new GoneException(GONE_MSG);
   }
 
   @Post('submit')
-  submit(@Body() dto: SubmitTradeInDto, @Req() req: Request & { user?: { sub?: string } }) {
-    return this.service.submit(dto, req.user?.sub);
+  submit() {
+    throw new GoneException(GONE_MSG);
   }
 
   @Get(':id')
-  getStatus(@Param('id') id: string) {
-    return this.service.getStatus(id);
+  getStatus() {
+    throw new GoneException(GONE_MSG);
   }
 }

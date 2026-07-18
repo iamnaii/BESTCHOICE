@@ -102,10 +102,10 @@ const ALLOWED_MIME_BY_KIND: Record<UploadKind, readonly string[]> = {
  * every photo upload on the storefront. Staff-only kinds (letters, MDM,
  * voice memos) stay behind the JWT route below.
  */
-// BUYBACK_PHOTO ถูกถอดออก (2026-07): buyback instant-quote ไม่รับรูปแล้ว —
+// TRADE_IN_PHOTO/BUYBACK_PHOTO ถูกถอดออก (spec /sell 2026-07-18): shop-trade-in
+// เหลือแค่ 410 stub และ buyback instant-quote ไม่รับรูปแล้ว —
 // คง enum value ไว้ให้ record เก่า แต่ปิดช่อง presign นิรนามที่ไร้ผู้เรียก
 const PUBLIC_UPLOAD_KINDS: readonly UploadKind[] = [
-  UploadKind.TRADE_IN_PHOTO,
   UploadKind.BANK_SLIP,
   UploadKind.REVIEW_PHOTO,
 ];

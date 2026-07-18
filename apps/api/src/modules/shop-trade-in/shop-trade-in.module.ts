@@ -1,14 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ShopTradeInController } from './shop-trade-in.controller';
-import { ShopTradeInService } from './shop-trade-in.service';
-import { TradeInIntakeModule } from './trade-in-intake.module';
 
-// ShopBotDefenseModule is @Global — guard is available without importing.
-
-@Module({
-  imports: [TradeInIntakeModule],
-  controllers: [ShopTradeInController],
-  providers: [ShopTradeInService],
-  exports: [ShopTradeInService],
-})
+/** RETIRED — โฮสต์ 410 stub เท่านั้น (app.module ยัง import module นี้อยู่ ห้ามถอด ไม่งั้น 404) */
+@Module({ controllers: [ShopTradeInController] })
 export class ShopTradeInModule {}

@@ -138,7 +138,6 @@ describe('ShopUploadController', () => {
 
   describe('presignPublic (anonymous storefront route)', () => {
     it.each([
-      [UploadKind.TRADE_IN_PHOTO, 'image/jpeg'],
       [UploadKind.BANK_SLIP, 'application/pdf'],
       [UploadKind.REVIEW_PHOTO, 'image/png'],
     ])('allows customer-facing kind %s', async (kind, contentType) => {
@@ -148,6 +147,7 @@ describe('ShopUploadController', () => {
     });
 
     it.each([
+      UploadKind.TRADE_IN_PHOTO,
       UploadKind.BUYBACK_PHOTO,
       UploadKind.LETTER_PDF,
       UploadKind.LETTER_SIGNATURE,
@@ -163,7 +163,7 @@ describe('ShopUploadController', () => {
     it('still enforces the per-kind MIME whitelist on the public route', async () => {
       await expect(
         controller.presignPublic({
-          kind: UploadKind.TRADE_IN_PHOTO,
+          kind: UploadKind.REVIEW_PHOTO,
           contentType: 'application/x-msdownload',
         }),
       ).rejects.toThrow(BadRequestException);

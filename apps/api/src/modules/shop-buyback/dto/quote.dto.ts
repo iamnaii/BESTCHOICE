@@ -3,6 +3,7 @@ import {
   ArrayMaxSize,
   ArrayUnique,
   IsArray,
+  IsIn,
   IsISO8601,
   IsNotEmpty,
   IsOptional,
@@ -63,4 +64,9 @@ export class SubmitBuybackDto extends BuybackQuoteDto {
   @IsOptional()
   @IsString()
   lineUserId?: string;
+
+  /** ทางที่ลูกค้าเลือก — bundle เก่า (#1360) ไม่ส่ง = BUYBACK พฤติกรรมเดิมเป๊ะ */
+  @IsOptional()
+  @IsIn(['BUYBACK', 'EXCHANGE'], { message: 'ประเภทรายการไม่ถูกต้อง' })
+  flow?: 'BUYBACK' | 'EXCHANGE';
 }

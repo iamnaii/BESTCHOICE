@@ -91,6 +91,7 @@ describe('ShopBuybackService (instant quote)', () => {
           ),
         findUnique: jest.fn().mockResolvedValue(null),
       },
+      systemConfig: { findFirst: jest.fn().mockResolvedValue({ value: '10' }) },
     };
     line = { sendFlexMessage: jest.fn().mockResolvedValue(undefined) };
     service = new ShopBuybackService(prisma, line, new BuybackPricingService());
@@ -100,6 +101,17 @@ describe('ShopBuybackService (instant quote)', () => {
     { questionKey: 'warranty', choiceIds: ['c11'] },
     { questionKey: 'functional-issues', choiceIds: [] },
   ];
+
+  const dto = {
+    model: 'iPhone 15',
+    storage: '128GB',
+    answers,
+    sellerName: 'สมชาย',
+    sellerPhone: '0812345678',
+    imei: '111',
+    lineUserId: 'L1',
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any;
 
   describe('quoteForAnswers', () => {
     it('คำนวณราคาเดียว + breakdown: (14500-500)*1 → 14000', async () => {
@@ -171,17 +183,6 @@ describe('ShopBuybackService (instant quote)', () => {
   });
 
   describe('submit', () => {
-    const dto = {
-      model: 'iPhone 15',
-      storage: '128GB',
-      answers,
-      sellerName: 'สมชาย',
-      sellerPhone: '0812345678',
-      imei: '111',
-      lineUserId: 'L1',
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } as any;
-
     it('สร้าง TradeIn snapshot ครบ + คืนราคา', async () => {
       const r = await service.submit(dto, undefined);
       expect(r).toEqual({ id: 'ti-1', status: 'PENDING_APPRAISAL', price: '14000.00' });
@@ -238,13 +239,68 @@ describe('ShopBuybackService (instant quote)', () => {
   describe('getStatus', () => {
     it('ไม่พบ → NotFoundException; พบ → รวม field ใหม่', async () => {
       await expect(service.getStatus('x')).rejects.toThrow(NotFoundException);
-      prisma.tradeIn.findUnique.mockResolvedValue({ id: 'ti-1', estimatedValue: D(14000) });
+      prisma.tradeIn.findFirst.mockResolvedValue({ id: 'ti-1', estimatedValue: D(14000) });
       const r = await service.getStatus('ti-1');
       expect(r.id).toBe('ti-1');
-      const select = prisma.tradeIn.findUnique.mock.calls[1][0].select;
-      expect(select.estimatedValue).toBe(true);
-      expect(select.quoteBreakdown).toBe(true);
-      expect(select.preferredVisitDate).toBe(true);
+      const call = prisma.tradeIn.findFirst.mock.calls[1][0];
+      expect(call.where.deletedAt).toBe(null);
+      expect(call.select.estimatedValue).toBe(true);
+      expect(call.select.quoteBreakdown).toBe(true);
+      expect(call.select.preferredVisitDate).toBe(true);
+    });
+  });
+
+  describe('dual price (flow)', () => {
+    it('quote default (BUYBACK): price=cash, มี exchangePrice/bonusPct ครบ', async () => {
+      const r = await service.quoteForAnswers('iPhone 15', '128GB', answers);
+      expect(r.price).toBe('14000.00'); // cash เดิม
+      expect(r.cashPrice).toBe('14000.00');
+      expect(r.exchangePrice).toBe('15400.00'); // 14000×1.1
+      expect(r.bonusPct).toBe('10');
+      expect(r.breakdown!.price).toBe('14000.00');
+      expect(r.breakdown!.chosenFlow).toBe('BUYBACK');
+      expect(r.breakdown!.cashPrice).toBe('14000.00');
+      expect(r.breakdown!.exchangePrice).toBe('15400.00');
+    });
+
+    it('quote flow=EXCHANGE: price=exchange + invariant breakdown.price', async () => {
+      const r = await service.quoteForAnswers('iPhone 15', '128GB', answers, 'EXCHANGE');
+      expect(r.price).toBe('15400.00');
+      expect(r.breakdown!.price).toBe('15400.00');
+      expect(r.breakdown!.chosenFlow).toBe('EXCHANGE');
+      expect(r.cashPrice).toBe('14000.00');
+    });
+
+    it('bonus config นอกช่วง → default 10', async () => {
+      prisma.systemConfig.findFirst.mockResolvedValue({ value: '250' });
+      const r = await service.quoteForAnswers('iPhone 15', '128GB', answers, 'EXCHANGE');
+      expect(r.bonusPct).toBe('10');
+    });
+
+    it('getQuestions ตอบ bonusPct', async () => {
+      const r = await service.getQuestions();
+      expect(r.bonusPct).toBe('10');
+    });
+
+    it('submit flow=EXCHANGE: estimatedValue=exchange, TradeIn.flow=EXCHANGE, flex มีราคาเทิร์น+คำว่าเทิร์น', async () => {
+      const r = await service.submit({ ...dto, flow: 'EXCHANGE' }, undefined);
+      expect(r.price).toBe('15400.00');
+      const data = prisma.tradeIn.create.mock.calls[0][0].data;
+      expect(data.flow).toBe('EXCHANGE');
+      expect(data.estimatedValue.toString()).toBe('15400');
+      expect(data.quoteBreakdown.price).toBe('15400.00');
+      expect(data.quoteBreakdown.chosenFlow).toBe('EXCHANGE');
+      const flex = JSON.stringify(line.sendFlexMessage.mock.calls[0][1]);
+      expect(flex).toContain('15,400');
+      expect(flex).toContain('เทิร์น');
+    });
+
+    it('submit ไม่ส่ง flow → BUYBACK เดิมเป๊ะ (back-compat bundle เก่า)', async () => {
+      await service.submit(dto, undefined);
+      const data = prisma.tradeIn.create.mock.calls[0][0].data;
+      expect(data.flow).toBe('BUYBACK');
+      expect(data.estimatedValue.toString()).toBe('14000');
+      expect(data.quoteBreakdown.chosenFlow).toBe('BUYBACK');
     });
   });
 });

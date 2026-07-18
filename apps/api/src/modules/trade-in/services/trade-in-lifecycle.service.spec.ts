@@ -175,4 +175,109 @@ describe('TradeInLifecycleService.accept() — SHOP JE wiring (Task 2)', () => {
     expect(shopAccountResolver.resolveOutflowCashAccount).toHaveBeenCalledWith('br-1', 'TRANSFER', tx);
     expect(shopTradeInTemplate.execute.mock.calls[0][0].cashAccountCode).toBe('S11-1202');
   });
+
+  // ─── Task 5: stock costPrice must not be inflated by EXCHANGE bonus ─────
+  describe('accept costPrice (spec /sell §7.4)', () => {
+    it('EXCHANGE instant: costPrice = cashPrice ไม่ใช่ราคารวมโบนัส', async () => {
+      tx.tradeIn.findUnique.mockResolvedValue({
+        id: 'ti-4',
+        status: 'APPRAISED',
+        deletedAt: null,
+        flow: 'EXCHANGE',
+        branchId: 'br-1',
+        // offeredPrice = 13660 includes the EXCHANGE bonus on top of cashPrice —
+        // stock cost must use the underlying cashPrice (12420), NOT this total.
+        offeredPrice: new Decimal(13660),
+        estimatedValue: null,
+        imei: null,
+        deviceBrand: 'Apple',
+        deviceModel: 'iPhone 12',
+        deviceColor: null,
+        deviceStorage: null,
+        deviceCondition: 'A',
+        notes: null,
+        quoteBreakdown: { cashPrice: '12420.00', chosenFlow: 'EXCHANGE' },
+      });
+      tx.product.create.mockResolvedValue({ id: 'p-4' });
+      tx.tradeIn.update.mockResolvedValue({ id: 'ti-4', status: 'ACCEPTED' });
+
+      await service.accept(
+        'ti-4',
+        { idCardVerified: true, sellerConsentSigned: true, paymentMethod: 'CASH' } as any,
+        'u-1',
+      );
+
+      const createArgs = tx.product.create.mock.calls[0][0];
+      expect(createArgs.data.costPrice.toString()).toBe('12420');
+    });
+
+    it('BUYBACK instant: costPrice = offeredPrice (เงินที่จ่ายจริง) เหมือนเดิม', async () => {
+      tx.tradeIn.findUnique.mockResolvedValue({
+        id: 'ti-5',
+        status: 'APPRAISED',
+        deletedAt: null,
+        flow: 'BUYBACK',
+        branchId: 'br-1',
+        // offeredPrice deliberately differs from quoteBreakdown.cashPrice (owner manually
+        // adjusted the payout) — BUYBACK cost MUST track the cash actually paid, not
+        // the breakdown's cashPrice, otherwise the JE (posted from costPrice) would
+        // no longer match the money that actually left the till.
+        offeredPrice: new Decimal(12200),
+        estimatedValue: null,
+        imei: null,
+        deviceBrand: 'A',
+        deviceModel: 'B',
+        deviceColor: null,
+        deviceStorage: null,
+        deviceCondition: null,
+        notes: null,
+        quoteBreakdown: { cashPrice: '12420.00', chosenFlow: 'BUYBACK' },
+      });
+      tx.product.create.mockResolvedValue({ id: 'p-5' });
+      tx.tradeIn.update.mockResolvedValue({ id: 'ti-5', status: 'ACCEPTED' });
+      shopAccountResolver.resolveOutflowCashAccount.mockResolvedValue('S11-1102');
+
+      await service.accept(
+        'ti-5',
+        { idCardVerified: true, sellerConsentSigned: true, paymentMethod: 'CASH' } as any,
+        'u-1',
+      );
+
+      const createArgs = tx.product.create.mock.calls[0][0];
+      expect(createArgs.data.costPrice.toString()).toBe('12200');
+      // JE (if posted) must also reflect the same money actually paid
+      expect(shopTradeInTemplate.execute.mock.calls[0][0].tradeInPrice.toString()).toBe('12200');
+    });
+
+    it('walk-in (ไม่มี quoteBreakdown): costPrice = offeredPrice เดิม', async () => {
+      tx.tradeIn.findUnique.mockResolvedValue({
+        id: 'ti-6',
+        status: 'APPRAISED',
+        deletedAt: null,
+        flow: 'EXCHANGE',
+        branchId: 'br-1',
+        offeredPrice: new Decimal(8000),
+        estimatedValue: null,
+        imei: null,
+        deviceBrand: 'A',
+        deviceModel: 'B',
+        deviceColor: null,
+        deviceStorage: null,
+        deviceCondition: null,
+        notes: null,
+        // no quoteBreakdown at all — legacy walk-in staff-appraised trade-in
+      });
+      tx.product.create.mockResolvedValue({ id: 'p-6' });
+      tx.tradeIn.update.mockResolvedValue({ id: 'ti-6', status: 'ACCEPTED' });
+
+      await service.accept(
+        'ti-6',
+        { idCardVerified: true, sellerConsentSigned: true, paymentMethod: 'CASH' } as any,
+        'u-1',
+      );
+
+      const createArgs = tx.product.create.mock.calls[0][0];
+      expect(createArgs.data.costPrice.toString()).toBe('8000');
+    });
+  });
 });

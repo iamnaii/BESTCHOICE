@@ -398,7 +398,14 @@ export class TradeInLifecycleService {
         tradeIn.deviceStorage,
       ].filter(Boolean);
       const productName = nameParts.join(' ');
-      const costPrice = tradeIn.offeredPrice ?? tradeIn.estimatedValue ?? new Prisma.Decimal(0);
+      // เทิร์น (EXCHANGE instant): ต้นทุนสต็อก = ราคาเงินสด — โบนัสเทิร์นเป็นส่วนลด
+      // ฝั่งเครื่องใหม่ ไม่ใช่ต้นทุนเครื่องเก่า (spec /sell §1.5/§7.4) ไม่งั้น COGS
+      // บวมเท่าโบนัสทุกเครื่อง; BUYBACK/walk-in = เงินที่จ่ายจริงเหมือนเดิม
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const exchangeCash = tradeIn.flow === 'EXCHANGE' ? (tradeIn.quoteBreakdown as any)?.cashPrice : null;
+      const costPrice = exchangeCash
+        ? new Prisma.Decimal(exchangeCash)
+        : (tradeIn.offeredPrice ?? tradeIn.estimatedValue ?? new Prisma.Decimal(0));
 
       const product = await tx.product.create({
         data: {

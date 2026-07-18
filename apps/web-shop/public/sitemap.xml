@@ -31,12 +31,7 @@
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://shop.bestchoicephone.app/trade-in</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://shop.bestchoicephone.app/buyback</loc>
+    <loc>https://shop.bestchoicephone.app/sell</loc>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>

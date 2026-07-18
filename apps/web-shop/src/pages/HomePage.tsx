@@ -11,7 +11,6 @@ import {
   ShoppingBag,
   Smartphone,
   Repeat,
-  Banknote,
   MapPin,
   Clock,
 } from 'lucide-react';
@@ -74,17 +73,10 @@ const SERVICE_ITEMS = [
   },
   {
     icon: <Repeat className="size-7" />,
-    title: copy.home.serviceTradeInTitle,
-    description: copy.home.serviceTradeInDescription,
-    cta: copy.home.serviceTradeInCta,
-    to: '/trade-in',
-  },
-  {
-    icon: <Banknote className="size-7" />,
-    title: copy.home.serviceBuybackTitle,
-    description: copy.home.serviceBuybackDescription,
-    cta: copy.home.serviceBuybackCta,
-    to: '/buyback',
+    title: copy.home.serviceSellTitle,
+    description: copy.home.serviceSellDescription,
+    cta: copy.home.serviceSellCta,
+    to: '/sell',
   },
 ];
 
@@ -171,7 +163,7 @@ export default function HomePage() {
             title={copy.home.servicesTitle}
             description={copy.home.servicesDescription}
           />
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {SERVICE_ITEMS.map((s) => (
               <Card key={s.to} variant="outlined" className="h-full">
                 <CardBody className="flex h-full flex-col space-y-3 leading-snug">

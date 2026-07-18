@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Routes, Route, useLocation, Navigate } from 'react-router';
+import { Routes, Route, useLocation, useParams, Navigate } from 'react-router';
 import { trackPageView } from './lib/tracking';
 import HomePage from './pages/HomePage';
 import CatalogPage from './pages/CatalogPage';
@@ -21,12 +21,9 @@ import ApplySuccessPage from './pages/apply/ApplySuccessPage';
 import ApplyStatusPage from './pages/apply/ApplyStatusPage';
 import PromotionsPage from './pages/PromotionsPage';
 import InstallmentTermsPage from './pages/InstallmentTermsPage';
-import TradeInLandingPage from './pages/trade-in/TradeInLandingPage';
-import TradeInSubmitPage from './pages/trade-in/TradeInSubmitPage';
-import TradeInStatusPage from './pages/trade-in/TradeInStatusPage';
-import BuybackLandingPage from './pages/buyback/BuybackLandingPage';
-import BuybackQuotePage from './pages/buyback/BuybackQuotePage';
-import BuybackStatusPage from './pages/buyback/BuybackStatusPage';
+import SellLandingPage from './pages/sell/SellLandingPage';
+import SellQuotePage from './pages/sell/SellQuotePage';
+import SellStatusPage from './pages/sell/SellStatusPage';
 import SavingPlanLandingPage from './pages/saving-plan/SavingPlanLandingPage';
 import SavingPlanCreatePage from './pages/saving-plan/SavingPlanCreatePage';
 import SavingPlanDetailPage from './pages/saving-plan/SavingPlanDetailPage';
@@ -34,6 +31,17 @@ import SavingPlansPage from './pages/account/SavingPlansPage';
 import LoginPage from './pages/auth/LoginPage';
 import LineCallbackPage from './pages/auth/LineCallbackPage';
 import NotFoundPage from './pages/NotFoundPage';
+
+function RedirectPreserveSearch({ to }: { to: string }) {
+  const location = useLocation();
+  return <Navigate to={{ pathname: to, search: location.search }} replace />;
+}
+
+function RedirectWithId({ base }: { base: string }) {
+  const { id } = useParams();
+  const location = useLocation();
+  return <Navigate to={{ pathname: `${base}/${id ?? ''}`, search: location.search }} replace />;
+}
 
 function RouteTracker() {
   const location = useLocation();
@@ -68,14 +76,17 @@ export default function App() {
         <Route path="/apply/status" element={<ApplyStatusPage />} />
         <Route path="/apply/:productId" element={<InstallmentApplyPage />} />
         <Route path="/apply/success/:applicationNumber" element={<ApplySuccessPage />} />
-        <Route path="/trade-in" element={<TradeInLandingPage />} />
-        <Route path="/trade-in/submit" element={<TradeInSubmitPage />} />
-        <Route path="/trade-in/:id" element={<TradeInStatusPage />} />
-        <Route path="/buyback" element={<BuybackLandingPage />} />
-        <Route path="/buyback/quote" element={<BuybackQuotePage />} />
-        {/* หน้า submit เดิมถูกยุบเข้า wizard — กันลิงก์เก่า */}
-        <Route path="/buyback/submit" element={<Navigate to="/buyback/quote" replace />} />
-        <Route path="/buyback/:id" element={<BuybackStatusPage />} />
+        <Route path="/sell" element={<SellLandingPage />} />
+        <Route path="/sell/quote" element={<SellQuotePage />} />
+        <Route path="/sell/:id" element={<SellStatusPage />} />
+        {/* ลิงก์เก่าทุกเส้น (LINE/โฆษณา/bookmark) — ส่งต่อ query string (utm) ด้วย */}
+        <Route path="/buyback" element={<RedirectPreserveSearch to="/sell" />} />
+        <Route path="/buyback/quote" element={<RedirectPreserveSearch to="/sell/quote" />} />
+        <Route path="/buyback/submit" element={<RedirectPreserveSearch to="/sell/quote" />} />
+        <Route path="/buyback/:id" element={<RedirectWithId base="/sell" />} />
+        <Route path="/trade-in" element={<RedirectPreserveSearch to="/sell" />} />
+        <Route path="/trade-in/submit" element={<RedirectPreserveSearch to="/sell/quote" />} />
+        <Route path="/trade-in/:id" element={<RedirectWithId base="/sell" />} />
         <Route path="/saving-plan" element={<SavingPlanLandingPage />} />
         <Route path="/saving-plan/create" element={<SavingPlanCreatePage />} />
         <Route path="/saving-plan/:id" element={<SavingPlanDetailPage />} />

@@ -23,6 +23,7 @@ import {
 import type {
   BuybackCatalog,
   BuybackQuestion,
+  BuybackQuestionsResponse,
   BuybackQuoteResult,
   BuybackSubmitResponse,
 } from '@/types/buyback';
@@ -54,8 +55,8 @@ function previewPrice(
   return { price: Math.max(Math.floor(raw / 10) * 10, 0), complete };
 }
 
-export default function BuybackQuotePage() {
-  usePageMeta(copy.buyback.pageTitle, copy.buyback.description);
+export default function SellQuotePage() {
+  usePageMeta(copy.sell.pageTitle, copy.sell.description);
   const nav = useNavigate();
   const track = useTrackEvent();
 
@@ -64,6 +65,7 @@ export default function BuybackQuotePage() {
   const [answers, setAnswers] = useState<Answers>({});
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [quote, setQuote] = useState<BuybackQuoteResult | null>(null);
+  const [chosenFlow, setChosenFlow] = useState<'BUYBACK' | 'EXCHANGE' | null>(null);
   const [seller, setSeller] = useState({ name: '', phone: '', imei: '', visitDate: '', notes: '' });
 
   const catalog = useQuery<BuybackCatalog>({
@@ -71,10 +73,10 @@ export default function BuybackQuotePage() {
     queryFn: () => api.get<BuybackCatalog>('/api/shop/buyback/catalog').then((r) => r.data),
     staleTime: 5 * 60_000,
   });
-  const questionsQ = useQuery<{ questions: BuybackQuestion[] }>({
+  const questionsQ = useQuery<BuybackQuestionsResponse>({
     queryKey: ['buyback-questions'],
     queryFn: () =>
-      api.get<{ questions: BuybackQuestion[] }>('/api/shop/buyback/questions').then((r) => r.data),
+      api.get<BuybackQuestionsResponse>('/api/shop/buyback/questions').then((r) => r.data),
     staleTime: 5 * 60_000,
   });
 
@@ -82,6 +84,7 @@ export default function BuybackQuotePage() {
   const storages = models.find((m) => m.model === model)?.storages ?? [];
   const maxPrice = storages.find((s) => s.storage === storage)?.maxPrice ?? null;
   const questions = questionsQ.data?.questions ?? [];
+  const bonusPct = questionsQ.data?.bonusPct ?? '10';
 
   const answersPayload = useMemo(
     () => questions.map((q) => ({ questionKey: q.key, choiceIds: answers[q.key] ?? [] })),
@@ -100,13 +103,13 @@ export default function BuybackQuotePage() {
         .then((r) => r.data),
     onSuccess: (data) => {
       if (!data.available) {
-        toast.error(copy.buyback.modelUnavailable);
+        toast.error(copy.sell.modelUnavailable);
         return;
       }
       setQuote(data);
     },
     onError: (e: { response?: { data?: { message?: string } } }) =>
-      toast.error(e.response?.data?.message ?? copy.buyback.quoteError),
+      toast.error(e.response?.data?.message ?? copy.sell.quoteError),
   });
 
   const submitMutation = useMutation({
@@ -121,6 +124,7 @@ export default function BuybackQuotePage() {
           imei: seller.imei || undefined,
           notes: seller.notes || undefined,
           preferredVisitDate: seller.visitDate || undefined,
+          flow: chosenFlow ?? 'BUYBACK',
         })
         .then((r) => r.data),
     onSuccess: (data) => {
@@ -129,16 +133,20 @@ export default function BuybackQuotePage() {
         model,
         storage,
         grade: quote?.grade,
+        flow: chosenFlow ?? 'BUYBACK',
       });
-      toast.success(copy.buyback.submitSuccess);
-      nav(`/buyback/${data.id}`);
+      toast.success(
+        chosenFlow === 'EXCHANGE' ? copy.sell.submitSuccessExchange : copy.sell.submitSuccessCash,
+      );
+      nav(`/sell/${data.id}`);
     },
     onError: (e: { response?: { data?: { message?: string } } }) =>
-      toast.error(e.response?.data?.message ?? copy.buyback.submitError),
+      toast.error(e.response?.data?.message ?? copy.sell.submitError),
   });
 
   function pick(q: BuybackQuestion, choiceId: string) {
     setQuote(null); // คำตอบเปลี่ยน → ใบเสนอเดิมใช้ไม่ได้
+    setChosenFlow(null);
     setAnswers((prev) => {
       const current = prev[q.key] ?? [];
       if (q.selectType === 'SINGLE') {
@@ -169,7 +177,7 @@ export default function BuybackQuotePage() {
   if (catalog.isError || questionsQ.isError) {
     return (
       <ShopLayout>
-        <Container narrow className="py-10"><ErrorState title={copy.buyback.quoteError} /></Container>
+        <Container narrow className="py-10"><ErrorState title={copy.sell.quoteError} /></Container>
       </ShopLayout>
     );
   }
@@ -177,8 +185,8 @@ export default function BuybackQuotePage() {
   return (
     <ShopLayout>
       <CategoryHero
-        title={copy.buyback.quoteCta}
-        breadcrumbs={[{ label: copy.buyback.pageTitle, to: '/buyback' }, { label: 'เช็คราคา' }]}
+        title={copy.sell.quoteCta}
+        breadcrumbs={[{ label: copy.sell.pageTitle, to: '/sell' }, { label: 'เช็คราคา' }]}
       />
 
       <Container narrow className="py-6 md:py-10 space-y-6 leading-snug">
@@ -197,6 +205,7 @@ export default function BuybackQuotePage() {
                     setModel(e.target.value);
                     setStorage('');
                     setQuote(null);
+                    setChosenFlow(null);
                   }}
                 >
                   <option value="">เลือกรุ่น</option>
@@ -214,6 +223,7 @@ export default function BuybackQuotePage() {
                   onChange={(e) => {
                     setStorage(e.target.value);
                     setQuote(null);
+                    setChosenFlow(null);
                   }}
                   disabled={!model}
                 >
@@ -225,7 +235,7 @@ export default function BuybackQuotePage() {
               </div>
             </div>
             {models.length === 0 && (
-              <p className="text-sm text-muted-foreground leading-snug">{copy.buyback.modelUnavailable}</p>
+              <p className="text-sm text-muted-foreground leading-snug">{copy.sell.modelUnavailable}</p>
             )}
             {deviceReady && (
               <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3 leading-snug">
@@ -304,8 +314,17 @@ export default function BuybackQuotePage() {
                 );
               })}
               {preview && preview.complete && !quote && (
-                <div className="rounded-xl bg-muted p-3 text-sm leading-snug">
-                  ราคาประเมินเบื้องต้น ~฿{preview.price.toLocaleString()} — กด "ดูราคารับซื้อ" เพื่อยืนยัน
+                <div className="rounded-xl bg-muted p-3 text-sm leading-snug space-y-0.5">
+                  <div>ขายรับเงินสด ~฿{preview.price.toLocaleString()}</div>
+                  <div>
+                    เทิร์นแลกเครื่องใหม่ ~฿
+                    {Math.max(
+                      Math.floor((preview.price * (100 + Number(bonusPct))) / 100 / 10) * 10,
+                      0,
+                    ).toLocaleString()}{' '}
+                    <span className="text-emerald-700">(+{Number(bonusPct)}%)</span>
+                  </div>
+                  <div className="text-xs text-muted-foreground">กด "ดูราคา" เพื่อยืนยัน</div>
                 </div>
               )}
               <div className="hidden md:block">
@@ -317,7 +336,7 @@ export default function BuybackQuotePage() {
                   size="lg"
                   fullWidth
                 >
-                  {quote ? 'เลื่อนลงเพื่อยืนยันขาย' : preview?.complete ? 'ดูราคารับซื้อ' : 'ตอบแบบประเมินให้ครบก่อน'}
+                  {quote ? 'เลื่อนลงเพื่อยืนยัน' : preview?.complete ? 'ดูราคา' : 'ตอบแบบประเมินให้ครบก่อน'}
                 </Button>
               </div>
             </CardBody>
@@ -328,12 +347,48 @@ export default function BuybackQuotePage() {
         {quote?.available && quote.breakdown && (
           <Card variant="outlined">
             <CardBody className="space-y-4 leading-snug">
-              <h2 className="font-semibold leading-snug">3. ราคารับซื้อของคุณ</h2>
-              <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-4 leading-snug">
-                <div className="text-sm text-emerald-800">รับซื้อ {quote.model} {quote.storage}</div>
-                <div className="text-4xl font-bold text-emerald-600">
-                  ฿{Number(quote.price).toLocaleString()}
-                </div>
+              <h2 className="font-semibold leading-snug">3. เลือกทางที่ต้องการ</h2>
+              <div className="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="เลือกวิธีขาย">
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={chosenFlow === 'BUYBACK'}
+                  onClick={() => setChosenFlow('BUYBACK')}
+                  className={`rounded-xl border p-4 text-left leading-snug transition-colors ${
+                    chosenFlow === 'BUYBACK'
+                      ? 'border-emerald-500 bg-emerald-50'
+                      : 'border-zinc-200 hover:bg-accent'
+                  }`}
+                >
+                  <div className="text-sm text-muted-foreground">💵 {copy.sell.cashOption}</div>
+                  <div className="text-3xl font-bold text-emerald-600">
+                    ฿{Number(quote.cashPrice ?? quote.price).toLocaleString()}
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={chosenFlow === 'EXCHANGE'}
+                  onClick={() => setChosenFlow('EXCHANGE')}
+                  className={`rounded-xl border p-4 text-left leading-snug transition-colors ${
+                    chosenFlow === 'EXCHANGE'
+                      ? 'border-emerald-500 bg-emerald-50'
+                      : 'border-zinc-200 hover:bg-accent'
+                  }`}
+                >
+                  <div className="text-sm text-muted-foreground">
+                    🔄 {copy.sell.exchangeOption}{' '}
+                    {Number(quote.bonusPct ?? 0) > 0 && (
+                      <span className="rounded bg-emerald-600 px-1.5 py-0.5 text-xs font-semibold text-white">
+                        +{Number(quote.bonusPct)}%
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-3xl font-bold text-emerald-600">
+                    ฿{Number(quote.exchangePrice ?? quote.price).toLocaleString()}
+                  </div>
+                  <div className="text-xs text-muted-foreground">{copy.sell.exchangeCreditNote}</div>
+                </button>
               </div>
               <div className="space-y-1 text-sm leading-snug">
                 <div className="flex justify-between text-muted-foreground">
@@ -351,15 +406,23 @@ export default function BuybackQuotePage() {
                       <span>−฿{Number(l.amount).toLocaleString()}</span>
                     </div>
                   ))}
+                {chosenFlow === 'EXCHANGE' && quote.cashPrice && quote.exchangePrice && (
+                  <div className="flex justify-between font-medium text-emerald-700">
+                    <span>โบนัสเทิร์น +{Number(quote.bonusPct)}%</span>
+                    <span>
+                      +฿{(Number(quote.exchangePrice) - Number(quote.cashPrice)).toLocaleString()}
+                    </span>
+                  </div>
+                )}
               </div>
-              <p className="text-xs text-muted-foreground leading-snug">{copy.buyback.priceCondition}</p>
+              <p className="text-xs text-muted-foreground leading-snug">{copy.sell.priceCondition}</p>
 
               {/* Step 4: ส่งข้อมูลนัดเข้าร้าน */}
               <div className="space-y-3 border-t border-zinc-200 pt-4">
-                <h3 className="font-semibold leading-snug">4. ยืนยันขาย — นัดเข้าร้าน</h3>
+                <h3 className="font-semibold leading-snug">4. ยืนยัน — นัดเข้าร้าน</h3>
                 <div className="grid sm:grid-cols-2 gap-3">
                   <div className="space-y-1.5">
-                    <Label htmlFor="bb-name">{copy.buyback.sellerName} *</Label>
+                    <Label htmlFor="bb-name">{copy.sell.sellerName} *</Label>
                     <Input
                       id="bb-name"
                       value={seller.name}
@@ -367,7 +430,7 @@ export default function BuybackQuotePage() {
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="bb-phone">{copy.buyback.sellerPhone} *</Label>
+                    <Label htmlFor="bb-phone">{copy.sell.sellerPhone} *</Label>
                     <Input
                       id="bb-phone"
                       inputMode="numeric"
@@ -406,13 +469,15 @@ export default function BuybackQuotePage() {
                 </p>
                 <Button
                   onClick={() => submitMutation.mutate()}
-                  disabled={!sellerReady || submitMutation.isPending}
+                  disabled={!sellerReady || !chosenFlow || submitMutation.isPending}
                   loading={submitMutation.isPending}
                   variant="primary"
                   size="lg"
                   fullWidth
                 >
-                  ยืนยันขาย — รอทีมงานติดต่อนัดวัน
+                  {chosenFlow === 'EXCHANGE'
+                    ? 'ยืนยันเทิร์น — มาเลือกเครื่องที่ร้าน'
+                    : 'ยืนยันขาย — รับเงินสดที่ร้าน'}
                 </Button>
               </div>
             </CardBody>
@@ -423,7 +488,7 @@ export default function BuybackQuotePage() {
         {model && storages.length === 0 && (
           <Card variant="outlined">
             <CardBody className="space-y-3 leading-snug">
-              <p className="text-sm text-muted-foreground leading-snug">{copy.buyback.modelUnavailable}</p>
+              <p className="text-sm text-muted-foreground leading-snug">{copy.sell.modelUnavailable}</p>
               <Button asChild variant="outline" fullWidth>
                 <a href="https://line.me/R/ti/p/@bestchoice" target="_blank" rel="noreferrer">
                   <MessageCircle className="size-4" aria-hidden="true" />
@@ -444,7 +509,7 @@ export default function BuybackQuotePage() {
           size="lg"
           fullWidth
         >
-          {quote ? 'เลื่อนลงเพื่อยืนยันขาย' : preview?.complete ? 'ดูราคารับซื้อ' : 'ตอบแบบประเมินให้ครบก่อน'}
+          {quote ? 'เลื่อนลงเพื่อยืนยัน' : preview?.complete ? 'ดูราคา' : 'ตอบแบบประเมินให้ครบก่อน'}
         </Button>
       </StickyBottomBar>
       <StickyBottomBarSpacer />

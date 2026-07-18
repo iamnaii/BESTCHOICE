@@ -58,7 +58,7 @@ function priceValue(v: number | string | null | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-export default function BuybackStatusPage() {
+export default function SellStatusPage() {
   const { id } = useParams<{ id: string }>();
   const { data, isLoading, isError } = useQuery<Buyback>({
     queryKey: ['buyback', id],
@@ -81,7 +81,7 @@ export default function BuybackStatusPage() {
     return (
       <ShopLayout>
         <Container narrow className="py-10">
-          <ErrorState title={copy.buyback.statusNotFound} />
+          <ErrorState title={copy.sell.statusNotFound} />
         </Container>
       </ShopLayout>
     );
@@ -92,13 +92,15 @@ export default function BuybackStatusPage() {
   const showOfferActions = data.status === 'APPRAISED' && offered !== null;
   const isInstantQuote = !!data.quoteBreakdown;
   const estimated = priceValue(data.estimatedValue);
+  const flow = data.flow ?? data.quoteBreakdown?.chosenFlow ?? 'BUYBACK';
+  const isExchange = flow === 'EXCHANGE';
 
   return (
     <ShopLayout>
       <CategoryHero
-        title={`${copy.buyback.statusTitle} ${data.id.slice(0, 8)}`}
+        title={`${copy.sell.statusTitle} ${data.id.slice(0, 8)}`}
         breadcrumbs={[
-          { label: copy.buyback.pageTitle, to: '/buyback' },
+          { label: copy.sell.pageTitle, to: '/sell' },
           { label: 'สถานะ' },
         ]}
       />
@@ -108,7 +110,11 @@ export default function BuybackStatusPage() {
           <Stepper
             steps={
               isInstantQuote
-                ? [{ label: 'ยืนยันราคาแล้ว' }, { label: 'เข้าร้านตรวจเครื่อง' }, { label: 'เสร็จสิ้น' }]
+                ? [
+                    { label: 'ยืนยันราคาแล้ว' },
+                    { label: isExchange ? 'เข้าร้านเลือกเครื่องใหม่' : 'เข้าร้านตรวจเครื่อง' },
+                    { label: 'เสร็จสิ้น' },
+                  ]
                 : [{ label: 'รอประเมิน' }, { label: 'เสนอราคา' }, { label: 'สรุป' }]
             }
             current={statusToStep(data.status)}
@@ -118,8 +124,12 @@ export default function BuybackStatusPage() {
             <span className="text-sm text-muted-foreground">สถานะ</span>
             <Badge variant={STATUS_BADGE[data.status] ?? 'default'} size="lg">
               {data.status === 'PENDING_APPRAISAL' && isInstantQuote
-                ? 'ยืนยันราคาแล้ว — รอนัดเข้าร้าน'
-                : STATUS_LABEL[data.status] ?? data.status}
+                ? isExchange
+                  ? 'ยืนยันมูลค่าเทิร์นแล้ว — รอนัดเข้าร้าน'
+                  : 'ยืนยันราคาแล้ว — รอนัดเข้าร้าน'
+                : data.status === 'REJECTED' && isExchange
+                  ? 'ไม่รับเทิร์น'
+                  : STATUS_LABEL[data.status] ?? data.status}
             </Badge>
           </div>
 
@@ -127,7 +137,7 @@ export default function BuybackStatusPage() {
             <Card variant="elevated" className="bg-emerald-50 border-emerald-200">
               <CardBody className="space-y-2 leading-snug">
                 <div className="text-sm font-medium text-emerald-800 leading-snug">
-                  {copy.buyback.quotedTitle}
+                  {isExchange ? 'มูลค่าเทิร์นที่ยืนยันแล้ว' : copy.sell.quotedTitle}
                 </div>
                 <div className="text-4xl font-bold text-emerald-600 leading-snug">
                   ฿{estimated.toLocaleString()}
@@ -146,9 +156,23 @@ export default function BuybackStatusPage() {
                           <span>−฿{Number(l.amount).toLocaleString()}</span>
                         </div>
                       ))}
+                    {isExchange && data.quoteBreakdown.cashPrice && data.quoteBreakdown.exchangePrice && (
+                      <div className="flex justify-between font-medium">
+                        <span>โบนัสเทิร์น +{Number(data.quoteBreakdown.bonusPct ?? 0)}%</span>
+                        <span>
+                          +฿{(
+                            Number(data.quoteBreakdown.exchangePrice) -
+                            Number(data.quoteBreakdown.cashPrice)
+                          ).toLocaleString()}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
-                <p className="text-xs text-emerald-800 leading-snug">{copy.buyback.priceCondition}</p>
+                <p className="text-xs text-emerald-800 leading-snug">{copy.sell.priceCondition}</p>
+                {isExchange && (
+                  <p className="text-xs text-emerald-800 leading-snug">{copy.sell.exchangeCreditNote}</p>
+                )}
                 {offered !== null && offered !== estimated && (
                   <p className="text-xs font-semibold text-emerald-900 leading-snug">
                     ราคายืนยันหน้าร้าน: ฿{offered.toLocaleString()}
@@ -187,11 +211,6 @@ export default function BuybackStatusPage() {
                   <> · แบตเตอรี่ {data.batteryHealth}%</>
                 )}
               </div>
-              {data.notes && (
-                <div className="text-sm text-muted-foreground leading-snug">
-                  หมายเหตุ: {data.notes}
-                </div>
-              )}
               {data.photoUrls.length > 0 && (
                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 pt-2">
                   {data.photoUrls.map((url, i) => (
@@ -226,7 +245,7 @@ export default function BuybackStatusPage() {
                   rel="noreferrer"
                 >
                   <MessageCircle className="size-4" aria-hidden="true" />
-                  {copy.buyback.acceptPrice}
+                  {copy.sell.acceptPrice}
                 </a>
               </Button>
               <Button
@@ -243,14 +262,14 @@ export default function BuybackStatusPage() {
                   rel="noreferrer"
                 >
                   <Phone className="size-4" aria-hidden="true" />
-                  {copy.buyback.rejectPrice}
+                  {copy.sell.rejectPrice}
                 </a>
               </Button>
             </div>
           )}
 
           <p className="text-xs text-muted-foreground leading-snug">
-            {copy.buyback.followUp}
+            {copy.sell.followUp}
           </p>
         </Stack>
       </Container>

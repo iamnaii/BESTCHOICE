@@ -28,6 +28,11 @@ export interface BuybackQuestion {
   choices: BuybackChoice[];
 }
 
+export interface BuybackQuestionsResponse {
+  bonusPct: string;
+  questions: BuybackQuestion[];
+}
+
 export interface BuybackBreakdownLine {
   label: string;
   deductType: 'PERCENT' | 'FIXED';
@@ -41,6 +46,10 @@ export interface BuybackBreakdown {
   pctTotal: string;
   price: string;
   lines: BuybackBreakdownLine[];
+  cashPrice?: string;
+  exchangePrice?: string;
+  bonusPct?: string;
+  chosenFlow?: 'BUYBACK' | 'EXCHANGE';
 }
 
 export interface BuybackQuoteResult {
@@ -51,6 +60,9 @@ export interface BuybackQuoteResult {
   maxPrice?: string;
   grade?: 'A' | 'B' | 'C' | 'D';
   breakdown?: BuybackBreakdown;
+  cashPrice?: string;
+  exchangePrice?: string;
+  bonusPct?: string;
 }
 
 export interface BuybackSubmitResponse {
@@ -62,6 +74,7 @@ export interface BuybackSubmitResponse {
 export interface Buyback {
   id: string;
   status: BuybackStatus;
+  flow: 'BUYBACK' | 'EXCHANGE';
   deviceBrand: string;
   deviceModel: string;
   deviceStorage: string | null;

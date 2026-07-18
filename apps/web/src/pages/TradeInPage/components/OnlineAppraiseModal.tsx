@@ -28,6 +28,7 @@ export default function OnlineAppraiseModal({ item, onClose }: Props) {
   const [answers, setAnswers] = useState<Record<string, string[]>>({});
   const [manualPrice, setManualPrice] = useState('');
   const [manualReason, setManualReason] = useState('');
+  const [cashFallback, setCashFallback] = useState(false);
 
   // questionnaire ปัจจุบัน (public endpoint) — ใช้เฉพาะโหมดแก้คำตอบ
   const questionsQ = useQuery<{ questions: Question[] }>({
@@ -61,12 +62,13 @@ export default function OnlineAppraiseModal({ item, onClose }: Props) {
     setAnswers({});
     setManualPrice('');
     setManualReason('');
+    setCashFallback(false);
     onClose();
   }
 
   function confirm() {
     if (mode === 'AS_ANSWERED') {
-      appraise.mutate({ mode });
+      appraise.mutate(cashFallback ? { mode, useCashPrice: true } : { mode });
     } else if (mode === 'REVISED') {
       const qs = questionsQ.data?.questions ?? [];
       const payload = qs.map((q) => ({ questionKey: q.key, choiceIds: effectiveAnswers[q.key] ?? [] }));
@@ -87,29 +89,71 @@ export default function OnlineAppraiseModal({ item, onClose }: Props) {
     <Modal isOpen={!!item} onClose={handleClose} title="ยืนยันราคาใบเสนอออนไลน์" size="lg">
       {item && (
         <div className="space-y-4 text-sm leading-snug">
-          <div className="rounded-lg bg-muted p-3">
-            <div className="font-semibold">{item.deviceBrand} {item.deviceModel} {item.deviceStorage ?? ''}</div>
+          <div className="rounded-lg bg-muted p-3 space-y-1">
+            <div className="font-semibold">
+              {item.deviceBrand} {item.deviceModel} {item.deviceStorage ?? ''}
+              <span className={`ml-2 text-xs font-medium ${item.flow === 'EXCHANGE' ? 'text-warning' : 'text-muted-foreground'}`}>
+                {item.flow === 'EXCHANGE' ? 'เทิร์นแลกเครื่องใหม่ (เครดิต)' : 'รับซื้อเงินสด'}
+              </span>
+            </div>
             {quoted !== null && (
               <div className="text-lg font-bold">ราคาที่เสนอออนไลน์: ฿{quoted.toLocaleString()}</div>
+            )}
+            {item.quoteBreakdown?.cashPrice && item.quoteBreakdown?.exchangePrice && (
+              <div className="text-xs text-muted-foreground">
+                เงินสด ฿{Number(item.quoteBreakdown.cashPrice).toLocaleString()} · เทิร์น ฿
+                {Number(item.quoteBreakdown.exchangePrice).toLocaleString()} (+
+                {Number(item.quoteBreakdown.bonusPct ?? 0)}%)
+              </div>
             )}
           </div>
 
           <div className="flex gap-1.5 flex-wrap">
-            <Button variant={mode === 'AS_ANSWERED' ? 'primary' : 'outline'} size="sm" onClick={() => setMode('AS_ANSWERED')}>
+            <Button
+              variant={mode === 'AS_ANSWERED' ? 'primary' : 'outline'}
+              size="sm"
+              onClick={() => { setMode('AS_ANSWERED'); setCashFallback(false); }}
+            >
               สภาพตรงตามที่ตอบ
             </Button>
-            <Button variant={mode === 'REVISED' ? 'primary' : 'outline'} size="sm" onClick={() => setMode('REVISED')}>
+            <Button
+              variant={mode === 'REVISED' ? 'primary' : 'outline'}
+              size="sm"
+              onClick={() => { setMode('REVISED'); setCashFallback(false); }}
+            >
               สภาพไม่ตรง — แก้คำตอบ
             </Button>
             {isOwner && (
-              <Button variant={mode === 'MANUAL' ? 'primary' : 'outline'} size="sm" onClick={() => setMode('MANUAL')}>
+              <Button
+                variant={mode === 'MANUAL' ? 'primary' : 'outline'}
+                size="sm"
+                onClick={() => { setMode('MANUAL'); setCashFallback(false); }}
+              >
                 กำหนดราคาเอง (OWNER)
+              </Button>
+            )}
+            {item.flow === 'EXCHANGE' && (
+              <Button
+                variant={cashFallback ? 'primary' : 'outline'}
+                size="sm"
+                onClick={() => { setMode('AS_ANSWERED'); setCashFallback(true); }}
+              >
+                ลูกค้าไม่ซื้อเครื่อง — ใช้ราคาเงินสด
               </Button>
             )}
           </div>
 
-          {mode === 'AS_ANSWERED' && quoted !== null && (
-            <p className="text-muted-foreground">ยืนยันรับซื้อที่ ฿{quoted.toLocaleString()} ตามใบเสนอ</p>
+          {mode === 'AS_ANSWERED' && (
+            <p className="text-muted-foreground">
+              ยืนยัน{item.flow === 'EXCHANGE' ? 'มูลค่าเทิร์น (เครดิตซื้อเครื่องใหม่)' : 'รับซื้อ'}ที่ ฿
+              {Number(item.estimatedValue ?? quoted ?? 0).toLocaleString()} ตามใบเสนอ
+            </p>
+          )}
+
+          {cashFallback && item.quoteBreakdown?.cashPrice && (
+            <p className="text-muted-foreground">
+              ถอยเป็นขายเงินสด ฿{Number(item.quoteBreakdown.cashPrice).toLocaleString()} — ระบบจะเปลี่ยนรายการเป็น "รับซื้อ"
+            </p>
           )}
 
           {mode === 'REVISED' && (

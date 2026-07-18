@@ -1,16 +1,20 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { readNumberFlag } from '../../../utils/config.util';
 import {
   CreateBuybackChoiceDto,
   CreateBuybackQuestionDto,
   UpdateBuybackChoiceDto,
   UpdateBuybackQuestionDto,
+  UpdateSellConfigDto,
 } from '../dto/buyback-question.dto';
 
 /** CRUD แบบประเมิน buyback (แอดมิน) — soft delete เท่านั้น; public read อยู่ที่ shop-buyback */
 @Injectable()
 export class BuybackQuestionAdminService {
+  private static readonly BONUS_KEY = 'sell_exchange_bonus_pct';
+
   constructor(private prisma: PrismaService) {}
 
   async list() {
@@ -83,6 +87,24 @@ export class BuybackQuestionAdminService {
     const c = await this.prisma.buybackChoice.findFirst({ where: { id, deletedAt: null } });
     if (!c) throw new NotFoundException('ไม่พบตัวเลือก');
     return this.prisma.buybackChoice.update({ where: { id }, data: { deletedAt: new Date() } });
+  }
+
+  async getSellConfig() {
+    const n = await readNumberFlag(this.prisma, BuybackQuestionAdminService.BONUS_KEY, 10);
+    return { exchangeBonusPct: n >= 0 && n <= 100 ? n : 10 };
+  }
+
+  async updateSellConfig(dto: UpdateSellConfigDto) {
+    await this.prisma.systemConfig.upsert({
+      where: { key: BuybackQuestionAdminService.BONUS_KEY },
+      update: { value: String(dto.exchangeBonusPct), deletedAt: null },
+      create: {
+        key: BuybackQuestionAdminService.BONUS_KEY,
+        value: String(dto.exchangeBonusPct),
+        label: 'โบนัสเทิร์น % (ราคาเทิร์น = เงินสด × (1+โบนัส))',
+      },
+    });
+    return { exchangeBonusPct: dto.exchangeBonusPct };
   }
 
   private async mustFindQuestion(id: string) {

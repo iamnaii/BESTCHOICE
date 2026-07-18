@@ -4,6 +4,7 @@ import {
   Post,
   Patch,
   Delete,
+  Put,
   Param,
   Body,
   Query,
@@ -28,6 +29,7 @@ import {
   CreateBuybackQuestionDto,
   UpdateBuybackChoiceDto,
   UpdateBuybackQuestionDto,
+  UpdateSellConfigDto,
 } from './dto/buyback-question.dto';
 import { AppraiseOnlineDto } from './dto/appraise-online.dto';
 import { PaginationDto } from '../../common/dto/pagination.dto';
@@ -268,6 +270,18 @@ export class TradeInController {
   @Roles('OWNER', 'BRANCH_MANAGER')
   deleteBuybackChoice(@Param('id') id: string) {
     return this.buybackAdmin.deleteChoice(id);
+  }
+
+  @Get('sell-config')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
+  getSellConfig() {
+    return this.buybackAdmin.getSellConfig();
+  }
+
+  @Put('sell-config')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  updateSellConfig(@Body() dto: UpdateSellConfigDto) {
+    return this.buybackAdmin.updateSellConfig(dto);
   }
 
   @Get(':id')

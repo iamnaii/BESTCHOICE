@@ -1,4 +1,4 @@
-import { IsBoolean, IsIn, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Matches, Min } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Matches, Min, Max } from 'class-validator';
 
 export class CreateBuybackQuestionDto {
   @IsString()
@@ -51,4 +51,11 @@ export class UpdateBuybackChoiceDto {
   @IsOptional() @IsNumber() @Min(0) deductValue?: number;
   @IsOptional() @IsInt() sortOrder?: number;
   @IsOptional() @IsBoolean() isActive?: boolean;
+}
+
+export class UpdateSellConfigDto {
+  @IsNumber({}, { message: 'กรุณาระบุโบนัสเทิร์นเป็นตัวเลข' })
+  @Min(0, { message: 'โบนัสต้องไม่ติดลบ' })
+  @Max(100, { message: 'โบนัสต้องไม่เกิน 100%' })
+  exchangeBonusPct!: number;
 }

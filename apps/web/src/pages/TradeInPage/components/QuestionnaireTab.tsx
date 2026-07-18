@@ -5,6 +5,7 @@ import api, { getErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import SellConfigBox from './SellConfigBox';
 
 interface Choice {
   id: string;
@@ -105,6 +106,7 @@ export default function QuestionnaireTab() {
       <p className="text-sm text-muted-foreground leading-snug">
         การแก้ค่าหักมีผลกับการเช็คราคาครั้งถัดไปทันที — ใบเสนอที่ลูกค้าส่งมาแล้วไม่เปลี่ยน (snapshot ไว้)
       </p>
+      <SellConfigBox />
       {(data?.questions ?? []).map((q) => (
         <div key={q.id} className="rounded-lg border border-border">
           <div className="flex items-center justify-between gap-2 p-3 bg-muted/50">

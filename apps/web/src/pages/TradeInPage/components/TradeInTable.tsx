@@ -134,6 +134,13 @@ export default function TradeInTable({
             {methodLabel && (
               <div className="text-xs text-muted-foreground">{methodLabel}</div>
             )}
+            <div className="text-xs">
+              {item.flow === 'EXCHANGE' ? (
+                <span className="text-warning font-medium">เทิร์น (เครดิต)</span>
+              ) : (
+                <span className="text-muted-foreground">รับซื้อ</span>
+              )}
+            </div>
           </div>
         );
       },

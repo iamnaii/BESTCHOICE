@@ -43,6 +43,11 @@ export default function TradeInDetailDialog({ id, onClose }: Props) {
           {data.quoteBreakdown && (
             <div className="rounded-lg border border-border p-3 space-y-1">
               <div className="font-medium">ใบเสนอราคาออนไลน์</div>
+              {data.quoteBreakdown.chosenFlow && (
+                <div className="text-xs text-muted-foreground">
+                  ประเภท: {data.quoteBreakdown.chosenFlow === 'EXCHANGE' ? 'เทิร์นแลกเครื่องใหม่ (เครดิต)' : 'รับซื้อเงินสด'}
+                </div>
+              )}
               <div className="flex justify-between text-muted-foreground">
                 <span>ราคาสูงสุด</span><span>฿{Number(data.quoteBreakdown.maxPrice).toLocaleString()}</span>
               </div>
@@ -51,6 +56,19 @@ export default function TradeInDetailDialog({ id, onClose }: Props) {
                   <span>{l.label}</span><span>−฿{Number(l.amount).toLocaleString()}</span>
                 </div>
               ))}
+              {data.quoteBreakdown.chosenFlow === 'EXCHANGE' &&
+                data.quoteBreakdown.cashPrice &&
+                data.quoteBreakdown.exchangePrice && (
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>โบนัสเทิร์น +{Number(data.quoteBreakdown.bonusPct ?? 0)}%</span>
+                    <span>
+                      +฿{(
+                        Number(data.quoteBreakdown.exchangePrice) -
+                        Number(data.quoteBreakdown.cashPrice)
+                      ).toLocaleString()}
+                    </span>
+                  </div>
+                )}
               <div className="flex justify-between font-semibold border-t border-border pt-1">
                 <span>ราคาที่เสนอ</span><span>฿{Number(data.quoteBreakdown.price).toLocaleString()}</span>
               </div>

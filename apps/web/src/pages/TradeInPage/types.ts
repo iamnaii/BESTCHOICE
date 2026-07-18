@@ -44,6 +44,10 @@ export interface TradeIn {
     pctTotal: string;
     price: string;
     lines: Array<{ label: string; deductType: 'PERCENT' | 'FIXED'; deductValue: string; amount: string }>;
+    cashPrice?: string;
+    exchangePrice?: string;
+    bonusPct?: string;
+    chosenFlow?: 'BUYBACK' | 'EXCHANGE';
   } | null;
 }
 

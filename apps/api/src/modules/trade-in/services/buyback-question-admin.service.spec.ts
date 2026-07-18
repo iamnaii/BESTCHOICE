@@ -9,7 +9,7 @@ describe('BuybackQuestionAdminService', () => {
   beforeEach(() => {
     prisma = {
       systemConfig: {
-        findUnique: jest.fn().mockResolvedValue(null),
+        findFirst: jest.fn().mockResolvedValue(null),
         upsert: jest.fn().mockResolvedValue({}),
       },
     };
@@ -17,7 +17,7 @@ describe('BuybackQuestionAdminService', () => {
   });
 
   it('getSellConfig: ไม่มี row → default 10; updateSellConfig upsert พร้อม deletedAt:null', async () => {
-    prisma.systemConfig.findUnique.mockResolvedValue(null);
+    prisma.systemConfig.findFirst.mockResolvedValue(null);
     prisma.systemConfig.upsert.mockResolvedValue({});
 
     expect(await service.getSellConfig()).toEqual({ exchangeBonusPct: 10 });
@@ -29,5 +29,11 @@ describe('BuybackQuestionAdminService', () => {
     expect(call.where).toEqual({ key: 'sell_exchange_bonus_pct' });
     expect(call.update).toEqual({ value: '15', deletedAt: null });
     expect(call.create.value).toBe('15');
+  });
+
+  it('getSellConfig: row มี value → คืน parsed value', async () => {
+    prisma.systemConfig.findFirst.mockResolvedValue({ value: '42' });
+
+    expect(await service.getSellConfig()).toEqual({ exchangeBonusPct: 42 });
   });
 });

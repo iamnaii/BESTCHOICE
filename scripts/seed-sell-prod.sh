@@ -17,6 +17,7 @@ REGION="${REGION:-asia-southeast1}"
 PROJECT="${PROJECT:-bestchoice-prod}"
 SOURCE_JOB="bestchoice-migrate"
 SEED_JOB="bestchoice-seed-sell"
+SEED_FILE="${SEED_FILE:-apps/api/prisma/seed-sell-questions-only.ts}"
 
 echo "→ Discovering image + Cloud SQL config from ${SOURCE_JOB}..."
 IMAGE=$(gcloud run jobs describe "${SOURCE_JOB}" \
@@ -45,7 +46,7 @@ gcloud run jobs update "${SEED_JOB}" \
   --set-cloudsql-instances="${CLOUDSQL}" \
   --set-secrets=DATABASE_URL=DATABASE_URL:latest \
   --command=npx \
-  --args=tsx,apps/api/prisma/seed-sell-questions-only.ts \
+  --args=tsx,${SEED_FILE} \
   --max-retries=1 \
   --task-timeout=300s \
   2>/dev/null || \
@@ -56,7 +57,7 @@ gcloud run jobs create "${SEED_JOB}" \
   --set-cloudsql-instances="${CLOUDSQL}" \
   --set-secrets=DATABASE_URL=DATABASE_URL:latest \
   --command=npx \
-  --args=tsx,apps/api/prisma/seed-sell-questions-only.ts \
+  --args=tsx,${SEED_FILE} \
   --max-retries=1 \
   --task-timeout=300s
 

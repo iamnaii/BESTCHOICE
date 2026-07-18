@@ -28,8 +28,8 @@ function storageGb(storage: string): number {
 }
 
 /**
- * Engine เดียวของหน้า /sell (ขาย/เทิร์น iPhone) — TradeInIntakeService เดิม
- * ถูกปลดระวางแล้ว (spec /sell 2026-07-18); shop-trade-in เหลือแค่ 410 stub
+ * Engine เดียวของหน้า /sell (ขาย/เทิร์น iPhone) — intake engine เก่าของ
+ * shop-trade-in ถูกปลดระวางแล้ว (spec /sell 2026-07-18) เหลือแค่ 410 stub
  */
 @Injectable()
 export class ShopBuybackService {

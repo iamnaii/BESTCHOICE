@@ -16,6 +16,7 @@ import {
   Store,
 } from 'lucide-react';
 import api, { getErrorMessage } from '@/lib/api';
+import { formatNumberDecimal } from '@/utils/formatters';
 import { CashAccountSelect, KBANK_ONLY_CODES } from '@/components/CashAccountSelect';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -56,6 +57,19 @@ interface RepoPreview {
     customerRefund: number;
     profitLoss: number;
   };
+  /** Dry-run JP5 JE — same buildJe as the posting path (null เมื่อ preview ล้มเหลว/ไม่มีงวดค้าง) */
+  journalPreview?: {
+    lines: {
+      accountCode: string;
+      accountName: string;
+      debit: string;
+      credit: string;
+      description: string;
+    }[];
+    totalDebit: string;
+    totalCredit: string;
+    isBalanced: boolean;
+  } | null;
 }
 
 const GRADES = ['A', 'B', 'C', 'D'];
@@ -112,6 +126,8 @@ export function RepossessionOverlay({
       appraisalPrice,
       discountPct,
       customerRefundEnabled,
+      depositAccountCode,
+      collectedByShop,
     ],
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -120,6 +136,9 @@ export function RepossessionOverlay({
       if (appraisalPrice) params.set('appraisalPrice', appraisalPrice);
       if (discountPct) params.set('discountPct', discountPct);
       params.set('customerRefundEnabled', String(customerRefundEnabled));
+      // JOURNAL AUTO dry-run — mirror ตอน create: collectedByShop → Dr 11-2107
+      params.set('depositAccountCode', depositAccountCode);
+      params.set('collectedByShop', String(collectedByShop));
       const { data } = await api.get(`/repossessions/preview/${contractId}?${params.toString()}`);
       return data;
     },
@@ -552,6 +571,56 @@ export function RepossessionOverlay({
             placeholder="เช่น สาเหตุการยึด, สภาพเครื่อง..."
           />
         </Section>
+
+        {/* Section 5.5: JOURNAL AUTO — JP5 JE preview (dry-run บรรทัดเดียวกับตอน post) */}
+        {canPreview && preview?.journalPreview && (
+          <Section
+            icon={<FileText className="size-4" />}
+            title="JOURNAL AUTO — บันทึกทางบัญชี"
+            subtitle="JP5 — ยึดเครื่อง + ใบลดหนี้ VAT (ม.82/5)"
+          >
+            <div className="space-y-1">
+              <div className="grid grid-cols-[80px_1fr_90px_90px] gap-1 text-xs text-muted-foreground font-medium pb-1 border-b border-border">
+                <span>รหัส</span>
+                <span>บัญชี</span>
+                <span className="text-right">Dr</span>
+                <span className="text-right">Cr</span>
+              </div>
+              {preview.journalPreview.lines.map((line, idx) => (
+                <div
+                  key={idx}
+                  className="grid grid-cols-[80px_1fr_90px_90px] gap-1 text-xs leading-snug"
+                >
+                  <span className="font-mono text-muted-foreground">{line.accountCode}</span>
+                  <div className="min-w-0">
+                    <span className="text-foreground truncate block">{line.accountName}</span>
+                    <span className="text-muted-foreground/70 text-[10px]">{line.description}</span>
+                  </div>
+                  <span className="text-right font-mono text-foreground">
+                    {parseFloat(line.debit) > 0 ? formatNumberDecimal(line.debit) : ''}
+                  </span>
+                  <span className="text-right font-mono text-foreground">
+                    {parseFloat(line.credit) > 0 ? formatNumberDecimal(line.credit) : ''}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div
+              className={`flex items-center justify-between mt-3 pt-2 border-t text-xs font-medium ${
+                preview.journalPreview.isBalanced
+                  ? 'border-success/30 text-success'
+                  : 'border-destructive/30 text-destructive'
+              }`}
+            >
+              <span>Dr รวม = Cr รวม</span>
+              <span className="font-mono">
+                {formatNumberDecimal(preview.journalPreview.totalDebit)} ={' '}
+                {formatNumberDecimal(preview.journalPreview.totalCredit)}{' '}
+                {preview.journalPreview.isBalanced ? 'BALANCED' : 'UNBALANCED'}
+              </span>
+            </div>
+          </Section>
+        )}
 
         {/* Section 6: สิ่งที่จะเกิดขึ้น */}
         <Section

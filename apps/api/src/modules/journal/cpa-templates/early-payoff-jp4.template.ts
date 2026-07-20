@@ -11,6 +11,13 @@ export interface EarlyPayoffInput {
   depositAccountCode: string;
   /** 0..100 — percentage of remaining deferred interest to waive */
   interestDiscountPercent: Decimal;
+  /**
+   * ค่าปรับค้างชำระ — ต้องเป็นยอด NETTED (หัก waived + หัก Cr 42-1103 ที่ลง
+   * ผ่าน partial แล้ว — ดู ContractPaymentService.computeUnbookedLateFees).
+   * Omitted → 0. หมายเหตุ: template นี้ไม่มี production caller — เส้นทางจริงคือ
+   * earlyPayoff() ใน contract-payment.service ซึ่ง net ให้เองแล้ว.
+   */
+  unpaidLateFees?: Decimal;
 }
 
 /**
@@ -135,6 +142,7 @@ export class EarlyPayoffJP4Template {
       totalMonths: c.totalMonths,
       unpaidCount: unpaid,
       interestDiscountPercent: input.interestDiscountPercent,
+      unpaidLateFees: input.unpaidLateFees ?? null,
     });
 
     // Wrap JE post + Payment.create loop in a single atomic transaction.

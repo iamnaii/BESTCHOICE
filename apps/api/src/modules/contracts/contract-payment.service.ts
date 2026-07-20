@@ -7,6 +7,8 @@ import { JournalAutoService } from '../journal/journal-auto.service';
 import { EarlyPayoffJP4Template } from '../journal/cpa-templates/early-payoff-jp4.template';
 import { ShopCollectSettlementTemplate } from '../journal/cpa-templates/shop-collect-settlement.template';
 import { computeEarlyPayoffJE } from '../journal/compute-early-payoff-je';
+import { computeInstallmentBreakdown } from '../journal/compute-installment-breakdown';
+import { reconstructPriorCleared } from '../journal/reconstruct-prior';
 import { computePayoffQuote } from './compute-payoff-quote';
 import { Decimal } from '@prisma/client/runtime/library';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
@@ -65,6 +67,72 @@ export class ContractPaymentService {
       where: { contractId: id, deletedAt: null },
       orderBy: { installmentNo: 'asc' },
     });
+  }
+
+  /**
+   * ค่าปรับค้างที่ "ยังไม่เคยลง Cr 42-1103" (NETTED) — สำหรับขา JE ปิดยอดเท่านั้น.
+   *
+   * 2B partial (FEE-FIRST, PR #1313) ลงรายได้ค่าปรับตอนรับเงินโดยไม่ reset
+   * Payment.lateFee — ค่าดิบใน DB จึงรวมค่าปรับที่รับรู้รายได้ไปแล้ว. ขา JE ต้อง
+   * หักส่วนที่ลงแล้วออก (reconstruct จาก JE เดิม — กลไกเดียวกับ
+   * payment-receipt.template) ไม่งั้น Cr 42-1103 ถูกลงซ้ำ.
+   *
+   * หมายเหตุ: ยอดเก็บลูกค้า (quote.totalPayoff/unpaidLateFees) ใช้ค่าดิบต่อไป —
+   * ถูกต้องแล้ว: เงินค่าปรับที่จ่ายผ่าน partial อยู่ใน amountPaid ซึ่งสูตร quote
+   * หักเป็น advance อยู่แล้ว จึงหักลบกันเองพอดี.
+   */
+  private async computeUnbookedLateFees(
+    client: Prisma.TransactionClient | PrismaService,
+    contract: {
+      id: string;
+      financedAmount: Prisma.Decimal;
+      storeCommission: Prisma.Decimal | null;
+      interestTotal: Prisma.Decimal;
+      vatAmount: Prisma.Decimal | null;
+      totalMonths: number;
+    },
+    payments: Array<{
+      installmentNo: number;
+      status: string;
+      lateFee: Prisma.Decimal;
+      lateFeeWaived: boolean | null;
+    }>,
+  ): Promise<Decimal> {
+    const feeRows = payments.filter(
+      (p) => p.status !== 'PAID' && !p.lateFeeWaived && d(p.lateFee).gt(0),
+    );
+    if (feeRows.length === 0) return new Decimal(0);
+
+    // installmentTotal ใช้เป็น discriminator ของ legacy-2B ใน reconstructPriorCleared
+    const { installmentExclVat, vatPerInst } = computeInstallmentBreakdown({
+      financedAmount: contract.financedAmount.toString(),
+      storeCommission:
+        contract.storeCommission != null ? contract.storeCommission.toString() : null,
+      interestTotal: contract.interestTotal.toString(),
+      vatAmount: contract.vatAmount != null ? contract.vatAmount.toString() : null,
+      totalMonths: contract.totalMonths,
+    });
+    const installmentTotal = installmentExclVat.plus(vatPerInst);
+
+    const scheds = await client.installmentSchedule.findMany({
+      where: { contractId: contract.id, deletedAt: null },
+      select: { id: true, installmentNo: true },
+    });
+    const schedByNo = new Map(scheds.map((s) => [s.installmentNo, s.id]));
+
+    let total = new Decimal(0);
+    for (const p of feeRows) {
+      const schedId = schedByNo.get(p.installmentNo);
+      if (!schedId) {
+        // ไม่มี schedule row (ข้อมูล legacy) → ไม่มี JE เดิมให้ชน — นับเต็ม
+        total = total.plus(d(p.lateFee));
+        continue;
+      }
+      const { priorLateFeeBooked } = await reconstructPriorCleared(client, schedId, installmentTotal);
+      const remaining = d(p.lateFee).minus(priorLateFeeBooked);
+      if (remaining.gt(0)) total = total.plus(remaining);
+    }
+    return total;
   }
 
   /**
@@ -140,9 +208,11 @@ export class ContractPaymentService {
       totalMonths: contract.totalMonths,
       unpaidCount: remainingMonths,
       interestDiscountPercent: discountPercent,
-      // ค่าปรับค้างชำระ (หัก waived) — Dr เงินสด +ค่าปรับ / Cr 42-1103 ทั้งก้อน
-      // (owner 2026-07-20: เงินรับจริงต้องเท่า Dr เงินสดใน JE)
-      unpaidLateFees: quote.unpaidLateFees,
+      // ขา JE ใช้ค่าปรับ NETTED (หัก Cr 42-1103 ที่เคยลงผ่าน partial แล้ว) —
+      // กัน double-book; quote.unpaidLateFees (ยอดเก็บ/แถว UI) เป็นค่าดิบโดยตั้งใจ
+      unpaidLateFees: (
+        await this.computeUnbookedLateFees(this.prisma, contract, contract.payments)
+      ).toString(),
     });
 
     // Resolve all account names from CoA so preview shows real labels.
@@ -318,12 +388,11 @@ export class ContractPaymentService {
         {
           const epContract = await tx.contract.findUniqueOrThrow({ where: { id } });
           const epUnpaid = installmentSnapshots.length;
-          // ค่าปรับค้างชำระ (หัก waived) จาก snapshot ณ ตอนปิดยอด — ต้องเข้า JE
-          // เป็น Dr เงินสด +ค่าปรับ / Cr 42-1103 (owner 2026-07-20: เงินรับจริง
-          // ต้องเท่า Dr เงินสด; เดิมค่าปรับถูกเก็บแต่ไม่เคยลงบัญชี)
-          const epLateFees = installmentSnapshots
-            .filter((p) => !p.lateFeeWaived)
-            .reduce((sum, p) => dAdd(sum, p.lateFee), d(0));
+          // ค่าปรับเข้า JE เป็นยอด NETTED — หัก Cr 42-1103 ที่เคยลงผ่านใบเสร็จ
+          // partial (FEE-FIRST) แล้ว กัน double-book (owner 2026-07-20 + review
+          // 2026-07-20). ใช้ unpaidPayments (สถานะก่อน flip PAID ข้างบน) + JE
+          // history ใน tx — JE ปิดยอดของรอบนี้ยังไม่ post จึงไม่ปนเข้ามา
+          const epLateFees = await this.computeUnbookedLateFees(tx, epContract, unpaidPayments);
           const epJe = computeEarlyPayoffJE({
             depositAccountCode: effectiveDepositCode,
             financedAmount: epContract.financedAmount.toString(),

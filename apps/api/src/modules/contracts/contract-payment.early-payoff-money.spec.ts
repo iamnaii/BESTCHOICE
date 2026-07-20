@@ -473,6 +473,9 @@ describe('ContractPaymentService early-payoff money branches (Wave 3 gap-fill)',
         update: jest.Mock;
       };
       payment: { findMany: jest.Mock; update: jest.Mock };
+      // computeUnbookedLateFees (netting ค่าปรับก่อนลง JE) — fixture นี้มีค่าปรับ
+      installmentSchedule: { findMany: jest.Mock };
+      journalEntry: { findMany: jest.Mock };
     };
     let createAndPost: jest.Mock;
     let transferOwnership: jest.Mock;
@@ -503,6 +506,9 @@ describe('ContractPaymentService early-payoff money branches (Wave 3 gap-fill)',
               },
             ),
         },
+        // ไม่มี schedule id / JE เดิม → netted = ค่าปรับดิบ (ไม่มีอะไรให้หัก)
+        installmentSchedule: { findMany: jest.fn().mockResolvedValue([]) },
+        journalEntry: { findMany: jest.fn().mockResolvedValue([]) },
       };
 
       prisma = {

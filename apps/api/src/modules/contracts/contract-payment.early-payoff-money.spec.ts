@@ -203,6 +203,13 @@ describe('ContractPaymentService early-payoff money branches (Wave 3 gap-fill)',
       // If 7% VAT were applied to the fee it would be 6214 — pin 6200 to lock
       // the "ค่าปรับไม่คิด VAT" policy.
       expect(quote.totalPayoff).toBe(6200);
+
+      // JE preview: ค่าปรับต้องมีขา Cr 42-1103 ทั้งก้อน (waived 300 ไม่รวม) และ
+      // Dr เงินสด grossed up — ยังคง balanced (owner 2026-07-20: เดิมค่าปรับ
+      // ถูกเก็บแต่ไม่มีขา JE เลย)
+      const feeLine = quote.journalPreview.lines.find((l) => l.accountCode === '42-1103');
+      expect(feeLine?.credit).toBe('200.00');
+      expect(quote.journalPreview.isBalanced).toBe(true);
     });
 
     // GAP 2b — discount rounds DOWN on a fractional (half-satang) result.

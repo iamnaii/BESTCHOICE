@@ -140,6 +140,9 @@ export class ContractPaymentService {
       totalMonths: contract.totalMonths,
       unpaidCount: remainingMonths,
       interestDiscountPercent: discountPercent,
+      // ค่าปรับค้างชำระ (หัก waived) — Dr เงินสด +ค่าปรับ / Cr 42-1103 ทั้งก้อน
+      // (owner 2026-07-20: เงินรับจริงต้องเท่า Dr เงินสดใน JE)
+      unpaidLateFees: quote.unpaidLateFees,
     });
 
     // Resolve all account names from CoA so preview shows real labels.
@@ -155,7 +158,7 @@ export class ContractPaymentService {
     // debit + credit, shared via computeEarlyPayoffJE — must match the posting;
     // the ledger words its descriptions differently and that's intentional.
     const epDescriptions: Record<string, string> = {
-      [epDepositCode]: `รับ ${je.settlement.toFixed(2)} ฿ ปิดยอด`,
+      [epDepositCode]: `รับ ${je.totalCash.toFixed(2)} ฿ ปิดยอด`,
       '11-2106': `ยกเลิกค่าอนาคต ${je.remainingDeferredInterest.toFixed(2)}`,
       '21-2102': `ล้าง 21-2102 ${je.remainingDeferredVat.toFixed(2)}`,
       '52-1106': `ส่วนลดดอกเบี้ย ${discountPercent}%`,
@@ -163,6 +166,7 @@ export class ContractPaymentService {
       '11-2105': `ล้าง 11-2105 ${je.remainingDeferredVat.toFixed(2)}`,
       '41-1101': 'รับรู้รายได้',
       '21-2101': `VAT ถึงกำหนด ${je.settleVat.toFixed(2)}`,
+      '42-1103': `ค่าปรับค้างชำระ ${je.lateFees.toFixed(2)} (ไม่คิด VAT)`,
     };
 
     type JeLine = { accountCode: string; accountName: string; debit: string; credit: string; description: string };
@@ -314,6 +318,12 @@ export class ContractPaymentService {
         {
           const epContract = await tx.contract.findUniqueOrThrow({ where: { id } });
           const epUnpaid = installmentSnapshots.length;
+          // ค่าปรับค้างชำระ (หัก waived) จาก snapshot ณ ตอนปิดยอด — ต้องเข้า JE
+          // เป็น Dr เงินสด +ค่าปรับ / Cr 42-1103 (owner 2026-07-20: เงินรับจริง
+          // ต้องเท่า Dr เงินสด; เดิมค่าปรับถูกเก็บแต่ไม่เคยลงบัญชี)
+          const epLateFees = installmentSnapshots
+            .filter((p) => !p.lateFeeWaived)
+            .reduce((sum, p) => dAdd(sum, p.lateFee), d(0));
           const epJe = computeEarlyPayoffJE({
             depositAccountCode: effectiveDepositCode,
             financedAmount: epContract.financedAmount.toString(),
@@ -325,14 +335,15 @@ export class ContractPaymentService {
             // quote.discountPct is a PERCENTAGE 0..100 (getEarlyPayoffQuote returns
             // `discountPct * 100`); computeEarlyPayoffJE divides by 100 internally.
             interestDiscountPercent: quote.discountPct,
+            unpaidLateFees: epLateFees.toString(),
           });
 
           // Ledger-side line descriptions (the preview words them differently —
           // only the money, shared via computeEarlyPayoffJE, must match).
           const epDescriptions: Record<string, string> = {
             [effectiveDepositCode]: dto.collectedByShop
-              ? `หน้าร้านรับ ${epJe.settlement.toFixed(2)} ฿ ปิดยอด (ลูกหนี้-หน้าร้าน)`
-              : `รับ ${epJe.settlement.toFixed(2)} ฿ ปิดยอด`,
+              ? `หน้าร้านรับ ${epJe.totalCash.toFixed(2)} ฿ ปิดยอด (ลูกหนี้-หน้าร้าน)`
+              : `รับ ${epJe.totalCash.toFixed(2)} ฿ ปิดยอด`,
             '11-2106': 'ยกเลิกรายได้รอตัดบัญชี-ดอกเบี้ย',
             '21-2102': 'ล้างภาษีขายรอเรียกเก็บ',
             '52-1106': 'ส่วนลดดอกเบี้ย-ปิดยอดก่อนกำหนด',
@@ -340,6 +351,7 @@ export class ContractPaymentService {
             '11-2105': 'ล้างลูกหนี้ภาษีขายรอฯ',
             '41-1101': 'รับรู้รายได้ดอกเบี้ย',
             '21-2101': 'ภาษีขาย ภ.พ.30 ถึงกำหนด',
+            '42-1103': 'ค่าปรับชำระล่าช้า',
           };
 
           // Build metadata — stamp shop-collect flags when applicable
@@ -350,6 +362,7 @@ export class ContractPaymentService {
             unpaidInstallments: epUnpaid,
             discount: epJe.discount.toFixed(2),
             interestDiscountPercent: quote.discountPct,
+            lateFees: epJe.lateFees.toFixed(2),
             ...(dto.collectedByShop ? { collectedByShop: true, shopReceivable: '11-2107' } : {}),
           };
 
@@ -384,6 +397,8 @@ export class ContractPaymentService {
                 newValue: {
                   shopReceivable: '11-2107',
                   settlement: epJe.settlement.toFixed(2),
+                  lateFees: epJe.lateFees.toFixed(2),
+                  totalCash: epJe.totalCash.toFixed(2),
                   unpaidInstallments: epUnpaid,
                 },
               },

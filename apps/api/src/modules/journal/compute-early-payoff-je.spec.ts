@@ -167,6 +167,54 @@ describe('computeEarlyPayoffJE (single-source early-payoff JE math)', () => {
     });
   });
 
+  // ── Late-fee leg (owner 2026-07-20: เงินรับจริงต้องเท่า Dr เงินสด) ────────────
+  // ค่าปรับไม่มี VAT + ไม่ร่วมส่วนลด (นโยบายเดียวกับ 2B receipt) — Dr เงินสด
+  // grossed up ทั้งก้อน / Cr 42-1103 ทั้งก้อน. เดิมค่าปรับถูกเก็บจากลูกค้า
+  // (quote.totalPayoff รวมค่าปรับ) แต่ไม่เคยมีขา JE — รายได้ค่าปรับหายจาก ledger.
+  describe('late-fee leg (Cr 42-1103 · no VAT · no discount)', () => {
+    const base = {
+      depositAccountCode: '11-1101',
+      financedAmount: '10000',
+      storeCommission: '1000',
+      interestTotal: '6000',
+      vatAmount: '1190',
+      totalMonths: 12,
+      unpaidCount: 6,
+      interestDiscountPercent: '50',
+    };
+
+    it('unpaidLateFees 100 → Dr cash grossed up to 7694.98 + Cr 42-1103 100.00, balanced 12790.00', () => {
+      const r = computeEarlyPayoffJE({ ...base, unpaidLateFees: '100' });
+      expect(r.lines.map((l) => l.accountCode)).toEqual([
+        '11-1101', '11-2106', '21-2102', '52-1106', '11-2101', '11-2105', '41-1101', '21-2101', '42-1103',
+      ]);
+      expect(drOf(r, '11-1101')).toBe('7694.98'); // settlement 7594.98 + fee 100
+      expect(crOf(r, '42-1103')).toBe('100.00');
+      expect(r.settlement.toFixed(2)).toBe('7594.98'); // settlement unchanged (excl fee)
+      expect(r.lateFees.toFixed(2)).toBe('100.00');
+      expect(r.totalCash.toFixed(2)).toBe('7694.98');
+      expect(totals(r).dr).toBe('12790.00');
+      expect(totals(r).cr).toBe('12790.00');
+    });
+
+    it('fee is NOT discounted and NOT VAT-divided — Cr 42-1103 stays 100.00 at 0% and 100% discount', () => {
+      const r0 = computeEarlyPayoffJE({ ...base, interestDiscountPercent: '0', unpaidLateFees: '100' });
+      const r100 = computeEarlyPayoffJE({ ...base, interestDiscountPercent: '100', unpaidLateFees: '100' });
+      expect(crOf(r0, '42-1103')).toBe('100.00');
+      expect(crOf(r100, '42-1103')).toBe('100.00');
+      expect(totals(r0).dr).toBe(totals(r0).cr);
+      expect(totals(r100).dr).toBe(totals(r100).cr);
+    });
+
+    it('omitted / 0 fees → no 42-1103 line (CPA case-4 golden byte-for-byte unchanged)', () => {
+      const rOmit = computeEarlyPayoffJE(base);
+      const rZero = computeEarlyPayoffJE({ ...base, unpaidLateFees: '0' });
+      expect(rOmit.lines.find((l) => l.accountCode === '42-1103')).toBeUndefined();
+      expect(rZero.lines.find((l) => l.accountCode === '42-1103')).toBeUndefined();
+      expect(rOmit.totalCash.toFixed(2)).toBe(rOmit.settlement.toFixed(2));
+    });
+  });
+
   // ── Default derivations when storeCommission / vatAmount are null ────────────
   describe('null storeCommission / vatAmount defaults', () => {
     it('null storeCommission → financed × 10%', () => {

@@ -47,6 +47,12 @@ export interface ComputeEarlyPayoffJeInput {
   unpaidCount: number;
   /** Interest discount as a PERCENTAGE 0..100 (e.g. 50 for 50%). */
   interestDiscountPercent: DecimalInput;
+  /**
+   * ค่าปรับค้างชำระที่เก็บพร้อมยอดปิด (หัก waived แล้ว). นโยบายเดียวกับใบเสร็จ
+   * งวดปกติ (2B): ไม่มี VAT + ไม่ร่วมส่วนลด — Dr เงินสดเพิ่มทั้งก้อน /
+   * Cr 42-1103 ทั้งก้อน. Omitted/null → 0 (ไม่มีขาค่าปรับ — CPA case-4 เดิม).
+   */
+  unpaidLateFees?: DecimalInput | null;
 }
 
 /** One canonical JE line — money only (accountCode + dr + cr). Descriptions are
@@ -72,8 +78,12 @@ export interface ComputeEarlyPayoffJeResult {
   discount: Decimal;
   /** Policy A: settleVat = remainingDeferredVat (VAT not reduced by discount). */
   settleVat: Decimal;
-  /** Cash the customer pays = remainingGross − discount + settleVat. */
+  /** Interest/VAT settlement = remainingGross − discount + settleVat (excl. late fees). */
   settlement: Decimal;
+  /** ค่าปรับค้างชำระที่เก็บพร้อมปิดยอด (0 เมื่อไม่มี). */
+  lateFees: Decimal;
+  /** เงินรับจริงทั้งหมด = settlement + lateFees — ตรงกับ Dr เงินสด/ธนาคาร. */
+  totalCash: Decimal;
 }
 
 export function computeEarlyPayoffJE(
@@ -108,9 +118,14 @@ export function computeEarlyPayoffJE(
   // Settlement the customer pays (reduced by discount only — VAT full).
   const settlement = remainingGross.minus(discount).plus(settleVat);
 
+  // ค่าปรับค้างชำระ — เก็บเต็มพร้อมยอดปิด (ไม่มี VAT, ไม่ร่วมส่วนลด — นโยบาย
+  // เดียวกับ 2B receipt ที่ Cr 42-1103 ทั้งก้อน). Dr เงินสดต้องเท่าเงินรับจริง.
+  const lateFees = new Decimal(input.unpaidLateFees ?? 0);
+  const totalCash = settlement.plus(lateFees);
+
   const zero = new Decimal(0);
   const lines: EarlyPayoffJeLine[] = [
-    { accountCode: input.depositAccountCode, dr: settlement, cr: zero },
+    { accountCode: input.depositAccountCode, dr: totalCash, cr: zero },
     { accountCode: '11-2106', dr: remainingDeferredInterest, cr: zero },
     { accountCode: '21-2102', dr: remainingDeferredVat, cr: zero },
   ];
@@ -128,6 +143,12 @@ export function computeEarlyPayoffJE(
     { accountCode: '21-2101', dr: zero, cr: settleVat },
   );
 
+  // Guard: emit the late-fee income line only when fees exist — keeps the
+  // CPA case-4 golden (no fees) byte-for-byte unchanged.
+  if (lateFees.gt(0)) {
+    lines.push({ accountCode: '42-1103', dr: zero, cr: lateFees });
+  }
+
   return {
     lines,
     installmentExclVat,
@@ -139,5 +160,7 @@ export function computeEarlyPayoffJE(
     discount,
     settleVat,
     settlement,
+    lateFees,
+    totalCash,
   };
 }

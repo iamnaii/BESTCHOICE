@@ -98,12 +98,10 @@ export function EarlyPayoffOverlay({
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const [discountPct, setDiscountPct] = useState(50);
-  const [paymentMethod, setPaymentMethod] = useState('CASH');
   // Owner rule 2026-07-08: direct FINANCE receipt = ธนาคารกสิกร (11-1201) only.
   const [depositAccountCode, setDepositAccountCode] = useState('11-1201');
   // BKK-aware today — toISOString() is UTC and yields "yesterday" before 07:00 น. (PR #1327 bug class)
   const [paymentDate, setPaymentDate] = useState(bkkToday);
-  const [referenceNo, setReferenceNo] = useState('');
   const [notes, setNotes] = useState('');
   // Shop-collect toggle — when true, FINANCE books Dr 11-2107 instead of a cash account
   const [collectedByShop, setCollectedByShop] = useState(false);
@@ -132,14 +130,16 @@ export function EarlyPayoffOverlay({
   const mutation = useMutation({
     mutationFn: async () => {
       const { data } = await api.post(`/contracts/${contractId}/early-payoff`, {
-        paymentMethod,
+        // วิธีชำระตายตัว — เงินเข้า FINANCE ตรงมีทางเดียวคือโอนเข้ากสิกร (owner
+        // rule 2026-07-08); เงินสด/เครื่องอยู่หน้าร้านใช้ collectedByShop แทน
+        // (UI ตัด dropdown ออกให้เหมือนจอคืนเครื่อง — owner 2026-07-20)
+        paymentMethod: 'BANK_TRANSFER',
         discountPct,
         depositAccountCode,
         collectedByShop,
         // Cleared input = '' → omit so the server defaults to today (an empty
         // string fails @IsDateString with a 400)
         paymentDate: paymentDate || undefined,
-        referenceNo: referenceNo || undefined,
         notes: notes || undefined,
       });
       return data;
@@ -182,9 +182,7 @@ export function EarlyPayoffOverlay({
   const inputClass =
     'w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 outline-hidden';
 
-  const needsReference = paymentMethod !== 'CASH';
-  const canSubmit =
-    !!quote && !mutation.isPending && (!needsReference || referenceNo.trim().length > 0);
+  const canSubmit = !!quote && !mutation.isPending;
 
   return (
     <WizardStackedOverlay maxWidthClass="max-w-2xl">
@@ -382,40 +380,24 @@ export function EarlyPayoffOverlay({
             </div>
             <div>
               <h3 className="text-sm font-semibold text-foreground">รับชำระ</h3>
-              <p className="text-xs text-muted-foreground">วิธีชำระ, วันที่, อ้างอิง</p>
+              <p className="text-xs text-muted-foreground">วันที่, บัญชีรับเงิน</p>
             </div>
           </div>
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-medium text-foreground mb-1.5">
-                  วิธีชำระ <span className="text-destructive">*</span>
-                </label>
-                <select
-                  value={paymentMethod}
-                  onChange={(e) => setPaymentMethod(e.target.value)}
-                  className={inputClass}
-                >
-                  <option value="CASH">เงินสด</option>
-                  <option value="BANK_TRANSFER">โอนเงิน</option>
-                  <option value="QR_EWALLET">QR/E-Wallet</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-foreground mb-1.5">
-                  วันที่รับเงิน{' '}
-                  <span className="text-muted-foreground font-normal">
-                    (ย้อนหลังได้ถ้างวดบัญชียังเปิด)
-                  </span>
-                </label>
-                <input
-                  type="date"
-                  value={paymentDate}
-                  max={bkkToday()}
-                  onChange={(e) => setPaymentDate(e.target.value)}
-                  className={`${inputClass} font-mono`}
-                />
-              </div>
+            <div>
+              <label className="block text-xs font-medium text-foreground mb-1.5">
+                วันที่รับเงิน{' '}
+                <span className="text-muted-foreground font-normal">
+                  (ย้อนหลังได้ถ้างวดบัญชียังเปิด)
+                </span>
+              </label>
+              <input
+                type="date"
+                value={paymentDate}
+                max={bkkToday()}
+                onChange={(e) => setPaymentDate(e.target.value)}
+                className={`${inputClass} font-mono`}
+              />
             </div>
             {/* Shop-collect toggle */}
             <div className="flex items-start gap-3 rounded-lg border border-border bg-muted/40 px-3 py-3">
@@ -454,31 +436,40 @@ export function EarlyPayoffOverlay({
                 </p>
               )}
             </div>
-            {needsReference && (
-              <div>
-                <label className="block text-xs font-medium text-foreground mb-1.5">
-                  เลขที่อ้างอิง / Ref <span className="text-destructive">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={referenceNo}
-                  onChange={(e) => setReferenceNo(e.target.value)}
-                  className={inputClass}
-                  placeholder="เลขที่อ้างอิงจากสลิป"
+          </div>
+        </div>
+
+        {/* Section: หมายเหตุ (card แยก — mirror จอคืนเครื่อง) */}
+        <div className="rounded-xl border border-border bg-card p-5">
+          <div className="flex items-center gap-2.5 mb-4">
+            <div className="flex items-center justify-center size-8 rounded-lg bg-primary/10 text-primary">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="size-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={1.5}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
                 />
-              </div>
-            )}
+              </svg>
+            </div>
             <div>
-              <label className="block text-xs font-medium text-foreground mb-1.5">หมายเหตุ</label>
-              <input
-                type="text"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                className={inputClass}
-                placeholder="หมายเหตุเพิ่มเติม (ถ้ามี)"
-              />
+              <h3 className="text-sm font-semibold text-foreground">หมายเหตุ</h3>
+              <p className="text-xs text-muted-foreground">บันทึกเพิ่มเติม (ถ้ามี)</p>
             </div>
           </div>
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            rows={2}
+            className={inputClass}
+            placeholder="หมายเหตุเพิ่มเติม (ถ้ามี)"
+          />
         </div>
 
         {/* Section JOURNAL AUTO */}

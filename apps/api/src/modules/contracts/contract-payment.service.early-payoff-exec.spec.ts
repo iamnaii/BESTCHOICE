@@ -465,4 +465,72 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
     expect(prisma.$transaction).not.toHaveBeenCalled();
     expect(createAndPost).not.toHaveBeenCalled();
   });
+
+  // Late-fee leg on the POSTED JE (review 2026-07-20) ────────────────────────
+  describe('late-fee leg on the posted JE (Cr 42-1103, NETTED)', () => {
+    const withFeeRows = () => {
+      const rows = makeUnpaidRows();
+      rows[0] = { ...rows[0], status: 'OVERDUE', lateFee: dec('300') };
+      return rows;
+    };
+    const mockSchedules = () => {
+      tx.installmentSchedule = {
+        findMany: jest.fn().mockResolvedValue(
+          Array.from({ length: 12 }, (_, i) => ({ id: `is-${i + 1}`, installmentNo: i + 1 })),
+        ),
+      };
+    };
+
+    it('books Cr 42-1103 = full fee + grosses the cash Dr when nothing was booked before', async () => {
+      tx.payment.findMany.mockResolvedValue(withFeeRows());
+      mockSchedules();
+      tx.journalEntry = { findMany: jest.fn().mockResolvedValue([]) };
+
+      await service.earlyPayoff(quoteContract.id, 'user-1', baseDto);
+
+      const je = getCapturedJe();
+      expect(lineFor(je, '42-1103')?.cr.toFixed(2)).toBe('300.00');
+      // settlement 11106.00 (18K golden @50%) + fee 300 = Dr cash 11406.00
+      expect(lineFor(je, '11-1201')?.dr.toFixed(2)).toBe('11406.00');
+      expect(je.metadata.lateFees).toBe('300.00');
+    });
+
+    it('NETS against Cr 42-1103 already booked by a prior FEE-FIRST partial receipt (no double-book)', async () => {
+      tx.payment.findMany.mockResolvedValue(withFeeRows());
+      mockSchedules();
+      // ใบเสร็จ partial เดิมบน inst 7 เคยลงรายได้ค่าปรับไปแล้ว 120 จาก 300
+      tx.journalEntry = {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            metadata: { tag: 'receipt', installmentScheduleId: 'is-7' },
+            lines: [{ accountCode: '42-1103', debit: dec('0'), credit: dec('120') }],
+          },
+        ]),
+      };
+
+      await service.earlyPayoff(quoteContract.id, 'user-1', baseDto);
+
+      const je = getCapturedJe();
+      // เหลือลงได้แค่ 300 − 120 = 180 — ห้าม Cr 42-1103 ซ้ำยอดที่ลงแล้ว
+      expect(lineFor(je, '42-1103')?.cr.toFixed(2)).toBe('180.00');
+      expect(lineFor(je, '11-1201')?.dr.toFixed(2)).toBe('11286.00'); // 11106 + 180
+      expect(je.metadata.lateFees).toBe('180.00');
+      // JE ยัง balanced
+      const dr = je.lines.reduce((s, l) => s.plus(l.dr), new Prisma.Decimal(0));
+      const cr = je.lines.reduce((s, l) => s.plus(l.cr), new Prisma.Decimal(0));
+      expect(dr.toFixed(2)).toBe(cr.toFixed(2));
+    });
+
+    it('waived fee is excluded entirely (no 42-1103 line)', async () => {
+      const rows = withFeeRows();
+      rows[0] = { ...rows[0], lateFeeWaived: true };
+      tx.payment.findMany.mockResolvedValue(rows);
+
+      await service.earlyPayoff(quoteContract.id, 'user-1', baseDto);
+
+      const je = getCapturedJe();
+      expect(lineFor(je, '42-1103')).toBeUndefined();
+      expect(lineFor(je, '11-1201')?.dr.toFixed(2)).toBe('11106.00');
+    });
+  });
 });

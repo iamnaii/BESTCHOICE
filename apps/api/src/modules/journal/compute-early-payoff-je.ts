@@ -48,9 +48,12 @@ export interface ComputeEarlyPayoffJeInput {
   /** Interest discount as a PERCENTAGE 0..100 (e.g. 50 for 50%). */
   interestDiscountPercent: DecimalInput;
   /**
-   * ค่าปรับค้างชำระที่เก็บพร้อมยอดปิด (หัก waived แล้ว). นโยบายเดียวกับใบเสร็จ
-   * งวดปกติ (2B): ไม่มี VAT + ไม่ร่วมส่วนลด — Dr เงินสดเพิ่มทั้งก้อน /
-   * Cr 42-1103 ทั้งก้อน. Omitted/null → 0 (ไม่มีขาค่าปรับ — CPA case-4 เดิม).
+   * ค่าปรับค้างชำระที่เก็บพร้อมยอดปิด — ต้องเป็นยอด "NETTED" แล้ว: หัก waived
+   * และหัก Cr 42-1103 ที่เคยลงผ่านใบเสร็จ partial (FEE-FIRST) ไปแล้ว
+   * (caller ใช้ ContractPaymentService.computeUnbookedLateFees ซึ่ง reconstruct
+   * จาก JE เดิม — ส่งค่าดิบจาก Payment.lateFee ตรงๆ จะ double-book รายได้).
+   * นโยบายเดียวกับใบเสร็จงวดปกติ (2B): ไม่มี VAT + ไม่ร่วมส่วนลด — Dr เงินสด
+   * เพิ่มทั้งก้อน / Cr 42-1103 ทั้งก้อน. Omitted/null → 0 (CPA case-4 เดิม).
    */
   unpaidLateFees?: DecimalInput | null;
 }

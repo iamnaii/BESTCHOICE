@@ -46,8 +46,10 @@ interface RepoPreview {
     principalExVat: number;
     financeCost: number;
     remainingCost: number;
+    grossProfit: number;
     discountPct: number;
     discountAmount: number;
+    unpaidLateFees: number;
     closingAmount: number;
     marketValue: number;
     customerRefundEnabled: boolean;
@@ -400,7 +402,7 @@ export function RepossessionOverlay({
                   value={`${preview.calculation.principalExVat.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿`}
                 />
                 <Row
-                  label="ต้นทุนคงเหลือ (financedAmount + คอม)"
+                  label="ต้นทุนยอดค้างชำระ (ยอดจัด + คอม)"
                   value={`${preview.calculation.remainingCost.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿`}
                 />
                 <div className="border-t border-border pt-2">
@@ -410,9 +412,16 @@ export function RepossessionOverlay({
                     destructive
                   />
                 </div>
+                {preview.calculation.unpaidLateFees > 0 && (
+                  <Row
+                    label="ค่าปรับค้างชำระ"
+                    value={`+ ${preview.calculation.unpaidLateFees.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿`}
+                    destructive
+                  />
+                )}
                 <div className="border-t border-border pt-2">
                   <Row
-                    label="ยอดปิดสัญญา"
+                    label="ยอดปิดสัญญา (ตรงกับปิดยอดก่อนกำหนด)"
                     value={`${preview.calculation.closingAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿`}
                     bold
                   />

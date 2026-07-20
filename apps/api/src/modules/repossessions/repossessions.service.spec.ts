@@ -171,7 +171,21 @@ describe('RepossessionsService', () => {
             createRepossessionResaleJournal: jest.fn().mockResolvedValue('je-repo-1'),
           },
         },
-        { provide: RepossessionJP5Template, useValue: (jp5 = { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK' }) }) },
+        {
+          provide: RepossessionJP5Template,
+          useValue: (jp5 = {
+            execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK' }),
+            previewJe: jest.fn().mockResolvedValue({
+              lines: [
+                { accountCode: '11-1201', accountName: 'ธนาคาร KBank', debit: '6000.00', credit: '0.00', description: 'ราคากลางเครื่อง' },
+                { accountCode: '11-2103', accountName: 'ลูกหนี้ค้างชำระ', debit: '0.00', credit: '6000.00', description: 'ล้างลูกหนี้' },
+              ],
+              totalDebit: '6000.00',
+              totalCredit: '6000.00',
+              isBalanced: true,
+            }),
+          }),
+        },
       ],
     }).compile();
 
@@ -346,6 +360,69 @@ describe('RepossessionsService', () => {
       });
       expect(result.calculation.closingAmount).toBe(expected.totalPayoff);
       expect(result.calculation.discountAmount).toBe(expected.discountAmount);
+    });
+
+    it('includes journalPreview (dry-run JP5) — mirror create(): repoValue = appraisalPrice, 11-2107 เมื่อ collectedByShop', async () => {
+      prisma.contract.findUnique.mockResolvedValue(makeContract());
+
+      const result = await service.previewCalculation('contract-1', {
+        appraisalPrice: 6000,
+        collectedByShop: true,
+      });
+
+      expect(result.journalPreview?.isBalanced).toBe(true);
+      expect(jp5.previewJe).toHaveBeenCalledWith(
+        expect.objectContaining({
+          contractId: 'contract-1',
+          depositAccountCode: '11-2107',
+          collectedByShop: true,
+        }),
+      );
+      expect(jp5.previewJe.mock.calls[0][0].repossessionValue.toFixed(2)).toBe('6000.00');
+    });
+
+    it('default deposit = 11-1201 (KBank) เมื่อไม่ส่ง depositAccountCode', async () => {
+      prisma.contract.findUnique.mockResolvedValue(makeContract());
+
+      await service.previewCalculation('contract-1', {});
+
+      expect(jp5.previewJe).toHaveBeenCalledWith(
+        expect.objectContaining({ depositAccountCode: '11-1201', collectedByShop: false }),
+      );
+    });
+
+    it('journalPreview = null เมื่อ previewJe ล้มเหลว — ไม่ล้มทั้ง response', async () => {
+      prisma.contract.findUnique.mockResolvedValue(makeContract());
+      jp5.previewJe.mockRejectedValueOnce(new Error('boom'));
+
+      const result = await service.previewCalculation('contract-1', {});
+
+      expect(result.journalPreview).toBeNull();
+      expect(result.calculation.closingAmount).toBeGreaterThan(0);
+    });
+
+    it('journalPreview gate ตรงกับ create(): งวดค้างสถานะแต่จ่ายครบแล้ว (outstanding = 0) → ไม่โชว์ JE card', async () => {
+      // create() ลง JE เฉพาะเมื่อ outstanding > 0 — preview ต้องใช้เงื่อนไขเดียวกัน
+      // ไม่งั้น UI โชว์ JE ที่กดยืนยันแล้วไม่ถูก post จริง (review 2026-07-20)
+      const contract = makeContract({
+        payments: [
+          {
+            id: 'pay-1',
+            installmentNo: 1,
+            status: 'PENDING', // ค้างสถานะ แต่เงินครบแล้ว (processing lag)
+            amountDue: decimal(1000),
+            amountPaid: decimal(1000),
+            lateFee: decimal(0),
+            lateFeeWaived: false,
+          },
+        ],
+      });
+      prisma.contract.findUnique.mockResolvedValue(contract);
+
+      const result = await service.previewCalculation('contract-1', {});
+
+      expect(result.journalPreview).toBeNull();
+      expect(jp5.previewJe).not.toHaveBeenCalled();
     });
   });
 

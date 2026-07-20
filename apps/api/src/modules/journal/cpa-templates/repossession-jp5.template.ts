@@ -76,6 +76,20 @@ export interface RepossessionInput {
  *   - Deferred portion (2A ยังไม่ run): VAT ยังอยู่ที่ 21-2102 (deferred) →
  *     ปิดบัญชีตรง ๆ ไม่ต้องออกใบลดหนี้เพราะยังไม่เกิดความรับผิด.
  */
+/** UI-shaped dry-run of the JP5 JE — same shape as JP4's journalPreview. */
+export interface RepossessionJePreview {
+  lines: {
+    accountCode: string;
+    accountName: string;
+    debit: string;
+    credit: string;
+    description: string;
+  }[];
+  totalDebit: string;
+  totalCredit: string;
+  isBalanced: boolean;
+}
+
 @Injectable()
 export class RepossessionJP5Template {
   constructor(
@@ -83,11 +97,16 @@ export class RepossessionJP5Template {
     private readonly prisma: PrismaService,
   ) {}
 
-  async execute(
-    input: RepossessionInput,
-    tx?: Prisma.TransactionClient,
-  ): Promise<{ entryNo: string }> {
-    const client = tx ?? this.prisma;
+  /**
+   * Shared money-math — builds the JP5 lines WITHOUT posting. Used by BOTH
+   * execute() (ledger posting) and previewJe() (UI dry-run) so the preview
+   * shown before ยืนยันยึดคืน is byte-for-byte the JE that gets posted
+   * (same pattern as computeEarlyPayoffJE for JP4).
+   */
+  private async buildJe(
+    input: Omit<RepossessionInput, 'postedAt'>,
+    client: Prisma.TransactionClient | PrismaService,
+  ) {
     const c = await client.contract.findUniqueOrThrow({ where: { id: input.contractId } });
 
     // Determine unpaid installments via Payment table (no status field on InstallmentSchedule)
@@ -289,31 +308,85 @@ export class RepossessionJP5Template {
       });
     }
 
+    return {
+      contract: c,
+      unpaid,
+      accruedCount: accruedInsts.length,
+      deferredCount: deferredInsts.length,
+      accruedCreditNoteVat,
+      lines,
+    };
+  }
+
+  async execute(
+    input: RepossessionInput,
+    tx?: Prisma.TransactionClient,
+  ): Promise<{ entryNo: string }> {
+    const client = tx ?? this.prisma;
+    const built = await this.buildJe(input, client);
+
     const result = await this.journal.createAndPost(
       {
-        description: `ยึดเครื่อง — สัญญา ${c.contractNumber} (${unpaid} งวดคงเหลือ)`,
-        reference: `${c.id}:repossession`,
+        description: `ยึดเครื่อง — สัญญา ${built.contract.contractNumber} (${built.unpaid} งวดคงเหลือ)`,
+        reference: `${built.contract.id}:repossession`,
         postedAt: input.postedAt,
         metadata: {
           tag: 'JP5',
           flow: 'repossession',
-          contractId: c.id,
-          unpaidInstallments: unpaid,
-          accruedInstallments: accruedInsts.length,
-          deferredInstallments: deferredInsts.length,
+          contractId: built.contract.id,
+          unpaidInstallments: built.unpaid,
+          accruedInstallments: built.accruedCount,
+          deferredInstallments: built.deferredCount,
           repossessionValue: input.repossessionValue.toFixed(2),
           // Wave 2 T2: Credit Note tracking (per ม.82/5)
-          creditNoteIssued: accruedCount.gt(0),
-          creditNoteVatAmount: accruedCreditNoteVat.toFixed(2),
+          creditNoteIssued: built.accruedCount > 0,
+          creditNoteVatAmount: built.accruedCreditNoteVat.toFixed(2),
           ...(input.collectedByShop
             ? { collectedByShop: true, shopReceivable: input.depositAccountCode }
             : {}),
         },
-        lines,
+        lines: built.lines,
       },
       tx,
     );
 
     return { entryNo: result.entryNumber };
+  }
+
+  /**
+   * Dry-run for the UI "JOURNAL AUTO" card (owner 2026-07-20) — same buildJe
+   * as execute(), no posting. Resolves account names from CoA like the JP4
+   * quote preview does.
+   */
+  async previewJe(input: Omit<RepossessionInput, 'postedAt'>): Promise<RepossessionJePreview> {
+    const built = await this.buildJe(input, this.prisma);
+
+    const codes = [...new Set(built.lines.map((l) => l.accountCode))];
+    const coaRows = await this.prisma.chartOfAccount.findMany({
+      where: { code: { in: codes } },
+      select: { code: true, name: true },
+    });
+    const nameMap = new Map(coaRows.map((r) => [r.code, r.name]));
+
+    let totalDr = new Decimal(0);
+    let totalCr = new Decimal(0);
+    const lines = built.lines.map((l) => {
+      totalDr = totalDr.plus(l.dr);
+      totalCr = totalCr.plus(l.cr);
+      return {
+        accountCode: l.accountCode,
+        accountName: nameMap.get(l.accountCode) ?? l.accountCode,
+        debit: l.dr.toFixed(2),
+        credit: l.cr.toFixed(2),
+        description: l.description ?? '',
+      };
+    });
+
+    return {
+      lines,
+      totalDebit: totalDr.toFixed(2),
+      totalCredit: totalCr.toFixed(2),
+      isBalanced: totalDr.toFixed(2) === totalCr.toFixed(2),
+    };
   }
 }

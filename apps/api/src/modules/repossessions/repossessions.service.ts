@@ -12,7 +12,7 @@ import { ConditionGrade, RepossessionStatus, ProductStatus } from '@prisma/clien
 import { d, dAdd, dSub } from '../../utils/decimal.util';
 import { computePayoffQuote } from '../contracts/compute-payoff-quote';
 import { JournalAutoService } from '../journal/journal-auto.service';
-import { RepossessionJP5Template } from '../journal/cpa-templates/repossession-jp5.template';
+import { RepossessionJP5Template, RepossessionJePreview } from '../journal/cpa-templates/repossession-jp5.template';
 import { Decimal } from '@prisma/client/runtime/library';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
 import { isFutureBkkDay } from '../../utils/date.util';
@@ -83,7 +83,7 @@ export class RepossessionsService {
    * Preview repossession P&L calculation for a contract.
    * Used by frontend to show live breakdown before creating.
    */
-  async previewCalculation(contractId: string, options: { marketValue?: number; appraisalPrice?: number; discountPct?: number; customerRefundEnabled?: boolean }) {
+  async previewCalculation(contractId: string, options: { marketValue?: number; appraisalPrice?: number; discountPct?: number; customerRefundEnabled?: boolean; depositAccountCode?: string; collectedByShop?: boolean }) {
     const contract = await this.prisma.contract.findUnique({
       where: { id: contractId },
       include: {
@@ -102,9 +102,16 @@ export class RepossessionsService {
     // accumulates float drift on long installment plans (24+ months) and
     // can show users the wrong refund/profit by a few baht.
     let totalPaid = new Prisma.Decimal(0);
+    // ยอดลูกหนี้คงค้างตามบัญชี (สูตรเดียวกับ create()) — ใช้ gate JOURNAL AUTO
+    // ให้ตรงกับเงื่อนไขที่ create() จะลง JE จริง (outstanding > 0) เท่านั้น
+    let outstandingForJe = new Prisma.Decimal(0);
     let remainingMonths = 0;
     for (const p of contract.payments) {
-      if (p.status !== 'PAID') remainingMonths += 1;
+      if (p.status !== 'PAID') {
+        remainingMonths += 1;
+        const lateFee = p.lateFeeWaived ? new Prisma.Decimal(0) : new Prisma.Decimal(p.lateFee);
+        outstandingForJe = outstandingForJe.add(p.amountDue).sub(p.amountPaid).add(lateFee);
+      }
       totalPaid = totalPaid.add(p.amountPaid);
     }
 
@@ -135,6 +142,29 @@ export class RepossessionsService {
     // กำไร/ขาดทุน = ราคากลาง − ยอดปิดสัญญา − เงินคืนลูกค้า (owner rule 2026-07-09:
     // บริษัทได้เครื่องมูลค่าราคากลาง แลกกับการปิดสัญญาที่ยอดหลังส่วนลด)
     const profitLoss = TWO_DP(marketValue.sub(closingAmount).sub(customerRefund));
+
+    // JOURNAL AUTO preview (owner 2026-07-20) — dry-run JP5 ผ่าน buildJe ตัวเดียว
+    // กับตอน post จริงใน create() จึงตรงกันเสมอ. Mirror create(): repoValue =
+    // appraisalPrice (ไม่ใช่ marketValue), deposit = 11-2107 เมื่อตั้งลูกหนี้-
+    // หน้าร้าน ไม่งั้น KBank 11-1201. Preview fail ต้องไม่ล้มทั้ง response.
+    let journalPreview: RepossessionJePreview | null = null;
+    if (outstandingForJe.greaterThan(0)) {
+      const previewDepositCode = options.collectedByShop
+        ? '11-2107'
+        : (options.depositAccountCode ?? '11-1201');
+      try {
+        journalPreview = await this.repossessionJP5Template.previewJe({
+          contractId,
+          depositAccountCode: previewDepositCode,
+          repossessionValue: new Prisma.Decimal(options.appraisalPrice ?? 0),
+          collectedByShop: options.collectedByShop === true,
+        });
+      } catch (err) {
+        this.logger.warn(
+          `JP5 preview failed for contract ${contractId}: ${err instanceof Error ? err.message : err}`,
+        );
+      }
+    }
 
     // Internally calculated with Decimal for precision; return as numbers
     // since frontend uses .toLocaleString() and numeric comparisons.
@@ -169,6 +199,7 @@ export class RepossessionsService {
         customerRefund: customerRefund.toNumber(),
         profitLoss: profitLoss.toNumber(),
       },
+      journalPreview,
     };
   }
 

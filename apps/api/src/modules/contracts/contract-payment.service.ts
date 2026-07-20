@@ -7,11 +7,12 @@ import { JournalAutoService } from '../journal/journal-auto.service';
 import { EarlyPayoffJP4Template } from '../journal/cpa-templates/early-payoff-jp4.template';
 import { ShopCollectSettlementTemplate } from '../journal/cpa-templates/shop-collect-settlement.template';
 import { computeEarlyPayoffJE } from '../journal/compute-early-payoff-je';
+import { computePayoffQuote } from './compute-payoff-quote';
 import { Decimal } from '@prisma/client/runtime/library';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
 import { isFutureBkkDay } from '../../utils/date.util';
 import { EarlyPayoffDto, ShopCollectSettlementDto } from './dto/contract.dto';
-import { d, dAdd, dSub, dMul, dDiv, dRound, dRoundDown, dSum, dGte } from '../../utils/decimal.util';
+import { d, dAdd, dSub, dRound } from '../../utils/decimal.util';
 
 @Injectable()
 export class ContractPaymentService {
@@ -107,56 +108,21 @@ export class ContractPaymentService {
       throw new BadRequestException('ไม่มีงวดค้างชำระ ไม่จำเป็นต้องปิดก่อนกำหนด');
     }
 
-    const round2 = (v: Prisma.Decimal) => dRound(v).toNumber();
-    const monthlyPayment = d(contract.monthlyPayment);
-
-    // (1) รวมค้างชำระ (รวม VAT)
-    const totalRemaining = round2(dMul(monthlyPayment, remainingMonths));
-
-    // (2) ยอดชำระล่วงหน้า / partial credit
-    const creditBalance = d(contract.creditBalance);
-    const paidPayments = contract.payments.filter(p => p.status === 'PARTIALLY_PAID');
-    const partialPaid = dSum(paidPayments.map(p => d(p.amountPaid)));
-    const advancePayment = round2(dAdd(creditBalance, partialPaid));
-
-    // (3) คงเหลือยอดค้าง
-    const remainingBalance = round2(dSub(totalRemaining, advancePayment));
-
-    // (4) ค่างวดไม่รวม VAT
-    const vatPct = d(contract.vatPct);
-    const remainingExVat = vatPct.gt(0)
-      ? round2(dDiv(remainingBalance, dAdd(1, vatPct)))
-      : remainingBalance;
-
-    // (5) ต้นทุนยอดค้าง = ยอดจัดจริง + commission
-    // หมายเหตุ: contract.financedAmount ในระบบเก็บ "ยอดรวมที่ลูกค้าต้องจ่าย"
-    // (principal + commission + interest + VAT) ไม่ใช่ยอดจัดล้วน
-    // ดังนั้นต้องคำนวณ principal จาก sellingPrice - downPayment
-    const truePrincipal = dSub(contract.sellingPrice, contract.downPayment);
-    const financeCost = dAdd(truePrincipal, d(contract.storeCommission));
-    const remainingCost = round2(dMul(dDiv(financeCost, contract.totalMonths), remainingMonths));
-
-    // (6) กำไรขั้นต้น (อาจติดลบเคสขาดทุน — แสดงค่าจริง)
-    const grossProfit = round2(dSub(remainingExVat, remainingCost));
-
-    // (7) ส่วนลด (default 50%, max 50% ตามนโยบาย)
-    // ถ้ากำไรติดลบ → ส่วนลด = 0 (ไม่ลดเพิ่ม ไม่บวกเพิ่ม)
-    // ปัดเศษส่วนลด "ลง" (ROUND_DOWN) — เศษครึ่งสตางค์ไม่ปัดขึ้นเป็นส่วนลด
-    // ยอดปิดสัญญาจึงปัดเข้าข้าง FINANCE (owner policy 2026-07-02).
-    const discountPercent =
-      discountPctInput != null ? Math.max(0, Math.min(50, discountPctInput)) : 50;
-    const discountPct = discountPercent / 100;
-    const discountAmount = grossProfit > 0 ? dRoundDown(dMul(grossProfit, discountPct)).toNumber() : 0;
-
-    // (8) ยอดชำระปิดยอด
-    const totalPayoff = Math.max(0, round2(dSub(remainingBalance, discountAmount)));
-
-    // Late fees (ไม่ลด — ตามนโยบาย "ไม่คิด VAT ค่าปรับ")
-    const unpaidLateFees = dSum(
-      contract.payments
-        .filter(p => p.status !== 'PAID' && !p.lateFeeWaived)
-        .map(p => d(p.lateFee)),
-    ).toNumber();
+    // สูตรทั้งหมดอยู่ใน computePayoffQuote — single source of truth ที่
+    // RepossessionsService (JP5) ใช้ด้วย เพื่อให้ยอดปิดยึดคืน = ยอดปิดก่อนกำหนดเสมอ
+    const quote = computePayoffQuote({
+      monthlyPayment: contract.monthlyPayment,
+      remainingMonths,
+      totalMonths: contract.totalMonths,
+      creditBalance: contract.creditBalance,
+      vatPct: contract.vatPct,
+      sellingPrice: contract.sellingPrice,
+      downPayment: contract.downPayment,
+      storeCommission: contract.storeCommission,
+      discountPctInput,
+      payments: contract.payments,
+    });
+    const discountPercent = quote.discountPercent;
 
     // ── JE preview (single source of truth — computeEarlyPayoffJE) ───────────
     // Computed from contract fields via the SAME pure function the ledger
@@ -217,18 +183,18 @@ export class ContractPaymentService {
     const jeIsBalanced = jeTotalDr.toFixed(2) === jeTotalCr.toFixed(2);
 
     return {
-      monthlyPayment: round2(monthlyPayment),
+      monthlyPayment: dRound(d(contract.monthlyPayment)).toNumber(),
       remainingMonths,
-      totalRemaining,
-      advancePayment,
-      remainingBalance,
-      remainingExVat,
-      remainingCost,
-      grossProfit,
-      discountPct: discountPct * 100, // return as percentage 0-100
-      discountAmount,
-      unpaidLateFees,
-      totalPayoff: round2(dAdd(totalPayoff, unpaidLateFees)),
+      totalRemaining: quote.totalRemaining,
+      advancePayment: quote.advancePayment,
+      remainingBalance: quote.remainingBalance,
+      remainingExVat: quote.remainingExVat,
+      remainingCost: quote.remainingCost,
+      grossProfit: quote.grossProfit,
+      discountPct: discountPercent, // percentage 0-100
+      discountAmount: quote.discountAmount,
+      unpaidLateFees: quote.unpaidLateFees,
+      totalPayoff: quote.totalPayoff,
       journalPreview: {
         lines: jeLines,
         totalDebit: jeTotalDr.toFixed(2),

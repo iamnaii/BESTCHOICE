@@ -5,6 +5,7 @@ import { RepossessionsService } from './repossessions.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RepossessionJP5Template } from '../journal/cpa-templates/repossession-jp5.template';
+import { computePayoffQuote } from '../contracts/compute-payoff-quote';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -22,6 +23,11 @@ function makeContract(overrides: Partial<Record<string, unknown>> = {}) {
     storeCommission: decimal(500),
     monthlyPayment: decimal(1000),
     sellingPrice: decimal(12000),
+    // computePayoffQuote inputs (สูตรเดียวกับปิดยอดก่อนกำหนด):
+    // ต้นทุน = (sellingPrice − downPayment) + commission = 10000 + 500 = 10500
+    downPayment: decimal(2000),
+    vatPct: decimal(0.07),
+    creditBalance: decimal(0),
     productId: 'product-1',
     product: {
       id: 'product-1',
@@ -227,22 +233,24 @@ describe('RepossessionsService', () => {
       ).rejects.toThrow(NotFoundException);
     });
 
-    it('returns correct outstanding balance using Decimal arithmetic', async () => {
+    it('returns correct outstanding balance using Decimal arithmetic (late fee separated)', async () => {
       prisma.contract.findUnique.mockResolvedValue(makeContract());
 
       const result = await service.previewCalculation('contract-1', {});
 
-      // pay-2: 1000 - 0 + 100 = 1100, pay-3: 1000 - 0 + 0 = 1000 → total 2100
-      expect(result.calculation.outstandingBalance).toBeCloseTo(2100, 2);
+      // ยอดค้าง = ค่างวด 1000 × 2 งวดค้าง = 2000 — ค่าปรับ 100 แยกออกมาต่างหาก
+      // (ไม่รวมในฐาน VAT/ส่วนลด ตามสูตรปิดยอดก่อนกำหนด)
+      expect(result.calculation.outstandingBalance).toBeCloseTo(2000, 2);
+      expect(result.calculation.unpaidLateFees).toBeCloseTo(100, 2);
       expect(result.calculation.remainingMonths).toBe(2);
     });
 
-    it('calculates principalExVat by dividing by 1.07 (VAT back-out)', async () => {
+    it('calculates principalExVat by dividing by 1.07 (VAT back-out, excl. late fee)', async () => {
       prisma.contract.findUnique.mockResolvedValue(makeContract());
 
       const result = await service.previewCalculation('contract-1', {});
 
-      const expectedPrincipalExVat = Math.round((2100 / 1.07) * 100) / 100;
+      const expectedPrincipalExVat = Math.round((2000 / 1.07) * 100) / 100;
       expect(result.calculation.principalExVat).toBeCloseTo(expectedPrincipalExVat, 1);
     });
 
@@ -297,10 +305,12 @@ describe('RepossessionsService', () => {
 
       const result = await service.previewCalculation('contract-1', { marketValue: 5000 });
 
-      // outstanding 2100 → exVat 1962.62; remainingCost 1750;
-      // discount 50% × (1962.62 − 1750) = 106.31 → closing 1856.31
-      expect(result.calculation.closingAmount).toBeCloseTo(1856.31, 2);
-      expect(result.calculation.profitLoss).toBeCloseTo(5000 - 1856.31, 2);
+      // สูตรเดียวกับปิดยอดก่อนกำหนด (owner 2026-07-20):
+      // ยอดค้าง 2000 (รวม VAT) → exVat 1869.16; ต้นทุน 1750;
+      // ส่วนลด 50% × (1869.16 − 1750) = ROUND_DOWN(59.58) = 59.58;
+      // ยอดปิด = 2000 − 59.58 + ค่าปรับ 100 = 2040.42
+      expect(result.calculation.closingAmount).toBeCloseTo(2040.42, 2);
+      expect(result.calculation.profitLoss).toBeCloseTo(5000 - 2040.42, 2);
     });
 
     it('refunding the full excess drives profitLoss to 0 (ราคากลาง > ยอดปิด + คืนเงิน)', async () => {
@@ -312,8 +322,30 @@ describe('RepossessionsService', () => {
       });
 
       // refund = marketValue − closingAmount → profit = market − closing − refund = 0
-      expect(result.calculation.customerRefund).toBeCloseTo(5000 - 1856.31, 2);
+      expect(result.calculation.customerRefund).toBeCloseTo(5000 - 2040.42, 2);
       expect(result.calculation.profitLoss).toBeCloseTo(0, 2);
+    });
+
+    it('anti-drift: closingAmount ตรงกับ computePayoffQuote (สูตรปิดยอดก่อนกำหนด) เสมอ', async () => {
+      const contract = makeContract();
+      prisma.contract.findUnique.mockResolvedValue(contract);
+
+      const result = await service.previewCalculation('contract-1', { discountPct: 30 });
+
+      const expected = computePayoffQuote({
+        monthlyPayment: contract.monthlyPayment as Prisma.Decimal,
+        remainingMonths: 2,
+        totalMonths: contract.totalMonths as number,
+        creditBalance: contract.creditBalance as Prisma.Decimal,
+        vatPct: contract.vatPct as Prisma.Decimal,
+        sellingPrice: contract.sellingPrice as Prisma.Decimal,
+        downPayment: contract.downPayment as Prisma.Decimal,
+        storeCommission: contract.storeCommission as Prisma.Decimal,
+        discountPctInput: 30,
+        payments: contract.payments as never,
+      });
+      expect(result.calculation.closingAmount).toBe(expected.totalPayoff);
+      expect(result.calculation.discountAmount).toBe(expected.discountAmount);
     });
   });
 
@@ -439,10 +471,10 @@ describe('RepossessionsService', () => {
       await service.create(baseDto as never, 'user-1');
 
       const data = prisma.repossession.create.mock.calls[0][0].data;
-      // outstanding 2100 → closing 1856.31 (same math as preview);
-      // marketValue 6000 → profit 4143.69
-      expect(Number(data.closingAmount)).toBeCloseTo(1856.31, 2);
-      expect(Number(data.profitLoss)).toBeCloseTo(6000 - 1856.31, 2);
+      // สูตรเดียวกับ preview + ปิดยอดก่อนกำหนด: ยอดค้าง 2000 − ส่วนลด 59.58
+      // + ค่าปรับ 100 = closing 2040.42; marketValue 6000 → profit 3959.58
+      expect(Number(data.closingAmount)).toBeCloseTo(2040.42, 2);
+      expect(Number(data.profitLoss)).toBeCloseTo(6000 - 2040.42, 2);
     });
 
     it('creates repossession, updates contract to CLOSED_BAD_DEBT, and sets product to REPOSSESSED', async () => {

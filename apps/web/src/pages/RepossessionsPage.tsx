@@ -114,7 +114,7 @@ export default function RepossessionsPage() {
   // Live P&L preview when creating
   const { data: previewData } = useQuery<{
     contract: { contractNumber: string; customer: { name: string }; product: { brand: string; model: string }; totalMonths: number; monthlyPayment: number; sellingPrice: number; financedAmount: number; storeCommission: number };
-    calculation: { remainingMonths: number; totalPaid: number; outstandingBalance: number; principalExVat: number; financeCost: number; remainingCost: number; discountPct: number; discountAmount: number; closingAmount: number; marketValue: number; customerRefundEnabled: boolean; customerRefund: number; profitLoss: number };
+    calculation: { remainingMonths: number; totalPaid: number; outstandingBalance: number; principalExVat: number; financeCost: number; remainingCost: number; grossProfit: number; discountPct: number; discountAmount: number; unpaidLateFees: number; closingAmount: number; marketValue: number; customerRefundEnabled: boolean; customerRefund: number; profitLoss: number };
   }>({
     queryKey: ['repossession-preview', createForm.contractId, createForm.marketValue, createForm.appraisalPrice, createForm.discountPct, createForm.customerRefundEnabled],
     queryFn: async () => {
@@ -639,15 +639,21 @@ export default function RepossessionsPage() {
                         <span className="font-medium text-foreground">{previewData.calculation.principalExVat.toLocaleString()} ฿</span>
                       </div>
                       <div className="flex justify-between text-xs">
-                        <span className="text-muted-foreground">ต้นทุนคงเหลือ (financedAmount + คอม)</span>
+                        <span className="text-muted-foreground">ต้นทุนยอดค้างชำระ (ยอดจัด + คอม)</span>
                         <span className="font-medium text-foreground">{previewData.calculation.remainingCost.toLocaleString()} ฿</span>
                       </div>
                       <div className="flex justify-between text-xs border-t border-border pt-2">
                         <span className="text-muted-foreground">ส่วนลดลูกค้า ({previewData.calculation.discountPct}%)</span>
                         <span className="font-medium text-destructive">- {previewData.calculation.discountAmount.toLocaleString()} ฿</span>
                       </div>
+                      {previewData.calculation.unpaidLateFees > 0 && (
+                        <div className="flex justify-between text-xs">
+                          <span className="text-muted-foreground">ค่าปรับค้างชำระ</span>
+                          <span className="font-medium text-destructive">+ {previewData.calculation.unpaidLateFees.toLocaleString()} ฿</span>
+                        </div>
+                      )}
                       <div className="flex justify-between text-sm pt-2 border-t border-border">
-                        <span className="font-semibold text-foreground">ยอดปิดสัญญา</span>
+                        <span className="font-semibold text-foreground">ยอดปิดสัญญา (ตรงกับปิดยอดก่อนกำหนด)</span>
                         <span className="font-bold text-foreground">{previewData.calculation.closingAmount.toLocaleString()} ฿</span>
                       </div>
 

@@ -297,6 +297,42 @@ describe('ShopCatalogService', () => {
       const result = await service.getProductDetail('p2');
       expect(result!.condition).toBe('NEW');
     });
+
+    it('returns per-unit color and installmentPrice', async () => {
+      prisma.product.findFirst.mockResolvedValue({
+        id: 'p1',
+        brand: 'Apple',
+        model: 'iPhone 15',
+        storage: '128GB',
+        color: 'Black',
+        category: 'PHONE_USED',
+        cashPrice: 15900,
+        conditionGrade: 'A',
+        gallery: [],
+        gallery360: [],
+        isOnlineVisible: true,
+      });
+      prisma.product.findMany.mockResolvedValue([
+        {
+          id: 'u1',
+          conditionGrade: 'A',
+          batteryHealth: 92,
+          hasBox: true,
+          shopWarrantyDays: 30,
+          color: 'Blue',
+          cashPrice: 15900,
+          installmentPrice: 17500,
+          imeiSerial: '111122223333',
+          gallery: [],
+          gallery360: [],
+        },
+      ]);
+      const result = await service.getProductDetail('p1');
+      const u = result!.tiers.A.units[0];
+      expect(u.color).toBe('Blue');
+      expect(u.installmentPrice).toBe(17500);
+      expect(JSON.stringify(result)).not.toContain('costPrice');
+    });
   });
 
   describe('smartStockCount', () => {

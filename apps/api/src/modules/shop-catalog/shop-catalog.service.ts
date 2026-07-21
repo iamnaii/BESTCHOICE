@@ -36,10 +36,10 @@ export interface ProductUnit {
   conditionGrade: string;
   batteryHealth?: number;
   hasBox?: boolean;
-  hasCharger?: boolean;
-  hasHeadphones?: boolean;
+  color?: string;
   shopWarrantyDays?: number;
   cashPrice: number;
+  installmentPrice: number | null;
   imeiPartial?: string; // last 4 digits
   gallery: string[];
   gallery360: string[];
@@ -210,8 +210,10 @@ export class ShopCatalogService {
         conditionGrade: grade,
         batteryHealth: u.batteryHealth ?? undefined,
         hasBox: u.hasBox ?? undefined,
+        color: u.color ?? undefined,
         shopWarrantyDays: u.shopWarrantyDays ?? undefined,
         cashPrice: price,
+        installmentPrice: u.installmentPrice != null ? Number(u.installmentPrice) : null,
         imeiPartial,
         gallery: u.gallery,
         gallery360: u.gallery360,

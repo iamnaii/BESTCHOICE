@@ -21,7 +21,7 @@ import { usePageMeta } from '@/hooks/usePageMeta';
 export default function ContactPage() {
   usePageMeta(
     copy.contact.pageTitle,
-    'ติดต่อ BESTCHOICE ร้านมือถือลพบุรี ทักไลน์หรือโทรสอบถามซื้อ-ผ่อน iPhone มือสอง',
+    'ติดต่อ BESTCHOICE ร้านมือถือลพบุรี ทักไลน์หรือโทรสอบถามซื้อ-ผ่อน iPhone มือ 1 และมือสอง',
   );
 
   const [name, setName] = useState('');
@@ -38,10 +38,7 @@ export default function ContactPage() {
       <CategoryHero
         title={copy.contact.pageTitle}
         description={copy.contact.intro}
-        breadcrumbs={[
-          { label: 'หน้าแรก', to: '/' },
-          { label: copy.contact.pageTitle },
-        ]}
+        breadcrumbs={[{ label: 'หน้าแรก', to: '/' }, { label: copy.contact.pageTitle }]}
       />
       <Container>
         <Stack gap={6} className="py-8">
@@ -53,9 +50,7 @@ export default function ContactPage() {
                     <MessageCircle className="size-6" aria-hidden="true" />
                   </span>
                   <div className="space-y-1">
-                    <h3 className="text-lg font-semibold leading-snug">
-                      {copy.contact.lineTitle}
-                    </h3>
+                    <h3 className="text-lg font-semibold leading-snug">{copy.contact.lineTitle}</h3>
                     <p className="text-base font-medium text-emerald-700 leading-snug">
                       {copy.contact.lineHandle}
                     </p>
@@ -87,9 +82,7 @@ export default function ContactPage() {
                     <h3 className="text-lg font-semibold leading-snug">
                       {copy.contact.phoneTitle}
                     </h3>
-                    <p className="text-base font-medium leading-snug">
-                      {copy.contact.phoneNumber}
-                    </p>
+                    <p className="text-base font-medium leading-snug">{copy.contact.phoneNumber}</p>
                     <p className="text-sm text-muted-foreground leading-snug">
                       {copy.contact.phoneDescription}
                     </p>
@@ -178,9 +171,7 @@ export default function ContactPage() {
           <Card variant="outlined">
             <CardBody>
               <Stack gap={3} className="leading-snug">
-                <h3 className="text-lg font-semibold leading-snug">
-                  {copy.contact.addressTitle}
-                </h3>
+                <h3 className="text-lg font-semibold leading-snug">{copy.contact.addressTitle}</h3>
                 <div className="flex items-start gap-3">
                   <MapPin className="size-5 text-emerald-600 shrink-0 mt-0.5" aria-hidden="true" />
                   <p className="text-sm text-muted-foreground leading-snug">
@@ -189,9 +180,7 @@ export default function ContactPage() {
                 </div>
                 <div className="flex items-start gap-3">
                   <Clock className="size-5 text-emerald-600 shrink-0 mt-0.5" aria-hidden="true" />
-                  <p className="text-sm text-muted-foreground leading-snug">
-                    {copy.contact.hours}
-                  </p>
+                  <p className="text-sm text-muted-foreground leading-snug">{copy.contact.hours}</p>
                 </div>
               </Stack>
             </CardBody>

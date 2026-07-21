@@ -69,17 +69,14 @@ const VALUES: Value[] = [
 export default function AboutPage() {
   usePageMeta(
     copy.about.pageTitle,
-    'รู้จัก BESTCHOICE ร้านมือถือลพบุรี ขาย iPhone มือสองของแท้ ผ่อนได้บัตรประชาชนใบเดียว ดูแลลูกค้ากว่า 1,000 ราย',
+    'รู้จัก BESTCHOICE ร้านมือถือลพบุรี ขาย iPhone มือ 1 และมือสองของแท้ ผ่อนได้บัตรประชาชนใบเดียว ดูแลลูกค้ากว่า 1,000 ราย',
   );
 
   return (
     <ShopLayout>
       <CategoryHero
         title={copy.about.pageTitle}
-        breadcrumbs={[
-          { label: 'หน้าแรก', to: '/' },
-          { label: copy.about.pageTitle },
-        ]}
+        breadcrumbs={[{ label: 'หน้าแรก', to: '/' }, { label: copy.about.pageTitle }]}
       />
       <Container>
         <Stack gap={6} className="py-8">

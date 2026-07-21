@@ -43,15 +43,14 @@ export const copy = {
   },
 
   home: {
-    heroTitle: 'iPhone มือสองคุณภาพ\nผ่อนได้บัตร ปชช. ใบเดียว',
-    heroDescription:
-      'ร้านมือถือลพบุรี ของแท้ 100% รับประกันร้าน 30 วัน ตรวจสอบ 30 จุดก่อนส่งมอบ',
+    heroTitle: 'iPhone มือ 1 & มือ 2 คุณภาพ\nผ่อนได้บัตร ปชช. ใบเดียว',
+    heroDescription: 'ร้านมือถือลพบุรี ของแท้ 100% รับประกันร้าน 30 วัน ตรวจสอบ 30 จุดก่อนส่งมอบ',
     featuredTitle: 'รุ่นยอดนิยม',
     whyUsTitle: 'ทำไมเลือก BESTCHOICE',
     testimonialsTitle: 'ลูกค้าพูดถึงเรา',
     servicesTitle: 'บริการของเรา',
     servicesDescription: 'ครบทุกเรื่องมือถือ ซื้อ ผ่อน แลก หรือขายคืน จบที่ร้านเดียว',
-    serviceBuyTitle: 'ซื้อ/ผ่อนมือถือ',
+    serviceBuyTitle: 'ซื้อ/ผ่อน iPhone',
     serviceBuyDescription: 'เครื่องผ่านตรวจ 30 จุด ผ่อนได้บัตรประชาชนใบเดียว 3-12 งวด',
     serviceBuyCta: 'ดูสินค้า',
     serviceSellTitle: 'ขาย/เทิร์น iPhone',
@@ -152,11 +151,9 @@ export const copy = {
     totalMonths: 'จำนวนงวด (เดือน)',
     notes: 'หมายเหตุ (ถ้ามี)',
     submitCta: 'ส่งใบสมัคร',
-    pdpaNotice:
-      'ข้อมูลของคุณถูกเก็บภายใต้นโยบาย PDPA — ใช้เพื่อประเมินสินเชื่อเท่านั้น',
+    pdpaNotice: 'ข้อมูลของคุณถูกเก็บภายใต้นโยบาย PDPA — ใช้เพื่อประเมินสินเชื่อเท่านั้น',
     successTitle: 'ส่งใบสมัครแล้ว',
-    successDescription:
-      'ทีมงานจะติดต่อกลับภายใน 2 ชั่วโมง (เวลาทำการ 10:00–19:00)',
+    successDescription: 'ทีมงานจะติดต่อกลับภายใน 2 ชั่วโมง (เวลาทำการ 10:00–19:00)',
   },
 
   sell: {
@@ -199,8 +196,7 @@ export const copy = {
 
   howItWorks: {
     pageTitle: 'วิธีซื้อและผ่อน',
-    intro:
-      'ซื้อเครื่องกับ BESTCHOICE ง่ายใน 6 ขั้นตอน ใช้บัตรประชาชนใบเดียว ไม่ต้องใช้บัตรเครดิต',
+    intro: 'ซื้อเครื่องกับ BESTCHOICE ง่ายใน 6 ขั้นตอน ใช้บัตรประชาชนใบเดียว ไม่ต้องใช้บัตรเครดิต',
     stepsTitle: '6 ขั้นตอนง่ายๆ',
     step1Title: 'เลือกเครื่อง',
     step1Description: 'เลือกรุ่นและสภาพที่ต้องการจากหน้ารายการสินค้า ดูรูปและรายละเอียดครบถ้วน',
@@ -284,7 +280,7 @@ export const copy = {
     timelineTitle: 'เส้นทางของเรา',
     milestone1Year: '2020',
     milestone1Title: 'ก่อตั้งร้าน',
-    milestone1Description: 'เปิดสาขาแรกที่ลพบุรี เน้นขาย iPhone มือสองคุณภาพ',
+    milestone1Description: 'เปิดสาขาแรกที่ลพบุรี เน้นขาย iPhone ทั้งมือ 1 และมือสองคุณภาพ',
     milestone2Year: '2022',
     milestone2Title: 'เริ่มบริการผ่อน',
     milestone2Description: 'เปิดผ่อนบัตรประชาชนใบเดียว ช่วยลูกค้าเข้าถึงได้ง่ายขึ้น',

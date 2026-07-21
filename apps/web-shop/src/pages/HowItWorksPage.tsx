@@ -85,7 +85,7 @@ const FAQS: FaqItem[] = [
 export default function HowItWorksPage() {
   usePageMeta(
     copy.howItWorks.pageTitle,
-    'วิธีผ่อน iPhone มือสองบัตรประชาชนใบเดียว 6 ขั้นตอนง่ายๆ ไม่ต้องใช้บัตรเครดิต ร้านมือถือลพบุรี',
+    'วิธีผ่อน iPhone มือ 1 และมือสองบัตรประชาชนใบเดียว 6 ขั้นตอนง่ายๆ ไม่ต้องใช้บัตรเครดิต ร้านมือถือลพบุรี',
   );
 
   return (
@@ -93,10 +93,7 @@ export default function HowItWorksPage() {
       <CategoryHero
         title={copy.howItWorks.pageTitle}
         description={copy.howItWorks.intro}
-        breadcrumbs={[
-          { label: 'หน้าแรก', to: '/' },
-          { label: copy.howItWorks.pageTitle },
-        ]}
+        breadcrumbs={[{ label: 'หน้าแรก', to: '/' }, { label: copy.howItWorks.pageTitle }]}
       />
       <Container>
         <Stack gap={6} className="py-8">

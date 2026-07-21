@@ -163,6 +163,16 @@ export class ShopCatalogService {
     return { data, total: allGroups.length, page, limit };
   }
 
+  async listAvailableModels(): Promise<{ model: string; count: number }[]> {
+    const rows = await this.prisma.product.groupBy({
+      by: ['model'],
+      where: shopBaseWhere(),
+      _count: { id: true },
+      orderBy: [{ _count: { id: 'desc' as const } }],
+    });
+    return rows.map((r) => ({ model: r.model, count: r._count?.id ?? 0 }));
+  }
+
   async getProductDetail(productId: string): Promise<ProductDetail | null> {
     const product = await this.prisma.product.findFirst({
       where: {

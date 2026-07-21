@@ -156,12 +156,14 @@ describe('ShopCatalogService', () => {
   });
 
   describe('getProductDetail', () => {
-    it('returns single product with units list grouped by tier', async () => {
+    it('scopes units to the SAME category as the clicked card (no new/used mix)', async () => {
       prisma.product.findFirst.mockResolvedValue({
         id: 'p1',
         brand: 'Apple',
         model: 'iPhone 13',
-        costPrice: 12500,
+        storage: '128GB',
+        category: 'PHONE_USED',
+        cashPrice: 13900,
         conditionGrade: 'A',
         gallery: [],
         gallery360: [],
@@ -172,25 +174,16 @@ describe('ShopCatalogService', () => {
           id: 'u1',
           conditionGrade: 'A',
           batteryHealth: 92,
-          costPrice: 13900,
+          cashPrice: 13900,
           gallery: [],
           gallery360: [],
           imeiSerial: null,
         },
         {
           id: 'u2',
-          conditionGrade: 'A',
-          batteryHealth: 95,
-          costPrice: 14200,
-          gallery: [],
-          gallery360: [],
-          imeiSerial: null,
-        },
-        {
-          id: 'u3',
           conditionGrade: 'B',
           batteryHealth: 87,
-          costPrice: 12800,
+          cashPrice: 12800,
           gallery: [],
           gallery360: [],
           imeiSerial: null,
@@ -199,10 +192,41 @@ describe('ShopCatalogService', () => {
 
       const result = await service.getProductDetail('p1');
 
-      expect(result).toBeDefined();
-      expect(result!.tiers.A.units).toHaveLength(2);
-      expect(result!.tiers.B.units).toHaveLength(1);
+      expect(prisma.product.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ category: 'PHONE_USED' }) }),
+      );
+      expect(result!.condition).toBe('USED');
+      expect(result!.tiers.A.units).toHaveLength(1);
       expect(result!.tiers.A.minPrice).toBe(13900);
+      expect(JSON.stringify(result)).not.toContain('costPrice');
+    });
+
+    it('reports condition=NEW for a brand-new phone', async () => {
+      prisma.product.findFirst.mockResolvedValue({
+        id: 'p2',
+        brand: 'Apple',
+        model: 'iPhone 16',
+        storage: '128GB',
+        category: 'PHONE_NEW',
+        cashPrice: 29900,
+        conditionGrade: null,
+        gallery: [],
+        gallery360: [],
+        isOnlineVisible: true,
+      });
+      prisma.product.findMany.mockResolvedValue([
+        {
+          id: 'n1',
+          conditionGrade: null,
+          cashPrice: 29900,
+          gallery: [],
+          gallery360: [],
+          imeiSerial: null,
+        },
+      ]);
+
+      const result = await service.getProductDetail('p2');
+      expect(result!.condition).toBe('NEW');
     });
   });
 

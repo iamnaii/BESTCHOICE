@@ -22,6 +22,7 @@ export interface ProductDetail {
   storage?: string;
   color?: string;
   category: string;
+  condition: 'NEW' | 'USED';
   description?: string;
   gallery: string[];
   gallery360: string[];
@@ -38,7 +39,7 @@ export interface ProductUnit {
   hasCharger?: boolean;
   hasHeadphones?: boolean;
   shopWarrantyDays?: number;
-  costPrice: number;
+  cashPrice: number;
   imeiPartial?: string; // last 4 digits
   gallery: string[];
   gallery360: string[];
@@ -168,18 +169,19 @@ export class ShopCatalogService {
         brand: product.brand,
         model: product.model,
         storage: product.storage,
+        category: product.category,
         deletedAt: null,
         isOnlineVisible: true,
         status: 'IN_STOCK',
       },
-      orderBy: { costPrice: 'asc' },
+      orderBy: { cashPrice: 'asc' },
     });
 
     const tiers: Record<string, { minPrice: number; maxPrice: number; units: ProductUnit[] }> = {};
     for (const u of allUnits) {
       const grade = u.conditionGrade ?? 'unknown';
       if (!tiers[grade]) tiers[grade] = { minPrice: Infinity, maxPrice: 0, units: [] };
-      const price = Number(u.costPrice);
+      const price = u.cashPrice != null ? Number(u.cashPrice) : 0;
       const imeiPartial = u.imeiSerial ? `••••••••••${u.imeiSerial.slice(-4)}` : undefined;
       tiers[grade].units.push({
         id: u.id,
@@ -187,7 +189,7 @@ export class ShopCatalogService {
         batteryHealth: u.batteryHealth ?? undefined,
         hasBox: u.hasBox ?? undefined,
         shopWarrantyDays: u.shopWarrantyDays ?? undefined,
-        costPrice: price,
+        cashPrice: price,
         imeiPartial,
         gallery: u.gallery,
         gallery360: u.gallery360,
@@ -203,6 +205,7 @@ export class ShopCatalogService {
       storage: product.storage ?? undefined,
       color: product.color ?? undefined,
       category: product.category,
+      condition: product.category === 'PHONE_NEW' ? 'NEW' : 'USED',
       description: product.onlineDescription ?? undefined,
       gallery: product.gallery,
       gallery360: product.gallery360,

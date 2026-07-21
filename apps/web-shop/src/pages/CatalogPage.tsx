@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router';
 import { Search, SlidersHorizontal, ChevronRight, ChevronDown, X } from 'lucide-react';
 import ShopLayout from '@/components/layout/ShopLayout';
@@ -26,6 +26,11 @@ interface CatalogResponse {
   total: number;
   page: number;
   limit: number;
+}
+
+interface ModelOption {
+  model: string;
+  count: number;
 }
 
 const CONDITIONS: Array<{ v: '' | 'NEW' | 'USED'; label: string }> = [
@@ -81,12 +86,18 @@ export default function CatalogPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [filters, setFilters] = useState<CatalogFilters>(() => ({
     condition: (searchParams.get('condition') as 'NEW' | 'USED' | null) ?? undefined,
+    model: searchParams.get('model') ?? undefined,
     search: searchParams.get('search') ?? undefined,
   }));
   const [sort, setSort] = useState<string>('popular');
   const [sortOpen, setSortOpen] = useState(false);
   const sortBtnRef = useRef<HTMLButtonElement>(null);
   const track = useTrackEvent();
+
+  const { data: models } = useQuery<ModelOption[]>({
+    queryKey: ['shop', 'models'],
+    queryFn: () => api.get('/api/shop/models').then((r) => r.data),
+  });
 
   useEffect(() => {
     track('ViewContent', { content_type: 'catalog' });
@@ -97,8 +108,11 @@ export default function CatalogPage() {
   useEffect(() => {
     const condition = (searchParams.get('condition') as 'NEW' | 'USED' | null) ?? undefined;
     const search = searchParams.get('search') ?? undefined;
+    const model = searchParams.get('model') ?? undefined;
     setFilters((f) =>
-      f.condition === condition && f.search === search ? f : { ...f, condition, search },
+      f.condition === condition && f.search === search && f.model === model
+        ? f
+        : { ...f, condition, search, model },
     );
   }, [searchParams]);
 
@@ -109,6 +123,8 @@ export default function CatalogPage() {
     const sp = new URLSearchParams(searchParams);
     if (next.condition) sp.set('condition', next.condition);
     else sp.delete('condition');
+    if (next.model) sp.set('model', next.model);
+    else sp.delete('model');
     if (next.search) sp.set('search', next.search);
     else sp.delete('search');
     setSearchParams(sp, { replace: true });
@@ -137,6 +153,7 @@ export default function CatalogPage() {
       queryFn: ({ pageParam }) => {
         const params = new URLSearchParams();
         if (filters.condition) params.set('condition', filters.condition);
+        if (filters.model) params.set('model', filters.model);
         if (filters.conditionGrade) params.set('conditionGrade', filters.conditionGrade);
         if (filters.minPrice !== undefined) params.set('minPrice', String(filters.minPrice));
         if (filters.maxPrice !== undefined) params.set('maxPrice', String(filters.maxPrice));
@@ -220,6 +237,20 @@ export default function CatalogPage() {
                 </Pill>
               ))}
             </div>
+
+            <select
+              aria-label="กรองตามรุ่น"
+              value={filters.model ?? ''}
+              onChange={(e) => updateFilters({ ...filters, model: e.target.value || undefined })}
+              className="px-3 py-1.5 text-[13px] rounded-full border border-border bg-background text-foreground leading-snug"
+            >
+              <option value="">ทุกรุ่น</option>
+              {models?.map((m) => (
+                <option key={m.model} value={m.model}>
+                  {m.model}
+                </option>
+              ))}
+            </select>
 
             <span className="hidden md:inline-block w-px h-5 bg-border mx-1" />
 

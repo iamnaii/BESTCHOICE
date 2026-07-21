@@ -26,6 +26,11 @@ export class ShopCatalogController {
     };
   }
 
+  @Get('models')
+  async models() {
+    return this.catalogService.listAvailableModels();
+  }
+
   @Get('products/:id')
   async detail(@Param('id') id: string) {
     const product = await this.catalogService.getProductDetail(id);

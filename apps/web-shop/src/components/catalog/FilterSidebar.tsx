@@ -17,17 +17,6 @@ export function FilterSidebar({
   return (
     <aside className="space-y-4">
       <div>
-        <h4 className="font-semibold mb-2">แบรนด์</h4>
-        <select
-          className="w-full border border-border rounded p-2"
-          value={filters.brand ?? ''}
-          onChange={(e) => onChange({ ...filters, brand: e.target.value || undefined })}
-        >
-          <option value="">ทั้งหมด</option>
-          <option value="Apple">Apple (iPhone)</option>
-        </select>
-      </div>
-      <div>
         <h4 className="font-semibold mb-2">สภาพเครื่อง</h4>
         {['', 'A', 'B', 'C'].map((g) => (
           <label key={g} className="flex items-center gap-2 mb-1">

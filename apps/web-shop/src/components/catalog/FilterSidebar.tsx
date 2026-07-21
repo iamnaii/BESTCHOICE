@@ -1,5 +1,6 @@
 export interface CatalogFilters {
   brand?: string;
+  condition?: 'NEW' | 'USED';
   conditionGrade?: string;
   minPrice?: number;
   maxPrice?: number;
@@ -49,7 +50,10 @@ export function FilterSidebar({
             className="border border-border rounded p-1 w-full"
             value={filters.minPrice ?? ''}
             onChange={(e) =>
-              onChange({ ...filters, minPrice: e.target.value ? Number(e.target.value) : undefined })
+              onChange({
+                ...filters,
+                minPrice: e.target.value ? Number(e.target.value) : undefined,
+              })
             }
           />
           <input
@@ -58,7 +62,10 @@ export function FilterSidebar({
             className="border border-border rounded p-1 w-full"
             value={filters.maxPrice ?? ''}
             onChange={(e) =>
-              onChange({ ...filters, maxPrice: e.target.value ? Number(e.target.value) : undefined })
+              onChange({
+                ...filters,
+                maxPrice: e.target.value ? Number(e.target.value) : undefined,
+              })
             }
           />
         </div>

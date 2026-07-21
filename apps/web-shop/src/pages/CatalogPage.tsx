@@ -28,7 +28,11 @@ interface CatalogResponse {
   limit: number;
 }
 
-const BRANDS = ['ทั้งหมด', 'Apple', 'Samsung', 'OPPO', 'Xiaomi'] as const;
+const CONDITIONS: Array<{ v: '' | 'NEW' | 'USED'; label: string }> = [
+  { v: '', label: 'ทั้งหมด' },
+  { v: 'NEW', label: 'มือ 1 · ของใหม่' },
+  { v: 'USED', label: 'มือ 2 · มือสอง' },
+];
 
 const GRADES: Array<{ v: string; label: string }> = [
   { v: '', label: 'ทุกเกรด' },
@@ -71,12 +75,12 @@ function Pill({ active, onClick, children }: PillProps) {
 export default function CatalogPage() {
   usePageMeta(
     'สินค้าทั้งหมด',
-    'iPhone มือสองตรวจ 30 จุด ผ่อนบัตรประชาชนใบเดียว ร้านมือถือลพบุรี',
+    'iPhone มือ 1 และมือสอง ตรวจ 30 จุด ผ่อนบัตรประชาชนใบเดียว ร้านมือถือลพบุรี',
   );
 
   const [searchParams, setSearchParams] = useSearchParams();
   const [filters, setFilters] = useState<CatalogFilters>(() => ({
-    brand: searchParams.get('brand') ?? undefined,
+    condition: (searchParams.get('condition') as 'NEW' | 'USED' | null) ?? undefined,
     search: searchParams.get('search') ?? undefined,
   }));
   const [sort, setSort] = useState<string>('popular');
@@ -91,18 +95,20 @@ export default function CatalogPage() {
   // The header search submits to /products?search=… — also while already on
   // this page, so keep listening to URL changes after the initial state.
   useEffect(() => {
-    const brand = searchParams.get('brand') ?? undefined;
+    const condition = (searchParams.get('condition') as 'NEW' | 'USED' | null) ?? undefined;
     const search = searchParams.get('search') ?? undefined;
-    setFilters((f) => (f.brand === brand && f.search === search ? f : { ...f, brand, search }));
+    setFilters((f) =>
+      f.condition === condition && f.search === search ? f : { ...f, condition, search },
+    );
   }, [searchParams]);
 
-  // Single write path: keep brand+search mirrored into the URL so header
+  // Single write path: keep condition+search mirrored into the URL so header
   // search, pill clicks, and deep links never fight over the state.
   function updateFilters(next: CatalogFilters) {
     setFilters(next);
     const sp = new URLSearchParams(searchParams);
-    if (next.brand) sp.set('brand', next.brand);
-    else sp.delete('brand');
+    if (next.condition) sp.set('condition', next.condition);
+    else sp.delete('condition');
     if (next.search) sp.set('search', next.search);
     else sp.delete('search');
     setSearchParams(sp, { replace: true });
@@ -130,7 +136,7 @@ export default function CatalogPage() {
       queryKey: ['shop', 'catalog', filters, sort],
       queryFn: ({ pageParam }) => {
         const params = new URLSearchParams();
-        if (filters.brand) params.set('brand', filters.brand);
+        if (filters.condition) params.set('condition', filters.condition);
         if (filters.conditionGrade) params.set('conditionGrade', filters.conditionGrade);
         if (filters.minPrice !== undefined) params.set('minPrice', String(filters.minPrice));
         if (filters.maxPrice !== undefined) params.set('maxPrice', String(filters.maxPrice));
@@ -140,23 +146,15 @@ export default function CatalogPage() {
         return api.get(`/api/shop/products?${params}`).then((r) => r.data);
       },
       initialPageParam: 1,
-      getNextPageParam: (last) =>
-        last.page * last.limit < last.total ? last.page + 1 : undefined,
+      getNextPageParam: (last) => (last.page * last.limit < last.total ? last.page + 1 : undefined),
     });
 
   const groups = data?.pages.flatMap((p) => p.data);
   const total = data?.pages[0]?.total ?? 0;
-  const activeBrand = filters.brand ?? 'ทั้งหมด';
+  const activeCondition = filters.condition ?? '';
   const activeGrade = filters.conditionGrade ?? '';
   const activeSortLabel = SORTS.find((s) => s.v === sort)?.label ?? '';
-
-  // Hero headline noun follows the brand filter — Apple-style single-noun
-  // headline must reflect what's actually being shown.
-  const heroNoun =
-    activeBrand === 'Samsung' ? 'Galaxy'
-    : activeBrand === 'OPPO' ? 'OPPO'
-    : activeBrand === 'Xiaomi' ? 'Xiaomi'
-    : 'iPhone';
+  const heroNoun = 'iPhone';
 
   return (
     <ShopLayout>
@@ -205,37 +203,39 @@ export default function CatalogPage() {
         <Container>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3">
             <div className="flex flex-wrap gap-2">
-              {BRANDS.map((b) => (
+              {CONDITIONS.map((c) => (
                 <Pill
-                  key={b}
-                  active={activeBrand === b}
+                  key={c.v || 'all'}
+                  active={activeCondition === c.v}
                   onClick={() =>
                     updateFilters({
                       ...filters,
-                      brand: b === 'ทั้งหมด' ? undefined : b,
+                      condition: c.v || undefined,
+                      // มือ 1 ไม่มีเกรดตำหนิ — ล้างตัวกรองเกรดทิ้ง
+                      conditionGrade: c.v === 'NEW' ? undefined : filters.conditionGrade,
                     })
                   }
                 >
-                  {b}
+                  {c.label}
                 </Pill>
               ))}
             </div>
 
             <span className="hidden md:inline-block w-px h-5 bg-border mx-1" />
 
-            <div className="flex flex-wrap gap-2">
-              {GRADES.map((g) => (
-                <Pill
-                  key={g.v || 'all'}
-                  active={activeGrade === g.v}
-                  onClick={() =>
-                    updateFilters({ ...filters, conditionGrade: g.v || undefined })
-                  }
-                >
-                  {g.label}
-                </Pill>
-              ))}
-            </div>
+            {activeCondition !== 'NEW' && (
+              <div className="flex flex-wrap gap-2">
+                {GRADES.map((g) => (
+                  <Pill
+                    key={g.v || 'all'}
+                    active={activeGrade === g.v}
+                    onClick={() => updateFilters({ ...filters, conditionGrade: g.v || undefined })}
+                  >
+                    {g.label}
+                  </Pill>
+                ))}
+              </div>
+            )}
 
             {filters.search && (
               <button

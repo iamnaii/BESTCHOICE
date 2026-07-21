@@ -7,11 +7,12 @@ export interface ProductGroup {
   brand: string;
   model: string;
   storage?: string;
-  minPrice: number;
+  minPrice: number | null;
   stockCount: number;
   thumbnailUrl?: string;
   conditionGrades: string[];
   monthlyPaymentFrom: number;
+  condition: 'NEW' | 'USED';
 }
 
 export interface ProductDetail {
@@ -21,6 +22,7 @@ export interface ProductDetail {
   storage?: string;
   color?: string;
   category: string;
+  condition: 'NEW' | 'USED';
   description?: string;
   gallery: string[];
   gallery360: string[];
@@ -37,7 +39,7 @@ export interface ProductUnit {
   hasCharger?: boolean;
   hasHeadphones?: boolean;
   shopWarrantyDays?: number;
-  costPrice: number;
+  cashPrice: number;
   imeiPartial?: string; // last 4 digits
   gallery: string[];
   gallery360: string[];
@@ -46,6 +48,9 @@ export interface ProductUnit {
 const INTEREST_RATE_PER_MONTH = 0.0099; // 0.99%/month — example, adjust per pricing config
 const DEFAULT_MONTHS = 12;
 const DEFAULT_DOWN_PCT = 0.2;
+const SHOP_BRAND = 'Apple';
+const PHONE_CATEGORIES = ['PHONE_NEW', 'PHONE_USED'] as const;
+const GROUP_BY = ['brand', 'model', 'storage', 'category'] as const;
 
 @Injectable()
 export class ShopCatalogService {
@@ -55,6 +60,7 @@ export class ShopCatalogService {
     page?: number;
     limit?: number;
     brand?: string;
+    condition?: 'NEW' | 'USED';
     conditionGrade?: string;
     minPrice?: number;
     maxPrice?: number;
@@ -68,11 +74,18 @@ export class ShopCatalogService {
       deletedAt: null,
       isOnlineVisible: true,
       status: 'IN_STOCK',
+      brand: SHOP_BRAND,
+      category: filters.condition
+        ? filters.condition === 'NEW'
+          ? 'PHONE_NEW'
+          : 'PHONE_USED'
+        : { in: [...PHONE_CATEGORIES] },
     };
-    if (filters.brand) where.brand = filters.brand;
     if (filters.conditionGrade) where.conditionGrade = filters.conditionGrade;
-    if (filters.minPrice !== undefined) where.costPrice = { ...where.costPrice, gte: filters.minPrice };
-    if (filters.maxPrice !== undefined) where.costPrice = { ...where.costPrice, lte: filters.maxPrice };
+    if (filters.minPrice !== undefined)
+      where.cashPrice = { ...where.cashPrice, gte: filters.minPrice };
+    if (filters.maxPrice !== undefined)
+      where.cashPrice = { ...where.cashPrice, lte: filters.maxPrice };
     if (filters.search?.trim()) {
       const q = filters.search.trim();
       where.OR = [
@@ -82,17 +95,20 @@ export class ShopCatalogService {
     }
 
     const orderBy =
-      filters.sort === 'price_asc' ? [{ _min: { costPrice: 'asc' as const } }] :
-      filters.sort === 'price_desc' ? [{ _min: { costPrice: 'desc' as const } }] :
-      filters.sort === 'newest' ? [{ _max: { createdAt: 'desc' as const } }] :
-      [{ _count: { id: 'desc' as const } }]; // order by count of id desc = most stock first
+      filters.sort === 'price_asc'
+        ? [{ _min: { cashPrice: 'asc' as const } }]
+        : filters.sort === 'price_desc'
+          ? [{ _min: { cashPrice: 'desc' as const } }]
+          : filters.sort === 'newest'
+            ? [{ _max: { createdAt: 'desc' as const } }]
+            : [{ _count: { id: 'desc' as const } }]; // order by count of id desc = most stock first
 
-    // Group by brand+model+storage so each card maps 1:1 onto the unit list
+    // Group by brand+model+storage+category so new+used of the same model are separate cards
     // that /products/:id renders (getProductDetail filters by the same trio).
     const groups = await this.prisma.product.groupBy({
-      by: ['brand', 'model', 'storage'],
+      by: [...GROUP_BY],
       where,
-      _min: { costPrice: true },
+      _min: { cashPrice: true },
       _count: { id: true },
       orderBy,
       skip: (page - 1) * limit,
@@ -100,31 +116,43 @@ export class ShopCatalogService {
     });
 
     // Fetch the cheapest product of each group for the card link target + thumbnail
-    const data: ProductGroup[] = await Promise.all(groups.map(async (g) => {
-      const sample = await this.prisma.product.findFirst({
-        where: { ...where, brand: g.brand, model: g.model, storage: g.storage },
-        orderBy: { costPrice: 'asc' },
-        select: { id: true, gallery: true, conditionGrade: true },
-      });
-      const minPrice = Number(g._min?.costPrice ?? 0);
-      const stockCount = g._count?.id ?? 0;
-      const monthly = this.calculateMonthlyPayment(minPrice, DEFAULT_MONTHS, DEFAULT_DOWN_PCT);
-      return {
-        id: sample?.id ?? '',
-        brand: g.brand,
-        model: g.model,
-        storage: g.storage ?? undefined,
-        minPrice,
-        stockCount,
-        thumbnailUrl: sample?.gallery[0],
-        conditionGrades: sample?.conditionGrade ? [sample.conditionGrade] : [],
-        monthlyPaymentFrom: monthly,
-      };
-    }));
+    const data: ProductGroup[] = await Promise.all(
+      groups.map(async (g) => {
+        const sample = await this.prisma.product.findFirst({
+          where: {
+            ...where,
+            brand: g.brand,
+            model: g.model,
+            storage: g.storage,
+            category: g.category,
+          },
+          orderBy: { cashPrice: 'asc' },
+          select: { id: true, gallery: true, conditionGrade: true },
+        });
+        const minPrice = g._min?.cashPrice != null ? Number(g._min.cashPrice) : null;
+        const stockCount = g._count?.id ?? 0;
+        const monthly =
+          minPrice != null
+            ? this.calculateMonthlyPayment(minPrice, DEFAULT_MONTHS, DEFAULT_DOWN_PCT)
+            : 0;
+        return {
+          id: sample?.id ?? '',
+          brand: g.brand,
+          model: g.model,
+          storage: g.storage ?? undefined,
+          minPrice,
+          stockCount,
+          thumbnailUrl: sample?.gallery[0],
+          conditionGrades: sample?.conditionGrade ? [sample.conditionGrade] : [],
+          monthlyPaymentFrom: monthly,
+          condition: g.category === 'PHONE_NEW' ? 'NEW' : 'USED',
+        };
+      }),
+    );
 
     // total = number of groups (the UI reads it as "พร้อมจัด X รุ่น"), not unit count
     const allGroups = await this.prisma.product.groupBy({
-      by: ['brand', 'model', 'storage'],
+      by: [...GROUP_BY],
       where,
     });
     return { data, total: allGroups.length, page, limit };
@@ -132,7 +160,13 @@ export class ShopCatalogService {
 
   async getProductDetail(productId: string): Promise<ProductDetail | null> {
     const product = await this.prisma.product.findFirst({
-      where: { id: productId, deletedAt: null, isOnlineVisible: true },
+      where: {
+        id: productId,
+        deletedAt: null,
+        isOnlineVisible: true,
+        brand: SHOP_BRAND,
+        category: { in: [...PHONE_CATEGORIES] },
+      },
     });
     if (!product) return null;
 
@@ -142,18 +176,19 @@ export class ShopCatalogService {
         brand: product.brand,
         model: product.model,
         storage: product.storage,
+        category: product.category,
         deletedAt: null,
         isOnlineVisible: true,
         status: 'IN_STOCK',
       },
-      orderBy: { costPrice: 'asc' },
+      orderBy: { cashPrice: 'asc' },
     });
 
     const tiers: Record<string, { minPrice: number; maxPrice: number; units: ProductUnit[] }> = {};
     for (const u of allUnits) {
       const grade = u.conditionGrade ?? 'unknown';
       if (!tiers[grade]) tiers[grade] = { minPrice: Infinity, maxPrice: 0, units: [] };
-      const price = Number(u.costPrice);
+      const price = u.cashPrice != null ? Number(u.cashPrice) : 0;
       const imeiPartial = u.imeiSerial ? `••••••••••${u.imeiSerial.slice(-4)}` : undefined;
       tiers[grade].units.push({
         id: u.id,
@@ -161,7 +196,7 @@ export class ShopCatalogService {
         batteryHealth: u.batteryHealth ?? undefined,
         hasBox: u.hasBox ?? undefined,
         shopWarrantyDays: u.shopWarrantyDays ?? undefined,
-        costPrice: price,
+        cashPrice: price,
         imeiPartial,
         gallery: u.gallery,
         gallery360: u.gallery360,
@@ -177,6 +212,7 @@ export class ShopCatalogService {
       storage: product.storage ?? undefined,
       color: product.color ?? undefined,
       category: product.category,
+      condition: product.category === 'PHONE_NEW' ? 'NEW' : 'USED',
       description: product.onlineDescription ?? undefined,
       gallery: product.gallery,
       gallery360: product.gallery360,

@@ -52,8 +52,15 @@ describe('ShopInstallmentApplyService', () => {
     service = mod.get(ShopInstallmentApplyService);
   });
 
-  it('computes monthly payment correctly and creates SUBMITTED application', async () => {
-    prismaMock.product.findUnique.mockResolvedValue({ id: 'p1', costPrice: 12000, deletedAt: null });
+  it('computes monthly payment from installmentPrice, never costPrice', async () => {
+    // costPrice is the internal cost and must never leak into the customer-facing quote.
+    prismaMock.product.findUnique.mockResolvedValue({
+      id: 'p1',
+      costPrice: 5000,
+      installmentPrice: 20000,
+      cashPrice: 18000,
+      deletedAt: null,
+    });
     prismaMock.onlineInstallmentApplication.findFirst.mockResolvedValue(null);
     prismaMock.onlineInstallmentApplication.create.mockResolvedValue({
       id: 'app1',
@@ -67,15 +74,50 @@ describe('ShopInstallmentApplyService', () => {
     const createArgs = prismaMock.onlineInstallmentApplication.create.mock.calls[0][0];
     expect(createArgs.data.status).toBe('SUBMITTED');
     expect(createArgs.data.proposedMonthlyPayment).toBeGreaterThan(0);
-    // financed = 12000 - 2000 = 10000; interest = 10000 * 0.013 * 12 = 1560
-    // monthly = ceil((10000 + 1560) / 12) = 964
-    expect(createArgs.data.proposedMonthlyPayment).toBe(964);
-    expect(res.proposedMonthlyPayment).toBe(964);
+    // financed = 20000 - 2000 = 18000; interest = 18000 * 0.013 * 12 = 2808
+    // monthly = ceil((18000 + 2808) / 12) = 1734
+    expect(createArgs.data.proposedMonthlyPayment).toBe(1734);
+    expect(res.proposedMonthlyPayment).toBe(1734);
+
+    // Sanity check: this must NOT be the value computed from costPrice (5000).
+    // financed = 5000 - 2000 = 3000; interest = 3000 * 0.013 * 12 = 468; monthly = ceil(3468/12) = 289
+    expect(createArgs.data.proposedMonthlyPayment).not.toBe(289);
+  });
+
+  it('falls back to cashPrice when installmentPrice is unset', async () => {
+    prismaMock.product.findUnique.mockResolvedValue({
+      id: 'p1',
+      costPrice: 5000,
+      installmentPrice: null,
+      cashPrice: 18000,
+      deletedAt: null,
+    });
+    prismaMock.onlineInstallmentApplication.findFirst.mockResolvedValue(null);
+    prismaMock.onlineInstallmentApplication.create.mockResolvedValue({
+      id: 'app1',
+      applicationNumber: 'APP-260421-124',
+      status: 'SUBMITTED',
+    });
+
+    const res = await service.submit({ ...baseDto }, undefined);
+
+    const createArgs = prismaMock.onlineInstallmentApplication.create.mock.calls[0][0];
+    // financed = 18000 - 2000 = 16000; interest = 16000 * 0.013 * 12 = 2496
+    // monthly = ceil((16000 + 2496) / 12) = 1542
+    expect(createArgs.data.proposedMonthlyPayment).toBe(1542);
+    expect(res.proposedMonthlyPayment).toBe(1542);
   });
 
   it('rejects duplicate active applications for same phone + product', async () => {
-    prismaMock.product.findUnique.mockResolvedValue({ id: 'p1', costPrice: 12000, deletedAt: null });
-    prismaMock.onlineInstallmentApplication.findFirst.mockResolvedValue({ id: 'dup', status: 'SUBMITTED' });
+    prismaMock.product.findUnique.mockResolvedValue({
+      id: 'p1',
+      costPrice: 12000,
+      deletedAt: null,
+    });
+    prismaMock.onlineInstallmentApplication.findFirst.mockResolvedValue({
+      id: 'dup',
+      status: 'SUBMITTED',
+    });
 
     await expect(service.submit({ ...baseDto }, undefined)).rejects.toThrow(/ใบสมัคร/);
     expect(prismaMock.onlineInstallmentApplication.create).not.toHaveBeenCalled();
@@ -85,12 +127,20 @@ describe('ShopInstallmentApplyService', () => {
     prismaMock.product.findUnique.mockResolvedValue(null);
     await expect(service.submit({ ...baseDto }, undefined)).rejects.toThrow(/ไม่พบสินค้า/);
 
-    prismaMock.product.findUnique.mockResolvedValue({ id: 'p1', costPrice: 12000, deletedAt: new Date() });
+    prismaMock.product.findUnique.mockResolvedValue({
+      id: 'p1',
+      costPrice: 12000,
+      deletedAt: new Date(),
+    });
     await expect(service.submit({ ...baseDto }, undefined)).rejects.toThrow(/ไม่พบสินค้า/);
   });
 
   it('sends Flex message when lineUserId provided (non-fatal on failure)', async () => {
-    prismaMock.product.findUnique.mockResolvedValue({ id: 'p1', costPrice: 12000, deletedAt: null });
+    prismaMock.product.findUnique.mockResolvedValue({
+      id: 'p1',
+      costPrice: 12000,
+      deletedAt: null,
+    });
     prismaMock.onlineInstallmentApplication.findFirst.mockResolvedValue(null);
     prismaMock.onlineInstallmentApplication.create.mockResolvedValue({
       id: 'app1',
@@ -102,13 +152,20 @@ describe('ShopInstallmentApplyService', () => {
     const res = await service.submit({ ...baseDto, lineUserId: 'U123' }, undefined);
 
     expect(res.applicationNumber).toBe('APP-260421-999');
-    expect(lineMock.sendFlexMessage).toHaveBeenCalledWith('U123', expect.objectContaining({ type: 'flex' }), 'line-shop');
+    expect(lineMock.sendFlexMessage).toHaveBeenCalledWith(
+      'U123',
+      expect.objectContaining({ type: 'flex' }),
+      'line-shop',
+    );
   });
 
   describe('admin actions', () => {
     it('schedules an application with reviewer metadata', async () => {
       const when = new Date('2026-05-01T10:00:00Z');
-      prismaMock.onlineInstallmentApplication.update.mockResolvedValue({ id: 'a1', status: 'SCHEDULED' });
+      prismaMock.onlineInstallmentApplication.update.mockResolvedValue({
+        id: 'a1',
+        status: 'SCHEDULED',
+      });
       await service.schedule('a1', when, 'user-1');
       const args = prismaMock.onlineInstallmentApplication.update.mock.calls[0][0];
       expect(args.where).toEqual({ id: 'a1' });
@@ -130,11 +187,18 @@ describe('ShopInstallmentApplyService', () => {
       const args = prismaMock.onlineInstallmentApplication.update.mock.calls[0][0];
       expect(args.data.status).toBe('REJECTED');
       expect(args.data.rejectReason).toBe('เครดิตไม่ผ่าน');
-      expect(lineMock.sendFlexMessage).toHaveBeenCalledWith('U999', expect.objectContaining({ type: 'flex' }), 'line-shop');
+      expect(lineMock.sendFlexMessage).toHaveBeenCalledWith(
+        'U999',
+        expect.objectContaining({ type: 'flex' }),
+        'line-shop',
+      );
     });
 
     it('links a contract and marks CONTRACT_SIGNED', async () => {
-      prismaMock.onlineInstallmentApplication.update.mockResolvedValue({ id: 'a1', status: 'CONTRACT_SIGNED' });
+      prismaMock.onlineInstallmentApplication.update.mockResolvedValue({
+        id: 'a1',
+        status: 'CONTRACT_SIGNED',
+      });
       await service.linkContract('a1', 'contract-1');
       const args = prismaMock.onlineInstallmentApplication.update.mock.calls[0][0];
       expect(args.data).toEqual({ status: 'CONTRACT_SIGNED', contractId: 'contract-1' });

@@ -20,7 +20,10 @@ const ACTIVE_STATUSES: ApplicationStatus[] = [
 
 @Injectable()
 export class ShopInstallmentApplyService {
-  constructor(private prisma: PrismaService, private line: LineOaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private line: LineOaService,
+  ) {}
 
   async submit(dto: CreateApplicationDto, customerId: string | undefined) {
     const product = await this.prisma.product.findUnique({ where: { id: dto.productId } });
@@ -38,7 +41,7 @@ export class ShopInstallmentApplyService {
       throw new BadRequestException('มีใบสมัครของท่านอยู่แล้ว ทีมงานจะติดต่อกลับ');
     }
 
-    const price = Number(product.costPrice);
+    const price = Number(product.installmentPrice ?? product.cashPrice ?? 0);
     const financed = Math.max(0, price - dto.proposedDownPayment);
     const interestTotal = financed * DEFAULT_INTEREST_MONTHLY * dto.proposedTotalMonths;
     const monthly = Math.ceil((financed + interestTotal) / dto.proposedTotalMonths);
@@ -70,7 +73,11 @@ export class ShopInstallmentApplyService {
 
     if (dto.lineUserId) {
       try {
-        await this.line.sendFlexMessage(dto.lineUserId, this.buildSubmittedFlex(app.applicationNumber), 'line-shop');
+        await this.line.sendFlexMessage(
+          dto.lineUserId,
+          this.buildSubmittedFlex(app.applicationNumber),
+          'line-shop',
+        );
       } catch {
         // non-fatal — staff will follow up by phone
       }

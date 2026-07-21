@@ -33,7 +33,7 @@ interface ProductUnit {
   hasCharger?: boolean;
   hasHeadphones?: boolean;
   shopWarrantyDays?: number;
-  costPrice: number;
+  cashPrice: number;
   imeiPartial?: string;
   gallery: string[];
   gallery360: string[];
@@ -46,6 +46,7 @@ interface ProductDetail {
   storage?: string;
   color?: string;
   category: string;
+  condition: 'NEW' | 'USED';
   description?: string;
   gallery: string[];
   gallery360: string[];
@@ -80,8 +81,7 @@ export default function ProductDetailPage() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['shop-product', id],
-    queryFn: () =>
-      api.get(`/api/shop/products/${id}`).then((r) => r.data as ProductDetail),
+    queryFn: () => api.get(`/api/shop/products/${id}`).then((r) => r.data as ProductDetail),
     enabled: !!id,
   });
 
@@ -153,14 +153,15 @@ export default function ProductDetailPage() {
     );
   }
 
-  const displayName = [data.brand, data.model, data.storage, data.color]
-    .filter(Boolean)
-    .join(' ');
+  const displayName = [data.brand, data.model, data.storage, data.color].filter(Boolean).join(' ');
   const price = lowestPrice(data.tiers);
   const monthlyFrom =
     preview?.available && preview.monthlyPayment ? Math.ceil(preview.monthlyPayment) : null;
   const gradeKeys = Object.keys(data.tiers);
-  const gallery = data.gallery && data.gallery.length > 0 ? data.gallery : [media('product.placeholder')];
+  const isNew = data.condition === 'NEW';
+  const showGrades = !isNew && gradeKeys.length > 0;
+  const gallery =
+    data.gallery && data.gallery.length > 0 ? data.gallery : [media('product.placeholder')];
   const mainImage = gallery[activeImage] ?? gallery[0];
 
   return (
@@ -207,20 +208,28 @@ export default function ProductDetailPage() {
           <Stack gap={4}>
             <h1 className="text-2xl md:text-3xl font-bold leading-snug">{displayName}</h1>
 
-            {gradeKeys.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {gradeKeys.map((g) => (
+            <div className="flex flex-wrap gap-2">
+              <Badge variant={isNew ? 'condition-a' : 'condition-b'} size="md">
+                {isNew ? 'เครื่องใหม่ · มือ 1' : 'มือสอง · มือ 2'}
+              </Badge>
+              {showGrades &&
+                gradeKeys.map((g) => (
                   <Badge key={g} variant={conditionVariant(g)} size="md">
                     เกรด {g}
                   </Badge>
                 ))}
-              </div>
-            )}
+            </div>
 
             <div className="space-y-1">
-              <div className="text-3xl md:text-4xl font-bold text-emerald-600 leading-snug">
-                ฿{price.toLocaleString()}
-              </div>
+              {price > 0 ? (
+                <div className="text-3xl md:text-4xl font-bold text-emerald-600 leading-snug">
+                  ฿{price.toLocaleString()}
+                </div>
+              ) : (
+                <div className="text-2xl md:text-3xl font-semibold text-muted-foreground leading-snug">
+                  สอบถามราคาทางไลน์
+                </div>
+              )}
               {monthlyFrom && (
                 <div className="text-base font-semibold text-emerald-700 leading-snug">
                   ผ่อนเริ่ม ฿{monthlyFrom.toLocaleString()}/เดือน
@@ -232,7 +241,7 @@ export default function ProductDetailPage() {
               )}
             </div>
 
-            {gradeKeys.length > 0 && (
+            {showGrades && (
               <ul className="space-y-1 text-sm text-muted-foreground leading-snug">
                 {gradeKeys.map((g) => (
                   <li key={g}>{conditionDescription(g)}</li>
@@ -258,7 +267,12 @@ export default function ProductDetailPage() {
               >
                 {copy.product.reserveCta}
               </Button>
-              <Button variant="outline" size="lg" fullWidth onClick={() => nav(`/apply/${data.id}`)}>
+              <Button
+                variant="outline"
+                size="lg"
+                fullWidth
+                onClick={() => nav(`/apply/${data.id}`)}
+              >
                 สมัครผ่อนทันที
               </Button>
               <a

@@ -83,7 +83,7 @@ const SERVICE_ITEMS = [
 export default function HomePage() {
   usePageMeta(
     undefined,
-    'iPhone มือสองคุณภาพ ผ่อนได้บัตรประชาชนใบเดียว ตรวจ 30 จุด รับประกันร้าน 30 วัน ร้านมือถือลพบุรี',
+    'iPhone มือ 1 และมือสองคุณภาพ ผ่อนได้บัตรประชาชนใบเดียว ตรวจ 30 จุด รับประกันร้าน 30 วัน ร้านมือถือลพบุรี',
   );
 
   const { data, isLoading, isError, refetch } = useQuery<CatalogResponse>({
@@ -139,7 +139,7 @@ export default function HomePage() {
         <Container>
           <SectionHeader
             title={copy.home.whyUsTitle}
-            description="ซื้อมือถือมือสองอย่างสบายใจ ผ่อนง่าย รับประกันจริง"
+            description="ซื้อ iPhone มือ 1 และมือสองอย่างสบายใจ ผ่อนง่าย รับประกันจริง"
           />
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {WHY_US_ITEMS.map((item, i) => (
@@ -196,7 +196,8 @@ export default function HomePage() {
                   ดาวน์ยังไม่พอ? ออมกับเราก่อนได้ เริ่ม ฿500/เดือน
                 </h2>
                 <p className="text-sm text-muted-foreground leading-snug">
-                  เลือกรุ่นที่อยากได้ ออมทีละน้อยทุกเดือน พอครบเป้าก็ใช้เงินออมเป็นเงินดาวน์รับเครื่องได้เลย
+                  เลือกรุ่นที่อยากได้ ออมทีละน้อยทุกเดือน
+                  พอครบเป้าก็ใช้เงินออมเป็นเงินดาวน์รับเครื่องได้เลย
                 </p>
                 <div className="flex flex-wrap gap-x-5 gap-y-1.5 pt-1 text-sm">
                   <span className="inline-flex items-center gap-1.5 text-muted-foreground">
@@ -246,7 +247,10 @@ export default function HomePage() {
                 </p>
                 <div className="space-y-2">
                   <div className="flex items-start gap-3">
-                    <MapPin className="size-5 text-emerald-600 shrink-0 mt-0.5" aria-hidden="true" />
+                    <MapPin
+                      className="size-5 text-emerald-600 shrink-0 mt-0.5"
+                      aria-hidden="true"
+                    />
                     <p className="text-sm text-muted-foreground leading-snug">{shopInfo.address}</p>
                   </div>
                   <div className="flex items-start gap-3">

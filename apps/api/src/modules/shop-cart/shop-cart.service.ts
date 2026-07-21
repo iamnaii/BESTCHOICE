@@ -36,7 +36,7 @@ export class ShopCartService {
         product: {
           id: r.product.id,
           name: r.product.name,
-          sellingPrice: Number(r.product.costPrice),
+          sellingPrice: Number(r.product.cashPrice ?? r.product.installmentPrice ?? 0),
           gallery: r.product.gallery,
           conditionGrade: r.product.conditionGrade,
         },

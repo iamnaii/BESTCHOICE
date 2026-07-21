@@ -7,11 +7,12 @@ export interface ProductGroup {
   brand: string;
   model: string;
   storage?: string;
-  minPrice: number;
+  minPrice: number | null;
   stockCount: number;
   thumbnailUrl?: string;
   monthlyPaymentFrom: number;
   conditionGrades?: string[];
+  condition: 'NEW' | 'USED';
   stock: { display: string; tone: string };
 }
 
@@ -36,6 +37,10 @@ export function ProductCard({ product: p }: Props) {
   // ever returns a group without a representative id (deploy skew).
   const to = p.id ? `/products/${p.id}` : '/products';
   const grades = p.conditionGrades ?? [];
+  const condBadge =
+    p.condition === 'NEW'
+      ? { label: 'มือ 1 · ของใหม่', cls: 'bg-emerald-600 text-white' }
+      : { label: 'มือ 2 · มือสอง', cls: 'bg-zinc-900/80 text-white' };
 
   return (
     <article className="group text-center">
@@ -58,6 +63,14 @@ export function ProductCard({ product: p }: Props) {
               {grades.map(gradeChip)}
             </div>
           )}
+          <span
+            className={cn(
+              'absolute top-2 right-2 md:top-3 md:right-3 text-[10px] md:text-[11px] font-medium px-2 py-0.5 rounded-full leading-none',
+              condBadge.cls,
+            )}
+          >
+            {condBadge.label}
+          </span>
         </div>
 
         {/* Caption block — Apple-style centered text. Tighter on mobile. */}
@@ -72,7 +85,11 @@ export function ProductCard({ product: p }: Props) {
           {/* Installment-first audience: lead with the monthly figure, full
              price is the secondary fact. Falls back to price-first when the
              model has no installment quote. */}
-          {p.monthlyPaymentFrom > 0 ? (
+          {p.minPrice == null ? (
+            <p className="text-base md:text-lg font-medium text-muted-foreground pt-1 md:pt-2">
+              สอบถามราคา
+            </p>
+          ) : p.monthlyPaymentFrom > 0 ? (
             <>
               <p className="num text-lg md:text-2xl font-semibold text-emerald-600 pt-1 md:pt-2">
                 ผ่อน ฿{p.monthlyPaymentFrom.toLocaleString()}
@@ -105,7 +122,11 @@ export function ProductCard({ product: p }: Props) {
           <span
             className={cn(
               'size-1 md:size-1.5 rounded-full',
-              p.stock.tone === 'urgent' ? 'bg-amber-500' : p.stock.tone === 'out' ? 'bg-muted-foreground' : 'bg-emerald-500',
+              p.stock.tone === 'urgent'
+                ? 'bg-amber-500'
+                : p.stock.tone === 'out'
+                  ? 'bg-muted-foreground'
+                  : 'bg-emerald-500',
             )}
           />
           {p.stock.display}

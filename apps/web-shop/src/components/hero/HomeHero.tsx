@@ -21,7 +21,7 @@ export function HomeHero() {
           <Reveal>
             <div className="space-y-5 leading-snug">
               <h1 className="text-4xl md:text-5xl font-bold text-zinc-900">
-                iPhone มือสองคุณภาพ
+                iPhone มือ 1 & มือ 2 คุณภาพ
                 <br />
                 <span className="text-emerald-600">ผ่อนได้บัตร ปชช. ใบเดียว</span>
               </h1>

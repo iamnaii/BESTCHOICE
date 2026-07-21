@@ -44,7 +44,7 @@ function conditionChips(p: ShopPromotion): string[] {
 export default function PromotionsPage() {
   usePageMeta(
     'โปรโมชัน',
-    'โปรโมชันและส่วนลด iPhone มือสองผ่อนได้บัตรประชาชนใบเดียว ร้านมือถือลพบุรี',
+    'โปรโมชันและส่วนลด iPhone มือ 1 และมือสองผ่อนได้บัตรประชาชนใบเดียว ร้านมือถือลพบุรี',
   );
 
   const { data, isLoading, isError, refetch } = usePromotions();

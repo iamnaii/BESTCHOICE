@@ -1,4 +1,4 @@
-import { IsOptional, IsString, IsInt, Min, Max, MaxLength, IsEnum } from 'class-validator';
+import { IsOptional, IsString, IsInt, Min, Max, MaxLength, IsEnum, IsIn } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class ListProductsDto {
@@ -13,6 +13,9 @@ export class ListProductsDto {
 
   @IsOptional() @IsString()
   brand?: string;
+
+  @IsOptional() @IsIn(['NEW', 'USED'])
+  condition?: 'NEW' | 'USED';
 
   @IsOptional() @IsString()
   conditionGrade?: string;

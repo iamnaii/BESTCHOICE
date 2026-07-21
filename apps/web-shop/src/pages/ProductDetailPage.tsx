@@ -71,6 +71,16 @@ export default function ProductDetailPage() {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [view360, setView360] = useState(false);
 
+  // Reset per-product UI state on navigation between products (RelatedSection
+  // links keep this component mounted, so stale hero image / 360 mode /
+  // selected unit would otherwise carry over to the new product).
+  useEffect(() => {
+    setActiveImage(0);
+    setSelectedUnitId(null);
+    setView360(false);
+    setLightboxOpen(false);
+  }, [id]);
+
   const { data, isLoading } = useQuery({
     queryKey: ['shop-product', id],
     queryFn: () => api.get(`/api/shop/products/${id}`).then((r) => r.data as ProductDetail),
@@ -402,9 +412,7 @@ export default function ProductDetailPage() {
         </Container>
       </Section>
 
-      <Section padding="md">
-        <RelatedSection productId={id!} />
-      </Section>
+      <RelatedSection productId={id!} />
 
       {/* Mobile sticky CTA — installment customers are the majority; give
          "สมัครผ่อน" equal billing with reserve instead of burying it above the fold */}

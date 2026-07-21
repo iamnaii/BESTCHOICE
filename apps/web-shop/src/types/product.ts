@@ -8,3 +8,17 @@ export interface ShopProduct {
   brand?: string;
   model?: string;
 }
+
+export interface ProductUnit {
+  id: string;
+  conditionGrade: string;
+  batteryHealth?: number;
+  hasBox?: boolean;
+  shopWarrantyDays?: number;
+  color?: string;
+  cashPrice: number;
+  installmentPrice: number | null;
+  imeiPartial?: string;
+  gallery: string[];
+  gallery360: string[];
+}

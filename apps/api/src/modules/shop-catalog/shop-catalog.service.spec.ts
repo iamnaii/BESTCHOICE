@@ -297,6 +297,79 @@ describe('ShopCatalogService', () => {
       const result = await service.getProductDetail('p2');
       expect(result!.condition).toBe('NEW');
     });
+
+    it('returns per-unit color and installmentPrice', async () => {
+      prisma.product.findFirst.mockResolvedValue({
+        id: 'p1',
+        brand: 'Apple',
+        model: 'iPhone 15',
+        storage: '128GB',
+        color: 'Black',
+        category: 'PHONE_USED',
+        cashPrice: 15900,
+        conditionGrade: 'A',
+        gallery: [],
+        gallery360: [],
+        isOnlineVisible: true,
+      });
+      prisma.product.findMany.mockResolvedValue([
+        {
+          id: 'u1',
+          conditionGrade: 'A',
+          batteryHealth: 92,
+          hasBox: true,
+          shopWarrantyDays: 30,
+          color: 'Blue',
+          cashPrice: 15900,
+          installmentPrice: 17500,
+          imeiSerial: '111122223333',
+          gallery: [],
+          gallery360: [],
+        },
+      ]);
+      const result = await service.getProductDetail('p1');
+      const u = result!.tiers.A.units[0];
+      expect(u.color).toBe('Blue');
+      expect(u.installmentPrice).toBe(17500);
+      expect(JSON.stringify(result)).not.toContain('costPrice');
+    });
+  });
+
+  describe('listRelated', () => {
+    it('returns other models (iPhone-only base, excludes current model, limit 6)', async () => {
+      prisma.product.findFirst.mockResolvedValueOnce({ id: 'p1', model: 'iPhone 16' });
+      prisma.product.groupBy.mockResolvedValue([
+        {
+          brand: 'Apple',
+          model: 'iPhone 15',
+          storage: '128GB',
+          category: 'PHONE_USED',
+          _min: { cashPrice: 14000 },
+          _count: { id: 2 },
+        },
+      ]);
+      prisma.product.findFirst.mockResolvedValueOnce({
+        id: 'rep',
+        gallery: [],
+        conditionGrade: 'A',
+      });
+
+      const result = await service.listRelated('p1');
+
+      expect(prisma.product.groupBy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          by: ['brand', 'model', 'storage', 'category'],
+          where: expect.objectContaining({ brand: 'Apple', model: { not: 'iPhone 16' } }),
+          take: 6,
+        }),
+      );
+      expect(result[0].model).toBe('iPhone 15');
+    });
+
+    it('returns [] when product not found', async () => {
+      prisma.product.findFirst.mockResolvedValueOnce(null);
+      expect(await service.listRelated('missing')).toEqual([]);
+    });
   });
 
   describe('smartStockCount', () => {

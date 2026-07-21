@@ -13,6 +13,14 @@ import { usePageMeta } from '@/hooks/usePageMeta';
 import ShopLayout from '@/components/layout/ShopLayout';
 import ReviewsSection from '@/components/reviews/ReviewsSection';
 import { InstallmentCalculatorCard } from '@/components/InstallmentCalculatorCard';
+import type { ProductUnit } from '@/types/product';
+import { Breadcrumb } from '@/components/catalog/Breadcrumb';
+import { SpecTable } from '@/components/catalog/SpecTable';
+import { UnitPicker } from '@/components/catalog/UnitPicker';
+import { ImageLightbox } from '@/components/catalog/ImageLightbox';
+import { Product360Viewer } from '@/components/catalog/Product360Viewer';
+import { RelatedSection } from '@/components/catalog/RelatedSection';
+import { StockIndicator } from '@/components/catalog/StockIndicator';
 import {
   Container,
   Section,
@@ -24,20 +32,6 @@ import {
   StickyBottomBar,
   StickyBottomBarSpacer,
 } from '@/components';
-
-interface ProductUnit {
-  id: string;
-  conditionGrade: string;
-  batteryHealth?: number;
-  hasBox?: boolean;
-  hasCharger?: boolean;
-  hasHeadphones?: boolean;
-  shopWarrantyDays?: number;
-  cashPrice: number;
-  imeiPartial?: string;
-  gallery: string[];
-  gallery360: string[];
-}
 
 interface ProductDetail {
   id: string;
@@ -53,11 +47,6 @@ interface ProductDetail {
   tiers: Record<string, { minPrice: number; maxPrice: number; units: ProductUnit[] }>;
   cashPrice: number | null;
   installmentPrice: number | null;
-}
-
-function lowestPrice(tiers: ProductDetail['tiers']): number {
-  const prices = Object.values(tiers).map((t) => t.minPrice);
-  return prices.length ? Math.min(...prices) : 0;
 }
 
 function conditionVariant(g: string): 'condition-a' | 'condition-b' | 'condition-c' {
@@ -78,6 +67,19 @@ export default function ProductDetailPage() {
   const cart = useCartStore();
   const track = useTrackEvent();
   const [activeImage, setActiveImage] = useState(0);
+  const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [view360, setView360] = useState(false);
+
+  // Reset per-product UI state on navigation between products (RelatedSection
+  // links keep this component mounted, so stale hero image / 360 mode /
+  // selected unit would otherwise carry over to the new product).
+  useEffect(() => {
+    setActiveImage(0);
+    setSelectedUnitId(null);
+    setView360(false);
+    setLightboxOpen(false);
+  }, [id]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['shop-product', id],
@@ -85,15 +87,30 @@ export default function ProductDetailPage() {
     enabled: !!id,
   });
 
+  // Computed null-safely so this can sit above the early return below and
+  // keep the installment-preview query (which re-keys off the selected
+  // unit) unconditional per rules-of-hooks.
+  const flatUnits: ProductUnit[] = data ? Object.values(data.tiers).flatMap((t) => t.units) : [];
+  const cheapest = flatUnits.reduce<ProductUnit | undefined>(
+    (min, u) => (min == null || u.cashPrice < min.cashPrice ? u : min),
+    undefined,
+  );
+  const selectedUnit = flatUnits.find((u) => u.id === selectedUnitId) ?? cheapest;
+
   // Real "ผ่อนเริ่ม" figure from the pricing engine (12 งวด ดาวน์ 15% = default
   // shown in the calculator below) — never estimate with a made-up multiplier.
+  // Re-keyed by the selected unit so the hero figure stays in sync with the
+  // unit picker instead of a page-level representative price.
+  const previewId = selectedUnit?.id ?? id;
   const { data: preview } = useQuery({
-    queryKey: ['shop-product-preview', id],
+    queryKey: ['shop-product-preview', previewId],
     queryFn: () =>
       api
-        .get(`/api/shop/installment-preview?productId=${id}&months=12&downPct=0.15&provider=BC`)
+        .get(
+          `/api/shop/installment-preview?productId=${previewId}&months=12&downPct=0.15&provider=BC`,
+        )
         .then((r) => r.data as { available: boolean; monthlyPayment?: number }),
-    enabled: !!id && !!data?.installmentPrice,
+    enabled: !!previewId && !!selectedUnit?.installmentPrice,
   });
 
   useEffect(() => {
@@ -116,14 +133,17 @@ export default function ProductDetailPage() {
   const reserveMut = useMutation({
     mutationFn: () =>
       api
-        .post('/api/shop/reservations', { productId: id, sessionId: getSessionId() })
+        .post('/api/shop/reservations', {
+          productId: selectedUnit?.id ?? id,
+          sessionId: getSessionId(),
+        })
         .then((r) => r.data as { id: string; expiresAt: string }),
     onSuccess: (res) => {
-      cart.setItem(res.id, id!);
+      cart.setItem(res.id, selectedUnit?.id ?? id!);
       if (id) {
         track('AddToCart', {
-          content_ids: [id],
-          value: lowestPrice(data?.tiers ?? {}),
+          content_ids: [selectedUnit?.id ?? id],
+          value: selectedUnit?.cashPrice ?? 0,
           currency: 'THB',
         });
       }
@@ -154,7 +174,7 @@ export default function ProductDetailPage() {
   }
 
   const displayName = [data.brand, data.model, data.storage, data.color].filter(Boolean).join(' ');
-  const price = lowestPrice(data.tiers);
+  const price = selectedUnit?.cashPrice ?? 0;
   const monthlyFrom =
     preview?.available && preview.monthlyPayment ? Math.ceil(preview.monthlyPayment) : null;
   const gradeKeys = Object.keys(data.tiers);
@@ -163,31 +183,78 @@ export default function ProductDetailPage() {
   const gallery =
     data.gallery && data.gallery.length > 0 ? data.gallery : [media('product.placeholder')];
   const mainImage = gallery[activeImage] ?? gallery[0];
+  const has360 = data.gallery360.length > 0;
+  const stockCount = flatUnits.length;
 
   return (
     <ShopLayout>
       <Container className="py-6 md:py-8">
-        <div className="grid md:grid-cols-2 gap-8 leading-snug">
+        <Breadcrumb
+          items={[
+            { label: 'หน้าแรก', to: '/' },
+            { label: 'สินค้าทั้งหมด', to: '/products' },
+            { label: data.model },
+          ]}
+        />
+        <div className="grid md:grid-cols-2 gap-8 leading-snug mt-3">
           {/* Gallery */}
           <div className="space-y-3">
-            <div className="aspect-square w-full rounded-2xl bg-zinc-50 overflow-hidden flex items-center justify-center">
-              <img
-                src={mainImage}
-                alt={displayName}
-                className="max-h-full max-w-full object-contain"
-                loading="eager"
-              />
-            </div>
+            {has360 && (
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setView360(false)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                    !view360
+                      ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
+                      : 'border-border text-muted-foreground hover:border-foreground/40'
+                  }`}
+                >
+                  รูป
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setView360(true)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                    view360
+                      ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
+                      : 'border-border text-muted-foreground hover:border-foreground/40'
+                  }`}
+                >
+                  360°
+                </button>
+              </div>
+            )}
+            {view360 && has360 ? (
+              <Product360Viewer frames={data.gallery360} alt={displayName} />
+            ) : (
+              <button
+                type="button"
+                onClick={() => setLightboxOpen(true)}
+                aria-label="ดูรูปขยาย"
+                className="aspect-square w-full rounded-2xl bg-zinc-50 overflow-hidden flex items-center justify-center cursor-zoom-in"
+              >
+                <img
+                  src={mainImage}
+                  alt={displayName}
+                  className="max-h-full max-w-full object-contain"
+                  loading="eager"
+                />
+              </button>
+            )}
             {gallery.length > 1 && (
               <div className="grid grid-cols-5 gap-2">
-                {gallery.slice(0, 5).map((src, i) => (
+                {gallery.map((src, i) => (
                   <button
                     key={i}
                     type="button"
-                    onClick={() => setActiveImage(i)}
+                    onClick={() => {
+                      setView360(false);
+                      setActiveImage(i);
+                    }}
                     aria-label={`รูปที่ ${i + 1}`}
                     className={`aspect-square rounded-xl bg-zinc-50 overflow-hidden flex items-center justify-center border transition-all ${
-                      i === activeImage
+                      i === activeImage && !view360
                         ? 'border-emerald-500 ring-2 ring-emerald-200'
                         : 'border-zinc-200 hover:border-emerald-200'
                     }`}
@@ -202,13 +269,21 @@ export default function ProductDetailPage() {
                 ))}
               </div>
             )}
+            <ImageLightbox
+              images={gallery}
+              open={lightboxOpen}
+              index={activeImage}
+              onOpenChange={setLightboxOpen}
+              onIndexChange={setActiveImage}
+              alt={displayName}
+            />
           </div>
 
           {/* Details */}
           <Stack gap={4}>
             <h1 className="text-2xl md:text-3xl font-bold leading-snug">{displayName}</h1>
 
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 items-center">
               <Badge variant={isNew ? 'condition-a' : 'condition-b'} size="md">
                 {isNew ? 'เครื่องใหม่ · มือ 1' : 'มือสอง · มือ 2'}
               </Badge>
@@ -218,18 +293,42 @@ export default function ProductDetailPage() {
                     เกรด {g}
                   </Badge>
                 ))}
+              {isNew && (
+                <span className="text-xs text-muted-foreground leading-snug">
+                  เครื่องใหม่ · ประกันศูนย์
+                </span>
+              )}
             </div>
 
+            <UnitPicker
+              units={flatUnits}
+              selectedId={selectedUnit?.id ?? ''}
+              onSelect={setSelectedUnitId}
+              isNew={isNew}
+            />
+
             <div className="space-y-1">
-              {price > 0 ? (
-                <div className="text-3xl md:text-4xl font-bold text-emerald-600 leading-snug">
-                  ฿{price.toLocaleString()}
-                </div>
-              ) : (
-                <div className="text-2xl md:text-3xl font-semibold text-muted-foreground leading-snug">
-                  สอบถามราคาทางไลน์
-                </div>
-              )}
+              <div className="flex flex-wrap items-baseline gap-2">
+                {price > 0 ? (
+                  <div className="text-3xl md:text-4xl font-bold text-emerald-600 leading-snug">
+                    ฿{price.toLocaleString()}
+                  </div>
+                ) : (
+                  <div className="text-2xl md:text-3xl font-semibold text-muted-foreground leading-snug">
+                    สอบถามราคาทางไลน์
+                  </div>
+                )}
+                {stockCount > 0 && (
+                  <StockIndicator
+                    display={
+                      stockCount <= 3
+                        ? `เหลือ ${stockCount} เครื่อง — ใกล้หมด`
+                        : `เหลือ ${stockCount} เครื่อง`
+                    }
+                    tone={stockCount <= 3 ? 'urgent' : 'low'}
+                  />
+                )}
+              </div>
               {monthlyFrom && (
                 <div className="text-base font-semibold text-emerald-700 leading-snug">
                   ผ่อนเริ่ม ฿{monthlyFrom.toLocaleString()}/เดือน
@@ -248,6 +347,8 @@ export default function ProductDetailPage() {
                 ))}
               </ul>
             )}
+
+            {selectedUnit && <SpecTable unit={selectedUnit} storage={data.storage} isNew={isNew} />}
 
             {data.description && (
               <p className="text-sm md:text-base text-muted-foreground leading-snug">
@@ -271,7 +372,7 @@ export default function ProductDetailPage() {
                 variant="outline"
                 size="lg"
                 fullWidth
-                onClick={() => nav(`/apply/${data.id}`)}
+                onClick={() => nav(`/apply/${selectedUnit?.id ?? data.id}`)}
               >
                 สมัครผ่อนทันที
               </Button>
@@ -292,9 +393,9 @@ export default function ProductDetailPage() {
       <Section padding="md">
         <Container>
           <InstallmentCalculatorCard
-            productId={data.id}
-            cashPrice={data.cashPrice ?? null}
-            installmentPrice={data.installmentPrice ?? null}
+            productId={selectedUnit?.id ?? data.id}
+            cashPrice={selectedUnit?.cashPrice ?? data.cashPrice}
+            installmentPrice={selectedUnit?.installmentPrice ?? data.installmentPrice}
           />
         </Container>
       </Section>
@@ -310,6 +411,8 @@ export default function ProductDetailPage() {
           <ReviewsSection productId={id!} />
         </Container>
       </Section>
+
+      <RelatedSection productId={id!} />
 
       {/* Mobile sticky CTA — installment customers are the majority; give
          "สมัครผ่อน" equal billing with reserve instead of burying it above the fold */}
@@ -329,7 +432,7 @@ export default function ProductDetailPage() {
             variant="outline"
             size="lg"
             className="flex-1"
-            onClick={() => nav(`/apply/${data.id}`)}
+            onClick={() => nav(`/apply/${selectedUnit?.id ?? data.id}`)}
           >
             สมัครผ่อน
           </Button>

@@ -50,6 +50,7 @@ const DEFAULT_MONTHS = 12;
 const DEFAULT_DOWN_PCT = 0.2;
 const SHOP_BRAND = 'Apple';
 const PHONE_CATEGORIES = ['PHONE_NEW', 'PHONE_USED'] as const;
+const GROUP_BY = ['brand', 'model', 'storage', 'category'] as const;
 
 @Injectable()
 export class ShopCatalogService {
@@ -105,7 +106,7 @@ export class ShopCatalogService {
     // Group by brand+model+storage+category so new+used of the same model are separate cards
     // that /products/:id renders (getProductDetail filters by the same trio).
     const groups = await this.prisma.product.groupBy({
-      by: ['brand', 'model', 'storage', 'category'],
+      by: [...GROUP_BY],
       where,
       _min: { cashPrice: true },
       _count: { id: true },
@@ -151,7 +152,7 @@ export class ShopCatalogService {
 
     // total = number of groups (the UI reads it as "พร้อมจัด X รุ่น"), not unit count
     const allGroups = await this.prisma.product.groupBy({
-      by: ['brand', 'model', 'storage', 'category'],
+      by: [...GROUP_BY],
       where,
     });
     return { data, total: allGroups.length, page, limit };
@@ -159,7 +160,13 @@ export class ShopCatalogService {
 
   async getProductDetail(productId: string): Promise<ProductDetail | null> {
     const product = await this.prisma.product.findFirst({
-      where: { id: productId, deletedAt: null, isOnlineVisible: true },
+      where: {
+        id: productId,
+        deletedAt: null,
+        isOnlineVisible: true,
+        brand: SHOP_BRAND,
+        category: { in: [...PHONE_CATEGORIES] },
+      },
     });
     if (!product) return null;
 

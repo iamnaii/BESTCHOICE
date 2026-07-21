@@ -87,6 +87,11 @@ describe('ShopCatalogService', () => {
       expect(result.data[0].minPrice).toBe(29900);
       expect(result.data[1].condition).toBe('USED');
       expect(result.data[1].minPrice).toBe(19900);
+      expect(prisma.product.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ category: 'PHONE_NEW' }),
+        }),
+      );
     });
 
     it('uses cashPrice (not costPrice) for min/sort and never leaks costPrice', async () => {
@@ -164,6 +169,7 @@ describe('ShopCatalogService', () => {
         storage: '128GB',
         category: 'PHONE_USED',
         cashPrice: 13900,
+        costPrice: 9999,
         conditionGrade: 'A',
         gallery: [],
         gallery360: [],
@@ -175,6 +181,7 @@ describe('ShopCatalogService', () => {
           conditionGrade: 'A',
           batteryHealth: 92,
           cashPrice: 13900,
+          costPrice: 9999,
           gallery: [],
           gallery360: [],
           imeiSerial: null,
@@ -184,6 +191,7 @@ describe('ShopCatalogService', () => {
           conditionGrade: 'B',
           batteryHealth: 87,
           cashPrice: 12800,
+          costPrice: 9999,
           gallery: [],
           gallery360: [],
           imeiSerial: null,
@@ -199,6 +207,22 @@ describe('ShopCatalogService', () => {
       expect(result!.tiers.A.units).toHaveLength(1);
       expect(result!.tiers.A.minPrice).toBe(13900);
       expect(JSON.stringify(result)).not.toContain('costPrice');
+    });
+
+    it('returns null when the resolved id is not an iPhone (brand/category guard on the initial lookup)', async () => {
+      prisma.product.findFirst.mockResolvedValue(null);
+
+      const result = await service.getProductDetail('non-iphone-id');
+
+      expect(result).toBeNull();
+      expect(prisma.product.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            brand: 'Apple',
+            category: { in: ['PHONE_NEW', 'PHONE_USED'] },
+          }),
+        }),
+      );
     });
 
     it('reports condition=NEW for a brand-new phone', async () => {

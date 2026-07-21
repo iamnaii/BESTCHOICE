@@ -1,6 +1,7 @@
 export interface CatalogFilters {
   brand?: string;
   condition?: 'NEW' | 'USED';
+  model?: string;
   conditionGrade?: string;
   minPrice?: number;
   maxPrice?: number;

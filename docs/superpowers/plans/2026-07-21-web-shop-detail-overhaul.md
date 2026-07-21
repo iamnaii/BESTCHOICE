@@ -196,8 +196,6 @@ export interface ProductUnit {
   conditionGrade: string;
   batteryHealth?: number;
   hasBox?: boolean;
-  hasCharger?: boolean;
-  hasHeadphones?: boolean;
   shopWarrantyDays?: number;
   color?: string;
   cashPrice: number;
@@ -206,6 +204,9 @@ export interface ProductUnit {
   gallery: string[];
   gallery360: string[];
 }
+```
+(หมายเหตุ: `hasCharger`/`hasHeadphones` ไม่มี column ใน Prisma → ตัดออก; อุปกรณ์ในกล่อง = แค่ `hasBox`)
+```ts
 ```
 
 - [ ] **Step 2: Breadcrumb.tsx**
@@ -260,11 +261,7 @@ export function SpecTable({
   storage?: string;
   isNew: boolean;
 }) {
-  const accessories = [
-    unit.hasBox && 'กล่อง',
-    unit.hasCharger && 'สายชาร์จ',
-    unit.hasHeadphones && 'หูฟัง',
-  ].filter(Boolean) as string[];
+  const accessories = [unit.hasBox && 'กล่อง'].filter(Boolean) as string[];
 
   const rows: Array<{ label: string; value: string } | null> = [
     storage ? { label: 'ความจุ', value: storage } : null,

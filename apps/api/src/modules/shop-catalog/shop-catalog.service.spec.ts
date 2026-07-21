@@ -335,6 +335,43 @@ describe('ShopCatalogService', () => {
     });
   });
 
+  describe('listRelated', () => {
+    it('returns other models (iPhone-only base, excludes current model, limit 6)', async () => {
+      prisma.product.findFirst.mockResolvedValueOnce({ id: 'p1', model: 'iPhone 16' });
+      prisma.product.groupBy.mockResolvedValue([
+        {
+          brand: 'Apple',
+          model: 'iPhone 15',
+          storage: '128GB',
+          category: 'PHONE_USED',
+          _min: { cashPrice: 14000 },
+          _count: { id: 2 },
+        },
+      ]);
+      prisma.product.findFirst.mockResolvedValueOnce({
+        id: 'rep',
+        gallery: [],
+        conditionGrade: 'A',
+      });
+
+      const result = await service.listRelated('p1');
+
+      expect(prisma.product.groupBy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          by: ['brand', 'model', 'storage', 'category'],
+          where: expect.objectContaining({ brand: 'Apple', model: { not: 'iPhone 16' } }),
+          take: 6,
+        }),
+      );
+      expect(result[0].model).toBe('iPhone 15');
+    });
+
+    it('returns [] when product not found', async () => {
+      prisma.product.findFirst.mockResolvedValueOnce(null);
+      expect(await service.listRelated('missing')).toEqual([]);
+    });
+  });
+
   describe('smartStockCount', () => {
     it('returns LOW_URGENT for 1-3 stock', () => {
       expect(service.smartStockCount(2)).toEqual({

@@ -173,6 +173,54 @@ export class ShopCatalogService {
     return rows.map((r) => ({ model: r.model, count: r._count?.id ?? 0 }));
   }
 
+  async listRelated(productId: string): Promise<ProductGroup[]> {
+    const product = await this.prisma.product.findFirst({
+      where: { id: productId, ...shopBaseWhere() },
+    });
+    if (!product) return [];
+    const where = { ...shopBaseWhere(), model: { not: product.model } };
+    const groups = await this.prisma.product.groupBy({
+      by: [...GROUP_BY],
+      where,
+      _min: { cashPrice: true },
+      _count: { id: true },
+      orderBy: [{ _count: { id: 'desc' as const } }],
+      take: 6,
+    });
+    return Promise.all(
+      groups.map(async (g) => {
+        const sample = await this.prisma.product.findFirst({
+          where: {
+            ...where,
+            brand: g.brand,
+            model: g.model,
+            storage: g.storage,
+            category: g.category,
+          },
+          orderBy: { cashPrice: 'asc' },
+          select: { id: true, gallery: true, conditionGrade: true },
+        });
+        const minPrice = g._min?.cashPrice != null ? Number(g._min.cashPrice) : null;
+        const monthly =
+          minPrice != null
+            ? this.calculateMonthlyPayment(minPrice, DEFAULT_MONTHS, DEFAULT_DOWN_PCT)
+            : 0;
+        return {
+          id: sample?.id ?? '',
+          brand: g.brand,
+          model: g.model,
+          storage: g.storage ?? undefined,
+          minPrice,
+          stockCount: g._count?.id ?? 0,
+          thumbnailUrl: sample?.gallery[0],
+          conditionGrades: sample?.conditionGrade ? [sample.conditionGrade] : [],
+          monthlyPaymentFrom: monthly,
+          condition: g.category === 'PHONE_NEW' ? 'NEW' : 'USED',
+        };
+      }),
+    );
+  }
+
   async getProductDetail(productId: string): Promise<ProductDetail | null> {
     const product = await this.prisma.product.findFirst({
       where: {

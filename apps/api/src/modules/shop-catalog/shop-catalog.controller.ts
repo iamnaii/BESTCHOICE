@@ -31,6 +31,12 @@ export class ShopCatalogController {
     return this.catalogService.listAvailableModels();
   }
 
+  @Get('products/:id/related')
+  async related(@Param('id') id: string) {
+    const groups = await this.catalogService.listRelated(id);
+    return groups.map((g) => ({ ...g, stock: this.catalogService.smartStockCount(g.stockCount) }));
+  }
+
   @Get('products/:id')
   async detail(@Param('id') id: string) {
     const product = await this.catalogService.getProductDetail(id);

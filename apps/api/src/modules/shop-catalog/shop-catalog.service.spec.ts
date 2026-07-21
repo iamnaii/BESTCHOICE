@@ -158,6 +158,22 @@ describe('ShopCatalogService', () => {
       const where = prisma.product.groupBy.mock.calls[0][0].where;
       expect(where.OR).toBeUndefined();
     });
+
+    it('filters by exact model while keeping the iPhone-only base', async () => {
+      prisma.product.groupBy.mockResolvedValue([]);
+      await service.listGroupedByModel({ model: 'iPhone 16' });
+      expect(prisma.product.groupBy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            model: 'iPhone 16',
+            brand: 'Apple',
+            category: { in: ['PHONE_NEW', 'PHONE_USED'] },
+            isOnlineVisible: true,
+            status: 'IN_STOCK',
+          }),
+        }),
+      );
+    });
   });
 
   describe('getProductDetail', () => {

@@ -52,6 +52,16 @@ const SHOP_BRAND = 'Apple';
 const PHONE_CATEGORIES = ['PHONE_NEW', 'PHONE_USED'] as const;
 const GROUP_BY = ['brand', 'model', 'storage', 'category'] as const;
 
+function shopBaseWhere(): Record<string, any> {
+  return {
+    deletedAt: null,
+    isOnlineVisible: true,
+    status: 'IN_STOCK',
+    brand: SHOP_BRAND,
+    category: { in: [...PHONE_CATEGORIES] },
+  };
+}
+
 @Injectable()
 export class ShopCatalogService {
   constructor(private prisma: PrismaService) {}
@@ -61,6 +71,7 @@ export class ShopCatalogService {
     limit?: number;
     brand?: string;
     condition?: 'NEW' | 'USED';
+    model?: string;
     conditionGrade?: string;
     minPrice?: number;
     maxPrice?: number;
@@ -70,17 +81,11 @@ export class ShopCatalogService {
     const page = filters.page ?? 1;
     const limit = filters.limit ?? 24;
 
-    const where: any = {
-      deletedAt: null,
-      isOnlineVisible: true,
-      status: 'IN_STOCK',
-      brand: SHOP_BRAND,
-      category: filters.condition
-        ? filters.condition === 'NEW'
-          ? 'PHONE_NEW'
-          : 'PHONE_USED'
-        : { in: [...PHONE_CATEGORIES] },
-    };
+    const where: any = { ...shopBaseWhere() };
+    if (filters.condition) {
+      where.category = filters.condition === 'NEW' ? 'PHONE_NEW' : 'PHONE_USED';
+    }
+    if (filters.model) where.model = filters.model;
     if (filters.conditionGrade) where.conditionGrade = filters.conditionGrade;
     if (filters.minPrice !== undefined)
       where.cashPrice = { ...where.cashPrice, gte: filters.minPrice };

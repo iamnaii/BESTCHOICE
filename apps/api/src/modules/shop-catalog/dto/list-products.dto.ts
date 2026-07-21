@@ -2,30 +2,54 @@ import { IsOptional, IsString, IsInt, Min, Max, MaxLength, IsEnum, IsIn } from '
 import { Type } from 'class-transformer';
 
 export class ListProductsDto {
-  @IsOptional() @IsString() @MaxLength(60)
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
   search?: string;
 
-  @IsOptional() @Type(() => Number) @IsInt() @Min(1)
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   page?: number = 1;
 
-  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100)
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
   limit?: number = 24;
 
-  @IsOptional() @IsString()
+  @IsOptional()
+  @IsString()
   brand?: string;
 
-  @IsOptional() @IsIn(['NEW', 'USED'])
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  model?: string;
+
+  @IsOptional()
+  @IsIn(['NEW', 'USED'])
   condition?: 'NEW' | 'USED';
 
-  @IsOptional() @IsString()
+  @IsOptional()
+  @IsString()
   conditionGrade?: string;
 
-  @IsOptional() @Type(() => Number) @IsInt() @Min(0)
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
   minPrice?: number;
 
-  @IsOptional() @Type(() => Number) @IsInt() @Min(0)
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
   maxPrice?: number;
 
-  @IsOptional() @IsEnum(['popular', 'price_asc', 'price_desc', 'newest'])
+  @IsOptional()
+  @IsEnum(['popular', 'price_asc', 'price_desc', 'newest'])
   sort?: 'popular' | 'price_asc' | 'price_desc' | 'newest' = 'popular';
 }

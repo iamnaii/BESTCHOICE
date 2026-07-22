@@ -30,7 +30,46 @@ interface DemoUnit {
   cashPrice: number;
   installmentPrice: number;
   gallery: string[];
+  gallery360?: string[];
   onlineDescription: string;
+}
+
+/**
+ * ชุดเฟรม 360° จำลอง (ภาพวาด SVG หมุนรอบแกนตั้ง — ไม่ใช่รูปถ่ายจริง) เพื่อ demo
+ * การลากหมุนบนหน้า detail. เก็บเป็น data URI ใน DB ได้ตาม pattern base64 เดิมของระบบ.
+ * ของจริง: ร้านถ่ายเครื่องบนแท่นหมุนเป็นเฟรมมุมละเท่าๆ กันแล้วใส่แทน.
+ */
+function spinFrames(count = 24): string[] {
+  const frames: string[] = [];
+  for (let i = 0; i < count; i++) {
+    const theta = (i / count) * 2 * Math.PI;
+    const c = Math.cos(theta);
+    const w = Math.max(0.14, Math.abs(c)); // ความกว้างตัวเครื่องตามมุมหมุน
+    const bw = 88 * w;
+    const x = 50 - bw / 2;
+    const rx = Math.min(24, bw / 3);
+    const showBack = c >= 0;
+    const body = `<rect x="${x.toFixed(1)}" y="6" width="${bw.toFixed(1)}" height="172" rx="${rx.toFixed(1)}" fill="url(#g)" stroke="rgba(0,0,0,.18)" stroke-width="1.5"/>`;
+    let detail = '';
+    if (showBack && w > 0.3) {
+      // กล้อง 3 ตัว (ฝั่งซ้ายบนของฝาหลัง) บีบตามมุม
+      detail = `<g transform="translate(${(x + bw * 0.12).toFixed(1)},14) scale(${w.toFixed(2)},1)"><rect width="36" height="38" rx="11" fill="rgba(0,0,0,.10)"/><circle cx="10" cy="11" r="6.5" fill="rgba(0,0,0,.34)"/><circle cx="10" cy="28" r="6.5" fill="rgba(0,0,0,.34)"/><circle cx="27" cy="19" r="6" fill="rgba(0,0,0,.30)"/></g>`;
+    } else if (!showBack && w > 0.3) {
+      // จอหน้า + Dynamic Island
+      const sw = bw * 0.88;
+      detail =
+        `<rect x="${(x + bw * 0.06).toFixed(1)}" y="11" width="${sw.toFixed(1)}" height="162" rx="15" fill="rgba(18,18,24,.92)"/>` +
+        `<rect x="${(50 - 10 * w).toFixed(1)}" y="16" width="${(20 * w).toFixed(1)}" height="6" rx="3" fill="#000"/>`;
+    }
+    const svg =
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 184">` +
+      `<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#a49b8e"/><stop offset="1" stop-color="#6e675d"/></linearGradient></defs>` +
+      body +
+      detail +
+      `</svg>`;
+    frames.push(`data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`);
+  }
+  return frames;
 }
 
 // IMEI ขึ้นต้น 990000 = ชุด demo เท่านั้น (ห้ามใช้กับเครื่องจริง)
@@ -97,7 +136,8 @@ const UNITS: DemoUnit[] = [
       `${WIKI}/4/4a/Back_view_of_iPhone_15_Pro_Natural_titanium.jpg/960px-Back_view_of_iPhone_15_Pro_Natural_titanium.jpg`,
       `${WIKI}/2/23/About_iPhone_15_Pro_Max_Natural_Titanium.jpg/960px-About_iPhone_15_Pro_Max_Natural_Titanium.jpg`,
     ],
-    onlineDescription: 'ไทเทเนียมสภาพสวย แบต 94% ครบกล่อง',
+    gallery360: spinFrames(),
+    onlineDescription: 'ไทเทเนียมสภาพสวย แบต 94% ครบกล่อง (ตัวอย่าง 360° เป็นภาพจำลอง)',
   },
   {
     imeiSerial: '990000000000005',
@@ -185,6 +225,7 @@ async function seed() {
       hasBox: true,
       shopWarrantyDays: 30,
       gallery: u.gallery,
+      gallery360: u.gallery360 ?? [],
       onlineDescription: u.onlineDescription,
       isOnlineVisible: true,
       status: 'IN_STOCK' as const,

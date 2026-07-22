@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Routes, Route, useLocation, useParams, Navigate } from 'react-router';
 import { trackPageView } from './lib/tracking';
+import { ScrollToTop } from './components/ScrollToTop';
 import HomePage from './pages/HomePage';
 import CatalogPage from './pages/CatalogPage';
 import ProductDetailPage from './pages/ProductDetailPage';
@@ -55,6 +56,7 @@ export default function App() {
   return (
     <>
       <RouteTracker />
+      <ScrollToTop />
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/products" element={<CatalogPage />} />

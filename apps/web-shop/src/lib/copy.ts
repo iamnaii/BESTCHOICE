@@ -11,8 +11,8 @@
 export const shopInfo = {
   lineHandle: '@bestchoice',
   lineUrl: 'https://line.me/R/ti/p/@bestchoice',
-  phoneDisplay: '036-XXX-XXX',
-  phoneHref: 'tel:036XXXXXX',
+  phoneDisplay: '095-567-8887',
+  phoneHref: 'tel:+66955678887',
   address: 'เลขที่ 99/9 ถนนนารายณ์มหาราช ตำบลทะเลชุบศร อำเภอเมืองลพบุรี จังหวัดลพบุรี 15000',
   hours: 'เปิดทุกวัน 10:00 - 19:00 น.',
   /** TODO(owner): ใส่ลิงก์ Google Maps จริงแล้วปุ่มนำทางจะโผล่เอง */

@@ -22,7 +22,7 @@ export class OnlineAppraisalService {
   async appraiseOnline(id: string, dto: AppraiseOnlineDto, userId: string, userRole: string) {
     const tradeIn = await this.prisma.tradeIn.findFirst({ where: { id, deletedAt: null } });
     if (!tradeIn) throw new NotFoundException('ไม่พบรายการเทรดอิน');
-    if (!tradeIn.quoteBreakdown) {
+    if (!tradeIn.quoteBreakdown && dto.mode !== 'MANUAL') {
       throw new BadRequestException(
         'รายการนี้ไม่ได้มาจากใบเสนอราคาออนไลน์ — ใช้การประเมินราคาแบบปกติ',
       );
@@ -50,7 +50,7 @@ export class OnlineAppraisalService {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const breakdown = tradeIn.quoteBreakdown as any;
-    const maxPrice = new Prisma.Decimal(breakdown.maxPrice ?? 0);
+    const maxPrice = breakdown ? new Prisma.Decimal(breakdown.maxPrice ?? 0) : new Prisma.Decimal(0);
 
     let offeredPrice: Prisma.Decimal;
     // AS_ANSWERED/MANUAL เทียบกับ breakdown เดิมของ record; REVISED เขียนทับด้านล่าง
@@ -121,19 +121,45 @@ export class OnlineAppraisalService {
         throw new BadRequestException('ต้องระบุเหตุผล (อย่างน้อย 3 ตัวอักษร)');
       }
       offeredPrice = new Prisma.Decimal(dto.offeredPrice);
-      await this.prisma.auditLog.create({
-        data: {
-          userId,
-          action: 'TRADE_IN_ONLINE_MANUAL_PRICE',
-          entity: 'trade_in',
-          entityId: id,
-          oldValue: {
-            estimatedValue: tradeIn.estimatedValue?.toString() ?? null,
-            offeredPrice: tradeIn.offeredPrice?.toString() ?? null,
-          },
-          newValue: { offeredPrice: dto.offeredPrice, reason: dto.reason },
-        },
-      });
+
+      // Re-stamp ราคาลง estimatedValue + breakdown ให้ invariant
+      // price == estimatedValue == offeredPrice กลับมาถูกทุกหน้าจอ (รวมหน้า status
+      // ลูกค้า) หลัง OWNER แก้ราคามือ — ก่อนหน้านี้ MANUAL ไม่แตะ breakdown เลย
+      // ทำให้ลูกค้าเห็นราคาเก่าค้าง
+      const oldBreakdown = tradeIn.quoteBreakdown as Record<string, unknown> | null;
+      if (oldBreakdown) {
+        const newBreakdown: Record<string, unknown> = {
+          ...oldBreakdown,
+          price: offeredPrice.toFixed(2),
+        };
+        if (tradeIn.flow === 'EXCHANGE') {
+          // ราคาเครดิตที่ตกลงกับลูกค้าคือตัวจริง — inverse หา cashPrice จาก snapshot
+          // bonusPct (ไม่ใช่ config ปัจจุบัน); floor to tens เหมือน pricing เดิม
+          // label "+X%" จึงคลาดได้ ~1% บน record ที่แก้มือ (ยอมรับตาม spec launch-wave §4)
+          newBreakdown.exchangePrice = offeredPrice.toFixed(2);
+          const pctRaw = oldBreakdown.bonusPct;
+          const bonusPct =
+            typeof pctRaw === 'string' || typeof pctRaw === 'number'
+              ? new Prisma.Decimal(pctRaw)
+              : null;
+          if (bonusPct && bonusPct.gt(0)) {
+            const HUNDRED = new Prisma.Decimal(100);
+            const rawCash = offeredPrice.mul(HUNDRED).div(HUNDRED.plus(bonusPct));
+            newBreakdown.cashPrice = rawCash.div(10).floor().mul(10).toFixed(2);
+          } else {
+            // record เก่าก่อน dual-price ไม่มีโบนัส
+            newBreakdown.cashPrice = offeredPrice.toFixed(2);
+          }
+        } else {
+          newBreakdown.cashPrice = offeredPrice.toFixed(2);
+        }
+        extraData = {
+          estimatedValue: offeredPrice,
+          quoteBreakdown: newBreakdown as Prisma.InputJsonValue,
+        };
+      } else {
+        extraData = { estimatedValue: offeredPrice };
+      }
     }
 
     // Compare-and-set: findFirst ข้างบนอ่านแบบ dirty read — ระหว่างนี้ staff คนอื่นอาจ
@@ -171,6 +197,24 @@ export class OnlineAppraisalService {
 
     if (result.count === 0) {
       throw new BadRequestException('รายการนี้เพิ่งถูกประเมินโดยผู้ใช้อื่น กรุณารีเฟรชหน้าจอ');
+    }
+
+    // MANUAL: เขียน audit หลัง CAS สำเร็จเท่านั้น — race-loser ต้องไม่ทิ้ง audit
+    // ของราคาที่ไม่เคยเกิดจริง (hardening ตาม spec launch-wave §4)
+    if (dto.mode === 'MANUAL') {
+      await this.prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'TRADE_IN_ONLINE_MANUAL_PRICE',
+          entity: 'trade_in',
+          entityId: id,
+          oldValue: {
+            estimatedValue: tradeIn.estimatedValue?.toString() ?? null,
+            offeredPrice: tradeIn.offeredPrice?.toString() ?? null,
+          },
+          newValue: { offeredPrice: dto.offeredPrice, reason: dto.reason },
+        },
+      });
     }
 
     return this.prisma.tradeIn.findUnique({ where: { id } });

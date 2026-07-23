@@ -217,4 +217,64 @@ describe('OnlineAppraisalService', () => {
       ).rejects.toThrow(BadRequestException);
     });
   });
+
+  describe('MANUAL re-stamp (launch-wave Track D)', () => {
+    const manualDto = (price: number) => ({
+      mode: 'MANUAL' as const,
+      offeredPrice: price,
+      reason: 'ปรับราคาตามสภาพจริง',
+    });
+
+    it('BUYBACK: estimatedValue + breakdown.price + cashPrice = ราคาใหม่ทั้งหมด', async () => {
+      await service.appraiseOnline('ti-1', manualDto(11000), 'u1', 'OWNER');
+      const data = prisma.tradeIn.updateMany.mock.calls[0][0].data;
+      expect(data.estimatedValue.toString()).toBe('11000');
+      expect(data.quoteBreakdown.price).toBe('11000.00');
+      expect(data.quoteBreakdown.cashPrice).toBe('11000.00');
+    });
+
+    it('EXCHANGE: exchangePrice = manual, cashPrice inverse จาก snapshot bonusPct (floor to tens)', async () => {
+      prisma.tradeIn.findFirst.mockResolvedValue({ ...EXCHANGE_TRADEIN });
+      await service.appraiseOnline('ti-1', manualDto(14000), 'u1', 'OWNER');
+      const data = prisma.tradeIn.updateMany.mock.calls[0][0].data;
+      expect(data.estimatedValue.toString()).toBe('14000');
+      expect(data.quoteBreakdown.price).toBe('14000.00');
+      expect(data.quoteBreakdown.exchangePrice).toBe('14000.00');
+      // 14000 × 100 ÷ 110 = 12727.27… → floor to tens = 12720
+      expect(data.quoteBreakdown.cashPrice).toBe('12720.00');
+    });
+
+    it('EXCHANGE record เก่าไม่มี bonusPct → cashPrice = manual ตรงๆ', async () => {
+      const legacy = { ...EXCHANGE_TRADEIN, quoteBreakdown: { maxPrice: '14500.00', price: '13660.00', lines: [] } };
+      prisma.tradeIn.findFirst.mockResolvedValue(legacy);
+      await service.appraiseOnline('ti-1', manualDto(13000), 'u1', 'OWNER');
+      const data = prisma.tradeIn.updateMany.mock.calls[0][0].data;
+      expect(data.quoteBreakdown.cashPrice).toBe('13000.00');
+      expect(data.quoteBreakdown.price).toBe('13000.00');
+    });
+
+    it('walk-in ไม่มี quoteBreakdown → stamp เฉพาะ estimatedValue', async () => {
+      prisma.tradeIn.findFirst.mockResolvedValue({ ...ONLINE_TRADEIN, quoteBreakdown: null });
+      await service.appraiseOnline('ti-1', manualDto(9000), 'u1', 'OWNER');
+      const data = prisma.tradeIn.updateMany.mock.calls[0][0].data;
+      expect(data.estimatedValue.toString()).toBe('9000');
+      expect(data.quoteBreakdown).toBeUndefined();
+    });
+
+    it('audit เขียนหลัง CAS สำเร็จ — race-loser (count=0) ต้องไม่มี audit', async () => {
+      prisma.tradeIn.updateMany.mockResolvedValue({ count: 0 });
+      await expect(
+        service.appraiseOnline('ti-1', manualDto(9000), 'u1', 'OWNER'),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.auditLog.create).not.toHaveBeenCalled();
+    });
+
+    it('CAS สำเร็จ → audit ถูกเขียน 1 ครั้งพร้อม oldValue/newValue', async () => {
+      await service.appraiseOnline('ti-1', manualDto(11000), 'u1', 'OWNER');
+      expect(prisma.auditLog.create).toHaveBeenCalledTimes(1);
+      const arg = prisma.auditLog.create.mock.calls[0][0].data;
+      expect(arg.action).toBe('TRADE_IN_ONLINE_MANUAL_PRICE');
+      expect(arg.newValue.offeredPrice).toBe(11000);
+    });
+  });
 });

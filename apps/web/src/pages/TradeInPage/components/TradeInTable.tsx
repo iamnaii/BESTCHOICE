@@ -341,8 +341,6 @@ export default function TradeInTable({
             isLoading={isLoading}
             emptyMessage="ไม่พบรายการรับซื้อ"
             emptyIcon={RefreshCw}
-            searchable
-            searchPlaceholder="ค้นหาลูกค้า, ยี่ห้อ, รุ่น..."
             columnToggle
             pagination={
               total !== undefined

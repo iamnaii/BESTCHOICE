@@ -50,11 +50,4 @@ describe('ShopBuybackController routing', () => {
     await request(app.getHttpServer()).get('/shop/buyback/some-uuid').expect(200);
     expect(service.getStatus).toHaveBeenCalledWith('some-uuid');
   });
-
-  it('POST /shop/buyback/quick-quote → 410 Gone', async () => {
-    await request(app.getHttpServer())
-      .post('/shop/buyback/quick-quote')
-      .send({})
-      .expect(410);
-  });
 });

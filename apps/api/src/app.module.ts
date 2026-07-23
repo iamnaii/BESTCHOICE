@@ -120,7 +120,6 @@ import { ShopOrdersModule } from './modules/shop-orders/shop-orders.module';
 import { ShopMeModule } from './modules/shop-me/shop-me.module';
 import { ShopCsModule } from './modules/shop-cs/shop-cs.module';
 import { ShopReviewsModule } from './modules/shop-reviews/shop-reviews.module';
-import { ShopTradeInModule } from './modules/shop-trade-in/shop-trade-in.module';
 import { ShopBuybackModule } from './modules/shop-buyback/shop-buyback.module';
 import { ShopInstallmentApplyModule } from './modules/shop-installment-apply/shop-installment-apply.module';
 import { ShopSavingPlanModule } from './modules/shop-saving-plan/shop-saving-plan.module';
@@ -351,8 +350,6 @@ import { AppCacheModule } from './cache/cache.module';
     ShopCsModule,
     // Online Shop — product reviews (verified purchase + moderation) (Phase 3)
     ShopReviewsModule,
-    // Online Shop — customer online trade-in submission (exchange flow) (Phase 3)
-    ShopTradeInModule,
     // Online Shop — customer online buyback (pure cash-out flow) (Phase 3)
     ShopBuybackModule,
     // Online Shop — installment application (customer submit + admin review) (Phase 3)

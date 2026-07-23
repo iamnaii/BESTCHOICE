@@ -1,4 +1,4 @@
-import { Body, Controller, Get, GoneException, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import { ShopBuybackService } from './shop-buyback.service';
@@ -36,12 +36,6 @@ export class ShopBuybackController {
   @Throttle({ short: { limit: 5, ttl: 60_000 } })
   submit(@Body() dto: SubmitBuybackDto, @Req() req: Request & { user?: { sub?: string } }) {
     return this.service.submit(dto, req.user?.sub);
-  }
-
-  /** Endpoint เก่า — คงไว้ 1 release เป็น 410 กัน SPA bundle เก่าใน cache แล้วค่อยลบ */
-  @Post('quick-quote')
-  quickQuoteGone() {
-    throw new GoneException('เวอร์ชันหน้าเว็บเก่าเกินไป กรุณารีเฟรชหน้า (Ctrl+R) แล้วลองใหม่');
   }
 
   // ⚠️ ต้องอยู่ท้ายสุดเสมอ — ไม่งั้นกลืน catalog/questions

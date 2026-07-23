@@ -587,15 +587,12 @@ export class BadDebtService {
       // T3-C6 — enforce amount-tier approval rule before any write.
       this.assertWriteOffTierPermitted(outstandingAmount, writer.role, approver.role);
 
-      // Capture total active provision amount before updating status (Decimal sum)
-      const activeProvisions = await tx.badDebtProvision.findMany({
-        where: { contractId, status: 'ACTIVE', deletedAt: null },
-        select: { provisionAmount: true },
-      });
-      const existingProvisionDec = activeProvisions.reduce(
-        (sum, p) => sum.add(new Decimal(p.provisionAmount.toString())),
-        new Decimal(0),
-      );
+      // Capture provision amount from the real 11-2102 GL balance — NOT the
+      // badDebtProvision rows. BadDebtWriteOffTemplate derives its
+      // provisionConsumed the same way; if a past provision JE ever failed
+      // silently the DB rows and the GL can diverge, and this audit log must
+      // report what the JE actually consumed, not what the rows claim.
+      const existingProvisionDec = await this.glBalance(contractId, '11-2102', 'cr', tx);
       const existingProvisionAmount = existingProvisionDec.toNumber();
 
       // Update contract status to CLOSED_BAD_DEBT
@@ -756,8 +753,11 @@ export class BadDebtService {
       // No aging-bucket stage-drop semantics for TERMINATED at payment time —
       // there are no more due dates to age against. Only fully release the
       // provision when carrying amount is truly settled (<=0). Otherwise
-      // leave the provision untouched: the daily cron (calculateProvisions,
-      // GL-based delta) owns TERMINATED adjustments within 24h.
+      // leave the provision untouched: provision อัปเดตโดย daily cron เมื่อ
+      // สัญญามีงวดค้างอย่างน้อย 1 งวด (dueDate < now); ถ้าชำระงวดค้างครบแต่
+      // ยังมีงวดอนาคต provision จะคงค้างที่ค่าเดิม (ทิศ conservative) จนกว่า
+      // งวดถัดไปเลย dueDate — นโยบาย escalate ระหว่างช่องว่างนี้รอ owner/CPA
+      // ตัดสิน (spec 2026-07-23 §4 1c follow-up).
       if (totalOutstanding.gt(0)) return null;
       return this.fullReverseProvision(contractId, existing, db, tx);
     }

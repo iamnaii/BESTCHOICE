@@ -716,14 +716,20 @@ describe('BadDebtService', () => {
         expect(Number(data.outstandingAmount)).toBe(25_000);
       });
 
-      it('records provisionAmount from existing ACTIVE provisions', async () => {
+      it('records provisionAmount from GL 11-2102 balance (not DB rows)', async () => {
+        // DB rows say 1,000.00 (would be wrong if a past provision JE ever
+        // failed silently) but the real GL 11-2102 balance is only 800.00 —
+        // the audit log must report what the JE actually consumed (GL wins).
         prisma.badDebtProvision.findMany.mockResolvedValue([
           { provisionAmount: new Prisma.Decimal(1_000) },
-          { provisionAmount: new Prisma.Decimal(500) },
+        ]);
+        prisma.journalLine.findMany.mockResolvedValue([
+          { debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('500.00') },
+          { debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('300.00') },
         ]);
         await service.writeOffBadDebt('c1', 'bm-1', 'fm-1');
         const data = prisma.badDebtWriteOffAuditLog.create.mock.calls[0][0].data;
-        expect(Number(data.provisionAmount)).toBe(1_500);
+        expect(Number(data.provisionAmount)).toBe(800);
       });
 
       it('does not write audit log if tier rule rejects the write-off', async () => {

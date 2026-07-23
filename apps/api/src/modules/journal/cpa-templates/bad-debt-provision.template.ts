@@ -6,20 +6,31 @@ import { PrismaService } from '../../../prisma/prisma.service';
 
 export interface BadDebtProvisionInput {
   contractId: string;
-  /** Delta provision amount (positive = increase, must be > 0) */
+  /**
+   * SIGNED delta: บวก = ตั้งสำรองเพิ่ม (Dr 51-1103 / Cr 11-2102),
+   * ลบ = release สำรอง (Dr 11-2102 / Cr 51-1103). ศูนย์ = skip.
+   */
   provisionAmount: Decimal;
-  /** Period string e.g. '2026-04' */
+  /** Period string e.g. '2026-04' (metadata/description เท่านั้น — ไม่ใช่ idempotency key แล้ว) */
   period: string;
+  /** Idempotency key: YYYY-MM-DD (BKK). default = วันนี้เวลา BKK */
+  runDate?: string;
 }
 
 /**
- * Template — Bad Debt Provision (monthly close).
+ * Template — Bad Debt Provision (monthly close, ECL-driven).
  *
- * JE:
- *   Dr 51-1103 ค่าเผื่อหนี้สงสัยจะสูญ (เพิ่มในปี)   [provisionAmount]
- *     Cr 11-2102 ค่าเผื่อหนี้สงสัยจะสูญ (Contra)      [provisionAmount]
+ * provisionAmount is a SIGNED delta from the ECL engine:
+ *   positive → increase provision:
+ *     Dr 51-1103 ค่าเผื่อหนี้สงสัยจะสูญ (เพิ่มในปี)   [amount]
+ *       Cr 11-2102 ค่าเผื่อหนี้สงสัยจะสูญ (Contra)      [amount]
+ *   negative → release provision:
+ *     Dr 11-2102 ค่าเผื่อหนี้สงสัยจะสูญ (Contra)      [amount]
+ *       Cr 51-1103 ค่าเผื่อหนี้สงสัยจะสูญ (เพิ่มในปี)   [amount]
  *
- * Idempotent: skips if a JE with same contractId + period already exists.
+ * Idempotent per (flow, contractId, runDate) — a cron re-run on the same
+ * BKK day will not double-post, but a different runDate (even same period)
+ * posts again. period is descriptive metadata only.
  */
 @Injectable()
 export class BadDebtProvisionTemplate {
@@ -32,63 +43,83 @@ export class BadDebtProvisionTemplate {
 
   async execute(input: BadDebtProvisionInput): Promise<{ entryNo: string } | null> {
     const { contractId, provisionAmount, period } = input;
+    const runDate =
+      input.runDate ??
+      new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' }); // YYYY-MM-DD
 
-    if (provisionAmount.lte(0)) {
+    if (provisionAmount.abs().lt(new Decimal('0.005'))) {
       this.logger.warn(
-        `[A.5a] BadDebtProvision skipped — provisionAmount=${provisionAmount.toFixed(2)} for contract ${contractId} period ${period}`,
+        `[A.5a] BadDebtProvision skipped — delta=${provisionAmount.toFixed(2)} for contract ${contractId} runDate ${runDate}`,
       );
       return null;
     }
 
-    // Idempotency check
+    // Idempotency: (flow, contractId, runDate) — daily cron รันซ้ำวันเดียวกันไม่ post ซ้ำ
     const existing = await this.prisma.journalEntry.findFirst({
       where: {
         AND: [
           { metadata: { path: ['flow'], equals: 'provision' } } as Prisma.JournalEntryWhereInput,
-          {
-            metadata: { path: ['contractId'], equals: contractId },
-          } as Prisma.JournalEntryWhereInput,
-          {
-            metadata: { path: ['period'], equals: period },
-          } as Prisma.JournalEntryWhereInput,
+          { metadata: { path: ['contractId'], equals: contractId } } as Prisma.JournalEntryWhereInput,
+          { metadata: { path: ['runDate'], equals: runDate } } as Prisma.JournalEntryWhereInput,
         ],
         deletedAt: null,
       },
     });
-
     if (existing) {
       this.logger.log(
-        `[A.5a] BadDebtProvision idempotency — JE ${existing.entryNumber} already exists for contract ${contractId} period ${period}, skipping`,
+        `[A.5a] BadDebtProvision idempotency — JE ${existing.entryNumber} already exists for contract ${contractId} runDate ${runDate}, skipping`,
       );
       return { entryNo: existing.entryNumber };
     }
 
     const zero = new Decimal(0);
+    const isRelease = provisionAmount.isNegative();
+    const amount = provisionAmount.abs().toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+    const direction = isRelease ? 'release' : 'increase';
+
+    const lines = isRelease
+      ? [
+          {
+            accountCode: '11-2102',
+            dr: amount,
+            cr: zero,
+            description: `กลับค่าเผื่อหนี้สงสัยจะสูญ (ลดสำรอง) — สัญญา ${contractId.slice(0, 8)}`,
+          },
+          {
+            accountCode: '51-1103',
+            dr: zero,
+            cr: amount,
+            description: `กลับค่าเผื่อหนี้สงสัยจะสูญ (เพิ่มในปี) — ${period}`,
+          },
+        ]
+      : [
+          {
+            accountCode: '51-1103',
+            dr: amount,
+            cr: zero,
+            description: `ค่าเผื่อหนี้สงสัยจะสูญ (เพิ่มในปี) — ${period}`,
+          },
+          {
+            accountCode: '11-2102',
+            dr: zero,
+            cr: amount,
+            description: `ค่าเผื่อหนี้สงสัยจะสูญ (Contra) — สัญญา ${contractId.slice(0, 8)}`,
+          },
+        ];
 
     const result = await this.journal.createAndPost({
-      description: `ตั้งสำรองหนี้สงสัยจะสูญ — สัญญา ${contractId.slice(0, 8)} งวด ${period}`,
-      reference: `${contractId}:bad-debt-provision:${period}`,
+      description: `${isRelease ? 'กลับ' : 'ตั้ง'}สำรองหนี้สงสัยจะสูญ — สัญญา ${contractId.slice(0, 8)} งวด ${period}`,
+      reference: `${contractId}:bad-debt-provision:${runDate}`,
       metadata: {
         tag: 'BAD-DEBT',
         flow: 'provision',
+        direction,
         contractId,
         period,
+        runDate,
         provisionAmount: provisionAmount.toFixed(2),
       },
-      lines: [
-        {
-          accountCode: '51-1103',
-          dr: provisionAmount,
-          cr: zero,
-          description: `ค่าเผื่อหนี้สงสัยจะสูญ (เพิ่มในปี) — ${period}`,
-        },
-        {
-          accountCode: '11-2102',
-          dr: zero,
-          cr: provisionAmount,
-          description: `ค่าเผื่อหนี้สงสัยจะสูญ (Contra) — สัญญา ${contractId.slice(0, 8)}`,
-        },
-      ],
+      lines,
     });
 
     return { entryNo: result.entryNumber };

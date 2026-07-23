@@ -59,6 +59,7 @@ describe('BadDebtProvisionTemplate', () => {
       contractId,
       provisionAmount: new Decimal('500.00'),
       period: '2026-04',
+      runDate: '2026-04-01',
     });
 
     expect(result).not.toBeNull();
@@ -69,7 +70,7 @@ describe('BadDebtProvisionTemplate', () => {
         AND: [
           { metadata: { path: ['flow'], equals: 'provision' } } as any,
           { metadata: { path: ['contractId'], equals: contractId } } as any,
-          { metadata: { path: ['period'], equals: '2026-04' } } as any,
+          { metadata: { path: ['runDate'], equals: '2026-04-01' } } as any,
         ],
       },
       include: { lines: true },
@@ -92,17 +93,19 @@ describe('BadDebtProvisionTemplate', () => {
     expect(new Decimal(crLine!.credit.toString()).toFixed(2)).toBe('500.00');
   });
 
-  it('is idempotent — second call returns same entry, no duplicate JE', async () => {
+  it('is idempotent by runDate — second call with same runDate returns same entry, no duplicate JE', async () => {
     const tmpl = new BadDebtProvisionTemplate(journal, prisma as any);
     const first = await tmpl.execute({
       contractId,
       provisionAmount: new Decimal('500.00'),
       period: '2026-04',
+      runDate: '2026-04-01',
     });
     const second = await tmpl.execute({
       contractId,
       provisionAmount: new Decimal('500.00'),
       period: '2026-04',
+      runDate: '2026-04-01',
     });
 
     expect(first!.entryNo).toBe(second!.entryNo);
@@ -112,7 +115,7 @@ describe('BadDebtProvisionTemplate', () => {
         AND: [
           { metadata: { path: ['flow'], equals: 'provision' } } as any,
           { metadata: { path: ['contractId'], equals: contractId } } as any,
-          { metadata: { path: ['period'], equals: '2026-04' } } as any,
+          { metadata: { path: ['runDate'], equals: '2026-04-01' } } as any,
         ],
         deletedAt: null,
       },
@@ -126,16 +129,18 @@ describe('BadDebtProvisionTemplate', () => {
       contractId,
       provisionAmount: new Decimal('0.00'),
       period: '2026-05',
+      runDate: '2026-05-01',
     });
     expect(result).toBeNull();
   });
 
-  it('posts a separate JE for a different period', async () => {
+  it('posts a separate JE for a different runDate (period is no longer the idempotency key)', async () => {
     const tmpl = new BadDebtProvisionTemplate(journal, prisma as any);
     const result = await tmpl.execute({
       contractId,
       provisionAmount: new Decimal('200.00'),
       period: '2026-06',
+      runDate: '2026-06-01',
     });
 
     expect(result).not.toBeNull();
@@ -149,7 +154,67 @@ describe('BadDebtProvisionTemplate', () => {
         deletedAt: null,
       },
     });
-    // Should have 2026-04 + 2026-06 entries (not 2026-05 which was 0)
+    // Should have 2026-04-01 + 2026-06-01 entries (not 2026-05-01 which was 0)
     expect(jeCount).toBeGreaterThanOrEqual(2);
+  });
+
+  it('posts RELEASE JE (Dr 11-2102 / Cr 51-1103) when provisionAmount is negative', async () => {
+    const c = await seedStandard17k12m(prisma);
+    const tmpl = new BadDebtProvisionTemplate(journal, prisma as any);
+    await tmpl.execute({
+      contractId: c.id,
+      provisionAmount: new Decimal('500.00'),
+      period: '2026-07',
+      runDate: '2026-07-23',
+    });
+    const result = await tmpl.execute({
+      contractId: c.id,
+      provisionAmount: new Decimal('-200.00'),
+      period: '2026-07',
+      runDate: '2026-07-24',
+    });
+    expect(result).not.toBeNull();
+
+    const je = await prisma.journalEntry.findFirst({
+      where: {
+        AND: [
+          { metadata: { path: ['flow'], equals: 'provision' } } as any,
+          { metadata: { path: ['contractId'], equals: c.id } } as any,
+          { metadata: { path: ['runDate'], equals: '2026-07-24' } } as any,
+        ],
+      },
+      include: { lines: true },
+    });
+    expect(je).toBeDefined();
+    const dr2102 = je!.lines.find((l) => l.accountCode === '11-2102');
+    const cr51 = je!.lines.find((l) => l.accountCode === '51-1103');
+    expect(new Decimal(dr2102!.debit.toString()).toFixed(2)).toBe('200.00');
+    expect(new Decimal(cr51!.credit.toString()).toFixed(2)).toBe('200.00');
+  });
+
+  it('same runDate posts once (idempotent), different runDate posts again', async () => {
+    const c = await seedStandard17k12m(prisma);
+    const tmpl = new BadDebtProvisionTemplate(journal, prisma as any);
+    const first = await tmpl.execute({
+      contractId: c.id, provisionAmount: new Decimal('100.00'), period: '2026-07', runDate: '2026-07-23',
+    });
+    const dup = await tmpl.execute({
+      contractId: c.id, provisionAmount: new Decimal('999.00'), period: '2026-07', runDate: '2026-07-23',
+    });
+    expect(dup!.entryNo).toBe(first!.entryNo); // skipped, returns existing
+
+    const second = await tmpl.execute({
+      contractId: c.id, provisionAmount: new Decimal('50.00'), period: '2026-07', runDate: '2026-07-24',
+    });
+    expect(second!.entryNo).not.toBe(first!.entryNo); // same month, new day → posts
+  });
+
+  it('skips when provisionAmount is zero', async () => {
+    const c = await seedStandard17k12m(prisma);
+    const tmpl = new BadDebtProvisionTemplate(journal, prisma as any);
+    const r = await tmpl.execute({
+      contractId: c.id, provisionAmount: new Decimal('0'), period: '2026-07', runDate: '2026-07-25',
+    });
+    expect(r).toBeNull();
   });
 });

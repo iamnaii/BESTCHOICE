@@ -1,7 +1,7 @@
 # ECL ให้ตรง Excel v3 (TFRS for NPAEs Ch.13) — Design
 
 - **วันที่:** 2026-07-23
-- **สถานะ:** อนุมัติ design โดย owner แล้ว — รอเขียน implementation plan
+- **สถานะ:** อนุมัติ design โดย owner แล้ว + แก้ตาม scrutinize รอบ 2 (ฐาน TERMINATED = carrying amount, delta เทียบ GL) — รอเขียน implementation plan
 - **ที่มา:** owner ส่งไฟล์ `ECL_System_v3.csv` (การตั้งค่าเผื่อระบบ ECL v3.0 Bug Fix #7 — Pattern 2A + Daily Cron) แล้วถามว่าระบบคิดตามนี้หรือไม่ → ตรวจโค้ด 5 มิติ (workflow `verify-ecl-vs-excel`, 2026-07-23) พบว่าแกนหลักตรง แต่มีช่องว่าง 9 ข้อ + bug ที่ template ตั้งสำรอง
 
 ## 1. เป้าหมาย
@@ -39,7 +39,8 @@
 
 การแก้:
 - Template รับ delta 2 ทิศ: บวก = `Dr 51-1103 / Cr 11-2102` (เดิม), ลบ = กลับทิศ `Dr 11-2102 / Cr 51-1103` (release) — logic อยู่ใน template เดียว
-- Idempotency เปลี่ยนเป็น `(contractId, run-date YYYY-MM-DD)`; ด่านแรกยังเป็น delta=0-skip ใน `calculateProvisions` (รันซ้ำวันเดียวกัน prev=new → delta 0 เอง)
+- **delta คิดเทียบยอดคงเหลือ GL 11-2102 ราย contract** (query journal lines — pattern เดียวกับ `provisionBalance` ใน write-off/JP5 template) ไม่ใช่เทียบแถว `BadDebtProvision` ใน DB — JE ที่เคย fail (non-blocking + Sentry) จะถูกเติมคืนอัตโนมัติรอบถัดไป (self-healing, แก้จุด drift ถาวรที่ scrutinize รอบ 2 พบ)
+- Idempotency เปลี่ยนเป็น `(contractId, run-date YYYY-MM-DD)`; ด่านแรกยังเป็น delta=0-skip ใน `calculateProvisions` (รันซ้ำวันเดียวกัน delta = 0 เองเพราะ GL ถูกอัปเดตแล้ว)
 - Metadata เพิ่ม `direction: 'increase' | 'release'` เพื่อให้ audit อ่านง่าย
 
 ### 1b. ฐานคำนวณเหมือนกันทุกเส้นทาง
@@ -52,6 +53,8 @@
 
 - `calculateProvisions`: เพิ่ม `TERMINATED` เข้า contract status filter → สัญญาบอกเลิกแล้ว escalate ต่อไป B4 75% / B5 100% ตาม Excel ระหว่างรอยึด/ตัดหนี้สูญ
   - ยืนยันแล้วว่าไม่ double-count: ยึดเครื่องเสร็จ contract ถูก set `CLOSED_BAD_DEBT` ทันที (repossessions.service.ts:316-319) หลุด scope เอง และ provision ถูก consume โดย JP5
+- **ฐานของสัญญา TERMINATED = มูลค่าตามบัญชีของลูกหนี้ (carrying amount) ไม่ใช่ Σ(amountDue−amountPaid) ของงวดที่เลย dueDate**: หลังบอกเลิก 2A หยุด accrue แต่งวดอนาคตยังทยอยเลย dueDate เข้า filter เดิมทั้งที่ไม่เคยเข้า 11-2103 → ฐานจะบวมรวมดอกเบี้ยที่ยังไม่รับรู้ (11-2106) + VAT ที่ยังไม่เกิดความรับผิด → ที่ B5 100% ค่าเผื่อจะเกิน carrying amount (ตั้งค่าใช้จ่ายบนรายได้ที่ไม่เคยรับรู้ — ผิด TFRS)
+  - สูตร: งวด accrued ค้าง (ตรงกับ 11-2103) + ส่วนที่ยังไม่ accrue สุทธิจาก unearned interest และ VAT deferred — แนวเดียวกับยอดปิดสัญญาที่ JP5 ใช้ (`computePayoffQuote`, สอดคล้อง payoff-parity rule) — ปักสูตรแน่นอน + golden test ในขั้น plan
 - Cron `bad-debt-provision.cron.ts`: `'30 0 1 * *'` → `'30 0 * * *'` (ทุกวัน 00:30 BKK — หลัง 2A accrual 00:01)
 - JE volume ยอมรับได้เพราะโพสต์เฉพาะสัญญาที่ delta ≠ 0
 
@@ -77,12 +80,13 @@
 - เปิด `letter_auto_generate_enabled='true'`: แก้ seed (`collections-foundation.seed.ts`) + label (เอา "ปิดไว้จนกว่าจะผ่านการตรวจสอบทางกฎหมาย" ออก) + upsert ค่าบน prod (idempotent script/manual SQL — ระบุใน plan)
 - Seed `jp5_require_terminated_status='true'` (key มีใน code แล้ว — repossessions.service.ts:240-249 — แต่ไม่เคย seed, default lenient)
 - Gate ตัดหนี้สูญ: `writeOffBadDebt` โยน `BadRequestException` ข้อความไทย ถ้า `contract.status !== 'TERMINATED'`
-  - เส้นยึดเครื่องไม่กระทบ — repossession โพสต์ write-off JE ผ่าน template ตรง ไม่ผ่าน service นี้ (verify อีกครั้งตอน implement)
+  - เส้นยึดเครื่องไม่กระทบ — **ยืนยันแล้ว**: repossession โพสต์ write-off ผ่าน `RepossessionJP5Template` ตรง (repossessions.service.ts:374-376) ไม่ผ่าน service นี้
+- Seed upsert ต้องไม่ทับค่า config ที่ owner ตั้งเองบน prod ตอน re-run (create-if-missing / preserve แบบเดียวกับ seedShopCoa preserve peakCode)
 - **สื่อสารทีมก่อนเปิด:** จดหมาย 60 วันจะเข้าคิวอัตโนมัติทุกวัน 09:15, ยึดเครื่อง/ตัดหนี้สูญต้องผ่าน dispatch หนังสือ + เลข EMS ก่อนเสมอ
 
 ## 6. เฟส 3 — เอกสารใบลดหนี้ + LINE (PR ที่สาม)
 
-- สร้างเอกสาร CN ตาม pattern receipt-void เดิม (`receiptType='CREDIT_NOTE'` + PDF หัว "ใบลดหนี้" — receipt-void.service.ts / receipt-pdf.service.ts) — ใช้ convention เลขที่เดิมของ flow นั้น
+- สร้างเอกสาร CN ตาม pattern receipt-void เดิม (`receiptType='CREDIT_NOTE'` + PDF หัว "ใบลดหนี้" — receipt-void.service.ts / receipt-pdf.service.ts) — ยืนยันแล้ว `Receipt.paymentId` nullable (schema.prisma:3171) จึงออก CN แบบไม่มี payment ได้; เลขที่ใช้ running RT ต่อเนื่องตาม void-CN เดิม (receipt-void.service.ts:181)
 - Trigger: JP5 และ write-off ที่ stamp `creditNoteIssued=true` → สร้าง CN record ใน transaction, PDF gen แบบ async
 - ส่ง LINE อัตโนมัติผ่าน OA FINANCE + **delivery tracking**:
   - ส่งสำเร็จ → บันทึกสถานะ + timestamp
@@ -116,7 +120,7 @@
 
 - เปลี่ยนฐานเป็น NET_PI (รอ CPA — §9)
 - SHOP-side ECL (SHOP ไม่มีลูกหนี้ผ่อน)
-- Migration ย้อนหลังของ provision รายเดือนที่เคย skip delta ติดลบ — GL จะ self-correct ในรอบแรกที่รันหลังเฟส 1 (delta คิดจาก prev จริงใน DB)
+- Migration ย้อนหลังของ provision รายเดือนที่เคย skip delta ติดลบ — GL จะ self-correct ในรอบแรกที่รันหลังเฟส 1 โดยโครงสร้าง เพราะ delta คิดเทียบ GL 11-2102 โดยตรง (§4 1a)
 
 ## 11. อ้างอิง
 

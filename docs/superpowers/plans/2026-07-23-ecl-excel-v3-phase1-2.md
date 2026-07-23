@@ -830,8 +830,8 @@ Dr 51-1102  plug (loss ส่วนเกินค่าเผื่อ)        
 ```
 
 Golden values (17k/12, 1A + 2A×3 งวด, ไม่มีชำระ, provision 0):
-- Cr 11-2103 = 4,547.49 · Cr 11-2101 = 12,750.02 · Cr 11-2105 = 892.51 · Cr 21-2101 = 892.51 · Cr 41-1101 = 4,500.00 → ΣCr = 23,582.53
-- Dr 21-2101 = 297.51 · Dr 11-2106 = 4,500.00 · Dr 21-2102 = 892.51 → Dr 51-1102 (plug) = **17,892.51**
+- Cr 11-2103 = 4,547.49 · Cr 11-2101 = 12,750.02 · Cr 11-2105 = 892.49 · Cr 21-2101 = 892.49 · Cr 41-1101 = 4,500.00 → ΣCr = 23,582.49
+- Dr 21-2101 = 297.51 · Dr 11-2106 = 4,500.00 · Dr 21-2102 = 892.49 → Dr 51-1102 (plug) = **17,892.49**
 
 - [ ] **Step 1: เขียน failing tests (เพิ่มใน spec เดิม)**
 
@@ -867,11 +867,11 @@ Golden values (17k/12, 1A + 2A×3 งวด, ไม่มีชำระ, provis
     expect(get('11-2103', 'credit')).toBe('4547.49');
     expect(get('11-2101', 'credit')).toBe('12750.02');
     expect(get('11-2106', 'debit')).toBe('4500.00');
-    expect(get('21-2102', 'debit')).toBe('892.51');
-    expect(get('11-2105', 'credit')).toBe('892.51');
-    expect(get('21-2101', 'credit')).toBe('892.51');   // deferred VAT ถึงกำหนด
+    expect(get('21-2102', 'debit')).toBe('892.49');
+    expect(get('11-2105', 'credit')).toBe('892.49');
+    expect(get('21-2101', 'credit')).toBe('892.49');   // deferred VAT ถึงกำหนด
     expect(get('41-1101', 'credit')).toBe('4500.00');
-    expect(get('51-1102', 'debit')).toBe('17892.51');  // loss plug
+    expect(get('51-1102', 'debit')).toBe('17892.49');  // loss plug
 
     const totalDr = je!.lines.reduce((s, l) => s.plus(l.debit.toString()), new Decimal(0));
     const totalCr = je!.lines.reduce((s, l) => s.plus(l.credit.toString()), new Decimal(0));

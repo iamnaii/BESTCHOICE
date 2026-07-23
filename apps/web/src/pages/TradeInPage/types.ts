@@ -22,8 +22,9 @@ export interface TradeIn {
   paymentMethod?: 'CASH' | 'TRANSFER' | null;
   submissionSource?: TradeInSubmissionSource;
   flow?: TradeInFlow;
-  customer: { id: string; name: string } | null;
+  branchId?: string | null;
   branch?: { id: string; name: string } | null;
+  customer: { id: string; name: string } | null;
   appraisedBy?: { id: string; name: string } | null;
   idCardVerifiedBy?: { id: string; name: string } | null;
 

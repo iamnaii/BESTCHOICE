@@ -57,6 +57,7 @@ const pages: NavEntry[] = [
   { label: 'ประวัติการขาย', path: '/sales', icon: Receipt, keywords: 'sales history' },
   { label: 'ลูกค้า', path: '/customers', icon: Users, keywords: 'customer ลูกค้า' },
   { label: 'รายชื่อผู้ติดต่อ', path: '/contacts', icon: BookUser, keywords: 'contacts ผู้ติดต่อ ผู้ขาย supplier ไฟแนนซ์ สมุดผู้ติดต่อ', roles: ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
+  { label: 'รับซื้อมือสอง / เทิร์น', path: '/trade-in', icon: Smartphone, keywords: 'trade-in buyback sell รับซื้อ เทิร์น มือสอง', roles: ['OWNER', 'BRANCH_MANAGER', 'SALES'] },
   { label: 'สัญญาผ่อน', path: '/contracts', icon: FileCheck, keywords: 'contract สัญญา ผ่อน' },
   { label: 'ชำระเงิน', path: '/payments', icon: DollarSign, keywords: 'payment ชำระ จ่าย' },
   { label: 'ใบเสร็จรับเงิน', path: '/payments?tab=receipts', icon: Receipt, keywords: 'receipt ใบเสร็จ', roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },

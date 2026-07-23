@@ -94,7 +94,7 @@ export default function TradeInPage() {
   });
 
   const acceptMutation = useMutation({
-    mutationFn: async ({ id, body }: { id: string; body: AcceptFormState }) =>
+    mutationFn: async ({ id, body }: { id: string; body: AcceptFormState & { branchId?: string } }) =>
       api.post(`/trade-ins/${id}/accept`, body),
     onSuccess: () => {
       toast.success('ยอมรับการรับซื้อเรียบร้อย');

@@ -1,4 +1,8 @@
+import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
+import { useQuery } from '@tanstack/react-query';
+import api from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 import Modal from '@/components/ui/Modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,7 +16,7 @@ interface AcceptModalProps {
   form: AcceptFormState;
   isPending: boolean;
   onChange: (patch: Partial<AcceptFormState>) => void;
-  onConfirm: (id: string, body: AcceptFormState) => void;
+  onConfirm: (id: string, body: AcceptFormState & { branchId?: string }) => void;
   onClose: () => void;
 }
 
@@ -24,8 +28,26 @@ export default function AcceptModal({
   onConfirm,
   onClose,
 }: AcceptModalProps) {
+  const { user } = useAuth();
+  // Mirror CROSS_BRANCH_ROLES ฝั่ง backend (branch-access.util.ts) — role อื่นล็อกสาขาตัวเอง
+  const canPickBranch = ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'].includes(user?.role ?? '');
+  const needBranch = !!item && !item.branchId;
+  const [branchId, setBranchId] = useState<string>('');
+  useEffect(() => {
+    if (item) setBranchId(item.branchId ?? user?.branchId ?? '');
+  }, [item, user?.branchId]);
+  const { data: branches } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ['branches'],
+    queryFn: async () => (await api.get('/branches')).data,
+    enabled: needBranch && canPickBranch,
+  });
+
   function handleConfirm() {
     if (!item) return;
+    if (needBranch && !branchId) {
+      toast.error('กรุณาเลือกสาขาที่รับเครื่อง');
+      return;
+    }
     if (!form.idCardVerified || !form.sellerConsentSigned) {
       toast.error('กรุณายืนยันการตรวจบัตรและความยินยอมก่อน');
       return;
@@ -40,7 +62,7 @@ export default function AcceptModal({
       toast.error('กรุณาให้ผู้ขายลงลายเซ็นก่อน');
       return;
     }
-    onConfirm(item.id, form);
+    onConfirm(item.id, needBranch ? { ...form, branchId } : form);
   }
 
   return (
@@ -62,6 +84,31 @@ export default function AcceptModal({
               <strong>ราคาตกลง:</strong> ฿{Number(item.offeredPrice ?? 0).toLocaleString()}
             </p>
           </div>
+
+          {needBranch && (
+            <div>
+              <Label>สาขาที่รับเครื่อง *</Label>
+              {canPickBranch ? (
+                <select
+                  className="mt-1.5 w-full h-10 rounded-lg border border-input bg-background px-3 text-sm"
+                  value={branchId}
+                  onChange={(e) => setBranchId(e.target.value)}
+                >
+                  <option value="">-- เลือกสาขา --</option>
+                  {(branches ?? []).map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <p className="mt-1.5 text-sm text-muted-foreground">
+                  รับเข้าสาขาของคุณโดยอัตโนมัติ (รายการออนไลน์ยังไม่ผูกสาขา)
+                </p>
+              )}
+            </div>
+          )}
+
           <label className="flex items-start gap-2 cursor-pointer p-2 rounded-lg hover:bg-muted">
             <input
               type="checkbox"

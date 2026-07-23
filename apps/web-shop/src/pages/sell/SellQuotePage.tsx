@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import { CheckCircle2, ChevronDown, MessageCircle } from 'lucide-react';
 import { api } from '@/lib/api';
-import { copy } from '@/lib/copy';
+import { copy, shopInfo } from '@/lib/copy';
 import { useTrackEvent } from '@/hooks/useTrackEvent';
 import ShopLayout from '@/components/layout/ShopLayout';
 import {
@@ -490,7 +490,7 @@ export default function SellQuotePage() {
             <CardBody className="space-y-3 leading-snug">
               <p className="text-sm text-muted-foreground leading-snug">{copy.sell.modelUnavailable}</p>
               <Button asChild variant="outline" fullWidth>
-                <a href="https://line.me/R/ti/p/@bestchoice" target="_blank" rel="noreferrer">
+                <a href={shopInfo.lineUrl} target="_blank" rel="noreferrer">
                   <MessageCircle className="size-4" aria-hidden="true" />
                   สอบถามราคาทางไลน์
                 </a>

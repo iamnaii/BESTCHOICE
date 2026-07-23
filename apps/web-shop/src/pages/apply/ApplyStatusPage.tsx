@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { AxiosError } from 'axios';
 import { FileSearch, MessageCircle, AlertTriangle } from 'lucide-react';
 import { api } from '@/lib/api';
+import { shopInfo } from '@/lib/copy';
 import ShopLayout from '@/components/layout/ShopLayout';
 import {
   Badge,
@@ -195,7 +196,7 @@ export default function ApplyStatusPage() {
                   )}
 
                   <Button asChild variant="outline" size="lg" fullWidth>
-                    <a href="https://line.me/R/ti/p/@bestchoice" target="_blank" rel="noreferrer">
+                    <a href={shopInfo.lineUrl} target="_blank" rel="noreferrer">
                       <MessageCircle className="size-4" aria-hidden="true" />
                       สอบถามทีมงานทาง LINE
                     </a>

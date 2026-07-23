@@ -41,4 +41,4 @@ Disallow: /
 User-agent: CCBot
 Disallow: /
 
-Sitemap: https://shop.bestchoicephone.app/sitemap.xml
+Sitemap: https://www.bestchoicephone.com/sitemap.xml

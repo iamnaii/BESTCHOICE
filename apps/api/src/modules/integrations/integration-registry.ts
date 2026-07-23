@@ -402,7 +402,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
   {
     key: 'ga4',
     name: 'Google Analytics 4',
-    description: 'วัดพฤติกรรมผู้ใช้ในหน้าร้านออนไลน์ (bestchoicephone.app)',
+    description: 'วัดพฤติกรรมผู้ใช้ในหน้าร้านออนไลน์ (www.bestchoicephone.com)',
     icon: 'line-chart',
     fields: [
       {

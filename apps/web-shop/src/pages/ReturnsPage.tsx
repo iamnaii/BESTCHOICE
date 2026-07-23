@@ -73,7 +73,7 @@ export default function ReturnsPage() {
                   <Stack gap={2}>
                     <Button asChild variant="primary" size="md" fullWidth>
                       <a
-                        href="https://line.me/R/ti/p/@bestchoice"
+                        href={shopInfo.lineUrl}
                         target="_blank"
                         rel="noopener noreferrer"
                       >

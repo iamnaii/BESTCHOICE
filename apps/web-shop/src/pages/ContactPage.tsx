@@ -60,7 +60,7 @@ export default function ContactPage() {
                   </div>
                   <Button asChild variant="primary" size="lg" fullWidth>
                     <a
-                      href="https://line.me/R/ti/p/@bestchoice"
+                      href={shopInfo.lineUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                     >

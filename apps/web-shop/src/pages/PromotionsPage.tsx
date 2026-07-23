@@ -18,6 +18,7 @@ import {
   promoEndsLabel,
 } from '@/components/shop/PromotionsStrip';
 import { usePageMeta } from '@/hooks/usePageMeta';
+import { shopInfo } from '@/lib/copy';
 import type { ShopPromotion } from '@/types/promotion';
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -106,7 +107,7 @@ export default function PromotionsPage() {
                       <Link to="/products">ดูสินค้า</Link>
                     </Button>
                     <Button asChild variant="outline" size="sm">
-                      <a href="https://line.me/R/ti/p/@bestchoice" target="_blank" rel="noreferrer">
+                      <a href={shopInfo.lineUrl} target="_blank" rel="noreferrer">
                         <MessageCircle className="size-4" aria-hidden="true" />
                         สอบถาม
                       </a>

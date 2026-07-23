@@ -138,13 +138,17 @@ jobs:
       # the first runs caught were fixed (#1331, #1333) and the suite is green.
       # contract-cancellation.template.spec.ts is excluded: it is a jest-format
       # mocked unit spec (uses jest.* globals) that crashes vitest's collector.
+      # src/modules/accounting/*.integration.spec.ts (bad-debt streak specs) added
+      # Task 7 — jest ignores them too (same .integration.spec.ts naming as above),
+      # so they NEVER ran in CI either until now.
       - name: Run DB-backed money-invariant specs (vitest — #1328)
         timeout-minutes: 10
         working-directory: apps/api
         run: |
           FILES=$(ls src/modules/journal/cpa-templates/*.spec.ts | grep -v contract-cancellation.template.spec.ts)
           npx vitest run --no-file-parallelism $FILES \
-            src/modules/installments/reschedule.service.spec.ts
+            src/modules/installments/reschedule.service.spec.ts \
+            src/modules/accounting/*.integration.spec.ts
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/test_db?schema=public
           DATABASE_URL_FINANCE: postgresql://test:test@localhost:5433/test_finance_db?schema=public

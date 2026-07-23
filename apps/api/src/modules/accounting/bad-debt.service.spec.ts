@@ -214,9 +214,9 @@ describe('BadDebtService', () => {
 
       const created = prisma.badDebtProvision.createMany.mock.calls[0][0].data;
       expect(created).toHaveLength(1); // one provision per contract
-      // outstanding = (1000 - 200 + 50) + (500 - 0 + 0) = 850 + 500 = 1350
+      // outstanding = (1000 - 200) + (500 - 0) = 800 + 500 = 1300 (lateFee excluded — Task 3)
       // PR #780 Wave 1: outstandingAmount is now persisted as Decimal (not Number cast)
-      expect(Number(created[0].outstandingAmount)).toBe(1350);
+      expect(Number(created[0].outstandingAmount)).toBe(1300);
     });
 
     it('uses the OLDEST overdue installment for the aging bucket (not the newest)', async () => {
@@ -306,26 +306,22 @@ describe('BadDebtService', () => {
       expect(where.contract.deletedAt).toBeNull();
     });
 
-    it('skips lateFee when it is waived', async () => {
+    it('NEVER includes late fee in the ECL base (waived or not)', async () => {
       prisma.payment.findMany.mockResolvedValue([
         {
-          id: 'p1',
-          contractId: 'c1',
-          installmentNo: 1,
-          amountDue: new Prisma.Decimal(1000),
-          amountPaid: new Prisma.Decimal(0),
-          lateFee: new Prisma.Decimal(500), // would be added if not waived
-          lateFeeWaived: true,
-          status: 'PENDING',
-          dueDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
-          contract: { id: 'c1', status: 'OVERDUE' },
+          contract: { id: 'c-1', status: 'OVERDUE' },
+          dueDate: new Date(Date.now() - 40 * 86_400_000), // B2 15%
+          amountDue: new Prisma.Decimal('1000.00'),
+          amountPaid: new Prisma.Decimal('0'),
+          lateFee: new Prisma.Decimal('75.79'),
+          lateFeeWaived: false, // ยังไม่ waive — เดิมเคยถูกบวกเข้าฐาน
         },
       ]);
+      prisma.journalLine.findMany.mockResolvedValue([]);
 
-      await service.calculateProvisions('user-1');
-      const created = prisma.badDebtProvision.createMany.mock.calls[0][0].data;
-      // outstanding = 1000 - 0 + 0 (waived) = 1000
-      expect(Number(created[0].outstandingAmount)).toBe(1000);
+      const result = await service.calculateProvisions('owner-1');
+      // ฐาน = 1,000.00 เท่านั้น → 15% = 150.00 (ไม่ใช่ 1,075.79 × 15%)
+      expect(result.totalProvision).toBe(150.0);
     });
 
     it('calls BadDebtProvisionTemplate.execute with correct delta vs prior provision (Phase A.5a)', async () => {
@@ -879,6 +875,37 @@ describe('BadDebtService', () => {
       const result = await service.reverseStageOnPayment('ct-1');
       expect(result).not.toBeNull();
       expect(result!.toBucket).toBe('1-30');
+    });
+
+    it('excludes future (not-yet-due) installments from the base', async () => {
+      prisma.badDebtProvision.findFirst.mockResolvedValue({
+        id: 'prov-1',
+        contractId: 'c-1',
+        agingBucket: '31-60',
+        provisionRate: new Prisma.Decimal('0.15'),
+        provisionAmount: new Prisma.Decimal('150.00'),
+      });
+      // 1 งวดค้าง 10 วัน (1,000) — งวดอนาคตถูกกรองที่ query แล้ว จึงไม่อยู่ใน mock นี้
+      prisma.payment.findMany.mockResolvedValue([
+        {
+          dueDate: new Date(Date.now() - 10 * 86_400_000),
+          amountDue: new Prisma.Decimal('1000.00'),
+          amountPaid: new Prisma.Decimal('0'),
+          lateFee: new Prisma.Decimal('0'),
+          lateFeeWaived: false,
+        },
+      ]);
+      prisma.contract.findUnique = jest.fn().mockResolvedValue({ id: 'c-1', status: 'OVERDUE' });
+
+      const r = await service.reverseStageOnPayment('c-1');
+      // bucket ใหม่ B1 2% × 1,000 = 20 → reverse = 150 − 20 = 130
+      expect(r!.reverseAmount).toBe('130.00');
+      // และ query ต้องส่ง dueDate filter
+      expect(prisma.payment.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ dueDate: expect.objectContaining({ lt: expect.any(Date) }) }),
+        }),
+      );
     });
   });
 });

@@ -132,16 +132,12 @@ export class BadDebtService {
   }
 
   /**
-   * Helper for outstanding calculation (DRY) — Decimal precision (TFRS 9 / v4 mandate).
-   * Replaces Number() casts which lose precision on Prisma.Decimal fields.
+   * ฐาน ECL = amountDue − amountPaid เท่านั้น (ตรงกับ 11-2103) — ค่าปรับล่าช้า
+   * ไม่ใช่สินทรัพย์ใน GL (รับรู้เป็นรายได้ 42-1103 ตอนรับเงิน) จึงห้ามเข้าฐาน
+   * (Excel v3 §1 + spec 2026-07-23 §4 1b)
    */
-  private computeOutstanding(
-    p: { amountDue: Prisma.Decimal; amountPaid: Prisma.Decimal },
-    lateFee: Prisma.Decimal | number = 0,
-  ): Decimal {
-    return new Decimal(p.amountDue.toString())
-      .sub(new Decimal(p.amountPaid.toString()))
-      .add(new Decimal(lateFee.toString()));
+  private computeOutstanding(p: { amountDue: Prisma.Decimal; amountPaid: Prisma.Decimal }): Decimal {
+    return new Decimal(p.amountDue.toString()).sub(new Decimal(p.amountPaid.toString()));
   }
 
   /**
@@ -236,8 +232,7 @@ export class BadDebtService {
     >();
     for (const p of overduePayments) {
       const existing = contractOutstanding.get(p.contract.id);
-      const unpaidLateFee = !p.lateFeeWaived ? new Decimal(p.lateFee.toString()) : new Decimal(0);
-      const remaining = this.computeOutstanding(p, unpaidLateFee);
+      const remaining = this.computeOutstanding(p);
       if (existing) {
         existing.amount = existing.amount.add(remaining);
       } else {
@@ -525,12 +520,12 @@ export class BadDebtService {
           status: { in: ['PENDING', 'PARTIALLY_PAID'] },
           deletedAt: null,
         },
-        select: { amountDue: true, amountPaid: true, lateFee: true, lateFeeWaived: true },
+        select: { amountDue: true, amountPaid: true },
       });
-      const outstandingDec = unpaidPayments.reduce((sum, p) => {
-        const unpaidLateFee = !p.lateFeeWaived ? new Decimal(p.lateFee.toString()) : new Decimal(0);
-        return sum.add(this.computeOutstanding(p, unpaidLateFee));
-      }, new Decimal(0));
+      const outstandingDec = unpaidPayments.reduce(
+        (sum, p) => sum.add(this.computeOutstanding(p)),
+        new Decimal(0),
+      );
       const outstandingAmount = outstandingDec.toNumber();
 
       // T3-C6 — enforce amount-tier approval rule before any write.
@@ -627,23 +622,23 @@ export class BadDebtService {
     });
     if (!existing) return null;
 
+    const now = new Date();
     const overduePayments = await db.payment.findMany({
       where: {
         contractId,
         status: { in: ['PENDING', 'PARTIALLY_PAID'] },
+        dueDate: { lt: now },
         deletedAt: null,
       },
-      select: { dueDate: true, amountDue: true, amountPaid: true, lateFee: true, lateFeeWaived: true },
+      select: { dueDate: true, amountDue: true, amountPaid: true },
     });
 
-    const now = new Date();
     let maxOverdueDays = 0;
     let totalOutstanding = new Decimal(0);
     for (const p of overduePayments) {
       const days = Math.floor((now.getTime() - p.dueDate.getTime()) / (1000 * 60 * 60 * 24));
       if (days > maxOverdueDays) maxOverdueDays = days;
-      const unpaidLateFee = !p.lateFeeWaived ? new Decimal(p.lateFee.toString()) : new Decimal(0);
-      totalOutstanding = totalOutstanding.add(this.computeOutstanding(p, unpaidLateFee));
+      totalOutstanding = totalOutstanding.add(this.computeOutstanding(p));
     }
 
     if (maxOverdueDays <= 0 || totalOutstanding.lte(0)) {

@@ -621,6 +621,42 @@ export class BadDebtService {
   }
 
   /**
+   * Fully releases an ACTIVE provision back to P&L (toBucket: 'CURRENT') and
+   * marks it REVERSED. Shared by both the non-TERMINATED "fully current"
+   * early-exit and the TERMINATED "carrying amount settled" path in
+   * `reverseStageOnPayment` — same JE + same status transition either way.
+   */
+  private async fullReverseProvision(
+    contractId: string,
+    existing: { id: string; provisionAmount: Prisma.Decimal; agingBucket: string },
+    db: Prisma.TransactionClient | PrismaService,
+    tx?: Prisma.TransactionClient,
+  ): Promise<{ entryNo: string; reverseAmount: string; fromBucket: string; toBucket: string } | null> {
+    const reverseAmount = new Decimal(existing.provisionAmount.toString());
+    if (reverseAmount.lte(0)) return null;
+    const result = await this.eclStageReverseTemplate.execute(
+      {
+        contractId,
+        reverseAmount,
+        fromBucket: existing.agingBucket,
+        toBucket: 'CURRENT',
+      },
+      tx,
+    );
+    if (!result) return null;
+    await db.badDebtProvision.update({
+      where: { id: existing.id },
+      data: { status: 'REVERSED' },
+    });
+    return {
+      entryNo: result.entryNo,
+      reverseAmount: reverseAmount.toFixed(2),
+      fromBucket: existing.agingBucket,
+      toBucket: 'CURRENT',
+    };
+  }
+
+  /**
    * ECL Stage Reverse on payment (CPA Policy A spec §3.6).
    *
    * Called from PaymentReceipt2BTemplate / payments.service after a successful
@@ -670,38 +706,36 @@ export class BadDebtService {
 
     // TERMINATED — ฐาน ECL = carrying amount จาก GL (เดียวกับ calculateProvisions,
     // Task 4). หลังบอกเลิก 2A หยุด accrue จึงต้องอิง GL แทน Payment rows.
+    //
+    // CRITICAL (review round 2): this lookup MUST happen BEFORE the
+    // maxOverdueDays<=0 early-exit below. If a TERMINATED contract's overdue
+    // Payment rows just got paid off, `overduePayments` comes back empty and
+    // maxOverdueDays = 0 — but GL carrying amount can still show real
+    // exposure. Falling into the old "fully current → full reverse" branch
+    // on maxOverdueDays alone would zero out legitimate ECL coverage while
+    // the contract is still carrying a receivable. Doing the TERMINATED
+    // check first and branching on carrying amount (not maxOverdueDays)
+    // avoids that.
     const contract = await db.contract.findUnique({
       where: { id: contractId },
       select: { status: true },
     });
-    if (contract?.status === 'TERMINATED') {
+    const isTerminated = contract?.status === 'TERMINATED';
+    if (isTerminated) {
       totalOutstanding = await this.terminatedCarryingAmount(contractId, db);
+
+      // No aging-bucket stage-drop semantics for TERMINATED at payment time —
+      // there are no more due dates to age against. Only fully release the
+      // provision when carrying amount is truly settled (<=0). Otherwise
+      // leave the provision untouched: the daily cron (calculateProvisions,
+      // GL-based delta) owns TERMINATED adjustments within 24h.
+      if (totalOutstanding.gt(0)) return null;
+      return this.fullReverseProvision(contractId, existing, db, tx);
     }
 
     if (maxOverdueDays <= 0 || totalOutstanding.lte(0)) {
       // Contract is fully current — fall through and reverse the entire provision.
-      const reverseAmount = new Decimal(existing.provisionAmount.toString());
-      if (reverseAmount.lte(0)) return null;
-      const result = await this.eclStageReverseTemplate.execute(
-        {
-          contractId,
-          reverseAmount,
-          fromBucket: existing.agingBucket,
-          toBucket: 'CURRENT',
-        },
-        tx,
-      );
-      if (!result) return null;
-      await db.badDebtProvision.update({
-        where: { id: existing.id },
-        data: { status: 'REVERSED' },
-      });
-      return {
-        entryNo: result.entryNo,
-        reverseAmount: reverseAmount.toFixed(2),
-        fromBucket: existing.agingBucket,
-        toBucket: 'CURRENT',
-      };
+      return this.fullReverseProvision(contractId, existing, db, tx);
     }
 
     const rates = await this.getProvisionRates();

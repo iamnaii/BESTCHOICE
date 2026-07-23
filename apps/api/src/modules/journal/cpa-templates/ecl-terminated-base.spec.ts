@@ -14,6 +14,16 @@ import { ConsecutiveMissedService } from '../../overdue/consecutive-missed.servi
 
 const prisma = new PrismaClient();
 
+// Mirrors DEFAULT_PROVISION_RATES in bad-debt.service.ts (not exported — keep in
+// sync manually). Golden values in this spec (91-180 → 75%) assume these rates.
+const DEFAULT_PROVISION_RATES_JSON = JSON.stringify({
+  '1-30': 0.02,
+  '31-60': 0.15,
+  '61-90': 0.5,
+  '91-180': 0.75,
+  '180+': 1.0,
+});
+
 function buildService(journal: JournalAutoService) {
   return new BadDebtService(
     prisma as any,
@@ -45,14 +55,21 @@ describe('ECL base for TERMINATED contract = GL carrying amount', () => {
 
     // Golden values (12,797.51 / 9,598.13 / '91-180') assume DEFAULT_PROVISION_RATES
     // (91-180 → 75%). A local dev DB may carry a custom `bad_debt_provision_rates`
-    // SystemConfig row (e.g. 91-180 → 50%) from unrelated seeding/testing — neutralize
-    // it for the duration of this spec, then restore exactly what was there.
+    // SystemConfig row (e.g. 91-180 → 50%) from unrelated seeding/testing.
+    //
+    // Crash-safety (review round 2): capture the original row (if any), then UPDATE
+    // its value to the code-default rates JSON — never delete. If the process dies
+    // mid-run, the row is left holding correct default rates (safe), not missing
+    // entirely. Restored to its exact original value in afterAll (first statement,
+    // before any cleanup that could throw and skip it).
     savedProvisionRatesConfig = await prisma.systemConfig.findUnique({
       where: { key: 'bad_debt_provision_rates' },
     });
-    if (savedProvisionRatesConfig) {
-      await prisma.systemConfig.delete({ where: { key: 'bad_debt_provision_rates' } });
-    }
+    await prisma.systemConfig.upsert({
+      where: { key: 'bad_debt_provision_rates' },
+      create: { key: 'bad_debt_provision_rates', value: DEFAULT_PROVISION_RATES_JSON },
+      update: { value: DEFAULT_PROVISION_RATES_JSON },
+    });
     if (!(await prisma.user.findFirst({ where: { email: 'admin@bestchoice.com' } }))) {
       await prisma.user.create({
         data: { email: 'admin@bestchoice.com', password: 'x', name: 'a', role: 'OWNER' },
@@ -92,26 +109,32 @@ describe('ECL base for TERMINATED contract = GL carrying amount', () => {
   });
 
   afterAll(async () => {
-    await prisma.badDebtProvision.deleteMany({ where: { contractId } });
-    await prisma.journalPostAuditLog.deleteMany({});
-    await prisma.journalLine.deleteMany({});
-    await prisma.journalEntry.deleteMany({});
-    await prisma.payment.deleteMany({ where: { contractId } });
-    await prisma.installmentSchedule.deleteMany({ where: { contractId } });
-    await prisma.contract.deleteMany({ where: { id: contractId } });
-    // Restore whatever bad_debt_provision_rates SystemConfig this dev DB had
-    // before the spec ran (neutralized in beforeAll).
+    // FIRST statement — restore whatever bad_debt_provision_rates SystemConfig this
+    // dev DB had before the spec ran, before any cleanup below gets a chance to throw
+    // and skip it (review round 2 crash-safety fix). If the row didn't exist before,
+    // delete it back out (deleteMany — no throw if already gone).
     if (savedProvisionRatesConfig) {
-      await prisma.systemConfig.upsert({
+      await prisma.systemConfig.update({
         where: { key: 'bad_debt_provision_rates' },
-        create: {
-          key: 'bad_debt_provision_rates',
+        data: {
           value: savedProvisionRatesConfig.value,
           label: savedProvisionRatesConfig.label,
         },
-        update: { value: savedProvisionRatesConfig.value, label: savedProvisionRatesConfig.label },
       });
+    } else {
+      await prisma.systemConfig.deleteMany({ where: { key: 'bad_debt_provision_rates' } });
     }
+
+    // Scoped to this spec's own contractId only — do NOT touch journal_entries/
+    // journal_lines/journal_post_audit_log here. Those are unscoped tables shared
+    // across specs; the beforeAll wipe convention (see above) already guarantees
+    // each spec a clean slate, matching the sibling bad-debt-writeoff.template.spec.ts
+    // pattern. Deleting them here with no `where` can erase a concurrently-running
+    // spec's fixture data under parallel vitest workers (review round 2 fix).
+    await prisma.badDebtProvision.deleteMany({ where: { contractId } });
+    await prisma.payment.deleteMany({ where: { contractId } });
+    await prisma.installmentSchedule.deleteMany({ where: { contractId } });
+    await prisma.contract.deleteMany({ where: { id: contractId } });
     await prisma.$disconnect();
   });
 

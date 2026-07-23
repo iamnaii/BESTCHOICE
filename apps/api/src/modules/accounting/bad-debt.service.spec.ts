@@ -52,6 +52,7 @@ describe('BadDebtService', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let prisma: any;
   let provisionTemplateMock: { execute: jest.Mock };
+  let eclStageReverseTemplateMock: { execute: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
@@ -102,6 +103,7 @@ describe('BadDebtService', () => {
     };
 
     provisionTemplateMock = { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK' }) };
+    eclStageReverseTemplateMock = { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-ECL-MOCK' }) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -116,7 +118,7 @@ describe('BadDebtService', () => {
         },
         { provide: BadDebtProvisionTemplate, useValue: provisionTemplateMock },
         { provide: BadDebtWriteOffTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK' }) } },
-        { provide: EclStageReverseTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-ECL-MOCK' }) } },
+        { provide: EclStageReverseTemplate, useValue: eclStageReverseTemplateMock },
         { provide: ConsecutiveMissedService, useValue: { getStreaks: jest.fn().mockResolvedValue(new Map()) } },
       ],
     }).compile();
@@ -932,6 +934,49 @@ describe('BadDebtService', () => {
           where: expect.objectContaining({ dueDate: expect.objectContaining({ lt: expect.any(Date) }) }),
         }),
       );
+    });
+
+    describe('TERMINATED contract — gated on carrying amount, not maxOverdueDays (review round 2 fix)', () => {
+      it('TERMINATED + zero overdue payment rows + carrying > 0: returns null, no reverse fires', async () => {
+        // Customer just paid off the 3 overdue installments — overduePayments
+        // query now comes back empty (maxOverdueDays = 0). Without the fix
+        // this would fall into the "fully current" early-exit and wipe the
+        // whole provision even though GL carrying amount still shows real
+        // exposure.
+        setActiveProvision({ provisionAmount: 9598.13, provisionRate: 0.75, agingBucket: '91-180' });
+        prisma.payment.findMany.mockResolvedValue([]);
+        prisma.contract.findUnique.mockResolvedValue({ status: 'TERMINATED' });
+        // glBalance ถูกเรียกตามลำดับ: 11-2103, 11-2101, 11-2106 (terminatedCarryingAmount)
+        prisma.journalLine.findMany
+          .mockResolvedValueOnce([{ debit: new Prisma.Decimal('4547.49'), credit: new Prisma.Decimal('0') }]) // 11-2103
+          .mockResolvedValueOnce([{ debit: new Prisma.Decimal('12750.02'), credit: new Prisma.Decimal('0') }]) // 11-2101
+          .mockResolvedValueOnce([{ debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('4500.00') }]); // 11-2106
+        // carrying = 4,547.49 + 12,750.02 − 4,500.00 = 12,797.51 > 0
+
+        const result = await service.reverseStageOnPayment('ct-1');
+
+        expect(result).toBeNull();
+        expect(prisma.badDebtProvision.update).not.toHaveBeenCalled();
+        expect(eclStageReverseTemplateMock.execute).not.toHaveBeenCalled();
+      });
+
+      it('TERMINATED + carrying = 0: full reverse fires, provision marked REVERSED', async () => {
+        setActiveProvision({ provisionAmount: 9598.13, provisionRate: 0.75, agingBucket: '91-180' });
+        prisma.payment.findMany.mockResolvedValue([]);
+        prisma.contract.findUnique.mockResolvedValue({ status: 'TERMINATED' });
+        // All three glBalance legs net to zero → carrying = 0 → fully settled.
+        prisma.journalLine.findMany.mockResolvedValue([]);
+
+        const result = await service.reverseStageOnPayment('ct-1');
+
+        expect(result).not.toBeNull();
+        expect(result!.toBucket).toBe('CURRENT');
+        expect(result!.reverseAmount).toBe('9598.13');
+        expect(eclStageReverseTemplateMock.execute).toHaveBeenCalledTimes(1);
+        const updateCall = prisma.badDebtProvision.update.mock.calls[0][0];
+        expect(updateCall.where.id).toBe('prov-1');
+        expect(updateCall.data.status).toBe('REVERSED');
+      });
     });
   });
 });

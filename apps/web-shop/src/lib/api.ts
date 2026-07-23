@@ -9,7 +9,7 @@ export function setAccessToken(token: string | null) {
 
 // Same-origin in both dev and prod.
 // Dev: Vite proxy rewrites /api → http://localhost:3000 (see vite.config).
-// Prod: Firebase Hosting on shop.bestchoicephone.app rewrites /api/** to the
+// Prod: Firebase Hosting on www.bestchoicephone.com rewrites /api/** to the
 // bestchoice-api Cloud Run service (see root firebase.json `shop` target).
 //
 // X-Requested-With is REQUIRED: the API's global CsrfGuard rejects every

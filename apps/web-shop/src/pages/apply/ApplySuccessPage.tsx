@@ -1,6 +1,6 @@
 import { Link, useParams } from 'react-router';
 import { CheckCircle2, MessageCircle, Home, FileSearch } from 'lucide-react';
-import { copy } from '@/lib/copy';
+import { copy, shopInfo } from '@/lib/copy';
 import ShopLayout from '@/components/layout/ShopLayout';
 import {
   Badge,
@@ -75,7 +75,7 @@ export default function ApplySuccessPage() {
           <div className="grid gap-3 w-full sm:grid-cols-2">
             <Button asChild variant="primary" size="lg" fullWidth>
               <a
-                href="https://line.me/R/ti/p/@bestchoice"
+                href={shopInfo.lineUrl}
                 target="_blank"
                 rel="noreferrer"
               >

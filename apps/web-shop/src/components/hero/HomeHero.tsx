@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Container } from '@/components/layout/Container';
 import { media } from '@/lib/media-placeholders';
 import { Reveal } from '@/components/motion/Reveal';
+import { shopInfo } from '@/lib/copy';
 
 export function HomeHero() {
   return (
@@ -35,7 +36,7 @@ export function HomeHero() {
                   </Link>
                 </Button>
                 <Button asChild size="lg" variant="outline">
-                  <a href="https://line.me/R/ti/p/@bestchoice" target="_blank" rel="noopener">
+                  <a href={shopInfo.lineUrl} target="_blank" rel="noopener">
                     <MessageCircle className="size-4" /> ทักไลน์
                   </a>
                 </Button>

@@ -111,6 +111,11 @@ async function bootstrap() {
   if (!allowedOrigins.includes('https://shop.bestchoicephone.app')) {
     allowedOrigins.push('https://shop.bestchoicephone.app');
   }
+  // Online Shop custom domain (launch 2026-07) — defensive: flow ปกติใช้
+  // same-origin rewrite ผ่าน Firebase Hosting แต่กัน direct-call ไว้ด้วย
+  if (!allowedOrigins.includes('https://www.bestchoicephone.com')) {
+    allowedOrigins.push('https://www.bestchoicephone.com');
+  }
   // Online Shop local dev (port 5174) — DEV ONLY.
   // (Audit finding P0-#8) Without this guard, any page served from
   // localhost:5174 in prod can make credentialed cross-origin requests

@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import ShopLayout from '@/components/layout/ShopLayout';
 import { Button, Card, CardBody, Container, Section, Stack } from '@/components';
+import { shopInfo } from '@/lib/copy';
 
 /**
  * Transparency page — answers the questions installment customers actually
@@ -147,7 +148,7 @@ export default function InstallmentTermsPage() {
                 <Link to="/products">ดูสินค้า + ลองคำนวณค่างวด</Link>
               </Button>
               <Button asChild variant="outline" size="lg" fullWidth>
-                <a href="https://line.me/R/ti/p/@bestchoice" target="_blank" rel="noreferrer">
+                <a href={shopInfo.lineUrl} target="_blank" rel="noreferrer">
                   <MessageCircle className="size-4" aria-hidden="true" />
                   มีคำถาม? ทักไลน์ได้เลย
                 </a>

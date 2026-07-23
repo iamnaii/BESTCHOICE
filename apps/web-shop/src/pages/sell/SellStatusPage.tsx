@@ -2,7 +2,7 @@ import { useParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { MessageCircle, Phone } from 'lucide-react';
 import { api } from '@/lib/api';
-import { copy } from '@/lib/copy';
+import { copy, shopInfo } from '@/lib/copy';
 import ShopLayout from '@/components/layout/ShopLayout';
 import {
   Badge,
@@ -240,7 +240,7 @@ export default function SellStatusPage() {
                 data-testid="buyback-accept"
               >
                 <a
-                  href="https://line.me/R/ti/p/@bestchoice"
+                  href={shopInfo.lineUrl}
                   target="_blank"
                   rel="noreferrer"
                 >
@@ -257,7 +257,7 @@ export default function SellStatusPage() {
                 data-testid="buyback-reject"
               >
                 <a
-                  href="https://line.me/R/ti/p/@bestchoice"
+                  href={shopInfo.lineUrl}
                   target="_blank"
                   rel="noreferrer"
                 >

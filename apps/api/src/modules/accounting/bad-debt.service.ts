@@ -145,6 +145,39 @@ export class BadDebtService {
   }
 
   /**
+   * GL balance ราย contract จาก journal lines (POSTED เท่านั้น) — pattern เดียวกับ
+   * BadDebtWriteOffTemplate/RepossessionJP5Template. side='cr' คืน ΣCr−ΣDr
+   * (contra-asset/liability เช่น 11-2102, 11-2106), side='dr' คืน ΣDr−ΣCr
+   * (asset เช่น 11-2101, 11-2103).
+   */
+  private async glBalance(
+    contractId: string,
+    accountCode: string,
+    side: 'dr' | 'cr',
+    db: Prisma.TransactionClient | PrismaService = this.prisma,
+  ): Promise<Decimal> {
+    const lines = await db.journalLine.findMany({
+      where: {
+        accountCode,
+        journalEntry: {
+          metadata: { path: ['contractId'], equals: contractId },
+          status: 'POSTED',
+          deletedAt: null,
+        },
+      },
+      select: { debit: true, credit: true },
+    });
+    let bal = new Decimal(0);
+    for (const l of lines) {
+      bal =
+        side === 'cr'
+          ? bal.plus(l.credit.toString()).minus(l.debit.toString())
+          : bal.plus(l.debit.toString()).minus(l.credit.toString());
+    }
+    return bal;
+  }
+
+  /**
    * Calculate Bad Debt provisions per TFRS for NPAEs Chapter 13.
    *
    * Uses CPA ECL v3.0 (NPAEs Ch.13 Aging-based · 6 buckets B0-B5):
@@ -271,18 +304,8 @@ export class BadDebtService {
     }
 
     // Atomic REVERSE + CREATE — never leave the balance sheet without coverage
-    const previousProvisionByContract = new Map<string, Prisma.Decimal>();
     await this.prisma.$transaction(async (tx) => {
       if (contractIdsInScope.length > 0) {
-        const activeProvisions = await tx.badDebtProvision.findMany({
-          where: { status: 'ACTIVE', contractId: { in: contractIdsInScope }, deletedAt: null },
-          select: { contractId: true, provisionAmount: true },
-        });
-        for (const p of activeProvisions) {
-          const prev = previousProvisionByContract.get(p.contractId) ?? new Prisma.Decimal(0);
-          previousProvisionByContract.set(p.contractId, prev.add(p.provisionAmount));
-        }
-
         await tx.badDebtProvision.updateMany({
           where: { status: 'ACTIVE', contractId: { in: contractIdsInScope }, deletedAt: null },
           data: { status: 'REVERSED' },
@@ -295,22 +318,23 @@ export class BadDebtService {
     });
 
     // Post delta-based provision JEs (non-blocking — a single JE failure must not abort the run)
+    // Delta เทียบ GL 11-2102 จริง (ไม่ใช่ DB rows) — JE ที่เคย fail จะถูกเติมคืนรอบถัดไป (self-healing)
     const year = now.getFullYear();
     const month = now.getMonth() + 1;
     const period = `${year}-${String(month).padStart(2, '0')}`;
+    const runDate = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
 
     for (const p of provisions) {
-      const prev = previousProvisionByContract.get(p.contractId) ?? new Prisma.Decimal(0);
-      const newAmount = p.provisionAmount;
-      const delta = newAmount.sub(prev);
-      if (delta.eq(0)) continue;
-
-      // Phase A.5a: post provision JE (non-blocking — a single JE failure must not abort the run)
       try {
+        const glPrev = await this.glBalance(p.contractId, '11-2102', 'cr');
+        const delta = new Decimal(p.provisionAmount.toString()).sub(glPrev);
+        if (delta.abs().lt(new Decimal('0.005'))) continue;
+
         await this.badDebtProvisionTemplate.execute({
           contractId: p.contractId,
           provisionAmount: delta,
           period,
+          runDate,
         });
       } catch (err) {
         Sentry.captureException(err, { extra: { contractId: p.contractId, period } });

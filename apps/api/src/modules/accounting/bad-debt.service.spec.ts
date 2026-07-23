@@ -15,6 +15,25 @@ jest.mock('@sentry/nestjs', () => ({
   captureMessage: jest.fn(),
 }));
 
+// jest has no built-in Decimal matcher — compare via toFixed(2) string equality.
+expect.extend({
+  decimalEq(received: any, expected: string) {
+    const pass =
+      received != null &&
+      typeof received.toFixed === 'function' &&
+      received.toFixed(2) === new Prisma.Decimal(expected).toFixed(2);
+    return { pass, message: () => `expected Decimal ${received} to equal ${expected}` };
+  },
+});
+declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace jest {
+    interface Expect {
+      decimalEq(expected: string): any;
+    }
+  }
+}
+
 /**
  * BadDebtService is the financial provisioning engine. It maps overdue
  * payments into aging buckets, applies bucket-specific provision rates,
@@ -32,6 +51,7 @@ describe('BadDebtService', () => {
   let service: BadDebtService;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let prisma: any;
+  let provisionTemplateMock: { execute: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
@@ -39,6 +59,9 @@ describe('BadDebtService', () => {
         findUnique: jest.fn().mockResolvedValue(null), // use defaults
       },
       payment: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      journalLine: {
         findMany: jest.fn().mockResolvedValue([]),
       },
       contract: {
@@ -77,6 +100,8 @@ describe('BadDebtService', () => {
       }),
     };
 
+    provisionTemplateMock = { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK' }) };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         BadDebtService,
@@ -88,7 +113,7 @@ describe('BadDebtService', () => {
             createBadDebtProvisionJournal: jest.fn().mockResolvedValue('je-provision-mock'),
           },
         },
-        { provide: BadDebtProvisionTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK' }) } },
+        { provide: BadDebtProvisionTemplate, useValue: provisionTemplateMock },
         { provide: BadDebtWriteOffTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK' }) } },
         { provide: EclStageReverseTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-ECL-MOCK' }) } },
         { provide: ConsecutiveMissedService, useValue: { getStreaks: jest.fn().mockResolvedValue(new Map()) } },
@@ -304,9 +329,9 @@ describe('BadDebtService', () => {
     });
 
     it('calls BadDebtProvisionTemplate.execute with correct delta vs prior provision (Phase A.5a)', async () => {
-      // Prior ACTIVE provision for c1: 50 (2%)
-      prisma.badDebtProvision.findMany.mockResolvedValue([
-        { contractId: 'c1', provisionAmount: new Prisma.Decimal(50) },
+      // Prior GL 11-2102 balance for c1: 50 (2%) — sourced from journal lines, not BadDebtProvision rows
+      prisma.journalLine.findMany.mockResolvedValue([
+        { debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('50') },
       ]);
       prisma.payment.findMany.mockResolvedValue([
         {
@@ -324,22 +349,20 @@ describe('BadDebtService', () => {
         },
       ]);
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const badDebtProvisionTemplate = (service as any).badDebtProvisionTemplate;
       await service.calculateProvisions('user-1');
 
-      expect(badDebtProvisionTemplate.execute).toHaveBeenCalledTimes(1);
-      const callArgs = badDebtProvisionTemplate.execute.mock.calls[0][0];
+      expect(provisionTemplateMock.execute).toHaveBeenCalledTimes(1);
+      const callArgs = provisionTemplateMock.execute.mock.calls[0][0];
       expect(callArgs.contractId).toBe('c1');
-      // new = 150 (B2 15%), prev = 50, provisionAmount (delta) = 100
+      // new = 150 (B2 15%), prev (GL) = 50, provisionAmount (delta) = 100
       expect(Number(callArgs.provisionAmount)).toBeCloseTo(100, 4);
       expect(callArgs.period).toMatch(/^\d{4}-\d{2}$/);
     });
 
     it('skips BadDebtProvisionTemplate.execute when delta is zero (no change in provision)', async () => {
-      // Prior ACTIVE provision = same as new provision (1000 * 0.02 = 20)
-      prisma.badDebtProvision.findMany.mockResolvedValue([
-        { contractId: 'c1', provisionAmount: new Prisma.Decimal(20) },
+      // Prior GL 11-2102 balance = same as new target provision (1000 * 0.02 = 20)
+      prisma.journalLine.findMany.mockResolvedValue([
+        { debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('20') },
       ]);
       prisma.payment.findMany.mockResolvedValue([
         {
@@ -357,11 +380,62 @@ describe('BadDebtService', () => {
         },
       ]);
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const badDebtProvisionTemplate = (service as any).badDebtProvisionTemplate;
       await service.calculateProvisions('user-1');
 
-      expect(badDebtProvisionTemplate.execute).not.toHaveBeenCalled();
+      expect(provisionTemplateMock.execute).not.toHaveBeenCalled();
+    });
+
+    it('computes delta against GL 11-2102 balance (not BadDebtProvision rows)', async () => {
+      // 1 contract, 40 วัน overdue, outstanding 1,000 → B2 15% → target 150.00
+      prisma.payment.findMany.mockResolvedValue([
+        {
+          contract: { id: 'c-1', status: 'OVERDUE' },
+          dueDate: new Date(Date.now() - 40 * 86_400_000),
+          amountDue: new Prisma.Decimal('1000.00'),
+          amountPaid: new Prisma.Decimal('0'),
+          lateFee: new Prisma.Decimal('0'),
+          lateFeeWaived: false,
+        },
+      ]);
+      // DB rows บอก prev = 150 (JE เดิมเคย fail) แต่ GL มีจริงแค่ 100
+      prisma.badDebtProvision.findMany.mockResolvedValue([
+        { contractId: 'c-1', provisionAmount: new Prisma.Decimal('150.00') },
+      ]);
+      prisma.journalLine.findMany.mockResolvedValue([
+        { debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('100.00') },
+      ]);
+
+      await service.calculateProvisions('owner-1');
+
+      // delta ต้อง = 150 − 100(GL) = 50 ไม่ใช่ 150 − 150(DB) = 0
+      expect(provisionTemplateMock.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          contractId: 'c-1',
+          provisionAmount: expect.decimalEq('50.00'),
+        }),
+      );
+    });
+
+    it('posts negative delta (release) when GL balance exceeds new target', async () => {
+      prisma.payment.findMany.mockResolvedValue([
+        {
+          contract: { id: 'c-1', status: 'OVERDUE' },
+          dueDate: new Date(Date.now() - 10 * 86_400_000), // B1 2%
+          amountDue: new Prisma.Decimal('1000.00'),
+          amountPaid: new Prisma.Decimal('0'),
+          lateFee: new Prisma.Decimal('0'),
+          lateFeeWaived: false,
+        },
+      ]);
+      prisma.journalLine.findMany.mockResolvedValue([
+        { debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('150.00') },
+      ]);
+
+      await service.calculateProvisions('owner-1');
+      // target = 20.00 (2%), GL = 150 → delta = −130.00
+      expect(provisionTemplateMock.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ provisionAmount: expect.decimalEq('-130.00') }),
+      );
     });
   });
 

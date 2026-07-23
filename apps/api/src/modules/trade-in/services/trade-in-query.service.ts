@@ -63,6 +63,9 @@ export class TradeInQueryService {
     } = filters;
     const where: Record<string, unknown> = { deletedAt: null };
     if (customerId) where.customerId = customerId;
+    // NOTE (launch-wave §2): findAll ไม่ scope ตามสาขาโดยเจตนา — record ออนไลน์
+    // เกิดมา branchId=null; ถ้าอนาคตเพิ่ม branch scoping ต้อง OR branchId=null เสมอ
+    // ไม่งั้นรายการออนไลน์หายจากตา BRANCH_MANAGER ก่อนได้ accept
     if (branchId) where.branchId = branchId;
     if (status) where.status = status;
     if (submissionSource) where.submissionSource = submissionSource;

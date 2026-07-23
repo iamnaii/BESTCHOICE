@@ -358,9 +358,15 @@ export class TradeInLifecycleService {
           );
         }
       }
-      if (!tradeIn.branchId) {
+      // Record ออนไลน์เกิดมา branchId=null — ให้ staff เลือกสาขาตอน accept ได้
+      // (BranchGuard เช็ค body.branchId ไปแล้วก่อนถึงตรงนี้ — BM เลือกสาขาอื่น = 403)
+      if (tradeIn.branchId && dto.branchId && dto.branchId !== tradeIn.branchId) {
+        throw new BadRequestException('รายการนี้ผูกสาขาแล้ว');
+      }
+      const effectiveBranchId = tradeIn.branchId ?? dto.branchId ?? null;
+      if (!effectiveBranchId) {
         throw new BadRequestException(
-          'รายการเทรดอินไม่มีข้อมูลสาขา — ไม่สามารถรับเข้าสต๊อคได้',
+          'รายการเทรดอินไม่มีข้อมูลสาขา — กรุณาเลือกสาขาที่รับเครื่อง',
         );
       }
 
@@ -416,7 +422,7 @@ export class TradeInLifecycleService {
           storage: tradeIn.deviceStorage ?? null,
           category: 'PHONE_USED',
           costPrice,
-          branchId: tradeIn.branchId,
+          branchId: effectiveBranchId,
           status: 'PHOTO_PENDING',
           imeiSerial: tradeIn.imei ?? null,
           checklistResults: {
@@ -432,6 +438,7 @@ export class TradeInLifecycleService {
       const updated = await tx.tradeIn.update({
         where: { id },
         data: {
+          branchId: effectiveBranchId,
           status: 'ACCEPTED',
           agreedPrice: tradeIn.offeredPrice,
           productId: product.id,
@@ -459,7 +466,7 @@ export class TradeInLifecycleService {
       // booked with the companion sale/contract, not as a standalone cash-out (deferred).
       if (tradeIn.flow === 'BUYBACK' && costPrice.gt(0)) {
         const cashAccountCode = await this.shopAccountResolver.resolveOutflowCashAccount(
-          tradeIn.branchId,
+          effectiveBranchId,
           dto.paymentMethod,
           tx,
         );

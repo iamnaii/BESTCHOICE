@@ -172,6 +172,14 @@ export class AcceptTradeInDto {
   @IsString()
   @IsOptional()
   sellerSignatureBase64?: string;
+
+  /**
+   * สาขาที่รับเครื่อง — ใช้เฉพาะ record ออนไลน์ที่ยังไม่ผูกสาขา (branchId null)
+   * record ที่ผูกสาขาแล้วส่งค่าต่างมา = 400 (กัน re-home ข้ามสาขาเงียบๆ)
+   */
+  @IsString()
+  @IsOptional()
+  branchId?: string;
 }
 
 /**

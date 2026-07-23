@@ -280,4 +280,79 @@ describe('TradeInLifecycleService.accept() — SHOP JE wiring (Task 2)', () => {
       expect(createArgs.data.costPrice.toString()).toBe('8000');
     });
   });
+
+  describe('accept effectiveBranchId (launch-wave Track B)', () => {
+    const ONLINE_NO_BRANCH = {
+      id: 'ti-9',
+      status: 'APPRAISED',
+      deletedAt: null,
+      flow: 'BUYBACK',
+      branchId: null,
+      offeredPrice: new Decimal(5000),
+      estimatedValue: null,
+      imei: null,
+      deviceBrand: 'Apple',
+      deviceModel: 'iPhone 12',
+      deviceColor: null,
+      deviceStorage: null,
+      deviceCondition: 'A',
+      notes: null,
+      quoteBreakdown: null,
+      firstAppraisedAt: null,
+    };
+    const BASE_DTO = {
+      idCardVerified: true,
+      sellerConsentSigned: true,
+      paymentMethod: 'CASH' as const,
+    };
+
+    it('record ออนไลน์ (branchId null) + dto.branchId → product/JE/persist ใช้สาขาที่เลือก', async () => {
+      tx.tradeIn.findUnique.mockResolvedValue({ ...ONLINE_NO_BRANCH });
+      tx.product.create.mockResolvedValue({ id: 'p-1' });
+      tx.tradeIn.update.mockResolvedValue({ id: 'ti-9', status: 'ACCEPTED' });
+      shopAccountResolver.resolveOutflowCashAccount.mockResolvedValue('S11-1101');
+
+      await service.accept('ti-9', { ...BASE_DTO, branchId: 'br-7' }, 'u1');
+
+      expect(tx.product.create.mock.calls[0][0].data.branchId).toBe('br-7');
+      expect(tx.tradeIn.update.mock.calls[0][0].data.branchId).toBe('br-7');
+      expect(shopAccountResolver.resolveOutflowCashAccount).toHaveBeenCalledWith('br-7', 'CASH', tx);
+    });
+
+    it('record ออนไลน์ไม่มีสาขา + ไม่ส่ง dto.branchId → 400', async () => {
+      tx.tradeIn.findUnique.mockResolvedValue({ ...ONLINE_NO_BRANCH });
+      await expect(service.accept('ti-9', { ...BASE_DTO }, 'u1')).rejects.toThrow(
+        'รายการเทรดอินไม่มีข้อมูลสาขา — กรุณาเลือกสาขาที่รับเครื่อง',
+      );
+    });
+
+    it('walk-in (branchId ผูกแล้ว) ไม่ส่ง dto → ใช้สาขาเดิม (back-compat)', async () => {
+      tx.tradeIn.findUnique.mockResolvedValue({ ...ONLINE_NO_BRANCH, branchId: 'br-1' });
+      tx.product.create.mockResolvedValue({ id: 'p-2' });
+      tx.tradeIn.update.mockResolvedValue({ id: 'ti-9', status: 'ACCEPTED' });
+      shopAccountResolver.resolveOutflowCashAccount.mockResolvedValue('S11-1101');
+
+      await service.accept('ti-9', { ...BASE_DTO }, 'u1');
+
+      expect(tx.product.create.mock.calls[0][0].data.branchId).toBe('br-1');
+      expect(shopAccountResolver.resolveOutflowCashAccount).toHaveBeenCalledWith('br-1', 'CASH', tx);
+    });
+
+    it('ผูกสาขาแล้ว + dto.branchId ต่างค่า → 400 รายการนี้ผูกสาขาแล้ว', async () => {
+      tx.tradeIn.findUnique.mockResolvedValue({ ...ONLINE_NO_BRANCH, branchId: 'br-1' });
+      await expect(
+        service.accept('ti-9', { ...BASE_DTO, branchId: 'br-2' }, 'u1'),
+      ).rejects.toThrow('รายการนี้ผูกสาขาแล้ว');
+    });
+
+    it('ผูกสาขาแล้ว + dto.branchId ค่าเดียวกัน → ผ่าน (idempotent)', async () => {
+      tx.tradeIn.findUnique.mockResolvedValue({ ...ONLINE_NO_BRANCH, branchId: 'br-1' });
+      tx.product.create.mockResolvedValue({ id: 'p-3' });
+      tx.tradeIn.update.mockResolvedValue({ id: 'ti-9', status: 'ACCEPTED' });
+      shopAccountResolver.resolveOutflowCashAccount.mockResolvedValue('S11-1101');
+
+      await service.accept('ti-9', { ...BASE_DTO, branchId: 'br-1' }, 'u1');
+      expect(tx.product.create.mock.calls[0][0].data.branchId).toBe('br-1');
+    });
+  });
 });

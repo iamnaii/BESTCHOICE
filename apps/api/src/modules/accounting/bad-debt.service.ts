@@ -214,10 +214,15 @@ export class BadDebtService {
    *
    * Refs: docs/accounting/audit-report.html (Wave 4 T1, TFRS 9 W-1/W-2)
    */
-  async calculateProvisions(calculatedById: string, branchId?: string): Promise<{
+  async calculateProvisions(
+    calculatedById: string,
+    branchId?: string,
+    dryRun = false,
+  ): Promise<{
     created: number;
     totalProvision: number;
     byBucket: Record<string, { count: number; amount: number }>;
+    deltas?: { contractId: string; bucket: string; prevGl: string; target: string; delta: string }[];
   }> {
     const rates = await this.getProvisionRates();
     const now = new Date();
@@ -325,19 +330,22 @@ export class BadDebtService {
       byBucket[bucket].amount = byBucket[bucket].amount.add(provisionAmountDec);
     }
 
-    // Atomic REVERSE + CREATE — never leave the balance sheet without coverage
-    await this.prisma.$transaction(async (tx) => {
-      if (contractIdsInScope.length > 0) {
-        await tx.badDebtProvision.updateMany({
-          where: { status: 'ACTIVE', contractId: { in: contractIdsInScope }, deletedAt: null },
-          data: { status: 'REVERSED' },
-        });
-      }
+    // Atomic REVERSE + CREATE — never leave the balance sheet without coverage.
+    // dryRun (Task 8) skips this entirely — no row writes for a read-only report.
+    if (!dryRun) {
+      await this.prisma.$transaction(async (tx) => {
+        if (contractIdsInScope.length > 0) {
+          await tx.badDebtProvision.updateMany({
+            where: { status: 'ACTIVE', contractId: { in: contractIdsInScope }, deletedAt: null },
+            data: { status: 'REVERSED' },
+          });
+        }
 
-      if (provisions.length > 0) {
-        await tx.badDebtProvision.createMany({ data: provisions });
-      }
-    });
+        if (provisions.length > 0) {
+          await tx.badDebtProvision.createMany({ data: provisions });
+        }
+      });
+    }
 
     // Post delta-based provision JEs (non-blocking — a single JE failure must not abort the run)
     // Delta เทียบ GL 11-2102 จริง (ไม่ใช่ DB rows) — JE ที่เคย fail จะถูกเติมคืนรอบถัดไป (self-healing)
@@ -346,10 +354,26 @@ export class BadDebtService {
     const period = `${year}-${String(month).padStart(2, '0')}`;
     const runDate = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
 
+    const deltas: { contractId: string; bucket: string; prevGl: string; target: string; delta: string }[] = [];
+
     for (const p of provisions) {
       try {
         const glPrev = await this.glBalance(p.contractId, '11-2102', 'cr');
         const delta = new Decimal(p.provisionAmount.toString()).sub(glPrev);
+
+        if (dryRun) {
+          // Report completeness: include zero-delta contracts too (they would
+          // be skipped for posting, but still reflect target vs GL state).
+          deltas.push({
+            contractId: p.contractId,
+            bucket: p.agingBucket,
+            prevGl: glPrev.toFixed(2),
+            target: p.provisionAmount.toFixed(2),
+            delta: delta.toFixed(2),
+          });
+          continue;
+        }
+
         if (delta.abs().lt(new Decimal('0.005'))) continue;
 
         await this.badDebtProvisionTemplate.execute({
@@ -377,7 +401,12 @@ export class BadDebtService {
     for (const [bucket, agg] of Object.entries(byBucket)) {
       byBucketResp[bucket] = { count: agg.count, amount: agg.amount.toNumber() };
     }
-    return { created: provisions.length, totalProvision, byBucket: byBucketResp };
+    return {
+      created: provisions.length,
+      totalProvision,
+      byBucket: byBucketResp,
+      ...(dryRun ? { deltas } : {}),
+    };
   }
 
   /**

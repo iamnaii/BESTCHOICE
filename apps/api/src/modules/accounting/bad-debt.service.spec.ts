@@ -438,6 +438,28 @@ describe('BadDebtService', () => {
     });
   });
 
+  describe('calculateProvisions — dryRun (Task 8)', () => {
+    it('dryRun=true computes deltas but writes nothing', async () => {
+      prisma.payment.findMany.mockResolvedValue([
+        {
+          contract: { id: 'c-1', status: 'OVERDUE' },
+          dueDate: new Date(Date.now() - 40 * 86_400_000),
+          amountDue: new Prisma.Decimal('1000.00'),
+          amountPaid: new Prisma.Decimal('0'),
+          lateFee: new Prisma.Decimal('0'),
+          lateFeeWaived: false,
+        },
+      ]);
+      prisma.journalLine.findMany.mockResolvedValue([]);
+
+      const r = await service.calculateProvisions('owner-1', undefined, true);
+      expect(r.deltas).toHaveLength(1);
+      expect(r.deltas![0].delta).toBe('150.00');
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(provisionTemplateMock.execute).not.toHaveBeenCalled();
+    });
+  });
+
   describe('calculateProvisions — TERMINATED contract base (Excel v3 B4/B5, Task 4)', () => {
     it('TERMINATED contract: base = carrying amount from GL (11-2103 + 11-2101 − 11-2106)', async () => {
       prisma.payment.findMany.mockResolvedValue([

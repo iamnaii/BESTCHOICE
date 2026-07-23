@@ -141,6 +141,25 @@ export class BadDebtService {
   }
 
   /**
+   * ฐาน ECL ของสัญญา TERMINATED = มูลค่าตามบัญชีของลูกหนี้ (carrying amount):
+   * 11-2103 (accrued ค้าง) + 11-2101 (ยังไม่ accrue, excl VAT) − 11-2106 (unearned interest).
+   * VAT deferred (11-2105/21-2102) หักล้างกันเอง — ไม่เข้าฐาน.
+   * เหตุผล: หลังบอกเลิก 2A หยุด accrue — ฐานจาก Payment rows จะบวมรวมดอกเบี้ย/VAT
+   * ที่ยังไม่รับรู้ เกิน carrying amount (spec 2026-07-23 §4 1c)
+   */
+  private async terminatedCarryingAmount(
+    contractId: string,
+    db: Prisma.TransactionClient | PrismaService = this.prisma,
+  ): Promise<Decimal> {
+    const [accrued, gross, unearned] = await Promise.all([
+      this.glBalance(contractId, '11-2103', 'dr', db),
+      this.glBalance(contractId, '11-2101', 'dr', db),
+      this.glBalance(contractId, '11-2106', 'cr', db),
+    ]);
+    return accrued.plus(gross).minus(unearned);
+  }
+
+  /**
    * GL balance ราย contract จาก journal lines (POSTED เท่านั้น) — pattern เดียวกับ
    * BadDebtWriteOffTemplate/RepossessionJP5Template. side='cr' คืน ΣCr−ΣDr
    * (contra-asset/liability เช่น 11-2102, 11-2106), side='dr' คืน ΣDr−ΣCr
@@ -214,7 +233,9 @@ export class BadDebtService {
         dueDate: { lt: now },
         contract: {
           deletedAt: null,
-          status: { in: ['ACTIVE', 'OVERDUE', 'DEFAULT'] },
+          // TERMINATED เข้า scope ตาม Excel v3 B4/B5 — escalate ต่อระหว่างรอยึด/ตัดหนี้สูญ
+          // (ยึดแล้ว = CLOSED_BAD_DEBT หลุด scope เอง — spec 2026-07-23 §4 1c)
+          status: { in: ['ACTIVE', 'OVERDUE', 'DEFAULT', 'TERMINATED'] },
           ...branchFilter,
         },
       },
@@ -230,7 +251,9 @@ export class BadDebtService {
       string,
       { amount: Decimal; oldestDueDate: Date }
     >();
+    const contractStatus = new Map<string, string>();
     for (const p of overduePayments) {
+      contractStatus.set(p.contract.id, p.contract.status);
       const existing = contractOutstanding.get(p.contract.id);
       const remaining = this.computeOutstanding(p);
       if (existing) {
@@ -270,6 +293,10 @@ export class BadDebtService {
     const provisions: ProvisionRow[] = [];
 
     for (const [contractId, data] of contractOutstanding) {
+      const isTerminated = contractStatus.get(contractId) === 'TERMINATED';
+      const baseAmount = isTerminated
+        ? await this.terminatedCarryingAmount(contractId)
+        : data.amount;
       const daysOverdue = Math.floor(
         (now.getTime() - data.oldestDueDate.getTime()) / (1000 * 60 * 60 * 24),
       );
@@ -278,8 +305,8 @@ export class BadDebtService {
       const bucket = this.effectiveBucket(agingBucket, streakBucket, rates);
       const rate = rates[bucket] || 0;
       const rateDec = new Decimal(rate);
-      const outstandingDec = data.amount.toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-      const provisionAmountDec = data.amount
+      const outstandingDec = baseAmount.toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+      const provisionAmountDec = baseAmount
         .mul(rateDec)
         .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
 
@@ -639,6 +666,16 @@ export class BadDebtService {
       const days = Math.floor((now.getTime() - p.dueDate.getTime()) / (1000 * 60 * 60 * 24));
       if (days > maxOverdueDays) maxOverdueDays = days;
       totalOutstanding = totalOutstanding.add(this.computeOutstanding(p));
+    }
+
+    // TERMINATED — ฐาน ECL = carrying amount จาก GL (เดียวกับ calculateProvisions,
+    // Task 4). หลังบอกเลิก 2A หยุด accrue จึงต้องอิง GL แทน Payment rows.
+    const contract = await db.contract.findUnique({
+      where: { id: contractId },
+      select: { status: true },
+    });
+    if (contract?.status === 'TERMINATED') {
+      totalOutstanding = await this.terminatedCarryingAmount(contractId, db);
     }
 
     if (maxOverdueDays <= 0 || totalOutstanding.lte(0)) {

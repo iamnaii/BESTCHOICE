@@ -66,6 +66,7 @@ describe('BadDebtService', () => {
       },
       contract: {
         findFirst: jest.fn(),
+        findUnique: jest.fn().mockResolvedValue(null),
         update: jest.fn(),
       },
       badDebtProvision: {
@@ -432,6 +433,31 @@ describe('BadDebtService', () => {
       expect(provisionTemplateMock.execute).toHaveBeenCalledWith(
         expect.objectContaining({ provisionAmount: expect.decimalEq('-130.00') }),
       );
+    });
+  });
+
+  describe('calculateProvisions — TERMINATED contract base (Excel v3 B4/B5, Task 4)', () => {
+    it('TERMINATED contract: base = carrying amount from GL (11-2103 + 11-2101 − 11-2106)', async () => {
+      prisma.payment.findMany.mockResolvedValue([
+        {
+          contract: { id: 'c-t', status: 'TERMINATED' },
+          dueDate: new Date(Date.now() - 100 * 86_400_000), // B4 75%
+          amountDue: new Prisma.Decimal('1515.83'),
+          amountPaid: new Prisma.Decimal('0'),
+          lateFee: new Prisma.Decimal('0'),
+          lateFeeWaived: false,
+        },
+      ]);
+      // glBalance ถูกเรียกตามลำดับ: 11-2103, 11-2101, 11-2106, แล้วค่อย 11-2102 (delta)
+      prisma.journalLine.findMany
+        .mockResolvedValueOnce([{ debit: new Prisma.Decimal('4547.49'), credit: new Prisma.Decimal('0') }]) // 11-2103
+        .mockResolvedValueOnce([{ debit: new Prisma.Decimal('12750.02'), credit: new Prisma.Decimal('0') }]) // 11-2101
+        .mockResolvedValueOnce([{ debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('4500.00') }]) // 11-2106
+        .mockResolvedValue([]); // 11-2102 = 0
+
+      const result = await service.calculateProvisions('owner-1');
+      // carrying = 4,547.49 + 12,750.02 − 4,500.00 = 12,797.51 → B4 75% = 9,598.13
+      expect(result.totalProvision).toBe(9598.13);
     });
   });
 

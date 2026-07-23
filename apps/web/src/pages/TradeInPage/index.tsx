@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -7,6 +7,7 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { useAuth } from '@/contexts/AuthContext';
 import PageHeader from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { RefreshCw, Plus } from 'lucide-react';
 import QuickBuyModal from '@/components/trade-in/QuickBuyModal';
 import TradeInTable from './components/TradeInTable';
@@ -41,6 +42,13 @@ export default function TradeInPage() {
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('ALL');
   const [flowFilter, setFlowFilter] = useState<FlowFilter>('ALL');
 
+  const [searchInput, setSearchInput] = useState('');
+  const debouncedSearch = useDebounce(searchInput, 400);
+  // ค่า search เปลี่ยน → กลับหน้า 1 เสมอ (กันหน้าเกินจำนวนผลลัพธ์ใหม่)
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch]);
+
   // Appraise modal state
   const [appraiseModal, setAppraiseModal] = useState<TradeIn | null>(null);
   const [appraiseValue, setAppraiseValue] = useState('');
@@ -57,11 +65,12 @@ export default function TradeInPage() {
   /* ─── Query ─── */
 
   const { data, isLoading, isError, error, refetch } = useQuery<TradeInsResponse>({
-    queryKey: ['trade-ins', page, sourceFilter, flowFilter],
+    queryKey: ['trade-ins', page, sourceFilter, flowFilter, debouncedSearch],
     queryFn: async () => {
       const params: Record<string, string | number> = { page, limit: 50 };
       if (sourceFilter !== 'ALL') params.submissionSource = sourceFilter;
       if (flowFilter !== 'ALL') params.flow = flowFilter;
+      if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
       const res = await api.get('/trade-ins', { params });
       return res.data;
     },
@@ -222,6 +231,12 @@ export default function TradeInPage() {
       {tab === 'list' && (
         <>
           <div className="flex flex-wrap items-center gap-4 mb-4">
+            <Input
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="ค้นหา ชื่อ/เบอร์ผู้ขาย, IMEI, รุ่น, เลขใบสำคัญ..."
+              className="h-8 w-full sm:w-72"
+            />
             <div className="flex items-center gap-1.5">
               <span className="text-xs text-muted-foreground leading-snug">ที่มา:</span>
               {(['ALL', 'ONLINE', 'OFFLINE'] as const).map((opt) => (

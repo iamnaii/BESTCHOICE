@@ -4,7 +4,7 @@ import { PromotionsService } from './promotions.service';
 import { ShopBotDefenseGuard } from '../shop-bot-defense/shop-bot-defense.guard';
 
 /**
- * Public promotions feed for the customer-facing web-shop (shop.bestchoicephone.app).
+ * Public promotions feed for the customer-facing web-shop (www.bestchoicephone.com).
  *
  * Intentionally unauthenticated — anonymous shoppers browse promotions before
  * they have any account. Returns only display-safe fields (no usage counters);

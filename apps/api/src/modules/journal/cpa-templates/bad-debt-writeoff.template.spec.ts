@@ -88,6 +88,10 @@ describe('BadDebtWriteOffTemplate', () => {
     const arLine = lines.find((l) => l.accountCode === '11-2101');
     expect(arLine).toBeDefined();
     expect(new Decimal(arLine!.credit.toString()).gt(0)).toBe(true);
+
+    // I3 — metadata.idempotencyKey backs the DB-level partial unique index
+    // (journal_entries_idempotency_idx) on (flow, idempotencyKey).
+    expect((je!.metadata as any).idempotencyKey).toBe(contractId);
   });
 
   it('is idempotent — second call returns same entry, no duplicate JE', async () => {

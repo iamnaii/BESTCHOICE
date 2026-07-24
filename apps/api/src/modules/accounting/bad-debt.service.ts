@@ -76,6 +76,23 @@ export class BadDebtService {
             extra: { missingKeys },
           });
         }
+        // C1: legacy bucket keys ('181-360'/'360+', pre-v3 naming) surviving
+        // alongside the canonical keys is a distinct hazard from "missing" —
+        // the row VALIDATES as present (has '91-180'/'180+') but its VALUES
+        // may still be stale ones the merge above happily takes as-is (stale
+        // values win over v3 defaults, since `parsed` overrides `merged` for
+        // any key it defines). Merging can't fix a stale VALUE under the
+        // correct key name, only a missing key — so alarm distinctly here.
+        const legacyKeys = ['181-360', '360+'].filter((k) => k in parsed);
+        if (legacyKeys.length > 0) {
+          const msg = `bad_debt_provision_rates SystemConfig still has legacy bucket key(s) [${legacyKeys.join(', ')}] (pre-v3 naming) — values for the canonical keys still come from the stored config as-is (stale VALUES win, not just missing keys); migrate this row via apps/api/prisma/migrations-manual/2026-07-23-enable-letter-auto-generate-and-jp5-strict.sql`;
+          this.logger.warn(msg);
+          Sentry.captureMessage(msg, {
+            level: 'warning',
+            tags: { subsystem: 'bad-debt', key: 'bad_debt_provision_rates' },
+            extra: { legacyKeys },
+          });
+        }
         return merged;
       } catch (err) {
         // Corrupt/edited provision-rate JSON must NOT silently revert to
@@ -174,7 +191,10 @@ export class BadDebtService {
       this.glBalance(contractId, '11-2101', 'dr', db),
       this.glBalance(contractId, '11-2106', 'cr', db),
     ]);
-    return accrued.plus(gross).minus(unearned);
+    // M4: clamp at >= 0 — unearned interest can (in edge/rounding cases)
+    // exceed accrued+gross, which would otherwise hand a negative "carrying
+    // amount" into the ECL rate multiplication downstream.
+    return Decimal.max(0, accrued.plus(gross).minus(unearned));
   }
 
   /**
@@ -681,8 +701,24 @@ export class BadDebtService {
     db: Prisma.TransactionClient | PrismaService,
     tx?: Prisma.TransactionClient,
   ): Promise<{ entryNo: string; reverseAmount: string; fromBucket: string; toBucket: string } | null> {
-    const reverseAmount = new Decimal(existing.provisionAmount.toString());
-    if (reverseAmount.lte(0)) return null;
+    const rowAmount = new Decimal(existing.provisionAmount.toString());
+    // I1: cap the release at what the GL actually holds on 11-2102. The
+    // BadDebtProvision row is only ever as trustworthy as the JE that posted
+    // it — if a past provision JE ever failed silently the row can claim more
+    // than the GL has, and releasing more than that would falsely credit
+    // 51-1103 (reversed ECL expense) with money that was never provisioned.
+    const glBal = await this.glBalance(contractId, '11-2102', 'cr', db);
+    const reverseAmount = Decimal.min(rowAmount, glBal);
+    if (reverseAmount.lte(0)) {
+      // Nothing left on the GL to release (or the row itself was already
+      // zero) — the row is operationally dead either way, so mark it
+      // REVERSED without posting a JE for zero/negative money.
+      await db.badDebtProvision.update({
+        where: { id: existing.id },
+        data: { status: 'REVERSED' },
+      });
+      return null;
+    }
     const result = await this.eclStageReverseTemplate.execute(
       {
         contractId,
@@ -805,8 +841,29 @@ export class BadDebtService {
     const newProvision = totalOutstanding
       .times(newRate)
       .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-    const reverseAmount = new Decimal(existing.provisionAmount.toString()).sub(newProvision);
-    if (reverseAmount.lte(0)) return null;
+    const rowDelta = new Decimal(existing.provisionAmount.toString()).sub(newProvision);
+    if (rowDelta.lte(0)) return null;
+
+    // I1: cap the release at what the GL actually holds on 11-2102 — same
+    // rationale as fullReverseProvision. The row-based delta can overstate a
+    // real GL balance if a past provision JE ever failed silently.
+    const glBal = await this.glBalance(contractId, '11-2102', 'cr', db);
+    const reverseAmount = Decimal.min(rowDelta, glBal);
+
+    const rowUpdateData = {
+      agingBucket: newBucket,
+      daysOverdue: maxOverdueDays,
+      outstandingAmount: totalOutstanding,
+      provisionRate: new Prisma.Decimal(newRate.toString()),
+      provisionAmount: newProvision,
+    };
+
+    if (reverseAmount.lte(0)) {
+      // GL has no room left to release — skip the JE, but the aging state
+      // still moved, so the row still needs to reflect the new bucket/amount.
+      await db.badDebtProvision.update({ where: { id: existing.id }, data: rowUpdateData });
+      return null;
+    }
 
     const result = await this.eclStageReverseTemplate.execute(
       {
@@ -821,13 +878,7 @@ export class BadDebtService {
 
     await db.badDebtProvision.update({
       where: { id: existing.id },
-      data: {
-        agingBucket: newBucket,
-        daysOverdue: maxOverdueDays,
-        outstandingAmount: totalOutstanding,
-        provisionRate: new Prisma.Decimal(newRate.toString()),
-        provisionAmount: newProvision,
-      },
+      data: rowUpdateData,
     });
 
     return {

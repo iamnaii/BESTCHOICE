@@ -252,26 +252,58 @@ export class BadDebtWriteOffTemplate {
       });
     }
 
-    const result = await this.journal.createAndPost(
-      {
-        description: `ตัดหนี้สูญ — สัญญา ${contract.contractNumber}`,
-        reference: `${contractId}:bad-debt-write-off`,
-        metadata: {
-          tag: 'BAD-DEBT',
-          flow: 'write-off',
-          contractId,
-          totalReceivable: totalReceivable.toFixed(2),
-          provisionConsumed: provisionConsumed.toFixed(2),
-          writeOffExpense: loss.toFixed(2),
-          creditNoteIssued,
-          creditNoteVatAmount: cnVat.toFixed(2),
-          writeOffReason: writeOffReason ?? null,
-        },
-        lines,
-      },
-      tx,
-    );
+    // I3 — DB-level defense-in-depth (journal_entries_idempotency_idx,
+    // P3-SP5 W8): partial unique index on (metadata->>'flow',
+    // metadata->>'idempotencyKey'). write-off is single-shot per contract, so
+    // the key is just the contractId (no runDate component).
+    const idempotencyKey = contractId;
 
-    return { entryNo: result.entryNumber };
+    try {
+      const result = await this.journal.createAndPost(
+        {
+          description: `ตัดหนี้สูญ — สัญญา ${contract.contractNumber}`,
+          reference: `${contractId}:bad-debt-write-off`,
+          metadata: {
+            tag: 'BAD-DEBT',
+            flow: 'write-off',
+            idempotencyKey,
+            contractId,
+            totalReceivable: totalReceivable.toFixed(2),
+            provisionConsumed: provisionConsumed.toFixed(2),
+            writeOffExpense: loss.toFixed(2),
+            creditNoteIssued,
+            creditNoteVatAmount: cnVat.toFixed(2),
+            writeOffReason: writeOffReason ?? null,
+          },
+          lines,
+        },
+        tx,
+      );
+
+      return { entryNo: result.entryNumber };
+    } catch (err) {
+      // A concurrent run can race past the findFirst probe above and lose
+      // the unique-index race. Translate the P2002 into the same
+      // idempotency-hit return shape the probe above would have returned,
+      // instead of surfacing a raw constraint error to the caller.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        const race = await client.journalEntry.findFirst({
+          where: {
+            AND: [
+              { metadata: { path: ['flow'], equals: 'write-off' } } as any,
+              { metadata: { path: ['idempotencyKey'], equals: idempotencyKey } } as any,
+            ],
+            deletedAt: null,
+          },
+        });
+        if (race) {
+          this.logger.log(
+            `[A.5a] BadDebtWriteOff race — JE ${race.entryNumber} already exists for idempotencyKey ${idempotencyKey} (P2002), returning existing`,
+          );
+          return { entryNo: race.entryNumber };
+        }
+      }
+      throw err;
+    }
   }
 }

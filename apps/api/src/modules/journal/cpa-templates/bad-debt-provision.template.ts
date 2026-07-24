@@ -107,21 +107,54 @@ export class BadDebtProvisionTemplate {
           },
         ];
 
-    const result = await this.journal.createAndPost({
-      description: `${isRelease ? 'กลับ' : 'ตั้ง'}สำรองหนี้สงสัยจะสูญ — สัญญา ${contractId.slice(0, 8)} งวด ${period}`,
-      reference: `${contractId}:bad-debt-provision:${runDate}`,
-      metadata: {
-        tag: 'BAD-DEBT',
-        flow: 'provision',
-        direction,
-        contractId,
-        period,
-        runDate,
-        provisionAmount: provisionAmount.toFixed(2),
-      },
-      lines,
-    });
+    // I3 — DB-level defense-in-depth (journal_entries_idempotency_idx,
+    // P3-SP5 W8): partial unique index on (metadata->>'flow',
+    // metadata->>'idempotencyKey'). Same shape as every SHOP template's key.
+    const idempotencyKey = `${contractId}:${runDate}`;
 
-    return { entryNo: result.entryNumber };
+    try {
+      const result = await this.journal.createAndPost({
+        description: `${isRelease ? 'กลับ' : 'ตั้ง'}สำรองหนี้สงสัยจะสูญ — สัญญา ${contractId.slice(0, 8)} งวด ${period}`,
+        reference: `${contractId}:bad-debt-provision:${runDate}`,
+        metadata: {
+          tag: 'BAD-DEBT',
+          flow: 'provision',
+          idempotencyKey,
+          direction,
+          contractId,
+          period,
+          runDate,
+          provisionAmount: provisionAmount.toFixed(2),
+        },
+        lines,
+      });
+
+      return { entryNo: result.entryNumber };
+    } catch (err) {
+      // A concurrent run can race past the findFirst probe above and lose
+      // the unique-index race. Translate the P2002 into the same
+      // idempotency-hit return shape the probe above would have returned,
+      // instead of surfacing a raw constraint error to the caller.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        const race = await this.prisma.journalEntry.findFirst({
+          where: {
+            AND: [
+              { metadata: { path: ['flow'], equals: 'provision' } } as Prisma.JournalEntryWhereInput,
+              {
+                metadata: { path: ['idempotencyKey'], equals: idempotencyKey },
+              } as Prisma.JournalEntryWhereInput,
+            ],
+            deletedAt: null,
+          },
+        });
+        if (race) {
+          this.logger.log(
+            `[A.5a] BadDebtProvision race — JE ${race.entryNumber} already exists for idempotencyKey ${idempotencyKey} (P2002), returning existing`,
+          );
+          return { entryNo: race.entryNumber };
+        }
+      }
+      throw err;
+    }
   }
 }

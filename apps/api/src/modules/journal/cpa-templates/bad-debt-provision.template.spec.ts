@@ -91,6 +91,10 @@ describe('BadDebtProvisionTemplate', () => {
     const crLine = lines.find((l) => l.accountCode === '11-2102');
     expect(crLine).toBeDefined();
     expect(new Decimal(crLine!.credit.toString()).toFixed(2)).toBe('500.00');
+
+    // I3 — metadata.idempotencyKey backs the DB-level partial unique index
+    // (journal_entries_idempotency_idx) on (flow, idempotencyKey).
+    expect((je!.metadata as any).idempotencyKey).toBe(`${contractId}:2026-04-01`);
   });
 
   it('is idempotent by runDate — second call with same runDate returns same entry, no duplicate JE', async () => {

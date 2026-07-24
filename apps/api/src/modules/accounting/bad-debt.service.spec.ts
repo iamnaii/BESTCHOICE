@@ -894,6 +894,11 @@ describe('BadDebtService', () => {
       // Reverse delta = 300 - 30 = 270.
       setActiveProvision({ provisionAmount: 300, provisionRate: 0.15, agingBucket: '31-60' });
       setOverduePayments([{ daysAgo: 15, due: 1500, paid: 0 }]);
+      // I1: GL 11-2102 balance has ample room (300) — the row-based delta
+      // (270) is not clipped.
+      prisma.journalLine.findMany.mockResolvedValue([
+        { debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('300') },
+      ]);
 
       const result = await service.reverseStageOnPayment('ct-1');
 
@@ -913,6 +918,10 @@ describe('BadDebtService', () => {
       setActiveProvision({ provisionAmount: 300, provisionRate: 0.15, agingBucket: '31-60' });
       // No overdue payments at all
       prisma.payment.findMany.mockResolvedValue([]);
+      // I1: GL 11-2102 balance covers the full row amount — no clipping.
+      prisma.journalLine.findMany.mockResolvedValue([
+        { debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('300') },
+      ]);
 
       const result = await service.reverseStageOnPayment('ct-1');
 
@@ -936,6 +945,11 @@ describe('BadDebtService', () => {
       // recordPayment's serializable tx (covered by integration tests).
       setActiveProvision({ provisionAmount: 300, provisionRate: 0.15, agingBucket: '31-60' });
       setOverduePayments([{ daysAgo: 15, due: 1500, paid: 0 }]);
+      // I1: ample GL room so the concurrency assertions below aren't
+      // incidentally affected by the GL cap.
+      prisma.journalLine.findMany.mockResolvedValue([
+        { debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('300') },
+      ]);
 
       const [r1, r2] = await Promise.all([
         service.reverseStageOnPayment('ct-1'),
@@ -973,6 +987,10 @@ describe('BadDebtService', () => {
       // Existing B2 (15%); new aging 15 days → B1 (2%). Drop confirmed.
       setActiveProvision({ provisionAmount: 300, provisionRate: 0.15, agingBucket: '31-60' });
       setOverduePayments([{ daysAgo: 15, due: 1500, paid: 0 }]);
+      // I1: ample GL room — not the focus of this test.
+      prisma.journalLine.findMany.mockResolvedValue([
+        { debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('300') },
+      ]);
 
       const result = await service.reverseStageOnPayment('ct-1');
       expect(result).not.toBeNull();
@@ -998,6 +1016,10 @@ describe('BadDebtService', () => {
         },
       ]);
       prisma.contract.findUnique = jest.fn().mockResolvedValue({ id: 'c-1', status: 'OVERDUE' });
+      // I1: GL 11-2102 balance covers the row (150) — not clipped.
+      prisma.journalLine.findMany.mockResolvedValue([
+        { debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('150.00') },
+      ]);
 
       const r = await service.reverseStageOnPayment('c-1');
       // bucket ใหม่ B1 2% × 1,000 = 20 → reverse = 150 − 20 = 130
@@ -1008,6 +1030,53 @@ describe('BadDebtService', () => {
           where: expect.objectContaining({ dueDate: expect.objectContaining({ lt: expect.any(Date) }) }),
         }),
       );
+    });
+
+    describe('I1 — cap release at live GL balance', () => {
+      it('full-reverse: row=150 but GL=0 → EclStageReverseTemplate NOT called, row still marked REVERSED', async () => {
+        setActiveProvision({ provisionAmount: 150, provisionRate: 0.15, agingBucket: '31-60' });
+        // Fully current — no overdue payments — would take the full-reverse path.
+        prisma.payment.findMany.mockResolvedValue([]);
+        // GL 11-2102 actually holds 0 — the provision row overstates reality
+        // (e.g. a past provision JE failed silently before idempotency hardening).
+        prisma.journalLine.findMany.mockResolvedValue([]);
+
+        const result = await service.reverseStageOnPayment('ct-1');
+
+        expect(result).toBeNull();
+        expect(eclStageReverseTemplateMock.execute).not.toHaveBeenCalled();
+        const updateCall = prisma.badDebtProvision.update.mock.calls[0][0];
+        expect(updateCall.where.id).toBe('prov-1');
+        expect(updateCall.data.status).toBe('REVERSED');
+      });
+
+      it('stage-drop: row-delta=130 but GL=100 → template called with reverseAmount 100.00', async () => {
+        // Existing 150 @ 15%; new aging 15 days on 1,000 due → B1 2% = 20.
+        // Row-based delta = 150 − 20 = 130, but GL only holds 100.
+        setActiveProvision({ provisionAmount: 150, provisionRate: 0.15, agingBucket: '31-60' });
+        setOverduePayments([{ daysAgo: 15, due: 1000, paid: 0 }]);
+        prisma.journalLine.findMany.mockResolvedValue([
+          { debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('100') },
+        ]);
+
+        const result = await service.reverseStageOnPayment('ct-1');
+
+        expect(result).not.toBeNull();
+        expect(result!.reverseAmount).toBe('100.00');
+        expect(eclStageReverseTemplateMock.execute).toHaveBeenCalledWith(
+          expect.objectContaining({
+            contractId: 'ct-1',
+            reverseAmount: expect.decimalEq('100.00'),
+            fromBucket: '31-60',
+            toBucket: '1-30',
+          }),
+          undefined,
+        );
+        // Row still moves to the new bucket/amount even though the JE amount was clipped.
+        const updateCall = prisma.badDebtProvision.update.mock.calls[0][0];
+        expect(updateCall.data.agingBucket).toBe('1-30');
+        expect(updateCall.data.provisionAmount.toString()).toBe('20');
+      });
     });
 
     describe('TERMINATED contract — gated on carrying amount, not maxOverdueDays (review round 2 fix)', () => {
@@ -1038,8 +1107,17 @@ describe('BadDebtService', () => {
         setActiveProvision({ provisionAmount: 9598.13, provisionRate: 0.75, agingBucket: '91-180' });
         prisma.payment.findMany.mockResolvedValue([]);
         prisma.contract.findUnique.mockResolvedValue({ status: 'TERMINATED' });
-        // All three glBalance legs net to zero → carrying = 0 → fully settled.
-        prisma.journalLine.findMany.mockResolvedValue([]);
+        // First 3 glBalance legs (11-2103, 11-2101, 11-2106) net to zero →
+        // carrying = 0 → fully settled. 4th call is the I1 GL-cap check on
+        // 11-2102 — GL actually holds 9,598.13 (matches the row), so the cap
+        // does not clip the release.
+        prisma.journalLine.findMany
+          .mockResolvedValueOnce([]) // 11-2103
+          .mockResolvedValueOnce([]) // 11-2101
+          .mockResolvedValueOnce([]) // 11-2106
+          .mockResolvedValueOnce([
+            { debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('9598.13') },
+          ]); // 11-2102 (I1 cap)
 
         const result = await service.reverseStageOnPayment('ct-1');
 

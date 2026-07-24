@@ -76,8 +76,31 @@ export class ReceiptQueryService {
       }),
     ]);
 
+    // Phase 3 Task 6 — batch-attach the latest CN LINE-delivery status onto
+    // CN rows (cnSource != null) so ReceiptsTab can render a
+    // ส่งแล้ว/ส่งไม่สำเร็จ/ยังไม่ส่ง chip without an N+1 NotificationLog
+    // lookup per row. Only fires when the current page actually has CN rows.
+    const cnReceiptIds = data.filter((r) => r.cnSource != null).map((r) => r.id);
+    const lastCnDeliveryByReceiptId = new Map<string, { status: string; createdAt: Date }>();
+    if (cnReceiptIds.length) {
+      const logs = await this.prisma.notificationLog.findMany({
+        where: { category: 'CREDIT_NOTE', relatedId: { in: cnReceiptIds } },
+        orderBy: { createdAt: 'desc' },
+        select: { relatedId: true, status: true, createdAt: true },
+      });
+      for (const log of logs) {
+        if (log.relatedId && !lastCnDeliveryByReceiptId.has(log.relatedId)) {
+          lastCnDeliveryByReceiptId.set(log.relatedId, { status: log.status, createdAt: log.createdAt });
+        }
+      }
+    }
+    const dataWithCn = data.map((r) => ({
+      ...r,
+      lastCnDelivery: r.cnSource ? (lastCnDeliveryByReceiptId.get(r.id) ?? null) : undefined,
+    }));
+
     return {
-      data,
+      data: dataWithCn,
       total,
       page,
       limit,

@@ -118,7 +118,7 @@ function isPublicOrLiffPage(): boolean {
   const path = window.location.pathname;
   const search = window.location.search;
   if (search.includes('liff.state')) return true;
-  return path === '/login' || path === '/landing' || path.startsWith('/liff/') || path.startsWith('/pay/') || path.startsWith('/customer-access/') || path.startsWith('/verify/');
+  return path === '/login' || path === '/landing' || path.startsWith('/liff/') || path.startsWith('/pay/') || path.startsWith('/customer-access/') || path.startsWith('/verify/') || path.startsWith('/cn/');
 }
 
 // Response interceptor: handle 401 with token refresh

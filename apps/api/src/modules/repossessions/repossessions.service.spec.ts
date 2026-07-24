@@ -149,6 +149,13 @@ describe('RepossessionsService', () => {
         create: jest.fn(),
         update: jest.fn(),
       },
+      // Phase 3 Task 6 — findAll's batched CN lookup (creditNote attach).
+      receipt: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      notificationLog: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
       auditLog: {
         create: jest.fn(),
       },
@@ -254,6 +261,42 @@ describe('RepossessionsService', () => {
       const call = prisma.repossession.findMany.mock.calls[0][0];
       expect(call.take).toBe(200);
       expect(call.skip).toBe(0); // page clamped to 1 → skip = 0
+    });
+
+    it('attaches creditNote (with lastDeliveryStatus) when a REPOSSESSION CN receipt exists for the contract', async () => {
+      const repo = makeRepossession({ contract: { ...makeRepossession().contract, id: 'contract-1' } });
+      prisma.repossession.findMany.mockResolvedValue([repo]);
+      prisma.repossession.count.mockResolvedValue(1);
+      prisma.receipt.findMany.mockResolvedValue([
+        { id: 'rcpt-1', receiptNumber: 'RT-202607-00001', contractId: 'contract-1' },
+      ]);
+      prisma.notificationLog.findMany.mockResolvedValue([
+        { relatedId: 'rcpt-1', status: 'SENT' },
+      ]);
+
+      const result = await service.findAll({});
+
+      expect(prisma.receipt.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { contractId: { in: ['contract-1'] }, cnSource: 'REPOSSESSION', deletedAt: null },
+        }),
+      );
+      expect(result.data[0].creditNote).toEqual({
+        receiptId: 'rcpt-1',
+        receiptNumber: 'RT-202607-00001',
+        lastDeliveryStatus: 'SENT',
+      });
+    });
+
+    it('creditNote is null when no CN receipt exists for the contract', async () => {
+      const repo = makeRepossession({ contract: { ...makeRepossession().contract, id: 'contract-2' } });
+      prisma.repossession.findMany.mockResolvedValue([repo]);
+      prisma.repossession.count.mockResolvedValue(1);
+      prisma.receipt.findMany.mockResolvedValue([]);
+
+      const result = await service.findAll({});
+
+      expect(result.data[0].creditNote).toBeNull();
     });
   });
 

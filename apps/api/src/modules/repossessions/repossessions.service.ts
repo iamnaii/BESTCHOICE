@@ -81,7 +81,54 @@ export class RepossessionsService {
       this.prisma.repossession.count({ where }),
     ]);
 
-    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+    // Phase 3 Task 6 — batch-attach the ใบลดหนี้ (CN) auto-issued at JP5
+    // repossession time (CreditNoteDocumentService.issueForContract, source
+    // REPOSSESSION), so RepossessionsPage can render a "ใบลดหนี้"/resend
+    // action without a per-row Receipt lookup. Two small batched queries
+    // (never per-row) scoped to just the contracts on this page.
+    const contractIds = data.map((r) => r.contract.id).filter(Boolean);
+    const receiptByContractId = new Map<string, { id: string; receiptNumber: string; contractId: string }>();
+    if (contractIds.length) {
+      const receipts = await this.prisma.receipt.findMany({
+        where: { contractId: { in: contractIds }, cnSource: 'REPOSSESSION', deletedAt: null },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, receiptNumber: true, contractId: true },
+      });
+      for (const r of receipts) {
+        if (r.contractId && !receiptByContractId.has(r.contractId)) {
+          receiptByContractId.set(r.contractId, r);
+        }
+      }
+    }
+    const cnReceiptIds = [...receiptByContractId.values()].map((r) => r.id);
+    const lastStatusByReceiptId = new Map<string, string>();
+    if (cnReceiptIds.length) {
+      const logs = await this.prisma.notificationLog.findMany({
+        where: { category: 'CREDIT_NOTE', relatedId: { in: cnReceiptIds } },
+        orderBy: { createdAt: 'desc' },
+        select: { relatedId: true, status: true },
+      });
+      for (const log of logs) {
+        if (log.relatedId && !lastStatusByReceiptId.has(log.relatedId)) {
+          lastStatusByReceiptId.set(log.relatedId, log.status);
+        }
+      }
+    }
+    const dataWithCn = data.map((r) => {
+      const cn = receiptByContractId.get(r.contract.id);
+      return {
+        ...r,
+        creditNote: cn
+          ? {
+              receiptId: cn.id,
+              receiptNumber: cn.receiptNumber,
+              lastDeliveryStatus: lastStatusByReceiptId.get(cn.id) ?? null,
+            }
+          : null,
+      };
+    });
+
+    return { data: dataWithCn, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   /**

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import DataTable from '@/components/ui/DataTable';
 import { Card, CardContent } from '@/components/ui/card';
@@ -57,6 +57,10 @@ interface Receipt {
   voidReason: string | null;
   createdAt: string;
   contract?: { contractNumber: string; customer: { name: string } };
+  /** Auto-issued CN source (JP5 repossession / bad-debt write-off) — null/undefined for ordinary receipts. */
+  cnSource?: string | null;
+  /** Latest NotificationLog attempt for this CN's LINE delivery — undefined for non-CN rows, null when a CN has no attempt yet. */
+  lastCnDelivery?: { status: string; createdAt: string } | null;
 }
 
 interface ReceiptsResponse {
@@ -82,6 +86,22 @@ const methodLabels: Record<string, string> = {
   QR_EWALLET: 'QR/E-Wallet',
 };
 
+// Phase 3 Task 6 — CN แหล่งที่มา (JP5 repossession vs bad-debt write-off)
+const cnSourceLabels: Record<string, string> = {
+  REPOSSESSION: 'ยึดเครื่อง',
+  WRITE_OFF: 'ตัดหนี้สูญ',
+};
+
+/** สถานะส่ง LINE ของ CN — จาก NotificationLog ล่าสุด (category='CREDIT_NOTE'). */
+function cnDeliveryBadgeProps(
+  lastCnDelivery: Receipt['lastCnDelivery'],
+): { label: string; variant: 'success' | 'destructive' | 'secondary' } {
+  if (!lastCnDelivery) return { label: 'ยังไม่ส่ง', variant: 'secondary' };
+  if (lastCnDelivery.status === 'SENT') return { label: 'ส่งแล้ว', variant: 'success' };
+  if (lastCnDelivery.status === 'FAILED') return { label: 'ส่งไม่สำเร็จ', variant: 'destructive' };
+  return { label: 'ยังไม่ส่ง', variant: 'secondary' };
+}
+
 interface ReceiptsTabProps {
   /** Mockup §11.1 — called after a successful void so the parent can re-open
    *  the record wizard on the now-unpaid installment. */
@@ -89,6 +109,7 @@ interface ReceiptsTabProps {
 }
 
 export default function ReceiptsTab({ onVoided }: ReceiptsTabProps) {
+  const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
   const debouncedSearch = useDebounce(searchTerm, 400);
   const [receiptType, setReceiptType] = useState('');
@@ -104,7 +125,11 @@ export default function ReceiptsTab({ onVoided }: ReceiptsTabProps) {
       const { data } = await api.post(`/receipts/${id}/send-line`);
       return data;
     },
-    onSuccess: () => toast.success('ส่งใบเสร็จทาง LINE เรียบร้อยแล้ว'),
+    onSuccess: () => {
+      toast.success('ส่งใบเสร็จทาง LINE เรียบร้อยแล้ว');
+      // Refresh so the CN "สถานะส่ง LINE" chip reflects the new delivery attempt.
+      queryClient.invalidateQueries({ queryKey: ['receipts'] });
+    },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
@@ -151,10 +176,23 @@ export default function ReceiptsTab({ onVoided }: ReceiptsTabProps) {
       label: 'ประเภท',
       render: (r: Receipt) => {
         const isCredit = r.receiptType === 'CREDIT_NOTE';
+        const deliveryBadge = cnDeliveryBadgeProps(r.lastCnDelivery);
         return (
-          <Badge variant={isCredit ? 'warning' : 'primary'} appearance="light" size="sm">
-            {receiptTypeLabels[r.receiptType] || r.receiptType}
-          </Badge>
+          <div className="flex flex-col items-start gap-1">
+            <Badge variant={isCredit ? 'warning' : 'primary'} appearance="light" size="sm">
+              {receiptTypeLabels[r.receiptType] || r.receiptType}
+            </Badge>
+            {isCredit && r.cnSource && (
+              <div className="flex flex-wrap items-center gap-1">
+                <Badge variant="secondary" appearance="light" size="sm">
+                  {cnSourceLabels[r.cnSource] || r.cnSource}
+                </Badge>
+                <Badge variant={deliveryBadge.variant} appearance="light" size="sm">
+                  {deliveryBadge.label}
+                </Badge>
+              </div>
+            )}
+          </div>
         );
       },
     },

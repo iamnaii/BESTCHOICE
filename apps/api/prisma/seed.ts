@@ -197,7 +197,9 @@ async function main() {
     { key: 'line_oa_welcome_message', value: 'ยินดีต้อนรับสู่ BESTCHOICE Mobile! พิมพ์เลขสัญญาเพื่อตรวจสอบยอดชำระ', label: 'ข้อความต้อนรับ LINE OA' },
     { key: 'line_oa_payment_reminder_template', value: 'แจ้งเตือน: สัญญา {contractNo} ครบกำหนดชำระงวดที่ {installment} จำนวน {amount} บาท ภายในวันที่ {dueDate}', label: 'เทมเพลตแจ้งเตือนชำระเงิน LINE OA' },
     { key: 'line_oa_overdue_template', value: 'แจ้งเตือน: สัญญา {contractNo} เลยกำหนดชำระ {overdueDays} วัน กรุณาชำระโดยเร็ว', label: 'เทมเพลตแจ้งเตือนค้างชำระ LINE OA' },
-    { key: 'bad_debt_provision_rates', value: JSON.stringify({ '1-30': 0.02, '31-60': 0.10, '61-90': 0.25, '91-180': 0.50, '181-360': 0.75, '360+': 1.00 }), label: 'อัตราค่าเผื่อหนี้สงสัยจะสูญ ตามอายุหนี้' },
+    // Keys must match BadDebtService canonical buckets (1-30/31-60/61-90/91-180/180+) —
+    // stale keys (e.g. old 181-360/360+) silently zero out B4/B5 via `rates[bucket] || 0`.
+    { key: 'bad_debt_provision_rates', value: JSON.stringify({ '1-30': 0.02, '31-60': 0.15, '61-90': 0.50, '91-180': 0.75, '180+': 1.00 }), label: 'อัตราค่าเผื่อหนี้สงสัยจะสูญ ตามอายุหนี้' },
     // SP5 Phase 2 — Repair ticket CoA defaults (SHOP-side, no VAT)
     { key: 'REPAIR_EXPENSE_ACCOUNT_CODE', value: 'S51-1105', label: 'SHOP CoA — ค่าซ่อมอุปกรณ์ลูกค้า (Dr leg, payer=SHOP)' },
     { key: 'REPAIR_INCOME_ACCOUNT_CODE', value: 'S42-1101', label: 'SHOP CoA — รายได้บริการซ่อม (Cr leg, payer=CUSTOMER)' },

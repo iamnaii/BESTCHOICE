@@ -29,6 +29,7 @@
     "backfill:contacts:help": "echo 'Cloud Run Job (prod) / node dist: CONFIRM_BACKFILL=YES_I_AM_SURE EXPECTED_DB_NAME=<db> [ALLOW_PROD_BACKFILL=YES_I_AM_SURE] npm --prefix apps/api run backfill:contacts  (runs node dist/src/cli/backfill-contacts.cli.js)'",
     "wipe:accounting": "node dist/src/cli/wipe-accounting.cli.js",
     "wipe:accounting:help": "echo 'Usage: CONFIRM_WIPE=YES_I_AM_SURE EXPECTED_DB_NAME=<db> [ALLOW_PROD_WIPE=YES_I_AM_SURE] npm run wipe:accounting'",
+    "ecl:dry-run": "node dist/src/cli/ecl-dry-run.cli.js",
     "wipe:expenses": "tsx src/cli/wipe-expenses.cli.ts",
     "wipe:expenses:help": "echo 'Usage: CONFIRM_WIPE_EXPENSES=YES_I_AM_SURE EXPECTED_DB_NAME=<db> [ALLOW_PROD_WIPE=YES_I_AM_SURE] npm run wipe:expenses'",
     "wipe:assets": "node dist/src/cli/wipe-assets.cli.js",

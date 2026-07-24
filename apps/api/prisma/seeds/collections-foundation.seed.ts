@@ -183,7 +183,7 @@ export async function seedCollectionsFoundation(
     });
   }
 
-  // 10 SystemConfig keys: collections flag + MDM + letter settings
+  // 11 SystemConfig keys: collections flag + MDM + letter settings + JP5 enforcement
   const mdmLetterConfigs: Array<{ key: string; value: string; label: string }> = [
     {
       key: 'collections_v2_enabled',
@@ -212,8 +212,8 @@ export async function seedCollectionsFoundation(
     },
     {
       key: 'letter_auto_generate_enabled',
-      value: 'false',
-      label: 'เปิดใช้งาน cron สร้างหนังสืออัตโนมัติรายวัน (ปิดไว้จนกว่าจะผ่านการตรวจสอบทางกฎหมาย)',
+      value: 'true',
+      label: 'เปิดใช้งาน cron สร้างหนังสืออัตโนมัติรายวัน (ผ่านการตรวจสอบทางกฎหมาย — owner 2026-07-24)',
     },
     {
       key: 'letter_return_device_days',
@@ -234,6 +234,12 @@ export async function seedCollectionsFoundation(
       key: 'letter_letterhead_url',
       value: '',
       label: 'URL รูปหัวจดหมายบริษัท (S3) — ไม่บังคับ',
+    },
+    {
+      key: 'jp5_require_terminated_status',
+      value: 'true',
+      label:
+        'JP5 strict mode: ต้องส่งหนังสือบอกเลิกสัญญา (TERMINATED) ก่อนยึดเครื่อง (ปพพ.386 — owner 2026-07-24)',
     },
   ];
 

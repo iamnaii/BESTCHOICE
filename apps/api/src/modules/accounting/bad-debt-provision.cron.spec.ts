@@ -11,11 +11,11 @@ jest.mock('@sentry/nestjs', () => ({
 import * as Sentry from '@sentry/nestjs';
 
 /**
- * Wave 4 Task 1 — automated provision cron tests.
+ * Wave 5 Task 5 — automated daily provision cron tests.
  *
  * Verifies:
  *  - happy path: SYSTEM user resolved, calculateProvisions called, period
- *    is the prior month (YYYY-MM)
+ *    is the current month (YYYY-MM)
  *  - resilience: errors are sent to Sentry but cron does not throw
  *  - guard: missing SYSTEM user → Sentry alarm + early return (no crash)
  */
@@ -71,11 +71,10 @@ describe('BadDebtProvisionCron (Wave 4 T1)', () => {
     expect(result!.period).toMatch(/^\d{4}-\d{2}$/);
   });
 
-  it('reports prior month (not current) as the period', async () => {
+  it('reports current month as the period (daily self-healing cron)', async () => {
     const result = await cron.run();
     const now = new Date();
-    const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const expected = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`;
+    const expected = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     expect(result!.period).toBe(expected);
   });
 

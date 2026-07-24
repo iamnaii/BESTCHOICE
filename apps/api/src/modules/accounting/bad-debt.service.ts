@@ -58,7 +58,42 @@ export class BadDebtService {
     });
     if (config) {
       try {
-        return JSON.parse(config.value);
+        const parsed = JSON.parse(config.value) as Record<string, number>;
+        // Merge over defaults so a partial/stale config (e.g. missing B4/B5
+        // after a bucket-key rename) never silently zeroes out a bucket via
+        // `rates[bucket] || 0` downstream — a missing key here must fall back
+        // to the safe default rate, not 0%.
+        const merged = { ...DEFAULT_PROVISION_RATES, ...parsed };
+        const missingKeys = Object.keys(DEFAULT_PROVISION_RATES).filter(
+          (k) => !(k in parsed),
+        );
+        if (missingKeys.length > 0) {
+          const msg = `bad_debt_provision_rates SystemConfig is missing canonical bucket(s) [${missingKeys.join(', ')}] — falling back to DEFAULT_PROVISION_RATES for those keys`;
+          this.logger.warn(msg);
+          Sentry.captureMessage(msg, {
+            level: 'warning',
+            tags: { subsystem: 'bad-debt', key: 'bad_debt_provision_rates' },
+            extra: { missingKeys },
+          });
+        }
+        // C1: legacy bucket keys ('181-360'/'360+', pre-v3 naming) surviving
+        // alongside the canonical keys is a distinct hazard from "missing" —
+        // the row VALIDATES as present (has '91-180'/'180+') but its VALUES
+        // may still be stale ones the merge above happily takes as-is (stale
+        // values win over v3 defaults, since `parsed` overrides `merged` for
+        // any key it defines). Merging can't fix a stale VALUE under the
+        // correct key name, only a missing key — so alarm distinctly here.
+        const legacyKeys = ['181-360', '360+'].filter((k) => k in parsed);
+        if (legacyKeys.length > 0) {
+          const msg = `bad_debt_provision_rates SystemConfig still has legacy bucket key(s) [${legacyKeys.join(', ')}] (pre-v3 naming) — values for the canonical keys still come from the stored config as-is (stale VALUES win, not just missing keys); migrate this row via apps/api/prisma/migrations-manual/2026-07-23-enable-letter-auto-generate-and-jp5-strict.sql`;
+          this.logger.warn(msg);
+          Sentry.captureMessage(msg, {
+            level: 'warning',
+            tags: { subsystem: 'bad-debt', key: 'bad_debt_provision_rates' },
+            extra: { legacyKeys },
+          });
+        }
+        return merged;
       } catch (err) {
         // Corrupt/edited provision-rate JSON must NOT silently revert to
         // defaults — these rates drive the TFRS-9 ECL allowance JE (Cr 11-2102),
@@ -132,16 +167,67 @@ export class BadDebtService {
   }
 
   /**
-   * Helper for outstanding calculation (DRY) — Decimal precision (TFRS 9 / v4 mandate).
-   * Replaces Number() casts which lose precision on Prisma.Decimal fields.
+   * ฐาน ECL = amountDue − amountPaid เท่านั้น (ตรงกับ 11-2103) — ค่าปรับล่าช้า
+   * ไม่ใช่สินทรัพย์ใน GL (รับรู้เป็นรายได้ 42-1103 ตอนรับเงิน) จึงห้ามเข้าฐาน
+   * (Excel v3 §1 + spec 2026-07-23 §4 1b)
    */
-  private computeOutstanding(
-    p: { amountDue: Prisma.Decimal; amountPaid: Prisma.Decimal },
-    lateFee: Prisma.Decimal | number = 0,
-  ): Decimal {
-    return new Decimal(p.amountDue.toString())
-      .sub(new Decimal(p.amountPaid.toString()))
-      .add(new Decimal(lateFee.toString()));
+  private computeOutstanding(p: { amountDue: Prisma.Decimal; amountPaid: Prisma.Decimal }): Decimal {
+    return new Decimal(p.amountDue.toString()).sub(new Decimal(p.amountPaid.toString()));
+  }
+
+  /**
+   * ฐาน ECL ของสัญญา TERMINATED = มูลค่าตามบัญชีของลูกหนี้ (carrying amount):
+   * 11-2103 (accrued ค้าง) + 11-2101 (ยังไม่ accrue, excl VAT) − 11-2106 (unearned interest).
+   * VAT deferred (11-2105/21-2102) หักล้างกันเอง — ไม่เข้าฐาน.
+   * เหตุผล: หลังบอกเลิก 2A หยุด accrue — ฐานจาก Payment rows จะบวมรวมดอกเบี้ย/VAT
+   * ที่ยังไม่รับรู้ เกิน carrying amount (spec 2026-07-23 §4 1c)
+   */
+  private async terminatedCarryingAmount(
+    contractId: string,
+    db: Prisma.TransactionClient | PrismaService = this.prisma,
+  ): Promise<Decimal> {
+    const [accrued, gross, unearned] = await Promise.all([
+      this.glBalance(contractId, '11-2103', 'dr', db),
+      this.glBalance(contractId, '11-2101', 'dr', db),
+      this.glBalance(contractId, '11-2106', 'cr', db),
+    ]);
+    // M4: clamp at >= 0 — unearned interest can (in edge/rounding cases)
+    // exceed accrued+gross, which would otherwise hand a negative "carrying
+    // amount" into the ECL rate multiplication downstream.
+    return Decimal.max(0, accrued.plus(gross).minus(unearned));
+  }
+
+  /**
+   * GL balance ราย contract จาก journal lines (POSTED เท่านั้น) — pattern เดียวกับ
+   * BadDebtWriteOffTemplate/RepossessionJP5Template. side='cr' คืน ΣCr−ΣDr
+   * (contra-asset/liability เช่น 11-2102, 11-2106), side='dr' คืน ΣDr−ΣCr
+   * (asset เช่น 11-2101, 11-2103).
+   */
+  private async glBalance(
+    contractId: string,
+    accountCode: string,
+    side: 'dr' | 'cr',
+    db: Prisma.TransactionClient | PrismaService = this.prisma,
+  ): Promise<Decimal> {
+    const lines = await db.journalLine.findMany({
+      where: {
+        accountCode,
+        journalEntry: {
+          metadata: { path: ['contractId'], equals: contractId },
+          status: 'POSTED',
+          deletedAt: null,
+        },
+      },
+      select: { debit: true, credit: true },
+    });
+    let bal = new Decimal(0);
+    for (const l of lines) {
+      bal =
+        side === 'cr'
+          ? bal.plus(l.credit.toString()).minus(l.debit.toString())
+          : bal.plus(l.debit.toString()).minus(l.credit.toString());
+    }
+    return bal;
   }
 
   /**
@@ -166,10 +252,15 @@ export class BadDebtService {
    *
    * Refs: docs/accounting/audit-report.html (Wave 4 T1, TFRS 9 W-1/W-2)
    */
-  async calculateProvisions(calculatedById: string, branchId?: string): Promise<{
+  async calculateProvisions(
+    calculatedById: string,
+    branchId?: string,
+    dryRun = false,
+  ): Promise<{
     created: number;
     totalProvision: number;
     byBucket: Record<string, { count: number; amount: number }>;
+    deltas?: { contractId: string; bucket: string; prevGl: string; target: string; delta: string }[];
   }> {
     const rates = await this.getProvisionRates();
     const now = new Date();
@@ -185,7 +276,9 @@ export class BadDebtService {
         dueDate: { lt: now },
         contract: {
           deletedAt: null,
-          status: { in: ['ACTIVE', 'OVERDUE', 'DEFAULT'] },
+          // TERMINATED เข้า scope ตาม Excel v3 B4/B5 — escalate ต่อระหว่างรอยึด/ตัดหนี้สูญ
+          // (ยึดแล้ว = CLOSED_BAD_DEBT หลุด scope เอง — spec 2026-07-23 §4 1c)
+          status: { in: ['ACTIVE', 'OVERDUE', 'DEFAULT', 'TERMINATED'] },
           ...branchFilter,
         },
       },
@@ -201,10 +294,11 @@ export class BadDebtService {
       string,
       { amount: Decimal; oldestDueDate: Date }
     >();
+    const contractStatus = new Map<string, string>();
     for (const p of overduePayments) {
+      contractStatus.set(p.contract.id, p.contract.status);
       const existing = contractOutstanding.get(p.contract.id);
-      const unpaidLateFee = !p.lateFeeWaived ? new Decimal(p.lateFee.toString()) : new Decimal(0);
-      const remaining = this.computeOutstanding(p, unpaidLateFee);
+      const remaining = this.computeOutstanding(p);
       if (existing) {
         existing.amount = existing.amount.add(remaining);
       } else {
@@ -242,6 +336,10 @@ export class BadDebtService {
     const provisions: ProvisionRow[] = [];
 
     for (const [contractId, data] of contractOutstanding) {
+      const isTerminated = contractStatus.get(contractId) === 'TERMINATED';
+      const baseAmount = isTerminated
+        ? await this.terminatedCarryingAmount(contractId)
+        : data.amount;
       const daysOverdue = Math.floor(
         (now.getTime() - data.oldestDueDate.getTime()) / (1000 * 60 * 60 * 24),
       );
@@ -250,8 +348,8 @@ export class BadDebtService {
       const bucket = this.effectiveBucket(agingBucket, streakBucket, rates);
       const rate = rates[bucket] || 0;
       const rateDec = new Decimal(rate);
-      const outstandingDec = data.amount.toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-      const provisionAmountDec = data.amount
+      const outstandingDec = baseAmount.toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+      const provisionAmountDec = baseAmount
         .mul(rateDec)
         .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
 
@@ -270,47 +368,57 @@ export class BadDebtService {
       byBucket[bucket].amount = byBucket[bucket].amount.add(provisionAmountDec);
     }
 
-    // Atomic REVERSE + CREATE — never leave the balance sheet without coverage
-    const previousProvisionByContract = new Map<string, Prisma.Decimal>();
-    await this.prisma.$transaction(async (tx) => {
-      if (contractIdsInScope.length > 0) {
-        const activeProvisions = await tx.badDebtProvision.findMany({
-          where: { status: 'ACTIVE', contractId: { in: contractIdsInScope }, deletedAt: null },
-          select: { contractId: true, provisionAmount: true },
-        });
-        for (const p of activeProvisions) {
-          const prev = previousProvisionByContract.get(p.contractId) ?? new Prisma.Decimal(0);
-          previousProvisionByContract.set(p.contractId, prev.add(p.provisionAmount));
+    // Atomic REVERSE + CREATE — never leave the balance sheet without coverage.
+    // dryRun (Task 8) skips this entirely — no row writes for a read-only report.
+    if (!dryRun) {
+      await this.prisma.$transaction(async (tx) => {
+        if (contractIdsInScope.length > 0) {
+          await tx.badDebtProvision.updateMany({
+            where: { status: 'ACTIVE', contractId: { in: contractIdsInScope }, deletedAt: null },
+            data: { status: 'REVERSED' },
+          });
         }
 
-        await tx.badDebtProvision.updateMany({
-          where: { status: 'ACTIVE', contractId: { in: contractIdsInScope }, deletedAt: null },
-          data: { status: 'REVERSED' },
-        });
-      }
-
-      if (provisions.length > 0) {
-        await tx.badDebtProvision.createMany({ data: provisions });
-      }
-    });
+        if (provisions.length > 0) {
+          await tx.badDebtProvision.createMany({ data: provisions });
+        }
+      });
+    }
 
     // Post delta-based provision JEs (non-blocking — a single JE failure must not abort the run)
+    // Delta เทียบ GL 11-2102 จริง (ไม่ใช่ DB rows) — JE ที่เคย fail จะถูกเติมคืนรอบถัดไป (self-healing)
     const year = now.getFullYear();
     const month = now.getMonth() + 1;
     const period = `${year}-${String(month).padStart(2, '0')}`;
+    const runDate = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
+
+    const deltas: { contractId: string; bucket: string; prevGl: string; target: string; delta: string }[] = [];
 
     for (const p of provisions) {
-      const prev = previousProvisionByContract.get(p.contractId) ?? new Prisma.Decimal(0);
-      const newAmount = p.provisionAmount;
-      const delta = newAmount.sub(prev);
-      if (delta.eq(0)) continue;
-
-      // Phase A.5a: post provision JE (non-blocking — a single JE failure must not abort the run)
       try {
+        const glPrev = await this.glBalance(p.contractId, '11-2102', 'cr');
+        const delta = new Decimal(p.provisionAmount.toString()).sub(glPrev);
+
+        if (dryRun) {
+          // Report completeness: include zero-delta contracts too (they would
+          // be skipped for posting, but still reflect target vs GL state).
+          deltas.push({
+            contractId: p.contractId,
+            bucket: p.agingBucket,
+            prevGl: glPrev.toFixed(2),
+            target: p.provisionAmount.toFixed(2),
+            delta: delta.toFixed(2),
+          });
+          continue;
+        }
+
+        if (delta.abs().lt(new Decimal('0.005'))) continue;
+
         await this.badDebtProvisionTemplate.execute({
           contractId: p.contractId,
           provisionAmount: delta,
           period,
+          runDate,
         });
       } catch (err) {
         Sentry.captureException(err, { extra: { contractId: p.contractId, period } });
@@ -331,7 +439,12 @@ export class BadDebtService {
     for (const [bucket, agg] of Object.entries(byBucket)) {
       byBucketResp[bucket] = { count: agg.count, amount: agg.amount.toNumber() };
     }
-    return { created: provisions.length, totalProvision, byBucket: byBucketResp };
+    return {
+      created: provisions.length,
+      totalProvision,
+      byBucket: byBucketResp,
+      ...(dryRun ? { deltas } : {}),
+    };
   }
 
   /**
@@ -492,6 +605,11 @@ export class BadDebtService {
     if (contract.status === 'CLOSED_BAD_DEBT') {
       throw new BadRequestException('สัญญานี้ถูกตัดหนี้สูญไปแล้ว');
     }
+    if (contract.status !== 'TERMINATED') {
+      throw new BadRequestException(
+        'ตัดหนี้สูญได้เฉพาะสัญญาที่บอกเลิกแล้ว (TERMINATED) — กรุณาออกหนังสือบอกเลิก (CONTRACT_TERMINATION_60D) และบันทึกการส่ง EMS ก่อน (ปพพ.386)',
+      );
+    }
 
     return this.prisma.$transaction(async (tx) => {
       // Calculate outstanding amount from unpaid/partial payments (Decimal arithmetic)
@@ -501,26 +619,23 @@ export class BadDebtService {
           status: { in: ['PENDING', 'PARTIALLY_PAID'] },
           deletedAt: null,
         },
-        select: { amountDue: true, amountPaid: true, lateFee: true, lateFeeWaived: true },
+        select: { amountDue: true, amountPaid: true },
       });
-      const outstandingDec = unpaidPayments.reduce((sum, p) => {
-        const unpaidLateFee = !p.lateFeeWaived ? new Decimal(p.lateFee.toString()) : new Decimal(0);
-        return sum.add(this.computeOutstanding(p, unpaidLateFee));
-      }, new Decimal(0));
+      const outstandingDec = unpaidPayments.reduce(
+        (sum, p) => sum.add(this.computeOutstanding(p)),
+        new Decimal(0),
+      );
       const outstandingAmount = outstandingDec.toNumber();
 
       // T3-C6 — enforce amount-tier approval rule before any write.
       this.assertWriteOffTierPermitted(outstandingAmount, writer.role, approver.role);
 
-      // Capture total active provision amount before updating status (Decimal sum)
-      const activeProvisions = await tx.badDebtProvision.findMany({
-        where: { contractId, status: 'ACTIVE', deletedAt: null },
-        select: { provisionAmount: true },
-      });
-      const existingProvisionDec = activeProvisions.reduce(
-        (sum, p) => sum.add(new Decimal(p.provisionAmount.toString())),
-        new Decimal(0),
-      );
+      // Capture provision amount from the real 11-2102 GL balance — NOT the
+      // badDebtProvision rows. BadDebtWriteOffTemplate derives its
+      // provisionConsumed the same way; if a past provision JE ever failed
+      // silently the DB rows and the GL can diverge, and this audit log must
+      // report what the JE actually consumed, not what the rows claim.
+      const existingProvisionDec = await this.glBalance(contractId, '11-2102', 'cr', tx);
       const existingProvisionAmount = existingProvisionDec.toNumber();
 
       // Update contract status to CLOSED_BAD_DEBT
@@ -575,6 +690,58 @@ export class BadDebtService {
   }
 
   /**
+   * Fully releases an ACTIVE provision back to P&L (toBucket: 'CURRENT') and
+   * marks it REVERSED. Shared by both the non-TERMINATED "fully current"
+   * early-exit and the TERMINATED "carrying amount settled" path in
+   * `reverseStageOnPayment` — same JE + same status transition either way.
+   */
+  private async fullReverseProvision(
+    contractId: string,
+    existing: { id: string; provisionAmount: Prisma.Decimal; agingBucket: string },
+    db: Prisma.TransactionClient | PrismaService,
+    tx?: Prisma.TransactionClient,
+  ): Promise<{ entryNo: string; reverseAmount: string; fromBucket: string; toBucket: string } | null> {
+    const rowAmount = new Decimal(existing.provisionAmount.toString());
+    // I1: cap the release at what the GL actually holds on 11-2102. The
+    // BadDebtProvision row is only ever as trustworthy as the JE that posted
+    // it — if a past provision JE ever failed silently the row can claim more
+    // than the GL has, and releasing more than that would falsely credit
+    // 51-1103 (reversed ECL expense) with money that was never provisioned.
+    const glBal = await this.glBalance(contractId, '11-2102', 'cr', db);
+    const reverseAmount = Decimal.min(rowAmount, glBal);
+    if (reverseAmount.lte(0)) {
+      // Nothing left on the GL to release (or the row itself was already
+      // zero) — the row is operationally dead either way, so mark it
+      // REVERSED without posting a JE for zero/negative money.
+      await db.badDebtProvision.update({
+        where: { id: existing.id },
+        data: { status: 'REVERSED' },
+      });
+      return null;
+    }
+    const result = await this.eclStageReverseTemplate.execute(
+      {
+        contractId,
+        reverseAmount,
+        fromBucket: existing.agingBucket,
+        toBucket: 'CURRENT',
+      },
+      tx,
+    );
+    if (!result) return null;
+    await db.badDebtProvision.update({
+      where: { id: existing.id },
+      data: { status: 'REVERSED' },
+    });
+    return {
+      entryNo: result.entryNo,
+      reverseAmount: reverseAmount.toFixed(2),
+      fromBucket: existing.agingBucket,
+      toBucket: 'CURRENT',
+    };
+  }
+
+  /**
    * ECL Stage Reverse on payment (CPA Policy A spec §3.6).
    *
    * Called from PaymentReceipt2BTemplate / payments.service after a successful
@@ -603,49 +770,60 @@ export class BadDebtService {
     });
     if (!existing) return null;
 
+    const now = new Date();
     const overduePayments = await db.payment.findMany({
       where: {
         contractId,
         status: { in: ['PENDING', 'PARTIALLY_PAID'] },
+        dueDate: { lt: now },
         deletedAt: null,
       },
-      select: { dueDate: true, amountDue: true, amountPaid: true, lateFee: true, lateFeeWaived: true },
+      select: { dueDate: true, amountDue: true, amountPaid: true },
     });
 
-    const now = new Date();
     let maxOverdueDays = 0;
     let totalOutstanding = new Decimal(0);
     for (const p of overduePayments) {
       const days = Math.floor((now.getTime() - p.dueDate.getTime()) / (1000 * 60 * 60 * 24));
       if (days > maxOverdueDays) maxOverdueDays = days;
-      const unpaidLateFee = !p.lateFeeWaived ? new Decimal(p.lateFee.toString()) : new Decimal(0);
-      totalOutstanding = totalOutstanding.add(this.computeOutstanding(p, unpaidLateFee));
+      totalOutstanding = totalOutstanding.add(this.computeOutstanding(p));
+    }
+
+    // TERMINATED — ฐาน ECL = carrying amount จาก GL (เดียวกับ calculateProvisions,
+    // Task 4). หลังบอกเลิก 2A หยุด accrue จึงต้องอิง GL แทน Payment rows.
+    //
+    // CRITICAL (review round 2): this lookup MUST happen BEFORE the
+    // maxOverdueDays<=0 early-exit below. If a TERMINATED contract's overdue
+    // Payment rows just got paid off, `overduePayments` comes back empty and
+    // maxOverdueDays = 0 — but GL carrying amount can still show real
+    // exposure. Falling into the old "fully current → full reverse" branch
+    // on maxOverdueDays alone would zero out legitimate ECL coverage while
+    // the contract is still carrying a receivable. Doing the TERMINATED
+    // check first and branching on carrying amount (not maxOverdueDays)
+    // avoids that.
+    const contract = await db.contract.findUnique({
+      where: { id: contractId },
+      select: { status: true },
+    });
+    const isTerminated = contract?.status === 'TERMINATED';
+    if (isTerminated) {
+      totalOutstanding = await this.terminatedCarryingAmount(contractId, db);
+
+      // No aging-bucket stage-drop semantics for TERMINATED at payment time —
+      // there are no more due dates to age against. Only fully release the
+      // provision when carrying amount is truly settled (<=0). Otherwise
+      // leave the provision untouched: provision อัปเดตโดย daily cron เมื่อ
+      // สัญญามีงวดค้างอย่างน้อย 1 งวด (dueDate < now); ถ้าชำระงวดค้างครบแต่
+      // ยังมีงวดอนาคต provision จะคงค้างที่ค่าเดิม (ทิศ conservative) จนกว่า
+      // งวดถัดไปเลย dueDate — นโยบาย escalate ระหว่างช่องว่างนี้รอ owner/CPA
+      // ตัดสิน (spec 2026-07-23 §4 1c follow-up).
+      if (totalOutstanding.gt(0)) return null;
+      return this.fullReverseProvision(contractId, existing, db, tx);
     }
 
     if (maxOverdueDays <= 0 || totalOutstanding.lte(0)) {
       // Contract is fully current — fall through and reverse the entire provision.
-      const reverseAmount = new Decimal(existing.provisionAmount.toString());
-      if (reverseAmount.lte(0)) return null;
-      const result = await this.eclStageReverseTemplate.execute(
-        {
-          contractId,
-          reverseAmount,
-          fromBucket: existing.agingBucket,
-          toBucket: 'CURRENT',
-        },
-        tx,
-      );
-      if (!result) return null;
-      await db.badDebtProvision.update({
-        where: { id: existing.id },
-        data: { status: 'REVERSED' },
-      });
-      return {
-        entryNo: result.entryNo,
-        reverseAmount: reverseAmount.toFixed(2),
-        fromBucket: existing.agingBucket,
-        toBucket: 'CURRENT',
-      };
+      return this.fullReverseProvision(contractId, existing, db, tx);
     }
 
     const rates = await this.getProvisionRates();
@@ -663,8 +841,29 @@ export class BadDebtService {
     const newProvision = totalOutstanding
       .times(newRate)
       .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-    const reverseAmount = new Decimal(existing.provisionAmount.toString()).sub(newProvision);
-    if (reverseAmount.lte(0)) return null;
+    const rowDelta = new Decimal(existing.provisionAmount.toString()).sub(newProvision);
+    if (rowDelta.lte(0)) return null;
+
+    // I1: cap the release at what the GL actually holds on 11-2102 — same
+    // rationale as fullReverseProvision. The row-based delta can overstate a
+    // real GL balance if a past provision JE ever failed silently.
+    const glBal = await this.glBalance(contractId, '11-2102', 'cr', db);
+    const reverseAmount = Decimal.min(rowDelta, glBal);
+
+    const rowUpdateData = {
+      agingBucket: newBucket,
+      daysOverdue: maxOverdueDays,
+      outstandingAmount: totalOutstanding,
+      provisionRate: new Prisma.Decimal(newRate.toString()),
+      provisionAmount: newProvision,
+    };
+
+    if (reverseAmount.lte(0)) {
+      // GL has no room left to release — skip the JE, but the aging state
+      // still moved, so the row still needs to reflect the new bucket/amount.
+      await db.badDebtProvision.update({ where: { id: existing.id }, data: rowUpdateData });
+      return null;
+    }
 
     const result = await this.eclStageReverseTemplate.execute(
       {
@@ -679,13 +878,7 @@ export class BadDebtService {
 
     await db.badDebtProvision.update({
       where: { id: existing.id },
-      data: {
-        agingBucket: newBucket,
-        daysOverdue: maxOverdueDays,
-        outstandingAmount: totalOutstanding,
-        provisionRate: new Prisma.Decimal(newRate.toString()),
-        provisionAmount: newProvision,
-      },
+      data: rowUpdateData,
     });
 
     return {

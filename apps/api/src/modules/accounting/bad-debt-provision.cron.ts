@@ -5,25 +5,24 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { BadDebtService } from './bad-debt.service';
 
 /**
- * Wave 4 Task 1 — automated monthly Bad Debt provision cron.
+ * Wave 5 Task 5 — automated daily Bad Debt provision cron.
  *
- * ก่อนหน้านี้ provision ต้องกด manual ผ่าน UI ทุกเดือน ซึ่งเสี่ยง
- * (ลืม / ทำตอนกลางเดือน / ทำหลายรอบ). Cron นี้รันอัตโนมัติทุกวันที่ 1
- * ของเดือนเวลา 00:30 BKK สำหรับเดือนก่อนหน้า เพื่อให้ provisions
- * อยู่ในงบของเดือนที่ปิดไปแล้ว (TFRS 9 W-1/W-2 audit fix).
+ * Excel v3 "Daily Cron" (spec 2026-07-23 §4 1c): provisions calculated
+ * every day at 00:30 BKK (after 2A accrual cron 00:01) as self-healing
+ * delta vs GL 11-2102 (allowance for doubtful accounts). Each run is
+ * idempotent per runDate at the JE template level (computes aging buckets
+ * from T-0 accrued installments, provisions fresh JE with idempotency key).
  *
- * Why a standalone cron (not integrated with monthly-close.service):
+ * Why a standalone daily cron (not integrated with monthly-close.service):
  *   - monthly-close is a manual state machine (OPEN→REVIEW→CLOSED→SYNCED)
- *     triggered per-company by FINANCE_MANAGER. Auto-firing provision on
- *     review-start would be a side-effect surprise.
+ *     triggered per-company by FINANCE_MANAGER. Auto-firing provision
+ *     independently gives GL visibility day-to-day without blocking on close.
  *   - calculateProvisions() always operates on "now" (oldest unpaid
- *     dueDate as of run time) — there's no period parameter to thread.
- *     A standalone cron run on day 1 of each month captures the prior
- *     month's tail-end aging cleanly.
+ *     dueDate as of run time). Daily runs capture aging drift on a rolling basis.
  *   - System-wide single run, not per-company. Cleaner ops contract.
  *
  * Failure mode: any error → Sentry + log, but cron does NOT throw.
- * Losing one month's auto-run is recoverable via manual UI trigger.
+ * Losing one day's auto-run is recoverable via manual UI trigger next day.
  */
 @Injectable()
 export class BadDebtProvisionCron {
@@ -34,12 +33,11 @@ export class BadDebtProvisionCron {
     private readonly prisma: PrismaService,
   ) {}
 
-  /** Day 1 of every month at 00:30 BKK — calculate provision for prior month */
-  @Cron('30 0 1 * *', { timeZone: 'Asia/Bangkok' })
+  /** Every day at 00:30 BKK — calculate provision for current month */
+  @Cron('30 0 * * *', { timeZone: 'Asia/Bangkok' })
   async run(): Promise<{ created: number; totalProvision: number; period: string } | null> {
     const now = new Date();
-    const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const period = `${prevMonth.getFullYear()}-${String(prevMonth.getMonth() + 1).padStart(2, '0')}`;
+    const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
     this.logger.log(`[BadDebtProvisionCron] start period=${period}`);
 

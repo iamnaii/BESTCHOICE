@@ -44,7 +44,11 @@ describe('calculateLateFees PER_DAY SQL == computePerDayLateFee (anti-drift)', (
     // Clean slate for payments, installmentSchedules, contracts
     await prisma.payment.deleteMany({});
     await prisma.installmentSchedule.deleteMany({});
-    await prisma.contract.deleteMany({});
+    // T1-C7 guard: see cn-issue-on-writeoff.spec.ts (Phase 3 Task 3) — a
+    // contract written off via the real writeOffBadDebt() has a permanent
+    // (immutable) badDebtWriteOffAuditLog row FK-referencing it.
+    const woPoisoned = await prisma.badDebtWriteOffAuditLog.findMany({ select: { contractId: true } });
+    await prisma.contract.deleteMany({ where: { id: { notIn: woPoisoned.map((p) => p.contractId) } } });
 
     // Set PER_DAY config
     for (const [key, value] of PER_DAY_CONFIG) {
@@ -76,7 +80,11 @@ describe('calculateLateFees PER_DAY SQL == computePerDayLateFee (anti-drift)', (
   afterAll(async () => {
     await prisma.payment.deleteMany({});
     await prisma.installmentSchedule.deleteMany({});
-    await prisma.contract.deleteMany({});
+    // T1-C7 guard: see cn-issue-on-writeoff.spec.ts (Phase 3 Task 3) — a
+    // contract written off via the real writeOffBadDebt() has a permanent
+    // (immutable) badDebtWriteOffAuditLog row FK-referencing it.
+    const woPoisoned = await prisma.badDebtWriteOffAuditLog.findMany({ select: { contractId: true } });
+    await prisma.contract.deleteMany({ where: { id: { notIn: woPoisoned.map((p) => p.contractId) } } });
     await prisma.systemConfig.deleteMany({ where: { key: { in: CONFIG_KEYS } } });
     await prisma.$disconnect();
   });
@@ -129,7 +137,11 @@ describe('calculateLateFees BRACKET SQL == flat bracket (parity / rollback guard
   beforeAll(async () => {
     await prisma.payment.deleteMany({});
     await prisma.installmentSchedule.deleteMany({});
-    await prisma.contract.deleteMany({});
+    // T1-C7 guard: see cn-issue-on-writeoff.spec.ts (Phase 3 Task 3) — a
+    // contract written off via the real writeOffBadDebt() has a permanent
+    // (immutable) badDebtWriteOffAuditLog row FK-referencing it.
+    const woPoisoned = await prisma.badDebtWriteOffAuditLog.findMany({ select: { contractId: true } });
+    await prisma.contract.deleteMany({ where: { id: { notIn: woPoisoned.map((p) => p.contractId) } } });
 
     // Set BRACKET config (also remove PER_DAY keys if present)
     await prisma.systemConfig.deleteMany({ where: { key: { in: CONFIG_KEYS } } });
@@ -157,7 +169,11 @@ describe('calculateLateFees BRACKET SQL == flat bracket (parity / rollback guard
   afterAll(async () => {
     await prisma.payment.deleteMany({});
     await prisma.installmentSchedule.deleteMany({});
-    await prisma.contract.deleteMany({});
+    // T1-C7 guard: see cn-issue-on-writeoff.spec.ts (Phase 3 Task 3) — a
+    // contract written off via the real writeOffBadDebt() has a permanent
+    // (immutable) badDebtWriteOffAuditLog row FK-referencing it.
+    const woPoisoned = await prisma.badDebtWriteOffAuditLog.findMany({ select: { contractId: true } });
+    await prisma.contract.deleteMany({ where: { id: { notIn: woPoisoned.map((p) => p.contractId) } } });
     await prisma.systemConfig.deleteMany({ where: { key: { in: BRACKET_KEYS } } });
     await prisma.$disconnect();
   });

@@ -58,7 +58,11 @@ describe('ConsecutiveMissedService.getStreaks', () => {
   beforeAll(async () => {
     await prisma.payment.deleteMany({});
     await prisma.installmentSchedule.deleteMany({});
-    await prisma.contract.deleteMany({});
+    // T1-C7 guard: see cn-issue-on-writeoff.spec.ts (Phase 3 Task 3) — a
+    // contract written off via the real writeOffBadDebt() has a permanent
+    // (immutable) badDebtWriteOffAuditLog row FK-referencing it.
+    const woPoisoned = await prisma.badDebtWriteOffAuditLog.findMany({ select: { contractId: true } });
+    await prisma.contract.deleteMany({ where: { id: { notIn: woPoisoned.map((p) => p.contractId) } } });
     const c = await seedStandard17k12m(prisma);
     contractId = c.id;
     await prisma.contract.update({ where: { id: contractId }, data: { status: 'OVERDUE' } });

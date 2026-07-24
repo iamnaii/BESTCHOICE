@@ -9,6 +9,7 @@ import { BadDebtWriteOffTemplate } from '../journal/cpa-templates/bad-debt-write
 import { EclStageReverseTemplate } from '../journal/cpa-templates/ecl-stage-reverse.template';
 import * as Sentry from '@sentry/nestjs';
 import { ConsecutiveMissedService } from '../overdue/consecutive-missed.service';
+import { CreditNoteDocumentService } from '../receipts/services/credit-note-document.service';
 
 jest.mock('@sentry/nestjs', () => ({
   captureException: jest.fn(),
@@ -53,6 +54,8 @@ describe('BadDebtService', () => {
   let prisma: any;
   let provisionTemplateMock: { execute: jest.Mock };
   let eclStageReverseTemplateMock: { execute: jest.Mock };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let creditNoteService: any;
 
   beforeEach(async () => {
     prisma = {
@@ -120,6 +123,16 @@ describe('BadDebtService', () => {
         { provide: BadDebtWriteOffTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK' }) } },
         { provide: EclStageReverseTemplate, useValue: eclStageReverseTemplateMock },
         { provide: ConsecutiveMissedService, useValue: { getStreaks: jest.fn().mockResolvedValue(new Map()) } },
+        {
+          provide: CreditNoteDocumentService,
+          useValue: (creditNoteService = {
+            issueForContract: jest.fn().mockResolvedValue({
+              outcome: 'ISSUED',
+              receiptId: 'r1',
+              receiptNumber: 'RT-x',
+            }),
+          }),
+        },
       ],
     }).compile();
 
@@ -640,6 +653,37 @@ describe('BadDebtService', () => {
         }),
       });
       expect(result.status).toBe('CLOSED_BAD_DEBT');
+    });
+
+    it('issues CN inside the same tx as the write-off JE, with source=WRITE_OFF and the entryNo the template returned', async () => {
+      prisma.contract.findFirst.mockResolvedValue({ id: 'c1', status: 'TERMINATED' });
+      prisma.contract.update.mockResolvedValue({});
+      prisma.badDebtProvision.updateMany.mockResolvedValue({ count: 1 });
+
+      const result = await service.writeOffBadDebt('c1', 'bm-1', 'fm-1', 'court order');
+
+      expect(creditNoteService.issueForContract).toHaveBeenCalledWith(
+        expect.objectContaining({
+          contractId: 'c1',
+          source: 'WRITE_OFF',
+          sourceJournalEntryNo: 'JE-MOCK',
+          actorUserId: 'bm-1',
+        }),
+        prisma, // same tx the write-off JE was posted in — atomic
+      );
+      expect(result.creditNote).toEqual({ outcome: 'ISSUED', receiptId: 'r1' });
+    });
+
+    it('rolls back the whole write-off when CN issuance throws (atomicity)', async () => {
+      prisma.contract.findFirst.mockResolvedValue({ id: 'c1', status: 'TERMINATED' });
+      prisma.contract.update.mockResolvedValue({});
+      prisma.badDebtProvision.updateMany.mockResolvedValue({ count: 1 });
+      creditNoteService.issueForContract.mockRejectedValueOnce(new Error('CN fail'));
+
+      await expect(
+        service.writeOffBadDebt('c1', 'bm-1', 'fm-1', 'court order'),
+      ).rejects.toThrow('CN fail');
+      expect(creditNoteService.issueForContract).toHaveBeenCalled();
     });
 
     // T3-C6 tier tests. The outstandingAmount is driven by what

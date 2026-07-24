@@ -13,6 +13,7 @@ import { d, dAdd, dSub } from '../../utils/decimal.util';
 import { computePayoffQuote } from '../contracts/compute-payoff-quote';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { RepossessionJP5Template, RepossessionJePreview } from '../journal/cpa-templates/repossession-jp5.template';
+import { CreditNoteDocumentService } from '../receipts/services/credit-note-document.service';
 import { Decimal } from '@prisma/client/runtime/library';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
 import { isFutureBkkDay } from '../../utils/date.util';
@@ -34,6 +35,7 @@ export class RepossessionsService {
     private prisma: PrismaService,
     private journalAutoService: JournalAutoService,
     private repossessionJP5Template: RepossessionJP5Template,
+    private creditNoteDocumentService: CreditNoteDocumentService,
   ) {}
 
   async findAll(filters: { status?: string; branchId?: string; page?: number; limit?: number }) {
@@ -380,6 +382,7 @@ export class RepossessionsService {
       // status updates. ปพพ.ม.392 — เลิกสัญญาต้องกลับสู่ฐานะเดิม. ก่อนหน้านี้
       // .catch() fire-and-forget ทำให้ contract status commit แต่ JE อาจ fail
       // ลูกหนี้ค้างใน ledger ตลอดกาล. ตอนนี้ ถ้า JE fail ทุกอย่าง rollback.
+      let creditNote: { outcome: string; receiptId?: string } | undefined;
       if (outstandingBalance.greaterThan(0)) {
         const repoValue = dto.appraisalPrice != null
           ? new Decimal(String(dto.appraisalPrice))
@@ -393,7 +396,7 @@ export class RepossessionsService {
         const depositAccountCode = dto.collectedByShop
           ? '11-2107'
           : (dto.depositAccountCode ?? '11-1201');
-        await this.repossessionJP5Template.execute(
+        const jp5Result = await this.repossessionJP5Template.execute(
           {
             contractId: dto.contractId,
             depositAccountCode,
@@ -420,6 +423,27 @@ export class RepossessionsService {
             },
           });
         }
+
+        // Phase 3 Task 3: auto-issue ใบลดหนี้ (CN) for any accrued-unpaid
+        // installments written off by JP5 — MUST run inside this same tx
+        // (atomic with the JE: throw here rolls back JP5 + status updates
+        // too). LINE delivery of the CN is intentionally NOT triggered here
+        // (Task 5) — that must happen only after the $transaction commits,
+        // or a rollback would hand the customer a link to a receipt that
+        // never existed.
+        const cnResult = await this.creditNoteDocumentService.issueForContract(
+          {
+            contractId: dto.contractId,
+            source: 'REPOSSESSION',
+            sourceJournalEntryNo: jp5Result.entryNo,
+            actorUserId: userId,
+          },
+          tx,
+        );
+        creditNote = {
+          outcome: cnResult.outcome,
+          receiptId: cnResult.outcome === 'ISSUED' ? cnResult.receiptId : undefined,
+        };
       }
 
       // Update product status
@@ -460,6 +484,7 @@ export class RepossessionsService {
         outstandingBalance: outstandingBalance.toNumber(),
         totalPaid: totalPaid.toNumber(),
         loss: outstandingBalance.sub(d(dto.appraisalPrice)).toNumber(),
+        creditNote,
       };
     });
   }

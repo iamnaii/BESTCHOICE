@@ -5,6 +5,7 @@ import { RepossessionsService } from './repossessions.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RepossessionJP5Template } from '../journal/cpa-templates/repossession-jp5.template';
+import { CreditNoteDocumentService } from '../receipts/services/credit-note-document.service';
 import { computePayoffQuote } from '../contracts/compute-payoff-quote';
 
 // ---------------------------------------------------------------------------
@@ -117,6 +118,8 @@ describe('RepossessionsService', () => {
   let prisma: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let jp5: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let creditNoteService: any;
 
   beforeEach(async () => {
     prisma = {
@@ -183,6 +186,16 @@ describe('RepossessionsService', () => {
               totalDebit: '6000.00',
               totalCredit: '6000.00',
               isBalanced: true,
+            }),
+          }),
+        },
+        {
+          provide: CreditNoteDocumentService,
+          useValue: (creditNoteService = {
+            issueForContract: jest.fn().mockResolvedValue({
+              outcome: 'ISSUED',
+              receiptId: 'r1',
+              receiptNumber: 'RT-x',
             }),
           }),
         },
@@ -599,6 +612,67 @@ describe('RepossessionsService', () => {
         }),
         prisma, // tx (mock $transaction passes prisma itself as tx)
       );
+    });
+
+    it('issues CN inside the same tx as JP5, with source=REPOSSESSION and the entryNo JP5 just returned', async () => {
+      prisma.contract.findUnique.mockResolvedValue(makeContract());
+      prisma.repossession.create.mockResolvedValue({ ...makeRepossession(), id: 'repo-new' });
+      prisma.contract.update.mockResolvedValue({});
+      prisma.product.update.mockResolvedValue({});
+      prisma.auditLog.create.mockResolvedValue({});
+      jp5.execute.mockResolvedValueOnce({ entryNo: 'JE-JP5-123' });
+
+      const result = await service.create(baseDto as never, 'user-1');
+
+      expect(creditNoteService.issueForContract).toHaveBeenCalledWith(
+        expect.objectContaining({
+          contractId: 'contract-1',
+          source: 'REPOSSESSION',
+          sourceJournalEntryNo: 'JE-JP5-123',
+          actorUserId: 'user-1',
+        }),
+        prisma, // same tx JP5 was called with — atomic
+      );
+      expect(result.creditNote).toEqual({ outcome: 'ISSUED', receiptId: 'r1' });
+    });
+
+    it('does not issue a CN when there is no outstanding balance (JP5 itself is skipped)', async () => {
+      const paidUpContract = makeContract({
+        payments: [
+          {
+            id: 'pay-1',
+            installmentNo: 1,
+            status: 'PAID',
+            amountDue: decimal(1000),
+            amountPaid: decimal(1000),
+            lateFee: decimal(0),
+            lateFeeWaived: false,
+          },
+        ],
+      });
+      prisma.contract.findUnique.mockResolvedValue(paidUpContract);
+      prisma.repossession.create.mockResolvedValue({ ...makeRepossession(), id: 'repo-new' });
+      prisma.contract.update.mockResolvedValue({});
+      prisma.product.update.mockResolvedValue({});
+      prisma.auditLog.create.mockResolvedValue({});
+
+      const result = await service.create(baseDto as never, 'user-1');
+
+      expect(jp5.execute).not.toHaveBeenCalled();
+      expect(creditNoteService.issueForContract).not.toHaveBeenCalled();
+      expect(result.creditNote).toBeUndefined();
+    });
+
+    it('rolls back the whole repossession when CN issuance throws (atomicity)', async () => {
+      prisma.contract.findUnique.mockResolvedValue(makeContract());
+      prisma.repossession.create.mockResolvedValue({ ...makeRepossession(), id: 'repo-new' });
+      prisma.contract.update.mockResolvedValue({});
+      prisma.product.update.mockResolvedValue({});
+      prisma.auditLog.create.mockResolvedValue({});
+      creditNoteService.issueForContract.mockRejectedValueOnce(new Error('CN fail'));
+
+      await expect(service.create(baseDto as never, 'user-1')).rejects.toThrow('CN fail');
+      expect(creditNoteService.issueForContract).toHaveBeenCalled();
     });
 
     it('collectedByShop books the JP5 deposit leg to 11-2107 + writes SHOP_COLLECT_REPOSSESSION audit', async () => {

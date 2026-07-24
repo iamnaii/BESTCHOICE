@@ -17,9 +17,14 @@ import { JournalModule } from '../journal/journal.module';
 import { TaxModule } from '../tax/tax.module';
 import { PeakModule } from '../peak/peak.module';
 import { ConsecutiveMissedModule } from '../overdue/consecutive-missed.module';
+import { ReceiptsModule } from '../receipts/receipts.module';
 
+// No forwardRef needed: PaymentsModule already imports both ReceiptsModule
+// and AccountingModule side-by-side with no cycle (payments.module.ts), and
+// ReceiptsModule's own chain (PrismaModule, LineOaModule, JournalModule)
+// never imports AccountingModule (verified 2026-07-24, Phase 3 Task 3).
 @Module({
-  imports: [JournalModule, TaxModule, PeakModule, ConsecutiveMissedModule],
+  imports: [JournalModule, TaxModule, PeakModule, ConsecutiveMissedModule, ReceiptsModule],
   controllers: [AccountingController, AccountingClosingController, ConsolidatedController],
   providers: [
     AccountingService,

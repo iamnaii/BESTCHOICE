@@ -10,6 +10,7 @@ import { BadDebtProvisionTemplate } from '../modules/journal/cpa-templates/bad-d
 import { BadDebtWriteOffTemplate } from '../modules/journal/cpa-templates/bad-debt-writeoff.template';
 import { EclStageReverseTemplate } from '../modules/journal/cpa-templates/ecl-stage-reverse.template';
 import { ConsecutiveMissedService } from '../modules/overdue/consecutive-missed.service';
+import { CreditNoteDocumentService } from '../modules/receipts/services/credit-note-document.service';
 
 async function main() {
   const prisma = new PrismaClient();
@@ -28,6 +29,10 @@ async function main() {
       new EclStageReverseTemplate(journal, prisma as any),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       new ConsecutiveMissedService(prisma as any),
+      // dryRun never reaches writeOffBadDebt (CN issuance path) — constructed
+      // only to satisfy BadDebtService's constructor signature.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      new CreditNoteDocumentService(prisma as any),
     );
 
     const system = await prisma.user.findFirst({

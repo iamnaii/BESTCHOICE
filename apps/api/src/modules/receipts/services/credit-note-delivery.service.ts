@@ -98,6 +98,12 @@ export class CreditNoteDeliveryService {
       return { delivered: false };
     }
 
+    // Every deliver() call is a resend candidate (manual "ส่งซ้ำ" button or a
+    // future retry) — always push the public-link TTL forward to now+30d so a
+    // resend never hands the customer a dead link. Same token is kept (no
+    // rotation) so any link already shared previously keeps working too.
+    await this.refreshPublicTokenExpiry(receipt);
+
     const customer = receipt.contract?.customer;
     const lineUserId = customer?.lineLinks?.[0]?.lineUserId || customer?.lineIdFinance || null;
 
@@ -219,6 +225,33 @@ export class CreditNoteDeliveryService {
     );
   }
 
+  /**
+   * Always extends `publicTokenExpiresAt` to now+30d on every deliver/resend
+   * (I1 fix). Mutates the in-memory `receipt` too so `buildFlex`/subsequent
+   * logic in this same call sees the refreshed value. Never throws — a
+   * failure here must not block the actual LINE push.
+   */
+  private async refreshPublicTokenExpiry(receipt: ReceiptForDelivery): Promise<void> {
+    try {
+      const publicTokenExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      await this.prisma.receipt.update({
+        where: { id: receipt.id },
+        data: { publicTokenExpiresAt },
+      });
+      receipt.publicTokenExpiresAt = publicTokenExpiresAt;
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `[CN Delivery] failed to refresh publicTokenExpiresAt for receipt ${receipt.id}: ${reason}`,
+      );
+      Sentry.captureMessage('CN delivery: failed to refresh publicTokenExpiresAt', {
+        level: 'warning',
+        tags: { subsystem: 'credit-note' },
+        extra: { receiptId: receipt.id, reason },
+      });
+    }
+  }
+
   private async getSystemUserId(): Promise<string> {
     const user = await this.prisma.user.findFirst({
       where: { isSystemUser: true },
@@ -255,14 +288,32 @@ export class CreditNoteDeliveryService {
       const systemUserId = await this.getSystemUserId();
       const customerName = customer?.name ?? receipt.payerName;
 
-      const todo = await this.prisma.todo.create({
-        data: {
-          title: `ส่งใบลดหนี้ ${receipt.receiptNumber} ให้ ${customerName} — LINE ไม่สำเร็จ (แนบซอง EMS กับหนังสือบอกเลิกได้)`,
-          priority: 'MEDIUM',
-          tags: ['credit-note'],
-          createdById: systemUserId,
+      // M6: dedup — repeated failures for the same receipt (e.g. retried
+      // resends that keep failing) must not spam a new Todo every time. Skip
+      // creating a second one if an open (not DONE) todo already covers this
+      // receipt; the NotificationLog FAILED row + audit log still get written
+      // every attempt so the failure history isn't lost.
+      const existingTodo = await this.prisma.todo.findFirst({
+        where: {
+          tags: { has: 'credit-note' },
+          title: { contains: receipt.receiptNumber },
+          status: { not: 'DONE' },
         },
+        select: { id: true },
       });
+
+      const todoId =
+        existingTodo?.id ??
+        (
+          await this.prisma.todo.create({
+            data: {
+              title: `ส่งใบลดหนี้ ${receipt.receiptNumber} ให้ ${customerName} — LINE ไม่สำเร็จ (แนบซอง EMS กับหนังสือบอกเลิกได้)`,
+              priority: 'MEDIUM',
+              tags: ['credit-note'],
+              createdById: systemUserId,
+            },
+          })
+        ).id;
 
       await this.prisma.auditLog.create({
         data: {
@@ -270,11 +321,11 @@ export class CreditNoteDeliveryService {
           action: 'CN_SEND_FAILED',
           entity: 'receipt',
           entityId: receipt.id,
-          newValue: { receiptNumber: receipt.receiptNumber, errorMsg, todoId: todo.id },
+          newValue: { receiptNumber: receipt.receiptNumber, errorMsg, todoId },
         },
       });
 
-      this.logger.warn(`[CN Delivery] FAILED ${receipt.receiptNumber} — todo ${todo.id} created`);
+      this.logger.warn(`[CN Delivery] FAILED ${receipt.receiptNumber} — todo ${todoId} created`);
       // Legally-mandated document delivery — ops must be alerted, not just logged.
       Sentry.captureMessage(`CN delivery failed: ${errorMsg}`, {
         level: 'warning',
@@ -327,10 +378,19 @@ export class CreditNoteDeliveryService {
     } catch (err) {
       // Push already succeeded (the customer DID receive the message) — a
       // bookkeeping failure here must not be reported back as a delivery
-      // failure, just logged loudly for ops to notice.
+      // failure, just logged loudly for ops to notice. M5: also raise Sentry
+      // — a missing SENT log is a silent double-send risk (nothing stops a
+      // human/cron from re-triggering delivery for a receipt whose NotificationLog
+      // never recorded the first successful push).
+      const reason = err instanceof Error ? err.message : String(err);
       this.logger.error(
-        `[CN Delivery] push succeeded but bookkeeping failed for receipt ${receipt.id}: ${err instanceof Error ? err.message : err}`,
+        `[CN Delivery] push succeeded but bookkeeping failed for receipt ${receipt.id}: ${reason}`,
       );
+      Sentry.captureMessage('CN sent but SENT log failed', {
+        level: 'warning',
+        tags: { subsystem: 'credit-note' },
+        extra: { receiptId: receipt.id },
+      });
     }
   }
 }

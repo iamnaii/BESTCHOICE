@@ -58,6 +58,9 @@ describe('ReceiptsPublicController', () => {
     expect(res.__headers['Content-Disposition']).toContain(
       encodeURIComponent('ใบลดหนี้-RT-202607-00099.pdf'),
     );
+    // M3: never let an intermediary/browser cache a legally-sensitive tax
+    // document behind a token-gated public URL.
+    expect(res.__headers['Cache-Control']).toBe('private, no-store');
     expect(res.send).toHaveBeenCalledWith(Buffer.from('%PDF-fake'));
   });
 

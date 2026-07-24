@@ -30,6 +30,8 @@ interface Overrides {
   pushMessage?: jest.Mock;
   systemUser?: { id: string } | null;
   baseUrl?: string | undefined;
+  existingTodo?: { id: string } | null;
+  notificationLogCreate?: jest.Mock;
 }
 
 function buildHarness(overrides: Overrides = {}) {
@@ -44,14 +46,23 @@ function buildHarness(overrides: Overrides = {}) {
       findUnique: jest
         .fn()
         .mockResolvedValue(overrides.receipt === undefined ? BASE_RECEIPT : overrides.receipt),
+      update: jest.fn(async (args: { where: { id: string }; data: Record<string, unknown> }) => ({
+        id: args.where.id,
+        ...args.data,
+      })),
     },
     notificationLog: {
-      create: jest.fn(async (args: { data: Record<string, unknown> }) => {
-        created.notificationLogs.push(args.data);
-        return { id: 'notif-1', ...args.data };
-      }),
+      create:
+        overrides.notificationLogCreate ??
+        jest.fn(async (args: { data: Record<string, unknown> }) => {
+          created.notificationLogs.push(args.data);
+          return { id: 'notif-1', ...args.data };
+        }),
     },
     todo: {
+      findFirst: jest
+        .fn()
+        .mockResolvedValue(overrides.existingTodo === undefined ? null : overrides.existingTodo),
       create: jest.fn(async (args: { data: Record<string, unknown> }) => {
         created.todos.push(args.data);
         return { id: 'todo-1', ...args.data };
@@ -148,6 +159,40 @@ describe('CreditNoteDeliveryService.deliver', () => {
     expect(prisma.todo.create).not.toHaveBeenCalled();
   });
 
+  it('(I1) resend on a receipt with an already-EXPIRED publicTokenExpiresAt: extends the token to now+30d (same token, no rotation) and still proceeds to push', async () => {
+    const expiredReceipt = {
+      ...BASE_RECEIPT,
+      publicTokenExpiresAt: new Date(Date.now() - 24 * 60 * 60 * 1000), // yesterday
+      contract: {
+        ...BASE_RECEIPT.contract,
+        customer: {
+          ...BASE_RECEIPT.contract.customer,
+          lineLinks: [{ lineUserId: 'U-finance-1' }],
+        },
+      },
+    };
+    const { service, prisma, lineFinanceClient } = buildHarness({ receipt: expiredReceipt });
+
+    const before = Date.now();
+    const result = await service.deliver('receipt-1');
+    const after = Date.now();
+
+    expect(result).toEqual({ delivered: true });
+
+    // receipt.update called with a future expiry, same token (never rotated)
+    expect(prisma.receipt.update).toHaveBeenCalledTimes(1);
+    const updateArgs = prisma.receipt.update.mock.calls[0][0];
+    expect(updateArgs.where).toEqual({ id: 'receipt-1' });
+    const newExpiry = (updateArgs.data.publicTokenExpiresAt as Date).getTime();
+    expect(newExpiry).toBeGreaterThan(before + 29 * 24 * 60 * 60 * 1000);
+    expect(newExpiry).toBeLessThanOrEqual(after + 30 * 24 * 60 * 60 * 1000);
+
+    // push still proceeds — a stale token must not block a resend
+    expect(lineFinanceClient.pushMessage).toHaveBeenCalledTimes(1);
+    const flexJson = JSON.stringify(lineFinanceClient.pushMessage.mock.calls[0][1][0]);
+    expect(flexJson).toContain('tok-abc123'); // same token, not rotated
+  });
+
   it('falls back to legacy Customer.lineIdFinance when no CustomerLineLink row exists', async () => {
     const { service, lineFinanceClient } = buildHarness({
       receipt: {
@@ -163,6 +208,38 @@ describe('CreditNoteDeliveryService.deliver', () => {
 
     expect(result).toEqual({ delivered: true });
     expect(lineFinanceClient.pushMessage).toHaveBeenCalledWith('U-legacy-1', expect.any(Array));
+  });
+
+  it('(M5) push succeeds but the SENT bookkeeping write fails afterward: still resolves { delivered: true } (customer really did get the message) and raises a Sentry warning so ops notices the silent double-send risk', async () => {
+    const notificationLogCreate = jest.fn().mockRejectedValue(new Error('DB write failed'));
+    const { service, lineFinanceClient } = buildHarness({
+      receipt: {
+        ...BASE_RECEIPT,
+        contract: {
+          ...BASE_RECEIPT.contract,
+          customer: {
+            ...BASE_RECEIPT.contract.customer,
+            lineLinks: [{ lineUserId: 'U-finance-1' }],
+          },
+        },
+      },
+      notificationLogCreate,
+    });
+
+    const result = await service.deliver('receipt-1');
+
+    expect(result).toEqual({ delivered: true });
+    expect(lineFinanceClient.pushMessage).toHaveBeenCalledTimes(1);
+    expect(notificationLogCreate).toHaveBeenCalledTimes(1);
+
+    expect(Sentry.captureMessage).toHaveBeenCalledWith(
+      'CN sent but SENT log failed',
+      expect.objectContaining({
+        level: 'warning',
+        tags: { subsystem: 'credit-note' },
+        extra: expect.objectContaining({ receiptId: 'receipt-1' }),
+      }),
+    );
   });
 
   it('(b) push throws: writes NotificationLog FAILED + Todo fallback + AuditLog CN_SEND_FAILED, resolves { delivered: false } (never throws)', async () => {
@@ -221,6 +298,51 @@ describe('CreditNoteDeliveryService.deliver', () => {
         extra: expect.objectContaining({ receiptId: 'receipt-1', reason: 'LINE API 500' }),
       }),
     );
+  });
+
+  it('(M6) second failure while an open (not-DONE) credit-note todo already exists for this receipt: skips creating a duplicate todo, still writes NotificationLog FAILED + AuditLog for every attempt', async () => {
+    const { service, prisma, created } = buildHarness({
+      receipt: {
+        ...BASE_RECEIPT,
+        contract: {
+          ...BASE_RECEIPT.contract,
+          customer: {
+            ...BASE_RECEIPT.contract.customer,
+            lineLinks: [{ lineUserId: 'U-finance-1' }],
+          },
+        },
+      },
+      pushMessage: jest.fn().mockRejectedValue(new Error('LINE API 500 again')),
+      existingTodo: { id: 'todo-existing-1' },
+    });
+
+    const result = await service.deliver('receipt-1');
+
+    expect(result).toEqual({ delivered: false });
+
+    // dedup lookup happened
+    expect(prisma.todo.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          tags: { has: 'credit-note' },
+          title: { contains: 'RT-202607-00099' },
+          status: { not: 'DONE' },
+        }),
+      }),
+    );
+
+    // no second todo created
+    expect(prisma.todo.create).not.toHaveBeenCalled();
+    expect(created.todos).toHaveLength(0);
+
+    // failure is still recorded every attempt
+    expect(created.notificationLogs).toHaveLength(1);
+    expect(created.notificationLogs[0]).toMatchObject({ status: 'FAILED' });
+    expect(created.auditLogs).toHaveLength(1);
+    expect(created.auditLogs[0]).toMatchObject({
+      action: 'CN_SEND_FAILED',
+      newValue: expect.objectContaining({ todoId: 'todo-existing-1' }),
+    });
   });
 
   it('(c) no LINE link at all: same FAILED path, never pushes, never throws', async () => {

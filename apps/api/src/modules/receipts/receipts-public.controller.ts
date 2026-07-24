@@ -56,6 +56,7 @@ export class ReceiptsPublicController {
     res.set({
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="${encodeURIComponent(filename)}"`,
+      'Cache-Control': 'private, no-store',
     });
     res.send(pdf);
   }

@@ -2148,7 +2148,7 @@ model NotificationLog {
   deliveryStatus String?             @map("delivery_status") // DELIVERED, UNDELIVERED, REJECTED, etc.
   deliveredAt    DateTime?           @map("delivered_at")
   customerId     String?             @map("customer_id")
-  category       String?             @map("category") // DUNNING | REMINDER | TRANSACTIONAL | STAFF | MARKETING
+  category       String?             @map("category") // DUNNING | REMINDER | TRANSACTIONAL | STAFF | MARKETING | CREDIT_NOTE
   blockReason    String?             @map("block_reason") // OUTSIDE_HOURS | FREQUENCY_CAP | NO_CONSENT | HOLIDAY_BLOCK
   createdAt      DateTime            @default(now()) @map("created_at")
   updatedAt      DateTime            @updatedAt @map("updated_at")

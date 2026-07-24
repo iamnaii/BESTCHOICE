@@ -6,6 +6,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateRepossessionDto, UpdateRepossessionDto } from './dto/create-repossession.dto';
 import { ConditionGrade, RepossessionStatus, ProductStatus } from '@prisma/client';
@@ -14,6 +15,7 @@ import { computePayoffQuote } from '../contracts/compute-payoff-quote';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { RepossessionJP5Template, RepossessionJePreview } from '../journal/cpa-templates/repossession-jp5.template';
 import { CreditNoteDocumentService } from '../receipts/services/credit-note-document.service';
+import { CreditNoteDeliveryService } from '../receipts/services/credit-note-delivery.service';
 import { Decimal } from '@prisma/client/runtime/library';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
 import { isFutureBkkDay } from '../../utils/date.util';
@@ -36,6 +38,7 @@ export class RepossessionsService {
     private journalAutoService: JournalAutoService,
     private repossessionJP5Template: RepossessionJP5Template,
     private creditNoteDocumentService: CreditNoteDocumentService,
+    private cnDeliveryService: CreditNoteDeliveryService,
   ) {}
 
   async findAll(filters: { status?: string; branchId?: string; page?: number; limit?: number }) {
@@ -256,7 +259,7 @@ export class RepossessionsService {
     }
     await validatePeriodOpen(this.prisma, paymentDate, financeCompany.id);
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const contract = await tx.contract.findUnique({
         where: { id: dto.contractId },
         include: { product: true, payments: true },
@@ -487,6 +490,20 @@ export class RepossessionsService {
         creditNote,
       };
     });
+
+    // Phase 3 Task 5: LINE delivery of the auto-issued CN fires ONLY after the
+    // $transaction above has committed — firing it from inside the tx would
+    // risk handing the customer a link to a receipt a later rollback erased.
+    // Fire-and-forget: never await, never let a delivery failure surface to
+    // the caller (RepossessionsController already returned successfully by
+    // the time this resolves).
+    if (result.creditNote?.outcome === 'ISSUED' && result.creditNote.receiptId) {
+      void this.cnDeliveryService
+        .deliver(result.creditNote.receiptId)
+        .catch((err) => Sentry.captureException(err));
+    }
+
+    return result;
   }
 
   /**

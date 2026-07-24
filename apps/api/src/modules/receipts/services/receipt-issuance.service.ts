@@ -5,6 +5,7 @@ import * as crypto from 'crypto';
 import { LineOaService } from '../../line-oa/line-oa.service';
 import { INSTALLMENT_MONEY_RECEIPT_TYPES } from '../receipt-types.constants';
 import { ReceiptNumberService } from './receipt-number.service';
+import { CreditNoteDeliveryService } from './credit-note-delivery.service';
 
 /**
  * Receipt issuance: e-Receipt generation ($tx #1, NO journal entry) + manual
@@ -16,6 +17,9 @@ export class ReceiptIssuanceService {
     private prisma: PrismaService,
     private lineOaService: LineOaService | undefined,
     private numbers: ReceiptNumberService,
+    // Phase 3 Task 5 — CN resend routes through the FINANCE channel instead
+    // of sendPaymentReceipt (SHOP channel) below.
+    private cnDelivery?: CreditNoteDeliveryService,
   ) {}
 
   /**
@@ -179,14 +183,32 @@ export class ReceiptIssuanceService {
 
   /** Manually push the receipt to the customer's LINE OA. */
   async sendReceiptToCustomer(id: string) {
-    if (!this.lineOaService) {
-      throw new BadRequestException('LINE OA ยังไม่ได้ตั้งค่า');
-    }
     const receipt = await this.prisma.receipt.findUnique({
       where: { id },
       include: { contract: { select: { customerId: true } } },
     });
     if (!receipt || receipt.deletedAt) throw new NotFoundException('ไม่พบใบเสร็จ');
+
+    // Phase 3 Task 5 — resend routing: an auto-issued ใบลดหนี้ (Credit Note)
+    // was never sent over the SHOP channel (sendPaymentReceipt below) — a
+    // resend must go back through the same FINANCE-channel delivery service
+    // that issued it (CreditNoteDeliveryService), not sendPaymentReceipt.
+    if (receipt.receiptType === 'CREDIT_NOTE' && receipt.cnSource != null) {
+      if (!this.cnDelivery) {
+        throw new BadRequestException('LINE FINANCE ยังไม่ได้ตั้งค่า');
+      }
+      const result = await this.cnDelivery.deliver(id);
+      if (!result.delivered) {
+        throw new BadRequestException(
+          'ไม่สามารถส่งได้ — ลูกค้ายังไม่ได้เชื่อม LINE การเงิน หรือส่งไม่สำเร็จ (ดูงานติดตามที่สร้างอัตโนมัติ)',
+        );
+      }
+      return { success: true };
+    }
+
+    if (!this.lineOaService) {
+      throw new BadRequestException('LINE OA ยังไม่ได้ตั้งค่า');
+    }
     if (!receipt.contract?.customerId) {
       throw new BadRequestException('ใบเสร็จนี้ไม่มีลูกค้าที่เชื่อมโยง');
     }

@@ -1,4 +1,4 @@
-import { Injectable, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, Inject, Optional, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LineOaService } from '../line-oa/line-oa.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
@@ -8,6 +8,7 @@ import { ReceiptIssuanceService } from './services/receipt-issuance.service';
 import { ReceiptVoidService } from './services/receipt-void.service';
 import { ReceiptQueryService } from './services/receipt-query.service';
 import { ReceiptPdfService } from './services/receipt-pdf.service';
+import { CreditNoteDeliveryService } from './services/credit-note-delivery.service';
 
 /**
  * Receipts facade. Preserves the original 8-method public surface + the 4-arg
@@ -37,9 +38,18 @@ export class ReceiptsService {
     private receiptVoidReversalTemplate: ReceiptVoidReversalTemplate,
     @Inject(forwardRef(() => LineOaService))
     private lineOaService?: LineOaService,
+    // Phase 3 Task 5 — CN resend routing (sendReceiptToCustomer). @Optional()
+    // so specs/consumers that never touch CN resend don't need to wire it.
+    @Optional()
+    private cnDeliveryService?: CreditNoteDeliveryService,
   ) {
     this.numbers = new ReceiptNumberService(this.prisma);
-    this.issuance = new ReceiptIssuanceService(this.prisma, this.lineOaService, this.numbers);
+    this.issuance = new ReceiptIssuanceService(
+      this.prisma,
+      this.lineOaService,
+      this.numbers,
+      this.cnDeliveryService,
+    );
     this.void = new ReceiptVoidService(this.prisma, this.receiptVoidReversalTemplate, this.numbers);
     this.query = new ReceiptQueryService(this.prisma);
     this.pdf = new ReceiptPdfService(this.query);

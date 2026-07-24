@@ -11,6 +11,7 @@ import { BadDebtWriteOffTemplate } from '../modules/journal/cpa-templates/bad-de
 import { EclStageReverseTemplate } from '../modules/journal/cpa-templates/ecl-stage-reverse.template';
 import { ConsecutiveMissedService } from '../modules/overdue/consecutive-missed.service';
 import { CreditNoteDocumentService } from '../modules/receipts/services/credit-note-document.service';
+import { CreditNoteDeliveryService } from '../modules/receipts/services/credit-note-delivery.service';
 
 async function main() {
   const prisma = new PrismaClient();
@@ -33,6 +34,9 @@ async function main() {
       // only to satisfy BadDebtService's constructor signature.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       new CreditNoteDocumentService(prisma as any),
+      // Same — dryRun never reaches the post-commit LINE delivery hook.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      new CreditNoteDeliveryService(prisma as any, {} as any, { get: () => undefined } as any),
     );
 
     const system = await prisma.user.findFirst({

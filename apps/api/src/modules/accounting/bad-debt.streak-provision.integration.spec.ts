@@ -22,6 +22,7 @@ function build() {
     new EclStageReverseTemplate(journal, prisma as any),
     new ConsecutiveMissedService(prisma as any),
     undefined as any, // CreditNoteDocumentService — unused (this spec never calls writeOffBadDebt)
+    undefined as any, // CreditNoteDeliveryService — unused (this spec never calls writeOffBadDebt)
   );
 }
 

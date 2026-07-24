@@ -10,6 +10,7 @@ import { EclStageReverseTemplate } from '../journal/cpa-templates/ecl-stage-reve
 import * as Sentry from '@sentry/nestjs';
 import { ConsecutiveMissedService } from '../overdue/consecutive-missed.service';
 import { CreditNoteDocumentService } from '../receipts/services/credit-note-document.service';
+import { CreditNoteDeliveryService } from '../receipts/services/credit-note-delivery.service';
 
 jest.mock('@sentry/nestjs', () => ({
   captureException: jest.fn(),
@@ -56,6 +57,8 @@ describe('BadDebtService', () => {
   let eclStageReverseTemplateMock: { execute: jest.Mock };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let creditNoteService: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let cnDeliveryServiceMock: any;
 
   beforeEach(async () => {
     prisma = {
@@ -131,6 +134,12 @@ describe('BadDebtService', () => {
               receiptId: 'r1',
               receiptNumber: 'RT-x',
             }),
+          }),
+        },
+        {
+          provide: CreditNoteDeliveryService,
+          useValue: (cnDeliveryServiceMock = {
+            deliver: jest.fn().mockResolvedValue({ delivered: true }),
           }),
         },
       ],
@@ -684,6 +693,50 @@ describe('BadDebtService', () => {
         service.writeOffBadDebt('c1', 'bm-1', 'fm-1', 'court order'),
       ).rejects.toThrow('CN fail');
       expect(creditNoteService.issueForContract).toHaveBeenCalled();
+    });
+
+    // Phase 3 Task 5 — post-commit LINE delivery hook.
+    describe('CreditNoteDeliveryService post-commit hook', () => {
+      it('fires deliver(receiptId) AFTER the $transaction resolves, with the ISSUED receiptId', async () => {
+        prisma.contract.findFirst.mockResolvedValue({ id: 'c1', status: 'TERMINATED' });
+        prisma.contract.update.mockResolvedValue({});
+        prisma.badDebtProvision.updateMany.mockResolvedValue({ count: 1 });
+
+        await service.writeOffBadDebt('c1', 'bm-1', 'fm-1', 'court order');
+
+        expect(cnDeliveryServiceMock.deliver).toHaveBeenCalledWith('r1');
+        // Ordering proof: deliver's global invocation index must come AFTER
+        // $transaction's — i.e. the hook runs post-commit, never from inside
+        // the transaction callback.
+        const txOrder = prisma.$transaction.mock.invocationCallOrder[0];
+        const deliverOrder = cnDeliveryServiceMock.deliver.mock.invocationCallOrder[0];
+        expect(deliverOrder).toBeGreaterThan(txOrder);
+      });
+
+      it('does NOT call deliver when the CN outcome is HELD_PARTIAL_PAID', async () => {
+        prisma.contract.findFirst.mockResolvedValue({ id: 'c1', status: 'TERMINATED' });
+        prisma.contract.update.mockResolvedValue({});
+        prisma.badDebtProvision.updateMany.mockResolvedValue({ count: 1 });
+        creditNoteService.issueForContract.mockResolvedValueOnce({
+          outcome: 'HELD_PARTIAL_PAID',
+          todoId: 'todo-1',
+        });
+
+        await service.writeOffBadDebt('c1', 'bm-1', 'fm-1', 'court order');
+
+        expect(cnDeliveryServiceMock.deliver).not.toHaveBeenCalled();
+      });
+
+      it('does NOT call deliver when the CN outcome is SKIPPED (no accrued / duplicate)', async () => {
+        prisma.contract.findFirst.mockResolvedValue({ id: 'c1', status: 'TERMINATED' });
+        prisma.contract.update.mockResolvedValue({});
+        prisma.badDebtProvision.updateMany.mockResolvedValue({ count: 1 });
+        creditNoteService.issueForContract.mockResolvedValueOnce({ outcome: 'SKIPPED_NO_ACCRUED' });
+
+        await service.writeOffBadDebt('c1', 'bm-1', 'fm-1', 'court order');
+
+        expect(cnDeliveryServiceMock.deliver).not.toHaveBeenCalled();
+      });
     });
 
     // T3-C6 tier tests. The outstandingAmount is driven by what

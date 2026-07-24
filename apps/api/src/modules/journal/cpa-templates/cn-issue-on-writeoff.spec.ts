@@ -34,6 +34,13 @@ function buildService(journal: JournalAutoService) {
     new EclStageReverseTemplate(journal, prisma as any),
     new ConsecutiveMissedService(prisma as any),
     new CreditNoteDocumentService(prisma as any),
+    // Task 5's LINE delivery is a post-commit fire-and-forget hook — this
+    // spec only asserts on the write-off JE + CN Receipt row created INSIDE
+    // the $transaction, so a no-op stub is enough (a real
+    // CreditNoteDeliveryService would try to push over LINE with no
+    // configured channel token in this test DB).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    { deliver: async () => ({ delivered: true }) } as any,
   );
 }
 

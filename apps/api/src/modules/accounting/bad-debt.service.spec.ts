@@ -528,6 +528,39 @@ describe('BadDebtService', () => {
       expect(result.byBucket['1-30'].amount).toBeCloseTo(50, 4); // custom 0.05
     });
 
+    it('merges stale/partial rate config over defaults instead of zeroing missing buckets', async () => {
+      (Sentry.captureMessage as jest.Mock).mockClear();
+      // Stale shape from an old seed — canonical B4/B5 keys renamed from
+      // 181-360/360+ to 91-180/180+ and never migrated in this config row.
+      prisma.systemConfig.findUnique.mockResolvedValue({
+        value: JSON.stringify({
+          '1-30': 0.02,
+          '31-60': 0.15,
+          '61-90': 0.5,
+          '181-360': 0.75,
+          '360+': 1.0,
+        }),
+      });
+      prisma.payment.findMany.mockResolvedValue([
+        {
+          id: 'p1',
+          contractId: 'c1',
+          installmentNo: 1,
+          amountDue: new Prisma.Decimal(1000),
+          amountPaid: new Prisma.Decimal(0),
+          lateFee: new Prisma.Decimal(0),
+          lateFeeWaived: false,
+          status: 'PENDING',
+          dueDate: new Date(Date.now() - 100 * 24 * 60 * 60 * 1000), // B4 (91-180)
+          contract: { id: 'c1', status: 'OVERDUE' },
+        },
+      ]);
+      const result = await service.calculateProvisions('user-1');
+      // Without the merge, rates['91-180'] || 0 would silently provision 0.
+      expect(result.byBucket['91-180'].amount).toBeCloseTo(750, 4); // merged default 0.75
+      expect(Sentry.captureMessage as jest.Mock).toHaveBeenCalled();
+    });
+
     it('falls back to defaults when systemConfig has malformed JSON', async () => {
       (Sentry.captureException as jest.Mock).mockClear();
       prisma.systemConfig.findUnique.mockResolvedValue({ value: 'not-json{{' });

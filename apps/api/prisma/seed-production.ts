@@ -176,15 +176,16 @@ async function main() {
         'แจ้งเตือน: สัญญา {contractNo} เลยกำหนดชำระ {overdueDays} วัน กรุณาชำระโดยเร็ว',
       label: 'เทมเพลตแจ้งเตือนค้างชำระ LINE OA',
     },
+    // Keys must match BadDebtService canonical buckets (1-30/31-60/61-90/91-180/180+) —
+    // stale keys (e.g. old 181-360/360+) silently zero out B4/B5 via `rates[bucket] || 0`.
     {
       key: 'bad_debt_provision_rates',
       value: JSON.stringify({
         '1-30': 0.02,
-        '31-60': 0.1,
-        '61-90': 0.25,
-        '91-180': 0.5,
-        '181-360': 0.75,
-        '360+': 1.0,
+        '31-60': 0.15,
+        '61-90': 0.5,
+        '91-180': 0.75,
+        '180+': 1.0,
       }),
       label: 'อัตราค่าเผื่อหนี้สงสัยจะสูญ ตามอายุหนี้',
     },

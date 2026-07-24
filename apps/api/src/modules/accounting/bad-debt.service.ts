@@ -58,7 +58,25 @@ export class BadDebtService {
     });
     if (config) {
       try {
-        return JSON.parse(config.value);
+        const parsed = JSON.parse(config.value) as Record<string, number>;
+        // Merge over defaults so a partial/stale config (e.g. missing B4/B5
+        // after a bucket-key rename) never silently zeroes out a bucket via
+        // `rates[bucket] || 0` downstream — a missing key here must fall back
+        // to the safe default rate, not 0%.
+        const merged = { ...DEFAULT_PROVISION_RATES, ...parsed };
+        const missingKeys = Object.keys(DEFAULT_PROVISION_RATES).filter(
+          (k) => !(k in parsed),
+        );
+        if (missingKeys.length > 0) {
+          const msg = `bad_debt_provision_rates SystemConfig is missing canonical bucket(s) [${missingKeys.join(', ')}] — falling back to DEFAULT_PROVISION_RATES for those keys`;
+          this.logger.warn(msg);
+          Sentry.captureMessage(msg, {
+            level: 'warning',
+            tags: { subsystem: 'bad-debt', key: 'bad_debt_provision_rates' },
+            extra: { missingKeys },
+          });
+        }
+        return merged;
       } catch (err) {
         // Corrupt/edited provision-rate JSON must NOT silently revert to
         // defaults — these rates drive the TFRS-9 ECL allowance JE (Cr 11-2102),

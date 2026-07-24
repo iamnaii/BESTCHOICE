@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import * as Sentry from '@sentry/nestjs';
 import { Prisma, LineChannelType } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { toNum } from '../../../utils/decimal.util';
@@ -148,9 +149,14 @@ export class CreditNoteDeliveryService {
       if (!receipt || receipt.deletedAt) return null;
       return receipt;
     } catch (err) {
-      this.logger.error(
-        `[CN Delivery] failed to load receipt ${receiptId}: ${err instanceof Error ? err.message : err}`,
-      );
+      const reason = err instanceof Error ? err.message : String(err);
+      this.logger.error(`[CN Delivery] failed to load receipt ${receiptId}: ${reason}`);
+      // Legally-mandated document delivery — ops must be alerted, not just logged.
+      Sentry.captureMessage('CN delivery failed: receipt load error', {
+        level: 'warning',
+        tags: { subsystem: 'credit-note' },
+        extra: { receiptId, reason },
+      });
       return null;
     }
   }
@@ -269,10 +275,22 @@ export class CreditNoteDeliveryService {
       });
 
       this.logger.warn(`[CN Delivery] FAILED ${receipt.receiptNumber} — todo ${todo.id} created`);
+      // Legally-mandated document delivery — ops must be alerted, not just logged.
+      Sentry.captureMessage(`CN delivery failed: ${errorMsg}`, {
+        level: 'warning',
+        tags: { subsystem: 'credit-note' },
+        extra: { receiptId: receipt.id, reason: errorMsg },
+      });
     } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
       this.logger.error(
-        `[CN Delivery] failed to record failure fallback for receipt ${receipt.id}: ${err instanceof Error ? err.message : err}`,
+        `[CN Delivery] failed to record failure fallback for receipt ${receipt.id}: ${reason}`,
       );
+      Sentry.captureMessage('CN delivery failed: failure-fallback write error', {
+        level: 'warning',
+        tags: { subsystem: 'credit-note' },
+        extra: { receiptId: receipt.id, reason },
+      });
     }
   }
 

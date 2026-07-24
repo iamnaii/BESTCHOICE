@@ -737,6 +737,27 @@ describe('BadDebtService', () => {
 
         expect(cnDeliveryServiceMock.deliver).not.toHaveBeenCalled();
       });
+
+      it('resolves normally (no unhandled rejection) even when deliver() itself rejects — fire-and-forget .catch() works', async () => {
+        (Sentry.captureException as jest.Mock).mockClear();
+        prisma.contract.findFirst.mockResolvedValue({ id: 'c1', status: 'TERMINATED' });
+        prisma.contract.update.mockResolvedValue({});
+        prisma.badDebtProvision.updateMany.mockResolvedValue({ count: 1 });
+        cnDeliveryServiceMock.deliver.mockRejectedValueOnce(new Error('deliver boom'));
+
+        // writeOffBadDebt must resolve normally — deliver() is fire-and-forget
+        // (`void ... .catch(Sentry.captureException)`), never awaited, so its
+        // rejection must never propagate to the caller.
+        await expect(
+          service.writeOffBadDebt('c1', 'bm-1', 'fm-1', 'court order'),
+        ).resolves.toMatchObject({ status: 'CLOSED_BAD_DEBT' });
+
+        // Flush the fire-and-forget microtask so the .catch() handler has run
+        // before asserting — proves the rejection was actually caught
+        // (Sentry.captureException), not merely swallowed by timing luck.
+        await new Promise((resolve) => setImmediate(resolve));
+        expect(Sentry.captureException).toHaveBeenCalledWith(expect.any(Error));
+      });
     });
 
     // T3-C6 tier tests. The outstandingAmount is driven by what

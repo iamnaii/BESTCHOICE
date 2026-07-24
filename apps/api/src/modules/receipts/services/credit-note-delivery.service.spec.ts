@@ -1,5 +1,11 @@
 import { Decimal } from '@prisma/client/runtime/library';
+import * as Sentry from '@sentry/nestjs';
 import { CreditNoteDeliveryService } from './credit-note-delivery.service';
+
+jest.mock('@sentry/nestjs', () => ({
+  captureException: jest.fn(),
+  captureMessage: jest.fn(),
+}));
 
 const BASE_RECEIPT = {
   id: 'receipt-1',
@@ -85,6 +91,11 @@ function buildHarness(overrides: Overrides = {}) {
 }
 
 describe('CreditNoteDeliveryService.deliver', () => {
+  beforeEach(() => {
+    (Sentry.captureMessage as jest.Mock).mockClear();
+    (Sentry.captureException as jest.Mock).mockClear();
+  });
+
   it('(a) success: pushes via LINE FINANCE with the resolved lineUserId + a flex containing the /cn/ URL, writes NotificationLog SENT + AuditLog CN_SENT', async () => {
     const { service, prisma, lineFinanceClient, created } = buildHarness({
       receipt: {
@@ -199,6 +210,17 @@ describe('CreditNoteDeliveryService.deliver', () => {
       entity: 'receipt',
       entityId: 'receipt-1',
     });
+
+    // Legally-mandated document delivery must alert ops, not just log —
+    // a push rejection has to raise a Sentry alarm.
+    expect(Sentry.captureMessage).toHaveBeenCalledWith(
+      expect.stringContaining('LINE API 500'),
+      expect.objectContaining({
+        level: 'warning',
+        tags: { subsystem: 'credit-note' },
+        extra: expect.objectContaining({ receiptId: 'receipt-1', reason: 'LINE API 500' }),
+      }),
+    );
   });
 
   it('(c) no LINE link at all: same FAILED path, never pushes, never throws', async () => {

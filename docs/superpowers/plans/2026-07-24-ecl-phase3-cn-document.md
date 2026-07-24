@@ -71,7 +71,8 @@ CREATE UNIQUE INDEX "receipts_contract_cn_source_key" ON "receipts"("contract_id
 issueForContract(input: {
   contractId: string;
   source: 'REPOSSESSION' | 'WRITE_OFF';
-  sourceJournalEntryId: string;
+  /** เลข JE จาก template result (templates คืน { entryNo } — ไม่มี UUID) */
+  sourceJournalEntryNo: string;
   actorUserId: string;
 }, tx: Prisma.TransactionClient): Promise<
   | { outcome: 'ISSUED'; receiptId: string; receiptNumber: string }
@@ -80,7 +81,7 @@ issueForContract(input: {
 >
 ```
 Logic ตามลำดับ: (1) duplicate check `receipt.findFirst({ contractId, cnSource: source })` → SKIPPED_DUPLICATE; (2) โหลด contract + installmentSchedules + payments แล้วหา accrued-unpaid (นิยามใน Global Constraints); count=0 → SKIPPED_NO_ACCRUED; (3) มี PARTIALLY_PAID ใน accrued-unpaid → สร้าง Todo (หา SYSTEM user `isSystemUser:true` เป็น createdById, title `ตรวจใบลดหนี้ [เลขสัญญา] — มีงวดจ่ายบางส่วน รอ CPA (ม.82/5)`, priority HIGH, tags ['credit-note-review']) + AuditLog `CN_HELD_PARTIAL_PAID` (entity 'contract') → HELD; (4) clean → คำนวณยอดจาก breakdown, สร้าง Receipt (fields ตาม Global Constraints + `payerName`=customer.name, `receiverName`='BESTCHOICE FINANCE', `paidDate`=now, `issuedById`=actorUserId, `itemDescription`=`ใบลดหนี้ยกเลิกงวดค้าง N งวด — เลิกสัญญา (ม.82/5)`, publicToken=`crypto.randomBytes(32).toString('base64url')`, expiry now+30d) + AuditLog `CN_ISSUED` → ISSUED
-- Assert ยอด: `vatAmount.toFixed(2)` ต้องเท่ากับ JE `metadata.creditNoteVatAmount` (โหลด JE จาก sourceJournalEntryId) — ไม่เท่า → throw (Thai message) กัน drift
+- Resolve JE: `tx.journalEntry.findUnique({ where: { entryNumber: sourceJournalEntryNo } })` → เก็บ `je.id` ลง `Receipt.sourceJournalEntryId`; Assert ยอด: `vatAmount.toFixed(2)` ต้องเท่ากับ `je.metadata.creditNoteVatAmount` — ไม่เท่า → throw (Thai message) กัน drift (อยู่ใน tx เดียวกับที่ JE เพิ่ง post — เห็นแน่นอน)
 
 - [ ] **Step 1:** เขียน failing jest tests: (a) clean 3 งวด accrued-unpaid fixture 17k/12 → ISSUED, Receipt ถูกสร้างด้วย amount 4,547.49 / vat 297.51 / beforeVat 4,249.98, token มี expiry; (b) มี 1 งวด PARTIALLY_PAID → HELD + todo.create ถูกเรียก + ไม่มี receipt.create; (c) duplicate → SKIPPED_DUPLICATE; (d) vat mismatch กับ JE metadata → throws
 - [ ] **Step 2:** รัน fail → implement → รันผ่าน (`npm run test --workspace=apps/api -- credit-note-document`)
@@ -97,7 +98,14 @@ Logic ตามลำดับ: (1) duplicate check `receipt.findFirst({ contrac
 
 **Interfaces:**
 - Consumes: `CreditNoteDocumentService.issueForContract` (Task 2 — receipts.module ต้อง export; ระวัง circular import: accounting/repossessions import receipts module — เช็คว่า receipts module ไม่ import กลับ; ถ้า circular ให้ใช้ `forwardRef` ตาม pattern ที่มีใน codebase)
-- กติกา: เรียกเฉพาะเมื่อ JE result metadata `creditNoteIssued=true` (JP5: `built.accruedCount > 0`; write-off: template คืน entryNo — โหลด JE หรือส่งผ่านค่า) — ให้ template caller ตัดสินจากข้อมูลที่มีอยู่แล้ว ไม่ query ซ้ำ; ผลลัพธ์ (ISSUED/HELD/SKIPPED) เก็บลง log + ไม่ throw ข้าม tx (การออกเอกสารต้อง atomic กับ JE — ถ้า issueForContract throw ให้ tx ทั้งก้อน rollback ตามธรรมชาติ)
+- กติกา: เรียก `issueForContract` **ภายใน** tx (atomic กับ JE — throw = rollback ทั้งก้อน) ด้วย `sourceJournalEntryNo` จาก template result; ผลลัพธ์ (outcome + receiptId) ต้อง**ส่งออกมาจาก tx closure** (return ค่าเพิ่ม)
+- **ห้ามเรียก LINE delivery ภายใน tx เด็ดขาด** (scrutinize blocker: ยิงก่อน commit = ลูกค้ากดลิงก์แล้ว 404 / tx rollback แล้วลูกค้าได้ลิงก์ผี) — pattern บังคับ:
+```ts
+const result = await this.prisma.$transaction(async (tx) => { /* ...JE + issueForContract... */ return { ..., cnReceiptId }; });
+if (result.cnReceiptId) void this.cnDelivery.deliver(result.cnReceiptId).catch((e) => Sentry.captureException(e));
+return result;
+```
++ unit test ยืนยันลำดับ: deliver ถูกเรียก**หลัง** $transaction resolve (mock $transaction แล้ว assert call order)
 
 - [ ] **Step 1:** failing tests ในทั้ง 2 spec (mock `creditNoteDocumentService.issueForContract` — assert ถูกเรียกด้วย `{ source: 'REPOSSESSION' }` / `{ source: 'WRITE_OFF' }` + sourceJournalEntryId จาก template result)
 - [ ] **Step 2:** implement ทั้ง 2 จุด → tests เขียว (`repossessions.service.spec` + `bad-debt.service.spec` ทั้งไฟล์)
@@ -129,7 +137,9 @@ Logic ตามลำดับ: (1) duplicate check `receipt.findFirst({ contrac
 
 **Interfaces:**
 - Produces: `deliver(receiptId: string): Promise<{ delivered: boolean }>`
-- Logic: โหลด receipt+contract+customer → resolve LINE userId (`CustomerLineLink` FINANCE → fallback `lineIdFinance`) → ไม่มี → FAILED path; มี → push Flex ผ่าน `LineFinanceClientService.pushMessage` (การ์ด: หัว "ใบลดหนี้", เลขที่ RT, สัญญา, ยอดลดหนี้รวม, ปุ่ม "ดูเอกสาร" → `${FRONTEND_URL}/api/receipts/public/${publicToken}/pdf` — เช็ค base URL จาก config เดียวกับ payment-link) → เขียน `NotificationLog` SENT + AuditLog `CN_SENT`
+- Logic: โหลด receipt+contract+customer → resolve LINE userId (`CustomerLineLink` FINANCE → fallback `lineIdFinance`) → ไม่มี → FAILED path; มี → push Flex ผ่าน `LineFinanceClientService.pushMessage` (การ์ด: หัว "ใบลดหนี้", เลขที่ RT, สัญญา, ยอดลดหนี้รวม, ปุ่ม "ดูเอกสาร" → `${baseUrl}/cn/${publicToken}` — **หน้า frontend** ตาม pattern `/pay/:token` และใช้ baseUrl จาก config ตัวเดียวกับ `payment-link.service.ts` เป๊ะ ห้ามใช้ env อื่น) → เขียน `NotificationLog` SENT + AuditLog `CN_SENT`
+- **PDPA (ตัดสินใจแล้ว):** ส่งโดยไม่ gate consent — ใบลดหนี้เป็นเอกสารภาษีตามหน้าที่กฎหมาย (legitimate interest) ไม่ใช่ marketing ต่างจาก receipt flex เดิมที่ gate (`line-flex-builder :115`) — ใส่ comment อธิบายในโค้ด
+- **Retry (ตัดสินใจแล้ว):** v1 ไม่มี auto-retry — ปุ่มส่งซ้ำ + Todo fallback ครอบแล้ว; ประเมิน reuse `notification-dispatch.send` (ได้ retry queue ฟรี) ไว้เป็น follow-up ถ้า volume โต — บันทึกเหตุผลใน jsdoc
 - FAILED path (push throw หรือไม่มี LINE): `NotificationLog` FAILED (errorMsg, blockReason ถ้ามี) + Todo (SYSTEM user, title `ส่งใบลดหนี้ ${receiptNumber} ให้ ${customer.name} — LINE ไม่สำเร็จ (แนบซอง EMS กับหนังสือบอกเลิกได้)`, tags ['credit-note'], priority MEDIUM) + AuditLog `CN_SEND_FAILED` — **ห้าม throw** (ต้องไม่ทำให้ caller พัง)
 - Resend: reuse endpoint `POST /receipts/:id/send-line` เดิม (`receipt-issuance.service.ts:181`) — เพิ่ม branch: ถ้า `receiptType==='CREDIT_NOTE' && cnSource != null` → เรียก `CreditNoteDeliveryService.deliver` แทน `sendPaymentReceipt` (ช่องทาง finance ไม่ใช่ shop)
 
@@ -144,6 +154,7 @@ Logic ตามลำดับ: (1) duplicate check `receipt.findFirst({ contrac
 **Files:**
 - Modify: `apps/web/src/pages/PaymentsPage/components/ReceiptsTab.tsx` — CN แถวที่ `cnSource` มี: แสดง chip แหล่งที่มา (ยึดเครื่อง/ตัดหนี้สูญ) + สถานะส่ง LINE (จาก NotificationLog ล่าสุด — เพิ่ม field ใน API response ของ receipts list) — ปุ่ม PDF/ส่ง LINE ใช้ของเดิมได้เลย
 - Modify: `apps/web/src/pages/RepossessionsPage.tsx` — actions column (~line 292-323): ถ้าสัญญามี CN (`cnSource='REPOSSESSION'`) → ปุ่ม "ใบลดหนี้" (เปิด PDF `/receipts/:id/pdf`) + ปุ่มส่งซ้ำ; API: เพิ่ม cn info ใน repossessions list response (join Receipt โดย contractId+cnSource)
+- Create: `apps/web/src/pages/CreditNoteViewPage.tsx` — หน้า public `/cn/:token` (lazy, ไม่มี ProtectedRoute — ตาม pattern `/pay/:token` PayPage): fetch `GET /api/receipts/public/:token/pdf` เป็น blob แสดงใน viewer/iframe + ปุ่มดาวน์โหลด; token ผิด/หมดอายุ → ข้อความไทยสุภาพ (ไม่ leak รายละเอียด)
 - ตาม design tokens (ห้าม hardcode สี), toast จาก sonner, react-query invalidate หลัง resend
 
 - [ ] **Step 1:** Backend: เติม `creditNote` summary ใน responses ทั้งสอง (receipts list มีอยู่แล้วเป็นแถวปกติ — เพิ่มเฉพาะ repossessions list + lastDelivery ใน receipt row)

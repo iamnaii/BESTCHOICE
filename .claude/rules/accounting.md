@@ -54,7 +54,8 @@ Key codes referenced by JE templates:
 | Code | Name |
 |------|------|
 | 51-1101 | ค่าใช้จ่าย VAT ลูกหนี้ไม่ชำระ |
-| 51-1102 | หนี้สูญ/ขาดทุนจากยึดเครื่อง |
+| 51-1102 | หนี้สูญ/ขาดทุนจากยึดเครื่อง (also: write-off loss plug) |
+| 51-1103 | ค่าเผื่อหนี้สงสัยจะสูญ (เพิ่มในปี) — ECL provision expense, contra to 11-2102 |
 | 51-1105 | VAT กลับรายการ |
 | 52-1104 | ส่วนลดเศษสตางค์ (≤1฿ rounding tolerance) |
 | 52-1106 | ส่วนลดดอกเบี้ย-ปิดยอด (Early payoff discount) |
@@ -730,3 +731,101 @@ balance-sheet equity matrix (accounting.service.ts:1564) disappears for years
 that have been closed via this flow.
 
 `/accounting/periods` redirects to `/settings#periods` via `window.location.replace` (preserves hash; react-router `<Navigate>` cannot set hash fragments).
+
+---
+
+## Bad Debt Provision — ECL v3 (Excel v3 alignment, Phase 1+2, owner sign-off 2026-07-23/24)
+
+TFRS for NPAEs Ch.13 aging-based Expected Credit Loss, 6 buckets (B0 implicit + B1-B5).
+Source: `apps/api/src/modules/accounting/bad-debt.service.ts` + `bad-debt-provision.cron.ts` +
+`apps/api/src/modules/journal/cpa-templates/{bad-debt-provision,bad-debt-writeoff,ecl-stage-reverse}.template.ts`.
+
+### Buckets & rates
+
+| Bucket | Days overdue | Rate | Contract status | Notes |
+|---|---|---|---|---|
+| B0 | 0 (ปกติ) | 0% | ACTIVE | Implicit — no provision row created |
+| B1 | 1-30 | 2% | ACTIVE | |
+| B2 | 31-60 | 15% | ACTIVE | 60d alert trigger |
+| B3 | 61-90 | 50% | ควร TERMINATED | Manual — not enforced by code |
+| B4 | 91-180 | 75% | TERMINATED | |
+| B5 | 180+ | 100% | TERMINATED (NPL) | |
+
+Rates configurable via SystemConfig **`bad_debt_provision_rates`** (JSON `{bucket: rate}`) — code defaults above apply if the row is missing OR the JSON fails to parse (corrupt JSON → Sentry alarm + safe fallback to defaults; never silently posts on a stale/zero basis).
+
+**Streak floor** — SystemConfig **`consecutive_missed_bucket_map`** (default `{2:'31-60', 3:'61-90', 4:'91-180', 5:'180+'}`, unset → code default): a contract with N consecutive missed/overdue installments (`ConsecutiveMissedService.getStreaks` — max run of `PENDING/OVERDUE/PARTIALLY_PAID` with `dueDate < now`) is floored to at least that bucket even when aging-by-days alone would land lower. Effective bucket = whichever of (aging bucket, streak-floor bucket) carries the HIGHER rate — streak can only escalate, never downgrade.
+
+### Daily cron (00:30 BKK) — GL-delta, self-healing
+
+`BadDebtProvisionCron` — `@Cron('30 0 * * *', { timeZone: 'Asia/Bangkok' })`, fires after the 00:01 2A accrual cron. System-wide single run (not per-branch/company).
+
+- For each in-scope contract, computes the TARGET provision, compares it against the contract's actual **11-2102** GL balance (not the `BadDebtProvision` DB rows), and posts only the **delta** via `BadDebtProvisionTemplate`:
+  - delta > 0 (increase) → `Dr 51-1103 / Cr 11-2102`
+  - delta < 0 (release) → `Dr 11-2102 / Cr 51-1103`
+  - `|delta| < 0.005` → skipped, no JE
+- Idempotent per `(flow='provision', contractId, runDate)` where `runDate` = today's Asia/Bangkok date (`YYYY-MM-DD`) — re-running the same BKK day is a no-op; a new BKK day always re-evaluates and can post again.
+- **Self-healing**: because the delta compares to the LIVE GL balance rather than DB state, a prior day's JE failure (caught per-contract, Sentry-alarmed, does not abort the batch) is automatically absorbed into the next day's delta — no manual backfill needed.
+- `BadDebtProvision` row maintenance (REVERSE stale ACTIVE rows + createMany fresh ones) happens in one `$transaction` up front, decoupled from the JE-posting loop.
+
+### ECL base — non-TERMINATED contracts
+
+`amountDue − amountPaid` summed over unpaid/partial overdue installments (ties to GL **11-2103** accrued receivable). **Late fee is excluded from the base** — it isn't a GL asset (only recognized as `42-1103` income when actually collected), so folding it in would overstate exposure.
+
+Stage-reverse on payment (`BadDebtService.reverseStageOnPayment`, invoked from the payment-receipt flow) only considers installments with `dueDate < now` — future-dated installments never enter the aging/base recompute, so pre-paying ahead of schedule can't manufacture a stage-drop.
+
+### TERMINATED contracts
+
+TERMINATED contracts stay IN SCOPE for the daily recalc (escalate while awaiting repossession/write-off) — only `CLOSED_BAD_DEBT` (already written off) drops out.
+
+Base flips to **carrying amount**: `11-2103 (accrued) + 11-2101 (gross, not-yet-accrued) − 11-2106 (unearned interest)`. VAT-deferred legs (11-2105/21-2102) net to zero and are excluded. Reason: the 2A accrual cron stops firing once a contract is TERMINATED, so a Payment-rows-based base would balloon past true carrying value with un-accrued interest/VAT.
+
+Stage-reverse for TERMINATED contracts has no bucket-drop semantics (no more due dates to age against) — only a **full reverse** when carrying amount settles to `<= 0`; otherwise a **no-op**, provision left untouched (the daily cron owns the adjustment, not the payment-time hook).
+
+**Known conservative-lag behavior** (documented, deliberately not "fixed" — escalation policy pending owner/CPA decision): if a TERMINATED contract's overdue installments are paid off in full but the NEXT installment hasn't reached its own due date yet, `terminatedCarryingAmount` can still read `> 0` (remaining gross/unearned-interest on that not-yet-due installment), so the provision stays at its prior value until that next installment itself goes overdue.
+
+### Write-off (`BadDebtWriteOffTemplate`)
+
+Gate: `BadDebtService.writeOffBadDebt` throws unless `contract.status === 'TERMINATED'` (ปพพ.386 — CONTRACT_TERMINATION_60D letter must be dispatched first). Also enforces T3-C6 amount-tier approval + writer≠approver (pre-existing SoD rule, unchanged).
+
+JE mirrors `RepossessionJP5Template` minus the cash/inventory legs — sweeps every GL balance the 1A+2A cycle can leave, split accrued vs deferred:
+
+```
+Dr 21-2101  cnVat = vatPerInst × accruedUnpaidCount   [only if any accrued+unpaid installment — ใบลดหนี้ VAT ม.82/5]
+Dr 11-2106  glBalance(11-2106)                        [ล้าง unearned interest คงเหลือ]
+Dr 21-2102  glBalance(21-2102)                        [ล้างภาษีขายรอเรียกเก็บ]
+Dr 11-2102  provisionConsumed = min(glBalance(11-2102), loss)  [ใช้ค่าเผื่อก่อน plug]
+Dr 51-1102  loss plug (ส่วนเกินค่าเผื่อ)                     [ให้ JE balance]
+   Cr 11-2103  glBalance(11-2103)   [ล้างลูกหนี้ค้างชำระ — accrued]
+   Cr 11-2101  glBalance(11-2101)   [ล้างลูกหนี้ผ่อนชำระ — Gross/deferred]
+   Cr 11-2105  glBalance(11-2105)   [ล้างลูกหนี้ภาษีขายรอฯ]
+   Cr 21-2101  glBalance(21-2102)   [VAT deferred ถึงกำหนดนำส่ง — ม.82/3]
+   Cr 41-1101  glBalance(11-2106)   [รับรู้รายได้ดอกเบี้ย deferred]
+```
+
+All Cr legs read the LIVE GL balance (not a re-derived formula), so any rounding residual parked by the last-installment true-up in 2A sweeps to zero along with everything else. `provisionConsumed` is capped at both the real `11-2102` GL balance AND the loss amount — never over-consumes.
+
+Idempotent per `(flow='write-off', contractId)` — no `runDate`; a contract can only be written off once (unlike the daily provision JE, which is idempotent per-day).
+
+`metadata.creditNoteIssued` (bool) + `metadata.creditNoteVatAmount` (string) are stamped on the JE for a future Phase 3 to actually issue the physical CN document — the write-off JE itself only books the VAT-reversal accounting line, it does NOT create a CreditNote/Document row yet.
+
+### Enforcement gates (Phase 2, owner sign-off 2026-07-24)
+
+| SystemConfig key | Value | Effect | Legal basis |
+|---|---|---|---|
+| `letter_auto_generate_enabled` | `'true'` | `LetterAutoGenerateCron` (09:15 BKK) actually fires RETURN_DEVICE_45D / CONTRACT_TERMINATION_60D letters. Was seeded `'false'` pending legal review — review now passed. | — |
+| `jp5_require_terminated_status` | `'true'` | `RepossessionsService` (JP5) rejects a repossession unless `contract.status === 'TERMINATED'` | ปพพ. มาตรา 386 — เจ้าหนี้ต้องบอกเลิกสัญญาก่อนจึงจะใช้สิทธิยึดทรัพย์คืนได้ |
+
+Fresh dev seed (`collections-foundation.seed.ts`) now seeds both `'true'`. **Existing environments** (already carrying a `letter_auto_generate_enabled` row) do NOT get flipped by re-seeding — the seeder's upsert only touches `label` on the UPDATE branch by design, so it never clobbers an operator's runtime value. Flip existing envs via the confirmation-gated manual SQL: `apps/api/prisma/migrations-manual/2026-07-23-enable-letter-auto-generate-and-jp5-strict.sql`. **Must run via `psql -f`** — the `\prompt` confirmation gate is silently skipped by GUI clients (DBeaver/pgAdmin "execute file").
+
+### Dry-run CLI
+
+```bash
+DATABASE_URL=... npm --prefix apps/api run ecl:dry-run
+```
+
+`apps/api/src/cli/ecl-dry-run.cli.ts` — read-only: calls `calculateProvisions(systemUserId, undefined, dryRun=true)`, which skips BOTH the `BadDebtProvision` row writes AND JE posting. Reports per-contract delta vs the current `11-2102` GL balance (`prevGl`, `target`, `delta`), bucket totals, and aggregate increase/release. Point `DATABASE_URL` at a prod-copy via cloud-sql-proxy and run this before the first Phase 1 prod rollout to sanity-check the blast radius.
+
+### Golden fixtures (CPA CSV 17,000฿ / 12-month contract)
+
+- **TERMINATED carrying-amount base** (`ecl-terminated-base.spec.ts`): 3 installments accrued + unpaid, marked 100 days overdue → carrying = `3×1,515.83 + (17,000 − 3×1,416.66) − (6,000 − 3×500) = 12,797.51` → bucket B4 (91-180d, 75%) → provision = **9,598.13**.
+- **Write-off, mixed accrued/deferred** (`bad-debt-writeoff.template.spec.ts`): 3 accrued+unpaid installments → CN VAT (Dr 21-2101) = `99.17 × 3 = 297.51`; loss plug (Dr 51-1102) = **17,892.49**.

@@ -215,6 +215,29 @@ export class ReceiptQueryService {
     return { ...receipt, company, issuer, payment, priorReceiptCount, voidedRef };
   }
 
+  /**
+   * Resolve a customer-facing CN public link (receipts-public.controller.ts,
+   * NO auth). Scoped to `cnSource != null` so an ordinary receipt or a legacy
+   * void-CN (which never gets a publicToken) can never be served through this
+   * public path even if some future bug ever populated `publicToken` on one.
+   * Returns null for: unknown token, soft-deleted receipt, non-CN receipt —
+   * the caller collapses all of these into one generic 404 (no oracle).
+   */
+  async findByPublicToken(token: string) {
+    const receipt = await this.prisma.receipt.findUnique({
+      where: { publicToken: token },
+      select: {
+        id: true,
+        receiptNumber: true,
+        cnSource: true,
+        publicTokenExpiresAt: true,
+        deletedAt: true,
+      },
+    });
+    if (!receipt || receipt.deletedAt || !receipt.cnSource) return null;
+    return receipt;
+  }
+
   /** Get receipt by number */
   async getReceiptByNumber(receiptNumber: string) {
     const receipt = await this.prisma.receipt.findUnique({

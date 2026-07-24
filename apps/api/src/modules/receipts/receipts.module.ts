@@ -1,5 +1,6 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { ReceiptsController } from './receipts.controller';
+import { ReceiptsPublicController } from './receipts-public.controller';
 import { ReceiptsService } from './receipts.service';
 import { CreditNoteDocumentService } from './services/credit-note-document.service';
 import { PrismaModule } from '../../prisma/prisma.module';
@@ -12,7 +13,7 @@ import { JournalModule } from '../journal/journal.module';
     forwardRef(() => LineOaModule),
     JournalModule,
   ],
-  controllers: [ReceiptsController],
+  controllers: [ReceiptsController, ReceiptsPublicController],
   providers: [ReceiptsService, CreditNoteDocumentService],
   exports: [ReceiptsService, CreditNoteDocumentService],
 })

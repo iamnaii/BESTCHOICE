@@ -98,6 +98,11 @@ export class ReceiptsService {
     return this.query.getReceiptByNumber(receiptNumber);
   }
 
+  /** Resolve a public CN token (receipts-public.controller.ts — no auth). */
+  findByPublicToken(token: string) {
+    return this.query.findByPublicToken(token);
+  }
+
   /** Void a receipt (posts a reversal JE for each matched POSTED receipt JE) */
   voidReceipt(
     id: string,

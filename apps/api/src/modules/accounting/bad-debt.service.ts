@@ -567,6 +567,11 @@ export class BadDebtService {
     if (contract.status === 'CLOSED_BAD_DEBT') {
       throw new BadRequestException('สัญญานี้ถูกตัดหนี้สูญไปแล้ว');
     }
+    if (contract.status !== 'TERMINATED') {
+      throw new BadRequestException(
+        'ตัดหนี้สูญได้เฉพาะสัญญาที่บอกเลิกแล้ว (TERMINATED) — กรุณาออกหนังสือบอกเลิก (CONTRACT_TERMINATION_60D) และบันทึกการส่ง EMS ก่อน (ปพพ.386)',
+      );
+    }
 
     return this.prisma.$transaction(async (tx) => {
       // Calculate outstanding amount from unpaid/partial payments (Decimal arithmetic)

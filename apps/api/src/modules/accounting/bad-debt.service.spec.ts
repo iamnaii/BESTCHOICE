@@ -573,8 +573,21 @@ describe('BadDebtService', () => {
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
+    it('refuses write-off when contract is not TERMINATED (Excel v3 workflow gate)', async () => {
+      prisma.contract.findFirst.mockResolvedValue({ id: 'c-1', status: 'OVERDUE', contractNumber: 'CT-1' });
+      await expect(
+        service.writeOffBadDebt('c-1', 'fm-1', 'owner-1'),
+      ).rejects.toThrow('ตัดหนี้สูญได้เฉพาะสัญญาที่บอกเลิกแล้ว');
+    });
+
+    it('allows write-off when contract is TERMINATED', async () => {
+      prisma.contract.findFirst.mockResolvedValue({ id: 'c-1', status: 'TERMINATED', contractNumber: 'CT-1' });
+      prisma.payment.findMany.mockResolvedValue([]);
+      await expect(service.writeOffBadDebt('c-1', 'fm-1', 'owner-1')).resolves.toBeDefined();
+    });
+
     it('marks contract CLOSED_BAD_DEBT and active provisions WRITTEN_OFF', async () => {
-      prisma.contract.findFirst.mockResolvedValue({ id: 'c1', status: 'OVERDUE' });
+      prisma.contract.findFirst.mockResolvedValue({ id: 'c1', status: 'TERMINATED' });
       prisma.contract.update.mockResolvedValue({});
       prisma.badDebtProvision.updateMany.mockResolvedValue({ count: 1 });
 
@@ -609,7 +622,7 @@ describe('BadDebtService', () => {
     }];
 
     it('tier 1 (≤10k): BM writer + ACCT approver is rejected (ACCT not in BM/FM/OWNER allowed list)', async () => {
-      prisma.contract.findFirst.mockResolvedValue({ id: 'c1', status: 'OVERDUE' });
+      prisma.contract.findFirst.mockResolvedValue({ id: 'c1', status: 'TERMINATED' });
       prisma.payment.findMany.mockResolvedValue(mkUnpaid(5000));
 
       await expect(
@@ -618,7 +631,7 @@ describe('BadDebtService', () => {
     });
 
     it('tier 2 (10-30k): BM approver rejected — must be FM or OWNER', async () => {
-      prisma.contract.findFirst.mockResolvedValue({ id: 'c1', status: 'OVERDUE' });
+      prisma.contract.findFirst.mockResolvedValue({ id: 'c1', status: 'TERMINATED' });
       prisma.payment.findMany.mockResolvedValue(mkUnpaid(20000));
 
       await expect(
@@ -627,7 +640,7 @@ describe('BadDebtService', () => {
     });
 
     it('tier 2 (10-30k): FM approver accepted', async () => {
-      prisma.contract.findFirst.mockResolvedValue({ id: 'c1', status: 'OVERDUE' });
+      prisma.contract.findFirst.mockResolvedValue({ id: 'c1', status: 'TERMINATED' });
       prisma.payment.findMany.mockResolvedValue(mkUnpaid(20000));
       prisma.contract.update.mockResolvedValue({});
 
@@ -636,7 +649,7 @@ describe('BadDebtService', () => {
     });
 
     it('tier 3 (>30k): non-OWNER approver rejected', async () => {
-      prisma.contract.findFirst.mockResolvedValue({ id: 'c1', status: 'OVERDUE' });
+      prisma.contract.findFirst.mockResolvedValue({ id: 'c1', status: 'TERMINATED' });
       prisma.payment.findMany.mockResolvedValue(mkUnpaid(50000));
 
       await expect(
@@ -645,7 +658,7 @@ describe('BadDebtService', () => {
     });
 
     it('tier 3 (>30k): BM writer rejected (must be FM or OWNER)', async () => {
-      prisma.contract.findFirst.mockResolvedValue({ id: 'c1', status: 'OVERDUE' });
+      prisma.contract.findFirst.mockResolvedValue({ id: 'c1', status: 'TERMINATED' });
       prisma.payment.findMany.mockResolvedValue(mkUnpaid(50000));
 
       await expect(
@@ -654,7 +667,7 @@ describe('BadDebtService', () => {
     });
 
     it('tier 3 (>30k): FM writer + OWNER approver accepted', async () => {
-      prisma.contract.findFirst.mockResolvedValue({ id: 'c1', status: 'OVERDUE' });
+      prisma.contract.findFirst.mockResolvedValue({ id: 'c1', status: 'TERMINATED' });
       prisma.payment.findMany.mockResolvedValue(mkUnpaid(50000));
       prisma.contract.update.mockResolvedValue({});
 
@@ -682,7 +695,7 @@ describe('BadDebtService', () => {
         prisma.contract.findFirst.mockResolvedValue({
           id: 'c1',
           contractNumber: 'HP-001',
-          status: 'OVERDUE',
+          status: 'TERMINATED',
         });
         prisma.contract.update.mockResolvedValue({});
         prisma.badDebtProvision.updateMany.mockResolvedValue({ count: 1 });

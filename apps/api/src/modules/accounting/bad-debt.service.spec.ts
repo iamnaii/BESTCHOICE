@@ -1131,4 +1131,59 @@ describe('BadDebtService', () => {
       });
     });
   });
+
+  describe('OVERDUE payment status in ECL base (2026-07-24 hotfix)', () => {
+    // Prod's overdue-lifecycle cron flips past-due payments PENDING → OVERDUE.
+    // Excluding OVERDUE made ECL blind to every aged installment on prod.
+    const expectedStatusFilter = { in: ['PENDING', 'PARTIALLY_PAID', 'OVERDUE'] };
+
+    it('calculateProvisions queries payments with OVERDUE included', async () => {
+      prisma.payment.findMany.mockResolvedValue([]);
+      await service.calculateProvisions('owner-1');
+      expect(prisma.payment.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ status: expectedStatusFilter }),
+        }),
+      );
+    });
+
+    it('reverseStageOnPayment queries payments with OVERDUE included', async () => {
+      prisma.badDebtProvision.findFirst.mockResolvedValue({
+        id: 'prov-x',
+        contractId: 'ct-x',
+        agingBucket: '31-60',
+        provisionRate: new Prisma.Decimal('0.15'),
+        provisionAmount: new Prisma.Decimal('150.00'),
+      });
+      prisma.contract.findUnique.mockResolvedValue({ status: 'ACTIVE' });
+      prisma.payment.findMany.mockResolvedValue([]);
+      prisma.journalLine.findMany.mockResolvedValue([]);
+
+      await service.reverseStageOnPayment('ct-x');
+
+      expect(prisma.payment.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ status: expectedStatusFilter }),
+        }),
+      );
+    });
+
+    it('writeOffBadDebt sums outstanding with OVERDUE included', async () => {
+      prisma.contract.findFirst.mockResolvedValue({
+        id: 'ct-w',
+        status: 'TERMINATED',
+        contractNumber: 'CT-W',
+      });
+      prisma.payment.findMany.mockResolvedValue([]);
+      prisma.journalLine.findMany.mockResolvedValue([]);
+
+      await service.writeOffBadDebt('ct-w', 'fm-1', 'owner-1');
+
+      expect(prisma.payment.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ status: expectedStatusFilter }),
+        }),
+      );
+    });
+  });
 });

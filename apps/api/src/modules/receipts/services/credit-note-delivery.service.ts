@@ -298,6 +298,7 @@ export class CreditNoteDeliveryService {
           tags: { has: 'credit-note' },
           title: { contains: receipt.receiptNumber },
           status: { not: 'DONE' },
+          deletedAt: null,
         },
         select: { id: true },
       });

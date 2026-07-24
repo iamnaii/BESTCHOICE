@@ -272,7 +272,10 @@ export class BadDebtService {
     // and installment 5 (due 100 days ago) is unpaid, aging = 100 days. This is correct.
     const overduePayments = await this.prisma.payment.findMany({
       where: {
-        status: { in: ['PENDING', 'PARTIALLY_PAID'] },
+        // OVERDUE included (2026-07-24 hotfix): overdue-lifecycle cron flips past-due
+        // payments PENDING → OVERDUE on prod — excluding it made ECL blind to every
+        // aged installment (ConsecutiveMissedService already counts OVERDUE; now consistent)
+        status: { in: ['PENDING', 'PARTIALLY_PAID', 'OVERDUE'] },
         dueDate: { lt: now },
         contract: {
           deletedAt: null,
@@ -616,7 +619,10 @@ export class BadDebtService {
       const unpaidPayments = await tx.payment.findMany({
         where: {
           contractId,
-          status: { in: ['PENDING', 'PARTIALLY_PAID'] },
+          // OVERDUE included (2026-07-24 hotfix): overdue-lifecycle cron flips past-due
+        // payments PENDING → OVERDUE on prod — excluding it made ECL blind to every
+        // aged installment (ConsecutiveMissedService already counts OVERDUE; now consistent)
+        status: { in: ['PENDING', 'PARTIALLY_PAID', 'OVERDUE'] },
           deletedAt: null,
         },
         select: { amountDue: true, amountPaid: true },
@@ -774,7 +780,10 @@ export class BadDebtService {
     const overduePayments = await db.payment.findMany({
       where: {
         contractId,
-        status: { in: ['PENDING', 'PARTIALLY_PAID'] },
+        // OVERDUE included (2026-07-24 hotfix): overdue-lifecycle cron flips past-due
+        // payments PENDING → OVERDUE on prod — excluding it made ECL blind to every
+        // aged installment (ConsecutiveMissedService already counts OVERDUE; now consistent)
+        status: { in: ['PENDING', 'PARTIALLY_PAID', 'OVERDUE'] },
         dueDate: { lt: now },
         deletedAt: null,
       },

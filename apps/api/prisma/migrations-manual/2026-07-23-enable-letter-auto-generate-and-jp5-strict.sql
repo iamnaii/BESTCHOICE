@@ -111,15 +111,30 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 BEGIN;
 
--- Step 1: letter_auto_generate_enabled → true (existing key, update in place).
--- Also refresh the label to record the legal-review sign-off, matching the
--- seed file's new label text.
+-- Step 1: letter_auto_generate_enabled → true. Insert-if-missing FIRST
+-- (2026-07-24 prod run found the key ABSENT — prod never carried the seed row,
+-- so the original update-only step was a no-op there), then update-in-place
+-- for environments that do carry it. Idempotent either way.
+INSERT INTO system_config (id, key, value, label, created_at, updated_at)
+SELECT
+    gen_random_uuid(),
+    'letter_auto_generate_enabled',
+    'true',
+    'เปิดใช้งาน cron สร้างหนังสืออัตโนมัติรายวัน (ผ่านการตรวจสอบทางกฎหมาย — owner 2026-07-24)',
+    NOW(),
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM system_config
+    WHERE key = 'letter_auto_generate_enabled' AND deleted_at IS NULL
+);
+
 UPDATE system_config
 SET value = 'true',
     label = 'เปิดใช้งาน cron สร้างหนังสืออัตโนมัติรายวัน (ผ่านการตรวจสอบทางกฎหมาย — owner 2026-07-24)',
     updated_at = NOW()
 WHERE key = 'letter_auto_generate_enabled'
-  AND deleted_at IS NULL;
+  AND deleted_at IS NULL
+  AND value <> 'true';
 
 -- Step 2: jp5_require_terminated_status → true. New key — insert if missing,
 -- otherwise (e.g. re-run, or a prior partial apply) just make sure it reads

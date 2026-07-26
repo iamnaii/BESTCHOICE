@@ -650,18 +650,185 @@ describe('JP5 Credit Note for accrued VAT (Wave 2 Task 2)', () => {
 /**
  * JP5 GL-based clearing legs + release residual (2026-07-26, Task 5 —
  * ECL-per-installment plan §2.4). New scenarios not covered by the
- * count-based-era tests above:
+ * count-based-era tests above (plan lettering — docs/superpowers/plans/
+ * 2026-07-26-ecl-per-installment.md, Task 5 goldens list):
  *
- *   (ก) a REAL partial 2B receipt against an accrued installment must reduce
+ *   (ก) re-derive of all pre-existing scenarios — done above, GL-based.
+ *   (ข) scenario A — composed full-flow simulation (1A+2A×4+2B×3+PROV 30.32+
+ *       JP5 @5,000) — added below (post-review fix: this was skipped in the
+ *       first pass without disclosure; caught by coordinator review).
+ *   (ค) a REAL partial 2B receipt against an accrued installment must reduce
  *       what JP5 clears — proves the backlog over-credit bug is closed.
- *   (ข) provision > loss → release covered by the updated "consume up to
+ *   (ง) provision > loss → release covered by the updated "consume up to
  *       loss" test in the Task 8 describe block above (asserts release +
- *       11-2102 = 0).
- *   (ค) gain branch releases the FULL provision (consume = 0).
+ *       11-2102 = 0). Gain-branch full release also added below.
  */
 describe('JP5 GL-based legs + release residual (Task 5 — ECL per-installment)', () => {
   beforeAll(async () => {
     await setup();
+  });
+
+  /**
+   * Scenario A (plan letter ข) — the composed full-flow golden. Simulates a
+   * realistic mid-life repossession: 4 installments accrued (2A), the first
+   * 3 of those FULLY PAID via real 2B receipts (not just Payment rows), a
+   * small pre-existing provision (30.32, e.g. B1 bucket on installment #4 at
+   * ~30 days overdue), then JP5 at repossessionValue 5,000. Every expected
+   * leg below is derived from the GL invariants documented throughout this
+   * file — this is the exact number set workbook v4's JE-example sheet needs.
+   *
+   * GL after 1A + 2A×4 (installments 1-4, none is the final #12, so no 2A
+   * residual-sweep adjustment applies):
+   *   11-2103 (dr) = 4 × 1,515.83 = 6,063.32
+   *   11-2101 (dr) = 17,000.00 − 4×1,416.66 = 11,333.36
+   *   11-2105 (dr) = 1,190.00 − 4×99.17     =    793.32
+   *   21-2102 (cr) = 1,190.00 − 4×99.17     =    793.32  (mirrors 11-2105)
+   *   11-2106 (cr) = 6,000.00 − 4×500.00    =  4,000.00
+   *
+   * Then 3 REAL full 2B receipts (installments 1-3, Dr cash / Cr 11-2103
+   * 1,515.83 each) — only 11-2103 moves:
+   *   11-2103 (dr) = 6,063.32 − 3×1,515.83 = 1,515.83   ← "Cr 11-2103 = GL
+   *     after 3 receipts" (4×1,515.83 − 3×1,515.83 = 1,515.83)
+   *
+   * Installment #4 is now the ONLY unpaid+accrued installment (1-3 are PAID
+   * and excluded; 5-12 were never accrued). CN VAT (ม.82/5, computeCnBreakdown):
+   * installment #4 has no Payment row at all → fully outstanding →
+   * cnVat = vatPerInst = 99.17 (1 งวด accrued ค้างเต็ม, not pro-rated).
+   *
+   * JP5 lines (GL-based, this template):
+   *   Dr  11-1101 (cash)             5,000.00
+   *   Dr  21-2101 (CN VAT)              99.17
+   *   Dr  11-2106                    4,000.00
+   *   Dr  21-2102                      793.32
+   *     Cr 11-2103                   1,515.83
+   *     Cr 11-2101                  11,333.36
+   *     Cr 11-2105                     793.32
+   *     Cr 21-2101 (deferred due)      793.32
+   *     Cr 41-1101                   4,000.00
+   *
+   * lossOrGain = ΣCr − ΣDr(above) = 18,435.83 − 9,892.49 = 8,543.34
+   * (equivalently: bal(11-2103)+bal(11-2101)+bal(11-2105) − CN − repoValue
+   *  = 1,515.83+11,333.36+793.32 − 99.17 − 5,000.00 = 8,543.34 — 21-2102/
+   *  21-2101 and 11-2106/41-1101 cancel out net-zero, same invariant as
+   *  every other test in this file).
+   *
+   * provisionBalance = 30.32 (< loss) → consume = 30.32 (full), release = 0.
+   * remainingLoss = 8,543.34 − 30.32 = **8,513.02** ← PINNED (coordinator ask).
+   *
+   * Whole JE: ΣDr = 5,000.00+99.17+4,000.00+793.32+30.32+8,513.02 = 18,435.83
+   *           ΣCr = 1,515.83+11,333.36+793.32+793.32+4,000.00      = 18,435.83  ✓
+   */
+  it('Scenario A — composed full-flow golden (1A+2A×4+2B×3+PROV 30.32+JP5 @5,000) — workbook v4 numbers', async () => {
+    const journal = await setup();
+    const c = await seedStandard17k12m(prisma);
+    await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
+
+    const accrual = new InstallmentAccrual2ATemplate(journal, prisma as any);
+    const insts = await prisma.installmentSchedule.findMany({
+      where: { contractId: c.id },
+      orderBy: { installmentNo: 'asc' },
+    });
+
+    // 2A × 4 — installments 1-4 accrued.
+    for (let i = 0; i < 4; i++) {
+      await accrual.execute(insts[i].id);
+    }
+
+    // 2B × 3 — REAL full receipts on installments 1-3 (Dr cash / Cr 11-2103),
+    // marking each Payment PAID so JP5's unpaid-installment filter excludes them.
+    const installmentTotal = new Decimal('1515.83');
+    for (let i = 0; i < 3; i++) {
+      const inst = insts[i];
+      const payment = await prisma.payment.create({
+        data: {
+          contractId: c.id,
+          installmentNo: inst.installmentNo,
+          dueDate: inst.dueDate,
+          amountDue: installmentTotal,
+          amountPaid: installmentTotal,
+          paidDate: new Date(),
+          paidAt: new Date(),
+          status: 'PAID',
+        },
+      });
+      await journal.createAndPost({
+        description: `รับชำระงวด #${inst.installmentNo} — สัญญา ${c.id}`,
+        reference: payment.id,
+        metadata: { tag: 'receipt', contractId: c.id, installmentScheduleId: inst.id, paymentId: payment.id },
+        lines: [
+          { accountCode: '11-1101', dr: installmentTotal, cr: new Decimal(0), description: 'รับเงิน' },
+          {
+            accountCode: '11-2103',
+            dr: new Decimal(0),
+            cr: installmentTotal,
+            description: 'ล้างลูกหนี้ค้างชำระ',
+          },
+        ],
+      });
+    }
+
+    // PROV 30.32 — small pre-existing provision (e.g. B1 on installment #4 @~30d).
+    const provisionTmpl = new BadDebtProvisionTemplate(journal, prisma as any);
+    await provisionTmpl.execute({
+      contractId: c.id,
+      provisionAmount: new Decimal('30.32'),
+      period: '2025-04',
+    });
+
+    const jp5 = new RepossessionJP5Template(journal, prisma as any);
+    await jp5.execute({
+      contractId: c.id,
+      depositAccountCode: '11-1101',
+      repossessionValue: new Decimal('5000.00'),
+    });
+
+    const lines = await getJp5Lines(c.id);
+
+    // Cr 11-2103 = GL after 3 receipts (4×1,515.83 − 3×1,515.83 = 1,515.83)
+    expect(sumCr(lines, '11-2103').toFixed(2)).toBe('1515.83');
+    // Cr 11-2101 = GL: 17,000 − 4×1,416.66 = 11,333.36 (สตางค์ต่างจาก
+    // count-based 11,333.28 โดยตั้งใจ — GL รวม residual ที่ยังไม่ sweep)
+    expect(sumCr(lines, '11-2101').toFixed(2)).toBe('11333.36');
+    // Cr 11-2105 = GL: 1,190 − 4×99.17 = 793.32
+    expect(sumCr(lines, '11-2105').toFixed(2)).toBe('793.32');
+    // Dr 21-2102 = GL: 1,190 − 4×99.17 = 793.32 (mirrors 11-2105)
+    expect(sumDr(lines, '21-2102').toFixed(2)).toBe('793.32');
+    // Cr 21-2101 (deferred due) = same GL balance as 21-2102 = 793.32
+    expect(sumCr(lines, '21-2101').toFixed(2)).toBe('793.32');
+    // Dr 11-2106 = GL: 6,000 − 4×500 = 4,000.00
+    expect(sumDr(lines, '11-2106').toFixed(2)).toBe('4000.00');
+    // Cr 41-1101 = same GL balance as 11-2106 = 4,000.00
+    expect(sumCr(lines, '41-1101').toFixed(2)).toBe('4000.00');
+    // Dr 21-2101 (CN) = 99.17 — installment #4 accrued, no Payment row at
+    // all → fully outstanding → cnVat = vatPerInst exactly (1 งวด ค้างเต็ม)
+    expect(sumDr(lines, '21-2101').toFixed(2)).toBe('99.17');
+    // Dr cash (deposit) = repossessionValue
+    expect(sumDr(lines, '11-1101').toFixed(2)).toBe('5000.00');
+    // Consume = min(loss, provisionBalance) = min(8,543.34, 30.32) = 30.32 (full)
+    expect(sumDr(lines, '11-2102').toFixed(2)).toBe('30.32');
+    // Release = provisionBalance − consume = 30.32 − 30.32 = 0 → no 51-1103 line
+    expect(sumCr(lines, '51-1103').toFixed(2)).toBe('0.00');
+    // Loss plug — PINNED (coordinator ask): 8,543.34 − 30.32 = 8,513.02
+    expect(sumDr(lines, '51-1102').toFixed(2)).toBe('8513.02');
+
+    // JE balanced
+    const totalDr = lines.reduce((s, l) => s.plus(l.debit), new Decimal(0));
+    const totalCr = lines.reduce((s, l) => s.plus(l.credit), new Decimal(0));
+    expect(totalDr.toFixed(2)).toBe(totalCr.toFixed(2));
+    expect(totalDr.toFixed(2)).toBe('18435.83');
+
+    // Metadata: releasedProvision = 0.00 (fully consumed, nothing left to release)
+    const entries = await prisma.journalEntry.findMany({
+      where: {
+        AND: [
+          { metadata: { path: ['contractId'], equals: c.id } } as any,
+          { metadata: { path: ['flow'], equals: 'repossession' } } as any,
+        ],
+      },
+    });
+    expect(entries.length).toBe(1);
+    const meta = entries[0].metadata as Record<string, unknown>;
+    expect(meta.releasedProvision).toBe('0.00');
   });
 
   it('Cr 11-2103 = GL net after a REAL partial 2B receipt — closes the backlog over-credit (11-2103 = 0 after JP5)', async () => {

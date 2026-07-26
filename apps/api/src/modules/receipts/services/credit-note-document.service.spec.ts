@@ -1,3 +1,4 @@
+import { NotFoundException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import {
   CnVatMismatchError,
@@ -233,6 +234,20 @@ describe('CreditNoteDocumentService', () => {
 
       expect(result).toEqual({ outcome: 'SKIPPED_NO_ACCRUED' });
       expect(tx.journalEntry.findUnique).not.toHaveBeenCalled();
+      expect(tx.receipt.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('contract not found (M7, final-review)', () => {
+    it('throws NotFoundException (Thai message) instead of a raw Error', async () => {
+      const { service, tx } = buildHarness({ contract: null });
+
+      await expect(service.issueForContract(DEFAULT_INPUT, tx as any)).rejects.toThrow(
+        NotFoundException,
+      );
+      await expect(service.issueForContract(DEFAULT_INPUT, tx as any)).rejects.toThrow(
+        /ไม่พบสัญญา/,
+      );
       expect(tx.receipt.create).not.toHaveBeenCalled();
     });
   });

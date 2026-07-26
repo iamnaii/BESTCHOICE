@@ -120,6 +120,27 @@ describe('CreditNoteIssueService.issueManually', () => {
     expect(deliver).not.toHaveBeenCalled();
   });
 
+  it('passes a NotFoundException thrown by issueForContract through unchanged (M7 — e.g. contract-not-found)', async () => {
+    const { service, deliver } = buildHarness({
+      cnOutcome: () => {
+        // Mirrors CreditNoteDocumentService.issueForContract's contract-not-found
+        // path (M7, final-review: NotFoundException instead of a raw Error).
+        // `mapIssueError`'s `err instanceof HttpException` branch must return
+        // this AS-IS — it must not fall through to the generic rethrow path
+        // or get remapped to a different status code.
+        throw new NotFoundException('[CN] ไม่พบสัญญา contract-1');
+      },
+    });
+
+    await expect(service.issueManually(CONTRACT_ID, 'WRITE_OFF', ACTOR_ID)).rejects.toThrow(
+      NotFoundException,
+    );
+    await expect(service.issueManually(CONTRACT_ID, 'WRITE_OFF', ACTOR_ID)).rejects.toThrow(
+      /ไม่พบสัญญา/,
+    );
+    expect(deliver).not.toHaveBeenCalled();
+  });
+
   it('rethrows an unrecognized error unchanged (surfaces as 500)', async () => {
     const { service } = buildHarness({
       cnOutcome: () => {

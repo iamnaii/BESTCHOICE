@@ -1,9 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ReceiptNumberService } from './receipt-number.service';
-import { computeInstallmentBreakdown } from '../../journal/compute-installment-breakdown';
 import { computeCnBreakdown } from '../../journal/compute-cn-breakdown';
 
 export type CreditNoteSource = 'REPOSSESSION' | 'WRITE_OFF';
@@ -91,7 +90,10 @@ export class CreditNoteDocumentService {
       include: { customer: { select: { name: true } } },
     });
     if (!contract) {
-      throw new Error(`[CN] ไม่พบสัญญา ${contractId}`);
+      // NotFoundException (not a raw Error) — mapIssueError's `err instanceof
+      // HttpException` branch passes this straight through as a 404 instead
+      // of surfacing an unmapped 500 (M7, final-review).
+      throw new NotFoundException(`[CN] ไม่พบสัญญา ${contractId}`);
     }
 
     // (2) Pro-rated CN breakdown — single source of truth shared with the JE
@@ -126,16 +128,12 @@ export class CreditNoteDocumentService {
 
     // Flag installments that were pro-rated (outstanding < full installment
     // amount) so the printed CN is self-explanatory about the reduced amount.
-    const { installmentExclVat, vatPerInst } = computeInstallmentBreakdown({
-      financedAmount: contract.financedAmount.toString(),
-      storeCommission:
-        contract.storeCommission != null ? contract.storeCommission.toString() : null,
-      interestTotal: contract.interestTotal.toString(),
-      vatAmount: contract.vatAmount != null ? contract.vatAmount.toString() : null,
-      totalMonths: contract.totalMonths,
-    });
-    const installmentTotal = installmentExclVat.plus(vatPerInst);
-    const hasProRatedRow = cnBreakdown.rows.some((r) => r.outstanding.lt(installmentTotal));
+    // (M4, final-review) `installmentTotal` now comes straight off
+    // `cnBreakdown` — computeCnBreakdown already derived it via
+    // computeInstallmentBreakdown internally, so re-deriving it here a
+    // second time was redundant (and a second place that could drift from
+    // the util if the breakdown inputs ever changed shape).
+    const hasProRatedRow = cnBreakdown.rows.some((r) => r.outstanding.lt(cnBreakdown.installmentTotal));
 
     let itemDescription = `ใบลดหนี้ยกเลิกงวดค้าง ${cnBreakdown.count} งวด — เลิกสัญญา (ม.82/5)`;
     if (hasProRatedRow) {

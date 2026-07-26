@@ -19,6 +19,16 @@ export interface CnPaymentInput {
   status: string;
   amountDue: DecimalInput;
   amountPaid: DecimalInput;
+  /**
+   * Raw late fee owed on this installment (FEE-FIRST convention, PR #1313 —
+   * `Payment.lateFee` is NOT reset after a partial receipt; it always holds
+   * the full fee owed for the installment). Optional/nullable so preloaded
+   * arrays from older call sites (or test fixtures) that omit it default to
+   * "no fee" rather than throwing.
+   */
+  lateFee?: DecimalInput | null;
+  /** Mirrors `Payment.lateFeeWaived` — a waived fee never consumes cash. */
+  lateFeeWaived?: boolean | null;
 }
 
 export interface CnBreakdownRow {
@@ -34,6 +44,11 @@ export interface CnBreakdown {
   totalCnVat: Decimal;
   totalBeforeVat: Decimal;
   rows: CnBreakdownRow[];
+  /** Full per-installment cash amount (excl+incl VAT) — same as
+   *  `computeInstallmentBreakdown(...).installmentTotal`. Exposed so callers
+   *  (e.g. `CreditNoteDocumentService`) can flag pro-rated rows without
+   *  re-deriving the breakdown themselves. */
+  installmentTotal: Decimal;
 }
 
 export interface CnBreakdownContractInput {
@@ -60,10 +75,28 @@ export interface CnBreakdownOpts {
  * CPA ruling (2026-07-26 — docs/superpowers/plans/2026-07-26-cn-prorate-cpa.md,
  * Global Constraints). Per accrued-unpaid installment `i`:
  *
- *   outstanding_i = clamp(amountDue_i − amountPaid_i, 0, installmentTotal)
- *   cnVat_i       = (vatPerInst × outstanding_i / installmentTotal)
- *                     .toDecimalPlaces(2, ROUND_HALF_UP)
- *   cnBeforeVat_i = outstanding_i − cnVat_i
+ *   netFee_i       = lateFeeWaived_i ? 0 : lateFee_i
+ *   feeCollected_i = min(amountPaid_i, netFee_i)
+ *   baseCash_i     = amountPaid_i − feeCollected_i
+ *   outstanding_i  = clamp(amountDue_i − baseCash_i, 0, installmentTotal)
+ *   cnVat_i        = (vatPerInst × outstanding_i / installmentTotal)
+ *                      .toDecimalPlaces(2, ROUND_HALF_UP)
+ *   cnBeforeVat_i  = outstanding_i − cnVat_i
+ *
+ * Netting out the late fee (I1, final-review) is required because
+ * `Payment.amountPaid` is GROSS cash including any late fee collected — the
+ * house convention (FEE-FIRST, PR #1313) allocates cash to the fee before the
+ * installment base. Without the net-out, a customer who paid mostly-fee would
+ * look like they'd paid down more principal/interest/VAT than they actually
+ * did, understating `outstanding` (and therefore `cnVat`). `amountDue` never
+ * includes the fee, so it needs no adjustment.
+ *
+ * Rows whose `outstanding` resolves to `<= 0` (fully covered, including the
+ * overpaid edge case where `baseCash > amountDue`) are DROPPED — not kept as
+ * a zero-contribution row. `count` must reflect "installments a CN is
+ * actually owed on" so callers (e.g. `CreditNoteDocumentService`'s
+ * `SKIPPED_NO_ACCRUED` gate and its "N งวด" description) never claim a CN
+ * covers an installment that in fact needs nothing reversed.
  *
  * Totals are the SUM of the already-rounded per-installment rows (round
  * per-installment BEFORE summing — required to match the CPA golden: a
@@ -114,7 +147,14 @@ export async function computeCnBreakdown(
     opts?.payments ??
     (await client.payment.findMany({
       where: { contractId: contract.id },
-      select: { installmentNo: true, status: true, amountDue: true, amountPaid: true },
+      select: {
+        installmentNo: true,
+        status: true,
+        amountDue: true,
+        amountPaid: true,
+        lateFee: true,
+        lateFeeWaived: true,
+      },
     }));
   const paymentByInst = new Map(payments.map((p) => [p.installmentNo, p]));
 
@@ -132,9 +172,21 @@ export async function computeCnBreakdown(
     } else {
       const due = new Decimal(payment.amountDue);
       const paid = new Decimal(payment.amountPaid);
-      outstanding = Decimal.max(zero, due.minus(paid));
+      // FEE-FIRST net-out (I1): amountPaid is GROSS cash including any late
+      // fee collected — strip the fee portion before comparing against
+      // amountDue (which never includes the fee) so a fee-heavy partial
+      // payment doesn't understate how much of the installment is still owed.
+      const netFee = payment.lateFeeWaived ? zero : new Decimal(payment.lateFee ?? 0);
+      const feeCollected = Decimal.min(paid, netFee);
+      const baseCash = paid.minus(feeCollected);
+      outstanding = Decimal.max(zero, due.minus(baseCash));
       outstanding = Decimal.min(outstanding, installmentTotal);
     }
+
+    // Fully covered (incl. overpaid edge case) — no CN owed on this
+    // installment. Drop the row entirely rather than keep a zero-contribution
+    // row, so `count` truthfully reflects "installments a CN is owed on".
+    if (outstanding.lte(0)) continue;
 
     const cnVat = installmentTotal.gt(0)
       ? vatPerInst
@@ -157,5 +209,6 @@ export async function computeCnBreakdown(
     totalCnVat,
     totalBeforeVat,
     rows,
+    installmentTotal,
   };
 }

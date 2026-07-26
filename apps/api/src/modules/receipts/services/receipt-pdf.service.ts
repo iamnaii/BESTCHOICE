@@ -272,14 +272,21 @@ export class ReceiptPdfService {
           })
         : null;
     // Phase 3 standalone CN (CreditNoteDocumentService): amountBeforeVat/vatAmount
-    // are stamped directly on the Receipt row from computeInstallmentBreakdown ×
-    // accrued-unpaid-installment-count — i.e. the EXACT figures the source JE
-    // booked (cross-checked against the JE's metadata.creditNoteVatAmount at
-    // issuance time). No other receipt type sets both fields today, so trusting
-    // them here is scoped to this one case. Re-deriving via the pro-rata 100/107
-    // split below would drift by a satang vs the ledger (e.g. golden fixture
-    // 4,249.98/297.51 → a pro-rata split of the 4,547.49 total yields
-    // 4,249.99/297.50 — off by 0.01 either side).
+    // are stamped directly on the Receipt row from computeCnBreakdown's
+    // pro-rated, per-installment-rounded totals (CPA ruling 2026-07-26,
+    // docs/superpowers/plans/2026-07-26-cn-prorate-cpa.md) — i.e. the EXACT
+    // figures the source JE booked (cross-checked against the JE's
+    // metadata.creditNoteVatAmount at issuance time). This is NOT a simple
+    // count × per-installment figure — a partially-paid accrued installment
+    // prices at less than the full vatPerInst/installmentExclVat, per
+    // installment, rounded before summing. No other receipt type sets both
+    // fields today, so trusting them here is scoped to this one case.
+    // Re-deriving via the pro-rata 100/107 split below would drift by a
+    // satang vs the ledger even in the all-full-installment case (e.g. the
+    // golden fixture 4,249.98/297.51 → a pro-rata split of the 4,547.49 total
+    // yields 4,249.99/297.50 — off by 0.01 either side); a mixed pro-rated
+    // case would drift further since the split ignores per-installment
+    // rounding entirely.
     const hasExplicitVatSplit = receipt.amountBeforeVat != null && receipt.vatAmount != null;
 
     let exclVat = ZERO;

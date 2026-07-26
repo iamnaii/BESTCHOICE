@@ -164,6 +164,124 @@ describe('computeCnBreakdown (CN pro-rate — single source of truth)', () => {
     expect(result.totalCnVat.toFixed(2)).toBe('33.75');
   });
 
+  describe('FEE-FIRST net-out (I1, final-review — Payment.amountPaid is GROSS cash incl. late fee)', () => {
+    it('partial payment 1,000 with unwaived lateFee 75.79 nets baseCash 924.21 → outstanding 591.62 / cnVat 38.71', async () => {
+      const client = mockClient();
+      const result = await computeCnBreakdown(client, FIXTURE_17K_12M, {
+        installments: [{ installmentNo: 1, accrualJournalEntryId: 'je-1' }],
+        payments: [
+          {
+            installmentNo: 1,
+            status: 'PARTIALLY_PAID',
+            amountDue: '1515.83',
+            amountPaid: '1000',
+            lateFee: '75.79',
+            lateFeeWaived: false,
+          },
+        ],
+      });
+
+      expect(result.count).toBe(1);
+      expect(result.rows[0].outstanding.toFixed(2)).toBe('591.62');
+      expect(result.rows[0].cnVat.toFixed(2)).toBe('38.71');
+      expect(result.totalCnVat.toFixed(2)).toBe('38.71');
+      expect(result.totalOutstanding.toFixed(2)).toBe('591.62');
+    });
+
+    it('waived lateFee behaves identically to no-fee at all (outstanding 515.83 / cnVat 33.75)', async () => {
+      const client = mockClient();
+      const result = await computeCnBreakdown(client, FIXTURE_17K_12M, {
+        installments: [{ installmentNo: 1, accrualJournalEntryId: 'je-1' }],
+        payments: [
+          {
+            installmentNo: 1,
+            status: 'PARTIALLY_PAID',
+            amountDue: '1515.83',
+            amountPaid: '1000',
+            lateFee: '75.79',
+            lateFeeWaived: true,
+          },
+        ],
+      });
+
+      expect(result.rows[0].outstanding.toFixed(2)).toBe('515.83');
+      expect(result.rows[0].cnVat.toFixed(2)).toBe('33.75');
+    });
+
+    it('a Payment row that omits lateFee/lateFeeWaived entirely defaults to no-fee (backward compat)', async () => {
+      const client = mockClient();
+      const result = await computeCnBreakdown(client, FIXTURE_17K_12M, {
+        installments: [{ installmentNo: 1, accrualJournalEntryId: 'je-1' }],
+        payments: [
+          { installmentNo: 1, status: 'PARTIALLY_PAID', amountDue: '1515.83', amountPaid: '1000' },
+        ],
+      });
+
+      expect(result.rows[0].outstanding.toFixed(2)).toBe('515.83');
+      expect(result.rows[0].cnVat.toFixed(2)).toBe('33.75');
+    });
+
+    it('overpaid installment (amountPaid > amountDue, net of fee) clamps outstanding to 0 and DROPS the row', async () => {
+      const client = mockClient();
+      const result = await computeCnBreakdown(client, FIXTURE_17K_12M, {
+        installments: [{ installmentNo: 1, accrualJournalEntryId: 'je-1' }],
+        payments: [
+          {
+            installmentNo: 1,
+            status: 'PARTIALLY_PAID',
+            amountDue: '1515.83',
+            amountPaid: '2000',
+            lateFee: '0',
+            lateFeeWaived: false,
+          },
+        ],
+      });
+
+      // count reflects "installments a CN is owed on" — an overpaid
+      // installment owes nothing, so it is dropped entirely rather than kept
+      // as a zero-contribution row (decided + documented in compute-cn-breakdown.ts jsdoc).
+      expect(result.count).toBe(0);
+      expect(result.rows).toHaveLength(0);
+      expect(result.totalOutstanding.toFixed(2)).toBe('0.00');
+      expect(result.totalCnVat.toFixed(2)).toBe('0.00');
+      expect(result.totalBeforeVat.toFixed(2)).toBe('0.00');
+    });
+
+    it('overpaid + full clean installment mixed — dropped row does not pollute totals for the remaining installment', async () => {
+      const client = mockClient();
+      const result = await computeCnBreakdown(client, FIXTURE_17K_12M, {
+        installments: [
+          { installmentNo: 1, accrualJournalEntryId: 'je-1' },
+          { installmentNo: 2, accrualJournalEntryId: 'je-2' },
+        ],
+        payments: [
+          {
+            installmentNo: 1,
+            status: 'PARTIALLY_PAID',
+            amountDue: '1515.83',
+            amountPaid: '2000',
+          },
+          // installmentNo 2: no Payment row → fully outstanding
+        ],
+      });
+
+      expect(result.count).toBe(1);
+      expect(result.rows[0].installmentNo).toBe(2);
+      expect(result.totalOutstanding.toFixed(2)).toBe('1515.83');
+      expect(result.totalCnVat.toFixed(2)).toBe('99.17');
+    });
+  });
+
+  it('exposes installmentTotal on the returned breakdown (M4, final-review)', async () => {
+    const client = mockClient();
+    const result = await computeCnBreakdown(client, FIXTURE_17K_12M, {
+      installments: [{ installmentNo: 1, accrualJournalEntryId: 'je-1' }],
+      payments: [],
+    });
+
+    expect(result.installmentTotal.toFixed(2)).toBe('1515.83');
+  });
+
   it('accepts real Decimal instances (not just strings) for contract + payment fields', async () => {
     const client = mockClient();
     const result = await computeCnBreakdown(

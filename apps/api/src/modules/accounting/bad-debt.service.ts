@@ -514,19 +514,35 @@ export class BadDebtService {
 
     const deltas: { contractId: string; bucket: string; prevGl: string; target: string; delta: string }[] = [];
 
-    for (const p of provisions) {
+    // CRITICAL fix (second-reviewer finding, post-Task-4): iterate
+    // `contractIdsInScope`, NOT `provisions`. A contract whose engine rows all
+    // dropped (rows.length === 0 in the loop above — e.g. fee-netted fully
+    // covered, status not yet flipped to PAID) never gets a `provisions`
+    // entry, so looping over `provisions` alone silently skipped its
+    // delta-vs-GL evaluation entirely — a stale 11-2102 GL balance from a
+    // PRIOR run would never be released, diverging from the DB row (which
+    // still gets REVERSED above). Every in-scope contract must get a GL
+    // evaluation with target defaulting to 0 when no provision was computed —
+    // this restores the pre-Task-4 guarantee ("delta-vs-GL กลไกเดิม ไม่แตะ").
+    const provisionsByContract = new Map(provisions.map((p) => [p.contractId, p]));
+
+    for (const contractId of contractIdsInScope) {
       try {
-        const glPrev = await this.glBalance(p.contractId, '11-2102', 'cr');
-        const delta = new Decimal(p.provisionAmount.toString()).sub(glPrev);
+        const p = provisionsByContract.get(contractId);
+        const target = p ? new Decimal(p.provisionAmount.toString()) : new Decimal(0);
+        const bucket = p ? p.agingBucket : 'CURRENT';
+        const glPrev = await this.glBalance(contractId, '11-2102', 'cr');
+        const delta = target.sub(glPrev);
 
         if (dryRun) {
-          // Report completeness: include zero-delta contracts too (they would
-          // be skipped for posting, but still reflect target vs GL state).
+          // Report completeness: include zero-delta AND zero-target contracts
+          // too (they would be skipped for posting, but still reflect target
+          // vs GL state).
           deltas.push({
-            contractId: p.contractId,
-            bucket: p.agingBucket,
+            contractId,
+            bucket,
             prevGl: glPrev.toFixed(2),
-            target: p.provisionAmount.toFixed(2),
+            target: target.toFixed(2),
             delta: delta.toFixed(2),
           });
           continue;
@@ -535,15 +551,15 @@ export class BadDebtService {
         if (delta.abs().lt(new Decimal('0.005'))) continue;
 
         await this.badDebtProvisionTemplate.execute({
-          contractId: p.contractId,
+          contractId,
           provisionAmount: delta,
           period,
           runDate,
         });
       } catch (err) {
-        Sentry.captureException(err, { extra: { contractId: p.contractId, period } });
+        Sentry.captureException(err, { extra: { contractId, period } });
         this.logger.error(
-          `[A.5a] Bad debt provision JE failed for contract ${p.contractId} period ${period}: ${(err as Error).message}`,
+          `[A.5a] Bad debt provision JE failed for contract ${contractId} period ${period}: ${(err as Error).message}`,
         );
       }
     }

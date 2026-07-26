@@ -680,6 +680,76 @@ describe('BadDebtService', () => {
         expect.objectContaining({ provisionAmount: expect.decimalEq('-130.00') }),
       );
     });
+
+    it('CRITICAL fix: a zero-outstanding contract (engine dropped all rows) still gets a GL-based release JE', async () => {
+      // installment fully fee-netted to 0 outstanding (due 1,515.83, paid
+      // 1,515.83 + 50 fee) — status hasn't flipped to PAID yet (PARTIALLY_PAID),
+      // so the top-level query still returns it, but computeInstallmentOutstanding
+      // drops the row (outstanding <= 0) → contractGroups has this contract, but
+      // `provisions` never gets an entry for it. Before the fix, the delta/GL
+      // loop iterated `provisions` only, so this contract's stale GL 11-2102
+      // balance (100) was NEVER re-evaluated/released — a silent DB-vs-GL
+      // divergence. The loop must iterate contractIdsInScope instead, treating
+      // the missing entry as target = 0.
+      prisma.payment.findMany.mockResolvedValue([
+        {
+          installmentNo: 1,
+          status: 'PARTIALLY_PAID',
+          contract: { id: 'c-1', ...STD_CONTRACT_FIELDS },
+          dueDate: new Date(Date.now() - 40 * 86_400_000),
+          amountDue: new Prisma.Decimal('1515.83'),
+          amountPaid: new Prisma.Decimal('1565.83'), // 1,515.83 principal + 50 fee
+          lateFee: new Prisma.Decimal('50.00'),
+          lateFeeWaived: false,
+        },
+      ]);
+      prisma.journalLine.findMany.mockResolvedValue([
+        { debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('100.00') },
+      ]);
+
+      const result = await service.calculateProvisions('owner-1');
+
+      // No provision row created for this contract (engine saw 0 outstanding).
+      expect(prisma.badDebtProvision.createMany).not.toHaveBeenCalled();
+      expect(result.created).toBe(0);
+      // ...but the GL release JE still fires: target 0 − GL 100 = −100.00.
+      expect(provisionTemplateMock.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ contractId: 'c-1', provisionAmount: expect.decimalEq('-100.00') }),
+      );
+    });
+
+    it('dryRun: zero-outstanding contract still appears in deltas with target 0.00', async () => {
+      prisma.payment.findMany.mockResolvedValue([
+        {
+          installmentNo: 1,
+          status: 'PARTIALLY_PAID',
+          contract: { id: 'c-1', ...STD_CONTRACT_FIELDS },
+          dueDate: new Date(Date.now() - 40 * 86_400_000),
+          amountDue: new Prisma.Decimal('1515.83'),
+          amountPaid: new Prisma.Decimal('1565.83'),
+          lateFee: new Prisma.Decimal('50.00'),
+          lateFeeWaived: false,
+        },
+      ]);
+      prisma.journalLine.findMany.mockResolvedValue([
+        { debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('100.00') },
+      ]);
+
+      const result = await service.calculateProvisions('owner-1', undefined, true);
+
+      expect(result.deltas).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            contractId: 'c-1',
+            target: '0.00',
+            prevGl: '100.00',
+            delta: '-100.00',
+          }),
+        ]),
+      );
+      // dryRun never writes rows.
+      expect(prisma.badDebtProvision.createMany).not.toHaveBeenCalled();
+    });
   });
 
   describe('calculateProvisions — dryRun (Task 8)', () => {

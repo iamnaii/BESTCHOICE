@@ -357,6 +357,7 @@ jobs:
           API_BASE_URL=https://api.bestchoicephone.app,\
           SHOP_BASE_URL=https://www.bestchoicephone.com,\
           LIFF_CHANNEL_ID=2009442540,\
+          LINE_LOGIN_CHANNEL_ID=2009442540,\
           SMS_PAYMENT_REMINDER_DISABLED=true,\
           FB_BOT_DISABLED=true,\
           FB_BOT_WHITELIST_PSIDS=8830107663706216,\

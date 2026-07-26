@@ -166,6 +166,94 @@ describe('BadDebtWriteOffTemplate', () => {
     expect(new Decimal(expenseLine!.debit.toString()).toFixed(2)).toBe('17190.00');
   });
 
+  /**
+   * Task 6 (2026-07-26, symmetric to RepossessionJP5Template Task 5) —
+   * provision seeded ABOVE the loss must release the residual to income
+   * instead of leaving it stranded on 11-2102.
+   *
+   * Same all-deferred (1A only, no 2A) contract as the "all-deferred" golden
+   * below: loss before consume = 18,190.00 (Dr 11-2106 6,000.00 + Dr 21-2102
+   * 1,190.00 vs Cr 11-2101 17,000.00 + Cr 11-2105 1,190.00 + Cr 21-2101
+   * 1,190.00 + Cr 41-1101 6,000.00 → 25,380.00 − 7,190.00 = 18,190.00).
+   *
+   * Provision seeded = 20,000.00 (> loss):
+   *   provisionConsumed = min(18,190.00, 20,000.00) = 18,190.00 → Dr 11-2102
+   *   releasedProvision = 20,000.00 − 18,190.00 = 1,810.00 → Dr 11-2102 / Cr 51-1103
+   *   remaining loss = 18,190.00 − 18,190.00 = 0.00 exactly → no 51-1102 plug line
+   *   GL 11-2102 for this contract: +20,000.00 (provision JE Cr) − 20,000.00
+   *   (write-off JE's two Dr lines, consume+release) = 0.00
+   */
+  it('releases provision residual to income when provision exceeds the loss (Task 6, symmetric to JP5)', async () => {
+    const c6 = await seedStandard17k12m(prisma);
+    await new ContractActivation1ATemplate(journal, prisma as any).execute(c6.id);
+
+    const provisionTmpl = new BadDebtProvisionTemplate(journal, prisma as any);
+    await provisionTmpl.execute({
+      contractId: c6.id,
+      provisionAmount: new Decimal('20000.00'),
+      period: '2026-04',
+    });
+
+    const result = await new BadDebtWriteOffTemplate(journal, prisma as any).execute({
+      contractId: c6.id,
+    });
+    expect(result.entryNo).toMatch(/^JE-/);
+
+    const je = await prisma.journalEntry.findFirst({
+      where: {
+        AND: [
+          { metadata: { path: ['flow'], equals: 'write-off' } } as any,
+          { metadata: { path: ['contractId'], equals: c6.id } } as any,
+        ],
+      },
+      include: { lines: true },
+    });
+    expect(je).toBeDefined();
+
+    const totalDr = je!.lines.reduce((s, l) => s.plus(l.debit.toString()), new Decimal(0));
+    const totalCr = je!.lines.reduce((s, l) => s.plus(l.credit.toString()), new Decimal(0));
+    expect(totalDr.toFixed(2)).toBe(totalCr.toFixed(2));
+
+    // Two separate Dr 11-2102 lines (consume 18,190.00 + release 1,810.00) sum
+    // to the full provisionBalance (20,000.00).
+    const provisionDrTotal = je!.lines
+      .filter((l) => l.accountCode === '11-2102')
+      .reduce((s, l) => s.plus(l.debit.toString()), new Decimal(0));
+    expect(provisionDrTotal.toFixed(2)).toBe('20000.00');
+
+    const releaseLine = je!.lines.find(
+      (l) => l.accountCode === '51-1103' && new Decimal(l.credit.toString()).gt(0),
+    );
+    expect(releaseLine).toBeDefined();
+    expect(new Decimal(releaseLine!.credit.toString()).toFixed(2)).toBe('1810.00');
+
+    // Loss fully absorbed by consume → no 51-1102 plug line at all.
+    const expenseLine = je!.lines.find((l) => l.accountCode === '51-1102');
+    expect(expenseLine).toBeUndefined();
+
+    expect((je!.metadata as any).provisionConsumed).toBe('18190.00');
+    expect((je!.metadata as any).releasedProvision).toBe('1810.00');
+    expect((je!.metadata as any).writeOffExpense).toBe('0.00');
+
+    // GL 11-2102 for this contract nets to exactly 0 after provision + write-off.
+    const glLines = await prisma.journalLine.findMany({
+      where: {
+        accountCode: '11-2102',
+        journalEntry: {
+          metadata: { path: ['contractId'], equals: c6.id } as any,
+          status: 'POSTED',
+          deletedAt: null,
+        },
+      },
+      select: { debit: true, credit: true },
+    });
+    const glBalance = glLines.reduce(
+      (s, l) => s.plus(l.credit.toString()).minus(l.debit.toString()),
+      new Decimal(0),
+    );
+    expect(glBalance.toFixed(2)).toBe('0.00');
+  });
+
   it('mixed accrued/deferred: issues CN VAT + clears 11-2103/11-2106/VAT legs (golden 17k, 3 accrued)', async () => {
     const c3 = await seedStandard17k12m(prisma);
     await new ContractActivation1ATemplate(journal, prisma as any).execute(c3.id);

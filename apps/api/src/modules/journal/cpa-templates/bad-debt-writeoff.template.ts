@@ -29,12 +29,23 @@ export interface BadDebtWriteOffInput {
  *   Dr 11-2106  glBalance(11-2106)                          ← ล้าง unearned interest คงเหลือ
  *   Dr 21-2102  glBalance(21-2102, cr side)                 ← ล้างภาษีขายรอเรียกเก็บคงเหลือ
  *   Dr 11-2102  provisionConsumed                           ← ใช้ค่าเผื่อก่อน (เดิม)
+ *   Dr 11-2102  releasedProvision (when provision > loss)   ← คืนค่าเผื่อส่วนเกิน (Task 6, symmetric to JP5)
  *   Dr 51-1102  plug (loss ส่วนเกินค่าเผื่อ)                    ← ส่วนที่เหลือให้ JE balance
  *     Cr 11-2103  glBalance(11-2103)                        ← ล้างลูกหนี้ค้าง (accrued)
  *     Cr 11-2101  glBalance(11-2101)                        ← ล้างลูกหนี้ Gross (deferred)
  *     Cr 11-2105  glBalance(11-2105)                        ← ล้างลูกหนี้ภาษีขายรอฯ
  *     Cr 21-2101  glBalance(21-2102, cr side)                ← VAT deferred ถึงกำหนดนำส่ง (ม.82/3)
  *     Cr 41-1101  glBalance(11-2106)                        ← รับรู้ดอกเบี้ยงวด deferred (แบบ JP5)
+ *     Cr 51-1103  releasedProvision                         ← กลับรายการค่าเผื่อหนี้สงสัยจะสูญ (ตัดหนี้สูญแล้ว ไม่ต้องตั้งสำรองอีก)
+ *
+ * Bad Debt provision (11-2102) — consume THEN release residual (Task 6, mirrors JP5 Task 5):
+ *   provisionBalance = GL balance of 11-2102 for this contract
+ *   provisionConsumed = min(loss, provisionBalance)      → Dr 11-2102 (when loss > 0)
+ *   releasedProvision = provisionBalance − provisionConsumed → Dr 11-2102 / Cr 51-1103 (when > 0)
+ *   Once a contract is written off there is no more receivable left to provide
+ *   against, so 11-2102 for this contract always lands on exactly 0 after this
+ *   JE — whether via consume (provision <= loss), release (provision > loss,
+ *   including the loss = 0 exact-wash edge case), or both.
  */
 @Injectable()
 export class BadDebtWriteOffTemplate {
@@ -213,6 +224,30 @@ export class BadDebtWriteOffTemplate {
       });
       loss = loss.minus(provisionConsumed);
     }
+
+    // Release provision residual (Task 6, symmetric to RepossessionJP5Template
+    // Task 5) — whatever provision is LEFT after consuming the loss must be
+    // released back to income; once written off there is no more receivable
+    // to provide against, so 11-2102 for this contract always lands on
+    // exactly 0 after this JE.
+    const releasedProvision = provisionBalance.gt(0)
+      ? provisionBalance.minus(provisionConsumed)
+      : new Decimal(0);
+    if (releasedProvision.gt(0)) {
+      lines.push({
+        accountCode: '11-2102',
+        dr: releasedProvision,
+        cr: zero,
+        description: 'คืนค่าเผื่อหนี้สงสัยจะสูญส่วนเกิน (release)',
+      });
+      lines.push({
+        accountCode: '51-1103',
+        dr: zero,
+        cr: releasedProvision,
+        description: 'กลับรายการค่าเผื่อหนี้สงสัยจะสูญ (ตัดหนี้สูญแล้ว ไม่ต้องตั้งสำรองอีก)',
+      });
+    }
+
     if (loss.gt(0)) {
       lines.push({
         accountCode: '51-1102',
@@ -240,6 +275,9 @@ export class BadDebtWriteOffTemplate {
             contractId,
             totalReceivable: totalReceivable.toFixed(2),
             provisionConsumed: provisionConsumed.toFixed(2),
+            // Task 6 (2026-07-26) — Bad Debt provision (11-2102) released back
+            // to 51-1103 on this contract (0.00 when nothing was left to release).
+            releasedProvision: releasedProvision.toFixed(2),
             writeOffExpense: loss.toFixed(2),
             creditNoteIssued,
             creditNoteVatAmount: cnVat.toFixed(2),

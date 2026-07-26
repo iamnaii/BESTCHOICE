@@ -8,6 +8,7 @@ import {
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../../prisma/prisma.service';
 import {
+  CnVatMismatchError,
   CreditNoteDocumentService,
   CreditNoteSource,
 } from './credit-note-document.service';
@@ -53,6 +54,12 @@ export class CreditNoteIssueService {
   ): Promise<{ receiptId: string; receiptNumber: string }> {
     const flow = FLOW_BY_SOURCE[source];
 
+    // Invariant (today): at most one POSTED JE exists per (contractId, flow) —
+    // both `RepossessionJP5Template` and `BadDebtWriteOffTemplate` are
+    // single-shot idempotent per contract. `orderBy createdAt desc` is a
+    // defensive tie-breaker, not a real "latest of many" lookup — revisit
+    // this query if a future reversal/re-open template ever reuses these
+    // `flow` values for the same contract.
     const je = await this.prisma.journalEntry.findFirst({
       where: {
         status: 'POSTED',
@@ -111,22 +118,24 @@ export class CreditNoteIssueService {
   }
 
   /**
-   * `issueForContract`'s own drift guard throws a plain `Error` (not an
-   * HttpException) when the recomputed CN VAT doesn't match the JE's stamped
-   * `metadata.creditNoteVatAmount` — this happens for a JE posted before the
-   * 2026-07-26 pro-rate ruling (full-amount metadata, no pro-rate). Map that
-   * to a 422 advising a CPA-guided JE adjustment rather than a raw 500.
-   * Any NestJS HttpException thrown above (Conflict/UnprocessableEntity for
-   * SKIPPED_DUPLICATE/SKIPPED_NO_ACCRUED) passes through unchanged; anything
-   * else unexpected is rethrown as-is (surfaces as 500).
+   * `issueForContract`'s own drift guard throws `CnVatMismatchError` (a
+   * dedicated class, not a string-matched message) when the recomputed CN
+   * VAT doesn't match the JE's stamped `metadata.creditNoteVatAmount` — this
+   * happens for a JE posted before the 2026-07-26 pro-rate ruling
+   * (full-amount metadata, no pro-rate). Map that to a 422 advising a
+   * CPA-guided JE adjustment rather than a raw 500. Discriminating via
+   * `instanceof` (not `err.message.includes(...)`) means an unrelated wording
+   * edit to the Thai message can never silently turn this into an unmapped
+   * 500. Any NestJS HttpException thrown above (Conflict/UnprocessableEntity
+   * for SKIPPED_DUPLICATE/SKIPPED_NO_ACCRUED) passes through unchanged;
+   * anything else unexpected is rethrown as-is (surfaces as 500).
    */
   private mapIssueError(err: unknown): unknown {
     if (err instanceof HttpException) {
       return err;
     }
-    const message = err instanceof Error ? err.message : String(err);
-    if (message.includes('ไม่ตรงกับ Journal Entry')) {
-      this.logger.warn(`[CN manual-issue] drift guard tripped: ${message}`);
+    if (err instanceof CnVatMismatchError) {
+      this.logger.warn(`[CN manual-issue] drift guard tripped: ${err.message}`);
       return new UnprocessableEntityException(
         'ยอด VAT ที่คำนวณใหม่ไม่ตรงกับ Journal Entry เดิม (น่าจะเป็น JE ที่ออกก่อนปรับสูตร pro-rate) — กรุณาปรึกษา CPA เพื่อพิจารณาปรับปรุงรายการบัญชีก่อนออกใบลดหนี้',
       );

@@ -8,6 +8,22 @@ import { computeCnBreakdown } from '../../journal/compute-cn-breakdown';
 
 export type CreditNoteSource = 'REPOSSESSION' | 'WRITE_OFF';
 
+/**
+ * Thrown when the CN VAT recomputed from `computeCnBreakdown` doesn't match
+ * the source JE's stamped `metadata.creditNoteVatAmount` (drift guard — e.g.
+ * a JE posted before the 2026-07-26 pro-rate ruling, full-amount metadata).
+ * A dedicated class (rather than matching on `err.message` substring) so
+ * callers like `CreditNoteIssueService` can discriminate this case at
+ * compile-time — a future wording edit to the Thai message can never
+ * silently turn this into an unmapped 500.
+ */
+export class CnVatMismatchError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'CnVatMismatchError';
+  }
+}
+
 export interface IssueCreditNoteInput {
   contractId: string;
   source: CreditNoteSource;
@@ -99,7 +115,7 @@ export class CreditNoteDocumentService {
     const jeMetadata = je.metadata as Record<string, unknown> | null;
     const jeCnVat = jeMetadata?.['creditNoteVatAmount'];
     if (jeCnVat !== cnBreakdown.totalCnVat.toFixed(2)) {
-      throw new Error(
+      throw new CnVatMismatchError(
         `[CN] ยอด VAT ใบลดหนี้ (${cnBreakdown.totalCnVat.toFixed(2)}) ไม่ตรงกับ Journal Entry ${sourceJournalEntryNo} (${String(jeCnVat)}) — หยุดเพื่อป้องกันข้อมูลคลาดเคลื่อน`,
       );
     }

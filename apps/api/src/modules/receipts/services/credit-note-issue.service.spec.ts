@@ -1,5 +1,6 @@
 import { ConflictException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { CreditNoteIssueService } from './credit-note-issue.service';
+import { CnVatMismatchError } from './credit-note-document.service';
 import type { CreditNoteSource, IssueCreditNoteResult } from './credit-note-document.service';
 
 /**
@@ -98,10 +99,13 @@ describe('CreditNoteIssueService.issueManually', () => {
     expect(deliver).not.toHaveBeenCalled();
   });
 
-  it('maps the drift-guard Error (legacy full-amount JE) to a 422 CPA-advisory message', async () => {
+  it('maps the drift-guard CnVatMismatchError (legacy full-amount JE) to a 422 CPA-advisory message', async () => {
     const { service, deliver } = buildHarness({
       cnOutcome: () => {
-        throw new Error(
+        // Real error class (not a hand-typed message string) — proves the
+        // catch site discriminates via `instanceof`, so a future wording
+        // edit to this message can never silently degrade into a 500.
+        throw new CnVatMismatchError(
           '[CN] ยอด VAT ใบลดหนี้ (232.09) ไม่ตรงกับ Journal Entry JE-202607-0001 (297.51) — หยุดเพื่อป้องกันข้อมูลคลาดเคลื่อน',
         );
       },

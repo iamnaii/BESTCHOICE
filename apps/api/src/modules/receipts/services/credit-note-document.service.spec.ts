@@ -1,5 +1,9 @@
 import { Decimal } from '@prisma/client/runtime/library';
-import { CreditNoteDocumentService, IssueCreditNoteInput } from './credit-note-document.service';
+import {
+  CnVatMismatchError,
+  CreditNoteDocumentService,
+  IssueCreditNoteInput,
+} from './credit-note-document.service';
 
 /**
  * CPA CSV golden fixture (17,000฿ financed+commission+interest / 12 months —
@@ -234,13 +238,19 @@ describe('CreditNoteDocumentService', () => {
   });
 
   describe('drift guard', () => {
-    it('throws when the recomputed VAT does not match the JE metadata.creditNoteVatAmount', async () => {
+    it('throws a CnVatMismatchError when the recomputed VAT does not match the JE metadata.creditNoteVatAmount', async () => {
       const { service, tx } = buildHarness({
         installments: buildInstallments(3),
         payments: [],
         je: { id: 'je-1', metadata: { creditNoteVatAmount: '999.99' } },
       });
 
+      // Dedicated error class (not just a message-string match) — callers
+      // like CreditNoteIssueService discriminate this case via `instanceof`
+      // so a future wording edit can never silently degrade into a 500.
+      await expect(service.issueForContract(DEFAULT_INPUT, tx as any)).rejects.toThrow(
+        CnVatMismatchError,
+      );
       await expect(service.issueForContract(DEFAULT_INPUT, tx as any)).rejects.toThrow(
         /ไม่ตรงกับ Journal Entry/,
       );

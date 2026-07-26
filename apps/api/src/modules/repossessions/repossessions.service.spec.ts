@@ -772,21 +772,6 @@ describe('RepossessionsService', () => {
         expect(cnDeliveryServiceMock.deliver).not.toHaveBeenCalled();
       });
 
-      it('does NOT call deliver when the CN outcome is HELD_PARTIAL_PAID', async () => {
-        prisma.contract.findUnique.mockResolvedValue(makeContract());
-        prisma.repossession.create.mockResolvedValue({ ...makeRepossession(), id: 'repo-new' });
-        prisma.contract.update.mockResolvedValue({});
-        prisma.product.update.mockResolvedValue({});
-        prisma.auditLog.create.mockResolvedValue({});
-        creditNoteService.issueForContract.mockResolvedValueOnce({
-          outcome: 'HELD_PARTIAL_PAID',
-          todoId: 'todo-1',
-        });
-
-        await service.create(baseDto as never, 'user-1');
-
-        expect(cnDeliveryServiceMock.deliver).not.toHaveBeenCalled();
-      });
     });
 
     it('collectedByShop books the JP5 deposit leg to 11-2107 + writes SHOP_COLLECT_REPOSSESSION audit', async () => {

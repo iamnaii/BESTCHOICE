@@ -469,9 +469,17 @@ export class BadDebtService {
         bucketBreakdown,
       });
 
-      if (!byBucket[contractBucket]) byBucket[contractBucket] = { count: 0, amount: new Decimal(0) };
-      byBucket[contractBucket].count++;
-      byBucket[contractBucket].amount = byBucket[contractBucket].amount.add(provisionAmountDec);
+      // byBucket aggregates from the PER-INSTALLMENT bucketAgg (Task 7 fix) —
+      // NOT the whole-contract provisionAmountDec dumped onto contractBucket
+      // (the oldest installment's display bucket). A contract spanning
+      // multiple buckets (e.g. {90,60,30} → 757.92/227.37/30.32) must show its
+      // TRUE per-bucket split, not the full 1,015.61 attributed to '61-90'
+      // alone — that was the deferred Warning from the earlier review.
+      for (const [bucket, agg] of Object.entries(bucketAgg)) {
+        if (!byBucket[bucket]) byBucket[bucket] = { count: 0, amount: new Decimal(0) };
+        byBucket[bucket].count += agg.count;
+        byBucket[bucket].amount = byBucket[bucket].amount.add(agg.provision);
+      }
     }
 
     // Atomic REVERSE + CREATE — never leave the balance sheet without coverage.
@@ -570,9 +578,20 @@ export class BadDebtService {
   }
 
   /**
-   * Get provision summary (current ACTIVE provisions)
+   * Get provision summary (current ACTIVE provisions).
+   *
+   * byBucket (2026-07-26, Task 7 — reports+docs alignment): aggregated from
+   * Σ `bucketBreakdown` across ACTIVE rows, NOT the row's single `agingBucket`
+   * (oldest-installment display bucket) — a contract spanning multiple
+   * buckets (e.g. {90,60,30}) must contribute its TRUE per-bucket share to
+   * each bucket, not dump its whole provisionAmount onto the oldest one.
+   * Rows persisted BEFORE the per-installment migration (Task 2/3) carry no
+   * `bucketBreakdown` — those fall back to the old whole-row attribution
+   * (their entire outstanding/provision keyed under their single agingBucket)
+   * so pre-migration data still reports sensibly instead of vanishing.
    */
   async getProvisionSummary() {
+    const rates = await this.getProvisionRates();
     const provisions = await this.prisma.badDebtProvision.findMany({
       where: { status: 'ACTIVE', deletedAt: null },
       include: {
@@ -590,10 +609,18 @@ export class BadDebtService {
     // Decimal accumulation (TFRS 9 / v4 mandate — avoid float drift on aggregation)
     let totalOutstandingDec = new Decimal(0);
     let totalProvisionDec = new Decimal(0);
-    const bucketDec = new Map<
-      string,
-      { count: number; outstanding: Decimal; provision: Decimal; rate: number }
-    >();
+    const bucketDec = new Map<string, { count: number; outstanding: Decimal; provision: Decimal }>();
+
+    const addBucket = (bucket: string, count: number, outstanding: Decimal, provision: Decimal) => {
+      const entry = bucketDec.get(bucket);
+      if (!entry) {
+        bucketDec.set(bucket, { count, outstanding, provision });
+      } else {
+        entry.count += count;
+        entry.outstanding = entry.outstanding.add(outstanding);
+        entry.provision = entry.provision.add(provision);
+      }
+    };
 
     for (const p of provisions) {
       const outstandingDec = new Decimal(p.outstandingAmount.toString());
@@ -601,19 +628,21 @@ export class BadDebtService {
       totalOutstandingDec = totalOutstandingDec.add(outstandingDec);
       totalProvisionDec = totalProvisionDec.add(provisionDec);
 
-      const bucket = p.agingBucket;
-      const entry = bucketDec.get(bucket);
-      if (!entry) {
-        bucketDec.set(bucket, {
-          count: 1,
-          outstanding: outstandingDec,
-          provision: provisionDec,
-          rate: Number(p.provisionRate),
-        });
+      const breakdown = p.bucketBreakdown as Record<
+        string,
+        { count: number; base: string; provision: string }
+      > | null;
+
+      if (breakdown && typeof breakdown === 'object' && Object.keys(breakdown).length > 0) {
+        // Per-installment engine (Task 3+) — true per-bucket share.
+        for (const [bucket, agg] of Object.entries(breakdown)) {
+          addBucket(bucket, agg.count, new Decimal(agg.base), new Decimal(agg.provision));
+        }
       } else {
-        entry.count++;
-        entry.outstanding = entry.outstanding.add(outstandingDec);
-        entry.provision = entry.provision.add(provisionDec);
+        // Legacy row (pre per-installment migration, no bucketBreakdown
+        // persisted) — fall back to whole-row attribution under its single
+        // agingBucket, same as the retired v3 behavior.
+        addBucket(p.agingBucket, 1, outstandingDec, provisionDec);
       }
     }
 
@@ -622,11 +651,19 @@ export class BadDebtService {
       { count: number; outstanding: number; provision: number; rate: number }
     > = {};
     for (const [bucket, entry] of bucketDec) {
+      // Rate derived from the actual data (provision/outstanding) rather than
+      // the current rates config — a contract's persisted provision reflects
+      // whatever rate was in effect WHEN it was calculated, which may differ
+      // from the live SystemConfig by the time this summary is read. Falls
+      // back to the configured rate only for the (should-be-impossible)
+      // zero-outstanding case.
       byBucket[bucket] = {
         count: entry.count,
         outstanding: entry.outstanding.toNumber(),
         provision: entry.provision.toNumber(),
-        rate: entry.rate,
+        rate: entry.outstanding.gt(0)
+          ? entry.provision.div(entry.outstanding).toNumber()
+          : (rates[bucket] ?? 0),
       };
     }
 
@@ -643,6 +680,12 @@ export class BadDebtService {
         outstandingAmount: new Decimal(p.outstandingAmount.toString()).toNumber(),
         provisionRate: Number(p.provisionRate),
         provisionAmount: new Decimal(p.provisionAmount.toString()).toNumber(),
+        // Passthrough (Task 7) — per-bucket breakdown for this contract's
+        // provision, null for legacy pre-migration rows.
+        bucketBreakdown: (p.bucketBreakdown as Record<
+          string,
+          { count: number; base: string; provision: string }
+        > | null) ?? null,
       })),
     };
 

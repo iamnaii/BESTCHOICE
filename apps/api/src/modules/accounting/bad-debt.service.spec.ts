@@ -263,6 +263,23 @@ describe('BadDebtService', () => {
       expect(result.totalProvision).toBeCloseTo(1015.61, 2);
     });
 
+    it('{90,60,30} — byBucket has 3 TRUE per-bucket entries (757.92/227.37/30.32), NOT 1,015.61 dumped on the oldest bucket (61-90) (Task 7 fix)', async () => {
+      prisma.payment.findMany.mockResolvedValue([
+        makeFullPayment('c1', 90, 1),
+        makeFullPayment('c1', 60, 2),
+        makeFullPayment('c1', 30, 3),
+      ]);
+      const result = await service.calculateProvisions('user-1');
+      expect(result.byBucket['61-90'].amount).toBeCloseTo(757.92, 2);
+      expect(result.byBucket['31-60'].amount).toBeCloseTo(227.37, 2);
+      expect(result.byBucket['1-30'].amount).toBeCloseTo(30.32, 2);
+      // Sum of the 3 buckets equals the contract total — none of it is
+      // double-counted or collapsed onto a single bucket.
+      const sum =
+        result.byBucket['61-90'].amount + result.byBucket['31-60'].amount + result.byBucket['1-30'].amount;
+      expect(sum).toBeCloseTo(1015.61, 2);
+    });
+
     it('{120,90,60,30} → 1,136.87 + 757.92 + 227.37 + 30.32 = 2,152.48', async () => {
       prisma.payment.findMany.mockResolvedValue([
         makeFullPayment('c1', 120, 1),
@@ -492,9 +509,21 @@ describe('BadDebtService', () => {
       ]);
 
       const result = await service.calculateProvisions('user-1');
-      // 100 days → 91-180 bucket (NOT 1-30 from the newer payment)
+
+      // The PERSISTED row's display agingBucket = bucket of the OLDEST
+      // installment (100d → 91-180), not the newer one — unchanged contract
+      // (spec §2.3 display convention).
+      const created = prisma.badDebtProvision.createMany.mock.calls[0][0].data[0];
+      expect(created.agingBucket).toBe('91-180');
+
+      // byBucket (Task 7 fix) is now per-installment TRUTHFUL — it must show
+      // BOTH buckets each installment actually ages into, not collapse
+      // everything onto the oldest-bucket display value. 100d@75%=750.00,
+      // 5d@2%=20.00 — previously '1-30' would have been entirely absent here.
       expect(result.byBucket['91-180']).toBeDefined();
-      expect(result.byBucket['1-30']).toBeUndefined();
+      expect(result.byBucket['91-180'].amount).toBeCloseTo(750, 2);
+      expect(result.byBucket['1-30']).toBeDefined();
+      expect(result.byBucket['1-30'].amount).toBeCloseTo(20, 2);
     });
 
     it('reverses existing ACTIVE provisions BEFORE creating new ones (idempotency)', async () => {
@@ -1212,6 +1241,104 @@ describe('BadDebtService', () => {
       expect(summary.byBucket['1-30'].count).toBe(1);
       expect(summary.byBucket['31-60'].count).toBe(1);
       expect(summary.details).toHaveLength(2);
+    });
+
+    it('legacy rows with NO bucketBreakdown (pre-migration) fall back to whole-row attribution under agingBucket, and details.bucketBreakdown is null', async () => {
+      prisma.badDebtProvision.findMany.mockResolvedValue([
+        {
+          contractId: 'c1',
+          contract: { contractNumber: 'CNT-001', customerId: 'cu1', customer: { name: 'A' } },
+          agingBucket: '1-30',
+          daysOverdue: 15,
+          outstandingAmount: new Prisma.Decimal(1000),
+          provisionRate: new Prisma.Decimal(0.02),
+          provisionAmount: new Prisma.Decimal(20),
+          bucketBreakdown: null, // pre-migration row
+        },
+      ]);
+
+      const summary = await service.getProvisionSummary();
+
+      expect(summary.byBucket['1-30']).toEqual({
+        count: 1,
+        outstanding: 1000,
+        provision: 20,
+        rate: 0.02,
+      });
+      expect(summary.details[0].bucketBreakdown).toBeNull();
+    });
+
+    it('a contract spanning 2 buckets (per-installment engine) contributes its TRUE per-bucket share to byBucket, not its whole provisionAmount under agingBucket alone', async () => {
+      prisma.badDebtProvision.findMany.mockResolvedValue([
+        {
+          contractId: 'c1',
+          contract: { contractNumber: 'CNT-001', customerId: 'cu1', customer: { name: 'A' } },
+          agingBucket: '61-90', // display bucket = oldest installment
+          daysOverdue: 90,
+          outstandingAmount: new Prisma.Decimal('3031.66'), // 2 × 1,515.83
+          provisionRate: new Prisma.Decimal('0.2601'), // blended
+          provisionAmount: new Prisma.Decimal('788.24'), // 757.92 + 30.32
+          bucketBreakdown: {
+            '61-90': { count: 1, base: '1515.83', provision: '757.92' },
+            '1-30': { count: 1, base: '1515.83', provision: '30.32' },
+          },
+        },
+      ]);
+
+      const summary = await service.getProvisionSummary();
+
+      // byBucket must split the two buckets independently — NOT attribute the
+      // whole 788.24 to '61-90' alone (the pre-Task-7 bug).
+      expect(summary.byBucket['61-90'].count).toBe(1);
+      expect(summary.byBucket['61-90'].outstanding).toBeCloseTo(1515.83, 2);
+      expect(summary.byBucket['61-90'].provision).toBeCloseTo(757.92, 2);
+      // rate derived from data (provision/outstanding) — within the ROUND_HALF_UP
+      // rounding-error bound of the nominal 50% bucket rate.
+      expect(summary.byBucket['61-90'].rate).toBeCloseTo(0.5, 5);
+      expect(summary.byBucket['1-30'].count).toBe(1);
+      expect(summary.byBucket['1-30'].outstanding).toBeCloseTo(1515.83, 2);
+      expect(summary.byBucket['1-30'].provision).toBeCloseTo(30.32, 2);
+      expect(summary.byBucket['1-30'].rate).toBeCloseTo(0.02, 5);
+      // Totals still reflect the whole contract row (unaffected by the split).
+      expect(summary.totalOutstanding).toBeCloseTo(3031.66, 2);
+      expect(summary.totalProvision).toBeCloseTo(788.24, 2);
+      // details[] passthrough — same shape as persisted.
+      expect(summary.details[0].bucketBreakdown).toEqual({
+        '61-90': { count: 1, base: '1515.83', provision: '757.92' },
+        '1-30': { count: 1, base: '1515.83', provision: '30.32' },
+      });
+    });
+
+    it('sums breakdown across MULTIPLE contracts sharing a bucket', async () => {
+      prisma.badDebtProvision.findMany.mockResolvedValue([
+        {
+          contractId: 'c1',
+          contract: { contractNumber: 'CNT-001', customerId: 'cu1', customer: { name: 'A' } },
+          agingBucket: '1-30',
+          daysOverdue: 15,
+          outstandingAmount: new Prisma.Decimal('1515.83'),
+          provisionRate: new Prisma.Decimal('0.02'),
+          provisionAmount: new Prisma.Decimal('30.32'),
+          bucketBreakdown: { '1-30': { count: 1, base: '1515.83', provision: '30.32' } },
+        },
+        {
+          contractId: 'c2',
+          contract: { contractNumber: 'CNT-002', customerId: 'cu2', customer: { name: 'B' } },
+          agingBucket: '1-30',
+          daysOverdue: 20,
+          outstandingAmount: new Prisma.Decimal('1515.83'),
+          provisionRate: new Prisma.Decimal('0.02'),
+          provisionAmount: new Prisma.Decimal('30.32'),
+          bucketBreakdown: { '1-30': { count: 1, base: '1515.83', provision: '30.32' } },
+        },
+      ]);
+
+      const summary = await service.getProvisionSummary();
+
+      expect(summary.byBucket['1-30'].count).toBe(2);
+      expect(summary.byBucket['1-30'].outstanding).toBeCloseTo(3031.66, 2);
+      expect(summary.byBucket['1-30'].provision).toBeCloseTo(60.64, 2);
+      expect(summary.byBucket['1-30'].rate).toBeCloseTo(0.02, 5);
     });
   });
 

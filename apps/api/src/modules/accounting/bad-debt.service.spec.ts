@@ -713,20 +713,6 @@ describe('BadDebtService', () => {
         expect(deliverOrder).toBeGreaterThan(txOrder);
       });
 
-      it('does NOT call deliver when the CN outcome is HELD_PARTIAL_PAID', async () => {
-        prisma.contract.findFirst.mockResolvedValue({ id: 'c1', status: 'TERMINATED' });
-        prisma.contract.update.mockResolvedValue({});
-        prisma.badDebtProvision.updateMany.mockResolvedValue({ count: 1 });
-        creditNoteService.issueForContract.mockResolvedValueOnce({
-          outcome: 'HELD_PARTIAL_PAID',
-          todoId: 'todo-1',
-        });
-
-        await service.writeOffBadDebt('c1', 'bm-1', 'fm-1', 'court order');
-
-        expect(cnDeliveryServiceMock.deliver).not.toHaveBeenCalled();
-      });
-
       it('does NOT call deliver when the CN outcome is SKIPPED (no accrued / duplicate)', async () => {
         prisma.contract.findFirst.mockResolvedValue({ id: 'c1', status: 'TERMINATED' });
         prisma.contract.update.mockResolvedValue({});

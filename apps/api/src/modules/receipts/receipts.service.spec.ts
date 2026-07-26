@@ -6,6 +6,7 @@ import { JournalAutoService } from '../journal/journal-auto.service';
 import { LineOaService } from '../line-oa/line-oa.service';
 import { ReceiptVoidReversalTemplate } from '../journal/cpa-templates/receipt-void-reversal.template';
 import { CreditNoteDeliveryService } from './services/credit-note-delivery.service';
+import { CreditNoteDocumentService } from './services/credit-note-document.service';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
 
 // Mock the period-lock util so the test isn't blocked by closed-period validation.
@@ -1029,6 +1030,57 @@ describe('ReceiptsService', () => {
 
       const data = local.__created.mock.calls[0][0].data;
       expect(data.remainingAmount.toString()).toBe('0');
+    });
+  });
+
+  describe('issueCreditNoteManually (Phase 3 CN Task 5)', () => {
+    it('throws BadRequestException when CreditNoteDocumentService is not wired', async () => {
+      // The outer `service` built in the top-level beforeEach never receives a
+      // CreditNoteDocumentService provider — mirrors any real consumer/module
+      // wiring that doesn't need the credit-note/issue route.
+      await expect(
+        service.issueCreditNoteManually('contract-1', 'REPOSSESSION', 'user-1'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('delegates through to CreditNoteIssueService (JE lookup + issueForContract + post-commit delivery) when wired', async () => {
+      const localPrisma: any = {
+        journalEntry: {
+          findFirst: jest.fn().mockResolvedValue({ entryNumber: 'JE-202607-0001' }),
+        },
+        $transaction: jest.fn(async (cb: any) => cb({})),
+      };
+      const creditNoteDocumentService = {
+        issueForContract: jest.fn().mockResolvedValue({
+          outcome: 'ISSUED',
+          receiptId: 'receipt-1',
+          receiptNumber: 'RT-202607-00001',
+        }),
+      } as unknown as CreditNoteDocumentService;
+      const cnDeliveryService = { deliver: jest.fn().mockResolvedValue({ delivered: true }) };
+
+      const svc = new ReceiptsService(
+        localPrisma,
+        {} as any,
+        {} as any,
+        undefined,
+        cnDeliveryService as any,
+        creditNoteDocumentService,
+      );
+
+      const result = await svc.issueCreditNoteManually('contract-1', 'WRITE_OFF', 'user-2');
+
+      expect(result).toEqual({ receiptId: 'receipt-1', receiptNumber: 'RT-202607-00001' });
+      expect(creditNoteDocumentService.issueForContract).toHaveBeenCalledWith(
+        {
+          contractId: 'contract-1',
+          source: 'WRITE_OFF',
+          sourceJournalEntryNo: 'JE-202607-0001',
+          actorUserId: 'user-2',
+        },
+        expect.anything(),
+      );
+      expect(cnDeliveryService.deliver).toHaveBeenCalledWith('receipt-1');
     });
   });
 });

@@ -8,6 +8,7 @@ import { BranchGuard } from '../auth/guards/branch.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { VoidReceiptDto } from './dto/void-receipt.dto';
+import { IssueCreditNoteDto } from './dto/issue-credit-note.dto';
 import { ExportEnabledGuard } from '../settings/guards/export-enabled.guard';
 
 @ApiTags('Receipts')
@@ -58,6 +59,21 @@ export class ReceiptsController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   getReceiptByNumber(@Param('receiptNumber') receiptNumber: string) {
     return this.receiptsService.getReceiptByNumber(receiptNumber);
+  }
+
+  // Phase 3 CN Task 5 — manual CN issue endpoint. Literal two-segment path
+  // ('credit-note/issue') declared before the ':id/...' POST routes below per
+  // Nest routing convention — a literal path always takes precedence, though
+  // in this case there's no actual collision risk since ':id/void' and
+  // ':id/send-line' both require a literal second segment that 'issue' can't
+  // match either way.
+  @Post('credit-note/issue')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  issueCreditNote(
+    @Body() dto: IssueCreditNoteDto,
+    @CurrentUser() user: { id: string; role: string },
+  ) {
+    return this.receiptsService.issueCreditNoteManually(dto.contractId, dto.source, user.id);
   }
 
   @Post(':id/void')

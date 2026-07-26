@@ -3,7 +3,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { computeInstallmentBreakdown } from '../compute-installment-breakdown';
+import { computeCnBreakdown } from '../compute-cn-breakdown';
 
 export interface BadDebtWriteOffInput {
   contractId: string;
@@ -24,7 +24,7 @@ export interface BadDebtWriteOffInput {
  * along with everything else — no orphaned cents left on the ledger.
  *
  * JE:
- *   Dr 21-2101  cnVat (= vatPerInst × accruedUnpaidCount)   ← ใบลดหนี้ VAT (ม.82/5), only if any accrued+unpaid
+ *   Dr 21-2101  cnVat (pro-rated per accrued+unpaid installment — computeCnBreakdown)   ← ใบลดหนี้ VAT (ม.82/5), only if any accrued+unpaid
  *   Dr 11-2106  glBalance(11-2106)                          ← ล้าง unearned interest คงเหลือ
  *   Dr 21-2102  glBalance(21-2102, cr side)                 ← ล้างภาษีขายรอเรียกเก็บคงเหลือ
  *   Dr 11-2102  provisionConsumed                           ← ใช้ค่าเผื่อก่อน (เดิม)
@@ -123,33 +123,19 @@ export class BadDebtWriteOffTemplate {
         vatAmount: true,
       },
     });
-    const breakdown = computeInstallmentBreakdown({
-      financedAmount: c.financedAmount.toString(),
-      storeCommission: c.storeCommission != null ? c.storeCommission.toString() : null,
-      interestTotal: c.interestTotal.toString(),
-      vatAmount: c.vatAmount != null ? c.vatAmount.toString() : null,
-      totalMonths: c.totalMonths,
-    });
-    const vatPerInst = breakdown.vatPerInst;
-
-    const allInsts = await client.installmentSchedule.findMany({
-      where: { contractId, deletedAt: null },
-      select: { installmentNo: true, accrualJournalEntryId: true },
-    });
-    const paidNos = new Set(
-      (
-        await client.payment.findMany({
-          where: { contractId, status: 'PAID' },
-          select: { installmentNo: true },
-        })
-      ).map((p) => p.installmentNo),
-    );
-    const accruedUnpaidCount = new Decimal(
-      allInsts.filter((i) => i.accrualJournalEntryId !== null && !paidNos.has(i.installmentNo))
-        .length,
-    );
-    const cnVat = vatPerInst.times(accruedUnpaidCount);
-    const creditNoteIssued = accruedUnpaidCount.gt(0);
+    // CPA pro-rate ruling (2026-07-26, docs/superpowers/plans/2026-07-26-cn-prorate-cpa.md):
+    // a partially-paid accrued installment's CN VAT is pro-rated to its
+    // outstanding balance instead of the full vatPerInst. computeCnBreakdown is
+    // the single source of truth shared with RepossessionJP5Template and
+    // CreditNoteDocumentService so the JE and the CN document never drift.
+    // opts omitted (unlike JP5) — this template doesn't already have the
+    // installments/payments loaded in memory, so let the util query them.
+    const cnBreakdown = await computeCnBreakdown(client, c);
+    const cnVat = cnBreakdown.totalCnVat;
+    // CPA pro-rate: key off the actual amount, not the raw count, so this flag
+    // stays truthful on the (theoretical) fully-paid-but-still-accrued edge case
+    // (matches RepossessionJP5Template's identical fix).
+    const creditNoteIssued = cnVat.gt(0);
 
     // ---- สร้าง lines: Dr ทั้งหมดก่อน แล้ว plug 51-1102 ให้ balance ----
     const zero = new Decimal(0);
@@ -160,7 +146,7 @@ export class BadDebtWriteOffTemplate {
         accountCode: '21-2101',
         dr: cnVat,
         cr: zero,
-        description: `ใบลดหนี้ VAT ${accruedUnpaidCount.toNumber()} งวด (ม.82/5)`,
+        description: `ใบลดหนี้ VAT ${cnBreakdown.count} งวด (ม.82/5)`,
       });
     }
     if (bal2106.gt(0)) {

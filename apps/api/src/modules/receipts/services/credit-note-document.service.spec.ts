@@ -1,12 +1,22 @@
+import { NotFoundException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
-import { CreditNoteDocumentService, IssueCreditNoteInput } from './credit-note-document.service';
+import {
+  CnVatMismatchError,
+  CreditNoteDocumentService,
+  IssueCreditNoteInput,
+} from './credit-note-document.service';
 
 /**
  * CPA CSV golden fixture (17,000฿ financed+commission+interest / 12 months —
  * same fixture used by seedStandard17k12m + bad-debt-writeoff.template.spec.ts):
  *   financedAmount=10,000 / storeCommission=1,000 / interestTotal=6,000 / vatAmount=1,190
  *   → installmentExclVat=1,416.66 (ROUND_DOWN) / vatPerInst=99.17 (ROUND_HALF_UP)
- *   → 3 accrued-unpaid installments: amountBeforeVat=4,249.98 / vat=297.51 / amount=4,547.49
+ *   → 3 accrued-unpaid installments (fully unpaid): amountBeforeVat=4,249.98 / vat=297.51 / amount=4,547.49
+ *
+ * CPA pro-rate ruling (2026-07-26, docs/superpowers/plans/2026-07-26-cn-prorate-cpa.md):
+ *   3 accrued installments, 1 of them PARTIALLY_PAID (paid 1,000 of 1,515.83) →
+ *   totalCnVat 232.09 / totalOutstanding 3,547.49 / totalBeforeVat 3,315.40
+ *   (same golden as computeCnBreakdown's "mixed" spec case).
  */
 const CONTRACT_FIXTURE = {
   id: 'contract-1',
@@ -35,9 +45,13 @@ function buildInstallments(accruedCount: number, total = 12) {
 
 interface Overrides {
   receiptFindFirst?: unknown;
-  payments?: Array<{ installmentNo: number; status: string }>;
+  payments?: Array<{
+    installmentNo: number;
+    status: string;
+    amountDue?: string;
+    amountPaid?: string;
+  }>;
   installments?: Array<{ installmentNo: number; accrualJournalEntryId: string | null }>;
-  systemUser?: { id: string } | null;
   je?: { id: string; metadata: Record<string, unknown> } | null;
   contract?: Record<string, unknown> | null;
 }
@@ -45,9 +59,8 @@ interface Overrides {
 function buildHarness(overrides: Overrides = {}) {
   const created: {
     receipts: Record<string, unknown>[];
-    todos: Record<string, unknown>[];
     auditLogs: Record<string, unknown>[];
-  } = { receipts: [], todos: [], auditLogs: [] };
+  } = { receipts: [], auditLogs: [] };
 
   const tx = {
     receipt: {
@@ -66,18 +79,14 @@ function buildHarness(overrides: Overrides = {}) {
       findMany: jest.fn().mockResolvedValue(overrides.installments ?? buildInstallments(0)),
     },
     payment: {
-      findMany: jest.fn().mockResolvedValue(overrides.payments ?? []),
-    },
-    user: {
-      findFirst: jest
-        .fn()
-        .mockResolvedValue(overrides.systemUser === undefined ? { id: 'sys-1' } : overrides.systemUser),
-    },
-    todo: {
-      create: jest.fn(async (args: { data: Record<string, unknown> }) => {
-        created.todos.push(args.data);
-        return { id: 'todo-1', ...args.data };
-      }),
+      findMany: jest.fn().mockResolvedValue(
+        (overrides.payments ?? []).map((p) => ({
+          installmentNo: p.installmentNo,
+          status: p.status,
+          amountDue: p.amountDue ?? '0',
+          amountPaid: p.amountPaid ?? '0',
+        })),
+      ),
     },
     auditLog: {
       create: jest.fn(async (args: { data: Record<string, unknown> }) => {
@@ -118,7 +127,6 @@ describe('CreditNoteDocumentService', () => {
         receiptId: 'receipt-1',
         receiptNumber: 'RT-202607-00001',
       });
-      expect(tx.todo.create).not.toHaveBeenCalled();
       expect(created.receipts).toHaveLength(1);
 
       const data = created.receipts[0] as Record<string, unknown> & {
@@ -127,6 +135,7 @@ describe('CreditNoteDocumentService', () => {
         amountBeforeVat: Decimal;
         publicToken: string;
         publicTokenExpiresAt: Date;
+        itemDescription: string;
       };
       expect((data.amount as Decimal).toFixed(2)).toBe('4547.49');
       expect((data.vatAmount as Decimal).toFixed(2)).toBe('297.51');
@@ -136,6 +145,8 @@ describe('CreditNoteDocumentService', () => {
       expect(data.sourceJournalEntryId).toBe('je-1');
       expect(data.payerName).toBe('ลูกค้าทดสอบ');
       expect(data.receiverName).toBe('BESTCHOICE FINANCE');
+      expect(data.itemDescription).toBe('ใบลดหนี้ยกเลิกงวดค้าง 3 งวด — เลิกสัญญา (ม.82/5)');
+      expect(data.itemDescription).not.toContain('ลดตามสัดส่วนยอดค้างจริง');
 
       // Public token: present + 30-day expiry in the future
       expect(typeof data.publicToken).toBe('string');
@@ -156,51 +167,47 @@ describe('CreditNoteDocumentService', () => {
     });
   });
 
-  describe('dirty gate — PARTIALLY_PAID among accrued-unpaid', () => {
-    it('holds for CPA review instead of issuing a receipt/number', async () => {
+  describe('pro-rated path — partial payment among accrued-unpaid (CPA ruling 2026-07-26)', () => {
+    it('auto-issues a receipt with pro-rated amounts instead of holding for review', async () => {
       const { service, tx, created } = buildHarness({
         installments: buildInstallments(3),
-        payments: [{ installmentNo: 1, status: 'PARTIALLY_PAID' }],
+        payments: [
+          { installmentNo: 1, status: 'PARTIALLY_PAID', amountDue: '1515.83', amountPaid: '1000' },
+        ],
+        je: { id: 'je-1', metadata: { creditNoteVatAmount: '232.09' } },
       });
 
       const result = await service.issueForContract(DEFAULT_INPUT, tx as any);
 
-      expect(result).toEqual({ outcome: 'HELD_PARTIAL_PAID', todoId: 'todo-1' });
-      expect(tx.receipt.create).not.toHaveBeenCalled();
-      expect(created.receipts).toHaveLength(0);
+      expect(result).toEqual({
+        outcome: 'ISSUED',
+        receiptId: 'receipt-1',
+        receiptNumber: 'RT-202607-00001',
+      });
+      expect(created.receipts).toHaveLength(1);
 
-      expect(tx.todo.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            title: expect.stringContaining('CT-0001'),
-            priority: 'HIGH',
-            tags: ['credit-note-review'],
-            createdById: 'sys-1',
-          }),
-        }),
+      const data = created.receipts[0] as Record<string, unknown> & {
+        amount: Decimal;
+        vatAmount: Decimal;
+        amountBeforeVat: Decimal;
+        itemDescription: string;
+      };
+      expect((data.amount as Decimal).toFixed(2)).toBe('3547.49');
+      expect((data.vatAmount as Decimal).toFixed(2)).toBe('232.09');
+      expect((data.amountBeforeVat as Decimal).toFixed(2)).toBe('3315.40');
+      expect(data.itemDescription).toBe(
+        'ใบลดหนี้ยกเลิกงวดค้าง 3 งวด — เลิกสัญญา (ม.82/5) (ลดตามสัดส่วนยอดค้างจริง)',
       );
+
       expect(tx.auditLog.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            action: 'CN_HELD_PARTIAL_PAID',
-            entity: 'contract',
-            entityId: 'contract-1',
+            action: 'CN_ISSUED',
+            entity: 'receipt',
+            entityId: 'receipt-1',
           }),
         }),
       );
-    });
-
-    it('throws when no SYSTEM user exists (seed collections-foundation missing)', async () => {
-      const { service, tx } = buildHarness({
-        installments: buildInstallments(3),
-        payments: [{ installmentNo: 1, status: 'PARTIALLY_PAID' }],
-        systemUser: null,
-      });
-
-      await expect(service.issueForContract(DEFAULT_INPUT, tx as any)).rejects.toThrow(
-        /SYSTEM user/,
-      );
-      expect(tx.todo.create).not.toHaveBeenCalled();
     });
   });
 
@@ -231,14 +238,34 @@ describe('CreditNoteDocumentService', () => {
     });
   });
 
+  describe('contract not found (M7, final-review)', () => {
+    it('throws NotFoundException (Thai message) instead of a raw Error', async () => {
+      const { service, tx } = buildHarness({ contract: null });
+
+      await expect(service.issueForContract(DEFAULT_INPUT, tx as any)).rejects.toThrow(
+        NotFoundException,
+      );
+      await expect(service.issueForContract(DEFAULT_INPUT, tx as any)).rejects.toThrow(
+        /ไม่พบสัญญา/,
+      );
+      expect(tx.receipt.create).not.toHaveBeenCalled();
+    });
+  });
+
   describe('drift guard', () => {
-    it('throws when the recomputed VAT does not match the JE metadata.creditNoteVatAmount', async () => {
+    it('throws a CnVatMismatchError when the recomputed VAT does not match the JE metadata.creditNoteVatAmount', async () => {
       const { service, tx } = buildHarness({
         installments: buildInstallments(3),
         payments: [],
         je: { id: 'je-1', metadata: { creditNoteVatAmount: '999.99' } },
       });
 
+      // Dedicated error class (not just a message-string match) — callers
+      // like CreditNoteIssueService discriminate this case via `instanceof`
+      // so a future wording edit can never silently degrade into a 500.
+      await expect(service.issueForContract(DEFAULT_INPUT, tx as any)).rejects.toThrow(
+        CnVatMismatchError,
+      );
       await expect(service.issueForContract(DEFAULT_INPUT, tx as any)).rejects.toThrow(
         /ไม่ตรงกับ Journal Entry/,
       );

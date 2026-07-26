@@ -1,4 +1,4 @@
-import { Prisma, PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient, PaymentStatus } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import {
   computeInstallmentBreakdown,
@@ -110,13 +110,27 @@ function feeNettedOutstanding(
 }
 
 /**
- * `Payment.status` values that are NOT settled — the universe
- * `calculateProvisions` has always scanned. `PaymentStatus` only has 4
- * members (PENDING/PAID/PARTIALLY_PAID/OVERDUE), so "not PAID" is equivalent
- * to `in [PENDING, PARTIALLY_PAID, OVERDUE]`.
+ * Exhaustive allow-list (NOT `status !== 'PAID'`) of `Payment.status` values
+ * that count as "still due" for ECL/DUE selection. The `satisfies
+ * Record<PaymentStatus, boolean>` forces this object to list EVERY member of
+ * the enum — if a 5th `PaymentStatus` (e.g. CANCELLED/REFUNDED) is ever added
+ * to schema.prisma, this line fails to compile instead of silently letting
+ * the new status flow into the ECL base as "due". That forces a deliberate
+ * yes/no decision at the call site instead of an accidental default.
  */
+const DUE_STATUS_MAP = {
+  PENDING: true,
+  PARTIALLY_PAID: true,
+  OVERDUE: true,
+  PAID: false,
+} satisfies Record<PaymentStatus, boolean>;
+
+const DUE_STATUSES = (Object.keys(DUE_STATUS_MAP) as PaymentStatus[]).filter(
+  (s) => DUE_STATUS_MAP[s],
+);
+
 function isDueStatus(status: string): boolean {
-  return status !== 'PAID';
+  return DUE_STATUS_MAP[status as PaymentStatus] === true;
 }
 
 export type InstallmentOutstandingSelection = 'DUE' | 'ACCRUED';
@@ -271,7 +285,7 @@ export async function computeInstallmentOutstanding(
     (await client.payment.findMany({
       where: {
         contractId: contract.id,
-        status: { not: 'PAID' },
+        status: { in: DUE_STATUSES },
         dueDate: { lt: asOf },
       },
       select: {

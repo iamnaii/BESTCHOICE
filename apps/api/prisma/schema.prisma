@@ -4819,6 +4819,9 @@ model BadDebtProvision {
   outstandingAmount Decimal   @map("outstanding_amount") @db.Decimal(12, 2)
   provisionRate     Decimal   @map("provision_rate") @db.Decimal(5, 4) // e.g. 0.05 = 5%
   provisionAmount   Decimal   @map("provision_amount") @db.Decimal(12, 2)
+  /// Per-installment ECL breakdown (spec 2026-07-26 §2.3) — per-bucket sums
+  /// `{ "<bucket>": { count, base, provision } }`
+  bucketBreakdown   Json?     @map("bucket_breakdown")
   status            String    @default("ACTIVE") // ACTIVE, REVERSED, WRITTEN_OFF
   writtenOffAt      DateTime? @map("written_off_at")
   writtenOffById    String?   @map("written_off_by_id")

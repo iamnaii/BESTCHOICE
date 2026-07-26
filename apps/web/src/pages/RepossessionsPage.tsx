@@ -12,9 +12,26 @@ import { formatDateShort } from '@/utils/formatters';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, repossessionStatusMap, conditionGradeMap } from '@/lib/status-badges';
-import { Check, X } from 'lucide-react';
+import { Check, X, Download, Send } from 'lucide-react';
 import { CashAccountSelect, KBANK_ONLY_CODES } from '@/components/CashAccountSelect';
 import { useAuth } from '@/contexts/AuthContext';
+
+async function downloadReceiptPdf(receiptId: string, receiptNumber: string) {
+  try {
+    const res = await api.get(`/receipts/${receiptId}/pdf`, { responseType: 'blob' });
+    const blob = new Blob([res.data], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${receiptNumber}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    toast.error(getErrorMessage(err) || 'ไม่สามารถดาวน์โหลดใบลดหนี้');
+  }
+}
 
 interface Repossession {
   id: string;
@@ -35,6 +52,9 @@ interface Repossession {
   };
   product: { id: string; name: string; brand: string; model: string; imeiSerial: string | null };
   appraisedBy: { id: string; name: string };
+  /** Auto-issued ใบลดหนี้ (CN) from JP5 repossession — null when this repossession
+   *  wrote off no accrued-unpaid installments (outstandingBalance was 0). */
+  creditNote: { receiptId: string; receiptNumber: string; lastDeliveryStatus: string | null } | null;
 }
 
 
@@ -156,6 +176,17 @@ export default function RepossessionsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['repossessions'] });
       toast.success('เปลี่ยนสถานะเป็น พร้อมขาย แล้ว');
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
+  // Resend the auto-issued ใบลดหนี้ (CN) over LINE FINANCE — routes through
+  // CreditNoteDeliveryService server-side (receipts.service sendReceiptToCustomer).
+  const resendCnMutation = useMutation({
+    mutationFn: async (receiptId: string) => api.post(`/receipts/${receiptId}/send-line`),
+    onSuccess: () => {
+      toast.success('ส่งใบลดหนี้ทาง LINE เรียบร้อยแล้ว');
+      queryClient.invalidateQueries({ queryKey: ['repossessions'] });
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
@@ -317,6 +348,27 @@ export default function RepossessionsPage() {
             >
               รับโอนหน้าร้าน
             </button>
+          )}
+          {r.creditNote && (
+            <>
+              <button
+                onClick={() => downloadReceiptPdf(r.creditNote!.receiptId, r.creditNote!.receiptNumber)}
+                title="ดูใบลดหนี้ PDF"
+                className="inline-flex items-center gap-1 text-info hover:text-info/80 text-sm font-medium"
+              >
+                <Download className="h-3.5 w-3.5" />
+                ใบลดหนี้
+              </button>
+              <button
+                onClick={() => resendCnMutation.mutate(r.creditNote!.receiptId)}
+                disabled={resendCnMutation.isPending}
+                title="ส่งใบลดหนี้ให้ลูกค้าทาง LINE อีกครั้ง"
+                className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground text-sm font-medium disabled:opacity-50"
+              >
+                <Send className="h-3.5 w-3.5" />
+                ส่งซ้ำ
+              </button>
+            </>
           )}
         </div>
       ),

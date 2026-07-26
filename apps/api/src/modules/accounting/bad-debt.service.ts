@@ -14,6 +14,8 @@ import { BadDebtProvisionTemplate } from '../journal/cpa-templates/bad-debt-prov
 import { BadDebtWriteOffTemplate } from '../journal/cpa-templates/bad-debt-writeoff.template';
 import { EclStageReverseTemplate } from '../journal/cpa-templates/ecl-stage-reverse.template';
 import { ConsecutiveMissedService } from '../overdue/consecutive-missed.service';
+import { CreditNoteDocumentService } from '../receipts/services/credit-note-document.service';
+import { CreditNoteDeliveryService } from '../receipts/services/credit-note-delivery.service';
 
 // CPA ECL v3.0 — NPAEs Ch.13 Aging-based (6 buckets B0-B5)
 // Refs: docs/superpowers/specs/2026-05-09-cpa-policy-a-100-compliance-design.md
@@ -49,6 +51,8 @@ export class BadDebtService {
     private badDebtWriteOffTemplate: BadDebtWriteOffTemplate,
     private eclStageReverseTemplate: EclStageReverseTemplate,
     private consecutiveMissed: ConsecutiveMissedService,
+    private creditNoteDocumentService: CreditNoteDocumentService,
+    private cnDeliveryService: CreditNoteDeliveryService,
   ) {}
 
   /** Load provision rates from system config or use defaults */
@@ -614,7 +618,7 @@ export class BadDebtService {
       );
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       // Calculate outstanding amount from unpaid/partial payments (Decimal arithmetic)
       const unpaidPayments = await tx.payment.findMany({
         where: {
@@ -666,13 +670,34 @@ export class BadDebtService {
       // Phase A.5a + Wave 1 Task 5: write-off JE inside same $transaction.
       // Template now accepts tx parameter (Task 1) — JE failure rolls back the whole
       // write-off. No more silent fail / orphan AR (TFRS 9 Critical 1).
-      await this.badDebtWriteOffTemplate.execute(
+      const woResult = await this.badDebtWriteOffTemplate.execute(
         {
           contractId,
           writeOffReason: notes ?? undefined,
         },
         tx,
       );
+
+      // Phase 3 Task 3: auto-issue ใบลดหนี้ (CN) for accrued-unpaid
+      // installments swept by the write-off JE — MUST stay inside this same
+      // tx (atomic with the JE: throw here rolls back the whole write-off).
+      // LINE delivery of the CN is intentionally NOT triggered here (Task 5)
+      // — must only fire after the $transaction commits, otherwise a
+      // rollback could hand the customer a link to a receipt that was never
+      // actually created.
+      const cnResult = await this.creditNoteDocumentService.issueForContract(
+        {
+          contractId,
+          source: 'WRITE_OFF',
+          sourceJournalEntryNo: woResult.entryNo,
+          actorUserId: writtenOffById,
+        },
+        tx,
+      );
+      const creditNote = {
+        outcome: cnResult.outcome,
+        receiptId: cnResult.outcome === 'ISSUED' ? cnResult.receiptId : undefined,
+      };
 
       // T1-C7: Immutable audit log inside the same transaction. Captures
       // both parties' roles at write-off time (role can change later, the
@@ -691,8 +716,21 @@ export class BadDebtService {
         },
       });
 
-      return { contractId, status: 'CLOSED_BAD_DEBT', writtenOffAt: new Date() };
+      return { contractId, status: 'CLOSED_BAD_DEBT', writtenOffAt: new Date(), creditNote };
     });
+
+    // Phase 3 Task 5: LINE delivery of the auto-issued CN fires ONLY after the
+    // $transaction above has committed — firing it from inside the tx would
+    // risk handing the customer a link to a receipt a later rollback erased.
+    // Fire-and-forget: never await, never let a delivery failure surface to
+    // the caller.
+    if (result.creditNote?.outcome === 'ISSUED' && result.creditNote.receiptId) {
+      void this.cnDeliveryService
+        .deliver(result.creditNote.receiptId)
+        .catch((err) => Sentry.captureException(err));
+    }
+
+    return result;
   }
 
   /**

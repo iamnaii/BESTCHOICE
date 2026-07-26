@@ -32,6 +32,8 @@ function buildService(journal: JournalAutoService) {
     new BadDebtWriteOffTemplate(journal, prisma as any),
     new EclStageReverseTemplate(journal, prisma as any),
     new ConsecutiveMissedService(prisma as any),
+    undefined as any, // CreditNoteDocumentService — unused (this spec never calls writeOffBadDebt)
+    undefined as any, // CreditNoteDeliveryService — unused (this spec never calls writeOffBadDebt)
   );
 }
 
@@ -50,7 +52,12 @@ describe('ECL base for TERMINATED contract = GL carrying amount', () => {
     await prisma.badDebtProvision.deleteMany({});
     await prisma.payment.deleteMany({});
     await prisma.installmentSchedule.deleteMany({});
-    await prisma.contract.deleteMany({});
+    // T1-C7 guard: a contract that went through a real writeOffBadDebt() has a
+    // permanent (DB-trigger-immutable) badDebtWriteOffAuditLog row FK-referencing
+    // it — an unscoped deleteMany would throw once one exists in this shared
+    // dev/CI DB (see cn-issue-on-writeoff.spec.ts, Phase 3 Task 3).
+    const woPoisoned = await prisma.badDebtWriteOffAuditLog.findMany({ select: { contractId: true } });
+    await prisma.contract.deleteMany({ where: { id: { notIn: woPoisoned.map((p) => p.contractId) } } });
     await seedFinanceCoa(prisma);
 
     // Golden values (12,797.51 / 9,598.13 / '91-180') assume DEFAULT_PROVISION_RATES

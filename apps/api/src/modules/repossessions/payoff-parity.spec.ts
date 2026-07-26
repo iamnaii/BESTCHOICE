@@ -116,6 +116,12 @@ describe('Payoff parity: repossession closingAmount === early-payoff totalPayoff
       {} as any,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       {} as any,
+      // CreditNoteDocumentService — unused (this spec only calls previewCalculation)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      {} as any,
+      // CreditNoteDeliveryService — unused (this spec only calls previewCalculation)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      {} as any,
     );
     return { ep, repo };
   }

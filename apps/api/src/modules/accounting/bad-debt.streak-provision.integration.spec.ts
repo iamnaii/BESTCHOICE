@@ -21,6 +21,8 @@ function build() {
     new BadDebtWriteOffTemplate(journal, prisma as any),
     new EclStageReverseTemplate(journal, prisma as any),
     new ConsecutiveMissedService(prisma as any),
+    undefined as any, // CreditNoteDocumentService — unused (this spec never calls writeOffBadDebt)
+    undefined as any, // CreditNoteDeliveryService — unused (this spec never calls writeOffBadDebt)
   );
 }
 
@@ -31,7 +33,11 @@ describe('calculateProvisions — streak floors a low-aging contract', () => {
     await prisma.badDebtProvision.deleteMany({});
     await prisma.payment.deleteMany({});
     await prisma.installmentSchedule.deleteMany({});
-    await prisma.contract.deleteMany({});
+    // T1-C7 guard: see cn-issue-on-writeoff.spec.ts (Phase 3 Task 3) — a
+    // contract written off via the real writeOffBadDebt() has a permanent
+    // (immutable) badDebtWriteOffAuditLog row FK-referencing it.
+    const woPoisoned = await prisma.badDebtWriteOffAuditLog.findMany({ select: { contractId: true } });
+    await prisma.contract.deleteMany({ where: { id: { notIn: woPoisoned.map((p) => p.contractId) } } });
     await prisma.$disconnect();
   });
 
@@ -39,7 +45,11 @@ describe('calculateProvisions — streak floors a low-aging contract', () => {
     await prisma.badDebtProvision.deleteMany({});
     await prisma.payment.deleteMany({});
     await prisma.installmentSchedule.deleteMany({});
-    await prisma.contract.deleteMany({});
+    // T1-C7 guard: see cn-issue-on-writeoff.spec.ts (Phase 3 Task 3) — a
+    // contract written off via the real writeOffBadDebt() has a permanent
+    // (immutable) badDebtWriteOffAuditLog row FK-referencing it.
+    const woPoisoned = await prisma.badDebtWriteOffAuditLog.findMany({ select: { contractId: true } });
+    await prisma.contract.deleteMany({ where: { id: { notIn: woPoisoned.map((p) => p.contractId) } } });
     await seedFinanceCoa(prisma);
     if (!(await prisma.user.findFirst({ where: { email: 'admin@bestchoice.com' } }))) {
       await prisma.user.create({

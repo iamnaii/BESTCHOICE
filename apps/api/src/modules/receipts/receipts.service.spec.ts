@@ -5,6 +5,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { LineOaService } from '../line-oa/line-oa.service';
 import { ReceiptVoidReversalTemplate } from '../journal/cpa-templates/receipt-void-reversal.template';
+import { CreditNoteDeliveryService } from './services/credit-note-delivery.service';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
 
 // Mock the period-lock util so the test isn't blocked by closed-period validation.
@@ -107,6 +108,7 @@ describe('ReceiptsService', () => {
         { provide: JournalAutoService, useValue: journalAutoService },
         { provide: LineOaService, useValue: lineOaService },
         { provide: ReceiptVoidReversalTemplate, useValue: { voidReceipt: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK' }) } },
+        { provide: CreditNoteDeliveryService, useValue: { deliver: jest.fn().mockResolvedValue({ delivered: true }) } },
       ],
     }).compile();
 

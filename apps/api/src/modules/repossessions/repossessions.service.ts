@@ -6,6 +6,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateRepossessionDto, UpdateRepossessionDto } from './dto/create-repossession.dto';
 import { ConditionGrade, RepossessionStatus, ProductStatus } from '@prisma/client';
@@ -13,6 +14,8 @@ import { d, dAdd, dSub } from '../../utils/decimal.util';
 import { computePayoffQuote } from '../contracts/compute-payoff-quote';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { RepossessionJP5Template, RepossessionJePreview } from '../journal/cpa-templates/repossession-jp5.template';
+import { CreditNoteDocumentService } from '../receipts/services/credit-note-document.service';
+import { CreditNoteDeliveryService } from '../receipts/services/credit-note-delivery.service';
 import { Decimal } from '@prisma/client/runtime/library';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
 import { isFutureBkkDay } from '../../utils/date.util';
@@ -34,6 +37,8 @@ export class RepossessionsService {
     private prisma: PrismaService,
     private journalAutoService: JournalAutoService,
     private repossessionJP5Template: RepossessionJP5Template,
+    private creditNoteDocumentService: CreditNoteDocumentService,
+    private cnDeliveryService: CreditNoteDeliveryService,
   ) {}
 
   async findAll(filters: { status?: string; branchId?: string; page?: number; limit?: number }) {
@@ -76,7 +81,54 @@ export class RepossessionsService {
       this.prisma.repossession.count({ where }),
     ]);
 
-    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+    // Phase 3 Task 6 — batch-attach the ใบลดหนี้ (CN) auto-issued at JP5
+    // repossession time (CreditNoteDocumentService.issueForContract, source
+    // REPOSSESSION), so RepossessionsPage can render a "ใบลดหนี้"/resend
+    // action without a per-row Receipt lookup. Two small batched queries
+    // (never per-row) scoped to just the contracts on this page.
+    const contractIds = data.map((r) => r.contract.id).filter(Boolean);
+    const receiptByContractId = new Map<string, { id: string; receiptNumber: string; contractId: string }>();
+    if (contractIds.length) {
+      const receipts = await this.prisma.receipt.findMany({
+        where: { contractId: { in: contractIds }, cnSource: 'REPOSSESSION', deletedAt: null },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, receiptNumber: true, contractId: true },
+      });
+      for (const r of receipts) {
+        if (r.contractId && !receiptByContractId.has(r.contractId)) {
+          receiptByContractId.set(r.contractId, r);
+        }
+      }
+    }
+    const cnReceiptIds = [...receiptByContractId.values()].map((r) => r.id);
+    const lastStatusByReceiptId = new Map<string, string>();
+    if (cnReceiptIds.length) {
+      const logs = await this.prisma.notificationLog.findMany({
+        where: { category: 'CREDIT_NOTE', relatedId: { in: cnReceiptIds } },
+        orderBy: { createdAt: 'desc' },
+        select: { relatedId: true, status: true },
+      });
+      for (const log of logs) {
+        if (log.relatedId && !lastStatusByReceiptId.has(log.relatedId)) {
+          lastStatusByReceiptId.set(log.relatedId, log.status);
+        }
+      }
+    }
+    const dataWithCn = data.map((r) => {
+      const cn = receiptByContractId.get(r.contract.id);
+      return {
+        ...r,
+        creditNote: cn
+          ? {
+              receiptId: cn.id,
+              receiptNumber: cn.receiptNumber,
+              lastDeliveryStatus: lastStatusByReceiptId.get(cn.id) ?? null,
+            }
+          : null,
+      };
+    });
+
+    return { data: dataWithCn, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   /**
@@ -254,7 +306,7 @@ export class RepossessionsService {
     }
     await validatePeriodOpen(this.prisma, paymentDate, financeCompany.id);
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const contract = await tx.contract.findUnique({
         where: { id: dto.contractId },
         include: { product: true, payments: true },
@@ -380,6 +432,7 @@ export class RepossessionsService {
       // status updates. ปพพ.ม.392 — เลิกสัญญาต้องกลับสู่ฐานะเดิม. ก่อนหน้านี้
       // .catch() fire-and-forget ทำให้ contract status commit แต่ JE อาจ fail
       // ลูกหนี้ค้างใน ledger ตลอดกาล. ตอนนี้ ถ้า JE fail ทุกอย่าง rollback.
+      let creditNote: { outcome: string; receiptId?: string } | undefined;
       if (outstandingBalance.greaterThan(0)) {
         const repoValue = dto.appraisalPrice != null
           ? new Decimal(String(dto.appraisalPrice))
@@ -393,7 +446,7 @@ export class RepossessionsService {
         const depositAccountCode = dto.collectedByShop
           ? '11-2107'
           : (dto.depositAccountCode ?? '11-1201');
-        await this.repossessionJP5Template.execute(
+        const jp5Result = await this.repossessionJP5Template.execute(
           {
             contractId: dto.contractId,
             depositAccountCode,
@@ -420,6 +473,27 @@ export class RepossessionsService {
             },
           });
         }
+
+        // Phase 3 Task 3: auto-issue ใบลดหนี้ (CN) for any accrued-unpaid
+        // installments written off by JP5 — MUST run inside this same tx
+        // (atomic with the JE: throw here rolls back JP5 + status updates
+        // too). LINE delivery of the CN is intentionally NOT triggered here
+        // (Task 5) — that must happen only after the $transaction commits,
+        // or a rollback would hand the customer a link to a receipt that
+        // never existed.
+        const cnResult = await this.creditNoteDocumentService.issueForContract(
+          {
+            contractId: dto.contractId,
+            source: 'REPOSSESSION',
+            sourceJournalEntryNo: jp5Result.entryNo,
+            actorUserId: userId,
+          },
+          tx,
+        );
+        creditNote = {
+          outcome: cnResult.outcome,
+          receiptId: cnResult.outcome === 'ISSUED' ? cnResult.receiptId : undefined,
+        };
       }
 
       // Update product status
@@ -460,8 +534,23 @@ export class RepossessionsService {
         outstandingBalance: outstandingBalance.toNumber(),
         totalPaid: totalPaid.toNumber(),
         loss: outstandingBalance.sub(d(dto.appraisalPrice)).toNumber(),
+        creditNote,
       };
     });
+
+    // Phase 3 Task 5: LINE delivery of the auto-issued CN fires ONLY after the
+    // $transaction above has committed — firing it from inside the tx would
+    // risk handing the customer a link to a receipt a later rollback erased.
+    // Fire-and-forget: never await, never let a delivery failure surface to
+    // the caller (RepossessionsController already returned successfully by
+    // the time this resolves).
+    if (result.creditNote?.outcome === 'ISSUED' && result.creditNote.receiptId) {
+      void this.cnDeliveryService
+        .deliver(result.creditNote.receiptId)
+        .catch((err) => Sentry.captureException(err));
+    }
+
+    return result;
   }
 
   /**

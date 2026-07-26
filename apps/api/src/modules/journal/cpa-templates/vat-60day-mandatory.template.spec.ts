@@ -22,7 +22,8 @@ async function setup() {
   await prisma.contractDocument.deleteMany({});
   await prisma.partialPaymentLink.deleteMany({});
   await prisma.warrantyAuditLog.deleteMany({});
-  await prisma.badDebtWriteOffAuditLog.deleteMany({});
+  // NOT wiped: badDebtWriteOffAuditLog is immutable (DB trigger, T1-C7) —
+  // deleteMany({}) throws once any row exists (see cn-issue-on-writeoff.spec.ts).
   await prisma.promiseSlot.deleteMany({});
   await prisma.callLog.deleteMany({});
   await prisma.dunningAction.deleteMany({});
@@ -30,7 +31,13 @@ async function setup() {
   await prisma.payment.deleteMany({});
   await prisma.installmentSchedule.deleteMany({});
   // Delete only test contracts (by contractNumber prefix) to avoid FK issues from other test data
-  await prisma.contract.deleteMany({ where: { contractNumber: { startsWith: 'TEST-' } } });
+  // T1-C7 guard: see cn-issue-on-writeoff.spec.ts (Phase 3 Task 3) — a
+  // contract written off via the real writeOffBadDebt() has a permanent
+  // (immutable) badDebtWriteOffAuditLog row FK-referencing it.
+  const woPoisoned = await prisma.badDebtWriteOffAuditLog.findMany({ select: { contractId: true } });
+  await prisma.contract.deleteMany({
+    where: { contractNumber: { startsWith: 'TEST-' }, id: { notIn: woPoisoned.map((p) => p.contractId) } },
+  });
   await seedFinanceCoa(prisma);
 
   const exists = await prisma.user.findUnique({ where: { email: 'admin@bestchoice.com' } });
@@ -122,14 +129,21 @@ describe('Vat60dayMandatoryTemplate', () => {
     await prisma.contractDocument.deleteMany({});
     await prisma.partialPaymentLink.deleteMany({});
     await prisma.warrantyAuditLog.deleteMany({});
-    await prisma.badDebtWriteOffAuditLog.deleteMany({});
+    // NOT wiped: badDebtWriteOffAuditLog is immutable (DB trigger, T1-C7) —
+    // deleteMany({}) throws once any row exists (see cn-issue-on-writeoff.spec.ts).
     await prisma.promiseSlot.deleteMany({});
     await prisma.callLog.deleteMany({});
     await prisma.dunningAction.deleteMany({});
     await prisma.repossession.deleteMany({});
     await prisma.payment.deleteMany({});
     await prisma.installmentSchedule.deleteMany({});
-    await prisma.contract.deleteMany({ where: { contractNumber: { startsWith: 'TEST-' } } });
+    // T1-C7 guard: see cn-issue-on-writeoff.spec.ts (Phase 3 Task 3) — a
+  // contract written off via the real writeOffBadDebt() has a permanent
+  // (immutable) badDebtWriteOffAuditLog row FK-referencing it.
+  const woPoisoned = await prisma.badDebtWriteOffAuditLog.findMany({ select: { contractId: true } });
+  await prisma.contract.deleteMany({
+    where: { contractNumber: { startsWith: 'TEST-' }, id: { notIn: woPoisoned.map((p) => p.contractId) } },
+  });
     await seedFinanceCoa(prisma);
 
     const c = await seedStandard17k12m(prisma);

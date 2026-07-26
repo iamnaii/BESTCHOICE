@@ -5,6 +5,8 @@ import { RepossessionsService } from './repossessions.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RepossessionJP5Template } from '../journal/cpa-templates/repossession-jp5.template';
+import { CreditNoteDocumentService } from '../receipts/services/credit-note-document.service';
+import { CreditNoteDeliveryService } from '../receipts/services/credit-note-delivery.service';
 import { computePayoffQuote } from '../contracts/compute-payoff-quote';
 
 // ---------------------------------------------------------------------------
@@ -117,6 +119,10 @@ describe('RepossessionsService', () => {
   let prisma: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let jp5: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let creditNoteService: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let cnDeliveryServiceMock: any;
 
   beforeEach(async () => {
     prisma = {
@@ -142,6 +148,13 @@ describe('RepossessionsService', () => {
         findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn(),
         update: jest.fn(),
+      },
+      // Phase 3 Task 6 — findAll's batched CN lookup (creditNote attach).
+      receipt: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      notificationLog: {
+        findMany: jest.fn().mockResolvedValue([]),
       },
       auditLog: {
         create: jest.fn(),
@@ -184,6 +197,22 @@ describe('RepossessionsService', () => {
               totalCredit: '6000.00',
               isBalanced: true,
             }),
+          }),
+        },
+        {
+          provide: CreditNoteDocumentService,
+          useValue: (creditNoteService = {
+            issueForContract: jest.fn().mockResolvedValue({
+              outcome: 'ISSUED',
+              receiptId: 'r1',
+              receiptNumber: 'RT-x',
+            }),
+          }),
+        },
+        {
+          provide: CreditNoteDeliveryService,
+          useValue: (cnDeliveryServiceMock = {
+            deliver: jest.fn().mockResolvedValue({ delivered: true }),
           }),
         },
       ],
@@ -232,6 +261,42 @@ describe('RepossessionsService', () => {
       const call = prisma.repossession.findMany.mock.calls[0][0];
       expect(call.take).toBe(200);
       expect(call.skip).toBe(0); // page clamped to 1 → skip = 0
+    });
+
+    it('attaches creditNote (with lastDeliveryStatus) when a REPOSSESSION CN receipt exists for the contract', async () => {
+      const repo = makeRepossession({ contract: { ...makeRepossession().contract, id: 'contract-1' } });
+      prisma.repossession.findMany.mockResolvedValue([repo]);
+      prisma.repossession.count.mockResolvedValue(1);
+      prisma.receipt.findMany.mockResolvedValue([
+        { id: 'rcpt-1', receiptNumber: 'RT-202607-00001', contractId: 'contract-1' },
+      ]);
+      prisma.notificationLog.findMany.mockResolvedValue([
+        { relatedId: 'rcpt-1', status: 'SENT' },
+      ]);
+
+      const result = await service.findAll({});
+
+      expect(prisma.receipt.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { contractId: { in: ['contract-1'] }, cnSource: 'REPOSSESSION', deletedAt: null },
+        }),
+      );
+      expect(result.data[0].creditNote).toEqual({
+        receiptId: 'rcpt-1',
+        receiptNumber: 'RT-202607-00001',
+        lastDeliveryStatus: 'SENT',
+      });
+    });
+
+    it('creditNote is null when no CN receipt exists for the contract', async () => {
+      const repo = makeRepossession({ contract: { ...makeRepossession().contract, id: 'contract-2' } });
+      prisma.repossession.findMany.mockResolvedValue([repo]);
+      prisma.repossession.count.mockResolvedValue(1);
+      prisma.receipt.findMany.mockResolvedValue([]);
+
+      const result = await service.findAll({});
+
+      expect(result.data[0].creditNote).toBeNull();
     });
   });
 
@@ -599,6 +664,129 @@ describe('RepossessionsService', () => {
         }),
         prisma, // tx (mock $transaction passes prisma itself as tx)
       );
+    });
+
+    it('issues CN inside the same tx as JP5, with source=REPOSSESSION and the entryNo JP5 just returned', async () => {
+      prisma.contract.findUnique.mockResolvedValue(makeContract());
+      prisma.repossession.create.mockResolvedValue({ ...makeRepossession(), id: 'repo-new' });
+      prisma.contract.update.mockResolvedValue({});
+      prisma.product.update.mockResolvedValue({});
+      prisma.auditLog.create.mockResolvedValue({});
+      jp5.execute.mockResolvedValueOnce({ entryNo: 'JE-JP5-123' });
+
+      const result = await service.create(baseDto as never, 'user-1');
+
+      expect(creditNoteService.issueForContract).toHaveBeenCalledWith(
+        expect.objectContaining({
+          contractId: 'contract-1',
+          source: 'REPOSSESSION',
+          sourceJournalEntryNo: 'JE-JP5-123',
+          actorUserId: 'user-1',
+        }),
+        prisma, // same tx JP5 was called with — atomic
+      );
+      expect(result.creditNote).toEqual({ outcome: 'ISSUED', receiptId: 'r1' });
+    });
+
+    it('does not issue a CN when there is no outstanding balance (JP5 itself is skipped)', async () => {
+      const paidUpContract = makeContract({
+        payments: [
+          {
+            id: 'pay-1',
+            installmentNo: 1,
+            status: 'PAID',
+            amountDue: decimal(1000),
+            amountPaid: decimal(1000),
+            lateFee: decimal(0),
+            lateFeeWaived: false,
+          },
+        ],
+      });
+      prisma.contract.findUnique.mockResolvedValue(paidUpContract);
+      prisma.repossession.create.mockResolvedValue({ ...makeRepossession(), id: 'repo-new' });
+      prisma.contract.update.mockResolvedValue({});
+      prisma.product.update.mockResolvedValue({});
+      prisma.auditLog.create.mockResolvedValue({});
+
+      const result = await service.create(baseDto as never, 'user-1');
+
+      expect(jp5.execute).not.toHaveBeenCalled();
+      expect(creditNoteService.issueForContract).not.toHaveBeenCalled();
+      expect(result.creditNote).toBeUndefined();
+    });
+
+    it('rolls back the whole repossession when CN issuance throws (atomicity)', async () => {
+      prisma.contract.findUnique.mockResolvedValue(makeContract());
+      prisma.repossession.create.mockResolvedValue({ ...makeRepossession(), id: 'repo-new' });
+      prisma.contract.update.mockResolvedValue({});
+      prisma.product.update.mockResolvedValue({});
+      prisma.auditLog.create.mockResolvedValue({});
+      creditNoteService.issueForContract.mockRejectedValueOnce(new Error('CN fail'));
+
+      await expect(service.create(baseDto as never, 'user-1')).rejects.toThrow('CN fail');
+      expect(creditNoteService.issueForContract).toHaveBeenCalled();
+    });
+
+    // Phase 3 Task 5 — post-commit LINE delivery hook.
+    describe('CreditNoteDeliveryService post-commit hook', () => {
+      it('fires deliver(receiptId) AFTER the $transaction resolves, with the ISSUED receiptId', async () => {
+        prisma.contract.findUnique.mockResolvedValue(makeContract());
+        prisma.repossession.create.mockResolvedValue({ ...makeRepossession(), id: 'repo-new' });
+        prisma.contract.update.mockResolvedValue({});
+        prisma.product.update.mockResolvedValue({});
+        prisma.auditLog.create.mockResolvedValue({});
+
+        await service.create(baseDto as never, 'user-1');
+
+        expect(cnDeliveryServiceMock.deliver).toHaveBeenCalledWith('r1');
+        // Ordering proof: deliver's global invocation index must come AFTER
+        // $transaction's — i.e. the hook runs post-commit, never from inside
+        // the transaction callback.
+        const txOrder = prisma.$transaction.mock.invocationCallOrder[0];
+        const deliverOrder = cnDeliveryServiceMock.deliver.mock.invocationCallOrder[0];
+        expect(deliverOrder).toBeGreaterThan(txOrder);
+      });
+
+      it('does NOT call deliver when there is no outstanding balance (no CN issued)', async () => {
+        const paidUpContract = makeContract({
+          payments: [
+            {
+              id: 'pay-1',
+              installmentNo: 1,
+              status: 'PAID',
+              amountDue: decimal(1000),
+              amountPaid: decimal(1000),
+              lateFee: decimal(0),
+              lateFeeWaived: false,
+            },
+          ],
+        });
+        prisma.contract.findUnique.mockResolvedValue(paidUpContract);
+        prisma.repossession.create.mockResolvedValue({ ...makeRepossession(), id: 'repo-new' });
+        prisma.contract.update.mockResolvedValue({});
+        prisma.product.update.mockResolvedValue({});
+        prisma.auditLog.create.mockResolvedValue({});
+
+        await service.create(baseDto as never, 'user-1');
+
+        expect(cnDeliveryServiceMock.deliver).not.toHaveBeenCalled();
+      });
+
+      it('does NOT call deliver when the CN outcome is HELD_PARTIAL_PAID', async () => {
+        prisma.contract.findUnique.mockResolvedValue(makeContract());
+        prisma.repossession.create.mockResolvedValue({ ...makeRepossession(), id: 'repo-new' });
+        prisma.contract.update.mockResolvedValue({});
+        prisma.product.update.mockResolvedValue({});
+        prisma.auditLog.create.mockResolvedValue({});
+        creditNoteService.issueForContract.mockResolvedValueOnce({
+          outcome: 'HELD_PARTIAL_PAID',
+          todoId: 'todo-1',
+        });
+
+        await service.create(baseDto as never, 'user-1');
+
+        expect(cnDeliveryServiceMock.deliver).not.toHaveBeenCalled();
+      });
     });
 
     it('collectedByShop books the JP5 deposit leg to 11-2107 + writes SHOP_COLLECT_REPOSSESSION audit', async () => {

@@ -271,10 +271,24 @@ export class ReceiptPdfService {
             totalMonths: receipt.contract.totalMonths,
           })
         : null;
+    // Phase 3 standalone CN (CreditNoteDocumentService): amountBeforeVat/vatAmount
+    // are stamped directly on the Receipt row from computeInstallmentBreakdown ×
+    // accrued-unpaid-installment-count — i.e. the EXACT figures the source JE
+    // booked (cross-checked against the JE's metadata.creditNoteVatAmount at
+    // issuance time). No other receipt type sets both fields today, so trusting
+    // them here is scoped to this one case. Re-deriving via the pro-rata 100/107
+    // split below would drift by a satang vs the ledger (e.g. golden fixture
+    // 4,249.98/297.51 → a pro-rata split of the 4,547.49 total yields
+    // 4,249.99/297.50 — off by 0.01 either side).
+    const hasExplicitVatSplit = receipt.amountBeforeVat != null && receipt.vatAmount != null;
+
     let exclVat = ZERO;
     let vatPart = ZERO;
     if (vatBearing && installmentPortion.gt(0)) {
-      if (breakdown && installmentPortion.equals(breakdown.installmentTotal)) {
+      if (hasExplicitVatSplit) {
+        exclVat = toDec(receipt.amountBeforeVat);
+        vatPart = toDec(receipt.vatAmount);
+      } else if (breakdown && installmentPortion.equals(breakdown.installmentTotal)) {
         // Full standard installment → exact ledger figures (per CPA manual).
         exclVat = breakdown.installmentExclVat;
         vatPart = breakdown.vatPerInst;
@@ -470,6 +484,9 @@ export class ReceiptPdfService {
     <div class="cn-notice">
       เอกสารนี้ออกเพื่อยกเลิกใบเสร็จรับเงินเลขที่ <strong>${this.escapeHtml(receipt.voidedRef.receiptNumber)}</strong>
       ลงวันที่ ${formatDateShort(receipt.voidedRef.paidDate)} — ยอดตามใบเสร็จเดิมถูกกลับรายการทั้งจำนวน
+    </div>` : isCreditNote ? `
+    <div class="cn-notice">
+      อ้างอิง: เลิกสัญญา <strong>${safe.contractNumber || '-'}</strong> — ใบลดหนี้ตามมาตรา 82/5
     </div>` : ''}
 
   <!-- Items -->

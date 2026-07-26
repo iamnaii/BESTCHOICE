@@ -2148,7 +2148,7 @@ model NotificationLog {
   deliveryStatus String?             @map("delivery_status") // DELIVERED, UNDELIVERED, REJECTED, etc.
   deliveredAt    DateTime?           @map("delivered_at")
   customerId     String?             @map("customer_id")
-  category       String?             @map("category") // DUNNING | REMINDER | TRANSACTIONAL | STAFF | MARKETING
+  category       String?             @map("category") // DUNNING | REMINDER | TRANSACTIONAL | STAFF | MARKETING | CREDIT_NOTE
   blockReason    String?             @map("block_reason") // OUTSIDE_HOURS | FREQUENCY_CAP | NO_CONSENT | HOLIDAY_BLOCK
   createdAt      DateTime            @default(now()) @map("created_at")
   updatedAt      DateTime            @updatedAt @map("updated_at")
@@ -3198,6 +3198,12 @@ model Receipt {
   voidApprovedAt        DateTime? @map("void_approved_at")
   voidedReceiptId       String?   @map("voided_receipt_id") // อ้างอิงใบเสร็จที่ถูกยกเลิก
   issuedById            String    @map("issued_by_id")
+  /// Phase 3 CN: แหล่งที่มาใบลดหนี้อัตโนมัติ — 'REPOSSESSION' | 'WRITE_OFF' (null = receipt ปกติ/void-CN เดิม)
+  cnSource              String?   @map("cn_source")
+  sourceJournalEntryId  String?   @map("source_journal_entry_id")
+  /// ลิงก์ PDF สาธารณะสำหรับลูกค้า (LINE) — หมดอายุตาม publicTokenExpiresAt
+  publicToken           String?   @unique @map("public_token")
+  publicTokenExpiresAt  DateTime? @map("public_token_expires_at")
   createdAt             DateTime  @default(now()) @map("created_at")
   updatedAt             DateTime  @default(now()) @updatedAt @map("updated_at")
   deletedAt             DateTime? @map("deleted_at")

@@ -1,4 +1,4 @@
-import { Injectable, Inject, Optional, forwardRef } from '@nestjs/common';
+import { BadRequestException, Injectable, Inject, Optional, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LineOaService } from '../line-oa/line-oa.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
@@ -9,6 +9,8 @@ import { ReceiptVoidService } from './services/receipt-void.service';
 import { ReceiptQueryService } from './services/receipt-query.service';
 import { ReceiptPdfService } from './services/receipt-pdf.service';
 import { CreditNoteDeliveryService } from './services/credit-note-delivery.service';
+import { CreditNoteDocumentService, CreditNoteSource } from './services/credit-note-document.service';
+import { CreditNoteIssueService } from './services/credit-note-issue.service';
 
 /**
  * Receipts facade. Preserves the original 8-method public surface + the 4-arg
@@ -31,6 +33,7 @@ export class ReceiptsService {
   private readonly void: ReceiptVoidService;
   private readonly query: ReceiptQueryService;
   private readonly pdf: ReceiptPdfService;
+  private readonly cnIssue?: CreditNoteIssueService;
 
   constructor(
     private prisma: PrismaService,
@@ -42,6 +45,11 @@ export class ReceiptsService {
     // so specs/consumers that never touch CN resend don't need to wire it.
     @Optional()
     private cnDeliveryService?: CreditNoteDeliveryService,
+    // Phase 3 CN Task 5 — manual CN issue endpoint. @Optional() for the same
+    // reason as cnDeliveryService above — specs that never touch the
+    // credit-note/issue route don't need to wire it.
+    @Optional()
+    private creditNoteDocumentService?: CreditNoteDocumentService,
   ) {
     this.numbers = new ReceiptNumberService(this.prisma);
     this.issuance = new ReceiptIssuanceService(
@@ -53,6 +61,9 @@ export class ReceiptsService {
     this.void = new ReceiptVoidService(this.prisma, this.receiptVoidReversalTemplate, this.numbers);
     this.query = new ReceiptQueryService(this.prisma);
     this.pdf = new ReceiptPdfService(this.query);
+    this.cnIssue = this.creditNoteDocumentService
+      ? new CreditNoteIssueService(this.prisma, this.creditNoteDocumentService, this.cnDeliveryService)
+      : undefined;
   }
 
   /** Auto-generate e-Receipt after payment recording. */
@@ -132,5 +143,18 @@ export class ReceiptsService {
   /** Generate the e-Receipt PDF using Puppeteer + the Thai tax-invoice layout. */
   generatePDF(id: string): Promise<Buffer> {
     return this.pdf.generatePDF(id);
+  }
+
+  /**
+   * Manually issue a ใบลดหนี้ (Credit Note) for a contract whose
+   * REPOSSESSION/WRITE_OFF journal entry already exists but never got a CN
+   * document — Phase 3 CN Task 5. See `CreditNoteIssueService` for the
+   * 404/409/422 mapping + post-commit LINE delivery.
+   */
+  async issueCreditNoteManually(contractId: string, source: CreditNoteSource, actorUserId: string) {
+    if (!this.cnIssue) {
+      throw new BadRequestException('ระบบใบลดหนี้ยังไม่ได้ตั้งค่า');
+    }
+    return this.cnIssue.issueManually(contractId, source, actorUserId);
   }
 }

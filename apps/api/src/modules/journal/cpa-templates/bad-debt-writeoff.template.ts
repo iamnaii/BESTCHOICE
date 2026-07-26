@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { computeCnBreakdown } from '../compute-cn-breakdown';
+import { glContractBalance } from '../gl-contract-balance';
 
 export interface BadDebtWriteOffInput {
   contractId: string;
@@ -74,27 +75,10 @@ export class BadDebtWriteOffTemplate {
     });
 
     // ---- GL balances (เก็บกวาดจริงถึงศูนย์ รวมเศษ rounding งวดสุดท้าย) ----
-    const glBal = async (accountCode: string, side: 'dr' | 'cr'): Promise<Decimal> => {
-      const ls = await client.journalLine.findMany({
-        where: {
-          accountCode,
-          journalEntry: {
-            metadata: { path: ['contractId'], equals: contractId },
-            status: 'POSTED',
-            deletedAt: null,
-          },
-        },
-        select: { debit: true, credit: true },
-      });
-      let b = new Decimal(0);
-      for (const l of ls) {
-        b =
-          side === 'dr'
-            ? b.plus(l.debit.toString()).minus(l.credit.toString())
-            : b.plus(l.credit.toString()).minus(l.debit.toString());
-      }
-      return b;
-    };
+    // Shared helper (2026-07-26, Task 5) — single source of truth with
+    // RepossessionJP5Template + BadDebtService's ECL delta cron.
+    const glBal = (accountCode: string, side: 'dr' | 'cr'): Promise<Decimal> =>
+      glContractBalance(client, contractId, accountCode, side);
 
     const bal2103 = await glBal('11-2103', 'dr');
     const bal2101 = await glBal('11-2101', 'dr');

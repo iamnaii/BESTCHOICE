@@ -19,6 +19,7 @@ import {
 import { BadDebtProvisionTemplate } from '../journal/cpa-templates/bad-debt-provision.template';
 import { BadDebtWriteOffTemplate } from '../journal/cpa-templates/bad-debt-writeoff.template';
 import { EclStageReverseTemplate } from '../journal/cpa-templates/ecl-stage-reverse.template';
+import { glContractBalance } from '../journal/gl-contract-balance';
 import { ConsecutiveMissedService } from '../overdue/consecutive-missed.service';
 import { CreditNoteDocumentService } from '../receipts/services/credit-note-document.service';
 import { CreditNoteDeliveryService } from '../receipts/services/credit-note-delivery.service';
@@ -198,10 +199,13 @@ export class BadDebtService {
   }
 
   /**
-   * GL balance ราย contract จาก journal lines (POSTED เท่านั้น) — pattern เดียวกับ
-   * BadDebtWriteOffTemplate/RepossessionJP5Template. side='cr' คืน ΣCr−ΣDr
-   * (contra-asset/liability เช่น 11-2102, 11-2106), side='dr' คืน ΣDr−ΣCr
-   * (asset เช่น 11-2101, 11-2103).
+   * GL balance ราย contract — thin delegate to the shared
+   * `journal/gl-contract-balance.ts` helper (2026-07-26, ECL-per-installment
+   * Task 5 — extracted from this exact method + the identical copies in
+   * `BadDebtWriteOffTemplate` and `RepossessionJP5Template`). Kept as a
+   * same-signature wrapper (contractId first, `db` defaulted last) so every
+   * existing call site in this file, and every jest mock of
+   * `prisma.journalLine.findMany`, keeps working unchanged.
    */
   private async glBalance(
     contractId: string,
@@ -209,25 +213,7 @@ export class BadDebtService {
     side: 'dr' | 'cr',
     db: Prisma.TransactionClient | PrismaService = this.prisma,
   ): Promise<Decimal> {
-    const lines = await db.journalLine.findMany({
-      where: {
-        accountCode,
-        journalEntry: {
-          metadata: { path: ['contractId'], equals: contractId },
-          status: 'POSTED',
-          deletedAt: null,
-        },
-      },
-      select: { debit: true, credit: true },
-    });
-    let bal = new Decimal(0);
-    for (const l of lines) {
-      bal =
-        side === 'cr'
-          ? bal.plus(l.credit.toString()).minus(l.debit.toString())
-          : bal.plus(l.debit.toString()).minus(l.credit.toString());
-    }
-    return bal;
+    return glContractBalance(db, contractId, accountCode, side);
   }
 
   /**

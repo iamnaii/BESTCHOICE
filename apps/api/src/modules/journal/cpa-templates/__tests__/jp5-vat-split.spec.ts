@@ -510,4 +510,96 @@ describe('JP5 Credit Note for accrued VAT (Wave 2 Task 2)', () => {
     const totalCr = lines.reduce((s, l) => s.plus(l.credit), new Decimal(0));
     expect(totalDr.toFixed(2)).toBe(totalCr.toFixed(2));
   });
+
+  /**
+   * CN pro-rate (CPA ruling 2026-07-26, docs/superpowers/plans/2026-07-26-cn-prorate-cpa.md).
+   *
+   * 3 accrued installments, one PARTIALLY_PAID (amountPaid=1,000 of the
+   * 1,515.83 installmentTotal). computeCnBreakdown pro-rates that installment's
+   * CN VAT to its outstanding balance instead of the full vatPerInst:
+   *
+   *   installment #1 (partial): outstanding = 1,515.83 − 1,000 = 515.83
+   *     cnVat = 99.17 × 515.83 / 1,515.83 (ROUND_HALF_UP, 2dp) = 33.75
+   *   installment #2 (no Payment row → fully outstanding): cnVat = 99.17
+   *   installment #3 (no Payment row → fully outstanding): cnVat = 99.17
+   *   totalCnVat = 33.75 + 99.17 + 99.17 = 232.09
+   *
+   * accruedClear11_2103 stays count-based (pre-existing behavior — NOT touched
+   * by this pro-rate fix, tracked as backlog): 3 × 1,515.83 = 4,547.49.
+   * remainingTotal = 4,547.49 + 12,749.94 (9×1,416.66) + 892.53 (9×99.17)
+   *                  − 232.09 = 17,957.87
+   * loss = remainingTotal − repossessionValue(5,000) = 12,957.87
+   * (vs. the all-full-installment golden above: 12,892.45 — the delta of
+   * 65.42 is exactly 297.51 − 232.09, the CN VAT no longer recovered because
+   * installment #1 is partially paid.)
+   */
+  it('pro-rates CN VAT for a partially-paid accrued installment (CPA 2026-07-26)', async () => {
+    const journal = await setup();
+    const c = await seedStandard17k12m(prisma);
+    await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
+
+    const accrual = new InstallmentAccrual2ATemplate(journal, prisma as any);
+    const insts = await prisma.installmentSchedule.findMany({
+      where: { contractId: c.id },
+      orderBy: { installmentNo: 'asc' },
+    });
+    // Accrue installments 1-3 (same as the other mixed scenarios above)
+    for (let i = 0; i < 3; i++) {
+      await accrual.execute(insts[i].id);
+    }
+
+    // Installment #1 (accrued) has a partial payment — 1,000 of 1,515.83 paid.
+    // Set up the Payment row state only (per task brief) — its own 2B GL effect
+    // on 11-2103 is not needed for this JE-line assertion.
+    await prisma.payment.create({
+      data: {
+        contractId: c.id,
+        installmentNo: insts[0].installmentNo,
+        dueDate: insts[0].dueDate,
+        amountDue: new Decimal('1515.83'),
+        amountPaid: new Decimal('1000.00'),
+        status: 'PARTIALLY_PAID',
+      },
+    });
+
+    const jp5 = new RepossessionJP5Template(journal, prisma as any);
+    await jp5.execute({
+      contractId: c.id,
+      depositAccountCode: '11-1101',
+      repossessionValue: new Decimal('5000.00'),
+    });
+
+    const lines = await getJp5Lines(c.id);
+
+    // Dr 21-2101 (credit note VAT) pro-rated: 33.75 + 99.17 + 99.17 = 232.09
+    const dr21_2101 = sumDr(lines, '21-2101');
+    expect(dr21_2101.toFixed(2)).toBe('232.09');
+
+    // Clearing legs untouched — count-based, unaffected by pro-rate (backlog item)
+    const cr11_2103 = sumCr(lines, '11-2103');
+    expect(cr11_2103.toFixed(2)).toBe('4547.49');
+
+    // Loss shifts by exactly the CN VAT delta (297.51 − 232.09 = 65.42)
+    const dr51_1102 = sumDr(lines, '51-1102');
+    expect(dr51_1102.toFixed(2)).toBe('12957.87');
+
+    // JE metadata reflects the pro-rated amount
+    const entries = await prisma.journalEntry.findMany({
+      where: {
+        AND: [
+          { metadata: { path: ['contractId'], equals: c.id } } as any,
+          { metadata: { path: ['flow'], equals: 'repossession' } } as any,
+        ],
+      },
+    });
+    expect(entries.length).toBe(1);
+    const meta = entries[0].metadata as Record<string, unknown>;
+    expect(meta.creditNoteIssued).toBe(true);
+    expect(meta.creditNoteVatAmount).toBe('232.09');
+
+    // JE balanced
+    const totalDr = lines.reduce((s, l) => s.plus(l.debit), new Decimal(0));
+    const totalCr = lines.reduce((s, l) => s.plus(l.credit), new Decimal(0));
+    expect(totalDr.toFixed(2)).toBe(totalCr.toFixed(2));
+  });
 });

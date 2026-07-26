@@ -3,6 +3,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { computeCnBreakdown } from '../compute-cn-breakdown';
 
 export interface RepossessionInput {
   contractId: string;
@@ -164,7 +165,16 @@ export class RepossessionJP5Template {
 
     // Wave 2 T2 — Credit note VAT for accrued installments (per ม.82/5)
     // Recovers settled VAT (21-2101) → reduces both VAT liability and loss recognition
-    const accruedCreditNoteVat = vatPerInst.times(accruedCount);
+    // CPA pro-rate ruling (2026-07-26, docs/superpowers/plans/2026-07-26-cn-prorate-cpa.md):
+    // a partially-paid accrued installment's CN VAT is pro-rated to its
+    // outstanding balance instead of the full vatPerInst. computeCnBreakdown is
+    // the single source of truth shared with BadDebtWriteOffTemplate and
+    // CreditNoteDocumentService so the JE and the CN document never drift.
+    // Installments here are already accrued-only (filtered above) — pass them
+    // preloaded so the util skips its own installmentSchedule query; payments
+    // are left for the util to query itself (this array lacks amountPaid).
+    const cnBreakdown = await computeCnBreakdown(client, c, { installments: accruedInsts });
+    const accruedCreditNoteVat = cnBreakdown.totalCnVat;
 
     // Deferred portion — full original clearance / VAT settlement
     const deferredGross = installmentExclVat.times(deferredCount);
@@ -339,7 +349,11 @@ export class RepossessionJP5Template {
           deferredInstallments: built.deferredCount,
           repossessionValue: input.repossessionValue.toFixed(2),
           // Wave 2 T2: Credit Note tracking (per ม.82/5)
-          creditNoteIssued: built.accruedCount > 0,
+          // CPA pro-rate (2026-07-26): a fully-paid-but-still-accrued edge case
+          // (Payment row exists, amountPaid === amountDue, status not yet PAID)
+          // can zero out cnVat even though accruedCount > 0 — key off the actual
+          // amount, not the count, so this flag stays truthful (matches T3 write-off).
+          creditNoteIssued: built.accruedCreditNoteVat.gt(0),
           creditNoteVatAmount: built.accruedCreditNoteVat.toFixed(2),
           ...(input.collectedByShop
             ? { collectedByShop: true, shopReceivable: input.depositAccountCode }

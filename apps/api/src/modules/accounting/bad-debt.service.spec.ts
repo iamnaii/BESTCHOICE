@@ -59,6 +59,41 @@ describe('BadDebtService', () => {
   let creditNoteService: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let cnDeliveryServiceMock: any;
+  let consecutiveMissedMock: { getStreaks: jest.Mock };
+
+  // 17k/12m fixture — same canonical contract used across the codebase
+  // (apps/api/src/modules/journal/__tests__/scenario-helpers.ts
+  // seedStandard17k12m): financedAmount 10,000 + storeCommission 1,000 +
+  // interestTotal 6,000 = grossExclVat 17,000; vatAmount 1,190; totalMonths
+  // 12 → installmentTotal = 1,515.83 (.claude/rules/accounting.md rounding:
+  // 17000/12 ROUND_DOWN=1,416.66, 1190/12 ROUND_HALF_UP=99.17, sum=1,515.83).
+  // The per-installment ECL engine (computeInstallmentOutstanding) needs
+  // these fields on every mocked payment's `contract` sub-object.
+  const STD_CONTRACT_FIELDS = {
+    totalMonths: 12,
+    financedAmount: new Prisma.Decimal('10000.00'),
+    storeCommission: new Prisma.Decimal('1000.00'),
+    interestTotal: new Prisma.Decimal('6000.00'),
+    vatAmount: new Prisma.Decimal('1190.00'),
+  };
+  const INSTALLMENT_TOTAL = 1515.83;
+
+  // Full (unpaid) installment payment row at a given dueDate offset (days
+  // ago). amountDue = installmentTotal so the engine's fee-netted clamp to
+  // [0, installmentTotal] never truncates it — outstanding = installmentTotal
+  // exactly, matching the 2026-07-26 per-installment plan's goldens.
+  const makeFullPayment = (contractId: string, daysAgo: number, installmentNo = 1) => ({
+    id: `pay-${contractId}-${installmentNo}-${daysAgo}`,
+    contractId,
+    installmentNo,
+    amountDue: new Prisma.Decimal(INSTALLMENT_TOTAL.toFixed(2)),
+    amountPaid: new Prisma.Decimal(0),
+    lateFee: new Prisma.Decimal(0),
+    lateFeeWaived: false,
+    status: 'PENDING',
+    dueDate: new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000),
+    contract: { id: contractId, ...STD_CONTRACT_FIELDS },
+  });
 
   beforeEach(async () => {
     prisma = {
@@ -125,7 +160,10 @@ describe('BadDebtService', () => {
         { provide: BadDebtProvisionTemplate, useValue: provisionTemplateMock },
         { provide: BadDebtWriteOffTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK' }) } },
         { provide: EclStageReverseTemplate, useValue: eclStageReverseTemplateMock },
-        { provide: ConsecutiveMissedService, useValue: { getStreaks: jest.fn().mockResolvedValue(new Map()) } },
+        {
+          provide: ConsecutiveMissedService,
+          useValue: (consecutiveMissedMock = { getStreaks: jest.fn().mockResolvedValue(new Map()) }),
+        },
         {
           provide: CreditNoteDocumentService,
           useValue: (creditNoteService = {
@@ -148,60 +186,234 @@ describe('BadDebtService', () => {
     service = module.get<BadDebtService>(BadDebtService);
   });
 
-  describe('calculateProvisions — aging bucket boundaries', () => {
-    // Helper to build a payment row with a specific dueDate offset (days ago)
-    const makePayment = (contractId: string, daysAgo: number, amountDue: number) => ({
-      id: `pay-${contractId}-${daysAgo}`,
-      contractId,
-      installmentNo: 1,
-      amountDue: new Prisma.Decimal(amountDue),
-      amountPaid: new Prisma.Decimal(0),
-      lateFee: new Prisma.Decimal(0),
-      lateFeeWaived: false,
-      status: 'PENDING',
-      dueDate: new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000),
-      contract: { id: contractId, status: 'OVERDUE' },
-    });
-
-    it('places a 30-day overdue payment in the 1-30 bucket (boundary inclusive)', async () => {
-      prisma.payment.findMany.mockResolvedValue([makePayment('c1', 30, 1000)]);
+  describe('calculateProvisions — aging bucket boundaries (per-installment engine, 2026-07-26)', () => {
+    // Full-installment payment row at a given dueDate offset (days ago).
+    // amountDue = installmentTotal (1,515.83 on the 17k/12 fixture — see
+    // STD_CONTRACT_FIELDS above) so the engine's fee-netted clamp to
+    // [0, installmentTotal] never truncates it — outstanding = installmentTotal
+    // exactly, matching the 2026-07-26 per-installment plan's goldens.
+    it('places a 30-day overdue installment in the 1-30 bucket (boundary inclusive) — golden 30.32', async () => {
+      prisma.payment.findMany.mockResolvedValue([makeFullPayment('c1', 30)]);
 
       const result = await service.calculateProvisions('user-1');
 
       expect(result.created).toBe(1);
       expect(result.byBucket['1-30']).toBeDefined();
-      // 1000 * 0.02 (default rate) = 20
-      expect(result.byBucket['1-30'].amount).toBeCloseTo(20, 4);
+      // 1,515.83 × 0.02 = 30.3166 → ROUND_HALF_UP 2dp = 30.32
+      expect(result.byBucket['1-30'].amount).toBeCloseTo(30.32, 2);
     });
 
-    it('places a 31-day overdue payment in the 31-60 bucket (boundary, B2)', async () => {
-      prisma.payment.findMany.mockResolvedValue([makePayment('c1', 31, 1000)]);
+    it('places a 31-day overdue installment in the 31-60 bucket (boundary, B2)', async () => {
+      prisma.payment.findMany.mockResolvedValue([makeFullPayment('c1', 31)]);
       const result = await service.calculateProvisions('user-1');
-      expect(result.byBucket['31-60'].amount).toBeCloseTo(150, 4); // 1000 * 0.15 (CPA ECL v3.0)
+      // 1,515.83 × 0.15 = 227.3745 → 227.37
+      expect(result.byBucket['31-60'].amount).toBeCloseTo(227.37, 2);
     });
 
-    it('places a 61-day overdue payment in the 61-90 bucket (B3 → terminate)', async () => {
-      prisma.payment.findMany.mockResolvedValue([makePayment('c1', 61, 1000)]);
+    it('places a 61-day overdue installment in the 61-90 bucket (B3 → terminate)', async () => {
+      prisma.payment.findMany.mockResolvedValue([makeFullPayment('c1', 61)]);
       const result = await service.calculateProvisions('user-1');
-      expect(result.byBucket['61-90'].amount).toBeCloseTo(500, 4); // 1000 * 0.50 (CPA ECL v3.0)
+      // 1,515.83 × 0.50 = 757.915 → 757.92 (ROUND_HALF_UP)
+      expect(result.byBucket['61-90'].amount).toBeCloseTo(757.92, 2);
     });
 
-    it('places a 91-day overdue payment in the 91-180 bucket (B4)', async () => {
-      prisma.payment.findMany.mockResolvedValue([makePayment('c1', 91, 1000)]);
+    it('places a 91-day overdue installment in the 91-180 bucket (B4)', async () => {
+      prisma.payment.findMany.mockResolvedValue([makeFullPayment('c1', 91)]);
       const result = await service.calculateProvisions('user-1');
-      expect(result.byBucket['91-180'].amount).toBeCloseTo(750, 4); // 1000 * 0.75 (CPA ECL v3.0)
+      // 1,515.83 × 0.75 = 1,136.8725 → 1,136.87
+      expect(result.byBucket['91-180'].amount).toBeCloseTo(1136.87, 2);
     });
 
-    it('places a 181-day overdue payment in the 180+ bucket (B5 NPL)', async () => {
-      prisma.payment.findMany.mockResolvedValue([makePayment('c1', 181, 1000)]);
+    it('places a 181-day overdue installment in the 180+ bucket (B5 NPL)', async () => {
+      prisma.payment.findMany.mockResolvedValue([makeFullPayment('c1', 181)]);
       const result = await service.calculateProvisions('user-1');
-      expect(result.byBucket['180+'].amount).toBeCloseTo(1000, 4); // 1000 * 1.00 (CPA B5 NPL)
+      expect(result.byBucket['180+'].amount).toBeCloseTo(INSTALLMENT_TOTAL, 2); // 100%
     });
 
-    it('places a 361-day overdue payment in the 180+ bucket (still B5)', async () => {
-      prisma.payment.findMany.mockResolvedValue([makePayment('c1', 361, 1000)]);
+    it('places a 361-day overdue installment in the 180+ bucket (still B5)', async () => {
+      prisma.payment.findMany.mockResolvedValue([makeFullPayment('c1', 361)]);
       const result = await service.calculateProvisions('user-1');
-      expect(result.byBucket['180+'].amount).toBeCloseTo(1000, 4); // CPA collapses 180+ into single bucket
+      expect(result.byBucket['180+'].amount).toBeCloseTo(INSTALLMENT_TOTAL, 2); // CPA collapses 180+ into single bucket
+    });
+  });
+
+  describe('calculateProvisions — per-installment scenario series (2026-07-26 plan goldens, aging only)', () => {
+    it('single 30d installment → 30.32', async () => {
+      prisma.payment.findMany.mockResolvedValue([makeFullPayment('c1', 30, 1)]);
+      const result = await service.calculateProvisions('user-1');
+      expect(result.totalProvision).toBeCloseTo(30.32, 2);
+    });
+
+    it('{60,30} → 227.37 + 30.32 = 257.69', async () => {
+      prisma.payment.findMany.mockResolvedValue([
+        makeFullPayment('c1', 60, 1),
+        makeFullPayment('c1', 30, 2),
+      ]);
+      const result = await service.calculateProvisions('user-1');
+      expect(result.totalProvision).toBeCloseTo(257.69, 2);
+    });
+
+    it('{90,60,30} → 757.92 + 227.37 + 30.32 = 1,015.61', async () => {
+      prisma.payment.findMany.mockResolvedValue([
+        makeFullPayment('c1', 90, 1),
+        makeFullPayment('c1', 60, 2),
+        makeFullPayment('c1', 30, 3),
+      ]);
+      const result = await service.calculateProvisions('user-1');
+      expect(result.totalProvision).toBeCloseTo(1015.61, 2);
+    });
+
+    it('{120,90,60,30} → 1,136.87 + 757.92 + 227.37 + 30.32 = 2,152.48', async () => {
+      prisma.payment.findMany.mockResolvedValue([
+        makeFullPayment('c1', 120, 1),
+        makeFullPayment('c1', 90, 2),
+        makeFullPayment('c1', 60, 3),
+        makeFullPayment('c1', 30, 4),
+      ]);
+      const result = await service.calculateProvisions('user-1');
+      expect(result.totalProvision).toBeCloseTo(2152.48, 2);
+    });
+
+    it('partial row uses fee-netted outstanding: due 1,515.83 paid 1,000 → outstanding 515.83 → B2 15% → 77.37', async () => {
+      prisma.payment.findMany.mockResolvedValue([
+        {
+          id: 'pay-partial',
+          contractId: 'c1',
+          installmentNo: 1,
+          amountDue: new Prisma.Decimal('1515.83'),
+          amountPaid: new Prisma.Decimal('1000.00'),
+          lateFee: new Prisma.Decimal('0'),
+          lateFeeWaived: false,
+          status: 'PARTIALLY_PAID',
+          dueDate: new Date(Date.now() - 40 * 24 * 60 * 60 * 1000), // 31-60 bucket
+          contract: { id: 'c1', ...STD_CONTRACT_FIELDS },
+        },
+      ]);
+      const result = await service.calculateProvisions('user-1');
+      // outstanding = 1,515.83 − 1,000.00 = 515.83 → 515.83 × 0.15 = 77.3745 → 77.37
+      expect(result.totalProvision).toBeCloseTo(77.37, 2);
+    });
+  });
+
+  describe('calculateProvisions — streak floor is DORMANT by default (2026-07-26 semantics)', () => {
+    it('no consecutive_missed_bucket_map row configured → NO floor, {60,30} = 257.69 (not 454.74)', async () => {
+      // beforeEach already mocks systemConfig.findUnique → null for every key.
+      prisma.payment.findMany.mockResolvedValue([
+        makeFullPayment('c1', 60, 1),
+        makeFullPayment('c1', 30, 2),
+      ]);
+      const result = await service.calculateProvisions('user-1');
+      expect(result.totalProvision).toBeCloseTo(257.69, 2);
+      // No floor configured → the streak query itself is skipped entirely.
+      expect(consecutiveMissedMock.getStreaks).not.toHaveBeenCalled();
+    });
+
+    it('corrupt consecutive_missed_bucket_map JSON → Sentry captured, still NO floor (257.69)', async () => {
+      (Sentry.captureException as jest.Mock).mockClear();
+      prisma.systemConfig.findUnique.mockImplementation(({ where }: any) =>
+        Promise.resolve(
+          where.key === 'consecutive_missed_bucket_map' ? { value: 'not-json{{' } : null,
+        ),
+      );
+      prisma.payment.findMany.mockResolvedValue([
+        makeFullPayment('c1', 60, 1),
+        makeFullPayment('c1', 30, 2),
+      ]);
+      const result = await service.calculateProvisions('user-1');
+      expect(result.totalProvision).toBeCloseTo(257.69, 2);
+      expect(Sentry.captureException as jest.Mock).toHaveBeenCalled();
+    });
+
+    it('empty consecutive_missed_bucket_map ({}) → NO floor (257.69)', async () => {
+      prisma.systemConfig.findUnique.mockImplementation(({ where }: any) =>
+        Promise.resolve(where.key === 'consecutive_missed_bucket_map' ? { value: '{}' } : null),
+      );
+      prisma.payment.findMany.mockResolvedValue([
+        makeFullPayment('c1', 60, 1),
+        makeFullPayment('c1', 30, 2),
+      ]);
+      const result = await service.calculateProvisions('user-1');
+      expect(result.totalProvision).toBeCloseTo(257.69, 2);
+    });
+
+    it('explicit non-empty config + streak 2 → floor B2 applied per-installment: {60,30} both floored → 227.37×2 = 454.74', async () => {
+      prisma.systemConfig.findUnique.mockImplementation(({ where }: any) =>
+        Promise.resolve(
+          where.key === 'consecutive_missed_bucket_map' ? { value: JSON.stringify({ '2': '31-60' }) } : null,
+        ),
+      );
+      consecutiveMissedMock.getStreaks.mockResolvedValue(new Map([['c1', 2]]));
+      prisma.payment.findMany.mockResolvedValue([
+        makeFullPayment('c1', 60, 1), // aging 31-60 already
+        makeFullPayment('c1', 30, 2), // aging 1-30, floored up to 31-60
+      ]);
+      const result = await service.calculateProvisions('user-1');
+      // both installments provision at 31-60 (15%): 1,515.83 × 0.15 = 227.3745 → 227.37 each
+      expect(result.totalProvision).toBeCloseTo(454.74, 2);
+    });
+  });
+
+  describe('calculateProvisions — TERMINATED contract uses the SAME per-installment aging as ACTIVE (carrying-amount base retired)', () => {
+    it('TERMINATED: per-installment math, no carrying-amount override — only 11-2102 queried (delta), never 11-2103/11-2101/11-2106', async () => {
+      prisma.payment.findMany.mockResolvedValue([
+        {
+          id: 'pay-t1',
+          contractId: 'c-t',
+          installmentNo: 1,
+          amountDue: new Prisma.Decimal('1515.83'),
+          amountPaid: new Prisma.Decimal('0'),
+          lateFee: new Prisma.Decimal('0'),
+          lateFeeWaived: false,
+          status: 'PENDING',
+          dueDate: new Date(Date.now() - 100 * 24 * 60 * 60 * 1000), // 91-180 bucket (B4 75%)
+          contract: { id: 'c-t', ...STD_CONTRACT_FIELDS },
+        },
+      ]);
+      prisma.journalLine.findMany.mockResolvedValue([]); // 11-2102 GL = 0 for the delta calc
+
+      const result = await service.calculateProvisions('owner-1');
+
+      // 1,515.83 × 0.75 = 1,136.8725 → 1,136.87 — SAME formula an ACTIVE
+      // contract at 100 days would get. No carrying-amount override.
+      expect(result.totalProvision).toBeCloseTo(1136.87, 2);
+      // The retired terminatedCarryingAmount() used to fire 3 EXTRA glBalance
+      // queries (11-2103/11-2101/11-2106) before the delta's 11-2102 lookup —
+      // only ONE journalLine.findMany call should happen now.
+      expect(prisma.journalLine.findMany).toHaveBeenCalledTimes(1);
+      expect(prisma.journalLine.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ accountCode: '11-2102' }) }),
+      );
+    });
+  });
+
+  describe('calculateProvisions — bucketBreakdown + blended rate + oldest-installment display bucket (spec §2.3)', () => {
+    it('persists per-bucket breakdown, agingBucket = bucket of the OLDEST installment, provisionRate = blended', async () => {
+      prisma.payment.findMany.mockResolvedValue([
+        makeFullPayment('c1', 90, 1), // 61-90, 50%
+        makeFullPayment('c1', 30, 2), // 1-30, 2%
+      ]);
+
+      await service.calculateProvisions('user-1');
+
+      const created = prisma.badDebtProvision.createMany.mock.calls[0][0].data[0];
+      // agingBucket = bucket of the OLDEST installment (90d → 61-90), not a blend
+      expect(created.agingBucket).toBe('61-90');
+      expect(created.bucketBreakdown['61-90']).toMatchObject({
+        count: 1,
+        base: '1515.83',
+        provision: '757.92',
+      });
+      expect(created.bucketBreakdown['1-30']).toMatchObject({
+        count: 1,
+        base: '1515.83',
+        provision: '30.32',
+      });
+      const outstanding = Number(created.outstandingAmount);
+      const provisionAmt = Number(created.provisionAmount);
+      expect(outstanding).toBeCloseTo(3031.66, 2); // 1,515.83 × 2
+      expect(provisionAmt).toBeCloseTo(788.24, 2); // 757.92 + 30.32
+      // Blended rate = provision / base — self-consistent, not hardcoded.
+      expect(Number(created.provisionRate)).toBeCloseTo(provisionAmt / outstanding, 4);
     });
   });
 
@@ -219,7 +431,7 @@ describe('BadDebtService', () => {
           lateFeeWaived: false,
           status: 'PENDING',
           dueDate: baseDate,
-          contract: { id: 'c1', status: 'OVERDUE' },
+          contract: { id: 'c1', ...STD_CONTRACT_FIELDS },
         },
         {
           id: 'p2',
@@ -231,17 +443,21 @@ describe('BadDebtService', () => {
           lateFeeWaived: false,
           status: 'PENDING',
           dueDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
-          contract: { id: 'c1', status: 'OVERDUE' },
+          contract: { id: 'c1', ...STD_CONTRACT_FIELDS },
         },
       ]);
 
       await service.calculateProvisions('user-1');
 
       const created = prisma.badDebtProvision.createMany.mock.calls[0][0].data;
-      expect(created).toHaveLength(1); // one provision per contract
-      // outstanding = (1000 - 200) + (500 - 0) = 800 + 500 = 1300 (lateFee excluded — Task 3)
+      expect(created).toHaveLength(1); // one provision per contract (2 installment rows summed)
+      // Fee-netted engine (2026-07-26 plan, Task 1): row1 netFee=min(paid=200,
+      // lateFee=50)=50 → baseCash=200-50=150 → outstanding=1000-150=850.
+      // row2: due=500, paid=0 → outstanding=500. Sum=850+500=1,350
+      // (was 1,300 under the old naive due−paid formula that never netted the
+      // fee back out of amountPaid).
       // PR #780 Wave 1: outstandingAmount is now persisted as Decimal (not Number cast)
-      expect(Number(created[0].outstandingAmount)).toBe(1300);
+      expect(Number(created[0].outstandingAmount)).toBe(1350);
     });
 
     it('uses the OLDEST overdue installment for the aging bucket (not the newest)', async () => {
@@ -259,7 +475,7 @@ describe('BadDebtService', () => {
           lateFeeWaived: false,
           status: 'PENDING',
           dueDate: oldDate,
-          contract: { id: 'c1', status: 'OVERDUE' },
+          contract: { id: 'c1', ...STD_CONTRACT_FIELDS },
         },
         {
           id: 'p2',
@@ -271,7 +487,7 @@ describe('BadDebtService', () => {
           lateFeeWaived: false,
           status: 'PENDING',
           dueDate: newDate,
-          contract: { id: 'c1', status: 'OVERDUE' },
+          contract: { id: 'c1', ...STD_CONTRACT_FIELDS },
         },
       ]);
 
@@ -293,7 +509,7 @@ describe('BadDebtService', () => {
           lateFeeWaived: false,
           status: 'PENDING',
           dueDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
-          contract: { id: 'c1', status: 'OVERDUE' },
+          contract: { id: 'c1', ...STD_CONTRACT_FIELDS },
         },
       ]);
 
@@ -334,7 +550,9 @@ describe('BadDebtService', () => {
     it('NEVER includes late fee in the ECL base (waived or not)', async () => {
       prisma.payment.findMany.mockResolvedValue([
         {
-          contract: { id: 'c-1', status: 'OVERDUE' },
+          installmentNo: 1,
+          status: 'PENDING',
+          contract: { id: 'c-1', ...STD_CONTRACT_FIELDS },
           dueDate: new Date(Date.now() - 40 * 86_400_000), // B2 15%
           amountDue: new Prisma.Decimal('1000.00'),
           amountPaid: new Prisma.Decimal('0'),
@@ -366,7 +584,7 @@ describe('BadDebtService', () => {
           status: 'PENDING',
           // 31 days ago → 31-60 bucket (B2) → 15% → provisionAmount = 150 (CPA ECL v3.0)
           dueDate: new Date(Date.now() - 31 * 24 * 60 * 60 * 1000),
-          contract: { id: 'c1', status: 'OVERDUE' },
+          contract: { id: 'c1', ...STD_CONTRACT_FIELDS },
         },
       ]);
 
@@ -397,7 +615,7 @@ describe('BadDebtService', () => {
           status: 'PENDING',
           // 30 days ago → 1-30 bucket → 2% → provisionAmount = 20 (same as prior)
           dueDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
-          contract: { id: 'c1', status: 'OVERDUE' },
+          contract: { id: 'c1', ...STD_CONTRACT_FIELDS },
         },
       ]);
 
@@ -410,7 +628,9 @@ describe('BadDebtService', () => {
       // 1 contract, 40 วัน overdue, outstanding 1,000 → B2 15% → target 150.00
       prisma.payment.findMany.mockResolvedValue([
         {
-          contract: { id: 'c-1', status: 'OVERDUE' },
+          installmentNo: 1,
+          status: 'PENDING',
+          contract: { id: 'c-1', ...STD_CONTRACT_FIELDS },
           dueDate: new Date(Date.now() - 40 * 86_400_000),
           amountDue: new Prisma.Decimal('1000.00'),
           amountPaid: new Prisma.Decimal('0'),
@@ -440,7 +660,9 @@ describe('BadDebtService', () => {
     it('posts negative delta (release) when GL balance exceeds new target', async () => {
       prisma.payment.findMany.mockResolvedValue([
         {
-          contract: { id: 'c-1', status: 'OVERDUE' },
+          installmentNo: 1,
+          status: 'PENDING',
+          contract: { id: 'c-1', ...STD_CONTRACT_FIELDS },
           dueDate: new Date(Date.now() - 10 * 86_400_000), // B1 2%
           amountDue: new Prisma.Decimal('1000.00'),
           amountPaid: new Prisma.Decimal('0'),
@@ -464,7 +686,9 @@ describe('BadDebtService', () => {
     it('dryRun=true computes deltas but writes nothing', async () => {
       prisma.payment.findMany.mockResolvedValue([
         {
-          contract: { id: 'c-1', status: 'OVERDUE' },
+          installmentNo: 1,
+          status: 'PENDING',
+          contract: { id: 'c-1', ...STD_CONTRACT_FIELDS },
           dueDate: new Date(Date.now() - 40 * 86_400_000),
           amountDue: new Prisma.Decimal('1000.00'),
           amountPaid: new Prisma.Decimal('0'),
@@ -482,31 +706,6 @@ describe('BadDebtService', () => {
     });
   });
 
-  describe('calculateProvisions — TERMINATED contract base (Excel v3 B4/B5, Task 4)', () => {
-    it('TERMINATED contract: base = carrying amount from GL (11-2103 + 11-2101 − 11-2106)', async () => {
-      prisma.payment.findMany.mockResolvedValue([
-        {
-          contract: { id: 'c-t', status: 'TERMINATED' },
-          dueDate: new Date(Date.now() - 100 * 86_400_000), // B4 75%
-          amountDue: new Prisma.Decimal('1515.83'),
-          amountPaid: new Prisma.Decimal('0'),
-          lateFee: new Prisma.Decimal('0'),
-          lateFeeWaived: false,
-        },
-      ]);
-      // glBalance ถูกเรียกตามลำดับ: 11-2103, 11-2101, 11-2106, แล้วค่อย 11-2102 (delta)
-      prisma.journalLine.findMany
-        .mockResolvedValueOnce([{ debit: new Prisma.Decimal('4547.49'), credit: new Prisma.Decimal('0') }]) // 11-2103
-        .mockResolvedValueOnce([{ debit: new Prisma.Decimal('12750.02'), credit: new Prisma.Decimal('0') }]) // 11-2101
-        .mockResolvedValueOnce([{ debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('4500.00') }]) // 11-2106
-        .mockResolvedValue([]); // 11-2102 = 0
-
-      const result = await service.calculateProvisions('owner-1');
-      // carrying = 4,547.49 + 12,750.02 − 4,500.00 = 12,797.51 → B4 75% = 9,598.13
-      expect(result.totalProvision).toBe(9598.13);
-    });
-  });
-
   describe('calculateProvisions — config rates', () => {
     it('falls back to defaults when systemConfig is missing', async () => {
       prisma.systemConfig.findUnique.mockResolvedValue(null);
@@ -521,7 +720,7 @@ describe('BadDebtService', () => {
           lateFeeWaived: false,
           status: 'PENDING',
           dueDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
-          contract: { id: 'c1', status: 'OVERDUE' },
+          contract: { id: 'c1', ...STD_CONTRACT_FIELDS },
         },
       ]);
       const result = await service.calculateProvisions('user-1');
@@ -543,7 +742,7 @@ describe('BadDebtService', () => {
           lateFeeWaived: false,
           status: 'PENDING',
           dueDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
-          contract: { id: 'c1', status: 'OVERDUE' },
+          contract: { id: 'c1', ...STD_CONTRACT_FIELDS },
         },
       ]);
       const result = await service.calculateProvisions('user-1');
@@ -574,7 +773,7 @@ describe('BadDebtService', () => {
           lateFeeWaived: false,
           status: 'PENDING',
           dueDate: new Date(Date.now() - 100 * 24 * 60 * 60 * 1000), // B4 (91-180)
-          contract: { id: 'c1', status: 'OVERDUE' },
+          contract: { id: 'c1', ...STD_CONTRACT_FIELDS },
         },
       ]);
       const result = await service.calculateProvisions('user-1');
@@ -597,7 +796,7 @@ describe('BadDebtService', () => {
           lateFeeWaived: false,
           status: 'PENDING',
           dueDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
-          contract: { id: 'c1', status: 'OVERDUE' },
+          contract: { id: 'c1', ...STD_CONTRACT_FIELDS },
         },
       ]);
       const result = await service.calculateProvisions('user-1');

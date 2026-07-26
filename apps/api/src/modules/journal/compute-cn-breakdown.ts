@@ -29,6 +29,15 @@ export interface CnPaymentInput {
   lateFee?: DecimalInput | null;
   /** Mirrors `Payment.lateFeeWaived` — a waived fee never consumes cash. */
   lateFeeWaived?: boolean | null;
+  /**
+   * Installment due date — canonical aging anchor for both DUE (ECL) and
+   * ACCRUED (CN, informational only) selections in
+   * `computeInstallmentOutstanding`. Optional because CN's existing preloaded
+   * arrays / test fixtures never populated it before this field existed; DUE
+   * selection cannot age or filter a payment that has no dueDate (it is
+   * defensively excluded — real `Payment` rows always carry one).
+   */
+  dueDate?: Date | string | null;
 }
 
 export interface CnBreakdownRow {
@@ -67,6 +76,241 @@ export interface CnBreakdownOpts {
   payments?: CnPaymentInput[];
 }
 
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+/**
+ * FEE-FIRST net-out (I1, final-review) — the single copy of the fee-netted
+ * outstanding formula. `Payment.amountPaid` is GROSS cash including any late
+ * fee collected (PR #1313 convention: `lateFee` is never reset after a
+ * partial receipt), so the fee portion must be stripped before comparing
+ * against `amountDue` (which never includes the fee). Clamped to
+ * `[0, installmentTotal]`.
+ *
+ *   netFee       = lateFeeWaived ? 0 : lateFee
+ *   feeCollected = min(amountPaid, netFee)
+ *   baseCash     = amountPaid − feeCollected
+ *   outstanding  = clamp(amountDue − baseCash, 0, installmentTotal)
+ *
+ * Shared verbatim by both selection paths of `computeInstallmentOutstanding`
+ * (DUE for ECL, ACCRUED for CN) per the 2026-07-26 ECL-per-installment plan's
+ * Global Constraints — this formula must never be re-derived independently.
+ */
+function feeNettedOutstanding(
+  payment: Pick<CnPaymentInput, 'amountDue' | 'amountPaid' | 'lateFee' | 'lateFeeWaived'>,
+  installmentTotal: Decimal,
+): Decimal {
+  const zero = new Decimal(0);
+  const due = new Decimal(payment.amountDue);
+  const paid = new Decimal(payment.amountPaid);
+  const netFee = payment.lateFeeWaived ? zero : new Decimal(payment.lateFee ?? 0);
+  const feeCollected = Decimal.min(paid, netFee);
+  const baseCash = paid.minus(feeCollected);
+  const outstanding = Decimal.max(zero, due.minus(baseCash));
+  return Decimal.min(outstanding, installmentTotal);
+}
+
+/**
+ * `Payment.status` values that are NOT settled — the universe
+ * `calculateProvisions` has always scanned. `PaymentStatus` only has 4
+ * members (PENDING/PAID/PARTIALLY_PAID/OVERDUE), so "not PAID" is equivalent
+ * to `in [PENDING, PARTIALLY_PAID, OVERDUE]`.
+ */
+function isDueStatus(status: string): boolean {
+  return status !== 'PAID';
+}
+
+export type InstallmentOutstandingSelection = 'DUE' | 'ACCRUED';
+
+export interface InstallmentOutstandingRow {
+  installmentNo: number;
+  /** From the matching `Payment.dueDate` — null when no Payment row exists (ACCRUED only). */
+  dueDate: Date | null;
+  /** Fee-netted outstanding for this installment — see `feeNettedOutstanding`. */
+  outstanding: Decimal;
+  /** floor((asOf − dueDate) / 1 day) — null when `dueDate` is null. */
+  daysOverdue: number | null;
+  installmentTotal: Decimal;
+  vatPerInst: Decimal;
+}
+
+export interface InstallmentOutstandingPreloaded {
+  /** ACCRUED only — ignored for DUE (DUE is Payment-row-driven and does NOT
+   *  require accrual to have run; see selection doc below). */
+  installments?: CnInstallmentInput[];
+  /** Payment rows for the contract. Does not need to be pre-filtered — the
+   *  engine applies the selection-specific filter itself, so one preload
+   *  (e.g. "all payments for this contract") can serve both a DUE and an
+   *  ACCRUED call without re-querying. */
+  payments?: CnPaymentInput[];
+}
+
+export interface ComputeInstallmentOutstandingOpts {
+  selection: InstallmentOutstandingSelection;
+  /** Reference "now" for DUE's `dueDate < asOf` filter + both paths'
+   *  `daysOverdue`. Defaults to `new Date()`. */
+  asOf?: Date;
+  preloaded?: InstallmentOutstandingPreloaded;
+}
+
+export interface InstallmentOutstandingResult {
+  rows: InstallmentOutstandingRow[];
+}
+
+/**
+ * Central "installment outstanding" engine (spec §2.1,
+ * docs/superpowers/specs/2026-07-26-ecl-per-installment-design.md) — single
+ * source of truth for "how much is still owed on installment `i`, and how
+ * old is it" feeding BOTH per-installment ECL (`selection: 'DUE'`) and the CN
+ * pro-rate util (`selection: 'ACCRUED'`, via `computeCnBreakdown` below).
+ *
+ * Two selections, deliberately different universes:
+ *
+ * - **ACCRUED** (CN, ม.82/5): iterates `InstallmentSchedule` rows with
+ *   `accrualJournalEntryId != null`. Unpaid = no `Payment` row with
+ *   `status = 'PAID'`. No Payment row at all → installment never touched →
+ *   fully outstanding (`outstanding = installmentTotal`). This is the
+ *   pre-existing CN definition — unchanged.
+ * - **DUE** (ECL): iterates `Payment` rows directly —
+ *   `status != 'PAID' AND dueDate < asOf` (same universe
+ *   `calculateProvisions` has always queried: PENDING/PARTIALLY_PAID/OVERDUE).
+ *   Deliberately does NOT require accrual to have run — resilience to the
+ *   2A cron missing a day (spec §2.1 rationale: ECL must not go blind just
+ *   because the accrual leg is late). A Payment row that doesn't exist yet
+ *   contributes nothing (there is nothing to iterate).
+ *
+ * Both selections reuse `feeNettedOutstanding` verbatim and drop rows whose
+ * outstanding resolves to `<= 0` (fully covered, including the overpaid edge
+ * case). `dueDate`/`daysOverdue` on ACCRUED rows are informational only (CN
+ * never reads them) — null when the installment has no Payment row.
+ *
+ * `opts.preloaded` lets a caller that already queried the rows (JP5's
+ * `buildJe`, `calculateProvisions`'s per-contract grouping) skip a
+ * round-trip; the preloaded array is always re-filtered defensively (not
+ * assumed to already match the selection's criteria) so one preload can
+ * safely serve either selection.
+ */
+export async function computeInstallmentOutstanding(
+  client: Prisma.TransactionClient | PrismaClient,
+  contract: CnBreakdownContractInput,
+  opts: ComputeInstallmentOutstandingOpts,
+): Promise<InstallmentOutstandingResult> {
+  const breakdown = computeInstallmentBreakdown({
+    financedAmount: contract.financedAmount,
+    storeCommission: contract.storeCommission,
+    interestTotal: contract.interestTotal,
+    vatAmount: contract.vatAmount,
+    totalMonths: contract.totalMonths,
+  } as InstallmentBreakdownInput);
+  const { vatPerInst, installmentTotal } = breakdown;
+  const asOf = opts.asOf ?? new Date();
+
+  if (opts.selection === 'ACCRUED') {
+    const allInstallments: CnInstallmentInput[] =
+      opts.preloaded?.installments ??
+      (await client.installmentSchedule.findMany({
+        where: { contractId: contract.id, deletedAt: null, accrualJournalEntryId: { not: null } },
+        select: { installmentNo: true, accrualJournalEntryId: true },
+      }));
+    // Filter unconditionally (not just on the query path) — a preloaded array
+    // passed via opts is not guaranteed to already be accrued-only.
+    const accruedInstallments = allInstallments.filter((i) => i.accrualJournalEntryId !== null);
+
+    const payments: CnPaymentInput[] =
+      opts.preloaded?.payments ??
+      (await client.payment.findMany({
+        where: { contractId: contract.id },
+        select: {
+          installmentNo: true,
+          status: true,
+          amountDue: true,
+          amountPaid: true,
+          lateFee: true,
+          lateFeeWaived: true,
+          dueDate: true,
+        },
+      }));
+    const paymentByInst = new Map(payments.map((p) => [p.installmentNo, p]));
+
+    const rows: InstallmentOutstandingRow[] = [];
+    for (const inst of accruedInstallments) {
+      const payment = paymentByInst.get(inst.installmentNo);
+      if (payment?.status === 'PAID') continue; // fully settled — not part of the CN
+
+      // No Payment row at all → installment never touched → fully outstanding.
+      const outstanding = payment
+        ? feeNettedOutstanding(payment, installmentTotal)
+        : installmentTotal;
+
+      // Fully covered (incl. overpaid edge case) — no CN owed on this
+      // installment. Drop the row entirely rather than keep a
+      // zero-contribution row, so callers can count "installments actually owed".
+      if (outstanding.lte(0)) continue;
+
+      const dueDate = payment?.dueDate ? new Date(payment.dueDate) : null;
+      const daysOverdue = dueDate
+        ? Math.floor((asOf.getTime() - dueDate.getTime()) / MS_PER_DAY)
+        : null;
+
+      rows.push({
+        installmentNo: inst.installmentNo,
+        dueDate,
+        outstanding,
+        daysOverdue,
+        installmentTotal,
+        vatPerInst,
+      });
+    }
+    return { rows };
+  }
+
+  // selection === 'DUE' — Payment-row-driven, does NOT require accrual (see
+  // jsdoc above). status != 'PAID' + dueDate < asOf, same universe
+  // `calculateProvisions` has always scanned.
+  const allPayments: CnPaymentInput[] =
+    opts.preloaded?.payments ??
+    (await client.payment.findMany({
+      where: {
+        contractId: contract.id,
+        status: { not: 'PAID' },
+        dueDate: { lt: asOf },
+      },
+      select: {
+        installmentNo: true,
+        status: true,
+        amountDue: true,
+        amountPaid: true,
+        lateFee: true,
+        lateFeeWaived: true,
+        dueDate: true,
+      },
+    }));
+
+  const rows: InstallmentOutstandingRow[] = [];
+  for (const payment of allPayments) {
+    // Filter unconditionally — a preloaded array (e.g. the full unfiltered
+    // payment set shared with an ACCRUED call) is not guaranteed to already
+    // match DUE's status/dueDate criteria.
+    if (!isDueStatus(payment.status)) continue;
+    if (!payment.dueDate) continue; // defensive — real Payment rows always have dueDate
+    const dueDate = new Date(payment.dueDate);
+    if (!(dueDate.getTime() < asOf.getTime())) continue;
+
+    const outstanding = feeNettedOutstanding(payment, installmentTotal);
+    if (outstanding.lte(0)) continue;
+
+    const daysOverdue = Math.floor((asOf.getTime() - dueDate.getTime()) / MS_PER_DAY);
+    rows.push({
+      installmentNo: payment.installmentNo,
+      dueDate,
+      outstanding,
+      daysOverdue,
+      installmentTotal,
+      vatPerInst,
+    });
+  }
+  return { rows };
+}
+
 /**
  * Single source of truth for CN (ใบลดหนี้ ม.82/5) pro-rated amounts — used by
  * BOTH the JE templates (RepossessionJP5Template, BadDebtWriteOffTemplate) and
@@ -82,6 +326,12 @@ export interface CnBreakdownOpts {
  *   cnVat_i        = (vatPerInst × outstanding_i / installmentTotal)
  *                      .toDecimalPlaces(2, ROUND_HALF_UP)
  *   cnBeforeVat_i  = outstanding_i − cnVat_i
+ *
+ * (2026-07-26, ECL-per-installment plan Task 1): this is now a thin wrapper
+ * over `computeInstallmentOutstanding(client, contract, { selection: 'ACCRUED' })`
+ * — the fee-netting/accrued-unpaid logic itself lives there and MUST NOT be
+ * re-derived independently. Only the CN-specific VAT pro-rate + totals stay
+ * here. Every golden below is preserved byte-for-byte through the refactor.
  *
  * Netting out the late fee (I1, final-review) is required because
  * `Payment.amountPaid` is GROSS cash including any late fee collected — the
@@ -131,73 +381,24 @@ export async function computeCnBreakdown(
     vatAmount: contract.vatAmount,
     totalMonths: contract.totalMonths,
   } as InstallmentBreakdownInput);
-  const { vatPerInst, installmentTotal } = breakdown;
+  const { installmentTotal } = breakdown;
 
-  const allInstallments: CnInstallmentInput[] =
-    opts?.installments ??
-    (await client.installmentSchedule.findMany({
-      where: { contractId: contract.id, deletedAt: null, accrualJournalEntryId: { not: null } },
-      select: { installmentNo: true, accrualJournalEntryId: true },
-    }));
-  // Filter unconditionally (not just on the query path) — a preloaded array
-  // passed via opts is not guaranteed to already be accrued-only.
-  const accruedInstallments = allInstallments.filter((i) => i.accrualJournalEntryId !== null);
-
-  const payments: CnPaymentInput[] =
-    opts?.payments ??
-    (await client.payment.findMany({
-      where: { contractId: contract.id },
-      select: {
-        installmentNo: true,
-        status: true,
-        amountDue: true,
-        amountPaid: true,
-        lateFee: true,
-        lateFeeWaived: true,
-      },
-    }));
-  const paymentByInst = new Map(payments.map((p) => [p.installmentNo, p]));
+  const { rows: outstandingRows } = await computeInstallmentOutstanding(client, contract, {
+    selection: 'ACCRUED',
+    preloaded: { installments: opts?.installments, payments: opts?.payments },
+  });
 
   const zero = new Decimal(0);
-  const rows: CnBreakdownRow[] = [];
-
-  for (const inst of accruedInstallments) {
-    const payment = paymentByInst.get(inst.installmentNo);
-    if (payment?.status === 'PAID') continue; // fully settled — not part of the CN
-
-    let outstanding: Decimal;
-    if (!payment) {
-      // No Payment row at all → installment never touched → fully outstanding.
-      outstanding = installmentTotal;
-    } else {
-      const due = new Decimal(payment.amountDue);
-      const paid = new Decimal(payment.amountPaid);
-      // FEE-FIRST net-out (I1): amountPaid is GROSS cash including any late
-      // fee collected — strip the fee portion before comparing against
-      // amountDue (which never includes the fee) so a fee-heavy partial
-      // payment doesn't understate how much of the installment is still owed.
-      const netFee = payment.lateFeeWaived ? zero : new Decimal(payment.lateFee ?? 0);
-      const feeCollected = Decimal.min(paid, netFee);
-      const baseCash = paid.minus(feeCollected);
-      outstanding = Decimal.max(zero, due.minus(baseCash));
-      outstanding = Decimal.min(outstanding, installmentTotal);
-    }
-
-    // Fully covered (incl. overpaid edge case) — no CN owed on this
-    // installment. Drop the row entirely rather than keep a zero-contribution
-    // row, so `count` truthfully reflects "installments a CN is owed on".
-    if (outstanding.lte(0)) continue;
-
-    const cnVat = installmentTotal.gt(0)
-      ? vatPerInst
-          .times(outstanding)
-          .div(installmentTotal)
+  const rows: CnBreakdownRow[] = outstandingRows.map((r) => {
+    const cnVat = r.installmentTotal.gt(0)
+      ? r.vatPerInst
+          .times(r.outstanding)
+          .div(r.installmentTotal)
           .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
       : zero;
-    const cnBeforeVat = outstanding.minus(cnVat);
-
-    rows.push({ installmentNo: inst.installmentNo, outstanding, cnVat, cnBeforeVat });
-  }
+    const cnBeforeVat = r.outstanding.minus(cnVat);
+    return { installmentNo: r.installmentNo, outstanding: r.outstanding, cnVat, cnBeforeVat };
+  });
 
   const totalOutstanding = rows.reduce((s, r) => s.plus(r.outstanding), zero);
   const totalCnVat = rows.reduce((s, r) => s.plus(r.cnVat), zero);

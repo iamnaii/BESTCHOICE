@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
+import * as Sentry from '@sentry/nestjs';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { computeCnBreakdown } from '../compute-cn-breakdown';
@@ -97,6 +98,19 @@ export class BadDebtWriteOffTemplate {
     const bal2105 = await glBal('11-2105', 'dr');
     const bal21_2102 = await glBal('21-2102', 'cr');
     const provisionBalance = await glBal('11-2102', 'cr');
+    // M1 (final-review 2026-07-26, mirrors RepossessionJP5Template): a
+    // negative pre-JE 11-2102 balance (Dr > Cr — e.g. a past mis-posted JE)
+    // is a GL anomaly this template does NOT auto-heal — `provisionConsumed`/
+    // `releasedProvision` below already clamp to 0 in this case (via the
+    // `provisionBalance.gt(0)` guards), but the anomaly itself must still
+    // surface for manual investigation instead of silently vanishing.
+    if (provisionBalance.lt(0)) {
+      Sentry.captureMessage('Write-off: negative 11-2102 balance', {
+        level: 'warning',
+        tags: { subsystem: 'bad-debt' },
+        extra: { contractId, balance: provisionBalance.toFixed(2) },
+      });
+    }
 
     const totalReceivable = bal2103.plus(bal2101);
     if (totalReceivable.lte(0)) {

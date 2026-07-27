@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
+import * as Sentry from '@sentry/nestjs';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { computeCnBreakdown } from '../compute-cn-breakdown';
@@ -285,6 +286,17 @@ export class RepossessionJP5Template {
     // more receivable to provide against, so 11-2102 for this contract always
     // lands on exactly 0 after this JE (loss, gain, or exact-wash alike).
     const provisionBalance = await glBal('11-2102', 'cr');
+    // M1 (final-review 2026-07-26): a negative pre-JE 11-2102 balance (Dr >
+    // Cr — e.g. a past mis-posted JE) is a GL anomaly this template does NOT
+    // auto-heal. Surface it instead of letting it silently zero itself out
+    // via the `release.gt(0)` gate below.
+    if (provisionBalance.lt(0)) {
+      Sentry.captureMessage('JP5: negative 11-2102 balance', {
+        level: 'warning',
+        tags: { subsystem: 'bad-debt' },
+        extra: { contractId: input.contractId, balance: provisionBalance.toFixed(2) },
+      });
+    }
     let remainingLoss = zero;
     let consume = zero;
     if (lossOrGain.gt(0)) {
@@ -293,7 +305,12 @@ export class RepossessionJP5Template {
         consume = Decimal.min(remainingLoss, provisionBalance);
       }
     }
-    const release = provisionBalance.minus(consume); // always >= 0 (consume <= provisionBalance)
+    // `release` can be negative when `provisionBalance` itself is negative
+    // (consume stays 0 in that branch) — the `release.gt(0)` gate below
+    // already prevents any JE line from posting a negative "release", but the
+    // METADATA field must not report a negative number either; see the
+    // Decimal.max(0, ...) clamp on the returned `releasedProvision` below.
+    const release = provisionBalance.minus(consume);
 
     if (consume.gt(0)) {
       lines.push({
@@ -344,7 +361,9 @@ export class RepossessionJP5Template {
       accruedCount: accruedInsts.length,
       deferredCount: deferredInsts.length,
       accruedCreditNoteVat,
-      releasedProvision: release,
+      // M1 clamp — never report a negative "released" amount in metadata,
+      // even in the negative-provisionBalance GL-anomaly case above.
+      releasedProvision: Decimal.max(0, release),
       lines,
     };
   }

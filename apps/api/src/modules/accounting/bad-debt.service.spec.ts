@@ -103,6 +103,12 @@ describe('BadDebtService', () => {
       payment: {
         findMany: jest.fn().mockResolvedValue([]),
       },
+      // C1 (final-review 2026-07-26) — TERMINATED contracts now re-query
+      // installmentSchedule directly (ACCRUED selection); defaults to empty
+      // so tests that don't care about TERMINATED contracts are unaffected.
+      installmentSchedule: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
       journalLine: {
         findMany: jest.fn().mockResolvedValue([]),
       },
@@ -400,6 +406,66 @@ describe('BadDebtService', () => {
       expect(prisma.journalLine.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: expect.objectContaining({ accountCode: '11-2102' }) }),
       );
+    });
+  });
+
+  describe('calculateProvisions — C1 final-review fix: TERMINATED uses ACCRUED selection, NOT DUE', () => {
+    it('TERMINATED contract: 3 accrued+overdue installments provision (2,122.16); 2 past-due-but-NEVER-accrued installments contribute NOTHING', async () => {
+      const contractId = 'c-term';
+      // Mock contract now carries `status` (C1 needs it to branch selection) —
+      // the top-level grouping query's `where` includes `.contract` (nested),
+      // the engine's own ACCRUED re-query has a FLAT `contractId` key — used
+      // below to route the shared jest.fn() mock to the right fixture set.
+      const contract = { id: contractId, ...STD_CONTRACT_FIELDS, status: 'TERMINATED' };
+      const makeP = (no: number, daysAgo: number) => ({
+        installmentNo: no,
+        status: 'PENDING',
+        amountDue: new Prisma.Decimal(INSTALLMENT_TOTAL.toFixed(2)),
+        amountPaid: new Prisma.Decimal(0),
+        lateFee: new Prisma.Decimal(0),
+        lateFeeWaived: false,
+        dueDate: new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000),
+        contract,
+      });
+      // All 5 installments are unpaid + past-due (would ALL qualify under a
+      // naive DUE selection) — only installments 1-3 ever went through 2A.
+      const allFive = [makeP(1, 100), makeP(2, 70), makeP(3, 40), makeP(4, 20), makeP(5, 10)];
+
+      prisma.payment.findMany.mockImplementation(({ where }: any) => {
+        if (where.contract) {
+          // Top-level grouping query (bad-debt.service.ts's own overduePayments
+          // query) — same 5-row candidate set DUE would have scanned.
+          return Promise.resolve(allFive);
+        }
+        // Engine's own ACCRUED re-query (flat contractId, no nested `contract`
+        // key) — "all payments for the contract", unfiltered by status/dueDate.
+        return Promise.resolve(allFive);
+      });
+      // Only installments 1-3 accrued via a real 2A run; 4-5 never ran (2A
+      // stopped once the contract was TERMINATED).
+      prisma.installmentSchedule.findMany.mockResolvedValue([
+        { installmentNo: 1, accrualJournalEntryId: 'je-1' },
+        { installmentNo: 2, accrualJournalEntryId: 'je-2' },
+        { installmentNo: 3, accrualJournalEntryId: 'je-3' },
+      ]);
+      prisma.journalLine.findMany.mockResolvedValue([]); // 11-2102 GL = 0
+
+      const result = await service.calculateProvisions('owner-1');
+
+      // 100d(75%)+70d(50%)+40d(15%) = 1,136.87+757.92+227.37 = 2,122.16 — the
+      // SAME golden as ecl-terminated-base.spec.ts. If the C1 fix were
+      // missing (TERMINATED still using DUE), installments 4/5 (20d/10d, both
+      // 1-30 @ 2%) would ALSO provision (+30.32 each), inflating the total.
+      expect(result.totalProvision).toBeCloseTo(2122.16, 2);
+      expect(result.byBucket['1-30']).toBeUndefined(); // 20d/10d never enter the base
+      expect(Object.keys(result.byBucket).sort()).toEqual(['31-60', '61-90', '91-180']);
+    });
+
+    it('always filters out soft-deleted payments in the top-level candidate query (deletedAt: null)', async () => {
+      prisma.payment.findMany.mockResolvedValue([]);
+      await service.calculateProvisions('user-1');
+      const where = prisma.payment.findMany.mock.calls[0][0].where;
+      expect(where.deletedAt).toBeNull();
     });
   });
 
@@ -1572,13 +1638,17 @@ describe('BadDebtService', () => {
       });
     });
 
-    describe('TERMINATED contract — carrying-amount machinery retired, flows the SAME per-installment path', () => {
-      it('never queries 11-2103/11-2101/11-2106 — only 11-2102 (I1 cap) — and no longer even selects contract.status', async () => {
+    describe('TERMINATED contract — carrying-amount machinery retired, flows the SAME per-installment bucket/rate math', () => {
+      it('never queries 11-2103/11-2101/11-2106 — only 11-2102 (I1 cap) — for a non-TERMINATED contract (status undefined here → DUE path)', async () => {
         // The retired terminatedCarryingAmount() fired 3 EXTRA glBalance
         // queries (11-2103/11-2101/11-2106) before ever reaching the 11-2102
-        // cap check, gated on a `contract.status === 'TERMINATED'` lookup.
-        // That machinery is gone — a TERMINATED contract is now
-        // indistinguishable in code from an ACTIVE one.
+        // cap check. That machinery is gone. C1 final-review fix (2026-07-26)
+        // re-added `status` to the contract select (see the dedicated test
+        // below) so TERMINATED contracts can branch to ACCRUED selection —
+        // but the underlying bucket/rate math (computePerInstallmentProvision)
+        // and the GL-cap mechanics here are UNCHANGED either way. This
+        // contract mock carries no `status` field (undefined !== 'TERMINATED')
+        // so it exercises the DUE path, same as an ACTIVE contract would.
         setActiveProvision({ provisionAmount: 1894.79, agingBucket: '91-180' });
         setOverduePayments([{ daysAgo: 61, due: INSTALLMENT_TOTAL }]);
         prisma.journalLine.findMany.mockResolvedValue([
@@ -1598,7 +1668,54 @@ describe('BadDebtService', () => {
         expect(prisma.contract.findUnique).toHaveBeenCalledWith(
           expect.objectContaining({ where: { id: 'ct-1' } }),
         );
-        expect(prisma.contract.findUnique.mock.calls[0][0].select.status).toBeUndefined();
+      });
+
+      it('C1 final-review fix (2026-07-26): DOES select contract.status now — needed to branch DUE vs ACCRUED', async () => {
+        setActiveProvision({ provisionAmount: 1894.79, agingBucket: '91-180' });
+        setOverduePayments([{ daysAgo: 61, due: INSTALLMENT_TOTAL }]);
+        prisma.journalLine.findMany.mockResolvedValue([
+          { debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('1894.79') },
+        ]);
+
+        await service.reverseStageOnPayment('ct-1');
+
+        expect(prisma.contract.findUnique.mock.calls[0][0].select.status).toBe(true);
+      });
+
+      it('C1: contract.status === TERMINATED routes through ACCRUED (installmentSchedule query), NOT the DUE payment query', async () => {
+        prisma.contract.findUnique.mockResolvedValue({
+          id: 'ct-1',
+          ...STD_CONTRACT_FIELDS,
+          status: 'TERMINATED',
+        });
+        setActiveProvision({ provisionAmount: 1136.87, agingBucket: '91-180' });
+        // Only 1 installment accrued (2A already ran for it) — 100 days overdue.
+        prisma.installmentSchedule.findMany.mockResolvedValue([
+          { installmentNo: 1, accrualJournalEntryId: 'je-1' },
+        ]);
+        const overdueDate = new Date(Date.now() - 100 * 24 * 60 * 60 * 1000);
+        prisma.payment.findMany.mockResolvedValue([
+          {
+            installmentNo: 1,
+            status: 'PENDING',
+            dueDate: overdueDate,
+            amountDue: new Prisma.Decimal(INSTALLMENT_TOTAL.toFixed(2)),
+            amountPaid: new Prisma.Decimal(0),
+            lateFee: new Prisma.Decimal(0),
+            lateFeeWaived: false,
+          },
+        ]);
+        // No change in target (still 100d → 91-180 @ 75% = 1,136.87) — nothing
+        // to release, but the call must succeed via the ACCRUED path without
+        // throwing (proves `installmentSchedule.findMany` gets called).
+        prisma.journalLine.findMany.mockResolvedValue([
+          { debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('1136.87') },
+        ]);
+
+        const result = await service.reverseStageOnPayment('ct-1');
+
+        expect(prisma.installmentSchedule.findMany).toHaveBeenCalled();
+        expect(result).toBeNull(); // target didn't drop below the persisted amount
       });
 
       it('full carrying settled (all installments paid off) → full reverse via the same path, no special-casing', async () => {

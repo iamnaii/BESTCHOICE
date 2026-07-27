@@ -11,6 +11,17 @@ type DecimalInput = Decimal | string | number;
 export interface CnInstallmentInput {
   installmentNo: number;
   accrualJournalEntryId: string | null;
+  /**
+   * ACCRUED fallback anchor (final-review C1, 2026-07-26) — when an accrued
+   * installment has NO matching `Payment` row (should not happen in practice;
+   * `Payment` rows are created upfront for every installment at contract
+   * creation — see `contract-lifecycle.service.ts`), `daysOverdue` would
+   * otherwise be null even though the installment IS aged. Falls back to this
+   * field so an ACCRUED row is never silently un-datable. Optional because
+   * existing preloaded arrays / test fixtures never populated it before this
+   * field existed.
+   */
+  dueDate?: Date | string | null;
 }
 
 /** Minimal payment shape this util needs — a subset of Payment. */
@@ -38,6 +49,15 @@ export interface CnPaymentInput {
    * defensively excluded — real `Payment` rows always carry one).
    */
   dueDate?: Date | string | null;
+  /**
+   * Soft-delete marker (I1, final-review 2026-07-26). A preloaded array is
+   * not guaranteed to already exclude soft-deleted rows — both selections
+   * filter it out defensively in addition to the `deletedAt: null` clause on
+   * their own default DB queries. `undefined` (field never selected/present)
+   * counts as "live", matching every existing preloaded array that predates
+   * this field.
+   */
+  deletedAt?: Date | string | null;
 }
 
 export interface CnBreakdownRow {
@@ -223,7 +243,7 @@ export async function computeInstallmentOutstanding(
       opts.preloaded?.installments ??
       (await client.installmentSchedule.findMany({
         where: { contractId: contract.id, deletedAt: null, accrualJournalEntryId: { not: null } },
-        select: { installmentNo: true, accrualJournalEntryId: true },
+        select: { installmentNo: true, accrualJournalEntryId: true, dueDate: true },
       }));
     // Filter unconditionally (not just on the query path) — a preloaded array
     // passed via opts is not guaranteed to already be accrued-only.
@@ -232,7 +252,9 @@ export async function computeInstallmentOutstanding(
     const payments: CnPaymentInput[] =
       opts.preloaded?.payments ??
       (await client.payment.findMany({
-        where: { contractId: contract.id },
+        // I1 (final-review 2026-07-26): deletedAt: null — a soft-deleted
+        // Payment row must never be treated as evidence of a real receipt.
+        where: { contractId: contract.id, deletedAt: null },
         select: {
           installmentNo: true,
           status: true,
@@ -243,7 +265,14 @@ export async function computeInstallmentOutstanding(
           dueDate: true,
         },
       }));
-    const paymentByInst = new Map(payments.map((p) => [p.installmentNo, p]));
+    // Defensive filter (I1) — a preloaded array is not guaranteed to already
+    // exclude soft-deleted rows the way the default query above does.
+    // `Payment.installmentNo` is unique per contract (@@unique), so there is
+    // at most one LIVE row per installmentNo after this filter — no orderBy
+    // needed to pick "the" row.
+    const paymentByInst = new Map(
+      payments.filter((p) => !p.deletedAt).map((p) => [p.installmentNo, p]),
+    );
 
     const rows: InstallmentOutstandingRow[] = [];
     for (const inst of accruedInstallments) {
@@ -260,7 +289,20 @@ export async function computeInstallmentOutstanding(
       // zero-contribution row, so callers can count "installments actually owed".
       if (outstanding.lte(0)) continue;
 
-      const dueDate = payment?.dueDate ? new Date(payment.dueDate) : null;
+      // dueDate anchor: prefer the Payment row's own dueDate; when no Payment
+      // row exists at all (fully-outstanding branch above), fall back to the
+      // InstallmentSchedule row's own dueDate (C1, final-review 2026-07-26) —
+      // in practice every real installment always has a Payment row (created
+      // upfront at contract creation, see contract-lifecycle.service.ts), so
+      // this fallback is defensive rather than a normally-exercised path, but
+      // it means an accrued installment is never silently un-datable just
+      // because a caller's preloaded `installments` array lacks a matching
+      // preloaded `payments` entry.
+      const dueDate = payment?.dueDate
+        ? new Date(payment.dueDate)
+        : inst.dueDate
+          ? new Date(inst.dueDate)
+          : null;
       const daysOverdue = dueDate
         ? Math.floor((asOf.getTime() - dueDate.getTime()) / MS_PER_DAY)
         : null;
@@ -287,6 +329,9 @@ export async function computeInstallmentOutstanding(
         contractId: contract.id,
         status: { in: DUE_STATUSES },
         dueDate: { lt: asOf },
+        // I1 (final-review 2026-07-26): a soft-deleted Payment row must never
+        // count toward the ECL DUE base.
+        deletedAt: null,
       },
       select: {
         installmentNo: true,
@@ -305,6 +350,7 @@ export async function computeInstallmentOutstanding(
     // payment set shared with an ACCRUED call) is not guaranteed to already
     // match DUE's status/dueDate criteria.
     if (!isDueStatus(payment.status)) continue;
+    if (payment.deletedAt) continue; // I1 — defensive, mirrors the ACCRUED path's filter
     if (!payment.dueDate) continue; // defensive — real Payment rows always have dueDate
     const dueDate = new Date(payment.dueDate);
     if (!(dueDate.getTime() < asOf.getTime())) continue;

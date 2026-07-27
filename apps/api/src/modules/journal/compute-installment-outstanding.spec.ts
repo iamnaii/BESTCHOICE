@@ -228,6 +228,86 @@ describe('computeInstallmentOutstanding (DUE vs ACCRUED engine)', () => {
     expect(result.rows[0].daysOverdue).toBeNull();
   });
 
+  it('I1: DUE self-query (no preload) filters out soft-deleted payments — deletedAt: null in the where clause', async () => {
+    const findManyPayments = jest.fn().mockResolvedValue([]);
+    const client = mockClient({ payment: findManyPayments });
+
+    await computeInstallmentOutstanding(client, FIXTURE_17K_12M, {
+      selection: 'DUE',
+      asOf: ASOF,
+    });
+
+    expect(findManyPayments).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ deletedAt: null }) }),
+    );
+  });
+
+  it('I1: ACCRUED self-query (no preload) filters out soft-deleted payments — deletedAt: null in the where clause', async () => {
+    const findManyPayments = jest.fn().mockResolvedValue([]);
+    const findManyInstallments = jest
+      .fn()
+      .mockResolvedValue([{ installmentNo: 1, accrualJournalEntryId: 'je-1' }]);
+    const client = mockClient({ installmentSchedule: findManyInstallments, payment: findManyPayments });
+
+    await computeInstallmentOutstanding(client, FIXTURE_17K_12M, {
+      selection: 'ACCRUED',
+      asOf: ASOF,
+    });
+
+    expect(findManyPayments).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ deletedAt: null }) }),
+    );
+  });
+
+  it('I1: ACCRUED drops a soft-deleted payment from a PRELOADED array (defensive map-level filter, not just the DB-level where clause) — treated as "no payment row" (fully outstanding)', async () => {
+    const client = mockClient();
+    const result = await computeInstallmentOutstanding(client, FIXTURE_17K_12M, {
+      selection: 'ACCRUED',
+      asOf: ASOF,
+      preloaded: {
+        installments: [{ installmentNo: 1, accrualJournalEntryId: 'je-1' }],
+        payments: [
+          {
+            // A real partial payment, but soft-deleted — must be excluded
+            // from paymentByInst, falling back to the "no payment row"
+            // branch (fully outstanding), NOT the partial-payment math.
+            installmentNo: 1,
+            status: 'PARTIALLY_PAID',
+            amountDue: '1515.83',
+            amountPaid: '1000',
+            dueDate: TEN_DAYS_BEFORE,
+            deletedAt: new Date('2026-01-01T00:00:00.000Z'),
+          },
+        ],
+      },
+    });
+
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].outstanding.toFixed(2)).toBe('1515.83');
+    // No live payment row → dueDate/daysOverdue fall back to null (no
+    // InstallmentSchedule.dueDate preloaded on this fixture either).
+    expect(result.rows[0].dueDate).toBeNull();
+  });
+
+  it('I1: ACCRUED dueDate falls back to InstallmentSchedule.dueDate when no live Payment row exists', async () => {
+    const client = mockClient();
+    const instDueDate = new Date('2026-06-01T00:00:00.000Z');
+    const result = await computeInstallmentOutstanding(client, FIXTURE_17K_12M, {
+      selection: 'ACCRUED',
+      asOf: ASOF,
+      preloaded: {
+        installments: [{ installmentNo: 1, accrualJournalEntryId: 'je-1', dueDate: instDueDate }],
+        payments: [],
+      },
+    });
+
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].dueDate).toEqual(instDueDate);
+    expect(result.rows[0].daysOverdue).toBe(
+      Math.floor((ASOF.getTime() - instDueDate.getTime()) / (24 * 60 * 60 * 1000)),
+    );
+  });
+
   it('rows expose installmentTotal + vatPerInst for both selections', async () => {
     const client = mockClient();
     const due = await computeInstallmentOutstanding(client, FIXTURE_17K_12M, {

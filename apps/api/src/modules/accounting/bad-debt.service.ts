@@ -274,15 +274,28 @@ export class BadDebtService {
    *
    * Per-installment engine (2026-07-26 ECL-per-installment plan, spec §2.1-2.2):
    * every outstanding installment ages INDEPENDENTLY off its own
-   * `Payment.dueDate` via `computeInstallmentOutstanding(..., { selection: 'DUE' })`
+   * `Payment.dueDate` via `computeInstallmentOutstanding(..., { selection })`
    * — the same fee-netted engine that powers the CN (ใบลดหนี้) pro-rate. A
    * contract with 4 unpaid installments at 120/90/60/30 days gets 4 separate
    * bucket provisions summed together, NOT one whole-contract bucket keyed
-   * off the oldest installment (the retired v3 model). TERMINATED contracts
-   * use the SAME per-installment aging as ACTIVE — the old carrying-amount
-   * base (`terminatedCarryingAmount`) is retired entirely (Task 4,
-   * 2026-07-26) — `reverseStageOnPayment` now shares this same math via
+   * off the oldest installment (the retired v3 model). The old carrying-amount
+   * base (`terminatedCarryingAmount`) is retired entirely (Task 4, 2026-07-26)
+   * — `reverseStageOnPayment` shares this same per-installment math via
    * `computePerInstallmentProvision`.
+   *
+   * C1 (final-review 2026-07-26, critical fix): TERMINATED contracts do NOT
+   * use plain `selection: 'DUE'` like ACTIVE/OVERDUE/DEFAULT contracts —
+   * they use `selection: 'ACCRUED'` instead. DUE is Payment-row-driven and
+   * deliberately does NOT require accrual to have run (resilience so ECL
+   * doesn't go blind when the 2A cron lags on an ACTIVE contract) — but the
+   * 2A cron stops firing entirely once a contract is TERMINATED, so an
+   * unconditional DUE selection would provision against un-accrued
+   * (unearned) interest/VAT the moment a future installment's dueDate
+   * crosses into the past post-termination (spec §2.2 "deferred ไม่ตั้งสำรอง").
+   * ACCRUED only admits installments the 2A cron actually accrued
+   * (`InstallmentSchedule.accrualJournalEntryId != null`), so the base
+   * always ties to what is actually sitting on GL 11-2103. See the inline
+   * branch below + `reverseStageOnPayment`'s identical branch.
    *
    * CPA ECL v3.0 buckets (NPAEs Ch.13 Aging-based · 6 buckets B0-B5), unchanged:
    *   B0: 0 days (ปกติ)    0%   ACTIVE (no provision row created)
@@ -339,6 +352,9 @@ export class BadDebtService {
         // aged installment (ConsecutiveMissedService already counts OVERDUE; now consistent)
         status: { in: ['PENDING', 'PARTIALLY_PAID', 'OVERDUE'] },
         dueDate: { lt: now },
+        // I1 (final-review 2026-07-26): a soft-deleted Payment row must never
+        // count toward the ECL candidate/grouping query.
+        deletedAt: null,
         contract: {
           deletedAt: null,
           // TERMINATED เข้า scope ตาม Excel v3 B4/B5 — escalate ต่อระหว่างรอยึด/ตัดหนี้สูญ
@@ -351,6 +367,10 @@ export class BadDebtService {
         contract: {
           select: {
             id: true,
+            // C1 (final-review 2026-07-26): needed to branch DUE vs ACCRUED
+            // selection per contract below — TERMINATED must NOT provision
+            // un-accrued installments (2A stops firing post-termination).
+            status: true,
             totalMonths: true,
             financedAmount: true,
             storeCommission: true,
@@ -365,8 +385,13 @@ export class BadDebtService {
 
     // Group payments per contract — every row already matches
     // computeInstallmentOutstanding's DUE filter (status/dueDate), so this
-    // preload lets the engine skip its own payment query entirely per contract.
-    type ContractGroup = { contract: CnBreakdownContractInput; payments: CnPaymentInput[] };
+    // preload lets the engine skip its own payment query entirely per contract
+    // for NON-TERMINATED contracts (TERMINATED contracts bypass this preload
+    // entirely — see the per-contract loop below, C1 final-review fix).
+    type ContractGroup = {
+      contract: CnBreakdownContractInput & { status: string };
+      payments: CnPaymentInput[];
+    };
     const contractGroups = new Map<string, ContractGroup>();
     for (const p of overduePayments) {
       let group = contractGroups.get(p.contract.id);
@@ -414,11 +439,35 @@ export class BadDebtService {
     const provisions: ProvisionRow[] = [];
 
     for (const [contractId, group] of contractGroups) {
-      const { rows } = await computeInstallmentOutstanding(this.prisma, group.contract, {
-        selection: 'DUE',
-        asOf: now,
-        preloaded: { payments: group.payments },
-      });
+      // C1 (final-review 2026-07-26, critical fix): TERMINATED contracts must
+      // NOT provision un-accrued installments. DUE selection is Payment-row-
+      // driven and does NOT require accrual to have run (by design, so ECL
+      // stays resilient when the 2A cron lags on an ACTIVE contract) — but
+      // the 2A accrual cron stops firing entirely once a contract is
+      // TERMINATED, so a future installment whose dueDate crosses into the
+      // past post-termination would surface in DUE and get provisioned
+      // against interest/VAT that was never recognized into the ledger
+      // (violates spec §2.2 "deferred ไม่ตั้งสำรอง"). TERMINATED contracts use
+      // ACCRUED selection instead — only installments the 2A cron actually
+      // accrued (`InstallmentSchedule.accrualJournalEntryId != null`) enter
+      // the base, mirroring exactly what's sitting on GL 11-2103. ACCRUED
+      // can't reuse the DUE-preloaded `group.payments` (that preload already
+      // excludes PAID rows, which ACCRUED needs to see in order to correctly
+      // skip a fully-settled-but-still-accrued installment) — it re-queries
+      // installmentSchedule + payment itself. TERMINATED contracts are a
+      // small subset of contractGroups, so the extra query per contract is
+      // acceptable.
+      const isTerminated = group.contract.status === 'TERMINATED';
+      const { rows } = isTerminated
+        ? await computeInstallmentOutstanding(this.prisma, group.contract, {
+            selection: 'ACCRUED',
+            asOf: now,
+          })
+        : await computeInstallmentOutstanding(this.prisma, group.contract, {
+            selection: 'DUE',
+            asOf: now,
+            preloaded: { payments: group.payments },
+          });
       // All installments fully covered net of fees (incl. overpaid edge
       // case) — nothing to provision. The contract stays in
       // `contractIdsInScope` so a stale ACTIVE provision still gets
@@ -950,7 +999,7 @@ export class BadDebtService {
    * Called from PaymentReceipt2BTemplate / payments.service after a successful
    * payment posts. Recomputes the contract's TARGET provision using the exact
    * same per-installment engine + math as `calculateProvisions`
-   * (`computeInstallmentOutstanding(..., { selection: 'DUE' })` →
+   * (`computeInstallmentOutstanding(..., { selection })` →
    * `computePerInstallmentProvision`) — never a separate formula, so the
    * real-time payment hook and the daily cron can never compute a different
    * number for the same contract state.
@@ -958,10 +1007,14 @@ export class BadDebtService {
    * release = min(existing.provisionAmount − target, GL 11-2102) when > 0.
    * target === 0 (no outstanding installments left) → full release via the
    * shared `fullReverseProvision` helper (already GL-capped). TERMINATED
-   * contracts are NOT special-cased anymore — the old GL-carrying-amount
-   * override (`terminatedCarryingAmount`, reading 11-2103/11-2101/11-2106)
-   * is retired; a TERMINATED contract's outstanding installments age exactly
-   * like an ACTIVE one's.
+   * contracts use `selection: 'ACCRUED'` here too (C1, final-review
+   * 2026-07-26 — same fix as `calculateProvisions`): the old GL-carrying-
+   * amount override (`terminatedCarryingAmount`, reading
+   * 11-2103/11-2101/11-2106) is still retired, but a plain unconditional DUE
+   * selection for TERMINATED contracts would provision against un-accrued
+   * (unearned) interest once the 2A cron stops firing post-termination — see
+   * `calculateProvisions`'s inline comment for the full rationale. ACTIVE/
+   * OVERDUE/DEFAULT contracts keep DUE selection unchanged.
    *
    * Pass `tx` to chain into the caller's transaction so a JE failure rolls
    * back the parent receipt JE. Returns null when no reverse is needed (no
@@ -988,6 +1041,8 @@ export class BadDebtService {
       where: { id: contractId },
       select: {
         id: true,
+        // C1 (final-review 2026-07-26) — branches DUE vs ACCRUED below.
+        status: true,
         totalMonths: true,
         financedAmount: true,
         storeCommission: true,
@@ -1000,8 +1055,11 @@ export class BadDebtService {
     if (!contract) return null;
 
     const now = new Date();
+    // C1 (final-review 2026-07-26) — see calculateProvisions's identical
+    // branch for the full rationale: TERMINATED must not provision un-accrued
+    // installments once the 2A cron stops firing post-termination.
     const { rows } = await computeInstallmentOutstanding(db, contract, {
-      selection: 'DUE',
+      selection: contract.status === 'TERMINATED' ? 'ACCRUED' : 'DUE',
       asOf: now,
     });
 

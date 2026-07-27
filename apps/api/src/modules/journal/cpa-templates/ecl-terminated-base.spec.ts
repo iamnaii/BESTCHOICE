@@ -47,6 +47,19 @@ function buildService(journal: JournalAutoService) {
  * is the SUM of those per-installment provisions (not one whole-contract
  * bucket keyed off the oldest installment).
  *
+ * C1 final-review fix (SAME day, 2026-07-26): "SAME per-installment engine as
+ * ACTIVE" above does NOT mean "same SELECTION as ACTIVE" — a same-day
+ * final-review caught that using plain DUE selection (Payment-row-driven,
+ * accrual-independent) for TERMINATED contracts silently provisioned against
+ * UN-accrued installments, since the 2A cron never runs again post-
+ * termination. The fix: TERMINATED contracts use `selection: 'ACCRUED'`
+ * (only installments 2A actually accrued enter the base); ACTIVE/OVERDUE/
+ * DEFAULT keep `selection: 'DUE'`. This fixture's 3 installments all went
+ * through a REAL 2A run (`InstallmentAccrual2ATemplate.execute`), so ACCRUED
+ * and DUE coincide here and the golden below is unaffected — the divergence
+ * is proven by the SEPARATE `it` below, which adds 2 more past-due PENDING
+ * installments that never accrued and asserts they contribute NOTHING.
+ *
  * Golden (17k/12m fixture, installmentTotal 1,515.83 — see
  * .claude/rules/accounting.md rounding table): 3 accrued-unpaid installments
  * aged 100/70/40 days →
@@ -59,7 +72,7 @@ function buildService(journal: JournalAutoService) {
  *     (100d) = '91-180'
  *   bucketBreakdown has 3 distinct buckets (one row each)
  */
-describe('ECL base for TERMINATED contract = per-installment aging (SAME as ACTIVE, carrying-amount base retired)', () => {
+describe('ECL base for TERMINATED contract = per-installment ACCRUED-gated aging (C1 final-review fix, 2026-07-26)', () => {
   let journal: JournalAutoService;
   let contractId: string;
   let savedProvisionRatesConfig: { value: string; label: string | null } | null = null;
@@ -151,6 +164,31 @@ describe('ECL base for TERMINATED contract = per-installment aging (SAME as ACTI
         update: {},
       });
     }
+
+    // C1 final-review fix (2026-07-26): installments 4-5 are past-due and
+    // PENDING (would qualify under a naive DUE selection) but NEVER went
+    // through 2A (`InstallmentAccrual2ATemplate` was only run for insts 1-3
+    // above — mirrors a real TERMINATED contract where the 2A cron stops
+    // firing post-termination). These must NOT contribute to the provision —
+    // see the "does NOT provision" test below, which proves the golden
+    // 2,122.16 total is unchanged by their presence.
+    const unaccruedAgesDays = [20, 10];
+    for (let i = 0; i < 2; i++) {
+      const no = i + 4;
+      await prisma.payment.upsert({
+        where: { contractId_installmentNo: { contractId, installmentNo: no } },
+        create: {
+          contractId,
+          installmentNo: no,
+          amountDue: new Decimal('1515.83'),
+          amountPaid: new Decimal('0'),
+          dueDate: new Date(now - unaccruedAgesDays[i] * 86_400_000),
+          status: 'PENDING',
+        },
+        update: {},
+      });
+    }
+
     await prisma.contract.update({ where: { id: contractId }, data: { status: 'TERMINATED' } });
   });
 
@@ -223,5 +261,46 @@ describe('ECL base for TERMINATED contract = per-installment aging (SAME as ACTI
     expect(breakdown['91-180']).toEqual({ count: 1, base: '1515.83', provision: '1136.87' });
     expect(breakdown['61-90']).toEqual({ count: 1, base: '1515.83', provision: '757.92' });
     expect(breakdown['31-60']).toEqual({ count: 1, base: '1515.83', provision: '227.37' });
+  });
+
+  it('C1 divergence proof: 2 past-due PENDING installments (20d/10d) that NEVER accrued contribute NOTHING — golden stays 2,122.16, not 2,183.12', async () => {
+    // Sanity precondition: installments 4-5 (seeded in beforeAll) really are
+    // past-due + PENDING (would ALL qualify under a naive DUE selection) but
+    // their InstallmentSchedule row never went through 2A.
+    const insts45 = await prisma.installmentSchedule.findMany({
+      where: { contractId, installmentNo: { in: [4, 5] } },
+    });
+    expect(insts45).toHaveLength(2);
+    for (const inst of insts45) {
+      expect(inst.accrualJournalEntryId).toBeNull();
+    }
+    const payments45 = await prisma.payment.findMany({
+      where: { contractId, installmentNo: { in: [4, 5] } },
+    });
+    expect(payments45).toHaveLength(2);
+    for (const p of payments45) {
+      expect(p.status).toBe('PENDING');
+      expect(p.dueDate.getTime()).toBeLessThan(Date.now());
+    }
+
+    const admin = await prisma.user.findFirst({ where: { email: 'admin@bestchoice.com' } });
+    await buildService(journal).calculateProvisions(admin!.id);
+
+    const row = await prisma.badDebtProvision.findFirst({
+      where: { contractId, status: 'ACTIVE', deletedAt: null },
+      orderBy: { provisionDate: 'desc' },
+    });
+    // If the C1 fix were missing (TERMINATED still on DUE), installments 4/5
+    // (20d/10d → both 1-30 @ 2%) would ALSO provision: +30.32 × 2 = +60.64,
+    // total 2,183.12 (WRONG — provisioning against un-accrued interest).
+    expect(new Decimal(row!.provisionAmount.toString()).toFixed(2)).toBe('2122.16');
+    expect(new Decimal(row!.outstandingAmount.toString()).toFixed(2)).toBe('4547.49');
+
+    const breakdown = row!.bucketBreakdown as Record<
+      string,
+      { count: number; base: string; provision: string }
+    >;
+    // NO '1-30' bucket — the two un-accrued installments never entered the base.
+    expect(Object.keys(breakdown).sort()).toEqual(['31-60', '61-90', '91-180']);
   });
 });

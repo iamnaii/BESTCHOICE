@@ -159,6 +159,11 @@ describe('RepossessionsService', () => {
       auditLog: {
         create: jest.fn(),
       },
+      // Task 5 (2026-07-26) — repossessions.service marks BadDebtProvision
+      // rows REVERSED right after JP5 posts (GL 11-2102 released to 51-1103).
+      badDebtProvision: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
       systemConfig: {
         findUnique: jest.fn().mockResolvedValue(null), // strict mode off by default
       },
@@ -688,6 +693,21 @@ describe('RepossessionsService', () => {
       expect(result.creditNote).toEqual({ outcome: 'ISSUED', receiptId: 'r1' });
     });
 
+    it('marks BadDebtProvision rows REVERSED right after JP5 posts (Task 5, 2026-07-26)', async () => {
+      prisma.contract.findUnique.mockResolvedValue(makeContract());
+      prisma.repossession.create.mockResolvedValue({ ...makeRepossession(), id: 'repo-new' });
+      prisma.contract.update.mockResolvedValue({});
+      prisma.product.update.mockResolvedValue({});
+      prisma.auditLog.create.mockResolvedValue({});
+
+      await service.create(baseDto as never, 'user-1');
+
+      expect(prisma.badDebtProvision.updateMany).toHaveBeenCalledWith({
+        where: { status: 'ACTIVE', contractId: 'contract-1', deletedAt: null },
+        data: { status: 'REVERSED' },
+      });
+    });
+
     it('does not issue a CN when there is no outstanding balance (JP5 itself is skipped)', async () => {
       const paidUpContract = makeContract({
         payments: [
@@ -712,6 +732,8 @@ describe('RepossessionsService', () => {
 
       expect(jp5.execute).not.toHaveBeenCalled();
       expect(creditNoteService.issueForContract).not.toHaveBeenCalled();
+      // No JP5 → no provision to release either (outstanding balance was 0).
+      expect(prisma.badDebtProvision.updateMany).not.toHaveBeenCalled();
       expect(result.creditNote).toBeUndefined();
     });
 

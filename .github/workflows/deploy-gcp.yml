@@ -147,9 +147,11 @@ jobs:
         run: |
           FILES=$(ls src/modules/journal/cpa-templates/*.spec.ts | grep -v contract-cancellation.template.spec.ts)
           ACCT_FILES=$(ls src/modules/accounting/*.integration.spec.ts)
+          JP5_FILES=$(ls src/modules/journal/cpa-templates/__tests__/*.spec.ts)
           npx vitest run --no-file-parallelism $FILES \
             src/modules/installments/reschedule.service.spec.ts \
-            $ACCT_FILES
+            $ACCT_FILES \
+            $JP5_FILES
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/test_db?schema=public
           DATABASE_URL_FINANCE: postgresql://test:test@localhost:5433/test_finance_db?schema=public

@@ -12,6 +12,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { hasCrossBranchAccess } from '../auth/branch-access.util';
 import { SubmitExchangeRequestDto } from './dto/submit-exchange-request.dto';
+import { ApproveExchangeRequestDto } from './dto/approve-exchange-request.dto';
 import { ExchangeNewContract1ATemplate } from '../journal/cpa-templates/exchange-new-contract-1a.template';
 import { ExchangeCloseOld21_1106Template } from '../journal/cpa-templates/exchange-close-old-21-1106.template';
 import { ExchangeClearVendor21_1106Template } from '../journal/cpa-templates/exchange-clear-vendor-21-1106.template';
@@ -185,23 +186,30 @@ export class ContractExchangeService {
 
     // AUTO tier — อนุมัติทันที (audit ระบุ auto)
     if (tier === 'AUTO') {
-      // TODO(Task 8): pass role + dto when approve() gains tier enforcement
-      const approved = await this.approve(request.id, user.id);
+      const approved = await this.approve(request.id, user.id, user.role ?? 'SALES', {});
       return { ...request, status: 'APPROVED', autoApproved: true, newContractId: approved.newContractId };
     }
     return request;
   }
 
-  async buildPreview(params: {
-    oldContractId: string;
-    newProductId?: string;
-    buybackPrice?: string;
-    deviceCondition?: string;
-    newTotalMonths?: number;
-    newInterestRate?: string;
-  }) {
+  async buildPreview(
+    params: {
+      oldContractId: string;
+      newProductId?: string;
+      buybackPrice?: string;
+      deviceCondition?: string;
+      newTotalMonths?: number;
+      newInterestRate?: string;
+    },
+    user: RequestUser,
+  ) {
     const oldContract = await this.prisma.contract.findUnique({ where: { id: params.oldContractId } });
     if (!oldContract || oldContract.deletedAt) throw new NotFoundException('ไม่พบสัญญาเดิม');
+    // Task 8 (carry-over from Task 7 review): same in-service branch scoping as
+    // submit() — without it any SALES user could read any contract's NCV/GL by UUID.
+    if (!hasCrossBranchAccess(user) && oldContract.branchId !== user.branchId) {
+      throw new ForbiddenException('ไม่สามารถดูข้อมูลสัญญาของสาขาอื่นได้');
+    }
     const oldProduct = (await this.prisma.product.findUnique({
       where: { id: oldContract.productId },
     })) as any;
@@ -307,7 +315,94 @@ export class ContractExchangeService {
    * for "ready to sign then activate" (see ContractWorkflowService.activate),
    * so we don't need a new lifecycle state.
    */
-  async approve(id: string, userId: string) {
+  async approve(
+    id: string,
+    userId: string,
+    userRole: string,
+    dto: ApproveExchangeRequestDto,
+  ) {
+    // Tier-role enforcement ที่ service (spec §6) — controller เปิด OWNER+BM แล้ว
+    const pre = await (this.prisma as any).contractExchangeRequest.findUnique({ where: { id } });
+    if (!pre || pre.deletedAt) throw new NotFoundException('ไม่พบคำขอเปลี่ยนเครื่อง');
+    if (pre.mode === 'PRICED' && pre.approvalTier === 'ESCALATE' && userRole !== 'OWNER') {
+      throw new ForbiddenException(
+        'ราคารับซื้อต่ำกว่า 70% ของมูลค่าคงเหลือ — ต้องให้ผู้จัดการใหญ่ (OWNER) อนุมัติเท่านั้น',
+      );
+    }
+
+    if (pre.mode === 'MEMO') {
+      return this.approveMemo(id, userId, dto);
+    }
+    return this.approvePriced(id, userId);
+  }
+
+  /** MEMO (workbook Case 1): เปลี่ยน device บนสัญญาเดิม — ไม่มี JE, ไม่มีสัญญาใหม่ (spec §8) */
+  private async approveMemo(id: string, userId: string, dto: ApproveExchangeRequestDto) {
+    if (!dto.memoAddendumSigned || !dto.memoMdmSwapped) {
+      throw new BadRequestException(
+        'ต้องยืนยัน checklist ก่อนอนุมัติ: บันทึกแนบท้ายสัญญา (ADDENDUM) + สลับ MDM เครื่องเก่า/ใหม่',
+      );
+    }
+    return this.prisma.$transaction(async (tx) => {
+      const lock = await (tx as any).contractExchangeRequest.updateMany({
+        where: { id, status: 'PENDING', deletedAt: null },
+        data: {
+          status: 'APPROVED',
+          approvedById: userId,
+          approvedAt: new Date(),
+          memoAppliedAt: new Date(),
+        },
+      });
+      if (lock.count !== 1) {
+        throw new ConflictException('คำขออาจถูกอนุมัติแล้ว หรือสถานะเปลี่ยน');
+      }
+      const req = await (tx as any).contractExchangeRequest.findUniqueOrThrow({
+        where: { id },
+        include: { oldContract: true },
+      });
+      const shopCompanyId = await this.companyResolver.getShopCompanyId(tx);
+      const oldProduct = await tx.product.findUniqueOrThrow({
+        where: { id: req.oldProductId },
+        select: { status: true, ownedByCompanyId: true } as any,
+      });
+
+      // เครื่องใหม่รับสถานะ/ownership ของเครื่องเดิม (FINANCE ถือกรรมสิทธิ์ระหว่างผ่อน)
+      await tx.product.update({
+        where: { id: req.newProductId },
+        data: {
+          status: (oldProduct as any).status,
+          ownedByCompanyId: (oldProduct as any).ownedByCompanyId,
+        } as any,
+      });
+      await tx.product.update({
+        where: { id: req.oldProductId },
+        data: { status: 'REFURBISHED', ownedByCompanyId: shopCompanyId } as any,
+      });
+      // หัวใจ MEMO: สัญญาเดิม-สถานะเดิม-ตารางเดิม แค่ชี้ product ใหม่
+      await tx.contract.update({
+        where: { id: req.oldContractId },
+        data: { productId: req.newProductId },
+      });
+
+      await this.audit.log({
+        action: 'EXCHANGE_MEMO_APPLIED',
+        entity: 'contract_exchange_request',
+        entityId: id,
+        userId,
+        newValue: {
+          contractId: req.oldContractId,
+          oldProductId: req.oldProductId,
+          newProductId: req.newProductId,
+          checklist: { addendumSigned: true, mdmSwapped: true },
+          note: 'Memo-only swap — no JE (workbook Case 1, TFRS 9 modification)',
+        },
+      });
+      return { id, newContractId: null as string | null, mode: 'MEMO' };
+    });
+  }
+
+  /** PRICED: เดิมคือ approve() ทั้งก้อน — เปลี่ยนเฉพาะที่มาของแผนผ่อน (Device Swap 2026-07) */
+  private async approvePriced(id: string, userId: string) {
     return this.prisma.$transaction(async (tx) => {
       // 1. Lock-acquire (race-safe via updateMany count===1)
       const lock = await (tx as any).contractExchangeRequest.updateMany({
@@ -325,24 +420,68 @@ export class ContractExchangeService {
       // 2. Re-fetch with full data
       const req = await (tx as any).contractExchangeRequest.findUniqueOrThrow({
         where: { id },
-        include: { oldContract: true },
+        include: { oldContract: true, newProduct: true },
       });
       const old = req.oldContract;
 
-      // 3. Remaining-installment plan
-      const paidCount = await tx.payment.count({
-        where: { contractId: old.id, status: 'PAID', deletedAt: null },
-      });
-      const remainingMonths = old.totalMonths - paidCount;
-      if (remainingMonths <= 0) {
-        throw new BadRequestException('สัญญาเดิมจ่ายครบงวดแล้ว — เปลี่ยนเครื่องไม่ได้');
+      // 3. Installment plan for the new contract.
+      //    Device Swap 2026-07: server-computed snapshot from submit() when
+      //    present; legacy fallback (in-flight PENDING rows created before
+      //    deploy) clones the remaining installments like SP2 did.
+      let planFields: {
+        totalMonths: number;
+        monthlyPayment: Decimal;
+        financedAmount: Decimal;
+        storeCommission: Decimal;
+        interestTotal: Decimal;
+        interestRate: Decimal;
+        vatAmount: Decimal;
+        sellingPrice: Decimal;
+      };
+      if (req.newTotalMonths != null) {
+        // Snapshot branch: submit() validated newProduct price, but legacy
+        // product rows may still carry a null installmentPrice — fail loudly
+        // instead of creating a contract financed at 0.
+        if (req.newProduct?.installmentPrice == null) {
+          throw new BadRequestException(
+            'ราคาผ่อนของเครื่องใหม่ไม่ถูกตั้งค่า — ตรวจสอบเครื่องในระบบก่อนอนุมัติ',
+          );
+        }
+        planFields = {
+          totalMonths: req.newTotalMonths,
+          monthlyPayment: new Decimal(req.newMonthlyPayment.toString()),
+          financedAmount: new Decimal(req.newProduct.installmentPrice.toString()),
+          storeCommission: new Decimal(req.newStoreCommission.toString()),
+          interestTotal: new Decimal(req.newInterestTotal.toString()),
+          interestRate: new Decimal(req.newInterestRate.toString()),
+          vatAmount: new Decimal(req.newVatAmount.toString()),
+          sellingPrice: new Decimal(req.newProduct.installmentPrice.toString()),
+        };
+      } else {
+        // Legacy fallback (in-flight PENDING ก่อน deploy): clone งวดคงเหลือแบบ SP2 เดิม
+        const paidCount = await tx.payment.count({
+          where: { contractId: old.id, status: 'PAID', deletedAt: null },
+        });
+        const remainingMonths = old.totalMonths - paidCount;
+        if (remainingMonths <= 0) {
+          throw new BadRequestException('สัญญาเดิมจ่ายครบงวดแล้ว — เปลี่ยนเครื่องไม่ได้');
+        }
+        const monthlyPayment = new Decimal(old.monthlyPayment.toString());
+        const newFinanced = new Decimal(old.financedAmount.toString());
+        const newCommission = old.storeCommission
+          ? new Decimal(old.storeCommission.toString())
+          : new Decimal(0);
+        planFields = {
+          totalMonths: remainingMonths,
+          monthlyPayment,
+          financedAmount: newFinanced,
+          storeCommission: newCommission,
+          interestTotal: monthlyPayment.times(remainingMonths).minus(newFinanced),
+          interestRate: new Decimal(old.interestRate.toString()),
+          vatAmount: new Decimal(old.vatAmount?.toString() ?? '0'),
+          sellingPrice: new Decimal(old.sellingPrice.toString()),
+        };
       }
-      const monthlyPayment = new Decimal(old.monthlyPayment.toString());
-      const newFinanced = new Decimal(old.financedAmount.toString());
-      const newCommission = old.storeCommission
-        ? new Decimal(old.storeCommission.toString())
-        : new Decimal(0);
-      const newInterest = monthlyPayment.times(remainingMonths).minus(newFinanced);
 
       // 4. Create new contract as DRAFT (sign-then-activate gate).
       // Issue #1086 item 4 — use EXCH-YYYYMMDD-NNNN to avoid grep-collision
@@ -390,14 +529,14 @@ export class ContractExchangeService {
           workflowStatus: 'APPROVED',
           pdpaConsentId: clonedPdpaConsentId,
           planType: old.planType,
-          totalMonths: remainingMonths,
-          monthlyPayment,
-          financedAmount: newFinanced,
-          storeCommission: newCommission,
-          interestTotal: newInterest,
-          interestRate: old.interestRate,
-          vatAmount: old.vatAmount,
-          sellingPrice: old.sellingPrice,
+          totalMonths: planFields.totalMonths,
+          monthlyPayment: planFields.monthlyPayment,
+          financedAmount: planFields.financedAmount,
+          storeCommission: planFields.storeCommission,
+          interestTotal: planFields.interestTotal,
+          interestRate: planFields.interestRate,
+          vatAmount: planFields.vatAmount,
+          sellingPrice: planFields.sellingPrice,
           // Same-price exchange: customer pays ฿0 at swap (spec v3). Copying
           // old.downPayment would distort payment-history view and corrupt
           // early-payoff calcs that reference downPayment. (Issue #1086 item 5.)
@@ -434,7 +573,7 @@ export class ContractExchangeService {
         newValue: {
           oldContractId: old.id,
           newContractId: newContract.id,
-          remainingMonths,
+          remainingMonths: planFields.totalMonths,
           // Highlight the deferred-finalization design so an auditor scanning
           // the log understands no money has moved at this point.
           phase: 'awaiting-sign-then-activate',
@@ -443,7 +582,8 @@ export class ContractExchangeService {
 
       return {
         id,
-        newContractId: newContract.id,
+        newContractId: newContract.id as string | null,
+        mode: 'PRICED',
       };
     });
   }

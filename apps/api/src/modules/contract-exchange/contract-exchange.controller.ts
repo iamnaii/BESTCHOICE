@@ -5,6 +5,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { ContractExchangeService } from './contract-exchange.service';
 import { SubmitExchangeRequestDto } from './dto/submit-exchange-request.dto';
 import { RejectExchangeRequestDto } from './dto/reject-exchange-request.dto';
+import { ApproveExchangeRequestDto } from './dto/approve-exchange-request.dto';
 
 @Controller('insurance/exchange-requests')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -22,6 +23,7 @@ export class ContractExchangeController {
   @Get('preview')
   @Roles('SALES', 'BRANCH_MANAGER', 'OWNER')
   preview(
+    @Req() req: any,
     @Query('oldContractId') oldContractId: string,
     @Query('newProductId') newProductId?: string,
     @Query('buybackPrice') buybackPrice?: string,
@@ -29,26 +31,37 @@ export class ContractExchangeController {
     @Query('newTotalMonths') newTotalMonths?: string,
     @Query('newInterestRate') newInterestRate?: string,
   ) {
-    return this.svc.buildPreview({
-      oldContractId,
-      newProductId,
-      buybackPrice,
-      deviceCondition,
-      newTotalMonths: newTotalMonths ? parseInt(newTotalMonths, 10) : undefined,
-      newInterestRate,
-    });
+    // Pass the user — buildPreview branch-scopes in-service (Task 8 carry-over
+    // from Task 7 review: SALES must not read other branches' NCV/GL by UUID).
+    return this.svc.buildPreview(
+      {
+        oldContractId,
+        newProductId,
+        buybackPrice,
+        deviceCondition,
+        newTotalMonths: newTotalMonths ? parseInt(newTotalMonths, 10) : undefined,
+        newInterestRate,
+      },
+      req.user,
+    );
   }
 
   @Get('pending')
-  @Roles('OWNER')
+  @Roles('OWNER', 'BRANCH_MANAGER')
   listPending() {
     return this.svc.listPending();
   }
 
   @Post(':id/approve')
-  @Roles('OWNER')
-  approve(@Param('id') id: string, @Req() req: any) {
-    return this.svc.approve(id, req.user.id);
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  approve(
+    @Param('id') id: string,
+    @Body() dto: ApproveExchangeRequestDto,
+    @Req() req: any,
+  ) {
+    // Tier enforcement (ESCALATE → OWNER only) lives in the service, which
+    // re-reads mode/approvalTier from the DB — never trusts the client.
+    return this.svc.approve(id, req.user.id, req.user.role, dto ?? {});
   }
 
   @Post(':id/reject')

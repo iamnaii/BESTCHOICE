@@ -72,45 +72,55 @@ describe('ContractExchangeService.submit', () => {
     ).rejects.toThrow(/IN_STOCK/);
   });
 
-  it('BadRequestException when brand differs', async () => {
-    prisma.contract.findUnique.mockResolvedValue({ id: 'old', branchId: 'br-1', status: 'ACTIVE', productId: 'op', deletedAt: null });
+  // Device Swap 2026-07: different model no longer rejects — it routes to PRICED,
+  // which then demands buybackPrice (was: /รุ่นเดียวกัน/ same-model rejection).
+  it('brand differs → routes PRICED: BadRequest "กรุณาระบุราคารับซื้อ" when no buybackPrice', async () => {
+    prisma.contract.findUnique.mockResolvedValue({ id: 'old', branchId: 'br-1', status: 'ACTIVE', productId: 'op', deletedAt: null, sellingPrice: '28000' });
     prisma.product.findUnique
       .mockResolvedValueOnce({ id: 'op', brand: 'Apple', model: 'iPhone 15', storage: '256', sellingPrice: '28000' })
       .mockResolvedValueOnce({ id: 'np', brand: 'Samsung', model: 'iPhone 15', storage: '256', sellingPrice: '28000', status: 'IN_STOCK' });
     await expect(
       service.submit({ oldContractId: 'old', oldProductId: 'op', newProductId: 'np' }, SALES_BR1),
-    ).rejects.toThrow(/รุ่นเดียวกัน/);
+    ).rejects.toThrow(/ราคารับซื้อ/);
   });
 
-  it('BadRequestException when sellingPrice differs', async () => {
-    prisma.contract.findUnique.mockResolvedValue({ id: 'old', branchId: 'br-1', status: 'ACTIVE', productId: 'op', deletedAt: null });
+  // Device Swap 2026-07: price different from contract.sellingPrice no longer
+  // rejects — it routes to PRICED (was: same-price rejection).
+  it('newPrice ≠ contract.sellingPrice → routes PRICED: BadRequest when no buybackPrice', async () => {
+    prisma.contract.findUnique.mockResolvedValue({ id: 'old', branchId: 'br-1', status: 'ACTIVE', productId: 'op', deletedAt: null, sellingPrice: '28000' });
     prisma.product.findUnique
       .mockResolvedValueOnce({ id: 'op', brand: 'Apple', model: 'iPhone 15', storage: '256', sellingPrice: '28000' })
       .mockResolvedValueOnce({ id: 'np', brand: 'Apple', model: 'iPhone 15', storage: '256', sellingPrice: '30000', status: 'IN_STOCK' });
     await expect(
       service.submit({ oldContractId: 'old', oldProductId: 'op', newProductId: 'np' }, SALES_BR1),
-    ).rejects.toThrow(/ราคา/);
+    ).rejects.toThrow(/ราคารับซื้อ/);
   });
 
-  // Issue #1086 item 1 — silent same-price bypass when prices are null
-  it('BadRequestException when new product has BOTH sellingPrice and installmentPrice null (no silent same-price bypass)', async () => {
-    prisma.contract.findUnique.mockResolvedValue({ id: 'old', branchId: 'br-1', status: 'ACTIVE', productId: 'op', deletedAt: null });
+  // Issue #1086 item 1 — silent bypass when the NEW product's price is null
+  it('BadRequestException when new product has BOTH sellingPrice and installmentPrice null (no silent bypass)', async () => {
+    prisma.contract.findUnique.mockResolvedValue({ id: 'old', branchId: 'br-1', status: 'ACTIVE', productId: 'op', deletedAt: null, sellingPrice: '28000' });
     prisma.product.findUnique
       .mockResolvedValueOnce({ id: 'op', brand: 'Apple', model: 'iPhone 15', storage: '256', sellingPrice: '28000', installmentPrice: '28000' })
       .mockResolvedValueOnce({ id: 'np', brand: 'Apple', model: 'iPhone 15', storage: '256', sellingPrice: null, installmentPrice: null, status: 'IN_STOCK' });
     await expect(
       service.submit({ oldContractId: 'old', oldProductId: 'op', newProductId: 'np' }, SALES_BR1),
-    ).rejects.toThrow(/ราคาเครื่องไม่ถูกตั้งค่า/);
+    ).rejects.toThrow(/ราคาเครื่องใหม่ไม่ถูกตั้งค่า/);
   });
 
-  it('BadRequestException when OLD product has BOTH sellingPrice and installmentPrice null', async () => {
-    prisma.contract.findUnique.mockResolvedValue({ id: 'old', branchId: 'br-1', status: 'ACTIVE', productId: 'op', deletedAt: null });
+  // Device Swap 2026-07: the OLD product's price no longer participates in
+  // validation — mode detection keys off contract.sellingPrice instead
+  // (price-list drift guard, spec §4). Null old-product price → MEMO still works.
+  it('OLD product with null prices no longer blocks — routes MEMO off contract.sellingPrice', async () => {
+    prisma.contract.findUnique.mockResolvedValue({ id: 'old', branchId: 'br-1', status: 'ACTIVE', productId: 'op', deletedAt: null, sellingPrice: '28000' });
     prisma.product.findUnique
       .mockResolvedValueOnce({ id: 'op', brand: 'Apple', model: 'iPhone 15', storage: '256', sellingPrice: null, installmentPrice: null })
       .mockResolvedValueOnce({ id: 'np', brand: 'Apple', model: 'iPhone 15', storage: '256', sellingPrice: '28000', installmentPrice: '28000', status: 'IN_STOCK' });
-    await expect(
-      service.submit({ oldContractId: 'old', oldProductId: 'op', newProductId: 'np' }, SALES_BR1),
-    ).rejects.toThrow(/ราคาเครื่องไม่ถูกตั้งค่า/);
+    prisma.contractExchangeRequest.create.mockImplementation(async ({ data }: any) => ({ id: 'req-memo', ...data }));
+    const result = await service.submit(
+      { oldContractId: 'old', oldProductId: 'op', newProductId: 'np' },
+      SALES_BR1,
+    );
+    expect(result.mode).toBe('MEMO');
   });
 
   // Issue #1086 item 2 — in-service branch check
@@ -122,7 +132,7 @@ describe('ContractExchangeService.submit', () => {
   });
 
   it('OWNER (cross-branch role) can submit for a contract in any branch', async () => {
-    prisma.contract.findUnique.mockResolvedValue({ id: 'old', branchId: 'br-1', status: 'ACTIVE', productId: 'op', deletedAt: null });
+    prisma.contract.findUnique.mockResolvedValue({ id: 'old', branchId: 'br-1', status: 'ACTIVE', productId: 'op', deletedAt: null, sellingPrice: '28000' });
     const same = { brand: 'Apple', model: 'iPhone 15', storage: '256', sellingPrice: '28000' };
     prisma.product.findUnique
       .mockResolvedValueOnce({ id: 'op', ...same })
@@ -137,7 +147,7 @@ describe('ContractExchangeService.submit', () => {
   });
 
   it('creates PENDING request when all checks pass', async () => {
-    prisma.contract.findUnique.mockResolvedValue({ id: 'old', branchId: 'br-1', status: 'ACTIVE', productId: 'op', deletedAt: null });
+    prisma.contract.findUnique.mockResolvedValue({ id: 'old', branchId: 'br-1', status: 'ACTIVE', productId: 'op', deletedAt: null, sellingPrice: '28000' });
     const same = { brand: 'Apple', model: 'iPhone 15', storage: '256', sellingPrice: '28000' };
     prisma.product.findUnique
       .mockResolvedValueOnce({ id: 'op', ...same })
@@ -156,10 +166,171 @@ describe('ContractExchangeService.submit', () => {
         oldProductId: 'op',
         newProductId: 'np',
         status: 'PENDING',
+        mode: 'MEMO',
         requestedById: 'u-1',
         conditionNote: 'good',
       }),
     }));
+  });
+});
+
+// ============================================================================
+// submit() mode routing (Device Swap 2026-07) — Task 7
+// MEMO = same model + newPrice equals contract.sellingPrice (no JE, no buyback).
+// PRICED = everything else: requires buyback/condition/months, snapshots
+// tier/ncv/plan, and auto-approves when tier resolves to AUTO.
+// ============================================================================
+describe('submit() mode routing (Device Swap 2026-07)', () => {
+  let service: ContractExchangeService;
+  let prisma: any;
+  let audit: any;
+
+  const user = { id: 'u-1', role: 'SALES', branchId: 'br-1' };
+
+  // oldContract.sellingPrice = 11000 (per brief fixture), interestRate 0.05/mo flat.
+  // Carries the full column set approve() reads so the AUTO path can run end-to-end.
+  const oldContract = {
+    id: 'old-c',
+    branchId: 'br-1',
+    status: 'ACTIVE',
+    productId: 'op',
+    deletedAt: null,
+    customerId: 'cust',
+    salespersonId: 'sp',
+    pdpaConsentId: null,
+    planType: 'STORE_DIRECT',
+    totalMonths: 12,
+    sellingPrice: { toString: () => '11000' } as any,
+    interestRate: { toString: () => '0.05' } as any,
+    monthlyPayment: { toString: () => '1000' } as any,
+    financedAmount: { toString: () => '10000' } as any,
+    storeCommission: { toString: () => '1000' } as any,
+    vatAmount: { toString: () => '1190' } as any,
+    downPayment: { toString: () => '1000' } as any,
+    advanceBalance: { toString: () => '0' } as any,
+    creditBalance: { toString: () => '0' } as any,
+  };
+  const oldProduct = { id: 'op', brand: 'Apple', model: 'iPhone 15', storage: '256', sellingPrice: '11000' };
+  // Same model + price 11000 = contract.sellingPrice → MEMO
+  const sameNewProduct = { id: 'np', brand: 'Apple', model: 'iPhone 15', storage: '256', sellingPrice: '11000', status: 'IN_STOCK' };
+  // Different model, price 10000 → PRICED (plan: financed 10000, commission 1000, vendorSum 11000)
+  const diffNewProduct = { id: 'np2', brand: 'Apple', model: 'iPhone 16', storage: '256', sellingPrice: '10000', status: 'IN_STOCK' };
+
+  const baseDto = { oldContractId: 'old-c', oldProductId: 'op', newProductId: 'np' };
+  const pricedDtoWithoutBuyback = { oldContractId: 'old-c', oldProductId: 'op', newProductId: 'np2' };
+  // buyback 8000 ≠ vendorSum 11000 → depositAccountCode required
+  const pricedDtoFull = {
+    ...pricedDtoWithoutBuyback,
+    buybackPrice: '8000',
+    deviceCondition: 'B',
+    newTotalMonths: 12,
+    newInterestRate: '0.05',
+    depositAccountCode: '11-1101',
+  };
+
+  beforeEach(async () => {
+    prisma = {
+      contract: {
+        findUnique: jest.fn().mockResolvedValue(oldContract),
+        findFirst: jest.fn().mockResolvedValue(null), // nextExchangeContractNumber
+        create: jest.fn().mockResolvedValue({ id: 'new-c', contractNumber: 'EXCH-20260729-0001' }),
+        update: jest.fn(),
+      },
+      product: {
+        findUnique: jest.fn().mockImplementation(async ({ where }: any) => {
+          if (where.id === 'op') return oldProduct;
+          if (where.id === 'np') return sameNewProduct;
+          if (where.id === 'np2') return diffNewProduct;
+          return null;
+        }),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      contractExchangeRequest: {
+        // Echo data so tests can assert mode/tier/snapshots off the return value
+        create: jest.fn().mockImplementation(async ({ data }: any) => ({ id: 'req-1', ...data })),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          id: 'req-1',
+          oldContractId: 'old-c',
+          oldProductId: 'op',
+          newProductId: 'np2',
+          oldContract,
+        }),
+        update: jest.fn(),
+      },
+      systemConfig: { findFirst: jest.fn().mockResolvedValue({ value: '15' }) },
+      tradeInValuation: { findFirst: jest.fn().mockResolvedValue(null) },
+      journalLine: { findMany: jest.fn().mockResolvedValue([]) },
+      payment: {
+        count: jest.fn().mockResolvedValue(4),
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
+      pDPAConsent: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'cloned-pdpa' }),
+      },
+      $transaction: jest.fn(async (fn: any) => fn(prisma)),
+      $executeRawUnsafe: jest.fn().mockResolvedValue(undefined),
+    };
+    audit = { log: jest.fn() };
+    const mod = await Test.createTestingModule({
+      providers: [
+        ContractExchangeService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: AuditService, useValue: audit },
+        { provide: ExchangeNewContract1ATemplate, useValue: {} },
+        { provide: ExchangeCloseOld21_1106Template, useValue: {} },
+        { provide: ExchangeClearVendor21_1106Template, useValue: {} },
+        { provide: ShopExchangeReturnTemplate, useValue: {} },
+        { provide: CompanyResolverService, useValue: { getShopCompanyId: jest.fn() } },
+      ],
+    }).compile();
+    service = mod.get(ContractExchangeService);
+  });
+
+  it('same model + ราคาเท่า contract.sellingPrice → MEMO (ไม่มี buybackPrice)', async () => {
+    // fixture: oldContract.sellingPrice = 11000, newProduct ราคา 11000 รุ่นเดียวกัน
+    const result = await service.submit(baseDto, user);
+    expect(result.mode).toBe('MEMO');
+    // MEMO carries no PRICED snapshot fields
+    const createData = prisma.contractExchangeRequest.create.mock.calls[0][0].data;
+    expect(createData.buybackPrice).toBeUndefined();
+    expect(createData.approvalTier).toBeUndefined();
+  });
+
+  it('MEMO + ส่ง buybackPrice มา → BadRequest ภาษาไทย', async () => {
+    await expect(service.submit({ ...baseDto, buybackPrice: '8000' }, user)).rejects.toThrow(
+      'MEMO',
+    );
+  });
+
+  it('คนละรุ่น → PRICED: ไม่ส่ง buybackPrice → BadRequest "กรุณาระบุราคารับซื้อ"', async () => {
+    await expect(service.submit(pricedDtoWithoutBuyback, user)).rejects.toThrow('ราคารับซื้อ');
+  });
+
+  it('PRICED ครบ field → เก็บ tier/ncv/plan snapshot; tier REVIEW ไม่ auto-approve', async () => {
+    // Empty ledger → NCV 0; buyback 8000 ≥ NCV but no TradeInValuation row
+    // (basePrice null) → REVIEW per the approval matrix.
+    const result = await service.submit(pricedDtoFull, user);
+    expect(result.mode).toBe('PRICED');
+    expect(result.approvalTier).toBe('REVIEW');
+    expect(result.status).toBe('PENDING');
+    // Plan snapshot is server-computed (workbook golden: 10000/12 @0.05 → 1515.83)
+    expect(result.newMonthlyPayment.toString()).toBe('1515.83');
+    expect(result.newStoreCommission.toString()).toBe('1000');
+    expect(result.newVatAmount.toString()).toBe('1190');
+    expect(result.ncvSnapshot.toString()).toBe('0');
+    expect(result.autoApproved).toBeUndefined();
+  });
+
+  it('tier AUTO → auto-approve ทันที (status APPROVED + newContractId)', async () => {
+    // basePrice 8000 → marketMin 6800; buyback 8000 ≥ NCV(0) และ ≥ 6800 → AUTO
+    prisma.tradeInValuation.findFirst.mockResolvedValue({ basePrice: '8000' });
+    const result = await service.submit(pricedDtoFull, user);
+    expect(result.autoApproved).toBe(true);
+    expect(result.status).toBe('APPROVED');
+    expect(result.newContractId).toBeDefined();
+    expect(result.newContractId).toBe('new-c');
   });
 });
 

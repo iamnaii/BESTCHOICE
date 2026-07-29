@@ -17,6 +17,9 @@ import { ExchangeCloseOld21_1106Template } from '../journal/cpa-templates/exchan
 import { ExchangeClearVendor21_1106Template } from '../journal/cpa-templates/exchange-clear-vendor-21-1106.template';
 import { ShopExchangeReturnTemplate } from '../journal/cpa-templates/shop-exchange-return.template';
 import { CompanyResolverService } from '../journal/company-resolver.service';
+import { computeExchangeTier, ExchangeTier } from './exchange-tier.util';
+import { computeExchangePlan } from './exchange-plan.util';
+import { glContractBalance } from '../journal/gl-contract-balance';
 
 /**
  * Subset of the request user that submit() needs to perform branch scoping.
@@ -64,73 +67,98 @@ export class ContractExchangeService {
   ) {}
 
   async submit(dto: SubmitExchangeRequestDto, user: RequestUser) {
-    // 1. Old contract must exist + ACTIVE + not deleted
     const oldContract = await this.prisma.contract.findUnique({
       where: { id: dto.oldContractId },
     });
     if (!oldContract || oldContract.deletedAt) {
       throw new NotFoundException('ไม่พบสัญญาเดิม');
     }
-
-    // Branch scoping (in-service because the DTO doesn't carry branchId — see
-    // issue #1086 item 2). BranchGuard isn't reachable from oldContractId
-    // without an extra controller-level resolver; doing the check here keeps
-    // the existing controller surface area unchanged.
     if (!hasCrossBranchAccess(user) && oldContract.branchId !== user.branchId) {
       throw new ForbiddenException('ไม่สามารถสร้างคำขอเปลี่ยนเครื่องของสาขาอื่นได้');
     }
-
     if (oldContract.status !== 'ACTIVE') {
       throw new BadRequestException(`สัญญาเดิมสถานะ ${oldContract.status} — ต้องเป็น ACTIVE`);
     }
 
-    // 2. Old + new products: same brand+model+storage+sellingPrice; new IN_STOCK
-    // We cast to ProductPriceSnapshot — test mocks expose `sellingPrice`,
-    // production Prisma returns `installmentPrice`. The helper below normalises both.
     const [oldRaw, newRaw] = await Promise.all([
       this.prisma.product.findUnique({ where: { id: dto.oldProductId } }) as Promise<ProductPriceSnapshot | null>,
       this.prisma.product.findUnique({ where: { id: dto.newProductId } }) as Promise<ProductPriceSnapshot | null>,
     ]);
-
     if (!oldRaw) throw new NotFoundException('ไม่พบเครื่องเดิม');
     if (!newRaw) throw new NotFoundException('ไม่พบเครื่องใหม่');
-
     const oldProduct = oldRaw as any;
     const newProduct = newRaw as any;
 
-    // Resolve whichever price field is populated (installmentPrice in prod, sellingPrice in tests).
-    // Return null when both fields are null/missing so the caller can reject — silently
-    // coercing to 0 would let two null-priced products pass the same-price check.
-    // (Issue #1086 item 1.)
     const resolvePriceOrNull = (p: any): Decimal | null => {
       const raw = p?.sellingPrice ?? p?.installmentPrice;
       if (raw === null || raw === undefined) return null;
       return new Decimal((raw as { toString(): string } | string).toString());
     };
-
-    const oldPrice = resolvePriceOrNull(oldProduct);
     const newPrice = resolvePriceOrNull(newProduct);
-    if (oldPrice === null || newPrice === null) {
-      throw new BadRequestException('ราคาเครื่องไม่ถูกตั้งค่า — ตรวจสอบเครื่องในระบบ');
+    if (newPrice === null) {
+      throw new BadRequestException('ราคาเครื่องใหม่ไม่ถูกตั้งค่า — ตรวจสอบเครื่องในระบบ');
     }
-
     if (newProduct.status !== 'IN_STOCK') {
       throw new BadRequestException('เครื่องใหม่ต้องอยู่ในสต็อก (IN_STOCK)');
     }
-    if (
-      oldProduct.brand !== newProduct.brand ||
-      oldProduct.model !== newProduct.model ||
-      oldProduct.storage !== newProduct.storage
-    ) {
-      throw new BadRequestException('เครื่องใหม่ต้องเป็นรุ่นเดียวกัน (brand/model/storage)');
-    }
-    if (!oldPrice.equals(newPrice)) {
-      throw new BadRequestException(`ราคาเครื่องใหม่ต้องเท่ากับเครื่องเดิม (${oldPrice} vs ${newPrice})`);
+
+    const mode = this.detectMode(
+      oldProduct,
+      newProduct,
+      newPrice,
+      new Decimal(oldContract.sellingPrice.toString()),
+    );
+
+    // ---------- MEMO (workbook Case 1): ไม่มี JE, ไม่มีราคารับซื้อ ----------
+    if (mode === 'MEMO') {
+      if (dto.buybackPrice !== undefined) {
+        throw new BadRequestException(
+          'รุ่นเดิม+ราคาเดิม = เปลี่ยนแบบไม่มีรายการบัญชี (MEMO) — ห้ามระบุราคารับซื้อ',
+        );
+      }
+      return (this.prisma as any).contractExchangeRequest.create({
+        data: {
+          oldContractId: dto.oldContractId,
+          oldProductId: dto.oldProductId,
+          newProductId: dto.newProductId,
+          conditionNote: dto.conditionNote,
+          conditionPhotos: dto.conditionPhotos ?? [],
+          status: 'PENDING',
+          mode: 'MEMO',
+          requestedById: user.id,
+        },
+      });
     }
 
-    // 3. Create PENDING request
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (this.prisma as any).contractExchangeRequest.create({
+    // ---------- PRICED (workbook Cases 2A-2G) ----------
+    if (!dto.buybackPrice) throw new BadRequestException('กรุณาระบุราคารับซื้อเครื่องเดิม');
+    if (!dto.deviceCondition) throw new BadRequestException('กรุณาระบุสภาพเครื่องเดิม (A-D)');
+    if (!dto.newTotalMonths) throw new BadRequestException('กรุณาระบุจำนวนงวดของสัญญาใหม่');
+    const buyback = new Decimal(dto.buybackPrice);
+    if (buyback.lte(0)) throw new BadRequestException('ราคารับซื้อต้องมากกว่า 0');
+
+    const rate = dto.newInterestRate
+      ? new Decimal(dto.newInterestRate)
+      : new Decimal(oldContract.interestRate.toString());
+    if (rate.lt(0) || rate.gt('0.15')) {
+      throw new BadRequestException('อัตราดอกเบี้ยต่อเดือนต้องอยู่ระหว่าง 0 ถึง 0.15');
+    }
+    const plan = computeExchangePlan({ newPrice, months: dto.newTotalMonths, monthlyRate: rate });
+
+    // Snapshot NCV + ราคากลาง + tier ณ ตอน submit (enforce ซ้ำตอน approve — spec §6)
+    const outstanding = await this.computeOldOutstanding(this.prisma as any, dto.oldContractId);
+    const ncv = outstanding.gross.minus(outstanding.unearnedInterest);
+    const basePrice = await this.lookupBasePrice(oldProduct, dto.deviceCondition);
+    const marketCheckPct = await this.configNumber('exchange_market_check_pct', 15);
+    const tier: ExchangeTier = computeExchangeTier({ buyback, ncv, basePrice, marketCheckPct });
+
+    // ขาเงินสดจะเกิดเมื่อ buyback ≠ vendorSum — บังคับเลือกบัญชีเงินตั้งแต่ submit
+    const vendorSum = plan.financedAmount.plus(plan.storeCommission);
+    if (!buyback.equals(vendorSum) && !dto.depositAccountCode) {
+      throw new BadRequestException('กรุณาเลือกบัญชีเงินสด/ธนาคาร (ราคารับซื้อไม่เท่ากับเจ้าหนี้สัญญาใหม่)');
+    }
+
+    const request = await (this.prisma as any).contractExchangeRequest.create({
       data: {
         oldContractId: dto.oldContractId,
         oldProductId: dto.oldProductId,
@@ -138,9 +166,127 @@ export class ContractExchangeService {
         conditionNote: dto.conditionNote,
         conditionPhotos: dto.conditionPhotos ?? [],
         status: 'PENDING',
+        mode: 'PRICED',
+        buybackPrice: buyback,
+        deviceCondition: dto.deviceCondition,
+        approvalTier: tier,
+        ncvSnapshot: ncv,
+        basePriceSnapshot: basePrice,
+        depositAccountCode: dto.depositAccountCode,
+        newTotalMonths: dto.newTotalMonths,
+        newInterestRate: rate,
+        newMonthlyPayment: plan.monthlyPayment,
+        newInterestTotal: plan.interestTotal,
+        newVatAmount: plan.vatAmount,
+        newStoreCommission: plan.storeCommission,
         requestedById: user.id,
       },
     });
+
+    // AUTO tier — อนุมัติทันที (audit ระบุ auto)
+    if (tier === 'AUTO') {
+      // TODO(Task 8): pass role + dto when approve() gains tier enforcement
+      const approved = await this.approve(request.id, user.id);
+      return { ...request, status: 'APPROVED', autoApproved: true, newContractId: approved.newContractId };
+    }
+    return request;
+  }
+
+  async buildPreview(params: {
+    oldContractId: string;
+    newProductId?: string;
+    buybackPrice?: string;
+    deviceCondition?: string;
+    newTotalMonths?: number;
+    newInterestRate?: string;
+  }) {
+    const oldContract = await this.prisma.contract.findUnique({ where: { id: params.oldContractId } });
+    if (!oldContract || oldContract.deletedAt) throw new NotFoundException('ไม่พบสัญญาเดิม');
+    const oldProduct = (await this.prisma.product.findUnique({
+      where: { id: oldContract.productId },
+    })) as any;
+
+    const outstanding = await this.computeOldOutstanding(this.prisma as any, params.oldContractId);
+    const ncv = outstanding.gross.minus(outstanding.unearnedInterest);
+    const grossRemainingInclVat = outstanding.gross.plus(outstanding.vatReceivable);
+
+    // Blockers (spec §7.0) — เตือนตั้งแต่ preview จะได้ไม่ไปตายตอน finalize
+    const bal2103 = await glContractBalance(this.prisma as any, params.oldContractId, '11-2103', 'dr');
+    const bal21_1103 = await glContractBalance(this.prisma as any, params.oldContractId, '21-1103', 'cr');
+    const overdueBlocked = bal2103.abs().gte('0.005');
+    const advanceBlocked =
+      bal21_1103.gte('0.005') ||
+      new Decimal(oldContract.advanceBalance.toString()).gt(0) ||
+      new Decimal((oldContract as any).creditBalance?.toString() ?? '0').gt(0);
+    const hasUnpaidLateFee = !!(await this.prisma.payment.findFirst({
+      where: {
+        contractId: params.oldContractId,
+        status: { not: 'PAID' },
+        dueDate: { lt: new Date() },
+        lateFee: { gt: 0 },
+        deletedAt: null,
+      },
+      select: { id: true },
+    }));
+
+    let mode: 'MEMO' | 'PRICED' | null = null;
+    let plan: ReturnType<typeof computeExchangePlan> | null = null;
+    if (params.newProductId) {
+      const newProduct = (await this.prisma.product.findUnique({
+        where: { id: params.newProductId },
+      })) as any;
+      if (newProduct) {
+        const raw = newProduct.sellingPrice ?? newProduct.installmentPrice;
+        const newPrice = raw != null ? new Decimal(raw.toString()) : null;
+        if (newPrice) {
+          mode = this.detectMode(oldProduct, newProduct, newPrice, new Decimal(oldContract.sellingPrice.toString()));
+          if (mode === 'PRICED' && params.newTotalMonths) {
+            const rate = params.newInterestRate
+              ? new Decimal(params.newInterestRate)
+              : new Decimal(oldContract.interestRate.toString());
+            plan = computeExchangePlan({ newPrice, months: params.newTotalMonths, monthlyRate: rate });
+          }
+        }
+      }
+    }
+
+    let tier: ExchangeTier | null = null;
+    let basePrice: Decimal | null = null;
+    let marketMin: Decimal | null = null;
+    let expectedPl: Decimal | null = null;
+    const marketCheckPct = await this.configNumber('exchange_market_check_pct', 15);
+    if (params.buybackPrice && params.deviceCondition) {
+      const buyback = new Decimal(params.buybackPrice);
+      basePrice = await this.lookupBasePrice(oldProduct, params.deviceCondition);
+      marketMin = basePrice
+        ? basePrice.times(new Decimal(100).minus(marketCheckPct).div(100)).toDecimalPlaces(2)
+        : null;
+      tier = computeExchangeTier({ buyback, ncv, basePrice, marketCheckPct });
+      expectedPl = buyback.minus(grossRemainingInclVat); // − = loss (Dr 51-1102), + = gain (Cr 41-1102)
+    }
+
+    return {
+      mode,
+      ncv: ncv.toFixed(2),
+      grossRemainingInclVat: grossRemainingInclVat.toFixed(2),
+      unearnedInterest: outstanding.unearnedInterest.toFixed(2),
+      basePrice: basePrice?.toFixed(2) ?? null,
+      marketMin: marketMin?.toFixed(2) ?? null,
+      marketCheckPct,
+      tier,
+      expectedPl: expectedPl?.toFixed(2) ?? null,
+      plan: plan
+        ? {
+            financedAmount: plan.financedAmount.toFixed(2),
+            storeCommission: plan.storeCommission.toFixed(2),
+            interestTotal: plan.interestTotal.toFixed(2),
+            vatAmount: plan.vatAmount.toFixed(2),
+            monthlyPayment: plan.monthlyPayment.toFixed(2),
+          }
+        : null,
+      blockers: { overdueBlocked, advanceBlocked },
+      hasUnpaidLateFee,
+    };
   }
 
   /**
@@ -494,6 +640,48 @@ export class ContractExchangeService {
       },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  /** SystemConfig ตัวเลข — fallback เมื่อ row หาย/parse ไม่ได้ */
+  private async configNumber(key: string, fallback: number): Promise<number> {
+    const row = await this.prisma.systemConfig.findFirst({
+      where: { key, deletedAt: null },
+      select: { value: true },
+    });
+    const n = row ? parseFloat(row.value) : NaN;
+    return Number.isFinite(n) && n >= 0 ? n : fallback;
+  }
+
+  /** ราคากลางเครื่องเดิมจากตารางตีราคา (null = ไม่มี row) */
+  private async lookupBasePrice(
+    p: { brand: string; model: string; storage: string | null },
+    condition: string,
+  ): Promise<Decimal | null> {
+    const row = await this.prisma.tradeInValuation.findFirst({
+      where: {
+        brand: p.brand,
+        model: p.model,
+        storage: p.storage ?? '',
+        condition,
+        deletedAt: null,
+      },
+      select: { basePrice: true },
+    });
+    return row ? new Decimal(row.basePrice.toString()) : null;
+  }
+
+  /** MEMO เมื่อรุ่นเดียวกันและราคาเครื่องใหม่ = ราคาบนสัญญาเดิม (spec §4 — กัน price-list drift) */
+  private detectMode(
+    oldProduct: { brand: string; model: string; storage: string | null },
+    newProduct: { brand: string; model: string; storage: string | null },
+    newPrice: Decimal,
+    oldContractSellingPrice: Decimal,
+  ): 'MEMO' | 'PRICED' {
+    const sameModel =
+      oldProduct.brand === newProduct.brand &&
+      oldProduct.model === newProduct.model &&
+      oldProduct.storage === newProduct.storage;
+    return sameModel && newPrice.equals(oldContractSellingPrice) ? 'MEMO' : 'PRICED';
   }
 
   /**

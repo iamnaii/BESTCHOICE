@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Param, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Param, Query, Req, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -17,6 +17,26 @@ export class ContractExchangeController {
     // Pass the full user object — the service does an in-service branch check
     // (issue #1086 item 2) and needs role + branchId, not just the id.
     return this.svc.submit(dto, req.user);
+  }
+
+  @Get('preview')
+  @Roles('SALES', 'BRANCH_MANAGER', 'OWNER')
+  preview(
+    @Query('oldContractId') oldContractId: string,
+    @Query('newProductId') newProductId?: string,
+    @Query('buybackPrice') buybackPrice?: string,
+    @Query('deviceCondition') deviceCondition?: string,
+    @Query('newTotalMonths') newTotalMonths?: string,
+    @Query('newInterestRate') newInterestRate?: string,
+  ) {
+    return this.svc.buildPreview({
+      oldContractId,
+      newProductId,
+      buybackPrice,
+      deviceCondition,
+      newTotalMonths: newTotalMonths ? parseInt(newTotalMonths, 10) : undefined,
+      newInterestRate,
+    });
   }
 
   @Get('pending')

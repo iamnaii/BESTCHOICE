@@ -3,14 +3,19 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { ContractExchangeService } from './contract-exchange.service';
+import { ExchangeCancelService } from './contract-exchange-cancel.service';
 import { SubmitExchangeRequestDto } from './dto/submit-exchange-request.dto';
 import { RejectExchangeRequestDto } from './dto/reject-exchange-request.dto';
 import { ApproveExchangeRequestDto } from './dto/approve-exchange-request.dto';
+import { CancelExchangeRequestDto } from './dto/cancel-exchange-request.dto';
 
 @Controller('insurance/exchange-requests')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ContractExchangeController {
-  constructor(private readonly svc: ContractExchangeService) {}
+  constructor(
+    private readonly svc: ContractExchangeService,
+    private readonly cancelSvc: ExchangeCancelService,
+  ) {}
 
   @Post()
   @Roles('SALES', 'BRANCH_MANAGER', 'OWNER')
@@ -62,6 +67,12 @@ export class ContractExchangeController {
     // Tier enforcement (ESCALATE → OWNER only) lives in the service, which
     // re-reads mode/approvalTier from the DB — never trusts the client.
     return this.svc.approve(id, req.user.id, req.user.role, dto ?? {});
+  }
+
+  @Post(':id/cancel')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  cancel(@Param('id') id: string, @Body() dto: CancelExchangeRequestDto, @Req() req: any) {
+    return this.cancelSvc.cancel(id, dto.reason, req.user);
   }
 
   @Post(':id/reject')

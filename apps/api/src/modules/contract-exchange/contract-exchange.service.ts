@@ -360,6 +360,13 @@ export class ContractExchangeService {
         where: { id },
         include: { oldContract: true },
       });
+      // Task 8 review fix 3: approval can happen days after submit — the old
+      // contract may have closed (early payoff / repossession) in between.
+      if (req.oldContract.status !== 'ACTIVE') {
+        throw new BadRequestException(
+          `สัญญาเดิมสถานะ ${req.oldContract.status} — เปลี่ยนเครื่องไม่ได้`,
+        );
+      }
       const shopCompanyId = await this.companyResolver.getShopCompanyId(tx);
       const oldProduct = await tx.product.findUniqueOrThrow({
         where: { id: req.oldProductId },
@@ -435,27 +442,52 @@ export class ContractExchangeService {
         storeCommission: Decimal;
         interestTotal: Decimal;
         interestRate: Decimal;
-        vatAmount: Decimal;
+        vatAmount: Decimal | null;
         sellingPrice: Decimal;
       };
-      if (req.newTotalMonths != null) {
-        // Snapshot branch: submit() validated newProduct price, but legacy
-        // product rows may still carry a null installmentPrice — fail loudly
+      const usedSnapshot = req.newTotalMonths != null;
+      if (usedSnapshot) {
+        // Task 8 review fix 3: approval can happen days after submit — the
+        // old contract may have closed (early payoff / repossession) since.
+        // (Legacy branch keeps its remainingMonths<=0 guard instead.)
+        if (old.status !== 'ACTIVE') {
+          throw new BadRequestException(
+            `สัญญาเดิมสถานะ ${old.status} — เปลี่ยนเครื่องไม่ได้`,
+          );
+        }
+        // Same price resolver submit() uses (sellingPrice ?? installmentPrice).
+        // Legacy product rows may still carry null prices — fail loudly
         // instead of creating a contract financed at 0.
-        if (req.newProduct?.installmentPrice == null) {
+        const rawNewPrice = req.newProduct?.sellingPrice ?? req.newProduct?.installmentPrice;
+        if (rawNewPrice == null) {
           throw new BadRequestException(
             'ราคาผ่อนของเครื่องใหม่ไม่ถูกตั้งค่า — ตรวจสอบเครื่องในระบบก่อนอนุมัติ',
+          );
+        }
+        const newPrice = new Decimal(rawNewPrice.toString());
+        // Task 8 review fix 2 — price-drift guard: recompute the plan off the
+        // LIVE product price. If it no longer reproduces the submit-time
+        // monthlyPayment snapshot, the price list moved while the request was
+        // pending — refuse rather than silently book stale numbers.
+        const livePlan = computeExchangePlan({
+          newPrice,
+          months: req.newTotalMonths,
+          monthlyRate: new Decimal(req.newInterestRate.toString()),
+        });
+        if (!livePlan.monthlyPayment.equals(new Decimal(req.newMonthlyPayment.toString()))) {
+          throw new BadRequestException(
+            'ราคาเครื่องหรือแผนผ่อนเปลี่ยนไประหว่างรออนุมัติ — กรุณาส่งคำขอเปลี่ยนเครื่องใหม่',
           );
         }
         planFields = {
           totalMonths: req.newTotalMonths,
           monthlyPayment: new Decimal(req.newMonthlyPayment.toString()),
-          financedAmount: new Decimal(req.newProduct.installmentPrice.toString()),
+          financedAmount: newPrice,
           storeCommission: new Decimal(req.newStoreCommission.toString()),
           interestTotal: new Decimal(req.newInterestTotal.toString()),
           interestRate: new Decimal(req.newInterestRate.toString()),
           vatAmount: new Decimal(req.newVatAmount.toString()),
-          sellingPrice: new Decimal(req.newProduct.installmentPrice.toString()),
+          sellingPrice: newPrice,
         };
       } else {
         // Legacy fallback (in-flight PENDING ก่อน deploy): clone งวดคงเหลือแบบ SP2 เดิม
@@ -478,7 +510,9 @@ export class ContractExchangeService {
           storeCommission: newCommission,
           interestTotal: monthlyPayment.times(remainingMonths).minus(newFinanced),
           interestRate: new Decimal(old.interestRate.toString()),
-          vatAmount: new Decimal(old.vatAmount?.toString() ?? '0'),
+          // Task 8 review fix 1: pass null THROUGH (template derives 7% from
+          // null; Decimal(0) would mean "book zero VAT" and kill the fallback)
+          vatAmount: old.vatAmount ? new Decimal(old.vatAmount.toString()) : null,
           sellingPrice: new Decimal(old.sellingPrice.toString()),
         };
       }
@@ -573,7 +607,11 @@ export class ContractExchangeService {
         newValue: {
           oldContractId: old.id,
           newContractId: newContract.id,
-          remainingMonths: planFields.totalMonths,
+          // Task 8 review fix 4: snapshot plan = a FULL new plan, so the key
+          // is totalMonths; legacy clone keeps the historical remainingMonths.
+          ...(usedSnapshot
+            ? { totalMonths: planFields.totalMonths }
+            : { remainingMonths: planFields.totalMonths }),
           // Highlight the deferred-finalization design so an auditor scanning
           // the log understands no money has moved at this point.
           phase: 'awaiting-sign-then-activate',

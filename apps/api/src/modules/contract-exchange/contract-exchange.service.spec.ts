@@ -585,6 +585,24 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
     expect(createData.downPayment.toString()).toBe('0');
   });
 
+  // Task 8 review fix 1 — legacy fallback must pass vatAmount null THROUGH,
+  // not coerce to Decimal(0): ExchangeNewContract1ATemplate treats null as
+  // "derive 7%" but 0 as "book zero VAT".
+  it('legacy fallback: old.vatAmount null → contract.create receives vatAmount null (not 0)', async () => {
+    prisma.contractExchangeRequest.updateMany.mockResolvedValue({ count: 1 });
+    prisma.contractExchangeRequest.findUniqueOrThrow.mockResolvedValue({
+      id: 'r1', oldContractId: 'old', oldProductId: 'op', newProductId: 'np',
+      oldContract: { ...makeOldContract(12, 4), vatAmount: null },
+    });
+    prisma.payment.count.mockResolvedValue(4);
+    prisma.contract.create.mockResolvedValue({ id: 'nc', contractNumber: 'EXCH-20260524-0001' });
+
+    await service.approve('r1', 'u1', 'OWNER', {});
+
+    const createData = prisma.contract.create.mock.calls[0][0].data;
+    expect(createData.vatAmount).toBeNull();
+  });
+
   // Issue #1086 item 4 — EXCH-YYYYMMDD-NNNN doc number (no EX-${Date.now()} collision)
   describe('contract number (Issue #1086 item 4)', () => {
     beforeEach(() => {
@@ -855,6 +873,18 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
     expect(result.mode).toBe('PRICED');
     // Snapshot branch must NOT run the legacy remaining-months clone
     expect(prisma.payment.count).not.toHaveBeenCalled();
+    // Task 8 review fix 4 — snapshot-branch audit uses `totalMonths` key
+    // (this is the FULL new plan's month count, not a remaining count)
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'EXCHANGE_REQUEST_APPROVED',
+        newValue: expect.objectContaining({ totalMonths: 12 }),
+      }),
+    );
+    const auditValue = audit.log.mock.calls.find(
+      (c: any[]) => c[0].action === 'EXCHANGE_REQUEST_APPROVED',
+    )![0].newValue;
+    expect(auditValue.remainingMonths).toBeUndefined();
   });
 
   it('PRICED snapshot branch: newProduct.installmentPrice null → BadRequest (defensive)', async () => {
@@ -862,6 +892,47 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
     await expect(service.approve('pricedReq', 'u1', 'OWNER', {})).rejects.toThrow(
       BadRequestException,
     );
+  });
+
+  // Task 8 review fix 2 — price-drift guard: live product price changed
+  // between submit and approve → snapshot no longer reproducible → reject.
+  it('PRICED snapshot branch: live price changed after submit → BadRequest ราคาเปลี่ยน', async () => {
+    requests.pricedReq.newProduct = {
+      id: 'new-p',
+      installmentPrice: { toString: () => '12000' }, // was 10000 at submit
+    };
+    await expect(service.approve('pricedReq', 'u1', 'OWNER', {})).rejects.toThrow(
+      'เปลี่ยนไประหว่างรออนุมัติ',
+    );
+    expect(prisma.contract.create).not.toHaveBeenCalled();
+  });
+
+  // Task 8 review fix 3 — old-contract status re-check at approve time
+  // (approval can be days after submit; contract may have closed meanwhile).
+  it('MEMO: old contract no longer ACTIVE (EARLY_PAYOFF) → BadRequest, no product swap', async () => {
+    requests.memoReq.oldContract = {
+      ...requests.memoReq.oldContract,
+      status: 'EARLY_PAYOFF',
+    };
+    await expect(
+      service.approve('memoReq', 'u1', 'OWNER', {
+        memoAddendumSigned: true,
+        memoMdmSwapped: true,
+      }),
+    ).rejects.toThrow('เปลี่ยนเครื่องไม่ได้');
+    expect(prisma.product.update).not.toHaveBeenCalled();
+    expect(prisma.contract.update).not.toHaveBeenCalled();
+  });
+
+  it('PRICED snapshot branch: old contract no longer ACTIVE (EARLY_PAYOFF) → BadRequest', async () => {
+    requests.pricedReq.oldContract = {
+      ...requests.pricedReq.oldContract,
+      status: 'EARLY_PAYOFF',
+    };
+    await expect(service.approve('pricedReq', 'u1', 'OWNER', {})).rejects.toThrow(
+      'เปลี่ยนเครื่องไม่ได้',
+    );
+    expect(prisma.contract.create).not.toHaveBeenCalled();
   });
 });
 
@@ -1159,6 +1230,7 @@ function makeOldContract(totalMonths: number, _paid: number) {
     salespersonId: 'sp',
     pdpaConsentId: null,
     planType: 'STORE_DIRECT',
+    status: 'ACTIVE',
     totalMonths,
     monthlyPayment: { toString: () => '1416.66' } as any,
     financedAmount: { toString: () => '10000' } as any,

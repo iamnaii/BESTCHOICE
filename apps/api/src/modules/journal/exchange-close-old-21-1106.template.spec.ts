@@ -70,4 +70,22 @@ describe('ExchangeCloseOld21_1106Template', () => {
     expect(lines.find((l: any) => l.accountCode === '51-1102')).toBeUndefined();
     expect(lines.find((l: any) => l.accountCode === '41-1102')).toBeUndefined();
   });
+
+  it('stamps contractId + idempotencyKey (Device Swap Task 6)', async () => {
+    // Why: glContractBalance filters journal entries by metadata.contractId ONLY.
+    // Without this stamp, computeOldOutstanding after a device swap would still
+    // see the old contract's outstanding balance (never nets to 0).
+    await template.execute({
+      oldContractId: 'old',
+      buyback: new Decimal('11000'),
+      oldGrossOutstanding: new Decimal('11333.28'),
+      oldVatReceivableOutstanding: new Decimal('793.36'),
+      oldUnearnedInterestOutstanding: new Decimal('2666.64'),
+      oldDeferredVatOutstanding: new Decimal('793.36'),
+    });
+
+    const meta = journal.createAndPost.mock.calls[0][0].metadata;
+    expect(meta.contractId).toBe('old');
+    expect(meta.idempotencyKey).toBe(meta.contractId);
+  });
 });

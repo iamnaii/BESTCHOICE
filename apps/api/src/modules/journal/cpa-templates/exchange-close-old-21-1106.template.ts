@@ -119,6 +119,8 @@ export class ExchangeCloseOld21_1106Template {
         description: `Exchange A.2 — close old contract ${input.oldContractId}`,
         metadata: {
           flow: 'exchange-close-old-21-1106',
+          idempotencyKey: input.oldContractId,
+          contractId: input.oldContractId,
           oldContractId: input.oldContractId,
           buyback: input.buyback.toString(),
           threshold: threshold.toString(),

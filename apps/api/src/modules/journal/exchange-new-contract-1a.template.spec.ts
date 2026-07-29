@@ -87,4 +87,38 @@ describe('ExchangeNewContract1ATemplate', () => {
     expect(result.id).toBe('je-uuid');
     expect(result.entryNumber).toBe('JV-2026-001');
   });
+
+  it('stamps contractId + idempotencyKey (Device Swap Task 6) and balances 6 lines', async () => {
+    // Why: glContractBalance filters journal entries by metadata.contractId ONLY.
+    // Without this stamp, a future JP5 repossession of an EXCH- contract would
+    // read GL = 0 on every leg (wrong JE) because it can never find this entry.
+    const newContractId = 'new-ctr-4';
+    prisma.contract.findUniqueOrThrow.mockResolvedValue({
+      id: newContractId,
+      contractNumber: 'EX-004',
+      financedAmount: new Decimal('10000'),
+      storeCommission: new Decimal('1000'),
+      interestTotal: new Decimal('6000'),
+      vatAmount: new Decimal('1190'),
+    });
+
+    await template.execute(newContractId);
+
+    const call = journal.createAndPost.mock.calls[0][0];
+    const meta = call.metadata;
+    expect(meta.contractId).toBe(newContractId);
+    expect(meta.idempotencyKey).toBe(meta.contractId);
+
+    // Sanity check: 6 JE lines exist and balance (Dr 11-2101 = 17000, Cr 21-2102 = 1190)
+    const lines = call.lines;
+    expect(lines).toHaveLength(6);
+    const dr112101 = lines.find((l: any) => l.accountCode === '11-2101');
+    expect(dr112101.dr.toFixed(2)).toBe('17000.00');
+    const cr212102 = lines.find((l: any) => l.accountCode === '21-2102');
+    expect(cr212102.cr.toFixed(2)).toBe('1190.00');
+
+    const drSum = lines.reduce((s: Decimal, l: any) => s.plus(l.dr), new Decimal(0));
+    const crSum = lines.reduce((s: Decimal, l: any) => s.plus(l.cr), new Decimal(0));
+    expect(drSum.toFixed(2)).toBe(crSum.toFixed(2));
+  });
 });

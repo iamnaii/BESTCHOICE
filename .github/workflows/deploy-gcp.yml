@@ -141,6 +141,9 @@ jobs:
       # src/modules/accounting/*.integration.spec.ts (bad-debt streak specs) added
       # Task 7 — jest ignores them too (same .integration.spec.ts naming as above),
       # so they NEVER ran in CI either until now.
+      # src/modules/contract-exchange/__tests__/*.integration.spec.ts (Device Swap
+      # priced-flow E2E) added 2026-07-29 — same jest-invisible naming; without an
+      # explicit glob here it would never run in any pipeline.
       - name: Run DB-backed money-invariant specs (vitest — #1328)
         timeout-minutes: 10
         working-directory: apps/api
@@ -148,10 +151,12 @@ jobs:
           FILES=$(ls src/modules/journal/cpa-templates/*.spec.ts | grep -v contract-cancellation.template.spec.ts)
           ACCT_FILES=$(ls src/modules/accounting/*.integration.spec.ts)
           JP5_FILES=$(ls src/modules/journal/cpa-templates/__tests__/*.spec.ts)
+          EXCH_FILES=$(ls src/modules/contract-exchange/__tests__/*.integration.spec.ts)
           npx vitest run --no-file-parallelism $FILES \
             src/modules/installments/reschedule.service.spec.ts \
             $ACCT_FILES \
-            $JP5_FILES
+            $JP5_FILES \
+            $EXCH_FILES
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/test_db?schema=public
           DATABASE_URL_FINANCE: postgresql://test:test@localhost:5433/test_finance_db?schema=public

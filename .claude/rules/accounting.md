@@ -943,3 +943,17 @@ Auto-issues the ม.82/5 ใบลดหนี้ (Credit Note) receipt that doc
 - `computeCnBreakdown`'s outstanding formula nets out `Payment.amountPaid`'s FEE-FIRST late-fee component before comparing against `amountDue` (see `compute-cn-breakdown.ts` jsdoc) — otherwise a fee-heavy partial payment understated `outstanding`/`cnVat`. ~~`RepossessionJP5Template`'s `Cr 11-2103` clearing leg and loss/gain plug remain count-based~~ — DONE 2026-07-26 (ECL-per-installment Task 5): both now read the live GL balance via `glContractBalance`, closing the over-credit gap. See "JP5 clearing legs residual — CLOSED" above.
 - The public token appears in the React Query `queryKey` (`['cn-view', token]`) and in the client-side download filename (`ใบลดหนี้-${token}.pdf`) on `CreditNoteViewPage` — same pre-existing pattern as other public-token pages (e.g. `/pay/:token`); not newly introduced here, but not yet remediated either.
 - No backfill for CNs on JEs posted before this phase shipped — forward-only. A backfill CLI would be a separate, explicit task if the owner wants historical coverage.
+
+---
+
+## Device Swap — Priced Exchange (2026-07-29)
+
+Spec: `docs/superpowers/specs/2026-07-29-device-swap-priced-exchange-design.md` (D1-D5 owner decisions)
+
+- MEMO mode (รุ่นเดิม+ราคาเดิม): ไม่มี JE — เปลี่ยน `contract.productId` บนสัญญาเดิม (TFRS 9 modification, workbook Case 1). SP2 same-price + `case-8-same-price.csv` golden ถูก retire
+- PRICED mode: A.1 (1A สัญญาใหม่) → A.2 (derecognize ผ่าน 21-1106, VAT due ทันที ม.78/1 ไม่ออก CN) → A.3 (ตัดเจ้าหนี้ + ขาเงินสดโอนเพิ่ม/คืนลูกค้า — D5 post ทันที) → A.4 (SHOP re-intake) → A.5 (ECL reversal Dr 11-2102 / Cr 42-1106 — D2; JP5/write-off ยังใช้ 51-1103)
+- Approval: AUTO (≥NCV + ≥basePrice×0.85) / REVIEW (BM) / ESCALATE (<70% NCV — OWNER) — `exchange-tier.util.ts`
+- Guards ก่อน finalize: GL 11-2103 = 0, ไม่มี advance/credit ค้าง
+- Cancellation: ≤7 วันฟรี / 8-30 วัน ค่าปรับ `exchange_cancel_penalty_pct`% → Cr 42-1107 (ไม่มี VAT) / >30 วันไม่ได้ — mirror-reverse ทุก JE รวม A.5; 2A cron backfill งวดที่พลาดเอง (query dueDate < tomorrow)
+- 42-1106 = รายได้จากการโอนกลับค่าเผื่อฯ (rename จาก orphan "รายได้บริการซ่อม" — runtime repair ใช้ S42-1101)
+- Integration E2E (DB จริง): `apps/api/src/modules/contract-exchange/__tests__/exchange-priced-flow.integration.spec.ts` — Case 2A (21-1106 net 0, Cr 11-2101 = GL-true 11,333.36 ไม่ใช่สูตรคูณ 11,333.28, loss plug 4,126.68), ECL 30.32 → 42-1106, cancel วันที่ 15 (penalty 400.00 + mirror-reverse net 0 ทุกบัญชี + 2A backfill), MEMO (JE count คงเดิม). CI: glob `src/modules/contract-exchange/__tests__/*.integration.spec.ts` ใน deploy-gcp.yml vitest step (jest มองไม่เห็นไฟล์ `*.integration.spec.ts` ตาม testPathIgnorePatterns)

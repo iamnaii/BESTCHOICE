@@ -125,6 +125,23 @@ describe('ContractExchangeService.submit', () => {
     expect(result.mode).toBe('MEMO');
   });
 
+  // I6 (final review 2026-07-29) — submitted oldProductId must be the device
+  // actually on the contract (a mismatch would return the WRONG device to SHOP
+  // at finalize).
+  it('BadRequestException when oldProductId does not match contract.productId', async () => {
+    prisma.contract.findUnique.mockResolvedValue({
+      id: 'old', branchId: 'br-1', status: 'ACTIVE', productId: 'other-product', deletedAt: null, sellingPrice: '28000',
+    });
+    const same = { brand: 'Apple', model: 'iPhone 15', storage: '256', sellingPrice: '28000' };
+    prisma.product.findUnique
+      .mockResolvedValueOnce({ id: 'op', ...same })
+      .mockResolvedValueOnce({ id: 'np', ...same, status: 'IN_STOCK' });
+    await expect(
+      service.submit({ oldContractId: 'old', oldProductId: 'op', newProductId: 'np' }, SALES_BR1),
+    ).rejects.toThrow('เครื่องเดิมไม่ตรงกับสัญญา');
+    expect(prisma.contractExchangeRequest.create).not.toHaveBeenCalled();
+  });
+
   // Issue #1086 item 2 — in-service branch check
   it('ForbiddenException when SALES user from another branch tries to submit', async () => {
     prisma.contract.findUnique.mockResolvedValue({ id: 'old', branchId: 'br-1', status: 'ACTIVE', productId: 'op', deletedAt: null });
@@ -259,12 +276,15 @@ describe('submit() mode routing (Device Swap 2026-07)', () => {
       contractExchangeRequest: {
         // Echo data so tests can assert mode/tier/snapshots off the return value
         create: jest.fn().mockImplementation(async ({ data }: any) => ({ id: 'req-1', ...data })),
-        // Task 8: approve() pre-fetches the request for tier-role enforcement
+        // Task 8: approve() pre-fetches the request for tier-role enforcement.
+        // I7: pre-fetch now includes oldContract.branchId for branch scoping —
+        // must match the SALES user's branch so the AUTO path passes the check.
         findUnique: jest.fn().mockResolvedValue({
           id: 'req-1',
           deletedAt: null,
           mode: 'PRICED',
           approvalTier: 'AUTO',
+          oldContract: { branchId: 'br-1' },
         }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         findUniqueOrThrow: jest.fn().mockResolvedValue({
@@ -327,6 +347,18 @@ describe('submit() mode routing (Device Swap 2026-07)', () => {
     await expect(service.submit(pricedDtoWithoutBuyback, user)).rejects.toThrow('ราคารับซื้อ');
   });
 
+  // Final review 2026-07-29: depositAccountCode is now required on EVERY
+  // PRICED submit (not just buyback ≠ vendorSum) — the Case-2F cancel penalty
+  // path needs a cash account even for a perfect-offset swap.
+  it('PRICED ไม่ส่ง depositAccountCode → BadRequest แม้ buyback == vendorSum', async () => {
+    const { depositAccountCode: _drop, ...noDeposit } = pricedDtoFull;
+    // buyback 11000 == vendorSum (financed 10000 + commission 1000) — เดิมผ่าน
+    await expect(
+      service.submit({ ...noDeposit, buybackPrice: '11000' }, user),
+    ).rejects.toThrow('บัญชีเงินสด');
+    expect(prisma.contractExchangeRequest.create).not.toHaveBeenCalled();
+  });
+
   it('PRICED ครบ field → เก็บ tier/ncv/plan snapshot; tier REVIEW ไม่ auto-approve', async () => {
     // Empty ledger → NCV 0; buyback 8000 ≥ NCV but no TradeInValuation row
     // (basePrice null) → REVIEW per the approval matrix.
@@ -374,11 +406,14 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
       contractExchangeRequest: {
         // Task 8: approve() pre-fetches the request (tier-role enforcement +
         // MEMO/PRICED routing). These legacy tests are all PRICED/REVIEW.
+        // I7: oldContract.branchId included for branch scoping (OWNER callers
+        // skip the check, but the shape mirrors the real include).
         findUnique: jest.fn().mockResolvedValue({
           id: 'r1',
           deletedAt: null,
           mode: 'PRICED',
           approvalTier: 'REVIEW',
+          oldContract: { branchId: 'br' },
         }),
         updateMany: jest.fn(),
         findUniqueOrThrow: jest.fn(),
@@ -430,7 +465,7 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
 
   it('throws ConflictException when lock returns count=0', async () => {
     prisma.contractExchangeRequest.updateMany.mockResolvedValue({ count: 0 });
-    await expect(service.approve('r1', 'u1', 'OWNER', {})).rejects.toThrow(/อาจถูกอนุมัติแล้ว/);
+    await expect(service.approve('r1', { id: 'u1', role: 'OWNER', branchId: null }, {})).rejects.toThrow(/อาจถูกอนุมัติแล้ว/);
   });
 
   it('creates DRAFT new contract + reserves new product + APPROVED workflow + audit (no JE, no old-side flips)', async () => {
@@ -442,7 +477,7 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
     prisma.payment.count.mockResolvedValue(4);
     prisma.contract.create.mockResolvedValue({ id: 'new-c', contractNumber: 'EXCH-20260524-0001' });
 
-    const result = await service.approve('r1', 'owner-1', 'OWNER', {});
+    const result = await service.approve('r1', { id: 'owner-1', role: 'OWNER', branchId: null }, {});
 
     // New contract created as DRAFT + workflowStatus APPROVED (sign-then-activate gate)
     const createData = prisma.contract.create.mock.calls[0][0].data;
@@ -511,7 +546,7 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
     prisma.pDPAConsent.create.mockResolvedValue({ id: 'pdpa-cloned-456' });
     prisma.contract.create.mockResolvedValue({ id: 'nc', contractNumber: 'EXCH-20260524-0001' });
 
-    await service.approve('r1', 'u1', 'OWNER', {});
+    await service.approve('r1', { id: 'u1', role: 'OWNER', branchId: null }, {});
 
     expect(prisma.pDPAConsent.findUnique).toHaveBeenCalledWith({
       where: { id: 'pdpa-old-123' },
@@ -539,7 +574,7 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
     prisma.payment.count.mockResolvedValue(4);
     prisma.contract.create.mockResolvedValue({ id: 'nc', contractNumber: 'EXCH-20260524-0001' });
 
-    await service.approve('r1', 'u1', 'OWNER', {});
+    await service.approve('r1', { id: 'u1', role: 'OWNER', branchId: null }, {});
 
     expect(prisma.pDPAConsent.findUnique).not.toHaveBeenCalled();
     expect(prisma.pDPAConsent.create).not.toHaveBeenCalled();
@@ -556,7 +591,7 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
     prisma.payment.count.mockResolvedValue(4);
     prisma.contract.create.mockResolvedValue({ id: 'nc', contractNumber: 'EXCH-20260524-0001' });
 
-    await service.approve('r1', 'u1', 'OWNER', {});
+    await service.approve('r1', { id: 'u1', role: 'OWNER', branchId: null }, {});
 
     const createData = prisma.contract.create.mock.calls[0][0].data;
     expect(createData.totalMonths).toBe(8);
@@ -570,7 +605,7 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
     });
     prisma.payment.count.mockResolvedValue(12);
 
-    await expect(service.approve('r1', 'u1', 'OWNER', {})).rejects.toThrow(/จ่ายครบงวด/);
+    await expect(service.approve('r1', { id: 'u1', role: 'OWNER', branchId: null }, {})).rejects.toThrow(/จ่ายครบงวด/);
   });
 
   // Issue #1086 item 5 — new contract must have downPayment=0
@@ -583,7 +618,7 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
     prisma.payment.count.mockResolvedValue(4);
     prisma.contract.create.mockResolvedValue({ id: 'nc', contractNumber: 'EXCH-20260524-0001' });
 
-    await service.approve('r1', 'u1', 'OWNER', {});
+    await service.approve('r1', { id: 'u1', role: 'OWNER', branchId: null }, {});
 
     const createData = prisma.contract.create.mock.calls[0][0].data;
     // The new contract's downPayment must be a zero Decimal, not the old 4000.
@@ -602,7 +637,7 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
     prisma.payment.count.mockResolvedValue(4);
     prisma.contract.create.mockResolvedValue({ id: 'nc', contractNumber: 'EXCH-20260524-0001' });
 
-    await service.approve('r1', 'u1', 'OWNER', {});
+    await service.approve('r1', { id: 'u1', role: 'OWNER', branchId: null }, {});
 
     const createData = prisma.contract.create.mock.calls[0][0].data;
     expect(createData.vatAmount).toBeNull();
@@ -622,7 +657,7 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
 
     it('uses EXCH-YYYYMMDD-NNNN format (NOT EX-<timestamp>)', async () => {
       prisma.contract.findFirst.mockResolvedValue(null); // first of the day
-      const result = await service.approve('r1', 'u1', 'OWNER', {});
+      const result = await service.approve('r1', { id: 'u1', role: 'OWNER', branchId: null }, {});
       const createData = prisma.contract.create.mock.calls[0][0].data;
       expect(createData.contractNumber).toMatch(/^EXCH-\d{8}-\d{4}$/);
       // Must NOT collide with ExpenseDocument EX- prefix:
@@ -632,7 +667,7 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
 
     it('acquires advisory lock per BKK day', async () => {
       prisma.contract.findFirst.mockResolvedValue(null);
-      await service.approve('r1', 'u1', 'OWNER', {});
+      await service.approve('r1', { id: 'u1', role: 'OWNER', branchId: null }, {});
       expect(prisma.$executeRawUnsafe).toHaveBeenCalledWith(
         expect.stringContaining('pg_advisory_xact_lock'),
       );
@@ -653,9 +688,9 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
         return { id: `nc-${pretendCount}`, contractNumber: data.contractNumber };
       });
 
-      await service.approve('r1', 'u1', 'OWNER', {});
-      await service.approve('r1', 'u1', 'OWNER', {});
-      await service.approve('r1', 'u1', 'OWNER', {});
+      await service.approve('r1', { id: 'u1', role: 'OWNER', branchId: null }, {});
+      await service.approve('r1', { id: 'u1', role: 'OWNER', branchId: null }, {});
+      await service.approve('r1', { id: 'u1', role: 'OWNER', branchId: null }, {});
 
       expect(seqs[0]).toMatch(/^EXCH-\d{8}-0001$/);
       expect(seqs[1]).toMatch(/^EXCH-\d{8}-0002$/);
@@ -666,7 +701,7 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
       prisma.contract.findFirst.mockResolvedValue({
         contractNumber: `EXCH-${todayBkk()}-0099`,
       });
-      await service.approve('r1', 'u1', 'OWNER', {});
+      await service.approve('r1', { id: 'u1', role: 'OWNER', branchId: null }, {});
       const createData = prisma.contract.create.mock.calls[0][0].data;
       expect(createData.contractNumber).toMatch(/^EXCH-\d{8}-0100$/);
     });
@@ -783,36 +818,51 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
   });
 
   it('NotFoundException when request does not exist', async () => {
-    await expect(service.approve('missing', 'u1', 'OWNER', {})).rejects.toThrow(
+    await expect(service.approve('missing', { id: 'u1', role: 'OWNER', branchId: null }, {})).rejects.toThrow(
       NotFoundException,
     );
   });
 
   it('ESCALATE tier + role BRANCH_MANAGER → Forbidden', async () => {
-    await expect(service.approve('req1', 'u1', 'BRANCH_MANAGER', {})).rejects.toThrow('OWNER');
+    await expect(service.approve('req1', { id: 'u1', role: 'BRANCH_MANAGER', branchId: 'br' }, {})).rejects.toThrow('OWNER');
     // Blocked BEFORE any state change — no tx, no lock
     expect(prisma.$transaction).not.toHaveBeenCalled();
     expect(prisma.contractExchangeRequest.updateMany).not.toHaveBeenCalled();
   });
 
   it('ESCALATE tier + role OWNER → ผ่าน', async () => {
-    await expect(service.approve('req1', 'u1', 'OWNER', {})).resolves.toBeDefined();
+    await expect(service.approve('req1', { id: 'u1', role: 'OWNER', branchId: null }, {})).resolves.toBeDefined();
   });
 
   it('REVIEW tier + BRANCH_MANAGER → ผ่าน', async () => {
-    await expect(service.approve('req2', 'u1', 'BRANCH_MANAGER', {})).resolves.toBeDefined();
+    await expect(service.approve('req2', { id: 'u1', role: 'BRANCH_MANAGER', branchId: 'br' }, {})).resolves.toBeDefined();
+  });
+
+  // I7 (final review 2026-07-29) — BM must not approve another branch's request
+  it('BRANCH_MANAGER ต่างสาขา → Forbidden ก่อนแตะ state ใดๆ', async () => {
+    await expect(
+      service.approve('req2', { id: 'u1', role: 'BRANCH_MANAGER', branchId: 'br-OTHER' }, {}),
+    ).rejects.toThrow('สาขาอื่น');
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(prisma.contractExchangeRequest.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('OWNER (cross-branch) อนุมัติคำขอสาขาไหนก็ได้', async () => {
+    await expect(
+      service.approve('req2', { id: 'u1', role: 'OWNER', branchId: null }, {}),
+    ).resolves.toBeDefined();
   });
 
   it('MEMO: checklist ไม่ครบ → BadRequest', async () => {
     await expect(
-      service.approve('memoReq', 'u1', 'BRANCH_MANAGER', { memoAddendumSigned: true }),
+      service.approve('memoReq', { id: 'u1', role: 'BRANCH_MANAGER', branchId: 'br' }, { memoAddendumSigned: true }),
     ).rejects.toThrow('checklist');
     // Guard fires OUTSIDE the tx — no lock attempted
     expect(prisma.contractExchangeRequest.updateMany).not.toHaveBeenCalled();
   });
 
   it('MEMO: checklist ครบ → เปลี่ยน productId บนสัญญาเดิม, ไม่สร้างสัญญาใหม่, ไม่มี JE', async () => {
-    const result = await service.approve('memoReq', 'u1', 'OWNER', {
+    const result = await service.approve('memoReq', { id: 'u1', role: 'OWNER', branchId: null }, {
       memoAddendumSigned: true,
       memoMdmSwapped: true,
     });
@@ -870,7 +920,7 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
   });
 
   it('PRICED: สัญญาใหม่ใช้แผนจาก request snapshot (ไม่ clone งวดเดิม)', async () => {
-    const result = await service.approve('pricedReq', 'u1', 'OWNER', {});
+    const result = await service.approve('pricedReq', { id: 'u1', role: 'OWNER', branchId: null }, {});
     const created = prisma.contract.create.mock.calls[0][0].data;
     expect(created.totalMonths).toBe(12);
     expect(created.monthlyPayment.toString()).toBe('1515.83');
@@ -896,7 +946,7 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
 
   it('PRICED snapshot branch: newProduct.installmentPrice null → BadRequest (defensive)', async () => {
     requests.pricedReq.newProduct = { id: 'new-p', installmentPrice: null };
-    await expect(service.approve('pricedReq', 'u1', 'OWNER', {})).rejects.toThrow(
+    await expect(service.approve('pricedReq', { id: 'u1', role: 'OWNER', branchId: null }, {})).rejects.toThrow(
       BadRequestException,
     );
   });
@@ -908,7 +958,7 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
       id: 'new-p',
       installmentPrice: { toString: () => '12000' }, // was 10000 at submit
     };
-    await expect(service.approve('pricedReq', 'u1', 'OWNER', {})).rejects.toThrow(
+    await expect(service.approve('pricedReq', { id: 'u1', role: 'OWNER', branchId: null }, {})).rejects.toThrow(
       'เปลี่ยนไประหว่างรออนุมัติ',
     );
     expect(prisma.contract.create).not.toHaveBeenCalled();
@@ -922,7 +972,7 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
       status: 'EARLY_PAYOFF',
     };
     await expect(
-      service.approve('memoReq', 'u1', 'OWNER', {
+      service.approve('memoReq', { id: 'u1', role: 'OWNER', branchId: null }, {
         memoAddendumSigned: true,
         memoMdmSwapped: true,
       }),
@@ -936,7 +986,7 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
       ...requests.pricedReq.oldContract,
       status: 'EARLY_PAYOFF',
     };
-    await expect(service.approve('pricedReq', 'u1', 'OWNER', {})).rejects.toThrow(
+    await expect(service.approve('pricedReq', { id: 'u1', role: 'OWNER', branchId: null }, {})).rejects.toThrow(
       'เปลี่ยนเครื่องไม่ได้',
     );
     expect(prisma.contract.create).not.toHaveBeenCalled();
@@ -1085,13 +1135,16 @@ describe('ContractExchangeService.finalizeAfterActivation', () => {
     expect(templates.t1a.execute).toHaveBeenCalled();
   });
 
-  it('passes costPrice to A.4 template', async () => {
+  it('passes costPrice + requestId to A.4 template', async () => {
     tx.product.findUniqueOrThrow.mockResolvedValue({ id: 'old-p', costPrice: '12345.67' });
     await service.finalizeAfterActivation(newContract, tx);
     const t4Call = templates.t4.execute.mock.calls[0][0];
     expect(t4Call.oldProductId).toBe('old-p');
     expect(t4Call.oldContractId).toBe('old-c');
+    expect(t4Call.requestId).toBe('r1'); // C1b idempotency re-key
     expect(t4Call.cost.toString()).toBe('12345.67');
+    // A.2 carries the same request-scoped key input
+    expect(templates.t2.execute.mock.calls[0][0].requestId).toBe('r1');
   });
 
   it('stores je*Id refs on the exchange request', async () => {
@@ -1268,7 +1321,11 @@ describe('ContractExchangeService.finalizeAfterActivation', () => {
       const result = await service.finalizeAfterActivation(newContract, tx);
 
       expect(callOrder).toEqual(['t4', 't5']);
-      expect(templates.t5.execute).toHaveBeenCalledWith({ oldContractId: 'old-c' }, tx);
+      // C1b: requestId flows into A.5 for the request-scoped idempotency key
+      expect(templates.t5.execute).toHaveBeenCalledWith(
+        { oldContractId: 'old-c', requestId: 'r1' },
+        tx,
+      );
       expect(tx.badDebtProvision.updateMany).toHaveBeenCalledWith({
         where: { contractId: 'old-c', status: 'ACTIVE', deletedAt: null },
         data: { status: 'REVERSED' },
@@ -1374,9 +1431,12 @@ describe('ContractExchangeService.listRecent', () => {
     service = mod.get(ContractExchangeService);
   });
 
+  const OWNER = { id: 'u1', role: 'OWNER', branchId: null };
+  const BM_BR1 = { id: 'u2', role: 'BRANCH_MANAGER', branchId: 'br-1' };
+
   it('queries status=APPROVED, deletedAt=null, within a 90-day window, take 100', async () => {
     const before = Date.now();
-    await service.listRecent();
+    await service.listRecent(OWNER);
     const after = Date.now();
 
     expect(prisma.contractExchangeRequest.findMany).toHaveBeenCalledTimes(1);
@@ -1385,6 +1445,8 @@ describe('ContractExchangeService.listRecent', () => {
     expect(call.where.deletedAt).toBeNull();
     expect(call.take).toBe(100);
     expect(call.orderBy).toEqual({ updatedAt: 'desc' });
+    // OWNER = cross-branch → no oldContract branch filter (I7)
+    expect(call.where.oldContract).toBeUndefined();
 
     // updatedAt.gte should be ~90 days before now (within a small tolerance
     // for test execution time).
@@ -1397,7 +1459,27 @@ describe('ContractExchangeService.listRecent', () => {
   it('returns whatever prisma resolves', async () => {
     const rows = [{ id: 'r1', status: 'APPROVED' }];
     prisma.contractExchangeRequest.findMany.mockResolvedValue(rows);
-    await expect(service.listRecent()).resolves.toBe(rows);
+    await expect(service.listRecent(OWNER)).resolves.toBe(rows);
+  });
+
+  // I7 (final review 2026-07-29) — BM only sees their own branch
+  it('listRecent: BRANCH_MANAGER → where includes oldContract.branchId filter', async () => {
+    await service.listRecent(BM_BR1);
+    const call = prisma.contractExchangeRequest.findMany.mock.calls[0][0];
+    expect(call.where.oldContract).toEqual({ branchId: 'br-1' });
+  });
+
+  it('listPending: BRANCH_MANAGER → where includes oldContract.branchId filter', async () => {
+    await service.listPending(BM_BR1);
+    const call = prisma.contractExchangeRequest.findMany.mock.calls[0][0];
+    expect(call.where.status).toBe('PENDING');
+    expect(call.where.oldContract).toEqual({ branchId: 'br-1' });
+  });
+
+  it('listPending: OWNER (cross-branch) → no branch filter', async () => {
+    await service.listPending(OWNER);
+    const call = prisma.contractExchangeRequest.findMany.mock.calls[0][0];
+    expect(call.where.oldContract).toBeUndefined();
   });
 });
 

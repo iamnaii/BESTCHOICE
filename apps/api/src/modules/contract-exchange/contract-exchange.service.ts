@@ -89,6 +89,12 @@ export class ContractExchangeService {
     ]);
     if (!oldRaw) throw new NotFoundException('ไม่พบเครื่องเดิม');
     if (!newRaw) throw new NotFoundException('ไม่พบเครื่องใหม่');
+    // I6 (final review 2026-07-29): the submitted oldProductId must be the
+    // device actually on the contract — a mismatched id would return the WRONG
+    // device to SHOP stock at finalize (A.4 cost + product flips key off it).
+    if (oldContract.productId !== dto.oldProductId) {
+      throw new BadRequestException('เครื่องเดิมไม่ตรงกับสัญญา');
+    }
     const oldProduct = oldRaw as any;
     const newProduct = newRaw as any;
 
@@ -155,10 +161,12 @@ export class ContractExchangeService {
     const marketCheckPct = await this.configNumber('exchange_market_check_pct', 15);
     const tier: ExchangeTier = computeExchangeTier({ buyback, ncv, basePrice, marketCheckPct });
 
-    // ขาเงินสดจะเกิดเมื่อ buyback ≠ vendorSum — บังคับเลือกบัญชีเงินตั้งแต่ submit
-    const vendorSum = plan.financedAmount.plus(plan.storeCommission);
-    if (!buyback.equals(vendorSum) && !dto.depositAccountCode) {
-      throw new BadRequestException('กรุณาเลือกบัญชีเงินสด/ธนาคาร (ราคารับซื้อไม่เท่ากับเจ้าหนี้สัญญาใหม่)');
+    // depositAccountCode บังคับทุกคำขอ PRICED (final review 2026-07-29):
+    // เดิมบังคับเฉพาะ buyback ≠ vendorSum แต่เคส Case-2F (buyback == vendorSum)
+    // ก็ยังต้องมีบัญชีเงินไว้ให้ penalty JE ตอน cancel วันที่ 8-30 — ไม่งั้น
+    // cancel ตาย "คำขอนี้ไม่มีบัญชีเงินสด" ทั้งที่ยกเลิกควรทำได้
+    if (!dto.depositAccountCode) {
+      throw new BadRequestException('กรุณาเลือกบัญชีเงินสด/ธนาคาร (บังคับทุกคำขอแบบมีราคารับซื้อ)');
     }
 
     const request = await (this.prisma as any).contractExchangeRequest.create({
@@ -188,7 +196,7 @@ export class ContractExchangeService {
 
     // AUTO tier — อนุมัติทันที (audit ระบุ auto)
     if (tier === 'AUTO') {
-      const approved = await this.approve(request.id, user.id, user.role ?? 'SALES', {});
+      const approved = await this.approve(request.id, user, {});
       return { ...request, status: 'APPROVED', autoApproved: true, newContractId: approved.newContractId };
     }
     return request;
@@ -317,25 +325,28 @@ export class ContractExchangeService {
    * for "ready to sign then activate" (see ContractWorkflowService.activate),
    * so we don't need a new lifecycle state.
    */
-  async approve(
-    id: string,
-    userId: string,
-    userRole: string,
-    dto: ApproveExchangeRequestDto,
-  ) {
+  async approve(id: string, user: RequestUser, dto: ApproveExchangeRequestDto) {
     // Tier-role enforcement ที่ service (spec §6) — controller เปิด OWNER+BM แล้ว
-    const pre = await (this.prisma as any).contractExchangeRequest.findUnique({ where: { id } });
+    const pre = await (this.prisma as any).contractExchangeRequest.findUnique({
+      where: { id },
+      include: { oldContract: { select: { branchId: true } } },
+    });
     if (!pre || pre.deletedAt) throw new NotFoundException('ไม่พบคำขอเปลี่ยนเครื่อง');
-    if (pre.mode === 'PRICED' && pre.approvalTier === 'ESCALATE' && userRole !== 'OWNER') {
+    // I7 (final review 2026-07-29): BM must not approve another branch's request
+    // by UUID — same in-service branch scoping as submit()/buildPreview().
+    if (!hasCrossBranchAccess(user) && pre.oldContract?.branchId !== user.branchId) {
+      throw new ForbiddenException('ไม่สามารถอนุมัติคำขอของสาขาอื่นได้');
+    }
+    if (pre.mode === 'PRICED' && pre.approvalTier === 'ESCALATE' && user.role !== 'OWNER') {
       throw new ForbiddenException(
         'ราคารับซื้อต่ำกว่า 70% ของมูลค่าคงเหลือ — ต้องให้ผู้จัดการใหญ่ (OWNER) อนุมัติเท่านั้น',
       );
     }
 
     if (pre.mode === 'MEMO') {
-      return this.approveMemo(id, userId, dto);
+      return this.approveMemo(id, user.id, dto);
     }
-    return this.approvePriced(id, userId);
+    return this.approvePriced(id, user.id);
   }
 
   /** MEMO (workbook Case 1): เปลี่ยน device บนสัญญาเดิม — ไม่มี JE, ไม่มีสัญญาใหม่ (spec §8) */
@@ -708,9 +719,12 @@ export class ContractExchangeService {
     const je1a = await this.t1a.execute(newContract.id, tx);
 
     // 5. JE A.2 — close old contract's outstanding
+    // requestId keys the idempotency (C1b) so a re-exchange after cancel
+    // doesn't collide with the first lifecycle's still-POSTED JEs.
     const je2 = await this.t2.execute(
       {
         oldContractId,
+        requestId: request.id,
         buyback,
         oldGrossOutstanding: oldOutstanding.gross,
         oldVatReceivableOutstanding: oldOutstanding.vatReceivable,
@@ -745,12 +759,12 @@ export class ContractExchangeService {
     }
     const cost = new Decimal(oldProduct.costPrice.toString());
     const je4 = await this.t4.execute(
-      { oldProductId: request.oldProductId, oldContractId, cost },
+      { oldProductId: request.oldProductId, oldContractId, requestId: request.id, cost },
       tx,
     );
 
     // JE A.5 — ECL reversal on derecognition (workbook Case 4, synchronous ใน tx เดียวกัน)
-    const je5 = await this.t5.execute({ oldContractId }, tx);
+    const je5 = await this.t5.execute({ oldContractId, requestId: request.id }, tx);
     if (je5) {
       await (tx as any).badDebtProvision.updateMany({
         where: { contractId: oldContractId, status: 'ACTIVE', deletedAt: null },
@@ -849,9 +863,15 @@ export class ContractExchangeService {
     });
   }
 
-  async listPending(): Promise<any[]> {
+  async listPending(user: RequestUser): Promise<any[]> {
+    // I7 (final review 2026-07-29): BM sees only their own branch's queue —
+    // cross-branch roles (OWNER/FM/ACC) see everything.
+    const where: Record<string, unknown> = { status: 'PENDING', deletedAt: null };
+    if (!hasCrossBranchAccess(user)) {
+      where.oldContract = { branchId: user.branchId };
+    }
     return (this.prisma as any).contractExchangeRequest.findMany({
-      where: { status: 'PENDING', deletedAt: null },
+      where,
       include: {
         oldContract: {
           include: { customer: { select: { id: true, name: true, phone: true } } },
@@ -871,10 +891,19 @@ export class ContractExchangeService {
    * finalizeAfterActivation/cancel, so a 90-day window on it comfortably
    * covers the 30-day cancel-eligibility window this list exists to serve.
    */
-  async listRecent(): Promise<any[]> {
+  async listRecent(user: RequestUser): Promise<any[]> {
     const since = new Date(Date.now() - 90 * 86_400_000);
+    // I7: same branch scoping as listPending — BM sees only their own branch.
+    const where: Record<string, unknown> = {
+      status: 'APPROVED',
+      deletedAt: null,
+      updatedAt: { gte: since },
+    };
+    if (!hasCrossBranchAccess(user)) {
+      where.oldContract = { branchId: user.branchId };
+    }
     return (this.prisma as any).contractExchangeRequest.findMany({
-      where: { status: 'APPROVED', deletedAt: null, updatedAt: { gte: since } },
+      where,
       include: {
         oldContract: {
           select: { id: true, contractNumber: true, exchangedAt: true, customer: { select: { name: true } } },

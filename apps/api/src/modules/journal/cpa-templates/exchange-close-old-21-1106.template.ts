@@ -6,6 +6,13 @@ import { PrismaService } from '../../../prisma/prisma.service';
 
 export interface ExchangeCloseOldInput {
   oldContractId: string;
+  /**
+   * ContractExchangeRequest.id — part of the idempotency key (C1b, final review
+   * 2026-07-29). Keying on oldContractId alone bricked re-exchange after a
+   * cancel: the first lifecycle's JE stays POSTED (mirror-reversed, not
+   * deleted) so its key still occupies journal_entries_idempotency_idx.
+   */
+  requestId: string;
   buyback: Decimal;
   oldGrossOutstanding: Decimal;
   oldVatReceivableOutstanding: Decimal;
@@ -119,7 +126,9 @@ export class ExchangeCloseOld21_1106Template {
         description: `Exchange A.2 — close old contract ${input.oldContractId}`,
         metadata: {
           flow: 'exchange-close-old-21-1106',
-          idempotencyKey: input.oldContractId,
+          // Keyed per exchange REQUEST — a canceled swap's still-POSTED JE must
+          // not block the same contract's second exchange attempt (C1b).
+          idempotencyKey: `${input.oldContractId}:${input.requestId}`,
           contractId: input.oldContractId,
           oldContractId: input.oldContractId,
           buyback: input.buyback.toString(),

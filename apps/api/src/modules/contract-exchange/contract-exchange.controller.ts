@@ -53,14 +53,16 @@ export class ContractExchangeController {
 
   @Get('pending')
   @Roles('OWNER', 'BRANCH_MANAGER')
-  listPending() {
-    return this.svc.listPending();
+  listPending(@Req() req: any) {
+    // I7: BM sees only their own branch's queue (scoped in-service).
+    return this.svc.listPending(req.user);
   }
 
   @Get('recent')
   @Roles('OWNER', 'BRANCH_MANAGER')
-  listRecent() {
-    return this.svc.listRecent();
+  listRecent(@Req() req: any) {
+    // I7: BM sees only their own branch's recent approvals (scoped in-service).
+    return this.svc.listRecent(req.user);
   }
 
   @Post(':id/approve')
@@ -70,9 +72,10 @@ export class ContractExchangeController {
     @Body() dto: ApproveExchangeRequestDto,
     @Req() req: any,
   ) {
-    // Tier enforcement (ESCALATE → OWNER only) lives in the service, which
-    // re-reads mode/approvalTier from the DB — never trusts the client.
-    return this.svc.approve(id, req.user.id, req.user.role, dto ?? {});
+    // Tier enforcement (ESCALATE → OWNER only) + branch scoping (I7) live in
+    // the service, which re-reads mode/approvalTier from the DB — never trusts
+    // the client.
+    return this.svc.approve(id, req.user, dto ?? {});
   }
 
   @Post(':id/cancel')

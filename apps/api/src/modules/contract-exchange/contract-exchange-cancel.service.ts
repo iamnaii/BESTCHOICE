@@ -2,15 +2,24 @@ import {
   Injectable,
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { hasCrossBranchAccess } from '../auth/branch-access.util';
 import { CompanyResolverService } from '../journal/company-resolver.service';
 import { ExchangeCancelReversalTemplate } from '../journal/cpa-templates/exchange-cancel-reversal.template';
 import { ExchangeCancelPenaltyTemplate } from '../journal/cpa-templates/exchange-cancel-penalty.template';
+
+/** Subset of request.user the cancel path needs (id + branch scoping — I7). */
+interface CancelRequestUser {
+  id: string;
+  role?: string | null;
+  branchId?: string | null;
+}
 
 /** จำนวนวันปฏิทิน BKK ระหว่าง 2 เวลา (0 = วันเดียวกัน) */
 export function bkkDayDiff(from: Date, to: Date): number {
@@ -36,7 +45,7 @@ export class ExchangeCancelService {
     private readonly penaltyTemplate: ExchangeCancelPenaltyTemplate,
   ) {}
 
-  async cancel(id: string, reason: string, user: { id: string }) {
+  async cancel(id: string, reason: string, user: CancelRequestUser) {
     return this.prisma.$transaction(async (tx) => {
       const req = await (tx as any).contractExchangeRequest.findUnique({
         where: { id },
@@ -48,12 +57,30 @@ export class ExchangeCancelService {
           `ยกเลิกได้เฉพาะคำขอที่อนุมัติแล้ว (สถานะปัจจุบัน: ${req.status})`,
         );
       }
+      // I7 (final review 2026-07-29): BM must not cancel another branch's swap
+      // by UUID — same in-service branch scoping as submit()/approve().
+      if (!hasCrossBranchAccess(user) && req.oldContract.branchId !== user.branchId) {
+        throw new ForbiddenException('ไม่สามารถยกเลิกคำขอของสาขาอื่นได้');
+      }
       const now = new Date();
       const shopCompanyId = await this.companyResolver.getShopCompanyId(tx);
       const financeCompanyId = await this.companyResolver.getFinanceCompanyId(tx);
 
       // ---------- MEMO: สลับกลับ ไม่มี JE ----------
       if (req.mode === 'MEMO') {
+        // I4 (final review 2026-07-29): MEMO cancel blindly swaps productId
+        // back — guard that the contract is still in the post-MEMO state
+        // (ACTIVE + pointing at the request's NEW product). Anything else
+        // (early payoff, repossession, a later swap) makes the blind revert
+        // corrupt real state.
+        if (
+          req.oldContract.status !== 'ACTIVE' ||
+          req.oldContract.productId !== req.newProductId
+        ) {
+          throw new BadRequestException(
+            'สัญญาสถานะเปลี่ยนไป หรือเครื่องบนสัญญาไม่ตรงกับคำขอ — ยกเลิกแบบ MEMO ไม่ได้',
+          );
+        }
         const days = bkkDayDiff(req.memoAppliedAt ?? req.approvedAt ?? req.createdAt, now);
         if (days > 30) throw new BadRequestException('เกิน 30 วันนับจากวันเปลี่ยน — ยกเลิกไม่ได้');
         const newProd = await tx.product.findUniqueOrThrow({
@@ -93,10 +120,21 @@ export class ExchangeCancelService {
       const finalized = !!req.oldContract.exchangedAt;
       if (!finalized) {
         if (req.newContractId) {
-          await tx.contract.update({
-            where: { id: req.newContractId },
-            data: { deletedAt: now },
+          // CAS soft-delete (final review 2026-07-29): guard on status=DRAFT so
+          // a concurrent activation (DRAFT → ACTIVE + JE chain in its own tx)
+          // can't race us into soft-deleting a just-finalized real contract.
+          // C1a: null exchangedFromContractId (@unique) in the same write —
+          // a dead EXCH- contract must not brick the old contract's next
+          // exchange attempt (history stays on the request row).
+          const casDelete = await tx.contract.updateMany({
+            where: { id: req.newContractId, status: 'DRAFT', deletedAt: null },
+            data: { deletedAt: now, exchangedFromContractId: null } as any,
           });
+          if (casDelete.count !== 1) {
+            throw new ConflictException(
+              'สัญญาใหม่ถูกเปิดใช้งานไปแล้วระหว่างยกเลิก — โหลดหน้าใหม่แล้วลองอีกครั้ง',
+            );
+          }
           await tx.product.update({
             where: { id: req.newProductId },
             data: { status: 'IN_STOCK' } as any,
@@ -197,7 +235,19 @@ export class ExchangeCancelService {
       });
       await tx.contract.update({
         where: { id: req.newContractId },
-        data: { status: 'CANCELED' } as any,
+        // C1a: null exchangedFromContractId (@unique) — the CANCELED EXCH-
+        // contract must not brick a future re-exchange of the same old
+        // contract (P2002 at contract.create). History lives on the request
+        // row (oldContractId + newContractId).
+        data: { status: 'CANCELED', exchangedFromContractId: null } as any,
+      });
+      // I3 (final review 2026-07-29): the daily ECL cron may have created
+      // BadDebtProvision rows for the NEW contract during the ≤30-day window.
+      // Their JEs are mirror-reversed by the sweep above — reverse the DB rows
+      // too or they sit ACTIVE forever on a CANCELED contract.
+      await (tx as any).badDebtProvision.updateMany({
+        where: { contractId: req.newContractId, status: 'ACTIVE', deletedAt: null },
+        data: { status: 'REVERSED' },
       });
       await tx.payment.updateMany({
         where: { contractId: req.newContractId, deletedAt: null },

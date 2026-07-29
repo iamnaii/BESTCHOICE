@@ -17,7 +17,12 @@ export interface ExchangeTierInput {
  *   ESCALATE : buyback < 70% × NCV                      (OWNER เท่านั้น)
  *   REVIEW   : 70%×NCV ≤ buyback < NCV                  (BRANCH_MANAGER+)
  *              หรือ ≥ NCV แต่ตก market check / ไม่มีราคากลาง
- *   AUTO     : buyback ≥ NCV และ buyback ≥ basePrice × (1 − pct/100)
+ *              หรือ buyback > basePrice × (1 + pct/100)  ← overpay เกินราคากลาง (symmetric ±pct)
+ *   AUTO     : buyback ≥ NCV และ marketMin ≤ buyback ≤ marketMax
+ *
+ * marketMax (2026-07-29 final review I5): AUTO tier ต้องผ่านกรอบราคากลางทั้ง 2 ด้าน —
+ * จ่ายแพงเกิน (เช่นเอื้อลูกค้า/พนักงาน) ต้องผ่านคนอนุมัติเหมือนจ่ายถูกเกิน
+ * (symmetric ±marketCheckPct ตาม rationale ของ D3; pending owner confirmation)
  */
 export function computeExchangeTier(input: ExchangeTierInput): ExchangeTier {
   const { buyback, ncv, basePrice, marketCheckPct } = input;
@@ -26,5 +31,7 @@ export function computeExchangeTier(input: ExchangeTierInput): ExchangeTier {
   if (basePrice === null) return 'REVIEW';
   const marketMin = basePrice.times(new Decimal(100).minus(marketCheckPct).div(100));
   if (buyback.lt(marketMin)) return 'REVIEW';
+  const marketMax = basePrice.times(new Decimal(100).plus(marketCheckPct).div(100));
+  if (buyback.gt(marketMax)) return 'REVIEW';
   return 'AUTO';
 }

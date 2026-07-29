@@ -1,5 +1,5 @@
 import { Test } from '@nestjs/testing';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { ExchangeCancelService, bkkDayDiff } from './contract-exchange-cancel.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -51,7 +51,8 @@ describe('ExchangeCancelService (spec §9)', () => {
   let audit: any;
   let requests: Record<string, any>;
 
-  const user = { id: 'u-owner' };
+  // OWNER = cross-branch role → passes the I7 branch check for any branch
+  const user = { id: 'u-owner', role: 'OWNER', branchId: null };
   const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000);
 
   // Finalized PRICED request: JE chain posted at activation (je1..je4 + A.5 ECL)
@@ -74,7 +75,13 @@ describe('ExchangeCancelService (spec §9)', () => {
     memoAppliedAt: null,
     approvedAt: daysAgo(exchangedDaysAgo),
     createdAt: daysAgo(exchangedDaysAgo),
-    oldContract: { id: 'oldC1', status: 'EXCHANGED', exchangedAt: daysAgo(exchangedDaysAgo) },
+    oldContract: {
+      id: 'oldC1',
+      status: 'EXCHANGED',
+      branchId: 'br-1',
+      productId: 'oldP1',
+      exchangedAt: daysAgo(exchangedDaysAgo),
+    },
     newContract: { id: 'newC1', status: 'ACTIVE' },
   });
 
@@ -85,7 +92,12 @@ describe('ExchangeCancelService (spec §9)', () => {
         findUnique: jest.fn().mockImplementation(async ({ where }: any) => requests[where.id] ?? null),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
-      contract: { update: jest.fn().mockResolvedValue({}) },
+      contract: {
+        update: jest.fn().mockResolvedValue({}),
+        // CAS soft-delete of the DRAFT contract (PRE_FINALIZE path)
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      badDebtProvision: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       product: {
         update: jest.fn().mockResolvedValue({}),
         findUniqueOrThrow: jest.fn().mockResolvedValue({
@@ -143,11 +155,12 @@ describe('ExchangeCancelService (spec §9)', () => {
         data: expect.objectContaining({ status: 'ACTIVE', exchangedAt: null }),
       }),
     );
-    // New contract CANCELED
+    // New contract CANCELED + exchangedFromContractId nulled (C1a — the
+    // @unique pointer must not brick a future re-exchange of the old contract)
     expect(txMock.contract.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'newC1' },
-        data: expect.objectContaining({ status: 'CANCELED' }),
+        data: expect.objectContaining({ status: 'CANCELED', exchangedFromContractId: null }),
       }),
     );
     // Product flips: old device back on installment under FINANCE; new device back to SHOP stock
@@ -274,7 +287,7 @@ describe('ExchangeCancelService (spec §9)', () => {
     expect(txMock.contract.update).not.toHaveBeenCalled();
   });
 
-  it('PRE_FINALIZE (DRAFT ยังไม่เซ็น): soft-delete สัญญาใหม่ + คืน product, ไม่มี reversal JE', async () => {
+  it('PRE_FINALIZE (DRAFT ยังไม่เซ็น): CAS soft-delete สัญญาใหม่ + null pointer + คืน product, ไม่มี reversal JE', async () => {
     requests.reqDraft = {
       ...makeFinalizedReq(5),
       id: 'reqDraft',
@@ -283,7 +296,7 @@ describe('ExchangeCancelService (spec §9)', () => {
       je3Id: null,
       je4Id: null,
       eclReversalJeId: null,
-      oldContract: { id: 'oldC1', status: 'EXCHANGED', exchangedAt: null }, // ยังไม่ finalize
+      oldContract: { id: 'oldC1', status: 'EXCHANGED', branchId: 'br-1', productId: 'oldP1', exchangedAt: null }, // ยังไม่ finalize
       newContract: { id: 'newC1', status: 'DRAFT' },
     };
 
@@ -291,14 +304,13 @@ describe('ExchangeCancelService (spec §9)', () => {
 
     expect(r.cancelWindow).toBe('PRE_FINALIZE');
     expect(r.penaltyAmount).toBeNull();
-    // Draft contract soft-deleted, new product released back to stock
-    expect(txMock.contract.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: 'newC1' },
-        data: { deletedAt: expect.any(Date) },
-      }),
-    );
-    expect(txMock.contract.update).toHaveBeenCalledTimes(1); // old contract untouched
+    // CAS soft-delete: guarded on status=DRAFT (concurrent-activation race) +
+    // exchangedFromContractId nulled in the same write (C1a)
+    expect(txMock.contract.updateMany).toHaveBeenCalledWith({
+      where: { id: 'newC1', status: 'DRAFT', deletedAt: null },
+      data: { deletedAt: expect.any(Date), exchangedFromContractId: null },
+    });
+    expect(txMock.contract.update).not.toHaveBeenCalled(); // old contract untouched
     expect(txMock.product.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'newP1' },
@@ -310,22 +322,53 @@ describe('ExchangeCancelService (spec §9)', () => {
     expect(penalty.execute).not.toHaveBeenCalled();
   });
 
-  it('MEMO cancel ≤30 วัน: สลับ productId กลับ, ไม่มี JE, ไม่มี penalty', async () => {
-    requests.memoReq = {
-      id: 'memoReq',
-      deletedAt: null,
-      status: 'APPROVED',
-      mode: 'MEMO',
-      oldContractId: 'oldC1',
-      oldProductId: 'oldP1',
-      newProductId: 'newP1',
-      newContractId: null,
-      memoAppliedAt: daysAgo(5),
-      approvedAt: daysAgo(5),
-      createdAt: daysAgo(6),
-      oldContract: { id: 'oldC1', status: 'ACTIVE', exchangedAt: null },
-      newContract: null,
+  it('PRE_FINALIZE race: DRAFT ถูก activate ระหว่างยกเลิก (CAS count=0) → Conflict, ไม่แตะ product', async () => {
+    requests.reqDraft = {
+      ...makeFinalizedReq(5),
+      id: 'reqDraft',
+      je1aId: null,
+      je2Id: null,
+      je3Id: null,
+      je4Id: null,
+      eclReversalJeId: null,
+      oldContract: { id: 'oldC1', status: 'EXCHANGED', branchId: 'br-1', productId: 'oldP1', exchangedAt: null },
+      newContract: { id: 'newC1', status: 'DRAFT' },
     };
+    txMock.contract.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(svc.cancel('reqDraft', 'ยกเลิกชนกับ activation', user)).rejects.toThrow(
+      ConflictException,
+    );
+    expect(txMock.product.update).not.toHaveBeenCalled();
+    expect(txMock.contractExchangeRequest.updateMany).not.toHaveBeenCalled();
+  });
+
+  // Post-MEMO state: contract ACTIVE + pointing at the request's NEW product
+  // (I4 guard requires both before the blind revert may run).
+  const makeMemoReq = () => ({
+    id: 'memoReq',
+    deletedAt: null,
+    status: 'APPROVED',
+    mode: 'MEMO',
+    oldContractId: 'oldC1',
+    oldProductId: 'oldP1',
+    newProductId: 'newP1',
+    newContractId: null,
+    memoAppliedAt: daysAgo(5),
+    approvedAt: daysAgo(5),
+    createdAt: daysAgo(6),
+    oldContract: {
+      id: 'oldC1',
+      status: 'ACTIVE',
+      branchId: 'br-1',
+      productId: 'newP1',
+      exchangedAt: null,
+    },
+    newContract: null,
+  });
+
+  it('MEMO cancel ≤30 วัน: สลับ productId กลับ, ไม่มี JE, ไม่มี penalty', async () => {
+    requests.memoReq = makeMemoReq();
 
     const r = await svc.cancel('memoReq', 'ลูกค้าขอเครื่องเดิมคืน', user);
 
@@ -366,5 +409,74 @@ describe('ExchangeCancelService (spec §9)', () => {
     expect(audit.log).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'EXCHANGE_MEMO_CANCELED', entityId: 'memoReq' }),
     );
+  });
+
+  // ==========================================================================
+  // Final review 2026-07-29 — I3 / I4 / I7
+  // ==========================================================================
+
+  // I3 — the ECL cron may have provisioned the NEW contract during the window;
+  // cancel must REVERSE those rows (their JEs are mirror-reversed by the sweep).
+  it('I3: FINALIZED cancel → BadDebtProvision rows ของสัญญาใหม่ ACTIVE → REVERSED', async () => {
+    requests.req1 = makeFinalizedReq(5);
+
+    await svc.cancel('req1', 'ทดสอบ reverse provision rows', user);
+
+    expect(txMock.badDebtProvision.updateMany).toHaveBeenCalledWith({
+      where: { contractId: 'newC1', status: 'ACTIVE', deletedAt: null },
+      data: { status: 'REVERSED' },
+    });
+  });
+
+  // I4 — MEMO cancel guards: blind revert only when the contract is still in
+  // the post-MEMO state (ACTIVE + pointing at the request's NEW product).
+  it('I4: MEMO cancel เมื่อสัญญาไม่ ACTIVE (EARLY_PAYOFF) → BadRequest, ไม่แตะอะไร', async () => {
+    requests.memoReq = makeMemoReq();
+    requests.memoReq.oldContract.status = 'EARLY_PAYOFF';
+
+    await expect(svc.cancel('memoReq', 'ยกเลิกหลังสัญญาปิดไปแล้ว', user)).rejects.toThrow(
+      'ยกเลิกแบบ MEMO ไม่ได้',
+    );
+    expect(txMock.contract.update).not.toHaveBeenCalled();
+    expect(txMock.product.update).not.toHaveBeenCalled();
+    expect(txMock.contractExchangeRequest.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('I4: MEMO cancel เมื่อ contract.productId ไม่ใช่เครื่องใหม่ของคำขอ (สลับซ้ำ/สัญญาเปลี่ยน) → BadRequest', async () => {
+    requests.memoReq = makeMemoReq();
+    requests.memoReq.oldContract.productId = 'someOtherProduct'; // e.g. a LATER memo swap
+
+    await expect(svc.cancel('memoReq', 'ยกเลิกหลังสลับเครื่องรอบใหม่', user)).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(txMock.contract.update).not.toHaveBeenCalled();
+    expect(txMock.product.update).not.toHaveBeenCalled();
+  });
+
+  // I7 — branch scoping: BM must not cancel another branch's swap by UUID
+  it('I7: BRANCH_MANAGER ต่างสาขา → Forbidden ก่อนแตะ state ใดๆ', async () => {
+    requests.req1 = makeFinalizedReq(5); // oldContract.branchId = 'br-1'
+
+    await expect(
+      svc.cancel('req1', 'BM สาขาอื่นลองยกเลิก', {
+        id: 'u-bm',
+        role: 'BRANCH_MANAGER',
+        branchId: 'br-OTHER',
+      }),
+    ).rejects.toThrow(ForbiddenException);
+    expect(reversal.reverse).not.toHaveBeenCalled();
+    expect(txMock.contract.update).not.toHaveBeenCalled();
+    expect(txMock.contractExchangeRequest.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('I7: BRANCH_MANAGER สาขาเดียวกัน → ยกเลิกได้', async () => {
+    requests.req1 = makeFinalizedReq(5);
+
+    const r = await svc.cancel('req1', 'BM สาขาตัวเองยกเลิก', {
+      id: 'u-bm',
+      role: 'BRANCH_MANAGER',
+      branchId: 'br-1',
+    });
+    expect(r.cancelWindow).toBe('FREE_7D');
   });
 });

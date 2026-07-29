@@ -483,7 +483,7 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
       createdRequestIds.push(submitted.id);
 
       // --- Real approve (creates the DRAFT EXCH- contract from the plan snapshot)
-      const approved = await svc.approve(submitted.id, adminId, 'OWNER', {});
+      const approved = await svc.approve(submitted.id, { id: adminId, role: 'OWNER', branchId: null }, {});
       expect(approved.newContractId).toBeTruthy();
       const newContractId = approved.newContractId as string;
       createdContractIds.push(newContractId);
@@ -673,7 +673,7 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
       const result = await cancelSvc.cancel(
         request.id,
         'ทดสอบยกเลิกเปลี่ยนเครื่องภายในวันที่ 15 (integration)',
-        { id: adminId },
+        { id: adminId, role: 'OWNER', branchId: null },
       );
       expect(result.cancelWindow).toBe('PENALTY_8_30D');
       expect(result.penaltyAmount).toBe('400.00'); // 5% × 8,000
@@ -749,6 +749,9 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
       expect(oldAfter.exchangedAt).toBeNull();
       const newAfter = await prisma.contract.findUniqueOrThrow({ where: { id: newContract.id } });
       expect(newAfter.status).toBe('CANCELED');
+      // C1a: the @unique exchangedFromContractId pointer is nulled at cancel —
+      // history lives on the request row; the old contract can be re-exchanged.
+      expect(newAfter.exchangedFromContractId).toBeNull();
       const oldProd = await prisma.product.findUniqueOrThrow({ where: { id: fix.oldProductId } });
       expect(oldProd.status).toBe('SOLD_INSTALLMENT');
       expect(oldProd.ownedByCompanyId).toBe(financeCompanyId);
@@ -791,7 +794,7 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
       expect(submitted.status).toBe('PENDING');
       createdRequestIds.push(submitted.id);
 
-      const approved = await svc.approve(submitted.id, adminId, 'OWNER', {
+      const approved = await svc.approve(submitted.id, { id: adminId, role: 'OWNER', branchId: null }, {
         memoAddendumSigned: true,
         memoMdmSwapped: true,
       } as never);
@@ -822,6 +825,115 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
       });
       expect(req.status).toBe('APPROVED');
       expect(req.memoAppliedAt).not.toBeNull();
+    },
+    120_000,
+  );
+
+  // -------------------------------------------------------------------------
+  // C1 (final review 2026-07-29): cancel → re-exchange must NOT be bricked.
+  // Two failure modes existed: (a) the CANCELED EXCH- contract kept the @unique
+  // exchangedFromContractId pointer → second approve's contract.create P2002;
+  // (b) the first lifecycle's still-POSTED (mirror-reversed) A.2/A.4/A.5 JEs
+  // held the contract-keyed idempotency slots → second finalize P2002. Fixed by
+  // nulling the pointer at cancel + re-keying A.2/A.4/A.5 with request.id.
+  it(
+    'C1: re-exchange after cancel — same old contract submit→approve→finalize succeeds, 21-1106 nets 0 again',
+    async () => {
+      const fix = await seedSwapFixture('100005', { schedule: 'FUTURE12' });
+      await act1a.execute(fix.oldContractId);
+
+      // --- Lifecycle 1: finalize a PRICED swap, then cancel on day 5 (FREE_7D)
+      const first = await seedNewContractAndRequest(fix, '100005', '8000');
+      await activateAndFinalize(first.newContract.id, fix.newProductId);
+      await prisma.contract.update({
+        where: { id: fix.oldContractId },
+        data: { exchangedAt: new Date(Date.now() - 5 * DAY) },
+      });
+      const cancelResult = await cancelSvc.cancel(
+        first.request.id,
+        'ทดสอบยกเลิกก่อนเปลี่ยนเครื่องรอบสอง (integration C1)',
+        { id: adminId, role: 'OWNER', branchId: null },
+      );
+      expect(cancelResult.cancelWindow).toBe('FREE_7D');
+
+      // Pointer nulled (C1a) — precondition for the second attempt
+      const firstAfterCancel = await prisma.contract.findUniqueOrThrow({
+        where: { id: first.newContract.id },
+      });
+      expect(firstAfterCancel.exchangedFromContractId).toBeNull();
+
+      // --- Lifecycle 2: REAL submit → approve → finalize on the SAME old contract
+      const submitted = await svc.submit(
+        {
+          oldContractId: fix.oldContractId,
+          oldProductId: fix.oldProductId,
+          newProductId: fix.newProductId, // back IN_STOCK after cancel
+          buybackPrice: '8000',
+          deviceCondition: 'A',
+          newTotalMonths: 12,
+          newInterestRate: '0.05',
+          depositAccountCode: '11-1101',
+        } as never,
+        { id: adminId, role: 'OWNER', branchId: null },
+      );
+      createdRequestIds.push(submitted.id);
+      expect(submitted.approvalTier).toBe('REVIEW'); // no valuation row
+
+      // approve = contract.create with exchangedFromContractId = old id —
+      // this is the exact statement that threw P2002 before the fix.
+      const approved = await svc.approve(
+        submitted.id,
+        { id: adminId, role: 'OWNER', branchId: null },
+        {},
+      );
+      expect(approved.newContractId).toBeTruthy();
+      const secondContractId = approved.newContractId as string;
+      createdContractIds.push(secondContractId);
+
+      // finalize = A.2/A.4 (+A.5) post — request-scoped keys (C1b) must not
+      // collide with lifecycle 1's still-POSTED mirror-reversed originals.
+      await activateAndFinalize(secondContractId, fix.newProductId);
+
+      const req2 = await prisma.contractExchangeRequest.findUniqueOrThrow({
+        where: { id: submitted.id },
+      });
+      expect(req2.je1aId).toBeTruthy();
+      expect(req2.je2Id).toBeTruthy();
+      expect(req2.je3Id).toBeTruthy();
+      expect(req2.je4Id).toBeTruthy();
+
+      // 21-1106 nets 0 again across the SECOND A.2 (Dr) + A.3 (Cr)
+      const je2Lines = await getJeLines(req2.je2Id!);
+      const je3Lines = await getJeLines(req2.je3Id!);
+      const dr1106 = sumSide(je2Lines, '21-1106', 'dr');
+      expect(dr1106.toFixed(2)).toBe('8000.00');
+      expect(dr1106.minus(sumSide(je3Lines, '21-1106', 'cr')).toFixed(2)).toBe('0.00');
+
+      // Old-contract GL fully cleared again (originals + reversals + round 2).
+      // (21-1106 is checked across je2/je3 lines above, not per-contract GL —
+      // the offsetting Cr is tagged to the NEW contract via A.3, same as test 1.)
+      for (const [code, side] of [
+        ['11-2101', 'dr'],
+        ['11-2105', 'dr'],
+        ['11-2103', 'dr'],
+        ['11-2106', 'cr'],
+        ['21-2102', 'cr'],
+      ] as const) {
+        expect(
+          (await glContractBalance(prisma, fix.oldContractId, code, side)).toFixed(2),
+          `old-contract GL ${code} must net 0 after re-exchange finalize`,
+        ).toBe('0.00');
+      }
+
+      const oldAfter = await prisma.contract.findUniqueOrThrow({
+        where: { id: fix.oldContractId },
+      });
+      expect(oldAfter.status).toBe('EXCHANGED');
+      const secondContract = await prisma.contract.findUniqueOrThrow({
+        where: { id: secondContractId },
+      });
+      expect(secondContract.status).toBe('ACTIVE');
+      expect(secondContract.exchangedFromContractId).toBe(fix.oldContractId);
     },
     120_000,
   );

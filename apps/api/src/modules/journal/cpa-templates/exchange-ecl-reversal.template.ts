@@ -30,7 +30,15 @@ export class ExchangeEclReversalTemplate {
   ) {}
 
   async execute(
-    input: { oldContractId: string },
+    input: {
+      oldContractId: string;
+      /**
+       * ContractExchangeRequest.id — part of the idempotency key (C1b, final
+       * review 2026-07-29): a canceled swap's still-POSTED A.5 must not block
+       * the same contract's second exchange attempt.
+       */
+      requestId: string;
+    },
     tx?: Prisma.TransactionClient,
   ): Promise<{ id: string; entryNumber: string } | null> {
     const client = tx ?? this.prisma;
@@ -58,7 +66,7 @@ export class ExchangeEclReversalTemplate {
         metadata: {
           tag: 'EXCHANGE-ECL-REVERSAL',
           flow: 'exchange-ecl-reversal',
-          idempotencyKey: input.oldContractId,
+          idempotencyKey: `${input.oldContractId}:${input.requestId}`,
           contractId: input.oldContractId,
           reversedProvision: balance.toFixed(2),
         },

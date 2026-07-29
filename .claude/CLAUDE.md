@@ -448,7 +448,7 @@ scripts/                      # Existing project scripts
 - Reuses `Supplier` model + new `isRepairCenter` flag (repair centers are SHOP suppliers)
 - Replace flow integrates with existing `/defect-exchange` via `bypassWindowCheck` flag (OWNER/BM only) — atomic markReplaced across both modules
 - Audit trail: 9 new AuditLog action strings + per-status-transition RepairStatusLog rows
-- SystemConfig keys: `REPAIR_EXPENSE_ACCOUNT_CODE` (53-1306) + `REPAIR_INCOME_ACCOUNT_CODE` (42-1106)
+- SystemConfig keys: `REPAIR_EXPENSE_ACCOUNT_CODE` (S51-1105) + `REPAIR_INCOME_ACCOUNT_CODE` (S42-1101)
 - Test counts: API +62 (repair-tickets) +5 (defect-exchange bypass) = +67 tests
 - Frontend: `/insurance` promoted from redirect stub → full list/detail/create UI with 5 action dialogs + 3 reusable badge/timeline components
 

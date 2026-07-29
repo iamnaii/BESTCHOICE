@@ -8,6 +8,7 @@ import { ExchangeNewContract1ATemplate } from '../journal/cpa-templates/exchange
 import { ExchangeCloseOld21_1106Template } from '../journal/cpa-templates/exchange-close-old-21-1106.template';
 import { ExchangeClearVendor21_1106Template } from '../journal/cpa-templates/exchange-clear-vendor-21-1106.template';
 import { ShopExchangeReturnTemplate } from '../journal/cpa-templates/shop-exchange-return.template';
+import { ExchangeEclReversalTemplate } from '../journal/cpa-templates/exchange-ecl-reversal.template';
 
 @Module({
   // JournalModule already exports CompanyResolverService — no need to re-provide.
@@ -19,6 +20,7 @@ import { ShopExchangeReturnTemplate } from '../journal/cpa-templates/shop-exchan
     ExchangeCloseOld21_1106Template,
     ExchangeClearVendor21_1106Template,
     ShopExchangeReturnTemplate,
+    ExchangeEclReversalTemplate,
   ],
   exports: [ContractExchangeService],
 })

@@ -112,6 +112,23 @@ describe('ExchangeCancelReversalTemplate (cancel — workbook Cases 3A/3B, spec 
     expect(createAndPost).not.toHaveBeenCalled();
   });
 
+  it("sweep เจอ void JE (tag REVERSAL, flow receipt-void) → ข้าม ไม่ mirror ไม่ stamp", async () => {
+    // Receipt-void pair: original 2B (stamped reversed:true → skipped) + its void JE.
+    // Mirroring the void JE would RE-POST the receipt effect into GL with no cash.
+    findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        makeJe({
+          id: 'void-je',
+          metadata: { tag: 'REVERSAL', flow: 'receipt-void', contractId: 'new-c' },
+        }),
+      ]);
+    const result = await template.reverse({ jeIds: [], newContractId: 'new-c' });
+    expect(result.reversalJeIds).toEqual([]);
+    expect(createAndPost).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
+  });
+
   it('stamp reversed:true + reversedByEntryNumber ลง JE เดิม', async () => {
     findMany.mockResolvedValueOnce([makeJe()]).mockResolvedValueOnce([]);
     await template.reverse({ jeIds: ['je1'], newContractId: 'new-c' });

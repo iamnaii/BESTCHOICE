@@ -47,6 +47,11 @@ export class ExchangeCancelReversalTemplate {
       const meta = (je.metadata ?? {}) as Record<string, unknown>;
       if (meta['reversed'] === true) continue;
       if (meta['flow'] === 'exchange-cancel') continue; // reversal ของตัวเองที่ sweep เจอ
+      // Reversal JEs (เช่น receipt-void) กับ original ที่ถูก stamp reversed:true
+      // หักล้างกันเป็นคู่ใน GL อยู่แล้ว — ข้ามทั้งคู่คือถูกต้อง; mirror ข้างใดข้างหนึ่ง
+      // = re-post ผลของ original กลับเข้า GL โดยไม่มีเงินจริง (A.5 ของเราปลอดภัย:
+      // ใช้ tag 'EXCHANGE-ECL-REVERSAL' ไม่ใช่ 'REVERSAL')
+      if (meta['tag'] === 'REVERSAL') continue;
       if (je.lines.length === 0) continue;
 
       const reversedLines = je.lines.map((l) => ({

@@ -72,7 +72,9 @@ export class ExchangeCancelService {
           where: { id: req.newProductId },
           data: { status: 'IN_STOCK', ownedByCompanyId: shopCompanyId } as any,
         });
-        await this.markCanceled(tx, id, user.id, reason, 'FREE_7D', null, [], now);
+        // MEMO_30D: distinct window label for reporting — MEMO cancels have no
+        // penalty at any day (only the 30-day cap), unlike the FREE_7D window.
+        await this.markCanceled(tx, id, user.id, reason, 'MEMO_30D', null, [], now);
         await this.audit.log({
           action: 'EXCHANGE_MEMO_CANCELED',
           entity: 'contract_exchange_request',
@@ -80,11 +82,15 @@ export class ExchangeCancelService {
           userId: user.id,
           newValue: { reason, days },
         });
-        return { id, cancelWindow: 'FREE_7D', penaltyAmount: null };
+        return { id, cancelWindow: 'MEMO_30D', penaltyAmount: null };
       }
 
       // ---------- PRE_FINALIZE: อนุมัติแล้วแต่ยังไม่ activate (ไม่มี JE) ----------
-      const finalized = !!req.oldContract.exchangedAt && req.newContract?.status === 'ACTIVE';
+      // exchangedAt ถูก set atomic พร้อม JE chain ใน finalizeAfterActivation —
+      // มันคือสัญญาณ finalized ตัวจริง (ห้าม AND กับ newContract.status: สัญญาใหม่
+      // ที่ finalize แล้วแต่ COMPLETED/TERMINATED ต้องถูก REJECT ไม่ใช่หลุดไป
+      // PRE_FINALIZE ซึ่งจะ soft-delete สัญญาจริงโดยไม่มี reversal/paid-guard/window)
+      const finalized = !!req.oldContract.exchangedAt;
       if (!finalized) {
         if (req.newContractId) {
           await tx.contract.update({
@@ -108,6 +114,13 @@ export class ExchangeCancelService {
       }
 
       // ---------- FINALIZED (มี JE แล้ว) ----------
+      // Status guard ก่อน window check: finalized แต่สัญญาใหม่ไม่ ACTIVE
+      // (COMPLETED/TERMINATED/ฯลฯ) = ยกเลิก swap ไม่ได้แล้ว
+      if (req.newContract?.status !== 'ACTIVE') {
+        throw new BadRequestException(
+          `สัญญาใหม่สถานะ ${req.newContract?.status ?? 'ไม่พบ'} — ยกเลิกเปลี่ยนเครื่องไม่ได้`,
+        );
+      }
       const exchangedAt: Date = req.oldContract.exchangedAt;
       const days = bkkDayDiff(exchangedAt, now);
       if (days > 30) {
@@ -142,30 +155,35 @@ export class ExchangeCancelService {
       let penaltyJeId: string | null = null;
       const window = days <= 7 ? 'FREE_7D' : 'PENALTY_8_30D';
       if (window === 'PENALTY_8_30D') {
-        if (!req.depositAccountCode) {
-          throw new BadRequestException(
-            'คำขอนี้ไม่มีบัญชีเงินสด — ระบุ depositAccountCode ตอน submit',
-          );
-        }
         const pctRow = await tx.systemConfig.findFirst({
           where: { key: 'exchange_cancel_penalty_pct', deletedAt: null },
           select: { value: true },
         });
-        const pct = pctRow && Number.isFinite(parseFloat(pctRow.value)) ? parseFloat(pctRow.value) : 5;
-        penalty = new Decimal(req.buybackPrice.toString())
-          .times(pct)
-          .div(100)
-          .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-        const pje = await this.penaltyTemplate.execute(
-          {
-            requestId: id,
-            oldContractId: req.oldContractId,
-            depositAccountCode: req.depositAccountCode,
-            penalty,
-          },
-          tx,
-        );
-        penaltyJeId = pje.id;
+        // Row missing/NaN → default 5. Row EXPLICITLY '0' (or negative) →
+        // penalty disabled: no JE, penalty stays null, window stays PENALTY_8_30D.
+        const parsed = pctRow ? parseFloat(pctRow.value) : NaN;
+        const pct = Number.isFinite(parsed) ? parsed : 5;
+        if (pct > 0) {
+          if (!req.depositAccountCode) {
+            throw new BadRequestException(
+              'คำขอนี้ไม่มีบัญชีเงินสด — ระบุ depositAccountCode ตอน submit',
+            );
+          }
+          penalty = new Decimal(req.buybackPrice.toString())
+            .times(pct)
+            .div(100)
+            .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+          const pje = await this.penaltyTemplate.execute(
+            {
+              requestId: id,
+              oldContractId: req.oldContractId,
+              depositAccountCode: req.depositAccountCode,
+              penalty,
+            },
+            tx,
+          );
+          penaltyJeId = pje.id;
+        }
       }
 
       // 3) restore states (spec §9 step 3)

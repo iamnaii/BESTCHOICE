@@ -215,6 +215,46 @@ describe('ExchangeCancelService (spec §9)', () => {
     );
   });
 
+  it('FINALIZED แต่สัญญาใหม่ไม่ ACTIVE (COMPLETED) → BadRequest, ไม่หลุดไป PRE_FINALIZE ไม่แตะอะไร', async () => {
+    // exchangedAt set = finalized จริง; newContract COMPLETED ต้องถูก REJECT —
+    // ห้าม route ไป PRE_FINALIZE (จะ soft-delete สัญญาจริงโดยไม่มี reversal/paid-guard)
+    requests.req1 = {
+      ...makeFinalizedReq(5),
+      newContract: { id: 'newC1', status: 'COMPLETED' },
+    };
+
+    await expect(svc.cancel('req1', 'ลองยกเลิกหลังปิดสัญญาใหม่', user)).rejects.toThrow(
+      'ยกเลิกเปลี่ยนเครื่องไม่ได้',
+    );
+    expect(reversal.reverse).not.toHaveBeenCalled();
+    expect(penalty.execute).not.toHaveBeenCalled();
+    expect(txMock.contract.update).not.toHaveBeenCalled();
+    expect(txMock.product.update).not.toHaveBeenCalled();
+    expect(txMock.contractExchangeRequest.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('penalty pct = "0" (ปิดค่าปรับ) → วันที่ 15: ไม่มี penalty JE, penaltyAmount null, window ยัง PENALTY_8_30D', async () => {
+    requests.req1 = makeFinalizedReq(15);
+    txMock.systemConfig.findFirst.mockResolvedValue({ value: '0' });
+
+    const r = await svc.cancel('req1', 'ยกเลิกช่วงเจ้าของปิดค่าปรับ', user);
+
+    expect(r.cancelWindow).toBe('PENALTY_8_30D');
+    expect(r.penaltyAmount).toBeNull();
+    expect(penalty.execute).not.toHaveBeenCalled();
+    // Reversal + restores still run in full
+    expect(reversal.reverse).toHaveBeenCalledTimes(1);
+    expect(txMock.contractExchangeRequest.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          cancelWindow: 'PENALTY_8_30D',
+          penaltyAmount: null,
+          penaltyJeId: null,
+        }),
+      }),
+    );
+  });
+
   it('วันที่ 31 → BadRequest "เกิน 30 วัน"', async () => {
     requests.req1 = makeFinalizedReq(31);
 
@@ -289,8 +329,14 @@ describe('ExchangeCancelService (spec §9)', () => {
 
     const r = await svc.cancel('memoReq', 'ลูกค้าขอเครื่องเดิมคืน', user);
 
-    expect(r.cancelWindow).toBe('FREE_7D');
+    // MEMO_30D — distinct window label for reporting (MEMO ไม่มี penalty ทุกวัน)
+    expect(r.cancelWindow).toBe('MEMO_30D');
     expect(r.penaltyAmount).toBeNull();
+    expect(txMock.contractExchangeRequest.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ cancelWindow: 'MEMO_30D' }),
+      }),
+    );
     // No JE posted at all (templates are the only JE paths in this service)
     expect(reversal.reverse).not.toHaveBeenCalled();
     expect(penalty.execute).not.toHaveBeenCalled();

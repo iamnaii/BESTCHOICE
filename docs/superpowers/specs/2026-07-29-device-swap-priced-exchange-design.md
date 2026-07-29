@@ -95,11 +95,17 @@ Migration additive ทั้งหมด, ไม่มี breaking change
 ```
 NCV        = GL(11-2101, dr) − GL(11-2106, cr)          // ledger จริงของสัญญาเก่า
 marketMin  = TradeInValuation(brand, model, storage, deviceCondition).basePrice × 0.85
+marketMax  = basePrice × 1.15                            // symmetric ±15% (I5)
 
-AUTO     : buyback ≥ NCV และ (มี valuation row และ buyback ≥ marketMin)
+AUTO     : buyback ≥ NCV และ (มี valuation row และ marketMin ≤ buyback ≤ marketMax)
 REVIEW   : NCV × 0.70 ≤ buyback < NCV  หรือ  (ผ่าน NCV แต่ตก market check / ไม่มี valuation row)
+           หรือ buyback > marketMax (overpay เกินราคากลาง — I5, final review 2026-07-29)
 ESCALATE : buyback < NCV × 0.70
 ```
+
+- **marketMax upper bound (I5, 2026-07-29):** AUTO ต้องอยู่ในกรอบราคากลางทั้ง 2 ด้าน —
+  จ่ายแพงเกิน (เอื้อลูกค้า/พนักงาน) ต้องผ่านคนอนุมัติเหมือนจ่ายถูกเกิน ตาม rationale
+  symmetric ±`exchange_market_check_pct` ของ D3 เอง (**pending owner confirmation** — ownerจะได้รับแจ้ง)
 
 - **AUTO** → auto-approve ตอน submit (approvedById = requester, audit ระบุ tier)
 - **REVIEW** → BRANCH_MANAGER หรือ OWNER อนุมัติ
@@ -158,9 +164,20 @@ Dr 11-2102   GL(11-2102, cr) ของสัญญาเก่า
 - ปิด `BadDebtProvision` rows ACTIVE → REVERSED ใน tx เดียวกัน (กัน stale rows — สัญญา EXCHANGED หลุด scope cron)
 - **หมายเหตุ asymmetry โดยเจตนา:** JP5/write-off/stage-reverse ยัง release เข้า 51-1103 ตามเดิม — 42-1106 ใช้เฉพาะ derecognition จากการเปลี่ยนเครื่อง (ตาม workbook + D2)
 
-### 7.5 Idempotency (ปิด hardening gap เดิม)
+### 7.5 Idempotency (ปิด hardening gap เดิม — key รวม requestId, C1b final review 2026-07-29)
 
-A.1–A.5 ทุกตัวเพิ่ม `metadata.idempotencyKey` (`{oldContractId}:{flow}`) — ใช้ DB partial unique index `journal_entries_idempotency_idx` ที่มีอยู่ + catch P2002 (pattern `bad-debt-provision.template.ts`)
+A.1–A.5 ทุกตัวมี `metadata.idempotencyKey` บังคับผ่าน DB partial unique index `journal_entries_idempotency_idx`:
+
+| JE | Key | เหตุผล |
+|---|---|---|
+| A.1 / A.3 | `{newContractId}` | สัญญาใหม่ unique ต่อ attempt อยู่แล้ว |
+| A.2 | `{oldContractId}:{requestId}` | key เดิม (`oldContractId` เพียว) ทำ re-exchange หลัง cancel พัง: JE รอบแรกถูก mirror-reverse แต่ยัง POSTED — key ยังค้างใน index → finalize รอบสอง P2002 |
+| A.4 | `{oldProductId}:{oldContractId}:{requestId}` | เหตุผลเดียวกับ A.2 |
+| A.5 | `{oldContractId}:{requestId}` | เหตุผลเดียวกับ A.2 |
+
+`requestId` = `ContractExchangeRequest.id` — แต่ละ lifecycle (submit→approve→finalize) มี request row ของตัวเอง จึงยัง idempotent ภายใน attempt เดียว (retry ใน tx เดิมชน key เดิม) แต่ไม่ block attempt ใหม่หลัง cancel
+
+หมายเหตุ: A.4 มี `reference` ด้วย (`contract:{oldContractId}:exchange-return:{requestId}`) — ตาราง `journal_entries` มี unique `(reference_type, reference_id)` แยกอีกชั้น จึงต้องผูก requestId ที่ reference string เช่นกัน ไม่งั้น round 2 ชน constraint นี้แม้ idempotencyKey จะไม่ชนแล้ว
 
 ## 8. MEMO mode (Case 1)
 
@@ -177,20 +194,21 @@ A.1–A.5 ทุกตัวเพิ่ม `metadata.idempotencyKey` (`{oldCont
 - **MDM checklist** ใน dialog เดียวกัน: ถอน MDM เครื่องเก่า + ลงทะเบียน MDM เครื่องใหม่ (manual ops step, บันทึกใน audit) — ระบบไม่ยิง MDM API อัตโนมัติใน v1
 - ยอมรับว่า `Sale` row เดิมชี้เครื่องเก่า — ประวัติตามได้จาก exchange log + audit
 
-**MEMO cancel:** ภายใน 30 วัน — revert `productId` + product states + audit `EXCHANGE_MEMO_CANCELED`; ไม่มีค่าปรับ (ไม่มีฐานราคารับซื้อ); ไม่มี JE
+**MEMO cancel:** ภายใน 30 วัน — revert `productId` + product states + audit `EXCHANGE_MEMO_CANCELED`; ไม่มีค่าปรับ (ไม่มีฐานราคารับซื้อ); ไม่มี JE. **Guards (I4, final review 2026-07-29):** ก่อน revert ต้อง `oldContract.status === 'ACTIVE'` **และ** `oldContract.productId === req.newProductId` (สัญญายังอยู่ในสถานะ post-MEMO จริง) — มิเช่นนั้น `BadRequestException` "สัญญาสถานะเปลี่ยนไป หรือเครื่องบนสัญญาไม่ตรงกับคำขอ — ยกเลิกแบบ MEMO ไม่ได้" (กัน blind revert ทับสัญญาที่ปิดไปแล้ว / สลับเครื่องรอบใหม่ไปแล้ว)
 
 ## 9. Cancellation (PRICED — Cases 3A/3B)
 
 **Preconditions:** `exchangedAt` set; `now − exchangedAt ≤ 30 วัน` (BKK); สัญญาใหม่ไม่มี Payment ที่ `amountPaid > 0` (มิเช่นนั้นต้อง void receipt ก่อน — pattern zero-payment guard ของ defect-exchange); role OWNER/BM + เหตุผล ≥10 ตัวอักษร
 
-**Abort ก่อน finalize (สถานะ APPROVED แต่ยังไม่เซ็น/activate — ยังไม่มี JE ใดๆ):** endpoint เดียวกัน — แค่ลบ DRAFT contract (soft-delete), คืนเครื่องใหม่ RESERVED → IN_STOCK, request → CANCELED (`cancelWindow = 'PRE_FINALIZE'`), ไม่มี reversal/penalty; audit `EXCHANGE_CANCELED`
+**Abort ก่อน finalize (สถานะ APPROVED แต่ยังไม่เซ็น/activate — ยังไม่มี JE ใดๆ):** endpoint เดียวกัน — soft-delete DRAFT contract แบบ **CAS** (`updateMany` guard `status='DRAFT' AND deletedAt IS NULL`, count ≠ 1 → Conflict — กัน race กับ activation ที่วิ่งพร้อมกัน) + **null `exchangedFromContractId` ใน write เดียวกัน** (C1a — ดูด้านล่าง), คืนเครื่องใหม่ RESERVED → IN_STOCK, request → CANCELED (`cancelWindow = 'PRE_FINALIZE'`), ไม่มี reversal/penalty; audit `EXCHANGE_CANCELED`
 
 **ขั้นตอนใน `$transaction` เดียว:**
 
 1. **Mirror-reverse ทุก JE** (template ใหม่ `ExchangeCancelReversalTemplate` — pattern `DefectExchangeReversalTemplate` + `receipt-void-reversal`): ทุก POSTED entry tagged `metadata.contractId = newContractId` (รวม A.1 + accrual 2A ที่อาจวิ่งไปแล้วบนสัญญาใหม่) + swap JEs บนสัญญาเก่า (A.2, A.3, **A.5 ECL** — Dr 42-1106 / Cr 11-2102 คืน provision ทันที P&L ไม่พองสองข้าง; cron delta เจอ 0 = no-op) + A.4 SHOP; stamp `metadata.reversesEntryId` + `reversalJeIds[]` บน request
 2. **Catch-up accrual (Major 3):** งวดของสัญญาเก่าที่ `dueDate ≤ วันนี้ AND accrualJournalEntryId IS NULL` → รัน 2A accrual ให้ครบใน tx (สัญญา EXCHANGED ถูกยกเว้นจาก cron ระหว่าง window — ห้ามเงียบ; ตอนเขียน plan ให้ตรวจ scan window ของ `installment-accrual.cron` ก่อน ถ้า cron backfill เองอยู่แล้วให้ลดเหลือ assertion)
-3. **Restore:** สัญญาเก่า → ACTIVE + ล้าง `exchangedAt` (overdue cron จัดสถานะ OVERDUE เองถ้ามีงวดเลย due); เครื่องเก่า → คืน FINANCE-owned + สถานะเดิม; เครื่องใหม่ → IN_STOCK + SHOP; สัญญาใหม่ → CANCELED (คง `exchangedFromContractId` ไว้เป็นประวัติ)
-4. **Penalty (เฉพาะวันที่ 8–30):** `penalty = round2(buybackPrice × exchange_cancel_penalty_pct / 100)` (SystemConfig, default `'5'`) → JE แยก: `Dr {depositAccountCode} / Cr 42-1107` — **ไม่มี VAT** (นโยบายค่าปรับเดียวกับ 42-1103); flow `exchange-cancel-penalty`
+3. **Restore:** สัญญาเก่า → ACTIVE + ล้าง `exchangedAt` (overdue cron จัดสถานะ OVERDUE เองถ้ามีงวดเลย due); เครื่องเก่า → คืน FINANCE-owned + สถานะเดิม; เครื่องใหม่ → IN_STOCK + SHOP; สัญญาใหม่ → CANCELED + **null `exchangedFromContractId`** (C1a, final review 2026-07-29: field เป็น `@unique` — ถ้าคงไว้บนสัญญา EXCH- ที่ตายแล้ว การเปลี่ยนเครื่องรอบใหม่ของสัญญาเดิมจะ P2002 ตอน `contract.create` ตลอดกาล; ประวัติ old↔new อยู่บน request row ครบอยู่แล้ว)
+3b. **Reverse ECL rows ของสัญญาใหม่ (I3):** `BadDebtProvision` ที่ cron ตั้งให้สัญญาใหม่ระหว่าง window ≤30 วัน → `status: ACTIVE → REVERSED` ใน tx เดียวกัน (JE ของมันถูก mirror-reverse โดย sweep ข้อ 1 อยู่แล้ว — ห้ามทิ้ง row ACTIVE ค้างบนสัญญา CANCELED)
+4. **Penalty (เฉพาะวันที่ 8–30):** `penalty = round2(buybackPrice × exchange_cancel_penalty_pct / 100)` (SystemConfig, default `'5'`) → JE แยก: `Dr {depositAccountCode} / Cr 42-1107` — **ไม่มี VAT** (นโยบายค่าปรับเดียวกับ 42-1103); flow `exchange-cancel-penalty`. เพื่อให้ path นี้ไม่ตาย: **submit แบบ PRICED บังคับ `depositAccountCode` ทุกคำขอ** (final review 2026-07-29 — เดิมบังคับเฉพาะ `buyback ≠ vendorSum` ทำให้เคส Case-2F ที่ offset พอดียกเลิกวันที่ 8–30 ไม่ได้)
 5. Request row: status → CANCELED + `cancelWindow` (FREE_7D | PENALTY_8_30D) + `penaltyAmount/penaltyJeId`; AuditLog `EXCHANGE_CANCELED`
 6. เกิน 30 วัน → block (ยกเลิกไม่ได้ — ต้องใช้เส้นทางอื่น เช่น repossession/CN ตามเหตุการณ์จริง)
 

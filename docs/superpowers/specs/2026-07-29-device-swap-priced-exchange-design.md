@@ -105,7 +105,7 @@ ESCALATE : buyback < NCV × 0.70
 
 - **marketMax upper bound (I5, 2026-07-29):** AUTO ต้องอยู่ในกรอบราคากลางทั้ง 2 ด้าน —
   จ่ายแพงเกิน (เอื้อลูกค้า/พนักงาน) ต้องผ่านคนอนุมัติเหมือนจ่ายถูกเกิน ตาม rationale
-  symmetric ±`exchange_market_check_pct` ของ D3 เอง (**pending owner confirmation** — ownerจะได้รับแจ้ง)
+  symmetric ±`exchange_market_check_pct` ของ D3 เอง (**owner confirmed 2026-07-29** = D6)
 
 - **AUTO** → auto-approve ตอน submit (approvedById = requester, audit ระบุ tier)
 - **REVIEW** → BRANCH_MANAGER หรือ OWNER อนุมัติ

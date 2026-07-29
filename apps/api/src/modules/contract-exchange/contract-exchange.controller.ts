@@ -57,6 +57,12 @@ export class ContractExchangeController {
     return this.svc.listPending();
   }
 
+  @Get('recent')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  listRecent() {
+    return this.svc.listRecent();
+  }
+
   @Post(':id/approve')
   @Roles('OWNER', 'BRANCH_MANAGER')
   approve(

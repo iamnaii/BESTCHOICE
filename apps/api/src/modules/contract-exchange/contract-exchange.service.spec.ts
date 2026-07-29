@@ -1350,6 +1350,57 @@ describe('ContractExchangeService.reject', () => {
   });
 });
 
+describe('ContractExchangeService.listRecent', () => {
+  let service: ContractExchangeService;
+  let prisma: any;
+
+  beforeEach(async () => {
+    prisma = {
+      contractExchangeRequest: { findMany: jest.fn().mockResolvedValue([]) },
+    };
+    const mod = await Test.createTestingModule({
+      providers: [
+        ContractExchangeService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: AuditService, useValue: { log: jest.fn() } },
+        { provide: ExchangeNewContract1ATemplate, useValue: {} },
+        { provide: ExchangeCloseOld21_1106Template, useValue: {} },
+        { provide: ExchangeClearVendor21_1106Template, useValue: {} },
+        { provide: ShopExchangeReturnTemplate, useValue: {} },
+        { provide: ExchangeEclReversalTemplate, useValue: {} },
+        { provide: CompanyResolverService, useValue: { getShopCompanyId: jest.fn() } },
+      ],
+    }).compile();
+    service = mod.get(ContractExchangeService);
+  });
+
+  it('queries status=APPROVED, deletedAt=null, within a 90-day window, take 100', async () => {
+    const before = Date.now();
+    await service.listRecent();
+    const after = Date.now();
+
+    expect(prisma.contractExchangeRequest.findMany).toHaveBeenCalledTimes(1);
+    const call = prisma.contractExchangeRequest.findMany.mock.calls[0][0];
+    expect(call.where.status).toBe('APPROVED');
+    expect(call.where.deletedAt).toBeNull();
+    expect(call.take).toBe(100);
+    expect(call.orderBy).toEqual({ updatedAt: 'desc' });
+
+    // updatedAt.gte should be ~90 days before now (within a small tolerance
+    // for test execution time).
+    const since: Date = call.where.updatedAt.gte;
+    const expectedSince = before - 90 * 86_400_000;
+    expect(since.getTime()).toBeGreaterThanOrEqual(expectedSince - 5000);
+    expect(since.getTime()).toBeLessThanOrEqual(after - 90 * 86_400_000 + 5000);
+  });
+
+  it('returns whatever prisma resolves', async () => {
+    const rows = [{ id: 'r1', status: 'APPROVED' }];
+    prisma.contractExchangeRequest.findMany.mockResolvedValue(rows);
+    await expect(service.listRecent()).resolves.toBe(rows);
+  });
+});
+
 function makeOldContract(totalMonths: number, _paid: number) {
   return {
     id: 'old-c',

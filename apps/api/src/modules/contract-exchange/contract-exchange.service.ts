@@ -864,6 +864,28 @@ export class ContractExchangeService {
     });
   }
 
+  /**
+   * APPROVED requests from the last 90 days — feeds the "อนุมัติแล้ว
+   * (ยกเลิกได้ภายใน 30 วัน)" table on ExchangeRequestsPage. `updatedAt` is
+   * touched by both approve() (approvedAt set in the same updateMany) and
+   * finalizeAfterActivation/cancel, so a 90-day window on it comfortably
+   * covers the 30-day cancel-eligibility window this list exists to serve.
+   */
+  async listRecent(): Promise<any[]> {
+    const since = new Date(Date.now() - 90 * 86_400_000);
+    return (this.prisma as any).contractExchangeRequest.findMany({
+      where: { status: 'APPROVED', deletedAt: null, updatedAt: { gte: since } },
+      include: {
+        oldContract: {
+          select: { id: true, contractNumber: true, exchangedAt: true, customer: { select: { name: true } } },
+        },
+        newContract: { select: { id: true, contractNumber: true, status: true } },
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: 100,
+    });
+  }
+
   /** SystemConfig ตัวเลข — fallback เมื่อ row หาย/parse ไม่ได้ */
   private async configNumber(key: string, fallback: number): Promise<number> {
     const row = await this.prisma.systemConfig.findFirst({

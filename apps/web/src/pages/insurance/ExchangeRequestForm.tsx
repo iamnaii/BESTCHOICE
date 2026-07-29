@@ -43,9 +43,17 @@ interface ReplacementProduct {
 }
 
 // Product price helper: Product schema has cashPrice + installmentPrice (both nullable).
-// For SP2 same-price filter we use installmentPrice as the comparison.
+// Display-only — used to show the old/replacement device's price (no filtering logic here).
 function resolvePrice(p: { installmentPrice?: string | null; sellingPrice?: string | null }) {
   return p.installmentPrice ?? p.sellingPrice ?? null;
+}
+
+// Interest rate travels the wire as a raw fraction (e.g. 0.08 = 8%/เดือน, see InterestConfigPage)
+// but the UI always shows/edits the percentage form (e.g. "8.00"). Converts pct string -> rate
+// string for the two API boundaries (preview query + submit payload); undefined when unparsable.
+function pctToRate(pct: string): string | undefined {
+  const n = parseFloat(pct);
+  return Number.isFinite(n) ? (n / 100).toString() : undefined;
 }
 
 export default function ExchangeRequestForm() {
@@ -58,7 +66,12 @@ export default function ExchangeRequestForm() {
   const [deviceCondition, setDeviceCondition] = useState('B');
   const [depositAccountCode, setDepositAccountCode] = useState('11-1201');
   const [newTotalMonths, setNewTotalMonths] = useState('12');
-  const [newInterestRate, setNewInterestRate] = useState('');
+  const [newInterestRatePct, setNewInterestRatePct] = useState('');
+
+  const ratePctNum = newInterestRatePct.trim() === '' ? NaN : parseFloat(newInterestRatePct);
+  const isRateValid = Number.isFinite(ratePctNum) && ratePctNum >= 0 && ratePctNum <= 15;
+  const monthsNum = newTotalMonths.trim() === '' ? NaN : parseInt(newTotalMonths, 10);
+  const isMonthsValid = Number.isFinite(monthsNum) && monthsNum >= 1;
 
   const contractQ = useQuery<OldContract>({
     queryKey: ['exchange-contract', contractId],
@@ -70,8 +83,8 @@ export default function ExchangeRequestForm() {
   });
 
   useEffect(() => {
-    if (contractQ.data?.interestRate && !newInterestRate) {
-      setNewInterestRate(contractQ.data.interestRate);
+    if (contractQ.data?.interestRate && !newInterestRatePct) {
+      setNewInterestRatePct((parseFloat(contractQ.data.interestRate) * 100).toFixed(2));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contractQ.data?.interestRate]);
@@ -100,14 +113,15 @@ export default function ExchangeRequestForm() {
     blockers: { overdueBlocked: boolean; advanceBlocked: boolean };
     hasUnpaidLateFee: boolean;
   }>({
-    queryKey: ['exchange-preview', contractId, newProductId, buybackPrice, deviceCondition, newTotalMonths, newInterestRate],
+    queryKey: ['exchange-preview', contractId, newProductId, buybackPrice, deviceCondition, newTotalMonths, newInterestRatePct],
     queryFn: async () => {
       const qs = new URLSearchParams({ oldContractId: contractId });
       if (newProductId) qs.set('newProductId', newProductId);
       if (buybackPrice) qs.set('buybackPrice', buybackPrice);
       if (deviceCondition) qs.set('deviceCondition', deviceCondition);
       if (newTotalMonths) qs.set('newTotalMonths', newTotalMonths);
-      if (newInterestRate) qs.set('newInterestRate', newInterestRate);
+      const rate = pctToRate(newInterestRatePct);
+      if (rate !== undefined) qs.set('newInterestRate', rate);
       return (await api.get(`/insurance/exchange-requests/preview?${qs}`)).data;
     },
     enabled: !!contractId,
@@ -128,7 +142,9 @@ export default function ExchangeRequestForm() {
               deviceCondition,
               depositAccountCode,
               newTotalMonths: parseInt(newTotalMonths, 10),
-              newInterestRate,
+              ...(pctToRate(newInterestRatePct) !== undefined
+                ? { newInterestRate: pctToRate(newInterestRatePct) }
+                : {}),
             }),
       });
       return res.data;
@@ -273,10 +289,15 @@ export default function ExchangeRequestForm() {
                 </select>
               </div>
               <div>
-                <label className="text-xs text-muted-foreground">อัตราดอกเบี้ย/เดือน</label>
-                <input type="number" min="0" max="0.15" step="0.01" value={newInterestRate}
-                  onChange={(e) => setNewInterestRate(e.target.value)}
+                <label className="text-xs text-muted-foreground">อัตราดอกเบี้ย (%/เดือน)</label>
+                <input type="number" min="0" max="15" step="0.01" value={newInterestRatePct}
+                  onChange={(e) => setNewInterestRatePct(e.target.value)}
                   className="w-full mt-1 px-3 py-2 border border-input rounded-lg bg-background text-sm" />
+                {!isRateValid && (
+                  <p className="text-xs text-destructive leading-snug mt-1">
+                    อัตราดอกเบี้ยต้องอยู่ระหว่าง 0–15% ต่อเดือน
+                  </p>
+                )}
               </div>
             </div>
 
@@ -343,7 +364,8 @@ export default function ExchangeRequestForm() {
               submitM.isPending ||
               previewQ.data?.blockers.overdueBlocked ||
               previewQ.data?.blockers.advanceBlocked ||
-              (previewQ.data?.mode === 'PRICED' && !buybackPrice)
+              (previewQ.data?.mode === 'PRICED' &&
+                (!buybackPrice || !isRateValid || !isMonthsValid))
             }
           >
             {submitM.isPending ? 'กำลังส่ง…' : 'ส่งคำขออนุมัติ →'}

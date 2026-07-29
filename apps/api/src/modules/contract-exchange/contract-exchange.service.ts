@@ -17,6 +17,7 @@ import { ExchangeNewContract1ATemplate } from '../journal/cpa-templates/exchange
 import { ExchangeCloseOld21_1106Template } from '../journal/cpa-templates/exchange-close-old-21-1106.template';
 import { ExchangeClearVendor21_1106Template } from '../journal/cpa-templates/exchange-clear-vendor-21-1106.template';
 import { ShopExchangeReturnTemplate } from '../journal/cpa-templates/shop-exchange-return.template';
+import { ExchangeEclReversalTemplate } from '../journal/cpa-templates/exchange-ecl-reversal.template';
 import { CompanyResolverService } from '../journal/company-resolver.service';
 import { computeExchangeTier, ExchangeTier } from './exchange-tier.util';
 import { computeExchangePlan } from './exchange-plan.util';
@@ -64,6 +65,7 @@ export class ContractExchangeService {
     private readonly t2: ExchangeCloseOld21_1106Template,
     private readonly t3: ExchangeClearVendor21_1106Template,
     private readonly t4: ShopExchangeReturnTemplate,
+    private readonly t5: ExchangeEclReversalTemplate,
     private readonly companyResolver: CompanyResolverService,
   ) {}
 
@@ -648,7 +650,7 @@ export class ContractExchangeService {
   async finalizeAfterActivation(
     newContract: ExchangeContractForFinalize,
     tx: Prisma.TransactionClient,
-  ): Promise<{ je1aId: string; je2Id: string; je3Id: string; je4Id: string }> {
+  ): Promise<{ je1aId: string; je2Id: string; je3Id: string; je4Id: string; je5Id: string | null }> {
     // 1. Resolve SHOP companyId
     const shopCompanyId = await this.companyResolver.getShopCompanyId(tx);
 
@@ -670,12 +672,36 @@ export class ContractExchangeService {
       );
     }
 
+    // ---- Pre-flight guards (spec §7.0) ----
+    const bal2103 = await glContractBalance(tx, oldContractId, '11-2103', 'dr');
+    if (bal2103.abs().gte('0.005')) {
+      throw new BadRequestException(
+        `มีงวดค้างชำระ (11-2103 = ${bal2103.toFixed(2)}) — เคลียร์งวดค้างก่อนเปลี่ยนเครื่อง`,
+      );
+    }
+    const bal21_1103 = await glContractBalance(tx, oldContractId, '21-1103', 'cr');
+    const oldC = await tx.contract.findUniqueOrThrow({
+      where: { id: oldContractId },
+      select: { advanceBalance: true, creditBalance: true },
+    });
+    if (
+      bal21_1103.gte('0.005') ||
+      new Decimal(oldC.advanceBalance.toString()).gt(0) ||
+      new Decimal((oldC as any).creditBalance?.toString() ?? '0').gt(0)
+    ) {
+      throw new BadRequestException(
+        'มีเงินรับล่วงหน้า/เครดิตค้างบนสัญญาเดิม — ใช้หรือคืนเงินก่อนเปลี่ยนเครื่อง',
+      );
+    }
+
     // 3. Outstanding from the real ledger (not straight-line proration).
     const newFinanced = new Decimal(newContract.financedAmount.toString());
     const newCommission = newContract.storeCommission
       ? new Decimal(newContract.storeCommission.toString())
       : new Decimal(0);
-    const buyback = newFinanced.plus(newCommission);
+    const buyback = request.buybackPrice
+      ? new Decimal(request.buybackPrice.toString())
+      : newFinanced.plus(newCommission); // legacy same-price fallback
     const oldOutstanding = await this.computeOldOutstanding(tx, oldContractId);
 
     // 4. JE A.1 — open new HP receivable
@@ -701,6 +727,7 @@ export class ContractExchangeService {
         buyback,
         newVendorYodjat: newFinanced,
         newVendorCommission: newCommission,
+        depositAccountCode: request.depositAccountCode ?? undefined,
       },
       tx,
     );
@@ -722,6 +749,15 @@ export class ContractExchangeService {
       tx,
     );
 
+    // JE A.5 — ECL reversal on derecognition (workbook Case 4, synchronous ใน tx เดียวกัน)
+    const je5 = await this.t5.execute({ oldContractId }, tx);
+    if (je5) {
+      await (tx as any).badDebtProvision.updateMany({
+        where: { contractId: oldContractId, status: 'ACTIVE', deletedAt: null },
+        data: { status: 'REVERSED' },
+      });
+    }
+
     // 8. Old-side status flips
     await tx.contract.update({
       where: { id: oldContractId },
@@ -740,6 +776,7 @@ export class ContractExchangeService {
         je2Id: je2.id,
         je3Id: je3.id,
         je4Id: je4.id,
+        eclReversalJeId: je5?.id ?? null,
       },
     });
 
@@ -753,7 +790,13 @@ export class ContractExchangeService {
         oldContractId,
         newContractId: newContract.id,
         buyback: buyback.toString(),
-        jeIds: { je1aId: je1a.id, je2Id: je2.id, je3Id: je3.id, je4Id: je4.id },
+        jeIds: {
+          je1aId: je1a.id,
+          je2Id: je2.id,
+          je3Id: je3.id,
+          je4Id: je4.id,
+          je5Id: je5?.id ?? null,
+        },
       },
     });
     await this.audit.log({
@@ -774,6 +817,7 @@ export class ContractExchangeService {
       je2Id: je2.id,
       je3Id: je3.id,
       je4Id: je4.id,
+      je5Id: je5?.id ?? null,
     };
   }
 

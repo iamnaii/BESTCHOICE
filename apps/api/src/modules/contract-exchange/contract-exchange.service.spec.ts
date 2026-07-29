@@ -14,6 +14,7 @@ import { ExchangeNewContract1ATemplate } from '../journal/cpa-templates/exchange
 import { ExchangeCloseOld21_1106Template } from '../journal/cpa-templates/exchange-close-old-21-1106.template';
 import { ExchangeClearVendor21_1106Template } from '../journal/cpa-templates/exchange-clear-vendor-21-1106.template';
 import { ShopExchangeReturnTemplate } from '../journal/cpa-templates/shop-exchange-return.template';
+import { ExchangeEclReversalTemplate } from '../journal/cpa-templates/exchange-ecl-reversal.template';
 import { CompanyResolverService } from '../journal/company-resolver.service';
 
 // Default user shape used by submit() tests after Fix 2 (issue #1086 item 2).
@@ -42,6 +43,7 @@ describe('ContractExchangeService.submit', () => {
         { provide: ExchangeCloseOld21_1106Template, useValue: {} },
         { provide: ExchangeClearVendor21_1106Template, useValue: {} },
         { provide: ShopExchangeReturnTemplate, useValue: {} },
+        { provide: ExchangeEclReversalTemplate, useValue: {} },
         { provide: CompanyResolverService, useValue: { getShopCompanyId: jest.fn() } },
       ],
     }).compile();
@@ -298,6 +300,7 @@ describe('submit() mode routing (Device Swap 2026-07)', () => {
         { provide: ExchangeCloseOld21_1106Template, useValue: {} },
         { provide: ExchangeClearVendor21_1106Template, useValue: {} },
         { provide: ShopExchangeReturnTemplate, useValue: {} },
+        { provide: ExchangeEclReversalTemplate, useValue: {} },
         { provide: CompanyResolverService, useValue: { getShopCompanyId: jest.fn() } },
       ],
     }).compile();
@@ -405,6 +408,7 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
       t2: { execute: jest.fn() },
       t3: { execute: jest.fn() },
       t4: { execute: jest.fn() },
+      t5: { execute: jest.fn() },
     };
     audit = { log: jest.fn() };
     companyResolver = { getShopCompanyId: jest.fn() };
@@ -417,6 +421,7 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
         { provide: ExchangeCloseOld21_1106Template, useValue: templates.t2 },
         { provide: ExchangeClearVendor21_1106Template, useValue: templates.t3 },
         { provide: ShopExchangeReturnTemplate, useValue: templates.t4 },
+        { provide: ExchangeEclReversalTemplate, useValue: templates.t5 },
         { provide: CompanyResolverService, useValue: companyResolver },
       ],
     }).compile();
@@ -757,6 +762,7 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
       t2: { execute: jest.fn() },
       t3: { execute: jest.fn() },
       t4: { execute: jest.fn() },
+      t5: { execute: jest.fn() },
     };
     audit = { log: jest.fn() };
     companyResolver = { getShopCompanyId: jest.fn().mockResolvedValue('shop-co-id') };
@@ -769,6 +775,7 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
         { provide: ExchangeCloseOld21_1106Template, useValue: templates.t2 },
         { provide: ExchangeClearVendor21_1106Template, useValue: templates.t3 },
         { provide: ShopExchangeReturnTemplate, useValue: templates.t4 },
+        { provide: ExchangeEclReversalTemplate, useValue: templates.t5 },
         { provide: CompanyResolverService, useValue: companyResolver },
       ],
     }).compile();
@@ -971,18 +978,30 @@ describe('ContractExchangeService.finalizeAfterActivation', () => {
       },
       contract: {
         update: jest.fn(),
+        // Pre-flight guards (Task 9) read advanceBalance/creditBalance —
+        // default zero so existing tests sail through the guards untouched.
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          advanceBalance: { toString: () => '0' },
+          creditBalance: { toString: () => '0' },
+        }),
       },
       product: {
         update: jest.fn(),
         findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'old-p', costPrice: '15000' }),
       },
+      // Guards call glContractBalance twice (11-2103 dr, 21-1103 cr) BEFORE
+      // computeOldOutstanding's own findMany call. Default [] on every call
+      // keeps both guard balances at 0 and preserves the old 3rd-call shape
+      // relied on by computeOldOutstanding tests below.
       journalLine: { findMany: jest.fn().mockResolvedValue([]) },
+      badDebtProvision: { updateMany: jest.fn() },
     };
     templates = {
       t1a: { execute: jest.fn().mockResolvedValue({ id: 'je1-id', entryNumber: 'JV-A1' }) },
       t2: { execute: jest.fn().mockResolvedValue({ id: 'je2-id', entryNumber: 'JV-A2' }) },
       t3: { execute: jest.fn().mockResolvedValue({ id: 'je3-id', entryNumber: 'JV-A3' }) },
       t4: { execute: jest.fn().mockResolvedValue({ id: 'je4-id', entryNumber: 'JV-A4' }) },
+      t5: { execute: jest.fn().mockResolvedValue(null) },
     };
     audit = { log: jest.fn() };
     companyResolver = { getShopCompanyId: jest.fn().mockResolvedValue('shop-co-id') };
@@ -995,6 +1014,7 @@ describe('ContractExchangeService.finalizeAfterActivation', () => {
         { provide: ExchangeCloseOld21_1106Template, useValue: templates.t2 },
         { provide: ExchangeClearVendor21_1106Template, useValue: templates.t3 },
         { provide: ShopExchangeReturnTemplate, useValue: templates.t4 },
+        { provide: ExchangeEclReversalTemplate, useValue: templates.t5 },
         { provide: CompanyResolverService, useValue: companyResolver },
       ],
     }).compile();
@@ -1042,6 +1062,7 @@ describe('ContractExchangeService.finalizeAfterActivation', () => {
       je2Id: 'je2-id',
       je3Id: 'je3-id',
       je4Id: 'je4-id',
+      je5Id: null,
     });
   });
 
@@ -1132,7 +1153,10 @@ describe('ContractExchangeService.finalizeAfterActivation', () => {
 
     it('queries by BOTH referenceId AND metadata.contractId', async () => {
       await service.finalizeAfterActivation(newContract, tx);
-      const call = tx.journalLine.findMany.mock.calls[0][0];
+      // Task 9: calls[0] and calls[1] are now the pre-flight guard's
+      // glContractBalance queries (11-2103, 21-1103) — computeOldOutstanding
+      // is the 3rd journalLine.findMany call.
+      const call = tx.journalLine.findMany.mock.calls[2][0];
       const or = call.where.journalEntry.OR;
       expect(or).toEqual(
         expect.arrayContaining([
@@ -1150,13 +1174,21 @@ describe('ContractExchangeService.finalizeAfterActivation', () => {
       //  11-2105: Dr 1400,  Cr 200   → net Dr 1200  (vat receivable outstanding)
       //  11-2106: Dr 1000,  Cr 5000  → net Cr 4000  (unearned interest remaining)
       //  21-2102: Dr 100,   Cr 1300  → net Cr 1200  (deferred VAT outstanding)
-      tx.journalLine.findMany.mockResolvedValue([
-        { accountCode: '11-2101', debit: new Prisma.Decimal(20000), credit: new Prisma.Decimal(0) },
-        { accountCode: '11-2101', debit: new Prisma.Decimal(0), credit: new Prisma.Decimal(3000) },
-        { accountCode: '11-2105', debit: new Prisma.Decimal(1400), credit: new Prisma.Decimal(200) },
-        { accountCode: '11-2106', debit: new Prisma.Decimal(1000), credit: new Prisma.Decimal(5000) },
-        { accountCode: '21-2102', debit: new Prisma.Decimal(100), credit: new Prisma.Decimal(1300) },
-      ]);
+      // Task 9: the mock is a dumb stub that ignores the `where` filter, so it
+      // must be sequenced per-call — calls 1-2 are the pre-flight guards
+      // (must stay empty or they'd misread this fixture as a real 11-2103/
+      // 21-1103 balance and reject before computeOldOutstanding ever runs);
+      // call 3 is computeOldOutstanding, which gets the real fixture.
+      tx.journalLine.findMany
+        .mockResolvedValueOnce([]) // guard: 11-2103
+        .mockResolvedValueOnce([]) // guard: 21-1103
+        .mockResolvedValueOnce([
+          { accountCode: '11-2101', debit: new Prisma.Decimal(20000), credit: new Prisma.Decimal(0) },
+          { accountCode: '11-2101', debit: new Prisma.Decimal(0), credit: new Prisma.Decimal(3000) },
+          { accountCode: '11-2105', debit: new Prisma.Decimal(1400), credit: new Prisma.Decimal(200) },
+          { accountCode: '11-2106', debit: new Prisma.Decimal(1000), credit: new Prisma.Decimal(5000) },
+          { accountCode: '21-2102', debit: new Prisma.Decimal(100), credit: new Prisma.Decimal(1300) },
+        ]);
       await service.finalizeAfterActivation(newContract, tx);
       const t2Call = templates.t2.execute.mock.calls[0][0];
       expect(t2Call.oldGrossOutstanding.toString()).toBe('17000');
@@ -1170,6 +1202,102 @@ describe('ContractExchangeService.finalizeAfterActivation', () => {
       await service.finalizeAfterActivation(newContract, tx);
       const t2Call = templates.t2.execute.mock.calls[0][0];
       expect(t2Call.oldGrossOutstanding.toString()).toBe('0');
+    });
+  });
+
+  // ==========================================================================
+  // Task 9 — finalize guards + buyback จาก request + A.5 wiring (Device Swap 2026-07)
+  // ==========================================================================
+  describe('finalizeAfterActivation guards + A.5 (Device Swap 2026-07)', () => {
+    it('GL 11-2103 > 0 (งวดค้าง accrued) → BadRequest ก่อน post JE ใดๆ', async () => {
+      // journalLine.findMany call #1 = the 11-2103 guard query — return a
+      // real accrued-unpaid installment line (Dr 1515.83).
+      tx.journalLine.findMany.mockResolvedValueOnce([
+        { accountCode: '11-2103', debit: new Prisma.Decimal(1515.83), credit: new Prisma.Decimal(0) },
+      ]);
+      await expect(service.finalizeAfterActivation(newContract, tx)).rejects.toThrow('งวดค้าง');
+      expect(templates.t1a.execute).not.toHaveBeenCalled();
+      expect(templates.t2.execute).not.toHaveBeenCalled();
+    });
+
+    it('advanceBalance > 0 → BadRequest "เงินรับล่วงหน้า"', async () => {
+      // Both GL guard balances stay 0 (default []); the advance-balance branch
+      // of the second guard is what should fire here.
+      tx.contract.findUniqueOrThrow.mockResolvedValueOnce({
+        advanceBalance: { toString: () => '500' },
+        creditBalance: { toString: () => '0' },
+      });
+      await expect(service.finalizeAfterActivation(newContract, tx)).rejects.toThrow(
+        'เงินรับล่วงหน้า',
+      );
+      expect(templates.t1a.execute).not.toHaveBeenCalled();
+    });
+
+    it('PRICED: buyback = request.buybackPrice (ไม่ใช่ vendorSum) + ส่ง depositAccountCode เข้า A.3', async () => {
+      tx.contractExchangeRequest.findFirst.mockResolvedValue({
+        id: 'r1',
+        oldContractId: 'old-c',
+        oldProductId: 'old-p',
+        newContractId: 'new-c',
+        buybackPrice: '8000',
+        depositAccountCode: '11-1201',
+      });
+      await service.finalizeAfterActivation(newContract, tx);
+      expect(templates.t3.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          buyback: expect.objectContaining({}),
+          depositAccountCode: '11-1201',
+        }),
+        tx,
+      );
+      const t3Call = templates.t3.execute.mock.calls[0][0];
+      expect(t3Call.buyback.toString()).toBe('8000');
+    });
+
+    it('A.5 ถูกเรียกหลัง A.4 + je5Id เก็บบน request + provision rows → REVERSED', async () => {
+      const callOrder: string[] = [];
+      templates.t4.execute.mockImplementation(async () => {
+        callOrder.push('t4');
+        return { id: 'je4-id' };
+      });
+      templates.t5.execute.mockImplementation(async () => {
+        callOrder.push('t5');
+        return { id: 'je5-id', entryNumber: 'JV-A5' };
+      });
+
+      const result = await service.finalizeAfterActivation(newContract, tx);
+
+      expect(callOrder).toEqual(['t4', 't5']);
+      expect(templates.t5.execute).toHaveBeenCalledWith({ oldContractId: 'old-c' }, tx);
+      expect(tx.badDebtProvision.updateMany).toHaveBeenCalledWith({
+        where: { contractId: 'old-c', status: 'ACTIVE', deletedAt: null },
+        data: { status: 'REVERSED' },
+      });
+      expect(result.je5Id).toBe('je5-id');
+      expect(tx.contractExchangeRequest.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ eclReversalJeId: 'je5-id' }),
+        }),
+      );
+    });
+
+    it('A.5 returns null (no provision) → skip badDebtProvision.updateMany + je5Id null', async () => {
+      const result = await service.finalizeAfterActivation(newContract, tx);
+      expect(tx.badDebtProvision.updateMany).not.toHaveBeenCalled();
+      expect(result.je5Id).toBeNull();
+      expect(tx.contractExchangeRequest.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ eclReversalJeId: null }),
+        }),
+      );
+    });
+
+    it('legacy request (buybackPrice null) → fallback buyback = newFinanced + newCommission', async () => {
+      // Default fixture request has no buybackPrice field → legacy fallback:
+      // newFinanced (10000) + newCommission (1000) = 11000.
+      await service.finalizeAfterActivation(newContract, tx);
+      const je2Call = templates.t2.execute.mock.calls[0][0];
+      expect(je2Call.buyback.toString()).toBe('11000');
     });
   });
 });
@@ -1197,6 +1325,7 @@ describe('ContractExchangeService.reject', () => {
         { provide: ExchangeCloseOld21_1106Template, useValue: {} },
         { provide: ExchangeClearVendor21_1106Template, useValue: {} },
         { provide: ShopExchangeReturnTemplate, useValue: {} },
+        { provide: ExchangeEclReversalTemplate, useValue: {} },
         { provide: CompanyResolverService, useValue: { getShopCompanyId: jest.fn() } },
       ],
     }).compile();

@@ -11,6 +11,7 @@ import { ProductsService } from '../../products/products.service';
 import { JournalAutoService } from '../../journal/journal-auto.service';
 import { PaymentReceiptTemplate } from '../../journal/cpa-templates/payment-receipt.template';
 import { Vat60dayReversalTemplate } from '../../journal/cpa-templates/vat-60day-reversal.template';
+import { BadDebtService } from '../../accounting/bad-debt.service';
 import { formatDateLong } from '../../../utils/thai-date.util';
 import { ensureInstallmentSchedules } from '../../../utils/installment-schedule.util';
 import { validatePeriodOpen } from '../../../utils/period-lock.util';
@@ -51,9 +52,10 @@ export interface PaySolutionsWebhookHost {
  * distribution. The line-1105 Serializable `$transaction` (claim/idempotency
  * gate, FIFO Payment.update loop, contract-close, ensureInstallmentSchedules,
  * transferOwnership, per-installment PaymentReceiptTemplate + Vat60dayReversal
- * JEs, surplus-advance JE + advanceBalance + audit) lives here AS ONE ATOM —
- * never split, never crossing a seam. The C2 fix that moved JE posting INSIDE
- * the tx is preserved verbatim.
+ * JEs, one contract-level BadDebtService.reverseStageOnPayment call (ECL
+ * follow-up to C1, 2026-07-30), surplus-advance JE + advanceBalance + audit)
+ * lives here AS ONE ATOM — never split, never crossing a seam. The C2 fix
+ * that moved JE posting INSIDE the tx is preserved verbatim.
  *
  * Routing branches (partial / saving-plan / online-order) and the post-tx
  * notifications dispatch through {@link PaySolutionsWebhookHost} (the facade),
@@ -72,6 +74,7 @@ export class PaySolutionsWebhookService {
     private journalAutoService: JournalAutoService,
     private paymentReceiptTemplate: PaymentReceiptTemplate,
     private vat60Reversal: Vat60dayReversalTemplate,
+    private badDebtService: BadDebtService,
     private host: PaySolutionsWebhookHost,
   ) {}
 
@@ -501,6 +504,41 @@ export class PaySolutionsWebhookService {
                 this.logger.error(
                   `PaySolutions: PaymentReceipt2B UNPOSTABLE — no InstallmentSchedule for contractId=${contractForJe.id} installmentNo=${snapshot.installmentNo} (Sentry-alarmed; manual reconcile needed)`,
                 );
+              }
+            }
+
+            // CPA Policy A §3.6 — ECL stage reverse on payment (follow-up to
+            // C1/PR #1384, owner decision 2026-07-30). The cashier recordPayment
+            // path (payment-receipt-orchestrator.ts) already calls this after
+            // every receipt; this webhook was the only production caller of
+            // paymentReceiptTemplate that skipped it — a QR payment closing a
+            // contract (EARLY_PAYOFF/COMPLETED above) left the contract's 11-2102
+            // allowance stuck forever once it exits the daily cron's scope
+            // (ACTIVE/OVERDUE/DEFAULT/TERMINATED only), same failure class as C1.
+            //
+            // Called ONCE per contract per webhook (not per installment) — the
+            // FIFO loop above may have touched several installments in one
+            // webhook (e.g. an early-payoff QR closing >1 installment);
+            // reverseStageOnPayment recomputes the contract's AGGREGATE target
+            // from every remaining outstanding installment, so firing it once
+            // after the last touched snapshot already reflects the full effect
+            // of this webhook. When nothing remains outstanding it falls through
+            // to the shared full-release path (Dr 11-2102 / Cr 51-1103 + row
+            // REVERSED) — the same release primitive C1 uses for JP4 payoff,
+            // just reached through the real-time hook instead of a bespoke
+            // helper. Same try/catch shape as the orchestrator: Sentry-capture
+            // then rethrow, so a reverse-JE failure rolls back this whole
+            // webhook tx exactly like a receipt-JE failure does above (the
+            // existing 'JE failure inside tx rolls back' test in
+            // paysolutions.service.spec.ts pins that atomicity contract).
+            if (touchedSnapshots.length > 0) {
+              try {
+                await this.badDebtService.reverseStageOnPayment(contractForJe.id, tx);
+              } catch (err) {
+                Sentry.captureException(err, {
+                  extra: { contractId: contractForJe.id, refno },
+                });
+                throw err;
               }
             }
           }

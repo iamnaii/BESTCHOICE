@@ -1,4 +1,5 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, InternalServerErrorException, Inject, forwardRef } from '@nestjs/common';
+import * as Sentry from '@sentry/nestjs';
 import { PaymentMethod, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ProductsService } from '../products/products.service';
@@ -592,6 +593,16 @@ export class ContractPaymentService {
    */
   private async releaseEclOnPayoff(tx: Prisma.TransactionClient, contractId: string): Promise<void> {
     const bal = await glContractBalance(tx, contractId, '11-2102', 'cr');
+    // Negative 11-2102 = GL anomaly (Dr > Cr — e.g. past mis-posted JE). Same
+    // alarm-and-skip convention as JP5/write-off (M1 hardening) — never
+    // auto-heal, surface for manual investigation instead.
+    if (bal.lt(0)) {
+      Sentry.captureMessage('JP4 payoff: negative 11-2102 balance', {
+        level: 'warning',
+        tags: { subsystem: 'bad-debt' },
+        extra: { contractId, balance: bal.toFixed(2) },
+      });
+    }
     if (bal.gt(0)) {
       const activeRow = await tx.badDebtProvision.findFirst({
         where: { contractId, status: 'ACTIVE', deletedAt: null },

@@ -238,10 +238,24 @@ SystemConfig ใหม่: `exchange_cancel_penalty_pct` = `'5'`, `exchange_mark
 
 ## 12. Out of scope / follow-ups (บันทึกไว้ ไม่หายไปเฉยๆ)
 
-1. **JP4 early-payoff ไม่ release ECL** + cron ตามไม่เจอ (สัญญาหลุด scope) — allowance ค้างบน B/S; fix แยกด้วย 51-1103 convention เดิม
-2. **VendorClearance unwired ทั้งระบบ** — FINANCE ไม่เคยบันทึกจ่าย SHOP, 21-1101/21-1102 สะสมไม่ถูกล้าง (ตระกูล F3) — ต้องเข้า backlog CPA/owner
-3. Year-end step "33-1101 ปิดเข้า 32-1101" ที่ CSV สั่งแต่โค้ดยังไม่มี
+1. **JP4 early-payoff ไม่ release ECL** + cron ตามไม่เจอ (สัญญาหลุด scope) — allowance ค้างบน B/S; fix แยกด้วย 51-1103 convention เดิม — **✅ owner เห็นด้วย (C1, 2026-07-30) → เข้าคิวแก้**
+2. **VendorClearance unwired ทั้งระบบ** — FINANCE ไม่เคยบันทึกจ่าย SHOP, 21-1101/21-1102 สะสมไม่ถูกล้าง (ตระกูล F3) — **✅ owner สั่งวางแผนเมนู "จ่ายให้หน้าร้าน (INTER-CO)" (C2, 2026-07-30) → brainstorming ถัดไป**
+3. Year-end step "33-1101 ปิดเข้า 32-1101" ที่ CSV สั่งแต่โค้ดยังไม่มี — **✅ owner อนุมัติตามคำแนะนำ (C3, 2026-07-30): ทำเป็น Step 4 ของ year-end closing ก่อนรอบปิดปี 2026 (ม.ค.–มี.ค. 2027) — ไม่ด่วน**
 4. SHOP-side JE ของ MEMO mode (inventory swap ไม่ลงบัญชี) — รอ phase SHOP wiring
 5. Down payment เพิ่มบนสัญญาใหม่ใน PRICED mode (v1 = 0 ตาม workbook)
 6. Transfer เงินรับล่วงหน้าอัตโนมัติแทนการ block (v1 block — §7.0)
 7. MDM auto lock/unlock ตอน swap (v1 = manual checklist)
+
+## 13. คำตอบ CPA/owner รอบ 2026-07-30 (relay ผ่านพี่นาย)
+
+| ข้อ | เรื่อง | คำตอบ | ผลต่อระบบ |
+|---|---|---|---|
+| A1 | Rename 42-1106 → "รายได้จากการโอนกลับค่าเผื่อหนี้สงสัยจะสูญ" (FINANCE ไม่มีรายได้บริการซ่อม — งานซ่อมอยู่ฝั่ง SHOP S42-1101) | **ยืนยัน** | ตรงที่ทำไว้แล้ว — ไม่แก้ |
+| A1 | ที่มากติกายกเลิก 7d/8-30d/5% | ชี้แจงแล้ว: โครงกติกา + "ค่าปรับเป็นรายได้" มาจาก workbook CPA (Case 3B + D4 owner เคาะ 2026-07-29); ส่วนที่เราตัดสินใจเอง = ย้ายบัญชี 41-1199→42-1107 (ผิดหมวด) + ทำ 5% เป็น config `exchange_cancel_penalty_pct` | ไม่แก้ (รอ CPA ทักถ้าไม่เห็นด้วย) |
+| A2.1 | ค่าปรับยกเลิกไม่คิด VAT | **ยืนยัน** (ตรง 42-1103 convention + ม.79) | ตรงที่ทำไว้แล้ว — 42-1107 ไม่มี VAT |
+| A2.2 | ECL reversal: ผสม (exchange→42-1106, ที่เหลือ→51-1103) vs มาตรฐานเดียว | **⏳ OPEN — รอ CPA เลือก** หลังอธิบายความต่าง (กำไรเท่ากัน ต่างที่ gross-up P&L + consistency); คำแนะนำเรา: ถ้าเลือกทางเดียวใช้ Cr 51-1103 ทุกเส้นทางแล้วแก้ workbook | ถ้า CPA เลือกมาตรฐานเดียว → แก้ A.5 template 1 จุด + spec |
+| B2 | VAT due ทันทีตอน derecognize (ม.78/1 ไม่ออก CN) | **ยืนยัน** | — |
+| B3, B4 | (ตามชุดคำถาม B) | **ยืนยัน/รับทราบ** | — |
+| B5 | | **รับทราบ** | — |
+| B6 | 51-1106 "ค่าเสียหายจากการยกเลิก swap" | **ไม่เปิดบัญชี** — ชี้แจงที่มา: โผล่เฉพาะ Sheet 13 (Year-End Closing) ของ workbook โดยไม่มี Case ไหน post → ขัดกันเองในไฟล์ | ตัดจาก CoA plan ถาวร; year-end กวาด 51-XXXX อัตโนมัติถ้าเพิ่มภายหลัง |
+| C1-C3 | follow-ups | ดูสถานะใน §12 ข้อ 1-3 | — |

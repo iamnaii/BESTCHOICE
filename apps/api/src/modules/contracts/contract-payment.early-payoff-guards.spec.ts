@@ -149,6 +149,13 @@ describe('ContractPaymentService early-payoff guards (Wave 3 MED gap-fill)', () 
         ),
         update: jest.fn().mockResolvedValue({}),
       },
+      // releaseEclOnPayoff (C1) — glContractBalance reads journalLine; no prior
+      // 11-2102 lines in this fixture → bal 0 → EclStageReverseTemplate skipped.
+      journalLine: { findMany: jest.fn().mockResolvedValue([]) },
+      badDebtProvision: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
     };
 
     prisma = {
@@ -181,6 +188,7 @@ describe('ContractPaymentService early-payoff guards (Wave 3 MED gap-fill)', () 
       {} as never, // EarlyPayoffJP4Template never invoked
       {} as never, // ShopCollectSettlementTemplate never invoked
       { generateReceipt: async () => undefined } as never, // ReceiptsService (EARLY_PAYOFF receipt)
+      { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-ECL-1' }) } as never, // EclStageReverseTemplate
     );
     return service;
   };

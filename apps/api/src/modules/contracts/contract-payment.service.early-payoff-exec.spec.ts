@@ -141,6 +141,10 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
   let createAndPost: jest.Mock;
   let transferOwnership: jest.Mock;
   let generateReceipt: jest.Mock;
+  let eclExecute: jest.Mock;
+  let badDebtProvisionFindFirst: jest.Mock;
+  let badDebtProvisionUpdateMany: jest.Mock;
+  let journalLineFindMany: jest.Mock;
   let paymentUpdates: Array<{ where: { id: string }; data: any }>;
   let contractUpdateData: any;
   let service: ContractPaymentService;
@@ -149,7 +153,12 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
     paymentMethod: 'CASH',
   };
 
-  const buildService = (contractOverride?: Partial<typeof quoteContract>) => {
+  // C1 (2026-07-30): options to shape the releaseEclOnPayoff (ECL release on
+  // JP4) fixture — default is "no prior 11-2102 balance, no ACTIVE row".
+  const buildService = (
+    contractOverride?: Partial<typeof quoteContract>,
+    eclOpts?: { journalLines?: Array<{ debit: string; credit: string }>; activeRow?: { agingBucket: string } | null },
+  ) => {
     const contract = { ...quoteContract, ...contractOverride };
 
     paymentUpdates = [];
@@ -158,6 +167,19 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
     createAndPost = jest.fn().mockResolvedValue({ id: 'je-ep-1', entryNumber: 'JE-EP-0001' });
     transferOwnership = jest.fn().mockResolvedValue(undefined);
     generateReceipt = jest.fn().mockResolvedValue(undefined);
+    eclExecute = jest.fn().mockResolvedValue({ entryNo: 'JE-ECL-1' });
+
+    // releaseEclOnPayoff (C1) reads journalLine (via glContractBalance) +
+    // badDebtProvision. Default fixture: no prior 11-2102 balance, no ACTIVE row.
+    const jlRows = (eclOpts?.journalLines ?? []).map((l) => ({
+      debit: new Prisma.Decimal(l.debit),
+      credit: new Prisma.Decimal(l.credit),
+    }));
+    journalLineFindMany = jest.fn().mockResolvedValue(jlRows);
+    badDebtProvisionFindFirst = jest
+      .fn()
+      .mockResolvedValue(eclOpts?.activeRow === undefined ? null : eclOpts.activeRow);
+    badDebtProvisionUpdateMany = jest.fn().mockResolvedValue({ count: 1 });
 
     // tx mock used inside $transaction
     tx = {
@@ -175,6 +197,12 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
           paymentUpdates.push(args);
           return Promise.resolve({ id: args.where.id, ...args.data });
         }),
+      },
+      // releaseEclOnPayoff (C1) — glContractBalance reads journalLine.
+      journalLine: { findMany: journalLineFindMany },
+      badDebtProvision: {
+        findFirst: badDebtProvisionFindFirst,
+        updateMany: badDebtProvisionUpdateMany,
       },
     };
 
@@ -203,6 +231,7 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
       {} as any, // EarlyPayoffJP4Template never invoked by earlyPayoff()
       {} as any, // ShopCollectSettlementTemplate never invoked
       { generateReceipt } as any, // ReceiptsService (EARLY_PAYOFF receipt)
+      { execute: eclExecute } as any, // EclStageReverseTemplate (C1)
     );
     return service;
   };
@@ -361,6 +390,65 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
     // Serializable isolation level passed to $transaction.
     expect(prisma.$transaction.mock.calls[0][1]).toEqual({
       isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
+  });
+
+  // ── C1 (2026-07-30): releaseEclOnPayoff — early payoff (JP4) must release
+  // any leftover 11-2102 ECL allowance back to P&L (Cr 51-1103) and flip the
+  // ACTIVE BadDebtProvision row(s) to REVERSED — mirrors the JP5/write-off
+  // release convention, minus the "consume against loss" leg. ─────────────────
+  describe('(g) releaseEclOnPayoff — C1 ECL release on JP4', () => {
+    it('(g1) 11-2102 balance 30.32 → EclStageReverse called with reverseAmount 30.32, fromBucket from the ACTIVE row, toBucket CURRENT; rows flip REVERSED', async () => {
+      buildService(undefined, {
+        // Dr 0 / Cr 30.32 on 11-2102 → glContractBalance(side='cr') = 30.32.
+        journalLines: [{ debit: '0', credit: '30.32' }],
+        activeRow: { agingBucket: '1-30' },
+      });
+
+      await service.earlyPayoff(quoteContract.id, 'user-1', baseDto);
+
+      expect(eclExecute).toHaveBeenCalledTimes(1);
+      const [input, txArg] = eclExecute.mock.calls[0];
+      expect(input.contractId).toBe(quoteContract.id);
+      expect((input.reverseAmount as Prisma.Decimal).toFixed(2)).toBe('30.32');
+      expect(input.fromBucket).toBe('1-30');
+      expect(input.toBucket).toBe('CURRENT');
+      expect(txArg).toBe(tx);
+
+      // Rows ALWAYS flip to REVERSED, whether or not a reverse JE posted.
+      expect(badDebtProvisionUpdateMany).toHaveBeenCalledWith({
+        where: { status: 'ACTIVE', contractId: quoteContract.id, deletedAt: null },
+        data: { status: 'REVERSED' },
+      });
+    });
+
+    it('(g2) zero 11-2102 balance → EclStageReverse NOT called, but ACTIVE rows still flip REVERSED', async () => {
+      buildService(undefined, {
+        journalLines: [], // no prior 11-2102 lines → bal 0
+        activeRow: null,
+      });
+
+      await service.earlyPayoff(quoteContract.id, 'user-1', baseDto);
+
+      expect(eclExecute).not.toHaveBeenCalled();
+      expect(badDebtProvisionUpdateMany).toHaveBeenCalledWith({
+        where: { status: 'ACTIVE', contractId: quoteContract.id, deletedAt: null },
+        data: { status: 'REVERSED' },
+      });
+    });
+
+    it('(g3) no ACTIVE row on file → falls back to fromBucket "CURRENT"', async () => {
+      buildService(undefined, {
+        journalLines: [{ debit: '0', credit: '15.00' }],
+        activeRow: null, // no ACTIVE row (e.g. row already reversed by a prior cron run)
+      });
+
+      await service.earlyPayoff(quoteContract.id, 'user-1', baseDto);
+
+      expect(eclExecute).toHaveBeenCalledTimes(1);
+      const input = eclExecute.mock.calls[0][0];
+      expect(input.fromBucket).toBe('CURRENT');
+      expect((input.reverseAmount as Prisma.Decimal).toFixed(2)).toBe('15.00');
     });
   });
 

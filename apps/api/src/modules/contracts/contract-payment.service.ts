@@ -6,6 +6,8 @@ import { ReceiptsService } from '../receipts/receipts.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { EarlyPayoffJP4Template } from '../journal/cpa-templates/early-payoff-jp4.template';
 import { ShopCollectSettlementTemplate } from '../journal/cpa-templates/shop-collect-settlement.template';
+import { EclStageReverseTemplate } from '../journal/cpa-templates/ecl-stage-reverse.template';
+import { glContractBalance } from '../journal/gl-contract-balance';
 import { computeEarlyPayoffJE } from '../journal/compute-early-payoff-je';
 import { computeInstallmentBreakdown } from '../journal/compute-installment-breakdown';
 import { reconstructPriorCleared } from '../journal/reconstruct-prior';
@@ -28,6 +30,8 @@ export class ContractPaymentService {
     // forwardRef: ContractsModule → ReceiptsModule → LineOaModule → ContractsModule cycle.
     @Inject(forwardRef(() => ReceiptsService))
     private receiptsService: ReceiptsService,
+    // C1 (2026-07-30): releases any leftover 11-2102 ECL allowance on early payoff.
+    private eclStageReverseTemplate: EclStageReverseTemplate,
   ) {}
 
   /**
@@ -485,6 +489,14 @@ export class ContractPaymentService {
           select: { productId: true },
         });
 
+        // C1 (2026-07-30 owner decision): early payoff derecognizes the HP
+        // receivable in full — any ECL allowance still sitting on 11-2102 for
+        // this contract is now stale and must release back to P&L. Same
+        // convention as the JP5/write-off consume-then-release helper
+        // (glContractBalance + EclStageReverseTemplate), minus the "consume"
+        // leg — JP4 has no loss to net the provision against.
+        await this.releaseEclOnPayoff(tx, id);
+
         // Ownership release: FINANCE → null. Customer owns the device once
         // the contract is closed via payoff, same semantics as COMPLETED.
         if (updated?.productId) {
@@ -559,6 +571,50 @@ export class ContractPaymentService {
     );
 
     return { success: true, contractId: id };
+  }
+
+  /**
+   * C1 (owner decision 2026-07-30): early payoff (JP4) never touched 11-2102 —
+   * once the contract leaves the daily bad-debt-provision cron's scope
+   * (ACTIVE/OVERDUE/DEFAULT/TERMINATED only), any ECL allowance still booked
+   * on 11-2102 for it would sit on the balance sheet forever, with stale
+   * ACTIVE BadDebtProvision rows never reconciled.
+   *
+   * Mirrors the JP5/write-off release convention exactly (see
+   * `RepossessionsService.create` + `glContractBalance` +
+   * `EclStageReverseTemplate`), minus the "consume against loss" leg — JP4 is
+   * a full cash settlement with no derecognition loss to net the provision
+   * against, so the entire GL balance (if any) releases straight to P&L.
+   *
+   * `EclStageReverseTemplate.execute` self-skips when reverseAmount <= 0, so
+   * calling this twice on an already-released contract posts nothing new
+   * (idempotent) — the GL balance nets to 0 after the first release.
+   */
+  private async releaseEclOnPayoff(tx: Prisma.TransactionClient, contractId: string): Promise<void> {
+    const bal = await glContractBalance(tx, contractId, '11-2102', 'cr');
+    if (bal.gt(0)) {
+      const activeRow = await tx.badDebtProvision.findFirst({
+        where: { contractId, status: 'ACTIVE', deletedAt: null },
+        orderBy: { provisionDate: 'desc' },
+      });
+      await this.eclStageReverseTemplate.execute(
+        {
+          contractId,
+          reverseAmount: bal,
+          fromBucket: activeRow?.agingBucket ?? 'CURRENT',
+          toBucket: 'CURRENT',
+        },
+        tx,
+      );
+    }
+
+    // ALWAYS mark ACTIVE rows REVERSED — the contract is now settled in full,
+    // so there is no more receivable left to provide against. Same convention
+    // as RepossessionsService's "REVERSE stale ACTIVE rows" step after JP5.
+    await tx.badDebtProvision.updateMany({
+      where: { status: 'ACTIVE', contractId, deletedAt: null },
+      data: { status: 'REVERSED' },
+    });
   }
 
   /** Shared findOne - reuses Prisma query for contract with full includes */

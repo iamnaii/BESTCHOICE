@@ -12,6 +12,7 @@ import { JournalAutoService } from '../journal/journal-auto.service';
 import { PaymentReceiptTemplate } from '../journal/cpa-templates/payment-receipt.template';
 import { Vat60dayReversalTemplate } from '../journal/cpa-templates/vat-60day-reversal.template';
 import { PaymentsService } from '../payments/payments.service';
+import { BadDebtService } from '../accounting/bad-debt.service';
 
 // Same Sentry-transport stub the sibling specs use — captureMessage is
 // asserted directly in the orphan test.
@@ -76,6 +77,7 @@ describe('PaySolutionsService.handlePaymentCallback — FIFO money + close (char
   let template: { execute: jest.Mock };
   let vat60Reversal: { execute: jest.Mock };
   let journalAuto: { createAndPost: jest.Mock; createPaymentJournal: jest.Mock };
+  let badDebtService: { reverseStageOnPayment: jest.Mock };
   let sendEarlyPayoffSpy: jest.SpyInstance;
   let sendPaymentSuccessSpy: jest.SpyInstance;
 
@@ -202,6 +204,7 @@ describe('PaySolutionsService.handlePaymentCallback — FIFO money + close (char
     // call shape without a DB.
     template = { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK', split: {} }) };
     vat60Reversal = { execute: jest.fn().mockResolvedValue(null) };
+    badDebtService = { reverseStageOnPayment: jest.fn().mockResolvedValue(null) };
 
     const lineOa = {} as Partial<LineOaService>;
     const integrationConfig = {
@@ -229,6 +232,7 @@ describe('PaySolutionsService.handlePaymentCallback — FIFO money + close (char
         { provide: PaymentReceiptTemplate, useValue: template },
         { provide: Vat60dayReversalTemplate, useValue: vat60Reversal },
         { provide: PaymentsService, useValue: { recordPayment: jest.fn() } },
+        { provide: BadDebtService, useValue: badDebtService },
       ],
     }).compile();
 
@@ -511,6 +515,13 @@ describe('PaySolutionsService.handlePaymentCallback — FIFO money + close (char
       expect((sendEarlyPayoffSpy.mock.calls[0][1] as Prisma.Decimal).toString()).toBe(
         '2000',
       );
+      // ECL follow-up to C1 (2026-07-30): a QR payment closing >1 installment
+      // (EARLY_PAYOFF here) must still release the contract's 11-2102 allowance
+      // — reverseStageOnPayment fires ONCE for the contract (not once per
+      // installment, even though 2 installments were touched above) inside the
+      // SAME tx as the two receipt JEs.
+      expect(badDebtService.reverseStageOnPayment).toHaveBeenCalledTimes(1);
+      expect(badDebtService.reverseStageOnPayment).toHaveBeenCalledWith(contractId, tx);
       expect(sendPaymentSuccessSpy).not.toHaveBeenCalled();
     });
 

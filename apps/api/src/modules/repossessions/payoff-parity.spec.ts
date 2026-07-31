@@ -108,6 +108,8 @@ describe('Payoff parity: repossession closingAmount === early-payoff totalPayoff
       {} as any,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       {} as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      {} as any, // EclStageReverseTemplate never invoked by getEarlyPayoffQuote
     );
     const repo = new RepossessionsService(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -12,6 +12,7 @@ import { JournalAutoService } from '../journal/journal-auto.service';
 import { PaymentReceiptTemplate } from '../journal/cpa-templates/payment-receipt.template';
 import { Vat60dayReversalTemplate } from '../journal/cpa-templates/vat-60day-reversal.template';
 import { PaymentsService } from '../payments/payments.service';
+import { BadDebtService } from '../accounting/bad-debt.service';
 import { buildEarlyPayoffSuccessFlex } from '../line-oa/flex-messages/early-payoff-success.flex';
 
 // The early-payoff flex builder is a plain module import (not an injected dep),
@@ -111,6 +112,7 @@ describe('PaySolutionsService — getPaymentStatus + early-payoff savings (chara
         { provide: PaymentReceiptTemplate, useValue: template },
         { provide: Vat60dayReversalTemplate, useValue: vat60Reversal },
         { provide: PaymentsService, useValue: payments },
+        { provide: BadDebtService, useValue: { reverseStageOnPayment: jest.fn().mockResolvedValue(null) } },
       ],
     }).compile();
 

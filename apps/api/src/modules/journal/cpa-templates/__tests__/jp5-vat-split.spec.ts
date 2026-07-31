@@ -31,8 +31,9 @@ import { JournalAutoService } from '../../journal-auto.service';
 const prisma = new PrismaClient();
 
 async function setup() {
-  // JournalPostAuditLog rows (asset flows) FK-reference journal_entries — clear
-  // them first or this deleteMany trips P2003 when an asset spec ran earlier.
+  // JournalPostAuditLog rows (asset flows) FK-reference journal_entries —
+  // clear them first or this deleteMany trips P2003 when an asset spec ran
+  // earlier (same convention as early-payoff-jp4.template.spec.ts).
   await prisma.journalPostAuditLog.deleteMany({});
   await prisma.journalLine.deleteMany({});
   await prisma.journalEntry.deleteMany({});

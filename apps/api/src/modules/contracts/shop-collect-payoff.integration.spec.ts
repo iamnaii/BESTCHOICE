@@ -16,6 +16,7 @@ import { ProductsService } from '../products/products.service';
 import { EarlyPayoffJP4Template } from '../journal/cpa-templates/early-payoff-jp4.template';
 import { Vat60dayReversalTemplate } from '../journal/cpa-templates/vat-60day-reversal.template';
 import { ShopCollectSettlementTemplate } from '../journal/cpa-templates/shop-collect-settlement.template';
+import { EclStageReverseTemplate } from '../journal/cpa-templates/ecl-stage-reverse.template';
 
 const prisma = new PrismaClient();
 const CASH_ACCOUNT_CODES = ['11-1101', '11-1102', '11-1103', '11-1201', '11-1202', '11-1203'];
@@ -26,7 +27,8 @@ function buildService(): ContractPaymentService {
   const jp4 = new EarlyPayoffJP4Template(journal, prisma as any, vat60Reversal);
   const products = new ProductsService(prisma as any);
   const settlementTemplate = new ShopCollectSettlementTemplate(journal, prisma as any);
-  return new ContractPaymentService(prisma as any, products, journal, jp4, settlementTemplate, { generateReceipt: async () => undefined } as any);
+  const eclStageReverseTemplate = new EclStageReverseTemplate(journal, prisma as any);
+  return new ContractPaymentService(prisma as any, products, journal, jp4, settlementTemplate, { generateReceipt: async () => undefined } as any, eclStageReverseTemplate);
 }
 
 async function ensureFinanceCompany(): Promise<void> {

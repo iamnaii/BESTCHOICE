@@ -65,6 +65,8 @@ describe('ContractPaymentService early-payoff money branches (Wave 3 gap-fill)',
         {} as any, // ShopCollectSettlementTemplate never invoked
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         { generateReceipt: async () => undefined } as any, // ReceiptsService (EARLY_PAYOFF receipt)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        {} as any, // EclStageReverseTemplate never invoked by getEarlyPayoffQuote
       );
       return service;
     };
@@ -476,9 +478,14 @@ describe('ContractPaymentService early-payoff money branches (Wave 3 gap-fill)',
       // computeUnbookedLateFees (netting ค่าปรับก่อนลง JE) — fixture นี้มีค่าปรับ
       installmentSchedule: { findMany: jest.Mock };
       journalEntry: { findMany: jest.Mock };
+      // releaseEclOnPayoff (C1) — glContractBalance reads journalLine; no prior
+      // 11-2102 lines in this fixture → bal 0 → EclStageReverseTemplate skipped.
+      journalLine: { findMany: jest.Mock };
+      badDebtProvision: { findFirst: jest.Mock; updateMany: jest.Mock };
     };
     let createAndPost: jest.Mock;
     let transferOwnership: jest.Mock;
+    let eclStageReverseTemplate: { execute: jest.Mock };
     let paymentUpdates: Array<{ where: { id: string }; data: Record<string, unknown> }>;
     let service: ContractPaymentService;
 
@@ -488,6 +495,7 @@ describe('ContractPaymentService early-payoff money branches (Wave 3 gap-fill)',
       paymentUpdates = [];
       createAndPost = jest.fn().mockResolvedValue({ id: 'je-fifo-1' });
       transferOwnership = jest.fn().mockResolvedValue(undefined);
+      eclStageReverseTemplate = { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-ECL-1' }) };
 
       tx = {
         contract: {
@@ -509,6 +517,13 @@ describe('ContractPaymentService early-payoff money branches (Wave 3 gap-fill)',
         // ไม่มี schedule id / JE เดิม → netted = ค่าปรับดิบ (ไม่มีอะไรให้หัก)
         installmentSchedule: { findMany: jest.fn().mockResolvedValue([]) },
         journalEntry: { findMany: jest.fn().mockResolvedValue([]) },
+        // releaseEclOnPayoff (C1): no prior 11-2102 lines → bal 0 → skip reverse,
+        // rows still flip REVERSED (none exist in this fixture — no-op update).
+        journalLine: { findMany: jest.fn().mockResolvedValue([]) },
+        badDebtProvision: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        },
       };
 
       prisma = {
@@ -539,6 +554,8 @@ describe('ContractPaymentService early-payoff money branches (Wave 3 gap-fill)',
         {} as any, // ShopCollectSettlementTemplate never invoked
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         { generateReceipt: async () => undefined } as any, // ReceiptsService (EARLY_PAYOFF receipt)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        eclStageReverseTemplate as any,
       );
     });
 

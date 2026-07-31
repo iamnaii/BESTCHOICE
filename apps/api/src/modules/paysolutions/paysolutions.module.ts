@@ -10,7 +10,12 @@ import { ShopOrdersModule } from '../shop-orders/shop-orders.module';
 import { ProductsModule } from '../products/products.module';
 import { JournalModule } from '../journal/journal.module';
 import { PaymentsModule } from '../payments/payments.module';
+import { AccountingModule } from '../accounting/accounting.module';
 
+// No forwardRef needed for AccountingModule: its own import chain (JournalModule,
+// TaxModule, PeakModule, ConsecutiveMissedModule, ReceiptsModule — see
+// accounting.module.ts) never imports PaySolutionsModule or PaymentsModule, so
+// this edge is acyclic (verified 2026-07-30, fix/qr-ecl-release).
 @Module({
   imports: [
     PrismaModule,
@@ -19,6 +24,7 @@ import { PaymentsModule } from '../payments/payments.module';
     forwardRef(() => ShopOrdersModule),
     ProductsModule,
     JournalModule,
+    AccountingModule,
     forwardRef(() => PaymentsModule),
   ],
   controllers: [PaySolutionsController],

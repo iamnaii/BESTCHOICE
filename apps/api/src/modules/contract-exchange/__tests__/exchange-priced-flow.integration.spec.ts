@@ -753,10 +753,15 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
   // -------------------------------------------------------------------------
   // Owner decision 2026-07-31: the old 30-day cancellation cap is gone —
   // prove cancel succeeds identically past it (day 45) end-to-end against a
-  // real DB. Mirrors the day-15 case above but skips the 2A-backfill
-  // assertions (already proven there) to keep this fixture lightweight.
+  // real DB. A REAL 45-day-old swap would already have 2A accrual JEs posted
+  // on the NEW contract (its own installments came due) — seed 2 real
+  // accruals via InstallmentAccrual2ATemplate (same template the daily cron
+  // uses) so this proves the cancel sweep reverses MORE than just the 4 core
+  // swap JEs, i.e. the metadata.contractId sweep in
+  // ExchangeCancelReversalTemplate actually catches JEs it never received an
+  // explicit id for.
   it(
-    'Cancel day-45 (past the old 30-day cap): SUCCEEDS — window FREE, no penalty JE, all JEs mirror-reversed',
+    'Cancel day-45 (past the old 30-day cap): SUCCEEDS — window FREE, no penalty JE, 2A accruals on the new contract swept + net 0',
     async () => {
       const fix = await seedSwapFixture('100006', { schedule: 'NONE' });
       await act1a.execute(fix.oldContractId);
@@ -764,13 +769,50 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
       const { newContract, request } = await seedNewContractAndRequest(fix, '100006', '8000');
       await activateAndFinalize(newContract.id, fix.newProductId);
 
+      // --- Seed 2 REAL 2A accruals on the NEW contract (installments #1-#2
+      // already due by day 45). Uses the same template the daily cron calls —
+      // not a hand-rolled JE — so the sweep is proven against production code.
+      const newInst1 = await prisma.installmentSchedule.create({
+        data: {
+          contractId: newContract.id,
+          installmentNo: 1,
+          dueDate: new Date(Date.now() - 40 * DAY),
+          principal: new Decimal('1250.00'),
+          interest: new Decimal('750.00'),
+          amountDue: new Decimal('2273.75'),
+        },
+      });
+      const newInst2 = await prisma.installmentSchedule.create({
+        data: {
+          contractId: newContract.id,
+          installmentNo: 2,
+          dueDate: new Date(Date.now() - 10 * DAY),
+          principal: new Decimal('1250.00'),
+          interest: new Decimal('750.00'),
+          amountDue: new Decimal('2273.75'),
+        },
+      });
+      const accrual1 = await accrual2a.execute(newInst1.id);
+      const accrual2 = await accrual2a.execute(newInst2.id);
+      expect(accrual1).not.toBeNull();
+      expect(accrual2).not.toBeNull();
+      // Look up the accrual JEs by their installmentScheduleId tag (not
+      // entryNumber — that's not guaranteed globally unique across companies)
+      // so the "mirror-reverse completeness" check below can include them.
+      const accrualJe1 = await prisma.journalEntry.findFirstOrThrow({
+        where: { metadata: { path: ['installmentScheduleId'], equals: newInst1.id } as never },
+      });
+      const accrualJe2 = await prisma.journalEntry.findFirstOrThrow({
+        where: { metadata: { path: ['installmentScheduleId'], equals: newInst2.id } as never },
+      });
+
       await prisma.contract.update({
         where: { id: fix.oldContractId },
         data: { exchangedAt: new Date(Date.now() - 45 * DAY) },
       });
       const result = await cancelSvc.cancel(
         request.id,
-        'ทดสอบยกเลิกเปลี่ยนเครื่องวันที่ 45 (integration — เกินเพดานเดิม)',
+        'ทดสอบยกเลิกเปลี่ยนเครื่องวันที่ 45 (integration — เกินเพดานเดิม + มี 2A accrual)',
         { id: adminId, role: 'OWNER', branchId: null },
       );
       expect(result.cancelWindow).toBe('FREE');
@@ -782,7 +824,10 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
       expect(req.status).toBe('CANCELED');
       expect(req.penaltyJeId).toBeNull();
       expect(req.penaltyAmount).toBeNull();
-      expect(req.reversalJeIds.length).toBe(4); // A.1 + A.2 + A.3 + A.4 (no A.5 here)
+      // (ก) A.1 + A.2 + A.3 + A.4 (no A.5 here) + the 2 swept 2A accrual JEs
+      // on the new contract — proves the metadata sweep, not just the 4
+      // explicitly-tracked core swap JEs, actually ran.
+      expect(req.reversalJeIds.length).toBe(6);
 
       // --- NO 42-1107 penalty JE anywhere in this spec's journal rows
       const anyPenaltyLine = await prisma.journalLine.findFirst({
@@ -790,8 +835,39 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
       });
       expect(anyPenaltyLine).toBeNull();
 
-      // --- Mirror-reverse completeness: originals + reversals net 0 per account
-      const pairIds = [req.je1aId!, req.je2Id!, req.je3Id!, req.je4Id!, ...req.reversalJeIds];
+      // (ข) Sweep-at-scale: every account the 2A accruals touched nets to 0
+      // on the new contract's GL. glContractBalance aggregates ALL POSTED
+      // lines tagged metadata.contractId = newContract.id regardless of
+      // which specific JE ids we know about — so this proves the swept
+      // accruals were actually reversed, not just the 4 core swap JEs.
+      for (const [code, side] of [
+        ['11-2103', 'dr'],
+        ['11-2101', 'dr'],
+        ['11-2106', 'cr'],
+        ['11-2105', 'dr'],
+        ['21-2102', 'cr'],
+        ['21-2101', 'cr'],
+        ['41-1101', 'cr'],
+      ] as const) {
+        expect(
+          (await glContractBalance(prisma, newContract.id, code, side)).toFixed(2),
+          `new-contract GL ${code} must net 0 after cancel (incl. swept 2A accruals)`,
+        ).toBe('0.00');
+      }
+
+      // (ค) Mirror-reverse completeness (existing check, still passing): originals
+      // + reversals net 0 per account — now includes the 2 accrual JE ids
+      // explicitly so their pair is complete (their reversals are only
+      // discoverable via the sweep, never stored on the request row).
+      const pairIds = [
+        req.je1aId!,
+        req.je2Id!,
+        req.je3Id!,
+        req.je4Id!,
+        accrualJe1.id,
+        accrualJe2.id,
+        ...req.reversalJeIds,
+      ];
       const pairLines = await prisma.journalLine.findMany({
         where: { journalEntryId: { in: pairIds } },
       });

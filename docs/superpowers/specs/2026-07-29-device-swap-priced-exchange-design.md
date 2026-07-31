@@ -242,8 +242,8 @@ SystemConfig ใหม่: `exchange_market_check_pct` = `'15'` (seed dev + prod
 **UI:** `ExchangeRequestForm` — mode auto-detect + input ราคารับซื้อ/สภาพเครื่อง (A–D)/บัญชีเงิน + live tier badge + P/L preview (pattern `RepossessionsPage` preview-then-commit) + MEMO addendum/MDM checklist; `ExchangeRequestsPage` — tier chips, คิวตาม role, ปุ่มยกเลิก (ใช้ได้ทุกเมื่อถ้ายังไม่มีการชำระเงิน — ไม่มี countdown/penalty dialog อีกต่อไป, ยกเลิก 2026-07-31)
 
 **Tests:**
-- Template golden specs (ตัวเลข GL จริง): 2A(8,000 loss)/2C(NCV)/2E(escalate)/2F(no-cash)/2G(refund ลูกค้า) + A.5 ECL + penalty + mirror-cancel + MEMO(no JE)
-- Service specs: tier matrix (รวม no-valuation-row → REVIEW, boundary NCV/70%), guards §7.0, window math (BKK timezone, ขอบ 7/8/30), tier-role authorization
+- Template golden specs (ตัวเลข GL จริง): 2A(8,000 loss)/2C(NCV)/2E(escalate)/2F(no-cash)/2G(refund ลูกค้า) + A.5 ECL + mirror-cancel + MEMO(no JE). (ExchangeCancelPenaltyTemplate golden spec ถูกลบทั้งไฟล์ 2026-07-31 พร้อมกับ template — ไม่มี penalty spec ให้อ้างอิงอีกต่อไป)
+- Service specs: tier matrix (รวม no-valuation-row → REVIEW, boundary NCV/70%), guards §7.0, cancel ได้ทุกเมื่อ (BKK day-diff ยังคำนวณเก็บไว้เป็น audit context — ไม่มี window เกทอีกต่อไป, 2026-07-31), tier-role authorization
 - Integration: full flow แบบ `*.integration.spec.ts` (CI = jest, DB จริง)
 - Retire case-8 + แก้ tests ที่อ้าง
 - CI glob: spec ใหม่ใต้ `cpa-templates/__tests__/` ถูก glob ครอบอยู่แล้ว — ห้ามสร้าง subdirectory ใหม่โดยไม่เช็ค glob
